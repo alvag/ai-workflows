@@ -83,7 +83,7 @@ momento*. Ley fundamental:
 > coincidencia forzada. Contaminar el paquete de contexto o leer el informe antes de tiempo
 > mata la señal (regla 2).
 
-Si reconocés alguno de estos pensamientos, pará y volvé a la regla que estás por saltear.
+Si reconoces alguno de estos pensamientos, detente y vuelve a la regla que estás por saltear.
 
 | Racionalización | Realidad |
 |---|---|
