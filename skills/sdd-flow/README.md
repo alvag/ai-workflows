@@ -11,10 +11,10 @@ init (opcional) → constitution → gather-context → specify → clarify → 
 ```
 
 - **Portable:** detecta stack (Node, Go, Rust, Python, Java, .NET…), host de Git (GitHub/GitLab/Bitbucket/otro), issue tracker y rama base por convención. Nada hardcodeado. Override opcional en `.specify/config.yml`.
-- **Gates escalados por complejidad:** un fix trivial usa 1 gate; un cambio complejo, 3 (spec/plan/tasks) más `clarify` obligatorio. El agente clasifica y vos confirmás.
+- **Gates escalados por complejidad:** un fix trivial usa 1 gate; un cambio complejo, 3 (spec/plan/tasks) más `clarify` obligatorio. El agente clasifica y tú confirmas.
 - **Trazabilidad:** cada criterio de aceptación (`AC-n`) se mapea a tasks y se verifica al final.
-- **Estado persistido / retomable:** cada flujo guarda su fase (`status`) y su rama en el `plan.md`, y un `handoff.md` con "dónde quedé, qué decidí y cómo sigo". Podés dejarlo a medias —en cualquier fase—, atender algo urgente en otra rama y retomarlo después desde donde quedó, incluso en otra sesión, sin re-investigar.
-- **Aprobación externa de la spec (opcional):** si tu equipo lo necesita, podés publicar la spec como **subtarea de Jira** para que el TL/PO la aprueben antes de implementar (`jira_approval` en config; off por defecto). El flujo queda en pausa y se retoma —incluso en otra sesión— sin re-explorar el ticket, gracias al `handoff.md`.
+- **Estado persistido / retomable:** cada flujo guarda su fase (`status`) y su rama en el `plan.md`, y un `handoff.md` con "dónde quedé, qué decidí y cómo sigo". Puedes dejarlo a medias —en cualquier fase—, atender algo urgente en otra rama y retomarlo después desde donde quedó, incluso en otra sesión, sin re-investigar.
+- **Aprobación externa de la spec (opcional):** si tu equipo lo necesita, puedes publicar la spec como **subtarea de Jira** para que el TL/PO la aprueben antes de implementar (`jira_approval` en config; off por defecto). El flujo queda en pausa y se retoma —incluso en otra sesión— sin re-explorar el ticket, gracias al `handoff.md`.
 - **Apertura de PR (opcional):** tras el push, crea el PR hacia la rama base con descripción **compacta** (Problema, Solución y los criterios de aceptación como checklist, más el link al spec de Jira si se publicó) y reviewers por defecto (de `.specify/reviewers.json` del repo, si existe). Degrada a PR manual si no hay integración del host; el agente **nunca** mergea ni aprueba, solo crea.
 - **Degradación elegante:** si falta un MCP/CLI (tracker, navegador, host), avisa y continúa con lo que haya.
 
@@ -26,16 +26,16 @@ Invocación explícita (no dispara sola): `/sdd-flow`.
 - `/sdd-flow` + contexto o clave de ticket → arranca el ciclo desde `gather-context`.
 - `/sdd-flow implement .plans/<id>/` → implementa en una sesión fresca, reconstruyendo el contexto desde los artefactos (Vía B).
 
-Frases que el router entiende: "configurá el proyecto", "armá la spec", "aclaremos", "analizá esto", "armá el plan", "desglosá en tareas", "implementá", "verificá", "push", "crear PR".
+Frases que el router entiende: "configura el proyecto", "arma la spec", "aclaremos", "analiza esto", "arma el plan", "desglosa en tareas", "implementa", "verifica", "push", "crear PR".
 
 ## Retomar y cerrar flujos
 
 Como `.plans/` es local (no trackeado), git no lo mueve al cambiar de rama: tus flujos están visibles desde **cualquier** rama, y cada `plan.md` recuerda su `branch` y su `status`. Eso permite:
 
 - **Listar lo pendiente:** "¿en qué quedé?" / "qué flujos tengo" → muestra `id · branch · status · primera task pendiente` de cada flujo activo.
-- **Retomar uno puntual:** "continuemos con `<id>`" → la skill lee la rama del header, hace el `checkout` seguro (frenando si tenés código sin commitear en la rama actual) y sigue desde la fase exacta (`status`), no desde cero.
-- **Pausar sin perder nada (en cualquier fase):** "pausá esto" → escribe un `handoff.md` (estado, decisiones, próximo paso) y, si hay código a medias, lo guarda como WIP commit en su propia rama (no `stash`, que se confunde entre flujos). Al retomar —incluso en otra sesión— reconstruye todo desde ahí, sin re-investigar.
-- **Cerrar y archivar:** cuando confirmás que está probado y correcto, el flujo pasa a `done` y se mueve a `.plans/archived/<id>/`. Nunca automático: lo decidís vos.
+- **Retomar uno puntual:** "continuemos con `<id>`" → la skill lee la rama del header, hace el `checkout` seguro (frenando si tienes código sin commitear en la rama actual) y sigue desde la fase exacta (`status`), no desde cero.
+- **Pausar sin perder nada (en cualquier fase):** "pausa esto" → escribe un `handoff.md` (estado, decisiones, próximo paso) y, si hay código a medias, lo guarda como WIP commit en su propia rama (no `stash`, que se confunde entre flujos). Al retomar —incluso en otra sesión— reconstruye todo desde ahí, sin re-investigar.
+- **Cerrar y archivar:** cuando confirmas que está probado y correcto, el flujo pasa a `done` y se mueve a `.plans/archived/<id>/`. Nunca automático: lo decides tú.
 
 ## Artefactos en disco
 
@@ -66,7 +66,7 @@ La skill no necesita configuración para empezar: en su primera corrida detecta 
 
 ### Inicializar el proyecto (opcional): `/sdd-flow init`
 
-Estos archivos **no se crean solos** durante el ciclo (que usa autodetección + defaults conversacionales). Si querés fijarlos de entrada, corré `/sdd-flow init`: detecta el stack/test/build/tracker y te guía con un **wizard** para las decisiones (tracker, estilo de commit, prefijo de rama, modo de implementación, cross-review, aprobación en Jira) mostrando cada opción con su descripción —y el valor **actual pre-seleccionado** si el config ya existe—; los comandos quedan autodetectados y editables. Al final te **muestra** el `config.yml` y la `constitution.md` y los escribe **solo tras tu confirmación**. Son locales y untracked (nunca se trackean ni commitean). Si ya existen, no los pisa: el wizard parte de lo vigente y fusiona lo que cambies. El ciclo funciona igual sin `init` — es un atajo para dejar la config explícita.
+Estos archivos **no se crean solos** durante el ciclo (que usa autodetección + defaults conversacionales). Si quieres fijarlos de entrada, corre `/sdd-flow init`: detecta el stack/test/build/tracker y te guía con un **wizard** para las decisiones (tracker, estilo de commit, prefijo de rama, modo de implementación, cross-review, aprobación en Jira) mostrando cada opción con su descripción —y el valor **actual pre-seleccionado** si el config ya existe—; los comandos quedan autodetectados y editables. Al final te **muestra** el `config.yml` y la `constitution.md` y los escribe **solo tras tu confirmación**. Son locales y untracked (nunca se trackean ni commitean). Si ya existen, no los pisa: el wizard parte de lo vigente y fusiona lo que cambies. El ciclo funciona igual sin `init` — es un atajo para dejar la config explícita.
 
 Para fijar el comportamiento a mano, crear `.specify/config.yml` (todos los campos opcionales):
 
@@ -86,9 +86,9 @@ jira_approval: { mode: "off" }   # aprobación externa de la spec en Jira (solo 
 implement_mode: ask              # cómo ejecutar las tasks: ask (preguntar en el gate) | inline | subagent
 ```
 
-> **Prefijo de rama:** por defecto la rama usa un prefijo **semántico** (`feature/`, `fix/`, `chore/`… — para features es siempre `feature`, nunca `feat`: ese queda para los commits). Si tu proyecto necesita un prefijo único para **todo** tipo de cambio (p. ej. siempre `feature/`, incluso en fixes, por CI/CD), fijalo en `branch_prefix` o pasalo al vuelo: "con prefijo de rama feature/". El prefijo reemplaza el segmento semántico; el resto (`<ticket>-<slug>`) no cambia.
+> **Prefijo de rama:** por defecto la rama usa un prefijo **semántico** (`feature/`, `fix/`, `chore/`… — para features es siempre `feature`, nunca `feat`: ese queda para los commits). Si tu proyecto necesita un prefijo único para **todo** tipo de cambio (p. ej. siempre `feature/`, incluso en fixes, por CI/CD), fíjalo en `branch_prefix` o pásalo al vuelo: "con prefijo de rama feature/". El prefijo reemplaza el segmento semántico; el resto (`<ticket>-<slug>`) no cambia.
 
-> **Modo de implementación:** al aprobar las tasks podés seguir **inline** (la misma sesión implementa, con todo el contexto cargado) o despachar **subagentes frescos por task** (cada agente lee solo spec/plan/su task — contexto limpio, sin el ruido conversacional previo; la revisión por task, el commit y el push quedan siempre en tu sesión). Por defecto la skill pregunta en el mismo gate de aprobación; se fija con `implement_mode: ask | inline | subagent` en config, o al vuelo: "implementá con subagentes".
+> **Modo de implementación:** al aprobar las tasks puedes seguir **inline** (la misma sesión implementa, con todo el contexto cargado) o despachar **subagentes frescos por task** (cada agente lee solo spec/plan/su task — contexto limpio, sin el ruido conversacional previo; la revisión por task, el commit y el push quedan siempre en tu sesión). Por defecto la skill pregunta en el mismo gate de aprobación; se fija con `implement_mode: ask | inline | subagent` en config, o al vuelo: "implementa con subagentes".
 
 El esquema completo y la matriz de detección están en `reference.md`.
 
@@ -120,7 +120,7 @@ El esquema completo y la matriz de detección están en `reference.md`.
 
 **5. Implementar con subagentes frescos:**
 ```
-/sdd-flow empezar PROJ-130: refactor del módulo de pagos, implementá con subagentes
+/sdd-flow empezar PROJ-130: refactor del módulo de pagos, implementa con subagentes
 ```
 → tras aprobar las tasks, cada task la implementa un agente fresco que lee solo los artefactos; tu sesión revisa cada diff, marca el progreso y conserva la revisión manual, el commit y el push.
 
@@ -140,8 +140,8 @@ Para bugs o cambios de UI, si hay una tool de navegador disponible (Chrome MCP, 
 
 ### Cómo asegurar que la verificación sea la correcta
 
-- **Por cambio:** al iniciar, indicá el método ("es un bug de UI, validalo en el navegador"); o revisá/ajustá el AC y la sección `## Verification` en los gates de `specify`/`plan`.
-- **Por repo (recomendado para consistencia):** fijalo en `.specify/constitution.md` como estándar de *Done*, p. ej.: *"los AC de UI se validan reproduciéndolos en el navegador, no solo con unit tests"*. Así todos los cambios de UI heredan esa exigencia sin repetirla cada vez.
+- **Por cambio:** al iniciar, indica el método ("es un bug de UI, valídalo en el navegador"); o revisa/ajusta el AC y la sección `## Verification` en los gates de `specify`/`plan`.
+- **Por repo (recomendado para consistencia):** fíjalo en `.specify/constitution.md` como estándar de *Done*, p. ej.: *"los AC de UI se validan reproduciéndolos en el navegador, no solo con unit tests"*. Así todos los cambios de UI heredan esa exigencia sin repetirla cada vez.
 
 > Límite: la validación en navegador requiere que la tool esté disponible en la sesión. Si no la hay, la skill degrada y pide captura/pasos de reproducción.
 

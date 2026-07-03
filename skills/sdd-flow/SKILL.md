@@ -13,7 +13,7 @@ description: >-
 argument-hint: "[init | <ticket|descripción> | implement .plans/<id>/ | continuemos con <id>]"
 # disable-model-invocation es una clave REAL de Claude Code: bloquea la invocación
 # vía Skill tool (la skill queda solo-slash: /sdd-flow). Se mantiene a propósito:
-# los triggers de esta skill son genéricos ("armá el plan", "implementá") y sin el
+# los triggers de esta skill son genéricos ("arma el plan", "implementa") y sin el
 # flag competiría por el auto-trigger. Consecuencia asumida: otras skills y
 # subagentes NO pueden invocarla con el Skill tool — sdd-orchestrator delega
 # leyendo estos archivos (ver su Fase 2).
@@ -55,7 +55,7 @@ Artefactos en disco:
       └─ <id>/            # misma estructura, ya terminada
 ```
 
-Como `.plans/` y `.specify/` son **locales (untracked)**, git no los mueve al cambiar de rama: están presentes en **todas** las ramas del working tree. Eso es deliberado — convierte a `.plans/` en un catálogo de flujos visible desde cualquier rama, y cada `plan.md` lleva en su header la `branch` a la que pertenece. Esa es la base del paso `resume` (retomar un flujo aunque estés parado en otra rama).
+Como `.plans/` y `.specify/` son **locales (untracked)**, git no los mueve al cambiar de rama: están presentes en **todas** las ramas del working tree. Eso es deliberado — convierte a `.plans/` en un catálogo de flujos visible desde cualquier rama, y cada `plan.md` lleva en su header la `branch` a la que pertenece. Esa es la base del paso `resume` (retomar un flujo aunque estés posicionado en otra rama).
 
 `<id>` = clave del ticket si existe (`ABC-123`), o slug del título si no hay tracker.
 
@@ -63,13 +63,13 @@ Como `.plans/` y `.specify/` son **locales (untracked)**, git no los mueve al ca
 
 1. **La spec manda.** No se escribe `plan.md` sin un `spec.md` aprobado (salvo cambio *trivial*, ver "Clasificador de complejidad"). No se implementa sin tasks aprobadas. La verificación final chequea contra los criterios de aceptación de la spec.
 2. **Gates escalados, nunca silenciosos.** El número de gates depende de la complejidad clasificada, pero el agente **siempre** anuncia qué clasificación eligió y por qué, y espera confirmación en cada gate activo. No colapsar gates sin avisar.
-3. **No tocar código hasta aprobar las tasks** (en `tasks.md`, o embebidas en el plan combinado en cambios *triviales*). La skill se detiene en cada gate y solo continúa con aprobación explícita ("aprobado", "dale", "seguí", o equivalente).
+3. **No tocar código hasta aprobar las tasks** (en `tasks.md`, o embebidas en el plan combinado en cambios *triviales*). La skill se detiene en cada gate y solo continúa con aprobación explícita ("aprobado", "dale", "sigue", o equivalente).
 4. **Trazabilidad obligatoria.** Cada criterio de aceptación lleva id `AC-n`. Cada task referencia ≥1 `AC-n`. Antes de implementar se valida que no haya AC huérfanos (sin task) ni tasks sin AC.
 5. **Adaptación por descubrimiento, no por suposición.** Detectar stack, comandos de test/build, host de Git, tracker y rama base. Nunca hardcodear comandos ni nombres. Si algo no se puede inferir y no está en `config.yml`, preguntar una vez (y ofrecer persistirlo).
 6. **Degradación elegante.** Si un MCP/CLI opcional (tracker, navegador, host de Git) no está disponible, avisar y continuar con lo que haya (p. ej. pedir el resumen del ticket, o analizar sin reproducción en navegador).
 7. **Tests + build obligatorios tras implementar.** Con los comandos detectados/configurados. Si fallan, no commitear: mostrar el error y proponer fix.
 8. **Stage selectivo.** Mantener un registro de los archivos que la skill tocó durante `implement` y compararlo contra el working tree antes de cualquier `git add`. Nunca stagear archivos ajenos sin confirmación.
-9. **Commit y push siempre confirmados.** Ofrecer revisión manual antes del commit (gate que se ofrece siempre, salteable). Antes de ejecutar el commit, mostrar archivos staged + mensaje + comando exacto (salvo que el usuario haya dicho "commiteá directo"). El push se ofrece y se ejecuta solo con confirmación afirmativa.
+9. **Commit y push siempre confirmados.** Ofrecer revisión manual antes del commit (gate que se ofrece siempre, salteable). Antes de ejecutar el commit, mostrar archivos staged + mensaje + comando exacto (salvo que el usuario haya dicho "commitea directo"). El push se ofrece y se ejecuta solo con confirmación afirmativa.
 10. **Nada de lo que genera la skill se trackea.** Este es un flujo **personal**, no del equipo: `.specify/` y `.plans/` son locales. La skill **nunca** los stagea, comitea ni los agrega a un `.gitignore` compartido, y los excluye de todo `git add` y de las listas de archivos a commitear. El ignore local (p. ej. `.git/info/exclude`) lo gestiona el usuario por su cuenta; la skill no lo toca.
 
 ## Red flags — pará y reconsiderá
@@ -78,7 +78,7 @@ Las reglas de arriba dicen *qué* hacer; esta sección frena los atajos que apar
 
 > **NINGÚN COMMIT CON UN AC EN ROJO O SIN VERIFICAR.** Lo verde es el paso `verify` con evidencia fresca, no una corazonada.
 
-Si reconocés alguno de estos pensamientos, es señal de pará: volvé al paso que estás por saltar y hacelo.
+Si reconoces alguno de estos pensamientos, es señal de detente: vuelve al paso que estás por saltar y hazlo.
 
 | Racionalización | Realidad |
 |---|---|
@@ -148,7 +148,7 @@ Antes de cada gate de artefacto (`specify`, `plan`, `tasks`), si está disponibl
 **`sdd-cross-review`**, se puede correr una **segunda opinión de un modelo de otra familia que
 el autor** (Codex cuando conduce Claude; Claude cuando conduce Codex) que
 critica el artefacto en read-only antes de mostrártelo. **Augmenta el gate, no lo reemplaza:** la
-crítica se presenta *junto* al artefacto en el mismo STOP; vos seguís siendo el árbitro final.
+crítica se presenta *junto* al artefacto en el mismo STOP; tú sigues siendo el árbitro final.
 
 - **Dependencia blanda.** Esta capacidad es opcional: si `sdd-cross-review` **no está instalada**,
   omitir la revisión y seguir con el gate humano normal. sdd-flow funciona igual sin ella (no es
@@ -190,31 +190,31 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
 | El usuario dice (ej.) | Paso SDD |
 |---|---|
 | "empezar ticket X", pega clave del tracker + descripción, "nuevo feature" | ciclo completo desde `gather-context` (gates según complejidad) → **STOP en cada gate** |
-| "/sdd-flow init", "configurá el proyecto", "inicializá sdd", "creá el `.specify/`" | `init` |
-| "principios del proyecto", "definí el constitution" | `constitution` |
+| "/sdd-flow init", "configura el proyecto", "inicializa sdd", "crea el `.specify/`" | `init` |
+| "principios del proyecto", "define el constitution" | `constitution` |
 | "dame el contexto", "qué pide X" | `gather-context` |
-| "qué hay que hacer", "armá la spec", "definí el alcance" | `specify` → **GATE** |
-| "aclaremos", "preguntame lo que falte" | `clarify` |
-| "subí/publicá la spec al ticket", "creá la subtarea de spec", "mandá la spec a revisión del PO/TL" | `publish-spec` → **GATE externo** (si `jira_approval` aplica) |
-| "creá la rama", "branch para esto" | `create-branch` |
-| "con prefijo de rama X", "prefijo de rama: X", "usá el prefijo X para la rama" | registra el **override de prefijo** de la corrida (reemplaza `{type}` en `create-branch`; ver "Paso `create-branch`") |
-| "partí desde la rama X", "base: rama X", "esto depende de X", "cortá desde X" (X = una rama, no la base habitual) | registra el **override de base** de la corrida (`create-branch` corta desde X en vez de `default_branch`, sin tocar el config; ver "Paso `create-branch`") |
-| "sin cross-review", "saltá la segunda opinión" / "con cross-review", "pedí segunda opinión" | registra el **override de revisión cross-model** de la corrida (off/on; ver "Revisión cross-model") |
-| "sin aprobación de jira", "no subas la spec" / "con aprobación de jira", "subí la spec a revisión" | registra el **override de aprobación externa** de la corrida (off/on; ver `publish-spec`) |
-| "implementá con subagentes (frescos)" / "implementá acá mismo", "inline" | registra el **override del modo de implementación** de la corrida (subagent/inline; ver `implement` → "Modo de ejecución") |
-| "analizá esto", "reproducí el bug", "dónde toco" | `analyze` |
-| "cómo lo hacemos", "armá el plan técnico" | `plan` → **GATE** |
-| "desglosá en tareas", "armá las tasks" | `tasks` → **GATE** |
-| "aprobado", "dale", "implementá", "vamos" (con tasks/plan aprobados en esta sesión) | `implement` — Vía A |
-| `/sdd-flow implement <ruta-carpeta>`, "implementá `.plans/X/`" (sesión fresca) | `resume` → `implement` Vía B (bootstrap) |
-| "qué flujos tengo", "listá los planes", "¿en qué quedé?" | `resume` (listar) |
-| "continuemos con `<id>`", "retomá el flujo a", "seguí `.plans/X/`" | `resume` (retomar el flujo nombrado) |
-| "ya aprobaron la spec", "revisá si aprobaron", "fijate las observaciones del ticket" | `resume` → "Gate de Jira" (detección de aprobación / observaciones) |
-| "pausá esto", "lo dejo por ahora", "guardá y sigo después" | sub-paso `pause` (escribe `handoff.md`) |
-| "verificá", "¿cumple lo pedido?" | `verify` |
-| "push", "publicá la rama" (commit ya hecho) | sub-paso `push` aislado |
-| "crear PR", "abrí el PR", "pull request" (rama ya pusheada) | paso `open-pr` de `implement` (opcional; ver "Paso común", paso 9) |
-| "archivá `<id>`", "esto ya está probado, cerralo" | sub-paso `archive` |
+| "qué hay que hacer", "arma la spec", "define el alcance" | `specify` → **GATE** |
+| "aclaremos", "pregúntame lo que falte" | `clarify` |
+| "sube/publica la spec al ticket", "crea la subtarea de spec", "manda la spec a revisión del PO/TL" | `publish-spec` → **GATE externo** (si `jira_approval` aplica) |
+| "crea la rama", "branch para esto" | `create-branch` |
+| "con prefijo de rama X", "prefijo de rama: X", "usa el prefijo X para la rama" | registra el **override de prefijo** de la corrida (reemplaza `{type}` en `create-branch`; ver "Paso `create-branch`") |
+| "parte desde la rama X", "base: rama X", "esto depende de X", "corta desde X" (X = una rama, no la base habitual) | registra el **override de base** de la corrida (`create-branch` corta desde X en vez de `default_branch`, sin tocar el config; ver "Paso `create-branch`") |
+| "sin cross-review", "salta la segunda opinión" / "con cross-review", "pide segunda opinión" | registra el **override de revisión cross-model** de la corrida (off/on; ver "Revisión cross-model") |
+| "sin aprobación de jira", "no subas la spec" / "con aprobación de jira", "sube la spec a revisión" | registra el **override de aprobación externa** de la corrida (off/on; ver `publish-spec`) |
+| "implementa con subagentes (frescos)" / "implementa acá mismo", "inline" | registra el **override del modo de implementación** de la corrida (subagent/inline; ver `implement` → "Modo de ejecución") |
+| "analiza esto", "reproduce el bug", "dónde toco" | `analyze` |
+| "cómo lo hacemos", "arma el plan técnico" | `plan` → **GATE** |
+| "desglosa en tareas", "arma las tasks" | `tasks` → **GATE** |
+| "aprobado", "dale", "implementa", "vamos" (con tasks/plan aprobados en esta sesión) | `implement` — Vía A |
+| `/sdd-flow implement <ruta-carpeta>`, "implementa `.plans/X/`" (sesión fresca) | `resume` → `implement` Vía B (bootstrap) |
+| "qué flujos tengo", "lista los planes", "¿en qué quedé?" | `resume` (listar) |
+| "continuemos con `<id>`", "retoma el flujo a", "sigue `.plans/X/`" | `resume` (retomar el flujo nombrado) |
+| "ya aprobaron la spec", "revisa si aprobaron", "fíjate las observaciones del ticket" | `resume` → "Gate de Jira" (detección de aprobación / observaciones) |
+| "pausa esto", "lo dejo por ahora", "guarda y sigo después" | sub-paso `pause` (escribe `handoff.md`) |
+| "verifica", "¿cumple lo pedido?" | `verify` |
+| "push", "publica la rama" (commit ya hecho) | sub-paso `push` aislado |
+| "crear PR", "abre el PR", "pull request" (rama ya pusheada) | paso `open-pr` de `implement` (opcional; ver "Paso común", paso 9) |
+| "archiva `<id>`", "esto ya está probado, ciérralo" | sub-paso `archive` |
 
 ---
 
@@ -279,10 +279,10 @@ Obligatorio en cambios *complejos*; en *normales* solo si hay ambigüedad; se sa
 
 1. **Construir el payload** de la subtarea (plantilla y reglas en `reference.md` → "Aprobación externa de la spec (Jira)"): título `SPEC: <título corto>`; descripción con **primero un resumen ejecutivo no técnico** (problema, objetivo, alcance, fuera de alcance, criterios de aceptación en lenguaje de negocio) y **debajo la definición técnica** (cuerpo de `spec.md`, prácticamente literal). **Sanitizar** (acotado: todo lo técnico —`AC-n`, métodos, código y paths de código fuente del proyecto— se publica sin abstraer): nunca publicar menciones a cross-review / segunda opinión / modelos, URLs o entornos locales o de prueba (`localhost`, `127.0.0.1`, hosts de desarrollo como `local.<proyecto>.dev:4200`, `file://`), ni artefactos/mecánica del flujo SDD (`.plans/`, `.specify/`, paths absolutos locales, archivos del propio flujo, `status`, prefijos de rama, comandos de test/build, nombres de fases del flujo). Guardar la copia exacta de lo que se va a publicar en `.plans/<id>/jira-spec.md`.
 2. **STOP (write-safety).** Mostrar (1) el **recurso** exacto (proyecto + issue padre `<id>`) y (2) el **contenido** exacto a publicar, y pedir confirmación. Recién entonces crear la subtarea (`createJiraIssue` con `parent` + issuetype de subtarea; ver `reference.md` → "Flujo por tracker"). Misma disciplina para toda escritura posterior (actualizar descripción, comentar, transicionar): siempre recurso + contenido a la vista antes de ejecutar.
-3. **Escribir `handoff.md`** con `gate_status: awaiting`, `parent_key`, `subtask_key` (la subtarea creada), `jira_subtask_url` (`<site_url>/browse/<subtask_key>`, con `<site_url>` = la URL del site Atlassian resuelta por el MCP —p. ej. vía `getAccessibleAtlassianResources`—, para que `open-pr` pueda linkear la spec), `cloud_id`, y el snapshot de `gather-context` (ver "`handoff.md` (retomado del flujo)"). Avisar que el flujo queda **en espera de aprobación** y cómo retomarlo (`resume` con `<id>`; o decir "ya aprobaron" / "revisá el ticket"). **No** seguir a `create-branch` hasta la aprobación.
+3. **Escribir `handoff.md`** con `gate_status: awaiting`, `parent_key`, `subtask_key` (la subtarea creada), `jira_subtask_url` (`<site_url>/browse/<subtask_key>`, con `<site_url>` = la URL del site Atlassian resuelta por el MCP —p. ej. vía `getAccessibleAtlassianResources`—, para que `open-pr` pueda linkear la spec), `cloud_id`, y el snapshot de `gather-context` (ver "`handoff.md` (retomado del flujo)"). Avisar que el flujo queda **en espera de aprobación** y cómo retomarlo (`resume` con `<id>`; o decir "ya aprobaron" / "revisa el ticket"). **No** seguir a `create-branch` hasta la aprobación.
 4. **Al retomar**, la detección de aprobación y el loop de observaciones los maneja `resume` (ver `resume` → "Gate de Jira (esperando aprobación externa)").
 
-**Degradación (regla 6, nunca bloquea).** Si `tracker != jira`, no hay clave de padre, el feature está `off`, o el MCP de Atlassian es solo-lectura / falla la escritura → avisar en una línea y, si igual querés el gate, ofrecer que crees la subtarea a mano y pegues su clave (se registra en `handoff.md` y se sigue el mismo loop). Si nada de eso aplica, continuar el flujo normal sin gate externo.
+**Degradación (regla 6, nunca bloquea).** Si `tracker != jira`, no hay clave de padre, el feature está `off`, o el MCP de Atlassian es solo-lectura / falla la escritura → avisar en una línea y, si igual quieres el gate, ofrecer que crees la subtarea a mano y pegues su clave (se registra en `handoff.md` y se sigue el mismo loop). Si nada de eso aplica, continuar el flujo normal sin gate externo.
 
 ## Paso `create-branch`
 
@@ -396,13 +396,13 @@ overrides: { branch_prefix: null, base_branch: null, cross_review: null, impleme
 
 ## Paso `resume` (retomar un flujo / cambiar de contexto)
 
-Punto de entrada cuando volvés a un flujo ya empezado — en una sesión nueva, o tras haber saltado a otra cosa. Funciona **aunque estés parado en otra rama**, porque `.plans/` es local y visible desde cualquier rama, y cada `plan.md` sabe a qué `branch` pertenece y en qué `status` quedó.
+Punto de entrada cuando vuelves a un flujo ya empezado — en una sesión nueva, o tras haber saltado a otra cosa. Funciona **aunque estés posicionado en otra rama**, porque `.plans/` es local y visible desde cualquier rama, y cada `plan.md` sabe a qué `branch` pertenece y en qué `status` quedó.
 
 ### Listar / elegir el flujo
 1. Si el usuario nombró un flujo (`<id>` o ruta `.plans/<id>/`), usar ese. Si dijo algo genérico ("¿en qué quedé?", "qué flujos tengo"), **listar** los flujos activos (excluir `.plans/archived/`): para los que tienen `plan.md`, leer su header; para los **pre-`plan`** (solo `spec.md`/`handoff.md`), leer el `handoff.md` (`phase`/`gate_status`). Mostrar tabla `id · branch · estado · siguiente paso` —donde "estado" es el `status` del plan o, si no hay plan, la `phase`/`gate_status` del handoff (p. ej. "esperando aprobación Jira")—. Que el usuario elija.
 2. Si `.plans/<id>/` tiene `spec.md` pero **no** `plan.md`, el flujo quedó pre-`plan`. **Leer `handoff.md` si existe** (narrativa + snapshot de `gather-context`: complejidad, tipo de cambio, prefijo, slug, rama base, overrides) — es lo que evita re-investigar el ticket o re-clasificar. Luego:
    - Si el `handoff.md` tiene **`gate_status: awaiting`** (o `changes-requested`) → el flujo está en el **gate de Jira**; ir a "Gate de Jira (esperando aprobación externa)" abajo.
-   - Si no (pausa común en `specify`/`clarify`) → chequear si ya existe una rama del flujo (`git branch --list "*<id>*"`): si existe, la spec ya fue aprobada y `create-branch` ya corrió → confirmarlo con el usuario, posicionarse en esa rama (checkout seguro, como abajo) y retomar en `plan` (así `base_commit` se toma del HEAD correcto, no de la rama en la que estés parado). Si no hay rama, retomar desde `specify`/`clarify`, sin navegación de rama.
+   - Si no (pausa común en `specify`/`clarify`) → chequear si ya existe una rama del flujo (`git branch --list "*<id>*"`): si existe, la spec ya fue aprobada y `create-branch` ya corrió → confirmarlo con el usuario, posicionarse en esa rama (checkout seguro, como abajo) y retomar en `plan` (así `base_commit` se toma del HEAD correcto, no de la rama en la que estés posicionado). Si no hay rama, retomar desde `specify`/`clarify`, sin navegación de rama.
 
 ### Navegar a la rama correcta (checkout seguro)
 3. Parsear el header del `plan.md` elegido: `id`, `branch`, `base_commit`, `complexity`, `status` (y `wip_commit` si está).
@@ -433,7 +433,7 @@ Punto de entrada cuando volvés a un flujo ya empezado — en una sesión nueva,
 Cuando `handoff.md` tiene `gate_status: awaiting`/`changes-requested`, el flujo está parado esperando que el TL/PO aprueben la subtarea `SPEC: …`. Confirmar el resumen del `handoff.md` (objetivo, complejidad, subtarea) y resolver según lo que diga el usuario:
 
 - **"ya aprobaron"** → confiar: poner `gate_status: approved` en `handoff.md` y seguir a `create-branch` usando el `branch_prefix`/`slug`/`base_branch` del snapshot.
-- **"revisá el ticket" o nada** → leer la subtarea por MCP (estado + comentarios nuevos desde la publicación):
+- **"revisa el ticket" o nada** → leer la subtarea por MCP (estado + comentarios nuevos desde la publicación):
   - **Hay observaciones** (comentarios pidiendo cambios) → ajustar la `spec.md` localmente; **actualizar la descripción de la subtarea** con la spec corregida (sanitizada) **+ un comentario consolidado que @menciona al/los autor(es) de las observaciones** (un bullet por observación; ver `reference.md` → "Comentario de ajuste") resumiendo qué cambió y que vuelve a revisión (cada escritura con el STOP de write-safety del paso `publish-spec`); dejar `gate_status: awaiting` y volver a esperar.
   - **Aprobada** (la señal de `jira_approval.approval_signal` —un estado de Jira— o, si es `ask`, confirmándolo con el usuario) → `gate_status: approved` y seguir a `create-branch`.
 
@@ -464,7 +464,7 @@ Ortogonal a las Vías A/B: se llegue por la sesión actual o por bootstrap, las 
 - **`inline`** — la propia sesión implementa cada task (el comportamiento de siempre). El contexto acumulado ayuda, pero arrastra el ruido de specify/plan/cross-review.
 - **`subagent`** — cada task la implementa un **agente fresco** que solo lee los artefactos (spec/plan/su task), con contexto limpio. El conductor revisa entre tasks y conserva todos los STOPs.
 
-Resolución (misma precedencia que el resto de overrides SDD): **override conversacional de la corrida** ("implementá con subagentes" / "implementá acá") > **`implement_mode`** del `config.yml` > default `ask` (preguntar en el último gate antes de implementar, dentro del mismo STOP — nunca un gate extra). Excepción: en *trivial* el default efectivo es `inline` sin pregunta (1-2 tasks mecánicas no ameritan despacho); el override conversacional sigue valiendo. Si el entorno **no tiene capacidad** de despachar agentes frescos (descubrirla por capacidad, no por nombre — ver `reference.md` → "Prompt del subagente por task"), avisar en una línea y seguir `inline` (degradación estándar, regla 6).
+Resolución (misma precedencia que el resto de overrides SDD): **override conversacional de la corrida** ("implementa con subagentes" / "implementa acá") > **`implement_mode`** del `config.yml` > default `ask` (preguntar en el último gate antes de implementar, dentro del mismo STOP — nunca un gate extra). Excepción: en *trivial* el default efectivo es `inline` sin pregunta (1-2 tasks mecánicas no ameritan despacho); el override conversacional sigue valiendo. Si el entorno **no tiene capacidad** de despachar agentes frescos (descubrirla por capacidad, no por nombre — ver `reference.md` → "Prompt del subagente por task"), avisar en una línea y seguir `inline` (degradación estándar, regla 6).
 
 ### Paso común — Implementación
 
@@ -483,12 +483,12 @@ Resolución (misma precedencia que el resto de overrides SDD): **override conver
    Los pasos 3-10 de abajo (tests+build completos, `verify` de AC, revisión manual, staging, commit, push, PR opcional) los ejecuta **siempre el conductor en esta sesión**, en ambos modos: los STOPs no funcionan dentro de un subagente.
 3. **Tests + build** con los comandos detectados/configurados (+ `lint_cmd` si está configurado). Acotar tests al código tocado si el runner lo permite (`test_scope_hint`). Si algo falla: **no commitear**; antes de parchar, aplicar **debugging sistemático** — formular **una** hipótesis ("creo que la causa raíz es X porque Y") y probarla mínimamente, en vez de prueba y error (skill de debugging sistemático si está disponible, o el método inline; ver `analyze` y `reference.md` → "Matriz de detección"). Mostrar el error + la hipótesis, aplicar el fix y volver al paso 2. **Tope: 3 fixes fallidos de la misma falla = problema de diseño** — parar y volver a `plan`/`specify`, no intentar un fix #4.
 4. **`verify` de los AC** (ver paso `verify`): recorrer `AC-1..N` con la gate function y marcar cumplido/no cumplido con evidencia fresca. Si alguno falla: **no commitear**, reportar y volver al paso 2 (con el mismo debugging sistemático del paso 3; mismo tope de 3 intentos), o a `plan`/`specify` si el gap es de diseño. Solo se commitea con **todos los AC en verde**; cuando lo estén, `verify` persiste el resultado y deja `status: verified`. Verificar antes del commit evita commits/push que después no cumplen lo pedido.
-5. **Gate de revisión manual (STOP):** con tests+build OK y AC verificados, ofrecer revisar (levantar la app, `git diff`, repasar la sección Verification del plan) antes de commitear. Salteable con "commiteá directo".
+5. **Gate de revisión manual (STOP):** con tests+build OK y AC verificados, ofrecer revisar (levantar la app, `git diff`, repasar la sección Verification del plan) antes de commitear. Salteable con "commitea directo".
 6. **Clasificar el working tree antes de stagear.** `git status --porcelain` y repartir cada ruta dirty:
    - **SDD local** (`.plans/`, `.specify/`) y **generados/cache** (lo que el repo ya ignora, más caches obvios como `dist/`, `__pycache__/`, `coverage/`): **nunca** se stagean ni cuentan como "código sin commitear". La fuente de verdad de qué es generado es el `.gitignore` del repo.
    - **Código:** `propios = code_touched ∩ (código dirty)`; `ajenos = (código dirty) − code_touched`. Sin ajenos → stagear `propios`. Con ajenos → listar ambos grupos y pedir elección (solo míos / incluir todos / cancelar). Nunca stagear ajenos sin confirmación.
    - **Extras (cambios sin AC).** Todo cambio que se decide incluir en el commit y **no mapea a ningún AC** se registra como `E-n` en la sección `## Extras (fuera de AC)` del `plan.md` antes de stagear — para que nada entre sin rastro (ver "Extras" abajo). Aplica a los `ajenos` que se eligen incluir y a cualquier ajuste oportunista que el conductor sepa que no corresponde a un AC (incluso dentro de un archivo `propio`). **No** aplica a corregir lo recién escrito por la skill (typo/ajuste dentro del código del feature): eso es parte de implementar bien el AC.
-7. **Commit (transparente, confirmado, inline).** Con el staging armado (paso 6: solo `code_touched`; nunca `git add` adicional), **construir el mensaje inline** —sin depender de ninguna skill externa— siguiendo `reference.md` → "Construcción del mensaje de commit" (`type` desde `change_type`; scope = ticket resuelto del `id`/rama, u omitido si no hay; subject imperativo **en español** < 72 chars; **sin firmas ni `Co-Authored-By`**; con `commit_style: plain`, mensaje plano sin `type(scope)`). **Mostrar antes de ejecutar**: archivos staged + mensaje exacto + comando exacto. Si el usuario ya dijo "commiteá directo" en el paso 5, proceder sin re-preguntar; si no, esperar su OK. **Ejecutar con heredoc** para que un body multilínea sobreviva intacto (plantilla en `reference.md`). Si hay `E-n` declarados en `## Extras`, listarlos como bullets en el **body** (el commit sigue siendo atómico del flujo). **Si el commit falla** (p. ej. hook de pre-commit): mostrar el error y **parar** — nunca reintentar con `--no-verify` salvo pedido explícito. Hecho el commit, poner `status: committed`.
+7. **Commit (transparente, confirmado, inline).** Con el staging armado (paso 6: solo `code_touched`; nunca `git add` adicional), **construir el mensaje inline** —sin depender de ninguna skill externa— siguiendo `reference.md` → "Construcción del mensaje de commit" (`type` desde `change_type`; scope = ticket resuelto del `id`/rama, u omitido si no hay; subject imperativo **en español** < 72 chars; **sin firmas ni `Co-Authored-By`**; con `commit_style: plain`, mensaje plano sin `type(scope)`). **Mostrar antes de ejecutar**: archivos staged + mensaje exacto + comando exacto. Si el usuario ya dijo "commitea directo" en el paso 5, proceder sin re-preguntar; si no, esperar su OK. **Ejecutar con heredoc** para que un body multilínea sobreviva intacto (plantilla en `reference.md`). Si hay `E-n` declarados en `## Extras`, listarlos como bullets en el **body** (el commit sigue siendo atómico del flujo). **Si el commit falla** (p. ej. hook de pre-commit): mostrar el error y **parar** — nunca reintentar con `--no-verify` salvo pedido explícito. Hecho el commit, poner `status: committed`.
 8. **Push opcional (STOP):** detectar si la rama existe en remoto (host de Git si hay tool, o `git ls-remote --heads origin <branch>`). Ofrecer `git push -u origin <branch>` (primera vez) o `git push origin <branch>`. Ejecutar solo con confirmación afirmativa; tras el push, poner `status: pushed`.
 9. **PR opcional (STOP).** Tras el push, ofrecer crear el PR hacia la **rama base del flujo**: `base_branch` del header si está (feature dependiente cortada de otra rama), si no `default_branch` (detalle en `reference.md` → "Apertura de PR"). Si el destino es un `base_branch` que aún no se mergeó, avisarlo en el preview (el PR queda **stacked** sobre esa rama; conviene mergear la base primero o re-apuntar a `default_branch` cuando la base entre): probar el MCP de Bitbucket (sin él, degradar a PR manual — regla 6); evitar duplicados (si ya hay un PR abierto para la rama, ofrecer actualizarlo); redactar una descripción **compacta** desde `spec.md`/`plan.md` (`## Ticket` con link a la subtarea SPEC si `jira_subtask_url` está en el header; `## Problema` ≤2 bullets; `## Solución` ≤3; `## Criterios de aceptación` = `AC-n` como checklist observable, que hacen de plan de pruebas); cargar reviewers por defecto de `.specify/reviewers.json` del repo (si existe; excluir al autor; sin archivo → PR sin reviewers por defecto, ofrecer indicarlos). **Preview + confirmación obligatoria** antes de `bb_post`. Crear, reportar URL/ID/reviewers, guardar `pr_url` en el header y poner `status: pr-open`. **Nunca** aprobar ni mergear — solo crear. Salteable.
 10. **Reporte final** (abajo). Ofrecer el sub-paso `archive`: si el usuario confirma que está probado y correcto, cerrar el flujo (ver `archive`).

@@ -105,7 +105,7 @@ La descripción quedó actualizada con la versión vigente. Vuelve a revisión.
 - **Degradación:** si el MCP no acepta menciones ADF o no se pudo resolver el `accountId` → publicar el mismo comentario consolidado **sin** la @mención (no bloquear). Nunca se responde en el hilo de cada comentario: los comentarios de Jira son planos en la API.
 
 ### Detección de aprobación (loop, resumen)
-Contrato completo en `SKILL.md` → `resume` → "Gate de Jira". En síntesis: "ya aprobaron" → confiar; "revisá el ticket"/silencio → leer estado + comentarios nuevos; **observaciones** → corregir + re-publicar (descripción) + comentar + volver a `awaiting`; **aprobado** (señal de `approval_signal`, o confirmación del usuario si es `ask`) → seguir a `create-branch`. El estado vive en el frontmatter de `handoff.md` (`gate_status: awaiting | changes-requested | approved`).
+Contrato completo en `SKILL.md` → `resume` → "Gate de Jira". En síntesis: "ya aprobaron" → confiar; "revisa el ticket"/silencio → leer estado + comentarios nuevos; **observaciones** → corregir + re-publicar (descripción) + comentar + volver a `awaiting`; **aprobado** (señal de `approval_signal`, o confirmación del usuario si es `ask`) → seguir a `create-branch`. El estado vive en el frontmatter de `handoff.md` (`gate_status: awaiting | changes-requested | approved`).
 
 ## Detección de stack y comandos
 
@@ -594,16 +594,16 @@ despacha **un agente fresco por task, secuencial**. El agente no puede invocar `
 Skill tool (la skill es solo-slash): el prompt le pasa el contrato directo. Plantilla:
 
 ```
-Trabajá ÚNICAMENTE en el repo <ruta-absoluta-al-working-dir> (todo comando y ruta, relativos a él).
-Contexto: leé .plans/<id>/plan.md (header + enfoque), .plans/<id>/spec.md (criterios de
+Trabaja ÚNICAMENTE en el repo <ruta-absoluta-al-working-dir> (todo comando y ruta, relativos a él).
+Contexto: lee .plans/<id>/plan.md (header + enfoque), .plans/<id>/spec.md (criterios de
 aceptación) y la task "<n>. <título>" en .plans/<id>/tasks.md. (Si la complejidad es trivial,
-spec y tasks están embebidas en el propio plan.md.) Implementá SOLO esa task, siguiendo sus
+spec y tasks están embebidas en el propio plan.md.) Implementa SOLO esa task, siguiendo sus
 campos (Archivos / Pasos / Verificar) al pie de la letra.
 Reglas duras:
-- No re-diseñes: si la task no se puede ejecutar como está escrita, devolvé STATUS: failed con la
+- No re-diseñes: si la task no se puede ejecutar como está escrita, devuelve STATUS: failed con la
   razón — no improvises otro enfoque.
 - Nada de git add/commit/push. No toques .plans/ ni .specify/ (las marcas [x] las pone el conductor).
-- Ejecutá el comando del campo "Verificar" de la task (tests acotados con <test_scope_hint> si aplica).
+- Ejecuta el comando del campo "Verificar" de la task (tests acotados con <test_scope_hint> si aplica).
 
 Tu mensaje final debe ser EXACTAMENTE este reporte (sin prosa extra):
 STATUS: done | failed
@@ -644,15 +644,15 @@ Tests+build completos, `verify` de los AC, revisión manual, staging selectivo, 
 Para el **reviewer por-task** del modo `subagent` (ver `SKILL.md` → "Modo de ejecución", paso 2). Un agente fresco que **solo revisa** el diff de una task contra sus artefactos — no edita ni implementa. Distinto de `sdd-cross-review`: aquel es **cross-model** y revisa *artefactos de diseño* (spec/plan/tasks); este es un agente **del mismo modelo** que revisa el *diff* de una task ya implementada. Despacharlo por capacidad, igual que el implementer (sin capacidad → degradar a la revisión liviana del conductor). El conductor **interpola la lista `FILES`** del reporte del implementer en el prompt (el reviewer es un agente fresco: sin ella no sabe qué archivos revisar). Plantilla:
 
 ```
-Trabajá en modo SOLO LECTURA sobre el repo <ruta-absoluta-al-working-dir>. No edites nada.
-Revisá el diff de la task "<n>. <título>" contra sus artefactos:
+Trabaja en modo SOLO LECTURA sobre el repo <ruta-absoluta-al-working-dir>. No edites nada.
+Revisa el diff de la task "<n>. <título>" contra sus artefactos:
 - Archivos de la task (FILES del implementer): <lista de archivos, uno por línea>
 - Diff de la task: `git diff -- <esos archivos>`. El working tree acumula los cambios de las
-  tasks previas (el staging ocurre después): limitá el diff a esos paths, y si otra task ya
-  tocó el mismo archivo puede haber hunks ajenos — evaluá solo lo que corresponde a esta task.
+  tasks previas (el staging ocurre después): limita el diff a esos paths, y si otra task ya
+  tocó el mismo archivo puede haber hunks ajenos — evalúa solo lo que corresponde a esta task.
 - Contexto: .plans/<id>/spec.md (AC que la task habilita), .plans/<id>/plan.md (enfoque),
   y la task en .plans/<id>/tasks.md. (Si la complejidad es trivial, están embebidos en plan.md.)
-Evaluá dos ejes:
+Evalúa dos ejes:
 - SPEC: ¿el diff cumple los AC que la task dice cubrir? (solo los suyos, no otros)
 - CALIDAD: ¿sin code smells, sigue los patrones/estilo del repo, sin dead code ni placeholders?
 
