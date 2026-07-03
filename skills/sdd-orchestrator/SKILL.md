@@ -10,7 +10,7 @@ description: >-
   vez con lock cooperativo. Usar cuando un mismo objetivo cruza 2+ repos bajo una
   carpeta contenedora. Para un solo repo, usar `sdd-flow` directamente. Invocación
   explícita: "/sdd-orchestrator" parado en la carpeta contenedora.
-argument-hint: "[<objetivo|ticket multi-repo> | retomá <id> | estado | cerrá <id>]"
+argument-hint: "[<objetivo|ticket multi-repo> | retoma <id> | estado | cierra <id>]"
 # disable-model-invocation es una clave REAL de Claude Code: bloquea la invocación
 # vía Skill tool (la skill queda solo-slash: /sdd-orchestrator). Se mantiene a
 # propósito: invocación explícita, sin competir por el auto-trigger. Nada invoca a
@@ -81,7 +81,7 @@ Las reglas de arriba dicen *qué* hacer; esta sección frena los atajos del fluj
 
 > **NINGÚN AC `[integration]` SE DA POR CUMPLIDO EN UN REPO — SOLO EN LA FASE 3.** Un repo verde no cierra una integración; eso es trabajo cross-repo con evidencia propia.
 
-Si reconocés alguno de estos pensamientos, pará y volvé al paso correspondiente.
+Si reconoces alguno de estos pensamientos, detente y vuelve al paso correspondiente.
 
 | Racionalización | Realidad |
 |---|---|
@@ -123,7 +123,7 @@ inconsistencias que un humano pasa por alto. **Augmenta el gate, no lo reemplaza
   (1.4) y quedan cubiertos por la revisión del **reparto**. Por eso, cuando la Fase 2 delega a
   `sdd-flow` (Vía B) sobre un plan ya escrito, **no se re-revisa** por defecto: pasar la corrida
   con `cross_review.mode: off` al `sdd-flow` delegado para no duplicar la segunda opinión (override
-  si querés revisión por-repo adicional).
+  si quieres revisión por-repo adicional).
 - **Modo de ejecución.** `cross_review.execution` (en `manifest.yml`, heredado por la revisión)
   controla cómo se espera al revisor: `auto` (default; sync si el conductor puede fijar un timeout
   largo, background+poll acotado si su exec es corto), `sync` o `background`. En todos los modos la
@@ -141,17 +141,17 @@ inconsistencias que un humano pasa por alto. **Augmenta el gate, no lo reemplaza
 |---|---|
 | "/sdd-orchestrator", "tengo un cambio que toca varios servicios", pega objetivo + carpeta | Fase 1 desde `gather-context` global → **STOP en cada gate** |
 | "qué repos toca esto", "cuáles servicios entran" | Fase 1 · selección de repos (análisis propone, usuario confirma) |
-| "armá la spec global", "definí el objetivo y los contratos" | Fase 1 · `master-spec.md` → **GATE** |
-| "repartí el trabajo", "armá los planes por repo" | Fase 1 · reparto + cross-artifact check → **GATE** |
-| "sin cross-review", "saltá la segunda opinión" / "con cross-review" | override de revisión cross-model de la orquestación (off/on; ver "Revisión cross-model") |
-| "ejecutá `<repo>` acá", "modo inline" / "volvé al fan-out" | override del **modo de ejecución** de la Fase 2 (inline/fanout; ver Fase 2 → "Modo inline") |
-| "implementá todo", "dale", "ejecutá" (con reparto aprobado) | Fase 2 · fan-out a `sdd-flow` |
+| "arma la spec global", "define el objetivo y los contratos" | Fase 1 · `master-spec.md` → **GATE** |
+| "reparte el trabajo", "arma los planes por repo" | Fase 1 · reparto + cross-artifact check → **GATE** |
+| "sin cross-review", "salta la segunda opinión" / "con cross-review" | override de revisión cross-model de la orquestación (off/on; ver "Revisión cross-model") |
+| "ejecuta `<repo>` acá", "modo inline" / "vuelve al fan-out" | override del **modo de ejecución** de la Fase 2 (inline/fanout; ver Fase 2 → "Modo inline") |
+| "implementa todo", "dale", "ejecuta" (con reparto aprobado) | Fase 2 · fan-out a `sdd-flow` |
 | "cómo viene", "estado", "qué falta" | leer `manifest.yml` y reportar |
-| "retomá", "seguí la orquestación `<id>`", "¿en qué quedó?" | Resume global |
-| "cerrá", "commiteá los verdes", "publicá" | Fase 3 · cierre (revisión/commit/push) |
-| "verificá la integración" | Fase 3 · AC de integración |
-| "archivá la orquestación `<id>`", "ya está todo probado, cerrala" | sub-paso `archive` |
-| "abortá/cancelá la orquestación `<id>`" | sub-paso `abort` |
+| "retoma", "sigue la orquestación `<id>`", "¿en qué quedó?" | Resume global |
+| "cierra", "commitea los verdes", "publica" | Fase 3 · cierre (revisión/commit/push) |
+| "verifica la integración" | Fase 3 · AC de integración |
+| "archiva la orquestación `<id>`", "ya está todo probado, ciérrala" | sub-paso `archive` |
+| "aborta/cancela la orquestación `<id>`" | sub-paso `abort` |
 
 ---
 
@@ -192,7 +192,7 @@ Precondición: reparto aprobado y `sdd-flow` disponible (ver "Dependencia de `sd
 2. **Lock cooperativo previo (regla 6).** Antes de tocar cada repo elegible, leer los **otros** `.sdd/*/manifest.yml`. Si el repo aparece en otra orquestación con `status` **no terminal** (≠ `pushed`/`pr-open`/`done`), está **tomado**: aplicar el protocolo del lock (ver "Orquestaciones concurrentes"). No arrancarlo hasta resolver.
 3. **Fan-out.** Por cada repo elegible y libre, despachar un agente que ejecute la **Vía B de `sdd-flow`** (`implement .plans/<id>/`) **parado en `<repo>/`**, con la corrida en `cross_review.mode: off` (los `plan.md`/`tasks.md` por repo ya quedaron cubiertos por la revisión del reparto en Fase 1, no se re-revisan). **Cómo se delega:** `sdd-flow` es solo-slash (`disable-model-invocation`), así que el subagente **no** puede invocarla con el Skill tool — el prompt del agente le indica **leer** `sdd-flow/SKILL.md` (y `reference.md` si lo necesita) desde el directorio de skills y ejecutar su Vía B siguiendo ese contrato. Plantilla del prompt y contrato de retorno en `reference.md` → "Prompt del agente delegado". El agente hereda toda la Vía B: crea rama, implementa task por task (con el **pre-flight scan** y el **reviewer por-task** del modo subagent de `sdd-flow`, si su entorno los soporta; y el **debugging sistemático** ante un test/AC en rojo), corre tests+build, verifica los AC `repo-local` con la **gate function**, y **FRENA antes de commitear** (regla 4). Usar el patrón de subagentes en paralelo (cada repo es un working tree disjunto → sin colisión de archivos) con un **tope de concurrencia**; los repos en exceso quedan en cola. Descubrir la capacidad de paralelismo por entorno, no por nombre de tool.
 
-   **Modo inline (opcional).** Con `execution_mode: inline` en el `manifest.yml` o a pedido del usuario ("ejecutá `<repo>` acá", "modo inline"), el orquestador ejecuta la Vía B de ese repo **en su propia sesión**, parado en `<repo>/` — mismo contrato que el agente delegado (incluido **FRENAR antes de commitear**) y mismo update del manifest; los repos van **de a uno** (sin paralelismo inline). Útil cuando queda un solo repo elegible o el usuario quiere seguir la implementación de cerca. Trade-off: carga el contexto del orquestador — para fan-outs grandes, seguir con agentes. El default es y sigue siendo `fanout`; el repo ejecutado inline hereda el `implement` de `sdd-flow` con sus propios modos.
+   **Modo inline (opcional).** Con `execution_mode: inline` en el `manifest.yml` o a pedido del usuario ("ejecuta `<repo>` acá", "modo inline"), el orquestador ejecuta la Vía B de ese repo **en su propia sesión**, parado en `<repo>/` — mismo contrato que el agente delegado (incluido **FRENAR antes de commitear**) y mismo update del manifest; los repos van **de a uno** (sin paralelismo inline). Útil cuando queda un solo repo elegible o el usuario quiere seguir la implementación de cerca. Trade-off: carga el contexto del orquestador — para fan-outs grandes, seguir con agentes. El default es y sigue siendo `fanout`; el repo ejecutado inline hereda el `implement` de `sdd-flow` con sus propios modos.
 4. **Recolección + cascada de fallos.** Al volver cada agente, leer su reporte estructurado (contrato en `reference.md` → "Prompt del agente delegado"; si el reporte falta o no parsea, **releer el `status` que `sdd-flow` persistió** en `<repo>/.plans/<id>/plan.md` y tratar la ausencia de `verified` como fallo) y actualizar el `status` del repo en `manifest.yml`:
    - Verde (`verified`): queda listo para el cierre.
    - **Fallo** (tests/build rojos o AC no cumplido): marcar `failed`, **no commitear**, y **bloquear solo a sus dependientes** en el DAG (marcarlos `blocked`). Los repos independientes siguen. Detalle en `reference.md` → "Cascada de fallos".
@@ -205,14 +205,14 @@ Precondición: reparto aprobado y `sdd-flow` disponible (ver "Dependencia de `sd
 ## Fase 3 · Cierre (centralizada, el usuario al mando)
 
 1. **Reporte consolidado.** Tabla por repo: `repo · status · AC repo-local cumplidos · verde/fallido/bloqueado`. Listar aparte los AC `integration` pendientes.
-2. **Commit/push centralizado.** Para cada repo en `verified`, ofrecer (controlado por el usuario): revisión → commit → push, **siguiendo el mecanismo de commit de `sdd-flow`** (leído de sus archivos — no vía Skill tool, que su flag bloquea): staging selectivo + mensaje convencional construido **inline** (su `reference.md` → "Construcción del mensaje de commit"; sdd-flow no depende de ninguna skill externa para commitear). Soportar lote ("commiteá todos los verdes"). Mostrar siempre, antes de ejecutar, los archivos staged + mensaje + comando. Actualizar `status` a `committed`/`pushed` en el manifest. El scope del commit por defecto es el `<id>` global (override por repo si el servicio tiene su propia clave de ticket).
+2. **Commit/push centralizado.** Para cada repo en `verified`, ofrecer (controlado por el usuario): revisión → commit → push, **siguiendo el mecanismo de commit de `sdd-flow`** (leído de sus archivos — no vía Skill tool, que su flag bloquea): staging selectivo + mensaje convencional construido **inline** (su `reference.md` → "Construcción del mensaje de commit"; sdd-flow no depende de ninguna skill externa para commitear). Soportar lote ("commitea todos los verdes"). Mostrar siempre, antes de ejecutar, los archivos staged + mensaje + comando. Actualizar `status` a `committed`/`pushed` en el manifest. El scope del commit por defecto es el `<id>` global (override por repo si el servicio tiene su propia clave de ticket).
 3. **AC de integración.** Los AC `[integration]` no los cierra un agente aislado. Aplicarles la **gate function** del `verify` de `sdd-flow`, a nivel cross-repo: IDENTIFICAR el comando/observación que prueba la integración → CORRERLO fresco → LEER salida + exit code → VERIFICAR que confirma el AC. Si el usuario proveyó un comando de integración (p. ej. `docker compose up` + smoke test), ejecutarlo y reportar la **evidencia**; si no, listarlos como **verificación manual** pendiente. Nunca darlos por cumplidos sin esa evidencia (ley de la sección "Red flags").
 
 ---
 
 ## Resume global (retomar una orquestación)
 
-Punto de entrada cuando volvés a una orquestación ya empezada (sesión nueva, o tras cambiar de contexto).
+Punto de entrada cuando vuelves a una orquestación ya empezada (sesión nueva, o tras cambiar de contexto).
 
 1. Si el usuario nombró un `<id>`, usar ese; si fue genérico ("¿en qué quedé?"), **listar** las orquestaciones activas leyendo cada `.sdd/*/manifest.yml` (excluir `.sdd/archived/`) y mostrar `id · #repos · estado agregado`. Que elija.
 2. Leer `manifest.yml` + el `status` de cada `<repo>/.plans/<id>/plan.md`. Si `<repo>/.plans/<id>/` no existe, buscar `<repo>/.plans/archived/<id>/` (el flujo del repo fue archivado por `sdd-flow` → tratarlo como `done`). **Anunciar el punto de cada repo** antes de actuar.

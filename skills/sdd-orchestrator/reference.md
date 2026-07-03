@@ -156,16 +156,16 @@ Cada contrato nombra **quién expone** y **quién consume**, con el shape (endpo
 Skill tool. El fan-out (Fase 2.3) le pasa el contrato por prompt. Plantilla:
 
 ```
-Trabajá ÚNICAMENTE en el repo <ruta-absoluta-al-repo> (todo comando y ruta, relativos a él).
-Leé <directorio-de-skills>/sdd-flow/SKILL.md (y su reference.md si lo necesitás) y ejecutá su
+Trabaja ÚNICAMENTE en el repo <ruta-absoluta-al-repo> (todo comando y ruta, relativos a él).
+Lee <directorio-de-skills>/sdd-flow/SKILL.md (y su reference.md si lo necesitas) y ejecuta su
 Vía B: "implement .plans/<id>/", siguiendo ese contrato al pie de la letra.
 Override de esta corrida: cross_review.mode: off (el plan ya fue revisado en el reparto).
 Reglas duras:
-- FRENÁ antes de commitear (nada de git commit/push); no toques nada fuera del repo.
-- Sos un agente sin usuario: NO hagas los checkpoints conversacionales de la Vía B (no
-  confirmes resúmenes ni preguntes el modo de implementación — usá inline, salvo que tu
-  entorno permita despachar subagentes). Ante un bloqueo real, devolvé STATUS: failed con la razón.
-- La rama del header todavía no existe (esta orquestación nunca la creó): creála desde
+- FRENA antes de commitear (nada de git commit/push); no toques nada fuera del repo.
+- Eres un agente sin usuario: NO hagas los checkpoints conversacionales de la Vía B (no
+  confirmes resúmenes ni preguntes el modo de implementación — usa inline, salvo que tu
+  entorno permita despachar subagentes). Ante un bloqueo real, devuelve STATUS: failed con la razón.
+- La rama del header todavía no existe (esta orquestación nunca la creó): créala desde
   base_commit sin preguntar (git checkout -b <branch> <base_commit>).
 
 Tu mensaje final debe ser EXACTAMENTE este reporte (sin prosa extra):

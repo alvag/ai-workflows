@@ -6,9 +6,9 @@ Es una capa de **orquestación sobre `sdd-flow`**: no reimplementa el ciclo SDD.
 
 ## Qué hace
 
-1. **Diseño centralizado (con gates):** consolida el objetivo, detecta y te propone los repos involucrados (vos confirmás), escribe una `master-spec.md` con criterios de aceptación globales y los contratos entre servicios, y reparte el trabajo en un sub-plan por repo (con dependencias declarables). Parás en cada gate.
-2. **Ejecución paralela (delegada):** lanza un agente por repo que corre `/sdd-flow implement` en su `.plans/<id>/`. Cada repo crea su rama, implementa, corre tests/build, verifica sus AC y **frena antes de commitear**. Respeta dependencias (DAG) y aísla los fallos en cascada. Opcional: **modo inline** ("ejecutá `<repo>` acá" o `execution_mode: inline` en el manifest) para ejecutar un repo en la propia sesión del orquestador, de a uno — útil con un solo repo elegible o para seguir la implementación de cerca.
-3. **Cierre centralizado (vos al mando):** reporte consolidado y luego revisión + commit + push por repo, controlado por vos.
+1. **Diseño centralizado (con gates):** consolida el objetivo, detecta y te propone los repos involucrados (tú confirmas), escribe una `master-spec.md` con criterios de aceptación globales y los contratos entre servicios, y reparte el trabajo en un sub-plan por repo (con dependencias declarables). Paras en cada gate.
+2. **Ejecución paralela (delegada):** lanza un agente por repo que corre `/sdd-flow implement` en su `.plans/<id>/`. Cada repo crea su rama, implementa, corre tests/build, verifica sus AC y **frena antes de commitear**. Respeta dependencias (DAG) y aísla los fallos en cascada. Opcional: **modo inline** ("ejecuta `<repo>` acá" o `execution_mode: inline` en el manifest) para ejecutar un repo en la propia sesión del orquestador, de a uno — útil con un solo repo elegible o para seguir la implementación de cerca.
+3. **Cierre centralizado (tú al mando):** reporte consolidado y luego revisión + commit + push por repo, controlado por ti.
 
 ## Cuándo usarla
 
@@ -16,9 +16,9 @@ Es una capa de **orquestación sobre `sdd-flow`**: no reimplementa el ciclo SDD.
 
 ## Cuándo NO usarla
 
-- **Un solo repo:** usá `sdd-flow` directamente.
+- **Un solo repo:** usa `sdd-flow` directamente.
 - **Cambios heterogéneos** sin objetivo común (sería un "batch runner", no el caso de esta skill).
-- Necesitás coordinar el **deploy/release** entre servicios: queda fuera de alcance (la skill llega hasta commit/push por repo).
+- Necesitas coordinar el **deploy/release** entre servicios: queda fuera de alcance (la skill llega hasta commit/push por repo).
 
 ## Requisitos
 
@@ -28,7 +28,7 @@ Es una capa de **orquestación sobre `sdd-flow`**: no reimplementa el ciclo SDD.
 
 ## Instalación
 
-Copiá la carpeta `sdd-orchestrator/` al directorio de skills de tu entorno (junto a `sdd-flow/`):
+Copia la carpeta `sdd-orchestrator/` al directorio de skills de tu entorno (junto a `sdd-flow/`):
 
 ```
 <skills>/
@@ -47,20 +47,20 @@ Parado en la carpeta contenedora (p. ej. `backend/`):
 /sdd-orchestrator
 ```
 
-Luego, en lenguaje natural: describí el objetivo y los servicios que creés que toca (y, si querés, un prefijo de rama para toda la orquestación: "con prefijo de rama feature/"). El flujo:
+Luego, en lenguaje natural: describe el objetivo y los servicios que crees que toca (y, si quieres, un prefijo de rama para toda la orquestación: "con prefijo de rama feature/"). El flujo:
 
-1. Te propone los repos involucrados → confirmás.
-2. Escribe la `master-spec.md` → la aprobás (GATE).
-3. Reparte en sub-planes por repo → los aprobás (GATE).
+1. Te propone los repos involucrados → confirmas.
+2. Escribe la `master-spec.md` → la apruebas (GATE).
+3. Reparte en sub-planes por repo → los apruebas (GATE).
 4. Implementa en paralelo, frenando antes de commitear.
-5. Cerrás vos: revisión + commit (con el mecanismo inline de `sdd-flow`) + push por repo.
-6. Cuando confirmás que todo está probado: "archivá `<id>`" mueve la orquestación a `.sdd/archived/<id>/` (sale del listado y libera los locks). Para cancelar una a medias: "abortá `<id>`" (pausa o descarta por repo, y archiva el manifest).
+5. Cierras tú: revisión + commit (con el mecanismo inline de `sdd-flow`) + push por repo.
+6. Cuando confirmas que todo está probado: "archiva `<id>`" mueve la orquestación a `.sdd/archived/<id>/` (sale del listado y libera los locks). Para cancelar una a medias: "aborta `<id>`" (pausa o descarta por repo, y archiva el manifest).
 
 > **Prefijo de rama:** el prefijo de la orquestación aplica a todos los repos, salvo que un repo tenga su propio `branch_prefix` en `.specify/config.yml` (ese gana, p. ej. por su CI/CD). Sin prefijo, cada repo usa el semántico.
 
 > **Config por repo (opcional):** cada repo puede inicializarse con `/sdd-flow init` (parado en el repo) para fijar su `.specify/config.yml` (stack, test/build, `branch_prefix`). Eso hace el reparto más determinista, pero no es obligatorio: sin config, el orquestador autodetecta cada repo.
 
-Para retomar una orquestación a medias: `/sdd-orchestrator` y "retomá `<id>`" (o "¿en qué quedé?" para listar las activas).
+Para retomar una orquestación a medias: `/sdd-orchestrator` y "retoma `<id>`" (o "¿en qué quedé?" para listar las activas).
 
 ### Varias features a la vez
 
