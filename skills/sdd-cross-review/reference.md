@@ -60,6 +60,8 @@ primitiva con que ese archivo llega a stdin (`<` en POSIX, `Get-Content -Raw | �
 
 ## Descubrir el revisor
 
+Esta sección es la **fuente canónica** del descubrimiento: `sdd-co-explore` la referencia por puntero (su fallback embebido es un resumen de esto).
+
 Los nombres de tools/MCP/agentes cambian entre entornos. Resolver el revisor por **capacidad**
 (un segundo modelo que pueda **criticar texto en read-only**) con una regla dura por delante:
 
@@ -462,6 +464,8 @@ El loop reusa el **mismo thread del revisor** para que tenga memoria de lo ya di
   (`<` en POSIX, `Get-Content -Raw | …` en PowerShell — ver "Portabilidad entre shells").
 - Si el resume no está disponible en el entorno, degradar a rondas independientes re-enviando el
   artefacto actualizado completo (más caro, pero válido).
+
+**Seed desde co-exploración:** si existe `co-explore/session.json` (escrito por `sdd-co-explore`; esquema: `{tool, session_id, mode, created_at}`), la Ronda 1 puede **reanudar esa sesión** en lugar de abrir una nueva — el crítico es el mismo agente que exploró. Si el resume falla, abrir sesión nueva con los `findings-*.md` como contexto: mismo efecto, sin estado.
 
 ## Prompt de revisión
 
