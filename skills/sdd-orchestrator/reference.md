@@ -45,6 +45,7 @@ cross_review:                  # opcional; segunda opinión cross-model (ver ski
   execution: auto              # auto (por capacidad del conductor) | sync | background
   artifacts: [master-spec, reparto]
   max_rounds: 3
+  co_explore: {mode: auto, deadline: 600}  # co-exploración: default on en orquestación; ver SKILL.md → Co-exploración cross-model
 repos:
   - path: servicio-a          # relativo a la contenedora
     branch: feature/ABC-123-trace-id
