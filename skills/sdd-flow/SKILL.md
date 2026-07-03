@@ -27,13 +27,14 @@ Skill **agnóstica de proyecto**: no asume lenguaje, framework, host de Git, tra
 El ciclo SDD:
 
 ```
-init (opcional) → constitution → gather-context → specify ─┐
+init (opcional) → constitution → gather-context → co-explore (opcional, paralela) → specify ─┐
                                                             ├─► clarify (condicional)
                                                             ▼
        publish-spec (Jira, opcional) ──► create-branch → analyze → plan ──► tasks ──► implement ──► verify
    (gates escalados por complejidad: trivial=1, normal=2, complejo=3 + clarify obligatorio)
    (publish-spec: gate externo opcional — aprobación del TL/PO en Jira; solo con jira_approval on)
    (init y constitution son setup checkpoints opcionales, no gates SDD)
+   (co-explore: exploración paralela cross-model opcional — ver "Co-exploración cross-model")
 ```
 
 Artefactos en disco:
@@ -82,7 +83,7 @@ Si reconoces alguno de estos pensamientos, es señal de detente: vuelve al paso 
 
 | Racionalización | Realidad |
 |---|---|
-| "Arranco el flujo sin leer el config" | Antes de cualquier paso operativo se lee `.specify/config.yml` y se **ecoan** los valores resueltos de `tracker`, `cross_review.mode` y `jira_approval.mode`. Saltarlo es cómo se pierden cross-review y `publish-spec` en silencio (se aplican los defaults sin avisar). |
+| "Arranco el flujo sin leer el config" | Antes de cualquier paso operativo se lee `.specify/config.yml` y se **ecoan** los valores resueltos de `tracker`, `cross_review.mode` y `jira_approval.mode`. Saltarlo es cómo se pierden cross-review, co-exploración (`co_explore`) y `publish-spec` en silencio (se aplican los defaults sin avisar). |
 | "Es trivial, salteo el gate y commiteo directo" | Trivial = 1 gate, no 0. La clasificación se **anuncia y se confirma siempre** (regla 2); no hay flujo con cero gates. |
 | "Los tests pasan, seguro cumple los AC" | Tests verdes ≠ AC cumplidos. `verify` recorre `AC-1..N` con evidencia fresca **antes** de commitear (paso `verify`, regla 7). |
 | "El subagente devolvió `STATUS: done`, marco la task `[x]`" | El reporte no es prueba. Validar `FILES` contra `git status` y revisar el diff antes de aceptar (modo subagent). |
@@ -94,7 +95,7 @@ Si reconoces alguno de estos pensamientos, es señal de detente: vuelve al paso 
 
 Antes de cualquier paso operativo, descubrir el entorno **una vez** por sesión y resumirlo al usuario. Orden de resolución para cada parámetro: `config.yml` → autodetección → preguntar.
 
-**Checkpoint de inicio (no salteable).** El **primer** acto operativo de toda corrida es leer `.specify/config.yml` si existe y **devolverle al usuario en una línea los valores resueltos** de al menos `tracker`, `cross_review.mode` y `jira_approval.mode`, **con qué implican**. Ej.: *"config: tracker jira · cross_review on → segunda opinión antes de cada gate · jira_approval on → publico la spec en Jira tras aprobarla localmente"*. Ese eco es la prueba de que el config se leyó: sin él, es fácil aplicar los defaults (`cross_review` por complejidad, `jira_approval: off`) y perder cross-review y `publish-spec` en silencio (ver red-flag "Arranco el flujo sin leer el config").
+**Checkpoint de inicio (no salteable).** El **primer** acto operativo de toda corrida es leer `.specify/config.yml` si existe y **devolverle al usuario en una línea los valores resueltos** de al menos `tracker`, `cross_review.mode`, `cross_review.co_explore.mode` y `jira_approval.mode`, **con qué implican**. Ej.: *"config: tracker jira · cross_review on · co_explore on → exploración paralela antes de la spec · jira_approval on → publico la spec en Jira tras aprobarla localmente"*. Ese eco es la prueba de que el config se leyó: sin él, es fácil aplicar los defaults (`cross_review` por complejidad, `jira_approval: off`) y perder cross-review y `publish-spec` en silencio (ver red-flag "Arranco el flujo sin leer el config").
 
 Si existe `.specify/config.yml`, leerlo primero. Esquema (todos los campos opcionales):
 
@@ -109,7 +110,7 @@ branch_prefix: ""           # opcional; reemplaza {type} (p. ej. "feature/"); va
 commit_style: conventional  # conventional | plain
 tracker: jira               # jira | github | gitlab | linear | none
 test_scope_hint: "vitest run {name}"  # plantilla de COMANDO para acotar tests; {name} = archivo/patrón
-cross_review: {mode: auto, execution: auto}  # segunda opinión cross-model; mode auto|"on"|"off" (on/off entre comillas: sin ellas YAML los parsea como booleanos), execution auto|sync|background; ver "Revisión cross-model"
+cross_review: {mode: auto, execution: auto, co_explore: {mode: auto, deadline: 600}}  # segunda opinión + co-exploración; ver "Revisión cross-model" y "Co-exploración cross-model"
 jira_approval: {mode: "off"}  # aprobación externa de la spec en Jira ("off"|"on", entre comillas: sin ellas YAML los parsea como booleanos; solo si tracker: jira); ver paso `publish-spec`
 implement_mode: ask         # cómo ejecutar las tasks: ask (preguntar en el gate) | inline | subagent
 ```
@@ -158,7 +159,9 @@ crítica se presenta *junto* al artefacto en el mismo STOP; tú sigues siendo el
   on. En *normal* el gate combina plan+tasks: se revisan juntos en ese único STOP.
 - **Cómo invocarla.** Con el **Skill tool** (`sdd-cross-review`; esa skill sí es invocable por el
   modelo). Pasarle `artifact_type`, `artifact_path`, los `context_paths` relevantes
-  (al revisar `tasks`, también `spec`+`plan`), `working_dir`, `complexity` y `execution` (de
+  (al revisar `tasks`, también `spec`+`plan`; con co-exploración corrida, sumar además los
+  informes `co-explore/findings-<familia>.md` y, en el gate del plan, el counter-plan, cuando
+  existan — ver "Co-exploración cross-model"), `working_dir`, `complexity` y `execution` (de
   `cross_review.execution`, que se hereda como el resto de la config). Devuelve el artefacto
   (quizá revisado) + un resumen de la crítica + la ruta del `review-log.md` (queda en
   `.plans/<id>/review-log.md`, local y untracked como el resto).
@@ -173,6 +176,53 @@ crítica se presenta *junto* al artefacto en el mismo STOP; tú sigues siendo el
 > Detalle del loop, el contrato con el revisor (Codex o Claude según quién conduzca) y el formato del log: en la propia
 > `sdd-cross-review`. Acá sdd-flow solo decide **cuándo** invocarla y **presenta** su salida en el
 > gate.
+
+## Co-exploración cross-model (opcional)
+
+Antes de escribir la spec (`explore`) y antes de escribir el plan (`counter-plan`), si está
+disponible la skill **`sdd-co-explore`**, un modelo de otra familia que el autor (Codex cuando
+conduce Claude; Claude cuando conduce Codex) explora el mismo código en background, read-only, y
+devuelve un mapa independiente — sin ver nada de lo que el conductor ya pensó. El valor no es que
+el revisor "ayude": es que produce un mapa independiente, y las divergencias entre los dos mapas
+salen a la luz temprano (en los hallazgos), antes de que las decisiones de la spec/plan queden
+tomadas. Es **ortogonal** a `cross_review.mode`: esta capacidad gobierna la exploración paralela
+y el contra-enfoque; `cross_review.mode` gobierna las críticas en los gates de artefactos.
+
+- **Dependencia blanda.** Igual que `sdd-cross-review`: si `sdd-co-explore` **no está instalada**,
+  se omite y el flujo sigue con la exploración de siempre del conductor.
+- **Cuándo se activa** (precedencia: override de la corrida > `cross_review.co_explore` de
+  `config.yml` > default por complejidad): default `trivial` nunca, `normal` opt-in (off salvo
+  pedido), `complex` on.
+- **Momento 1 — `explore` (pre-spec).** Tras confirmar el contexto y la clasificación en
+  `gather-context`: (1) armar el **paquete de contexto** (digest del ticket + prompt del usuario +
+  complejidad); (2) invocar `sdd-co-explore` (Skill tool) con `mode: explore`,
+  `execution: background`; (3) hacer la **exploración propia** de siempre, sin leer nada del
+  revisor, y escribir el propio `findings-<familia-conductor>.md` (mismo formato) antes de leer
+  el del revisor; (4) **punto de encuentro:** recoger el informe si terminó (`READY`) o seguir
+  sin él (`UNAVAILABLE`, aviso de una línea); (5) **síntesis**, siguiendo la guía de
+  `sdd-co-explore` → "La síntesis (guía para la skill llamadora)" (no se duplica acá): produce
+  `synthesis.md` con la tabla de convergencias/divergencias, el duelo de enfoques con su
+  rationale, y las incógnitas fusionadas de ambos mapas (las que cambiarían el diseño alimentan
+  `clarify`); (6) **checkpoint informativo condicional** (no es un gate SDD): solo si quedaron
+  divergencias sin resolver o enfoques viables materialmente distintos, presentarlos y dejar
+  decidir al usuario antes de escribir la spec — si los mapas convergen, se sigue directo a
+  `specify` sin stop extra.
+- **Momento 2 — `counter-plan` (pre-plan).** Con la spec aprobada (y ya posicionados en la rama
+  feature), antes de escribir `plan.md`: invocar `sdd-co-explore` con `mode: counter-plan`
+  (contexto: la spec aprobada + el propio `findings-<familia>.md` del revisor de la fase
+  `explore`); contrastar el contra-enfoque devuelto con el propio en una adenda de
+  `synthesis.md` (mismo criterio de la síntesis: méritos, no adopción automática) y escribir
+  `plan.md` con esa síntesis a la vista.
+- **Efecto en `analyze`.** Con co-exploración corrida, este paso **no re-explora**: es un
+  **refresco incremental** sobre el mapa ya construido — validar que sigue vigente sobre el HEAD
+  real de la rama (archivos movidos, código cambiado desde entonces) y anotar los deltas.
+- **Crítica informada.** En los gates de `specify` y `plan`, si la revisión cross-model está
+  activa, pasar a `sdd-cross-review` los informes de co-exploración como `context_paths`
+  adicionales: `findings-<familia>.md` (y, en el gate del plan, también el counter-plan). Si
+  existe `co-explore/session.json`, mencionarlo para el resume oportunista del revisor.
+- **Degradación (nunca bloquea).** Skill no instalada, informe `UNAVAILABLE`, o deadline vencido
+  → avisar en una línea ("co-exploración no disponible — sigo con mi exploración") y seguir el
+  flujo normal. Misma filosofía de la regla #6.
 
 ## Compatibilidad con Plan Mode / modos no mutantes
 
@@ -200,6 +250,7 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
 | "con prefijo de rama X", "prefijo de rama: X", "usa el prefijo X para la rama" | registra el **override de prefijo** de la corrida (reemplaza `{type}` en `create-branch`; ver "Paso `create-branch`") |
 | "parte desde la rama X", "base: rama X", "esto depende de X", "corta desde X" (X = una rama, no la base habitual) | registra el **override de base** de la corrida (`create-branch` corta desde X en vez de `default_branch`, sin tocar el config; ver "Paso `create-branch`") |
 | "sin cross-review", "salta la segunda opinión" / "con cross-review", "pide segunda opinión" | registra el **override de revisión cross-model** de la corrida (off/on; ver "Revisión cross-model") |
+| "con co-exploración", "que Codex explore en paralelo" / "sin co-exploración" | registra el **override de co-exploración** de la corrida (on/off; ver "Co-exploración cross-model") |
 | "sin aprobación de jira", "no subas la spec" / "con aprobación de jira", "sube la spec a revisión" | registra el **override de aprobación externa** de la corrida (off/on; ver `publish-spec`) |
 | "implementa con subagentes (frescos)" / "implementa acá mismo", "inline" | registra el **override del modo de implementación** de la corrida (subagent/inline; ver `implement` → "Modo de ejecución") |
 | "analiza esto", "reproduce el bug", "dónde toco" | `analyze` |
@@ -261,7 +312,7 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
 1. Crear `.plans/<id>/` (POSIX: `mkdir -p`; PowerShell: `New-Item -ItemType Directory -Force`).
 2. Escribir `spec.md` con la plantilla de `reference.md` → "Plantilla de spec". Mínimo: problema/objetivo, alcance (in/out), y **criterios de aceptación numerados `AC-1..N`** en formato verificable (Given/When/Then o checklist observable).
 3. Para cambios *triviales*, la spec puede ser un bloque breve dentro de `plan.md` en lugar de archivo aparte.
-4. **STOP** — si la **revisión cross-model** está activa para `spec` (ver "Revisión cross-model"), ejecutar `sdd-cross-review` sobre `spec.md` antes de presentar. Presentar la spec (con el resumen de crítica, si lo hubo) y pedir aprobación. No avanzar sin ella. Si el usuario corrige, actualizar y volver a ofrecer.
+4. **STOP** — si la **revisión cross-model** está activa para `spec` (ver "Revisión cross-model"), ejecutar `sdd-cross-review` sobre `spec.md` antes de presentar (con co-exploración: sumar `co-explore/findings-<familia>.md` como contexto — ver "Co-exploración cross-model"). Presentar la spec (con el resumen de crítica, si lo hubo) y pedir aprobación. No avanzar sin ella. Si el usuario corrige, actualizar y volver a ofrecer.
 
 ## Paso `clarify` (condicional)
 
@@ -306,6 +357,8 @@ Obligatorio en cambios *complejos*; en *normales* solo si hay ambigüedad; se sa
 
 **Output:** hipótesis (bug) o lista de puntos de reúso (feature) con referencias `path:line`.
 
+**Con co-exploración corrida** (ver "Co-exploración cross-model"), este paso es un refresco incremental del mapa, no una re-exploración.
+
 ## Paso `plan` → GATE
 
 **Objetivo:** dejar el **CÓMO** técnico en `plan.md`, con header YAML para bootstrap.
@@ -328,7 +381,7 @@ Obligatorio en cambios *complejos*; en *normales* solo si hay ambigüedad; se sa
    ```
 
    Al crear el `plan.md`, escribir `status: planned`.
-4. **STOP** — si la **revisión cross-model** está activa (ver "Revisión cross-model"), ejecutar `sdd-cross-review` sobre `plan.md` con `spec` como contexto antes de presentar (en *normal*, sobre plan + tasks juntos). Presentar el plan (con el resumen de crítica, si lo hubo) y pedir aprobación. En *trivial* este es el último gate antes de implementar (tasks inline en `## Tasks`). En *normal*, **antes del STOP se ejecuta el paso `tasks`** (se escribe `tasks.md`) y este gate presenta **plan + tasks juntos** (un solo STOP, sin gate extra). En *complejo*, el plan se aprueba acá y el gate de `tasks` es independiente y posterior (ver paso `tasks`). En todos, al aprobar el último gate aplicable, pasar `status` a `tasks-ready`. Si este es el **último gate antes de implementar** (*normal*) y el modo de implementación resuelto es `ask`, incluir en el **mismo STOP** la pregunta del modo: ¿implemento acá (inline) o despacho subagentes frescos por task? (ver `implement` → "Modo de ejecución"; sin gate extra; en *trivial* no se pregunta: default `inline`).
+4. **STOP** — si la **revisión cross-model** está activa (ver "Revisión cross-model"), ejecutar `sdd-cross-review` sobre `plan.md` con `spec` como contexto (con co-exploración: sumar `co-explore/findings-<familia>.md` y el counter-plan como contexto — ver "Co-exploración cross-model") antes de presentar (en *normal*, sobre plan + tasks juntos). Presentar el plan (con el resumen de crítica, si lo hubo) y pedir aprobación. En *trivial* este es el último gate antes de implementar (tasks inline en `## Tasks`). En *normal*, **antes del STOP se ejecuta el paso `tasks`** (se escribe `tasks.md`) y este gate presenta **plan + tasks juntos** (un solo STOP, sin gate extra). En *complejo*, el plan se aprueba acá y el gate de `tasks` es independiente y posterior (ver paso `tasks`). En todos, al aprobar el último gate aplicable, pasar `status` a `tasks-ready`. Si este es el **último gate antes de implementar** (*normal*) y el modo de implementación resuelto es `ask`, incluir en el **mismo STOP** la pregunta del modo: ¿implemento acá (inline) o despacho subagentes frescos por task? (ver `implement` → "Modo de ejecución"; sin gate extra; en *trivial* no se pregunta: default `inline`).
 
 ### Ciclo de `status` (estado persistido del flujo)
 
