@@ -214,7 +214,7 @@ autor es GPT/Codex directo.
 |---|---|---|
 | Claude real | Codex | `codex exec` en background, read-only |
 | GPT/Codex | Claude | `claude -p` en background, restringido a tools de lectura |
-| Modelo de respaldo redirigido (GLM/Kimi/…) | Codex (preferido, sin higiene de entorno) o Claude real | Codex: igual que arriba. Claude: `claude -p` con higiene de entorno — ver `sdd-cross-review/reference.md` → "Higiene de entorno" |
+| Modelo de respaldo redirigido (GLM/Kimi/…) | Codex (preferido, sin higiene de entorno) o Claude real | Codex: igual que arriba. Claude: `claude -p` con higiene de entorno — primitiva embebida más abajo ("Invocación directa — autor GPT/Codex → explorador Claude"); camino preferido si `sdd-cross-review` está instalada: su `sdd-cross-review/reference.md` → "Higiene de entorno" trae el detalle completo |
 
 Si ninguna opción de otra familia está disponible → `UNAVAILABLE` (regla 6 del `SKILL.md`).
 
@@ -279,9 +279,33 @@ $SessionId | Out-File co-explore\scratch\explorer-session.txt
 `--allowedTools=Read,Grep,Glob` es lo único que garantiza read-only en `claude -p` (no existe un
 flag de sandbox equivalente a `-s read-only`); `--safe-mode` evita cargar plugins/hooks/MCP/
 CLAUDE.md del usuario del `working_dir`. Si la sonda de arriba detectó redirección, antepón la
-higiene de entorno de `sdd-cross-review/reference.md` → "Higiene de entorno" (el mismo `env -u …`
-en POSIX, o el proceso hijo aislado en PowerShell) antes de este bloque, para que el explorador
-llegue a Claude real y no al modelo de respaldo redirigido.
+higiene de entorno a este bloque para que el explorador llegue a Claude real y no al modelo de
+respaldo redirigido — camino preferido si `sdd-cross-review` está instalada: su
+`sdd-cross-review/reference.md` → "Higiene de entorno" trae el detalle completo (por qué no toca
+la sesión en curso, cuándo aplicarla de forma condicional, degradación por auth). Primitiva
+mínima, embebida aquí para que este fallback no dependa de esa skill (variables reales que limpia
+`sdd-cross-review/reference.md` → "Higiene de entorno", copiadas de ahí):
+
+```bash
+# POSIX — antepuesto al `claude -p …` del bloque de arriba:
+env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN \
+    -u ANTHROPIC_DEFAULT_OPUS_MODEL -u ANTHROPIC_DEFAULT_SONNET_MODEL -u ANTHROPIC_DEFAULT_HAIKU_MODEL \
+    -u ANTHROPIC_MODEL -u ANTHROPIC_SMALL_FAST_MODEL \
+  claude -p --safe-mode --model opus --permission-mode default --allowedTools=Read,Grep,Glob …
+```
+```powershell
+# PowerShell — proceso hijo aislado (Remove-Item Env: es a nivel de sesión: mutaría la actual sin
+# restaurarla, por eso se aplica en un hijo, no en el proceso corriente):
+$strip = "Remove-Item Env:ANTHROPIC_BASE_URL,Env:ANTHROPIC_AUTH_TOKEN," +
+         "Env:ANTHROPIC_DEFAULT_OPUS_MODEL,Env:ANTHROPIC_DEFAULT_SONNET_MODEL," +
+         "Env:ANTHROPIC_DEFAULT_HAIKU_MODEL,Env:ANTHROPIC_MODEL,Env:ANTHROPIC_SMALL_FAST_MODEL " +
+         "-ErrorAction SilentlyContinue; "
+powershell -NoProfile -Command ($strip + "claude -p …")
+```
+
+Caso límite: con la sesión redirigida y sin posibilidad de aplicar esta higiene (por ejemplo, un
+entorno restringido que no permite anteponer `env -u` ni lanzar el proceso hijo aislado) →
+preferir Codex; sin Codex disponible → `UNAVAILABLE` (regla 6 del `SKILL.md`).
 
 `$SESSION_ID`/`$SessionId`, capturado en `explorer-session.txt`, es la base para escribir
 `co-explore/session.json` (ver "Archivos de trabajo (scratch)") cuando `sdd-cross-review` está
@@ -359,6 +383,9 @@ En `sdd-orchestrator` la raíz es `.sdd/<id>/co-explore/`, con los mismos nombre
 ```json
 { "tool": "codex", "session_id": "<id-o-ruta-que-permita-resume>", "mode": "explore", "created_at": "<ISO-8601>" }
 ```
+
+Valores **ilustrativos**: `tool` refleja la vía realmente usada (`codex` en Vía B, `claude` en
+Vía C) y `mode` el modo corrido (`explore` o `counter-plan`) — no son literales fijos.
 
 Lo consume `sdd-cross-review` para el resume oportunista en la crítica informada del gate; si el
 runtime no expone sesión, no escribir el archivo — la ausencia del archivo es la señal, no un
