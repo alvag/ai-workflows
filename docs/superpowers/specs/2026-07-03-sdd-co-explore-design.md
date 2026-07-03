@@ -1,7 +1,7 @@
 # sdd-co-explore — exploración paralela cross-model (diseño)
 
 **Fecha:** 2026-07-03
-**Estado:** diseño aprobado en conversación; pendiente de plan de implementación.
+**Estado:** implementado (ver docs/superpowers/plans/2026-07-03-sdd-co-explore.md).
 
 ## Problema
 
