@@ -361,7 +361,7 @@ que darle tiempo. El modo lo controla `cross_review.execution` (ver "Configuraci
 
 > **Aplica en cualquier OS:** el tope lo impone el **conductor** (p.ej. Codex, ~120s por comando),
 > no el sistema operativo. La gestión es idéntica en macOS/Linux y Windows; solo cambia la sintaxis
-> del shell — usá el bloque **bash** (POSIX: macOS/Linux/Git Bash) o el **PowerShell** (Windows),
+> del shell — usa el bloque **bash** (POSIX: macOS/Linux/Git Bash) o el **PowerShell** (Windows),
 > ambos abajo.
 
 **Invariante (vale para los dos caminos): ningún camino espera indefinida.** Siempre hay un tope de
@@ -485,8 +485,8 @@ Complejidad declarada: {complexity}.
 </context>
 
 <grounding_rules>
-- Anclá cada finding a una sección/AC/línea concreta del artefacto o del código. No inventes.
-- Si algo es hipótesis (no lo pudiste verificar en el repo), decílo explícitamente.
+- Ancla cada finding a una sección/AC/línea concreta del artefacto o del código. No inventes.
+- Si algo es hipótesis (no lo pudiste verificar en el repo), dilo explícitamente.
 - No comentes estilo, wording ni formato. Foco en correctitud, completitud y riesgo.
 </grounding_rules>
 
@@ -495,9 +495,9 @@ Complejidad declarada: {complexity}.
 </structured_output_contract>
 
 <dig_deeper_nudge>
-No te quedes en lo superficial. Buscá el AC que falta, el caso borde no cubierto, el supuesto
-no declarado, la dependencia no vista, el contrato que no cierra. Si no encontrás nada serio,
-APROBÁ — no inventes findings para parecer productivo.
+No te quedes en lo superficial. Busca el AC que falta, el caso borde no cubierto, el supuesto
+no declarado, la dependencia no vista, el contrato que no cierra. Si no encuentras nada serio,
+APRUEBA — no inventes findings para parecer productivo.
 </dig_deeper_nudge>
 ```
 

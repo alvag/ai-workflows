@@ -33,8 +33,8 @@ artefacto escrito ──► [sdd-cross-review] ──► artefacto (quizá revis
 ## Cuándo usarla
 
 - `/sdd-cross-review .plans/<id>/plan.md` → revisa ese artefacto (modo directo).
-- Pedidos en lenguaje natural: "revisá este plan con otra opinión", "segunda opinión de la spec",
-  "pedile a Codex que critique el reparto" → el modelo puede invocarla directamente.
+- Pedidos en lenguaje natural: "revisa este plan con otra opinión", "segunda opinión de la spec",
+  "pídele a Codex que critique el reparto" → el modelo puede invocarla directamente.
 - La invocan `sdd-flow` y `sdd-orchestrator` en sus gates (modo embebido, vía Skill tool), si está
   instalada y la config no la desactiva.
 

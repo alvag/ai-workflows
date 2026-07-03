@@ -70,7 +70,7 @@ Las reglas de arriba dicen *qué* hacer; esta sección frena los atajos al proce
 
 > **LOS FINDINGS SON INSUMO, NO ÓRDENES — VERIFICAR ANTES DE APLICAR.** Aceptar a ciegas es tan dañino como ignorar a ciegas (regla 3).
 
-Si reconocés alguno de estos pensamientos, pará y aplicá la disciplina de `superpowers:receiving-code-review`.
+Si reconoces alguno de estos pensamientos, detente y aplica la disciplina de `superpowers:receiving-code-review`.
 
 | Racionalización | Realidad |
 |---|---|
@@ -157,7 +157,7 @@ Antes de nada, resolver si hay un segundo modelo disponible (algoritmo y opcione
    artefacto (Claude edita, no el revisor). Registrar todo en `review-log.md` con el rationale,
    incluidos los rechazos.
 5. **Siguiente ronda** reanudando el mismo thread del revisor (resume; mandar solo el delta:
-   "apliqué X e Y; rechacé Z porque…; revisá de nuevo"). Repetir desde el paso 2.
+   "apliqué X e Y; rechacé Z porque…; revisa de nuevo"). Repetir desde el paso 2.
 6. **Corte por `max_rounds`.** Si se agotan las rondas sin `APPROVED`, parar y escalar al humano
    las disputas abiertas (findings no resueltos), con el estado en `review-log.md`.
 
@@ -218,10 +218,10 @@ nunca espera indefinida (ver `reference.md` → "Latencia y timeout").
 
 | El usuario dice (ej.) | Acción |
 |---|---|
-| "/sdd-cross-review `.plans/X/plan.md`", "revisá este plan con otra opinión" | revisar el artefacto nombrado (modo directo) |
-| "pedile a Codex que critique la spec", "segunda opinión del plan" | revisar el artefacto (modo directo) |
+| "/sdd-cross-review `.plans/X/plan.md`", "revisa este plan con otra opinión" | revisar el artefacto nombrado (modo directo) |
+| "pídele a Codex que critique la spec", "segunda opinión del plan" | revisar el artefacto (modo directo) |
 | (invocada por `sdd-flow`/`sdd-orchestrator` en un gate) | modo embebido: revisar y devolver resumen |
-| "sin cross-review", "saltá la segunda opinión" | desactivar para la corrida (`mode: off`) |
+| "sin cross-review", "salta la segunda opinión" | desactivar para la corrida (`mode: off`) |
 
 ## Referencias internas
 
