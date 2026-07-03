@@ -13,7 +13,7 @@
 Copiadas del spec y de las convenciones de las skills hermanas — **toda tarea las hereda**:
 
 - **Fuente de verdad:** `docs/superpowers/specs/2026-07-03-sdd-co-explore-design.md`. Cada task lista qué secciones leer ANTES de escribir. Ante conflicto entre este plan y el spec, gana el spec.
-- **Idioma y estilo:** español rioplatense/neutro, mismo tono y estructura que `skills/sdd-flow/SKILL.md` y `skills/sdd-cross-review/SKILL.md` (frontmatter YAML con `name`/`description`, secciones "Reglas no negociables", "Red flags", "Router de intención", "Referencias internas"). Diagramas ASCII en bloques de código.
+- **Idioma y estilo:** español **neutro, sin voseo** (decisión de Max del 2026-07-03: las skills existentes se migran a neutro en tareas M1-M3), misma estructura que `skills/sdd-flow/SKILL.md` y `skills/sdd-cross-review/SKILL.md` (frontmatter YAML con `name`/`description`, secciones "Reglas no negociables", "Red flags", "Router de intención", "Referencias internas"). Diagramas ASCII en bloques de código.
 - **Vocabulario fijo (interfaces entre archivos — usar EXACTAMENTE estos nombres):**
   - Skill: `sdd-co-explore`. Modos: `explore` | `counter-plan`.
   - Config: sub-clave `co_explore` bajo `cross_review`, campos `mode` (`auto`|`"on"`|`"off"`, on/off entre comillas) y `deadline` (segundos; defaults: 600 en `explore`, 300 en `counter-plan`).
