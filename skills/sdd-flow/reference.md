@@ -184,7 +184,7 @@ El paso `init` (ver `SKILL.md` → "Paso `init`") materializa `.specify/` a pedi
    test_scope_hint: "ng test --include={name}"   # {name} = ruta exacta del .spec.ts (no glob **/…: rompe el loader)
    ```
 
-   Los campos de decisión (`tracker`, `commit_style`, `branch_prefix`, `implement_mode`, `cross_review`, `jira_approval`) se eligen en el **wizard** (2 pantallas, con el valor actual/detectado pre-seleccionado); los comandos (`test_cmd`/`build_cmd`/`lint_cmd`/`test_scope_hint`) se autodetectan y quedan editables en la confirmación final. Nada se inventa. Al escribir el `config.yml`, `cross_review.mode` y `jira_approval.mode` se emiten con `on`/`off` **entre comillas** (`"on"`/`"off"`): sin ellas YAML los parsea como booleanos.
+   Los campos de decisión (`tracker`, `commit_style`, `branch_prefix`, `implement_mode`, `cross_review`, `jira_approval`) se eligen en el **wizard** (2 pantallas, con el valor actual/detectado pre-seleccionado); los comandos (`test_cmd`/`build_cmd`/`lint_cmd`/`test_scope_hint`) se autodetectan y quedan editables en la confirmación final. Nada se inventa. Al escribir el `config.yml`, `cross_review.mode`, `co_explore.mode` y `jira_approval.mode` se emiten con `on`/`off` **entre comillas** (`"on"`/`"off"`): sin ellas YAML los parsea como booleanos.
 
 2. **`.specify/constitution.md`** — desde "Plantilla de constitution" (abajo), con el puntero a los principios de código del repo (`CLAUDE.md`/`AGENTS.md`/`CONTRIBUTING.md`) si existen.
 

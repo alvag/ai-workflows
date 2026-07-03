@@ -10,6 +10,8 @@ description: >-
   invocar directo: "/sdd-co-explore <ticket|descripción>" o "que Codex explore
   esto en paralelo". NO revisa artefactos escritos (eso es sdd-cross-review):
   produce hallazgos e hipótesis propios para que compitan con los del conductor.
+  No invocarla espontáneamente: solo ante un pedido explícito del usuario o
+  invocada por sdd-flow/sdd-orchestrator.
 ---
 
 # sdd-co-explore — dos mapas independientes antes de la spec y el plan
@@ -183,7 +185,7 @@ lee ambas y orquesta es la skill llamadora (`sdd-flow`/`sdd-orchestrator`), nunc
 
 Nunca bloquea el flujo SDD. Cuatro vías de falla, todas con el mismo final:
 
-1. Skill no instalada → la llamadora la omite y la llamadora sigue con la exploración del
+1. Skill no instalada → la llamadora la omite y sigue con la exploración del
    conductor.
 2. Sin revisor de otra familia disponible → `UNAVAILABLE`; la llamadora sigue con la
    exploración del conductor.
