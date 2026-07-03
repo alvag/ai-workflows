@@ -89,7 +89,7 @@ Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario) proveen:
 - **`artifact_path`** — ruta del artefacto a revisar (p. ej. `.plans/ABC-123/plan.md`).
 - **`context_paths`** — artefactos relacionados para grounding (p. ej. al revisar `tasks`, pasar
   también `spec` y `plan`; al revisar `reparto`, la `master-spec`). Opcional pero recomendado. Si
-  el flujo corrió **co-exploración** (`sdd-co-explore`), la llamadora pasa acá los
+  el flujo corrió **co-exploración** (`co-explore`), la llamadora pasa acá los
   `co-explore/findings-*.md` (y `co-explore/counter-plan-*.md` al revisar `plan`): la crítica sale
   informada por la exploración previa del propio revisor.
 - **`working_dir`** — directorio desde donde el revisor puede leer el código en read-only.

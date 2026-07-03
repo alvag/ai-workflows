@@ -1,6 +1,6 @@
-# sdd-co-explore — Referencia
+# co-explore — Referencia
 
-Detalle operativo de la skill `sdd-co-explore`. El `SKILL.md` apunta aquí cuando necesita la
+Detalle operativo de la skill `co-explore`. El `SKILL.md` apunta aquí cuando necesita la
 plantilla del prompt de exploración (por modo), el formato del informe, la plantilla de
 síntesis, el algoritmo de descubrimiento del explorador, los tiempos de espera o el árbol de
 archivos de trabajo.
@@ -11,6 +11,8 @@ archivos de trabajo.
 - [Prompt de exploración](#prompt-de-exploración)
 - [Formato del informe](#formato-del-informe)
 - [Plantilla de `synthesis.md`](#plantilla-de-synthesismd)
+- [Plantilla de síntesis — `investigate`](#plantilla-de-síntesis--investigate)
+- [Capacidades y worktree (`investigate`)](#capacidades-y-worktree-investigate)
 - [Descubrir el revisor (puntero + fallback)](#descubrir-el-revisor-puntero--fallback)
 - [Latencia y deadlines](#latencia-y-deadlines)
 - [Archivos de trabajo (scratch)](#archivos-de-trabajo-scratch)
@@ -24,7 +26,7 @@ PowerShell)": esa sección es la fuente canónica de las equivalencias de shell 
 esta skill (detección de OS, prompt por archivo a stdin, generar un UUID, sondear variables de
 entorno, remover variables en un proceso hijo para la higiene de entorno). No se duplican aquí.
 
-Lo único que `sdd-co-explore` necesita y que cross-review no, porque `explore` corre siempre en
+Lo único que `co-explore` necesita y que cross-review no, porque `explore` corre siempre en
 background (ver "Latencia y deadlines"):
 
 | Primitiva | POSIX (bash / Git Bash) | PowerShell (Windows) |
@@ -39,7 +41,8 @@ puntero en "Descubrir el revisor (puntero + fallback)".
 ## Prompt de exploración
 
 Estructura XML compacta, mismo estilo que "Prompt de revisión" de `sdd-cross-review/reference.md`
-(operador, no colaborador). Una variante por `mode`; ambas comparten el `output_contract` exacto.
+(operador, no colaborador). Una variante por `mode`: `explore` y `counter-plan` comparten el
+`output_contract` exacto; `investigate` usa uno propio (bug-shaped).
 
 ### Modo `explore` (pre-spec)
 
@@ -109,6 +112,45 @@ Cierra con la línea: STATUS: done
 </output_contract>
 ```
 
+### Modo `investigate` (standalone, bug)
+
+Cambia el objetivo (encontrar la causa raíz de un bug, no preparar un cambio) y el
+`output_contract` (bug-shaped). El revisor sigue read-only: forma hipótesis leyendo, no
+ejecuta:
+
+```xml
+<task>
+Eres un ingeniero investigando un bug en este repositorio. NO escribas, ejecutes ni
+modifiques nada: solo lee, busca y razona sobre la causa raíz. Trabajas SOLO: nadie va a
+responder preguntas — toda duda se registra (ver output_contract) y sigues investigando. No
+tienes navegador ni puedes correr el código: extrae señal de la evidencia observada que te
+den (consola, red, stacktrace, pasos de reproducción) y registra en Incógnitas/Supuestos lo
+que solo podrías confirmar ejecutando.
+</task>
+
+<context_package>
+{síntoma reportado del bug + evidencia de reproducción observada (consola/red/stacktrace/pasos)
+si la hubo + prompt del usuario}
+</context_package>
+
+<focus>
+Rastrea la causa raíz: dónde vive el problema, qué cadena de código lo produce, y qué
+hipótesis explican el síntoma. Rankea tus hipótesis por probabilidad y, para cada una, di qué
+evidencia la confirmaría. Referencia todo con path:line. No propongas el arreglo: el objetivo
+es entender la causa, no resolverla.
+</focus>
+
+<output_contract>
+Tu ÚLTIMA salida debe ser EXACTAMENTE este markdown (headings literales):
+## Síntoma\n## Mapa de código\n## Hipótesis de causa raíz\n## Incógnitas\n## Supuestos\n## Plan de verificación
+- Hipótesis de causa raíz: rankeadas; cada una con evidencia de respaldo, confianza (alta/media/
+  baja) y cómo confirmarla (qué correr u observar).
+- Incógnitas: lo que no pudiste determinar leyendo; Supuestos: qué asumiste para seguir, y por qué.
+- Plan de verificación: qué verificar primero y con qué, para el handoff a systematic-debugging.
+Cierra con la línea: STATUS: done
+</output_contract>
+```
+
 ## Formato del informe
 
 El explorador (y, con el mismo formato, el propio conductor — ver regla 2 del `SKILL.md`) debe
@@ -149,6 +191,34 @@ fase `explore` — ver "Archivos de trabajo (scratch)"); si la salida del explor
 este formato, se degrada según la regla 4 del `SKILL.md` (texto libre como contexto, o descarte
 si es ruido — registrando la degradación).
 
+### Formato del informe — `investigate` (bug-shaped)
+
+En `investigate` los 7 headings de arriba se reemplazan por estos 6, en este orden:
+
+```
+## Síntoma
+<comportamiento reportado + evidencia observada (consola/red/stacktrace/pasos)>
+
+## Mapa de código
+<archivos/módulos en la cadena del bug, referenciados con path:line>
+
+## Hipótesis de causa raíz
+<rankeadas; cada una: hipótesis · evidencia de respaldo · confianza (alta/media/baja) ·
+ cómo confirmarla (qué correr u observar)>
+
+## Incógnitas
+<lo que no se pudo determinar leyendo — candidato a confirmar ejecutando>
+
+## Supuestos
+<qué se asumió para seguir investigando sin bloquearse, y por qué>
+
+## Plan de verificación
+<qué verificar primero y con qué — input directo para el handoff a systematic-debugging>
+```
+
+Se escribe en `co-explore/investigate-<familia>.md`. Misma degradación que los otros modos
+(regla 4 del `SKILL.md`) si la salida no respeta el formato.
+
 ## Plantilla de `synthesis.md`
 
 La escribe el conductor (no el explorador) al comparar su propio informe con el del explorador,
@@ -187,6 +257,64 @@ después de que ambos cerraron su exploración:
   `sdd-cross-review` — el crítico puede marcar ahí si alguno de esos supuestos resultó
   equivocado.
 
+## Plantilla de síntesis — `investigate`
+
+Variante bug-shaped de `synthesis.md`, escrita por el conductor tras cerrar ambas
+investigaciones. Se escribe en `co-explore/synthesis.md` (mismo archivo, contenido según modo):
+
+```markdown
+# Síntesis co-explore investigate — <id> (<ISO-8601>)
+
+## Convergencias
+- <hipótesis/hecho en que ambos mapas coinciden>
+
+## Divergencias
+| # | Tema | Conductor dice | Revisor dice | Resolución (o "abierta → presentar ambas") |
+|---|---|---|---|---|
+
+## Duelo de hipótesis de causa raíz
+- **Hipótesis del conductor:** <bullets + evidencia>
+- **Hipótesis del revisor:** <bullets + evidencia>
+- **Líder:** <cuál> — **Rationale:** <evidencia, encaje con el repro, qué la distingue>
+
+## Hipótesis líder + plan de verificación
+- Causa raíz probable: <...>
+- Verificar con: <qué correr/observar primero — input para systematic-debugging>
+
+## Divergencia no resuelta (si la hay)
+- <ambas posiciones, con su evidencia; se presentan al usuario, no se fuerza consenso>
+```
+
+- **Duelo de hipótesis:** evaluar las causas raíz candidatas en méritos (evidencia, encaje con
+  el repro), no adoptar la primera; el "Rationale" es lo auditable. Acá es donde el conductor L1
+  puede **ejecutar para desempatar** (ver "Capacidades y worktree (`investigate`)").
+- **Divergencia no resuelta:** si los dos mapas no convergen en la causa raíz, se presentan
+  ambas posiciones — mismo principio que en `explore` (no forzar consenso).
+
+## Capacidades y worktree (`investigate`)
+
+Recap del modelo de capacidades (regla 1 del `SKILL.md`) y su mecánica:
+
+- **Revisor: L0 read-only siempre.** Se lanza igual que en `explore` (`-s read-only` en Codex,
+  `--allowedTools=Read,Grep,Glob` en Claude; ver "Descubrir el revisor"). Lee un checkout
+  **estable** — nunca el worktree que el conductor pueda estar mutando.
+- **Conductor: L0 por defecto; L1 opt-in.** Si el bug es de runtime y el conductor decide
+  ejecutar (reproducir, correr tests, logging efímero), lo hace en un **worktree descartable**,
+  no en el árbol del usuario:
+
+```bash
+# Worktree throwaway para la ejecución L1 del conductor (POSIX):
+WT="$(git rev-parse --show-toplevel)/../.co-explore-wt-$$"
+git worktree add --detach "$WT" HEAD
+# … el conductor reproduce/corre dentro de "$WT" …
+git worktree remove --force "$WT"    # se descarta al cerrar; el árbol del usuario queda intacto
+```
+
+El invariante es "no persiste cambios en tu árbol": el worktree se crea, se usa para observar, y
+se remueve. L1 rinde sobre todo en la síntesis, para **adjudicar divergencias** entre las dos
+hipótesis. Editar/proponer parches (persistir cambios) queda fuera de co-explore (sería una
+skill aparte, tipo carrera de fixes cross-model).
+
 ## Descubrir el revisor (puntero + fallback)
 
 **Puntero.** El algoritmo canónico de descubrimiento del explorador —identificar el harness
@@ -194,7 +322,7 @@ conductor, desambiguar la familia del modelo de respaldo, elegir un explorador d
 e higiene de entorno cuando hace falta— vive en `sdd-cross-review/reference.md` → "Descubrir el
 revisor". Si esa skill está instalada en el entorno, léelo de ahí: esta sección no lo duplica.
 
-**Fallback mínimo (`sdd-co-explore` sin `sdd-cross-review` instalada).** Misma regla dura:
+**Fallback mínimo (`co-explore` sin `sdd-cross-review` instalada).** Misma regla dura:
 el explorador nunca es de la misma familia de modelos que el autor. El autor es el modelo de
 respaldo que ejecuta el agente conductor, no el CLI/harness — un Claude Code redirigido a un
 proveedor no-Anthropic (GLM, Kimi, DeepSeek…) tiene como autor real ese modelo de respaldo, no
@@ -322,11 +450,13 @@ instalada y puede reanudar ese thread.
 |---|---|---|---|
 | `explore` | 600 s | 10 s | ~60 |
 | `counter-plan` | 300 s | 10 s | ~30 |
+| `investigate` | 600 s | 10 s | ~60 |
 
 Override: `cross_review.co_explore.deadline` en la config (ver `SKILL.md` → "Configuración"); si
 no está seteado, se usa el default de la tabla según `mode`. Una exploración tarda más que una
 crítica de cross-review (tiene que recorrer el repo desde cero), por eso el default de `explore`
-es más alto.
+es más alto. En `investigate` no hay config (es standalone): el override, si lo hay, es
+conversacional; si no, el default de la tabla.
 
 **Tope duro.** Al vencer el deadline sin ver `STATUS: done` en `co-explore/scratch/explorer.out`:
 matar el proceso (`kill "$PID"` en POSIX, `Stop-Process -Id $proc.Id -Force` en PowerShell) y
@@ -371,8 +501,11 @@ corre desde el lanzamiento, no desde que el conductor vuelve a mirar.
 │                                    #   de leer el del explorador (regla 2 del SKILL.md)
 ├─ counter-plan-<familia-revisor>.md # informe del explorador en modo `counter-plan`, mismo
 │                                    #   formato — nunca pisa el findings de la fase `explore`
-├─ synthesis.md                      # convergencias/divergencias + duelo de enfoques
-│                                    #   ver "Plantilla de `synthesis.md`"
+├─ investigate-<familia-revisor>.md  # informe del explorador en modo `investigate` (bug-shaped)
+├─ investigate-<familia-conductor>.md# informe del conductor, mismo formato — escrito ANTES de
+│                                    #   leer el del revisor (regla 2 del SKILL.md)
+├─ synthesis.md                      # convergencias/divergencias + duelo de enfoques (o de
+│                                    #   hipótesis en `investigate`) — ver plantillas de síntesis
 ├─ session.json                      # ref. de sesión del explorador, opcional (resume oportunista)
 └─ scratch/
    ├─ prompt.txt                     # prompt de exploración, escrito a archivo con Write (nunca inline)
@@ -383,7 +516,9 @@ corre desde el lanzamiento, no desde que el conductor vuelve a mirar.
 ```
 
 En `sdd-orchestrator` la raíz es `.sdd/<id>/co-explore/`, con los mismos nombres (ver `SKILL.md`
-→ "Configuración" y el diseño, sección 8).
+→ "Configuración" y el diseño, sección 8). En modo directo `investigate` no hay `.plans/<id>/`:
+la raíz es un dir local untracked `.co-explore/<slug>/` en el repo (o un temp dir si el repo no
+debe tocarse), con los mismos nombres.
 
 **`session.json`.** Si el runtime del explorador expone una referencia de sesión reanudable
 (Vía B: session id de `codex exec`; Vía C: `$SESSION_ID`/`$SessionId` propio), escribir:

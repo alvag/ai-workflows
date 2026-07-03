@@ -148,7 +148,7 @@ cross_review:                    # segunda opinión cross-model (opcional; ver s
   artifacts: [spec, plan, tasks] # qué artefactos revisar
   max_rounds: 3
   reviewer: auto                 # auto (descubre por capacidad; nunca la familia del autor) | claude | codex
-  co_explore:                    # exploración paralela cross-model (opcional; ver skill sdd-co-explore)
+  co_explore:                    # exploración paralela cross-model (opcional; ver skill co-explore)
     mode: auto                   # auto (por complejidad: complejo on, normal opt-in, trivial nunca) | "on" | "off"
     deadline: 600                # segundos; default 600 en `explore` (pre-spec), 300 en `counter-plan` (pre-plan) salvo override
 jira_approval:                   # aprobación externa de la spec en Jira (opcional; solo si tracker: jira)

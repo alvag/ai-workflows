@@ -1,7 +1,13 @@
 # sdd-co-explore — exploración paralela cross-model (diseño)
 
+> **Nota (posterior):** esta skill fue después **renombrada a `co-explore`** (se le quitó el
+> prefijo `sdd-` al dejar de ser SDD-only) y ganó un tercer modo **`investigate`** para
+> investigar bugs standalone. Ver `docs/superpowers/specs/2026-07-03-co-explore-investigate-mode-design.md`.
+> Este documento describe el diseño original (dos modos, SDD-only) tal como se implementó.
+
 **Fecha:** 2026-07-03
-**Estado:** implementado (ver docs/superpowers/plans/2026-07-03-sdd-co-explore.md).
+**Estado:** implementado (ver docs/superpowers/plans/2026-07-03-sdd-co-explore.md); luego
+generalizado a `co-explore` (ver nota arriba).
 
 ## Problema
 

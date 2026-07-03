@@ -139,17 +139,17 @@ inconsistencias que un humano pasa por alto. **Augmenta el gate, no lo reemplaza
 
 Mismo patrón que `sdd-flow` (ver su sección "Co-exploración cross-model" en
 `skills/sdd-flow/SKILL.md`), aplicado a los dos artefactos de Fase 1 — que ya se revisan como
-`complex`. Si está disponible la skill **`sdd-co-explore`**, un modelo de otra familia que el
+`complex`. Si está disponible la skill **`co-explore`**, un modelo de otra familia que el
 autor explora el mismo terreno **cross-repo** en paralelo, antes de que el conductor escriba
 `master-spec.md` o el reparto. Contrato completo (formato del informe, independencia, degradación)
-en la propia `sdd-co-explore`; acá solo cuándo se despacha y qué contexto recibe.
+en la propia `co-explore`; acá solo cuándo se despacha y qué contexto recibe.
 
 - **`explore` (pre-`master-spec`).** Corre **después de 1.2** (selección de repos confirmada — el
   revisor necesita saber dónde mirar) y antes de 1.3: se arma el paquete de contexto global y se
-  invoca `sdd-co-explore` con los repos confirmados como `working_dir`s. El foco del informe se
+  invoca `co-explore` con los repos confirmados como `working_dir`s. El foco del informe se
   corre a nivel sistema: contratos entre servicios existentes, superficies de integración, riesgos
   `[integration]`. El conductor explora en paralelo y sintetiza igual que en `sdd-flow` (guía en
-  `sdd-co-explore` → "La síntesis"). **Si el informe sugiere que un repo no confirmado está
+  `co-explore` → "La síntesis"). **Si el informe sugiere que un repo no confirmado está
   involucrado** (en Riesgos/Incógnitas), re-abrir la selección de repos con el usuario antes de
   escribir `master-spec.md`.
 - **`counter-plan` (pre-reparto).** Con `master-spec.md` aprobada, antes de 1.4: el revisor

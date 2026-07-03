@@ -180,7 +180,7 @@ crítica se presenta *junto* al artefacto en el mismo STOP; tú sigues siendo el
 ## Co-exploración cross-model (opcional)
 
 Antes de escribir la spec (`explore`) y antes de escribir el plan (`counter-plan`), si está
-disponible la skill **`sdd-co-explore`**, un modelo de otra familia que el autor (Codex cuando
+disponible la skill **`co-explore`**, un modelo de otra familia que el autor (Codex cuando
 conduce Claude; Claude cuando conduce Codex) explora el mismo código en background, read-only, y
 devuelve un mapa independiente — sin ver nada de lo que el conductor ya pensó. El valor no es que
 el revisor "ayude": es que produce un mapa independiente, y las divergencias entre los dos mapas
@@ -188,7 +188,7 @@ salen a la luz temprano (en los hallazgos), antes de que las decisiones de la sp
 tomadas. Es **ortogonal** a `cross_review.mode`: esta capacidad gobierna la exploración paralela
 y el contra-enfoque; `cross_review.mode` gobierna las críticas en los gates de artefactos.
 
-- **Dependencia blanda.** Igual que `sdd-cross-review`: si `sdd-co-explore` **no está instalada**,
+- **Dependencia blanda.** Igual que `sdd-cross-review`: si `co-explore` **no está instalada**,
   se omite y el flujo sigue con la exploración de siempre del conductor.
 - **Cuándo se activa** (precedencia: override de la corrida > `cross_review.co_explore` de
   `config.yml` > default por complejidad): default `trivial` nunca, `normal` opt-in (off salvo
@@ -201,12 +201,12 @@ y el contra-enfoque; `cross_review.mode` gobierna las críticas en los gates de 
   pasos observados) — hechos, **sin hipótesis propias**, que contaminarían la independencia del
   explorador (que es headless: no puede navegar). Sin tool de navegador, degradación de la regla
   6: pedir capturas/pasos al usuario, o seguir sin reproducción avisando; (2) invocar
-  `sdd-co-explore` (Skill tool) con `mode: explore`,
+  `co-explore` (Skill tool) con `mode: explore`,
   `execution: background`; (3) hacer la **exploración propia** de siempre, sin leer nada del
   revisor, y escribir el propio `findings-<familia-conductor>.md` (mismo formato) antes de leer
   el del revisor; (4) **punto de encuentro:** recoger el informe si terminó (`READY`) o seguir
   sin él (`UNAVAILABLE`, aviso de una línea); (5) **síntesis**, siguiendo la guía de
-  `sdd-co-explore` → "La síntesis (guía para la skill llamadora)" (no se duplica acá): produce
+  `co-explore` → "La síntesis (guía para la skill llamadora)" (no se duplica acá): produce
   `synthesis.md` con la tabla de convergencias/divergencias, el duelo de enfoques con su
   rationale, y las incógnitas fusionadas de ambos mapas (las que cambiarían el diseño alimentan
   `clarify`); (6) **checkpoint informativo condicional** (no es un gate SDD): solo si quedaron
@@ -214,7 +214,7 @@ y el contra-enfoque; `cross_review.mode` gobierna las críticas en los gates de 
   decidir al usuario antes de escribir la spec — si los mapas convergen, se sigue directo a
   `specify` sin stop extra.
 - **Momento 2 — `counter-plan` (pre-plan).** Con la spec aprobada (y ya posicionados en la rama
-  feature), antes de escribir `plan.md`: invocar `sdd-co-explore` con `mode: counter-plan`
+  feature), antes de escribir `plan.md`: invocar `co-explore` con `mode: counter-plan`
   (contexto: la spec aprobada + el propio `findings-<familia>.md` del revisor de la fase
   `explore`); contrastar el contra-enfoque devuelto con el propio en una adenda de
   `synthesis.md` (mismo criterio de la síntesis: méritos, no adopción automática) y escribir
