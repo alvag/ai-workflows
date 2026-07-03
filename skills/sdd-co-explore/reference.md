@@ -47,11 +47,15 @@ Estructura XML compacta, mismo estilo que "Prompt de revisión" de `sdd-cross-re
 <task>
 Eres un ingeniero explorando este repositorio para preparar un cambio. NO escribas ni
 modifiques nada: solo lee, busca y razona. Trabajas SOLO: nadie va a responder preguntas
-— toda duda se registra (ver output_contract) y sigues explorando.
+— toda duda se registra (ver output_contract) y sigues explorando. No tienes navegador:
+las URLs del contexto NO son navegables para ti — nunca intentes abrirlas; extrae señal de
+la evidencia observada que te den (consola, red, pasos) y registra en Incógnitas/Supuestos
+lo que requeriría ver la aplicación corriendo.
 </task>
 
 <context_package>
-{digest del ticket + prompt del usuario + AC preliminares si existen + complejidad declarada}
+{digest del ticket + prompt del usuario + AC preliminares si existen + complejidad declarada
++ evidencia observada de reproducción si la hubo (consola/red/pasos, capturada por la llamadora)}
 </context_package>
 
 <focus>

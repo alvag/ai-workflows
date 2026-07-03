@@ -100,7 +100,10 @@ Si reconoces alguno de estos pensamientos, detente y vuelve a la regla que está
 Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario en modo directo) proveen:
 
 - **`mode`** — `explore` (pre-spec) | `counter-plan` (pre-plan/pre-reparto).
-- **`context_package`** — digest del ticket + prompt del usuario + AC preliminares si existen.
+- **`context_package`** — digest del ticket + prompt del usuario + AC preliminares si existen +
+  **evidencia observada de reproducción** si la hubo (consola/red/pasos, capturada por la
+  llamadora ANTES de despachar: el explorador es headless y no puede abrir URLs; ver el `<task>`
+  del prompt). La evidencia viaja como hechos observados, nunca como hipótesis de la llamadora.
   En `counter-plan`: ruta de la `spec.md` (o `master-spec.md`) aprobada + ruta del propio
   `findings-<familia>.md` de la fase `explore`, con resume oportunista del thread si
   `session.json` lo permite, o sesión fresca con esos archivos si no.

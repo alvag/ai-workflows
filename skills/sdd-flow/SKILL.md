@@ -195,7 +195,13 @@ y el contra-enfoque; `cross_review.mode` gobierna las críticas en los gates de 
   pedido), `complex` on.
 - **Momento 1 — `explore` (pre-spec).** Tras confirmar el contexto y la clasificación en
   `gather-context`: (1) armar el **paquete de contexto** (digest del ticket + prompt del usuario +
-  complejidad); (2) invocar `sdd-co-explore` (Skill tool) con `mode: explore`,
+  complejidad). Si el prompt/ticket trae **URLs de reproducción** ("abre esta URL para ver el
+  error") y hay tool de navegador, el conductor **reproduce antes de despachar** y suma al
+  paquete un digest **observacional** de la evidencia (salida de consola, requests fallidos,
+  pasos observados) — hechos, **sin hipótesis propias**, que contaminarían la independencia del
+  explorador (que es headless: no puede navegar). Sin tool de navegador, degradación de la regla
+  6: pedir capturas/pasos al usuario, o seguir sin reproducción avisando; (2) invocar
+  `sdd-co-explore` (Skill tool) con `mode: explore`,
   `execution: background`; (3) hacer la **exploración propia** de siempre, sin leer nada del
   revisor, y escribir el propio `findings-<familia-conductor>.md` (mismo formato) antes de leer
   el del revisor; (4) **punto de encuentro:** recoger el informe si terminó (`READY`) o seguir
