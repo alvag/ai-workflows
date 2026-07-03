@@ -139,10 +139,11 @@ qué orden, riesgos) y, en una orquestación multi-repo, el reparto tentativo re
 `depends_on` (ver "Prompt de exploración" → variante `counter-plan`).
 
 Este formato fijo es lo que hace barata la síntesis (comparar dos informes sección por sección
-en vez de dos textos libres). Se escribe en `co-explore/findings-<familia>.md` (ver "Archivos de
-trabajo (scratch)"); si la salida del explorador no respeta este formato, se degrada según la
-regla 4 del `SKILL.md` (texto libre como contexto, o descarte si es ruido — registrando la
-degradación).
+en vez de dos textos libres). Se escribe en `co-explore/findings-<familia>.md` en modo `explore`,
+o en `co-explore/counter-plan-<familia>.md` en modo `counter-plan` (nunca pisa el findings de la
+fase `explore` — ver "Archivos de trabajo (scratch)"); si la salida del explorador no respeta
+este formato, se degrada según la regla 4 del `SKILL.md` (texto libre como contexto, o descarte
+si es ruido — registrando la degradación).
 
 ## Plantilla de `synthesis.md`
 
@@ -360,9 +361,12 @@ corre desde el lanzamiento, no desde que el conductor vuelve a mirar.
 
 ```
 .plans/<id>/co-explore/
-├─ findings-<familia-revisor>.md     # informe del explorador — ver "Formato del informe"
+├─ findings-<familia-revisor>.md     # informe del explorador en modo `explore` — ver "Formato
+│                                    #   del informe"
 ├─ findings-<familia-conductor>.md   # informe del conductor, mismo formato — escrito ANTES
 │                                    #   de leer el del explorador (regla 2 del SKILL.md)
+├─ counter-plan-<familia-revisor>.md # informe del explorador en modo `counter-plan`, mismo
+│                                    #   formato — nunca pisa el findings de la fase `explore`
 ├─ synthesis.md                      # convergencias/divergencias + duelo de enfoques
 │                                    #   ver "Plantilla de `synthesis.md`"
 ├─ session.json                      # ref. de sesión del explorador, opcional (resume oportunista)
@@ -392,5 +396,6 @@ runtime no expone sesión, no escribir el archivo — la ausencia del archivo es
 campo vacío dentro de él.
 
 **Igual que en cross-review:** `co-explore/` es local, untracked (regla #10 de `sdd-flow`) y sin
-autolimpieza — una corrida nueva sobre el mismo `<id>` sobrescribe `scratch/` y los
-`findings-*.md` (no crece sin límite); el usuario lo borra cuando quiere.
+autolimpieza — una corrida nueva sobre el mismo `<id>` sobrescribe `scratch/` y los archivos de
+informe de su propio modo (`findings-*.md` en `explore`, `counter-plan-*.md` en `counter-plan`;
+no crece sin límite); el usuario lo borra cuando quiere.

@@ -11,7 +11,8 @@ conductor hace su exploración de siempre, en paralelo, sin esperas secuenciales
 `sdd-co-explore` despacha, antes de que existan decisiones escritas, un segundo mapa del terreno:
 archivos relevantes, hipótesis, puntos de reúso, riesgos, incógnitas y un enfoque sugerido — en el
 mismo formato que produce el conductor. El resultado es `READY` (con el informe en
-`co-explore/findings-<familia>.md`) o `UNAVAILABLE` (degradado, sin bloquear nunca el flujo SDD).
+`co-explore/findings-<familia>.md` para `explore`, o `co-explore/counter-plan-<familia>.md` para
+`counter-plan`) o `UNAVAILABLE` (degradado, sin bloquear nunca el flujo SDD).
 
 ```
 paquete de contexto ──► [sdd-co-explore: revisor explora en background, read-only]

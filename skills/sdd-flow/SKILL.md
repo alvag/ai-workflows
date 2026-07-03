@@ -28,8 +28,8 @@ El ciclo SDD:
 
 ```
 init (opcional) → constitution → gather-context → co-explore (opcional, paralela) → specify ─┐
-                                                            ├─► clarify (condicional)
-                                                            ▼
+                                                                                              ├─► clarify (condicional)
+                                                                                              ▼
        publish-spec (Jira, opcional) ──► create-branch → analyze → plan ──► tasks ──► implement ──► verify
    (gates escalados por complejidad: trivial=1, normal=2, complejo=3 + clarify obligatorio)
    (publish-spec: gate externo opcional — aprobación del TL/PO en Jira; solo con jira_approval on)
@@ -73,7 +73,7 @@ Como `.plans/` y `.specify/` son **locales (untracked)**, git no los mueve al ca
 9. **Commit y push siempre confirmados.** Ofrecer revisión manual antes del commit (gate que se ofrece siempre, salteable). Antes de ejecutar el commit, mostrar archivos staged + mensaje + comando exacto (salvo que el usuario haya dicho "commitea directo"). El push se ofrece y se ejecuta solo con confirmación afirmativa.
 10. **Nada de lo que genera la skill se trackea.** Este es un flujo **personal**, no del equipo: `.specify/` y `.plans/` son locales. La skill **nunca** los stagea, comitea ni los agrega a un `.gitignore` compartido, y los excluye de todo `git add` y de las listas de archivos a commitear. El ignore local (p. ej. `.git/info/exclude`) lo gestiona el usuario por su cuenta; la skill no lo toca.
 
-## Red flags — pará y reconsiderá
+## Red flags — detente y reconsidera
 
 Las reglas de arriba dicen *qué* hacer; esta sección frena los atajos que aparecen *en el momento*. Ley fundamental:
 
@@ -158,13 +158,13 @@ crítica se presenta *junto* al artefacto en el mismo STOP; tú sigues siendo el
   default por complejidad): default `trivial` off, `normal` opt-in (off salvo pedido), `complex`
   on. En *normal* el gate combina plan+tasks: se revisan juntos en ese único STOP.
 - **Cómo invocarla.** Con el **Skill tool** (`sdd-cross-review`; esa skill sí es invocable por el
-  modelo). Pasarle `artifact_type`, `artifact_path`, los `context_paths` relevantes
-  (al revisar `tasks`, también `spec`+`plan`; con co-exploración corrida, sumar además los
-  informes `co-explore/findings-<familia>.md` y, en el gate del plan, el counter-plan, cuando
-  existan — ver "Co-exploración cross-model"), `working_dir`, `complexity` y `execution` (de
-  `cross_review.execution`, que se hereda como el resto de la config). Devuelve el artefacto
-  (quizá revisado) + un resumen de la crítica + la ruta del `review-log.md` (queda en
-  `.plans/<id>/review-log.md`, local y untracked como el resto).
+  modelo). Pasarle `artifact_type`, `artifact_path`, los `context_paths` relevantes (al revisar
+  `tasks`, también `spec`+`plan`; con co-exploración corrida, sumar además los informes
+  `co-explore/findings-<familia>.md` y, en el gate del plan,
+  `co-explore/counter-plan-<familia>.md`, cuando existan — ver "Co-exploración cross-model"),
+  `working_dir`, `complexity` y `execution` (de `cross_review.execution`, que se hereda como el
+  resto de la config). Devuelve el artefacto (quizá revisado) + un resumen de la crítica + la ruta
+  del `review-log.md` (queda en `.plans/<id>/review-log.md`, local y untracked como el resto).
 - **Degradación (nunca bloquea el flujo).** Si no hay revisor (ningún segundo modelo de otra
   familia disponible), si la skill
   está instalada pero la invocación falla (p. ej. error del Skill tool), si falla en
@@ -218,8 +218,9 @@ y el contra-enfoque; `cross_review.mode` gobierna las críticas en los gates de 
   real de la rama (archivos movidos, código cambiado desde entonces) y anotar los deltas.
 - **Crítica informada.** En los gates de `specify` y `plan`, si la revisión cross-model está
   activa, pasar a `sdd-cross-review` los informes de co-exploración como `context_paths`
-  adicionales: `findings-<familia>.md` (y, en el gate del plan, también el counter-plan). Si
-  existe `co-explore/session.json`, mencionarlo para el resume oportunista del revisor.
+  adicionales: `findings-<familia>.md` (y, en el gate del plan, también
+  `co-explore/counter-plan-<familia>.md`). Si existe `co-explore/session.json`, mencionarlo para
+  el resume oportunista del revisor.
 - **Degradación (nunca bloquea).** Skill no instalada, informe `UNAVAILABLE`, o deadline vencido
   → avisar en una línea ("co-exploración no disponible — sigo con mi exploración") y seguir el
   flujo normal. Misma filosofía de la regla #6.
@@ -381,7 +382,7 @@ Obligatorio en cambios *complejos*; en *normales* solo si hay ambigüedad; se sa
    ```
 
    Al crear el `plan.md`, escribir `status: planned`.
-4. **STOP** — si la **revisión cross-model** está activa (ver "Revisión cross-model"), ejecutar `sdd-cross-review` sobre `plan.md` con `spec` como contexto (con co-exploración: sumar `co-explore/findings-<familia>.md` y el counter-plan como contexto — ver "Co-exploración cross-model") antes de presentar (en *normal*, sobre plan + tasks juntos). Presentar el plan (con el resumen de crítica, si lo hubo) y pedir aprobación. En *trivial* este es el último gate antes de implementar (tasks inline en `## Tasks`). En *normal*, **antes del STOP se ejecuta el paso `tasks`** (se escribe `tasks.md`) y este gate presenta **plan + tasks juntos** (un solo STOP, sin gate extra). En *complejo*, el plan se aprueba acá y el gate de `tasks` es independiente y posterior (ver paso `tasks`). En todos, al aprobar el último gate aplicable, pasar `status` a `tasks-ready`. Si este es el **último gate antes de implementar** (*normal*) y el modo de implementación resuelto es `ask`, incluir en el **mismo STOP** la pregunta del modo: ¿implemento acá (inline) o despacho subagentes frescos por task? (ver `implement` → "Modo de ejecución"; sin gate extra; en *trivial* no se pregunta: default `inline`).
+4. **STOP** — si la **revisión cross-model** está activa (ver "Revisión cross-model"), ejecutar `sdd-cross-review` sobre `plan.md` con `spec` como contexto (con co-exploración: sumar `co-explore/findings-<familia>.md` y `co-explore/counter-plan-<familia>.md` como contexto — ver "Co-exploración cross-model") antes de presentar (en *normal*, sobre plan + tasks juntos). Presentar el plan (con el resumen de crítica, si lo hubo) y pedir aprobación. En *trivial* este es el último gate antes de implementar (tasks inline en `## Tasks`). En *normal*, **antes del STOP se ejecuta el paso `tasks`** (se escribe `tasks.md`) y este gate presenta **plan + tasks juntos** (un solo STOP, sin gate extra). En *complejo*, el plan se aprueba acá y el gate de `tasks` es independiente y posterior (ver paso `tasks`). En todos, al aprobar el último gate aplicable, pasar `status` a `tasks-ready`. Si este es el **último gate antes de implementar** (*normal*) y el modo de implementación resuelto es `ask`, incluir en el **mismo STOP** la pregunta del modo: ¿implemento acá (inline) o despacho subagentes frescos por task? (ver `implement` → "Modo de ejecución"; sin gate extra; en *trivial* no se pregunta: default `inline`).
 
 ### Ciclo de `status` (estado persistido del flujo)
 

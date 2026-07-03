@@ -64,7 +64,7 @@ artefacto escrito ──► [sdd-cross-review] ──► artefacto (quizá revis
    revisor es Claude con la sesión redirigida, invocarlo con higiene de entorno. Detalle en
    `reference.md` → "Descubrir el revisor" y "Vía C → Higiene de entorno".
 
-## Red flags — pará y reconsiderá
+## Red flags — detente y reconsidera
 
 Las reglas de arriba dicen *qué* hacer; esta sección frena los atajos al procesar la crítica. Ley fundamental:
 
@@ -88,7 +88,10 @@ Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario) proveen:
   revisión (ver `reference.md` → "Foco por tipo de artefacto").
 - **`artifact_path`** — ruta del artefacto a revisar (p. ej. `.plans/ABC-123/plan.md`).
 - **`context_paths`** — artefactos relacionados para grounding (p. ej. al revisar `tasks`, pasar
-  también `spec` y `plan`; al revisar `reparto`, la `master-spec`). Opcional pero recomendado. Si el flujo corrió **co-exploración** (`sdd-co-explore`), la llamadora pasa acá los `co-explore/findings-*.md` (y el counter-plan al revisar `plan`): la crítica sale informada por la exploración previa del propio revisor.
+  también `spec` y `plan`; al revisar `reparto`, la `master-spec`). Opcional pero recomendado. Si
+  el flujo corrió **co-exploración** (`sdd-co-explore`), la llamadora pasa acá los
+  `co-explore/findings-*.md` (y `co-explore/counter-plan-*.md` al revisar `plan`): la crítica sale
+  informada por la exploración previa del propio revisor.
 - **`working_dir`** — directorio desde donde el revisor puede leer el código en read-only.
 - **`complexity`** — `trivial | normal | complex` (de `sdd-flow`); modula profundidad/esfuerzo.
 - **`execution`** — `auto | sync | background` (de la config `cross_review`); cómo se espera al

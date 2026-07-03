@@ -74,7 +74,7 @@ paquete de contexto ──► [sdd-co-explore: revisor explora en background, re
    `sdd-cross-review/reference.md` → "Descubrir el revisor"; acá solo el puntero + un fallback
    mínimo (ver `reference.md` → "Descubrir el revisor (puntero + fallback)").
 
-## Red flags — pará y reconsiderá
+## Red flags — detente y reconsidera
 
 Las reglas de arriba dicen *qué* hacer; esta sección frena los atajos que aparecen *en el
 momento*. Ley fundamental:
@@ -123,8 +123,9 @@ Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario en modo directo) prove
    llamadora hace su propia exploración y vuelve a consultar en el punto de encuentro. En
    `counter-plan` o con `execution: sync`, esperar con tope.
 5. **Punto de encuentro:** si el explorador terminó, normalizar la salida al "Formato del
-   informe" y escribirla en `co-explore/findings-<familia>.md`. Si venció el `deadline`, matar
-   el proceso y devolver `UNAVAILABLE`.
+   informe" y escribirla en `co-explore/findings-<familia>.md` (`explore`) o
+   `co-explore/counter-plan-<familia>.md` (`counter-plan`) — ver `reference.md` → "Archivos de
+   trabajo (scratch)". Si venció el `deadline`, matar el proceso y devolver `UNAVAILABLE`.
 
 **Modo directo** (el usuario invoca `/sdd-co-explore <ticket|descripción>`): inferir
 `mode: explore`, armar el `context_package` desde el prompt (+ tracker si hay clave y MCP
@@ -132,9 +133,9 @@ disponible), correr los pasos de arriba y **presentar** el informe al usuario.
 
 ## Salida
 
-**Salida a la llamadora:** estado `READY` | `UNAVAILABLE` · ruta del `findings-<familia>.md`
-(si hay) · resumen de 3-5 líneas (hallazgos top + enfoque sugerido) · ruta de `session.json`
-si existe.
+**Salida a la llamadora:** estado `READY` | `UNAVAILABLE` · ruta del informe
+(`findings-<familia>.md` en `explore`, `counter-plan-<familia>.md` en `counter-plan`; si hay) ·
+resumen de 3-5 líneas (hallazgos top + enfoque sugerido) · ruta de `session.json` si existe.
 
 ## La síntesis (guía para la skill llamadora)
 

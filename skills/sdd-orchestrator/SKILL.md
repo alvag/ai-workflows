@@ -75,7 +75,7 @@ Como `.sdd/` y los `.plans/<id>/` son **locales (untracked)**, conviven N featur
 7. **Nada de lo que genera el orquestador se trackea.** `.sdd/` es local, igual que los `.plans/`/`.specify/` de `sdd-flow`. La skill nunca los stagea, comitea ni los agrega a un `.gitignore` compartido.
 8. **Degradación elegante.** Si falta un MCP/CLI (tracker, navegador, host de Git) o `sdd-flow` no está disponible, avisar y continuar con lo que haya, o detenerse explicando el bloqueo. Descubrir por capacidad, no por nombre de tool.
 
-## Red flags — pará y reconsiderá
+## Red flags — detente y reconsidera
 
 Las reglas de arriba dicen *qué* hacer; esta sección frena los atajos del flujo multi-repo. Ley fundamental:
 
@@ -137,14 +137,36 @@ inconsistencias que un humano pasa por alto. **Augmenta el gate, no lo reemplaza
 
 ## Co-exploración cross-model (opcional)
 
-Mismo patrón que `sdd-flow` (ver su sección "Co-exploración cross-model" en `skills/sdd-flow/SKILL.md`), aplicado a los dos artefactos de Fase 1 — que ya se revisan como `complex`. Si está disponible la skill **`sdd-co-explore`**, un modelo de otra familia que el autor explora el mismo terreno **cross-repo** en paralelo, antes de que el conductor escriba `master-spec.md` o el reparto. Contrato completo (formato del informe, independencia, degradación) en la propia `sdd-co-explore`; acá solo cuándo se despacha y qué contexto recibe.
+Mismo patrón que `sdd-flow` (ver su sección "Co-exploración cross-model" en
+`skills/sdd-flow/SKILL.md`), aplicado a los dos artefactos de Fase 1 — que ya se revisan como
+`complex`. Si está disponible la skill **`sdd-co-explore`**, un modelo de otra familia que el
+autor explora el mismo terreno **cross-repo** en paralelo, antes de que el conductor escriba
+`master-spec.md` o el reparto. Contrato completo (formato del informe, independencia, degradación)
+en la propia `sdd-co-explore`; acá solo cuándo se despacha y qué contexto recibe.
 
-- **`explore` (pre-`master-spec`).** Corre **después de 1.2** (selección de repos confirmada — el revisor necesita saber dónde mirar) y antes de 1.3: se arma el paquete de contexto global y se invoca `sdd-co-explore` con los repos confirmados como `working_dir`s. El foco del informe se corre a nivel sistema: contratos entre servicios existentes, superficies de integración, riesgos `[integration]`. El conductor explora en paralelo y sintetiza igual que en `sdd-flow` (guía en `sdd-co-explore` → "La síntesis"). **Si el informe sugiere que un repo no confirmado está involucrado** (en Riesgos/Incógnitas), re-abrir la selección de repos con el usuario antes de escribir `master-spec.md`.
-- **`counter-plan` (pre-reparto).** Con `master-spec.md` aprobada, antes de 1.4: el revisor propone su propio **reparto tentativo** (qué repo cubre qué AC, `depends_on`, orden) que el conductor contrasta antes de escribir el reparto real. Errores de DAG y cobertura AC↔repo son el objetivo.
-- **Artefactos.** `.sdd/<id>/co-explore/` (mismos nombres que en `sdd-flow`), local y untracked como el resto de `.sdd/` (regla 7).
-- **Config.** Sub-clave `cross_review.co_explore` en el `manifest.yml` de la orquestación (ver "Esquema de `manifest.yml`"). Default `auto` = **on**: los artefactos de orquestación son el caso complejo por definición, igual que su cross-review. Deadlines: usar los de `complexity: complex` (600 s) como piso.
-- **Crítica informada.** Los informes se pasan como `context_paths` adicionales a `sdd-cross-review` en la revisión de `master-spec` (gate 1.3) y de `reparto` (gate 1.4).
-- **Sin doble co-exploración.** La Fase 2 ya delega con `cross_review.mode: off`; dejar explícito que eso también apaga `co_explore` en los `sdd-flow` por-repo — la exploración global ya cubrió ese terreno.
+- **`explore` (pre-`master-spec`).** Corre **después de 1.2** (selección de repos confirmada — el
+  revisor necesita saber dónde mirar) y antes de 1.3: se arma el paquete de contexto global y se
+  invoca `sdd-co-explore` con los repos confirmados como `working_dir`s. El foco del informe se
+  corre a nivel sistema: contratos entre servicios existentes, superficies de integración, riesgos
+  `[integration]`. El conductor explora en paralelo y sintetiza igual que en `sdd-flow` (guía en
+  `sdd-co-explore` → "La síntesis"). **Si el informe sugiere que un repo no confirmado está
+  involucrado** (en Riesgos/Incógnitas), re-abrir la selección de repos con el usuario antes de
+  escribir `master-spec.md`.
+- **`counter-plan` (pre-reparto).** Con `master-spec.md` aprobada, antes de 1.4: el revisor
+  propone su propio **reparto tentativo** (qué repo cubre qué AC, `depends_on`, orden) que el
+  conductor contrasta antes de escribir el reparto real. Errores de DAG y cobertura AC↔repo son el
+  objetivo.
+- **Artefactos.** `.sdd/<id>/co-explore/` (mismos nombres que en `sdd-flow`), local y untracked
+  como el resto de `.sdd/` (regla 7).
+- **Config.** Sub-clave `cross_review.co_explore` en el `manifest.yml` de la orquestación
+  (ver "Esquema de `manifest.yml`"). Default `auto` = **on**: los artefactos de orquestación
+  son el caso complejo por definición, igual que su cross-review. Deadlines: usar los de
+  `complexity: complex` (600 s) como piso.
+- **Crítica informada.** Los informes se pasan como `context_paths` adicionales a
+  `sdd-cross-review` en la revisión de `master-spec` (gate 1.3) y de `reparto` (gate 1.4).
+- **Sin doble co-exploración.** La Fase 2 ya delega con `cross_review.mode: off`; dejar explícito
+  que eso también apaga `co_explore` en los `sdd-flow` por-repo — la exploración global ya cubrió
+  ese terreno.
 
 ## Router de intención (alias coloquiales → fase / sub-paso)
 
