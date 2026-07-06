@@ -157,7 +157,9 @@ en la propia `co-explore`; acá solo cuándo se despacha y qué contexto recibe.
   conductor contrasta antes de escribir el reparto real. Errores de DAG y cobertura AC↔repo son el
   objetivo.
 - **Artefactos.** `.sdd/<id>/co-explore/` (mismos nombres que en `sdd-flow`), local y untracked
-  como el resto de `.sdd/` (regla 7).
+  como el resto de `.sdd/` (regla 7). Los artefactos de orquestación (`master-spec.md`, el
+  reparto / `manifest.yml`) no citan la co-exploración ni sus informes — misma regla que en
+  `sdd-flow` ("Los artefactos no citan la co-exploración").
 - **Config.** Sub-clave `cross_review.co_explore` en el `manifest.yml` de la orquestación
   (ver "Esquema de `manifest.yml`"). Default `auto` = **on**: los artefactos de orquestación
   son el caso complejo por definición, igual que su cross-review. Deadlines: usar los de

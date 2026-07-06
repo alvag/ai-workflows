@@ -256,6 +256,10 @@ después de que ambos cerraron su exploración:
 - **Supuestos del revisor a vigilar:** input directo para la crítica informada de
   `sdd-cross-review` — el crítico puede marcar ahí si alguno de esos supuestos resultó
   equivocado.
+- **Material interno:** `synthesis.md` (como los informes) es material de trabajo del
+  directorio `co-explore/` — su vocabulario (conductor/revisor, duelo, dos mapas) **no se
+  traslada** a la conclusión presentada al usuario ni a los artefactos SDD (ver `SKILL.md` →
+  "La síntesis", paso 5).
 
 ## Plantilla de síntesis — `investigate`
 
@@ -290,6 +294,8 @@ investigaciones. Se escribe en `co-explore/synthesis.md` (mismo archivo, conteni
   puede **ejecutar para desempatar** (ver "Capacidades y worktree (`investigate`)").
 - **Divergencia no resuelta:** si los dos mapas no convergen en la causa raíz, se presentan
   ambas posiciones — mismo principio que en `explore` (no forzar consenso).
+- **Material interno:** misma regla que la `synthesis.md` de `explore` — este vocabulario no
+  se traslada a la conclusión presentada al usuario (paso 5 de "La síntesis").
 
 ## Capacidades y worktree (`investigate`)
 

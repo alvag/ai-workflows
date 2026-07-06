@@ -168,7 +168,8 @@ natural una exploración/investigación paralela):
    headless y no abre URLs).
 3. **Correr los pasos de arriba** y, a diferencia del modo embebido, **ejecutar la síntesis
    completa** (ver "La síntesis"): el conductor escribe su propio mapa, lee el del revisor,
-   compara y **presenta la conclusión al usuario** — no un solo mapa.
+   compara y **presenta la conclusión al usuario** — no un solo mapa, y redactada según el
+   paso 5 de "La síntesis": los hallazgos, sin la mecánica.
 4. **En `investigate`, tras presentar**, el conductor **ofrece** el handoff a la verificación:
    "¿verifico la hipótesis líder con `superpowers:systematic-debugging`?". Es una invocación de
    otra skill, opcional y a cargo del conductor en su rol normal — co-explore no verifica ni
@@ -200,12 +201,22 @@ La síntesis la ejecuta **el conductor** en todos los casos: los callers SDD (`s
 4. Las **divergencias no resueltas** se presentan en un checkpoint informativo de la llamadora
    antes de escribir la spec/plan (no es un gate SDD, y solo ocurre si hay divergencias sin
    resolver; si los mapas convergen, se sigue directo sin stop extra).
+5. **Los entregables hablan del objeto, no del método.** La conclusión presentada al usuario
+   en modo directo y los artefactos que la llamadora escriba después (spec/plan/reparto) se
+   redactan en términos de los hallazgos —mapa, riesgos, enfoque, hipótesis, plan de
+   verificación— **sin mencionar la mecánica de co-exploración**: ni "conductor/revisor", ni
+   nombres de modelos, ni "dos mapas"/"duelo", ni rutas de `co-explore/`. Esa trazabilidad ya
+   vive en `synthesis.md` y los informes del directorio de trabajo. En el entregable, las
+   divergencias no resueltas se presentan como **posiciones alternativas con su evidencia**,
+   sin atribuirlas a quién las produjo. (El checkpoint conversacional del paso 4 es proceso,
+   no entregable: ahí sí se puede nombrar fuentes.)
 
 **En `investigate`** la síntesis es *bug-shaped*: en vez del "duelo de enfoques" se hace un
 **duelo de hipótesis de causa raíz** (evaluar las candidatas en méritos: evidencia, encaje con
 el repro; elegir la líder con rationale auditable) y el cierre es **hipótesis líder + plan de
 verificación**, no una spec. Si los dos mapas divergen en la causa raíz y no se resuelve, se
-presentan **ambas posiciones** al usuario (mismo principio: no forzar consenso). Plantilla en
+presentan **ambas posiciones** al usuario como hipótesis alternativas con su evidencia, sin
+atribuirlas a conductor/revisor (paso 5; mismo principio: no forzar consenso). Plantilla en
 `reference.md` → "Plantilla de síntesis — `investigate`".
 
 ## Alcance de `investigate`
