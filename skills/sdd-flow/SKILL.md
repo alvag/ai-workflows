@@ -83,7 +83,7 @@ Si reconoces alguno de estos pensamientos, es señal de detente: vuelve al paso 
 
 | Racionalización | Realidad |
 |---|---|
-| "Arranco el flujo sin leer el config" | Antes de cualquier paso operativo se lee `.specify/config.yml` y se **ecoan** los valores resueltos de `tracker`, `cross_review.mode` y `jira_approval.mode`. Saltarlo es cómo se pierden cross-review, co-exploración (`co_explore`) y `publish-spec` en silencio (se aplican los defaults sin avisar). |
+| "Arranco el flujo sin leer el config" | Antes de cualquier paso operativo se lee `.specify/config.yml` y se **ecoan** los valores resueltos de `tracker`, `cross_review.mode`, `domain_context.mode`, `final_diff_review.mode` y `jira_approval.mode`. Saltarlo es cómo se pierden cross-review, co-exploración (`co_explore`), contexto de dominio, revisión final y `publish-spec` en silencio (se aplican los defaults sin avisar). |
 | "Es trivial, salteo el gate y commiteo directo" | Trivial = 1 gate, no 0. La clasificación se **anuncia y se confirma siempre** (regla 2); no hay flujo con cero gates. |
 | "Los tests pasan, seguro cumple los AC" | Tests verdes ≠ AC cumplidos. `verify` recorre `AC-1..N` con evidencia fresca **antes** de commitear (paso `verify`, regla 7). |
 | "El subagente devolvió `STATUS: done`, marco la task `[x]`" | El reporte no es prueba. Validar `FILES` contra `git status` y revisar el diff antes de aceptar (modo subagent). |
@@ -95,7 +95,7 @@ Si reconoces alguno de estos pensamientos, es señal de detente: vuelve al paso 
 
 Antes de cualquier paso operativo, descubrir el entorno **una vez** por sesión y resumirlo al usuario. Orden de resolución para cada parámetro: `config.yml` → autodetección → preguntar.
 
-**Checkpoint de inicio (no salteable).** El **primer** acto operativo de toda corrida es leer `.specify/config.yml` si existe y **devolverle al usuario en una línea los valores resueltos** de al menos `tracker`, `cross_review.mode`, `cross_review.co_explore.mode` y `jira_approval.mode`, **con qué implican**. Ej.: *"config: tracker jira · cross_review on · co_explore on → exploración paralela antes de la spec · jira_approval on → publico la spec en Jira tras aprobarla localmente"*. Ese eco es la prueba de que el config se leyó: sin él, es fácil aplicar los defaults (`cross_review` por complejidad, `jira_approval: off`) y perder cross-review y `publish-spec` en silencio (ver red-flag "Arranco el flujo sin leer el config").
+**Checkpoint de inicio (no salteable).** El **primer** acto operativo de toda corrida es leer `.specify/config.yml` si existe y **devolverle al usuario en una línea los valores resueltos** de al menos `tracker`, `cross_review.mode`, `cross_review.co_explore.mode`, `domain_context.mode`, `final_diff_review.mode` y `jira_approval.mode`, **con qué implican**. Ej.: *"config: tracker jira · cross_review on · co_explore on → exploración paralela antes de la spec · domain_context auto → leer ADRs si existen · final_diff_review auto → revisión agregada en complex inline · jira_approval on → publico la spec en Jira tras aprobarla localmente"*. Ese eco es la prueba de que el config se leyó: sin él, es fácil aplicar los defaults (`cross_review` por complejidad, `domain_context: auto`, `final_diff_review: auto`, `jira_approval: off`) y perder cross-review, contexto de dominio, revisión final y `publish-spec` en silencio (ver red-flag "Arranco el flujo sin leer el config").
 
 Si existe `.specify/config.yml`, leerlo primero. Esquema (todos los campos opcionales):
 
@@ -111,6 +111,8 @@ commit_style: conventional  # conventional | plain
 tracker: jira               # jira | github | gitlab | linear | none
 test_scope_hint: "vitest run {name}"  # plantilla de COMANDO para acotar tests; {name} = archivo/patrón
 cross_review: {mode: auto, execution: auto, co_explore: {mode: auto, deadline: 600}}  # segunda opinión + co-exploración; ver "Revisión cross-model" y "Co-exploración cross-model"
+domain_context: {mode: auto, context_paths: [], adr_paths: []}  # lectura de contexto/ADRs; ver "Contexto de dominio"
+final_diff_review: {mode: auto}  # revisión agregada de diff en cambios complex/high-risk inline
 jira_approval: {mode: "off"}  # aprobación externa de la spec en Jira ("off"|"on", entre comillas: sin ellas YAML los parsea como booleanos; solo si tracker: jira); ver paso `publish-spec`
 implement_mode: ask         # cómo ejecutar las tasks: ask (preguntar en el gate) | inline | subagent
 ```
@@ -128,6 +130,22 @@ Lo que no esté en `config.yml` se **autodetecta** por convención (detalle y co
 > **Descubrir por capacidad, no por nombre.** Los nombres de tools/MCP cambian entre entornos (Claude Code, Codex, etc.). Buscar por capacidad (tracker, navegador, búsqueda en código, host de Git) y, antes de fallar por "tool X no existe", listar las disponibles y buscar coincidencias. Solo entonces degradar o preguntar. Tabla completa en `reference.md`.
 
 Si tras detectar quedan huecos (p. ej. no se infiere el comando de build), preguntarlos en una sola tanda y ofrecer guardarlos en `.specify/config.yml` para próximas corridas.
+
+### Contexto de dominio (solo lectura)
+
+`domain_context` agrega conocimiento de dominio o decisiones existentes al flujo sin convertir
+`sdd-flow` en una skill de documentación. Se usa solo como **input de lectura**:
+
+- `context_paths`: documentos de dominio, glosarios o guías funcionales.
+- `adr_paths`: ADRs o decisiones técnicas ya existentes.
+
+Resolución: override conversacional de la corrida > `domain_context` del `config.yml` > default
+`auto` (leer documentos obvios si existen, como `CONTEXT.md`, `docs/adr/`, `docs/architecture*`,
+sin inventar rutas). Si un path configurado no existe, avisar y seguir sin bloquear. En
+`analyze`/`plan`, leer estos paths para usar nombres canónicos y decisiones vigentes; en
+`co-explore` y `sdd-cross-review`, pasarlos como `context_paths` adicionales. **Nunca** crear,
+editar ni "mantener" ADRs/docs versionados como parte de este campo: si hace falta documentar una
+decisión nueva, pedir un flujo aparte o confirmación explícita.
 
 ## Clasificador de complejidad (escalado de gates)
 
@@ -159,7 +177,8 @@ crítica se presenta *junto* al artefacto en el mismo STOP; tú sigues siendo el
   on. En *normal* el gate combina plan+tasks: se revisan juntos en ese único STOP.
 - **Cómo invocarla.** Con el **Skill tool** (`sdd-cross-review`; esa skill sí es invocable por el
   modelo). Pasarle `artifact_type`, `artifact_path`, los `context_paths` relevantes (al revisar
-  `tasks`, también `spec`+`plan`; con co-exploración corrida, sumar además los informes
+  `tasks`, también `spec`+`plan`; sumar los paths resueltos de `domain_context` y, con
+  co-exploración corrida, sumar además los informes
   `co-explore/findings-<familia>.md` y, en el gate del plan,
   `co-explore/counter-plan-<familia>.md`, cuando existan — ver "Co-exploración cross-model"),
   `working_dir`, `complexity` y `execution` (de `cross_review.execution`, que se hereda como el
@@ -195,7 +214,7 @@ y el contra-enfoque; `cross_review.mode` gobierna las críticas en los gates de 
   pedido), `complex` on.
 - **Momento 1 — `explore` (pre-spec).** Tras confirmar el contexto y la clasificación en
   `gather-context`: (1) armar el **paquete de contexto** (digest del ticket + prompt del usuario +
-  complejidad). Si el prompt/ticket trae **URLs de reproducción** ("abre esta URL para ver el
+  complejidad + paths resueltos de `domain_context`). Si el prompt/ticket trae **URLs de reproducción** ("abre esta URL para ver el
   error") y hay tool de navegador, el conductor **reproduce antes de despachar** y suma al
   paquete un digest **observacional** de la evidencia (salida de consola, requests fallidos,
   pasos observados) — hechos, **sin hipótesis propias**, que contaminarían la independencia del
@@ -215,7 +234,7 @@ y el contra-enfoque; `cross_review.mode` gobierna las críticas en los gates de 
   `specify` sin stop extra.
 - **Momento 2 — `counter-plan` (pre-plan).** Con la spec aprobada (y ya posicionados en la rama
   feature), antes de escribir `plan.md`: invocar `co-explore` con `mode: counter-plan`
-  (contexto: la spec aprobada + el propio `findings-<familia>.md` del revisor de la fase
+  (contexto: la spec aprobada + paths resueltos de `domain_context` + el propio `findings-<familia>.md` del revisor de la fase
   `explore`); contrastar el contra-enfoque devuelto con el propio en una adenda de
   `synthesis.md` (mismo criterio de la síntesis: méritos, no adopción automática) y escribir
   `plan.md` con esa síntesis a la vista.
@@ -228,8 +247,8 @@ y el contra-enfoque; `cross_review.mode` gobierna las críticas en los gates de 
   **refresco incremental** sobre el mapa ya construido — validar que sigue vigente sobre el HEAD
   real de la rama (archivos movidos, código cambiado desde entonces) y anotar los deltas.
 - **Crítica informada.** En los gates de `specify` y `plan`, si la revisión cross-model está
-  activa, pasar a `sdd-cross-review` los informes de co-exploración como `context_paths`
-  adicionales: `findings-<familia>.md` (y, en el gate del plan, también
+  activa, pasar a `sdd-cross-review` los paths resueltos de `domain_context` y los informes de
+  co-exploración como `context_paths` adicionales: `findings-<familia>.md` (y, en el gate del plan, también
   `co-explore/counter-plan-<familia>.md`). Si existe `co-explore/session.json`, mencionarlo para
   el resume oportunista del revisor.
 - **Degradación (nunca bloquea).** Skill no instalada, informe `UNAVAILABLE`, o deadline vencido
@@ -270,8 +289,9 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
 | "desglosa en tareas", "arma las tasks" | `tasks` → **GATE** |
 | "aprobado", "dale", "implementa", "vamos" (con tasks/plan aprobados en esta sesión) | `implement` — Vía A |
 | `/sdd-flow implement <ruta-carpeta>`, "implementa `.plans/X/`" (sesión fresca) | `resume` → `implement` Vía B (bootstrap) |
-| "qué flujos tengo", "lista los planes", "¿en qué quedé?" | `resume` (listar) |
+| "qué flujos tengo", "lista los planes", "¿en qué quedé?", `/sdd-flow status` | `resume` (listar; `status` es alias, no estado paralelo) |
 | "continuemos con `<id>`", "retoma el flujo a", "sigue `.plans/X/`" | `resume` (retomar el flujo nombrado) |
+| `/sdd-flow doctor <id>`, "valida el plan", "revisa coherencia del flujo" | `doctor` (read-only; no arregla ni escribe) |
 | "ya aprobaron la spec", "revisa si aprobaron", "fíjate las observaciones del ticket" | `resume` → "Gate de Jira" (detección de aprobación / observaciones) |
 | "pausa esto", "lo dejo por ahora", "guarda y sigo después" | sub-paso `pause` (escribe `handoff.md`) |
 | "verifica", "¿cumple lo pedido?" | `verify` |
@@ -290,11 +310,11 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
 3. **Detectar el entorno** (rutina de "Adaptación al proyecto"): stack, `test_cmd`/`build_cmd`/`lint_cmd`/`test_scope_hint`, rama base, host de Git y tracker. El valor **leído del config existente** (paso 2) o, si no hay, el **detectado**, es el default de cada campo; lo que no se infiera queda como hueco a preguntar, nunca inventado.
 4. **Wizard de decisiones.** Si hay una herramienta de **selección interactiva** (p. ej. `AskUserQuestion` en Claude Code — descubrir por capacidad, no por nombre), presentar las opciones **con descripción**, marcando el valor **actual/detectado como recomendado** (etiqueta "(actual)"). Dos pantallas:
    - **Pantalla 1:** `tracker` (jira · github · gitlab · none) · `commit_style` (conventional · plain) · `branch_prefix` (semántico `feature`/`fix`/… · fijo `feature/`) · `implement_mode` (ask · inline · subagent).
-   - **Pantalla 2:** `cross_review` (auto por complejidad · on · off) · `jira_approval` (off · on; solo si `tracker: jira`).
+   - **Pantalla 2:** `cross_review` (auto por complejidad · on · off) · `domain_context` (auto · on · off) · `final_diff_review` (auto · on · off) · `jira_approval` (off · on; solo si `tracker: jira`).
    - **Sin** herramienta de selección → **degradar** al modo conversacional: proponer los valores y confirmar (regla 6).
-5. **Comandos autodetectados.** `test_cmd`/`build_cmd`/`lint_cmd`/`test_scope_hint` **no** van al wizard (son texto libre, no elecciones): se autodetectan y se muestran en el preview final (paso 6), donde el usuario puede **editarlos**.
+5. **Comandos y paths autodetectados.** `test_cmd`/`build_cmd`/`lint_cmd`/`test_scope_hint` y los `domain_context.context_paths`/`adr_paths` **no** van al wizard (son texto libre/listas, no elecciones): se autodetectan y se muestran en el preview final (paso 6), donde el usuario puede **editarlos**.
 6. **Armar y mostrar** el contenido completo de ambos archivos antes de escribir:
-   - `.specify/config.yml` — con las selecciones del wizard + comandos detectados. Esquema en `reference.md` → "Esquema de `.specify/config.yml`". Al escribirlo, emitir `cross_review.mode` y `jira_approval.mode` con los valores `on`/`off` **entre comillas** (`"on"`/`"off"`): sin ellas YAML los parsea como booleanos.
+   - `.specify/config.yml` — con las selecciones del wizard + comandos/paths detectados. Esquema en `reference.md` → "Esquema de `.specify/config.yml`". Al escribirlo, emitir `cross_review.mode`, `domain_context.mode`, `final_diff_review.mode` y `jira_approval.mode` con los valores `on`/`off` **entre comillas** (`"on"`/`"off"`): sin ellas YAML los parsea como booleanos.
    - `.specify/constitution.md` — desde `reference.md` → "Plantilla de constitution" (definición de *Done*, formato de AC, regla de trazabilidad, y un **puntero** a los principios de código del repo —`CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`— si existen).
 7. **STOP** — escribir ambos **solo tras confirmación**. Son locales y untracked (regla #10): nunca se trackean, comitean ni se agregan a un `.gitignore` compartido.
 8. **Re-corrida:** si ya existían, no pisar a ciegas — el wizard mostró los valores vigentes pre-seleccionados; al confirmar, **fusionar** los cambios respetando lo que el usuario mantuvo. Si prefiere no fijar config, puede saltar `init`: el ciclo sigue con autodetección + defaults conversacionales (ver `constitution`).
@@ -324,7 +344,7 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
 1. Crear `.plans/<id>/` (POSIX: `mkdir -p`; PowerShell: `New-Item -ItemType Directory -Force`).
 2. Escribir `spec.md` con la plantilla de `reference.md` → "Plantilla de spec". Mínimo: problema/objetivo, alcance (in/out), y **criterios de aceptación numerados `AC-1..N`** en formato verificable (Given/When/Then o checklist observable).
 3. Para cambios *triviales*, la spec puede ser un bloque breve dentro de `plan.md` en lugar de archivo aparte.
-4. **STOP** — si la **revisión cross-model** está activa para `spec` (ver "Revisión cross-model"), ejecutar `sdd-cross-review` sobre `spec.md` antes de presentar (con co-exploración: sumar `co-explore/findings-<familia>.md` como contexto — ver "Co-exploración cross-model"). Presentar la spec (con el resumen de crítica, si lo hubo) y pedir aprobación. No avanzar sin ella. Si el usuario corrige, actualizar y volver a ofrecer.
+4. **STOP** — si la **revisión cross-model** está activa para `spec` (ver "Revisión cross-model"), ejecutar `sdd-cross-review` sobre `spec.md` antes de presentar (sumar `domain_context` resuelto y, con co-exploración, `co-explore/findings-<familia>.md` como contexto — ver "Co-exploración cross-model"). Presentar la spec (con el resumen de crítica, si lo hubo) y pedir aprobación. No avanzar sin ella. Si el usuario corrige, actualizar y volver a ofrecer.
 
 ## Paso `clarify` (condicional)
 
@@ -363,6 +383,9 @@ Obligatorio en cambios *complejos*; en *normales* solo si hay ambigüedad; se sa
 
 **Objetivo:** entender el código lo suficiente para planear bien.
 
+- **Contexto de dominio.** Leer los paths resueltos de `domain_context` antes de decidir nombres,
+  alcance técnico o contratos. Usar ese contexto para adoptar términos canónicos, respetar ADRs
+  vigentes y marcar conflictos como incógnitas; no escribir ni actualizar esos documentos.
 - **Si es bug:** seguir un método de debugging sistemático (hipótesis → prueba → refutar). Si hay una skill de debugging sistemático disponible, usarla. Si es reproducible en navegador y hay tool de navegador, capturar consola/network; si no, pedir captura/pasos. El mismo método aplica si un test o un AC falla durante `implement`/`verify` (ver `implement`, pasos 3-4).
 - **Si es feature/refactor:** mapear archivos/módulos/utilidades existentes a reutilizar. Preferir reúso sobre código nuevo.
 - Localizar el código con búsqueda en el repo (subagentes de exploración si el entorno los soporta y el alcance lo amerita; si no, `grep`/`ripgrep`/`find` locales).
@@ -376,7 +399,7 @@ Obligatorio en cambios *complejos*; en *normales* solo si hay ambigüedad; se sa
 **Objetivo:** dejar el **CÓMO** técnico en `plan.md`, con header YAML para bootstrap.
 
 1. Estando ya en la rama feature (creada en `create-branch`), obtener `base_commit` = `git rev-parse HEAD` y la fecha ISO-8601 actual. Si en `create-branch` se resolvió una `base_branch` **distinta de `default_branch`** (override de base), conservarla para el header (define el destino del PR); si coincide con `default_branch`, se omite del header.
-2. Escribir `plan.md` con el header YAML obligatorio + secciones de enfoque, archivos a tocar, tests/build y verificación. Plantilla en `reference.md` → "Plantilla de plan". **Sin placeholders:** nada de `TBD`, `TODO`, "agregar manejo de errores apropiado" o "etc." colgados — cada sección con contenido real (ruta, comando, enfoque). Si algo no se puede precisar todavía, falta `clarify`; no es un placeholder.
+2. Escribir `plan.md` con el header YAML obligatorio + secciones de enfoque, contexto de dominio aplicado (si hubo `domain_context`), archivos a tocar, tests/build y verificación. Plantilla en `reference.md` → "Plantilla de plan". **Sin placeholders:** nada de `TBD`, `TODO`, "agregar manejo de errores apropiado" o "etc." colgados — cada sección con contenido real (ruta, comando, enfoque). Si algo no se puede precisar todavía, falta `clarify`; no es un placeholder.
 3. El header YAML es la fuente del bootstrap y del retomado (paso `resume`):
 
    ```yaml
@@ -393,7 +416,7 @@ Obligatorio en cambios *complejos*; en *normales* solo si hay ambigüedad; se sa
    ```
 
    Al crear el `plan.md`, escribir `status: planned`.
-4. **STOP** — si la **revisión cross-model** está activa (ver "Revisión cross-model"), ejecutar `sdd-cross-review` sobre `plan.md` con `spec` como contexto (con co-exploración: sumar `co-explore/findings-<familia>.md` y `co-explore/counter-plan-<familia>.md` como contexto — ver "Co-exploración cross-model") antes de presentar (en *normal*, sobre plan + tasks juntos). Presentar el plan (con el resumen de crítica, si lo hubo) y pedir aprobación. En *trivial* este es el último gate antes de implementar (tasks inline en `## Tasks`). En *normal*, **antes del STOP se ejecuta el paso `tasks`** (se escribe `tasks.md`) y este gate presenta **plan + tasks juntos** (un solo STOP, sin gate extra). En *complejo*, el plan se aprueba acá y el gate de `tasks` es independiente y posterior (ver paso `tasks`). En todos, al aprobar el último gate aplicable, pasar `status` a `tasks-ready`. Si este es el **último gate antes de implementar** (*normal*) y el modo de implementación resuelto es `ask`, incluir en el **mismo STOP** la pregunta del modo: ¿implemento acá (inline) o despacho subagentes frescos por task? (ver `implement` → "Modo de ejecución"; sin gate extra; en *trivial* no se pregunta: default `inline`).
+4. **STOP** — si la **revisión cross-model** está activa (ver "Revisión cross-model"), ejecutar `sdd-cross-review` sobre `plan.md` con `spec` + `domain_context` resuelto como contexto (con co-exploración: sumar `co-explore/findings-<familia>.md` y `co-explore/counter-plan-<familia>.md` como contexto — ver "Co-exploración cross-model") antes de presentar (en *normal*, sobre plan + tasks juntos). Presentar el plan (con el resumen de crítica, si lo hubo) y pedir aprobación. En *trivial* este es el último gate antes de implementar (tasks inline en `## Tasks`). En *normal*, **antes del STOP se ejecuta el paso `tasks`** (se escribe `tasks.md`) y este gate presenta **plan + tasks juntos** (un solo STOP, sin gate extra). En *complejo*, el plan se aprueba acá y el gate de `tasks` es independiente y posterior (ver paso `tasks`). En todos, al aprobar el último gate aplicable, pasar `status` a `tasks-ready`. Si este es el **último gate antes de implementar** (*normal*) y el modo de implementación resuelto es `ask`, incluir en el **mismo STOP** la pregunta del modo: ¿implemento acá (inline) o despacho subagentes frescos por task? (ver `implement` → "Modo de ejecución"; sin gate extra; en *trivial* no se pregunta: default `inline`).
 
 ### Ciclo de `status` (estado persistido del flujo)
 
@@ -419,12 +442,12 @@ Antes de que exista `plan.md` (fase `specify`/`clarify`, o el gate de Jira), no 
 **Objetivo:** descomponer el plan en tareas atómicas, ordenadas, verificables y **autosuficientes** — ejecutables en una sesión fresca sin tener que re-deducir el diseño ni elegir otro enfoque. El modo `subagent` de `implement` **depende** de esta autosuficiencia: cada task debe poder ejecutarla un agente fresco que solo ve spec/plan/su task; si no podría, la task está mal escrita.
 
 1. **Dónde se escriben** (según complejidad): en *normal* y *complejo*, en `tasks.md` separado; en *trivial*, inline en la sección `## Tasks` del `plan.md`. **Siempre anunciar la ruta exacta** donde quedaron ("Tasks en `.plans/<id>/tasks.md`" o "en `plan.md` → sección `## Tasks`"). Nunca dejar al usuario adivinando si hay tasks o dónde están.
-2. **Formato detallado** (plantilla en `reference.md` → "Plantilla de tasks"): cada task lleva checkbox `- [ ]`, acción concreta, y los campos **Por qué** (qué AC habilita / intención), **Archivos** (rutas a tocar, con `path:line` de reúso identificado en `analyze`), **Pasos** (el test que falla primero + comandos de verificación acotados, con snippets **ilustrativos** del enfoque —firma, estructura, casos a cubrir—, **no** la implementación final completa), **Verificar** (comando o paso manual ligado al AC), y la(s) referencia(s) `AC-n`. Cuando una task crea o usa una interfaz (función, endpoint, contrato) que otra task necesita, agregar **Produce** / **Consume**: declarar la **firma exacta** en la task que la *produce* y referenciarla desde la que la *consume* (DRY: no repetir la firma en cada task). Es lo que vuelve la task autosuficiente para el modo `subagent`. Cada task sigue siendo **atómica** (un cambio coherente). En tasks puramente mecánicas (config, copy) los Pasos pueden colapsarse a 1‑2 líneas.
+2. **Formato detallado** (plantilla en `reference.md` → "Plantilla de tasks"): cada task lleva checkbox `- [ ]`, acción concreta, y los campos **Por qué** (qué AC habilita / intención), **Archivos** (rutas a tocar, con `path:line` de reúso identificado en `analyze`), **Pasos** (para cambios de comportamiento, recomendar el punto testeable o **Seam** + test que debería fallar primero + comandos acotados; para tareas mecánicas, pasos directos), **Verificar** (comando o paso manual ligado al AC), y la(s) referencia(s) `AC-n`. Los snippets de los Pasos son **ilustrativos** del enfoque —firma, estructura, casos a cubrir—, **no** la implementación final completa. Cuando una task crea o usa una interfaz (función, endpoint, contrato) que otra task necesita, agregar **Produce** / **Consume**: declarar la **firma exacta** en la task que la *produce* y referenciarla desde la que la *consume* (DRY: no repetir la firma en cada task). Es lo que vuelve la task autosuficiente para el modo `subagent`. Cada task sigue siendo **atómica** (un cambio coherente). En tasks puramente mecánicas (config, copy, wiring sin seam testeable) los Pasos pueden colapsarse a 1‑2 líneas y declarar que la evidencia vendrá de `verify`.
 3. **Self-review antes del gate** (el conductor lo corre y reporta en una línea):
    - **Cobertura de spec** (cross-artifact check): cada `AC-n` tiene ≥1 task y ninguna task carece de AC. Reportar huérfanos antes del gate.
    - **Scan anti-placeholder:** ni plan ni tasks tienen `TBD`, `TODO`, "agregar X apropiado", "similar a la Task N" o "etc." colgados; cada paso con contenido real (ruta, comando, firma). Un hueco que no se puede precisar es señal de que falta `clarify`.
    - **Consistencia de interfaces:** lo declarado en **Produce** coincide exacto con quien lo **Consume** (mismo nombre, misma firma) — el desajuste rompe el modo subagent.
-4. **STOP** — en *complejo* (gate propio), si la **revisión cross-model** está activa para `tasks` (ver "Revisión cross-model"), ejecutar `sdd-cross-review` sobre `tasks.md` con `spec`+`plan` como contexto antes de presentar. Presentar las tasks (con el resumen de crítica, si lo hubo) y pedir aprobación. En *complejo* es un gate **propio** (STOP independiente tras el plan). En *normal* las tasks se presentan **junto al plan** en el gate de `plan` (sin STOP adicional; la revisión, si aplica, ya cubrió plan+tasks ahí). Al aprobarlas, pasar `status` a `tasks-ready`. En *complejo*, si el modo de implementación resuelto es `ask`, incluir en este **mismo STOP** la pregunta del modo: ¿inline o subagentes frescos por task? (ver `implement` → "Modo de ejecución"; sin gate extra).
+4. **STOP** — en *complejo* (gate propio), si la **revisión cross-model** está activa para `tasks` (ver "Revisión cross-model"), ejecutar `sdd-cross-review` sobre `tasks.md` con `spec`+`plan`+`domain_context` resuelto como contexto antes de presentar. Presentar las tasks (con el resumen de crítica, si lo hubo) y pedir aprobación. En *complejo* es un gate **propio** (STOP independiente tras el plan). En *normal* las tasks se presentan **junto al plan** en el gate de `plan` (sin STOP adicional; la revisión, si aplica, ya cubrió plan+tasks ahí). Al aprobarlas, pasar `status` a `tasks-ready`. En *complejo*, si el modo de implementación resuelto es `ask`, incluir en este **mismo STOP** la pregunta del modo: ¿inline o subagentes frescos por task? (ver `implement` → "Modo de ejecución"; sin gate extra).
 
 ## `handoff.md` (retomado del flujo)
 
@@ -493,6 +516,33 @@ Punto de entrada cuando vuelves a un flujo ya empezado — en una sesión nueva,
 
    Al retomar en `implement` (`tasks-ready`/`implementing`), **re-resolver el modo de ejecución** (override > `implement_mode` > preguntar; ver `implement` → "Modo de ejecución"). Las tasks ya marcadas `[x]` no se repiten en ningún modo.
 
+### Sub-paso `status` (alias de listado)
+
+`/sdd-flow status` no introduce un estado nuevo: es un alias read-only de `resume` en modo listar.
+Muestra los mismos datos (`id · branch · estado · siguiente paso`) y, si se pasa un `<id>`, resume
+solo ese flujo. La fuente de verdad sigue siendo `plan.md` (`status` + marcas `[x]`) o
+`handoff.md` en la ventana pre-`plan`.
+
+### Sub-paso `doctor` (diagnóstico read-only)
+
+**Objetivo:** validar la coherencia de un flujo sin arreglar nada ni escribir archivos. Aplica a
+`/sdd-flow doctor <id>` o cuando el usuario pida "valida/revisa coherencia del flujo".
+
+1. Resolver el flujo igual que `resume`: si hay `plan.md`, leer su header; si no, leer
+   `handoff.md`/`spec.md`.
+2. Ejecutar los mismos checks del self-review de `tasks`: cobertura `AC-n` ↔ tasks, tasks sin AC,
+   anti-placeholder y consistencia exacta `Produce`/`Consume`.
+3. Validar bootstrap: `branch` del header existe, `base_commit` es ancestro de `HEAD` si la rama
+   está disponible, y `base_branch`/`default_branch` no dejan el flujo en detached HEAD.
+4. Validar `## Verify`: los AC salen de `spec.md` o de `## Spec` embebido en `plan.md`; si el
+   flujo tiene commits o cambios posteriores a la fecha/evidencia de `## Verify`, marcar
+   **verify stale**. No re-verifica: solo detecta que la evidencia ya no es fresca.
+5. Clasificar ruido del working tree: `.plans/`/`.specify/` son locales; generados/cache ignorados
+   no bloquean; archivos de código dirty fuera de `code_touched` se reportan como ajenos. Si hay
+   `.plans/<id>/work/`, tratarlo como scratch/auditoría, nunca como fuente de progreso.
+6. Reportar `OK` / `WARN` / `FAIL` con evidencia concreta (`path:line`, comando leído, estado de
+   git). **No** crear ramas, no editar artefactos, no marcar tasks, no limpiar archivos.
+
 ### Gate de Jira (esperando aprobación externa)
 
 Cuando `handoff.md` tiene `gate_status: awaiting`/`changes-requested`, el flujo está parado esperando que el TL/PO aprueben la subtarea `SPEC: …`. Confirmar el resumen del `handoff.md` (objetivo, complejidad, subtarea) y resolver según lo que diga el usuario:
@@ -538,17 +588,22 @@ Resolución (misma precedencia que el resto de overrides SDD): **override conver
    - `sdd_local` — `.plans/`, `.specify/` (locales, nunca se commitean).
    - `generated` — artefactos de tests/build (caches, `dist/`, `__pycache__/`, …; nunca se commitean).
 2. **Aplicar cambios** task por task según el **modo de ejecución** resuelto (ver arriba). Al iniciar este paso, poner `status: implementing` en el header del `plan.md`. En ambos modos: marcar cada task `- [x]` al completarla (es el detalle fino del progreso que `resume` usa para saber por dónde seguir) y reutilizar lo identificado en `analyze`.
-   - **Modo `inline`:** la propia sesión implementa cada task. *(Compatible con TDD: si el proyecto/agente lo usa, escribir el test que falla antes del código. La skill no lo impone — su garantía es el paso 4, no el orden en que llegues a los tests verdes.)*
+   - **Modo `inline`:** la propia sesión implementa cada task. Para tasks de comportamiento con un
+     seam testeable, seguir los Pasos roja-verde propuestos en `tasks.md` (test que debería fallar
+     → implementación mínima → test verde). Si la task es mecánica o no tiene seam razonable, no
+     inflar el plan: la garantía vive en `verify`, que exige evidencia fresca y, cuando haya test
+     ligado al AC, test con dientes vía revert-to-confirm.
    - **Modo `subagent`** (loop por task, **siempre secuencial** — un solo working tree; despachar en paralelo garantiza colisiones):
      0. **Pre-flight scan** (una vez, antes de la primera task): revisar el conjunto de tasks buscando conflictos entre sí o con constraints globales (dos tasks tocando el mismo archivo de forma incompatible, orden de `Produce`/`Consume` mal resuelto). Si aparece algo, presentarlo al usuario en **una sola tanda** (batched) antes de arrancar — no interrumpir el loop a mitad de camino.
      1. Por cada task `[ ]` en orden, despachar un **agente fresco** con la plantilla de `reference.md` → "Prompt del subagente por task" (ahí también: cómo despachar según el entorno). El agente implementa **solo esa task**, corre su comando de Verificar, y devuelve el reporte estructurado (`STATUS`/`FILES`/`VERIFY`/`NOTES`). No commitea ni toca `.plans/`/`.specify/`.
      2. Al volver: validar `FILES` contra `git status --porcelain` y sumarlos a `code_touched` (regla 8). **Revisar el diff de la task** antes de aceptarlo (disciplina de `receiving-code-review`). Si el entorno puede despachar otro agente fresco, hacerlo con un **reviewer por-task** (plantilla en `reference.md` → "Prompt del subagente reviewer"): recibe el diff + spec + plan + la task y reporta **spec ✅** (¿cumple los AC que la task habilita?) y **calidad ✅** (¿sin code smells, sigue los patrones del repo?). **Ambos** verdes para marcar la task `- [x]`. Si el reviewer marca ⚠️ "no verificable desde el diff" (un requisito que vive en código no tocado), **no bloquea**: lo resuelve el conductor antes de marcar. Sin capacidad de despachar el reviewer → caer a la **revisión liviana del diff** por el propio conductor, con un aviso de una línea (degradación, regla 6).
      3. Si `STATUS: failed`, o el reviewer reprueba spec/calidad: **máximo 1 reintento**, re-despachando al implementer con el feedback concreto de qué corregir. Si vuelve a fallar, parar y escalar al usuario con el estado — nunca un loop abierto.
      4. Red de seguridad: si el reporte falta o no parsea, clasificar por `git status` + diff; las marcas `[x]` y el `status` del header siguen siendo la fuente de verdad del progreso. **Ante una compactación de contexto**, confiar en esa fuente persistida (`status` + marcas `[x]` + `git log`), no en la memoria de la sesión.
+     5. Scratch opcional: si el reporte del implementer/reviewer aporta valor para auditoría o retomado, guardarlo en `.plans/<id>/work/Tn-*.md`. Ese directorio es **scratch local**: no se commitea, no reemplaza `tasks.md`, no contiene `progress.md`, y nunca decide qué task está completa.
    Los pasos 3-10 de abajo (tests+build completos, `verify` de AC, revisión manual, staging, commit, push, PR opcional) los ejecuta **siempre el conductor en esta sesión**, en ambos modos: los STOPs no funcionan dentro de un subagente.
 3. **Tests + build** con los comandos detectados/configurados (+ `lint_cmd` si está configurado). Acotar tests al código tocado si el runner lo permite (`test_scope_hint`). Si algo falla: **no commitear**; antes de parchar, aplicar **debugging sistemático** — formular **una** hipótesis ("creo que la causa raíz es X porque Y") y probarla mínimamente, en vez de prueba y error (skill de debugging sistemático si está disponible, o el método inline; ver `analyze` y `reference.md` → "Matriz de detección"). Mostrar el error + la hipótesis, aplicar el fix y volver al paso 2. **Tope: 3 fixes fallidos de la misma falla = problema de diseño** — parar y volver a `plan`/`specify`, no intentar un fix #4.
 4. **`verify` de los AC** (ver paso `verify`): recorrer `AC-1..N` con la gate function y marcar cumplido/no cumplido con evidencia fresca. Si alguno falla: **no commitear**, reportar y volver al paso 2 (con el mismo debugging sistemático del paso 3; mismo tope de 3 intentos), o a `plan`/`specify` si el gap es de diseño. Solo se commitea con **todos los AC en verde**; cuando lo estén, `verify` persiste el resultado y deja `status: verified`. Verificar antes del commit evita commits/push que después no cumplen lo pedido.
-5. **Gate de revisión manual (STOP):** con tests+build OK y AC verificados, ofrecer revisar (levantar la app, `git diff`, repasar la sección Verification del plan) antes de commitear. Salteable con "commitea directo".
+5. **Gate de revisión manual (STOP):** con tests+build OK y AC verificados, ofrecer revisar (levantar la app, `git diff`, repasar la sección Verification del plan) antes de commitear. Salteable con "commitea directo". Si `final_diff_review.mode` está `on`, o está `auto` y el flujo es `complex`/high-risk ejecutado `inline`, ofrecer en este mismo gate una revisión agregada del diff completo contra spec + estándares del repo: usar un reviewer fresco por capacidad (mismo contrato que el reviewer por-task: **SPEC** y **QUALITY**) o, sin esa capacidad, revisión liviana del conductor. Es una revisión de diff **same-model/de capacidad**, no conformance cross-model; el gate cross-model pre-commit sigue diferido salvo dolor concreto.
 6. **Clasificar el working tree antes de stagear.** `git status --porcelain` y repartir cada ruta dirty:
    - **SDD local** (`.plans/`, `.specify/`) y **generados/cache** (lo que el repo ya ignora, más caches obvios como `dist/`, `__pycache__/`, `coverage/`): **nunca** se stagean ni cuentan como "código sin commitear". La fuente de verdad de qué es generado es el `.gitignore` del repo.
    - **Código:** `propios = code_touched ∩ (código dirty)`; `ajenos = (código dirty) − code_touched`. Sin ajenos → stagear `propios`. Con ajenos → listar ambos grupos y pedir elección (solo míos / incluir todos / cancelar). Nunca stagear ajenos sin confirmación.
@@ -586,9 +641,17 @@ La detección es por **disciplina del conductor** al revisar el diff (paso 5/6),
    | "AC-n cumplido" | salida del comando/observación que prueba *ese* AC | "los tests pasan", "el código cambió", "debería andar" |
    | "tests en verde" | salida fresca del runner: 0 fallos | una corrida previa, el linter en verde |
    | "build OK" | comando de build: exit 0 | "los logs se ven bien" |
-3. **Regression revert-to-confirm (solo `change_type: fix`).** Un test que pasa no prueba que cubra el bug. Con el test en verde, revertir **solo el hunk del fix** → el test **debe fallar** → restaurar el fix → vuelve a verde. Si al revertir el test sigue pasando, no cubre el bug: rehacerlo. Comandos POSIX/PowerShell en `reference.md` → "Plantilla de `## Verify`".
+3. **Revert-to-confirm para AC de comportamiento con test.** Un test que pasa no prueba que
+   discrimine el comportamiento. Cuando un `AC-n` de comportamiento está cubierto por un test:
+   con el test en verde, revertir **solo el hunk de implementación que habilita ese AC** → el test
+   **debe fallar** → restaurar el hunk → vuelve a verde. Si al revertir el test sigue pasando, el
+   test no tiene dientes: rehacerlo o cambiar la evidencia del AC. En `change_type: fix`, este
+   paso es obligatorio para el test de regresión; en features/refactors aplica a los AC testeados.
+   Excepción: tasks mecánicas, copy/config o wiring sin seam razonable; documentar la excepción y
+   usar la observación/comando de `verify` como evidencia. Comandos POSIX/PowerShell en
+   `reference.md` → "Plantilla de `## Verify`".
 4. Contrastar contra la definición de *Done* del constitution.
-5. **Persistir el resultado** en una sección `## Verify` del `plan.md` (tabla `AC-n · cumplido/no · evidencia · fecha`; en fixes, anotar el resultado del revert-to-confirm como evidencia). Así sobrevive a la sesión: al retomar con `status: verified` no se re-verifica de gusto, y queda auditable. Plantilla en `reference.md`.
+5. **Persistir el resultado** en una sección `## Verify` del `plan.md` (tabla `AC-n · cumplido/no · evidencia · fecha`; cuando aplique, anotar `revert → FAIL / restore → PASS` como evidencia del AC). Así sobrevive a la sesión: al retomar con `status: verified` no se re-verifica de gusto, y queda auditable. Plantilla en `reference.md`.
 6. Si **todos** los AC se cumplen: poner `status: verified`. Si alguno falla: poner `status: implementing` (también si el flujo venía de `verified` — un AC en rojo desactualiza esa marca), reportarlo y volver a `implement` (o a `plan`/`specify` si el gap es de diseño).
 
 ## Sub-paso `archive` (cerrar un flujo terminado)

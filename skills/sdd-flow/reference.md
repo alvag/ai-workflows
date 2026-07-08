@@ -9,6 +9,8 @@ Detalle operativo de la skill `sdd-flow`. El `SKILL.md` apunta acá cuando neces
 - [Aprobación externa de la spec (Jira)](#aprobación-externa-de-la-spec-jira)
 - [Detección de stack y comandos](#detección-de-stack-y-comandos)
 - [Esquema de `.specify/config.yml`](#esquema-de-specifyconfigyml)
+- [Contexto de dominio](#contexto-de-dominio)
+- [Doctor read-only](#doctor-read-only)
 - [Qué escribe `init`](#qué-escribe-init)
 - [Mapeo tipo de cambio → prefijo](#mapeo-tipo-de-cambio--prefijo)
 - [Construcción del mensaje de commit](#construcción-del-mensaje-de-commit)
@@ -22,6 +24,7 @@ Detalle operativo de la skill `sdd-flow`. El `SKILL.md` apunta acá cuando neces
 - [Plantilla de `handoff.md`](#plantilla-de-handoffmd)
 - [Prompt del subagente por task](#prompt-del-subagente-por-task)
 - [Prompt del subagente reviewer](#prompt-del-subagente-reviewer)
+- [Revisión final de diff](#revisión-final-de-diff)
 - [Ejemplo de criterios de aceptación](#ejemplo-de-criterios-de-aceptación)
 
 ---
@@ -156,6 +159,12 @@ jira_approval:                   # aprobación externa de la spec en Jira (opcio
   subtask_issuetype: auto        # auto (descubrir por createmeta) | "Subtarea" | "Sub-task"
   approval_signal: ask           # ask | status:"<estado Jira que cuenta como aprobado>"
 implement_mode: ask              # cómo ejecutar las tasks: ask (preguntar en el último gate) | inline | subagent
+domain_context:
+  mode: auto                     # auto | "on" | "off"; solo lectura, nunca escribe ADRs/docs
+  context_paths: []              # docs de dominio/glosarios/arquitectura a leer si existen
+  adr_paths: []                  # ADRs o decisiones vigentes a leer si existen
+final_diff_review:
+  mode: auto                     # auto (complex/high-risk inline) | "on" | "off"
 ```
 
 Placeholders de `branch_format`: `{type}` (prefijo efectivo), `{ticket}` (clave del tracker, se omite si no hay), `{slug}` (2-5 palabras del título en kebab, sin acentos, `[a-z0-9-]`).
@@ -163,6 +172,52 @@ Placeholders de `branch_format`: `{type}` (prefijo efectivo), `{ticket}` (clave 
 **`test_scope_hint`** es una **plantilla de comando completa**, no un glob suelto: se reemplaza `{name}` por el archivo/patrón a acotar y se ejecuta tal cual (ej.: `vitest run {name}`, `ng test --include={name}`, `pytest {name}`). En Angular, `{name}` debe ser la **ruta exacta** del `.spec.ts`, **no** un glob `**/…`: el glob arrastra `.html`/`.scss` y rompe el loader.
 
 **Prefijo efectivo (`{type}`)** = primer valor presente: (1) override conversacional de la corrida → (2) `branch_prefix` del `config.yml` → (3) prefijo semántico (tabla de abajo). Se normaliza quitando la barra final si la trae. El `branch_prefix`/override **reemplazan** el `{type}`; el mapeo semántico de abajo aplica **solo cuando no hay ninguno de los dos**.
+
+## Contexto de dominio
+
+`domain_context` es una lista de entradas **read-only** que el flujo usa para aterrizar términos,
+decisiones y restricciones existentes:
+
+- `context_paths`: documentos de dominio, glosarios, arquitectura o guías funcionales.
+- `adr_paths`: ADRs o decisiones técnicas ya aceptadas.
+
+Resolución:
+1. `mode: "off"` → no leer nada.
+2. `mode: "on"` → leer los paths configurados; si faltan, avisar y continuar.
+3. `mode: auto` → leer paths configurados y, si no hay, detectar candidatos obvios (`CONTEXT.md`,
+   `docs/adr/`, `docs/architecture*`, `docs/domain*`) sin inventar rutas.
+
+Uso:
+- `analyze`/`plan`: usar nombres canónicos y decisiones vigentes; si contradicen el ticket, llevar
+  la duda a `clarify`.
+- `co-explore`/`sdd-cross-review`: pasar los paths resueltos como `context_paths` adicionales.
+- Nunca crear, actualizar ni normalizar esos documentos desde `domain_context`; si hace falta un
+  ADR nuevo, es otro flujo o requiere confirmación explícita.
+
+## Doctor read-only
+
+`/sdd-flow doctor <id>` valida coherencia sin escribir. Salida sugerida:
+
+```markdown
+## Doctor — <id>
+| Check | Resultado | Evidencia |
+|---|---|---|
+| AC coverage | OK/WARN/FAIL | AC-1 → T1; AC-2 huérfano |
+| Placeholders | OK/WARN/FAIL | sin TBD/TODO/etc. |
+| Interfaces | OK/WARN/FAIL | Produce `foo()` no coincide con Consume |
+| Git coherence | OK/WARN/FAIL | branch/base_commit/HEAD |
+| Verify freshness | OK/WARN/FAIL | Verify anterior a <sha> |
+| Working tree | OK/WARN/FAIL | código ajeno / generado / SDD local |
+```
+
+Checks:
+- Reusar el self-review de `tasks`: cobertura AC↔task, anti-placeholder y Produce/Consume.
+- Leer ACs desde `spec.md` o desde `## Spec` embebido en `plan.md`.
+- Marcar **verify stale** si `## Verify` existe pero hay commits/cambios posteriores a su fecha o
+  evidencia.
+- Tratar `.plans/`, `.specify/` y `.plans/<id>/work/` como locales; `work/` es scratch/auditoría,
+  nunca fuente de progreso.
+- Reportar evidencia concreta; no arreglar ni tocar archivos.
 
 ## Qué escribe `init`
 
@@ -182,9 +237,15 @@ El paso `init` (ver `SKILL.md` → "Paso `init`") materializa `.specify/` a pedi
    commit_style: conventional
    tracker: jira
    test_scope_hint: "ng test --include={name}"   # {name} = ruta exacta del .spec.ts (no glob **/…: rompe el loader)
+   domain_context:
+     mode: auto
+     context_paths: []
+     adr_paths: []
+   final_diff_review:
+     mode: auto
    ```
 
-   Los campos de decisión (`tracker`, `commit_style`, `branch_prefix`, `implement_mode`, `cross_review`, `jira_approval`) se eligen en el **wizard** (2 pantallas, con el valor actual/detectado pre-seleccionado); los comandos (`test_cmd`/`build_cmd`/`lint_cmd`/`test_scope_hint`) se autodetectan y quedan editables en la confirmación final. Nada se inventa. Al escribir el `config.yml`, `cross_review.mode`, `co_explore.mode` y `jira_approval.mode` se emiten con `on`/`off` **entre comillas** (`"on"`/`"off"`): sin ellas YAML los parsea como booleanos.
+   Los campos de decisión (`tracker`, `commit_style`, `branch_prefix`, `implement_mode`, `cross_review`, `domain_context.mode`, `final_diff_review`, `jira_approval`) se eligen en el **wizard** (2 pantallas, con el valor actual/detectado pre-seleccionado); los comandos (`test_cmd`/`build_cmd`/`lint_cmd`/`test_scope_hint`) y los paths de `domain_context` se autodetectan y quedan editables en la confirmación final. Nada se inventa. Al escribir el `config.yml`, `cross_review.mode`, `co_explore.mode`, `domain_context.mode`, `final_diff_review.mode` y `jira_approval.mode` se emiten con `on`/`off` **entre comillas** (`"on"`/`"off"`): sin ellas YAML los parsea como booleanos.
 
 2. **`.specify/constitution.md`** — desde "Plantilla de constitution" (abajo), con el puntero a los principios de código del repo (`CLAUDE.md`/`AGENTS.md`/`CONTRIBUTING.md`) si existen.
 
@@ -400,6 +461,9 @@ created_at: 2026-01-01T12:00:00-03:00
 ## Enfoque
 <estrategia técnica elegida; no listar alternativas descartadas>
 
+## Contexto de dominio
+<paths de `domain_context` leídos + términos/ADRs aplicados. Omitir si no aplica.>
+
 ## Archivos a tocar
 - `ruta/al/archivo` — <qué cambia; reúso de `path:line` si aplica>
 
@@ -485,21 +549,28 @@ El paso `verify` (ver `SKILL.md` → "Paso `verify`") completa la sección `## V
 
 La **evidencia** es la salida fresca del comando que prueba *ese* AC (gate function del paso `verify`), no "los tests pasan" en general.
 
-### Revert-to-confirm (solo `change_type: fix`)
+### Revert-to-confirm (AC de comportamiento con test)
 
-Confirma que el test de regresión realmente cubre el bug: debe **fallar sin el fix**. Con el test en verde y el fix aislado en un archivo/hunk:
+Confirma que el test realmente discrimina el comportamiento del AC: debe **fallar sin el hunk de
+implementación que habilita el AC**. En `change_type: fix`, aplica siempre al test de regresión.
+En features/refactors, aplica a cada AC de comportamiento cubierto por test. Con el test en verde
+y el hunk de implementación aislado:
 
 **POSIX** (macOS/Linux/Git Bash):
 ```bash
-git stash push -- <archivo-del-fix>   # quita solo el fix (deja el test en el árbol)
-<test_cmd acotado>                     # DEBE fallar — si pasa, el test no cubre el bug
-git stash pop                          # restaura el fix
+git stash push -- <archivo-del-cambio> # quita solo el hunk/archivo de implementación (deja el test)
+<test_cmd acotado>                     # DEBE fallar — si pasa, el test no cubre el AC
+git stash pop                          # restaura la implementación
 <test_cmd acotado>                     # vuelve a verde
 ```
 
-**PowerShell** (Windows): mismos comandos git (`git stash push -- <archivo-del-fix>` / `git stash pop`); el runner de tests según el stack.
+**PowerShell** (Windows): mismos comandos git (`git stash push -- <archivo-del-cambio>` / `git stash pop`); el runner de tests según el stack.
 
-Si el fix y el test viven en el mismo archivo, revertir por hunk (`git stash -p` en POSIX) o aislar el cambio del fix antes del revert. Anotar el resultado (`revert → FAIL, restore → PASS`) como evidencia del AC en la tabla.
+Si el test y la implementación viven en el mismo archivo, revertir por hunk (`git stash -p` en
+POSIX) o aislar el cambio de implementación antes del revert. Si el AC es mecánico, copy/config o
+wiring sin seam razonable, documentar la excepción en la evidencia y usar el comando/observación
+del `verify`. Anotar el resultado (`revert → FAIL, restore → PASS`) como evidencia del AC en la
+tabla.
 
 ## Plantilla de tasks
 
@@ -513,12 +584,13 @@ Cada task es un **bloque** con estos campos:
 - [ ] **T1 — <acción concreta>**  · cubre: AC-1
   - **Por qué:** <qué AC habilita / la intención — 1 línea>
   - **Archivos:** `ruta/archivo.ts` (reúso de `fn()` en `path:line`); `ruta/archivo.spec.ts`
+  - **Seam:** <punto testeable del comportamiento; omitir en tareas mecánicas/sin seam razonable>
   - **Produce:** `nuevaFn(arg: Tipo): Resultado` — firma exacta que consume T2. *(solo si otra task la necesita)*
   - **Pasos:**
-    1. (test rojo) <caso a agregar — qué debe fallar y por qué>
-    2. `<comando de test acotado>` → FAIL esperado
-    3. (impl) <enfoque + snippet ILUSTRATIVO de la firma/estructura clave>
-    4. `<comando de test acotado>` → PASS
+    1. (si hay seam) <caso de test que debería fallar y por qué>
+    2. (si hay seam) `<comando de test acotado>` → FAIL esperado
+    3. <enfoque + snippet ILUSTRATIVO de la firma/estructura clave>
+    4. `<comando de test acotado>` o verificación acotada → PASS/OK
   - **Verificar:** <comando o paso manual ligado al AC>
 
 - [ ] **T2 — <acción concreta>**  · cubre: AC-1, AC-2
@@ -534,7 +606,7 @@ Cada task es un **bloque** con estos campos:
 - **Interfaces:** cada `Produce` coincide exacto (nombre + firma) con el `Consume` que lo referencia.
 ```
 
-> **Regla anti-sobre-especificación.** Los snippets de los Pasos son **ilustrativos**: muestran la *firma*, la *estructura* y los *casos a cubrir*, no la implementación final completa de cada archivo. El plan orienta la ejecución; el código exhaustivo se escribe en `implement`, no acá. En tasks puramente mecánicas (config, copy, bump) los Pasos pueden colapsarse a 1‑2 líneas — no inflar artificialmente.
+> **Regla anti-sobre-especificación.** Los snippets de los Pasos son **ilustrativos**: muestran la *firma*, la *estructura* y los *casos a cubrir*, no la implementación final completa de cada archivo. El plan orienta la ejecución; el código exhaustivo se escribe en `implement`, no acá. En tasks puramente mecánicas (config, copy, bump, wiring sin seam razonable) los Pasos pueden colapsarse a 1‑2 líneas y la evidencia se cierra en `verify` — no inflar artificialmente.
 
 Ejemplo concreto de una task:
 
@@ -542,6 +614,7 @@ Ejemplo concreto de una task:
 - [ ] **T1 — Persistir el borrador del formulario al recargar**  · cubre: AC-1
   - **Por qué:** AC-1 pide conservar lo que el usuario cargó cuando recarga la página.
   - **Archivos:** `src/app/shared/services/draft/draft-form.service.ts` (reúso de `this.form`); `draft-form.service.spec.ts`
+  - **Seam:** `persistDraftOnReload()` observable mediante `globalThis.sessionStorage`.
   - **Pasos:**
     1. (test rojo) spec que mockea `globalThis.sessionStorage` y espera que al restaurar se lea la clave y se limpie.
     2. `ng test --include=src/app/shared/services/draft/draft-form.service.spec.ts` → FAIL (método no existe)
@@ -638,6 +711,9 @@ NOTES: <decisiones/supuestos en 1-3 líneas; omitir si no hay>
    feedback concreto. Si falla de nuevo: parar y escalar al usuario.
 5. Reporte ausente o no parseable → clasificar por `git status` + diff; las marcas `[x]` y el
    `status` del header siguen siendo la fuente de verdad del progreso.
+6. Opcional: guardar el reporte crudo del implementer/reviewer en `.plans/<id>/work/Tn-*.md` para
+   auditoría o retomado tras compactación. Ese directorio es scratch local: no se commitea, no
+   reemplaza `tasks.md`, no contiene `progress.md`, y nunca decide qué task está completa.
 
 Tests+build completos, `verify` de los AC, revisión manual, staging selectivo, commit, push y PR opcional:
 **siempre el conductor** (pasos 3-10 del Paso común). Los STOPs no existen dentro de un subagente.
@@ -667,6 +743,37 @@ NOTES: <"no verificable desde el diff" si un requisito vive en código no tocado
 ```
 
 El conductor: **SPEC ok + QUALITY ok** → marcar la task `[x]`. `fail` en cualquiera → 1 reintento al implementer con `FINDINGS` como feedback (paso 3 del modo subagent). `warn` (no verificable desde el diff) no bloquea: el conductor lo resuelve antes de marcar.
+
+## Revisión final de diff
+
+En `final_diff_review.mode: auto`, solo se ofrece para flujos `complex` o high-risk ejecutados en
+modo `inline`, dentro del gate de revisión manual previo al commit. No es cross-model por defecto
+y no reemplaza `verify`: revisa el **diff completo** ya verificado contra dos ejes.
+
+Usar el mismo contrato del "Prompt del subagente reviewer", ajustando el alcance:
+
+```markdown
+Trabaja en modo SOLO LECTURA sobre el repo <working_dir>. No edites nada.
+Revisa el diff completo del flujo contra:
+- `.plans/<id>/spec.md` o `## Spec` embebido en `plan.md`
+- `.plans/<id>/plan.md`
+- `.plans/<id>/tasks.md` si existe
+- principios del repo (`AGENTS.md`/`CLAUDE.md`/`CONTRIBUTING.md`) si existen
+
+Evalúa:
+- SPEC: ¿el diff cumple los AC y no agrega cambios fuera de AC sin estar declarados como Extras?
+- QUALITY: ¿sigue patrones del repo, sin dead code, placeholders ni deuda obvia?
+
+Salida exacta:
+SPEC: ok | fail | warn
+QUALITY: ok | fail
+FINDINGS: <una línea por problema; vacío si todo ok>
+NOTES: <no verificable desde el diff / recomendaciones no bloqueantes>
+```
+
+Si no hay capacidad para despachar un reviewer fresco, el conductor hace la revisión liviana y lo
+avisa. Si hay findings, volver a `implement` o a `plan`/`specify` según el tipo de gap; no abrir
+otro gate nuevo.
 
 ## Ejemplo de criterios de aceptación
 
