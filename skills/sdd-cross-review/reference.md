@@ -45,8 +45,6 @@ es agnóstico del shell):
 | Generar un UUID | `uuidgen` | `[guid]::NewGuid().ToString()` |
 | Ejecutar en otro cwd | `(cd dir && cmd)` | `Push-Location dir; …; Pop-Location` (o el flag `-C dir` de `codex`) |
 | Detectar el OS | `uname -s` | `$IsWindows` |
-| Sondear env (redirección) | `env \| grep -iE 'ANTHROPIC_…'` | `Get-ChildItem Env: \| Where-Object Name -match 'ANTHROPIC_…'` |
-| Correr un hijo con env de redirección removida | `env -u VAR … cmd` | `powershell -NoProfile -Command { Remove-Item Env:VAR…; cmd }` (proceso hijo aislado) |
 
 > **`uuidgen` falta en Git Bash de Windows** (solo está en macOS/Linux). Si se corre la Vía C por
 > Git Bash en Windows, usar el fallback `powershell -NoProfile -Command "[guid]::NewGuid().ToString()"`,
@@ -66,60 +64,27 @@ puntero (su fallback embebido es un resumen de esto).
 Los nombres de tools/MCP/agentes cambian entre entornos. Resolver el revisor por **capacidad**
 (un segundo modelo que pueda **criticar texto en read-only**) con una regla dura por delante:
 
-> **El revisor nunca es de la misma familia de modelos que el autor.** El autor del artefacto es
-> el **modelo de respaldo** que ejecuta el agente que conduce la skill, no el CLI ni el harness.
-> Un revisor de la misma familia comparte los puntos ciegos del autor: los errores correlacionados
-> que la cross-review existe para romper.
+> **El revisor nunca es de la misma familia de modelos que el autor.** Hay dos familias: Claude
+> y GPT/Codex. Un revisor de la misma familia comparte los puntos ciegos del autor: los errores
+> correlacionados que la cross-review existe para romper.
 
-> **El CLI/harness ≠ la familia del modelo.** Claude Code puede estar **redirigido** a un proveedor
-> Anthropic-compatible (GLM/z.ai, Kimi, DeepSeek, MiniMax…) vía `ANTHROPIC_BASE_URL` +
-> `ANTHROPIC_DEFAULT_*_MODEL`. En ese caso el binario es `claude` y el harness dice "You are Claude
-> Code", pero el modelo real es otro. **No confiar en esa autopercepción** — la única señal
-> confiable es el entorno.
+**Paso 1 — identificar la familia del autor.** Es la del agente que conduce la skill, sin
+importar la superficie donde corre (CLI, app de escritorio, IDE, web): un agente Claude → autor
+Claude; un agente Codex → autor GPT/Codex.
 
-**Paso 1 — identificar el harness conductor.** Claude Code, Codex CLI u otro (lo indica el runtime).
+**Paso 2 — elegir el revisor de la OTRA familia** (`reviewer: auto`):
 
-**Paso 2 — desambiguar el modelo de respaldo (solo si el conductor es Claude Code).** Sondear el
-entorno antes de decidir la familia:
-
-```bash
-# POSIX (macOS/Linux/Git Bash):
-env | grep -iE 'ANTHROPIC_BASE_URL|ANTHROPIC_DEFAULT_(OPUS|SONNET|HAIKU)_MODEL|ANTHROPIC_MODEL'
-```
-```powershell
-# PowerShell (Windows):
-Get-ChildItem Env: | Where-Object Name -match 'ANTHROPIC_BASE_URL|ANTHROPIC_DEFAULT_(OPUS|SONNET|HAIKU)_MODEL|ANTHROPIC_MODEL'
-```
-
-Interpretación (genérica, no hardcodear un proveedor): si `ANTHROPIC_BASE_URL` apunta a un host
-**distinto de `api.anthropic.com`/`anthropic.com`**, **o** algún `ANTHROPIC_DEFAULT_*_MODEL` /
-`ANTHROPIC_MODEL` mapea a un modelo **no-`claude-*`** (`glm-*`, `kimi-*`, `deepseek-*`, `minimax-*`,
-`qwen-*`, …) → la **familia del autor es ese modelo de respaldo** (ej. "GLM/z.ai"), NO Claude. Si la
-sonda sale vacía o el base_url es Anthropic → autor = Claude real.
-
-> Si el conductor es **Codex CLI** (u otro que no sea Claude Code), saltear el Paso 2: el autor es
-> GPT/Codex (o el que corresponda) directo. La sonda de `ANTHROPIC_*` no define la identidad del
-> autor cuando el conductor no es Claude Code.
-
-**Paso 3 — elegir revisor de OTRA familia** (`reviewer: auto`):
-
-| Familia del autor (modelo de respaldo) | Revisor a buscar | Cómo detectarlo | Vía de invocación |
+| Familia del autor | Revisor a buscar | Cómo detectarlo | Vía de invocación |
 |---|---|---|---|
-| Claude real (Claude Code, sin redirección) | Codex | ¿Existe el subagente `codex:codex-rescue` (plugin codex)? Si no, ¿`command -v codex`? | Vía A (preferida) o Vía B |
-| GPT/Codex (Codex CLI) | Claude | ¿`command -v claude`? | Vía C |
-| **Modelo de respaldo en Claude Code redirigido** (GLM/Kimi/…) | Codex **o** Claude real (ambos ≠ familia del autor) | Codex: subagente/`command -v codex`. Claude real: `command -v claude` **+ Vía C con env limpio** | `auto`→ Codex (Vías A/B, sin líos de env); `reviewer: claude`→ Vía C **con higiene de env** |
-| Otra | El primero de familia distinta | `command -v codex`, `command -v claude`, u otro subagente/CLI disponible | B, C o adaptada |
+| Claude | Codex | ¿Existe el subagente `codex:codex-rescue` (plugin codex)? Si no, ¿`command -v codex`? | Vía A (preferida) o Vía B |
+| GPT/Codex | Claude | ¿`command -v claude`? | Vía C |
 
 > **En PowerShell** la detección de binarios es `Get-Command codex -ErrorAction SilentlyContinue`
 > (ídem `claude`) en vez de `command -v` — ver "Portabilidad entre shells (POSIX / PowerShell)".
 
-Con `reviewer: claude` o `reviewer: codex` forzados en config, ir directo a esa vía. **El aviso de
-"misma familia / se pierde el valor cross-model" se dispara solo si la vía forzada coincide con el
-modelo de respaldo real**, no con el CLI. Ejemplos:
-- Claude Code redirigido a GLM + `reviewer: claude` → la Vía C con env limpio llega a Claude real,
-  que **sí** es otra familia que GLM: cross-model legítimo, **sin** aviso.
-- Claude Code redirigido a GLM + `reviewer: codex` → Codex es otra familia: válido, sin aviso.
-- Claude real + `reviewer: claude` → misma familia → avisar y continuar (el override manda).
+Con `reviewer: claude` o `reviewer: codex` forzados en config, ir directo a esa vía. Si la vía
+forzada coincide con la familia del autor (ej. autor Claude + `reviewer: claude`) → misma
+familia: avisar que se pierde el valor cross-model y continuar (el override manda).
 
 > **No usar `/codex:review` ni `/codex:adversarial-review`.** Esos comandos del plugin operan
 > sobre git diff y su schema de salida exige `file`+`line` (código-céntrico): no sirven para
@@ -224,7 +189,7 @@ hardcodear ciegamente.
 - Opcional: `--output-schema <archivo.json>` fuerza el shape del mensaje final a un JSON Schema
   (útil para hacer el "Formato de salida" todavía más parseable).
 
-### Vía C — CLI `claude -p` (Claude como revisor; cuando el autor es GPT/Codex, otra familia, o un modelo de respaldo en Claude Code redirigido)
+### Vía C — CLI `claude -p` (Claude como revisor; cuando el autor es GPT/Codex)
 
 `claude` no tiene un flag de sandbox equivalente a `codex -s read-only`: el read-only se
 garantiza **restringiendo las tools permitidas a las de lectura**
@@ -232,52 +197,6 @@ garantiza **restringiendo las tools permitidas a las de lectura**
 fuera de esa lista queda
 denegada — sin escritura ni shell). Flags verificados con Claude Code 2026-06; ante la duda
 confirmar con `claude --help`.
-
-#### Higiene de entorno (cuando la sesión está redirigida a un proveedor no-Anthropic)
-
-Si la sonda del Paso 2 ("Descubrir el revisor") detectó una **redirección** (`ANTHROPIC_BASE_URL`
-no-Anthropic o `ANTHROPIC_DEFAULT_*_MODEL` no-`claude-*`), un `claude -p` lanzado tal cual
-**heredaría esas variables** y el "revisor Claude" volvería a ser el modelo de respaldo (GLM/Kimi/…)
-— autor revisándose a sí mismo. Para garantizar que la Vía C llegue a **Claude real**, lanzar el
-revisor en un **proceso hijo con las vars de redirección removidas**, que cae a la suscripción
-Anthropic (OAuth) o a la `ANTHROPIC_API_KEY` real:
-
-- **POSIX** — anteponer `env -u …` al `claude` (construye el entorno del hijo sin esas vars):
-  ```bash
-  env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN \
-      -u ANTHROPIC_DEFAULT_OPUS_MODEL -u ANTHROPIC_DEFAULT_SONNET_MODEL -u ANTHROPIC_DEFAULT_HAIKU_MODEL \
-      -u ANTHROPIC_MODEL -u ANTHROPIC_SMALL_FAST_MODEL \
-    claude -p …
-  ```
-- **PowerShell** — `powershell` no tiene `env -u` y las `$env:` son **a nivel de proceso** (un
-  `Remove-Item Env:` mutaría la sesión actual sin restaurarla). El análogo exacto y a prueba de
-  fugas es un **proceso hijo aislado** que primero borra las vars y después corre `claude`. El
-  comando del hijo se arma como **string** (un scriptblock literal `{…}` pasado a `-Command` no
-  capturaría variables del padre como `$SessionId`; interpolarlas en el string sí):
-  ```powershell
-  $strip = "Remove-Item Env:ANTHROPIC_BASE_URL,Env:ANTHROPIC_AUTH_TOKEN," +
-           "Env:ANTHROPIC_DEFAULT_OPUS_MODEL,Env:ANTHROPIC_DEFAULT_SONNET_MODEL," +
-           "Env:ANTHROPIC_DEFAULT_HAIKU_MODEL,Env:ANTHROPIC_MODEL,Env:ANTHROPIC_SMALL_FAST_MODEL " +
-           "-ErrorAction SilentlyContinue; "
-  powershell -NoProfile -Command ($strip + "claude -p …")
-  ```
-  (Git Bash en Windows usa el bloque POSIX `env -u`.)
-
-**Por qué no toca la sesión en curso:** el entorno fluye padre→hijo, nunca al revés. El `claude`
-conductor (GLM) ya leyó su env al arrancar; el wrapper solo afecta al subproceso revisor.
-
-**Condicional, no incondicional:** aplicar el wrapper **solo** si la sonda detectó redirección. Si
-`ANTHROPIC_BASE_URL` está sin setear o es Anthropic, **no** stripear `ANTHROPIC_AUTH_TOKEN` (podría
-ser la API key real de Anthropic de alguien sin OAuth) — correr la Vía C tal cual.
-
-**Degradación por auth:** si el `claude -p` con env limpio falla por autenticación (no hay
-credencial Anthropic real, solo el token redirigido) → registrar el error, tratarlo como
-`UNAVAILABLE` y ceder a Codex o al gate humano (regla 6 del SKILL). Nunca caer de vuelta al modelo
-de respaldo en silencio.
-
-Los bloques de invocación de abajo muestran el `claude -p` **base**; cuando la sonda detectó
-redirección, anteponer el wrapper de higiene (POSIX `env -u …` / PowerShell hijo aislado) tal como
-arriba. El camino SYNC/BACKGROUND y el `--resume` también lo llevan.
 
 Trampas de este CLI que la invocación debe esquivar:
 
@@ -306,8 +225,6 @@ Trampas de este CLI que la invocación debe esquivar:
 - Ronda 1 (fijar un session id propio para poder reanudar después; prompt escrito antes a archivo):
   ```bash
   SESSION_ID=$(uuidgen)   # Git Bash en Windows no trae uuidgen → ver "Portabilidad entre shells"
-  # Si la sonda detectó redirección: anteponer `env -u ANTHROPIC_BASE_URL -u … ` al `claude`
-  # (ver "Higiene de entorno"). Sin redirección, correr el `claude` tal cual:
   (cd <working_dir> && claude -p --safe-mode \
       --model opus \
       --permission-mode default \
@@ -321,8 +238,6 @@ Trampas de este CLI que la invocación debe esquivar:
   $SessionId = [guid]::NewGuid().ToString()
   Push-Location <working_dir>
   try {
-    # Si la sonda detectó redirección: reemplazar el `claude …` por el hijo aislado
-    #   powershell -NoProfile -Command ($strip + "claude …")   (ver "Higiene de entorno").
     Get-Content -Raw <ruta\al\prompt-r1.txt> |
       claude -p --safe-mode --model opus --permission-mode default `
         '--allowedTools=Read,Grep,Glob' --session-id $SessionId > <ruta\al\veredicto.txt>
@@ -332,7 +247,6 @@ Trampas de este CLI que la invocación debe esquivar:
   igual que `--output-last-message` en la Vía B.
 - Rondas siguientes (mismo thread, con memoria de lo ya discutido):
   ```bash
-  # Si hay redirección: anteponer el mismo `env -u …` al `claude` (ver "Higiene de entorno"):
   (cd <working_dir> && claude -p --safe-mode \
       --model opus \
       --permission-mode default \
@@ -344,7 +258,6 @@ Trampas de este CLI que la invocación debe esquivar:
   ```powershell
   Push-Location <working_dir>
   try {
-    # Si hay redirección: reemplazar el `claude …` por el hijo aislado (ver "Higiene de entorno").
     Get-Content -Raw <ruta\al\delta-rN.txt> |
       claude -p --safe-mode --model opus --permission-mode default `
         '--allowedTools=Read,Grep,Glob' --resume $SessionId > <ruta\al\veredicto.txt>
@@ -380,8 +293,6 @@ cuando el conductor puede sostener ese timeout, y lo que fuerza `execution: sync
 
 ```bash
 # Sync (POSIX) — el conductor fija el tope vía su exec (Claude Code: Bash timeout 300000/600000):
-# Si la sonda detectó redirección: anteponer `env -u ANTHROPIC_BASE_URL -u … ` al `claude`
-# (ver "Higiene de entorno") para que el revisor sea Claude real y no el modelo de respaldo.
 ( cd <working_dir> && claude -p --safe-mode --model opus --permission-mode default \
     --allowedTools=Read,Grep,Glob --session-id "$SESSION_ID" \
     < <ruta/al/prompt-r1.txt> ) > <ruta/al/veredicto.txt> 2> <ruta/al/claude-r1.err.txt>
@@ -404,7 +315,6 @@ comando único bloquea más que el límite del conductor. Lo fuerza `execution: 
 
 ```bash
 # Lanzar en background (POSIX) — capturar el PID para poder matarlo al vencer el deadline:
-# Si hay redirección: anteponer el mismo `env -u …` al `claude` (ver "Higiene de entorno").
 ( cd <working_dir> && claude -p --safe-mode --model opus --permission-mode default \
     --allowedTools=Read,Grep,Glob --session-id "$SESSION_ID" \
     < <ruta/al/prompt-r1.txt> > <ruta/al/veredicto.txt> 2> <ruta/al/claude-r1.err.txt> ) &
@@ -416,22 +326,12 @@ grep -q '^VERDICT:' <ruta/al/veredicto.txt> 2>/dev/null && cat <ruta/al/veredict
 ```
 ```powershell
 # Lanzar en background (PowerShell; Start-Process toma el prompt como archivo de stdin):
-# Sin redirección, FilePath = claude directo. CON redirección, Start-Process heredaría las env
-# del proceso actual → lanzar en cambio un `powershell` hijo que limpia el env y después corre
-# claude (el env limpio queda contenido en el hijo, sin tocar la sesión actual): ver la variante
-# comentada debajo del bloque.
 $SessionId = [guid]::NewGuid().ToString()
 $proc = Start-Process -FilePath claude -WorkingDirectory <working_dir> -NoNewWindow -PassThru `
   -RedirectStandardInput  <ruta\al\prompt-r1.txt> `
   -RedirectStandardOutput <ruta\al\veredicto.txt> `
   -RedirectStandardError  <ruta\al\claude-r1.err.txt> `
   -ArgumentList '-p','--safe-mode','--model','opus','--permission-mode','default','--allowedTools=Read,Grep,Glob','--session-id',$SessionId
-# Variante con higiene de env (redirección detectada): FilePath = powershell hijo aislado.
-#   $cmd = $strip + "claude -p --safe-mode --model opus --permission-mode default " +
-#          "'--allowedTools=Read,Grep,Glob' --session-id $SessionId"   # $strip: ver "Higiene de entorno"
-#   $proc = Start-Process -FilePath powershell -WorkingDirectory <working_dir> -NoNewWindow -PassThru `
-#     -RedirectStandardInput <ruta\al\prompt-r1.txt> -RedirectStandardOutput <ruta\al\veredicto.txt> `
-#     -RedirectStandardError <ruta\al\claude-r1.err.txt> -ArgumentList '-NoProfile','-Command',$cmd
 # Poll (repetir como comandos cortos; tope DURO de ~N intentos = poll_deadline / 10s):
 if ((Test-Path <ruta\al\veredicto.txt>) -and ((Get-Content <ruta\al\veredicto.txt> -Raw) -match 'VERDICT:')) {
   Get-Content <ruta\al\veredicto.txt>      # listo → parsear

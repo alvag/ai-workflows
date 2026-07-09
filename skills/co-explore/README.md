@@ -74,18 +74,16 @@ del conductor.
 Ninguno obligatorio: es una **capacidad opcional**. Para que la exploración efectivamente ocurra,
 hace falta un **segundo modelo de otra familia que el autor** (el agente que conduce la skill):
 
-- Autor Claude (Claude Code) → Codex, vía `codex exec -s read-only` en el PATH.
-- Autor GPT/Codex (Codex CLI) → Claude, vía `claude -p --allowedTools=Read,Grep,Glob` en el PATH.
-- o cualquier otro segundo modelo de familia distinta capaz de explorar en modo read-only.
+- Autor Claude → Codex, vía `codex exec -s read-only` en el PATH.
+- Autor GPT/Codex → Claude, vía `claude -p --allowedTools=Read,Grep,Glob` en el PATH.
 
 **`sdd-cross-review` recomendada (no obligatoria).** Si está instalada en el entorno, aporta el
 algoritmo canónico de descubrimiento del revisor (`sdd-cross-review/reference.md` → "Descubrir el
-revisor"), la higiene de entorno completa cuando el autor está redirigido a un modelo no-Anthropic,
-y consume el informe de esta skill como contexto persistente para su propia crítica informada en
-el gate. Sin ella, `co-explore` usa su propio fallback mínimo (mismo algoritmo de descubrimiento
-por capacidad, sondeo de entorno incluido, pero sin la higiene de entorno completa).
+revisor") y consume el informe de esta skill como contexto persistente para su propia crítica
+informada en el gate. Sin ella, `co-explore` usa su propio fallback mínimo (mismo algoritmo de
+descubrimiento por capacidad).
 
-Sin ningún modelo de otra familia disponible, con `mode: off`, o ante un fallo en runtime, la skill
+Sin el modelo de la otra familia disponible, con `mode: off`, o ante un fallo en runtime, la skill
 devuelve `UNAVAILABLE` en una línea y la llamadora sigue con la exploración del conductor solamente.
 
 ## Instalación

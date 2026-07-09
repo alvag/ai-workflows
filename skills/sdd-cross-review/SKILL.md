@@ -58,11 +58,10 @@ artefacto escrito ──► [sdd-cross-review] ──► artefacto (quizá revis
    busca por capacidad (un segundo modelo que pueda criticar texto en read-only), no por un
    nombre de tool fijo. Regla dura: **el revisor nunca es de la misma familia de modelos que el
    autor del artefacto**; misma familia = errores correlacionados, justo lo que esta revisión
-   existe para romper. **La familia es la del modelo de respaldo, no la del CLI/harness:** Claude
-   Code redirigido a otro proveedor (GLM/Kimi/…) tiene como autor a ese modelo, y un `claude -p`
-   ingenuo lo reabriría (autor revisándose). Identificar al autor sondeando el entorno y, si el
-   revisor es Claude con la sesión redirigida, invocarlo con higiene de entorno. Detalle en
-   `reference.md` → "Descubrir el revisor" y "Vía C → Higiene de entorno".
+   existe para romper. Hay **dos familias**: Claude y GPT/Codex. El autor es la familia del
+   **agente que conduce la skill** — sin importar la superficie donde corre (CLI, app de
+   escritorio, IDE, web) — y el revisor es siempre el de la otra. Detalle en `reference.md` →
+   "Descubrir el revisor".
 
 ## Red flags — detente y reconsidera
 
@@ -77,7 +76,6 @@ Si reconoces alguno de estos pensamientos, detente y aplica la disciplina de `su
 | "El revisor lo marcó, lo aplico" | Antes de aplicar: verificar técnicamente, rebatir lo incorrecto/inaplicable y **registrar el porqué** (regla 3). |
 | "Tiene razón, le agradezco y edito" | Sin sycophancy. La respuesta correcta es reformular el requisito o directamente corregir — no validación performativa. |
 | "Le respondo el delta y de paso pulo el wording que sugirió" | Foco, no estilo (regla 4): wording/formato es review theater. La revisión apunta a correctitud, AC, riesgos y contratos. |
-| "Corre el mismo binario `claude`, total es otra familia" | Lo que correlaciona errores es el **modelo de respaldo**, no el CLI (regla 7). Si la sesión está redirigida (GLM/Kimi/…), un `claude -p` ingenuo reabre el mismo modelo: sondear el entorno e invocar la Vía C con higiene de entorno para llegar a Claude real. |
 | "No hay revisor disponible, espero / reintento en loop" | Degradación: avisar en una línea y ceder al gate humano. Loop acotado a `max_rounds`, con tope duro → `UNAVAILABLE` (reglas 2, 6). |
 
 ## Contrato de invocación (lo que pasa la skill llamadora)
@@ -113,30 +111,18 @@ Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario) proveen:
 Antes de nada, resolver si hay un segundo modelo disponible (algoritmo y opciones en
 `reference.md` → "Descubrir el revisor"):
 
-1. **Identificar la familia del autor — por el modelo de respaldo, no por el CLI.** El autor es el
-   **modelo** que ejecuta el agente conductor, que no siempre coincide con el binario: Claude Code
-   puede estar **redirigido** a un proveedor Anthropic-compatible (GLM/z.ai, Kimi, DeepSeek…) vía
-   `ANTHROPIC_BASE_URL` + `ANTHROPIC_DEFAULT_*_MODEL`. **No confiar en el "You are Claude Code" del
-   harness ni en la autopercepción** — sondear el entorno: si el conductor es Claude Code y
-   `ANTHROPIC_BASE_URL` apunta a un host no-Anthropic (o un `ANTHROPIC_DEFAULT_*_MODEL` es
-   no-`claude-*`), el autor es ese modelo de respaldo, no Claude. Si conduce Codex CLI, autor =
-   GPT/Codex (la sonda no aplica). Detalle y comandos POSIX/PowerShell en `reference.md` →
-   "Descubrir el revisor".
-2. **Elegir un revisor de OTRA familia** (regla 7 — el revisor nunca es de la familia del autor):
-   - Autor **Claude real** → revisor **Codex**: el subagente `codex:codex-rescue` si existe en el
+1. **Identificar la familia del autor.** Es la del agente que conduce la skill, sin importar la
+   superficie donde corre (CLI, app de escritorio, IDE, web): un agente **Claude** → autor
+   Claude; un agente **Codex** → autor GPT/Codex.
+2. **Elegir el revisor de la OTRA familia** (regla 7 — el revisor nunca es de la familia del
+   autor):
+   - Autor **Claude** → revisor **Codex**: el subagente `codex:codex-rescue` si existe en el
      entorno; si no, el CLI `codex exec` en read-only.
    - Autor **GPT/Codex** → revisor **Claude**: el CLI `claude -p` restringido a tools de lectura.
-   - Autor **modelo de respaldo en Claude Code redirigido** (GLM/Kimi/…) → Codex **o** Claude real
-     (ambos son otra familia): `auto` prefiere Codex (Vías A/B, sin tocar el entorno); `reviewer:
-     claude` usa la Vía C **con higiene de entorno** para alcanzar Claude real (ver `reference.md`
-     → "Vía C" → "Higiene de entorno").
-   - Otra familia → el primer segundo modelo de familia distinta capaz de criticar texto sin
-     editar.
-3. Si `cross_review.reviewer` fuerza una vía (`claude` | `codex`), usarla directo; **avisar que se
-   pierde el valor cross-model solo si la vía forzada coincide con el modelo de respaldo real**
-   (no con el CLI): forzar `claude` desde un Claude Code redirigido a GLM **es** cross-model
-   legítimo (Claude real ≠ GLM) y no lleva aviso. El override explícito manda.
-4. Si **no hay revisor** de otra familia disponible → no romper: devolver veredicto
+3. Si `cross_review.reviewer` fuerza una vía (`claude` | `codex`), usarla directo; si la vía
+   forzada coincide con la familia del autor, **avisar que se pierde el valor cross-model** y
+   continuar. El override explícito manda.
+4. Si **no hay revisor** de la otra familia disponible → no romper: devolver veredicto
    `UNAVAILABLE` con el aviso estándar y ceder al gate humano (ver "Degradación").
 5. Si hay revisor → seguir con el loop.
 
@@ -181,7 +167,8 @@ extra). El humano aprueba con la segunda opinión ya a la vista.
 Tres modos de falla, todos terminan en el gate humano de siempre con un aviso de una línea
 ("revisión cross-model no disponible — sigo con el gate humano"):
 
-1. **El revisor no existe** (no hay Codex ni otro segundo modelo) → Paso 0 devuelve `UNAVAILABLE`.
+1. **El revisor no existe** (el subagente/CLI de la otra familia no está disponible) → Paso 0
+   devuelve `UNAVAILABLE`.
 2. **El revisor falla en runtime** (error, timeout de exec, `poll_deadline` vencido sin `VERDICT:`,
    o respuesta no parseable) → registrar el fallo en `review-log.md`, cortar el loop (y matar el
    proceso en background si lo hubo) y devolver `UNAVAILABLE` con lo que haya. **Nunca quedar

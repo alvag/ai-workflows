@@ -184,8 +184,8 @@ crítica se presenta *junto* al artefacto en el mismo STOP; tú sigues siendo el
   `working_dir`, `complexity` y `execution` (de `cross_review.execution`, que se hereda como el
   resto de la config). Devuelve el artefacto (quizá revisado) + un resumen de la crítica + la ruta
   del `review-log.md` (queda en `.plans/<id>/review-log.md`, local y untracked como el resto).
-- **Degradación (nunca bloquea el flujo).** Si no hay revisor (ningún segundo modelo de otra
-  familia disponible), si la skill
+- **Degradación (nunca bloquea el flujo).** Si no hay revisor (el modelo de la otra familia no
+  está disponible), si la skill
   está instalada pero la invocación falla (p. ej. error del Skill tool), si falla en
   runtime, si vence el timeout/`poll_deadline` de la revisión (la skill garantiza un tope duro: ver
   su "Latencia y timeout"), o si `cross_review.mode: off` → avisar en una línea ("revisión

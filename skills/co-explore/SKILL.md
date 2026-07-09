@@ -90,9 +90,10 @@ paquete de contexto ──► [co-explore: revisor explora en background, read-o
 6. **Opcional y degradable.** Es una capacidad, no un requisito. Sin revisor de otra familia
    disponible, con un fallo en runtime, o con `mode: off`, el resultado es `UNAVAILABLE` en una
    línea y la llamadora sigue con la exploración del conductor solamente.
-7. **Revisor de OTRA familia, por capacidad.** Misma regla 7 de `sdd-cross-review`: familia =
-   modelo de respaldo, no el CLI/harness; se identifica sondeando el entorno, con higiene de
-   entorno si el revisor es Claude con la sesión redirigida. El algoritmo canónico vive en
+7. **Revisor de OTRA familia, por capacidad.** Misma regla 7 de `sdd-cross-review`: hay dos
+   familias — Claude y GPT/Codex —, el autor es la del agente que conduce la skill (sin importar
+   la superficie: CLI, app de escritorio, IDE, web) y el revisor es siempre el de la otra. El
+   algoritmo canónico vive en
    `sdd-cross-review/reference.md` → "Descubrir el revisor"; acá solo el puntero + un fallback
    mínimo (ver `reference.md` → "Descubrir el revisor (puntero + fallback)").
 

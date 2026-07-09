@@ -23,8 +23,7 @@ archivos de trabajo.
 
 Mismo criterio que `sdd-cross-review/reference.md` → "Portabilidad entre shells (POSIX /
 PowerShell)": esa sección es la fuente canónica de las equivalencias de shell que también usa
-esta skill (detección de OS, prompt por archivo a stdin, generar un UUID, sondear variables de
-entorno, remover variables en un proceso hijo para la higiene de entorno). No se duplican aquí.
+esta skill (detección de OS, prompt por archivo a stdin, generar un UUID). No se duplican aquí.
 
 Lo único que `co-explore` necesita y que cross-review no, porque `explore` corre siempre en
 background (ver "Latencia y deadlines"):
@@ -34,9 +33,9 @@ background (ver "Latencia y deadlines"):
 | Lanzar en background y capturar el PID | `cmd & PID=$!` | `$proc = Start-Process -FilePath … -PassThru; $proc.Id` |
 | Matar el proceso al vencer el deadline | `kill "$PID"` | `Stop-Process -Id $proc.Id -Force` |
 
-El resto de las equivalencias (detectar el binario, prompt por archivo, UUID, sondeo de env,
-higiene de entorno) son las mismas que en `sdd-cross-review/reference.md` y se referencian por
-puntero en "Descubrir el revisor (puntero + fallback)".
+El resto de las equivalencias (detectar el binario, prompt por archivo, UUID) son las mismas
+que en `sdd-cross-review/reference.md` y se referencian por puntero en "Descubrir el revisor
+(puntero + fallback)".
 
 ## Prompt de exploración
 
@@ -323,39 +322,23 @@ skill aparte, tipo carrera de fixes cross-model).
 
 ## Descubrir el revisor (puntero + fallback)
 
-**Puntero.** El algoritmo canónico de descubrimiento del explorador —identificar el harness
-conductor, desambiguar la familia del modelo de respaldo, elegir un explorador de otra familia,
-e higiene de entorno cuando hace falta— vive en `sdd-cross-review/reference.md` → "Descubrir el
-revisor". Si esa skill está instalada en el entorno, léelo de ahí: esta sección no lo duplica.
+**Puntero.** El algoritmo canónico de descubrimiento del explorador —identificar la familia
+del autor y elegir el explorador de la otra familia— vive en `sdd-cross-review/reference.md` →
+"Descubrir el revisor". Si esa skill está instalada en el entorno, léelo de ahí: esta sección
+no lo duplica.
 
-**Fallback mínimo (`co-explore` sin `sdd-cross-review` instalada).** Misma regla dura:
-el explorador nunca es de la misma familia de modelos que el autor. El autor es el modelo de
-respaldo que ejecuta el agente conductor, no el CLI/harness — un Claude Code redirigido a un
-proveedor no-Anthropic (GLM, Kimi, DeepSeek…) tiene como autor real ese modelo de respaldo, no
-Claude. Sondea el entorno antes de decidir la familia:
-
-```bash
-# POSIX (macOS/Linux/Git Bash):
-env | grep -iE 'ANTHROPIC_BASE_URL|ANTHROPIC_DEFAULT_(OPUS|SONNET|HAIKU)_MODEL|ANTHROPIC_MODEL'
-```
-```powershell
-# PowerShell (Windows):
-Get-ChildItem Env: | Where-Object Name -match 'ANTHROPIC_BASE_URL|ANTHROPIC_DEFAULT_(OPUS|SONNET|HAIKU)_MODEL|ANTHROPIC_MODEL'
-```
-
-Si `ANTHROPIC_BASE_URL` apunta a un host distinto de `api.anthropic.com`/`anthropic.com`, o
-algún `ANTHROPIC_DEFAULT_*_MODEL`/`ANTHROPIC_MODEL` mapea a un modelo no-`claude-*` → el autor
-real es ese modelo de respaldo. Si la sonda sale vacía o el `base_url` es Anthropic → autor =
-Claude real. Si el conductor es Codex CLI (u otro que no sea Claude Code), salta la sonda: el
-autor es GPT/Codex directo.
+**Fallback mínimo (`co-explore` sin `sdd-cross-review` instalada).** Misma regla dura: el
+explorador nunca es de la misma familia de modelos que el autor. Hay dos familias — Claude y
+GPT/Codex — y la del autor es la del agente que conduce la skill, sin importar la superficie
+donde corre (CLI, app de escritorio, IDE, web): un agente Claude → Claude; un agente Codex →
+GPT/Codex.
 
 | Familia del autor | Explorador a buscar | Vía |
 |---|---|---|
-| Claude real | Codex | `codex exec` en background, read-only |
+| Claude | Codex | `codex exec` en background, read-only |
 | GPT/Codex | Claude | `claude -p` en background, restringido a tools de lectura |
-| Modelo de respaldo redirigido (GLM/Kimi/…) | Codex (preferido, sin higiene de entorno) o Claude real | Codex: igual que arriba. Claude: `claude -p` con higiene de entorno — primitiva embebida más abajo ("Invocación directa — autor GPT/Codex → explorador Claude"); camino preferido si `sdd-cross-review` está instalada: su `sdd-cross-review/reference.md` → "Higiene de entorno" trae el detalle completo |
 
-Si ninguna opción de otra familia está disponible → `UNAVAILABLE` (regla 6 del `SKILL.md`).
+Si el explorador de la otra familia no está disponible → `UNAVAILABLE` (regla 6 del `SKILL.md`).
 
 **Invocación directa — autor Claude → explorador Codex.** Adaptado de
 `sdd-cross-review/reference.md` → Vía B, lanzado en background porque `explore` nunca bloquea
@@ -417,34 +400,7 @@ $SessionId | Out-File co-explore\scratch\explorer-session.txt
 
 `--allowedTools=Read,Grep,Glob` es lo único que garantiza read-only en `claude -p` (no existe un
 flag de sandbox equivalente a `-s read-only`); `--safe-mode` evita cargar plugins/hooks/MCP/
-CLAUDE.md del usuario del `working_dir`. Si la sonda de arriba detectó redirección, antepón la
-higiene de entorno a este bloque para que el explorador llegue a Claude real y no al modelo de
-respaldo redirigido — camino preferido si `sdd-cross-review` está instalada: su
-`sdd-cross-review/reference.md` → "Higiene de entorno" trae el detalle completo (por qué no toca
-la sesión en curso, cuándo aplicarla de forma condicional, degradación por auth). Primitiva
-mínima, embebida aquí para que este fallback no dependa de esa skill (variables reales que limpia
-`sdd-cross-review/reference.md` → "Higiene de entorno", copiadas de ahí):
-
-```bash
-# POSIX — antepuesto al `claude -p …` del bloque de arriba:
-env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN \
-    -u ANTHROPIC_DEFAULT_OPUS_MODEL -u ANTHROPIC_DEFAULT_SONNET_MODEL -u ANTHROPIC_DEFAULT_HAIKU_MODEL \
-    -u ANTHROPIC_MODEL -u ANTHROPIC_SMALL_FAST_MODEL \
-  claude -p --safe-mode --model opus --permission-mode default --allowedTools=Read,Grep,Glob …
-```
-```powershell
-# PowerShell — proceso hijo aislado (Remove-Item Env: es a nivel de sesión: mutaría la actual sin
-# restaurarla, por eso se aplica en un hijo, no en el proceso corriente):
-$strip = "Remove-Item Env:ANTHROPIC_BASE_URL,Env:ANTHROPIC_AUTH_TOKEN," +
-         "Env:ANTHROPIC_DEFAULT_OPUS_MODEL,Env:ANTHROPIC_DEFAULT_SONNET_MODEL," +
-         "Env:ANTHROPIC_DEFAULT_HAIKU_MODEL,Env:ANTHROPIC_MODEL,Env:ANTHROPIC_SMALL_FAST_MODEL " +
-         "-ErrorAction SilentlyContinue; "
-powershell -NoProfile -Command ($strip + "claude -p …")
-```
-
-Caso límite: con la sesión redirigida y sin posibilidad de aplicar esta higiene (por ejemplo, un
-entorno restringido que no permite anteponer `env -u` ni lanzar el proceso hijo aislado) →
-preferir Codex; sin Codex disponible → `UNAVAILABLE` (regla 6 del `SKILL.md`).
+CLAUDE.md del usuario del `working_dir`.
 
 `$SESSION_ID`/`$SessionId`, capturado en `explorer-session.txt`, es la base para escribir
 `co-explore/session.json` (ver "Archivos de trabajo (scratch)") cuando `sdd-cross-review` está

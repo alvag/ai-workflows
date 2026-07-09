@@ -47,22 +47,13 @@ Ninguno obligatorio: es una **capacidad opcional**. Para que la revisión efecti
 hace falta un **segundo modelo de otra familia que el autor** (el agente que conduce la skill),
 descubierto por capacidad:
 
-- Autor Claude (Claude Code) → el subagente `codex:codex-rescue` (plugin codex) — camino
+- Autor Claude → el subagente `codex:codex-rescue` (plugin codex) — camino
   preferido; **no** usa `/codex:review` (ese es solo para git diff/código), usa el camino `task`
   en read-only. O el CLI `codex exec` en el PATH (portable, fuera del plugin).
-- Autor GPT/Codex (Codex CLI) → el CLI `claude -p` en el PATH, restringido a tools de lectura.
-- o cualquier otro segundo modelo de familia distinta capaz de criticar texto sin editar.
+- Autor GPT/Codex → el CLI `claude -p` en el PATH, restringido a tools de lectura.
 
-> **Claude Code redirigido a un modelo no-Anthropic.** Si Claude Code corre apuntado a un proveedor
-> Anthropic-compatible (GLM/z.ai, Kimi, DeepSeek… vía `ANTHROPIC_BASE_URL` +
-> `ANTHROPIC_DEFAULT_*_MODEL`), la familia del autor es **ese modelo**, no Claude — la skill lo
-> detecta sondeando el entorno (no por el nombre del binario). En ese caso: `reviewer: auto` elige
-> Codex; `reviewer: claude` alcanza **Claude real** invocando `claude -p` con las variables de
-> redirección removidas (proceso hijo aislado, no toca la sesión en curso) — requiere una credencial
-> Anthropic válida (suscripción OAuth o `ANTHROPIC_API_KEY`). Si esa auth no existe, degrada a Codex
-> o al gate humano.
-
-Sin ninguno, la skill devuelve `UNAVAILABLE` y el flujo SDD continúa con su gate humano.
+Sin el revisor de la otra familia disponible, la skill devuelve `UNAVAILABLE` y el flujo SDD
+continúa con su gate humano.
 
 ## Integración con sdd-flow y sdd-orchestrator
 
