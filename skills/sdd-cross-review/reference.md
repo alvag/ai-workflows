@@ -86,6 +86,18 @@ Con `reviewer: claude` o `reviewer: codex` forzados en config, ir directo a esa 
 forzada coincide con la familia del autor (ej. autor Claude + `reviewer: claude`) → misma
 familia: avisar que se pierde el valor cross-model y continuar (el override manda).
 
+**Prechequeos (revisor Codex, Vías A/B).** Tres chequeos baratos antes de la ronda 1:
+
+- **Versión**: `codex --version`. CLIs viejos (< 0.130) fallan con error de modelo contra los
+  defaults actuales. Ante un error de auth o de modelo, superficiarlo y degradar (`UNAVAILABLE`)
+  — nunca reintentar en silencio.
+- **Modelo: no pinear `-m`.** Usar el default de la config: los variants `gpt-5.x-codex`
+  devuelven 400 con auth de cuenta ChatGPT. Si el usuario pide un modelo explícito, ese override
+  manda.
+- **Eco del modelo activo**: leer la línea `model` de `~/.codex/config.toml` (ausente = "CLI
+  default") y registrarla en el `review-log.md` junto al revisor, para que la corrida quede
+  auditada con el modelo real que criticó.
+
 > **No usar `/codex:review` ni `/codex:adversarial-review`.** Esos comandos del plugin operan
 > sobre git diff y su schema de salida exige `file`+`line` (código-céntrico): no sirven para
 > revisar un markdown. El camino correcto para documentos es `task` / `codex exec`.
@@ -121,7 +133,8 @@ en la raíz del flujo:
   colisiones entre los gates de `spec`/`plan`/`tasks`. Ejemplos:
   `cross-review/spec-prompt-r1.txt`, `cross-review/spec-verdict-r1.txt`,
   `cross-review/plan-delta-r2.txt`, `cross-review/plan-verdict-r2.txt`,
-  `cross-review/plan-r1.err.txt`, `cross-review/spec-session.txt`.
+  `cross-review/plan-r1.err.txt`, `cross-review/spec-thread-r1.jsonl` (stream JSONL de la ronda 1,
+  de donde se parsea el thread id), `cross-review/spec-session.txt` (el thread/session id capturado).
 - **`review-log.md` NO va acá.** Es el registro auditable consolidado (rondas, findings, decisiones,
   veredicto), hermano de `spec.md`/`plan.md`/`tasks.md`: queda en `<dir del artefacto>/review-log.md`
   (la raíz del flujo).
@@ -147,45 +160,64 @@ que es una **revisión de solo lectura, sin modificar archivos**. No agregar `--
 
 ### Vía B — CLI `codex exec` (portable)
 
-Patrón (igual que grill-me-codex). Flags verificados con `codex-cli` 0.137–0.139; pueden variar
-por versión, así que ante la duda confirmar con `codex exec --help`. Descubrir por capacidad, no
-hardcodear ciegamente.
+Patrón (igual que grill-me-codex). Flags verificados con `codex-cli` 0.137–0.143 (el
+comportamiento del sandbox en resume y del id vacío/inválido, end-to-end en 0.143.0,
+2026-07-09); pueden variar por versión, así que ante la duda confirmar con `codex exec --help`.
+Descubrir por capacidad, no hardcodear ciegamente.
 
 - Ronda 1 (prompt escrito antes a archivo — ver regla 2 de "Invocar al revisor"):
   ```bash
-  codex exec -s read-only -C <working_dir> --skip-git-repo-check \
-    --output-last-message <ruta/al/veredicto.txt> - < <ruta/al/prompt-r1.txt>
+  codex exec -s read-only -C <working_dir> --skip-git-repo-check --json \
+    --output-last-message <ruta/al/veredicto.txt> - < <ruta/al/prompt-r1.txt> \
+    > <ruta/al/thread-r1.jsonl>
+  # Capturar el thread id del evento thread.started (determinístico, no "buscarlo en la salida"):
+  grep -m1 -o '"thread_id":"[^"]*"' <ruta/al/thread-r1.jsonl> | cut -d'"' -f4 \
+    > <ruta/al/session.txt>
   ```
   En **PowerShell** (el prompt llega por un pipe en vez de `<`):
   ```powershell
   Get-Content -Raw <ruta\al\prompt-r1.txt> |
-    codex exec -s read-only -C <working_dir> --skip-git-repo-check `
-      --output-last-message <ruta\al\veredicto.txt> -
+    codex exec -s read-only -C <working_dir> --skip-git-repo-check --json `
+      --output-last-message <ruta\al\veredicto.txt> - > <ruta\al\thread-r1.jsonl>
+  (Select-String -Path <ruta\al\thread-r1.jsonl> -Pattern '"thread_id":"([^"]+)"' |
+    Select-Object -First 1).Matches.Groups[1].Value > <ruta\al\session.txt>
   ```
   `-s read-only` (= `--sandbox read-only`) garantiza que no escribe; `-C` fija el working root;
   `--skip-git-repo-check` permite correr aunque la contenedora no sea repo git;
   `--output-last-message` deja el mensaje final (el veredicto + findings) en un archivo, fácil de
-  parsear; el `-` como PROMPT hace que las instrucciones se lean de **stdin** (verificado en
-  `codex exec --help`). Codex reporta el **session id** en su salida — capturarlo (o usar
-  `--last` en el resume).
+  parsear; el `-` como PROMPT hace que las instrucciones se lean de **stdin**; `--json` emite el
+  stream de eventos JSONL por stdout — la línea `{"type":"thread.started","thread_id":"…"}` es la
+  única captura **determinística** del session id, y ese id explícito es lo que usa el resume.
 - Rondas siguientes (mismo thread): el subcomando `resume` **no** acepta `-s`/`--sandbox` ni
-  `--color` ni `-C` (hereda el sandbox read-only y el cwd de la sesión original):
+  `--color` ni `-C` — y **NO hereda el sandbox de la sesión original**: lo re-resuelve al
+  reanudar desde `~/.codex/config.toml` y los flags `-c`. Verificado 2026-07-09 con codex-cli
+  0.143.0: una sesión lanzada con `-s read-only` y reanudada con `-c sandbox_mode="workspace-write"`
+  **escribió un archivo**. Por eso el resume lleva SIEMPRE el override explícito
+  `-c sandbox_mode="read-only"` — sin él, el sandbox efectivo es el que tenga la config del
+  usuario (posiblemente de escritura):
   ```bash
-  codex exec resume --last --skip-git-repo-check \
+  SESSION_ID=$(cat <ruta/al/session.txt>)
+  echo "resume → ${SESSION_ID:?vacío}"   # eco visible + corte si quedó vacío (ver nota --last)
+  codex exec resume "$SESSION_ID" -c sandbox_mode="read-only" --skip-git-repo-check \
     --output-last-message <ruta/veredicto.txt> - < <ruta/al/delta-rN.txt>
-  # o con id explícito: codex exec resume <SESSION_ID> --skip-git-repo-check ... - < <delta>
   ```
   En **PowerShell**:
   ```powershell
+  $SessionId = (Get-Content <ruta\al\session.txt>).Trim()
+  if (-not $SessionId) { throw 'session id vacío' }; "resume → $SessionId"
   Get-Content -Raw <ruta\al\delta-rN.txt> |
-    codex exec resume --last --skip-git-repo-check --output-last-message <ruta\veredicto.txt> -
-  # o con id explícito: … | codex exec resume <SESSION_ID> --skip-git-repo-check … -
+    codex exec resume $SessionId -c sandbox_mode="read-only" --skip-git-repo-check `
+      --output-last-message <ruta\veredicto.txt> -
   ```
-  **`--last` filtra por cwd:** elige la sesión más reciente *del directorio actual* (el `--all`
-  desactiva ese filtro). Correr el resume desde el mismo `working_dir` de la ronda 1 (en
-  PowerShell, `Push-Location <working_dir>` antes), **o** usar el `<SESSION_ID>` explícito (más
-  robusto: no depende del cwd ni de cuál fue la última sesión global). Verificado end-to-end en
-  codex-cli 0.139.
+  **`--last` es solo fallback** (si el thread id no se pudo capturar): filtra por cwd — elige la
+  sesión más reciente *del directorio actual* (`--all` desactiva el filtro), así que correrlo
+  desde el mismo `working_dir` de la ronda 1 (en PowerShell, `Push-Location <working_dir>`
+  antes) — y con sesiones paralelas puede agarrar el thread equivocado. Y ojo con el id
+  **vacío** (verificado 2026-07-09, codex-cli 0.143.0): un id inválido falla ruidoso ("no
+  rollout found", exit 1), pero un id vacío arranca **en silencio una sesión FRESCA** — exit 0,
+  parece un resume exitoso y el revisor perdió todo su contexto. Por eso el corte si el id está
+  vacío (`${SESSION_ID:?}` / `throw`) y el eco visible antes de correr el comando. El id
+  explícito capturado de `thread.started` es siempre el camino preferido.
 - Opcional: `--output-schema <archivo.json>` fuerza el shape del mensaje final a un JSON Schema
   (útil para hacer el "Formato de salida" todavía más parseable).
 
@@ -360,7 +392,9 @@ El loop reusa el **mismo thread del revisor** para que tenga memoria de lo ya di
 - No re-mandar el artefacto completo en cada ronda. Mandar solo el **delta**: qué findings se
   aplicaron, cuáles se rechazaron y por qué, y pedir una nueva pasada sobre el artefacto
   actualizado. (Si la edición fue grande, incluir el fragmento cambiado.)
-- Vía A: `--resume` (→ `task --resume-last`). Vía B: `codex exec resume <thread_id>`. Vía C:
+- Vía A: `--resume` (→ `task --resume-last`). Vía B: `codex exec resume <thread_id>
+  -c sandbox_mode="read-only"` (el override es obligatorio: resume NO hereda el sandbox de la
+  sesión — ver la Vía B). Vía C:
   `claude -p --resume <session_id>`. El delta se pasa por stdin con la primitiva de cada shell
   (`<` en POSIX, `Get-Content -Raw | …` en PowerShell — ver "Portabilidad entre shells").
 - Si el resume no está disponible en el entorno, degradar a rondas independientes re-enviando el
@@ -368,7 +402,9 @@ El loop reusa el **mismo thread del revisor** para que tenga memoria de lo ya di
 
 **Seed desde co-exploración:** si existe `co-explore/session.json` (escrito por `co-explore`;
 esquema: `{tool, session_id, mode, created_at}`), la Ronda 1 puede **reanudar esa sesión** en
-lugar de abrir una nueva — el crítico es el mismo agente que exploró. Si el resume falla, abrir
+lugar de abrir una nueva — el crítico es el mismo agente que exploró. Con `tool: codex`, ese
+resume lleva igualmente el override `-c sandbox_mode="read-only"` (resume no hereda el sandbox
+de la sesión original — ver la Vía B). Si el resume falla, abrir
 sesión nueva con los `findings-*.md` como contexto: mismo efecto, sin estado.
 
 ## Prompt de revisión
@@ -456,7 +492,7 @@ subsección por ronda. Acumulativo (no se pisa entre artefactos del mismo `<id>`
 # Cross-review log — <id>
 
 ## <artifact_type> (<artifact_path>) — <ISO-8601>
-Revisor: <codex-rescue | codex exec | claude -p | …>  ·  max_rounds: <n>
+Revisor: <codex-rescue | codex exec | claude -p | …>  ·  modelo: <model de config | CLI default | opus>  ·  max_rounds: <n>
 
 ### Ronda 1
 **Veredicto del revisor:** REVISE

@@ -347,9 +347,10 @@ al conductor (a diferencia de cross-review, que en Claude Code prefiere el camin
 ```bash
 # POSIX — el prompt ya está escrito a archivo con la tool Write (nunca inline, ni echo/heredoc):
 mkdir -p co-explore/scratch
-codex exec -s read-only -C <working_dir> --skip-git-repo-check \
+codex exec -s read-only -C <working_dir> --skip-git-repo-check --json \
     --output-last-message co-explore/scratch/explorer.out \
     - < co-explore/scratch/prompt.txt \
+    > co-explore/scratch/explorer-thread.jsonl \
     2> co-explore/scratch/explorer.err &
 PID=$!
 echo "$PID" > co-explore/scratch/explorer.pid
@@ -359,15 +360,31 @@ echo "$PID" > co-explore/scratch/explorer.pid
 New-Item -ItemType Directory -Force -Path co-explore\scratch | Out-Null
 $proc = Start-Process -FilePath codex -NoNewWindow -PassThru `
   -RedirectStandardInput  co-explore\scratch\prompt.txt `
+  -RedirectStandardOutput co-explore\scratch\explorer-thread.jsonl `
   -RedirectStandardError  co-explore\scratch\explorer.err `
-  -ArgumentList 'exec','-s','read-only','-C','<working_dir>','--skip-git-repo-check','--output-last-message','co-explore\scratch\explorer.out'
+  -ArgumentList 'exec','-s','read-only','-C','<working_dir>','--skip-git-repo-check','--json','--output-last-message','co-explore\scratch\explorer.out'
 $proc.Id | Out-File co-explore\scratch\explorer.pid
 ```
 
 `-s read-only` (`--sandbox read-only`) garantiza que el explorador no escribe nada en el repo;
 `--output-last-message` deja el informe final —el que debe terminar en `STATUS: done`— en
-`explorer.out`, listo para el poll del punto de encuentro (ver "Latencia y deadlines"). Codex
-reporta el session id en su salida; capturarlo si se quiere escribir `session.json`.
+`explorer.out`, listo para el poll del punto de encuentro (ver "Latencia y deadlines"). `--json`
+emite el stream de eventos JSONL por stdout (redirigido a `explorer-thread.jsonl`): la línea
+`{"type":"thread.started","thread_id":"…"}` aparece apenas arranca la sesión, y es la captura
+**determinística** del thread id para `session.json` — no "buscarlo en la salida humana":
+
+```bash
+# En cuanto interese el id (para explorer-session.txt / session.json):
+grep -m1 -o '"thread_id":"[^"]*"' co-explore/scratch/explorer-thread.jsonl | cut -d'"' -f4 \
+  > co-explore/scratch/explorer-session.txt
+```
+```powershell
+(Select-String -Path co-explore\scratch\explorer-thread.jsonl -Pattern '"thread_id":"([^"]+)"' |
+  Select-Object -First 1).Matches.Groups[1].Value > co-explore\scratch\explorer-session.txt
+```
+
+> **Prechequeos**: aplican los mismos de `sdd-cross-review/reference.md` → "Descubrir el revisor"
+> (versión del CLI, no pinear `-m`, eco del modelo activo de `~/.codex/config.toml`).
 
 **Invocación directa — autor GPT/Codex → explorador Claude.** Adaptado de
 `sdd-cross-review/reference.md` → Vía C, camino BACKGROUND (el mismo patrón que usa cross-review
@@ -474,7 +491,10 @@ corre desde el lanzamiento, no desde que el conductor vuelve a mirar.
    ├─ explorer.out                   # salida del explorador — termina en `STATUS: done`
    ├─ explorer.err                   # stderr del proceso del explorador
    ├─ explorer.pid                   # PID capturado al lanzar en background
-   └─ explorer-session.txt           # session id del explorador, si la vía lo genera (Vía C)
+   ├─ explorer-thread.jsonl          # stream JSONL de `codex exec --json` (Vía B) — de acá se
+   │                                 #   parsea el thread id (evento `thread.started`)
+   └─ explorer-session.txt           # session/thread id del explorador (Vía B: parseado del
+                                     #   jsonl; Vía C: generado con uuidgen)
 ```
 
 En `sdd-orchestrator` la raíz es `.sdd/<id>/co-explore/`, con los mismos nombres (ver `SKILL.md`
@@ -483,7 +503,8 @@ la raíz es un dir local untracked `.co-explore/<slug>/` en el repo (o un temp d
 debe tocarse), con los mismos nombres.
 
 **`session.json`.** Si el runtime del explorador expone una referencia de sesión reanudable
-(Vía B: session id de `codex exec`; Vía C: `$SESSION_ID`/`$SessionId` propio), escribir:
+(Vía B: el thread id parseado del evento `thread.started` de `explorer-thread.jsonl`; Vía C:
+`$SESSION_ID`/`$SessionId` propio), escribir:
 
 ```json
 { "tool": "codex", "session_id": "<id-o-ruta-que-permita-resume>", "mode": "explore", "created_at": "<ISO-8601>" }
