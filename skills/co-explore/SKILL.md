@@ -48,7 +48,11 @@ rationale auditable) y, en los modos SDD, más adelante la **crítica informada*
 `cross-review`, que recibe ese informe como contexto persistente en el gate. Esta skill
 **no revisa artefactos escritos** — eso lo hace `cross-review`: `co-explore` produce
 hallazgos e hipótesis propios que compiten con los del conductor, no una crítica de lo que el
-conductor ya escribió.
+conductor ya escribió. La frontera con el **modo draft** de `cross-review` es la misma, en clave
+**mapa vs veredicto**: co-explore corre cuando el terreno sigue abierto (aún no hay enfoque
+elegido — el valor está en dos mapas independientes); si el conductor ya eligió un enfoque y
+quiere que lo ataquen, eso es un veredicto sobre una decisión tomada → `cross-review` draft, no
+una co-exploración.
 
 ```
 paquete de contexto ──► [co-explore: revisor explora en background, read-only]
@@ -285,6 +289,7 @@ Nunca bloquea el flujo SDD. Cuatro vías de falla, todas con el mismo final:
 | "/co-explore `<ticket|descripción>`" | modo directo: `mode: explore`, corre la síntesis y presenta la conclusión |
 | "que Codex explore esto en paralelo" | modo directo `explore`, mismo flujo que arriba |
 | "/co-explore `<bug>`", "por qué falla X", "que Codex investigue este bug en paralelo" | modo directo: `mode: investigate`, corre la síntesis, presenta hipótesis rankeadas + plan de verificación, y ofrece el handoff a `systematic-debugging` |
+| "stress-test de este plan/idea" (enfoque ya elegido) | **no es co-explore**: es `cross-review` (modo draft) — crítica adversarial de una decisión ya tomada. co-explore aplica cuando el terreno está abierto: **mapa antes que veredicto** |
 | "con co-exploración" | override `on` para la corrida — lo registra la llamadora |
 | "sin co-exploración" | override `off` para la corrida — lo registra la llamadora |
 | (invocada por `sdd-flow`/`sdd-orchestrator` post-`gather-context` o pre-`plan`/reparto) | modo embebido (`explore`/`counter-plan`): explorar y devolver informe + resumen, sin STOP propio |

@@ -45,6 +45,9 @@ artefacto escrito ──► [cross-review] ──► artefacto (quizá revisado)
   critique") → **modo draft**: redacta un plan ligero desde la conversación + el código, lo somete
   al mismo loop y, al converger, ofrece el handoff a la implementación (inline o cruzada vía
   `cross-implement`, si está instalada). Es el punto de entrada portable, fuera de todo flujo SDD.
+  Regla rápida frente a `co-explore`: **¿mapa o veredicto?** — el draft ataca un enfoque **ya
+  elegido** (veredicto); si el terreno sigue abierto y falta entender qué existe y dónde tocar,
+  antes va `co-explore` (mapa).
 - La invocan `sdd-flow` y `sdd-orchestrator` en sus gates (modo embebido, vía Skill tool), si está
   instalada y la config no la desactiva.
 

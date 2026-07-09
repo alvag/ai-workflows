@@ -119,7 +119,11 @@ fuera de todo flujo SDD (inspirado en `codex-review` de chaseai):
 1. **Una sola pregunta si falta el objetivo.** Si la conversación no deja claro qué se quiere
    construir, preguntarlo (una vez). Si escribir el plan obliga a resolver ambigüedades de diseño
    más profundas, este modo no alcanza: ofrecer `sdd-flow` (con su `clarify`) en vez de un draft
-   con huecos.
+   con huecos. Y si lo que falta no es decisión sino **terreno** (no está claro qué existe en el
+   repo, dónde tocar, qué riesgos hay), el paso previo natural es `co-explore` — **mapa antes que
+   veredicto**: un draft escrito sin conocer el terreno le da al revisor un blanco flojo y quema
+   rondas en problemas que una exploración habría evitado (ver la fila de desambiguación del
+   router).
 2. **Planificar de verdad.** Leer el código relevante del repo (no planear en el aire) y escribir
    el plan a `.cross-review/<slug>/plan.md` — dir local untracked, mismo criterio que el modo
    directo de `co-explore` — con la estructura: `## Objetivo`, `## Enfoque` (pasos concretos),
@@ -242,6 +246,7 @@ nunca espera indefinida (ver `reference.md` → "Latencia y timeout").
 | "/cross-review `.plans/X/plan.md`", "revisa este plan con otra opinión" | revisar el artefacto nombrado (modo directo) |
 | "pídele a Codex que critique la spec", "segunda opinión del plan" | revisar el artefacto (modo directo) |
 | "/cross-review" sin ruta, "stress-test de esta idea", "arma un plan y que Codex lo critique" | **modo draft**: redactar el plan ligero + loop + ofrecer handoff (ver "Modo draft") |
+| "segunda opinión sobre esta idea" (ambiguo, sin artefacto) | desambiguar con **¿mapa o veredicto?** — ya hay un enfoque elegido y quiere que lo ataquen → modo draft (veredicto); todavía no hay enfoque y falta entender el terreno (qué existe, dónde tocar, riesgos) → `co-explore` (mapa), no esta skill |
 | (invocada por `sdd-flow`/`sdd-orchestrator` en un gate) | modo embebido: revisar y devolver resumen |
 | "sin cross-review", "salta la segunda opinión" | desactivar para la corrida (`mode: off`) |
 

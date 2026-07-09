@@ -64,6 +64,10 @@ cross-model — `co-explore` (explorar) · `cross-review` (criticar el diseño) 
 
 - **Para revisar artefactos ya escritos** (`spec.md`, `plan.md`, `tasks.md`, reparto): eso es
   `cross-review`. `co-explore` corre **antes** de que el artefacto exista.
+- **Para atacar un enfoque ya elegido** (aunque no haya artefacto): eso es el **modo draft** de
+  `cross-review`. Regla rápida: **¿mapa o veredicto?** — terreno abierto, sin enfoque decidido →
+  co-explore (mapa); enfoque ya decidido que quieres stress-testear → cross-review draft
+  (veredicto).
 - **Para arreglar o verificar el bug** (en `investigate`): la skill termina en hipótesis + plan de
   verificación; verificar/arreglar es `superpowers:systematic-debugging`, el paso siguiente.
 - **Para reemplazar la exploración del conductor:** no la sustituye, corre en paralelo con ella —
