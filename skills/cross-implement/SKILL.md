@@ -1,0 +1,185 @@
+---
+name: cross-implement
+description: >-
+  Implementación cruzada cross-model: el conductor (autor del plan) delega la
+  implementación de un work order CONGELADO a un modelo de otra familia (Codex
+  cuando conduce Claude; Claude cuando conduce Codex), que escribe código con
+  escritura acotada al working dir; el conductor revisa el diff completo como un
+  PR ajeno, corre la prueba él mismo, itera fixes en la misma sesión del
+  implementador (loop acotado) y es quien commitea tras el gate humano. Portable:
+  sirve para cualquier flujo donde uno planifica y el otro implementa; también la
+  invoca sdd-flow cuando implement_mode es "cross". Invocación directa:
+  "/cross-implement <ruta-del-work-order>", "que Codex implemente este plan",
+  "implementa esto con Codex y revisas tú". NO es para diseñar (el work order
+  debe existir y estar aprobado), NO para cambios triviales (~<20 líneas), NO
+  para revisar código existente (eso es code review) ni artefactos de diseño
+  (eso es sdd-cross-review). No invocarla espontáneamente: solo ante un pedido
+  explícito del usuario o invocada por sdd-flow.
+---
+
+# cross-implement — uno planifica, el otro implementa, el primero revisa
+
+Helper que **cruza los roles entre familias de modelos**: el conductor (el agente que escribió
+o posee el work order) no implementa — despacha la implementación completa a un modelo de la
+otra familia, con escritura acotada, y se queda con los dos roles que más valor tienen cruzados:
+**revisor del diff** (un revisor que no escribió el código, de otra familia, es genuinamente
+externo) y **verificador de la prueba** (la corre él mismo; el reporte del implementador es
+advisory). El humano entra en dos puntos: el kickoff y el sign-off del diff.
+
+El valor es el mismo que funda a `co-explore` y `sdd-cross-review`: romper la correlación de
+errores. Hoy, cuando un modelo implementa su propio plan, autor y revisor del código son el
+mismo modelo con los mismos puntos ciegos. Acá implementador y revisor son de familias distintas
+**por construcción**.
+
+```
+work order congelado ──► [implementador de otra familia: escribe, corre la prueba, reporta]
+   (spec/plan/tasks              │ escritura acotada al working dir, nunca commitea
+    aprobados, o contrato        ▼
+    destilado)          diff + reporte ──► conductor: lee el diff completo como PR ajeno,
+                                            corre la prueba él mismo, itera fixes (loop
+                                            acotado, misma sesión) ──► gate humano ──► commit
+                                                                                    (del conductor)
+```
+
+## Reglas no negociables
+
+1. **Work order congelado o nada (spec gate).** No se delega sin un contrato completo y aprobado:
+   spec/plan/tasks SDD, un plan que sobrevivió una revisión, o un contrato destilado con objetivo,
+   pasos, límites y prueba. El implementador arranca con CERO contexto de la sesión: todo lo que
+   necesita viaja en el prompt. Si escribir el work order obliga a tomar decisiones de diseño,
+   eso es diseño y se queda con el conductor — delegar diseño es cómo falla este patrón.
+2. **Clean-tree gate.** Antes de lanzar, `git status` limpio de código sin commitear (los locales
+   `.plans/`/`.specify/` no cuentan). Innegociable: el implementador escribe con libertad dentro
+   del working dir, y un árbol sucio impide aislar o revertir su diff.
+3. **Escritura acotada, nunca commit.** El implementador escribe SOLO dentro del `working_dir`
+   (sandbox `workspace-write` en Codex; permisos path-scoped en Claude — ver `reference.md` →
+   "Vías de invocación"; **nunca** modos de bypass total). No commitea, no pushea, no toca
+   `.plans/`/`.specify/` ni los archivos de trabajo de esta skill.
+4. **El reporte es advisory.** El conductor valida siempre por su cuenta: lee el **diff completo**
+   como un PR de un contribuidor externo, contrasta los archivos declarados contra `git status`,
+   y corre `proof_cmd` **él mismo** — la salida pegada por el implementador no cuenta como prueba.
+5. **Fix loop acotado, misma sesión.** Problemas encontrados → reanudar la MISMA sesión del
+   implementador (conserva su contexto; siempre con el override de sandbox explícito — el modo de
+   la sesión original no es garantía al reanudar) con la lista concreta de qué corregir. Máximo
+   `max_fix_rounds` (default 2); al agotarse, **takeover**: el conductor termina los fixes
+   directamente y lo registra. Nunca ping-pong indefinido.
+6. **El commit es del conductor, tras gate humano.** Presentar diff + prueba + rondas y esperar
+   confirmación. El implementador jamás commitea; el conductor tampoco auto-commitea.
+7. **Opcional y degradable.** Sin implementador de la otra familia disponible, o ante un fallo en
+   runtime o deadline vencido → `UNAVAILABLE` en una línea y el conductor implementa inline (su
+   rol de siempre). Nunca bloquea al flujo llamador.
+8. **Implementador de OTRA familia, por capacidad.** Misma regla 7 de `sdd-cross-review`: dos
+   familias (Claude y GPT/Codex), el autor es la del agente que conduce, el implementador es
+   siempre el de la otra. Algoritmo canónico en `sdd-cross-review/reference.md` → "Descubrir el
+   revisor"; acá la tabla invertida (con escritura) vive en `reference.md` → "Descubrir el
+   implementador".
+
+## Red flags — detente y reconsidera
+
+Ley fundamental:
+
+> **EL DIFF ES LA VERDAD, NO EL REPORTE.** Nada se acepta, se marca ni se commitea sin que el
+> conductor haya leído el diff completo y corrido la prueba él mismo (regla 4).
+
+| Racionalización | Realidad |
+|---|---|
+| "El reporte dice que la prueba pasó, avanzo" | La salida pegada no es evidencia. Correr `proof_cmd` fresco, leer salida + exit code (regla 4). |
+| "Es un cambio chico, igual lo delego" | ~<20 líneas: el overhead de delegar supera al cambio. Implementar inline. |
+| "El work order tiene un hueco, que el implementador decida" | Un hueco de diseño se resuelve ANTES de delegar (con el usuario o el flujo llamador), no en el prompt (regla 1). |
+| "Le doy acceso total así no falla por permisos" | Bypass de sandbox/permisos = regla 3 rota. Si el work order necesita escribir fuera del working dir, está mal recortado. |
+| "Una ronda más de fix y seguro sale" | `max_fix_rounds` es el tope. Al agotarse: takeover del conductor, registrado (regla 5). |
+| "El diff trae un cambio extra razonable, lo dejo pasar" | Todo hunk fuera del work order se reporta como drift: se pide su reversión en el fix round, o se declara explícitamente (en SDD: `## Extras`). Nada entra sin rastro. |
+| "El árbol está casi limpio, lanzo igual" | Clean-tree gate (regla 2): código sin commitear = diff imposible de aislar. Commitear/stashear antes. |
+
+## Contrato de invocación
+
+Quien la invoca (el usuario en modo directo, o `sdd-flow` en modo embebido) provee:
+
+- **`work_order`** — ruta(s) al contrato congelado: `.plans/<id>/` (spec+plan+tasks SDD), un
+  `PLAN.md`, o equivalente. En modo directo sin archivo, el conductor **destila** el contrato de
+  la conversación y lo escribe a `cross-implement/work-order.md` ANTES de lanzar (queda auditable
+  y respeta la regla 1).
+- **`working_dir`** — raíz del repo donde se implementa (límite de escritura del implementador).
+- **`proof_cmd`** — comando exacto que prueba el resultado (tests acotados, build, script). Si
+  falta y no se puede derivar del work order, **una sola pregunta** al usuario antes de lanzar.
+- **`max_fix_rounds`** — default 2.
+- **`execution`** — `auto | sync | background`. `auto`: sync con timeout largo si el conductor
+  puede fijarlo (Claude Code: Bash hasta 600000ms) y el work order es chico; background con
+  deadline y banner para work orders grandes o conductores de exec corto (Codex ~120s). Ver
+  `reference.md` → "Latencia, deadlines y banner".
+
+### Pasos de ejecución
+
+1. **Resolver el implementador** (regla 8) + prechequeos (versión del CLI, no pinear modelo, eco
+   del modelo activo — ver `reference.md` → "Descubrir el implementador"). Sin implementador →
+   `UNAVAILABLE`.
+2. **Gates previos**: work order existe y se lee como contrato (regla 1); clean-tree (regla 2);
+   `proof_cmd` resuelto. Cualquiera falla → no se lanza.
+3. **Armar el prompt-contrato** (`reference.md` → "Prompt del implementador": GOAL / SPEC / KEY
+   PATHS / CONSTRAINTS / NON-GOALS / PROOF / OUTPUT), escrito a archivo con la tool Write, y
+   **lanzar** por la vía de la familia (`reference.md` → "Vías de invocación"), capturando la
+   referencia de sesión para el fix loop.
+4. **Revisión del conductor** (regla 4): diff completo como PR ajeno; archivos declarados vs
+   `git status`; drift fuera del work order; `proof_cmd` fresco corrido por el conductor. Si el
+   work order es SDD, atribuir hunks a tasks y marcar `- [x]` las cubiertas. Checklist en
+   `reference.md` → "Revisión del conductor".
+5. **Fix loop** (regla 5): con problemas concretos, reanudar la misma sesión con el delta (qué
+   está mal, en qué archivo, qué prueba debe pasar). Re-revisar (paso 4) tras cada ronda. Al
+   agotar `max_fix_rounds` → **takeover** del conductor, registrado en el log.
+6. **Cierre**: registrar todo en el log (`reference.md` → "Log de implementación") y devolver el
+   resultado a la llamadora — o, en modo directo, presentar diff + prueba + rondas y ofrecer el
+   commit (que ejecuta el conductor tras confirmación, con la disciplina de commit del flujo que
+   corresponda).
+
+**Modo embebido (sdd-flow, `implement_mode: cross`):** esta skill cubre solo el paso 2 del "Paso
+común" de `implement` (aplicar los cambios). Todo lo demás sigue siendo del conductor en sdd-flow:
+tests+build completos, `verify` de AC con gate function, revisión manual, staging selectivo,
+commit y push con sus STOPs. El tope de `sdd-flow` ("3 fixes de la misma falla = problema de
+diseño → volver a plan/specify") manda por encima de `max_fix_rounds`.
+
+## Salida
+
+A la llamadora (o presentada al usuario en modo directo):
+
+- **Estado:** `IMPLEMENTED` (diff revisado + prueba en verde) | `PARTIAL` (takeover: qué quedó
+  hecho por el implementador y qué terminó el conductor) | `UNAVAILABLE`.
+- **Resumen del diff** (archivos, qué cambió) + salida de `proof_cmd` corrida por el conductor.
+- **Rondas usadas** y desviaciones del work order reportadas por el implementador.
+- **Ruta del log** (`implement-log.md`).
+
+## Router de intención
+
+| El usuario dice (ej.) | Acción |
+|---|---|
+| "/cross-implement `.plans/X/`", "/cross-implement `PLAN.md`" | modo directo con ese work order |
+| "que Codex implemente este plan", "implementa esto con Codex y revisas tú" | modo directo; si no hay archivo, destilar el work order primero (contrato de invocación) |
+| "que Claude implemente esto" (conduciendo Codex) | modo directo, vía inversa |
+| (invocada por `sdd-flow` con `implement_mode: cross`) | modo embebido: pasos 1-6, devolver salida sin STOP propio (los STOPs son de sdd-flow) |
+| "cambio de 3 líneas, delégalo igual" | advertir el overhead (red flag) y, si insiste, proceder — el pedido explícito manda |
+
+## Degradación
+
+Nunca bloquea. Cuatro vías de falla, mismo final — el conductor implementa inline:
+
+1. Skill no instalada → la llamadora la omite.
+2. Sin implementador de otra familia (CLI ausente, auth rota) → `UNAVAILABLE`.
+3. Fallo en runtime / deadline vencido → matar el proceso, conservar el diff parcial **solo si**
+   el conductor lo revisa y decide qué mantener (por default, revertirlo), registrar y `UNAVAILABLE`.
+4. Reporte no parseable → el diff sigue siendo la verdad: revisarlo igual (regla 4); solo se
+   pierde la narrativa del implementador.
+
+## Referencias internas
+
+- `reference.md` — "Descubrir el implementador", "Vías de invocación" (Codex/Claude, POSIX +
+  PowerShell, con matriz de verificación), "Prompt del implementador", "Revisión del conductor",
+  "Fix loop", "Latencia, deadlines y banner", "Archivos de trabajo (scratch)", "Log de
+  implementación".
+- `README.md` — qué es, cuándo usarla, requisitos e instalación.
+
+## Atribución
+
+El patrón "el otro modelo construye desde una spec congelada, el autor revisa el diff y exige
+prueba" está inspirado en la skill `codex-build` de chaseai (a su vez adaptada del patrón
+`codex-first` de Peter Steinberger). Acá se toma la **idea** con mecánica propia: bidireccional
+por familias, sandbox acotado en vez de bypass (`--yolo`), y contratos de invocación verificados
+end-to-end (ver `reference.md` → "Matriz de verificación").
