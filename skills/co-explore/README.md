@@ -41,9 +41,11 @@ causa raíz, en `investigate`) en méritos, y decide con rationale auditable en 
 En los modos SDD, ese mismo informe alimenta más adelante la **crítica informada** de
 `sdd-cross-review`: si esa skill está instalada, recibe `findings-<familia>.md` (y `session.json`,
 si existe) como contexto persistente del gate, en vez de partir de cero. `co-explore` **no revisa
-artefactos escritos** (eso es `sdd-cross-review`) **ni arregla el bug** (eso es
-`superpowers:systematic-debugging`): produce hallazgos e hipótesis propios que compiten con los
-del conductor.
+artefactos escritos** (eso es `sdd-cross-review`), **ni arregla el bug** (eso es
+`superpowers:systematic-debugging`), **ni implementa** (eso es `cross-implement`): produce
+hallazgos e hipótesis propios que compiten con los del conductor. Es la primera pieza del trío
+cross-model — `co-explore` (explorar) · `sdd-cross-review` (criticar el diseño) ·
+`cross-implement` (implementar cruzado) — todas opcionales, degradables y encadenables.
 
 ## Cuándo usarla
 

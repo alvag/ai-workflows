@@ -5,11 +5,14 @@ description: >-
   o adversarial", un "cross-review", una "mirada externa", o "que otro modelo o
   Codex revise/critique/desafíe" un artefacto de Spec-Driven Development (spec,
   plan, tasks, master-spec, reparto) antes de implementar o de un gate. También
-  la invocan sdd-flow y sdd-orchestrator en sus gates (modo embebido). NO es code
-  review: no usarla sobre diffs, PRs ni código fuente — solo documentos de diseño
-  SDD. No invocarla espontáneamente: solo ante un pedido explícito del usuario o
-  invocada por una skill SDD. Invocación directa:
-  "/sdd-cross-review <ruta-del-artefacto>".
+  la invocan sdd-flow y sdd-orchestrator en sus gates (modo embebido). También
+  cubre el caso "tengo una idea/plan claro pero ningún artefacto": modo draft —
+  redacta un plan ligero desde la conversación + el código y lo somete al mismo
+  loop ("stress-test de esta idea", "arma un plan y que Codex lo critique"). NO
+  es code review: no usarla sobre diffs, PRs ni código fuente — solo documentos
+  de diseño. No invocarla espontáneamente: solo ante un pedido explícito del
+  usuario o invocada por una skill SDD. Invocación directa:
+  "/sdd-cross-review <ruta-del-artefacto>", o sin ruta para el modo draft.
 ---
 
 # sdd-cross-review — segunda opinión cross-model para artefactos SDD
@@ -105,6 +108,34 @@ Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario) proveen:
   revisado) + un resumen de la crítica para que la llamadora lo presente en su gate.
 - *Directo* (lo llama el usuario con `/sdd-cross-review <ruta>`): infiere `artifact_type` por el
   nombre/encabezado del archivo, corre el loop y **presenta** el resultado al usuario.
+- *Draft* (directo **sin ruta**, con una idea/plan claro en la conversación): el conductor
+  redacta primero un plan ligero y lo somete al mismo loop — ver "Modo draft" abajo.
+
+## Modo draft (directo, sin artefacto)
+
+Para cuando hay una idea clara pero ningún artefacto que revisar — el punto de entrada portable,
+fuera de todo flujo SDD (inspirado en `codex-review` de chaseai):
+
+1. **Una sola pregunta si falta el objetivo.** Si la conversación no deja claro qué se quiere
+   construir, preguntarlo (una vez). Si escribir el plan obliga a resolver ambigüedades de diseño
+   más profundas, este modo no alcanza: ofrecer `sdd-flow` (con su `clarify`) en vez de un draft
+   con huecos.
+2. **Planificar de verdad.** Leer el código relevante del repo (no planear en el aire) y escribir
+   el plan a `.cross-review/<slug>/plan.md` — dir local untracked, mismo criterio que el modo
+   directo de `co-explore` — con la estructura: `## Objetivo`, `## Enfoque` (pasos concretos),
+   `## Decisiones y trade-offs` (las apuestas contestables, nombradas — los blancos del revisor),
+   `## Riesgos y preguntas abiertas`, `## Fuera de alcance`.
+3. **Correr el loop normal** con `artifact_type: plan`, `artifact_path` ese archivo,
+   `working_dir` el repo y `complexity` estimada (anunciarla). El `review-log.md` y el scratch
+   `cross-review/` quedan junto al plan draft.
+4. **Presentar** el plan convergido (o el deadlock con sus disputas, regla 2) y **ofrecer el
+   handoff**: implementarlo el conductor, o —si la skill `cross-implement` y el CLI de la otra
+   familia están disponibles— delegar la implementación cruzada con este plan como `work_order`
+   (el conductor revisa el diff). El código se escribe solo tras ese sign-off del usuario.
+
+El draft **no es** un `plan.md` de sdd-flow (sin header YAML, sin ciclo de status, sin rama): si
+el usuario quiere el ciclo completo con gates y verify, el camino es `sdd-flow` — este modo es el
+stress-test portable de una idea, no un flujo de desarrollo.
 
 ## Paso 0 — descubrir el revisor
 
@@ -210,6 +241,7 @@ nunca espera indefinida (ver `reference.md` → "Latencia y timeout").
 |---|---|
 | "/sdd-cross-review `.plans/X/plan.md`", "revisa este plan con otra opinión" | revisar el artefacto nombrado (modo directo) |
 | "pídele a Codex que critique la spec", "segunda opinión del plan" | revisar el artefacto (modo directo) |
+| "/sdd-cross-review" sin ruta, "stress-test de esta idea", "arma un plan y que Codex lo critique" | **modo draft**: redactar el plan ligero + loop + ofrecer handoff (ver "Modo draft") |
 | (invocada por `sdd-flow`/`sdd-orchestrator` en un gate) | modo embebido: revisar y devolver resumen |
 | "sin cross-review", "salta la segunda opinión" | desactivar para la corrida (`mode: off`) |
 
@@ -225,5 +257,6 @@ nunca espera indefinida (ver `reference.md` → "Latencia y timeout").
 
 El patrón de "revisión adversarial de otro modelo antes de implementar" está inspirado en la
 skill `grill-me-codex` de chaseai (su "Acto 2") y, más atrás, en `grill-me` de Matt Pocock
-(MIT). Acá se toma la **idea**, no el código: la implementación, el contrato con el runtime de
-Codex y la integración con el ciclo SDD son propios.
+(MIT); el **modo draft** ("redactar el plan primero y someterlo al loop") viene de su variante
+standalone `codex-review`. Acá se toma la **idea**, no el código: la implementación, el contrato
+con el runtime de Codex y la integración con el ciclo SDD son propios.

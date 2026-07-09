@@ -127,8 +127,9 @@ en la raíz del flujo:
 
 - **`scratch_dir` = `<dir del artefacto>/cross-review/`** — derivado del `artifact_path`
   (`dirname(artifact_path)/cross-review/`). Resuelve a `.plans/<id>/cross-review/` (sdd-flow,
-  sdd-pr-feedback) o `.sdd/<id>/cross-review/` (sdd-orchestrator), sin lógica especial por skill.
-  Crearlo antes de la ronda 1.
+  sdd-pr-feedback), `.sdd/<id>/cross-review/` (sdd-orchestrator) o
+  `.cross-review/<slug>/cross-review/` (modo draft, cuyo plan vive en `.cross-review/<slug>/plan.md`),
+  sin lógica especial por skill. Crearlo antes de la ronda 1.
 - **Nomenclatura**: `<artifact_type>-<tipo>-r<N>.txt`. El prefijo por `artifact_type` evita
   colisiones entre los gates de `spec`/`plan`/`tasks`. Ejemplos:
   `cross-review/spec-prompt-r1.txt`, `cross-review/spec-verdict-r1.txt`,
@@ -189,12 +190,14 @@ Descubrir por capacidad, no hardcodear ciegamente.
   stream de eventos JSONL por stdout — la línea `{"type":"thread.started","thread_id":"…"}` es la
   única captura **determinística** del session id, y ese id explícito es lo que usa el resume.
 - Rondas siguientes (mismo thread): el subcomando `resume` **no** acepta `-s`/`--sandbox` ni
-  `--color` ni `-C` — y **NO hereda el sandbox de la sesión original**: lo re-resuelve al
-  reanudar desde `~/.codex/config.toml` y los flags `-c`. Verificado 2026-07-09 con codex-cli
-  0.143.0: una sesión lanzada con `-s read-only` y reanudada con `-c sandbox_mode="workspace-write"`
-  **escribió un archivo**. Por eso el resume lleva SIEMPRE el override explícito
-  `-c sandbox_mode="read-only"` — sin él, el sandbox efectivo es el que tenga la config del
-  usuario (posiblemente de escritura):
+  `--color` ni `-C` — y el sandbox de la sesión original **NO es una garantía al reanudar**: un
+  `-c sandbox_mode` en el resume lo redefine en cualquier dirección. Verificado 2026-07-09 con
+  codex-cli 0.143.0: una sesión lanzada con `-s read-only` y reanudada con
+  `-c sandbox_mode="workspace-write"` **escribió un archivo**. Sin flags, en esas pruebas (config
+  sin `sandbox_mode`) el resume se comportó como la sesión original, pero ese default **no está
+  garantizado** entre versiones ni configs (grill-me-codex reporta que hereda `config.toml`,
+  posiblemente `danger-full-access`). Por eso el resume lleva SIEMPRE el override explícito
+  `-c sandbox_mode="read-only"` — el read-only del revisor nunca depende de un default:
   ```bash
   SESSION_ID=$(cat <ruta/al/session.txt>)
   echo "resume → ${SESSION_ID:?vacío}"   # eco visible + corte si quedó vacío (ver nota --last)

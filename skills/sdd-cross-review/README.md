@@ -7,6 +7,12 @@ forma adversarial en un loop acotado y read-only. La crítica se
 presenta junto al artefacto en el gate de aprobación: la persona decide con esa entrada ya a la
 vista.
 
+Es la segunda pieza del trío cross-model: **`co-explore`** (explorar/investigar en paralelo),
+**`sdd-cross-review`** (criticar el diseño antes de implementar) y **`cross-implement`**
+(implementación cruzada: uno planifica, el otro implementa, el primero revisa el diff). Las tres
+son opcionales, degradables y encadenables — dentro de SDD vía sus gates, o fuera como pipeline
+portable (draft → crítica → implementación cruzada).
+
 ## Por qué existe
 
 En el flujo SDD, el mismo modelo que escribe la spec/plan/tasks es —hoy— el único que los revisa
@@ -35,6 +41,10 @@ artefacto escrito ──► [sdd-cross-review] ──► artefacto (quizá revis
 - `/sdd-cross-review .plans/<id>/plan.md` → revisa ese artefacto (modo directo).
 - Pedidos en lenguaje natural: "revisa este plan con otra opinión", "segunda opinión de la spec",
   "pídele a Codex que critique el reparto" → el modelo puede invocarla directamente.
+- `/sdd-cross-review` **sin ruta** (o "stress-test de esta idea", "arma un plan y que Codex lo
+  critique") → **modo draft**: redacta un plan ligero desde la conversación + el código, lo somete
+  al mismo loop y, al converger, ofrece el handoff a la implementación (inline o cruzada vía
+  `cross-implement`, si está instalada). Es el punto de entrada portable, fuera de todo flujo SDD.
 - La invocan `sdd-flow` y `sdd-orchestrator` en sus gates (modo embebido, vía Skill tool), si está
   instalada y la config no la desactiva.
 
