@@ -158,7 +158,7 @@ jira_approval:                   # aprobación externa de la spec en Jira (opcio
   mode: "off"                    # "off" | "on"  (default off; entre comillas: sin ellas YAML los parsea como booleanos)
   subtask_issuetype: auto        # auto (descubrir por createmeta) | "Subtarea" | "Sub-task"
   approval_signal: ask           # ask | status:"<estado Jira que cuenta como aprobado>"
-implement_mode: ask              # cómo ejecutar las tasks: ask (preguntar en el último gate) | inline | subagent
+implement_mode: ask              # cómo ejecutar las tasks: ask (preguntar en el último gate) | inline | subagent | cross (delegar a la otra familia vía `cross-implement`; requiere esa skill + el CLI de la otra familia)
 domain_context:
   mode: auto                     # auto | "on" | "off"; solo lectura, nunca escribe ADRs/docs
   context_paths: []              # docs de dominio/glosarios/arquitectura a leer si existen
@@ -460,6 +460,13 @@ created_at: 2026-01-01T12:00:00-03:00
 
 ## Enfoque
 <estrategia técnica elegida; no listar alternativas descartadas>
+
+## Decisiones y trade-offs
+<las elecciones contestables del plan, nombradas explícitamente: qué se eligió y qué costo/riesgo
+se acepta a cambio. Son los blancos concretos de la revisión (cross-model o humana) — una decisión
+que no está acá no puede ser desafiada en el gate. No repite el Enfoque: lo descompone en sus
+apuestas.>
+- <decisión> — trade-off aceptado: <…>
 
 ## Contexto de dominio
 <paths de `domain_context` leídos + términos/ADRs aplicados. Omitir si no aplica.>

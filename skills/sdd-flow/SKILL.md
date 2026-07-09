@@ -86,7 +86,7 @@ Si reconoces alguno de estos pensamientos, es señal de detente: vuelve al paso 
 | "Arranco el flujo sin leer el config" | Antes de cualquier paso operativo se lee `.specify/config.yml` y se **ecoan** los valores resueltos de `tracker`, `cross_review.mode`, `domain_context.mode`, `final_diff_review.mode` y `jira_approval.mode`. Saltarlo es cómo se pierden cross-review, co-exploración (`co_explore`), contexto de dominio, revisión final y `publish-spec` en silencio (se aplican los defaults sin avisar). |
 | "Es trivial, salteo el gate y commiteo directo" | Trivial = 1 gate, no 0. La clasificación se **anuncia y se confirma siempre** (regla 2); no hay flujo con cero gates. |
 | "Los tests pasan, seguro cumple los AC" | Tests verdes ≠ AC cumplidos. `verify` recorre `AC-1..N` con evidencia fresca **antes** de commitear (paso `verify`, regla 7). |
-| "El subagente devolvió `STATUS: done`, marco la task `[x]`" | El reporte no es prueba. Validar `FILES` contra `git status` y revisar el diff antes de aceptar (modo subagent). |
+| "El subagente devolvió `STATUS: done`, marco la task `[x]`" | El reporte no es prueba. Validar `FILES` contra `git status` y revisar el diff antes de aceptar (modos subagent y cross). |
 | "Aprovecho y arreglo esto otro de paso, total es chico" | Si no mapea a un AC, se declara como `E-n` en `## Extras` antes de stagear — nada entra al commit sin rastro. |
 | "Ya gasté 3 intentos en este fix, con uno más sale" | 3 fixes fallidos de la misma falla = problema de diseño: volver a `plan`/`specify`, no intentar un fix #4 (ver `implement`). |
 | "Stageo todo lo que está dirty y después limpio" | Stage selectivo: solo `code_touched`; los archivos ajenos se confirman uno por uno (regla 8). |
@@ -114,7 +114,7 @@ cross_review: {mode: auto, execution: auto, co_explore: {mode: auto, deadline: 6
 domain_context: {mode: auto, context_paths: [], adr_paths: []}  # lectura de contexto/ADRs; ver "Contexto de dominio"
 final_diff_review: {mode: auto}  # revisión agregada de diff en cambios complex/high-risk inline
 jira_approval: {mode: "off"}  # aprobación externa de la spec en Jira ("off"|"on", entre comillas: sin ellas YAML los parsea como booleanos; solo si tracker: jira); ver paso `publish-spec`
-implement_mode: ask         # cómo ejecutar las tasks: ask (preguntar en el gate) | inline | subagent
+implement_mode: ask         # cómo ejecutar las tasks: ask (preguntar en el gate) | inline | subagent | cross
 ```
 
 Lo que no esté en `config.yml` se **autodetecta** por convención (detalle y comandos en `reference.md` → "Matriz de detección"):
@@ -158,6 +158,13 @@ Tras `gather-context`, clasificar el cambio, **anunciar la clasificación con su
 | **Complejo** | Varios módulos/subsistemas, lógica nueva, integraciones, o ambigüedad real en requisitos. | `spec.md` + `plan.md` + `tasks.md` separados, con **gate de `tasks` propio**. **3 gates** + cross-artifact check. | **Obligatorio**. |
 
 En la duda, subir un nivel: es más barato un gate de más que retrabajo.
+
+> **Señal de dominio high-stakes.** Auth/permisos, pagos, migraciones de datos o schema,
+> concurrencia y seguridad son caros de equivocar aunque toquen pocos archivos: un cambio **con
+> lógica en juego** en estos dominios se trata como **complejo** aunque sus señales de tamaño
+> digan *normal* — o, como mínimo, activa la revisión cross-model en *normal*. Anunciarlo en la
+> clasificación: "normal por tamaño, complex por dominio (auth)". (No aplica a cambios puramente
+> cosméticos en esos archivos: un typo en la UI de login sigue siendo trivial.)
 
 > **Gates vs checkpoints.** El contador (trivial=1 / normal=2 / complejo=3) cuenta solo los **gates de artefactos SDD** (`specify`, `plan`, `tasks`): los puntos donde el flujo se detiene a aprobar un artefacto. **No** son gates de complejidad: los **checkpoints informativos** (confirmar el contexto en `gather-context`, confirmar el nombre de rama en `create-branch`), los **setup checkpoints** de `init` y `constitution`, ni los **gates operativos** que existen siempre (revisión manual, commit, push).
 
@@ -283,7 +290,7 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
 | "sin cross-review", "salta la segunda opinión" / "con cross-review", "pide segunda opinión" | registra el **override de revisión cross-model** de la corrida (off/on; ver "Revisión cross-model") |
 | "con co-exploración", "que Codex explore en paralelo" / "sin co-exploración" | registra el **override de co-exploración** de la corrida (on/off; ver "Co-exploración cross-model") |
 | "sin aprobación de jira", "no subas la spec" / "con aprobación de jira", "sube la spec a revisión" | registra el **override de aprobación externa** de la corrida (off/on; ver `publish-spec`) |
-| "implementa con subagentes (frescos)" / "implementa acá mismo", "inline" | registra el **override del modo de implementación** de la corrida (subagent/inline; ver `implement` → "Modo de ejecución") |
+| "implementa con subagentes (frescos)" / "implementa acá mismo", "inline" / "implementa con Codex", "delega la implementación" | registra el **override del modo de implementación** de la corrida (subagent/inline/cross; ver `implement` → "Modo de ejecución") |
 | "analiza esto", "reproduce el bug", "dónde toco" | `analyze` |
 | "cómo lo hacemos", "arma el plan técnico" | `plan` → **GATE** |
 | "desglosa en tareas", "arma las tasks" | `tasks` → **GATE** |
@@ -309,7 +316,7 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
 2. **Leer la selección actual si existe.** Si ya hay `.specify/config.yml`, leerlo: sus valores son la **selección vigente** que el wizard mostrará **pre-seleccionada** — re-correr `init` no arranca de cero, muestra lo que está fijado hoy para mantener o cambiar. Respetar overrides puestos a mano.
 3. **Detectar el entorno** (rutina de "Adaptación al proyecto"): stack, `test_cmd`/`build_cmd`/`lint_cmd`/`test_scope_hint`, rama base, host de Git y tracker. El valor **leído del config existente** (paso 2) o, si no hay, el **detectado**, es el default de cada campo; lo que no se infiera queda como hueco a preguntar, nunca inventado.
 4. **Wizard de decisiones.** Si hay una herramienta de **selección interactiva** (p. ej. `AskUserQuestion` en Claude Code — descubrir por capacidad, no por nombre), presentar las opciones **con descripción**, marcando el valor **actual/detectado como recomendado** (etiqueta "(actual)"). Dos pantallas:
-   - **Pantalla 1:** `tracker` (jira · github · gitlab · none) · `commit_style` (conventional · plain) · `branch_prefix` (semántico `feature`/`fix`/… · fijo `feature/`) · `implement_mode` (ask · inline · subagent).
+   - **Pantalla 1:** `tracker` (jira · github · gitlab · none) · `commit_style` (conventional · plain) · `branch_prefix` (semántico `feature`/`fix`/… · fijo `feature/`) · `implement_mode` (ask · inline · subagent · cross).
    - **Pantalla 2:** `cross_review` (auto por complejidad · on · off) · `domain_context` (auto · on · off) · `final_diff_review` (auto · on · off) · `jira_approval` (off · on; solo si `tracker: jira`).
    - **Sin** herramienta de selección → **degradar** al modo conversacional: proponer los valores y confirmar (regla 6).
 5. **Comandos y paths autodetectados.** `test_cmd`/`build_cmd`/`lint_cmd`/`test_scope_hint` y los `domain_context.context_paths`/`adr_paths` **no** van al wizard (son texto libre/listas, no elecciones): se autodetectan y se muestran en el preview final (paso 6), donde el usuario puede **editarlos**.
@@ -350,9 +357,11 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
 
 Obligatorio en cambios *complejos*; en *normales* solo si hay ambigüedad; se saltea en *triviales*.
 
-1. Hacer preguntas de cobertura, **una a una**, enfocadas en cerrar ambigüedades que cambiarían el diseño (no detalles cosméticos).
-2. Registrar cada Q&A en la sección `## Clarifications` de `spec.md` (queda auditable, no solo en el chat).
-3. Si una respuesta altera los criterios de aceptación, actualizar los `AC-n` y volver al gate de `specify`.
+1. **El código responde primero.** Antes de preguntar algo al usuario, chequear si el repo lo responde (grep/lectura puntual): una pregunta cuya respuesta vive en el código es ruido en el gate. Al usuario solo llegan las que requieren una decisión o conocimiento que el código no tiene.
+2. Hacer las preguntas de cobertura **una a una**, recorriendo el árbol de decisiones **en orden de dependencia** — primero las que condicionan a las demás; cada respuesta abre o cierra ramas —, enfocadas en cerrar ambigüedades que cambiarían el diseño (no detalles cosméticos).
+3. **Cada pregunta lleva una respuesta recomendada** con su porqué. Con herramienta de selección interactiva (p. ej. `AskUserQuestion` — descubrir por capacidad), la recomendada va primera y marcada "(Recomendada)"; sin ella, proponerla conversacionalmente. El usuario decide; la recomendación solo baja el costo de decidir.
+4. Registrar cada Q&A en la sección `## Clarifications` de `spec.md` (queda auditable, no solo en el chat).
+5. Si una respuesta altera los criterios de aceptación, actualizar los `AC-n` y volver al gate de `specify`.
 
 ## Paso `publish-spec` (aprobación externa de la spec — Jira, opcional)
 
@@ -399,7 +408,7 @@ Obligatorio en cambios *complejos*; en *normales* solo si hay ambigüedad; se sa
 **Objetivo:** dejar el **CÓMO** técnico en `plan.md`, con header YAML para bootstrap.
 
 1. Estando ya en la rama feature (creada en `create-branch`), obtener `base_commit` = `git rev-parse HEAD` y la fecha ISO-8601 actual. Si en `create-branch` se resolvió una `base_branch` **distinta de `default_branch`** (override de base), conservarla para el header (define el destino del PR); si coincide con `default_branch`, se omite del header.
-2. Escribir `plan.md` con el header YAML obligatorio + secciones de enfoque, contexto de dominio aplicado (si hubo `domain_context`), archivos a tocar, tests/build y verificación. Plantilla en `reference.md` → "Plantilla de plan". **Sin placeholders:** nada de `TBD`, `TODO`, "agregar manejo de errores apropiado" o "etc." colgados — cada sección con contenido real (ruta, comando, enfoque). Si algo no se puede precisar todavía, falta `clarify`; no es un placeholder.
+2. Escribir `plan.md` con el header YAML obligatorio + secciones de enfoque, decisiones y trade-offs (las elecciones contestables, nombradas explícitamente — blancos para la revisión del gate), contexto de dominio aplicado (si hubo `domain_context`), archivos a tocar, tests/build y verificación. Plantilla en `reference.md` → "Plantilla de plan". **Sin placeholders:** nada de `TBD`, `TODO`, "agregar manejo de errores apropiado" o "etc." colgados — cada sección con contenido real (ruta, comando, enfoque). Si algo no se puede precisar todavía, falta `clarify`; no es un placeholder.
 3. El header YAML es la fuente del bootstrap y del retomado (paso `resume`):
 
    ```yaml
@@ -416,7 +425,7 @@ Obligatorio en cambios *complejos*; en *normales* solo si hay ambigüedad; se sa
    ```
 
    Al crear el `plan.md`, escribir `status: planned`.
-4. **STOP** — si la **revisión cross-model** está activa (ver "Revisión cross-model"), ejecutar `sdd-cross-review` sobre `plan.md` con `spec` + `domain_context` resuelto como contexto (con co-exploración: sumar `co-explore/findings-<familia>.md` y `co-explore/counter-plan-<familia>.md` como contexto — ver "Co-exploración cross-model") antes de presentar (en *normal*, sobre plan + tasks juntos). Presentar el plan (con el resumen de crítica, si lo hubo) y pedir aprobación. En *trivial* este es el último gate antes de implementar (tasks inline en `## Tasks`). En *normal*, **antes del STOP se ejecuta el paso `tasks`** (se escribe `tasks.md`) y este gate presenta **plan + tasks juntos** (un solo STOP, sin gate extra). En *complejo*, el plan se aprueba acá y el gate de `tasks` es independiente y posterior (ver paso `tasks`). En todos, al aprobar el último gate aplicable, pasar `status` a `tasks-ready`. Si este es el **último gate antes de implementar** (*normal*) y el modo de implementación resuelto es `ask`, incluir en el **mismo STOP** la pregunta del modo: ¿implemento acá (inline) o despacho subagentes frescos por task? (ver `implement` → "Modo de ejecución"; sin gate extra; en *trivial* no se pregunta: default `inline`).
+4. **STOP** — si la **revisión cross-model** está activa (ver "Revisión cross-model"), ejecutar `sdd-cross-review` sobre `plan.md` con `spec` + `domain_context` resuelto como contexto (con co-exploración: sumar `co-explore/findings-<familia>.md` y `co-explore/counter-plan-<familia>.md` como contexto — ver "Co-exploración cross-model") antes de presentar (en *normal*, sobre plan + tasks juntos). Presentar el plan (con el resumen de crítica, si lo hubo) y pedir aprobación. En *trivial* este es el último gate antes de implementar (tasks inline en `## Tasks`). En *normal*, **antes del STOP se ejecuta el paso `tasks`** (se escribe `tasks.md`) y este gate presenta **plan + tasks juntos** (un solo STOP, sin gate extra). En *complejo*, el plan se aprueba acá y el gate de `tasks` es independiente y posterior (ver paso `tasks`). En todos, al aprobar el último gate aplicable, pasar `status` a `tasks-ready`. Si este es el **último gate antes de implementar** (*normal*) y el modo de implementación resuelto es `ask`, incluir en el **mismo STOP** la pregunta del modo: ¿implemento acá (inline), despacho subagentes frescos por task, o delego la implementación al modelo de la otra familia y yo reviso el diff (`cross`, solo si la capacidad está disponible)? (ver `implement` → "Modo de ejecución"; sin gate extra; en *trivial* no se pregunta: default `inline`).
 
 ### Ciclo de `status` (estado persistido del flujo)
 
@@ -447,7 +456,7 @@ Antes de que exista `plan.md` (fase `specify`/`clarify`, o el gate de Jira), no 
    - **Cobertura de spec** (cross-artifact check): cada `AC-n` tiene ≥1 task y ninguna task carece de AC. Reportar huérfanos antes del gate.
    - **Scan anti-placeholder:** ni plan ni tasks tienen `TBD`, `TODO`, "agregar X apropiado", "similar a la Task N" o "etc." colgados; cada paso con contenido real (ruta, comando, firma). Un hueco que no se puede precisar es señal de que falta `clarify`.
    - **Consistencia de interfaces:** lo declarado en **Produce** coincide exacto con quien lo **Consume** (mismo nombre, misma firma) — el desajuste rompe el modo subagent.
-4. **STOP** — en *complejo* (gate propio), si la **revisión cross-model** está activa para `tasks` (ver "Revisión cross-model"), ejecutar `sdd-cross-review` sobre `tasks.md` con `spec`+`plan`+`domain_context` resuelto como contexto antes de presentar. Presentar las tasks (con el resumen de crítica, si lo hubo) y pedir aprobación. En *complejo* es un gate **propio** (STOP independiente tras el plan). En *normal* las tasks se presentan **junto al plan** en el gate de `plan` (sin STOP adicional; la revisión, si aplica, ya cubrió plan+tasks ahí). Al aprobarlas, pasar `status` a `tasks-ready`. En *complejo*, si el modo de implementación resuelto es `ask`, incluir en este **mismo STOP** la pregunta del modo: ¿inline o subagentes frescos por task? (ver `implement` → "Modo de ejecución"; sin gate extra).
+4. **STOP** — en *complejo* (gate propio), si la **revisión cross-model** está activa para `tasks` (ver "Revisión cross-model"), ejecutar `sdd-cross-review` sobre `tasks.md` con `spec`+`plan`+`domain_context` resuelto como contexto antes de presentar. Presentar las tasks (con el resumen de crítica, si lo hubo) y pedir aprobación. En *complejo* es un gate **propio** (STOP independiente tras el plan). En *normal* las tasks se presentan **junto al plan** en el gate de `plan` (sin STOP adicional; la revisión, si aplica, ya cubrió plan+tasks ahí). Al aprobarlas, pasar `status` a `tasks-ready`. En *complejo*, si el modo de implementación resuelto es `ask`, incluir en este **mismo STOP** la pregunta del modo: ¿inline, subagentes frescos por task, o delegación cross-model con revisión del conductor (`cross`, si la capacidad está disponible)? (ver `implement` → "Modo de ejecución"; sin gate extra).
 
 ## `handoff.md` (retomado del flujo)
 
@@ -572,14 +581,15 @@ Disparador: `/sdd-flow implement <ruta-carpeta>` (p. ej. `.plans/ABC-123/`), o l
 1. Leer `plan.md` (**obligatorio**: contiene el header YAML). Leer `spec.md` y `tasks.md` **solo si existen**; si no, tomar la spec y/o las tasks de las secciones embebidas `## Spec` / `## Tasks` del propio `plan.md`. La `complexity` del header indica qué esperar: `trivial` → todo embebido en `plan.md`; `normal` → `spec.md` + `tasks.md` separados; `complex` → `spec.md` + `tasks.md` separados (con gate de tasks propio).
 2. Confirmar el resumen extraído (incluido el `status` y las tasks pendientes) antes de avanzar al "Paso común".
 
-### Modo de ejecución (`inline` | `subagent`)
+### Modo de ejecución (`inline` | `subagent` | `cross`)
 
-Ortogonal a las Vías A/B: se llegue por la sesión actual o por bootstrap, las tasks se ejecutan en uno de dos modos.
+Ortogonal a las Vías A/B: se llegue por la sesión actual o por bootstrap, las tasks se ejecutan en uno de tres modos.
 
 - **`inline`** — la propia sesión implementa cada task (el comportamiento de siempre). El contexto acumulado ayuda, pero arrastra el ruido de specify/plan/cross-review.
 - **`subagent`** — cada task la implementa un **agente fresco** que solo lee los artefactos (spec/plan/su task), con contexto limpio. El conductor revisa entre tasks y conserva todos los STOPs.
+- **`cross`** — la implementación completa la delega la skill **`cross-implement`** a un modelo de **otra familia** (Codex cuando conduce Claude; Claude cuando conduce Codex), con escritura acotada al repo; el conductor revisa el diff como un PR ajeno y corre la prueba él mismo. El valor: implementador y revisor del código son de familias distintas por construcción (en `inline`/`subagent` son el mismo modelo). Requiere la skill `cross-implement` instalada **y** el CLI de la otra familia disponible — descubrir ambas por capacidad; si falta cualquiera, el modo no se ofrece.
 
-Resolución (misma precedencia que el resto de overrides SDD): **override conversacional de la corrida** ("implementa con subagentes" / "implementa acá") > **`implement_mode`** del `config.yml` > default `ask` (preguntar en el último gate antes de implementar, dentro del mismo STOP — nunca un gate extra). Excepción: en *trivial* el default efectivo es `inline` sin pregunta (1-2 tasks mecánicas no ameritan despacho); el override conversacional sigue valiendo. Si el entorno **no tiene capacidad** de despachar agentes frescos (descubrirla por capacidad, no por nombre — ver `reference.md` → "Prompt del subagente por task"), avisar en una línea y seguir `inline` (degradación estándar, regla 6).
+Resolución (misma precedencia que el resto de overrides SDD): **override conversacional de la corrida** ("implementa con subagentes" / "implementa acá" / "implementa con Codex") > **`implement_mode`** del `config.yml` > default `ask` (preguntar en el último gate antes de implementar, dentro del mismo STOP — nunca un gate extra; la opción `cross` se incluye en la pregunta solo si su capacidad está disponible). Excepción: en *trivial* el default efectivo es `inline` sin pregunta (1-2 tasks mecánicas no ameritan despacho — regla que también excluye a `cross`: delegar ~<20 líneas cuesta más que hacerlas); el override conversacional sigue valiendo. Si el entorno **no tiene capacidad** de despachar agentes frescos (descubrirla por capacidad, no por nombre — ver `reference.md` → "Prompt del subagente por task"), o si falta la capacidad de `cross`, avisar en una línea y seguir con los modos disponibles (degradación estándar, regla 6).
 
 ### Paso común — Implementación
 
@@ -587,7 +597,7 @@ Resolución (misma precedencia que el resto de overrides SDD): **override conver
    - `code_touched` — código/producto que tocó la skill (candidatos a commit).
    - `sdd_local` — `.plans/`, `.specify/` (locales, nunca se commitean).
    - `generated` — artefactos de tests/build (caches, `dist/`, `__pycache__/`, …; nunca se commitean).
-2. **Aplicar cambios** task por task según el **modo de ejecución** resuelto (ver arriba). Al iniciar este paso, poner `status: implementing` en el header del `plan.md`. En ambos modos: marcar cada task `- [x]` al completarla (es el detalle fino del progreso que `resume` usa para saber por dónde seguir) y reutilizar lo identificado en `analyze`.
+2. **Aplicar cambios** según el **modo de ejecución** resuelto (ver arriba). Al iniciar este paso, poner `status: implementing` en el header del `plan.md`. En todos los modos: marcar cada task `- [x]` al completarla (es el detalle fino del progreso que `resume` usa para saber por dónde seguir) y reutilizar lo identificado en `analyze`.
    - **Modo `inline`:** la propia sesión implementa cada task. Para tasks de comportamiento con un
      seam testeable, seguir los Pasos roja-verde propuestos en `tasks.md` (test que debería fallar
      → implementación mínima → test verde). Si la task es mecánica o no tiene seam razonable, no
@@ -600,7 +610,8 @@ Resolución (misma precedencia que el resto de overrides SDD): **override conver
      3. Si `STATUS: failed`, o el reviewer reprueba spec/calidad: **máximo 1 reintento**, re-despachando al implementer con el feedback concreto de qué corregir. Si vuelve a fallar, parar y escalar al usuario con el estado — nunca un loop abierto.
      4. Red de seguridad: si el reporte falta o no parsea, clasificar por `git status` + diff; las marcas `[x]` y el `status` del header siguen siendo la fuente de verdad del progreso. **Ante una compactación de contexto**, confiar en esa fuente persistida (`status` + marcas `[x]` + `git log`), no en la memoria de la sesión.
      5. Scratch opcional: si el reporte del implementer/reviewer aporta valor para auditoría o retomado, guardarlo en `.plans/<id>/work/Tn-*.md`. Ese directorio es **scratch local**: no se commitea, no reemplaza `tasks.md`, no contiene `progress.md`, y nunca decide qué task está completa.
-   Los pasos 3-10 de abajo (tests+build completos, `verify` de AC, revisión manual, staging, commit, push, PR opcional) los ejecuta **siempre el conductor en esta sesión**, en ambos modos: los STOPs no funcionan dentro de un subagente.
+   - **Modo `cross`:** invocar la skill **`cross-implement`** (Skill tool) con `work_order: .plans/<id>/` (en retomados, indicando que las tasks ya `[x]` quedan fuera del alcance), `working_dir` = raíz del repo, `proof_cmd` derivado de `test_cmd`/`test_scope_hint` acotado al cambio, y `execution` según el tamaño del work order. La skill delega la implementación **completa** al modelo de la otra familia (escritura acotada, nunca commitea) y guía la revisión del conductor: diff completo como PR ajeno, archivos declarados vs `git status` (alimenta `code_touched`, regla 8), prueba corrida por el conductor, y fix loop acotado reanudando la misma sesión. Al aceptar el diff, el conductor atribuye hunks a tasks y marca `- [x]` solo las efectivamente cubiertas; el drift fuera del work order se revierte o se declara en `## Extras`. **El tope de diseño de esta skill manda:** 3 fallos de la misma falla = volver a `plan`/`specify`, aunque queden fix rounds (ver paso 3). Si la skill devuelve `UNAVAILABLE` o `PARTIAL`, el conductor sigue/termina inline con lo revisado hasta ahí. El detalle del contrato vive en `cross-implement` (dependencia blanda: sin ella, este modo no existe).
+   Los pasos 3-10 de abajo (tests+build completos, `verify` de AC, revisión manual, staging, commit, push, PR opcional) los ejecuta **siempre el conductor en esta sesión**, en todos los modos: los STOPs no funcionan dentro de un subagente ni de un implementador delegado.
 3. **Tests + build** con los comandos detectados/configurados (+ `lint_cmd` si está configurado). Acotar tests al código tocado si el runner lo permite (`test_scope_hint`). Si algo falla: **no commitear**; antes de parchar, aplicar **debugging sistemático** — formular **una** hipótesis ("creo que la causa raíz es X porque Y") y probarla mínimamente, en vez de prueba y error (skill de debugging sistemático si está disponible, o el método inline; ver `analyze` y `reference.md` → "Matriz de detección"). Mostrar el error + la hipótesis, aplicar el fix y volver al paso 2. **Tope: 3 fixes fallidos de la misma falla = problema de diseño** — parar y volver a `plan`/`specify`, no intentar un fix #4.
 4. **`verify` de los AC** (ver paso `verify`): recorrer `AC-1..N` con la gate function y marcar cumplido/no cumplido con evidencia fresca. Si alguno falla: **no commitear**, reportar y volver al paso 2 (con el mismo debugging sistemático del paso 3; mismo tope de 3 intentos), o a `plan`/`specify` si el gap es de diseño. Solo se commitea con **todos los AC en verde**; cuando lo estén, `verify` persiste el resultado y deja `status: verified`. Verificar antes del commit evita commits/push que después no cumplen lo pedido.
 5. **Gate de revisión manual (STOP):** con tests+build OK y AC verificados, ofrecer revisar (levantar la app, `git diff`, repasar la sección Verification del plan) antes de commitear. Salteable con "commitea directo". Si `final_diff_review.mode` está `on`, o está `auto` y el flujo es `complex`/high-risk ejecutado `inline`, ofrecer en este mismo gate una revisión agregada del diff completo contra spec + estándares del repo: usar un reviewer fresco por capacidad (mismo contrato que el reviewer por-task: **SPEC** y **QUALITY**) o, sin esa capacidad, revisión liviana del conductor. Es una revisión de diff **same-model/de capacidad**, no conformance cross-model; el gate cross-model pre-commit sigue diferido salvo dolor concreto.

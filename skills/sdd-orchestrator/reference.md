@@ -39,6 +39,7 @@ master_spec: .sdd/ABC-123/master-spec.md
 created_at: 2026-06-03T12:00:00-03:00
 branch_prefix: ""              # opcional; prefijo único de la orquestación; vacío → semántico por repo (features: feature/, nunca feat/)
 execution_mode: fanout         # opcional; fanout (agentes paralelos, default) | inline (en la sesión del orquestador, de a un repo)
+implement_mode: ""             # opcional; modo de implementación que heredan los sdd-flow delegados: inline | subagent | cross (vacío → cada sdd-flow resuelve el suyo: config del repo > default). `cross` exige la capacidad (skill cross-implement + CLI de la otra familia) en el contexto del agente delegado
 # outcome: aborted             # solo si la orquestación terminó abortada (sub-paso `abort`)
 cross_review:                  # opcional; segunda opinión cross-model (ver skill sdd-cross-review)
   mode: auto                   # auto | on | off
@@ -52,6 +53,7 @@ repos:
     status: tasks-ready        # ver "Valores de status"
     depends_on: []             # lista de paths de los que depende (DAG)
     covers_ac: [AC-1, AC-2]    # qué AC globales cubre este repo
+    # implement_mode: cross    # opcional; override por repo del implement_mode de la orquestación
   - path: servicio-b
     branch: feature/ABC-123-consume-health
     status: planned
