@@ -13,7 +13,7 @@ description: >-
   "implementa esto con Codex y revisas tú". NO es para diseñar (el work order
   debe existir y estar aprobado), NO para cambios triviales (~<20 líneas), NO
   para revisar código existente (eso es code review) ni artefactos de diseño
-  (eso es sdd-cross-review). No invocarla espontáneamente: solo ante un pedido
+  (eso es cross-review). No invocarla espontáneamente: solo ante un pedido
   explícito del usuario o invocada por sdd-flow.
 ---
 
@@ -26,7 +26,7 @@ otra familia, con escritura acotada, y se queda con los dos roles que más valor
 externo) y **verificador de la prueba** (la corre él mismo; el reporte del implementador es
 advisory). El humano entra en dos puntos: el kickoff y el sign-off del diff.
 
-El valor es el mismo que funda a `co-explore` y `sdd-cross-review`: romper la correlación de
+El valor es el mismo que funda a `co-explore` y `cross-review`: romper la correlación de
 errores. Hoy, cuando un modelo implementa su propio plan, autor y revisor del código son el
 mismo modelo con los mismos puntos ciegos. Acá implementador y revisor son de familias distintas
 **por construcción**.
@@ -68,9 +68,9 @@ work order congelado ──► [implementador de otra familia: escribe, corre la
 7. **Opcional y degradable.** Sin implementador de la otra familia disponible, o ante un fallo en
    runtime o deadline vencido → `UNAVAILABLE` en una línea y el conductor implementa inline (su
    rol de siempre). Nunca bloquea al flujo llamador.
-8. **Implementador de OTRA familia, por capacidad.** Misma regla 7 de `sdd-cross-review`: dos
+8. **Implementador de OTRA familia, por capacidad.** Misma regla 7 de `cross-review`: dos
    familias (Claude y GPT/Codex), el autor es la del agente que conduce, el implementador es
-   siempre el de la otra. Algoritmo canónico en `sdd-cross-review/reference.md` → "Descubrir el
+   siempre el de la otra. Algoritmo canónico en `cross-review/reference.md` → "Descubrir el
    revisor"; acá la tabla invertida (con escritura) vive en `reference.md` → "Descubrir el
    implementador".
 

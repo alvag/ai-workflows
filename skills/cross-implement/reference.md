@@ -22,14 +22,14 @@ conductor, el fix loop, los tiempos y los archivos de trabajo.
 
 ## Portabilidad entre shells (POSIX / PowerShell)
 
-Mismo criterio que `sdd-cross-review/reference.md` → "Portabilidad entre shells": esa sección es
+Mismo criterio que `cross-review/reference.md` → "Portabilidad entre shells": esa sección es
 la fuente canónica de las equivalencias (detección de binarios, prompt por archivo a stdin, UUID,
 background y kill). No se duplican acá. Regla invariante idéntica: el prompt **se escribe a
 archivo con la tool Write** (nunca inline ni `echo`/heredoc) y llega por stdin.
 
 ## Descubrir el implementador
 
-El algoritmo canónico de identificación de familia vive en `sdd-cross-review/reference.md` →
+El algoritmo canónico de identificación de familia vive en `cross-review/reference.md` →
 "Descubrir el revisor" (autor = la familia del agente que conduce, sin importar la superficie).
 Acá cambia el rol buscado: no un crítico read-only sino un **implementador con escritura acotada**.
 
@@ -38,7 +38,7 @@ Acá cambia el rol buscado: no un crítico read-only sino un **implementador con
 | Claude | Codex | `command -v codex` (PowerShell: `Get-Command codex -ErrorAction SilentlyContinue`) | Vía W-B (workspace-write) |
 | GPT/Codex | Claude | `command -v claude` | Vía W-C (permisos path-scoped) |
 
-**Prechequeos** — los mismos de `sdd-cross-review/reference.md` → "Descubrir el revisor" →
+**Prechequeos** — los mismos de `cross-review/reference.md` → "Descubrir el revisor" →
 "Prechequeos" (versión del CLI, no pinear `-m`, eco del modelo activo), registrando el modelo en
 el `implement-log.md`.
 
@@ -78,7 +78,7 @@ Dos reglas invariantes (además de las del `SKILL.md`):
 - `-s workspace-write` limita las escrituras al `working_dir` **más `/tmp`** (por diseño del
   sandbox). Caveat: si el repo objetivo vive bajo `/tmp`, el borde efectivo es más laxo.
 - **Fix round** (resume del MISMO thread; el override de sandbox es **obligatorio** — el modo de
-  la sesión original no es garantía al reanudar, ver `sdd-cross-review/reference.md` → Vía B):
+  la sesión original no es garantía al reanudar, ver `cross-review/reference.md` → Vía B):
   ```bash
   SESSION_ID=$(cat <scratch>/session.txt)
   echo "resume → ${SESSION_ID:?vacío}"   # id vacío = sesión fresca silenciosa; cortar acá
@@ -125,7 +125,7 @@ limitan la escritura al working dir:
       < <scratch>/fix-rN.txt ) > <scratch>/report.txt 2> <scratch>/impl.err.txt
   ```
 - Con conductor de exec corto (Codex ~120s): lanzar en background y pollear el `report.txt`
-  buscando `STATUS: done` — mismo patrón BACKGROUND de `sdd-cross-review/reference.md` → "Latencia
+  buscando `STATUS: done` — mismo patrón BACKGROUND de `cross-review/reference.md` → "Latencia
   y timeout (Claude revisor)", con el deadline de esta skill.
 
 ## Matriz de verificación

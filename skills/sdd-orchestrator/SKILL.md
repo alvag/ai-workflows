@@ -103,15 +103,15 @@ Esta skill **requiere** `sdd-flow` instalada en el entorno. Antes de la Fase 2, 
 ## Revisión cross-model (segunda opinión, opcional)
 
 En la Fase 1, antes de los gates de `master-spec.md` y de reparto, si está disponible la skill
-**`sdd-cross-review`** se puede correr una **segunda opinión de un modelo de otra familia que el
+**`cross-review`** se puede correr una **segunda opinión de un modelo de otra familia que el
 autor** (Codex cuando conduce Claude; Claude cuando conduce Codex) sobre
 esos artefactos, en read-only. Es el candidato más fuerte de todo el flujo SDD: los **contratos
 entre servicios** y los **AC `[integration]`** son justo donde un segundo modelo caza
 inconsistencias que un humano pasa por alto. **Augmenta el gate, no lo reemplaza.**
 
-- **Dependencia blanda.** Si `sdd-cross-review` no está instalada, omitir la revisión y seguir con
+- **Dependencia blanda.** Si `cross-review` no está instalada, omitir la revisión y seguir con
   el gate humano normal. Detectarla por capacidad (regla 8). Si está instalada, invocarla con el
-  **Skill tool** (`sdd-cross-review`; esa skill sí es invocable por el modelo). (Distinta de
+  **Skill tool** (`cross-review`; esa skill sí es invocable por el modelo). (Distinta de
   `sdd-flow`, que **sí** es dependencia dura: sin ella no hay Fase 2.)
 - **Qué se revisa y dónde:** `master-spec` (foco en contratos y AC `[integration]`) en el gate 1.3,
   y `reparto` (foco en cobertura AC↔repo, `depends_on` y ciclos del DAG) en el gate 1.4. El
@@ -133,7 +133,7 @@ inconsistencias que un humano pasa por alto. **Augmenta el gate, no lo reemplaza
   gate humano. Misma filosofía que la regla 8.
 
 > Detalle del loop, el contrato con el revisor (Codex o Claude según quién conduzca) y el formato del log viven en la propia
-> `sdd-cross-review`. Acá el orquestador solo decide **cuándo** invocarla y **presenta** su salida.
+> `cross-review`. Acá el orquestador solo decide **cuándo** invocarla y **presenta** su salida.
 
 ## Co-exploración cross-model (opcional)
 
@@ -165,7 +165,7 @@ en la propia `co-explore`; acá solo cuándo se despacha y qué contexto recibe.
   son el caso complejo por definición, igual que su cross-review. Deadlines: usar los de
   `complexity: complex` (600 s) como piso.
 - **Crítica informada.** Los informes se pasan como `context_paths` adicionales a
-  `sdd-cross-review` en la revisión de `master-spec` (gate 1.3) y de `reparto` (gate 1.4).
+  `cross-review` en la revisión de `master-spec` (gate 1.3) y de `reparto` (gate 1.4).
 - **Sin doble co-exploración.** La Fase 2 ya delega con `cross_review.mode: off`; dejar explícito
   que eso también apaga `co_explore` en los `sdd-flow` por-repo — la exploración global ya cubrió
   ese terreno.
@@ -205,7 +205,7 @@ Consolidar el objetivo del cambio desde el ticket (si hay clave de tracker y MCP
 ### 1.3 `master-spec.md` → GATE
 1. Crear `<contenedora>/.sdd/<id>/` (POSIX: `mkdir -p`; PowerShell: `New-Item -ItemType Directory -Force`).
 2. Escribir `master-spec.md` con la plantilla de `reference.md` → "Plantilla de `master-spec.md`". Mínimo: problema/objetivo global, alcance (in/out) a nivel sistema, **criterios de aceptación `AC-1..N`** cada uno etiquetado `[repo-local]` o `[integration]`, **contratos entre servicios** (qué expone cada uno y qué consume), y el **reparto** (qué repo cubre qué AC).
-3. **STOP** — si la **revisión cross-model** está activa (ver "Revisión cross-model"), ejecutar `sdd-cross-review` sobre `master-spec.md` (foco en contratos entre servicios y AC `[integration]`; con co-exploración corrida, sumar `co-explore/findings-<familia>.md` como `context_paths` adicional — ver "Co-exploración cross-model") antes de presentar. Presentar la spec madre (con el resumen de crítica, si lo hubo) y pedir aprobación. No avanzar sin ella.
+3. **STOP** — si la **revisión cross-model** está activa (ver "Revisión cross-model"), ejecutar `cross-review` sobre `master-spec.md` (foco en contratos entre servicios y AC `[integration]`; con co-exploración corrida, sumar `co-explore/findings-<familia>.md` como `context_paths` adicional — ver "Co-exploración cross-model") antes de presentar. Presentar la spec madre (con el resumen de crítica, si lo hubo) y pedir aprobación. No avanzar sin ella.
 
 ### 1.4 Reparto → GATE
 Con co-exploración activa, antes del punto 1 se despacha el `counter-plan` (ver "Co-exploración cross-model"): el revisor propone su **reparto tentativo**, que el conductor contrasta antes de escribir el reparto real.
@@ -218,7 +218,7 @@ Con co-exploración activa, antes del punto 1 se despacha el `counter-plan` (ver
    El `branch` se nombra con la convención de `sdd-flow` (`<prefijo>/{id}-{slug}`), resolviendo el `<prefijo>` (el `{type}`) por repo con esta **precedencia**: (1) `branch_prefix` del `<repo>/.specify/config.yml` si lo tiene (su CI/CD manda) → (2) `branch_prefix` de la orquestación (del `manifest.yml`) → (3) prefijo **semántico** del cambio. Normalizar quitando la barra final si la trae. (Ese `<repo>/.specify/config.yml` se puede generar con `/sdd-flow init` dentro del repo; hace el reparto más determinista.)
 2. Escribir/actualizar `manifest.yml` (esquema en `reference.md`): por repo, `path`, `branch`, `status`, `depends_on` (el DAG) y `covers_ac`.
 3. **Cross-artifact check (regla 5):** validar que cada `AC-n` global está cubierto por ≥1 repo y que ninguna sub-task referencia un AC inexistente. Reportar huérfanos antes del gate.
-4. **STOP** — si la **revisión cross-model** está activa, ejecutar `sdd-cross-review` sobre el `reparto` (artefacto: `manifest.yml`; contexto: `master-spec.md` + los `plan.md` por repo + `co-explore/counter-plan-<familia>.md`, si co-exploración corrió; foco en cobertura AC↔repo, `depends_on` y ciclos del DAG) antes de presentar. Presentar el reparto (tabla repo · branch · AC cubiertos · dependencias, con el resumen de crítica si lo hubo) y pedir aprobación. Al aprobar, poner cada repo en `status: tasks-ready`.
+4. **STOP** — si la **revisión cross-model** está activa, ejecutar `cross-review` sobre el `reparto` (artefacto: `manifest.yml`; contexto: `master-spec.md` + los `plan.md` por repo + `co-explore/counter-plan-<familia>.md`, si co-exploración corrió; foco en cobertura AC↔repo, `depends_on` y ciclos del DAG) antes de presentar. Presentar el reparto (tabla repo · branch · AC cubiertos · dependencias, con el resumen de crítica si lo hubo) y pedir aprobación. Al aprobar, poner cada repo en `status: tasks-ready`.
 
 ---
 

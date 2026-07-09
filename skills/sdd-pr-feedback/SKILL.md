@@ -70,7 +70,7 @@ Los nombres de tools/MCP cambian entre entornos. Resolver por **capacidad**, no 
 |---|---|---|
 | Bitbucket API (lectura) | `mcp__bitbucket__bb_get` | Buscar una tool con `bitbucket` que haga GET REST. Si no hay, **avisar** que el MCP no está configurado y detenerse. |
 | Bitbucket API (escritura) | `mcp__bitbucket__bb_post`, `bb_delete` | Sin tool de escritura → degradar: proponer el texto de la respuesta para que el usuario lo pegue a mano (no se resuelve nada automático). |
-| Segunda opinión cross-model | Skill `sdd-cross-review` (Skill tool) | Omitir el cross-review y seguir con el gate humano (dependencia blanda). |
+| Segunda opinión cross-model | Skill `cross-review` (Skill tool) | Omitir el cross-review y seguir con el gate humano (dependencia blanda). |
 | Implementar el fix | Subagente fresco (`Agent`/`Task`) que corre la Vía B de `sdd-flow` | Sin subagentes → degradar a implementar inline con la disciplina de `sdd-flow` (el conductor). |
 
 > Antes de fallar por "tool X no existe", listar las tools disponibles y elegir por capacidad. El
@@ -140,7 +140,7 @@ solo ruido/dudas → *trivial*; con cambios → *normal*/*complex*, y con ella l
 ### Paso 3 — Triage: cross-review del spec + gate de triage
 
 - El **conductor** (esta sesión) corre el **cross-review del `spec.md`** (la clasificación)
-  invocando `sdd-cross-review` con el **Skill tool** (`artifact_type: spec`, `context_paths` = los
+  invocando `cross-review` con el **Skill tool** (`artifact_type: spec`, `context_paths` = los
   artefactos previos del Paso 0 + el diff del PR). Lo despacha **siempre el conductor** — en este
   punto no hay ningún subagente.
 - **El triage siempre se cross-revisa**: aunque el flujo sea *trivial* (PR de solo ruido/dudas), se
@@ -169,7 +169,7 @@ commit: nada que publicar).
   `sdd-flow` — la Vía B delegada los espera) con las plantillas de `sdd-flow` (su `reference.md`),
   con el header YAML (`status: tasks-ready`, `branch` = rama del PR).
 - Corre el **cross-review del plan** (en *normal* con las `tasks` como contexto del mismo gate; en
-  *complex* también sobre las `tasks` en su gate propio) invocando `sdd-cross-review`
+  *complex* también sobre las `tasks` en su gate propio) invocando `cross-review`
   con el **Skill tool** (`artifact_type: plan`, luego `tasks`; `context_paths` = el `spec.md` del
   triage + los artefactos previos del Paso 0 + el diff). Es el cross-review estándar de `sdd-flow`
   sobre el enfoque técnico del fix; lo despacha **siempre el conductor**, antes de delegar.
@@ -231,7 +231,7 @@ Paso 0) y la ronda quedó cerrada (sin `cambio`, o con el fix ya pusheado), ofre
 - Sin MCP de Bitbucket → avisar y detenerse.
 - Sin escritura en Bitbucket (solo `bb_get`) → proponer el texto de las respuestas para pegar a
   mano; no resolver nada automático.
-- Sin `sdd-cross-review` → seguir con el gate humano (aviso de una línea).
+- Sin `cross-review` → seguir con el gate humano (aviso de una línea).
 - Sin subagentes → implementar inline con la disciplina de `sdd-flow`.
 - Sin subtarea SPEC en Jira, sin `cambio` que toque AC, o sin escritura Atlassian → no se sincroniza
   la spec de Jira (aviso de una línea).

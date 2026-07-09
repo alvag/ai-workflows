@@ -12,7 +12,7 @@ La tercera pieza del trío cross-model, con el mismo fundamento que sus hermanas
 correlación de errores entre autor y revisor:
 
 - **`co-explore`** — explorar/investigar en paralelo (dos mapas independientes).
-- **`sdd-cross-review`** — criticar artefactos de diseño (spec/plan/tasks) antes de implementar.
+- **`cross-review`** — criticar artefactos de diseño (spec/plan/tasks) antes de implementar.
 - **`cross-implement`** — implementar cruzado: uno planifica, el otro implementa, el primero
   revisa la implementación.
 
@@ -41,10 +41,10 @@ work order congelado ──► implementador (otra familia, escritura acotada, n
 ## Cuándo NO usarla
 
 - **Sin work order congelado**: si escribir el contrato obliga a decidir diseño, eso es diseño y
-  va antes (sdd-flow, o `sdd-cross-review` en modo draft). Delegar diseño es cómo falla esto.
+  va antes (sdd-flow, o `cross-review` en modo draft). Delegar diseño es cómo falla esto.
 - **Cambios triviales** (~<20 líneas): el overhead de delegar supera al cambio.
 - **Para revisar código existente** (eso es code review) ni artefactos de diseño (eso es
-  `sdd-cross-review`).
+  `cross-review`).
 - **Tasks que dependen de tools de sesión** (MCPs, secretos, navegador): el implementador
   delegado no las ve.
 
@@ -58,7 +58,7 @@ la delegación ocurra hace falta el CLI de la otra familia:
   `--permission-mode default` + `Edit(./**),Write(./**)` — nunca `acceptEdits`, que escribe fuera
   del working dir; ver `reference.md` → "Matriz de verificación").
 
-`sdd-cross-review` recomendada (no obligatoria): aporta el algoritmo canónico de descubrimiento
+`cross-review` recomendada (no obligatoria): aporta el algoritmo canónico de descubrimiento
 por familia y la sección de portabilidad de shells que esta skill referencia.
 
 ## Instalación
@@ -70,7 +70,7 @@ portable (no solo SDD), conviene scope usuario (`~/.claude/skills/` en Claude Co
 ```
 <skills>/
 ├─ sdd-flow/             # opcional (modo embebido)
-├─ sdd-cross-review/     # opcional, recomendada
+├─ cross-review/     # opcional, recomendada
 ├─ co-explore/           # opcional
 └─ cross-implement/
    ├─ SKILL.md

@@ -12,7 +12,7 @@ description: >-
   cross_review.co_explore está activo; investigate es standalone, fuera de todo
   flujo SDD. Invocación directa: "/co-explore <ticket|descripción|bug>", "que
   Codex explore esto en paralelo" o "que Codex investigue este bug en paralelo".
-  NO revisa artefactos escritos (eso es sdd-cross-review) ni arregla el bug (eso
+  NO revisa artefactos escritos (eso es cross-review) ni arregla el bug (eso
   es systematic-debugging): produce hallazgos e hipótesis propios que compiten
   con los del conductor. No invocarla espontáneamente: solo ante un pedido
   explícito del usuario o invocada por sdd-flow/sdd-orchestrator.
@@ -45,8 +45,8 @@ de encuentro es temprano, en los hallazgos, no al final.
 El informe alimenta la **síntesis del conductor** (que compara los dos mapas, hace competir
 los enfoques —o las hipótesis de causa raíz, en `investigate`— en méritos y decide con
 rationale auditable) y, en los modos SDD, más adelante la **crítica informada** de
-`sdd-cross-review`, que recibe ese informe como contexto persistente en el gate. Esta skill
-**no revisa artefactos escritos** — eso lo hace `sdd-cross-review`: `co-explore` produce
+`cross-review`, que recibe ese informe como contexto persistente en el gate. Esta skill
+**no revisa artefactos escritos** — eso lo hace `cross-review`: `co-explore` produce
 hallazgos e hipótesis propios que compiten con los del conductor, no una crítica de lo que el
 conductor ya escribió.
 
@@ -85,16 +85,16 @@ paquete de contexto ──► [co-explore: revisor explora en background, read-o
    conserva como texto libre si aporta contexto, o se descarta si es ruido — y en cualquier
    caso se registra la degradación.
 5. **Loop acotado, deadline duro.** Una sola pasada por modo — sin rondas, a diferencia de
-   `sdd-cross-review`. Al vencer `deadline` se mata el proceso del explorador y se devuelve
+   `cross-review`. Al vencer `deadline` se mata el proceso del explorador y se devuelve
    `UNAVAILABLE` con lo que haya alcanzado a producir. Nunca se espera de forma indefinida.
 6. **Opcional y degradable.** Es una capacidad, no un requisito. Sin revisor de otra familia
    disponible, con un fallo en runtime, o con `mode: off`, el resultado es `UNAVAILABLE` en una
    línea y la llamadora sigue con la exploración del conductor solamente.
-7. **Revisor de OTRA familia, por capacidad.** Misma regla 7 de `sdd-cross-review`: hay dos
+7. **Revisor de OTRA familia, por capacidad.** Misma regla 7 de `cross-review`: hay dos
    familias — Claude y GPT/Codex —, el autor es la del agente que conduce la skill (sin importar
    la superficie: CLI, app de escritorio, IDE, web) y el revisor es siempre el de la otra. El
    algoritmo canónico vive en
-   `sdd-cross-review/reference.md` → "Descubrir el revisor"; acá solo el puntero + un fallback
+   `cross-review/reference.md` → "Descubrir el revisor"; acá solo el puntero + un fallback
    mínimo (ver `reference.md` → "Descubrir el revisor (puntero + fallback)").
 
 ## Red flags — detente y reconsidera

@@ -1,5 +1,5 @@
 ---
-name: sdd-cross-review
+name: cross-review
 description: >-
   Usar cuando el usuario pida una "segunda opinión", una "revisión independiente
   o adversarial", un "cross-review", una "mirada externa", o "que otro modelo o
@@ -12,10 +12,10 @@ description: >-
   es code review: no usarla sobre diffs, PRs ni código fuente — solo documentos
   de diseño. No invocarla espontáneamente: solo ante un pedido explícito del
   usuario o invocada por una skill SDD. Invocación directa:
-  "/sdd-cross-review <ruta-del-artefacto>", o sin ruta para el modo draft.
+  "/cross-review <ruta-del-artefacto>", o sin ruta para el modo draft.
 ---
 
-# sdd-cross-review — segunda opinión cross-model para artefactos SDD
+# cross-review — segunda opinión cross-model para artefactos SDD
 
 Helper que toma un artefacto SDD y le pide una **crítica adversarial a un modelo de otra
 familia que el autor** (Codex cuando conduce Claude; Claude cuando conduce Codex) antes de que
@@ -30,7 +30,7 @@ incorporada. Y **nunca bloquea el flujo**: si no hay revisor disponible o algo f
 limpio al gate humano de siempre.
 
 ```
-artefacto escrito ──► [sdd-cross-review] ──► artefacto (quizá revisado) + resumen de crítica ──► GATE humano
+artefacto escrito ──► [cross-review] ──► artefacto (quizá revisado) + resumen de crítica ──► GATE humano
                          loop acotado, read-only,                          (lo presenta la skill
                          Claude árbitro, log auditable                      llamadora; STOP normal)
 ```
@@ -106,7 +106,7 @@ Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario) proveen:
 **Modo de uso:**
 - *Embebido* (lo llama otra skill SDD): no hace STOP propio. Devuelve el artefacto (quizá
   revisado) + un resumen de la crítica para que la llamadora lo presente en su gate.
-- *Directo* (lo llama el usuario con `/sdd-cross-review <ruta>`): infiere `artifact_type` por el
+- *Directo* (lo llama el usuario con `/cross-review <ruta>`): infiere `artifact_type` por el
   nombre/encabezado del archivo, corre el loop y **presenta** el resultado al usuario.
 - *Draft* (directo **sin ruta**, con una idea/plan claro en la conversación): el conductor
   redacta primero un plan ligero y lo somete al mismo loop — ver "Modo draft" abajo.
@@ -209,7 +209,7 @@ Tres modos de falla, todos terminan en el gate humano de siempre con un aviso de
    se intenta; la llamadora va directo al gate.
 
 > La cuarta forma de degradación —**que esta skill ni siquiera esté instalada**— la maneja la
-> skill llamadora: `sdd-flow`/`sdd-orchestrator` chequean si `sdd-cross-review` está disponible
+> skill llamadora: `sdd-flow`/`sdd-orchestrator` chequean si `cross-review` está disponible
 > y, si no, omiten la revisión. Por eso la dependencia es **blanda**: las skills SDD funcionan
 > igual sin este helper.
 
@@ -239,9 +239,9 @@ nunca espera indefinida (ver `reference.md` → "Latencia y timeout").
 
 | El usuario dice (ej.) | Acción |
 |---|---|
-| "/sdd-cross-review `.plans/X/plan.md`", "revisa este plan con otra opinión" | revisar el artefacto nombrado (modo directo) |
+| "/cross-review `.plans/X/plan.md`", "revisa este plan con otra opinión" | revisar el artefacto nombrado (modo directo) |
 | "pídele a Codex que critique la spec", "segunda opinión del plan" | revisar el artefacto (modo directo) |
-| "/sdd-cross-review" sin ruta, "stress-test de esta idea", "arma un plan y que Codex lo critique" | **modo draft**: redactar el plan ligero + loop + ofrecer handoff (ver "Modo draft") |
+| "/cross-review" sin ruta, "stress-test de esta idea", "arma un plan y que Codex lo critique" | **modo draft**: redactar el plan ligero + loop + ofrecer handoff (ver "Modo draft") |
 | (invocada por `sdd-flow`/`sdd-orchestrator` en un gate) | modo embebido: revisar y devolver resumen |
 | "sin cross-review", "salta la segunda opinión" | desactivar para la corrida (`mode: off`) |
 

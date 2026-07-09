@@ -1,6 +1,6 @@
-# sdd-cross-review — Referencia
+# cross-review — Referencia
 
-Detalle operativo de la skill `sdd-cross-review`. El `SKILL.md` apunta acá cuando necesita el
+Detalle operativo de la skill `cross-review`. El `SKILL.md` apunta acá cuando necesita el
 contrato de invocación del revisor, la plantilla del prompt, el formato de salida o el foco por
 tipo de artefacto.
 

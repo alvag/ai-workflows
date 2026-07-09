@@ -1,4 +1,4 @@
-# sdd-cross-review
+# cross-review
 
 **Segunda opinión cross-model** para artefactos de Spec-Driven Development. Antes de que un
 humano apruebe una `spec`, `plan`, `tasks`, `master-spec` o `reparto`, un modelo de **otra
@@ -8,7 +8,7 @@ presenta junto al artefacto en el gate de aprobación: la persona decide con esa
 vista.
 
 Es la segunda pieza del trío cross-model: **`co-explore`** (explorar/investigar en paralelo),
-**`sdd-cross-review`** (criticar el diseño antes de implementar) y **`cross-implement`**
+**`cross-review`** (criticar el diseño antes de implementar) y **`cross-implement`**
 (implementación cruzada: uno planifica, el otro implementa, el primero revisa el diff). Las tres
 son opcionales, degradables y encadenables — dentro de SDD vía sus gates, o fuera como pipeline
 portable (draft → crítica → implementación cruzada).
@@ -24,7 +24,7 @@ cierra. Cazarlo en el plan cuesta minutos; cazarlo después de implementar, hora
 ## Qué hace
 
 ```
-artefacto escrito ──► [sdd-cross-review] ──► artefacto (quizá revisado) + resumen de crítica ──► GATE humano
+artefacto escrito ──► [cross-review] ──► artefacto (quizá revisado) + resumen de crítica ──► GATE humano
 ```
 
 - **Augmenta el gate, no lo reemplaza.** Corre antes del STOP y le da insumo a la persona. Claude
@@ -38,10 +38,10 @@ artefacto escrito ──► [sdd-cross-review] ──► artefacto (quizá revis
 
 ## Cuándo usarla
 
-- `/sdd-cross-review .plans/<id>/plan.md` → revisa ese artefacto (modo directo).
+- `/cross-review .plans/<id>/plan.md` → revisa ese artefacto (modo directo).
 - Pedidos en lenguaje natural: "revisa este plan con otra opinión", "segunda opinión de la spec",
   "pídele a Codex que critique el reparto" → el modelo puede invocarla directamente.
-- `/sdd-cross-review` **sin ruta** (o "stress-test de esta idea", "arma un plan y que Codex lo
+- `/cross-review` **sin ruta** (o "stress-test de esta idea", "arma un plan y que Codex lo
   critique") → **modo draft**: redacta un plan ligero desde la conversación + el código, lo somete
   al mismo loop y, al converger, ofrece el handoff a la implementación (inline o cruzada vía
   `cross-implement`, si está instalada). Es el punto de entrada portable, fuera de todo flujo SDD.
@@ -82,7 +82,7 @@ Configuración bajo `cross_review` en `.specify/config.yml` (sdd-flow) o en el `
 
 **1. Revisar un plan complejo antes de implementar:**
 ```
-/sdd-cross-review .plans/PROJ-128/plan.md
+/cross-review .plans/PROJ-128/plan.md
 ```
 → descubre el revisor, corre el loop read-only, edita el plan con lo aplicado, deja `review-log.md`
 y presenta el resumen de la crítica.

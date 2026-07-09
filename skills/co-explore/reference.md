@@ -21,7 +21,7 @@ archivos de trabajo.
 
 ## Portabilidad entre shells (POSIX / PowerShell)
 
-Mismo criterio que `sdd-cross-review/reference.md` → "Portabilidad entre shells (POSIX /
+Mismo criterio que `cross-review/reference.md` → "Portabilidad entre shells (POSIX /
 PowerShell)": esa sección es la fuente canónica de las equivalencias de shell que también usa
 esta skill (detección de OS, prompt por archivo a stdin, generar un UUID). No se duplican aquí.
 
@@ -34,12 +34,12 @@ background (ver "Latencia y deadlines"):
 | Matar el proceso al vencer el deadline | `kill "$PID"` | `Stop-Process -Id $proc.Id -Force` |
 
 El resto de las equivalencias (detectar el binario, prompt por archivo, UUID) son las mismas
-que en `sdd-cross-review/reference.md` y se referencian por puntero en "Descubrir el revisor
+que en `cross-review/reference.md` y se referencian por puntero en "Descubrir el revisor
 (puntero + fallback)".
 
 ## Prompt de exploración
 
-Estructura XML compacta, mismo estilo que "Prompt de revisión" de `sdd-cross-review/reference.md`
+Estructura XML compacta, mismo estilo que "Prompt de revisión" de `cross-review/reference.md`
 (operador, no colaborador). Una variante por `mode`: `explore` y `counter-plan` comparten el
 `output_contract` exacto; `investigate` usa uno propio (bug-shaped).
 
@@ -253,7 +253,7 @@ después de que ambos cerraron su exploración:
 - **Incógnitas fusionadas:** las que cambiarían el diseño alimentan `clarify` (obligatorio en
   complejos); las respuestas quedan después en `## Clarifications` de la spec.
 - **Supuestos del revisor a vigilar:** input directo para la crítica informada de
-  `sdd-cross-review` — el crítico puede marcar ahí si alguno de esos supuestos resultó
+  `cross-review` — el crítico puede marcar ahí si alguno de esos supuestos resultó
   equivocado.
 - **Material interno:** `synthesis.md` (como los informes) es material de trabajo del
   directorio `co-explore/` — su vocabulario (conductor/revisor, duelo, dos mapas) **no se
@@ -323,11 +323,11 @@ skill aparte, tipo carrera de fixes cross-model).
 ## Descubrir el revisor (puntero + fallback)
 
 **Puntero.** El algoritmo canónico de descubrimiento del explorador —identificar la familia
-del autor y elegir el explorador de la otra familia— vive en `sdd-cross-review/reference.md` →
+del autor y elegir el explorador de la otra familia— vive en `cross-review/reference.md` →
 "Descubrir el revisor". Si esa skill está instalada en el entorno, léelo de ahí: esta sección
 no lo duplica.
 
-**Fallback mínimo (`co-explore` sin `sdd-cross-review` instalada).** Misma regla dura: el
+**Fallback mínimo (`co-explore` sin `cross-review` instalada).** Misma regla dura: el
 explorador nunca es de la misma familia de modelos que el autor. Hay dos familias — Claude y
 GPT/Codex — y la del autor es la del agente que conduce la skill, sin importar la superficie
 donde corre (CLI, app de escritorio, IDE, web): un agente Claude → Claude; un agente Codex →
@@ -341,7 +341,7 @@ GPT/Codex.
 Si el explorador de la otra familia no está disponible → `UNAVAILABLE` (regla 6 del `SKILL.md`).
 
 **Invocación directa — autor Claude → explorador Codex.** Adaptado de
-`sdd-cross-review/reference.md` → Vía B, lanzado en background porque `explore` nunca bloquea
+`cross-review/reference.md` → Vía B, lanzado en background porque `explore` nunca bloquea
 al conductor (a diferencia de cross-review, que en Claude Code prefiere el camino sync):
 
 ```bash
@@ -383,11 +383,11 @@ grep -m1 -o '"thread_id":"[^"]*"' co-explore/scratch/explorer-thread.jsonl | cut
   Select-Object -First 1).Matches.Groups[1].Value > co-explore\scratch\explorer-session.txt
 ```
 
-> **Prechequeos**: aplican los mismos de `sdd-cross-review/reference.md` → "Descubrir el revisor"
+> **Prechequeos**: aplican los mismos de `cross-review/reference.md` → "Descubrir el revisor"
 > (versión del CLI, no pinear `-m`, eco del modelo activo de `~/.codex/config.toml`).
 
 **Invocación directa — autor GPT/Codex → explorador Claude.** Adaptado de
-`sdd-cross-review/reference.md` → Vía C, camino BACKGROUND (el mismo patrón que usa cross-review
+`cross-review/reference.md` → Vía C, camino BACKGROUND (el mismo patrón que usa cross-review
 cuando el conductor tiene un exec corto, p. ej. Codex ~120s):
 
 ```bash
@@ -420,7 +420,7 @@ flag de sandbox equivalente a `-s read-only`); `--safe-mode` evita cargar plugin
 CLAUDE.md del usuario del `working_dir`.
 
 `$SESSION_ID`/`$SessionId`, capturado en `explorer-session.txt`, es la base para escribir
-`co-explore/session.json` (ver "Archivos de trabajo (scratch)") cuando `sdd-cross-review` está
+`co-explore/session.json` (ver "Archivos de trabajo (scratch)") cuando `cross-review` está
 instalada y puede reanudar ese thread.
 
 ## Latencia y deadlines
@@ -513,7 +513,7 @@ debe tocarse), con los mismos nombres.
 Valores **ilustrativos**: `tool` refleja la vía realmente usada (`codex` en Vía B, `claude` en
 Vía C) y `mode` el modo corrido (`explore` o `counter-plan`) — no son literales fijos.
 
-Lo consume `sdd-cross-review` para el resume oportunista en la crítica informada del gate; si el
+Lo consume `cross-review` para el resume oportunista en la crítica informada del gate; si el
 runtime no expone sesión, no escribir el archivo — la ausencia del archivo es la señal, no un
 campo vacío dentro de él.
 

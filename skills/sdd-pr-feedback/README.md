@@ -44,7 +44,7 @@ y, con confirmación, escribe en el PR.
 - **`sdd-flow`** instalada — dependencia **dura**: sus plantillas, la Vía B y las reglas de commit
   son el contrato de esta skill. Lo degradable es la capacidad de **subagentes**: sin ellos, el
   conductor implementa inline con la disciplina de `sdd-flow`.
-- **`sdd-cross-review`** (opcional) para la segunda opinión cross-model sobre el triage. Sin ella,
+- **`cross-review`** (opcional) para la segunda opinión cross-model sobre el triage. Sin ella,
   sigue con el gate humano.
 
 ## Garantías

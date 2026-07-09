@@ -143,7 +143,7 @@ PR #<pr-id> · rama `<branch>`
 ## Contrato del cross-review (triage y plan)
 
 Es el cross-review estándar de `sdd-flow`: el **conductor** lo corre sobre **cada artefacto de
-diseño antes de delegar el implement**, invocando `sdd-cross-review` con el **Skill tool** (no tiene
+diseño antes de delegar el implement**, invocando `cross-review` con el **Skill tool** (no tiene
 `disable-model-invocation`). **Nunca** desde un subagente. Una pasada por gate:
 
 | Gate | `artifact_type` | `artifact_path` | Cuándo |

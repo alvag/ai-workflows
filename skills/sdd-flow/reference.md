@@ -41,7 +41,7 @@ Los nombres de tools/MCP cambian entre entornos. Resolver por **capacidad**: pro
 | Búsqueda en código | Subagente de exploración si el entorno lo soporta y el alcance lo amerita. | `grep`/`ripgrep`/`find` locales desde shell. |
 | Debugging sistemático | Skill de debugging sistemático si está disponible. | Seguir el método manualmente: hipótesis → prueba mínima → refutar → repetir. |
 | Commit convencional | **Construcción inline** (sin dependencia externa): ver "Construcción del mensaje de commit"; scope del ticket de la rama. | — (es inline: no hay skill de commit que descubrir). |
-| Segunda opinión cross-model | Skill `sdd-cross-review` instalada + un segundo modelo de **otra familia que el autor** (subagente `codex:codex-rescue` o CLI `codex exec` si conduce Claude; CLI `claude -p` si conduce Codex). | Omitir la revisión y seguir con el gate humano (dependencia blanda; ver `SKILL.md` → "Revisión cross-model"). |
+| Segunda opinión cross-model | Skill `cross-review` instalada + un segundo modelo de **otra familia que el autor** (subagente `codex:codex-rescue` o CLI `codex exec` si conduce Claude; CLI `claude -p` si conduce Codex). | Omitir la revisión y seguir con el gate humano (dependencia blanda; ver `SKILL.md` → "Revisión cross-model"). |
 
 > Regla: antes de fallar por "tool X no existe", listar las tools disponibles y buscar coincidencias por capacidad/keyword. Solo entonces avisar y degradar.
 
@@ -145,9 +145,9 @@ branch_prefix: ""                # opcional; reemplaza {type} (p. ej. "feature/"
 commit_style: conventional       # conventional | plain
 tracker: jira                    # jira | github | gitlab | linear | none
 test_scope_hint: "vitest run {name}"      # plantilla de COMANDO para acotar tests; {name} = archivo/patrón
-cross_review:                    # segunda opinión cross-model (opcional; ver skill sdd-cross-review)
+cross_review:                    # segunda opinión cross-model (opcional; ver skill cross-review)
   mode: auto                     # auto (por complejidad) | "on" | "off"  (on/off entre comillas: sin ellas YAML los parsea como booleanos)
-  execution: auto                # auto | sync | background — cómo corre la revisión (se hereda a sdd-cross-review)
+  execution: auto                # auto | sync | background — cómo corre la revisión (se hereda a cross-review)
   artifacts: [spec, plan, tasks] # qué artefactos revisar
   max_rounds: 3
   reviewer: auto                 # auto (descubre por capacidad; nunca la familia del autor) | claude | codex
@@ -190,7 +190,7 @@ Resolución:
 Uso:
 - `analyze`/`plan`: usar nombres canónicos y decisiones vigentes; si contradicen el ticket, llevar
   la duda a `clarify`.
-- `co-explore`/`sdd-cross-review`: pasar los paths resueltos como `context_paths` adicionales.
+- `co-explore`/`cross-review`: pasar los paths resueltos como `context_paths` adicionales.
 - Nunca crear, actualizar ni normalizar esos documentos desde `domain_context`; si hace falta un
   ADR nuevo, es otro flujo o requiere confirmación explícita.
 
@@ -727,7 +727,7 @@ Tests+build completos, `verify` de los AC, revisión manual, staging selectivo, 
 
 ## Prompt del subagente reviewer
 
-Para el **reviewer por-task** del modo `subagent` (ver `SKILL.md` → "Modo de ejecución", paso 2). Un agente fresco que **solo revisa** el diff de una task contra sus artefactos — no edita ni implementa. Distinto de `sdd-cross-review`: aquel es **cross-model** y revisa *artefactos de diseño* (spec/plan/tasks); este es un agente **del mismo modelo** que revisa el *diff* de una task ya implementada. Despacharlo por capacidad, igual que el implementer (sin capacidad → degradar a la revisión liviana del conductor). El conductor **interpola la lista `FILES`** del reporte del implementer en el prompt (el reviewer es un agente fresco: sin ella no sabe qué archivos revisar). Plantilla:
+Para el **reviewer por-task** del modo `subagent` (ver `SKILL.md` → "Modo de ejecución", paso 2). Un agente fresco que **solo revisa** el diff de una task contra sus artefactos — no edita ni implementa. Distinto de `cross-review`: aquel es **cross-model** y revisa *artefactos de diseño* (spec/plan/tasks); este es un agente **del mismo modelo** que revisa el *diff* de una task ya implementada. Despacharlo por capacidad, igual que el implementer (sin capacidad → degradar a la revisión liviana del conductor). El conductor **interpola la lista `FILES`** del reporte del implementer en el prompt (el reviewer es un agente fresco: sin ella no sabe qué archivos revisar). Plantilla:
 
 ```
 Trabaja en modo SOLO LECTURA sobre el repo <ruta-absoluta-al-working-dir>. No edites nada.
