@@ -1,20 +1,23 @@
 # po-ticket
 
-Skill orientada al **Product Owner** para redactar **tickets de Jira claros y accionables** a partir de un problema mal descrito. Convierte "esto no anda, mirá esta URL" en un ticket con contexto, objetivo y **criterios de aceptación verificables**, en lenguaje **no técnico**.
+Skill orientada al **Product Owner** para redactar **tickets de Jira claros y accionables** a partir de un problema o pedido mal descrito. Convierte "esto no anda / falta esto / hay que ajustarlo al diseño, mirá esta URL" en un ticket con contexto, objetivo y **criterios de aceptación verificables**, en lenguaje **no técnico**.
+
+Sirve para **tres tipos de ticket**: **bug** (arreglo), **nueva feature** (funcionalidad nueva) y **ajuste/rediseño de UI** (contra un diseño de Figma). La plantilla y los pasos se adaptan al tipo.
 
 Pensada para un PO **sin acceso al código ni al repo**: trabaja solo con **Jira + navegador**.
 
 ## Qué hace
 
 ```
-descripción + URL + contexto ──► reproducir en navegador ──► clarificar (negocio) ──► ticket.md ──► GATE (PO revisa) ──► publicar en Jira
-     (o CLAVE-123 para enriquecer)     (evidencia observable)        (diálogo)                                          (write-safety STOP)
+descripción + URL + contexto ──► clasificar tipo ──► observar en navegador ──► clarificar (negocio) ──► ticket.md ──► GATE (PO revisa) ──► publicar en Jira
+     (o CLAVE-123 para enriquecer)  (bug/feature/rediseño)  (evidencia observable)      (diálogo)                                         (write-safety STOP)
 ```
 
 - **Dos modos:** crear un ticket nuevo (desde descripción + URL + contexto), o **enriquecer** uno existente ambiguo (pasando su clave, p. ej. `PQTCH-649`).
-- **Reproduce el error** en el navegador y captura **evidencia observable** (pasos, capturas, consola/red). No diagnostica a nivel código (eso lo hace el developer luego con `sdd-flow`): lo observado se rotula como "pistas para el equipo".
+- **Clasifica el tipo** (bug / feature / rediseño) infiriéndolo y confirmándolo con el PO.
+- **Observa en el navegador** lo que corresponde al tipo (bug: reproduce el error; feature: estado actual de la pantalla; rediseño: pantalla actual **+** el diseño de Figma) y captura **evidencia observable**. No diagnostica a nivel código (eso lo hace el developer luego con `sdd-flow`): lo observado se rotula como "pistas para el equipo".
 - **Clarifica en diálogo de negocio** antes de redactar, sin inventar contexto.
-- **Estructura estándar** con encabezados con emoji y **prefijo de área** en el título (`[Front]` / `[Back]` / `[Front/Back]`); si es `[Front/Back]`, ofrece crear las subtareas por área.
+- **Estructura estándar adaptativa** con encabezados con emoji y **prefijo de área** en el título (`[Front]` / `[Back]` / `[Front/Back]`); si es `[Front/Back]`, ofrece crear las subtareas por área.
 - **Publica en Jira** tras confirmación (write-safety), adjuntando capturas por capacidad.
 
 ## Cuándo usarla
@@ -24,15 +27,18 @@ Invocación explícita (no dispara sola): `/po-ticket`.
 - `/po-ticket <descripción + URL de reproducción + contexto>` → crea un ticket nuevo.
 - `/po-ticket PQTCH-649` → enriquece/reescribe un ticket existente ambiguo.
 
-## Estructura del ticket
+## Estructura del ticket (adaptativa por tipo)
+
+Esqueleto común + una sección según el tipo:
 
 ```
 # [Front|Back|Front/Back] <título>
-## 📋 Descripción / Contexto     (incluye el síntoma / comportamiento actual)
-## 🔁 Pasos para Reproducir
-## 📸 Evidencia                   (capturas)
+## 📋 Descripción / Contexto     (estado actual: síntoma en bug, qué hay hoy en rediseño)
+## 🔁 Pasos para Reproducir      (solo bug)
+## 🎨 Referencia de Diseño       (solo rediseño; link de Figma + qué cambia)
+## 📸 Evidencia                   (capturas; en rediseño, actual vs. diseño)
 ## 🎯 Objetivo
-## ✅ Criterios de Aceptación     (AC-1..N, observables; formalizan lo esperado)
+## ✅ Criterios de Aceptación     (AC-1..N: comportamiento en bug/feature, fidelidad en rediseño)
 ## 🛠️ Pistas para el Equipo      (opcional; observado, no diagnóstico de código)
 ```
 
@@ -62,7 +68,7 @@ Por capacidad, con orden de preferencia: **1º el conector de Atlassian del Clau
 Ninguna obligatoria. Aprovecha, si están:
 
 - Conector de Atlassian del desktop **o** MCP de Atlassian (leer/crear/editar tickets).
-- Tool de navegador (Chrome/Playwright/DevTools) para reproducir y capturar evidencia.
+- Tool de navegador (Chrome/Playwright/DevTools) para observar/reproducir y capturar evidencia — y, en rediseño, abrir el diseño de Figma con la sesión del PO.
 - Tool de selección interactiva (tipo `AskUserQuestion`) para clarificar.
 
 Sin ellas, degrada: borrador local, o pedir capturas/pasos al PO.

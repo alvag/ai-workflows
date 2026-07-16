@@ -21,6 +21,7 @@ Los nombres de tools/MCP cambian entre entornos. Resolver por **capacidad**: pro
 |---|---|---|
 | Acceso a Jira | 1º **conector de Atlassian del Claude Code desktop** si está presente; 2º **MCP de Atlassian** configurado. Buscar la tool cuyo nombre contenga `jira`/`atlassian`. | Leer `ticket.md` local si existe; presentar el pre-check sin tocar Jira. |
 | Prueba en navegador | Cualquier tool con `chrome`/`browser`/`playwright`/`devtools`. | Sin navegador no hay validación real: avisar y detener, o pedir al PO que pruebe y reporte. |
+| Acceso a diseño (Figma) | Navegador con la sesión real del PO (abrir el link de Figma), o un MCP de diseño si existe. Solo en rediseño / AC de fidelidad. | Pedir al PO el link/capturas del diseño; comparar contra eso o dejar el AC como ⚠️ no verificable. |
 | Selección interactiva | Tool de selección tipo `AskUserQuestion` si existe. | Preguntar de forma conversacional, con recomendación. |
 
 > Regla: antes de fallar por "tool X no existe", listar las tools disponibles y buscar coincidencias por capacidad/keyword. Solo entonces avisar y degradar.
@@ -50,6 +51,11 @@ Reglas para elegir:
 3. **Hay varias candidatas ambiguas** (o ninguna con título claro y más de una subtarea que no es `[Front]`/`[Back]`) → **preguntar al PO** cuál subtarea corresponde a la spec. No adivinar.
 
 Los AC a validar = **unión** de los AC del ticket (lenguaje de negocio, escritos por `po-ticket`) + los `AC-n` de la spec elegida (si la hay). Si un AC del ticket y uno de la spec son el mismo, no duplicarlo en el reporte.
+
+### Fuente de verdad por tipo
+
+- **bug / feature:** los AC (texto) son la fuente de verdad; se validan como comportamiento observable.
+- **rediseño:** además de los AC, el **diseño de referencia** (Figma, ubicado en la sección 🎨 Referencia de Diseño del ticket) es fuente de verdad de los AC de fidelidad. Abrirlo por capacidad (ver matriz) para comparar la UI en vivo contra el diseño; si no se puede abrir, pedir el link/capturas al PO o dejar esos AC como ⚠️ no verificable.
 
 ## Resolución del ambiente
 
@@ -86,6 +92,7 @@ Si no se puede resolver ninguna URL, preguntar al PO. Cuando el PO la provee y n
 
 - **Veredictos:** `✅ cumple` / `❌ no cumple` / `⚠️ no verificable`. La evidencia es concreta (captura, paso, salida observada), no "se ve bien".
 - Las capturas de la validación se guardan en `capturas/` (junto a las de `po-ticket`, si existen).
+- **En rediseño**, la evidencia de cada AC de fidelidad compara **UI en vivo vs. diseño** (captura de la pantalla + referencia del diseño); anotar la diferencia concreta cuando es ❌ (p. ej. "el botón usa otro color / el espaciado es menor que el diseño").
 
 ## Comentario de observaciones
 

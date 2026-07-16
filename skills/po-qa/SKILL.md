@@ -2,19 +2,21 @@
 name: po-qa
 description: >-
   Ayuda al Product Owner (que hace las veces de QA) a validar la entrega de un
-  ticket contra sus criterios de aceptación, usando el navegador. El PO invoca
-  "prueba este ticket en DEV/QA/PROD"; la skill lee el ticket de Jira (y su
-  subtarea de spec si existe), establece QUÉ probar y los criterios de aceptación,
-  abre el ambiente en el navegador (el PO se loguea a mano si hace falta), ejercita
-  cada criterio, junta evidencia (capturas, pasos, consola/red) y produce un
-  pre-check con veredicto AC por AC: cumple / no cumple / no verificable. Es un
-  PRE-CHECK ASISTIDO: recomienda, pero decide el PO. Si pasa, ofrece archivar el
-  ticket; si no pasa, y solo si el PO autoriza, publica un comentario en Jira
-  etiquetando al asignado con las observaciones. Pensada para un PO SIN acceso al
-  código: trabaja solo con Jira y el navegador. NO decide por sí sola el rechazo
-  formal, NO es code review, NO arregla el bug. Invocación explícita: "/po-qa
-  prueba PQTCH-649 en DEV" (o QA/PROD). No dispara sola: solo por slash o pedido
-  explícito.
+  ticket contra sus criterios de aceptación, usando el navegador. Sirve para los
+  tres tipos de ticket: bug (el error ya no ocurre), nueva feature (la funcionalidad
+  nueva funciona) y ajuste/rediseño de UI (la pantalla coincide con el diseño de
+  Figma). El PO invoca "prueba este ticket en DEV/QA/PROD"; la skill lee el ticket
+  de Jira (y su subtarea de spec si existe), establece QUÉ probar y los criterios de
+  aceptación, abre el ambiente en el navegador (el PO se loguea a mano si hace falta;
+  en rediseño abre también el diseño de referencia), ejercita cada criterio, junta
+  evidencia (capturas, pasos, consola/red) y produce un pre-check con veredicto AC
+  por AC: cumple / no cumple / no verificable. Es un PRE-CHECK ASISTIDO: recomienda,
+  pero decide el PO. Si pasa, ofrece archivar el ticket; si no pasa, y solo si el PO
+  autoriza, publica un comentario en Jira etiquetando al asignado con las
+  observaciones. Pensada para un PO SIN acceso al código: trabaja solo con Jira y el
+  navegador. NO decide por sí sola el rechazo formal, NO es code review, NO arregla
+  el bug. Invocación explícita: "/po-qa prueba PQTCH-649 en DEV" (o QA/PROD). No
+  dispara sola: solo por slash o pedido explícito.
 argument-hint: "[prueba <CLAVE-123> en <DEV|QA|PROD>]  ·  URL opcional en el prompt"
 # disable-model-invocation: clave REAL de Claude Code — deja la skill solo-slash
 # (/po-qa). Los triggers ("prueba el ticket", "valida esto") son genéricos y sin
@@ -30,8 +32,8 @@ Skill orientada al **Product Owner que hace las veces de QA**. Valida que lo ent
 Es la contraparte de PO al cierre del ciclo: [`po-ticket`](../po-ticket/SKILL.md) produce el ticket → el developer lo implementa con `sdd-flow` → `po-qa` valida la entrega.
 
 ```
-prueba CLAVE-123 en DEV ──► leer ticket + spec ──► establecer QUÉ probar (AC) ──► abrir ambiente (login manual) ──► ejercitar cada AC ──► qa-reporte.md ──► veredicto al PO
-                            (Jira: ticket+subtareas)   (checklist desde los AC)    (navegador, sesión real)      (evidencia por AC)   (AC por AC)   (pasa→archiva / no→comenta)
+prueba CLAVE-123 en DEV ──► leer ticket + spec ──► establecer QUÉ probar (AC + tipo) ──► abrir ambiente (login manual) ──► ejercitar cada AC ──► qa-reporte.md ──► veredicto al PO
+                            (Jira: ticket+subtareas)   (checklist + diseño si rediseño)    (navegador, sesión real)      (evidencia por AC)   (AC por AC)   (pasa→archiva / no→comenta)
 ```
 
 ## Es un pre-check asistido (no un juez)
@@ -81,9 +83,13 @@ Comparte la estructura de [`po-ticket`](../po-ticket/SKILL.md): carpeta del proy
    - **Casos borde:**
      - **No hay subtarea de spec** → avisar al PO que no encontró la spec del developer y ofrecer probar solo contra los AC del ticket / `ticket.md`.
      - **Varias subtareas y no está claro cuál es la spec** → consultar al PO para que indique cuál corresponde.
+   - **Detectar el tipo** de cambio (bug / feature / rediseño) desde el ticket y sus AC. En **rediseño** (o cuando un AC habla de **fidelidad**, "coincide con el diseño X"), el **diseño de referencia** es fuente de verdad: ubicar el link de Figma en el ticket/spec y abrirlo **por capacidad** (navegador con la sesión del PO, o MCP de diseño) para tener contra qué comparar. Si no se puede abrir → degradar: pedir el link/capturas del diseño al PO.
    - **Consolidar los AC** (ticket + spec elegida) y derivar de ellos la **checklist de prueba**. Confirmar brevemente con el PO qué se va a probar **antes** de abrir el navegador.
 3. **Resolver la URL y abrir el ambiente.** URL por precedencia: prompt > el ticket > `environments.<ambiente>` del `.po-config.yml`. Abrir en el navegador (por capacidad). Si aparece **login**, pedir al PO que se autentique él mismo y confirme; recién entonces seguir (regla 3). Con `PROD`, avisar explícitamente que se está validando en producción.
-4. **Ejercitar cada AC.** Recorrer la checklist; por cada AC, reproducir el escenario y capturar **evidencia**: captura a `capturas/`, pasos observados, y consola/red si aporta. Registrar cumple / no cumple / no verificable con su evidencia.
+4. **Ejercitar cada AC**, según el tipo. Recorrer la checklist y capturar **evidencia** por AC (captura a `capturas/`, pasos, consola/red si aporta). Registrar cumple / no cumple / no verificable con su evidencia.
+   - **bug:** reproducir el escenario que fallaba y confirmar que el error **ya no ocurre**, además de los AC.
+   - **feature:** ejercitar la **funcionalidad nueva** contra cada AC.
+   - **rediseño:** abrir la UI en vivo y el diseño en paralelo y comparar **fidelidad** (espaciados, colores, textos, estados hover/activo/error, responsive) contra los AC; capturar evidencia **lado a lado** (pantalla vs. diseño).
 5. **Escribir `qa-reporte.md`** con la plantilla de `reference.md` → "Plantilla de `qa-reporte.md`": veredicto **AC por AC** con evidencia + recomendación global. Es el pre-check.
 6. **Presentar el veredicto al PO** y actuar según su decisión:
    - **Aprueba** → ofrecer **archivar**: mover el dir del ticket a `done/` (solo tras confirmación).

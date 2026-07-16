@@ -2,18 +2,20 @@
 name: po-ticket
 description: >-
   Ayuda al Product Owner a redactar tickets de Jira claros y accionables a partir
-  de un problema mal descrito. El PO pasa una descripción del problema, una URL
-  para reproducirlo y el contexto; la skill reproduce el error en el navegador,
-  captura evidencia observable (pasos, capturas, consola/red), clarifica en
-  diálogo de negocio y redacta un ticket en lenguaje NO técnico con objetivo,
-  impacto y criterios de aceptación verificables. Publica el ticket en Jira tras
-  confirmación. Dos modos: crear uno nuevo, o enriquecer/reescribir un ticket
-  existente ambiguo (pasando su clave, p. ej. PQTCH-649). Pensada para un PO SIN
-  acceso al código ni al repo: trabaja solo con Jira y el navegador. NO diagnostica
-  a nivel código (eso lo hace el developer luego con sdd-flow), NO es code review.
-  Invocación explícita: "/po-ticket <descripción + URL + contexto>" para uno nuevo,
-  o "/po-ticket PQTCH-649" para enriquecer uno existente. No dispara sola: solo por
-  slash o pedido explícito.
+  de un problema o pedido mal descrito. Sirve para tres tipos de ticket: bug
+  (arreglo), nueva feature (funcionalidad nueva) y ajuste/rediseño de UI (contra
+  un diseño de Figma). El PO pasa una descripción, una URL y el contexto; la skill
+  observa/reproduce en el navegador (y abre el diseño de referencia si es rediseño),
+  captura evidencia observable (pasos, capturas, consola/red), clarifica en diálogo
+  de negocio y redacta un ticket en lenguaje NO técnico con objetivo, impacto y
+  criterios de aceptación verificables. Publica el ticket en Jira tras confirmación.
+  Dos modos: crear uno nuevo, o enriquecer/reescribir un ticket existente ambiguo
+  (pasando su clave, p. ej. PQTCH-649). Pensada para un PO SIN acceso al código ni
+  al repo: trabaja solo con Jira y el navegador. NO diagnostica a nivel código (eso
+  lo hace el developer luego con sdd-flow), NO es code review. Invocación explícita:
+  "/po-ticket <descripción + URL + contexto>" para uno nuevo, o "/po-ticket
+  PQTCH-649" para enriquecer uno existente. No dispara sola: solo por slash o pedido
+  explícito.
 argument-hint: "[<descripción + URL de reproducción + contexto> | <CLAVE-123> para enriquecer]"
 # disable-model-invocation: clave REAL de Claude Code — deja la skill solo-slash
 # (/po-ticket). Los triggers ("arma el ticket", "crea el ticket") son genéricos y
@@ -29,13 +31,23 @@ Skill orientada al **Product Owner**. Convierte un problema descrito de forma va
 Es la contraparte de PO al inicio del ciclo: `po-ticket` produce el ticket → el developer lo toma con `sdd-flow` → [`po-qa`](../po-qa/SKILL.md) valida la entrega.
 
 ```
-descripción + URL + contexto ──► reproducir en navegador ──► clarificar (negocio) ──► ticket.md ──► GATE (PO revisa) ──► publicar en Jira
-     (o CLAVE-123 para enriquecer)     (evidencia observable)        (diálogo)                                          (write-safety STOP)
+descripción + URL + contexto ──► clasificar tipo ──► observar en navegador ──► clarificar (negocio) ──► ticket.md ──► GATE (PO revisa) ──► publicar en Jira
+     (o CLAVE-123 para enriquecer)  (bug/feature/rediseño)  (evidencia observable)      (diálogo)                                         (write-safety STOP)
 ```
+
+## Tres tipos de ticket
+
+La skill se adapta al **tipo de cambio**, que infiere y confirma con el PO (ver paso `Clasificar tipo`):
+
+- **bug** — hay un comportamiento roto / error a reproducir.
+- **feature** — se pide algo que hoy no existe (funcionalidad nueva); no hay error que reproducir.
+- **rediseño** — ajuste visual/de UI contra un **diseño de referencia** (Figma): hay un link de diseño o el pedido es "ajustar según el diseño de la pantalla X".
+
+El tipo cambia qué se observa en el navegador, qué se pregunta y qué secciones lleva el ticket (ver `reference.md` → "Plantilla de `ticket.md`").
 
 ## Alcance y límite honesto
 
-- **Sí:** reproducir el síntoma en el navegador, observar lo que pasa (pasos, pantallas, mensajes de error visibles, consola/red), y traducir eso a un ticket claro con objetivo, impacto y AC.
+- **Sí:** observar/reproducir en el navegador lo que corresponde al tipo (bug: el síntoma; feature: el estado actual de la pantalla destino; rediseño: la pantalla actual **y** el diseño de referencia), y traducir eso a un ticket claro con objetivo, impacto y AC.
 - **No:** diagnosticar la causa a nivel código ni proponer la solución técnica. El PO no tiene el código; la skill tampoco lo asume. Lo observado se rotula como **"pistas para el equipo de desarrollo"**, nunca como análisis de código. El diagnóstico real lo hace el developer después con `sdd-flow`.
 
 ## Reglas no negociables
@@ -44,7 +56,7 @@ descripción + URL + contexto ──► reproducir en navegador ──► clarif
 2. **Nada se publica en Jira sin autorización totalmente explícita — siempre, sin excepción.** Antes de **cualquier** escritura en Jira (crear ticket, crear subtarea, editar, comentar, adjuntar) se le muestra al PO **exactamente qué se va a publicar** —el recurso exacto (proyecto + tipo, o clave del ticket) y el contenido exacto, literal— y se **espera su confirmación explícita**. No vale una autorización general previa ni un "dale" anticipado: cada escritura tiene su propio STOP con el contenido a la vista. Ante cualquier duda sobre si hay autorización, **no publicar**. Es la regla de mayor prioridad de esta skill.
 3. **Evidencia observable, no diagnóstico de código.** Ver "Alcance y límite honesto".
 4. **La clarificación va primero, de a una pregunta.** No inventar contexto que el PO no dio: cuando falte información que cambia el ticket (comportamiento esperado, frecuencia, usuarios afectados, prioridad), preguntar — una a una, con una opción recomendada.
-5. **Descubrir por capacidad, no por nombre.** El acceso a Jira y al navegador se resuelve por capacidad (ver "Acceso a Jira" y "Reproducción en navegador"). Antes de fallar por "tool X no existe", listar las disponibles y buscar coincidencias.
+5. **Descubrir por capacidad, no por nombre.** El acceso a Jira, al navegador y al diseño se resuelve por capacidad (ver "Acceso a Jira", "Observación en navegador" y "Acceso al diseño"). Antes de fallar por "tool X no existe", listar las disponibles y buscar coincidencias.
 6. **Degradación elegante.** Si falta el navegador o el acceso a Jira, avisar en una línea y seguir con lo que haya (pedir capturas/pasos al PO; dejar el ticket como borrador local para publicar a mano).
 7. **Sanitización antes de publicar.** El entregable habla del objetivo, no del método: nunca publicar rutas locales, nombres de archivos del flujo, ni mención a esta skill o su mecánica (ver `reference.md` → "Sanitización").
 
@@ -57,9 +69,19 @@ Resolver por **capacidad**, con este orden:
 
 La skill busca la herramienta cuyo nombre matchee `jira`/`atlassian` y usa la que haya — no depende de cuál de las dos vías la provee. Operaciones esperadas (equivalentes en ambas): resolver `cloudId` del site, leer ticket (`getJiraIssue`), crear (`createJiraIssue`), editar (`editJiraIssue`), y comentar (`addCommentToJiraIssue`). Detalle en `reference.md` → "Flujo de Jira". Si no hay ninguna de las dos vías → degradar (regla 6): dejar el `ticket.md` como borrador y ofrecer que el PO lo cree/actualice a mano y pegue la clave.
 
-## Reproducción en navegador
+## Observación en navegador (según tipo)
 
-Buscar por capacidad cualquier tool con `chrome`/`browser`/`playwright`/`devtools`. Con ella: abrir la URL de reproducción, seguir los pasos, y capturar **evidencia observable** — pasos reproducidos, capturas a `capturas/`, y un digest de consola/red (errores visibles, requests fallidos) como hechos, sin hipótesis de código. Sin tool de navegador → degradar (regla 6): pedir al PO capturas/video/pasos.
+Buscar por capacidad cualquier tool con `chrome`/`browser`/`playwright`/`devtools`. Con ella, abrir la URL y capturar **evidencia observable** (capturas a `capturas/`, pasos, digest de consola/red) — hechos, sin hipótesis de código. Qué se observa depende del tipo:
+
+- **bug:** reproducir el síntoma (seguir los pasos hasta el error) y capturar el estado roto + consola/red.
+- **feature:** abrir la pantalla destino si existe y capturar el estado actual como contexto (no hay error).
+- **rediseño:** abrir la pantalla actual **y** el diseño de referencia, y capturar ambos anotando las diferencias observables.
+
+Sin tool de navegador → degradar (regla 6): pedir al PO capturas/video/pasos.
+
+## Acceso al diseño (rediseño)
+
+Solo en tickets de **rediseño**. Resolver por **capacidad**: abrir el diseño de referencia (Figma) con el navegador y la **sesión real del PO**, o con un MCP de diseño si existe. El diseño es la **fuente de verdad** de los criterios de aceptación de fidelidad. Si no se puede abrir → degradar: **referenciar el link** en el ticket y que el PO compare a ojo.
 
 ## Modelo de artefactos en disco
 
@@ -82,12 +104,13 @@ El directorio de trabajo es la **carpeta del proyecto**; su nombre es la **clave
 
 1. **Resolver proyecto y config.** Inferir `project_key` del nombre del directorio de trabajo; leer `.po-config.yml` si existe. La config se crea/completa **on-demand**: no hay setup previo — solo se pregunta el dato que falte cuando hace falta (p. ej. `default_issuetype` al momento de crear), se muestra el YAML exacto y se escribe/mergea tras confirmación (ver `reference.md` → "Creación on-demand e incremental"). Si el directorio no parece una carpeta de proyecto, avisar y confirmar dónde trabajar.
 2. **Detectar modo.** Si el prompt trae una clave `[A-Z][A-Z0-9]+-\d+` → **enriquecer**: leer el ticket de Jira (`getJiraIssue`) y tomarlo como base. Si no → **nuevo**.
-3. **Reproducir** (si hay URL + navegador). Abrir la URL, reproducir el síntoma, capturar pasos + capturas a `capturas/` + digest de consola/red. Evidencia observable, no diagnóstico de código (regla 3). Sin navegador → pedir capturas/pasos al PO.
-4. **Clarificar** (regla 4). Preguntas de negocio, de a una, con recomendación: comportamiento esperado, frecuencia/alcance, usuarios afectados, prioridad, y lo que falte para AC verificables. En modo enriquecer, preguntar solo lo que el ticket base no responde.
-5. **Redactar `ticket.md`** en el dir del ticket, en lenguaje no técnico, con la plantilla de `reference.md` → "Plantilla de `ticket.md`": título (con **prefijo de área**) · 📋 descripción/contexto (incluye el comportamiento actual/síntoma) · 🔁 pasos para reproducir · 📸 evidencia (capturas) · 🎯 objetivo · ✅ criterios de aceptación (`AC-1..N`, formalizan el comportamiento esperado) · 🛠️ pistas para el equipo (observado, opcional). Los encabezados llevan emoji (convención del equipo). No usar secciones separadas de "Resultado esperado/actual": el síntoma va en Descripción y lo esperado en los AC. **Proponer el prefijo de área** (`[Front]` / `[Back]` / `[Front/Back]`) a partir de los síntomas observables (ver `reference.md` → "Prefijo de área"); confirmarlo con el PO en el gate, nunca imponerlo.
-6. **GATE — el PO revisa el borrador.** Presentar `ticket.md` (incluido el prefijo de área propuesto) y esperar aprobación. Si el PO corrige, actualizar y volver a ofrecer. No publicar sin aprobación. Si el área quedó `[Front/Back]`, avisar que en el gate de publicación se ofrecerá crear las dos subtareas.
-7. **Publicar en Jira (write-safety STOP).** Sanitizar (regla 7). Mostrar recurso exacto (proyecto + `default_issuetype` para nuevo; clave para enriquecer) + contenido exacto, y esperar confirmación. Recién entonces: `createJiraIssue` (nuevo) o `editJiraIssue` (enriquecer). Adjuntar las capturas **por capacidad**; si la vía de Jira no soporta adjuntar archivos, dejarlas en `capturas/`, referenciarlas en el ticket y avisar al PO para que las adjunte a mano. Guardar en `ticket.md` la versión publicada; si es nuevo, renombrar el dir provisional a la clave real que devolvió Jira.
-8. **Subtareas por área (solo si `[Front/Back]`).** Ofrecer crear dos subtareas del ticket recién publicado —una `[Front]` y otra `[Back]`—, cada una con un **resumen heredado del padre** (contexto + los AC que le tocan a esa área) y apuntando al padre. Crearlas **solo tras confirmación** del PO, cada una con su STOP de write-safety. Detalle del payload en `reference.md` → "Subtareas por área". Si el ticket es `[Front]` o `[Back]` solo, no se crean subtareas.
+3. **Clasificar tipo.** Inferir si es **bug** / **feature** / **rediseño** desde el prompt, el ticket base (en enriquecer) y la presencia de un link de diseño (Figma → rediseño). **Confirmarlo con el PO** en una línea ("lo trato como rediseño porque hay un diseño de Figma; ¿va?"). El tipo define qué se observa, qué se pregunta y qué secciones lleva el ticket.
+4. **Observar en navegador** (si hay URL + navegador), según el tipo (ver "Observación en navegador"): bug reproduce el síntoma; feature captura el estado actual de la pantalla destino; rediseño abre la pantalla actual **y** el diseño de referencia (ver "Acceso al diseño"). Capturas a `capturas/`. Evidencia observable, no diagnóstico de código (regla 3). Sin navegador → pedir al PO capturas/pasos (y el link de diseño, si es rediseño).
+5. **Clarificar** (regla 4), adaptando las preguntas al tipo: **bug** → frecuencia, cuándo pasa, usuarios afectados; **feature** → quién lo necesita, comportamiento esperado, alcance; **rediseño** → qué elementos/estados cambian y cuál es el diseño de referencia. De a una, con recomendación. En modo enriquecer, preguntar solo lo que el ticket base no responde.
+6. **Redactar `ticket.md`** en el dir del ticket, en lenguaje no técnico, con la plantilla **adaptativa** de `reference.md` → "Plantilla de `ticket.md`" (esqueleto común + bloque por tipo). Esqueleto: título (con **prefijo de área**) · 📋 descripción/contexto · 🎯 objetivo · ✅ criterios de aceptación (`AC-1..N`) · 🛠️ pistas para el equipo (opcional). Bloque por tipo: **bug** suma 🔁 pasos para reproducir + 📸 evidencia (estado roto); **feature** suma 📸 evidencia (estado actual, opcional); **rediseño** suma 🎨 referencia de diseño + 📸 evidencia (actual vs. diseño). Los AC formalizan el comportamiento esperado (bug/feature) o la **fidelidad al diseño** (rediseño). Encabezados con emoji. **Proponer el prefijo de área** (`[Front]`/`[Back]`/`[Front/Back]`; rediseño ≈ `[Front]` por defecto — ver `reference.md` → "Prefijo de área") y confirmarlo con el PO en el gate, nunca imponerlo.
+7. **GATE — el PO revisa el borrador.** Presentar `ticket.md` (incluidos el tipo y el prefijo de área propuestos) y esperar aprobación. Si el PO corrige, actualizar y volver a ofrecer. No publicar sin aprobación. Si el área quedó `[Front/Back]`, avisar que en el gate de publicación se ofrecerá crear las dos subtareas.
+8. **Publicar en Jira (write-safety STOP).** Sanitizar (regla 7). Mostrar recurso exacto (proyecto + `default_issuetype` para nuevo; clave para enriquecer) + contenido exacto, y esperar confirmación. Recién entonces: `createJiraIssue` (nuevo) o `editJiraIssue` (enriquecer). Adjuntar las capturas **por capacidad**; si la vía de Jira no soporta adjuntar archivos, dejarlas en `capturas/`, referenciarlas en el ticket y avisar al PO para que las adjunte a mano. Guardar en `ticket.md` la versión publicada; si es nuevo, renombrar el dir provisional a la clave real que devolvió Jira.
+9. **Subtareas por área (solo si `[Front/Back]`).** Ofrecer crear dos subtareas del ticket recién publicado —una `[Front]` y otra `[Back]`—, cada una con un **resumen heredado del padre** (contexto + los AC que le tocan a esa área) y apuntando al padre. Crearlas **solo tras confirmación** del PO, cada una con su STOP de write-safety. Detalle del payload en `reference.md` → "Subtareas por área". Si el ticket es `[Front]` o `[Back]` solo, no se crean subtareas.
 
 ## Compatibilidad con Plan Mode / modos no mutantes
 

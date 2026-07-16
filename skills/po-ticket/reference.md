@@ -21,7 +21,8 @@ Los nombres de tools/MCP cambian entre entornos. Resolver por **capacidad**: pro
 | Capacidad | Cómo intentarlo (orden) | Fallback / degradación |
 |---|---|---|
 | Acceso a Jira | 1º **conector de Atlassian del Claude Code desktop** si está presente; 2º **MCP de Atlassian** configurado. Buscar la tool cuyo nombre contenga `jira`/`atlassian`. | Dejar `ticket.md` como borrador local; el PO crea/actualiza el ticket a mano y pega la clave. |
-| Reproducción en navegador | Cualquier tool con `chrome`/`browser`/`playwright`/`devtools`. | Pedir al PO captura/video/pasos; redactar con eso. |
+| Observación en navegador | Cualquier tool con `chrome`/`browser`/`playwright`/`devtools`. | Pedir al PO captura/video/pasos; redactar con eso. |
+| Acceso a diseño (Figma) | Navegador con la sesión real del PO (abrir el link de Figma), o un MCP de diseño si existe. | Referenciar el link en el ticket; el PO compara la fidelidad a ojo. |
 | Selección interactiva (clarify) | Tool de selección tipo `AskUserQuestion` si existe. | Preguntar de forma conversacional, con recomendación. |
 
 > Regla: antes de fallar por "tool X no existe", listar las tools disponibles y buscar coincidencias por capacidad/keyword. Solo entonces avisar y degradar.
@@ -71,43 +72,77 @@ Así el `.po-config.yml` empieza vacío o inexistente y se va llenando: `po-tick
 
 ## Plantilla de `ticket.md`
 
-`<CLAVE>/ticket.md` — el ticket en **lenguaje no técnico**. Es lo que se publica en Jira (tras sanitizar y convertir a ADF). Los encabezados de sección llevan **emoji** (convención del equipo) y el título lleva **prefijo de área** (ver abajo).
+`<CLAVE>/ticket.md` — el ticket en **lenguaje no técnico**. Es lo que se publica en Jira (tras sanitizar y convertir a ADF). Los encabezados llevan **emoji** (convención del equipo) y el título lleva **prefijo de área** (ver abajo). La plantilla es **adaptativa**: un esqueleto común + un bloque según el tipo de cambio.
+
+**Qué secciones aplican por tipo:**
+
+| Sección | bug | feature | rediseño |
+|---|:---:|:---:|:---:|
+| Título con prefijo de área | ✓ | ✓ | ✓ |
+| 📋 Descripción / Contexto | ✓ | ✓ | ✓ |
+| 🔁 Pasos para Reproducir | ✓ | — | — |
+| 🎨 Referencia de Diseño | — | — | ✓ |
+| 📸 Evidencia | ✓ (estado roto) | opcional (estado actual) | ✓ (actual vs. diseño) |
+| 🎯 Objetivo | ✓ | ✓ | ✓ |
+| ✅ Criterios de Aceptación | ✓ (comportamiento) | ✓ (comportamiento) | ✓ (fidelidad al diseño) |
+| 🛠️ Pistas para el Equipo | opcional | opcional | opcional |
+
+**Esqueleto común** (todas las secciones comunes; se le inserta el bloque del tipo donde corresponde):
 
 ```markdown
 # [Front|Back|Front/Back] <Título claro y accionable, desde la vista del usuario>
 
 ## 📋 Descripción / Contexto
-<Qué está pasando hoy, desde la perspectiva del usuario o del negocio: el
-comportamiento actual/roto (el síntoma, con el mensaje de error visible si lo
-hay), a quién afecta y en qué situación. 1-3 párrafos, sin jerga técnica.>
+<Qué pasa hoy y qué se necesita, desde la perspectiva del usuario o del negocio,
+sin jerga técnica. 1-3 párrafos.
+- bug: el comportamiento actual/roto (el síntoma, con el mensaje de error visible si lo hay).
+- feature: la necesidad y el contexto donde vivirá la funcionalidad nueva.
+- rediseño: qué pantalla/componente se ajusta y por qué.>
 
-## 🔁 Pasos para Reproducir
-1. <paso observado>
-2. <paso observado>
-3. <...>
+<!-- INSERTAR AQUÍ el bloque del tipo: 🔁 Pasos (bug) o 🎨 Referencia de Diseño (rediseño) -->
 
 ## 📸 Evidencia
 - Captura: `capturas/<archivo>.png`
-- <Observación en lenguaje llano — p. ej. "al enviar el formulario aparece un
-  mensaje de error rojo y la página no avanza".>
+- <Observación en lenguaje llano — bug: "aparece un mensaje de error rojo y la
+  página no avanza"; feature: estado actual de la pantalla destino; rediseño:
+  actual vs. diseño lado a lado.>
 
 ## 🎯 Objetivo
-<Por qué importa resolverlo: qué se gana o qué riesgo/costo evita. En términos de
-negocio/usuario.>
+<Por qué importa: qué se gana o qué riesgo/costo evita. En términos de negocio/usuario.>
 
 ## ✅ Criterios de Aceptación
-<El comportamiento esperado, formalizado y verificable. Cada AC es una condición
-observable de "cuándo está resuelto"; cubren también los casos borde.>
-- **AC-1:** <resultado observable, verificable, en lenguaje de negocio>
+<Formalizados y verificables. bug/feature: comportamiento observable ("cuándo está
+resuelto"), con casos borde. rediseño: fidelidad al diseño referenciado.>
+- **AC-1:** <resultado observable / condición de fidelidad, en lenguaje de negocio>
 - **AC-2:** <...>
 
 ## 🛠️ Pistas para el Equipo  <!-- opcional; observado, NO diagnóstico de código -->
 <Solo hechos observados en el navegador que podrían orientar al developer — p. ej.
 "la consola muestra un error 500 al guardar". Nunca análisis de código ni propuesta
-de solución técnica. Omitir la sección si no hay nada observable útil.>
+de solución técnica. Omitir si no hay nada observable útil.>
 ```
 
-> **Sin solapamiento Esperado/Actual vs. AC.** El comportamiento **actual** (el síntoma) vive en 📋 Descripción/Contexto; el comportamiento **esperado** se formaliza en los ✅ Criterios de Aceptación (que además cubren casos borde). No se usan secciones separadas de "Resultado esperado/actual": los AC son la única fuente de "qué debe cumplirse".
+**Bloque por tipo** (se inserta tras 📋 Descripción / Contexto):
+
+```markdown
+<!-- bug -->
+## 🔁 Pasos para Reproducir
+1. <paso observado>
+2. <paso observado>
+3. <...>
+```
+
+```markdown
+<!-- rediseño -->
+## 🎨 Referencia de Diseño
+- Diseño: <link de Figma> — pantalla/estado: <cuál>
+- <Qué cambia respecto de lo actual, a nivel visible: espaciados, colores, textos,
+  estados (hover/activo/error), responsive. En lenguaje llano.>
+```
+
+> **feature:** no lleva bloque propio — va directo de 📋 Descripción a 📸 Evidencia (opcional) y los AC formalizan el comportamiento deseado.
+
+> **Sin solapamiento Esperado/Actual vs. AC.** El estado **actual** vive en 📋 Descripción/Contexto (bug: el síntoma; rediseño: lo que hay hoy); lo **esperado** se formaliza en los ✅ Criterios de Aceptación. No se usan secciones separadas de "Resultado esperado/actual": los AC son la única fuente de "qué debe cumplirse".
 
 ### Prefijo de área en el título (`[Front]` / `[Back]` / `[Front/Back]`)
 
@@ -117,7 +152,11 @@ Convención del equipo: el título del ticket (y de sus subtareas, si las hay) e
 - **`[Back]`** — el problema es de datos, guardado, cálculo o de un error que viene del servidor.
 - **`[Front/Back]`** — involucra ambas.
 
-Como el PO no es técnico, la skill **propone** el área a partir de los **síntomas observables** (bug visual → `[Front]`; error al guardar / dato incorrecto / error del servidor en consola → `[Back]`; ambos → `[Front/Back]`) y **lo confirma con el PO** en el gate. Nunca imponerla en silencio.
+Como el PO no es técnico, la skill **propone** el área a partir de lo observable y **lo confirma con el PO** en el gate (nunca imponerla en silencio):
+
+- **bug:** visual → `[Front]`; error al guardar / dato incorrecto / error del servidor en consola → `[Back]`; ambos → `[Front/Back]`.
+- **feature:** según dónde vive lo nuevo (pantalla → `[Front]`; datos/servicio → `[Back]`; ambos → `[Front/Back]`).
+- **rediseño:** casi siempre `[Front]` (es un ajuste visual); se propone `[Front]` por defecto y se confirma.
 
 ### Emoji de encabezados (referencia)
 
@@ -125,6 +164,7 @@ Como el PO no es técnico, la skill **propone** el área a partir de los **sínt
 |---|---|
 | Descripción / Contexto | 📋 |
 | Pasos para Reproducir | 🔁 |
+| Referencia de Diseño | 🎨 |
 | Evidencia | 📸 |
 | Objetivo | 🎯 |
 | Criterios de Aceptación | ✅ |

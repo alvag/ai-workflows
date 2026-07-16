@@ -2,17 +2,19 @@
 
 Skill orientada al **Product Owner que hace las veces de QA**. Valida que la entrega de un ticket cumple sus **criterios de aceptación**, ejercitándola en el navegador y produciendo un **pre-check** con veredicto AC por AC.
 
+Sirve para los **tres tipos de ticket**: **bug** (el error ya no ocurre), **nueva feature** (la funcionalidad nueva funciona) y **ajuste/rediseño de UI** (la pantalla coincide con el diseño de Figma).
+
 Pensada para un PO **sin acceso al código**: trabaja solo con **Jira + navegador**.
 
 ## Qué hace
 
 ```
-prueba CLAVE-123 en DEV ──► leer ticket + spec ──► establecer QUÉ probar (AC) ──► abrir ambiente (login manual) ──► ejercitar cada AC ──► qa-reporte.md ──► veredicto al PO
+prueba CLAVE-123 en DEV ──► leer ticket + spec ──► establecer QUÉ probar (AC + tipo) ──► abrir ambiente (login manual) ──► ejercitar cada AC ──► qa-reporte.md ──► veredicto al PO
 ```
 
-- **Establece qué probar** leyendo el ticket de Jira y su **subtarea de spec** (la que publica `sdd-flow`); si no la encuentra o hay varias, se lo consulta al PO. Consolida los AC y arma la checklist.
+- **Establece qué probar** leyendo el ticket de Jira y su **subtarea de spec** (la que publica `sdd-flow`); si no la encuentra o hay varias, se lo consulta al PO. Consolida los AC, detecta el tipo y arma la checklist. En **rediseño** abre el diseño de referencia (Figma) como fuente de verdad.
 - **Abre el ambiente** (DEV/QA/PROD) en el navegador. Si pide login, el **PO se autentica a mano** en su sesión real; sin credenciales guardadas.
-- **Ejercita cada AC** y junta evidencia (capturas, pasos, consola/red).
+- **Ejercita cada AC** según el tipo (bug: el error ya no ocurre; feature: la funcionalidad nueva; rediseño: compara UI en vivo vs. diseño) y junta evidencia (capturas, pasos, consola/red).
 - **Pre-check asistido:** da un veredicto AC por AC (✅ cumple / ❌ no cumple / ⚠️ no verificable) y una recomendación global. **Recomienda, pero decide el PO.**
 - **Si pasa** → ofrece archivar el ticket (mover a `done/`). **Si no pasa** → solo si el PO autoriza, comenta en Jira **etiquetando al asignado** con las observaciones.
 
@@ -52,7 +54,7 @@ Por capacidad, con orden de preferencia: **1º el conector de Atlassian del Clau
 
 Ninguna obligatoria, pero:
 
-- **Navegador** (Chrome/Playwright/DevTools) — imprescindible para validar de verdad; sin él no hay QA real.
+- **Navegador** (Chrome/Playwright/DevTools) — imprescindible para validar de verdad; sin él no hay QA real. En rediseño, también abre el diseño de Figma con la sesión del PO.
 - Conector de Atlassian del desktop **o** MCP de Atlassian (leer ticket/subtareas, comentar).
 - Tool de selección interactiva (tipo `AskUserQuestion`) para consultar al PO.
 
