@@ -86,7 +86,11 @@ tracker: github                  # jira | github | gitlab | linear | none
 test_scope_hint: "vitest run {name}"   # plantilla de COMANDO para acotar tests; {name} = archivo/patrón
 cross_review: { mode: auto }     # segunda opinión cross-model: auto (por complejidad) | on | off
 jira_approval: { mode: "off" }   # aprobación externa de la spec en Jira (solo si tracker: jira; "off"/"on" entre comillas)
-implement_mode: ask              # cómo ejecutar las tasks: ask (preguntar en el gate) | inline | subagent
+implement_mode: ask              # cómo ejecutar las tasks: ask (preguntar en el gate) | inline | subagent | cross
+cross_implement:                 # política del modo cross (solo si implement_mode: cross; ver skill cross-implement)
+  execution: auto                # auto | sync | background
+  max_fix_rounds: 2              # tope del fix loop antes del takeover del conductor
+  deadline: 1800                 # segundos; tope del wait en background
 domain_context:
   mode: auto                     # auto | on | off; solo lectura
   context_paths: []              # docs/glosarios/arquitectura existentes
@@ -94,9 +98,11 @@ domain_context:
 final_diff_review: { mode: auto } # revisión agregada en complex/high-risk inline
 ```
 
+> El esquema **completo** (las sub-claves de `cross_review` —`execution`, `artifacts`, `max_rounds`, `reviewer`—, el bloque top-level `co_explore` —`mode`, `deadline`, hermano de `cross_review`, no anidado— y las de `jira_approval`) está en `reference.md` → "Esquema de `.specify/config.yml`".
+
 > **Prefijo de rama:** por defecto la rama usa un prefijo **semántico** (`feature/`, `fix/`, `chore/`… — para features es siempre `feature`, nunca `feat`: ese queda para los commits). Si tu proyecto necesita un prefijo único para **todo** tipo de cambio (p. ej. siempre `feature/`, incluso en fixes, por CI/CD), fíjalo en `branch_prefix` o pásalo al vuelo: "con prefijo de rama feature/". El prefijo reemplaza el segmento semántico; el resto (`<ticket>-<slug>`) no cambia.
 
-> **Modo de implementación:** al aprobar las tasks puedes seguir **inline** (la misma sesión implementa, con todo el contexto cargado) o despachar **subagentes frescos por task** (cada agente lee solo spec/plan/su task — contexto limpio, sin el ruido conversacional previo; la revisión por task, el commit y el push quedan siempre en tu sesión). Por defecto la skill pregunta en el mismo gate de aprobación; se fija con `implement_mode: ask | inline | subagent` en config, o al vuelo: "implementa con subagentes". En tasks de comportamiento, los pasos roja-verde se recomiendan cuando hay un seam testeable; la garantía final es `verify`.
+> **Modo de implementación:** al aprobar las tasks puedes seguir **inline** (la misma sesión implementa, con todo el contexto cargado) o despachar **subagentes frescos por task** (cada agente lee solo spec/plan/su task — contexto limpio, sin el ruido conversacional previo; la revisión por task, el commit y el push quedan siempre en tu sesión). Por defecto la skill pregunta en el mismo gate de aprobación; se fija con `implement_mode: ask | inline | subagent | cross` en config, o al vuelo: "implementa con subagentes". El modo **`cross`** delega la implementación a la skill `cross-implement` (un modelo de otra familia implementa; tu sesión revisa el diff como un PR ajeno) y solo se ofrece si esa skill y el CLI de la otra familia están disponibles; su política (`execution`/`max_fix_rounds`/`deadline`) se fija en el bloque `cross_implement` del config. En tasks de comportamiento, los pasos roja-verde se recomiendan cuando hay un seam testeable; la garantía final es `verify`.
 
 El esquema completo y la matriz de detección están en `reference.md`.
 

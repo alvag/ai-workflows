@@ -9,7 +9,7 @@ description: >-
   (contra-enfoque antes de un plan/reparto) e "investigate" (investigar un bug:
   hipótesis de causa raíz rankeadas + plan de verificación, sin arreglar).
   explore/counter-plan los invocan sdd-flow y sdd-orchestrator cuando
-  cross_review.co_explore está activo; investigate es standalone, fuera de todo
+  co_explore está activo; investigate es standalone, fuera de todo
   flujo SDD. Invocación directa: "/co-explore <ticket|descripción|bug>", "que
   Codex explore esto en paralelo" o "que Codex investigue este bug en paralelo".
   NO revisa artefactos escritos (eso es cross-review) ni arregla el bug (eso
@@ -248,15 +248,15 @@ valor en duplicarlo.
 
 ## Configuración
 
-Clave bajo `cross_review` en `.specify/config.yml` (sdd-flow) o en el `manifest.yml` de la
-orquestación (sdd-orchestrator). **Gobierna solo los modos `explore`/`counter-plan` (callers
-SDD); `investigate` es standalone y no lee config:**
+Clave **top-level** `co_explore` (hermana de `cross_review`, **no** anidada — son ortogonales) en
+`.specify/config.yml` (sdd-flow) o en el `manifest.yml` de la orquestación (sdd-orchestrator).
+**Gobierna solo los modos `explore`/`counter-plan` (callers SDD); `investigate` es standalone y
+no lee config:**
 
 ```yaml
-cross_review:
-  co_explore:
-    mode: auto        # auto (por complejidad: complejo on, normal opt-in, trivial nunca) | "on" | "off"
-    deadline: 600     # segundos (explore; counter-plan usa 300 salvo override)
+co_explore:
+  mode: auto        # auto (por complejidad: complejo on, normal opt-in, trivial nunca) | "on" | "off"
+  deadline: 600     # segundos (explore; counter-plan usa 300 salvo override)
 ```
 
 Precedencia (igual que el resto de overrides SDD): **override conversacional de la corrida >

@@ -41,12 +41,12 @@ branch_prefix: ""              # opcional; prefijo único de la orquestación; v
 execution_mode: fanout         # opcional; fanout (agentes paralelos, default) | inline (en la sesión del orquestador, de a un repo)
 implement_mode: ""             # opcional; modo de implementación que heredan los sdd-flow delegados: inline | subagent | cross (vacío → cada sdd-flow resuelve el suyo: config del repo > default). `cross` exige la capacidad (skill cross-implement + CLI de la otra familia) en el contexto del agente delegado
 # outcome: aborted             # solo si la orquestación terminó abortada (sub-paso `abort`)
-cross_review:                  # opcional; segunda opinión cross-model (ver skill cross-review)
+cross_review:                  # opcional; segunda opinión cross-model EN LOS GATES (ver skill cross-review)
   mode: auto                   # auto | on | off
   execution: auto              # auto (por capacidad del conductor) | sync | background
   artifacts: [master-spec, reparto]
   max_rounds: 3
-  co_explore: {mode: auto, deadline: 600}  # co-exploración: default on en orquestación; ver SKILL.md → Co-exploración cross-model
+co_explore: {mode: auto, deadline: 600}  # co-exploración cross-repo ANTES del reparto; ORTOGONAL a cross_review (bloque hermano, no anidado); default on en orquestación; ver SKILL.md → Co-exploración cross-model
 repos:
   - path: servicio-a          # relativo a la contenedora
     branch: feature/ABC-123-trace-id

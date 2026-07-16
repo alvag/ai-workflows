@@ -145,20 +145,25 @@ branch_prefix: ""                # opcional; reemplaza {type} (p. ej. "feature/"
 commit_style: conventional       # conventional | plain
 tracker: jira                    # jira | github | gitlab | linear | none
 test_scope_hint: "vitest run {name}"      # plantilla de COMANDO para acotar tests; {name} = archivo/patrón
-cross_review:                    # segunda opinión cross-model (opcional; ver skill cross-review)
+cross_review:                    # segunda opinión cross-model EN LOS GATES (opcional; ver skill cross-review)
   mode: auto                     # auto (por complejidad) | "on" | "off"  (on/off entre comillas: sin ellas YAML los parsea como booleanos)
   execution: auto                # auto | sync | background — cómo corre la revisión (se hereda a cross-review)
   artifacts: [spec, plan, tasks] # qué artefactos revisar
   max_rounds: 3
   reviewer: auto                 # auto (descubre por capacidad; nunca la familia del autor) | claude | codex
-  co_explore:                    # exploración paralela cross-model (opcional; ver skill co-explore)
-    mode: auto                   # auto (por complejidad: complejo on, normal opt-in, trivial nunca) | "on" | "off"
-    deadline: 600                # segundos; default 600 en `explore` (pre-spec), 300 en `counter-plan` (pre-plan) salvo override
+co_explore:                      # exploración paralela cross-model ANTES de spec/plan (opcional; ver skill co-explore). ORTOGONAL a cross_review → bloque top-level hermano, no anidado
+  mode: auto                     # auto (por complejidad: complejo on, normal opt-in, trivial nunca) | "on" | "off"
+  deadline: 600                  # segundos; overridea el default POR MODO de la skill (600 `explore` / 300 `counter-plan`). `investigate` es standalone (no lo invoca SDD) y no lee config.
 jira_approval:                   # aprobación externa de la spec en Jira (opcional; solo si tracker: jira)
   mode: "off"                    # "off" | "on"  (default off; entre comillas: sin ellas YAML los parsea como booleanos)
   subtask_issuetype: auto        # auto (descubrir por createmeta) | "Subtarea" | "Sub-task"
   approval_signal: ask           # ask | status:"<estado Jira que cuenta como aprobado>"
 implement_mode: ask              # cómo ejecutar las tasks: ask (preguntar en el último gate) | inline | subagent | cross (delegar a la otra familia vía `cross-implement`; requiere esa skill + el CLI de la otra familia)
+cross_implement:                 # política del modo `implement_mode: cross` (opcional; ver skill cross-implement). Ignorado en los otros modos.
+  execution: auto                # auto (por tamaño del work order) | sync | background — cómo espera al implementador
+  max_fix_rounds: 2              # tope del fix loop antes del takeover del conductor (el tope de sdd-flow "3 fixes de la misma falla → volver a plan/specify" manda por encima)
+  deadline: 1800                 # segundos; tope duro del wait en background
+  # sin `implementer:` — la familia del IMPLEMENTADOR la fija el conductor (Codex cuando conduce Claude; Claude cuando conduce Codex), no es configurable (a diferencia de cross_review.reviewer)
 domain_context:
   mode: auto                     # auto | "on" | "off"; solo lectura, nunca escribe ADRs/docs
   context_paths: []              # docs de dominio/glosarios/arquitectura a leer si existen

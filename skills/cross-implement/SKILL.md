@@ -107,6 +107,15 @@ Quien la invoca (el usuario en modo directo, o `sdd-flow` en modo embebido) prov
   puede fijarlo (Claude Code: Bash hasta 600000ms) y el work order es chico; background con
   deadline y banner para work orders grandes o conductores de exec corto (Codex ~120s). Ver
   `reference.md` → "Latencia, deadlines y banner".
+- **`deadline`** — segundos; tope duro del wait en background (default 1800). En sync no aplica
+  (lo acota el timeout de exec del conductor).
+
+> **Fuente de estos parámetros.** En modo **directo** son defaults de la skill / override
+> conversacional. En modo **embebido** por `sdd-flow` (`implement_mode: cross`), `execution`,
+> `max_fix_rounds` y `deadline` se resuelven del bloque **`cross_implement`** del
+> `.specify/config.yml` (con estos mismos defaults como fallback); el resto (`work_order`,
+> `working_dir`, `proof_cmd`) los arma sdd-flow por corrida. La **familia** del implementador la
+> fija el conductor (no es configurable).
 
 ### Pasos de ejecución
 

@@ -50,7 +50,7 @@ cross-model — `co-explore` (explorar) · `cross-review` (criticar el diseño) 
 ## Cuándo usarla
 
 - La invocan `sdd-flow` y `sdd-orchestrator` (modos `explore`/`counter-plan`) cuando
-  `cross_review.co_explore` está activo (modo embebido, post-`gather-context` o pre-`plan`/reparto).
+  `co_explore` está activo (modo embebido, post-`gather-context` o pre-`plan`/reparto).
 - Modo directo `explore`: `/co-explore <ticket|descripción>` → corre la síntesis y presenta la
   conclusión.
 - Modo directo `investigate`: `/co-explore <bug>` o "que Codex investigue este bug en paralelo" →
@@ -113,15 +113,15 @@ así está disponible en cualquier repo y es inmune a los worktrees (el cwd deja
 
 ## Configuración
 
-Clave bajo `cross_review` en `.specify/config.yml` (`sdd-flow`) o en el `manifest.yml` de la
-orquestación (`sdd-orchestrator`). **Gobierna solo los modos `explore`/`counter-plan`;
-`investigate` es standalone y no lee config** (su deadline se overridea conversacionalmente):
+Clave **top-level** `co_explore` (hermana de `cross_review`, **no** anidada — son ortogonales) en
+`.specify/config.yml` (`sdd-flow`) o en el `manifest.yml` de la orquestación (`sdd-orchestrator`).
+**Gobierna solo los modos `explore`/`counter-plan`; `investigate` es standalone y no lee config**
+(su deadline se overridea conversacionalmente):
 
 ```yaml
-cross_review:
-  co_explore:
-    mode: auto        # auto (por complejidad: complejo on, normal opt-in, trivial nunca) | "on" | "off"
-    deadline: 600     # segundos (explore; counter-plan usa 300 salvo override)
+co_explore:
+  mode: auto        # auto (por complejidad: complejo on, normal opt-in, trivial nunca) | "on" | "off"
+  deadline: 600     # segundos (explore; counter-plan usa 300 salvo override)
 ```
 
 Precedencia (igual que el resto de overrides SDD): **override conversacional de la corrida >

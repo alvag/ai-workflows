@@ -431,7 +431,7 @@ instalada y puede reanudar ese thread.
 | `counter-plan` | 300 s | 10 s | ~30 |
 | `investigate` | 600 s | 10 s | ~60 |
 
-Override: `cross_review.co_explore.deadline` en la config (ver `SKILL.md` → "Configuración"); si
+Override: `co_explore.deadline` en la config (ver `SKILL.md` → "Configuración"); si
 no está seteado, se usa el default de la tabla según `mode`. Una exploración tarda más que una
 crítica de cross-review (tiene que recorrer el repo desde cero), por eso el default de `explore`
 es más alto. En `investigate` no hay config (es standalone): el override, si lo hay, es
