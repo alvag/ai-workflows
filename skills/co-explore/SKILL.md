@@ -4,14 +4,18 @@ description: >-
   Exploración paralela cross-model: un modelo de otra familia que el autor
   (Codex cuando conduce Claude; Claude cuando conduce Codex) explora el código
   en background, read-only, y devuelve un informe estructurado propio; el
-  conductor explora en paralelo y sintetiza los dos mapas independientes. Tres
+  conductor explora en paralelo y sintetiza los dos mapas independientes. Cuatro
   modos: "explore" (mapear terreno antes de una spec), "counter-plan"
-  (contra-enfoque antes de un plan/reparto) e "investigate" (investigar un bug:
-  hipótesis de causa raíz rankeadas + plan de verificación, sin arreglar).
+  (contra-enfoque antes de un plan/reparto), "investigate" (investigar un bug:
+  hipótesis de causa raíz rankeadas + plan de verificación, sin arreglar) y
+  "debate" (ayudar a decidir entre opciones abiertas cuando no estás seguro:
+  las dos familias forman posturas independientes, se critican en rondas y el
+  conductor sintetiza sin elegir).
   explore/counter-plan los invocan sdd-flow y sdd-orchestrator cuando
   co_explore está activo; investigate es standalone, fuera de todo
   flujo SDD. Invocación directa: "/co-explore <ticket|descripción|bug>", "que
-  Codex explore esto en paralelo" o "que Codex investigue este bug en paralelo".
+  Codex explore esto en paralelo", "que Codex investigue este bug en paralelo",
+  "/co-explore debate <decisión>" o "no sé si X o Y, que Codex y tú lo debatan".
   NO revisa artefactos escritos (eso es cross-review) ni arregla el bug (eso
   es systematic-debugging): produce hallazgos e hipótesis propios que compiten
   con los del conductor. No invocarla espontáneamente: solo ante un pedido
@@ -24,7 +28,7 @@ Helper que despacha a un modelo de otra familia (Codex cuando conduce Claude; Cl
 conduce Codex) a explorar el mismo código en background, read-only, y a devolver un informe
 estructurado propio; mientras tanto el conductor hace su propia exploración — no hay espera
 secuencial, ambos avanzan en paralelo — y al final el conductor **sintetiza** los dos mapas.
-Sirve para tres cosas, según `mode`:
+Sirve para cuatro cosas, según `mode`:
 
 - **`explore`** (pre-spec, lo invoca SDD): mapear el terreno antes de escribir una `spec.md` —
   archivos relevantes, puntos de reúso, riesgos, enfoque sugerido.
@@ -35,6 +39,11 @@ Sirve para tres cosas, según `mode`:
   rankeadas + plan de verificación. **No arregla ni verifica ejecutando como parte de la
   skill**: el valor cross-model vive en el espacio de hipótesis (dos lentes con puntos ciegos
   distintos); verificar es determinístico y lo hace después otra skill.
+- **`debate`** (standalone + lo invoca SDD en decisiones): ayudar a **decidir** entre
+  opciones abiertas cuando el usuario no está seguro. Las dos familias forman posturas
+  independientes, se critican en varias rondas y el conductor entrega una **síntesis neutral
+  atribuida** — no elige ganador, afila la decisión. Es el único modo con **loop de rondas**
+  (los otros tres son una sola pasada).
 
 El valor no es que el revisor "ayude" al conductor: es que produce un mapa **independiente**,
 sin ver nada de lo que el conductor ya pensó, para que las diferencias entre los dos mapas
@@ -52,7 +61,9 @@ conductor ya escribió. La frontera con el **modo draft** de `cross-review` es l
 **mapa vs veredicto**: co-explore corre cuando el terreno sigue abierto (aún no hay enfoque
 elegido — el valor está en dos mapas independientes); si el conductor ya eligió un enfoque y
 quiere que lo ataquen, eso es un veredicto sobre una decisión tomada → `cross-review` draft, no
-una co-exploración.
+una co-exploración. Y hay un tercer eje: si el terreno está abierto pero ya tienes **opciones
+concretas** entre las que no sabes cuál elegir, eso no es mapa (`explore`) ni veredicto sobre un
+enfoque ya elegido (`cross-review` draft) — es una **decisión** entre alternativas → `debate`.
 
 ```
 paquete de contexto ──► [co-explore: revisor explora en background, read-only]
@@ -80,6 +91,9 @@ paquete de contexto ──► [co-explore: revisor explora en background, read-o
    skill llamadora tampoco lee `findings-<familia>.md` del revisor hasta haber cerrado su
    propia exploración y escrito su propio informe. El valor está en dos mapas sin contaminar,
    no en uno que copia al otro.
+   En `debate` la independencia rige la **ronda 0** (ambas familias forman su postura a ciegas,
+   sin verse); de la ronda 1 en adelante el **cruce** de posturas es deliberado (cada una critica
+   la del otro) — es la excepción diseñada de este modo, no una violación de la independencia.
 3. **Nunca se bloquea por dudas.** El explorador corre no-interactivo: no puede preguntar a
    mitad de camino ni esperar una respuesta. Toda duda se registra y se sigue explorando — una
    pregunta abierta que no pudo resolver va a `## Incógnitas`; una decisión que tomó para
@@ -88,9 +102,11 @@ paquete de contexto ──► [co-explore: revisor explora en background, read-o
    (`reference.md`). Si la respuesta del revisor no parsea contra ese formato, se degrada: se
    conserva como texto libre si aporta contexto, o se descarta si es ruido — y en cualquier
    caso se registra la degradación.
-5. **Loop acotado, deadline duro.** Una sola pasada por modo — sin rondas, a diferencia de
-   `cross-review`. Al vencer `deadline` se mata el proceso del explorador y se devuelve
-   `UNAVAILABLE` con lo que haya alcanzado a producir. Nunca se espera de forma indefinida.
+5. **Loop acotado, deadline duro.** En `explore`/`counter-plan`/`investigate`, **una sola pasada
+   por modo — sin rondas**. La excepción es `debate`: es el único modo con **loop acotado** de
+   rondas de cruce (default 3, tope duro `max_rounds`), como `cross-review`; igual tiene deadline
+   duro **por ronda** → al vencer se mata el proceso del explorador y se devuelve `UNAVAILABLE`
+   con lo que haya. Nunca se espera de forma indefinida.
 6. **Opcional y degradable.** Es una capacidad, no un requisito. Sin revisor de otra familia
    disponible, con un fallo en runtime, o con `mode: off`, el resultado es `UNAVAILABLE` en una
    línea y la llamadora sigue con la exploración del conductor solamente.
@@ -125,7 +141,8 @@ Si reconoces alguno de estos pensamientos, detente y vuelve a la regla que está
 Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario en modo directo) proveen:
 
 - **`mode`** — `explore` (pre-spec) | `counter-plan` (pre-plan/pre-reparto) | `investigate`
-  (standalone, investigar un bug fuera de todo flujo SDD).
+  (standalone, investigar un bug fuera de todo flujo SDD) | `debate` (decisión abierta entre
+  opciones).
 - **`context_package`** — digest del ticket + prompt del usuario + AC preliminares si existen +
   **evidencia observada de reproducción** si la hubo (consola/red/pasos, capturada por la
   llamadora ANTES de despachar: el explorador es headless y no puede abrir URLs; ver el `<task>`
@@ -136,14 +153,20 @@ Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario en modo directo) prove
   En `investigate`: síntoma reportado del bug + evidencia de reproducción observada
   (consola/red/pasos/stacktrace) si la hubo + prompt del usuario. No hay ticket ni AC
   necesariamente; la evidencia de repro viaja como hechos observados, igual que en `explore`.
+  En `debate`: la **decisión a resolver** + las **opciones en juego** (si el usuario las dio;
+  si no, el conductor las deriva y las declara explícitas) + el contexto de código/artefactos
+  relevante. Cuando lo invoca sdd-flow: la ambigüedad de `clarify` o el trade-off contestable del
+  `plan`, con `spec.md`/`plan.md` como contexto.
 - **`working_dir`** — uno, o una lista de repos cuando llama el orquestador (exploración
   cross-repo).
 - **`complexity`** — `trivial | normal | complex`; modula profundidad/esfuerzo.
 - **`execution`** — `auto | sync | background`. Para `explore` e `investigate` el valor útil es
   `background`: el conductor explora/investiga mientras tanto. En `counter-plan` o si el
-  conductor no puede lanzar background, se espera con tope (`sync`).
+  conductor no puede lanzar background, se espera con tope (`sync`). En `debate` el loop es
+  secuencial (rondas de cruce), como `cross-review`: se espera cada ronda con tope duro.
 - **`deadline`** — opcional; defaults 600s (`explore`), 300s (`counter-plan`), 600s
-  (`investigate`), ver `reference.md` → "Latencia y deadlines".
+  (`investigate`), ver `reference.md` → "Latencia y deadlines"; en `debate`, deadline **por
+  ronda** (default 300s/ronda) más el tope `max_rounds`.
 
 ### Pasos de ejecución
 
@@ -166,8 +189,9 @@ Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario en modo directo) prove
 natural una exploración/investigación paralela):
 
 1. **Inferir el modo desde la intención.** Un bug, error o "por qué falla X" → `investigate`;
-   preparar un cambio/feature o mapear terreno → `explore`. (`counter-plan` no se invoca directo:
-   presupone una spec aprobada.)
+   una decisión abierta entre opciones ("no sé si X o Y", "¿conviene X o Y?", "debatan si…") →
+   `debate`; preparar un cambio/feature o mapear terreno → `explore`. (`counter-plan` no se
+   invoca directo: presupone una spec aprobada.)
 2. **Armar el `context_package`** desde el prompt (+ tracker si hay clave y MCP disponible; en
    `investigate`, + evidencia de reproducción que el conductor haya capturado — el explorador es
    headless y no abre URLs).
@@ -179,6 +203,51 @@ natural una exploración/investigación paralela):
    "¿verifico la hipótesis líder con `superpowers:systematic-debugging`?". Es una invocación de
    otra skill, opcional y a cargo del conductor en su rol normal — co-explore no verifica ni
    arregla (ver "Alcance de `investigate`").
+
+## El loop de debate (modo `debate`)
+
+A diferencia de los otros modos (una sola pasada), `debate` itera. El conductor participa como
+una voz y la otra familia es la otra; el conductor además sintetiza (el usuario es el árbitro).
+
+1. **R0 — posturas independientes.** El conductor escribe su propia postura sobre la decisión
+   (opciones, análisis, hacia dónde se inclina y por qué) **antes** de ver nada de la otra
+   familia. En paralelo despacha al revisor con el **mismo** paquete de decisión (sin la postura
+   del conductor; prompt en `reference.md` → "Prompt de debate — ronda 0") para que forme la suya
+   a ciegas. Regla 2 (independencia) aplica acá.
+2. **R1..N — crítica cruzada.** Cada ronda cruza las posturas: se le pasa al revisor la postura
+   del conductor para que la critique y actualice la suya (prompt en `reference.md` → "Prompt de
+   debate — cruce"), y el conductor lee la del revisor, la critica y actualiza la propia.
+   Registrar el **delta** de cada ronda (qué concedió, qué sostuvo cada uno) en el scratch.
+3. **Convergencia + anti-desperdicio.** Default **3 rondas** de cruce; tope duro `max_rounds`
+   (default 3). Si una ronda no mueve nada (ninguna familia concede ni refina su postura),
+   **converger temprano** y decirlo — no quemar rondas. Cada ronda tiene deadline duro
+   (regla 5): al vencer, cortar y sintetizar con lo que haya.
+4. **Síntesis** (ver "La síntesis del debate").
+
+## La síntesis del debate
+
+El conductor cierra con una síntesis que **no elige ganador** — presenta las posturas para que
+el usuario decida (ethos de árbitro humano, regla 3 de `cross-review`). La escribe en
+`co-explore/debate.md` (plantilla en `reference.md` → "Plantilla de `debate.md`") y la presenta:
+
+- **Postura final de cada familia**, atribuida por familia (🟠 Claude / 🔵 Codex) y **sin
+  fusionar** en una sola voz. La atribución vale acá porque `debate.md` y la síntesis presentada
+  son **locales y solo las lee el usuario** (ver "Publicado vs local"); nombrar a las familias es
+  parte del valor del debate.
+- **Dónde convergieron** y **qué queda en disputa**.
+- **Los trade-offs afilados**: qué compra y qué cuesta cada opción, según salió del cruce.
+- **No elige ganador**: la decisión es del usuario.
+
+### Publicado vs local
+
+La regla de co-explore "los entregables hablan del objeto, no del método" protege lo que se
+**publica** donde lo leen otras personas (spec en Jira vía `publish-spec`, descripciones o
+comentarios de PR en Bitbucket, cualquier superficie compartida). **No** aplica a archivos
+**locales que solo lee el usuario**: `debate.md` y la síntesis presentada **sí** nombran a las
+familias. El guardrail que se mantiene: lo que el debate haga aterrizar en `spec.md`
+(`## Clarifications`) o `plan.md` (un trade-off) queda **limpio de método/familias**, porque eso
+sí fluye a superficies publicadas. La skill llamadora (sdd-flow) escribe esos artefactos de forma
+autónoma, con la decisión ya tomada, sin citar el debate.
 
 ## Salida
 
@@ -257,6 +326,9 @@ no lee config:**
 co_explore:
   mode: auto        # auto (por complejidad: complejo on, normal opt-in, trivial nunca) | "on" | "off"
   deadline: 600     # segundos (explore; counter-plan usa 300 salvo override)
+  debate:           # modo debate — soporte a decisiones (independiente de mode; lo ofrece sdd-flow)
+    mode: auto      # off | on | auto  — cuándo se OFRECE el debate (nunca corre sin confirmación)
+    max_rounds: 3   # tope de rondas de cruce
 ```
 
 Precedencia (igual que el resto de overrides SDD): **override conversacional de la corrida >
@@ -264,6 +336,14 @@ config > default por complejidad**. Default por complejidad: `complex` on, `norm
 (off salvo pedido), `trivial` nunca. `deadline` por defecto: 600s en `explore` (una
 exploración tarda más que una crítica), 300s en `counter-plan`, ver `reference.md` → "Latencia
 y deadlines".
+
+El sub-bloque `debate` es **independiente** de `co_explore.mode` (se puede querer debate sin haber
+corrido la exploración pre-spec). `debate.mode`: `off` nunca ofrece; `auto` ofrece solo en
+decisiones complejas / high-stakes (auth, pagos, migraciones de datos o schema, concurrencia,
+cambios difíciles de revertir) o cuando el conductor está genuinamente inseguro; `on` ofrece en
+cualquier decisión contestable de `clarify`/`plan`. En **todos** los casos **ofrece y espera un
+"sí"** — nunca corre el debate solo. `investigate` sigue sin leer config; `debate` standalone
+tampoco.
 
 `co_explore` es **ortogonal** a `cross_review.mode`: esta clave gobierna la exploración
 paralela y el contra-enfoque; `cross_review.mode` gobierna las críticas en los gates. Quien
@@ -286,6 +366,11 @@ Nunca bloquea el flujo SDD. Cuatro vías de falla, todas con el mismo final:
 4. Informe no parseable → se degrada (texto libre como contexto, o descarte si es ruido) y se
    registra; la llamadora sigue con la exploración del conductor.
 
+En `debate`, si la otra familia no está disponible (misma distinción pared confirmada vs flake del
+punto 2), el debate no corre: el conductor presenta su **análisis de una sola voz** y avisa en una
+línea que el debate no estuvo disponible. Nunca bloquea; en sdd-flow el flujo sigue al gate normal
+de `clarify`/`plan`.
+
 ## Router de intención
 
 | El usuario dice (ej.) | Acción |
@@ -293,6 +378,8 @@ Nunca bloquea el flujo SDD. Cuatro vías de falla, todas con el mismo final:
 | "/co-explore `<ticket|descripción>`" | modo directo: `mode: explore`, corre la síntesis y presenta la conclusión |
 | "que Codex explore esto en paralelo" | modo directo `explore`, mismo flujo que arriba |
 | "/co-explore `<bug>`", "por qué falla X", "que Codex investigue este bug en paralelo" | modo directo: `mode: investigate`, corre la síntesis, presenta hipótesis rankeadas + plan de verificación, y ofrece el handoff a `systematic-debugging` |
+| "/co-explore debate `<decisión>`", "no sé si X o Y, que lo debatan", "somete esto a debate" | modo directo: `mode: debate`, corre el loop de rondas + síntesis neutral atribuida, y presenta las posturas para que decidas |
+| "con debate" / "sin debate" (en un flujo SDD) | override `on`/`off` del ofrecimiento de debate para la corrida — lo registra la llamadora |
 | "stress-test de este plan/idea" (enfoque ya elegido) | **no es co-explore**: es `cross-review` (modo draft) — crítica adversarial de una decisión ya tomada. co-explore aplica cuando el terreno está abierto: **mapa antes que veredicto** |
 | "con co-exploración" | override `on` para la corrida — lo registra la llamadora |
 | "sin co-exploración" | override `off` para la corrida — lo registra la llamadora |
@@ -303,5 +390,6 @@ Nunca bloquea el flujo SDD. Cuatro vías de falla, todas con el mismo final:
 - `reference.md` — "Prompt de exploración" (por modo, incluido `investigate`), "Formato del
   informe" (+ variante bug-shaped), "Plantilla de `synthesis.md`", "Plantilla de síntesis —
   `investigate`", "Capacidades y worktree (`investigate`)", "Descubrir el revisor (puntero +
-  fallback)", "Latencia y deadlines", "Archivos de trabajo (scratch)".
+  fallback)", "Latencia y deadlines", "Archivos de trabajo (scratch)", "Prompt de debate" (ronda
+  0 + cruce), "Plantilla de `debate.md`".
 - `README.md` — qué es, cuándo usarla, requisitos e instalación.
