@@ -171,9 +171,18 @@ A la llamadora (o presentada al usuario en modo directo):
 Nunca bloquea. Cuatro vías de falla, mismo final — el conductor implementa inline:
 
 1. Skill no instalada → la llamadora la omite.
-2. Sin implementador de otra familia (CLI ausente, auth rota) → `UNAVAILABLE`.
-3. Fallo en runtime / deadline vencido → matar el proceso, conservar el diff parcial **solo si**
-   el conductor lo revisa y decide qué mantener (por default, revertirlo), registrar y `UNAVAILABLE`.
+2. **Fallo de arranque.** Dos casos, según el preflight de capacidad del CLI:
+   - **Pared confirmada** — el binario no está, auth rechazada o versión incompatible: reintentar es
+     chocar contra la misma pared → `UNAVAILABLE`. Es **terminal para la corrida**; si la llamadora
+     despacha en tanda (p. ej. `sdd-orchestrator` sobre varios repos), la capacidad queda no
+     disponible para toda la tanda (no se re-diagnostica por ítem).
+   - **Flake transitorio** — el binario existe pero el lanzamiento falló por arranque frío, timeout
+     de spawn o una race: 2-3 reintentos con backoff corto, no un loop abierto; solo si ninguno
+     levanta → `UNAVAILABLE`.
+3. **Fallo en runtime / tarea** (deadline vencido, error de ejecución tras arrancar bien) → matar el
+   proceso, conservar el diff parcial **solo si** el conductor lo revisa y decide qué mantener (por
+   default, revertirlo), registrar y `UNAVAILABLE`. A diferencia del punto 2, es **por-intento**: no
+   marca la capacidad como ausente para el resto de la tanda.
 4. Reporte no parseable → el diff sigue siendo la verdad: revisarlo igual (regla 4); solo se
    pierde la narrativa del implementador.
 

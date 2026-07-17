@@ -173,13 +173,14 @@ Antes de nada, resolver si hay un segundo modelo disponible (algoritmo y opcione
    artefacto inline (grounding) y el foco según `artifact_type`. Invocar al revisor en
    **read-only**. Guardar referencia del thread para poder reanudarlo en rondas siguientes.
 2. **Parsear la respuesta** al formato estructurado (`reference.md` → "Formato de salida"):
-   lista de `findings` `[severidad, qué, por qué, cambio sugerido, AC/sección]` + un veredicto
-   `APPROVED | REVISE`.
+   lista de `findings` `[severidad, confianza, qué, por qué, cambio sugerido, AC/sección]` + un
+   veredicto `APPROVED | REVISE`.
 3. **Si `APPROVED`** → cortar el loop. Ir a "Salida".
 4. **Si `REVISE`** → para cada finding, **decidir como árbitro** (regla 3, vía
-   `receiving-code-review`): aplicar / rechazar / escalar. Aplicar los aceptados editando el
-   artefacto (Claude edita, no el revisor). Registrar todo en `review-log.md` con el rationale,
-   incluidos los rechazos.
+   `receiving-code-review`): aplicar / rechazar / escalar. Ordenar el triage por severidad×confianza
+   (atacar primero lo grave y probable), pero **verificar cada finding igual** — la confianza no
+   saltea la regla 3. Aplicar los aceptados editando el artefacto (Claude edita, no el revisor).
+   Registrar todo en `review-log.md` con el rationale, incluidos los rechazos.
 5. **Siguiente ronda** reanudando el mismo thread del revisor (resume; mandar solo el delta:
    "apliqué X e Y; rechacé Z porque…; revisa de nuevo"). Repetir desde el paso 2.
 6. **Corte por `max_rounds`.** Si se agotan las rondas sin `APPROVED`, parar y escalar al humano
@@ -202,8 +203,13 @@ extra). El humano aprueba con la segunda opinión ya a la vista.
 Tres modos de falla, todos terminan en el gate humano de siempre con un aviso de una línea
 ("revisión cross-model no disponible — sigo con el gate humano"):
 
-1. **El revisor no existe** (el subagente/CLI de la otra familia no está disponible) → Paso 0
-   devuelve `UNAVAILABLE`.
+1. **El revisor no arranca.** Según el preflight de capacidad del CLI de la otra familia:
+   - **Pared confirmada** (binario ausente, auth rechazada, versión incompatible): reintentar no
+     sirve → Paso 0 devuelve `UNAVAILABLE`, **terminal para la corrida** (no se reintenta en rondas
+     posteriores del loop ni en despachos siguientes de la misma tanda).
+   - **Flake transitorio** (el binario existe pero el lanzamiento flaqueó por arranque frío o
+     timeout de spawn): 2-3 reintentos con backoff corto, no un loop abierto; solo ahí `UNAVAILABLE`.
+   (Distinto del punto 2, el fallo en runtime **tras** arrancar bien, que es por-intento.)
 2. **El revisor falla en runtime** (error, timeout de exec, `poll_deadline` vencido sin `VERDICT:`,
    o respuesta no parseable) → registrar el fallo en `review-log.md`, cortar el loop (y matar el
    proceso en background si lo hubo) y devolver `UNAVAILABLE` con lo que haya. **Nunca quedar

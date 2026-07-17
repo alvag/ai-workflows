@@ -462,10 +462,12 @@ FINDINGS:
   why: <por qué importa — qué se rompe / qué falta>
   suggestion: <cambio concreto propuesto>
   refs: <AC-n | sección del artefacto | path:line>
+  confidence: <high|medium|low>
 ```
 
 - `APPROVED` sin findings (o solo con findings `low` opcionales) → corta el loop.
 - `REVISE` → hay al menos un finding `high`/`medium` que el revisor considera bloqueante.
+- **`confidence` es señal de triage, no un atajo.** Es ortogonal a la severidad: la severidad `[high|medium|low]` es *qué tan grave si es real*; la confianza es *qué tan seguro está el revisor de que lo es*. El árbitro la usa para **priorizar** qué verificar primero y calibrar el escrutinio (un finding `high` con `confidence: low` es «vale la pena mirarlo, pero sin certeza»), nunca para saltarse la verificación de la regla 3 — todo finding se evalúa antes de aplicar. Si el revisor no la emite, tratarla como `medium` y seguir.
 - Si la salida no respeta el formato, intentar un parseo tolerante; si no se puede, tratarlo como
   fallo de runtime (degradación).
 
@@ -500,10 +502,10 @@ Revisor: <codex-rescue | codex exec | claude -p | …>  ·  modelo: <model de co
 ### Ronda 1
 **Veredicto del revisor:** REVISE
 **Findings:**
-- [high] <título>
+- [high] <título>  · confidence: <high|medium|low>
   - why: <…>  · suggestion: <…>  · refs: AC-2
   - **Decisión de Claude:** APLICADO — <qué se cambió y por qué el finding era correcto>
-- [medium] <título>
+- [medium] <título>  · confidence: <high|medium|low>
   - why: <…>  · suggestion: <…>  · refs: sección "Enfoque"
   - **Decisión de Claude:** RECHAZADO — <razón técnica del rechazo>
 

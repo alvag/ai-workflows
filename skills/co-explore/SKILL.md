@@ -276,7 +276,11 @@ Nunca bloquea el flujo SDD. Cuatro vías de falla, todas con el mismo final:
 1. Skill no instalada → la llamadora la omite y sigue con la exploración del
    conductor.
 2. Sin revisor de otra familia disponible → `UNAVAILABLE`; la llamadora sigue con la
-   exploración del conductor.
+   exploración del conductor. Distinguir según el preflight de capacidad: una **pared confirmada**
+   (binario ausente, auth rechazada, versión incompatible) es **terminal para la corrida** —no
+   reintentar en despachos siguientes de la misma tanda—; un **flake transitorio de lanzamiento**
+   (el binario existe pero flaqueó el arranque) admite 2-3 reintentos con backoff corto antes de
+   rendirse. (El deadline del punto 3, ya arrancado, es por-intento.)
 3. Deadline vencido → se mata el proceso y se registra; la llamadora sigue con la exploración
    del conductor.
 4. Informe no parseable → se degrada (texto libre como contexto, o descarte si es ruido) y se

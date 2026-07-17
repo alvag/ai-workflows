@@ -90,6 +90,7 @@ Si reconoces alguno de estos pensamientos, es señal de detente: vuelve al paso 
 | "Aprovecho y arreglo esto otro de paso, total es chico" | Si no mapea a un AC, se declara como `E-n` en `## Extras` antes de stagear — nada entra al commit sin rastro. |
 | "Ya gasté 3 intentos en este fix, con uno más sale" | 3 fixes fallidos de la misma falla = problema de diseño: volver a `plan`/`specify`, no intentar un fix #4 (ver `implement`). |
 | "Stageo todo lo que está dirty y después limpio" | Stage selectivo: solo `code_touched`; los archivos ajenos se confirman uno por uno (regla 8). |
+| "Anuncio que despacho el subagente y cierro el turno" | Anunciar no es despachar: la tool call del subagente va en el **mismo turno** que la anuncias. Cerrar tras solo anunciar es un turno muerto que frena el loop (modo `subagent`). |
 
 ## Adaptación al proyecto (portabilidad)
 
@@ -654,6 +655,8 @@ La detección es por **disciplina del conductor** al revisar el diff (paso 5/6),
    | "AC-n cumplido" | salida del comando/observación que prueba *ese* AC | "los tests pasan", "el código cambió", "debería andar" |
    | "tests en verde" | salida fresca del runner: 0 fallos | una corrida previa, el linter en verde |
    | "build OK" | comando de build: exit 0 | "los logs se ven bien" |
+
+   > **Conteo de tests: la verdad son los casos colectados, no las funciones.** Cuando la evidencia de un AC es un número de tests, lee el conteo que reporta el **propio runner** al correr el comando fresco; no lo deduzcas contando funciones a mano (`grep -c 'def test_'`, o contar `it(`/`test(`): un test parametrizado o table-driven explota en varios casos colectados, así que contar funciones sub-cuenta. Y si un reporte externo trae un conteo (un subagente en modo `subagent`, o un agente delegado por `sdd-orchestrator`), vuelve a correr el **mismo comando sobre el mismo set de archivos y el mismo commit** antes de darlo por bueno o por discrepante — comparar comandos o file-sets distintos fabrica discrepancias falsas.
 3. **Revert-to-confirm para AC de comportamiento con test.** Un test que pasa no prueba que
    discrimine el comportamiento. Cuando un `AC-n` de comportamiento está cubierto por un test:
    con el test en verde, revertir **solo el hunk de implementación que habilita ese AC** → el test
