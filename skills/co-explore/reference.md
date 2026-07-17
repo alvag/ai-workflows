@@ -12,6 +12,7 @@ archivos de trabajo.
 - [Formato del informe](#formato-del-informe)
 - [Plantilla de `synthesis.md`](#plantilla-de-synthesismd)
 - [Plantilla de síntesis — `investigate`](#plantilla-de-síntesis--investigate)
+- [Plantilla de `debate.md`](#plantilla-de-debatemd)
 - [Capacidades y worktree (`investigate`)](#capacidades-y-worktree-investigate)
 - [Descubrir el revisor (puntero + fallback)](#descubrir-el-revisor-puntero--fallback)
 - [Latencia y deadlines](#latencia-y-deadlines)
@@ -339,6 +340,14 @@ investigaciones. Se escribe en `co-explore/synthesis.md` (mismo archivo, conteni
 - <ambas posiciones, con su evidencia; se presentan al usuario, no se fuerza consenso>
 ```
 
+- **Duelo de hipótesis:** evaluar las causas raíz candidatas en méritos (evidencia, encaje con
+  el repro), no adoptar la primera; el "Rationale" es lo auditable. Acá es donde el conductor L1
+  puede **ejecutar para desempatar** (ver "Capacidades y worktree (`investigate`)").
+- **Divergencia no resuelta:** si los dos mapas no convergen en la causa raíz, se presentan
+  ambas posiciones — mismo principio que en `explore` (no forzar consenso).
+- **Material interno:** misma regla que la `synthesis.md` de `explore` — este vocabulario no
+  se traslada a la conclusión presentada al usuario (paso 5 de "La síntesis").
+
 ## Plantilla de `debate.md`
 
 Local/untracked, en `co-explore/debate.md`. Nombra a las familias (es local, solo lo lee el
@@ -377,14 +386,6 @@ Convergió en <n> rondas (de max_rounds <m>). <nota si convergió temprano por f
 > El debate NO elige: la decisión es del usuario. Lo que se registre luego en spec.md/plan.md va
 > limpio de método/familias (ver SKILL.md → "Publicado vs local").
 ```
-
-- **Duelo de hipótesis:** evaluar las causas raíz candidatas en méritos (evidencia, encaje con
-  el repro), no adoptar la primera; el "Rationale" es lo auditable. Acá es donde el conductor L1
-  puede **ejecutar para desempatar** (ver "Capacidades y worktree (`investigate`)").
-- **Divergencia no resuelta:** si los dos mapas no convergen en la causa raíz, se presentan
-  ambas posiciones — mismo principio que en `explore` (no forzar consenso).
-- **Material interno:** misma regla que la `synthesis.md` de `explore` — este vocabulario no
-  se traslada a la conclusión presentada al usuario (paso 5 de "La síntesis").
 
 ## Capacidades y worktree (`investigate`)
 
@@ -521,7 +522,7 @@ instalada y puede reanudar ese thread.
 | `counter-plan` | 300 s | 10 s | ~30 |
 | `investigate` | 600 s | 10 s | ~60 |
 
-En `debate`: deadline **por ronda** (default 300s) + tope `max_rounds` (default 3). Al vencer una
+En `debate`: deadline **por ronda** (default 300 s) + tope `max_rounds` (default 3). Al vencer una
 ronda, cortar y sintetizar con lo que haya (regla 5).
 
 Override: `co_explore.deadline` en la config (ver `SKILL.md` → "Configuración"); si
