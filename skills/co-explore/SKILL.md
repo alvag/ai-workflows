@@ -253,7 +253,7 @@ autónoma, con la decisión ya tomada, sin citar el debate.
 
 **Salida a la llamadora:** estado `READY` | `UNAVAILABLE` · ruta del informe
 (`findings-<familia>.md` en `explore`, `counter-plan-<familia>.md` en `counter-plan`,
-`investigate-<familia>.md` en `investigate`; si hay) · resumen de 3-5 líneas (hallazgos top +
+`investigate-<familia>.md` en `investigate`, `debate.md` en `debate`; si hay) · resumen de 3-5 líneas (hallazgos top +
 enfoque sugerido, o en `investigate` hipótesis líder) · ruta de `session.json` si existe.
 
 ## La síntesis (guía para la skill llamadora)

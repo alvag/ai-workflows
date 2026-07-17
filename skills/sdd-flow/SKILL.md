@@ -277,8 +277,8 @@ decidir** cuando una decisión abierta te deja inseguro. Se gobierna con `co_exp
   `co-explore` con `mode: debate` (la pregunta + las opciones + `spec.md` como contexto) → presentar
   la síntesis → decides → registrar la respuesta en `## Clarifications`. Si no → clarify normal.
 - **En `plan`:** cuando hay un trade-off contestable (los que ya se nombran en "Decisiones y
-  trade-offs" del plan) y el modo lo habilita, ofrecer someter *ese* trade-off a debate antes del
-  gate del plan; la decisión resultante se refleja en el plan.
+  trade-offs" del plan) y el modo lo habilita, ofrecer someter *ese* trade-off a debate (con
+  `plan.md` como contexto) antes del gate del plan; la decisión resultante se refleja en el plan.
 - **Umbral del ofrecimiento:** `off` nunca; `auto` solo en decisiones complejas / high-stakes
   (auth, pagos, migraciones de datos o schema, concurrencia, cambios difíciles de revertir) o si
   estás genuinamente inseguro; `on` en cualquier decisión contestable.
