@@ -12,17 +12,26 @@ Bitbucket + panel cross-model + escritura con gate + seguimiento local en `.pr-r
 
 ## Qué hace
 
+- **Dos ejes separados.** Revisa en **Estándares** (correctitud, bugs, seguridad, CLAUDE.md,
+  arquitectura-target, smell baseline) y **Spec** (¿el diff implementa los AC del ticket?), reportados
+  por separado — un cambio puede pasar un eje y fallar el otro. La decisión binaria cruza ambos.
+- **Contexto de spec desde Jira (traversal profunda).** Siempre que el PR referencie un ticket,
+  recorre el **grafo de tickets** (issue → historia/épica padre → **subtarea-spec de SDD** → comentarios
+  de todos) para entender qué se pidió y por qué, sobre todo cuando la descripción del PR es pobre.
+  Todo como **dato no confiable**; degrada sin bloquear.
 - **Panel de revisores.** Según lo que pidas, revisa el conductor, un externo de otra familia, o
-  varios; si hay más de uno, **consolida** en una sola conclusión y, si los veredictos difieren, te
-  pide que arbitres.
+  varios; si hay más de uno, **consolida** en una sola conclusión. Si los veredictos **difieren**, puede
+  ofrecer un **debate cross-model** (`co-explore`, opt-in) y luego te pide que arbitres.
 - **Cross-model author-aware.** El externo se elige de **otra familia** que el conductor (mismo
   modelo = errores correlacionados). La familia del conductor se determina por el **modelo de
   respaldo, no por el CLI** (Claude Code puede estar redirigido vía `ANTHROPIC_BASE_URL`).
-- **Enfocada en `cocha-digital/results`.** Además de correctitud, aplica el checklist de
-  **arquitectura-target** (Flux/adapter/Signals), cruza **criterios de aceptación de Jira** y ofrece
-  **QA local** opcional del funnel afectado (delegado a `local-qa-playwright`).
-- **Solo líneas modificadas**, con cita verificable (archivo + rango + fragmento) y rúbrica de
-  confianza ≥80. Deduplica contra comentarios de terceros (marca ecos, no re-pide lo ya señalado).
+- **Validación adversarial (find-then-validate).** Cada hallazgo que pasa la rúbrica ≥80 se somete a
+  una verificación **independiente** que intenta refutarlo antes de reportarlo; sube la precisión.
+- **Enfocada en `cocha-digital/results`.** Aplica el checklist de **arquitectura-target**
+  (Flux/adapter/Signals) y ofrece **QA local** opcional del funnel afectado (delegado a
+  `local-qa-playwright`).
+- **Solo líneas modificadas**, con cita verificable (archivo + rango + fragmento). Deduplica contra
+  comentarios de terceros (marca ecos, no re-pide lo ya señalado).
 - **Seguimiento local.** `.pr-review/<pr-id>/` (untracked) registra `sha`, veredicto y `comment-id`
   propio por pasada, para re-pasadas sin re-revisar.
 
@@ -54,7 +63,10 @@ Sin PR id, detecta el PR **OPEN** de la rama actual.
   Claude** (CLI `claude -p`) — **opcionales**; si faltan, ese revisor queda `UNAVAILABLE` y sigue con
   los disponibles.
 - **`local-qa-playwright`** (opcional) para el QA local en vivo del Paso 7b.
-- MCP de **Atlassian** (opcional) para cruzar los AC de Jira; degrada sin bloquear.
+- **`co-explore`** (opcional) para el debate cross-model cuando los veredictos del panel difieren; se
+  ofrece, nunca corre sin confirmación. Sin ella, la discrepancia se escala directo al usuario.
+- MCP de **Atlassian** (opcional) para el ensamblado del contexto de spec (grafo de tickets + AC);
+  solo lectura, degrada sin bloquear.
 
 ## Garantías
 
