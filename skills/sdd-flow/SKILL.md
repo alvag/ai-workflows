@@ -83,7 +83,7 @@ Si reconoces alguno de estos pensamientos, es señal de detente: vuelve al paso 
 
 | Racionalización | Realidad |
 |---|---|
-| "Arranco el flujo sin leer el config" | Antes de cualquier paso operativo se lee `.specify/config.yml` y se **ecoan** los valores resueltos de `tracker`, `cross_review.mode`, `domain_context.mode`, `final_diff_review.mode` y `jira_approval.mode`. Saltarlo es cómo se pierden cross-review, co-exploración (`co_explore`), contexto de dominio, revisión final y `publish-spec` en silencio (se aplican los defaults sin avisar). |
+| "Arranco el flujo sin leer el config" | Antes de cualquier paso operativo se lee `.specify/config.yml` y se **ecoan** los valores resueltos de `tracker`, `cross_review.mode`, `domain_context.mode`, `final_diff_review.mode`, `jira_approval.mode` y `co_explore.debate`. Saltarlo es cómo se pierden cross-review, co-exploración (`co_explore`), el debate en decisiones, contexto de dominio, revisión final y `publish-spec` en silencio (se aplican los defaults sin avisar). |
 | "Es trivial, salteo el gate y commiteo directo" | Trivial = 1 gate, no 0. La clasificación se **anuncia y se confirma siempre** (regla 2); no hay flujo con cero gates. |
 | "Los tests pasan, seguro cumple los AC" | Tests verdes ≠ AC cumplidos. `verify` recorre `AC-1..N` con evidencia fresca **antes** de commitear (paso `verify`, regla 7). |
 | "El subagente devolvió `STATUS: done`, marco la task `[x]`" | El reporte no es prueba. Validar `FILES` contra `git status` y revisar el diff antes de aceptar (modos subagent y cross). |
@@ -96,7 +96,7 @@ Si reconoces alguno de estos pensamientos, es señal de detente: vuelve al paso 
 
 Antes de cualquier paso operativo, descubrir el entorno **una vez** por sesión y resumirlo al usuario. Orden de resolución para cada parámetro: `config.yml` → autodetección → preguntar.
 
-**Checkpoint de inicio (no salteable).** El **primer** acto operativo de toda corrida es leer `.specify/config.yml` si existe y **devolverle al usuario en una línea los valores resueltos** de al menos `tracker`, `cross_review.mode`, `co_explore.mode`, `domain_context.mode`, `final_diff_review.mode` y `jira_approval.mode`, **con qué implican**. Ej.: *"config: tracker jira · cross_review on · co_explore on → exploración paralela antes de la spec · domain_context auto → leer ADRs si existen · final_diff_review auto → revisión agregada en complex inline · jira_approval on → publico la spec en Jira tras aprobarla localmente"*. Ese eco es la prueba de que el config se leyó: sin él, es fácil aplicar los defaults (`cross_review` por complejidad, `domain_context: auto`, `final_diff_review: auto`, `jira_approval: off`) y perder cross-review, contexto de dominio, revisión final y `publish-spec` en silencio (ver red-flag "Arranco el flujo sin leer el config").
+**Checkpoint de inicio (no salteable).** El **primer** acto operativo de toda corrida es leer `.specify/config.yml` si existe y **devolverle al usuario en una línea los valores resueltos** de al menos `tracker`, `cross_review.mode`, `co_explore.mode`, `co_explore.debate`, `domain_context.mode`, `final_diff_review.mode` y `jira_approval.mode`, **con qué implican**. Ej.: *"config: tracker jira · cross_review on · co_explore on → exploración paralela antes de la spec · co_explore.debate auto → ofrezco debate en decisiones complejas de clarify/plan · domain_context auto → leer ADRs si existen · final_diff_review auto → revisión agregada en complex inline · jira_approval on → publico la spec en Jira tras aprobarla localmente"*. Ese eco es la prueba de que el config se leyó: sin él, es fácil aplicar los defaults (`cross_review` por complejidad, `domain_context: auto`, `final_diff_review: auto`, `jira_approval: off`) y perder cross-review, contexto de dominio, revisión final y `publish-spec` en silencio (ver red-flag "Arranco el flujo sin leer el config").
 
 Si existe `.specify/config.yml`, leerlo primero. Esquema (todos los campos opcionales):
 
@@ -112,7 +112,7 @@ commit_style: conventional  # conventional | plain
 tracker: jira               # jira | github | gitlab | linear | none
 test_scope_hint: "vitest run {name}"  # plantilla de COMANDO para acotar tests; {name} = archivo/patrón
 cross_review: {mode: auto, execution: auto}  # segunda opinión cross-model en los gates; ver "Revisión cross-model"
-co_explore: {mode: auto, deadline: 600}      # exploración paralela antes de spec/plan; ORTOGONAL a cross_review (bloque hermano); ver "Co-exploración cross-model"
+co_explore: {mode: auto, deadline: 600, debate: {mode: auto, max_rounds: 3}}  # exploración paralela + modo debate (decisiones); ver "Co-exploración cross-model"
 domain_context: {mode: auto, context_paths: [], adr_paths: []}  # lectura de contexto/ADRs; ver "Contexto de dominio"
 final_diff_review: {mode: auto}  # revisión agregada de diff en cambios complex/high-risk inline
 jira_approval: {mode: "off"}  # aprobación externa de la spec en Jira ("off"|"on", entre comillas: sin ellas YAML los parsea como booleanos; solo si tracker: jira); ver paso `publish-spec`
@@ -265,6 +265,30 @@ y el contra-enfoque; `cross_review.mode` gobierna las críticas en los gates de 
   → avisar en una línea ("co-exploración no disponible — sigo con mi exploración") y seguir el
   flujo normal. Misma filosofía de la regla #6.
 
+### Debate en decisiones (`clarify` y `plan`)
+
+Además de `explore`/`counter-plan`, `co-explore` tiene el modo **`debate`** para **ayudarte a
+decidir** cuando una decisión abierta te deja inseguro. Se gobierna con `co_explore.debate`
+(independiente de `co_explore.mode`) y **siempre se ofrece, nunca corre sin tu "sí"**.
+
+- **En `clarify`:** cuando una pregunta es una decisión abierta real (no algo que el código
+  responde) y `co_explore.debate.mode` es `on`/`auto`, ofrecer: *"esta decisión (X vs Y) es
+  contestable — ¿la someto a debate cross-model antes de que decidas?"*. Si aceptas → invocar
+  `co-explore` con `mode: debate` (la pregunta + las opciones + `spec.md` como contexto) → presentar
+  la síntesis → decides → registrar la respuesta en `## Clarifications`. Si no → clarify normal.
+- **En `plan`:** cuando hay un trade-off contestable (los que ya se nombran en "Decisiones y
+  trade-offs" del plan) y el modo lo habilita, ofrecer someter *ese* trade-off a debate antes del
+  gate del plan; la decisión resultante se refleja en el plan.
+- **Umbral del ofrecimiento:** `off` nunca; `auto` solo en decisiones complejas / high-stakes
+  (auth, pagos, migraciones de datos o schema, concurrencia, cambios difíciles de revertir) o si
+  estás genuinamente inseguro; `on` en cualquier decisión contestable.
+- **Lo que aterriza en el artefacto va limpio.** La respuesta de `clarify` en `spec.md` y el
+  trade-off resuelto en `plan.md` se escriben **sin** mencionar el debate, las familias ni el
+  método (fluyen a Jira/PR). La atribución por familia vive solo en `co-explore/debate.md`, local
+  (ver `co-explore` → "Publicado vs local").
+- **Degradación:** sin la otra familia, no hay debate: seguir al gate normal con un aviso de una
+  línea (misma filosofía que el resto de co-exploración).
+
 ## Compatibilidad con Plan Mode / modos no mutantes
 
 Si el entorno prohíbe mutaciones (Plan Mode, modo solo-lectura, etc.):
@@ -292,6 +316,7 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
 | "parte desde la rama X", "base: rama X", "esto depende de X", "corta desde X" (X = una rama, no la base habitual) | registra el **override de base** de la corrida (`create-branch` corta desde X en vez de `default_branch`, sin tocar el config; ver "Paso `create-branch`") |
 | "sin cross-review", "salta la segunda opinión" / "con cross-review", "pide segunda opinión" | registra el **override de revisión cross-model** de la corrida (off/on; ver "Revisión cross-model") |
 | "con co-exploración", "que Codex explore en paralelo" / "sin co-exploración" | registra el **override de co-exploración** de la corrida (on/off; ver "Co-exploración cross-model") |
+| "con debate", "somételo a debate" / "sin debate" | registra el **override de debate** de la corrida (on/off; ver "Debate en decisiones") |
 | "sin aprobación de jira", "no subas la spec" / "con aprobación de jira", "sube la spec a revisión" | registra el **override de aprobación externa** de la corrida (off/on; ver `publish-spec`) |
 | "implementa con subagentes (frescos)" / "implementa acá mismo", "inline" / "implementa con Codex", "delega la implementación" | registra el **override del modo de implementación** de la corrida (subagent/inline/cross; ver `implement` → "Modo de ejecución") |
 | "analiza esto", "reproduce el bug", "dónde toco" | `analyze` |
@@ -320,11 +345,11 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
 3. **Detectar el entorno** (rutina de "Adaptación al proyecto"): stack, `test_cmd`/`build_cmd`/`lint_cmd`/`test_scope_hint`, rama base, host de Git y tracker. El valor **leído del config existente** (paso 2) o, si no hay, el **detectado**, es el default de cada campo; lo que no se infiera queda como hueco a preguntar, nunca inventado.
 4. **Wizard de decisiones.** Si hay una herramienta de **selección interactiva** (p. ej. `AskUserQuestion` en Claude Code — descubrir por capacidad, no por nombre), presentar las opciones **con descripción**, marcando el valor **actual/detectado como recomendado** (etiqueta "(actual)"). Dos pantallas:
    - **Pantalla 1:** `tracker` (jira · github · gitlab · none) · `commit_style` (conventional · plain) · `branch_prefix` (semántico `feature`/`fix`/… · fijo `feature/`) · `implement_mode` (ask · inline · subagent · cross).
-   - **Pantalla 2:** `cross_review` (auto por complejidad · on · off) · `domain_context` (auto · on · off) · `final_diff_review` (auto · on · off) · `jira_approval` (off · on; solo si `tracker: jira`).
+   - **Pantalla 2:** `cross_review` (auto por complejidad · on · off) · `domain_context` (auto · on · off) · `final_diff_review` (auto · on · off) · `jira_approval` (off · on; solo si `tracker: jira`) · `debate` (off · auto · on; gobierna `co_explore.debate.mode`, ver "Debate en decisiones").
    - **Sin** herramienta de selección → **degradar** al modo conversacional: proponer los valores y confirmar (regla 6).
 5. **Comandos y paths autodetectados.** `test_cmd`/`build_cmd`/`lint_cmd`/`test_scope_hint` y los `domain_context.context_paths`/`adr_paths` **no** van al wizard (son texto libre/listas, no elecciones): se autodetectan y se muestran en el preview final (paso 6), donde el usuario puede **editarlos**.
 6. **Armar y mostrar** el contenido completo de ambos archivos antes de escribir:
-   - `.specify/config.yml` — con las selecciones del wizard + comandos/paths detectados. Esquema en `reference.md` → "Esquema de `.specify/config.yml`". Al escribirlo, emitir `cross_review.mode`, `domain_context.mode`, `final_diff_review.mode` y `jira_approval.mode` con los valores `on`/`off` **entre comillas** (`"on"`/`"off"`): sin ellas YAML los parsea como booleanos.
+   - `.specify/config.yml` — con las selecciones del wizard + comandos/paths detectados. Esquema en `reference.md` → "Esquema de `.specify/config.yml`". Al escribirlo, emitir `cross_review.mode`, `domain_context.mode`, `final_diff_review.mode`, `jira_approval.mode` y `co_explore.debate.mode` con los valores `on`/`off` **entre comillas** (`"on"`/`"off"`; `auto` sin comillas es válido): sin ellas YAML los parsea como booleanos.
    - `.specify/constitution.md` — desde `reference.md` → "Plantilla de constitution" (definición de *Done*, formato de AC, regla de trazabilidad, y un **puntero** a los principios de código del repo —`CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`— si existen).
 7. **STOP** — escribir ambos **solo tras confirmación**. Son locales y untracked (regla #10): nunca se trackean, comitean ni se agregan a un `.gitignore` compartido.
 8. **Re-corrida:** si ya existían, no pisar a ciegas — el wizard mostró los valores vigentes pre-seleccionados; al confirmar, **fusionar** los cambios respetando lo que el usuario mantuvo. Si prefiere no fijar config, puede saltar `init`: el ciclo sigue con autodetección + defaults conversacionales (ver `constitution`).
