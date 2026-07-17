@@ -9,7 +9,7 @@ independientes.
 ## Qué es
 
 `co-explore` despacha un segundo mapa del terreno, independiente del que arma el conductor, para
-que las diferencias entre ambos salgan a la luz antes de decidir. Sirve para tres cosas, según
+que las diferencias entre ambos salgan a la luz antes de decidir. Sirve para cuatro cosas, según
 `mode`:
 
 - **`explore`** (pre-spec, lo invoca SDD): mapear el terreno antes de una `spec.md` — archivos
@@ -19,6 +19,9 @@ que las diferencias entre ambos salgan a la luz antes de decidir. Sirve para tre
 - **`investigate`** (standalone, fuera de SDD): investigar un bug — dos modelos forman hipótesis
   de causa raíz por su lado y el conductor las sintetiza en **hipótesis rankeadas + plan de
   verificación**. No arregla ni verifica ejecutando como parte de la skill.
+- **`debate`** (standalone, fuera de SDD): ayudar a decidir entre opciones abiertas cuando no
+  estás seguro — dos familias forman posturas independientes, se critican en rondas y el
+  conductor sintetiza sin elegir.
 
 El resultado es `READY` (con el informe en `co-explore/findings-<familia>.md`,
 `counter-plan-<familia>.md` o `investigate-<familia>.md`) o `UNAVAILABLE` (degradado, sin bloquear
