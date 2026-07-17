@@ -154,6 +154,9 @@ cross_review:                    # segunda opinión cross-model EN LOS GATES (op
 co_explore:                      # exploración paralela cross-model ANTES de spec/plan (opcional; ver skill co-explore). ORTOGONAL a cross_review → bloque top-level hermano, no anidado
   mode: auto                     # auto (por complejidad: complejo on, normal opt-in, trivial nunca) | "on" | "off"
   deadline: 600                  # segundos; overridea el default POR MODO de la skill (600 `explore` / 300 `counter-plan`). `investigate` es standalone (no lo invoca SDD) y no lee config.
+  debate:                        # modo `debate` de co-explore: ayuda a decidir en `clarify`/`plan`. INDEPENDIENTE de `mode` (arriba); ver `SKILL.md` → "Debate en decisiones"
+    mode: auto                   # off (nunca se ofrece) | auto (decisiones complejas/high-stakes o inseguridad) | on (cualquier decisión contestable). Siempre se OFRECE, nunca corre sin confirmación
+    max_rounds: 3
 jira_approval:                   # aprobación externa de la spec en Jira (opcional; solo si tracker: jira)
   mode: "off"                    # "off" | "on"  (default off; entre comillas: sin ellas YAML los parsea como booleanos)
   subtask_issuetype: auto        # auto (descubrir por createmeta) | "Subtarea" | "Sub-task"
@@ -250,7 +253,7 @@ El paso `init` (ver `SKILL.md` → "Paso `init`") materializa `.specify/` a pedi
      mode: auto
    ```
 
-   Los campos de decisión (`tracker`, `commit_style`, `branch_prefix`, `implement_mode`, `cross_review`, `domain_context.mode`, `final_diff_review`, `jira_approval`) se eligen en el **wizard** (2 pantallas, con el valor actual/detectado pre-seleccionado); los comandos (`test_cmd`/`build_cmd`/`lint_cmd`/`test_scope_hint`) y los paths de `domain_context` se autodetectan y quedan editables en la confirmación final. Nada se inventa. Al escribir el `config.yml`, `cross_review.mode`, `co_explore.mode`, `domain_context.mode`, `final_diff_review.mode` y `jira_approval.mode` se emiten con `on`/`off` **entre comillas** (`"on"`/`"off"`): sin ellas YAML los parsea como booleanos.
+   Los campos de decisión (`tracker`, `commit_style`, `branch_prefix`, `implement_mode`, `cross_review`, `domain_context.mode`, `final_diff_review`, `jira_approval`, `debate`) se eligen en el **wizard** (2 pantallas, con el valor actual/detectado pre-seleccionado); `debate` gobierna `co_explore.debate.mode` (ver `SKILL.md` → "Debate en decisiones"). Los comandos (`test_cmd`/`build_cmd`/`lint_cmd`/`test_scope_hint`) y los paths de `domain_context` se autodetectan y quedan editables en la confirmación final. Nada se inventa. Al escribir el `config.yml`, `cross_review.mode`, `co_explore.mode`, `domain_context.mode`, `final_diff_review.mode`, `jira_approval.mode` y `co_explore.debate.mode` se emiten con `on`/`off` **entre comillas** (`"on"`/`"off"`; `auto` sin comillas es válido): sin ellas YAML los parsea como booleanos.
 
 2. **`.specify/constitution.md`** — desde "Plantilla de constitution" (abajo), con el puntero a los principios de código del repo (`CLAUDE.md`/`AGENTS.md`/`CONTRIBUTING.md`) si existen.
 
