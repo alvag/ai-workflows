@@ -150,6 +150,57 @@ Cierra con la línea: STATUS: done
 </output_contract>
 ```
 
+### Modo `debate` (decisión abierta)
+
+Dos prompts: uno para la **ronda 0** (postura independiente) y otro para cada **ronda de cruce**.
+Ambos read-only. Estructura XML compacta (operador, no colaborador), escritos a archivo con Write
+(nunca inline).
+
+**Prompt de debate — ronda 0 (postura independiente):**
+
+```xml
+<task>
+Eres un asesor técnico independiente. Se debe tomar una DECISIÓN entre opciones y el usuario no
+está seguro. Forma tu propia postura ANTES de ver la de nadie más. Es SOLO LECTURA: puedes leer el
+código en {working_dir} para fundamentar, pero no edites ni ejecutes nada.
+</task>
+
+<decision>
+{la decisión a resolver + las opciones en juego, del paquete de contexto}
+</decision>
+
+<context>
+{contexto relevante: spec/plan si los hay, AC, contratos, complejidad}
+</context>
+
+<output_contract>
+Devuelve exactamente:
+POSTURA: <hacia qué opción te inclinas, o "sin preferencia" con el porqué>
+POR QUÉ: <2-5 razones fundadas, ancladas al código/contexto cuando se pueda>
+TRADE-OFFS: <qué compra y qué cuesta cada opción>
+RIESGOS/INCÓGNITAS: <lo que no pudiste verificar o lo que cambiaría tu postura>
+</output_contract>
+```
+
+**Prompt de debate — cruce (rondas 1..N):**
+
+```xml
+<task>
+Continúa el debate. Abajo está la postura ACTUAL de la otra parte sobre la misma decisión.
+Critícala de forma adversarial y luego da tu postura ACTUALIZADA. SOLO LECTURA.
+</task>
+
+<other_position>
+{la postura actual del conductor, del delta de la ronda anterior}
+</other_position>
+
+<output_contract>
+CRÍTICA: <qué falla, qué no consideró, qué riesgo ignora la otra postura>
+POSTURA ACTUALIZADA: <tu postura tras la crítica: qué mantienes, qué concedes>
+CONVERGENCIA: <en qué estás de acuerdo con la otra parte>
+</output_contract>
+```
+
 ## Formato del informe
 
 El explorador (y, con el mismo formato, el propio conductor — ver regla 2 del `SKILL.md`) debe
@@ -286,6 +337,45 @@ investigaciones. Se escribe en `co-explore/synthesis.md` (mismo archivo, conteni
 
 ## Divergencia no resuelta (si la hay)
 - <ambas posiciones, con su evidencia; se presentan al usuario, no se fuerza consenso>
+```
+
+## Plantilla de `debate.md`
+
+Local/untracked, en `co-explore/debate.md`. Nombra a las familias (es local, solo lo lee el
+usuario). Los deltas crudos por ronda quedan en el scratch.
+
+```markdown
+# Debate co-explore — <decisión> (<ISO-8601>)
+
+## Opciones en juego
+- <Opción X>
+- <Opción Y>
+
+## Posturas finales
+### 🟠 Claude
+<postura final del conductor: hacia qué opción, por qué, qué concedió en el cruce>
+### 🔵 Codex
+<postura final del revisor: ídem>
+(Ajustar los nombres a las familias reales: si conduce Codex, el conductor es 🔵 Codex y el
+revisor 🟠 Claude.)
+
+## Convergencias
+<en qué coincidieron las dos posturas>
+
+## En disputa (sin resolver)
+<dónde siguen en desacuerdo, con la evidencia de cada lado>
+
+## Trade-offs afilados
+| Opción | Compra | Cuesta |
+|---|---|---|
+| X | … | … |
+| Y | … | … |
+
+## Rondas
+Convergió en <n> rondas (de max_rounds <m>). <nota si convergió temprano por falta de movimiento>.
+
+> El debate NO elige: la decisión es del usuario. Lo que se registre luego en spec.md/plan.md va
+> limpio de método/familias (ver SKILL.md → "Publicado vs local").
 ```
 
 - **Duelo de hipótesis:** evaluar las causas raíz candidatas en méritos (evidencia, encaje con
@@ -431,6 +521,9 @@ instalada y puede reanudar ese thread.
 | `counter-plan` | 300 s | 10 s | ~30 |
 | `investigate` | 600 s | 10 s | ~60 |
 
+En `debate`: deadline **por ronda** (default 300s) + tope `max_rounds` (default 3). Al vencer una
+ronda, cortar y sintetizar con lo que haya (regla 5).
+
 Override: `co_explore.deadline` en la config (ver `SKILL.md` → "Configuración"); si
 no está seteado, se usa el default de la tabla según `mode`. Una exploración tarda más que una
 crítica de cross-review (tiene que recorrer el repo desde cero), por eso el default de `explore`
@@ -496,6 +589,9 @@ corre desde el lanzamiento, no desde que el conductor vuelve a mirar.
    └─ explorer-session.txt           # session/thread id del explorador (Vía B: parseado del
                                      #   jsonl; Vía C: generado con uuidgen)
 ```
+
+En `debate`: `co-explore/debate.md` (la síntesis, hermana de `synthesis.md`) + los deltas crudos
+por ronda en `co-explore/scratch/debate-r<n>.out`.
 
 En `sdd-orchestrator` la raíz es `.sdd/<id>/co-explore/`, con los mismos nombres (ver `SKILL.md`
 → "Configuración" y el diseño, sección 8). En modo directo `investigate` no hay `.plans/<id>/`:
