@@ -73,10 +73,23 @@ El conductor arma:
 ### Salida — síntesis neutral (decide el usuario)
 
 El conductor presenta:
-- **Postura final de cada familia**, atribuida y **sin fusionar** en una sola voz.
+- **Postura final de cada familia**, **atribuida por familia** (🟠 Claude / 🔵 Codex) y **sin
+  fusionar** en una sola voz. La atribución es válida acá porque la síntesis es **local y solo la
+  lee el usuario** (ver "Publicado vs local" abajo); nombrar a las familias es parte del valor del
+  debate.
 - **Dónde convergieron** y **qué queda en disputa**.
 - **Los trade-offs afilados**: qué compra y qué cuesta cada opción, según salió del cruce.
 - **No elige ganador** — se presenta para que el usuario decida.
+
+### Publicado vs local (alcance de la regla "sin método")
+
+La regla de co-explore de "los entregables hablan del objeto, no del método" protege lo que se
+**publica** donde lo leen otras personas (spec en Jira vía `publish-spec`, descripciones/comentarios
+de PR en Bitbucket, cualquier superficie compartida). **No** aplica a los archivos **locales que
+solo lee el usuario**: la síntesis del debate y `debate.md` son locales/untracked, así que **sí**
+nombran a las familias. El guardrail que se mantiene: lo que el debate aterrice en `spec.md`
+(`## Clarifications`) o `plan.md` (un trade-off) queda **limpio de método/familias**, porque eso sí
+fluye a superficies publicadas.
 
 ### Artefactos
 
@@ -155,8 +168,10 @@ el flujo sigue al gate normal de `clarify`/`plan`. Misma filosofía que el resto
 3. **Atribución, no fusión.** Nunca colapsar las dos voces en una; la divergencia es el valor.
 4. **Anti-desperdicio.** Converger temprano si una ronda no aporta; tope duro `max_rounds`.
 5. **Siempre ofrece, nunca corre sin un "sí".** El debate gasta despachos; se pide confirmación.
-6. **Los artefactos SDD no citan el método.** spec/plan autónomos; trazabilidad solo en
-   `co-explore/`.
+6. **Lo publicado no cita el método; lo local sí puede.** La síntesis del debate y `debate.md`
+   (locales, solo el usuario los lee) atribuyen a las familias. Lo que aterriza en spec/plan queda
+   limpio de método/familias, porque fluye a superficies publicadas (Jira, PR). Ver "Publicado vs
+   local".
 7. **Dos familias, no personas.** Las voces son Claude y GPT/Codex, no roles inventados.
 8. **Degradación blanda.** Sin la otra familia, análisis de una voz + aviso; nunca bloquea.
 
