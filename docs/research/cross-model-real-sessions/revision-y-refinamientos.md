@@ -1,14 +1,21 @@
 # Revisión verificada y refinamientos — Sesiones reales Claude ↔ Codex
 
 **Estado:** revisión crítica del diseño de `README.md`, con verificación de interfaz de CLI y
-decisiones de mecánica que el README dejaba abiertas. **Sometido a nueve rondas de crítica de la
+decisiones de mecánica que el README dejaba abiertas. **Sometido a diez rondas de crítica de la
 otra familia (cross-model); las correcciones resultantes están incorporadas** (ver "Procedencia").
-**Gate 0 ejecutado end-to-end el 2026-07-18 — la matriz de TRANSPORTE PASA; el Gate 0 completo
-queda PARCIAL** (ver "9. Resultados del Gate 0"). Los tres casos de transporte (inject + `worker_done`
-+ envelope) se validaron en vivo, pero **las capas de seguridad que el propio Gate 0 exige
-(restricción de MCP y neutralización de hooks arbitrarios, sección 7 punto 0) y la cosecha validada
-del informe NO se cerraron**. Por eso **aún no desbloquea la Fase 1 completa**: primero hay que cerrar
-seguridad y cosecha.
+**Gate 0 ejecutado end-to-end el 2026-07-18; revisado tras la 10ª ronda cross-model** (ver "9.
+Resultados del Gate 0" y "Estado de los tres bloqueantes"). **Validado:** el transporte (inject +
+`worker_done` + envelope), la **degradación sin Orca** (transporte `cli`, que cosecha igual que hoy,
+informe largo incluido), y el **aislamiento de hooks** —§9.7, con lever limpio `disableAllHooks: true`
+(Claude, verificado) / `--disable hooks` (Codex), sin romper auth—. **Corregido:** la restricción de MCP
+(§9.6) necesita reglas `ask`/`deny` explícitas (omitir de la allowlist no anula permisos heredados;
+`--strict-mcp-config` es por-servidor). **Pendientes reales antes de Fase 1:** la **cosecha de
+Codex-secundario bajo Orca para informes largos** (§9.8/P3 — el `--body` auto-compuesto rompe con
+markdown largo; falta el harvest por `Stop` hook → `reportPath`) y la **UX del permiso atendido** (P4 —
+el permiso es respondible solo si el usuario observa la TUI del secundario, que `terminal read` no ve;
+falta surfacear el `PermissionRequest` al coordinador o declarar vigilancia manual). El patrón atendido
+—**surfacear al humano, no pre-bloquear**— se sostiene para el gate de permiso de MCP; para hooks, v1 usa
+el lever de apagado. **Gate 0 NO "PASA" en bloque**: quedan P3 y P4.
 
 **Fecha:** 2026-07-17
 
@@ -21,13 +28,13 @@ este documento **supersede** al README —porque el README quedó desactualizado
 
 | Tema | README (original) | Este documento (vigente) |
 |---|---|---|
-| Hooks | conserva los del entorno como "capacidad" | solo el hook de coordinación; el resto se deshabilita (2.8) |
-| Rol del hook `Stop` | red de seguridad / fallback | **mecanismo oficial** de `worker_done`, validando sentinel (2.8) |
+| Hooks | conserva los del entorno como "capacidad" | se **apagan todos** con `disableAllHooks:true` (Claude) / `--disable hooks` (Codex), sin romper auth (§9.7) |
+| Rol del hook `Stop` | red de seguridad / fallback | en atendido el `worker_done` es **self-report por comando**; el `Stop` hook queda para la variante sin-Bash y para la cosecha robusta del informe (§9.7/§9.8) |
 | Sentinel de fin | `STATUS: done` (no universal) | **envelope común**: `STATUS: done` como última línea, en todos los modos (2.8) |
 | Quién escribe el informe | el secundario escribe `reportPath` | en v1 **el conductor persiste** desde el mensaje final (§5) |
 | `reportPath` | archivo existente, `parse_result(reportPath)` | **ruta destino** aún inexistente, validada dentro del área autorizada (2.8) |
-| Restricción de MCP | por contrato en el prompt | **allowlist técnica** obligatoria en el lanzamiento (2.7) |
-| Read-only de Claude | allowlist de tools | **toolset cerrado** (`--tools`) + MCP + `dontAsk` (§5) |
+| Restricción de MCP | por contrato en el prompt | **atendido**: gate de permiso (MCP va por el mismo gate) + reglas **`ask`/`deny` explícitas** para escrituras sensibles (omitir de la allowlist no anula permisos heredados); **desatendido**: `deny` duro + `--strict-mcp-config` por-servidor (2.7, §9.6) |
+| Read-only de Claude | allowlist de tools | **atendido**: `manual` + `allow`/`deny` en `--settings`; **desatendido**: `--tools` cerrado + MCP + `dontAsk` (§5, §9.6) |
 
 El README debería actualizarse eventualmente para absorber estos cambios; mientras tanto, esta tabla
 —y la regla global de precedencia— son la fuente de verdad. Además de lo anterior, aquí se verifica la interfaz contra el CLI
@@ -270,8 +277,15 @@ escritura externa**. Codex soporta control de tools por configuración (`enabled
 `disabled_tools` y approval por herramienta, según la Configuration Reference,
 https://learn.chatgpt.com/docs/config-file/config-reference); Claude, por allowlist enumerada
 (sección 5). La **sintaxis exacta** de esa config es uno de los ítems a fijar en el Gate 0, pero el
-requisito es innegociable: sin lista blanca de MCP, la sesión no se despacha. "Tener acceso al
+requisito es innegociable: sin control de MCP, la sesión no se despacha. "Tener acceso al
 servidor MCP no equivale a autorizar sus escrituras."
+
+> **Refinado por round 10 (§9.6):** el control **no** es solo "lista blanca de lectura". En el modelo
+> **atendido** las tools MCP pasan por el **mismo gate de permiso** que Bash, y el corte fino se hace con
+> reglas **`ask`/`deny` explícitas** para las escrituras sensibles — **omitir** una tool de la allowlist
+> **no anula** un permiso heredado, y `--strict-mcp-config` opera **por-servidor, no por-tool**. La lista
+> blanca dura + `--strict-mcp-config` es la postura del **desatendido**. Sigue innegociable que ninguna
+> escritura MCP sensible quede habilitada sin control.
 
 ### 2.8 Notificación y hooks: la tercera superficie de efectos laterales (bloqueante)
 
@@ -299,19 +313,18 @@ pasar por el filesystem ni por una tool MCP.
 > conserva" sigue valiendo como política de seguridad; lo que cambia es que para Codex la
 > notificación no depende de él.
 
-**Solución integrada (v1):** el mecanismo **oficial** de `worker_done` es un **hook de coordinación
-auditado** —no un comando que el modelo ejecuta, ni un mero fallback— para **Claude**; en **Codex**
-el comando nativo alcanza y el hook queda como respaldo. En ambos casos, ese es **el único hook que
-se conserva**:
+**Solución integrada (v1) — actualizada por round 10 (§9.7):**
 
-- El hook de coordinación emite el `worker_done`. En **Claude** es el mecanismo (Stop hook, validado
-  en el Gate 0 — resuelve (a) sin darle `Bash` al modelo). En **Codex** el mecanismo **validado** es
-  el **comando nativo**; el hook equivalente quedaría como respaldo pero **no se ejercitó en el
-  spike**.
-- **Todos los demás hooks se deshabilitan** en las sesiones secundarias. "Máxima capacidad" pasa a
-  significar: modelo, config, MCP de lectura e historial — **no** hooks arbitrarios.
-- Deshabilitar hooks sin apagar MCP requiere un mecanismo por familia (p. ej. lanzar con un
-  `settings`/config dedicado): parte del Gate 0.
+- **Notificación:** en **atendido** el `worker_done` es **self-report por comando** (el modelo tiene
+  `Bash`/comando gateado y ejecuta el `orchestration send`), en ambas familias. El **hook `Stop`** de
+  coordinación queda para (i) la **variante sin-Bash** de Claude (toolset cerrado, donde el modelo no
+  puede ejecutar el comando — validado en el Gate 0) y (ii) la **cosecha robusta del informe** (§9.8).
+- **Aislamiento de los demás hooks:** **todos los hooks del usuario se apagan** con un lever dedicado —
+  **`disableAllHooks: true`** (Claude) / **`--disable hooks`** (Codex)—, que **no rompe la auth** ni exige
+  API key (a diferencia de `--bare`/config-dir, descartados). Esto resuelve el "deshabilitar hooks **sin
+  apagar MCP**" que aquí se dejaba como pendiente del Gate 0: el lever apaga hooks y **no toca los MCP**.
+- "Máxima capacidad" pasa a significar: modelo, config, MCP de lectura e historial — **no** hooks
+  arbitrarios.
 
 **Qué valida el hook antes de emitir `worker_done` (evitar el deadlock informe ↔ notificación).** En
 v1 el secundario **no escribe un archivo de informe**; el conductor lo persiste *después*, leyendo
@@ -346,8 +359,10 @@ menor en `cross-review`: agregar la línea sentinel tras su `VERDICT:` cuando el
 2. el hook valida: existe dispatch activo, `taskId`/`dispatchId` coinciden, `STATUS: done` es la
    **última línea no vacía** de `last_assistant_message`, y aún no se envió `worker_done`;
 3. el hook emite `worker_done`;
-4. recién entonces el conductor lo recibe, **extrae el informe del mensaje final** (`terminal read`)
-   y lo persiste en la ruta destino (ver "reportPath" abajo).
+4. recién entonces el conductor lo recibe, **extrae el informe del cuerpo del `worker_done`** (no de
+   `terminal read`, que es **ciego a la TUI alt-screen** — §9.8) y lo persiste en la ruta destino (ver
+   "reportPath" abajo). Para informes **largos** de Codex/Orca el `--body` auto-compuesto es frágil →
+   el harvest robusto lo hace el `Stop` hook (§9.8/P3).
 
 Así la notificación depende del sentinel (que sí existe al terminar), no del archivo (que el
 conductor escribe después).
@@ -370,14 +385,15 @@ mensaje del secundario y es una entrada no confiable:
 (Alternativa descartada: omitir `reportPath` y derivarlo del dispatch; se prefiere pasarlo explícito
 para que quede auditado.)
 
-**Al Gate 0 se agrega:** validar la vía de `worker_done` para **ambas** familias (hook de
-coordinación validando `STATUS: done` como última línea de `last_assistant_message` y disparando el
-`send`), e **inventariar y neutralizar** los hooks del entorno salvo el de coordinación.
+**Al Gate 0 se agregó (y se resolvió, §9.6–9.8):** validar la vía de `worker_done` para **ambas**
+familias (self-report por comando en atendido; `Stop` hook para la variante sin-Bash) y **neutralizar**
+los hooks del entorno — hecho con `disableAllHooks:true` (Claude) / `--disable hooks` (Codex), sin romper
+auth.
 
 **Veredicto general:** diseño viable, honesto y bien separado (qué / cuándo / cómo / cómo vuelve).
-No se reescribe. Antes de implementar son innegociables la **lista blanca de MCP (2.7)** y la
-**política de hooks + notificación por hook de coordinación (2.8)** — sin ellas la sesión no se
-despacha. Luego, en orden: (a) el Gate 0 de 2.1; (b) el default de lanzamiento read-only +
+No se reescribe. Antes de implementar son innegociables el **control de MCP (2.7 + §9.6: reglas
+`ask`/`deny`, no solo allowlist)** y el **apagado de hooks + notificación (2.8 + §9.7: `disableAllHooks`/
+`--disable hooks` + self-report por comando)** — sin ellos la sesión no se despacha. Luego, en orden: (a) el Gate 0 de 2.1; (b) el default de lanzamiento read-only +
 conductor persiste de la sección 5; (c) la separación de sesiones por permiso de 2.3 y 2.6.
 
 ---
@@ -461,14 +477,19 @@ el workspace. **No existe un "escribí solo este archivo"** a nivel sandbox. Per
 ### Default de v1: el conductor persiste (read-only duro desde la raíz)
 
 Para la **primera versión** se usa el patrón ya probado y de máxima garantía: el secundario corre
-`-s read-only` desde la raíz del repo, **no escribe nada**, emite el informe como su mensaje final,
-y **el principal** lo vuelca en el artefacto típico (con `terminal read`, o el patrón
-`--output-last-message` de `exec`). Es idéntico al comportamiento actual; la única diferencia
-respecto de "que el secundario escriba" es *quién teclea el archivo*, y a cambio conserva el
-sandbox del SO como garantía dura. Se adopta esto hasta que el Gate 0 valide la forma óptima de
-abajo.
+`-s read-only`, **no escribe nada**, emite el informe como su mensaje final, y **el principal** lo
+vuelca en el artefacto típico. La cosecha del mensaje final es **del cuerpo del `worker_done`** (CLI:
+`--output-last-message` de `exec` / stdout de `-p`), **no de `terminal read`** —que es ciego a la TUI
+alt-screen (§9.8)—. Es idéntico al comportamiento actual; la única diferencia respecto de "que el
+secundario escriba" es *quién teclea el archivo*, y a cambio conserva el sandbox del SO como garantía
+dura.
+
+> **Nota round 10:** el modo de aprobación depende de si la sesión es **atendida** o **desatendida** (ver
+> la matriz de §9.6). Desatendido: `-a never` (Codex) / `dontAsk` (Claude), como abajo. Atendido: `-a
+> untrusted`/`on-request` (Codex) / `manual` (Claude), donde el gate de permiso es respondible.
 
 ```bash
+# desatendido (sin humano mirando): el sandbox + never contienen
 orca terminal create --worktree active --command "codex -s read-only -a never"
 ```
 
@@ -642,15 +663,16 @@ Nunca "worktree del worktree": o el mismo worktree, o un hermano del repo con br
 Ajustes recomendados sobre el plan por fases del README, sin cambiar su estructura:
 
 0. **Precondición de seguridad (bloqueante, antes que nada):** definir las **tres capas de control**
-   por rol y familia — (a) lista blanca de MCP, solo lectura (2.7); (b) política de hooks: todos
-   deshabilitados salvo el de coordinación (2.8); (c) el sandbox de filesystem. Sin las tres,
-   ninguna sesión secundaria se despacha. Fijar en el Gate 0 la sintaxis exacta
-   (`enabled_tools`/`disabled_tools` de Codex; mecanismo para apagar hooks sin apagar MCP en cada
-   familia).
-1. **Gate 0 (nuevo, bloqueante) antes de la Fase 1:** **matriz** de dispatches (no uno solo; ver
-   hallazgo 2.1) que valide los cinco puntos de la sección 1 — inject-dispara-turno, `worker_done`
-   por hook de coordinación, lectura del código con la raíz escribible estrechada, etiquetado de
-   familia en `terminal list`, y extracción íntegra con `terminal read`. La matriz mínima:
+   por rol y familia — (a) **MCP**: en atendido, gate de permiso + reglas **`ask`/`deny`** para
+   escrituras sensibles; en desatendido, `deny` duro + `--strict-mcp-config` por-servidor (2.7, §9.6) —
+   *omitir de la allowlist no anula permisos heredados*; (b) **hooks**: apagarlos con
+   **`disableAllHooks:true`** (Claude) / **`--disable hooks`** (Codex), sin romper auth (§9.7) — esto
+   **resuelve** el "apagar hooks sin apagar MCP" que era el punto abierto; (c) el **sandbox** de
+   filesystem. Sin las tres, ninguna sesión secundaria se despacha.
+1. **Gate 0 (ejecutado, §9):** **matriz** de dispatches (no uno solo; ver hallazgo 2.1) que validó
+   inject-dispara-turno, `worker_done` (self-report por comando en atendido; `Stop` hook en la variante
+   sin-Bash), lectura del código, etiquetado de familia en `terminal list`, y —corregido— **cosecha por
+   el `worker_done`, no por `terminal read`** (que resultó ciego a la TUI, §9.8). La matriz mínima fue:
    **(a)** Claude→Codex `explore`; **(b)** Codex→Claude `explore` (valida el hook de Claude sin
    `Bash`); **(c)** un `cross-review` en cualquier dirección (valida el envelope `VERDICT:` +
    `STATUS: done`). Más la sintaxis de las listas del punto 0, el **inventario/neutralización de
@@ -667,13 +689,13 @@ Ajustes recomendados sobre el plan por fases del README, sin cambiar su estructu
    nunca elevar la read-only; y documentar la política de worktree de la sección 6 (mismo worktree +
    escritor único + clean-tree gate; hermano solo opt-in) y el caso "el usuario ya está en un
    worktree".
-5. **Seguridad:** en v1, el read-only fuerte se compone de **tres capas** (hallazgos 2.7 y 2.8): el
-   sandbox `-s read-only` desde la raíz para el filesystem, la lista blanca de MCP para los sistemas
-   externos, **y** la política de hooks (solo el de coordinación); más el conductor persiste el
-   informe. La frontera de sandbox con `workspace = carpeta del informe` se registra como
-   optimización **habilitable solo tras el Gate 0**. El `--tools` cierra los built-ins y la
-   config de MCP enumera tools de lectura concretas, nunca wildcards de servidor, en ambas familias
-   (sección 5).
+5. **Seguridad:** en v1, el read-only fuerte se compone de **tres capas** (hallazgos 2.7/2.8 + §9.6/9.7):
+   el sandbox `-s read-only` para el filesystem; el **control de MCP** para los sistemas externos (gate de
+   permiso + reglas `ask`/`deny` en atendido; `deny` + `--strict-mcp-config` en desatendido); **y** el
+   **apagado de hooks** con `disableAllHooks`/`--disable hooks`; más el conductor persiste el informe
+   (cosechado del `worker_done`). La frontera de sandbox con `workspace = carpeta del informe` se registra
+   como optimización **habilitable solo tras validarla**. El `--tools` cierra los built-ins de Claude pero
+   **no** cubre MCP (§9.6): el corte de MCP se hace con reglas `ask`/`deny`, no con wildcards de servidor.
 6. **Envelope de fin común + `reportPath` (protocolo, 2.8):** para el transporte `orca-session`,
    todos los modos cierran su salida con `STATUS: done` como última línea; **`cross-review` debe
    agregar esa línea** tras su `VERDICT:` (hoy no la emite). El hook valida esa última línea antes
@@ -832,17 +854,228 @@ legítimos del README que se incorporan al backlog de diseño:
   `stale_bootstrap`). Así que el criterio de descubrimiento no puede ser solo "`orca status` dice
   ready" — debe considerar desde dónde se consulta.
 
-### Lo que falta cerrar antes de dar el Gate 0 por completo (bloqueante de Fase 1)
+### 9.6 Seguimiento: el gate de permiso bajo dispatch (cierra el bloqueante 1)
 
-Estas son las razones por las que el veredicto es **PARCIAL**, no "PASA":
+El bloqueante 1 (restricción de MCP) estaba mal encuadrado. No era "el gate de permiso no cubre MCP":
+era que **`--tools` no restringe MCP** (hallazgo B/2.7), y de ahí se saltaba a "entonces hace falta una
+allowlist técnica dura". Un segundo spike reencuadra el problema y lo cierra para el caso atendido.
 
-1. **Restricción de MCP (capa de seguridad del Gate 0).** No se configuró ni validó la lista blanca
-   de MCP (2.7); el spike corrió con los MCP del entorno activos. **Bloqueante.**
-2. **Neutralización de hooks arbitrarios (capa de seguridad del Gate 0).** `--settings` agrega el
-   hook de coordinación pero no aísla los preexistentes (2.8); falta un mecanismo que deje solo el de
-   coordinación. **Bloqueante.**
-3. **Cosecha del informe validada para ambas familias.** `terminal read` falló; la vía transcript
-   solo se probó en Claude, no en Codex. **Bloqueante.**
+**Insight de fondo:** hay **dos modelos operativos**, con posturas de seguridad opuestas:
+
+- **Atendido** — el conductor/usuario mira el loop del secundario. Si el secundario pega contra un gate
+  de permiso, **puede contestar**. El gate de aprobación *es* el control; no hace falta pre-restricción
+  dura.
+- **Desatendido** — nadie mira la terminal del secundario. Un prompt lo **cuelga**. Ahí sí hace falta
+  pre-restricción (sandbox + `dontAsk`/`never` + allowlist sin escrituras), porque no hay humano.
+
+Mi diseño previo empujaba `never`/`dontAsk` **asumiendo desatendido**. Para el atendido, ese supuesto
+se **invierte**: queremos que el gate dispare.
+
+**Spike ejecutado (atendido, sobre el propio transporte Orca):** secundario Claude fresco en modo
+`manual`, despachado por `dispatch --inject` con una tarea que intenta una **escritura por Bash**
+(gated). Resultado:
+
+- El prompt de permiso **apareció en la TUI de Orca** (`Do you want to proceed? 1. Yes / 2. … / 3. No`).
+- El usuario lo **aprobó**; el secundario ejecutó, cerró el turno y quedó ocioso. **No hubo deadlock.**
+- La **prohibición de `AskUserQuestion`** del preámbulo de inject (hallazgo D) **no toca** el gate de
+  permiso: son mecanismos distintos (uno es una tool que el modelo llama; el otro es el harness gateando
+  una tool). El gate **sobrevive al inject**.
+
+**El matiz sobre MCP (reinterpreta el hallazgo B/F):** en Claude Code las tools MCP **pasan por el mismo
+gate de permiso** que Bash (aparecen como `mcp__server__tool` y piden aprobación) **salvo que estén
+allowlisteadas** — en cuyo caso corren sin prompt. Que `engram` corriera sin preguntar en el Gate 0 **no
+fue** "el gate no cubre MCP": fue que **engram estaba allowlisteado** (típico en MCP de memoria).
+
+**Corrección tras la revisión cross-model (round 10):** la garantía **no** puede ser solo "no
+allowlistear los MCP sensibles" — **omitir una tool de la allowlist no anula un permiso heredado**
+(reglas `allow` preexistentes en settings de usuario/proyecto/enterprise siguen vigentes). La garantía
+correcta es **agregar reglas explícitas `ask` o `deny`** para los MCP de escritura sensibles en el
+`--settings` del secundario. Y hay que ser preciso con la semántica: **`ask` gatea (pregunta), `deny`
+bloquea (sin prompt)** — para el modelo atendido (surfacing) la regla es `ask`, no `deny`. Nota
+adicional: **`--strict-mcp-config` opera a nivel de servidor** (qué servidores cargan), **no por-tool**;
+no distingue las tools de lectura de las de escritura dentro de un mismo servidor, así que para el corte
+fino escritura-vs-lectura hacen falta las reglas `ask`/`deny`, no `--strict-mcp-config` solo.
+
+**Corolario que se confirmó solo:** durante el spike, `orca terminal read` devolvió únicamente 2 líneas
+de scrollback (el prompt del shell + `claude`) y un poll de 20 iteraciones quedó **congelado** en el
+frame de boot — nunca vio el spinner, la tool ni el prompt. Evidencia dura de que **la preview/read de
+Orca es ciega a la TUI alt-screen de Claude** → refuerza que la cosecha (bloqueante 3) debe ser del
+transcript, jamás del buffer.
+
+#### Matriz de modos de lanzamiento del secundario
+
+El modo depende de dos ejes: **rol** (lectura vs escritura) × **modelo operativo** (atendido vs
+desatendido). Tokens verificados contra `--help` (2026-07-18): Claude `--permission-mode` ∈
+{`manual`, `auto`, `acceptEdits`, `plan`, `dontAsk`, `bypassPermissions`}; Codex `-s` ∈ {`read-only`,
+`workspace-write`, `danger-full-access`}, `-a` ∈ {`untrusted`, `on-request`, `never`}.
+
+**Claude secundario:**
+
+| Rol | Atendido (default v1) | Desatendido |
+|---|---|---|
+| **Read-only** (co-explore, cross-review) | `--permission-mode manual` + `--settings` con `allow` de tools de lectura (Read/Grep/Glob/`Bash(git log:*)`/MCP reads) y `deny` de escritura → lecturas fluyen, escrituras **bloqueadas** (`ask` si se quiere poder aprobar alguna) | `--permission-mode dontAsk` + `--tools` de lectura + reglas `deny`/`ask` para escrituras MCP (contención dura) |
+| **Write** (cross-implement) | `--permission-mode acceptEdits` en worktree aislado; regla **`ask`** explícita para MCP de escritura sensible → **gatea** (no basta con omitirla de la allowlist) | `--permission-mode dontAsk`/`acceptEdits` en worktree + reglas controladas |
+
+**Codex secundario:**
+
+| Rol | Atendido (default v1) | Desatendido |
+|---|---|---|
+| **Read-only** | `-s read-only -a untrusted` (solo comandos confiables corren sin preguntar; todo lo demás escala al usuario) | `-s read-only -a never` |
+| **Write** (cross-implement) | `-s workspace-write -a on-request` | `-s workspace-write -a never` |
+
+**Asimetría a tener presente:** el `read-only` de Codex es un **sandbox duro** (kernel) — aun en
+atendido el filesystem está genuinamente bloqueado; el approval es solo para el borde (red, MCP). Los
+modos de Claude son más **blandos** (no es sandbox de kernel): el contrato read-only se apoya en el
+`deny` de `--settings` **más** el gate, por eso el `deny` explícito pesa más del lado Claude. Además
+`-a untrusted` le da a Codex "lecturas fluyen, escrituras preguntan" **sin configurar settings**;
+Claude necesita el `allow`/`deny` para el mismo efecto.
+
+**Veredicto del bloqueante 1:** **resuelto para v1 vía modo aprobación (atendido)** — el gate bajo
+dispatch está probado y MCP va por ese mismo gate. La **allowlist técnica dura** baja de "bloqueante" a
+**endurecimiento opcional del path desatendido**. Queda **un checkpoint** (no bloqueante acá): verificar
+el gate con una tool real de escritura de Atlassian/Bitbucket **en un repo donde el MCP esté vivo** (p.
+ej. `results`), como paso previo a habilitar la feature ahí — en este repo el MCP de Jira no está
+habilitado, y un sustituto (engram) no da señal real por estar allowlisteado.
+
+### 9.7 Aislamiento de hooks: no hay lever quirúrgico → surfacing, no candado (cierra el bloqueante 2)
+
+Segundo spike, esta vez **automatizable** (los hooks escriben archivos que sí se pueden leer, a
+diferencia del gate de permiso invisible en la TUI). Se montó un hook "de usuario" auto-descubierto
+(proyecto `.claude/settings.json`) y un hook "de coordinación" (por `--settings`), y se corrieron
+cuatro variantes con `claude -p` (que **sí dispara el `Stop` hook** — método validado):
+
+| Variante | user hook | coord hook | resultado |
+|---|---|---|---|
+| **V1** baseline (sin `--bare`) | ✅ dispara | — | valida el método |
+| **V4** `--settings` sin `--bare` | ✅ dispara | ✅ dispara | **reproduce el problema**: `--settings` agrega el nuestro, el del usuario dispara igual |
+| **V2** `--bare` | ❌ | ❌ | **confundido**: `Not logged in` — `--bare` skipea *keychain reads* y rompe la auth OAuth |
+| **V3** `--bare --settings` | ❌ | ❌ | idem `Not logged in` |
+| **A1** `CLAUDE_CONFIG_DIR` limpio | — | ❌ | idem `Not logged in`: redirigir el config dir también desloguea |
+
+**Hallazgo inicial (parcial):** `--bare` y `CLAUDE_CONFIG_DIR` a un dir limpio **rompen la auth OAuth**
+(`--bare` skipea keychain reads; el config dir referencia el estado de login). De ahí concluí —**mal**—
+que "no hay aislamiento quirúrgico de hooks sin romper la auth".
+
+**Corrección tras la revisión cross-model (round 10):** **sí lo hay.** Claude Code expone la clave de
+settings **`disableAllHooks: true`**, que apaga los hooks ordinarios **sin `--bare` y sin romper OAuth**.
+Verificado empíricamente: con un hook de proyecto activo y `claude -p … --settings '{"disableAllHooks":
+true}'`, el modelo **respondió normal** (auth intacta) y el **hook de usuario NO disparó**. Simétrico en
+Codex: **`--disable hooks`** (≡ `-c features.hooks=false`) apaga los hooks de Codex (documentado en
+`codex exec --help`). O sea, el lever quirúrgico existe para **ambas familias** y es zero-auth-break.
+
+**El cierre (con el lever correcto):**
+
+1. **Lever duro y limpio:** el secundario se lanza con **`disableAllHooks: true`** (Claude) /
+   **`--disable hooks`** (Codex) → **ningún** hook del usuario corre, sin tocar el keychain ni exigir
+   API key. Esto reemplaza al `--bare`/config-dir como mecanismo de aislamiento.
+2. **Notificación:** en atendido el modelo se auto-reporta el `worker_done` por comando (§9.6), así que
+   apagar *todos* los hooks (incluido cualquiera propio) no rompe la coordinación. En la variante
+   sin-Bash que sí necesita hook de coordinación, se re-habilita **solo** ese (allowlist de hooks), no
+   `disableAllHooks` a secas.
+3. **`detect-and-warn` queda como complemento opcional, no como control principal** — y con la salvedad
+   que marcó la review: inspeccionar solo `~/.claude/settings.json` + `.claude/settings.json` y hooks de
+   tipo `command` es **incompleto** (omite settings locales, plugins, y hooks tipo HTTP/MCP). Como el
+   control real ahora es `disableAllHooks`/`--disable hooks` (apaga todo), el detect-and-warn pasa a ser
+   informativo, no la garantía.
+
+**Convergencia con el bloqueante 1:** el patrón atendido sigue siendo **surfacing al humano** para lo que
+el usuario *quiere* dejar pasar (el gate de permiso para MCP de escritura); pero para los hooks el
+control v1 es más fuerte y más simple: **apagarlos** con el lever dedicado.
+
+**Veredicto del bloqueante 2:** **resuelto** con `disableAllHooks: true` (Claude, verificado) /
+`--disable hooks` (Codex, documentado) — aislamiento limpio, **sin romper auth y sin API key**, en
+atendido y desatendido por igual. El `--bare`/config-dir queda descartado como mecanismo (rompen auth).
+
+**Nota multiplataforma (Windows):** `disableAllHooks`/`--disable hooks` son flags/settings independientes
+de plataforma (no dependen del keychain), así que **deberían** valer igual en Windows — a confirmar en el
+checkpoint. El detect-and-warn (si se conserva) lee rutas con separadores Windows (`%USERPROFILE%\…`).
+
+### 9.8 Cosecha del informe: el canal es el `worker_done`, no el buffer (cierra el bloqueante 3)
+
+Tercer spike, sobre el propio transporte. El hallazgo articulador: **la cosecha NO se hace del buffer
+de la terminal** (`terminal read` es ciego a la TUI, §9.6) **sino del mensaje `worker_done`** — y eso
+converge para ambas familias y ambos transportes.
+
+**Path CLI (sin Orca) — resuelto para ambas familias:**
+
+- **Codex:** `codex exec -o <FILE>` escribe el último mensaje. Validado: un `exec -s read-only` con
+  marcador `PONG-B3-SPIKE-42` lo escribió íntegro en el archivo `-o`. (Nota: `codex exec` **no** persiste
+  rollout en `~/.codex/sessions`; el `-o` **es** su cosecha. `--output-schema` da respuesta estructurada
+  si se quiere.)
+- **Claude:** `claude -p` → stdout, como hoy.
+- Esto **satisface la restricción "las skills siguen funcionando igual sin Orca"**: el path CLI es el
+  status quo y ya cosecha para ambas familias.
+
+**Path Orca (interactivo) — cosecha por el `worker_done`, validada para ambas familias:**
+
+| Familia | Cómo llega el informe al conductor | Estado |
+|---|---|---|
+| **Claude** | `Stop` hook lee el transcript (`last_assistant_message`) → lo pone en el `worker_done` | ✅ (Gate 0) |
+| **Codex** | el modelo compone `orchestration send … --body <informe>` (o un `Stop` hook) | ✅ **validado ahora** |
+
+En el spike de Codex interactivo por Orca, el `worker_done` llegó al inbox del conductor con el informe
+**íntegro** (marcador `MARCADOR-HARVEST-B3-7788` presente + texto completo, 222 chars). El envelope
+entregado trae, además del body, un **`Subject`** y un **payload con `taskId`/`dispatchId`** → el canal
+de cosecha **carga también los campos de autoridad**, así el conductor verifica que el informe pertenece
+al dispatch que despachó (no un mensaje espurio) en el mismo mensaje del que cosecha. Además se
+confirmó un comportamiento coherente con el bloqueante 1: **Codex interactivo auto-compone el `send` y
+lo gatea por aprobación** (`Ask for approval`), que se aprobó con `orca terminal send --enter`. Y se vio
+que **Codex también dispara un evento `Stop`** (`hook: Stop Completed`), habilitando el harvest hook
+simétrico al de Claude.
+
+**Corrección operativa:** `orchestration check` usa `--terminal <handle>`, **no** `--to` (este último es
+de `send`/`dispatch`). Con `--to` el `check` falla silencioso y el inbox parece vacío — matiz que
+refuerza el hallazgo C (usar `--all` y el flag correcto).
+
+**Reclasificado tras la revisión cross-model (round 10): informe largo en Codex/Orca = BLOQUEANTE de
+ese path, no "refinamiento".** Un `--body` de 222 chars prueba el **canal**, no un informe **real** en
+markdown largo, y el propio documento reconoce que comillas/backticks rompen el quoting del `send` y que
+el `Stop` hook de Codex **aún no fue validado**. Como el caso de uso real (co-explore/cross-review
+producen markdown largo) cae justo en el punto frágil-y-no-validado, **la cosecha de Codex-secundario
+bajo Orca para informes largos NO está aprobada** y bloquea *ese* path hasta validar el mecanismo
+robusto: el **`Stop` hook** (ambas familias lo tienen; corre fuera del sandbox) **cosecha el último
+mensaje y escribe el `reportPath` canónico**, eliminando la ceguera de `terminal read` y la fragilidad
+del quoting. Lo que **sí** queda aprobado: la cosecha por **CLI** (`codex exec -o` / `claude -p`, informe
+largo incluido), Claude/Orca (Stop hook), y Codex/Orca para informes **cortos**.
+
+**Nota multiplataforma (Windows):** el hook de cosecha del Gate 0 era `python3 <script>` — no portable.
+Debe reimplementarse **cross-runtime** (node, que ambos CLIs empaquetan) con rutas resueltas por
+plataforma (`~/.claude`, `~/.codex` vs `%USERPROFILE%\…`).
+
+### Estado de los tres bloqueantes del Gate 0 (revisado tras round 10)
+
+Estado honesto tras la crítica cross-model, que refutó el veredicto "PASA para v1 atendido" como
+overclaim. Lo **validado**: transporte, degradación CLI (cosecha larga incluida) y aislamiento de hooks.
+Lo que **queda**: dos ítems reales (P3, P4) y una corrección de recipe (P1).
+
+1. **Restricción de MCP** (§9.6): el gate cubre MCP — pero **corregido**: no basta con omitir de la
+   allowlist (no anula permisos heredados); hacen falta reglas **`ask`/`deny`** explícitas para MCP de
+   escritura sensibles, y `--strict-mcp-config` es **por-servidor, no por-tool**. Con eso, **resuelto**;
+   es un fix de recipe, no un bloqueante.
+2. **Aislamiento de hooks** (§9.7): **resuelto y mejor de lo que decía** — hay lever limpio sin romper
+   auth: **`disableAllHooks: true`** (Claude, verificado) / **`--disable hooks`** (Codex). No hace falta
+   `--bare`+API key. El `detect-and-warn` pasa a complemento opcional (e incompleto).
+3. **Cosecha del informe** (§9.8): **parcial**. CLI (ambas familias, informe largo) ✅; Claude/Orca ✅;
+   Codex/Orca **corto** ✅; **Codex/Orca informe largo = BLOQUEANTE** hasta validar el harvest por `Stop`
+   hook → `reportPath` (el `--body` auto-compuesto rompe con markdown largo). **No resuelto para ese path.**
+4. **UX del modelo atendido** (nuevo, de la review): "atendido" **presupone una UX que aún no existe**.
+   El permiso es respondible solo si el usuario **observa la TUI del secundario**, pero `terminal read` no
+   ve ese prompt y el conductor solo espera mensajes Orca. Falta **surfacear el `PermissionRequest` al
+   coordinador**, o **declarar explícitamente** que el modo atendido exige vigilancia manual de la pestaña
+   del secundario. **Gap de diseño abierto.**
+
+**Conclusión revisada:** el Gate 0 **no** "PASA" en bloque. Transporte + CLI + aislamiento de hooks:
+validados. Pendientes reales antes de Fase 1: **P3** (cosecha larga Codex/Orca) y **P4** (UX de permiso
+atendido); **P1** es un fix de recipe ya especificado.
+
+**Checkpoints de habilitación (previos a activar en un repo real):**
+
+- Gate de permiso con tool **real de escritura de Atlassian/Bitbucket** en un repo con MCP vivo (este no
+  tiene Jira MCP) — §9.6.
+- Re-verificar en **Windows** `disableAllHooks`/`--disable hooks` y reimplementar el hook de cosecha
+  **cross-runtime** (node) — §9.7, §9.8.
+- Validar el **harvest por `Stop` hook de Codex** (acceso al mensaje final) para informes largos — §9.8, P3.
+- Definir la **UX de surfacing del permiso** al coordinador (o declarar vigilancia manual) — P4.
 
 ### Pendientes menores / de refinamiento (para la Fase 1)
 
@@ -872,8 +1105,9 @@ Entorno: Codex CLI 0.144.5 → 0.144.6 (auto-update durante el spike) · Claude 
 (`app.running: true`, `ready`) y **suficiente para correr el ciclo E2E de transporte** (sección 9),
 pero `stale_bootstrap` / `runtime_unavailable` desde dentro del sandbox del agente Codex (dato
 empírico de la sección 1). El ciclo E2E del **transporte** (`dispatch --inject` → `worker_done`) **se
-ejecutó** (sección 9); lo que queda sin ejecutar E2E son las **capas de seguridad** (restricción de
-MCP, aislamiento de hooks) y la **cosecha del informe para ambas familias**.
+ejecutó** (sección 9), y los seguimientos §9.6–9.8 ejercitaron el **gate de permiso** (MCP), el
+**apagado de hooks** (`disableAllHooks`/`--disable hooks`) y la **cosecha** (canal `worker_done`, ambas
+familias). Quedan pendientes reales: **P3** (cosecha larga Codex/Orca) y **P4** (UX de permiso atendido).
 
 ---
 
@@ -1003,11 +1237,27 @@ ejecutado**):
     no el hook (2.8); y corregir la frase de la octava ronda que decía "sin el Gate 0 ejecutado".
     Todo aplicado. *Con esto el revisor declaró que cierra el REVISE.*
 
-Las nueve rondas ilustran el propio patrón que el diseño busca habilitar: dos familias produciendo y
+**Décima ronda** (crítica del cierre de los tres bloqueantes; la re-review se **despachó como tarea** y
+su veredicto volvió por `worker_done`, cosechado sin relay humano):
+
+28. **"PASA para v1 atendido" era overclaim; cuatro correcciones sustantivas** — (P1) MCP: hacen falta
+    reglas `ask`/`deny` explícitas (omitir de la allowlist no anula permisos heredados), `deny` bloquea /
+    `ask` gatea, y `--strict-mcp-config` es por-servidor; (P2) hooks: **sí** hay lever limpio sin romper
+    auth — `disableAllHooks:true` (Claude, verificado) / `--disable hooks` (Codex) —, refutando mi
+    conclusión previa; (P3) la **cosecha larga de Codex/Orca** se reclasifica de "refinamiento" a
+    **bloqueante de ese path**; (P4, nuevo) el modo **atendido** presupone una UX inexistente (surfacear
+    `PermissionRequest` al coordinador o declarar vigilancia manual). *Overclaim corregido; diseño más
+    sólido.*
+29. **Residuos normativos alineados** — tabla de precedencia, 2.7/2.8, §5 y §7 dejan de decir "allowlist
+    dura / solo el hook de coordinación / cosecha por `terminal read`"; apéndice y este conteo
+    actualizados. *Consistencia normativa.*
+
+Las diez rondas ilustran el propio patrón que el diseño busca habilitar: dos familias produciendo y
 criticando de forma independiente, con síntesis del conductor. Notablemente, cada ronda encontró un
-problema que la anterior no vio —varias, huecos de seguridad o de protocolo reales (MCP externos,
-hooks, toolset abierto de Claude, sentinel no universal, Gate 0 unidireccional, veredicto
-sobredeclarado)—: evidencia de que la crítica iterada cross-model aporta más que una sola pasada. Las
-rondas 7, 8 y 9, además, se corrieron **sobre el propio transporte que el documento diseña**. Estado
-actual: **transporte del Gate 0 validado E2E; capas de seguridad y cosecha pendientes antes de
-habilitar la Fase 1 completa.**
+problema que la anterior no vio —huecos de seguridad o de protocolo reales (MCP externos, hooks, toolset
+abierto de Claude, sentinel no universal, Gate 0 unidireccional, veredicto sobredeclarado —dos veces—, y
+un mejor mecanismo de hooks que el conductor había descartado)—: evidencia de que la crítica iterada
+cross-model aporta más que una sola pasada. Las rondas 7–10, además, se corrieron **sobre el propio
+transporte que el documento diseña** (la 10 incluso despachando la review como tarea). Estado actual:
+**transporte, degradación CLI y aislamiento de hooks validados; pendientes reales antes de la Fase 1:
+P3 (cosecha larga Codex/Orca) y P4 (UX de permiso atendido).**
