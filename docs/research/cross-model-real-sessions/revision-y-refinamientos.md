@@ -1,7 +1,7 @@
 # Revisión verificada y refinamientos — Sesiones reales Claude ↔ Codex
 
 **Estado:** revisión crítica del diseño de `README.md`, con verificación de interfaz de CLI y
-decisiones de mecánica que el README dejaba abiertas. **Sometido a diez rondas de crítica de la
+decisiones de mecánica que el README dejaba abiertas. **Sometido a once rondas de crítica de la
 otra familia (cross-model); las correcciones resultantes están incorporadas** (ver "Procedencia").
 **Gate 0 ejecutado end-to-end el 2026-07-18; revisado tras la 10ª ronda cross-model** (ver "9.
 Resultados del Gate 0" y "Estado de los tres bloqueantes"). **Validado:** el transporte (inject +
@@ -9,13 +9,16 @@ Resultados del Gate 0" y "Estado de los tres bloqueantes"). **Validado:** el tra
 informe largo incluido), y el **aislamiento de hooks** —§9.7, con lever limpio `disableAllHooks: true`
 (Claude, verificado) / `--disable hooks` (Codex), sin romper auth—. **Corregido:** la restricción de MCP
 (§9.6) necesita reglas `ask`/`deny` explícitas (omitir de la allowlist no anula permisos heredados;
-`--strict-mcp-config` es por-servidor). **Pendientes reales antes de Fase 1:** la **cosecha de
-Codex-secundario bajo Orca para informes largos** (§9.8/P3 — el `--body` auto-compuesto rompe con
-markdown largo; falta el harvest por `Stop` hook → `reportPath`) y la **UX del permiso atendido** (P4 —
-el permiso es respondible solo si el usuario observa la TUI del secundario, que `terminal read` no ve;
-falta surfacear el `PermissionRequest` al coordinador o declarar vigilancia manual). El patrón atendido
+`--strict-mcp-config` es por-servidor). El **mecanismo de cosecha de informes largos** quedó validado
+(§9.8/P3, round 11): el **`notify` de Codex** entrega el `last-assistant-message` como campo JSON
+(escaping-safe) al `reportPath` — markdown con backticks/comillas intacto en `codex exec` —; pero **la
+habilitación de Codex/Orca para informes largos** queda **bloqueada** hasta el E2E bajo Orca interactivo,
+un límite/fallback por **`ARG_MAX`** (el JSON va por `argv`) y el protocolo del notifier —esto **no**
+bloquea la Fase 1 ni el CLI—. **Pendiente real de diseño:** la **UX del permiso atendido** (P4 — el
+permiso es respondible solo si el usuario observa la TUI del secundario, que `terminal read` no ve; falta
+surfacear el `PermissionRequest` al coordinador o declarar vigilancia manual). El patrón atendido
 —**surfacear al humano, no pre-bloquear**— se sostiene para el gate de permiso de MCP; para hooks, v1 usa
-el lever de apagado. **Gate 0 NO "PASA" en bloque**: quedan P3 y P4.
+el lever de apagado. **Checkpoint aparte:** re-verificación en Windows.
 
 **Fecha:** 2026-07-17
 
@@ -1038,6 +1041,29 @@ mensaje y escribe el `reportPath` canónico**, eliminando la ceguera de `termina
 del quoting. Lo que **sí** queda aprobado: la cosecha por **CLI** (`codex exec -o` / `claude -p`, informe
 largo incluido), Claude/Orca (Stop hook), y Codex/Orca para informes **cortos**.
 
+> **Resuelto (round 11 — el mecanismo, validado): el `notify` de Codex es el harvest hook.** Codex expone
+> `notify = [<programa>, …]` (config, o `-c notify=[…]`, o en el `--command` al crear la terminal). Al
+> cerrar turno llama al programa con un payload JSON `agent-turn-complete` que **incluye
+> `last-assistant-message`**. Verificado: un informe markdown con `##`, un bloque cercado con backticks y
+> una línea con comillas dobles y simples **llegó íntegro** al `reportPath` que el programa escribió — el
+> markdown viaja como **valor JSON** (Codex hace el escaping), no como comando de shell, así que **no hay
+> fragilidad de quoting**. Es más limpio que el `Stop` hook: payload estructurado con el mensaje ya
+> extraído. Simétrico al Stop hook de Claude. **Checkpoint remanente (chico):** esto se validó en `codex
+> exec` (CLI); falta el E2E con `notify` bajo el Codex **interactivo despachado por Orca** (mismo
+> mecanismo y config, el `notify` dispara en `agent-turn-complete` también en interactivo).
+>
+> **Corregido por la review de round 11 (no era "checkpoint chico"):** el E2E bajo Orca interactivo **y**
+> el límite de tamaño **bloquean la habilitación de Codex/Orca para informes largos** —aunque **no** la
+> Fase 1 ni el fallback CLI—. Dos razones: (1) el spike fue `codex exec`, no el path interactivo/Orca ni
+> un informe *realmente* grande; (2) **`ARG_MAX`**: el payload JSON viaja **por `argv`**, así que un
+> informe que exceda el máximo de argumentos del SO se truncaría/fallaría → hace falta un **límite +
+> fallback** (p. ej. cap de tamaño, y para el excedente, escritura directa a un `reportPath` en un dir
+> escribible acotado, o troceo). Además, el **notifier auditado** (forzado por `-c notify`) debe cumplir
+> el mismo protocolo que el Stop hook: validar `STATUS: done` como sentinel, hacer coincidir
+> `taskId`/`dispatchId` (inyectados por contexto, no vienen en el payload de `notify`), emitir
+> **exactly-once**, validar el `reportPath` con **contención canónica**, y **escribir el informe ANTES**
+> de emitir `worker_done`.
+
 **Nota multiplataforma (Windows):** el hook de cosecha del Gate 0 era `python3 <script>` — no portable.
 Debe reimplementarse **cross-runtime** (node, que ambos CLIs empaquetan) con rutas resueltas por
 plataforma (`~/.claude`, `~/.codex` vs `%USERPROFILE%\…`).
@@ -1045,8 +1071,10 @@ plataforma (`~/.claude`, `~/.codex` vs `%USERPROFILE%\…`).
 ### Estado de los tres bloqueantes del Gate 0 (revisado tras round 10)
 
 Estado honesto tras la crítica cross-model, que refutó el veredicto "PASA para v1 atendido" como
-overclaim. Lo **validado**: transporte, degradación CLI (cosecha larga incluida) y aislamiento de hooks.
-Lo que **queda**: dos ítems reales (P3, P4) y una corrección de recipe (P1).
+overclaim. Lo **validado**: transporte, degradación CLI (cosecha larga incluida), aislamiento de hooks y
+—tras round 11— el **mecanismo** de cosecha `notify`. Lo que **queda**: **P4** (pendiente de diseño), el
+**P3 acotado** (habilitación Codex/Orca-largo: E2E Orca + `ARG_MAX` + protocolo del notifier) y la
+corrección de recipe **P1**.
 
 1. **Restricción de MCP** (§9.6): el gate cubre MCP — pero **corregido**: no basta con omitir de la
    allowlist (no anula permisos heredados); hacen falta reglas **`ask`/`deny`** explícitas para MCP de
@@ -1055,18 +1083,24 @@ Lo que **queda**: dos ítems reales (P3, P4) y una corrección de recipe (P1).
 2. **Aislamiento de hooks** (§9.7): **resuelto y mejor de lo que decía** — hay lever limpio sin romper
    auth: **`disableAllHooks: true`** (Claude, verificado) / **`--disable hooks`** (Codex). No hace falta
    `--bare`+API key. El `detect-and-warn` pasa a complemento opcional (e incompleto).
-3. **Cosecha del informe** (§9.8): **parcial**. CLI (ambas familias, informe largo) ✅; Claude/Orca ✅;
-   Codex/Orca **corto** ✅; **Codex/Orca informe largo = BLOQUEANTE** hasta validar el harvest por `Stop`
-   hook → `reportPath` (el `--body` auto-compuesto rompe con markdown largo). **No resuelto para ese path.**
+3. **Cosecha del informe** (§9.8): **mecanismo validado** (round 11), pero con un bloqueo de *habilitación*
+   acotado (round 11 review). CLI (ambas familias, informe largo) ✅; Claude/Orca (Stop hook) ✅; Codex →
+   **`notify` → `last-assistant-message` (JSON, escaping-safe) → `reportPath`**, validado con markdown
+   intacto en `codex exec` ✅. **Bloquea la habilitación de Codex/Orca para informes largos** (no la Fase 1
+   ni el CLI): (a) falta el E2E de `notify` bajo Codex interactivo/Orca; (b) **`ARG_MAX`** — el JSON va por
+   `argv` → límite + fallback para informes muy grandes; (c) el notifier debe cumplir el protocolo
+   (sentinel, `taskId`/`dispatchId` por contexto, exactly-once, contención canónica, escritura→worker_done).
 4. **UX del modelo atendido** (nuevo, de la review): "atendido" **presupone una UX que aún no existe**.
    El permiso es respondible solo si el usuario **observa la TUI del secundario**, pero `terminal read` no
    ve ese prompt y el conductor solo espera mensajes Orca. Falta **surfacear el `PermissionRequest` al
    coordinador**, o **declarar explícitamente** que el modo atendido exige vigilancia manual de la pestaña
    del secundario. **Gap de diseño abierto.**
 
-**Conclusión revisada:** el Gate 0 **no** "PASA" en bloque. Transporte + CLI + aislamiento de hooks:
-validados. Pendientes reales antes de Fase 1: **P3** (cosecha larga Codex/Orca) y **P4** (UX de permiso
-atendido); **P1** es un fix de recipe ya especificado.
+**Conclusión revisada (tras round 11 + su review):** Transporte + CLI + aislamiento de hooks + **cosecha
+(mecanismo `notify`, escaping-safe)**: validados. **P1** es un fix de recipe ya especificado. Pendiente
+real de diseño: **P4** (UX del permiso atendido). **Bloquea solo la habilitación de Codex/Orca para
+informes largos** (no la Fase 1 ni el CLI): el E2E de `notify` bajo Orca interactivo + el límite/fallback
+por `ARG_MAX` + el protocolo del notifier (P3). Checkpoint aparte: re-verificación en Windows.
 
 **Checkpoints de habilitación (previos a activar en un repo real):**
 
@@ -1074,7 +1108,10 @@ atendido); **P1** es un fix de recipe ya especificado.
   tiene Jira MCP) — §9.6.
 - Re-verificar en **Windows** `disableAllHooks`/`--disable hooks` y reimplementar el hook de cosecha
   **cross-runtime** (node) — §9.7, §9.8.
-- Validar el **harvest por `Stop` hook de Codex** (acceso al mensaje final) para informes largos — §9.8, P3.
+- **Habilitación de Codex/Orca para informes largos** (bloquea *ese* path, no la Fase 1 ni el CLI): E2E de
+  `notify` bajo Codex interactivo/Orca + límite/fallback por **`ARG_MAX`** (JSON por `argv`) + protocolo del
+  notifier (sentinel, `taskId`/`dispatchId` por contexto, exactly-once, contención canónica,
+  escritura→worker_done) — §9.8, P3.
 - Definir la **UX de surfacing del permiso** al coordinador (o declarar vigilancia manual) — P4.
 
 ### Pendientes menores / de refinamiento (para la Fase 1)
@@ -1106,8 +1143,9 @@ Entorno: Codex CLI 0.144.5 → 0.144.6 (auto-update durante el spike) · Claude 
 pero `stale_bootstrap` / `runtime_unavailable` desde dentro del sandbox del agente Codex (dato
 empírico de la sección 1). El ciclo E2E del **transporte** (`dispatch --inject` → `worker_done`) **se
 ejecutó** (sección 9), y los seguimientos §9.6–9.8 ejercitaron el **gate de permiso** (MCP), el
-**apagado de hooks** (`disableAllHooks`/`--disable hooks`) y la **cosecha** (canal `worker_done`, ambas
-familias). Quedan pendientes reales: **P3** (cosecha larga Codex/Orca) y **P4** (UX de permiso atendido).
+**apagado de hooks** (`disableAllHooks`/`--disable hooks`) y la **cosecha** (canal `worker_done` + el
+`notify` de Codex para informe largo, mecanismo validado). Pendiente de diseño: **P4** (UX de permiso
+atendido); **P3 acotado** a la habilitación Codex/Orca-largo (E2E Orca + `ARG_MAX` + protocolo).
 
 ---
 
@@ -1252,12 +1290,25 @@ su veredicto volvió por `worker_done`, cosechado sin relay humano):
     dura / solo el hook de coordinación / cosecha por `terminal read`"; apéndice y este conteo
     actualizados. *Consistencia normativa.*
 
-Las diez rondas ilustran el propio patrón que el diseño busca habilitar: dos familias produciendo y
+**Undécima ronda** (crítica del cierre de P3, también despachada como tarea → veredicto por `worker_done`):
+
+30. **Mecanismo `notify` confirmado, pero clasificación otra vez optimista** — el revisor validó contra
+    Codex 0.144.6 + docs que `notify` entrega el `last-assistant-message` como arg JSON (sólido contra
+    quoting, superficie separada de `features.hooks`), pero marcó que el spike fue `codex exec`, no el
+    path Orca interactivo ni un informe *realmente* grande → el E2E + un **límite/fallback por `ARG_MAX`**
+    (el JSON va por `argv`) **bloquean la habilitación de Codex/Orca-largo** (no la Fase 1 ni el CLI). Más:
+    el notifier auditado debe cumplir el protocolo (sentinel, `taskId`/`dispatchId` por contexto,
+    exactly-once, contención canónica, escritura→worker_done). *Overclaim acotado; `ARG_MAX` es un gap
+    técnico real que el conductor no vio.*
+
+Las once rondas ilustran el propio patrón que el diseño busca habilitar: dos familias produciendo y
 criticando de forma independiente, con síntesis del conductor. Notablemente, cada ronda encontró un
 problema que la anterior no vio —huecos de seguridad o de protocolo reales (MCP externos, hooks, toolset
-abierto de Claude, sentinel no universal, Gate 0 unidireccional, veredicto sobredeclarado —dos veces—, y
-un mejor mecanismo de hooks que el conductor había descartado)—: evidencia de que la crítica iterada
-cross-model aporta más que una sola pasada. Las rondas 7–10, además, se corrieron **sobre el propio
-transporte que el documento diseña** (la 10 incluso despachando la review como tarea). Estado actual:
-**transporte, degradación CLI y aislamiento de hooks validados; pendientes reales antes de la Fase 1:
-P3 (cosecha larga Codex/Orca) y P4 (UX de permiso atendido).**
+abierto de Claude, sentinel no universal, Gate 0 unidireccional, veredicto sobredeclarado —**tres
+veces**—, un mejor mecanismo de hooks que el conductor había descartado, y el límite `ARG_MAX` del canal
+`notify`)—: evidencia de que la crítica iterada cross-model aporta más que una sola pasada. Las rondas
+7–11, además, se corrieron **sobre el propio transporte que el documento diseña** (las 10 y 11 despachando
+la review como tarea, con el veredicto cosechado por `worker_done` sin relay humano). Estado actual:
+**transporte, degradación CLI, aislamiento de hooks y el mecanismo de cosecha `notify` validados;
+pendiente de diseño P4 (UX de permiso atendido); P3 acotado a la habilitación Codex/Orca-largo (E2E Orca +
+`ARG_MAX` + protocolo).**
