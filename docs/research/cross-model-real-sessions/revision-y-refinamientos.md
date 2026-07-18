@@ -3,7 +3,7 @@
 **Estado:** revisión crítica del diseño de `README.md`, con verificación de interfaz de CLI y
 decisiones de mecánica que el README dejaba abiertas. **Sometido a once rondas de crítica de la
 otra familia (cross-model); las correcciones resultantes están incorporadas** (ver "Procedencia").
-**Gate 0 ejecutado end-to-end el 2026-07-18; revisado tras la 10ª ronda cross-model** (ver "9.
+**Gate 0 ejecutado end-to-end el 2026-07-18; revisado tras las rondas 10–11 cross-model** (ver "9.
 Resultados del Gate 0" y "Estado de los tres bloqueantes"). **Validado:** el transporte (inject +
 `worker_done` + envelope), la **degradación sin Orca** (transporte `cli`, que cosecha igual que hoy,
 informe largo incluido), y el **aislamiento de hooks** —§9.7, con lever limpio `disableAllHooks: true`
@@ -1009,12 +1009,25 @@ converge para ambas familias y ambos transportes.
 - Esto **satisface la restricción "las skills siguen funcionando igual sin Orca"**: el path CLI es el
   status quo y ya cosecha para ambas familias.
 
-**Path Orca (interactivo) — cosecha por el `worker_done`, validada para ambas familias:**
+**Path Orca (interactivo) — la cosecha llega por el `worker_done`, en dos niveles.** El canal es siempre
+el mensaje (no `terminal read`), pero **cómo** llega el informe tiene dos formas según el tamaño:
 
-| Familia | Cómo llega el informe al conductor | Estado |
+- **Nivel corto / default:** el informe va **en el cuerpo** del `worker_done` (el conductor lo persiste
+  del body). Claude: un `Stop` hook lo pone ahí; Codex: el modelo compone el `send --body`.
+- **Nivel robusto (informe largo):** un **notifier/hook auditado escribe el informe en el `reportPath`
+  ANTES** de emitir el `worker_done`, que solo lleva la **ruta** (+ autoridad). Evita el `--body` frágil
+  y el límite `ARG_MAX`. Es el modelo que rige para Codex/Orca-largo (§9.8, blockquote round 11).
+
+| Familia | Cosecha corta (body) | Cosecha larga (reportPath) |
 |---|---|---|
-| **Claude** | `Stop` hook lee el transcript (`last_assistant_message`) → lo pone en el `worker_done` | ✅ (Gate 0) |
-| **Codex** | el modelo compone `orchestration send … --body <informe>` (o un `Stop` hook) | ✅ **validado ahora** |
+| **Claude** | `Stop` hook → `last_assistant_message` en el `worker_done` — ✅ (Gate 0) | `Stop` hook escribe `reportPath` antes de notificar |
+| **Codex** | modelo compone `send --body` — ✅ validado (corto) | **`notify` → `last-assistant-message` → `reportPath`** — mecanismo ✅; E2E Orca + `ARG_MAX` pendientes |
+
+> **Reconciliación (round 11 review):** las secciones que hablan de "el conductor persiste del cuerpo del
+> `worker_done`" (§5) o de "self-report por comando / `Stop` hook" (2.8, §7) describen el **nivel corto**;
+> para informe **largo** rige el **notifier auditado que escribe `reportPath` antes de notificar** (con
+> sentinel, `taskId`/`dispatchId` por contexto, exactly-once y contención canónica). Los dos niveles
+> conviven; no se contradicen.
 
 En el spike de Codex interactivo por Orca, el `worker_done` llegó al inbox del conductor con el informe
 **íntegro** (marcador `MARCADOR-HARVEST-B3-7788` presente + texto completo, 222 chars). El envelope
@@ -1030,7 +1043,9 @@ simétrico al de Claude.
 de `send`/`dispatch`). Con `--to` el `check` falla silencioso y el inbox parece vacío — matiz que
 refuerza el hallazgo C (usar `--all` y el flag correcto).
 
-**Reclasificado tras la revisión cross-model (round 10): informe largo en Codex/Orca = BLOQUEANTE de
+**Reclasificado tras la revisión cross-model (round 10)** — *nota: el mecanismo robusto que este bloque
+anticipaba como "`Stop` hook" quedó superseded por round 11: para Codex es el **`notify`** (blockquote
+de abajo); se conserva por trazabilidad.* **Informe largo en Codex/Orca = BLOQUEANTE de
 ese path, no "refinamiento".** Un `--body` de 222 chars prueba el **canal**, no un informe **real** en
 markdown largo, y el propio documento reconoce que comillas/backticks rompen el quoting del `send` y que
 el `Stop` hook de Codex **aún no fue validado**. Como el caso de uso real (co-explore/cross-review
@@ -1068,7 +1083,7 @@ largo incluido), Claude/Orca (Stop hook), y Codex/Orca para informes **cortos**.
 Debe reimplementarse **cross-runtime** (node, que ambos CLIs empaquetan) con rutas resueltas por
 plataforma (`~/.claude`, `~/.codex` vs `%USERPROFILE%\…`).
 
-### Estado de los tres bloqueantes del Gate 0 (revisado tras round 10)
+### Estado de los tres bloqueantes del Gate 0 (revisado tras rondas 10–11)
 
 Estado honesto tras la crítica cross-model, que refutó el veredicto "PASA para v1 atendido" como
 overclaim. Lo **validado**: transporte, degradación CLI (cosecha larga incluida), aislamiento de hooks y
@@ -1118,8 +1133,10 @@ por `ARG_MAX` + el protocolo del notifier (P3). Checkpoint aparte: re-verificaci
 
 - Probar la "forma óptima" de read-only (`-C` a la carpeta del informe) — no cubierta por el spike.
 - Estructurar el descubrimiento de familia (hoy inferido del preview, no dato estructurado).
-- El hook real: subject/reporte dinámicos (el del spike tenía subject estático) y resolución robusta
-  de `taskId`/`dispatchId` (el spike los pasó por un archivo de contexto).
+- El hook real: subject/reporte dinámicos (el del spike tenía subject estático). *La resolución robusta
+  de `taskId`/`dispatchId` (el spike los pasó por un archivo de contexto) **no es menor**: es parte del
+  protocolo del notifier del bloqueo P3 (§9.8) — los IDs no vienen en el payload de `notify` y deben
+  inyectarse por contexto.*
 
 ---
 
