@@ -1,10 +1,14 @@
 # Revisión verificada y refinamientos — Sesiones reales Claude ↔ Codex
 
 **Estado:** revisión crítica del diseño de `README.md`, con verificación de interfaz de CLI y
-decisiones de mecánica que el README dejaba abiertas. **Sometido a siete rondas de crítica de la
+decisiones de mecánica que el README dejaba abiertas. **Sometido a nueve rondas de crítica de la
 otra familia (cross-model); las correcciones resultantes están incorporadas** (ver "Procedencia").
-Veredicto documental del revisor: **APPROVED para ejecutar el Gate 0** (como matriz). La
-aprobación habilita correr el spike, no modificar skills; eso último espera a que el Gate 0 pase.
+**Gate 0 ejecutado end-to-end el 2026-07-18 — la matriz de TRANSPORTE PASA; el Gate 0 completo
+queda PARCIAL** (ver "9. Resultados del Gate 0"). Los tres casos de transporte (inject + `worker_done`
++ envelope) se validaron en vivo, pero **las capas de seguridad que el propio Gate 0 exige
+(restricción de MCP y neutralización de hooks arbitrarios, sección 7 punto 0) y la cosecha validada
+del informe NO se cerraron**. Por eso **aún no desbloquea la Fase 1 completa**: primero hay que cerrar
+seguridad y cosecha.
 
 **Fecha:** 2026-07-17
 
@@ -92,6 +96,11 @@ usan, y la semántica de `worker_done` coincide con la documentada por el CLI.
 
 ### Lo que sigue SIN verificar (y por qué importa)
 
+> **Estado histórico (previo al Gate 0).** Esta lista describía lo pendiente **antes** de ejecutar el
+> spike. El Gate 0 se corrió el 2026-07-18: el estado real de cada punto está en la **sección 9**
+> (transporte validado; seguridad y cosecha parciales). Lo de abajo se conserva como el planteo
+> original que motivó el Gate 0.
+
 La interfaz existe, pero el **comportamiento dinámico** no se ejecutó porque el runtime estaba
 caído. En particular:
 
@@ -131,9 +140,14 @@ Ocho observaciones sobre `README.md`, ordenadas por severidad.
 
 ### 2.1 El eslabón que sostiene todo es justo el no verificado (crítico)
 
+> **Estado histórico (previo al Gate 0).** Este hallazgo motivó el Gate 0. **Ya se ejecutó** (sección
+> 9): `dispatch --inject` **sí** dispara turno y el `worker_done` **sí** vuelve (transporte validado);
+> lo que quedó parcial es seguridad y cosecha. Lo de abajo se conserva como el planteo original.
+
 Todo el diseño depende de que `dispatch --inject` dispare un turno en una TUI viva y de que el
-secundario emita `worker_done`. Ninguna de las dos cosas se probó. **Recomendación:** convertir el
-punto 6 de la Fase 1 del README en un **Gate 0 explícito y bloqueante** que demuestre
+secundario emita `worker_done`. Ninguna de las dos cosas se probó (al redactar esto). **Recomendación
+(original):** convertir el punto 6 de la Fase 1 del README en un **Gate 0 explícito y bloqueante** que
+demuestre
 inject-dispara-turno + worker_done-reactiva-al-principal + `terminal read` extrae el informe
 íntegro, **antes de escribir una línea en las skills**. Hoy el plan lo trata como validación
 posterior; debe ser precondición. La lista completa a validar son los cinco puntos de la sección 1.
@@ -278,12 +292,22 @@ https://code.claude.com/docs/en/hooks; Hooks de Codex, https://learn.chatgpt.com
 hook del entorno del usuario podría escribir en un sistema externo durante la sesión secundaria, sin
 pasar por el filesystem ni por una tool MCP.
 
+> **Refinado por el Gate 0 (sección 9):** el spike mostró que el hook **no es igual de obligatorio
+> en ambas familias**. Codex read-only **sí** puede emitir `worker_done` por comando (el sandbox no
+> bloqueó el runtime), así que ahí el hook es **opcional**. Claude read-only con el toolset cerrado
+> **no** tiene Bash → el hook `Stop` es **obligatorio** (y quedó validado). El "único hook que se
+> conserva" sigue valiendo como política de seguridad; lo que cambia es que para Codex la
+> notificación no depende de él.
+
 **Solución integrada (v1):** el mecanismo **oficial** de `worker_done` es un **hook de coordinación
-auditado** —no un comando que el modelo ejecuta, ni un mero fallback—, y ese es **el único hook que
+auditado** —no un comando que el modelo ejecuta, ni un mero fallback— para **Claude**; en **Codex**
+el comando nativo alcanza y el hook queda como respaldo. En ambos casos, ese es **el único hook que
 se conserva**:
 
-- El hook de coordinación (Stop en Claude; el evento equivalente en Codex) emite el `worker_done`.
-  Esto resuelve (a) sin darle `Bash` al modelo, en ambas familias.
+- El hook de coordinación emite el `worker_done`. En **Claude** es el mecanismo (Stop hook, validado
+  en el Gate 0 — resuelve (a) sin darle `Bash` al modelo). En **Codex** el mecanismo **validado** es
+  el **comando nativo**; el hook equivalente quedaría como respaldo pero **no se ejercitó en el
+  spike**.
 - **Todos los demás hooks se deshabilitan** en las sesiones secundarias. "Máxima capacidad" pasa a
   significar: modelo, config, MCP de lectura e historial — **no** hooks arbitrarios.
 - Deshabilitar hooks sin apagar MCP requiere un mecanismo por familia (p. ej. lanzar con un
@@ -294,7 +318,9 @@ v1 el secundario **no escribe un archivo de informe**; el conductor lo persiste 
 el mensaje final (sección 5). Por lo tanto el hook **no puede** condicionar la notificación a "existe
 el archivo del informe" —nunca existiría, y el conductor esperaría un `worker_done` que nunca
 llega—. La condición correcta es un **sentinel estructurado en el mensaje final del asistente**
-(`last_assistant_message`, expuesto por los Stop hooks de ambas familias).
+(`last_assistant_message`, expuesto por el Stop hook de Claude —validado en el Gate 0—; el hook
+equivalente de Codex está documentado pero **no se ejercitó** en el spike, donde Codex notificó por
+comando).
 
 **El sentinel debe ser universal, y hoy no lo es.** Los formatos de salida difieren por skill:
 `co-explore` y `cross-implement` ya cierran con `STATUS: done`
@@ -702,6 +728,131 @@ camino.
 
 ---
 
+## 9. Resultados del Gate 0 (ejecutado 2026-07-18)
+
+El Gate 0 se **ejecutó end-to-end**, y —cerrando el círculo— usando el **propio transporte que el
+documento diseña**: el coordinador fue una sesión Claude Code con handle Orca real
+(`term_197438da`), los secundarios se crearon con `orca terminal create`, las tareas se despacharon
+con `orchestration task-create` + `dispatch --inject`, y la finalización volvió por `worker_done`.
+
+**Veredicto: la matriz de TRANSPORTE pasa; el Gate 0 completo queda PARCIAL.** El Gate 0 definido en
+la sección 7 (punto 0) exige, además del transporte, **tres capas de seguridad** (restricción de MCP,
+neutralización de hooks, sandbox) y una **cosecha validada del informe**. El spike validó el
+transporte end-to-end, pero **no cerró la restricción de MCP ni la neutralización de hooks** — de
+hecho evidenció lo contrario (el MCP `engram` se activó sin restricción; `--settings` *agrega* el
+hook de coordinación pero no prueba que los hooks preexistentes queden aislados) — **ni validó la
+cosecha sustituta del informe para ambas familias** (`terminal read` falló; la vía transcript solo se
+probó en Claude). Por eso **no desbloquea la Fase 1 completa** todavía.
+
+### Matriz mínima — los tres casos pasaron
+
+| Caso | `inject` dispara turno | Notificación `worker_done` | Envelope |
+|---|---|---|---|
+| **(a) Codex secundario** (`-s read-only -a never`) | ✅ | ✅ **por comando** (el sandbox read-only no bloqueó `orchestration send`) | `STATUS: done` |
+| **(b) Claude secundario** (`--tools Read,Grep,Glob --permission-mode dontAsk`) | ✅ | ✅ **por hook** (el modelo sin `Bash` no pudo; el `Stop` hook sí) | `STATUS: done` |
+| **(c) cross-review** (mismo Claude, 2º dispatch) | ✅ | ✅ por hook | `VERDICT: …` + `STATUS: done` ✅ |
+
+El caso (c) además validó **reutilizar la misma sesión dedicada para varios dispatches** (2.3) y
+produjo un cross-review **real** (encontró gaps de especificación concretos, ver 9.5).
+
+### Los cinco puntos "sin verificar" (sección 1) → estado tras el spike
+
+1. **`dispatch --inject` dispara turno en TUI viva** → ✅ **verificado** en ambas familias.
+2. **`worker_done` por hook de coordinación en ambas familias** → ✅ **verificado**: Codex lo emite
+   por comando (hook opcional); Claude lo emite **por hook `Stop`** (obligatorio), validando
+   `STATUS: done` como última línea incluso con un `VERDICT:` justo antes.
+3. **Lectura del código con la raíz escribible estrechada (`-C .plans/…`)** → ⏳ **no probado**: el
+   spike corrió read-only desde la raíz (default de v1), no la "forma óptima". Sigue pendiente para
+   cuando se evalúe esa optimización.
+4. **`terminal list` etiqueta la familia** → 🟡 **parcial**: no expone un campo "familia" directo,
+   pero se **infiere del preview** (`gpt-5.6-sol` ⇒ Codex; `Opus 4.8` ⇒ Claude). Suficiente para
+   descubrir, pero es inferencia, no dato estructurado.
+5. **`terminal read` extrae el informe íntegro** → ❌ **FALLÓ; sustituto validado solo a medias**:
+   `terminal read` **no refleja fielmente la TUI**, sobre todo la de Claude (devolvió frames viejos —
+   "connecting" — cuando en pantalla ya estaba listo). El sustituto propuesto es **cosechar del
+   transcript / mensaje final**, pero **solo se validó en Claude** (el hook leyó su transcript /
+   `last_assistant_message`); para **Codex no se validó** una cosecha equivalente (en el spike el
+   informe de Codex vino en el `--body` del `worker_done`, no cosechado del transcript). **Queda como
+   pendiente cerrar la cosecha para ambas familias** antes de dar por bueno el criterio.
+
+### Hallazgos operativos nuevos (del spike)
+
+- **A. Arranque de secundario no determinista.** Un secundario fresco se topó con: auto-update de
+  Codex (`brew upgrade`), fallos de auth de MCP (`atlassian`, `context7`), modo aprobación que
+  colgaría el `send`, y prompts de arranque. **v1 debe "domesticar" el arranque** (saltar update,
+  `-a never`/`dontAsk`, deshabilitar MCP problemáticos) antes de despachar.
+- **B. `--tools` no cubre los MCP.** El Claude read-only con `--tools Read,Grep,Glob` **igual llamó
+  a `engram` (MCP)**. Confirma en vivo el hallazgo 2.7: el toolset cerrado gobierna built-ins, no
+  MCP — hay que restringirlos aparte.
+- **C. `check --wait --unread` puede perder el mensaje por timing.** Un `worker_done` realmente
+  entregado (visible en `check --all` / `inbox`) no apareció en una ventana de `--wait --unread`.
+  El coordinador debe usar `--all`/`--peek` o reintentar contra el deadline global (refuerza
+  "ventana de espera vs deadline" del README).
+- **D. El preámbulo de `--inject` es autocontenido.** Orca inyecta el protocolo completo (handle del
+  coordinador, `taskId`/`dispatchId`, reglas: `worker_done` exactamente una vez, heartbeats, y
+  **prohibición explícita de `AskUserQuestion`** porque colgaría). El `worker_done` nativo es **por
+  comando**; el hook es el complemento para quien no puede ejecutarlo.
+- **E. El hook de coordinación se *agrega* por `--settings` — pero eso no *aísla* los hooks
+  existentes.** Se lanzó el Claude con `claude --settings <archivo> …` y el `Stop` hook dedicado
+  disparó correctamente. Eso responde la pregunta de **distribución** (la skill pasa el settings; el
+  usuario no configura nada a mano). **Pero `--settings` *carga* config adicional, no deshabilita los
+  hooks de usuario/proyecto preexistentes** (`claude --help`). La **neutralización de hooks
+  arbitrarios** que exige el hallazgo 2.8 sigue **sin resolver**: `--bare` los apaga todos (pero
+  también MCP y más), y falta un mecanismo que deje **solo** el de coordinación. Pendiente duro.
+- **F. La restricción de MCP del Gate 0 no se ejercitó.** El spike corrió con los MCP del entorno
+  activos (por eso `engram` respondió). La lista blanca de MCP del hallazgo 2.7 —parte de las capas de
+  seguridad del Gate 0— **no se configuró ni validó**. Pendiente duro.
+
+### Conclusión sobre el hook de coordinación (refina 2.8)
+
+El spike **confirma y matiza** el hallazgo 2.8:
+
+- **Codex read-only:** emite `worker_done` **por comando** (el sandbox no bloqueó el runtime en este
+  entorno) → **hook opcional**.
+- **Claude read-only** (`--tools` sin `Bash`): **no puede** por comando → **hook `Stop` obligatorio
+  y validado** (emite el `worker_done` fuera del toolset del modelo, validando el sentinel).
+
+Sobre la discrepancia de runtime de 2.8(a) (el revisor veía `unreachable` desde su sandbox): el
+secundario read-only del spike **sí alcanzó el runtime** para el `send`, así que la observación
+previa probablemente venía de otra vía (auth de MCP / codesign), no de un bloqueo de red del
+sandbox. Queda como matiz a caracterizar, no como bloqueo.
+
+### 9.5 Feedback de diseño generado por el propio Gate 0
+
+El cross-review del caso (c) —hecho por el secundario Claude a plena capacidad— produjo dos gaps
+legítimos del README que se incorporan al backlog de diseño:
+
+- **Recuperación en caliente, no solo detección previa.** El README describe el *happy path* y
+  plantea el fallback como *decisión al inicio* (elegir transporte), pero no como *recuperación a
+  mitad de corrida*: ¿qué hace el conductor si el `worker_done` **no llega** una vez despachado? El
+  Gate 0 dio la evidencia (el `check` expira; `--unread` pierde por timing) y la respuesta: cosechar
+  el mensaje final, reintentar contra el deadline, o degradar a `cli`. **Debe explicitarse.**
+- **"Orca disponible" por criterio, no por intención.** El Gate 0 mostró que `orca status` responde
+  **distinto según el contexto de ejecución** (shell libre `ready` vs sandbox del agente
+  `stale_bootstrap`). Así que el criterio de descubrimiento no puede ser solo "`orca status` dice
+  ready" — debe considerar desde dónde se consulta.
+
+### Lo que falta cerrar antes de dar el Gate 0 por completo (bloqueante de Fase 1)
+
+Estas son las razones por las que el veredicto es **PARCIAL**, no "PASA":
+
+1. **Restricción de MCP (capa de seguridad del Gate 0).** No se configuró ni validó la lista blanca
+   de MCP (2.7); el spike corrió con los MCP del entorno activos. **Bloqueante.**
+2. **Neutralización de hooks arbitrarios (capa de seguridad del Gate 0).** `--settings` agrega el
+   hook de coordinación pero no aísla los preexistentes (2.8); falta un mecanismo que deje solo el de
+   coordinación. **Bloqueante.**
+3. **Cosecha del informe validada para ambas familias.** `terminal read` falló; la vía transcript
+   solo se probó en Claude, no en Codex. **Bloqueante.**
+
+### Pendientes menores / de refinamiento (para la Fase 1)
+
+- Probar la "forma óptima" de read-only (`-C` a la carpeta del informe) — no cubierta por el spike.
+- Estructurar el descubrimiento de familia (hoy inferido del preview, no dato estructurado).
+- El hook real: subject/reporte dinámicos (el del spike tenía subject estático) y resolución robusta
+  de `taskId`/`dispatchId` (el spike los pasó por un archivo de contexto).
+
+---
+
 ## Apéndice — Comandos verificados en esta sesión
 
 ```text
@@ -716,11 +867,13 @@ codex exec --help                    # -o/--output-last-message
 codex sandbox --help                 # --sandbox-state-readable-root, etc.
 ```
 
-Entorno: Codex CLI 0.144.5 · Claude Code 2.1.214. **Estado de Orca (snapshot 2026-07-18, no
-permanente):** operativo desde un shell libre (`app.running: true`, `ready`), pero
-`stale_bootstrap` / `runtime_unavailable` desde dentro del sandbox del agente Codex (ver el dato
-empírico de la sección 1). Sin ciclo E2E del protocolo `dispatch`/`worker_done`. Volver a comprobar
-antes del spike.
+Entorno: Codex CLI 0.144.5 → 0.144.6 (auto-update durante el spike) · Claude Code 2.1.214.
+**Estado de Orca (snapshot 2026-07-18, no permanente):** operativo desde un shell libre
+(`app.running: true`, `ready`) y **suficiente para correr el ciclo E2E de transporte** (sección 9),
+pero `stale_bootstrap` / `runtime_unavailable` desde dentro del sandbox del agente Codex (dato
+empírico de la sección 1). El ciclo E2E del **transporte** (`dispatch --inject` → `worker_done`) **se
+ejecutó** (sección 9); lo que queda sin ejecutar E2E son las **capas de seguridad** (restricción de
+MCP, aislamiento de hooks) y la **cosecha del informe para ambas familias**.
 
 ---
 
@@ -827,11 +980,34 @@ adoptarlas:
     (`unavailable`), evidencia directa del hallazgo 2.8(a) (sección 1; apéndice). *Estado transitorio
     correctamente encuadrado.*
 
-Las siete rondas ilustran el propio patrón que el diseño busca habilitar: dos familias produciendo y
+**Octava ronda** (misma familia revisora; sobre la sección 9, que consolida el Gate 0 **ya
+ejecutado**):
+
+24. **El veredicto "Gate 0 PASA" estaba sobredeclarado (bloqueante)** — el Gate 0 (sección 7,
+    punto 0) exige, además del transporte, las capas de seguridad (restricción de MCP, neutralización
+    de hooks) y una cosecha validada del informe; el spike solo cerró el transporte. Se reclasifica a
+    **transporte PASA / Gate 0 PARCIAL** (encabezado, §9 y sus pendientes bloqueantes). *Alcance del
+    veredicto corregido.*
+25. **`terminal read` falló y la cosecha sustituta solo se validó en Claude** — se reclasifica el
+    punto 5 como pendiente para ambas familias (§9). *Criterio de cosecha reabierto.*
+26. **Contradicciones internas reconciliadas** — hook opcional (Codex) / obligatorio (Claude)
+    alineado entre 2.8 y §9; apéndice ya no dice "Sin ciclo E2E"; `--settings` agrega el hook pero no
+    aísla los preexistentes (hallazgo E) y la restricción de MCP no se ejercitó (hallazgo F).
+    *Consistencia normativa.*
+
+**Novena ronda** (misma familia revisora; confirma la clasificación y pide cerrar residuos):
+
+27. **Clasificación confirmada, tres residuos de estado histórico vs vigente** — el revisor validó
+    que "transporte PASA / Gate 0 PARCIAL" ya es correcto, y pidió: marcar las secciones 1 y 2.1 como
+    **estado previo al Gate 0** (con puntero a §9); aclarar que en **Codex solo se validó el comando**,
+    no el hook (2.8); y corregir la frase de la octava ronda que decía "sin el Gate 0 ejecutado".
+    Todo aplicado. *Con esto el revisor declaró que cierra el REVISE.*
+
+Las nueve rondas ilustran el propio patrón que el diseño busca habilitar: dos familias produciendo y
 criticando de forma independiente, con síntesis del conductor. Notablemente, cada ronda encontró un
 problema que la anterior no vio —varias, huecos de seguridad o de protocolo reales (MCP externos,
-hooks, toolset abierto de Claude, sentinel no universal, Gate 0 unidireccional)—: evidencia de que
-la crítica iterada cross-model aporta más que una sola pasada. La séptima ronda, además, se corrió
-sobre el propio transporte que el documento diseña. El veredicto documental del revisor es
-**APPROVED para ejecutar el Gate 0** (como matriz) — la aprobación habilita correr el spike, no
-modificar skills, que espera a que el Gate 0 pase. Con esto, la iteración documental queda cerrada.
+hooks, toolset abierto de Claude, sentinel no universal, Gate 0 unidireccional, veredicto
+sobredeclarado)—: evidencia de que la crítica iterada cross-model aporta más que una sola pasada. Las
+rondas 7, 8 y 9, además, se corrieron **sobre el propio transporte que el documento diseña**. Estado
+actual: **transporte del Gate 0 validado E2E; capas de seguridad y cosecha pendientes antes de
+habilitar la Fase 1 completa.**
