@@ -110,20 +110,21 @@ instalados) se cumplan explícitamente.
 
 ## Envelope y cosecha crash-idempotente
 
-El formato general del envelope (`X-CMO: taskId=<..> dispatchId=<..> nonce=<..>` + `STATUS: done`
-como última línea no vacía) está en `SKILL.md` → sección 2; esta sección documenta cómo el código
-lo produce, lo parsea y lo cosecha exactamente una vez.
+El formato del envelope (`X-CMO: nonce=<..>` + `STATUS: done` como última línea no vacía) está en
+`SKILL.md` → sección 2; esta sección documenta cómo el código lo produce, lo parsea y lo cosecha
+exactamente una vez.
 
-**Discrepancia código vs. `SKILL.md` (el código gana):** `SKILL.md` describe el envelope completo
-con `taskId`+`dispatchId`+`nonce`. La instrucción real que `createDispatch` inyecta en el spec del
-dispatch (`buildEnvelopeInstructions` en `dispatch-adapter.mjs`) le pide al secundario cerrar con
-**solo** `X-CMO: nonce=<nonce>` + `STATUS: done` — sin `taskId`/`dispatchId`. Es intencional, no un
-bug: el comentario del propio código lo explica — `harvest()`/`selectAssistantByNonce` solo
-necesitan el `nonce` para desambiguar dentro del transcript; `taskId`/`dispatchId` viajan por el
-canal de `worker_done` (el `payload` de la orquestación de Orca), no por el texto del envelope.
-`parseEnvelope()` sigue soportando los tres campos (para otros transportes/skills que sí los
-pidan en su prompt, p. ej. el `cli` de hoy), y tolera que falten sin lanzar. Si vas a redactar el
-prompt de un dispatch `orca-session` a mano, sigue lo que pide el código: alcanza con `nonce`.
+**Correlación vs. autoridad (`SKILL.md` y el código coinciden):** la instrucción que
+`createDispatch` inyecta en el spec del dispatch (`buildEnvelopeInstructions` en
+`dispatch-adapter.mjs`) le pide al secundario cerrar con **solo** `X-CMO: nonce=<nonce>` +
+`STATUS: done`. Es intencional: `harvest()`/`selectAssistantByNonce` solo necesitan el `nonce` para
+desambiguar dentro del transcript (token de correlación, y es texto del modelo → falsificable);
+la **autoridad** (`taskId`/`dispatchId`) viaja por el canal de `worker_done` (el `payload` de la
+orquestación de Orca) y la valida el conductor **antes** de cosechar (ver "Autoridad ANTES de
+cosechar" más abajo), no por el texto del envelope. `parseEnvelope()` sigue soportando los tres
+campos (para otros transportes/skills que sí los pidan en su prompt, p. ej. el `cli` de hoy), y
+tolera que falten sin lanzar. Si vas a redactar el prompt de un dispatch `orca-session` a mano,
+sigue lo que pide el código: alcanza con `nonce`.
 
 **Parseo del envelope (`harvest-core.mjs`):**
 - `parseEnvelope(msg)` busca la **última** línea que empieza con `X-CMO:` y extrae los pares

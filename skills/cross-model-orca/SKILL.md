@@ -58,14 +58,26 @@ El secundario cierra su turno con:
 
 ```
 <salida propia del modo (findings/veredicto/diff, según la skill llamadora)>
-X-CMO: taskId=<..> dispatchId=<..> nonce=<..>
+X-CMO: nonce=<..>
 STATUS: done
 ```
 
 `STATUS: done` debe ser la **última línea no vacía**. El conductor cosecha **solo** el mensaje que
 trae el `nonce` del dispatch en curso — una sesión reutilizada (p. ej. `cross-review` entre
-rondas) puede tener mensajes de dispatches previos con `nonce` viejo, y esos se descartan. El
-parseo exacto del envelope, la desambiguación por `nonce`+IDs y el algoritmo de cosecha
+rondas) puede tener mensajes de dispatches previos con `nonce` viejo, y esos se descartan.
+
+**Correlación vs. autoridad.** El texto del envelope lo produce el modelo secundario, así que es
+**falsificable**: no sirve como credencial. Por eso lleva un único campo, el `nonce`, que es solo
+un **token de correlación** — para qué mensaje del transcript corresponde a este dispatch. La
+**autoridad**, lo que un secundario no puede forjar, vive **fuera del texto** y la valida el
+conductor **antes** de cosechar: para Codex, el `payload={taskId, dispatchId}` del `worker_done`
+más la garantía de Orca de que el `sender` coincide con el `assignee` del dispatch; para Claude
+(que no emite `worker_done`), la **propiedad de la sesión** — el conductor la creó con un
+`--session-id` propio y lee ese transcript exacto. Agregar `taskId`/`dispatchId` al texto no
+sumaría autoridad (serían un eco forjable de datos que el conductor ya conoce); el parser los
+tolera por compatibilidad, pero el dispatch `orca-session` solo pide `nonce`.
+
+El parseo exacto del envelope, la desambiguación por `nonce` y el algoritmo de cosecha
 crash-idempotente están en `reference.md` (consumen `assets/harvest-core.mjs` y
 `assets/harvest-from-transcript.mjs`).
 
