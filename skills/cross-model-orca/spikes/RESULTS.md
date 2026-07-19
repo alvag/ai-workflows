@@ -29,6 +29,15 @@ inspeccionaron 232 rollouts de Codex bajo `CODEX_HOME` y 23 transcripts de Claud
   timestamp**: el conductor crea la sesión fresca y toma el rollout `cli/codex-tui` más reciente con ese
   `cwd` y mtime posterior a la creación. **Inequívoco en v1** (el flujo crea su sesión dedicada); ante
   ambigüedad (dos sesiones Codex naciendo en el mismo `cwd` en la misma ventana) → **fallback CLI**.
+- **TIMING del rollout (verificado 2026-07-19, cierra el riesgo de secuencia del review de Task 1.5):** el
+  rollout de Codex **NO existe al arrancar la terminal**; se escribe recién en el **primer turno** (tras el
+  primer `dispatch --inject`). Comprobado: se creó una sesión Codex, se esperó el `tui-idle` de arranque, y
+  **antes** de despachar había **0 candidatos** `cli/codex-tui` con ese `cwd`. → **El locator de Codex debe
+  resolverse LAZY, después del primer dispatch** (cuando el rollout ya existe), no en `createOwnedSession`.
+  Consecuencia para el adaptador (Task 1.5): `createOwnedSession` para Codex registra la sesión con
+  `createdAt` (para el filtro de timestamp) pero **con `transcriptPath` pendiente**; la resolución del
+  rollout ocurre en `awaitDone`/tras `createDispatch`, con retry acotado (por flush). Claude no tiene este
+  problema: su locator es directo por `--session-id` desde `createOwnedSession`.
 - **Parser (`parseTranscript('codex')`):** último `response_item` con `payload.role==="assistant"` →
   `payload.content[].output_text` concatenado. Verificado: el mensaje final llega íntegro (probado contra
   el rollout de la ronda 6 de review, que terminaba exacto en `VERDICT: APPROVED` / `STATUS: done`).

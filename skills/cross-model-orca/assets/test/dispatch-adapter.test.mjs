@@ -16,6 +16,7 @@ import {
   recover,
   buildLaunchCommand,
   locateCodexRollout,
+  resolveCodexTranscript,
 } from '../dispatch-adapter.mjs';
 import { makeDedupFsm } from '../harvest-core.mjs';
 
@@ -27,12 +28,14 @@ function mkTmpDir(prefix) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
-function withEnv(vars, fn) {
+// async-aware: espera el resultado de `fn` (sync o async) antes de restaurar el entorno, para
+// no filtrar las variables mientras un `fn` async todavía está corriendo.
+async function withEnv(vars, fn) {
   const originals = {};
   for (const key of Object.keys(vars)) originals[key] = process.env[key];
   Object.assign(process.env, vars);
   try {
-    return fn();
+    return await fn();
   } finally {
     for (const key of Object.keys(vars)) {
       if (originals[key] === undefined) delete process.env[key];
@@ -155,84 +158,56 @@ test('locateCodexRollout: descarta candidatos con distinto cwd, source u origina
 // createOwnedSession (Codex)
 // ---------------------------------------------------------------------------
 
-test('createOwnedSession (codex): un candidato -> registra el locator y devuelve la sesión', () => {
-  const codexHome = mkTmpDir('cmo-codex-home-');
+test('createOwnedSession (codex): NO intenta localizar el rollout todavía -> registra la sesión con transcriptPath pendiente (null)', () => {
+  // Contrato nuevo (fix wave 1, tras el hallazgo del review): el rollout de Codex no existe al
+  // arrancar la terminal (se escribe recién en el primer turno). createOwnedSession ya no intenta
+  // localizarlo -- ni siquiera toca CODEX_HOME/sessions -- y por eso este test no prepara ningún
+  // rollout ni setea CODEX_HOME: si createOwnedSession intentara leerlo, fallaría o encontraría 0
+  // candidatos, y este test lo detectaría por un transcriptPath/sessionId != null inesperado.
   const stateDir = mkTmpDir('cmo-state-');
   const worktree = '/repo/ai-workflows-worktree';
 
-  withEnv({ CODEX_HOME: codexHome }, () => {
-    const sessionsRoot = path.join(codexHome, 'sessions');
-    fs.mkdirSync(sessionsRoot, { recursive: true });
-    writeRollout(sessionsRoot, 'rollout-solo.jsonl', { cwd: worktree, sessionId: 'codex-sess-1' });
+  const fakeOrcaRunner = (args) => {
+    if (args[0] === 'terminal' && args[1] === 'create') {
+      return { stdout: JSON.stringify({ handle: 'term_codex_1' }), code: 0 };
+    }
+    throw new Error(`orcaRunner inesperado en el test: ${args.join(' ')}`);
+  };
 
-    const fakeOrcaRunner = (args) => {
-      if (args[0] === 'terminal' && args[1] === 'create') {
-        return { stdout: JSON.stringify({ handle: 'term_codex_1' }), code: 0 };
-      }
-      throw new Error(`orcaRunner inesperado en el test: ${args.join(' ')}`);
-    };
-
-    const result = createOwnedSession({
-      family: 'codex',
-      role: 'read-only',
-      mode: 'attended',
-      worktree,
-      orcaRunner: fakeOrcaRunner,
-      now: () => 0,
-      stateDir,
-    });
-
-    assert.notEqual(result, null);
-    assert.equal(result.session.terminalHandle, 'term_codex_1');
-    assert.equal(result.session.sessionId, 'codex-sess-1');
-    assert.equal(result.session.transcriptPath, path.join(sessionsRoot, 'rollout-solo.jsonl'));
-
-    const registry = JSON.parse(fs.readFileSync(path.join(stateDir, 'sessions.json'), 'utf8'));
-    const entries = Object.values(registry);
-    assert.equal(entries.length, 1);
-    assert.equal(entries[0].terminalHandle, 'term_codex_1');
-    assert.equal(entries[0].family, 'codex');
+  const result = createOwnedSession({
+    family: 'codex',
+    role: 'read-only',
+    mode: 'attended',
+    worktree,
+    orcaRunner: fakeOrcaRunner,
+    now: () => 12345,
+    stateDir,
   });
-});
 
-test('createOwnedSession (codex): dos candidatos -> null (locator ambiguo)', () => {
-  const codexHome = mkTmpDir('cmo-codex-home-');
-  const stateDir = mkTmpDir('cmo-state-');
-  const worktree = '/repo/ai-workflows-worktree';
+  assert.notEqual(result, null);
+  assert.equal(result.session.terminalHandle, 'term_codex_1');
+  assert.equal(result.session.transcriptPath, null);
+  assert.equal(result.session.sessionId, null);
+  assert.equal(result.session.createdAt, 12345);
 
-  withEnv({ CODEX_HOME: codexHome }, () => {
-    const sessionsRoot = path.join(codexHome, 'sessions');
-    fs.mkdirSync(sessionsRoot, { recursive: true });
-    writeRollout(sessionsRoot, 'rollout-1.jsonl', { cwd: worktree, sessionId: 'codex-sess-1' });
-    writeRollout(sessionsRoot, 'rollout-2.jsonl', { cwd: worktree, sessionId: 'codex-sess-2' });
-
-    const fakeOrcaRunner = () => ({ stdout: JSON.stringify({ handle: 'term_codex_2' }), code: 0 });
-
-    const result = createOwnedSession({
-      family: 'codex',
-      role: 'read-only',
-      mode: 'attended',
-      worktree,
-      orcaRunner: fakeOrcaRunner,
-      now: () => 0,
-      stateDir,
-    });
-
-    assert.equal(result, null);
-    assert.equal(fs.existsSync(path.join(stateDir, 'sessions.json')), false);
-  });
+  const registry = JSON.parse(fs.readFileSync(path.join(stateDir, 'sessions.json'), 'utf8'));
+  const entries = Object.values(registry);
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].terminalHandle, 'term_codex_1');
+  assert.equal(entries[0].family, 'codex');
+  assert.equal(entries[0].transcriptPath, null);
 });
 
 // ---------------------------------------------------------------------------
 // createOwnedSession (Claude)
 // ---------------------------------------------------------------------------
 
-test('createOwnedSession (claude): fija --session-id, arma el path del transcript por slug y devuelve la sesión', () => {
+test('createOwnedSession (claude): fija --session-id, arma el path del transcript por slug y devuelve la sesión', async () => {
   const claudeConfigDir = mkTmpDir('cmo-claude-home-');
   const stateDir = mkTmpDir('cmo-state-');
   const worktree = '/repo/ai-workflows-worktree';
 
-  withEnv({ CLAUDE_CONFIG_DIR: claudeConfigDir, CROSS_MODEL_ORCA: ASSETS_DIR }, () => {
+  await withEnv({ CLAUDE_CONFIG_DIR: claudeConfigDir, CROSS_MODEL_ORCA: ASSETS_DIR }, () => {
     let capturedCommand = null;
     const fakeOrcaRunner = (args) => {
       if (args[0] === 'terminal' && args[1] === 'create') {
@@ -263,6 +238,140 @@ test('createOwnedSession (claude): fija --session-id, arma el path del transcrip
     );
     assert.match(capturedCommand, new RegExp(`--session-id "${session.sessionId}"`));
   });
+});
+
+// ---------------------------------------------------------------------------
+// resolveCodexTranscript: resolución LAZY del locator de Codex (fix wave 1)
+// ---------------------------------------------------------------------------
+
+test('resolveCodexTranscript: un candidato ya presente -> resuelve en el primer intento, sin reintentos', async () => {
+  const codexHome = mkTmpDir('cmo-codex-home-');
+  const stateDir = mkTmpDir('cmo-state-');
+  const worktree = '/repo/worktree-lazy';
+
+  await withEnv({ CODEX_HOME: codexHome }, async () => {
+    const sessionsRoot = path.join(codexHome, 'sessions');
+    fs.mkdirSync(sessionsRoot, { recursive: true });
+    writeRollout(sessionsRoot, 'rollout-lazy.jsonl', { cwd: worktree, sessionId: 'codex-sess-lazy' });
+
+    const session = { family: 'codex', worktree, createdAt: 0, transcriptPath: null, sessionId: null, stateDir };
+    let sleepCalls = 0;
+    const fakeSleep = () => {
+      sleepCalls += 1;
+      return Promise.resolve();
+    };
+
+    const resolved = await resolveCodexTranscript({ session, sleep: fakeSleep });
+
+    const expectedPath = path.join(sessionsRoot, 'rollout-lazy.jsonl');
+    assert.equal(resolved, expectedPath);
+    assert.equal(session.transcriptPath, expectedPath);
+    assert.equal(session.sessionId, 'codex-sess-lazy');
+    assert.equal(sleepCalls, 0);
+
+    const registry = JSON.parse(fs.readFileSync(path.join(stateDir, 'sessions.json'), 'utf8'));
+    assert.equal(Object.values(registry)[0].transcriptPath, expectedPath);
+  });
+});
+
+test('resolveCodexTranscript: 0 candidatos al inicio, aparece recién en el 2do intento -> resuelve tras reintentar', async () => {
+  const codexHome = mkTmpDir('cmo-codex-home-');
+  const stateDir = mkTmpDir('cmo-state-');
+  const worktree = '/repo/worktree-lazy-2';
+
+  await withEnv({ CODEX_HOME: codexHome }, async () => {
+    const sessionsRoot = path.join(codexHome, 'sessions');
+    fs.mkdirSync(sessionsRoot, { recursive: true });
+    // El rollout todavía no existe: simula el "aún no flushó" del hallazgo del review. Se
+    // escribe recién durante el "sleep" del primer reintento (efecto colateral deliberado del
+    // fake, para no depender de tiempo real).
+    let sleepCalls = 0;
+    const fakeSleep = () => {
+      sleepCalls += 1;
+      writeRollout(sessionsRoot, 'rollout-tardio.jsonl', { cwd: worktree, sessionId: 'codex-sess-tardio' });
+      return Promise.resolve();
+    };
+
+    const session = { family: 'codex', worktree, createdAt: 0, transcriptPath: null, sessionId: null, stateDir };
+    const resolved = await resolveCodexTranscript({ session, sleep: fakeSleep });
+
+    assert.equal(resolved, path.join(sessionsRoot, 'rollout-tardio.jsonl'));
+    assert.equal(sleepCalls, 1);
+  });
+});
+
+test('resolveCodexTranscript: nunca aparece -> null tras agotar los reintentos acotados', async () => {
+  const codexHome = mkTmpDir('cmo-codex-home-');
+  const stateDir = mkTmpDir('cmo-state-');
+  const worktree = '/repo/worktree-lazy-3';
+
+  await withEnv({ CODEX_HOME: codexHome }, async () => {
+    fs.mkdirSync(path.join(codexHome, 'sessions'), { recursive: true }); // vacío: nunca hay rollout.
+
+    let sleepCalls = 0;
+    const fakeSleep = () => {
+      sleepCalls += 1;
+      return Promise.resolve();
+    };
+
+    const session = { family: 'codex', worktree, createdAt: 0, transcriptPath: null, sessionId: null, stateDir };
+    const resolved = await resolveCodexTranscript({ session, sleep: fakeSleep, maxAttempts: 3 });
+
+    assert.equal(resolved, null);
+    assert.equal(session.transcriptPath, null);
+    assert.equal(sleepCalls, 2); // 3 intentos, sleep solo entre intentos (no después del último).
+    assert.equal(fs.existsSync(path.join(stateDir, 'sessions.json')), false); // nunca se persistió nada.
+  });
+});
+
+test('resolveCodexTranscript: dos candidatos (ambiguo) en todos los intentos -> null', async () => {
+  const codexHome = mkTmpDir('cmo-codex-home-');
+  const stateDir = mkTmpDir('cmo-state-');
+  const worktree = '/repo/worktree-lazy-4';
+
+  await withEnv({ CODEX_HOME: codexHome }, async () => {
+    const sessionsRoot = path.join(codexHome, 'sessions');
+    fs.mkdirSync(sessionsRoot, { recursive: true });
+    writeRollout(sessionsRoot, 'rollout-a.jsonl', { cwd: worktree, sessionId: 'codex-sess-a' });
+    writeRollout(sessionsRoot, 'rollout-b.jsonl', { cwd: worktree, sessionId: 'codex-sess-b' });
+
+    const session = { family: 'codex', worktree, createdAt: 0, transcriptPath: null, sessionId: null, stateDir };
+    const resolved = await resolveCodexTranscript({ session, sleep: () => Promise.resolve(), maxAttempts: 2 });
+
+    assert.equal(resolved, null);
+    assert.equal(session.transcriptPath, null);
+  });
+});
+
+test('resolveCodexTranscript: ya resuelto -> devuelve el valor cacheado sin tocar el filesystem ni dormir', async () => {
+  const stateDir = mkTmpDir('cmo-state-');
+  const session = {
+    family: 'codex',
+    worktree: '/repo/no-importa',
+    createdAt: 0,
+    transcriptPath: '/ya/resuelto/rollout.jsonl',
+    sessionId: 'codex-sess-cacheado',
+    stateDir,
+  };
+  let sleepCalls = 0;
+  const fakeSleep = () => {
+    sleepCalls += 1;
+    return Promise.resolve();
+  };
+
+  // Sin CODEX_HOME seteado a un sessions/ real: si esta función tocara el filesystem, fallaría
+  // silenciosamente (listRolloutFiles atrapa el ENOENT) pero igual estaríamos verificando el
+  // comportamiento equivocado. La aserción de sleepCalls===0 es la prueba real de que no reintentó.
+  const resolved = await resolveCodexTranscript({ session, sleep: fakeSleep });
+
+  assert.equal(resolved, '/ya/resuelto/rollout.jsonl');
+  assert.equal(sleepCalls, 0);
+});
+
+test('resolveCodexTranscript (claude): pass-through del transcriptPath ya resuelto por createOwnedSession', async () => {
+  const session = { family: 'claude', transcriptPath: '/algun/transcript.jsonl' };
+  const resolved = await resolveCodexTranscript({ session, sleep: () => Promise.resolve() });
+  assert.equal(resolved, '/algun/transcript.jsonl');
 });
 
 // ---------------------------------------------------------------------------
@@ -488,6 +597,107 @@ test('awaitDone (claude): sin worker_done, tui-idle satisfied=true es autoridad 
   assert.equal(result.code, 0);
   const written = fs.readFileSync(result.reportPath, 'utf8');
   assert.match(written, /NONCE-ACTUAL/);
+});
+
+test('awaitDone (codex): transcriptPath pendiente -> resuelve el rollout lazy y después cosecha normalmente', async () => {
+  const codexHome = mkTmpDir('cmo-codex-home-');
+  const stateDir = mkTmpDir('cmo-state-');
+  const root = mkTmpDir('cmo-report-root-');
+  const worktree = '/repo/ai-workflows'; // mismo cwd que CODEX_FIXTURE
+
+  await withEnv({ CODEX_HOME: codexHome }, async () => {
+    const sessionsRoot = path.join(codexHome, 'sessions');
+    fs.mkdirSync(sessionsRoot, { recursive: true });
+    fs.copyFileSync(CODEX_FIXTURE, path.join(sessionsRoot, 'rollout-lazy-awaitdone.jsonl'));
+
+    const session = {
+      family: 'codex',
+      worktree,
+      createdAt: 0,
+      transcriptPath: null,
+      sessionId: null,
+      terminalHandle: 'term_1',
+      stateDir,
+    };
+    const dispatch = { taskId: 'T1', dispatchId: 'D1', nonce: 'NONCE-ACTUAL', expectedAssignee: 'term_1' };
+
+    let checkCalls = 0;
+    const fakeOrcaRunner = (args) => {
+      if (args[0] === 'orchestration' && args[1] === 'check') {
+        checkCalls += 1;
+        return {
+          stdout: JSON.stringify({
+            messages: [{ type: 'worker_done', payload: { taskId: 'T1', dispatchId: 'D1' }, from: 'term_1' }],
+          }),
+          code: 0,
+        };
+      }
+      throw new Error(`orcaRunner inesperado: ${args.join(' ')}`);
+    };
+
+    const result = await awaitDone({
+      session,
+      dispatch,
+      coordinatorHandle: 'coord_1',
+      reportPath: 'informe.md',
+      root,
+      deadlineMs: 1000,
+      orcaRunner: fakeOrcaRunner,
+      sleep: instantSleep,
+    });
+
+    assert.equal(result.code, 0);
+    assert.equal(checkCalls, 1);
+    assert.equal(session.transcriptPath, path.join(sessionsRoot, 'rollout-lazy-awaitdone.jsonl'));
+    const written = fs.readFileSync(result.reportPath, 'utf8');
+    assert.match(written, /NONCE-ACTUAL/);
+  });
+});
+
+test('awaitDone (codex): el rollout nunca aparece -> code 4 (degradar a cli), sin consultar "orchestration check"', async () => {
+  const codexHome = mkTmpDir('cmo-codex-home-');
+  const stateDir = mkTmpDir('cmo-state-');
+  const root = mkTmpDir('cmo-report-root-');
+  const worktree = '/repo/worktree-sin-rollout';
+
+  await withEnv({ CODEX_HOME: codexHome }, async () => {
+    fs.mkdirSync(path.join(codexHome, 'sessions'), { recursive: true }); // vacío: nunca hay rollout.
+
+    const session = {
+      family: 'codex',
+      worktree,
+      createdAt: 0,
+      transcriptPath: null,
+      sessionId: null,
+      terminalHandle: 'term_1',
+      stateDir,
+    };
+    const dispatch = { taskId: 'T1', dispatchId: 'D1', nonce: 'NONCE-ACTUAL', expectedAssignee: 'term_1' };
+
+    let checkCalls = 0;
+    const fakeOrcaRunner = (args) => {
+      if (args[0] === 'orchestration' && args[1] === 'check') {
+        checkCalls += 1;
+        return { stdout: JSON.stringify({ messages: [] }), code: 0 };
+      }
+      throw new Error(`orcaRunner inesperado: ${args.join(' ')}`);
+    };
+
+    const result = await awaitDone({
+      session,
+      dispatch,
+      coordinatorHandle: 'coord_1',
+      reportPath: 'informe.md',
+      root,
+      deadlineMs: 1000,
+      orcaRunner: fakeOrcaRunner,
+      sleep: instantSleep,
+    });
+
+    assert.equal(result.code, 4);
+    assert.equal(checkCalls, 0); // nunca llegó a entrar al poll de worker_done
+    assert.equal(fs.existsSync(path.join(root, 'informe.md')), false);
+  });
 });
 
 // ---------------------------------------------------------------------------

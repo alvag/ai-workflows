@@ -276,8 +276,20 @@ function slugifyCwd(cwd) {
 
 /**
  * Crea la sesión secundaria fresca (terminal Orca) y captura su locator de
- * transcript/rollout. Registra la sesión en `stateDir` (conductor-only, fuera
- * de cualquier worktree que el secundario pueda escribir).
+ * transcript/rollout donde ya se puede (Claude, directo). Registra la sesión
+ * en `stateDir` (conductor-only, fuera de cualquier worktree que el
+ * secundario pueda escribir).
+ *
+ * **Codex: el locator es diferido (lazy), no se resuelve acá.** Verificado en
+ * vivo (`spikes/RESULTS.md`, Task 0.1, "TIMING del rollout"): el rollout de
+ * Codex NO existe al arrancar la terminal — se escribe recién en el primer
+ * turno, tras el primer `dispatch --inject`. Si `createOwnedSession`
+ * intentara localizarlo acá, siempre encontraría 0 candidatos y devolvería
+ * `null`, degradando el transporte a `cli` siempre para Codex (bug real,
+ * encontrado en el review de esta task). Por eso, para Codex esta función
+ * registra la sesión con `transcriptPath: null` y `sessionId: null`, y
+ * devuelve la sesión normalmente (nunca `null` por esto); `resolveCodexTranscript`
+ * hace la resolución diferida más adelante (ver esa función).
  *
  * @param {object} params
  * @param {'codex'|'claude'} params.family
@@ -287,7 +299,7 @@ function slugifyCwd(cwd) {
  * @param {(args: string[]) => { stdout: string, code: number }} [params.orcaRunner]
  * @param {() => number} [params.now]
  * @param {string} [params.stateDir]
- * @returns {{ session: object } | null} `null` si el locator es ambiguo o no se pudo capturar.
+ * @returns {{ session: object } | null} `null` solo si no se pudo crear la terminal / leer su handle.
  */
 export function createOwnedSession({
   family,
@@ -331,11 +343,10 @@ export function createOwnedSession({
     sessionId = claudeSessionId;
     transcriptPath = path.join(configDir('claude'), 'projects', slugifyCwd(worktree), `${sessionId}.jsonl`);
   } else {
-    const sessionsRoot = path.join(configDir('codex'), 'sessions');
-    const located = locateCodexRollout({ sessionsRoot, cwd: worktree, afterMs: createdAtMs });
-    if (located === null) return null; // ambiguo o no localizado: la skill llamadora degrada a cli.
-    sessionId = located.sessionId;
-    transcriptPath = located.path;
+    // Codex: el rollout todavía no existe (ver docstring de esta función). Queda pendiente;
+    // `resolveCodexTranscript` lo resuelve más adelante, cuando ya arrancó el primer turno.
+    sessionId = null;
+    transcriptPath = null;
   }
 
   const session = {
@@ -423,6 +434,66 @@ export function createDispatch({ session, spec, root, orcaRunner = defaultOrcaRu
 }
 
 // ---------------------------------------------------------------------------
+// resolveCodexTranscript: resolución LAZY del locator de Codex (post-dispatch)
+// ---------------------------------------------------------------------------
+
+const CODEX_LOCATOR_MAX_ATTEMPTS = 3;
+const CODEX_LOCATOR_RETRY_MS = 200;
+
+/**
+ * Resuelve, de forma diferida y con reintentos acotados, el rollout de Codex
+ * de `session`. Se invoca desde `awaitDone` (no desde `createOwnedSession`):
+ * el rollout recién existe tras el primer turno del secundario, así que
+ * intentar resolverlo en el momento de crear la terminal siempre falla (ver
+ * `spikes/RESULTS.md`, Task 0.1, "TIMING del rollout").
+ *
+ * No participa `orcaRunner` acá: `locateCodexRollout` es una operación pura de
+ * filesystem, no invoca `orca` en ningún paso — no hay proceso externo que
+ * inyectar en esta función, solo tiempo (de ahí el `sleep` inyectable).
+ *
+ * Reglas de resultado: si en algún intento hay exactamente 1 candidato, lo
+ * persiste en `session` (`transcriptPath`/`sessionId`) y en el registro de
+ * `stateDir`, y lo devuelve. Si tras `maxAttempts` intentos sigue sin haber
+ * exactamente 1 candidato (0 — el rollout aún no se flushó — o >1 —
+ * ambiguo), devuelve `null`: el llamador (`awaitDone`) degrada a `cli`.
+ *
+ * Idempotente: si `session.transcriptPath` ya está resuelto (una llamada
+ * anterior lo encontró, o es Claude y ya lo trae de `createOwnedSession`), no
+ * vuelve a tocar el filesystem ni a dormir — devuelve el valor ya conocido.
+ *
+ * @param {object} params
+ * @param {object} params.session sesión (se muta si resuelve: `transcriptPath`/`sessionId`).
+ * @param {(ms: number) => Promise<void>} [params.sleep]
+ * @param {number} [params.maxAttempts]
+ * @param {number} [params.retryDelayMs]
+ * @returns {Promise<string|null>}
+ */
+export async function resolveCodexTranscript({
+  session,
+  sleep = defaultSleep,
+  maxAttempts = CODEX_LOCATOR_MAX_ATTEMPTS,
+  retryDelayMs = CODEX_LOCATOR_RETRY_MS,
+}) {
+  if (session.family !== 'codex') return session.transcriptPath ?? null; // Claude ya lo resolvió directo.
+  if (session.transcriptPath) return session.transcriptPath; // ya resuelto: no reprocesar.
+
+  const sessionsRoot = path.join(configDir('codex'), 'sessions');
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const located = locateCodexRollout({ sessionsRoot, cwd: session.worktree, afterMs: session.createdAt });
+    if (located !== null) {
+      session.transcriptPath = located.path;
+      session.sessionId = located.sessionId;
+      persistSessionRecord(session.stateDir, session);
+      return located.path;
+    }
+    if (attempt < maxAttempts) {
+      await sleep(retryDelayMs);
+    }
+  }
+  return null; // 0 candidatos (aún no flushó) o ambiguo tras los reintentos: degradar a cli.
+}
+
+// ---------------------------------------------------------------------------
 // awaitDone
 // ---------------------------------------------------------------------------
 
@@ -478,6 +549,15 @@ function checkWorkerDoneAuthority({ orcaRunner, coordinatorHandle, dispatch }) {
  * FSM de `harvest-core.mjs`). Si ya está `promoted`, no se vuelve a invocar
  * `harvest` — nunca se procesa dos veces el mismo dispatch+nonce.
  *
+ * Codex además necesita resolver el locator del rollout de forma diferida
+ * (ver `resolveCodexTranscript`): si `session.transcriptPath` todavía no está
+ * resuelto al entrar acá, se reintenta un número acotado de veces antes de
+ * empezar el poll de `worker_done`. Si tras esos reintentos sigue sin
+ * resolverse (0 candidatos — el rollout aún no se flushó — o >1, ambiguo),
+ * esta función devuelve `code: 4` **sin** haber tocado la FSM ni haber
+ * consultado `orchestration check` — es la señal explícita de "degradar a
+ * cli" que debe interpretar la skill llamadora.
+ *
  * @param {object} params
  * @param {object} params.session
  * @param {{ taskId: string, dispatchId: string, expectedAssignee: string, nonce: string }} params.dispatch
@@ -488,7 +568,8 @@ function checkWorkerDoneAuthority({ orcaRunner, coordinatorHandle, dispatch }) {
  * @param {(args: string[]) => { stdout: string, code: number }} [params.orcaRunner]
  * @param {() => number} [params.now]
  * @param {(ms: number) => Promise<void>} [params.sleep]
- * @returns {Promise<{ code: 0, reportPath: string } | { code: 2|3, reason: string }>}
+ * @returns {Promise<{ code: 0, reportPath: string } | { code: 2|3, reason: string } | { code: 4, reason: string }>}
+ *   `code` 4: no se pudo resolver el locator de Codex tras los reintentos acotados — degradar a `cli`.
  */
 export async function awaitDone({
   session,
@@ -510,6 +591,16 @@ export async function awaitDone({
     // destino ya existe en disco, así que ni siquiera intentamos invocar
     // harvest() de nuevo (checkContainment lo rechazaría por "ya existe").
     return { code: 0, reportPath: path.resolve(root, reportPath) };
+  }
+
+  if (session.family === 'codex' && !session.transcriptPath) {
+    const resolved = await resolveCodexTranscript({ session, sleep });
+    if (resolved === null) {
+      return {
+        code: 4,
+        reason: 'no se pudo localizar el rollout de Codex tras los reintentos acotados: degradar a cli',
+      };
+    }
   }
 
   const deadlineAt = now() + deadlineMs;
