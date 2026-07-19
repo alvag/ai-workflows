@@ -93,8 +93,13 @@ Sin las tres activas, no se despacha:
    `worker_done` por comando es **solo Codex**.
 2. **MCP** — qué tools remotas están disponibles. Codex: perfil instalado en
    `$CODEX_HOME/<nombre>.config.toml`, invocado con `-p <nombre>` (server-scoped, nunca `-c`).
-   Claude: `allow`/`ask`/`deny` por tool enumerada, con **preflight que falla cerrado** ante un
-   servidor/tool/app/plugin no inventariado. Nunca wildcards de servidor.
+   Claude: **`--strict-mcp-config --mcp-config <allowlist>`** como gate **primario** — la sesión
+   ve **solo** los servidores del allowlist, todo MCP del entorno queda invisible (fail-closed por
+   construcción; `--tools` acota solo los built-ins, no las tools MCP) —, más `allow`/`ask`/`deny`
+   por tool como defensa en profundidad dentro de los servidores allowlisteados. Nunca wildcards
+   de servidor. El preflight se reduce a verificar que el lanzamiento incluye el `--strict-mcp-config`
+   y, para un servidor allowlisteado en solo-lectura, el namespacing real de sus read tools (ver
+   `assets/launch/mcp-inventory.md` → "Dos gates").
 3. **Hooks** — qué automatización local puede dispararse. `disableAllHooks: true` (Claude) /
    `--disable hooks` (Codex), siempre, en los dos roles.
 

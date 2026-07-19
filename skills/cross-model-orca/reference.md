@@ -412,6 +412,20 @@ También `resolveCodexTranscript` reescribe el registro de sesión en `sessions.
 el locator diferido de Codex (`transcriptPath`/`sessionId`), siempre vía el mismo
 `persistSessionRecord` atómico.
 
+**Allowlist de MCP del secundario read-only (`assets/launch/claude-readonly.mcp.json`).** El Claude
+read-only se lanza con `--strict-mcp-config --mcp-config assets/launch/claude-readonly.mcp.json` —
+gate **primario** de MCP, fail-closed por construcción: la sesión ve **solo** los servidores de ese
+archivo y todo MCP del entorno queda invisible (`--tools` acota los built-ins, no las tools MCP).
+Verificado en vivo (Claude 2.1.214): allowlist vacío → `CERO-MCP`. El archivo trae `context7` (docs
+de librerías, solo lectura) con la API key como **placeholder** (`REEMPLAZA_POR_TU_API_KEY_DE_CONTEXT7`):
+**no se commitea una key real** — sustitúyela antes de usar, o copia el archivo a una ruta runtime
+con la key puesta (mismo patrón que los perfiles de Codex en `$CODEX_HOME`). El mecanismo, y el
+patrón "servidor en el allowlist + allowlist de read tools" para dar un servidor tipo Jira en solo
+lectura, están en `assets/launch/mcp-inventory.md` → "Dos gates". La aparición efectiva de `context7`
+en la sesión (que conecta por `npx`) es una confirmación de **Fase 7 E2E**: el probe headless `-p`
+no la zanja porque el cold-start del server excede el turno; el lanzamiento real es interactivo y
+espera la conexión al arranque.
+
 ---
 
 ## Ver también
@@ -421,5 +435,8 @@ el locator diferido de Codex (`transcriptPath`/`sessionId`), siempre vía el mis
 - `install.md` — instalación paso a paso (Node ≥18, `CROSS_MODEL_ORCA`, `skills-ref`).
 - `assets/launch/profiles.md` — matriz de lanzamiento completa (POSIX+PowerShell) por
   familia×rol×modo.
-- `assets/launch/mcp-inventory.md` — inventario MCP y namespacing real de tools.
+- `assets/launch/mcp-inventory.md` — inventario MCP, los dos gates de MCP en Claude (server + tool)
+  y el namespacing real de tools.
+- `assets/launch/claude-readonly.mcp.json` — allowlist exclusivo de servidores MCP del secundario
+  read-only (gate primario `--strict-mcp-config`).
 - `spikes/RESULTS.md` — contratos de locator y señal con evidencia (Task 0.1/0.2/0.3).

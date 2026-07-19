@@ -16,6 +16,41 @@ servidor nuevo que aparezca en el entorno (agregado por el usuario, por un plugi
 clasificar sus tools, y recién después reflejarlo en los perfiles de `claude-*.settings.json` /
 `codex-*.config.toml`.
 
+## Dos gates de MCP en Claude (server + tool)
+
+El fail-closed de Claude se logra con **dos gates apilados**, no con la denylist sola:
+
+1. **Gate de servidor — `--strict-mcp-config --mcp-config claude-readonly.mcp.json` (PRIMARIO,
+   fail-closed por construcción).** La sesión ve **solo** los servidores declarados en ese
+   allowlist; todo MCP del entorno (Gmail, Drive, Playwright, `pencil`, servidores agregados con
+   `mcp add`, cualquiera nuevo) queda **invisible**. Verificado en vivo (Claude 2.1.214,
+   2026-07-19): allowlist vacío → la sesión responde `CERO-MCP`. **Consecuencia clave:** un
+   servidor que no está en el allowlist **no puede** ejecutarse aunque una regla `deny` tenga el
+   namespacing equivocado — el hueco fail-open silencioso que describe la sección de namespacing
+   de abajo **queda cerrado por este gate** para todo servidor no allowlisteado. `--tools
+   "Read,Grep,Glob"` **no** sirve para esto: acota solo los built-ins, no las tools MCP
+   (`claude --help`: *"from the built-in set"*).
+2. **Gate de tool — `permissions` en `claude-readonly.settings.json` (defensa en profundidad,
+   solo relevante DENTRO de los servidores allowlisteados).** Para un servidor que **sí** incluyes
+   en el allowlist pero quieres en **solo lectura** (ej. Atlassian/Jira), acota sus tools:
+   - **Allowlist de lecturas (recomendado, fail-closed):** enumera en `permissions.allow` solo las
+     read tools (`mcp__atlassian__searchJiraIssues`, `getJiraIssue`, …); lo demás del servidor no
+     corre. Una write tool nueva sigue bloqueada por default.
+   - **Denylist de escrituras (fail-open):** enumera las write tools en `permissions.deny`. Frágil
+     por el namespacing (abajo) y porque una write tool nueva no listada se colaría; úsalo solo si
+     el allowlist de lecturas no es viable, y con el preflight de namespacing activo.
+
+   > **Pendiente de verificar contra el CLI real (Fase 7):** la precedencia `allow`/`deny` y qué
+   > pasa con una tool de un servidor allowlisteado que no está ni en `allow` ni en `deny`
+   > (¿bloqueo por default o `ask`, que en desatendido colgaría). Hasta confirmarlo, para "solo
+   > lectura" de un servidor incluido usa el allowlist de lecturas **y** valida el comportamiento
+   > en una corrida real antes de un despacho desatendido.
+
+**Rol write (cross-implement, Fase 5):** el mismo gate de servidor aplica — la sesión Claude write
+debe lanzarse con su propio `--strict-mcp-config --mcp-config <allowlist-write>`; hoy no existe ese
+archivo (lo define Fase 5, que puede necesitar MCP de escritura acotada). No despachar el rol write
+sin ese gate.
+
 ## Namespacing real de las tools MCP en Claude (crítico para `deny`/`ask`)
 
 **El nombre literal de una tool MCP en `permissions.deny`/`permissions.ask` de Claude Code
@@ -48,15 +83,22 @@ enumeradas con la convención de servidor directo (`mcp__atlassian__<tool>`) **s
 si en el entorno real de despacho `atlassian` estuviera instalado como plugin, ese nombre no
 matchea y hay que corregirlo antes de lanzar.
 
-**Consecuencia obligatoria (preflight fail-closed):** antes de despachar un secundario Claude,
-quien invoque `cross-model-orca` **debe confirmar el namespacing real de cada tool inventariada
-contra el entorno de activación** (p. ej. con `claude mcp list` y, si hace falta, inspeccionando
-cómo se resuelven las tools MCP disponibles en una sesión de prueba) — **no asumir** que el
-nombre que aparece en este archivo matchea tal cual. Si una tool enumerada en `deny`/`ask` no
-matchea ninguna tool real del entorno (porque cambió el namespacing, el servidor se reinstaló
-distinto, o el nombre nunca se verificó), el preflight **bloquea el despacho** en vez de lanzar
-con una regla que no surte efecto. Esto traslada la fragilidad del nombre literal — inevitable en
-un archivo de config estático — a un chequeo de arranque, que es la red de seguridad correcta.
+**Alcance del namespacing con strict-mcp-config:** el gate de servidor (arriba) hace que esta
+fragilidad **ya no sea un fail-open** para servidores fuera del allowlist — un `deny` mal escrito
+sobre `atlassian` es inocuo si `atlassian` no está en `claude-readonly.mcp.json`, porque el
+servidor ni siquiera existe en la sesión. El namespacing solo importa para el **gate de tool
+dentro de un servidor allowlisteado** (el caso "Jira solo lectura"): ahí, un `allow`/`deny` con el
+prefijo equivocado no matchea y la regla no surte efecto.
+
+**Preflight fail-closed (reducido):** antes de despachar un secundario Claude, quien invoque
+`cross-model-orca` debe confirmar dos cosas: (1) **de construcción** — que el comando de
+lanzamiento incluye `--strict-mcp-config --mcp-config <allowlist>` (sin eso, MCP es fail-open); y
+(2) **solo para servidores en el allowlist con gate de tool** — que el namespacing real de cada
+read tool allowlisteada matchea el entorno de activación (con `claude mcp list` y, si hace falta,
+una sesión de prueba enumerando las tools disponibles). Si una tool del allowlist de lecturas no
+matchea ninguna tool real, el preflight **bloquea el despacho** en vez de lanzar con una regla que
+no surte efecto. La superficie del preflight es mucho menor que con la denylist sola, porque el
+gate de servidor ya elimina todo lo no allowlisteado.
 
 ## Servidores "conocidos" — inventario a nivel de tool
 

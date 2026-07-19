@@ -1,0 +1,9 @@
+{
+  "_comment": "Allowlist EXCLUSIVO de servidores MCP para el Claude secundario read-only. Se pasa con --strict-mcp-config --mcp-config <este archivo>: la sesion ve SOLO lo declarado aca; todo MCP del entorno del usuario (Gmail, Drive, Playwright, pencil, servidores agregados con `mcp add`, etc.) queda INVISIBLE. Fail-closed por construccion. Para agregar un servidor de lectura, declaralo entero aca (con --strict-mcp-config no se hereda ninguna definicion de otras configs). Para dar un servidor en SOLO LECTURA (ej. Atlassian/Jira), inclui el servidor aca Y limita sus tools con un allowlist de lecturas en claude-readonly.settings.json (ver mcp-inventory.md). NO commitees API keys reales: reemplaza el placeholder abajo por tu key (o copia este archivo a una ruta runtime y sustituilo alli, como se hace con los perfiles de Codex en $CODEX_HOME).",
+  "mcpServers": {
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp", "--api-key", "REEMPLAZA_POR_TU_API_KEY_DE_CONTEXT7"]
+    }
+  }
+}
