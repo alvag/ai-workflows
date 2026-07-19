@@ -16,7 +16,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { makeDedupFsm } from './harvest-core.mjs';
+import { makeDedupFsm, REPORT_ALREADY_EXISTS_REASON } from './harvest-core.mjs';
 import { harvest } from './harvest-from-transcript.mjs';
 import { configDir, isWindows, resolveInstallRoot } from './lib/platform.mjs';
 
@@ -266,8 +266,23 @@ export function locateCodexRollout({ sessionsRoot, cwd, afterMs }) {
   return candidates[0];
 }
 
+/**
+ * Reproduce el slug que Claude Code arma a partir de `cwd` para el nombre del
+ * directorio bajo `<configDir('claude')>/projects/`: reemplaza **todo**
+ * carácter no alfanumérico (no solo `/`) por `-`, preservando los guiones ya
+ * existentes. Verificado contra dos directorios reales de proyecto:
+ * `/Users/max/Personal/repos/ai-workflows` → `-Users-max-Personal-repos-ai-workflows`
+ * (los guiones de "ai-workflows" se preservan) y `/Users/max/.claude` →
+ * `-Users-max--claude` (el `/.` se vuelve `--`, dos reemplazos consecutivos).
+ * Un `slugifyCwd` que solo reemplazara `/` (versión anterior, con bug) dejaría
+ * el `.` literal en el slug para cualquier worktree con un punto en el path →
+ * `transcriptPath` apuntaría a un directorio inexistente → timeout silencioso
+ * en `harvest` (hallazgo del final review de Fase 1).
+ * @param {string} cwd
+ * @returns {string}
+ */
 function slugifyCwd(cwd) {
-  return cwd.replace(/[\\/]/g, '-');
+  return cwd.replace(/[^a-zA-Z0-9-]/g, '-');
 }
 
 // ---------------------------------------------------------------------------
@@ -547,7 +562,13 @@ function checkWorkerDoneAuthority({ orcaRunner, coordinatorHandle, dispatch }) {
  *
  * Dedup: la clave durable es `${dispatchId}:${nonce}` (misma clave que usa la
  * FSM de `harvest-core.mjs`). Si ya está `promoted`, no se vuelve a invocar
- * `harvest` — nunca se procesa dos veces el mismo dispatch+nonce.
+ * `harvest` — nunca se procesa dos veces el mismo dispatch+nonce. Crash-
+ * idempotencia adicional: si un intento anterior escribió el reporte
+ * (`writeExclusive`) pero cayó antes de `markPromoted`, el retry ve un
+ * `harvest()` con `code:2` cuyo `reason` es exactamente
+ * `REPORT_ALREADY_EXISTS_REASON` (destino ya existente, no un escape de
+ * contención real) — ese caso se trata como éxito idempotente (`code:0`), no
+ * como rechazo, y de paso auto-repara una FSM corrupta/perdida.
  *
  * Codex además necesita resolver el locator del rollout de forma diferida
  * (ver `resolveCodexTranscript`): si `session.transcriptPath` todavía no está
@@ -652,6 +673,28 @@ export async function awaitDone({
     deadlineMs: remainingMs,
     now,
   });
+
+  if (harvestResult.code === 2 && harvestResult.reason === REPORT_ALREADY_EXISTS_REASON) {
+    // Hueco de crash-idempotencia (hallazgo del final review de Fase 1): si el proceso cae
+    // DESPUÉS de que harvest() ya escribió el reporte (writeExclusive) pero ANTES de
+    // markPromoted, el retry llega hasta acá (isPromoted seguía en false al entrar) y vuelve a
+    // invocar harvest(), que ahora ve el destino ya existente y lo reporta como contención
+    // (code 2) -- aunque en realidad la cosecha anterior fue exitosa. Como ya pasamos la
+    // validación de autoridad de este mismo dispatch+nonce (arriba, en el loop), el reporte en
+    // disco es legítimo: lo tratamos como éxito idempotente, no como rechazo, y re-marcamos la
+    // FSM (esto también autorepara una FSM corrupta que hubiera perdido su estado). Un rechazo
+    // real por escape (".."/absoluta/symlink/root inválido) tiene un `reason` DISTINTO (ver
+    // checkContainment en harvest-core.mjs) y no entra en esta rama.
+    let resolvedPath;
+    try {
+      resolvedPath = path.resolve(fs.realpathSync(root), reportPath);
+    } catch {
+      resolvedPath = path.resolve(root, reportPath);
+    }
+    fsm.markHarvested(dedupKey);
+    fsm.markPromoted(dedupKey, hashFile(resolvedPath));
+    return { code: 0, reportPath: resolvedPath };
+  }
 
   if (harvestResult.code !== 0) {
     return harvestResult;

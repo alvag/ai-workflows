@@ -206,6 +206,11 @@ test('createOwnedSession (claude): fija --session-id, arma el path del transcrip
   const claudeConfigDir = mkTmpDir('cmo-claude-home-');
   const stateDir = mkTmpDir('cmo-state-');
   const worktree = '/repo/ai-workflows-worktree';
+  // Slug esperado como literal (NO se deriva con la misma lógica que el código bajo prueba: eso
+  // consagraría un bug si `slugifyCwd` estuviera mal, como pasó con la versión anterior que solo
+  // reemplazaba "/" y dejaba pasar el "." literal -- ver el test dedicado con path punteado más
+  // abajo, que sí lo hubiera detectado).
+  const expectedSlug = '-repo-ai-workflows-worktree';
 
   await withEnv({ CLAUDE_CONFIG_DIR: claudeConfigDir, CROSS_MODEL_ORCA: ASSETS_DIR }, () => {
     let capturedCommand = null;
@@ -231,12 +236,47 @@ test('createOwnedSession (claude): fija --session-id, arma el path del transcrip
     const { session } = result;
     assert.equal(session.terminalHandle, 'term_claude_1');
     assert.match(session.sessionId, /^[0-9a-f-]{36}$/);
-    const expectedSlug = worktree.replace(/\//g, '-');
     assert.equal(
       session.transcriptPath,
       path.join(claudeConfigDir, 'projects', expectedSlug, `${session.sessionId}.jsonl`)
     );
     assert.match(capturedCommand, new RegExp(`--session-id "${session.sessionId}"`));
+  });
+});
+
+test('createOwnedSession (claude): un worktree con "." en el path slugifica el punto a "-" (fix wave 2, S1)', async () => {
+  // Regresión del bug real encontrado en el final review: la versión anterior de slugifyCwd solo
+  // reemplazaba "/" (\\ y /) y dejaba el "." literal en el slug, apuntando a un directorio de
+  // transcript inexistente. Este worktree, con un "." en el medio del path, lo hubiera detectado.
+  const claudeConfigDir = mkTmpDir('cmo-claude-home-');
+  const stateDir = mkTmpDir('cmo-state-');
+  const worktree = '/tmp/foo.bar/baz';
+  // Literal (no derivado de slugifyCwd): confirmado a mano contra el algoritmo real de Claude Code
+  // con dos directorios de proyecto reales (ver docstring de slugifyCwd en dispatch-adapter.mjs).
+  const expectedSlug = '-tmp-foo-bar-baz';
+
+  await withEnv({ CLAUDE_CONFIG_DIR: claudeConfigDir, CROSS_MODEL_ORCA: ASSETS_DIR }, () => {
+    const fakeOrcaRunner = (args) => {
+      if (args[0] === 'terminal' && args[1] === 'create') {
+        return { stdout: JSON.stringify({ handle: 'term_claude_dot' }), code: 0 };
+      }
+      throw new Error(`orcaRunner inesperado en el test: ${args.join(' ')}`);
+    };
+
+    const result = createOwnedSession({
+      family: 'claude',
+      role: 'read-only',
+      mode: 'attended',
+      worktree,
+      orcaRunner: fakeOrcaRunner,
+      stateDir,
+    });
+
+    assert.notEqual(result, null);
+    assert.equal(
+      result.session.transcriptPath,
+      path.join(claudeConfigDir, 'projects', expectedSlug, `${result.session.sessionId}.jsonl`)
+    );
   });
 });
 
@@ -564,6 +604,63 @@ test('awaitDone: un segundo worker_done idéntico no reprocesa (dedup vía FSM)'
 
   assert.equal(second.code, 0);
   assert.equal(checkCalls, 1); // sin llamadas adicionales a "orchestration check"
+});
+
+test('awaitDone: crash entre writeExclusive y markPromoted -> el retry ve "destino ya existe" y lo trata como éxito idempotente (fix wave 2, S2)', async () => {
+  // Simula el hueco encontrado en el final review: un intento anterior ya escribió el reporte en
+  // disco (writeExclusive real, dentro de "root") y avanzó la FSM hasta "received" -- pero cayó
+  // antes de marcar "harvested"/"promoted". El siguiente awaitDone() para el MISMO dispatchId:nonce
+  // no debe reprocesar el transcript (haría un check nuevo), pero el bug original hacía que
+  // harvest() volviera a intentar escribir, checkContainment rechazara por "ya existe", y
+  // awaitDone devolviera {code:2} para lo que en realidad fue una cosecha exitosa.
+  const stateDir = mkTmpDir('cmo-state-');
+  const root = mkTmpDir('cmo-report-root-');
+  const session = { family: 'codex', transcriptPath: CODEX_FIXTURE, terminalHandle: 'term_1', stateDir };
+  const dispatch = { taskId: 'T1', dispatchId: 'D1', nonce: 'NONCE-ACTUAL', expectedAssignee: 'term_1' };
+  const dedupKey = 'D1:NONCE-ACTUAL';
+
+  // Precondición: el reporte YA está en disco (como si un harvest() previo lo hubiera escrito) y
+  // la FSM quedó en "received" (avanzó hasta ahí, pero el proceso cayó antes de "harvested"/"promoted").
+  fs.writeFileSync(path.join(root, 'informe.md'), 'contenido cosechado por el intento anterior');
+  const fsmBefore = makeDedupFsm(path.join(stateDir, 'dedup-fsm.json'));
+  fsmBefore.markReceived(dedupKey);
+  assert.equal(fsmBefore.isPromoted(dedupKey), false); // confirma la precondición del hueco.
+
+  let checkCalls = 0;
+  const fakeOrcaRunner = (args) => {
+    if (args[0] === 'orchestration' && args[1] === 'check') {
+      checkCalls += 1;
+      return {
+        stdout: JSON.stringify({
+          messages: [{ type: 'worker_done', payload: { taskId: 'T1', dispatchId: 'D1' }, from: 'term_1' }],
+        }),
+        code: 0,
+      };
+    }
+    throw new Error(`orcaRunner inesperado: ${args.join(' ')}`);
+  };
+
+  const result = await awaitDone({
+    session,
+    dispatch,
+    coordinatorHandle: 'coord_1',
+    reportPath: 'informe.md',
+    root,
+    deadlineMs: 1000,
+    orcaRunner: fakeOrcaRunner,
+    sleep: instantSleep,
+  });
+
+  // Antes del fix esto era {code:2, reason:"El destino ya existe."}: un rechazo de contención
+  // para lo que en realidad fue una cosecha exitosa.
+  assert.equal(result.code, 0);
+  assert.equal(result.reportPath, path.join(fs.realpathSync(root), 'informe.md'));
+  // El contenido en disco es el del intento ANTERIOR (no se reescribe -- writeExclusive nunca se
+  // vuelve a invocar en esta rama, y no debería: el archivo ya existe y es válido).
+  assert.equal(fs.readFileSync(result.reportPath, 'utf8'), 'contenido cosechado por el intento anterior');
+
+  const fsmAfter = makeDedupFsm(path.join(stateDir, 'dedup-fsm.json'));
+  assert.equal(fsmAfter.isPromoted(dedupKey), true); // la FSM quedó reparada/completa.
 });
 
 test('awaitDone (claude): sin worker_done, tui-idle satisfied=true es autoridad suficiente', async () => {

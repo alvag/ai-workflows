@@ -12,6 +12,15 @@ const ENVELOPE_PREFIX = 'X-CMO:';
 const ENVELOPE_KEYS = new Set(['nonce', 'taskId', 'dispatchId']);
 
 /**
+ * Texto exacto que devuelve `checkContainment` cuando el único motivo de rechazo es que el
+ * destino ya existe (a diferencia de un escape real por ".."/absoluta/symlink). Exportado como
+ * constante -- en vez de que cada llamador dependa de un literal duplicado -- para que
+ * `dispatch-adapter.mjs` pueda distinguir, en un retry post-crash, "ya cosechado" (destino
+ * existente = éxito idempotente) de un rechazo real de contención.
+ */
+export const REPORT_ALREADY_EXISTS_REASON = 'El destino ya existe.';
+
+/**
  * Índice de la última línea no vacía de `msg`, o -1 si todas las líneas están vacías.
  * @param {string[]} lines
  * @returns {number}
@@ -235,7 +244,7 @@ export function checkContainment(reportPath, root) {
 
   try {
     fs.lstatSync(target);
-    return { ok: false, reason: 'El destino ya existe.' };
+    return { ok: false, reason: REPORT_ALREADY_EXISTS_REASON };
   } catch (err) {
     if (err.code !== 'ENOENT') {
       return { ok: false, reason: `No se pudo verificar el destino: ${err.message}` };
