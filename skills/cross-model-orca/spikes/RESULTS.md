@@ -64,18 +64,43 @@ exacto y `tui-idle` requieren una **corrida live** (pendiente, coordinada con el
   terminada en `\n`) con el envelope del dispatch en curso; ignora entradas de dispatches previos (nonce
   viejo) y líneas a medio escribir.
 
-### Pendiente (corrida live, requiere Orca + vigilancia del usuario)
-- **Flush-timing:** ¿la línea del mensaje final ya está en disco cuando llega el `worker_done`? Medir la
-  ventana y fijar el timeout/backoff del poll.
-- **`terminal wait --for tui-idle`:** validar que reporta la transición **busy→idle posterior al dispatch**
-  (no un idle preexistente). Es el respaldo de detección de fin, sobre todo para Claude (que no señaliza).
-- **`nonce` en el envelope:** confirmar en vivo que el secundario copia el `nonce` inyectado en el prompt a
-  su envelope final (desambiguación de sesión reutilizada).
+### Resuelto por corrida live (2026-07-19, sesión Codex fresca `term_debdf0e6`)
+- **`nonce` en el envelope — ✅.** Se inyectó `nonce=NONCE-FASE0-7788` en el spec; el mensaje final del
+  secundario en el rollout terminó exacto en `Hay 2 archivos .md.\nX-CMO: nonce=NONCE-FASE0-7788\nSTATUS: done`.
+  El secundario copia el nonce → desambiguación viable.
+- **`terminal wait --for tui-idle` — ✅** reportó `satisfied:true` tras el dispatch (fin del turno detectado).
+- **Flush-timing — ✅ favorable:** al momento de consultar, el **mensaje final ya estaba escrito en el
+  rollout** aun cuando el `worker_done` todavía no figuraba en el inbox del coordinador → la cosecha del
+  transcript no depende de que la señal haya completado. El poll estabilizado con nonce es robusto ante el
+  orden.
+- **Body del `worker_done` ≠ envelope (hallazgo).** El `--body` que compuso el modelo fue un **resumen**
+  ("Conté... 2 archivos .md..."), NO el envelope. El envelope con `nonce`+`STATUS: done` vive en el
+  **mensaje final del transcript**. → Confirma que el informe se cosecha del transcript, no del body.
+- **Locator live — ✅.** El rollout de la sesión se ubicó por creación+`cwd`+timestamp con **1 solo
+  candidato** (`cli/codex-tui`, ai-workflows) — locator inequívoco en la práctica.
+
+### Matiz para el adaptador (r4 #1 — autoridad)
+El `worker_done` trae `payload={taskId,dispatchId}` (autoridad de tarea). El **sender** no vino en un campo
+`from` obvio del mensaje parseado; a nivel protocolo Orca garantiza que un `worker_done` con el task/dispatch
+activos **sólo** completa desde el pane asignado (CLI Notes: «the sender handle must exactly match the
+dispatch assignee»). → La validación `expectedAssignee` vs `actualSender` puede apoyarse en esa garantía de
+Orca + verificación de `taskId`/`dispatchId`; **localizar el campo exacto del sender** queda como detalle de
+implementación del `dispatch-adapter`.
 
 ## Task 0.3 — Señal por comando (solo Codex) con hooks apagados
 
-Estado: **pendiente**.
+Estado: **RESUELTO (corrida live 2026-07-19).**
 
-- Codex read-only `--disable hooks -s read-only -a untrusted` emite `worker_done` por comando → _(a completar)_
-- Claude read-only toolset cerrado (`--tools "Read,Grep,Glob"`) no señaliza → fin por `tui-idle` → _(a completar)_
-- Mecanismo por familia/modo: _(a completar)_
+- **Codex read-only `--disable hooks -s read-only -a untrusted` emite `worker_done` por comando — ✅.**
+  El modelo compuso y ejecutó, **sin prompt de aprobación** (confirmado por el usuario mirando la TUI):
+  `orca orchestration send --to <coord> --from <sec> --type worker_done --subject "..." --body "<resumen>"`.
+  Llegó al inbox del coordinador con `payload={taskId,dispatchId}`. Los hooks apagados (`--disable hooks`)
+  no impidieron la señal (el modelo la emite por comando, no por hook).
+- **Claude no señaliza (por diseño):** no se ejercitó en esta corrida; con toolset cerrado
+  (`--tools "Read,Grep,Glob"`) no tiene Bash → su fin se detecta por `tui-idle` (validado en 0.2). Queda un
+  checkpoint menor: confirmar `tui-idle` con un Claude secundario real (pendiente, no bloqueante — el
+  mecanismo `tui-idle` ya se validó con Codex).
+- **Mecanismo por familia:** Codex = señal `worker_done` por comando (wake-up + `{taskId,dispatchId}`);
+  Claude = sin señal → `tui-idle`. **Ambos** cosechan del transcript.
+- **Nota `-a` (atendido):** con `-a untrusted` el `send` corrió sin gate en este entorno. Si en otro perfil
+  el `send` escalara a aprobación, aplica P4 (vigilancia manual / aprobar en la TUI).
