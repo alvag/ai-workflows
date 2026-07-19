@@ -20,6 +20,16 @@ surfacear el `PermissionRequest` al coordinador o declarar vigilancia manual). E
 —**surfacear al humano, no pre-bloquear**— se sostiene para el gate de permiso de MCP; para hooks, v1 usa
 el lever de apagado. **Checkpoint aparte:** re-verificación en Windows.
 
+> **Decisión de implementación (duodécima ronda, 2026-07-19 — supersede la mecánica de cosecha de §9.8):**
+> el plan de implementación (`docs/superpowers/plans/2026-07-18-cross-model-orca-transport.md`, **APPROVED**
+> tras 6 rondas cross-model) fija que **la cosecha del informe la hace el CONDUCTOR leyendo el
+> transcript/rollout de la sesión fresca**, no un notifier/`Stop` hook del secundario que escribe
+> `reportPath` antes de `worker_done`. El secundario **Codex** solo **señaliza** `worker_done` por comando
+> (wake-up); **Claude no señaliza** (toolset cerrado) y su fin se detecta por `tui-idle`. Esto elimina la
+> dependencia de hooks del secundario **y el límite `ARG_MAX`** (se lee un archivo, no un `argv`). Las
+> menciones de §9.8/§5/§7 al **`notify`/`reportPath`-antes-de-`worker_done`** quedan **superseded** (se
+> conservan por trazabilidad). Ver Procedencia → «Duodécima ronda».
+
 **Fecha:** 2026-07-17
 
 **Relación con el README (precedencia):** el `README.md` define la arquitectura propuesta
@@ -995,6 +1005,14 @@ checkpoint. El detect-and-warn (si se conserva) lee rutas con separadores Window
 
 ### 9.8 Cosecha del informe: el canal es el `worker_done`, no el buffer (cierra el bloqueante 3)
 
+> **SUPERSEDED por la duodécima ronda (2026-07-19; ver encabezado).** El mecanismo de cosecha que sigue
+> —`notify`/`Stop` hook del secundario escribiendo `reportPath` antes de `worker_done`— fue **reemplazado**
+> en el plan de implementación por la **cosecha del conductor desde el transcript/rollout** de la sesión
+> fresca (el secundario solo señaliza). El motivo: `disableAllHooks` apaga todo hook del secundario y el
+> `last-assistant-message` por `argv` choca con `ARG_MAX`. Lo de abajo se conserva por trazabilidad del
+> proceso; **la mecánica vigente es la del plan** (Task 1.2/1.3/1.5, cosecha del conductor + FSM
+> crash-idempotent + envelope con `nonce`).
+
 Tercer spike, sobre el propio transporte. El hallazgo articulador: **la cosecha NO se hace del buffer
 de la terminal** (`terminal read` es ciego a la TUI, §9.6) **sino del mensaje `worker_done`** — y eso
 converge para ambas familias y ambos transportes.
@@ -1318,7 +1336,18 @@ su veredicto volvió por `worker_done`, cosechado sin relay humano):
     exactly-once, contención canónica, escritura→worker_done). *Overclaim acotado; `ARG_MAX` es un gap
     técnico real que el conductor no vio.*
 
-Las once rondas ilustran el propio patrón que el diseño busca habilitar: dos familias produciendo y
+**Duodécima ronda** (reconciliación tras el plan de implementación; 2026-07-19):
+
+31. **La cosecha del secundario (notifier/`Stop` hook + `reportPath` antes de `worker_done`) quedó
+    superseded** — al pasar el diseño a plan de implementación (`docs/superpowers/plans/2026-07-18-cross-model-orca-transport.md`,
+    APPROVED tras 6 rondas cross-model), la propia review refutó ese mecanismo: `disableAllHooks` apaga
+    **todos** los hooks del secundario (no hay excepción quirúrgica) y el `last-assistant-message` por
+    `argv` choca con `ARG_MAX`. La mecánica vigente pasa a ser **cosecha del CONDUCTOR leyendo el
+    transcript/rollout** de la sesión fresca; el secundario Codex solo **señaliza** `worker_done` por
+    comando y Claude no señaliza (toolset cerrado → `tui-idle`). Se agregó la nota superseding al
+    encabezado y a §9.8. *Contrato de cosecha unificado con el plan; `ARG_MAX` eliminado del camino.*
+
+Las doce rondas ilustran el propio patrón que el diseño busca habilitar: dos familias produciendo y
 criticando de forma independiente, con síntesis del conductor. Notablemente, cada ronda encontró un
 problema que la anterior no vio —huecos de seguridad o de protocolo reales (MCP externos, hooks, toolset
 abierto de Claude, sentinel no universal, Gate 0 unidireccional, veredicto sobredeclarado —**tres
