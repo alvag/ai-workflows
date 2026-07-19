@@ -6,7 +6,7 @@ Node ejecutables (`assets/lib/*.mjs`); no hay build ni empaquetado, se ejecutan 
 
 ## 1. Verificar Node ≥ 18
 
-Los módulos usan sintaxis y APIs de `node:test` disponibles desde Node 18. Verificá la versión
+Los módulos usan sintaxis y APIs de `node:test` disponibles desde Node 18. Verifica la versión
 instalada:
 
 **POSIX (bash/zsh):**
@@ -19,7 +19,7 @@ node --version
 node --version
 ```
 
-Si la major es menor a 18, actualizá Node antes de continuar. `assertNode(18)` (en
+Si la major es menor a 18, actualiza Node antes de continuar. `assertNode(18)` (en
 `assets/lib/platform.mjs`) hace este mismo chequeo en runtime y lanza un error claro si no se
 cumple.
 
@@ -29,7 +29,7 @@ Los módulos resuelven su raíz de instalación desde la variable de entorno `CR
 que debe apuntar a la ruta **absoluta** de `skills/cross-model-orca/assets` (dentro de este
 repo, `ai-workflows`).
 
-**POSIX (bash/zsh)** — reemplazá `<ruta-absoluta-del-repo>` por la ruta real del checkout:
+**POSIX (bash/zsh)** — reemplaza `<ruta-absoluta-del-repo>` por la ruta real del checkout:
 ```bash
 export CROSS_MODEL_ORCA="<ruta-absoluta-del-repo>/skills/cross-model-orca/assets"
 ```
@@ -39,12 +39,12 @@ Ejemplo concreto en este entorno:
 export CROSS_MODEL_ORCA="/Users/max/Personal/repos/ai-workflows/skills/cross-model-orca/assets"
 ```
 
-**PowerShell** — reemplazá `<ruta-absoluta-del-repo>` por la ruta real del checkout:
+**PowerShell** — reemplaza `<ruta-absoluta-del-repo>` por la ruta real del checkout:
 ```powershell
 $env:CROSS_MODEL_ORCA = "<ruta-absoluta-del-repo>\skills\cross-model-orca\assets"
 ```
 
-Para que quede seteada en toda sesión nueva, agregá el `export`/`$env:` a tu `~/.zshrc`,
+Para que quede seteada en toda sesión nueva, agrega el `export`/`$env:` a tu `~/.zshrc`,
 `~/.bashrc` o perfil de PowerShell (`$PROFILE`), según corresponda.
 
 ## 3. Instalación reproducible de `skills-ref`
@@ -74,7 +74,7 @@ uvx --from skills-ref agentskills validate ./skills/cross-model-orca
 > `skills-ref`. Se verificó en vivo: `uvx skills-ref ...` falla con
 > *"An executable named `skills-ref` is not provided by package `skills-ref`"* y sugiere
 > `uvx --from skills-ref agentskills`. Antes de depender de este comando en un pipeline
-> automatizado, confirmá el nombre del ejecutable contra la versión de `skills-ref` que
+> automatizado, confirma el nombre del ejecutable contra la versión de `skills-ref` que
 > tengas instalada (`agentskills --version` o `skills-ref --version`, según corresponda).
 
 **Alternativa con `pip` (entorno virtual, en vez de `uv`):**

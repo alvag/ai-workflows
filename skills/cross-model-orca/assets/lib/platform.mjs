@@ -40,7 +40,7 @@ export function assertNode(minMajor) {
   if (currentMajor < minMajor) {
     throw new Error(
       `Se requiere Node >= ${minMajor}. Versión actual: ${process.versions.node}. ` +
-        'Actualizá Node antes de continuar (ver install.md).'
+        'Actualiza Node antes de continuar (ver install.md).'
     );
   }
 }
@@ -55,7 +55,7 @@ export function resolveInstallRoot() {
   const root = process.env.CROSS_MODEL_ORCA;
   if (!root) {
     throw new Error(
-      'CROSS_MODEL_ORCA no está seteada. Exportá la variable apuntando a la ruta absoluta de ' +
+      'CROSS_MODEL_ORCA no está seteada. Exporta la variable apuntando a la ruta absoluta de ' +
         'skills/cross-model-orca/assets (ver install.md).'
     );
   }
