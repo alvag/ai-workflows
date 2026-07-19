@@ -16,6 +16,48 @@ servidor nuevo que aparezca en el entorno (agregado por el usuario, por un plugi
 clasificar sus tools, y recién después reflejarlo en los perfiles de `claude-*.settings.json` /
 `codex-*.config.toml`.
 
+## Namespacing real de las tools MCP en Claude (crítico para `deny`/`ask`)
+
+**El nombre literal de una tool MCP en `permissions.deny`/`permissions.ask` de Claude Code
+depende de cómo esté instalado el servidor, no solo de su nombre "de servidor" tal como aparece
+en `codex mcp list` o en la documentación del MCP.** Dos convenciones reales, confirmadas en este
+entorno:
+
+- **Servidor directo** (agregado con `claude mcp add`/`.mcp.json`, sin pasar por un
+  marketplace de plugins): `mcp__<servidor>__<tool>`. Ejemplo confirmado en este entorno:
+  `pencil` está instalado como servidor directo → `mcp__pencil__get_editor_state`,
+  `mcp__pencil__batch_design`, etc.
+- **Servidor instalado como plugin de marketplace**: `mcp__plugin_<paquete>_<servidor>__<tool>`.
+  Ejemplo confirmado en este entorno: `engram` aparece en `claude mcp list` como
+  `plugin:engram:engram` (no como servidor directo) → el nombre real de sus tools es
+  `mcp__plugin_engram_engram__mem_save`, `mcp__plugin_engram_engram__mem_update`, etc. — **no**
+  `mcp__engram__mem_save`. Un nombre con el prefijo equivocado en `deny`/`ask` **no matchea
+  ninguna tool real**, y la escritura que se creía bloqueada queda sin bloquear (fail-open
+  silencioso, exactamente lo que la prohibición de wildcards de servidor busca evitar).
+
+Un mismo servidor puede incluso aparecer **instalado de las dos formas a la vez** en un mismo
+entorno (`context7` apareció tanto como `plugin:context7:context7` como servidor directo
+`context7` en `claude mcp list` de esta sesión) — cada instalación tiene su propio namespace de
+tools, y ambas necesitan su propia entrada en `deny`/`ask` si las dos están activas.
+
+**Por eso el namespacing no puede quedar fijo en este documento como una verdad universal: es
+una propiedad de CÓMO está instalado el servidor en el entorno donde se va a despachar, no del
+servidor en sí.** `atlassian`, en particular, no fue verificable en el entorno donde se escribió
+este inventario (no aparece en `claude mcp list` a nivel de proyecto) — sus tools quedan
+enumeradas con la convención de servidor directo (`mcp__atlassian__<tool>`) **sin confirmar**;
+si en el entorno real de despacho `atlassian` estuviera instalado como plugin, ese nombre no
+matchea y hay que corregirlo antes de lanzar.
+
+**Consecuencia obligatoria (preflight fail-closed):** antes de despachar un secundario Claude,
+quien invoque `cross-model-orca` **debe confirmar el namespacing real de cada tool inventariada
+contra el entorno de activación** (p. ej. con `claude mcp list` y, si hace falta, inspeccionando
+cómo se resuelven las tools MCP disponibles en una sesión de prueba) — **no asumir** que el
+nombre que aparece en este archivo matchea tal cual. Si una tool enumerada en `deny`/`ask` no
+matchea ninguna tool real del entorno (porque cambió el namespacing, el servidor se reinstaló
+distinto, o el nombre nunca se verificó), el preflight **bloquea el despacho** en vez de lanzar
+con una regla que no surte efecto. Esto traslada la fragilidad del nombre literal — inevitable en
+un archivo de config estático — a un chequeo de arranque, que es la red de seguridad correcta.
+
 ## Servidores "conocidos" — inventario a nivel de tool
 
 Estos cuatro son los que consume el flujo `cross-model-orca` (contexto de Jira/Confluence,
