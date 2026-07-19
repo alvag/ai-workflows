@@ -1,0 +1,156 @@
+# Perfil "read-only" para el secundario Codex lanzado por cross-model-orca (co-explore,
+# cross-review). Instalar como $CODEX_HOME/<nombre>.config.toml e invocar con:
+#   codex exec -p <nombre> -s read-only -a untrusted --disable hooks ...
+# (comando completo POSIX + PowerShell en profiles.md).
+#
+# Regla fail-closed (ver mcp-inventory.md): cualquier servidor/tool/app/plugin no inventariado
+# queda bloqueado. Este archivo enumera explícitamente cada servidor MCP y plugin conocido en el
+# entorno de referencia (Codex 0.144.6, 2026-07-19) en vez de confiar en que lo no mencionado
+# quede "implícitamente" afuera.
+#
+# Nota de validación (confirmada contra el CLI real): bajo `--strict-config`, tocar CUALQUIER
+# campo de `mcp_servers.<id>` — incluido `enabled` por sí solo — exige redeclarar el transporte
+# completo (`command`/`args` o `url`) en este archivo, aunque el servidor ya exista en la config
+# base. Sin transporte, `--strict-config` falla con "invalid transport". Por eso cada bloque de
+# abajo repite su transporte real, aun para los que solo se deshabilitan.
+
+# --- apps: fail-closed a nivel de feature, no per-app ---
+# `apps._default.enabled=false` NO alcanza (un `apps.<id>.enabled=true` heredado lo pisa, y
+# `codex mcp list` no enumera apps). El corte real es el feature flag completo.
+[features]
+apps = false
+
+# ============================================================
+# Servidores MCP "conocidos" del flujo (ver mcp-inventory.md)
+# ============================================================
+
+# Atlassian (Jira/Confluence): lectura habilitada, escritura bloqueada por nombre de tool.
+[mcp_servers.atlassian-mcp-server]
+url = "https://mcp.atlassian.com/v1/mcp/authv2"
+enabled = true
+disabled_tools = [
+  "createJiraIssue",
+  "addCommentToJiraIssue",
+  "transitionJiraIssue",
+  "addWorklogToJiraIssue",
+]
+
+# engram (memoria persistente): ningún rol de cross-model-orca necesita que el secundario
+# escriba en la memoria del usuario -> todas las tools de escritura bloqueadas, ambos perfiles.
+# `command = "engram"` (sin ruta absoluta) para que resuelva por PATH en cualquier máquina donde
+# el binario esté instalado; si tu entorno no lo tiene en PATH, ajusta a la ruta real.
+[mcp_servers.engram]
+command = "engram"
+args = ["mcp", "--tools=agent"]
+enabled = true
+disabled_tools = [
+  "mem_save",
+  "mem_save_prompt",
+  "mem_update",
+  "mem_delete",
+  "mem_pin",
+  "mem_unpin",
+  "mem_merge_projects",
+  "mem_session_start",
+  "mem_session_end",
+  "mem_capture_passive",
+  "mem_judge",
+  "mem_review",
+]
+
+# context7 (documentación de librerías) NO aparece aquí a propósito: no tiene ninguna tool de
+# escritura conocida (query-docs / resolve-library-id, ambas lectura — ver mcp-inventory.md), y
+# su transporte en este entorno lleva una API key real en `http_headers` que no corresponde
+# versionar en este archivo. Queda con el `enabled` que traiga la config base del usuario; si en
+# tu entorno context7 expusiera alguna tool de escritura, agrégalo aquí con su propio transporte.
+
+# pencil (diseño): fuera de alcance de este flujo -> servidor completo deshabilitado (ni
+# siquiera las tools de lectura; ver razones en mcp-inventory.md). El path del binario es
+# específico de este entorno (macOS, Pencil.app instalado en /Applications); en otra máquina sin
+# Pencil instalado este bloque es inocuo (el server deshabilitado nunca se intenta lanzar).
+[mcp_servers.pencil]
+command = "/Applications/Pencil.app/Contents/Resources/app.asar.unpacked/out/mcp-server-darwin-arm64"
+args = ["--app", "desktop", "--agent", "codexCLI"]
+enabled = false
+
+# ============================================================
+# Otros servidores detectados en el entorno, fuera de alcance -> deshabilitados explícitamente
+# (ver mcp-inventory.md "Otros servidores detectados"). Los que ya vienen `enabled=false` en la
+# config base de referencia (figma, sonarqube, computer-use, api-mcp-front) no se repiten aquí:
+# si tu entorno los tiene habilitados, agrégalos con `enabled = false` + su transporte real.
+# ============================================================
+
+[mcp_servers.chrome-devtools]
+command = "npx"
+args = ["chrome-devtools-mcp@latest"]
+enabled = false
+
+[mcp_servers.playwright]
+command = "npx"
+args = ["@playwright/mcp@latest"]
+enabled = false
+
+[mcp_servers.bitbucket]
+command = "npx"
+args = ["-y", "@aashari/mcp-server-atlassian-bitbucket"]
+enabled = false
+
+[mcp_servers.angular-cli]
+command = "npx"
+args = ["-y", "@angular/cli", "mcp"]
+enabled = false
+
+[mcp_servers.node_repl]
+command = "node_repl"
+enabled = false
+
+[mcp_servers.sites-design-picker]
+command = "node"
+args = ["./mcp/server.mjs"]
+enabled = false
+
+# ============================================================
+# Plugins de Codex: ninguno es necesario para este flujo (no interactúa con documentos de
+# oficina, PDFs, ni automatiza navegador) -> deshabilitados uno por uno en vez de confiar en que
+# queden implícitamente afuera. Ajusta esta lista si tu entorno tiene plugins distintos
+# instalados (`codex plugin list`).
+# ============================================================
+
+[plugins."documents@openai-primary-runtime"]
+enabled = false
+
+[plugins."spreadsheets@openai-primary-runtime"]
+enabled = false
+
+[plugins."presentations@openai-primary-runtime"]
+enabled = false
+
+[plugins."superpowers@openai-curated"]
+enabled = false
+
+[plugins."atlassian-rovo@openai-curated"]
+enabled = false
+
+[plugins."figma@openai-curated"]
+enabled = false
+
+[plugins."pdf@openai-primary-runtime"]
+enabled = false
+
+[plugins."chrome@openai-bundled"]
+enabled = false
+
+[plugins."template-creator@openai-primary-runtime"]
+enabled = false
+
+[plugins."sites@openai-bundled"]
+enabled = false
+
+[plugins."visualize@openai-bundled"]
+enabled = false
+
+[plugins."browser@openai-bundled"]
+enabled = false
+
+# --- Sandbox / approval / hooks: se pasan como flags de invocación, no en este archivo (ver
+#     profiles.md). Read-only = `-s read-only -a untrusted --disable hooks`.
