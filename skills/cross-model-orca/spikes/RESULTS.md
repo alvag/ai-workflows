@@ -50,11 +50,27 @@ inspeccionaron 232 rollouts de Codex bajo `CODEX_HOME` y 23 transcripts de Claud
 
 ## Task 0.2 — Contrato de señal + estabilización
 
-Estado: **pendiente**.
+Estado: **PARCIAL** — la parte inspeccionable (orden en el transcript) quedó resuelta; el flush-timing
+exacto y `tui-idle` requieren una **corrida live** (pendiente, coordinada con el usuario).
 
-- Orden señal `worker_done` vs mensaje final en el transcript → _(a completar)_
-- `terminal wait --for tui-idle` como transición busy→idle posterior al dispatch → _(a completar)_
-- `nonce` en el envelope para desambiguar sesión reutilizada → _(a completar)_
+### Resuelto por inspección (rollouts interactivos con `worker_done`, 2026-07-19)
+- **El mensaje final del turno NO es garantizadamente la última línea del transcript.** En un rollout real
+  hay `function_call`/`function_call_output` (incluida la propia llamada a `orchestration send worker_done`)
+  **después** del último `response_item` de texto del asistente. → El conductor **no** debe leer "la última
+  línea"; debe buscar **la última entrada `assistant` de texto cuyo envelope cumpla `STATUS: done` + el
+  `nonce`/IDs esperados**. Confirma el hallazgo de review r2 #15/#17.
+- **Contrato de poll (fijado):** la señal `worker_done` es **solo wake-up**; la evidencia es el **envelope
+  con `nonce`**. El conductor poll-ea el transcript hasta una entrada JSON **completa y parseable** (línea
+  terminada en `\n`) con el envelope del dispatch en curso; ignora entradas de dispatches previos (nonce
+  viejo) y líneas a medio escribir.
+
+### Pendiente (corrida live, requiere Orca + vigilancia del usuario)
+- **Flush-timing:** ¿la línea del mensaje final ya está en disco cuando llega el `worker_done`? Medir la
+  ventana y fijar el timeout/backoff del poll.
+- **`terminal wait --for tui-idle`:** validar que reporta la transición **busy→idle posterior al dispatch**
+  (no un idle preexistente). Es el respaldo de detección de fin, sobre todo para Claude (que no señaliza).
+- **`nonce` en el envelope:** confirmar en vivo que el secundario copia el `nonce` inyectado en el prompt a
+  su envelope final (desambiguación de sesión reutilizada).
 
 ## Task 0.3 — Señal por comando (solo Codex) con hooks apagados
 
