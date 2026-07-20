@@ -85,6 +85,7 @@ commit_style: conventional       # conventional | plain
 tracker: github                  # jira | github | gitlab | linear | none
 test_scope_hint: "vitest run {name}"   # plantilla de COMANDO para acotar tests; {name} = archivo/patrón
 cross_review: { mode: auto }     # segunda opinión cross-model: auto (por complejidad) | on | off
+cross_model: { transport: auto } # transporte cross-model (auto | orca-session | cli) para co-explore/cross-review/cross-implement; es el `desired`, cada skill delegada reevalúa su propio effective
 jira_approval: { mode: "off" }   # aprobación externa de la spec en Jira (solo si tracker: jira; "off"/"on" entre comillas)
 implement_mode: ask              # cómo ejecutar las tasks: ask (preguntar en el gate) | inline | subagent | cross
 cross_implement:                 # política del modo cross (solo si implement_mode: cross; ver skill cross-implement)

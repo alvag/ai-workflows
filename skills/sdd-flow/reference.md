@@ -157,6 +157,8 @@ co_explore:                      # exploración paralela cross-model ANTES de sp
   debate:                        # modo `debate` de co-explore: ayuda a decidir en `clarify`/`plan`. INDEPENDIENTE de `mode` (arriba); ver `SKILL.md` → "Debate en decisiones"
     mode: auto                   # off (nunca se ofrece) | auto (decisiones complejas/high-stakes o inseguridad) | on (cualquier decisión contestable). Siempre se OFRECE, nunca corre sin confirmación
     max_rounds: 3
+cross_model:                     # transporte cross-model para las delegaciones (co-explore, cross-review, cross-implement); ver skill cross-model-orca
+  transport: auto                # auto (resuelve por reachability de Orca) | orca-session | cli. Es el `desired`; cada skill delegada reevalúa su propio `effective`
 jira_approval:                   # aprobación externa de la spec en Jira (opcional; solo si tracker: jira)
   mode: "off"                    # "off" | "on"  (default off; entre comillas: sin ellas YAML los parsea como booleanos)
   subtask_issuetype: auto        # auto (descubrir por createmeta) | "Subtarea" | "Sub-task"
@@ -174,6 +176,14 @@ domain_context:
 final_diff_review:
   mode: auto                     # auto (complex/high-risk inline) | "on" | "off"
 ```
+
+**Propagación de `cross_model.transport`.** Cuando sdd-flow invoca `co-explore`, `cross-review` o
+`cross-implement`, les pasa **`cross_model.transport`** (el valor de arriba, el `desired`) como
+override — **nunca** un transporte ya resuelto por su propio proceso. Cada skill delegada
+reevalúa su propio `effective` con el algoritmo `override ?? config ?? auto` (ver
+`cross-model-orca/reference.md` → "Resolver de transporte") y degrada a `cli` si su proceso no
+alcanza Orca, aunque el proceso de sdd-flow sí lo alcance. Sin cambios de comportamiento cuando el
+valor es `auto` y Orca no está disponible: el transporte sigue siendo `cli`, como hoy.
 
 Placeholders de `branch_format`: `{type}` (prefijo efectivo), `{ticket}` (clave del tracker, se omite si no hay), `{slug}` (2-5 palabras del título en kebab, sin acentos, `[a-z0-9-]`).
 
