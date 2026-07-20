@@ -92,16 +92,16 @@ test('buildLaunchCommand (claude, write, atendido vs desatendido, PowerShell)', 
   assert.match(attended, /claude-write\.settings\.json/);
 });
 
-test('buildLaunchCommand (codex): perfil/sandbox/approval varían por role+mode, sin variante PowerShell distinta', () => {
+test('buildLaunchCommand (codex): sandbox/approval varían por role+mode, features.apps=false inline, sin -p ni variante PowerShell distinta', () => {
   const roAttended = buildLaunchCommand({ family: 'codex', role: 'read-only', mode: 'attended' });
   const roUnattended = buildLaunchCommand({ family: 'codex', role: 'read-only', mode: 'unattended' });
   const writeAttended = buildLaunchCommand({ family: 'codex', role: 'write', mode: 'attended' });
   const writeUnattended = buildLaunchCommand({ family: 'codex', role: 'write', mode: 'unattended' });
 
-  assert.equal(roAttended, 'codex -p cmo-readonly -s read-only -a untrusted --disable hooks');
-  assert.equal(roUnattended, 'codex -p cmo-readonly -s read-only -a never --disable hooks');
-  assert.equal(writeAttended, 'codex -p cmo-write -s workspace-write -a on-request --disable hooks');
-  assert.equal(writeUnattended, 'codex -p cmo-write -s workspace-write -a never --disable hooks');
+  assert.equal(roAttended, 'codex -c features.apps=false -s read-only -a untrusted --disable hooks');
+  assert.equal(roUnattended, 'codex -c features.apps=false -s read-only -a never --disable hooks');
+  assert.equal(writeAttended, 'codex -c features.apps=false -s workspace-write -a on-request --disable hooks');
+  assert.equal(writeUnattended, 'codex -c features.apps=false -s workspace-write -a never --disable hooks');
 });
 
 test('buildLaunchCommand: familia desconocida lanza Error', () => {

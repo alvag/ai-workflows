@@ -233,30 +233,31 @@ codex -p cmo-readonly -c features.apps=false -s read-only -a never --disable hoo
 
 ### Codex · write (cross-implement)
 
-**Atendido** — `-a on-request` (el modelo decide cuándo pedir aprobación; alguien puede
-responder):
+**Atendido (default, vigilancia manual)** — `-a on-request` (el modelo decide cuándo pedir
+aprobación; el humano responde en la TUI), sin perfil que copiar, `features.apps=false` inline:
 
 **POSIX:**
 ```bash
-codex -p cmo-write -s workspace-write -a on-request --disable hooks "<work order>"
+codex -c features.apps=false -s workspace-write -a on-request --disable hooks "<work order>"
 ```
 
 **PowerShell:**
 ```powershell
-codex -p cmo-write -s workspace-write -a on-request --disable hooks "<work order>"
+codex -c features.apps=false -s workspace-write -a on-request --disable hooks "<work order>"
 ```
 
 **Desatendido** — `-a never` (cualquier comando fuera del sandbox falla en vez de preguntar; el
-secundario debe resolverlo solo o terminar en error, nunca colgado):
+secundario debe resolverlo solo o terminar en error, nunca colgado), y **opcionalmente** el perfil
+`-p cmo-write` para restringir MCP server-scoped (hay que copiarlo antes a `$CODEX_HOME`):
 
 **POSIX:**
 ```bash
-codex -p cmo-write -s workspace-write -a never --disable hooks "<work order>"
+codex -p cmo-write -c features.apps=false -s workspace-write -a never --disable hooks "<work order>"
 ```
 
 **PowerShell:**
 ```powershell
-codex -p cmo-write -s workspace-write -a never --disable hooks "<work order>"
+codex -p cmo-write -c features.apps=false -s workspace-write -a never --disable hooks "<work order>"
 ```
 
 ## Validación real

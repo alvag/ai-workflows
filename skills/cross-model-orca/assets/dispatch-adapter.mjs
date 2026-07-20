@@ -156,14 +156,16 @@ export function buildLaunchCommand({ family, role, mode, sessionId, installRoot,
   }
 
   if (family === 'codex') {
-    const profile = role === 'read-only' ? 'cmo-readonly' : 'cmo-write';
     const sandbox = role === 'read-only' ? 'read-only' : 'workspace-write';
     const approval =
       role === 'read-only'
         ? mode === 'attended' ? 'untrusted' : 'never'
         : mode === 'attended' ? 'on-request' : 'never';
-    // Misma sintaxis en POSIX y PowerShell: no hay prefijo de variables de entorno que traducir.
-    return `codex -p ${profile} -s ${sandbox} -a ${approval} --disable hooks`;
+    // Default de vigilancia manual (S3/Fase 5): el gate de MCP es el humano en la TUI, no un perfil
+    // instalado. Sin `-p` (ese es endurecimiento OPCIONAL para el caso desatendido, ver
+    // profiles.md), con `features.apps=false` inline como garantía cero-config. Misma sintaxis en
+    // POSIX y PowerShell: no hay prefijo de variables de entorno que traducir.
+    return `codex -c features.apps=false -s ${sandbox} -a ${approval} --disable hooks`;
   }
 
   throw new Error(`Familia desconocida: "${family}". Los valores válidos son "codex" o "claude".`);
