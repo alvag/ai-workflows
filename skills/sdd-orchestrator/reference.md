@@ -47,6 +47,7 @@ cross_review:                  # opcional; segunda opinión cross-model EN LOS G
   artifacts: [master-spec, reparto]
   max_rounds: 3
 co_explore: {mode: auto, deadline: 600}  # co-exploración cross-repo ANTES del reparto; ORTOGONAL a cross_review (bloque hermano, no anidado); default on en orquestación; ver SKILL.md → Co-exploración cross-model
+cross_model: {transport: auto}   # transporte cross-model heredado por los sdd-flow delegados; auto | orca-session | cli. Es el `desired`
 repos:
   - path: servicio-a          # relativo a la contenedora
     branch: feature/ABC-123-trace-id
@@ -62,6 +63,14 @@ repos:
 ```
 
 El `branch` de cada repo se computa al hacer el reparto resolviendo el prefijo con precedencia **`branch_prefix` local del repo (`<repo>/.specify/config.yml`) > `branch_prefix` de la orquestación (este `manifest.yml`) > prefijo semántico**. Por eso dos repos de la misma orquestación pueden tener prefijos distintos (uno con config local, otro no).
+
+**Propagación de `cross_model.transport`.** El orquestador pasa **`cross_model.transport`** (el
+valor de arriba, el `desired`) al `sdd-flow` delegado de cada repo — vía el prompt del agente
+delegado (ver "Prompt del agente delegado") — **nunca** el transporte ya resuelto en el proceso
+del orquestador (su propio `effective`). Cada `sdd-flow` delegado corre en su propio proceso (un
+agente del fan-out) y reevalúa su propio `effective` con `override ?? config ?? auto` (ver
+`cross-model-orca/reference.md` → "Resolver de transporte"): puede ver el runtime de Orca como
+`stale_bootstrap` y degradar a `cli` aunque el orquestador lo alcance sin problema.
 
 ### Valores de `status`
 
@@ -162,7 +171,10 @@ Skill tool. El fan-out (Fase 2.3) le pasa el contrato por prompt. Plantilla:
 Trabaja ÚNICAMENTE en el repo <ruta-absoluta-al-repo> (todo comando y ruta, relativos a él).
 Lee <directorio-de-skills>/sdd-flow/SKILL.md (y su reference.md si lo necesitas) y ejecuta su
 Vía B: "implement .plans/<id>/", siguiendo ese contrato al pie de la letra.
-Override de esta corrida: cross_review.mode: off (el plan ya fue revisado en el reparto).
+Override de esta corrida: cross_review.mode: off (el plan ya fue revisado en el reparto);
+cross_model.transport.desired: <valor de cross_model.transport del manifest> (resuelve tu propio
+effective con override ?? config ?? auto; si Orca no es alcanzable desde tu proceso, degrada a
+cli — nunca heredes el effective del orquestador, es tuyo por reevaluar).
 Reglas duras:
 - FRENA antes de commitear (nada de git commit/push); no toques nada fuera del repo.
 - Eres un agente sin usuario: NO hagas los checkpoints conversacionales de la Vía B (no
@@ -176,6 +188,7 @@ STATUS: verified | failed
 FAILURE_REASON: <1-3 líneas si failed; omitir si verified>
 AC: <una línea por AC-n: cumplido | no cumplido — evidencia breve>
 FILES: <una línea por archivo tocado>
+TRANSPORT: orca-session | cli  (el effective que tu proceso resolvió para tus delegaciones cross-model, si corriste alguna; omitir si no invocaste co-explore/cross-review/cross-implement)
 ```
 
 El orquestador parsea `STATUS` para actualizar el `manifest.yml` (Fase 2.4). Red de seguridad: si
