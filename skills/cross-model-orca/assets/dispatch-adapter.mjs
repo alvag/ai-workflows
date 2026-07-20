@@ -58,6 +58,29 @@ function parseJsonOutput(stdout) {
   }
 }
 
+/**
+ * Todo comando `orca ... --json` envuelve su salida en un envelope común:
+ * `{ id, ok, result | error, _meta }` (verificado en vivo contra el CLI real —
+ * ver `spikes/RESULTS.md`, Fase 7). El éxito NO se decide por el exit code del
+ * proceso (es inconsistente: `terminal close` sobre un handle stale devuelve
+ * `ok:false` pero exit 0), sino por `ok === true`. Estos dos helpers son el
+ * único punto por el que el adaptador lee salidas de `orca`.
+ * @param {*} parsed salida ya pasada por `parseJsonOutput`.
+ * @returns {boolean}
+ */
+function orcaOk(parsed) {
+  return parsed != null && parsed.ok === true;
+}
+
+/**
+ * Devuelve `parsed.result` solo si el envelope es `ok`; si no, `null`.
+ * @param {*} parsed
+ * @returns {*}
+ */
+function orcaResult(parsed) {
+  return orcaOk(parsed) ? (parsed.result ?? null) : null;
+}
+
 // ---------------------------------------------------------------------------
 // stateDir: registro de sesiones/dispatches, conductor-only, fuera de worktrees
 // ---------------------------------------------------------------------------
@@ -350,7 +373,8 @@ export function createOwnedSession({
   ];
   const createResult = orcaRunner(createArgs);
   const createJson = parseJsonOutput(createResult.stdout);
-  const terminalHandle = createJson?.handle ?? createJson?.terminal?.handle ?? null;
+  // Forma real (verificada en vivo): `{ ok:true, result: { terminal: { handle, ... } } }`.
+  const terminalHandle = orcaResult(createJson)?.terminal?.handle ?? null;
   if (!terminalHandle) return null; // no se pudo crear la terminal / leer su handle: no hay sesión que registrar.
 
   let sessionId;
@@ -389,9 +413,10 @@ export function createOwnedSession({
 
 /**
  * Instruye al secundario a cerrar su último mensaje con el envelope de nonce.
- * `harvest()` (Task 1.3) solo necesita el `nonce` para desambiguar (ver
- * `selectAssistantByNonce`); `taskId`/`dispatchId` viajan por el canal de
- * `worker_done` (payload de la orquestación), no por este envelope de texto.
+ * Este envelope (nonce + sentinel `STATUS: done`) es la ÚNICA señal de fin y de
+ * correlación que usa el conductor: `harvest()` busca el mensaje del asistente con
+ * este `nonce` (único por dispatch) en el transcript propio (ver
+ * `selectAssistantByNonce`). No se depende de `worker_done` (ver `awaitDone`).
  * @param {string} nonce
  * @returns {string}
  */
@@ -404,40 +429,74 @@ function buildEnvelopeInstructions(nonce) {
   );
 }
 
+// Presupuesto para que el secundario recién creado bootee su TUI (Codex/Claude cargan MCP servers,
+// modelo, etc.) y llegue a tui-idle antes de inyectarle la tarea. En el E2E de Fase 7 el boot de
+// Codex (con arranque de MCP servers) tardó decenas de segundos; 120s da margen holgado.
+const CREATE_DISPATCH_BOOT_TIMEOUT_MS = 120_000;
+
 /**
  * Crea el task+dispatch de Orca para `session`, genera un `nonce` e inyecta las
- * instrucciones de cierre en el spec. Persiste el registro en `session.stateDir`.
+ * instrucciones de cierre en el spec vía `dispatch --inject`. Persiste el registro
+ * en `session.stateDir`. El `dispatchId` es parte de la clave de dedup de `awaitDone`.
+ *
+ * **Espera de boot (tui-idle) antes de inyectar.** El secundario recién creado está
+ * booteando su TUI. Inyectar la tarea antes de que esté listo la pierde: el agente
+ * queda idle en su prompt sin trabajar (verificado en el E2E de Fase 7 — Codex quedaba
+ * en su placeholder). La guía de orquestación de Orca lo exige: esperar tui-idle antes
+ * de `dispatch --inject`. Se bloquea hasta `bootTimeoutMs`; si no llega a idle, se lanza
+ * (el llamador degrada a `cli`).
+ *
+ * **No se pasa `--from` (worker_done abandonado).** El preamble de `--inject` le pide al
+ * worker mandar un `worker_done`, pero el E2E probó que un Codex sandboxeado no alcanza el
+ * runtime de Orca para enviarlo (falla con "Orca is not running"). La detección de fin y
+ * la autoridad las da el nonce del envelope en el transcript propio (ver `awaitDone`), no
+ * `worker_done`. El intento de worker_done del secundario falla de forma inocua; no lo
+ * ruteamos con `--from` porque no lo consumimos.
  *
  * @param {object} params
  * @param {object} params.session sesión devuelta por `createOwnedSession`.
  * @param {string} params.spec texto de la tarea (sin envelope: este helper lo agrega).
  * @param {string} params.root raíz autorizada del dispatch (se persiste como referencia; la usa `awaitDone`/`harvest`).
+ * @param {number} [params.bootTimeoutMs] presupuesto de boot del secundario hasta tui-idle.
  * @param {(args: string[]) => { stdout: string, code: number }} [params.orcaRunner]
  * @returns {{ taskId: string, dispatchId: string, expectedAssignee: string, nonce: string }}
  */
-export function createDispatch({ session, spec, root, orcaRunner = defaultOrcaRunner }) {
+export function createDispatch({
+  session,
+  spec,
+  root,
+  bootTimeoutMs = CREATE_DISPATCH_BOOT_TIMEOUT_MS,
+  orcaRunner = defaultOrcaRunner,
+}) {
   const nonce = randomUUID();
   const augmentedSpec = `${spec}\n\n${buildEnvelopeInstructions(nonce)}`;
 
   const taskCreateResult = orcaRunner(['orchestration', 'task-create', '--spec', augmentedSpec, '--json']);
   const taskJson = parseJsonOutput(taskCreateResult.stdout);
-  const taskId = taskJson?.taskId ?? taskJson?.task_id ?? taskJson?.id ?? null;
+  // Forma real (verificada en vivo): `{ ok:true, result: { task: { id: "task_...", ... } } }`.
+  const taskId = orcaResult(taskJson)?.task?.id ?? null;
   if (!taskId) {
     throw new Error('No se pudo obtener taskId de "orchestration task-create": salida inesperada.');
   }
 
+  // Espera a que el secundario termine de bootear (tui-idle) antes de inyectar (ver docstring).
+  // Éxito = ok:true; un timeout llega como ok:false (error.code:"timeout").
+  const bootWait = orcaRunner([
+    'terminal', 'wait', '--terminal', session.terminalHandle,
+    '--for', 'tui-idle', '--timeout-ms', String(bootTimeoutMs), '--json',
+  ]);
+  if (!orcaOk(parseJsonOutput(bootWait.stdout))) {
+    throw new Error(
+      `El secundario no alcanzó tui-idle en ${bootTimeoutMs}ms tras crearse: inyectar ahora perdería el prompt (degradar a cli).`
+    );
+  }
+
   const dispatchResult = orcaRunner([
-    'orchestration',
-    'dispatch',
-    '--task',
-    taskId,
-    '--to',
-    session.terminalHandle,
-    '--inject',
-    '--json',
+    'orchestration', 'dispatch', '--task', taskId, '--to', session.terminalHandle, '--inject', '--json',
   ]);
   const dispatchJson = parseJsonOutput(dispatchResult.stdout);
-  const dispatchId = dispatchJson?.dispatchId ?? dispatchJson?.dispatch_id ?? dispatchJson?.id ?? null;
+  // Forma real (verificada en vivo): `{ ok:true, result: { dispatch: { id: "ctx_...", ... }, injected } }`.
+  const dispatchId = orcaResult(dispatchJson)?.dispatch?.id ?? null;
   if (!dispatchId) {
     throw new Error('No se pudo obtener dispatchId de "orchestration dispatch": salida inesperada.');
   }
@@ -514,94 +573,63 @@ export async function resolveCodexTranscript({
 // awaitDone
 // ---------------------------------------------------------------------------
 
-const AWAIT_POLL_INITIAL_MS = 50;
-const AWAIT_POLL_MAX_MS = 1000;
+// Presupuesto máximo para esperar a que el rollout de Codex APAREZCA (se escribe cuando arranca
+// el turno, segundos tras el inject). Es solo la espera de aparición; una vez localizado, harvest()
+// consume el resto del deadline esperando el nonce+sentinel. Acotado además por el deadline real.
+const CODEX_LOCATE_BUDGET_MS = 60_000;
 
 function hashFile(filePath) {
   return createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
 }
 
 /**
- * Busca, en la respuesta de `orchestration check`, un `worker_done` cuyo
- * `payload.taskId`/`payload.dispatchId` coincidan con `dispatch`. Autoridad de
- * tarea: Orca garantiza que un `worker_done` con el task/dispatch activos solo
- * completa desde el pane assignee (ver `spikes/RESULTS.md`, Task 0.2, "Matiz
- * para el adaptador"). Si el mensaje además expone el handle del sender, se
- * compara contra `expectedAssignee` como mejor esfuerzo; si no lo expone, no
- * bloquea por eso (la garantía de Orca + los IDs alcanzan para v1).
- * @param {object} params
- * @returns {{ authorized: boolean }}
- */
-function checkWorkerDoneAuthority({ orcaRunner, coordinatorHandle, dispatch }) {
-  const result = orcaRunner(['orchestration', 'check', '--terminal', coordinatorHandle, '--all', '--json']);
-  const parsed = parseJsonOutput(result.stdout);
-  const messages = Array.isArray(parsed?.messages) ? parsed.messages : Array.isArray(parsed) ? parsed : [];
-
-  for (const msg of messages) {
-    if (msg?.type !== 'worker_done') continue;
-    const payload = msg.payload ?? {};
-    if (payload.taskId !== dispatch.taskId || payload.dispatchId !== dispatch.dispatchId) continue;
-
-    const sender = msg.from ?? msg.sender ?? msg.senderHandle ?? null;
-    if (sender !== null && sender !== dispatch.expectedAssignee) continue;
-
-    return { authorized: true };
-  }
-  return { authorized: false };
-}
-
-/**
- * Espera el fin del turno del secundario, valida autoridad y cosecha.
+ * Espera el fin del turno del secundario y cosecha su informe del transcript propio.
  *
- * Detección de fin: Codex señaliza `worker_done` por comando (autoridad =
- * `taskId`/`dispatchId` del payload, ver `checkWorkerDoneAuthority`). Claude no
- * emite `worker_done` por diseño (`spikes/RESULTS.md`, Task 0.3): su sesión es
- * exclusiva (nosotros fijamos el `--session-id`, así que el transcript solo
- * puede contener mensajes de esa sesión) y `harvest()` desambigua además por
- * `nonce`, así que para esa familia "fin del turno" (`terminal wait --for
- * tui-idle`) ya es autoridad suficiente. Para Codex, `tui-idle` NO sustituye la
- * validación de `worker_done`: solo se consulta para Claude.
+ * **Detección de fin = el nonce+sentinel del envelope en el transcript propio, NO
+ * `worker_done`.** El E2E de Fase 7 (primer contacto con Orca real) demostró que un
+ * secundario Codex sandboxeado NO puede reportar `worker_done`: dentro del sandbox
+ * `read-only`, `ORCA_CLI_SOCKET`/`ORCA_RUNTIME_DIR` vienen vacíos y `orca ...` falla
+ * con "Orca is not running" (el sandbox no alcanza el runtime). Codex sí completa la
+ * tarea, cierra con el envelope `X-CMO: nonce=… / STATUS: done`, y su rollout queda
+ * en disco — todo observable por el conductor (que no está sandboxeado). Por eso la
+ * autoridad/correlación es el **nonce** (único por dispatch) dentro del transcript de
+ * la **sesión propia** (terminal que creamos nosotros; para Codex, rollout localizado
+ * por cwd+mtime+source y desambiguado a exactamente 1), el mismo modelo que Claude.
+ * `harvest()` ya hace el poll del transcript con backoff hasta el deadline esperando
+ * ese nonce+sentinel: es la detección de fin. No se consulta `orchestration check`
+ * ni `tui-idle`.
  *
- * Dedup: la clave durable es `${dispatchId}:${nonce}` (misma clave que usa la
- * FSM de `harvest-core.mjs`). Si ya está `promoted`, no se vuelve a invocar
- * `harvest` — nunca se procesa dos veces el mismo dispatch+nonce. Crash-
- * idempotencia adicional: si un intento anterior escribió el reporte
- * (`writeExclusive`) pero cayó antes de `markPromoted`, el retry ve un
- * `harvest()` con `code:2` cuyo `reason` es exactamente
- * `REPORT_ALREADY_EXISTS_REASON` (destino ya existente, no un escape de
- * contención real) — ese caso se trata como éxito idempotente (`code:0`), no
- * como rechazo, y de paso auto-repara una FSM corrupta/perdida.
+ * Codex: el rollout no existe hasta que arranca el turno (segundos tras el inject),
+ * así que primero se lo localiza reintentando hasta que aparece, acotado por el
+ * deadline (`resolveCodexTranscript`). Si nunca aparece (0 candidatos) o es ambiguo
+ * (>1), se devuelve `code: 4` (degradar a `cli`) sin cosechar. Claude ya trae su
+ * `transcriptPath` resuelto de `createOwnedSession`.
  *
- * Codex además necesita resolver el locator del rollout de forma diferida
- * (ver `resolveCodexTranscript`): si `session.transcriptPath` todavía no está
- * resuelto al entrar acá, se reintenta un número acotado de veces antes de
- * empezar el poll de `worker_done`. Si tras esos reintentos sigue sin
- * resolverse (0 candidatos — el rollout aún no se flushó — o >1, ambiguo),
- * esta función devuelve `code: 4` **sin** haber tocado la FSM ni haber
- * consultado `orchestration check` — es la señal explícita de "degradar a
- * cli" que debe interpretar la skill llamadora.
+ * Dedup: la clave durable es `${dispatchId}:${nonce}` (misma clave que usa la FSM de
+ * `harvest-core.mjs`). Si ya está `promoted`, no se vuelve a cosechar. Crash-
+ * idempotencia adicional: si un intento anterior escribió el reporte (`writeExclusive`)
+ * pero cayó antes de `markPromoted`, el retry ve un `harvest()` con `code:2` cuyo
+ * `reason` es `REPORT_ALREADY_EXISTS_REASON` (destino ya existente, no un escape de
+ * contención real) — ese caso se trata como éxito idempotente (`code:0`) y auto-repara
+ * la FSM.
  *
  * @param {object} params
  * @param {object} params.session
- * @param {{ taskId: string, dispatchId: string, expectedAssignee: string, nonce: string }} params.dispatch
- * @param {string} params.coordinatorHandle terminal del conductor donde llega el `worker_done`.
+ * @param {{ taskId: string, dispatchId: string, nonce: string }} params.dispatch
  * @param {string} params.reportPath
  * @param {string} params.root
  * @param {number} params.deadlineMs
- * @param {(args: string[]) => { stdout: string, code: number }} [params.orcaRunner]
  * @param {() => number} [params.now]
  * @param {(ms: number) => Promise<void>} [params.sleep]
  * @returns {Promise<{ code: 0, reportPath: string } | { code: 2|3, reason: string } | { code: 4, reason: string }>}
- *   `code` 4: no se pudo resolver el locator de Codex tras los reintentos acotados — degradar a `cli`.
+ *   `code` 4: no se pudo localizar el rollout de Codex antes del deadline — degradar a `cli`.
  */
 export async function awaitDone({
   session,
   dispatch,
-  coordinatorHandle,
   reportPath,
   root,
   deadlineMs,
-  orcaRunner = defaultOrcaRunner,
   now = Date.now,
   sleep = defaultSleep,
 }) {
@@ -609,58 +637,27 @@ export async function awaitDone({
   const fsm = makeDedupFsm(path.join(session.stateDir, 'dedup-fsm.json'));
 
   if (fsm.isPromoted(dedupKey)) {
-    // Ya cosechado en una corrida anterior (recuperación post-crash, o un
-    // segundo worker_done idéntico llegando después): no reprocesar. El
-    // destino ya existe en disco, así que ni siquiera intentamos invocar
-    // harvest() de nuevo (checkContainment lo rechazaría por "ya existe").
+    // Ya cosechado en una corrida anterior (recuperación post-crash, o una segunda
+    // invocación con el mismo dispatch+nonce): no reprocesar. El destino ya existe en
+    // disco, así que ni siquiera intentamos invocar harvest() de nuevo.
     return { code: 0, reportPath: path.resolve(root, reportPath) };
   }
 
+  const deadlineAt = now() + deadlineMs;
+
+  // Codex: localizar el rollout, que aparece cuando arranca el turno (segundos tras el inject).
+  // Se reintenta hasta que aparezca, acotado por una porción del deadline; si no aparece o es
+  // ambiguo, degradar a cli (code 4). Claude ya trae su transcriptPath de createOwnedSession.
   if (session.family === 'codex' && !session.transcriptPath) {
-    const resolved = await resolveCodexTranscript({ session, sleep });
+    const locateBudgetMs = Math.max(0, Math.min(deadlineAt - now(), CODEX_LOCATE_BUDGET_MS));
+    const maxAttempts = Math.max(1, Math.floor(locateBudgetMs / CODEX_LOCATOR_RETRY_MS));
+    const resolved = await resolveCodexTranscript({ session, sleep, maxAttempts, retryDelayMs: CODEX_LOCATOR_RETRY_MS });
     if (resolved === null) {
       return {
         code: 4,
-        reason: 'no se pudo localizar el rollout de Codex tras los reintentos acotados: degradar a cli',
+        reason: 'no se pudo localizar el rollout de Codex antes del deadline: degradar a cli',
       };
     }
-  }
-
-  const deadlineAt = now() + deadlineMs;
-  let waitMs = AWAIT_POLL_INITIAL_MS;
-  let authorized = false;
-
-  while (!authorized) {
-    const authResult = checkWorkerDoneAuthority({ orcaRunner, coordinatorHandle, dispatch });
-    if (authResult.authorized) {
-      authorized = true;
-      break;
-    }
-
-    if (session.family === 'claude') {
-      const idleResult = orcaRunner([
-        'terminal',
-        'wait',
-        '--terminal',
-        session.terminalHandle,
-        '--for',
-        'tui-idle',
-        '--timeout-ms',
-        '0',
-        '--json',
-      ]);
-      const idleJson = parseJsonOutput(idleResult.stdout);
-      if (idleJson?.satisfied === true) {
-        authorized = true;
-        break;
-      }
-    }
-
-    if (now() >= deadlineAt) {
-      return { code: 3, reason: 'timeout esperando fin de turno autorizado (worker_done/tui-idle)' };
-    }
-    await sleep(Math.min(waitMs, Math.max(0, deadlineAt - now())));
-    waitMs = Math.min(waitMs * 2, AWAIT_POLL_MAX_MS);
   }
 
   fsm.markReceived(dedupKey);
@@ -681,9 +678,9 @@ export async function awaitDone({
     // DESPUÉS de que harvest() ya escribió el reporte (writeExclusive) pero ANTES de
     // markPromoted, el retry llega hasta acá (isPromoted seguía en false al entrar) y vuelve a
     // invocar harvest(), que ahora ve el destino ya existente y lo reporta como contención
-    // (code 2) -- aunque en realidad la cosecha anterior fue exitosa. Como ya pasamos la
-    // validación de autoridad de este mismo dispatch+nonce (arriba, en el loop), el reporte en
-    // disco es legítimo: lo tratamos como éxito idempotente, no como rechazo, y re-marcamos la
+    // (code 2) -- aunque en realidad la cosecha anterior fue exitosa. El reporte en disco proviene
+    // de un harvest() previo del mismo dispatch+nonce (la clave de dedup): es legítimo. Lo tratamos
+    // como éxito idempotente, no como rechazo, y re-marcamos la
     // FSM (esto también autorepara una FSM corrupta que hubiera perdido su estado). Un rechazo
     // real por escape (".."/absoluta/symlink/root inválido) tiene un `reason` DISTINTO (ver
     // checkContainment en harvest-core.mjs) y no entra en esta rama.
@@ -747,8 +744,8 @@ export function recover({ session, dispatch, orcaRunner = defaultOrcaRunner }) {
     String(RECOVER_IDLE_TIMEOUT_MS),
     '--json',
   ]);
-  const idleJson = parseJsonOutput(idleResult.stdout);
-  const idleConfirmed = idleJson?.satisfied === true;
+  // Idle confirmado = `ok:true` (el timeout llega como `ok:false, error.code:"timeout"`).
+  const idleConfirmed = orcaOk(parseJsonOutput(idleResult.stdout));
 
   if (!idleConfirmed) {
     return { recovered: false };
@@ -758,9 +755,12 @@ export function recover({ session, dispatch, orcaRunner = defaultOrcaRunner }) {
     return { recovered: true };
   }
 
+  // Cierre demostrado = `ok:true`. El exit code del proceso NO sirve acá: `terminal close`
+  // sobre un handle stale devuelve `ok:false` pero exit 0 (verificado en vivo). Un cierre
+  // fallido deja `ok:false` (`error.code:"terminal_handle_stale"` u otro) → no se habilita el
+  // redispatch en rol write (no se demostró que el escritor anterior no vaya a volver a escribir).
   const closeResult = orcaRunner(['terminal', 'close', '--terminal', session.terminalHandle, '--json']);
-  const closeJson = parseJsonOutput(closeResult.stdout);
-  const closed = closeResult.code === 0 && closeJson?.error === undefined;
+  const closed = orcaOk(parseJsonOutput(closeResult.stdout));
 
   return { recovered: closed };
 }

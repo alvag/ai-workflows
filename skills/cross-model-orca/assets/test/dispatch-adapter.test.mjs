@@ -50,6 +50,24 @@ function instantSleep() {
 }
 
 // ---------------------------------------------------------------------------
+// Builders de envelope de Orca (formas REALES, verificadas en vivo contra el CLI
+// — ver spikes/RESULTS.md, Fase 7). Todo comando `orca ... --json` envuelve su
+// salida en `{ id, ok, result | error, _meta }`. Los fakes de abajo devuelven
+// exactamente esa forma para que los tests validen contra Orca real, no contra
+// una forma plana asumida (el bug que estos tests no detectaban antes).
+// ---------------------------------------------------------------------------
+
+function okEnvelope(result) {
+  return { stdout: JSON.stringify({ id: 'test', ok: true, result, _meta: {} }), code: 0 };
+}
+
+// `terminal wait` y `terminal close` fallidos: el CLI real devuelve `ok:false` con
+// `error.code` — y, para `close`, exit 0 pese al fallo (por eso el adaptador NO mira el code).
+function errEnvelope(code, { exit = 1 } = {}) {
+  return { stdout: JSON.stringify({ id: 'test', ok: false, error: { code, message: code }, _meta: {} }), code: exit };
+}
+
+// ---------------------------------------------------------------------------
 // buildLaunchCommand: construcción del comando por family+role+mode
 // ---------------------------------------------------------------------------
 
@@ -170,7 +188,7 @@ test('createOwnedSession (codex): NO intenta localizar el rollout todavía -> re
 
   const fakeOrcaRunner = (args) => {
     if (args[0] === 'terminal' && args[1] === 'create') {
-      return { stdout: JSON.stringify({ handle: 'term_codex_1' }), code: 0 };
+      return okEnvelope({ terminal: { handle: 'term_codex_1' } });
     }
     throw new Error(`orcaRunner inesperado en el test: ${args.join(' ')}`);
   };
@@ -219,7 +237,7 @@ test('createOwnedSession (claude): fija --session-id, arma el path del transcrip
       if (args[0] === 'terminal' && args[1] === 'create') {
         const commandIdx = args.indexOf('--command');
         capturedCommand = args[commandIdx + 1];
-        return { stdout: JSON.stringify({ handle: 'term_claude_1' }), code: 0 };
+        return okEnvelope({ terminal: { handle: 'term_claude_1' } });
       }
       throw new Error(`orcaRunner inesperado en el test: ${args.join(' ')}`);
     };
@@ -259,7 +277,7 @@ test('createOwnedSession (claude): un worktree con "." en el path slugifica el p
   await withEnv({ CLAUDE_CONFIG_DIR: claudeConfigDir, CROSS_MODEL_ORCA: ASSETS_DIR }, () => {
     const fakeOrcaRunner = (args) => {
       if (args[0] === 'terminal' && args[1] === 'create') {
-        return { stdout: JSON.stringify({ handle: 'term_claude_dot' }), code: 0 };
+        return okEnvelope({ terminal: { handle: 'term_claude_dot' } });
       }
       throw new Error(`orcaRunner inesperado en el test: ${args.join(' ')}`);
     };
@@ -427,10 +445,13 @@ test('createDispatch: parsea taskId/dispatchId, genera un nonce no vacío y pers
   const fakeOrcaRunner = (args) => {
     calls.push(args);
     if (args[1] === 'task-create') {
-      return { stdout: JSON.stringify({ taskId: 'task_1' }), code: 0 };
+      return okEnvelope({ task: { id: 'task_1' } });
+    }
+    if (args[1] === 'wait') {
+      return okEnvelope({ wait: { satisfied: true } }); // boot completo: tui-idle antes de inyectar.
     }
     if (args[1] === 'dispatch') {
-      return { stdout: JSON.stringify({ dispatchId: 'dispatch_1' }), code: 0 };
+      return okEnvelope({ dispatch: { id: 'dispatch_1' }, injected: true });
     }
     throw new Error(`orcaRunner inesperado: ${args.join(' ')}`);
   };
@@ -453,16 +474,42 @@ test('createDispatch: parsea taskId/dispatchId, genera un nonce no vacío y pers
   const specIdx = taskCreateCall.indexOf('--spec');
   assert.match(taskCreateCall[specIdx + 1], new RegExp(`nonce=${dispatch.nonce}`));
 
+  // worker_done abandonado: el dispatch NO pasa --from (no ruteamos un worker_done que no consumimos).
+  const dispatchCall = calls.find((c) => c[1] === 'dispatch');
+  assert.equal(dispatchCall.includes('--from'), false);
+  assert.equal(dispatchCall.includes('--inject'), true);
+
   const registry = JSON.parse(fs.readFileSync(path.join(stateDir, 'dispatches.json'), 'utf8'));
   assert.equal(registry['dispatch_1'].taskId, 'task_1');
   assert.equal(registry['dispatch_1'].nonce, dispatch.nonce);
   assert.equal(registry['dispatch_1'].expectedAssignee, 'term_1');
 });
 
+test('createDispatch: el secundario nunca llega a tui-idle (boot) -> lanza y NO despacha (degradar a cli)', () => {
+  const stateDir = mkTmpDir('cmo-state-');
+  const session = { uid: 'sess-uid-boot', terminalHandle: 'term_1', stateDir };
+
+  const calls = [];
+  const fakeOrcaRunner = (args) => {
+    calls.push(args);
+    if (args[1] === 'task-create') return okEnvelope({ task: { id: 'task_boot' } });
+    if (args[1] === 'wait') return errEnvelope('timeout'); // boot no completó: tui-idle nunca satisfecho.
+    if (args[1] === 'dispatch') throw new Error('no debería despachar si el boot no llegó a idle');
+    throw new Error(`orcaRunner inesperado: ${args.join(' ')}`);
+  };
+
+  assert.throws(
+    () => createDispatch({ session, spec: 'x', root: '/repo/root', orcaRunner: fakeOrcaRunner }),
+    /tui-idle/
+  );
+  // No debe haberse intentado el dispatch (el prompt se perdería).
+  assert.equal(calls.some((c) => c[1] === 'dispatch'), false);
+});
+
 test('createDispatch: lanza si "task-create" no devuelve taskId', () => {
   const stateDir = mkTmpDir('cmo-state-');
   const session = { uid: 'sess-uid-2', terminalHandle: 'term_1', stateDir };
-  const fakeOrcaRunner = () => ({ stdout: JSON.stringify({}), code: 0 });
+  const fakeOrcaRunner = () => okEnvelope({}); // ok:true pero sin `task`: no hay task.id que extraer.
 
   assert.throws(
     () => createDispatch({ session, spec: 'x', root: '/repo/root', orcaRunner: fakeOrcaRunner }),
@@ -474,150 +521,86 @@ test('createDispatch: lanza si "task-create" no devuelve taskId', () => {
 // awaitDone
 // ---------------------------------------------------------------------------
 
-test('awaitDone: worker_done con IDs correctos -> valida autoridad, cosecha y marca promoted', async () => {
+test('awaitDone (codex): cosecha del transcript propio por nonce y marca promoted (sin worker_done)', async () => {
+  // Nuevo modelo (decisión post-E2E de Fase 7): la detección de fin y la autoridad las da el
+  // nonce+sentinel del envelope en el transcript propio, NO worker_done (que el sandbox de Codex
+  // no puede enviar). awaitDone no consulta orchestration check: resuelve el transcript y llama a
+  // harvest(), que hace el poll del archivo esperando el nonce. El fixture ya contiene NONCE-ACTUAL.
   const stateDir = mkTmpDir('cmo-state-');
   const root = mkTmpDir('cmo-report-root-');
   const session = { family: 'codex', transcriptPath: CODEX_FIXTURE, terminalHandle: 'term_1', stateDir };
-  const dispatch = { taskId: 'T1', dispatchId: 'D1', nonce: 'NONCE-ACTUAL', expectedAssignee: 'term_1' };
+  const dispatch = { taskId: 'T1', dispatchId: 'D1', nonce: 'NONCE-ACTUAL' };
 
-  let checkCalls = 0;
-  const fakeOrcaRunner = (args) => {
-    if (args[0] === 'orchestration' && args[1] === 'check') {
-      checkCalls += 1;
-      return {
-        stdout: JSON.stringify({
-          messages: [{ type: 'worker_done', payload: { taskId: 'T1', dispatchId: 'D1' }, from: 'term_1' }],
-        }),
-        code: 0,
-      };
-    }
-    throw new Error(`orcaRunner inesperado: ${args.join(' ')}`);
-  };
-
-  const result = await awaitDone({
-    session,
-    dispatch,
-    coordinatorHandle: 'coord_1',
-    reportPath: 'informe.md',
-    root,
-    deadlineMs: 1000,
-    orcaRunner: fakeOrcaRunner,
-    sleep: instantSleep,
-  });
+  const result = await awaitDone({ session, dispatch, reportPath: 'informe.md', root, deadlineMs: 1000 });
 
   assert.equal(result.code, 0);
-  const written = fs.readFileSync(result.reportPath, 'utf8');
-  assert.match(written, /NONCE-ACTUAL/);
-  assert.equal(checkCalls, 1);
+  assert.match(fs.readFileSync(result.reportPath, 'utf8'), /NONCE-ACTUAL/);
 
   const fsm = makeDedupFsm(path.join(stateDir, 'dedup-fsm.json'));
   assert.equal(fsm.isPromoted('D1:NONCE-ACTUAL'), true);
 });
 
-test('awaitDone: worker_done con IDs que NO coinciden -> no cosecha, agota el deadline (timeout)', async () => {
+test('awaitDone: el nonce nunca aparece en el transcript -> no cosecha, agota el deadline (timeout code 3)', async () => {
   const stateDir = mkTmpDir('cmo-state-');
   const root = mkTmpDir('cmo-report-root-');
+  // transcriptPath válido (el fixture existe) pero con un nonce que NO está en él: harvest hace
+  // poll hasta el deadline sin encontrarlo.
   const session = { family: 'codex', transcriptPath: CODEX_FIXTURE, terminalHandle: 'term_1', stateDir };
-  const dispatch = { taskId: 'T1', dispatchId: 'D1', nonce: 'NONCE-ACTUAL', expectedAssignee: 'term_1' };
+  const dispatch = { taskId: 'T1', dispatchId: 'D1', nonce: 'NONCE-INEXISTENTE' };
 
-  const fakeOrcaRunner = (args) => {
-    if (args[0] === 'orchestration' && args[1] === 'check') {
-      return {
-        stdout: JSON.stringify({
-          messages: [{ type: 'worker_done', payload: { taskId: 'OTRO', dispatchId: 'OTRO' }, from: 'term_1' }],
-        }),
-        code: 0,
-      };
-    }
-    throw new Error(`orcaRunner inesperado: ${args.join(' ')}`);
-  };
-
-  let ticks = 0;
-  const fakeNow = () => {
-    ticks += 1;
-    return ticks === 1 ? 0 : 10_000; // primer now() arranca el deadline; el resto ya lo agota.
+  // now monotónico que avanza en cada llamada: cruza el deadline de forma determinista sin depender
+  // de tiempo real (harvest chequea now() >= deadline antes de dormir, así que corta enseguida).
+  let t = 0;
+  const steppingNow = () => {
+    const v = t;
+    t += 1000;
+    return v;
   };
 
   const result = await awaitDone({
     session,
     dispatch,
-    coordinatorHandle: 'coord_1',
     reportPath: 'informe.md',
     root,
-    deadlineMs: 5,
-    orcaRunner: fakeOrcaRunner,
-    now: fakeNow,
-    sleep: instantSleep,
+    deadlineMs: 1,
+    now: steppingNow,
   });
 
   assert.equal(result.code, 3);
   assert.equal(fs.existsSync(path.join(root, 'informe.md')), false);
 
   const fsm = makeDedupFsm(path.join(stateDir, 'dedup-fsm.json'));
-  assert.equal(fsm.isPromoted('D1:NONCE-ACTUAL'), false);
+  assert.equal(fsm.isPromoted('D1:NONCE-INEXISTENTE'), false);
 });
 
-test('awaitDone: un segundo worker_done idéntico no reprocesa (dedup vía FSM)', async () => {
+test('awaitDone: una segunda invocación con el mismo dispatch+nonce no reprocesa (dedup vía FSM)', async () => {
   const stateDir = mkTmpDir('cmo-state-');
   const root = mkTmpDir('cmo-report-root-');
   const session = { family: 'codex', transcriptPath: CODEX_FIXTURE, terminalHandle: 'term_1', stateDir };
-  const dispatch = { taskId: 'T1', dispatchId: 'D1', nonce: 'NONCE-ACTUAL', expectedAssignee: 'term_1' };
+  const dispatch = { taskId: 'T1', dispatchId: 'D1', nonce: 'NONCE-ACTUAL' };
 
-  let checkCalls = 0;
-  const fakeOrcaRunner = (args) => {
-    if (args[0] === 'orchestration' && args[1] === 'check') {
-      checkCalls += 1;
-      return {
-        stdout: JSON.stringify({
-          messages: [{ type: 'worker_done', payload: { taskId: 'T1', dispatchId: 'D1' }, from: 'term_1' }],
-        }),
-        code: 0,
-      };
-    }
-    throw new Error(`orcaRunner inesperado: ${args.join(' ')}`);
-  };
-
-  const first = await awaitDone({
-    session,
-    dispatch,
-    coordinatorHandle: 'coord_1',
-    reportPath: 'informe.md',
-    root,
-    deadlineMs: 1000,
-    orcaRunner: fakeOrcaRunner,
-    sleep: instantSleep,
-  });
+  const first = await awaitDone({ session, dispatch, reportPath: 'informe.md', root, deadlineMs: 1000 });
   assert.equal(first.code, 0);
-  assert.equal(checkCalls, 1);
 
-  // Segundo worker_done idéntico (mismo dispatchId:nonce): no debe volver a invocar
-  // "orchestration check" ni harvest -- isPromoted corta antes de entrar al loop.
-  const second = await awaitDone({
-    session,
-    dispatch,
-    coordinatorHandle: 'coord_1',
-    reportPath: 'informe.md',
-    root,
-    deadlineMs: 1000,
-    orcaRunner: fakeOrcaRunner,
-    sleep: instantSleep,
-  });
+  // Rompe el transcript antes de la 2da llamada: si reprocesara (volviera a harvest), fallaría por
+  // no encontrar el nonce. Como isPromoted corta antes de tocar el transcript, devuelve code 0.
+  const brokenSession = { ...session, transcriptPath: '/ruta/inexistente/rollout.jsonl' };
+  const second = await awaitDone({ session: brokenSession, dispatch, reportPath: 'informe.md', root, deadlineMs: 1000 });
 
   assert.equal(second.code, 0);
-  assert.equal(checkCalls, 1); // sin llamadas adicionales a "orchestration check"
+  assert.equal(second.reportPath, path.resolve(root, 'informe.md'));
 });
 
 test('awaitDone: crash entre writeExclusive y markPromoted -> el retry ve "destino ya existe" y lo trata como éxito idempotente (fix wave 2, S2)', async () => {
   // Simula el hueco encontrado en el final review: un intento anterior ya escribió el reporte en
   // disco (writeExclusive real, dentro de "root") y avanzó la FSM hasta "received" -- pero cayó
   // antes de marcar "harvested"/"promoted". El siguiente awaitDone() para el MISMO dispatchId:nonce
-  // no debe reprocesar el transcript (haría un check nuevo), pero el bug original hacía que
-  // harvest() volviera a intentar escribir, checkContainment rechazara por "ya existe", y
-  // awaitDone devolviera {code:2} para lo que en realidad fue una cosecha exitosa.
+  // vuelve a harvest() (isPromoted seguía en false), que encuentra el nonce en el transcript pero
+  // ve el destino ya existente; el bug original devolvía {code:2} para lo que fue una cosecha exitosa.
   const stateDir = mkTmpDir('cmo-state-');
   const root = mkTmpDir('cmo-report-root-');
   const session = { family: 'codex', transcriptPath: CODEX_FIXTURE, terminalHandle: 'term_1', stateDir };
-  const dispatch = { taskId: 'T1', dispatchId: 'D1', nonce: 'NONCE-ACTUAL', expectedAssignee: 'term_1' };
+  const dispatch = { taskId: 'T1', dispatchId: 'D1', nonce: 'NONCE-ACTUAL' };
   const dedupKey = 'D1:NONCE-ACTUAL';
 
   // Precondición: el reporte YA está en disco (como si un harvest() previo lo hubiera escrito) y
@@ -627,30 +610,7 @@ test('awaitDone: crash entre writeExclusive y markPromoted -> el retry ve "desti
   fsmBefore.markReceived(dedupKey);
   assert.equal(fsmBefore.isPromoted(dedupKey), false); // confirma la precondición del hueco.
 
-  let checkCalls = 0;
-  const fakeOrcaRunner = (args) => {
-    if (args[0] === 'orchestration' && args[1] === 'check') {
-      checkCalls += 1;
-      return {
-        stdout: JSON.stringify({
-          messages: [{ type: 'worker_done', payload: { taskId: 'T1', dispatchId: 'D1' }, from: 'term_1' }],
-        }),
-        code: 0,
-      };
-    }
-    throw new Error(`orcaRunner inesperado: ${args.join(' ')}`);
-  };
-
-  const result = await awaitDone({
-    session,
-    dispatch,
-    coordinatorHandle: 'coord_1',
-    reportPath: 'informe.md',
-    root,
-    deadlineMs: 1000,
-    orcaRunner: fakeOrcaRunner,
-    sleep: instantSleep,
-  });
+  const result = await awaitDone({ session, dispatch, reportPath: 'informe.md', root, deadlineMs: 1000 });
 
   // Antes del fix esto era {code:2, reason:"El destino ya existe."}: un rechazo de contención
   // para lo que en realidad fue una cosecha exitosa.
@@ -664,37 +624,19 @@ test('awaitDone: crash entre writeExclusive y markPromoted -> el retry ve "desti
   assert.equal(fsmAfter.isPromoted(dedupKey), true); // la FSM quedó reparada/completa.
 });
 
-test('awaitDone (claude): sin worker_done, tui-idle satisfied=true es autoridad suficiente', async () => {
+test('awaitDone (claude): cosecha del transcript por nonce (transcriptPath ya resuelto en createOwnedSession)', async () => {
+  // Claude ya trae su transcriptPath (determinístico por --session-id), así que awaitDone va directo
+  // a harvest(), que hace poll del archivo esperando el nonce+sentinel. Mismo modelo que Codex.
   const stateDir = mkTmpDir('cmo-state-');
   const root = mkTmpDir('cmo-report-root-');
   const claudeFixture = path.join(TEST_DIR, 'fixtures/claude-transcript.jsonl');
   const session = { family: 'claude', transcriptPath: claudeFixture, terminalHandle: 'term_c1', stateDir };
-  const dispatch = { taskId: 'T1', dispatchId: 'D1', nonce: 'NONCE-ACTUAL', expectedAssignee: 'term_c1' };
+  const dispatch = { taskId: 'T1', dispatchId: 'D1', nonce: 'NONCE-ACTUAL' };
 
-  const fakeOrcaRunner = (args) => {
-    if (args[0] === 'orchestration' && args[1] === 'check') {
-      return { stdout: JSON.stringify({ messages: [] }), code: 0 };
-    }
-    if (args[0] === 'terminal' && args[1] === 'wait') {
-      return { stdout: JSON.stringify({ satisfied: true }), code: 0 };
-    }
-    throw new Error(`orcaRunner inesperado: ${args.join(' ')}`);
-  };
-
-  const result = await awaitDone({
-    session,
-    dispatch,
-    coordinatorHandle: 'coord_1',
-    reportPath: 'informe.md',
-    root,
-    deadlineMs: 1000,
-    orcaRunner: fakeOrcaRunner,
-    sleep: instantSleep,
-  });
+  const result = await awaitDone({ session, dispatch, reportPath: 'informe.md', root, deadlineMs: 1000 });
 
   assert.equal(result.code, 0);
-  const written = fs.readFileSync(result.reportPath, 'utf8');
-  assert.match(written, /NONCE-ACTUAL/);
+  assert.match(fs.readFileSync(result.reportPath, 'utf8'), /NONCE-ACTUAL/);
 });
 
 test('awaitDone (codex): transcriptPath pendiente -> resuelve el rollout lazy y después cosecha normalmente', async () => {
@@ -717,42 +659,27 @@ test('awaitDone (codex): transcriptPath pendiente -> resuelve el rollout lazy y 
       terminalHandle: 'term_1',
       stateDir,
     };
-    const dispatch = { taskId: 'T1', dispatchId: 'D1', nonce: 'NONCE-ACTUAL', expectedAssignee: 'term_1' };
-
-    let checkCalls = 0;
-    const fakeOrcaRunner = (args) => {
-      if (args[0] === 'orchestration' && args[1] === 'check') {
-        checkCalls += 1;
-        return {
-          stdout: JSON.stringify({
-            messages: [{ type: 'worker_done', payload: { taskId: 'T1', dispatchId: 'D1' }, from: 'term_1' }],
-          }),
-          code: 0,
-        };
-      }
-      throw new Error(`orcaRunner inesperado: ${args.join(' ')}`);
-    };
+    const dispatch = { taskId: 'T1', dispatchId: 'D1', nonce: 'NONCE-ACTUAL' };
 
     const result = await awaitDone({
       session,
       dispatch,
-      coordinatorHandle: 'coord_1',
       reportPath: 'informe.md',
       root,
       deadlineMs: 1000,
-      orcaRunner: fakeOrcaRunner,
       sleep: instantSleep,
     });
 
     assert.equal(result.code, 0);
-    assert.equal(checkCalls, 1);
     assert.equal(session.transcriptPath, path.join(sessionsRoot, 'rollout-lazy-awaitdone.jsonl'));
-    const written = fs.readFileSync(result.reportPath, 'utf8');
-    assert.match(written, /NONCE-ACTUAL/);
+    assert.match(fs.readFileSync(result.reportPath, 'utf8'), /NONCE-ACTUAL/);
   });
 });
 
-test('awaitDone (codex): el rollout nunca aparece -> code 4 (degradar a cli), sin consultar "orchestration check"', async () => {
+test('awaitDone (codex): el rollout nunca aparece -> code 4 (degradar a cli), sin cosechar', async () => {
+  // Codex: el rollout aparece cuando arranca el turno. Si nunca aparece (aquí el sessions/ está
+  // vacío), resolveCodexTranscript agota su presupuesto acotado por el deadline y awaitDone
+  // devuelve code 4 (degradar a cli) sin llegar a harvest.
   const codexHome = mkTmpDir('cmo-codex-home-');
   const stateDir = mkTmpDir('cmo-state-');
   const root = mkTmpDir('cmo-report-root-');
@@ -770,30 +697,18 @@ test('awaitDone (codex): el rollout nunca aparece -> code 4 (degradar a cli), si
       terminalHandle: 'term_1',
       stateDir,
     };
-    const dispatch = { taskId: 'T1', dispatchId: 'D1', nonce: 'NONCE-ACTUAL', expectedAssignee: 'term_1' };
-
-    let checkCalls = 0;
-    const fakeOrcaRunner = (args) => {
-      if (args[0] === 'orchestration' && args[1] === 'check') {
-        checkCalls += 1;
-        return { stdout: JSON.stringify({ messages: [] }), code: 0 };
-      }
-      throw new Error(`orcaRunner inesperado: ${args.join(' ')}`);
-    };
+    const dispatch = { taskId: 'T1', dispatchId: 'D1', nonce: 'NONCE-ACTUAL' };
 
     const result = await awaitDone({
       session,
       dispatch,
-      coordinatorHandle: 'coord_1',
       reportPath: 'informe.md',
       root,
-      deadlineMs: 1000,
-      orcaRunner: fakeOrcaRunner,
+      deadlineMs: 1000, // acota el presupuesto de localización: ~5 intentos (1000/200) con sleep instantáneo.
       sleep: instantSleep,
     });
 
     assert.equal(result.code, 4);
-    assert.equal(checkCalls, 0); // nunca llegó a entrar al poll de worker_done
     assert.equal(fs.existsSync(path.join(root, 'informe.md')), false);
   });
 });
@@ -808,8 +723,8 @@ test('recover (read-only): interrumpe, confirma idle -> recovered:true', () => {
   const calls = [];
   const fakeOrcaRunner = (args) => {
     calls.push(args);
-    if (args.includes('--interrupt')) return { stdout: '', code: 0 };
-    if (args[1] === 'wait') return { stdout: JSON.stringify({ satisfied: true }), code: 0 };
+    if (args.includes('--interrupt')) return okEnvelope({ sent: true });
+    if (args[1] === 'wait') return okEnvelope({}); // idle confirmado = ok:true.
     throw new Error(`orcaRunner inesperado: ${args.join(' ')}`);
   };
 
@@ -825,9 +740,11 @@ test('recover (write): idle confirmado pero SIN cierre demostrado -> recovered:f
   const session = { role: 'write', terminalHandle: 'term_1' };
   const dispatch = { taskId: 'T1', dispatchId: 'D1' };
   const fakeOrcaRunner = (args) => {
-    if (args.includes('--interrupt')) return { stdout: '', code: 0 };
-    if (args[1] === 'wait') return { stdout: JSON.stringify({ satisfied: true }), code: 0 };
-    if (args[1] === 'close') return { stdout: JSON.stringify({ error: 'no se pudo cerrar' }), code: 1 };
+    if (args.includes('--interrupt')) return okEnvelope({ sent: true });
+    if (args[1] === 'wait') return okEnvelope({}); // idle confirmado = ok:true.
+    // Cierre fallido: ok:false. Ojo -- el CLI real devuelve exit 0 aun así para close, por eso
+    // se usa exit:0 acá: prueba que el adaptador decide por `ok`, no por el code del proceso.
+    if (args[1] === 'close') return errEnvelope('terminal_handle_stale', { exit: 0 });
     throw new Error(`orcaRunner inesperado: ${args.join(' ')}`);
   };
 
@@ -840,9 +757,9 @@ test('recover (write): idle confirmado y cierre exitoso -> recovered:true', () =
   const session = { role: 'write', terminalHandle: 'term_1' };
   const dispatch = { taskId: 'T1', dispatchId: 'D1' };
   const fakeOrcaRunner = (args) => {
-    if (args.includes('--interrupt')) return { stdout: '', code: 0 };
-    if (args[1] === 'wait') return { stdout: JSON.stringify({ satisfied: true }), code: 0 };
-    if (args[1] === 'close') return { stdout: JSON.stringify({ closed: true }), code: 0 };
+    if (args.includes('--interrupt')) return okEnvelope({ sent: true });
+    if (args[1] === 'wait') return okEnvelope({}); // idle confirmado = ok:true.
+    if (args[1] === 'close') return okEnvelope({ close: { handle: 'term_1', ptyKilled: true } });
     throw new Error(`orcaRunner inesperado: ${args.join(' ')}`);
   };
 
@@ -855,8 +772,8 @@ test('recover: idle NO confirmado -> recovered:false sin importar el rol', () =>
   const session = { role: 'read-only', terminalHandle: 'term_1' };
   const dispatch = { taskId: 'T1', dispatchId: 'D1' };
   const fakeOrcaRunner = (args) => {
-    if (args.includes('--interrupt')) return { stdout: '', code: 0 };
-    if (args[1] === 'wait') return { stdout: JSON.stringify({ satisfied: false }), code: 0 };
+    if (args.includes('--interrupt')) return okEnvelope({ sent: true });
+    if (args[1] === 'wait') return errEnvelope('timeout'); // idle NO confirmado = ok:false (timeout).
     throw new Error(`orcaRunner inesperado: ${args.join(' ')}`);
   };
 
