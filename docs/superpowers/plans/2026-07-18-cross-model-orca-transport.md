@@ -153,13 +153,21 @@ Skills modificadas: `co-explore` · `cross-review` · `cross-implement` · `sdd-
 
 ## Fase 7 — Validación E2E + checkpoints + P4
 
-### Task 7.1: Matriz E2E + parser grande + seguridad
-- [ ] (a) Claude→Codex explore; (b) Codex→Claude explore; (c) cross-review (envelope+`STATUS: done`), **con las tres capas configuradas** y validadas.
-- [ ] **P3-largo (ronda 2 #20): separar** — (i) **test de parser** con fixture JSONL fabricado **>1 MB** (prueba que la cosecha lee del archivo, nunca argv); (ii) **E2E real** con el **máximo output alcanzable** por el modelo, confirmando cosecha del rollout bajo `CODEX_HOME`.
-- [ ] **Default atendido (P4):** confirmar que una acción MCP sensible del secundario **muestra el prompt de aprobación en la TUI** para que el humano decida (vigilancia manual, el gate del default). **Endurecimiento desatendido (opcional, S3):** confirmar en la sesión interactiva real que `--strict-mcp-config` + allowlist deja **solo** los servidores declarados (env MCP invisible; `CERO-MCP` con allowlist vacío ya verificado headless). **Commit.**
+> **Estado (2026-07-20):** reencuadrada al modelo de **vigilancia manual** (el humano aprueba en la TUI; el inventario/allowlist de MCP como gate se descartó — ver Global Constraints). Lo que se puede ejecutar sin un entorno especial (Orca real, Windows, MCP Atlassian vivo) quedó verificado; el resto se documenta como **checkpoint pendiente**, honestamente marcado como tal, en `spikes/RESULTS.md` → sección "Fase 7 — validación y checkpoints".
 
-### Task 7.2: Checkpoints (Windows, Atlassian) · Task 7.3: P4 vigilancia manual
-- [ ] Windows: `disableAllHooks`/`--disable hooks`, auth Credential Manager/DPAPI, entry Node con `%USERPROFILE%\…`/`CODEX_HOME`, rutas de transcript por plataforma. Atlassian: gate con tool de escritura real en repo con MCP vivo. P4: documentar vigilancia manual en la librería + cada skill. Validar todas; **commit.**
+### Task 7.1: Matriz E2E + parser grande + seguridad
+- [ ] **(a) Claude→Codex explore; (b) Codex→Claude explore; (c) cross-review** (envelope+`STATUS: done`), con las tres capas configuradas. **Pendiente (checkpoint, requiere sesiones Orca reales).** El mecanismo subyacente (locator/señal/cosecha) ya se validó en vivo en Fase 0 (Tasks 0.1/0.2/0.3), pero no la matriz completa de los 3 casos con el transporte `orca-session` end-to-end.
+- [x] **P3-largo (ronda 2 #20), parte (i) — test de parser >1 MB:** ✅ `assets/test/harvest-large.test.mjs`. Fixture JSONL fabricado **en runtime** (nunca commiteado) por familia, con un mensaje del asistente >1 MB y uno anterior con nonce viejo; prueba que `selectAssistantByNonce`/`parseTranscript` leen del **archivo**, nunca de `argv` (por eso un informe que jamás cabría en `ARG_MAX` se cosecha igual), y que la desambiguación por `nonce` sigue funcionando con un archivo grande. Suite completa: 82 tests (78 previos + 4 nuevos), 0 fail.
+- [ ] **P3-largo, parte (ii) — E2E real con el máximo output alcanzable por el modelo:** **pendiente (checkpoint)**, requiere una sesión Orca real; no ejecutable sin ese entorno.
+- [x] **Default atendido (P4), endurecimiento opcional — ya verificado headless:** `--strict-mcp-config` + allowlist vacío → `CERO-MCP` (Claude 2.1.214); `-c features.apps=false` válido inline en Codex, confirmado vía `--strict-config` sin "unknown field" (ver `assets/launch/profiles.md`, validación real #7).
+- [ ] **Default atendido (P4), el prompt en la TUI ante una acción sensible — pendiente de confirmación real.** El modelo (`-a untrusted` escala a aprobación cualquier comando no confiable) está documentado, pero la corrida live de Task 0.3 no disparó el prompt (el comando ejecutado no escaló) — no hay todavía una confirmación con una acción MCP realmente sensible. Se reencuadra como parte del checkpoint de Atlassian (Task 7.2): ahí se confirma con una tool de escritura real. **El check original de esta task, "el preflight bloquea MCP no inventariado", queda OBSOLETO** — el modelo de MCP es vigilancia manual, no inventario/allowlist (no reintroducir ese modelo).
+
+### Task 7.2: Checkpoints (Windows, Atlassian)
+- [ ] **Windows — pendiente (checkpoint, requiere máquina Windows).** Falta confirmar: `disableAllHooks`/`--disable hooks`; auth vía Credential Manager/DPAPI; el entry Node con `%USERPROFILE%\…`/`CODEX_HOME`; y las rutas de transcript por plataforma (todo lo anterior está codificado, pero no ejercitado en Windows real).
+- [ ] **Atlassian — pendiente (checkpoint, requiere MCP Atlassian vivo).** Falta confirmar, con una tool de escritura real: el gate de la acción sensible bajo vigilancia manual — que el `send`/la tool de escritura efectivamente escala a aprobación en la TUI (cierra también el punto de P4 pendiente de la task anterior).
+
+### Task 7.3: P4 vigilancia manual
+- [x] **Cubierto por el modelo default.** La vigilancia manual (el humano aprueba en la TUI) ya es el modelo central de MCP en `cross-model-orca` y quedó documentada en la librería (`reference.md`, `SKILL.md`, `install.md`, `assets/launch/profiles.md`/`mcp-inventory.md`) y en las skills que la consumen (`co-explore`, `cross-implement` la documentan directo; `cross-review` remite por referencia a `cross-model-orca/assets/launch/profiles.md`) tras el giro de MCP (commits `36afa6f`/`3f40c2e`). Nota: aprobar en la TUI es responsabilidad de quien mira la corrida — no hay surfacing programático del `PermissionRequest` en v1 (ver Global Constraints, "P4 = vigilancia manual declarada").
 
 ---
 

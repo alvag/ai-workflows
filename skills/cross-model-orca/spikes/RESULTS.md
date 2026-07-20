@@ -113,3 +113,55 @@ Estado: **RESUELTO (corrida live 2026-07-19).**
   Claude = sin señal → `tui-idle`. **Ambos** cosechan del transcript.
 - **Nota `-a` (atendido):** con `-a untrusted` el `send` corrió sin gate en este entorno. Si en otro perfil
   el `send` escalara a aprobación, aplica P4 (vigilancia manual / aprobar en la TUI).
+
+---
+
+## Fase 7 (2026-07-20) — validación y checkpoints
+
+Estado: **PARCIAL** — lo ejecutable sin un entorno especial (Orca real, Windows, MCP Atlassian vivo)
+quedó verificado en esta task; el resto se deja **honestamente marcado como pendiente**, sin declarar
+verificado lo que no se corrió. Plan: sección "Fase 7" de
+`docs/superpowers/plans/2026-07-18-cross-model-orca-transport.md`.
+
+### Verificado
+
+- **Test de parser >1 MB (lee del archivo, nunca de argv).** `assets/test/harvest-large.test.mjs`:
+  genera, por cada familia (`claude`/`codex`), un fixture JSONL **en runtime** (`os.tmpdir()` +
+  `fs.mkdtempSync`, nunca commiteado) con un mensaje del asistente anterior (nonce viejo, chico) y uno
+  actual cuyo texto supera 1.1 MB, cerrado con el envelope real (`X-CMO: ... nonce=NONCE-ACTUAL` +
+  `STATUS: done`). Confirma que `selectAssistantByNonce`/`parseTranscript` cosechan el mensaje grande
+  leyendo el archivo (no `argv`, que jamás lo admitiría por `ARG_MAX`) y que la desambiguación por
+  `nonce` sigue siendo correcta con un archivo grande (no devuelve el mensaje viejo por casualidad).
+  También se corrió `harvest()` completo contra ese fixture (`reportPath` dentro de un `root` propio,
+  respetando la contención) y se confirmó exit 0 con el informe persistido íntegro (>1 MB). Suite
+  completa: **82 tests, 0 fail** (78 previos de las Fases 1–6 + 4 nuevos de esta task).
+- **`CERO-MCP` con `--strict-mcp-config` + allowlist vacío (Claude 2.1.214).** Verificado headless en
+  una task anterior de endurecimiento (commits `36afa6f`/`3f40c2e`); ver
+  `assets/launch/mcp-inventory.md` y `assets/launch/profiles.md`.
+- **`-c features.apps=false` válido inline (Codex, bajo `--strict-config`).** Confirmado sin
+  "unknown field" contra los TOML instalados (`assets/launch/profiles.md`, tabla "Validación real", #7).
+- **Mecanismo cross-model (locator + señal + cosecha) validado en vivo en Fase 0.** Locator de
+  transcript/rollout por inspección de stores reales (Task 0.1); orden señal-vs-mensaje-final y `nonce`
+  de desambiguación con una sesión Codex fresca real (Task 0.2); señal `worker_done` por comando con
+  hooks apagados, confirmada en una corrida live (Task 0.3). Es la base empírica sobre la que se apoya
+  el resto del transporte, aunque la matriz E2E completa de Task 7.1(a)(b)(c) no se repitió en esta task.
+
+### Pendiente (checkpoints, requieren entorno real — no se ejecutaron en esta task)
+
+- **E2E live completo.** Matriz de 3 casos con sesiones Orca reales: (a) Claude→Codex explore; (b)
+  Codex→Claude explore; (c) cross-review con envelope+`STATUS: done`, las tres capas de control
+  configuradas, y el **máximo output alcanzable** por el modelo (P3-largo parte ii). Qué correr: lanzar
+  cada skill con `cross_model.transport=orca-session` contra una sesión Orca real y confirmar cosecha
+  correcta del informe. Qué se espera: cosecha exitosa en los 3 casos, sin fallback a `cli`.
+- **Windows.** `disableAllHooks`/`--disable hooks`; auth vía Credential Manager/DPAPI (en vez de
+  keychain); el entry Node (`harvest-from-transcript.mjs`) resolviendo `%USERPROFILE%\…`/`CODEX_HOME`
+  correctamente; rutas de transcript/rollout por plataforma. Qué correr: repetir el locator (Task 0.1) y
+  la cosecha básica en una máquina Windows real. Qué se espera: mismo contrato de locator y parseo, con
+  las rutas POSIX de este entorno traducidas a sus equivalentes Windows.
+- **Atlassian (gate de escritura real con MCP vivo).** Bajo vigilancia manual: confirmar que una tool de
+  escritura de Atlassian invocada por el secundario efectivamente escala a aprobación en la TUI (cierra
+  también el punto de P4 que quedó pendiente en Task 7.1: "el prompt en la TUI ante una acción sensible"
+  no se disparó en la corrida live de Task 0.3, porque el comando ejecutado no escaló). Qué correr:
+  sesión secundaria con el MCP de Atlassian configurado, dispatch que la induzca a intentar una
+  operación de escritura (`create*`/`update*`/etc.). Qué se espera: el prompt de aprobación aparece en
+  la TUI antes de que la operación se ejecute; sin aprobación, no se escribe nada.
