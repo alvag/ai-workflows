@@ -101,7 +101,8 @@ el nombre real del directorio que Claude crea.
    ```powershell
    $env:DISABLE_AUTOUPDATER = "1"
    $sid = "11111111-2222-3333-4444-555555555555"
-   claude --tools "Read,Grep,Glob" --session-id $sid "responde exactamente OK" < $null
+   # PowerShell no soporta `<`; se pasa stdin vacío por pipe:
+   $null | claude --tools "Read,Grep,Glob" --session-id $sid "responde exactamente OK"
    ```
 3. Busca el transcript real y compáralo con el slug calculado:
    ```powershell
@@ -153,7 +154,8 @@ por `--strict-mcp-config`). En macOS: allowlist vacío → responde `CERO-MCP`.
 $env:DISABLE_AUTOUPDATER = "1"
 $empty = "$env:TEMP\cmo-empty-mcp.json"
 '{"mcpServers":{}}' | Set-Content $empty
-claude --tools "Read,Grep,Glob" --strict-mcp-config --mcp-config $empty --settings skills/cross-model-orca/assets/launch/claude-readonly.settings.json "Enumera EXACTAMENTE los nombres de tus herramientas que empiezan con mcp__, una por linea. Si no tienes ninguna responde CERO-MCP" < $null
+# PowerShell no soporta `<`; stdin vacío por pipe:
+$null | claude --tools "Read,Grep,Glob" --strict-mcp-config --mcp-config $empty --settings skills/cross-model-orca/assets/launch/claude-readonly.settings.json "Enumera EXACTAMENTE los nombres de tus herramientas que empiezan con mcp__, una por linea. Si no tienes ninguna responde CERO-MCP"
 ```
 
 - **Esperado:** `CERO-MCP`. (Confirma que `--strict-mcp-config` deja la sesión sin MCP del entorno
@@ -164,7 +166,8 @@ claude --tools "Read,Grep,Glob" --strict-mcp-config --mcp-config $empty --settin
 **Solo si Codex CLI está instalado.**
 
 ```powershell
-codex exec -c features.apps=false --strict-config --ephemeral --skip-git-repo-check -s read-only --disable hooks "responde OK" < $null
+# PowerShell no soporta `<`; stdin vacío por pipe:
+$null | codex exec -c features.apps=false --strict-config --ephemeral --skip-git-repo-check -s read-only --disable hooks "responde OK"
 ```
 
 - **Esperado:** responde `OK` sin error de esquema (`--strict-config` valida el campo).
@@ -185,15 +188,39 @@ codex exec -c features.apps=false --strict-config --ephemeral --skip-git-repo-ch
 
 | # | Prueba | Resultado | Evidencia / nota |
 |---|--------|-----------|------------------|
-| — | Entorno | | Node `___`, Windows `___`, Claude CLI `___`, Codex CLI `___` |
-| 1 | Suite de tests | ⬜ pass / ⬜ fail | `tests __ / pass __ / fail __` |
-| 2 | Rutas platform.mjs + autolocalización (install root) | ⬜ ok / ⬜ hallazgo | |
-| 3 | Slug transcript Claude | ⬜ ok / ⬜ hallazgo / ⬜ N/A | slug calc: `___` · dir real: `___` |
-| 4 | assertNode | ⬜ ok / ⬜ hallazgo | |
-| 5 | Comandos PowerShell | ⬜ ok / ⬜ hallazgo | |
-| 6 | CERO-MCP | ⬜ ok / ⬜ hallazgo / ⬜ N/A | |
-| 7 | features.apps inline (Codex) | ⬜ ok / ⬜ hallazgo / ⬜ N/A | |
+| — | Entorno | ✅ | Node `v22.14.0`, Windows `10.0.26200`, Claude CLI `sí` (`~/.local/bin/claude.exe`), Codex CLI `sí` (`OpenAI/Codex/bin/codex.exe`) |
+| 1 | Suite de tests | ⚠️ hallazgo | `tests 82 / pass 63 / fail 19`. **Los 19 fallos son de la SUITE, no del artefacto** (ver hallazgo H1–H3). El artefacto de producción se valida en las pruebas 2–5. |
+| 2 | Rutas platform.mjs + autolocalización (install root) | ✅ ok | `isWindows=true`; `install=C:\Users\MaxAlva\ai-workflows\skills\cross-model-orca\assets` (backslashes, sin `/C:/`, `existe launch: true`); `claude=C:\Users\MaxAlva\.claude`; overrides `CODEX_HOME`/`CLAUDE_CONFIG_DIR` respetados |
+| 3 | Slug transcript Claude | ✅ ok | slug calc: `C--Users-MaxAlva-ai-workflows` · dir real: `C--Users-MaxAlva-ai-workflows` (coinciden; validado contra la sesión real actual de Claude Code, sin lanzar una sesión nueva) |
+| 4 | assertNode | ✅ ok | `assertNode(18)` OK; `assertNode(999)` lanza mensaje legible en Windows |
+| 5 | Comandos PowerShell | ✅ ok | 3 JSON de settings parsean; `CROSS_MODEL_ORCA` override apunta a `assets` y existe (`True`) |
+| 6 | CERO-MCP | ⬜ pendiente | Lanza el Claude CLI real; a correr en PowerShell con supervisión. Ya verificado headless en macOS (Claude 2.1.214, ver RESULTS.md) |
+| 7 | features.apps inline (Codex) | ⬜ pendiente | Lanza el Codex CLI real; a correr en PowerShell con supervisión |
 
-**Resumen / hallazgos:**
+**Resumen:** El **artefacto de producción es portable a Windows** — lo confirman las pruebas 2, 3, 4 y 5, que ejercitan `platform.mjs` (rutas, autolocalización, `assertNode`) y los settings directamente. Los dos focos de riesgo del checkpoint pasan: la **autolocalización** (`resolveInstallRoot` con `fileURLToPath`) produce una ruta `C:\...` bien formada, y el **slug del transcript de Claude** (`slugifyCwd`) coincide con el directorio real que Claude crea. Las pruebas 6 y 7 (que lanzan CLIs de IA reales) quedan pendientes de una corrida supervisada en PowerShell.
 
-_(completar)_
+**Hallazgos — la suite de tests NO es portable a Windows** (no es un bug del artefacto; se documentan, no se corrigen: esto es checkpoint, no fix):
+
+- **H1 — `new URL(import.meta.url).pathname` deja `/C:/...` (barra inicial) → 16 fallos.** En
+  `assets/test/dispatch-adapter.test.mjs:23`, `assets/test/harvest-core.test.mjs:21` y
+  `assets/test/harvest-entry.test.mjs:14`, `TEST_DIR` se calcula con `.pathname`. En Windows eso
+  produce `/C:/Users/...` en vez de `C:\Users\...`, así que `readFileSync` de los fixtures da `ENOENT`
+  → `[]` → `parseTranscript`/`selectAssistantByNonce` devuelven `null` y los subprocesos de
+  `harvest`/`awaitDone` salen con code 3. Afecta a los tests 19,21,22,23,24,40,41,43,44,45,47,61,62,63,64,67.
+  Producción **no** tiene el bug: usa `fileURLToPath` (prueba 2, `install` sale bien formado).
+  Corrección propuesta (no aplicada): en los 3 tests, `import { fileURLToPath } from 'node:url'` y
+  `const TEST_DIR = path.dirname(fileURLToPath(import.meta.url))`.
+- **H2 — `fs.symlinkSync` → `EPERM` sin modo desarrollador/admin → 2 fallos (50, 53).** Los tests de
+  contención que crean un symlink que escapa del `root` (`harvest-core.test.mjs`) no pueden ni crear el
+  symlink en Windows estándar. Es limitación del entorno de test; `checkContainment` no llega a
+  ejercitarse en ese caso. Corrección propuesta: `try/catch` alrededor del `symlinkSync` con `skip` si
+  lanza `EPERM`.
+- **H3 — test POSIX-only en `configDir` → 1 fallo (76).** `platform.test.mjs` setea
+  `CLAUDE_CONFIG_DIR = "/tmp/custom-claude-config"` y compara por igualdad exacta; en Windows `path`
+  lo normaliza a `C:\tmp\custom-claude-config`. El comportamiento de `configDir` (respetar la env var)
+  es correcto — es el test el que asume rutas POSIX. Corrección propuesta: usar una ruta de fixture
+  neutra por plataforma (p. ej. derivada de `os.tmpdir()`).
+
+**Nota de conteo:** 63 pass + 19 fail = 82. Todos los tests puramente de string/lógica (sentinel,
+envelope, `assertNode`, JSON de settings) pasan; los 19 fallos se concentran en los que tocan el
+filesystem con los tres patrones de arriba.

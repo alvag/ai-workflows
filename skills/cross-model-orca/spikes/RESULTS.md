@@ -145,6 +145,24 @@ verificado lo que no se corrió. Plan: sección "Fase 7" de
   de desambiguación con una sesión Codex fresca real (Task 0.2); señal `worker_done` por comando con
   hooks apagados, confirmada en una corrida live (Task 0.3). Es la base empírica sobre la que se apoya
   el resto del transporte, aunque la matriz E2E completa de Task 7.1(a)(b)(c) no se repitió en esta task.
+- **Windows — artefacto de producción portable (checkpoint parcial, `[~]`).** Corrido en una máquina
+  Windows real (Node 22.14.0, Windows 10.0.26200) siguiendo
+  [`WINDOWS-CHECKPOINT.md`](./WINDOWS-CHECKPOINT.md). **Pasan las pruebas 2–5 y la 3**, que ejercitan el
+  artefacto directamente: `platform.mjs` resuelve rutas con backslashes bajo `%USERPROFILE%`, respeta
+  `CODEX_HOME`/`CLAUDE_CONFIG_DIR`, y la **autolocalización** (`resolveInstallRoot` vía `fileURLToPath`)
+  devuelve un `install` `C:\...` bien formado (sin el `/C:/` con barra inicial); `assertNode` da un
+  mensaje legible; los JSON de settings parsean. **Foco real del checkpoint, verificado:** el **slug del
+  transcript de Claude** (`slugifyCwd`) calcula `C--Users-MaxAlva-ai-workflows`, que coincide con el
+  directorio que Claude crea bajo `~/.claude/projects/` (validado contra la sesión real actual, sin
+  lanzar una sesión nueva). **Hallazgo (no bloqueante, no es bug del artefacto):** la **suite de tests**
+  no es portable a Windows — `node --test` da `82 tests / 63 pass / 19 fail`. Los 19 fallos son de la
+  suite, no de la lógica: (H1) `new URL(import.meta.url).pathname` deja `/C:/...` en 3 archivos de test
+  (`dispatch-adapter.test.mjs:23`, `harvest-core.test.mjs:21`, `harvest-entry.test.mjs:14`) → fixtures
+  no se leen (`ENOENT`) → 16 fallos; (H2) `fs.symlinkSync` da `EPERM` sin modo desarrollador → 2 fallos;
+  (H3) un test de `configDir` hardcodea `/tmp/...` y compara igualdad exacta → 1 fallo. Detalle y
+  correcciones propuestas (no aplicadas — checkpoint, no fix) en `WINDOWS-CHECKPOINT.md` → "Resultados
+  (Windows)". **Pendiente:** pruebas 6 (CERO-MCP) y 7 (`features.apps` inline en Codex), que lanzan CLIs
+  de IA reales, a correr en una sesión PowerShell supervisada.
 
 ### Pendiente (checkpoints, requieren entorno real — no se ejecutaron en esta task)
 
@@ -153,14 +171,6 @@ verificado lo que no se corrió. Plan: sección "Fase 7" de
   configuradas, y el **máximo output alcanzable** por el modelo (P3-largo parte ii). Qué correr: lanzar
   cada skill con `cross_model.transport=orca-session` contra una sesión Orca real y confirmar cosecha
   correcta del informe. Qué se espera: cosecha exitosa en los 3 casos, sin fallback a `cli`.
-- **Windows.** `disableAllHooks`/`--disable hooks`; auth vía Credential Manager/DPAPI (en vez de
-  keychain); el entry Node (`harvest-from-transcript.mjs`) resolviendo `%USERPROFILE%\…`/`CODEX_HOME`
-  correctamente; rutas de transcript/rollout por plataforma. Qué correr: repetir el locator (Task 0.1) y
-  la cosecha básica en una máquina Windows real. Qué se espera: mismo contrato de locator y parseo, con
-  las rutas POSIX de este entorno traducidas a sus equivalentes Windows. **Runbook ejecutable paso a
-  paso (PowerShell) en [`WINDOWS-CHECKPOINT.md`](./WINDOWS-CHECKPOINT.md)** — el agente que corra en
-  Windows sigue ese archivo y documenta ahí + marca este checkpoint. El foco real: rutas de
-  `platform.mjs` y el **slug del transcript de Claude** en Windows (`C:\...` → `slugifyCwd`).
 - **Atlassian (gate de escritura real con MCP vivo).** Bajo vigilancia manual: confirmar que una tool de
   escritura de Atlassian invocada por el secundario efectivamente escala a aprobación en la TUI (cierra
   también el punto de P4 que quedó pendiente en Task 7.1: "el prompt en la TUI ante una acción sensible"
