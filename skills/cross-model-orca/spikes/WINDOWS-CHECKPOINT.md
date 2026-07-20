@@ -154,8 +154,8 @@ por `--strict-mcp-config`). En macOS: allowlist vacío → responde `CERO-MCP`.
 $env:DISABLE_AUTOUPDATER = "1"
 $empty = "$env:TEMP\cmo-empty-mcp.json"
 '{"mcpServers":{}}' | Set-Content $empty
-# PowerShell no soporta `<`; stdin vacío por pipe:
-$null | claude --tools "Read,Grep,Glob" --strict-mcp-config --mcp-config $empty --settings skills/cross-model-orca/assets/launch/claude-readonly.settings.json "Enumera EXACTAMENTE los nombres de tus herramientas que empiezan con mcp__, una por linea. Si no tienes ninguna responde CERO-MCP"
+# `-p` (print/headless): sin él Claude abre la TUI y no termina. PowerShell no soporta `<`; stdin vacío por pipe:
+$null | claude -p --tools "Read,Grep,Glob" --strict-mcp-config --mcp-config $empty --settings skills/cross-model-orca/assets/launch/claude-readonly.settings.json "Enumera EXACTAMENTE los nombres de tus herramientas que empiezan con mcp__, una por linea. Si no tienes ninguna responde CERO-MCP"
 ```
 
 - **Esperado:** `CERO-MCP`. (Confirma que `--strict-mcp-config` deja la sesión sin MCP del entorno
@@ -194,10 +194,10 @@ $null | codex exec -c features.apps=false --strict-config --ephemeral --skip-git
 | 3 | Slug transcript Claude | ✅ ok | slug calc: `C--Users-MaxAlva-ai-workflows` · dir real: `C--Users-MaxAlva-ai-workflows` (coinciden; validado contra la sesión real actual de Claude Code, sin lanzar una sesión nueva) |
 | 4 | assertNode | ✅ ok | `assertNode(18)` OK; `assertNode(999)` lanza mensaje legible en Windows |
 | 5 | Comandos PowerShell | ✅ ok | 3 JSON de settings parsean; `CROSS_MODEL_ORCA` override apunta a `assets` y existe (`True`) |
-| 6 | CERO-MCP | ⬜ pendiente | Lanza el Claude CLI real; a correr en PowerShell con supervisión. Ya verificado headless en macOS (Claude 2.1.214, ver RESULTS.md) |
-| 7 | features.apps inline (Codex) | ⬜ pendiente | Lanza el Codex CLI real; a correr en PowerShell con supervisión |
+| 6 | CERO-MCP | ✅ ok | Claude respondió `CERO-MCP`, exit 0. `--strict-mcp-config` + allowlist vacío deja la sesión sin MCP también en Windows. **Requiere `-p`** (modo print/headless); sin él, Claude abre la TUI y no termina |
+| 7 | features.apps inline (Codex) | ✅ ok | Codex respondió `OK`, exit 0. `-c features.apps=false --strict-config` aceptado sin "unknown field". Los `ERROR rmcp::transport::worker` (postman/atlassian/figma) son de MCP externos con auth pendiente del entorno; no afectan la prueba |
 
-**Resumen:** El **artefacto de producción es portable a Windows** — lo confirman las pruebas 2, 3, 4 y 5, que ejercitan `platform.mjs` (rutas, autolocalización, `assertNode`) y los settings directamente. Los dos focos de riesgo del checkpoint pasan: la **autolocalización** (`resolveInstallRoot` con `fileURLToPath`) produce una ruta `C:\...` bien formada, y el **slug del transcript de Claude** (`slugifyCwd`) coincide con el directorio real que Claude crea. Las pruebas 6 y 7 (que lanzan CLIs de IA reales) quedan pendientes de una corrida supervisada en PowerShell.
+**Resumen:** El **artefacto de producción es portable a Windows** — lo confirman las pruebas 2, 3, 4 y 5, que ejercitan `platform.mjs` (rutas, autolocalización, `assertNode`) y los settings directamente. Los dos focos de riesgo del checkpoint pasan: la **autolocalización** (`resolveInstallRoot` con `fileURLToPath`) produce una ruta `C:\...` bien formada, y el **slug del transcript de Claude** (`slugifyCwd`) coincide con el directorio real que Claude crea. Las pruebas 6 (CERO-MCP) y 7 (`features.apps` inline) también pasan: `--strict-mcp-config` deja la sesión sin MCP en Windows y `-c features.apps=false --strict-config` es válido inline en Codex. **Checkpoint Windows completo: las 7 pruebas pasan.**
 
 **Hallazgos — la suite de tests NO era portable a Windows** (no eran bugs del artefacto). Detectados en
 la corrida inicial (`63 pass / 19 fail`) y **resueltos por el commit `f27e119`**

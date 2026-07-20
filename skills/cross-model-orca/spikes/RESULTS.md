@@ -145,7 +145,7 @@ verificado lo que no se corrió. Plan: sección "Fase 7" de
   de desambiguación con una sesión Codex fresca real (Task 0.2); señal `worker_done` por comando con
   hooks apagados, confirmada en una corrida live (Task 0.3). Es la base empírica sobre la que se apoya
   el resto del transporte, aunque la matriz E2E completa de Task 7.1(a)(b)(c) no se repitió en esta task.
-- **Windows — artefacto de producción portable (checkpoint parcial, `[~]`).** Corrido en una máquina
+- **Windows — checkpoint completo (`[x]`), las 7 pruebas pasan.** Corrido en una máquina
   Windows real (Node 22.14.0, Windows 10.0.26200) siguiendo
   [`WINDOWS-CHECKPOINT.md`](./WINDOWS-CHECKPOINT.md). **Pasan las pruebas 2–5 y la 3**, que ejercitan el
   artefacto directamente: `platform.mjs` resuelve rutas con backslashes bajo `%USERPROFILE%`, respeta
@@ -163,8 +163,10 @@ verificado lo que no se corrió. Plan: sección "Fase 7" de
   (`test(cross-model-orca): portabilidad del suite a Windows` — `fileURLToPath`, skip de symlinks,
   `path.resolve`): tras él, `node --test` da `82 / 80 pass / 0 fail / 2 skip` (los 2 skip son los tests
   de symlink, inejecutables sin modo desarrollador). Detalle en `WINDOWS-CHECKPOINT.md` → "Resultados
-  (Windows)". **Pendiente:** pruebas 6 (CERO-MCP) y 7 (`features.apps` inline en Codex), que lanzan CLIs
-  de IA reales, a correr en una sesión PowerShell supervisada.
+  (Windows)". **Pruebas 6 y 7 (CLIs de IA reales) — pasan:** Claude respondió `CERO-MCP` (exit 0) con
+  `--strict-mcp-config` + allowlist vacío (requiere `-p` para modo headless; sin él abre la TUI), y
+  Codex respondió `OK` (exit 0) con `-c features.apps=false --strict-config` aceptado inline sin
+  "unknown field". Con esto el checkpoint Windows queda **completo**.
 
 ### Pendiente (checkpoints, requieren entorno real — no se ejecutaron en esta task)
 
