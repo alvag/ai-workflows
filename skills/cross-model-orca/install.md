@@ -23,11 +23,18 @@ Si la major es menor a 18, actualiza Node antes de continuar. `assertNode(18)` (
 `assets/lib/platform.mjs`) hace este mismo chequeo en runtime y lanza un error claro si no se
 cumple.
 
-## 2. Exportar `CROSS_MODEL_ORCA`
+## 2. `CROSS_MODEL_ORCA` (opcional)
 
-Los módulos resuelven su raíz de instalación desde la variable de entorno `CROSS_MODEL_ORCA`,
-que debe apuntar a la ruta **absoluta** de `skills/cross-model-orca/assets` (dentro de este
-repo, `ai-workflows`).
+Los módulos resuelven su raíz de instalación **solos**: `resolveInstallRoot()` (en
+`assets/lib/platform.mjs`) deduce el directorio `assets` a partir de su propia ruta de archivo
+(`import.meta.url`), así que instalar la skill-librería es "copiarla y listo" — no hace falta
+setear nada. `CROSS_MODEL_ORCA` queda como variable **opcional**, solo para el caso de correr los
+módulos desde una ubicación distinta de su propio `assets` (por ejemplo, un `assets` empaquetado o
+copiado aparte del resto de la skill): cuando está seteada, se usa como **override** y gana por
+sobre la autolocalización.
+
+Para setearla como override, apunta a la ruta **absoluta** de `skills/cross-model-orca/assets`
+(dentro de este repo, `ai-workflows`):
 
 **POSIX (bash/zsh)** — reemplaza `<ruta-absoluta-del-repo>` por la ruta real del checkout:
 ```bash
@@ -44,7 +51,7 @@ export CROSS_MODEL_ORCA="/Users/max/Personal/repos/ai-workflows/skills/cross-mod
 $env:CROSS_MODEL_ORCA = "<ruta-absoluta-del-repo>\skills\cross-model-orca\assets"
 ```
 
-Para que quede seteada en toda sesión nueva, agrega el `export`/`$env:` a tu `~/.zshrc`,
+Si necesitas el override en toda sesión nueva, agrega el `export`/`$env:` a tu `~/.zshrc`,
 `~/.bashrc` o perfil de PowerShell (`$PROFILE`), según corresponda.
 
 ## 3. Instalación reproducible de `skills-ref`

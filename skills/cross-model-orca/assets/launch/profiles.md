@@ -118,7 +118,7 @@ Bash) hace que no exista ningún prompt de aprobación posible, con o sin alguie
 ```bash
 DISABLE_AUTOUPDATER=1 claude \
   --tools "Read,Grep,Glob" \
-  --settings skills/cross-model-orca/assets/launch/claude-readonly.settings.json \
+  --settings "$CROSS_MODEL_ORCA/launch/claude-readonly.settings.json" \
   --session-id "<uuid>" \
   "<prompt>"
 ```
@@ -128,13 +128,20 @@ DISABLE_AUTOUPDATER=1 claude \
 $env:DISABLE_AUTOUPDATER = "1"
 claude `
   --tools "Read,Grep,Glob" `
-  --settings skills/cross-model-orca/assets/launch/claude-readonly.settings.json `
+  --settings "$env:CROSS_MODEL_ORCA\launch\claude-readonly.settings.json" `
   --session-id "<uuid>" `
   "<prompt>"
 ```
 
+> **`$CROSS_MODEL_ORCA`/`$env:CROSS_MODEL_ORCA`:** el comando real lo arma
+> `dispatch-adapter.mjs` (`buildLaunchCommand`) desde el install root resuelto por
+> `resolveInstallRoot()`; por defecto se **autolocaliza** al `assets` instalado (no hace falta
+> setear nada), y `CROSS_MODEL_ORCA` queda como override opcional (ver `install.md`). Si corres
+> este comando a mano y no seteaste el override, reemplaza la variable por la ruta real de tu
+> checkout (p. ej. `skills/cross-model-orca/assets/launch/claude-readonly.settings.json`).
+
 > **Desatendido (opcional):** para una corrida sin nadie mirando la TUI, agrega
-> `--strict-mcp-config --mcp-config skills/cross-model-orca/assets/launch/claude-readonly.mcp.json`
+> `--strict-mcp-config --mcp-config "$CROSS_MODEL_ORCA/launch/claude-readonly.mcp.json"`
 > **antes** de `--settings` para acotar MCP a cero (o a un allowlist de lectura). En el default
 > atendido no hace falta: el gate es la vigilancia manual (ver `mcp-inventory.md`). Ambos flags son
 > variádicos — mantén el `<prompt>` al final, tras `--session-id`.
@@ -146,7 +153,7 @@ claude `
 **POSIX:**
 ```bash
 DISABLE_AUTOUPDATER=1 claude \
-  --settings skills/cross-model-orca/assets/launch/claude-write.settings.json \
+  --settings "$CROSS_MODEL_ORCA/launch/claude-write.settings.json" \
   --permission-mode manual \
   --session-id "<uuid>" \
   "<work order>"
@@ -156,11 +163,16 @@ DISABLE_AUTOUPDATER=1 claude \
 ```powershell
 $env:DISABLE_AUTOUPDATER = "1"
 claude `
-  --settings skills/cross-model-orca/assets/launch/claude-write.settings.json `
+  --settings "$env:CROSS_MODEL_ORCA\launch\claude-write.settings.json" `
   --permission-mode manual `
   --session-id "<uuid>" `
   "<work order>"
 ```
+
+> **`$CROSS_MODEL_ORCA`/`$env:CROSS_MODEL_ORCA`:** igual que en el perfil read-only, el comando
+> real lo arma `buildLaunchCommand` desde el install root autolocalizado por
+> `resolveInstallRoot()`; setea el override solo si corres los módulos desde otra ubicación (ver
+> `install.md`).
 
 **Desatendido** (nadie mirando; `manual` se colgaría esperando aprobación) —
 `--permission-mode dontAsk`:
@@ -168,7 +180,7 @@ claude `
 **POSIX:**
 ```bash
 DISABLE_AUTOUPDATER=1 claude \
-  --settings skills/cross-model-orca/assets/launch/claude-write.settings.json \
+  --settings "$CROSS_MODEL_ORCA/launch/claude-write.settings.json" \
   --permission-mode dontAsk \
   --session-id "<uuid>" \
   "<work order>"
@@ -178,7 +190,7 @@ DISABLE_AUTOUPDATER=1 claude \
 ```powershell
 $env:DISABLE_AUTOUPDATER = "1"
 claude `
-  --settings skills/cross-model-orca/assets/launch/claude-write.settings.json `
+  --settings "$env:CROSS_MODEL_ORCA\launch\claude-write.settings.json" `
   --permission-mode dontAsk `
   --session-id "<uuid>" `
   "<work order>"

@@ -106,6 +106,20 @@ incierta, sesión no verificable como propia, locator ambiguo — el resultado e
 condiciones (Orca alcanzable, sesión propia/fresca, perfiles de las tres capas de control
 instalados) se cumplan explícitamente.
 
+**Verificación preventiva de perfiles (secundario Claude).** El install root que
+`createOwnedSession` usa para armar el `--settings` de Claude (`resolveInstallRoot()` en
+`platform.mjs`) se **autolocaliza**: deduce el `assets` instalado a partir de su propia ruta
+(`import.meta.url`), sin depender de que nadie setee `CROSS_MODEL_ORCA` a mano; la variable queda
+como **override opcional**, solo para quien corra los módulos desde una copia distinta de su
+propio `assets`. Eso ya no lanza, así que el chequeo real de "instalación rota o movida" se hace
+antes, como parte de decidir `orca-session` con secundario Claude: el conductor confirma que los
+perfiles de lanzamiento **existen** en `<install root>/launch/` (p. ej.
+`claude-readonly.settings.json`, `claude-write.settings.json`, según el rol). Si el install root
+resuelto **no** contiene esos archivos, `orca-session` se trata como **no disponible → degradar a
+`cli`**, en vez de lanzar una sesión con un `--settings` que apunta a un archivo inexistente. Este
+chequeo reemplaza el viejo modo de falla (la excepción que `resolveInstallRoot()` lanzaba cuando
+`CROSS_MODEL_ORCA` no estaba seteada).
+
 ---
 
 ## Envelope y cosecha crash-idempotente
@@ -392,9 +406,9 @@ standalone (`harvest-from-transcript.mjs`) expone el mismo presupuesto vía `CMO
 ## Instalación y raíz conductor-only
 
 Ver [`install.md`](./install.md) para el contrato completo de instalación (verificación de Node
-≥18 vía `assertNode(18)`/`node --version`, y la variable de entorno `CROSS_MODEL_ORCA` que
-resuelve la raíz de los módulos vía `resolveInstallRoot()` en `assets/lib/platform.mjs`) — no se
-duplica acá.
+≥18 vía `assertNode(18)`/`node --version`, y cómo `resolveInstallRoot()` en
+`assets/lib/platform.mjs` autolocaliza la raíz de los módulos, con `CROSS_MODEL_ORCA` como
+override opcional) — no se duplica acá.
 
 **Raíz conductor-only (`stateDir`).** El registro de sesiones propias y la FSM durable de dedup
 viven en un directorio **exclusivo del conductor**, fuera de cualquier worktree que el secundario
