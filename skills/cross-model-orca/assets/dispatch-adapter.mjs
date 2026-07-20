@@ -623,23 +623,49 @@ function hashFile(filePath) {
  * contención real) — ese caso se trata como éxito idempotente (`code:0`) y auto-repara
  * la FSM.
  *
+ * **Cierre del dispatch (reúso de sesión).** Tras una cosecha exitosa (`code:0`), completa
+ * el dispatch en Orca (`orchestration task-update --id <taskId> --status completed`). Como
+ * NO usamos `worker_done` (que lo completaría automáticamente), sin este cierre el dispatch
+ * queda "active" y Orca rechaza un segundo dispatch a la MISMA terminal ("already has an
+ * active dispatch") — el **reúso de sesión** (cross-review multi-ronda) fallaría (hallazgo
+ * del E2E de Fase 7, caso c). Es **best-effort**: si el cierre falla, la cosecha sigue siendo
+ * válida (solo se resentiría un reúso posterior). Requiere `dispatch.taskId`.
+ *
  * @param {object} params
  * @param {object} params.session
- * @param {{ taskId: string, dispatchId: string, nonce: string }} params.dispatch
+ * @param {{ taskId?: string, dispatchId: string, nonce: string }} params.dispatch
  * @param {string} params.reportPath
  * @param {string} params.root
  * @param {number} params.deadlineMs
+ * @param {(args: string[]) => { stdout: string, code: number }} [params.orcaRunner]
  * @param {() => number} [params.now]
  * @param {(ms: number) => Promise<void>} [params.sleep]
  * @returns {Promise<{ code: 0, reportPath: string } | { code: 2|3, reason: string } | { code: 4, reason: string }>}
  *   `code` 4: no se pudo localizar el rollout de Codex antes del deadline — degradar a `cli`.
  */
+
+/**
+ * Cierra el lifecycle del dispatch en Orca tras cosechar (ver docstring de `awaitDone` →
+ * "Cierre del dispatch"). Best-effort: nunca lanza, y no hace nada si falta `taskId`.
+ * @param {(args: string[]) => { stdout: string, code: number }} orcaRunner
+ * @param {string|undefined} taskId
+ */
+function completeDispatchTask(orcaRunner, taskId) {
+  if (!taskId) return;
+  try {
+    orcaRunner(['orchestration', 'task-update', '--id', taskId, '--status', 'completed', '--json']);
+  } catch {
+    // best-effort: la cosecha ya fue válida; un cierre fallido solo afecta un reúso posterior.
+  }
+}
+
 export async function awaitDone({
   session,
   dispatch,
   reportPath,
   root,
   deadlineMs,
+  orcaRunner = defaultOrcaRunner,
   now = Date.now,
   sleep = defaultSleep,
 }) {
@@ -702,6 +728,7 @@ export async function awaitDone({
     }
     fsm.markHarvested(dedupKey);
     fsm.markPromoted(dedupKey, hashFile(resolvedPath));
+    completeDispatchTask(orcaRunner, dispatch.taskId); // libera la terminal para el reúso de sesión.
     return { code: 0, reportPath: resolvedPath };
   }
 
@@ -711,6 +738,7 @@ export async function awaitDone({
 
   fsm.markHarvested(dedupKey);
   fsm.markPromoted(dedupKey, hashFile(harvestResult.reportPath));
+  completeDispatchTask(orcaRunner, dispatch.taskId); // libera la terminal para el reúso de sesión.
 
   return harvestResult;
 }

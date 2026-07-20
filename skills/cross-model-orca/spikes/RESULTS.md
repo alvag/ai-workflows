@@ -222,12 +222,28 @@ universal de `dispatch --inject` (que sí funciona para ambas familias), así qu
 `dispatch --inject` y el ruido del `worker_done` se neutraliza por rol: read-only con MCP off (no
 puede ejecutarlo), Codex lo corre en su sandbox shell (inofensivo, contenido).
 
-### Pendiente (checkpoints, requieren entorno real)
+### E2E live — caso (c) cross-review, 2 rondas / reúso de sesión: VERDE (2026-07-20)
 
-- **E2E live caso (c).** cross-review con envelope+`STATUS: done`, las tres capas de control y el
-  **máximo output alcanzable** (P3-largo parte ii). Qué correr: lanzar la skill con
-  `cross_model.transport=orca-session` contra una sesión Orca real y confirmar cosecha correcta. Qué
-  se espera: cosecha exitosa, sin fallback a `cli`. (Los casos (a) y (b) ya validaron ambas direcciones.)
+Secundario = Claude read-only (MCP off). Review adversarial de un spec real
+(`docs/superpowers/specs/2026-07-17-co-explore-debate-mode-design.md`), **dos rondas sobre la MISMA
+sesión**. Ambas cosecharon `code 0` (5191 y 4855 bytes — reviews reales y estructurados, leídos del
+transcript, no del preview). Verificado: r1 contiene **solo** su nonce (no el de r2) y viceversa
+(desambiguación por nonce en sesión reutilizada), y r1 ≠ r2 (reúso real, no re-cosecha del mismo
+mensaje). Sin tocar el IDE (MCP off). ~2.5 min total.
+
+**Hallazgo de reúso (y su fix).** La primera corrida falló en la ronda 2: `dispatch --inject` a la
+misma terminal devolvió `ok:false` con `"Terminal ... already has an active dispatch"`. Causa: como
+NO usamos `worker_done` (que completa el dispatch automáticamente en Orca), el dispatch de la ronda 1
+queda **"active"** y Orca rechaza un segundo dispatch a esa terminal. **Fix:** `awaitDone`, tras una
+cosecha exitosa, cierra el dispatch con `orchestration task-update --id <taskId> --status completed`
+(best-effort, requiere `dispatch.taskId`). Re-validado: las dos rondas verdes. Nota: para un dispatch
+único por sesión (co-explore, cross-implement) el reúso no aplica, pero el cierre es buena higiene.
+
+> Nota de tarea (no de transporte): un Codex a **xhigh** con un prompt "exhaustivo, listá TODOS los
+> hallazgos" razona sin cerrar el turno y puede exceder un deadline de 5 min. El review acotado
+> ("los 6-8 hallazgos más importantes") cierra rápido. El mecanismo de cosecha es indiferente a esto.
+
+### Pendiente (checkpoints, requieren entorno real)
 - **Atlassian (gate de escritura real con MCP vivo).** Bajo vigilancia manual: confirmar que una tool de
   escritura de Atlassian invocada por el secundario efectivamente escala a aprobación en la TUI (cierra
   también el punto de P4 que quedó pendiente en Task 7.1: "el prompt en la TUI ante una acción sensible"

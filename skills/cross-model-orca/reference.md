@@ -359,10 +359,11 @@ fin"), así que no hay coordinador que rutear.
 
 ## Espera y backoff
 
-`awaitDone({ session, dispatch, reportPath, root, deadlineMs, now, sleep })` (`dispatch-adapter.mjs`)
-es la espera bloqueante del conductor tras un dispatch. No consulta `orchestration check` ni recibe
-`coordinatorHandle`/`orcaRunner`: la detección de fin es puramente el transcript propio (ver
-"Detección de fin" arriba). Tiene, en orden, hasta tres fases:
+`awaitDone({ session, dispatch, reportPath, root, deadlineMs, orcaRunner, now, sleep })`
+(`dispatch-adapter.mjs`) es la espera bloqueante del conductor tras un dispatch. No consulta
+`orchestration check`: la detección de fin es puramente el transcript propio (ver "Detección de fin"
+arriba). Solo usa `orcaRunner` para **cerrar el dispatch** tras cosechar (fase 3). Tiene, en orden,
+hasta tres fases:
 
 **0. Dedup temprano.** Si `fsm.isPromoted(dedupKey)` ya es `true` (una corrida anterior ya cosechó
 este `dispatchId:nonce` — recuperación post-crash, o una segunda invocación con el mismo
@@ -390,6 +391,13 @@ buscando `selectAssistantByNonce` + `hasSentinel`, con backoff exponencial acota
 sentinel aparece, lo persiste (contención de `reportPath` incluida). Si nunca aparece antes del
 deadline, `harvest()` devuelve `{ code: 3 }`. La rama de crash-idempotencia (destino ya existente
 para el mismo dispatch+nonce ⇒ éxito idempotente `code: 0`) se documenta en el JSDoc de `awaitDone`.
+
+**3. Cierre del dispatch (best-effort, tras cosecha `code:0`).** `completeDispatchTask` invoca
+`orchestration task-update --id <dispatch.taskId> --status completed`. Sin esto el dispatch queda
+"active" en Orca y un segundo dispatch a la MISMA terminal se rechaza ("already has an active
+dispatch") — el **reúso de sesión** (cross-review multi-ronda) fallaría (hallazgo del E2E caso c). No
+falla la cosecha si el cierre falla, y no hace nada si falta `dispatch.taskId`. Para un dispatch único
+por sesión el reúso no aplica, pero el cierre es buena higiene del lifecycle de Orca.
 
 **Presupuesto de tiempo y liberar el turno.** `deadlineMs` es siempre un **presupuesto de espera**
 contado desde la invocación (`deadlineAt = now() + deadlineMs`), no un timestamp absoluto — así lo

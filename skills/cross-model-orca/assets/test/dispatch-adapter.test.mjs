@@ -544,7 +544,7 @@ test('awaitDone (codex): cosecha del transcript propio por nonce y marca promote
   const stateDir = mkTmpDir('cmo-state-');
   const root = mkTmpDir('cmo-report-root-');
   const session = { family: 'codex', transcriptPath: CODEX_FIXTURE, terminalHandle: 'term_1', stateDir };
-  const dispatch = { taskId: 'T1', dispatchId: 'D1', nonce: 'NONCE-ACTUAL' };
+  const dispatch = { dispatchId: 'D1', nonce: 'NONCE-ACTUAL' };
 
   const result = await awaitDone({ session, dispatch, reportPath: 'informe.md', root, deadlineMs: 1000 });
 
@@ -555,13 +555,39 @@ test('awaitDone (codex): cosecha del transcript propio por nonce y marca promote
   assert.equal(fsm.isPromoted('D1:NONCE-ACTUAL'), true);
 });
 
+test('awaitDone: tras cosechar OK, completa el dispatch (task-update --status completed) para liberar la terminal (reúso de sesión)', async () => {
+  // Como no usamos worker_done, sin este cierre el dispatch queda "active" y Orca rechaza un segundo
+  // dispatch a la misma terminal (hallazgo del E2E caso c). El cierre es best-effort y solo dispara
+  // si hay dispatch.taskId.
+  const stateDir = mkTmpDir('cmo-state-');
+  const root = mkTmpDir('cmo-report-root-');
+  const session = { family: 'codex', transcriptPath: CODEX_FIXTURE, terminalHandle: 'term_1', stateDir };
+  const dispatch = { taskId: 'task_r1', dispatchId: 'D1', nonce: 'NONCE-ACTUAL' };
+
+  const calls = [];
+  const fakeOrcaRunner = (args) => {
+    calls.push(args);
+    if (args[1] === 'task-update') return okEnvelope({ task: { status: 'completed' } });
+    throw new Error(`orcaRunner inesperado en awaitDone: ${args.join(' ')}`);
+  };
+
+  const result = await awaitDone({ session, dispatch, reportPath: 'informe.md', root, deadlineMs: 1000, orcaRunner: fakeOrcaRunner });
+
+  assert.equal(result.code, 0);
+  // Se llamó a task-update con el taskId del dispatch y --status completed.
+  const upd = calls.find((c) => c[1] === 'task-update');
+  assert.notEqual(upd, undefined);
+  assert.equal(upd[upd.indexOf('--id') + 1], 'task_r1');
+  assert.equal(upd[upd.indexOf('--status') + 1], 'completed');
+});
+
 test('awaitDone: el nonce nunca aparece en el transcript -> no cosecha, agota el deadline (timeout code 3)', async () => {
   const stateDir = mkTmpDir('cmo-state-');
   const root = mkTmpDir('cmo-report-root-');
   // transcriptPath válido (el fixture existe) pero con un nonce que NO está en él: harvest hace
   // poll hasta el deadline sin encontrarlo.
   const session = { family: 'codex', transcriptPath: CODEX_FIXTURE, terminalHandle: 'term_1', stateDir };
-  const dispatch = { taskId: 'T1', dispatchId: 'D1', nonce: 'NONCE-INEXISTENTE' };
+  const dispatch = { dispatchId: 'D1', nonce: 'NONCE-INEXISTENTE' };
 
   // now monotónico que avanza en cada llamada: cruza el deadline de forma determinista sin depender
   // de tiempo real (harvest chequea now() >= deadline antes de dormir, así que corta enseguida).
@@ -592,7 +618,7 @@ test('awaitDone: una segunda invocación con el mismo dispatch+nonce no reproces
   const stateDir = mkTmpDir('cmo-state-');
   const root = mkTmpDir('cmo-report-root-');
   const session = { family: 'codex', transcriptPath: CODEX_FIXTURE, terminalHandle: 'term_1', stateDir };
-  const dispatch = { taskId: 'T1', dispatchId: 'D1', nonce: 'NONCE-ACTUAL' };
+  const dispatch = { dispatchId: 'D1', nonce: 'NONCE-ACTUAL' };
 
   const first = await awaitDone({ session, dispatch, reportPath: 'informe.md', root, deadlineMs: 1000 });
   assert.equal(first.code, 0);
@@ -615,7 +641,7 @@ test('awaitDone: crash entre writeExclusive y markPromoted -> el retry ve "desti
   const stateDir = mkTmpDir('cmo-state-');
   const root = mkTmpDir('cmo-report-root-');
   const session = { family: 'codex', transcriptPath: CODEX_FIXTURE, terminalHandle: 'term_1', stateDir };
-  const dispatch = { taskId: 'T1', dispatchId: 'D1', nonce: 'NONCE-ACTUAL' };
+  const dispatch = { dispatchId: 'D1', nonce: 'NONCE-ACTUAL' };
   const dedupKey = 'D1:NONCE-ACTUAL';
 
   // Precondición: el reporte YA está en disco (como si un harvest() previo lo hubiera escrito) y
@@ -646,7 +672,7 @@ test('awaitDone (claude): cosecha del transcript por nonce (transcriptPath ya re
   const root = mkTmpDir('cmo-report-root-');
   const claudeFixture = path.join(TEST_DIR, 'fixtures/claude-transcript.jsonl');
   const session = { family: 'claude', transcriptPath: claudeFixture, terminalHandle: 'term_c1', stateDir };
-  const dispatch = { taskId: 'T1', dispatchId: 'D1', nonce: 'NONCE-ACTUAL' };
+  const dispatch = { dispatchId: 'D1', nonce: 'NONCE-ACTUAL' };
 
   const result = await awaitDone({ session, dispatch, reportPath: 'informe.md', root, deadlineMs: 1000 });
 
@@ -674,7 +700,7 @@ test('awaitDone (codex): transcriptPath pendiente -> resuelve el rollout lazy y 
       terminalHandle: 'term_1',
       stateDir,
     };
-    const dispatch = { taskId: 'T1', dispatchId: 'D1', nonce: 'NONCE-ACTUAL' };
+    const dispatch = { dispatchId: 'D1', nonce: 'NONCE-ACTUAL' };
 
     const result = await awaitDone({
       session,
@@ -712,7 +738,7 @@ test('awaitDone (codex): el rollout nunca aparece -> code 4 (degradar a cli), si
       terminalHandle: 'term_1',
       stateDir,
     };
-    const dispatch = { taskId: 'T1', dispatchId: 'D1', nonce: 'NONCE-ACTUAL' };
+    const dispatch = { dispatchId: 'D1', nonce: 'NONCE-ACTUAL' };
 
     const result = await awaitDone({
       session,
