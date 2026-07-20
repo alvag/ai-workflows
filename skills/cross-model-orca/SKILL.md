@@ -69,13 +69,22 @@ rondas) puede tener mensajes de dispatches previos con `nonce` viejo, y esos se 
 **Correlación vs. autoridad.** El texto del envelope lo produce el modelo secundario, así que es
 **falsificable**: no sirve como credencial. Por eso lleva un único campo, el `nonce`, que es solo
 un **token de correlación** — para qué mensaje del transcript corresponde a este dispatch. La
-**autoridad**, lo que un secundario no puede forjar, vive **fuera del texto** y la valida el
-conductor **antes** de cosechar: para Codex, el `payload={taskId, dispatchId}` del `worker_done`
-más la garantía de Orca de que el `sender` coincide con el `assignee` del dispatch; para Claude
-(que no emite `worker_done`), la **propiedad de la sesión** — el conductor la creó con un
-`--session-id` propio y lee ese transcript exacto. Agregar `taskId`/`dispatchId` al texto no
-sumaría autoridad (serían un eco forjable de datos que el conductor ya conoce); el parser los
-tolera por compatibilidad, pero el dispatch `orca-session` solo pide `nonce`.
+**autoridad**, lo que un secundario no puede forjar, es la **propiedad de la sesión**: el conductor
+**creó él mismo** la terminal fresca y lee el transcript/rollout de **esa** sesión exacta — para
+Claude, fijando un `--session-id` propio; para Codex, localizando el rollout por `cwd`+`mtime`+
+`source` y desambiguando a **exactamente 1** candidato. El `nonce` (único por dispatch) selecciona
+el mensaje correcto dentro de ese transcript propio. Vale para **ambas familias**: es el mismo
+modelo.
+
+**Por qué no se usa `worker_done`.** El E2E real (Fase 7, primer contacto con Orca vivo) mostró que
+un Codex **sandboxeado** no puede reportar `worker_done` de forma confiable: dentro del sandbox
+`read-only` el `orca orchestration send` falla de forma **intermitente** con "Orca is not running"
+(el `ORCA_CLI_SOCKET` viene vacío y no alcanza el runtime). La señal que el conductor **siempre**
+observa —porque él no está sandboxeado— es el `nonce`+sentinel apareciendo en el transcript propio,
+que `harvest()` sondea hasta el deadline: **esa** es la detección de fin. `taskId`/`dispatchId` no
+sumarían autoridad (serían un eco forjable de datos que el conductor ya conoce); el parser los
+tolera por compatibilidad, pero el dispatch `orca-session` solo pide `nonce`. El `worker_done` que
+el preamble de Orca le pide emitir al secundario es ruido inofensivo: no se consume.
 
 El parseo exacto del envelope, la desambiguación por `nonce` y el algoritmo de cosecha
 crash-idempotente están en `reference.md` (consumen `assets/harvest-core.mjs` y
@@ -88,9 +97,10 @@ Sin las tres activas, no se despacha:
 1. **Sandbox/toolset** — qué puede tocar el proceso. Codex: `-s read-only` / `-s
    workspace-write`. Claude: **siempre** toolset cerrado `--tools "Read,Grep,Glob"` (Bash queda
    fuera del toolset → read-only duro, inmune a un `allow:["Bash"]` heredado de otro scope).
-   Consecuencia: **Claude no señaliza por comando** — su fin de turno se detecta por la
-   transición `tui-idle` posterior al dispatch, nunca por una señal propia. La señal
-   `worker_done` por comando es **solo Codex**.
+   El fin de turno **no** se detecta por una señal que emita el secundario: para **ambas familias**
+   el conductor sondea el transcript propio esperando el `nonce`+sentinel (sección 2). `tui-idle`
+   solo se usa como barrera de **boot** antes de inyectar (para no perder el prompt) y en la
+   recuperación, no como detección de fin.
 2. **MCP** — qué tools remotas están disponibles. En el **default atendido**, MCP se controla por
    **vigilancia manual** (P4): el secundario ve los MCP del entorno y el humano aprueba/rechaza en
    la TUI cualquier acción sensible. No hay inventario ni allowlist que configurar. `--tools` acota

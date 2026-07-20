@@ -168,13 +168,41 @@ verificado lo que no se corrió. Plan: sección "Fase 7" de
   Codex respondió `OK` (exit 0) con `-c features.apps=false --strict-config` aceptado inline sin
   "unknown field". Con esto el checkpoint Windows queda **completo**.
 
-### Pendiente (checkpoints, requieren entorno real — no se ejecutaron en esta task)
+### E2E live — caso (a) Claude→Codex explore: VERDE (2026-07-20)
 
-- **E2E live completo.** Matriz de 3 casos con sesiones Orca reales: (a) Claude→Codex explore; (b)
-  Codex→Claude explore; (c) cross-review con envelope+`STATUS: done`, las tres capas de control
-  configuradas, y el **máximo output alcanzable** por el modelo (P3-largo parte ii). Qué correr: lanzar
+Primer contacto del adaptador con Orca real. Corrido punta a punta contra el runtime vivo:
+`createOwnedSession` → `createDispatch` (boot-wait + `dispatch --inject`) → Codex read-only leyó los
+4 módulos de `assets/` → `awaitDone` **cosechó el informe por nonce** (`code 0`, 518 bytes con el
+envelope correcto). El E2E destapó y corrigió cuatro capas de bugs, todas en `dispatch-adapter.mjs`:
+
+1. **Envelope JSON de Orca.** Todo comando `orca --json` envuelve en `{ id, ok, result|error, _meta }`;
+   el adaptador leía campos planos → `null` siempre → degradaba a `cli` siempre. Regla: éxito =
+   `ok===true` (nunca el exit code — `terminal close` sobre handle stale da `ok:false` pero exit 0).
+   Formas reales: `terminal create`→`result.terminal.handle`, `task-create`→`result.task.id`,
+   `dispatch`→`result.dispatch.id`, `check`→`result.messages` (con `payload` **string JSON** y emisor
+   en `from_handle`).
+2. **Boot-wait.** `createDispatch` espera `tui-idle` antes de `dispatch --inject`, si no el prompt se
+   pierde (ver "Dispatch: esperar el boot antes de inyectar" en `reference.md`).
+3. **Detección de fin migrada a nonce en el transcript propio.** Se **abandonó `worker_done`**: un Codex
+   sandboxeado no lo envía de forma confiable (falla **intermitente** con "Orca is not running", el
+   `ORCA_CLI_SOCKET` viene vacío en el sandbox `read-only`). Se eliminó `checkWorkerDoneAuthority`, el
+   poll de `orchestration check`, el poll de `tui-idle` como autoridad y `--from`/coordinatorHandle.
+   `awaitDone` ahora localiza el rollout y deja que `harvest()` sondee el transcript por `nonce`+sentinel
+   — señal que el conductor (no sandboxeado) siempre observa. Mismo modelo para ambas familias.
+4. **Contención de `reportPath`.** Confirmada: un `reportPath` **absoluto** se rechaza (`code 2`); debe
+   ser relativo a `root`.
+
+Actualiza CONTRATO-CROSS-VENDOR-Fase0: el mecanismo por familia de Task 0.2/0.3 (Codex = `worker_done`
+por comando) queda **superado** — la señal confiable es el envelope en el transcript propio, no
+`worker_done` (que ahora es ruido inofensivo del preamble de `--inject`).
+
+### Pendiente (checkpoints, requieren entorno real)
+
+- **E2E live casos (b) y (c).** (b) Codex→Claude explore; (c) cross-review con envelope+`STATUS: done`,
+  las tres capas de control y el **máximo output alcanzable** (P3-largo parte ii). Qué correr: lanzar
   cada skill con `cross_model.transport=orca-session` contra una sesión Orca real y confirmar cosecha
-  correcta del informe. Qué se espera: cosecha exitosa en los 3 casos, sin fallback a `cli`.
+  correcta. Qué se espera: cosecha exitosa, sin fallback a `cli`. (El caso (a) ya validó el mecanismo
+  base end-to-end.)
 - **Atlassian (gate de escritura real con MCP vivo).** Bajo vigilancia manual: confirmar que una tool de
   escritura de Atlassian invocada por el secundario efectivamente escala a aprobación en la TUI (cierra
   también el punto de P4 que quedó pendiente en Task 7.1: "el prompt en la TUI ante una acción sensible"

@@ -132,13 +132,13 @@ exactamente una vez.
 `createDispatch` inyecta en el spec del dispatch (`buildEnvelopeInstructions` en
 `dispatch-adapter.mjs`) le pide al secundario cerrar con **solo** `X-CMO: nonce=<nonce>` +
 `STATUS: done`. Es intencional: `harvest()`/`selectAssistantByNonce` solo necesitan el `nonce` para
-desambiguar dentro del transcript (token de correlación, y es texto del modelo → falsificable);
-la **autoridad** (`taskId`/`dispatchId`) viaja por el canal de `worker_done` (el `payload` de la
-orquestación de Orca) y la valida el conductor **antes** de cosechar (ver "Autoridad ANTES de
-cosechar" más abajo), no por el texto del envelope. `parseEnvelope()` sigue soportando los tres
-campos (para otros transportes/skills que sí los pidan en su prompt, p. ej. el `cli` de hoy), y
-tolera que falten sin lanzar. Si vas a redactar el prompt de un dispatch `orca-session` a mano,
-sigue lo que pide el código: alcanza con `nonce`.
+desambiguar dentro del transcript (token de correlación, y es texto del modelo → falsificable); la
+**autoridad** es la **propiedad de la sesión** (el conductor creó la terminal y lee el transcript de
+esa sesión exacta — `--session-id` propio para Claude, rollout localizado y desambiguado a 1 para
+Codex), no un campo del texto ni un `worker_done`. `parseEnvelope()` sigue soportando los tres
+campos (`nonce`/`taskId`/`dispatchId`, para otros transportes/skills que sí los pidan, p. ej. el
+`cli` de hoy) y tolera que falten sin lanzar. Si vas a redactar el prompt de un dispatch
+`orca-session` a mano, sigue lo que pide el código: alcanza con `nonce`.
 
 **Parseo del envelope (`harvest-core.mjs`):**
 - `parseEnvelope(msg)` busca la **última** línea que empieza con `X-CMO:` y extrae los pares
@@ -158,21 +158,22 @@ función que usa `harvest()`, no la más simple `parseTranscript(family, filePat
 el último mensaje del asistente sin filtrar por nonce — esa queda para casos donde no hace falta
 desambiguar).
 
-**`worker_done` es solo wake-up, no evidencia de escritura.** La señal por comando (`Codex`
-únicamente — Claude nunca la emite, ver SKILL.md → sección 3) dispara que el conductor **empiece**
-a mirar, pero el mensaje final con el envelope puede tardar en aparecer en el transcript. El
-conductor nunca cosecha directo del `worker_done`: siempre relee el transcript y busca el mensaje
-con el `nonce` esperado (ver "Espera y backoff" para el detalle del poll).
+**Detección de fin = el `nonce`+sentinel en el transcript propio, no `worker_done`.** No se
+consulta `orchestration check`. `awaitDone` llama a `harvest()`, que hace poll del transcript de la
+sesión propia hasta el deadline buscando el mensaje del asistente con el `nonce` esperado y su
+sentinel `STATUS: done` (ver "Espera y backoff"). Ese mensaje, en el transcript de una sesión que el
+conductor creó y posee, es a la vez la señal de fin y la autoridad. `harvest-from-transcript.mjs`/
+`harvest()` no revalida ninguna otra autoridad: asume una entrada ya localizada (así lo documenta su
+comentario de cabecera).
 
-**Autoridad ANTES de cosechar (`dispatch-adapter.mjs`):** `checkWorkerDoneAuthority({ orcaRunner,
-coordinatorHandle, dispatch })` consulta `orchestration check --terminal <coordinatorHandle> --all
---json`, filtra los mensajes `type: 'worker_done'` cuyo `payload.taskId`/`payload.dispatchId`
-coincidan con el `dispatch` activo, y si el mensaje además expone un `sender` (`msg.from` /
-`msg.sender` / `msg.senderHandle`, mejor esfuerzo — el campo exacto no está garantizado en el
-shape de Orca) lo compara contra el `expectedAssignee` capturado en `createDispatch` (el
-`terminalHandle` al que se despachó). Solo si todo coincide, `awaitDone` avanza a invocar el
-harvester — `harvest-from-transcript.mjs`/`harvest()` **no revalida** esta autoridad: asume una
-entrada ya autorizada (así lo documenta su propio comentario de cabecera).
+**Por qué se abandonó `worker_done` (E2E de Fase 7).** El diseño previo validaba autoridad con un
+`checkWorkerDoneAuthority` que leía `orchestration check` y matcheaba `payload.taskId`/`dispatchId`.
+El primer E2E contra Orca real mostró que un Codex **sandboxeado** no puede enviar `worker_done` de
+forma confiable: el `orca orchestration send` desde el sandbox `read-only` falla **intermitentemente**
+con "Orca is not running" (el `ORCA_CLI_SOCKET` viene vacío y no alcanza el runtime). La señal que el
+conductor —no sandboxeado— siempre observa es el envelope en el transcript propio. Por eso `awaitDone`
+ya no consulta `orchestration check` ni pasa `--from`/coordinatorHandle; el `worker_done` que el
+preamble de `--inject` le pide emitir al secundario es ruido inofensivo que no se consume.
 
 **FSM durable crash-idempotente (`makeDedupFsm`, `harvest-core.mjs`):** clave durable
 `${dispatchId}:${nonce}` (la misma que arma `awaitDone`). Estados `received → harvested →
@@ -342,60 +343,58 @@ Recién con `{ recovered: true }` el llamador puede habilitar un redispatch por 
 
 ---
 
+## Dispatch: esperar el boot antes de inyectar
+
+`createDispatch` **espera `tui-idle` antes de `dispatch --inject`** (`terminal wait --for tui-idle
+--timeout-ms CREATE_DISPATCH_BOOT_TIMEOUT_MS`, 120 s). Gotcha confirmado en el E2E de Fase 7: el
+secundario recién creado está booteando su TUI (Codex carga MCP servers, modelo, etc., decenas de
+segundos); inyectar antes de que esté listo **pierde el prompt** — el agente queda idle en su
+placeholder sin trabajar y nunca aparece el envelope. Éxito de la espera = `ok:true` en el envelope
+de Orca (un timeout llega como `ok:false, error.code:"timeout"`). Si no alcanza `tui-idle` en el
+presupuesto, `createDispatch` **lanza** (la skill degrada a `cli`), sin despachar. No se pasa
+`--from`: el `worker_done` que el preamble le pide al secundario no se consume (ver "Detección de
+fin"), así que no hay coordinador que rutear.
+
+---
+
 ## Espera y backoff
 
-`awaitDone({ session, dispatch, coordinatorHandle, reportPath, root, deadlineMs, ... })`
-(`dispatch-adapter.mjs`) es la espera bloqueante del conductor tras un dispatch. Tiene, en orden,
-hasta cuatro fases:
+`awaitDone({ session, dispatch, reportPath, root, deadlineMs, now, sleep })` (`dispatch-adapter.mjs`)
+es la espera bloqueante del conductor tras un dispatch. No consulta `orchestration check` ni recibe
+`coordinatorHandle`/`orcaRunner`: la detección de fin es puramente el transcript propio (ver
+"Detección de fin" arriba). Tiene, en orden, hasta tres fases:
 
 **0. Dedup temprano.** Si `fsm.isPromoted(dedupKey)` ya es `true` (una corrida anterior ya cosechó
-este `dispatchId:nonce` — recuperación post-crash, o un segundo `worker_done` idéntico llegando
-tarde), devuelve `{ code: 0, reportPath }` de inmediato **sin** tocar Orca ni el filesystem de
+este `dispatchId:nonce` — recuperación post-crash, o una segunda invocación con el mismo
+dispatch+nonce), devuelve `{ code: 0, reportPath }` de inmediato **sin** tocar el filesystem de
 nuevo.
 
 **1. Locator de Codex, si sigue pendiente.** Si `session.family === 'codex'` y
-`session.transcriptPath` todavía es `null` (el rollout no se resolvió en `createOwnedSession`,
-ver su docstring — el rollout de Codex no existe hasta el primer turno), se invoca
-`resolveCodexTranscript`: hasta `CODEX_LOCATOR_MAX_ATTEMPTS` (3) intentos con
-`CODEX_LOCATOR_RETRY_MS` (200 ms) de espera fija entre intentos, buscando exactamente 1 candidato
-(`locateCodexRollout`, por creación+`cwd`+timestamp). Si tras los reintentos sigue sin resolverse
-(0 candidatos — no flushó todavía — o más de uno, ambiguo), `awaitDone` devuelve `{ code: 4,
-reason: '...' }` **sin** haber consultado `orchestration check` ni tocado la FSM — es la señal
-explícita de "degradar a `cli`" para la skill llamadora. Claude no pasa por esta fase: su locator ya
-quedó resuelto en `createOwnedSession` (directo, por `--session-id` fijado).
+`session.transcriptPath` todavía es `null` (el rollout no se resolvió en `createOwnedSession`, ver
+su docstring — el rollout de Codex no existe hasta que **arranca el turno**, segundos después del
+inject), se invoca `resolveCodexTranscript` reintentando hasta que el rollout **aparezca**: el
+presupuesto es `min(deadline restante, CODEX_LOCATE_BUDGET_MS = 60_000 ms)`, con
+`CODEX_LOCATOR_RETRY_MS` (200 ms) entre intentos (`maxAttempts = budget / 200`), buscando
+exactamente 1 candidato (`locateCodexRollout`, por creación+`cwd`+timestamp). Si tras el
+presupuesto sigue sin resolverse (0 candidatos — no arrancó/flushó todavía — o más de uno,
+ambiguo), `awaitDone` devuelve `{ code: 4, reason: '...' }` — la señal explícita de "degradar a
+`cli`" para la skill llamadora. Claude no pasa por esta fase: su locator ya quedó resuelto en
+`createOwnedSession` (directo, por `--session-id` fijado).
 
-**2. Loop de autoridad + backoff exponencial.** Mientras no haya autoridad confirmada:
-   - Consulta `checkWorkerDoneAuthority` (`orchestration check --terminal <coordinatorHandle> --all
-     --json`, filtrado por `taskId`/`dispatchId`/`sender` — ver sección anterior). Si matchea,
-     autorizado.
-   - Si la familia es `claude` (que nunca emite `worker_done`), además consulta en la misma
-     iteración `terminal wait --terminal <terminalHandle> --for tui-idle --timeout-ms 0 --json`
-     (timeout 0 = no bloqueante, solo pregunta el estado actual). `satisfied: true` ahí es
-     autoridad suficiente para Claude — es la transición **busy→idle posterior al dispatch**, nunca
-     un idle aislado de antes de despachar (la sesión se creó y se le inyectó la tarea en el mismo
-     flujo, así que cualquier idle detectado acá es posterior al dispatch por construcción). Para
-     Codex, `tui-idle` **no** sustituye la validación de `worker_done`: esta rama no se consulta
-     para esa familia.
-   - Si ninguna de las dos autorizó y `now() >= deadlineAt`, devuelve `{ code: 3, reason: 'timeout
-     esperando fin de turno autorizado (worker_done/tui-idle)' }`.
-   - Si no, duerme `Math.min(waitMs, tiempo restante hasta el deadline)` y dobla `waitMs`
-     (arranca en `AWAIT_POLL_INITIAL_MS` = 50 ms, tope `AWAIT_POLL_MAX_MS` = 1000 ms) — backoff
-     exponencial acotado, nunca un poll a intervalo fijo ni una espera sin techo.
-
-**3. Cosecha.** Con autoridad confirmada, marca `fsm.markReceived(dedupKey)` y llama a `harvest()`
-   con el **tiempo restante** del presupuesto (`remainingMs = deadlineAt - now()`, no el
-   `deadlineMs` original) — el presupuesto total se reparte entre la espera de autoridad y la
-   cosecha, no se duplica. `harvest()` (`harvest-from-transcript.mjs`) hace su **propio** poll
-   interno, más fino: relee el transcript buscando `selectAssistantByNonce` + `hasSentinel`, con
-   backoff exponencial acotado entre `POLL_INITIAL_MS` (20 ms) y `POLL_MAX_MS` (200 ms) — un
-   segundo loop de espera, anidado, con su propia escala de tiempo más corta que la del loop de
-   autoridad (tiene sentido: una vez que ya sabemos que el turno terminó, el mensaje con el
-   sentinel debería aparecer pronto).
+**2. Cosecha.** Marca `fsm.markReceived(dedupKey)` y llama a `harvest()` con el **tiempo restante**
+del presupuesto (`remainingMs = deadlineAt - now()`, no el `deadlineMs` original) — el presupuesto
+total se reparte entre la localización del rollout y la cosecha, no se duplica. `harvest()`
+(`harvest-from-transcript.mjs`) es el poll que **detecta el fin**: relee el transcript propio
+buscando `selectAssistantByNonce` + `hasSentinel`, con backoff exponencial acotado entre
+`POLL_INITIAL_MS` (20 ms) y `POLL_MAX_MS` (200 ms). Cuando el mensaje con el `nonce` esperado y su
+sentinel aparece, lo persiste (contención de `reportPath` incluida). Si nunca aparece antes del
+deadline, `harvest()` devuelve `{ code: 3 }`. La rama de crash-idempotencia (destino ya existente
+para el mismo dispatch+nonce ⇒ éxito idempotente `code: 0`) se documenta en el JSDoc de `awaitDone`.
 
 **Presupuesto de tiempo y liberar el turno.** `deadlineMs` es siempre un **presupuesto de espera**
 contado desde la invocación (`deadlineAt = now() + deadlineMs`), no un timestamp absoluto — así lo
-documenta el propio JSDoc de `harvest()`. Ningún loop de esta función espera indefinidamente: el
-loop de autoridad revisa el deadline en cada vuelta y el loop interno de `harvest()` hace lo mismo.
+documenta el propio JSDoc de `harvest()`. Ningún loop de esta función espera indefinidamente: la
+localización del rollout y el loop interno de `harvest()` revisan el deadline en cada vuelta.
 Vencido el presupuesto, la función **devuelve el turno al llamador** con `code: 3` (o `code: 4` en
 la fase de locator) en vez de colgarse — es la skill llamadora quien decide degradar a `cli` con
 ese resultado, nunca esta función por sí sola reintenta más allá del presupuesto dado. El CLI
