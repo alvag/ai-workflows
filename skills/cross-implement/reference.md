@@ -230,7 +230,10 @@ cambia el transporte, nunca la regla 3 del `SKILL.md` ("Escritura acotada, nunca
    `{ recovered: false }` (idle sin cierre confirmado, o cierre fallido) significa: **no**
    redespachar todavía — ni por `orca-session` ni por `cli` — porque no se puede garantizar que el
    escritor anterior dejó de escribir; el conductor decide (reintentar el cierre, escalar a
-   intervención manual). Ver `cross-model-orca/reference.md` → "Recuperación".
+   intervención manual). Ver `cross-model-orca/reference.md` → "Recuperación". El mismo principio
+   aplica a cualquier otro estado donde no se puede confirmar el cierre del turno del escritor
+   anterior (no solo a `recover()`) — ver punto 9 para la clasificación completa de fallas con y
+   sin riesgo de doble escritor.
 5. **Clean-tree gate — sin excepción, antes de cualquier dispatch por esta rama.** La regla 2 del
    `SKILL.md` ya exige `git status` limpio de código sin commitear antes de lanzar; en la rama
    `orca-session` es además la precondición de la que depende el punto 8: si el worktree no está
@@ -270,13 +273,30 @@ cambia el transporte, nunca la regla 3 del `SKILL.md` ("Escritura acotada, nunca
    `report.txt` cosechado es advisory, nunca prueba. El fix loop reanuda la MISMA sesión
    (reutilizada, no una nueva) con el delta de la ronda — mismo mecanismo de "Fix loop" abajo,
    mismo tope `max_fix_rounds`. El commit, tras el gate humano, sigue siendo del conductor.
-9. **Degradación a `cli` — explícita, sin cambio de comportamiento observable.** Si el resolver da
-   `cli`, o si algo de la rama de arriba falla — Orca no alcanzable, runtime `stale_bootstrap`,
-   sesión write no creable, locator del transcript ambiguo, `recover` devuelve
-   `recovered: false`, o un MCP/perfil requerido no está instalado —, se corre la Vía W-B/W-C de
-   siempre ("Vías de invocación" arriba): mismo prompt-contrato, mismo "Formato del reporte", mismo
-   `report.txt`. La llamadora nunca queda bloqueada por la ausencia de Orca — degrada y sigue
-   (regla 7 del `SKILL.md`, "Opcional y degradable").
+9. **Degradación a `cli` — dos clases de falla, nunca una sola bolsa.** No toda falla de la rama de
+   arriba degrada igual: hay que distinguir si llegó a existir un escritor `orca-session` activo
+   sobre el `working_dir`, porque redespachar por `cli` sobre un escritor que podría seguir vivo
+   crea dos escritores concurrentes sobre el mismo worktree — la violación exacta que prohíbe el
+   punto 4.
+
+   - **Sin riesgo de doble escritor (degradación a `cli` inmediata):** el resolver dio `cli` de
+     entrada; Orca no alcanzable ANTES de crear la sesión; runtime `stale_bootstrap` detectado
+     antes del dispatch; la sesión write no pudo crearse; o falta un binario/MCP/perfil requerido.
+     En ninguno de estos casos llegó a haber un escritor `orca-session` activo sobre el worktree →
+     se corre la Vía W-B/W-C de siempre ("Vías de invocación" arriba): mismo prompt-contrato, mismo
+     "Formato del reporte", mismo `report.txt`. La llamadora nunca queda bloqueada por la ausencia
+     de Orca — degrada y sigue (regla 7 del `SKILL.md`, "Opcional y degradable").
+   - **Con riesgo de doble escritor (remite al punto 4 — no redespachar todavía):** `recover()`
+     devolvió `{ recovered: false }`; o el turno se despachó pero no se puede confirmar su cierre —
+     p. ej. `awaitDone` devuelve `code: 4` (locator de Codex ambiguo tras los reintentos: esa
+     resolución es **lazy** y ocurre en la fase de resolución del locator, ANTES de consultar
+     `worker_done` — el conductor todavía no sabe si el turno del implementador terminó), o
+     cualquier otro estado donde una terminal write propia pueda seguir viva. En estos casos,
+     degradar a un `cli` fresco sobre el mismo `working_dir` crearía un segundo escritor
+     concurrente: el conductor NO redespacha por NINGUNA vía —ni `orca-session` ni `cli`— hasta
+     demostrar el cierre del escritor anterior, exactamente como exige el punto 4 (reintentar
+     `recover()` hasta un `terminal close` confirmado, o escalar a intervención manual). "Degrada y
+     sigue" no aplica acá tal cual: primero hay que resolver el escritor pendiente.
 
 ### Portabilidad
 
