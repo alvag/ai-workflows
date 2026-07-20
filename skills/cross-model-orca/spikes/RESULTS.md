@@ -146,8 +146,8 @@ verificado lo que no se corrió. Plan: sección "Fase 7" de
   hooks apagados, confirmada en una corrida live (Task 0.3). Es la base empírica sobre la que se apoya
   el resto del transporte, aunque la matriz E2E completa de Task 7.1(a)(b)(c) no se repitió en esta task.
 - **Windows — checkpoint completo (`[x]`), las 7 pruebas pasan.** Corrido en una máquina
-  Windows real (Node 22.14.0, Windows 10.0.26200) siguiendo
-  [`WINDOWS-CHECKPOINT.md`](./WINDOWS-CHECKPOINT.md). **Pasan las pruebas 2–5 y la 3**, que ejercitan el
+  Windows real (Node 22.14.0, Windows 10.0.26200) con un runbook de 7 pruebas.
+  **Pasan las pruebas 2–5 y la 3**, que ejercitan el
   artefacto directamente: `platform.mjs` resuelve rutas con backslashes bajo `%USERPROFILE%`, respeta
   `CODEX_HOME`/`CLAUDE_CONFIG_DIR`, y la **autolocalización** (`resolveInstallRoot` vía `fileURLToPath`)
   devuelve un `install` `C:\...` bien formado (sin el `/C:/` con barra inicial); `assertNode` da un
@@ -162,8 +162,7 @@ verificado lo que no se corrió. Plan: sección "Fase 7" de
   `/tmp/...` y compara igualdad exacta → 1 fallo. **Resueltos por el commit `f27e119`**
   (`test(cross-model-orca): portabilidad del suite a Windows` — `fileURLToPath`, skip de symlinks,
   `path.resolve`): tras él, `node --test` da `82 / 80 pass / 0 fail / 2 skip` (los 2 skip son los tests
-  de symlink, inejecutables sin modo desarrollador). Detalle en `WINDOWS-CHECKPOINT.md` → "Resultados
-  (Windows)". **Pruebas 6 y 7 (CLIs de IA reales) — pasan:** Claude respondió `CERO-MCP` (exit 0) con
+  de symlink, inejecutables sin modo desarrollador). **Pruebas 6 y 7 (CLIs de IA reales) — pasan:** Claude respondió `CERO-MCP` (exit 0) con
   `--strict-mcp-config` + allowlist vacío (requiere `-p` para modo headless; sin él abre la TUI), y
   Codex respondió `OK` (exit 0) con `-c features.apps=false --strict-config` aceptado inline sin
   "unknown field". Con esto el checkpoint Windows queda **completo**.
