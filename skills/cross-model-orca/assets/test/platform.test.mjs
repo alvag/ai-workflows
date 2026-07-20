@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
+import fs from 'node:fs';
 import { configDir, isWindows, assertNode, resolveInstallRoot } from '../lib/platform.mjs';
 
 test('configDir("codex") sin CODEX_HOME devuelve ruta absoluta terminada en .codex', () => {
@@ -77,11 +78,14 @@ test('assertNode lanza Error con un mínimo imposible', () => {
   assert.throws(() => assertNode(999), /Node/);
 });
 
-test('resolveInstallRoot lanza si CROSS_MODEL_ORCA no está seteada', () => {
+test('resolveInstallRoot sin CROSS_MODEL_ORCA se autolocaliza al `assets` instalado', () => {
   const original = process.env.CROSS_MODEL_ORCA;
   delete process.env.CROSS_MODEL_ORCA;
   try {
-    assert.throws(() => resolveInstallRoot(), /CROSS_MODEL_ORCA/);
+    const root = resolveInstallRoot();
+    assert.equal(path.isAbsolute(root), true);
+    assert.equal(path.basename(root), 'assets');
+    assert.equal(fs.existsSync(path.join(root, 'lib', 'platform.mjs')), true);
   } finally {
     if (original === undefined) delete process.env.CROSS_MODEL_ORCA;
     else process.env.CROSS_MODEL_ORCA = original;

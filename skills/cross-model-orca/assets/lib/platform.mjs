@@ -3,6 +3,7 @@
 // de Node en la que corre el resto de los módulos (harvest-core, dispatch-adapter, etc.).
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
  * Directorio de configuración/datos de la familia indicada.
@@ -46,18 +47,18 @@ export function assertNode(minMajor) {
 }
 
 /**
- * Resuelve la raíz de instalación del transporte cross-model-orca a partir de la
- * variable de entorno CROSS_MODEL_ORCA.
- * @returns {string} el valor de CROSS_MODEL_ORCA.
- * @throws {Error} si la variable no está seteada.
+ * Resuelve la raíz de instalación del transporte cross-model-orca (el directorio `assets`).
+ * Por defecto se autolocaliza a partir de la propia ruta de este módulo (`platform.mjs` vive en
+ * `<assets>/lib/`, así que `<assets>` es la carpeta abuela del archivo) — no depende de que nadie
+ * setee una variable de entorno. La variable CROSS_MODEL_ORCA sigue soportada como **override
+ * opcional**: si está seteada, se respeta tal cual (caso de correr los módulos desde una copia
+ * distinta de su propio `assets`, ver install.md).
+ * @returns {string} ruta absoluta a la raíz de instalación (`assets`).
  */
 export function resolveInstallRoot() {
-  const root = process.env.CROSS_MODEL_ORCA;
-  if (!root) {
-    throw new Error(
-      'CROSS_MODEL_ORCA no está seteada. Exporta la variable apuntando a la ruta absoluta de ' +
-        'skills/cross-model-orca/assets (ver install.md).'
-    );
+  const override = process.env.CROSS_MODEL_ORCA;
+  if (override) {
+    return override;
   }
-  return root;
+  return path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 }
