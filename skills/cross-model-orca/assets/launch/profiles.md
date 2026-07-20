@@ -20,20 +20,26 @@
    opcional (Claude `--strict-mcp-config`; Codex `-p <perfil>` con MCP server-scoped), ver abajo. Ver
    `mcp-inventory.md` para el modelo completo.
 
-### MCP: vigilancia manual (default) y endurecimiento opcional
+### MCP en Claude: read-only → OFF por default; write → vigilancia manual
 
 `--tools "Read,Grep,Glob"` acota **solo los built-ins** (por eso excluir Bash da read-only duro),
-pero **no gobierna las tools MCP** (`claude --help`: *"from the built-in set"*). En el default
-**atendido** eso no es un problema: el gate de MCP es la **vigilancia manual** (P4) — el humano que
-mira la corrida aprueba o rechaza cualquier acción sensible en la TUI. No hay inventario ni
-allowlist que configurar para instalar la skill.
+pero **no gobierna las tools MCP** (`claude --help`: *"from the built-in set"*). El E2E de Fase 7
+mostró la consecuencia: un Claude read-only con los MCP del entorno alcanzó una tool MCP de
+**ejecución** (la terminal del IDE del usuario) para intentar el `worker_done` que le pide el
+preamble de `dispatch --inject`, y corrió un comando **fuera del worktree, en otro proyecto**
+(gateado por aprobación manual, pero fuera de lo esperado para un read-only).
 
-Para una corrida **desatendida** (nadie mira la TUI, no hay gate humano), existe un gate
-declarativo **opcional**: `--strict-mcp-config --mcp-config claude-readonly.mcp.json`, que da vuelta
-el default de MCP a *deny-all* — la sesión ve **solo** los servidores del allowlist (vacío = cero
-MCP). Verificado en vivo (2026-07-19, Claude 2.1.214): sin el flag, la sesión enumera tools MCP del
-entorno; con `--strict-mcp-config` + allowlist vacío responde **`CERO-MCP`**. Detalle y el patrón
-para permitir un servidor de lectura en `mcp-inventory.md`.
+Por eso **el read-only se lanza con MCP OFF por default**: `--strict-mcp-config --mcp-config
+claude-readonly.mcp.json` con el archivo **vacío** da vuelta el default de MCP a *deny-all* — la
+sesión ve **cero** tools MCP. Sumado al toolset cerrado (sin Bash), el read-only no tiene **ninguna**
+superficie de ejecución: solo Read/Grep/Glob. Verificado en vivo (2026-07-19, Claude 2.1.214): sin
+el flag la sesión enumera tools MCP del entorno; con `--strict-mcp-config` + allowlist vacío responde
+**`CERO-MCP`**. Endurecimiento inverso (OPCIONAL): para habilitar un servidor de **lectura** (p. ej.
+Jira read-only), declararlo entero en `claude-readonly.mcp.json` — con `--strict-mcp-config` no se
+hereda nada del entorno. El detalle en `mcp-inventory.md`.
+
+El rol **write** (cross-implement) NO fuerza MCP off: usa la **vigilancia manual** (P4) — el humano
+aprueba/rechaza en la TUI — más `--permission-mode`. No hay inventario ni allowlist que mantener.
 
 > **Gotcha de orden de flags:** `--tools <tools...>` y `--mcp-config <configs...>` son
 > **variádicos** — se comen los tokens siguientes hasta el próximo flag. Cuando uses el flag
@@ -111,13 +117,16 @@ creación+`cwd`+timestamp, no hay bandera para fijar el `session_id` desde afuer
 
 ### Claude · read-only
 
-**Atendido y desatendido usan el mismo comando** — el toolset cerrado (`Read,Grep,Glob`, sin
-Bash) hace que no exista ningún prompt de aprobación posible, con o sin alguien mirando.
+**Atendido y desatendido usan el mismo comando** — el toolset cerrado (`Read,Grep,Glob`, sin Bash)
+**más MCP off** (`--strict-mcp-config` + `--mcp-config` vacío) hacen que no exista ninguna superficie
+de ejecución ni prompt de aprobación posible, con o sin alguien mirando.
 
 **POSIX:**
 ```bash
 DISABLE_AUTOUPDATER=1 claude \
   --tools "Read,Grep,Glob" \
+  --strict-mcp-config \
+  --mcp-config "$CROSS_MODEL_ORCA/launch/claude-readonly.mcp.json" \
   --settings "$CROSS_MODEL_ORCA/launch/claude-readonly.settings.json" \
   --session-id "<uuid>" \
   "<prompt>"
@@ -128,6 +137,8 @@ DISABLE_AUTOUPDATER=1 claude \
 $env:DISABLE_AUTOUPDATER = "1"
 claude `
   --tools "Read,Grep,Glob" `
+  --strict-mcp-config `
+  --mcp-config "$env:CROSS_MODEL_ORCA\launch\claude-readonly.mcp.json" `
   --settings "$env:CROSS_MODEL_ORCA\launch\claude-readonly.settings.json" `
   --session-id "<uuid>" `
   "<prompt>"

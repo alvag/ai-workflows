@@ -196,13 +196,38 @@ Actualiza CONTRATO-CROSS-VENDOR-Fase0: el mecanismo por familia de Task 0.2/0.3 
 por comando) queda **superado** — la señal confiable es el envelope en el transcript propio, no
 `worker_done` (que ahora es ruido inofensivo del preamble de `--inject`).
 
+### E2E live — caso (b) Codex→Claude explore: VERDE (2026-07-20)
+
+Secundario = Claude read-only. `createOwnedSession` → boot-wait → `dispatch --inject` → Claude leyó
+los 4 módulos → `awaitDone` cosechó por nonce (`code 0`, ~40 s). El Claude lanzado por Orca escribe
+su transcript en el DEFAULT `~/.claude/projects/<slug>/<session-id>.jsonl` (Orca NO sobreescribe
+`CLAUDE_CONFIG_DIR`, a diferencia de `CODEX_HOME`) → coincide exacto con lo que computa el adaptador.
+
+**Hallazgo de contención (y su fix).** En una primera corrida, Claude read-only —al que el preamble
+de `dispatch --inject` le pide un `worker_done`— no tenía Bash (toolset cerrado) pero **sí** los MCP
+del entorno, así que usó `mcp__idea__execute_terminal_command` (la terminal del IDE del usuario) para
+correr el `orca orchestration send`: un comando **fuera del worktree, en otro proyecto**, gateado por
+aprobación manual pero fuera de lo esperado para un read-only. `--tools` cierra los built-ins, NO las
+tools MCP. **Fix:** el read-only de Claude ahora se lanza con **MCP off** (`--strict-mcp-config
+--mcp-config claude-readonly.mcp.json` vacío). Re-validado en vivo: Claude intentó el `worker_done`
+por Bash → **denegado** (`No such tool available: Bash`), sin MCP no tuvo ruta al IDE, y cerró con el
+envelope. Read-only = sin superficie de ejecución (solo Read/Grep/Glob). Ver `SKILL.md` §3.2 y
+`profiles.md`.
+
+**Descartado: `terminal send` en vez de `dispatch --inject`.** Se evaluó entregar la tarea por
+`terminal send` (prompt plano, sin preamble → sin `worker_done`) para eliminar ese ruido. Entrega
+limpia y multilínea en la TUI de **Claude** (validado, cosecha en ~9 s), pero en la TUI de **Codex**
+**duplica el prompt** (llega dos veces) y no completó en 240 s. No es un reemplazo robusto y
+universal de `dispatch --inject` (que sí funciona para ambas familias), así que se mantiene
+`dispatch --inject` y el ruido del `worker_done` se neutraliza por rol: read-only con MCP off (no
+puede ejecutarlo), Codex lo corre en su sandbox shell (inofensivo, contenido).
+
 ### Pendiente (checkpoints, requieren entorno real)
 
-- **E2E live casos (b) y (c).** (b) Codex→Claude explore; (c) cross-review con envelope+`STATUS: done`,
-  las tres capas de control y el **máximo output alcanzable** (P3-largo parte ii). Qué correr: lanzar
-  cada skill con `cross_model.transport=orca-session` contra una sesión Orca real y confirmar cosecha
-  correcta. Qué se espera: cosecha exitosa, sin fallback a `cli`. (El caso (a) ya validó el mecanismo
-  base end-to-end.)
+- **E2E live caso (c).** cross-review con envelope+`STATUS: done`, las tres capas de control y el
+  **máximo output alcanzable** (P3-largo parte ii). Qué correr: lanzar la skill con
+  `cross_model.transport=orca-session` contra una sesión Orca real y confirmar cosecha correcta. Qué
+  se espera: cosecha exitosa, sin fallback a `cli`. (Los casos (a) y (b) ya validaron ambas direcciones.)
 - **Atlassian (gate de escritura real con MCP vivo).** Bajo vigilancia manual: confirmar que una tool de
   escritura de Atlassian invocada por el secundario efectivamente escala a aprobación en la TUI (cierra
   también el punto de P4 que quedó pendiente en Task 7.1: "el prompt en la TUI ante una acción sensible"

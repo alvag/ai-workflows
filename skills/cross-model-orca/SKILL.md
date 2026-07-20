@@ -101,15 +101,21 @@ Sin las tres activas, no se despacha:
    el conductor sondea el transcript propio esperando el `nonce`+sentinel (sección 2). `tui-idle`
    solo se usa como barrera de **boot** antes de inyectar (para no perder el prompt) y en la
    recuperación, no como detección de fin.
-2. **MCP** — qué tools remotas están disponibles. En el **default atendido**, MCP se controla por
-   **vigilancia manual** (P4): el secundario ve los MCP del entorno y el humano aprueba/rechaza en
-   la TUI cualquier acción sensible. No hay inventario ni allowlist que configurar. `--tools` acota
-   solo los built-ins, no las tools MCP (`claude --help`: "from the built-in set"), por eso el gate
-   de MCP es el humano, no el toolset. Para una corrida **desatendida** (sin gate humano), un gate
-   declarativo **opcional**: `--strict-mcp-config --mcp-config claude-readonly.mcp.json` (deja solo
-   los servidores del allowlist; vacío = cero MCP). Codex: perfil instalado en
-   `$CODEX_HOME/<nombre>.config.toml`, invocado con `-p <nombre>` (server-scoped, nunca `-c`). Ver
-   `assets/launch/mcp-inventory.md` para el modelo completo.
+2. **MCP** — qué tools remotas están disponibles. El comportamiento **depende del rol**:
+   - **read-only Claude → MCP OFF por default.** `--tools "Read,Grep,Glob"` cierra los built-ins
+     (sin Bash), pero **no** las tools MCP: un read-only con los MCP del entorno podía alcanzar una
+     tool MCP de **ejecución** (p. ej. la terminal del IDE del usuario) y correr comandos fuera del
+     worktree — gatillado por el `worker_done` que le pide el preamble de `dispatch --inject`
+     (hallazgo del E2E de Fase 7, gateado por aprobación manual pero fuera de lo esperado para un
+     read-only). Por eso el read-only se lanza con `--strict-mcp-config --mcp-config
+     claude-readonly.mcp.json` **vacío = cero MCP**: sin superficie de ejecución (solo Read/Grep/
+     Glob), y ni siquiera puede intentar el `worker_done`. Endurecimiento OPCIONAL: para habilitar un
+     MCP de lectura (p. ej. Jira read-only), declararlo entero en `claude-readonly.mcp.json` (con
+     `--strict-mcp-config` no se hereda nada del entorno).
+   - **write Claude / Codex → vigilancia manual (P4).** El secundario ve los MCP del entorno y el
+     humano aprueba/rechaza en la TUI cualquier acción sensible; no hay inventario ni allowlist que
+     mantener. Codex read-only queda contenido por su sandbox `-s read-only` (sus tools MCP no pueden
+     escribir/red), así que no fuerza MCP off. Ver `assets/launch/mcp-inventory.md`.
 3. **Hooks** — qué automatización local puede dispararse. `disableAllHooks: true` (Claude) /
    `--disable hooks` (Codex), siempre, en los dos roles.
 
@@ -124,7 +130,7 @@ Resumen familia × rol × modo — comandos completos POSIX+PowerShell en `asset
 
 | Familia | Rol | Atendido | Desatendido |
 |---|---|---|---|
-| Claude | read-only | `--tools "Read,Grep,Glob"` + `--settings claude-readonly.settings.json` | mismo comando (el toolset cerrado ya excluye todo prompt) |
+| Claude | read-only | `--tools "Read,Grep,Glob"` + `--strict-mcp-config --mcp-config claude-readonly.mcp.json` (MCP off) + `--settings claude-readonly.settings.json` | mismo comando (toolset cerrado + MCP off ya excluyen todo prompt) |
 | Claude | write (cross-implement) | `--permission-mode manual` | `--permission-mode dontAsk` (`acceptEdits` solo en worktree hermano aislado) |
 | Codex | read-only | `-p cmo-readonly -s read-only -a untrusted --disable hooks` | `-a never` en vez de `untrusted` |
 | Codex | write (cross-implement) | `-p cmo-write -s workspace-write -a on-request --disable hooks` | `-a never` en vez de `on-request` |

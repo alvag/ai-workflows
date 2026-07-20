@@ -71,7 +71,7 @@ function errEnvelope(code, { exit = 1 } = {}) {
 // buildLaunchCommand: construcción del comando por family+role+mode
 // ---------------------------------------------------------------------------
 
-test('buildLaunchCommand (claude, read-only, POSIX): tools cerrado, sin permission-mode, session-id fijado', () => {
+test('buildLaunchCommand (claude, read-only, POSIX): tools cerrado, MCP off (strict + config vacío), sin permission-mode, session-id fijado', () => {
   const cmd = buildLaunchCommand({
     family: 'claude',
     role: 'read-only',
@@ -82,9 +82,24 @@ test('buildLaunchCommand (claude, read-only, POSIX): tools cerrado, sin permissi
   });
   assert.match(cmd, /^DISABLE_AUTOUPDATER=1 claude /);
   assert.match(cmd, /--tools "Read,Grep,Glob"/);
+  // MCP off: read-only = sin superficie de ejecución (ni built-in Bash ni tool MCP del IDE).
+  assert.match(cmd, /--strict-mcp-config/);
+  assert.match(cmd, /--mcp-config "\/inst\/launch\/claude-readonly\.mcp\.json"/);
   assert.match(cmd, /--session-id "uuid-123"/);
   assert.match(cmd, /claude-readonly\.settings\.json/);
   assert.doesNotMatch(cmd, /--permission-mode/);
+});
+
+test('buildLaunchCommand (claude, write): NO fuerza MCP off (el rol write puede usar MCP con gate por permission-mode)', () => {
+  const cmd = buildLaunchCommand({
+    family: 'claude',
+    role: 'write',
+    mode: 'attended',
+    sessionId: 'uuid-w',
+    installRoot: '/inst',
+    windows: false,
+  });
+  assert.doesNotMatch(cmd, /--strict-mcp-config/);
 });
 
 test('buildLaunchCommand (claude, write, atendido vs desatendido, PowerShell)', () => {

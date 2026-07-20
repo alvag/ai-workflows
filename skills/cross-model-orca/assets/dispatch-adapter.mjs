@@ -168,6 +168,16 @@ export function buildLaunchCommand({ family, role, mode, sessionId, installRoot,
     const parts = [`--settings "${settingsPath}"`];
     if (role === 'read-only') {
       parts.push('--tools "Read,Grep,Glob"');
+      // MCP off para read-only: sin superficie de ejecución. `--tools` cierra los built-ins (sin
+      // Bash), pero NO las tools MCP — un Claude read-only con los MCP del entorno podía alcanzar
+      // una tool MCP de ejecución (p. ej. la terminal del IDE del usuario) y correr comandos fuera
+      // del worktree, gatillado por el `worker_done` que le pide el preamble de `dispatch --inject`
+      // (hallazgo del E2E de Fase 7). Con `--strict-mcp-config` + un `--mcp-config` VACÍO, el
+      // secundario no ve ningún MCP: read-only de verdad (solo Read/Grep/Glob), y ni siquiera puede
+      // intentar el `worker_done`. Endurecimiento OPCIONAL: para habilitar un MCP de lectura,
+      // declararlo entero en `claude-readonly.mcp.json` (con `--strict-mcp-config` no se hereda nada).
+      const mcpConfigPath = path.join(installRoot, 'launch', 'claude-readonly.mcp.json');
+      parts.push('--strict-mcp-config', `--mcp-config "${mcpConfigPath}"`);
     } else {
       parts.push(`--permission-mode ${mode === 'attended' ? 'manual' : 'dontAsk'}`);
     }
