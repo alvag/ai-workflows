@@ -157,7 +157,10 @@ verificado lo que no se corrió. Plan: sección "Fase 7" de
   keychain); el entry Node (`harvest-from-transcript.mjs`) resolviendo `%USERPROFILE%\…`/`CODEX_HOME`
   correctamente; rutas de transcript/rollout por plataforma. Qué correr: repetir el locator (Task 0.1) y
   la cosecha básica en una máquina Windows real. Qué se espera: mismo contrato de locator y parseo, con
-  las rutas POSIX de este entorno traducidas a sus equivalentes Windows.
+  las rutas POSIX de este entorno traducidas a sus equivalentes Windows. **Runbook ejecutable paso a
+  paso (PowerShell) en [`WINDOWS-CHECKPOINT.md`](./WINDOWS-CHECKPOINT.md)** — el agente que corra en
+  Windows sigue ese archivo y documenta ahí + marca este checkpoint. El foco real: rutas de
+  `platform.mjs` y el **slug del transcript de Claude** en Windows (`C:\...` → `slugifyCwd`).
 - **Atlassian (gate de escritura real con MCP vivo).** Bajo vigilancia manual: confirmar que una tool de
   escritura de Atlassian invocada por el secundario efectivamente escala a aprobación en la TUI (cierra
   también el punto de P4 que quedó pendiente en Task 7.1: "el prompt en la TUI ante una acción sensible"
