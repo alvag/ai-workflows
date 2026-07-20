@@ -124,10 +124,12 @@ Quien la invoca (el usuario en modo directo, o `sdd-flow` en modo embebido) prov
    `UNAVAILABLE`.
 2. **Gates previos**: work order existe y se lee como contrato (regla 1); clean-tree (regla 2);
    `proof_cmd` resuelto. Cualquiera falla → no se lanza.
-3. **Armar el prompt-contrato** (`reference.md` → "Prompt del implementador": GOAL / SPEC / KEY
-   PATHS / CONSTRAINTS / NON-GOALS / PROOF / OUTPUT), escrito a archivo con la tool Write, y
-   **lanzar** por la vía de la familia (`reference.md` → "Vías de invocación"), capturando la
-   referencia de sesión para el fix loop.
+3. **Resolver el transporte** (`cli` u `orca-session` — ver `reference.md` → "Transporte: rama
+   `orca-session` (escritura acotada, sesión propia)"). **Armar el prompt-contrato** (`reference.md`
+   → "Prompt del implementador": GOAL / SPEC / KEY PATHS / CONSTRAINTS / NON-GOALS / PROOF /
+   OUTPUT), escrito a archivo con la tool Write, y **lanzar** por la vía de la familia
+   (`reference.md` → "Vías de invocación", o la rama `orca-session` si el resolver la eligió),
+   capturando la referencia de sesión para el fix loop.
 4. **Revisión del conductor** (regla 4): diff completo como PR ajeno; archivos declarados vs
    `git status`; drift fuera del work order; `proof_cmd` fresco corrido por el conductor. Si el
    work order es SDD, atribuir hunks a tasks y marcar `- [x]` las cubiertas. Checklist en
@@ -189,9 +191,11 @@ Nunca bloquea. Cuatro vías de falla, mismo final — el conductor implementa in
 ## Referencias internas
 
 - `reference.md` — "Descubrir el implementador", "Vías de invocación" (Codex/Claude, POSIX +
-  PowerShell, con matriz de verificación), "Prompt del implementador", "Revisión del conductor",
-  "Fix loop", "Latencia, deadlines y banner", "Archivos de trabajo (scratch)", "Log de
-  implementación".
+  PowerShell, con matriz de verificación), el transporte alternativo "Transporte: rama
+  `orca-session` (escritura acotada, sesión propia)" (sesión write propia + vigilancia manual +
+  cosecha raw→promote del reporte, código ya escrito en el worktree), "Prompt del implementador",
+  "Revisión del conductor", "Fix loop", "Latencia, deadlines y banner", "Archivos de trabajo
+  (scratch)", "Log de implementación".
 - `README.md` — qué es, cuándo usarla, requisitos e instalación.
 
 ## Atribución

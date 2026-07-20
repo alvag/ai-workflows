@@ -10,6 +10,7 @@ conductor, el fix loop, los tiempos y los archivos de trabajo.
 - [Descubrir el implementador](#descubrir-el-implementador)
 - [Vías de invocación](#vías-de-invocación)
 - [Matriz de verificación](#matriz-de-verificación)
+- [Transporte: rama `orca-session` (escritura acotada, sesión propia)](#transporte-rama-orca-session-escritura-acotada-sesión-propia)
 - [Prompt del implementador](#prompt-del-implementador)
 - [Formato del reporte](#formato-del-reporte)
 - [Revisión del conductor](#revisión-del-conductor)
@@ -146,6 +147,152 @@ Verificado end-to-end el 2026-07-09 (codex-cli 0.143.0; Claude Code local, `clau
 | Ambas vías lanzadas en background con redirección + poll | OK |
 
 Flags pueden variar por versión: ante la duda, `codex exec --help` / `claude --help`.
+
+## Transporte: rama `orca-session` (escritura acotada, sesión propia)
+
+Alternativa a las Vías W-B/W-C de arriba ("Vías de invocación"): en vez de un subproceso headless
+efímero, el conductor abre, con la skill-librería `cross-model-orca`, una **sesión interactiva
+write propia** de la otra familia vía Orca, la deja implementar dentro del `working_dir`, y
+**cosecha su reporte**. Es **aditiva**: las Vías W-B/W-C de arriba y su matriz de verificación no
+cambian y siguen siendo el transporte por defecto en cuanto algo de lo de abajo no se pueda
+garantizar. A diferencia de las ramas `orca-session` de `co-explore`/`cross-review` (rol
+read-only), esta es el **primer** enganche **write-capable** del transporte: el implementador sí
+escribe archivos reales dentro del worktree, no solo texto en un transcript.
+
+### Resolver transporte (antes del paso 3 de "Pasos de ejecución")
+
+Antes de armar el prompt-contrato y lanzar, resolver qué transporte usar: `override ?? config ??
+auto` — algoritmo canónico, no se reimplementa acá, ver `cross-model-orca/reference.md` →
+"Resolver de transporte":
+
+- **`override`** — lo que pasa explícito la skill llamadora. Cuando invoca `sdd-flow`
+  (`implement_mode: cross`), propaga solo el `cross_model.transport.desired` configurado (nunca su
+  propio `effective` ya resuelto: cada proceso reevalúa su propia reachability de Orca).
+- **`config`** — la clave `cross_model.transport` en `.specify/config.yml` (default `auto` cuando
+  la clave no está).
+- **`auto`** — `orca-session` si el runtime de Orca es alcanzable **desde el proceso del
+  conductor** en este momento y se puede crear una sesión write fresca; si no, `cli`.
+
+Ante **cualquier** duda — reachability incierta, sesión no verificable como propia y fresca,
+locator ambiguo — el resultado es `cli`, igual que en `co-explore`/`cross-review`.
+`cross-implement` no necesita justificar `cli`; sí necesita que las tres condiciones de
+`orca-session` (Orca alcanzable, sesión propia/fresca, perfiles de las tres capas de control
+instalados) se cumplan explícitamente — y, por ser rol **write**, dos precondiciones propias: el
+clean-tree gate (punto 5 abajo) y el escritor único (punto 4).
+
+### Rama `orca-session`
+
+Sustituye, dentro de "Pasos de ejecución" del `SKILL.md`, el paso 3 (lanzar) y parte del 4 (el
+implementador ya deja el diff escrito en el worktree; lo que el conductor cosecha es el reporte,
+no el código). El implementador sigue tan acotado en su escritura como en la vía `cli`: solo
+cambia el transporte, nunca la regla 3 del `SKILL.md` ("Escritura acotada, nunca commit").
+
+1. **Sesión write propia, nunca ajena.** `createOwnedSession({ family, role: 'write', mode,
+   worktree: working_dir, ... })` (`cross-model-orca/assets/dispatch-adapter.mjs`) crea una sesión
+   **fresca**, dedicada a este dispatch — el conductor **nunca** reutiliza una sesión ajena (una ya
+   abierta por el usuario o por otro flujo; privacidad v1, `cross-model-orca/SKILL.md` → sección
+   6). Perfil write según familia (`cross-model-orca/assets/launch/profiles.md` → "Claude · write
+   (cross-implement)" / "Codex · write (cross-implement)"):
+   - Codex: `codex -p cmo-write -s workspace-write -a on-request --disable hooks` (atendido).
+   - Claude: `--settings cross-model-orca/assets/launch/claude-write.settings.json`
+     (`{disableAllHooks: true, permissions: {allow: ["Edit(./**)", "Write(./**)",
+     "Bash(<proof>:*)"]}}`) + `--permission-mode manual` + `--session-id <uuid>`.
+2. **Mismo worktree = vigilancia manual, no inventario.** Bajo `--permission-mode manual` (Claude,
+   atendido), **todo lo no allowlisteado pregunta**: el humano que mira la sesión aprueba o
+   rechaza en la TUI, incluidas las escrituras MCP sensibles. El `allow` de
+   `claude-write.settings.json` acota **por construcción** la escritura de archivos al worktree
+   (`Edit(./**)`/`Write(./**)`, relativas al cwd — el `cd <working_dir>` previo es parte del
+   contrato, igual que en la Vía W-C) y habilita sin fricción el proof binary (`Bash(<proof>:*)`,
+   mismo placeholder que la Vía W-C: el conductor deriva el patrón real del primer token de
+   `proof_cmd` por sesión). Cualquier otra cosa — MCP, Bash fuera del proof, escritura fuera de
+   `./` — cae a aprobación manual. No hay lista `ask`/`deny` de inventario MCP que mantener: mismo
+   modelo de vigilancia manual ya aplicado al rol read-only (`claude-readonly.settings.json` =
+   solo `disableAllHooks`). Codex: `-a on-request` deja que el modelo decida cuándo pedir
+   aprobación, con alguien disponible para responder.
+   > **Endurecimiento opcional, desatendido.** Sin humano mirando, `--permission-mode manual` se
+   > colgaría esperando una aprobación que nadie da: usar `--permission-mode dontAsk` (Codex:
+   > `-a never`) y, si además hace falta acotar MCP sin gate humano, `--strict-mcp-config` + un
+   > allowlist write propio — opcional, no se define acá (ver `profiles.md` → "Claude · write
+   > (cross-implement)").
+3. **`acceptEdits` solo en worktree hermano aislado.** Si el work order corre en un worktree
+   hermano descartable (nunca el árbol principal del usuario), `--permission-mode acceptEdits`
+   puede reemplazar `dontAsk`/`manual` para aplicar ediciones sin fricción — excepción explícita
+   **por sesión**, decidida y documentada en el momento en que se usa, nunca el default. En el
+   worktree del usuario, `acceptEdits` sigue descartado como forma canónica: escribe **fuera** del
+   cwd sin restricción ("Matriz de verificación" arriba).
+4. **Escritor único — nunca dos escritores concurrentes sobre el mismo worktree.** Para recuperar
+   una sesión que se colgó o que hay que abortar, `recover({ session, dispatch })` interrumpe
+   (`terminal send --interrupt`) y confirma idle (`terminal wait --for tui-idle`) — pero, a
+   diferencia del rol read-only de `co-explore`/`cross-review`, idle confirmado **no alcanza** para
+   el rol write: hace falta demostrar el **cierre real** de la terminal (`terminal close`). Solo
+   con `{ recovered: true }` (cierre confirmado) el conductor puede habilitar un redispatch — y
+   siempre por la vía `cli`, nunca reabriendo `orca-session` sobre la sesión ya comprometida.
+   `{ recovered: false }` (idle sin cierre confirmado, o cierre fallido) significa: **no**
+   redespachar todavía — ni por `orca-session` ni por `cli` — porque no se puede garantizar que el
+   escritor anterior dejó de escribir; el conductor decide (reintentar el cierre, escalar a
+   intervención manual). Ver `cross-model-orca/reference.md` → "Recuperación".
+5. **Clean-tree gate — sin excepción, antes de cualquier dispatch por esta rama.** La regla 2 del
+   `SKILL.md` ya exige `git status` limpio de código sin commitear antes de lanzar; en la rama
+   `orca-session` es además la precondición de la que depende el punto 8: si el worktree no está
+   limpio, el `git diff` posterior mezcla trabajo ajeno con el del implementador y deja de ser
+   enteramente atribuible a él. Ante un árbol sucio: no despachar (o aislar los cambios previos con
+   un commit/stash fuera de esta skill) antes de reintentar.
+6. **El implementador escribe el código; el conductor cosecha el reporte.** A diferencia de las
+   ramas `orca-session` read-only (`co-explore`/`cross-review`, donde el secundario solo produce
+   texto en el transcript), acá el implementador **sí** escribe archivos reales en el
+   `working_dir` — eso ya queda en el worktree cuando termina su turno, fuera del transcript. Lo
+   que el conductor cosecha del transcript es el **informe** ("Formato del reporte": FILES/PROOF/
+   DEVIATIONS), no el código. El conductor detecta el fin del turno con `awaitDone({ session,
+   dispatch, coordinatorHandle, reportPath, root, deadlineMs })`: Codex señaliza por `worker_done`
+   (autoridad validada contra `taskId`/`dispatchId`/`sender` del dispatch activo); Claude no lo
+   emite — su fin de turno se detecta por la transición `tui-idle` posterior al dispatch. Con
+   autoridad confirmada, `awaitDone` llama a `harvest()`
+   (`cross-model-orca/assets/harvest-from-transcript.mjs`), que relee el transcript, desambigua por
+   `nonce` (`selectAssistantByNonce` — relevante en el fix loop, donde la sesión se reutiliza ronda
+   a ronda con un `nonce` nuevo cada vez) y valida el sentinel (`hasSentinel`) antes de persistir.
+7. **Cosecha a un raw único por dispatch, luego promover (sobrescribiendo) `report.txt`.**
+   `harvest()` exige que `reportPath` sea un destino **inexistente** (`checkContainment` +
+   `writeExclusive` con `wx`) — nunca el `cross-implement/report.txt` estable directamente, porque
+   ya existiría a partir de la primera ronda cosechada y la cosecha lo trataría como éxito
+   idempotente sin reescribir. En cambio: el raw único vive en el propio scratch del work order
+   (`cross-implement/report-<nonce>.raw` en la implementación inicial, `report-fix-r<N>-<nonce>.raw`
+   en cada ronda de fix), y el conductor lo promueve —con `rename` atómico— sobre
+   `cross-implement/report.txt`, sobrescribiendo el de la ronda anterior. Es el mismo contrato **no
+   acumulativo** que documenta `cross-model-orca/reference.md` → "Contención robusta y promoción
+   atómica" para el `findings-<familia>.md` de `co-explore`: el raw más reciente reemplaza entero
+   al estable, sin concatenar rondas — coherente con que `report.txt` ya hoy "se sobreescribe por
+   ronda; queda el último" (ver "Archivos de trabajo (scratch)" abajo). El código, en cambio, no se
+   cosecha: ya está en el worktree; lo que sigue es el paso 8.
+8. **`git diff` como PR ajeno — sin cambios respecto de la vía cli.** El conductor revisa el `git
+   diff` completo del worktree exactamente como documenta "Revisión del conductor" abajo (regla 4
+   del `SKILL.md`): FILES declarados vs. `git status --porcelain`, diff completo (correctitud,
+   fidelidad al work order, drift), `proof_cmd` corrido **por el conductor** — la salida del
+   `report.txt` cosechado es advisory, nunca prueba. El fix loop reanuda la MISMA sesión
+   (reutilizada, no una nueva) con el delta de la ronda — mismo mecanismo de "Fix loop" abajo,
+   mismo tope `max_fix_rounds`. El commit, tras el gate humano, sigue siendo del conductor.
+9. **Degradación a `cli` — explícita, sin cambio de comportamiento observable.** Si el resolver da
+   `cli`, o si algo de la rama de arriba falla — Orca no alcanzable, runtime `stale_bootstrap`,
+   sesión write no creable, locator del transcript ambiguo, `recover` devuelve
+   `recovered: false`, o un MCP/perfil requerido no está instalado —, se corre la Vía W-B/W-C de
+   siempre ("Vías de invocación" arriba): mismo prompt-contrato, mismo "Formato del reporte", mismo
+   `report.txt`. La llamadora nunca queda bloqueada por la ausencia de Orca — degrada y sigue
+   (regla 7 del `SKILL.md`, "Opcional y degradable").
+
+### Portabilidad
+
+Los comandos de lanzamiento (POSIX + PowerShell, por familia, rol y modo atendido/desatendido)
+están completos en `cross-model-orca/assets/launch/profiles.md` — no se copian acá.
+`dispatch-adapter.mjs` invoca `orca` con `spawnSync('orca', args, { encoding: 'utf8' })` (arreglo
+de argv, sin `shell: true`): no hereda el problema de quoting de un prompt en markdown que sí
+afecta a `codex exec`/`claude -p` en las Vías W-B/W-C.
+
+### Escritura acotada preservada
+
+La rama `orca-session` es tan acotada en su escritura como las Vías W-B/W-C: el implementador
+escribe SOLO dentro del `working_dir` (regla 3 del `SKILL.md`) — la garantía cambia de mecanismo
+(permisos + vigilancia manual de la sesión Orca en vez de `-s workspace-write`/`--allowedTools`
+del subproceso), no de invariante. El conductor sigue siendo quien revisa el diff completo, corre
+`proof_cmd`, itera el fix loop y commitea tras el gate humano.
 
 ## Prompt del implementador
 
