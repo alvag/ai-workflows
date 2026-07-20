@@ -167,11 +167,13 @@ Antes de nada, resolver si hay un segundo modelo disponible (algoritmo y opcione
 
 ## El loop de revisión
 
-1. **Ronda 1.** Armar el prompt de revisión (plantilla XML en `reference.md` → "Prompt de
-   revisión": `<task>`, `<artifact>`, `<context>`, `<grounding_rules>`,
-   `<structured_output_contract>`, `<dig_deeper_nudge>`), incluyendo el **contenido** del
-   artefacto inline (grounding) y el foco según `artifact_type`. Invocar al revisor en
-   **read-only**. Guardar referencia del thread para poder reanudarlo en rondas siguientes.
+1. **Ronda 1.** Antes de invocar, resolver el transporte (`cli` u `orca-session` — ver
+   `reference.md` → "Transporte: rama `orca-session` (sesión reutilizada entre rondas)"). Armar el
+   prompt de revisión (plantilla XML en `reference.md` → "Prompt de revisión": `<task>`,
+   `<artifact>`, `<context>`, `<grounding_rules>`, `<structured_output_contract>`,
+   `<dig_deeper_nudge>`), incluyendo el **contenido** del artefacto inline (grounding) y el foco
+   según `artifact_type`. Invocar al revisor en **read-only**. Guardar referencia del thread (o de
+   la sesión propia, en la rama `orca-session`) para poder reanudarlo en rondas siguientes.
 2. **Parsear la respuesta** al formato estructurado (`reference.md` → "Formato de salida"):
    lista de `findings` `[severidad, confianza, qué, por qué, cambio sugerido, AC/sección]` + un
    veredicto `APPROVED | REVISE`.
@@ -259,9 +261,10 @@ nunca espera indefinida (ver `reference.md` → "Latencia y timeout").
 ## Referencias internas
 
 - `reference.md` — cómo descubrir e invocar el revisor (subagente codex / `codex exec`
-  read-only / resume entre rondas), **portabilidad entre shells (POSIX / PowerShell)**, plantilla
-  del prompt, formato de salida, plantilla del `review-log.md`, y el foco de revisión por tipo de
-  artefacto.
+  read-only / resume entre rondas), **portabilidad entre shells (POSIX / PowerShell)**, el
+  transporte alternativo `orca-session` (sesión reutilizada entre rondas + cosecha raw→promote),
+  plantilla del prompt, formato de salida, plantilla del `review-log.md`, y el foco de revisión
+  por tipo de artefacto.
 - `README.md` — qué es, cuándo usarla, requisitos e instalación.
 
 ## Atribución

@@ -10,6 +10,7 @@ tipo de artefacto.
 - [Descubrir el revisor](#descubrir-el-revisor)
 - [Invocar al revisor (read-only)](#invocar-al-revisor-read-only)
 - [Resume entre rondas](#resume-entre-rondas)
+- [Transporte: rama `orca-session` (sesión reutilizada entre rondas)](#transporte-rama-orca-session-sesión-reutilizada-entre-rondas)
 - [Prompt de revisión](#prompt-de-revisión)
 - [Formato de salida](#formato-de-salida)
 - [Foco por tipo de artefacto](#foco-por-tipo-de-artefacto)
@@ -142,6 +143,14 @@ en la raíz del flujo:
 - **Scratch transitorio, sin autolimpieza.** El `cross-review/` es local y untracked (igual que el
   resto de `.plans/`/`.sdd/`). No se borra solo: el usuario puede eliminarlo cuando quiera. Una nueva
   corrida del mismo artefacto sobrescribe los archivos de las mismas rondas (no crece sin límite).
+
+En la rama `orca-session` ("Transporte: rama `orca-session` (sesión reutilizada entre rondas)" más
+abajo) no hay subproceso propio, así que no aplican `-session.txt`/`-thread.jsonl`/`.err.txt`: en su
+lugar, `<scratch_dir>/session.json` guarda el objeto `session` reutilizable entre rondas,
+`<scratch_dir>/<artifact_type>-raw-r<N>-<nonce>.raw` es el destino único por ronda de `harvest()` y
+`<scratch_dir>/<artifact_type>-decisions-r<N>.md` el triage del árbitro de esa ronda. El conductor
+combina ambos y promueve (sobrescribiendo) al `review-log.md` estable — nunca se cosecha directo al
+acumulativo.
 
 > En los bloques de comando de las Vías B y C (abajo), todas las rutas de archivo de trabajo
 > —`<ruta/al/prompt-r1.txt>`, `<ruta/al/veredicto.txt>`, `<ruta/al/delta-rN.txt>`,
@@ -409,6 +418,172 @@ lugar de abrir una nueva — el crítico es el mismo agente que exploró. Con `t
 resume lleva igualmente el override `-c sandbox_mode="read-only"` (resume no hereda el sandbox
 de la sesión original — ver la Vía B). Si el resume falla, abrir
 sesión nueva con los `findings-*.md` como contexto: mismo efecto, sin estado.
+
+## Transporte: rama `orca-session` (sesión reutilizada entre rondas)
+
+Alternativa a las Vías A/B/C de arriba ("Invocar al revisor (read-only)"): en vez de un subproceso
+headless por ronda, el conductor abre, con la skill-librería `cross-model-orca`, una **sesión
+interactiva propia** y la **reutiliza entre rondas** — el equivalente `orca-session` al resume de
+la cli — cosechando el transcript de cada ronda. Es **aditiva**: las Vías A/B/C y su mecánica de
+rondas/resume/scratch/`VERDICT:` no cambian y siguen siendo el transporte por defecto en cuanto
+algo de lo de abajo no se pueda garantizar.
+
+### Resolver transporte (antes de la Ronda 1)
+
+Antes de invocar al revisor (paso 1 de "El loop de revisión" del `SKILL.md`), resolver qué
+transporte usar: `override ?? config ?? auto` — algoritmo canónico, no se reimplementa acá, ver
+`cross-model-orca/reference.md` → "Resolver de transporte":
+
+- **`override`** — lo que pasa explícito la skill llamadora. `sdd-flow`/`sdd-orchestrator`
+  propagan solo su `cross_model.transport.desired` configurado (nunca su propio `effective` ya
+  resuelto: cada proceso reevalúa su propia reachability de Orca).
+- **`config`** — la clave `cross_model.transport` en `.specify/config.yml` (default `auto` cuando
+  la clave no está).
+- **`auto`** — `orca-session` si el runtime de Orca es alcanzable **desde el proceso del
+  conductor** en este momento y se puede crear o reutilizar una sesión propia; si no, `cli`.
+
+Ante **cualquier** duda — reachability incierta, sesión no verificable como propia, locator
+ambiguo — el resultado es `cli`, igual que documenta `co-explore/reference.md` → "Transporte: rama
+`orca-session`" para su propio resolver. `cross-review` no necesita justificar `cli`; sí necesita
+que las tres condiciones de `orca-session` (Orca alcanzable, sesión propia/reutilizable, perfiles
+de las tres capas de control instalados) se cumplan explícitamente.
+
+### Rama `orca-session`
+
+Sustituye, ronda a ronda, la invocación de las Vías A/B/C y su resume. El revisor sigue tan
+read-only como en `cli`: solo cambia el transporte, no la regla 1 del `SKILL.md`.
+
+1. **Ronda 1 — crear la sesión propia dedicada.** `createOwnedSession({ family, role:
+   'read-only', mode, worktree, ... })` (`cross-model-orca/assets/dispatch-adapter.mjs`), con el
+   mismo perfil read-only que usa `co-explore` según la familia del revisor (Codex o Claude — ver
+   "Descubrir el revisor" arriba; perfiles completos en
+   `cross-model-orca/assets/launch/profiles.md`). A diferencia de `co-explore` (sesión fresca por
+   dispatch), `cross-review` **reutiliza esta misma sesión en las rondas siguientes** — el diseño
+   de la librería para sesiones propias (`cross-model-orca/reference.md` → "Runtime de sesión vs
+   runtime del flujo"). Persistir el objeto `session` devuelto (`uid`, `family`, `role`, `mode`,
+   `worktree`, `terminalHandle`, `sessionId`, `transcriptPath`, `createdAt`, `stateDir`) en
+   `<scratch_dir>/session.json` (`<scratch_dir>` = `<dir del artefacto>/cross-review/`, la misma
+   raíz que ya documenta "Archivos de trabajo (scratch)"). Ese archivo es bookkeeping propio de
+   `cross-review`, distinto del registro conductor-only `sessions.json` bajo el `stateDir` de la
+   librería (la fuente de verdad de "propia", verificable por `uid`): la copia local es lo que le
+   permite a una ronda posterior — corrida como una invocación separada — reconstruir el objeto
+   `session` sin volver a preguntarle a Orca.
+2. **Armar y despachar el mismo prompt de la ronda, con un `nonce` nuevo.** El prompt es el mismo
+   "Prompt de revisión" de abajo — ronda 1 completo, rondas siguientes el delta, ver "Resume entre
+   rondas" arriba —, sin cambios. Se despacha con `createDispatch({ session, spec, root })`, que
+   genera un `nonce` **nuevo por ronda** (cada ronda necesita el suyo para que el conductor pueda
+   cosechar el mensaje de *esta* ronda y descartar los de rondas previas en la misma sesión
+   reutilizada) e inyecta por su cuenta la instrucción de cierre (`buildEnvelopeInstructions`).
+3. **Sentinel universal de esta rama.** El revisor cierra su turno con su salida normal —"Formato
+   de salida" de abajo: `VERDICT: APPROVED | REVISE` + `FINDINGS:` — seguida, como **últimas
+   líneas**, del envelope que `createDispatch` ya inyectó:
+   ```
+   VERDICT: REVISE
+
+   FINDINGS:
+   - [high] <título>
+     why: <...>
+     suggestion: <...>
+     refs: AC-2
+     confidence: high
+
+   X-CMO: nonce=<..>
+   STATUS: done
+   ```
+   Esto es **solo** en esta rama: las Vías A/B/C siguen cerrando cada ronda solo con `VERDICT:`
+   (sin envelope) — el poll de la cli sigue buscando `^VERDICT:`, sin cambios. La razón es la
+   cosecha del conductor: `harvest()` necesita el `nonce` para desambiguar la ronda en curso
+   dentro de una sesión reutilizada, que a partir de la ronda 2 tiene mensajes de rondas
+   anteriores con `nonce` viejo. El `nonce` es solo un token de correlación (texto del modelo,
+   falsificable); la autoridad va por el `payload` del `worker_done` (Codex) o por la propiedad de
+   la sesión (Claude) — ver `cross-model-orca/SKILL.md` → sección 2 ("Envelope con autoridad") y
+   `reference.md` → "Envelope y cosecha crash-idempotente" (párrafo "Correlación vs. autoridad").
+   No agregar `taskId`/`dispatchId` al texto.
+4. **El revisor no escribe su propio `review-log.md`.** El conductor espera el fin del turno con
+   `awaitDone({ session, dispatch, coordinatorHandle, reportPath, root, deadlineMs })`: Codex
+   señaliza por `worker_done` (autoridad validada contra el dispatch activo); Claude no lo
+   emite — su fin de turno se detecta por la transición `tui-idle` posterior al dispatch. Con
+   autoridad confirmada, `awaitDone` llama a `harvest()`
+   (`cross-model-orca/assets/harvest-from-transcript.mjs`), que relee el transcript, desambigua
+   por `nonce` (`selectAssistantByNonce`, descartando los mensajes de rondas previas) y valida el
+   sentinel (`hasSentinel`) antes de persistir — al raw único de esta ronda, no al `review-log.md`
+   (ver el punto siguiente). `deadlineMs` usa el mismo presupuesto que ya define "Latencia y
+   timeout" para la vía cli (≥5 min `normal`, ~10 min `complex`); si el conductor solo puede
+   sostener un exec corto, lanzar la espera en background y pollear, igual que hoy hace el camino
+   BACKGROUND de esa sección — la distinción `execution: sync | background` es ortogonal al
+   transporte.
+5. **Cosecha a un raw único por ronda, luego reconstruir y promover el `review-log.md`
+   (CRÍTICO).** `harvest()` exige que `reportPath` sea un destino **inexistente**
+   (`checkContainment` + `writeExclusive` con `wx`, ver `cross-model-orca/reference.md` →
+   "Contención robusta y promoción atómica"). El `review-log.md` es, en cambio, un destino
+   **acumulativo estable** — crece ronda a ronda e incluye también las decisiones del árbitro —,
+   así que **nunca** es el `reportPath` que recibe `awaitDone`: un `wx` sobre un archivo que ya
+   existe (a partir de la ronda 2) fallaría siempre. En cambio:
+   a. `harvest()` cosecha al raw único de esta ronda, dentro de `<scratch_dir>`, con un nombre que
+      combina el número de ronda y el `nonce` para que nunca colisione ni entre rondas ni entre
+      reintentos de la misma corrida:
+      `<scratch_dir>/<artifact_type>-raw-r<N>-<nonce>.raw` (p. ej.
+      `cross-review/plan-raw-r2-3f9a1c...raw`). El número de ronda solo no alcanza: una corrida
+      repetida sobre el mismo artefacto reutilizaría el mismo `r<N>` y el `wx` fallaría contra el
+      raw de la corrida anterior.
+   b. El árbitro (Claude) registra su triage de esa ronda — aplicado/rechazado/escalado por
+      finding, con el rationale (regla 3 del `SKILL.md`) — en
+      `<scratch_dir>/<artifact_type>-decisions-r<N>.md`: el mismo contenido que, en la vía cli, hoy
+      se escribe directo dentro de `review-log.md`.
+   c. El **conductor** reconstruye el `review-log.md` completo: por cada ronda ya cosechada
+      (1..N), combina su raw (veredicto + findings del revisor) con su archivo de decisiones,
+      siguiendo la estructura de "Plantilla de review-log.md" abajo; escribe el resultado a un
+      temporal en `<dir del artefacto>/` y lo **promueve con `rename` atómico** sobre
+      `review-log.md`, sobrescribiendo cualquier versión previa — mismo patrón que documenta
+      `cross-model-orca/reference.md` para destinos acumulativos. El `review-log.md` sigue
+      viviendo donde ya lo documenta "Archivos de trabajo (scratch)" arriba: hermano del
+      artefacto, nunca dentro de `cross-review/`.
+   d. Recién después de la promoción exitosa se marca la FSM `promoted`
+      (`dedupKey = ${dispatchId}:${nonce}`); si el proceso cae entre el `rename` y
+      `markPromoted`, un retry reconstruye desde los mismos raws (todos inmutables) y llega al
+      mismo contenido — idempotente, sin duplicar rondas (ver "El hueco post-rename/pre-promoted"
+      en `cross-model-orca/reference.md`).
+6. **Rondas siguientes — reutilizar la sesión.** En vez de `createOwnedSession`, releer
+   `<scratch_dir>/session.json`, confirmar que el `uid` sigue registrado como propio en el
+   `stateDir` del conductor (`cross-model-orca/reference.md` → "Runtime de sesión vs runtime del
+   flujo") y pasar ese mismo objeto `session` a un nuevo `createDispatch` (paso 2, con su propio
+   `nonce`). **Nunca** se reutiliza una sesión ajena — una abierta por el usuario o por otro
+   flujo (privacidad v1, `cross-model-orca/SKILL.md` → sección 6): si el `uid` no está registrado,
+   o el registro no confirma que sigue siendo la misma sesión (mismo `terminalHandle`), crear una
+   sesión fresca (volviendo al paso 1) o degradar a `cli`.
+7. **Ante falla del revisor, `recover`.** `recover({ session, dispatch })` interrumpe (`terminal
+   send --interrupt`) y confirma idle (`terminal wait --for tui-idle`) antes de dar la sesión por
+   recuperable. Rol `read-only`: idle confirmado alcanza — no hay riesgo de doble escritor. Si
+   `recover` no confirma, o el locator del transcript resulta ambiguo, o la sesión no se puede
+   garantizar propia → **degradar a `cli`** para el resto del loop (nunca redespachar por
+   `orca-session` sobre una sesión ya comprometida).
+
+### Degradación a `cli`
+
+Explícita, sin cambio de comportamiento observable: si el resolver da `cli`, o si algo de la rama
+de arriba falla — Orca no alcanzable, runtime `stale_bootstrap`, locator del transcript ambiguo,
+sesión no verificable como propia (fresca o reutilizada), falta el binario de Orca/de la otra
+familia, o un MCP requerido por el perfil —, se corre la vía cli de siempre (Vía A/B/C, "Invocar
+al revisor (read-only)" arriba): mismo prompt, mismo "Formato de salida", mismo `review-log.md`.
+La llamadora nunca queda bloqueada por la ausencia de Orca — degrada y sigue, igual que hoy
+degrada ante la ausencia de un binario o MCP (regla 6 del `SKILL.md`, "Degradación").
+
+### Portabilidad
+
+Los comandos de lanzamiento (POSIX + PowerShell, por familia, rol y modo atendido/desatendido)
+están completos en `cross-model-orca/assets/launch/profiles.md` — no se copian acá.
+`dispatch-adapter.mjs` invoca `orca` con `spawnSync('orca', args, { encoding: 'utf8' })` (arreglo
+de argv, sin `shell: true`): no hereda el problema de quoting de un prompt en markdown que sí
+afecta a `codex exec`/`claude -p` en la vía cli (ver "Portabilidad entre shells (POSIX /
+PowerShell)" arriba).
+
+### Read-only preservado
+
+La rama `orca-session` es tan read-only como la cli: el revisor lee el artefacto y el código del
+`working_dir`, critica, pero no edita nada (regla 1 del `SKILL.md`) — la garantía cambia de
+mecanismo (sandbox/toolset cerrado de la sesión Orca en vez de `-s read-only`/`--allowedTools` del
+subproceso), no de invariante. Quien aplica los findings sigue siendo Claude, editando el
+artefacto fuera de esta sesión.
 
 ## Prompt de revisión
 
