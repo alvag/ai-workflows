@@ -173,9 +173,10 @@ Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario en modo directo) prove
 1. **Resolver el revisor** (regla 7). Sin revisor de otra familia disponible → `UNAVAILABLE`.
 2. **Armar el prompt** desde `reference.md` → "Prompt de exploración" (una variante por modo),
    con el paquete de contexto inline.
-3. **Lanzar en background, read-only**, con el stdout redirigido a
-   `co-explore/scratch/explorer.out`; guardar el PID y, si el runtime lo expone, la referencia
-   de sesión en `co-explore/session.json`.
+3. **Resolver el transporte** (`cli` u `orca-session` — ver `reference.md` → "Transporte: rama
+   `orca-session` (sesión fresca read-only)") y **lanzar en background, read-only**. En la rama
+   `cli` (por defecto), con el stdout redirigido a `co-explore/scratch/explorer.out`; guardar el
+   PID y, si el runtime lo expone, la referencia de sesión en `co-explore/session.json`.
 4. En `explore`, **devolver el control de inmediato** ("explorando en background") — la
    llamadora hace su propia exploración y vuelve a consultar en el punto de encuentro. En
    `counter-plan` o con `execution: sync`, esperar con tope.

@@ -15,6 +15,7 @@ archivos de trabajo.
 - [Plantilla de `debate.md`](#plantilla-de-debatemd)
 - [Capacidades y worktree (`investigate`)](#capacidades-y-worktree-investigate)
 - [Descubrir el revisor (puntero + fallback)](#descubrir-el-revisor-puntero--fallback)
+- [Transporte: rama `orca-session` (sesión fresca read-only)](#transporte-rama-orca-session-sesión-fresca-read-only)
 - [Latencia y deadlines](#latencia-y-deadlines)
 - [Archivos de trabajo (scratch)](#archivos-de-trabajo-scratch)
 
@@ -513,6 +514,133 @@ CLAUDE.md del usuario del `working_dir`.
 `$SESSION_ID`/`$SessionId`, capturado en `explorer-session.txt`, es la base para escribir
 `co-explore/session.json` (ver "Archivos de trabajo (scratch)") cuando `cross-review` está
 instalada y puede reanudar ese thread.
+
+## Transporte: rama `orca-session` (sesión fresca read-only)
+
+Alternativa a la rama `cli` de arriba ("Descubrir el revisor (puntero + fallback)"): en vez de un
+subproceso headless efímero, el conductor abre, con la skill-librería `cross-model-orca`, una
+**sesión interactiva fresca** de la otra familia vía Orca, la deja explorar y **cosecha su
+transcript**. Es **aditiva**: la rama `cli` de arriba no cambia y sigue siendo el transporte por
+defecto en cuanto algo de lo de abajo no se pueda garantizar.
+
+### Resolver transporte (antes del paso 3 de `SKILL.md`)
+
+Antes de lanzar (paso 3 de "Pasos de ejecución"), resolver qué transporte usar:
+`override ?? config ?? auto`. Algoritmo canónico — no se reimplementa acá, ver
+`cross-model-orca/reference.md` → "Resolver de transporte":
+
+- **`override`** — lo que pasa explícito la skill llamadora. Cuando invoca `sdd-flow`/
+  `sdd-orchestrator`, propagan solo el `cross_model.transport.desired` configurado (nunca su
+  propio `effective` ya resuelto: cada proceso reevalúa su propia reachability de Orca, porque un
+  subproceso delegado puede ver el runtime `stale_bootstrap` aunque el padre lo haya alcanzado
+  sin problema).
+- **`config`** — la clave `cross_model.transport` en `.specify/config.yml` (default `auto` cuando
+  la clave no está).
+- **`auto`** — `orca-session` si el runtime de Orca es alcanzable **desde el proceso del
+  conductor** en este momento y se puede crear una sesión fresca propia; si no, `cli`.
+
+Ante **cualquier** duda —reachability incierta, locator ambiguo, sesión no verificable como
+propia y fresca— el resultado es `cli`. `co-explore` no necesita justificar `cli`; sí necesita
+que las tres condiciones de `orca-session` (Orca alcanzable, sesión propia/fresca, perfiles de
+las tres capas de control instalados) se cumplan explícitamente antes de tomar esa rama.
+
+### Rama `orca-session`
+
+Sustituye los pasos 3-5 de "Pasos de ejecución" (lanzar / punto de encuentro / normalizar)
+cuando el resolver da `orca-session`. El explorador sigue tan read-only como en la rama `cli`:
+solo cambia el transporte, no el invariante de la regla 1 del `SKILL.md`.
+
+1. **Crear la sesión fresca dedicada.** `createOwnedSession({ family, role: 'read-only', mode,
+   worktree, ... })` (`cross-model-orca/assets/dispatch-adapter.mjs`), con el perfil read-only de
+   `cross-model-orca/assets/launch/profiles.md` según familia:
+   - Codex: `codex -c features.apps=false -s read-only -a untrusted --disable hooks`
+     (atendido) — la garantía read-only es el sandbox `-s read-only`, no un toolset acotado.
+   - Claude: `--tools "Read,Grep,Glob"` + `--settings
+     cross-model-orca/assets/launch/claude-readonly.settings.json` (`disableAllHooks: true`) +
+     `--session-id <uuid>` — el toolset cerrado (sin Bash) es lo que da read-only duro; Claude no
+     tiene una bandera de sandbox equivalente a `-s read-only`.
+
+   MCP no se restringe por config en el default atendido: es **vigilancia manual** (el humano
+   aprueba/rechaza en la TUI cualquier acción sensible del explorador durante su turno) — no hay
+   inventario ni allowlist que instalar para esta rama. Para una corrida **desatendida**, el
+   endurecimiento `--strict-mcp-config` (Claude) o el perfil `-p cmo-readonly` (Codex) es
+   **opcional**, no un requisito — ver `profiles.md`.
+
+2. **Armar y despachar el mismo prompt.** El prompt de exploración es el mismo que usa la rama
+   `cli` — "Prompt de exploración" arriba, una variante por `mode`
+   (`explore`/`counter-plan`/`investigate`), sin cambios: el explorador sigue leyendo, buscando y
+   razonando, nunca editando ni ejecutando. Se despacha con `createDispatch({ session, spec, root
+   })`, que genera el `nonce` e inyecta por su cuenta la instrucción de cierre
+   (`buildEnvelopeInstructions`): el explorador termina su turno con el `output_contract` de su
+   modo (headings del "Formato del informe") seguido de
+   ```
+   X-CMO: nonce=<..>
+   STATUS: done
+   ```
+   Sin `taskId`/`dispatchId` en el texto: esos viajan por el `payload` del `worker_done` (Codex)
+   o por la propiedad de la sesión (Claude), y el conductor los valida **antes** de cosechar —
+   ver `cross-model-orca/reference.md` → "Correlación vs. autoridad" (`SKILL.md` sección 2).
+
+3. **El explorador no escribe su propio informe.** A diferencia de la rama `cli` (donde el
+   stdout se redirige a `co-explore/scratch/explorer.out`), acá el informe solo vive en el
+   transcript de la sesión. El **conductor** espera el fin del turno con `awaitDone({ session,
+   dispatch, coordinatorHandle, reportPath, root, deadlineMs })`: Codex señaliza por comando
+   (`worker_done`, con autoridad validada contra `taskId`/`dispatchId`/`sender`); Claude no emite
+   `worker_done` — su fin de turno se detecta por la transición `tui-idle` posterior al dispatch.
+   Con autoridad confirmada, `awaitDone` llama a `harvest()`
+   (`cross-model-orca/assets/harvest-from-transcript.mjs`), que relee el transcript, desambigua
+   por `nonce` (`selectAssistantByNonce`, para el caso de una sesión reutilizada con mensajes de
+   dispatches previos) y valida el sentinel (`hasSentinel`) antes de persistir.
+
+4. **Persistir en la misma ruta que la rama `cli`.** `harvest()` escribe el informe cosechado
+   contra el mismo "Formato del informe" (los headings fijos de arriba) en la ruta que le
+   corresponde al modo — sin cambios respecto de hoy:
+   - `co-explore/findings-<familia>.md` (`explore`)
+   - `co-explore/counter-plan-<familia>.md` (`counter-plan`)
+   - `co-explore/investigate-<familia>.md` (`investigate`, standalone)
+
+   con la raíz según el contexto: `.plans/<id>/co-explore/` o `.sdd/<id>/co-explore/` dentro de
+   un flujo SDD, `.co-explore/<slug>/` en modo directo standalone — mismas raíces que documenta
+   "Archivos de trabajo (scratch)" abajo y la matriz de `cross-model-orca/SKILL.md` → sección 5
+   ("Matriz de raíces por skill/modo"). La escritura es exclusiva y contenida
+   (`checkContainment` + `writeExclusive` con `wx`) contra esa raíz: nunca pisa un informe ya
+   existente por accidente — si el destino ya existe, la cosecha lo trata como éxito idempotente
+   (retry post-crash), no como una sobreescritura.
+
+5. **Ante falla del secundario, `recover`.** Si el explorador se cuelga o hay que abortar el
+   turno, `recover({ session, dispatch })` interrumpe (`terminal send --interrupt`) y confirma
+   idle (`terminal wait --for tui-idle`) antes de dar la sesión por recuperable — en rol
+   read-only, idle confirmado alcanza (no hay riesgo de doble escritor, a diferencia del rol
+   write de `cross-implement`). Si `recover` no confirma, o si el locator del transcript resulta
+   ambiguo, o si la sesión no se puede garantizar propia y fresca, **degradar a `cli`** (ver
+   abajo) — nunca redespachar por `orca-session` sobre una sesión ya comprometida.
+
+### Degradación a `cli`
+
+Explícita, sin cambio de comportamiento observable: si el resolver da `cli`, o si algo de la rama
+de arriba falla —Orca no alcanzable, runtime `stale_bootstrap`, locator del transcript ambiguo,
+sesión no verificable como propia y fresca, falta el binario de Orca/de la otra familia, o un MCP
+requerido por el perfil—, se corre la rama `cli` de siempre ("Descubrir el revisor (puntero +
+fallback)", arriba): mismo prompt, mismo "Formato del informe", misma ruta de informe. La
+llamadora nunca queda bloqueada por la ausencia de Orca — degrada y sigue, igual que hoy degrada
+ante la ausencia de un binario o MCP (regla 6 del `SKILL.md`, "Degradación").
+
+### Portabilidad
+
+Los comandos de lanzamiento (POSIX + PowerShell, por familia, rol y modo atendido/desatendido)
+están completos en `cross-model-orca/assets/launch/profiles.md` — no se copian acá. La única
+particularidad de esta rama, documentada en `cross-model-orca/reference.md` → "Portabilidad entre
+shells": `dispatch-adapter.mjs` invoca `orca` con `spawnSync('orca', args, { encoding: 'utf8' })`
+(arreglo de argv, sin `shell: true`), así que no hereda el problema de quoting de un prompt en
+markdown que sí afecta a `codex exec`/`claude -p` en la rama `cli`; los comandos `orca
+<subcomando> ...` de recuperación manual son idénticos en los dos shells.
+
+### Read-only preservado
+
+La rama `orca-session` es tan read-only como la `cli`: el explorador lee, busca y razona, nunca
+edita ni ejecuta (regla 1 del `SKILL.md`) — la garantía cambia de mecanismo (sandbox/toolset
+cerrado de la sesión Orca en vez de `-s read-only`/`--allowedTools` del subproceso), no de
+invariante.
 
 ## Latencia y deadlines
 
