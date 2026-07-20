@@ -54,6 +54,12 @@ Get-Command orca -ErrorAction SilentlyContinue
 
 ## Resolver de transporte
 
+> Las funciones que documenta este archivo (`createOwnedSession`, `createDispatch`, `awaitDone`,
+> `recover`) son la **librería** del transporte; el conductor **no las cablea a mano**, sino que
+> corre el entrypoint `assets/run-orca-session.mjs`, que las encadena con la degradación a `cli`
+> (ver `SKILL.md` → sección 1, "Cómo se corre: UN comando", y su red flag contra improvisar
+> `orca terminal create --command 'codex exec …'`).
+
 Algoritmo: `override ?? config ?? auto`. Se evalúa en ese orden; el primer valor no-nulo gana.
 
 1. **`override`** — lo que pasa explícito la skill llamadora (`co-explore`, `cross-review`,

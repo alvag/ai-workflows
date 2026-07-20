@@ -52,6 +52,36 @@ El resolver que decide `orca-session` vs `cli` (`override ?? config ?? auto`), l
 ante fallas del secundario y la espera bloqueante con backoff están en `reference.md` → secciones
 "Resolver de transporte", "Recuperación" y "Espera y backoff" (no en este archivo).
 
+### Cómo se corre: UN comando (no improvisar Orca a mano)
+
+El flujo de arriba lo ejecuta el conductor con **un** comando — el entrypoint
+`assets/run-orca-session.mjs` —, que encadena `createOwnedSession → createDispatch → awaitDone`
+con la misma degradación a `cli`. El prompt/spec va **por archivo** (nunca inline: el markdown con
+backticks rompe el quoting del shell):
+
+```sh
+node <skill>/assets/run-orca-session.mjs \
+  --family <codex|claude> --role <read-only|write> --mode <attended|unattended> \
+  --worktree <abspath-registrado-en-orca> --spec-file <path> \
+  --report <relpath-a-root> --root <dir> [--deadline-ms <n>] [--boot-timeout-ms <n>]
+```
+
+Devuelve una línea JSON en stdout: `{ transport:"orca-session", code, reportPath?, reason? }`.
+`code:0` = cosechado (`reportPath` es el informe); `code!=0` = **degradar a `cli`** leyendo
+`reason` (4 = no se pudo crear/localizar la sesión propia; 2/3 = fallo de cosecha/invocación).
+
+> **Red flag — NUNCA improvisar `orca terminal create --command 'codex exec … < prompt > out'`.**
+> Eso NO es este transporte: es la rama `cli` metida a mano en una terminal Orca, y se salta las
+> dos garantías del adaptador — el **boot-wait (`tui-idle`)** antes de inyectar (sin él, el comando
+> se teclea mientras el shell todavía sourcea `.zshrc` y el prompt se pierde en la carrera de boot)
+> y la **cosecha por `nonce`** del transcript propio. Si el runtime de Orca es alcanzable,
+> `orca-session` se corre SOLO por `run-orca-session.mjs`; si no, se corre la rama `cli` de
+> siempre. No hay un punto intermedio a mano.
+>
+> El transporte se llama **`orca-session`** (una sesión interactiva propia), no "orca-cli": "usar
+> la CLI de Orca" no significa teclear comandos `orca …` sueltos, sino correr el entrypoint que
+> abre esa sesión y la cosecha con autoridad.
+
 ## 2. Envelope con autoridad
 
 El secundario cierra su turno con:

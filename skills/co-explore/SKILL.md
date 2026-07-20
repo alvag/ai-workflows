@@ -176,7 +176,10 @@ Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario en modo directo) prove
 3. **Resolver el transporte** (`cli` u `orca-session` — ver `reference.md` → "Transporte: rama
    `orca-session` (sesión fresca read-only)") y **lanzar en background, read-only**. En la rama
    `cli` (por defecto), con el stdout redirigido a `co-explore/scratch/explorer.out`; guardar el
-   PID y, si el runtime lo expone, la referencia de sesión en `co-explore/session.json`.
+   PID y, si el runtime lo expone, la referencia de sesión en `co-explore/session.json`. En la
+   rama `orca-session` se corre el entrypoint `cross-model-orca/assets/run-orca-session.mjs` como
+   un único comando — **nunca** se improvisa `orca terminal create --command 'codex exec …'` a
+   mano (ver el red flag en `reference.md`).
 4. En `explore`, **devolver el control de inmediato** ("explorando en background") — la
    llamadora hace su propia exploración y vuelve a consultar en el punto de encuentro. En
    `counter-plan` o con `execution: sync`, esperar con tope.

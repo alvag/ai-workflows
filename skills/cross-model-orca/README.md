@@ -64,7 +64,8 @@ skills/cross-model-orca/
   README.md          # este archivo, documentación para humanos
   install.md         # contrato de instalación (Node, CROSS_MODEL_ORCA, skills-ref)
   assets/
-    dispatch-adapter.mjs           # ENTRY conductor: sesión, dispatch, espera, recuperación
+    run-orca-session.mjs           # ENTRYPOINT CLI: un comando que corre el flujo completo (lo que invoca el conductor)
+    dispatch-adapter.mjs           # librería: sesión, dispatch, espera, recuperación (createOwnedSession/createDispatch/awaitDone)
     harvest-core.mjs               # funciones puras: envelope, contención, parser, dedup-FSM
     harvest-from-transcript.mjs    # ENTRY conductor: espera + cosecha del transcript
     lib/platform.mjs               # rutas por plataforma, preflight de Node

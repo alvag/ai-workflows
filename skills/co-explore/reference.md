@@ -550,6 +550,19 @@ Sustituye los pasos 3-5 de "Pasos de ejecución" (lanzar / punto de encuentro / 
 cuando el resolver da `orca-session`. El explorador sigue tan read-only como en la rama `cli`:
 solo cambia el transporte, no el invariante de la regla 1 del `SKILL.md`.
 
+> **Se corre con UN comando, no a mano.** Los pasos 1-4 de abajo son lo que hace el entrypoint
+> `cross-model-orca/assets/run-orca-session.mjs` (`createOwnedSession → createDispatch → awaitDone`,
+> con degradación a `cli`); el conductor lo invoca como un solo comando —
+> `node <cross-model-orca>/assets/run-orca-session.mjs --family codex --role read-only --mode
+> <attended|unattended> --worktree <abspath> --spec-file <prompt.txt> --report <relpath> --root
+> <dir>` — y lee la línea JSON de stdout (`code:0` → usar `reportPath`; `code!=0` → degradar a
+> `cli`). **NUNCA improvisar `orca terminal create --command 'codex exec … < prompt > out'`:** eso
+> es la rama `cli` metida a mano en una terminal Orca, sin el boot-wait (`tui-idle`) que evita
+> perder el prompt en la carrera de boot ni la cosecha por `nonce`. El transporte se llama
+> **`orca-session`** (sesión interactiva propia), no "orca-cli": "usar la CLI de Orca" = correr ese
+> entrypoint, no teclear comandos `orca …` sueltos. Detalle del contrato en
+> `cross-model-orca/SKILL.md` → sección 1 ("Cómo se corre: UN comando").
+
 1. **Crear la sesión fresca dedicada.** `createOwnedSession({ family, role: 'read-only', mode,
    worktree, ... })` (`cross-model-orca/assets/dispatch-adapter.mjs`), con el perfil read-only de
    `cross-model-orca/assets/launch/profiles.md` según familia:
