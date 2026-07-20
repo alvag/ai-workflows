@@ -15,9 +15,10 @@
 3. **Config de MCP + hooks** (qué tools remotas y qué automatizaciones locales están
    disponibles): en el **default atendido**, MCP se controla por **vigilancia manual** (el humano
    aprueba/rechaza en la TUI; no hay allowlist ni denylist que mantener), más `--settings <archivo>`
-   (`disableAllHooks`); `-p <perfil> --disable hooks` en Codex (`mcp_servers.<id>.*`, `features.apps`,
-   `plugins.*`). Para el caso **desatendido**, un gate declarativo opcional (`--strict-mcp-config`,
-   ver abajo). Ver `mcp-inventory.md` para el modelo completo.
+   (`disableAllHooks`); en Codex, `-c features.apps=false --disable hooks` inline (sin perfil que
+   copiar) + vigilancia manual vía `-a untrusted`. Para el caso **desatendido**, un gate declarativo
+   opcional (Claude `--strict-mcp-config`; Codex `-p <perfil>` con MCP server-scoped), ver abajo. Ver
+   `mcp-inventory.md` para el modelo completo.
 
 ### MCP: vigilancia manual (default) y endurecimiento opcional
 
@@ -40,31 +41,40 @@ para permitir un servidor de lectura en `mcp-inventory.md`.
 > prompt se pierde como "otra tool/config"). En la matriz de abajo el `<prompt>` va último, tras
 > `--session-id` (no variádico).
 
-## Instalación de los perfiles Codex (paso previo obligatorio)
+## MCP en Codex: vigilancia manual (default) + perfil opcional (desatendido)
 
-`-p <nombre>` en Codex **no** acepta una ruta: busca `$CODEX_HOME/<nombre>.config.toml`. Hay que
-copiar el archivo del repo a `$CODEX_HOME` con el nombre que se va a usar en `-p` antes de
-invocar.
+Igual que en Claude, el **default atendido** de Codex read-only no restringe MCP por config: el
+secundario ve los MCP del entorno y **el humano es el gate** — con `-a untrusted`, una acción no
+confiable escala a aprobación en la TUI. Las garantías cero-config que sí valen: `-s read-only`
+(sandbox), `--disable hooks`, y **`-c features.apps=false`** (apaga la superficie de Apps; se setea
+**inline**, sin perfil — verificado válido bajo `--strict-config`). **No hace falta copiar ningún
+perfil a `$CODEX_HOME` para el default.**
+
+Para el caso **desatendido** (nadie aprueba en la TUI) existe un perfil **opcional** con
+restricciones MCP server-scoped (`codex-readonly.config.toml`). `-p <nombre>` **no** acepta una
+ruta: busca `$CODEX_HOME/<nombre>.config.toml`, así que hay que copiarlo primero. El perfil de
+**write** (cross-implement, Fase 5) sí se instala del mismo modo.
 
 **POSIX (bash/zsh):**
 ```bash
 cp skills/cross-model-orca/assets/launch/codex-readonly.config.toml \
-   "$CODEX_HOME/cmo-readonly.config.toml"
+   "$CODEX_HOME/cmo-readonly.config.toml"   # solo para el endurecimiento desatendido
 cp skills/cross-model-orca/assets/launch/codex-write.config.toml \
-   "$CODEX_HOME/cmo-write.config.toml"
+   "$CODEX_HOME/cmo-write.config.toml"      # rol write (Fase 5)
 ```
 
 **PowerShell:**
 ```powershell
 Copy-Item skills/cross-model-orca/assets/launch/codex-readonly.config.toml `
-  "$env:CODEX_HOME/cmo-readonly.config.toml"
+  "$env:CODEX_HOME/cmo-readonly.config.toml"   # solo para el endurecimiento desatendido
 Copy-Item skills/cross-model-orca/assets/launch/codex-write.config.toml `
-  "$env:CODEX_HOME/cmo-write.config.toml"
+  "$env:CODEX_HOME/cmo-write.config.toml"      # rol write (Fase 5)
 ```
 
 > Un perfil inexistente en `$CODEX_HOME` se **ignora silenciosamente** (confirmado: `-p
-> <nombre-inexistente>` no produce error, corre con la config base tal cual) — verifica que el
-> `cp`/`Copy-Item` haya corrido antes de asumir que las restricciones están activas.
+> <nombre-inexistente>` no produce error, corre con la config base tal cual) — si usas el perfil
+> opcional, verifica que el `cp`/`Copy-Item` haya corrido antes de asumir que las restricciones
+> están activas.
 
 Del lado Claude, `--settings <archivo>` sí acepta una ruta directa — no hace falta instalar nada
 primero.
@@ -181,30 +191,32 @@ claude `
 
 ### Codex · read-only
 
-**Atendido** (alguien puede aprobar en la TUI si el modelo propone un comando no confiable) —
-`-a untrusted`:
+**Atendido (default, vigilancia manual)** — sin perfil que copiar; `-a untrusted` manda cualquier
+comando no confiable a aprobación en la TUI (el humano es el gate), y `-c features.apps=false` apaga
+Apps inline:
 
 **POSIX:**
 ```bash
-codex -p cmo-readonly -s read-only -a untrusted --disable hooks "<prompt>"
+codex -c features.apps=false -s read-only -a untrusted --disable hooks "<prompt>"
 ```
 
 **PowerShell:**
 ```powershell
-codex -p cmo-readonly -s read-only -a untrusted --disable hooks "<prompt>"
+codex -c features.apps=false -s read-only -a untrusted --disable hooks "<prompt>"
 ```
 
 **Desatendido** (nadie mirando; `untrusted` podría escalar y colgarse esperando aprobación) —
-`-a never`:
+`-a never`, y **opcionalmente** el perfil `-p cmo-readonly` para restringir MCP server-scoped (hay
+que copiarlo antes a `$CODEX_HOME`, ver arriba):
 
 **POSIX:**
 ```bash
-codex -p cmo-readonly -s read-only -a never --disable hooks "<prompt>"
+codex -p cmo-readonly -c features.apps=false -s read-only -a never --disable hooks "<prompt>"
 ```
 
 **PowerShell:**
 ```powershell
-codex -p cmo-readonly -s read-only -a never --disable hooks "<prompt>"
+codex -p cmo-readonly -c features.apps=false -s read-only -a never --disable hooks "<prompt>"
 ```
 
 ### Codex · write (cross-implement)

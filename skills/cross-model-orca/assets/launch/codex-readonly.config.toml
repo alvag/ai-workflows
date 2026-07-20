@@ -1,12 +1,14 @@
-# Perfil "read-only" para el secundario Codex lanzado por cross-model-orca (co-explore,
-# cross-review). Instalar como $CODEX_HOME/<nombre>.config.toml e invocar con:
-#   codex exec -p <nombre> -s read-only -a untrusted --disable hooks ...
-# (comando completo POSIX + PowerShell en profiles.md).
+# Perfil "read-only" OPCIONAL para el secundario Codex, SOLO para el caso DESATENDIDO
+# (nadie mira la TUI, no hay gate humano). NO se usa en el default: por defecto el secundario Codex
+# corre con vigilancia manual (codex exec -c features.apps=false -s read-only -a untrusted
+# --disable hooks; el humano aprueba en la TUI) y NO necesita copiar este perfil a $CODEX_HOME.
+# Para el modo desatendido, instalar como $CODEX_HOME/<nombre>.config.toml e invocar con:
+#   codex exec -p <nombre> -c features.apps=false -s read-only -a never --disable hooks ...
+# (comando completo POSIX + PowerShell en profiles.md; modelo completo en mcp-inventory.md).
 #
-# Regla fail-closed (ver mcp-inventory.md): cualquier servidor/tool/app/plugin no inventariado
-# queda bloqueado. Este archivo enumera explícitamente cada servidor MCP y plugin conocido en el
-# entorno de referencia (Codex 0.144.6, 2026-07-19) en vez de confiar en que lo no mencionado
-# quede "implícitamente" afuera.
+# Este archivo enumera explícitamente cada servidor MCP y plugin conocido en el entorno de
+# referencia (Codex 0.144.6, 2026-07-19) para acotar MCP cuando no hay quién apruebe. Es una lista
+# que envejece con el entorno: solo tiene sentido mantenerla si vas a correr desatendido.
 #
 # Nota de validación (confirmada contra el CLI real): bajo `--strict-config`, tocar CUALQUIER
 # campo de `mcp_servers.<id>` — incluido `enabled` por sí solo — exige redeclarar el transporte
