@@ -8,10 +8,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { harvest } from '../harvest-from-transcript.mjs';
 
-const TEST_DIR = path.dirname(new URL(import.meta.url).pathname);
+const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS_DIR = path.dirname(TEST_DIR);
 const ENTRY_PATH = path.join(ASSETS_DIR, 'harvest-from-transcript.mjs');
 const CODEX_FIXTURE = path.join(TEST_DIR, 'fixtures/codex-rollout.jsonl');

@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   createOwnedSession,
   createDispatch,
@@ -20,7 +21,7 @@ import {
 } from '../dispatch-adapter.mjs';
 import { makeDedupFsm } from '../harvest-core.mjs';
 
-const TEST_DIR = path.dirname(new URL(import.meta.url).pathname);
+const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS_DIR = path.dirname(TEST_DIR);
 const CODEX_FIXTURE = path.join(TEST_DIR, 'fixtures/codex-rollout.jsonl');
 

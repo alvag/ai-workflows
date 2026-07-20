@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   hasSentinel,
   stripSentinel,
@@ -18,13 +19,33 @@ import {
   makeDedupFsm,
 } from '../harvest-core.mjs';
 
-const TEST_DIR = path.dirname(new URL(import.meta.url).pathname);
+const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const CODEX_FIXTURE = path.join(TEST_DIR, 'fixtures/codex-rollout.jsonl');
 const CLAUDE_FIXTURE = path.join(TEST_DIR, 'fixtures/claude-transcript.jsonl');
 
 function mkTmpDir(prefix) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
+
+// Sonda de capacidad: en Windows sin modo desarrollador, crear symlinks requiere
+// privilegios elevados y fs.symlinkSync lanza EPERM. Se prueba una vez al cargar el
+// archivo y el resultado gatea los dos tests que ejercen symlinks (ver más abajo),
+// para que se salteen limpio en vez de fallar en un entorno sin esa capacidad.
+const SYMLINK_SUPPORTED = (() => {
+  const probeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'harvest-core-symlink-probe-'));
+  const target = path.join(probeDir, 'target');
+  const link = path.join(probeDir, 'link');
+  try {
+    fs.mkdirSync(target);
+    fs.symlinkSync(target, link, 'dir');
+    return true;
+  } catch {
+    return false;
+  } finally {
+    fs.rmSync(probeDir, { recursive: true, force: true });
+  }
+})();
+const SYMLINK_SKIP_REASON = 'symlinks no disponibles (Windows sin modo desarrollador)';
 
 // ---------------------------------------------------------------------------
 // hasSentinel
@@ -183,7 +204,7 @@ test('checkContainment: rechaza rutas con segmentos ".."', () => {
   assert.equal(result.ok, false);
 });
 
-test('checkContainment: rechaza symlink en el directorio padre que escapa del root', () => {
+test('checkContainment: rechaza symlink en el directorio padre que escapa del root', { skip: SYMLINK_SUPPORTED ? false : SYMLINK_SKIP_REASON }, () => {
   const root = mkTmpDir('harvest-core-root-');
   const outside = mkTmpDir('harvest-core-outside-');
   fs.symlinkSync(outside, path.join(root, 'escape'), 'dir');
@@ -206,7 +227,7 @@ test('checkContainment: caso feliz dentro del root', () => {
   assert.equal(result.resolved, path.join(fs.realpathSync(root), 'reports', 'ok.md'));
 });
 
-test('checkContainment: canonicaliza root cuando root en sí es un symlink', () => {
+test('checkContainment: canonicaliza root cuando root en sí es un symlink', { skip: SYMLINK_SUPPORTED ? false : SYMLINK_SKIP_REASON }, () => {
   const realRoot = mkTmpDir('harvest-core-realroot-');
   const rootLink = path.join(os.tmpdir(), `harvest-core-rootlink-${process.pid}-${Date.now()}`);
   fs.symlinkSync(realRoot, rootLink, 'dir');

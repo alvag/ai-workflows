@@ -53,7 +53,10 @@ test('configDir("claude") respeta CLAUDE_CONFIG_DIR cuando está seteada', () =>
   process.env.CLAUDE_CONFIG_DIR = customDir;
   try {
     const dir = configDir('claude');
-    assert.equal(dir, customDir);
+    // configDir resuelve con path.resolve (ver platform.mjs): en POSIX es idempotente
+    // sobre un path absoluto, pero en Windows normaliza a `C:\tmp\...`. Se asserta
+    // contra la forma resuelta, no contra el literal, para que valga en ambos SO.
+    assert.equal(dir, path.resolve(customDir));
   } finally {
     if (original === undefined) delete process.env.CLAUDE_CONFIG_DIR;
     else process.env.CLAUDE_CONFIG_DIR = original;
