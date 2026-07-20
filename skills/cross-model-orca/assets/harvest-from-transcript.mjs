@@ -5,7 +5,8 @@
 // (worker_done / tui-idle) y ya validó la autoridad (sender vs. assignee) del
 // dispatch. Este módulo NO revalida esa autoridad: asume una entrada ya
 // autorizada y su única responsabilidad es cosechar del transcript → persistir.
-import { pathToFileURL } from 'node:url';
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
   hasSentinel,
   stripSentinel,
@@ -138,7 +139,18 @@ async function main() {
   }
 }
 
-const isMainModule = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
-if (isMainModule) {
+// ¿Se invoca como script? Compara resolviendo symlinks en ambos lados: Node deriva
+// `import.meta.url` del path físico, pero `process.argv[1]` conserva el path literal.
+// Con las skills instaladas por symlink (`~/.claude/skills/… → repo`), sin resolver el
+// symlink el guard daría `false` y `main()` no correría (salida vacía, exit 0).
+function isMainModule() {
+  if (!process.argv[1]) return false;
+  try {
+    return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+}
+if (isMainModule()) {
   main();
 }

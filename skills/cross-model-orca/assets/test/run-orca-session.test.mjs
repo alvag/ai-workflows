@@ -9,7 +9,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { runOrcaSession } from '../run-orca-session.mjs';
+
+const RUNNER_PATH = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'run-orca-session.mjs');
 
 function mkTmpDir(prefix) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -86,4 +90,24 @@ test('degrada a cli (code 4) y recupera cuando createDispatch falla en el boot-w
   assert.ok(!calls.some((c) => c === 'orchestration dispatch'));
   // Se intentó recuperar la sesión (interrupt) antes de degradar.
   assert.ok(calls.includes('terminal send'));
+});
+
+test('regresión: el guard de módulo-main corre main() aun invocado por un SYMLINK', () => {
+  // Bug real: las skills se instalan por symlink (~/.claude/skills/… → repo). Node deriva
+  // `import.meta.url` del path físico pero `process.argv[1]` conserva el path symlinked, así
+  // que el guard `import.meta.url === pathToFileURL(argv[1])` daba false → main() no corría →
+  // salida VACÍA + exit 0, sin crear terminal (runner.out/err quedaban en 0 bytes). El fix
+  // resuelve symlinks en ambos lados. Este test invoca el runner por un symlink y exige que
+  // main() efectivamente corra (emite JSON de usageError), no que quede en silencio.
+  const dir = mkTmpDir('cmo-run-symlink-');
+  const link = path.join(dir, 'runner-link.mjs');
+  fs.symlinkSync(RUNNER_PATH, link);
+
+  const res = spawnSync(process.execPath, [link, '--family', 'codex'], { encoding: 'utf8' });
+
+  assert.notEqual(res.stdout.trim(), '', 'stdout NO debe estar vacío: main() debe correr por el symlink');
+  const parsed = JSON.parse(res.stdout.trim());
+  assert.equal(parsed.transport, 'orca-session');
+  assert.equal(parsed.usageError, true);
+  assert.equal(res.status, 2);
 });

@@ -21,7 +21,7 @@
 //              4 = no se pudo crear/localizar la sesión propia (degradación limpia);
 //              2/3 = fallo de cosecha/contención; 2+usageError = error de invocación.
 import fs from 'node:fs';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { createOwnedSession, createDispatch, awaitDone, recover } from './dispatch-adapter.mjs';
 
 // Deadline por default del turno del secundario (aparición de rollout + cosecha del
@@ -148,6 +148,26 @@ function emit(result) {
   process.exitCode = result.code === 0 ? 0 : result.code;
 }
 
+/**
+ * ¿Se está invocando este archivo como script (`node run-orca-session.mjs …`)?
+ * Compara el path del módulo con `process.argv[1]` **resolviendo symlinks en
+ * ambos lados**: Node deriva `import.meta.url` del path físico (real), pero
+ * `process.argv[1]` conserva el path literal que tecleó el llamador. Como las
+ * skills se instalan por **symlink** (`~/.claude/skills/… → repo`), el conductor
+ * invoca el runner por su ruta symlinked; sin resolver el symlink, la comparación
+ * daría `false`, `main()` no correría y el proceso terminaría con salida VACÍA
+ * (exit 0) — sin crear la terminal ni cosechar (bug observado en corrida real).
+ * @returns {boolean}
+ */
+function isMainModule() {
+  if (!process.argv[1]) return false;
+  try {
+    return fs.realpathSync(fileURLToPath(import.meta.url)) === fs.realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+}
+
 async function main() {
   const args = parseCliArgs(process.argv.slice(2));
 
@@ -194,7 +214,7 @@ async function main() {
 }
 
 // Solo corre el CLI cuando se invoca como script (no al importarlo desde un test).
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMainModule()) {
   main().catch((err) => {
     emit({ transport: 'orca-session', code: 2, reason: `error inesperado: ${err && err.message}` });
   });
