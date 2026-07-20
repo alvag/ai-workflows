@@ -538,11 +538,20 @@ read-only como en `cli`: solo cambia el transporte, no la regla 1 del `SKILL.md`
       `cross-model-orca/reference.md` para destinos acumulativos. El `review-log.md` sigue
       viviendo donde ya lo documenta "Archivos de trabajo (scratch)" arriba: hermano del
       artefacto, nunca dentro de `cross-review/`.
-   d. Recién después de la promoción exitosa se marca la FSM `promoted`
-      (`dedupKey = ${dispatchId}:${nonce}`); si el proceso cae entre el `rename` y
-      `markPromoted`, un retry reconstruye desde los mismos raws (todos inmutables) y llega al
-      mismo contenido — idempotente, sin duplicar rondas (ver "El hueco post-rename/pre-promoted"
-      en `cross-model-orca/reference.md`).
+   d. Son dos eventos de promoción distintos, no uno. La FSM con `dedupKey =
+      ${dispatchId}:${nonce}` ya quedó en `promoted` en el paso 4, dentro de `awaitDone`,
+      apenas `harvest()` escribió el raw de esta ronda (con el hash del raw, no del
+      review-log) — esa marca es el dedup de la **cosecha del raw**, automática, y ya sucedió
+      antes de que el conductor empiece la reconstrucción de acá. La promoción del
+      `review-log.md` es un evento **separado y posterior**, a cargo del conductor: no reusa
+      esa FSM ni tiene una propia (`cross-model-orca/reference.md` → "Contención robusta y
+      promoción atómica" documenta esto como contrato pendiente para cada skill acumulativa,
+      no como función ya codificada). Su idempotencia viene enteramente de que el `rename` es
+      atómico y de que el contenido se reconstruye por completo desde los raws inmutables: si
+      el proceso cae después del `rename`, un retry vuelve a reconstruir desde los mismos raws
+      y llega al mismo contenido — sin duplicar rondas, sin necesitar un `markPromoted` propio
+      (mecanismo genérico descrito en "El hueco post-rename/pre-promoted" de
+      `cross-model-orca/reference.md`, aplicado acá a un canónico multi-raw).
 6. **Rondas siguientes — reutilizar la sesión.** En vez de `createOwnedSession`, releer
    `<scratch_dir>/session.json`, confirmar que el `uid` sigue registrado como propio en el
    `stateDir` del conductor (`cross-model-orca/reference.md` → "Runtime de sesión vs runtime del
