@@ -154,13 +154,15 @@ verificado lo que no se corrió. Plan: sección "Fase 7" de
   mensaje legible; los JSON de settings parsean. **Foco real del checkpoint, verificado:** el **slug del
   transcript de Claude** (`slugifyCwd`) calcula `C--Users-MaxAlva-ai-workflows`, que coincide con el
   directorio que Claude crea bajo `~/.claude/projects/` (validado contra la sesión real actual, sin
-  lanzar una sesión nueva). **Hallazgo (no bloqueante, no es bug del artefacto):** la **suite de tests**
-  no es portable a Windows — `node --test` da `82 tests / 63 pass / 19 fail`. Los 19 fallos son de la
-  suite, no de la lógica: (H1) `new URL(import.meta.url).pathname` deja `/C:/...` en 3 archivos de test
-  (`dispatch-adapter.test.mjs:23`, `harvest-core.test.mjs:21`, `harvest-entry.test.mjs:14`) → fixtures
-  no se leen (`ENOENT`) → 16 fallos; (H2) `fs.symlinkSync` da `EPERM` sin modo desarrollador → 2 fallos;
-  (H3) un test de `configDir` hardcodea `/tmp/...` y compara igualdad exacta → 1 fallo. Detalle y
-  correcciones propuestas (no aplicadas — checkpoint, no fix) en `WINDOWS-CHECKPOINT.md` → "Resultados
+  lanzar una sesión nueva). **Suite de tests en Windows — verde tras fix.** La corrida inicial dio
+  `82 / 63 pass / 19 fail`; los 19 fallos eran de la suite, no de la lógica: (H1) `new
+  URL(import.meta.url).pathname` deja `/C:/...` en 3 archivos de test (`dispatch-adapter.test.mjs`,
+  `harvest-core.test.mjs`, `harvest-entry.test.mjs`) → fixtures no se leen (`ENOENT`) → 16 fallos; (H2)
+  `fs.symlinkSync` da `EPERM` sin modo desarrollador → 2 fallos; (H3) un test de `configDir` hardcodea
+  `/tmp/...` y compara igualdad exacta → 1 fallo. **Resueltos por el commit `f27e119`**
+  (`test(cross-model-orca): portabilidad del suite a Windows` — `fileURLToPath`, skip de symlinks,
+  `path.resolve`): tras él, `node --test` da `82 / 80 pass / 0 fail / 2 skip` (los 2 skip son los tests
+  de symlink, inejecutables sin modo desarrollador). Detalle en `WINDOWS-CHECKPOINT.md` → "Resultados
   (Windows)". **Pendiente:** pruebas 6 (CERO-MCP) y 7 (`features.apps` inline en Codex), que lanzan CLIs
   de IA reales, a correr en una sesión PowerShell supervisada.
 

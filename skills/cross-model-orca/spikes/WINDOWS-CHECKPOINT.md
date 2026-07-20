@@ -189,7 +189,7 @@ $null | codex exec -c features.apps=false --strict-config --ephemeral --skip-git
 | # | Prueba | Resultado | Evidencia / nota |
 |---|--------|-----------|------------------|
 | — | Entorno | ✅ | Node `v22.14.0`, Windows `10.0.26200`, Claude CLI `sí` (`~/.local/bin/claude.exe`), Codex CLI `sí` (`OpenAI/Codex/bin/codex.exe`) |
-| 1 | Suite de tests | ⚠️ hallazgo | `tests 82 / pass 63 / fail 19`. **Los 19 fallos son de la SUITE, no del artefacto** (ver hallazgo H1–H3). El artefacto de producción se valida en las pruebas 2–5. |
+| 1 | Suite de tests | ✅ ok (tras fix) | Corrida inicial: `82 / 63 pass / 19 fail` (hallazgos H1–H3, todos de la suite, no del artefacto). Tras el commit `f27e119` (`fileURLToPath` + skip de symlinks + `path.resolve`): **`82 / 80 pass / 0 fail / 2 skip`**. Los 2 skip son los tests de symlink (50, 53), saltados limpiamente en Windows sin modo desarrollador. |
 | 2 | Rutas platform.mjs + autolocalización (install root) | ✅ ok | `isWindows=true`; `install=C:\Users\MaxAlva\ai-workflows\skills\cross-model-orca\assets` (backslashes, sin `/C:/`, `existe launch: true`); `claude=C:\Users\MaxAlva\.claude`; overrides `CODEX_HOME`/`CLAUDE_CONFIG_DIR` respetados |
 | 3 | Slug transcript Claude | ✅ ok | slug calc: `C--Users-MaxAlva-ai-workflows` · dir real: `C--Users-MaxAlva-ai-workflows` (coinciden; validado contra la sesión real actual de Claude Code, sin lanzar una sesión nueva) |
 | 4 | assertNode | ✅ ok | `assertNode(18)` OK; `assertNode(999)` lanza mensaje legible en Windows |
@@ -199,7 +199,9 @@ $null | codex exec -c features.apps=false --strict-config --ephemeral --skip-git
 
 **Resumen:** El **artefacto de producción es portable a Windows** — lo confirman las pruebas 2, 3, 4 y 5, que ejercitan `platform.mjs` (rutas, autolocalización, `assertNode`) y los settings directamente. Los dos focos de riesgo del checkpoint pasan: la **autolocalización** (`resolveInstallRoot` con `fileURLToPath`) produce una ruta `C:\...` bien formada, y el **slug del transcript de Claude** (`slugifyCwd`) coincide con el directorio real que Claude crea. Las pruebas 6 y 7 (que lanzan CLIs de IA reales) quedan pendientes de una corrida supervisada en PowerShell.
 
-**Hallazgos — la suite de tests NO es portable a Windows** (no es un bug del artefacto; se documentan, no se corrigen: esto es checkpoint, no fix):
+**Hallazgos — la suite de tests NO era portable a Windows** (no eran bugs del artefacto). Detectados en
+la corrida inicial (`63 pass / 19 fail`) y **resueltos por el commit `f27e119`**
+(`test(cross-model-orca): portabilidad del suite a Windows`); tras él la suite da `80 pass / 0 fail / 2 skip`:
 
 - **H1 — `new URL(import.meta.url).pathname` deja `/C:/...` (barra inicial) → 16 fallos.** En
   `assets/test/dispatch-adapter.test.mjs:23`, `assets/test/harvest-core.test.mjs:21` y
@@ -207,20 +209,22 @@ $null | codex exec -c features.apps=false --strict-config --ephemeral --skip-git
   produce `/C:/Users/...` en vez de `C:\Users\...`, así que `readFileSync` de los fixtures da `ENOENT`
   → `[]` → `parseTranscript`/`selectAssistantByNonce` devuelven `null` y los subprocesos de
   `harvest`/`awaitDone` salen con code 3. Afecta a los tests 19,21,22,23,24,40,41,43,44,45,47,61,62,63,64,67.
-  Producción **no** tiene el bug: usa `fileURLToPath` (prueba 2, `install` sale bien formado).
-  Corrección propuesta (no aplicada): en los 3 tests, `import { fileURLToPath } from 'node:url'` y
+  Producción **no** tenía el bug: usa `fileURLToPath` (prueba 2, `install` sale bien formado).
+  **Resuelto en `f27e119`:** los 3 tests ahora hacen `import { fileURLToPath } from 'node:url'` y
   `const TEST_DIR = path.dirname(fileURLToPath(import.meta.url))`.
 - **H2 — `fs.symlinkSync` → `EPERM` sin modo desarrollador/admin → 2 fallos (50, 53).** Los tests de
   contención que crean un symlink que escapa del `root` (`harvest-core.test.mjs`) no pueden ni crear el
   symlink en Windows estándar. Es limitación del entorno de test; `checkContainment` no llega a
-  ejercitarse en ese caso. Corrección propuesta: `try/catch` alrededor del `symlinkSync` con `skip` si
-  lanza `EPERM`.
+  ejercitarse en ese caso. **Resuelto en `f27e119`:** los dos tests se saltan (`skip`) cuando el
+  `symlinkSync` lanza `EPERM` — en la corrida final aparecen como `# SKIP symlinks no disponibles
+  (Windows sin modo desarrollador)`.
 - **H3 — test POSIX-only en `configDir` → 1 fallo (76).** `platform.test.mjs` setea
   `CLAUDE_CONFIG_DIR = "/tmp/custom-claude-config"` y compara por igualdad exacta; en Windows `path`
   lo normaliza a `C:\tmp\custom-claude-config`. El comportamiento de `configDir` (respetar la env var)
-  es correcto — es el test el que asume rutas POSIX. Corrección propuesta: usar una ruta de fixture
-  neutra por plataforma (p. ej. derivada de `os.tmpdir()`).
+  es correcto — era el test el que asumía rutas POSIX. **Resuelto en `f27e119`:** el test usa una ruta
+  neutra por plataforma (`path.resolve`) en vez del literal `/tmp/...`.
 
-**Nota de conteo:** 63 pass + 19 fail = 82. Todos los tests puramente de string/lógica (sentinel,
-envelope, `assertNode`, JSON de settings) pasan; los 19 fallos se concentran en los que tocan el
-filesystem con los tres patrones de arriba.
+**Nota de conteo:** corrida inicial `63 pass + 19 fail = 82` (los 19 fallos, todos de la suite, en los
+tests que tocan el filesystem con los tres patrones de arriba). Tras `f27e119`: `80 pass + 0 fail +
+2 skip = 82` — la suite queda **verde en Windows**, con los 2 tests de symlink saltados por ser
+inejecutables sin modo desarrollador.
