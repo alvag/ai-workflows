@@ -268,6 +268,13 @@ de enganche (`cross-review/reference.md`, Task 4.2 del plan: "reutiliza sesión 
 raw→promote"). Esta sección documenta el contrato que esa task debe cumplir, no una función ya
 codificada acá.
 
+**El mismo contrato aplica a un destino estable/reusable no acumulativo** (informe único que una
+corrida nueva debe **reemplazar entero**, no extender — p. ej. `findings-<familia>.md` de
+`co-explore`): `reportPath` sigue siendo el raw único del dispatch, nunca el path estable; la
+"reconstrucción" es trivial (el raw más reciente, sin concatenar rondas anteriores) y la promoción
+sobrescribe el destino con `rename` atómico en vez de negarse porque ya existe (ver
+`co-explore/reference.md` → "Transporte: rama `orca-session`", punto 4).
+
 ---
 
 ## Recuperación

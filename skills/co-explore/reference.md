@@ -579,7 +579,9 @@ solo cambia el transporte, no el invariante de la regla 1 del `SKILL.md`.
    ```
    Sin `taskId`/`dispatchId` en el texto: esos viajan por el `payload` del `worker_done` (Codex)
    o por la propiedad de la sesión (Claude), y el conductor los valida **antes** de cosechar —
-   ver `cross-model-orca/reference.md` → "Correlación vs. autoridad" (`SKILL.md` sección 2).
+   ver `cross-model-orca/reference.md` → "Envelope y cosecha crash-idempotente" (párrafo
+   "Correlación vs. autoridad"; mismo contenido en `SKILL.md` sección 2, "Envelope con
+   autoridad").
 
 3. **El explorador no escribe su propio informe.** A diferencia de la rama `cli` (donde el
    stdout se redirige a `co-explore/scratch/explorer.out`), acá el informe solo vive en el
@@ -590,22 +592,41 @@ solo cambia el transporte, no el invariante de la regla 1 del `SKILL.md`.
    Con autoridad confirmada, `awaitDone` llama a `harvest()`
    (`cross-model-orca/assets/harvest-from-transcript.mjs`), que relee el transcript, desambigua
    por `nonce` (`selectAssistantByNonce`, para el caso de una sesión reutilizada con mensajes de
-   dispatches previos) y valida el sentinel (`hasSentinel`) antes de persistir.
+   dispatches previos) y valida el sentinel (`hasSentinel`) antes de persistir — al raw único de
+   este dispatch, no al path de informe estable (ver punto 4).
 
-4. **Persistir en la misma ruta que la rama `cli`.** `harvest()` escribe el informe cosechado
-   contra el mismo "Formato del informe" (los headings fijos de arriba) en la ruta que le
-   corresponde al modo — sin cambios respecto de hoy:
-   - `co-explore/findings-<familia>.md` (`explore`)
-   - `co-explore/counter-plan-<familia>.md` (`counter-plan`)
-   - `co-explore/investigate-<familia>.md` (`investigate`, standalone)
+4. **Cosechar a un raw único por dispatch, luego promover (sobrescribiendo) al path estable.**
+   `harvest()` exige que `reportPath` sea un destino **inexistente** (`checkContainment` +
+   `writeExclusive` con `wx`, ver `cross-model-orca/reference.md` → "Contención robusta y
+   promoción atómica"): por eso el `reportPath` que recibe `awaitDone` en esta rama **nunca** es
+   el path de informe estable y reusable del modo — pasarle ese path rompería en el segundo rerun
+   sobre el mismo `<id>`, porque el destino ya existiría y la cosecha lo trataría como éxito
+   idempotente sin reescribir (contrato pensado para un raw que nunca preexiste, no para un
+   informe que debe poder sobrescribirse). En cambio:
+   a. `harvest()` cosecha al raw único de este dispatch, en `co-explore/scratch/`, con un nombre
+      derivado del `nonce` (p. ej. `scratch/explorer-<nonce>.raw`) — nunca colisiona entre
+      corridas, así que `wx` es válido sin condiciones especiales.
+   b. El **conductor** promueve ese raw al path de informe que le corresponde al modo — sin
+      cambios respecto de hoy en cuanto a destino final:
+      - `co-explore/findings-<familia>.md` (`explore`)
+      - `co-explore/counter-plan-<familia>.md` (`counter-plan`)
+      - `co-explore/investigate-<familia>.md` (`investigate`, standalone)
 
-   con la raíz según el contexto: `.plans/<id>/co-explore/` o `.sdd/<id>/co-explore/` dentro de
-   un flujo SDD, `.co-explore/<slug>/` en modo directo standalone — mismas raíces que documenta
-   "Archivos de trabajo (scratch)" abajo y la matriz de `cross-model-orca/SKILL.md` → sección 5
-   ("Matriz de raíces por skill/modo"). La escritura es exclusiva y contenida
-   (`checkContainment` + `writeExclusive` con `wx`) contra esa raíz: nunca pisa un informe ya
-   existente por accidente — si el destino ya existe, la cosecha lo trata como éxito idempotente
-   (retry post-crash), no como una sobreescritura.
+      con la raíz según el contexto: `.plans/<id>/co-explore/` o `.sdd/<id>/co-explore/` dentro
+      de un flujo SDD, `.co-explore/<slug>/` en modo directo standalone — mismas raíces que
+      documenta "Archivos de trabajo (scratch)" abajo y la matriz de `cross-model-orca/SKILL.md`
+      → sección 5 ("Matriz de raíces por skill/modo"). La promoción escribe el contenido del raw
+      contra el mismo "Formato del informe" (los headings fijos de arriba) a un temporal en el
+      mismo directorio y lo renombra (`rename` atómico) sobre el destino, **sobrescribiendo**
+      cualquier informe previo de su propio modo — exactamente igual que la rama `cli` normaliza
+      `scratch/explorer.out` → `findings-<familia>.md`, y preservando la semántica de "Archivos
+      de trabajo (scratch)" abajo: una corrida nueva sobre el mismo `<id>` sobrescribe los
+      archivos de informe de su propio modo.
+   c. Recién después de la promoción exitosa se marca la FSM `promoted` (dentro de `awaitDone`,
+      con `dedupKey = ${dispatchId}:${nonce}`); si el proceso cae entre la escritura del raw y el
+      `markPromoted`, el retry ve el raw ya existente (mismo `dispatchId`/`nonce`, contención por
+      "ya existe") y lo trata como éxito idempotente — la contención `wx` sigue aplicando al raw,
+      nunca al path estable.
 
 5. **Ante falla del secundario, `recover`.** Si el explorador se cuelga o hay que abortar el
    turno, `recover({ session, dispatch })` interrumpe (`terminal send --interrupt`) y confirma
@@ -718,6 +739,11 @@ corre desde el lanzamiento, no desde que el conductor vuelve a mirar.
    └─ explorer-session.txt           # session/thread id del explorador (Vía B: parseado del
                                      #   jsonl; Vía C: generado con uuidgen)
 ```
+
+En la rama `orca-session` ("Transporte: rama `orca-session`" arriba), `explorer.out`/`.err`/`.pid` no
+aplican (no hay subproceso propio): en su lugar, `scratch/explorer-<nonce>.raw` es el destino
+único por dispatch de `harvest()`, que el conductor promueve (sobrescribiendo) al informe estable
+del modo — nunca se cosecha directo a `findings-<familia>.md` ni equivalentes.
 
 En `debate`: `co-explore/debate.md` (la síntesis, hermana de `synthesis.md`) + los deltas crudos
 por ronda en `co-explore/scratch/debate-r<n>.out`.
