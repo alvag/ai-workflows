@@ -53,16 +53,31 @@ node --test "skills/cross-model-orca/assets/test/*.test.mjs"
 - **Ojo:** `node --test <directorio>` a secas **falla** en Node 24 (trata el dir como módulo). No es
   un test roto — usa el glob de archivos.
 
-## Prueba 2 — Rutas de `platform.mjs` en Windows
+## Prueba 2 — Rutas de `platform.mjs` en Windows (incluye autolocalización)
+
+**Asegúrate de que `CROSS_MODEL_ORCA` NO esté seteada** para esta prueba (así se ejercita la
+autolocalización, que es el camino por defecto): `Remove-Item Env:\CROSS_MODEL_ORCA -ErrorAction SilentlyContinue`.
 
 ```powershell
+Remove-Item Env:\CROSS_MODEL_ORCA -ErrorAction SilentlyContinue
 node -e "import('./skills/cross-model-orca/assets/lib/platform.mjs').then(m => { console.log('isWindows =', m.isWindows()); console.log('codex   =', m.configDir('codex')); console.log('claude  =', m.configDir('claude')); console.log('install =', m.resolveInstallRoot()); })"
 ```
 
 - **Esperado:** `isWindows = true`; `codex`/`claude` resuelven a rutas **con backslashes** bajo
   `%USERPROFILE%` (p. ej. `C:\Users\<vos>\.codex` y `C:\Users\<vos>\.claude`), **salvo** que
   `CODEX_HOME`/`CLAUDE_CONFIG_DIR` estén seteadas, en cuyo caso mandan esas.
-- Repite con las env vars seteadas para confirmar que se respetan:
+- **`install` (autolocalización — la verificación Windows clave):** sin la var, `resolveInstallRoot()`
+  debe devolver una ruta **válida de Windows** que termina en `...\cross-model-orca\assets` (con
+  backslashes, con la letra de unidad `C:\...` bien formada). Es el camino `import.meta.url` →
+  `fileURLToPath`; en Windows el módulo se sirve como `file:///C:/...`, y `fileURLToPath` lo traduce
+  a `C:\...`. **Si sale malformado** (p. ej. con `/` en vez de `\`, o un `/C:/...` con barra
+  inicial, o un error), es un **hallazgo** (la autolocalización no es Windows-safe) — anótalo.
+- Confirma que la ruta existe:
+  ```powershell
+  node -e "import('./skills/cross-model-orca/assets/lib/platform.mjs').then(m => { const r = m.resolveInstallRoot(); console.log('existe launch:', require('fs').existsSync(r + '\\launch\\claude-readonly.settings.json')); })"
+  ```
+  **Esperado:** `existe launch: true`.
+- Repite `configDir` con las env vars seteadas para confirmar que se respetan:
   ```powershell
   $env:CODEX_HOME = "C:\tmp\codex-home"; $env:CLAUDE_CONFIG_DIR = "C:\tmp\claude-cfg"
   node -e "import('./skills/cross-model-orca/assets/lib/platform.mjs').then(m => { console.log(m.configDir('codex')); console.log(m.configDir('claude')); })"
@@ -112,11 +127,16 @@ node -e "import('./skills/cross-model-orca/assets/lib/platform.mjs').then(m => {
 
 Confirma que los bloques PowerShell de `install.md` y `assets/launch/profiles.md` corren en tu shell.
 
+**Nota:** `CROSS_MODEL_ORCA` es **opcional** (el artefacto se autolocaliza — Prueba 2). El bloque de
+abajo solo verifica que, **si** la seteas como override, apunta a algo válido; no es un paso
+obligatorio de instalación.
+
 ```powershell
-# Instalación (install.md): variable de entorno
+# Instalación (install.md): la variable es OPCIONAL (override). Si la seteas, debe apuntar al assets:
 $env:CROSS_MODEL_ORCA = "$((Get-Location).Path)\skills\cross-model-orca\assets"
 Write-Output $env:CROSS_MODEL_ORCA
 Test-Path $env:CROSS_MODEL_ORCA
+Remove-Item Env:\CROSS_MODEL_ORCA   # limpiar: el default es autolocalizar
 
 # JSON de los settings parsea:
 node -e "JSON.parse(require('fs').readFileSync('skills/cross-model-orca/assets/launch/claude-readonly.settings.json','utf8')); JSON.parse(require('fs').readFileSync('skills/cross-model-orca/assets/launch/claude-readonly.mcp.json','utf8')); JSON.parse(require('fs').readFileSync('skills/cross-model-orca/assets/launch/claude-write.settings.json','utf8')); console.log('settings JSON OK')"
@@ -167,7 +187,7 @@ codex exec -c features.apps=false --strict-config --ephemeral --skip-git-repo-ch
 |---|--------|-----------|------------------|
 | — | Entorno | | Node `___`, Windows `___`, Claude CLI `___`, Codex CLI `___` |
 | 1 | Suite de tests | ⬜ pass / ⬜ fail | `tests __ / pass __ / fail __` |
-| 2 | Rutas platform.mjs | ⬜ ok / ⬜ hallazgo | |
+| 2 | Rutas platform.mjs + autolocalización (install root) | ⬜ ok / ⬜ hallazgo | |
 | 3 | Slug transcript Claude | ⬜ ok / ⬜ hallazgo / ⬜ N/A | slug calc: `___` · dir real: `___` |
 | 4 | assertNode | ⬜ ok / ⬜ hallazgo | |
 | 5 | Comandos PowerShell | ⬜ ok / ⬜ hallazgo | |

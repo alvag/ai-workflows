@@ -47,9 +47,13 @@ resolver de transporte, la recuperación y la espera bloqueante están en `refer
 
 ## Instalación
 
-Ver [`install.md`](./install.md): verificación de Node ≥18, la variable de entorno
-`CROSS_MODEL_ORCA` que resuelve la raíz de instalación de los módulos, e instalación reproducible
-de `skills-ref` (el validador de formato de skills) como checkpoint manual. No se duplica acá.
+Instalar es, en esencia, **copiar la skill-librería** (y las skills que la consumen) a
+`~/.claude/skills/`: los módulos Node resuelven su raíz **solos** (autolocalización vía
+`import.meta.url`), así que no hace falta setear nada. Ver [`install.md`](./install.md) para el
+detalle: verificación de Node ≥18, la variable de entorno **opcional** `CROSS_MODEL_ORCA` (solo
+como override, para correr los módulos desde una ubicación distinta de su propio `assets`), e
+instalación reproducible de `skills-ref` (el validador de formato de skills) como checkpoint
+manual. No se duplica acá.
 
 ## Estructura de archivos
 
