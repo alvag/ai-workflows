@@ -13,31 +13,32 @@
 2. **Approval policy** (qué necesita aprobación humana): `--permission-mode` en Claude; `-a` en
    Codex.
 3. **Config de MCP + hooks** (qué tools remotas y qué automatizaciones locales están
-   disponibles): en Claude, **`--strict-mcp-config --mcp-config <allowlist>`** es el gate
-   **primario** de MCP — la sesión ve **solo** los servidores del allowlist y todo MCP del
-   entorno queda invisible (fail-closed por construcción; ver abajo) —, más `--settings <archivo>`
-   (`disableAllHooks` + `permissions` como defensa en profundidad por tool); `-p <perfil>
-   --disable hooks` en Codex (`mcp_servers.<id>.*`, `features.apps`, `plugins.*`). Ver
-   `mcp-inventory.md` para la clasificación de tools que sustenta estos archivos.
+   disponibles): en el **default atendido**, MCP se controla por **vigilancia manual** (el humano
+   aprueba/rechaza en la TUI; no hay allowlist ni denylist que mantener), más `--settings <archivo>`
+   (`disableAllHooks`); `-p <perfil> --disable hooks` en Codex (`mcp_servers.<id>.*`, `features.apps`,
+   `plugins.*`). Para el caso **desatendido**, un gate declarativo opcional (`--strict-mcp-config`,
+   ver abajo). Ver `mcp-inventory.md` para el modelo completo.
 
-### Gate primario de MCP en Claude: `--strict-mcp-config` (fail-closed)
+### MCP: vigilancia manual (default) y endurecimiento opcional
 
 `--tools "Read,Grep,Glob"` acota **solo los built-ins** (por eso excluir Bash da read-only duro),
-pero **no gobierna las tools MCP** (`claude --help`: *"from the built-in set"*). Sin un gate
-propio, MCP es una superficie separada que un `deny` enumerado en `settings.json` controla como
-**denylist** → **fail-open** ante un servidor nuevo del entorno. El gate correcto es
-**`--strict-mcp-config --mcp-config claude-readonly.mcp.json`**: da vuelta el default de MCP de
-*allow-all* a *deny-all*, la sesión ve **solo** los servidores del allowlist. Verificado en vivo
-(2026-07-19, Claude 2.1.214): sin el flag, la sesión read-only enumera tools MCP del entorno
-(lecturas de engram, etc.); con `--strict-mcp-config` + allowlist vacío responde **`CERO-MCP`**.
-Para dar un servidor en **solo lectura** (ej. Atlassian/Jira): inclúyelo en el allowlist **y**
-limita sus tools con un allowlist de lecturas en `claude-readonly.settings.json` (ver
-`mcp-inventory.md` → "Dos gates").
+pero **no gobierna las tools MCP** (`claude --help`: *"from the built-in set"*). En el default
+**atendido** eso no es un problema: el gate de MCP es la **vigilancia manual** (P4) — el humano que
+mira la corrida aprueba o rechaza cualquier acción sensible en la TUI. No hay inventario ni
+allowlist que configurar para instalar la skill.
+
+Para una corrida **desatendida** (nadie mira la TUI, no hay gate humano), existe un gate
+declarativo **opcional**: `--strict-mcp-config --mcp-config claude-readonly.mcp.json`, que da vuelta
+el default de MCP a *deny-all* — la sesión ve **solo** los servidores del allowlist (vacío = cero
+MCP). Verificado en vivo (2026-07-19, Claude 2.1.214): sin el flag, la sesión enumera tools MCP del
+entorno; con `--strict-mcp-config` + allowlist vacío responde **`CERO-MCP`**. Detalle y el patrón
+para permitir un servidor de lectura en `mcp-inventory.md`.
 
 > **Gotcha de orden de flags:** `--tools <tools...>` y `--mcp-config <configs...>` son
-> **variádicos** — se comen los tokens siguientes hasta el próximo flag. Ponlos **seguidos de otro
-> flag** (nunca justo antes del `<prompt>` posicional, o el prompt se pierde como "otra tool/
-> config"). En la matriz de abajo el `<prompt>` va último, tras `--session-id` (no variádico).
+> **variádicos** — se comen los tokens siguientes hasta el próximo flag. Cuando uses el flag
+> opcional, ponlo **seguido de otro flag** (nunca justo antes del `<prompt>` posicional, o el
+> prompt se pierde como "otra tool/config"). En la matriz de abajo el `<prompt>` va último, tras
+> `--session-id` (no variádico).
 
 ## Instalación de los perfiles Codex (paso previo obligatorio)
 
@@ -107,8 +108,6 @@ Bash) hace que no exista ningún prompt de aprobación posible, con o sin alguie
 ```bash
 DISABLE_AUTOUPDATER=1 claude \
   --tools "Read,Grep,Glob" \
-  --strict-mcp-config \
-  --mcp-config skills/cross-model-orca/assets/launch/claude-readonly.mcp.json \
   --settings skills/cross-model-orca/assets/launch/claude-readonly.settings.json \
   --session-id "<uuid>" \
   "<prompt>"
@@ -119,12 +118,16 @@ DISABLE_AUTOUPDATER=1 claude \
 $env:DISABLE_AUTOUPDATER = "1"
 claude `
   --tools "Read,Grep,Glob" `
-  --strict-mcp-config `
-  --mcp-config skills/cross-model-orca/assets/launch/claude-readonly.mcp.json `
   --settings skills/cross-model-orca/assets/launch/claude-readonly.settings.json `
   --session-id "<uuid>" `
   "<prompt>"
 ```
+
+> **Desatendido (opcional):** para una corrida sin nadie mirando la TUI, agrega
+> `--strict-mcp-config --mcp-config skills/cross-model-orca/assets/launch/claude-readonly.mcp.json`
+> **antes** de `--settings` para acotar MCP a cero (o a un allowlist de lectura). En el default
+> atendido no hace falta: el gate es la vigilancia manual (ver `mcp-inventory.md`). Ambos flags son
+> variádicos — mantén el `<prompt>` al final, tras `--session-id`.
 
 ### Claude · write (cross-implement)
 

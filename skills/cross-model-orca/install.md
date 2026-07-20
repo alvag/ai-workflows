@@ -105,40 +105,10 @@ manual**: antes de dar por buena una skill nueva o editada, revisar a mano contr
 carpeta (`SKILL.md` + `reference.md` + `README.md`) sea la esperada. Documentar en el PR que la
 validación fue manual (sin `skills-ref`) cuando corresponda.
 
-## 4. API key de `context7` para el allowlist read-only
+## 4. MCP del secundario: nada que configurar por defecto
 
-El Claude secundario read-only se lanza con `--strict-mcp-config --mcp-config
-assets/launch/claude-readonly.mcp.json` (gate primario de MCP; ver `assets/launch/mcp-inventory.md`
-→ "Dos gates"). Ese allowlist declara `context7` (documentación de librerías, solo lectura) con la
-API key como **placeholder** (`REEMPLAZA_POR_TU_API_KEY_DE_CONTEXT7`) — **el repo no lleva una key
-real**.
-
-Antes de despachar un secundario read-only que use `context7`, pon tu key. Dos opciones (no
-edites el archivo trackeado en el checkout: dejaría el árbol sucio y arriesga commitear la key):
-
-- **Recomendado — copia a una ruta runtime con la key puesta** (mismo patrón que los perfiles de
-  Codex en `$CODEX_HOME`), y apunta `--mcp-config` a esa copia:
-
-  **POSIX (bash/zsh):**
-  ```bash
-  mkdir -p "$HOME/.cross-model-orca-state/launch"
-  sed 's/REEMPLAZA_POR_TU_API_KEY_DE_CONTEXT7/'"$CONTEXT7_API_KEY"'/' \
-    skills/cross-model-orca/assets/launch/claude-readonly.mcp.json \
-    > "$HOME/.cross-model-orca-state/launch/claude-readonly.mcp.json"
-  ```
-
-  **PowerShell:**
-  ```powershell
-  New-Item -ItemType Directory -Force "$HOME/.cross-model-orca-state/launch" | Out-Null
-  (Get-Content -Raw skills/cross-model-orca/assets/launch/claude-readonly.mcp.json) `
-    -replace 'REEMPLAZA_POR_TU_API_KEY_DE_CONTEXT7', $env:CONTEXT7_API_KEY |
-    Set-Content "$HOME/.cross-model-orca-state/launch/claude-readonly.mcp.json"
-  ```
-
-- **Si no quieres `context7` en el secundario:** deja el allowlist con `{"mcpServers": {}}` (cero
-  MCP; el secundario explora con `Read`/`Grep`/`Glob`). Es el default más fail-closed.
-
-> No pusimos la key vía `${CONTEXT7_API_KEY}` en el archivo porque no se pudo confirmar que el
-> `--mcp-config` de Claude 2.1.214 expanda variables de entorno (el probe quedó inconcluso por el
-> cold-start de `context7` en modo `-p`). La sustitución explícita de arriba es determinística.
-> Si en tu entorno confirmas que la expansión de `${VAR}` funciona, puedes usarla en su lugar.
+No hace falta configurar MCP para usar la skill. En el default atendido, el secundario ve los MCP
+del entorno del usuario y el humano es el gate (vigilancia manual, P4): aprueba o rechaza en la TUI
+de esa sesión. Solo para el caso **desatendido** (sin nadie que apruebe) existe un endurecimiento
+opcional con `--strict-mcp-config` + un allowlist; el detalle está en
+`assets/launch/mcp-inventory.md`, no es un paso de instalación.

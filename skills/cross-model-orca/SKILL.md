@@ -91,15 +91,15 @@ Sin las tres activas, no se despacha:
    Consecuencia: **Claude no señaliza por comando** — su fin de turno se detecta por la
    transición `tui-idle` posterior al dispatch, nunca por una señal propia. La señal
    `worker_done` por comando es **solo Codex**.
-2. **MCP** — qué tools remotas están disponibles. Codex: perfil instalado en
-   `$CODEX_HOME/<nombre>.config.toml`, invocado con `-p <nombre>` (server-scoped, nunca `-c`).
-   Claude: **`--strict-mcp-config --mcp-config <allowlist>`** como gate **primario** — la sesión
-   ve **solo** los servidores del allowlist, todo MCP del entorno queda invisible (fail-closed por
-   construcción; `--tools` acota solo los built-ins, no las tools MCP) —, más `allow`/`ask`/`deny`
-   por tool como defensa en profundidad dentro de los servidores allowlisteados. Nunca wildcards
-   de servidor. El preflight se reduce a verificar que el lanzamiento incluye el `--strict-mcp-config`
-   y, para un servidor allowlisteado en solo-lectura, el namespacing real de sus read tools (ver
-   `assets/launch/mcp-inventory.md` → "Dos gates").
+2. **MCP** — qué tools remotas están disponibles. En el **default atendido**, MCP se controla por
+   **vigilancia manual** (P4): el secundario ve los MCP del entorno y el humano aprueba/rechaza en
+   la TUI cualquier acción sensible. No hay inventario ni allowlist que configurar. `--tools` acota
+   solo los built-ins, no las tools MCP (`claude --help`: "from the built-in set"), por eso el gate
+   de MCP es el humano, no el toolset. Para una corrida **desatendida** (sin gate humano), un gate
+   declarativo **opcional**: `--strict-mcp-config --mcp-config claude-readonly.mcp.json` (deja solo
+   los servidores del allowlist; vacío = cero MCP). Codex: perfil instalado en
+   `$CODEX_HOME/<nombre>.config.toml`, invocado con `-p <nombre>` (server-scoped, nunca `-c`). Ver
+   `assets/launch/mcp-inventory.md` para el modelo completo.
 3. **Hooks** — qué automatización local puede dispararse. `disableAllHooks: true` (Claude) /
    `--disable hooks` (Codex), siempre, en los dos roles.
 
