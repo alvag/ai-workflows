@@ -36,6 +36,19 @@ function defaultOrcaRunner(args) {
 }
 
 /**
+ * Ejecuta el binario `codex` real (solo para consultas del conductor, p. ej.
+ * `codex mcp list --json`; el codex secundario lo lanza Orca, no este módulo).
+ * `shell: true` en Windows: el codex de npm es un `.cmd` y `spawnSync` sin shell
+ * no lo resuelve.
+ * @param {string[]} args
+ * @returns {{ stdout: string, code: number }}
+ */
+function defaultCodexRunner(args) {
+  const result = spawnSync('codex', args, { encoding: 'utf8', shell: isWindows() });
+  return { stdout: result.stdout ?? '', code: result.status ?? 1 };
+}
+
+/**
  * @param {number} ms
  * @returns {Promise<void>}
  */
@@ -142,6 +155,41 @@ const CLAUDE_SETTINGS_FILE = {
   write: 'claude-write.settings.json',
 };
 
+// Solo nombres de MCP server que el parser de `-c` de Codex acepta como segmento "bare"
+// de la ruta TOML. Verificado en vivo (Codex 0.144.6): `mcp_servers.engram.enabled=false`
+// funciona; la variante quoted `mcp_servers."engram".enabled=false` ROMPE la carga del
+// config ("invalid transport": crea una entrada nueva con las comillas en el nombre en vez
+// de matchear la existente). Un nombre fuera de este patrón no se puede deshabilitar por
+// override → se lo salta (best-effort; el backstop es el presupuesto de locate ampliado).
+const CODEX_MCP_BARE_NAME_RE = /^[A-Za-z0-9_-]+$/;
+
+/**
+ * Enumera los MCP servers HABILITADOS del codex del conductor (`codex mcp list --json`),
+ * filtrando a los nombres "bare" que el override `-c` puede deshabilitar. Best-effort:
+ * cualquier fallo (binario ausente, salida no-JSON) devuelve `[]` y el launch sale sin
+ * overrides — exactamente el comportamiento previo a este endurecimiento.
+ *
+ * Por qué del lado del conductor: el codex secundario lo lanza Orca con SU config; la
+ * evidencia real (E2E Windows) es que la lista efectiva de servers coincide con la del
+ * usuario, así que enumerar acá alcanza para armar los overrides. Si algún server no
+ * matchea, el boot solo queda tan lento como hoy — no rompe nada.
+ * @param {(args: string[]) => { stdout: string, code: number }} codexRunner
+ * @returns {string[]}
+ */
+export function listEnabledCodexMcpServers(codexRunner) {
+  try {
+    const result = codexRunner(['mcp', 'list', '--json']);
+    const parsed = JSON.parse(result.stdout);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((server) => server && server.enabled === true && typeof server.name === 'string')
+      .map((server) => server.name)
+      .filter((name) => CODEX_MCP_BARE_NAME_RE.test(name));
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Construye el comando de lanzamiento del perfil family+role+mode, referenciando
  * por nombre los perfiles de `assets/launch/` (ver `profiles.md`). No incluye el
@@ -159,10 +207,11 @@ const CLAUDE_SETTINGS_FILE = {
  * @param {'attended'|'unattended'} params.mode atendido/desatendido (ver `profiles.md`).
  * @param {string|null} params.sessionId uuid fijado para Claude; ignorado para Codex.
  * @param {string} params.installRoot raíz de instalación del skill (`resolveInstallRoot()`); solo se usa para Claude.
+ * @param {string[]} [params.disableMcpServers] nombres de MCP servers de Codex a deshabilitar por override (solo rol read-only; ver `listEnabledCodexMcpServers`).
  * @param {boolean} [params.windows] default `isWindows()`.
  * @returns {string}
  */
-export function buildLaunchCommand({ family, role, mode, sessionId, installRoot, windows = isWindows() }) {
+export function buildLaunchCommand({ family, role, mode, sessionId, installRoot, disableMcpServers = [], windows = isWindows() }) {
   if (family === 'claude') {
     const settingsPath = path.join(installRoot, 'launch', CLAUDE_SETTINGS_FILE[role]);
     const parts = [`--settings "${settingsPath}"`];
@@ -194,11 +243,22 @@ export function buildLaunchCommand({ family, role, mode, sessionId, installRoot,
       role === 'read-only'
         ? mode === 'attended' ? 'untrusted' : 'never'
         : mode === 'attended' ? 'on-request' : 'never';
-    // Default de vigilancia manual (S3/Fase 5): el gate de MCP es el humano en la TUI, no un perfil
-    // instalado. Sin `-p` (ese es endurecimiento OPCIONAL para el caso desatendido, ver
-    // profiles.md), con `features.apps=false` inline como garantía cero-config. Misma sintaxis en
-    // POSIX y PowerShell: no hay prefijo de variables de entorno que traducir.
-    return `codex -c features.apps=false -s ${sandbox} -a ${approval} --disable hooks`;
+    // Rol read-only: MCP off por override dinámico, un `-c mcp_servers.<name>.enabled=false` por
+    // server habilitado (hallazgo del caso real en Windows: la TUI de Codex quedaba colgada en
+    // "MCP startup incomplete" arrancando los MCP del usuario — atlassian/figma/postman/Mongo — y
+    // el primer turno nunca arrancaba, así que no había rollout que cosechar; `codex exec` no lo
+    // sufre porque avanza pese a los MCP fallidos). Además da simetría con el read-only de Claude
+    // (MCP off = sin superficie de ejecución fuera del sandbox). No existe una forma global:
+    // `-c mcp_servers={}` NO vacía la lista (semántica de merge de TOML, verificado en vivo).
+    // Rol write conserva los MCP con vigilancia manual (S3/Fase 5): el gate es el humano en la
+    // TUI. Sin `-p` (endurecimiento OPCIONAL del caso desatendido, ver profiles.md), con
+    // `features.apps=false` inline como garantía cero-config. Misma sintaxis en POSIX y
+    // PowerShell: no hay prefijo de variables de entorno que traducir ni comillas en los args.
+    const mcpOverrides =
+      role === 'read-only'
+        ? disableMcpServers.map((name) => ` -c mcp_servers.${name}.enabled=false`).join('')
+        : '';
+    return `codex -c features.apps=false${mcpOverrides} -s ${sandbox} -a ${approval} --disable hooks`;
   }
 
   throw new Error(`Familia desconocida: "${family}". Los valores válidos son "codex" o "claude".`);
@@ -347,6 +407,7 @@ function slugifyCwd(cwd) {
  * @param {'attended'|'unattended'} params.mode
  * @param {string} params.worktree ruta absoluta del worktree (se usa como selector `path:<worktree>` de Orca y, para Codex, como `cwd` a matchear contra el rollout).
  * @param {(args: string[]) => { stdout: string, code: number }} [params.orcaRunner]
+ * @param {(args: string[]) => { stdout: string, code: number }} [params.codexRunner] solo se usa para Codex read-only (enumerar MCP servers a deshabilitar).
  * @param {() => number} [params.now]
  * @param {string} [params.stateDir]
  * @returns {{ session: object } | null} `null` solo si no se pudo crear la terminal / leer su handle.
@@ -357,6 +418,7 @@ export function createOwnedSession({
   mode,
   worktree,
   orcaRunner = defaultOrcaRunner,
+  codexRunner = defaultCodexRunner,
   now = Date.now,
   stateDir = defaultStateDir(),
 }) {
@@ -367,8 +429,12 @@ export function createOwnedSession({
   const uid = randomUUID();
   const claudeSessionId = family === 'claude' ? randomUUID() : null;
   const installRoot = family === 'claude' ? resolveInstallRoot() : null;
+  // Codex read-only: MCP off por override dinámico (ver buildLaunchCommand). Best-effort:
+  // si la enumeración falla, la lista queda vacía y el launch sale sin overrides.
+  const disableMcpServers =
+    family === 'codex' && role === 'read-only' ? listEnabledCodexMcpServers(codexRunner) : [];
   const createdAtMs = now();
-  const command = buildLaunchCommand({ family, role, mode, sessionId: claudeSessionId, installRoot });
+  const command = buildLaunchCommand({ family, role, mode, sessionId: claudeSessionId, installRoot, disableMcpServers });
 
   const createArgs = [
     'terminal',
@@ -584,9 +650,14 @@ export async function resolveCodexTranscript({
 // ---------------------------------------------------------------------------
 
 // Presupuesto máximo para esperar a que el rollout de Codex APAREZCA (se escribe cuando arranca
-// el turno, segundos tras el inject). Es solo la espera de aparición; una vez localizado, harvest()
-// consume el resto del deadline esperando el nonce+sentinel. Acotado además por el deadline real.
-const CODEX_LOCATE_BUDGET_MS = 60_000;
+// el turno). Es solo la espera de aparición; una vez localizado, harvest() consume el resto del
+// deadline esperando el nonce+sentinel. Acotado además por el deadline real. 240s (antes 60s):
+// el caso real en Windows mostró que la TUI puede alcanzar tui-idle (dispatch inyectado OK) y aun
+// así demorar el PRIMER turno en la cola del arranque de MCP ("MCP startup incomplete", >90s) —
+// con 60s el adaptador declaraba code 4 e interrumpía a un Codex que solo estaba booteando lento.
+// El launch read-only ya apaga los MCP (boot rápido); este margen cubre el rol write, que los
+// conserva por diseño (vigilancia manual).
+const CODEX_LOCATE_BUDGET_MS = 240_000;
 
 function hashFile(filePath) {
   return createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
@@ -758,15 +829,25 @@ const RECOVER_IDLE_TIMEOUT_MS = 30_000;
  * exitoso). Para rol read-only, no hay riesgo de doble escritor: idle
  * confirmado alcanza.
  *
+ * **`closeTerminal` (abandono, no redispatch).** Cuando el llamador NO va a
+ * redespachar sobre la sesión sino a abandonarla (degradación a `cli`), pasar
+ * `closeTerminal: true` cierra la terminal aunque el rol sea read-only — sin
+ * esto, la degradación deja una terminal zombie abierta "sin hacer nada"
+ * (observado en el caso real de Windows). Para rol write ya es el default. Con
+ * `closeTerminal`, el cierre se intenta aunque idle no se confirme (se está
+ * descartando la sesión; un cierre exitoso es estrictamente mejor que dejarla
+ * viva) y `recovered` refleja el cierre demostrado.
+ *
  * @param {object} params
  * @param {object} params.session
  * @param {object} params.dispatch (no se usa para decidir la recuperación en sí; se acepta por
  *   simetría de interfaz con `awaitDone`/`createDispatch` y por si el llamador necesita loguear
  *   qué dispatch se está recuperando).
+ * @param {boolean} [params.closeTerminal] default `session.role === 'write'`.
  * @param {(args: string[]) => { stdout: string, code: number }} [params.orcaRunner]
  * @returns {{ recovered: boolean }}
  */
-export function recover({ session, dispatch, orcaRunner = defaultOrcaRunner }) {
+export function recover({ session, dispatch, closeTerminal = session.role === 'write', orcaRunner = defaultOrcaRunner }) {
   void dispatch; // ver nota de interfaz arriba: no participa en la decisión de recuperación.
 
   orcaRunner(['terminal', 'send', '--terminal', session.terminalHandle, '--interrupt', '--json']);
@@ -785,12 +866,9 @@ export function recover({ session, dispatch, orcaRunner = defaultOrcaRunner }) {
   // Idle confirmado = `ok:true` (el timeout llega como `ok:false, error.code:"timeout"`).
   const idleConfirmed = orcaOk(parseJsonOutput(idleResult.stdout));
 
-  if (!idleConfirmed) {
-    return { recovered: false };
-  }
-
-  if (session.role !== 'write') {
-    return { recovered: true };
+  if (!closeTerminal) {
+    // Read-only sin abandono: idle confirmado alcanza para habilitar el redispatch.
+    return { recovered: idleConfirmed };
   }
 
   // Cierre demostrado = `ok:true`. El exit code del proceso NO sirve acá: `terminal close`

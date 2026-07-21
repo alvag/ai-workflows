@@ -303,23 +303,29 @@ sobrescribe el destino con `rename` atómico en vez de negarse porque ya existe 
 Orca **no cancela** un dispatch en curso (confirmado, ronda 2 #7 del plan): no hay un comando
 `orchestration cancel`. Para recuperar ante un fallo del secundario hay que interrumpirlo primero.
 
-**`recover({ session, dispatch, orcaRunner })` (`dispatch-adapter.mjs`):**
+**`recover({ session, dispatch, closeTerminal?, orcaRunner })` (`dispatch-adapter.mjs`):**
 
 1. Envía `terminal send --terminal <terminalHandle> --interrupt --json` — no espera respuesta de
    contenido, solo dispara la interrupción.
 2. Confirma que la terminal quedó idle: `terminal wait --terminal <terminalHandle> --for tui-idle
    --timeout-ms 30000 --json` (el timeout de 30s es `RECOVER_IDLE_TIMEOUT_MS`, constante del
-   módulo). Si `satisfied !== true`, devuelve `{ recovered: false }` de inmediato — sin idle
-   confirmado no se garantiza que el secundario dejó de escribir/actuar, así que **no** se habilita
-   ningún redispatch.
-3. **Rol `read-only`:** con idle confirmado alcanza — no hay riesgo de doble escritor. Devuelve
-   `{ recovered: true }`.
-4. **Rol `write`:** idle confirmado **no alcanza**. Antes de habilitar el redispatch hace falta
-   demostrar el **cierre real** de la terminal: `terminal close --terminal <terminalHandle>
-   --json`. Solo si ese cierre tiene éxito (`code === 0` y sin `error` en el JSON de respuesta)
-   devuelve `{ recovered: true }`; si no, `{ recovered: false }`. `recovered: false` en rol write
-   significa: **no** redespaches por CLI todavía — el llamador decide qué hacer (reintentar el
-   cierre, escalar a intervención manual), nunca asumir que es seguro abrir un segundo escritor.
+   módulo).
+3. **Rol `read-only` (default, `closeTerminal: false`):** con idle confirmado alcanza — no hay
+   riesgo de doble escritor. Devuelve `{ recovered: <idle confirmado> }`; sin idle confirmado no
+   se garantiza que el secundario dejó de actuar → no se habilita el redispatch.
+4. **Con `closeTerminal: true` (default en rol `write`):** idle confirmado **no alcanza**. Se
+   intenta el **cierre real** de la terminal (`terminal close --terminal <terminalHandle> --json`)
+   — aunque idle no se haya confirmado (si la sesión se está descartando, un cierre exitoso es
+   estrictamente mejor que dejarla viva). `recovered` = cierre demostrado (`ok: true` del envelope;
+   el exit code no sirve: `close` sobre un handle stale devuelve `ok:false` con exit 0).
+   `recovered: false` en rol write significa: **no** redespaches por CLI todavía — el llamador
+   decide qué hacer (reintentar el cierre, escalar a intervención manual), nunca asumir que es
+   seguro abrir un segundo escritor.
+
+**Abandono ≠ redispatch.** Cuando el llamador va a **degradar a `cli`** (no a redespachar sobre la
+sesión), debe pasar `closeTerminal: true` aunque el rol sea read-only — es lo que hace el runner
+(`orca-session.mjs`): sin el cierre, la degradación deja una terminal zombie abierta "sin hacer
+nada" (observado en el caso real de Windows).
 
 El parámetro `dispatch` no participa en la decisión de recuperación en sí (se acepta solo por
 simetría de interfaz con `awaitDone`/`createDispatch`, y por si el llamador quiere loguear qué
@@ -380,7 +386,9 @@ nuevo.
 `session.transcriptPath` todavía es `null` (el rollout no se resolvió en `createOwnedSession`, ver
 su docstring — el rollout de Codex no existe hasta que **arranca el turno**, segundos después del
 inject), se invoca `resolveCodexTranscript` reintentando hasta que el rollout **aparezca**: el
-presupuesto es `min(deadline restante, CODEX_LOCATE_BUDGET_MS = 60_000 ms)`, con
+presupuesto es `min(deadline restante, CODEX_LOCATE_BUDGET_MS = 240_000 ms — 240s: la TUI puede
+alcanzar tui-idle y aun así demorar el primer turno en la cola del arranque de MCP, caso real en
+Windows)`, con
 `CODEX_LOCATOR_RETRY_MS` (200 ms) entre intentos (`maxAttempts = budget / 200`), buscando
 exactamente 1 candidato (`locateCodexRollout`, por creación+`cwd`+timestamp). Si tras el
 presupuesto sigue sin resolverse (0 candidatos — no arrancó/flushó todavía — o más de uno,

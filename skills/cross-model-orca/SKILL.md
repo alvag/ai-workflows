@@ -142,10 +142,18 @@ Sin las tres activas, no se despacha:
      Glob), y ni siquiera puede intentar el `worker_done`. Endurecimiento OPCIONAL: para habilitar un
      MCP de lectura (p. ej. Jira read-only), declararlo entero en `claude-readonly.mcp.json` (con
      `--strict-mcp-config` no se hereda nada del entorno).
+   - **read-only Codex → MCP OFF por override dinámico.** El adaptador enumera los MCP servers
+     habilitados (`codex mcp list --json`) y lanza con un `-c mcp_servers.<name>.enabled=false`
+     por cada uno. La razón principal es de **confiabilidad de boot**, con caso real (Windows):
+     la TUI interactiva arranca TODOS los MCP del usuario y puede quedar colgada en "MCP startup
+     incomplete" sin ejecutar el primer turno — sin turno no hay rollout que cosechar y el
+     transporte degrada (mientras que `codex exec` avanza pese a los MCP fallidos). De regalo,
+     simetría con el read-only de Claude. Best-effort: si la enumeración falla o un nombre no es
+     overrideable, el launch sale sin ese override y el backstop es el presupuesto de locate
+     ampliado — ver `assets/launch/profiles.md` → "Codex · read-only".
    - **write Claude / Codex → vigilancia manual (P4).** El secundario ve los MCP del entorno y el
      humano aprueba/rechaza en la TUI cualquier acción sensible; no hay inventario ni allowlist que
-     mantener. Codex read-only queda contenido por su sandbox `-s read-only` (sus tools MCP no pueden
-     escribir/red), así que no fuerza MCP off. Ver `assets/launch/mcp-inventory.md`.
+     mantener. Ver `assets/launch/mcp-inventory.md`.
 3. **Hooks** — qué automatización local puede dispararse. `disableAllHooks: true` (Claude) /
    `--disable hooks` (Codex), siempre, en los dos roles.
 

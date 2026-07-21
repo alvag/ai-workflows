@@ -16,6 +16,7 @@ import {
   awaitDone,
   recover,
   buildLaunchCommand,
+  listEnabledCodexMcpServers,
   locateCodexRollout,
   resolveCodexTranscript,
 } from '../dispatch-adapter.mjs';
@@ -137,8 +138,67 @@ test('buildLaunchCommand (codex): sandbox/approval varían por role+mode, featur
   assert.equal(writeUnattended, 'codex -c features.apps=false -s workspace-write -a never --disable hooks');
 });
 
+test('buildLaunchCommand (codex, read-only): disableMcpServers agrega un override bare por server (MCP off dinámico)', () => {
+  // Hallazgo del caso real en Windows: la TUI de Codex quedaba colgada en "MCP startup
+  // incomplete" y el primer turno nunca arrancaba. El launch read-only apaga los MCP por
+  // override dinámico. Verificado en vivo (Codex 0.144.6): funciona el segmento bare
+  // (`mcp_servers.engram.enabled=false`); la variante quoted rompe la carga del config.
+  const cmd = buildLaunchCommand({
+    family: 'codex',
+    role: 'read-only',
+    mode: 'unattended',
+    disableMcpServers: ['engram', 'MongoDB-DEV'],
+  });
+  assert.equal(
+    cmd,
+    'codex -c features.apps=false -c mcp_servers.engram.enabled=false -c mcp_servers.MongoDB-DEV.enabled=false -s read-only -a never --disable hooks'
+  );
+});
+
+test('buildLaunchCommand (codex, write): disableMcpServers se IGNORA (write conserva MCP con vigilancia manual)', () => {
+  const cmd = buildLaunchCommand({
+    family: 'codex',
+    role: 'write',
+    mode: 'attended',
+    disableMcpServers: ['engram'],
+  });
+  assert.equal(cmd, 'codex -c features.apps=false -s workspace-write -a on-request --disable hooks');
+});
+
 test('buildLaunchCommand: familia desconocida lanza Error', () => {
   assert.throws(() => buildLaunchCommand({ family: 'gpt', role: 'read-only', mode: 'attended' }), /Error/);
+});
+
+// ---------------------------------------------------------------------------
+// listEnabledCodexMcpServers: enumeración best-effort de MCP a deshabilitar
+// ---------------------------------------------------------------------------
+
+test('listEnabledCodexMcpServers: filtra a habilitados con nombre bare; excluye disabled y nombres no-overrideables', () => {
+  // Forma real de `codex mcp list --json` (verificada en vivo, 0.144.6): array de
+  // { name, enabled, ... }. Un nombre con "." no se puede deshabilitar por `-c` (la clave
+  // quoted rompe el config) → se lo salta (best-effort).
+  const listing = [
+    { name: 'engram', enabled: true },
+    { name: 'MongoDB-DEV', enabled: true },
+    { name: 'computer-use', enabled: false }, // disabled: no hace falta override.
+    { name: 'weird.name', enabled: true }, // punto: no-overrideable por -c → se salta.
+  ];
+  const fakeCodexRunner = (args) => {
+    assert.deepEqual(args, ['mcp', 'list', '--json']);
+    return { stdout: JSON.stringify(listing), code: 0 };
+  };
+
+  assert.deepEqual(listEnabledCodexMcpServers(fakeCodexRunner), ['engram', 'MongoDB-DEV']);
+});
+
+test('listEnabledCodexMcpServers: salida no-JSON o runner que lanza -> [] (best-effort, launch sin overrides)', () => {
+  assert.deepEqual(listEnabledCodexMcpServers(() => ({ stdout: 'no json', code: 1 })), []);
+  assert.deepEqual(
+    listEnabledCodexMcpServers(() => {
+      throw new Error('codex ausente');
+    }),
+    []
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -214,6 +274,7 @@ test('createOwnedSession (codex): NO intenta localizar el rollout todavía -> re
     mode: 'attended',
     worktree,
     orcaRunner: fakeOrcaRunner,
+    codexRunner: () => ({ stdout: '[]', code: 0 }), // sin MCP servers que deshabilitar en este test.
     now: () => 12345,
     stateDir,
   });
@@ -230,6 +291,67 @@ test('createOwnedSession (codex): NO intenta localizar el rollout todavía -> re
   assert.equal(entries[0].terminalHandle, 'term_codex_1');
   assert.equal(entries[0].family, 'codex');
   assert.equal(entries[0].transcriptPath, null);
+});
+
+test('createOwnedSession (codex, read-only): el --command de la terminal incluye los overrides MCP-off enumerados', () => {
+  const stateDir = mkTmpDir('cmo-state-');
+  let capturedCommand = null;
+  const fakeOrcaRunner = (args) => {
+    if (args[0] === 'terminal' && args[1] === 'create') {
+      capturedCommand = args[args.indexOf('--command') + 1];
+      return okEnvelope({ terminal: { handle: 'term_codex_mcp' } });
+    }
+    throw new Error(`orcaRunner inesperado en el test: ${args.join(' ')}`);
+  };
+  const fakeCodexRunner = () => ({
+    stdout: JSON.stringify([
+      { name: 'engram', enabled: true },
+      { name: 'figma', enabled: true },
+    ]),
+    code: 0,
+  });
+
+  const result = createOwnedSession({
+    family: 'codex',
+    role: 'read-only',
+    mode: 'unattended',
+    worktree: '/repo/wt',
+    orcaRunner: fakeOrcaRunner,
+    codexRunner: fakeCodexRunner,
+    stateDir,
+  });
+
+  assert.notEqual(result, null);
+  assert.match(capturedCommand, / -c mcp_servers\.engram\.enabled=false/);
+  assert.match(capturedCommand, / -c mcp_servers\.figma\.enabled=false/);
+});
+
+test('createOwnedSession (codex, write): NO enumera MCP ni agrega overrides (vigilancia manual)', () => {
+  const stateDir = mkTmpDir('cmo-state-');
+  let capturedCommand = null;
+  const fakeOrcaRunner = (args) => {
+    if (args[0] === 'terminal' && args[1] === 'create') {
+      capturedCommand = args[args.indexOf('--command') + 1];
+      return okEnvelope({ terminal: { handle: 'term_codex_w' } });
+    }
+    throw new Error(`orcaRunner inesperado en el test: ${args.join(' ')}`);
+  };
+  const codexRunnerNuncaLlamado = () => {
+    throw new Error('codexRunner no debe invocarse en rol write');
+  };
+
+  const result = createOwnedSession({
+    family: 'codex',
+    role: 'write',
+    mode: 'attended',
+    worktree: '/repo/wt',
+    orcaRunner: fakeOrcaRunner,
+    codexRunner: codexRunnerNuncaLlamado,
+    stateDir,
+  });
+
+  assert.notEqual(result, null);
+  assert.doesNotMatch(capturedCommand, /mcp_servers\./);
 });
 
 // ---------------------------------------------------------------------------
@@ -807,6 +929,43 @@ test('recover (write): idle confirmado y cierre exitoso -> recovered:true', () =
   const result = recover({ session, dispatch, orcaRunner: fakeOrcaRunner });
 
   assert.equal(result.recovered, true);
+});
+
+test('recover (read-only, closeTerminal:true): abandono -> cierra la terminal y recovered = cierre demostrado', () => {
+  // Abandono por degradación a `cli` (runner): sin el cierre, la degradación deja una terminal
+  // zombie abierta "sin hacer nada" (observado en el caso real de Windows).
+  const session = { role: 'read-only', terminalHandle: 'term_1' };
+  const calls = [];
+  const fakeOrcaRunner = (args) => {
+    calls.push(args);
+    if (args.includes('--interrupt')) return okEnvelope({ sent: true });
+    if (args[1] === 'wait') return okEnvelope({});
+    if (args[1] === 'close') return okEnvelope({ close: { handle: 'term_1', ptyKilled: true } });
+    throw new Error(`orcaRunner inesperado: ${args.join(' ')}`);
+  };
+
+  const result = recover({ session, dispatch: null, closeTerminal: true, orcaRunner: fakeOrcaRunner });
+
+  assert.equal(result.recovered, true);
+  assert.equal(calls.some((c) => c[1] === 'close'), true);
+});
+
+test('recover (closeTerminal:true): el cierre se intenta AUNQUE idle no se confirme (se descarta la sesión)', () => {
+  const session = { role: 'read-only', terminalHandle: 'term_1' };
+  const calls = [];
+  const fakeOrcaRunner = (args) => {
+    calls.push(args);
+    if (args.includes('--interrupt')) return okEnvelope({ sent: true });
+    if (args[1] === 'wait') return errEnvelope('timeout'); // idle NO confirmado.
+    if (args[1] === 'close') return okEnvelope({ close: { handle: 'term_1', ptyKilled: true } });
+    throw new Error(`orcaRunner inesperado: ${args.join(' ')}`);
+  };
+
+  const result = recover({ session, dispatch: null, closeTerminal: true, orcaRunner: fakeOrcaRunner });
+
+  // Cierre demostrado pese al idle timeout: la terminal quedó muerta -> recovered:true.
+  assert.equal(result.recovered, true);
+  assert.equal(calls.some((c) => c[1] === 'close'), true);
 });
 
 test('recover: idle NO confirmado -> recovered:false sin importar el rol', () => {

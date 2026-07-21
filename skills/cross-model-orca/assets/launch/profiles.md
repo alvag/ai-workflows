@@ -214,18 +214,33 @@ claude `
 
 ### Codex · read-only
 
+**MCP off dinámico (default en ambos modos).** En la rama `orca-session`, el adaptador enumera los
+MCP servers habilitados (`codex mcp list --json`) y agrega un `-c mcp_servers.<name>.enabled=false`
+por cada uno al comando de lanzamiento (`listEnabledCodexMcpServers` en `dispatch-adapter.mjs`).
+Dos razones, ambas de caso real:
+- **Confiabilidad de boot:** la TUI interactiva arranca TODOS los MCP del usuario y puede quedar
+  colgada en "MCP startup incomplete" sin llegar a ejecutar el primer turno (observado en Windows
+  con atlassian/figma/postman/Mongo) — sin turno no hay rollout que cosechar. `codex exec` no lo
+  sufre porque avanza pese a los MCP fallidos.
+- **Simetría con Claude read-only:** MCP off = sin superficie de ejecución fuera del sandbox.
+
+No existe una forma global: `-c mcp_servers={}` **no** vacía la lista (merge de TOML, verificado en
+vivo en 0.144.6), y la clave quoted (`mcp_servers."x".enabled=false`) rompe la carga del config —
+solo funcionan nombres bare (`[A-Za-z0-9_-]+`); un server con otro nombre no se puede apagar por
+override y se salta (best-effort).
+
 **Atendido (default, vigilancia manual)** — sin perfil que copiar; `-a untrusted` manda cualquier
 comando no confiable a aprobación en la TUI (el humano es el gate), y `-c features.apps=false` apaga
-Apps inline:
+Apps inline (los `-c mcp_servers.*` de abajo son los que agrega el adaptador — uno por server):
 
 **POSIX:**
 ```bash
-codex -c features.apps=false -s read-only -a untrusted --disable hooks "<prompt>"
+codex -c features.apps=false -c mcp_servers.<name>.enabled=false [...] -s read-only -a untrusted --disable hooks "<prompt>"
 ```
 
 **PowerShell:**
 ```powershell
-codex -c features.apps=false -s read-only -a untrusted --disable hooks "<prompt>"
+codex -c features.apps=false -c mcp_servers.<name>.enabled=false [...] -s read-only -a untrusted --disable hooks "<prompt>"
 ```
 
 **Desatendido** (nadie mirando; `untrusted` podría escalar y colgarse esperando aprobación) —
@@ -234,12 +249,12 @@ que copiarlo antes a `$CODEX_HOME`, ver arriba):
 
 **POSIX:**
 ```bash
-codex -p cmo-readonly -c features.apps=false -s read-only -a never --disable hooks "<prompt>"
+codex -p cmo-readonly -c features.apps=false -c mcp_servers.<name>.enabled=false [...] -s read-only -a never --disable hooks "<prompt>"
 ```
 
 **PowerShell:**
 ```powershell
-codex -p cmo-readonly -c features.apps=false -s read-only -a never --disable hooks "<prompt>"
+codex -p cmo-readonly -c features.apps=false -c mcp_servers.<name>.enabled=false [...] -s read-only -a never --disable hooks "<prompt>"
 ```
 
 ### Codex · write (cross-implement)

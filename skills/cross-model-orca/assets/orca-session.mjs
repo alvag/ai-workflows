@@ -20,15 +20,17 @@ import { createOwnedSession, createDispatch, awaitDone, recover } from './dispat
 export const DEFAULT_DEADLINE_MS = 240_000;
 
 /**
- * Best-effort: interrumpe al secundario y confirma idle (y cierra la terminal en
- * rol write) antes de degradar, para no dejar una sesión trabajando en el vacío.
- * Nunca lanza: la degradación a `cli` procede aunque la recuperación falle.
+ * Best-effort: interrumpe al secundario y CIERRA la terminal antes de degradar.
+ * `closeTerminal: true` explícito aunque el rol sea read-only: el runner degrada a
+ * `cli` y abandona la sesión — no va a redespachar sobre ella —, y sin el cierre la
+ * degradación deja una terminal zombie abierta "sin hacer nada" (observado en el
+ * caso real de Windows). Nunca lanza: la degradación procede aunque falle.
  * @param {object} session
  * @param {(args: string[]) => { stdout: string, code: number }} [orcaRunner]
  */
 function tryRecover(session, orcaRunner) {
   try {
-    recover({ session, dispatch: null, orcaRunner });
+    recover({ session, dispatch: null, closeTerminal: true, orcaRunner });
   } catch {
     // best-effort: si no se pudo recuperar, igual degradamos a cli.
   }
@@ -50,6 +52,7 @@ function tryRecover(session, orcaRunner) {
  * @param {number} [params.deadlineMs]
  * @param {number} [params.bootTimeoutMs]
  * @param {(args: string[]) => { stdout: string, code: number }} [params.orcaRunner]
+ * @param {(args: string[]) => { stdout: string, code: number }} [params.codexRunner]
  * @param {() => number} [params.now]
  * @param {(ms: number) => Promise<void>} [params.sleep]
  * @param {string} [params.stateDir]
@@ -66,12 +69,13 @@ export async function runOrcaSession({
   deadlineMs = DEFAULT_DEADLINE_MS,
   bootTimeoutMs,
   orcaRunner,
+  codexRunner,
   now,
   sleep,
   stateDir,
 }) {
   // 1. Sesión fresca propia. `null` = no se pudo crear la terminal / leer su handle.
-  const owned = createOwnedSession({ family, role, mode, worktree, orcaRunner, now, stateDir });
+  const owned = createOwnedSession({ family, role, mode, worktree, orcaRunner, codexRunner, now, stateDir });
   if (!owned || !owned.session) {
     return {
       transport: 'orca-session',

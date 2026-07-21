@@ -46,6 +46,7 @@ test('degrada a cli (code 4) cuando no se puede crear la sesión propia', async 
     reportPath: 'findings-codex.md',
     root,
     orcaRunner,
+    codexRunner: () => ({ stdout: '[]', code: 0 }), // no invocar el codex real en el test.
     stateDir,
   });
 
@@ -88,8 +89,11 @@ test('degrada a cli (code 4) y recupera cuando createDispatch falla en el boot-w
   assert.match(res.reason, /no se pudo despachar/i);
   // El dispatch --inject NUNCA se emitió (se abortó en el boot-wait).
   assert.ok(!calls.some((c) => c === 'orchestration dispatch'));
-  // Se intentó recuperar la sesión (interrupt) antes de degradar.
+  // Se intentó recuperar la sesión (interrupt) antes de degradar...
   assert.ok(calls.includes('terminal send'));
+  // ...y se CERRÓ la terminal abandonada (sin cierre, la degradación deja una terminal
+  // zombie abierta "sin hacer nada" — observado en el caso real de Windows).
+  assert.ok(calls.includes('terminal close'));
 });
 
 // El entrypoint CLI es guardless: corre `main()` SIEMPRE al ejecutarse, sin importar por qué
