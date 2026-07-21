@@ -214,20 +214,27 @@ claude `
 
 ### Codex · read-only
 
-**MCP off dinámico (default en ambos modos).** En la rama `orca-session`, el adaptador enumera los
-MCP servers habilitados (`codex mcp list --json`) y agrega un `-c mcp_servers.<name>.enabled=false`
-por cada uno al comando de lanzamiento (`listEnabledCodexMcpServers` en `dispatch-adapter.mjs`).
-Dos razones, ambas de caso real:
+**MCP off dinámico (default en ambos modos).** En la rama `orca-session`, el adaptador enumera las
+secciones `[mcp_servers.*]` del **`config.toml`** de Codex (`configDir('codex')`, respeta
+`CODEX_HOME`) y agrega un `-c mcp_servers.<name>.enabled=false` por cada una al comando de
+lanzamiento (`listCodexConfigMcpServers` en `dispatch-adapter.mjs`). Dos razones, ambas de caso
+real:
 - **Confiabilidad de boot:** la TUI interactiva arranca TODOS los MCP del usuario y puede quedar
   colgada en "MCP startup incomplete" sin llegar a ejecutar el primer turno (observado en Windows
   con atlassian/figma/postman/Mongo) — sin turno no hay rollout que cosechar. `codex exec` no lo
   sufre porque avanza pese a los MCP fallidos.
 - **Simetría con Claude read-only:** MCP off = sin superficie de ejecución fuera del sandbox.
 
-No existe una forma global: `-c mcp_servers={}` **no** vacía la lista (merge de TOML, verificado en
-vivo en 0.144.6), y la clave quoted (`mcp_servers."x".enabled=false`) rompe la carga del config —
-solo funcionan nombres bare (`[A-Za-z0-9_-]+`); un server con otro nombre no se puede apagar por
-override y se salta (best-effort).
+Restricciones verificadas en vivo (0.144.6):
+- No existe una forma global: `-c mcp_servers={}` **no** vacía la lista (merge de TOML).
+- La clave quoted (`mcp_servers."x".enabled=false`) rompe la carga del config — solo funcionan
+  nombres bare (`[A-Za-z0-9_-]+`).
+- La fuente es el config.toml, **no** `codex mcp list --json`: esa lista agrega servers gestionados
+  por la app (p. ej. `sites-design-picker`) que no viven en el config; deshabilitar uno de esos por
+  `-c` crea una entrada sin transporte → "Error loading config.toml: invalid transport" → el boot
+  entero aborta (regresión real observada). Esos servers quedan vivos (builtins locales y rápidos;
+  `codex_apps` lo apaga `features.apps=false`); los del config —los npx/pesados que cuelgan el
+  boot— son exactamente los que el listado cubre.
 
 **Atendido (default, vigilancia manual)** — sin perfil que copiar; `-a untrusted` manda cualquier
 comando no confiable a aprobación en la TUI (el humano es el gate), y `-c features.apps=false` apaga

@@ -142,9 +142,12 @@ Sin las tres activas, no se despacha:
      Glob), y ni siquiera puede intentar el `worker_done`. Endurecimiento OPCIONAL: para habilitar un
      MCP de lectura (p. ej. Jira read-only), declararlo entero en `claude-readonly.mcp.json` (con
      `--strict-mcp-config` no se hereda nada del entorno).
-   - **read-only Codex → MCP OFF por override dinámico.** El adaptador enumera los MCP servers
-     habilitados (`codex mcp list --json`) y lanza con un `-c mcp_servers.<name>.enabled=false`
-     por cada uno. La razón principal es de **confiabilidad de boot**, con caso real (Windows):
+   - **read-only Codex → MCP OFF por override dinámico.** El adaptador enumera las secciones
+     `[mcp_servers.*]` del `config.toml` de Codex y lanza con un `-c
+     mcp_servers.<name>.enabled=false` por cada una. La fuente es el config.toml, **no** `codex
+     mcp list` (esa lista agrega servers gestionados por la app que no viven en el config;
+     deshabilitar uno de esos por `-c` crea una entrada inválida y aborta el boot entero —
+     regresión real observada en vivo). La razón principal es de **confiabilidad de boot**, con caso real (Windows):
      la TUI interactiva arranca TODOS los MCP del usuario y puede quedar colgada en "MCP startup
      incomplete" sin ejecutar el primer turno — sin turno no hay rollout que cosechar y el
      transporte degrada (mientras que `codex exec` avanza pese a los MCP fallidos). De regalo,

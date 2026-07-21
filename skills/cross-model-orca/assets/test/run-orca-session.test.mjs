@@ -46,7 +46,6 @@ test('degrada a cli (code 4) cuando no se puede crear la sesión propia', async 
     reportPath: 'findings-codex.md',
     root,
     orcaRunner,
-    codexRunner: () => ({ stdout: '[]', code: 0 }), // no invocar el codex real en el test.
     stateDir,
   });
 

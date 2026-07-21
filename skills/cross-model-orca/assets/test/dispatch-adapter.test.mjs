@@ -16,7 +16,7 @@ import {
   awaitDone,
   recover,
   buildLaunchCommand,
-  listEnabledCodexMcpServers,
+  listCodexConfigMcpServers,
   locateCodexRollout,
   resolveCodexTranscript,
 } from '../dispatch-adapter.mjs';
@@ -170,35 +170,42 @@ test('buildLaunchCommand: familia desconocida lanza Error', () => {
 });
 
 // ---------------------------------------------------------------------------
-// listEnabledCodexMcpServers: enumeración best-effort de MCP a deshabilitar
+// listCodexConfigMcpServers: enumeración best-effort desde config.toml
 // ---------------------------------------------------------------------------
 
-test('listEnabledCodexMcpServers: filtra a habilitados con nombre bare; excluye disabled y nombres no-overrideables', () => {
-  // Forma real de `codex mcp list --json` (verificada en vivo, 0.144.6): array de
-  // { name, enabled, ... }. Un nombre con "." no se puede deshabilitar por `-c` (la clave
-  // quoted rompe el config) → se lo salta (best-effort).
-  const listing = [
-    { name: 'engram', enabled: true },
-    { name: 'MongoDB-DEV', enabled: true },
-    { name: 'computer-use', enabled: false }, // disabled: no hace falta override.
-    { name: 'weird.name', enabled: true }, // punto: no-overrideable por -c → se salta.
-  ];
-  const fakeCodexRunner = (args) => {
-    assert.deepEqual(args, ['mcp', 'list', '--json']);
-    return { stdout: JSON.stringify(listing), code: 0 };
-  };
+test('listCodexConfigMcpServers: enumera secciones [mcp_servers.*] bare de config.toml, dedup por subtablas, salta quoted', async () => {
+  // Fuente = config.toml, NO `codex mcp list --json`: esa lista agrega servers que no viven
+  // en el config (p. ej. sites-design-picker, gestionado por la app) y deshabilitar uno de
+  // esos por -c crea una entrada sin transporte → el boot entero de Codex aborta ("Error
+  // loading config.toml: invalid transport"). Regresión real observada en vivo en el E2E.
+  const codexHome = mkTmpDir('cmo-codex-cfg-');
+  fs.writeFileSync(
+    path.join(codexHome, 'config.toml'),
+    [
+      'model = "gpt-5.5"',
+      '[mcp_servers.engram]',
+      'command = "engram"',
+      '[mcp_servers.chrome-devtools]',
+      'command = "npx"',
+      '[mcp_servers.chrome-devtools.tools.click]', // subtabla: NO duplica el nombre.
+      'enabled = true',
+      '[mcp_servers."weird.name"]', // quoted (no-overrideable por -c): se salta.
+      'command = "x"',
+      '[other_section]',
+      'foo = "bar"',
+    ].join('\n')
+  );
 
-  assert.deepEqual(listEnabledCodexMcpServers(fakeCodexRunner), ['engram', 'MongoDB-DEV']);
+  await withEnv({ CODEX_HOME: codexHome }, () => {
+    assert.deepEqual(listCodexConfigMcpServers(), ['engram', 'chrome-devtools']);
+  });
 });
 
-test('listEnabledCodexMcpServers: salida no-JSON o runner que lanza -> [] (best-effort, launch sin overrides)', () => {
-  assert.deepEqual(listEnabledCodexMcpServers(() => ({ stdout: 'no json', code: 1 })), []);
-  assert.deepEqual(
-    listEnabledCodexMcpServers(() => {
-      throw new Error('codex ausente');
-    }),
-    []
-  );
+test('listCodexConfigMcpServers: config.toml ausente -> [] (best-effort, launch sin overrides)', async () => {
+  const codexHome = mkTmpDir('cmo-codex-nocfg-');
+  await withEnv({ CODEX_HOME: codexHome }, () => {
+    assert.deepEqual(listCodexConfigMcpServers(), []);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -252,7 +259,7 @@ test('locateCodexRollout: descarta candidatos con distinto cwd, source u origina
 // createOwnedSession (Codex)
 // ---------------------------------------------------------------------------
 
-test('createOwnedSession (codex): NO intenta localizar el rollout todavía -> registra la sesión con transcriptPath pendiente (null)', () => {
+test('createOwnedSession (codex): NO intenta localizar el rollout todavía -> registra la sesión con transcriptPath pendiente (null)', async () => {
   // Contrato nuevo (fix wave 1, tras el hallazgo del review): el rollout de Codex no existe al
   // arrancar la terminal (se escribe recién en el primer turno). createOwnedSession ya no intenta
   // localizarlo -- ni siquiera toca CODEX_HOME/sessions -- y por eso este test no prepara ningún
@@ -268,16 +275,19 @@ test('createOwnedSession (codex): NO intenta localizar el rollout todavía -> re
     throw new Error(`orcaRunner inesperado en el test: ${args.join(' ')}`);
   };
 
-  const result = createOwnedSession({
-    family: 'codex',
-    role: 'read-only',
-    mode: 'attended',
-    worktree,
-    orcaRunner: fakeOrcaRunner,
-    codexRunner: () => ({ stdout: '[]', code: 0 }), // sin MCP servers que deshabilitar en este test.
-    now: () => 12345,
-    stateDir,
-  });
+  // CODEX_HOME apunta a un home vacío: la enumeración MCP-off devuelve [] (sin overrides)
+  // y, ademas, este test NO depende del config real de la máquina.
+  const result = await withEnv({ CODEX_HOME: mkTmpDir('cmo-codex-empty-') }, () =>
+    createOwnedSession({
+      family: 'codex',
+      role: 'read-only',
+      mode: 'attended',
+      worktree,
+      orcaRunner: fakeOrcaRunner,
+      now: () => 12345,
+      stateDir,
+    })
+  );
 
   assert.notEqual(result, null);
   assert.equal(result.session.terminalHandle, 'term_codex_1');
@@ -293,8 +303,13 @@ test('createOwnedSession (codex): NO intenta localizar el rollout todavía -> re
   assert.equal(entries[0].transcriptPath, null);
 });
 
-test('createOwnedSession (codex, read-only): el --command de la terminal incluye los overrides MCP-off enumerados', () => {
+test('createOwnedSession (codex, read-only): el --command de la terminal incluye los overrides MCP-off del config.toml', async () => {
   const stateDir = mkTmpDir('cmo-state-');
+  const codexHome = mkTmpDir('cmo-codex-cfg-');
+  fs.writeFileSync(
+    path.join(codexHome, 'config.toml'),
+    '[mcp_servers.engram]\ncommand = "engram"\n[mcp_servers.figma]\ncommand = "npx"\n'
+  );
   let capturedCommand = null;
   const fakeOrcaRunner = (args) => {
     if (args[0] === 'terminal' && args[1] === 'create') {
@@ -303,31 +318,27 @@ test('createOwnedSession (codex, read-only): el --command de la terminal incluye
     }
     throw new Error(`orcaRunner inesperado en el test: ${args.join(' ')}`);
   };
-  const fakeCodexRunner = () => ({
-    stdout: JSON.stringify([
-      { name: 'engram', enabled: true },
-      { name: 'figma', enabled: true },
-    ]),
-    code: 0,
-  });
 
-  const result = createOwnedSession({
-    family: 'codex',
-    role: 'read-only',
-    mode: 'unattended',
-    worktree: '/repo/wt',
-    orcaRunner: fakeOrcaRunner,
-    codexRunner: fakeCodexRunner,
-    stateDir,
-  });
+  const result = await withEnv({ CODEX_HOME: codexHome }, () =>
+    createOwnedSession({
+      family: 'codex',
+      role: 'read-only',
+      mode: 'unattended',
+      worktree: '/repo/wt',
+      orcaRunner: fakeOrcaRunner,
+      stateDir,
+    })
+  );
 
   assert.notEqual(result, null);
   assert.match(capturedCommand, / -c mcp_servers\.engram\.enabled=false/);
   assert.match(capturedCommand, / -c mcp_servers\.figma\.enabled=false/);
 });
 
-test('createOwnedSession (codex, write): NO enumera MCP ni agrega overrides (vigilancia manual)', () => {
+test('createOwnedSession (codex, write): NO agrega overrides MCP aunque el config los tenga (vigilancia manual)', async () => {
   const stateDir = mkTmpDir('cmo-state-');
+  const codexHome = mkTmpDir('cmo-codex-cfg-');
+  fs.writeFileSync(path.join(codexHome, 'config.toml'), '[mcp_servers.engram]\ncommand = "engram"\n');
   let capturedCommand = null;
   const fakeOrcaRunner = (args) => {
     if (args[0] === 'terminal' && args[1] === 'create') {
@@ -336,19 +347,17 @@ test('createOwnedSession (codex, write): NO enumera MCP ni agrega overrides (vig
     }
     throw new Error(`orcaRunner inesperado en el test: ${args.join(' ')}`);
   };
-  const codexRunnerNuncaLlamado = () => {
-    throw new Error('codexRunner no debe invocarse en rol write');
-  };
 
-  const result = createOwnedSession({
-    family: 'codex',
-    role: 'write',
-    mode: 'attended',
-    worktree: '/repo/wt',
-    orcaRunner: fakeOrcaRunner,
-    codexRunner: codexRunnerNuncaLlamado,
-    stateDir,
-  });
+  const result = await withEnv({ CODEX_HOME: codexHome }, () =>
+    createOwnedSession({
+      family: 'codex',
+      role: 'write',
+      mode: 'attended',
+      worktree: '/repo/wt',
+      orcaRunner: fakeOrcaRunner,
+      stateDir,
+    })
+  );
 
   assert.notEqual(result, null);
   assert.doesNotMatch(capturedCommand, /mcp_servers\./);

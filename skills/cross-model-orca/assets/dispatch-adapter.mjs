@@ -35,18 +35,6 @@ function defaultOrcaRunner(args) {
   return { stdout: result.stdout ?? '', code: result.status ?? 1 };
 }
 
-/**
- * Ejecuta el binario `codex` real (solo para consultas del conductor, p. ej.
- * `codex mcp list --json`; el codex secundario lo lanza Orca, no este módulo).
- * `shell: true` en Windows: el codex de npm es un `.cmd` y `spawnSync` sin shell
- * no lo resuelve.
- * @param {string[]} args
- * @returns {{ stdout: string, code: number }}
- */
-function defaultCodexRunner(args) {
-  const result = spawnSync('codex', args, { encoding: 'utf8', shell: isWindows() });
-  return { stdout: result.stdout ?? '', code: result.status ?? 1 };
-}
 
 /**
  * @param {number} ms
@@ -155,39 +143,40 @@ const CLAUDE_SETTINGS_FILE = {
   write: 'claude-write.settings.json',
 };
 
-// Solo nombres de MCP server que el parser de `-c` de Codex acepta como segmento "bare"
-// de la ruta TOML. Verificado en vivo (Codex 0.144.6): `mcp_servers.engram.enabled=false`
-// funciona; la variante quoted `mcp_servers."engram".enabled=false` ROMPE la carga del
-// config ("invalid transport": crea una entrada nueva con las comillas en el nombre en vez
-// de matchear la existente). Un nombre fuera de este patrón no se puede deshabilitar por
-// override → se lo salta (best-effort; el backstop es el presupuesto de locate ampliado).
-const CODEX_MCP_BARE_NAME_RE = /^[A-Za-z0-9_-]+$/;
+// Encabezados de sección `[mcp_servers.<name>]` (y subtablas `[mcp_servers.<name>.…]`) de
+// config.toml, con <name> "bare" — el único que el parser de `-c` de Codex acepta. Verificado
+// en vivo (0.144.6): `mcp_servers.engram.enabled=false` funciona; la variante quoted
+// `mcp_servers."x".enabled=false` ROMPE la carga del config. Un nombre quoted en el config no
+// matchea este patrón y se salta (tampoco sería overrideable).
+const CODEX_MCP_SECTION_RE = /^\s*\[mcp_servers\.([A-Za-z0-9_-]+)[.\]]/;
 
 /**
- * Enumera los MCP servers HABILITADOS del codex del conductor (`codex mcp list --json`),
- * filtrando a los nombres "bare" que el override `-c` puede deshabilitar. Best-effort:
- * cualquier fallo (binario ausente, salida no-JSON) devuelve `[]` y el launch sale sin
- * overrides — exactamente el comportamiento previo a este endurecimiento.
+ * Enumera los MCP servers declarados en el `config.toml` de Codex (`configDir('codex')`,
+ * que respeta `CODEX_HOME`). Es la fuente CORRECTA para armar overrides `-c
+ * mcp_servers.<name>.enabled=false`: enumerar por `codex mcp list --json` fue una
+ * regresión real — esa lista agrega servers que NO viven en config.toml (p. ej.
+ * `sites-design-picker`, gestionado por la app), y deshabilitar uno de esos por `-c` crea
+ * una entrada nueva sin transporte → "Error loading config.toml: invalid transport" → el
+ * boot entero de Codex aborta (observado en vivo en el E2E). Los servers fuera del config
+ * no se pueden apagar por override (quedan vivos: son builtins locales y rápidos); los del
+ * config —los npx/pesados que cuelgan el boot— son exactamente los que este listado cubre.
  *
- * Por qué del lado del conductor: el codex secundario lo lanza Orca con SU config; la
- * evidencia real (E2E Windows) es que la lista efectiva de servers coincide con la del
- * usuario, así que enumerar acá alcanza para armar los overrides. Si algún server no
- * matchea, el boot solo queda tan lento como hoy — no rompe nada.
- * @param {(args: string[]) => { stdout: string, code: number }} codexRunner
- * @returns {string[]}
+ * Best-effort: config ausente/ilegible devuelve `[]` y el launch sale sin overrides.
+ * @returns {string[]} nombres únicos, en orden de aparición.
  */
-export function listEnabledCodexMcpServers(codexRunner) {
+export function listCodexConfigMcpServers() {
+  let content;
   try {
-    const result = codexRunner(['mcp', 'list', '--json']);
-    const parsed = JSON.parse(result.stdout);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((server) => server && server.enabled === true && typeof server.name === 'string')
-      .map((server) => server.name)
-      .filter((name) => CODEX_MCP_BARE_NAME_RE.test(name));
+    content = fs.readFileSync(path.join(configDir('codex'), 'config.toml'), 'utf8');
   } catch {
     return [];
   }
+  const names = new Set();
+  for (const line of content.split('\n')) {
+    const match = line.match(CODEX_MCP_SECTION_RE);
+    if (match) names.add(match[1]);
+  }
+  return [...names];
 }
 
 /**
@@ -207,7 +196,7 @@ export function listEnabledCodexMcpServers(codexRunner) {
  * @param {'attended'|'unattended'} params.mode atendido/desatendido (ver `profiles.md`).
  * @param {string|null} params.sessionId uuid fijado para Claude; ignorado para Codex.
  * @param {string} params.installRoot raíz de instalación del skill (`resolveInstallRoot()`); solo se usa para Claude.
- * @param {string[]} [params.disableMcpServers] nombres de MCP servers de Codex a deshabilitar por override (solo rol read-only; ver `listEnabledCodexMcpServers`).
+ * @param {string[]} [params.disableMcpServers] nombres de MCP servers de Codex a deshabilitar por override (solo rol read-only; ver `listCodexConfigMcpServers`).
  * @param {boolean} [params.windows] default `isWindows()`.
  * @returns {string}
  */
@@ -407,7 +396,6 @@ function slugifyCwd(cwd) {
  * @param {'attended'|'unattended'} params.mode
  * @param {string} params.worktree ruta absoluta del worktree (se usa como selector `path:<worktree>` de Orca y, para Codex, como `cwd` a matchear contra el rollout).
  * @param {(args: string[]) => { stdout: string, code: number }} [params.orcaRunner]
- * @param {(args: string[]) => { stdout: string, code: number }} [params.codexRunner] solo se usa para Codex read-only (enumerar MCP servers a deshabilitar).
  * @param {() => number} [params.now]
  * @param {string} [params.stateDir]
  * @returns {{ session: object } | null} `null` solo si no se pudo crear la terminal / leer su handle.
@@ -418,7 +406,6 @@ export function createOwnedSession({
   mode,
   worktree,
   orcaRunner = defaultOrcaRunner,
-  codexRunner = defaultCodexRunner,
   now = Date.now,
   stateDir = defaultStateDir(),
 }) {
@@ -432,7 +419,7 @@ export function createOwnedSession({
   // Codex read-only: MCP off por override dinámico (ver buildLaunchCommand). Best-effort:
   // si la enumeración falla, la lista queda vacía y el launch sale sin overrides.
   const disableMcpServers =
-    family === 'codex' && role === 'read-only' ? listEnabledCodexMcpServers(codexRunner) : [];
+    family === 'codex' && role === 'read-only' ? listCodexConfigMcpServers() : [];
   const createdAtMs = now();
   const command = buildLaunchCommand({ family, role, mode, sessionId: claudeSessionId, installRoot, disableMcpServers });
 

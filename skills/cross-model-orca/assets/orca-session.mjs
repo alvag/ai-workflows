@@ -52,7 +52,6 @@ function tryRecover(session, orcaRunner) {
  * @param {number} [params.deadlineMs]
  * @param {number} [params.bootTimeoutMs]
  * @param {(args: string[]) => { stdout: string, code: number }} [params.orcaRunner]
- * @param {(args: string[]) => { stdout: string, code: number }} [params.codexRunner]
  * @param {() => number} [params.now]
  * @param {(ms: number) => Promise<void>} [params.sleep]
  * @param {string} [params.stateDir]
@@ -69,13 +68,12 @@ export async function runOrcaSession({
   deadlineMs = DEFAULT_DEADLINE_MS,
   bootTimeoutMs,
   orcaRunner,
-  codexRunner,
   now,
   sleep,
   stateDir,
 }) {
   // 1. Sesión fresca propia. `null` = no se pudo crear la terminal / leer su handle.
-  const owned = createOwnedSession({ family, role, mode, worktree, orcaRunner, codexRunner, now, stateDir });
+  const owned = createOwnedSession({ family, role, mode, worktree, orcaRunner, now, stateDir });
   if (!owned || !owned.session) {
     return {
       transport: 'orca-session',
