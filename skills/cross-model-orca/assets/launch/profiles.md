@@ -13,12 +13,13 @@
 2. **Approval policy** (qué necesita aprobación humana): `--permission-mode` en Claude; `-a` en
    Codex.
 3. **Config de MCP + hooks** (qué tools remotas y qué automatizaciones locales están
-   disponibles): en el **default atendido**, MCP se controla por **vigilancia manual** (el humano
-   aprueba/rechaza en la TUI; no hay allowlist ni denylist que mantener), más `--settings <archivo>`
-   (`disableAllHooks`); en Codex, `-c features.apps=false --disable hooks` inline (sin perfil que
-   copiar) + vigilancia manual vía `-a untrusted`. Para el caso **desatendido**, un gate declarativo
-   opcional (Claude `--strict-mcp-config`; Codex `-p <perfil>` con MCP server-scoped), ver abajo. Ver
-   `mcp-inventory.md` para el modelo completo.
+   disponibles): **depende del rol**. Rol **read-only** (ambas familias, ambos modos): **MCP OFF
+   por default** — Claude vía `--strict-mcp-config` + config vacío; Codex vía overrides dinámicos
+   `-c mcp_servers.<name>.enabled=false` derivados de su `config.toml` (ver "Codex · read-only").
+   Rol **write**: **vigilancia manual** (el humano aprueba/rechaza en la TUI; no hay allowlist que
+   mantener). Hooks siempre off: `--settings <archivo>` (`disableAllHooks`) en Claude,
+   `--disable hooks` en Codex; y `-c features.apps=false` inline en Codex. Ver `mcp-inventory.md`
+   para el modelo completo.
 
 ### MCP en Claude: read-only → OFF por default; write → vigilancia manual
 
@@ -47,14 +48,17 @@ aprueba/rechaza en la TUI — más `--permission-mode`. No hay inventario ni all
 > prompt se pierde como "otra tool/config"). En la matriz de abajo el `<prompt>` va último, tras
 > `--session-id` (no variádico).
 
-## MCP en Codex: vigilancia manual (default) + perfil opcional (desatendido)
+## MCP en Codex: read-only → OFF dinámico (default); write → vigilancia manual
 
-Igual que en Claude, el **default atendido** de Codex read-only no restringe MCP por config: el
-secundario ve los MCP del entorno y **el humano es el gate** — con `-a untrusted`, una acción no
-confiable escala a aprobación en la TUI. Las garantías cero-config que sí valen: `-s read-only`
-(sandbox), `--disable hooks`, y **`-c features.apps=false`** (apaga la superficie de Apps; se setea
-**inline**, sin perfil — verificado válido bajo `--strict-config`). **No hace falta copiar ningún
-perfil a `$CODEX_HOME` para el default.**
+Rol **read-only**: **MCP OFF por default en ambos modos**, vía los overrides dinámicos que arma el
+adaptador desde el `config.toml` (detalle y restricciones en "Codex · read-only" abajo) — no es
+solo simetría con Claude: sin esto la TUI puede colgarse arrancando los MCP del usuario y el turno
+nunca empieza (caso real en Windows). Es **best-effort**, no una garantía dura: los servers
+gestionados por la app y los de nombre no-bare quedan vivos. Rol **write** (cross-implement):
+**vigilancia manual** — el secundario ve los MCP del entorno y el humano es el gate en la TUI. Las
+garantías cero-config que valen siempre: `-s <sandbox>`, `--disable hooks`, y
+**`-c features.apps=false`** (apaga la superficie de Apps; inline, sin perfil — verificado válido
+bajo `--strict-config`). **No hace falta copiar ningún perfil a `$CODEX_HOME` para el default.**
 
 Para el caso **desatendido** (nadie aprueba en la TUI) existe un perfil **opcional** con
 restricciones MCP server-scoped (`codex-readonly.config.toml`). `-p <nombre>` **no** acepta una

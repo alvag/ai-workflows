@@ -20,11 +20,15 @@
 // markdown con backticks rompe el quoting del shell (misma regla que la rama `cli`).
 //
 // Contrato de salida (una línea JSON en stdout, SIEMPRE — nunca vacío):
-//   { transport: "orca-session", code, reportPath?, reason? }
+//   { transport: "orca-session", code, reportPath?, reason?, recovered? }
 //   code 0  → cosechado; `reportPath` es el informe. exit 0.
 //   code !=0 → el conductor DEGRADA a `cli` (lee `reason`). exit == code.
 //              4 = no se pudo crear/localizar la sesión propia (degradación limpia);
 //              2/3 = fallo de cosecha/contención; 2+usageError = error de invocación.
+//   recovered (presente cuando code!=0 y hubo sesión que abandonar) → cierre de la
+//              terminal demostrado. En rol write, `recovered:false` significa que NO
+//              se demostró que el secundario dejó de escribir: NO redespachar por cli
+//              sin intervención manual (contrato de `recover`, reference.md).
 // El conductor NO debe inferir éxito solo del exit code: debe leer `code`/`reportPath`
 // del JSON (y verificar que el informe exista) antes de darlo por cosechado.
 import fs from 'node:fs';

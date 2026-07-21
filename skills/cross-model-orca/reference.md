@@ -325,7 +325,11 @@ Orca **no cancela** un dispatch en curso (confirmado, ronda 2 #7 del plan): no h
 **Abandono ≠ redispatch.** Cuando el llamador va a **degradar a `cli`** (no a redespachar sobre la
 sesión), debe pasar `closeTerminal: true` aunque el rol sea read-only — es lo que hace el runner
 (`orca-session.mjs`): sin el cierre, la degradación deja una terminal zombie abierta "sin hacer
-nada" (observado en el caso real de Windows).
+nada" (observado en el caso real de Windows). El runner recupera/cierra ante **cualquier** fallo
+posterior al dispatch (no solo `code 4`: con `code 3` —deadline vencido— el secundario puede seguir
+trabajando) y propaga el cierre demostrado como `recovered` en su JSON de salida: en rol write,
+`recovered:false` = **no** redespachar por cli sin intervención manual (hallazgos del cross-review
+de Codex sobre esta saga).
 
 El parámetro `dispatch` no participa en la decisión de recuperación en sí (se acepta solo por
 simetría de interfaz con `awaitDone`/`createDispatch`, y por si el llamador quiere loguear qué

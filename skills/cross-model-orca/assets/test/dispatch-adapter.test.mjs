@@ -235,6 +235,35 @@ test('locateCodexRollout: un solo candidato en la ventana -> lo devuelve', () =>
   assert.equal(located.sessionId, 'sess-1');
 });
 
+test('locateCodexRollout: cwd Windows con backslashes matchea pese al escape JSON del rollout (regresión)', () => {
+  // Hallazgo ALTA del cross-review de Codex: matchField devolvía la forma ESCAPADA del string
+  // JSON (`C:\\repos\\wt` literal) que nunca coincide con el worktree real (`C:\repos\wt`) →
+  // en Windows el locator daría 0 candidatos SIEMPRE y el transporte degradaría a cli en toda
+  // corrida. writeRollout usa JSON.stringify (escapa igual que el rollout real de Codex).
+  const sessionsRoot = mkTmpDir('cmo-sessions-win-');
+  writeRollout(sessionsRoot, 'rollout-2026-07-21T00-00-00-sess-w.jsonl', {
+    cwd: 'C:\\repos\\payin-backoffice',
+    sessionId: 'sess-w',
+  });
+
+  const located = locateCodexRollout({ sessionsRoot, cwd: 'C:\\repos\\payin-backoffice', afterMs: 0 });
+  assert.notEqual(located, null);
+  assert.equal(located.sessionId, 'sess-w');
+});
+
+test('locateCodexRollout (windows:true): la comparación de cwd es case-insensitive', () => {
+  // El filesystem de Windows es case-insensitive: el rollout puede registrar `c:\...` cuando el
+  // conductor conoce el worktree como `C:\...`. Con windows:true deben matchear igual.
+  const sessionsRoot = mkTmpDir('cmo-sessions-case-');
+  writeRollout(sessionsRoot, 'rollout-2026-07-21T00-00-01-sess-c.jsonl', {
+    cwd: 'c:\\repos\\wt',
+    sessionId: 'sess-c',
+  });
+
+  assert.notEqual(locateCodexRollout({ sessionsRoot, cwd: 'C:\\Repos\\WT', afterMs: 0, windows: true }), null);
+  assert.equal(locateCodexRollout({ sessionsRoot, cwd: 'C:\\Repos\\WT', afterMs: 0, windows: false }), null);
+});
+
 test('locateCodexRollout: dos candidatos en la ventana -> null (ambiguo)', () => {
   const sessionsRoot = mkTmpDir('cmo-sessions-');
   writeRollout(sessionsRoot, 'rollout-a.jsonl', { cwd: '/repo/worktree-a', sessionId: 'sess-1' });

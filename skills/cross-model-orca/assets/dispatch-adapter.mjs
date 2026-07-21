@@ -281,7 +281,17 @@ function listRolloutFiles(rootDir) {
 
 function matchField(line, key) {
   const match = line.match(new RegExp(`"${key}":"((?:[^"\\\\]|\\\\.)*)"`));
-  return match ? match[1] : null;
+  if (!match) return null;
+  // Des-escapar el string JSON capturado (hallazgo del cross-review de Codex, severidad ALTA):
+  // el regex captura la forma ESCAPADA — en Windows, un cwd real `C:\repos\wt` viaja en el
+  // rollout como `C:\\repos\\wt`, que NUNCA coincide con el worktree al comparar → el locator
+  // daría 0 candidatos siempre y el transporte degradaría en todo Windows. JSON.parse de la
+  // captura re-envuelta devuelve el valor real; si el fragmento no parsea, null (best-effort).
+  try {
+    return JSON.parse(`"${match[1]}"`);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -328,9 +338,13 @@ function readRolloutHeadMeta(filePath) {
  * @param {string} params.sessionsRoot `<configDir('codex')>/sessions`.
  * @param {string} params.cwd
  * @param {number} params.afterMs
+ * @param {boolean} [params.windows] default `isWindows()`: compara `cwd` case-insensitive
+ *   (el filesystem de Windows lo es; el rollout puede registrar `c:\...` vs `C:\...`).
  * @returns {{ path: string, sessionId: string }|null}
  */
-export function locateCodexRollout({ sessionsRoot, cwd, afterMs }) {
+export function locateCodexRollout({ sessionsRoot, cwd, afterMs, windows = isWindows() }) {
+  const normalizeCwd = (p) => (windows ? p.toLowerCase() : p);
+  const wantedCwd = normalizeCwd(cwd);
   const candidates = [];
   for (const filePath of listRolloutFiles(sessionsRoot)) {
     let stat;
@@ -343,7 +357,7 @@ export function locateCodexRollout({ sessionsRoot, cwd, afterMs }) {
     const meta = readRolloutHeadMeta(filePath);
     if (!meta) continue;
     if (meta.source !== 'cli' || meta.originator !== 'codex-tui') continue;
-    if (meta.cwd !== cwd) continue;
+    if (normalizeCwd(meta.cwd) !== wantedCwd) continue;
     candidates.push({ path: filePath, sessionId: meta.sessionId });
   }
   if (candidates.length !== 1) return null;

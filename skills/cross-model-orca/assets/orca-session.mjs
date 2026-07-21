@@ -24,15 +24,20 @@ export const DEFAULT_DEADLINE_MS = 240_000;
  * `closeTerminal: true` explícito aunque el rol sea read-only: el runner degrada a
  * `cli` y abandona la sesión — no va a redespachar sobre ella —, y sin el cierre la
  * degradación deja una terminal zombie abierta "sin hacer nada" (observado en el
- * caso real de Windows). Nunca lanza: la degradación procede aunque falle.
+ * caso real de Windows). Nunca lanza: la degradación procede aunque falle, pero el
+ * resultado del cierre SÍ se devuelve — un `false` en rol write significa que no se
+ * demostró que el secundario dejó de escribir (ver `recovered` en el contrato del
+ * runner; hallazgo del cross-review de Codex).
  * @param {object} session
  * @param {(args: string[]) => { stdout: string, code: number }} [orcaRunner]
+ * @returns {boolean} cierre/recuperación demostrados.
  */
 function tryRecover(session, orcaRunner) {
   try {
-    recover({ session, dispatch: null, closeTerminal: true, orcaRunner });
+    return recover({ session, dispatch: null, closeTerminal: true, orcaRunner }).recovered;
   } catch {
     // best-effort: si no se pudo recuperar, igual degradamos a cli.
+    return false;
   }
 }
 
@@ -89,19 +94,27 @@ export async function runOrcaSession({
   try {
     dispatch = createDispatch({ session, spec, root, bootTimeoutMs, orcaRunner });
   } catch (err) {
-    tryRecover(session, orcaRunner);
+    const recovered = tryRecover(session, orcaRunner);
     return {
       transport: 'orca-session',
       code: 4,
+      recovered,
       reason: `no se pudo despachar la tarea (${err && err.message}): degradar a cli`,
     };
   }
 
   // 3. Esperar el fin del turno y cosechar por nonce del transcript propio.
   const res = await awaitDone({ session, dispatch, reportPath, root, deadlineMs, orcaRunner, now, sleep });
-  if (res.code === 4) {
-    // Rollout de Codex no localizable/ambiguo: recuperar antes de degradar.
-    tryRecover(session, orcaRunner);
+  if (res.code !== 0) {
+    // TODO fallo (no solo code 4): recuperar/cerrar antes de degradar. Hallazgo del
+    // cross-review de Codex: con code 3 (deadline vencido esperando el nonce) el
+    // secundario puede seguir TRABAJANDO — degradar a cli sin interrumpirlo dejaría
+    // un doble escritor en rol write (y una terminal zombie en read-only). `recovered`
+    // viaja en el resultado: en rol write, `recovered:false` significa que el cierre
+    // NO se demostró y la skill llamadora NO debe redespachar por cli sin intervención
+    // manual (mismo contrato que `recover`, ver reference.md → "Recuperación").
+    const recovered = tryRecover(session, orcaRunner);
+    return { transport: 'orca-session', recovered, ...res };
   }
   return { transport: 'orca-session', ...res };
 }

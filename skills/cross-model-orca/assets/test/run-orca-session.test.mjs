@@ -93,6 +93,53 @@ test('degrada a cli (code 4) y recupera cuando createDispatch falla en el boot-w
   // ...y se CERRÓ la terminal abandonada (sin cierre, la degradación deja una terminal
   // zombie abierta "sin hacer nada" — observado en el caso real de Windows).
   assert.ok(calls.includes('terminal close'));
+  // El cierre demostrado viaja en el resultado (contrato de recover).
+  assert.equal(res.recovered, true);
+});
+
+test('degrada con recuperación ante code 3 (deadline vencido): interrumpe y cierra al secundario aún vivo', async () => {
+  // Hallazgo del cross-review de Codex: el runner solo recuperaba ante code 4. Con code 3
+  // (deadline vencido esperando el nonce) el secundario puede seguir TRABAJANDO — degradar a
+  // cli sin interrumpirlo deja un doble escritor en rol write (y una terminal zombie en
+  // read-only). El transcript de esta sesión Claude nunca aparece → harvest devuelve code 3.
+  const stateDir = mkTmpDir('cmo-run-t3-');
+  const root = mkTmpDir('cmo-run-root3-');
+  const claudeHome = mkTmpDir('cmo-claude-home-');
+  const calls = [];
+  const orcaRunner = (args) => {
+    const verb = `${args[0]} ${args[1]}`;
+    calls.push(verb);
+    if (verb === 'terminal create') return okEnvelope({ terminal: { handle: 'term-3' } });
+    if (verb === 'orchestration task-create') return okEnvelope({ task: { id: 'task_3' } });
+    if (verb === 'orchestration dispatch') return okEnvelope({ dispatch: { id: 'ctx_3' }, injected: true });
+    // terminal wait (boot e idle de recover), terminal send (nudge + interrupt), terminal close.
+    return okEnvelope({ close: { ptyKilled: true } });
+  };
+
+  const prevClaudeDir = process.env.CLAUDE_CONFIG_DIR;
+  process.env.CLAUDE_CONFIG_DIR = claudeHome;
+  try {
+    const res = await runOrcaSession({
+      family: 'claude',
+      role: 'read-only',
+      mode: 'unattended',
+      worktree: '/tmp/wt3',
+      spec: 'tarea',
+      reportPath: 'findings-claude.md',
+      root,
+      deadlineMs: 150, // vence rápido: el transcript nunca aparece.
+      orcaRunner,
+      stateDir,
+    });
+
+    assert.equal(res.code, 3);
+    assert.equal(res.recovered, true);
+    // Se interrumpió y cerró la sesión abandonada pese a NO ser code 4.
+    assert.ok(calls.includes('terminal close'));
+  } finally {
+    if (prevClaudeDir === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+    else process.env.CLAUDE_CONFIG_DIR = prevClaudeDir;
+  }
 });
 
 // El entrypoint CLI es guardless: corre `main()` SIEMPRE al ejecutarse, sin importar por qué
