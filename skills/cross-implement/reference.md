@@ -61,17 +61,33 @@ Dos reglas invariantes (además de las del `SKILL.md`):
 
 ### Vía W-B — Codex implementador (autor Claude)
 
-- **Lanzamiento** (sesión fresca; captura del thread id igual que la Vía B de cross-review):
+- **Lanzamiento** (sesión fresca; captura del thread id igual que la Vía B de cross-review). El
+  prelude `MCP_OFF` apaga por override dinámico los MCP del `config.toml` vigente (mismo prelude
+  y racional que la Vía B de cross-review: el implementador no necesita MCPs — escribe con
+  shell/archivos dentro del sandbox — y apagarlos ahorra ~la mitad del boot; config ilegible →
+  sin overrides, fail-open):
   ```bash
-  codex exec -s workspace-write -C <working_dir> --skip-git-repo-check --json \
+  CODEX_CFG="${CODEX_HOME:-$HOME/.codex}/config.toml"
+  # ARRAY, no string: zsh no splitea una variable sin comillas (el string entero llegaba como UN
+  # argumento y Codex abortaba); la asignación de array splitea el $() en bash Y zsh:
+  MCP_OFF=( $(sed -n 's/^[[:space:]]*\[mcp_servers\.\([A-Za-z0-9_-]*\)[].].*/\1/p' "$CODEX_CFG" 2>/dev/null \
+    | sort -u | sed 's/.*/-c mcp_servers.&.enabled=false/') )
+  codex exec "${MCP_OFF[@]}" -s workspace-write -C <working_dir> --skip-git-repo-check --json \
     --output-last-message <scratch>/report.txt - < <scratch>/prompt.txt \
     > <scratch>/thread.jsonl 2> <scratch>/impl.err.txt
   grep -m1 -o '"thread_id":"[^"]*"' <scratch>/thread.jsonl | cut -d'"' -f4 > <scratch>/session.txt
   ```
-  En **PowerShell**:
+  En **PowerShell** (arreglo `$McpOff` construido igual que en la Vía B de cross-review):
   ```powershell
+  $CodexCfg = Join-Path $(if ($env:CODEX_HOME) { $env:CODEX_HOME } else { "$HOME\.codex" }) 'config.toml'
+  $McpOff = @()
+  if (Test-Path $CodexCfg) {
+    Select-String -Path $CodexCfg -Pattern '^\s*\[mcp_servers\.([A-Za-z0-9_-]+)[\].]' |
+      ForEach-Object { $_.Matches[0].Groups[1].Value } | Sort-Object -Unique |
+      ForEach-Object { $McpOff += @('-c', "mcp_servers.$_.enabled=false") }
+  }
   Get-Content -Raw <scratch>\prompt.txt |
-    codex exec -s workspace-write -C <working_dir> --skip-git-repo-check --json `
+    codex exec @McpOff -s workspace-write -C <working_dir> --skip-git-repo-check --json `
       --output-last-message <scratch>\report.txt - > <scratch>\thread.jsonl 2> <scratch>\impl.err.txt
   (Select-String -Path <scratch>\thread.jsonl -Pattern '"thread_id":"([^"]+)"' |
     Select-Object -First 1).Matches.Groups[1].Value > <scratch>\session.txt
@@ -79,11 +95,12 @@ Dos reglas invariantes (además de las del `SKILL.md`):
 - `-s workspace-write` limita las escrituras al `working_dir` **más `/tmp`** (por diseño del
   sandbox). Caveat: si el repo objetivo vive bajo `/tmp`, el borde efectivo es más laxo.
 - **Fix round** (resume del MISMO thread; el override de sandbox es **obligatorio** — el modo de
-  la sesión original no es garantía al reanudar, ver `cross-review/reference.md` → Vía B):
+  la sesión original no es garantía al reanudar, ver `cross-review/reference.md` → Vía B). El
+  resume arranca un proceso nuevo (vuelve a bootear MCPs): lleva el mismo prelude `MCP_OFF`:
   ```bash
   SESSION_ID=$(cat <scratch>/session.txt)
   echo "resume → ${SESSION_ID:?vacío}"   # id vacío = sesión fresca silenciosa; cortar acá
-  codex exec resume "$SESSION_ID" -c sandbox_mode="workspace-write" --skip-git-repo-check --json \
+  codex exec resume "$SESSION_ID" "${MCP_OFF[@]}" -c sandbox_mode="workspace-write" --skip-git-repo-check --json \
     --output-last-message <scratch>/report.txt - < <scratch>/fix-rN.txt \
     > <scratch>/thread-fix-rN.jsonl 2> <scratch>/impl.err.txt
   ```

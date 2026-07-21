@@ -16,6 +16,7 @@ import {
   awaitDone,
   recover,
   buildLaunchCommand,
+  listCodexConfigMcpServers,
   locateCodexRollout,
   resolveCodexTranscript,
 } from '../dispatch-adapter.mjs';
@@ -148,8 +149,77 @@ test('buildLaunchCommand (codex): sandbox/approval varían por role+mode, featur
   assert.equal(writeUnattended, 'codex -c features.apps=false -s workspace-write -a never --disable hooks');
 });
 
+test('buildLaunchCommand (codex): disableMcpServers agrega un override bare por server, en AMBOS roles (MCP off dinámico)', () => {
+  // Motivación doble: latencia (los MCP dominan el boot de la TUI; en Windows llegaron a
+  // colgarlo en "MCP startup incomplete") y que el secundario no los necesita — todo su
+  // contexto viaja en el prompt. Verificado en vivo (Codex 0.144.6): funciona el segmento
+  // bare (`mcp_servers.engram.enabled=false`); la variante quoted rompe la carga del config.
+  const readOnly = buildLaunchCommand({
+    family: 'codex',
+    role: 'read-only',
+    mode: 'unattended',
+    disableMcpServers: ['engram', 'MongoDB-DEV'],
+  });
+  assert.equal(
+    readOnly,
+    'codex -c features.apps=false -c mcp_servers.engram.enabled=false -c mcp_servers.MongoDB-DEV.enabled=false -s read-only -a never --disable hooks'
+  );
+
+  // A diferencia de la versión histórica (solo read-only), el rol write también apaga MCP:
+  // el implementador escribe con shell/archivos dentro del sandbox, no con tools MCP.
+  const write = buildLaunchCommand({
+    family: 'codex',
+    role: 'write',
+    mode: 'attended',
+    disableMcpServers: ['engram'],
+  });
+  assert.equal(
+    write,
+    'codex -c features.apps=false -c mcp_servers.engram.enabled=false -s workspace-write -a on-request --disable hooks'
+  );
+});
+
 test('buildLaunchCommand: familia desconocida lanza Error', () => {
   assert.throws(() => buildLaunchCommand({ family: 'gpt', role: 'read-only', mode: 'attended' }), /Error/);
+});
+
+// ---------------------------------------------------------------------------
+// listCodexConfigMcpServers: enumeración best-effort desde config.toml
+// ---------------------------------------------------------------------------
+
+test('listCodexConfigMcpServers: enumera secciones [mcp_servers.*] bare de config.toml, dedup por subtablas, salta quoted', async () => {
+  // Fuente = config.toml, NO `codex mcp list --json`: esa lista agrega servers que no viven
+  // en el config (p. ej. sites-design-picker, gestionado por la app) y deshabilitar uno de
+  // esos por -c crea una entrada sin transporte → el boot entero de Codex aborta ("Error
+  // loading config.toml: invalid transport"). Regresión real observada en vivo en el E2E.
+  const codexHome = mkTmpDir('cmo-codex-cfg-');
+  fs.writeFileSync(
+    path.join(codexHome, 'config.toml'),
+    [
+      'model = "gpt-5.5"',
+      '[mcp_servers.engram]',
+      'command = "engram"',
+      '[mcp_servers.chrome-devtools]',
+      'command = "npx"',
+      '[mcp_servers.chrome-devtools.tools.click]', // subtabla: NO duplica el nombre.
+      'enabled = true',
+      '[mcp_servers."weird.name"]', // quoted (no-overrideable por -c): se salta.
+      'command = "x"',
+      '[other_section]',
+      'foo = "bar"',
+    ].join('\n')
+  );
+
+  await withEnv({ CODEX_HOME: codexHome }, () => {
+    assert.deepEqual(listCodexConfigMcpServers(), ['engram', 'chrome-devtools']);
+  });
+});
+
+test('listCodexConfigMcpServers: config.toml ausente -> [] (best-effort, launch sin overrides)', async () => {
+  const codexHome = mkTmpDir('cmo-codex-nocfg-');
+  await withEnv({ CODEX_HOME: codexHome }, () => {
+    assert.deepEqual(listCodexConfigMcpServers(), []);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -320,7 +390,9 @@ test('createOwnedSession (codex): NO intenta localizar el rollout todavía -> re
   assert.equal(entries[0].transcriptPath, null);
 });
 
-test('createOwnedSession (codex, read-only): conserva los MCP configurados', async () => {
+test('createOwnedSession (codex): apaga por override los MCP enumerados del config.toml vigente', async () => {
+  // La enumeración corre en el momento del lanzamiento: lo que el conductor tenga HOY en
+  // config.toml (agregado o quitado ayer) es exactamente lo que se apaga — sin lista fija.
   const stateDir = mkTmpDir('cmo-state-');
   const codexHome = mkTmpDir('cmo-codex-cfg-');
   fs.writeFileSync(
@@ -348,7 +420,8 @@ test('createOwnedSession (codex, read-only): conserva los MCP configurados', asy
   );
 
   assert.notEqual(result, null);
-  assert.doesNotMatch(capturedCommand, /mcp_servers\./);
+  assert.match(capturedCommand, /-c mcp_servers\.engram\.enabled=false/);
+  assert.match(capturedCommand, /-c mcp_servers\.figma\.enabled=false/);
 });
 
 // ---------------------------------------------------------------------------

@@ -149,11 +149,16 @@ Sin las tres activas, no se despacha:
      claude-readonly.mcp.json` vacío con `--disallowedTools "mcp__*"` y `--permission-mode dontAsk`.
      El config vacío evita heredar servidores configurados; el deny explícito también cubre tools
      publicadas por plugins/connectors y `dontAsk` impide que una negación deje la TUI esperando.
-   - **Codex → conserva los MCP configurados en ambos roles.** El adaptador no enumera
-     `config.toml` ni agrega overrides `mcp_servers.*.enabled=false`. En read-only, `-s read-only`
-     limita las escrituras de shell/filesystem, pero **no** promete aislar efectos externos de las
-     tools MCP. Esta política evita complejidad parcial que no cubría MCP de plugins y podía volver
-     frágil el boot. `-c features.apps=false` y `--disable hooks` siguen activos.
+   - **Codex → MCP OFF por override dinámico, en ambos roles.** El adaptador enumera
+     `[mcp_servers.*]` del `config.toml` vigente (`configDir('codex')`, respeta `CODEX_HOME`) **al
+     momento de lanzar** y agrega un `-c mcp_servers.<name>.enabled=false` por server — la lista
+     nunca se fija: altas/bajas en el config quedan cubiertas en la próxima sesión. Motivo doble:
+     latencia (los MCP dominan el boot de la TUI — medido ~2x — y en Windows llegaron a colgarlo
+     en "MCP startup incomplete") y que el secundario no los necesita: todo su contexto viaja en
+     el prompt del dispatch. Cobertura parcial asumida: MCP publicados por plugins y servers con
+     nombre quoted no son overrideables y arrancan igual (costo menor). Best-effort: config
+     ilegible → sin overrides, boot completo. `-c features.apps=false` y `--disable hooks` siguen
+     activos.
    - **write Claude → vigilancia manual (P4).** El secundario ve los MCP del entorno y el humano
      aprueba/rechaza en la TUI cualquier acción sensible; no hay inventario ni allowlist que
      mantener. Ver `assets/launch/mcp-inventory.md`.
@@ -163,7 +168,7 @@ Sin las tres activas, no se despacha:
 El detalle verificado de cada capa (perfiles concretos, validación real contra el CLI, namespacing
 de tools MCP por cómo está instalado el servidor) vive en `assets/launch/profiles.md` y
 `assets/launch/mcp-inventory.md`. El cierre MCP **fail-closed** corresponde a Claude read-only;
-Codex conserva la configuración MCP del entorno.
+en Codex el apagado es best-effort por override dinámico (fail-open ante config ilegible).
 
 ## 4. Matriz de lanzamiento
 
@@ -173,8 +178,8 @@ Resumen familia × rol × modo — comandos completos POSIX+PowerShell en `asset
 |---|---|---|---|
 | Claude | read-only | `--tools "Read,Grep,Glob"` + `--disallowedTools "mcp__*"` + `--permission-mode dontAsk` + config MCP estricto vacío | mismo comando (sin superficie de ejecución ni prompts) |
 | Claude | write (cross-implement) | `--permission-mode manual` | `--permission-mode dontAsk` (`acceptEdits` solo en worktree hermano aislado) |
-| Codex | read-only | `-c features.apps=false -s read-only -a untrusted --disable hooks` | `-a never` en vez de `untrusted` |
-| Codex | write (cross-implement) | `-c features.apps=false -s workspace-write -a on-request --disable hooks` | `-a never` en vez de `on-request` |
+| Codex | read-only | `-c features.apps=false` + overrides MCP-off dinámicos + `-s read-only -a untrusted --disable hooks` | `-a never` en vez de `untrusted` |
+| Codex | write (cross-implement) | `-c features.apps=false` + overrides MCP-off dinámicos + `-s workspace-write -a on-request --disable hooks` | `-a never` en vez de `on-request` |
 
 No copies los comandos completos desde acá: `assets/launch/profiles.md` tiene cada celda con su
 bloque POSIX y PowerShell verificado. Los perfiles Codex son un endurecimiento **opcional** y no

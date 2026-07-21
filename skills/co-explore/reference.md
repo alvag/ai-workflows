@@ -437,9 +437,18 @@ Si el explorador de la otra familia no está disponible → `UNAVAILABLE` (regla
 al conductor (a diferencia de cross-review, que en Claude Code prefiere el camino sync):
 
 ```bash
-# POSIX — el prompt ya está escrito a archivo con la tool Write (nunca inline, ni echo/heredoc):
+# POSIX — el prompt ya está escrito a archivo con la tool Write (nunca inline, ni echo/heredoc).
+# MCP off dinámico: enumera los [mcp_servers.*] del config.toml VIGENTE (altas/bajas de servers
+# quedan cubiertas solas; config ausente/ilegible → sin overrides, boot completo). El explorador
+# no necesita MCPs (todo su contexto viaja en el prompt) y apagarlos ahorra ~la mitad del boot:
+CODEX_CFG="${CODEX_HOME:-$HOME/.codex}/config.toml"
+# ARRAY, no string: zsh no hace word splitting de una variable sin comillas (verificado en vivo:
+# el string entero llegaba como UN argumento y Codex abortaba con "invalid type"); la asignación
+# de array sí splitea el $() en bash Y zsh, y "${MCP_OFF[@]}" expande un word por elemento:
+MCP_OFF=( $(sed -n 's/^[[:space:]]*\[mcp_servers\.\([A-Za-z0-9_-]*\)[].].*/\1/p' "$CODEX_CFG" 2>/dev/null \
+  | sort -u | sed 's/.*/-c mcp_servers.&.enabled=false/') )
 mkdir -p co-explore/scratch
-codex exec -s read-only -C <working_dir> --skip-git-repo-check --json \
+codex exec "${MCP_OFF[@]}" -s read-only -C <working_dir> --skip-git-repo-check --json \
     --output-last-message co-explore/scratch/explorer.out \
     - < co-explore/scratch/prompt.txt \
     > co-explore/scratch/explorer-thread.jsonl \
@@ -448,13 +457,20 @@ PID=$!
 echo "$PID" > co-explore/scratch/explorer.pid
 ```
 ```powershell
-# PowerShell:
+# PowerShell (mismo prelude MCP-off, como arreglo de argumentos):
+$CodexCfg = Join-Path $(if ($env:CODEX_HOME) { $env:CODEX_HOME } else { "$HOME\.codex" }) 'config.toml'
+$McpOff = @()
+if (Test-Path $CodexCfg) {
+  Select-String -Path $CodexCfg -Pattern '^\s*\[mcp_servers\.([A-Za-z0-9_-]+)[\].]' |
+    ForEach-Object { $_.Matches[0].Groups[1].Value } | Sort-Object -Unique |
+    ForEach-Object { $McpOff += @('-c', "mcp_servers.$_.enabled=false") }
+}
 New-Item -ItemType Directory -Force -Path co-explore\scratch | Out-Null
 $proc = Start-Process -FilePath codex -NoNewWindow -PassThru `
   -RedirectStandardInput  co-explore\scratch\prompt.txt `
   -RedirectStandardOutput co-explore\scratch\explorer-thread.jsonl `
   -RedirectStandardError  co-explore\scratch\explorer.err `
-  -ArgumentList 'exec','-s','read-only','-C','<working_dir>','--skip-git-repo-check','--json','--output-last-message','co-explore\scratch\explorer.out'
+  -ArgumentList (@('exec') + $McpOff + @('-s','read-only','-C','<working_dir>','--skip-git-repo-check','--json','--output-last-message','co-explore\scratch\explorer.out'))
 $proc.Id | Out-File co-explore\scratch\explorer.pid
 ```
 
@@ -566,20 +582,22 @@ solo cambia el transporte, no el invariante de la regla 1 del `SKILL.md`.
 1. **Crear la sesión fresca dedicada.** `createOwnedSession({ family, role: 'read-only', mode,
    worktree, ... })` (`cross-model-orca/assets/dispatch-adapter.mjs`), con el perfil read-only de
    `cross-model-orca/assets/launch/profiles.md` según familia:
-   - Codex: `codex -c features.apps=false -s read-only -a untrusted --disable hooks` (atendido) —
-     la garantía read-only es el sandbox `-s read-only`, no un toolset acotado. El adaptador
-     conserva los MCP configurados y no agrega overrides `mcp_servers.*.enabled=false`.
+   - Codex: `codex -c features.apps=false` + overrides MCP-off dinámicos + `-s read-only
+     -a untrusted --disable hooks` (atendido) — la garantía read-only es el sandbox `-s
+     read-only`, no un toolset acotado. El adaptador enumera los `[mcp_servers.*]` del
+     `config.toml` vigente al lanzar y agrega un `-c mcp_servers.<name>.enabled=false` por
+     server (best-effort; ver `cross-model-orca/assets/launch/profiles.md` → "MCP en Codex").
    - Claude: `--tools "Read,Grep,Glob"` + `--settings
      cross-model-orca/assets/launch/claude-readonly.settings.json` (`disableAllHooks: true`) +
      `--strict-mcp-config --mcp-config claude-readonly.mcp.json` (vacío) + `--session-id <uuid>`
      — el toolset cerrado (sin Bash) es lo que da read-only duro; Claude no tiene una bandera de
      sandbox equivalente a `-s read-only`.
 
-   **La política MCP es asimétrica** (ver `cross-model-orca/SKILL.md` → sección 3): Claude
-   read-only usa MCP off porque `--tools` no cierra las tools MCP; Codex conserva los MCP del
-   entorno. En Codex, `-s read-only` limita shell/filesystem, pero no garantiza que una tool MCP
-   externa sea read-only. Se acepta ese tradeoff para evitar una desactivación dinámica parcial y
-   frágil.
+   **Ambas familias lanzan con MCP off** (ver `cross-model-orca/SKILL.md` → sección 3), por
+   mecanismos distintos: Claude read-only usa el deny fail-closed (`--tools` no cierra las tools
+   MCP); Codex usa el override dinámico best-effort (los MCP de plugins o con nombre quoted no
+   son overrideables y arrancan igual). Además de la latencia de boot, apagar MCP en Codex
+   reduce la superficie externa que `-s read-only` no aísla.
 
 2. **Armar y despachar el mismo prompt.** El prompt de exploración es el mismo que usa la rama
    `cli` — "Prompt de exploración" arriba, una variante por `mode`

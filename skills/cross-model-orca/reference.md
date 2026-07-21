@@ -487,7 +487,7 @@ El modelo completo y la nota de namespacing están en `assets/launch/mcp-invento
 - `assets/launch/profiles.md` — matriz de lanzamiento completa (POSIX+PowerShell) por
   familia×rol×modo.
 - `assets/launch/mcp-inventory.md` — modelo MCP asimétrico: Claude read-only fail-closed, Codex
-  conserva MCP, y namespacing real de tools.
+  MCP-off por override dinámico (best-effort), y namespacing real de tools.
 - `assets/launch/claude-readonly.mcp.json` — config vacío obligatorio del perfil read-only;
   el deny `mcp__*` cubre además plugins/connectors.
 - `spikes/RESULTS.md` — contratos de locator y señal con evidencia (Task 0.1/0.2/0.3).

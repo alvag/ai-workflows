@@ -175,9 +175,17 @@ comportamiento del sandbox en resume y del id vacío/inválido, end-to-end en 0.
 2026-07-09); pueden variar por versión, así que ante la duda confirmar con `codex exec --help`.
 Descubrir por capacidad, no hardcodear ciegamente.
 
-- Ronda 1 (prompt escrito antes a archivo — ver regla 2 de "Invocar al revisor"):
+- Ronda 1 (prompt escrito antes a archivo — ver regla 2 de "Invocar al revisor"). El prelude
+  `MCP_OFF` apaga por override dinámico los MCP del `config.toml` vigente — el revisor no los
+  necesita (su contexto viaja en el prompt) y apagarlos ahorra ~la mitad del boot; config
+  ausente/ilegible → sin overrides, boot completo (fail-open):
   ```bash
-  codex exec -s read-only -C <working_dir> --skip-git-repo-check --json \
+  CODEX_CFG="${CODEX_HOME:-$HOME/.codex}/config.toml"
+  # ARRAY, no string: zsh no splitea una variable sin comillas (el string entero llegaba como UN
+  # argumento y Codex abortaba); la asignación de array splitea el $() en bash Y zsh:
+  MCP_OFF=( $(sed -n 's/^[[:space:]]*\[mcp_servers\.\([A-Za-z0-9_-]*\)[].].*/\1/p' "$CODEX_CFG" 2>/dev/null \
+    | sort -u | sed 's/.*/-c mcp_servers.&.enabled=false/') )
+  codex exec "${MCP_OFF[@]}" -s read-only -C <working_dir> --skip-git-repo-check --json \
     --output-last-message <ruta/al/veredicto.txt> - < <ruta/al/prompt-r1.txt> \
     > <ruta/al/thread-r1.jsonl>
   # Capturar el thread id del evento thread.started (determinístico, no "buscarlo en la salida"):
@@ -186,8 +194,15 @@ Descubrir por capacidad, no hardcodear ciegamente.
   ```
   En **PowerShell** (el prompt llega por un pipe en vez de `<`):
   ```powershell
+  $CodexCfg = Join-Path $(if ($env:CODEX_HOME) { $env:CODEX_HOME } else { "$HOME\.codex" }) 'config.toml'
+  $McpOff = @()
+  if (Test-Path $CodexCfg) {
+    Select-String -Path $CodexCfg -Pattern '^\s*\[mcp_servers\.([A-Za-z0-9_-]+)[\].]' |
+      ForEach-Object { $_.Matches[0].Groups[1].Value } | Sort-Object -Unique |
+      ForEach-Object { $McpOff += @('-c', "mcp_servers.$_.enabled=false") }
+  }
   Get-Content -Raw <ruta\al\prompt-r1.txt> |
-    codex exec -s read-only -C <working_dir> --skip-git-repo-check --json `
+    codex exec @McpOff -s read-only -C <working_dir> --skip-git-repo-check --json `
       --output-last-message <ruta\al\veredicto.txt> - > <ruta\al\thread-r1.jsonl>
   (Select-String -Path <ruta\al\thread-r1.jsonl> -Pattern '"thread_id":"([^"]+)"' |
     Select-Object -First 1).Matches.Groups[1].Value > <ruta\al\session.txt>
@@ -207,10 +222,12 @@ Descubrir por capacidad, no hardcodear ciegamente.
   garantizado** entre versiones ni configs (grill-me-codex reporta que hereda `config.toml`,
   posiblemente `danger-full-access`). Por eso el resume lleva SIEMPRE el override explícito
   `-c sandbox_mode="read-only"` — el read-only del revisor nunca depende de un default:
+  El resume arranca un proceso nuevo (vuelve a bootear MCPs): lleva el mismo prelude `MCP_OFF`
+  de la ronda 1.
   ```bash
   SESSION_ID=$(cat <ruta/al/session.txt>)
   echo "resume → ${SESSION_ID:?vacío}"   # eco visible + corte si quedó vacío (ver nota --last)
-  codex exec resume "$SESSION_ID" -c sandbox_mode="read-only" --skip-git-repo-check \
+  codex exec resume "$SESSION_ID" "${MCP_OFF[@]}" -c sandbox_mode="read-only" --skip-git-repo-check \
     --output-last-message <ruta/veredicto.txt> - < <ruta/al/delta-rN.txt>
   ```
   En **PowerShell**:
@@ -218,7 +235,7 @@ Descubrir por capacidad, no hardcodear ciegamente.
   $SessionId = (Get-Content <ruta\al\session.txt>).Trim()
   if (-not $SessionId) { throw 'session id vacío' }; "resume → $SessionId"
   Get-Content -Raw <ruta\al\delta-rN.txt> |
-    codex exec resume $SessionId -c sandbox_mode="read-only" --skip-git-repo-check `
+    codex exec resume $SessionId @McpOff -c sandbox_mode="read-only" --skip-git-repo-check `
       --output-last-message <ruta\veredicto.txt> -
   ```
   **`--last` es solo fallback** (si el thread id no se pudo capturar): filtra por cwd — elige la

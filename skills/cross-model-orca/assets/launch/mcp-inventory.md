@@ -1,7 +1,8 @@
 # MCP y el secundario — política por familia y rol
 
 > Modelo de control de MCP para las sesiones que lanza `cross-model-orca`. No mantiene un inventario
-> manual de tools: Claude read-only cierra el namespace MCP; Codex conserva los MCP configurados.
+> manual de tools: Claude read-only cierra el namespace MCP; Codex apaga por override dinámico los
+> MCP de su `config.toml` (enumeración al lanzar, nunca una lista fija).
 
 ## Claude read-only: deny global en ambos modos
 
@@ -16,12 +17,17 @@ Las garantías que **sí** son cero-config y no dependen de vigilancia:
 - **`disableAllHooks:true` / `--disable hooks`**: ninguna automatización local se dispara.
 - **Sandbox de Codex** (`-s read-only`): el proceso no escribe fuera de lectura.
 
-## Codex: MCP preservado en ambos roles
+## Codex: MCP off por override dinámico en ambos roles
 
-El adaptador no enumera `config.toml` ni agrega overrides `mcp_servers.*.enabled=false`. Codex
-conserva los MCP configurados tanto en read-only como en write. `-s read-only` limita las escrituras
-de shell/filesystem, pero no garantiza que una herramienta MCP externa sea read-only. Los perfiles
-server-scoped de `profiles.md` son un endurecimiento opcional, no parte del lanzamiento default.
+El adaptador enumera las secciones `[mcp_servers.*]` del `config.toml` vigente al momento de
+lanzar y agrega un `-c mcp_servers.<name>.enabled=false` por server (`listCodexConfigMcpServers`).
+Altas y bajas en el config quedan cubiertas en el próximo lanzamiento sin mantenimiento; config
+ilegible → sin overrides (fail-open). Motivo: latencia de boot (los MCP la dominan) y que el
+secundario no los necesita — su contexto viaja en el prompt. Cobertura parcial: MCP de plugins y
+servers con nombre quoted no son overrideables y arrancan igual. `-s read-only` limita las
+escrituras de shell/filesystem, pero no garantiza que una herramienta MCP externa sea read-only —
+apagar los MCP también reduce esa superficie. Los perfiles server-scoped de `profiles.md` siguen
+siendo un endurecimiento opcional, no parte del lanzamiento default.
 
 ## Write: el humano es el gate
 

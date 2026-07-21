@@ -142,6 +142,45 @@ const CLAUDE_SETTINGS_FILE = {
   write: 'claude-write.settings.json',
 };
 
+// Encabezados de sección `[mcp_servers.<name>]` (y subtablas `[mcp_servers.<name>.…]`) de
+// config.toml, con <name> "bare" — el único que el parser de `-c` de Codex acepta. Verificado
+// en vivo (0.144.6): `mcp_servers.engram.enabled=false` funciona; la variante quoted
+// `mcp_servers."x".enabled=false` ROMPE la carga del config. Un nombre quoted en el config no
+// matchea este patrón y se salta (tampoco sería overrideable).
+const CODEX_MCP_SECTION_RE = /^\s*\[mcp_servers\.([A-Za-z0-9_-]+)[.\]]/;
+
+/**
+ * Enumera los MCP servers declarados en el `config.toml` de Codex (`configDir('codex')`,
+ * que respeta `CODEX_HOME`) **al momento de lanzar** — la lista nunca se fija: agregar o
+ * quitar servers del config queda reflejado en el próximo lanzamiento sin mantenimiento.
+ * Es la fuente CORRECTA para armar overrides `-c mcp_servers.<name>.enabled=false`:
+ * enumerar por `codex mcp list --json` fue una regresión real — esa lista agrega servers
+ * que NO viven en config.toml (p. ej. `sites-design-picker`, gestionado por la app), y
+ * deshabilitar uno de esos por `-c` crea una entrada nueva sin transporte → "Error loading
+ * config.toml: invalid transport" → el boot entero de Codex aborta (observado en vivo en el
+ * E2E). Los servers fuera del config no se pueden apagar por override (quedan vivos: son
+ * builtins locales y rápidos); los del config —los npx/OAuth pesados que dominan el boot—
+ * son exactamente los que este listado cubre.
+ *
+ * Best-effort: config ausente/ilegible devuelve `[]` y el launch sale sin overrides
+ * (fail-open: se pierde la optimización de boot, nunca el lanzamiento).
+ * @returns {string[]} nombres únicos, en orden de aparición.
+ */
+export function listCodexConfigMcpServers() {
+  let content;
+  try {
+    content = fs.readFileSync(path.join(configDir('codex'), 'config.toml'), 'utf8');
+  } catch {
+    return [];
+  }
+  const names = new Set();
+  for (const line of content.split('\n')) {
+    const match = line.match(CODEX_MCP_SECTION_RE);
+    if (match) names.add(match[1]);
+  }
+  return [...names];
+}
+
 /**
  * Construye el comando de lanzamiento family+role+mode (ver `profiles.md`). No incluye el
  * prompt/work-order: la terminal se crea "en frío" y `createDispatch` inyecta la tarea después
@@ -157,13 +196,14 @@ const CLAUDE_SETTINGS_FILE = {
  * @param {'attended'|'unattended'} params.mode atendido/desatendido (ver `profiles.md`).
  * @param {string|null} params.sessionId uuid fijado para Claude; ignorado para Codex.
  * @param {string} params.installRoot raíz de instalación del skill (`resolveInstallRoot()`); solo se usa para Claude.
+ * @param {string[]} [params.disableMcpServers] nombres de MCP servers de Codex a deshabilitar por override (ambos roles; ver `listCodexConfigMcpServers`).
  * @returns {string}
  */
 function terminalAssetPath(installRoot, fileName) {
   return path.posix.join(installRoot.replaceAll('\\', '/'), 'launch', fileName);
 }
 
-export function buildLaunchCommand({ family, role, mode, sessionId, installRoot }) {
+export function buildLaunchCommand({ family, role, mode, sessionId, installRoot, disableMcpServers = [] }) {
   if (family === 'claude') {
     const settingsPath = terminalAssetPath(installRoot, CLAUDE_SETTINGS_FILE[role]);
     const parts = [`--settings "${settingsPath}"`];
@@ -193,9 +233,19 @@ export function buildLaunchCommand({ family, role, mode, sessionId, installRoot 
       role === 'read-only'
         ? mode === 'attended' ? 'untrusted' : 'never'
         : mode === 'attended' ? 'on-request' : 'never';
-    // Codex conserva los MCP del entorno en ambos roles. `-s read-only` limita las escrituras
-    // de shell al filesystem, pero no promete aislar efectos externos de herramientas MCP.
-    return `codex -c features.apps=false -s ${sandbox} -a ${approval} --disable hooks`;
+    // MCP off por override dinámico en AMBOS roles, un `-c mcp_servers.<name>.enabled=false`
+    // por server del config. Dos motivos: (1) latencia — los MCP dominan el boot de la TUI
+    // (medido en vivo: 13.1s→6.9s con 13 servers; en Windows llegaron a colgar el arranque en
+    // "MCP startup incomplete" y el primer turno nunca arrancaba, sin rollout que cosechar);
+    // (2) el secundario no los necesita: todo su contexto viaja en el prompt del dispatch, y
+    // `-s read-only` no aísla efectos externos de tools MCP — apagarlos da simetría con el
+    // read-only de Claude. No existe una forma global: `-c mcp_servers={}` NO vacía la lista
+    // (semántica de merge de TOML, verificado en vivo dos veces). Misma sintaxis en POSIX y
+    // PowerShell: no hay prefijo de variables de entorno que traducir ni comillas en los args.
+    const mcpOverrides = disableMcpServers
+      .map((name) => ` -c mcp_servers.${name}.enabled=false`)
+      .join('');
+    return `codex -c features.apps=false${mcpOverrides} -s ${sandbox} -a ${approval} --disable hooks`;
   }
 
   throw new Error(`Familia desconocida: "${family}". Los valores válidos son "codex" o "claude".`);
@@ -382,7 +432,10 @@ export function createOwnedSession({
   const claudeSessionId = family === 'claude' ? randomUUID() : null;
   const installRoot = family === 'claude' ? resolveInstallRoot() : null;
   const createdAtMs = now();
-  const command = buildLaunchCommand({ family, role, mode, sessionId: claudeSessionId, installRoot });
+  // Enumeración en el momento del lanzamiento (no una lista fija): refleja el config.toml
+  // actual — servers agregados/quitados quedan cubiertos en la próxima sesión sin tocar nada.
+  const disableMcpServers = family === 'codex' ? listCodexConfigMcpServers() : [];
+  const command = buildLaunchCommand({ family, role, mode, sessionId: claudeSessionId, installRoot, disableMcpServers });
 
   const createArgs = [
     'terminal',
