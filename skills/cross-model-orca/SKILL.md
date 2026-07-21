@@ -137,11 +137,10 @@ Sin las tres activas, no se despacha:
      tool MCP de **ejecución** (p. ej. la terminal del IDE del usuario) y correr comandos fuera del
      worktree — gatillado por el `worker_done` que le pide el preamble de `dispatch --inject`
      (hallazgo del E2E de Fase 7, gateado por aprobación manual pero fuera de lo esperado para un
-     read-only). Por eso el read-only se lanza con `--strict-mcp-config --mcp-config
-     claude-readonly.mcp.json` **vacío = cero MCP**: sin superficie de ejecución (solo Read/Grep/
-     Glob), y ni siquiera puede intentar el `worker_done`. Endurecimiento OPCIONAL: para habilitar un
-     MCP de lectura (p. ej. Jira read-only), declararlo entero en `claude-readonly.mcp.json` (con
-     `--strict-mcp-config` no se hereda nada del entorno).
+     read-only). Por eso el read-only combina `--strict-mcp-config --mcp-config
+     claude-readonly.mcp.json` vacío con `--disallowedTools "mcp__*"` y `--permission-mode dontAsk`.
+     El config vacío evita heredar servidores configurados; el deny explícito también cubre tools
+     publicadas por plugins/connectors y `dontAsk` impide que una negación deje la TUI esperando.
    - **read-only Codex → MCP OFF por override dinámico.** El adaptador enumera las secciones
      `[mcp_servers.*]` del `config.toml` de Codex y lanza con un `-c
      mcp_servers.<name>.enabled=false` por cada una. La fuente es el config.toml, **no** `codex
@@ -171,7 +170,7 @@ Resumen familia × rol × modo — comandos completos POSIX+PowerShell en `asset
 
 | Familia | Rol | Atendido | Desatendido |
 |---|---|---|---|
-| Claude | read-only | `--tools "Read,Grep,Glob"` + `--strict-mcp-config --mcp-config claude-readonly.mcp.json` (MCP off) + `--settings claude-readonly.settings.json` | mismo comando (toolset cerrado + MCP off ya excluyen todo prompt) |
+| Claude | read-only | `--tools "Read,Grep,Glob"` + `--disallowedTools "mcp__*"` + `--permission-mode dontAsk` + config MCP estricto vacío | mismo comando (sin superficie de ejecución ni prompts) |
 | Claude | write (cross-implement) | `--permission-mode manual` | `--permission-mode dontAsk` (`acceptEdits` solo en worktree hermano aislado) |
 | Codex | read-only | `-p cmo-readonly -s read-only -a untrusted --disable hooks` | `-a never` en vez de `untrusted` |
 | Codex | write (cross-implement) | `-p cmo-write -s workspace-write -a on-request --disable hooks` | `-a never` en vez de `on-request` |
@@ -208,11 +207,10 @@ excepciones.
 
 ## 7. P4 = vigilancia manual declarada
 
-v1 trata la aprobación de acciones sensibles como **vigilancia manual atendida**: no hay
-surfacing programático del `PermissionRequest` del secundario hacia el conductor. Si un `send` o
-una tool escala a aprobación durante el turno del secundario, se aprueba **a mano en la TUI** de
-esa sesión — es responsabilidad de quien está mirando la corrida, no algo que esta librería
-automatice.
+En perfiles **write atendidos**, v1 trata la aprobación de acciones sensibles como vigilancia
+manual: no hay surfacing programático del `PermissionRequest` hacia el conductor. Si una acción
+escala, se aprueba a mano en la TUI. Claude read-only no usa P4: su toolset y namespace MCP están
+cerrados y `dontAsk` rechaza cualquier desvío sin bloquear.
 
 ## 8. Degradación (fallback CLI)
 

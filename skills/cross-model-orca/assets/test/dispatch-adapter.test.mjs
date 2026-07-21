@@ -72,23 +72,23 @@ function errEnvelope(code, { exit = 1 } = {}) {
 // buildLaunchCommand: construcción del comando por family+role+mode
 // ---------------------------------------------------------------------------
 
-test('buildLaunchCommand (claude, read-only, POSIX): tools cerrado, MCP off (strict + config vacío), sin permission-mode, session-id fijado', () => {
+test('buildLaunchCommand (claude, read-only): tools cerrado, MCP denegado y dontAsk', () => {
   const cmd = buildLaunchCommand({
     family: 'claude',
     role: 'read-only',
     mode: 'attended',
     sessionId: 'uuid-123',
     installRoot: '/inst',
-    windows: false,
   });
-  assert.match(cmd, /^DISABLE_AUTOUPDATER=1 claude /);
+  assert.match(cmd, /^claude /);
   assert.match(cmd, /--tools "Read,Grep,Glob"/);
   // MCP off: read-only = sin superficie de ejecución (ni built-in Bash ni tool MCP del IDE).
   assert.match(cmd, /--strict-mcp-config/);
   assert.match(cmd, /--mcp-config "\/inst\/launch\/claude-readonly\.mcp\.json"/);
   assert.match(cmd, /--session-id "uuid-123"/);
   assert.match(cmd, /claude-readonly\.settings\.json/);
-  assert.doesNotMatch(cmd, /--permission-mode/);
+  assert.match(cmd, /--permission-mode dontAsk/);
+  assert.match(cmd, /--disallowedTools "mcp__\*"/);
 });
 
 test('buildLaunchCommand (claude, write): NO fuerza MCP off (el rol write puede usar MCP con gate por permission-mode)', () => {
@@ -98,32 +98,43 @@ test('buildLaunchCommand (claude, write): NO fuerza MCP off (el rol write puede 
     mode: 'attended',
     sessionId: 'uuid-w',
     installRoot: '/inst',
-    windows: false,
   });
   assert.doesNotMatch(cmd, /--strict-mcp-config/);
 });
 
-test('buildLaunchCommand (claude, write, atendido vs desatendido, PowerShell)', () => {
+test('buildLaunchCommand (claude, write, Windows/Git Bash): comando directo y paths POSIX', () => {
   const attended = buildLaunchCommand({
     family: 'claude',
     role: 'write',
     mode: 'attended',
     sessionId: 'uuid-1',
-    installRoot: '/inst',
-    windows: true,
+    installRoot: 'C:\\inst',
   });
   const unattended = buildLaunchCommand({
     family: 'claude',
     role: 'write',
     mode: 'unattended',
     sessionId: 'uuid-2',
-    installRoot: '/inst',
-    windows: true,
+    installRoot: 'C:\\inst',
   });
-  assert.match(attended, /^\$env:DISABLE_AUTOUPDATER = "1"; claude /);
+  assert.match(attended, /^claude /);
+  assert.doesNotMatch(attended, /DISABLE_AUTOUPDATER|\$env:/);
+  assert.doesNotMatch(attended, /\\/);
+  assert.match(attended, /--settings "C:\/inst\/launch\/claude-write\.settings\.json"/);
   assert.match(attended, /--permission-mode manual/);
   assert.match(unattended, /--permission-mode dontAsk/);
   assert.match(attended, /claude-write\.settings\.json/);
+});
+
+test('perfiles Claude deshabilitan el autoupdater sin depender del shell de la terminal', () => {
+  for (const file of ['claude-readonly.settings.json', 'claude-write.settings.json']) {
+    const settings = JSON.parse(fs.readFileSync(path.join(ASSETS_DIR, 'launch', file), 'utf8'));
+    assert.equal(settings.env?.DISABLE_AUTOUPDATER, '1');
+  }
+  const readOnly = JSON.parse(fs.readFileSync(path.join(ASSETS_DIR, 'launch', 'claude-readonly.settings.json'), 'utf8'));
+  assert.equal(readOnly.permissions?.defaultMode, 'dontAsk');
+  assert.deepEqual(readOnly.permissions?.allow, ['Read', 'Grep', 'Glob']);
+  assert.equal(readOnly.permissions?.deny?.includes('mcp__*'), true);
 });
 
 test('buildLaunchCommand (codex): sandbox/approval varían por role+mode, features.apps=false inline, sin -p ni variante PowerShell distinta', () => {
@@ -612,14 +623,19 @@ test('resolveCodexTranscript (claude): pass-through del transcriptPath ya resuel
 // createDispatch
 // ---------------------------------------------------------------------------
 
-test('createDispatch: parsea taskId/dispatchId, genera un nonce no vacío y persiste el registro', () => {
+test('createDispatch: espera evidencia del prompt renderizado antes de someter en Windows', async () => {
   const stateDir = mkTmpDir('cmo-state-');
   const session = { uid: 'sess-uid-1', terminalHandle: 'term_1', stateDir };
 
   const calls = [];
+  const sleeps = [];
+  let injectedNonce = null;
+  let readCalls = 0;
   const fakeOrcaRunner = (args) => {
     calls.push(args);
     if (args[1] === 'task-create') {
+      const spec = args[args.indexOf('--spec') + 1];
+      injectedNonce = spec.match(/nonce=([^\s]+)/)?.[1] ?? null;
       return okEnvelope({ task: { id: 'task_1' } });
     }
     if (args[1] === 'wait') {
@@ -628,17 +644,24 @@ test('createDispatch: parsea taskId/dispatchId, genera un nonce no vacío y pers
     if (args[1] === 'dispatch') {
       return okEnvelope({ dispatch: { id: 'dispatch_1' }, injected: true });
     }
+    if (args[1] === 'read') {
+      readCalls += 1;
+      const tail = readCalls === 1 ? ['rendering'] : ['X-CMO: nonce=' + injectedNonce];
+      return okEnvelope({ terminal: { tail } });
+    }
     if (args[1] === 'send') {
       return okEnvelope({ send: { handle: 'term_1', accepted: true, bytesWritten: 1 } });
     }
     throw new Error(`orcaRunner inesperado: ${args.join(' ')}`);
   };
 
-  const dispatch = createDispatch({
+  const dispatch = await createDispatch({
     session,
     spec: 'Hace la tarea X.',
     root: '/repo/root',
     orcaRunner: fakeOrcaRunner,
+    windows: true,
+    sleep: async (ms) => { sleeps.push(ms); },
   });
 
   assert.equal(dispatch.taskId, 'task_1');
@@ -646,6 +669,8 @@ test('createDispatch: parsea taskId/dispatchId, genera un nonce no vacío y pers
   assert.equal(dispatch.expectedAssignee, 'term_1');
   assert.equal(typeof dispatch.nonce, 'string');
   assert.notEqual(dispatch.nonce.length, 0);
+  assert.deepEqual(sleeps, [250, 250]);
+  assert.equal(readCalls, 2);
 
   // El spec inyectado (task-create) debe llevar el nonce.
   const taskCreateCall = calls.find((c) => c[1] === 'task-create');
@@ -657,12 +682,11 @@ test('createDispatch: parsea taskId/dispatchId, genera un nonce no vacío y pers
   assert.equal(dispatchCall.includes('--from'), false);
   assert.equal(dispatchCall.includes('--inject'), true);
 
-  // Nudge de sumisión (hallazgo Windows/ConPTY): tras el inject se envía un Enter explícito
-  // (`terminal send --enter`, SIN --text) — el inject puede dejar el prompt pegado sin someter.
+  // Windows puede requerir un Enter posterior al inject; debe viajar después y sin texto.
   const sendIdx = calls.findIndex((c) => c[1] === 'send');
   const dispatchIdx = calls.findIndex((c) => c[1] === 'dispatch');
-  assert.notEqual(sendIdx, -1, 'debe emitirse el nudge terminal send --enter');
-  assert.ok(sendIdx > dispatchIdx, 'el nudge va DESPUÉS del dispatch --inject');
+  assert.notEqual(sendIdx, -1, 'debe emitirse el Enter de submit');
+  assert.ok(sendIdx > dispatchIdx, 'el Enter va después de dispatch --inject');
   assert.equal(calls[sendIdx].includes('--enter'), true);
   assert.equal(calls[sendIdx].includes('--text'), false);
 
@@ -672,7 +696,34 @@ test('createDispatch: parsea taskId/dispatchId, genera un nonce no vacío y pers
   assert.equal(registry['dispatch_1'].expectedAssignee, 'term_1');
 });
 
-test('createDispatch: el secundario nunca llega a tui-idle (boot) -> lanza y NO despacha (degradar a cli)', () => {
+test('createDispatch: fuera de Windows conserva el submit nativo de dispatch --inject', async () => {
+  const stateDir = mkTmpDir('cmo-state-');
+  const session = { uid: 'sess-uid-posix', terminalHandle: 'term_posix', stateDir };
+  const calls = [];
+  const sleeps = [];
+  const fakeOrcaRunner = (args) => {
+    calls.push(args);
+    if (args[1] === 'task-create') return okEnvelope({ task: { id: 'task_posix' } });
+    if (args[1] === 'wait') return okEnvelope({ wait: { satisfied: true } });
+    if (args[1] === 'dispatch') return okEnvelope({ dispatch: { id: 'dispatch_posix' }, injected: true });
+    throw new Error(`orcaRunner inesperado: ${args.join(' ')}`);
+  };
+
+  await createDispatch({
+    session,
+    spec: 'Hace la tarea X.',
+    root: '/repo/root',
+    orcaRunner: fakeOrcaRunner,
+    windows: false,
+    sleep: async (ms) => { sleeps.push(ms); },
+  });
+
+  assert.equal(calls.some((c) => c[1] === 'read'), false);
+  assert.equal(calls.some((c) => c[1] === 'send'), false);
+  assert.deepEqual(sleeps, []);
+});
+
+test('createDispatch: el secundario nunca llega a tui-idle (boot) -> lanza y NO despacha (degradar a cli)', async () => {
   const stateDir = mkTmpDir('cmo-state-');
   const session = { uid: 'sess-uid-boot', terminalHandle: 'term_1', stateDir };
 
@@ -685,7 +736,7 @@ test('createDispatch: el secundario nunca llega a tui-idle (boot) -> lanza y NO 
     throw new Error(`orcaRunner inesperado: ${args.join(' ')}`);
   };
 
-  assert.throws(
+  await assert.rejects(
     () => createDispatch({ session, spec: 'x', root: '/repo/root', orcaRunner: fakeOrcaRunner }),
     /tui-idle/
   );
@@ -693,12 +744,12 @@ test('createDispatch: el secundario nunca llega a tui-idle (boot) -> lanza y NO 
   assert.equal(calls.some((c) => c[1] === 'dispatch'), false);
 });
 
-test('createDispatch: lanza si "task-create" no devuelve taskId', () => {
+test('createDispatch: lanza si "task-create" no devuelve taskId', async () => {
   const stateDir = mkTmpDir('cmo-state-');
   const session = { uid: 'sess-uid-2', terminalHandle: 'term_1', stateDir };
   const fakeOrcaRunner = () => okEnvelope({}); // ok:true pero sin `task`: no hay task.id que extraer.
 
-  assert.throws(
+  await assert.rejects(
     () => createDispatch({ session, spec: 'x', root: '/repo/root', orcaRunner: fakeOrcaRunner }),
     /taskId/
   );

@@ -1,3 +1,25 @@
 {
-  "disableAllHooks": true
+  "disableAllHooks": true,
+  "env": {
+    "DISABLE_AUTOUPDATER": "1"
+  },
+  "permissions": {
+    "defaultMode": "dontAsk",
+    "allow": [
+      "Read",
+      "Grep",
+      "Glob"
+    ],
+    "deny": [
+      "mcp__*",
+      "Agent",
+      "AskUserQuestion",
+      "Bash",
+      "Edit",
+      "Write",
+      "NotebookEdit",
+      "WebFetch",
+      "WebSearch"
+    ]
+  }
 }

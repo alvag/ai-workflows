@@ -185,10 +185,9 @@ export function listCodexConfigMcpServers() {
  * prompt/work-order: la terminal se crea "en frío" y `createDispatch` inyecta la
  * tarea después vía `orchestration dispatch --inject`.
  *
- * POSIX (`windows:false`, default en macOS/Linux) usa `VAR=1 cmd ...`; Windows usa
- * el equivalente PowerShell `$env:VAR = "1"; cmd ...` en una sola línea (es el valor
- * de `--command` de `terminal create`, así que tiene que ser un one-liner). Codex no
- * necesita esta distinción: su comando no antepone variables de entorno.
+ * El comando debe ser válido para el shell real de la terminal de Orca: en Windows es
+ * Git Bash, no PowerShell. Por eso Claude recibe una invocación directa, las variables
+ * de entorno viven en los settings y las rutas de assets usan `/` en el límite del PTY.
  *
  * @param {object} params
  * @param {'codex'|'claude'} params.family
@@ -197,33 +196,34 @@ export function listCodexConfigMcpServers() {
  * @param {string|null} params.sessionId uuid fijado para Claude; ignorado para Codex.
  * @param {string} params.installRoot raíz de instalación del skill (`resolveInstallRoot()`); solo se usa para Claude.
  * @param {string[]} [params.disableMcpServers] nombres de MCP servers de Codex a deshabilitar por override (solo rol read-only; ver `listCodexConfigMcpServers`).
- * @param {boolean} [params.windows] default `isWindows()`.
  * @returns {string}
  */
-export function buildLaunchCommand({ family, role, mode, sessionId, installRoot, disableMcpServers = [], windows = isWindows() }) {
+function terminalAssetPath(installRoot, fileName) {
+  return path.posix.join(installRoot.replaceAll('\\', '/'), 'launch', fileName);
+}
+
+export function buildLaunchCommand({ family, role, mode, sessionId, installRoot, disableMcpServers = [] }) {
   if (family === 'claude') {
-    const settingsPath = path.join(installRoot, 'launch', CLAUDE_SETTINGS_FILE[role]);
+    const settingsPath = terminalAssetPath(installRoot, CLAUDE_SETTINGS_FILE[role]);
     const parts = [`--settings "${settingsPath}"`];
     if (role === 'read-only') {
       parts.push('--tools "Read,Grep,Glob"');
+      parts.push('--disallowedTools "mcp__*"', '--permission-mode dontAsk');
       // MCP off para read-only: sin superficie de ejecución. `--tools` cierra los built-ins (sin
       // Bash), pero NO las tools MCP — un Claude read-only con los MCP del entorno podía alcanzar
       // una tool MCP de ejecución (p. ej. la terminal del IDE del usuario) y correr comandos fuera
       // del worktree, gatillado por el `worker_done` que le pide el preamble de `dispatch --inject`
-      // (hallazgo del E2E de Fase 7). Con `--strict-mcp-config` + un `--mcp-config` VACÍO, el
-      // secundario no ve ningún MCP: read-only de verdad (solo Read/Grep/Glob), y ni siquiera puede
-      // intentar el `worker_done`. Endurecimiento OPCIONAL: para habilitar un MCP de lectura,
-      // declararlo entero en `claude-readonly.mcp.json` (con `--strict-mcp-config` no se hereda nada).
-      const mcpConfigPath = path.join(installRoot, 'launch', 'claude-readonly.mcp.json');
+      // (hallazgo del E2E de Fase 7). `--strict-mcp-config` + config vacío evita heredar servidores
+      // MCP configurados, pero los plugins/connectors todavía pueden publicar tools. El deny global
+      // `mcp__*` y `dontAsk` cierran también esa superficie sin dejar prompts de aprobación colgados.
+      const mcpConfigPath = terminalAssetPath(installRoot, 'claude-readonly.mcp.json');
       parts.push('--strict-mcp-config', `--mcp-config "${mcpConfigPath}"`);
     } else {
       parts.push(`--permission-mode ${mode === 'attended' ? 'manual' : 'dontAsk'}`);
     }
     parts.push(`--session-id "${sessionId}"`);
     const claudeInvocation = `claude ${parts.join(' ')}`;
-    return windows
-      ? `$env:DISABLE_AUTOUPDATER = "1"; ${claudeInvocation}`
-      : `DISABLE_AUTOUPDATER=1 ${claudeInvocation}`;
+    return claudeInvocation;
   }
 
   if (family === 'codex') {
@@ -510,6 +510,9 @@ function buildEnvelopeInstructions(nonce) {
 // modelo, etc.) y llegue a tui-idle antes de inyectarle la tarea. En el E2E de Fase 7 el boot de
 // Codex (con arranque de MCP servers) tardó decenas de segundos; 120s da margen holgado.
 const CREATE_DISPATCH_BOOT_TIMEOUT_MS = 120_000;
+const WINDOWS_SUBMIT_READY_MAX_ATTEMPTS = 20;
+const WINDOWS_SUBMIT_POLL_MS = 250;
+const WINDOWS_SUBMIT_SETTLE_MS = 250;
 
 /**
  * Crea el task+dispatch de Orca para `session`, genera un `nonce` e inyecta las
@@ -536,14 +539,18 @@ const CREATE_DISPATCH_BOOT_TIMEOUT_MS = 120_000;
  * @param {string} params.root raíz autorizada del dispatch (se persiste como referencia; la usa `awaitDone`/`harvest`).
  * @param {number} [params.bootTimeoutMs] presupuesto de boot del secundario hasta tui-idle.
  * @param {(args: string[]) => { stdout: string, code: number }} [params.orcaRunner]
- * @returns {{ taskId: string, dispatchId: string, expectedAssignee: string, nonce: string }}
+ * @param {(ms: number) => Promise<void>} [params.sleep]
+ * @param {boolean} [params.windows] default `isWindows()`; habilita la barrera semántica de submit.
+ * @returns {Promise<{ taskId: string, dispatchId: string, expectedAssignee: string, nonce: string }>}
  */
-export function createDispatch({
+export async function createDispatch({
   session,
   spec,
   root,
   bootTimeoutMs = CREATE_DISPATCH_BOOT_TIMEOUT_MS,
   orcaRunner = defaultOrcaRunner,
+  sleep = defaultSleep,
+  windows = isWindows(),
 }) {
   const nonce = randomUUID();
   const augmentedSpec = `${spec}\n\n${buildEnvelopeInstructions(nonce)}`;
@@ -578,20 +585,40 @@ export function createDispatch({
     throw new Error('No se pudo obtener dispatchId de "orchestration dispatch": salida inesperada.');
   }
 
-  // Nudge de sumisión (hallazgo del caso real en Windows/ConPTY): `dispatch --inject` tipea el
-  // prompt en el composer del TUI, pero la tecla de envío puede no llegar — el secundario queda
-  // con el prompt pegado, sin someter, para siempre. Enter explícito (`terminal send --enter`,
-  // sin `--text`; verificado en vivo: `ok:true, bytesWritten:1`): viaja por el MISMO stream del
-  // PTY que el paste, así que llega ordenado DESPUÉS del prompt; y si el inject ya lo sometió
-  // (macOS), cae en un composer vacío y es no-op. Best-effort: si falla, el inject pudo haber
-  // sometido igual — no se aborta el dispatch por esto.
-  try {
-    orcaRunner(['terminal', 'send', '--terminal', session.terminalHandle, '--enter', '--json']);
-  } catch {
-    // best-effort (ver arriba).
-  }
   // El assignee es la terminal secundaria a la que acabamos de despachar: ya lo sabemos
   // (se lo pasamos nosotros mismos vía --to), no hace falta parsearlo del JSON de vuelta.
+  // On Windows, accepted PTY bytes are not enough: the renderer may still be
+  // painting the bracketed paste after dispatch returns. Poll the terminal until
+  // this dispatch nonce is visible near the end of the composer, then give the
+  // renderer one final settle tick before submitting.
+  if (windows) {
+    let promptRendered = false;
+    for (let attempt = 0; attempt < WINDOWS_SUBMIT_READY_MAX_ATTEMPTS; attempt += 1) {
+      let readResult = null;
+      try {
+        readResult = orcaRunner(['terminal', 'read', '--terminal', session.terminalHandle, '--json']);
+      } catch {
+        // Best-effort readiness probe; the Enter below remains the fallback.
+      }
+      const tail = orcaResult(parseJsonOutput(readResult?.stdout))?.terminal?.tail;
+      if (Array.isArray(tail) && tail.join('\n').includes('nonce=' + nonce)) {
+        promptRendered = true;
+        break;
+      }
+      if (attempt + 1 < WINDOWS_SUBMIT_READY_MAX_ATTEMPTS) {
+        await sleep(WINDOWS_SUBMIT_POLL_MS);
+      }
+    }
+    if (promptRendered) {
+      await sleep(WINDOWS_SUBMIT_SETTLE_MS);
+    }
+    try {
+      orcaRunner(['terminal', 'send', '--terminal', session.terminalHandle, '--enter', '--json']);
+    } catch {
+      // Best-effort: dispatch --inject may already have submitted the prompt.
+    }
+  }
+
   const expectedAssignee = session.terminalHandle;
 
   const dispatch = { taskId, dispatchId, expectedAssignee, nonce, sessionRef: session.uid, root };

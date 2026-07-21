@@ -371,14 +371,12 @@ presupuesto, `createDispatch` **lanza** (la skill degrada a `cli`), sin despacha
 `--from`: el `worker_done` que el preamble le pide al secundario no se consume (ver "Detección de
 fin"), así que no hay coordinador que rutear.
 
-**Nudge de sumisión tras el inject (Windows/ConPTY).** Gotcha de caso real en Windows: `dispatch
---inject` tipea el prompt en el composer del TUI pero la tecla de envío puede no llegar — el
-secundario queda con el prompt pegado, sin someter, para siempre. Por eso, tras un inject exitoso,
-`createDispatch` envía un **Enter explícito**: `terminal send --terminal <handle> --enter --json`
-(sin `--text`; verificado en vivo: `ok:true, bytesWritten:1`). Viaja por el mismo stream del PTY
-que el paste, así que llega ordenado **después** del prompt; si el inject ya lo sometió (macOS),
-cae en un composer vacío y es no-op (validado en E2E: la corrida con nudge cosechó igual, 40s).
-Best-effort: un fallo del nudge no aborta el dispatch.
+**Barrera semántica de submit (Windows/ConPTY).** En Windows, `dispatch --inject` puede terminar de
+escribir al PTY antes de que el renderer haya aplicado el bracketed paste; mandar Enter de inmediato
+lo pierde y deja el prompt pegado. Tras el inject, `createDispatch` sondea `terminal read` hasta ver
+el `nonce` de este dispatch en el tail del composer, espera 250 ms de asentamiento y recién entonces
+envía `terminal send --enter` (sin `--text`). El sondeo está acotado a 20 intentos cada 250 ms y el
+Enter es best-effort. En macOS no se aplica esta corrección: conserva el submit nativo del inject.
 
 ---
 
@@ -467,14 +465,11 @@ También `resolveCodexTranscript` reescribe el registro de sesión en `sessions.
 el locator diferido de Codex (`transcriptPath`/`sessionId`), siempre vía el mismo
 `persistSessionRecord` atómico.
 
-**MCP del secundario read-only.** En el default **atendido**, MCP se controla por **vigilancia
-manual** (P4): el secundario ve los MCP del entorno del usuario y el humano aprueba/rechaza en la
-TUI cualquier acción sensible — no hay allowlist ni inventario que configurar (`--tools` acota solo
-los built-ins, no las tools MCP). Para una corrida **desatendida** (sin gate humano), un gate
-declarativo **opcional**: `--strict-mcp-config --mcp-config assets/launch/claude-readonly.mcp.json`
-deja **solo** los servidores del allowlist (viene vacío → cero MCP; verificado en vivo con Claude
-2.1.214: allowlist vacío → `CERO-MCP`). El modelo completo, el patrón para permitir un servidor de
-lectura y la nota de namespacing están en `assets/launch/mcp-inventory.md`.
+**MCP del secundario Claude read-only.** En ambos modos se usa un gate declarativo: config MCP
+estricto vacío, `--disallowedTools "mcp__*"` y `--permission-mode dontAsk`. El config estricto evita
+heredar servidores configurados, pero no alcanza para plugins/connectors; el deny wildcard cubre
+esas tools y `dontAsk` las rechaza sin bloquear la TUI. `--tools` sigue acotando solo los built-ins.
+El modelo completo y la nota de namespacing están en `assets/launch/mcp-inventory.md`.
 
 ---
 
@@ -485,8 +480,8 @@ lectura y la nota de namespacing están en `assets/launch/mcp-inventory.md`.
 - `install.md` — instalación paso a paso (Node ≥18, `CROSS_MODEL_ORCA`, `skills-ref`).
 - `assets/launch/profiles.md` — matriz de lanzamiento completa (POSIX+PowerShell) por
   familia×rol×modo.
-- `assets/launch/mcp-inventory.md` — modelo de MCP: vigilancia manual (default) + endurecimiento
-  opcional (`--strict-mcp-config`) para desatendido, y el namespacing real de tools.
-- `assets/launch/claude-readonly.mcp.json` — template opcional (vacío) del allowlist de servidores
-  MCP para el caso desatendido.
+- `assets/launch/mcp-inventory.md` — modelo MCP: read-only fail-closed, write con vigilancia
+  manual, y namespacing real de tools.
+- `assets/launch/claude-readonly.mcp.json` — config vacío obligatorio del perfil read-only;
+  el deny `mcp__*` cubre además plugins/connectors.
 - `spikes/RESULTS.md` — contratos de locator y señal con evidencia (Task 0.1/0.2/0.3).

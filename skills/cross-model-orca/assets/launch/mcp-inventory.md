@@ -1,42 +1,27 @@
-# MCP y el secundario — vigilancia manual (default) + endurecimiento opcional
+# MCP y el secundario — read-only fail-closed, write con vigilancia manual
 
-> Modelo de control de MCP para las sesiones que lanza `cross-model-orca`. Reemplaza al inventario
-> fail-closed de rondas anteriores: un inventario de tools clasificadas a mano envejece cada vez
-> que aparece o desaparece un MCP, y empujaba configuración al usuario. El default ahora es
-> **vigilancia manual** (P4), coherente con "copiar la skill y listo".
+> Modelo de control de MCP para las sesiones que lanza `cross-model-orca`. No mantiene un inventario
+> manual de tools: read-only cierra todo el namespace MCP y write conserva la vigilancia humana.
 
-## Default: el humano es el gate (P4, atendido)
+## Read-only: deny global en ambos modos
 
-El secundario ve los **MCP del entorno del usuario tal cual** — no hay allowlist ni denylist que
-mantener. Si el modelo intenta una acción sensible (una escritura MCP, un `send`, etc.), el prompt
-de aprobación aparece en la **TUI de esa sesión** y **el humano que mira la corrida aprueba o
-rechaza**. Ese es el gate. No hace falta configurar nada de MCP para instalar la skill.
+Claude read-only combina tres controles: `--strict-mcp-config` con config vacío evita heredar
+servidores configurados; `--disallowedTools "mcp__*"` bloquea también tools aportadas por
+plugins/connectors; `--permission-mode dontAsk` rechaza sin dejar la TUI esperando aprobación.
 
 Las garantías que **sí** son cero-config y no dependen de vigilancia:
 
 - **`--tools "Read,Grep,Glob"`** (Claude): sin Bash → read-only duro de los built-ins. Ojo: `--tools`
-  acota **solo los built-ins** (`claude --help`: *"from the built-in set"*), **no** gobierna las
-  tools MCP — por eso el gate de MCP en el default es la vigilancia manual, no el toolset.
+  acota **solo los built-ins**, no las tools MCP; por eso existe el deny separado.
 - **`disableAllHooks:true` / `--disable hooks`**: ninguna automatización local se dispara.
 - **Sandbox de Codex** (`-s read-only`): el proceso no escribe fuera de lectura.
 
-## Endurecimiento opcional: caso desatendido
+## Write: el humano es el gate
 
-Cuando **nadie mira la TUI** (corrida desatendida), la vigilancia manual no aplica: no hay quién
-apruebe. Para ese caso, y solo para ese caso, existe un gate declarativo opcional:
-**`--strict-mcp-config --mcp-config claude-readonly.mcp.json`**. Da vuelta el default de MCP de
-*allow-all* a *deny-all*: la sesión ve **solo** los servidores declarados en ese archivo; todo MCP
-del entorno queda invisible. Verificado en vivo (Claude 2.1.214, 2026-07-19): allowlist vacío → la
-sesión responde `CERO-MCP`.
-
-`claude-readonly.mcp.json` viene **vacío** (`{"mcpServers": {}}` → cero MCP, el máximo fail-closed).
-Si un caso desatendido necesita un servidor de **lectura**, se declara entero ahí (con
-`--strict-mcp-config` no se hereda ninguna definición de otras configs). No es un inventario que
-haya que mantener sincronizado con el entorno: es una lista corta y explícita que solo crece si el
-usuario la hace crecer.
-
-> **Rol write (cross-implement, Fase 5):** su propio gate lo define Fase 5. En desatendido, mismo
-> criterio: si no hay humano que apruebe, acota con `--strict-mcp-config` + un allowlist propio.
+El rol write conserva los MCP del entorno. En atendido, cualquier acción sensible requiere la
+aprobación del humano en la TUI. En desatendido usa `dontAsk`: lo no aprobado falla en vez de dejar
+la sesión colgada. Si un flujo write necesita una política MCP más estrecha, debe declararla como
+parte explícita de ese work order; no se relaja el perfil read-only.
 
 ## Referencia: namespacing real de las tools MCP en Claude
 

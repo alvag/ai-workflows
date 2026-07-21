@@ -162,8 +162,16 @@ test('regresión: el CLI corre main() invocado por su ruta FÍSICA (emite JSON, 
   runCliAndParse(RUNNER_PATH);
 });
 
-test('regresión: el CLI corre main() invocado por un SYMLINK (bug histórico: salida vacía)', () => {
+test('regresión: el CLI corre main() invocado por una ruta enlazada (bug histórico: salida vacía)', () => {
   const dir = mkTmpDir('cmo-run-symlink-');
+  if (process.platform === 'win32') {
+    // Crear symlinks de archivo requiere Developer Mode o privilegios elevados en Windows.
+    // Un junction de directorio no los requiere y reproduce la ruta instalada enlazada.
+    const linkDir = path.join(dir, 'assets-link');
+    fs.symlinkSync(path.dirname(RUNNER_PATH), linkDir, 'junction');
+    runCliAndParse(path.join(linkDir, path.basename(RUNNER_PATH)));
+    return;
+  }
   const link = path.join(dir, 'runner-link.mjs');
   fs.symlinkSync(RUNNER_PATH, link);
   runCliAndParse(link);

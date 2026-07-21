@@ -92,7 +92,7 @@ export async function runOrcaSession({
   //    llega a idle a tiempo o si task/dispatch no devuelven id → degradar a cli.
   let dispatch;
   try {
-    dispatch = createDispatch({ session, spec, root, bootTimeoutMs, orcaRunner });
+    dispatch = await createDispatch({ session, spec, root, bootTimeoutMs, orcaRunner, sleep });
   } catch (err) {
     const recovered = tryRecover(session, orcaRunner);
     return {

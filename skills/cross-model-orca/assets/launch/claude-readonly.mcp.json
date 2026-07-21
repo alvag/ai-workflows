@@ -1,4 +1,4 @@
 {
-  "_comment": "Template OPCIONAL para el endurecimiento del caso DESATENDIDO (nadie mira la TUI, no hay gate humano). NO se usa en el lanzamiento por defecto: por defecto el secundario ve los MCP del entorno del usuario y el humano es el gate (vigilancia manual, P4). Para el modo desatendido, lanzar con --strict-mcp-config --mcp-config <este archivo>: la sesion vera SOLO los servidores declarados aca (vacio = cero MCP). Para permitir alguno de lectura, declararlo entero (con --strict-mcp-config no se hereda ninguna definicion de otras configs); no incluir API keys reales. Ver mcp-inventory.md.",
+  "_comment": "Config vacio usado por Claude read-only en ambos modos para no heredar servidores MCP configurados. Los plugins/connectors pueden publicar tools fuera de este config, por eso el perfil tambien aplica --disallowedTools mcp__* y permission-mode dontAsk. No incluir API keys reales. Ver mcp-inventory.md.",
   "mcpServers": {}
 }

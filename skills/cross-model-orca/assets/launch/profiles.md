@@ -14,7 +14,7 @@
    Codex.
 3. **Config de MCP + hooks** (qué tools remotas y qué automatizaciones locales están
    disponibles): **depende del rol**. Rol **read-only** (ambas familias, ambos modos): **MCP OFF
-   por default** — Claude vía `--strict-mcp-config` + config vacío; Codex vía overrides dinámicos
+   por default** — Claude vía config estricto vacío + deny `mcp__*`; Codex vía overrides dinámicos
    `-c mcp_servers.<name>.enabled=false` derivados de su `config.toml` (ver "Codex · read-only").
    Rol **write**: **vigilancia manual** (el humano aprueba/rechaza en la TUI; no hay allowlist que
    mantener). Hooks siempre off: `--settings <archivo>` (`disableAllHooks`) en Claude,
@@ -31,13 +31,10 @@ preamble de `dispatch --inject`, y corrió un comando **fuera del worktree, en o
 (gateado por aprobación manual, pero fuera de lo esperado para un read-only).
 
 Por eso **el read-only se lanza con MCP OFF por default**: `--strict-mcp-config --mcp-config
-claude-readonly.mcp.json` con el archivo **vacío** da vuelta el default de MCP a *deny-all* — la
-sesión ve **cero** tools MCP. Sumado al toolset cerrado (sin Bash), el read-only no tiene **ninguna**
-superficie de ejecución: solo Read/Grep/Glob. Verificado en vivo (2026-07-19, Claude 2.1.214): sin
-el flag la sesión enumera tools MCP del entorno; con `--strict-mcp-config` + allowlist vacío responde
-**`CERO-MCP`**. Endurecimiento inverso (OPCIONAL): para habilitar un servidor de **lectura** (p. ej.
-Jira read-only), declararlo entero en `claude-readonly.mcp.json` — con `--strict-mcp-config` no se
-hereda nada del entorno. El detalle en `mcp-inventory.md`.
+claude-readonly.mcp.json` evita heredar servidores configurados y `--disallowedTools "mcp__*"`
+cierra también las tools aportadas por plugins/connectors. `--permission-mode dontAsk` rechaza sin
+dejar un prompt pendiente. Sumado al toolset cerrado (sin Bash), el read-only queda limitado a
+Read/Grep/Glob. El detalle en `mcp-inventory.md`.
 
 El rol **write** (cross-implement) NO fuerza MCP off: usa la **vigilancia manual** (P4) — el humano
 aprueba/rechaza en la TUI — más `--permission-mode`. No hay inventario ni allowlist que mantener.
@@ -91,9 +88,8 @@ primero.
 
 ## Domesticación del arranque
 
-- **Auto-update — Claude:** configura `DISABLE_AUTOUPDATER=1` en el entorno del proceso (variable
-  real, confirmada en el binario de Claude Code 2.1.214) para que no intente actualizarse solo
-  en medio de una sesión desatendida.
+- **Auto-update — Claude:** ambos archivos `claude-*.settings.json` configuran
+  `env.DISABLE_AUTOUPDATER="1"`; así el launcher no depende de sintaxis POSIX o PowerShell.
 - **Auto-update — Codex:** `codex update` es un subcomando manual (no se dispara solo al
   invocar `codex`/`codex exec`); no encontramos una bandera ni variable de entorno de
   "no actualizar" propia de la CLI porque no hace falta — no hay nada que domesticar aquí.
@@ -107,8 +103,7 @@ primero.
   columna "desatendido" de la matriz — Codex usa `-a never` (nunca escala a aprobación: los
   comandos no confiables fallan en vez de preguntar) y Claude usa `--permission-mode dontAsk`
   para el rol write (en vez de `manual`, que se quedaría esperando una aprobación que nadie va a
-  dar). El rol read-only de Claude no necesita esta distinción: el toolset cerrado
-  (`--tools "Read,Grep,Glob"`, sin Bash) ya garantiza que nunca surge un prompt, atendido o no.
+  dar). El rol read-only usa `dontAsk` siempre junto al deny MCP explícito.
 - **`--disable hooks` en Codex, `disableAllHooks:true` en Claude:** en ambas familias, siempre —
   no solo en el modo desatendido — para que ninguna automatización local (hook de usuario o de
   proyecto) se dispare durante la sesión del secundario.
@@ -121,14 +116,15 @@ creación+`cwd`+timestamp, no hay bandera para fijar el `session_id` desde afuer
 
 ### Claude · read-only
 
-**Atendido y desatendido usan el mismo comando** — el toolset cerrado (`Read,Grep,Glob`, sin Bash)
-**más MCP off** (`--strict-mcp-config` + `--mcp-config` vacío) hacen que no exista ninguna superficie
-de ejecución ni prompt de aprobación posible, con o sin alguien mirando.
+**Atendido y desatendido usan el mismo comando** — toolset cerrado, deny MCP explícito y `dontAsk`
+eliminan tanto la superficie de ejecución como los prompts de aprobación.
 
 **POSIX:**
 ```bash
-DISABLE_AUTOUPDATER=1 claude \
+claude \
   --tools "Read,Grep,Glob" \
+  --disallowedTools "mcp__*" \
+  --permission-mode dontAsk \
   --strict-mcp-config \
   --mcp-config "$CROSS_MODEL_ORCA/launch/claude-readonly.mcp.json" \
   --settings "$CROSS_MODEL_ORCA/launch/claude-readonly.settings.json" \
@@ -138,9 +134,10 @@ DISABLE_AUTOUPDATER=1 claude \
 
 **PowerShell:**
 ```powershell
-$env:DISABLE_AUTOUPDATER = "1"
 claude `
   --tools "Read,Grep,Glob" `
+  --disallowedTools "mcp__*" `
+  --permission-mode dontAsk `
   --strict-mcp-config `
   --mcp-config "$env:CROSS_MODEL_ORCA\launch\claude-readonly.mcp.json" `
   --settings "$env:CROSS_MODEL_ORCA\launch\claude-readonly.settings.json" `
@@ -155,11 +152,9 @@ claude `
 > este comando a mano y no seteaste el override, reemplaza la variable por la ruta real de tu
 > checkout (p. ej. `skills/cross-model-orca/assets/launch/claude-readonly.settings.json`).
 
-> **Desatendido (opcional):** para una corrida sin nadie mirando la TUI, agrega
-> `--strict-mcp-config --mcp-config "$CROSS_MODEL_ORCA/launch/claude-readonly.mcp.json"`
-> **antes** de `--settings` para acotar MCP a cero (o a un allowlist de lectura). En el default
-> atendido no hace falta: el gate es la vigilancia manual (ver `mcp-inventory.md`). Ambos flags son
-> variádicos — mantén el `<prompt>` al final, tras `--session-id`.
+> El launcher real emite este comando sin prefijos de shell, normaliza sus rutas a `/` y toma
+> `DISABLE_AUTOUPDATER` de los settings. Esto es necesario porque las terminales Orca en Windows
+> usan Git Bash, aunque el proceso conductor se haya iniciado desde PowerShell.
 
 ### Claude · write (cross-implement)
 
@@ -167,7 +162,7 @@ claude `
 
 **POSIX:**
 ```bash
-DISABLE_AUTOUPDATER=1 claude \
+claude \
   --settings "$CROSS_MODEL_ORCA/launch/claude-write.settings.json" \
   --permission-mode manual \
   --session-id "<uuid>" \
@@ -176,7 +171,6 @@ DISABLE_AUTOUPDATER=1 claude \
 
 **PowerShell:**
 ```powershell
-$env:DISABLE_AUTOUPDATER = "1"
 claude `
   --settings "$env:CROSS_MODEL_ORCA\launch\claude-write.settings.json" `
   --permission-mode manual `
@@ -194,7 +188,7 @@ claude `
 
 **POSIX:**
 ```bash
-DISABLE_AUTOUPDATER=1 claude \
+claude \
   --settings "$CROSS_MODEL_ORCA/launch/claude-write.settings.json" \
   --permission-mode dontAsk \
   --session-id "<uuid>" \
@@ -203,7 +197,6 @@ DISABLE_AUTOUPDATER=1 claude \
 
 **PowerShell:**
 ```powershell
-$env:DISABLE_AUTOUPDATER = "1"
 claude `
   --settings "$env:CROSS_MODEL_ORCA\launch\claude-write.settings.json" `
   --permission-mode dontAsk `

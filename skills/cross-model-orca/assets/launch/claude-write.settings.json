@@ -1,5 +1,8 @@
 {
   "disableAllHooks": true,
+  "env": {
+    "DISABLE_AUTOUPDATER": "1"
+  },
   "permissions": {
     "allow": [
       "Edit(./**)",
