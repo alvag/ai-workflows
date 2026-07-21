@@ -134,8 +134,7 @@ function persistDispatchRecord(stateDir, dispatch) {
 }
 
 // ---------------------------------------------------------------------------
-// Comando de lanzamiento por family+role+mode (referencia los perfiles de
-// assets/launch/ por nombre; no los parsea).
+// Comando de lanzamiento por family+role+mode (ver matriz en assets/launch/profiles.md).
 // ---------------------------------------------------------------------------
 
 const CLAUDE_SETTINGS_FILE = {
@@ -143,47 +142,10 @@ const CLAUDE_SETTINGS_FILE = {
   write: 'claude-write.settings.json',
 };
 
-// Encabezados de sección `[mcp_servers.<name>]` (y subtablas `[mcp_servers.<name>.…]`) de
-// config.toml, con <name> "bare" — el único que el parser de `-c` de Codex acepta. Verificado
-// en vivo (0.144.6): `mcp_servers.engram.enabled=false` funciona; la variante quoted
-// `mcp_servers."x".enabled=false` ROMPE la carga del config. Un nombre quoted en el config no
-// matchea este patrón y se salta (tampoco sería overrideable).
-const CODEX_MCP_SECTION_RE = /^\s*\[mcp_servers\.([A-Za-z0-9_-]+)[.\]]/;
-
 /**
- * Enumera los MCP servers declarados en el `config.toml` de Codex (`configDir('codex')`,
- * que respeta `CODEX_HOME`). Es la fuente CORRECTA para armar overrides `-c
- * mcp_servers.<name>.enabled=false`: enumerar por `codex mcp list --json` fue una
- * regresión real — esa lista agrega servers que NO viven en config.toml (p. ej.
- * `sites-design-picker`, gestionado por la app), y deshabilitar uno de esos por `-c` crea
- * una entrada nueva sin transporte → "Error loading config.toml: invalid transport" → el
- * boot entero de Codex aborta (observado en vivo en el E2E). Los servers fuera del config
- * no se pueden apagar por override (quedan vivos: son builtins locales y rápidos); los del
- * config —los npx/pesados que cuelgan el boot— son exactamente los que este listado cubre.
- *
- * Best-effort: config ausente/ilegible devuelve `[]` y el launch sale sin overrides.
- * @returns {string[]} nombres únicos, en orden de aparición.
- */
-export function listCodexConfigMcpServers() {
-  let content;
-  try {
-    content = fs.readFileSync(path.join(configDir('codex'), 'config.toml'), 'utf8');
-  } catch {
-    return [];
-  }
-  const names = new Set();
-  for (const line of content.split('\n')) {
-    const match = line.match(CODEX_MCP_SECTION_RE);
-    if (match) names.add(match[1]);
-  }
-  return [...names];
-}
-
-/**
- * Construye el comando de lanzamiento del perfil family+role+mode, referenciando
- * por nombre los perfiles de `assets/launch/` (ver `profiles.md`). No incluye el
- * prompt/work-order: la terminal se crea "en frío" y `createDispatch` inyecta la
- * tarea después vía `orchestration dispatch --inject`.
+ * Construye el comando de lanzamiento family+role+mode (ver `profiles.md`). No incluye el
+ * prompt/work-order: la terminal se crea "en frío" y `createDispatch` inyecta la tarea después
+ * vía `orchestration dispatch --inject`.
  *
  * El comando debe ser válido para el shell real de la terminal de Orca: en Windows es
  * Git Bash, no PowerShell. Por eso Claude recibe una invocación directa, las variables
@@ -195,14 +157,13 @@ export function listCodexConfigMcpServers() {
  * @param {'attended'|'unattended'} params.mode atendido/desatendido (ver `profiles.md`).
  * @param {string|null} params.sessionId uuid fijado para Claude; ignorado para Codex.
  * @param {string} params.installRoot raíz de instalación del skill (`resolveInstallRoot()`); solo se usa para Claude.
- * @param {string[]} [params.disableMcpServers] nombres de MCP servers de Codex a deshabilitar por override (solo rol read-only; ver `listCodexConfigMcpServers`).
  * @returns {string}
  */
 function terminalAssetPath(installRoot, fileName) {
   return path.posix.join(installRoot.replaceAll('\\', '/'), 'launch', fileName);
 }
 
-export function buildLaunchCommand({ family, role, mode, sessionId, installRoot, disableMcpServers = [] }) {
+export function buildLaunchCommand({ family, role, mode, sessionId, installRoot }) {
   if (family === 'claude') {
     const settingsPath = terminalAssetPath(installRoot, CLAUDE_SETTINGS_FILE[role]);
     const parts = [`--settings "${settingsPath}"`];
@@ -232,22 +193,9 @@ export function buildLaunchCommand({ family, role, mode, sessionId, installRoot,
       role === 'read-only'
         ? mode === 'attended' ? 'untrusted' : 'never'
         : mode === 'attended' ? 'on-request' : 'never';
-    // Rol read-only: MCP off por override dinámico, un `-c mcp_servers.<name>.enabled=false` por
-    // server habilitado (hallazgo del caso real en Windows: la TUI de Codex quedaba colgada en
-    // "MCP startup incomplete" arrancando los MCP del usuario — atlassian/figma/postman/Mongo — y
-    // el primer turno nunca arrancaba, así que no había rollout que cosechar; `codex exec` no lo
-    // sufre porque avanza pese a los MCP fallidos). Además da simetría con el read-only de Claude
-    // (MCP off = sin superficie de ejecución fuera del sandbox). No existe una forma global:
-    // `-c mcp_servers={}` NO vacía la lista (semántica de merge de TOML, verificado en vivo).
-    // Rol write conserva los MCP con vigilancia manual (S3/Fase 5): el gate es el humano en la
-    // TUI. Sin `-p` (endurecimiento OPCIONAL del caso desatendido, ver profiles.md), con
-    // `features.apps=false` inline como garantía cero-config. Misma sintaxis en POSIX y
-    // PowerShell: no hay prefijo de variables de entorno que traducir ni comillas en los args.
-    const mcpOverrides =
-      role === 'read-only'
-        ? disableMcpServers.map((name) => ` -c mcp_servers.${name}.enabled=false`).join('')
-        : '';
-    return `codex -c features.apps=false${mcpOverrides} -s ${sandbox} -a ${approval} --disable hooks`;
+    // Codex conserva los MCP del entorno en ambos roles. `-s read-only` limita las escrituras
+    // de shell al filesystem, pero no promete aislar efectos externos de herramientas MCP.
+    return `codex -c features.apps=false -s ${sandbox} -a ${approval} --disable hooks`;
   }
 
   throw new Error(`Familia desconocida: "${family}". Los valores válidos son "codex" o "claude".`);
@@ -296,11 +244,11 @@ function matchField(line, key) {
 
 /**
  * Lee solo los primeros `HEAD_READ_BYTES` de la primera línea del rollout y
- * extrae session_id/cwd/source/originator por regex, sin `JSON.parse` de la
+ * extrae timestamp/session_id/cwd/source/originator por regex, sin `JSON.parse` de la
  * línea completa (que puede traer `base_instructions.text` con el system
  * prompt entero — ver `spikes/RESULTS.md`, Task 0.1).
  * @param {string} filePath
- * @returns {{ sessionId: string, cwd: string, source: string, originator: string }|null}
+ * @returns {{ createdAtMs: number, sessionId: string, cwd: string, source: string, originator: string }|null}
  */
 function readRolloutHeadMeta(filePath) {
   let fd;
@@ -315,12 +263,13 @@ function readRolloutHeadMeta(filePath) {
     const head = buffer.toString('utf8', 0, bytesRead);
     const newlineIdx = head.indexOf('\n');
     const firstLine = newlineIdx === -1 ? head : head.slice(0, newlineIdx);
+    const createdAtMs = Date.parse(matchField(firstLine, 'timestamp') ?? '');
     const sessionId = matchField(firstLine, 'session_id');
     const cwd = matchField(firstLine, 'cwd');
     const source = matchField(firstLine, 'source');
     const originator = matchField(firstLine, 'originator');
-    if (!sessionId || !cwd || !source || !originator) return null;
-    return { sessionId, cwd, source, originator };
+    if (!Number.isFinite(createdAtMs) || !sessionId || !cwd || !source || !originator) return null;
+    return { createdAtMs, sessionId, cwd, source, originator };
   } catch {
     return null;
   } finally {
@@ -331,19 +280,20 @@ function readRolloutHeadMeta(filePath) {
 /**
  * Localiza el rollout de Codex de la sesión recién creada: interactivo
  * (`source:"cli"`/`originator:"codex-tui"`), mismo `cwd` que el worktree, y
- * `mtime` posterior a `afterMs` (el instante de creación de la terminal).
+ * `session_meta.timestamp` posterior a `afterMs` (el instante de creación de la terminal).
+ * `mtime` es solo un prefiltro: un rollout viejo todavía activo puede actualizarlo.
  * Si hay **más de un** candidato en esa ventana, el locator es ambiguo →
  * devuelve `null` (la skill llamadora degrada a `cli`).
  * @param {object} params
  * @param {string} params.sessionsRoot `<configDir('codex')>/sessions`.
  * @param {string} params.cwd
  * @param {number} params.afterMs
- * @param {boolean} [params.windows] default `isWindows()`: compara `cwd` case-insensitive
- *   (el filesystem de Windows lo es; el rollout puede registrar `c:\...` vs `C:\...`).
+ * @param {boolean} [params.windows] default `isWindows()`: compara `cwd` case-insensitive y
+ *   normaliza sus separadores (el rollout puede registrar `C:\...` y Orca `C:/...`).
  * @returns {{ path: string, sessionId: string }|null}
  */
 export function locateCodexRollout({ sessionsRoot, cwd, afterMs, windows = isWindows() }) {
-  const normalizeCwd = (p) => (windows ? p.toLowerCase() : p);
+  const normalizeCwd = (p) => (windows ? p.replaceAll('\\', '/').toLowerCase() : p);
   const wantedCwd = normalizeCwd(cwd);
   const candidates = [];
   for (const filePath of listRolloutFiles(sessionsRoot)) {
@@ -356,6 +306,7 @@ export function locateCodexRollout({ sessionsRoot, cwd, afterMs, windows = isWin
     if (stat.mtimeMs <= afterMs) continue;
     const meta = readRolloutHeadMeta(filePath);
     if (!meta) continue;
+    if (meta.createdAtMs <= afterMs) continue;
     if (meta.source !== 'cli' || meta.originator !== 'codex-tui') continue;
     if (normalizeCwd(meta.cwd) !== wantedCwd) continue;
     candidates.push({ path: filePath, sessionId: meta.sessionId });
@@ -430,12 +381,8 @@ export function createOwnedSession({
   const uid = randomUUID();
   const claudeSessionId = family === 'claude' ? randomUUID() : null;
   const installRoot = family === 'claude' ? resolveInstallRoot() : null;
-  // Codex read-only: MCP off por override dinámico (ver buildLaunchCommand). Best-effort:
-  // si la enumeración falla, la lista queda vacía y el launch sale sin overrides.
-  const disableMcpServers =
-    family === 'codex' && role === 'read-only' ? listCodexConfigMcpServers() : [];
   const createdAtMs = now();
-  const command = buildLaunchCommand({ family, role, mode, sessionId: claudeSessionId, installRoot, disableMcpServers });
+  const command = buildLaunchCommand({ family, role, mode, sessionId: claudeSessionId, installRoot });
 
   const createArgs = [
     'terminal',
@@ -499,6 +446,7 @@ export function createOwnedSession({
  */
 function buildEnvelopeInstructions(nonce) {
   return (
+    'No ejecutes `orca` ni intentes enviar `worker_done`: el conductor cosecha tu respuesta directamente del transcript.\n' +
     'Al terminar esta tarea, cierra tu último mensaje exactamente con estas dos líneas finales, ' +
     'en este orden y sin texto adicional después:\n' +
     `X-CMO: nonce=${nonce}\n` +
@@ -510,9 +458,20 @@ function buildEnvelopeInstructions(nonce) {
 // modelo, etc.) y llegue a tui-idle antes de inyectarle la tarea. En el E2E de Fase 7 el boot de
 // Codex (con arranque de MCP servers) tardó decenas de segundos; 120s da margen holgado.
 const CREATE_DISPATCH_BOOT_TIMEOUT_MS = 120_000;
-const WINDOWS_SUBMIT_READY_MAX_ATTEMPTS = 20;
-const WINDOWS_SUBMIT_POLL_MS = 250;
+const WINDOWS_CODEX_SUBMIT_POLL_MS = 1_000;
+const WINDOWS_OTHER_SUBMIT_POLL_MS = 250;
+const WINDOWS_OTHER_SUBMIT_MAX_ATTEMPTS = 20;
 const WINDOWS_SUBMIT_SETTLE_MS = 250;
+
+function isWindowsPromptReady(tail, nonce) {
+  if (!Array.isArray(tail)) return false;
+  const nonEmptyLines = tail.filter((line) => typeof line === 'string' && line.trim() !== '');
+  const latestFrame = nonEmptyLines.at(-1) ?? '';
+  const promptEvidence =
+    nonEmptyLines.join('\n').includes('nonce=' + nonce) || latestFrame.includes('[Pasted Content');
+  const startupStillActive = /Starting MCP servers/i.test(latestFrame);
+  return promptEvidence && !startupStillActive;
+}
 
 /**
  * Crea el task+dispatch de Orca para `session`, genera un `nonce` e inyecta las
@@ -530,8 +489,8 @@ const WINDOWS_SUBMIT_SETTLE_MS = 250;
  * worker mandar un `worker_done`, pero el E2E probó que un Codex sandboxeado no alcanza el
  * runtime de Orca para enviarlo (falla con "Orca is not running"). La detección de fin y
  * la autoridad las da el nonce del envelope en el transcript propio (ver `awaitDone`), no
- * `worker_done`. El intento de worker_done del secundario falla de forma inocua; no lo
- * ruteamos con `--from` porque no lo consumimos.
+ * `worker_done`. El spec aumentado le ordena no intentar ese envío; tampoco lo ruteamos
+ * con `--from` porque no lo consumimos.
  *
  * @param {object} params
  * @param {object} params.session sesión devuelta por `createOwnedSession`.
@@ -587,13 +546,19 @@ export async function createDispatch({
 
   // El assignee es la terminal secundaria a la que acabamos de despachar: ya lo sabemos
   // (se lo pasamos nosotros mismos vía --to), no hace falta parsearlo del JSON de vuelta.
-  // On Windows, accepted PTY bytes are not enough: the renderer may still be
-  // painting the bracketed paste after dispatch returns. Poll the terminal until
-  // this dispatch nonce is visible near the end of the composer, then give the
-  // renderer one final settle tick before submitting.
+  // On Windows, accepted PTY bytes are not enough: dispatch may paste while Codex is still
+  // starting MCP servers, and an Enter sent in that phase can be lost. Long bracketed pastes are
+  // compacted as "[Pasted Content ...]", so the nonce is not always visible. Wait until the latest
+  // frame shows prompt evidence and no active MCP-startup spinner, then submit.
   if (windows) {
     let promptRendered = false;
-    for (let attempt = 0; attempt < WINDOWS_SUBMIT_READY_MAX_ATTEMPTS; attempt += 1) {
+    const pollMs = session.family === 'codex'
+      ? WINDOWS_CODEX_SUBMIT_POLL_MS
+      : WINDOWS_OTHER_SUBMIT_POLL_MS;
+    const maxAttempts = session.family === 'codex'
+      ? Math.max(1, Math.ceil(bootTimeoutMs / pollMs))
+      : WINDOWS_OTHER_SUBMIT_MAX_ATTEMPTS;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       let readResult = null;
       try {
         readResult = orcaRunner(['terminal', 'read', '--terminal', session.terminalHandle, '--json']);
@@ -601,12 +566,12 @@ export async function createDispatch({
         // Best-effort readiness probe; the Enter below remains the fallback.
       }
       const tail = orcaResult(parseJsonOutput(readResult?.stdout))?.terminal?.tail;
-      if (Array.isArray(tail) && tail.join('\n').includes('nonce=' + nonce)) {
+      if (isWindowsPromptReady(tail, nonce)) {
         promptRendered = true;
         break;
       }
-      if (attempt + 1 < WINDOWS_SUBMIT_READY_MAX_ATTEMPTS) {
-        await sleep(WINDOWS_SUBMIT_POLL_MS);
+      if (attempt + 1 < maxAttempts) {
+        await sleep(pollMs);
       }
     }
     if (promptRendered) {

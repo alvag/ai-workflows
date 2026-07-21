@@ -178,8 +178,9 @@ El primer E2E contra Orca real mostró que un Codex **sandboxeado** no puede env
 forma confiable: el `orca orchestration send` desde el sandbox `read-only` falla **intermitentemente**
 con "Orca is not running" (el `ORCA_CLI_SOCKET` viene vacío y no alcanza el runtime). La señal que el
 conductor —no sandboxeado— siempre observa es el envelope en el transcript propio. Por eso `awaitDone`
-ya no consulta `orchestration check` ni pasa `--from`/coordinatorHandle; el `worker_done` que el
-preamble de `--inject` le pide emitir al secundario es ruido inofensivo que no se consume.
+ya no consulta `orchestration check` ni pasa `--from`/coordinatorHandle. Como el preamble de
+`--inject` igualmente menciona `worker_done`, el spec aumentado le ordena explícitamente al
+secundario no ejecutar `orca` ni intentar enviarlo.
 
 **FSM durable crash-idempotente (`makeDedupFsm`, `harvest-core.mjs`):** clave durable
 `${dispatchId}:${nonce}` (la misma que arma `awaitDone`). Estados `received → harvested →
@@ -251,7 +252,10 @@ este orden:
    directorio padre** del destino (`fs.realpathSync(path.dirname(target))`): si ese padre real no
    cae dentro de `rootReal` (con separador de path incluido, para no confundir un prefijo parcial
    con un directorio hermano), rechaza — esto bloquea un symlink intermedio que reapunte fuera de
-   la raíz.
+   la raíz. Por lo tanto, el conductor debe **pre-crear el árbol del padre** y dejar inexistente
+   solo el archivo final; `runOrcaSession()` ejecuta este check como preflight y devuelve `code:2`
+   antes de abrir la sesión si el padre falta. El runner no hace `mkdir -p`: hacerlo antes de
+   canonicalizar podría seguir un symlink y crear directorios fuera de `root`.
 4. Exige que el destino **no exista**: `fs.lstatSync(target)` (contra el symlink final, sin
    seguirlo) debe fallar con `ENOENT`. Si el `lstat` tiene éxito, el destino ya existe → rechaza con
    el motivo exacto `REPORT_ALREADY_EXISTS_REASON` (`"El destino ya existe."`, exportado como
@@ -368,15 +372,17 @@ segundos); inyectar antes de que esté listo **pierde el prompt** — el agente 
 placeholder sin trabajar y nunca aparece el envelope. Éxito de la espera = `ok:true` en el envelope
 de Orca (un timeout llega como `ok:false, error.code:"timeout"`). Si no alcanza `tui-idle` en el
 presupuesto, `createDispatch` **lanza** (la skill degrada a `cli`), sin despachar. No se pasa
-`--from`: el `worker_done` que el preamble le pide al secundario no se consume (ver "Detección de
-fin"), así que no hay coordinador que rutear.
+`--from` ni se solicita `worker_done`: el spec aumentado lo prohíbe y la detección de fin usa el
+envelope del transcript (ver "Detección de fin").
 
-**Barrera semántica de submit (Windows/ConPTY).** En Windows, `dispatch --inject` puede terminar de
-escribir al PTY antes de que el renderer haya aplicado el bracketed paste; mandar Enter de inmediato
-lo pierde y deja el prompt pegado. Tras el inject, `createDispatch` sondea `terminal read` hasta ver
-el `nonce` de este dispatch en el tail del composer, espera 250 ms de asentamiento y recién entonces
-envía `terminal send --enter` (sin `--text`). El sondeo está acotado a 20 intentos cada 250 ms y el
-Enter es best-effort. En macOS no se aplica esta corrección: conserva el submit nativo del inject.
+**Barrera semántica de submit (Windows/ConPTY).** En Windows, `dispatch --inject` puede pegar el
+prompt mientras Codex todavía inicia sus MCP; un Enter enviado en esa fase puede perderse y dejar el
+prompt pegado. Tras el inject, `createDispatch` sondea `terminal read` hasta ver evidencia del prompt
+en el composer —el `nonce` o, para bracketed pastes largos, `[Pasted Content ...]`— y confirma que el
+último frame ya no muestre `Starting MCP servers`. Luego espera 250 ms de asentamiento y envía
+`terminal send --enter` (sin `--text`). Para Codex, el sondeo usa intervalos de 1 s dentro del
+presupuesto de boot; las otras familias conservan el presupuesto corto de 20 intentos cada 250 ms.
+El Enter es best-effort. En macOS no se aplica esta corrección: conserva el submit nativo del inject.
 
 ---
 
@@ -480,8 +486,8 @@ El modelo completo y la nota de namespacing están en `assets/launch/mcp-invento
 - `install.md` — instalación paso a paso (Node ≥18, `CROSS_MODEL_ORCA`, `skills-ref`).
 - `assets/launch/profiles.md` — matriz de lanzamiento completa (POSIX+PowerShell) por
   familia×rol×modo.
-- `assets/launch/mcp-inventory.md` — modelo MCP: read-only fail-closed, write con vigilancia
-  manual, y namespacing real de tools.
+- `assets/launch/mcp-inventory.md` — modelo MCP asimétrico: Claude read-only fail-closed, Codex
+  conserva MCP, y namespacing real de tools.
 - `assets/launch/claude-readonly.mcp.json` — config vacío obligatorio del perfil read-only;
   el deny `mcp__*` cubre además plugins/connectors.
 - `spikes/RESULTS.md` — contratos de locator y señal con evidencia (Task 0.1/0.2/0.3).

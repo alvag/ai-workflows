@@ -27,6 +27,34 @@ function errEnvelope(code) {
   return { stdout: JSON.stringify({ id: 'x', ok: false, error: { code }, _meta: {} }), code: 0 };
 }
 
+test('preflight: rechaza un directorio padre inexistente antes de crear la sesión Orca', async () => {
+  const stateDir = mkTmpDir('cmo-run-preflight-');
+  const root = mkTmpDir('cmo-run-preflight-root-');
+  const calls = [];
+  const orcaRunner = (args) => {
+    calls.push(args);
+    return errEnvelope('should_not_run');
+  };
+
+  const res = await runOrcaSession({
+    family: 'codex',
+    role: 'read-only',
+    mode: 'unattended',
+    worktree: '/tmp/wt',
+    spec: 'tarea',
+    reportPath: '.co-explore/smoke/informe.md',
+    root,
+    orcaRunner,
+    stateDir,
+  });
+
+  assert.equal(res.transport, 'orca-session');
+  assert.equal(res.code, 2);
+  assert.match(res.reason, /directorio padre del destino/i);
+  assert.match(res.reason, /antes de invocar el runner/i);
+  assert.deepEqual(calls, []);
+});
+
 test('degrada a cli (code 4) cuando no se puede crear la sesión propia', async () => {
   const stateDir = mkTmpDir('cmo-run-nosess-');
   const root = mkTmpDir('cmo-run-root-');
@@ -112,6 +140,7 @@ test('degrada con recuperación ante code 3 (deadline vencido): interrumpe y cie
     if (verb === 'terminal create') return okEnvelope({ terminal: { handle: 'term-3' } });
     if (verb === 'orchestration task-create') return okEnvelope({ task: { id: 'task_3' } });
     if (verb === 'orchestration dispatch') return okEnvelope({ dispatch: { id: 'ctx_3' }, injected: true });
+    if (verb === 'terminal read') return okEnvelope({ terminal: { tail: ['› [Pasted Content 100 chars]'] } });
     // terminal wait (boot e idle de recover), terminal send (nudge + interrupt), terminal close.
     return okEnvelope({ close: { ptyKilled: true } });
   };

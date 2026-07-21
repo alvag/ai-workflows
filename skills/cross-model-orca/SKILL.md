@@ -66,6 +66,12 @@ node <skill>/assets/run-orca-session.mjs \
   --report <relpath-a-root> --root <dir> [--deadline-ms <n>] [--boot-timeout-ms <n>]
 ```
 
+**Precondición del destino:** el conductor crea antes el directorio padre de `--report`
+(`mkdir -p` / `New-Item -ItemType Directory -Force`), pero deja el archivo destino inexistente.
+El runner no hace `mkdir -p`: necesita que el padre ya exista para canonicalizarlo con `realpath`
+y rechazar symlinks que escapen de `--root`. Si falta, devuelve `code:2` **antes** de crear una
+sesión Orca, con un error sobre el directorio padre.
+
 Devuelve una línea JSON en stdout: `{ transport:"orca-session", code, reportPath?, reason? }`.
 `code:0` = cosechado (`reportPath` es el informe); `code!=0` = **degradar a `cli`** leyendo
 `reason` (4 = no se pudo crear/localizar la sesión propia; 2/3 = fallo de cosecha/invocación).
@@ -101,7 +107,7 @@ rondas) puede tener mensajes de dispatches previos con `nonce` viejo, y esos se 
 un **token de correlación** — para qué mensaje del transcript corresponde a este dispatch. La
 **autoridad**, lo que un secundario no puede forjar, es la **propiedad de la sesión**: el conductor
 **creó él mismo** la terminal fresca y lee el transcript/rollout de **esa** sesión exacta — para
-Claude, fijando un `--session-id` propio; para Codex, localizando el rollout por `cwd`+`mtime`+
+Claude, fijando un `--session-id` propio; para Codex, localizando el rollout por `cwd`+timestamp de creación+
 `source` y desambiguando a **exactamente 1** candidato. El `nonce` (único por dispatch) selecciona
 el mensaje correcto dentro de ese transcript propio. Vale para **ambas familias**: es el mismo
 modelo.
@@ -113,8 +119,9 @@ un Codex **sandboxeado** no puede reportar `worker_done` de forma confiable: den
 observa —porque él no está sandboxeado— es el `nonce`+sentinel apareciendo en el transcript propio,
 que `harvest()` sondea hasta el deadline: **esa** es la detección de fin. `taskId`/`dispatchId` no
 sumarían autoridad (serían un eco forjable de datos que el conductor ya conoce); el parser los
-tolera por compatibilidad, pero el dispatch `orca-session` solo pide `nonce`. El `worker_done` que
-el preamble de Orca le pide emitir al secundario es ruido inofensivo: no se consume.
+tolera por compatibilidad, pero el dispatch `orca-session` solo pide `nonce`. Como el preamble de
+Orca igualmente menciona `worker_done`, la tarea inyectada le ordena explícitamente al secundario
+no ejecutar `orca` ni intentar enviarlo.
 
 El parseo exacto del envelope, la desambiguación por `nonce` y el algoritmo de cosecha
 crash-idempotente están en `reference.md` (consumen `assets/harvest-core.mjs` y
@@ -131,7 +138,8 @@ Sin las tres activas, no se despacha:
    el conductor sondea el transcript propio esperando el `nonce`+sentinel (sección 2). `tui-idle`
    solo se usa como barrera de **boot** antes de inyectar (para no perder el prompt) y en la
    recuperación, no como detección de fin.
-2. **MCP** — qué tools remotas están disponibles. El comportamiento **depende del rol**:
+2. **MCP** — qué tools remotas están disponibles. El comportamiento **depende de la familia y el
+   rol**:
    - **read-only Claude → MCP OFF por default.** `--tools "Read,Grep,Glob"` cierra los built-ins
      (sin Bash), pero **no** las tools MCP: un read-only con los MCP del entorno podía alcanzar una
      tool MCP de **ejecución** (p. ej. la terminal del IDE del usuario) y correr comandos fuera del
@@ -141,28 +149,21 @@ Sin las tres activas, no se despacha:
      claude-readonly.mcp.json` vacío con `--disallowedTools "mcp__*"` y `--permission-mode dontAsk`.
      El config vacío evita heredar servidores configurados; el deny explícito también cubre tools
      publicadas por plugins/connectors y `dontAsk` impide que una negación deje la TUI esperando.
-   - **read-only Codex → MCP OFF por override dinámico.** El adaptador enumera las secciones
-     `[mcp_servers.*]` del `config.toml` de Codex y lanza con un `-c
-     mcp_servers.<name>.enabled=false` por cada una. La fuente es el config.toml, **no** `codex
-     mcp list` (esa lista agrega servers gestionados por la app que no viven en el config;
-     deshabilitar uno de esos por `-c` crea una entrada inválida y aborta el boot entero —
-     regresión real observada en vivo). La razón principal es de **confiabilidad de boot**, con caso real (Windows):
-     la TUI interactiva arranca TODOS los MCP del usuario y puede quedar colgada en "MCP startup
-     incomplete" sin ejecutar el primer turno — sin turno no hay rollout que cosechar y el
-     transporte degrada (mientras que `codex exec` avanza pese a los MCP fallidos). De regalo,
-     simetría con el read-only de Claude. Best-effort: si la enumeración falla o un nombre no es
-     overrideable, el launch sale sin ese override y el backstop es el presupuesto de locate
-     ampliado — ver `assets/launch/profiles.md` → "Codex · read-only".
-   - **write Claude / Codex → vigilancia manual (P4).** El secundario ve los MCP del entorno y el
-     humano aprueba/rechaza en la TUI cualquier acción sensible; no hay inventario ni allowlist que
+   - **Codex → conserva los MCP configurados en ambos roles.** El adaptador no enumera
+     `config.toml` ni agrega overrides `mcp_servers.*.enabled=false`. En read-only, `-s read-only`
+     limita las escrituras de shell/filesystem, pero **no** promete aislar efectos externos de las
+     tools MCP. Esta política evita complejidad parcial que no cubría MCP de plugins y podía volver
+     frágil el boot. `-c features.apps=false` y `--disable hooks` siguen activos.
+   - **write Claude → vigilancia manual (P4).** El secundario ve los MCP del entorno y el humano
+     aprueba/rechaza en la TUI cualquier acción sensible; no hay inventario ni allowlist que
      mantener. Ver `assets/launch/mcp-inventory.md`.
 3. **Hooks** — qué automatización local puede dispararse. `disableAllHooks: true` (Claude) /
    `--disable hooks` (Codex), siempre, en los dos roles.
 
 El detalle verificado de cada capa (perfiles concretos, validación real contra el CLI, namespacing
 de tools MCP por cómo está instalado el servidor) vive en `assets/launch/profiles.md` y
-`assets/launch/mcp-inventory.md` — **fail-closed**: un servidor/tool que no aparece en el
-inventario bloquea el despacho, no se habilita solo porque exista en el entorno.
+`assets/launch/mcp-inventory.md`. El cierre MCP **fail-closed** corresponde a Claude read-only;
+Codex conserva la configuración MCP del entorno.
 
 ## 4. Matriz de lanzamiento
 
@@ -172,12 +173,12 @@ Resumen familia × rol × modo — comandos completos POSIX+PowerShell en `asset
 |---|---|---|---|
 | Claude | read-only | `--tools "Read,Grep,Glob"` + `--disallowedTools "mcp__*"` + `--permission-mode dontAsk` + config MCP estricto vacío | mismo comando (sin superficie de ejecución ni prompts) |
 | Claude | write (cross-implement) | `--permission-mode manual` | `--permission-mode dontAsk` (`acceptEdits` solo en worktree hermano aislado) |
-| Codex | read-only | `-p cmo-readonly -s read-only -a untrusted --disable hooks` | `-a never` en vez de `untrusted` |
-| Codex | write (cross-implement) | `-p cmo-write -s workspace-write -a on-request --disable hooks` | `-a never` en vez de `on-request` |
+| Codex | read-only | `-c features.apps=false -s read-only -a untrusted --disable hooks` | `-a never` en vez de `untrusted` |
+| Codex | write (cross-implement) | `-c features.apps=false -s workspace-write -a on-request --disable hooks` | `-a never` en vez de `on-request` |
 
 No copies los comandos completos desde acá: `assets/launch/profiles.md` tiene cada celda con su
-bloque POSIX y PowerShell verificado, más la instalación previa obligatoria de los perfiles Codex
-(`cp`/`Copy-Item` a `$CODEX_HOME/<nombre>.config.toml` antes de invocar `-p`).
+bloque POSIX y PowerShell verificado. Los perfiles Codex son un endurecimiento **opcional** y no
+forman parte del lanzamiento default del adaptador.
 
 ## 5. Matriz de raíces por skill/modo
 

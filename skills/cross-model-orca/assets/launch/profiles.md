@@ -13,13 +13,12 @@
 2. **Approval policy** (qué necesita aprobación humana): `--permission-mode` en Claude; `-a` en
    Codex.
 3. **Config de MCP + hooks** (qué tools remotas y qué automatizaciones locales están
-   disponibles): **depende del rol**. Rol **read-only** (ambas familias, ambos modos): **MCP OFF
-   por default** — Claude vía config estricto vacío + deny `mcp__*`; Codex vía overrides dinámicos
-   `-c mcp_servers.<name>.enabled=false` derivados de su `config.toml` (ver "Codex · read-only").
-   Rol **write**: **vigilancia manual** (el humano aprueba/rechaza en la TUI; no hay allowlist que
-   mantener). Hooks siempre off: `--settings <archivo>` (`disableAllHooks`) en Claude,
-   `--disable hooks` en Codex; y `-c features.apps=false` inline en Codex. Ver `mcp-inventory.md`
-   para el modelo completo.
+   disponibles): **depende de la familia y el rol**. Claude read-only usa config estricto vacío +
+   deny `mcp__*`; Claude write conserva MCP con vigilancia manual. Codex conserva los MCP
+   configurados en ambos roles: el sandbox read-only limita shell/filesystem, no efectos externos
+   de MCP. Hooks siempre off: `--settings <archivo>` (`disableAllHooks`) en Claude, `--disable
+   hooks` en Codex; y `-c features.apps=false` inline en Codex. Ver `mcp-inventory.md` para el
+   modelo completo.
 
 ### MCP en Claude: read-only → OFF por default; write → vigilancia manual
 
@@ -45,17 +44,17 @@ aprueba/rechaza en la TUI — más `--permission-mode`. No hay inventario ni all
 > prompt se pierde como "otra tool/config"). En la matriz de abajo el `<prompt>` va último, tras
 > `--session-id` (no variádico).
 
-## MCP en Codex: read-only → OFF dinámico (default); write → vigilancia manual
+## MCP en Codex: preservado por default
 
-Rol **read-only**: **MCP OFF por default en ambos modos**, vía los overrides dinámicos que arma el
-adaptador desde el `config.toml` (detalle y restricciones en "Codex · read-only" abajo) — no es
-solo simetría con Claude: sin esto la TUI puede colgarse arrancando los MCP del usuario y el turno
-nunca empieza (caso real en Windows). Es **best-effort**, no una garantía dura: los servers
-gestionados por la app y los de nombre no-bare quedan vivos. Rol **write** (cross-implement):
-**vigilancia manual** — el secundario ve los MCP del entorno y el humano es el gate en la TUI. Las
-garantías cero-config que valen siempre: `-s <sandbox>`, `--disable hooks`, y
-**`-c features.apps=false`** (apaga la superficie de Apps; inline, sin perfil — verificado válido
-bajo `--strict-config`). **No hace falta copiar ningún perfil a `$CODEX_HOME` para el default.**
+Codex conserva los MCP configurados en los roles read-only y write. El adaptador no enumera
+`config.toml` ni agrega overrides `mcp_servers.*.enabled=false`: esa estrategia era parcial, no
+cubría MCP publicados por plugins y podía introducir fallas de boot. En una corrida E2E real en
+Windows, el flujo sin MCP-off terminó con `code:0`.
+
+Las garantías cero-config que valen siempre son `-s <sandbox>`, `--disable hooks` y **`-c
+features.apps=false`**. En particular, `-s read-only` limita las escrituras de shell/filesystem,
+pero **no** promete aislar efectos externos de herramientas MCP. **No hace falta copiar ningún
+perfil a `$CODEX_HOME` para el default.**
 
 Para el caso **desatendido** (nadie aprueba en la TUI) existe un perfil **opcional** con
 restricciones MCP server-scoped (`codex-readonly.config.toml`). `-p <nombre>` **no** acepta una
@@ -211,40 +210,23 @@ claude `
 
 ### Codex · read-only
 
-**MCP off dinámico (default en ambos modos).** En la rama `orca-session`, el adaptador enumera las
-secciones `[mcp_servers.*]` del **`config.toml`** de Codex (`configDir('codex')`, respeta
-`CODEX_HOME`) y agrega un `-c mcp_servers.<name>.enabled=false` por cada una al comando de
-lanzamiento (`listCodexConfigMcpServers` en `dispatch-adapter.mjs`). Dos razones, ambas de caso
-real:
-- **Confiabilidad de boot:** la TUI interactiva arranca TODOS los MCP del usuario y puede quedar
-  colgada en "MCP startup incomplete" sin llegar a ejecutar el primer turno (observado en Windows
-  con atlassian/figma/postman/Mongo) — sin turno no hay rollout que cosechar. `codex exec` no lo
-  sufre porque avanza pese a los MCP fallidos.
-- **Simetría con Claude read-only:** MCP off = sin superficie de ejecución fuera del sandbox.
+El lanzamiento default conserva la configuración MCP del entorno. `-s read-only` protege el
+filesystem frente a la shell, mientras `-a untrusted`/`-a never` gobierna las aprobaciones del CLI;
+ninguno de esos controles convierte las herramientas MCP externas en read-only. El perfil
+`cmo-readonly` que aparece abajo es un endurecimiento explícito y opcional, no una dependencia del
+transporte.
 
-Restricciones verificadas en vivo (0.144.6):
-- No existe una forma global: `-c mcp_servers={}` **no** vacía la lista (merge de TOML).
-- La clave quoted (`mcp_servers."x".enabled=false`) rompe la carga del config — solo funcionan
-  nombres bare (`[A-Za-z0-9_-]+`).
-- La fuente es el config.toml, **no** `codex mcp list --json`: esa lista agrega servers gestionados
-  por la app (p. ej. `sites-design-picker`) que no viven en el config; deshabilitar uno de esos por
-  `-c` crea una entrada sin transporte → "Error loading config.toml: invalid transport" → el boot
-  entero aborta (regresión real observada). Esos servers quedan vivos (builtins locales y rápidos;
-  `codex_apps` lo apaga `features.apps=false`); los del config —los npx/pesados que cuelgan el
-  boot— son exactamente los que el listado cubre.
-
-**Atendido (default, vigilancia manual)** — sin perfil que copiar; `-a untrusted` manda cualquier
-comando no confiable a aprobación en la TUI (el humano es el gate), y `-c features.apps=false` apaga
-Apps inline (los `-c mcp_servers.*` de abajo son los que agrega el adaptador — uno por server):
+**Atendido (default)** — sin perfil que copiar; `-a untrusted` manda cualquier comando no
+confiable a aprobación en la TUI, y `-c features.apps=false` apaga Apps inline:
 
 **POSIX:**
 ```bash
-codex -c features.apps=false -c mcp_servers.<name>.enabled=false [...] -s read-only -a untrusted --disable hooks "<prompt>"
+codex -c features.apps=false -s read-only -a untrusted --disable hooks "<prompt>"
 ```
 
 **PowerShell:**
 ```powershell
-codex -c features.apps=false -c mcp_servers.<name>.enabled=false [...] -s read-only -a untrusted --disable hooks "<prompt>"
+codex -c features.apps=false -s read-only -a untrusted --disable hooks "<prompt>"
 ```
 
 **Desatendido** (nadie mirando; `untrusted` podría escalar y colgarse esperando aprobación) —
@@ -253,12 +235,12 @@ que copiarlo antes a `$CODEX_HOME`, ver arriba):
 
 **POSIX:**
 ```bash
-codex -p cmo-readonly -c features.apps=false -c mcp_servers.<name>.enabled=false [...] -s read-only -a never --disable hooks "<prompt>"
+codex -p cmo-readonly -c features.apps=false -s read-only -a never --disable hooks "<prompt>"
 ```
 
 **PowerShell:**
 ```powershell
-codex -p cmo-readonly -c features.apps=false -c mcp_servers.<name>.enabled=false [...] -s read-only -a never --disable hooks "<prompt>"
+codex -p cmo-readonly -c features.apps=false -s read-only -a never --disable hooks "<prompt>"
 ```
 
 ### Codex · write (cross-implement)

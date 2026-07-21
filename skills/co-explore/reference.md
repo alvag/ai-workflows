@@ -566,22 +566,20 @@ solo cambia el transporte, no el invariante de la regla 1 del `SKILL.md`.
 1. **Crear la sesión fresca dedicada.** `createOwnedSession({ family, role: 'read-only', mode,
    worktree, ... })` (`cross-model-orca/assets/dispatch-adapter.mjs`), con el perfil read-only de
    `cross-model-orca/assets/launch/profiles.md` según familia:
-   - Codex: `codex -c features.apps=false -c mcp_servers.<name>.enabled=false [...] -s read-only
-     -a untrusted --disable hooks` (atendido) — la garantía read-only es el sandbox `-s
-     read-only`, no un toolset acotado; los overrides `mcp_servers.*` los agrega el adaptador
-     (uno por server habilitado).
+   - Codex: `codex -c features.apps=false -s read-only -a untrusted --disable hooks` (atendido) —
+     la garantía read-only es el sandbox `-s read-only`, no un toolset acotado. El adaptador
+     conserva los MCP configurados y no agrega overrides `mcp_servers.*.enabled=false`.
    - Claude: `--tools "Read,Grep,Glob"` + `--settings
      cross-model-orca/assets/launch/claude-readonly.settings.json` (`disableAllHooks: true`) +
      `--strict-mcp-config --mcp-config claude-readonly.mcp.json` (vacío) + `--session-id <uuid>`
      — el toolset cerrado (sin Bash) es lo que da read-only duro; Claude no tiene una bandera de
      sandbox equivalente a `-s read-only`.
 
-   **MCP off por default en el rol read-only, para las dos familias** (ver
-   `cross-model-orca/SKILL.md` → sección 3): en Claude porque `--tools` no cierra las tools MCP
-   (un explorador podía alcanzar una tool MCP de ejecución); en Codex por confiabilidad de boot —
-   la TUI interactiva arranca todos los MCP del usuario y puede colgarse en "MCP startup
-   incomplete" sin ejecutar el primer turno (caso real en Windows), dejando el transporte sin
-   rollout que cosechar. La exploración no necesita MCP: lee, busca y razona sobre el worktree.
+   **La política MCP es asimétrica** (ver `cross-model-orca/SKILL.md` → sección 3): Claude
+   read-only usa MCP off porque `--tools` no cierra las tools MCP; Codex conserva los MCP del
+   entorno. En Codex, `-s read-only` limita shell/filesystem, pero no garantiza que una tool MCP
+   externa sea read-only. Se acepta ese tradeoff para evitar una desactivación dinámica parcial y
+   frágil.
 
 2. **Armar y despachar el mismo prompt.** El prompt de exploración es el mismo que usa la rama
    `cli` — "Prompt de exploración" arriba, una variante por `mode`

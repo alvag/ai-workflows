@@ -16,7 +16,6 @@ import {
   awaitDone,
   recover,
   buildLaunchCommand,
-  listCodexConfigMcpServers,
   locateCodexRollout,
   resolveCodexTranscript,
 } from '../dispatch-adapter.mjs';
@@ -149,84 +148,24 @@ test('buildLaunchCommand (codex): sandbox/approval varían por role+mode, featur
   assert.equal(writeUnattended, 'codex -c features.apps=false -s workspace-write -a never --disable hooks');
 });
 
-test('buildLaunchCommand (codex, read-only): disableMcpServers agrega un override bare por server (MCP off dinámico)', () => {
-  // Hallazgo del caso real en Windows: la TUI de Codex quedaba colgada en "MCP startup
-  // incomplete" y el primer turno nunca arrancaba. El launch read-only apaga los MCP por
-  // override dinámico. Verificado en vivo (Codex 0.144.6): funciona el segmento bare
-  // (`mcp_servers.engram.enabled=false`); la variante quoted rompe la carga del config.
-  const cmd = buildLaunchCommand({
-    family: 'codex',
-    role: 'read-only',
-    mode: 'unattended',
-    disableMcpServers: ['engram', 'MongoDB-DEV'],
-  });
-  assert.equal(
-    cmd,
-    'codex -c features.apps=false -c mcp_servers.engram.enabled=false -c mcp_servers.MongoDB-DEV.enabled=false -s read-only -a never --disable hooks'
-  );
-});
-
-test('buildLaunchCommand (codex, write): disableMcpServers se IGNORA (write conserva MCP con vigilancia manual)', () => {
-  const cmd = buildLaunchCommand({
-    family: 'codex',
-    role: 'write',
-    mode: 'attended',
-    disableMcpServers: ['engram'],
-  });
-  assert.equal(cmd, 'codex -c features.apps=false -s workspace-write -a on-request --disable hooks');
-});
-
 test('buildLaunchCommand: familia desconocida lanza Error', () => {
   assert.throws(() => buildLaunchCommand({ family: 'gpt', role: 'read-only', mode: 'attended' }), /Error/);
-});
-
-// ---------------------------------------------------------------------------
-// listCodexConfigMcpServers: enumeración best-effort desde config.toml
-// ---------------------------------------------------------------------------
-
-test('listCodexConfigMcpServers: enumera secciones [mcp_servers.*] bare de config.toml, dedup por subtablas, salta quoted', async () => {
-  // Fuente = config.toml, NO `codex mcp list --json`: esa lista agrega servers que no viven
-  // en el config (p. ej. sites-design-picker, gestionado por la app) y deshabilitar uno de
-  // esos por -c crea una entrada sin transporte → el boot entero de Codex aborta ("Error
-  // loading config.toml: invalid transport"). Regresión real observada en vivo en el E2E.
-  const codexHome = mkTmpDir('cmo-codex-cfg-');
-  fs.writeFileSync(
-    path.join(codexHome, 'config.toml'),
-    [
-      'model = "gpt-5.5"',
-      '[mcp_servers.engram]',
-      'command = "engram"',
-      '[mcp_servers.chrome-devtools]',
-      'command = "npx"',
-      '[mcp_servers.chrome-devtools.tools.click]', // subtabla: NO duplica el nombre.
-      'enabled = true',
-      '[mcp_servers."weird.name"]', // quoted (no-overrideable por -c): se salta.
-      'command = "x"',
-      '[other_section]',
-      'foo = "bar"',
-    ].join('\n')
-  );
-
-  await withEnv({ CODEX_HOME: codexHome }, () => {
-    assert.deepEqual(listCodexConfigMcpServers(), ['engram', 'chrome-devtools']);
-  });
-});
-
-test('listCodexConfigMcpServers: config.toml ausente -> [] (best-effort, launch sin overrides)', async () => {
-  const codexHome = mkTmpDir('cmo-codex-nocfg-');
-  await withEnv({ CODEX_HOME: codexHome }, () => {
-    assert.deepEqual(listCodexConfigMcpServers(), []);
-  });
 });
 
 // ---------------------------------------------------------------------------
 // locateCodexRollout: 1 candidato vs 2 candidatos (ambiguo)
 // ---------------------------------------------------------------------------
 
-function writeRollout(dir, name, { cwd, source = 'cli', originator = 'codex-tui', sessionId = 'sess-1' }) {
+function writeRollout(dir, name, {
+  cwd,
+  source = 'cli',
+  originator = 'codex-tui',
+  sessionId = 'sess-1',
+  timestamp = '2026-07-19T00:00:00.000Z',
+}) {
   const filePath = path.join(dir, name);
   const metaLine = JSON.stringify({
-    timestamp: '2026-07-19T00:00:00.000Z',
+    timestamp,
     type: 'session_meta',
     payload: { session_id: sessionId, cwd, source, originator, cli_version: '0.144.6' },
   });
@@ -275,6 +214,48 @@ test('locateCodexRollout (windows:true): la comparación de cwd es case-insensit
   assert.equal(locateCodexRollout({ sessionsRoot, cwd: 'C:\\Repos\\WT', afterMs: 0, windows: false }), null);
 });
 
+test('locateCodexRollout (windows:true): normaliza separadores mixtos del cwd', () => {
+  const sessionsRoot = mkTmpDir('cmo-sessions-separators-');
+  writeRollout(sessionsRoot, 'rollout-2026-07-21T00-00-02-sess-s.jsonl', {
+    cwd: 'C:\\Users\\MaxAlva\\ai-workflows',
+    sessionId: 'sess-s',
+  });
+
+  const located = locateCodexRollout({
+    sessionsRoot,
+    cwd: 'C:/Users/MaxAlva/ai-workflows',
+    afterMs: 0,
+    windows: true,
+  });
+
+  assert.notEqual(located, null);
+  assert.equal(located.sessionId, 'sess-s');
+});
+
+test('locateCodexRollout: excluye un rollout viejo aunque su mtime cambie después de crear la terminal', () => {
+  const sessionsRoot = mkTmpDir('cmo-sessions-created-at-');
+  writeRollout(sessionsRoot, 'rollout-old-active.jsonl', {
+    cwd: 'C:\\repos\\wt',
+    sessionId: 'sess-old',
+    timestamp: '2026-07-20T23:59:00.000Z',
+  });
+  writeRollout(sessionsRoot, 'rollout-fresh.jsonl', {
+    cwd: 'C:\\repos\\wt',
+    sessionId: 'sess-fresh',
+    timestamp: '2026-07-21T00:00:01.000Z',
+  });
+
+  const located = locateCodexRollout({
+    sessionsRoot,
+    cwd: 'C:/repos/wt',
+    afterMs: Date.parse('2026-07-21T00:00:00.000Z'),
+    windows: true,
+  });
+
+  assert.notEqual(located, null);
+  assert.equal(located.sessionId, 'sess-fresh');
+});
+
 test('locateCodexRollout: dos candidatos en la ventana -> null (ambiguo)', () => {
   const sessionsRoot = mkTmpDir('cmo-sessions-');
   writeRollout(sessionsRoot, 'rollout-a.jsonl', { cwd: '/repo/worktree-a', sessionId: 'sess-1' });
@@ -315,19 +296,15 @@ test('createOwnedSession (codex): NO intenta localizar el rollout todavía -> re
     throw new Error(`orcaRunner inesperado en el test: ${args.join(' ')}`);
   };
 
-  // CODEX_HOME apunta a un home vacío: la enumeración MCP-off devuelve [] (sin overrides)
-  // y, ademas, este test NO depende del config real de la máquina.
-  const result = await withEnv({ CODEX_HOME: mkTmpDir('cmo-codex-empty-') }, () =>
-    createOwnedSession({
-      family: 'codex',
-      role: 'read-only',
-      mode: 'attended',
-      worktree,
-      orcaRunner: fakeOrcaRunner,
-      now: () => 12345,
-      stateDir,
-    })
-  );
+  const result = createOwnedSession({
+    family: 'codex',
+    role: 'read-only',
+    mode: 'attended',
+    worktree,
+    orcaRunner: fakeOrcaRunner,
+    now: () => 12345,
+    stateDir,
+  });
 
   assert.notEqual(result, null);
   assert.equal(result.session.terminalHandle, 'term_codex_1');
@@ -343,7 +320,7 @@ test('createOwnedSession (codex): NO intenta localizar el rollout todavía -> re
   assert.equal(entries[0].transcriptPath, null);
 });
 
-test('createOwnedSession (codex, read-only): el --command de la terminal incluye los overrides MCP-off del config.toml', async () => {
+test('createOwnedSession (codex, read-only): conserva los MCP configurados', async () => {
   const stateDir = mkTmpDir('cmo-state-');
   const codexHome = mkTmpDir('cmo-codex-cfg-');
   fs.writeFileSync(
@@ -364,35 +341,6 @@ test('createOwnedSession (codex, read-only): el --command de la terminal incluye
       family: 'codex',
       role: 'read-only',
       mode: 'unattended',
-      worktree: '/repo/wt',
-      orcaRunner: fakeOrcaRunner,
-      stateDir,
-    })
-  );
-
-  assert.notEqual(result, null);
-  assert.match(capturedCommand, / -c mcp_servers\.engram\.enabled=false/);
-  assert.match(capturedCommand, / -c mcp_servers\.figma\.enabled=false/);
-});
-
-test('createOwnedSession (codex, write): NO agrega overrides MCP aunque el config los tenga (vigilancia manual)', async () => {
-  const stateDir = mkTmpDir('cmo-state-');
-  const codexHome = mkTmpDir('cmo-codex-cfg-');
-  fs.writeFileSync(path.join(codexHome, 'config.toml'), '[mcp_servers.engram]\ncommand = "engram"\n');
-  let capturedCommand = null;
-  const fakeOrcaRunner = (args) => {
-    if (args[0] === 'terminal' && args[1] === 'create') {
-      capturedCommand = args[args.indexOf('--command') + 1];
-      return okEnvelope({ terminal: { handle: 'term_codex_w' } });
-    }
-    throw new Error(`orcaRunner inesperado en el test: ${args.join(' ')}`);
-  };
-
-  const result = await withEnv({ CODEX_HOME: codexHome }, () =>
-    createOwnedSession({
-      family: 'codex',
-      role: 'write',
-      mode: 'attended',
       worktree: '/repo/wt',
       orcaRunner: fakeOrcaRunner,
       stateDir,
@@ -623,9 +571,9 @@ test('resolveCodexTranscript (claude): pass-through del transcriptPath ya resuel
 // createDispatch
 // ---------------------------------------------------------------------------
 
-test('createDispatch: espera evidencia del prompt renderizado antes de someter en Windows', async () => {
+test('createDispatch: espera que termine el startup MCP y el prompt pegado quede listo antes de someter en Windows', async () => {
   const stateDir = mkTmpDir('cmo-state-');
-  const session = { uid: 'sess-uid-1', terminalHandle: 'term_1', stateDir };
+  const session = { uid: 'sess-uid-1', terminalHandle: 'term_1', family: 'codex', stateDir };
 
   const calls = [];
   const sleeps = [];
@@ -646,7 +594,9 @@ test('createDispatch: espera evidencia del prompt renderizado antes de someter e
     }
     if (args[1] === 'read') {
       readCalls += 1;
-      const tail = readCalls === 1 ? ['rendering'] : ['X-CMO: nonce=' + injectedNonce];
+      const tail = readCalls === 1
+        ? ['Starting MCP servers (9/11): engram, tabularis › [Pasted Content 4866 chars]']
+        : ['⚠ MCP startup incomplete (failed: tabularis) › [Pasted Content 4866 chars]'];
       return okEnvelope({ terminal: { tail } });
     }
     if (args[1] === 'send') {
@@ -669,13 +619,14 @@ test('createDispatch: espera evidencia del prompt renderizado antes de someter e
   assert.equal(dispatch.expectedAssignee, 'term_1');
   assert.equal(typeof dispatch.nonce, 'string');
   assert.notEqual(dispatch.nonce.length, 0);
-  assert.deepEqual(sleeps, [250, 250]);
+  assert.deepEqual(sleeps, [1_000, 250]);
   assert.equal(readCalls, 2);
 
   // El spec inyectado (task-create) debe llevar el nonce.
   const taskCreateCall = calls.find((c) => c[1] === 'task-create');
   const specIdx = taskCreateCall.indexOf('--spec');
   assert.match(taskCreateCall[specIdx + 1], new RegExp(`nonce=${dispatch.nonce}`));
+  assert.match(taskCreateCall[specIdx + 1], /No ejecutes `orca` ni intentes enviar `worker_done`/);
 
   // worker_done abandonado: el dispatch NO pasa --from (no ruteamos un worker_done que no consumimos).
   const dispatchCall = calls.find((c) => c[1] === 'dispatch');

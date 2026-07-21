@@ -13,6 +13,7 @@
 // (tui-idle) de `createDispatch` y la cosecha por nonce de `awaitDone`, y pierde el
 // prompt en la carrera de boot. La rama `orca-session` se corre SOLO por este flujo.
 import { createOwnedSession, createDispatch, awaitDone, recover } from './dispatch-adapter.mjs';
+import { checkContainment } from './harvest-core.mjs';
 
 // Deadline por default del turno del secundario (aparición de rollout + cosecha del
 // nonce). 240s cubre el boot de MCP servers + un turno de exploración read-only real
@@ -77,6 +78,19 @@ export async function runOrcaSession({
   sleep,
   stateDir,
 }) {
+  // 0. Preflight del destino ANTES de pagar el costo de una sesión secundaria. El padre del
+  //    reporte debe existir para que `realpath` pueda demostrar contención y detectar symlinks;
+  //    crearlo automáticamente acá sería inseguro porque un componente symlink podría hacer que
+  //    `mkdir -p` escriba fuera de `root` antes del rechazo. `awaitDone` repite este check al
+  //    cosechar para cubrir cambios ocurridos durante el turno.
+  const reportPreflight = checkContainment(reportPath, root);
+  if (!reportPreflight.ok) {
+    const parentHint = reportPreflight.reason.startsWith('No se pudo canonicalizar el directorio padre')
+      ? ' Crea o verifica el directorio padre de --report antes de invocar el runner.'
+      : '';
+    return { transport: 'orca-session', code: 2, reason: `${reportPreflight.reason}${parentHint}` };
+  }
+
   // 1. Sesión fresca propia. `null` = no se pudo crear la terminal / leer su handle.
   const owned = createOwnedSession({ family, role, mode, worktree, orcaRunner, now, stateDir });
   if (!owned || !owned.session) {

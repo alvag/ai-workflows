@@ -1,9 +1,9 @@
-# MCP y el secundario — read-only fail-closed, write con vigilancia manual
+# MCP y el secundario — política por familia y rol
 
 > Modelo de control de MCP para las sesiones que lanza `cross-model-orca`. No mantiene un inventario
-> manual de tools: read-only cierra todo el namespace MCP y write conserva la vigilancia humana.
+> manual de tools: Claude read-only cierra el namespace MCP; Codex conserva los MCP configurados.
 
-## Read-only: deny global en ambos modos
+## Claude read-only: deny global en ambos modos
 
 Claude read-only combina tres controles: `--strict-mcp-config` con config vacío evita heredar
 servidores configurados; `--disallowedTools "mcp__*"` bloquea también tools aportadas por
@@ -16,9 +16,16 @@ Las garantías que **sí** son cero-config y no dependen de vigilancia:
 - **`disableAllHooks:true` / `--disable hooks`**: ninguna automatización local se dispara.
 - **Sandbox de Codex** (`-s read-only`): el proceso no escribe fuera de lectura.
 
+## Codex: MCP preservado en ambos roles
+
+El adaptador no enumera `config.toml` ni agrega overrides `mcp_servers.*.enabled=false`. Codex
+conserva los MCP configurados tanto en read-only como en write. `-s read-only` limita las escrituras
+de shell/filesystem, pero no garantiza que una herramienta MCP externa sea read-only. Los perfiles
+server-scoped de `profiles.md` son un endurecimiento opcional, no parte del lanzamiento default.
+
 ## Write: el humano es el gate
 
-El rol write conserva los MCP del entorno. En atendido, cualquier acción sensible requiere la
+Claude write conserva los MCP del entorno. En atendido, cualquier acción sensible requiere la
 aprobación del humano en la TUI. En desatendido usa `dontAsk`: lo no aprobado falla en vez de dejar
 la sesión colgada. Si un flujo write necesita una política MCP más estrecha, debe declararla como
 parte explícita de ese work order; no se relaja el perfil read-only.
