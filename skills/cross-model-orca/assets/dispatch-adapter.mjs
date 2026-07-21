@@ -563,6 +563,19 @@ export function createDispatch({
   if (!dispatchId) {
     throw new Error('No se pudo obtener dispatchId de "orchestration dispatch": salida inesperada.');
   }
+
+  // Nudge de sumisión (hallazgo del caso real en Windows/ConPTY): `dispatch --inject` tipea el
+  // prompt en el composer del TUI, pero la tecla de envío puede no llegar — el secundario queda
+  // con el prompt pegado, sin someter, para siempre. Enter explícito (`terminal send --enter`,
+  // sin `--text`; verificado en vivo: `ok:true, bytesWritten:1`): viaja por el MISMO stream del
+  // PTY que el paste, así que llega ordenado DESPUÉS del prompt; y si el inject ya lo sometió
+  // (macOS), cae en un composer vacío y es no-op. Best-effort: si falla, el inject pudo haber
+  // sometido igual — no se aborta el dispatch por esto.
+  try {
+    orcaRunner(['terminal', 'send', '--terminal', session.terminalHandle, '--enter', '--json']);
+  } catch {
+    // best-effort (ver arriba).
+  }
   // El assignee es la terminal secundaria a la que acabamos de despachar: ya lo sabemos
   // (se lo pasamos nosotros mismos vía --to), no hace falta parsearlo del JSON de vuelta.
   const expectedAssignee = session.terminalHandle;

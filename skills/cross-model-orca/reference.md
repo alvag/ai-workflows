@@ -367,6 +367,15 @@ presupuesto, `createDispatch` **lanza** (la skill degrada a `cli`), sin despacha
 `--from`: el `worker_done` que el preamble le pide al secundario no se consume (ver "Detección de
 fin"), así que no hay coordinador que rutear.
 
+**Nudge de sumisión tras el inject (Windows/ConPTY).** Gotcha de caso real en Windows: `dispatch
+--inject` tipea el prompt en el composer del TUI pero la tecla de envío puede no llegar — el
+secundario queda con el prompt pegado, sin someter, para siempre. Por eso, tras un inject exitoso,
+`createDispatch` envía un **Enter explícito**: `terminal send --terminal <handle> --enter --json`
+(sin `--text`; verificado en vivo: `ok:true, bytesWritten:1`). Viaja por el mismo stream del PTY
+que el paste, así que llega ordenado **después** del prompt; si el inject ya lo sometió (macOS),
+cae en un composer vacío y es no-op (validado en E2E: la corrida con nudge cosechó igual, 40s).
+Best-effort: un fallo del nudge no aborta el dispatch.
+
 ---
 
 ## Espera y backoff

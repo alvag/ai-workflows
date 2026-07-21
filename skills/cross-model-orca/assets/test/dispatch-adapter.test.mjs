@@ -599,6 +599,9 @@ test('createDispatch: parsea taskId/dispatchId, genera un nonce no vacío y pers
     if (args[1] === 'dispatch') {
       return okEnvelope({ dispatch: { id: 'dispatch_1' }, injected: true });
     }
+    if (args[1] === 'send') {
+      return okEnvelope({ send: { handle: 'term_1', accepted: true, bytesWritten: 1 } });
+    }
     throw new Error(`orcaRunner inesperado: ${args.join(' ')}`);
   };
 
@@ -624,6 +627,15 @@ test('createDispatch: parsea taskId/dispatchId, genera un nonce no vacío y pers
   const dispatchCall = calls.find((c) => c[1] === 'dispatch');
   assert.equal(dispatchCall.includes('--from'), false);
   assert.equal(dispatchCall.includes('--inject'), true);
+
+  // Nudge de sumisión (hallazgo Windows/ConPTY): tras el inject se envía un Enter explícito
+  // (`terminal send --enter`, SIN --text) — el inject puede dejar el prompt pegado sin someter.
+  const sendIdx = calls.findIndex((c) => c[1] === 'send');
+  const dispatchIdx = calls.findIndex((c) => c[1] === 'dispatch');
+  assert.notEqual(sendIdx, -1, 'debe emitirse el nudge terminal send --enter');
+  assert.ok(sendIdx > dispatchIdx, 'el nudge va DESPUÉS del dispatch --inject');
+  assert.equal(calls[sendIdx].includes('--enter'), true);
+  assert.equal(calls[sendIdx].includes('--text'), false);
 
   const registry = JSON.parse(fs.readFileSync(path.join(stateDir, 'dispatches.json'), 'utf8'));
   assert.equal(registry['dispatch_1'].taskId, 'task_1');
