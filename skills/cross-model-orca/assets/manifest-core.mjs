@@ -482,6 +482,7 @@ export function finishRun({
   status,
   usage = DEFAULT_USAGE,
   artifacts = [],
+  ext,
   now = Date.now,
 }) {
   const { resolvedDir, partialPath, manifestPath } = pathsFor(dir, runId);
@@ -501,6 +502,7 @@ export function finishRun({
   const closure = deriveClosure(partial.attempts, status);
   const validatedUsage = validateUsage(usage);
   const validatedArtifacts = validateArtifacts(artifacts, resolvedDir);
+  const validatedExt = ext === undefined ? partial.ext : validateExt(partial.workflow, ext);
   const finishedAt = toIsoTimestamp(now);
   const durationMs = Date.parse(finishedAt) - Date.parse(partial.timing.startedAt);
   if (!Number.isFinite(durationMs) || durationMs < 0) {
@@ -529,7 +531,7 @@ export function finishRun({
     outcome: closure.outcome,
     usage: validatedUsage,
     artifacts: validatedArtifacts,
-    ext: partial.ext,
+    ext: validatedExt,
   };
 
   writeJsonAtomic(manifestPath, terminal);

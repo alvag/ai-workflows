@@ -331,6 +331,113 @@ test('ext y resolvedBy rechazan contenido libre o schemas no registrados', () =>
   );
 });
 
+test('finishRun sustituye por completo el ext inicial con los valores finales', () => {
+  const dir = mkTmpDir();
+  const { runId } = startRun(dir);
+  const finalExt = {
+    'cross-implement': {
+      fixRounds: 2,
+      verificationReruns: 3,
+      triage: [{
+        checkId: 'contrato-final',
+        class: 'IMPLEMENTATION_DEFECT',
+        consumedRound: true,
+      }],
+    },
+  };
+
+  const terminal = readJson(finishRun({
+    dir,
+    runId,
+    status: 'aborted',
+    ext: finalExt,
+  }).manifestPath);
+
+  assert.deepEqual(terminal.ext, finalExt);
+  assert.notDeepEqual(terminal.ext, DEFAULT_EXT);
+});
+
+test('finishRun rechaza ext final inválido sin publicar el terminal', () => {
+  const invalidExts = [
+    {
+      'cross-implement': {
+        fixRounds: 0,
+        verificationReruns: 0,
+        triage: [],
+        extra: true,
+      },
+    },
+    {
+      'cross-implement': {
+        fixRounds: 0,
+        verificationReruns: 0,
+        triage: [{
+          checkId: 'contrato',
+          class: 'OTRA_CLASE',
+          consumedRound: false,
+        }],
+      },
+    },
+    {
+      'cross-implement': {
+        fixRounds: 0,
+        verificationReruns: 0,
+        triage: [{
+          checkId: 'ID con espacios',
+          class: 'VERIFICATION_DEFECT',
+          consumedRound: false,
+        }],
+      },
+    },
+  ];
+
+  for (const ext of invalidExts) {
+    const dir = mkTmpDir();
+    const { runId, partialPath } = startRun(dir);
+    const manifestPath = path.join(dir, `${runId}.json`);
+
+    assert.throws(
+      () => finishRun({ dir, runId, status: 'aborted', ext }),
+      /ext\.cross-implement|checkId/i,
+    );
+    assert.equal(fs.existsSync(manifestPath), false);
+    assert.equal(fs.existsSync(partialPath), true);
+  }
+});
+
+test('finishRun repetido ignora un ext distinto y no muta el terminal', () => {
+  const dir = mkTmpDir();
+  const { runId } = startRun(dir);
+  const { manifestPath } = finishRun({
+    dir,
+    runId,
+    status: 'aborted',
+    ext: {
+      'cross-implement': {
+        fixRounds: 1,
+        verificationReruns: 1,
+        triage: [],
+      },
+    },
+  });
+  const original = fs.readFileSync(manifestPath);
+
+  finishRun({
+    dir,
+    runId,
+    status: 'ready',
+    ext: {
+      'cross-implement': {
+        fixRounds: 99,
+        verificationReruns: 99,
+        triage: [],
+      },
+    },
+  });
+
+  assert.deepEqual(fs.readFileSync(manifestPath), original);
+});
+
 test('finishRun rechaza attempts abiertos y cierra explícitamente uno fallido', () => {
   const openDir = mkTmpDir();
   const openClock = tickingClock();
@@ -462,6 +569,97 @@ test('golden fallback orca-session hacia cli deriva transporte, duración y outc
     costUsd: null,
     source: 'unavailable',
   });
+});
+
+test('instrumentación: fix tras CLI conserva un único attempt y persiste métricas finales', () => {
+  const dir = mkTmpDir();
+  const now = tickingClock();
+  const { runId } = startRun(dir, { now, transportDesired: 'cli' });
+  attemptStart({ dir, runId, transport: 'cli', access: 'write', now });
+  attemptFinish({ dir, runId, outcome: 'completed', code: 0, now });
+  const ext = {
+    'cross-implement': {
+      fixRounds: 2,
+      verificationReruns: 3,
+      triage: [
+        {
+          checkId: 'compilacion',
+          class: 'IMPLEMENTATION_DEFECT',
+          consumedRound: true,
+        },
+        {
+          checkId: 'pruebas',
+          class: 'IMPLEMENTATION_DEFECT',
+          consumedRound: true,
+        },
+      ],
+    },
+  };
+
+  const terminal = readJson(finishRun({ dir, runId, status: 'ready', ext, now }).manifestPath);
+  assert.equal(terminal.attempts.length, 1);
+  assert.equal(terminal.attempts[0].transport, 'cli');
+  assert.deepEqual(terminal.ext, ext);
+});
+
+test('instrumentación: fix tras Orca conserva un único attempt y persiste métricas finales', () => {
+  const dir = mkTmpDir();
+  const now = tickingClock();
+  const { runId } = startRun(dir, { now, transportDesired: 'orca-session' });
+  attemptStart({ dir, runId, transport: 'orca-session', access: 'write', now });
+  attemptFinish({ dir, runId, outcome: 'completed', code: 0, now });
+  const ext = {
+    'cross-implement': {
+      fixRounds: 1,
+      verificationReruns: 1,
+      triage: [{
+        checkId: 'lint',
+        class: 'IMPLEMENTATION_DEFECT',
+        consumedRound: true,
+      }],
+    },
+  };
+
+  const terminal = readJson(finishRun({ dir, runId, status: 'ready', ext, now }).manifestPath);
+  assert.equal(terminal.attempts.length, 1);
+  assert.equal(terminal.attempts[0].transport, 'orca-session');
+  assert.equal(Object.hasOwn(terminal.attempts[0], 'recovered'), false);
+  assert.deepEqual(terminal.ext, ext);
+});
+
+test('instrumentación: fallback seguido de fix usa dos attempts y triage mixto', () => {
+  const dir = mkTmpDir();
+  const now = tickingClock();
+  const { runId } = startRun(dir, { now });
+  attemptStart({ dir, runId, transport: 'orca-session', access: 'write', now });
+  attemptFinish({ dir, runId, outcome: 'failed', code: 4, recovered: true, now });
+  attemptStart({ dir, runId, transport: 'cli', access: 'write', now });
+  attemptFinish({ dir, runId, outcome: 'completed', code: 0, now });
+  const ext = {
+    'cross-implement': {
+      fixRounds: 1,
+      verificationReruns: 2,
+      triage: [
+        {
+          checkId: 'pruebas',
+          class: 'VERIFICATION_DEFECT',
+          consumedRound: false,
+        },
+        {
+          checkId: 'compilacion',
+          class: 'IMPLEMENTATION_DEFECT',
+          consumedRound: true,
+        },
+      ],
+    },
+  };
+
+  const terminal = readJson(finishRun({ dir, runId, status: 'ready', ext, now }).manifestPath);
+  assert.equal(terminal.attempts.length, 2);
+  assert.deepEqual(terminal.attempts.map((attempt) => attempt.transport), ['orca-session', 'cli']);
+  assert.equal(terminal.transport.fallbackUsed, true);
+  assert.equal(terminal.transport.effective, 'cli');
+  assert.deepEqual(terminal.ext, ext);
 });
 
 test('la tabla de cierre cubre éxito directo, fallos, aborto y cero attempts', () => {

@@ -124,6 +124,40 @@ test('fallback completo vía CLI produce un único run.json ordenado', () => {
   assert.equal(typeof terminal.timing.durationMs, 'number');
 });
 
+test('finish --ext-file sustituye los valores iniciales por métricas finales', () => {
+  const dir = mkTmpDir();
+  const { runId } = startCli(dir);
+  expectOk([
+    'attempt-start', '--dir', dir, '--run-id', runId,
+    '--transport', 'cli', '--access', 'write',
+  ]);
+  expectOk([
+    'attempt-finish', '--dir', dir, '--run-id', runId,
+    '--outcome', 'completed', '--code', '0',
+  ]);
+  const ext = {
+    'cross-implement': {
+      fixRounds: 2,
+      verificationReruns: 3,
+      triage: [{
+        checkId: 'contrato-final',
+        class: 'IMPLEMENTATION_DEFECT',
+        consumedRound: true,
+      }],
+    },
+  };
+  const extPath = path.join(dir, 'ext-final.json');
+  fs.writeFileSync(extPath, JSON.stringify(ext));
+
+  const finish = expectOk([
+    'finish', '--dir', dir, '--run-id', runId, '--status', 'ready',
+    '--ext-file', extPath,
+  ]);
+  const terminal = JSON.parse(fs.readFileSync(finish.manifestPath, 'utf8'));
+
+  assert.deepEqual(terminal.ext, ext);
+});
+
 test('attempt-finish --code null persiste null y no string ni cero', () => {
   const dir = mkTmpDir();
   const { runId } = startCli(dir);

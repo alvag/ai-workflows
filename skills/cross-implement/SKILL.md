@@ -1,20 +1,17 @@
 ---
 name: cross-implement
 description: >-
-  Implementación cruzada cross-model: el conductor (autor del plan) delega la
-  implementación de un work order CONGELADO a un modelo de otra familia (Codex
-  cuando conduce Claude; Claude cuando conduce Codex), que escribe código con
-  escritura acotada al working dir; el conductor revisa el diff completo como un
-  PR ajeno, corre la prueba él mismo, itera fixes en la misma sesión del
-  implementador (loop acotado) y es quien commitea tras el gate humano. Portable:
-  sirve para cualquier flujo donde uno planifica y el otro implementa; también la
-  invoca sdd-flow cuando implement_mode es "cross". Invocación directa:
-  "/cross-implement <ruta-del-work-order>", "que Codex implemente este plan",
-  "implementa esto con Codex y revisas tú". NO es para diseñar (el work order
-  debe existir y estar aprobado), NO para cambios triviales (~<20 líneas), NO
-  para revisar código existente (eso es code review) ni artefactos de diseño
-  (eso es cross-review). No invocarla espontáneamente: solo ante un pedido
-  explícito del usuario o invocada por sdd-flow.
+  Implementación cruzada cross-model: el conductor delega un work order
+  CONGELADO a un modelo de otra familia (Codex si conduce Claude; Claude si
+  conduce Codex) con escritura acotada; luego revisa el diff completo como PR
+  ajeno, corre las pruebas, itera fixes en la misma sesión (loop acotado) y
+  commitea solo tras gate humano. También la invoca sdd-flow con implement_mode
+  "cross". Triggers directos: "/cross-implement <ruta>", "que Codex implemente
+  este plan", "implementa esto con Codex y revisas tú", "que Claude implemente
+  esto". NO sirve para diseñar: el work order debe existir y estar aprobado;
+  tampoco para cambios triviales (~<20 líneas), revisar código existente (code
+  review) ni artefactos de diseño (cross-review). No invocarla espontáneamente:
+  solo por pedido explícito o desde sdd-flow.
 ---
 
 # cross-implement — uno planifica, el otro implementa, el primero revisa
@@ -73,6 +70,11 @@ work order congelado ──► [implementador de otra familia: escribe, corre la
    siempre el de la otra. Algoritmo canónico en `cross-review/reference.md` → "Descubrir el
    revisor"; acá la tabla invertida (con escritura) vive en `reference.md` → "Descubrir el
    implementador".
+9. **Contrato de verificación congelado o nada (normal/complex).** Sin verification contract
+   resuelto no hay dispatch; antes de consumir rondas se hace triage manual, y el mismo contrato
+   rige el takeover. Envolver la corrida con el manifest es telemetría, no gate. Detalle en
+   `reference.md` → "Verification contract (normal/complex)", "Triage de ownership" e
+   "Instrumentación con manifest".
 
 ## Red flags — detente y reconsidera
 
@@ -90,6 +92,9 @@ Ley fundamental:
 | "Una ronda más de fix y seguro sale" | `max_fix_rounds` es el tope. Al agotarse: takeover del conductor, registrado (regla 5). |
 | "El diff trae un cambio extra razonable, lo dejo pasar" | Todo hunk fuera del work order se reporta como drift: se pide su reversión en el fix round, o se declara explícitamente (en SDD: `## Extras`). Nada entra sin rastro. |
 | "El árbol está casi limpio, lanzo igual" | Clean-tree gate (regla 2): código sin commitear = diff imposible de aislar. Commitear/stashear antes. |
+| "El baseline ya estaba verde, cuenta igual" | `GREEN_ALREADY` exige adjudicación previa; como `already_satisfied` solo prueba no-regresión. Nunca demuestra el cambio por sí solo. |
+| "Seguro es defecto del implementador" | Antes del segundo `IMPLEMENTATION_DEFECT` consecutivo del mismo check, registrar una razón falsable de por qué el contrato no está defectuoso. |
+| "Arreglo el contrato y sigo" | Toda corrección crea una versión nueva, preserva la anterior y recalcula el baseline contra la revisión pre-dispatch. |
 
 ## Contrato de invocación
 
@@ -123,20 +128,23 @@ Quien la invoca (el usuario en modo directo, o `sdd-flow` en modo embebido) prov
    del modelo activo — ver `reference.md` → "Descubrir el implementador"). Sin implementador →
    `UNAVAILABLE`.
 2. **Gates previos**: work order existe y se lee como contrato (regla 1); clean-tree (regla 2);
-   `proof_cmd` resuelto. Cualquiera falla → no se lanza.
+   `proof_cmd` resuelto; en normal/complex, verification contract validado, con baseline
+   registrado, adjudicado y congelado (regla 9). Cualquiera falla → no se lanza.
 3. **Resolver el transporte** (`cli` u `orca-session` — ver `reference.md` → "Transporte: rama
    `orca-session` (escritura acotada, sesión propia)"). **Armar el prompt-contrato** (`reference.md`
    → "Prompt del implementador": GOAL / SPEC / KEY PATHS / CONSTRAINTS / NON-GOALS / PROOF /
    OUTPUT), escrito a archivo con la tool Write, y **lanzar** por la vía de la familia
    (`reference.md` → "Vías de invocación", o la rama `orca-session` si el resolver la eligió),
    capturando la referencia de sesión para el fix loop.
-4. **Revisión del conductor** (regla 4): diff completo como PR ajeno; archivos declarados vs
-   `git status`; drift fuera del work order; `proof_cmd` fresco corrido por el conductor. Si el
-   work order es SDD, atribuir hunks a tasks y marcar `- [x]` las cubiertas. Checklist en
-   `reference.md` → "Revisión del conductor".
-5. **Fix loop** (regla 5): con problemas concretos, reanudar la misma sesión con el delta (qué
-   está mal, en qué archivo, qué prueba debe pasar). Re-revisar (paso 4) tras cada ronda. Al
-   agotar `max_fix_rounds` → **takeover** del conductor, registrado en el log.
+4. **Revisión del conductor** (reglas 4 y 9): diff completo como PR ajeno; archivos declarados vs
+   `git status`; drift fuera del work order; evidencia fresca del contrato fila por fila corrida
+   por el conductor. Si el work order es SDD, atribuir hunks a tasks y marcar `- [x]` las
+   cubiertas. Checklist en `reference.md` → "Revisión del conductor".
+5. **Fix loop** (reglas 5 y 9): clasificar cada falla con el triage de ownership antes de gastar
+   otra ronda; solo `IMPLEMENTATION_DEFECT` reanuda la misma sesión con un delta. Re-revisar
+   (paso 4) tras cada ronda. Al agotar `max_fix_rounds` → **takeover** bajo el mismo contrato; un
+   `DESIGN_GAP` suspende y vuelve a plan/spec. Detalle en `reference.md` → "Triage de ownership"
+   y "Fix loop".
 6. **Cierre**: registrar todo en el log (`reference.md` → "Log de implementación") y devolver el
    resultado a la llamadora — o, en modo directo, presentar diff + prueba + rondas y ofrecer el
    commit (que ejecuta el conductor tras confirmación, con la disciplina de commit del flujo que
@@ -152,9 +160,11 @@ diseño → volver a plan/specify") manda por encima de `max_fix_rounds`.
 
 A la llamadora (o presentada al usuario en modo directo):
 
-- **Estado:** `IMPLEMENTED` (diff revisado + prueba en verde) | `PARTIAL` (takeover: qué quedó
-  hecho por el implementador y qué terminó el conductor) | `UNAVAILABLE`.
-- **Resumen del diff** (archivos, qué cambió) + salida de `proof_cmd` corrida por el conductor.
+- **Estado:** `IMPLEMENTED` (diff revisado + contrato en verde) | `PARTIAL` (takeover: qué quedó
+  hecho por el implementador y qué terminó el conductor) | `DESIGN_GAP (suspendida)` (volver a
+  plan/spec; en modo embebido, aplica la regla de diseño de sdd-flow) | `UNAVAILABLE`.
+- **Resumen del diff** (archivos, qué cambió) + evidencia terminal del contrato corrida por el
+  conductor (incluido `proof_cmd` cuando corresponda).
 - **Rondas usadas** y desviaciones del work order reportadas por el implementador.
 - **Ruta del log** (`implement-log.md`).
 
@@ -194,8 +204,9 @@ Nunca bloquea. Cuatro vías de falla, mismo final — el conductor implementa in
   PowerShell, con matriz de verificación), el transporte alternativo "Transporte: rama
   `orca-session` (escritura acotada, sesión propia)" (sesión write propia + vigilancia manual +
   cosecha raw→promote del reporte, código ya escrito en el worktree), "Prompt del implementador",
-  "Revisión del conductor", "Fix loop", "Latencia, deadlines y banner", "Archivos de trabajo
-  (scratch)", "Log de implementación".
+  "Verification contract (normal/complex)", "Revisión del conductor", "Triage de ownership",
+  "Fix loop", "Instrumentación con manifest", "Latencia, deadlines y banner", "Archivos de
+  trabajo (scratch)", "Log de implementación".
 - `README.md` — qué es, cuándo usarla, requisitos e instalación.
 
 ## Atribución

@@ -11,7 +11,7 @@
 //     [--code N|null] [--recovered true|false]
 //   node run-manifest.mjs resolve-writer --dir D --run-id ID --resolved-by QUIEN
 //   node run-manifest.mjs finish --dir D --run-id ID --status S
-//     [--usage-file u.json] [--artifacts-file a.json]
+//     [--usage-file u.json] [--artifacts-file a.json] [--ext-file ext.json]
 import fs from 'node:fs';
 import {
   attemptFinish,
@@ -40,7 +40,7 @@ const COMMANDS = {
   },
   finish: {
     required: ['dir', 'run-id', 'status'],
-    optional: ['usage-file', 'artifacts-file'],
+    optional: ['usage-file', 'artifacts-file', 'ext-file'],
   },
 };
 
@@ -176,12 +176,14 @@ function main() {
   const artifacts = args['artifacts-file']
     ? readJsonFile(args['artifacts-file'], 'artifacts-file')
     : undefined;
+  const ext = args['ext-file'] ? readJsonFile(args['ext-file'], 'ext-file') : undefined;
   emit(finishRun({
     dir: args.dir,
     runId: args['run-id'],
     status: args.status,
     usage,
     artifacts,
+    ext,
   }));
 }
 
