@@ -44,11 +44,17 @@ stack de results (Angular + verticales air/accommodations/packages).
    afirmativa** ("sí", "ok", "adelante", "confirmo"). Sin confirmación, no se escribe. Alineado con
    la regla "Atlassian MCP" de `~/.claude/CLAUDE.md`: nunca escribir sin pedido explícito, y
    confirmar antes el recurso y el contenido.
-2. **Acciones de escritura permitidas (y solo estas):** crear comentario general, crear comentario
-   inline (`inline.path`/`inline.to`), responder un comentario (`parent.id`), `POST .../approve`,
+2. **Acciones de escritura permitidas (y solo estas):** crear comentario general
+   (`POST .../comments`), crear comentario inline (`POST .../comments` con `inline.path`/`inline.to`),
+   responder un comentario (`POST .../comments` con `parent.id`), `POST .../approve`,
    `POST .../request-changes`, y `POST .../comments/<id>/resolve` **acotado al propio comentario de
    decisión** de la skill. **Prohibido:** `POST .../merge`, y responder/resolver comentarios de
    **terceros** (eso es de `sdd-pr-feedback`, no de esta skill).
+
+   > Los endpoints se nombran acá con **el mismo path** que usan los bloques de
+   > `reference.md` → "Endpoints de escritura (con gate)", no solo por su nombre en prosa. Esa
+   > coincidencia es lo que permite verificar mecánicamente que ningún endpoint nuevo entre al
+   > reference sin que esta lista lo autorice — y al revés.
 3. **`approve` exige confirmación inequívoca y separada.** Aprobar un PR es una acción
    outward-facing de alto impacto: se confirma aparte del comentario, nunca como efecto colateral.
 4. **El conductor es el único que escribe en Bitbucket.** Los revisores externos (Codex/Claude
@@ -130,7 +136,7 @@ pedido pero rompe las convenciones— y mezclarlos hace que un eje **enmascare**
 - **Eje Estándares** — *¿el código está bien escrito y es correcto?* Cubre: bugs reales (lógica,
   null/undefined, bordes, `await` faltante), seguridad, cumplimiento de los CLAUDE.md aplicables,
   **arquitectura-target de results** (Flux/adapter/Signals) y el **smell baseline** portable
-  (`reference.md` → "Smell baseline") como piso para archivos sin estándar documentado.
+  (`reference.md` → "Smell baseline (Fowler)") como piso para archivos sin estándar documentado.
 - **Eje Spec** — *¿el diff implementa lo que el ticket/spec pidió?* Cubre: criterios de aceptación
   faltantes o parciales, comportamiento no pedido (scope creep) y requisitos implementados de forma
   incorrecta. Se alimenta del **contexto de spec ensamblado desde Jira** (Paso 4).
@@ -149,7 +155,7 @@ Reglas de los ejes:
 ## Paso 0 — descubrir el conductor y los revisores
 
 Antes de revisar, resolver quién compone el panel y cómo invocar a cada externo (algoritmo y
-comandos POSIX/PowerShell en `reference.md` → "Descubrir e invocar revisores"):
+comandos POSIX/PowerShell en `reference.md` → "Descubrir e invocar revisores (cross-model)"):
 
 1. **Identificar la familia del conductor por el modelo de respaldo, no por el CLI.** Claude Code
    puede estar **redirigido** a un proveedor Anthropic-compatible (GLM/z.ai, Kimi, DeepSeek…) vía
@@ -327,7 +333,7 @@ El conductor solo necesita este volcado si delega o pide segunda opinión.
   - **Eje Estándares** — bugs reales (lógica, null/undefined, bordes, `await` faltante), seguridad,
     cumplimiento de CLAUDE.md aplicable, **arquitectura-target de results** (checklist Flux/adapter/Signals
     en `reference.md`; solo violaciones en **código nuevo**, no legacy no tocado) y el **smell baseline**
-    portable (`reference.md` → "Smell baseline") como piso donde no hay estándar documentado — **el repo
+    portable (`reference.md` → "Smell baseline (Fowler)") como piso donde no hay estándar documentado — **el repo
     manda** (un estándar documentado gana) y el smell es **siempre juicio, nunca violación dura**.
   - **Eje Spec** — cruzar el diff contra el `spec-context` (Paso 4): AC faltantes/parciales, scope creep,
     requisito mal implementado. Sin `spec-context` → reportar "sin spec disponible".
@@ -387,7 +393,7 @@ decir una línea sobre el QA.
    defiendan su postura en rondas y produzcan una **síntesis**; presentarla y **pedir que el usuario
    arbitre**. Si declinás el debate o `co-explore` no está, **presentar la discrepancia tal cual y pedir
    que decidas**. El conductor **nunca** resuelve la discrepancia por su cuenta. Cómo invocarlo:
-   `reference.md` → "co-explore debate en discrepancia".
+   `reference.md` → "co-explore debate en discrepancia de veredicto".
 2. **Filtrar por confianza** ≥80 y descartar falsos positivos (`reference.md`). La **confianza**
    responde "¿el hallazgo es real?" — es un eje distinto del riesgo.
 3. **Validación adversarial (find-then-validate).** Antes de clasificar, someter **cada hallazgo
@@ -397,7 +403,7 @@ decir una línea sobre el QA.
    `spec-context`: si hay una **familia externa** disponible, delegarle la refutación (read-only); si
    no, el conductor hace una **re-pasada escéptica fresca**. **Descartar** todo hallazgo que se refuta o
    no se confirma. Es un filtro de **precisión** sobre la rúbrica ≥80, no un re-review; acotado y
-   read-only (`reference.md` → "Validación adversarial de hallazgos").
+   read-only (`reference.md` → "Validación adversarial de hallazgos (find-then-validate)").
 4. **Clasificar cada observación que sobrevive por su riesgo** (icono de semáforo):
    - 🔴 **crítico** — rompe funcionalidad, corrompe datos, falla de seguridad, o viola gravemente un
      CLAUDE.md aplicable. **Bloquea.**
@@ -460,7 +466,7 @@ confirmación**: 🔴 Cambios solicitados → `request-changes`; 🟢 Aprobado �
 aparte; si el usuario lo declina, se publica solo el comentario sin emitir el voto). El comentario
 **no sustituye** la acción de estado: para bloquear el merge según la política del repo hacen falta
 **ambos** (comentario + `request-changes`). Payloads verbatim
-en `reference.md` → "Endpoints de escritura".
+en `reference.md` → "Endpoints de escritura (con gate)".
 
 ### 12. Registrar en `.pr-review/<pr-id>/`
 

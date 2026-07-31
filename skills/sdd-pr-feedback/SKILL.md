@@ -153,8 +153,9 @@ solo ruido/dudas → *trivial*; con cambios → *normal*/*complex*, y con ella l
 > **Sincronizar la spec de Jira (si aplica).** Si el flujo tenía **subtarea SPEC** en Jira
 > (`jira_subtask_url`/`jira_subtask` en el `plan.md` de la ronda previa, del gate `publish-spec` de
 > `sdd-flow`) y algún `cambio` de este triage **toca AC**, la spec aprobada por el TL/PO quedó
-> desactualizada. Ofrecer sincronizarla reusando `sdd-flow` → `reference.md` → "Comentario de ajuste
-> (tras observaciones)": actualizar la descripción de la subtarea con la spec corregida (sanitizada) +
+> desactualizada. Ofrecer sincronizarla reusando
+> `sdd-flow/reference.md` → "Comentario de ajuste (tras observaciones)":
+> actualizar la descripción de la subtarea con la spec corregida (sanitizada) +
 > un comentario consolidado que @menciona al autor, con el **STOP de write-safety** (recurso + contenido
 > a la vista). Respetar `jira_approval`: si estaba `on` y el cambio es **material**, ofrecer devolver la
 > subtarea a revisión (`awaiting`); si es menor, alcanza con dejar constancia. **No bloquea** el flujo
@@ -180,7 +181,7 @@ commit: nada que publicar).
 ### Paso 5 — Implement (delegado) para los `cambio`
 
 Con spec **y** plan/tasks ya aprobados y cross-revisados, **despachar un subagente** que corre la
-Vía B de `sdd-flow` sobre `.plans/<id>/` (contrato y prompt en `reference.md` → "Delegación"). El
+Vía B de `sdd-flow` sobre `.plans/<id>/` (contrato y prompt en `reference.md` → "Delegación a `sdd-flow` (prompt del subagente)"). El
 subagente implementa, **frena antes de commitear** y devuelve `STATUS / AC / FILES`. El conductor
 valida `FILES` vs `git status --porcelain` y revisa el diff (`receiving-code-review`).
 
@@ -203,8 +204,9 @@ está en el PR (y si el push falla, no se respondió/resolvió de más). Si el t
 2. **Squash a un commit** (stage **selectivo** de los archivos del fix — nunca `git add -A`, que
    metería `.plans/` y trabajo ajeno): 1 commit sobre la base → `git add <archivos del fix>` +
    `git commit --amend`; >1 → `git reset --soft <base>` + `git add <archivos del fix>` + recommit
-   único. **Mensaje** según las reglas de commit de `sdd-flow` (su `reference.md` → "Construcción del
-   mensaje de commit": scope del ticket, **en español**, **sin** `Co-Authored-By`). Mecánica del
+   único. **Mensaje** según las reglas de commit de `sdd-flow`
+   (`sdd-flow/reference.md` → "Construcción del mensaje de commit":
+   scope del ticket, **en español**, **sin** `Co-Authored-By`). Mecánica del
    squash/amend y force-push en `reference.md` → "Cierre de un commit".
 3. **Gate** + `git push --force-with-lease` a la rama del PR. (Reescribe la historia de la rama del
    PR: siempre con confirmación explícita.) Detalle en `reference.md` → "Cierre de un commit".

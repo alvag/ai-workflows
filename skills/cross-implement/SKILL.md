@@ -1,13 +1,13 @@
 ---
 name: cross-implement
 description: >-
-  Implementación cruzada cross-model: el conductor (autor del plan) delega la
-  implementación de un work order CONGELADO a un modelo de otra familia (Codex
-  cuando conduce Claude; Claude cuando conduce Codex), que escribe código con
-  escritura acotada al working dir; el conductor revisa el diff completo como un
-  PR ajeno, corre la prueba él mismo, itera fixes en la misma sesión del
-  implementador (loop acotado) y es quien commitea tras el gate humano. Portable:
-  sirve para cualquier flujo donde uno planifica y el otro implementa; también la
+  Implementación cruzada cross-model: el conductor (autor del plan) delega un
+  work order CONGELADO a la otra familia (Codex cuando conduce Claude; Claude
+  cuando conduce Codex), que escribe código con escritura acotada al working
+  dir; el conductor revisa el diff completo como un PR ajeno, corre la prueba él
+  mismo, itera fixes en la misma sesión del implementador (loop acotado) y es
+  quien commitea tras el gate humano. Sirve para cualquier flujo donde uno
+  planifica y el otro implementa; también la
   invoca sdd-flow cuando implement_mode es "cross". Invocación directa:
   "/cross-implement <ruta-del-work-order>", "que Codex implemente este plan",
   "implementa esto con Codex y revisas tú". NO es para diseñar (el work order
