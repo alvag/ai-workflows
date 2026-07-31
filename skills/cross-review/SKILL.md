@@ -100,7 +100,7 @@ Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario) proveen:
 - **`execution`** — `auto | sync | background` (de la config `cross_review`); cómo se espera al
   revisor. `auto` (default) elige por la capacidad de timeout del conductor; `sync` fuerza llamada
   bloqueante; `background` fuerza poll acotado. En todos hay tope duro → `UNAVAILABLE` (ver
-  `reference.md` → "Latencia y timeout").
+  `reference.md` → "Latencia y timeout (Claude revisor)").
 - **`ac_context`** — los `AC-n` y contratos en juego, para que la crítica los referencie.
   Opcional: si la llamadora no lo pasa, derivarlos de `context_paths` (la spec/master-spec ya
   los contiene).
@@ -224,8 +224,7 @@ Tres modos de falla, todos terminan en el gate humano de siempre con un aviso de
 2. **El revisor falla en runtime** (error, timeout de exec, `poll_deadline` vencido sin `VERDICT:`,
    o respuesta no parseable) → registrar el fallo en `review-log.md`, cortar el loop (y matar el
    proceso en background si lo hubo) y devolver `UNAVAILABLE` con lo que haya. **Nunca quedar
-   esperando indefinida** — todos los caminos tienen tope duro (ver `reference.md` → "Latencia y
-   timeout").
+   esperando indefinida** — todos los caminos tienen tope duro (ver `reference.md` → "Latencia y timeout (Claude revisor)").
 3. **Config la desactiva** (`cross_review.mode: off`, o complejidad por debajo del umbral) → ni
    se intenta; la llamadora va directo al gate.
 
@@ -254,7 +253,7 @@ config > default por complejidad**. Default por complejidad en `sdd-flow`: `triv
 `master-spec`/`reparto`, que se revisan como `complex`. `execution: auto` (default) corre **sync** cuando
 el conductor puede fijar un timeout largo (Claude Code: `Bash` hasta 600000ms) y **background+poll
 acotado** cuando su exec es corto (Codex ~120s); en todos los modos hay tope duro → `UNAVAILABLE`,
-nunca espera indefinida (ver `reference.md` → "Latencia y timeout").
+nunca espera indefinida (ver `reference.md` → "Latencia y timeout (Claude revisor)").
 
 ## Router de intención
 

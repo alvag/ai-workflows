@@ -78,7 +78,7 @@ comparan**.
 1. **No persiste nada en tu árbol.** El invariante de seguridad: el **revisor** nunca escribe ni
    ejecuta — se invoca read-only (sin permisos de escritura) y su salida se captura por
    redirección del conductor hacia `co-explore/scratch/`, nunca porque tenga permiso para tocar
-   archivos (ver `reference.md` → "Archivos de trabajo (scratch)"). El **conductor** nunca
+   archivos (ver `reference.md` → "Árbol de rutas"). El **conductor** nunca
    persiste cambios en el working tree del usuario. En `explore`/`counter-plan` ambos son
    read-only puro. En `investigate` el conductor puede, opt-in (L1), **ejecutar** para investigar
    —reproducir, correr tests, logging efímero— pero SOLO en un **worktree descartable** que se
@@ -97,7 +97,7 @@ comparan**.
    mitad de camino ni esperar una respuesta. Toda duda se registra y se sigue explorando — una
    pregunta abierta que no pudo resolver va a `## Incógnitas`; una decisión que tomó para
    poder seguir avanzando va a `## Supuestos`, con el porqué.
-4. **Informe estructurado o nada.** La salida tiene que respetar el "Formato del informe"
+4. **Informe estructurado o nada.** La salida tiene que respetar el "Formato de dos capas"
    (`reference.md`). Si la respuesta del revisor no parsea contra ese formato, se degrada: se
    conserva como texto libre si aporta contexto, o se descarta si es ruido — y en cualquier
    caso se registra la degradación.
@@ -192,7 +192,7 @@ Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario en modo directo) prove
 
 1. **Preflight de aislamiento** (fail-closed) y resolución de los dos CLIs. Sin ninguno de los dos
    → `UNAVAILABLE`; con uno solo → la escalera decide la rama (ver "Degradación").
-2. **Armar los dos prompts** desde `reference.md` → "Prompt de explore / counter-plan / investigate (dos capas)", con el mismo
+2. **Armar los dos prompts** desde `reference.md` → "Prompt de explore (dos capas)", con el mismo
    paquete de contexto. En `counter-plan`, núcleo común byte-idéntico + anexo privado de la propia
    familia, concatenado por el shell.
 3. **Decidir retoma antes de truncar** (ver "Retoma"), y solo si corresponde redespachar, truncar
@@ -331,8 +331,7 @@ valor en duplicarlo.
   correr tests, logging efímero) en un worktree descartable, sin persistir en tu árbol (regla
   1). L1 rinde sobre todo **en la síntesis, para adjudicar divergencias**: correr algo que
   desempate entre las dos hipótesis (p. ej. el revisor sospecha una race → el conductor corre
-  con el sanitizer y verifica). Mecánica del worktree en `reference.md` → "Capacidades y
-  worktree (investigate)".
+  con el sanitizer y verifica). Mecánica del worktree en `reference.md` → "Capacidades y worktree (`investigate`)".
 - **Handoff:** verificar/arreglar de verdad es el paso siguiente y es de **otra skill**
   (`superpowers:systematic-debugging`), que el conductor ofrece en su rol normal. Las hipótesis
   rankeadas + plan de verificación son su input directo. Editar/proponer parches en paralelo
@@ -426,6 +425,6 @@ de reintento: `reference.md` → "Estados del worker". Una pared confirmada no s
 - `reference.md` — "Prompt de exploración" (por modo, incluido `investigate`), "Formato del
   informe" (+ variante bug-shaped), "Plantilla de `synthesis.md`", "Plantilla de síntesis —
   `investigate`", "Capacidades y worktree (`investigate`)", "Descubrir el revisor (puntero +
-  fallback)", "Latencia y deadlines", "Archivos de trabajo (scratch)", "Prompt de debate" (ronda
+  fallback)", "Latencia y deadlines", "Árbol de rutas", "Prompt de debate" (ronda
   0 + cruce), "Plantilla de `debate.md`".
 - `README.md` — qué es, cuándo usarla, requisitos e instalación.

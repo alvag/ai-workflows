@@ -198,7 +198,7 @@ crítica se presenta *junto* al artefacto en el mismo STOP; tú sigues siendo el
   está disponible), si la skill
   está instalada pero la invocación falla (p. ej. error del Skill tool), si falla en
   runtime, si vence el timeout/`poll_deadline` de la revisión (la skill garantiza un tope duro: ver
-  su "Latencia y timeout"), o si `cross_review.mode: off` → avisar en una línea ("revisión
+  `cross-review/reference.md` → "Latencia y timeout (Claude revisor)"), o si `cross_review.mode: off` → avisar en una línea ("revisión
   cross-model no disponible — sigo con el gate humano") y continuar con el gate normal. Es la misma
   filosofía de la regla #6.
 

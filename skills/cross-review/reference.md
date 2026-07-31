@@ -367,7 +367,7 @@ Trampas de este CLI que la invocación debe esquivar:
   `--print` aborta ("Input must be provided…"); si stdin está abierto y vacío (típico al invocar
   desde Python), **cuelga indefinidamente** esperando input. Una invocación que **cuelga de
   entrada, sin progreso alguno**, es señal de parseo de flags roto — distinto de una que **avanza
-  pero tarda** (lentitud real del modelo con prompt grande; ver "Latencia y timeout" más abajo).
+  pero tarda** (lentitud real del modelo con prompt grande; ver "Latencia y timeout (Claude revisor)" más abajo).
 - Un `claude -p` headless **hereda los settings del usuario y del proyecto** del working_dir:
   modelo configurado (puede ser uno caro/lento), `permissions.defaultMode`, plugins, hooks y
   servidores MCP (arranque pesado). Fijar siempre los valores por flag: `--model opus`,
@@ -730,8 +730,7 @@ cross_review:
 
 - `mode: auto` → en sdd-flow: `trivial` off, `normal` opt-in (off salvo pedido), `complex` on.
   En sdd-orchestrator: **on** para `master-spec`/`reparto`, revisados como `complex`.
-- `execution: auto` elige por la **capacidad de timeout de exec del conductor** (ver "Latencia y
-  timeout"): conductor que puede fijar un tope largo (Claude Code: `Bash` con `timeout` hasta
+- `execution: auto` elige por la **capacidad de timeout de exec del conductor** (ver "Latencia y timeout (Claude revisor)"): conductor que puede fijar un tope largo (Claude Code: `Bash` con `timeout` hasta
   600000ms) → **sync** (camino preferido); conductor con exec corto no ampliable (Codex ~120s/comando)
   → **background + poll acotado**. `sync` fuerza una única llamada bloqueante; `background` fuerza el
   poll acotado. En **todos** los modos hay un tope de pared duro: vencido → `UNAVAILABLE` (regla 6),
