@@ -66,6 +66,17 @@ Para retomar una orquestación a medias: `/sdd-orchestrator` y "retoma `<id>`" (
 
 Cada feature usa su propio `<id>`, así que conviven sin pisarse. Si dos features tocan el **mismo** repo, un **lock cooperativo** lo detecta y te ofrece esperar, pausar la otra, o excluir ese repo. Los repos no compartidos siguen en paralelo.
 
+## Contrato de verificación y AC de integración
+
+Cada `plan.md` por repo hereda el **contrato de verificación** de `sdd-flow` —el mismo esquema, por
+puntero, sin plantilla propia—.
+
+Los AC `[integration]` no viven en el contrato de ningún repo: viven en un **contrato de integración**
+propio del orquestador, y el contrato de cada repo los referencia en solo-lectura. Es la forma
+contractual de la regla que ya regía: ninguna integración se da por cumplida en un repo. Ese contrato
+pasa por su propio gate al abrir la Fase 3, y la agregación final **no puede dar verde** con filas
+ausentes o bloqueadas.
+
 ## Artefactos (todos locales, no se trackean)
 
 - `<contenedora>/.sdd/<id>/master-spec.md` y `manifest.yml` — la capa de orquestación.

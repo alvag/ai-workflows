@@ -55,6 +55,21 @@ hallazgos e hipótesis propios que compiten con los del conductor. Es la primera
 cross-model — `co-explore` (explorar) · `cross-review` (criticar el diseño) ·
 `cross-implement` (implementar cruzado) — todas opcionales, degradables y encadenables.
 
+## Índice paginado y el cuarto estado
+
+Dos capacidades que cambian lo que la skill devuelve:
+
+**El índice se pagina sin perder nada.** Si un worker encuentra más hallazgos de los que entran en
+una página, se crean páginas adicionales y un metaíndice que las lista con sus IDs. El presupuesto
+limita el tamaño de cada entrada y de cada página, **nunca el total de hallazgos**. El detalle sigue
+siendo un archivo por worker: es la capa que se abre por ID, así que paginarla no compraría nada.
+
+**`clarification-needed` es un cuarto estado del worker.** Cuando una ambigüedad le impide seguir
+mapeando, el worker frena, **entrega igual lo que alcanzó a mapear** y adosa la pregunta con su
+impacto. El conductor intenta resolverla desde el paquete de contexto o el repositorio antes de
+escalártela. Es una excepción acotada a la regla de que el explorador nunca se bloquea por dudas:
+solo aplica cuando el resto del mapa depende de la respuesta.
+
 ## Cuándo usarla
 
 - La invocan `sdd-flow` y `sdd-orchestrator` (modos `explore`/`counter-plan`) cuando

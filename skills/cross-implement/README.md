@@ -29,6 +29,23 @@ work order congelado ──► implementador (otra familia, escritura acotada, n
                     fix loop acotado (misma sesión) ──► gate humano ──► commit (del conductor)
 ```
 
+## El contrato de verificación
+
+Antes de delegar nada, el work order tiene que traer su **contrato de verificación congelado**: una
+tabla con una fila por requisito —qué lo prueba, con qué comando, qué resultado cuenta como cumplido
+y qué daba ese comando *antes* de implementar— más un bloque de baseline por versión. El gate previo
+al dispatch no acepta un work order sin él.
+
+La razón es sencilla: elegir la evidencia *después* de implementar es elegir la que ya pasa. Con el
+contrato congelado antes, una fila que no discrimina se detecta cuando todavía se puede arreglar.
+
+Cuando una fila falla, la primera pregunta no es cómo arreglarla sino **de quién es el problema**:
+hay cuatro clases (defecto de implementación, de verificación, de entorno, o hueco de diseño) y solo
+la primera consume una ronda de fix. Las otras tienen presupuesto propio.
+
+El detalle vive en `contrato-verificacion.md` y `ownership.md`, que se leen en momentos distintos:
+el primero al armar y aprobar el contrato, el segundo cuando una ronda falla.
+
 ## Cuándo usarla
 
 - Modo directo: `/cross-implement .plans/ABC-123/`, `/cross-implement PLAN.md`, "que Codex

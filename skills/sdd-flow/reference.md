@@ -842,3 +842,111 @@ Contexto: feature "exportar resultados a CSV".
 ```
 
 Cada uno es observable y se puede mapear a un test o a un paso manual de verificación.
+
+## Bloques de validación del contrato en el plan
+
+Predicados sobre los artefactos que este flujo produce. Cada bloque declara su **predicado**, y esa
+línea es idéntica en las dos variantes de shell.
+
+```bash
+# @bloque:materializacion-contrato
+# Predicado: toda materialización del contrato usa la MISMA cabecera normativa de seis columnas;
+# no existe una segunda forma de tabla haciéndose pasar por contrato.
+# Entradas: $plan
+CAB='| ID | Requisito | Evidencia | Comando/observación | Esperado | Baseline |'
+rc=0
+grep -qxF "$CAB" "$plan" || {
+  echo "GUARD:materializacion-unica el plan no materializa la cabecera normativa" >&2; rc=1; }
+# Una tabla que arranca en `| ID |` y NO es la cabecera normativa es un dialecto propio: es la forma
+# en que "no dupliquen la norma" deja de cumplirse sin que nada se rompa a la vista.
+grep -E '^\|[[:space:]]*ID[[:space:]]*\|' "$plan" | grep -vxF "$CAB" > /tmp/mu.$$ 2>/dev/null
+[ -s /tmp/mu.$$ ] && { echo "GUARD:materializacion-unica hay una tabla de contrato con otro esquema:" >&2
+  cat /tmp/mu.$$ >&2; rc=1; }
+rm -f /tmp/mu.$$
+exit $rc
+# @fin:materializacion-contrato
+```
+
+```powershell
+# @bloque:materializacion-contrato-ps
+# Predicado: toda materialización del contrato usa la MISMA cabecera normativa de seis columnas;
+# no existe una segunda forma de tabla haciéndose pasar por contrato.
+# Entradas: $plan
+$cab = '| ID | Requisito | Evidencia | Comando/observación | Esperado | Baseline |'
+$rc = 0
+$doc = Get-Content -LiteralPath $plan
+if ($doc -notcontains $cab) { Write-Error 'GUARD:materializacion-unica el plan no materializa la cabecera normativa'; $rc = 1 }
+$otras = @($doc | Where-Object { $_ -match '^\|\s*ID\s*\|' -and $_ -ne $cab })
+if ($otras.Count -gt 0) { Write-Error "GUARD:materializacion-unica hay una tabla de contrato con otro esquema: $($otras -join ' | ')"; $rc = 1 }
+exit $rc
+# @fin:materializacion-contrato-ps
+```
+
+```bash
+# @bloque:cobertura-ac-fila
+# Predicado: todo AC declarado en el plan tiene al menos una fila del contrato que lo cita, y toda
+# fila cita un AC declarado. Las dos direcciones se reportan por separado.
+# Entradas: $plan
+t=$(mktemp -d); rc=0
+grep -oE '^- \*\*AC-[0-9a-z]+' "$plan" | sed 's/^- \*\*//' | sort -u > "$t/ac"
+grep -E '^\|' "$plan" | grep -vE '^\|[[:space:]]*(ID[[:space:]]*\||[-: |]+\|)' \
+  | awk -F'|' '{gsub(/^ +| +$/,"",$3); split($3,p," "); if (p[1]!="") print p[1]}' | sort -u > "$t/citados"
+comm -23 "$t/ac" "$t/citados" > "$t/e"
+[ -s "$t/e" ] && { printf 'GUARD:cobertura-ac-fila AC sin fila: %s\n' "$(tr '\n' ' ' < "$t/e")" >&2; rc=1; }
+comm -13 "$t/ac" "$t/citados" > "$t/e"
+[ -s "$t/e" ] && { printf 'GUARD:cobertura-ac-fila fila sin AC declarado: %s\n' "$(tr '\n' ' ' < "$t/e")" >&2; rc=1; }
+rm -rf "$t"; exit $rc
+# @fin:cobertura-ac-fila
+```
+
+```powershell
+# @bloque:cobertura-ac-fila-ps
+# Predicado: todo AC declarado en el plan tiene al menos una fila del contrato que lo cita, y toda
+# fila cita un AC declarado. Las dos direcciones se reportan por separado.
+# Entradas: $plan
+$rc = 0
+$doc = Get-Content -LiteralPath $plan
+$ac = @($doc | Where-Object { $_ -match '^- \*\*(AC-[0-9a-z]+)' } | ForEach-Object { [regex]::Match($_, '^- \*\*(AC-[0-9a-z]+)').Groups[1].Value } | Sort-Object -Unique)
+$citados = @($doc | Where-Object { $_ -match '^\|' -and $_ -notmatch '^\|\s*(ID\s*\||[-: |]+\|)' } |
+  ForEach-Object { ($_ -split '\|')[2].Trim() -split '\s+' | Select-Object -First 1 } |
+  Where-Object { $_ } | Sort-Object -Unique)
+$sinFila = $ac | Where-Object { $_ -notin $citados }
+if ($sinFila) { Write-Error "GUARD:cobertura-ac-fila AC sin fila: $($sinFila -join ' ')"; $rc = 1 }
+$sinAc = $citados | Where-Object { $_ -notin $ac }
+if ($sinAc) { Write-Error "GUARD:cobertura-ac-fila fila sin AC declarado: $($sinAc -join ' ')"; $rc = 1 }
+exit $rc
+# @fin:cobertura-ac-fila-ps
+```
+
+```bash
+# @bloque:verify-ejecuta
+# Predicado: el paso verify CARGA la fila declarada en vez de identificar evidencia en ese momento,
+# y revert-to-confirm sigue alcanzable.
+# Entradas: $skill (el SKILL.md de sdd-flow)
+rc=0
+grep -q '\*\*CARGAR\*\*' "$skill" || {
+  echo "GUARD:verify-solo-ejecuta el paso verify no carga la fila del contrato" >&2; rc=1; }
+# `IDENTIFICAR` era el paso que ELEGÍA la evidencia después de implementar, que es elegir la que ya
+# pasa. Se comprueba su ausencia como paso de la gate function, no la de la palabra en el documento.
+grep -q '\*\*IDENTIFICAR\*\*' "$skill" && {
+  echo "GUARD:verify-solo-ejecuta el paso verify sigue eligiendo evidencia (IDENTIFICAR)" >&2; rc=1; }
+# Control POSITIVO: el cambio es sustitutivo, no una poda. revert-to-confirm tiene que seguir ahí.
+grep -qi 'revert-to-confirm' "$skill" || {
+  echo "GUARD:verify-solo-ejecuta se perdió revert-to-confirm" >&2; rc=1; }
+exit $rc
+# @fin:verify-ejecuta
+```
+
+```powershell
+# @bloque:verify-ejecuta-ps
+# Predicado: el paso verify CARGA la fila declarada en vez de identificar evidencia en ese momento,
+# y revert-to-confirm sigue alcanzable.
+# Entradas: $skill (el SKILL.md de sdd-flow)
+$rc = 0
+$doc = (Get-Content -LiteralPath $skill) -join "`n"
+if ($doc -notmatch '\*\*CARGAR\*\*') { Write-Error 'GUARD:verify-solo-ejecuta el paso verify no carga la fila del contrato'; $rc = 1 }
+if ($doc -match '\*\*IDENTIFICAR\*\*') { Write-Error 'GUARD:verify-solo-ejecuta el paso verify sigue eligiendo evidencia (IDENTIFICAR)'; $rc = 1 }
+if ($doc -notmatch '(?i)revert-to-confirm') { Write-Error 'GUARD:verify-solo-ejecuta se perdió revert-to-confirm'; $rc = 1 }
+exit $rc
+# @fin:verify-ejecuta-ps
+```

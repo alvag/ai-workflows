@@ -138,7 +138,69 @@ Master-spec de la orquestación: <contenedora>/.sdd/<id>/master-spec.md
 
 Mantener los IDs globales `AC-n` (no renumerar): la trazabilidad cross-repo del `manifest.yml` (`covers_ac`) y el cross-artifact check dependen de eso.
 
-> **Self-review del reparto (antes del gate 1.4).** Los `plan.md`/`tasks.md` por repo heredan el formato y la disciplina de `sdd-flow` (ver su `reference.md` → "Plantilla de tasks", bloque "Self-review (antes del gate)"). Además de la cobertura AC↔repo (cross-artifact check, regla 5), correr sobre cada `plan.md`/`tasks.md` generado: el **scan anti-placeholder** (sin `TBD`/`TODO`/"etc." colgados) y la **consistencia de contratos** entre servicios — lo que un repo `expone` coincide en firma con lo que el otro `consume` (mismo criterio que `Produce`/`Consume` entre tasks). Reportarlo en una línea antes del gate.
+> **Self-review del reparto (antes del gate 1.4).** Los `plan.md`/`tasks.md` por repo heredan el formato y la disciplina de `sdd-flow` (ver su `reference.md` → "Plantilla de plan" y "Plantilla de tasks", bloque "Self-review (antes del gate)"). Además de la cobertura AC↔repo (cross-artifact check, regla 5), correr sobre cada `plan.md`/`tasks.md` generado: la **cobertura AC↔fila del contrato de verificación** (bidireccional, ni AC sin fila ni fila sin AC), el **scan anti-placeholder** (sin `TBD`/`TODO`/"etc." colgados) y la **consistencia de contratos** entre servicios — lo que un repo `expone` coincide en firma con lo que el otro `consume` (mismo criterio que `Produce`/`Consume` entre tasks). Reportarlo en una línea antes del gate.
+
+### Contrato de verificación por repo
+
+El `## Verification` de cada `plan.md` generado lleva el **mismo esquema normativo** que en un flujo
+`sdd-flow` de un solo repo: la tabla de seis columnas y su bloque de baseline por versión. Se hereda
+**por puntero** (`sdd-flow/reference.md` → "Plantilla de plan"), y esta skill **no** mantiene una
+plantilla propia: dos plantillas del mismo contrato se desincronizan en la primera corrección, y el
+gate de `cross-implement` valida una sola forma.
+
+Lo único propio del multi-repo es qué filas entran, y eso lo decide la etiqueta del AC:
+
+| AC | Dónde vive su fila | Qué lleva el contrato del repo |
+|---|---|---|
+| `[repo-local]` | en el contrato del repo | la fila completa, con su baseline medido en ese repo |
+| `[integration]` | en el **contrato de integración** de la orquestación | una referencia **solo-lectura** (ver "Contrato de integración") |
+
+### Contrato de integración
+
+Las filas de los AC `[integration]` **no viven en el contrato de ningún repo**. Viven en un contrato
+de integración propio, en `<contenedora>/.sdd/<id>/integracion.md`, con el mismo esquema normativo y
+un dueño único: el orquestador. Su evidencia se ejecuta y se agrega en la **Fase 3**.
+
+Es la forma contractual de la regla no negociable que ya rige —ningún AC `[integration]` se da por
+cumplido en un repo—: si su fila viviera en el contrato del repo, el `verify` local la ejecutaría y
+la cerraría, que es exactamente lo prohibido. Y si viviera en **dos** repos, cada uno la cerraría con
+media evidencia.
+
+El contrato del repo la **referencia en modo solo-lectura**, con su ID global y una evidencia que no
+es un estado del enum:
+
+```markdown
+| ID | Requisito | Evidencia | Comando/observación | Esperado | Baseline |
+|---|---|---|---|---|---|
+| V3 | AC-7 [integration] — el checkout confirma contra el servicio de pagos | N/A: Fase 3 | — | se verifica en el contrato de integración | N/A: Fase 3 |
+```
+
+`N/A: Fase 3` es deliberadamente **ninguno de los dos atajos** que parecen naturales:
+
+- **no es `NOT_APPLICABLE`**, que significa "medir un baseline es semánticamente inaplicable" y
+  borraría una obligación global: el AC sí se verifica, en otro lado;
+- **no es una fila pendiente ni `BLOCKED`**, que bloquearía el gate del repo por algo que no le toca
+  resolver y dejaría el flujo local trabado para siempre.
+
+La referencia es obligatoria y no opcional: sin ella, el contrato del repo tendría un AC en alcance
+sin fila y la cobertura bidireccional no cerraría. Eliminarla para "simplificar" rompe el gate.
+
+### Gate de la Fase 3 y agregación
+
+El contrato de integración pasa por un gate **equivalente** al que `cross-implement` aplica antes de
+delegar (`cross-implement/contrato-verificacion.md` → "El gate previo al dispatch"): versión vigente
+identificada, cobertura bidireccional contra los AC `[integration]`, campos obligatorios presentes y
+baseline resuelto en toda fila, ninguna en `BLOCKED`. Se congela **antes** de ejecutar la primera
+evidencia.
+
+El gate no es un trámite copiado: es lo que hace que sacar estas filas del contrato de cada repo sea
+**moverlas a otro gate** y no dejarlas sin ninguno. Sin él, la separación las volvería invisibles —
+que es peor que el problema original de cerrarlas localmente con media evidencia.
+
+**La agregación final no puede producir verde con filas ausentes.** El estado global es verde solo
+si toda fila del contrato de integración está resuelta; una ausente, una `BLOCKED` o una `manual`
+pendiente producen **no verificado**. Un agregador que ignora lo que falta reporta el subconjunto que
+miró, y ese número siempre da mejor que la realidad.
 
 ## Formato de contratos entre servicios
 
@@ -261,4 +323,98 @@ repos:
     status: planned
     depends_on: [servicio-a]
     covers_ac: [AC-2]
+```
+
+## Bloques de validación de la integración
+
+Predicados sobre el reparto y el contrato de integración. Cada bloque declara su **predicado**, y esa
+línea es idéntica en las dos variantes de shell.
+
+```bash
+# @bloque:integracion-ownership
+# Predicado: ninguna fila de un AC [integration] vive completa en el contrato de un repo; cada repo
+# que participa la referencia en solo-lectura con evidencia N/A: Fase 3, nunca NOT_APPLICABLE.
+# Entradas: $repos (uno o más plan.md por repo, separados por espacios)
+rc=0
+for f in $repos; do
+  [ -f "$f" ] || { printf 'ARNES:no existe %s\n' "$f" >&2; exit 99; }
+  grep -E '^\|' "$f" | grep -vE '^\|[[:space:]]*(ID[[:space:]]*\||[-: |]+\|)' \
+    | grep -F '[integration]' | while IFS= read -r fila; do
+        ev=$(printf '%s' "$fila" | awk -F'|' '{gsub(/^ +| +$/,"",$4); print $4}')
+        bl=$(printf '%s' "$fila" | awk -F'|' '{gsub(/^ +| +$/,"",$7); print $7}')
+        case "$ev@$bl" in
+          'N/A: Fase 3@N/A: Fase 3') ;;
+          *NOT_APPLICABLE*) printf 'GUARD:integracion-no-local %s: fila [integration] marcada NOT_APPLICABLE (borraria una obligacion global)\n' "$f" >&2 ;;
+          *) printf 'GUARD:integracion-no-local %s: fila [integration] con evidencia local "%s"/"%s"\n' "$f" "$ev" "$bl" >&2 ;;
+        esac
+      done > "$f.err" 2>&1
+  [ -s "$f.err" ] && { cat "$f.err" >&2; rc=1; }
+  rm -f "$f.err"
+done
+# Control en el otro sentido: un repo que participa y NO la referencia deja su cobertura abierta.
+# Se busca la FILA, no la mencion: el AC aparece igual en la lista de criterios del plan, asi que
+# buscar en el archivo entero daria verde con la fila borrada.
+for f in $repos; do
+  grep -qE '^\|.*\[integration\]' "$f" || {
+    printf 'GUARD:integracion-no-local %s: no referencia ninguna fila [integration]\n' "$f" >&2; rc=1; }
+done
+exit $rc
+# @fin:integracion-ownership
+```
+
+```powershell
+# @bloque:integracion-ownership-ps
+# Predicado: ninguna fila de un AC [integration] vive completa en el contrato de un repo; cada repo
+# que participa la referencia en solo-lectura con evidencia N/A: Fase 3, nunca NOT_APPLICABLE.
+# Entradas: $repos (uno o más plan.md por repo, separados por espacios)
+$rc = 0
+foreach ($f in ($repos -split '\s+' | Where-Object { $_ })) {
+  $filas = Get-Content -LiteralPath $f | Where-Object { $_ -match '^\|' -and $_ -notmatch '^\|\s*(ID\s*\||[-: |]+\|)' -and $_ -match '\[integration\]' }
+  foreach ($fila in $filas) {
+    $c = $fila -split '\|'; $ev = $c[3].Trim(); $bl = $c[6].Trim()
+    if ($ev -eq 'N/A: Fase 3' -and $bl -eq 'N/A: Fase 3') { continue }
+    if ($ev -match 'NOT_APPLICABLE' -or $bl -match 'NOT_APPLICABLE') {
+      Write-Error "GUARD:integracion-no-local ${f}: fila [integration] marcada NOT_APPLICABLE (borraria una obligacion global)"
+    } else {
+      Write-Error "GUARD:integracion-no-local ${f}: fila [integration] con evidencia local `"$ev`"/`"$bl`""
+    }
+    $rc = 1
+  }
+  # Se busca la FILA, no la mencion: el AC aparece igual en la lista de criterios del plan.
+  if ($filas.Count -eq 0) {
+    Write-Error "GUARD:integracion-no-local ${f}: no referencia ninguna fila [integration]"; $rc = 1
+  }
+}
+exit $rc
+# @fin:integracion-ownership-ps
+```
+
+```bash
+# @bloque:gate-fase-3
+# Predicado: la Fase 3 congela el contrato de integración antes de ejecutar evidencia, y la
+# agregación no puede dar verde con filas ausentes o BLOCKED.
+# Entradas: $skill_orq (el SKILL.md de sdd-orchestrator)
+rc=0
+grep -q 'Gate de apertura del contrato de integración' "$skill_orq" || {
+  echo "GUARD:gate-fase-3 la Fase 3 no tiene gate de apertura" >&2; rc=1; }
+grep -q 'Congelarlo \*\*antes\*\*' "$skill_orq" || {
+  echo "GUARD:gate-fase-3 el gate no exige congelar antes de ejecutar" >&2; rc=1; }
+grep -q 'no verificado' "$skill_orq" || {
+  echo "GUARD:gate-fase-3 la agregacion no declara que una fila ausente impide el verde" >&2; rc=1; }
+exit $rc
+# @fin:gate-fase-3
+```
+
+```powershell
+# @bloque:gate-fase-3-ps
+# Predicado: la Fase 3 congela el contrato de integración antes de ejecutar evidencia, y la
+# agregación no puede dar verde con filas ausentes o BLOCKED.
+# Entradas: $skill_orq (el SKILL.md de sdd-orchestrator)
+$rc = 0
+$doc = (Get-Content -LiteralPath $skill_orq) -join "`n"
+if ($doc -notmatch 'Gate de apertura del contrato de integración') { Write-Error 'GUARD:gate-fase-3 la Fase 3 no tiene gate de apertura'; $rc = 1 }
+if ($doc -notmatch 'Congelarlo \*\*antes\*\*') { Write-Error 'GUARD:gate-fase-3 el gate no exige congelar antes de ejecutar'; $rc = 1 }
+if ($doc -notmatch 'no verificado') { Write-Error 'GUARD:gate-fase-3 la agregacion no declara que una fila ausente impide el verde'; $rc = 1 }
+exit $rc
+# @fin:gate-fase-3-ps
 ```

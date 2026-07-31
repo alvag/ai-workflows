@@ -261,7 +261,8 @@ publicado vs local que decide qué puede nombrar a las familias y qué no— viv
 
 `co-explore` devuelve un **envelope agregado**, no un estado singular. La llamadora decide con él
 sin abrir ningún informe: `outcome` (`completed` | `map_failure`) · `branch` · `diversity` ·
-`workers[]` (familia, estado, causa, paridad, rutas de índice y detalle, sesión) ·
+`workers[]` (familia, **estado** —`READY` · `INVALID` · `clarification-needed` · `UNAVAILABLE`—,
+causa, paridad, rutas de índice y detalle, sesión) ·
 `contributors[]` (todo mapa aceptado, incluido el del conductor en ramas degradadas, con `session`
 nullable). Esquema campo por campo en `reference.md` → "Envelope de retorno".
 
@@ -392,6 +393,12 @@ significa `READY` (ver `reference.md` → "Estados del worker"):
 | **2** | sobrevive el de la **otra** familia | **explora** (topología anterior) | diversidad conservada, ahorro perdido |
 | **3** | sobrevive el de la **misma** familia | **explora** | **diversidad reducida** · `same_family` |
 | **4** | cero workers válidos | **explora**; cierre conductor-only | una sola voz · `single_voice` |
+
+Un worker en **`clarification-needed`** frenó ante una ambigüedad que le impide seguir, pero
+**entregó lo que alcanzó a mapear**. El conductor intenta resolver la pregunta desde el paquete o el
+repo antes de escalarla; si la resuelve, redespacha ese worker y la escalera se evalúa de nuevo. Si
+no, el worker baja a la rama que corresponda y su entrega parcial se conserva como contribuyente
+(`reference.md` → "`clarification-needed` — el cuarto estado").
 
 Fuera de la escalera: **`FALLO_DE_MAPA`** — el conductor no logró escribir un mapa válido en dos
 intentos. Es terminal, no pasa contexto de co-explore y va directo al gate humano. No es la rama 4:

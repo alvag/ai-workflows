@@ -165,6 +165,21 @@ Para bugs o cambios de UI, si hay una tool de navegador disponible (Chrome MCP, 
 
 > Límite: la validación en navegador requiere que la tool esté disponible en la sesión. Si no la hay, la skill degrada y pide captura/pasos de reproducción.
 
+## El contrato de verificación en el plan
+
+La sección `## Verification` del `plan.md` dejó de ser prosa: es un **contrato** con una fila por
+criterio de aceptación —evidencia, comando, resultado esperado y baseline—, escrito **antes** de
+implementar, con todas las filas arrancando en rojo. Cada task referencia el ID de su fila, y el
+self-review comprueba que la cobertura cierre en las dos direcciones: ni un AC sin fila ni una fila
+sin AC.
+
+El paso `verify` ya no elige qué evidencia usar: **carga la fila declarada y la ejecuta**. Es el
+mismo rigor de antes movido de momento — y el momento era el problema, porque evidencia elegida
+después de implementar es evidencia elegida para pasar.
+
+Aplica en los tres niveles de complejidad, incluido *trivial*: lo que escala con la complejidad es
+la cantidad de filas, no el formato.
+
 ## Dependencias
 
 Ninguna obligatoria. Aprovecha, si están disponibles:

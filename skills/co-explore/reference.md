@@ -803,6 +803,13 @@ Los tres primeros conviven con la rama nominal; el cuarto la presupone descartad
 | **3** | sobrevive el de la **misma** familia | **explora** | **diversidad reducida** — `same_family` |
 | **4** | cero workers válidos | **explora**; cierre conductor-only, **sin síntesis** | una sola voz — `single_voice` |
 
+Un worker en **`clarification-needed`** no es un worker perdido: cuenta como **válido a medias**.
+El conductor primero intenta resolver la pregunta (ver "El conductor resuelve antes de preguntar");
+si la resuelve, redespacha ese worker con una versión nueva del paquete y la escalera se evalúa de
+nuevo con su entrega completa. Si no se puede resolver, el worker baja a la rama que corresponda por
+las voces que quedan, y su entrega parcial **se conserva** como contribuyente: descartarla tiraría
+un mapa real por una pregunta sin contestar.
+
 Fuera de la escalera: **`FALLO_DE_MAPA`** (ver "Contrato del mapa del conductor"), terminal, sin
 contexto de co-explore y directo al gate humano.
 
@@ -821,7 +828,7 @@ diversity: cross_family | same_family | single_voice | null
 
 workers:
   - family: codex
-    state: READY | INVALID | UNAVAILABLE
+    state: READY | INVALID | clarification-needed | UNAVAILABLE
     cause: confirmed_wall | launch_flake | runtime_failure | null   # solo si UNAVAILABLE
     parity: pass | fail | null
     index:  co-explore/index-explore-codex-worker.md   | null
@@ -1211,12 +1218,13 @@ importa.
 
 ### Estados del worker
 
-Tres estados, definidos por **predicado** y no por criterio:
+**Cuatro** estados, definidos por **predicado** y no por criterio:
 
 | Estado | Predicado |
 |---|---|
-| `READY` | pasa **todos**: dos capas, gramática de ID, unidad indexable, enums, `STATUS: done`, split correcto y paridad |
+| `READY` | pasa **todos**: dos capas, gramática de ID, unidad indexable, enums, `STATUS: done`, split correcto y paridad (por **página** y por **unión**, si el índice está paginado) |
 | `INVALID` | respondió, pero falla alguno de esos predicados |
+| `clarification-needed` | frenó ante una ambigüedad que le impide seguir, **entregó lo que mapeó** y adosó la pregunta (ver "`clarification-needed` — el cuarto estado") |
 | `UNAVAILABLE` | no respondió, o no se pudo lanzar |
 
 `READY` los exige **todos**, sin excepciones. Omitir la gramática de ID o la unidad indexable de la
@@ -1233,7 +1241,9 @@ porque la omisión está en el índice *y* en el detalle— o con contenido sin 
 
 Distinción fina entre `INVALID` y `runtime_failure`: un proceso que **terminó** y dejó salida sin
 marcador es `INVALID` (respondió mal); uno que **alcanzó el deadline** sin marcador es
-`runtime_failure` (no llegó a responder).
+`runtime_failure` (no llegó a responder). Con un índice **paginado**, la serie incompleta se
+clasifica por el mismo criterio del observable (ver "Una serie incompleta se clasifica por el
+observable").
 
 Un worker `INVALID` **no aporta anexo** a `counter-plan` **ni sirve de seed** a `cross-review`,
 aunque conserve una sesión técnicamente reanudable.
@@ -1397,3 +1407,687 @@ Sin las tres, no se rankea. Y sin evidencia de respaldo, "el criterio está mal"
 nunca falsable si no se la ata a evidencia— y por eso lleva la misma vara que las demás, no una
 más baja. Sostenerla exige el criterio de éxito en el paquete de contexto (ver "Contrato de
 invocación"); si no llegó, decirlo como incógnita en vez de especular.
+
+## Índice paginado
+
+Cuando un worker encuentra más hallazgos de los que entran en una página, el índice se parte en
+varias. **Ninguna entrada se descarta**: el presupuesto limita el tamaño de **cada entrada** y de
+**cada página**, nunca el total de hallazgos. Un presupuesto que recorta el total convierte "el
+worker encontró 40 cosas" en "el worker informó 25", y las 15 que faltan no dejan rastro.
+
+### Se pagina solo el índice
+
+El **detalle sigue siendo un archivo por worker**, sin paginar. No es una omisión: el índice es la
+capa que el conductor lee **entera y siempre**, y la única cuyo tamaño escala con el número de
+hallazgos. El detalle se abre por ID y nunca se lee completo, así que paginarlo no compra nada y
+multiplica las rutas — y cada ruta más es una forma más de que la serie quede inconsistente.
+
+### Rutas y nombres
+
+El archivo con el nombre canónico —`index-<modo>-<familia>-<rol>.md`— pasa a ser el **metaíndice**, y
+las páginas se numeran con sufijo `-pNN` a partir de `01`, con cero a la izquierda para que el orden
+lexicográfico coincida con el numérico:
+
+```
+<dir>/co-explore/
+├─ index-<modo>-<familia>-<rol>.md          # METAÍNDICE: rutas, cantidades e IDs de cada página
+├─ index-<modo>-<familia>-<rol>-p01.md      # página 1
+├─ index-<modo>-<familia>-<rol>-p02.md      # página 2
+└─ detail-<modo>-<familia>-<rol>.md         # UNO solo, sin paginar
+```
+
+Que el metaíndice conserve el nombre canónico es deliberado: todo consumidor que hoy busca
+`index-<modo>-<familia>-<rol>.md` sigue encontrando un archivo, y lo que encuentra le dice dónde está
+el resto. Si el nombre canónico pasara a ser la página 1, un consumidor viejo leería un tercio del
+índice creyendo que lo leyó entero — la peor forma de fallar, porque es silenciosa.
+
+**Presupuestos**, ajustables por la skill: **240 caracteres** por resumen de entrada y **25 entradas**
+por página. Un informe con una sola página **también** lleva metaíndice: un formato que cambia según
+la cantidad obliga a cada consumidor a implementar los dos.
+
+### El metaíndice
+
+```markdown
+## Páginas
+| Página | Ruta | Entradas | IDs |
+|---|---|---|---|
+| 01 | index-explore-codex-worker-p01.md | 3 | CDX-W-EXP-001 CDX-W-EXP-002 CDX-W-EXP-003 |
+| 02 | index-explore-codex-worker-p02.md | 2 | CDX-W-EXP-004 CDX-W-EXP-005 |
+```
+
+Los IDs van **enumerados, no como rango**: un rango (`001..003`) se cumple con cualquier serie que
+empiece y termine ahí, y deja de detectar exactamente el caso que importa —una entrada que se perdió
+en el medio—.
+
+### Interacción con el resto del contrato
+
+- **Split:** el split parte la salida cruda en índice y detalle; la paginación es un paso más, sobre
+  el índice ya partido. El detalle no se toca.
+- **Truncado previo al dispatch:** alcanza a **todas** las páginas y al metaíndice. Una página vieja
+  que sobreviva a un redespacho es un índice fantasma que apunta a un detalle que ya no existe.
+- **Decisión de retoma:** una serie de páginas incompleta **no** es un artefacto de cierre válido, así
+  que la retoma la trata como ausente y redespacha (o falla cerrado si el consumidor ya está escrito).
+- **Publicación atómica:** se escriben primero todas las páginas y **el metaíndice al final**. Al
+  revés, un metaíndice publicado antes que sus páginas declara rutas que todavía no existen, y
+  cualquier lector concurrente ve una serie rota que en realidad iba a estar completa.
+
+### Una serie incompleta se clasifica por el observable
+
+Falta una página que el metaíndice declara, hay una duplicada, o hay una huérfana que el metaíndice
+no lista. Es el estado en que queda un worker cuyo deadline venció a mitad de la emisión, así que
+"ninguna entrada se descarta" **no** obliga a aceptar una entrega truncada: obliga a rechazarla como
+incompleta en vez de tomarla por buena.
+
+Ninguna resuelve `READY`, pero **no todas resuelven lo mismo**, y "no resuelve `READY`" a secas
+dejaría el mismo caso clasificable de cuatro formas — de esa clasificación dependen el retry, el
+fallback y la recuperación:
+
+| Observable | Estado |
+|---|---|
+| el proceso terminó normalmente y la serie es inconsistente | `INVALID` — entregó, y lo que entregó no cumple el contrato |
+| el deadline venció sin señal de finalización | `UNAVAILABLE`, causa `runtime_failure` — no llegó a terminar |
+| el resultado sobre el recurso original es incierto | `recovery-required` — no se sabe qué quedó escrito |
+
+Se decide por lo que se **observa** —estado del proceso, señal de finalización, integridad de la
+serie—, nunca por criterio de quien mira.
+
+### Bloques del índice paginado
+
+```bash
+# @bloque:split-paginado
+# Predicado: la salida cruda se parte en detalle único y páginas de índice de a lo sumo
+# $por_pagina entradas, sin perder ninguna, y el metaíndice se publica al final.
+# Entradas: $raw $base (prefijo de ruta sin extensión) $por_pagina
+set -u
+t=$(mktemp -d)
+awk '/^## Índice[[:space:]]*$/{m=1;next} /^## Detalle[[:space:]]*$/{m=2;next}
+     /^STATUS: done[[:space:]]*$/{next}
+     m==1{print > IDX} m==2{print > DET}' IDX="$t/idx" DET="${base}-detalle.tmp" "$raw"
+mv "${base}-detalle.tmp" "$(dirname "$base")/detail-$(basename "$base").md"
+
+cab=$(grep -m1 -E '^\|[[:space:]]*ID[[:space:]]*\|' "$t/idx")
+sep=$(grep -m1 -E '^\|[-: |]+\|$' "$t/idx")
+grep -E '^\|' "$t/idx" | grep -vE '^\|[[:space:]]*(ID[[:space:]]*\||[-: |]+\|)' > "$t/filas"
+
+n=0; pag=0; meta="$t/meta"; : > "$meta"
+while IFS= read -r fila; do
+  [ -n "$fila" ] || continue
+  if [ "$((n % por_pagina))" -eq 0 ]; then
+    pag=$((pag + 1)); p=$(printf '%02d' "$pag"); arch="${base}-p${p}.md"
+    printf '%s\n%s\n' "$cab" "$sep" > "$arch"
+    printf '%s\t%s\t' "$p" "$(basename "$arch")" >> "$meta"
+  fi
+  printf '%s\n' "$fila" >> "${base}-p$(printf '%02d' "$pag").md"
+  printf '%s ' "$(printf '%s' "$fila" | awk -F'|' '{gsub(/^ +| +$/,"",$2); print $2}')" >> "$meta"
+  n=$((n + 1))
+  [ "$((n % por_pagina))" -eq 0 ] && printf '\n' >> "$meta"
+done < "$t/filas"
+printf '\n' >> "$meta"
+
+# El metaíndice va ÚLTIMO: publicado antes que sus páginas declara rutas que aún no existen, y
+# cualquier lector concurrente ve una serie rota que en realidad iba a estar completa.
+{ echo "## Páginas"; echo "| Página | Ruta | Entradas | IDs |"; echo "|---|---|---|---|"
+  while IFS="$(printf '\t')" read -r p ruta ids; do
+    [ -n "${p:-}" ] || continue
+    printf '| %s | %s | %s | %s |\n' "$p" "$ruta" "$(printf '%s' "$ids" | wc -w | tr -d ' ')" "$ids"
+  done < "$meta"
+} > "${base}.md.tmp"
+mv "${base}.md.tmp" "${base}.md"
+rm -rf "$t"
+# @fin:split-paginado
+```
+
+```powershell
+# @bloque:split-paginado-ps
+# Predicado: la salida cruda se parte en detalle único y páginas de índice de a lo sumo
+# $por_pagina entradas, sin perder ninguna, y el metaíndice se publica al final.
+# Entradas: $raw $base (prefijo de ruta sin extensión) $por_pagina
+$modo = 0; $idx = @(); $det = @()
+foreach ($l in (Get-Content -LiteralPath $raw)) {
+  if ($l -match '^## Índice\s*$')       { $modo = 1; continue }
+  if ($l -match '^## Detalle\s*$')      { $modo = 2; continue }
+  if ($l -match '^STATUS: done\s*$')    { continue }
+  if ($modo -eq 1) { $idx += $l } elseif ($modo -eq 2) { $det += $l }
+}
+$det | Set-Content -LiteralPath (Join-Path (Split-Path $base) ("detail-" + (Split-Path $base -Leaf) + ".md"))
+$cab = $idx | Where-Object { $_ -match '^\|\s*ID\s*\|' } | Select-Object -First 1
+$sep = $idx | Where-Object { $_ -match '^\|[-: |]+\|$' } | Select-Object -First 1
+$filas = @($idx | Where-Object { $_ -match '^\|' -and $_ -notmatch '^\|\s*(ID\s*\||[-: |]+\|)' })
+$meta = @()
+for ($i = 0; $i -lt $filas.Count; $i += [int]$por_pagina) {
+  $p = '{0:d2}' -f ([int]($i / [int]$por_pagina) + 1)
+  $arch = "$base-p$p.md"
+  $trozo = $filas[$i..([Math]::Min($i + [int]$por_pagina - 1, $filas.Count - 1))]
+  (@($cab, $sep) + $trozo) | Set-Content -LiteralPath $arch
+  $ids = ($trozo | ForEach-Object { ($_ -split '\|')[1].Trim() }) -join ' '
+  $meta += "| $p | $(Split-Path $arch -Leaf) | $($trozo.Count) | $ids |"
+}
+# El metaíndice va ÚLTIMO: publicado antes que sus páginas declara rutas que aún no existen.
+(@('## Páginas', '| Página | Ruta | Entradas | IDs |', '|---|---|---|---|') + $meta) |
+  Set-Content -LiteralPath "$base.md"
+# @fin:split-paginado-ps
+```
+
+```bash
+# @bloque:metaindice
+# Predicado: toda página que el metaíndice declara existe, no hay páginas huérfanas ni duplicadas,
+# y el conjunto de IDs que el metaíndice lista coincide exactamente con el de las páginas.
+# Entradas: $base (prefijo de ruta sin extensión)
+set -u
+t=$(mktemp -d); rc=0
+[ -f "${base}.md" ] || { echo "GUARD:metaindice-completo no existe el metaíndice" >&2; rm -rf "$t"; exit 1; }
+grep -E '^\|' "${base}.md" | grep -vE '^\|[[:space:]]*(Página[[:space:]]*\||[-: |]+\|)' > "$t/decl"
+
+# 1) toda ruta declarada existe; ninguna se declara dos veces
+awk -F'|' '{gsub(/^ +| +$/,"",$3); print $3}' "$t/decl" | sort > "$t/rutas"
+while IFS= read -r r; do
+  [ -n "$r" ] || continue
+  [ -f "$(dirname "$base")/$r" ] || {
+    printf 'GUARD:pagina-declarada-existe el metaíndice declara %s y no existe\n' "$r" >&2; rc=1; }
+done < "$t/rutas"
+uniq -d "$t/rutas" > "$t/dup"
+[ -s "$t/dup" ] && { printf 'GUARD:pagina-declarada-existe página declarada dos veces: %s\n' \
+  "$(tr '\n' ' ' < "$t/dup")" >&2; rc=1; }
+
+# 2) ninguna página huérfana: un archivo -pNN que el metaíndice no lista es un índice invisible
+ls "$(dirname "$base")" 2>/dev/null | grep -E "^$(basename "$base")-p[0-9]{2}\.md$" | sort > "$t/enDisco"
+comm -13 "$t/rutas" "$t/enDisco" > "$t/huerf"
+[ -s "$t/huerf" ] && { printf 'GUARD:pagina-declarada-existe página huérfana, no listada: %s\n' \
+  "$(tr '\n' ' ' < "$t/huerf")" >&2; rc=1; }
+
+# 3) los IDs del metaíndice coinciden EXACTAMENTE con los de las páginas. Enumerados, no en rango:
+#    un rango se cumple con cualquier serie que empiece y termine ahí, y deja de detectar la
+#    entrada que se perdió en el medio.
+awk -F'|' '{gsub(/^ +| +$/,"",$5); print $5}' "$t/decl" | tr ' ' '\n' | grep -v '^$' | sort > "$t/idsMeta"
+: > "$t/idsPag"
+while IFS= read -r r; do
+  f="$(dirname "$base")/$r"; [ -f "$f" ] || continue
+  grep -E '^\|' "$f" | grep -vE '^\|[[:space:]]*(ID[[:space:]]*\||[-: |]+\|)' \
+    | awk -F'|' '{gsub(/^ +| +$/,"",$2); print $2}' >> "$t/idsPag"
+done < "$t/rutas"
+sort -o "$t/idsPag" "$t/idsPag"
+cmp -s "$t/idsMeta" "$t/idsPag" || {
+  printf 'GUARD:metaindice-completo meta=[%s] paginas=[%s]\n' \
+    "$(tr '\n' ' ' < "$t/idsMeta")" "$(tr '\n' ' ' < "$t/idsPag")" >&2; rc=1; }
+# la cantidad declarada por pagina tiene que ser la real
+while IFS= read -r fila; do
+  r=$(printf '%s' "$fila" | awk -F'|' '{gsub(/^ +| +$/,"",$3); print $3}')
+  n=$(printf '%s' "$fila" | awk -F'|' '{gsub(/^ +| +$/,"",$4); print $4}')
+  f="$(dirname "$base")/$r"; [ -f "$f" ] || continue
+  real=$(grep -E '^\|' "$f" | grep -vcE '^\|[[:space:]]*(ID[[:space:]]*\||[-: |]+\|)')
+  [ "$n" = "$real" ] || { printf 'GUARD:paridad-por-pagina %s declara %s entradas y tiene %s\n' \
+    "$r" "$n" "$real" >&2; rc=1; }
+done < "$t/decl"
+rm -rf "$t"; exit $rc
+# @fin:metaindice
+```
+
+```powershell
+# @bloque:metaindice-ps
+# Predicado: toda página que el metaíndice declara existe, no hay páginas huérfanas ni duplicadas,
+# y el conjunto de IDs que el metaíndice lista coincide exactamente con el de las páginas.
+# Entradas: $base (prefijo de ruta sin extensión)
+$rc = 0
+if (-not (Test-Path -LiteralPath "$base.md")) { Write-Error 'GUARD:metaindice-completo no existe el metaíndice'; exit 1 }
+$dir = Split-Path $base
+$decl = Get-Content -LiteralPath "$base.md" | Where-Object { $_ -match '^\|' -and $_ -notmatch '^\|\s*(Página\s*\||[-: |]+\|)' }
+$rutas = @($decl | ForEach-Object { ($_ -split '\|')[2].Trim() })
+foreach ($r in $rutas) {
+  if (-not (Test-Path -LiteralPath (Join-Path $dir $r))) { Write-Error "GUARD:pagina-declarada-existe el metaíndice declara $r y no existe"; $rc = 1 }
+}
+$dup = $rutas | Group-Object | Where-Object Count -gt 1
+if ($dup) { Write-Error "GUARD:pagina-declarada-existe página declarada dos veces: $($dup.Name -join ' ')"; $rc = 1 }
+$enDisco = @(Get-ChildItem -LiteralPath $dir -Filter "$(Split-Path $base -Leaf)-p??.md" | ForEach-Object { $_.Name })
+$huerf = $enDisco | Where-Object { $_ -notin $rutas }
+if ($huerf) { Write-Error "GUARD:pagina-declarada-existe página huérfana, no listada: $($huerf -join ' ')"; $rc = 1 }
+$idsMeta = @($decl | ForEach-Object { ($_ -split '\|')[4].Trim() -split '\s+' } | Where-Object { $_ } | Sort-Object)
+$idsPag = @()
+foreach ($r in $rutas) {
+  $f = Join-Path $dir $r; if (-not (Test-Path -LiteralPath $f)) { continue }
+  $idsPag += Get-Content -LiteralPath $f | Where-Object { $_ -match '^\|' -and $_ -notmatch '^\|\s*(ID\s*\||[-: |]+\|)' } | ForEach-Object { ($_ -split '\|')[1].Trim() }
+}
+$idsPag = @($idsPag | Sort-Object)
+if (Compare-Object $idsMeta $idsPag) { Write-Error "GUARD:metaindice-completo meta=[$($idsMeta -join ' ')] paginas=[$($idsPag -join ' ')]"; $rc = 1 }
+foreach ($fila in $decl) {
+  $c = $fila -split '\|'; $r = $c[2].Trim(); $n = $c[3].Trim()
+  $f = Join-Path $dir $r; if (-not (Test-Path -LiteralPath $f)) { continue }
+  $real = @(Get-Content -LiteralPath $f | Where-Object { $_ -match '^\|' -and $_ -notmatch '^\|\s*(ID\s*\||[-: |]+\|)' }).Count
+  if ("$n" -ne "$real") { Write-Error "GUARD:paridad-por-pagina $r declara $n entradas y tiene $real"; $rc = 1 }
+}
+exit $rc
+# @fin:metaindice-ps
+```
+
+```bash
+# @bloque:validador-paginado
+# Predicado: la UNIÓN de las páginas tiene paridad exacta con el detalle — ni una entrada indexada
+# sin desarrollo, ni un desarrollo sin entrada en ninguna página.
+# Entradas: $base (prefijo de ruta sin extensión) $detail
+set -u
+t=$(mktemp -d); rc=0
+grep -E '^\|' "${base}.md" | grep -vE '^\|[[:space:]]*(Página[[:space:]]*\||[-: |]+\|)' \
+  | awk -F'|' '{gsub(/^ +| +$/,"",$3); print $3}' > "$t/rutas"
+: > "$t/union"
+while IFS= read -r r; do
+  f="$(dirname "$base")/$r"; [ -f "$f" ] || continue
+  grep -E '^\|' "$f" | grep -vE '^\|[[:space:]]*(ID[[:space:]]*\||[-: |]+\|)' \
+    | awk -F'|' '{gsub(/^ +| +$/,"",$2); print $2}' >> "$t/union"
+done < "$t/rutas"
+sort -o "$t/union" "$t/union"
+sed -nE 's/^###[[:space:]]+([A-Z]{3}-[A-Z]-[A-Z]{3}-[0-9]{3})[[:space:]]*$/\1/p' "$detail" | sort > "$t/det"
+
+# La paridad se comprueba contra la UNIÓN, no página por página: por página, una entrada que migró
+# de la página 2 a la 3 rompería la paridad sin que se haya perdido nada.
+comm -23 "$t/union" "$t/det" > "$t/e"
+[ -s "$t/e" ] && { printf 'GUARD:paridad-union indexado sin desarrollo: %s\n' "$(tr '\n' ' ' < "$t/e")" >&2; rc=1; }
+comm -13 "$t/union" "$t/det" > "$t/e"
+[ -s "$t/e" ] && { printf 'GUARD:paridad-union desarrollo sin entrada: %s\n' "$(tr '\n' ' ' < "$t/e")" >&2; rc=1; }
+[ -s "$t/union" ] || { echo "GUARD:paridad-union la unión de las páginas está vacía" >&2; rc=1; }
+rm -rf "$t"; exit $rc
+# @fin:validador-paginado
+```
+
+```powershell
+# @bloque:validador-paginado-ps
+# Predicado: la UNIÓN de las páginas tiene paridad exacta con el detalle — ni una entrada indexada
+# sin desarrollo, ni un desarrollo sin entrada en ninguna página.
+# Entradas: $base (prefijo de ruta sin extensión) $detail
+$rc = 0; $dir = Split-Path $base
+$rutas = @(Get-Content -LiteralPath "$base.md" | Where-Object { $_ -match '^\|' -and $_ -notmatch '^\|\s*(Página\s*\||[-: |]+\|)' } | ForEach-Object { ($_ -split '\|')[2].Trim() })
+$union = @()
+foreach ($r in $rutas) {
+  $f = Join-Path $dir $r; if (-not (Test-Path -LiteralPath $f)) { continue }
+  $union += Get-Content -LiteralPath $f | Where-Object { $_ -match '^\|' -and $_ -notmatch '^\|\s*(ID\s*\||[-: |]+\|)' } | ForEach-Object { ($_ -split '\|')[1].Trim() }
+}
+$union = @($union | Sort-Object)
+$det = @(Get-Content -LiteralPath $detail | Where-Object { $_ -match '^###\s+[A-Z]{3}-[A-Z]-[A-Z]{3}-\d{3}\s*$' } | ForEach-Object { ($_ -replace '^###\s+', '').Trim() } | Sort-Object)
+# La paridad se comprueba contra la UNIÓN, no página por página.
+$sinDet = $union | Where-Object { $_ -notin $det }
+if ($sinDet) { Write-Error "GUARD:paridad-union indexado sin desarrollo: $($sinDet -join ' ')"; $rc = 1 }
+$sinIdx = $det | Where-Object { $_ -notin $union }
+if ($sinIdx) { Write-Error "GUARD:paridad-union desarrollo sin entrada: $($sinIdx -join ' ')"; $rc = 1 }
+if ($union.Count -eq 0) { Write-Error 'GUARD:paridad-union la unión de las páginas está vacía'; $rc = 1 }
+exit $rc
+# @fin:validador-paginado-ps
+```
+
+## `clarification-needed` — el cuarto estado
+
+Un worker que se topa con una ambigüedad que **le impide seguir mapeando** emite
+`clarification-needed`: la pregunta concreta, su impacto, el supuesto seguro si existe, y **entrega
+igual** el índice y el detalle de todo lo que alcanzó a mapear. No es un abandono: es una entrega
+parcial con una pregunta adosada.
+
+### La excepción a la regla 3, y su predicado
+
+La regla 3 no negociable dice que el explorador **nunca se bloquea por dudas**: toda duda se
+registra y se sigue explorando. Este estado es una **excepción nombrada**, no un agregado silencioso,
+y está acotada por un predicado que se puede evaluar sin juicio:
+
+> Emite `clarification-needed` **solo** cuando la duda hace que **el resto del mapa dependa de la
+> respuesta**: sin resolverla, lo que siga sería exploración de un terreno que quizá no existe.
+
+Si la duda deja seguir mapeando —aunque sea con menos certeza— **no** es este estado: va a
+`## Incógnitas` y la exploración continúa. La regla 3 sigue siendo la norma; esto es su borde.
+
+### Distinguirlo de una `incógnita high`
+
+Se parecen en que las dos nombran algo sin resolver, y por eso hay que decir en qué se diferencian —
+la misma distinción que separa `INVALID` de `runtime_failure`:
+
+| | `incógnita high` | `clarification-needed` |
+|---|---|---|
+| Qué pasó con el mapa | está **completo**; la incógnita es un hallazgo más | está **truncado**: lo que falta depende de la respuesta |
+| Quién puede resolverla | nadie todavía; queda para `clarify` | el conductor, el paquete de contexto o el usuario, **ahora** |
+| Qué habilita | nada: el flujo sigue | reanudar el mapeo con una versión nueva del paquete |
+| Si se ignora | el flujo avanza con un riesgo declarado | el mapa queda incompleto **y nadie lo sabe** |
+
+La última fila es la razón de que exista el estado: una incógnita ignorada deja un riesgo visible;
+una aclaración ignorada deja un mapa que parece completo y no lo está.
+
+### El conductor resuelve antes de preguntar
+
+Recibido un `clarification-needed`, el conductor **busca la respuesta antes de escalarla**: primero
+en el paquete de contexto que él mismo armó, después en el repositorio. Solo si no está en ninguno de
+los dos le pregunta al usuario.
+
+No es cortesía: la mayoría de estas preguntas se contestan con algo que ya estaba en el paquete y el
+worker no relacionó, o con un archivo que el worker no llegó a abrir. Escalar sin buscar convierte
+cada ambigüedad del explorador en una interrupción, y el costo lo paga la persona.
+
+### Paquete de contexto versionado
+
+La respuesta **no se aplica sobre el paquete que el worker ya recibió**: se crea una **versión
+nueva**. El paquete entregado es inmutable.
+
+```
+<dir>/co-explore/scratch/
+├─ paquete-<modo>-v1.txt          # el que se despachó
+├─ paquete-<modo>-v2.txt          # v1 + la aclaración respondida
+└─ paquete-<modo>-v2.origen.txt   # qué pregunta contestó, y quién
+```
+
+Mutar el paquete entregado rompe lo único que hace auditable una exploración: saber **con qué
+información** se produjo cada mapa. Con el paquete mutado, el índice del worker parece responder a
+una pregunta que en el momento de escribirlo no existía.
+
+**El truncado previo al dispatch alcanza a todas las versiones.** Una `v1` que sobreviva a un
+redespacho es contexto fantasma: el worker nuevo puede leerla y contestar a partir de un paquete que
+ya nadie considera vigente, sin que nada lo delate.
+
+### Cómo deben quedar los consumidores
+
+El estado no vale solo en este documento: si el `reference.md` lo define y el `SKILL.md` no lo
+nombra, la skill queda mintiendo sobre sus propios estados. Los **cuatro** consumidores normativos
+tienen que reflejarlo, y cada uno es una omisión posible por separado:
+
+1. **el envelope de retorno** — `workers[].estado` admite `clarification-needed`;
+2. **la escalera de degradación** — qué rama resuelve cuando un worker queda en ese estado;
+3. **la vista "Degradación" del `SKILL.md`**;
+4. **la vista "Salida — el envelope" del `SKILL.md`**.
+
+### Bloques del cuarto estado
+
+```bash
+# @bloque:clarificacion-completa
+# Predicado: un clarification-needed trae pregunta, impacto y el índice y detalle de lo que alcanzó
+# a mapear; el supuesto seguro es opcional pero, si falta, se declara que no hay.
+# Entradas: $informe
+set -u
+rc=0
+for campo in 'pregunta:' 'impacto:' 'supuesto-seguro:'; do
+  grep -qE "^${campo}[[:space:]]*[^[:space:]]" "$informe" || {
+    printf 'GUARD:clarification-completa falta o está vacío el campo "%s"\n' "$campo" >&2; rc=1; }
+done
+# La entrega parcial es obligatoria: sin ella el estado sería indistinguible de un abandono, y se
+# perdería todo lo que el worker sí llegó a mapear.
+grep -q '^## Índice' "$informe" || {
+  echo "GUARD:clarification-completa no entrega el índice de lo mapeado" >&2; rc=1; }
+grep -q '^## Detalle' "$informe" || {
+  echo "GUARD:clarification-completa no entrega el detalle de lo mapeado" >&2; rc=1; }
+exit $rc
+# @fin:clarificacion-completa
+```
+
+```powershell
+# @bloque:clarificacion-completa-ps
+# Predicado: un clarification-needed trae pregunta, impacto y el índice y detalle de lo que alcanzó
+# a mapear; el supuesto seguro es opcional pero, si falta, se declara que no hay.
+# Entradas: $informe
+$rc = 0
+$doc = Get-Content -LiteralPath $informe
+foreach ($campo in @('pregunta:', 'impacto:', 'supuesto-seguro:')) {
+  if (-not ($doc | Where-Object { $_ -match "^$campo\s*\S" })) {
+    Write-Error "GUARD:clarification-completa falta o está vacío el campo `"$campo`""; $rc = 1
+  }
+}
+if (-not ($doc | Where-Object { $_ -match '^## Índice' }))  { Write-Error 'GUARD:clarification-completa no entrega el índice de lo mapeado'; $rc = 1 }
+if (-not ($doc | Where-Object { $_ -match '^## Detalle' })) { Write-Error 'GUARD:clarification-completa no entrega el detalle de lo mapeado'; $rc = 1 }
+exit $rc
+# @fin:clarificacion-completa-ps
+```
+
+```bash
+# @bloque:resolver-antes-de-preguntar
+# Predicado: el conductor registra haber buscado la respuesta en el paquete y en el repositorio
+# antes de escalar la pregunta al usuario.
+# Entradas: $bitacora
+set -u
+rc=0
+esc=$(grep -n '`paso: preguntar-al-usuario`' "$bitacora" | head -1 | cut -d: -f1)
+[ -n "$esc" ] || exit 0   # no escaló: nada que exigir
+for p in buscar-en-paquete buscar-en-repo; do
+  n=$(grep -n "\`paso: $p\`" "$bitacora" | head -1 | cut -d: -f1)
+  if [ -z "$n" ]; then
+    printf 'GUARD:resolver-antes-de-preguntar escaló sin registrar "%s"\n' "$p" >&2; rc=1
+  elif [ "$n" -gt "$esc" ]; then
+    printf 'GUARD:resolver-antes-de-preguntar "%s" quedó DESPUÉS de escalar\n' "$p" >&2; rc=1
+  fi
+done
+exit $rc
+# @fin:resolver-antes-de-preguntar
+```
+
+```powershell
+# @bloque:resolver-antes-de-preguntar-ps
+# Predicado: el conductor registra haber buscado la respuesta en el paquete y en el repositorio
+# antes de escalar la pregunta al usuario.
+# Entradas: $bitacora
+$rc = 0
+$doc = Get-Content -LiteralPath $bitacora
+function Idx($p) { for ($i = 0; $i -lt $doc.Count; $i++) { if ($doc[$i] -match "``paso: $p``") { return $i + 1 } }; return 0 }
+$esc = Idx 'preguntar-al-usuario'
+if ($esc -eq 0) { exit 0 }
+foreach ($p in @('buscar-en-paquete', 'buscar-en-repo')) {
+  $n = Idx $p
+  if ($n -eq 0) { Write-Error "GUARD:resolver-antes-de-preguntar escaló sin registrar `"$p`""; $rc = 1 }
+  elseif ($n -gt $esc) { Write-Error "GUARD:resolver-antes-de-preguntar `"$p`" quedó DESPUÉS de escalar"; $rc = 1 }
+}
+exit $rc
+# @fin:resolver-antes-de-preguntar-ps
+```
+
+```bash
+# @bloque:paquete-versionado
+# Predicado: el paquete entregado no se modifica —la respuesta crea una versión nueva— y el
+# truncado previo al dispatch alcanza a TODAS las versiones.
+# Entradas: $scratch (directorio) $hash_v1 (checksum del paquete entregado)
+set -u
+rc=0
+v1=$(ls "$scratch" 2>/dev/null | grep -E '^paquete-.*-v1\.txt$' | head -1)
+if [ -n "$v1" ]; then
+  actual=$(cksum < "$scratch/$v1" | awk '{print $1}')
+  [ "$actual" = "$hash_v1" ] || {
+    printf 'GUARD:paquete-inmutable el paquete entregado cambió (%s ≠ %s)\n' "$actual" "$hash_v1" >&2
+    rc=1; }
+fi
+# Tras un redespacho no puede sobrevivir NINGUNA version: una v1 viva es contexto fantasma que el
+# worker nuevo puede leer sin que nada lo delate.
+if [ "${redespachado:-0}" = "1" ]; then
+  quedan=$(ls "$scratch" 2>/dev/null | grep -cE '^paquete-.*-v[0-9]+\.txt$')
+  [ "$quedan" -eq 0 ] || {
+    printf 'GUARD:truncado-alcanza-versiones sobrevivieron %s versiones al redespacho\n' "$quedan" >&2
+    rc=1; }
+fi
+exit $rc
+# @fin:paquete-versionado
+```
+
+```powershell
+# @bloque:paquete-versionado-ps
+# Predicado: el paquete entregado no se modifica —la respuesta crea una versión nueva— y el
+# truncado previo al dispatch alcanza a TODAS las versiones.
+# Entradas: $scratch (directorio) $hash_v1 (checksum del paquete entregado)
+$rc = 0
+$v1 = Get-ChildItem -LiteralPath $scratch -Filter 'paquete-*-v1.txt' -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($v1) {
+  $actual = (Get-FileHash -LiteralPath $v1.FullName -Algorithm MD5).Hash
+  if ($actual -ne $hash_v1) { Write-Error "GUARD:paquete-inmutable el paquete entregado cambió ($actual ≠ $hash_v1)"; $rc = 1 }
+}
+if ($env:redespachado -eq '1') {
+  $quedan = @(Get-ChildItem -LiteralPath $scratch -Filter 'paquete-*-v*.txt' -ErrorAction SilentlyContinue).Count
+  if ($quedan -ne 0) { Write-Error "GUARD:truncado-alcanza-versiones sobrevivieron $quedan versiones al redespacho"; $rc = 1 }
+}
+exit $rc
+# @fin:paquete-versionado-ps
+```
+
+```bash
+# @bloque:cuarto-estado-consumidores
+# Predicado: los cuatro consumidores normativos nombran clarification-needed — el envelope, la
+# escalera de degradación, y las dos vistas del SKILL.md.
+# Entradas: $ref (reference.md de co-explore) $skill (su SKILL.md)
+set -u
+rc=0
+# Se descuentan los PUNTEROS antes de buscar: `reference.md` → "…el cuarto estado" contiene el
+# nombre del estado, y una seccion que solo lo cita de paso no le dice al lector qué pasa con él.
+# La primera version contaba esa mencion y daba verde con el párrafo borrado.
+seccion() {  # seccion <archivo> <heading>
+  awk -v h="$2" '$0 ~ "^#+ " h "$" {on=1;next} on && /^#{2,3} /{exit} on' "$1" \
+    | sed -E 's/`[a-z0-9-]+\.md` → "[^"]*"//g'
+}
+seccion "$ref" "Envelope de retorno" | grep -q 'clarification-needed' || {
+  echo "GUARD:cuarto-estado-en-consumidores el envelope no admite clarification-needed" >&2; rc=1; }
+seccion "$ref" "Escalera de degradación" | grep -q 'clarification-needed' || {
+  echo "GUARD:cuarto-estado-en-consumidores la escalera de degradación lo ignora" >&2; rc=1; }
+seccion "$skill" "Degradación" | grep -q 'clarification-needed' || {
+  echo "GUARD:cuarto-estado-en-consumidores la vista Degradación del SKILL.md lo ignora" >&2; rc=1; }
+seccion "$skill" "Salida — el envelope" | grep -q 'clarification-needed' || {
+  echo "GUARD:cuarto-estado-en-consumidores la vista del envelope del SKILL.md lo ignora" >&2; rc=1; }
+exit $rc
+# @fin:cuarto-estado-consumidores
+```
+
+```powershell
+# @bloque:cuarto-estado-consumidores-ps
+# Predicado: los cuatro consumidores normativos nombran clarification-needed — el envelope, la
+# escalera de degradación, y las dos vistas del SKILL.md.
+# Entradas: $ref (reference.md de co-explore) $skill (su SKILL.md)
+$rc = 0
+# Se descuentan los PUNTEROS antes de buscar: una sección que solo cita el estado de paso no le
+# dice al lector qué pasa con él.
+function Seccion($archivo, $h) {
+  $out = @(); $on = $false
+  foreach ($l in (Get-Content -LiteralPath $archivo)) {
+    if ($l -match "^#+ $([regex]::Escape($h))$") { $on = $true; continue }
+    if ($on -and $l -match '^#{2,3} ') { break }
+    if ($on) { $out += ($l -replace '`[a-z0-9-]+\.md` → "[^"]*"', '') }
+  }
+  $out -join "`n"
+}
+if ((Seccion $ref 'Envelope de retorno') -notmatch 'clarification-needed')      { Write-Error 'GUARD:cuarto-estado-en-consumidores el envelope no admite clarification-needed'; $rc = 1 }
+if ((Seccion $ref 'Escalera de degradación') -notmatch 'clarification-needed')  { Write-Error 'GUARD:cuarto-estado-en-consumidores la escalera de degradación lo ignora'; $rc = 1 }
+if ((Seccion $skill 'Degradación') -notmatch 'clarification-needed')            { Write-Error 'GUARD:cuarto-estado-en-consumidores la vista Degradación del SKILL.md lo ignora'; $rc = 1 }
+if ((Seccion $skill 'Salida — el envelope') -notmatch 'clarification-needed')   { Write-Error 'GUARD:cuarto-estado-en-consumidores la vista del envelope del SKILL.md lo ignora'; $rc = 1 }
+exit $rc
+# @fin:cuarto-estado-consumidores-ps
+```
+
+## Tres identidades de reintento, y ninguna es la otra
+
+Cuando algo sale mal con un worker hay **tres** operaciones distintas, y hoy se confunden con
+facilidad porque las tres se ven como "volver a intentar". Se registran por separado, con nombre
+propio y contador propio:
+
+| Identidad | Qué se rehace | Qué NO se rehace | Cuándo |
+|---|---|---|---|
+| `transportAttempt` | el **lanzamiento** | nada: no llegó a explorar | el proceso no arrancó, o murió antes de emitir |
+| `formatRepair` | la **emisión** del informe, en la misma sesión viva | la exploración | exploró y entregó, pero lo entregado no valida |
+| `semanticAttempt` | la **exploración entera**, sesión nueva | — | lo entregado valida y no sirve |
+
+Confundirlas tiene un costo concreto en cada dirección: contar una reparación de formato como
+intento semántico agota el presupuesto sin haber explorado dos veces; y contar un intento semántico
+como reparación de formato hace creer que hay dos mapas independientes cuando hay uno.
+
+### Una ronda de reparación de formato, y por qué no viola la regla 5
+
+Un worker que **terminó su trabajo** pero cuyo informe no cumple el contrato hoy queda `INVALID` y
+muere. Ese es trabajo real tirado: la exploración está hecha, lo que falló es el formato de salida.
+Se permite **una** ronda de reparación —en la **misma sesión viva**, pidiendo solo que reemita con el
+formato correcto—, sin volver a explorar.
+
+La regla 5 dice "una sola pasada, sin rondas" y **sigue intacta**: lo que prohíbe son rondas de
+**contenido**, donde el worker vuelve a mirar el código y puede cambiar de opinión. Una reemisión no
+toca el espacio de hipótesis; es una ronda de **transporte**. La prueba de que la distinción es real:
+si la reparación cambiara un solo hallazgo, dejaría de ser reparación y sería un intento semántico —
+y por eso la reparación se valida contra los **mismos IDs** que el intento original.
+
+### `recovery-required` bloquea retry y fallback
+
+Un intento cuyo resultado sobre el recurso original es **incierto** —no se sabe si escribió, si dejó
+el proceso vivo, si el archivo quedó a medias— no queda en `INVALID` ni en `UNAVAILABLE`: queda en
+`recovery-required`, y **no habilita ni retry ni fallback** hasta resolver qué pasó con ese recurso.
+
+Reintentar sobre un estado incierto es cómo se duplica trabajo o se corrompe una entrega a medio
+escribir: el segundo intento no sabe qué encontró del primero, y el resultado combinado no es el de
+ninguno de los dos.
+
+### Bloques de las identidades
+
+```bash
+# @bloque:identidades-reintento
+# Predicado: las tres identidades se registran por separado, ninguna reparación de formato cuenta
+# como intento semántico, y hay a lo sumo una reparación por worker.
+# Entradas: $log
+set -u
+t=$(mktemp -d); rc=0
+grep -oE '^- `(transportAttempt|formatRepair|semanticAttempt): [^`]*`' "$log" \
+  | sed -E 's/^- `([a-zA-Z]+): .*/\1/' > "$t/ids"
+# Ninguna identidad desconocida: un cuarto nombre es una identidad inventada, y el punto de esta
+# seccion es que hay exactamente tres.
+grep -oE '^- `[a-zA-Z]+:' "$log" | sed -E 's/^- `//; s/:$//' | sort -u > "$t/vistas"
+grep -vE '^(transportAttempt|formatRepair|semanticAttempt)$' "$t/vistas" > "$t/raras"
+[ -s "$t/raras" ] && { printf 'GUARD:identidades-reintento identidad desconocida: %s\n' \
+  "$(tr '\n' ' ' < "$t/raras")" >&2; rc=1; }
+# A lo sumo UNA reparación de formato: la segunda ya no es transporte, es contenido.
+n=$(grep -c '^formatRepair$' "$t/ids")
+[ "$n" -le 1 ] || { printf 'GUARD:identidades-reintento %s reparaciones de formato (el tope es 1)\n' \
+  "$n" >&2; rc=1; }
+# Una reparación tiene que conservar los MISMOS IDs: si cambia un hallazgo dejó de ser transporte.
+if grep -q '^- `formatRepair:' "$log"; then
+  grep -q '`mismos_ids: sí`' "$log" || {
+    echo "GUARD:identidades-reintento la reparación no declara haber conservado los IDs" >&2; rc=1; }
+fi
+rm -rf "$t"; exit $rc
+# @fin:identidades-reintento
+```
+
+```powershell
+# @bloque:identidades-reintento-ps
+# Predicado: las tres identidades se registran por separado, ninguna reparación de formato cuenta
+# como intento semántico, y hay a lo sumo una reparación por worker.
+# Entradas: $log
+$rc = 0
+$doc = Get-Content -LiteralPath $log
+$vistas = @($doc | Where-Object { $_ -match '^- `[a-zA-Z]+:' } | ForEach-Object { [regex]::Match($_, '^- `([a-zA-Z]+):').Groups[1].Value } | Sort-Object -Unique)
+$raras = $vistas | Where-Object { $_ -notin @('transportAttempt', 'formatRepair', 'semanticAttempt') }
+if ($raras) { Write-Error "GUARD:identidades-reintento identidad desconocida: $($raras -join ' ')"; $rc = 1 }
+$n = @($doc | Where-Object { $_ -match '^- `formatRepair:' }).Count
+if ($n -gt 1) { Write-Error "GUARD:identidades-reintento $n reparaciones de formato (el tope es 1)"; $rc = 1 }
+if ($n -ge 1 -and -not ($doc | Where-Object { $_ -match '`mismos_ids: sí`' })) {
+  Write-Error 'GUARD:identidades-reintento la reparación no declara haber conservado los IDs'; $rc = 1
+}
+exit $rc
+# @fin:identidades-reintento-ps
+```
+
+```bash
+# @bloque:recovery-bloquea
+# Predicado: tras un recovery-required no hay ningún retry ni fallback registrado hasta que el
+# recurso original se resuelve.
+# Entradas: $log
+set -u
+rc=0
+rec=$(grep -n 'recovery-required' "$log" | head -1 | cut -d: -f1)
+[ -n "$rec" ] || exit 0
+res=$(grep -n '`recurso: resuelto`' "$log" | head -1 | cut -d: -f1)
+lim=${res:-999999}
+post=$(awk -v a="$rec" -v b="$lim" 'NR>a && NR<b && (/`semanticAttempt:/ || /`transportAttempt:/) {print NR": "$0}' "$log")
+[ -z "$post" ] || {
+  printf 'GUARD:recovery-bloquea hubo reintento con el recurso sin resolver:\n%s\n' "$post" >&2
+  rc=1; }
+exit $rc
+# @fin:recovery-bloquea
+```
+
+```powershell
+# @bloque:recovery-bloquea-ps
+# Predicado: tras un recovery-required no hay ningún retry ni fallback registrado hasta que el
+# recurso original se resuelve.
+# Entradas: $log
+$rc = 0
+$doc = Get-Content -LiteralPath $log
+$rec = -1; $res = $doc.Count
+for ($i = 0; $i -lt $doc.Count; $i++) {
+  if ($rec -lt 0 -and $doc[$i] -match 'recovery-required') { $rec = $i }
+  if ($doc[$i] -match '`recurso: resuelto`') { $res = $i; break }
+}
+if ($rec -lt 0) { exit 0 }
+for ($i = $rec + 1; $i -lt $res; $i++) {
+  if ($doc[$i] -match '`(semanticAttempt|transportAttempt):') {
+    Write-Error "GUARD:recovery-bloquea hubo reintento con el recurso sin resolver: $($doc[$i])"; $rc = 1
+  }
+}
+exit $rc
+# @fin:recovery-bloquea-ps
+```
