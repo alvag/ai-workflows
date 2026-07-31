@@ -51,6 +51,12 @@ Más allá del spec, estas skills usan patrones consistentes que hay que respeta
 - **`cross-review`** — segunda opinión adversarial sobre **artefactos de diseño** (spec/plan/tasks), no sobre código. Modo `draft` cuando hay idea pero no artefacto.
 - **`cross-implement`** — delega la implementación de un work order **congelado** a la otra familia; el conductor revisa el diff como un PR ajeno y commitea tras el gate humano.
 
+**Escalera de rigor.** Las fronteras dicen *qué* hace cada una; la escalera dice *cuál alcanza*:
+respuesta local → `co-explore` (mapa, causa raíz o decisión) → `cross-review` (crítica de una
+decisión escrita) → `cross-implement` (construcción desde contrato congelado) → `verify` de
+`sdd-flow` (evidencia por AC). La pregunta al elegir no es cuál es la mejor sino **cuál es la más
+barata que alcanza**. Canónica en `co-explore/reference.md` → "Escalera de rigor".
+
 Regla de fronteras entre skills (aparece repetida en las descripciones y hay que preservarla): `co-explore` explora/hipotetiza · `cross-review` revisa documentos de diseño · `cross-implement` escribe código · `systematic-debugging` arreglar bugs · code review sobre diffs. No solapar.
 
 ## Invocación cross-model (el mecanismo compartido)

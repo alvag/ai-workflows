@@ -80,52 +80,15 @@ Ambos read-only. Estructura XML compacta (operador, no colaborador), escritos a 
 
 **Prompt de debate — ronda 0 (postura independiente):**
 
-```xml
-<task>
-Eres un asesor técnico independiente. Se debe tomar una DECISIÓN entre opciones y el usuario no
-está seguro. Forma tu propia postura ANTES de ver la de nadie más. Es SOLO LECTURA: puedes leer el
-código en {working_dir} para fundamentar, pero no edites ni ejecutes nada.
-</task>
 
-<decision>
-{la decisión a resolver + las opciones en juego, del paquete de contexto}
-</decision>
+El prompt vive en `assets/prompts/debate-round-0.md` — es la **entrada exacta** del worker y se escribe a archivo con la tool Write. Placeholders que hay que sustituir antes de despachar: `{constraints}`, `{working_dir}`.
 
-<context>
-{contexto relevante: spec/plan si los hay, AC, contratos, complejidad}
-</context>
-
-{constraints}
-
-<output_contract>
-Devuelve exactamente:
-POSTURA: <hacia qué opción te inclinas, o "sin preferencia" con el porqué>
-POR QUÉ: <2-5 razones fundadas, ancladas al código/contexto cuando se pueda>
-TRADE-OFFS: <qué compra y qué cuesta cada opción>
-RIESGOS/INCÓGNITAS: <lo que no pudiste verificar o lo que cambiaría tu postura>
-</output_contract>
-```
 
 **Prompt de debate — cruce (rondas 1..N):**
 
-```xml
-<task>
-Continúa el debate. Abajo está la postura ACTUAL de la otra parte sobre la misma decisión.
-Critícala de forma adversarial y luego da tu postura ACTUALIZADA. SOLO LECTURA.
-</task>
 
-<other_position>
-{la postura actual del conductor, del delta de la ronda anterior}
-</other_position>
+El prompt vive en `assets/prompts/debate-cross.md` — es la **entrada exacta** del worker y se escribe a archivo con la tool Write. Placeholders que hay que sustituir antes de despachar: `{constraints}`.
 
-{constraints}
-
-<output_contract>
-CRÍTICA: <qué falla, qué no consideró, qué riesgo ignora la otra postura>
-POSTURA ACTUALIZADA: <tu postura tras la crítica: qué mantienes, qué concedes>
-CONVERGENCIA: <en qué estás de acuerdo con la otra parte>
-</output_contract>
-```
 
 ## Plantilla de `debate.md`
 
@@ -567,46 +530,9 @@ operación.
 Reemplaza a "Modo `explore` (pre-spec)" en la topología dual. Los dos workers reciben este prompt
 **idéntico**; solo cambia el prefijo de familia de sus IDs.
 
-```xml
-<task>
-Eres un ingeniero explorando este repositorio para preparar un cambio. NO escribas ni
-modifiques nada: solo lee, busca y razona. Trabajas SOLO: nadie va a responder preguntas
-— toda duda se registra como entrada de tipo incógnita y sigues explorando. No tienes
-navegador: las URLs del contexto NO son navegables para ti — nunca intentes abrirlas.
-</task>
 
-<context_package>
-{digest del ticket + prompt del usuario + AC preliminares si existen + complejidad declarada
-+ evidencia observada de reproducción si la hubo (consola/red/pasos, capturada por la llamadora)}
-</context_package>
+El prompt vive en `assets/prompts/explore.md` — es la **entrada exacta** del worker y se escribe a archivo con la tool Write. Placeholders que hay que sustituir antes de despachar: `{FORMATO_PUNTERO}`, `{PREFIJO}`, `{constraints}`.
 
-<focus>
-Mapea el terreno para este cambio: dónde vive lo que hay que tocar, qué existe para reusar,
-qué puede romperse, y qué enfoque seguirías. Referencia todo con path:line.
-</focus>
-
-{constraints}
-
-<output_contract>
-Tu ÚLTIMA salida debe ser EXACTAMENTE esta estructura, con estos headings literales:
-
-## Índice
-Una tabla con una fila POR CADA entrada de tu detalle. Cinco columnas, en este orden:
-ID | tipo · qué | severidad | confianza | punteros
-- ID: {PREFIJO}-001, {PREFIJO}-002, … correlativo, tres dígitos.
-- tipo: uno de ubicación · relación · hipótesis · reúso · riesgo · incógnita · supuesto.
-- qué: una frase. La fila entera ocupa UNA sola línea.
-- severidad y confianza: exactamente high, medium o low.
-- punteros: {FORMATO_PUNTERO}, o "N/A: <motivo>" si no hay ninguno posible.
-
-## Detalle
-Un heading "### <ID>" por CADA fila del índice, con el desarrollo completo debajo.
-Ningún contenido fuera de un "### <ID>".
-
-Los IDs del índice y los del detalle deben ser EXACTAMENTE el mismo conjunto.
-Cierra con la línea: STATUS: done
-</output_contract>
-```
 
 `{PREFIJO}` se sustituye por `CDX-W-EXP` o `CLD-W-EXP` según el worker. `{FORMATO_PUNTERO}` es
 `path:line` con un solo `working_dir`, o `repo/path:line` con varios.
@@ -616,28 +542,9 @@ Cierra con la línea: STATUS: done
 Mismo `output_contract` que `explore`, con `{PREFIJO}` = `<FAM>-W-CTR`. Cambian `<task>`, el
 paquete y el foco:
 
-```xml
-<task>
-Eres un ingeniero proponiendo tu propio enfoque técnico para el cambio descrito en la spec
-aprobada. NO escribas ni modifiques nada: solo lee, busca y razona. Trabajas SOLO: nadie va
-a responder preguntas — toda duda se registra como entrada de tipo incógnita.
-</task>
 
-<context_package>
-NÚCLEO COMÚN (idéntico para ambos workers):
-{ruta y contenido de la spec.md o master-spec.md aprobada + paths de domain_context}
+El prompt vive en `assets/prompts/counter-plan.md` — es la **entrada exacta** del worker y se escribe a archivo con la tool Write.
 
-ANEXO (solo si este worker quedó READY en la fase explore):
-{contenido concatenado de su PROPIO index-explore-<familia>-worker.md y
- detail-explore-<familia>-worker.md}
-</context_package>
-
-<focus>
-Propón tu propio contra-enfoque: qué tocarías, qué reusarías, en qué orden, y qué riesgos ves.
-Las entradas de tipo "hipótesis" llevan acá el peso del informe: ahí va tu enfoque, paso por
-paso. Referencia todo con path:line.
-</focus>
-```
 
 El anexo **viaja concatenado dentro del prompt**, nunca como una ruta a abrir: en `sdd-orchestrator`
 los artefactos viven en la carpeta contenedora, fuera del `working_dir`, y el bloque `{constraints}`
@@ -648,6 +555,11 @@ worker, y sin que el conductor cargue el anexo en su ventana: lo escribe el shel
 preservar.
 
 ### Prompt de investigate (dos capas)
+
+> **No tiene asset propio, a diferencia de los otros cuatro.** Está definido **por delta** sobre
+> `assets/prompts/explore.md`, y materializarlo sería escribir un prompt que hoy no existe — un
+> cambio de contenido disfrazado de mudanza de archivo. Se deja como delta hasta que haya una razón
+> concreta para congelarlo aparte.
 
 Mismo formato de dos capas, con `{PREFIJO}` = `<FAM>-W-INV` y los **seis** tipos de la tabla de
 `investigate`. El `<task>` y el `<focus>` son los de "Modo `investigate` (standalone, bug)", con la
@@ -1098,7 +1010,10 @@ contribuyentes: [CDX-W-EXP, CLD-W-EXP]
 Cada contribuyente se nombra por su **prefijo de ID** `<FAM>-<ROL>-<MODO>`: es lo que ata cada ID
 citado en el cuerpo a un mapa concreto.
 
-El cuerpo de una síntesis compara **por ID**, no informes completos:
+El cuerpo de una síntesis compara **por ID**, no informes completos. `## Descartados` es
+obligatoria y **puede quedar vacía**, pero no ausente: registrar por qué se eligió un enfoque no es
+lo mismo que registrar qué se tiró, y lo segundo es lo único que permite revisar una síntesis meses
+después sin reconstruirla de cero. Una hipótesis descartada sin rastro vuelve a proponerse.
 
 ```markdown
 ## Convergencias
@@ -1116,6 +1031,11 @@ El cuerpo de una síntesis compara **por ID**, no informes completos:
 | ID | Disparador | Punteros verificados |
 |---|---|---|
 | CDX-W-EXP-002 | divergencia unilateral | skills/co-explore/reference.md:690 |
+
+## Descartados
+| ID | Qué proponía | Por qué se descartó |
+|---|---|---|
+| CLD-W-EXP-006 | mover el truncado al entrar al modo | destruye el artefacto de cierre que la retoma necesita leer |
 
 ## Incógnitas fusionadas
 ## Límite de esta exploración
@@ -1407,6 +1327,85 @@ Sin las tres, no se rankea. Y sin evidencia de respaldo, "el criterio está mal"
 nunca falsable si no se la ata a evidencia— y por eso lleva la misma vara que las demás, no una
 más baja. Sostenerla exige el criterio de éxito en el paquete de contexto (ver "Contrato de
 invocación"); si no llegó, decirlo como incógnita en vez de especular.
+
+## Handoff destilado, nunca transcript crudo
+
+Al modelo delegado se le pasa un **contrato destilado** —objetivo, contexto necesario, límites—,
+nunca el transcript literal de la sesión del conductor. El prompt por archivo que estas skills usan
+**ya es** un handoff destilado: no es una convención estética, es la forma correcta, y conviene
+saber por qué para que nadie la "optimice" pasándole contexto ambiente al delegado.
+
+El porqué no es solo de diseño. Está documentado un caso real donde reproducir dentro de un modelo
+un transcript construido bajo otro activó clasificadores de política de uso y **bloqueó todas las
+requests de la sesión** —incluso las triviales—, mientras la misma consulta en una sesión fresca
+pasaba sin problema. El diseño barato resultó ser también el seguro.
+
+Consecuencia práctica: si el delegado necesita saber algo, ese algo se **escribe en el prompt**. No
+se le reenvía la conversación para que lo deduzca.
+
+## Perfiles de worker
+
+Un perfil describe **cómo ejecutar** un worker —familia, modelo, esfuerzo—, **nunca qué tarea
+hacer**. La skill conserva la autoridad sobre el rol, el prompt, los permisos y los límites de
+escritura: un perfil **no puede elevar permisos**, y uno que lo intente se ignora con aviso.
+
+Viven en el bloque `cross_model.profiles` de `.specify/config.yml` (esquema en
+`sdd-flow/reference.md` → "Esquema de `.specify/config.yml`") y se consumen desde
+`co_explore.workers.profiles`. Separarlos así es lo que permite cambiar costo y latencia **sin tocar
+ninguna skill**.
+
+### Precedencia y reglas duras
+
+Precedencia, igual que el resto de los overrides SDD: **override conversacional de la corrida >
+`.specify/config.yml` > defaults de la skill**.
+
+Cuatro reglas que no se negocian, y las cuatro existen por el mismo motivo — que una sustitución
+silenciosa produce un resultado que parece el pedido y no lo es:
+
+1. **Un modelo explícito no disponible vuelve ese perfil `UNAVAILABLE`.** Nunca se sustituye por
+   otro. Pedir `sonnet` y recibir otro modelo sin aviso invalida cualquier comparación de costo o
+   de calidad que motivó el perfil.
+2. **`model: default` sí delega** la elección al proveedor: es el valor con el que se declara "me da
+   igual cuál", y por eso no dispara la regla anterior.
+3. **Una opción de esfuerzo incompatible se avisa, no se descarta en silencio.** Un adaptador que
+   ignora `effort: high` porque su CLI no lo soporta entrega un worker más barato del pedido y el
+   conteo de costo queda mintiendo.
+4. **Un perfil no puede elevar permisos.** El nivel de escritura lo fija el rol —read-only en
+   `co-explore` y `cross-review`, workspace-write acotado en `cross-implement`—, y ningún campo del
+   perfil lo toca.
+
+### Interacción con la diversidad de familia
+
+`family_diversity: prefer` (default) intenta despachar perfiles de familias distintas y, si no
+puede, sigue con lo que haya declarando la diversidad reducida — es la escalera de degradación de
+siempre. Con `require`, dos perfiles de la misma familia **no despachan**: la corrida resuelve
+`UNAVAILABLE` antes de gastar nada.
+
+`target_success` y `min_success` son distintos a propósito: el primero dice cuántos se querrían, el
+segundo cuántos alcanzan para no abortar. Colapsarlos en un solo número obliga a elegir entre
+abortar de más o aceptar de menos.
+
+## Escalera de rigor
+
+Cuándo escalar entre skills, para no usar el martillo caro. Cada peldaño cuesta más que el anterior
+—en tiempo, en tokens y en atención de la persona—, así que la pregunta no es "¿cuál es la mejor?"
+sino **"¿cuál es la más barata que alcanza?"**:
+
+| Peldaño | Cuándo | Qué produce |
+|---|---|---|
+| **respuesta local** | el conductor puede contestar leyendo el repo | una respuesta |
+| **`co-explore`** | el terreno está abierto: hace falta un mapa, una causa raíz o decidir entre opciones | dos mapas independientes + síntesis |
+| **`cross-review`** | ya hay una **decisión escrita** y se quiere que la ataquen | crítica adversarial + veredicto |
+| **`cross-implement`** | hay un contrato **congelado** y hay que construirlo | un diff que el conductor revisa |
+| **`verify` de `sdd-flow`** | hay código y hace falta evidencia por criterio de aceptación | filas ejecutadas con su salida |
+
+El orden **no** es una secuencia obligatoria: la mayoría de los trabajos entran por un peldaño y no
+suben. Subir sin necesidad no es cautela, es gasto — y bajar cuando hacía falta subir es la otra
+mitad del error.
+
+> **No hay un modo `opinion` (A/B barato) a propósito.** Se difirió hasta tener un caso real donde
+> `co-explore` resulte desproporcionado; las dos familias convergieron en que agregarlo antes es
+> inventar un peldaño para un hueco que todavía nadie encontró.
 
 ## Índice paginado
 

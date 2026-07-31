@@ -165,22 +165,28 @@ Flags pueden variar por versión: ante la duda, `codex exec --help` / `claude --
 Contrato completo — el implementador arranca sin contexto de sesión; lo que no esté acá no
 existe para él. Escrito a archivo con Write:
 
-```
-GOAL: <un párrafo — cómo se ve "terminado">
-SPEC: Lee <work_order> en la raíz del repo. Es un contrato CONGELADO y ya aprobado.
-  Impleméntalo exactamente. Si un paso es imposible tal como está escrito, implementa la
-  versión fiel más cercana y reporta la desviación — no rediseñes.
-KEY PATHS: <archivos/dirs a tocar, y los que debe leer primero (reúso identificado)>
-CONSTRAINTS: <"no toques X", estilo del repo, dependencias que no deben cambiar.
-  Siempre incluir: no commitees, no toques .plans/ ni .specify/ ni cross-implement/>
-NON-GOALS: <explícitamente fuera de alcance — del "Out of scope"/AC del work order>
-PROOF: Corre `<proof_cmd>` e incluye su salida completa y exit code en tu reporte.
-OUTPUT: Termina con el reporte del "Formato del reporte" (abajo), cerrando con STATUS: done.
-```
+
+El prompt vive en `assets/prompts/implement.md` — es la **entrada exacta** del worker y se escribe a archivo con la tool Write.
+
 
 Cuando el work order es SDD (`.plans/<id>/`), derivar GOAL del objetivo de la spec, KEY PATHS de
 los campos Archivos de las tasks, CONSTRAINTS/NON-GOALS del alcance, y PROOF del `test_cmd`
 acotado (o el Verificar agregado de las tasks).
+
+## Handoff destilado, nunca transcript crudo
+
+Al modelo delegado se le pasa un **contrato destilado** —objetivo, contexto necesario, límites—,
+nunca el transcript literal de la sesión del conductor. El prompt por archivo que esta skill usa
+**ya es** un handoff destilado: no es una convención estética, es la forma correcta, y conviene
+saber por qué para que nadie la "optimice" pasándole contexto ambiente al delegado.
+
+El porqué no es solo de diseño. Está documentado un caso real donde reproducir dentro de un modelo
+un transcript construido bajo otro activó clasificadores de política de uso y **bloqueó todas las
+requests de la sesión** —incluso las triviales—, mientras la misma consulta en una sesión fresca
+pasaba sin problema. El diseño barato resultó ser también el seguro.
+
+Consecuencia práctica: si el delegado necesita saber algo, ese algo se **escribe en el prompt**. No
+se le reenvía la conversación para que lo deduzca.
 
 ## Formato del reporte
 
@@ -239,6 +245,10 @@ el principio aplica. Si no, el reporte era el artefacto y su formato no es narra
 entregable.
 
 ## Fix loop
+
+> **El delta de fix no tiene asset propio.** No es un prompt con estructura fija sino el contenido
+> mínimo de abajo, distinto en cada ronda; congelarlo en una plantilla invitaría a rellenarla en vez
+> de escribir lo que esa ronda necesita.
 
 - El delta de cada ronda es concreto: **qué está mal · en qué archivo · qué prueba debe pasar** —
   no re-mandar el work order completo (la sesión lo recuerda).

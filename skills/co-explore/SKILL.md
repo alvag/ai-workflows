@@ -415,6 +415,10 @@ de reintento: `reference.md` → "Estados del worker". Una pared confirmada no s
 
 ## Router de intención
 
+> **¿Es este el peldaño que hace falta?** La escalera de rigor —respuesta local → `co-explore` →
+> `cross-review` → `cross-implement` → `verify`— dice cuál es la opción **más barata que
+> alcanza**, que casi nunca es la más completa: `co-explore/reference.md` → "Escalera de rigor".
+
 | El usuario dice (ej.) | Acción |
 |---|---|
 | "/co-explore `<ticket|descripción>`" | modo directo: `mode: explore`, corre la síntesis y presenta la conclusión |

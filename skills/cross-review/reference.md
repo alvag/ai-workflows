@@ -423,7 +423,22 @@ Trampas de este CLI que la invocación debe esquivar:
 - El prompt debe decir igualmente que es una revisión de SOLO lectura: la restricción de tools
   es el cinturón; el prompt, los tiradores.
 
-#### Latencia y timeout (Claude revisor)
+#### Handoff destilado, nunca transcript crudo
+
+Al modelo delegado se le pasa un **contrato destilado** —objetivo, contexto necesario, límites—,
+nunca el transcript literal de la sesión del conductor. El prompt por archivo que esta skill usa
+**ya es** un handoff destilado: no es una convención estética, es la forma correcta, y conviene
+saber por qué para que nadie la "optimice" pasándole contexto ambiente al delegado.
+
+El porqué no es solo de diseño. Está documentado un caso real donde reproducir dentro de un modelo
+un transcript construido bajo otro activó clasificadores de política de uso y **bloqueó todas las
+requests de la sesión** —incluso las triviales—, mientras la misma consulta en una sesión fresca
+pasaba sin problema. El diseño barato resultó ser también el seguro.
+
+Consecuencia práctica: si el delegado necesita saber algo, ese algo se **escribe en el prompt**. No
+se le reenvía la conversación para que lo deduzca.
+
+## Latencia y timeout (Claude revisor)
 
 La revisión con `--model opus` sobre un **prompt grande** (gate de plan/tasks: artefacto + spec/plan
 de contexto + permiso de leer el repo) puede tardar **varios minutos** en producir la primera
@@ -583,48 +598,9 @@ normal, para que las rondas siguientes no dependan del `session.json` de otra sk
 
 Estructura XML compacta (estilo `gpt-5-4-prompting`: operador, no colaborador). Plantilla base:
 
-```xml
-<task>
-Eres un revisor adversarial independiente. Critica el siguiente artefacto de Spec-Driven
-Development de tipo "{artifact_type}" ANTES de que se implemente. Es una revisión de SOLO
-LECTURA: no modifiques archivos. Puedes leer el código del repo en {working_dir} para fundamentar,
-pero no edites nada. Tu objetivo es cazar problemas que cuesten caro después: {foco según tipo}.
-</task>
 
-<artifact>
-{contenido inline del artefacto}
-</artifact>
+El prompt vive en `assets/prompts/review.md` — es la **entrada exacta** del worker y se escribe a archivo con la tool Write. Placeholders que hay que sustituir antes de despachar: `{artifact_type}`, `{complexity}`, `{working_dir}`.
 
-<context>
-{contenido de los context_paths relevantes: spec/plan relacionados, master-spec, AC y contratos}
-Complejidad declarada: {complexity}.
-</context>
-
-<grounding_rules>
-- Ancla cada finding a una sección/AC/línea concreta del artefacto o del código. No inventes.
-- Si algo es hipótesis (no lo pudiste verificar en el repo), dilo explícitamente.
-- No comentes estilo, wording ni formato. Foco en correctitud, completitud y riesgo.
-</grounding_rules>
-
-<constraints>
-Todo el contexto que necesitas está en este prompt y en el repositorio del working dir.
-- NO consultes memoria ni herramientas MCP de ningún tipo.
-- NO busques en la web.
-- NO accedas a nada fuera del working dir.
-- DENTRO del working dir, lee el código con libertad: fundamentar los findings es tu tarea.
-Emite tu veredicto en el formato pedido y termina el turno.
-</constraints>
-
-<structured_output_contract>
-{ver "Formato de salida" — respetar ese formato exacto}
-</structured_output_contract>
-
-<dig_deeper_nudge>
-No te quedes en lo superficial. Busca el AC que falta, el caso borde no cubierto, el supuesto
-no declarado, la dependencia no vista, el contrato que no cierra. Si no encuentras nada serio,
-APRUEBA — no inventes findings para parecer productivo.
-</dig_deeper_nudge>
-```
 
 `{foco según tipo}` se completa con la fila correspondiente de "Foco por tipo de artefacto".
 

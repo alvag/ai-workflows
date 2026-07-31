@@ -257,6 +257,10 @@ nunca espera indefinida (ver `reference.md` → "Latencia y timeout (Claude revi
 
 ## Router de intención
 
+> **¿Es este el peldaño que hace falta?** La escalera de rigor —respuesta local → `co-explore` →
+> `cross-review` → `cross-implement` → `verify`— dice cuál es la opción **más barata que
+> alcanza**, que casi nunca es la más completa: `co-explore/reference.md` → "Escalera de rigor".
+
 | El usuario dice (ej.) | Acción |
 |---|---|
 | "/cross-review `.plans/X/plan.md`", "revisa este plan con otra opinión" | revisar el artefacto nombrado (modo directo) |

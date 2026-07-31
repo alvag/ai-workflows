@@ -443,23 +443,37 @@ Todo sobre `feat/cross-model`, sin runtime nuevo. Cada paso es entregable por s�
 0. **Archivar las ramas de origen** con un tag, sin borrarlas. — **pendiente**
 1. ~~**Puntos 4, 5, 10 y 13**~~ — **HECHO**, commit `dd2f3b7`.
 2. ~~**Punto 1** (coordinador puro + índice/detalle)~~ — **HECHO**, commit `97cc694`.
-3. **Puntos 2, 3, 11 y 12** — verification contract con sus reglas de congelamiento, triage con
-   sus refinamientos, checks declarados en `plan`/`tasks` y verificación de lo declarado contra el
-   árbol. Van juntos porque comparten el mismo contrato.
-4. **Puntos 6, 7, 8, 14 y 15** — perfiles en config, prompts a assets, escalera de rigor, handoff
-   destilado documentado y descarte auditable.
+3. ~~**Puntos 2, 3, 11 y 12**~~ — **HECHO**, commits `82b619d`, `a7ae11b` y `411636d`. Incluyó
+   además los tres pendientes detectados al ejecutar el paso 2 (índice paginado,
+   `clarification-needed` y separación de reparación de formato vs retry semántico), que se
+   sumaron al alcance por decisión del usuario.
+4. ~~**Puntos 6, 7, 8, 14 y 15**~~ — **HECHO**. Perfiles de worker en `cross_model.profiles` +
+   `co_explore.workers`, seis prompts movidos a `assets/prompts/`, escalera de rigor canónica en
+   `co-explore/reference.md`, handoff destilado en las tres skills que despachan, y `## Descartados`
+   obligatoria en la síntesis.
+
+   **Corrección al punto 7:** el catálogo nombraba **ocho** assets y solo **seis** existen como
+   bloque literal. `investigate` y `fix` están definidos **por delta** —el primero sobre `explore`,
+   el segundo como contenido mínimo por ronda—, así que moverlos habría sido *escribir* prompts que
+   hoy no existen: un cambio de contenido disfrazado de mudanza de archivo. Quedan como delta, con
+   la razón anotada donde alguien los buscaría.
 5. **Punto 9** (manifest mínimo) — recién acá, y solo para decidir con datos si algo más de las
    ramas se justifica.
 
 Estimación gruesa original: los pasos 1–4 en menos de 1.800 líneas de Markdown. **Medido:** el
-paso 1 costó 923 líneas y el paso 2, 1.328 (neto +677). La estimación quedó corta y conviene
-recalibrar: cada paso rinde más de lo previsto pero cuesta cerca del doble.
+paso 1 costó 923 líneas, el paso 2, 1.328 (neto +677), y el paso 3, **2.457** (neto +2.393,
+repartido en `cross-implement` +1.350, `co-explore` +715, `sdd-orchestrator` +169 y `sdd-flow`
++161). La estimación original ya se pasó **tres veces** con el paso 4 todavía sin empezar: cada
+paso rinde más de lo previsto y cuesta cerca del doble del anterior.
 
-**Pendiente de portar, detectado al ejecutar el paso 2** (`docs/superpowers/specs/2026-07-23-herdr-cli-cross-model-ideas.md`):
-índice **paginado sin pérdida** (el presupuesto limita entrada y página, nunca la cantidad de
-hallazgos), `clarification-needed` como resultado de worker con versión inmutable del paquete de
-contexto, y separar **reparación de formato** de **retry semántico** — hoy un enum mal escrito tira
-todo el trabajo del worker.
+**Lo que la estimación no contaba, y es la mayor parte del trabajo:** el paso 3 sumó un arnés de 87
+archivos con **82 mutaciones declaradas** que vive en `.plans/` y no se publica. Las líneas de
+Markdown publicado miden el entregable, no el esfuerzo — y sin ese arnés cinco guardas habrían
+quedado en verde sin poder detectar el defecto que decían detectar.
+
+~~**Pendiente de portar, detectado al ejecutar el paso 2**~~ — **HECHO en el paso 3**: índice
+paginado sin pérdida, `clarification-needed` con paquete de contexto versionado, y las tres
+identidades de reintento (`transportAttempt` / `formatRepair` / `semanticAttempt`) separadas.
 
 ## Riesgo de pérdida de insumos
 
