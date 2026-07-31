@@ -487,13 +487,28 @@ apuestas.>
 - build: `<comando detectado>`
 
 ## Verification
-<pasos manuales/observables para validar end-to-end, ligados a los AC>
+<el contrato de verificación. Mismo esquema normativo que
+`cross-implement/contrato-verificacion.md` → "La tabla" y "El bloque de baseline": no se reescribe
+acá con otra forma, se llena. Todas las filas arrancan en `RED` porque todavía no se implementó
+nada; un baseline que no arranca en `RED` se adjudica o se justifica antes de congelar.>
+
+### v1
+
+| ID | Requisito | Evidencia | Comando/observación | Esperado | Baseline |
+|---|---|---|---|---|---|
+| V1 | AC-1 — <requisito, en una línea> | test | `<comando literal, copiable>` | <lo que cuenta como cumplido> | RED |
+
+#### Baseline de v1
+`hash_previo:` · `hash: <sha256 de los bytes canónicos de esta versión>`
+
+- `id: V1` · `commit: <SHA evaluado>` · `timestamp: <ISO-8601>`
 
 ## Verify
-<lo completa el paso `verify`; vacío hasta entonces>
-| AC | Resultado | Evidencia | Fecha |
-|---|---|---|---|
-| AC-1 | ✅ / ❌ | <test / paso manual / salida observada> | <ISO-8601> |
+<lo completa el paso `verify` EJECUTANDO las filas de arriba; vacío hasta entonces. No elige
+evidencia: la evidencia ya está declarada y congelada.>
+| AC | Fila | Resultado | Evidencia | Fecha |
+|---|---|---|---|---|
+| AC-1 | V1 | ✅ / ❌ | <salida observada al correr el comando de la fila> | <ISO-8601> |
 
 ## Extras (fuera de AC)
 <cambios que entran al commit pero no mapean a ningún AC; vacío por default. Ver "Extras" en SKILL.md>
@@ -537,13 +552,27 @@ created_at: 2026-01-01T12:00:00-03:00
 - [ ] T1 — <acción> · cubre: AC-1
 
 ## Verification
-- <cómo se comprueba cada AC>
+<el MISMO esquema normativo que el plan completo, sin excepción por complejidad: un contrato con
+una fila es igual de contrato. Lo que escala con la complejidad es la cantidad de filas, no el
+formato — un dialecto propio para *trivial* obligaría a `verify` y al gate de `cross-implement` a
+entender dos.>
+
+### v1
+
+| ID | Requisito | Evidencia | Comando/observación | Esperado | Baseline |
+|---|---|---|---|---|---|
+| V1 | AC-1 — <requisito> | test | `<comando literal>` | <lo que cuenta como cumplido> | RED |
+
+#### Baseline de v1
+`hash_previo:` · `hash: <sha256 de los bytes canónicos>`
+
+- `id: V1` · `commit: <SHA evaluado>` · `timestamp: <ISO-8601>`
 
 ## Verify
-<lo completa el paso `verify`>
-| AC | Resultado | Evidencia | Fecha |
-|---|---|---|---|
-| AC-1 | ✅ / ❌ | <evidencia> | <ISO-8601> |
+<lo completa el paso `verify` ejecutando las filas de arriba>
+| AC | Fila | Resultado | Evidencia | Fecha |
+|---|---|---|---|---|
+| AC-1 | V1 | ✅ / ❌ | <salida observada> | <ISO-8601> |
 
 ## Extras (fuera de AC)
 <cambios sin AC que entran al commit; vacío por default. Ver "Extras" en SKILL.md>
@@ -552,17 +581,24 @@ created_at: 2026-01-01T12:00:00-03:00
 
 ## Plantilla de `## Verify`
 
-El paso `verify` (ver `SKILL.md` → "Paso `verify`") completa la sección `## Verify` del `plan.md`. Tabla base — una fila por AC:
+El paso `verify` (ver `SKILL.md` → "Paso `verify`") completa la sección `## Verify` del `plan.md`
+**ejecutando las filas del contrato de `## Verification`**. Una fila por AC, con la fila del contrato
+que lo prueba:
 
 ```markdown
 ## Verify
-| AC | Resultado | Evidencia | Fecha |
-|---|---|---|---|
-| AC-1 | ✅ | `vitest run cart.spec` → 12 passed, exit 0 | 2026-01-01T12:00:00-03:00 |
-| AC-2 | ❌ | el botón no se deshabilita con lista vacía | 2026-01-01T12:00:00-03:00 |
+| AC | Fila | Resultado | Evidencia | Fecha |
+|---|---|---|---|---|
+| AC-1 | V1 | ✅ | `vitest run cart.spec` → 12 passed, exit 0 | 2026-01-01T12:00:00-03:00 |
+| AC-2 | V2 | ❌ | el botón no se deshabilita con lista vacía | 2026-01-01T12:00:00-03:00 |
 ```
 
-La **evidencia** es la salida fresca del comando que prueba *ese* AC (gate function del paso `verify`), no "los tests pasan" en general.
+La **evidencia** es la salida fresca del comando **que la fila ya declaraba**, no uno elegido en este
+momento. La columna `Fila` es lo que hace comprobable esa diferencia: sin ella, "corrí lo que
+correspondía" no se puede contrastar contra nada.
+
+Un AC sin fila, o una fila sin AC, es un contrato que no cerró y no debería haber llegado hasta acá
+(lo comprueba el self-review del paso `tasks`).
 
 ### Revert-to-confirm (AC de comportamiento con test)
 
@@ -606,7 +642,8 @@ Cada task es un **bloque** con estos campos:
     2. (si hay seam) `<comando de test acotado>` → FAIL esperado
     3. <enfoque + snippet ILUSTRATIVO de la firma/estructura clave>
     4. `<comando de test acotado>` o verificación acotada → PASS/OK
-  - **Verificar:** <comando o paso manual ligado al AC>
+  - **Verificar:** `Vn` — la fila del contrato de `## Verification` que prueba este AC. Solo el
+    ID: repetir acá el comando o el esperado crea una segunda fuente que se desincroniza.
 
 - [ ] **T2 — <acción concreta>**  · cubre: AC-1, AC-2
   - **Por qué:** <…>
@@ -616,7 +653,8 @@ Cada task es un **bloque** con estos campos:
   - **Verificar:** <…>
 
 ## Self-review (antes del gate)
-- **Cobertura:** AC-1 → T1, T2 ✓ · AC-2 → T2 ✓ (sin AC huérfanos / sin tasks sin AC).
+- **Cobertura AC ↔ task:** AC-1 → T1, T2 ✓ · AC-2 → T2 ✓ (sin AC huérfanos / sin tasks sin AC).
+- **Cobertura AC ↔ fila del contrato:** AC-1 → V1 ✓ · AC-2 → V2 ✓ (bidireccional: ni AC sin fila ni fila sin AC — es lo que el gate de `cross-implement` exige para congelar).
 - **Anti-placeholder:** sin `TBD`/`TODO`/"agregar X apropiado"/"similar a T-N"/"etc." en plan ni tasks.
 - **Interfaces:** cada `Produce` coincide exacto (nombre + firma) con el `Consume` que lo referencia.
 ```
@@ -635,7 +673,7 @@ Ejemplo concreto de una task:
     2. `ng test --include=src/app/shared/services/draft/draft-form.service.spec.ts` → FAIL (método no existe)
     3. (impl) `persistDraftOnReload()` serializa `this.form` a `sessionStorage` con guard `try/catch`.
     4. `ng test --include=src/app/shared/services/draft/draft-form.service.spec.ts` → PASS
-  - **Verificar:** recargar la página en el navegador y confirmar que el borrador persiste.
+  - **Verificar:** `V1`
 ```
 
 ## Plantilla de `handoff.md`

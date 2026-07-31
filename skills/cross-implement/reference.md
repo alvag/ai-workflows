@@ -6,6 +6,7 @@ conductor, el fix loop, los tiempos y los archivos de trabajo.
 
 ## Tabla de contenidos
 
+- [Documentos de esta referencia](#documentos-de-esta-referencia)
 - [Portabilidad entre shells (POSIX / PowerShell)](#portabilidad-entre-shells-posix--powershell)
 - [Descubrir el implementador](#descubrir-el-implementador)
 - [Vías de invocación](#vías-de-invocación)
@@ -17,8 +18,20 @@ conductor, el fix loop, los tiempos y los archivos de trabajo.
 - [Latencia, deadlines y banner](#latencia-deadlines-y-banner)
 - [Archivos de trabajo (scratch)](#archivos-de-trabajo-scratch)
 - [Log de implementación](#log-de-implementación)
+- [Cuándo un reporte ilegible no invalida la revisión](#cuándo-un-reporte-ilegible-no-invalida-la-revisión)
 
 ---
+
+## Documentos de esta referencia
+
+La referencia de esta skill son **tres** archivos, partidos por el momento en que se los lee, no por
+tamaño. Cargar los tres siempre desperdicia contexto en una corrida que sale bien a la primera:
+
+| Archivo | Qué trae | Cuándo se lee |
+|---|---|---|
+| `reference.md` (este) | descubrimiento, vías de invocación, prompt, reporte, revisión, fix loop, tiempos y scratch | en toda corrida |
+| `contrato-verificacion.md` | esquema del contrato, reglas de congelamiento, adjudicación, gate previo al dispatch y sus bloques de validación | al armar y aprobar el contrato, antes de delegar |
+| `ownership.md` | las cuatro clases de falla, presupuestos, re-baseline aislado, takeover y precedencia de topes | cuando una ronda falla |
 
 ## Portabilidad entre shells (POSIX / PowerShell)
 
@@ -203,6 +216,27 @@ Checklist tras cada ronda (regla 4 del `SKILL.md`) — como PR de un contribuido
 4. **En SDD**: atribuir hunks a tasks y marcar `- [x]` solo las efectivamente cubiertas; los AC
    los verifica después el `verify` de sdd-flow (esta revisión no lo reemplaza).
 5. Registrar el veredicto de la ronda en el log (qué pasó, qué va al fix round).
+
+## Cuándo un reporte ilegible no invalida la revisión
+
+El principio: **un reporte que no parsea no invalida la revisión**. Se revisa el artefacto igual y lo
+único que se pierde es la narrativa del implementador.
+
+**Condición de aplicación — el principio es falso sin ella:** vale donde el **artefacto es el diff**,
+no donde el artefacto **es** el informe.
+
+- Acá el entregable es el diff; el reporte solo lo describe. Si el reporte no parsea, el diff sigue
+  estando y se revisa igual: leerlo no depende del formato del texto que lo acompaña.
+- En `co-explore` el entregable **es** el informe. Uno que no parsea no deja nada que revisar, y por
+  eso esa skill exige informe estructurado o nada: degrada a texto libre si aporta contexto, o
+  descarta, y registra la degradación.
+
+Enunciarlo como principio general **sin** su condición contradiría de frente esa regla no negociable,
+y dejaría a quien lea las dos eligiendo cuál desobedecer.
+
+La prueba de si aplica es una sola pregunta: **si borro el reporte, ¿queda algo que revisar?** Si sí,
+el principio aplica. Si no, el reporte era el artefacto y su formato no es narrativa: es el
+entregable.
 
 ## Fix loop
 

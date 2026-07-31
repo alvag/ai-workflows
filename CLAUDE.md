@@ -18,6 +18,15 @@ Cada `skills/<nombre>/` tiene tres archivos, alineados con la **divulgación pro
 - **`reference.md`** — detalle técnico pesado (matrices de detección, invocación de CLIs, casos borde, PowerShell vs POSIX). Se carga **solo cuando el SKILL.md lo indica explícitamente** ("ver `reference.md` → sección X"). Acá va lo que no se necesita en cada corrida.
 - **`README.md`** — documentación para humanos (qué hace, cuándo usarla, instalación). No lo lee el agente en ejecución.
 
+**La capa de referencia puede ser más de un archivo.** Cuando el detalle de una skill se lee en
+**momentos distintos**, se parte en varios `.md` hermanos de `reference.md` (el patrón `pptx` de
+agentskills.io, con su `pptxgenjs.md` y su `ooxml.md`). El criterio de corte es el momento de
+lectura, no el tamaño: cargar en cada corrida un documento que solo hace falta cuando algo falla es
+desperdiciar contexto. `cross-implement` es el caso vivo — `reference.md` (toda corrida),
+`contrato-verificacion.md` (antes de delegar) y `ownership.md` (cuando una ronda falla)—, y su
+`reference.md` abre con una tabla que dice cuál se lee cuándo. `SKILL.md` y `README.md` siguen
+siendo **uno** por skill.
+
 Al crear o editar skills, seguí las buenas prácticas de agentskills.io (referencia pedida explícitamente):
 - **Specification:** https://agentskills.io/specification — `name` (== nombre del directorio, minúsculas/números/guiones, sin guion inicial/final ni `--`), `description` (máx 1024 chars, tercera persona, qué hace **y cuándo** usarla, con keywords de trigger).
 - **Best practices:** https://agentskills.io/skill-creation/best-practices — SKILL.md idealmente <500 líneas / <5000 tokens; mover el detalle a `reference.md`; dar **un default, no un menú**; secciones "Gotchas" y "red flags"; procedimientos reutilizables, no respuestas puntuales.

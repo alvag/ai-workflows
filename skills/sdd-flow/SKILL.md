@@ -441,7 +441,7 @@ Obligatorio en cambios *complejos*; en *normales* solo si hay ambigüedad; se sa
 **Objetivo:** dejar el **CÓMO** técnico en `plan.md`, con header YAML para bootstrap.
 
 1. Estando ya en la rama feature (creada en `create-branch`), obtener `base_commit` = `git rev-parse HEAD` y la fecha ISO-8601 actual. Si en `create-branch` se resolvió una `base_branch` **distinta de `default_branch`** (override de base), conservarla para el header (define el destino del PR); si coincide con `default_branch`, se omite del header.
-2. Escribir `plan.md` con el header YAML obligatorio + secciones de enfoque, decisiones y trade-offs (las elecciones contestables, nombradas explícitamente — blancos para la revisión del gate), contexto de dominio aplicado (si hubo `domain_context`), archivos a tocar, tests/build y verificación. Plantilla en `reference.md` → "Plantilla de plan". **Sin placeholders:** nada de `TBD`, `TODO`, "agregar manejo de errores apropiado" o "etc." colgados — cada sección con contenido real (ruta, comando, enfoque). Si algo no se puede precisar todavía, falta `clarify`; no es un placeholder.
+2. Escribir `plan.md` con el header YAML obligatorio + secciones de enfoque, decisiones y trade-offs (las elecciones contestables, nombradas explícitamente — blancos para la revisión del gate), contexto de dominio aplicado (si hubo `domain_context`), archivos a tocar, tests/build y el **contrato de verificación** en `## Verification` (una fila por AC, todas en `RED`; esquema en `cross-implement/contrato-verificacion.md` → "La tabla"). Plantilla en `reference.md` → "Plantilla de plan". **Sin placeholders:** nada de `TBD`, `TODO`, "agregar manejo de errores apropiado" o "etc." colgados — cada sección con contenido real (ruta, comando, enfoque). Si algo no se puede precisar todavía, falta `clarify`; no es un placeholder.
 3. El header YAML es la fuente del bootstrap y del retomado (paso `resume`):
 
    ```yaml
@@ -484,11 +484,12 @@ Antes de que exista `plan.md` (fase `specify`/`clarify`, o el gate de Jira), no 
 **Objetivo:** descomponer el plan en tareas atómicas, ordenadas, verificables y **autosuficientes** — ejecutables en una sesión fresca sin tener que re-deducir el diseño ni elegir otro enfoque. El modo `subagent` de `implement` **depende** de esta autosuficiencia: cada task debe poder ejecutarla un agente fresco que solo ve spec/plan/su task; si no podría, la task está mal escrita.
 
 1. **Dónde se escriben** (según complejidad): en *normal* y *complejo*, en `tasks.md` separado; en *trivial*, inline en la sección `## Tasks` del `plan.md`. **Siempre anunciar la ruta exacta** donde quedaron ("Tasks en `.plans/<id>/tasks.md`" o "en `plan.md` → sección `## Tasks`"). Nunca dejar al usuario adivinando si hay tasks o dónde están.
-2. **Formato detallado** (plantilla en `reference.md` → "Plantilla de tasks"): cada task lleva checkbox `- [ ]`, acción concreta, y los campos **Por qué** (qué AC habilita / intención), **Archivos** (rutas a tocar, con `path:line` de reúso identificado en `analyze`), **Pasos** (para cambios de comportamiento, recomendar el punto testeable o **Seam** + test que debería fallar primero + comandos acotados; para tareas mecánicas, pasos directos), **Verificar** (comando o paso manual ligado al AC), y la(s) referencia(s) `AC-n`. Los snippets de los Pasos son **ilustrativos** del enfoque —firma, estructura, casos a cubrir—, **no** la implementación final completa. Cuando una task crea o usa una interfaz (función, endpoint, contrato) que otra task necesita, agregar **Produce** / **Consume**: declarar la **firma exacta** en la task que la *produce* y referenciarla desde la que la *consume* (DRY: no repetir la firma en cada task). Es lo que vuelve la task autosuficiente para el modo `subagent`. Cada task sigue siendo **atómica** (un cambio coherente). En tasks puramente mecánicas (config, copy, wiring sin seam testeable) los Pasos pueden colapsarse a 1‑2 líneas y declarar que la evidencia vendrá de `verify`.
+2. **Formato detallado** (plantilla en `reference.md` → "Plantilla de tasks"): cada task lleva checkbox `- [ ]`, acción concreta, y los campos **Por qué** (qué AC habilita / intención), **Archivos** (rutas a tocar, con `path:line` de reúso identificado en `analyze`), **Pasos** (para cambios de comportamiento, recomendar el punto testeable o **Seam** + test que debería fallar primero + comandos acotados; para tareas mecánicas, pasos directos), **Verificar** (el `Vn` de la fila del contrato que prueba el AC — solo el ID, sin repetir comando ni esperado), y la(s) referencia(s) `AC-n`. Los snippets de los Pasos son **ilustrativos** del enfoque —firma, estructura, casos a cubrir—, **no** la implementación final completa. Cuando una task crea o usa una interfaz (función, endpoint, contrato) que otra task necesita, agregar **Produce** / **Consume**: declarar la **firma exacta** en la task que la *produce* y referenciarla desde la que la *consume* (DRY: no repetir la firma en cada task). Es lo que vuelve la task autosuficiente para el modo `subagent`. Cada task sigue siendo **atómica** (un cambio coherente). En tasks puramente mecánicas (config, copy, wiring sin seam testeable) los Pasos pueden colapsarse a 1‑2 líneas y declarar que la evidencia vendrá de `verify`.
 3. **Self-review antes del gate** (el conductor lo corre y reporta en una línea):
    - **Cobertura de spec** (cross-artifact check): cada `AC-n` tiene ≥1 task y ninguna task carece de AC. Reportar huérfanos antes del gate.
    - **Scan anti-placeholder:** ni plan ni tasks tienen `TBD`, `TODO`, "agregar X apropiado", "similar a la Task N" o "etc." colgados; cada paso con contenido real (ruta, comando, firma). Un hueco que no se puede precisar es señal de que falta `clarify`.
    - **Consistencia de interfaces:** lo declarado en **Produce** coincide exacto con quien lo **Consume** (mismo nombre, misma firma) — el desajuste rompe el modo subagent.
+   - **Cobertura AC ↔ fila del contrato:** bidireccional, ni AC sin fila ni fila sin AC — lo mismo que el gate de `cross-implement` exige para congelar, detectado antes de llegar al dispatch.
 4. **STOP** — en *complejo* (gate propio), si la **revisión cross-model** está activa para `tasks` (ver "Revisión cross-model"), ejecutar `cross-review` sobre `tasks.md` con `spec`+`plan`+`domain_context` resuelto como contexto antes de presentar. Presentar las tasks (con el resumen de crítica, si lo hubo) y pedir aprobación. En *complejo* es un gate **propio** (STOP independiente tras el plan). En *normal* las tasks se presentan **junto al plan** en el gate de `plan` (sin STOP adicional; la revisión, si aplica, ya cubrió plan+tasks ahí). Al aprobarlas, pasar `status` a `tasks-ready`. En *complejo*, si el modo de implementación resuelto es `ask`, incluir en este **mismo STOP** la pregunta del modo: ¿inline, subagentes frescos por task, o delegación cross-model con revisión del conductor (`cross`, si la capacidad está disponible)? (ver `implement` → "Modo de ejecución"; sin gate extra).
 
 ## `handoff.md` (retomado del flujo)
@@ -674,15 +675,14 @@ La detección es por **disciplina del conductor** al revisar el diff (paso 5/6),
 
 1. **Fuente de los AC:** `spec.md` si existe; si no (triviales con spec embebida), la sección `## Spec` del `plan.md`.
 2. **Gate function por cada AC** — saltarse un paso es afirmar sin verificar:
-   - **IDENTIFICAR** — qué comando u observación prueba *este* AC.
-   - **CORRER** — ejecutarlo *fresco y completo* (no reusar una salida anterior ni "los tests de recién").
+   - **CARGAR** — la versión vigente del contrato de `## Verification` y la fila que prueba *este* AC. Acá **no se elige** evidencia: elegirla después de implementar es elegir la que ya pasa. Un AC sin fila es un contrato que no cerró, y se vuelve a `plan`.
+   - **CORRER** — ejecutar el comando **de la fila**, *fresco y completo* (no reusar una salida anterior ni "los tests de recién").
    - **LEER** — la salida entera + el exit code; contar fallos.
-   - **VERIFICAR** — que esa salida confirma el AC puntual (no que "compila" o "pasan los tests" en general).
-   - Recién entonces marcar el AC **cumplido / no cumplido**, con la evidencia (salida observada / test que lo cubre / paso manual).
+   - **VERIFICAR** — que esa salida coincide con el `Esperado` de la fila (no que "compila" o "pasan los tests" en general).
+   - Recién entonces marcar el AC **cumplido / no cumplido**, citando la fila y la salida observada.
 
    | Afirmación | Requiere | No alcanza |
    |---|---|---|
-   | "AC-n cumplido" | salida del comando/observación que prueba *ese* AC | "los tests pasan", "el código cambió", "debería andar" |
    | "tests en verde" | salida fresca del runner: 0 fallos | una corrida previa, el linter en verde |
    | "build OK" | comando de build: exit 0 | "los logs se ven bien" |
 
@@ -697,7 +697,7 @@ La detección es por **disciplina del conductor** al revisar el diff (paso 5/6),
    usar la observación/comando de `verify` como evidencia. Comandos POSIX/PowerShell en
    `reference.md` → "Plantilla de `## Verify`".
 4. Contrastar contra la definición de *Done* del constitution.
-5. **Persistir el resultado** en una sección `## Verify` del `plan.md` (tabla `AC-n · cumplido/no · evidencia · fecha`; cuando aplique, anotar `revert → FAIL / restore → PASS` como evidencia del AC). Así sobrevive a la sesión: al retomar con `status: verified` no se re-verifica de gusto, y queda auditable. Plantilla en `reference.md`.
+5. **Persistir el resultado** en una sección `## Verify` del `plan.md` (tabla `AC-n · fila · cumplido/no · evidencia · fecha`; cuando aplique, anotar `revert → FAIL / restore → PASS`). Así sobrevive a la sesión: al retomar con `status: verified` no se re-verifica de gusto, y queda auditable. Plantilla en `reference.md`.
 6. Si **todos** los AC se cumplen: poner `status: verified`. Si alguno falla: poner `status: implementing` (también si el flujo venía de `verified` — un AC en rojo desactualiza esa marca), reportarlo y volver a `implement` (o a `plan`/`specify` si el gap es de diseño).
 
 ## Sub-paso `archive` (cerrar un flujo terminado)

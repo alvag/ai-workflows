@@ -45,7 +45,8 @@ work order congelado ──► [implementador de otra familia: escribe, corre la
 
 1. **Work order congelado o nada (spec gate).** No se delega sin un contrato completo y aprobado:
    spec/plan/tasks SDD, un plan que sobrevivió una revisión, o un contrato destilado con objetivo,
-   pasos, límites y prueba. El implementador arranca con CERO contexto de la sesión: todo lo que
+   pasos, límites y prueba — **y su tabla de verificación congelada** (`contrato-verificacion.md` →
+   "El gate previo al dispatch"): un work order sin tabla, o con una tabla sin congelar, no se delega. El implementador arranca con CERO contexto de la sesión: todo lo que
    necesita viaja en el prompt. Si escribir el work order obliga a tomar decisiones de diseño,
    eso es diseño y se queda con el conductor — delegar diseño es cómo falla este patrón.
 2. **Clean-tree gate.** Antes de lanzar, `git status` limpio de código sin commitear (los locales
@@ -58,11 +59,12 @@ work order congelado ──► [implementador de otra familia: escribe, corre la
 4. **El reporte es advisory.** El conductor valida siempre por su cuenta: lee el **diff completo**
    como un PR de un contribuidor externo, contrasta los archivos declarados contra `git status`,
    y corre `proof_cmd` **él mismo** — la salida pegada por el implementador no cuenta como prueba.
-5. **Fix loop acotado, misma sesión.** Problemas encontrados → reanudar la MISMA sesión del
-   implementador (conserva su contexto; siempre con el override de sandbox explícito — el modo de
-   la sesión original no es garantía al reanudar) con la lista concreta de qué corregir. Máximo
-   `max_fix_rounds` (default 2); al agotarse, **takeover**: el conductor termina los fixes
-   directamente y lo registra. Nunca ping-pong indefinido.
+5. **Fix loop acotado, y solo para lo que se arregla implementando.** Cada falla se clasifica
+   primero (`ownership.md` → "Las cuatro clases"); **solo `IMPLEMENTATION_DEFECT` reanuda la sesión**
+   del implementador (con el override de sandbox explícito — el modo original no es garantía al
+   reanudar) y consume ronda. Las otras tres tienen presupuesto propio y no abren fix round. Máximo
+   `max_fix_rounds` (default 2); al agotarse, **takeover**: el conductor termina y lo registra, sin
+   poder ablandar las filas que él escribió. Nunca ping-pong indefinido.
 6. **El commit es del conductor, tras gate humano.** Presentar diff + prueba + rondas y esperar
    confirmación. El implementador jamás commitea; el conductor tampoco auto-commitea.
 7. **Opcional y degradable.** Sin implementador de la otra familia disponible, o ante un fallo en
@@ -88,6 +90,8 @@ Ley fundamental:
 | "El work order tiene un hueco, que el implementador decida" | Un hueco de diseño se resuelve ANTES de delegar (con el usuario o el flujo llamador), no en el prompt (regla 1). |
 | "Le doy acceso total así no falla por permisos" | Bypass de sandbox/permisos = regla 3 rota. Si el work order necesita escribir fuera del working dir, está mal recortado. |
 | "Una ronda más de fix y seguro sale" | `max_fix_rounds` es el tope. Al agotarse: takeover del conductor, registrado (regla 5). |
+| "Falló la verificación, lo mando a corregir" | Antes hay que clasificar de quién es la falla (regla 5). Mandarle un `VERIFICATION_DEFECT` o un `ENVIRONMENT_FAILURE` le pide arreglar algo que no está en su código, y lo más probable es que fuerce el síntoma hasta que pase. |
+| "La fila no se deja cumplir, la ajusto y sigo" | Cambiar `Requisito` o `Esperado` no es reparar una prueba: es `DESIGN_GAP` y vuelve al diseño (`contrato-verificacion.md` → "Qué es invariante entre versiones"). En takeover también. |
 | "El diff trae un cambio extra razonable, lo dejo pasar" | Todo hunk fuera del work order se reporta como drift: se pide su reversión en el fix round, o se declara explícitamente (en SDD: `## Extras`). Nada entra sin rastro. |
 | "El árbol está casi limpio, lanzo igual" | Clean-tree gate (regla 2): código sin commitear = diff imposible de aislar. Commitear/stashear antes. |
 
@@ -100,8 +104,10 @@ Quien la invoca (el usuario en modo directo, o `sdd-flow` en modo embebido) prov
   la conversación y lo escribe a `cross-implement/work-order.md` ANTES de lanzar (queda auditable
   y respeta la regla 1).
 - **`working_dir`** — raíz del repo donde se implementa (límite de escritura del implementador).
-- **`proof_cmd`** — comando exacto que prueba el resultado (tests acotados, build, script). Si
-  falta y no se puede derivar del work order, **una sola pregunta** al usuario antes de lanzar.
+- **`proof_cmd`** — comprobación **agregada y opcional** que el conductor corre para ver el
+  conjunto de un vistazo (la suite completa, el build). No sustituye ninguna fila del contrato ni
+  alcanza para dar un requisito por cumplido. El gate acepta contrato **sin** `proof_cmd`; nunca
+  `proof_cmd` sin contrato (`contrato-verificacion.md` → "`proof_cmd` frente al contrato").
 - **`max_fix_rounds`** — default 2.
 - **`execution`** — `auto | sync | background`. `auto`: sync con timeout largo si el conductor
   puede fijarlo (Claude Code: Bash hasta 600000ms) y el work order es chico; background con
@@ -122,8 +128,13 @@ Quien la invoca (el usuario en modo directo, o `sdd-flow` en modo embebido) prov
 1. **Resolver el implementador** (regla 8) + prechequeos (versión del CLI, no pinear modelo, eco
    del modelo activo — ver `reference.md` → "Descubrir el implementador"). Sin implementador →
    `UNAVAILABLE`.
-2. **Gates previos**: work order existe y se lee como contrato (regla 1); clean-tree (regla 2);
-   `proof_cmd` resuelto. Cualquiera falla → no se lanza.
+2. **Gates previos**: work order existe y se lee como contrato (regla 1); **contrato de
+   verificación congelado** — versión vigente, cobertura bidireccional, campos obligatorios y
+   baseline resuelto en toda fila, ninguna en `BLOCKED` (`contrato-verificacion.md` → "El gate
+   previo al dispatch"); clean-tree (regla 2). En modo directo el conductor deriva la tabla y
+   ejecuta el baseline, el usuario la aprueba en el kickoff y recién ahí se congela
+   (`contrato-verificacion.md` → "Contrato en work orders sin flujo SDD"). Cualquiera falla → no se
+   lanza.
 3. **Armar el prompt-contrato** (`reference.md` → "Prompt del implementador": GOAL / SPEC / KEY
    PATHS / CONSTRAINTS / NON-GOALS / PROOF / OUTPUT), escrito a archivo con la tool Write, y
    **lanzar** por la vía de la familia (`reference.md` → "Vías de invocación"), capturando la
@@ -143,8 +154,10 @@ Quien la invoca (el usuario en modo directo, o `sdd-flow` en modo embebido) prov
 **Modo embebido (sdd-flow, `implement_mode: cross`):** esta skill cubre solo el paso 2 del "Paso
 común" de `implement` (aplicar los cambios). Todo lo demás sigue siendo del conductor en sdd-flow:
 tests+build completos, `verify` de AC con gate function, revisión manual, staging selectivo,
-commit y push con sus STOPs. El tope de `sdd-flow` ("3 fixes de la misma falla = problema de
-diseño → volver a plan/specify") manda por encima de `max_fix_rounds`.
+commit y push con sus STOPs. El contrato de verificación llega ya escrito en el `## Verification`
+del `plan.md`. El tope de `sdd-flow` ("3 fixes de la misma falla = problema de diseño → volver a
+plan/specify") manda por encima de `max_fix_rounds`; las clases que no consumen ronda tampoco
+cuentan para él (`ownership.md` → "Precedencia entre los tres topes de corte").
 
 ## Salida
 
@@ -184,14 +197,21 @@ Nunca bloquea. Cuatro vías de falla, mismo final — el conductor implementa in
    default, revertirlo), registrar y `UNAVAILABLE`. A diferencia del punto 2, es **por-intento**: no
    marca la capacidad como ausente para el resto de la tanda.
 4. Reporte no parseable → el diff sigue siendo la verdad: revisarlo igual (regla 4); solo se
-   pierde la narrativa del implementador.
+   pierde la narrativa del implementador. Vale **porque acá el artefacto es el diff**; donde el
+   artefacto *es* el informe no aplica (`reference.md` → "Cuándo un reporte ilegible no invalida la
+   revisión").
 
 ## Referencias internas
 
 - `reference.md` — "Descubrir el implementador", "Vías de invocación" (Codex/Claude, POSIX +
   PowerShell, con matriz de verificación), "Prompt del implementador", "Revisión del conductor",
   "Fix loop", "Latencia, deadlines y banner", "Archivos de trabajo (scratch)", "Log de
-  implementación".
+  implementación", "Cuándo un reporte ilegible no invalida la revisión".
+- `contrato-verificacion.md` — el esquema del contrato, las reglas de congelamiento, la adjudicación
+  del baseline, el gate previo al dispatch y el flujo en work orders sin SDD. Se lee **al armar y
+  aprobar el contrato**, antes de delegar.
+- `ownership.md` — las cuatro clases de falla, sus presupuestos, el re-baseline en worktree aislado,
+  el takeover y la precedencia de topes. Se lee **cuando una ronda falla**.
 - `README.md` — qué es, cuándo usarla, requisitos e instalación.
 
 ## Atribución
