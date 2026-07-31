@@ -343,7 +343,13 @@ El conductor solo necesita este volcado si delega o pide segunda opinión.
   materializado (**incluido el `spec-context`**), el foco de **ambos ejes** y el **contrato de salida
   estructurada** (`reference.md` → "Prompt al revisor + contrato de salida"): `VERDICT: APPROVED |
   REQUEST_CHANGES | COMMENT` + `FINDINGS` con `refs: <archivo>:<línea>` y `axis: standards | spec`. Sync
-  o background con tope duro; si no responde a tiempo → `UNAVAILABLE` para ese revisor.
+  o background con tope duro.
+- **Clasificar a cada revisor al volver**, antes de consolidar: `READY` (entregó y valida) · `INVALID`
+  (entregó y no valida → **una** reemisión de formato en la misma sesión, sin volver a mirar el diff) ·
+  `UNAVAILABLE` (no entregó, con su causa). No responder a tiempo es `UNAVAILABLE`; responder mal **no
+  lo es** — ver `reference.md` → "Estados del revisor". Al cerrar la corrida se escribe el **manifest**
+  (`cross-review/reference.md` → "Manifest de corrida"), incluidas las corridas sin panel externo y las
+  que terminaron sin publicar.
 
 ### 7b. QA local en vivo (decisión obligatoria y explícita; la corrida es opt-in)
 
@@ -468,6 +474,12 @@ aparte; si el usuario lo declina, se publica solo el comentario sin emitir el vo
 **ambos** (comentario + `request-changes`). Payloads verbatim
 en `reference.md` → "Endpoints de escritura (con gate)".
 
+**Si una escritura no confirma** —la llamada no devolvió, cortó la red—, el resultado es *incierto*, no
+fallido: **no se reintenta**. Verificar con un `bb_get` si el comentario o el voto llegaron, y recién
+ahí decidir. Sin verificación posible, parar y decir qué quedó incierto sobre qué recurso. Un retry a
+ciegas publica dos veces en el PR de otra persona (`reference.md` → "Escritura incierta:
+`recovery-required`").
+
 ### 12. Registrar en `.pr-review/<pr-id>/`
 
 Append al `review-log.md`: fecha, panel, `sha` revisado, veredicto, `comment-id` publicado y acciones.
@@ -478,6 +490,15 @@ Es la marca de "ya revisado" (ver "Seguimiento y re-pasada").
 URL del comentario/PR, ID, veredicto, acciones realizadas y **qué modelos revisaron**. El reparto de
 modelos se informa **solo aquí (en el chat)**, nunca dentro del comentario publicado en el PR (ver la
 regla del template).
+
+- **Estado de la corrida:** `PUBLISHED` (la decisión se publicó en el PR) | `PROPOSED` (se revisó y
+  el texto quedó propuesto sin publicar: gate declinado o MCP sin escritura) | `UNAVAILABLE` (no hubo
+  revisión: panel vacío sin conductor, o PR no apto). Es lo que se registra en el **manifest de
+  corrida**, y se escriben los tres: una serie con solo `PUBLISHED` no puede decir cuántas veces esta
+  skill llegó al final sin servir de nada (`cross-review/reference.md` → "Manifest de corrida").
+- **Revisores que se perdieron**, si los hubo: cuál, en qué estado quedó y con qué causa. Un revisor
+  `INVALID` que no se pudo rescatar es una revisión hecha y tirada; callarlo hace que el reporte se
+  lea como "esto es todo lo que había".
 
 ## Template del comentario de decisión
 
@@ -597,9 +618,16 @@ correctitud, no en estilo. Cuando los revisores discrepan, el **usuario es el á
 
 - **Sin capacidad de escritura** (MCP solo lectura) → revisar y **solo proponer** el comentario; avisar
   que no se pudo publicar.
-- **Revisor externo no disponible** (no existe el CLI/subagente, o timeout/respuesta no parseable) →
-  marcar ese revisor `UNAVAILABLE`, seguir con los disponibles (y matar el proceso si quedó en
-  background). Si el panel queda vacío, caer al conductor o pedir instrucción.
+- **Revisor externo no disponible** (no existe el CLI/subagente, o timeout) → marcar ese revisor
+  `UNAVAILABLE` con su causa, seguir con los disponibles (y matar el proceso si quedó en background).
+  Si el panel queda vacío, caer al conductor o pedir instrucción.
+- **Respuesta no parseable ≠ revisor ausente.** El revisor que entregó algo que no valida queda
+  `INVALID`, no `UNAVAILABLE`: se le pide **una** reemisión en la misma sesión, sin volver a mirar el
+  diff. Descartarlo de entrada tira una revisión ya hecha, y si ahí había un 🔴 el PR se aprueba sin
+  él. Estados, causas y la regla de la reemisión: `reference.md` → "Estados del revisor".
+- **Escritura de resultado incierto** (un `bb_post` que no confirmó) → **no reintentar**: verificar con
+  un `bb_get` si llegó, y si no se resuelve, parar y avisar. Un retry a ciegas duplica el comentario o
+  el voto en el PR ajeno (`reference.md` → "Escritura incierta: `recovery-required`").
 - **PR no apto** (MERGED/DECLINED/draft) → avisar y continuar solo si el usuario insiste.
 - En todos los casos: una línea de aviso, sin loops, sin escribir nada sin confirmación.
 

@@ -843,6 +843,7 @@ reanudación de una sesión ajena.
 | `co-explore` | `explore` · `counter-plan` · `investigate` · `debate` | `completed` · `map_failure` | `branch-2` · `branch-3` · `branch-4` · `confirmed_wall` · `launch_flake` · `runtime_failure` |
 | `cross-review` | `spec` · `plan` · `tasks` · `master-spec` · `reparto` · `draft` | `APPROVED` · `REVISE` · `UNAVAILABLE` | `rounds_exhausted` · `confirmed_wall` · `launch_flake` · `runtime_failure` |
 | `cross-implement` | `embebido` · `directo` | `IMPLEMENTED` · `PARTIAL` · `UNAVAILABLE` | `takeover` · `confirmed_wall` · `launch_flake` · `runtime_failure` |
+| `bitbucket-code-review` | `conductor` · `delegado` · `mixto` | `PUBLISHED` · `PROPOSED` · `UNAVAILABLE` | `revisor_invalido` · `panel_vacio` · `confirmed_wall` · `launch_flake` · `runtime_failure` |
 
 Cada uno de esos términos ya existe en la skill que lo produce: el manifest los **serializa**, no
 los define. Un manifest con taxonomía propia se desincroniza del envelope que dice resumir, y cuando
@@ -926,6 +927,8 @@ case "$sk" in
   co-explore)      outs="completed map_failure";              degs="$comunes branch-2 branch-3 branch-4" ;;
   cross-review)    outs="APPROVED REVISE UNAVAILABLE";        degs="$comunes rounds_exhausted" ;;
   cross-implement) outs="IMPLEMENTED PARTIAL UNAVAILABLE";    degs="$comunes takeover" ;;
+  bitbucket-code-review)
+                   outs="PUBLISHED PROPOSED UNAVAILABLE";      degs="$comunes revisor_invalido panel_vacio" ;;
   *) printf 'GUARD:manifest-valido skill fuera del ecosistema: "%s"\n' "$sk" >&2
      rc=1; outs=""; degs="" ;;
 esac
@@ -961,6 +964,7 @@ switch ($sk) {
   'co-explore'      { $outs = @('completed','map_failure');            $degs = $comunes + @('branch-2','branch-3','branch-4') }
   'cross-review'    { $outs = @('APPROVED','REVISE','UNAVAILABLE');    $degs = $comunes + @('rounds_exhausted') }
   'cross-implement' { $outs = @('IMPLEMENTED','PARTIAL','UNAVAILABLE'); $degs = $comunes + @('takeover') }
+  'bitbucket-code-review' { $outs = @('PUBLISHED','PROPOSED','UNAVAILABLE'); $degs = $comunes + @('revisor_invalido','panel_vacio') }
   default { Write-Error "GUARD:manifest-valido skill fuera del ecosistema: `"$sk`""; $rc = 1; $outs = @(); $degs = @() }
 }
 foreach ($par in @(@('outcome',$outs), @('degradation',$degs))) {

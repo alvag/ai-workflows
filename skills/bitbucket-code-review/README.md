@@ -75,8 +75,26 @@ Sin PR id, detecta el PR **OPEN** de la rama actual.
 - **El conductor es el único que escribe** en Bitbucket; los revisores externos corren read-only y
   solo devuelven hallazgos + veredicto.
 - **Nunca mergea** el PR ni toca archivos trackeados del repo (la única escritura en disco es
-  `.pr-review/` untracked, y el worktree efímero si lo elegís).
+  `.pr-review/` untracked, y el worktree efímero si lo eliges).
+- **Un revisor que contesta mal no se descarta.** Responder con el formato torcido deja al revisor en
+  `INVALID`, no en "ausente": se le pide una reemisión del formato, sin volver a mirar el diff. Antes
+  se tiraba esa revisión entera, y si ahí había un 🔴 el PR se aprobaba sin él.
+- **Una escritura de resultado incierto no se reintenta.** Si un `bb_post` no confirma, se verifica
+  con un `bb_get` si llegó antes de decidir nada. Un retry a ciegas publicaría dos veces en el PR de
+  otra persona.
 - El comentario publicado **no expone** el reparto de modelos ni el término "cross-model"; solo lleva
   el descargo de autoría IA. Ese detalle va al chat.
+
+## Qué escribe en tu repo
+
+El seguimiento vive en `.pr-review/<pr-id>/`. Además, cada corrida deja un **manifest**: un JSON de
+unos 300 bytes en `.cross-model/runs/` con el panel, las familias, la duración y el estado — los tres
+estados, no solo `PUBLISHED`: una serie que omite las corridas que terminaron sin publicar no puede
+decir cuántas veces esta skill llegó al final sin servir de nada.
+
+Todo eso es local y untracked, y la skill **no toca tu `.gitignore`** (es un archivo trackeado, y
+ignorarlo es decisión tuya): agrega `.pr-review/` y `.cross-model/` a `.git/info/exclude` si prefieres
+que git deje de nombrarlos. El manifest se apaga con `cross_model.manifest.mode: "off"`; esquema en
+`cross-review/reference.md` → "Manifest de corrida".
 
 Funciona en Claude Code y Codex (detección de tools por capacidad).

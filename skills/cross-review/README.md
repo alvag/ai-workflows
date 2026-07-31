@@ -111,7 +111,7 @@ costo — sin datos, esa decisión es intuición. Se escriben **los tres veredic
 Es local y untracked, y ninguna skill toca tu `.gitignore`: agrega `.cross-model/` a
 `.git/info/exclude` si prefieres que git deje de nombrarlo. Se apaga con
 `cross_model.manifest.mode: "off"`. Esquema y recorte en `reference.md` → "Manifest de corrida",
-que es también la sede canónica para `co-explore` y `cross-implement`.
+que es también la sede canónica para `co-explore`, `cross-implement` y `bitbucket-code-review`.
 
 ## Archivos
 

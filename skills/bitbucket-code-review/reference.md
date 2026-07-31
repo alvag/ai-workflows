@@ -16,6 +16,7 @@ Material de apoyo para el `SKILL.md`. Cargar bajo demanda.
 - [Preview de publicación](#preview-de-publicación)
 - [Descubrir e invocar revisores (cross-model)](#descubrir-e-invocar-revisores-cross-model)
 - [Prompt al revisor + contrato de salida](#prompt-al-revisor--contrato-de-salida)
+- [Estados del revisor](#estados-del-revisor)
 - [Validación adversarial de hallazgos](#validación-adversarial-de-hallazgos-find-then-validate)
 - [co-explore debate en discrepancia](#co-explore-debate-en-discrepancia-de-veredicto)
 - [Materializar el contexto del PR](#materializar-el-contexto-del-pr)
@@ -607,15 +608,30 @@ VERDICT: APPROVED | REQUEST_CHANGES | COMMENT
 FINDINGS:
 - risk: critical | medium | low
   axis: standards | spec
-  what: <título corto del problema>
-  why: <por qué importa — qué se rompe / qué falta / qué AC no cubre>
-  suggestion: <cambio concreto propuesto>
+  what: <título corto del problema — máx 80 caracteres>
+  why: <por qué importa — qué se rompe / qué falta / qué AC no cubre — máx 240 caracteres>
+  suggestion: <cambio concreto propuesto — máx 240 caracteres>
   refs: <archivo>:<línea>   # para axis: spec, prefijar con AC-<n> si aplica
 
 SUGGESTIONS:        # opcional; mejoras no bloqueantes (no cuentan para la decisión)
-- what: <mejora nice-to-have>
+- what: <mejora nice-to-have — máx 80 caracteres>
   refs: <archivo>:<línea>
 ```
+
+**El presupuesto acota cada campo, nunca el total de hallazgos.** Un tope sobre el total convertiría
+"el revisor encontró 30 problemas" en "el revisor informó 18", y los 12 que faltan no dejan rastro —
+uno de ellos podría ser el 🔴 que decide el PR. Lo que se acota es cuánto ocupa **cada** hallazgo,
+porque el conductor los procesa **todos** y uno por uno: filtro de confianza, validación adversarial,
+clasificación y dedup contra terceros (Paso 8). Sin presupuesto, un revisor verboso con treinta
+hallazgos llena el contexto del conductor justo antes del paso más caro.
+
+El detalle que no entra en 240 caracteres **no se pierde**: vive en el `refs`, que ancla a
+`<archivo>:<línea>` del diff. El conductor abre esa línea cuando la necesita; el campo `why` existe
+para decidir si vale abrirla, no para reemplazarla. (Mismo criterio que
+`co-explore/reference.md` → "Índice paginado".)
+
+Un campo que excede su presupuesto **no invalida el hallazgo**: se trunca al consolidar y se deja
+constancia. Descartar un 🔴 real por verborrágico sería el peor canje posible.
 
 - `risk: critical` → 🔴 (bloquea); `medium` → 🟡; `low` → 🟢. El conductor mapea cada `risk` a su icono
   al consolidar, y agrupa por `axis` (correctitud/estándares · cumplimiento del spec) en el comentario.
@@ -623,8 +639,67 @@ SUGGESTIONS:        # opcional; mejoras no bloqueantes (no cuentan para la decis
   niveles de riesgo consolidados (ver "Regla de decisión"): ≥1 `critical` → Cambios solicitados; si no
   → Aprobado. Ante conflicto entre el `VERDICT` y los `risk`, manda la regla de decisión.
 - `SUGGESTIONS` es opcional → sección 💡 del comentario; **no** altera la decisión.
-- Si la salida no respeta el formato, intentar un parseo tolerante; si no se puede, tratar al revisor
-  como `UNAVAILABLE`.
+- Si la salida no respeta el formato, ver "Estados del revisor" — **no** se descarta al revisor: un
+  informe mal formateado no es un revisor ausente.
+
+## Estados del revisor
+
+Un revisor que **contestó mal** y un revisor que **no contestó** son cosas distintas, y colapsarlas
+tiene una consecuencia que sale hacia afuera: el revisor que encontró un 🔴 real y lo escribió con el
+formato torcido se descarta entero, la decisión se deriva sin su hallazgo, y el PR se aprueba. El
+trabajo estaba hecho; lo que falló fue la emisión.
+
+| Estado | Qué pasó | Qué hace el conductor |
+|---|---|---|
+| `READY` | contestó y el informe valida contra el contrato | consolida sus hallazgos (Paso 8) |
+| `INVALID` | contestó, pero lo entregado no valida | **una** reparación de formato; si sigue inválido, se pierde y se declara |
+| `UNAVAILABLE` | no contestó | sigue con los revisores disponibles, declarando la causa |
+
+Las **causas** de `UNAVAILABLE` y su política de reintento son las del ecosistema: `confirmed_wall`
+(binario ausente, auth rechazada, versión incompatible — no se reintenta), `launch_flake` (el binario
+está y el lanzamiento flaqueó — 2-3 reintentos con backoff corto) y `runtime_failure` (arrancó bien y
+murió o venció el deadline — por-intento, no condena al resto del panel).
+
+### Las tres identidades de reintento
+
+Tres operaciones distintas que se ven todas como "volver a intentar". Se registran por separado, con
+contador propio (canónico en `co-explore/reference.md` → "Tres identidades de reintento, y ninguna es
+la otra"):
+
+| Identidad | Qué se rehace | Qué NO se rehace | Cuándo |
+|---|---|---|---|
+| `transportAttempt` | el **lanzamiento** | nada: no llegó a revisar | el proceso no arrancó, o murió antes de emitir |
+| `formatRepair` | la **emisión** del informe, en la misma sesión viva | la revisión | revisó y entregó, pero lo entregado no valida |
+| `semanticAttempt` | la **revisión entera**, sesión nueva | — | lo entregado valida y no sirve |
+
+### Una reparación de formato, y por qué no es un segundo review
+
+Ante `INVALID`, reanudar la **misma sesión** pidiendo únicamente que reemita con el formato correcto,
+sin volver a mirar el diff. Es una ronda de **transporte**, no de contenido: el revisor no revisita el
+código ni puede cambiar de opinión sobre lo que encontró.
+
+La prueba de que la distinción es real: **si la reparación cambia un hallazgo, dejó de ser
+reparación**. Por eso se valida contra los **mismos `refs`** que el intento original — misma cantidad
+de hallazgos y los mismos `<archivo>:<línea>`. Un revisor que en la reemisión "encuentra" algo nuevo
+está haciendo un segundo review disfrazado, y dos reviews del mismo modelo no son dos opiniones.
+
+**Una sola.** La segunda ya no sería transporte. Si la reemisión tampoco valida, ese revisor se
+pierde: se declara en el reporte —qué revisor, que llegó a entregar, y que su contenido no pudo
+rescatarse— porque un hallazgo perdido en silencio es indistinguible de un PR sin problemas.
+
+### Escritura incierta: `recovery-required`
+
+Aplica al **conductor**, no al revisor: es el único que escribe, y escribe en el PR de otra persona.
+
+Un `bb_post` cuyo resultado es **incierto** —la llamada no devolvió, cortó la red, el MCP no confirmó—
+no es un fallo: es un estado desconocido. No se reintenta. Reintentar publica el comentario **dos
+veces** en el PR ajeno, o emite dos votos, y el segundo intento no sabe qué dejó el primero.
+
+El procedimiento es **verificar antes de decidir**: un `bb_get` de los comentarios del PR (o del
+estado de participantes, si lo incierto fue `approve`/`request-changes`) resuelve si la escritura
+llegó. Recién con eso se decide reintentar o darla por hecha. Si la verificación tampoco resuelve, se
+**para y se le dice al usuario** qué quedó incierto y sobre qué recurso; nunca se escribe de nuevo a
+ciegas. Es la misma regla que la escritura con gate: la duda se resuelve mirando, no escribiendo.
 
 ## Validación adversarial de hallazgos (find-then-validate)
 
@@ -868,9 +943,14 @@ https://bitbucket.org/<ws>/<repo>/src/<sha>/<path>#lines-<n>:<m>   (rango)
   numérico y existente.
 - **`bb_post` a `/approve` o `/request-changes` da 403**: el token no tiene scope de escritura de PRs
   → degradar a dejar la decisión solo en el comentario.
-- **Revisor externo no disponible / cuelga / timeout**: marcarlo `UNAVAILABLE`, matar el proceso si
-  quedó en background, seguir con los disponibles. Distinguir cuelgue de entrada (parseo de flags
-  roto) de lentitud real (subir el tope sync o bajar a `--model sonnet`).
+- **Revisor externo no disponible / cuelga / timeout**: marcarlo `UNAVAILABLE` **con su causa**
+  (`confirmed_wall` · `launch_flake` · `runtime_failure`), matar el proceso si quedó en background,
+  seguir con los disponibles. Distinguir cuelgue de entrada (parseo de flags roto) de lentitud real
+  (subir el tope sync o bajar a `--model sonnet`).
+- **El revisor contestó pero el informe no parsea**: es `INVALID`, **no** `UNAVAILABLE` — llegó a
+  revisar. Pedirle **una** reemisión en la misma sesión, solo del formato, y validarla contra los
+  mismos `refs` (ver "Estados del revisor"). El síntoma típico es un preámbulo conversacional antes
+  del `VERDICT:`, que el parseo tolerante suele salvar sin reemitir.
 - **`claude -p` revisor vuelve a ser el modelo de respaldo**: faltó la higiene de entorno
   (`env -u ANTHROPIC_*`); aplicarla solo si la sonda detectó redirección.
 - **El diff es muy grande**: acotar el análisis a los archivos del `diffstat` con cambios relevantes y,
