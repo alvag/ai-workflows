@@ -116,6 +116,16 @@ que Codex implemente el renombre de UserService a AccountService en todo src/, p
 ```
 → destila el contrato a `cross-implement/work-order.md`, lo muestra, y sigue el flujo normal.
 
+## Qué escribe en tu repo
+
+El diff lo escribe el implementador en tu working tree, y el log y el scratch quedan junto al work
+order. Además, cada delegación deja un **manifest de corrida** en `.cross-model/runs/`: un JSON de
+unos 300 bytes con familia, transporte, duración y estado — los tres estados, porque un
+`UNAVAILABLE` dice que la capacidad no existe en este entorno y un `PARTIAL` dice cuánto termina
+haciendo el conductor. Local y untracked; agrega `.cross-model/` a `.git/info/exclude` si prefieres
+que git deje de nombrarlo, y apágalo con `cross_model.manifest.mode: "off"`. Esquema en
+`cross-review/reference.md` → "Manifest de corrida".
+
 ## Archivos
 
 - `SKILL.md` — reglas, contrato de invocación, pasos, degradación.

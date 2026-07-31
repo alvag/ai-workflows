@@ -35,7 +35,8 @@ tamaño. Cargar los tres siempre desperdicia contexto en una corrida que sale bi
 
 ## Portabilidad entre shells (POSIX / PowerShell)
 
-Mismo criterio que `cross-review/reference.md` → "Portabilidad entre shells": esa sección es
+Mismo criterio que `cross-review/reference.md` → "Portabilidad entre shells (POSIX / PowerShell)":
+esa sección es
 la fuente canónica de las equivalencias (detección de binarios, prompt por archivo a stdin, UUID,
 background y kill). No se duplican acá. Regla invariante idéntica: el prompt **se escribe a
 archivo con la tool Write** (nunca inline ni `echo`/heredoc) y llega por stdin.

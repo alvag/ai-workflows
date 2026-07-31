@@ -201,7 +201,7 @@ Consolidar el objetivo del cambio desde el ticket (si hay clave de tracker y MCP
 ### 1.2 Selección de repos
 1. **Universo:** enumerar los subdirectorios de la carpeta contenedora que son repos git (probar `git rev-parse --is-inside-work-tree` dentro de cada uno, o detectar `.git`). Detalle en `reference.md` → "Matriz de detección de repos".
 2. **Propuesta:** a partir del objetivo, proponer qué repos parecen involucrados (por nombre, por los contratos mencionados, por búsqueda en código si el alcance lo amerita).
-3. **Confirmación (checkpoint):** mostrar la lista propuesta y dejar que el usuario agregue/saque repos. **Nunca** se trabaja un repo no confirmado (regla 3). Confirmar los repos **no** es explorar: es acotar el `working_dir` del fan-out, y es un carve-out declarado de "el conductor no explora" (ver `co-explore/reference.md` → "Carve-outs"). Con co-exploración activa, acá se despacha el `explore` global (ver "Co-exploración cross-model").
+3. **Confirmación (checkpoint):** mostrar la lista propuesta y dejar que el usuario agregue/saque repos. **Nunca** se trabaja un repo no confirmado (regla 3). Confirmar los repos **no** es explorar: es acotar el `working_dir` del fan-out, y es un carve-out declarado de "el conductor no explora" (ver `co-explore/reference.md` → "Carve-outs de la regla del conductor"). Con co-exploración activa, acá se despacha el `explore` global (ver "Co-exploración cross-model").
 4. Si no hay ningún repo git bajo la carpeta, **avisar y detener** (no inventar).
 
 ### 1.3 `master-spec.md` → GATE

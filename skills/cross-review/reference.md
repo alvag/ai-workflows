@@ -15,6 +15,7 @@ tipo de artefacto.
 - [Foco por tipo de artefacto](#foco-por-tipo-de-artefacto)
 - [Plantilla de review-log.md](#plantilla-de-review-logmd)
 - [Configuración](#configuración)
+- [Manifest de corrida](#manifest-de-corrida)
 
 ---
 
@@ -760,3 +761,282 @@ revisión necesita una entrada concreta, se abre esa entrada por su ID (ver `co-
 informe—, ahora se resuelve esta matriz contra el `contributors[]` del envelope. El fallback no
 cambia: si el resume falla, sesión nueva con los índices y la síntesis como contexto; mismo efecto,
 sin estado.
+
+## Manifest de corrida
+
+Un registro por corrida de una skill cross-model, con lo mínimo para responder **"¿esto me está
+sirviendo?"**. Es la sede canónica de las tres: `co-explore` y `cross-implement` apuntan acá y no
+duplican el esquema.
+
+No es un log. El log de cada skill cuenta *qué pasó en una corrida* para poder auditarla; el
+manifest existe para poder mirar **cien corridas juntas** y decidir si la capacidad se gana su
+costo. De ahí que sea chico, plano y uniforme: lo que no se puede comparar entre corridas no vale
+la pena registrarlo acá.
+
+### El archivo
+
+```
+<repo>/.cross-model/runs/<started_at compacto>-<skill>-<mode>.json
+```
+
+Ejemplo: `.cross-model/runs/20260731T140211Z-co-explore-explore.json`
+
+```json
+{
+  "skill": "co-explore",
+  "mode": "explore",
+  "started_at": "2026-07-31T14:02:11Z",
+  "duration_s": 412,
+  "families": ["codex", "claude"],
+  "transport": "cli-exec",
+  "outcome": "completed",
+  "degradation": "branch-3"
+}
+```
+
+**Un archivo por corrida, nunca uno agregado.** Un JSON acumulado obligaría a leer-modificar-escribir,
+y dos corridas concurrentes —una tanda de `sdd-orchestrator` sobre varios repos— se pisarían.
+Resolverlo pide locking: exactamente la infraestructura que este manifest existe para no traer. El
+timestamp va adelante del nombre para que el orden lexicográfico sea el cronológico.
+
+**Local y untracked, sin autolimpieza**, misma clase que `.plans/` y que los scratch de las tres
+skills. El usuario borra el directorio cuando quiera; ninguna skill lo hace por él. Una corrida son
+~300 bytes.
+
+**Se escribe con la tool de escritura de archivos del conductor, nunca con `echo` ni heredoc** —
+misma regla que los prompts, y por el mismo motivo: el quoting. Por eso acá no hay bloque de
+escritura; los bloques verificables son validar y leer.
+
+### Los campos
+
+Los ocho son **obligatorios**. Un campo que solo aparece a veces hace que "no hubo" y "no se supo"
+sean el mismo dato ausente.
+
+| Campo | Qué es | De dónde sale |
+|---|---|---|
+| `skill` | cuál de las tres corrió | fijo por skill |
+| `mode` | el modo o `artifact_type` de esta corrida | contrato de invocación |
+| `started_at` | ISO-8601 UTC del **despacho** | reloj al lanzar |
+| `duration_s` | del despacho a la resolución del outcome | reloj |
+| `families` | familias delegadas — **siempre una lista** | topología de la corrida |
+| `transport` | la vía efectiva: `subagent` · `cli-exec` · `cli-resume` | vía resuelta al lanzar |
+| `outcome` | el estado terminal que la skill ya devuelve | envelope / salida |
+| `degradation` | qué se perdió, o `none` | escalera / causa de indisponibilidad |
+
+**`families` es lista incluso cuando hay una sola familia.** Un campo que a veces es cadena y a
+veces lista obliga a cada lector a ramificar, y el lector típico es un `grep` apurado.
+
+**`duration_s` mide del despacho a la resolución del outcome**, no la corrida entera de la skill.
+Preparar el paquete y arbitrar es trabajo del conductor, no de la capacidad delegada: incluirlo hace
+que dos corridas midan cosas distintas según cuánto tardó el conductor en leer. En `co-explore`,
+donde el despacho son dos lanzamientos en paralelo, es del primer lanzamiento al último outcome
+resuelto — wall clock, no suma.
+
+**`transport` es el del lanzamiento.** Una corrida que arranca con `cli-exec` y reanuda su sesión en
+las rondas siguientes sigue siendo `cli-exec`; `cli-resume` es para la corrida que *entera* fue una
+reanudación de una sesión ajena.
+
+### El vocabulario es prestado, nunca propio
+
+| Skill | `mode` | `outcome` | `degradation` (además de `none`) |
+|---|---|---|---|
+| `co-explore` | `explore` · `counter-plan` · `investigate` · `debate` | `completed` · `map_failure` | `branch-2` · `branch-3` · `branch-4` · `confirmed_wall` · `launch_flake` · `runtime_failure` |
+| `cross-review` | `spec` · `plan` · `tasks` · `master-spec` · `reparto` · `draft` | `APPROVED` · `REVISE` · `UNAVAILABLE` | `rounds_exhausted` · `confirmed_wall` · `launch_flake` · `runtime_failure` |
+| `cross-implement` | `embebido` · `directo` | `IMPLEMENTED` · `PARTIAL` · `UNAVAILABLE` | `takeover` · `confirmed_wall` · `launch_flake` · `runtime_failure` |
+
+Cada uno de esos términos ya existe en la skill que lo produce: el manifest los **serializa**, no
+los define. Un manifest con taxonomía propia se desincroniza del envelope que dice resumir, y cuando
+los dos difieren no hay forma de saber cuál miente. Si una corrida termina en un estado que no está
+en su fila, lo que falta actualizar es la fila — o el estado es uno que la skill no documenta, y eso
+es un hallazgo más valioso que el registro.
+
+### Cuándo se escribe
+
+> **En el punto donde se resuelve el outcome, y todos los caminos de salida pasan por ese punto.**
+
+Es la única regla del manifest que no es de forma, y la que decide si sirve. Un manifest escrito al
+cerrar bien una corrida registra **solo éxitos** — y entonces responde "¿esto me está sirviendo?"
+con la única muestra incapaz de contestarlo. Las corridas que informan si la capacidad vale son las
+que se degradaron, las que vencieron el deadline y las que nunca arrancaron. Una serie de puros
+`completed` no dice que la capacidad funciona: dice que se registró cuando funcionó.
+
+En la práctica, **cada estado terminal documentado escribe su manifest**, incluidos los que
+devuelven `UNAVAILABLE` antes de despachar nada. Un preflight que choca contra una pared confirmada
+es una corrida de duración corta con outcome `UNAVAILABLE`: es un dato, no una no-corrida — y es
+justamente el dato que dice que la capacidad no está disponible en este entorno.
+
+### Nunca bloquea
+
+Si la escritura falla —directorio no creable, disco lleno—, la corrida **sigue** y se dice en una
+línea: `manifest no escrito: <causa>`. Un registro que puede tumbar una corrida cuesta más de lo que
+mide. El aviso no es cortesía: sin él, un directorio mal permisado produce huecos en la serie
+indistinguibles de "no corrió", que es la lectura opuesta a la verdadera.
+
+### Qué NO se registra
+
+El recorte es la mitad del diseño. Cada línea de acá existe para que nadie la re-agregue sin
+enterarse de por qué se fue:
+
+| Recortado | Por qué |
+|---|---|
+| `attempts[]` con owner único | era la infraestructura del fallback entre **dos transportes**, que acá no existe: hay una vía por familia y su alternativa está documentada como degradación. El número de rondas ya vive en el log de la skill, que es donde se lo consulta. |
+| schema versionado | el conjunto de campos es **fijo**. Versionarlo compra la posibilidad de expandirlo, y expandirlo es salir de "¿esto me sirve?" hacia una telemetría que nadie pidió. El día que haga falta versionar, esa es la señal de que el alcance cambió — y esa decisión se toma explícita, no se hereda de un campo que ya estaba. |
+| `usage.source` | atribuía consumo entre suscripción y API. El CLI headless corre sobre la suscripción: no hay costo por corrida que atribuir. |
+| parent/child runs | un flujo que corre tres co-exploraciones deja tres archivos con tres timestamps. Correlacionarlos es ordenar por nombre, no un campo más que mantener consistente. |
+| `.partial` + rename atómico | protegía una escritura que podía morir a la mitad porque se hacía incremental. Acá el archivo se escribe entero, una vez, cuando ya se conoce el outcome. |
+
+### Activación
+
+```yaml
+cross_model:
+  schema_version: 1
+  manifest:
+    mode: "on"     # "on" (default) | "off"  (entre comillas: sin ellas YAML los parsea como booleanos)
+```
+
+Vive en `cross_model` —política del **ecosistema**, no de una skill— porque las tres escriben el
+mismo registro: apagarlo para una sola produciría una serie con huecos sistemáticos, que es peor que
+no tenerla. Esquema completo en `sdd-flow/reference.md` → "Esquema de `.specify/config.yml`".
+
+Default **on**: sin datos, cualquier decisión posterior sobre expandir o recortar el ecosistema es
+intuición, y el costo es un archivo de 300 bytes en un directorio untracked.
+
+### Validar un manifest
+
+```bash
+# @bloque:manifest-valido
+# Predicado: los ocho campos del núcleo presentes, ninguno de los cuatro recortados, families como
+# lista, y outcome/degradation dentro del vocabulario de la fila de esa skill.
+# Entradas: $manifest
+rc=0
+for c in skill mode started_at duration_s families transport outcome degradation; do
+  grep -q "\"$c\"[[:space:]]*:" "$manifest" || {
+    printf 'GUARD:manifest-valido falta el campo "%s"\n' "$c" >&2; rc=1; }
+done
+for c in attempts schema_version usage parent; do
+  grep -q "\"$c\"[[:space:]]*:" "$manifest" && {
+    printf 'GUARD:manifest-valido campo recortado presente: "%s"\n' "$c" >&2; rc=1; }
+done
+grep -qE '"families"[[:space:]]*:[[:space:]]*\[' "$manifest" || {
+  printf 'GUARD:manifest-valido "families" no es una lista\n' >&2; rc=1; }
+val() { sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$manifest" | head -1; }
+sk=$(val skill)
+comunes="none confirmed_wall launch_flake runtime_failure"
+case "$sk" in
+  co-explore)      outs="completed map_failure";              degs="$comunes branch-2 branch-3 branch-4" ;;
+  cross-review)    outs="APPROVED REVISE UNAVAILABLE";        degs="$comunes rounds_exhausted" ;;
+  cross-implement) outs="IMPLEMENTED PARTIAL UNAVAILABLE";    degs="$comunes takeover" ;;
+  *) printf 'GUARD:manifest-valido skill fuera del ecosistema: "%s"\n' "$sk" >&2
+     rc=1; outs=""; degs="" ;;
+esac
+for par in "outcome:$outs" "degradation:$degs"; do
+  campo=${par%%:*}; permitidos=${par#*:}
+  [ -n "$permitidos" ] || continue
+  v=$(val "$campo")
+  printf '%s\n' "$permitidos" | tr ' ' '\n' | grep -qxF "$v" || {
+    printf 'GUARD:manifest-valido %s "%s" no pertenece a %s\n' "$campo" "$v" "$sk" >&2; rc=1; }
+done
+exit $rc
+# @fin:manifest-valido
+```
+
+```powershell
+# @bloque:manifest-valido-ps
+# Predicado: los ocho campos del núcleo presentes, ninguno de los cuatro recortados, families como
+# lista, y outcome/degradation dentro del vocabulario de la fila de esa skill.
+# Entradas: $manifest
+$rc = 0
+$m = Get-Content -Raw $manifest
+foreach ($c in 'skill','mode','started_at','duration_s','families','transport','outcome','degradation') {
+  if ($m -notmatch "`"$c`"\s*:") { Write-Error "GUARD:manifest-valido falta el campo `"$c`""; $rc = 1 }
+}
+foreach ($c in 'attempts','schema_version','usage','parent') {
+  if ($m -match "`"$c`"\s*:") { Write-Error "GUARD:manifest-valido campo recortado presente: `"$c`""; $rc = 1 }
+}
+if ($m -notmatch '"families"\s*:\s*\[') { Write-Error 'GUARD:manifest-valido "families" no es una lista'; $rc = 1 }
+function Val($k) { if ($m -match "`"$k`"\s*:\s*`"([^`"]*)`"") { $Matches[1] } else { '' } }
+$sk = Val 'skill'
+$comunes = @('none','confirmed_wall','launch_flake','runtime_failure')
+switch ($sk) {
+  'co-explore'      { $outs = @('completed','map_failure');            $degs = $comunes + @('branch-2','branch-3','branch-4') }
+  'cross-review'    { $outs = @('APPROVED','REVISE','UNAVAILABLE');    $degs = $comunes + @('rounds_exhausted') }
+  'cross-implement' { $outs = @('IMPLEMENTED','PARTIAL','UNAVAILABLE'); $degs = $comunes + @('takeover') }
+  default { Write-Error "GUARD:manifest-valido skill fuera del ecosistema: `"$sk`""; $rc = 1; $outs = @(); $degs = @() }
+}
+foreach ($par in @(@('outcome',$outs), @('degradation',$degs))) {
+  if ($par[1].Count -eq 0) { continue }
+  $v = Val $par[0]
+  if ($par[1] -notcontains $v) {
+    Write-Error "GUARD:manifest-valido $($par[0]) `"$v`" no pertenece a $sk"; $rc = 1
+  }
+}
+exit $rc
+# @fin:manifest-valido-ps
+```
+
+### Leer la serie
+
+La pregunta que justifica todo lo anterior. Sin una forma de mirar los datos, el manifest es un
+montón de JSON que nadie abre:
+
+```bash
+# @bloque:manifest-resumen
+# Predicado: por skill, cuántas corridas, cuántas degradadas y la duración mediana; más el total
+# leído, para que un directorio vacío se distinga de un filtro que no matcheó.
+# Entradas: $runs
+n=$(find "$runs" -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
+printf 'corridas leídas: %s\n' "$n"
+[ "$n" -eq 0 ] && exit 0
+t=$(mktemp -d)
+for f in "$runs"/*.json; do
+  [ -f "$f" ] || continue
+  campo() { sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\{0,1\}\([^\",}]*\).*/\1/p" "$f" | head -1; }
+  printf '%s\t%s\t%s\n' "$(campo skill)" "$(campo degradation)" "$(campo duration_s)"
+done > "$t/filas"
+cut -f1 "$t/filas" | sort -u | while IFS= read -r sk; do
+  [ -n "$sk" ] || continue
+  tot=$(awk -F'\t' -v s="$sk" '$1==s' "$t/filas" | wc -l | tr -d ' ')
+  deg=$(awk -F'\t' -v s="$sk" '$1==s && $2!="none"' "$t/filas" | wc -l | tr -d ' ')
+  med=$(awk -F'\t' -v s="$sk" '$1==s{print $3}' "$t/filas" | sort -n \
+        | awk '{v[NR]=$1} END{if (NR) print v[int((NR+1)/2)]; else print "-"}')
+  printf '%s: %s corridas · %s degradadas · mediana %ss\n' "$sk" "$tot" "$deg" "$med"
+done
+rm -rf "$t"
+# @fin:manifest-resumen
+```
+
+```powershell
+# @bloque:manifest-resumen-ps
+# Predicado: por skill, cuántas corridas, cuántas degradadas y la duración mediana; más el total
+# leído, para que un directorio vacío se distinga de un filtro que no matcheó.
+# Entradas: $runs
+$archivos = @(Get-ChildItem -Path $runs -Filter *.json -File -ErrorAction SilentlyContinue)
+Write-Output "corridas leídas: $($archivos.Count)"
+if ($archivos.Count -eq 0) { exit 0 }
+$filas = foreach ($f in $archivos) {
+  $j = Get-Content -Raw $f.FullName
+  function C($k) { if ($j -match "`"$k`"\s*:\s*`"?([^`",}]*)") { $Matches[1].Trim() } else { '' } }
+  [pscustomobject]@{ skill = (C 'skill'); degradation = (C 'degradation'); duration = [int](C 'duration_s') }
+}
+foreach ($g in ($filas | Group-Object skill | Sort-Object Name)) {
+  if (-not $g.Name) { continue }
+  $deg = @($g.Group | Where-Object { $_.degradation -ne 'none' }).Count
+  $ord = @($g.Group.duration | Sort-Object)
+  $med = if ($ord.Count) { $ord[[int](($ord.Count + 1) / 2) - 1] } else { '-' }
+  Write-Output "$($g.Name): $($g.Count) corridas · $deg degradadas · mediana $($med)s"
+}
+# @fin:manifest-resumen-ps
+```
+
+### Qué se hace con esto
+
+El manifest no decide nada por sí solo; habilita tres preguntas que hoy se contestan de memoria:
+
+- **¿La capacidad está disponible donde corro?** Una proporción alta de `confirmed_wall` dice que el
+  entorno no tiene el CLI de la otra familia, no que la idea sea mala.
+- **¿La diversidad se está conservando?** `branch-3` y `branch-4` frecuentes en `co-explore`
+  significan que la topología dual se degrada seguido: dos mapas comparados es el supuesto del que
+  cuelga todo el valor del modo.
+- **¿El peldaño elegido es el más barato que alcanza?** Duraciones medianas por skill contra la
+  escalera de rigor (`co-explore/reference.md` → "Escalera de rigor") muestran si se está pagando
+  `cross-implement` donde alcanzaba una `cross-review`.

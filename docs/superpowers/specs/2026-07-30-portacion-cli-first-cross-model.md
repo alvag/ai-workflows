@@ -319,6 +319,18 @@ que son las que hacen que el mecanismo sea honesto en vez de decorativo:
 
 ### 9. Manifest mínimo de corrida (opcional, último)
 
+> **HECHO** — canon en `cross-review/reference.md` → "Manifest de corrida", enganchado en las tres
+> skills y en `cross_model.manifest` del config. Ocho campos, un archivo por corrida en
+> `.cross-model/runs/`, y el recorte del catálogo respetado más uno: se fue también el `.partial`
+> con rename atómico, que protegía una escritura incremental que acá no existe.
+>
+> **La decisión que define si sirve no estaba en el catálogo:** *cuándo* se escribe. Un manifest
+> escrito al cerrar bien una corrida registra solo éxitos y responde "¿esto me está sirviendo?" con
+> la única muestra incapaz de contestarlo. Quedó como regla —se escribe donde se resuelve el
+> outcome, y **todos** los caminos de salida pasan por ahí— con una guarda bidireccional que la
+> sostiene: todo estado terminal que una skill declara tiene que ser registrable, y todo término del
+> manifest tiene que existir en la skill que lo produce.
+
 - **Origen:** §P0.1 del research; implementación en
   `skills/cross-model-orca/assets/run-manifest.mjs`.
 - **Qué es:** un `run.json` por invocación con lo mínimo para responder *"¿esto me está sirviendo?"*:
@@ -440,7 +452,9 @@ Vienen de la lista *Keep* del research y siguen vigentes:
 
 Todo sobre `feat/cross-model`, sin runtime nuevo. Cada paso es entregable por sí solo.
 
-0. **Archivar las ramas de origen** con un tag, sin borrarlas. — **pendiente**
+0. ~~**Archivar las ramas de origen** con un tag, sin borrarlas.~~ — **descartado**. Las ramas y sus
+   worktrees quedan tal como están, por si en algún momento se retoman. El tag existía para poder
+   borrarlas sin perder la referencia; si no se borran, no compra nada.
 1. ~~**Puntos 4, 5, 10 y 13**~~ — **HECHO**, commit `dd2f3b7`.
 2. ~~**Punto 1** (coordinador puro + índice/detalle)~~ — **HECHO**, commit `97cc694`.
 3. ~~**Puntos 2, 3, 11 y 12**~~ — **HECHO**, commits `82b619d`, `a7ae11b` y `411636d`. Incluyó
@@ -457,8 +471,13 @@ Todo sobre `feat/cross-model`, sin runtime nuevo. Cada paso es entregable por s�
    el segundo como contenido mínimo por ronda—, así que moverlos habría sido *escribir* prompts que
    hoy no existen: un cambio de contenido disfrazado de mudanza de archivo. Quedan como delta, con
    la razón anotada donde alguien los buscaría.
-5. **Punto 9** (manifest mínimo) — recién acá, y solo para decidir con datos si algo más de las
-   ramas se justifica.
+5. ~~**Punto 9** (manifest mínimo)~~ — **HECHO**. Canon del manifest en `cross-review/reference.md`
+   (la sede de la mecánica compartida, donde ya vivía la portabilidad de shells), enganchado en el
+   punto donde cada skill resuelve su outcome, más `cross_model.manifest` en el config y una sección
+   "Qué escribe en tu repo" en los tres README. De yapa se repararon las dos citas cruzadas
+   abreviadas vivas, para que la guarda nueva de punteros entre skills naciera con **alcance total
+   y sin lista de exentos** — una guarda con exentos envejece hacia adentro, porque cada excepción
+   nueva se justifica con la anterior.
 
 Estimación gruesa original: los pasos 1–4 en menos de 1.800 líneas de Markdown. **Medido:** el
 paso 1 costó 923 líneas, el paso 2, 1.328 (neto +677), y el paso 3, **2.457** (neto +2.393,
@@ -466,10 +485,17 @@ repartido en `cross-implement` +1.350, `co-explore` +715, `sdd-orchestrator` +16
 +161). La estimación original ya se pasó **tres veces** con el paso 4 todavía sin empezar: cada
 paso rinde más de lo previsto y cuesta cerca del doble del anterior.
 
-**Lo que la estimación no contaba, y es la mayor parte del trabajo:** el paso 3 sumó un arnés de 87
-archivos con **82 mutaciones declaradas** que vive en `.plans/` y no se publica. Las líneas de
-Markdown publicado miden el entregable, no el esfuerzo — y sin ese arnés cinco guardas habrían
-quedado en verde sin poder detectar el defecto que decían detectar.
+**Lo que la estimación no contaba, y es la mayor parte del trabajo:** el paso 3 sumó un arnés que
+vive en `.plans/` y no se publica. Las líneas de Markdown publicado miden el entregable, no el
+esfuerzo — y sin ese arnés cinco guardas habrían quedado en verde sin poder detectar el defecto que
+decían detectar.
+
+**Cierre del catálogo.** El paso 5 costó **+338 / −3** en 10 archivos, el más barato de los cinco y
+el único que se acercó a su estimación. El arnés terminó en **100 archivos, 14 guardas, 20 fixtures
+y 92 mutaciones declaradas**, con la corrida completa en **147 verificaciones**. La suma de los
+cinco pasos triplica largamente las 1.800 líneas estimadas, y la razón es la misma en cada paso:
+escribir la regla es la parte barata; construir la evidencia de que la regla puede detectar su
+violación cuesta más que la regla.
 
 ~~**Pendiente de portar, detectado al ejecutar el paso 2**~~ — **HECHO en el paso 3**: índice
 paginado sin pérdida, `clarification-needed` con paquete de contexto versionado, y las tres
@@ -483,8 +509,10 @@ identidades de reintento (`transportAttempt` / `formatRepair` / `semanticAttempt
 - ~~`.plans/herdr-cli-cross-model/ideas.md`~~ — **rescatado** a
   `docs/superpowers/specs/2026-07-23-herdr-cli-cross-model-ideas.md`.
 - `.plans/cross-model-herdr-adapter/runtime-adoption-log.md` (1.229 líneas) — la evidencia de los
-  hallazgos verificados. **Sigue en riesgo**: si se archiva la rama y se limpia el worktree, se
-  pierde.
+  hallazgos verificados. **Sigue en riesgo**, y el riesgo no cambió al descartar el archivado: no
+  depende de que la rama exista, sino de que el archivo es untracked. Un `git clean -xdf` o borrar
+  el worktree se lo lleva, y la rama seguiría ahí sin él. Lo que sí bajó es la probabilidad: nadie
+  va a limpiar un worktree que se decidió dejar en pie.
 
 ## Método y límites de la verificación
 

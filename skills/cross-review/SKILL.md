@@ -209,6 +209,11 @@ Devolver a la skill llamadora (o presentar, en modo directo):
 La llamadora presenta este resumen **junto al artefacto** en su gate humano (mismo STOP, sin gate
 extra). El humano aprueba con la segunda opinión ya a la vista.
 
+Además, al resolver el veredicto se escribe el **manifest de corrida** — los tres veredictos, no
+solo `APPROVED`: una serie que registra las revisiones que convergieron y omite las que agotaron
+rondas o nunca encontraron revisor no puede decir si esta capacidad rinde. Esquema y vocabulario en
+`reference.md` → "Manifest de corrida".
+
 ## Degradación (nunca bloquea el flujo SDD)
 
 Tres modos de falla, todos terminan en el gate humano de siempre con un aviso de una línea

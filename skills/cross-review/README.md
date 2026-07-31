@@ -100,6 +100,19 @@ mismo STOP de aprobación.
 ```
 → `mode: off` para esa corrida; gate humano directo.
 
+## Qué escribe en tu repo
+
+Además del `review-log.md` y el scratch junto al artefacto, cada corrida deja un **manifest**: un
+JSON de unos 300 bytes en `.cross-model/runs/` con modo, familias, transporte, duración, veredicto y
+degradación. Existe para poder mirar cien corridas juntas y decidir si la segunda opinión se gana su
+costo — sin datos, esa decisión es intuición. Se escriben **los tres veredictos**, no solo los
+`APPROVED`: una serie que omite las corridas que fallaron no puede contestar la pregunta.
+
+Es local y untracked, y ninguna skill toca tu `.gitignore`: agrega `.cross-model/` a
+`.git/info/exclude` si prefieres que git deje de nombrarlo. Se apaga con
+`cross_model.manifest.mode: "off"`. Esquema y recorte en `reference.md` → "Manifest de corrida",
+que es también la sede canónica para `co-explore` y `cross-implement`.
+
 ## Archivos
 
 - `SKILL.md` — el flujo, las reglas y el contrato de invocación.

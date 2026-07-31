@@ -185,6 +185,15 @@ reproducción si el conductor la capturó, lanza al revisor read-only mientras e
 investiga en paralelo, sintetiza y presenta **hipótesis de causa raíz rankeadas + plan de
 verificación**, y ofrece verificar la líder con `systematic-debugging`.
 
+## Qué escribe en tu repo
+
+Los informes y el scratch viven junto al flujo que la invoca. Lo único que se escribe fuera es el
+**manifest de corrida**: un JSON de unos 300 bytes en `.cross-model/runs/` por cada exploración,
+incluidas las que se degradaron a una sola voz — que son las que dicen con qué frecuencia la
+topología dual no se sostiene. Local y untracked; agrega `.cross-model/` a `.git/info/exclude` si
+prefieres que git deje de nombrarlo, y apágalo con `cross_model.manifest.mode: "off"`. Esquema en
+`cross-review/reference.md` → "Manifest de corrida".
+
 ## Archivos
 
 - `SKILL.md` — el flujo, las reglas, el contrato de invocación y la guía de síntesis.

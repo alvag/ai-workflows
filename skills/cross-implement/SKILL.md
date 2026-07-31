@@ -169,6 +169,12 @@ A la llamadora (o presentada al usuario en modo directo):
 - **Rondas usadas** y desviaciones del work order reportadas por el implementador.
 - **Ruta del log** (`implement-log.md`).
 
+Al resolver el estado se escribe además el **manifest de corrida**, en los tres casos: un
+`UNAVAILABLE` por pared confirmada es el dato que dice que la capacidad no existe en este entorno, y
+un `PARTIAL` es el que dice cuánto termina haciendo el conductor. Registrar solo los `IMPLEMENTED`
+dejaría una serie que responde "siempre funciona" porque solo se anotó cuando funcionó. Esquema y
+vocabulario en `cross-review/reference.md` → "Manifest de corrida".
+
 ## Router de intención
 
 > **¿Es este el peldaño que hace falta?** La escalera de rigor —respuesta local → `co-explore` →

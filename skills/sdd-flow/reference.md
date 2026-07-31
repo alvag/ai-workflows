@@ -150,6 +150,8 @@ cross_model:                     # PERFILES de ejecución de workers (opcional).
   profiles:
     claude-deep: { family: claude, model: sonnet,  effort: high }
     codex-deep:  { family: codex,  model: default, effort: high }   # `default` delega la elección al proveedor
+  manifest:                      # registro por corrida de las skills cross-model, para decidir con datos si la capacidad rinde
+    mode: "on"                   # "on" (default) | "off"  (entre comillas: sin ellas YAML los parsea como booleanos). Política del ECOSISTEMA: las tres skills escriben el mismo registro; apagarlo para una sola dejaría huecos sistemáticos. Ver `cross-review/reference.md` → "Manifest de corrida"
 cross_review:                    # segunda opinión cross-model EN LOS GATES (opcional; ver skill cross-review)
   mode: auto                     # auto (por complejidad) | "on" | "off"  (on/off entre comillas: sin ellas YAML los parsea como booleanos)
   execution: auto                # auto | sync | background — cómo corre la revisión (se hereda a cross-review)

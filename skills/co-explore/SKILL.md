@@ -79,7 +79,9 @@ comparan**.
    ejecuta — se invoca read-only (sin permisos de escritura) y su salida se captura por
    redirección del conductor hacia `co-explore/scratch/`, nunca porque tenga permiso para tocar
    archivos (ver `reference.md` → "Árbol de rutas"). El **conductor** nunca
-   persiste cambios en el working tree del usuario. En `explore`/`counter-plan` ambos son
+   persiste cambios en el working tree del usuario — el único archivo que escribe fuera del scratch
+   es el **manifest de corrida**, un registro local untracked de la misma clase que `.plans/`
+   (`cross-review/reference.md` → "Manifest de corrida"). En `explore`/`counter-plan` ambos son
    read-only puro. En `investigate` el conductor puede, opt-in (L1), **ejecutar** para investigar
    —reproducir, correr tests, logging efímero— pero SOLO en un **worktree descartable** que se
    tira al cerrar; el revisor sigue L0 read-only siempre y lee un checkout estable, nunca el
@@ -268,6 +270,13 @@ nullable). Esquema campo por campo en `reference.md` → "Envelope de retorno".
 
 `contributors[]` existe porque en las ramas 2, 3 y 4 aparece un mapa que **ningún worker produjo**
 y que `workers[]` no puede describir.
+
+**El envelope se persiste además como manifest de corrida.** Sus campos comparables entre corridas
+—modo, familias, transporte, duración, `outcome` y la rama de degradación— se escriben en el mismo
+punto donde se resuelve el envelope, **incluidos** los `map_failure` y las ramas 3 y 4. Registrar
+solo las corridas nominales dejaría una serie de puros éxitos, incapaz de mostrar lo único que hay
+que vigilar acá: con qué frecuencia la topología dual se degrada a una sola voz. Esquema,
+vocabulario y recorte en `cross-review/reference.md` → "Manifest de corrida".
 
 **Nota de límite (obligatoria, una vez por corrida).** Toda salida presentada al usuario cierra
 declarando el techo del método:
