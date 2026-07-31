@@ -91,11 +91,17 @@ familia: avisar que se pierde el valor cross-model y continuar (el override mand
 - **Versión**: `codex --version`. CLIs viejos (< 0.130) fallan con error de modelo contra los
   defaults actuales. Ante un error de auth o de modelo, superficiarlo y degradar (`UNAVAILABLE`)
   — nunca reintentar en silencio.
-- **Modelo: no pinear `-m`.** Usar el default de la config: los variants `gpt-5.x-codex`
-  devuelven 400 con auth de cuenta ChatGPT. Si el usuario pide un modelo explícito, ese override
-  manda.
-- **Eco del modelo activo**: leer la línea `model` de `~/.codex/config.toml` (ausente = "CLI
-  default") y registrarla en el `review-log.md` junto al revisor, para que la corrida quede
+- **Aislamiento disponible**: ver "Preflight de aislamiento (fail-closed)" en la Vía B. Sin él no
+  se lanza el worker.
+- **Modelo: leer del config y pasarlo explícito.** El worker corre con `--ignore-user-config`, que
+  descarta el `model` y el `model_reasoning_effort` del usuario junto con el resto de la
+  configuración. El flujo es: leer del config → aislar → pasar explícito con `-m` y
+  `-c model_reasoning_effort=` → ecoar lo resuelto. Si la lectura no es inequívoca (ver Vía B), no
+  se pasa `-m` y se usa el default del CLI. Un modelo pedido explícitamente por el usuario manda
+  sobre lo leído. Nota histórica: los variants `gpt-5.x-codex` devuelven 400 con auth de cuenta
+  ChatGPT — por eso el valor viaja tal cual está en el config, sin sustituciones.
+- **Eco del modelo activo**: registrar en el `review-log.md`, junto al revisor, el modelo y el
+  esfuerzo efectivos (o "CLI default" cuando no se pudieron determinar), para que la corrida quede
   auditada con el modelo real que criticó.
 
 > **No usar `/codex:review` ni `/codex:adversarial-review`.** Esos comandos del plugin operan
@@ -135,7 +141,12 @@ en la raíz del flujo:
   `cross-review/spec-prompt-r1.txt`, `cross-review/spec-verdict-r1.txt`,
   `cross-review/plan-delta-r2.txt`, `cross-review/plan-verdict-r2.txt`,
   `cross-review/plan-r1.err.txt`, `cross-review/spec-thread-r1.jsonl` (stream JSONL de la ronda 1,
-  de donde se parsea el thread id), `cross-review/spec-session.txt` (el thread/session id capturado).
+  de donde se parsea el thread id), `cross-review/spec-session.txt` (el thread/session id capturado),
+  `cross-review/spec-session-meta.json` (modelo y esfuerzo efectivos de la corrida).
+- **`session-meta.json`** acompaña al `session.txt` con `{"model": "...", "effort": "..."}`. Existe
+  porque cada ronda corre en un proceso shell nuevo y las variables de la ronda 1 no sobreviven;
+  el resume las relee de ahí. Un campo vacío significa "default del CLI", nunca cadena vacía a
+  pasar como flag.
 - **`review-log.md` NO va acá.** Es el registro auditable consolidado (rondas, findings, decisiones,
   veredicto), hermano de `spec.md`/`plan.md`/`tasks.md`: queda en `<dir del artefacto>/review-log.md`
   (la raíz del flujo).
@@ -166,23 +177,101 @@ comportamiento del sandbox en resume y del id vacío/inválido, end-to-end en 0.
 2026-07-09); pueden variar por versión, así que ante la duda confirmar con `codex exec --help`.
 Descubrir por capacidad, no hardcodear ciegamente.
 
-- Ronda 1 (prompt escrito antes a archivo — ver regla 2 de "Invocar al revisor"):
-  ```bash
-  codex exec -s read-only -C <working_dir> --skip-git-repo-check --json \
-    --output-last-message <ruta/al/veredicto.txt> - < <ruta/al/prompt-r1.txt> \
-    > <ruta/al/thread-r1.jsonl>
-  # Capturar el thread id del evento thread.started (determinístico, no "buscarlo en la salida"):
-  grep -m1 -o '"thread_id":"[^"]*"' <ruta/al/thread-r1.jsonl> | cut -d'"' -f4 \
-    > <ruta/al/session.txt>
-  ```
-  En **PowerShell** (el prompt llega por un pipe en vez de `<`):
-  ```powershell
-  Get-Content -Raw <ruta\al\prompt-r1.txt> |
-    codex exec -s read-only -C <working_dir> --skip-git-repo-check --json `
-      --output-last-message <ruta\al\veredicto.txt> - > <ruta\al\thread-r1.jsonl>
-  (Select-String -Path <ruta\al\thread-r1.jsonl> -Pattern '"thread_id":"([^"]+)"' |
-    Select-Object -First 1).Matches.Groups[1].Value > <ruta\al\session.txt>
-  ```
+#### Preflight de aislamiento (fail-closed)
+
+Antes de lanzar, comprobar que la versión instalada permite aislar al worker. Si falta cualquiera
+de las tres piezas, **no se lanza**: `UNAVAILABLE` y gate humano.
+
+```bash
+codex exec --help | grep -q -- --ignore-user-config || FAIL=1
+for f in hooks apps plugins; do
+  codex features list 2>/dev/null | grep -qE "^$f[[:space:]]" || FAIL=1
+done
+```
+
+Por qué fail-closed y no best-effort: `-s read-only` acota lo que el worker escribe **en disco**,
+no los efectos remotos de una tool MCP. Un worker "read-only" con los MCP del entorno puede
+alcanzar una tool de ejecución y correr comandos fuera del `working_dir`. Si no se puede
+garantizar el aislamiento, la degradación correcta es no tener revisor, no tener uno sin contener.
+
+#### Ronda 1
+
+Prompt escrito antes a archivo (ver regla 2 de "Invocar al revisor"). Dos detalles del comando son
+contraintuitivos y **no** se deben "simplificar":
+
+- **Los argumentos se construyen incrementalmente, nunca con expansión condicional.**
+  `${MODEL:+-m "$MODEL"}` no sirve: en zsh las expansiones de parámetros no hacen field splitting,
+  así que `-m` y su valor viajan como un solo argumento y el modelo llega con un espacio inicial.
+  La API responde `' <modelo>' model is not supported`.
+- **La lectura del config valida antes de usar.** Solo vale una asignación **raíz** —anterior a la
+  primera cabecera de tabla—, con comillas dobles y una sola ocurrencia. Cualquier otra cosa deja
+  el valor vacío y el flag no se pasa: es preferible el default del CLI a forzar un modelo sacado
+  de dentro de una tabla o de un perfil inactivo.
+
+```bash
+# POSIX
+CODEX_CFG="${CODEX_HOME:-$HOME/.codex}/config.toml"
+# Preámbulo raíz del TOML. awk y no `sed -n '1,/^\[/p' | sed '$d'`, que falla en tres casos
+# válidos: cabecera en la primera línea (mete la tabla en la raíz), archivo sin tablas (borra la
+# última asignación) y cabecera indentada (no la reconoce).
+ROOT=$(awk '/^[[:space:]]*\[/{exit} {print}' "$CODEX_CFG" 2>/dev/null)
+read_root_key() {   # $1 = clave; imprime el valor SOLO si hay una asignación raíz inequívoca
+  n=$(printf '%s\n' "$ROOT" | grep -cE "^$1[[:space:]]*=[[:space:]]*\"[^\"]*\"[[:space:]]*$")
+  [ "$n" -eq 1 ] && printf '%s\n' "$ROOT" |
+    sed -n "s/^$1[[:space:]]*=[[:space:]]*\"\([^\"]*\)\".*/\1/p"
+}
+MODEL=$(read_root_key model)
+EFFORT=$(read_root_key model_reasoning_effort)
+echo "revisor: codex ${MODEL:-<default del CLI: no se pudo determinar el del config>}"
+
+set -- exec --ignore-user-config --disable hooks --disable apps --disable plugins \
+       -s read-only -C <working_dir> --skip-git-repo-check --json \
+       --output-last-message <ruta/al/veredicto.txt>
+[ -n "$MODEL" ]  && set -- "$@" -m "$MODEL"
+[ -n "$EFFORT" ] && set -- "$@" -c "model_reasoning_effort=$EFFORT"
+set -- "$@" -
+codex "$@" < <ruta/al/prompt-r1.txt> > <ruta/al/thread-r1.jsonl> 2> <ruta/al/r1.err.txt>
+
+# Persistir thread id + modelo/esfuerzo efectivos: las rondas siguientes corren en otro proceso.
+grep -m1 -o '"thread_id":"[^"]*"' <ruta/al/thread-r1.jsonl> | cut -d'"' -f4 \
+  > <ruta/al/session.txt>
+printf '{"model":"%s","effort":"%s"}\n' "$MODEL" "$EFFORT" > <ruta/al/session-meta.json>
+```
+
+```powershell
+# PowerShell
+$CodexCfg = Join-Path ($env:CODEX_HOME ?? "$HOME\.codex") 'config.toml'
+$Lines = @(Get-Content $CodexCfg -ErrorAction SilentlyContinue)
+# Cabecera de tabla: admite indentación. Si está en la línea 1, la raíz es vacía.
+$Idx = ($Lines | Select-String -Pattern '^\s*\[' | Select-Object -First 1).LineNumber
+$Root = if (-not $Idx) { $Lines } elseif ($Idx -eq 1) { @() } else { $Lines[0..($Idx - 2)] }
+function Read-RootKey($Key) {
+  $m = @($Root | Select-String -Pattern "^$Key\s*=\s*`"([^`"]*)`"\s*$")
+  if ($m.Count -eq 1) { $m[0].Matches.Groups[1].Value }
+}
+$Model  = Read-RootKey 'model'
+$Effort = Read-RootKey 'model_reasoning_effort'
+
+$CodexArgs = @('exec','--ignore-user-config','--disable','hooks','--disable','apps',
+               '--disable','plugins','-s','read-only','-C','<working_dir>',
+               '--skip-git-repo-check','--json','--output-last-message','<ruta\al\veredicto.txt>')
+if ($Model)  { $CodexArgs += @('-m', $Model) }
+if ($Effort) { $CodexArgs += @('-c', "model_reasoning_effort=$Effort") }
+$CodexArgs += '-'
+Get-Content -Raw <ruta\al\prompt-r1.txt> |
+  & codex @CodexArgs > <ruta\al\thread-r1.jsonl> 2> <ruta\al\r1.err.txt>
+
+(Select-String -Path <ruta\al\thread-r1.jsonl> -Pattern '"thread_id":"([^"]+)"' |
+  Select-Object -First 1).Matches.Groups[1].Value > <ruta\al\session.txt>
+@{ model = $Model; effort = $Effort } | ConvertTo-Json -Compress > <ruta\al\session-meta.json>
+```
+
+  Los cuatro flags de aislamiento —`--ignore-user-config --disable hooks --disable apps
+  --disable plugins`— son el corazón del cambio: sin ellos el worker hereda los MCP del entorno,
+  los hooks locales y las instrucciones de modelo del usuario. Medido en este repo: un worker sin
+  aislar arrancó consultando memoria, hizo búsquedas web y no terminó en 600 s; el mismo prompt
+  aislado cerró en 297 s con cero llamadas MCP. `--ignore-user-config` descarta **todo** el config,
+  por eso el modelo y el esfuerzo se releen antes y se pasan explícitos.
   `-s read-only` (= `--sandbox read-only`) garantiza que no escribe; `-C` fija el working root;
   `--skip-git-repo-check` permite correr aunque la contenedora no sea repo git;
   `--output-last-message` deja el mensaje final (el veredicto + findings) en un archivo, fácil de
@@ -197,21 +286,52 @@ Descubrir por capacidad, no hardcodear ciegamente.
   sin `sandbox_mode`) el resume se comportó como la sesión original, pero ese default **no está
   garantizado** entre versiones ni configs (grill-me-codex reporta que hereda `config.toml`,
   posiblemente `danger-full-access`). Por eso el resume lleva SIEMPRE el override explícito
-  `-c sandbox_mode="read-only"` — el read-only del revisor nunca depende de un default:
+  `-c sandbox_mode="read-only"` — el read-only del revisor nunca depende de un default.
+
+  **El aislamiento también se repite en cada ronda.** La configuración se lee en *cada* invocación
+  de `codex`, así que un resume sin los cuatro flags vuelve a levantar los MCP, hooks y plugins del
+  usuario, por más que la ronda 1 los haya apagado. Verificado contra `codex exec resume --help`
+  0.145.0: acepta `--ignore-user-config`, `--disable` y `-m`.
+
+  **Y el modelo se relee de disco, no de una variable.** Cada ronda corre en un proceso shell
+  nuevo: `$MODEL`/`$EFFORT` de la ronda 1 no existen acá. Por eso la ronda 1 los persistió en
+  `session-meta.json` junto al `session.txt`.
+
   ```bash
   SESSION_ID=$(cat <ruta/al/session.txt>)
   echo "resume → ${SESSION_ID:?vacío}"   # eco visible + corte si quedó vacío (ver nota --last)
-  codex exec resume "$SESSION_ID" -c sandbox_mode="read-only" --skip-git-repo-check \
-    --output-last-message <ruta/veredicto.txt> - < <ruta/al/delta-rN.txt>
+  # Releer del scratch: las variables del proceso de la ronda 1 no sobreviven.
+  MODEL=$(sed -n 's/.*"model":"\([^"]*\)".*/\1/p'  <ruta/al/session-meta.json>)
+  EFFORT=$(sed -n 's/.*"effort":"\([^"]*\)".*/\1/p' <ruta/al/session-meta.json>)
+
+  set -- exec resume "$SESSION_ID" --ignore-user-config \
+         --disable hooks --disable apps --disable plugins \
+         -c sandbox_mode=read-only --skip-git-repo-check \
+         --output-last-message <ruta/veredicto.txt>
+  [ -n "$MODEL" ]  && set -- "$@" -m "$MODEL"
+  [ -n "$EFFORT" ] && set -- "$@" -c "model_reasoning_effort=$EFFORT"
+  set -- "$@" -
+  codex "$@" < <ruta/al/delta-rN.txt> > <ruta/al/thread-rN.jsonl> 2> <ruta/al/rN.err.txt>
   ```
   En **PowerShell**:
   ```powershell
   $SessionId = (Get-Content <ruta\al\session.txt>).Trim()
   if (-not $SessionId) { throw 'session id vacío' }; "resume → $SessionId"
+  $Meta   = Get-Content -Raw <ruta\al\session-meta.json> | ConvertFrom-Json
+  $Model  = $Meta.model
+  $Effort = $Meta.effort
+
+  $CodexArgs = @('exec','resume',$SessionId,'--ignore-user-config','--disable','hooks',
+                 '--disable','apps','--disable','plugins','-c','sandbox_mode=read-only',
+                 '--skip-git-repo-check','--output-last-message','<ruta\veredicto.txt>')
+  if ($Model)  { $CodexArgs += @('-m', $Model) }
+  if ($Effort) { $CodexArgs += @('-c', "model_reasoning_effort=$Effort") }
+  $CodexArgs += '-'
   Get-Content -Raw <ruta\al\delta-rN.txt> |
-    codex exec resume $SessionId -c sandbox_mode="read-only" --skip-git-repo-check `
-      --output-last-message <ruta\veredicto.txt> -
+    & codex @CodexArgs > <ruta\al\thread-rN.jsonl> 2> <ruta\al\rN.err.txt>
   ```
+  Capturar el stderr no es opcional: es donde aparecen los fallos de refresh de OAuth y los
+  errores de metadata de modelo, que de otro modo pasan invisibles.
   **`--last` es solo fallback** (si el thread id no se pudo capturar): filtra por cwd — elige la
   sesión más reciente *del directorio actual* (`--all` desactiva el filtro), así que correrlo
   desde el mismo `working_dir` de la ronda 1 (en PowerShell, `Push-Location <working_dir>`
@@ -404,11 +524,60 @@ El loop reusa el **mismo thread del revisor** para que tenga memoria de lo ya di
   artefacto actualizado completo (más caro, pero válido).
 
 **Seed desde co-exploración:** si existe `co-explore/session.json` (escrito por `co-explore`;
-esquema: `{tool, session_id, mode, created_at}`), la Ronda 1 puede **reanudar esa sesión** en
-lugar de abrir una nueva — el crítico es el mismo agente que exploró. Con `tool: codex`, ese
-resume lleva igualmente el override `-c sandbox_mode="read-only"` (resume no hereda el sandbox
-de la sesión original — ver la Vía B). Si el resume falla, abrir
-sesión nueva con los `findings-*.md` como contexto: mismo efecto, sin estado.
+esquema: `{tool, session_id, mode, created_at, model, effort}`), la Ronda 1 puede **reanudar esa
+sesión** en lugar de abrir una nueva — el crítico es el mismo agente que exploró. Si el resume
+falla, abrir sesión nueva con los `findings-*.md` como contexto: mismo efecto, sin estado.
+
+Con `tool: codex`, este resume es **el tercer punto** donde se reanuda una sesión Codex —junto con
+las rondas de esta skill y las de `co-explore`— y necesita exactamente el mismo tratamiento que
+los otros dos:
+
+- el override `-c sandbox_mode=read-only` (resume no hereda el sandbox de la sesión original — ver
+  la Vía B);
+- los cuatro flags de aislamiento, porque la configuración se relee en cada invocación: sin ellos
+  este resume vuelve a levantar los MCP, hooks y plugins del usuario aunque la exploración
+  original los haya apagado;
+- `model` y `effort` **leídos del `session.json`**, no del config: `--ignore-user-config` los
+  descarta, y sin repetirlos la crítica seguiría con un modelo distinto del que exploró. Si el
+  `session.json` no los trae, se usa el default del CLI y se declara en el eco.
+
+```bash
+# POSIX — resume del seed
+SEED=co-explore/session.json
+SESSION_ID=$(sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$SEED")
+MODEL=$(sed -n 's/.*"model"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$SEED")
+EFFORT=$(sed -n 's/.*"effort"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$SEED")
+echo "seed → ${SESSION_ID:?session.json sin session_id} · modelo ${MODEL:-<default del CLI>}"
+
+set -- exec resume "$SESSION_ID" --ignore-user-config \
+       --disable hooks --disable apps --disable plugins \
+       -c sandbox_mode=read-only --skip-git-repo-check --json \
+       --output-last-message <ruta/al/veredicto.txt>
+[ -n "$MODEL" ]  && set -- "$@" -m "$MODEL"
+[ -n "$EFFORT" ] && set -- "$@" -c "model_reasoning_effort=$EFFORT"
+set -- "$@" -
+codex "$@" < <ruta/al/prompt-r1.txt> > <ruta/al/thread-r1.jsonl> 2> <ruta/al/r1.err.txt>
+```
+
+```powershell
+# PowerShell — resume del seed
+$Seed = Get-Content -Raw co-explore\session.json | ConvertFrom-Json
+if (-not $Seed.session_id) { throw 'session.json sin session_id' }
+"seed → $($Seed.session_id) · modelo $(if ($Seed.model) { $Seed.model } else { '<default del CLI>' })"
+
+$CodexArgs = @('exec','resume',$Seed.session_id,'--ignore-user-config','--disable','hooks',
+               '--disable','apps','--disable','plugins','-c','sandbox_mode=read-only',
+               '--skip-git-repo-check','--json',
+               '--output-last-message','<ruta\al\veredicto.txt>')
+if ($Seed.model)  { $CodexArgs += @('-m', $Seed.model) }
+if ($Seed.effort) { $CodexArgs += @('-c', "model_reasoning_effort=$($Seed.effort)") }
+$CodexArgs += '-'
+Get-Content -Raw <ruta\al\prompt-r1.txt> |
+  & codex @CodexArgs > <ruta\al\thread-r1.jsonl> 2> <ruta\al\r1.err.txt>
+```
+
+Tras el seed, persistir `session-meta.json` en el scratch de esta skill igual que en una ronda 1
+normal, para que las rondas siguientes no dependan del `session.json` de otra skill.
 
 ## Prompt de revisión
 
@@ -437,6 +606,15 @@ Complejidad declarada: {complexity}.
 - No comentes estilo, wording ni formato. Foco en correctitud, completitud y riesgo.
 </grounding_rules>
 
+<constraints>
+Todo el contexto que necesitas está en este prompt y en el repositorio del working dir.
+- NO consultes memoria ni herramientas MCP de ningún tipo.
+- NO busques en la web.
+- NO accedas a nada fuera del working dir.
+- DENTRO del working dir, lee el código con libertad: fundamentar los findings es tu tarea.
+Emite tu veredicto en el formato pedido y termina el turno.
+</constraints>
+
 <structured_output_contract>
 {ver "Formato de salida" — respetar ese formato exacto}
 </structured_output_contract>
@@ -449,6 +627,14 @@ APRUEBA — no inventes findings para parecer productivo.
 ```
 
 `{foco según tipo}` se completa con la fila correspondiente de "Foco por tipo de artefacto".
+
+Sobre `<constraints>`: las tres prohibiciones evitan que el revisor se disperse —sin ellas, uno
+consultó memoria y buscó en la web antes de mirar el artefacto—, pero la cuarta línea es igual de
+importante y es lo que impide leerlas de más. Que el artefacto a criticar esté identificado **no**
+significa que lo estén los archivos relevantes: cazar reúso ignorado, dependencias no vistas y
+efectos colaterales exige leer código, y el contrato de invocación ya define `working_dir` como el
+directorio desde el que el revisor puede hacerlo. Solo se reemplaza por una lista cerrada cuando
+la llamadora declara explícitamente que su lista es exhaustiva.
 
 ## Formato de salida
 
@@ -515,10 +701,18 @@ Revisor: <codex-rescue | codex exec | claude -p | …>  ·  modelo: <model de co
 
 ### Resultado
 Veredicto final: APPROVED en 2 rondas. 1 aplicado, 1 rechazado, 0 disputas abiertas.
+Revisor: codex <modelo> (effort <esfuerzo>).
+
+**Límite:** un revisor independiente de otra familia aporta una crítica adicional; sigue siendo
+una sola revisión. No prueba correctitud y no reemplaza el gate humano.
 ```
 
 Si se agotan las rondas sin `APPROVED`, el "Resultado" lista las **disputas abiertas** para que
 el humano las arbitre en el gate.
+
+El bloque **Límite** va una vez por corrida, en `Resultado` — no por ronda ni en el veredicto
+crudo del revisor. Junto al modelo efectivo (ver "Prechequeos"), es lo que permite leer meses
+después con cuánta cobertura se aprobó ese artefacto.
 
 ## Configuración
 

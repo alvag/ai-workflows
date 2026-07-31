@@ -135,6 +135,8 @@ Si reconoces alguno de estos pensamientos, detente y vuelve a la regla que está
 | "El explorador no contestó, espero un poco más" | Deadline duro (regla 5): matar el proceso, `UNAVAILABLE`, seguir con lo propio. |
 | "Su enfoque se ve bien, lo adopto y listo" | Los enfoques compiten en la síntesis: evaluar en méritos y registrar el porqué en `synthesis.md`; enfoques viables pero distintos = divergencia al checkpoint. |
 | "Su duda la respondo yo mentalmente y sigo" | Las Incógnitas que cambiarían el diseño van a `clarify`; las respuestas quedan en `## Clarifications` de la spec. |
+| "Acá el problema es el test, no el código" (en `investigate`) | Puede serlo, y por eso está en el espacio de hipótesis — con la misma vara que las demás: observable, autoridad y refutación. Sin evidencia de respaldo va como **incógnita**, nunca como hipótesis líder. |
+| "El worker con MCP explora mejor, le dejo el entorno" | El aislamiento no es opcional: sin él hereda memoria, hooks y tools de ejecución que pueden alcanzar cosas fuera del working dir. Si no se puede garantizar, `UNAVAILABLE` (ver `reference.md` → "Preflight de aislamiento"). |
 
 ## Contrato de invocación (lo que pasa la skill llamadora)
 
@@ -151,8 +153,14 @@ Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario en modo directo) prove
   `findings-<familia>.md` de la fase `explore`, con resume oportunista del thread si
   `session.json` lo permite, o sesión fresca con esos archivos si no.
   En `investigate`: síntoma reportado del bug + evidencia de reproducción observada
-  (consola/red/pasos/stacktrace) si la hubo + prompt del usuario. No hay ticket ni AC
-  necesariamente; la evidencia de repro viaja como hechos observados, igual que en `explore`.
+  (consola/red/pasos/stacktrace) si la hubo + prompt del usuario + **el criterio de éxito y su
+  procedencia**, cuando existan. No hay ticket ni AC necesariamente; la evidencia de repro viaja
+  como hechos observados, igual que en `explore`.
+  El **criterio de éxito** es lo que define que el bug está resuelto: el test que falla, el
+  requisito, o la expectativa del usuario. Su **procedencia** es de dónde sale esa autoridad (un
+  AC, una decisión de producto, el juicio de quien reporta). Va en el paquete porque sin él la
+  hipótesis de que el criterio sea el defectuoso no se puede sostener ni descartar — ver "Alcance
+  de `investigate`".
   En `debate`: la **decisión a resolver** + las **opciones en juego** (si el usuario las dio;
   si no, el conductor las deriva y las declara explícitas) + el contexto de código/artefactos
   relevante. Cuando lo invoca sdd-flow: la ambigüedad de `clarify` o el trade-off contestable del
@@ -256,6 +264,17 @@ autónoma, con la decisión ya tomada, sin citar el debate.
 `investigate-<familia>.md` en `investigate`, `debate.md` en `debate`; si hay) · resumen de 3-5 líneas (hallazgos top +
 enfoque sugerido, o en `investigate` hipótesis líder) · ruta de `session.json` si existe.
 
+**Nota de límite (obligatoria, una vez por corrida).** Toda salida presentada al usuario cierra
+declarando el techo del método:
+
+> Dos exploraciones independientes aumentan la cobertura; no garantizan correctitud. Un punto
+> ciego compartido por ambas familias queda sin detectar.
+
+Va **una sola vez**, al final de la conclusión presentada, no repetida por sección ni por ronda.
+Cuando la corrida fue de una sola voz (ver "Rama terminal de una sola voz"), esta es la línea
+donde se declara. Es local y conversacional: **no** viaja a `spec.md` ni a `plan.md`, que siguen
+limpios de método (ver el paso 5 de "La síntesis").
+
 ## La síntesis (guía para la skill llamadora)
 
 La síntesis la ejecuta **el conductor** en todos los casos: los callers SDD (`sdd-flow`,
@@ -284,6 +303,12 @@ La síntesis la ejecuta **el conductor** en todos los casos: los callers SDD (`s
    divergencias no resueltas se presentan como **posiciones alternativas con su evidencia**,
    sin atribuirlas a quién las produjo. (El checkpoint conversacional del paso 4 es proceso,
    no entregable: ahí sí se puede nombrar fuentes.)
+
+   **Dos excepciones acotadas, ambas conversacionales.** La **nota de límite** (ver "Salida") y la
+   **advertencia de una sola voz** (ver "Rama terminal de una sola voz") sí hablan del método, y
+   deben hacerlo: sin ellas el usuario no sabe con qué cobertura está decidiendo. Viven en la
+   conclusión presentada y en los artefactos locales; **no** entran en `spec.md`, `plan.md` ni
+   ninguna superficie publicada.
 
 **En `investigate`** la síntesis es *bug-shaped*: en vez del "duelo de enfoques" se hace un
 **duelo de hipótesis de causa raíz** (evaluar las candidatas en méritos: evidencia, encaje con
@@ -314,6 +339,27 @@ valor en duplicarlo.
   (`superpowers:systematic-debugging`), que el conductor ofrece en su rol normal. Las hipótesis
   rankeadas + plan de verificación son su input directo. Editar/proponer parches en paralelo
   (una "carrera de fixes cross-model") sería otra skill distinta — **no** está en co-explore.
+
+### El criterio de éxito también es una hipótesis
+
+El espacio de hipótesis no se agota en el código. Un bug que resiste puede ser un **criterio de
+éxito defectuoso**: un test que verifica lo que no corresponde, que depende de un supuesto
+inválido, o que afirma un observable que su fuente no autoriza. Esa hipótesis compite con las
+demás desde la primera pasada — no hace falta esperar a que fallen varios intentos.
+
+**Toda hipótesis, esta incluida, declara tres cosas antes de ser rankeada:**
+
+| | Qué responde |
+|---|---|
+| **Observable** | Qué afirma exactamente que ocurre o debería ocurrir. |
+| **Autoridad** | Qué fuente lo respalda: un AC, una decisión de producto, el código, quien reporta. |
+| **Refutación** | Qué evidencia concreta la tumbaría. |
+
+Sin las tres, no se rankea. Y sin evidencia de respaldo, "el criterio está mal" se registra como
+**incógnita**, nunca como hipótesis líder: es la salida cómoda de este modo —siempre disponible,
+nunca falsable si no se la ata a evidencia— y por eso lleva la misma vara que las demás, no una
+más baja. Sostenerla exige el criterio de éxito en el paquete de contexto (ver "Contrato de
+invocación"); si no llegó, decirlo como incógnita en vez de especular.
 
 ## Configuración
 
@@ -357,19 +403,38 @@ Nunca bloquea el flujo SDD. Cuatro vías de falla, todas con el mismo final:
    conductor.
 2. Sin revisor de otra familia disponible → `UNAVAILABLE`; la llamadora sigue con la
    exploración del conductor. Distinguir según el preflight de capacidad: una **pared confirmada**
-   (binario ausente, auth rechazada, versión incompatible) es **terminal para la corrida** —no
-   reintentar en despachos siguientes de la misma tanda—; un **flake transitorio de lanzamiento**
-   (el binario existe pero flaqueó el arranque) admite 2-3 reintentos con backoff corto antes de
-   rendirse. (El deadline del punto 3, ya arrancado, es por-intento.)
+   (binario ausente, auth rechazada, versión incompatible, o **aislamiento no garantizable** — ver
+   `reference.md` → "Preflight de aislamiento") es **terminal para la corrida** —no reintentar en
+   despachos siguientes de la misma tanda—; un **flake transitorio de lanzamiento** (el binario
+   existe pero flaqueó el arranque) admite 2-3 reintentos con backoff corto antes de rendirse.
+   (El deadline del punto 3, ya arrancado, es por-intento.)
 3. Deadline vencido → se mata el proceso y se registra; la llamadora sigue con la exploración
    del conductor.
 4. Informe no parseable → se degrada (texto libre como contexto, o descarte si es ruido) y se
    registra; la llamadora sigue con la exploración del conductor.
 
-En `debate`, si la otra familia no está disponible (misma distinción pared confirmada vs flake del
-punto 2), el debate no corre: el conductor presenta su **análisis de una sola voz** y avisa en una
-línea que el debate no estuvo disponible. Nunca bloquea; en sdd-flow el flujo sigue al gate normal
-de `clarify`/`plan`.
+### Rama terminal de una sola voz (modo directo)
+
+En **modo directo**, "no hay explorador" no puede terminar en silencio: el usuario pidió algo y
+espera una respuesta. `debate` ya lo resolvía así y los otros modos siguen la misma rama.
+
+Cuando el explorador no está disponible (misma distinción pared confirmada vs flake del punto 2),
+el conductor:
+
+1. **Presenta igual su propio análisis**, con una advertencia de una línea: corrió con una sola
+   voz, sin contraste cross-model.
+2. **No escribe `synthesis.md`.** Las tres plantillas de síntesis presuponen dos mapas
+   independientes; una síntesis de una voz sola obligaría a fabricar el segundo o a llamar
+   co-exploración a algo que no lo fue. Si algo se persiste, va a un archivo inequívocamente
+   distinto de una síntesis y repite la advertencia.
+3. **Devuelve `UNAVAILABLE`** como estado. El contrato con las skills SDD no cambia: la llamadora
+   sigue con la exploración del conductor, igual que hoy.
+
+La regla no negociable "DOS MAPAS INDEPENDIENTES O NINGUNO" **no se relaja acá**: esta rama *es*
+el "ninguno", nombrado explícitamente en vez de quedar implícito. Lo que se entrega es el análisis
+del conductor, declarado como tal — nunca presentado como una co-exploración.
+
+En sdd-flow el flujo sigue al gate normal de `clarify`/`plan`; nunca bloquea.
 
 ## Router de intención
 

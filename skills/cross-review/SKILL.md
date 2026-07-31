@@ -194,6 +194,15 @@ Devolver a la skill llamadora (o presentar, en modo directo):
 - **Resumen de la crítica:** qué marcó el revisor, qué aplicó Claude y qué rechazó (con el porqué).
 - **Diff del artefacto** si hubo cambios.
 - **Ruta del `review-log.md`.**
+- **Nota de límite** (obligatoria, una vez por corrida):
+
+  > Un revisor independiente de otra familia aporta una crítica adicional; sigue siendo **una
+  > sola** revisión. No prueba correctitud y no reemplaza el gate humano.
+
+  Va **una vez, al cierre de la corrida** — no en el formato de salida del revisor ni repetida por
+  ronda. Es distinta de "no reemplaza el gate humano" a secas: eso dice quién decide, esto dice
+  cuánta cobertura compró la decisión. La asimetría importa: acá hay **un** revisor frente a un
+  autor, no dos voces simétricas como en `co-explore`.
 
 La llamadora presenta este resumen **junto al artefacto** en su gate humano (mismo STOP, sin gate
 extra). El humano aprueba con la segunda opinión ya a la vista.

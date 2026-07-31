@@ -44,6 +44,35 @@ Estructura XML compacta, mismo estilo que "Prompt de revisión" de `cross-review
 (operador, no colaborador). Una variante por `mode`: `explore` y `counter-plan` comparten el
 `output_contract` exacto; `investigate` usa uno propio (bug-shaped).
 
+### `{constraints}` — el bloque común de todas las plantillas
+
+Las cinco plantillas de este archivo —`explore`, `counter-plan`, `investigate` y las dos rondas de
+`debate`— llevan el mismo bloque. Se define una vez acá y cada plantilla lo referencia con el
+marcador `{constraints}`, en la posición indicada (entre `<focus>` y `<output_contract>`).
+
+```xml
+<constraints>
+Todo el contexto que necesitas está en este prompt y en el repositorio del working dir.
+- NO consultes memoria ni herramientas MCP de ningún tipo.
+- NO busques en la web.
+- NO accedas a nada fuera del working dir.
+- DENTRO del working dir, busca y lee con libertad: mapear el terreno es tu tarea.
+Emite tu salida en el formato pedido y termina el turno.
+</constraints>
+```
+
+Las tres primeras líneas son prohibiciones; la cuarta es igual de importante y es lo que impide
+leerlas de más. **Aislar la configuración no reemplaza este bloque**: los flags evitan que el
+worker *pueda* alcanzar MCP y hooks, pero no que decida buscar en la web ni que se vaya por las
+ramas. Medido acá: un worker sin estas restricciones hizo dos búsquedas web y 44 comandos antes de
+mirar el artefacto.
+
+**El perímetro no se cierra a una lista de archivos.** `explore` e `investigate` reciben un síntoma
+o un ticket, no un inventario: descubrir dónde vive el cambio y cuál es la cadena causal *es* el
+objetivo, y una lista cerrada esconde justamente las dependencias que nadie conocía. Solo cuando
+la skill llamadora declara **explícitamente** que su lista de archivos es exhaustiva, la cuarta
+línea se reemplaza por esa lista.
+
 ### Modo `explore` (pre-spec)
 
 ```xml
@@ -65,6 +94,8 @@ lo que requeriría ver la aplicación corriendo.
 Mapea el terreno para este cambio: dónde vive lo que hay que tocar, qué existe para reusar,
 qué puede romperse, y qué enfoque seguirías. Referencia todo con path:line.
 </focus>
+
+{constraints}
 
 <output_contract>
 Tu ÚLTIMA salida debe ser EXACTAMENTE este markdown (headings literales):
@@ -101,6 +132,8 @@ ahí el reparto tentativo — qué repo cubre qué AC y sus depends_on. Referenc
 path:line.
 </focus>
 
+{constraints}
+
 <output_contract>
 Tu ÚLTIMA salida debe ser EXACTAMENTE este markdown (headings literales):
 ## Mapa\n## Hipótesis\n## Puntos de reúso\n## Riesgos\n## Incógnitas\n## Supuestos\n## Enfoque sugerido
@@ -130,7 +163,8 @@ que solo podrías confirmar ejecutando.
 
 <context_package>
 {síntoma reportado del bug + evidencia de reproducción observada (consola/red/stacktrace/pasos)
-si la hubo + prompt del usuario}
+si la hubo + prompt del usuario + criterio de éxito y su procedencia si existen: qué define que
+el bug está resuelto (test, requisito, expectativa) y qué fuente lo autoriza}
 </context_package>
 
 <focus>
@@ -138,13 +172,23 @@ Rastrea la causa raíz: dónde vive el problema, qué cadena de código lo produ
 hipótesis explican el síntoma. Rankea tus hipótesis por probabilidad y, para cada una, di qué
 evidencia la confirmaría. Referencia todo con path:line. No propongas el arreglo: el objetivo
 es entender la causa, no resolverla.
+
+El espacio de hipótesis incluye el criterio de éxito: si te lo dieron, evalúa también si el
+defecto está ahí — un test que verifica lo que no corresponde, que depende de un supuesto
+inválido, o que afirma un observable que su fuente no autoriza. Esa hipótesis lleva la MISMA vara
+que las del código: sin evidencia de respaldo va en Incógnitas, nunca como hipótesis líder. Si no
+te dieron el criterio de éxito, decláralo como incógnita en vez de especular sobre él.
 </focus>
+
+{constraints}
 
 <output_contract>
 Tu ÚLTIMA salida debe ser EXACTAMENTE este markdown (headings literales):
 ## Síntoma\n## Mapa de código\n## Hipótesis de causa raíz\n## Incógnitas\n## Supuestos\n## Plan de verificación
-- Hipótesis de causa raíz: rankeadas; cada una con evidencia de respaldo, confianza (alta/media/
-  baja) y cómo confirmarla (qué correr u observar).
+- Hipótesis de causa raíz: rankeadas; cada una declara OBSERVABLE (qué afirma exactamente),
+  AUTORIDAD (qué fuente lo respalda: código, AC, decisión de producto, quien reporta),
+  REFUTACIÓN (qué evidencia la tumbaría), más evidencia de respaldo, confianza (alta/media/baja)
+  y cómo confirmarla. Una hipótesis sin las tres primeras no se rankea: va a Incógnitas.
 - Incógnitas: lo que no pudiste determinar leyendo; Supuestos: qué asumiste para seguir, y por qué.
 - Plan de verificación: qué verificar primero y con qué, para el handoff a systematic-debugging.
 Cierra con la línea: STATUS: done
@@ -174,6 +218,8 @@ código en {working_dir} para fundamentar, pero no edites ni ejecutes nada.
 {contexto relevante: spec/plan si los hay, AC, contratos, complejidad}
 </context>
 
+{constraints}
+
 <output_contract>
 Devuelve exactamente:
 POSTURA: <hacia qué opción te inclinas, o "sin preferencia" con el porqué>
@@ -194,6 +240,8 @@ Critícala de forma adversarial y luego da tu postura ACTUALIZADA. SOLO LECTURA.
 <other_position>
 {la postura actual del conductor, del delta de la ronda anterior}
 </other_position>
+
+{constraints}
 
 <output_contract>
 CRÍTICA: <qué falla, qué no consideró, qué riesgo ignora la otra postura>
@@ -254,11 +302,14 @@ En `investigate` los 7 headings de arriba se reemplazan por estos 6, en este ord
 <archivos/módulos en la cadena del bug, referenciados con path:line>
 
 ## Hipótesis de causa raíz
-<rankeadas; cada una: hipótesis · evidencia de respaldo · confianza (alta/media/baja) ·
+<rankeadas; cada una: hipótesis · observable (qué afirma) · autoridad (qué fuente lo respalda) ·
+ refutación (qué evidencia la tumbaría) · evidencia de respaldo · confianza (alta/media/baja) ·
  cómo confirmarla (qué correr u observar)>
 
 ## Incógnitas
-<lo que no se pudo determinar leyendo — candidato a confirmar ejecutando>
+<lo que no se pudo determinar leyendo — candidato a confirmar ejecutando.
+ Acá van también las hipótesis sin evidencia de respaldo, incluida "el criterio de éxito está
+ mal" cuando no se la pudo sostener: sin evidencia no se rankea>
 
 ## Supuestos
 <qué se asumió para seguir investigando sin bloquearse, y por qué>
@@ -269,6 +320,12 @@ En `investigate` los 7 headings de arriba se reemplazan por estos 6, en este ord
 
 Se escribe en `co-explore/investigate-<familia>.md`. Misma degradación que los otros modos
 (regla 4 del `SKILL.md`) si la salida no respeta el formato.
+
+El **criterio de éxito** entra en este formato como una hipótesis más: si el defecto está en el
+test o en el requisito y no en el código, aparece rankeada en "Hipótesis de causa raíz" con su
+evidencia; si se sospecha pero no se puede sostener, baja a "Incógnitas". La vara es la misma que
+para cualquier hipótesis del código — ver `SKILL.md` → "El criterio de éxito también es una
+hipótesis".
 
 ## Plantilla de `synthesis.md`
 
@@ -295,6 +352,11 @@ después de que ambos cerraron su exploración:
 
 ## Supuestos del revisor a vigilar
 - <supuesto> (verificar en la crítica de la spec)
+
+## Límite de esta exploración
+- Dos exploraciones independientes aumentan la cobertura; no garantizan correctitud. Un punto
+  ciego compartido por ambas familias queda sin detectar.
+- <si corrió una sola voz: declararlo acá — ver `SKILL.md` → "Rama terminal de una sola voz">
 ```
 
 - **Convergencias / Divergencias:** tabla corta, no un volcado completo de ambos informes —
@@ -338,6 +400,11 @@ investigaciones. Se escribe en `co-explore/synthesis.md` (mismo archivo, conteni
 
 ## Divergencia no resuelta (si la hay)
 - <ambas posiciones, con su evidencia; se presentan al usuario, no se fuerza consenso>
+
+## Límite de esta investigación
+- Dos investigaciones independientes aumentan la cobertura; no garantizan correctitud. Un punto
+  ciego compartido por ambas familias queda sin detectar.
+- Ninguna hipótesis está verificada: verificar es el paso siguiente y es de otra skill.
 ```
 
 - **Duelo de hipótesis:** evaluar las causas raíz candidatas en méritos (evidencia, encaje con
@@ -382,6 +449,10 @@ revisor 🟠 Claude.)
 
 ## Rondas
 Convergió en <n> rondas (de max_rounds <m>). <nota si convergió temprano por falta de movimiento>.
+
+## Límite de este debate
+- Dos posturas independientes afilan la decisión; no garantizan que la opción correcta esté entre
+  las que se debatieron. Un punto ciego compartido por ambas familias queda sin detectar.
 
 > El debate NO elige: la decisión es del usuario. Lo que se registre luego en spec.md/plan.md va
 > limpio de método/familias (ver SKILL.md → "Publicado vs local").
@@ -435,12 +506,41 @@ Si el explorador de la otra familia no está disponible → `UNAVAILABLE` (regla
 `cross-review/reference.md` → Vía B, lanzado en background porque `explore` nunca bloquea
 al conductor (a diferencia de cross-review, que en Claude Code prefiere el camino sync):
 
+**Preflight de aislamiento (fail-closed).** Antes de lanzar, comprobar que la versión instalada
+permite aislar al worker: que `codex exec --help` ofrezca `--ignore-user-config` y que
+`codex features list` reporte `hooks`, `apps` y `plugins`. Si falta cualquiera, **no se lanza** y
+se devuelve `UNAVAILABLE` (regla 6 del `SKILL.md`). Acá pesa más que en una invocación sync: el
+lanzamiento es en **background**, así que un fail-open dejaría un proceso sin aislar corriendo sin
+nadie mirándolo. `-s read-only` acota lo que el explorador escribe en disco, no los efectos
+remotos de una tool MCP.
+
 ```bash
 # POSIX — el prompt ya está escrito a archivo con la tool Write (nunca inline, ni echo/heredoc):
 mkdir -p co-explore/scratch
-codex exec -s read-only -C <working_dir> --skip-git-repo-check --json \
-    --output-last-message co-explore/scratch/explorer.out \
-    - < co-explore/scratch/prompt.txt \
+# Modelo y esfuerzo del usuario: --ignore-user-config los descarta junto con el resto del config,
+# así que se leen antes y se pasan explícitos. Solo vale una asignación RAÍZ inequívoca del TOML
+# (anterior a la primera cabecera de tabla, comillas dobles, una sola ocurrencia); si no, se deja
+# el default del CLI en vez de forzar un valor sacado de una tabla o de un perfil inactivo.
+CODEX_CFG="${CODEX_HOME:-$HOME/.codex}/config.toml"
+ROOT=$(awk '/^[[:space:]]*\[/{exit} {print}' "$CODEX_CFG" 2>/dev/null)
+read_root_key() {
+  n=$(printf '%s\n' "$ROOT" | grep -cE "^$1[[:space:]]*=[[:space:]]*\"[^\"]*\"[[:space:]]*$")
+  [ "$n" -eq 1 ] && printf '%s\n' "$ROOT" |
+    sed -n "s/^$1[[:space:]]*=[[:space:]]*\"\([^\"]*\)\".*/\1/p"
+}
+MODEL=$(read_root_key model)
+EFFORT=$(read_root_key model_reasoning_effort)
+
+# Argumentos incrementales, NUNCA ${MODEL:+-m "$MODEL"}: en zsh esa expansión no hace field
+# splitting y `-m` viaja pegado a su valor, con lo que el modelo llega con un espacio inicial y
+# la API lo rechaza.
+set -- exec --ignore-user-config --disable hooks --disable apps --disable plugins \
+       -s read-only -C <working_dir> --skip-git-repo-check --json \
+       --output-last-message co-explore/scratch/explorer.out
+[ -n "$MODEL" ]  && set -- "$@" -m "$MODEL"
+[ -n "$EFFORT" ] && set -- "$@" -c "model_reasoning_effort=$EFFORT"
+set -- "$@" -
+codex "$@" < co-explore/scratch/prompt.txt \
     > co-explore/scratch/explorer-thread.jsonl \
     2> co-explore/scratch/explorer.err &
 PID=$!
@@ -449,13 +549,36 @@ echo "$PID" > co-explore/scratch/explorer.pid
 ```powershell
 # PowerShell:
 New-Item -ItemType Directory -Force -Path co-explore\scratch | Out-Null
+$CodexCfg = Join-Path ($env:CODEX_HOME ?? "$HOME\.codex") 'config.toml'
+$Lines = @(Get-Content $CodexCfg -ErrorAction SilentlyContinue)
+$Idx = ($Lines | Select-String -Pattern '^\s*\[' | Select-Object -First 1).LineNumber
+$Root = if (-not $Idx) { $Lines } elseif ($Idx -eq 1) { @() } else { $Lines[0..($Idx - 2)] }
+function Read-RootKey($Key) {
+  $m = @($Root | Select-String -Pattern "^$Key\s*=\s*`"([^`"]*)`"\s*$")
+  if ($m.Count -eq 1) { $m[0].Matches.Groups[1].Value }
+}
+$Model  = Read-RootKey 'model'
+$Effort = Read-RootKey 'model_reasoning_effort'
+
+$CodexArgs = @('exec','--ignore-user-config','--disable','hooks','--disable','apps',
+               '--disable','plugins','-s','read-only','-C','<working_dir>',
+               '--skip-git-repo-check','--json',
+               '--output-last-message','co-explore\scratch\explorer.out')
+if ($Model)  { $CodexArgs += @('-m', $Model) }
+if ($Effort) { $CodexArgs += @('-c', "model_reasoning_effort=$Effort") }
 $proc = Start-Process -FilePath codex -NoNewWindow -PassThru `
   -RedirectStandardInput  co-explore\scratch\prompt.txt `
   -RedirectStandardOutput co-explore\scratch\explorer-thread.jsonl `
   -RedirectStandardError  co-explore\scratch\explorer.err `
-  -ArgumentList 'exec','-s','read-only','-C','<working_dir>','--skip-git-repo-check','--json','--output-last-message','co-explore\scratch\explorer.out'
+  -ArgumentList $CodexArgs
 $proc.Id | Out-File co-explore\scratch\explorer.pid
 ```
+
+Los cuatro flags de aislamiento son lo que evita que el explorador herede los MCP del entorno, los
+hooks locales y las instrucciones de modelo del usuario. Medido en este repo: un worker sin aislar
+arrancó consultando memoria y haciendo búsquedas web, y no terminó en 600 s; el mismo prompt
+aislado cerró en 297 s con cero llamadas MCP. Todo el contexto que el explorador necesita viaja en
+el prompt, así que no pierde nada.
 
 `-s read-only` (`--sandbox read-only`) garantiza que el explorador no escribe nada en el repo;
 `--output-last-message` deja el informe final —el que debe terminar en `STATUS: done`— en
@@ -604,11 +727,19 @@ debe tocarse), con los mismos nombres.
 `$SESSION_ID`/`$SessionId` propio), escribir:
 
 ```json
-{ "tool": "codex", "session_id": "<id-o-ruta-que-permita-resume>", "mode": "explore", "created_at": "<ISO-8601>" }
+{ "tool": "codex", "session_id": "<id-o-ruta-que-permita-resume>", "mode": "explore",
+  "created_at": "<ISO-8601>", "model": "<modelo efectivo>", "effort": "<esfuerzo efectivo>" }
 ```
 
 Valores **ilustrativos**: `tool` refleja la vía realmente usada (`codex` en Vía B, `claude` en
 Vía C) y `mode` el modo corrido (`explore` o `counter-plan`) — no son literales fijos.
+
+`model` y `effort` son los valores con los que **realmente** corrió el explorador, y existen para
+que quien reanude esta sesión los repita: el resume corre con `--ignore-user-config`, así que si no
+los recibe cae al default del CLI y cambia de modelo a mitad de conversación. **Se omiten** cuando
+no se pudieron determinar del config de forma inequívoca — su ausencia significa "usar el default
+del CLI", nunca una cadena vacía que se pase como flag. Los cuatro campos originales no cambian de
+nombre: `session_id` sigue siendo lo que `cross-review` busca.
 
 Lo consume `cross-review` para el resume oportunista en la crítica informada del gate; si el
 runtime no expone sesión, no escribir el archivo — la ausencia del archivo es la señal, no un
