@@ -1,33 +1,28 @@
 ---
 name: co-explore
 description: >-
-  Exploración paralela cross-model: un modelo de otra familia que el autor
-  (Codex cuando conduce Claude; Claude cuando conduce Codex) explora el código
-  en background, read-only, y devuelve un informe estructurado propio; el
-  conductor explora en paralelo y sintetiza los dos mapas independientes. Cuatro
-  modos: "explore" (mapear terreno antes de una spec), "counter-plan"
-  (contra-enfoque antes de un plan/reparto), "investigate" (investigar un bug:
-  hipótesis de causa raíz rankeadas + plan de verificación, sin arreglar) y
-  "debate" (ayudar a decidir entre opciones abiertas cuando no estás seguro:
-  las dos familias forman posturas independientes, se critican en rondas y el
-  conductor sintetiza sin elegir).
-  explore/counter-plan los invocan sdd-flow y sdd-orchestrator cuando
-  co_explore está activo; investigate es standalone, fuera de todo
-  flujo SDD. Invocación directa: "/co-explore <ticket|descripción|bug>", "que
-  Codex explore esto en paralelo", "que Codex investigue este bug en paralelo",
-  "/co-explore debate <decisión>" o "no sé si X o Y, que Codex y tú lo debatan".
-  NO revisa artefactos escritos (eso es cross-review) ni arregla el bug (eso
-  es systematic-debugging): produce hallazgos e hipótesis propios que compiten
-  con los del conductor. No invocarla espontáneamente: solo ante un pedido
+  Exploración paralela cross-model con dos workers frescos: uno por familia
+  (Codex y Claude) explora el mismo código read-only, con el mismo paquete de
+  contexto y sin verse entre sí. El conductor NO explora — arbitra: lee el
+  índice compacto de cada uno y abre el detalle solo ante divergencia, alto
+  riesgo, baja confianza o una decisión a arbitrar. Cuatro modos: "explore"
+  (mapear terreno antes de una spec), "counter-plan" (contra-enfoque antes de un
+  plan/reparto), "investigate" (causas raíz rankeadas + plan de verificación,
+  sin arreglar) y "debate" (decidir entre opciones abiertas; único modo donde el
+  conductor es voz). explore/counter-plan los invocan sdd-flow y
+  sdd-orchestrator; investigate y debate son standalone. Invocación directa:
+  "/co-explore <ticket|bug>" o "que Codex explore esto en paralelo". NO revisa
+  artefactos escritos (eso es cross-review) ni arregla bugs (eso es
+  systematic-debugging). No invocarla espontáneamente: solo ante pedido
   explícito del usuario o invocada por sdd-flow/sdd-orchestrator.
 ---
 
 # co-explore — dos mapas independientes que convergen
 
-Helper que despacha a un modelo de otra familia (Codex cuando conduce Claude; Claude cuando
-conduce Codex) a explorar el mismo código en background, read-only, y a devolver un informe
-estructurado propio; mientras tanto el conductor hace su propia exploración — no hay espera
-secuencial, ambos avanzan en paralelo — y al final el conductor **sintetiza** los dos mapas.
+Helper que despacha **dos workers frescos en paralelo** —uno por familia, Codex y Claude— a
+explorar el mismo código read-only con el mismo paquete de contexto y sin verse entre sí. El
+conductor **no explora**: arbitra. Lee siempre el **índice** de cada worker y abre el **detalle**
+solo ante un disparador, y al final escribe el artefacto de cierre.
 Sirve para cuatro cosas, según `mode`:
 
 - **`explore`** (pre-spec, lo invoca SDD): mapear el terreno antes de escribir una `spec.md` —
@@ -66,13 +61,17 @@ concretas** entre las que no sabes cuál elegir, eso no es mapa (`explore`) ni v
 enfoque ya elegido (`cross-review` draft) — es una **decisión** entre alternativas → `debate`.
 
 ```
-paquete de contexto ──► [co-explore: revisor explora en background, read-only]
-                              │                        (el conductor explora en paralelo
-                              ▼                         por su cuenta — no espera)
-                    informe-<familia>.md ──► síntesis del conductor ──► spec / plan / conclusión
-                    (+ session.json opcional)   (convergencias/divergencias, competencia de
-                                                 enfoques o de hipótesis de causa raíz)
+                        ┌──► worker Codex  ──► índice + detalle ──┐
+paquete de contexto ────┤    (read-only, aislado)                 ├──► conductor: ÁRBITRO
+   (idéntico, sin       └──► worker Claude ──► índice + detalle ──┘     · lee los dos ÍNDICES
+    hipótesis de nadie)                                                 · abre DETALLE solo por
+                                                                          disparador
+                                                                        · cierre + envelope
 ```
+
+El conductor no es una tercera voz: no produce mapa. Por eso los dos workers pueden ser uno de cada
+familia aunque uno comparta la del conductor — la diversidad vive entre **los dos mapas que se
+comparan**.
 
 ## Reglas no negociables
 
@@ -85,15 +84,15 @@ paquete de contexto ──► [co-explore: revisor explora en background, read-o
    —reproducir, correr tests, logging efímero— pero SOLO en un **worktree descartable** que se
    tira al cerrar; el revisor sigue L0 read-only siempre y lee un checkout estable, nunca el
    worktree que el conductor está mutando (ver `reference.md` → "Capacidades y worktree
-   (investigate)").
-2. **Independencia (anti-anclaje).** El explorador arranca únicamente con el paquete de
-   contexto: nunca recibe hallazgos, hipótesis ni borradores del conductor. Es simétrico — la
-   skill llamadora tampoco lee `findings-<familia>.md` del revisor hasta haber cerrado su
-   propia exploración y escrito su propio informe. El valor está en dos mapas sin contaminar,
-   no en uno que copia al otro.
-   En `debate` la independencia rige la **ronda 0** (ambas familias forman su postura a ciegas,
-   sin verse); de la ronda 1 en adelante el **cruce** de posturas es deliberado (cada una critica
-   la del otro) — es la excepción diseñada de este modo, no una violación de la independencia.
+   (`investigate`)").
+2. **Independencia (anti-anclaje), por modo.** En `explore`, `counter-plan` e `investigate` la
+   independencia rige **entre los dos workers**: ninguno ve la salida del otro, ni ahora ni en
+   fases posteriores, y ambos arrancan solo con el paquete de contexto — nunca con hallazgos,
+   hipótesis ni borradores de nadie. En `debate` rige **conductor ↔ worker en la ronda 0**, porque
+   ahí el conductor sí es una de las dos voces; del cruce en adelante el intercambio es deliberado.
+   El valor está en dos mapas sin contaminar, no en uno que copia al otro.
+   Ver `reference.md` → "Independencia por modo (regla 2 en topología dual)".
+
 3. **Nunca se bloquea por dudas.** El explorador corre no-interactivo: no puede preguntar a
    mitad de camino ni esperar una respuesta. Toda duda se registra y se sigue explorando — una
    pregunta abierta que no pudo resolver va a `## Incógnitas`; una decisión que tomó para
@@ -110,12 +109,19 @@ paquete de contexto ──► [co-explore: revisor explora en background, read-o
 6. **Opcional y degradable.** Es una capacidad, no un requisito. Sin revisor de otra familia
    disponible, con un fallo en runtime, o con `mode: off`, el resultado es `UNAVAILABLE` en una
    línea y la llamadora sigue con la exploración del conductor solamente.
-7. **Revisor de OTRA familia, por capacidad.** Misma regla 7 de `cross-review`: hay dos
-   familias — Claude y GPT/Codex —, el autor es la del agente que conduce la skill (sin importar
-   la superficie: CLI, app de escritorio, IDE, web) y el revisor es siempre el de la otra. El
-   algoritmo canónico vive en
-   `cross-review/reference.md` → "Descubrir el revisor"; acá solo el puntero + un fallback
-   mínimo (ver `reference.md` → "Descubrir el revisor (puntero + fallback)").
+7. **Dos familias, y una excepción acotada.** Hay **dos** familias — Claude y GPT/Codex — y el
+   autor es la del agente que conduce la skill. En los tres modos duales se despacha **un worker de
+   cada familia**, así que uno comparte familia con el conductor: es aceptable **solo acá**, porque
+   el conductor ya no es una voz y la diversidad se conserva **entre los dos mapas comparados**. La
+   excepción **no** alcanza al revisor de `cross-review` ni al implementador de `cross-implement`,
+   donde hay una sola salida delegada y la familia opuesta es lo único que rompe la correlación de
+   errores. Descubrimiento por capacidad, nunca por nombre de tool: algoritmo canónico en
+   `cross-review/reference.md` → "Descubrir el revisor"; fundamento de la excepción en
+   `reference.md` → "Excepción de familia (topología dual)".
+8. **El conductor arbitra, no explora.** En la rama nominal no construye un mapa propio del
+   repositorio: lee siempre el índice completo de cada worker y abre detalle **solo** por
+   disparador. Cuatro cosas no son explorar y siguen vigentes — ver "Lectura selectiva" y
+   `reference.md` → "Carve-outs de la regla del conductor".
 
 ## Red flags — detente y reconsidera
 
@@ -130,13 +136,16 @@ Si reconoces alguno de estos pensamientos, detente y vuelve a la regla que está
 
 | Racionalización | Realidad |
 |---|---|
-| "Le paso al explorador mi hipótesis para que no pierda tiempo" | Rompe la independencia (regla 2): el valor está en dos mapas sin contaminar. Solo viaja el paquete de contexto. |
-| "Miro su informe mientras exploro, total ya terminó" | El conductor no lee `findings-*` hasta cerrar y escribir su propio informe. |
-| "El explorador no contestó, espero un poco más" | Deadline duro (regla 5): matar el proceso, `UNAVAILABLE`, seguir con lo propio. |
-| "Su enfoque se ve bien, lo adopto y listo" | Los enfoques compiten en la síntesis: evaluar en méritos y registrar el porqué en `synthesis.md`; enfoques viables pero distintos = divergencia al checkpoint. |
+| "Le paso a un worker mi hipótesis para que no pierda tiempo" | Rompe la independencia (regla 2): los dos arrancan solo con el paquete de contexto, idéntico. |
+| "Abro el detalle completo, total ya lo tengo en disco" | `cat detail-*` anula el ahorro que este contrato compra. Índice siempre; detalle solo por disparador y solo por ID. |
+| "Un worker no contestó, espero un poco más" | Deadline duro (regla 5) y **por worker**, desde su propio lanzamiento: matarlo, clasificarlo y resolver la rama con lo que haya. |
+| "Su enfoque se ve bien, lo adopto y listo" | Los enfoques compiten en el cierre: evaluar en méritos y registrar el porqué; viables pero distintos = divergencia al checkpoint. |
 | "Su duda la respondo yo mentalmente y sigo" | Las Incógnitas que cambiarían el diseño van a `clarify`; las respuestas quedan en `## Clarifications` de la spec. |
 | "Acá el problema es el test, no el código" (en `investigate`) | Puede serlo, y por eso está en el espacio de hipótesis — con la misma vara que las demás: observable, autoridad y refutación. Sin evidencia de respaldo va como **incógnita**, nunca como hipótesis líder. |
-| "El worker con MCP explora mejor, le dejo el entorno" | El aislamiento no es opcional: sin él hereda memoria, hooks y tools de ejecución que pueden alcanzar cosas fuera del working dir. Si no se puede garantizar, `UNAVAILABLE` (ver `reference.md` → "Preflight de aislamiento"). |
+| "El worker con MCP explora mejor, le dejo el entorno" | El aislamiento no es opcional: sin él hereda memoria, hooks y tools que pueden alcanzar cosas fuera del working dir. Sin garantía, `UNAVAILABLE`. |
+| "Lanzo uno, veo qué devuelve, y después lanzo el otro" | Duplica la latencia cumpliendo la letra. El orden es preparar · truncar · lanzar A · lanzar B · esperar; `execution` decide cuándo vuelve el control, no la concurrencia. |
+| "Trunco al entrar al modo, así arranco limpio" | Truncar antes de decidir destruye el artefacto de cierre que la retoma necesita leer, y convierte cada retoma en un redespacho. Primero decidir, después truncar. |
+| "El índice ya me dice bastante, no hace falta el detalle" | Al revés del anterior, y también un error: divergencia, `high`, `low` o una decisión a arbitrar **obligan** a abrir esa entrada. |
 
 ## Contrato de invocación (lo que pasa la skill llamadora)
 
@@ -149,9 +158,12 @@ Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario en modo directo) prove
   **evidencia observada de reproducción** si la hubo (consola/red/pasos, capturada por la
   llamadora ANTES de despachar: el explorador es headless y no puede abrir URLs; ver el `<task>`
   del prompt). La evidencia viaja como hechos observados, nunca como hipótesis de la llamadora.
-  En `counter-plan`: ruta de la `spec.md` (o `master-spec.md`) aprobada + ruta del propio
-  `findings-<familia>.md` de la fase `explore`, con resume oportunista del thread si
-  `session.json` lo permite, o sesión fresca con esos archivos si no.
+  En `counter-plan`: **núcleo común byte-idéntico** para ambos workers (la `spec.md` o
+  `master-spec.md` aprobada + los paths de `domain_context`) **+ un anexo privado** con el índice y
+  el detalle **de la propia familia** en la fase `explore`, y solo si ese worker quedó `READY`. El
+  anexo viaja **concatenado dentro del prompt**, nunca como una ruta: en multi-repo cae fuera del
+  `working_dir`. El artefacto de la otra familia está prohibido, y "fresco" significa **sesión
+  nueva, sin resume**.
   En `investigate`: síntoma reportado del bug + evidencia de reproducción observada
   (consola/red/pasos/stacktrace) si la hubo + prompt del usuario + **el criterio de éxito y su
   procedencia**, cuando existan. No hay ticket ni AC necesariamente; la evidencia de repro viaja
@@ -178,91 +190,83 @@ Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario en modo directo) prove
 
 ### Pasos de ejecución
 
-1. **Resolver el revisor** (regla 7). Sin revisor de otra familia disponible → `UNAVAILABLE`.
-2. **Armar el prompt** desde `reference.md` → "Prompt de exploración" (una variante por modo),
-   con el paquete de contexto inline.
-3. **Lanzar en background, read-only**, con el stdout redirigido a
-   `co-explore/scratch/explorer.out`; guardar el PID y, si el runtime lo expone, la referencia
-   de sesión en `co-explore/session.json`.
-4. En `explore`, **devolver el control de inmediato** ("explorando en background") — la
-   llamadora hace su propia exploración y vuelve a consultar en el punto de encuentro. En
-   `counter-plan` o con `execution: sync`, esperar con tope.
-5. **Punto de encuentro:** si el explorador terminó, normalizar la salida al "Formato del
-   informe" y escribirla en `co-explore/findings-<familia>.md` (`explore`),
-   `co-explore/counter-plan-<familia>.md` (`counter-plan`) o
-   `co-explore/investigate-<familia>.md` (`investigate`) — ver `reference.md` → "Archivos de
-   trabajo (scratch)". Si venció el `deadline`, matar el proceso y devolver `UNAVAILABLE`.
+1. **Preflight de aislamiento** (fail-closed) y resolución de los dos CLIs. Sin ninguno de los dos
+   → `UNAVAILABLE`; con uno solo → la escalera decide la rama (ver "Degradación").
+2. **Armar los dos prompts** desde `reference.md` → "Prompt de explore / counter-plan / investigate (dos capas)", con el mismo
+   paquete de contexto. En `counter-plan`, núcleo común byte-idéntico + anexo privado de la propia
+   familia, concatenado por el shell.
+3. **Decidir retoma antes de truncar** (ver "Retoma"), y solo si corresponde redespachar, truncar
+   las rutas exactas del modo.
+4. **Lanzar los dos, y recién entonces esperar.** El orden es fijo: preparar · truncar · lanzar A ·
+   lanzar B · esperar. `execution: sync | background` gobierna **cuándo vuelve el control a la
+   llamadora**, nunca la concurrencia: lanzar uno, esperarlo y después lanzar el otro duplica la
+   latencia cumpliendo la letra. Cada deadline corre desde **su** lanzamiento.
+5. **Punto de encuentro:** por cada worker, validar y clasificar en `READY` / `INVALID` /
+   `UNAVAILABLE` (`reference.md` → "Estados del worker"), partir su salida en índice y detalle, y
+   resolver la rama de la escalera.
+6. **Arbitrar** con la lectura selectiva y escribir el artefacto de cierre con publicación atómica.
 
-**Modo directo** (el usuario invoca `/co-explore <ticket|descripción|bug>` o pide en lenguaje
-natural una exploración/investigación paralela):
+Receta completa en `reference.md` → "Fan-out dual y orden de lanzamiento".
 
-1. **Inferir el modo desde la intención.** Un bug, error o "por qué falla X" → `investigate`;
-   una decisión abierta entre opciones ("no sé si X o Y", "¿conviene X o Y?", "debatan si…") →
-   `debate`; preparar un cambio/feature o mapear terreno → `explore`. (`counter-plan` no se
-   invoca directo: presupone una spec aprobada.)
-2. **Armar el `context_package`** desde el prompt (+ tracker si hay clave y MCP disponible; en
-   `investigate`, + evidencia de reproducción que el conductor haya capturado — el explorador es
-   headless y no abre URLs).
-3. **Correr los pasos de arriba** y, a diferencia del modo embebido, **ejecutar la síntesis
-   completa** (ver "La síntesis"): el conductor escribe su propio mapa, lee el del revisor,
-   compara y **presenta la conclusión al usuario** — no un solo mapa, y redactada según el
-   paso 5 de "La síntesis": los hallazgos, sin la mecánica.
-4. **En `investigate`, tras presentar**, el conductor **ofrece** el handoff a la verificación:
-   "¿verifico la hipótesis líder con `superpowers:systematic-debugging`?". Es una invocación de
-   otra skill, opcional y a cargo del conductor en su rol normal — co-explore no verifica ni
-   arregla (ver "Alcance de `investigate`").
+## Lectura selectiva
+
+El conductor lee **siempre** el índice completo de cada contribuyente. Abre una entrada del detalle
+**solo** ante uno de estos cuatro disparadores, todos decidibles leyendo la fila del índice:
+
+| Disparador | Cómo se reconoce |
+|---|---|
+| divergencia entre contribuyentes | dos entradas sobre lo mismo que no coinciden, **o una sola** cuando el otro no vio nada |
+| alto riesgo | `severidad = high` |
+| baja confianza | `confianza = low` |
+| decisión que arbitrar | dos enfoques viables y distintos |
+
+**Abrir el archivo de detalle completo está prohibido.** `cat detail-*` anula el ahorro que este
+contrato compra: la única forma de abrir una entrada es por su ID, cortando en el siguiente heading
+(`reference.md` → "Apertura puntual de una entrada").
+
+**El árbitro sí puede verificar la evidencia.** Ante un disparador puede leer los `path:line` que
+cita **esa** entrada, y registra qué IDs verificó. Sin eso, ante una divergencia factual solo podría
+elegir entre dos narraciones y los punteros del índice serían decorativos. Es acotado: lecturas
+puntuales de entradas disparadas, **nunca** búsquedas amplias ni un mapa propio.
+
+## Retoma
+
+Un flujo SDD puede pausarse y retomarse en una sesión nueva. La regla es binaria:
+
+- **Existe el artefacto de cierre del modo y valida** → la corrida terminó: se usa lo que hay, sin
+  recalcular rama ni diversidad (el cierre las lleva como campos cerrados). Vale en sus **dos**
+  formas: síntesis en las ramas 1-3, cierre conductor-only en la rama 4.
+- **No existe o no valida, y el consumidor tampoco** → se **redespacha** el modo completo. Los
+  workers son baratos y no consumen contexto del conductor: redespachar sale más barato que
+  reconstruir un estado parcial.
+- **No existe o no valida, pero el consumidor ya está escrito** → **falla cerrado**: sin anexo, sin
+  seed, sin contexto de co-explore, declarado en una línea. Redespachar acá podría traer un riesgo
+  `high` que ese artefacto —quizá ya aprobado en su gate— nunca arbitró.
+
+El orden importa: **primero decidir, después truncar**. Detalle, matriz de consumidores y los dos
+ejes (artefacto vs capacidad actual) en `reference.md` → "Decisión de retoma".
 
 ## El loop de debate (modo `debate`)
 
-A diferencia de los otros modos (una sola pasada), `debate` itera. El conductor participa como
-una voz y la otra familia es la otra; el conductor además sintetiza (el usuario es el árbitro).
+A diferencia de los otros modos (una sola pasada), `debate` itera: el conductor participa como una
+voz, la otra familia es la otra, y el conductor además sintetiza — el usuario es el árbitro. R0 son
+posturas independientes (regla 2), R1..N cruzan y critican con tope duro `max_rounds`, y la síntesis
+**no elige ganador**.
 
-1. **R0 — posturas independientes.** El conductor escribe su propia postura sobre la decisión
-   (opciones, análisis, hacia dónde se inclina y por qué) **antes** de ver nada de la otra
-   familia. En paralelo despacha al revisor con el **mismo** paquete de decisión (sin la postura
-   del conductor; prompt en `reference.md` → "Prompt de debate — ronda 0") para que forme la suya
-   a ciegas. Regla 2 (independencia) aplica acá.
-2. **R1..N — crítica cruzada.** Cada ronda cruza las posturas: se le pasa al revisor la postura
-   del conductor para que la critique y actualice la suya (prompt en `reference.md` → "Prompt de
-   debate — cruce"), y el conductor lee la del revisor, la critica y actualiza la propia.
-   Registrar el **delta** de cada ronda (qué concedió, qué sostuvo cada uno) en el scratch.
-3. **Convergencia + anti-desperdicio.** Default **3 rondas** de cruce; tope duro `max_rounds`
-   (default 3). Si una ronda no mueve nada (ninguna familia concede ni refina su postura),
-   **converger temprano** y decirlo — no quemar rondas. Cada ronda tiene deadline duro
-   (regla 5): al vencer, cortar y sintetizar con lo que haya.
-4. **Síntesis** (ver "La síntesis del debate").
+La mecánica completa —las cuatro etapas del loop, la síntesis atribuida por familia, y la frontera
+publicado vs local que decide qué puede nombrar a las familias y qué no— vive en `reference.md` →
+"Mecánica del modo `debate`".
 
-## La síntesis del debate
+## Salida — el envelope
 
-El conductor cierra con una síntesis que **no elige ganador** — presenta las posturas para que
-el usuario decida (ethos de árbitro humano, regla 3 de `cross-review`). La escribe en
-`co-explore/debate.md` (plantilla en `reference.md` → "Plantilla de `debate.md`") y la presenta:
+`co-explore` devuelve un **envelope agregado**, no un estado singular. La llamadora decide con él
+sin abrir ningún informe: `outcome` (`completed` | `map_failure`) · `branch` · `diversity` ·
+`workers[]` (familia, estado, causa, paridad, rutas de índice y detalle, sesión) ·
+`contributors[]` (todo mapa aceptado, incluido el del conductor en ramas degradadas, con `session`
+nullable). Esquema campo por campo en `reference.md` → "Envelope de retorno".
 
-- **Postura final de cada familia**, atribuida por familia (🟠 Claude / 🔵 Codex) y **sin
-  fusionar** en una sola voz. La atribución vale acá porque `debate.md` y la síntesis presentada
-  son **locales y solo las lee el usuario** (ver "Publicado vs local"); nombrar a las familias es
-  parte del valor del debate.
-- **Dónde convergieron** y **qué queda en disputa**.
-- **Los trade-offs afilados**: qué compra y qué cuesta cada opción, según salió del cruce.
-- **No elige ganador**: la decisión es del usuario.
-
-### Publicado vs local
-
-La regla de co-explore "los entregables hablan del objeto, no del método" protege lo que se
-**publica** donde lo leen otras personas (spec en Jira vía `publish-spec`, descripciones o
-comentarios de PR en Bitbucket, cualquier superficie compartida). **No** aplica a archivos
-**locales que solo lee el usuario**: `debate.md` y la síntesis presentada **sí** nombran a las
-familias. El guardrail que se mantiene: lo que el debate haga aterrizar en `spec.md`
-(`## Clarifications`) o `plan.md` (un trade-off) queda **limpio de método/familias**, porque eso
-sí fluye a superficies publicadas. La skill llamadora (sdd-flow) escribe esos artefactos de forma
-autónoma, con la decisión ya tomada, sin citar el debate.
-
-## Salida
-
-**Salida a la llamadora:** estado `READY` | `UNAVAILABLE` · ruta del informe
-(`findings-<familia>.md` en `explore`, `counter-plan-<familia>.md` en `counter-plan`,
-`investigate-<familia>.md` en `investigate`, `debate.md` en `debate`; si hay) · resumen de 3-5 líneas (hallazgos top +
-enfoque sugerido, o en `investigate` hipótesis líder) · ruta de `session.json` si existe.
+`contributors[]` existe porque en las ramas 2, 3 y 4 aparece un mapa que **ningún worker produjo**
+y que `workers[]` no puede describir.
 
 **Nota de límite (obligatoria, una vez por corrida).** Toda salida presentada al usuario cierra
 declarando el techo del método:
@@ -271,52 +275,46 @@ declarando el techo del método:
 > ciego compartido por ambas familias queda sin detectar.
 
 Va **una sola vez**, al final de la conclusión presentada, no repetida por sección ni por ronda.
-Cuando la corrida fue de una sola voz (ver "Rama terminal de una sola voz"), esta es la línea
-donde se declara. Es local y conversacional: **no** viaja a `spec.md` ni a `plan.md`, que siguen
-limpios de método (ver el paso 5 de "La síntesis").
+Cuando la corrida fue de una sola voz (rama 4), esta es la línea donde se declara. Es local y
+conversacional: **no** viaja a `spec.md` ni a `plan.md`, que siguen limpios de método.
 
 ## La síntesis (guía para la skill llamadora)
 
-La síntesis la ejecuta **el conductor** en todos los casos: los callers SDD (`sdd-flow`,
-`sdd-orchestrator`) en modo embebido, y el propio conductor en modo directo (incluido
-`investigate`). La guía vive acá una sola vez para que nadie la duplique:
+La ejecuta **el conductor** en todos los casos: los callers SDD en modo embebido y el propio
+conductor en modo directo. Vive acá una sola vez para que nadie la duplique.
 
-1. Escribir el propio `findings-<familia>.md` del conductor **antes** de leer el del revisor
-   (regla 2 — independencia hasta el final).
-2. Comparar los dos informes sección por sección.
-3. Producir `synthesis.md` (plantilla en `reference.md` → "Plantilla de `synthesis.md`") con:
-   - una tabla de **convergencias / divergencias**;
-   - el **duelo de enfoques**: evaluar los dos "Enfoque sugerido" en méritos (reúso, riesgo,
-     simplicidad, encaje con el repo), elegir uno o hibridar, y registrar el **porqué** —
-     auditable, no implícito;
-   - las **Incógnitas fusionadas** de ambos mapas: las que cambiarían el diseño alimentan
-     `clarify` (obligatorio en complejos).
-4. Las **divergencias no resueltas** se presentan en un checkpoint informativo de la llamadora
-   antes de escribir la spec/plan (no es un gate SDD, y solo ocurre si hay divergencias sin
-   resolver; si los mapas convergen, se sigue directo sin stop extra).
-5. **Los entregables hablan del objeto, no del método.** La conclusión presentada al usuario
-   en modo directo y los artefactos que la llamadora escriba después (spec/plan/reparto) se
-   redactan en términos de los hallazgos —mapa, riesgos, enfoque, hipótesis, plan de
-   verificación— **sin mencionar la mecánica de co-exploración**: ni "conductor/revisor", ni
-   nombres de modelos, ni "dos mapas"/"duelo", ni rutas de `co-explore/`. Esa trazabilidad ya
-   vive en `synthesis.md` y los informes del directorio de trabajo. En el entregable, las
-   divergencias no resueltas se presentan como **posiciones alternativas con su evidencia**,
-   sin atribuirlas a quién las produjo. (El checkpoint conversacional del paso 4 es proceso,
-   no entregable: ahí sí se puede nombrar fuentes.)
+1. **Comparar por ID, no informes completos.** Cada convergencia y cada divergencia se ancla a los
+   IDs concretos de los contribuyentes. Comparar "sección por sección" dos informes enteros anula
+   el ahorro que la lectura selectiva compra.
+2. **La ausencia es una divergencia de primera clase.** Si un contribuyente vio algo que el otro no,
+   la fila lleva `∅` en el lado ausente y al menos un ID real. Exigir IDs de ambos lados obligaría a
+   descartar el hallazgo o a fabricar una correspondencia — y esa asimetría es justamente donde vive
+   el valor cross-model, así que **dispara** la lectura del detalle existente.
+3. **Registrar qué se abrió y qué se verificó.** `## Detalles abiertos` deja la traza de la lectura
+   selectiva: sin ella no hay forma de auditar si el conductor leyó de más o de menos.
+4. **Duelo de enfoques con rationale auditable**, y las **incógnitas fusionadas** de todos los
+   mapas: las que cambiarían el diseño alimentan `clarify`.
+5. **Publicación atómica**: temporal → validar el predicado completo → renombrar. Un archivo escrito
+   a medias puede contener solo IDs válidos y satisfacer un predicado flojo.
+6. **Las divergencias no resueltas** se presentan en un checkpoint informativo de la llamadora antes
+   de escribir la spec/plan — solo si quedaron sin resolver.
+7. **Los entregables hablan del objeto, no del método.** Los artefactos que la llamadora escriba
+   después se redactan en términos de los hallazgos, **sin** mencionar la mecánica: ni
+   "conductor/worker", ni nombres de modelos, ni rutas de `co-explore/`. Esa trazabilidad ya vive en
+   el artefacto de cierre. Las divergencias no resueltas se presentan como **posiciones alternativas
+   con su evidencia**, sin atribuirlas.
 
-   **Dos excepciones acotadas, ambas conversacionales.** La **nota de límite** (ver "Salida") y la
-   **advertencia de una sola voz** (ver "Rama terminal de una sola voz") sí hablan del método, y
-   deben hacerlo: sin ellas el usuario no sabe con qué cobertura está decidiendo. Viven en la
-   conclusión presentada y en los artefactos locales; **no** entran en `spec.md`, `plan.md` ni
-   ninguna superficie publicada.
+   **Dos excepciones acotadas, ambas conversacionales.** La **nota de límite** y la **advertencia de
+   una sola voz** sí hablan del método, y deben hacerlo: sin ellas el usuario no sabe con qué
+   cobertura está decidiendo.
 
-**En `investigate`** la síntesis es *bug-shaped*: en vez del "duelo de enfoques" se hace un
-**duelo de hipótesis de causa raíz** (evaluar las candidatas en méritos: evidencia, encaje con
-el repro; elegir la líder con rationale auditable) y el cierre es **hipótesis líder + plan de
-verificación**, no una spec. Si los dos mapas divergen en la causa raíz y no se resuelve, se
-presentan **ambas posiciones** al usuario como hipótesis alternativas con su evidencia, sin
-atribuirlas a conductor/revisor (paso 5; mismo principio: no forzar consenso). Plantilla en
-`reference.md` → "Plantilla de síntesis — `investigate`".
+Plantillas, cabecera de campos cerrados y el predicado completo del cierre: `reference.md` →
+"Plantillas de cierre" y "Predicado del artefacto de cierre".
+
+**En `investigate`** la síntesis es *bug-shaped*: en vez del duelo de enfoques va un **duelo de
+hipótesis de causa raíz** y el cierre es **hipótesis líder + plan de verificación**. Si los mapas
+divergen en la causa y no se resuelve, se presentan ambas posiciones con su evidencia, sin
+atribuirlas.
 
 ## Alcance de `investigate`
 
@@ -342,25 +340,14 @@ valor en duplicarlo.
 
 ### El criterio de éxito también es una hipótesis
 
-El espacio de hipótesis no se agota en el código. Un bug que resiste puede ser un **criterio de
-éxito defectuoso**: un test que verifica lo que no corresponde, que depende de un supuesto
-inválido, o que afirma un observable que su fuente no autoriza. Esa hipótesis compite con las
-demás desde la primera pasada — no hace falta esperar a que fallen varios intentos.
+El espacio de hipótesis no se agota en el código: un bug que resiste puede ser un **criterio de éxito
+defectuoso**, y esa hipótesis compite con las demás desde la primera pasada. Como cualquier otra,
+declara **observable · autoridad · refutación** antes de rankearse; sin evidencia de respaldo va como
+**incógnita**, nunca como hipótesis líder — es la salida cómoda de este modo y lleva la misma vara,
+no una más baja.
 
-**Toda hipótesis, esta incluida, declara tres cosas antes de ser rankeada:**
-
-| | Qué responde |
-|---|---|
-| **Observable** | Qué afirma exactamente que ocurre o debería ocurrir. |
-| **Autoridad** | Qué fuente lo respalda: un AC, una decisión de producto, el código, quien reporta. |
-| **Refutación** | Qué evidencia concreta la tumbaría. |
-
-Sin las tres, no se rankea. Y sin evidencia de respaldo, "el criterio está mal" se registra como
-**incógnita**, nunca como hipótesis líder: es la salida cómoda de este modo —siempre disponible,
-nunca falsable si no se la ata a evidencia— y por eso lleva la misma vara que las demás, no una
-más baja. Sostenerla exige el criterio de éxito en el paquete de contexto (ver "Contrato de
-invocación"); si no llegó, decirlo como incógnita en vez de especular.
-
+La tabla de las tres columnas y su fundamento: `reference.md` → "El criterio de éxito también es una
+hipótesis (`investigate`)".
 ## Configuración
 
 Clave **top-level** `co_explore` (hermana de `cross_review`, **no** anidada — son ortogonales) en
@@ -397,44 +384,28 @@ lee ambas y orquesta es la skill llamadora (`sdd-flow`/`sdd-orchestrator`), nunc
 
 ## Degradación
 
-Nunca bloquea el flujo SDD. Cuatro vías de falla, todas con el mismo final:
+Ninguna rama bloquea el flujo. La escalera está ordenada por **diversidad conservada**, y "válido"
+significa `READY` (ver `reference.md` → "Estados del worker"):
 
-1. Skill no instalada → la llamadora la omite y sigue con la exploración del
-   conductor.
-2. Sin revisor de otra familia disponible → `UNAVAILABLE`; la llamadora sigue con la
-   exploración del conductor. Distinguir según el preflight de capacidad: una **pared confirmada**
-   (binario ausente, auth rechazada, versión incompatible, o **aislamiento no garantizable** — ver
-   `reference.md` → "Preflight de aislamiento") es **terminal para la corrida** —no reintentar en
-   despachos siguientes de la misma tanda—; un **flake transitorio de lanzamiento** (el binario
-   existe pero flaqueó el arranque) admite 2-3 reintentos con backoff corto antes de rendirse.
-   (El deadline del punto 3, ya arrancado, es por-intento.)
-3. Deadline vencido → se mata el proceso y se registra; la llamadora sigue con la exploración
-   del conductor.
-4. Informe no parseable → se degrada (texto libre como contexto, o descarte si es ruido) y se
-   registra; la llamadora sigue con la exploración del conductor.
+| Rama | Situación | Qué hace el conductor | Qué se declara |
+|---|---|---|---|
+| **1** | dos workers válidos | arbitra, no explora | nominal · `cross_family` |
+| **2** | sobrevive el de la **otra** familia | **explora** (topología anterior) | diversidad conservada, ahorro perdido |
+| **3** | sobrevive el de la **misma** familia | **explora** | **diversidad reducida** · `same_family` |
+| **4** | cero workers válidos | **explora**; cierre conductor-only | una sola voz · `single_voice` |
 
-### Rama terminal de una sola voz (modo directo)
+Fuera de la escalera: **`FALLO_DE_MAPA`** — el conductor no logró escribir un mapa válido en dos
+intentos. Es terminal, no pasa contexto de co-explore y va directo al gate humano. No es la rama 4:
+esa exige cero workers válidos, y acá puede haber uno `READY`.
 
-En **modo directo**, "no hay explorador" no puede terminar en silencio: el usuario pidió algo y
-espera una respuesta. `debate` ya lo resolvía así y los otros modos siguen la misma rama.
+**La rama 4 es el "ninguno" de la regla, nombrado.** El conductor presenta igual su análisis con una
+advertencia de una línea —corrió con una sola voz, sin contraste cross-model—, **no escribe
+`synthesis.md`** (las plantillas presuponen dos mapas; una síntesis de una voz obligaría a fabricar
+el segundo) y persiste su cierre en un archivo inequívocamente distinto. La regla "DOS MAPAS
+INDEPENDIENTES O NINGUNO" no se relaja: esta rama *es* el ninguno.
 
-Cuando el explorador no está disponible (misma distinción pared confirmada vs flake del punto 2),
-el conductor:
-
-1. **Presenta igual su propio análisis**, con una advertencia de una línea: corrió con una sola
-   voz, sin contraste cross-model.
-2. **No escribe `synthesis.md`.** Las tres plantillas de síntesis presuponen dos mapas
-   independientes; una síntesis de una voz sola obligaría a fabricar el segundo o a llamar
-   co-exploración a algo que no lo fue. Si algo se persiste, va a un archivo inequívocamente
-   distinto de una síntesis y repite la advertencia.
-3. **Devuelve `UNAVAILABLE`** como estado. El contrato con las skills SDD no cambia: la llamadora
-   sigue con la exploración del conductor, igual que hoy.
-
-La regla no negociable "DOS MAPAS INDEPENDIENTES O NINGUNO" **no se relaja acá**: esta rama *es*
-el "ninguno", nombrado explícitamente en vez de quedar implícito. Lo que se entrega es el análisis
-del conductor, declarado como tal — nunca presentado como una co-exploración.
-
-En sdd-flow el flujo sigue al gate normal de `clarify`/`plan`; nunca bloquea.
+**Causas de indisponibilidad** (`confirmed_wall` · `launch_flake` · `runtime_failure`) y su política
+de reintento: `reference.md` → "Estados del worker". Una pared confirmada no se reintenta.
 
 ## Router de intención
 

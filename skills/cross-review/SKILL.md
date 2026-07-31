@@ -90,9 +90,11 @@ Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario) proveen:
 - **`artifact_path`** — ruta del artefacto a revisar (p. ej. `.plans/ABC-123/plan.md`).
 - **`context_paths`** — artefactos relacionados para grounding (p. ej. al revisar `tasks`, pasar
   también `spec` y `plan`; al revisar `reparto`, la `master-spec`). Opcional pero recomendado. Si
-  el flujo corrió **co-exploración** (`co-explore`), la llamadora pasa acá los
-  `co-explore/findings-*.md` (y `co-explore/counter-plan-*.md` al revisar `plan`): la crítica sale
-  informada por la exploración previa del propio revisor.
+  el flujo corrió **co-exploración** (`co-explore`), la llamadora pasa acá los **índices** y la
+  **síntesis** —nunca los `detail-*` completos, que reintroducirían el costo que la lectura
+  selectiva elimina—. Qué sesión se reanuda lo fija la matriz normativa de `reference.md` →
+  "Matriz de resume desde co-exploración": nunca resuelve a la familia del autor ni a un worker
+  `INVALID`.
 - **`working_dir`** — directorio desde donde el revisor puede leer el código en read-only.
 - **`complexity`** — `trivial | normal | complex` (de `sdd-flow`); modula profundidad/esfuerzo.
 - **`execution`** — `auto | sync | background` (de la config `cross_review`); cómo se espera al

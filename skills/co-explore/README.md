@@ -1,15 +1,15 @@
 # co-explore
 
-**Exploración paralela cross-model.** Un modelo de **otra familia que el autor** (Codex cuando
-conduce Claude; Claude cuando conduce Codex) explora el mismo código en background, read-only, y
-devuelve su propio informe estructurado — mientras el conductor hace su exploración de siempre, en
-paralelo, sin esperas secuenciales — y al final el conductor **sintetiza** los dos mapas
-independientes.
+**Exploración paralela cross-model, con dos workers frescos.** Se despacha **uno por familia**
+(Codex y Claude) a explorar el mismo código read-only, con el mismo paquete de contexto y sin verse
+entre sí. El conductor **no explora**: arbitra. Lee el **índice compacto** de cada worker y abre el
+**detalle** solo ante divergencia, alto riesgo, baja confianza o una decisión que arbitrar.
 
 ## Qué es
 
-`co-explore` despacha un segundo mapa del terreno, independiente del que arma el conductor, para
-que las diferencias entre ambos salgan a la luz antes de decidir. Sirve para cuatro cosas, según
+`co-explore` produce **dos mapas del terreno independientes entre sí**, para que las diferencias
+salgan a la luz antes de decidir. El conductor no aporta un tercero: su trabajo es arbitrar entre
+los dos con el menor contexto posible. Sirve para cuatro cosas, según
 `mode`:
 
 - **`explore`** (pre-spec, lo invoca SDD): mapear el terreno antes de una `spec.md` — archivos
@@ -23,26 +23,31 @@ que las diferencias entre ambos salgan a la luz antes de decidir. Sirve para cua
   estás seguro — dos familias forman posturas independientes, se critican en rondas y el
   conductor sintetiza sin elegir.
 
-El resultado es `READY` (con el informe en `co-explore/findings-<familia>.md`,
-`counter-plan-<familia>.md` o `investigate-<familia>.md`) o `UNAVAILABLE` (degradado, sin bloquear
+El resultado es un **envelope**: `outcome`, la rama de degradación alcanzada, la diversidad
+efectiva, y por cada contribuyente sus rutas de índice y detalle (degradado, sin bloquear
 nunca a la llamadora).
 
 ```
-paquete de contexto ──► [co-explore: revisor explora en background, read-only]
-                              │                        (el conductor explora en paralelo
-                              ▼                         por su cuenta — no espera)
-                    informe-<familia>.md ──► síntesis del conductor ──► spec / plan / conclusión
+                        ┌──► worker Codex  ──► índice + detalle ──┐
+paquete de contexto ────┤                                         ├──► conductor: ÁRBITRO
+   (idéntico, sin       └──► worker Claude ──► índice + detalle ──┘     · lee los dos ÍNDICES
+    hipótesis de nadie)                                                 · abre DETALLE por disparador
+                                                                        · cierre + envelope
 ```
 
-El valor no es que el explorador "ayude": es que produce un mapa **independiente**, sin ver nada
-de lo que el conductor ya pensó, para que las diferencias salgan a la luz antes de que las
-decisiones queden tomadas. Dos exploraciones convergen fácil (son hechos + hipótesis); dos
+Cada worker entrega **dos capas**: un índice que enumera *todos* sus hallazgos —con ID estable,
+severidad, confianza y punteros— y un detalle con el desarrollo completo. El conductor consume
+siempre el índice entero; el detalle, solo la entrada que un disparador justifica. Ese es el ahorro
+de contexto que el diseño compra.
+
+El valor no es que un worker "ayude": es que los dos mapas son **independientes**, ninguno ve al
+otro, y sus diferencias salen a la luz antes de que las decisiones queden tomadas. Dos exploraciones convergen fácil (son hechos + hipótesis); dos
 conclusiones ya tomadas no — por eso el punto de encuentro es temprano, en los hallazgos. La
 síntesis la hace el conductor: compara ambos informes, hace competir enfoques (o hipótesis de
 causa raíz, en `investigate`) en méritos, y decide con rationale auditable en `synthesis.md`.
 
 En los modos SDD, ese mismo informe alimenta más adelante la **crítica informada** de
-`cross-review`: si esa skill está instalada, recibe `findings-<familia>.md` (y `session.json`,
+`cross-review`: si esa skill está instalada, recibe los **índices y la síntesis** (y la sesión que fije su matriz,
 si existe) como contexto persistente del gate, en vez de partir de cero. `co-explore` **no revisa
 artefactos escritos** (eso es `cross-review`), **ni arregla el bug** (eso es
 `superpowers:systematic-debugging`), **ni implementa** (eso es `cross-implement`): produce
@@ -73,10 +78,11 @@ cross-model — `co-explore` (explorar) · `cross-review` (criticar el diseño) 
   (veredicto).
 - **Para arreglar o verificar el bug** (en `investigate`): la skill termina en hipótesis + plan de
   verificación; verificar/arreglar es `superpowers:systematic-debugging`, el paso siguiente.
-- **Para reemplazar la exploración del conductor:** no la sustituye, corre en paralelo con ella —
-  el conductor siempre escribe su propio informe.
+- **Esperando que el conductor aporte su propio mapa:** en la topología nominal no lo hace, y es
+  deliberado. Solo vuelve a explorar si un worker cae y la corrida degrada — y entonces se declara
+  qué diversidad quedó.
 - **En cambios triviales** (modos SDD): el default por complejidad es "nunca" (ver "Configuración");
-  no aporta frente al costo de una segunda exploración completa.
+  no aporta frente al costo de dos exploraciones completas.
 
 ## Requisitos
 

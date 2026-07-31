@@ -189,8 +189,8 @@ crítica se presenta *junto* al artefacto en el mismo STOP; tú sigues siendo el
   modelo). Pasarle `artifact_type`, `artifact_path`, los `context_paths` relevantes (al revisar
   `tasks`, también `spec`+`plan`; sumar los paths resueltos de `domain_context` y, con
   co-exploración corrida, sumar además los informes
-  `co-explore/findings-<familia>.md` y, en el gate del plan,
-  `co-explore/counter-plan-<familia>.md`, cuando existan — ver "Co-exploración cross-model"),
+  los **índices** de la co-exploración y su **síntesis** (nunca los `detail-*` completos), cuando
+  existan — ver "Co-exploración cross-model"),
   `working_dir`, `complexity` y `execution` (de `cross_review.execution`, que se hereda como el
   resto de la config). Devuelve el artefacto (quizá revisado) + un resumen de la crítica + la ruta
   del `review-log.md` (queda en `.plans/<id>/review-log.md`, local y untracked como el resto).
@@ -224,46 +224,51 @@ y el contra-enfoque; `cross_review.mode` gobierna las críticas en los gates de 
   pedido), `complex` on.
 - **Momento 1 — `explore` (pre-spec).** Tras confirmar el contexto y la clasificación en
   `gather-context`: (1) armar el **paquete de contexto** (digest del ticket + prompt del usuario +
-  complejidad + paths resueltos de `domain_context`). Si el prompt/ticket trae **URLs de reproducción** ("abre esta URL para ver el
+  complejidad + paths resueltos de `domain_context`), que viaja **idéntico a los dos workers**. Si el prompt/ticket trae **URLs de reproducción** ("abre esta URL para ver el
   error") y hay tool de navegador, el conductor **reproduce antes de despachar** y suma al
   paquete un digest **observacional** de la evidencia (salida de consola, requests fallidos,
   pasos observados) — hechos, **sin hipótesis propias**, que contaminarían la independencia del
   explorador (que es headless: no puede navegar). Sin tool de navegador, degradación de la regla
   6: pedir capturas/pasos al usuario, o seguir sin reproducción avisando; (2) invocar
-  `co-explore` (Skill tool) con `mode: explore`,
-  `execution: background`; (3) hacer la **exploración propia** de siempre, sin leer nada del
-  revisor, y escribir el propio `findings-<familia-conductor>.md` (mismo formato) antes de leer
-  el del revisor; (4) **punto de encuentro:** recoger el informe si terminó (`READY`) o seguir
-  sin él (`UNAVAILABLE`, aviso de una línea); (5) **síntesis**, siguiendo la guía de
-  `co-explore` → "La síntesis (guía para la skill llamadora)" (no se duplica acá): produce
-  `synthesis.md` con la tabla de convergencias/divergencias, el duelo de enfoques con su
-  rationale, y las incógnitas fusionadas de ambos mapas (las que cambiarían el diseño alimentan
-  `clarify`); (6) **checkpoint informativo condicional** (no es un gate SDD): solo si quedaron
+  `co-explore` (Skill tool) con `mode: explore`, `execution: background`; (3) **el conductor no
+  explora**: espera el envelope y arbitra desde los índices, abriendo detalle solo por disparador
+  (ver `co-explore` → "Lectura selectiva"). Solo si el envelope resuelve a una **rama degradada**
+  el conductor produce su propio mapa, con el mismo contrato de índice y detalle; (4) **punto de
+  encuentro:** leer el envelope — `outcome`, `branch`, `diversity`, `workers[]`, `contributors[]`—
+  y declarar la rama alcanzada en una línea; (5) **síntesis**, siguiendo la guía de
+  `co-explore` → "La síntesis (guía para la skill llamadora)" (no se duplica acá): compara **por
+  ID**, admite `∅` en divergencias unilaterales, registra qué detalles se abrieron, y fusiona las
+  incógnitas (las que cambiarían el diseño alimentan `clarify`); (6) **checkpoint informativo
+  condicional** (no es un gate SDD): solo si quedaron
   divergencias sin resolver o enfoques viables materialmente distintos, presentarlos y dejar
   decidir al usuario antes de escribir la spec — si los mapas convergen, se sigue directo a
   `specify` sin stop extra.
 - **Momento 2 — `counter-plan` (pre-plan).** Con la spec aprobada (y ya posicionados en la rama
   feature), antes de escribir `plan.md`: invocar `co-explore` con `mode: counter-plan`
-  (contexto: la spec aprobada + paths resueltos de `domain_context` + el propio `findings-<familia>.md` del revisor de la fase
-  `explore`); contrastar el contra-enfoque devuelto con el propio en una adenda de
-  `synthesis.md` (mismo criterio de la síntesis: méritos, no adopción automática) y escribir
+  (contexto: **núcleo común** con la spec aprobada + paths resueltos de `domain_context`, más un
+  **anexo privado** por worker con su propio índice y detalle de la fase `explore` — nunca el de la
+  otra familia, nunca por ruta); contrastar los dos contra-enfoques en una adenda del cierre (mismo criterio de la síntesis: méritos, no adopción automática) y escribir
   `plan.md` con esa síntesis a la vista.
 - **Los artefactos no citan la co-exploración.** `spec.md` y `plan.md` se escriben con la
   síntesis a la vista pero redactados de forma autónoma: sin referencias a la co-exploración,
   a los informes del revisor, a `co-explore/` ni al vocabulario conductor/revisor (ver
   `co-explore` → "La síntesis", paso 5). La trazabilidad queda en `.plans/<id>/co-explore/`.
   El checkpoint informativo conversacional no está alcanzado por esta regla.
-- **Efecto en `analyze`.** Con co-exploración corrida, este paso **no re-explora**: es un
-  **refresco incremental** sobre el mapa ya construido — validar que sigue vigente sobre el HEAD
-  real de la rama (archivos movidos, código cambiado desde entonces) y anotar los deltas.
+- **Efecto en `analyze`.** Con co-exploración **nominal** (rama 1), este paso **no explora**: el
+  contra-enfoque de `counter-plan` ya cubrió el terreno, y `analyze` queda acotado a comprobar
+  **vigencia sobre el HEAD** real de la rama (archivos movidos, código cambiado) y a las
+  **verificaciones puntuales** de punteros que habilite un disparador. Solo las **ramas degradadas**
+  recuperan el `analyze` completo, porque ahí el mapa del conductor sí es el insumo.
 - **Crítica informada.** En los gates de `specify` y `plan`, si la revisión cross-model está
-  activa, pasar a `cross-review` los paths resueltos de `domain_context` y los informes de
-  co-exploración como `context_paths` adicionales: `findings-<familia>.md` (y, en el gate del plan, también
-  `co-explore/counter-plan-<familia>.md`). Si existe `co-explore/session.json`, mencionarlo para
-  el resume oportunista del revisor.
-- **Degradación (nunca bloquea).** Skill no instalada, informe `UNAVAILABLE`, o deadline vencido
-  → avisar en una línea ("co-exploración no disponible — sigo con mi exploración") y seguir el
-  flujo normal. Misma filosofía de la regla #6.
+  activa, pasar a `cross-review` los paths resueltos de `domain_context` y, de la co-exploración,
+  **los índices y la síntesis** — nunca los `detail-*` completos, que reintroducirían el costo que
+  la lectura selectiva elimina. Qué sesión reanuda el revisor **no queda a criterio**: lo fija la
+  matriz de `cross-review/reference.md` → "Matriz de resume desde co-exploración", que nunca
+  resuelve a la familia del autor ni a un worker `INVALID`.
+- **Degradación (nunca bloquea).** La escalera de `co-explore` tiene cuatro ramas y el envelope
+  dice cuál se alcanzó; en las degradadas el conductor explora y **se declara** qué diversidad
+  quedó. Skill no instalada, `outcome: map_failure`, o los dos workers caídos → avisar en una línea
+  y seguir el flujo normal. Misma filosofía de la regla #6.
 
 ### Debate en decisiones (`clarify` y `plan`)
 
@@ -379,7 +384,7 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
 1. Crear `.plans/<id>/` (POSIX: `mkdir -p`; PowerShell: `New-Item -ItemType Directory -Force`).
 2. Escribir `spec.md` con la plantilla de `reference.md` → "Plantilla de spec". Mínimo: problema/objetivo, alcance (in/out), y **criterios de aceptación numerados `AC-1..N`** en formato verificable (Given/When/Then o checklist observable).
 3. Para cambios *triviales*, la spec puede ser un bloque breve dentro de `plan.md` en lugar de archivo aparte.
-4. **STOP** — si la **revisión cross-model** está activa para `spec` (ver "Revisión cross-model"), ejecutar `cross-review` sobre `spec.md` antes de presentar (sumar `domain_context` resuelto y, con co-exploración, `co-explore/findings-<familia>.md` como contexto — ver "Co-exploración cross-model"). Presentar la spec (con el resumen de crítica, si lo hubo) y pedir aprobación. No avanzar sin ella. Si el usuario corrige, actualizar y volver a ofrecer.
+4. **STOP** — si la **revisión cross-model** está activa para `spec` (ver "Revisión cross-model"), ejecutar `cross-review` sobre `spec.md` antes de presentar (sumar `domain_context` resuelto y, con co-exploración, los **índices + la síntesis** de `explore` — nunca los `detail-*` — ver "Co-exploración cross-model"). Presentar la spec (con el resumen de crítica, si lo hubo) y pedir aprobación. No avanzar sin ella. Si el usuario corrige, actualizar y volver a ofrecer.
 
 ## Paso `clarify` (condicional)
 
@@ -425,11 +430,11 @@ Obligatorio en cambios *complejos*; en *normales* solo si hay ambigüedad; se sa
   vigentes y marcar conflictos como incógnitas; no escribir ni actualizar esos documentos.
 - **Si es bug:** seguir un método de debugging sistemático (hipótesis → prueba → refutar). Si hay una skill de debugging sistemático disponible, usarla. Si es reproducible en navegador y hay tool de navegador, capturar consola/network; si no, pedir captura/pasos. El mismo método aplica si un test o un AC falla durante `implement`/`verify` (ver `implement`, pasos 3-4).
 - **Si es feature/refactor:** mapear archivos/módulos/utilidades existentes a reutilizar. Preferir reúso sobre código nuevo.
-- Localizar el código con búsqueda en el repo (subagentes de exploración si el entorno los soporta y el alcance lo amerita; si no, `grep`/`ripgrep`/`find` locales).
+- Localizar el código con búsqueda en el repo (subagentes de exploración si el entorno los soporta y el alcance lo amerita; si no, `grep`/`ripgrep`/`find` locales). **Con co-exploración nominal esto no se hace**: el terreno ya está mapeado y `analyze` solo comprueba vigencia sobre el HEAD (ver "Co-exploración cross-model" → "Efecto en `analyze`").
 
 **Output:** hipótesis (bug) o lista de puntos de reúso (feature) con referencias `path:line`.
 
-**Con co-exploración corrida** (ver "Co-exploración cross-model"), este paso es un refresco incremental del mapa, no una re-exploración.
+**Con co-exploración nominal** (ver "Co-exploración cross-model"), este paso **no re-explora ni construye mapa**: comprueba vigencia sobre el HEAD y hace las verificaciones puntuales que habilite un disparador. Las ramas degradadas recuperan el `analyze` completo.
 
 ## Paso `plan` → GATE
 
@@ -453,7 +458,7 @@ Obligatorio en cambios *complejos*; en *normales* solo si hay ambigüedad; se sa
    ```
 
    Al crear el `plan.md`, escribir `status: planned`.
-4. **STOP** — si la **revisión cross-model** está activa (ver "Revisión cross-model"), ejecutar `cross-review` sobre `plan.md` con `spec` + `domain_context` resuelto como contexto (con co-exploración: sumar `co-explore/findings-<familia>.md` y `co-explore/counter-plan-<familia>.md` como contexto — ver "Co-exploración cross-model") antes de presentar (en *normal*, sobre plan + tasks juntos). Presentar el plan (con el resumen de crítica, si lo hubo) y pedir aprobación. En *trivial* este es el último gate antes de implementar (tasks inline en `## Tasks`). En *normal*, **antes del STOP se ejecuta el paso `tasks`** (se escribe `tasks.md`) y este gate presenta **plan + tasks juntos** (un solo STOP, sin gate extra). En *complejo*, el plan se aprueba acá y el gate de `tasks` es independiente y posterior (ver paso `tasks`). En todos, al aprobar el último gate aplicable, pasar `status` a `tasks-ready`. Si este es el **último gate antes de implementar** (*normal*) y el modo de implementación resuelto es `ask`, incluir en el **mismo STOP** la pregunta del modo: ¿implemento acá (inline), despacho subagentes frescos por task, o delego la implementación al modelo de la otra familia y yo reviso el diff (`cross`, solo si la capacidad está disponible)? (ver `implement` → "Modo de ejecución"; sin gate extra; en *trivial* no se pregunta: default `inline`).
+4. **STOP** — si la **revisión cross-model** está activa (ver "Revisión cross-model"), ejecutar `cross-review` sobre `plan.md` con `spec` + `domain_context` resuelto como contexto (con co-exploración: sumar los **índices + la síntesis** de `explore` y de `counter-plan` — nunca los `detail-*` — ver "Co-exploración cross-model") antes de presentar (en *normal*, sobre plan + tasks juntos). Presentar el plan (con el resumen de crítica, si lo hubo) y pedir aprobación. En *trivial* este es el último gate antes de implementar (tasks inline en `## Tasks`). En *normal*, **antes del STOP se ejecuta el paso `tasks`** (se escribe `tasks.md`) y este gate presenta **plan + tasks juntos** (un solo STOP, sin gate extra). En *complejo*, el plan se aprueba acá y el gate de `tasks` es independiente y posterior (ver paso `tasks`). En todos, al aprobar el último gate aplicable, pasar `status` a `tasks-ready`. Si este es el **último gate antes de implementar** (*normal*) y el modo de implementación resuelto es `ask`, incluir en el **mismo STOP** la pregunta del modo: ¿implemento acá (inline), despacho subagentes frescos por task, o delego la implementación al modelo de la otra familia y yo reviso el diff (`cross`, solo si la capacidad está disponible)? (ver `implement` → "Modo de ejecución"; sin gate extra; en *trivial* no se pregunta: default `inline`).
 
 ### Ciclo de `status` (estado persistido del flujo)
 

@@ -523,10 +523,10 @@ El loop reusa el **mismo thread del revisor** para que tenga memoria de lo ya di
 - Si el resume no está disponible en el entorno, degradar a rondas independientes re-enviando el
   artefacto actualizado completo (más caro, pero válido).
 
-**Seed desde co-exploración:** si existe `co-explore/session.json` (escrito por `co-explore`;
-esquema: `{tool, session_id, mode, created_at, model, effort}`), la Ronda 1 puede **reanudar esa
-sesión** en lugar de abrir una nueva — el crítico es el mismo agente que exploró. Si el resume
-falla, abrir sesión nueva con los `findings-*.md` como contexto: mismo efecto, sin estado.
+**Seed desde co-exploración:** con dos workers hay **dos** sesiones por modo, así que cuál se
+reanuda no es una elección libre — la fija la matriz normativa de "Matriz de resume desde
+co-exploración", que nunca resuelve a la familia del autor ni a un worker `INVALID`. Si el resume
+falla, sesión nueva con los **índices y la síntesis** como contexto: mismo efecto, sin estado.
 
 Con `tool: codex`, este resume es **el tercer punto** donde se reanuda una sesión Codex —junto con
 las rondas de esta skill y las de `co-explore`— y necesita exactamente el mismo tratamiento que
@@ -543,7 +543,7 @@ los otros dos:
 
 ```bash
 # POSIX — resume del seed
-SEED=co-explore/session.json
+SEED=<sesión que resuelva la matriz de resume>
 SESSION_ID=$(sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$SEED")
 MODEL=$(sed -n 's/.*"model"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$SEED")
 EFFORT=$(sed -n 's/.*"effort"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$SEED")
@@ -742,3 +742,46 @@ cross_review:
   complejidad. Misma regla que el resto de overrides SDD.
 - `max_rounds` chico (2-3) suele alcanzar: los artefactos son chicos comparados con una
   implementación; más rondas dan rendimientos decrecientes.
+
+## Consumo de co-exploración dual
+
+> **Sección inerte hasta el corte.** Nada de lo que sigue está referenciado desde `SKILL.md`
+> todavía. Reemplaza al seed desde un `co-explore/session.json` singular, que deja de existir cuando
+> `co-explore` despacha dos workers.
+
+### Matriz de resume desde co-exploración
+
+Con dos workers hay **dos** sesiones por modo, una por familia. Cuál se reanuda **no queda a
+criterio**: elegir la de la misma familia que el autor violaría la regla 7 —el revisor nunca es de la
+familia del autor—, y sería fácil de hacer sin darse cuenta, porque las dos sesiones están ahí y
+las dos "funcionan".
+
+| Artefacto a revisar | Sesión que se reanuda | Contexto que recibe |
+|---|---|---|
+| `spec` · `master-spec` | `explore` de la familia **opuesta al autor** | índices + síntesis |
+| `plan` · `reparto` | `counter-plan` de la familia **opuesta al autor** | índices + síntesis |
+| `tasks` | **ninguna** sesión de co-explore | índices + síntesis |
+
+Reglas que acotan la matriz:
+
+- **Un worker `INVALID` no es elegible**, aunque su sesión siga siendo reanudable: su informe no
+  pasó los predicados, y reanudarlo importaría ese contexto malo a la revisión.
+- **Rama 4 o `outcome: map_failure` → ningún contexto de co-explore** y revisor **fresco**. En la
+  rama 4 no hubo co-exploración —es el "ninguno" de la regla, nombrado— y el análisis del conductor
+  ya está embebido en el artefacto que se va a revisar; pasarlo como "contexto de co-exploración"
+  sería etiquetar mal algo que no lo fue.
+- **Sin sesión disponible → revisor fresco de la familia opuesta**, con índices y síntesis como
+  contexto. **Salvo** que la capacidad actual sea `confirmed_wall`: ahí no hay reintento y el
+  resultado es `UNAVAILABLE` terminal. Distinguirlo importa — reintentar contra una pared quema el
+  deadline sin ninguna chance de éxito.
+
+**Nunca se pasan los detalles completos.** El contrato de dos capas existe para que el conductor lea
+índices y abra detalle solo por disparador; volcarle a la revisión los `detail-*` enteros
+reintroduce por la puerta de atrás exactamente el costo que el cambio elimina. Si un finding de la
+revisión necesita una entrada concreta, se abre esa entrada por su ID (ver `co-explore/reference.md`
+→ "Apertura puntual de una entrada").
+
+**Qué reemplaza.** Donde antes se leía `co-explore/session.json` —una sola sesión, un solo
+informe—, ahora se resuelve esta matriz contra el `contributors[]` del envelope. El fallback no
+cambia: si el resume falla, sesión nueva con los índices y la síntesis como contexto; mismo efecto,
+sin estado.

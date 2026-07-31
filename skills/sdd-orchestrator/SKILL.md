@@ -150,7 +150,7 @@ en la propia `co-explore`; acá solo cuándo se despacha y qué contexto recibe.
   revisor necesita saber dónde mirar) y antes de 1.3: se arma el paquete de contexto global y se
   invoca `co-explore` con los repos confirmados como `working_dir`s. El foco del informe se
   corre a nivel sistema: contratos entre servicios existentes, superficies de integración, riesgos
-  `[integration]`. El conductor explora en paralelo y sintetiza igual que en `sdd-flow` (guía en
+  `[integration]`. El conductor **no explora**: arbitra desde los índices de los dos workers y sintetiza igual que en `sdd-flow` (guía en
   `co-explore` → "La síntesis"). **Si el informe sugiere que un repo no confirmado está
   involucrado** (en Riesgos/Incógnitas), re-abrir la selección de repos con el usuario antes de
   escribir `master-spec.md`.
@@ -201,13 +201,13 @@ Consolidar el objetivo del cambio desde el ticket (si hay clave de tracker y MCP
 ### 1.2 Selección de repos
 1. **Universo:** enumerar los subdirectorios de la carpeta contenedora que son repos git (probar `git rev-parse --is-inside-work-tree` dentro de cada uno, o detectar `.git`). Detalle en `reference.md` → "Matriz de detección de repos".
 2. **Propuesta:** a partir del objetivo, proponer qué repos parecen involucrados (por nombre, por los contratos mencionados, por búsqueda en código si el alcance lo amerita).
-3. **Confirmación (checkpoint):** mostrar la lista propuesta y dejar que el usuario agregue/saque repos. **Nunca** se trabaja un repo no confirmado (regla 3). Con co-exploración activa, acá se despacha el `explore` global (ver "Co-exploración cross-model").
+3. **Confirmación (checkpoint):** mostrar la lista propuesta y dejar que el usuario agregue/saque repos. **Nunca** se trabaja un repo no confirmado (regla 3). Confirmar los repos **no** es explorar: es acotar el `working_dir` del fan-out, y es un carve-out declarado de "el conductor no explora" (ver `co-explore/reference.md` → "Carve-outs"). Con co-exploración activa, acá se despacha el `explore` global (ver "Co-exploración cross-model").
 4. Si no hay ningún repo git bajo la carpeta, **avisar y detener** (no inventar).
 
 ### 1.3 `master-spec.md` → GATE
 1. Crear `<contenedora>/.sdd/<id>/` (POSIX: `mkdir -p`; PowerShell: `New-Item -ItemType Directory -Force`).
 2. Escribir `master-spec.md` con la plantilla de `reference.md` → "Plantilla de `master-spec.md`". Mínimo: problema/objetivo global, alcance (in/out) a nivel sistema, **criterios de aceptación `AC-1..N`** cada uno etiquetado `[repo-local]` o `[integration]`, **contratos entre servicios** (qué expone cada uno y qué consume), y el **reparto** (qué repo cubre qué AC).
-3. **STOP** — si la **revisión cross-model** está activa (ver "Revisión cross-model"), ejecutar `cross-review` sobre `master-spec.md` (foco en contratos entre servicios y AC `[integration]`; con co-exploración corrida, sumar `co-explore/findings-<familia>.md` como `context_paths` adicional — ver "Co-exploración cross-model") antes de presentar. Presentar la spec madre (con el resumen de crítica, si lo hubo) y pedir aprobación. No avanzar sin ella.
+3. **STOP** — si la **revisión cross-model** está activa (ver "Revisión cross-model"), ejecutar `cross-review` sobre `master-spec.md` (foco en contratos entre servicios y AC `[integration]`; con co-exploración corrida, sumar los **índices + la síntesis** de la co-exploración como `context_paths` adicional — nunca los `detail-*` completos — ver "Co-exploración cross-model") antes de presentar. Presentar la spec madre (con el resumen de crítica, si lo hubo) y pedir aprobación. No avanzar sin ella.
 
 ### 1.4 Reparto → GATE
 Con co-exploración activa, antes del punto 1 se despacha el `counter-plan` (ver "Co-exploración cross-model"): el revisor propone su **reparto tentativo**, que el conductor contrasta antes de escribir el reparto real.
@@ -220,7 +220,7 @@ Con co-exploración activa, antes del punto 1 se despacha el `counter-plan` (ver
    El `branch` se nombra con la convención de `sdd-flow` (`<prefijo>/{id}-{slug}`), resolviendo el `<prefijo>` (el `{type}`) por repo con esta **precedencia**: (1) `branch_prefix` del `<repo>/.specify/config.yml` si lo tiene (su CI/CD manda) → (2) `branch_prefix` de la orquestación (del `manifest.yml`) → (3) prefijo **semántico** del cambio. Normalizar quitando la barra final si la trae. (Ese `<repo>/.specify/config.yml` se puede generar con `/sdd-flow init` dentro del repo; hace el reparto más determinista.)
 2. Escribir/actualizar `manifest.yml` (esquema en `reference.md`): por repo, `path`, `branch`, `status`, `depends_on` (el DAG) y `covers_ac`.
 3. **Cross-artifact check (regla 5):** validar que cada `AC-n` global está cubierto por ≥1 repo y que ninguna sub-task referencia un AC inexistente. Reportar huérfanos antes del gate.
-4. **STOP** — si la **revisión cross-model** está activa, ejecutar `cross-review` sobre el `reparto` (artefacto: `manifest.yml`; contexto: `master-spec.md` + los `plan.md` por repo + `co-explore/counter-plan-<familia>.md`, si co-exploración corrió; foco en cobertura AC↔repo, `depends_on` y ciclos del DAG) antes de presentar. Presentar el reparto (tabla repo · branch · AC cubiertos · dependencias, con el resumen de crítica si lo hubo) y pedir aprobación. Al aprobar, poner cada repo en `status: tasks-ready`.
+4. **STOP** — si la **revisión cross-model** está activa, ejecutar `cross-review` sobre el `reparto` (artefacto: `manifest.yml`; contexto: `master-spec.md` + los `plan.md` por repo + los índices + la síntesis de `counter-plan`, si co-exploración corrió; foco en cobertura AC↔repo, `depends_on` y ciclos del DAG) antes de presentar. Presentar el reparto (tabla repo · branch · AC cubiertos · dependencias, con el resumen de crítica si lo hubo) y pedir aprobación. Al aprobar, poner cada repo en `status: tasks-ready`.
 
 ---
 
