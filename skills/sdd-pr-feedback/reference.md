@@ -190,11 +190,11 @@ Vía B: "implement .plans/<id>/", siguiendo ese contrato al pie de la letra.
 Override de esta corrida: cross_review.mode: off (el conductor ya cross-revisó spec y plan/tasks).
 Reglas duras:
 - FRENÁ antes de commitear (nada de git add/commit/push); no toques nada fuera del repo.
-- En .plans/ actualizá SOLO .plans/<id>/ según el contrato de la Vía B (marcas [x], status,
+- En .plans/ actualiza SOLO .plans/<id>/ según el contrato de la Vía B (marcas [x], status,
   sección ## Verify); no toques .specify/ ni otros flujos de .plans/.
 - Sos un agente sin usuario: NO hagas los checkpoints conversacionales de la Vía B (no confirmes
-  resúmenes ni preguntes el modo de implementación — usá inline, salvo que tu entorno permita
-  despachar subagentes). Ante un bloqueo real, devolvé STATUS: failed con la razón.
+  resúmenes ni preguntes el modo de implementación — usa inline, salvo que tu entorno permita
+  despachar subagentes). Ante un bloqueo real, devuelve STATUS: failed con la razón.
 - Ya estás parado en la rama del PR (el `branch` del header apunta a ella): no crees ramas nuevas.
 
 Tu mensaje final debe ser EXACTAMENTE este reporte (sin prosa extra):
@@ -224,7 +224,7 @@ created_at: <ISO-8601>
 - `branch` es **la rama del PR** — el fix se aplica sobre ella, no sobre una rama nueva.
 - Al volver: validar `FILES` vs `git status --porcelain`; revisar el diff
   (`receiving-code-review`). `STATUS: failed` → 1 reintento con el feedback; si falla de nuevo,
-  escalar a Max.
+  escalar al usuario.
 
 ### Cómo despachar según el entorno
 
@@ -263,9 +263,39 @@ en el working tree, sin commitear):
      `git commit -m "fix(<TICKET>): ..."` (squash a uno; el soft-reset no toca el working tree).
    - `== 0` (no había commits / fix sobre base) → `git add <fix>` + `git commit -m "fix(<TICKET>): ..."`.
 4. **Gate** + publicar: `git push --force-with-lease origin <rama-del-PR>`.
-   - `--force-with-lease` (no `--force`): aborta si alguien más pushó la rama. Si lo rechaza, **no
-     forzar**: avisar y coordinar (otro dev tocó la rama del PR).
+   - `--force-with-lease` (nunca `--force` a secas, regla 6): aborta si el remoto se movió respecto
+     de lo que tu repo cree. **Si lo rechaza, no forzar** — pero tampoco asumir por qué.
 5. Verificar: `git rev-list --count <base>..HEAD` == 1 antes de dar por cerrado.
+
+### El rechazo del lease tiene dos causas, y llevan a lugares opuestos
+
+Que el lease aborte **no significa** que otro dev tocó la rama. Significa que el remoto no está donde
+tu repo cree, y a eso se llega por dos caminos:
+
+| Causa | Cómo se ve el remoto | Qué corresponde |
+|---|---|---|
+| **Otro tocó la rama** | apunta a un commit que **no es tuyo** | no forzar: avisar y coordinar |
+| **Tu push anterior llegó** | apunta **a tu propio commit** — el que estás por pushear | no hay nada que pushear: ya está hecho |
+
+El segundo caso aparece cuando la red corta **después** de que el servidor aceptó el push y antes de
+que llegue la respuesta: el comando parece haber fallado, el remoto quedó actualizado, y el reintento
+choca contra un lease que tu repo no sabe que venciste **vos mismo**. Tratarlo como "otro dev tocó la
+rama" manda a coordinar con alguien que no hizo nada, y deja el fix publicado creyendo que no lo está.
+
+**Distinguirlas es una consulta, no una inferencia:**
+
+```bash
+git ls-remote origin refs/heads/<rama-del-PR> | cut -f1     # sha remoto real
+git rev-parse HEAD                                          # el que querés publicar
+```
+
+Iguales → el push **ya se aplicó**: seguir al Paso 7 sin repushear. Distintos → el remoto tiene
+trabajo ajeno: no forzar, avisar y coordinar. **Nunca reintentar el push a ciegas** para ver qué pasa:
+si la causa era la primera, el retry es inofensivo pero inútil; si era la segunda, forzar por encima
+del trabajo de otro es exactamente lo que `--force-with-lease` existe para impedir.
+
+Es el mismo principio que rige toda escritura de resultado incierto: la duda se resuelve **mirando**,
+no volviendo a escribir.
 
 `<base>` = `destination.branch.name` del PR (típicamente `master`) en su merge-base:
 `git merge-base origin/<dst> HEAD`.

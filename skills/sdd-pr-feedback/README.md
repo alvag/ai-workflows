@@ -23,7 +23,7 @@ review (solo lectura), esta skill **reacciona** a los comentarios ya publicados 
 ## Cuándo usarla
 
 Cuando un PR de Bitbucket tiene comentarios de revisión (de bots/revisión automatizada o de
-humanos) que hay que atender con criterio. Triggers: "atendé el feedback del PR", "respondé los
+humanos) que hay que atender con criterio. Triggers: "atiende el feedback del PR", "responde los
 comentarios del PR", "qué hago con el review del PR \<id\>".
 
 No es code review (esa es `bitbucket-code-review`, que solo propone comentarios). Esta skill decide
@@ -50,8 +50,15 @@ y, con confirmación, escribe en el PR.
 ## Garantías
 
 - Toda escritura (responder, resolver, force-push) pasa por un gate de confirmación; el texto de las
-  respuestas se muestra antes de publicar.
-- Nunca aprueba ni mergea el PR.
+  respuestas se muestra antes de publicar. La lista de escrituras permitidas es **cerrada**.
+- Nunca aprueba ni mergea el PR, y nunca hace `git push --force` a secas: solo `--force-with-lease`.
 - Los Pasos 0–3 son solo lectura.
+- **Nada de resultado incierto se reintenta.** Si un `bb_post` no confirma, se verifica con un
+  `bb_get` si llegó antes de decidir; un retry a ciegas publicaría la misma respuesta dos veces en el
+  hilo de otra persona.
+- **Un `--force-with-lease` rechazado no se da por explicado.** Puede ser que otro haya tocado la
+  rama, o que tu propio push anterior sí llegara y cortara la respuesta. Se distinguen mirando el sha
+  remoto, porque llevan a lugares opuestos: coordinar con alguien, o darse cuenta de que ya está
+  publicado.
 
 Funciona en Claude Code y Codex (detección de tools por capacidad).
