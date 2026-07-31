@@ -2,6 +2,16 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Estado:** implementado y **superado en parte**.
+> **Nota (posterior, 2026-07-31):** la **topología** que este documento describe —el conductor
+> explora en paralelo con un worker de la otra familia y sintetiza los dos mapas— fue reemplazada
+> en el commit `97cc694`. Hoy `co-explore` despacha **dos workers frescos, uno por familia**, y el
+> conductor **no explora**: arbitra leyendo el índice compacto de cada uno y abriendo el detalle
+> solo por disparador. Cambian también la salida (envelope agregado en vez de estado singular), la
+> degradación (escalera de cuatro ramas) y las rutas de trabajo (con modo, familia y rol). Lo que
+> este documento sigue describiendo bien es el **porqué** de la capacidad y las fronteras entre
+> skills. Ver `docs/superpowers/specs/2026-07-30-portacion-cli-first-cross-model.md`, punto 1.
+
 **Goal:** Crear la skill `sdd-co-explore` (exploración paralela cross-model) e integrarla en `sdd-flow` y `sdd-orchestrator`, según el spec `docs/superpowers/specs/2026-07-03-sdd-co-explore-design.md`.
 
 **Architecture:** Skill nueva hermana de las SDD que despacha al revisor de otra familia a explorar el código en background (modo `explore` pre-spec, `counter-plan` pre-plan/pre-reparto) y devuelve un informe estructurado de hallazgos. `sdd-flow`/`sdd-orchestrator` orquestan: exploración propia del conductor en paralelo, síntesis con competencia de enfoques, y pasan los informes a `sdd-cross-review` como contexto (crítica informada). Todo degradable: sin revisor o vencido el deadline, el flujo sigue como hoy.

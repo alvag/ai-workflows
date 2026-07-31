@@ -1,7 +1,14 @@
 # Diseño: modo `debate` en `co-explore` (soporte a decisiones cross-model)
 
 Fecha: 2026-07-17
-Estado: aprobado (pendiente de plan de implementación)
+Estado: implementado (ver `docs/superpowers/plans/2026-07-17-co-explore-debate-mode.md`)
+
+> **Nota (posterior, 2026-07-31):** el modo `debate` **no cambió** en el commit `97cc694` y sigue
+> siendo el único donde el conductor es una de las dos voces — quedó explícitamente fuera del
+> alcance de la topología dual. Lo que sí cambió a su alrededor: los otros tres modos despachan dos
+> workers con el conductor como árbitro, y la regla 2 (independencia) pasó a discriminar **por
+> modo** justamente para preservar la ronda 0 de `debate`. Su mecánica se movió de `SKILL.md` a
+> `reference.md` → "Mecánica del modo `debate`".
 Skills afectadas: `co-explore` (nuevo modo), `sdd-flow` (config + disparadores)
 
 ## Contexto y objetivo

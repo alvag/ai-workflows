@@ -5,6 +5,15 @@
 > investigar bugs standalone. Ver `docs/superpowers/specs/2026-07-03-co-explore-investigate-mode-design.md`.
 > Este documento describe el diseño original (dos modos, SDD-only) tal como se implementó.
 
+> **Nota (posterior, 2026-07-31):** la **topología** que este documento describe —el conductor
+> explora en paralelo con un worker de la otra familia y sintetiza los dos mapas— fue reemplazada
+> en el commit `97cc694`. Hoy `co-explore` despacha **dos workers frescos, uno por familia**, y el
+> conductor **no explora**: arbitra leyendo el índice compacto de cada uno y abriendo el detalle
+> solo por disparador. Cambian también la salida (envelope agregado en vez de estado singular), la
+> degradación (escalera de cuatro ramas) y las rutas de trabajo (con modo, familia y rol). Lo que
+> este documento sigue describiendo bien es el **porqué** de la capacidad y las fronteras entre
+> skills. Ver `docs/superpowers/specs/2026-07-30-portacion-cli-first-cross-model.md`, punto 1.
+
 **Fecha:** 2026-07-03
 **Estado:** implementado (ver docs/superpowers/plans/2026-07-03-sdd-co-explore.md); luego
 generalizado a `co-explore` (ver nota arriba).

@@ -1,10 +1,9 @@
 # Portación CLI-first: qué rescatar de las ramas Herdr y Orca
 
 Fecha: 2026-07-30
-Actualizado: 2026-07-31 — refinamientos del triage y seis ideas nuevas (puntos 10 a 15), tras
-revisar los últimos tres commits de `feat/cross-model-real-sessions` (`38dc95f`, `f236192`,
-`2979d6d`) y los dos insumos independientes del research
-Estado: catálogo de ideas aprobado para evaluar; secuencia propuesta pendiente de confirmación
+Actualizado: 2026-07-31 — pasos 1 y 2 de la secuencia implementados; estado por punto al día
+Estado: catálogo aprobado y **en ejecución**. Hechos: pasos 1 (`dd2f3b7`) y 2 (`97cc694`).
+Siguiente: paso 3 (puntos 2, 3, 11 y 12)
 Skills afectadas: `co-explore`, `cross-implement`, `cross-review`, `sdd-flow` (config)
 Ramas analizadas: `feat/herdr-cli-cross-model` (ffcc851), `feat/cross-model-real-sessions` (2979d6d)
 Rama destino: `feat/cross-model` (24fc46b, idéntica a `main`)
@@ -85,9 +84,17 @@ Ordenadas por valor sobre costo. Cada una es independiente de las demás.
 
 ### 1. Coordinador puro + índice compacto y lectura selectiva
 
-- **Origen:** `.plans/herdr-cli-cross-model/ideas.md` (untracked, worktree de esa rama).
-- **Qué es:** hoy el conductor explora él mismo *y además* despacha un worker, por lo que paga el
-  contexto completo de la exploración. La idea es que el conductor **no explore**: despacha dos
+> **HECHO** — commit `97cc694` (2026-07-31). Implementado con una diferencia respecto de lo
+> anotado abajo: la lectura selectiva se apoya en un **split a dos archivos** (`index-*` /
+> `detail-*`), no en extraer rangos del informe completo — leer el índice pasa a ser leer un
+> archivo chico. Se sumaron además el envelope de retorno, la escalera de cuatro ramas, la
+> excepción de familia acotada y la decisión de retoma. Artefactos del flujo en
+> `.plans/punto-1-coordinador-puro/`.
+
+- **Origen:** `docs/superpowers/specs/2026-07-23-herdr-cli-cross-model-ideas.md` (rescatado del
+  worktree de esa rama, antes untracked).
+- **Qué era:** el conductor exploraba él mismo *y además* despachaba un worker, por lo que pagaba
+  el contexto completo de la exploración. La idea es que el conductor **no explore**: despacha dos
   workers frescos y actúa como árbitro. Cada worker entrega **dos capas**:
   - un **índice compacto** que enumera *todos* los hallazgos, cada uno con ID estable, severidad
     o impacto, confianza y punteros a evidencia;
@@ -216,6 +223,9 @@ que son las que hacen que el mecanismo sea honesto en vez de decorativo:
 
 ### 4. Worker con MCP y hooks apagados
 
+> **HECHO** — commit `dd2f3b7`. Se implementó con más alcance del anotado: sumó el preflight
+> fail-closed, la lectura validada del config del usuario y la persistencia del modelo entre rondas.
+
 - **Origen:** `feat/cross-model-real-sessions`, `skills/cross-model-orca/assets/launch/profiles.md`
   y sección 3 de su `SKILL.md`.
 - **Qué es:** el worker delegado no necesita MCP —todo su contexto viaja en el prompt— y no debe
@@ -234,7 +244,10 @@ que son las que hacen que el mecanismo sea honesto en vez de decorativo:
 
 ### 5. Degradación parcial declarada en vez de `UNAVAILABLE`
 
-- **Origen:** `.plans/herdr-cli-cross-model/ideas.md`.
+> **HECHO en forma reducida** — commit `dd2f3b7` (rama terminal de una sola voz). La versión
+> completa dependía del punto 1 y llegó con él en `97cc694`: escalera de cuatro ramas.
+
+- **Origen:** `docs/superpowers/specs/2026-07-23-herdr-cli-cross-model-ideas.md`.
 - **Qué es:** hoy `co-explore` devuelve `UNAVAILABLE` si no hay revisor de la otra familia
   (regla 7, paso 1 de sus pasos de ejecución). La idea es continuar con un solo worker y
   **declarar explícitamente la diversidad reducida** en la salida.
@@ -247,7 +260,8 @@ que son las que hacen que el mecanismo sea honesto en vez de decorativo:
 
 ### 6. Perfiles de worker en `.specify/config.yml`
 
-- **Origen:** `.plans/herdr-cli-cross-model/ideas.md`, sección "Decisión: perfiles nombrados".
+- **Origen:** `docs/superpowers/specs/2026-07-23-herdr-cli-cross-model-ideas.md`, sección
+  "Decisión: perfiles nombrados de workers".
 - **Qué es:** un perfil describe **cómo ejecutar** un worker (familia, modelo, esfuerzo), nunca
   qué tarea hacer. La skill conserva la autoridad sobre rol, prompt, permisos y límites de
   escritura; un perfil no puede elevar permisos.
@@ -318,6 +332,10 @@ que son las que hacen que el mecanismo sea honesto en vez de decorativo:
 
 ### 10. Llevar el triage a `systematic-debugging`
 
+> **HECHO, reubicado** — commit `dd2f3b7`. `systematic-debugging` es del plugin superpowers y no
+> pertenece a este repo, así que la regla vive en `co-explore investigate` como el criterio de éxito
+> tratado como una hipótesis más.
+
 - **Origen:** `docs/research/fusion-harness/claude/README.md`, oportunidad 2.
 - **Qué es:** esa skill ya sostiene el principio "una hipótesis de causa raíz, no prueba y error".
   Lo que le falta es la vuelta de tuerca: **una de las hipótesis válidas es que tu criterio de
@@ -353,6 +371,8 @@ que son las que hacen que el mecanismo sea honesto en vez de decorativo:
 - **Costo:** una línea de checklist.
 
 ### 13. Nota de límite en las síntesis
+
+> **HECHO** — commit `dd2f3b7`. Slot obligatorio en las seis superficies de salida.
 
 - **Origen:** `docs/research/fusion-harness/claude/README.md` §6, "blind-spot honesty".
 - **Qué es:** cerrar las síntesis de `co-explore` y las conclusiones de `cross-review` con una
@@ -420,10 +440,9 @@ Vienen de la lista *Keep* del research y siguen vigentes:
 
 Todo sobre `feat/cross-model`, sin runtime nuevo. Cada paso es entregable por sí solo.
 
-0. **Archivar las ramas de origen** con un tag, sin borrarlas.
-1. **Puntos 4, 5, 10 y 13** — MCP/hooks off, degradación parcial declarada, triage en
-   `systematic-debugging` y nota de límite en las síntesis. Todos baratos y de efecto inmediato.
-2. **Punto 1** (coordinador puro + índice/detalle) — el que más rinde.
+0. **Archivar las ramas de origen** con un tag, sin borrarlas. — **pendiente**
+1. ~~**Puntos 4, 5, 10 y 13**~~ — **HECHO**, commit `dd2f3b7`.
+2. ~~**Punto 1** (coordinador puro + índice/detalle)~~ — **HECHO**, commit `97cc694`.
 3. **Puntos 2, 3, 11 y 12** — verification contract con sus reglas de congelamiento, triage con
    sus refinamientos, checks declarados en `plan`/`tasks` y verificación de lo declarado contra el
    árbol. Van juntos porque comparten el mismo contrato.
@@ -432,20 +451,26 @@ Todo sobre `feat/cross-model`, sin runtime nuevo. Cada paso es entregable por s�
 5. **Punto 9** (manifest mínimo) — recién acá, y solo para decidir con datos si algo más de las
    ramas se justifica.
 
-Estimación gruesa: los pasos 1–4 caben en menos de 1.800 líneas de Markdown más ~350 de JS
-reusado, frente a las 79.074 líneas de la rama Herdr. Los puntos 10 a 15 son casi todos texto.
+Estimación gruesa original: los pasos 1–4 en menos de 1.800 líneas de Markdown. **Medido:** el
+paso 1 costó 923 líneas y el paso 2, 1.328 (neto +677). La estimación quedó corta y conviene
+recalibrar: cada paso rinde más de lo previsto pero cuesta cerca del doble.
+
+**Pendiente de portar, detectado al ejecutar el paso 2** (`docs/superpowers/specs/2026-07-23-herdr-cli-cross-model-ideas.md`):
+índice **paginado sin pérdida** (el presupuesto limita entrada y página, nunca la cantidad de
+hallazgos), `clarification-needed` como resultado de worker con versión inmutable del paquete de
+contexto, y separar **reparación de formato** de **retry semántico** — hoy un enum mal escrito tira
+todo el trabajo del worker.
 
 ## Riesgo de pérdida de insumos
 
 `.plans/` es untracked por diseño. Dos documentos citados acá viven **solo** en el worktree de
 `feat/herdr-cli-cross-model` (`/Users/max/Personal/repos/ai-workflows`) y no están en ninguna rama:
 
-- `.plans/herdr-cli-cross-model/ideas.md` (37.689 bytes) — origen de los puntos 1, 5 y 6.
+- ~~`.plans/herdr-cli-cross-model/ideas.md`~~ — **rescatado** a
+  `docs/superpowers/specs/2026-07-23-herdr-cli-cross-model-ideas.md`.
 - `.plans/cross-model-herdr-adapter/runtime-adoption-log.md` (1.229 líneas) — la evidencia de los
-  hallazgos verificados.
-
-Si se archiva esa rama y se limpia el worktree, se pierden. Conviene decidir si se rescatan a
-`docs/research/` antes de archivar.
+  hallazgos verificados. **Sigue en riesgo**: si se archiva la rama y se limpia el worktree, se
+  pierde.
 
 ## Método y límites de la verificación
 
@@ -467,5 +492,6 @@ Max desde su propio entorno. Las cifras de tests que aparecen en el adoption log
 - `skills/cross-implement/reference.md` en `2979d6d` — implementación del contract y el triage;
   origen de todas las reglas de congelamiento y los refinamientos del triage.
 - `docs/research/cross-model-real-sessions/README.md` (misma rama).
-- `.plans/herdr-cli-cross-model/ideas.md` y `.plans/cross-model-herdr-adapter/` (untracked).
+- `docs/superpowers/specs/2026-07-23-herdr-cli-cross-model-ideas.md` (rescatado el 2026-07-31) y
+  `.plans/cross-model-herdr-adapter/` (aún untracked).
 - `skills/cross-model-runtime/` y `skills/cross-model-orca/` en sus respectivas ramas.
