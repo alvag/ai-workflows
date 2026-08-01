@@ -244,11 +244,8 @@ branch_prefix: ""                # opcional; reemplaza {type} (p. ej. "feature/"
 commit_style: conventional       # conventional | plain
 tracker: jira                    # jira | github | gitlab | linear | none
 test_scope_hint: "vitest run {name}"      # plantilla de COMANDO para acotar tests; {name} = archivo/patrón
-cross_model:                     # PERFILES de ejecución de workers (opcional). Un perfil dice CÓMO ejecutar, nunca QUÉ tarea hacer
+cross_model:                     # políticas comunes a las skills cross-model (opcional)
   schema_version: 1              # obligatorio si el bloque existe; una versión desconocida se ignora entera con aviso, nunca se interpreta a medias
-  profiles:
-    claude-deep: { family: claude, model: sonnet,  effort: high }
-    codex-deep:  { family: codex,  model: default, effort: high }   # `default` delega la elección al proveedor
   manifest:                      # registro por corrida de las skills cross-model, para decidir con datos si la capacidad rinde
     mode: "on"                   # "on" (default) | "off"  (entre comillas: sin ellas YAML los parsea como booleanos). Política del ECOSISTEMA: las tres skills escriben el mismo registro; apagarlo para una sola dejaría huecos sistemáticos. Ver `cross-review/reference.md` → "Manifest de corrida"
 cross_review:                    # segunda opinión cross-model EN LOS GATES (opcional; ver skill cross-review)
@@ -263,11 +260,7 @@ co_explore:                      # exploración paralela cross-model ANTES de sp
   debate:                        # modo `debate` de co-explore: ayuda a decidir en `clarify`/`plan`. INDEPENDIENTE de `mode` (arriba); ver `SKILL.md` → "Debate en decisiones"
     mode: auto                   # off (nunca se ofrece) | auto (decisiones complejas/high-stakes o inseguridad) | on (cualquier decisión contestable). Siempre se OFRECE, nunca corre sin confirmación
     max_rounds: 3
-  workers:                       # qué perfiles de `cross_model.profiles` despachar (opcional; ver `co-explore/reference.md` → "Perfiles de worker")
-    profiles: [claude-deep, codex-deep]
-    target_success: 2            # cuántos se querrían READY
-    min_success: 1               # con menos, la corrida es UNAVAILABLE
-    family_diversity: prefer     # prefer | require — con `require`, dos perfiles de la misma familia no despachan
+                                 # NO hay bloque `workers`: cuántos se despachan y de qué familia lo fija la topología dual (`co-explore/SKILL.md` regla 7), no el config
 jira_approval:                   # aprobación externa de la spec en Jira (opcional; solo si tracker: jira)
   mode: "off"                    # "off" | "on"  (default off; entre comillas: sin ellas YAML los parsea como booleanos)
   subtask_issuetype: auto        # auto (descubrir por createmeta) | "Subtarea" | "Sub-task"

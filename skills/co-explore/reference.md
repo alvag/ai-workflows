@@ -196,7 +196,7 @@ mkdir -p co-explore/scratch
 # Modelo y esfuerzo del usuario: --ignore-user-config los descarta junto con el resto del config,
 # así que se leen antes y se pasan explícitos. Solo vale una asignación RAÍZ inequívoca del TOML
 # (anterior a la primera cabecera de tabla, comillas dobles, una sola ocurrencia); si no, se deja
-# el default del CLI en vez de forzar un valor sacado de una tabla o de un perfil inactivo.
+# el default del CLI en vez de forzar un valor sacado de una tabla, que aplica a otro contexto.
 CODEX_CFG="${CODEX_HOME:-$HOME/.codex}/config.toml"
 ROOT=$(awk '/^[[:space:]]*\[/{exit} {print}' "$CODEX_CFG" 2>/dev/null)
 read_root_key() {
@@ -1343,47 +1343,43 @@ pasaba sin problema. El diseño barato resultó ser también el seguro.
 Consecuencia práctica: si el delegado necesita saber algo, ese algo se **escribe en el prompt**. No
 se le reenvía la conversación para que lo deduzca.
 
-## Perfiles de worker
+## Modelo y esfuerzo del worker
 
-Un perfil describe **cómo ejecutar** un worker —familia, modelo, esfuerzo—, **nunca qué tarea
-hacer**. La skill conserva la autoridad sobre el rol, el prompt, los permisos y los límites de
-escritura: un perfil **no puede elevar permisos**, y uno que lo intente se ignora con aviso.
+**De dónde salen hoy, y no es uniforme.** El worker Codex se aísla con `--ignore-user-config` y
+después **reinyecta** el `model` y el `model_reasoning_effort` que el usuario tenga en la raíz de su
+`~/.codex/config.toml`; el worker Claude recibe un modelo **explícito** en la línea de lanzamiento.
+Las dos formas están en los bloques de invocación de arriba, que son la fuente.
 
-Viven en el bloque `cross_model.profiles` de `.specify/config.yml` (esquema en
-`sdd-flow/reference.md` → "Esquema de `.specify/config.yml`") y se consumen desde
-`co_explore.workers.profiles`. Separarlos así es lo que permite cambiar costo y latencia **sin tocar
-ninguna skill**.
+**No es configurable por skill, y es deliberado.** Hubo un bloque `cross_model.profiles` +
+`co_explore.workers` en el esquema del config que nunca tuvo consumidor: ninguna línea de lanzamiento
+lo leía. Se quitó en vez de cablearlo, porque config documentada que nada lee es peor que no tenerla
+— quien escribía `model: sonnet` recibía el modelo de siempre, sin aviso, que es exactamente la
+sustitución silenciosa que las reglas de abajo prohíben. Cambiar modelo o esfuerzo hoy es editar la
+línea de lanzamiento. Si alguna vez vuelve a hacer falta configurarlo, que entre **con** su
+consumidor y no antes.
 
-### Precedencia y reglas duras
+**Cuántos workers y de qué familia no se configuran nunca**, ni siquiera si vuelven los perfiles: lo
+fija la topología dual (`SKILL.md` regla 7) y la escalera de degradación decide con los **estados**
+de los workers, no con umbrales. Un config que dijera "prefiero diversidad de familia" describiría
+mal la skill: la diversidad no es una preferencia acá, es la razón de la topología.
 
-Precedencia, igual que el resto de los overrides SDD: **override conversacional de la corrida >
-`.specify/config.yml` > defaults de la skill**.
+### Reglas duras sobre modelo y esfuerzo
 
-Cuatro reglas que no se negocian, y las cuatro existen por el mismo motivo — que una sustitución
-silenciosa produce un resultado que parece el pedido y no lo es:
+Valen para cualquier vía de despacho, venga el valor de donde venga. Las cuatro existen por el mismo
+motivo — una sustitución silenciosa produce un resultado que **parece** el pedido y no lo es:
 
-1. **Un modelo explícito no disponible vuelve ese perfil `UNAVAILABLE`.** Nunca se sustituye por
+1. **Un modelo explícito no disponible vuelve ese worker `UNAVAILABLE`.** Nunca se sustituye por
    otro. Pedir `sonnet` y recibir otro modelo sin aviso invalida cualquier comparación de costo o
-   de calidad que motivó el perfil.
-2. **`model: default` sí delega** la elección al proveedor: es el valor con el que se declara "me da
-   igual cuál", y por eso no dispara la regla anterior.
-3. **Una opción de esfuerzo incompatible se avisa, no se descarta en silencio.** Un adaptador que
-   ignora `effort: high` porque su CLI no lo soporta entrega un worker más barato del pedido y el
-   conteo de costo queda mintiendo.
-4. **Un perfil no puede elevar permisos.** El nivel de escritura lo fija el rol —read-only en
-   `co-explore` y `cross-review`, workspace-write acotado en `cross-implement`—, y ningún campo del
-   perfil lo toca.
-
-### Interacción con la diversidad de familia
-
-`family_diversity: prefer` (default) intenta despachar perfiles de familias distintas y, si no
-puede, sigue con lo que haya declarando la diversidad reducida — es la escalera de degradación de
-siempre. Con `require`, dos perfiles de la misma familia **no despachan**: la corrida resuelve
-`UNAVAILABLE` antes de gastar nada.
-
-`target_success` y `min_success` son distintos a propósito: el primero dice cuántos se querrían, el
-segundo cuántos alcanzan para no abortar. Colapsarlos en un solo número obliga a elegir entre
-abortar de más o aceptar de menos.
+   de calidad que motivó el pedido.
+2. **Un modelo sin declarar sí delega** la elección al proveedor: es la forma de decir "me da igual
+   cuál", y por eso no dispara la regla anterior. La distinción es entre no haber pedido nada y
+   haber pedido algo que no se pudo dar.
+3. **Una opción de esfuerzo incompatible se avisa, no se descarta en silencio.** Una vía que ignora
+   un esfuerzo alto porque su CLI no lo soporta entrega un worker más barato del pedido y el conteo
+   de costo queda mintiendo.
+4. **La ejecución no eleva permisos.** El nivel de escritura lo fija el rol —read-only en
+   `co-explore` y `cross-review`, workspace-write acotado en `cross-implement`—, y nada de lo que
+   diga un modelo, un esfuerzo o un config lo toca.
 
 ## Escalera de rigor
 

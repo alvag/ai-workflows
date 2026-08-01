@@ -207,7 +207,7 @@ contraintuitivos y **no** se deben "simplificar":
 - **La lectura del config valida antes de usar.** Solo vale una asignación **raíz** —anterior a la
   primera cabecera de tabla—, con comillas dobles y una sola ocurrencia. Cualquier otra cosa deja
   el valor vacío y el flag no se pasa: es preferible el default del CLI a forzar un modelo sacado
-  de dentro de una tabla o de un perfil inactivo.
+  de dentro de una tabla, que aplica a otro contexto y no a la raíz.
 
 ```bash
 # POSIX

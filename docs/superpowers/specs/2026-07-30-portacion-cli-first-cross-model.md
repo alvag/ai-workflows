@@ -288,6 +288,26 @@ que son las que hacen que el mecanismo sea honesto en vez de decorativo:
 - **Por qué:** control real sobre costo y latencia sin tocar las skills.
 - **Costo:** bajo.
 
+> **Cerrado el 2026-08-01 — revertido, no implementado.** El vocabulario se portó (el YAML de arriba
+> llegó al esquema del config) y **el consumidor nunca**: ninguna línea de lanzamiento leía un perfil,
+> así que escribir `model: sonnet` despachaba el modelo de siempre sin avisar — la sustitución
+> silenciosa que las reglas de este mismo punto prohíben. Se quitaron `cross_model.profiles` y
+> `co_explore.workers` enteros; las reglas sobre modelo y esfuerzo sobreviven en
+> `co-explore/reference.md` → "Modelo y esfuerzo del worker", que es donde estaban vivas.
+>
+> Tres cosas que se aprendieron y valen más que la capacidad:
+>
+> 1. **El "costo: bajo" estaba mal medido.** Cablearlo eran 31 bloques de invocación en 4 archivos,
+>    3 guardas nuevas y un `v2` del contrato. Lo barato era el YAML, no el consumidor.
+> 2. **El ejemplo que lo motivaba ya era el comportamiento por defecto** (`co-explore` con `opus`,
+>    `cross-implement` con `sonnet`): el trabajo compraba poder *cambiarlos*, no tenerlos.
+> 3. **`target_success`, `min_success` y `family_diversity` tampoco tenían consumidor**, y además
+>    describían mal la skill: con la topología dual del punto 1, la diversidad de familia dejó de ser
+>    una preferencia configurable. Sobrevivieron porque nadie volvió a mirarlos.
+>
+> La spec completa (18 AC, 5+9 rondas de revisión) queda en `.plans/perfiles-por-skill/` por si algún
+> día vuelve a hacer falta. Si vuelve, **entra con su consumidor o no entra.**
+
 ### 7. Prompts como assets versionados
 
 - **Origen:** §P0.4 del research (`feat/cross-model-real-sessions`).
