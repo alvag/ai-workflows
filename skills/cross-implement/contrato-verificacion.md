@@ -200,6 +200,16 @@ Cada versión registra dos hashes, en la cabecera de su bloque de baseline:
   forma del bloque no dependa de si ya fue hasheado.
 - `hash_previo` — el `hash` de la versión inmediatamente anterior; cadena vacía en `v1`.
 
+**Dónde termina el bloque.** Empieza en el encabezado `#+ vN` y termina en el **primer encabezado de
+nivel menor o igual** al de esa versión, o en EOF. Así `#### Baseline de vN` queda adentro —es más
+profundo— y `## Tests y build` queda afuera. Los encabezados dentro de cercas ` ``` ` no cuentan: un
+`# comentario` de un bloque de código no cierra nada.
+
+Fijarlo importa tanto como fijar la normalización, y por la misma razón. Definir el hash sin definir
+su frontera dejaba a la **última** versión absorbiendo todo lo que viniera después: en un plan de
+`sdd-flow`, la sección "Tests y build" y el `## Verify` que el propio flujo escribe al terminar. La
+cadena se rompía sola, sin que nadie hubiera tocado una fila, y el gate rechazaba un contrato intacto.
+
 Bytes canónicos = el bloque tal cual, con finales de línea `LF`, sin espacios al final de cada línea
 y sin líneas en blanco al final. Sin fijar la normalización, un editor que reescriba los finales de
 línea rompe la cadena sin que nadie haya tocado el contenido.
@@ -314,7 +324,11 @@ equivocado.
 t=$(mktemp -d); rc=0
 CAB='| ID | Requisito | Evidencia | Comando/observación | Esperado | Baseline |'
 n=$(grep -oE '^#+ v[0-9]+$' "$contrato" | grep -oE '[0-9]+' | sort -n | tail -1)
-awk -v n="$n" '$0~"^#+ v"n"$"{on=1;next} on&&/^#+ v[0-9]+$/{on=0} on' "$contrato" > "$t/vig"
+awk -v n="$n" '
+  /^`{3}/ { f = !f }
+  !on && !f && $0 ~ "^#+ v" n "$" { lv = index($0, " ") - 1; on = 1; next }
+  on && !f && /^#+ / { if (index($0, " ") - 1 <= lv) exit }
+  on' "$contrato" > "$t/vig"
 grep -E '^\|' "$t/vig" | grep -vE '^\|[[:space:]]*(ID[[:space:]]*\||[-: |]+\|)' > "$t/filas"
 
 grep -qxF "$CAB" "$t/vig" || { echo "GUARD:esquema-tabla cabecera no normativa" >&2; rc=1; }
@@ -341,10 +355,11 @@ $rc = 0
 $cab = '| ID | Requisito | Evidencia | Comando/observación | Esperado | Baseline |'
 $doc = Get-Content -LiteralPath $contrato
 $n   = ($doc | Select-String -Pattern '^#+ v(\d+)$' | ForEach-Object { [int]$_.Matches.Groups[1].Value } | Measure-Object -Maximum).Maximum
-$vig = @(); $on = $false
+$vig = @(); $on = $false; $f = $false; $lv = 0
 foreach ($l in $doc) {
-  if ($l -match "^#+ v$n$") { $on = $true; continue }
-  if ($on -and $l -match '^#+ v\d+$') { $on = $false }
+  if ($l -match '^`{3}') { $f = -not $f }
+  if (-not $on -and -not $f -and $l -match "^#+ v$n$") { $lv = $l.IndexOf(' '); $on = $true; continue }
+  if ($on -and -not $f -and $l -match '^#+ ' -and $l.IndexOf(' ') -le $lv) { break }
   if ($on) { $vig += $l }
 }
 $filas = $vig | Where-Object { $_ -match '^\|' -and $_ -notmatch '^\|\s*(ID\s*\||[-: |]+\|)' }
@@ -366,7 +381,11 @@ exit $rc
 # Entradas: $contrato $reqs (un identificador de requisito por línea)
 t=$(mktemp -d); rc=0
 n=$(grep -oE '^#+ v[0-9]+$' "$contrato" | grep -oE '[0-9]+' | sort -n | tail -1)
-awk -v n="$n" '$0~"^#+ v"n"$"{on=1;next} on&&/^#+ v[0-9]+$/{on=0} on' "$contrato" > "$t/vig"
+awk -v n="$n" '
+  /^`{3}/ { f = !f }
+  !on && !f && $0 ~ "^#+ v" n "$" { lv = index($0, " ") - 1; on = 1; next }
+  on && !f && /^#+ / { if (index($0, " ") - 1 <= lv) exit }
+  on' "$contrato" > "$t/vig"
 grep -E '^\|' "$t/vig" | grep -vE '^\|[[:space:]]*(ID[[:space:]]*\||[-: |]+\|)' \
   | awk -F'|' '{gsub(/^ +| +$/,"",$3); split($3,p," "); if (p[1]!="") print p[1]}' \
   | sort -u > "$t/citados"
@@ -390,10 +409,11 @@ rm -rf "$t"; exit $rc
 $rc = 0
 $doc = Get-Content -LiteralPath $contrato
 $n   = ($doc | Select-String -Pattern '^#+ v(\d+)$' | ForEach-Object { [int]$_.Matches.Groups[1].Value } | Measure-Object -Maximum).Maximum
-$vig = @(); $on = $false
+$vig = @(); $on = $false; $f = $false; $lv = 0
 foreach ($l in $doc) {
-  if ($l -match "^#+ v$n$") { $on = $true; continue }
-  if ($on -and $l -match '^#+ v\d+$') { $on = $false }
+  if ($l -match '^`{3}') { $f = -not $f }
+  if (-not $on -and -not $f -and $l -match "^#+ v$n$") { $lv = $l.IndexOf(' '); $on = $true; continue }
+  if ($on -and -not $f -and $l -match '^#+ ' -and $l.IndexOf(' ') -le $lv) { break }
   if ($on) { $vig += $l }
 }
 $citados = $vig | Where-Object { $_ -match '^\|' -and $_ -notmatch '^\|\s*(ID\s*\||[-: |]+\|)' } |
@@ -417,7 +437,11 @@ exit $rc
 t=$(mktemp -d); rc=0
 vs=$(grep -oE '^#+ v[0-9]+$' "$contrato" | grep -oE '[0-9]+' | sort -n)
 for v in $vs; do
-  awk -v n="$v" '$0~"^#+ v"n"$"{on=1;next} on&&/^#+ v[0-9]+$/{on=0} on' "$contrato" \
+  awk -v n="$v" '
+    /^`{3}/ { f = !f }
+    !on && !f && $0 ~ "^#+ v" n "$" { lv = index($0, " ") - 1; on = 1; next }
+    on && !f && /^#+ / { if (index($0, " ") - 1 <= lv) exit }
+    on' "$contrato" \
     | grep -E '^\|' | grep -vE '^\|[[:space:]]*(ID[[:space:]]*\||[-: |]+\|)' \
     | awk -F'|' '{gsub(/^ +| +$/,"",$2); gsub(/^ +| +$/,"",$3); gsub(/^ +| +$/,"",$6)
                   print $2"\t"$3"\t"$6}' | sort > "$t/v$v"
@@ -448,10 +472,11 @@ $rc = 0
 $doc = Get-Content -LiteralPath $contrato
 $vs  = $doc | Select-String -Pattern '^#+ v(\d+)$' | ForEach-Object { [int]$_.Matches.Groups[1].Value } | Sort-Object
 function Get-Filas($doc, $n) {
-  $vig = @(); $on = $false
+  $vig = @(); $on = $false; $f = $false; $lv = 0
   foreach ($l in $doc) {
-    if ($l -match "^#+ v$n$") { $on = $true; continue }
-    if ($on -and $l -match '^#+ v\d+$') { $on = $false }
+    if ($l -match '^`{3}') { $f = -not $f }
+    if (-not $on -and -not $f -and $l -match "^#+ v$n$") { $lv = $l.IndexOf(' '); $on = $true; continue }
+    if ($on -and -not $f -and $l -match '^#+ ' -and $l.IndexOf(' ') -le $lv) { break }
     if ($on) { $vig += $l }
   }
   $h = @{}
@@ -497,7 +522,16 @@ done
 
 anterior=''
 for v in $vs; do
-  awk -v n="$v" '$0~"^#+ v"n"$"{on=1;print;next} on&&/^#+ v[0-9]+$/{on=0} on' "$contrato" > "$t/b"
+  # El bloque termina en el primer encabezado de nivel MENOR O IGUAL al de la versión, o en EOF.
+  # Cortar solo en la próxima `#+ vN` hacía que la última versión se comiera todo lo que viniera
+  # después —en un plan de sdd-flow, "Tests y build" y el "## Verify" que escribe el propio flujo—,
+  # y entonces la cadena se rompía sin que nadie hubiera tocado una fila. Las cercas ``` se
+  # respetan: un `# comentario` dentro de un bloque de código no es un encabezado.
+  awk -v n="$v" '
+    /^`{3}/ { f = !f }
+    !on && !f && $0 ~ "^#+ v" n "$" { lv = index($0, " ") - 1; on = 1; print; next }
+    on && !f && /^#+ / { if (index($0, " ") - 1 <= lv) exit }
+    on' "$contrato" > "$t/b"
   # bytes canónicos: se vacía el VALOR de hash, se recortan espacios finales y líneas en blanco
   # del final. Sin normalizar, un editor que reescriba finales de línea rompe la cadena sin que
   # nadie haya tocado el contenido.
@@ -531,10 +565,18 @@ foreach ($v in $vs) {
 }
 $anterior = ''
 foreach ($v in $vs) {
-  $b = @(); $on = $false
+  # El bloque termina en el primer encabezado de nivel MENOR O IGUAL al de la versión, o en EOF.
+  # Cortar solo en la próxima `#+ vN` hacía que la última versión se comiera todo lo que viniera
+  # después —en un plan de sdd-flow, "Tests y build" y el "## Verify" que escribe el propio flujo—,
+  # y entonces la cadena se rompía sin que nadie hubiera tocado una fila. Las cercas ``` se
+  # respetan: un `# comentario` dentro de un bloque de código no es un encabezado.
+  $b = @(); $on = $false; $f = $false; $lv = 0
   foreach ($l in $doc) {
-    if ($l -match "^#+ v$v$") { $on = $true; $b += $l; continue }
-    if ($on -and $l -match '^#+ v\d+$') { $on = $false }
+    if ($l -match '^`{3}') { $f = -not $f }
+    if (-not $on -and -not $f -and $l -match "^#+ v$v$") {
+      $lv = $l.IndexOf(' '); $on = $true; $b += $l; continue
+    }
+    if ($on -and -not $f -and $l -match '^#+ ' -and $l.IndexOf(' ') -le $lv) { break }
     if ($on) { $b += $l }
   }
   # bytes canónicos: se vacía el VALOR de hash, se recortan espacios finales y líneas en blanco
@@ -562,7 +604,11 @@ exit $rc
 # Entradas: $contrato
 t=$(mktemp -d); rc=0
 n=$(grep -oE '^#+ v[0-9]+$' "$contrato" | grep -oE '[0-9]+' | sort -n | tail -1)
-awk -v n="$n" '$0~"^#+ v"n"$"{on=1;next} on&&/^#+ v[0-9]+$/{on=0} on' "$contrato" > "$t/vig"
+awk -v n="$n" '
+  /^`{3}/ { f = !f }
+  !on && !f && $0 ~ "^#+ v" n "$" { lv = index($0, " ") - 1; on = 1; next }
+  on && !f && /^#+ / { if (index($0, " ") - 1 <= lv) exit }
+  on' "$contrato" > "$t/vig"
 grep -E '^\|' "$t/vig" | grep -vE '^\|[[:space:]]*(ID[[:space:]]*\||[-: |]+\|)' > "$t/filas"
 grep -E '^- `id: ' "$t/vig" > "$t/regs"
 
@@ -613,10 +659,11 @@ rm -rf "$t"; exit $rc
 $rc = 0
 $doc = Get-Content -LiteralPath $contrato
 $n   = ($doc | Select-String -Pattern '^#+ v(\d+)$' | ForEach-Object { [int]$_.Matches.Groups[1].Value } | Measure-Object -Maximum).Maximum
-$vig = @(); $on = $false
+$vig = @(); $on = $false; $f = $false; $lv = 0
 foreach ($l in $doc) {
-  if ($l -match "^#+ v$n$") { $on = $true; continue }
-  if ($on -and $l -match '^#+ v\d+$') { $on = $false }
+  if ($l -match '^`{3}') { $f = -not $f }
+  if (-not $on -and -not $f -and $l -match "^#+ v$n$") { $lv = $l.IndexOf(' '); $on = $true; continue }
+  if ($on -and -not $f -and $l -match '^#+ ' -and $l.IndexOf(' ') -le $lv) { break }
   if ($on) { $vig += $l }
 }
 $filas = $vig | Where-Object { $_ -match '^\|' -and $_ -notmatch '^\|\s*(ID\s*\||[-: |]+\|)' }
@@ -663,7 +710,11 @@ el orden que sea.
 # Entradas: $contrato $bitacora
 t=$(mktemp -d); rc=0
 n=$(grep -oE '^#+ v[0-9]+$' "$contrato" 2>/dev/null | grep -oE '[0-9]+' | sort -n | tail -1)
-awk -v n="$n" '$0~"^#+ v"n"$"{on=1;next} on&&/^#+ v[0-9]+$/{on=0} on' "$contrato" 2>/dev/null > "$t/vig"
+awk -v n="$n" '
+  /^`{3}/ { f = !f }
+  !on && !f && $0 ~ "^#+ v" n "$" { lv = index($0, " ") - 1; on = 1; next }
+  on && !f && /^#+ / { if (index($0, " ") - 1 <= lv) exit }
+  on' "$contrato" 2>/dev/null > "$t/vig"
 grep -E '^\|' "$t/vig" | grep -vE '^\|[[:space:]]*(ID[[:space:]]*\||[-: |]+\|)' > "$t/filas"
 
 [ -s "$t/filas" ] || { echo "GUARD:gate-contrato-congelado el work order no trae tabla" >&2; rc=1; }
@@ -683,10 +734,11 @@ rm -rf "$t"; exit $rc
 $rc = 0
 $doc = Get-Content -LiteralPath $contrato
 $n   = ($doc | Select-String -Pattern '^#+ v(\d+)$' | ForEach-Object { [int]$_.Matches.Groups[1].Value } | Measure-Object -Maximum).Maximum
-$vig = @(); $on = $false
+$vig = @(); $on = $false; $f = $false; $lv = 0
 foreach ($l in $doc) {
-  if ($l -match "^#+ v$n$") { $on = $true; continue }
-  if ($on -and $l -match '^#+ v\d+$') { $on = $false }
+  if ($l -match '^`{3}') { $f = -not $f }
+  if (-not $on -and -not $f -and $l -match "^#+ v$n$") { $lv = $l.IndexOf(' '); $on = $true; continue }
+  if ($on -and -not $f -and $l -match '^#+ ' -and $l.IndexOf(' ') -le $lv) { break }
   if ($on) { $vig += $l }
 }
 $filas = @($vig | Where-Object { $_ -match '^\|' -and $_ -notmatch '^\|\s*(ID\s*\||[-: |]+\|)' })
@@ -713,7 +765,11 @@ t=$(mktemp -d); rc=0
 # para que su alcance sea auditable en vez de quedar implícito en un regex suelto.
 AMB='no hay entorno|no disponible|sin acceso|no tengo|falta el|no está instalad|no se pudo instalar'
 n=$(grep -oE '^#+ v[0-9]+$' "$contrato" | grep -oE '[0-9]+' | sort -n | tail -1)
-awk -v n="$n" '$0~"^#+ v"n"$"{on=1;next} on&&/^#+ v[0-9]+$/{on=0} on' "$contrato" > "$t/vig"
+awk -v n="$n" '
+  /^`{3}/ { f = !f }
+  !on && !f && $0 ~ "^#+ v" n "$" { lv = index($0, " ") - 1; on = 1; next }
+  on && !f && /^#+ / { if (index($0, " ") - 1 <= lv) exit }
+  on' "$contrato" > "$t/vig"
 grep -E '^\|' "$t/vig" | grep -vE '^\|[[:space:]]*(ID[[:space:]]*\||[-: |]+\|)' > "$t/filas"
 
 awk -F'|' 'NF==8{gsub(/^ +| +$/,"",$7); if ($7=="BLOCKED") print "  "$2}' "$t/filas" > "$t/e"
@@ -739,10 +795,11 @@ $rc = 0
 $amb = 'no hay entorno|no disponible|sin acceso|no tengo|falta el|no está instalad|no se pudo instalar'
 $doc = Get-Content -LiteralPath $contrato
 $n   = ($doc | Select-String -Pattern '^#+ v(\d+)$' | ForEach-Object { [int]$_.Matches.Groups[1].Value } | Measure-Object -Maximum).Maximum
-$vig = @(); $on = $false
+$vig = @(); $on = $false; $f = $false; $lv = 0
 foreach ($l in $doc) {
-  if ($l -match "^#+ v$n$") { $on = $true; continue }
-  if ($on -and $l -match '^#+ v\d+$') { $on = $false }
+  if ($l -match '^`{3}') { $f = -not $f }
+  if (-not $on -and -not $f -and $l -match "^#+ v$n$") { $lv = $l.IndexOf(' '); $on = $true; continue }
+  if ($on -and -not $f -and $l -match '^#+ ' -and $l.IndexOf(' ') -le $lv) { break }
   if ($on) { $vig += $l }
 }
 $filas    = @($vig | Where-Object { $_ -match '^\|' -and $_ -notmatch '^\|\s*(ID\s*\||[-: |]+\|)' })
