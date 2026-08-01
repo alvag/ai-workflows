@@ -129,6 +129,105 @@ Determinar el **gestor de paquetes** en Node por lockfile: `package-lock.json` �
 
 **Host de Git:** parsear `git remote get-url origin` y buscar `github.com`, `gitlab`, `bitbucket` u otro dominio; define qué CLI/MCP usar para PRs y detección de rama remota.
 
+### Elección de rama
+
+Qué hace `create-branch` cuando el HEAD **no** está parado en la base resuelta. El paso dispara la
+decisión; el procedimiento vive acá. Nada mueve el HEAD hasta que la elección está tomada.
+
+**Antes de ofrecer nada, clasificar el HEAD.** Dos estados no admiten ninguna salida y obligan a
+**parar con diagnóstico**, porque cualquier resultado sería inválido:
+
+- **detached** — `git symbolic-ref -q HEAD` falla: no hay rama que seguir ni que renombrar.
+- **sin commits** — `git rev-parse HEAD` falla: el `base_commit` que exige el header del `plan.md` no
+  existiría.
+
+Si el nombre que el flujo construyó **es** el de la rama actual, no hay nada que elegir:
+
+| Condición | Resultado | Motivo |
+|---|---|---|
+| el nombre construido coincide con la rama actual | seguir en la rama actual | las dos salidas de rama nueva chocarían contra la comprobación de existencia y el rename no tendría destino distinto |
+
+**Cómo se pregunta** — descubrimiento por capacidad, como el resto de la skill. La opción recomendada
+se marca, y la señal que la decide es si el `<id>` del flujo aparece en el nombre de la rama actual:
+si aparece, esa rama ya es de este flujo; si no, es una iniciativa multi-fase y lo natural es quedarse.
+
+| Condición | Medio | Recomendación |
+|---|---|---|
+| capacidad de selección presente | selección interactiva | (según `<id>`) |
+| capacidad ausente | pregunta conversacional | (según `<id>`) |
+| `<id>` en el nombre de la rama actual | — | rama nueva desde la base |
+| `<id>` ausente del nombre | — | seguir en la rama actual |
+
+**Las cuatro salidas.** En todas, `base_branch` —el destino del PR— sigue siendo la base resuelta,
+salvo en la salida 3, que es la única que lo cambia a propósito: varios flujos sobre una rama
+compartida se mergean una sola vez contra la base, no uno contra otro. Si el nombre construido **ya
+existe** como rama, las salidas 2 y 3 **paran y avisan** con el nombre a la vista y vuelven a
+**reofrecer las mismas salidas**: nunca un `checkout` sin `-b` a una rama ajena, nunca un sufijo
+inventado.
+
+1. **seguir en la rama actual** — no se ejecuta ningún comando que mueva el HEAD. `branch` = la rama
+   actual, `base_commit` = `git rev-parse HEAD`, `base_branch` = la base resuelta.
+2. **rama nueva desde la base** — el procedimiento de siempre: posicionarse en la base
+   (`git checkout <base-local>` + `git pull --ff-only origin <base-local>`) y recién ahí
+   `git checkout -b <nuevo>`.
+3. **rama nueva desde la actual** — feature dependiente. Equivale al override de base con la rama
+   actual como base: se corta desde el HEAD local sin pull, y `base_branch` pasa a ser la rama actual.
+4. **renombrar la actual** — la salida 1 más un `git branch -m <nuevo>`: no crea rama ni mueve el
+   HEAD. Sólo aparece cuando la rama actual es **sólo local** y el nombre construido difiere del
+   actual — el caso de la rama abierta a mano antes de saber de qué se trataba la tarea. Tres
+   precondiciones, las tres obligatorias:
+
+   - **sólo local, con dos comprobaciones**: `git ls-remote --heads origin <rama>` devuelve vacío
+     **y** `git rev-parse --abbrev-ref --symbolic-full-name @{u}` falla. La segunda sola no alcanza:
+     una rama pusheada sin tracking la satisface igual.
+   - **destino libre**: `git show-ref --verify --quiet refs/heads/<nuevo>` debe fallar.
+   - **árbol limpio**: `git status --porcelain` vacío, la misma exigencia del paso 1.
+
+   Cuándo **no** aparece la opción, y qué se dice en su lugar:
+
+   | Estado | Decisión | Motivo |
+   |---|---|---|
+   | rama publicada (`ls-remote` con resultado o `@{u}` resuelve) | el rename no se ofrece | renombrarla exige push del nombre nuevo y borrado del viejo en el remoto |
+   | `ls-remote` no ejecutable | el rename no se ofrece | no se puede descartar publicación; ante la duda no aparece |
+
+   **Reparación, y por qué bloquea.** `.plans/` es local a cada worktree y el rename cambia una
+   referencia que todos comparten. Recorrer los worktrees con `git worktree list --porcelain`,
+   actualizar el header `branch:` de los `plan.md` cuyo valor sea el **nombre viejo** —sólo esos— e
+   **informar cuántos** se tocaron. Si algún worktree no es accesible el rename se **bloquea** antes
+   de ejecutarse: reparar a medias deja parte de los flujos apuntando a una rama que ya no existe, y
+   entonces su `resume` ofrece recrearla desde su `base_commit`, que parte la historia en dos justo
+   cuando creías estar retomando.
+
+   POSIX:
+
+   ```sh
+   rama=$(git symbolic-ref --short -q HEAD) || exit 1
+   nuevo=<nombre construido>
+   # `ls-remote` que no se puede ejecutar NO es "vacío": sin poder descartar publicación, no se ofrece
+   pub=$(git ls-remote --heads origin "$rama") || exit 1
+   [ -z "$pub" ] || exit 1
+   git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1 && exit 1
+   git show-ref --verify --quiet "refs/heads/$nuevo" && exit 1
+   [ -z "$(git status --porcelain)" ] || exit 1
+   git branch -m "$nuevo"
+   ```
+
+   PowerShell:
+
+   ```powershell
+   $rama = git symbolic-ref --short -q HEAD
+   if ($LASTEXITCODE -ne 0) { return }
+   $nuevo = '<nombre construido>'
+   $pub = git ls-remote --heads origin $rama 2>$null
+   if ($LASTEXITCODE -ne 0 -or $pub) { return }
+   git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>$null | Out-Null
+   if ($LASTEXITCODE -eq 0) { return }
+   git show-ref --verify --quiet "refs/heads/$nuevo"
+   if ($LASTEXITCODE -eq 0) { return }
+   if (git status --porcelain) { return }
+   git branch -m $nuevo
+   ```
+
 ## Esquema de `.specify/config.yml`
 
 Todos los campos son opcionales; lo que falte se autodetecta. **No se trackea**: igual que el resto de `.specify/` y `.plans/`, es local (el ignore local lo gestiona el usuario, p. ej. vía `.git/info/exclude`).
