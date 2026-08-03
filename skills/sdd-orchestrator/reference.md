@@ -6,6 +6,7 @@ Detalle operativo de la skill `sdd-orchestrator`. El `SKILL.md` apunta acá cuan
 
 - [Matriz de detección de repos](#matriz-de-detección-de-repos)
 - [Esquema de `manifest.yml`](#esquema-de-manifestyml)
+- [Transporte de las corridas delegadas](#transporte-de-las-corridas-delegadas)
 - [Plantilla de `master-spec.md`](#plantilla-de-master-specmd)
 - [Spec por repo](#spec-por-repo)
 - [Formato de contratos entre servicios](#formato-de-contratos-entre-servicios)
@@ -47,6 +48,7 @@ cross_review:                  # opcional; segunda opinión cross-model EN LOS G
   artifacts: [master-spec, reparto]
   max_rounds: 3
 co_explore: {mode: auto, deadline: 600}  # co-exploración cross-repo ANTES del reparto; ORTOGONAL a cross_review (bloque hermano, no anidado); default on en orquestación; ver SKILL.md → Co-exploración cross-model
+cross_model: {schema_version: 1, transport: cli}  # opcional; intención de transporte que heredan los sdd-flow delegados para SUS corridas delegadas: cli (default) | herdr — nunca para el fan-out por repos. `schema_version` es obligatorio si el bloque existe; ver "Transporte de las corridas delegadas"
 repos:
   - path: servicio-a          # relativo a la contenedora
     branch: feature/ABC-123-trace-id
@@ -80,6 +82,24 @@ planned → tasks-ready → implementing → verified → committed → pushed �
 - `blocked` — el repo no arrancó porque un `depends_on` quedó `failed`.
 
 `failed`/`blocked` viven solo en el `manifest.yml`; `sdd-flow` no los conoce.
+
+## Transporte de las corridas delegadas
+
+`cross_model.transport` del `manifest.yml` es la **intención** de transporte de la orquestación: dónde se alojan las corridas delegadas (`co-explore`, `cross-review`, `cross-implement`) que corren **dentro de cada repo**. El predicado de **capacidad** y la durabilidad del override son los de `sdd-flow` (`sdd-flow/reference.md` → "Transporte de las corridas delegadas"), heredados por puntero y no re-especificados acá; la mecánica y la sintaxis del multiplexor tampoco se copian: la autoridad es su skill externa.
+
+**La precedencia es un orden total de cinco niveles**, no dos criterios que el lector tenga que combinar. Se recorre de arriba hacia abajo y gana el **primer nivel presente**:
+
+| # | Nivel | Sede |
+|---|---|---|
+| 1 | override conversacional **específico del repo** | la sesión de la orquestación ("en `<repo>` por CLI") |
+| 2 | override conversacional **global** | la sesión de la orquestación ("todo en panes") |
+| 3 | **config del repo** | `<repo>/.specify/config.yml` → `cross_model.transport` (el proyecto manda sobre la orquestación, igual que con `branch_prefix`) |
+| 4 | **config de la orquestación** | este `manifest.yml` → `cross_model.transport` |
+| 5 | **default** | `cli` |
+
+Los cinco niveles fijan los dos ejes de una sola vez —**fuente** (override sobre config) y **nivel** (repo sobre global)—, así que ninguna combinación queda sin resolver. El valor resuelto **se persiste** en el nivel del orquestador (nivel 4, lo único que sobrevive a una sesión nueva) y **llega a cada** `sdd-flow` delegado por el prompt del fan-out (línea `Override de esta corrida: transport: <valor>`), que lo trata como el override conversacional de **su** corrida.
+
+**El fan-out por repos del orquestador está excluido, y no es un olvido.** El despacho de los agentes por repo **no se convierte a panes** en ninguna combinación de la tabla: sigue con el mecanismo de subagentes vigente. Las tres condiciones que lo habilitarían están **declaradas no probadas** —multi-repo, presupuesto de layout del multiplexor y escrituras paralelas de varios agentes— y un transporte no probado ahí arriesga la coordinación entera, no una corrida. El orquestador propaga la **intención**; su propio transporte no se toca.
 
 ## Plantilla de `master-spec.md`
 
@@ -225,6 +245,7 @@ Trabaja ÚNICAMENTE en el repo <ruta-absoluta-al-repo> (todo comando y ruta, rel
 Lee <directorio-de-skills>/sdd-flow/SKILL.md (y su reference.md si lo necesitas) y ejecuta su
 Vía B: "implement .plans/<id>/", siguiendo ese contrato al pie de la letra.
 Override de esta corrida: cross_review.mode: off (el plan ya fue revisado en el reparto).
+Override de esta corrida: transport: <valor resuelto para ESTE repo> (rige tus corridas delegadas).
 Reglas duras:
 - FRENA antes de commitear (nada de git commit/push); no toques nada fuera del repo.
 - Eres un agente sin usuario: NO hagas los checkpoints conversacionales de la Vía B (no

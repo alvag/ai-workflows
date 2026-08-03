@@ -1,7 +1,7 @@
 <!-- prompt `debate-cross` · lo despacha `co-explore` · formato: xml
      placeholders: {constraints}
      ESTE ARCHIVO ES LA ENTRADA EXACTA DEL WORKER: lo que no esté acá no existe para él.
-     Se escribe a archivo y llega por stdin; no se arma inline. -->
+     Se escribe a archivo y nunca se arma inline; cómo llega al worker lo fija el transporte. -->
 
 <task>
 Continúa el debate. Abajo está la postura ACTUAL de la otra parte sobre la misma decisión.

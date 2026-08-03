@@ -164,7 +164,10 @@ cuentan para él (`ownership.md` → "Precedencia entre los tres topes de corte"
 A la llamadora (o presentada al usuario en modo directo):
 
 - **Estado:** `IMPLEMENTED` (diff revisado + prueba en verde) | `PARTIAL` (takeover: qué quedó
-  hecho por el implementador y qué terminó el conductor) | `UNAVAILABLE`.
+  hecho por el implementador y qué terminó el conductor) | `UNAVAILABLE`. El `UNAVAILABLE` va con su
+  **causa** del enum compartido —`confirmed_wall` · `launch_flake` · `runtime_failure` ·
+  `deadline_exceeded`—: son causas, no estados nuevos (`cross-review/reference.md` → "Latencia y
+  timeout (Claude revisor)").
 - **Resumen del diff** (archivos, qué cambió) + salida de `proof_cmd` corrida por el conductor.
 - **Rondas usadas** y desviaciones del work order reportadas por el implementador.
 - **Ruta del log** (`implement-log.md`).
@@ -173,7 +176,9 @@ Al resolver el estado se escribe además el **manifest de corrida**, en los tres
 `UNAVAILABLE` por pared confirmada es el dato que dice que la capacidad no existe en este entorno, y
 un `PARTIAL` es el que dice cuánto termina haciendo el conductor. Registrar solo los `IMPLEMENTED`
 dejaría una serie que responde "siempre funciona" porque solo se anotó cuando funcionó. Esquema y
-vocabulario en `cross-review/reference.md` → "Manifest de corrida".
+vocabulario en `cross-review/reference.md` → "Manifest de corrida". Su `degradation` admite además
+`transport_fallback`, causa de la **corrida** y no del estado: se registra incluso con un
+`IMPLEMENTED`.
 
 ## Router de intención
 
@@ -205,11 +210,24 @@ Nunca bloquea. Cuatro vías de falla, mismo final — el conductor implementa in
 3. **Fallo en runtime / tarea** (deadline vencido, error de ejecución tras arrancar bien) → matar el
    proceso, conservar el diff parcial **solo si** el conductor lo revisa y decide qué mantener (por
    default, revertirlo), registrar y `UNAVAILABLE`. A diferencia del punto 2, es **por-intento**: no
-   marca la capacidad como ausente para el resto de la tanda.
+   marca la capacidad como ausente para el resto de la tanda. Lleva dos **causas** distintas:
+   `deadline_exceeded` si venció el tope sin `STATUS: done` —arrancó bien y el corte lo puso el
+   conductor, así que `runtime_failure` sugeriría una falla de infraestructura que no ocurrió— y
+   `runtime_failure` si falló ejecutando.
 4. Reporte no parseable → el diff sigue siendo la verdad: revisarlo igual (regla 4); solo se
    pierde la narrativa del implementador. Vale **porque acá el artefacto es el diff**; donde el
    artefacto *es* el informe no aplica (`reference.md` → "Cuándo un reporte ilegible no invalida la
    revisión").
+
+**`transport_fallback` no es una quinta vía de falla: es una causa, y la implementación sí ocurre.**
+Se registra cuando la intención se resolvió a la vía de panes y el transporte efectivo fue el CLI
+—**por resultado**, sin importar si cayó en el preflight de capacidad o en el lanzamiento—, para que
+esa corrida no quede indistinguible de una CLI intencional. `transport` guarda la vía que
+efectivamente corrió y la causa raíz concreta va al log de la skill. **Excepción:** con el intento en
+resultado incierto **no hay fallback** hasta resolver el recovery — con escritura acotada al working
+dir, dos implementadores vivos sobre el mismo árbol es el peor caso. Las cinco reglas, en
+`reference.md` → "Vías de invocación" y `cross-review/reference.md` → "Latencia y timeout (Claude
+revisor)".
 
 ## Referencias internas
 
@@ -222,6 +240,9 @@ Nunca bloquea. Cuatro vías de falla, mismo final — el conductor implementa in
   aprobar el contrato**, antes de delegar.
 - `ownership.md` — las cuatro clases de falla, sus presupuestos, el re-baseline en worktree aislado,
   el takeover y la precedencia de topes. Se lee **cuando una ronda falla**.
+- `transporte-herdr.md` — el adaptador del transporte por panes: activación, permisos, entradas y
+  salidas, independencia, deadline, continuidad entre rondas, validación y cleanup. Se lee **solo
+  cuando la activación del flujo resolvió a esa vía**; con el transporte CLI vigente no se carga.
 - `README.md` — qué es, cuándo usarla, requisitos e instalación.
 
 ## Atribución

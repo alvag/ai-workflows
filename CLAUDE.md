@@ -61,13 +61,20 @@ Regla de fronteras entre skills (aparece repetida en las descripciones y hay que
 
 ## Invocación cross-model (el mecanismo compartido)
 
-Cuando conduce Claude, la otra familia es **Codex**; el detalle canónico vive en cada `reference.md`. Patrón:
+Cuando conduce Claude, la otra familia es **Codex**; el detalle canónico vive en cada `reference.md`. **Hay dos transportes** por los que puede viajar esa delegación, y el default es el **CLI headless**: el worker se lanza como proceso hijo y su salida se cosecha del disco. Patrón:
 
 - **Detección de binario:** POSIX `command -v codex` · PowerShell `Get-Command codex -ErrorAction SilentlyContinue`.
 - **Read-only** (co-explore, cross-review): `codex exec -s read-only -C <working_dir> --skip-git-repo-check --json ...`
 - **Workspace-write** (cross-implement): `codex exec -s workspace-write -C <working_dir> --skip-git-repo-check --json ...`; resume con `codex exec resume "$SESSION_ID" -c sandbox_mode="workspace-write" ...`
 - **Prompt por archivo, nunca inline:** el markdown con backticks rompe el quoting del shell. POSIX pasa el prompt por `< prompt.txt`; **PowerShell no soporta `<`** → `Get-Content -Raw prompt.txt | codex exec ... -`. Todo comando nuevo que invoque un CLI debe ofrecer **ambas** variantes (POSIX y PowerShell).
 - Degradación elegante: si falta el binario/MCP, avisar y continuar con lo que haya.
+
+**El segundo transporte es la vía de panes:** el worker se aloja en un pane de un multiplexor de terminales en vez de lanzarse headless. Cuatro principios, ninguno de los cuales baja a comandos:
+
+- **Sustituye el transporte, no la semántica.** Las dos familias, quién revisa a quién, los estados del worker, los artefactos y la escalera de degradación siguen siendo los mismos y viven donde ya viven: cambia por dónde viaja el prompt y dónde vive el proceso, nada más.
+- **Capacidad distinta de intención.** Que se pueda alojar un worker en un pane no significa que este flujo deba hacerlo: hacen falta las dos en verdadero, y la intención tiene sede durable en el config del proyecto, no en la conversación. Sin las dos, la vía de panes no se intenta y la corrida sigue por el CLI.
+- **La sintaxis pertenece a la skill externa.** Este repo **no** copia los comandos del multiplexor: la autoridad son la skill externa `herdr` y el binario instalado, que se consultan en la sesión. Copiarlos acá los congelaría desactualizados.
+- **Adaptador por skill, sin copiar comandos.** Cada skill que delega tiene su `transporte-herdr.md`, hermano de `reference.md`, con lo único que cambia por el transporte; se lee **solo** cuando la activación resolvió a esta vía.
 
 ## Artefactos en disco (dogfooding)
 

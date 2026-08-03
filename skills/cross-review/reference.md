@@ -6,6 +6,7 @@ tipo de artefacto.
 
 ## Tabla de contenidos
 
+- [Documentos de esta referencia](#documentos-de-esta-referencia)
 - [Portabilidad entre shells (POSIX / PowerShell)](#portabilidad-entre-shells-posix--powershell)
 - [Descubrir el revisor](#descubrir-el-revisor)
 - [Invocar al revisor (read-only)](#invocar-al-revisor-read-only)
@@ -18,6 +19,17 @@ tipo de artefacto.
 - [Manifest de corrida](#manifest-de-corrida)
 
 ---
+
+## Documentos de esta referencia
+
+La referencia de esta skill son **dos** archivos, partidos por el momento en que se los lee, no por
+tamaño. Cargar el segundo en toda corrida gastaría contexto en las corridas que no usan ese
+transporte:
+
+| Archivo | Qué trae | Cuándo se lee |
+|---|---|---|
+| `reference.md` (este) | portabilidad entre shells, descubrimiento e invocación del revisor, resume entre rondas, prompt, formato de salida, foco por tipo de artefacto, latencia y topes, matriz de resume y manifest | en toda corrida |
+| `transporte-herdr.md` | el adaptador del transporte por panes: activación, perfil de permisos, entradas y salidas, independencia, deadline, continuidad entre rondas, validación del artefacto y cleanup | **solo** cuando la activación del flujo resolvió a la vía de panes |
 
 ## Portabilidad entre shells (POSIX / PowerShell)
 
@@ -524,6 +536,135 @@ if ((Test-Path <ruta\al\veredicto.txt>) -and ((Get-Content <ruta\al\veredicto.tx
 En todas las vías, si la invocación falla (error, timeout, deadline vencido, salida vacía o no
 parseable) → tratarlo como `UNAVAILABLE` en runtime (degradación, regla 6 del SKILL).
 
+##### Las causas de la indisponibilidad, y la que no lo es
+
+`UNAVAILABLE` no viaja solo: lleva una **causa** de un enum cerrado, compartido con las skills
+hermanas, porque de ella depende qué se hace después. Son cuatro, y ninguna es un estado terminal
+nuevo — todas acompañan al que la skill ya devuelve:
+
+| Causa | Qué la produce | Qué habilita |
+|---|---|---|
+| `confirmed_wall` | binario ausente, auth rechazada, versión incompatible | nada: terminal para la corrida |
+| `launch_flake` | el binario existe pero el lanzamiento flaqueó | 2-3 reintentos con backoff corto |
+| `runtime_failure` | arrancó bien y falló ejecutando: error, salida no parseable | reintento por-intento |
+| `deadline_exceeded` | arrancó bien y venció el tope de pared —`poll_deadline` o `timeout` del exec— sin `VERDICT:` | subir el presupuesto, no reintentar igual |
+
+**`deadline_exceeded` es una causa, no un estado.** Hasta acá el deadline vencido se registraba como
+`runtime_failure`, que sugiere una falla de infraestructura que no ocurrió: el revisor arrancó bien y
+el corte lo puso el conductor al fijar el tope. La palanca que corresponde es distinta —subir el tope
+o bajar de modelo, como dice "Diagnóstico y palancas"—, y con un solo literal para las dos no había
+cómo elegirla leyendo la serie de manifests.
+
+**`transport_fallback` es la quinta causa y no es causa de `UNAVAILABLE`.** Registra que la corrida se
+despachó por un transporte que no era el que se había resuelto, y la corrida puede terminar
+`APPROVED`: es una causa de la **corrida**, no de una indisponibilidad. Sus cinco reglas son
+normativas para las tres skills que la emiten:
+
+1. **El literal es `transport_fallback`, y no otro.** Es un valor de enum compartido por tres
+   productores: dejarlo como "una causa propia de cada skill" habilita literales incompatibles que
+   igual cumplirían la intención. Se nombra por el **mecanismo** y no por el producto —no
+   `herdr_unavailable`— para que un transporte futuro no obligue a agregar un valor más.
+2. **El disparador se define por resultado, no por dónde falló.** Intención resuelta a la vía de
+   panes **+** transporte efectivo CLI despachado ⇒ `transport_fallback`, sin importar si la vía cayó
+   en el preflight de capacidad o en el lanzamiento. Sin esa regla, una implementación lo registraría
+   desde el preflight y otra solo tras un lanzamiento fallido, y las dos se creerían correctas.
+3. **`transport` guarda la vía que efectivamente corrió**, no la que se intentó: en un fallback es la
+   del CLI. Las dos juntas son el par que hace legible la serie — el transporte real más el hecho de
+   que hubo fallback. Sin la causa, esa corrida sería indistinguible de una CLI intencional.
+4. **La causa raíz concreta —pared confirmada, flake de lanzamiento— queda en el log de la skill**, no
+   en el manifest. El manifest guarda el hecho comparable entre corridas; el diagnóstico se consulta
+   en el log, que es donde ya se lo busca.
+5. **Excepción — resultado incierto: no hay fallback.** Si el intento por la vía de panes quedó en
+   estado incierto (no se sabe si el agente sigue vivo), **no hay fallback** hasta resolver el
+   recovery. Despachar por CLI sobre un intento que quizá siga corriendo produce dos escritores sobre
+   las mismas rutas de salida, que es peor que no tener revisión.
+
+##### `recovery-required` bloquea retry y fallback
+
+La excepción de arriba nombra el estado; esta subsección lo define, porque es acá —donde se fija el
+deadline— donde se toma la decisión que lo produce.
+
+Un intento de revisión cuyo resultado es **incierto** —no se sabe si el revisor dejó salida, si la
+dejó a medias, si su proceso sigue vivo— no cae en `UNAVAILABLE` ni en ningún veredicto: queda en
+`recovery-required`, que es estado del **intento de transporte**, no un veredicto. Mientras no se
+resuelva **no habilita ni retry ni fallback**: ni otra ronda contra el mismo revisor, ni el despacho
+de la misma revisión por el otro transporte.
+
+**Vencer el deadline no prueba que el proceso dejó de trabajar.** No es una precaución teórica: se
+observó lo contrario — una espera venció con los agentes todavía produciendo y los informes llegaron
+válidos **después** de que la corrida ya se había degradado. El deadline es el corte que el conductor
+se pone a sí mismo para dejar de esperar, y `deadline_exceeded` registra esa decisión suya: ninguno de
+los dos es una señal que le llegue al revisor ni una prueba de que terminó.
+
+**Las rutas de salida fijas no protegen contra un revisor tardío.** Completa el veredicto de una
+corrida ya degradada sobre la ruta que la ronda siguiente va a leer, y una crítica de la ronda 1 pasa
+por crítica de la ronda 2 sin que nada la delate: el formato es el correcto y el archivo está entero.
+De ahí las dos consecuencias — cada intento escribe en **rutas exclusivas**, y no se despacha por el
+otro transporte hasta cerrar el recovery, que es la excepción de `transport_fallback`.
+
+**Esto no bloquea el gate.** Al gate lo libera el estado terminal con su aviso de degradación, como
+fija "Estados terminales que liberan el gate". `recovery-required` bloquea el reintento y el fallback;
+no agrega una casilla de espera antes de presentar.
+
+##### Callback o poll: el segundo predicado, una vez en `background`
+
+`execution` sigue siendo un enum **cerrado de tres valores** (`auto | sync | background`), y los
+defaults de las tres skills cross-model están en un solo lugar: `co-explore/reference.md` →
+"Latencia y deadlines". El de `cross-review` es `auto` en todos sus modos. Lo que se agrega acá no es
+un valor más sino la mitad que faltaba de la decisión.
+
+**Elegir `background` no dice cómo se espera.** Hacen falta **dos** predicados distintos: que el
+conductor pueda fijar un timeout de exec largo **no demuestra** que el host lo vuelva a invocar
+cuando el comando en background termina. La secuencia completa es, en este orden: `execution: auto`
+elige `sync` o `background` por el predicado de timeout de exec de los dos caminos de arriba
+—auto → sync con tope largo disponible, auto → background sin él—; y **ya dentro de `background`**,
+un segundo predicado, el de **re-invocación durable**, elige entre **callback** y el **poll acotado**
+de "Camino BACKGROUND". Un `background` pedido a mano saltea el primer paso, no el segundo.
+
+**Condición de verdad, positiva.** El predicado de re-invocación durable es verdadero **solo** cuando
+el contrato documentado del host **garantiza** volver a invocar al conductor al completar un comando
+en background. La **ausencia de garantía —no solo una garantía en contra— lo vuelve falso**; un host
+que no documenta el comportamiento cuenta como falso.
+
+**La continuidad la aporta el harness, no el transporte.** El multiplexor de terminales aloja el
+proceso; despertar al conductor cuando el comando termina es del **host** que lo corre. Alojar
+procesos bien no vuelve verdadero el predicado.
+
+**Falla cerrado.** Con el predicado en falso, `background` **falla cerrado al poll acotado de hoy**:
+el `poll_deadline`, el contador de iteraciones y el `UNAVAILABLE` con causa `deadline_exceeded` al
+vencer, tal como quedan definidos arriba. El invariante no se toca: ningún camino espera indefinida.
+
+##### Estados terminales que liberan el gate
+
+La revisión corre **antes** del gate humano de la llamadora y, en `background`, puede seguir corriendo
+cuando el artefacto ya está listo para presentar. De ahí dos fallas simétricas: presentar el gate
+antes de que la crítica vuelva —y contar una aprobación dada sin ella— o **no presentarlo nunca**
+porque la revisión falló de un modo que nadie previó. La primera la cierra la llamadora marcando el
+gate mientras la revisión está pendiente (`sdd-flow/SKILL.md` → "Revisión cross-model"); la segunda la
+cierra esta tabla: hay **cinco observables terminales y los cinco liberan el gate**, sin una sexta
+casilla en la que quedarse esperando.
+
+| Observable | Qué se presenta |
+|---|---|
+| **veredicto cosechado y validado** — parseado al formato estructurado y triado | el gate **con** la crítica incorporada: es el único que aporta findings |
+| **deadline vencido** sin el marcador de cierre | el gate **igual**, con el aviso de degradación de una línea (`UNAVAILABLE` · `deadline_exceeded`) |
+| **bloqueo no resuelto** — esperó una aprobación interactiva y no se destrabó dentro de su deadline | el gate **igual**, con el aviso de degradación (`UNAVAILABLE` · `deadline_exceeded`, que es lo que ocurrió) |
+| **artefacto ausente** — terminó sin dejar salida en la ruta acordada, o dejó una que no se puede parsear ni con parseo tolerante | el gate **igual**, con el aviso de degradación (`UNAVAILABLE` · `runtime_failure`) |
+| **indisponibilidad** — no se pudo lanzar, o arrancó y falló ejecutando, con cualquiera de sus causas | el gate **igual**, con el aviso de degradación |
+
+**No son estados nuevos: son observables de estados que ya existen.** La tabla no agrega un veredicto
+ni una causa —los enums siguen cerrados y son los de arriba—; nombra **qué se ve** y a qué casilla ya
+definida cae, que es lo que faltaba para poder afirmar que la cobertura es total. Un bloqueo **vivo**
+no figura acá porque no es terminal: es la *ausencia* de observable, y es justo el caso que cubre la
+marca del gate. Y el `recovery-required` de un intento de transporte con resultado incierto tampoco es
+una sexta casilla de espera: bloquea el retry y el fallback, no el gate, que se presenta con el aviso.
+
+**Lo que libera el gate es el estado terminal, no haber cerrado el pane.** Conservar un pane para
+inspección —lo que ya se hace con un bloqueo, un deadline vencido o una salida ilegible— es compatible
+con presentar el gate: son dos decisiones independientes y ninguna espera a la otra. Un pane vivo no
+es un observable pendiente; esperar a cerrarlo antes de presentar reintroduciría exactamente el
+cuelgue que esta tabla elimina.
+
 ## Resume entre rondas
 
 El loop reusa el **mismo thread del revisor** para que tenga memoria de lo ya discutido:
@@ -711,7 +852,10 @@ cross_review:
   600000ms) → **sync** (camino preferido); conductor con exec corto no ampliable (Codex ~120s/comando)
   → **background + poll acotado**. `sync` fuerza una única llamada bloqueante; `background` fuerza el
   poll acotado. En **todos** los modos hay un tope de pared duro: vencido → `UNAVAILABLE` (regla 6),
-  nunca espera indefinida.
+  nunca espera indefinida. Ese predicado resuelve **solo** entre `sync` y `background`; una vez en
+  `background`, callback o poll lo decide un segundo predicado (ver "Callback o poll: el segundo
+  predicado, una vez en `background`"). Los defaults de las tres skills viven en
+  `co-explore/reference.md` → "Latencia y deadlines"; el de `cross-review` es `auto`.
 - `reviewer: auto` aplica la regla anti-misma-familia (ver "Descubrir el revisor"). `claude` |
   `codex` fuerzan la vía; si la forzada coincide con la familia del autor, se avisa y se respeta.
 - Precedencia: override conversacional de la corrida > `cross_review` de config > default por
@@ -721,9 +865,8 @@ cross_review:
 
 ## Consumo de co-exploración dual
 
-> **Sección inerte hasta el corte.** Nada de lo que sigue está referenciado desde `SKILL.md`
-> todavía. Reemplaza al seed desde un `co-explore/session.json` singular, que deja de existir cuando
-> `co-explore` despacha dos workers.
+Reemplaza al seed desde un `co-explore/session.json` singular, que deja de existir cuando
+`co-explore` despacha dos workers.
 
 ### Matriz de resume desde co-exploración
 
@@ -819,7 +962,7 @@ sean el mismo dato ausente.
 | `started_at` | ISO-8601 UTC del **despacho** | reloj al lanzar |
 | `duration_s` | del despacho a la resolución del outcome | reloj |
 | `families` | familias delegadas — **siempre una lista** | topología de la corrida |
-| `transport` | la vía efectiva: `subagent` · `cli-exec` · `cli-resume` | vía resuelta al lanzar |
+| `transport` | la vía efectiva: `subagent` · `cli-exec` · `cli-resume` · `herdr` | vía resuelta al lanzar |
 | `outcome` | el estado terminal que la skill ya devuelve | envelope / salida |
 | `degradation` | qué se perdió, o `none` | escalera / causa de indisponibilidad |
 
@@ -840,9 +983,9 @@ reanudación de una sesión ajena.
 
 | Skill | `mode` | `outcome` | `degradation` (además de `none`) |
 |---|---|---|---|
-| `co-explore` | `explore` · `counter-plan` · `investigate` · `debate` | `completed` · `map_failure` | `branch-2` · `branch-3` · `branch-4` · `confirmed_wall` · `launch_flake` · `runtime_failure` |
-| `cross-review` | `spec` · `plan` · `tasks` · `master-spec` · `reparto` · `draft` | `APPROVED` · `REVISE` · `UNAVAILABLE` | `rounds_exhausted` · `confirmed_wall` · `launch_flake` · `runtime_failure` |
-| `cross-implement` | `embebido` · `directo` | `IMPLEMENTED` · `PARTIAL` · `UNAVAILABLE` | `takeover` · `confirmed_wall` · `launch_flake` · `runtime_failure` |
+| `co-explore` | `explore` · `counter-plan` · `investigate` · `debate` | `completed` · `map_failure` | `branch-2` · `branch-3` · `branch-4` · `confirmed_wall` · `launch_flake` · `runtime_failure` · `deadline_exceeded` · `transport_fallback` |
+| `cross-review` | `spec` · `plan` · `tasks` · `master-spec` · `reparto` · `draft` | `APPROVED` · `REVISE` · `UNAVAILABLE` | `rounds_exhausted` · `confirmed_wall` · `launch_flake` · `runtime_failure` · `deadline_exceeded` · `transport_fallback` |
+| `cross-implement` | `embebido` · `directo` | `IMPLEMENTED` · `PARTIAL` · `UNAVAILABLE` | `takeover` · `confirmed_wall` · `launch_flake` · `runtime_failure` · `deadline_exceeded` · `transport_fallback` |
 | `bitbucket-code-review` | `conductor` · `delegado` · `mixto` | `PUBLISHED` · `PROPOSED` · `UNAVAILABLE` | `revisor_invalido` · `panel_vacio` · `confirmed_wall` · `launch_flake` · `runtime_failure` |
 
 Cada uno de esos términos ya existe en la skill que lo produce: el manifest los **serializa**, no
@@ -850,6 +993,14 @@ los define. Un manifest con taxonomía propia se desincroniza del envelope que d
 los dos difieren no hay forma de saber cuál miente. Si una corrida termina en un estado que no está
 en su fila, lo que falta actualizar es la fila — o el estado es uno que la skill no documenta, y eso
 es un hallazgo más valioso que el registro.
+
+**La vía de panes es vocabulario prestado como cualquier otro.** Cuando `cross-review` despacha su
+revisor en un pane de un multiplexor de terminales en vez de por CLI headless, el valor que emite es
+`transport: herdr`; la semántica no se mueve —mismos modos, mismos outcomes, misma matriz de
+resume—, solo cambia por dónde viaja el prompt. `bitbucket-code-review` **no** emite ese valor: no
+delega a través de las tres skills que lo producen, y su fila no se amplía. La sintaxis del
+multiplexor no es asunto de esta skill: la autoridad es la skill externa `herdr` y el binario
+instalado.
 
 ### Cuándo se escribe
 
@@ -907,7 +1058,7 @@ intuición, y el costo es un archivo de 300 bytes en un directorio untracked.
 ```bash
 # @bloque:manifest-valido
 # Predicado: los ocho campos del núcleo presentes, ninguno de los cuatro recortados, families como
-# lista, y outcome/degradation dentro del vocabulario de la fila de esa skill.
+# lista, y outcome, degradation y transport dentro del vocabulario de la fila de esa skill.
 # Entradas: $manifest
 rc=0
 for c in skill mode started_at duration_s families transport outcome degradation; do
@@ -923,16 +1074,26 @@ grep -qE '"families"[[:space:]]*:[[:space:]]*\[' "$manifest" || {
 val() { sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$manifest" | head -1; }
 sk=$(val skill)
 comunes="none confirmed_wall launch_flake runtime_failure"
+# `deadline_exceeded` y `transport_fallback` NO van en "comunes": ese conjunto lo comparten las
+# cuatro filas, y meterlas ahí las filtraría a bitbucket-code-review, que no delega a través de las
+# tres skills que las producen. Se suman fila por fila, solo en esas tres.
 case "$sk" in
-  co-explore)      outs="completed map_failure";              degs="$comunes branch-2 branch-3 branch-4" ;;
-  cross-review)    outs="APPROVED REVISE UNAVAILABLE";        degs="$comunes rounds_exhausted" ;;
-  cross-implement) outs="IMPLEMENTED PARTIAL UNAVAILABLE";    degs="$comunes takeover" ;;
+  co-explore)      outs="completed map_failure"
+                   degs="$comunes branch-2 branch-3 branch-4 deadline_exceeded transport_fallback"
+                   trans="subagent cli-exec cli-resume herdr" ;;
+  cross-review)    outs="APPROVED REVISE UNAVAILABLE"
+                   degs="$comunes rounds_exhausted deadline_exceeded transport_fallback"
+                   trans="subagent cli-exec cli-resume herdr" ;;
+  cross-implement) outs="IMPLEMENTED PARTIAL UNAVAILABLE"
+                   degs="$comunes takeover deadline_exceeded transport_fallback"
+                   trans="subagent cli-exec cli-resume herdr" ;;
   bitbucket-code-review)
-                   outs="PUBLISHED PROPOSED UNAVAILABLE";      degs="$comunes revisor_invalido panel_vacio" ;;
+                   outs="PUBLISHED PROPOSED UNAVAILABLE";      degs="$comunes revisor_invalido panel_vacio"
+                   trans="subagent cli-exec cli-resume" ;;
   *) printf 'GUARD:manifest-valido skill fuera del ecosistema: "%s"\n' "$sk" >&2
-     rc=1; outs=""; degs="" ;;
+     rc=1; outs=""; degs=""; trans="" ;;
 esac
-for par in "outcome:$outs" "degradation:$degs"; do
+for par in "outcome:$outs" "degradation:$degs" "transport:$trans"; do
   campo=${par%%:*}; permitidos=${par#*:}
   [ -n "$permitidos" ] || continue
   v=$(val "$campo")
@@ -946,7 +1107,7 @@ exit $rc
 ```powershell
 # @bloque:manifest-valido-ps
 # Predicado: los ocho campos del núcleo presentes, ninguno de los cuatro recortados, families como
-# lista, y outcome/degradation dentro del vocabulario de la fila de esa skill.
+# lista, y outcome, degradation y transport dentro del vocabulario de la fila de esa skill.
 # Entradas: $manifest
 $rc = 0
 $m = Get-Content -Raw $manifest
@@ -960,14 +1121,25 @@ if ($m -notmatch '"families"\s*:\s*\[') { Write-Error 'GUARD:manifest-valido "fa
 function Val($k) { if ($m -match "`"$k`"\s*:\s*`"([^`"]*)`"") { $Matches[1] } else { '' } }
 $sk = Val 'skill'
 $comunes = @('none','confirmed_wall','launch_flake','runtime_failure')
+# 'deadline_exceeded' y 'transport_fallback' NO van en $comunes: ese conjunto lo comparten las cuatro
+# filas, y meterlas ahí las filtraría a bitbucket-code-review, que no delega a través de las tres
+# skills que las producen. Se suman fila por fila, solo en esas tres.
 switch ($sk) {
-  'co-explore'      { $outs = @('completed','map_failure');            $degs = $comunes + @('branch-2','branch-3','branch-4') }
-  'cross-review'    { $outs = @('APPROVED','REVISE','UNAVAILABLE');    $degs = $comunes + @('rounds_exhausted') }
-  'cross-implement' { $outs = @('IMPLEMENTED','PARTIAL','UNAVAILABLE'); $degs = $comunes + @('takeover') }
-  'bitbucket-code-review' { $outs = @('PUBLISHED','PROPOSED','UNAVAILABLE'); $degs = $comunes + @('revisor_invalido','panel_vacio') }
-  default { Write-Error "GUARD:manifest-valido skill fuera del ecosistema: `"$sk`""; $rc = 1; $outs = @(); $degs = @() }
+  'co-explore'      { $outs = @('completed','map_failure')
+                      $degs = $comunes + @('branch-2','branch-3','branch-4','deadline_exceeded','transport_fallback')
+                      $trans = @('subagent','cli-exec','cli-resume','herdr') }
+  'cross-review'    { $outs = @('APPROVED','REVISE','UNAVAILABLE')
+                      $degs = $comunes + @('rounds_exhausted','deadline_exceeded','transport_fallback')
+                      $trans = @('subagent','cli-exec','cli-resume','herdr') }
+  'cross-implement' { $outs = @('IMPLEMENTED','PARTIAL','UNAVAILABLE')
+                      $degs = $comunes + @('takeover','deadline_exceeded','transport_fallback')
+                      $trans = @('subagent','cli-exec','cli-resume','herdr') }
+  'bitbucket-code-review' { $outs = @('PUBLISHED','PROPOSED','UNAVAILABLE'); $degs = $comunes + @('revisor_invalido','panel_vacio')
+                      $trans = @('subagent','cli-exec','cli-resume') }
+  default { Write-Error "GUARD:manifest-valido skill fuera del ecosistema: `"$sk`""
+            $rc = 1; $outs = @(); $degs = @(); $trans = @() }
 }
-foreach ($par in @(@('outcome',$outs), @('degradation',$degs))) {
+foreach ($par in @(@('outcome',$outs), @('degradation',$degs), @('transport',$trans))) {
   if ($par[1].Count -eq 0) { continue }
   $v = Val $par[0]
   if ($par[1] -notcontains $v) {

@@ -83,7 +83,7 @@ Si reconoces alguno de estos pensamientos, es señal de detente: vuelve al paso 
 
 | Racionalización | Realidad |
 |---|---|
-| "Arranco el flujo sin leer el config" | Antes de cualquier paso operativo se lee `.specify/config.yml` y se **ecoan** los valores resueltos de `tracker`, `cross_review.mode`, `domain_context.mode`, `final_diff_review.mode`, `jira_approval.mode` y `co_explore.debate`. Saltarlo es cómo se pierden cross-review, co-exploración (`co_explore`), el debate en decisiones, contexto de dominio, revisión final y `publish-spec` en silencio (se aplican los defaults sin avisar). |
+| "Arranco el flujo sin leer el config" | Antes de cualquier paso operativo se lee `.specify/config.yml` y se **ecoan** los valores resueltos de `tracker`, `cross_review.mode`, `domain_context.mode`, `final_diff_review.mode`, `jira_approval.mode`, `co_explore.debate` y `cross_model.transport`. Saltarlo es cómo se pierden cross-review, co-exploración (`co_explore`), el debate en decisiones, contexto de dominio, revisión final, `publish-spec` y el transporte de las corridas delegadas en silencio (se aplican los defaults sin avisar). |
 | "Es trivial, salteo el gate y commiteo directo" | Trivial = 1 gate, no 0. La clasificación se **anuncia y se confirma siempre** (regla 2); no hay flujo con cero gates. |
 | "Los tests pasan, seguro cumple los AC" | Tests verdes ≠ AC cumplidos. `verify` recorre `AC-1..N` con evidencia fresca **antes** de commitear (paso `verify`, regla 7). |
 | "El subagente devolvió `STATUS: done`, marco la task `[x]`" | El reporte no es prueba. Validar `FILES` contra `git status` y revisar el diff antes de aceptar (modos subagent y cross). |
@@ -96,7 +96,9 @@ Si reconoces alguno de estos pensamientos, es señal de detente: vuelve al paso 
 
 Antes de cualquier paso operativo, descubrir el entorno **una vez** por sesión y resumirlo al usuario. Orden de resolución para cada parámetro: `config.yml` → autodetección → preguntar.
 
-**Checkpoint de inicio (no salteable).** El **primer** acto operativo de toda corrida es leer `.specify/config.yml` si existe y **devolverle al usuario en una línea los valores resueltos** de al menos `tracker`, `cross_review.mode`, `co_explore.mode`, `co_explore.debate`, `domain_context.mode`, `final_diff_review.mode` y `jira_approval.mode`, **con qué implican**. Ej.: *"config: tracker jira · cross_review on · co_explore on → exploración paralela antes de la spec · co_explore.debate auto → ofrezco debate en decisiones complejas de clarify/plan · domain_context auto → leer ADRs si existen · final_diff_review auto → revisión agregada en complex inline · jira_approval on → publico la spec en Jira tras aprobarla localmente"*. Ese eco es la prueba de que el config se leyó: sin él, es fácil aplicar los defaults (`cross_review` por complejidad, `domain_context: auto`, `final_diff_review: auto`, `jira_approval: off`) y perder cross-review, contexto de dominio, revisión final y `publish-spec` en silencio (ver red-flag "Arranco el flujo sin leer el config").
+**Checkpoint de inicio (no salteable).** El **primer** acto operativo de toda corrida es leer `.specify/config.yml` si existe y **devolverle al usuario en una línea los valores resueltos** de al menos `tracker`, `cross_review.mode`, `co_explore.mode`, `co_explore.debate`, `cross_model.transport`, `domain_context.mode`, `final_diff_review.mode` y `jira_approval.mode`, **con qué implican**. Ej.: *"config: tracker jira · cross_review on · co_explore on → exploración paralela antes de la spec · co_explore.debate auto → ofrezco debate en decisiones complejas de clarify/plan · cross_model.transport cli → las corridas delegadas van por el CLI vigente · domain_context auto → leer ADRs si existen · final_diff_review auto → revisión agregada en complex inline · jira_approval on → publico la spec en Jira tras aprobarla localmente"*. Ese eco es la prueba de que el config se leyó: sin él, es fácil aplicar los defaults (`cross_review` por complejidad, `cross_model.transport: cli`, `domain_context: auto`, `final_diff_review: auto`, `jira_approval: off`) y perder cross-review, contexto de dominio, revisión final, `publish-spec` y el transporte de las corridas delegadas en silencio (ver red-flag "Arranco el flujo sin leer el config").
+
+**Transporte de las corridas delegadas.** `cross_model.transport` elige dónde se aloja cada corrida delegada (`co-explore`, `cross-review`, `cross-implement`): el transporte CLI vigente (`cli`, default) o un pane del multiplexor de terminales (`herdr`). Es la **intención** ("¿debe este flujo usar panes?"), y la intención no crea la capacidad ("¿se puede acá?"): **hacen falta las dos** y ninguna sustituye a la otra — sin capacidad (variable de entorno, binario utilizable, skill externa de transporte instalada) la vía de panes **no se intenta** y la corrida sigue por el CLI vigente con un aviso de una línea (regla #6). Precedencia: **override conversacional de la corrida > `cross_model.transport` del config > default `cli`**, y el valor resuelto entra al eco de arriba. Resuelto una vez, se **anuncia antes de abrir el primer pane**, rige para **todas las fases delegadas** del flujo y **no se vuelve a pedir permiso** por fase; el usuario conserva el **opt-out** en cualquier momento. Predicado de capacidad, durabilidad del override y persistencia: `reference.md` → "Transporte de las corridas delegadas".
 
 Si existe `.specify/config.yml`, leerlo primero. Esquema (todos los campos opcionales):
 
@@ -111,6 +113,7 @@ branch_prefix: ""           # opcional; reemplaza {type} (p. ej. "feature/"); va
 commit_style: conventional  # conventional | plain
 tracker: jira               # jira | github | gitlab | linear | none
 test_scope_hint: "vitest run {name}"  # plantilla de COMANDO para acotar tests; {name} = archivo/patrón
+cross_model: {schema_version: 1, transport: cli}  # dónde se alojan las corridas delegadas: cli (default) | herdr; `schema_version` es obligatorio si el bloque existe; ver "Transporte de las corridas delegadas"
 cross_review: {mode: auto, execution: auto}  # segunda opinión cross-model en los gates; ver "Revisión cross-model"
 co_explore: {mode: auto, deadline: 600, debate: {mode: auto, max_rounds: 3}}  # exploración paralela + modo debate (decisiones); ver "Co-exploración cross-model"
 domain_context: {mode: auto, context_paths: [], adr_paths: []}  # lectura de contexto/ADRs; ver "Contexto de dominio"
@@ -201,6 +204,12 @@ crítica se presenta *junto* al artefacto en el mismo STOP; tú sigues siendo el
   `cross-review/reference.md` → "Latencia y timeout (Claude revisor)"), o si `cross_review.mode: off` → avisar en una línea ("revisión
   cross-model no disponible — sigo con el gate humano") y continuar con el gate normal. Es la misma
   filosofía de la regla #6.
+- **Barrera preterminal (`review-pending`).** Mientras la revisión delegada esté pendiente, se
+  apendiza `review-pending` a la línea del gate en curso —una marca, **no** un `status` nuevo de
+  `plan.md`: precondición del STOP, no fase del flujo— y el STOP **no se presenta**; una aprobación
+  que llegue antes del estado terminal **no se contabiliza** y se vuelve a pedir con la crítica a la
+  vista. La levanta el **primer** estado terminal, veredicto o degradación: los cinco liberan el
+  gate, así que no puede colgar el flujo (`cross-review/reference.md` → "Estados terminales que liberan el gate").
 
 > Detalle del loop, el contrato con el revisor (Codex o Claude según quién conduzca) y el formato del log: en la propia
 > `cross-review`. Acá sdd-flow solo decide **cuándo** invocarla y **presenta** su salida en el
@@ -511,7 +520,7 @@ change_type: feat               # feat | fix | refactor | ...
 branch_prefix: feature          # el {type} ya resuelto
 slug: export-csv
 base_branch: master             # rama base resuelta (con override de base, la rama de la que se corta)
-overrides: { branch_prefix: null, base_branch: null, cross_review: null, implement_mode: null, jira_approval: null }
+overrides: { branch_prefix: null, base_branch: null, cross_review: null, implement_mode: null, jira_approval: null, transport: null }   # `transport`: el override de la corrida; sin él manda `cross_model.transport`
 # campos del gate de Jira (solo si es una pausa por aprobación externa):
 # gate_status: awaiting         # awaiting | changes-requested | approved
 # parent_key: ABC-123 · subtask_key: ABC-145 · cloud_id: <uuid>
@@ -567,35 +576,16 @@ solo ese flujo. La fuente de verdad sigue siendo `plan.md` (`status` + marcas `[
 `handoff.md` en la ventana pre-`plan`.
 
 ### Sub-paso `doctor` (diagnóstico read-only)
-
-**Objetivo:** validar la coherencia de un flujo sin arreglar nada ni escribir archivos. Aplica a
-`/sdd-flow doctor <id>` o cuando el usuario pida "valida/revisa coherencia del flujo".
-
-1. Resolver el flujo igual que `resume`: si hay `plan.md`, leer su header; si no, leer
-   `handoff.md`/`spec.md`.
-2. Ejecutar los mismos checks del self-review de `tasks`: cobertura `AC-n` ↔ tasks, tasks sin AC,
-   anti-placeholder y consistencia exacta `Produce`/`Consume`.
-3. Validar bootstrap: `branch` del header existe, `base_commit` es ancestro de `HEAD` si la rama
-   está disponible, y `base_branch`/`default_branch` no dejan el flujo en detached HEAD.
-4. Validar `## Verify`: los AC salen de `spec.md` o de `## Spec` embebido en `plan.md`; si el
-   flujo tiene commits o cambios posteriores a la fecha/evidencia de `## Verify`, marcar
-   **verify stale**. No re-verifica: solo detecta que la evidencia ya no es fresca.
-5. Clasificar ruido del working tree: `.plans/`/`.specify/` son locales; generados/cache ignorados
-   no bloquean; archivos de código dirty fuera de `code_touched` se reportan como ajenos. Si hay
-   `.plans/<id>/work/`, tratarlo como scratch/auditoría, nunca como fuente de progreso.
-6. Reportar `OK` / `WARN` / `FAIL` con evidencia concreta (`path:line`, comando leído, estado de
-   git). **No** crear ramas, no editar artefactos, no marcar tasks, no limpiar archivos.
+Valida la coherencia de un flujo **sin arreglar nada ni escribir archivos**: resuelve el flujo igual
+que `resume` y reporta `OK`/`WARN`/`FAIL` con evidencia concreta. Los checks, el formato de salida y
+qué cuenta como ruido del working tree: `reference.md` → "Doctor read-only".
 
 ### Gate de Jira (esperando aprobación externa)
-
-Cuando `handoff.md` tiene `gate_status: awaiting`/`changes-requested`, el flujo está parado esperando que el TL/PO aprueben la subtarea `SPEC: …`. Confirmar el resumen del `handoff.md` (objetivo, complejidad, subtarea) y resolver según lo que diga el usuario:
-
-- **"ya aprobaron"** → confiar: poner `gate_status: approved` en `handoff.md` y seguir a `create-branch` usando el `branch_prefix`/`slug`/`base_branch` del snapshot.
-- **"revisa el ticket" o nada** → leer la subtarea por MCP (estado + comentarios nuevos desde la publicación):
-  - **Hay observaciones** (comentarios pidiendo cambios) → ajustar la `spec.md` localmente; **actualizar la descripción de la subtarea** con la spec corregida (sanitizada) **+ un comentario consolidado que @menciona al/los autor(es) de las observaciones** (un bullet por observación; ver `reference.md` → "Comentario de ajuste (tras observaciones)") resumiendo qué cambió y que vuelve a revisión (cada escritura con el STOP de write-safety del paso `publish-spec`); dejar `gate_status: awaiting` y volver a esperar.
-  - **Aprobada** (la señal de `jira_approval.approval_signal` —un estado de Jira— o, si es `ask`, confirmándolo con el usuario) → `gate_status: approved` y seguir a `create-branch`.
-
-Al aprobar, el flujo sigue normal: `create-branch` → `analyze` → `plan` (recién ahí se crea `plan.md`, sembrando `complexity`/`change_type` desde el snapshot; opcional `jira_subtask: <subtask_key>` + `jira_subtask_url: <url>` en el header para trazabilidad —los usa `open-pr` para linkear la spec en el PR). El análisis del código (`analyze`) corre fresco a propósito: va **después** de la aprobación.
+Con `gate_status: awaiting`/`changes-requested` en `handoff.md` el flujo está parado esperando que
+el TL/PO aprueben la subtarea `SPEC: …`; al aprobarse sigue normal a `create-branch` → `analyze` →
+`plan`, y el `analyze` corre **después** de la aprobación a propósito. Las tres resoluciones, la
+detección por MCP, el loop de observaciones y las escrituras con su STOP de write-safety:
+`reference.md` → "Aprobación externa de la spec (Jira)".
 
 ### Sub-paso `pause` (dejar un flujo a medias de forma segura)
 Aplica en **cualquier fase** del flujo, no solo `implement`. Al pausar:
