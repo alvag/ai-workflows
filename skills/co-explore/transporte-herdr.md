@@ -11,7 +11,9 @@ artefactos, la retoma y la síntesis son los mismos y viven donde ya viven (`SKI
 
 **La sintaxis no vive acá.** Este archivo dice **qué** hay que lograr —crear el pane, despachar,
 esperar, cosechar, cerrar—; los comandos que lo logran son autoridad de la skill externa `herdr` y
-del binario instalado, que se consulta en la sesión. Copiarlos acá los congelaría desactualizados.
+del binario instalado, que se consulta en la sesión. El binario **imprime su propia copia de esa
+skill** (`herdr --skill`): es la vía que la entrega apareada con la versión que corre, en vez de con
+la que alguien instaló alguna vez. Copiarlos acá los congelaría desactualizados.
 
 Los dos ejercicios que pagaron estas reglas están versionados en
 `docs/superpowers/experiments/2026-08-01-herdr-como-transporte.md` y
@@ -36,7 +38,7 @@ son de la skill que conduce el flujo, no de este archivo.
 |---|---|---|
 | la variable de entorno `HERDR_ENV` vale `1` | se lee del entorno del propio conductor; es capacidad, no consentimiento | el conductor no corre dentro de un pane host: se cae al transporte CLI vigente |
 | el binario utilizable, comprobado en la sesión | no se infiere de la variable: la variable dice dónde corre el conductor, no que el binario responda | se cae al transporte CLI vigente, sin improvisar comandos |
-| la skill de transporte instalada, que es la autoridad de uso | si esa skill no está, la mecánica del CLI no está disponible como contrato | se cae al transporte CLI vigente: la mecánica no se improvisa de memoria |
+| la mecánica de uso, obtenible de cualquiera de sus dos fuentes | la skill de transporte instalada **o** el binario, que imprime su propia copia (`herdr --skill`): alcanza con una. No son equivalentes en todo —la instalada es además lo que hace que la vía de panes se conozca fuera de un flujo; la del binario es la única apareada con la versión que corre— pero para la mecánica de una corrida cualquiera de las dos basta | sin ninguna de las dos se cae al transporte CLI vigente, porque la mecánica no se improvisa de memoria |
 
 **La degradación es la regla vigente del ecosistema, no una improvisación.** Sin capacidad la vía de
 panes no se intenta: la corrida sigue por el transporte CLI vigente con un aviso de una línea, y el
@@ -81,9 +83,11 @@ escribe a archivo** y cómo llega al worker lo fija el transporte.
 **Las rutas de salida no cambian.** Son las del árbol de `reference.md` → "Árbol de rutas", con su
 modo, familia y rol: el prompt en `co-explore/scratch/prompt-<modo>-<familia>-worker.txt` y el
 artefacto del worker en `co-explore/scratch/raw-<modo>-<familia>-worker.md`, de donde sale el split a
-índice y detalle. **La cosecha es por archivo, nunca por lectura del pane:** los agentes de terminal
-pintan sobre la pantalla alternativa, las filas que salen del viewport no entran al scrollback del
-host y subir el tope de líneas no las recupera, así que un informe largo es irrecuperable desde ahí.
+índice y detalle. **La cosecha es por archivo, nunca por lectura del pane:** el archivo es la autoridad
+—se publica atómicamente y pasa su validador—, y lo que devuelve el pane es la pantalla renderizada
+del agente, con el cromo de la TUI entremezclado, que no es el informe. Cuánto historial alcance a
+devolver una lectura es un dato de la plataforma —depende de la versión del multiplexor y del estado
+del agente— y por eso no se apoya un contrato ahí.
 
 **Qué campos del descriptor de corrida escribe esta skill.** El descriptor es de la corrida y tiene
 **doce** campos; `co-explore` completa los suyos **antes** del dispatch:

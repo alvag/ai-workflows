@@ -73,7 +73,7 @@ Cuando conduce Claude, la otra familia es **Codex**; el detalle canónico vive e
 
 - **Sustituye el transporte, no la semántica.** Las dos familias, quién revisa a quién, los estados del worker, los artefactos y la escalera de degradación siguen siendo los mismos y viven donde ya viven: cambia por dónde viaja el prompt y dónde vive el proceso, nada más.
 - **Capacidad distinta de intención.** Que se pueda alojar un worker en un pane no significa que este flujo deba hacerlo: hacen falta las dos en verdadero, y la intención tiene sede durable en el config del proyecto, no en la conversación. Sin las dos, la vía de panes no se intenta y la corrida sigue por el CLI.
-- **La sintaxis pertenece a la skill externa.** Este repo **no** copia los comandos del multiplexor: la autoridad son la skill externa `herdr` y el binario instalado, que se consultan en la sesión. Copiarlos acá los congelaría desactualizados.
+- **La sintaxis pertenece a la skill externa.** Este repo **no** copia los comandos del multiplexor: la autoridad son la skill externa `herdr` y el binario instalado, que se consultan en la sesión. El binario además **imprime su propia copia de esa skill** (`herdr --skill`), que es la forma de obtenerla ya apareada con la versión que corre en vez de con la que alguien instaló alguna vez. Copiar los comandos acá los congelaría desactualizados.
 - **Adaptador por skill, sin copiar comandos.** Cada skill que delega tiene su `transporte-herdr.md`, hermano de `reference.md`, con lo único que cambia por el transporte; se lee **solo** cuando la activación resolvió a esta vía.
 
 ## Artefactos en disco (dogfooding)

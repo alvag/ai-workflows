@@ -19,7 +19,9 @@ siempre uno, y de ahí sale la mitad de este archivo.
 
 **La sintaxis no vive acá.** Este archivo dice **qué** hay que lograr —crear el pane, despachar,
 esperar, cosechar, cerrar—; los comandos que lo logran son autoridad de la skill externa `herdr` y del
-binario instalado, que se consulta en la sesión. Copiarlos acá los congelaría desactualizados.
+binario instalado, que se consulta en la sesión. El binario **imprime su propia copia de esa skill**
+(`herdr --skill`): es la vía que la entrega apareada con la versión que corre, en vez de con la que
+alguien instaló alguna vez. Copiarlos acá los congelaría desactualizados.
 
 Los dos ejercicios que pagaron estas reglas están versionados en
 `docs/superpowers/experiments/2026-08-01-herdr-como-transporte.md` y
@@ -46,7 +48,7 @@ de este archivo.
 |---|---|---|
 | la variable de entorno `HERDR_ENV` vale `1` | se lee del entorno del propio conductor; es capacidad, no consentimiento | el conductor no corre dentro de un pane host: se cae al transporte CLI vigente |
 | el binario utilizable, comprobado en la sesión | no se infiere de la variable: la variable dice dónde corre el conductor, no que el binario responda | se cae al transporte CLI vigente, sin improvisar comandos |
-| la skill de transporte instalada, que es la autoridad de uso | si esa skill no está, la mecánica del CLI no está disponible como contrato | se cae al transporte CLI vigente: la mecánica no se improvisa de memoria |
+| la mecánica de uso, obtenible de cualquiera de sus dos fuentes | la skill de transporte instalada **o** el binario, que imprime su propia copia (`herdr --skill`): alcanza con una. No son equivalentes en todo —la instalada es además lo que hace que la vía de panes se conozca fuera de un flujo; la del binario es la única apareada con la versión que corre— pero para la mecánica de una corrida cualquiera de las dos basta | sin ninguna de las dos se cae al transporte CLI vigente, porque la mecánica no se improvisa de memoria |
 
 **La degradación es la regla vigente del ecosistema, no una improvisación.** Sin capacidad la vía de
 panes no se intenta: la corrida sigue por el transporte CLI vigente con un aviso de una línea, y el
@@ -120,11 +122,13 @@ skill es el **diff del working tree**, y se cosecha con las herramientas de git 
 status --porcelain` y `git diff`—, nunca leyendo el pane. El transporte no cambia cuál manda: el diff
 es la verdad y el reporte es advisory.
 
-**Y la cosecha por pantalla no es una opción, ni siquiera para el reporte.** Los agentes de terminal
-pintan sobre la pantalla alternativa: las filas que salen del viewport no entran al scrollback del
-host, y subir el tope de líneas no las recupera. Un reporte largo leído de la pantalla queda truncado
-en silencio, y un reporte truncado se confunde con un reporte que no parsea —que en esta skill tiene
-una regla propia y benigna: el diff sigue estando—. Cosechar del archivo es lo que mantiene esa regla
+**Y la cosecha por pantalla no es una opción, ni siquiera para el reporte.** Lo que devuelve el pane es
+la pantalla renderizada del implementador, con el cromo de la TUI entremezclado, y cuánto historial
+alcance es un dato de la plataforma: depende de la versión del multiplexor y del estado del agente. Y
+la lectura **entrega el texto sin decir si quedó recortada** —el aviso de recorte vive en la API por
+socket, no en la salida que se lee acá—, así que un reporte leído de la pantalla queda truncado en
+silencio, y un reporte truncado se confunde con un reporte que no parsea —que en esta skill tiene una
+regla propia y benigna: el diff sigue estando—. Cosechar del archivo es lo que mantiene esa regla
 honesta en vez de convertirla en una excusa.
 
 **Qué campos del descriptor de corrida escribe esta skill.** El descriptor es de la corrida y tiene
