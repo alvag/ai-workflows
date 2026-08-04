@@ -205,6 +205,27 @@
       }
     },
     {
+      "nombre": "tabla-sin-filas",
+      "particion": "invalido",
+      "objetivo": "tabla-vs-registros",
+      "clase_esperada": "rechazo",
+      "exento_mono_causa": "una tabla sin filas y un registro presente rompen la paridad por el otro lado; no hay forma de vaciar la tabla sin moverla",
+      "precondicion": "la versión vigente tiene cabecera y separador pero NINGUNA fila, y sí hay un registro. Es el lado espejo de `duplicado-vacio`: acá el nulo cae en `ReferenceObject` de `Compare-Object` en vez de en `DifferenceObject`",
+      "clausulas": {
+        "campo-como-columna": "valido",
+        "tabla-vs-registros": "invalido",
+        "registro-duplicado": "valido",
+        "sin-commit": "valido",
+        "timestamp-no-iso": "valido",
+        "green-sin-adjudicacion": "valido",
+        "na-sin-justificacion": "valido"
+      },
+      "fixture": "tabla-sin-filas",
+      "entradas": {
+        "contrato": "{dir}/contrato.md"
+      }
+    },
+    {
       "nombre": "duplicado-singleton",
       "particion": "singleton",
       "objetivo": "registro-duplicado",

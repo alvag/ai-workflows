@@ -672,8 +672,12 @@ $cab   = $vig | Where-Object { $_ -match '^\|\s*ID\s*\|' } | Select-Object -Firs
 if ($cab -match '(?i)adjudicaci|justificaci|commit|timestamp') {
   Write-Error 'GUARD:ubicacion-baseline un campo del registro está puesto como columna'; $rc = 1
 }
-$idsTabla = $filas | ForEach-Object { ($_ -split '\|')[1].Trim() }
-$idsReg   = $regs  | ForEach-Object { [regex]::Match($_, '^- `id: ([^`]*)`').Groups[1].Value }
+# El `@()` no es cosmético: una proyección sin resultados es `$null`, y `Compare-Object` lanza si
+# recibe null en cualquiera de sus dos parámetros. Sin envolver, un contrato con tabla y CERO
+# registros —o al revés— hacía que el bloque lanzara, siguiera, nunca tocara $rc y saliera 0: daba
+# por bueno justo lo que este predicado existe para impedir.
+$idsTabla = @($filas | ForEach-Object { ($_ -split '\|')[1].Trim() })
+$idsReg   = @($regs  | ForEach-Object { [regex]::Match($_, '^- `id: ([^`]*)`').Groups[1].Value })
 if (Compare-Object $idsTabla $idsReg -SyncWindow 0) {
   Write-Error "GUARD:baseline-record-parity tabla=[$($idsTabla -join ' ')] registros=[$($idsReg -join ' ')]"; $rc = 1
 }

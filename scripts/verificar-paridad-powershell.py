@@ -1293,6 +1293,65 @@ def cmd_registrar_auditoria(raiz: Path, pares: dict[str, Par], solo: str | None)
     return 0
 
 
+def cmd_resincronizar_catalogo(raiz: Path, pares: dict[str, Par], solo: str | None) -> int:
+    """Reubica las entradas cuyo sitio SE MOVIÓ sin cambiar, por identidad de digest.
+
+    Distingue las dos cosas que un cambio de cuerpo mezcla: una sentencia que se corrió de línea
+    sigue siendo la misma sentencia, y su entrada la sigue describiendo; una sentencia que cambió
+    de texto puede haber cambiado de significado, y ahí el patrón hay que revisarlo a mano. Solo
+    reubica cuando encuentra EXACTAMENTE un sitio con el mismo digest: cero o varios es rojo.
+    """
+    alcance = cargar_alcance(raiz)
+    objetivo = [solo] if solo else alcance.get("cubiertos", [])
+    problemas: list[str] = []
+    movidas = 0
+    for nombre in objetivo:
+        par = pares.get(nombre)
+        if par is None:
+            problemas.append(f"{nombre}: no existe en el inventario")
+            continue
+        ruta = raiz / DIR_CASOS / nombre / "eventos.json"
+        catalogo = cargar_catalogo(raiz, nombre)
+        if not catalogo:
+            continue
+        cambio = False
+        for sabor in ("posix", "ps"):
+            cuerpo = par.cuerpo_posix if sabor == "posix" else par.cuerpo_ps
+            sitios, _ = escanear_sitios(cuerpo, sabor)
+            por_linea = {s.linea: s for s in sitios}
+            for entrada in catalogo:
+                if entrada.get("solo_en") and entrada["solo_en"] != sabor:
+                    continue
+                sitio = entrada.get("sitio", {}).get(sabor)
+                if sitio is None:
+                    continue
+                ln, dg = sitio.get("linea"), sitio.get("digest")
+                if ln in por_linea and por_linea[ln].digest == dg:
+                    continue
+                candidatos = [s for s in sitios if s.digest == dg]
+                if len(candidatos) == 1:
+                    sitio["linea"] = candidatos[0].linea
+                    movidas += 1
+                    cambio = True
+                    print(f"  movida {nombre}/{sabor}/{entrada['id']}: {ln} → "
+                          f"{candidatos[0].linea}")
+                elif not candidatos:
+                    problemas.append(
+                        f"{nombre}/{sabor}/{entrada['id']}: la sentencia de la línea {ln} cambió"
+                        f" de texto, no solo de lugar — revisá el patrón a mano")
+                else:
+                    problemas.append(
+                        f"{nombre}/{sabor}/{entrada['id']}: {len(candidatos)} sentencias con el"
+                        f" mismo digest; la reubicación sería una adivinanza")
+        if cambio:
+            ruta.write_text(json.dumps(catalogo, indent=2, ensure_ascii=False) + "\n",
+                            encoding=ENCODING)
+    print(f"entradas reubicadas: {movidas}")
+    for p in problemas:
+        print(f"  ROJO {p}")
+    return 0 if not problemas else CODIGO["fallo"]
+
+
 def cmd_auditar_matrices(raiz: Path, pares: dict[str, Par], args) -> int:
     problemas = auditar_matrices(raiz, pares, args.par, args.estricto_mono_causa,
                                  args.exigir_particiones)
@@ -1505,6 +1564,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--listar-inventario", action="store_true")
     p.add_argument("--auditar-catalogo", action="store_true")
     p.add_argument("--auditar-matrices", action="store_true")
+    p.add_argument("--resincronizar-catalogo", action="store_true",
+                   help="reubica las entradas cuyo sitio se movió sin cambiar de texto")
     p.add_argument("--registrar-auditoria", action="store_true",
                    help="liga la cobertura al cuerpo vigente (el acto que AC-5 exige tras un"
                         " cambio de cuerpo)")
@@ -1562,6 +1623,8 @@ def main(argv: list[str] | None = None) -> int:
         return CODIGO["fallo"]
     if args.auditar_catalogo:
         return cmd_auditar_catalogo(raiz, pares)
+    if args.resincronizar_catalogo:
+        return cmd_resincronizar_catalogo(raiz, pares, args.par)
     if args.registrar_auditoria:
         return cmd_registrar_auditoria(raiz, pares, args.par)
     if args.auditar_matrices:
