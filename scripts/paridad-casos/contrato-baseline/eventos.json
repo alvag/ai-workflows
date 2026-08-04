@@ -1,0 +1,249 @@
+[
+  {
+    "id": "campo-como-columna",
+    "sitio": {
+      "posix": {
+        "linea": 18,
+        "digest": "sha256:3b3b054d26d4eb43"
+      },
+      "ps": {
+        "linea": 19,
+        "digest": "sha256:40e1ba290079bcd0"
+      }
+    },
+    "posix": "^GUARD:ubicacion-baseline un campo del registro está puesto como columna$",
+    "ps": "^GUARD:ubicacion-baseline un campo del registro está puesto como columna$",
+    "campos": {},
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:ubicacion-baseline un campo del registro está puesto como columna",
+        "campos": {}
+      },
+      "ps": {
+        "texto": "GUARD:ubicacion-baseline un campo del registro está puesto como columna",
+        "campos": {}
+      }
+    }
+  },
+  {
+    "id": "tabla-vs-registros",
+    "sitio": {
+      "posix": {
+        "linea": 24,
+        "digest": "sha256:a61cf947a4a4cdc8"
+      },
+      "ps": {
+        "linea": 24,
+        "digest": "sha256:3a5dd0185cf12adc"
+      }
+    },
+    "posix": "^GUARD:baseline-record-parity tabla=\\[(?P<tabla>[^\\]]*)\\] registros=\\[(?P<registros>[^\\]]*)\\]$",
+    "ps": "^GUARD:baseline-record-parity tabla=\\[(?P<tabla>[^\\]]*)\\] registros=\\[(?P<registros>[^\\]]*)\\]$",
+    "campos": {
+      "tabla": {
+        "tipo": "conjunto"
+      },
+      "registros": {
+        "tipo": "conjunto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:baseline-record-parity tabla=[CENTINELA-A] registros=[CENTINELA-B]",
+        "campos": {
+          "tabla": [
+            "CENTINELA-A"
+          ],
+          "registros": [
+            "CENTINELA-B"
+          ]
+        }
+      },
+      "ps": {
+        "texto": "GUARD:baseline-record-parity tabla=[CENTINELA-A] registros=[CENTINELA-B]",
+        "campos": {
+          "tabla": [
+            "CENTINELA-A"
+          ],
+          "registros": [
+            "CENTINELA-B"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": "registro-duplicado",
+    "sitio": {
+      "posix": {
+        "linea": 28,
+        "digest": "sha256:3b2aa80b65e6ec12"
+      },
+      "ps": {
+        "linea": 27,
+        "digest": "sha256:32ebc3b950e2f9b9"
+      }
+    },
+    "posix": "^GUARD:baseline-record-parity registro duplicado: (?P<ids>.*?) ?$",
+    "ps": "^GUARD:baseline-record-parity registro duplicado: (?P<ids>.*)$",
+    "campos": {
+      "ids": {
+        "tipo": "conjunto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:baseline-record-parity registro duplicado: CENTINELA",
+        "campos": {
+          "ids": [
+            "CENTINELA"
+          ]
+        }
+      },
+      "ps": {
+        "texto": "GUARD:baseline-record-parity registro duplicado: CENTINELA",
+        "campos": {
+          "ids": [
+            "CENTINELA"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": "sin-commit",
+    "sitio": {
+      "posix": {
+        "linea": 35,
+        "digest": "sha256:032292c3d7730387"
+      },
+      "ps": {
+        "linea": 30,
+        "digest": "sha256:bdb81e67219c210d"
+      }
+    },
+    "posix": "^GUARD:adjudicacion-obligatoria (?P<id>[^:]*): sin commit$",
+    "ps": "^GUARD:adjudicacion-obligatoria (?P<id>[^:]*): sin commit$",
+    "campos": {
+      "id": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:adjudicacion-obligatoria CENTINELA: sin commit",
+        "campos": {
+          "id": "CENTINELA"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:adjudicacion-obligatoria CENTINELA: sin commit",
+        "campos": {
+          "id": "CENTINELA"
+        }
+      }
+    }
+  },
+  {
+    "id": "timestamp-no-iso",
+    "sitio": {
+      "posix": {
+        "linea": 37,
+        "digest": "sha256:cb41e2f4e503b412"
+      },
+      "ps": {
+        "linea": 32,
+        "digest": "sha256:ddd658afa282992e"
+      }
+    },
+    "posix": "^GUARD:adjudicacion-obligatoria (?P<id>[^:]*): timestamp no ISO-8601$",
+    "ps": "^GUARD:adjudicacion-obligatoria (?P<id>[^:]*): timestamp no ISO-8601$",
+    "campos": {
+      "id": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:adjudicacion-obligatoria CENTINELA: timestamp no ISO-8601",
+        "campos": {
+          "id": "CENTINELA"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:adjudicacion-obligatoria CENTINELA: timestamp no ISO-8601",
+        "campos": {
+          "id": "CENTINELA"
+        }
+      }
+    }
+  },
+  {
+    "id": "green-sin-adjudicacion",
+    "sitio": {
+      "posix": {
+        "linea": 42,
+        "digest": "sha256:ee3fbf48e1bb8a0c"
+      },
+      "ps": {
+        "linea": 37,
+        "digest": "sha256:411068241071c5ec"
+      }
+    },
+    "posix": "^GUARD:adjudicacion-obligatoria (?P<id>[^:]*): GREEN_ALREADY sin adjudicación already_satisfied$",
+    "ps": "^GUARD:adjudicacion-obligatoria (?P<id>[^:]*): GREEN_ALREADY sin adjudicación already_satisfied$",
+    "campos": {
+      "id": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:adjudicacion-obligatoria CENTINELA: GREEN_ALREADY sin adjudicación already_satisfied",
+        "campos": {
+          "id": "CENTINELA"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:adjudicacion-obligatoria CENTINELA: GREEN_ALREADY sin adjudicación already_satisfied",
+        "campos": {
+          "id": "CENTINELA"
+        }
+      }
+    }
+  },
+  {
+    "id": "na-sin-justificacion",
+    "sitio": {
+      "posix": {
+        "linea": 46,
+        "digest": "sha256:20d1e059ea1d1cc1"
+      },
+      "ps": {
+        "linea": 40,
+        "digest": "sha256:9f6eeace87cf5021"
+      }
+    },
+    "posix": "^GUARD:adjudicacion-obligatoria (?P<id>[^:]*): NOT_APPLICABLE sin justificación$",
+    "ps": "^GUARD:adjudicacion-obligatoria (?P<id>[^:]*): NOT_APPLICABLE sin justificación$",
+    "campos": {
+      "id": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:adjudicacion-obligatoria CENTINELA: NOT_APPLICABLE sin justificación",
+        "campos": {
+          "id": "CENTINELA"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:adjudicacion-obligatoria CENTINELA: NOT_APPLICABLE sin justificación",
+        "campos": {
+          "id": "CENTINELA"
+        }
+      }
+    }
+  }
+]

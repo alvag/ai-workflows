@@ -3,6 +3,8 @@
   "cubiertos": [
     "clarificacion-completa",
     "cobertura-ac-fila",
+    "contrato-baseline",
+    "contrato-cadena",
     "contrato-cobertura",
     "contrato-esquema",
     "contrato-invariantes",
@@ -28,8 +30,6 @@
     "verify-ejecuta"
   ],
   "declarados_sin_matriz": {
-    "rebaseline-worktree": "fuera de alcance por decisión de la spec: opera sobre worktrees de Git que crea y destruye, y probarlo exigiría que el arnés levante repositorios desechables",
-    "contrato-baseline": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
-    "contrato-cadena": "recorte de alcance declarado de la v1: sin matriz, no comprobado"
+    "rebaseline-worktree": "fuera de alcance por decisión de la spec: opera sobre worktrees de Git que crea y destruye, y probarlo exigiría que el arnés levante repositorios desechables"
   }
 }

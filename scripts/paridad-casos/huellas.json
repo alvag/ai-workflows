@@ -7,6 +7,14 @@
     "posix": "sha256:0297c22811b7d6dc",
     "ps": "sha256:311b12769506791f"
   },
+  "contrato-baseline": {
+    "posix": "sha256:ab2053287e19cf15",
+    "ps": "sha256:b4fd7b2f4dfca5c4"
+  },
+  "contrato-cadena": {
+    "posix": "sha256:4c58f33a967b0565",
+    "ps": "sha256:4631829129b1c70a"
+  },
   "contrato-cobertura": {
     "posix": "sha256:0be415d3ef3891e7",
     "ps": "sha256:acf052e8c3de6dca"
