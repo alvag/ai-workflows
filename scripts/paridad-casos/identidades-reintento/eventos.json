@@ -35,6 +35,10 @@
           ]
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:identidades-reintento identidad desconocida: %s\\n",
+      "ps": "GUARD:identidades-reintento identidad desconocida: $($raras -join ' ')"
     }
   },
   {
@@ -69,6 +73,10 @@
           "cuantas": "2"
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:identidades-reintento %s reparaciones de formato (el tope es 1)\\n",
+      "ps": "GUARD:identidades-reintento $n reparaciones de formato (el tope es 1)"
     }
   },
   {
@@ -95,6 +103,10 @@
         "texto": "GUARD:identidades-reintento la reparación no declara haber conservado los IDs",
         "campos": {}
       }
+    },
+    "literal": {
+      "posix": "GUARD:identidades-reintento la reparación no declara haber conservado los IDs",
+      "ps": "GUARD:identidades-reintento la reparación no declara haber conservado los IDs"
     }
   }
 ]

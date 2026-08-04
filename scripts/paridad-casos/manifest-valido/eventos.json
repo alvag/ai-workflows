@@ -31,6 +31,10 @@
           "campo": "CENTINELA"
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:manifest-valido falta el campo \"%s\"\\n",
+      "ps": "GUARD:manifest-valido falta el campo `"
     }
   },
   {
@@ -65,6 +69,10 @@
           "campo": "CENTINELA"
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:manifest-valido campo recortado presente: \"%s\"\\n",
+      "ps": "GUARD:manifest-valido campo recortado presente: `"
     }
   },
   {
@@ -91,6 +99,10 @@
         "texto": "GUARD:manifest-valido \"families\" no es una lista",
         "campos": {}
       }
+    },
+    "literal": {
+      "posix": "GUARD:manifest-valido \"families\" no es una lista\\n",
+      "ps": "GUARD:manifest-valido \"families\" no es una lista"
     }
   },
   {
@@ -125,6 +137,10 @@
           "skill": "CENTINELA"
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:manifest-valido skill fuera del ecosistema: \"%s\"\\n",
+      "ps": "GUARD:manifest-valido skill fuera del ecosistema: `"
     }
   },
   {
@@ -169,6 +185,10 @@
           "skill": "cross-review"
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:manifest-valido %s \"%s\" no pertenece a %s\\n",
+      "ps": "GUARD:manifest-valido $($par[0]) `"
     }
   }
 ]

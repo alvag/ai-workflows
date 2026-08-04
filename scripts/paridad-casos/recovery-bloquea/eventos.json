@@ -39,6 +39,10 @@
           ]
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:recovery-bloquea hubo reintento con el recurso sin resolver:\\n%s\\n",
+      "ps": "GUARD:recovery-bloquea hubo reintento con el recurso sin resolver: $($doc[$i])"
     }
   }
 ]

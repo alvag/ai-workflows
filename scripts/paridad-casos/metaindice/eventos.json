@@ -23,6 +23,10 @@
         "texto": "GUARD:metaindice-completo no existe el metaíndice",
         "campos": {}
       }
+    },
+    "literal": {
+      "posix": "GUARD:metaindice-completo no existe el metaíndice",
+      "ps": "GUARD:metaindice-completo no existe el metaíndice"
     }
   },
   {
@@ -57,6 +61,10 @@
           "ruta": "CENTINELA.md"
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:pagina-declarada-existe el metaíndice declara %s y no existe\\n",
+      "ps": "GUARD:pagina-declarada-existe el metaíndice declara $r y no existe"
     }
   },
   {
@@ -95,6 +103,10 @@
           ]
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:pagina-declarada-existe página declarada dos veces: %s\\n",
+      "ps": "GUARD:pagina-declarada-existe página declarada dos veces: $($dup.Name -join ' ')"
     }
   },
   {
@@ -133,6 +145,10 @@
           ]
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:pagina-declarada-existe página huérfana, no listada: %s\\n",
+      "ps": "GUARD:pagina-declarada-existe página huérfana, no listada: $($huerf -join ' ')"
     }
   },
   {
@@ -180,6 +196,10 @@
           ]
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:metaindice-completo meta=[%s] paginas=[%s]\\n",
+      "ps": "GUARD:metaindice-completo meta=[$($idsMeta -join ' ')] paginas=[$($idsPag -join ' ')]"
     }
   },
   {
@@ -224,6 +244,10 @@
           "real": "2"
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:paridad-por-pagina %s declara %s entradas y tiene %s\\n",
+      "ps": "GUARD:paridad-por-pagina $r declara $n entradas y tiene $real"
     }
   }
 ]

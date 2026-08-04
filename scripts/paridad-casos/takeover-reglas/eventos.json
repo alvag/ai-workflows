@@ -39,6 +39,10 @@
           ]
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:design-gap-corta-takeover hay trabajo después del DESIGN_GAP:\\n%s\\n",
+      "ps": "GUARD:design-gap-corta-takeover hay trabajo después del DESIGN_GAP: $($post -join ' | ')"
     }
   },
   {
@@ -78,6 +82,10 @@
           "durante": "v2"
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:takeover-no-ablanda el contrato pasó de %s a %s durante el takeover\\n",
+      "ps": "GUARD:takeover-no-ablanda el contrato pasó de $antes a $durante durante el takeover"
     }
   }
 ]

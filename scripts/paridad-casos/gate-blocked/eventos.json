@@ -39,6 +39,10 @@
           ]
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:blocked-no-despacha hay filas BLOCKED y la bitácora despacha igual:",
+      "ps": "GUARD:blocked-no-despacha hay filas BLOCKED y la bitácora despacha igual: $((($bloqueadas | ForEach-Object { ($_ -split '\\|')[1].Trim() })) -join ' ')"
     }
   },
   {
@@ -79,6 +83,10 @@
           "registros": []
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:blocked-no-despacha NOT_APPLICABLE justificado por el entorno:",
+      "ps": "GUARD:blocked-no-despacha NOT_APPLICABLE justificado por el entorno"
     }
   }
 ]

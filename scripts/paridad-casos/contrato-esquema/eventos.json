@@ -23,6 +23,10 @@
         "texto": "GUARD:esquema-tabla cabecera no normativa",
         "campos": {}
       }
+    },
+    "literal": {
+      "posix": "GUARD:esquema-tabla cabecera no normativa",
+      "ps": "GUARD:esquema-tabla cabecera no normativa"
     }
   },
   {
@@ -65,6 +69,10 @@
           ]
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:esquema-tabla columnas fuera del esquema",
+      "ps": "GUARD:esquema-tabla columnas fuera del esquema: $($c[1].Trim())"
     }
   },
   {
@@ -107,6 +115,10 @@
           ]
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:esquema-tabla enum de Evidencia",
+      "ps": "GUARD:esquema-tabla enum de Evidencia: $($c[3].Trim())"
     }
   },
   {
@@ -149,6 +161,10 @@
           ]
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:esquema-tabla enum de Baseline",
+      "ps": "GUARD:esquema-tabla enum de Baseline: $($c[6].Trim())"
     }
   }
 ]

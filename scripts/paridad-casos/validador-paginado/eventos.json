@@ -35,6 +35,10 @@
           ]
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:paridad-union indexado sin desarrollo: %s\\n",
+      "ps": "GUARD:paridad-union indexado sin desarrollo: $($sinDet -join ' ')"
     }
   },
   {
@@ -73,6 +77,10 @@
           ]
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:paridad-union desarrollo sin entrada: %s\\n",
+      "ps": "GUARD:paridad-union desarrollo sin entrada: $($sinIdx -join ' ')"
     }
   },
   {
@@ -99,6 +107,10 @@
         "texto": "GUARD:paridad-union la unión de las páginas está vacía",
         "campos": {}
       }
+    },
+    "literal": {
+      "posix": "GUARD:paridad-union la unión de las páginas está vacía",
+      "ps": "GUARD:paridad-union la unión de las páginas está vacía"
     }
   }
 ]

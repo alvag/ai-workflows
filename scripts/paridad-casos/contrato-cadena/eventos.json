@@ -36,6 +36,10 @@
           "vino": "3"
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:versiones-consecutivas se esperaba v%s y vino v%s\\n",
+      "ps": "GUARD:versiones-consecutivas se esperaba v$esp y vino v$v"
     }
   },
   {
@@ -80,6 +84,10 @@
           "recalculado": "CENTINELA2"
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:cadena-hash v%s: hash declarado %s, recalculado %s\\n",
+      "ps": "GUARD:cadena-hash v${v}: hash declarado $decl, recalculado $calc"
     }
   },
   {
@@ -124,6 +132,10 @@
           "esperado": "CENTINELA2"
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:cadena-hash v%s: hash_previo %s, se esperaba %s\\n",
+      "ps": "GUARD:cadena-hash v${v}: hash_previo $prev, se esperaba $anterior"
     }
   }
 ]

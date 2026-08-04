@@ -36,6 +36,10 @@
           "esperado": "CENTINELA2"
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:paquete-inmutable el paquete entregado cambió (%s ≠ %s)\\n",
+      "ps": "GUARD:paquete-inmutable el paquete entregado cambió ($actual ≠ $hash_v1)"
     }
   },
   {
@@ -70,6 +74,10 @@
           "cuantas": "3"
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:truncado-alcanza-versiones sobrevivieron %s versiones al redespacho\\n",
+      "ps": "GUARD:truncado-alcanza-versiones sobrevivieron $quedan versiones al redespacho"
     }
   }
 ]

@@ -23,6 +23,10 @@
         "texto": "GUARD:gate-fase-3 la Fase 3 no tiene gate de apertura",
         "campos": {}
       }
+    },
+    "literal": {
+      "posix": "GUARD:gate-fase-3 la Fase 3 no tiene gate de apertura",
+      "ps": "GUARD:gate-fase-3 la Fase 3 no tiene gate de apertura"
     }
   },
   {
@@ -49,6 +53,10 @@
         "texto": "GUARD:gate-fase-3 el gate no exige congelar antes de ejecutar",
         "campos": {}
       }
+    },
+    "literal": {
+      "posix": "GUARD:gate-fase-3 el gate no exige congelar antes de ejecutar",
+      "ps": "GUARD:gate-fase-3 el gate no exige congelar antes de ejecutar"
     }
   },
   {
@@ -75,6 +83,10 @@
         "texto": "GUARD:gate-fase-3 la agregacion no declara que una fila ausente impide el verde",
         "campos": {}
       }
+    },
+    "literal": {
+      "posix": "GUARD:gate-fase-3 la agregacion no declara que una fila ausente impide el verde",
+      "ps": "GUARD:gate-fase-3 la agregacion no declara que una fila ausente impide el verde"
     }
   }
 ]

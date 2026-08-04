@@ -23,6 +23,10 @@
         "texto": "GUARD:cuarto-estado-en-consumidores el envelope no admite clarification-needed",
         "campos": {}
       }
+    },
+    "literal": {
+      "posix": "GUARD:cuarto-estado-en-consumidores el envelope no admite clarification-needed",
+      "ps": "GUARD:cuarto-estado-en-consumidores el envelope no admite clarification-needed"
     }
   },
   {
@@ -49,6 +53,10 @@
         "texto": "GUARD:cuarto-estado-en-consumidores la escalera de degradación lo ignora",
         "campos": {}
       }
+    },
+    "literal": {
+      "posix": "GUARD:cuarto-estado-en-consumidores la escalera de degradación lo ignora",
+      "ps": "GUARD:cuarto-estado-en-consumidores la escalera de degradación lo ignora"
     }
   },
   {
@@ -75,6 +83,10 @@
         "texto": "GUARD:cuarto-estado-en-consumidores la vista Degradación del SKILL.md lo ignora",
         "campos": {}
       }
+    },
+    "literal": {
+      "posix": "GUARD:cuarto-estado-en-consumidores la vista Degradación del SKILL.md lo ignora",
+      "ps": "GUARD:cuarto-estado-en-consumidores la vista Degradación del SKILL.md lo ignora"
     }
   },
   {
@@ -101,6 +113,10 @@
         "texto": "GUARD:cuarto-estado-en-consumidores la vista del envelope del SKILL.md lo ignora",
         "campos": {}
       }
+    },
+    "literal": {
+      "posix": "GUARD:cuarto-estado-en-consumidores la vista del envelope del SKILL.md lo ignora",
+      "ps": "GUARD:cuarto-estado-en-consumidores la vista del envelope del SKILL.md lo ignora"
     }
   }
 ]

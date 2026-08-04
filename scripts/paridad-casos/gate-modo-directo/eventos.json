@@ -36,6 +36,10 @@
           "actor": "worker"
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:conductor-deriva-y-baseline \"%s\" lo hizo \"%s\"\\n",
+      "ps": "GUARD:conductor-deriva-y-baseline `"
     }
   },
   {
@@ -62,6 +66,10 @@
         "texto": "GUARD:kickoff-antes-de-congelar la bitácora lista los pasos fuera del orden de sus timestamps",
         "campos": {}
       }
+    },
+    "literal": {
+      "posix": "GUARD:kickoff-antes-de-congelar la bitácora lista los pasos fuera del orden de sus timestamps",
+      "ps": "GUARD:kickoff-antes-de-congelar la bitácora lista los pasos fuera del orden de sus timestamps"
     }
   },
   {
@@ -88,6 +96,10 @@
         "texto": "GUARD:kickoff-antes-de-congelar el kickoff no aprobó antes de congelar",
         "campos": {}
       }
+    },
+    "literal": {
+      "posix": "GUARD:kickoff-antes-de-congelar el kickoff no aprobó antes de congelar",
+      "ps": "GUARD:kickoff-antes-de-congelar el kickoff no aprobó antes de congelar"
     }
   },
   {
@@ -114,6 +126,10 @@
         "texto": "GUARD:congelar-antes-de-despachar se despachó sin congelar antes",
         "campos": {}
       }
+    },
+    "literal": {
+      "posix": "GUARD:congelar-antes-de-despachar se despachó sin congelar antes",
+      "ps": "GUARD:congelar-antes-de-despachar se despachó sin congelar antes"
     }
   }
 ]

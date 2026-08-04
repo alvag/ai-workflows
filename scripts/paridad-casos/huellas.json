@@ -5,7 +5,7 @@
   },
   "cobertura-ac-fila": {
     "posix": "sha256:0297c22811b7d6dc",
-    "ps": "sha256:311b12769506791f"
+    "ps": "sha256:b99f6fbb5d407764"
   },
   "contrato-baseline": {
     "posix": "sha256:ab2053287e19cf15",
@@ -65,7 +65,7 @@
   },
   "materializacion-contrato": {
     "posix": "sha256:e438069a86ca77b8",
-    "ps": "sha256:a5f78b9fe6abd718"
+    "ps": "sha256:44009b37b0fc265f"
   },
   "metaindice": {
     "posix": "sha256:eecdd56ef8221bcd",
@@ -105,6 +105,6 @@
   },
   "verify-ejecuta": {
     "posix": "sha256:465a6474aa567589",
-    "ps": "sha256:ba7aaa7bcaf49788"
+    "ps": "sha256:9d6a792f203c6597"
   }
 }

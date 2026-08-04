@@ -37,6 +37,10 @@
           ]
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:cobertura-bidireccional requisito en alcance sin fila: %s\\n",
+      "ps": "GUARD:cobertura-bidireccional requisito en alcance sin fila: $($sinFila -join ' ')"
     }
   },
   {
@@ -75,6 +79,10 @@
           ]
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:cobertura-bidireccional fila sin requisito en alcance: %s\\n",
+      "ps": "GUARD:cobertura-bidireccional fila sin requisito en alcance: $($huerfanas -join ' ')"
     }
   }
 ]

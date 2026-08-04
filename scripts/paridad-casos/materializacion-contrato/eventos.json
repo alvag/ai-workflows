@@ -8,7 +8,7 @@
       },
       "ps": {
         "linea": 7,
-        "digest": "sha256:4258a20128cd8b34"
+        "digest": "sha256:66606c88485641b8"
       }
     },
     "posix": "^GUARD:materializacion-unica el plan no materializa la cabecera normativa$",
@@ -23,6 +23,10 @@
         "texto": "GUARD:materializacion-unica el plan no materializa la cabecera normativa",
         "campos": {}
       }
+    },
+    "literal": {
+      "posix": "GUARD:materializacion-unica el plan no materializa la cabecera normativa",
+      "ps": "GUARD:materializacion-unica el plan no materializa la cabecera normativa"
     }
   },
   {
@@ -64,6 +68,10 @@
           ]
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:materializacion-unica hay una tabla de contrato con otro esquema:",
+      "ps": "GUARD:materializacion-unica hay una tabla de contrato con otro esquema: $($otras -join ' | ')"
     }
   }
 ]

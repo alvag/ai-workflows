@@ -39,6 +39,10 @@
           ]
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:presupuesto-por-check presupuesto excedido:",
+      "ps": "GUARD:presupuesto-por-check $id · $cl · $($g.Count) > $tope"
     }
   }
 ]

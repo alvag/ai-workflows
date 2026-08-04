@@ -8,7 +8,7 @@
       },
       "ps": {
         "linea": 6,
-        "digest": "sha256:82120e0656229d91"
+        "digest": "sha256:1332d93b5f93e2b1"
       }
     },
     "posix": "^GUARD:verify-solo-ejecuta el paso verify no carga la fila del contrato$",
@@ -23,6 +23,10 @@
         "texto": "GUARD:verify-solo-ejecuta el paso verify no carga la fila del contrato",
         "campos": {}
       }
+    },
+    "literal": {
+      "posix": "GUARD:verify-solo-ejecuta el paso verify no carga la fila del contrato",
+      "ps": "GUARD:verify-solo-ejecuta el paso verify no carga la fila del contrato"
     }
   },
   {
@@ -34,7 +38,7 @@
       },
       "ps": {
         "linea": 7,
-        "digest": "sha256:039f62a8af4af15b"
+        "digest": "sha256:e5cb9977c2e6ef50"
       }
     },
     "posix": "^GUARD:verify-solo-ejecuta el paso verify sigue eligiendo evidencia \\(IDENTIFICAR\\)$",
@@ -49,6 +53,10 @@
         "texto": "GUARD:verify-solo-ejecuta el paso verify sigue eligiendo evidencia (IDENTIFICAR)",
         "campos": {}
       }
+    },
+    "literal": {
+      "posix": "GUARD:verify-solo-ejecuta el paso verify sigue eligiendo evidencia (IDENTIFICAR)",
+      "ps": "GUARD:verify-solo-ejecuta el paso verify sigue eligiendo evidencia (IDENTIFICAR)"
     }
   },
   {
@@ -75,6 +83,10 @@
         "texto": "GUARD:verify-solo-ejecuta se perdió revert-to-confirm",
         "campos": {}
       }
+    },
+    "literal": {
+      "posix": "GUARD:verify-solo-ejecuta se perdió revert-to-confirm",
+      "ps": "GUARD:verify-solo-ejecuta se perdió revert-to-confirm"
     }
   }
 ]

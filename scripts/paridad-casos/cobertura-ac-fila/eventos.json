@@ -37,6 +37,10 @@
           ]
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:cobertura-ac-fila AC sin fila: %s\\n",
+      "ps": "GUARD:cobertura-ac-fila AC sin fila: $($sinFila -join ' ')"
     }
   },
   {
@@ -75,6 +79,10 @@
           ]
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:cobertura-ac-fila fila sin AC declarado: %s\\n",
+      "ps": "GUARD:cobertura-ac-fila fila sin AC declarado: $($sinAc -join ' ')"
     }
   }
 ]

@@ -23,6 +23,10 @@
         "texto": "GUARD:gate-contrato-congelado el work order no trae tabla",
         "campos": {}
       }
+    },
+    "literal": {
+      "posix": "GUARD:gate-contrato-congelado el work order no trae tabla",
+      "ps": "GUARD:gate-contrato-congelado el work order no trae tabla"
     }
   },
   {
@@ -65,6 +69,10 @@
           ]
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:gate-contrato-congelado baseline sin resolver:",
+      "ps": "GUARD:gate-contrato-congelado baseline sin resolver: $($c[1].Trim())"
     }
   },
   {
@@ -91,6 +99,10 @@
         "texto": "GUARD:gate-contrato-congelado la bitácora no registra el congelamiento",
         "campos": {}
       }
+    },
+    "literal": {
+      "posix": "GUARD:gate-contrato-congelado la bitácora no registra el congelamiento",
+      "ps": "GUARD:gate-contrato-congelado la bitácora no registra el congelamiento"
     }
   }
 ]

@@ -36,6 +36,10 @@
           "hasta": "2"
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:ids-invariantes el conjunto de ID cambia entre v%s y v%s\\n",
+      "ps": "GUARD:ids-invariantes el conjunto de ID cambia entre v$prev y v$v"
     }
   },
   {
@@ -84,6 +88,10 @@
           ]
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:requisito-esperado-invariantes cambian entre v%s y v%s:\\n",
+      "ps": "GUARD:requisito-esperado-invariantes cambian entre v$prev y v${v}: $k"
     }
   }
 ]

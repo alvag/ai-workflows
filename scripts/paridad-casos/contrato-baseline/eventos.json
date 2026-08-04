@@ -23,6 +23,10 @@
         "texto": "GUARD:ubicacion-baseline un campo del registro está puesto como columna",
         "campos": {}
       }
+    },
+    "literal": {
+      "posix": "GUARD:ubicacion-baseline un campo del registro está puesto como columna",
+      "ps": "GUARD:ubicacion-baseline un campo del registro está puesto como columna"
     }
   },
   {
@@ -70,6 +74,10 @@
           ]
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:baseline-record-parity tabla=[%s] registros=[%s]\\n",
+      "ps": "GUARD:baseline-record-parity tabla=[$($idsTabla -join ' ')] registros=[$($idsReg -join ' ')]"
     }
   },
   {
@@ -108,6 +116,10 @@
           ]
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:baseline-record-parity registro duplicado: %s\\n",
+      "ps": "GUARD:baseline-record-parity registro duplicado: $($dup.Name -join ' ')"
     }
   },
   {
@@ -142,6 +154,10 @@
           "id": "CENTINELA"
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:adjudicacion-obligatoria %s: sin commit\\n",
+      "ps": "GUARD:adjudicacion-obligatoria ${id}: sin commit"
     }
   },
   {
@@ -176,6 +192,10 @@
           "id": "CENTINELA"
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:adjudicacion-obligatoria %s: timestamp no ISO-8601\\n",
+      "ps": "GUARD:adjudicacion-obligatoria ${id}: timestamp no ISO-8601"
     }
   },
   {
@@ -210,6 +230,10 @@
           "id": "CENTINELA"
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:adjudicacion-obligatoria %s: GREEN_ALREADY sin adjudicación already_satisfied\\n",
+      "ps": "GUARD:adjudicacion-obligatoria ${id}: GREEN_ALREADY sin adjudicación already_satisfied"
     }
   },
   {
@@ -244,6 +268,10 @@
           "id": "CENTINELA"
         }
       }
+    },
+    "literal": {
+      "posix": "GUARD:adjudicacion-obligatoria %s: NOT_APPLICABLE sin justificación\\n",
+      "ps": "GUARD:adjudicacion-obligatoria ${id}: NOT_APPLICABLE sin justificación"
     }
   }
 ]

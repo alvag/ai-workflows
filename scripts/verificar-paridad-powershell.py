@@ -380,6 +380,7 @@ class Sitio:
     digest: str         # de la sentencia, para detectar que la plantilla cambió
     prefijo: str
     texto: str
+    literal: str = ""   # el mensaje emitido, que es lo que el patrón del catálogo describe
 
 
 # Conjunto CERRADO de formas de emisión. Una forma no reconocida es fallo, no omisión.
@@ -436,7 +437,8 @@ def escanear_sitios(cuerpo: str, sabor: str) -> tuple[list[Sitio], list[str]]:
                 linea=i,
                 digest="sha256:" + hashlib.sha256(desnuda.encode(ENCODING)).hexdigest()[:16],
                 prefijo=mensajes[0][1],
-                texto=desnuda))
+                texto=desnuda,
+                literal=mensajes[0][0]))
         elif not valores:
             prefijo = next(p for p in PREFIJOS_EVENTO if p in linea)
             anomalias.append(f"línea {i}: prefijo '{prefijo}' que no es ni emisión reconocida ni"
@@ -1335,10 +1337,20 @@ def cmd_resincronizar_catalogo(raiz: Path, pares: dict[str, Par], solo: str | No
                     cambio = True
                     print(f"  movida {nombre}/{sabor}/{entrada['id']}: {ln} → "
                           f"{candidatos[0].linea}")
-                elif not candidatos:
+                    continue
+                if not candidatos:
+                    lit = entrada.get("literal", {}).get(sabor)
+                    mismos = [s for s in sitios if lit and s.literal == lit]
+                    if len(mismos) == 1:
+                        sitio["linea"], sitio["digest"] = mismos[0].linea, mismos[0].digest
+                        movidas += 1
+                        cambio = True
+                        print(f"  reblanqueada {nombre}/{sabor}/{entrada['id']}: la sentencia"
+                              f" cambió y el MENSAJE no → línea {mismos[0].linea}")
+                        continue
                     problemas.append(
-                        f"{nombre}/{sabor}/{entrada['id']}: la sentencia de la línea {ln} cambió"
-                        f" de texto, no solo de lugar — revisá el patrón a mano")
+                        f"{nombre}/{sabor}/{entrada['id']}: cambió el mensaje de la línea {ln},"
+                        f" no solo la sentencia — revisá el patrón a mano")
                 else:
                     problemas.append(
                         f"{nombre}/{sabor}/{entrada['id']}: {len(candidatos)} sentencias con el"
