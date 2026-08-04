@@ -73,9 +73,31 @@ puntero, sin plantilla propia—.
 
 Los AC `[integration]` no viven en el contrato de ningún repo: viven en un **contrato de integración**
 propio del orquestador, y el contrato de cada repo los referencia en solo-lectura. Es la forma
-contractual de la regla que ya regía: ninguna integración se da por cumplida en un repo. Ese contrato
-pasa por su propio gate al abrir la Fase 3, y la agregación final **no puede dar verde** con filas
-ausentes o bloqueadas.
+contractual de la regla que ya regía: ninguna integración se da por cumplida en un repo.
+
+Ese contrato cubre además el trabajo que no pertenece a ningún repo —lo que hay que cerrar antes de
+repartir, y lo que solo tiene sentido con todos los servicios arriba—, que el `manifest.yml` declara
+como `orchestration_tasks`. Cada una de esas tareas tiene ahí su fila donde probar el cierre, cubra
+un AC de integración o sea auxiliar; y como el conjunto de filas de un contrato no admite altas
+posteriores, nace entero y temprano:
+
+- El contrato de integración cubre el cierre de toda tarea y se congela en la Fase 1.
+
+El mismo gate que habilita ese congelamiento vuelve a correr al abrir la Fase 3, esta vez para
+revalidar la versión vigente antes de ejecutar ninguna evidencia; y la agregación final **no puede
+dar verde** con filas ausentes o bloqueadas.
+
+Nada de eso se lee del estado final. Un repo que se despacha, un gate que se cierra, un lock que se
+libera: cada intento deja rastro propio.
+
+- La orquestación registra sus transiciones en una bitácora local.
+
+El `manifest.yml` dice en qué estado quedó cada cosa; la bitácora, los intentos de moverlo —quién,
+cuándo y con qué resultado—, incluidos los rechazados. De ahí sale, entre otras cosas, si la
+evidencia de una tarea sigue fresca en el momento de cerrarla.
+
+El detalle —los campos de una tarea, la forma de un evento, las precondiciones de un cierre— vive en
+`SKILL.md` y `reference.md`; acá va el mapa.
 
 ## Artefactos (todos locales, no se trackean)
 
