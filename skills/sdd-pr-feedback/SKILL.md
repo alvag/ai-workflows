@@ -157,6 +157,9 @@ solo ruido/dudas → *trivial*; con cambios → *normal*/*complex*, y con ella l
   la clasificación es el punto de mayor riesgo (descartar mal un comentario / injection).
 - **Gate de triage**: presentar al usuario el plan de acción completo (la tabla del Paso 2) + el resumen
   del cross-review. El usuario puede reclasificar. Sin aprobación no se escribe nada ni se avanza al plan.
+  Si la revisión devolvió `tandas_concedibles`, ofrecer en **este mismo STOP** las cuatro opciones —
+  continuar así · conceder una tanda · seguir hasta `APPROVED` · cerrar la revisión — y cerrar la
+  corrida según lo elegido (ver `reference.md` → "Contrato del cross-review").
 - Degradación: sin revisor / timeout → aviso de una línea y sigue al gate humano.
 
 > **Sincronizar la spec de Jira (si aplica).** Si el flujo tenía **subtarea SPEC** en Jira
@@ -185,7 +188,8 @@ commit: nada que publicar).
   sobre el enfoque técnico del fix; lo despacha **siempre el conductor**, antes de delegar.
 - **Gate del plan**: presentar el `plan.md` (+`tasks.md`) y el resumen del cross-review. Escala como
   `sdd-flow`: *normal* → plan (tasks aprobadas en el mismo gate); *complex* → plan + tasks (gate de
-  tasks propio). Sin aprobación no se delega nada.
+  tasks propio). Sin aprobación no se delega nada. Con `tandas_concedibles` en la salida, este STOP
+  ofrece las mismas cuatro opciones que el de triage.
 
 ### Paso 5 — Implement (delegado) para los `cambio`
 

@@ -30,10 +30,18 @@ artefacto escrito ──► [cross-review] ──► artefacto (quizá revisado)
 - **Augmenta el gate, no lo reemplaza.** Corre antes del STOP y le da insumo a la persona. Claude
   y el usuario siguen siendo el árbitro final.
 - **Read-only.** El revisor nunca escribe en el repo. Si hay algo que aplicar, lo edita Claude.
-- **Loop acotado.** Hasta `max_rounds` rondas (default 3), con veredicto `APPROVED`/`REVISE`.
-- **Sin sycophancy.** Cada finding del revisor se evalúa técnicamente (vía
-  `superpowers:receiving-code-review`): se aplica si es correcto, se rechaza con razón si no.
-- **Auditable.** Deja un `review-log.md` con rondas, findings y las decisiones de Claude.
+- **Loop acotado, con salida en manos de la persona.** `max_rounds` (default 3) es el presupuesto de
+  **una tanda**, no de la corrida entera: al agotarse no se cierra sola — se abre un checkpoint donde
+  elegís entre continuar así, conceder otra tanda, seguir hasta `APPROVED` (con un tope total) o
+  cerrar la revisión. El loop nunca corre sin tope, y quien lo extiende sos vos.
+- **Sin sycophancy, en las dos direcciones.** Cada finding del revisor se evalúa técnicamente (vía
+  `superpowers:receiving-code-review`): se aplica si es correcto, se rechaza **con motivo** si no —
+  un rechazo sin motivo es un estado inválido. Y el revisor puede **defender** un rechazo una vez,
+  si trae un argumento nuevo; una defensa admisible obliga a re-arbitrar, no a aceptar.
+- **Auditable.** Deja un `review-log.md` con un **ledger append-only** de todo lo que le pasó a cada
+  finding, y un `Resultado` que separa los **eventos de arbitraje** (cuántos se aplicaron, cuántos se
+  rechazaron, cuántas defensas hubo y cuántas eran admisibles) de los **estados finales**. Es lo que
+  hace visible el escrutinio y no solo el desenlace.
 - **Nunca bloquea.** Si no hay revisor o algo falla, degrada al gate humano de siempre.
 
 ## Cuándo usarla

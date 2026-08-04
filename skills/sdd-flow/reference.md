@@ -254,7 +254,7 @@ cross_review:                    # segunda opinión cross-model EN LOS GATES (op
   mode: auto                     # auto (por complejidad) | "on" | "off"  (on/off entre comillas: sin ellas YAML los parsea como booleanos)
   execution: auto                # auto | sync | background — cómo corre la revisión (se hereda a cross-review)
   artifacts: [spec, plan, tasks] # qué artefactos revisar
-  max_rounds: 3
+  max_rounds: 3                  # rondas POR TANDA, no de la corrida entera; al agotarse se abre el checkpoint
   reviewer: auto                 # auto (descubre por capacidad; nunca la familia del autor) | claude | codex
 co_explore:                      # exploración paralela cross-model ANTES de spec/plan (opcional; ver skill co-explore). ORTOGONAL a cross_review → bloque top-level hermano, no anidado
   mode: auto                     # auto (por complejidad: complejo on, normal opt-in, trivial nunca) | "on" | "off"
