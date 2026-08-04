@@ -73,11 +73,11 @@
   },
   "ownership-log": {
     "posix": "sha256:4365eeaee786df83",
-    "ps": "sha256:6c1ef13224adf88d"
+    "ps": "sha256:e4ff2912a8fd7031"
   },
   "ownership-presupuesto": {
     "posix": "sha256:a767516058c81598",
-    "ps": "sha256:05f5a19c06160f5e"
+    "ps": "sha256:d080dc9e8a43989c"
   },
   "paquete-versionado": {
     "posix": "sha256:24da62133bda640f",
@@ -97,7 +97,7 @@
   },
   "takeover-reglas": {
     "posix": "sha256:09d736f757ec217a",
-    "ps": "sha256:eeb2155ddc426be4"
+    "ps": "sha256:726fc455ec64b8ae"
   },
   "validador-paginado": {
     "posix": "sha256:0dc4578bb352c1de",

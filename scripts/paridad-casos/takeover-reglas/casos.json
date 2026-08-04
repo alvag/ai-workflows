@@ -48,10 +48,10 @@
       "nombre": "design-gap-casing",
       "particion": "casing",
       "objetivo": "design-gap-corta-takeover",
-      "clase_esperada": "rechazo",
-      "precondicion": "la clase va `design_gap` en minúsculas y hay una ronda después. El literal normativo NO está, pero PowerShell lo encuentra igual con `-match` (case-insensitive) donde POSIX no lo ve con `grep`",
+      "clase_esperada": "aceptacion",
+      "precondicion": "la clase se escribe `design_gap` en minúsculas y hay una ronda después. El literal normativo `DESIGN_GAP` NO está, así que para el predicado escrito no hubo ningún gap y la ronda posterior es legítima: la cláusula queda del lado VÁLIDO, igual que en su gemelo `contrato-casing`. PowerShell lo encuentra igual con `-match`, case-insensitive, y corta un takeover que POSIX no corta",
       "clausulas": {
-        "design-gap-corta-takeover": "invalido",
+        "design-gap-corta-takeover": "valido",
         "takeover-no-ablanda": "valido"
       },
       "fixture": "design-gap-casing",

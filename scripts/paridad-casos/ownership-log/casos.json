@@ -415,6 +415,44 @@
       "entradas": {
         "log": "{dir}/log.md"
       }
+    },
+    {
+      "nombre": "checkid-casing",
+      "particion": "casing",
+      "objetivo": "razon-ausente",
+      "clase_esperada": "aceptacion",
+      "precondicion": "el mismo checkId se escribe `V1` y `v1` en dos rondas. Para el predicado escrito son DOS checkId distintos —POSIX cuenta apariciones con `awk n[$0]++`—, cada uno con una sola aparición, así que ninguno exige razón y la cláusula queda del lado válido. Los deltas son distintos para que la cláusula de delta no se active. Lo que este caso ejercita no es un operador sino la HASHTABLE `$vistos`, que en PowerShell es case-insensitive por defecto y funde las dos claves",
+      "clausulas": {
+        "clase-invalida": "valido",
+        "sin-evidencia": "valido",
+        "consumed-round-incoherente": "valido",
+        "delta-una-ronda": "valido",
+        "razon-ausente": "valido",
+        "razon-no-falsable": "valido"
+      },
+      "fixture": "checkid-casing",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    },
+    {
+      "nombre": "delta-casing",
+      "particion": "casing",
+      "objetivo": "delta-una-ronda",
+      "clase_esperada": "aceptacion",
+      "precondicion": "el mismo delta se escribe `D1` y `d1` en dos rondas. Para el predicado escrito son DOS deltas distintos —POSIX los separa con `sort -u`—, cada uno en una sola ronda, así que la cláusula queda del lado válido. Los checkId son distintos para que la cláusula de razón no se active. Ejercita la HASHTABLE `$deltas`, case-insensitive por defecto en PowerShell",
+      "clausulas": {
+        "clase-invalida": "valido",
+        "sin-evidencia": "valido",
+        "consumed-round-incoherente": "valido",
+        "delta-una-ronda": "valido",
+        "razon-ausente": "valido",
+        "razon-no-falsable": "valido"
+      },
+      "fixture": "delta-casing",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
     }
   ]
 }
