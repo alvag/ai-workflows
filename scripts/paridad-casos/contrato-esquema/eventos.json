@@ -1,0 +1,154 @@
+[
+  {
+    "id": "cabecera-no-normativa",
+    "sitio": {
+      "posix": {
+        "linea": 14,
+        "digest": "sha256:7da08dc3ea6351e2"
+      },
+      "ps": {
+        "linea": 16,
+        "digest": "sha256:73efb289af72096b"
+      }
+    },
+    "posix": "^GUARD:esquema-tabla cabecera no normativa$",
+    "ps": "^GUARD:esquema-tabla cabecera no normativa$",
+    "campos": {},
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:esquema-tabla cabecera no normativa",
+        "campos": {}
+      },
+      "ps": {
+        "texto": "GUARD:esquema-tabla cabecera no normativa",
+        "campos": {}
+      }
+    }
+  },
+  {
+    "id": "columnas-fuera-del-esquema",
+    "sitio": {
+      "posix": {
+        "linea": 16,
+        "digest": "sha256:16964a3df1a29936"
+      },
+      "ps": {
+        "linea": 19,
+        "digest": "sha256:842fdefa5bdd9fe9"
+      }
+    },
+    "posix": "(?s)^GUARD:esquema-tabla columnas fuera del esquema\\n(?P<filas>.*)$",
+    "ps": "^GUARD:esquema-tabla columnas fuera del esquema: (?P<filas>.*)$",
+    "campos": {
+      "filas": {
+        "tipo": "conjunto",
+        "items": {
+          "posix": "\\s*([^\\n]+?)\\s*(?=\\n|$)",
+          "ps": "\\s*([^|]+?)\\s*(?=\\||$)"
+        }
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:esquema-tabla columnas fuera del esquema\n  CENTINELA: 4 columnas",
+        "campos": {
+          "filas": [
+            "CENTINELA: 4 columnas"
+          ]
+        }
+      },
+      "ps": {
+        "texto": "GUARD:esquema-tabla columnas fuera del esquema: CENTINELA",
+        "campos": {
+          "filas": [
+            "CENTINELA"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": "enum-evidencia",
+    "sitio": {
+      "posix": {
+        "linea": 20,
+        "digest": "sha256:9d086d32fde3b0cd"
+      },
+      "ps": {
+        "linea": 20,
+        "digest": "sha256:f97d7923fd09346e"
+      }
+    },
+    "posix": "(?s)^GUARD:esquema-tabla enum de Evidencia\\n(?P<filas>.*)$",
+    "ps": "^GUARD:esquema-tabla enum de Evidencia: (?P<filas>.*)$",
+    "campos": {
+      "filas": {
+        "tipo": "conjunto",
+        "items": {
+          "posix": "\\s*([^\\n]+?)\\s*(?=\\n|$)",
+          "ps": "\\s*([^|]+?)\\s*(?=\\||$)"
+        }
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:esquema-tabla enum de Evidencia\n  V1: Evidencia=CENTINELA",
+        "campos": {
+          "filas": [
+            "V1: Evidencia=CENTINELA"
+          ]
+        }
+      },
+      "ps": {
+        "texto": "GUARD:esquema-tabla enum de Evidencia: CENTINELA",
+        "campos": {
+          "filas": [
+            "CENTINELA"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": "enum-baseline",
+    "sitio": {
+      "posix": {
+        "linea": 24,
+        "digest": "sha256:74069027479a88e5"
+      },
+      "ps": {
+        "linea": 21,
+        "digest": "sha256:0ab884c5ec1a76f4"
+      }
+    },
+    "posix": "(?s)^GUARD:esquema-tabla enum de Baseline\\n(?P<filas>.*)$",
+    "ps": "^GUARD:esquema-tabla enum de Baseline: (?P<filas>.*)$",
+    "campos": {
+      "filas": {
+        "tipo": "conjunto",
+        "items": {
+          "posix": "\\s*([^\\n]+?)\\s*(?=\\n|$)",
+          "ps": "\\s*([^|]+?)\\s*(?=\\||$)"
+        }
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:esquema-tabla enum de Baseline\n  V1: Baseline=CENTINELA",
+        "campos": {
+          "filas": [
+            "V1: Baseline=CENTINELA"
+          ]
+        }
+      },
+      "ps": {
+        "texto": "GUARD:esquema-tabla enum de Baseline: CENTINELA",
+        "campos": {
+          "filas": [
+            "CENTINELA"
+          ]
+        }
+      }
+    }
+  }
+]

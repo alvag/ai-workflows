@@ -3,6 +3,7 @@
   "cubiertos": [
     "cobertura-ac-fila",
     "contrato-cobertura",
+    "contrato-esquema",
     "contrato-invariantes",
     "gate-fase-3",
     "integracion-ownership",
@@ -21,7 +22,6 @@
     "clarificacion-completa": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
     "contrato-baseline": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
     "contrato-cadena": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
-    "contrato-esquema": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
     "cuarto-estado-consumidores": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
     "gate-blocked": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
     "gate-congelado": "recorte de alcance declarado de la v1: sin matriz, no comprobado",

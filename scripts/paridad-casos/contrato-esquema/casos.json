@@ -1,0 +1,216 @@
+{
+  "par": "contrato-esquema",
+  "clausulas": [
+    {
+      "id": "cabecera-no-normativa",
+      "compara_cadenas": true
+    },
+    {
+      "id": "columnas-fuera-del-esquema",
+      "agrega": true,
+      "nota": "cuenta las columnas de cada fila y las contrasta contra las seis normativas"
+    },
+    {
+      "id": "enum-evidencia",
+      "compara_cadenas": true
+    },
+    {
+      "id": "enum-baseline",
+      "compara_cadenas": true
+    }
+  ],
+  "casos": [
+    {
+      "nombre": "positivo",
+      "particion": "positivo",
+      "objetivos": [
+        "cabecera-no-normativa",
+        "columnas-fuera-del-esquema",
+        "enum-evidencia",
+        "enum-baseline"
+      ],
+      "clase_esperada": "aceptacion",
+      "precondicion": "cabecera normativa, una fila de seis columnas y los dos enums dentro de su vocabulario",
+      "clausulas": {
+        "cabecera-no-normativa": "valido",
+        "columnas-fuera-del-esquema": "valido",
+        "enum-evidencia": "valido",
+        "enum-baseline": "valido"
+      },
+      "fixture": "positivo",
+      "entradas": {
+        "contrato": "{dir}/contrato.md"
+      }
+    },
+    {
+      "nombre": "cabecera-distinta",
+      "particion": "invalido",
+      "objetivo": "cabecera-no-normativa",
+      "clase_esperada": "rechazo",
+      "precondicion": "la cabecera dice `Comando` en vez de `Comando/observación`: no es el literal normativo, pero sigue arrancando en `| ID |`, así que se filtra como cabecera y no se cuenta como fila — el mutante mueve una sola cláusula",
+      "clausulas": {
+        "cabecera-no-normativa": "invalido",
+        "columnas-fuera-del-esquema": "valido",
+        "enum-evidencia": "valido",
+        "enum-baseline": "valido"
+      },
+      "fixture": "cabecera-distinta",
+      "entradas": {
+        "contrato": "{dir}/contrato.md"
+      }
+    },
+    {
+      "nombre": "cabecera-casing",
+      "particion": "casing",
+      "objetivo": "cabecera-no-normativa",
+      "clase_esperada": "rechazo",
+      "precondicion": "la cabecera escribe `| id |` en minúsculas: el literal normativo NO está. POSIX la compara con `grep -qxF` (case-sensitive) y PowerShell con `-notcontains`, case-insensitive",
+      "clausulas": {
+        "cabecera-no-normativa": "invalido",
+        "columnas-fuera-del-esquema": "valido",
+        "enum-evidencia": "valido",
+        "enum-baseline": "valido"
+      },
+      "fixture": "cabecera-casing",
+      "entradas": {
+        "contrato": "{dir}/contrato.md"
+      }
+    },
+    {
+      "nombre": "evidencia-fuera-del-enum",
+      "particion": "invalido",
+      "objetivo": "enum-evidencia",
+      "clase_esperada": "rechazo",
+      "precondicion": "Evidencia dice `revisión`, que no pertenece al enum cerrado; el resto de la fila está bien",
+      "clausulas": {
+        "cabecera-no-normativa": "valido",
+        "columnas-fuera-del-esquema": "valido",
+        "enum-evidencia": "invalido",
+        "enum-baseline": "valido"
+      },
+      "fixture": "evidencia-fuera-del-enum",
+      "entradas": {
+        "contrato": "{dir}/contrato.md"
+      }
+    },
+    {
+      "nombre": "evidencia-casing",
+      "particion": "casing",
+      "objetivo": "enum-evidencia",
+      "clase_esperada": "rechazo",
+      "precondicion": "Evidencia dice `Test` con mayúscula: el literal del enum es `test`. POSIX compara con awk `!=` (case-sensitive) y PowerShell con `-notin`, case-insensitive",
+      "clausulas": {
+        "cabecera-no-normativa": "valido",
+        "columnas-fuera-del-esquema": "valido",
+        "enum-evidencia": "invalido",
+        "enum-baseline": "valido"
+      },
+      "fixture": "evidencia-casing",
+      "entradas": {
+        "contrato": "{dir}/contrato.md"
+      }
+    },
+    {
+      "nombre": "baseline-fuera-del-enum",
+      "particion": "invalido",
+      "objetivo": "enum-baseline",
+      "clase_esperada": "rechazo",
+      "precondicion": "Baseline dice `AMARILLO`, que no pertenece al enum cerrado",
+      "clausulas": {
+        "cabecera-no-normativa": "valido",
+        "columnas-fuera-del-esquema": "valido",
+        "enum-evidencia": "valido",
+        "enum-baseline": "invalido"
+      },
+      "fixture": "baseline-fuera-del-enum",
+      "entradas": {
+        "contrato": "{dir}/contrato.md"
+      }
+    },
+    {
+      "nombre": "baseline-casing",
+      "particion": "casing",
+      "objetivo": "enum-baseline",
+      "clase_esperada": "rechazo",
+      "precondicion": "Baseline dice `red` en minúsculas: el literal del enum es `RED`",
+      "clausulas": {
+        "cabecera-no-normativa": "valido",
+        "columnas-fuera-del-esquema": "valido",
+        "enum-evidencia": "valido",
+        "enum-baseline": "invalido"
+      },
+      "fixture": "baseline-casing",
+      "entradas": {
+        "contrato": "{dir}/contrato.md"
+      }
+    },
+    {
+      "nombre": "sin-filas",
+      "particion": "vacio",
+      "objetivo": "columnas-fuera-del-esquema",
+      "clase_esperada": "aceptacion",
+      "precondicion": "la versión vigente tiene cabecera y separador y ninguna fila: no hay columnas que contar",
+      "clausulas": {
+        "cabecera-no-normativa": "valido",
+        "columnas-fuera-del-esquema": "valido",
+        "enum-evidencia": "valido",
+        "enum-baseline": "valido"
+      },
+      "fixture": "sin-filas",
+      "entradas": {
+        "contrato": "{dir}/contrato.md"
+      }
+    },
+    {
+      "nombre": "una-sola-columna",
+      "particion": "singleton",
+      "objetivo": "columnas-fuera-del-esquema",
+      "clase_esperada": "rechazo",
+      "precondicion": "una fila con UNA sola columna: el extremo inferior del conteo. Al no tener las ocho posiciones, los dos enums ni se evalúan y quedan del lado válido",
+      "clausulas": {
+        "cabecera-no-normativa": "valido",
+        "columnas-fuera-del-esquema": "invalido",
+        "enum-evidencia": "valido",
+        "enum-baseline": "valido"
+      },
+      "fixture": "una-sola-columna",
+      "entradas": {
+        "contrato": "{dir}/contrato.md"
+      }
+    },
+    {
+      "nombre": "seis-columnas",
+      "particion": "par",
+      "objetivo": "columnas-fuera-del-esquema",
+      "clase_esperada": "aceptacion",
+      "precondicion": "dos filas con las seis columnas normativas: el lado de adentro de la frontera del conteo",
+      "clausulas": {
+        "cabecera-no-normativa": "valido",
+        "columnas-fuera-del-esquema": "valido",
+        "enum-evidencia": "valido",
+        "enum-baseline": "valido"
+      },
+      "fixture": "seis-columnas",
+      "entradas": {
+        "contrato": "{dir}/contrato.md"
+      }
+    },
+    {
+      "nombre": "cinco-columnas",
+      "particion": "impar",
+      "objetivo": "columnas-fuera-del-esquema",
+      "clase_esperada": "rechazo",
+      "precondicion": "una fila con CINCO columnas: le falta una respecto de las seis normativas. Es el lado de afuera de la misma frontera, con `seis-columnas` como control",
+      "clausulas": {
+        "cabecera-no-normativa": "valido",
+        "columnas-fuera-del-esquema": "invalido",
+        "enum-evidencia": "valido",
+        "enum-baseline": "valido"
+      },
+      "fixture": "cinco-columnas",
+      "entradas": {
+        "contrato": "{dir}/contrato.md"
+      }
+    }
+  ]
+}
