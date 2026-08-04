@@ -1,0 +1,119 @@
+[
+  {
+    "id": "paso-de-otro-actor",
+    "sitio": {
+      "posix": {
+        "linea": 15,
+        "digest": "sha256:184cf090dd240550"
+      },
+      "ps": {
+        "linea": 16,
+        "digest": "sha256:23b058571b3f375b"
+      }
+    },
+    "posix": "^GUARD:conductor-deriva-y-baseline \"(?P<paso>[^\"]*)\" lo hizo \"(?P<actor>[^\"]*)\"$",
+    "ps": "^GUARD:conductor-deriva-y-baseline \"(?P<paso>[^\"]*)\" lo hizo \"(?P<actor>[^\"]*)\"$",
+    "campos": {
+      "paso": {
+        "tipo": "texto"
+      },
+      "actor": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:conductor-deriva-y-baseline \"CENTINELA\" lo hizo \"worker\"",
+        "campos": {
+          "paso": "CENTINELA",
+          "actor": "worker"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:conductor-deriva-y-baseline \"CENTINELA\" lo hizo \"worker\"",
+        "campos": {
+          "paso": "CENTINELA",
+          "actor": "worker"
+        }
+      }
+    }
+  },
+  {
+    "id": "orden-contradice-timestamps",
+    "sitio": {
+      "posix": {
+        "linea": 21,
+        "digest": "sha256:1220253228c50796"
+      },
+      "ps": {
+        "linea": 20,
+        "digest": "sha256:21c34d9173350d5a"
+      }
+    },
+    "posix": "^GUARD:kickoff-antes-de-congelar la bitácora lista los pasos fuera del orden de sus timestamps$",
+    "ps": "^GUARD:kickoff-antes-de-congelar la bitácora lista los pasos fuera del orden de sus timestamps$",
+    "campos": {},
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:kickoff-antes-de-congelar la bitácora lista los pasos fuera del orden de sus timestamps",
+        "campos": {}
+      },
+      "ps": {
+        "texto": "GUARD:kickoff-antes-de-congelar la bitácora lista los pasos fuera del orden de sus timestamps",
+        "campos": {}
+      }
+    }
+  },
+  {
+    "id": "kickoff-no-precede",
+    "sitio": {
+      "posix": {
+        "linea": 27,
+        "digest": "sha256:5809e5b9f12b10df"
+      },
+      "ps": {
+        "linea": 25,
+        "digest": "sha256:16dbb8a7de1fce0f"
+      }
+    },
+    "posix": "^GUARD:kickoff-antes-de-congelar el kickoff no aprobó antes de congelar$",
+    "ps": "^GUARD:kickoff-antes-de-congelar el kickoff no aprobó antes de congelar$",
+    "campos": {},
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:kickoff-antes-de-congelar el kickoff no aprobó antes de congelar",
+        "campos": {}
+      },
+      "ps": {
+        "texto": "GUARD:kickoff-antes-de-congelar el kickoff no aprobó antes de congelar",
+        "campos": {}
+      }
+    }
+  },
+  {
+    "id": "despacho-sin-congelar",
+    "sitio": {
+      "posix": {
+        "linea": 30,
+        "digest": "sha256:fc3240aa3b755762"
+      },
+      "ps": {
+        "linea": 28,
+        "digest": "sha256:8c92ce35af03a981"
+      }
+    },
+    "posix": "^GUARD:congelar-antes-de-despachar se despachó sin congelar antes$",
+    "ps": "^GUARD:congelar-antes-de-despachar se despachó sin congelar antes$",
+    "campos": {},
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:congelar-antes-de-despachar se despachó sin congelar antes",
+        "campos": {}
+      },
+      "ps": {
+        "texto": "GUARD:congelar-antes-de-despachar se despachó sin congelar antes",
+        "campos": {}
+      }
+    }
+  }
+]

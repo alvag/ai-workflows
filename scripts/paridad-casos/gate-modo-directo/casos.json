@@ -1,0 +1,182 @@
+{
+  "par": "gate-modo-directo",
+  "clausulas": [
+    {
+      "id": "paso-de-otro-actor",
+      "compara_cadenas": true
+    },
+    {
+      "id": "orden-contradice-timestamps",
+      "compara_cadenas": true
+    },
+    {
+      "id": "kickoff-no-precede",
+      "compara_cadenas": true
+    },
+    {
+      "id": "despacho-sin-congelar",
+      "compara_cadenas": true
+    }
+  ],
+  "casos": [
+    {
+      "nombre": "positivo",
+      "particion": "positivo",
+      "objetivos": [
+        "paso-de-otro-actor",
+        "orden-contradice-timestamps",
+        "kickoff-no-precede",
+        "despacho-sin-congelar"
+      ],
+      "clase_esperada": "aceptacion",
+      "precondicion": "el conductor deriva y ejecuta el baseline, el kickoff precede al congelamiento y este al despacho, y el orden de líneas coincide con el de los timestamps",
+      "clausulas": {
+        "paso-de-otro-actor": "valido",
+        "orden-contradice-timestamps": "valido",
+        "kickoff-no-precede": "valido",
+        "despacho-sin-congelar": "valido"
+      },
+      "fixture": "positivo",
+      "entradas": {
+        "bitacora": "{dir}/bitacora.md"
+      }
+    },
+    {
+      "nombre": "otro-actor",
+      "particion": "invalido",
+      "objetivo": "paso-de-otro-actor",
+      "clase_esperada": "rechazo",
+      "precondicion": "`derivar-tabla` figura hecho por el worker; el resto del orden queda intacto",
+      "clausulas": {
+        "paso-de-otro-actor": "invalido",
+        "orden-contradice-timestamps": "valido",
+        "kickoff-no-precede": "valido",
+        "despacho-sin-congelar": "valido"
+      },
+      "fixture": "otro-actor",
+      "entradas": {
+        "bitacora": "{dir}/bitacora.md"
+      }
+    },
+    {
+      "nombre": "actor-casing",
+      "particion": "casing",
+      "objetivo": "paso-de-otro-actor",
+      "clase_esperada": "rechazo",
+      "precondicion": "el actor dice `Conductor` con mayúscula: el literal normativo `conductor` NO está. POSIX compara con `[ = ]` (case-sensitive) y PowerShell con `-ne`, case-insensitive",
+      "clausulas": {
+        "paso-de-otro-actor": "invalido",
+        "orden-contradice-timestamps": "valido",
+        "kickoff-no-precede": "valido",
+        "despacho-sin-congelar": "valido"
+      },
+      "fixture": "actor-casing",
+      "entradas": {
+        "bitacora": "{dir}/bitacora.md"
+      }
+    },
+    {
+      "nombre": "orden-vs-timestamps",
+      "particion": "invalido",
+      "objetivo": "orden-contradice-timestamps",
+      "clase_esperada": "rechazo",
+      "precondicion": "las líneas van en un orden que sus propios timestamps contradicen, sin alterar la precedencia entre kickoff, congelamiento y despacho",
+      "clausulas": {
+        "paso-de-otro-actor": "valido",
+        "orden-contradice-timestamps": "invalido",
+        "kickoff-no-precede": "valido",
+        "despacho-sin-congelar": "valido"
+      },
+      "fixture": "orden-vs-timestamps",
+      "entradas": {
+        "bitacora": "{dir}/bitacora.md"
+      }
+    },
+    {
+      "nombre": "paso-casing",
+      "particion": "casing",
+      "objetivo": "kickoff-no-precede",
+      "clase_esperada": "rechazo",
+      "precondicion": "el paso se escribe `Congelar` con mayúscula: el literal normativo no está, así que no hay timestamp de congelamiento y la precedencia no se puede sostener. POSIX lo busca con `grep` case-sensitive y PowerShell con `-match`, case-insensitive",
+      "clausulas": {
+        "paso-de-otro-actor": "valido",
+        "orden-contradice-timestamps": "valido",
+        "kickoff-no-precede": "invalido",
+        "despacho-sin-congelar": "valido"
+      },
+      "fixture": "paso-casing",
+      "entradas": {
+        "bitacora": "{dir}/bitacora.md"
+      }
+    },
+    {
+      "nombre": "timestamp-casing",
+      "particion": "casing",
+      "objetivo": "orden-contradice-timestamps",
+      "clase_esperada": "rechazo",
+      "precondicion": "dos timestamps que solo difieren en el casing de la `Z` final, listados `z` antes que `Z`. Por bytes `Z` (0x5A) precede a `z` (0x7A), así que el listado contradice el orden lexicográfico que el bloque declara usar. POSIX ordena con `sort` bajo colación por bytes y PowerShell con `Sort-Object`, que los considera iguales y por ser estable deja el listado como está",
+      "clausulas": {
+        "paso-de-otro-actor": "valido",
+        "orden-contradice-timestamps": "invalido",
+        "kickoff-no-precede": "valido",
+        "despacho-sin-congelar": "valido"
+      },
+      "fixture": "timestamp-casing",
+      "entradas": {
+        "bitacora": "{dir}/bitacora.md"
+      }
+    },
+    {
+      "nombre": "kickoff-tarde",
+      "particion": "invalido",
+      "objetivo": "kickoff-no-precede",
+      "clase_esperada": "rechazo",
+      "precondicion": "el kickoff aprueba DESPUÉS del congelamiento; el orden de líneas sigue coincidiendo con el de los timestamps y el despacho sigue después de congelar",
+      "clausulas": {
+        "paso-de-otro-actor": "valido",
+        "orden-contradice-timestamps": "valido",
+        "kickoff-no-precede": "invalido",
+        "despacho-sin-congelar": "valido"
+      },
+      "fixture": "kickoff-tarde",
+      "entradas": {
+        "bitacora": "{dir}/bitacora.md"
+      }
+    },
+    {
+      "nombre": "despacho-sin-congelar",
+      "particion": "invalido",
+      "objetivo": "despacho-sin-congelar",
+      "clase_esperada": "rechazo",
+      "precondicion": "no hay congelamiento y sí despacho. Al faltar el timestamp de congelar, la cláusula del kickoff también cae, así que el caso se declara exento",
+      "exento_mono_causa": "sin `congelar` no hay timestamp contra el cual medir el kickoff, así que una sola edición mueve las dos cláusulas; separarlas exigiría un congelamiento que el caso existe para quitar",
+      "clausulas": {
+        "paso-de-otro-actor": "valido",
+        "orden-contradice-timestamps": "valido",
+        "kickoff-no-precede": "invalido",
+        "despacho-sin-congelar": "invalido"
+      },
+      "fixture": "despacho-sin-congelar",
+      "entradas": {
+        "bitacora": "{dir}/bitacora.md"
+      }
+    },
+    {
+      "nombre": "despachar-casing",
+      "particion": "casing",
+      "objetivo": "despacho-sin-congelar",
+      "clase_esperada": "aceptacion",
+      "precondicion": "el paso se escribe `Despachar` con mayúscula: el literal normativo NO está, así que para el predicado escrito no hubo despacho y no hay nada que exigir — la cláusula queda del lado VÁLIDO",
+      "clausulas": {
+        "paso-de-otro-actor": "valido",
+        "orden-contradice-timestamps": "valido",
+        "kickoff-no-precede": "valido",
+        "despacho-sin-congelar": "valido"
+      },
+      "fixture": "despachar-casing",
+      "entradas": {
+        "bitacora": "{dir}/bitacora.md"
+      }
+    }
+  ]
+}

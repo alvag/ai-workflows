@@ -7,7 +7,10 @@
     "contrato-esquema",
     "contrato-invariantes",
     "cuarto-estado-consumidores",
+    "gate-blocked",
+    "gate-congelado",
     "gate-fase-3",
+    "gate-modo-directo",
     "identidades-reintento",
     "integracion-ownership",
     "manifest-resumen",
@@ -27,9 +30,6 @@
   "declarados_sin_matriz": {
     "rebaseline-worktree": "fuera de alcance por decisión de la spec: opera sobre worktrees de Git que crea y destruye, y probarlo exigiría que el arnés levante repositorios desechables",
     "contrato-baseline": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
-    "contrato-cadena": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
-    "gate-blocked": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
-    "gate-congelado": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
-    "gate-modo-directo": "recorte de alcance declarado de la v1: sin matriz, no comprobado"
+    "contrato-cadena": "recorte de alcance declarado de la v1: sin matriz, no comprobado"
   }
 }

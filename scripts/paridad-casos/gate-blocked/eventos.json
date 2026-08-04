@@ -1,0 +1,84 @@
+[
+  {
+    "id": "blocked-y-despacha",
+    "sitio": {
+      "posix": {
+        "linea": 19,
+        "digest": "sha256:c6f1e1cab7f44298"
+      },
+      "ps": {
+        "linea": 21,
+        "digest": "sha256:6f84cc33ca34c4ca"
+      }
+    },
+    "posix": "(?s)^GUARD:blocked-no-despacha hay filas BLOCKED y la bitácora despacha igual:\\n(?P<filas>.*)$",
+    "ps": "^GUARD:blocked-no-despacha hay filas BLOCKED y la bitácora despacha igual: (?P<filas>.*)$",
+    "campos": {
+      "filas": {
+        "tipo": "conjunto",
+        "items": {
+          "posix": "\\s*([^\\n]+?)\\s*(?=\\n|$)",
+          "ps": "\\s*([^|]+?)\\s*(?=\\||$)"
+        }
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:blocked-no-despacha hay filas BLOCKED y la bitácora despacha igual:\n  CENTINELA",
+        "campos": {
+          "filas": [
+            "CENTINELA"
+          ]
+        }
+      },
+      "ps": {
+        "texto": "GUARD:blocked-no-despacha hay filas BLOCKED y la bitácora despacha igual: CENTINELA",
+        "campos": {
+          "filas": [
+            "CENTINELA"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": "justificado-por-el-entorno",
+    "sitio": {
+      "posix": {
+        "linea": 23,
+        "digest": "sha256:dfd8525f91d29708"
+      },
+      "ps": {
+        "linea": 26,
+        "digest": "sha256:73ccab824adc8ab2"
+      }
+    },
+    "posix": "(?s)^GUARD:blocked-no-despacha NOT_APPLICABLE justificado por el entorno:\\n(?P<registros>.*)$",
+    "ps": "^GUARD:blocked-no-despacha NOT_APPLICABLE justificado por el entorno(?P<registros>)$",
+    "campos": {
+      "registros": {
+        "tipo": "conjunto",
+        "items": {
+          "posix": "\\s*([^\\n]+?)\\s*(?=\\n|$)",
+          "ps": "\\s*([^|]+?)\\s*(?=\\||$)"
+        }
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:blocked-no-despacha NOT_APPLICABLE justificado por el entorno:\n- `id: CENTINELA`",
+        "campos": {
+          "registros": [
+            "- `id: CENTINELA`"
+          ]
+        }
+      },
+      "ps": {
+        "texto": "GUARD:blocked-no-despacha NOT_APPLICABLE justificado por el entorno",
+        "campos": {
+          "registros": []
+        }
+      }
+    }
+  }
+]
