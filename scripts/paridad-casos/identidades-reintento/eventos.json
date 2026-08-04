@@ -1,0 +1,100 @@
+[
+  {
+    "id": "identidad-desconocida",
+    "sitio": {
+      "posix": {
+        "linea": 12,
+        "digest": "sha256:e8b7ec48aa155c1a"
+      },
+      "ps": {
+        "linea": 8,
+        "digest": "sha256:b1e28bc2484234ab"
+      }
+    },
+    "posix": "^GUARD:identidades-reintento identidad desconocida: (?P<identidades>.*?) ?$",
+    "ps": "^GUARD:identidades-reintento identidad desconocida: (?P<identidades>.*)$",
+    "campos": {
+      "identidades": {
+        "tipo": "conjunto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:identidades-reintento identidad desconocida: CENTINELA",
+        "campos": {
+          "identidades": [
+            "CENTINELA"
+          ]
+        }
+      },
+      "ps": {
+        "texto": "GUARD:identidades-reintento identidad desconocida: CENTINELA",
+        "campos": {
+          "identidades": [
+            "CENTINELA"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": "tope-reparaciones",
+    "sitio": {
+      "posix": {
+        "linea": 16,
+        "digest": "sha256:56884eb77cf9dbd7"
+      },
+      "ps": {
+        "linea": 10,
+        "digest": "sha256:326c0eeaed1b23e9"
+      }
+    },
+    "posix": "^GUARD:identidades-reintento (?P<cuantas>\\d+) reparaciones de formato \\(el tope es 1\\)$",
+    "ps": "^GUARD:identidades-reintento (?P<cuantas>\\d+) reparaciones de formato \\(el tope es 1\\)$",
+    "campos": {
+      "cuantas": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:identidades-reintento 2 reparaciones de formato (el tope es 1)",
+        "campos": {
+          "cuantas": "2"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:identidades-reintento 2 reparaciones de formato (el tope es 1)",
+        "campos": {
+          "cuantas": "2"
+        }
+      }
+    }
+  },
+  {
+    "id": "reparacion-sin-mismos-ids",
+    "sitio": {
+      "posix": {
+        "linea": 21,
+        "digest": "sha256:0bb66ac53781268a"
+      },
+      "ps": {
+        "linea": 12,
+        "digest": "sha256:7d25a4d04f7f7b60"
+      }
+    },
+    "posix": "^GUARD:identidades-reintento la reparación no declara haber conservado los IDs$",
+    "ps": "^GUARD:identidades-reintento la reparación no declara haber conservado los IDs$",
+    "campos": {},
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:identidades-reintento la reparación no declara haber conservado los IDs",
+        "campos": {}
+      },
+      "ps": {
+        "texto": "GUARD:identidades-reintento la reparación no declara haber conservado los IDs",
+        "campos": {}
+      }
+    }
+  }
+]

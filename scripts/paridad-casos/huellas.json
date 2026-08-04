@@ -1,4 +1,8 @@
 {
+  "clarificacion-completa": {
+    "posix": "sha256:649223a144fa1380",
+    "ps": "sha256:5a0c5bd8ec533ef7"
+  },
   "cobertura-ac-fila": {
     "posix": "sha256:0297c22811b7d6dc",
     "ps": "sha256:311b12769506791f"
@@ -18,6 +22,10 @@
   "gate-fase-3": {
     "posix": "sha256:7d976068b5c5aacc",
     "ps": "sha256:6e6138c419db7797"
+  },
+  "identidades-reintento": {
+    "posix": "sha256:43305d71409c4535",
+    "ps": "sha256:6089cc4b00f46a0f"
   },
   "integracion-ownership": {
     "posix": "sha256:5504f452a3894da8",
@@ -46,6 +54,14 @@
   "paquete-versionado": {
     "posix": "sha256:24da62133bda640f",
     "ps": "sha256:aaadc54797c7f23a"
+  },
+  "recovery-bloquea": {
+    "posix": "sha256:71cf1ccedc7280ed",
+    "ps": "sha256:26f18850fbd991a1"
+  },
+  "resolver-antes-de-preguntar": {
+    "posix": "sha256:0577964f7a342477",
+    "ps": "sha256:e54197da23e047e5"
   },
   "split-paginado": {
     "posix": "sha256:d52867a0af6b39a1",

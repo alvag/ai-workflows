@@ -1,0 +1,88 @@
+[
+  {
+    "id": "campo-faltante",
+    "sitio": {
+      "posix": {
+        "linea": 8,
+        "digest": "sha256:0b99b9909b5b2709"
+      },
+      "ps": {
+        "linea": 8,
+        "digest": "sha256:49ce7097972fa321"
+      }
+    },
+    "posix": "^GUARD:clarification-completa falta o está vacío el campo \"(?P<campo>[^\"]*)\"$",
+    "ps": "^GUARD:clarification-completa falta o está vacío el campo \"(?P<campo>[^\"]*)\"$",
+    "campos": {
+      "campo": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:clarification-completa falta o está vacío el campo \"CENTINELA:\"",
+        "campos": {
+          "campo": "CENTINELA:"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:clarification-completa falta o está vacío el campo \"CENTINELA:\"",
+        "campos": {
+          "campo": "CENTINELA:"
+        }
+      }
+    }
+  },
+  {
+    "id": "sin-indice",
+    "sitio": {
+      "posix": {
+        "linea": 13,
+        "digest": "sha256:a07d482d1fcbdda6"
+      },
+      "ps": {
+        "linea": 11,
+        "digest": "sha256:b9c55a10393f13fb"
+      }
+    },
+    "posix": "^GUARD:clarification-completa no entrega el índice de lo mapeado$",
+    "ps": "^GUARD:clarification-completa no entrega el índice de lo mapeado$",
+    "campos": {},
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:clarification-completa no entrega el índice de lo mapeado",
+        "campos": {}
+      },
+      "ps": {
+        "texto": "GUARD:clarification-completa no entrega el índice de lo mapeado",
+        "campos": {}
+      }
+    }
+  },
+  {
+    "id": "sin-detalle",
+    "sitio": {
+      "posix": {
+        "linea": 15,
+        "digest": "sha256:413311747b76161c"
+      },
+      "ps": {
+        "linea": 12,
+        "digest": "sha256:9d0da5bf2b9cd035"
+      }
+    },
+    "posix": "^GUARD:clarification-completa no entrega el detalle de lo mapeado$",
+    "ps": "^GUARD:clarification-completa no entrega el detalle de lo mapeado$",
+    "campos": {},
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:clarification-completa no entrega el detalle de lo mapeado",
+        "campos": {}
+      },
+      "ps": {
+        "texto": "GUARD:clarification-completa no entrega el detalle de lo mapeado",
+        "campos": {}
+      }
+    }
+  }
+]

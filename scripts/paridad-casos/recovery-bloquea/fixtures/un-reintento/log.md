@@ -1,0 +1,2 @@
+- `estado: recovery-required`
+- `transportAttempt: 2`

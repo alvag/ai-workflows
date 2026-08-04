@@ -1,0 +1,111 @@
+{
+  "par": "recovery-bloquea",
+  "clausulas": [
+    {
+      "id": "reintento-con-recurso-abierto",
+      "compara_cadenas": true,
+      "agrega": true,
+      "nota": "compara los literales del recovery y del recurso resuelto, y recorre el rango de líneas entre ambos"
+    }
+  ],
+  "casos": [
+    {
+      "nombre": "positivo",
+      "particion": "positivo",
+      "objetivo": "reintento-con-recurso-abierto",
+      "clase_esperada": "aceptacion",
+      "precondicion": "tras el recovery-required el recurso se resuelve, y recién después hay un reintento",
+      "clausulas": {
+        "reintento-con-recurso-abierto": "valido"
+      },
+      "fixture": "positivo",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    },
+    {
+      "nombre": "reintento-antes-de-resolver",
+      "particion": "invalido",
+      "objetivo": "reintento-con-recurso-abierto",
+      "clase_esperada": "rechazo",
+      "precondicion": "hay un semanticAttempt entre el recovery-required y la resolución del recurso",
+      "clausulas": {
+        "reintento-con-recurso-abierto": "invalido"
+      },
+      "fixture": "reintento-antes-de-resolver",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    },
+    {
+      "nombre": "recovery-casing",
+      "particion": "casing",
+      "objetivo": "reintento-con-recurso-abierto",
+      "clase_esperada": "aceptacion",
+      "precondicion": "el estado se escribe `Recovery-Required`: el literal normativo NO está, así que para el predicado escrito no hubo recovery y no hay nada que bloquear — la cláusula queda del lado VÁLIDO. PowerShell lo encuentra igual con `-match`, case-insensitive",
+      "clausulas": {
+        "reintento-con-recurso-abierto": "valido"
+      },
+      "fixture": "recovery-casing",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    },
+    {
+      "nombre": "sin-reintentos",
+      "particion": "vacio",
+      "objetivo": "reintento-con-recurso-abierto",
+      "clase_esperada": "aceptacion",
+      "precondicion": "el recurso queda sin resolver y no hay ningún reintento en el medio",
+      "clausulas": {
+        "reintento-con-recurso-abierto": "valido"
+      },
+      "fixture": "sin-reintentos",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    },
+    {
+      "nombre": "un-reintento",
+      "particion": "singleton",
+      "objetivo": "reintento-con-recurso-abierto",
+      "clase_esperada": "rechazo",
+      "precondicion": "un solo reintento con el recurso sin resolver",
+      "clausulas": {
+        "reintento-con-recurso-abierto": "invalido"
+      },
+      "fixture": "un-reintento",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    },
+    {
+      "nombre": "dos-reintentos",
+      "particion": "par",
+      "objetivo": "reintento-con-recurso-abierto",
+      "clase_esperada": "rechazo",
+      "precondicion": "dos reintentos en el rango bloqueado: el payload tiene que traer los dos, no uno",
+      "clausulas": {
+        "reintento-con-recurso-abierto": "invalido"
+      },
+      "fixture": "dos-reintentos",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    },
+    {
+      "nombre": "tres-reintentos",
+      "particion": "impar",
+      "objetivo": "reintento-con-recurso-abierto",
+      "clase_esperada": "rechazo",
+      "precondicion": "tres reintentos en el rango bloqueado",
+      "clausulas": {
+        "reintento-con-recurso-abierto": "invalido"
+      },
+      "fixture": "tres-reintentos",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    }
+  ]
+}

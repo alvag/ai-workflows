@@ -1,0 +1,3 @@
+- `estado: recovery-required`
+- `recurso: resuelto`
+- `semanticAttempt: 2`
