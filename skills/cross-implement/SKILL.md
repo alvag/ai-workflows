@@ -180,6 +180,31 @@ vocabulario en `cross-review/reference.md` → "Manifest de corrida". Su `degrad
 `transport_fallback`, causa de la **corrida** y no del estado: se registra incluso con un
 `IMPLEMENTED`.
 
+## Configuración
+
+Claves bajo `cross_implement` en el `.specify/config.yml` del repo. Solo aplican con
+`implement_mode: cross`; en los otros modos se ignoran. Todas opcionales:
+
+```yaml
+cross_implement:
+  execution: auto        # auto (por tamaño del work order) | sync | background — cómo espera al implementador
+  max_fix_rounds: 2      # tope del fix loop antes del takeover del conductor (el tope de sdd-flow "3 fixes de la misma falla → volver a plan/specify" manda por encima)
+  deadline: 1800         # segundos; tope duro del wait en background
+  # sin `implementer:` — la familia la fija el conductor, no es configurable
+```
+
+A diferencia de `cross_review` y `co_explore`, estas claves **no** viajan en el `manifest.yml`
+de una orquestación: ahí solo va `implement_mode`, que elige el modo pero no lo parametriza. En
+modo embebido bajo `sdd-orchestrator`, cada `sdd-flow` delegado resuelve estos tres valores del
+`.specify/config.yml` de **su propio repo**, no del manifest compartido.
+
+Esta skill es **dueña** de estas tres claves: su enum y su descripción se definen acá. El
+ejemplo copiable del archivo completo vive en `sdd-flow/config-ejemplo.md`, que es una **vista**
+ensamblada de este bloque y sus hermanos; ante discrepancia manda este bloque.
+
+Precedencia (igual que el resto de overrides SDD): **override conversacional de la corrida >
+config > default de la skill**.
+
 ## Router de intención
 
 > **¿Es este el peldaño que hace falta?** La escalera de rigor —respuesta local → `co-explore` →

@@ -70,42 +70,17 @@ La skill no necesita configuración para empezar: en su primera corrida detecta 
 
 ### Inicializar el proyecto (opcional): `/sdd-flow init`
 
-Estos archivos **no se crean solos** durante el ciclo (que usa autodetección + defaults conversacionales). Si quieres fijarlos de entrada, corre `/sdd-flow init`: detecta el stack/test/build/tracker y te guía con un **wizard** para las decisiones (tracker, estilo de commit, prefijo de rama, modo de implementación, cross-review, aprobación en Jira) mostrando cada opción con su descripción —y el valor **actual pre-seleccionado** si el config ya existe—; los comandos quedan autodetectados y editables. Al final te **muestra** el `config.yml` y la `constitution.md` y los escribe **solo tras tu confirmación**. Son locales y untracked (nunca se trackean ni commitean). Si ya existen, no los pisa: el wizard parte de lo vigente y fusiona lo que cambies. El ciclo funciona igual sin `init` — es un atajo para dejar la config explícita.
+Estos archivos **no se crean solos** durante el ciclo (que usa autodetección + defaults conversacionales). Si quieres fijarlos de entrada, corre `/sdd-flow init`: detecta el stack/test/build/tracker y te guía con un **wizard** de una sola pantalla para las decisiones que la skill no puede inferir (tracker, prefijo de rama y, solo si elegiste tracker Jira, aprobación externa de la spec) mostrando cada opción con su descripción —y el valor **actual pre-seleccionado** si el config ya existe—; los comandos quedan autodetectados y editables. El resto de las claves con default (estilo de commit, modo de implementación, cross-review, contexto de dominio…) no se pregunta: la skill las resuelve, y quien quiera fijarlas las copia de `config-ejemplo.md`, el ejemplo completo con las 33 claves del esquema. Al final te **muestra** el `config.yml` y la `constitution.md` y los escribe **solo tras tu confirmación**. Son locales y untracked (nunca se trackean ni commitean). Si ya existen, no los pisa: el wizard parte de lo vigente y fusiona lo que cambies. El ciclo funciona igual sin `init` — es un atajo para dejar la config explícita.
 
-Para fijar el comportamiento a mano, crear `.specify/config.yml` (todos los campos opcionales):
+Para fijar el comportamiento a mano, sin pasar por el wizard: crea `.specify/config.yml` (todos los campos opcionales) y copia ahí las claves que necesites desde `config-ejemplo.md`, la vista completa con las 33 claves marcadas `[def]`, `[ej]` u `[obl]`. Buenos candidatos para empezar: las tres que resuelve el wizard (`tracker`, `branch_prefix`, `jira_approval.mode`) y los comandos (`test_cmd`/`build_cmd`/`lint_cmd`/`test_scope_hint`) si la autodetección no da con los tuyos.
 
-```yaml
-stack: node                      # node | go | rust | python | java | dotnet | other
-test_cmd: "npm test"
-build_cmd: "npm run build"       # omitir si el stack no compila
-lint_cmd: "npm run lint"         # opcional
-default_branch: main             # rama base; auto si se omite
-branch_format: "{type}/{ticket}-{slug}"
-branch_prefix: "feature/"        # opcional: fija el prefijo de rama (útil para CI/CD); reemplaza el semántico
-commit_style: conventional       # conventional | plain
-tracker: github                  # jira | github | gitlab | linear | none
-test_scope_hint: "vitest run {name}"   # plantilla de COMANDO para acotar tests; {name} = archivo/patrón
-cross_review: { mode: auto }     # segunda opinión cross-model: auto (por complejidad) | on | off
-jira_approval: { mode: "off" }   # aprobación externa de la spec en Jira (solo si tracker: jira; "off"/"on" entre comillas)
-implement_mode: ask              # cómo ejecutar las tasks: ask (preguntar en el gate) | inline | subagent | cross
-cross_implement:                 # política del modo cross (solo si implement_mode: cross; ver skill cross-implement)
-  execution: auto                # auto | sync | background
-  max_fix_rounds: 2              # tope del fix loop antes del takeover del conductor
-  deadline: 1800                 # segundos; tope del wait en background
-domain_context:
-  mode: auto                     # auto | on | off; solo lectura
-  context_paths: []              # docs/glosarios/arquitectura existentes
-  adr_paths: []                  # ADRs existentes
-final_diff_review: { mode: auto } # revisión agregada en complex/high-risk inline
-```
-
-> El esquema **completo** (las sub-claves de `cross_review` —`execution`, `artifacts`, `max_rounds`, `reviewer`—, el bloque top-level `co_explore` —`mode`, `deadline`, hermano de `cross_review`, no anidado— y las de `jira_approval`) está en `reference.md` → "Esquema de `.specify/config.yml`".
+> El esquema **completo** —las 33 claves de las cuatro skills que la config abarca, cada una marcada `[def]`, `[ej]` u `[obl]` y lista para copiar— está en `config-ejemplo.md`. Cada skill dueña documenta las suyas en su propio `SKILL.md` → "Configuración"; las de `sdd-flow` están en `reference.md` → "Esquema de `.specify/config.yml`".
 
 > **Prefijo de rama:** por defecto la rama usa un prefijo **semántico** (`feature/`, `fix/`, `chore/`… — para features es siempre `feature`, nunca `feat`: ese queda para los commits). Si tu proyecto necesita un prefijo único para **todo** tipo de cambio (p. ej. siempre `feature/`, incluso en fixes, por CI/CD), fíjalo en `branch_prefix` o pásalo al vuelo: "con prefijo de rama feature/". El prefijo reemplaza el segmento semántico; el resto (`<ticket>-<slug>`) no cambia.
 
 > **Modo de implementación:** al aprobar las tasks puedes seguir **inline** (la misma sesión implementa, con todo el contexto cargado) o despachar **subagentes frescos por task** (cada agente lee solo spec/plan/su task — contexto limpio, sin el ruido conversacional previo; la revisión por task, el commit y el push quedan siempre en tu sesión). Por defecto la skill pregunta en el mismo gate de aprobación; se fija con `implement_mode: ask | inline | subagent | cross` en config, o al vuelo: "implementa con subagentes". El modo **`cross`** delega la implementación a la skill `cross-implement` (un modelo de otra familia implementa; tu sesión revisa el diff como un PR ajeno) y solo se ofrece si esa skill y el CLI de la otra familia están disponibles; su política (`execution`/`max_fix_rounds`/`deadline`) se fija en el bloque `cross_implement` del config. En tasks de comportamiento, los pasos roja-verde se recomiendan cuando hay un seam testeable; la garantía final es `verify`.
 
-El esquema completo y la matriz de detección están en `reference.md`.
+El esquema completo está en `config-ejemplo.md`; la matriz de detección, en `reference.md`.
 
 ## Ejemplos de uso
 

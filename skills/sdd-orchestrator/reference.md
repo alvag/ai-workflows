@@ -39,11 +39,11 @@ id: ABC-123                    # clave del ticket o slug del título
 master_spec: .sdd/ABC-123/master-spec.md
 created_at: 2026-06-03T12:00:00-03:00
 branch_prefix: ""              # opcional; prefijo único de la orquestación; vacío → semántico por repo (features: feature/, nunca feat/)
-execution_mode: fanout         # opcional; fanout (agentes paralelos, default) | inline (en la sesión del orquestador, de a un repo)
+execution_mode: fanout         # fanout (agentes paralelos, default) | inline (en la sesión del orquestador, de a un repo) — opcional
 implement_mode: ""             # opcional; modo de implementación que heredan los sdd-flow delegados: inline | subagent | cross (vacío → cada sdd-flow resuelve el suyo: config del repo > default). `cross` exige la capacidad (skill cross-implement + CLI de la otra familia) en el contexto del agente delegado
 # outcome: aborted             # solo si la orquestación terminó abortada (sub-paso `abort`)
 cross_review:                  # opcional; segunda opinión cross-model EN LOS GATES (ver skill cross-review)
-  mode: auto                   # auto | on | off
+  mode: auto                   # auto | "on" | "off"  (entre comillas: sin ellas YAML los parsea como booleanos)
   execution: auto              # auto (por capacidad del conductor) | sync | background
   artifacts: [master-spec, reparto]
   max_rounds: 3
@@ -82,6 +82,14 @@ planned → tasks-ready → implementing → verified → committed → pushed �
 - `blocked` — el repo no arrancó porque un `depends_on` quedó `failed`.
 
 `failed`/`blocked` viven solo en el `manifest.yml`; `sdd-flow` no los conoce.
+
+**Este esquema mezcla estado de corrida (`id`, `created_at`, `master_spec`, `repos`) con
+configuración.** Las claves de configuración son propias de esta skill (`branch_prefix`,
+`execution_mode`, `implement_mode`) salvo `cross_review.*`, `co_explore.*` y `cross_model.*`, cuyo
+enum lo define su dueño: `cross_review.*` en `cross-review/SKILL.md` → "Configuración";
+`co_explore.*` en `co-explore/SKILL.md` → "Configuración"; `cross_model.*` en
+`sdd-flow/reference.md` → "Esquema de `.specify/config.yml`". Solo esas 11 claves, listas para
+copiar y con la misma vista que `config-ejemplo.md` de `sdd-flow`, están en `manifest-ejemplo.md`.
 
 ## Transporte de las corridas delegadas
 

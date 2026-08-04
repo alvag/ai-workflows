@@ -376,8 +376,9 @@ co_explore:
   mode: auto        # auto (por complejidad: complejo on, normal opt-in, trivial nunca) | "on" | "off"
   deadline: 600     # segundos (explore; counter-plan usa 300 salvo override)
   debate:           # modo debate — soporte a decisiones (independiente de mode; lo ofrece sdd-flow)
-    mode: auto      # off | on | auto  — cuándo se OFRECE el debate (nunca corre sin confirmación)
+    mode: auto      # "off" | "on" | auto  — cuándo se OFRECE el debate (nunca corre sin confirmación)
     max_rounds: 3   # tope de rondas de cruce
+                     # NO hay bloque `workers`: cuántos se despachan y de qué familia lo fija la topología dual (regla 7), no el config
 ```
 
 Precedencia (igual que el resto de overrides SDD): **override conversacional de la corrida >

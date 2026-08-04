@@ -360,7 +360,7 @@ copias de una tabla de defaults son tres oportunidades de divergir.
 
 **Estos defaults no tienen perilla de config, y es deliberado.** No existe un campo `execution` bajo
 `co_explore`: cómo se espera en cada modo es parte de la **definición del modo**, no un parámetro de
-la corrida. Tres razones, cualquiera suficiente por sí sola: `sdd-flow/reference.md` ya fijó la
+la corrida. Tres razones, cualquiera suficiente por sí sola: `SKILL.md` → "Configuración" ya fija la
 doctrina para el campo hermano —"NO hay bloque `workers`: … lo fija la topología dual, no el
 config"—; el repo tiene un precedente reciente y explícito de revertir configuración sin consumidor;
 y un escalar no puede expresar defaults que **varían por modo**, que es exactamente lo que muestran

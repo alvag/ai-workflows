@@ -839,7 +839,7 @@ sdd-orchestrator). Todas opcionales:
 
 ```yaml
 cross_review:
-  mode: auto            # auto (por complejidad) | on | off
+  mode: auto            # auto (por complejidad) | "on" | "off"  (entre comillas: sin ellas YAML los parsea como booleanos)
   execution: auto       # auto (por capacidad del conductor) | sync | background
   artifacts: [spec, plan, tasks]   # tipos a revisar (orchestrator: [master-spec, reparto])
   max_rounds: 3
