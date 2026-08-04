@@ -7,7 +7,7 @@
         "digest": "sha256:0b99b9909b5b2709"
       },
       "ps": {
-        "linea": 8,
+        "linea": 10,
         "digest": "sha256:49ce7097972fa321"
       }
     },
@@ -45,8 +45,8 @@
         "digest": "sha256:a07d482d1fcbdda6"
       },
       "ps": {
-        "linea": 11,
-        "digest": "sha256:b9c55a10393f13fb"
+        "linea": 13,
+        "digest": "sha256:9e7cf3655aad2f09"
       }
     },
     "posix": "^GUARD:clarification-completa no entrega el índice de lo mapeado$",
@@ -75,8 +75,8 @@
         "digest": "sha256:413311747b76161c"
       },
       "ps": {
-        "linea": 12,
-        "digest": "sha256:9d0da5bf2b9cd035"
+        "linea": 14,
+        "digest": "sha256:01c2771e77296872"
       }
     },
     "posix": "^GUARD:clarification-completa no entrega el detalle de lo mapeado$",

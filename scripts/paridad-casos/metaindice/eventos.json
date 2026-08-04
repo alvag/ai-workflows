@@ -37,7 +37,7 @@
         "digest": "sha256:3a0986c4020305a3"
       },
       "ps": {
-        "linea": 10,
+        "linea": 14,
         "digest": "sha256:203e0dc8b2bcda95"
       }
     },
@@ -75,7 +75,7 @@
         "digest": "sha256:fe667d08286fdeb9"
       },
       "ps": {
-        "linea": 13,
+        "linea": 17,
         "digest": "sha256:b408d45853c87961"
       }
     },
@@ -117,7 +117,7 @@
         "digest": "sha256:74f7c7d6d0265612"
       },
       "ps": {
-        "linea": 16,
+        "linea": 20,
         "digest": "sha256:2b325e26daf321f8"
       }
     },
@@ -159,8 +159,8 @@
         "digest": "sha256:6fb251fc68c5f291"
       },
       "ps": {
-        "linea": 24,
-        "digest": "sha256:6d614096e892560c"
+        "linea": 32,
+        "digest": "sha256:a77e85fe32862745"
       }
     },
     "posix": "^GUARD:metaindice-completo meta=\\[(?P<meta>[^\\]]*)\\] paginas=\\[(?P<paginas>[^\\]]*)\\]$",
@@ -210,7 +210,7 @@
         "digest": "sha256:8139c7ac65270587"
       },
       "ps": {
-        "linea": 29,
+        "linea": 37,
         "digest": "sha256:a47deaafa37bd731"
       }
     },

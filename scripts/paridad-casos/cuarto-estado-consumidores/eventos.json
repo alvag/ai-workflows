@@ -7,8 +7,8 @@
         "digest": "sha256:32b592ae8b085dcf"
       },
       "ps": {
-        "linea": 16,
-        "digest": "sha256:f6d4dfbd3e3be90a"
+        "linea": 19,
+        "digest": "sha256:05028e5fc80838f7"
       }
     },
     "posix": "^GUARD:cuarto-estado-en-consumidores el envelope no admite clarification-needed$",
@@ -37,8 +37,8 @@
         "digest": "sha256:7ee9b441292d803c"
       },
       "ps": {
-        "linea": 17,
-        "digest": "sha256:dac47a90910d05fa"
+        "linea": 20,
+        "digest": "sha256:0a3db90e24376466"
       }
     },
     "posix": "^GUARD:cuarto-estado-en-consumidores la escalera de degradación lo ignora$",
@@ -67,8 +67,8 @@
         "digest": "sha256:963058def6ffbc21"
       },
       "ps": {
-        "linea": 18,
-        "digest": "sha256:bbef04732878cde8"
+        "linea": 21,
+        "digest": "sha256:23179328b11a355c"
       }
     },
     "posix": "^GUARD:cuarto-estado-en-consumidores la vista Degradación del SKILL\\.md lo ignora$",
@@ -97,8 +97,8 @@
         "digest": "sha256:fb2d4864e8cdbe56"
       },
       "ps": {
-        "linea": 19,
-        "digest": "sha256:f3187fad79be4d58"
+        "linea": 22,
+        "digest": "sha256:6d5b96d596c62bb9"
       }
     },
     "posix": "^GUARD:cuarto-estado-en-consumidores la vista del envelope del SKILL\\.md lo ignora$",

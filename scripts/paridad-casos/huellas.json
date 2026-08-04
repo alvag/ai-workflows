@@ -1,7 +1,7 @@
 {
   "clarificacion-completa": {
     "posix": "sha256:649223a144fa1380",
-    "ps": "sha256:5a0c5bd8ec533ef7"
+    "ps": "sha256:3f4c0337f134b38c"
   },
   "cobertura-ac-fila": {
     "posix": "sha256:0297c22811b7d6dc",
@@ -29,7 +29,7 @@
   },
   "cuarto-estado-consumidores": {
     "posix": "sha256:791162751c32f922",
-    "ps": "sha256:af31ecd5e78325ca"
+    "ps": "sha256:40d2fc5aa93bfa10"
   },
   "gate-blocked": {
     "posix": "sha256:5165dae817806360",
@@ -49,7 +49,7 @@
   },
   "identidades-reintento": {
     "posix": "sha256:43305d71409c4535",
-    "ps": "sha256:6089cc4b00f46a0f"
+    "ps": "sha256:d1fe6640de8bab64"
   },
   "integracion-ownership": {
     "posix": "sha256:5504f452a3894da8",
@@ -69,7 +69,7 @@
   },
   "metaindice": {
     "posix": "sha256:eecdd56ef8221bcd",
-    "ps": "sha256:95d958123d3ac06e"
+    "ps": "sha256:44d612e756f16e5e"
   },
   "ownership-log": {
     "posix": "sha256:4365eeaee786df83",
@@ -85,11 +85,11 @@
   },
   "recovery-bloquea": {
     "posix": "sha256:71cf1ccedc7280ed",
-    "ps": "sha256:26f18850fbd991a1"
+    "ps": "sha256:af821b1e5acbb6b2"
   },
   "resolver-antes-de-preguntar": {
     "posix": "sha256:0577964f7a342477",
-    "ps": "sha256:e54197da23e047e5"
+    "ps": "sha256:e97fce5cbf2e400c"
   },
   "split-paginado": {
     "posix": "sha256:d52867a0af6b39a1",
@@ -101,7 +101,7 @@
   },
   "validador-paginado": {
     "posix": "sha256:0dc4578bb352c1de",
-    "ps": "sha256:e564362f21703a15"
+    "ps": "sha256:c665e5eea95f9ca6"
   },
   "verify-ejecuta": {
     "posix": "sha256:465a6474aa567589",
