@@ -5,10 +5,13 @@
       "posix": {
         "linea": 6,
         "digest": "sha256:8b4c49e28f82cc7c"
+      },
+      "ps": {
+        "linea": 13,
+        "digest": "sha256:88052c3f1359c889"
       }
     },
-    "solo_en": "posix",
-    "motivo": "PowerShell no tiene la comprobación `[ -f \"$f\" ]` ni el `exit 99`: sobre un archivo ausente `Get-Content` emite un diagnóstico del intérprete y sigue. La asimetría se declara acá para que sea visible; si PowerShell llegara a emitirla, su fragmento quedaría sin patrón y el caso caería en `fallo`.",
+    "motivo": "Es un error de INVOCACIÓN, no una guarda: el archivo que se pasó no existe. Los dos sabores lo comprueban antes de leer y cortan con `exit 99`. Antes solo lo hacía POSIX, y PowerShell dejaba que `Get-Content` lanzara y seguía con la lista vacía, reportando que el plan no referencia ninguna fila de integración sobre un archivo que nadie escribió nunca.",
     "posix": "^ARNES:no existe (?P<archivo>.*)$",
     "campos": {
       "archivo": {
@@ -21,11 +24,19 @@
         "campos": {
           "archivo": "{dir}/CENTINELA.md"
         }
+      },
+      "ps": {
+        "texto": "ARNES:no existe {dir}/CENTINELA.md",
+        "campos": {
+          "archivo": "{dir}/CENTINELA.md"
+        }
       }
     },
     "literal": {
-      "posix": "ARNES:no existe %s\\n"
-    }
+      "posix": "ARNES:no existe %s\\n",
+      "ps": "ARNES:no existe $f"
+    },
+    "ps": "^ARNES:no existe (?P<archivo>.*)$"
   },
   {
     "id": "not-applicable",
@@ -35,7 +46,7 @@
         "digest": "sha256:477f50e000d421cc"
       },
       "ps": {
-        "linea": 15,
+        "linea": 19,
         "digest": "sha256:1376fa25b49c6368"
       }
     },
@@ -73,7 +84,7 @@
         "digest": "sha256:63d5b3e92cc226cb"
       },
       "ps": {
-        "linea": 17,
+        "linea": 21,
         "digest": "sha256:3a72631050fa69d0"
       }
     },
@@ -121,7 +132,7 @@
         "digest": "sha256:0dcbf275336d6718"
       },
       "ps": {
-        "linea": 23,
+        "linea": 27,
         "digest": "sha256:d2315445bcc8e80f"
       }
     },

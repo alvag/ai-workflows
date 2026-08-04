@@ -3,12 +3,12 @@
     "id": "paquete-inmutable",
     "sitio": {
       "posix": {
-        "linea": 10,
+        "linea": 16,
         "digest": "sha256:19f1fd93dd0f59fc"
       },
       "ps": {
-        "linea": 8,
-        "digest": "sha256:738ac40333dd36b7"
+        "linea": 11,
+        "digest": "sha256:ee93510a8cfb0aa3"
       }
     },
     "posix": "^GUARD:paquete-inmutable el paquete entregado cambió \\((?P<actual>\\S+) ≠ (?P<esperado>\\S+)\\)$",
@@ -46,11 +46,11 @@
     "id": "truncado-alcanza-versiones",
     "sitio": {
       "posix": {
-        "linea": 18,
+        "linea": 24,
         "digest": "sha256:2d0be28e9afdcbe1"
       },
       "ps": {
-        "linea": 12,
+        "linea": 15,
         "digest": "sha256:ddfce75967cf7dca"
       }
     },

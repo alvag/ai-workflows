@@ -402,6 +402,10 @@ $rc = 0
 # contaría como una fila de integración, `n/a: fase 3` como la evidencia exigida y `not_applicable`
 # como la marca prohibida.
 foreach ($f in ($repos -split '\s+' | Where-Object { $_ })) {
+  # Mismo corte que el par POSIX: un plan que no existe es un error de invocación, no un plan que
+  # incumple. Sin esto, `Get-Content` lanzaba y el bloque seguía con `$filas` vacío, reportando
+  # "no referencia ninguna fila [integration]" sobre un archivo que nadie escribió nunca.
+  if (-not (Test-Path -LiteralPath $f -PathType Leaf)) { Write-Error "ARNES:no existe $f"; exit 99 }
   $filas = Get-Content -LiteralPath $f | Where-Object { $_ -cmatch '^\|' -and $_ -cnotmatch '^\|\s*(ID\s*\||[-: |]+\|)' -and $_ -cmatch '\[integration\]' }
   foreach ($fila in $filas) {
     $c = $fila -split '\|'; $ev = $c[3].Trim(); $bl = $c[6].Trim()

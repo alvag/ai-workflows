@@ -443,8 +443,10 @@ $gap = -1
 # los de .NET, un `design_gap` cortaría el takeover y un `contrato: V2` contaría como versión.
 for ($i = 0; $i -lt $doc.Count; $i++) { if ($doc[$i] -cmatch 'DESIGN_GAP') { $gap = $i; break } }
 if ($gap -ge 0) {
-  $post = @(for ($i = $gap + 1; $i -lt $doc.Count; $i++) { if ($doc[$i] -cmatch '^## (Ronda |Takeover)') { $doc[$i] } })
-  if ($post.Count -gt 0) { Write-Error "GUARD:design-gap-corta-takeover hay trabajo después del DESIGN_GAP: $($post -join ' | ')"; $rc = 1 }
+  # Con el número de línea y un evento agregado, como el `awk` del par: sin la línea el lector no
+  # sabe a qué altura del log está el trabajo que no debería existir.
+  $post = @(for ($i = $gap + 1; $i -lt $doc.Count; $i++) { if ($doc[$i] -cmatch '^## (Ronda |Takeover)') { "$($i + 1): $($doc[$i])" } })
+  if ($post.Count -gt 0) { Write-Error "GUARD:design-gap-corta-takeover hay trabajo después del DESIGN_GAP:`n$($post -join "`n")"; $rc = 1 }
 }
 # El conductor no puede ablandar filas que él escribió: durante el takeover la versión del contrato
 # se congela. Una versión nueva ahí es el conductor reescribiendo su propia vara sin nadie mirando.

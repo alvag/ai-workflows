@@ -7,18 +7,18 @@
         "digest": "sha256:c6f1e1cab7f44298"
       },
       "ps": {
-        "linea": 24,
-        "digest": "sha256:6f84cc33ca34c4ca"
+        "linea": 25,
+        "digest": "sha256:1c3be5392c330544"
       }
     },
     "posix": "(?s)^GUARD:blocked-no-despacha hay filas BLOCKED y la bitácora despacha igual:\\n(?P<filas>.*)$",
-    "ps": "^GUARD:blocked-no-despacha hay filas BLOCKED y la bitácora despacha igual: (?P<filas>.*)$",
+    "ps": "(?s)^GUARD:blocked-no-despacha hay filas BLOCKED y la bitácora despacha igual:\\n(?P<filas>.*)$",
     "campos": {
       "filas": {
         "tipo": "conjunto",
         "items": {
           "posix": "\\s*([^\\n]+?)\\s*(?=\\n|$)",
-          "ps": "\\s*([^|]+?)\\s*(?=\\||$)"
+          "ps": "\\s*([^\\n]+?)\\s*(?=\\n|$)"
         }
       }
     },
@@ -32,7 +32,7 @@
         }
       },
       "ps": {
-        "texto": "GUARD:blocked-no-despacha hay filas BLOCKED y la bitácora despacha igual: CENTINELA",
+        "texto": "GUARD:blocked-no-despacha hay filas BLOCKED y la bitácora despacha igual:\n  CENTINELA",
         "campos": {
           "filas": [
             "CENTINELA"
@@ -42,7 +42,7 @@
     },
     "literal": {
       "posix": "GUARD:blocked-no-despacha hay filas BLOCKED y la bitácora despacha igual:",
-      "ps": "GUARD:blocked-no-despacha hay filas BLOCKED y la bitácora despacha igual: $((($bloqueadas | ForEach-Object { ($_ -split '\\|')[1].Trim() })) -join ' ')"
+      "ps": "GUARD:blocked-no-despacha hay filas BLOCKED y la bitácora despacha igual:`n$($ids -join "
     }
   },
   {
@@ -53,18 +53,18 @@
         "digest": "sha256:dfd8525f91d29708"
       },
       "ps": {
-        "linea": 31,
-        "digest": "sha256:73ccab824adc8ab2"
+        "linea": 34,
+        "digest": "sha256:41bbbbaf020ab1ad"
       }
     },
     "posix": "(?s)^GUARD:blocked-no-despacha NOT_APPLICABLE justificado por el entorno:\\n(?P<registros>.*)$",
-    "ps": "^GUARD:blocked-no-despacha NOT_APPLICABLE justificado por el entorno(?P<registros>)$",
+    "ps": "(?s)^GUARD:blocked-no-despacha NOT_APPLICABLE justificado por el entorno:\\n(?P<registros>.*)$",
     "campos": {
       "registros": {
         "tipo": "conjunto",
         "items": {
           "posix": "\\s*([^\\n]+?)\\s*(?=\\n|$)",
-          "ps": "\\s*([^|]+?)\\s*(?=\\||$)"
+          "ps": "\\s*([^\\n]+?)\\s*(?=\\n|$)"
         }
       }
     },
@@ -78,15 +78,17 @@
         }
       },
       "ps": {
-        "texto": "GUARD:blocked-no-despacha NOT_APPLICABLE justificado por el entorno",
+        "texto": "GUARD:blocked-no-despacha NOT_APPLICABLE justificado por el entorno:\n- `id: CENTINELA`",
         "campos": {
-          "registros": []
+          "registros": [
+            "- `id: CENTINELA`"
+          ]
         }
       }
     },
     "literal": {
       "posix": "GUARD:blocked-no-despacha NOT_APPLICABLE justificado por el entorno:",
-      "ps": "GUARD:blocked-no-despacha NOT_APPLICABLE justificado por el entorno"
+      "ps": "GUARD:blocked-no-despacha NOT_APPLICABLE justificado por el entorno:`n$($malJustificadas -join "
     }
   }
 ]

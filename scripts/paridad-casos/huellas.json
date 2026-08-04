@@ -13,7 +13,7 @@
   },
   "contrato-cadena": {
     "posix": "sha256:4c58f33a967b0565",
-    "ps": "sha256:bbd1489739d6f3c6"
+    "ps": "sha256:1de6008659350fbf"
   },
   "contrato-cobertura": {
     "posix": "sha256:0be415d3ef3891e7",
@@ -21,7 +21,7 @@
   },
   "contrato-esquema": {
     "posix": "sha256:56a65cf4120dfd4e",
-    "ps": "sha256:a5fe33e3ee708cb4"
+    "ps": "sha256:374956398e99f0ea"
   },
   "contrato-invariantes": {
     "posix": "sha256:4ab5d04fe206d0bf",
@@ -33,7 +33,7 @@
   },
   "gate-blocked": {
     "posix": "sha256:5165dae817806360",
-    "ps": "sha256:b56821e57499e15e"
+    "ps": "sha256:4852a151874c76b0"
   },
   "gate-congelado": {
     "posix": "sha256:39f5c808a9bb4671",
@@ -53,11 +53,11 @@
   },
   "integracion-ownership": {
     "posix": "sha256:5504f452a3894da8",
-    "ps": "sha256:0eb8d62176496e2a"
+    "ps": "sha256:de823c539bf83267"
   },
   "manifest-resumen": {
     "posix": "sha256:61ed6398cb102f70",
-    "ps": "sha256:77d4841700632e14"
+    "ps": "sha256:ab00a281488e551b"
   },
   "manifest-valido": {
     "posix": "sha256:207216c678ed8d41",
@@ -80,24 +80,24 @@
     "ps": "sha256:d080dc9e8a43989c"
   },
   "paquete-versionado": {
-    "posix": "sha256:24da62133bda640f",
-    "ps": "sha256:aaadc54797c7f23a"
+    "posix": "sha256:edef5814dbb8e807",
+    "ps": "sha256:75c3ef63b56083b3"
   },
   "recovery-bloquea": {
     "posix": "sha256:71cf1ccedc7280ed",
-    "ps": "sha256:af821b1e5acbb6b2"
+    "ps": "sha256:38873c0ac6779147"
   },
   "resolver-antes-de-preguntar": {
     "posix": "sha256:0577964f7a342477",
     "ps": "sha256:e97fce5cbf2e400c"
   },
   "split-paginado": {
-    "posix": "sha256:d52867a0af6b39a1",
-    "ps": "sha256:834a273fbf4e298c"
+    "posix": "sha256:b91d95aa10633a1b",
+    "ps": "sha256:3430e4f647f2b0f2"
   },
   "takeover-reglas": {
     "posix": "sha256:09d736f757ec217a",
-    "ps": "sha256:726fc455ec64b8ae"
+    "ps": "sha256:3b371de94df44f13"
   },
   "validador-paginado": {
     "posix": "sha256:0dc4578bb352c1de",

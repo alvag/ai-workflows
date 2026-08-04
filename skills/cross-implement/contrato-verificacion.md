@@ -369,12 +369,19 @@ foreach ($l in $doc) {
 }
 $filas = $vig | Where-Object { $_ -cmatch '^\|' -and $_ -cnotmatch '^\|\s*(ID\s*\||[-: |]+\|)' }
 if ($vig -cnotcontains $cab) { Write-Error 'GUARD:esquema-tabla cabecera no normativa'; $rc = 1 }
+# Un evento agregado por cláusula, con el ID de la fila delante, como los tres `awk` del par.
+# Emitir uno por fila y SIN el ID dejaba mensajes que nombran el valor incorrecto pero no dicen en
+# qué fila está: con una tabla de veinte filas, eso no alcanza para ir a arreglarlo.
+$eCol = @(); $eEvi = @(); $eBas = @()
 foreach ($f in $filas) {
   $c = $f -split '\|'
-  if ($c.Count -ne 8) { Write-Error "GUARD:esquema-tabla columnas fuera del esquema: $($c[1].Trim())"; $rc = 1; continue }
-  if ($c[3].Trim() -cnotin @('test','build','inspección','manual')) { Write-Error "GUARD:esquema-tabla enum de Evidencia: $($c[3].Trim())"; $rc = 1 }
-  if ($c[6].Trim() -cnotin @('RED','GREEN_ALREADY','NOT_APPLICABLE','BLOCKED')) { Write-Error "GUARD:esquema-tabla enum de Baseline: $($c[6].Trim())"; $rc = 1 }
+  if ($c.Count -ne 8) { $eCol += "  $($c[1]): $($c.Count - 2) columnas"; $rc = 1; continue }
+  if ($c[3].Trim() -cnotin @('test','build','inspección','manual')) { $eEvi += "  $($c[1]): Evidencia=$($c[3].Trim())"; $rc = 1 }
+  if ($c[6].Trim() -cnotin @('RED','GREEN_ALREADY','NOT_APPLICABLE','BLOCKED')) { $eBas += "  $($c[1]): Baseline=$($c[6].Trim())"; $rc = 1 }
 }
+if ($eCol.Count) { Write-Error "GUARD:esquema-tabla columnas fuera del esquema`n$($eCol -join "`n")" }
+if ($eEvi.Count) { Write-Error "GUARD:esquema-tabla enum de Evidencia`n$($eEvi -join "`n")" }
+if ($eBas.Count) { Write-Error "GUARD:esquema-tabla enum de Baseline`n$($eBas -join "`n")" }
 exit $rc
 # @fin:contrato-esquema-ps
 ```
@@ -604,8 +611,18 @@ foreach ($v in $vs) {
   $calc  = -join ([Security.Cryptography.SHA256]::Create().ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') })
   $decl  = if ($b -join "`n" -cmatch '`hash: ([0-9a-f]*)`')        { $Matches[1] } else { '' }
   $prev  = if ($b -join "`n" -cmatch '`hash_previo: ?([0-9a-f]*)`') { $Matches[1] } else { '' }
-  if ($decl -cne $calc)     { Write-Error "GUARD:cadena-hash v${v}: hash declarado $decl, recalculado $calc"; $rc = 1 }
-  if ($prev -cne $anterior) { Write-Error "GUARD:cadena-hash v${v}: hash_previo $prev, se esperaba $anterior"; $rc = 1 }
+  # El placeholder `vacío` es el `${decl:-vacío}` del par: un campo ausente se nombra, porque un
+  # mensaje que dice "hash declarado , recalculado abc" se lee como si el valor se hubiera perdido
+  # al formatear. Se reasigna DESPUÉS de comparar, así que no altera el veredicto.
+  if ($decl -cne $calc) {
+    if (-not $decl) { $decl = 'vacío' }
+    Write-Error "GUARD:cadena-hash v${v}: hash declarado $decl, recalculado $calc"; $rc = 1
+  }
+  if ($prev -cne $anterior) {
+    if (-not $prev)     { $prev = 'vacío' }
+    if (-not $anterior) { $anterior = 'vacío' }
+    Write-Error "GUARD:cadena-hash v${v}: hash_previo $prev, se esperaba $anterior"; $rc = 1
+  }
   $anterior = $calc
 }
 exit $rc
@@ -838,14 +855,17 @@ $filas    = @($vig | Where-Object { $_ -cmatch '^\|' -and $_ -cnotmatch '^\|\s*(
 $bloqueadas = @($filas | Where-Object { ($_ -split '\|')[6].Trim() -ceq 'BLOCKED' })
 $bit = Get-Content -LiteralPath $bitacora
 if ($bloqueadas.Count -gt 0 -and ($bit -cmatch '`paso: despachar`')) {
-  Write-Error "GUARD:blocked-no-despacha hay filas BLOCKED y la bitácora despacha igual: $((($bloqueadas | ForEach-Object { ($_ -split '\|')[1].Trim() })) -join ' ')"
+  $ids = @($bloqueadas | ForEach-Object { "  $(($_ -split '\|')[1])" })
+  Write-Error "GUARD:blocked-no-despacha hay filas BLOCKED y la bitácora despacha igual:`n$($ids -join "`n")"
   $rc = 1
 }
 # El segundo `-match` es el único insensible del bloque, y lo es a propósito: su par POSIX usa
 # `grep -iE`, porque la excusa de entorno alega lo mismo escrita en mayúsculas.
 $malJustificadas = @($vig | Where-Object { $_ -cmatch '^- `id: ' -and $_ -match "``justificación: [^``]*($amb)" })
 if ($malJustificadas.Count -gt 0) {
-  Write-Error 'GUARD:blocked-no-despacha NOT_APPLICABLE justificado por el entorno'; $rc = 1
+  # Con los registros adentro, como el `cat` del par. El mensaje sin payload decía que HAY una
+  # justificación por entorno sin decir cuál: sobre un contrato de veinte filas es inaccionable.
+  Write-Error "GUARD:blocked-no-despacha NOT_APPLICABLE justificado por el entorno:`n$($malJustificadas -join "`n")"; $rc = 1
 }
 exit $rc
 # @fin:gate-blocked-ps

@@ -7,18 +7,18 @@
         "digest": "sha256:1b3524d2407d25a4"
       },
       "ps": {
-        "linea": 12,
-        "digest": "sha256:f75f65e5b483bf97"
+        "linea": 14,
+        "digest": "sha256:7d0a6138931faf93"
       }
     },
     "posix": "(?s)^GUARD:design-gap-corta-takeover hay trabajo después del DESIGN_GAP:\\n(?P<lineas>.*)$",
-    "ps": "^GUARD:design-gap-corta-takeover hay trabajo después del DESIGN_GAP: (?P<lineas>.*)$",
+    "ps": "(?s)^GUARD:design-gap-corta-takeover hay trabajo después del DESIGN_GAP:\\n(?P<lineas>.*)$",
     "campos": {
       "lineas": {
         "tipo": "conjunto",
         "items": {
           "posix": "\\s*([^\\n]+?)\\s*(?=\\n|$)",
-          "ps": "\\s*([^|]+?)\\s*(?=\\||$)"
+          "ps": "\\s*([^\\n]+?)\\s*(?=\\n|$)"
         }
       }
     },
@@ -32,7 +32,7 @@
         }
       },
       "ps": {
-        "texto": "GUARD:design-gap-corta-takeover hay trabajo después del DESIGN_GAP: ## Ronda CENTINELA",
+        "texto": "GUARD:design-gap-corta-takeover hay trabajo después del DESIGN_GAP:\n## Ronda CENTINELA",
         "campos": {
           "lineas": [
             "## Ronda CENTINELA"
@@ -42,7 +42,7 @@
     },
     "literal": {
       "posix": "GUARD:design-gap-corta-takeover hay trabajo después del DESIGN_GAP:\\n%s\\n",
-      "ps": "GUARD:design-gap-corta-takeover hay trabajo después del DESIGN_GAP: $($post -join ' | ')"
+      "ps": "GUARD:design-gap-corta-takeover hay trabajo después del DESIGN_GAP:`n$($post -join "
     }
   },
   {
@@ -53,7 +53,7 @@
         "digest": "sha256:6b2f24443ad8064d"
       },
       "ps": {
-        "linea": 22,
+        "linea": 24,
         "digest": "sha256:eb7c8d156369bf95"
       }
     },

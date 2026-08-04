@@ -21,10 +21,10 @@
       "clase_esperada": "aceptacion",
       "entradas": {
         "scratch": "{dir}/scratch",
-        "hash_v1": "1341375114",
+        "hash_v1": "590423528a8f5265b54a107bcbe6ebeb0a95f082abfb8a48d95d74789a8c64f1",
         "redespachado": "0"
       },
-      "precondicion": "el v1 está intacto y `hash_v1` es su CRC de `cksum`, que es lo que el lado POSIX calcula. El lado PowerShell calcula MD5 con `Get-FileHash`: son dos algoritmos distintos sobre el mismo archivo y no pueden coincidir, así que ningún valor de `hash_v1` pone verdes a los dos a la vez",
+      "precondicion": "el v1 está intacto y `hash_v1` es su SHA-256 en minúsculas, que es lo que calculan los DOS sabores desde que el algoritmo se unificó: antes acá había un CRC de `cksum` contra un MD5 de `Get-FileHash` y ningún valor podía poner verdes a los dos a la vez",
       "clausulas": {
         "paquete-inmutable": "valido",
         "truncado-alcanza-versiones": "valido"
@@ -38,10 +38,10 @@
       "clase_esperada": "rechazo",
       "entradas": {
         "scratch": "{dir}/scratch",
-        "hash_v1": "111111111",
+        "hash_v1": "1111111111111111111111111111111111111111111111111111111111111111",
         "redespachado": "0"
       },
-      "precondicion": "`hash_v1` no corresponde al contenido en ninguno de los dos algoritmos: los dos sabores tienen que rechazar",
+      "precondicion": "`hash_v1` es un SHA-256 bien formado que no corresponde al contenido: los dos sabores tienen que rechazar",
       "clausulas": {
         "paquete-inmutable": "invalido",
         "truncado-alcanza-versiones": "valido"
@@ -52,15 +52,15 @@
       "nombre": "hash-casing",
       "particion": "casing",
       "objetivo": "paquete-inmutable",
-      "clase_esperada": "aceptacion",
+      "clase_esperada": "rechazo",
       "entradas": {
         "scratch": "{dir}/scratch",
-        "hash_v1": "24162a8f8fe5175227442eea331b59e4",
+        "hash_v1": "590423528A8F5265B54A107BCBE6EBEB0A95F082ABFB8A48D95D74789A8C64F1",
         "redespachado": "0"
       },
-      "precondicion": "`hash_v1` es el MD5 en MINÚSCULAS. `Get-FileHash` devuelve el hex en mayúsculas y `-ne` es case-insensitive, así que PowerShell lo da por igual; POSIX compara ese hex contra un CRC decimal y lo rechaza",
+      "precondicion": "`hash_v1` es el SHA-256 correcto del paquete escrito en MAYÚSCULAS. Los dos sabores lo producen en minúsculas, así que un valor con otro casing es uno que ningún productor escribe y el par lo rechaza — POSIX con `[ = ]`, PowerShell con `-cne`. Antes de unificar el algoritmo este caso medía otra cosa (un MD5 contra un CRC) y no podía cerrar",
       "clausulas": {
-        "paquete-inmutable": "valido",
+        "paquete-inmutable": "invalido",
         "truncado-alcanza-versiones": "valido"
       },
       "fixture": "hash-casing"

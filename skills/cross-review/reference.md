@@ -1210,7 +1210,10 @@ foreach ($nombre in $nombres) {
   $g = @($grupos | Where-Object { $_.Name -ceq $nombre })[0]
   $deg = @($g.Group | Where-Object { $_.degradation -cne 'none' }).Count
   $ord = @($g.Group.duration | Sort-Object)
-  $med = if ($ord.Count) { $ord[[int](($ord.Count + 1) / 2) - 1] } else { '-' }
+  # `[Math]::Floor` y no `[int]`: con cardinalidad par el índice medio cae en .5, y `[int]` aplica
+  # redondeo bancario —`[int]1.5` es 2— así que devolvía el MAYOR de los dos centrales donde el
+  # `int()` de awk trunca y devuelve el menor. La mediana definida es el menor.
+  $med = if ($ord.Count) { $ord[[int][Math]::Floor(($ord.Count + 1) / 2) - 1] } else { '-' }
   Write-Output "$($nombre): $($g.Count) corridas · $deg degradadas · mediana $($med)s"
 }
 # @fin:manifest-resumen-ps

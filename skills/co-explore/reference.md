@@ -1662,6 +1662,12 @@ serie—, nunca por criterio de quien mira.
 # Entradas: $raw $base (prefijo de ruta sin extensión) $por_pagina
 set -u
 t=$(mktemp -d)
+# Sin `## Detalle` no hay nada que partir, y hay que DECIRLO. Antes esto moría en el `mv` de abajo
+# con un "No such file or directory" sobre un temporal que el awk nunca llegó a crear: un mensaje
+# que no menciona la sección faltante y que deja al lector buscando un problema de permisos.
+grep -qE '^## Detalle[[:space:]]*$' "$raw" || {
+  printf 'GUARD:split-sin-detalle el informe no trae la sección `## Detalle`\n' >&2
+  rm -rf "$t"; exit 1; }
 awk '/^## Índice[[:space:]]*$/{m=1;next} /^## Detalle[[:space:]]*$/{m=2;next}
      /^STATUS: done[[:space:]]*$/{next}
      m==1{print > IDX} m==2{print > DET}' IDX="$t/idx" DET="${base}-detalle.tmp" "$raw"
@@ -1707,17 +1713,24 @@ rm -rf "$t"
 # Predicado: la salida cruda se parte en detalle único y páginas de índice de a lo sumo
 # $por_pagina entradas, sin perder ninguna, y el metaíndice se publica al final.
 # Entradas: $raw $base (prefijo de ruta sin extensión) $por_pagina
+$crudo = @(Get-Content -LiteralPath $raw)
+# Sin `## Detalle` no hay nada que partir, y hay que DECIRLO. Antes esto escribía un archivo de
+# detalle VACÍO y salía 0: daba por buena una publicación que perdió todo el desarrollo.
+if (-not ($crudo | Where-Object { $_ -cmatch '^## Detalle\s*$' })) {
+  Write-Error 'GUARD:split-sin-detalle el informe no trae la sección `## Detalle`'
+  exit 1
+}
 $modo = 0; $idx = @(); $det = @()
-foreach ($l in (Get-Content -LiteralPath $raw)) {
-  if ($l -match '^## Índice\s*$')       { $modo = 1; continue }
-  if ($l -match '^## Detalle\s*$')      { $modo = 2; continue }
-  if ($l -match '^STATUS: done\s*$')    { continue }
+foreach ($l in $crudo) {
+  if ($l -cmatch '^## Índice\s*$')       { $modo = 1; continue }
+  if ($l -cmatch '^## Detalle\s*$')      { $modo = 2; continue }
+  if ($l -cmatch '^STATUS: done\s*$')    { continue }
   if ($modo -eq 1) { $idx += $l } elseif ($modo -eq 2) { $det += $l }
 }
 $det | Set-Content -LiteralPath (Join-Path (Split-Path $base) ("detail-" + (Split-Path $base -Leaf) + ".md"))
-$cab = $idx | Where-Object { $_ -match '^\|\s*ID\s*\|' } | Select-Object -First 1
-$sep = $idx | Where-Object { $_ -match '^\|[-: |]+\|$' } | Select-Object -First 1
-$filas = @($idx | Where-Object { $_ -match '^\|' -and $_ -notmatch '^\|\s*(ID\s*\||[-: |]+\|)' })
+$cab = $idx | Where-Object { $_ -cmatch '^\|\s*ID\s*\|' } | Select-Object -First 1
+$sep = $idx | Where-Object { $_ -cmatch '^\|[-: |]+\|$' } | Select-Object -First 1
+$filas = @($idx | Where-Object { $_ -cmatch '^\|' -and $_ -cnotmatch '^\|\s*(ID\s*\||[-: |]+\|)' })
 $meta = @()
 for ($i = 0; $i -lt $filas.Count; $i += [int]$por_pagina) {
   $p = '{0:d2}' -f ([int]($i / [int]$por_pagina) + 1)
@@ -2057,9 +2070,15 @@ exit $rc
 # Entradas: $scratch (directorio) $hash_v1 (checksum del paquete entregado)
 set -u
 rc=0
+# SHA-256 hex en minúsculas, el mismo algoritmo y la misma forma que la cadena de `cross-implement`.
+# Antes acá había un CRC decimal de `cksum` contra el que ningún hash de PowerShell podía cerrar:
+# el predicado era incomparable entre sabores, no solo divergente. `sha256sum` no existe en macOS,
+# de ahí el fallback.
+sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d' ' -f1
+        else shasum -a 256 | cut -d' ' -f1; fi; }
 v1=$(ls "$scratch" 2>/dev/null | grep -E '^paquete-.*-v1\.txt$' | head -1)
 if [ -n "$v1" ]; then
-  actual=$(cksum < "$scratch/$v1" | awk '{print $1}')
+  actual=$(sha < "$scratch/$v1")
   [ "$actual" = "$hash_v1" ] || {
     printf 'GUARD:paquete-inmutable el paquete entregado cambió (%s ≠ %s)\n' "$actual" "$hash_v1" >&2
     rc=1; }
@@ -2084,8 +2103,11 @@ exit $rc
 $rc = 0
 $v1 = Get-ChildItem -LiteralPath $scratch -Filter 'paquete-*-v1.txt' -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($v1) {
-  $actual = (Get-FileHash -LiteralPath $v1.FullName -Algorithm MD5).Hash
-  if ($actual -ne $hash_v1) { Write-Error "GUARD:paquete-inmutable el paquete entregado cambió ($actual ≠ $hash_v1)"; $rc = 1 }
+  # SHA-256 y no MD5, y en minúsculas: `Get-FileHash` devuelve el hex en MAYÚSCULAS y el par POSIX
+  # lo produce en minúsculas. `-cne` porque, unificado el algoritmo, un `hash_v1` con otro casing es
+  # un valor que ningún productor escribe.
+  $actual = (Get-FileHash -LiteralPath $v1.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+  if ($actual -cne $hash_v1) { Write-Error "GUARD:paquete-inmutable el paquete entregado cambió ($actual ≠ $hash_v1)"; $rc = 1 }
 }
 if ($env:redespachado -eq '1') {
   $quedan = @(Get-ChildItem -LiteralPath $scratch -Filter 'paquete-*-v*.txt' -ErrorAction SilentlyContinue).Count
@@ -2289,10 +2311,15 @@ for ($i = 0; $i -lt $doc.Count; $i++) {
   if ($doc[$i] -cmatch '`recurso: resuelto`') { $res = $i; break }
 }
 if ($rec -lt 0) { exit 0 }
-for ($i = $rec + 1; $i -lt $res; $i++) {
-  if ($doc[$i] -cmatch '`(semanticAttempt|transportAttempt):') {
-    Write-Error "GUARD:recovery-bloquea hubo reintento con el recurso sin resolver: $($doc[$i])"; $rc = 1
-  }
+# Un solo evento con TODOS los reintentos y su número de línea, como el `awk` del par: emitir uno
+# por ítem obligaba a reconstruir el conjunto desde varios mensajes, y sin el número de línea el
+# lector no sabe a qué altura del log mirar.
+$post = @(for ($i = $rec + 1; $i -lt $res; $i++) {
+  if ($doc[$i] -cmatch '`(semanticAttempt|transportAttempt):') { "$($i + 1): $($doc[$i])" }
+})
+if ($post.Count -gt 0) {
+  Write-Error "GUARD:recovery-bloquea hubo reintento con el recurso sin resolver:`n$($post -join "`n")"
+  $rc = 1
 }
 exit $rc
 # @fin:recovery-bloquea-ps
