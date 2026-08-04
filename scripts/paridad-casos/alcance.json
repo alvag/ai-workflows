@@ -6,12 +6,14 @@
     "contrato-cobertura",
     "contrato-esquema",
     "contrato-invariantes",
+    "cuarto-estado-consumidores",
     "gate-fase-3",
     "identidades-reintento",
     "integracion-ownership",
     "manifest-resumen",
     "manifest-valido",
     "materializacion-contrato",
+    "metaindice",
     "ownership-log",
     "ownership-presupuesto",
     "paquete-versionado",
@@ -19,17 +21,15 @@
     "resolver-antes-de-preguntar",
     "split-paginado",
     "takeover-reglas",
+    "validador-paginado",
     "verify-ejecuta"
   ],
   "declarados_sin_matriz": {
     "rebaseline-worktree": "fuera de alcance por decisión de la spec: opera sobre worktrees de Git que crea y destruye, y probarlo exigiría que el arnés levante repositorios desechables",
     "contrato-baseline": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
     "contrato-cadena": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
-    "cuarto-estado-consumidores": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
     "gate-blocked": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
     "gate-congelado": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
-    "gate-modo-directo": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
-    "metaindice": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
-    "validador-paginado": "recorte de alcance declarado de la v1: sin matriz, no comprobado"
+    "gate-modo-directo": "recorte de alcance declarado de la v1: sin matriz, no comprobado"
   }
 }

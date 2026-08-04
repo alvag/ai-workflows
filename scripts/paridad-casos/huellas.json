@@ -19,6 +19,10 @@
     "posix": "sha256:4ab5d04fe206d0bf",
     "ps": "sha256:eec969e800c73b90"
   },
+  "cuarto-estado-consumidores": {
+    "posix": "sha256:791162751c32f922",
+    "ps": "sha256:af31ecd5e78325ca"
+  },
   "gate-fase-3": {
     "posix": "sha256:7d976068b5c5aacc",
     "ps": "sha256:6e6138c419db7797"
@@ -42,6 +46,10 @@
   "materializacion-contrato": {
     "posix": "sha256:e438069a86ca77b8",
     "ps": "sha256:a5f78b9fe6abd718"
+  },
+  "metaindice": {
+    "posix": "sha256:eecdd56ef8221bcd",
+    "ps": "sha256:95d958123d3ac06e"
   },
   "ownership-log": {
     "posix": "sha256:4365eeaee786df83",
@@ -70,6 +78,10 @@
   "takeover-reglas": {
     "posix": "sha256:09d736f757ec217a",
     "ps": "sha256:eeb2155ddc426be4"
+  },
+  "validador-paginado": {
+    "posix": "sha256:0dc4578bb352c1de",
+    "ps": "sha256:e564362f21703a15"
   },
   "verify-ejecuta": {
     "posix": "sha256:465a6474aa567589",
