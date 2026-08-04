@@ -1691,7 +1691,10 @@ printf '\n' >> "$meta"
 { echo "## Páginas"; echo "| Página | Ruta | Entradas | IDs |"; echo "|---|---|---|---|"
   while IFS="$(printf '\t')" read -r p ruta ids; do
     [ -n "${p:-}" ] || continue
-    printf '| %s | %s | %s | %s |\n' "$p" "$ruta" "$(printf '%s' "$ids" | wc -w | tr -d ' ')" "$ids"
+    # `${ids% }` recorta el espacio que deja la acumulación de arriba (`printf '%s '` por ID).
+    # Sin eso la celda queda `E1 E2  |` acá y `E1 E2 |` en la variante PowerShell, que une con
+    # `-join ' '`: misma tabla, distinto byte.
+    printf '| %s | %s | %s | %s |\n' "$p" "$ruta" "$(printf '%s' "$ids" | wc -w | tr -d ' ')" "${ids% }"
   done < "$meta"
 } > "${base}.md.tmp"
 mv "${base}.md.tmp" "${base}.md"
