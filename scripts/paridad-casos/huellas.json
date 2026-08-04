@@ -9,23 +9,23 @@
   },
   "contrato-baseline": {
     "posix": "sha256:ab2053287e19cf15",
-    "ps": "sha256:92b4f84e38a9b7a5"
+    "ps": "sha256:d9e65be824aa56ec"
   },
   "contrato-cadena": {
     "posix": "sha256:4c58f33a967b0565",
-    "ps": "sha256:4631829129b1c70a"
+    "ps": "sha256:bbd1489739d6f3c6"
   },
   "contrato-cobertura": {
     "posix": "sha256:0be415d3ef3891e7",
-    "ps": "sha256:acf052e8c3de6dca"
+    "ps": "sha256:aa4892e5dfcaa8c3"
   },
   "contrato-esquema": {
     "posix": "sha256:56a65cf4120dfd4e",
-    "ps": "sha256:407c6d26a195d1f4"
+    "ps": "sha256:a5fe33e3ee708cb4"
   },
   "contrato-invariantes": {
     "posix": "sha256:4ab5d04fe206d0bf",
-    "ps": "sha256:eec969e800c73b90"
+    "ps": "sha256:8f03abf7b15ae65f"
   },
   "cuarto-estado-consumidores": {
     "posix": "sha256:791162751c32f922",
@@ -33,11 +33,11 @@
   },
   "gate-blocked": {
     "posix": "sha256:5165dae817806360",
-    "ps": "sha256:b703961e69a57131"
+    "ps": "sha256:b56821e57499e15e"
   },
   "gate-congelado": {
     "posix": "sha256:39f5c808a9bb4671",
-    "ps": "sha256:6a6a5d3aeebf3e4c"
+    "ps": "sha256:42c1e310b0d3acb8"
   },
   "gate-fase-3": {
     "posix": "sha256:7d976068b5c5aacc",
@@ -45,7 +45,7 @@
   },
   "gate-modo-directo": {
     "posix": "sha256:ce1446fe6a68c9bb",
-    "ps": "sha256:0bd4562a0d6f4fe2"
+    "ps": "sha256:c7057caef8296827"
   },
   "identidades-reintento": {
     "posix": "sha256:43305d71409c4535",

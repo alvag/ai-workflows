@@ -354,21 +354,26 @@ rm -rf "$t"; exit $rc
 $rc = 0
 $cab = '| ID | Requisito | Evidencia | Comando/observación | Esperado | Baseline |'
 $doc = Get-Content -LiteralPath $contrato
-$n   = ($doc | Select-String -Pattern '^#+ v(\d+)$' | ForEach-Object { [int]$_.Matches.Groups[1].Value } | Measure-Object -Maximum).Maximum
+# Todo va case-sensitive, `Select-String -CaseSensitive` incluido: el par POSIX localiza las
+# versiones con `grep -oE`, recorta con `awk`, compara la cabecera con `grep -qxF` y cierra los dos
+# enums con `!=` de awk. Con los comparadores por defecto de .NET, un encabezado `## V2` contaría
+# como versión, una cabecera con otro casing pasaría por normativa y `Test`/`red` caerían dentro de
+# sus enums cerrados.
+$n   = ($doc | Select-String -Pattern '^#+ v(\d+)$' -CaseSensitive | ForEach-Object { [int]$_.Matches.Groups[1].Value } | Measure-Object -Maximum).Maximum
 $vig = @(); $on = $false; $f = $false; $lv = 0
 foreach ($l in $doc) {
-  if ($l -match '^`{3}') { $f = -not $f }
-  if (-not $on -and -not $f -and $l -match "^#+ v$n$") { $lv = $l.IndexOf(' '); $on = $true; continue }
-  if ($on -and -not $f -and $l -match '^#+ ' -and $l.IndexOf(' ') -le $lv) { break }
+  if ($l -cmatch '^`{3}') { $f = -not $f }
+  if (-not $on -and -not $f -and $l -cmatch "^#+ v$n$") { $lv = $l.IndexOf(' '); $on = $true; continue }
+  if ($on -and -not $f -and $l -cmatch '^#+ ' -and $l.IndexOf(' ') -le $lv) { break }
   if ($on) { $vig += $l }
 }
-$filas = $vig | Where-Object { $_ -match '^\|' -and $_ -notmatch '^\|\s*(ID\s*\||[-: |]+\|)' }
-if ($vig -notcontains $cab) { Write-Error 'GUARD:esquema-tabla cabecera no normativa'; $rc = 1 }
+$filas = $vig | Where-Object { $_ -cmatch '^\|' -and $_ -cnotmatch '^\|\s*(ID\s*\||[-: |]+\|)' }
+if ($vig -cnotcontains $cab) { Write-Error 'GUARD:esquema-tabla cabecera no normativa'; $rc = 1 }
 foreach ($f in $filas) {
   $c = $f -split '\|'
   if ($c.Count -ne 8) { Write-Error "GUARD:esquema-tabla columnas fuera del esquema: $($c[1].Trim())"; $rc = 1; continue }
-  if ($c[3].Trim() -notin @('test','build','inspección','manual')) { Write-Error "GUARD:esquema-tabla enum de Evidencia: $($c[3].Trim())"; $rc = 1 }
-  if ($c[6].Trim() -notin @('RED','GREEN_ALREADY','NOT_APPLICABLE','BLOCKED')) { Write-Error "GUARD:esquema-tabla enum de Baseline: $($c[6].Trim())"; $rc = 1 }
+  if ($c[3].Trim() -cnotin @('test','build','inspección','manual')) { Write-Error "GUARD:esquema-tabla enum de Evidencia: $($c[3].Trim())"; $rc = 1 }
+  if ($c[6].Trim() -cnotin @('RED','GREEN_ALREADY','NOT_APPLICABLE','BLOCKED')) { Write-Error "GUARD:esquema-tabla enum de Baseline: $($c[6].Trim())"; $rc = 1 }
 }
 exit $rc
 # @fin:contrato-esquema-ps
@@ -408,22 +413,25 @@ rm -rf "$t"; exit $rc
 # Entradas: $contrato $reqs (un identificador de requisito por línea)
 $rc = 0
 $doc = Get-Content -LiteralPath $contrato
-$n   = ($doc | Select-String -Pattern '^#+ v(\d+)$' | ForEach-Object { [int]$_.Matches.Groups[1].Value } | Measure-Object -Maximum).Maximum
+# Case-sensitive en todo: el par POSIX recorta con `grep`/`awk`, unifica con `sort -u` y resta con
+# `comm`. Con los comparadores de .NET, una fila que cita `ac-1` cerraría contra el requisito `AC-1`
+# y las dos direcciones darían verde con el identificador cambiado.
+$n   = ($doc | Select-String -Pattern '^#+ v(\d+)$' -CaseSensitive | ForEach-Object { [int]$_.Matches.Groups[1].Value } | Measure-Object -Maximum).Maximum
 $vig = @(); $on = $false; $f = $false; $lv = 0
 foreach ($l in $doc) {
-  if ($l -match '^`{3}') { $f = -not $f }
-  if (-not $on -and -not $f -and $l -match "^#+ v$n$") { $lv = $l.IndexOf(' '); $on = $true; continue }
-  if ($on -and -not $f -and $l -match '^#+ ' -and $l.IndexOf(' ') -le $lv) { break }
+  if ($l -cmatch '^`{3}') { $f = -not $f }
+  if (-not $on -and -not $f -and $l -cmatch "^#+ v$n$") { $lv = $l.IndexOf(' '); $on = $true; continue }
+  if ($on -and -not $f -and $l -cmatch '^#+ ' -and $l.IndexOf(' ') -le $lv) { break }
   if ($on) { $vig += $l }
 }
-$citados = $vig | Where-Object { $_ -match '^\|' -and $_ -notmatch '^\|\s*(ID\s*\||[-: |]+\|)' } |
+$citados = $vig | Where-Object { $_ -cmatch '^\|' -and $_ -cnotmatch '^\|\s*(ID\s*\||[-: |]+\|)' } |
   ForEach-Object { ($_ -split '\|')[2].Trim() -split '\s+' | Select-Object -First 1 } |
-  Where-Object { $_ } | Sort-Object -Unique
-$alcance = Get-Content -LiteralPath $reqs | Where-Object { $_ } | Sort-Object -Unique
+  Where-Object { $_ } | Sort-Object -Unique -CaseSensitive
+$alcance = Get-Content -LiteralPath $reqs | Where-Object { $_ } | Sort-Object -Unique -CaseSensitive
 
-$sinFila = $alcance | Where-Object { $_ -notin $citados }
+$sinFila = $alcance | Where-Object { $_ -cnotin $citados }
 if ($sinFila) { Write-Error "GUARD:cobertura-bidireccional requisito en alcance sin fila: $($sinFila -join ' ')"; $rc = 1 }
-$huerfanas = $citados | Where-Object { $_ -notin $alcance }
+$huerfanas = $citados | Where-Object { $_ -cnotin $alcance }
 if ($huerfanas) { Write-Error "GUARD:cobertura-bidireccional fila sin requisito en alcance: $($huerfanas -join ' ')"; $rc = 1 }
 exit $rc
 # @fin:contrato-cobertura-ps
@@ -470,17 +478,21 @@ rm -rf "$t"; exit $rc
 # Entradas: $contrato
 $rc = 0
 $doc = Get-Content -LiteralPath $contrato
-$vs  = $doc | Select-String -Pattern '^#+ v(\d+)$' | ForEach-Object { [int]$_.Matches.Groups[1].Value } | Sort-Object
+$vs  = $doc | Select-String -Pattern '^#+ v(\d+)$' -CaseSensitive | ForEach-Object { [int]$_.Matches.Groups[1].Value } | Sort-Object
 function Get-Filas($doc, $n) {
   $vig = @(); $on = $false; $f = $false; $lv = 0
   foreach ($l in $doc) {
-    if ($l -match '^`{3}') { $f = -not $f }
-    if (-not $on -and -not $f -and $l -match "^#+ v$n$") { $lv = $l.IndexOf(' '); $on = $true; continue }
-    if ($on -and -not $f -and $l -match '^#+ ' -and $l.IndexOf(' ') -le $lv) { break }
+    if ($l -cmatch '^`{3}') { $f = -not $f }
+    if (-not $on -and -not $f -and $l -cmatch "^#+ v$n$") { $lv = $l.IndexOf(' '); $on = $true; continue }
+    if ($on -and -not $f -and $l -cmatch '^#+ ' -and $l.IndexOf(' ') -le $lv) { break }
     if ($on) { $vig += $l }
   }
-  $h = @{}
-  $vig | Where-Object { $_ -match '^\|' -and $_ -notmatch '^\|\s*(ID\s*\||[-: |]+\|)' } | ForEach-Object {
+  # `Dictionary` con `[StringComparer]::Ordinal` y NO una hashtable: las hashtables de PowerShell
+  # comparan sus claves sin distinguir mayúsculas, así que `AC-1` y `ac-1` serían el mismo ID y una
+  # versión que renombra el casing de una fila pasaría por invariante. El par POSIX los separa con
+  # `sort` y los cruza con `join`.
+  $h = [System.Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal)
+  $vig | Where-Object { $_ -cmatch '^\|' -and $_ -cnotmatch '^\|\s*(ID\s*\||[-: |]+\|)' } | ForEach-Object {
     $c = $_ -split '\|'; $h[$c[1].Trim()] = @($c[2].Trim(), $c[5].Trim())
   }
   $h
@@ -489,11 +501,11 @@ $prev = $null
 foreach ($v in $vs) {
   if ($null -eq $prev) { $prev = $v; continue }
   $a = Get-Filas $doc $prev; $b = Get-Filas $doc $v
-  if (Compare-Object ($a.Keys | Sort-Object) ($b.Keys | Sort-Object)) {
+  if (Compare-Object @($a.Keys | Sort-Object) @($b.Keys | Sort-Object) -CaseSensitive) {
     Write-Error "GUARD:ids-invariantes el conjunto de ID cambia entre v$prev y v$v"; $rc = 1
   }
   foreach ($k in $a.Keys) {
-    if ($b.ContainsKey($k) -and (($a[$k][0] -ne $b[$k][0]) -or ($a[$k][1] -ne $b[$k][1]))) {
+    if ($b.ContainsKey($k) -and (($a[$k][0] -cne $b[$k][0]) -or ($a[$k][1] -cne $b[$k][1]))) {
       Write-Error "GUARD:requisito-esperado-invariantes cambian entre v$prev y v${v}: $k"; $rc = 1
     }
   }
@@ -557,7 +569,11 @@ rm -rf "$t"; exit $rc
 # Entradas: $contrato
 $rc = 0
 $doc = Get-Content -LiteralPath $contrato
-$vs  = $doc | Select-String -Pattern '^#+ v(\d+)$' | ForEach-Object { [int]$_.Matches.Groups[1].Value } | Sort-Object
+# Case-sensitive en todo: el par POSIX localiza versiones con `grep -oE`, recorta con `awk`,
+# canoniza con `sed` y extrae los dos hashes con `grep -oE`, y ninguno admite otro casing. Con los
+# comparadores de .NET un `## V2` contaría como versión y un hash en mayúsculas cerraría contra el
+# recalculado, que es exactamente lo que esta cadena existe para detectar.
+$vs  = $doc | Select-String -Pattern '^#+ v(\d+)$' -CaseSensitive | ForEach-Object { [int]$_.Matches.Groups[1].Value } | Sort-Object
 $esp = 1
 foreach ($v in $vs) {
   if ($v -ne $esp) { Write-Error "GUARD:versiones-consecutivas se esperaba v$esp y vino v$v"; $rc = 1 }
@@ -572,24 +588,24 @@ foreach ($v in $vs) {
   # respetan: un `# comentario` dentro de un bloque de código no es un encabezado.
   $b = @(); $on = $false; $f = $false; $lv = 0
   foreach ($l in $doc) {
-    if ($l -match '^`{3}') { $f = -not $f }
-    if (-not $on -and -not $f -and $l -match "^#+ v$v$") {
+    if ($l -cmatch '^`{3}') { $f = -not $f }
+    if (-not $on -and -not $f -and $l -cmatch "^#+ v$v$") {
       $lv = $l.IndexOf(' '); $on = $true; $b += $l; continue
     }
-    if ($on -and -not $f -and $l -match '^#+ ' -and $l.IndexOf(' ') -le $lv) { break }
+    if ($on -and -not $f -and $l -cmatch '^#+ ' -and $l.IndexOf(' ') -le $lv) { break }
     if ($on) { $b += $l }
   }
   # bytes canónicos: se vacía el VALOR de hash, se recortan espacios finales y líneas en blanco
   # del final. Sin normalizar, un editor que reescriba finales de línea rompe la cadena sin que
   # nadie haya tocado el contenido.
-  $canon = $b | ForEach-Object { ($_ -replace '`hash: [^`]*`', '`hash: `') -replace '\s+$', '' }
+  $canon = $b | ForEach-Object { ($_ -creplace '`hash: [^`]*`', '`hash: `') -creplace '\s+$', '' }
   while ($canon.Count -gt 0 -and $canon[-1] -eq '') { $canon = $canon[0..($canon.Count - 2)] }
   $bytes = [Text.Encoding]::UTF8.GetBytes(($canon -join "`n") + "`n")
   $calc  = -join ([Security.Cryptography.SHA256]::Create().ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') })
-  $decl  = if ($b -join "`n" -match '`hash: ([0-9a-f]*)`')        { $Matches[1] } else { '' }
-  $prev  = if ($b -join "`n" -match '`hash_previo: ?([0-9a-f]*)`') { $Matches[1] } else { '' }
-  if ($decl -ne $calc)     { Write-Error "GUARD:cadena-hash v${v}: hash declarado $decl, recalculado $calc"; $rc = 1 }
-  if ($prev -ne $anterior) { Write-Error "GUARD:cadena-hash v${v}: hash_previo $prev, se esperaba $anterior"; $rc = 1 }
+  $decl  = if ($b -join "`n" -cmatch '`hash: ([0-9a-f]*)`')        { $Matches[1] } else { '' }
+  $prev  = if ($b -join "`n" -cmatch '`hash_previo: ?([0-9a-f]*)`') { $Matches[1] } else { '' }
+  if ($decl -cne $calc)     { Write-Error "GUARD:cadena-hash v${v}: hash declarado $decl, recalculado $calc"; $rc = 1 }
+  if ($prev -cne $anterior) { Write-Error "GUARD:cadena-hash v${v}: hash_previo $prev, se esperaba $anterior"; $rc = 1 }
   $anterior = $calc
 }
 exit $rc
@@ -658,17 +674,23 @@ rm -rf "$t"; exit $rc
 # Entradas: $contrato
 $rc = 0
 $doc = Get-Content -LiteralPath $contrato
-$n   = ($doc | Select-String -Pattern '^#+ v(\d+)$' | ForEach-Object { [int]$_.Matches.Groups[1].Value } | Measure-Object -Maximum).Maximum
+# Case-sensitive en todo salvo el `(?i)` de abajo: el par POSIX recorta con `grep`/`awk`, compara
+# los dos órdenes de ID con `cmp`, cuenta duplicados con `sort | uniq -d` y busca los cuatro campos
+# del registro con `grep -q`. Con los comparadores de .NET, `AC-1` cerraría contra `ac-1`, un
+# `Commit:` pasaría por commit válido y `not_applicable` no exigiría justificación.
+$n   = ($doc | Select-String -Pattern '^#+ v(\d+)$' -CaseSensitive | ForEach-Object { [int]$_.Matches.Groups[1].Value } | Measure-Object -Maximum).Maximum
 $vig = @(); $on = $false; $f = $false; $lv = 0
 foreach ($l in $doc) {
-  if ($l -match '^`{3}') { $f = -not $f }
-  if (-not $on -and -not $f -and $l -match "^#+ v$n$") { $lv = $l.IndexOf(' '); $on = $true; continue }
-  if ($on -and -not $f -and $l -match '^#+ ' -and $l.IndexOf(' ') -le $lv) { break }
+  if ($l -cmatch '^`{3}') { $f = -not $f }
+  if (-not $on -and -not $f -and $l -cmatch "^#+ v$n$") { $lv = $l.IndexOf(' '); $on = $true; continue }
+  if ($on -and -not $f -and $l -cmatch '^#+ ' -and $l.IndexOf(' ') -le $lv) { break }
   if ($on) { $vig += $l }
 }
-$filas = $vig | Where-Object { $_ -match '^\|' -and $_ -notmatch '^\|\s*(ID\s*\||[-: |]+\|)' }
-$regs  = $vig | Where-Object { $_ -match '^- `id: ' }
-$cab   = $vig | Where-Object { $_ -match '^\|\s*ID\s*\|' } | Select-Object -First 1
+$filas = $vig | Where-Object { $_ -cmatch '^\|' -and $_ -cnotmatch '^\|\s*(ID\s*\||[-: |]+\|)' }
+$regs  = $vig | Where-Object { $_ -cmatch '^- `id: ' }
+$cab   = $vig | Where-Object { $_ -cmatch '^\|\s*ID\s*\|' } | Select-Object -First 1
+# El `(?i)` es el ÚNICO insensible del bloque, y lo es a propósito: su par POSIX usa `grep -qiE`,
+# porque un campo puesto como columna se delata igual escrito `Commit` o `Timestamp`.
 if ($cab -match '(?i)adjudicaci|justificaci|commit|timestamp') {
   Write-Error 'GUARD:ubicacion-baseline un campo del registro está puesto como columna'; $rc = 1
 }
@@ -678,23 +700,23 @@ if ($cab -match '(?i)adjudicaci|justificaci|commit|timestamp') {
 # por bueno justo lo que este predicado existe para impedir.
 $idsTabla = @($filas | ForEach-Object { ($_ -split '\|')[1].Trim() })
 $idsReg   = @($regs  | ForEach-Object { [regex]::Match($_, '^- `id: ([^`]*)`').Groups[1].Value })
-if (Compare-Object $idsTabla $idsReg -SyncWindow 0) {
+if (Compare-Object $idsTabla $idsReg -SyncWindow 0 -CaseSensitive) {
   Write-Error "GUARD:baseline-record-parity tabla=[$($idsTabla -join ' ')] registros=[$($idsReg -join ' ')]"; $rc = 1
 }
-$dup = $idsReg | Group-Object | Where-Object Count -gt 1
+$dup = $idsReg | Group-Object -CaseSensitive | Where-Object Count -gt 1
 if ($dup) { Write-Error "GUARD:baseline-record-parity registro duplicado: $($dup.Name -join ' ')"; $rc = 1 }
 foreach ($r in $regs) {
   $id = [regex]::Match($r, '^- `id: ([^`]*)`').Groups[1].Value
-  if ($r -notmatch '`commit: [0-9a-f]+`') { Write-Error "GUARD:adjudicacion-obligatoria ${id}: sin commit"; $rc = 1 }
-  if ($r -notmatch '`timestamp: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}([+-]\d{2}:\d{2}|Z)`') {
+  if ($r -cnotmatch '`commit: [0-9a-f]+`') { Write-Error "GUARD:adjudicacion-obligatoria ${id}: sin commit"; $rc = 1 }
+  if ($r -cnotmatch '`timestamp: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}([+-]\d{2}:\d{2}|Z)`') {
     Write-Error "GUARD:adjudicacion-obligatoria ${id}: timestamp no ISO-8601"; $rc = 1
   }
-  $fila = $filas | Where-Object { ($_ -split '\|')[1].Trim() -eq $id } | Select-Object -First 1
+  $fila = $filas | Where-Object { ($_ -split '\|')[1].Trim() -ceq $id } | Select-Object -First 1
   $est  = if ($fila) { ($fila -split '\|')[6].Trim() } else { '' }
-  if ($est -eq 'GREEN_ALREADY' -and $r -notmatch '`adjudicación: already_satisfied`') {
+  if ($est -ceq 'GREEN_ALREADY' -and $r -cnotmatch '`adjudicación: already_satisfied`') {
     Write-Error "GUARD:adjudicacion-obligatoria ${id}: GREEN_ALREADY sin adjudicación already_satisfied"; $rc = 1
   }
-  if ($est -eq 'NOT_APPLICABLE' -and $r -notmatch '`justificación: [^`]') {
+  if ($est -ceq 'NOT_APPLICABLE' -and $r -cnotmatch '`justificación: [^`]') {
     Write-Error "GUARD:adjudicacion-obligatoria ${id}: NOT_APPLICABLE sin justificación"; $rc = 1
   }
 }
@@ -737,21 +759,24 @@ rm -rf "$t"; exit $rc
 # Entradas: $contrato $bitacora
 $rc = 0
 $doc = Get-Content -LiteralPath $contrato
-$n   = ($doc | Select-String -Pattern '^#+ v(\d+)$' | ForEach-Object { [int]$_.Matches.Groups[1].Value } | Measure-Object -Maximum).Maximum
+# Case-sensitive: el par POSIX localiza la versión con `grep -oE`, recorta con `awk` y busca el paso
+# con `grep -q`. Con los comparadores de .NET un `## V2` contaría como versión vigente y un
+# `paso: Congelar` daría por registrado un congelamiento que POSIX no ve.
+$n   = ($doc | Select-String -Pattern '^#+ v(\d+)$' -CaseSensitive | ForEach-Object { [int]$_.Matches.Groups[1].Value } | Measure-Object -Maximum).Maximum
 $vig = @(); $on = $false; $f = $false; $lv = 0
 foreach ($l in $doc) {
-  if ($l -match '^`{3}') { $f = -not $f }
-  if (-not $on -and -not $f -and $l -match "^#+ v$n$") { $lv = $l.IndexOf(' '); $on = $true; continue }
-  if ($on -and -not $f -and $l -match '^#+ ' -and $l.IndexOf(' ') -le $lv) { break }
+  if ($l -cmatch '^`{3}') { $f = -not $f }
+  if (-not $on -and -not $f -and $l -cmatch "^#+ v$n$") { $lv = $l.IndexOf(' '); $on = $true; continue }
+  if ($on -and -not $f -and $l -cmatch '^#+ ' -and $l.IndexOf(' ') -le $lv) { break }
   if ($on) { $vig += $l }
 }
-$filas = @($vig | Where-Object { $_ -match '^\|' -and $_ -notmatch '^\|\s*(ID\s*\||[-: |]+\|)' })
+$filas = @($vig | Where-Object { $_ -cmatch '^\|' -and $_ -cnotmatch '^\|\s*(ID\s*\||[-: |]+\|)' })
 if ($filas.Count -eq 0) { Write-Error 'GUARD:gate-contrato-congelado el work order no trae tabla'; $rc = 1 }
 foreach ($f in $filas) {
   $c = $f -split '\|'
   if ($c.Count -eq 8 -and $c[6].Trim() -eq '') { Write-Error "GUARD:gate-contrato-congelado baseline sin resolver: $($c[1].Trim())"; $rc = 1 }
 }
-if ((Get-Content -LiteralPath $bitacora) -notmatch '`paso: congelar`') {
+if ((Get-Content -LiteralPath $bitacora) -cnotmatch '`paso: congelar`') {
   Write-Error 'GUARD:gate-contrato-congelado la bitácora no registra el congelamiento'; $rc = 1
 }
 exit $rc
@@ -798,22 +823,27 @@ $rc = 0
 # semántico: caza la forma en que esta excusa se escribe, no toda excusa posible.
 $amb = 'no hay entorno|no disponible|sin acceso|no tengo|falta el|no está instalad|no se pudo instalar'
 $doc = Get-Content -LiteralPath $contrato
-$n   = ($doc | Select-String -Pattern '^#+ v(\d+)$' | ForEach-Object { [int]$_.Matches.Groups[1].Value } | Measure-Object -Maximum).Maximum
+# Case-sensitive salvo la heurística `$amb` de abajo: el par POSIX recorta con `awk`, compara el
+# estado con `$7=="BLOCKED"` y busca el paso con `grep -q`. Con los comparadores de .NET un
+# `blocked` en minúscula bloquearía un despacho que POSIX deja pasar.
+$n   = ($doc | Select-String -Pattern '^#+ v(\d+)$' -CaseSensitive | ForEach-Object { [int]$_.Matches.Groups[1].Value } | Measure-Object -Maximum).Maximum
 $vig = @(); $on = $false; $f = $false; $lv = 0
 foreach ($l in $doc) {
-  if ($l -match '^`{3}') { $f = -not $f }
-  if (-not $on -and -not $f -and $l -match "^#+ v$n$") { $lv = $l.IndexOf(' '); $on = $true; continue }
-  if ($on -and -not $f -and $l -match '^#+ ' -and $l.IndexOf(' ') -le $lv) { break }
+  if ($l -cmatch '^`{3}') { $f = -not $f }
+  if (-not $on -and -not $f -and $l -cmatch "^#+ v$n$") { $lv = $l.IndexOf(' '); $on = $true; continue }
+  if ($on -and -not $f -and $l -cmatch '^#+ ' -and $l.IndexOf(' ') -le $lv) { break }
   if ($on) { $vig += $l }
 }
-$filas    = @($vig | Where-Object { $_ -match '^\|' -and $_ -notmatch '^\|\s*(ID\s*\||[-: |]+\|)' })
-$bloqueadas = @($filas | Where-Object { ($_ -split '\|')[6].Trim() -eq 'BLOCKED' })
+$filas    = @($vig | Where-Object { $_ -cmatch '^\|' -and $_ -cnotmatch '^\|\s*(ID\s*\||[-: |]+\|)' })
+$bloqueadas = @($filas | Where-Object { ($_ -split '\|')[6].Trim() -ceq 'BLOCKED' })
 $bit = Get-Content -LiteralPath $bitacora
-if ($bloqueadas.Count -gt 0 -and ($bit -match '`paso: despachar`')) {
+if ($bloqueadas.Count -gt 0 -and ($bit -cmatch '`paso: despachar`')) {
   Write-Error "GUARD:blocked-no-despacha hay filas BLOCKED y la bitácora despacha igual: $((($bloqueadas | ForEach-Object { ($_ -split '\|')[1].Trim() })) -join ' ')"
   $rc = 1
 }
-$malJustificadas = @($vig | Where-Object { $_ -match '^- `id: ' -and $_ -match "``justificación: [^``]*($amb)" })
+# El segundo `-match` es el único insensible del bloque, y lo es a propósito: su par POSIX usa
+# `grep -iE`, porque la excusa de entorno alega lo mismo escrita en mayúsculas.
+$malJustificadas = @($vig | Where-Object { $_ -cmatch '^- `id: ' -and $_ -match "``justificación: [^``]*($amb)" })
 if ($malJustificadas.Count -gt 0) {
   Write-Error 'GUARD:blocked-no-despacha NOT_APPLICABLE justificado por el entorno'; $rc = 1
 }
@@ -870,23 +900,31 @@ $bit = Get-Content -LiteralPath $bitacora
 # reescribe cuándo pasó cada cosa. Y se exige que las dos coincidan, porque una bitácora cuyo orden
 # de líneas contradice sus propios timestamps no es evidencia de ningún orden.
 # Comparación léxica de ISO-8601: vale porque una bitácora usa un solo huso.
-function Ts($p)  { foreach ($l in $bit) { if ($l -match "``paso: $p``" -and $l -match '`timestamp: ([^`]*)`') { return $Matches[1] } }; return '' }
-function Act($p) { foreach ($l in $bit) { if ($l -match "``paso: $p``" -and $l -match '`actor: ([^`]*)`')     { return $Matches[1] } }; return '' }
+# Case-sensitive: el par POSIX localiza los pasos con `grep`, extrae con `sed -E` y compara el actor
+# con `[ = ]`. Con los comparadores de .NET un `paso: Congelar` o un actor `Conductor` pasarían por
+# los normativos, y el orden de los timestamps se comprobaría contra una lista que POSIX no ve.
+function Ts($p)  { foreach ($l in $bit) { if ($l -cmatch "``paso: $p``" -and $l -cmatch '`timestamp: ([^`]*)`') { return $Matches[1] } }; return '' }
+function Act($p) { foreach ($l in $bit) { if ($l -cmatch "``paso: $p``" -and $l -cmatch '`actor: ([^`]*)`')     { return $Matches[1] } }; return '' }
 
 foreach ($p in @('derivar-tabla', 'ejecutar-baseline')) {
   $a = Act $p
-  if ($a -ne 'conductor') { Write-Error "GUARD:conductor-deriva-y-baseline `"$p`" lo hizo `"$a`""; $rc = 1 }
+  if ($a -cne 'conductor') { Write-Error "GUARD:conductor-deriva-y-baseline `"$p`" lo hizo `"$a`""; $rc = 1 }
 }
-$ord = @($bit | ForEach-Object { if ($_ -match '`timestamp: ([^`]*)`') { $Matches[1] } })
-if (Compare-Object $ord ($ord | Sort-Object) -SyncWindow 0) {
+# El orden de referencia lo fija `[StringComparer]::Ordinal`, que es el de `sort`: `Sort-Object`
+# compara por cultura y puede ordenar distinto los `+`, `-` y `Z` de un ISO-8601.
+$ord = @($bit | ForEach-Object { if ($_ -cmatch '`timestamp: ([^`]*)`') { $Matches[1] } })
+$ordenado = [string[]]@($ord); [array]::Sort($ordenado, [StringComparer]::Ordinal)
+if (Compare-Object $ord $ordenado -SyncWindow 0 -CaseSensitive) {
   Write-Error 'GUARD:kickoff-antes-de-congelar la bitácora lista los pasos fuera del orden de sus timestamps'
   $rc = 1
 }
 $kick = Ts 'aprobar-kickoff'; $cong = Ts 'congelar'; $desp = Ts 'despachar'
-if ($kick -eq '' -or $cong -eq '' -or ([string]::Compare($kick, $cong) -gt 0)) {
+# `CompareOrdinal` y no `Compare`: el par POSIX ordena con el `\>` del shell, que compara byte a
+# byte, mientras que `[string]::Compare` de dos argumentos usa la cultura actual.
+if ($kick -eq '' -or $cong -eq '' -or ([string]::CompareOrdinal($kick, $cong) -gt 0)) {
   Write-Error 'GUARD:kickoff-antes-de-congelar el kickoff no aprobó antes de congelar'; $rc = 1
 }
-if ($desp -ne '' -and ($cong -eq '' -or ([string]::Compare($cong, $desp) -gt 0))) {
+if ($desp -ne '' -and ($cong -eq '' -or ([string]::CompareOrdinal($cong, $desp) -gt 0))) {
   Write-Error 'GUARD:congelar-antes-de-despachar se despachó sin congelar antes'; $rc = 1
 }
 exit $rc

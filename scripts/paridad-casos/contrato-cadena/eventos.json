@@ -7,7 +7,7 @@
         "digest": "sha256:d300ad3a917882ff"
       },
       "ps": {
-        "linea": 9,
+        "linea": 13,
         "digest": "sha256:79b0c8623d4ba407"
       }
     },
@@ -50,8 +50,8 @@
         "digest": "sha256:6775144fa2397f27"
       },
       "ps": {
-        "linea": 37,
-        "digest": "sha256:4998cdee4d773a58"
+        "linea": 41,
+        "digest": "sha256:1992457dc878dbb1"
       }
     },
     "posix": "^GUARD:cadena-hash v(?P<version>\\d+): hash declarado (?P<declarado>\\S*), recalculado (?P<recalculado>\\S*)$",
@@ -98,8 +98,8 @@
         "digest": "sha256:f5eca1b3e30b5340"
       },
       "ps": {
-        "linea": 38,
-        "digest": "sha256:f5e25a7b1e9efb62"
+        "linea": 42,
+        "digest": "sha256:c873864feb3dc227"
       }
     },
     "posix": "^GUARD:cadena-hash v(?P<version>\\d+): hash_previo (?P<previo>\\S*), se esperaba (?P<esperado>\\S*)$",

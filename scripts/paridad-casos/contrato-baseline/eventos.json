@@ -7,7 +7,7 @@
         "digest": "sha256:3b3b054d26d4eb43"
       },
       "ps": {
-        "linea": 19,
+        "linea": 25,
         "digest": "sha256:40e1ba290079bcd0"
       }
     },
@@ -37,7 +37,7 @@
         "digest": "sha256:a61cf947a4a4cdc8"
       },
       "ps": {
-        "linea": 28,
+        "linea": 34,
         "digest": "sha256:3a5dd0185cf12adc"
       }
     },
@@ -88,7 +88,7 @@
         "digest": "sha256:3b2aa80b65e6ec12"
       },
       "ps": {
-        "linea": 31,
+        "linea": 37,
         "digest": "sha256:32ebc3b950e2f9b9"
       }
     },
@@ -130,8 +130,8 @@
         "digest": "sha256:032292c3d7730387"
       },
       "ps": {
-        "linea": 34,
-        "digest": "sha256:bdb81e67219c210d"
+        "linea": 40,
+        "digest": "sha256:1254f55c024dcaaf"
       }
     },
     "posix": "^GUARD:adjudicacion-obligatoria (?P<id>[^:]*): sin commit$",
@@ -168,7 +168,7 @@
         "digest": "sha256:cb41e2f4e503b412"
       },
       "ps": {
-        "linea": 36,
+        "linea": 42,
         "digest": "sha256:ddd658afa282992e"
       }
     },
@@ -206,7 +206,7 @@
         "digest": "sha256:ee3fbf48e1bb8a0c"
       },
       "ps": {
-        "linea": 41,
+        "linea": 47,
         "digest": "sha256:411068241071c5ec"
       }
     },
@@ -244,7 +244,7 @@
         "digest": "sha256:20d1e059ea1d1cc1"
       },
       "ps": {
-        "linea": 44,
+        "linea": 50,
         "digest": "sha256:9f6eeace87cf5021"
       }
     },

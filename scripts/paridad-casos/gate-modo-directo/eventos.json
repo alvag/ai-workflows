@@ -7,8 +7,8 @@
         "digest": "sha256:184cf090dd240550"
       },
       "ps": {
-        "linea": 16,
-        "digest": "sha256:23b058571b3f375b"
+        "linea": 19,
+        "digest": "sha256:982f1f9c90dec4f3"
       }
     },
     "posix": "^GUARD:conductor-deriva-y-baseline \"(?P<paso>[^\"]*)\" lo hizo \"(?P<actor>[^\"]*)\"$",
@@ -50,7 +50,7 @@
         "digest": "sha256:1220253228c50796"
       },
       "ps": {
-        "linea": 20,
+        "linea": 26,
         "digest": "sha256:21c34d9173350d5a"
       }
     },
@@ -80,7 +80,7 @@
         "digest": "sha256:5809e5b9f12b10df"
       },
       "ps": {
-        "linea": 25,
+        "linea": 33,
         "digest": "sha256:16dbb8a7de1fce0f"
       }
     },
@@ -110,7 +110,7 @@
         "digest": "sha256:fc3240aa3b755762"
       },
       "ps": {
-        "linea": 28,
+        "linea": 36,
         "digest": "sha256:8c92ce35af03a981"
       }
     },
