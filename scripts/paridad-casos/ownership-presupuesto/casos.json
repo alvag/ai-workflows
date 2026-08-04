@@ -1,0 +1,118 @@
+{
+  "par": "ownership-presupuesto",
+  "clausulas": [
+    {
+      "id": "presupuesto-excedido",
+      "compara_cadenas": true,
+      "agrega": true,
+      "nota": "compara el nombre de la clase para elegir el tope, y cuenta las apariciones del checkId para contrastarlo"
+    }
+  ],
+  "casos": [
+    {
+      "nombre": "positivo",
+      "particion": "positivo",
+      "objetivo": "presupuesto-excedido",
+      "clase_esperada": "aceptacion",
+      "precondicion": "un DESIGN_GAP una sola vez: su tope es 1 y no lo excede",
+      "clausulas": {
+        "presupuesto-excedido": "valido"
+      },
+      "fixture": "positivo",
+      "entradas": {
+        "log": "{dir}/log.md",
+        "max_fix_rounds": "2"
+      }
+    },
+    {
+      "nombre": "design-gap-repetido",
+      "particion": "invalido",
+      "objetivo": "presupuesto-excedido",
+      "clase_esperada": "rechazo",
+      "precondicion": "el mismo checkId con DESIGN_GAP dos veces: su tope es 1",
+      "clausulas": {
+        "presupuesto-excedido": "invalido"
+      },
+      "fixture": "design-gap-repetido",
+      "entradas": {
+        "log": "{dir}/log.md",
+        "max_fix_rounds": "2"
+      }
+    },
+    {
+      "nombre": "clase-casing",
+      "particion": "casing",
+      "objetivo": "presupuesto-excedido",
+      "clase_esperada": "aceptacion",
+      "precondicion": "la clase va `design_gap` en minúsculas dos veces. El literal normativo NO está, así que el tope aplicable es el genérico 2 y dos apariciones no lo exceden: la cláusula queda del lado VÁLIDO. POSIX compara con awk `==` (case-sensitive) y PowerShell con `-eq` (case-insensitive), que sí lo trata como DESIGN_GAP y le pone tope 1",
+      "clausulas": {
+        "presupuesto-excedido": "valido"
+      },
+      "fixture": "clase-casing",
+      "entradas": {
+        "log": "{dir}/log.md",
+        "max_fix_rounds": "2"
+      }
+    },
+    {
+      "nombre": "vacio",
+      "particion": "vacio",
+      "objetivo": "presupuesto-excedido",
+      "clase_esperada": "aceptacion",
+      "precondicion": "no hay ninguna línea de ownership: nada que contar",
+      "clausulas": {
+        "presupuesto-excedido": "valido"
+      },
+      "fixture": "vacio",
+      "entradas": {
+        "log": "{dir}/log.md",
+        "max_fix_rounds": "2"
+      }
+    },
+    {
+      "nombre": "singleton",
+      "particion": "singleton",
+      "objetivo": "presupuesto-excedido",
+      "clase_esperada": "aceptacion",
+      "precondicion": "una sola aparición de un VERIFICATION_DEFECT, cuyo tope es 2",
+      "clausulas": {
+        "presupuesto-excedido": "valido"
+      },
+      "fixture": "singleton",
+      "entradas": {
+        "log": "{dir}/log.md",
+        "max_fix_rounds": "2"
+      }
+    },
+    {
+      "nombre": "cardinalidad-par",
+      "particion": "par",
+      "objetivo": "presupuesto-excedido",
+      "clase_esperada": "aceptacion",
+      "precondicion": "dos apariciones de un VERIFICATION_DEFECT: el tope es 2 y queda JUSTO en el límite, sin excederlo. Es el lado de adentro de la frontera",
+      "clausulas": {
+        "presupuesto-excedido": "valido"
+      },
+      "fixture": "cardinalidad-par",
+      "entradas": {
+        "log": "{dir}/log.md",
+        "max_fix_rounds": "2"
+      }
+    },
+    {
+      "nombre": "cardinalidad-impar",
+      "particion": "impar",
+      "objetivo": "presupuesto-excedido",
+      "clase_esperada": "rechazo",
+      "precondicion": "tres apariciones de un VERIFICATION_DEFECT: cruza el tope de 2. Es el lado de afuera de la misma frontera, con el `par` como control",
+      "clausulas": {
+        "presupuesto-excedido": "invalido"
+      },
+      "fixture": "cardinalidad-impar",
+      "entradas": {
+        "log": "{dir}/log.md",
+        "max_fix_rounds": "2"
+      }
+    }
+  ]
+}

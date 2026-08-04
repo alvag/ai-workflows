@@ -11,6 +11,10 @@
     "posix": "sha256:4ab5d04fe206d0bf",
     "ps": "sha256:eec969e800c73b90"
   },
+  "gate-fase-3": {
+    "posix": "sha256:7d976068b5c5aacc",
+    "ps": "sha256:6e6138c419db7797"
+  },
   "integracion-ownership": {
     "posix": "sha256:5504f452a3894da8",
     "ps": "sha256:0f59af81b0228853"
@@ -27,6 +31,14 @@
     "posix": "sha256:e438069a86ca77b8",
     "ps": "sha256:a5f78b9fe6abd718"
   },
+  "ownership-log": {
+    "posix": "sha256:4365eeaee786df83",
+    "ps": "sha256:6c1ef13224adf88d"
+  },
+  "ownership-presupuesto": {
+    "posix": "sha256:a767516058c81598",
+    "ps": "sha256:05f5a19c06160f5e"
+  },
   "paquete-versionado": {
     "posix": "sha256:24da62133bda640f",
     "ps": "sha256:aaadc54797c7f23a"
@@ -34,6 +46,10 @@
   "split-paginado": {
     "posix": "sha256:d52867a0af6b39a1",
     "ps": "sha256:834a273fbf4e298c"
+  },
+  "takeover-reglas": {
+    "posix": "sha256:09d736f757ec217a",
+    "ps": "sha256:eeb2155ddc426be4"
   },
   "verify-ejecuta": {
     "posix": "sha256:465a6474aa567589",

@@ -42,7 +42,15 @@ TIMEOUT_DEFECTO = 30
 
 # Entorno determinista: `sort` depende de LC_COLLATE y `Sort-Object` de la cultura del proceso.
 # Se declara acá y se imprime con `--entorno`; ninguna corrida lo elige sobre la marcha.
-LOCALE = {"LC_ALL": "C", "LANG": "C", "LC_COLLATE": "C", "TZ": "UTC"}
+#
+# `C.UTF-8` y no `C`: los dos dan la MISMA colación por bytes —`sort -u` sobre
+# `Beta/alpha/BETA/Alpha` devuelve los cuatro en el mismo orden—, pero `C` trata la entrada como
+# bytes sueltos y `grep -i` deja de plegar mayúsculas fuera de ASCII. Los cuerpos están escritos en
+# español y comparan contra literales con acento, así que bajo `C` una guarda que sí dispara en
+# cualquier entorno real deja de disparar, y el arnés lo reportaría como divergencia de PowerShell.
+# Medido: `grep -qiE 'no cubrió'` contra `NO CUBRIÓ` bajo `/bin/sh` da falso con `C` y verdadero
+# con `C.UTF-8`. Nadie corre estas guardas bajo `C`; medirlas ahí es medir otra cosa.
+LOCALE = {"LC_ALL": "C.UTF-8", "LANG": "C.UTF-8", "LC_COLLATE": "C.UTF-8", "TZ": "UTC"}
 ENCODING = "utf-8"
 
 RAIZ_ARNES = Path(__file__).resolve().parent.parent
@@ -210,6 +218,28 @@ class Observacion:
 
 class SinInterprete(Exception):
     pass
+
+
+def locale_usable() -> tuple[bool, str]:
+    """Comprueba POR OBSERVACIÓN que el locale declarado da semántica UTF-8, no que exista.
+
+    Fail-closed: si el plegado de mayúsculas fuera de ASCII no funciona, caer en silencio a la
+    semántica de bytes produce divergencias falsas —una guarda POSIX deja de disparar y el arnés
+    se lo atribuye a PowerShell—. Preferimos `no comprobable` a un rojo inventado.
+    """
+    entorno = dict(os.environ)
+    entorno.update(LOCALE)
+    sonda = "printf '%s' 'NO CUBRIÓ' | grep -qiE 'no cubrió' && echo SI || echo NO\n"
+    try:
+        r = subprocess.run(["/bin/sh", "-c", sonda], env=entorno, capture_output=True,
+                           timeout=60, check=False)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, f"no se pudo ejecutar la sonda de locale: {exc}"
+    if r.stdout.decode(ENCODING, "replace").strip() != "SI":
+        return False, (f"el locale declarado ({LOCALE['LC_ALL']}) no pliega mayúsculas fuera de"
+                       f" ASCII en este sistema; medir bajo semántica de bytes reportaría"
+                       f" divergencias que no existen")
+    return True, LOCALE["LC_ALL"]
 
 
 def _candidatos_pwsh() -> list[str]:
@@ -530,8 +560,13 @@ def _valor_campo(entrada: dict, campo: str, crudo: str, sabor: str) -> str:
     if spec.get("items"):
         # El payload viaja unido de formas distintas —POSIX con `\n`, PowerShell con `-join ' | '`—
         # y ese pegamento es del canal. `items` extrae las ENTIDADES del payload, que son del
-        # predicado; el casing NUNCA se toca, que es la propiedad en disputa.
-        hallados = re.findall(spec["items"], crudo)
+        # predicado; el casing NUNCA se toca, que es la propiedad en disputa. Admite un patrón por
+        # sabor cuando el pegamento difiere: extraer los items es del canal, y lo que queda adentro
+        # de cada item —incluido un prefijo que un sabor pone y el otro no— sigue comparándose.
+        items = spec["items"]
+        if isinstance(items, dict):
+            items = items[sabor]
+        hallados = re.findall(items, crudo)
         piezas = [(h if isinstance(h, str) else h[0]).strip() for h in hallados]
         piezas = [p for p in piezas if p]
     else:
@@ -888,6 +923,10 @@ def correr_caso(raiz: Path, par: Par, matriz: dict, caso: dict, catalogo: list[d
     entradas = caso.get("entradas", {})
     timeout = caso.get("timeout", TIMEOUT_DEFECTO)
 
+    ok, detalle_locale = locale_usable()
+    if not ok:
+        return ResultadoCaso(par.nombre, caso["nombre"], "no_comprobable", detalle=detalle_locale)
+
     obs: dict[str, Observacion] = {}
     for sabor in orden:
         cuerpo = par.cuerpo_posix if sabor == "posix" else par.cuerpo_ps
@@ -948,6 +987,8 @@ def cmd_entorno(raiz: Path) -> int:
     print(f"shell POSIX           : /bin/sh")
     print(f"timeout por caso      : {TIMEOUT_DEFECTO}s")
     print(f"locale                : {', '.join(f'{k}={v}' for k, v in LOCALE.items())}")
+    ok, detalle = locale_usable()
+    print(f"sonda de locale       : {'ok — pliega fuera de ASCII' if ok else 'FALLA — ' + detalle}")
     print(f"encoding              : {ENCODING}")
     print(f"raíz                  : {raiz}")
     return 0

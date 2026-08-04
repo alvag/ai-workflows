@@ -1,0 +1,80 @@
+[
+  {
+    "id": "gate-apertura-ausente",
+    "sitio": {
+      "posix": {
+        "linea": 6,
+        "digest": "sha256:f6e6373a1b8dddc8"
+      },
+      "ps": {
+        "linea": 6,
+        "digest": "sha256:8e0ba53725378191"
+      }
+    },
+    "posix": "^GUARD:gate-fase-3 la Fase 3 no tiene gate de apertura$",
+    "ps": "^GUARD:gate-fase-3 la Fase 3 no tiene gate de apertura$",
+    "campos": {},
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:gate-fase-3 la Fase 3 no tiene gate de apertura",
+        "campos": {}
+      },
+      "ps": {
+        "texto": "GUARD:gate-fase-3 la Fase 3 no tiene gate de apertura",
+        "campos": {}
+      }
+    }
+  },
+  {
+    "id": "no-exige-congelar",
+    "sitio": {
+      "posix": {
+        "linea": 8,
+        "digest": "sha256:0e67f47334fb8450"
+      },
+      "ps": {
+        "linea": 7,
+        "digest": "sha256:78f71e616d550264"
+      }
+    },
+    "posix": "^GUARD:gate-fase-3 el gate no exige congelar antes de ejecutar$",
+    "ps": "^GUARD:gate-fase-3 el gate no exige congelar antes de ejecutar$",
+    "campos": {},
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:gate-fase-3 el gate no exige congelar antes de ejecutar",
+        "campos": {}
+      },
+      "ps": {
+        "texto": "GUARD:gate-fase-3 el gate no exige congelar antes de ejecutar",
+        "campos": {}
+      }
+    }
+  },
+  {
+    "id": "agregacion-no-declara",
+    "sitio": {
+      "posix": {
+        "linea": 10,
+        "digest": "sha256:04c90ec5e8b82510"
+      },
+      "ps": {
+        "linea": 8,
+        "digest": "sha256:ce2dc4273b70e30c"
+      }
+    },
+    "posix": "^GUARD:gate-fase-3 la agregacion no declara que una fila ausente impide el verde$",
+    "ps": "^GUARD:gate-fase-3 la agregacion no declara que una fila ausente impide el verde$",
+    "campos": {},
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:gate-fase-3 la agregacion no declara que una fila ausente impide el verde",
+        "campos": {}
+      },
+      "ps": {
+        "texto": "GUARD:gate-fase-3 la agregacion no declara que una fila ausente impide el verde",
+        "campos": {}
+      }
+    }
+  }
+]

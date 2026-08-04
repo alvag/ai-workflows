@@ -1,0 +1,239 @@
+[
+  {
+    "id": "clase-invalida",
+    "sitio": {
+      "posix": {
+        "linea": 22,
+        "digest": "sha256:454ead0c120be57b"
+      },
+      "ps": {
+        "linea": 23,
+        "digest": "sha256:8322d5f82a9378b0"
+      }
+    },
+    "posix": "^GUARD:log-clasificacion (?P<check>[^:]*): clase inválida \"(?P<clase>[^\"]*)\"$",
+    "ps": "^GUARD:log-clasificacion (?P<check>[^:]*): clase inválida \"(?P<clase>[^\"]*)\"$",
+    "campos": {
+      "check": {
+        "tipo": "texto"
+      },
+      "clase": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:log-clasificacion CENTINELA: clase inválida \"BOGUS\"",
+        "campos": {
+          "check": "CENTINELA",
+          "clase": "BOGUS"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:log-clasificacion CENTINELA: clase inválida \"BOGUS\"",
+        "campos": {
+          "check": "CENTINELA",
+          "clase": "BOGUS"
+        }
+      }
+    }
+  },
+  {
+    "id": "sin-evidencia",
+    "sitio": {
+      "posix": {
+        "linea": 25,
+        "digest": "sha256:c446dde87c835eaf"
+      },
+      "ps": {
+        "linea": 25,
+        "digest": "sha256:ae81402c756a6adf"
+      }
+    },
+    "posix": "^GUARD:log-clasificacion (?P<check>[^:]*): sin evidencia$",
+    "ps": "^GUARD:log-clasificacion (?P<check>[^:]*): sin evidencia$",
+    "campos": {
+      "check": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:log-clasificacion CENTINELA: sin evidencia",
+        "campos": {
+          "check": "CENTINELA"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:log-clasificacion CENTINELA: sin evidencia",
+        "campos": {
+          "check": "CENTINELA"
+        }
+      }
+    }
+  },
+  {
+    "id": "consumed-round-incoherente",
+    "sitio": {
+      "posix": {
+        "linea": 28,
+        "digest": "sha256:a62bd75537b08ea7"
+      },
+      "ps": {
+        "linea": 27,
+        "digest": "sha256:fb8f79084f2e4dd7"
+      }
+    },
+    "posix": "^GUARD:log-clasificacion (?P<check>[^:]*): consumedRound=\"(?P<cr>[^\"]*)\" y la clase (?P<clase>\\S+) exige \"(?P<esp>[^\"]*)\"$",
+    "ps": "^GUARD:log-clasificacion (?P<check>[^:]*): consumedRound=\"(?P<cr>[^\"]*)\" y la clase (?P<clase>\\S+) exige \"(?P<esp>[^\"]*)\"$",
+    "campos": {
+      "check": {
+        "tipo": "texto"
+      },
+      "cr": {
+        "tipo": "texto"
+      },
+      "clase": {
+        "tipo": "texto"
+      },
+      "esp": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:log-clasificacion CENTINELA: consumedRound=\"no\" y la clase IMPLEMENTATION_DEFECT exige \"sí\"",
+        "campos": {
+          "check": "CENTINELA",
+          "cr": "no",
+          "clase": "IMPLEMENTATION_DEFECT",
+          "esp": "sí"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:log-clasificacion CENTINELA: consumedRound=\"no\" y la clase IMPLEMENTATION_DEFECT exige \"sí\"",
+        "campos": {
+          "check": "CENTINELA",
+          "cr": "no",
+          "clase": "IMPLEMENTATION_DEFECT",
+          "esp": "sí"
+        }
+      }
+    }
+  },
+  {
+    "id": "delta-una-ronda",
+    "sitio": {
+      "posix": {
+        "linea": 36,
+        "digest": "sha256:ab5739919575a02d"
+      },
+      "ps": {
+        "linea": 43,
+        "digest": "sha256:11cb3d535f9fb6a7"
+      }
+    },
+    "posix": "(?s)^GUARD:delta-una-ronda hay deltas repartidos entre rondas:\\n(?P<deltas>.*)$",
+    "ps": "^GUARD:delta-una-ronda (?P<deltas>.*)$",
+    "campos": {
+      "deltas": {
+        "tipo": "conjunto",
+        "items": {
+          "posix": "\\s*([^\\n]+?)\\s*(?=\\n|$)",
+          "ps": "\\s*([^|]+?)\\s*(?=\\||$)"
+        }
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:delta-una-ronda hay deltas repartidos entre rondas:\n  CENTINELA en 2 rondas",
+        "campos": {
+          "deltas": [
+            "CENTINELA en 2 rondas"
+          ]
+        }
+      },
+      "ps": {
+        "texto": "GUARD:delta-una-ronda CENTINELA en 2 rondas",
+        "campos": {
+          "deltas": [
+            "CENTINELA en 2 rondas"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": "razon-ausente",
+    "sitio": {
+      "posix": {
+        "linea": 44,
+        "digest": "sha256:3d2abbd3882f0747"
+      },
+      "ps": {
+        "linea": 36,
+        "digest": "sha256:a6db2c539d1004e3"
+      }
+    },
+    "posix": "^GUARD:razon-falsable (?P<check>[^:]*): aparición (?P<n>\\d+) sin razón registrada$",
+    "ps": "^GUARD:razon-falsable (?P<check>[^:]*): aparición (?P<n>\\d+) sin razón registrada$",
+    "campos": {
+      "check": {
+        "tipo": "texto"
+      },
+      "n": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:razon-falsable CENTINELA: aparición 2 sin razón registrada",
+        "campos": {
+          "check": "CENTINELA",
+          "n": "2"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:razon-falsable CENTINELA: aparición 2 sin razón registrada",
+        "campos": {
+          "check": "CENTINELA",
+          "n": "2"
+        }
+      }
+    }
+  },
+  {
+    "id": "razon-no-falsable",
+    "sitio": {
+      "posix": {
+        "linea": 47,
+        "digest": "sha256:e9c38a51c53a9561"
+      },
+      "ps": {
+        "linea": 38,
+        "digest": "sha256:33444b74ee17c1de"
+      }
+    },
+    "posix": "^GUARD:razon-falsable (?P<check>[^:]*): la razón no nombra un observable que la refute$",
+    "ps": "^GUARD:razon-falsable (?P<check>[^:]*): la razón no nombra un observable que la refute$",
+    "campos": {
+      "check": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:razon-falsable CENTINELA: la razón no nombra un observable que la refute",
+        "campos": {
+          "check": "CENTINELA"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:razon-falsable CENTINELA: la razón no nombra un observable que la refute",
+        "campos": {
+          "check": "CENTINELA"
+        }
+      }
+    }
+  }
+]
