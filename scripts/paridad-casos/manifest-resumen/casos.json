@@ -1,0 +1,173 @@
+{
+  "par": "manifest-resumen",
+  "clausulas": [
+    {
+      "id": "obs:total-leido",
+      "tipo": "observable",
+      "agrega": true
+    },
+    {
+      "id": "obs:agrupacion",
+      "tipo": "observable",
+      "compara_cadenas": true
+    },
+    {
+      "id": "obs:degradadas",
+      "tipo": "observable",
+      "agrega": true
+    },
+    {
+      "id": "obs:mediana",
+      "tipo": "observable",
+      "agrega": true
+    }
+  ],
+  "casos": [
+    {
+      "nombre": "positivo",
+      "particion": "positivo",
+      "clase_esperada": "aceptacion",
+      "objetivos": [
+        "obs:total-leido",
+        "obs:agrupacion",
+        "obs:degradadas",
+        "obs:mediana"
+      ],
+      "precondicion": "dos corridas de una skill, una degradada, con duraciones iguales",
+      "clausulas": {
+        "obs:total-leido": "valido",
+        "obs:agrupacion": "valido",
+        "obs:degradadas": "valido",
+        "obs:mediana": "valido"
+      },
+      "fixture": "positivo",
+      "entradas": {
+        "runs": "{dir}/runs"
+      }
+    },
+    {
+      "nombre": "vacio",
+      "particion": "vacio",
+      "objetivos": [
+        "obs:total-leido",
+        "obs:degradadas",
+        "obs:mediana"
+      ],
+      "clase_esperada": "aceptacion",
+      "precondicion": "el directorio existe y no tiene ningún .json: el corte temprano se toma antes de agregar nada",
+      "clausulas": {
+        "obs:total-leido": "valido",
+        "obs:agrupacion": "valido",
+        "obs:degradadas": "valido",
+        "obs:mediana": "valido"
+      },
+      "fixture": "vacio",
+      "entradas": {
+        "runs": "{dir}/runs"
+      }
+    },
+    {
+      "nombre": "singleton",
+      "particion": "singleton",
+      "objetivos": [
+        "obs:total-leido",
+        "obs:degradadas",
+        "obs:mediana"
+      ],
+      "clase_esperada": "aceptacion",
+      "precondicion": "una sola corrida: la mediana es su propia duración",
+      "clausulas": {
+        "obs:total-leido": "valido",
+        "obs:agrupacion": "valido",
+        "obs:degradadas": "valido",
+        "obs:mediana": "valido"
+      },
+      "fixture": "singleton",
+      "entradas": {
+        "runs": "{dir}/runs"
+      }
+    },
+    {
+      "nombre": "cardinalidad-par",
+      "particion": "par",
+      "objetivos": [
+        "obs:total-leido",
+        "obs:degradadas",
+        "obs:mediana"
+      ],
+      "clase_esperada": "aceptacion",
+      "precondicion": "DOS corridas con duraciones 1 y 9: es la cardinalidad par, donde el índice medio cae en .5. POSIX usa `awk int((NR+1)/2)`, que TRUNCA a 1 → mediana 1; PowerShell usa `[int](($n+1)/2)`, que aplica redondeo bancario (`[int]1.5 = 2`) → mediana 9. El casing no ejercita esta familia",
+      "clausulas": {
+        "obs:total-leido": "valido",
+        "obs:agrupacion": "valido",
+        "obs:degradadas": "valido",
+        "obs:mediana": "valido"
+      },
+      "fixture": "cardinalidad-par",
+      "entradas": {
+        "runs": "{dir}/runs"
+      }
+    },
+    {
+      "nombre": "cardinalidad-impar",
+      "particion": "impar",
+      "objetivos": [
+        "obs:total-leido",
+        "obs:degradadas",
+        "obs:mediana"
+      ],
+      "clase_esperada": "aceptacion",
+      "precondicion": "TRES corridas con duraciones 1, 5 y 9: el índice medio es entero y los dos sabores lo resuelven igual — control de que la divergencia del caso par es del redondeo y no de la fórmula entera",
+      "clausulas": {
+        "obs:total-leido": "valido",
+        "obs:agrupacion": "valido",
+        "obs:degradadas": "valido",
+        "obs:mediana": "valido"
+      },
+      "fixture": "cardinalidad-impar",
+      "entradas": {
+        "runs": "{dir}/runs"
+      }
+    },
+    {
+      "nombre": "agrupacion-case",
+      "particion": "casing",
+      "objetivo": "obs:agrupacion",
+      "clase_esperada": "aceptacion",
+      "precondicion": "dos corridas con skill `cross-review` y `Cross-Review`. POSIX agrupa con `sort -u` (case-sensitive) → dos grupos; PowerShell con `Group-Object` (case-insensitive) → uno. Sin eventos, sin artefactos y exit 0 en los dos: la divergencia solo puede gobernarla la dimensión stdout",
+      "clausulas": {
+        "obs:total-leido": "valido",
+        "obs:agrupacion": "invalido",
+        "obs:degradadas": "valido",
+        "obs:mediana": "valido"
+      },
+      "fixture": "agrupacion-case",
+      "entradas": {
+        "runs": "{dir}/runs"
+      }
+    },
+    {
+      "nombre": "skill-vacia",
+      "particion": "invalido",
+      "objetivo": "obs:agrupacion",
+      "clase_esperada": "aceptacion",
+      "precondicion": "una corrida sin skill: el grupo anónimo se saltea en los dos sabores",
+      "clausulas": {
+        "obs:total-leido": "valido",
+        "obs:agrupacion": "invalido",
+        "obs:degradadas": "valido",
+        "obs:mediana": "valido"
+      },
+      "fixture": "skill-vacia",
+      "entradas": {
+        "runs": "{dir}/runs"
+      }
+    }
+  ],
+  "observables": {
+    "obs:total-leido": "la línea `corridas leídas: N`, que distingue un directorio vacío de un filtro que no matcheó",
+    "obs:agrupacion": "una línea por skill, ordenada por nombre",
+    "obs:degradadas": "el conteo de corridas con degradation distinta de `none`",
+    "obs:mediana": "la duración mediana por skill"
+  }
+}

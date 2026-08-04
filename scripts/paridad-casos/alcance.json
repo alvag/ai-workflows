@@ -1,0 +1,35 @@
+{
+  "_nota": "Todo par del inventario tiene que estar acá: cubierto o declarado sin matriz. Un par que no figure en ninguna de las dos listas pone la auditoría en rojo — es la forma de que un recorte de alcance no pueda pasar como cobertura.",
+  "cubiertos": [
+    "cobertura-ac-fila",
+    "contrato-cobertura",
+    "contrato-invariantes",
+    "integracion-ownership",
+    "manifest-resumen",
+    "manifest-valido",
+    "materializacion-contrato",
+    "paquete-versionado",
+    "split-paginado",
+    "verify-ejecuta"
+  ],
+  "declarados_sin_matriz": {
+    "rebaseline-worktree": "fuera de alcance por decisión de la spec: opera sobre worktrees de Git que crea y destruye, y probarlo exigiría que el arnés levante repositorios desechables",
+    "clarificacion-completa": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
+    "contrato-baseline": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
+    "contrato-cadena": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
+    "contrato-esquema": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
+    "cuarto-estado-consumidores": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
+    "gate-blocked": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
+    "gate-congelado": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
+    "gate-fase-3": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
+    "gate-modo-directo": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
+    "identidades-reintento": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
+    "metaindice": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
+    "ownership-log": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
+    "ownership-presupuesto": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
+    "recovery-bloquea": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
+    "resolver-antes-de-preguntar": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
+    "takeover-reglas": "recorte de alcance declarado de la v1: sin matriz, no comprobado",
+    "validador-paginado": "recorte de alcance declarado de la v1: sin matriz, no comprobado"
+  }
+}

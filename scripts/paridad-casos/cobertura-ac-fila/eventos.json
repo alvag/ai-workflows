@@ -1,0 +1,80 @@
+[
+  {
+    "id": "ac-sin-fila",
+    "sitio": {
+      "posix": {
+        "linea": 9,
+        "digest": "sha256:32165b8f48716b1e"
+      },
+      "ps": {
+        "linea": 11,
+        "digest": "sha256:b9ec44b64e81ea3a"
+      }
+    },
+    "posix": "^GUARD:cobertura-ac-fila AC sin fila: (?P<entidades>.*?) ?$",
+    "ps": "^GUARD:cobertura-ac-fila AC sin fila: (?P<entidades>.*)$",
+    "campos": {
+      "entidades": {
+        "tipo": "conjunto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:cobertura-ac-fila AC sin fila: CENTINELA-A CENTINELA-B",
+        "campos": {
+          "entidades": [
+            "CENTINELA-A",
+            "CENTINELA-B"
+          ]
+        }
+      },
+      "ps": {
+        "texto": "GUARD:cobertura-ac-fila AC sin fila: CENTINELA-A CENTINELA-B",
+        "campos": {
+          "entidades": [
+            "CENTINELA-A",
+            "CENTINELA-B"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": "fila-sin-ac",
+    "sitio": {
+      "posix": {
+        "linea": 11,
+        "digest": "sha256:8f4e11bc1f45a55f"
+      },
+      "ps": {
+        "linea": 13,
+        "digest": "sha256:a3dccc031ccb576c"
+      }
+    },
+    "posix": "^GUARD:cobertura-ac-fila fila sin AC declarado: (?P<entidades>.*?) ?$",
+    "ps": "^GUARD:cobertura-ac-fila fila sin AC declarado: (?P<entidades>.*)$",
+    "campos": {
+      "entidades": {
+        "tipo": "conjunto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:cobertura-ac-fila fila sin AC declarado: CENTINELA-Z",
+        "campos": {
+          "entidades": [
+            "CENTINELA-Z"
+          ]
+        }
+      },
+      "ps": {
+        "texto": "GUARD:cobertura-ac-fila fila sin AC declarado: CENTINELA-Z",
+        "campos": {
+          "entidades": [
+            "CENTINELA-Z"
+          ]
+        }
+      }
+    }
+  }
+]

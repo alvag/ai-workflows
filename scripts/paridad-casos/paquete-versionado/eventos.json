@@ -1,0 +1,75 @@
+[
+  {
+    "id": "paquete-inmutable",
+    "sitio": {
+      "posix": {
+        "linea": 10,
+        "digest": "sha256:19f1fd93dd0f59fc"
+      },
+      "ps": {
+        "linea": 8,
+        "digest": "sha256:738ac40333dd36b7"
+      }
+    },
+    "posix": "^GUARD:paquete-inmutable el paquete entregado cambió \\((?P<actual>\\S+) ≠ (?P<esperado>\\S+)\\)$",
+    "ps": "^GUARD:paquete-inmutable el paquete entregado cambió \\((?P<actual>\\S+) ≠ (?P<esperado>\\S+)\\)$",
+    "campos": {
+      "actual": {
+        "tipo": "texto"
+      },
+      "esperado": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:paquete-inmutable el paquete entregado cambió (CENTINELA1 ≠ CENTINELA2)",
+        "campos": {
+          "actual": "CENTINELA1",
+          "esperado": "CENTINELA2"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:paquete-inmutable el paquete entregado cambió (CENTINELA1 ≠ CENTINELA2)",
+        "campos": {
+          "actual": "CENTINELA1",
+          "esperado": "CENTINELA2"
+        }
+      }
+    }
+  },
+  {
+    "id": "truncado-alcanza-versiones",
+    "sitio": {
+      "posix": {
+        "linea": 18,
+        "digest": "sha256:2d0be28e9afdcbe1"
+      },
+      "ps": {
+        "linea": 12,
+        "digest": "sha256:ddfce75967cf7dca"
+      }
+    },
+    "posix": "^GUARD:truncado-alcanza-versiones sobrevivieron (?P<cuantas>\\d+) versiones al redespacho$",
+    "ps": "^GUARD:truncado-alcanza-versiones sobrevivieron (?P<cuantas>\\d+) versiones al redespacho$",
+    "campos": {
+      "cuantas": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:truncado-alcanza-versiones sobrevivieron 3 versiones al redespacho",
+        "campos": {
+          "cuantas": "3"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:truncado-alcanza-versiones sobrevivieron 3 versiones al redespacho",
+        "campos": {
+          "cuantas": "3"
+        }
+      }
+    }
+  }
+]

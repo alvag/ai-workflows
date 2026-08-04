@@ -1,0 +1,42 @@
+{
+  "cobertura-ac-fila": {
+    "posix": "sha256:0297c22811b7d6dc",
+    "ps": "sha256:311b12769506791f"
+  },
+  "contrato-cobertura": {
+    "posix": "sha256:0be415d3ef3891e7",
+    "ps": "sha256:acf052e8c3de6dca"
+  },
+  "contrato-invariantes": {
+    "posix": "sha256:4ab5d04fe206d0bf",
+    "ps": "sha256:eec969e800c73b90"
+  },
+  "integracion-ownership": {
+    "posix": "sha256:5504f452a3894da8",
+    "ps": "sha256:0f59af81b0228853"
+  },
+  "manifest-resumen": {
+    "posix": "sha256:61ed6398cb102f70",
+    "ps": "sha256:92c9371dff19423f"
+  },
+  "manifest-valido": {
+    "posix": "sha256:207216c678ed8d41",
+    "ps": "sha256:a529983aa9aa10a4"
+  },
+  "materializacion-contrato": {
+    "posix": "sha256:e438069a86ca77b8",
+    "ps": "sha256:a5f78b9fe6abd718"
+  },
+  "paquete-versionado": {
+    "posix": "sha256:24da62133bda640f",
+    "ps": "sha256:aaadc54797c7f23a"
+  },
+  "split-paginado": {
+    "posix": "sha256:6ee464bc2242aba2",
+    "ps": "sha256:834a273fbf4e298c"
+  },
+  "verify-ejecuta": {
+    "posix": "sha256:465a6474aa567589",
+    "ps": "sha256:ba7aaa7bcaf49788"
+  }
+}
