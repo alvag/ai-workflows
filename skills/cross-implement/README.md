@@ -75,6 +75,12 @@ la delegación ocurra hace falta el CLI de la otra familia:
   `--permission-mode default` + `Edit(./**),Write(./**)` — nunca `acceptEdits`, que escribe fuera
   del working dir; ver `reference.md` → "Matriz de verificación").
 
+**Transporte alternativo por panes (opcional).** Si el entorno lo permite, el implementador puede
+alojarse en un pane de un multiplexor de terminales en vez de lanzarse headless por CLI. Sustituye el
+transporte, no la semántica —sigue siendo de la otra familia, con escritura acotada, y el conductor
+sigue revisando el diff—, y si la capacidad no está la vía no se intenta: la corrida sigue por el
+transporte CLI vigente con un aviso de una línea. Detalle en `transporte-herdr.md`.
+
 `cross-review` recomendada (no obligatoria): aporta el algoritmo canónico de descubrimiento
 por familia y la sección de portabilidad de shells que esta skill referencia.
 

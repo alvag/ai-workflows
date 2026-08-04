@@ -107,6 +107,11 @@ hace falta un **segundo modelo de otra familia que el autor** (el agente que con
 - Autor Claude → Codex, vía `codex exec -s read-only` en el PATH.
 - Autor GPT/Codex → Claude, vía `claude -p --allowedTools=Read,Grep,Glob` en el PATH.
 
+**Transporte alternativo por panes (opcional).** Si el entorno lo permite, los dos workers pueden
+alojarse en panes de un multiplexor de terminales en vez de lanzarse headless por CLI. Sustituye el
+transporte, no la semántica, y si la capacidad no está la vía no se intenta: la corrida sigue por el
+transporte CLI vigente con un aviso de una línea. Detalle en `transporte-herdr.md`.
+
 **`cross-review` recomendada (no obligatoria).** Si está instalada en el entorno, aporta el
 algoritmo canónico de descubrimiento del revisor (`cross-review/reference.md` → "Descubrir el
 revisor") y consume el informe de esta skill como contexto persistente para su propia crítica

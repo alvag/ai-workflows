@@ -1,7 +1,7 @@
 <!-- prompt `review` · lo despacha `cross-review` · formato: xml
      placeholders: {artifact_type}, {complexity}, {working_dir}
      ESTE ARCHIVO ES LA ENTRADA EXACTA DEL WORKER: lo que no esté acá no existe para él.
-     Se escribe a archivo y llega por stdin; no se arma inline. -->
+     Se escribe a archivo y nunca se arma inline; cómo llega al worker lo fija el transporte. -->
 
 <task>
 Eres un revisor adversarial independiente. Critica el siguiente artefacto de Spec-Driven

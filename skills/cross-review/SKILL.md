@@ -37,8 +37,12 @@ artefacto escrito ──► [cross-review] ──► artefacto (quizá revisado)
 
 ## Reglas no negociables
 
-1. **Read-only.** El revisor nunca escribe en el repo. Se invoca en modo read-only (sin `--write`).
-   Quien edita el artefacto —si hay algo que aplicar— es Claude, no el revisor.
+1. **Read-only por contrato.** Garantizado: el **comportamiento read-only** — el prompt le prohíbe
+   escribir y modificar, y la única salida permitida del revisor es su veredicto en el scratch de la
+   corrida. **No** garantizado: el **aislamiento** por permisos — por CLI se lo invoca sin permiso
+   de escritura y el veredicto lo captura el conductor, pero en la vía de panes lo escribe él mismo
+   y el perfil que lo habilita le abre todo el working dir (`transporte-herdr.md` → "Perfil de
+   permisos"). Quien edita el artefacto —si hay algo que aplicar— es Claude, no el revisor.
 2. **Loop acotado.** Máximo `max_rounds` rondas (default 3). Termina por veredicto `APPROVED` o
    por agotar las rondas. Nunca un loop abierto.
 3. **Claude/el usuario son el árbitro final — sin sycophancy.** Los findings del revisor son
@@ -193,6 +197,9 @@ Antes de nada, resolver si hay un segundo modelo disponible (algoritmo y opcione
 Devolver a la skill llamadora (o presentar, en modo directo):
 
 - **Veredicto final:** `APPROVED` | `REVISE (rondas agotadas, N disputas abiertas)` | `UNAVAILABLE`.
+  El `UNAVAILABLE` va con su **causa** —`confirmed_wall` · `launch_flake` · `runtime_failure` ·
+  `deadline_exceeded`—: son causas del enum compartido, no veredictos nuevos (`reference.md` →
+  "Latencia y timeout (Claude revisor)").
 - **Resumen de la crítica:** qué marcó el revisor, qué aplicó Claude y qué rechazó (con el porqué).
 - **Diff del artefacto** si hubo cambios.
 - **Ruta del `review-log.md`.**
@@ -212,7 +219,8 @@ extra). El humano aprueba con la segunda opinión ya a la vista.
 Además, al resolver el veredicto se escribe el **manifest de corrida** — los tres veredictos, no
 solo `APPROVED`: una serie que registra las revisiones que convergieron y omite las que agotaron
 rondas o nunca encontraron revisor no puede decir si esta capacidad rinde. Esquema y vocabulario en
-`reference.md` → "Manifest de corrida".
+`reference.md` → "Manifest de corrida". Su `degradation` admite además `transport_fallback`, que es
+causa de la **corrida** y no del veredicto: se registra incluso con un `APPROVED`.
 
 ## Degradación (nunca bloquea el flujo SDD)
 
@@ -230,8 +238,20 @@ Tres modos de falla, todos terminan en el gate humano de siempre con un aviso de
    o respuesta no parseable) → registrar el fallo en `review-log.md`, cortar el loop (y matar el
    proceso en background si lo hubo) y devolver `UNAVAILABLE` con lo que haya. **Nunca quedar
    esperando indefinida** — todos los caminos tienen tope duro (ver `reference.md` → "Latencia y timeout (Claude revisor)").
+   Son dos **causas**, no dos veredictos: `runtime_failure` para el error de ejecución o la respuesta
+   ilegible, y `deadline_exceeded` cuando venció el tope de pared sin `VERDICT:`. El revisor arrancó
+   bien y el corte lo puso el conductor, así que registrarlo como `runtime_failure` sugiere una falla
+   de infraestructura que no ocurrió — y esconde que la palanca es el presupuesto.
 3. **Config la desactiva** (`cross_review.mode: off`, o complejidad por debajo del umbral) → ni
    se intenta; la llamadora va directo al gate.
+
+**`transport_fallback` no es uno de esos modos: es una causa, y la revisión sí ocurre.** Se registra
+cuando la intención se resolvió a la vía de panes y el transporte efectivo fue el CLI —**por
+resultado**, sin importar si cayó en el preflight de capacidad o en el lanzamiento—, de modo que esa
+corrida no quede indistinguible de una CLI intencional. `transport` guarda la vía que efectivamente
+corrió y la causa raíz concreta va al log de la skill. **Excepción:** con el intento en resultado
+incierto **no hay fallback** hasta resolver el recovery. Las cinco reglas, en `reference.md` →
+"Latencia y timeout (Claude revisor)".
 
 > La cuarta forma de degradación —**que esta skill ni siquiera esté instalada**— la maneja la
 > skill llamadora: `sdd-flow`/`sdd-orchestrator` chequean si `cross-review` está disponible
@@ -245,7 +265,7 @@ orquestación (sdd-orchestrator). Todas opcionales:
 
 ```yaml
 cross_review:
-  mode: auto            # auto (por complejidad) | on | off
+  mode: auto            # auto (por complejidad) | "on" | "off"  (entre comillas: sin ellas YAML los parsea como booleanos)
   execution: auto       # auto (por capacidad del conductor) | sync | background
   artifacts: [spec, plan, tasks]   # qué tipos revisar (sdd-orchestrator: [master-spec, reparto])
   max_rounds: 3
@@ -281,6 +301,10 @@ nunca espera indefinida (ver `reference.md` → "Latencia y timeout (Claude revi
   read-only / resume entre rondas), **portabilidad entre shells (POSIX / PowerShell)**, plantilla
   del prompt, formato de salida, plantilla del `review-log.md`, y el foco de revisión por tipo de
   artefacto.
+- `transporte-herdr.md` — el adaptador del transporte por panes: activación, perfil de permisos,
+  entradas y salidas, independencia, deadline, continuidad entre rondas, validación del artefacto y
+  cleanup. Se lee **solo cuando la activación del flujo resolvió a esa vía**; con el transporte CLI
+  vigente no se carga.
 - `README.md` — qué es, cuándo usarla, requisitos e instalación.
 
 ## Atribución

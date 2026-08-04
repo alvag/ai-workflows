@@ -9,6 +9,7 @@ Detalle operativo de la skill `sdd-flow`. El `SKILL.md` apunta acá cuando neces
 - [Aprobación externa de la spec (Jira)](#aprobación-externa-de-la-spec-jira)
 - [Detección de stack y comandos](#detección-de-stack-y-comandos)
 - [Esquema de `.specify/config.yml`](#esquema-de-specifyconfigyml)
+- [Transporte de las corridas delegadas](#transporte-de-las-corridas-delegadas)
 - [Contexto de dominio](#contexto-de-dominio)
 - [Doctor read-only](#doctor-read-only)
 - [Qué escribe `init`](#qué-escribe-init)
@@ -230,7 +231,7 @@ inventado.
 
 ## Esquema de `.specify/config.yml`
 
-Todos los campos son opcionales; lo que falte se autodetecta. **No se trackea**: igual que el resto de `.specify/` y `.plans/`, es local (el ignore local lo gestiona el usuario, p. ej. vía `.git/info/exclude`).
+Todos los campos son opcionales salvo una excepción (`cross_model.schema_version`, obligatorio si el bloque `cross_model` existe); lo que falte se autodetecta. **No se trackea**: igual que el resto de `.specify/` y `.plans/`, es local (el ignore local lo gestiona el usuario, p. ej. vía `.git/info/exclude`).
 
 ```yaml
 # .specify/config.yml — overrides de adaptación para sdd-flow
@@ -246,31 +247,14 @@ tracker: jira                    # jira | github | gitlab | linear | none
 test_scope_hint: "vitest run {name}"      # plantilla de COMANDO para acotar tests; {name} = archivo/patrón
 cross_model:                     # políticas comunes a las skills cross-model (opcional)
   schema_version: 1              # obligatorio si el bloque existe; una versión desconocida se ignora entera con aviso, nunca se interpreta a medias
+  transport: cli                 # cli (default) | herdr — dónde se aloja cada corrida delegada: el transporte CLI vigente o un pane del multiplexor de terminales. Es la INTENCIÓN del proyecto: hace falta junto con la capacidad, nunca en su lugar. Ver "Transporte de las corridas delegadas"
   manifest:                      # registro por corrida de las skills cross-model, para decidir con datos si la capacidad rinde
     mode: "on"                   # "on" (default) | "off"  (entre comillas: sin ellas YAML los parsea como booleanos). Política del ECOSISTEMA: las tres skills escriben el mismo registro; apagarlo para una sola dejaría huecos sistemáticos. Ver `cross-review/reference.md` → "Manifest de corrida"
-cross_review:                    # segunda opinión cross-model EN LOS GATES (opcional; ver skill cross-review)
-  mode: auto                     # auto (por complejidad) | "on" | "off"  (on/off entre comillas: sin ellas YAML los parsea como booleanos)
-  execution: auto                # auto | sync | background — cómo corre la revisión (se hereda a cross-review)
-  artifacts: [spec, plan, tasks] # qué artefactos revisar
-  max_rounds: 3
-  reviewer: auto                 # auto (descubre por capacidad; nunca la familia del autor) | claude | codex
-co_explore:                      # exploración paralela cross-model ANTES de spec/plan (opcional; ver skill co-explore). ORTOGONAL a cross_review → bloque top-level hermano, no anidado
-  mode: auto                     # auto (por complejidad: complejo on, normal opt-in, trivial nunca) | "on" | "off"
-  deadline: 600                  # segundos; overridea el default POR MODO de la skill (600 `explore` / 300 `counter-plan`). `investigate` es standalone (no lo invoca SDD) y no lee config.
-  debate:                        # modo `debate` de co-explore: ayuda a decidir en `clarify`/`plan`. INDEPENDIENTE de `mode` (arriba); ver `SKILL.md` → "Debate en decisiones"
-    mode: auto                   # off (nunca se ofrece) | auto (decisiones complejas/high-stakes o inseguridad) | on (cualquier decisión contestable). Siempre se OFRECE, nunca corre sin confirmación
-    max_rounds: 3
-                                 # NO hay bloque `workers`: cuántos se despachan y de qué familia lo fija la topología dual (`co-explore/SKILL.md` regla 7), no el config
 jira_approval:                   # aprobación externa de la spec en Jira (opcional; solo si tracker: jira)
   mode: "off"                    # "off" | "on"  (default off; entre comillas: sin ellas YAML los parsea como booleanos)
   subtask_issuetype: auto        # auto (descubrir por createmeta) | "Subtarea" | "Sub-task"
   approval_signal: ask           # ask | status:"<estado Jira que cuenta como aprobado>"
 implement_mode: ask              # cómo ejecutar las tasks: ask (preguntar en el último gate) | inline | subagent | cross (delegar a la otra familia vía `cross-implement`; requiere esa skill + el CLI de la otra familia)
-cross_implement:                 # política del modo `implement_mode: cross` (opcional; ver skill cross-implement). Ignorado en los otros modos.
-  execution: auto                # auto (por tamaño del work order) | sync | background — cómo espera al implementador
-  max_fix_rounds: 2              # tope del fix loop antes del takeover del conductor (el tope de sdd-flow "3 fixes de la misma falla → volver a plan/specify" manda por encima)
-  deadline: 1800                 # segundos; tope duro del wait en background
-  # sin `implementer:` — la familia del IMPLEMENTADOR la fija el conductor (Codex cuando conduce Claude; Claude cuando conduce Codex), no es configurable (a diferencia de cross_review.reviewer)
 domain_context:
   mode: auto                     # auto | "on" | "off"; solo lectura, nunca escribe ADRs/docs
   context_paths: []              # docs de dominio/glosarios/arquitectura a leer si existen
@@ -279,11 +263,68 @@ final_diff_review:
   mode: auto                     # auto (complex/high-risk inline) | "on" | "off"
 ```
 
+**Este bloque es dueño de las 21 claves que `sdd-flow` gobierna.** Las 12 restantes las poseen sus
+hermanas y su enum se define allá: `cross_review.*` en `cross-review/SKILL.md` → "Configuración";
+`co_explore.*` en `co-explore/SKILL.md` → "Configuración"; `cross_implement.*` en
+`cross-implement/SKILL.md` → "Configuración". El archivo **completo**, con las 33 juntas y listo
+para copiar, está en `config-ejemplo.md`, que es una vista de todos estos dueños.
+
 Placeholders de `branch_format`: `{type}` (prefijo efectivo), `{ticket}` (clave del tracker, se omite si no hay), `{slug}` (2-5 palabras del título en kebab, sin acentos, `[a-z0-9-]`).
 
 **`test_scope_hint`** es una **plantilla de comando completa**, no un glob suelto: se reemplaza `{name}` por el archivo/patrón a acotar y se ejecuta tal cual (ej.: `vitest run {name}`, `ng test --include={name}`, `pytest {name}`). En Angular, `{name}` debe ser la **ruta exacta** del `.spec.ts`, **no** un glob `**/…`: el glob arrastra `.html`/`.scss` y rompe el loader.
 
 **Prefijo efectivo (`{type}`)** = primer valor presente: (1) override conversacional de la corrida → (2) `branch_prefix` del `config.yml` → (3) prefijo semántico (tabla de abajo). Se normaliza quitando la barra final si la trae. El `branch_prefix`/override **reemplazan** el `{type}`; el mapeo semántico de abajo aplica **solo cuando no hay ninguno de los dos**.
+
+## Transporte de las corridas delegadas
+
+`cross_model.transport` responde **"¿debe este flujo usar panes?"**, que es una pregunta distinta de
+**"¿se puede acá?"**. La primera es **intención** y la segunda **capacidad**: hacen falta las dos, la
+intención no crea la capacidad —querer panes no los crea— y la capacidad no autoriza sola.
+
+**Capacidad — tres cláusulas, cada una con lo que pasa si resuelve a falso.** Su sede es el adaptador
+de cada skill delegada (`co-explore`, `cross-review`, `cross-implement` → `transporte-herdr.md` →
+"Activación"); acá se resume porque el flujo es quien decide si la vía se intenta. La mecánica y la
+sintaxis del multiplexor no se copian: la autoridad es su skill externa.
+
+| Cláusula de capacidad | Falsa ⇒ qué hace el flujo |
+|---|---|
+| la variable de entorno del multiplexor vale `1` | el conductor no corre dentro de un pane host: delega por el transporte CLI vigente |
+| el binario utilizable, comprobado en la sesión | no se infiere de la variable —que dice dónde corre el conductor, no que el binario responda—: transporte CLI vigente, sin improvisar comandos |
+| la skill externa de transporte instalada | es la autoridad de la mecánica: sin ella no se improvisa de memoria, se delega por el transporte CLI vigente |
+
+Sin **cualquiera** de las tres la vía de panes **no se intenta**: la corrida sigue por el transporte
+CLI vigente con un aviso de una línea, la misma degradación que el resto del ecosistema (regla #6).
+
+**Intención — cuatro cláusulas.**
+
+1. **Sede:** `cross_model.transport` de `.specify/config.yml`, hermano de `manifest`, como default
+   durable del proyecto. Es lo único que sobrevive a una sesión nueva.
+2. **Conjunción:** hace falta **junto con** la capacidad, no en su lugar. Con `transport: herdr` y
+   capacidad falsa se delega por CLI; con capacidad verdadera y `transport: cli` no se abre ningún
+   pane. Ninguna de las dos alcanza sola.
+3. **Precedencia** (la estándar del ecosistema, igual que `cross_review` o `implement_mode`):
+   **override conversacional de la corrida > `cross_model.transport` del config > default `cli`**.
+4. **Eco:** el valor resuelto se ecoa en el **checkpoint de inicio** junto al resto de los valores
+   (`SKILL.md` → "Adaptación al proyecto"), de modo que el transporte nunca se aplique en silencio.
+
+**Durabilidad del override conversacional.** Tiene exactamente la misma que `cross_review` o
+`implement_mode`. Queda escrita para que el config no actúe como sustituto silencioso de un estado por
+flujo que no existe:
+
+- **Se anuncia antes de abrir el primer pane** —una línea, con la vía resuelta— y recién después se
+  despacha la primera corrida.
+- Rige para **todas las fases delegadas** del flujo (co-exploración, contra-enfoque, revisiones de
+  gate, implementación cruzada) y **no se vuelve a pedir permiso** por fase: se resolvió una vez.
+- El usuario conserva el **opt-out** en cualquier momento ("sigue por CLI"): vale desde la corrida
+  siguiente, sin tocar las que ya están en vuelo.
+- **Alcance: la sesión del flujo.** No es global ni por repo — muere con la sesión, como el resto de
+  los overrides de la corrida.
+- **Sede del override:** la clave `transport` del mapa `overrides` del `handoff.md` (`SKILL.md` →
+  "`handoff.md` (retomado del flujo)"), que es lo que lo persiste cuando el flujo se pausa.
+- **Cada corrida delegada lo replica** en su descriptor para que el callback lo lea: el descriptor es
+  **copia, no sede**, y no se consulta para resolver la intención de la corrida siguiente.
+- Un override **no persistido no sobrevive a una sesión nueva**: al retomar sin ese valor en el
+  `handoff.md` manda el config. Es la conducta vigente del ecosistema, declarada en vez de asumida.
 
 ## Contexto de dominio
 
@@ -344,20 +385,17 @@ El paso `init` (ver `SKILL.md` → "Paso `init`") materializa `.specify/` a pedi
    build_cmd: "npm run build"
    lint_cmd: "npm run lint"
    default_branch: master
-   branch_format: "{type}/{ticket}-{slug}"
    branch_prefix: ""            # vacío → prefijo semántico
-   commit_style: conventional
    tracker: jira
    test_scope_hint: "ng test --include={name}"   # {name} = ruta exacta del .spec.ts (no glob **/…: rompe el loader)
+   jira_approval:
+     mode: "off"                # elegido en el wizard junto con tracker/branch_prefix (default off)
    domain_context:
-     mode: auto
      context_paths: []
      adr_paths: []
-   final_diff_review:
-     mode: auto
    ```
 
-   Los campos de decisión (`tracker`, `commit_style`, `branch_prefix`, `implement_mode`, `cross_review`, `domain_context.mode`, `final_diff_review`, `jira_approval`, `debate`) se eligen en el **wizard** (2 pantallas, con el valor actual/detectado pre-seleccionado); `debate` gobierna `co_explore.debate.mode` (ver `SKILL.md` → "Debate en decisiones"). Los comandos (`test_cmd`/`build_cmd`/`lint_cmd`/`test_scope_hint`) y los paths de `domain_context` se autodetectan y quedan editables en la confirmación final. Nada se inventa. Al escribir el `config.yml`, `cross_review.mode`, `co_explore.mode`, `domain_context.mode`, `final_diff_review.mode`, `jira_approval.mode` y `co_explore.debate.mode` se emiten con `on`/`off` **entre comillas** (`"on"`/`"off"`; `auto` sin comillas es válido): sin ellas YAML los parsea como booleanos.
+   Los campos de decisión (`tracker`, `branch_prefix` y, solo si se acaba de elegir `tracker: jira`, `jira_approval.mode`) se eligen en el **wizard** (una sola pantalla, con el valor actual/detectado pre-seleccionado). El resto de las claves con default (`commit_style`, `implement_mode`, `cross_review`, `domain_context.mode`, `final_diff_review`, `co_explore.debate.mode`, entre otras) no se pregunta: la skill las resuelve, y quien quiera fijarlas las copia de `config-ejemplo.md`. Los comandos (`test_cmd`/`build_cmd`/`lint_cmd`/`test_scope_hint`) y los paths de `domain_context` se autodetectan y quedan editables en la confirmación final. Nada se inventa. Al escribir el `config.yml`, `cross_review.mode`, `co_explore.mode`, `domain_context.mode`, `final_diff_review.mode`, `jira_approval.mode` y `co_explore.debate.mode` se emiten con `on`/`off` **entre comillas** (`"on"`/`"off"`; `auto` sin comillas es válido): sin ellas YAML los parsea como booleanos.
 
 2. **`.specify/constitution.md`** — desde "Plantilla de constitution" (abajo), con el puntero a los principios de código del repo (`CLAUDE.md`/`AGENTS.md`/`CONTRIBUTING.md`) si existen.
 
@@ -793,7 +831,7 @@ change_type: feat               # feat | fix | refactor | chore | docs | test | 
 branch_prefix: feature          # el {type} ya resuelto
 slug: export-csv
 base_branch: master             # rama base resuelta (con override de base, la rama de la que se corta)
-overrides: { branch_prefix: null, base_branch: null, cross_review: null, implement_mode: null, jira_approval: null }
+overrides: { branch_prefix: null, base_branch: null, cross_review: null, implement_mode: null, jira_approval: null, transport: null }
 # campos del gate de Jira (solo si es una pausa por aprobación externa):
 gate_status: awaiting           # awaiting | changes-requested | approved
 parent_key: ABC-123

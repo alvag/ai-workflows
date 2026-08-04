@@ -1,7 +1,7 @@
 <!-- prompt `implement` · lo despacha `cross-implement` · formato: texto plano
      placeholders: (ninguno)
      ESTE ARCHIVO ES LA ENTRADA EXACTA DEL WORKER: lo que no esté acá no existe para él.
-     Se escribe a archivo y llega por stdin; no se arma inline. -->
+     Se escribe a archivo y nunca se arma inline; cómo llega al worker lo fija el transporte. -->
 
 GOAL: <un párrafo — cómo se ve "terminado">
 SPEC: Lee <work_order> en la raíz del repo. Es un contrato CONGELADO y ya aprobado.

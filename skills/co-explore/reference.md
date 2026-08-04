@@ -7,6 +7,7 @@ archivos de trabajo.
 
 ## Tabla de contenidos
 
+- [Documentos de esta referencia](#documentos-de-esta-referencia)
 - [Portabilidad entre shells (POSIX / PowerShell)](#portabilidad-entre-shells-posix-powershell)
 - [Prompt de exploración](#prompt-de-exploración)
 - [Plantilla de `debate.md`](#plantilla-de-debatemd)
@@ -18,6 +19,17 @@ archivos de trabajo.
 - [El criterio de éxito también es una hipótesis (`investigate`)](#el-criterio-de-éxito-también-es-una-hipótesis-investigate)
 
 ---
+
+## Documentos de esta referencia
+
+La referencia de esta skill son **dos** archivos, partidos por el momento en que se los lee, no por
+tamaño. Cargar el segundo en toda corrida gastaría contexto en las corridas que no usan ese
+transporte:
+
+| Archivo | Qué trae | Cuándo se lee |
+|---|---|---|
+| `reference.md` (este) | prompts por modo, topología dual, envelope, árbol de rutas, retoma, estados del worker, latencia, `debate` e índice paginado | en toda corrida |
+| `transporte-herdr.md` | el adaptador del transporte por panes: activación, perfil de permisos, entradas y salidas, independencia, deadline, continuidad entre rondas, validación del artefacto y cleanup | **solo** cuando la activación del flujo resolvió a la vía de panes |
 
 ## Portabilidad entre shells (POSIX / PowerShell)
 
@@ -330,6 +342,73 @@ crítica de cross-review (tiene que recorrer el repo desde cero), por eso el def
 es más alto. En `investigate` no hay config (es standalone): el override, si lo hay, es
 conversacional; si no, el default de la tabla.
 
+### Default de `execution` por skill y modo
+
+`execution` es un enum **cerrado de tres valores** —`auto | sync | background`— y estos son los
+defaults efectivos de las tres skills cross-model. Viven acá una sola vez: `cross-review` y
+`cross-implement` los referencian por el nombre de esta sección en lugar de copiarlos, porque tres
+copias de una tabla de defaults son tres oportunidades de divergir.
+
+| Skill · modo | Default de `execution` |
+|---|---|
+| `co-explore` · `explore` (embebido) | `background` |
+| `co-explore` · `counter-plan` (embebido) | `sync` |
+| `co-explore` · `investigate` (directo) | `background` |
+| `co-explore` · `debate` (directo) | `sync` por ronda — el loop de cruce es secuencial |
+| `cross-review` · todos los modos | `auto` |
+| `cross-implement` · `embebido` y `directo` | `auto` |
+
+**Estos defaults no tienen perilla de config, y es deliberado.** No existe un campo `execution` bajo
+`co_explore`: cómo se espera en cada modo es parte de la **definición del modo**, no un parámetro de
+la corrida. Tres razones, cualquiera suficiente por sí sola: `SKILL.md` → "Configuración" ya fija la
+doctrina para el campo hermano —"NO hay bloque `workers`: … lo fija la topología dual, no el
+config"—; el repo tiene un precedente reciente y explícito de revertir configuración sin consumidor;
+y un escalar no puede expresar defaults que **varían por modo**, que es exactamente lo que muestran
+las seis filas de arriba. *El costo, declarado:* quien quiera forzar `sync` en `explore` no tiene
+dónde pedirlo. `cross_review` y `cross_implement` sí exponen la clave porque su default es `auto` —un
+único valor por skill, no uno por modo.
+
+### Re-invocación durable: el segundo predicado
+
+Haber elegido `background` no dice todavía **cómo** se espera. Hacen falta **dos** predicados
+distintos, y confundirlos es el error que esta sección existe para cerrar: que el conductor pueda
+fijar un timeout de exec largo **no demuestra** que el host lo vuelva a invocar cuando un comando en
+background termina. Son capacidades de piezas distintas y se miden aparte.
+
+**La secuencia completa, en dos pasos y en este orden.** Primero, `execution: auto` elige entre
+`sync` y `background` por el predicado de **timeout de exec** que ya existe: auto → sync cuando el
+conductor puede sostener un tope largo (Claude Code, `Bash` con `timeout` hasta 600000 ms), auto →
+background cuando no (conductor de exec corto, ~120 s por comando). Después, **ya dentro de
+`background`**, decide un segundo predicado —el de **re-invocación durable**— entre **callback** y
+**poll acotado**. Pedir `sync` o `background` a mano saltea el primer paso, nunca el segundo: un
+`background` explícito también pasa por el predicado de re-invocación durable.
+
+**Condición de verdad, positiva.** El predicado de re-invocación durable es verdadero **solo** cuando
+el contrato documentado del host **garantiza** volver a invocar al conductor al completar un comando
+en background. La **ausencia de garantía —no solo una garantía en contra— lo vuelve falso**: un host
+que no documenta el comportamiento, o que lo documenta como algo que "puede" ocurrir, cuenta como
+falso. Redactado al revés —verdadero salvo garantía en contra— sería verdadero por defecto en
+cualquier host desconocido, que es justo donde una espera sin poll se cuelga para siempre.
+
+**La continuidad la aporta el harness, no el transporte.** El multiplexor de terminales aloja el
+proceso y lo mantiene vivo mientras el conductor no está mirando; eso no es lo mismo que despertar al
+conductor. Volver a invocarlo cuando el comando termina es una capacidad del **host** que corre al
+conductor, y se mide en su contrato, no en el del transporte. Un transporte que aloje procesos
+impecablemente no vuelve verdadero este predicado.
+
+**Falla cerrado.** Con el predicado en falso, `background` **falla cerrado al poll acotado de hoy**:
+la tabla de deadlines de arriba y el tope duro por worker de acá abajo, con su `kill` y su
+`UNAVAILABLE` al vencer. Sin comportamiento nuevo y sin nada nuevo que configurar.
+
+**El enum no crece.** No hay un cuarto valor para esto, ni sinónimo suyo. El desacople
+**reinterpreta** `background`: con el predicado en verdadero, `background` no consume turnos del
+conductor poleando —el host lo despierta al terminar—; con el predicado en falso, `background` es el
+poll de siempre. Un cuarto valor obligaría además a definir qué hace el conductor cuando alguien lo
+pide en un host sin la capacidad, y la única respuesta sensata sería degradar a `background`: el
+mismo comportamiento con un nombre más en tres skills.
+
+### Tope duro, señal de fin y espera por modo
+
 **Tope duro, por worker.** Cada deadline corre desde **su propio** lanzamiento, no desde el
 primero. Al vencer sin ver `STATUS: done` en el crudo de ese worker
 (`scratch/raw-<modo>-<familia>-worker.md`):
@@ -367,8 +446,7 @@ corre desde el lanzamiento, no desde que el conductor vuelve a mirar.
 
 ## Topología dual (contrato nuevo)
 
-> **Sección inerte hasta el corte.** Nada de lo que sigue está referenciado desde `SKILL.md`
-> todavía. Define el contrato de la topología de dos workers con conductor árbitro.
+Define el contrato de la topología de dos workers con conductor árbitro.
 
 ### Formato de dos capas
 
@@ -741,7 +819,7 @@ diversity: cross_family | same_family | single_voice | null
 workers:
   - family: codex
     state: READY | INVALID | clarification-needed | UNAVAILABLE
-    cause: confirmed_wall | launch_flake | runtime_failure | null   # solo si UNAVAILABLE
+    cause: confirmed_wall | launch_flake | runtime_failure | deadline_exceeded | null  # solo si UNAVAILABLE
     parity: pass | fail | null
     index:  co-explore/index-explore-codex-worker.md   | null
     detail: co-explore/detail-explore-codex-worker.md  | null
@@ -764,6 +842,21 @@ worker produjo.
 
 Con `outcome: map_failure`, la llamadora **ignora todo contribuyente** y no pasa contexto de
 co-explore.
+
+**El transporte no viaja en el envelope, pero esta skill lo emite.** Cuando los workers se despachan
+en panes de un multiplexor de terminales en vez de por CLI headless, el manifest de corrida
+—esquema en `cross-review/reference.md` → "Manifest de corrida"— registra `transport: herdr`. El
+envelope no cambia por eso: sustituye el transporte, no la semántica —mismos estados, mismas ramas,
+mismos artefactos—. Los comandos que lo logran no viven acá: la autoridad es la skill externa
+`herdr` y el binario instalado.
+
+**`deadline_exceeded` sí es un valor del envelope; `transport_fallback` no.** El primero es una causa
+de un worker y viaja en su `cause`. El segundo es una **causa de la corrida**: no tiene worker al que
+colgarse —el worker puede haber terminado `READY`— y el envelope no lleva campo de degradación, así
+que se emite en el mismo punto donde se resuelve el envelope pero solo aterriza en el `degradation`
+del manifest. Su disparador es por **resultado**: intención resuelta a la vía de panes **+**
+transporte efectivo CLI despachado. El detalle canónico está en `cross-review/reference.md` →
+"Latencia y timeout (Claude revisor)".
 
 ### Árbol de rutas
 
@@ -847,6 +940,65 @@ los archivos nuevos —los IDs coinciden otra vez— y se acepta como resolució
 un fallo previo al lanzamiento deja archivos vacíos y cierres ausentes → `UNAVAILABLE`; un fallo a
 mitad deja un informe parcial → `INVALID`. En ninguno sobrevive un `READY` ni un cierre heredados. Un
 nonce agregaría un identificador que habría que propagar y validar en cada capa para cubrir lo mismo.
+
+**El descriptor de corrida entra al conjunto truncado, y sin eso el argumento anti-nonce no cierra.**
+Ese argumento vale **solo** si el conjunto es completo, y el descriptor efímero de la corrida es parte
+de él: se vacía en el mismo paso, antes de lanzar. Un descriptor que sobreviva al redespacho **lista
+los panes de la corrida anterior**, y con el patrón recomendado de reutilizar panes esos mismos panes
+pueden alojar hoy a **otra** corrida — cerrarlos violaría la única prohibición absoluta del cierre.
+
+**Un pane propio vivo bloquea el truncado y el redespacho sobre esas rutas.** Es la regla en su
+dirección positiva, y es conservadora a propósito: mientras quede un pane que la corrida anterior
+creó y esté vivo, no se trunca ni se redespacha sobre las rutas de ese modo. Truncar ahí borraría la
+lista que autoriza cerrar ese pane, y redespachar reutilizaría rutas que un proceso todavía vivo
+puede estar escribiendo.
+
+### El descriptor de corrida y su retiro
+
+Esta sección existe acá, y no en el adaptador del transporte, porque el conjunto que se trunca se
+define acá: el descriptor pertenece a ese conjunto y sus reglas de cierre y de retiro son las que
+hacen válidas las dos cláusulas de arriba. Solo aplica a las corridas que fueron por la vía de panes;
+el resto lo ignora.
+
+**Qué es, y qué no es.** Es el sobre de una corrida delegada **activa**: lo que un callback necesita
+releer al despertar para saber qué panes creó, qué esperaba y qué le falta. Muere con la corrida. Sus
+**doce** campos son: run ID · skill · modo · nombres de agentes · panes propios · prompt esperado ·
+outputs esperados · deadline · estados terminales · gate pendiente · próxima acción · transporte
+replicado. Qué escribe cada skill en cada campo está en su adaptador —`transporte-herdr.md` →
+"Entradas y salidas"— y no se duplica acá. **No** hay máquina de estados persistente, ni esquema
+formal, ni validador propio, ni versionado: ese nivel de estado persistido ya se rechazó por escrito
+en este ecosistema, y este mecanismo nunca se ejercitó.
+
+**Sus cuatro transiciones**, que son justamente lo que evita un callback doble y el cierre de un pane
+ajeno:
+
+1. **Se crea antes del dispatch.** Escribirlo después deja una ventana con un worker lanzado y sin
+   sobre: si el conductor no llega a esa escritura, queda un pane que ninguna lista reclama.
+2. **Se relee al despertar.** El callback no reconstruye la corrida por inferencia ni por lectura de
+   pantalla: la lee del descriptor.
+3. **Se cosecha exactamente una vez.** El campo de gate pendiente es lo que lo dice: mientras esté
+   marcado, la corrida no cosechó; una vez cosechada y validada deja de estarlo, y un segundo callback
+   que despierte más tarde lee eso y no vuelve a presentar el gate ni a publicar la degradación.
+4. **Solo autoriza cerrar los panes que la corrida creó.** Su lista de panes propios es la única
+   autorización de cierre que existe. Un pane que la corrida no creó no está en la lista, y no se
+   cierra ni se hereda por vecindad.
+
+**El retiro va en las dos direcciones, y las dos hacen falta.**
+
+- **No se retira mientras quede un pane propio vivo.** Alcanzar un estado terminal **no** basta: una
+  degradación terminal puede liberar el gate conservando el pane, y ese pane no se puede cerrar sin
+  artefacto válido. Retirar el descriptor ahí borraría la única lista de panes propios que existe.
+- **Se retira cuando todos sus panes propios están confirmados cerrados.** Es la única salida en esta
+  versión —la transferencia de ownership al usuario, que sería la segunda, quedó fuera—. Sin esta
+  mitad, una implementación que lo conserve para siempre cumpliría igual la mitad negativa, y el
+  descriptor se volvería el estado persistente que este diseño excluye.
+
+**Un pane propio vivo no es, por sí solo, un resultado incierto.** La cláusula anterior impide truncar
+y redespachar; no clasifica nada ni dispara recovery. Lo dispara una **causa registrada** por el
+descriptor de la skill que produce o consume ese pane. Sin esta dirección, el pane que se conserva a
+propósito y con salud —el que una fase posterior va a consumir— quedaría clasificado como resultado
+incierto por el solo hecho de estar vivo, y arrastraría el recovery sobre un caso donde no hay nada
+incierto.
 
 ### Split a dos archivos
 
@@ -1157,13 +1309,28 @@ porque la omisión está en el índice *y* en el detalle— o con contenido sin 
 |---|---|---|
 | `confirmed_wall` | binario ausente, auth rechazada, versión incompatible, aislamiento imposible | **ninguno** — terminal para la corrida |
 | `launch_flake` | el binario existe pero el lanzamiento flaqueó (arranque frío, timeout de spawn) | 2-3 con backoff corto, nunca un loop abierto |
-| `runtime_failure` | arrancó bien y falló después: error de ejecución, deadline vencido sin marcador, salida vacía | por intento; no condena la corrida ni se reintenta en bucle |
+| `runtime_failure` | arrancó bien y falló después: error de ejecución, salida vacía | por intento; no condena la corrida ni se reintenta en bucle |
+| `deadline_exceeded` | arrancó bien y **alcanzó el deadline** sin marcador de cierre | por intento; el tope lo puso el conductor, así que la palanca es subirlo, no reintentar igual |
 
-Distinción fina entre `INVALID` y `runtime_failure`: un proceso que **terminó** y dejó salida sin
-marcador es `INVALID` (respondió mal); uno que **alcanzó el deadline** sin marcador es
-`runtime_failure` (no llegó a responder). Con un índice **paginado**, la serie incompleta se
+**`deadline_exceeded` es una causa nueva, no un quinto estado.** Acompaña al `UNAVAILABLE` que ya
+existe en vez de crear un terminal propio. Hasta acá un deadline vencido se reportaba como
+`runtime_failure`, que sugiere una falla de infraestructura que no ocurrió: el proceso arrancó bien y
+el corte lo puso el conductor al fijar el tope. Distinguirlas cambia qué se hace después — ante
+`runtime_failure` se mira el error, ante `deadline_exceeded` se mira el presupuesto.
+
+Distinción fina entre `INVALID`, `deadline_exceeded` y `runtime_failure`: un proceso que **terminó** y
+dejó salida sin marcador es `INVALID` (respondió mal); uno que **alcanzó el deadline** sin marcador es
+`deadline_exceeded` (no llegó a responder, y el corte fue nuestro); uno que **falló ejecutando** tras
+arrancar bien es `runtime_failure`. Con un índice **paginado**, la serie incompleta se
 clasifica por el mismo criterio del observable (ver "Una serie incompleta se clasifica por el
 observable").
+
+**`transport_fallback` es la otra causa nueva y no es causa de `UNAVAILABLE`.** El enum de causas
+alimenta dos campos: el `cause` de un worker —solo cuando quedó `UNAVAILABLE`— y la degradación de la
+corrida que se persiste en el manifest. `transport_fallback` vive solo en el segundo, porque un worker
+despachado por el transporte de reemplazo puede terminar `READY`: la causa no dice que al worker le
+pasó algo, dice por dónde corrió. Su disparador está en el `SKILL.md` → "Degradación", y el detalle
+canónico en `cross-review/reference.md` → "Latencia y timeout (Claude revisor)".
 
 Un worker `INVALID` **no aporta anexo** a `counter-plan` **ni sirve de seed** a `cross-review`,
 aunque conserve una sesión técnicamente reanudable.
@@ -1996,6 +2163,21 @@ el proceso vivo, si el archivo quedó a medias— no queda en `INVALID` ni en `U
 Reintentar sobre un estado incierto es cómo se duplica trabajo o se corrompe una entrega a medio
 escribir: el segundo intento no sabe qué encontró del primero, y el resultado combinado no es el de
 ninguno de los dos.
+
+**Vencer el deadline no prueba que el proceso dejó de trabajar.** No es una precaución teórica: se
+observó lo contrario — una espera venció con los dos workers **todavía produciendo**, y los dos
+entregaron informes válidos **después** de que la corrida ya se había degradado. El deadline es el
+corte que el conductor se pone a sí mismo para dejar de esperar; no es una señal que le llegue al
+proceso ni una prueba de que terminó. `UNAVAILABLE` con causa `deadline_exceeded` describe lo que
+hizo el conductor, no lo que hizo el worker.
+
+**Las rutas de salida fijas no protegen contra un worker tardío.** Si dos intentos del mismo modo
+escriben en la misma ruta, el tardío completa el archivo de una corrida **ya degradada** y el
+conductor lee un artefacto que pasa los predicados sin poder saber de qué intento salió. Por eso cada
+intento necesita **rutas exclusivas**: no para ordenar el scratch, sino para que un escritor tardío no
+pueda hacerse pasar por el actual. Y por eso, mientras no se sepa qué quedó escrito ni si el proceso
+sigue vivo, el estado es `recovery-required` y no hay retry ni fallback que valga — tampoco el
+fallback al otro transporte, que sobre un intento quizá vivo pone dos escritores en las mismas rutas.
 
 ### Bloques de las identidades
 

@@ -31,6 +31,7 @@ Al crear o editar skills, seguí las buenas prácticas de agentskills.io (refere
 - **Specification:** https://agentskills.io/specification — `name` (== nombre del directorio, minúsculas/números/guiones, sin guion inicial/final ni `--`), `description` (máx 1024 chars, tercera persona, qué hace **y cuándo** usarla, con keywords de trigger).
 - **Best practices:** https://agentskills.io/skill-creation/best-practices — SKILL.md idealmente <500 líneas / <5000 tokens; mover el detalle a `reference.md`; dar **un default, no un menú**; secciones "Gotchas" y "red flags"; procedimientos reutilizables, no respuestas puntuales.
 - Validar con `skills-ref validate ./skills/<nombre>` (de https://github.com/agentskills/agentskills).
+- Si la skill toca `config-ejemplo.md` o `manifest-ejemplo.md`, o el esquema/"Configuración" de alguno de sus cinco dueños (`sdd-flow`, `sdd-orchestrator`, `cross-review`, `co-explore`, `cross-implement`), correr `python3 scripts/verificar-vistas-config.py`: valida que esas vistas sigan fieles a sus dueños (claves, enums, valores, marcas `[def]`/`[ej]`/`[obl]` y comillas en `on`/`off`).
 
 > Nota: varios SKILL.md de este repo (p. ej. `sdd-flow`) exceden holgadamente el presupuesto de tokens sugerido. Es una tensión conocida por la complejidad del flujo; al editar, empujá contenido hacia `reference.md` antes que engordar el SKILL.md.
 
@@ -61,13 +62,20 @@ Regla de fronteras entre skills (aparece repetida en las descripciones y hay que
 
 ## Invocación cross-model (el mecanismo compartido)
 
-Cuando conduce Claude, la otra familia es **Codex**; el detalle canónico vive en cada `reference.md`. Patrón:
+Cuando conduce Claude, la otra familia es **Codex**; el detalle canónico vive en cada `reference.md`. **Hay dos transportes** por los que puede viajar esa delegación, y el default es el **CLI headless**: el worker se lanza como proceso hijo y su salida se cosecha del disco. Patrón:
 
 - **Detección de binario:** POSIX `command -v codex` · PowerShell `Get-Command codex -ErrorAction SilentlyContinue`.
 - **Read-only** (co-explore, cross-review): `codex exec -s read-only -C <working_dir> --skip-git-repo-check --json ...`
 - **Workspace-write** (cross-implement): `codex exec -s workspace-write -C <working_dir> --skip-git-repo-check --json ...`; resume con `codex exec resume "$SESSION_ID" -c sandbox_mode="workspace-write" ...`
 - **Prompt por archivo, nunca inline:** el markdown con backticks rompe el quoting del shell. POSIX pasa el prompt por `< prompt.txt`; **PowerShell no soporta `<`** → `Get-Content -Raw prompt.txt | codex exec ... -`. Todo comando nuevo que invoque un CLI debe ofrecer **ambas** variantes (POSIX y PowerShell).
 - Degradación elegante: si falta el binario/MCP, avisar y continuar con lo que haya.
+
+**El segundo transporte es la vía de panes:** el worker se aloja en un pane de un multiplexor de terminales en vez de lanzarse headless. Cuatro principios, ninguno de los cuales baja a comandos:
+
+- **Sustituye el transporte, no la semántica.** Las dos familias, quién revisa a quién, los estados del worker, los artefactos y la escalera de degradación siguen siendo los mismos y viven donde ya viven: cambia por dónde viaja el prompt y dónde vive el proceso, nada más.
+- **Capacidad distinta de intención.** Que se pueda alojar un worker en un pane no significa que este flujo deba hacerlo: hacen falta las dos en verdadero, y la intención tiene sede durable en el config del proyecto, no en la conversación. Sin las dos, la vía de panes no se intenta y la corrida sigue por el CLI.
+- **La sintaxis pertenece a la skill externa.** Este repo **no** copia los comandos del multiplexor: la autoridad son la skill externa `herdr` y el binario instalado, que se consultan en la sesión. El binario además **imprime su propia copia de esa skill** (`herdr --skill`), que es la forma de obtenerla ya apareada con la versión que corre en vez de con la que alguien instaló alguna vez. Copiar los comandos acá los congelaría desactualizados.
+- **Adaptador por skill, sin copiar comandos.** Cada skill que delega tiene su `transporte-herdr.md`, hermano de `reference.md`, con lo único que cambia por el transporte; se lee **solo** cuando la activación resolvió a esta vía.
 
 ## Artefactos en disco (dogfooding)
 

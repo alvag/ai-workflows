@@ -24,14 +24,26 @@ conductor, el fix loop, los tiempos y los archivos de trabajo.
 
 ## Documentos de esta referencia
 
-La referencia de esta skill son **tres** archivos, partidos por el momento en que se los lee, no por
-tamaño. Cargar los tres siempre desperdicia contexto en una corrida que sale bien a la primera:
+La referencia de esta skill son **cuatro** archivos, partidos por el momento en que se los lee, no por
+tamaño. Cargar los cuatro siempre desperdicia contexto en una corrida que sale bien a la primera:
 
 | Archivo | Qué trae | Cuándo se lee |
 |---|---|---|
 | `reference.md` (este) | descubrimiento, vías de invocación, prompt, reporte, revisión, fix loop, tiempos y scratch | en toda corrida |
 | `contrato-verificacion.md` | esquema del contrato, reglas de congelamiento, adjudicación, gate previo al dispatch y sus bloques de validación | al armar y aprobar el contrato, antes de delegar |
 | `ownership.md` | las cuatro clases de falla, presupuestos, re-baseline aislado, takeover y precedencia de topes | cuando una ronda falla |
+| `transporte-herdr.md` | el adaptador del transporte por panes: activación, permisos, entradas y salidas, independencia, deadline, continuidad entre rondas, validación y cleanup | solo cuando la activación del flujo resolvió a la vía de panes |
+
+**El costo asumido de este reparto, declarado acá porque es donde se elige qué leer.** De los cuatro,
+`transporte-herdr.md` es el único que **no** es agnóstico del transporte; `ownership.md` sí lo es y se
+deja intacto a propósito, porque sus cuatro clases, sus presupuestos y su precedencia valen igual con
+cualquier transporte. La consecuencia es concreta y no está compensada: quien llega a `ownership.md`
+**por una ronda fallida** no encuentra ahí la casilla de **resultado incierto** —el estado en que no se
+sabe qué quedó escrito en el árbol ni si el implementador sigue vivo— ni la regla de que ningún
+fallback que escriba se habilita sin evidencia positiva de que ese proceso murió. Eso vive solo en
+`transporte-herdr.md` → "Validación del artefacto". En una corrida por panes, entonces, una ronda
+fallida se clasifica leyendo los **dos**: el triage no cambia, pero la pregunta de si el conductor
+puede escribir todavía no es parte del triage.
 
 ## Portabilidad entre shells (POSIX / PowerShell)
 
@@ -71,6 +83,23 @@ Dos reglas invariantes (además de las del `SKILL.md`):
    `acceptEdits` sin scoping — ver la matriz de verificación: `acceptEdits` escribe fuera del
    working dir.
 2. El prompt va por **stdin desde archivo** (tool Write), igual que en las skills hermanas.
+
+Las dos valen igual si el implementador corre en un pane de un multiplexor de terminales en vez de
+por CLI headless: cambia por dónde viaja el prompt, no qué se le exige. Esa corrida registra
+`transport: herdr` en el manifest de corrida (esquema en `cross-review/reference.md` → "Manifest de
+corrida"), y ahí queda dicho por qué `bitbucket-code-review` no recibe ese valor. Los comandos
+concretos no viven acá: la autoridad de la sintaxis es la skill externa `herdr` y el binario
+instalado.
+
+**Cuando la vía de panes se resolvió pero corrió el CLI, la corrida lo declara con la causa
+`transport_fallback`.** El disparador es por **resultado**: intención resuelta a la vía de panes +
+transporte efectivo CLI despachado, sin importar si cayó en el preflight de capacidad o en el
+lanzamiento. `transport` guarda la vía que efectivamente corrió —la del CLI—, y la causa raíz concreta
+(pared confirmada, flake de lanzamiento) queda en el log de la skill, no en el manifest. **Excepción:**
+si el intento por la vía de panes quedó en resultado incierto, **no hay fallback** hasta resolver el
+recovery — con escritura acotada al working dir, dos implementadores vivos sobre el mismo árbol es el
+peor caso posible. Es una causa, no un estado: la corrida puede terminar `IMPLEMENTED`. Las cinco
+reglas completas, en `cross-review/reference.md` → "Latencia y timeout (Claude revisor)".
 
 ### Vía W-B — Codex implementador (autor Claude)
 
@@ -272,12 +301,72 @@ Una implementación tarda mucho más que una crítica: presupuestos por encima d
 
 - **Tope duro siempre**: al vencer sin `STATUS: done`, matar el proceso (`kill $PID` /
   `Stop-Process`), revisar el diff parcial (degradación 3 del `SKILL.md`) y devolver `UNAVAILABLE`.
+  La **causa** de ese `UNAVAILABLE` es `deadline_exceeded`, no `runtime_failure`: el implementador
+  arrancó bien y el corte lo puso el conductor al fijar el tope de esta tabla. La distinción no es
+  cosmética — decide la palanca: ante `runtime_failure` se mira el error, ante `deadline_exceeded` se
+  mira el presupuesto (y acá el override conversacional del deadline es justamente esa palanca).
+  Enum completo de causas en `cross-review/reference.md` → "Latencia y timeout (Claude revisor)".
 - **Banner al terminar un run en background** (obligatorio): la PRIMERA línea del siguiente
   mensaje al usuario es un aviso destacado — `🔔 Implementación cruzada terminada — <work order>
   (ok/fallo) — reviso el diff ahora` — antes de cualquier salida de verificación. El usuario no
   mira las tools; un build terminado nunca se desliza en silencio a la fase de revisión.
 - No matar un run background silencioso antes del deadline: las implementaciones legítimamente
   tardan.
+
+### `recovery-required` bloquea retry y fallback
+
+Matar el proceso al vencer el deadline es lo que la tabla manda hacer; esta subsección dice qué pasa
+cuando **no** se puede afirmar que quedó muerto.
+
+Un intento cuyo resultado sobre el árbol es **incierto** —no se sabe qué quedó escrito ni si hay un
+proceso que siga escribiéndolo— no queda en `UNAVAILABLE` ni en `PARTIAL`: queda en
+`recovery-required`, que es estado del **intento**, no un resultado de la corrida. Mientras no se
+resuelva **no habilita ni retry ni fallback**: ni una ronda de fix más, ni el despacho del mismo work
+order por el otro transporte, ni un implementador nuevo sobre ese árbol.
+
+**Vencer el deadline no prueba que el proceso dejó de trabajar.** No es una precaución teórica: se
+observó lo contrario — una espera venció con los agentes todavía produciendo y entregaron **después**
+de que la corrida ya se había degradado. El deadline de la tabla es el corte que el conductor se pone
+a sí mismo, y `deadline_exceeded` registra esa decisión suya; ninguno de los dos prueba nada sobre el
+proceso. Lo único que sirve como prueba es evidencia positiva de que ya no está vivo.
+
+**Y acá las rutas de salida fijas no protegen nada, porque la salida no es una ruta.** Contra un
+worker tardío que completa el archivo de una corrida ya degradada, dar a cada intento rutas exclusivas
+alcanza; contra un implementador tardío no, porque lo que sigue tocando es el **working tree entero**.
+Dos escritores sobre el mismo árbol dejan un diff que no es de ninguno de los dos y un estado del repo
+que ninguno explica. Por eso el recovery acá es una pregunta concreta y contestable —qué quedó escrito,
+y si hay algo que siga escribiéndolo—, y hasta contestarla no se despacha nada sobre ese árbol. Cómo
+se clasifica ese intento en el triage lo fija una sola sede, la matriz de `transporte-herdr.md` →
+"Validación del artefacto"; acá no se repite.
+
+### Callback o poll: el segundo predicado, una vez en `background`
+
+`execution` es un enum **cerrado de tres valores** (`auto | sync | background`) y el default de esta
+skill es `auto`, tanto en modo embebido como directo. Los defaults de las tres skills cross-model
+están en un solo lugar, sin copias: `co-explore/reference.md` → "Latencia y deadlines".
+
+**Elegir `background` no dice cómo se espera.** Hacen falta **dos** predicados distintos, y el error
+que hay que evitar es tratarlos como uno: que el conductor pueda fijar un timeout de exec largo **no
+demuestra** que el host lo vuelva a invocar cuando el comando en background termina. La secuencia
+completa, en este orden: `execution: auto` elige `sync` o `background` por el predicado de timeout de
+exec y el tamaño del work order de la tabla de arriba —auto → sync con tope largo disponible y work
+order chico, auto → background si no—; y **ya dentro de `background`**, un segundo predicado, el de
+**re-invocación durable**, elige entre **callback** y el **poll de `STATUS: done`** de esa misma
+tabla. Un `background` pedido a mano saltea el primer paso, no el segundo.
+
+**Condición de verdad, positiva.** El predicado de re-invocación durable es verdadero **solo** cuando
+el contrato documentado del host **garantiza** volver a invocar al conductor al completar un comando
+en background. La **ausencia de garantía —no solo una garantía en contra— lo vuelve falso**; un host
+que no documenta el comportamiento cuenta como falso.
+
+**La continuidad la aporta el harness, no el transporte.** El multiplexor de terminales aloja el
+proceso del implementador mientras el conductor no está mirando; despertar al conductor cuando el
+comando termina es del **host** que lo corre. Alojar procesos bien no vuelve verdadero el predicado.
+
+**Falla cerrado.** Con el predicado en falso, `background` **falla cerrado al poll acotado de hoy**:
+el deadline de la tabla, el `kill` al vencer y el `UNAVAILABLE` con causa `deadline_exceeded`. El
+banner obligatorio no cambia en ninguno de los dos casos — con callback es lo primero que se escribe
+al despertar; con poll, lo primero después de ver `STATUS: done`.
 
 ## Archivos de trabajo (scratch)
 
