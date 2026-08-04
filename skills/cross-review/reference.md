@@ -1111,20 +1111,24 @@ exit $rc
 # Entradas: $manifest
 $rc = 0
 $m = Get-Content -Raw $manifest
+# Los operadores van en su variante case-sensitive (`-cmatch`, `-cnotmatch`, `-cnotcontains`,
+# `switch -CaseSensitive`) porque el par POSIX compara con `grep`/`case`/`grep -qxF`, que distinguen
+# mayúsculas. Con los operadores por defecto de .NET, `Started_at` cuenta como el campo `started_at`
+# y `HERDR` como el transporte `herdr`.
 foreach ($c in 'skill','mode','started_at','duration_s','families','transport','outcome','degradation') {
-  if ($m -notmatch "`"$c`"\s*:") { Write-Error "GUARD:manifest-valido falta el campo `"$c`""; $rc = 1 }
+  if ($m -cnotmatch "`"$c`"\s*:") { Write-Error "GUARD:manifest-valido falta el campo `"$c`""; $rc = 1 }
 }
 foreach ($c in 'attempts','schema_version','usage','parent') {
-  if ($m -match "`"$c`"\s*:") { Write-Error "GUARD:manifest-valido campo recortado presente: `"$c`""; $rc = 1 }
+  if ($m -cmatch "`"$c`"\s*:") { Write-Error "GUARD:manifest-valido campo recortado presente: `"$c`""; $rc = 1 }
 }
-if ($m -notmatch '"families"\s*:\s*\[') { Write-Error 'GUARD:manifest-valido "families" no es una lista'; $rc = 1 }
-function Val($k) { if ($m -match "`"$k`"\s*:\s*`"([^`"]*)`"") { $Matches[1] } else { '' } }
+if ($m -cnotmatch '"families"\s*:\s*\[') { Write-Error 'GUARD:manifest-valido "families" no es una lista'; $rc = 1 }
+function Val($k) { if ($m -cmatch "`"$k`"\s*:\s*`"([^`"]*)`"") { $Matches[1] } else { '' } }
 $sk = Val 'skill'
 $comunes = @('none','confirmed_wall','launch_flake','runtime_failure')
 # 'deadline_exceeded' y 'transport_fallback' NO van en $comunes: ese conjunto lo comparten las cuatro
 # filas, y meterlas ahí las filtraría a bitbucket-code-review, que no delega a través de las tres
 # skills que las producen. Se suman fila por fila, solo en esas tres.
-switch ($sk) {
+switch -CaseSensitive ($sk) {
   'co-explore'      { $outs = @('completed','map_failure')
                       $degs = $comunes + @('branch-2','branch-3','branch-4','deadline_exceeded','transport_fallback')
                       $trans = @('subagent','cli-exec','cli-resume','herdr') }
@@ -1142,7 +1146,7 @@ switch ($sk) {
 foreach ($par in @(@('outcome',$outs), @('degradation',$degs), @('transport',$trans))) {
   if ($par[1].Count -eq 0) { continue }
   $v = Val $par[0]
-  if ($par[1] -notcontains $v) {
+  if ($par[1] -cnotcontains $v) {
     Write-Error "GUARD:manifest-valido $($par[0]) `"$v`" no pertenece a $sk"; $rc = 1
   }
 }
@@ -1191,15 +1195,23 @@ Write-Output "corridas leídas: $($archivos.Count)"
 if ($archivos.Count -eq 0) { exit 0 }
 $filas = foreach ($f in $archivos) {
   $j = Get-Content -Raw $f.FullName
-  function C($k) { if ($j -match "`"$k`"\s*:\s*`"?([^`",}]*)") { $Matches[1].Trim() } else { '' } }
+  function C($k) { if ($j -cmatch "`"$k`"\s*:\s*`"?([^`",}]*)") { $Matches[1].Trim() } else { '' } }
   [pscustomobject]@{ skill = (C 'skill'); degradation = (C 'degradation'); duration = [int](C 'duration_s') }
 }
-foreach ($g in ($filas | Group-Object skill | Sort-Object Name)) {
-  if (-not $g.Name) { continue }
-  $deg = @($g.Group | Where-Object { $_.degradation -ne 'none' }).Count
+$grupos = @($filas | Group-Object skill -CaseSensitive)
+# El orden lo fija `[StringComparer]::Ordinal` y no `Sort-Object`: el par POSIX ordena con `sort`
+# bajo colación por bytes, donde `Cross-Review` precede a `cross-review`. `Sort-Object` compara por
+# cultura y devuelve el orden inverso para ese par — también con `-CaseSensitive`, que decide qué
+# strings son iguales pero no con qué comparador se ordenan.
+$nombres = [string[]]@($grupos.Name)
+[array]::Sort($nombres, [StringComparer]::Ordinal)
+foreach ($nombre in $nombres) {
+  if (-not $nombre) { continue }
+  $g = @($grupos | Where-Object { $_.Name -ceq $nombre })[0]
+  $deg = @($g.Group | Where-Object { $_.degradation -cne 'none' }).Count
   $ord = @($g.Group.duration | Sort-Object)
   $med = if ($ord.Count) { $ord[[int](($ord.Count + 1) / 2) - 1] } else { '-' }
-  Write-Output "$($g.Name): $($g.Count) corridas · $deg degradadas · mediana $($med)s"
+  Write-Output "$($nombre): $($g.Count) corridas · $deg degradadas · mediana $($med)s"
 }
 # @fin:manifest-resumen-ps
 ```

@@ -7,8 +7,8 @@
         "digest": "sha256:05a086c428d2d771"
       },
       "ps": {
-        "linea": 7,
-        "digest": "sha256:68d24ab092d98e2a"
+        "linea": 11,
+        "digest": "sha256:a3375fc9088d1f7d"
       }
     },
     "posix": "^GUARD:manifest-valido falta el campo \"(?P<campo>[^\"]*)\"$",
@@ -45,8 +45,8 @@
         "digest": "sha256:2e96363ef6b52725"
       },
       "ps": {
-        "linea": 10,
-        "digest": "sha256:ce674b04d600fb01"
+        "linea": 14,
+        "digest": "sha256:3c1f85a373c72127"
       }
     },
     "posix": "^GUARD:manifest-valido campo recortado presente: \"(?P<campo>[^\"]*)\"$",
@@ -83,8 +83,8 @@
         "digest": "sha256:81f082c5fb0b7768"
       },
       "ps": {
-        "linea": 12,
-        "digest": "sha256:4f25c42e22e4d4a2"
+        "linea": 16,
+        "digest": "sha256:c5f08c359bb83eb4"
       }
     },
     "posix": "^GUARD:manifest-valido \"families\" no es una lista$",
@@ -113,7 +113,7 @@
         "digest": "sha256:daf333d36a20632d"
       },
       "ps": {
-        "linea": 31,
+        "linea": 35,
         "digest": "sha256:d0f2e0af5d5553e3"
       }
     },
@@ -151,7 +151,7 @@
         "digest": "sha256:7a8edd9ba8d6f052"
       },
       "ps": {
-        "linea": 38,
+        "linea": 42,
         "digest": "sha256:a87ce9229506ecf1"
       }
     },
