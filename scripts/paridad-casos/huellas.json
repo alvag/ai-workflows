@@ -41,7 +41,7 @@
   },
   "gate-fase-3": {
     "posix": "sha256:7d976068b5c5aacc",
-    "ps": "sha256:6e6138c419db7797"
+    "ps": "sha256:b92fa1bc21ce2c86"
   },
   "gate-modo-directo": {
     "posix": "sha256:ce1446fe6a68c9bb",
@@ -53,7 +53,7 @@
   },
   "integracion-ownership": {
     "posix": "sha256:5504f452a3894da8",
-    "ps": "sha256:0f59af81b0228853"
+    "ps": "sha256:0eb8d62176496e2a"
   },
   "manifest-resumen": {
     "posix": "sha256:61ed6398cb102f70",

@@ -397,12 +397,16 @@ exit $rc
 # que participa la referencia en solo-lectura con evidencia N/A: Fase 3, nunca NOT_APPLICABLE.
 # Entradas: $repos (uno o más plan.md por repo, separados por espacios)
 $rc = 0
+# Los operadores van en su variante case-sensitive: el par POSIX filtra con `grep -E`/`grep -F` y
+# decide con `case`, que distinguen mayúsculas. Con los operadores por defecto de .NET, `[INTEGRATION]`
+# contaría como una fila de integración, `n/a: fase 3` como la evidencia exigida y `not_applicable`
+# como la marca prohibida.
 foreach ($f in ($repos -split '\s+' | Where-Object { $_ })) {
-  $filas = Get-Content -LiteralPath $f | Where-Object { $_ -match '^\|' -and $_ -notmatch '^\|\s*(ID\s*\||[-: |]+\|)' -and $_ -match '\[integration\]' }
+  $filas = Get-Content -LiteralPath $f | Where-Object { $_ -cmatch '^\|' -and $_ -cnotmatch '^\|\s*(ID\s*\||[-: |]+\|)' -and $_ -cmatch '\[integration\]' }
   foreach ($fila in $filas) {
     $c = $fila -split '\|'; $ev = $c[3].Trim(); $bl = $c[6].Trim()
-    if ($ev -eq 'N/A: Fase 3' -and $bl -eq 'N/A: Fase 3') { continue }
-    if ($ev -match 'NOT_APPLICABLE' -or $bl -match 'NOT_APPLICABLE') {
+    if ($ev -ceq 'N/A: Fase 3' -and $bl -ceq 'N/A: Fase 3') { continue }
+    if ($ev -cmatch 'NOT_APPLICABLE' -or $bl -cmatch 'NOT_APPLICABLE') {
       Write-Error "GUARD:integracion-no-local ${f}: fila [integration] marcada NOT_APPLICABLE (borraria una obligacion global)"
     } else {
       Write-Error "GUARD:integracion-no-local ${f}: fila [integration] con evidencia local `"$ev`"/`"$bl`""
@@ -441,9 +445,11 @@ exit $rc
 # Entradas: $skill_orq (el SKILL.md de sdd-orchestrator)
 $rc = 0
 $doc = (Get-Content -LiteralPath $skill_orq) -join "`n"
-if ($doc -notmatch 'Gate de apertura del contrato de integración') { Write-Error 'GUARD:gate-fase-3 la Fase 3 no tiene gate de apertura'; $rc = 1 }
-if ($doc -notmatch 'Congelarlo \*\*antes\*\*') { Write-Error 'GUARD:gate-fase-3 el gate no exige congelar antes de ejecutar'; $rc = 1 }
-if ($doc -notmatch 'no verificado') { Write-Error 'GUARD:gate-fase-3 la agregacion no declara que una fila ausente impide el verde'; $rc = 1 }
+# `-cnotmatch` y no `-notmatch`: el par POSIX busca con `grep -q`, que distingue mayúsculas. Con el
+# operador por defecto de .NET, un `no Verificado` en la skill daría por cumplida la cláusula.
+if ($doc -cnotmatch 'Gate de apertura del contrato de integración') { Write-Error 'GUARD:gate-fase-3 la Fase 3 no tiene gate de apertura'; $rc = 1 }
+if ($doc -cnotmatch 'Congelarlo \*\*antes\*\*') { Write-Error 'GUARD:gate-fase-3 el gate no exige congelar antes de ejecutar'; $rc = 1 }
+if ($doc -cnotmatch 'no verificado') { Write-Error 'GUARD:gate-fase-3 la agregacion no declara que una fila ausente impide el verde'; $rc = 1 }
 exit $rc
 # @fin:gate-fase-3-ps
 ```
