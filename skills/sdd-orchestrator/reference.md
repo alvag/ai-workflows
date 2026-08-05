@@ -2250,7 +2250,9 @@ for ($k = 0; $k -lt $f1.Count; $k++) {
 # además no despache es una regla del despacho, y la valida @bloque:orchestration-state.
 foreach ($v in $vers) {
   foreach ($fila in $v.filas) {
-    if ($fila.base -notin @('RED', 'GREEN_ALREADY', 'NOT_APPLICABLE', 'BLOCKED')) {
+    # `-cnotin` y no `-notin`: el par POSIX resuelve el enum con un `case`, que distingue
+    # mayúsculas. Con el operador por defecto, un baseline `red` pasaría por el `RED` del enum.
+    if ($fila.base -cnotin @('RED', 'GREEN_ALREADY', 'NOT_APPLICABLE', 'BLOCKED')) {
       Falla 'baseline-sin-resolver' "la fila $($fila.id) de v$($v.num) declara baseline [$($fila.base)], fuera de {RED, GREEN_ALREADY, NOT_APPLICABLE, BLOCKED}"
     }
   }
@@ -2264,12 +2266,12 @@ for ($i = 1; $i -lt $vers.Count; $i++) {
   $prev = @($vers[$i - 1].filas | ForEach-Object { $_.id })
   $act = @($vers[$i].filas | ForEach-Object { $_.id })
   foreach ($id in $act) {
-    if ($prev -notcontains $id) {
+    if (-not ($prev -ccontains $id)) {
       Falla 'id-agregado-entre-versiones' "v$($vers[$i].num) estrena la fila $id, que v$($vers[$i - 1].num) no declara"
     }
   }
   foreach ($id in $prev) {
-    if ($act -notcontains $id) {
+    if (-not ($act -ccontains $id)) {
       Falla 'id-quitado-entre-versiones' "v$($vers[$i].num) no lleva la fila $id, que v$($vers[$i - 1].num) declara"
     }
   }
@@ -2321,10 +2323,10 @@ sin asignar es justo para lo que el centinela existe.
 # Un solo diagnóstico por corrida: gana el primero del orden de abajo, que es el de la fábrica.
 # Entradas: $manifest, $master_spec, $contrato, $bitacora y $repos (un plan.md por repo)
 for f in "$manifest" "$master_spec" "$contrato"; do
-  [ -f "$f" ] || { printf 'ARNES:no existe %s\n' "$f" >&2; exit 99; }
+  [ -f "$f" ] || { printf 'ARNES:no existe el artefacto %s\n' "$f" >&2; exit 99; }
 done
 for f in $repos; do
-  [ -f "$f" ] || { printf 'ARNES:no existe %s\n' "$f" >&2; exit 99; }
+  [ -f "$f" ] || { printf 'ARNES:no existe el plan %s\n' "$f" >&2; exit 99; }
 done
 # Una bitácora que no existe NO es un error del arnés sino el hallazgo `bitacora-ausente`: AC-20 pide
 # el mismo veredicto que una transición inválida, nunca un verde por omisión. Se sustituye por
@@ -2736,11 +2738,11 @@ exit $?
 # Un solo diagnóstico por corrida: gana el primero del orden de abajo, que es el de la fábrica.
 # Entradas: $manifest, $master_spec, $contrato, $bitacora y $repos (un plan.md por repo)
 foreach ($f in @($manifest, $master_spec, $contrato)) {
-  if (-not (Test-Path -LiteralPath $f)) { [Console]::Error.WriteLine("ARNES:no existe $f"); exit 99 }
+  if (-not (Test-Path -LiteralPath $f)) { [Console]::Error.WriteLine("ARNES:no existe el artefacto $f"); exit 99 }
 }
 $planes = @($repos -split '\s+' | Where-Object { $_ })
 foreach ($f in $planes) {
-  if (-not (Test-Path -LiteralPath $f)) { [Console]::Error.WriteLine("ARNES:no existe $f"); exit 99 }
+  if (-not (Test-Path -LiteralPath $f)) { [Console]::Error.WriteLine("ARNES:no existe el plan $f"); exit 99 }
 }
 $Q = [char]39
 function Desnudo($s) {
@@ -3187,9 +3189,9 @@ exit 0
 # Un solo diagnóstico por corrida: gana el primero del orden de abajo, que mira la forma de cada
 # fila antes que el conjunto del repo, porque son dos defectos distintos sobre la misma referencia.
 # Entradas: $manifest (el manifest.yml) y $repos (uno o más plan.md por repo, separados por espacios)
-[ -f "$manifest" ] || { printf 'ARNES:no existe %s\n' "$manifest" >&2; exit 99; }
+[ -f "$manifest" ] || { printf 'ARNES:no existe el manifest %s\n' "$manifest" >&2; exit 99; }
 for f in $repos; do
-  [ -f "$f" ] || { printf 'ARNES:no existe %s\n' "$f" >&2; exit 99; }
+  [ -f "$f" ] || { printf 'ARNES:no existe el plan %s\n' "$f" >&2; exit 99; }
 done
 # El manifest es entrada y no un lujo: sin `participating_repos` no hay forma de saber quién
 # participa, y exigirle a TODO plan.md una referencia deja en rojo al repo que no participa y a la
@@ -3372,10 +3374,10 @@ exit $?
 # Un solo diagnóstico por corrida: gana el primero del orden de abajo, que mira la forma de cada
 # fila antes que el conjunto del repo, porque son dos defectos distintos sobre la misma referencia.
 # Entradas: $manifest (el manifest.yml) y $repos (uno o más plan.md por repo, separados por espacios)
-if (-not (Test-Path -LiteralPath $manifest)) { [Console]::Error.WriteLine("ARNES:no existe $manifest"); exit 99 }
+if (-not (Test-Path -LiteralPath $manifest)) { [Console]::Error.WriteLine("ARNES:no existe el manifest $manifest"); exit 99 }
 $planes = @($repos -split '\s+' | Where-Object { $_ })
 foreach ($f in $planes) {
-  if (-not (Test-Path -LiteralPath $f)) { [Console]::Error.WriteLine("ARNES:no existe $f"); exit 99 }
+  if (-not (Test-Path -LiteralPath $f)) { [Console]::Error.WriteLine("ARNES:no existe el plan $f"); exit 99 }
 }
 $Q = [char]39
 $OWNED = 'N/A: orchestration-owned'
@@ -3492,11 +3494,15 @@ foreach ($pf in $planes) {
 # ── índices derivados del manifest ───────────────────────────────────────────────────
 # La fila autoritativa de un AC es la de la tarea que lo cubre; que sea UNA sola lo garantiza
 # `orchestration-model`, así que acá alcanza con la primera.
-$autoritativa = @{}
+# Diccionarios ORDINALES y no `@{}`: una hashtable de PowerShell compara sus claves sin
+# distinguir mayúsculas, así que fundiría `API` con `api` y daría por participante a un repo
+# que el manifest nombra de otra forma. Los arreglos de awk se indexan por bytes.
+$autoritativa = [Collections.Generic.Dictionary[string, string]]::new([StringComparer]::Ordinal)
 foreach ($t in $tareas) {
   foreach ($ac in $t.cov) { if (-not $autoritativa.ContainsKey($ac)) { $autoritativa[$ac] = "V-$($t.id)" } }
 }
-$participa = @{}; $esperado = @{}
+$participa = [Collections.Generic.Dictionary[string, bool]]::new([StringComparer]::Ordinal)
+$esperado  = [Collections.Generic.Dictionary[string, object]]::new([StringComparer]::Ordinal)
 foreach ($t in $tareas) {
   for ($j = 0; $j -lt $t.pk.Count; $j++) {
     foreach ($r in @($t.pv[$j])) {
@@ -3516,16 +3522,16 @@ foreach ($t in $tareas) {
 foreach ($p in $planinfo) {
   if ($p.repo -eq '') { [Console]::Error.WriteLine("ARNES:el plan $($p.arch) no declara repo: en su frontmatter"); exit 99 }
   foreach ($f in $p.filas) {
-    if ($p.vistas -notcontains $f.ac) { $p.vistas += $f.ac }
+    if (-not ($p.vistas -ccontains $f.ac)) { $p.vistas += $f.ac }
     if ($f.ev.Contains($VIEJO) -or $f.bl.Contains($VIEJO)) {
       Falla 'referencia-obsoleta-fase-3' "el repo $($p.repo) referencia $($f.ac) con el literal viejo, que anuncia una fase y no un dueño" $p.arch
     } elseif ($f.ev.Contains('NOT_APPLICABLE') -or $f.bl.Contains('NOT_APPLICABLE')) {
       Falla 'fila-integration-not-applicable' "el repo $($p.repo) marca NOT_APPLICABLE la fila de $($f.ac), que borraría una obligación global" $p.arch
-    } elseif ($f.ev -ne $OWNED -or $f.bl -ne $OWNED) {
+    } elseif ($f.ev -cne $OWNED -or $f.bl -cne $OWNED) {
       Falla 'fila-integration-con-evidencia-local' "el repo $($p.repo) cierra $($f.ac) de su lado: evidencia [$($f.ev)] y baseline [$($f.bl)]" $p.arch
     } else {
       $rf = RefDeLa $f.obs
-      if ($autoritativa.ContainsKey($f.ac) -and $rf -ne $autoritativa[$f.ac]) {
+      if ($autoritativa.ContainsKey($f.ac) -and $rf -cne $autoritativa[$f.ac]) {
         Falla 'referencia-a-fila-equivocada' "el repo $($p.repo) referencia $($f.ac) apuntando a [$rf], y su fila autoritativa es $($autoritativa[$f.ac])" $p.arch
       }
     }
@@ -3538,7 +3544,7 @@ foreach ($p in $planinfo) {
 foreach ($p in $planinfo) {
   $falta = @()
   if ($esperado.ContainsKey($p.repo)) {
-    foreach ($ac in $esperado[$p.repo]) { if ($p.vistas -notcontains $ac) { $falta += $ac } }
+    foreach ($ac in $esperado[$p.repo]) { if (-not ($p.vistas -ccontains $ac)) { $falta += $ac } }
   }
   if ($falta.Count -gt 0) {
     Falla 'referencia-esperada-ausente' "el repo $($p.repo) participa en $($falta -join ', ') y no lo referencia" $p.arch

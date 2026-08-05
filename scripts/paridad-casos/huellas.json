@@ -52,8 +52,8 @@
     "ps": "sha256:d1fe6640de8bab64"
   },
   "integracion-ownership": {
-    "posix": "sha256:5504f452a3894da8",
-    "ps": "sha256:de823c539bf83267"
+    "posix": "sha256:ea99f9f96098c370",
+    "ps": "sha256:0774b7b17f8e25ec"
   },
   "manifest-resumen": {
     "posix": "sha256:61ed6398cb102f70",
@@ -70,6 +70,10 @@
   "metaindice": {
     "posix": "sha256:eecdd56ef8221bcd",
     "ps": "sha256:44d612e756f16e5e"
+  },
+  "orchestration-contract": {
+    "posix": "sha256:1f9e1c7da3a6845a",
+    "ps": "sha256:5827b50941ceb548"
   },
   "ownership-log": {
     "posix": "sha256:4365eeaee786df83",
