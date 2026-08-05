@@ -56,6 +56,9 @@ Estos findings están **cerrados**: se aceptó el rechazo, o su defensa se evalu
 - Si algo es hipótesis (no lo pudiste verificar en el repo), dilo explícitamente.
 - No comentes estilo, wording ni formato. Foco en correctitud, completitud y riesgo.
 - Repite los IDs que recibiste para los temas ya conocidos; propón ID solo para temas nuevos.
+- Escribe `why`, `suggestion` y `argumento` con lo que hace falta para entender el problema y
+  actuar: sin preámbulos, sin repetir el artefacto y sin boilerplate. Esto calibra cuánto escribes
+  POR finding y NO cuántos emites: reporta todos los que encuentres — quien filtra es el conductor.
 </grounding_rules>
 
 <constraints>
@@ -106,6 +109,7 @@ ella tu salida se trata como incompleta, aunque el contenido parezca entero.
 
 <dig_deeper_nudge>
 No te quedes en lo superficial. Busca el AC que falta, el caso borde no cubierto, el supuesto no
-declarado, la dependencia no vista, el contrato que no cierra. Si no encuentras nada serio, APRUEBA
-— no inventes findings para parecer productivo.
+declarado, la dependencia no vista, el contrato que no cierra. Reporta todo lo que encuentres con su
+severidad y su confianza: el filtrado lo hace el conductor después, no vos. Lo único que no debe
+aparecer es un finding que no puedas anclar — no inventes para parecer productivo.
 </dig_deeper_nudge>

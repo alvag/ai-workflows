@@ -773,6 +773,22 @@ efectos colaterales exige leer código, y el contrato de invocación ya define `
 directorio desde el que el revisor puede hacerlo. Solo se reemplaza por una lista cerrada cuando
 la llamadora declara explícitamente que su lista es exhaustiva.
 
+Sobre la calibración de longitud en `<grounding_rules>`: acota la prosa de `why`/`suggestion`
+—que se persiste en el `review-log.md` y se relee en cada ronda—, y lleva pegada la salvaguarda de
+que **no** toca el número de findings. La salvaguarda no es adorno: pedirle brevedad a un revisor
+es indistinguible de pedirle que sea conservador, y un revisor conservador reporta menos, que es
+justo lo contrario de lo que compra esta skill. El diseño ya separa las dos cosas —el revisor emite
+todo con `severidad` y `confidence`, y el filtrado ocurre en un pase aparte, el triage del
+conductor—, así que la línea solo tiene que no romper esa separación.
+
+Por el mismo motivo, el `<dig_deeper_nudge>` **no** le dice al revisor cuándo aprobar. Antes cerraba
+con "si no encuentras nada serio, APRUEBA", que eran dos instrucciones pegadas: una anti-alucinación
+—legítima— y un empujón a reportar menos. El empujón además era **redundante**: el criterio de
+aprobación ya está normado en "Formato de salida" (`APPROVED` sin findings, o solo con `low`
+opcionales, corta el loop), que es donde vive. Repetirlo en el nudge no agregaba una regla, agregaba
+un sesgo — y un revisor al que se le pide moderación reporta menos, que es lo contrario de lo que
+esta skill compra. Queda la mitad que sí hace falta: un finding que no se puede anclar no se emite.
+
 ## Formato de salida
 
 Pedirle al revisor exactamente esta estructura (fácil de parsear y de loguear). **Ronda 1:**

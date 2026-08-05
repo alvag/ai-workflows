@@ -615,6 +615,20 @@ El prompt vive en `assets/prompts/explore.md` — es la **entrada exacta** del w
 `{PREFIJO}` se sustituye por `CDX-W-EXP` o `CLD-W-EXP` según el worker. `{FORMATO_PUNTERO}` es
 `path:line` con un solo `working_dir`, o `repo/path:line` con varios.
 
+> **La calibración de longitud del detalle y por qué está redactada así.** El contrato acota la
+> *estructura* del informe pero no cuánto se escribe bajo cada `### <ID>`, y esa prosa es la que
+> paga el costo: el detalle se persiste en disco y el árbitro abre entradas por disparador. De ahí
+> la línea que pide desarrollar lo que aporta y no rellenar. Va con una salvaguarda explícita —
+> **calibra cuánto se escribe por entrada, no cuántas se emiten**— porque una instrucción de
+> brevedad a secas se cumple al pie de la letra recortando **hallazgos**, que es exactamente lo que
+> este modo existe para producir.
+>
+> **Todo cambio acá tiene que ser neutro entre familias.** Los dos workers reciben este prompt
+> byte-idéntico (regla 2), así que una redacción afinada para una familia desoptimiza a la otra y,
+> peor, vuelve incomparables los dos mapas. Una guía de estilo específica de un modelo entra en el
+> prompt del **revisor** de `cross-review` o del **implementador** de `cross-implement`, donde la
+> familia destinataria está fijada — nunca en los prompts duales.
+
 ### Prompt de counter-plan (dos capas)
 
 Mismo `output_contract` que `explore`, con `{PREFIJO}` = `<FAM>-W-CTR`. Cambian `<task>`, el

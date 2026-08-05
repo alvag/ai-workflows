@@ -37,6 +37,9 @@ ID | tipo · qué | severidad | confianza | punteros
 ## Detalle
 Un heading "### <ID>" por CADA fila del índice, con el desarrollo completo debajo.
 Ningún contenido fuera de un "### <ID>".
+Calibra cada entrada a lo que el hallazgo necesita: desarrolla lo que aporta y no rellenes con
+preámbulos, recapitulaciones ni boilerplate. Esto es sobre cuánto escribes POR entrada, no sobre
+cuántas emites: no dejes un hallazgo afuera para ser breve.
 
 Los IDs del índice y los del detalle deben ser EXACTAMENTE el mismo conjunto.
 Cierra con la línea: STATUS: done
