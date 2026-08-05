@@ -53,10 +53,34 @@ contraste entre los dos ejercicios:
 1. Con **sandbox estricto** de solo lectura el worker **no puede escribir** su propio informe en el
    repo — y este contrato exige que lo escriba, porque el pane no devuelve el texto (ver "Entradas y
    salidas").
-2. Con el perfil amplio de escritura al workspace el worker queda habilitado a escribir **todo el
-   working dir**, no solo su ruta de salida.
+2. Con el perfil amplio de escritura al workspace el worker queda **habilitado** a escribir **todo el
+   working dir**, no solo su ruta de salida. **Habilitado no es capaz:** el perfil concede el
+   permiso, pero ejercerlo depende del **mecanismo** con que se escriba, y hay un mecanismo que bajo
+   este mismo perfil no logra persistir (ver "Permiso y mecanismo son cosas distintas"). Este punto
+   habla del permiso concedido; no dice que cualquier vía de escritura vaya a funcionar.
 3. El punto intermedio —repo de solo lectura con una única salida escribible— **no se ejercitó** en
    ninguno de los dos ejercicios. Es diseño sin validar, no práctica recomendada.
+
+### Permiso y mecanismo son cosas distintas
+
+**El hecho medido.** Bajo el perfil de escritura al workspace, sobre **Windows**, la herramienta de
+edición interna de Codex **no logra persistir** el artefacto, y la escritura por **shell** desde el
+mismo agente y la misma sesión **sí lo logra**.
+
+**El alcance de esa evidencia, para no leerla de más.** El par controlado varió **una** variable —el
+mecanismo— manteniendo constantes agente, sesión, perfil, repositorio, destino y operación. Sobre las
+demás: la ruta, el carácter oculto del directorio y la preexistencia del archivo **no impidieron la
+escritura por shell**, y **cambiarlas no reparó la herramienta** en las sondas realizadas. Eso no
+descarta interacciones mecanismo × ruta o mecanismo × preexistencia fuera de las combinaciones
+probadas.
+
+**La capa causal queda indeterminada, y se declara así.** El perfil se mantuvo constante en todas las
+sondas —probar sin él habría exigido el bypass que la sección siguiente prohíbe—, así que **no** se
+puede afirmar si la causa es un defecto propio de la herramienta, de la plataforma, o una interacción
+con el sandbox. Lo que está medido es el hecho operacional, no su explicación.
+
+**Consecuencia práctica.** El worker que deposita su informe necesita que el prompt le diga **cómo**
+escribir, no sólo dónde: esa instrucción es el bloque `<output_persistence>` de "Entradas y salidas".
 
 **El perfil ejercitado, nombrado como tal.** Lo que los ejercicios probaron es el **comportamiento**
 read-only por contrato —el prompt prohíbe escribir y modificar, y los dos workers lo respetaron—, no
@@ -88,6 +112,128 @@ artefacto del worker en `co-explore/scratch/raw-<modo>-<familia>-worker.md`, de 
 del agente, con el cromo de la TUI entremezclado, que no es el informe. Cuánto historial alcance a
 devolver una lectura es un dato de la plataforma —depende de la versión del multiplexor y del estado
 del agente— y por eso no se apoya un contrato ahí.
+
+### Cómo persiste el worker su informe — el seam
+
+El worker no devuelve texto: deposita un archivo. Y bajo este transporte, sobre Windows, **decirle
+dónde no alcanza** — hay un mecanismo de escritura que bajo el perfil vigente no persiste (ver
+"Permiso y mecanismo son cosas distintas"). Por eso el prompt materializado lleva un bloque que le
+dice **cómo** escribir.
+
+**Un único punto de materialización.** El bloque no se copia en siete lugares: se inserta en el paso
+donde el conductor arma el prompt final, justo antes de cada dispatch. Ese punto es el que se
+enumera y el que se verifica, y la garantía que sostiene es **una sola inserción por prompt**:
+insertarlo dos veces es tan defectuoso como no insertarlo, y es detectable contando ocurrencias.
+
+**Y una posición, no sólo un momento.** Contar ocurrencias no alcanza: un bloque que cae dentro de
+`<artifact>`, `<context_package>` o el anexo privado es **dato citado**, no una instrucción, y
+pasaría el conteo dando un falso verde. El ancla es una sección **top-level** `<output_persistence>`,
+y **no es la misma en todas las entradas** porque las plantillas no comparten estructura:
+
+| Entrada | Qué recibe | Ancla | Marca de cierre |
+|---|---|---|---|
+| `explore` (los dos workers) | el prompt completo del lanzamiento, con el bloque | entre `<constraints>` y `<output_contract>` | `STATUS: done` |
+| `investigate` (los dos, por delta) | ídem | ídem | `STATUS: done` |
+| `counter-plan` (los dos) | ídem; el bloque va en el **núcleo común**, nunca en el anexo privado | tras `<focus>` — esta plantilla no tiene `<constraints>` ni `<output_contract>` | **ninguna** |
+| `debate` ronda 0 · `debate` cruce | el prompt **único** de la ronda, sujeto al predicado de abajo | entre `<constraints>` y `<output_contract>` | **ninguna** |
+| `transportAttempt` | el prompt **completo** de nuevo: se relanza, no hay sesión viva | la de su modo | la de su modo |
+| `formatRepair` | el pedido de reemisión **a la sesión viva**, con el bloque repetido top-level | no aplica: no es un prompt con secciones | la de su modo |
+| `semanticAttempt` | el prompt completo, sesión nueva | la de su modo | la de su modo |
+
+**`debate` no sigue la regla de los modos duales.** No es dual: se despacha un solo worker, de la
+familia opuesta al conductor, así que la familia efectiva queda determinada por corrida y no hay par
+que preservar. Toma el mismo predicado que `cross-review` — **panes ∧ Windows ∧ worker efectivo
+Codex** — y su verificación es la de un prompt único, no la de un par.
+
+**En los modos duales el bloque se condiciona por comportamiento y plataforma, nunca por familia.**
+El prompt dual es byte-idéntico por regla dura (`reference.md` → "Prompt de explore (dos capas)"), y
+una instrucción específica de modelo está prohibida ahí. El bloque la respeta porque enuncia
+condiciones —*si corrés sobre Windows y tu herramienta de edición falla al persistir*— y no
+destinatarios: un worker cuya herramienta funciona no entra en la rama y conserva su mecanismo.
+
+**La línea marcada `(*)` es condicional.** Tres entradas no definen marca de cierre en su
+contrato de salida —`counter-plan` y las dos rondas de `debate`—, y ahí esas dos líneas **se
+omiten**: con ellas puestas la condición nunca se cumpliría, el `throw` se dispararía siempre y esos
+workers **jamás publicarían**. Consecuencia declarada: en esas tres entradas la validación de
+transporte cubre bytes y BOM, pero **no detecta un truncado final**. La paridad dual no se ve
+afectada, porque los dos workers de un modo comparten entrada y por lo tanto comparten la condición.
+
+**Placeholders**, que el conductor sustituye al materializar:
+
+- `{ruta_salida}` — la ruta desnuda, para que el worker la lea.
+- `{ruta_salida_literal}` — la misma ruta ya serializada como literal de PowerShell: comillas simples
+  incluidas y apóstrofos internos duplicados. La serializa el conductor, que es quien la conoce; así
+  una ruta como `C:\Users\O'Brien\out.md` llega como `'C:\Users\O''Brien\out.md'` y no rompe el
+  parseo antes de que `-LiteralPath` pueda protegerla.
+- `{marca_cierre}` — la de la tabla de arriba, cuando la entrada define una.
+
+El bloque, literal:
+
+```
+<output_persistence>
+Escribe tu informe completo en este archivo:
+
+  {ruta_salida}
+
+PASO 1 — intentá con tu herramienta habitual de edición de archivos. Si el archivo queda
+escrito, terminaste: no sigas al paso 2.
+
+PASO 2 — SÓLO si el paso 1 falló al persistir, o si te ofreció reintentar fuera del sandbox
+—cosa que no debés aceptar, está prohibido en esta corrida—, caé a la primitiva de abajo.
+No la uses preventivamente: es el plan B de un fallo observado, no el camino por defecto.
+Si tu herramienta funcionó, este bloque no cambia nada de lo que ya hacés.
+
+LA PRIMITIVA. Se escribe por LOTES, en varios comandos cortos, nunca en uno solo: un comando
+que lleve el informe entero supera el largo que el sistema de permisos puede analizar, y ahí
+el intento queda esperando una aprobación que nadie va a dar. Mantené cada comando por debajo
+de unos 800 caracteres, y contá los lotes: perder uno produce un texto coherente consigo mismo
+que ninguna comprobación de abajo detecta.
+
+Cada comando es autocontenido: el estado no sobrevive de uno al siguiente, así que las
+variables se redeclaran en cada uno.
+
+Comando 1 — crea el temporal con el primer lote:
+
+$e=[System.Text.UTF8Encoding]::new($false); [System.IO.File]::WriteAllText({ruta_salida_literal}+'.tmp','primera linea'+[char]10+'segunda linea'+[char]10,$e)
+
+Comandos 2..N-1 — uno por lote, agregando al final:
+
+$e=[System.Text.UTF8Encoding]::new($false); [System.IO.File]::AppendAllText({ruta_salida_literal}+'.tmp','linea con '' comilla simple'+[char]10+'otra linea'+[char]10,$e)
+
+Comando final — valida y publica:
+
+$e=[System.Text.UTF8Encoding]::new($false); $p={ruta_salida_literal}; $t=[System.IO.File]::ReadAllText($p+'.tmp',$e); $b=[System.IO.File]::ReadAllBytes($p+'.tmp'); if($b.Length -ge 3 -and $b[0] -eq 0xEF){throw 'BOM presente: no se publica'}; $l=@($t.Split([char]10)|Where-Object{$_.Trim() -ne ''}); if($l.Count -eq 0 -or -not [string]::Equals($l[-1].Trim(),'{marca_cierre}',[System.StringComparison]::Ordinal)){throw 'la ultima linea no vacia no es la marca de cierre: no se publica'}; Move-Item -LiteralPath ($p+'.tmp') -Destination $p -Force    # (*)
+
+Las tres reglas del contenido:
+- Escape: cada lote es un literal entre comillas simples. El único carácter que necesita
+  escape es la comilla simple, y se escapa duplicándola. Ni $, ni backtick, ni @ se
+  interpretan, así que una línea que sea exactamente '@ viaja como cualquier otra.
+- Saltos: se agregan con +[char]10+ entre líneas y al final de cada lote. No uses "`n".
+- Corte: partí donde quieras mientras cada comando quede corto; el corte no cambia el
+  resultado. Lo que sí importa es no perder un lote.
+
+Qué valida el comando final, y qué no. Verifica que no haya BOM y que la última línea no
+vacía sea la marca de cierre — eso atrapa el caso más común, perder el último lote. NO
+detecta un lote intermedio omitido: el resultado queda coherente consigo mismo. La validación
+de formato que hace el conductor al cosechar sólo lo atrapa si esa omisión rompe el contrato
+estructural; si no lo rompe, la pérdida es INDETECTABLE sin un esperado independiente. Contar
+los lotes es la única defensa real, y por eso está en las reglas.
+
+Si algo falla. Conservá el .tmp para inspección y reportá el intento como no entregado. Nunca
+escribas directo sobre el destino: eso deja un archivo parcial visible, que es justamente lo
+que el temporal más el rename evitan. Que la ruta final quede ausente ES la señal de "no
+entregado", y es distinta de un artefacto entregado con formato inválido, que se repara sin
+volver a transportar.
+</output_persistence>
+```
+
+**El truncado previo cambia para las rutas finales.** El orden de preparación de esta vía es
+*preparar · truncar · crear los panes*, y truncar la ruta final del artefacto la dejaría **existente
+y vacía** antes de que el worker publique — un observador vería un archivo vacío desde el inicio por
+más impecable que fuera el rename posterior, y eso contradice la propiedad *ausente o completa* que
+la publicación atómica sostiene. Por lo tanto **las rutas finales exclusivas del intento nacen
+ausentes**: se eliminan, no se truncan a vacío. El truncado sigue valiendo para prompts y logs, que
+sí deben existir.
 
 **Qué campos del descriptor de corrida escribe esta skill.** El descriptor es de la corrida y tiene
 **doce** campos; `co-explore` completa los suyos **antes** del dispatch:
@@ -147,7 +293,15 @@ en `reference.md` → "Latencia y deadlines". Lo que cambia es **la forma de esp
 reglas que los dos ejercicios pagaron por descubrir.
 
 **(a) Se despachan todos antes de esperar a ninguno.** El orden es fijo: preparar · truncar · crear
-los panes · despachar A · despachar B · **y recién entonces** esperar. Medido: dos despachos que
+los panes · despachar A · despachar B · **y recién entonces** esperar.
+
+> **El truncado no alcanza a las rutas finales del artefacto: esas nacen ausentes.** Truncarlas las
+> dejaría existentes y vacías antes de que el worker publique, y un observador vería un archivo vacío
+> desde el inicio por más impecable que fuera el rename posterior — contradiciendo la propiedad
+> *ausente o completa* de la publicación atómica. Se **eliminan**, no se truncan a vacío. El truncado
+> sigue valiendo para prompts y logs, que sí deben existir. Ver "Cómo persiste el worker su informe".
+
+Medido: dos despachos que
 incluyen su propia espera se ejecutan en serie —el harness espera el primero antes de ejecutar el
 segundo— y el ahorro de reloj es lo de menos, porque serializados el segundo worker arranca con el
 artefacto del primero ya en disco. Crear el pane y arrancar al agente son además **dos pasos**:

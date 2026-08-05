@@ -70,10 +70,52 @@ contraste entre los dos ejercicios:
 1. Con **sandbox estricto** de solo lectura el agente **no puede escribir** su propio informe —ni,
    acá, el código que se le pidió—. Para esta skill ese hecho no es una limitación a sortear: es la
    prueba de que el perfil estricto está fuera de discusión.
-2. Con el perfil amplio de escritura al workspace el agente queda habilitado a escribir
-   **todo el working dir**, no solo las rutas que el work order nombra.
+2. Con el perfil amplio de escritura al workspace el agente queda **habilitado** a escribir
+   **todo el working dir**, no solo las rutas que el work order nombra. **Habilitado no es capaz:**
+   el perfil concede el permiso, pero ejercerlo depende del **mecanismo**, y hay uno que bajo este
+   mismo perfil no logra persistir (ver "Permiso y mecanismo son cosas distintas"). Este punto habla
+   del permiso concedido; no dice que cualquier vía de escritura vaya a funcionar.
 3. El punto intermedio —árbol de solo lectura con un conjunto acotado de rutas escribibles— **no se
    ejercitó** en ninguno de los dos ejercicios. Es diseño sin validar, no práctica recomendada.
+
+### Permiso y mecanismo son cosas distintas
+
+**El hecho medido.** Bajo el perfil de escritura al workspace, sobre **Windows**, la herramienta de
+edición interna de Codex **no logra persistir** el archivo que escribe, y la escritura por **shell**
+desde el mismo agente y la misma sesión **sí lo logra**.
+
+**El alcance de esa evidencia, para no leerla de más.** El par controlado varió **una** variable —el
+mecanismo— manteniendo constantes agente, sesión, perfil, repositorio, destino y operación. La ruta,
+el carácter oculto del directorio y la preexistencia del archivo **no impidieron la escritura por
+shell**, y **cambiarlas no reparó la herramienta** en las sondas realizadas; eso no descarta
+interacciones fuera de las combinaciones probadas. Y **la capa causal queda indeterminada**: el
+perfil se mantuvo constante en todas las sondas —probar sin él habría exigido el bypass que esta
+skill prohíbe—, así que no se puede afirmar si la causa es de la herramienta, de la plataforma o de
+su interacción con el sandbox.
+
+**Y acá pega distinto que en las otras dos skills.** `co-explore` y `cross-review` remedian el
+problema con una instrucción de prompt —*persistí por shell*— porque su agente deposita **un archivo
+de texto**, y una escritura por shell lo produce igual de bien. **Esta skill escribe código**: un
+cambio real sobre un árbol de fuentes, hecho de ediciones a archivos existentes. "Persistí por shell"
+**no es trasladable** a eso, y prometer que lo sería repetiría el error de diagnóstico que este hilo
+de incidentes ya cometió una vez.
+
+**Por lo tanto, el impacto sobre esta skill se declara, no se remedia:** si la herramienta de edición
+del agente no persiste sobre Windows, **escribir código por esta vía está comprometido de una forma
+que este flujo no resuelve**. No hay bloque `<output_persistence>` acá.
+
+**El transporte CLI de esta skill no está a salvo por defecto — está sin medir.** Su agente también
+escribe en el working tree con el mismo perfil de escritura al workspace, y el hecho medido no
+distingue transportes: aisló el mecanismo de edición, no la vía por la que se lanzó el proceso. **No
+se afirma que el CLI esté exento**, porque no se comprobó. Queda como **riesgo explícitamente no
+verificado**, con ese alcance: se sabe que el mecanismo falla bajo ese perfil en panes; no se sabe si
+falla igual por CLI.
+
+**Cómo se detecta si ocurre.** El síntoma es el mismo que en las otras skills: la edición no
+persiste, o el agente ofrece reintentar fuera del sandbox. Lo segundo **no se acepta nunca** —es el
+bypass que la regla de abajo prohíbe—, y lo primero se manifiesta como un diff vacío o incompleto
+frente a un agente que reporta haber terminado. La defensa vigente es la que ya existe: **el
+conductor revisa el diff completo** y no acepta el reporte del agente como prueba.
 
 **Acá el perfil amplio no es una concesión: es el modo normal de la skill.** Donde el worker delegado
 solo deposita un informe, la escritura al workspace es una holgura que se tolera. Esta skill
