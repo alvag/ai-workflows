@@ -205,8 +205,9 @@ siempre como el estado del lifecycle.
 ## Continuidad entre rondas
 
 **El resume es gratis, y ahí el andamiaje se cae solo.** El revisor sigue vivo en su pane entre
-rondas: reanudarlo es mandarle el delta al mismo agente —qué findings se aplicaron, cuáles se
-rechazaron y por qué, y el pedido de una pasada nueva sobre el artefacto actualizado—. No hay
+rondas: reanudarlo es mandarle el delta al mismo agente —**proyectado desde el ledger, nunca
+redactado aparte** (`reference.md` → "Resume entre rondas")— y el pedido de una pasada nueva sobre el
+artefacto actualizado. No hay
 identificador de sesión del proveedor que capturar, persistir ni recuperar: el handle es el nombre del
 agente. Con él desaparece también la relectura del modelo y del esfuerzo efectivos desde el scratch,
 que el transporte CLI necesitaba porque cada ronda corría en un proceso nuevo; acá el proceso es el
@@ -214,6 +215,14 @@ mismo y no se relanza. **El pane no se recrea entre rondas:** recrearlo sería u
 disfrazada de resume, y el revisor perdería la memoria de lo ya discutido, que es exactamente para lo
 que el loop reusa su thread. Si la ronda no se puede reanudar, la degradación vigente sigue siendo
 rondas independientes con el artefacto actualizado completo — más caro, pero válido.
+
+**El paquete degradado lleva el ledger y el registro de identidad, en las tres vías.** Cuando la
+ronda va a un revisor que no vio las anteriores —resume caído, sesión fresca, o un pane nuevo—, viaja
+**el ledger** de la corrida **más el registro de identidad** de cada finding: su tema y sus anclas.
+Solo las filas del ledger —ID, evento, decisión, rationale— lo dejarían sin **con qué** evaluar el
+rechazo: sabría que algo se rechazó, no sobre qué. La equivalencia entre las tres vías es requisito
+del contrato, no una propiedad del transporte: un revisor fresco tiene que poder aceptar o defender
+cada rechazo igual que el que estuvo desde la ronda 1.
 
 **El pane del seed se toma prestado y nunca se cierra.** Cuando la matriz de resume resuelve que esta
 revisión arranca reanudando una sesión de la co-exploración, en esta vía esa sesión *es* un agente
@@ -308,7 +317,7 @@ a propósito quedaría clasificado como resultado incierto.
 
 ## Cleanup
 
-**El pane se cierra por artefacto validado, nunca por lifecycle.** Las cuatro precondiciones de cierre
+**El pane se cierra por artefacto validado, nunca por lifecycle.** Las cinco precondiciones de cierre
 son **conjuntivas**: hacen falta **todas a la vez**, y ninguna se deja inferir de otra.
 
 1. El veredicto **cosechado y validado** contra el formato estructurado, con sus findings parseados.
@@ -317,6 +326,12 @@ son **conjuntivas**: hacen falta **todas a la vez**, y ninguna se deja inferir d
    corrida, pero tampoco se calla.
 4. **Sin rondas ni recovery pendientes**: mientras quede una ronda del loop por delante, un consumidor
    elegible del pane o un `recovery-required` sin resolver, el pane vive.
+5. **Sin tandas concedibles pendientes de decisión**: mientras el checkpoint esté abierto —el humano
+   todavía no eligió entre las cuatro opciones—, el pane vive en `cleanup: keep`. Que la tanda se
+   haya agotado **no** es un outcome terminal de la corrida: si el humano concede, la ronda siguiente
+   reanuda **este** revisor, y cerrarlo antes convertiría la continuación en una sesión fresca
+   disfrazada de resume — el mismo error que "Continuidad entre rondas" ya prohíbe entre rondas de
+   una misma tanda.
 
 **Un agente asentado no es condición suficiente de ninguna de las cuatro.** Que el revisor esté en
 `idle` o en `done` no dice nada sobre el veredicto, el outcome, el manifest ni las rondas pendientes:

@@ -172,6 +172,21 @@ estas pasadas corran **todas en el conductor** es lo que habilita delegar el imp
 `cross_review.mode: off` (ver "Delegación"): el subagente no re-revisa porque el diseño completo ya
 se revisó arriba.
 
+**Salida de rondas.** Cuando la revisión devuelve `tandas_concedibles` —todo `REVISE` que abra el
+checkpoint—, el STOP del gate ofrece las **cuatro opciones**: **continuar así** · **conceder una
+tanda** · **seguir hasta `APPROVED`** · **cerrar la revisión**. Se ofrecen siempre; `disponibles:
+false` advierte que conceder no puede converger, no deshabilita nada. Con el modo automático activo,
+el fin de tanda es una frontera interna y la barrera del gate sigue marcada.
+
+Tras el gate, y como en las otras dos llamadoras: si el humano concede se **reanuda la misma corrida
+por su `run_id`**; si elige una salida terminal se **finaliza el único manifest**; y el `resume` de
+este flujo **consulta el descriptor durable** antes de iniciar otra revisión, para rehidratar una
+corrida abierta en vez de duplicarla (`cross-review/reference.md` → "Tandas y salida de rondas" y
+"Checkpoint durable").
+
+Este flujo **garantiza humano en el gate**, así que la excepción de "donde no hay forma de presentar
+un gate no se pregunta" no lo alcanza.
+
 ---
 
 ## Delegación a `sdd-flow` (prompt del subagente)

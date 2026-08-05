@@ -41,7 +41,8 @@ cross_review:
   mode: auto                     # auto (por complejidad) | "on" | "off" — [def]
   execution: auto                # auto (por capacidad del conductor) | sync | background — [def]
   artifacts: [master-spec, reparto]   # [def] qué artefactos revisar (difiere del default de sdd-flow)
-  max_rounds: 3                  # [def] tope de rondas
+  max_rounds: 3                  # [def] rondas por TANDA, no de la corrida entera
+  reviewer: auto                 # auto | claude | codex — [def] nunca la familia del autor
 
 # ── dueño: co-explore/SKILL.md → "Configuración" ──
 co_explore:

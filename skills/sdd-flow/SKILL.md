@@ -210,6 +210,21 @@ crítica se presenta *junto* al artefacto en el mismo STOP; tú sigues siendo el
   que llegue antes del estado terminal **no se contabiliza** y se vuelve a pedir con la crítica a la
   vista. La levanta el **primer** estado terminal, veredicto o degradación: los cinco liberan el
   gate, así que no puede colgar el flujo (`cross-review/reference.md` → "Estados terminales que liberan el gate").
+  **Con el modo automático activo, el fin de una tanda es una frontera interna y la barrera sigue
+  marcada:** se libera en los tres cortes de ese modo, no al agotarse cada tanda.
+- **Las cuatro opciones del checkpoint, dentro del STOP existente.** Si la revisión devuelve
+  `tandas_concedibles` (todo `REVISE` que abra checkpoint), el gate ofrece —sin gate extra, con el
+  patrón de la pregunta de `implement_mode`— **continuar así** · **conceder una tanda** · **seguir
+  hasta `APPROVED`** · **cerrar la revisión**. Las cuatro se ofrecen siempre: `disponibles: false`
+  advierte que conceder no puede converger, no deshabilita nada. Postcondiciones de cada una en
+  `cross-review/reference.md` → "Tandas y salida de rondas".
+- **Cerrar la corrida es responsabilidad de la llamadora.** Tras el gate: si el usuario concede, se
+  **reanuda la misma corrida con su `run_id`** (nunca se inicia otra); si elige una salida terminal
+  —aprobar así o cerrar—, se **finaliza el único manifest** de la corrida. `cross-review` no puede
+  hacerlo: al devolver todavía no sabe si habrá otra tanda.
+- **`resume` consulta el descriptor antes de revisar.** Una corrida de revisión abierta —con su
+  checkpoint pendiente— se **rehidrata** por `run_id`; no se duplica ni se recargan presupuestos
+  (`cross-review/reference.md` → "Checkpoint durable").
 
 > Detalle del loop, el contrato con el revisor (Codex o Claude según quién conduzca) y el formato del log: en la propia
 > `cross-review`. Acá sdd-flow solo decide **cuándo** invocarla y **presenta** su salida en el

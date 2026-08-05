@@ -46,7 +46,8 @@ cross_review:                  # opcional; segunda opinión cross-model EN LOS G
   mode: auto                   # auto | "on" | "off"  (entre comillas: sin ellas YAML los parsea como booleanos)
   execution: auto              # auto (por capacidad del conductor) | sync | background
   artifacts: [master-spec, reparto]
-  max_rounds: 3
+  max_rounds: 3                # rondas POR TANDA, no de la corrida entera; al agotarse se abre el checkpoint
+  reviewer: auto               # auto (descubre por capacidad; nunca la familia del autor) | claude | codex
 co_explore: {mode: auto, deadline: 600}  # co-exploración cross-repo ANTES del reparto; ORTOGONAL a cross_review (bloque hermano, no anidado); default on en orquestación; ver SKILL.md → Co-exploración cross-model
 cross_model: {schema_version: 1, transport: cli}  # opcional; intención de transporte que heredan los sdd-flow delegados para SUS corridas delegadas: cli (default) | herdr — nunca para el fan-out por repos. `schema_version` es obligatorio si el bloque existe; ver "Transporte de las corridas delegadas"
 repos:
