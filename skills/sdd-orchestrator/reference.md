@@ -1618,11 +1618,16 @@ function Lst($t, $c) { if ($t.lst.ContainsKey($c)) { return , @($t.lst[$c]) } el
 # ── master-spec: la etiqueta de cada AC ───────────────────────────────────────
 # La etiqueta se lee del criterio, no de la tabla de Reparto: la tabla es una vista humana derivada
 # y el propio documento dice que ante una discrepancia manda el manifest.
-$tag = @{}; $intac = @()
+# Diccionarios ORDINALES y comparadores `-c*`: los arreglos de awk se indexan por bytes y
+# su `==` distingue mayúsculas. Una hashtable `@{}` y los operadores por defecto de .NET no,
+# así que `g1` pasaría por la tarea `G1`, `Servicio-A` por el repo `servicio-a` y `Gate` por
+# el `gate` del enum — y en la otra dirección, `g1` y `G1` contarían como el mismo id.
+$tag = [Collections.Generic.Dictionary[string, string]]::new([StringComparer]::Ordinal)
+$intac = @()
 foreach ($ln in (Get-Content -LiteralPath $master_spec)) {
   if ($ln -match '^-[ \t]*\*\*(AC-[0-9]+)[ \t]*\[([a-z-]+)\]') {
     $tag[$Matches[1]] = $Matches[2]
-    if ($Matches[2] -eq 'integration') { $intac += $Matches[1] }
+    if ($Matches[2] -ceq 'integration') { $intac += $Matches[1] }
   }
 }
 
@@ -1630,7 +1635,8 @@ foreach ($ln in (Get-Content -LiteralPath $master_spec)) {
 # La columna manda: un campo de la tarea está a la altura de su `id:`, y todo lo que cuelgue más a
 # la derecha pertenece al último campo abierto. Sin eso, una clave del mapa de participación es
 # indistinguible de un campo de la tarea.
-$repos_ = @(); $tareas = @(); $porid = @{}
+$repos_ = @(); $tareas = @()
+$porid = [Collections.Generic.Dictionary[string, int]]::new([StringComparer]::Ordinal)
 $sec = ''; $t = $null; $indcampo = 0; $campo = ''; $enmapa = $false
 foreach ($ln in (Get-Content -LiteralPath $manifest)) {
   # Una línea entera de comentario no abre ni cierra nada: si reseteara la sección, un comentario en
@@ -1705,11 +1711,11 @@ foreach ($t in $tareas) {
 # ── enums y campos obligatorios ───────────────────────────────────────────────
 foreach ($t in $tareas) {
   $p = Esc $t 'phase'
-  if ($p -ne 'gate' -and $p -ne 'closeout') { Falla 'phase-fuera-de-enum' "la tarea $($t.id) declara phase=[$p], fuera de {gate, closeout}" }
+  if ($p -cne 'gate' -and $p -cne 'closeout') { Falla 'phase-fuera-de-enum' "la tarea $($t.id) declara phase=[$p], fuera de {gate, closeout}" }
 }
 foreach ($t in $tareas) {
   $st = Esc $t 'status'
-  if ($st -ne 'pending' -and $st -ne 'in-progress' -and $st -ne 'done' -and $st -ne 'blocked') {
+  if ($st -cne 'pending' -and $st -cne 'in-progress' -and $st -cne 'done' -and $st -cne 'blocked') {
     Falla 'status-fuera-de-enum' "la tarea $($t.id) declara status=[$st], fuera de {pending, in-progress, done, blocked}"
   }
 }
@@ -1720,7 +1726,7 @@ foreach ($t in $tareas) { if ($t.has['done_when'] -and (Esc $t 'done_when') -eq 
 
 # ── grafo: ejecutabilidad antes que forma ─────────────────────────────────────
 foreach ($t in $tareas) {
-  if ($t.has['blocks_repos'] -and (Esc $t 'phase') -ne 'gate') {
+  if ($t.has['blocks_repos'] -and (Esc $t 'phase') -cne 'gate') {
     Falla 'blocks_repos-en-closeout' "la tarea $($t.id) es phase=$(Esc $t 'phase') y declara blocks_repos: [$(Ids (Lst $t 'blocks_repos'))]"
   }
 }
@@ -1729,7 +1735,8 @@ foreach ($t in $tareas) {
     if (-not $porid.ContainsKey($d)) { Falla 'depends_on-inexistente' "la tarea $($t.id) depende de $d, que ninguna orchestration_task declara" }
   }
 }
-$espath = @{}; foreach ($r in $repos_) { $espath[$r.path] = $true }
+$espath = [Collections.Generic.Dictionary[string, bool]]::new([StringComparer]::Ordinal)
+foreach ($r in $repos_) { $espath[$r.path] = $true }
 foreach ($t in $tareas) {
   foreach ($b in (Lst $t 'blocks_repos')) {
     if (-not $espath.ContainsKey($b)) { Falla 'blocks_repos-inexistente' "la tarea $($t.id) bloquea $b, que no es un path de repos" }
@@ -1737,10 +1744,10 @@ foreach ($t in $tareas) {
 }
 # Un gate corre antes del fan-out y un closeout después: el grafo es acíclico y aun así inejecutable.
 foreach ($t in $tareas) {
-  if ((Esc $t 'phase') -ne 'gate') { continue }
+  if ((Esc $t 'phase') -cne 'gate') { continue }
   foreach ($d in (Lst $t 'depends_on')) {
     foreach ($u in $tareas) {
-      if ($u.id -eq $d -and (Esc $u 'phase') -eq 'closeout') { Falla 'gate-depende-de-closeout' "el gate $($t.id) depende de $($u.id), que es phase=closeout" }
+      if ($u.id -ceq $d -and (Esc $u 'phase') -ceq 'closeout') { Falla 'gate-depende-de-closeout' "el gate $($t.id) depende de $($u.id), que es phase=closeout" }
     }
   }
 }
@@ -1754,8 +1761,8 @@ while ($cambio) {
     if (-not $vivos[$i]) { continue }
     $atado = $false
     foreach ($d in (Lst $tareas[$i] 'depends_on')) {
-      if ($d -eq $tareas[$i].id) { $atado = $true; continue }
-      for ($j = 0; $j -lt $tareas.Count; $j++) { if ($vivos[$j] -and $tareas[$j].id -eq $d) { $atado = $true } }
+      if ($d -ceq $tareas[$i].id) { $atado = $true; continue }
+      for ($j = 0; $j -lt $tareas.Count; $j++) { if ($vivos[$j] -and $tareas[$j].id -ceq $d) { $atado = $true } }
     }
     if (-not $atado) { $vivos[$i] = $false; $cambio = $true }
   }
@@ -1767,12 +1774,12 @@ if ($ciclo.Count -gt 0) { Falla 'ciclo-en-depends_on' "estas tareas no llegan a 
 # ── ubicación de cada AC, en los dos sentidos ─────────────────────────────────
 foreach ($r in $repos_) {
   foreach ($ac in $r.covers) {
-    if ($tag[$ac] -eq 'integration') { Falla 'integration-en-covers_ac-de-repo' "el repo $($r.path) declara $ac, que la master-spec etiqueta [integration]" }
+    if ($tag[$ac] -ceq 'integration') { Falla 'integration-en-covers_ac-de-repo' "el repo $($r.path) declara $ac, que la master-spec etiqueta [integration]" }
   }
 }
 foreach ($t in $tareas) {
   foreach ($ac in (Lst $t 'covers_ac')) {
-    if ($tag[$ac] -eq 'repo-local') { Falla 'repo-local-en-covers_ac-de-tarea' "la tarea $($t.id) declara $ac, que la master-spec etiqueta [repo-local]" }
+    if ($tag[$ac] -ceq 'repo-local') { Falla 'repo-local-en-covers_ac-de-tarea' "la tarea $($t.id) declara $ac, que la master-spec etiqueta [repo-local]" }
   }
 }
 
@@ -1780,7 +1787,7 @@ foreach ($t in $tareas) {
 $huerf = @(); $condetalle = $false
 foreach ($ac in $intac) {
   $cub = @()
-  foreach ($t in $tareas) { if ((Lst $t 'covers_ac') -contains $ac) { $cub += $t.id } }
+  foreach ($t in $tareas) { if ((Lst $t 'covers_ac') -ccontains $ac) { $cub += $t.id } }
   if ($cub.Count -eq 0) { $huerf += $ac }
   if ($cub.Count -gt 1) { Falla 'ac-cubierto-por-dos-tareas' "$ac lo cubren $($cub.Count) tareas de cierre: $(Ids $cub)" }
 }
@@ -1801,7 +1808,7 @@ foreach ($t in $tareas) {
 foreach ($t in $tareas) {
   for ($j = 0; $j -lt $t.pk.Count; $j++) {
     for ($k = $j + 1; $k -lt $t.pk.Count; $k++) {
-      if ($t.pk[$j] -eq $t.pk[$k]) { Falla 'participacion-clave-duplicada' "la tarea $($t.id) repite la clave $($t.pk[$j]) en participating_repos" }
+      if ($t.pk[$j] -ceq $t.pk[$k]) { Falla 'participacion-clave-duplicada' "la tarea $($t.id) repite la clave $($t.pk[$j]) en participating_repos" }
     }
   }
 }
@@ -1810,7 +1817,7 @@ foreach ($t in $tareas) {
 # relación AC → repos indefinida, y ahí ninguna otra guarda la reclama.
 foreach ($t in $tareas) {
   foreach ($k in $t.pk) {
-    if (-not ((Lst $t 'covers_ac') -contains $k)) {
+    if (-not ((Lst $t 'covers_ac') -ccontains $k)) {
       Falla 'participacion-clave-ajena' "la tarea $($t.id) declara la clave $k, que no está en su covers_ac [$(Ids (Lst $t 'covers_ac'))]"
     }
   }
@@ -1818,12 +1825,12 @@ foreach ($t in $tareas) {
 foreach ($t in $tareas) {
   if ($t.pmodo -ne 'map') { continue }
   foreach ($ac in (Lst $t 'covers_ac')) {
-    if (-not ($t.pk -contains $ac)) { Falla 'participacion-ac-sin-clave' "la tarea $($t.id) cubre $ac y no le declara clave en participating_repos" }
+    if (-not ($t.pk -ccontains $ac)) { Falla 'participacion-ac-sin-clave' "la tarea $($t.id) cubre $ac y no le declara clave en participating_repos" }
   }
 }
 foreach ($t in $tareas) {
   foreach ($k in $t.pk) {
-    if ($tag[$k] -ne 'integration') { Falla 'participacion-ac-no-integration' "la clave $k de la tarea $($t.id) no es un AC [integration] de la master-spec" }
+    if ($tag[$k] -cne 'integration') { Falla 'participacion-ac-no-integration' "la clave $k de la tarea $($t.id) no es un AC [integration] de la master-spec" }
   }
 }
 foreach ($t in $tareas) {
@@ -2786,13 +2793,19 @@ function Duenia($req, $id) {
   $resto = $resto -replace '^[ \t]+', ''
   return ($resto.IndexOf('— ') -eq 0 -or $resto.IndexOf('- ') -eq 0)
 }
-function Promovido($st) { return ($st -ne 'planned') }
-function Despachado($st) { return ($st -ne 'planned' -and $st -ne 'tasks-ready' -and $st -ne 'blocked') }
-function Elegible($st) { return ($st -ne 'planned' -and $st -ne 'blocked' -and $st -ne 'failed') }
-function Verde($st) { return ($st -eq 'verified' -or $st -eq 'committed' -or $st -eq 'pushed' -or $st -eq 'pr-open' -or $st -eq 'done') }
+function Promovido($st) { return ($st -cne 'planned') }
+function Despachado($st) { return ($st -cne 'planned' -and $st -cne 'tasks-ready' -and $st -cne 'blocked') }
+function Elegible($st) { return ($st -cne 'planned' -and $st -cne 'blocked' -and $st -cne 'failed') }
+function Verde($st) { return ($st -ceq 'verified' -or $st -ceq 'committed' -or $st -ceq 'pushed' -or $st -ceq 'pr-open' -or $st -ceq 'done') }
 
 # ── master-spec: el ancla versionada declarada de cada recurso no ligado a código ─────
-$ancla = @{}; $enanclas = $false
+# Diccionarios ORDINALES y comparadores `-c*` en todo el bloque: los arreglos de awk se
+# indexan por bytes y su `==` distingue mayúsculas. Con una hashtable `@{}` y los operadores
+# por defecto de .NET, `SERVICIO-A` sería el repo `servicio-a`, `Consumado` pasaría por el
+# `consumado` del enum y `v-c1` por la fila `V-C1` — y en la otra dirección, dos owners que
+# solo difieren en caja contarían como el mismo dueño.
+$ancla = [Collections.Generic.Dictionary[string, string]]::new([StringComparer]::Ordinal)
+$enanclas = $false
 foreach ($ln in (Get-Content -LiteralPath $master_spec)) {
   if ($ln -match '^#+[ \t]') { $enanclas = ($ln -match '^#+[ \t]*Anclas versionadas[ \t]*$'); continue }
   if (-not $enanclas) { continue }
@@ -2803,8 +2816,11 @@ foreach ($ln in (Get-Content -LiteralPath $master_spec)) {
 }
 
 # ── manifest: repos, tareas y outcome ────────────────────────────────────────────────
-$rpath = @(); $rst = @(); $esrepo = @{}
-$tareas = @(); $porid = @{}; $outcome = ''
+$rpath = @(); $rst = @()
+$esrepo = [Collections.Generic.Dictionary[string, int]]::new([StringComparer]::Ordinal)
+$tareas = @()
+$porid = [Collections.Generic.Dictionary[string, int]]::new([StringComparer]::Ordinal)
+$outcome = ''
 $sec = ''; $t = $null; $indcampo = 0; $campo = ''; $enmapa = $false
 foreach ($ln in (Get-Content -LiteralPath $manifest)) {
   if ($ln -match '^[ \t]*#') { continue }
@@ -2817,7 +2833,7 @@ foreach ($ln in (Get-Content -LiteralPath $manifest)) {
   }
   if ($ln.Trim() -eq '') { continue }
   $ind = ($ln -replace '^([ \t]*).*$', '$1').Length + 1
-  if ($sec -eq 'repos') {
+  if ($sec -ceq 'repos') {
     if ($ln -match '^[ \t]*-[ \t]*path:[ \t]*(.*)$') {
       $rpath += (Desnudo (Sincom $Matches[1])); $rst += ''; $esrepo[$rpath[$rpath.Count - 1]] = $rpath.Count
     } elseif ($rpath.Count -gt 0 -and $ln -match '^[ \t]*status:[ \t]*(.*)$') {
@@ -2825,7 +2841,7 @@ foreach ($ln in (Get-Content -LiteralPath $manifest)) {
     }
     continue
   }
-  if ($sec -ne 'tasks') { continue }
+  if ($sec -cne 'tasks') { continue }
   if ($ln -match '^[ \t]*-[ \t]*id:[ \t]*(.*)$') {
     $t = @{ id = (Desnudo (Sincom $Matches[1])); phase = ''; owner = ''; st = ''; dw = ''; deps = @(); blocks = @(); part = @() }
     $tareas += , $t; $porid[$t.id] = $tareas.Count
@@ -2841,21 +2857,21 @@ foreach ($ln in (Get-Content -LiteralPath $manifest)) {
       if ($ln -match '^[ \t]*-[ \t](.*)$') { $t.part += (Desnudo (Sincom $Matches[1])) }
       elseif ($ln -match '^[ \t]*[^ \t:]+:[ \t]*(.*)$') { $t.part += (Lista (Sincom $Matches[1])) }
     } elseif ($campo -ne '' -and $ln -match '^[ \t]*-[ \t](.*)$') {
-      if ($campo -eq 'depends_on') { $t.deps += (Desnudo (Sincom $Matches[1])) }
-      elseif ($campo -eq 'blocks_repos') { $t.blocks += (Desnudo (Sincom $Matches[1])) }
+      if ($campo -ceq 'depends_on') { $t.deps += (Desnudo (Sincom $Matches[1])) }
+      elseif ($campo -ceq 'blocks_repos') { $t.blocks += (Desnudo (Sincom $Matches[1])) }
     }
     continue
   }
   if ($ind -ne $indcampo) { continue }
   if ($ln -notmatch '^[ \t]*([A-Za-z_][A-Za-z0-9_]*):[ \t]*(.*)$') { continue }
   $campo = $Matches[1]; $v = Sincom $Matches[2]; $enmapa = $false
-  if ($campo -eq 'phase') { $t.phase = Desnudo $v }
-  elseif ($campo -eq 'owner') { $t.owner = Desnudo $v }
-  elseif ($campo -eq 'status') { $t.st = Desnudo $v }
-  elseif ($campo -eq 'done_when') { $t.dw = Desnudo $v }
-  elseif ($campo -eq 'participating_repos') { if ($v -eq '') { $enmapa = $true } }
-  elseif ($campo -eq 'depends_on') { $t.deps = Lista $v }
-  elseif ($campo -eq 'blocks_repos') { $t.blocks = Lista $v }
+  if ($campo -ceq 'phase') { $t.phase = Desnudo $v }
+  elseif ($campo -ceq 'owner') { $t.owner = Desnudo $v }
+  elseif ($campo -ceq 'status') { $t.st = Desnudo $v }
+  elseif ($campo -ceq 'done_when') { $t.dw = Desnudo $v }
+  elseif ($campo -ceq 'participating_repos') { if ($v -eq '') { $enmapa = $true } }
+  elseif ($campo -ceq 'depends_on') { $t.deps = Lista $v }
+  elseif ($campo -ceq 'blocks_repos') { $t.blocks = Lista $v }
 }
 
 # ── contrato: una tabla por versión ──────────────────────────────────────────────────
@@ -2889,7 +2905,10 @@ if (Test-Path -LiteralPath $bitacora) {
 }
 
 # ── plan.md por repo: estado del header, SHA y baseline de su contrato local ─────────
-$planst = @{}; $plansha = @{}; $planblocked = @{}; $planfile = @{}
+$planst = [Collections.Generic.Dictionary[string, string]]::new([StringComparer]::Ordinal)
+$plansha = [Collections.Generic.Dictionary[string, string]]::new([StringComparer]::Ordinal)
+$planblocked = [Collections.Generic.Dictionary[string, bool]]::new([StringComparer]::Ordinal)
+$planfile = [Collections.Generic.Dictionary[string, string]]::new([StringComparer]::Ordinal)
 foreach ($pf in $planes) {
   $curr = ''; $fm = 0
   foreach ($ln in (Get-Content -LiteralPath $pf)) {
@@ -2902,7 +2921,7 @@ foreach ($pf in $planes) {
     }
     if ($curr -eq '' -or $ln -notmatch '^[ \t]*\|') { continue }
     $c = $ln -split '\|'
-    if ($c.Count -ge 4 -and $c[$c.Count - 2].Trim() -eq 'BLOCKED') { $planblocked[$curr] = $true }
+    if ($c.Count -ge 4 -and $c[$c.Count - 2].Trim() -ceq 'BLOCKED') { $planblocked[$curr] = $true }
   }
 }
 
@@ -2915,24 +2934,30 @@ foreach ($t in $tareas) {
     foreach ($f in $filas[$vig]) { if (Duenia $f.req $t.id) { $t.fila = $f.id; $t.esp = $f.esp } }
   }
 }
-$retiene = @{}; $abierto = @{}
+$retiene = [Collections.Generic.Dictionary[string, int]]::new([StringComparer]::Ordinal)
+$abierto = [Collections.Generic.Dictionary[string, int]]::new([StringComparer]::Ordinal)
 foreach ($p in $rpath) { $retiene[$p] = 0; $abierto[$p] = 0 }
 foreach ($t in $tareas) {
-  if ($t.phase -ne 'gate') { continue }
+  if ($t.phase -cne 'gate') { continue }
   foreach ($p in $t.blocks) {
     if (-not $retiene.ContainsKey($p)) { $retiene[$p] = 0; $abierto[$p] = 0 }
     $retiene[$p]++
-    if ($t.st -ne 'done') { $abierto[$p]++ }
+    if ($t.st -cne 'done') { $abierto[$p]++ }
   }
 }
-$promok = @{}; $despok = @{}; $cierreok = @{}; $porfila = @{}; $evfila = @{}; $evobj = @{}
+$promok = [Collections.Generic.Dictionary[string, bool]]::new([StringComparer]::Ordinal)
+$despok = [Collections.Generic.Dictionary[string, bool]]::new([StringComparer]::Ordinal)
+$cierreok = [Collections.Generic.Dictionary[string, bool]]::new([StringComparer]::Ordinal)
+$porfila = [Collections.Generic.Dictionary[string, int]]::new([StringComparer]::Ordinal)
+$evfila = [Collections.Generic.Dictionary[string, object]]::new([StringComparer]::Ordinal)
+$evobj = [Collections.Generic.Dictionary[string, object]]::new([StringComparer]::Ordinal)
 $hayreparto = $false
 foreach ($e in $eventos) {
   $pa = "$($e['paso'])"; $ob = "$($e['objeto'])"; $re = "$($e['resultado'])"
-  if ($pa -eq 'promover-repo') { $hayreparto = $true; if ($re -eq 'consumado') { $promok[$ob] = $true } }
-  elseif ($pa -eq 'despachar-repo') { if ($re -eq 'consumado') { $despok[$ob] = $true } }
-  elseif ($pa -eq 'cerrar-tarea') { if ($re -eq 'consumado') { $cierreok[$ob] = $true } }
-  elseif ($pa -eq 'ejecutar-evidencia' -and $re -eq 'consumado') {
+  if ($pa -ceq 'promover-repo') { $hayreparto = $true; if ($re -ceq 'consumado') { $promok[$ob] = $true } }
+  elseif ($pa -ceq 'despachar-repo') { if ($re -ceq 'consumado') { $despok[$ob] = $true } }
+  elseif ($pa -ceq 'cerrar-tarea') { if ($re -ceq 'consumado') { $cierreok[$ob] = $true } }
+  elseif ($pa -ceq 'ejecutar-evidencia' -and $re -ceq 'consumado') {
     $fi = "$($e['fila'])"
     if ($porfila.ContainsKey($fi)) { $porfila[$fi]++ } else { $porfila[$fi] = 1 }
     if (-not $evfila.ContainsKey($fi)) { $evfila[$fi] = $e }
@@ -2952,11 +2977,11 @@ foreach ($c in @('id', 'paso', 'actor', 'objeto', 'resultado', 'timestamp')) {
   }
 }
 foreach ($e in $eventos) {
-  if ($e.ContainsKey('resultado') -and $e['resultado'] -ne 'consumado' -and $e['resultado'] -ne 'rechazado') {
+  if ($e.ContainsKey('resultado') -and $e['resultado'] -cne 'consumado' -and $e['resultado'] -cne 'rechazado') {
     Falla 'resultado-fuera-de-enum' "el evento $($e['id']) declara resultado=[$($e['resultado'])], fuera de {consumado, rechazado}"
   }
 }
-$cuantos = @{}
+$cuantos = [Collections.Generic.Dictionary[string, int]]::new([StringComparer]::Ordinal)
 foreach ($e in $eventos) { if ($e.ContainsKey('id')) { if ($cuantos.ContainsKey($e['id'])) { $cuantos[$e['id']]++ } else { $cuantos[$e['id']] = 1 } } }
 foreach ($e in $eventos) {
   if ($e.ContainsKey('id') -and $cuantos[$e['id']] -gt 1) {
@@ -2973,8 +2998,8 @@ foreach ($e in $eventos) {
 
 # ── archive con tareas de orquestación sin cerrar ────────────────────────────────────
 $pend = @(); $condetalle = $false
-if ($outcome -eq 'archived') {
-  foreach ($t in $tareas) { if ($t.st -ne 'done') { $pend += $t.id } }
+if ($outcome -ceq 'archived') {
+  foreach ($t in $tareas) { if ($t.st -cne 'done') { $pend += $t.id } }
   if ($pend.Count -gt 0) {
     Falla 'archive-con-tareas-pendientes' "quedan $($pend.Count) orchestration_tasks fuera de done: $($pend -join ', ')"
     $condetalle = $true
@@ -2997,17 +3022,17 @@ for ($r = 0; $r -lt $rpath.Count; $r++) {
 # `planned` solo es defecto si el reparto se aprobó, y esa señal es la existencia de un evento
 # promover-repo: sin él, todo en planned es el estado correcto de una orquestación sin repartir.
 for ($r = 0; $r -lt $rpath.Count; $r++) {
-  if ($hayreparto -and $rst[$r] -eq 'planned' -and $retiene[$rpath[$r]] -eq 0) {
+  if ($hayreparto -and $rst[$r] -ceq 'planned' -and $retiene[$rpath[$r]] -eq 0) {
     Falla 'repo-libre-sin-promover' "el repo $($rpath[$r]) sigue en planned y ninguna tarea gate lo retiene"
   }
 }
 for ($r = 0; $r -lt $rpath.Count; $r++) {
-  if ($hayreparto -and $rst[$r] -eq 'planned' -and $retiene[$rpath[$r]] -gt 0 -and $abierto[$rpath[$r]] -eq 0) {
+  if ($hayreparto -and $rst[$r] -ceq 'planned' -and $retiene[$rpath[$r]] -gt 0 -and $abierto[$rpath[$r]] -eq 0) {
     Falla 'gate-cerrado-sin-promover' "el repo $($rpath[$r]) sigue en planned con sus $($retiene[$rpath[$r]]) gate(s) en done"
   }
 }
 for ($r = 0; $r -lt $rpath.Count; $r++) {
-  if ($rst[$r] -eq 'tasks-ready' -and $retiene[$rpath[$r]] -gt 0 -and $abierto[$rpath[$r]] -eq 0 -and -not $despok.ContainsKey($rpath[$r])) {
+  if ($rst[$r] -ceq 'tasks-ready' -and $retiene[$rpath[$r]] -gt 0 -and $abierto[$rpath[$r]] -eq 0 -and -not $despok.ContainsKey($rpath[$r])) {
     Falla 'gate-cerrado-sin-despachar' "el repo $($rpath[$r]) se promovió al cerrar su gate y nunca se despachó"
   }
 }
@@ -3020,14 +3045,14 @@ for ($r = 0; $r -lt $rpath.Count; $r++) {
   }
 }
 for ($r = 0; $r -lt $rpath.Count; $r++) {
-  if ($planfile.ContainsKey($rpath[$r]) -and $planst[$rpath[$r]] -ne $rst[$r]) {
+  if ($planfile.ContainsKey($rpath[$r]) -and $planst[$rpath[$r]] -cne $rst[$r]) {
     Falla 'manifest-y-plan-divergen' "el repo $($rpath[$r]) vale $($rst[$r]) en el manifest y $($planst[$rpath[$r]]) en su plan.md"
   }
 }
 
 # ── la liberación del lock exige una decisión previa ─────────────────────────────────
 for ($i = 0; $i -lt $eventos.Count; $i++) {
-  if ($eventos[$i]['paso'] -ne 'liberar-lock' -or $eventos[$i]['resultado'] -ne 'consumado') { continue }
+  if ($eventos[$i]['paso'] -cne 'liberar-lock' -or $eventos[$i]['resultado'] -cne 'consumado') { continue }
   $hay = $false
   for ($j = 0; $j -le $i; $j++) { if ($eventos[$j].ContainsKey('decision')) { $hay = $true } }
   if (-not $hay) {
@@ -3040,15 +3065,15 @@ for ($i = 0; $i -lt $eventos.Count; $i++) {
 # materializan ninguno, así que exigirles un cambio de estado sería inventarles un observable.
 foreach ($e in $eventos) {
   $pa = "$($e['paso'])"; $ob = "$($e['objeto'])"; $re = "$($e['resultado'])"
-  if ($pa -eq 'cerrar-tarea') { $mat = $porid.ContainsKey($ob) -and $tareas[$porid[$ob] - 1].st -eq 'done' }
-  elseif ($pa -eq 'despachar-repo') { $mat = $esrepo.ContainsKey($ob) -and (Despachado $rst[$esrepo[$ob] - 1]) }
-  elseif ($pa -eq 'promover-repo') { $mat = $esrepo.ContainsKey($ob) -and (Promovido $rst[$esrepo[$ob] - 1]) }
+  if ($pa -ceq 'cerrar-tarea') { $mat = $porid.ContainsKey($ob) -and $tareas[$porid[$ob] - 1].st -ceq 'done' }
+  elseif ($pa -ceq 'despachar-repo') { $mat = $esrepo.ContainsKey($ob) -and (Despachado $rst[$esrepo[$ob] - 1]) }
+  elseif ($pa -ceq 'promover-repo') { $mat = $esrepo.ContainsKey($ob) -and (Promovido $rst[$esrepo[$ob] - 1]) }
   else { continue }
-  if ($re -eq 'consumado' -and -not $mat) { Falla 'exito-sin-transicion' "el evento $($e['id']) consumó $pa sobre $ob y su estado no cambió" }
-  if ($re -eq 'rechazado' -and $mat) { Falla 'rechazo-con-transicion' "el evento $($e['id']) rechazó $pa sobre $ob y su estado cambió igual" }
+  if ($re -ceq 'consumado' -and -not $mat) { Falla 'exito-sin-transicion' "el evento $($e['id']) consumó $pa sobre $ob y su estado no cambió" }
+  if ($re -ceq 'rechazado' -and $mat) { Falla 'rechazo-con-transicion' "el evento $($e['id']) rechazó $pa sobre $ob y su estado cambió igual" }
 }
 foreach ($t in $tareas) {
-  if ($t.st -eq 'done' -and -not $cierreok.ContainsKey($t.id)) {
+  if ($t.st -ceq 'done' -and -not $cierreok.ContainsKey($t.id)) {
     Falla 'transicion-sin-evento' "la tarea $($t.id) está en done y ningún evento cerrar-tarea la consumó"
   }
 }
@@ -3064,14 +3089,14 @@ for ($r = 0; $r -lt $rpath.Count; $r++) {
 # ── el gate del paso a done (AC-7 y AC-9) ────────────────────────────────────────────
 $repl = @()
 foreach ($t in $tareas) {
-  if ($t.owner -ne 'UNASSIGNED') { continue }
-  if ($t.st -eq 'done') { Falla 'cierre-con-owner-unassigned' "la tarea $($t.id) (phase=$($t.phase)) cerró con owner UNASSIGNED" }
+  if ($t.owner -cne 'UNASSIGNED') { continue }
+  if ($t.st -ceq 'done') { Falla 'cierre-con-owner-unassigned' "la tarea $($t.id) (phase=$($t.phase)) cerró con owner UNASSIGNED" }
   else { $repl += $t.id }
 }
 foreach ($t in $tareas) {
-  if ($t.st -ne 'done') { continue }
+  if ($t.st -cne 'done') { continue }
   foreach ($d in $t.deps) {
-    if (-not $porid.ContainsKey($d) -or $tareas[$porid[$d] - 1].st -ne 'done') {
+    if (-not $porid.ContainsKey($d) -or $tareas[$porid[$d] - 1].st -cne 'done') {
       Falla 'depends_on-insatisfecho' "la tarea $($t.id) cerró con $d fuera de done"
     }
   }
@@ -3079,16 +3104,16 @@ foreach ($t in $tareas) {
 # Ni la evidencia ni el dueño se comparten: dos tareas que declaren la misma fila —o el mismo
 # dueño de ejecución— no son dos cierres sino uno contado dos veces.
 foreach ($e in $eventos) {
-  if ($e['paso'] -eq 'ejecutar-evidencia' -and $e['resultado'] -eq 'consumado' -and $porfila["$($e['fila'])"] -gt 1) {
+  if ($e['paso'] -ceq 'ejecutar-evidencia' -and $e['resultado'] -ceq 'consumado' -and $porfila["$($e['fila'])"] -gt 1) {
     Falla 'evidencia-duplicada' "la fila $($e['fila']) la ejecutan $($porfila["$($e['fila'])"]) eventos de tareas distintas"
   }
 }
 # UNASSIGNED es el centinela de un dueño pendiente, no un dueño: dos tareas sin asignar no son dos
 # tareas con el mismo dueño, y AC-7 ya las bloquea por su lado.
 for ($i = 0; $i -lt $tareas.Count; $i++) {
-  if ($tareas[$i].owner -eq '' -or $tareas[$i].owner -eq 'UNASSIGNED') { continue }
+  if ($tareas[$i].owner -eq '' -or $tareas[$i].owner -ceq 'UNASSIGNED') { continue }
   for ($j = $i + 1; $j -lt $tareas.Count; $j++) {
-    if ($tareas[$j].owner -eq $tareas[$i].owner) {
+    if ($tareas[$j].owner -ceq $tareas[$i].owner) {
       Falla 'dueno-duplicado' "las tareas $($tareas[$i].id) y $($tareas[$j].id) declaran el mismo owner $($tareas[$i].owner)"
     }
   }
@@ -3096,9 +3121,9 @@ for ($i = 0; $i -lt $tareas.Count; $i++) {
 
 # ── la frescura de la evidencia (AC-20) ──────────────────────────────────────────────
 foreach ($t in $tareas) {
-  if ($t.st -ne 'done' -or $t.fila -eq '') { continue }
+  if ($t.st -cne 'done' -or $t.fila -eq '') { continue }
   $e = $null; if ($evfila.ContainsKey($t.fila)) { $e = $evfila[$t.fila] }
-  if ($null -ne $e -and $e['objeto'] -ne $t.id) {
+  if ($null -ne $e -and $e['objeto'] -cne $t.id) {
     Falla 'evidencia-de-otra-tarea' "la fila $($t.fila) de $($t.id) la ejecutó un evento con objeto $($e['objeto'])"
   } elseif ($null -eq $e -and $evobj.ContainsKey($t.id)) {
     Falla 'evidencia-de-otra-fila' "la tarea $($t.id) cierra con $($t.fila) y su evidencia ejecutó $($evobj[$t.id]['fila'])"
@@ -3107,42 +3132,42 @@ foreach ($t in $tareas) {
   }
 }
 foreach ($t in $tareas) {
-  if ($t.st -ne 'done' -or $t.fila -eq '') { continue }
+  if ($t.st -cne 'done' -or $t.fila -eq '') { continue }
   if (-not $evfila.ContainsKey($t.fila)) { continue }
   $e = $evfila[$t.fila]
-  if ($e['objeto'] -ne $t.id) { continue }
-  if ($e['contrato'] -ne "v$($vnum[$vig])") {
+  if ($e['objeto'] -cne $t.id) { continue }
+  if ($e['contrato'] -cne "v$($vnum[$vig])") {
     Falla 'evidencia-de-version-anterior' "la fila $($t.fila) se midió contra el contrato $($e['contrato']) y la versión vigente es v$($vnum[$vig])"
   }
   # El anclaje es uno u otro según de qué esté hecha la evidencia, y participating_repos es quien
   # lo decide: con repos participantes se mide un SHA por CADA uno, y sin ninguno el ancla
   # versionada declarada hace las veces y se revalida con la misma vara.
   if ($t.part.Count -gt 0) {
-    $medido = @{}
+    $medido = [Collections.Generic.Dictionary[string, string]]::new([StringComparer]::Ordinal)
     foreach ($par in ("$($e['sha'])" -split ',')) {
       $par = $par.Trim()
       if ($par -match '^([^=]*)=(.*)$') { if ($Matches[1] -ne '') { $medido[$Matches[1]] = $Matches[2] } }
     }
     foreach ($p in $t.part) {
       if (-not $medido.ContainsKey($p)) { Falla 'repo-relevante-sin-sha' "la tarea $($t.id) participa $p y su evidencia no lo mide" }
-      elseif ($medido[$p] -ne $plansha[$p]) { Falla 'repo-cambiado-tras-medir' "la tarea $($t.id) midió $p en $($medido[$p]) y su plan.md declara $($plansha[$p])" }
+      elseif ($medido[$p] -cne $plansha[$p]) { Falla 'repo-cambiado-tras-medir' "la tarea $($t.id) midió $p en $($medido[$p]) y su plan.md declara $($plansha[$p])" }
     }
   } elseif (-not $e.ContainsKey('ancla')) {
     Falla 'ancla-versionada-ausente' "la tarea $($t.id) no participa ningún repo y su evidencia no declara ancla versionada"
   } else {
     $nom = "$($e['ancla'])"; $val = ''
     if ($nom -match '^([^=]*)=(.*)$') { $nom = $Matches[1]; $val = $Matches[2] }
-    if (-not $ancla.ContainsKey($nom) -or $ancla[$nom] -ne $val) {
+    if (-not $ancla.ContainsKey($nom) -or $ancla[$nom] -cne $val) {
       $vigente = 'ninguna declarada'; if ($ancla.ContainsKey($nom)) { $vigente = $ancla[$nom] }
       Falla 'ancla-versionada-obsoleta' "la tarea $($t.id) midió $nom en $val y la vigente es $vigente"
     }
   }
-  if ($e['observado'] -ne $t.esp) {
+  if ($e['observado'] -cne $t.esp) {
     Falla 'esperado-no-satisfecho' "la fila $($t.fila) esperaba [$($t.esp)] y observó [$($e['observado'])]"
   }
 }
 foreach ($t in $tareas) {
-  if ($t.st -eq 'done' -and $t.fila -ne '' -and $t.dw -ne $t.fila) {
+  if ($t.st -ceq 'done' -and $t.fila -ne '' -and $t.dw -cne $t.fila) {
     $dicho = $t.dw; if ($dicho -eq '') { $dicho = '—' }
     Falla 'done_when-no-referencia-su-fila' "la tarea $($t.id) cierra en la fila $($t.fila) y su done_when dice $dicho"
   }
@@ -3170,11 +3195,11 @@ if ($G -ne '') {
 # Se asigna de lo menos grave a lo más grave y gana la última: es la tabla de precedencia de la
 # Fase 3 leída al revés, y por eso ningún estado puede ocultar a uno de rango menor.
 $est = 'done'
-foreach ($t in $tareas) { if ($t.st -ne 'done') { $est = 'no-verificado:integracion-pendiente' } }
+foreach ($t in $tareas) { if ($t.st -cne 'done') { $est = 'no-verificado:integracion-pendiente' } }
 foreach ($s in $rst) { if (-not (Verde $s)) { $est = 'en-curso' } }
-foreach ($t in $tareas) { if ($t.phase -eq 'gate' -and $t.st -eq 'blocked') { $est = 'no-verificado:gate-blocked' } }
-foreach ($s in $rst) { if ($s -eq 'blocked') { $est = 'no-verificado:repo-blocked' } }
-foreach ($s in $rst) { if ($s -eq 'failed') { $est = 'no-verificado:repo-failed' } }
+foreach ($t in $tareas) { if ($t.phase -ceq 'gate' -and $t.st -ceq 'blocked') { $est = 'no-verificado:gate-blocked' } }
+foreach ($s in $rst) { if ($s -ceq 'blocked') { $est = 'no-verificado:repo-blocked' } }
+foreach ($s in $rst) { if ($s -ceq 'failed') { $est = 'no-verificado:repo-failed' } }
 Write-Output "ESTADO:$est"
 exit 0
 # @fin:orchestration-state-ps

@@ -1,0 +1,1783 @@
+{
+  "par": "orchestration-model",
+  "observables": {
+    "obs:ac-integration-huerfano": "ningún orchestration_task cubre un AC [integration] de la master-spec",
+    "obs:ac-cubierto-por-dos-tareas": "dos orchestration_tasks cubren el mismo AC",
+    "obs:integration-en-covers_ac-de-repo": "un repo declara en covers_ac un AC que la master-spec etiqueta [integration]",
+    "obs:repo-local-en-covers_ac-de-tarea": "una tarea declara en covers_ac un AC que la master-spec etiqueta [repo-local]",
+    "obs:ciclo-en-depends_on": "el grafo de depends_on entre tareas tiene un ciclo",
+    "obs:id-duplicado": "dos orchestration_tasks comparten id",
+    "obs:depends_on-inexistente": "una tarea depende de un id que ninguna otra declara",
+    "obs:blocks_repos-inexistente": "una tarea bloquea un path que no está en repos",
+    "obs:phase-fuera-de-enum": "phase cae fuera de {gate, closeout}",
+    "obs:status-fuera-de-enum": "status cae fuera de {pending, in-progress, done, blocked}",
+    "obs:owner-ausente": "una tarea no declara owner",
+    "obs:owner-vacio": "una tarea declara owner con valor vacío",
+    "obs:done_when-ausente": "una tarea no declara done_when",
+    "obs:done_when-vacio": "una tarea declara done_when con valor vacío",
+    "obs:blocks_repos-en-closeout": "una tarea con phase=closeout declara blocks_repos, que solo tiene sentido en un gate",
+    "obs:gate-depende-de-closeout": "un gate depende de una tarea closeout, que invierte el orden del reparto",
+    "obs:participacion-clave-duplicada": "el mapa de participación repite una clave",
+    "obs:participacion-repo-inexistente": "una clave del mapa nombra un path que no está en repos",
+    "obs:participacion-ac-no-integration": "una clave del mapa no es un AC [integration]",
+    "obs:participacion-ac-sin-clave": "un AC cubierto por la tarea no tiene clave en el mapa",
+    "obs:participacion-clave-ajena": "el mapa declara una clave de un AC que la tarea no cubre",
+    "obs:participacion-ausente-con-covers_ac": "la tarea cubre AC [integration] y no declara mapa de participación",
+    "obs:participacion-vacia-con-covers_ac": "la tarea cubre AC [integration] y su mapa está vacío"
+  },
+  "clausulas": [
+    {
+      "id": "arnes-archivo-inexistente"
+    },
+    {
+      "id": "obs:ac-integration-huerfano",
+      "tipo": "observable",
+      "compara_cadenas": true
+    },
+    {
+      "id": "obs:ac-cubierto-por-dos-tareas",
+      "tipo": "observable",
+      "compara_cadenas": true
+    },
+    {
+      "id": "obs:integration-en-covers_ac-de-repo",
+      "tipo": "observable",
+      "compara_cadenas": true
+    },
+    {
+      "id": "obs:repo-local-en-covers_ac-de-tarea",
+      "tipo": "observable",
+      "compara_cadenas": true
+    },
+    {
+      "id": "obs:ciclo-en-depends_on",
+      "tipo": "observable",
+      "compara_cadenas": true
+    },
+    {
+      "id": "obs:id-duplicado",
+      "tipo": "observable",
+      "compara_cadenas": true
+    },
+    {
+      "id": "obs:depends_on-inexistente",
+      "tipo": "observable",
+      "compara_cadenas": true
+    },
+    {
+      "id": "obs:blocks_repos-inexistente",
+      "tipo": "observable",
+      "compara_cadenas": true
+    },
+    {
+      "id": "obs:phase-fuera-de-enum",
+      "tipo": "observable",
+      "compara_cadenas": true
+    },
+    {
+      "id": "obs:status-fuera-de-enum",
+      "tipo": "observable",
+      "compara_cadenas": true
+    },
+    {
+      "id": "obs:owner-ausente",
+      "tipo": "observable"
+    },
+    {
+      "id": "obs:owner-vacio",
+      "tipo": "observable"
+    },
+    {
+      "id": "obs:done_when-ausente",
+      "tipo": "observable"
+    },
+    {
+      "id": "obs:done_when-vacio",
+      "tipo": "observable"
+    },
+    {
+      "id": "obs:blocks_repos-en-closeout",
+      "tipo": "observable",
+      "compara_cadenas": true
+    },
+    {
+      "id": "obs:gate-depende-de-closeout",
+      "tipo": "observable",
+      "compara_cadenas": true
+    },
+    {
+      "id": "obs:participacion-clave-duplicada",
+      "tipo": "observable",
+      "compara_cadenas": true
+    },
+    {
+      "id": "obs:participacion-repo-inexistente",
+      "tipo": "observable",
+      "compara_cadenas": true
+    },
+    {
+      "id": "obs:participacion-ac-no-integration",
+      "tipo": "observable",
+      "compara_cadenas": true
+    },
+    {
+      "id": "obs:participacion-ac-sin-clave",
+      "tipo": "observable",
+      "compara_cadenas": true
+    },
+    {
+      "id": "obs:participacion-clave-ajena",
+      "tipo": "observable",
+      "compara_cadenas": true
+    },
+    {
+      "id": "obs:participacion-ausente-con-covers_ac",
+      "tipo": "observable"
+    },
+    {
+      "id": "obs:participacion-vacia-con-covers_ac",
+      "tipo": "observable"
+    }
+  ],
+  "casos": [
+    {
+      "nombre": "modelo-valido",
+      "particion": "positivo",
+      "objetivos": [
+        "arnes-archivo-inexistente",
+        "obs:ac-integration-huerfano",
+        "obs:ac-cubierto-por-dos-tareas",
+        "obs:integration-en-covers_ac-de-repo",
+        "obs:repo-local-en-covers_ac-de-tarea",
+        "obs:ciclo-en-depends_on",
+        "obs:id-duplicado",
+        "obs:depends_on-inexistente",
+        "obs:blocks_repos-inexistente",
+        "obs:phase-fuera-de-enum",
+        "obs:status-fuera-de-enum",
+        "obs:owner-ausente",
+        "obs:owner-vacio",
+        "obs:done_when-ausente",
+        "obs:done_when-vacio",
+        "obs:blocks_repos-en-closeout",
+        "obs:gate-depende-de-closeout",
+        "obs:participacion-clave-duplicada",
+        "obs:participacion-repo-inexistente",
+        "obs:participacion-ac-no-integration",
+        "obs:participacion-ac-sin-clave",
+        "obs:participacion-clave-ajena",
+        "obs:participacion-ausente-con-covers_ac",
+        "obs:participacion-vacia-con-covers_ac"
+      ],
+      "clase_esperada": "aceptacion",
+      "precondicion": "el manifest declara dos repos y tres tareas coherentes con la master-spec",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "modelo-valido",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "participacion-ausente-sin-integ",
+      "particion": "positivo",
+      "objetivos": [
+        "obs:ac-integration-huerfano",
+        "obs:ac-cubierto-por-dos-tareas",
+        "obs:integration-en-covers_ac-de-repo",
+        "obs:repo-local-en-covers_ac-de-tarea",
+        "obs:ciclo-en-depends_on",
+        "obs:id-duplicado",
+        "obs:depends_on-inexistente",
+        "obs:blocks_repos-inexistente",
+        "obs:phase-fuera-de-enum",
+        "obs:status-fuera-de-enum",
+        "obs:owner-ausente",
+        "obs:owner-vacio",
+        "obs:done_when-ausente",
+        "obs:done_when-vacio",
+        "obs:blocks_repos-en-closeout",
+        "obs:gate-depende-de-closeout",
+        "obs:participacion-clave-duplicada",
+        "obs:participacion-repo-inexistente",
+        "obs:participacion-ac-no-integration",
+        "obs:participacion-ac-sin-clave",
+        "obs:participacion-clave-ajena",
+        "obs:participacion-ausente-con-covers_ac",
+        "obs:participacion-vacia-con-covers_ac"
+      ],
+      "clase_esperada": "aceptacion",
+      "precondicion": "una tarea sin AC [integration] puede no declarar mapa de participación",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "participacion-ausente-sin-integ",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "participacion-vacia-sin-integ",
+      "particion": "positivo",
+      "objetivos": [
+        "obs:ac-integration-huerfano",
+        "obs:ac-cubierto-por-dos-tareas",
+        "obs:integration-en-covers_ac-de-repo",
+        "obs:repo-local-en-covers_ac-de-tarea",
+        "obs:ciclo-en-depends_on",
+        "obs:id-duplicado",
+        "obs:depends_on-inexistente",
+        "obs:blocks_repos-inexistente",
+        "obs:phase-fuera-de-enum",
+        "obs:status-fuera-de-enum",
+        "obs:owner-ausente",
+        "obs:owner-vacio",
+        "obs:done_when-ausente",
+        "obs:done_when-vacio",
+        "obs:blocks_repos-en-closeout",
+        "obs:gate-depende-de-closeout",
+        "obs:participacion-clave-duplicada",
+        "obs:participacion-repo-inexistente",
+        "obs:participacion-ac-no-integration",
+        "obs:participacion-ac-sin-clave",
+        "obs:participacion-clave-ajena",
+        "obs:participacion-ausente-con-covers_ac",
+        "obs:participacion-vacia-con-covers_ac"
+      ],
+      "clase_esperada": "aceptacion",
+      "precondicion": "una tarea sin AC [integration] puede declarar el mapa vacío",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "participacion-vacia-sin-integ",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "retrocompat",
+      "particion": "positivo",
+      "objetivos": [
+        "obs:ac-integration-huerfano",
+        "obs:ac-cubierto-por-dos-tareas",
+        "obs:integration-en-covers_ac-de-repo",
+        "obs:repo-local-en-covers_ac-de-tarea",
+        "obs:ciclo-en-depends_on",
+        "obs:id-duplicado",
+        "obs:depends_on-inexistente",
+        "obs:blocks_repos-inexistente",
+        "obs:phase-fuera-de-enum",
+        "obs:status-fuera-de-enum",
+        "obs:owner-ausente",
+        "obs:owner-vacio",
+        "obs:done_when-ausente",
+        "obs:done_when-vacio",
+        "obs:blocks_repos-en-closeout",
+        "obs:gate-depende-de-closeout",
+        "obs:participacion-clave-duplicada",
+        "obs:participacion-repo-inexistente",
+        "obs:participacion-ac-no-integration",
+        "obs:participacion-ac-sin-clave",
+        "obs:participacion-clave-ajena",
+        "obs:participacion-ausente-con-covers_ac",
+        "obs:participacion-vacia-con-covers_ac"
+      ],
+      "clase_esperada": "aceptacion",
+      "precondicion": "una orquestación sin AC [integration] no exige mapa de participación en ninguna tarea",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "retrocompat",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "mixto-2p-1np",
+      "particion": "positivo",
+      "objetivos": [
+        "obs:ac-integration-huerfano",
+        "obs:ac-cubierto-por-dos-tareas",
+        "obs:integration-en-covers_ac-de-repo",
+        "obs:repo-local-en-covers_ac-de-tarea",
+        "obs:ciclo-en-depends_on",
+        "obs:id-duplicado",
+        "obs:depends_on-inexistente",
+        "obs:blocks_repos-inexistente",
+        "obs:phase-fuera-de-enum",
+        "obs:status-fuera-de-enum",
+        "obs:owner-ausente",
+        "obs:owner-vacio",
+        "obs:done_when-ausente",
+        "obs:done_when-vacio",
+        "obs:blocks_repos-en-closeout",
+        "obs:gate-depende-de-closeout",
+        "obs:participacion-clave-duplicada",
+        "obs:participacion-repo-inexistente",
+        "obs:participacion-ac-no-integration",
+        "obs:participacion-ac-sin-clave",
+        "obs:participacion-clave-ajena",
+        "obs:participacion-ausente-con-covers_ac",
+        "obs:participacion-vacia-con-covers_ac"
+      ],
+      "clase_esperada": "aceptacion",
+      "precondicion": "dos repos participan y uno no; el modelo lo admite",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "mixto-2p-1np",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "archivo-inexistente",
+      "particion": "invalido",
+      "objetivos": [
+        "arnes-archivo-inexistente"
+      ],
+      "clase_esperada": "fallo",
+      "precondicion": "la entrada apunta a una master-spec que el fixture no trae; corta con exit 99",
+      "clausulas": {
+        "arnes-archivo-inexistente": "invalido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "modelo-valido",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/NO-EXISTE.md"
+      }
+    },
+    {
+      "nombre": "ac-integration-huerfano",
+      "particion": "invalido",
+      "objetivos": [
+        "obs:ac-integration-huerfano"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "ningún orchestration_task cubre AC-3",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "invalido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "ac-integration-huerfano",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "cardinalidad-dos-tareas",
+      "particion": "invalido",
+      "objetivos": [
+        "obs:ac-cubierto-por-dos-tareas"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "dos tareas cubren AC-3",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "invalido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "cardinalidad-dos-tareas",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "ac-mal-ubicado-integ-en-repo",
+      "particion": "invalido",
+      "objetivos": [
+        "obs:integration-en-covers_ac-de-repo"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "un repo se atribuye un AC [integration]",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "invalido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "ac-mal-ubicado-integ-en-repo",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "ac-mal-ubicado-local-en-tarea",
+      "particion": "invalido",
+      "objetivos": [
+        "obs:repo-local-en-covers_ac-de-tarea"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "una tarea se atribuye un AC [repo-local]",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "invalido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "ac-mal-ubicado-local-en-tarea",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "ciclo",
+      "particion": "invalido",
+      "objetivos": [
+        "obs:ciclo-en-depends_on"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "dos tareas dependen entre sí",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "invalido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "ciclo",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "id-duplicado",
+      "particion": "invalido",
+      "objetivos": [
+        "obs:id-duplicado"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "dos tareas comparten el id G1",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "invalido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "id-duplicado",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "ref-muerta-depends",
+      "particion": "invalido",
+      "objetivos": [
+        "obs:depends_on-inexistente"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "una tarea depende de G9, que no existe",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "invalido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "ref-muerta-depends",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "ref-muerta-blocks",
+      "particion": "invalido",
+      "objetivos": [
+        "obs:blocks_repos-inexistente"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "un gate bloquea servicio-z, que no está en repos",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "invalido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "ref-muerta-blocks",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "enum-phase",
+      "particion": "invalido",
+      "objetivos": [
+        "obs:phase-fuera-de-enum"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "una tarea declara phase=cierre",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "invalido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "enum-phase",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "enum-status",
+      "particion": "invalido",
+      "objetivos": [
+        "obs:status-fuera-de-enum"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "una tarea declara status=pendiente",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "invalido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "enum-status",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "owner-ausente",
+      "particion": "invalido",
+      "objetivos": [
+        "obs:owner-ausente"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "una tarea no declara owner",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "invalido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "owner-ausente",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "owner-vacio",
+      "particion": "invalido",
+      "objetivos": [
+        "obs:owner-vacio"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "una tarea declara owner vacío",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "invalido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "owner-vacio",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "done-when-ausente",
+      "particion": "invalido",
+      "objetivos": [
+        "obs:done_when-ausente"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "una tarea no declara done_when",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "invalido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "done-when-ausente",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "done-when-vacio",
+      "particion": "invalido",
+      "objetivos": [
+        "obs:done_when-vacio"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "una tarea declara done_when vacío",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "invalido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "done-when-vacio",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "blocks-en-closeout",
+      "particion": "invalido",
+      "objetivos": [
+        "obs:blocks_repos-en-closeout"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "una tarea closeout declara blocks_repos",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "invalido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "blocks-en-closeout",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "gate-depende-closeout",
+      "particion": "invalido",
+      "objetivos": [
+        "obs:gate-depende-de-closeout"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "un gate depende de una tarea closeout",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "invalido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "gate-depende-closeout",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "participacion-clave-dup",
+      "particion": "invalido",
+      "objetivos": [
+        "obs:participacion-clave-duplicada"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "el mapa repite una clave",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "invalido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "participacion-clave-dup",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "participacion-repo-inexistente",
+      "particion": "invalido",
+      "objetivos": [
+        "obs:participacion-repo-inexistente"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "una clave nombra un path que no está en repos",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "invalido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "participacion-repo-inexistente",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "participacion-ac-no-integ",
+      "particion": "invalido",
+      "objetivos": [
+        "obs:participacion-ac-no-integration"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "una clave del mapa no es un AC [integration]",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "invalido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "participacion-ac-no-integ",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "participacion-ac-sin-clave",
+      "particion": "invalido",
+      "objetivos": [
+        "obs:participacion-ac-sin-clave"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "un AC cubierto no tiene clave en el mapa",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "invalido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "participacion-ac-sin-clave",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "participacion-clave-extra",
+      "particion": "invalido",
+      "objetivos": [
+        "obs:participacion-clave-ajena"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "el mapa declara la clave de un AC que la tarea no cubre",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "invalido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "participacion-clave-extra",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "participacion-ausente-con-integ",
+      "particion": "invalido",
+      "objetivos": [
+        "obs:participacion-ausente-con-covers_ac"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "la tarea cubre AC [integration] y no declara mapa",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "invalido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "participacion-ausente-con-integ",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "participacion-vacia-con-integ",
+      "particion": "invalido",
+      "objetivos": [
+        "obs:participacion-vacia-con-covers_ac"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "la tarea cubre AC [integration] y su mapa está vacío",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "invalido"
+      },
+      "fixture": "participacion-vacia-con-integ",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "casing-phase",
+      "particion": "casing",
+      "objetivos": [
+        "obs:phase-fuera-de-enum",
+        "obs:blocks_repos-en-closeout",
+        "obs:gate-depende-de-closeout"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "el gate declara `phase: Gate`: no es el `gate` del enum, y el par POSIX resuelve el enum con un `!=` de awk que distingue mayúsculas",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "invalido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "casing-phase",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "casing-status",
+      "particion": "casing",
+      "objetivos": [
+        "obs:status-fuera-de-enum"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "una tarea declara `status: Done`, que no es el `done` del enum",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "invalido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "casing-status",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "casing-depends-on",
+      "particion": "casing",
+      "objetivos": [
+        "obs:depends_on-inexistente",
+        "obs:ciclo-en-depends_on"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "una tarea depende de `g1` y la tarea se llama `G1`: son dos ids distintos, así que la referencia está muerta",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "invalido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "casing-depends-on",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "casing-blocks",
+      "particion": "casing",
+      "objetivos": [
+        "obs:blocks_repos-inexistente"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "el gate bloquea `SERVICIO-B` y el repo es `servicio-b`: no es un path de repos",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "invalido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "casing-blocks",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "casing-part-repo",
+      "particion": "casing",
+      "objetivos": [
+        "obs:participacion-repo-inexistente"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "una clave del mapa nombra `Servicio-A` y el repo es `servicio-a`",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "invalido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "casing-part-repo",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "casing-part-clave",
+      "particion": "casing",
+      "objetivos": [
+        "obs:participacion-clave-ajena",
+        "obs:participacion-ac-sin-clave",
+        "obs:participacion-clave-duplicada"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "el mapa declara la clave `ac-4` y la tarea cubre `AC-4`: son dos AC distintos, así que la clave es ajena",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "invalido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "casing-part-clave",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "casing-id",
+      "particion": "casing",
+      "objetivos": [
+        "obs:id-duplicado"
+      ],
+      "clase_esperada": "aceptacion",
+      "precondicion": "una tarea se llama `g1` y otra `G1`: NO son el mismo id y no hay duplicado. Es el control en la dirección contraria — con `-eq` PowerShell reportaba un rojo que POSIX no da",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "casing-id",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "casing-covers-ac",
+      "particion": "casing",
+      "objetivos": [
+        "obs:ac-integration-huerfano",
+        "obs:ac-cubierto-por-dos-tareas"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "la tarea cubre `ac-4` y la master-spec declara `AC-4`: el AC [integration] queda sin tarea que lo cubra",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "invalido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "valido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "casing-covers-ac",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    },
+    {
+      "nombre": "casing-tag-ac",
+      "particion": "casing",
+      "objetivos": [
+        "obs:participacion-ac-no-integration",
+        "obs:integration-en-covers_ac-de-repo",
+        "obs:repo-local-en-covers_ac-de-tarea"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "la master-spec etiqueta `[INTEGRATION]` en mayúsculas: no es la etiqueta `[integration]`, así que la clave del mapa deja de ser un AC de integración",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "obs:ac-integration-huerfano": "valido",
+        "obs:ac-cubierto-por-dos-tareas": "valido",
+        "obs:integration-en-covers_ac-de-repo": "valido",
+        "obs:repo-local-en-covers_ac-de-tarea": "valido",
+        "obs:ciclo-en-depends_on": "valido",
+        "obs:id-duplicado": "valido",
+        "obs:depends_on-inexistente": "valido",
+        "obs:blocks_repos-inexistente": "valido",
+        "obs:phase-fuera-de-enum": "valido",
+        "obs:status-fuera-de-enum": "valido",
+        "obs:owner-ausente": "valido",
+        "obs:owner-vacio": "valido",
+        "obs:done_when-ausente": "valido",
+        "obs:done_when-vacio": "valido",
+        "obs:blocks_repos-en-closeout": "valido",
+        "obs:gate-depende-de-closeout": "valido",
+        "obs:participacion-clave-duplicada": "valido",
+        "obs:participacion-repo-inexistente": "valido",
+        "obs:participacion-ac-no-integration": "invalido",
+        "obs:participacion-ac-sin-clave": "valido",
+        "obs:participacion-clave-ajena": "valido",
+        "obs:participacion-ausente-con-covers_ac": "valido",
+        "obs:participacion-vacia-con-covers_ac": "valido"
+      },
+      "fixture": "casing-tag-ac",
+      "entradas": {
+        "manifest": "{dir}/.sdd/notificaciones-v2/manifest.yml",
+        "master_spec": "{dir}/.sdd/notificaciones-v2/master-spec.md"
+      }
+    }
+  ]
+}

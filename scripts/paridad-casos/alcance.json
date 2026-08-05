@@ -20,6 +20,8 @@
     "materializacion-contrato",
     "metaindice",
     "orchestration-contract",
+    "orchestration-model",
+    "orchestration-state",
     "ownership-log",
     "ownership-presupuesto",
     "paquete-versionado",

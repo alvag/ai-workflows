@@ -75,6 +75,14 @@
     "posix": "sha256:1f9e1c7da3a6845a",
     "ps": "sha256:5827b50941ceb548"
   },
+  "orchestration-model": {
+    "posix": "sha256:c014ae5e7c511639",
+    "ps": "sha256:aae08319f6f53ca6"
+  },
+  "orchestration-state": {
+    "posix": "sha256:65344302c07113d8",
+    "ps": "sha256:f6567fa1eeb53679"
+  },
   "ownership-log": {
     "posix": "sha256:4365eeaee786df83",
     "ps": "sha256:e4ff2912a8fd7031"
