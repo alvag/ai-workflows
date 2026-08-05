@@ -1,92 +1,134 @@
 [
   {
-    "id": "gate-apertura-ausente",
+    "id": "arnes-archivo-inexistente",
     "sitio": {
       "posix": {
         "linea": 6,
-        "digest": "sha256:f6e6373a1b8dddc8"
+        "digest": "sha256:795ba48927cb10f4"
       },
       "ps": {
-        "linea": 8,
-        "digest": "sha256:18b1b38ed4b276bb"
+        "linea": 6,
+        "digest": "sha256:bd1e397a8f323139"
       }
     },
-    "posix": "^GUARD:gate-fase-3 la Fase 3 no tiene gate de apertura$",
-    "ps": "^GUARD:gate-fase-3 la Fase 3 no tiene gate de apertura$",
-    "campos": {},
+    "motivo": "Error de INVOCACIÓN, no una guarda: el SKILL.md que se pasó no existe. Los dos sabores lo comprueban antes de leer y cortan con `exit 99`, que la tabla clasifica como fallo.",
+    "posix": "^ARNES:no existe (?P<archivo>.*)$",
+    "ps": "^ARNES:no existe (?P<archivo>.*)$",
+    "campos": {
+      "archivo": {
+        "tipo": "texto"
+      }
+    },
     "testigo": {
       "posix": {
-        "texto": "GUARD:gate-fase-3 la Fase 3 no tiene gate de apertura",
-        "campos": {}
+        "texto": "ARNES:no existe {dir}/CENTINELA.md",
+        "campos": {
+          "archivo": "{dir}/CENTINELA.md"
+        }
       },
       "ps": {
-        "texto": "GUARD:gate-fase-3 la Fase 3 no tiene gate de apertura",
-        "campos": {}
+        "texto": "ARNES:no existe {dir}/CENTINELA.md",
+        "campos": {
+          "archivo": "{dir}/CENTINELA.md"
+        }
       }
     },
     "literal": {
-      "posix": "GUARD:gate-fase-3 la Fase 3 no tiene gate de apertura",
-      "ps": "GUARD:gate-fase-3 la Fase 3 no tiene gate de apertura"
+      "posix": "ARNES:no existe %s\\n",
+      "ps": "ARNES:no existe $skill_orq"
     }
   },
   {
-    "id": "no-exige-congelar",
+    "id": "sin-gate-de-apertura",
     "sitio": {
       "posix": {
-        "linea": 8,
-        "digest": "sha256:0e67f47334fb8450"
-      },
-      "ps": {
         "linea": 9,
-        "digest": "sha256:75834602e6cf9f13"
+        "digest": "sha256:ac27b5d8ae881b16"
+      },
+      "ps": {
+        "linea": 16,
+        "digest": "sha256:efaa7f37104c350b"
       }
     },
-    "posix": "^GUARD:gate-fase-3 el gate no exige congelar antes de ejecutar$",
-    "ps": "^GUARD:gate-fase-3 el gate no exige congelar antes de ejecutar$",
+    "motivo": "El marcador va solo en su línea y el detalle abajo: el consumidor compara el marcador entero, así que ningún dato variable puede vivir en esa línea. El patrón cubre el fragmento completo porque una continuación sin patrón caería como diagnóstico no reconocido.",
+    "posix": "^GUARD:gate-fase-3 sin-gate-de-apertura\\n  la Fase 3 no declara el gate previo a ejecutar evidencia$",
+    "ps": "^GUARD:gate-fase-3 sin-gate-de-apertura\\n  la Fase 3 no declara el gate previo a ejecutar evidencia$",
     "campos": {},
     "testigo": {
       "posix": {
-        "texto": "GUARD:gate-fase-3 el gate no exige congelar antes de ejecutar",
+        "texto": "GUARD:gate-fase-3 sin-gate-de-apertura\n  la Fase 3 no declara el gate previo a ejecutar evidencia",
         "campos": {}
       },
       "ps": {
-        "texto": "GUARD:gate-fase-3 el gate no exige congelar antes de ejecutar",
+        "texto": "GUARD:gate-fase-3 sin-gate-de-apertura\n  la Fase 3 no declara el gate previo a ejecutar evidencia",
         "campos": {}
       }
     },
     "literal": {
-      "posix": "GUARD:gate-fase-3 el gate no exige congelar antes de ejecutar",
-      "ps": "GUARD:gate-fase-3 el gate no exige congelar antes de ejecutar"
+      "posix": "GUARD:gate-fase-3 sin-gate-de-apertura",
+      "ps": "GUARD:gate-fase-3 sin-gate-de-apertura"
     }
   },
   {
-    "id": "agregacion-no-declara",
+    "id": "no-revalida-version-vigente",
     "sitio": {
       "posix": {
-        "linea": 10,
-        "digest": "sha256:04c90ec5e8b82510"
+        "linea": 16,
+        "digest": "sha256:575d7cac3ba87e77"
       },
       "ps": {
-        "linea": 10,
-        "digest": "sha256:5fcfc6837e3f2532"
+        "linea": 24,
+        "digest": "sha256:9d9268280cfcb523"
       }
     },
-    "posix": "^GUARD:gate-fase-3 la agregacion no declara que una fila ausente impide el verde$",
-    "ps": "^GUARD:gate-fase-3 la agregacion no declara que una fila ausente impide el verde$",
+    "motivo": "Un solo marcador para las DOS mitades de la cláusula —que declare la revalidación y que no conserve el congelado anclado a la Fase 3—. Emitirlas por separado daría dos líneas GUARD: ante un documento migrado a medias, el que dice las dos cosas, y el consumidor compara una línea entera.",
+    "posix": "^GUARD:gate-fase-3 no-revalida-version-vigente\\n  la Fase 3 no declara que revalida la versión vigente del contrato antes de ejecutar evidencia$",
+    "ps": "^GUARD:gate-fase-3 no-revalida-version-vigente\\n  la Fase 3 no declara que revalida la versión vigente del contrato antes de ejecutar evidencia$",
     "campos": {},
     "testigo": {
       "posix": {
-        "texto": "GUARD:gate-fase-3 la agregacion no declara que una fila ausente impide el verde",
+        "texto": "GUARD:gate-fase-3 no-revalida-version-vigente\n  la Fase 3 no declara que revalida la versión vigente del contrato antes de ejecutar evidencia",
         "campos": {}
       },
       "ps": {
-        "texto": "GUARD:gate-fase-3 la agregacion no declara que una fila ausente impide el verde",
+        "texto": "GUARD:gate-fase-3 no-revalida-version-vigente\n  la Fase 3 no declara que revalida la versión vigente del contrato antes de ejecutar evidencia",
         "campos": {}
       }
     },
     "literal": {
-      "posix": "GUARD:gate-fase-3 la agregacion no declara que una fila ausente impide el verde",
-      "ps": "GUARD:gate-fase-3 la agregacion no declara que una fila ausente impide el verde"
+      "posix": "GUARD:gate-fase-3 no-revalida-version-vigente",
+      "ps": "GUARD:gate-fase-3 no-revalida-version-vigente"
+    }
+  },
+  {
+    "id": "sin-veredicto-no-verificado",
+    "sitio": {
+      "posix": {
+        "linea": 21,
+        "digest": "sha256:e6b542d4b399dcf1"
+      },
+      "ps": {
+        "linea": 29,
+        "digest": "sha256:e3f0df4ccfe9ef0f"
+      }
+    },
+    "motivo": "La agregación de la Fase 3 no puede dar verde con filas ausentes: el documento tiene que declarar el veredicto `no verificado`.",
+    "posix": "^GUARD:gate-fase-3 sin-veredicto-no-verificado\\n  la agregación no declara que una fila ausente impide el verde$",
+    "ps": "^GUARD:gate-fase-3 sin-veredicto-no-verificado\\n  la agregación no declara que una fila ausente impide el verde$",
+    "campos": {},
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:gate-fase-3 sin-veredicto-no-verificado\n  la agregación no declara que una fila ausente impide el verde",
+        "campos": {}
+      },
+      "ps": {
+        "texto": "GUARD:gate-fase-3 sin-veredicto-no-verificado\n  la agregación no declara que una fila ausente impide el verde",
+        "campos": {}
+      }
+    },
+    "literal": {
+      "posix": "GUARD:gate-fase-3 sin-veredicto-no-verificado",
+      "ps": "GUARD:gate-fase-3 sin-veredicto-no-verificado"
     }
   }
 ]

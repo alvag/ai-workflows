@@ -9,10 +9,12 @@ dueño.** Existe para poder mirar el archivo completo y copiar lo que sirva; no 
 autoridad de ninguna clave.
 
 **Solo configuración.** El esquema completo de `manifest.yml` (`sdd-orchestrator/reference.md` →
-"Esquema de `manifest.yml`") tiene 15 hojas; 4 son **estado de corrida** de la orquestación, no
-configuración, y no aparecen acá: `id`, `created_at`, `master_spec` y `repos` (esta última incluye,
-por cada repo del DAG, `branch`, `status`, `depends_on` y `covers_ac` — también estado, no config).
-Este archivo documenta las 11 restantes.
+"Esquema de `manifest.yml`") tiene 17 hojas; 5 son **estado de corrida** de la orquestación, no
+configuración, y no aparecen acá: `id`, `created_at`, `master_spec`, `repos` y
+`orchestration_tasks`. Las dos últimas anidan estado propio: `repos` incluye, por cada repo del DAG,
+`branch`, `status`, `depends_on` y `covers_ac`; y `orchestration_tasks`, por cada tarea, su `phase`,
+`owner`, `status` y `done_when` — también estado, no config. Este archivo documenta las 12
+restantes.
 
 **Copialo entero o por bloques.** Una clave que borres vuelve a su default —salvo las marcadas
 `[obl]`, que no tienen uno—, que es lo que la skill aplica cuando la clave está ausente del

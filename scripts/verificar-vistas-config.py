@@ -46,9 +46,9 @@ SDD_ORCH_ESQUEMA = r"Esquema de `manifest\.yml`"
 MANIFEST_EJEMPLO = REPO / "skills/sdd-orchestrator/manifest-ejemplo.md"
 MANIFEST_EJEMPLO_HEADING = r"Ejemplo de `manifest\.yml`"
 
-# Las 4 claves de ESTADO DE CORRIDA del esquema de manifest.yml (no son config, no viven en
+# Las 5 claves de ESTADO DE CORRIDA del esquema de manifest.yml (no son config, no viven en
 # manifest-ejemplo.md).
-CLAVES_ESTADO_CORRIDA = {"id", "created_at", "master_spec", "repos"}
+CLAVES_ESTADO_CORRIDA = {"id", "created_at", "master_spec", "repos", "orchestration_tasks"}
 
 DUENOS_CONFIG = [
     (SDD_FLOW_REF, SDD_FLOW_ESQUEMA),
@@ -263,7 +263,8 @@ def check1_manifest():
     vista = claves(MANIFEST_EJEMPLO, MANIFEST_EJEMPLO_HEADING)
     return _comparar_conjuntos(
         "manifest-ejemplo.md", config_keys, vista,
-        "esquema de manifest.yml (15 hojas) menos las 4 de estado de corrida", "la vista",
+        f"esquema de manifest.yml ({len(esquema)} hojas) menos las "
+        f"{len(esquema & CLAVES_ESTADO_CORRIDA)} de estado de corrida", "la vista",
     )
 
 

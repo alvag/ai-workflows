@@ -1,22 +1,52 @@
 {
   "par": "integracion-ownership",
+  "observables": {
+    "obs:referencia-obsoleta-fase-3": "la evidencia o el baseline de una fila [integration] contienen el literal viejo `N/A: Fase 3`",
+    "obs:fila-integration-not-applicable": "contienen `NOT_APPLICABLE`, que borraría una obligación global — solo se evalúa si no disparó la anterior",
+    "obs:fila-integration-con-evidencia-local": "no son exactamente `N/A: orchestration-owned` — solo se evalúa si no dispararon las dos anteriores",
+    "obs:referencia-a-fila-equivocada": "la `V-<id>` citada en la observación no es la fila autoritativa del AC — solo se evalúa sobre una fila bien formada",
+    "obs:referencia-esperada-ausente": "el conjunto de AC en los que el repo participa y NO referencia; agrega todos en un evento",
+    "obs:referencia-en-repo-no-participante": "el conjunto de AC que el repo referencia sin que participating_repos lo declare participante; agrega todos en un evento"
+  },
   "clausulas": [
     {
-      "id": "arnes-archivo-inexistente",
-      "compara_cadenas": false,
-      "nota": "el discriminador es la existencia del archivo; el sistema de archivos de esta plataforma no distingue mayúsculas, así que un caso de casing no mediría nada"
+      "id": "arnes-manifest-inexistente"
     },
     {
-      "id": "not-applicable",
+      "id": "arnes-archivo-inexistente"
+    },
+    {
+      "id": "arnes-plan-sin-repo"
+    },
+    {
+      "id": "obs:referencia-obsoleta-fase-3",
+      "tipo": "observable",
       "compara_cadenas": true
     },
     {
-      "id": "evidencia-local",
+      "id": "obs:fila-integration-not-applicable",
+      "tipo": "observable",
       "compara_cadenas": true
     },
     {
-      "id": "sin-fila-integration",
+      "id": "obs:fila-integration-con-evidencia-local",
+      "tipo": "observable",
       "compara_cadenas": true
+    },
+    {
+      "id": "obs:referencia-a-fila-equivocada",
+      "tipo": "observable",
+      "compara_cadenas": true
+    },
+    {
+      "id": "obs:referencia-esperada-ausente",
+      "tipo": "observable",
+      "agrega": true
+    },
+    {
+      "id": "obs:referencia-en-repo-no-participante",
+      "tipo": "observable",
+      "agrega": true
     }
   ],
   "casos": [
@@ -24,141 +54,511 @@
       "nombre": "positivo",
       "particion": "positivo",
       "objetivos": [
+        "arnes-manifest-inexistente",
         "arnes-archivo-inexistente",
-        "not-applicable",
-        "evidencia-local",
-        "sin-fila-integration"
+        "arnes-plan-sin-repo",
+        "obs:referencia-obsoleta-fase-3",
+        "obs:fila-integration-not-applicable",
+        "obs:fila-integration-con-evidencia-local",
+        "obs:referencia-a-fila-equivocada",
+        "obs:referencia-esperada-ausente",
+        "obs:referencia-en-repo-no-participante"
       ],
       "clase_esperada": "aceptacion",
-      "precondicion": "el plan referencia una fila [integration] con `N/A: Fase 3` en evidencia y en baseline",
+      "precondicion": "dos repos participan en AC-1 y los dos lo referencian con la evidencia de orquestación y la fila autoritativa",
       "clausulas": {
+        "arnes-manifest-inexistente": "valido",
         "arnes-archivo-inexistente": "valido",
-        "not-applicable": "valido",
-        "evidencia-local": "valido",
-        "sin-fila-integration": "valido"
+        "arnes-plan-sin-repo": "valido",
+        "obs:referencia-obsoleta-fase-3": "valido",
+        "obs:fila-integration-not-applicable": "valido",
+        "obs:fila-integration-con-evidencia-local": "valido",
+        "obs:referencia-a-fila-equivocada": "valido",
+        "obs:referencia-esperada-ausente": "valido",
+        "obs:referencia-en-repo-no-participante": "valido"
       },
       "fixture": "positivo",
       "entradas": {
-        "repos": "{dir}/plan.md"
+        "manifest": "{dir}/manifest.yml",
+        "repos": "{dir}/api-plan.md {dir}/web-plan.md"
       }
     },
     {
-      "nombre": "archivo-inexistente",
+      "nombre": "archivo-inexistente-manifest",
       "particion": "invalido",
-      "objetivo": "arnes-archivo-inexistente",
+      "objetivos": [
+        "arnes-manifest-inexistente"
+      ],
       "clase_esperada": "fallo",
-      "entradas": {
-        "repos": "{dir}/no-existe.md"
-      },
-      "precondicion": "la ruta no existe. POSIX lo comprueba con `[ -f ]` y sale 99 con prefijo `ARNES:`; PowerShell no tiene esa comprobación y `Get-Content` emite un diagnóstico del intérprete. Los dos quedan en `fallo`, que es una clase propia y NUNCA paridad",
+      "precondicion": "la entrada apunta a un manifest que el fixture no trae; el bloque corta con exit 99 antes de mirar los planes",
       "clausulas": {
-        "arnes-archivo-inexistente": "invalido",
-        "not-applicable": "valido",
-        "evidencia-local": "valido",
-        "sin-fila-integration": "valido"
-      },
-      "fixture": "archivo-inexistente"
-    },
-    {
-      "nombre": "marcada-not-applicable",
-      "particion": "invalido",
-      "objetivo": "not-applicable",
-      "clase_esperada": "rechazo",
-      "precondicion": "la fila [integration] lleva NOT_APPLICABLE en el baseline",
-      "clausulas": {
+        "arnes-manifest-inexistente": "invalido",
         "arnes-archivo-inexistente": "valido",
-        "not-applicable": "invalido",
-        "evidencia-local": "valido",
-        "sin-fila-integration": "valido"
+        "arnes-plan-sin-repo": "valido",
+        "obs:referencia-obsoleta-fase-3": "valido",
+        "obs:fila-integration-not-applicable": "valido",
+        "obs:fila-integration-con-evidencia-local": "valido",
+        "obs:referencia-a-fila-equivocada": "valido",
+        "obs:referencia-esperada-ausente": "valido",
+        "obs:referencia-en-repo-no-participante": "valido"
       },
-      "fixture": "marcada-not-applicable",
+      "fixture": "archivo-inexistente",
       "entradas": {
-        "repos": "{dir}/plan.md"
+        "manifest": "{dir}/NO-EXISTE.yml",
+        "repos": "{dir}/api-plan.md {dir}/web-plan.md"
       }
     },
     {
-      "nombre": "not-applicable-minuscula",
-      "particion": "casing",
-      "objetivo": "not-applicable",
-      "clase_esperada": "rechazo",
-      "precondicion": "el baseline dice `not_applicable` en minúsculas. POSIX resuelve con un `case` case-sensitive: no matchea `*NOT_APPLICABLE*` y cae en la rama genérica, así que emite la OTRA cláusula. PowerShell resuelve con `-match`, case-insensitive, y emite esta. El id del evento difiere",
+      "nombre": "archivo-inexistente-plan",
+      "particion": "invalido",
+      "objetivos": [
+        "arnes-archivo-inexistente"
+      ],
+      "clase_esperada": "fallo",
+      "precondicion": "el manifest existe y uno de los plan.md de $repos no; corta con exit 99 en el segundo lazo",
       "clausulas": {
-        "arnes-archivo-inexistente": "valido",
-        "not-applicable": "invalido",
-        "evidencia-local": "valido",
-        "sin-fila-integration": "valido"
+        "arnes-manifest-inexistente": "valido",
+        "arnes-archivo-inexistente": "invalido",
+        "arnes-plan-sin-repo": "valido",
+        "obs:referencia-obsoleta-fase-3": "valido",
+        "obs:fila-integration-not-applicable": "valido",
+        "obs:fila-integration-con-evidencia-local": "valido",
+        "obs:referencia-a-fila-equivocada": "valido",
+        "obs:referencia-esperada-ausente": "valido",
+        "obs:referencia-en-repo-no-participante": "valido"
       },
-      "fixture": "not-applicable-minuscula",
+      "fixture": "archivo-inexistente",
       "entradas": {
-        "repos": "{dir}/plan.md"
+        "manifest": "{dir}/manifest.yml",
+        "repos": "{dir}/api-plan.md {dir}/NO-EXISTE.md"
+      }
+    },
+    {
+      "nombre": "plan-sin-repo",
+      "particion": "invalido",
+      "objetivos": [
+        "arnes-plan-sin-repo"
+      ],
+      "clase_esperada": "fallo",
+      "precondicion": "los planes existen pero su frontmatter no declara `repo:`, así que sus filas no se pueden atribuir",
+      "clausulas": {
+        "arnes-manifest-inexistente": "valido",
+        "arnes-archivo-inexistente": "valido",
+        "arnes-plan-sin-repo": "invalido",
+        "obs:referencia-obsoleta-fase-3": "valido",
+        "obs:fila-integration-not-applicable": "valido",
+        "obs:fila-integration-con-evidencia-local": "valido",
+        "obs:referencia-a-fila-equivocada": "valido",
+        "obs:referencia-esperada-ausente": "valido",
+        "obs:referencia-en-repo-no-participante": "valido"
+      },
+      "fixture": "plan-sin-repo",
+      "entradas": {
+        "manifest": "{dir}/manifest.yml",
+        "repos": "{dir}/api-plan.md {dir}/web-plan.md"
+      }
+    },
+    {
+      "nombre": "obsoleta-fase-3",
+      "particion": "invalido",
+      "objetivos": [
+        "obs:referencia-obsoleta-fase-3"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "api cierra AC-1 con el literal viejo `N/A: Fase 3` en la evidencia",
+      "clausulas": {
+        "arnes-manifest-inexistente": "valido",
+        "arnes-archivo-inexistente": "valido",
+        "arnes-plan-sin-repo": "valido",
+        "obs:referencia-obsoleta-fase-3": "invalido",
+        "obs:fila-integration-not-applicable": "valido",
+        "obs:fila-integration-con-evidencia-local": "valido",
+        "obs:referencia-a-fila-equivocada": "valido",
+        "obs:referencia-esperada-ausente": "valido",
+        "obs:referencia-en-repo-no-participante": "valido"
+      },
+      "fixture": "obsoleta-fase-3",
+      "entradas": {
+        "manifest": "{dir}/manifest.yml",
+        "repos": "{dir}/api-plan.md {dir}/web-plan.md"
+      }
+    },
+    {
+      "nombre": "obsoleta-casing",
+      "particion": "casing",
+      "objetivos": [
+        "obs:referencia-obsoleta-fase-3",
+        "obs:fila-integration-con-evidencia-local"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "dice `N/A: fase 3` en otro casing: NO es el literal viejo, así que la primera cláusula queda del lado válido y el rechazo lo tiene que dar la tercera, con OTRO marcador. Es la partición que distingue las dos: con una comparación insensible los dos sabores reportarían hallazgos distintos",
+      "clausulas": {
+        "arnes-manifest-inexistente": "valido",
+        "arnes-archivo-inexistente": "valido",
+        "arnes-plan-sin-repo": "valido",
+        "obs:referencia-obsoleta-fase-3": "valido",
+        "obs:fila-integration-not-applicable": "valido",
+        "obs:fila-integration-con-evidencia-local": "invalido",
+        "obs:referencia-a-fila-equivocada": "valido",
+        "obs:referencia-esperada-ausente": "valido",
+        "obs:referencia-en-repo-no-participante": "valido"
+      },
+      "fixture": "obsoleta-casing",
+      "entradas": {
+        "manifest": "{dir}/manifest.yml",
+        "repos": "{dir}/api-plan.md {dir}/web-plan.md"
+      }
+    },
+    {
+      "nombre": "not-applicable",
+      "particion": "invalido",
+      "objetivos": [
+        "obs:fila-integration-not-applicable"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "api marca NOT_APPLICABLE la fila de AC-1",
+      "clausulas": {
+        "arnes-manifest-inexistente": "valido",
+        "arnes-archivo-inexistente": "valido",
+        "arnes-plan-sin-repo": "valido",
+        "obs:referencia-obsoleta-fase-3": "valido",
+        "obs:fila-integration-not-applicable": "invalido",
+        "obs:fila-integration-con-evidencia-local": "valido",
+        "obs:referencia-a-fila-equivocada": "valido",
+        "obs:referencia-esperada-ausente": "valido",
+        "obs:referencia-en-repo-no-participante": "valido"
+      },
+      "fixture": "not-applicable",
+      "entradas": {
+        "manifest": "{dir}/manifest.yml",
+        "repos": "{dir}/api-plan.md {dir}/web-plan.md"
+      }
+    },
+    {
+      "nombre": "not-applicable-casing",
+      "particion": "casing",
+      "objetivos": [
+        "obs:fila-integration-not-applicable",
+        "obs:fila-integration-con-evidencia-local"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "dice `not_applicable` en minúscula: no es la marca prohibida, y el rechazo pasa a la tercera cláusula",
+      "clausulas": {
+        "arnes-manifest-inexistente": "valido",
+        "arnes-archivo-inexistente": "valido",
+        "arnes-plan-sin-repo": "valido",
+        "obs:referencia-obsoleta-fase-3": "valido",
+        "obs:fila-integration-not-applicable": "valido",
+        "obs:fila-integration-con-evidencia-local": "invalido",
+        "obs:referencia-a-fila-equivocada": "valido",
+        "obs:referencia-esperada-ausente": "valido",
+        "obs:referencia-en-repo-no-participante": "valido"
+      },
+      "fixture": "not-applicable-casing",
+      "entradas": {
+        "manifest": "{dir}/manifest.yml",
+        "repos": "{dir}/api-plan.md {dir}/web-plan.md"
       }
     },
     {
       "nombre": "evidencia-local",
       "particion": "invalido",
-      "objetivo": "evidencia-local",
+      "objetivos": [
+        "obs:fila-integration-con-evidencia-local"
+      ],
       "clase_esperada": "rechazo",
-      "precondicion": "la fila [integration] declara evidencia local en vez de `N/A: Fase 3`",
+      "precondicion": "api cierra AC-1 de su lado con un comando propio en vez de la evidencia de orquestación",
       "clausulas": {
+        "arnes-manifest-inexistente": "valido",
         "arnes-archivo-inexistente": "valido",
-        "not-applicable": "valido",
-        "evidencia-local": "invalido",
-        "sin-fila-integration": "valido"
+        "arnes-plan-sin-repo": "valido",
+        "obs:referencia-obsoleta-fase-3": "valido",
+        "obs:fila-integration-not-applicable": "valido",
+        "obs:fila-integration-con-evidencia-local": "invalido",
+        "obs:referencia-a-fila-equivocada": "valido",
+        "obs:referencia-esperada-ausente": "valido",
+        "obs:referencia-en-repo-no-participante": "valido"
       },
       "fixture": "evidencia-local",
       "entradas": {
-        "repos": "{dir}/plan.md"
+        "manifest": "{dir}/manifest.yml",
+        "repos": "{dir}/api-plan.md {dir}/web-plan.md"
       }
     },
     {
-      "nombre": "fase-3-minuscula",
+      "nombre": "owned-casing",
       "particion": "casing",
-      "objetivo": "evidencia-local",
+      "objetivos": [
+        "obs:fila-integration-con-evidencia-local"
+      ],
       "clase_esperada": "rechazo",
-      "precondicion": "la fila dice `n/a: fase 3` en minúsculas. POSIX compara con un patrón literal case-sensitive y la manda a la rama genérica; PowerShell usa `-eq`, case-insensitive, y la da por buena",
+      "precondicion": "dice `N/A: Orchestration-Owned` con otro casing: NO es el literal exigido, y la cláusula tiene que dispararse. POSIX compara con `!=` de awk, que distingue mayúsculas",
       "clausulas": {
+        "arnes-manifest-inexistente": "valido",
         "arnes-archivo-inexistente": "valido",
-        "not-applicable": "valido",
-        "evidencia-local": "invalido",
-        "sin-fila-integration": "valido"
+        "arnes-plan-sin-repo": "valido",
+        "obs:referencia-obsoleta-fase-3": "valido",
+        "obs:fila-integration-not-applicable": "valido",
+        "obs:fila-integration-con-evidencia-local": "invalido",
+        "obs:referencia-a-fila-equivocada": "valido",
+        "obs:referencia-esperada-ausente": "valido",
+        "obs:referencia-en-repo-no-participante": "valido"
       },
-      "fixture": "fase-3-minuscula",
+      "fixture": "owned-casing",
       "entradas": {
-        "repos": "{dir}/plan.md"
+        "manifest": "{dir}/manifest.yml",
+        "repos": "{dir}/api-plan.md {dir}/web-plan.md"
       }
     },
     {
-      "nombre": "sin-fila",
+      "nombre": "fila-equivocada",
       "particion": "invalido",
-      "objetivo": "sin-fila-integration",
+      "objetivos": [
+        "obs:referencia-a-fila-equivocada"
+      ],
       "clase_esperada": "rechazo",
-      "precondicion": "el plan no referencia ninguna fila [integration]: su cobertura queda abierta. Es el control en el otro sentido",
+      "precondicion": "api apunta a `V-G9` y la fila autoritativa de AC-1 es `V-G1`",
       "clausulas": {
+        "arnes-manifest-inexistente": "valido",
         "arnes-archivo-inexistente": "valido",
-        "not-applicable": "valido",
-        "evidencia-local": "valido",
-        "sin-fila-integration": "invalido"
+        "arnes-plan-sin-repo": "valido",
+        "obs:referencia-obsoleta-fase-3": "valido",
+        "obs:fila-integration-not-applicable": "valido",
+        "obs:fila-integration-con-evidencia-local": "valido",
+        "obs:referencia-a-fila-equivocada": "invalido",
+        "obs:referencia-esperada-ausente": "valido",
+        "obs:referencia-en-repo-no-participante": "valido"
       },
-      "fixture": "sin-fila",
+      "fixture": "fila-equivocada",
       "entradas": {
-        "repos": "{dir}/plan.md"
+        "manifest": "{dir}/manifest.yml",
+        "repos": "{dir}/api-plan.md {dir}/web-plan.md"
       }
     },
     {
-      "nombre": "integration-mayuscula",
+      "nombre": "fila-equivocada-casing",
       "particion": "casing",
-      "objetivo": "sin-fila-integration",
+      "objetivos": [
+        "obs:referencia-a-fila-equivocada"
+      ],
       "clase_esperada": "rechazo",
-      "precondicion": "la fila dice `[INTEGRATION]` en mayúsculas: el literal `[integration]` NO está. POSIX busca con `grep -F` case-sensitive y no la ve; PowerShell usa `-match`, case-insensitive, y sí",
+      "precondicion": "api apunta a `V-g1` en minúscula: no es `V-G1`, así que la referencia no lleva a la fila autoritativa y la cláusula tiene que dispararse",
       "clausulas": {
+        "arnes-manifest-inexistente": "valido",
         "arnes-archivo-inexistente": "valido",
-        "not-applicable": "valido",
-        "evidencia-local": "valido",
-        "sin-fila-integration": "invalido"
+        "arnes-plan-sin-repo": "valido",
+        "obs:referencia-obsoleta-fase-3": "valido",
+        "obs:fila-integration-not-applicable": "valido",
+        "obs:fila-integration-con-evidencia-local": "valido",
+        "obs:referencia-a-fila-equivocada": "invalido",
+        "obs:referencia-esperada-ausente": "valido",
+        "obs:referencia-en-repo-no-participante": "valido"
       },
-      "fixture": "integration-mayuscula",
+      "fixture": "fila-equivocada-casing",
       "entradas": {
-        "repos": "{dir}/plan.md"
+        "manifest": "{dir}/manifest.yml",
+        "repos": "{dir}/api-plan.md {dir}/web-plan.md"
+      }
+    },
+    {
+      "nombre": "repo-casing",
+      "particion": "casing",
+      "objetivos": [
+        "obs:referencia-en-repo-no-participante"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "el manifest declara participante a `API` y el plan dice `repo: api`: son repos distintos, así que api referencia AC-1 sin participar. Es el caso que mide el fundido de claves — una hashtable de PowerShell no distingue mayúsculas y daría por participante a un repo que el manifest nombra de otra forma",
+      "clausulas": {
+        "arnes-manifest-inexistente": "valido",
+        "arnes-archivo-inexistente": "valido",
+        "arnes-plan-sin-repo": "valido",
+        "obs:referencia-obsoleta-fase-3": "valido",
+        "obs:fila-integration-not-applicable": "valido",
+        "obs:fila-integration-con-evidencia-local": "valido",
+        "obs:referencia-a-fila-equivocada": "valido",
+        "obs:referencia-esperada-ausente": "valido",
+        "obs:referencia-en-repo-no-participante": "invalido"
+      },
+      "fixture": "repo-casing",
+      "entradas": {
+        "manifest": "{dir}/manifest.yml",
+        "repos": "{dir}/api-plan.md {dir}/web-plan.md"
+      }
+    },
+    {
+      "nombre": "agregadores-vacio",
+      "particion": "vacio",
+      "objetivos": [
+        "obs:referencia-esperada-ausente",
+        "obs:referencia-en-repo-no-participante"
+      ],
+      "clase_esperada": "aceptacion",
+      "precondicion": "nadie participa y nadie referencia: los dos conjuntos agregados son vacíos, que es el caso retrocompatible y es correcto por diseño",
+      "clausulas": {
+        "arnes-manifest-inexistente": "valido",
+        "arnes-archivo-inexistente": "valido",
+        "arnes-plan-sin-repo": "valido",
+        "obs:referencia-obsoleta-fase-3": "valido",
+        "obs:fila-integration-not-applicable": "valido",
+        "obs:fila-integration-con-evidencia-local": "valido",
+        "obs:referencia-a-fila-equivocada": "valido",
+        "obs:referencia-esperada-ausente": "valido",
+        "obs:referencia-en-repo-no-participante": "valido"
+      },
+      "fixture": "agregadores-vacio",
+      "entradas": {
+        "manifest": "{dir}/manifest.yml",
+        "repos": "{dir}/api-plan.md {dir}/web-plan.md"
+      }
+    },
+    {
+      "nombre": "ausente-singleton",
+      "particion": "singleton",
+      "objetivos": [
+        "obs:referencia-esperada-ausente"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "api participa en {'singleton': 1, 'par': 2, 'impar': 3}['singleton'] AC y no trae ninguna fila; el evento agrega todos los faltantes en un payload",
+      "clausulas": {
+        "arnes-manifest-inexistente": "valido",
+        "arnes-archivo-inexistente": "valido",
+        "arnes-plan-sin-repo": "valido",
+        "obs:referencia-obsoleta-fase-3": "valido",
+        "obs:fila-integration-not-applicable": "valido",
+        "obs:fila-integration-con-evidencia-local": "valido",
+        "obs:referencia-a-fila-equivocada": "valido",
+        "obs:referencia-esperada-ausente": "invalido",
+        "obs:referencia-en-repo-no-participante": "valido"
+      },
+      "fixture": "ausente-singleton",
+      "entradas": {
+        "manifest": "{dir}/manifest.yml",
+        "repos": "{dir}/api-plan.md {dir}/web-plan.md"
+      }
+    },
+    {
+      "nombre": "sobrante-singleton",
+      "particion": "singleton",
+      "objetivos": [
+        "obs:referencia-en-repo-no-participante"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "nadie participa y api referencia {'singleton': 1, 'par': 2, 'impar': 3}['singleton'] AC; el evento agrega todos los sobrantes en un payload",
+      "clausulas": {
+        "arnes-manifest-inexistente": "valido",
+        "arnes-archivo-inexistente": "valido",
+        "arnes-plan-sin-repo": "valido",
+        "obs:referencia-obsoleta-fase-3": "valido",
+        "obs:fila-integration-not-applicable": "valido",
+        "obs:fila-integration-con-evidencia-local": "valido",
+        "obs:referencia-a-fila-equivocada": "valido",
+        "obs:referencia-esperada-ausente": "valido",
+        "obs:referencia-en-repo-no-participante": "invalido"
+      },
+      "fixture": "sobrante-singleton",
+      "entradas": {
+        "manifest": "{dir}/manifest.yml",
+        "repos": "{dir}/api-plan.md {dir}/web-plan.md"
+      }
+    },
+    {
+      "nombre": "ausente-par",
+      "particion": "par",
+      "objetivos": [
+        "obs:referencia-esperada-ausente"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "api participa en {'singleton': 1, 'par': 2, 'impar': 3}['par'] AC y no trae ninguna fila; el evento agrega todos los faltantes en un payload",
+      "clausulas": {
+        "arnes-manifest-inexistente": "valido",
+        "arnes-archivo-inexistente": "valido",
+        "arnes-plan-sin-repo": "valido",
+        "obs:referencia-obsoleta-fase-3": "valido",
+        "obs:fila-integration-not-applicable": "valido",
+        "obs:fila-integration-con-evidencia-local": "valido",
+        "obs:referencia-a-fila-equivocada": "valido",
+        "obs:referencia-esperada-ausente": "invalido",
+        "obs:referencia-en-repo-no-participante": "valido"
+      },
+      "fixture": "ausente-par",
+      "entradas": {
+        "manifest": "{dir}/manifest.yml",
+        "repos": "{dir}/api-plan.md {dir}/web-plan.md"
+      }
+    },
+    {
+      "nombre": "sobrante-par",
+      "particion": "par",
+      "objetivos": [
+        "obs:referencia-en-repo-no-participante"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "nadie participa y api referencia {'singleton': 1, 'par': 2, 'impar': 3}['par'] AC; el evento agrega todos los sobrantes en un payload",
+      "clausulas": {
+        "arnes-manifest-inexistente": "valido",
+        "arnes-archivo-inexistente": "valido",
+        "arnes-plan-sin-repo": "valido",
+        "obs:referencia-obsoleta-fase-3": "valido",
+        "obs:fila-integration-not-applicable": "valido",
+        "obs:fila-integration-con-evidencia-local": "valido",
+        "obs:referencia-a-fila-equivocada": "valido",
+        "obs:referencia-esperada-ausente": "valido",
+        "obs:referencia-en-repo-no-participante": "invalido"
+      },
+      "fixture": "sobrante-par",
+      "entradas": {
+        "manifest": "{dir}/manifest.yml",
+        "repos": "{dir}/api-plan.md {dir}/web-plan.md"
+      }
+    },
+    {
+      "nombre": "ausente-impar",
+      "particion": "impar",
+      "objetivos": [
+        "obs:referencia-esperada-ausente"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "api participa en {'singleton': 1, 'par': 2, 'impar': 3}['impar'] AC y no trae ninguna fila; el evento agrega todos los faltantes en un payload",
+      "clausulas": {
+        "arnes-manifest-inexistente": "valido",
+        "arnes-archivo-inexistente": "valido",
+        "arnes-plan-sin-repo": "valido",
+        "obs:referencia-obsoleta-fase-3": "valido",
+        "obs:fila-integration-not-applicable": "valido",
+        "obs:fila-integration-con-evidencia-local": "valido",
+        "obs:referencia-a-fila-equivocada": "valido",
+        "obs:referencia-esperada-ausente": "invalido",
+        "obs:referencia-en-repo-no-participante": "valido"
+      },
+      "fixture": "ausente-impar",
+      "entradas": {
+        "manifest": "{dir}/manifest.yml",
+        "repos": "{dir}/api-plan.md {dir}/web-plan.md"
+      }
+    },
+    {
+      "nombre": "sobrante-impar",
+      "particion": "impar",
+      "objetivos": [
+        "obs:referencia-en-repo-no-participante"
+      ],
+      "clase_esperada": "rechazo",
+      "precondicion": "nadie participa y api referencia {'singleton': 1, 'par': 2, 'impar': 3}['impar'] AC; el evento agrega todos los sobrantes en un payload",
+      "clausulas": {
+        "arnes-manifest-inexistente": "valido",
+        "arnes-archivo-inexistente": "valido",
+        "arnes-plan-sin-repo": "valido",
+        "obs:referencia-obsoleta-fase-3": "valido",
+        "obs:fila-integration-not-applicable": "valido",
+        "obs:fila-integration-con-evidencia-local": "valido",
+        "obs:referencia-a-fila-equivocada": "valido",
+        "obs:referencia-esperada-ausente": "valido",
+        "obs:referencia-en-repo-no-participante": "invalido"
+      },
+      "fixture": "sobrante-impar",
+      "entradas": {
+        "manifest": "{dir}/manifest.yml",
+        "repos": "{dir}/api-plan.md {dir}/web-plan.md"
       }
     }
   ]

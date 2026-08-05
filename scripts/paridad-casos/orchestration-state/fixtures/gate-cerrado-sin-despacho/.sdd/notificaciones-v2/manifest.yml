@@ -1,0 +1,43 @@
+id: notificaciones-v2
+master_spec: .sdd/notificaciones-v2/master-spec.md
+created_at: 2026-06-03T09:00:00-03:00
+repos:
+  - path: servicio-a
+    branch: feature/notificaciones-v2-servicio-a
+    status: tasks-ready
+    depends_on: []
+    covers_ac: [AC-1]
+  - path: servicio-b
+    branch: feature/notificaciones-v2-servicio-b
+    status: tasks-ready
+    depends_on: []
+    covers_ac: [AC-2]
+orchestration_tasks:
+  - id: G1
+    phase: gate
+    what: acordar el esquema del evento entre los dos equipos
+    owner: equipo-arquitectura
+    status: done
+    depends_on: []
+    covers_ac: []
+    done_when: V-G1
+    blocks_repos: [servicio-b]
+  - id: C1
+    phase: closeout
+    what: correr el flujo end-to-end con los dos servicios desplegados
+    owner: equipo-plataforma
+    status: pending
+    depends_on: [G1]
+    covers_ac: [AC-3, AC-4]
+    done_when: V-C1
+    participating_repos:
+      AC-3: [servicio-a, servicio-b]
+      AC-4: [servicio-a]
+  - id: X1
+    phase: closeout
+    what: archivar el acuerdo del evento en la wiki del equipo
+    owner: equipo-datos
+    status: pending
+    depends_on: []
+    covers_ac: []
+    done_when: V-X1

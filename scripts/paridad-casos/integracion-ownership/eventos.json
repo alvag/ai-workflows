@@ -1,18 +1,58 @@
 [
   {
+    "id": "arnes-manifest-inexistente",
+    "sitio": {
+      "posix": {
+        "linea": 8,
+        "digest": "sha256:f6f76bbac425575e"
+      },
+      "ps": {
+        "linea": 8,
+        "digest": "sha256:cfb173bc801aea5e"
+      }
+    },
+    "motivo": "Error de INVOCACIÓN, no una guarda: el manifest que se pasó no existe. Va aparte del que comprueba cada plan de repo porque son dos sitios distintos y el orden importa — sin manifest no hay `participating_repos`, así que ninguna referencia se puede juzgar y el bloque corta antes de mirar los planes. El mensaje nombra QUÉ falta y no solo la ruta: con el texto común los dos sitios eran indistinguibles, y un fragmento que matchea dos patrones invalida el caso entero.",
+    "posix": "^ARNES:no existe el manifest (?P<archivo>.*)$",
+    "ps": "^ARNES:no existe el manifest (?P<archivo>.*)$",
+    "campos": {
+      "archivo": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "ARNES:no existe el manifest {dir}/CENTINELA.yml",
+        "campos": {
+          "archivo": "{dir}/CENTINELA.yml"
+        }
+      },
+      "ps": {
+        "texto": "ARNES:no existe el manifest {dir}/CENTINELA.yml",
+        "campos": {
+          "archivo": "{dir}/CENTINELA.yml"
+        }
+      }
+    },
+    "literal": {
+      "posix": "ARNES:no existe el manifest %s\\n",
+      "ps": "ARNES:no existe el manifest $manifest"
+    }
+  },
+  {
     "id": "arnes-archivo-inexistente",
     "sitio": {
       "posix": {
-        "linea": 6,
-        "digest": "sha256:8b4c49e28f82cc7c"
+        "linea": 10,
+        "digest": "sha256:2d9909f1d17eb850"
       },
       "ps": {
-        "linea": 13,
-        "digest": "sha256:88052c3f1359c889"
+        "linea": 11,
+        "digest": "sha256:4777454353bd1d08"
       }
     },
-    "motivo": "Es un error de INVOCACIÓN, no una guarda: el archivo que se pasó no existe. Los dos sabores lo comprueban antes de leer y cortan con `exit 99`. Antes solo lo hacía POSIX, y PowerShell dejaba que `Get-Content` lanzara y seguía con la lista vacía, reportando que el plan no referencia ninguna fila de integración sobre un archivo que nadie escribió nunca.",
-    "posix": "^ARNES:no existe (?P<archivo>.*)$",
+    "motivo": "El otro lado de la comprobación de existencia: uno de los plan.md de `$repos` no está. Antes compartía texto con el sitio del manifest y por eso ninguno de los dos se podía catalogar.",
+    "posix": "^ARNES:no existe el plan (?P<archivo>.*)$",
+    "ps": "^ARNES:no existe el plan (?P<archivo>.*)$",
     "campos": {
       "archivo": {
         "tipo": "texto"
@@ -20,146 +60,109 @@
     },
     "testigo": {
       "posix": {
-        "texto": "ARNES:no existe {dir}/CENTINELA.md",
+        "texto": "ARNES:no existe el plan {dir}/CENTINELA.md",
         "campos": {
           "archivo": "{dir}/CENTINELA.md"
         }
       },
       "ps": {
-        "texto": "ARNES:no existe {dir}/CENTINELA.md",
+        "texto": "ARNES:no existe el plan {dir}/CENTINELA.md",
         "campos": {
           "archivo": "{dir}/CENTINELA.md"
         }
       }
     },
     "literal": {
-      "posix": "ARNES:no existe %s\\n",
-      "ps": "ARNES:no existe $f"
-    },
-    "ps": "^ARNES:no existe (?P<archivo>.*)$"
-  },
-  {
-    "id": "not-applicable",
-    "sitio": {
-      "posix": {
-        "linea": 13,
-        "digest": "sha256:477f50e000d421cc"
-      },
-      "ps": {
-        "linea": 19,
-        "digest": "sha256:1376fa25b49c6368"
-      }
-    },
-    "posix": "^GUARD:integracion-no-local (?P<archivo>.*): fila \\[integration\\] marcada NOT_APPLICABLE \\(borraria una obligacion global\\)$",
-    "ps": "^GUARD:integracion-no-local (?P<archivo>.*): fila \\[integration\\] marcada NOT_APPLICABLE \\(borraria una obligacion global\\)$",
-    "campos": {
-      "archivo": {
-        "tipo": "texto"
-      }
-    },
-    "testigo": {
-      "posix": {
-        "texto": "GUARD:integracion-no-local {dir}/CENTINELA.md: fila [integration] marcada NOT_APPLICABLE (borraria una obligacion global)",
-        "campos": {
-          "archivo": "{dir}/CENTINELA.md"
-        }
-      },
-      "ps": {
-        "texto": "GUARD:integracion-no-local {dir}/CENTINELA.md: fila [integration] marcada NOT_APPLICABLE (borraria una obligacion global)",
-        "campos": {
-          "archivo": "{dir}/CENTINELA.md"
-        }
-      }
-    },
-    "literal": {
-      "posix": "GUARD:integracion-no-local %s: fila [integration] marcada NOT_APPLICABLE (borraria una obligacion global)\\n",
-      "ps": "GUARD:integracion-no-local ${f}: fila [integration] marcada NOT_APPLICABLE (borraria una obligacion global)"
+      "posix": "ARNES:no existe el plan %s\\n",
+      "ps": "ARNES:no existe el plan $f"
     }
   },
   {
-    "id": "evidencia-local",
+    "id": "arnes-plan-sin-repo",
     "sitio": {
       "posix": {
-        "linea": 14,
-        "digest": "sha256:63d5b3e92cc226cb"
+        "linea": 138,
+        "digest": "sha256:3fa059f8aa23e1ab"
       },
       "ps": {
-        "linea": 21,
-        "digest": "sha256:3a72631050fa69d0"
+        "linea": 154,
+        "digest": "sha256:5535ae48ff40f6e7"
       }
     },
-    "posix": "^GUARD:integracion-no-local (?P<archivo>.*): fila \\[integration\\] con evidencia local \"(?P<ev>[^\"]*)\"/\"(?P<bl>[^\"]*)\"$",
-    "ps": "^GUARD:integracion-no-local (?P<archivo>.*): fila \\[integration\\] con evidencia local \"(?P<ev>[^\"]*)\"/\"(?P<bl>[^\"]*)\"$",
+    "motivo": "El plan existe pero su frontmatter no declara `repo:`, así que sus filas no se pueden atribuir. Es error de invocación y no hallazgo: sin esa clave el predicado no se puede evaluar, y darlo por incumplido acusaría al repo de algo que nadie escribió.",
+    "posix": "^ARNES:el plan (?P<plan>.*) no declara repo: en su frontmatter$",
+    "ps": "^ARNES:el plan (?P<plan>.*) no declara repo: en su frontmatter$",
     "campos": {
-      "archivo": {
-        "tipo": "texto"
-      },
-      "ev": {
-        "tipo": "texto"
-      },
-      "bl": {
+      "plan": {
         "tipo": "texto"
       }
     },
     "testigo": {
       "posix": {
-        "texto": "GUARD:integracion-no-local {dir}/CENTINELA.md: fila [integration] con evidencia local \"test\"/\"RED\"",
+        "texto": "ARNES:el plan {dir}/api-plan.md no declara repo: en su frontmatter",
         "campos": {
-          "archivo": "{dir}/CENTINELA.md",
-          "ev": "test",
-          "bl": "RED"
+          "plan": "{dir}/api-plan.md"
         }
       },
       "ps": {
-        "texto": "GUARD:integracion-no-local {dir}/CENTINELA.md: fila [integration] con evidencia local \"test\"/\"RED\"",
+        "texto": "ARNES:el plan {dir}/api-plan.md no declara repo: en su frontmatter",
         "campos": {
-          "archivo": "{dir}/CENTINELA.md",
-          "ev": "test",
-          "bl": "RED"
+          "plan": "{dir}/api-plan.md"
         }
       }
     },
     "literal": {
-      "posix": "GUARD:integracion-no-local %s: fila [integration] con evidencia local \"%s\"/\"%s\"\\n",
-      "ps": "GUARD:integracion-no-local ${f}: fila [integration] con evidencia local `"
+      "posix": "ARNES:el plan ",
+      "ps": "ARNES:el plan $($p.arch) no declara repo: en su frontmatter"
     }
   },
   {
-    "id": "sin-fila-integration",
+    "id": "integracion",
     "sitio": {
       "posix": {
-        "linea": 25,
-        "digest": "sha256:0dcbf275336d6718"
+        "linea": 174,
+        "digest": "sha256:f27e8371ceca69e2"
       },
       "ps": {
-        "linea": 27,
-        "digest": "sha256:d2315445bcc8e80f"
+        "linea": 197,
+        "digest": "sha256:bb465e6d0a60a4a9"
       }
     },
-    "posix": "^GUARD:integracion-no-local (?P<archivo>.*): no referencia ninguna fila \\[integration\\]$",
-    "ps": "^GUARD:integracion-no-local (?P<archivo>.*): no referencia ninguna fila \\[integration\\]$",
+    "motivo": "UNA entrada para los SEIS subpredicados, porque el bloque acumula el hallazgo en `G` y emite una sola vez al cerrar: la relación sitio↔entrada es 1:1 y seis entradas chocarían apuntando al mismo sitio. El subpredicado viaja como campo `hallazgo`, que además es la forma correcta de compararlo — el payload se compara distinguiendo mayúsculas, que es la propiedad en disputa. El patrón cubre el fragmento entero porque una continuación sin patrón cae como diagnóstico no reconocido.",
+    "posix": "^GUARD:integracion (?P<hallazgo>[a-z0-9-]+)\\n  (?P<contexto>.*)\\n  plan: (?P<plan>.*)$",
+    "ps": "^GUARD:integracion (?P<hallazgo>[a-z0-9-]+)\\n  (?P<contexto>.*)\\n  plan: (?P<plan>.*)$",
     "campos": {
-      "archivo": {
+      "hallazgo": {
+        "tipo": "texto"
+      },
+      "contexto": {
+        "tipo": "texto"
+      },
+      "plan": {
         "tipo": "texto"
       }
     },
     "testigo": {
       "posix": {
-        "texto": "GUARD:integracion-no-local {dir}/CENTINELA.md: no referencia ninguna fila [integration]",
+        "texto": "GUARD:integracion referencia-obsoleta-fase-3\n  el repo api referencia AC-1 con la evidencia vieja N/A: Fase 3\n  plan: {dir}/api-plan.md",
         "campos": {
-          "archivo": "{dir}/CENTINELA.md"
+          "hallazgo": "referencia-obsoleta-fase-3",
+          "contexto": "el repo api referencia AC-1 con la evidencia vieja N/A: Fase 3",
+          "plan": "{dir}/api-plan.md"
         }
       },
       "ps": {
-        "texto": "GUARD:integracion-no-local {dir}/CENTINELA.md: no referencia ninguna fila [integration]",
+        "texto": "GUARD:integracion referencia-obsoleta-fase-3\n  el repo api referencia AC-1 con la evidencia vieja N/A: Fase 3\n  plan: {dir}/api-plan.md",
         "campos": {
-          "archivo": "{dir}/CENTINELA.md"
+          "hallazgo": "referencia-obsoleta-fase-3",
+          "contexto": "el repo api referencia AC-1 con la evidencia vieja N/A: Fase 3",
+          "plan": "{dir}/api-plan.md"
         }
       }
     },
     "literal": {
-      "posix": "GUARD:integracion-no-local %s: no referencia ninguna fila [integration]\\n",
-      "ps": "GUARD:integracion-no-local ${f}: no referencia ninguna fila [integration]"
+      "posix": "GUARD:integracion ",
+      "ps": "GUARD:integracion $G"
     }
   }
 ]
