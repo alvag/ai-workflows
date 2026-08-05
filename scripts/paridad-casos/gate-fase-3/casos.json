@@ -2,15 +2,18 @@
   "par": "gate-fase-3",
   "clausulas": [
     {
-      "id": "gate-apertura-ausente",
+      "id": "arnes-archivo-inexistente"
+    },
+    {
+      "id": "sin-gate-de-apertura",
       "compara_cadenas": true
     },
     {
-      "id": "no-exige-congelar",
+      "id": "no-revalida-version-vigente",
       "compara_cadenas": true
     },
     {
-      "id": "agregacion-no-declara",
+      "id": "sin-veredicto-no-verificado",
       "compara_cadenas": true
     }
   ],
@@ -19,16 +22,18 @@
       "nombre": "positivo",
       "particion": "positivo",
       "objetivos": [
-        "gate-apertura-ausente",
-        "no-exige-congelar",
-        "agregacion-no-declara"
+        "arnes-archivo-inexistente",
+        "sin-gate-de-apertura",
+        "no-revalida-version-vigente",
+        "sin-veredicto-no-verificado"
       ],
       "clase_esperada": "aceptacion",
-      "precondicion": "el SKILL.md nombra el gate de apertura, exige congelar antes y declara `no verificado`",
+      "precondicion": "el SKILL.md existe, nombra el gate de apertura, declara que revalida la versión vigente, no conserva `Congelarlo **antes**` y declara el veredicto `no verificado`",
       "clausulas": {
-        "gate-apertura-ausente": "valido",
-        "no-exige-congelar": "valido",
-        "agregacion-no-declara": "valido"
+        "arnes-archivo-inexistente": "valido",
+        "sin-gate-de-apertura": "valido",
+        "no-revalida-version-vigente": "valido",
+        "sin-veredicto-no-verificado": "valido"
       },
       "fixture": "positivo",
       "entradas": {
@@ -36,15 +41,33 @@
       }
     },
     {
+      "nombre": "archivo-inexistente",
+      "particion": "invalido",
+      "objetivo": "arnes-archivo-inexistente",
+      "clase_esperada": "fallo",
+      "precondicion": "la entrada apunta a un skill.md que el fixture no trae; los dos sabores cortan con exit 99 antes de leer",
+      "clausulas": {
+        "arnes-archivo-inexistente": "invalido",
+        "sin-gate-de-apertura": "valido",
+        "no-revalida-version-vigente": "valido",
+        "sin-veredicto-no-verificado": "valido"
+      },
+      "fixture": "archivo-inexistente",
+      "entradas": {
+        "skill_orq": "{dir}/skill.md"
+      }
+    },
+    {
       "nombre": "sin-gate-apertura",
       "particion": "invalido",
-      "objetivo": "gate-apertura-ausente",
+      "objetivo": "sin-gate-de-apertura",
       "clase_esperada": "rechazo",
-      "precondicion": "se quita la frase del gate de apertura y las otras dos siguen presentes",
+      "precondicion": "se reemplaza el encabezado del gate de apertura y las otras dos cláusulas siguen satisfechas",
       "clausulas": {
-        "gate-apertura-ausente": "invalido",
-        "no-exige-congelar": "valido",
-        "agregacion-no-declara": "valido"
+        "arnes-archivo-inexistente": "valido",
+        "sin-gate-de-apertura": "invalido",
+        "no-revalida-version-vigente": "valido",
+        "sin-veredicto-no-verificado": "valido"
       },
       "fixture": "sin-gate-apertura",
       "entradas": {
@@ -54,13 +77,14 @@
     {
       "nombre": "gate-apertura-casing",
       "particion": "casing",
-      "objetivo": "gate-apertura-ausente",
+      "objetivo": "sin-gate-de-apertura",
       "clase_esperada": "rechazo",
-      "precondicion": "la frase va en minúsculas: el literal normativo NO está. POSIX busca con `grep -q` case-sensitive; PowerShell con `-notmatch`, case-insensitive",
+      "precondicion": "el encabezado va con `gate` en minúscula: el literal normativo NO está. POSIX lo busca con `grep -q`, que distingue mayúsculas; PowerShell tiene que usar `-cnotmatch` para coincidir",
       "clausulas": {
-        "gate-apertura-ausente": "invalido",
-        "no-exige-congelar": "valido",
-        "agregacion-no-declara": "valido"
+        "arnes-archivo-inexistente": "valido",
+        "sin-gate-de-apertura": "invalido",
+        "no-revalida-version-vigente": "valido",
+        "sin-veredicto-no-verificado": "valido"
       },
       "fixture": "gate-apertura-casing",
       "entradas": {
@@ -68,33 +92,69 @@
       }
     },
     {
-      "nombre": "sin-exigir-congelar",
+      "nombre": "sin-revalida",
       "particion": "invalido",
-      "objetivo": "no-exige-congelar",
+      "objetivo": "no-revalida-version-vigente",
       "clase_esperada": "rechazo",
-      "precondicion": "se quita `Congelarlo **antes**` y las otras dos siguen presentes",
+      "precondicion": "el documento dice que usa el contrato congelado en vez de revalidar la versión vigente: falta la primera mitad de la cláusula",
       "clausulas": {
-        "gate-apertura-ausente": "valido",
-        "no-exige-congelar": "invalido",
-        "agregacion-no-declara": "valido"
+        "arnes-archivo-inexistente": "valido",
+        "sin-gate-de-apertura": "valido",
+        "no-revalida-version-vigente": "invalido",
+        "sin-veredicto-no-verificado": "valido"
       },
-      "fixture": "sin-exigir-congelar",
+      "fixture": "sin-revalida",
       "entradas": {
         "skill_orq": "{dir}/skill.md"
       }
     },
     {
-      "nombre": "congelar-casing",
+      "nombre": "revalida-casing",
       "particion": "casing",
-      "objetivo": "no-exige-congelar",
+      "objetivo": "no-revalida-version-vigente",
       "clase_esperada": "rechazo",
-      "precondicion": "dice `congelarlo **ANTES**`: el literal normativo NO está",
+      "precondicion": "dice `Revalida La Versión Vigente`: el literal normativo NO está, y la cláusula tiene que dispararse en los dos sabores",
       "clausulas": {
-        "gate-apertura-ausente": "valido",
-        "no-exige-congelar": "invalido",
-        "agregacion-no-declara": "valido"
+        "arnes-archivo-inexistente": "valido",
+        "sin-gate-de-apertura": "valido",
+        "no-revalida-version-vigente": "invalido",
+        "sin-veredicto-no-verificado": "valido"
       },
-      "fixture": "congelar-casing",
+      "fixture": "revalida-casing",
+      "entradas": {
+        "skill_orq": "{dir}/skill.md"
+      }
+    },
+    {
+      "nombre": "congelado-presente",
+      "particion": "invalido",
+      "objetivo": "no-revalida-version-vigente",
+      "clase_esperada": "rechazo",
+      "precondicion": "el documento revalida Y conserva `Congelarlo **antes**`: es el migrado a medias, la segunda mitad de la cláusula, y tiene que dar UN solo marcador",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "sin-gate-de-apertura": "valido",
+        "no-revalida-version-vigente": "invalido",
+        "sin-veredicto-no-verificado": "valido"
+      },
+      "fixture": "congelado-presente",
+      "entradas": {
+        "skill_orq": "{dir}/skill.md"
+      }
+    },
+    {
+      "nombre": "congelado-casing",
+      "particion": "casing",
+      "objetivo": "no-revalida-version-vigente",
+      "clase_esperada": "aceptacion",
+      "precondicion": "dice `congelarlo **ANTES**` en otro casing: NO es el literal prohibido, así que la cláusula sigue del lado válido. Es el control en la dirección contraria — con `-match` en vez de `-cmatch`, PowerShell dispararía un rojo que POSIX no da",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "sin-gate-de-apertura": "valido",
+        "no-revalida-version-vigente": "valido",
+        "sin-veredicto-no-verificado": "valido"
+      },
+      "fixture": "congelado-casing",
       "entradas": {
         "skill_orq": "{dir}/skill.md"
       }
@@ -102,13 +162,14 @@
     {
       "nombre": "sin-no-verificado",
       "particion": "invalido",
-      "objetivo": "agregacion-no-declara",
+      "objetivo": "sin-veredicto-no-verificado",
       "clase_esperada": "rechazo",
-      "precondicion": "se quita `no verificado` y las otras dos siguen presentes",
+      "precondicion": "la agregación deja el veredicto `abierto` en vez de `no verificado`",
       "clausulas": {
-        "gate-apertura-ausente": "valido",
-        "no-exige-congelar": "valido",
-        "agregacion-no-declara": "invalido"
+        "arnes-archivo-inexistente": "valido",
+        "sin-gate-de-apertura": "valido",
+        "no-revalida-version-vigente": "valido",
+        "sin-veredicto-no-verificado": "invalido"
       },
       "fixture": "sin-no-verificado",
       "entradas": {
@@ -118,13 +179,14 @@
     {
       "nombre": "no-verificado-casing",
       "particion": "casing",
-      "objetivo": "agregacion-no-declara",
+      "objetivo": "sin-veredicto-no-verificado",
       "clase_esperada": "rechazo",
       "precondicion": "dice `NO VERIFICADO` en mayúsculas: el literal normativo NO está",
       "clausulas": {
-        "gate-apertura-ausente": "valido",
-        "no-exige-congelar": "valido",
-        "agregacion-no-declara": "invalido"
+        "arnes-archivo-inexistente": "valido",
+        "sin-gate-de-apertura": "valido",
+        "no-revalida-version-vigente": "valido",
+        "sin-veredicto-no-verificado": "invalido"
       },
       "fixture": "no-verificado-casing",
       "entradas": {

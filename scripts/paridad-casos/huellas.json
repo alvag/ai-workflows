@@ -40,8 +40,8 @@
     "ps": "sha256:42c1e310b0d3acb8"
   },
   "gate-fase-3": {
-    "posix": "sha256:7d976068b5c5aacc",
-    "ps": "sha256:b92fa1bc21ce2c86"
+    "posix": "sha256:01c6586706d3a6a5",
+    "ps": "sha256:986cdc741004fba3"
   },
   "gate-modo-directo": {
     "posix": "sha256:ce1446fe6a68c9bb",

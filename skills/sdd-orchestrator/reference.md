@@ -1560,7 +1560,7 @@ exit $?
 # Un solo diagnóstico por corrida: gana el primero del orden de abajo, que es el de la fábrica.
 # Entradas: $manifest (el manifest.yml) y $master_spec (la master-spec.md)
 foreach ($f in @($manifest, $master_spec)) {
-  if (-not (Test-Path -LiteralPath $f)) { Write-Output "ARNES:no existe $f"; exit 99 }
+  if (-not (Test-Path -LiteralPath $f)) { [Console]::Error.WriteLine("ARNES:no existe $f"); exit 99 }
 }
 $Q = [char]39
 # Un escalar YAML puede venir entrecomillado; `owner: ""` es un owner VACIO y no uno de dos
@@ -1836,12 +1836,13 @@ foreach ($t in $tareas) {
 
 if ($G -eq '') { exit 0 }
 # El marcador va SOLO en su línea: el arnés lo compara entero, así que el dato medido vive abajo.
-# `Write-Output` y no `Write-Error`: el renderizado de un ErrorRecord antepone su propio prefijo y
-# la línea deja de empezar por GUARD:, así que el marcador no se puede comparar entero.
-Write-Output "GUARD:model $G"
-Write-Output "  $CTX"
-Write-Output "  manifest: $manifest"
-if ($condetalle) { foreach ($ac in $huerf) { Write-Output "DETALLE:$ac" } }
+# `[Console]::Error.WriteLine` y no `Write-Error`: los eventos van por stderr —es donde los lee
+# el arnés de paridad—, pero el renderizado de un ErrorRecord antepone su propio prefijo y la
+# línea deja de empezar por GUARD:. Escribir crudo en el canal da las dos cosas.
+[Console]::Error.WriteLine("GUARD:model $G")
+[Console]::Error.WriteLine("  $CTX")
+[Console]::Error.WriteLine("  manifest: $manifest")
+if ($condetalle) { foreach ($ac in $huerf) { [Console]::Error.WriteLine("DETALLE:$ac") } }
 exit 1
 # @fin:orchestration-model-ps
 ```
@@ -2082,7 +2083,7 @@ exit $?
 # Un solo diagnóstico por corrida: gana el primero del orden de abajo, que es el de la fábrica.
 # Entradas: $manifest (el manifest.yml) y $contrato (el integracion.md de la orquestación)
 foreach ($f in @($manifest, $contrato)) {
-  if (-not (Test-Path -LiteralPath $f)) { Write-Output "ARNES:no existe $f"; exit 99 }
+  if (-not (Test-Path -LiteralPath $f)) { [Console]::Error.WriteLine("ARNES:no existe $f"); exit 99 }
 }
 $Q = [char]39
 $DASH = [char]0x2014   # el em dash por punto de código: no depende del encoding con que se lea este bloque
@@ -2276,11 +2277,12 @@ for ($i = 1; $i -lt $vers.Count; $i++) {
 
 if ($G -eq '') { exit 0 }
 # El marcador va SOLO en su línea: el arnés lo compara entero, así que el dato medido vive abajo.
-# `Write-Output` y no `Write-Error`: el renderizado de un ErrorRecord antepone su propio prefijo y
-# la línea deja de empezar por GUARD:, así que el marcador no se puede comparar entero.
-Write-Output "GUARD:contract $G"
-Write-Output "  $CTX"
-Write-Output "  contrato: $contrato"
+# `[Console]::Error.WriteLine` y no `Write-Error`: los eventos van por stderr —es donde los lee
+# el arnés de paridad—, pero el renderizado de un ErrorRecord antepone su propio prefijo y la
+# línea deja de empezar por GUARD:. Escribir crudo en el canal da las dos cosas.
+[Console]::Error.WriteLine("GUARD:contract $G")
+[Console]::Error.WriteLine("  $CTX")
+[Console]::Error.WriteLine("  contrato: $contrato")
 exit 1
 # @fin:orchestration-contract-ps
 ```
@@ -2693,10 +2695,14 @@ END {
   }
   if (G != "") {
     # El marcador va SOLO en su línea: el arnés lo compara entero, así que el dato medido vive abajo.
-    print "GUARD:state " G
-    print "  " CTX
-    print "  manifest: " MF
-    if (condetalle) for (i = 1; i <= npend; i++) print "DETALLE:" pend[i]
+    # Y va por stderr explícito, no por una redirección de la invocación: este bloque es el único
+    # que emite las DOS cosas —el hallazgo y el estado agregado—, y tienen canales distintos. El
+    # hallazgo es un evento; `REPORTE:` y `ESTADO:` son el dato que el bloque produce y salen por
+    # stdout. Con el `>&2` afuera no hay forma de separarlos: ahí la stdout de awk YA es stderr.
+    print "GUARD:state " G          > "/dev/stderr"
+    print "  " CTX                  > "/dev/stderr"
+    print "  manifest: " MF         > "/dev/stderr"
+    if (condetalle) for (i = 1; i <= npend; i++) print "DETALLE:" pend[i] > "/dev/stderr"
     exit 1
   }
 
@@ -2714,7 +2720,7 @@ END {
   print "ESTADO:" est
   exit 0
 }
-' "$master_spec" "$manifest" "$contrato" "$bit" $repos >&2
+' "$master_spec" "$manifest" "$contrato" "$bit" $repos
 exit $?
 # @fin:orchestration-state
 ```
@@ -2730,11 +2736,11 @@ exit $?
 # Un solo diagnóstico por corrida: gana el primero del orden de abajo, que es el de la fábrica.
 # Entradas: $manifest, $master_spec, $contrato, $bitacora y $repos (un plan.md por repo)
 foreach ($f in @($manifest, $master_spec, $contrato)) {
-  if (-not (Test-Path -LiteralPath $f)) { Write-Output "ARNES:no existe $f"; exit 99 }
+  if (-not (Test-Path -LiteralPath $f)) { [Console]::Error.WriteLine("ARNES:no existe $f"); exit 99 }
 }
 $planes = @($repos -split '\s+' | Where-Object { $_ })
 foreach ($f in $planes) {
-  if (-not (Test-Path -LiteralPath $f)) { Write-Output "ARNES:no existe $f"; exit 99 }
+  if (-not (Test-Path -LiteralPath $f)) { [Console]::Error.WriteLine("ARNES:no existe $f"); exit 99 }
 }
 $Q = [char]39
 function Desnudo($s) {
@@ -3146,12 +3152,13 @@ if ($repl.Count -gt 0) {
 }
 if ($G -ne '') {
   # El marcador va SOLO en su línea: el arnés lo compara entero, así que el dato medido vive abajo.
-  # `Write-Output` y no `Write-Error`: el renderizado de un ErrorRecord antepone su propio prefijo y
-  # la línea deja de empezar por GUARD:, así que el marcador no se puede comparar entero.
-  Write-Output "GUARD:state $G"
-  Write-Output "  $CTX"
-  Write-Output "  manifest: $manifest"
-  if ($condetalle) { foreach ($p in $pend) { Write-Output "DETALLE:$p" } }
+  # `[Console]::Error.WriteLine` y no `Write-Error`: los eventos van por stderr —es donde los lee
+  # el arnés de paridad—, pero el renderizado de un ErrorRecord antepone su propio prefijo y la
+  # línea deja de empezar por GUARD:. Escribir crudo en el canal da las dos cosas.
+  [Console]::Error.WriteLine("GUARD:state $G")
+  [Console]::Error.WriteLine("  $CTX")
+  [Console]::Error.WriteLine("  manifest: $manifest")
+  if ($condetalle) { foreach ($p in $pend) { [Console]::Error.WriteLine("DETALLE:$p") } }
   exit 1
 }
 
@@ -3365,10 +3372,10 @@ exit $?
 # Un solo diagnóstico por corrida: gana el primero del orden de abajo, que mira la forma de cada
 # fila antes que el conjunto del repo, porque son dos defectos distintos sobre la misma referencia.
 # Entradas: $manifest (el manifest.yml) y $repos (uno o más plan.md por repo, separados por espacios)
-if (-not (Test-Path -LiteralPath $manifest)) { Write-Output "ARNES:no existe $manifest"; exit 99 }
+if (-not (Test-Path -LiteralPath $manifest)) { [Console]::Error.WriteLine("ARNES:no existe $manifest"); exit 99 }
 $planes = @($repos -split '\s+' | Where-Object { $_ })
 foreach ($f in $planes) {
-  if (-not (Test-Path -LiteralPath $f)) { Write-Output "ARNES:no existe $f"; exit 99 }
+  if (-not (Test-Path -LiteralPath $f)) { [Console]::Error.WriteLine("ARNES:no existe $f"); exit 99 }
 }
 $Q = [char]39
 $OWNED = 'N/A: orchestration-owned'
@@ -3507,7 +3514,7 @@ foreach ($t in $tareas) {
 # Va primero que el conjunto: una fila con evidencia local SÍ referencia su AC, mal escrita, y
 # tratarla como ausente reportaría el defecto equivocado.
 foreach ($p in $planinfo) {
-  if ($p.repo -eq '') { Write-Output "ARNES:el plan $($p.arch) no declara repo: en su frontmatter"; exit 99 }
+  if ($p.repo -eq '') { [Console]::Error.WriteLine("ARNES:el plan $($p.arch) no declara repo: en su frontmatter"); exit 99 }
   foreach ($f in $p.filas) {
     if ($p.vistas -notcontains $f.ac) { $p.vistas += $f.ac }
     if ($f.ev.Contains($VIEJO) -or $f.bl.Contains($VIEJO)) {
@@ -3547,11 +3554,12 @@ foreach ($p in $planinfo) {
 
 if ($G -eq '') { exit 0 }
 # El marcador va SOLO en su línea: el arnés lo compara entero, así que el repo y los AC van abajo.
-# `Write-Output` y no `Write-Error`: el renderizado de un ErrorRecord antepone su propio prefijo y
-# la línea deja de empezar por GUARD:, así que el marcador no se puede comparar entero.
-Write-Output "GUARD:integracion $G"
-Write-Output "  $CTX"
-Write-Output "  plan: $ARCH"
+# `[Console]::Error.WriteLine` y no `Write-Error`: los eventos van por stderr —es donde los lee
+# el arnés de paridad—, pero el renderizado de un ErrorRecord antepone su propio prefijo y la
+# línea deja de empezar por GUARD:. Escribir crudo en el canal da las dos cosas.
+[Console]::Error.WriteLine("GUARD:integracion $G")
+[Console]::Error.WriteLine("  $CTX")
+[Console]::Error.WriteLine("  plan: $ARCH")
 exit 1
 # @fin:integracion-ownership-ps
 ```
@@ -3566,20 +3574,20 @@ exit 1
 [ -f "$skill_orq" ] || { printf 'ARNES:no existe %s\n' "$skill_orq" >&2; exit 99; }
 rc=0
 grep -q 'Gate de apertura del contrato de integración' "$skill_orq" || {
-  echo "GUARD:gate-fase-3 sin-gate-de-apertura"
-  echo "  la Fase 3 no declara el gate previo a ejecutar evidencia"; rc=1; }
+  echo "GUARD:gate-fase-3 sin-gate-de-apertura" >&2
+  echo "  la Fase 3 no declara el gate previo a ejecutar evidencia" >&2; rc=1; }
 # Un solo marcador para las dos mitades. El documento tiene que declarar la revalidación Y no
 # conservar el congelado anclado a esta fase: emitirlas por separado daría DOS líneas GUARD: ante un
 # documento migrado a medias —el que dice las dos cosas—, y el arnés compara una línea entera.
 if ! grep -q 'revalida la versión vigente' "$skill_orq" \
    || grep -q 'Congelarlo \*\*antes\*\*' "$skill_orq"; then
-  echo "GUARD:gate-fase-3 no-revalida-version-vigente"
-  echo "  la Fase 3 no declara que revalida la versión vigente del contrato antes de ejecutar evidencia"
+  echo "GUARD:gate-fase-3 no-revalida-version-vigente" >&2
+  echo "  la Fase 3 no declara que revalida la versión vigente del contrato antes de ejecutar evidencia" >&2
   rc=1
 fi
 grep -q 'no verificado' "$skill_orq" || {
-  echo "GUARD:gate-fase-3 sin-veredicto-no-verificado"
-  echo "  la agregación no declara que una fila ausente impide el verde"; rc=1; }
+  echo "GUARD:gate-fase-3 sin-veredicto-no-verificado" >&2
+  echo "  la agregación no declara que una fila ausente impide el verde" >&2; rc=1; }
 exit $rc
 # @fin:gate-fase-3
 ```
@@ -3591,30 +3599,31 @@ exit $rc
 # `orchestration-contract`; acá se comprueba que el documento lo declare así y no como un
 # congelado de la Fase 3—, y la agregación no puede dar verde con filas ausentes o BLOCKED.
 # Entradas: $skill_orq (el SKILL.md de sdd-orchestrator)
-if (-not (Test-Path -LiteralPath $skill_orq)) { Write-Output "ARNES:no existe $skill_orq"; exit 99 }
+if (-not (Test-Path -LiteralPath $skill_orq)) { [Console]::Error.WriteLine("ARNES:no existe $skill_orq"); exit 99 }
 $rc = 0
 $doc = (Get-Content -LiteralPath $skill_orq) -join "`n"
-# `Write-Output` y no `Write-Error`: el renderizado de un ErrorRecord antepone su propio prefijo y la
-# línea deja de empezar por GUARD:, así que el marcador no se puede comparar entero.
+# `[Console]::Error.WriteLine` y no `Write-Error`: los eventos van por stderr —es donde los lee
+# el arnés de paridad—, pero el renderizado de un ErrorRecord antepone su propio prefijo y la
+# línea deja de empezar por GUARD:. Escribir crudo en el canal da las dos cosas.
 # Los operadores van en su variante case-sensitive: el par POSIX busca con `grep -q`, que distingue
 # mayúsculas. Con el operador por defecto de .NET, un `no Verificado` en la skill daría por cumplida
 # la cláusula, y un `Congelarlo **antes**` que sobrevivió en otra caja dejaría de detectarse.
 if ($doc -cnotmatch 'Gate de apertura del contrato de integración') {
-  Write-Output 'GUARD:gate-fase-3 sin-gate-de-apertura'
-  Write-Output '  la Fase 3 no declara el gate previo a ejecutar evidencia'
+  [Console]::Error.WriteLine('GUARD:gate-fase-3 sin-gate-de-apertura')
+  [Console]::Error.WriteLine('  la Fase 3 no declara el gate previo a ejecutar evidencia')
   $rc = 1
 }
 # Un solo marcador para las dos mitades. El documento tiene que declarar la revalidación Y no
 # conservar el congelado anclado a esta fase: emitirlas por separado daría DOS líneas GUARD: ante un
 # documento migrado a medias —el que dice las dos cosas—, y el arnés compara una línea entera.
 if (($doc -cnotmatch 'revalida la versión vigente') -or ($doc -cmatch 'Congelarlo \*\*antes\*\*')) {
-  Write-Output 'GUARD:gate-fase-3 no-revalida-version-vigente'
-  Write-Output '  la Fase 3 no declara que revalida la versión vigente del contrato antes de ejecutar evidencia'
+  [Console]::Error.WriteLine('GUARD:gate-fase-3 no-revalida-version-vigente')
+  [Console]::Error.WriteLine('  la Fase 3 no declara que revalida la versión vigente del contrato antes de ejecutar evidencia')
   $rc = 1
 }
 if ($doc -cnotmatch 'no verificado') {
-  Write-Output 'GUARD:gate-fase-3 sin-veredicto-no-verificado'
-  Write-Output '  la agregación no declara que una fila ausente impide el verde'
+  [Console]::Error.WriteLine('GUARD:gate-fase-3 sin-veredicto-no-verificado')
+  [Console]::Error.WriteLine('  la agregación no declara que una fila ausente impide el verde')
   $rc = 1
 }
 exit $rc

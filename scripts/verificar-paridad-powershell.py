@@ -385,9 +385,17 @@ class Sitio:
 
 # Conjunto CERRADO de formas de emisión. Una forma no reconocida es fallo, no omisión.
 # El `)` del contexto POSIX es la rama de un `case`: `*) printf 'GUARD:…'`.
+# Las formas de emisión reconocidas por sabor. Una forma que falte no se omite: el prefijo queda
+# sin explicar y sale como anomalía, así que agregar una forma nueva es la única manera de que un
+# bloque que la use pueda auditarse. Cada agregado tiene su control en `autotest_escaner`.
 _EMISORES = {
-    "posix": re.compile(r"(?:^|[;&|)]|\bthen\b|\bdo\b|\{)\s*(echo|printf)\b"),
-    "ps": re.compile(r"\b(Write-Error|Write-Output|Write-Host)\b"),
+    # `print` es el emisor de awk. Los bloques de `sdd-orchestrator` arman su diagnóstico dentro de
+    # un programa awk entrecomillado, donde `echo` no existe y el canal lo fija la redirección.
+    "posix": re.compile(r"(?:^|[;&|)]|\bthen\b|\bdo\b|\{)\s*(echo|printf|print)\b"),
+    # `[Console]::Error.WriteLine` escribe la línea CRUDA en stderr. Es lo que usan los bloques
+    # cuyo marcador se compara por línea entera: `Write-Error` le antepondría su envoltorio.
+    "ps": re.compile(r"\b(Write-Error|Write-Output|Write-Host)\b"
+                     r"|\[Console\]::Error\.Write(?:Line)?\b"),
 }
 _LITERAL = re.compile(r"'([^']*)'|\"((?:[^\"\\]|\\.)*)\"")
 # Un prefijo entrecomillado y solo — `$7=="BLOCKED"` — es un VALOR del enum, no un mensaje.
@@ -427,6 +435,11 @@ def escanear_sitios(cuerpo: str, sabor: str) -> tuple[list[Sitio], list[str]]:
         mensajes = [(l, p) for l in lits for p in PREFIJOS_EVENTO
                     if l.startswith(p) and len(l) > len(p)]
         valores = _VALOR_ENUM.search(linea)
+        # Tercera explicación, junto a "mensaje" y "valor de enum": el prefijo **adentro** de un
+        # literal más largo que no lo encabeza es PROSA del diagnóstico —"la fila X declara BLOCKED
+        # sin justificar"—. No puede ser un evento, y no por convención: `_fragmentar` reconoce por
+        # `startswith`, así que una línea que no empieza con el prefijo nunca abre un fragmento.
+        prosa = any(p in l and not l.startswith(p) for l in lits for p in PREFIJOS_EVENTO)
 
         if mensajes:
             if not _EMISORES[sabor].search(linea):
@@ -439,10 +452,10 @@ def escanear_sitios(cuerpo: str, sabor: str) -> tuple[list[Sitio], list[str]]:
                 prefijo=mensajes[0][1],
                 texto=desnuda,
                 literal=mensajes[0][0]))
-        elif not valores:
+        elif not valores and not prosa:
             prefijo = next(p for p in PREFIJOS_EVENTO if p in linea)
             anomalias.append(f"línea {i}: prefijo '{prefijo}' que no es ni emisión reconocida ni"
-                             f" valor de enum → {desnuda[:70]}")
+                             f" valor de enum ni prosa de un mensaje → {desnuda[:70]}")
     return sitios, anomalias
 
 
@@ -1028,6 +1041,64 @@ def autotest_extractor() -> int:
     return 0 if not fallos else CODIGO["fallo"]
 
 
+def autotest_escaner() -> int:
+    """Cada forma de emisión reconocida, y cada explicación que evita una anomalía, con su control
+    en las DOS direcciones: que la forma nueva produzca sitio, y que nada real pueda esconderse
+    detrás de ella."""
+    print("autotest del escáner de sitios (formas de emisión y explicaciones)")
+    fallos: list[str] = []
+
+    def sitios_de(cuerpo, sabor):
+        s, a = escanear_sitios(cuerpo, sabor)
+        return [x.literal for x in s], a
+
+    # ── positivos: cada forma reconocida produce un sitio ────────────────────
+    emisiones = [
+        ("posix", 'echo "GUARD:x algo"', "GUARD:x algo"),
+        ("posix", "printf 'ARNES:no existe %s\\n' \"$f\"", "ARNES:no existe %s\\n"),
+        ("posix", '  print "GUARD:x " G          > "/dev/stderr"', "GUARD:x "),
+        ("posix", 'if (r == "") { print "ARNES:falta algo"; exit 99 }', "ARNES:falta algo"),
+        ("posix", 'if (d) for (i = 1; i <= n; i++) print "GUARD:x " a[i]', "GUARD:x "),
+        ("ps", 'Write-Error "GUARD:x algo"', "GUARD:x algo"),
+        ("ps", 'Write-Output "GUARD:x algo"', "GUARD:x algo"),
+        ("ps", '[Console]::Error.WriteLine("GUARD:x $G")', "GUARD:x $G"),
+        ("ps", "  [Console]::Error.WriteLine('ARNES:no existe')", "ARNES:no existe"),
+    ]
+    for sabor, linea, literal in emisiones:
+        lits, anom = sitios_de(linea, sabor)
+        _ok(lits == [literal] and not anom,
+            f"{sabor}: {linea.strip()[:44]!r} → sitio", fallos)
+
+    # ── negativos: lo que NO debe contarse como sitio ────────────────────────
+    no_emisiones = [
+        ("posix", '  if ($7 == "BLOCKED") continue', "valor de enum"),
+        ("posix", '# echo "GUARD:x algo" — el comentario no emite', "comentario"),
+        ("posix", 'falla("m", "la fila " id " declara BLOCKED sin justificar")', "prosa"),
+        ("ps", "if ($f.base -eq 'BLOCKED') { continue }", "valor de enum"),
+        ("ps", "Falla 'm' \"la fila $($f.id) declara BLOCKED sin justificar\"", "prosa"),
+    ]
+    for sabor, linea, motivo in no_emisiones:
+        lits, anom = sitios_de(linea, sabor)
+        _ok(not lits and not anom, f"{sabor}: {motivo} → ni sitio ni anomalía", fallos)
+
+    # ── la explicación nueva no puede tapar una emisión real ─────────────────
+    # Mismo literal con prosa Y con mensaje: si `prosa` ganara, el sitio desaparecería.
+    lits, anom = sitios_de('print "GUARD:x algo" " y la fila declara BLOCKED"', "posix")
+    _ok(lits == ["GUARD:x algo"], "prosa + mensaje en la misma línea → sigue siendo sitio", fallos)
+
+    # Un prefijo que encabeza su literal SIN forma de emisión reconocida sigue siendo anomalía:
+    # es el caso del emisor que el escáner todavía no conoce, y ese no se puede perder.
+    for sabor, linea in [("posix", 'salida="GUARD:x algo"'), ("ps", '$m = "GUARD:x algo"')]:
+        lits, anom = sitios_de(linea, sabor)
+        _ok(not lits and len(anom) == 1, f"{sabor}: mensaje sin emisor reconocida → anomalía", fallos)
+
+    # Y el literal que ES exactamente el prefijo sigue siendo valor, no mensaje.
+    lits, anom = sitios_de('print "BLOCKED"', "posix")
+    _ok(not lits and not anom, "literal exactamente igual al prefijo → valor, no mensaje", fallos)
+
+    return 0 if not fallos else CODIGO["fallo"]
+
+
 def autotest_normalizacion() -> int:
     print("autotest de normalización (colapsa lo cosmético, preserva lo semántico)")
     fallos: list[str] = []
@@ -1584,6 +1655,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--estricto-mono-causa", action="store_true")
     p.add_argument("--exigir-particiones", action="store_true")
     p.add_argument("--autotest-extractor", action="store_true")
+    p.add_argument("--autotest-escaner", action="store_true")
     p.add_argument("--autotest-normalizacion", action="store_true")
     p.add_argument("--autotest-clasificador", action="store_true")
     p.add_argument("--afirmar-particiones", action="store_true")
@@ -1608,6 +1680,8 @@ def main(argv: list[str] | None = None) -> int:
     # autotests que no necesitan inventario
     if args.autotest_extractor:
         return autotest_extractor()
+    if args.autotest_escaner:
+        return autotest_escaner()
     if args.autotest_normalizacion:
         return autotest_normalizacion()
     if args.autotest_clasificador:
