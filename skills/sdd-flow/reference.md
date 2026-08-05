@@ -598,7 +598,7 @@ base_commit: <SHA del HEAD al escribir el plan>
 # base_branch: feature/ABC-100-otra   # solo si se cortó de una rama != default_branch (override de base); es el destino del PR
 change_type: feat
 complexity: complex
-status: planned        # planned → tasks-ready → implementing → verified → committed → pushed → (pr-open) → done
+status: planned        # planned → (plan-approved, solo complejo) → tasks-ready → implementing → verified → committed → pushed → (pr-open) → done
 created_at: 2026-01-01T12:00:00-03:00
 # wip_commit: <sha>            # solo si el flujo quedó pausado (ver sub-paso `pause`); se borra al retomar
 # jira_subtask: ABC-145       # subtarea SPEC en Jira, si se publicó (gate `publish-spec`)

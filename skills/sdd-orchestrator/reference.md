@@ -68,7 +68,8 @@ El `branch` de cada repo se computa al hacer el reparto resolviendo el prefijo c
 
 ### Valores de `status`
 
-Reusa el ciclo de `sdd-flow` por-repo, más dos estados **propios del orquestador**:
+Lo que el `manifest.yml` escribe por repo: el ciclo de `sdd-flow` menos el valor que este
+orquestador nunca emite (`plan-approved`, ver abajo), más dos estados **propios del orquestador**:
 
 ```
 planned → tasks-ready → implementing → verified → committed → pushed → (pr-open) → done
@@ -79,6 +80,10 @@ planned → tasks-ready → implementing → verified → committed → pushed �
 - `planned … done` — idénticos a `sdd-flow` (el `plan.md` del repo es la fuente fina). Incluye el
   opcional `pr-open` (el usuario abrió el PR del repo vía `sdd-flow`): cuenta como **terminal verde**
   para el lock, la elegibilidad del DAG y el `archive`.
+- `plan-approved` — existe en el ciclo de `sdd-flow` pero **el `manifest.yml` nunca lo escribe**: el
+  gate de reparto es único y pone cada repo en `tasks-ready` de una (`SKILL.md` → Fase 1, punto 4).
+  Puede aparecer en el `plan.md` de un repo cuyo `sdd-flow` delegado quedó entre sus dos gates; ahí
+  se lee con el significado que le da `sdd-flow`.
 - `failed` — el agente del repo no logró dejarlo verde (tests/build rojos o AC no cumplido). No se commitea.
 - `blocked` — el repo no arrancó porque un `depends_on` quedó `failed`.
 

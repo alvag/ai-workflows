@@ -482,18 +482,20 @@ Obligatorio en cambios *complejos*; en *normales* solo si hay ambigüedad; se sa
    ```
 
    Al crear el `plan.md`, escribir `status: planned`.
-4. **STOP** — si la **revisión cross-model** está activa (ver "Revisión cross-model"), ejecutar `cross-review` sobre `plan.md` con `spec` + `domain_context` resuelto como contexto (con co-exploración: sumar los **índices + la síntesis** de `explore` y de `counter-plan` — nunca los `detail-*` — ver "Co-exploración cross-model") antes de presentar (en *normal*, sobre plan + tasks juntos). Presentar el plan (con el resumen de crítica, si lo hubo) y pedir aprobación. En *trivial* este es el último gate antes de implementar (tasks inline en `## Tasks`). En *normal*, **antes del STOP se ejecuta el paso `tasks`** (se escribe `tasks.md`) y este gate presenta **plan + tasks juntos** (un solo STOP, sin gate extra). En *complejo*, el plan se aprueba acá y el gate de `tasks` es independiente y posterior (ver paso `tasks`). En todos, al aprobar el último gate aplicable, pasar `status` a `tasks-ready`. Si este es el **último gate antes de implementar** (*normal*) y el modo de implementación resuelto es `ask`, incluir en el **mismo STOP** la pregunta del modo: ¿implemento acá (inline), despacho subagentes frescos por task, o delego la implementación al modelo de la otra familia y yo reviso el diff (`cross`, solo si la capacidad está disponible)? (ver `implement` → "Modo de ejecución"; sin gate extra; en *trivial* no se pregunta: default `inline`).
+4. **STOP** — si la **revisión cross-model** está activa (ver "Revisión cross-model"), ejecutar `cross-review` sobre `plan.md` con `spec` + `domain_context` resuelto como contexto (con co-exploración: sumar los **índices + la síntesis** de `explore` y de `counter-plan` — nunca los `detail-*` — ver "Co-exploración cross-model") antes de presentar (en *normal*, sobre plan + tasks juntos). Presentar el plan (con el resumen de crítica, si lo hubo) y pedir aprobación. En *trivial* este es el último gate antes de implementar (tasks inline en `## Tasks`). En *normal*, **antes del STOP se ejecuta el paso `tasks`** (se escribe `tasks.md`) y este gate presenta **plan + tasks juntos** (un solo STOP, sin gate extra). En *complejo*, el plan se aprueba acá y el gate de `tasks` es independiente y posterior (ver paso `tasks`). En *trivial* y *normal* este es el último gate aplicable: al aprobarlo, pasar `status` a `tasks-ready`. En *complejo* todavía falta el gate de `tasks`: al aprobar el plan, pasar `status` a `plan-approved`. Si este es el **último gate antes de implementar** (*normal*) y el modo de implementación resuelto es `ask`, incluir en el **mismo STOP** la pregunta del modo: ¿implemento acá (inline), despacho subagentes frescos por task, o delego la implementación al modelo de la otra familia y yo reviso el diff (`cross`, solo si la capacidad está disponible)? (ver `implement` → "Modo de ejecución"; sin gate extra; en *trivial* no se pregunta: default `inline`).
 
 ### Ciclo de `status` (estado persistido del flujo)
 
 `status` vive en el header del `plan.md` y es la **fuente de verdad de en qué fase quedó el flujo**. La skill lo actualiza al cerrar cada paso, y `resume` lo lee para saber dónde retomar:
 
 ```
-planned → tasks-ready → implementing → verified → committed → pushed → done
+planned → plan-approved → tasks-ready → implementing → verified → committed → pushed → done
+          (solo complejo)
 (open-pr opcional: pushed → pr-open → done)
 ```
 
 - `planned` — `plan.md` escrito, con aprobación pendiente.
+- `plan-approved` — el plan de un flujo complejo fue aprobado; las tasks todavía no. **Se escribe si y solo si `complexity: complex`**: en *trivial* y *normal* el gate del plan es el último aplicable, así que el ciclo pasa de `planned` a `tasks-ready` sin escala.
 - `tasks-ready` — plan aprobado; en *normal*/*complejo*, tasks aprobadas. Listo para implementar.
 - `implementing` — implementación en curso (ver tasks marcadas para el detalle fino).
 - `verified` — todos los AC en verde (resultado persistido, ver `verify`).
@@ -514,7 +516,7 @@ Antes de que exista `plan.md` (fase `specify`/`clarify`, o el gate de Jira), no 
    - **Scan anti-placeholder:** ni plan ni tasks tienen `TBD`, `TODO`, "agregar X apropiado", "similar a la Task N" o "etc." colgados; cada paso con contenido real (ruta, comando, firma). Un hueco que no se puede precisar es señal de que falta `clarify`.
    - **Consistencia de interfaces:** lo declarado en **Produce** coincide exacto con quien lo **Consume** (mismo nombre, misma firma) — el desajuste rompe el modo subagent.
    - **Cobertura AC ↔ fila del contrato:** bidireccional, ni AC sin fila ni fila sin AC — lo mismo que el gate de `cross-implement` exige para congelar, detectado antes de llegar al dispatch.
-4. **STOP** — en *complejo* (gate propio), si la **revisión cross-model** está activa para `tasks` (ver "Revisión cross-model"), ejecutar `cross-review` sobre `tasks.md` con `spec`+`plan`+`domain_context` resuelto como contexto antes de presentar. Presentar las tasks (con el resumen de crítica, si lo hubo) y pedir aprobación. En *complejo* es un gate **propio** (STOP independiente tras el plan). En *normal* las tasks se presentan **junto al plan** en el gate de `plan` (sin STOP adicional; la revisión, si aplica, ya cubrió plan+tasks ahí). Al aprobarlas, pasar `status` a `tasks-ready`. En *complejo*, si el modo de implementación resuelto es `ask`, incluir en este **mismo STOP** la pregunta del modo: ¿inline, subagentes frescos por task, o delegación cross-model con revisión del conductor (`cross`, si la capacidad está disponible)? (ver `implement` → "Modo de ejecución"; sin gate extra).
+4. **STOP** — en *complejo* (gate propio), si la **revisión cross-model** está activa para `tasks` (ver "Revisión cross-model"), ejecutar `cross-review` sobre `tasks.md` con `spec`+`plan`+`domain_context` resuelto como contexto antes de presentar. Presentar las tasks (con el resumen de crítica, si lo hubo) y pedir aprobación. En *complejo* es un gate **propio** (STOP independiente tras el plan). En *normal* las tasks se presentan **junto al plan** en el gate de `plan` (sin STOP adicional; la revisión, si aplica, ya cubrió plan+tasks ahí). Al aprobarlas, pasar `status` a `tasks-ready` — en *complejo* se entra a este gate desde `plan-approved`, y es el paso que lo cierra. En *complejo*, si el modo de implementación resuelto es `ask`, incluir en este **mismo STOP** la pregunta del modo: ¿inline, subagentes frescos por task, o delegación cross-model con revisión del conductor (`cross`, si la capacidad está disponible)? (ver `implement` → "Modo de ejecución"; sin gate extra).
 
 ## `handoff.md` (retomado del flujo)
 
@@ -572,7 +574,8 @@ Punto de entrada cuando vuelves a un flujo ya empezado — en una sesión nueva,
 
    | `status` | Dónde retoma |
    |---|---|
-   | `planned` | falta `tasks` (complejo) o aprobar el plan → seguir el gate pendiente |
+   | `planned` | el plan no está aprobado → **gate del plan**, sea cual sea la complejidad |
+   | `plan-approved` | plan aprobado, tasks no (solo *complejo*) → **gate de `tasks`** |
    | `tasks-ready` | `implement` (Paso común) |
    | `implementing` | `implement`, continuando desde la primera task `[ ]` (y el WIP, si hay `wip_commit`) |
    | `verified` | AC ya en verde; falta commit → `implement` desde el gate de revisión manual |
@@ -580,6 +583,8 @@ Punto de entrada cuando vuelves a un flujo ya empezado — en una sesión nueva,
    | `pushed` | completo en disco; ofrecer `open-pr` (si no hay `pr_url`) o `archive` |
    | `pr-open` | PR ya creado (`pr_url` en el header); no re-ofrecer `open-pr` — ofrecer `archive` si lo das por probado |
    | `done` | ya cerrado; si sigue fuera de `archived/`, ofrecer archivarlo |
+
+   **Un `planned` con `tasks.md` presente retoma igual en el gate del plan.** Es la forma que escribía un flujo complejo antes de que existiera `plan-approved`, y también la que produce un *normal* reclasificado a complejo después de escribir las tasks: en ninguno de los dos casos el artefacto dice si el gate del plan llegó a darse. Ante esa duda se repite el gate, que es barato; inferir que ya se dio saltearía un gate que quizá nadie aprobó.
 
    Al retomar en `implement` (`tasks-ready`/`implementing`), **re-resolver el modo de ejecución** (override > `implement_mode` > preguntar; ver `implement` → "Modo de ejecución"). Las tasks ya marcadas `[x]` no se repiten en ningún modo.
 
