@@ -126,9 +126,33 @@ Es local y untracked, y ninguna skill toca tu `.gitignore`: agrega `.cross-model
 `cross_model.manifest.mode: "off"`. Esquema y recorte en `reference.md` → "Manifest de corrida",
 que es también la sede canónica para `co-explore`, `cross-implement` y `bitbucket-code-review`.
 
+Bajo la misma raíz, pero en `.cross-model/active/`, vive el otro registro: el **sobre de la corrida
+en vuelo**, un archivo por revisión despachada con el revisor que salió, dónde escribe, por qué
+transporte viaja, hasta cuándo se lo espera y si su resultado ya se cosechó. Los dos directorios
+dicen cuánto vive lo que guardan: `runs/` acumula lo que ya pasó, y `active/` contiene únicamente lo
+que sigue corriendo —el archivo se retira cuando la corrida llega a un final comprobado y su crítica
+quedó adjudicada—. Es lo que permite que una sesión nueva encuentre la revisión en vuelo en vez de
+arrancar otra encima, y no se deduce del checkpoint durable ni al revés: aquel registra un STOP
+esperando que **tú** decidas, y el sobre, un worker del que todavía se espera un resultado.
+
+**`cross_model.manifest.mode` no lo apaga.** Esa clave gobierna el manifest y solo el manifest; el
+sobre es obligatorio e **independiente** de ella, porque un proyecto que decidió no medir sus
+revisiones sigue necesitando saber cuál tiene despachada. Tampoco existe una clave propia para
+desactivarlo: lo único que habilitaría un interruptor del sobre es justamente la pérdida de hilo que
+el sobre existe para cerrar.
+
+El contrato del sobre está en `corridas-en-vuelo.md`, y **esta skill es su sede canónica**: las otras
+seis copias se generan de la de aquí, byte a byte. De ahí sale un riesgo que solo aparece del lado de
+la instalación — si actualizas unas skills y no otras, te queda un directorio de skills con versiones
+**mezcladas** del contrato, y nada en tu entorno lo verifica, porque el chequeo de identidad vive en
+el repo de autoría. Por eso la **primera línea** de cada copia nombra su sede: abre la copia
+sospechosa, mira contra qué archivo dice que hay que compararla, y actualiza la que quedó atrás.
+
 ## Archivos
 
 - `SKILL.md` — el flujo, las reglas y el contrato de invocación.
 - `reference.md` — cómo descubrir/invocar el revisor, plantilla del prompt, formato de salida,
   plantilla del `review-log.md`, foco por tipo de artefacto, configuración.
+- `corridas-en-vuelo.md` — el contrato del sobre, y la **sede canónica** de la que se generan las
+  copias de las otras seis skills que despachan.
 - `README.md` — este archivo.

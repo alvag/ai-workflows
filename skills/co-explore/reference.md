@@ -970,45 +970,39 @@ puede estar escribiendo.
 ### El descriptor de corrida y su retiro
 
 Esta sección existe acá, y no en el adaptador del transporte, porque el conjunto que se trunca se
-define acá: el descriptor pertenece a ese conjunto y sus reglas de cierre y de retiro son las que
-hacen válidas las dos cláusulas de arriba. Solo aplica a las corridas que fueron por la vía de panes;
-el resto lo ignora.
+define acá: el descriptor pertenece a ese conjunto y sus reglas de cierre son las que hacen válidas
+las dos cláusulas de arriba. Solo aplica a las corridas que fueron por la vía de panes; el resto lo
+ignora.
 
-**Qué es, y qué no es.** Es el sobre de una corrida delegada **activa**: lo que un callback necesita
-releer al despertar para saber qué panes creó, qué esperaba y qué le falta. Muere con la corrida. Sus
-**doce** campos son: run ID · skill · modo · nombres de agentes · panes propios · prompt esperado ·
-outputs esperados · deadline · estados terminales · gate pendiente · próxima acción · transporte
-replicado. Qué escribe cada skill en cada campo está en su adaptador —`transporte-herdr.md` →
-"Entradas y salidas"— y no se duplica acá. **No** hay máquina de estados persistente, ni esquema
-formal, ni validador propio, ni versionado: ese nivel de estado persistido ya se rechazó por escrito
-en este ecosistema, y este mecanismo nunca se ejercitó.
+**Qué es: el sobre de la corrida delegada, escrito por la vía de panes.** No es un mecanismo aparte
+del que rige para cualquier despacho —es ese mismo sobre visto desde este transporte—, y su contrato
+vive en `corridas-en-vuelo.md`: qué registra, cuándo nace, cómo se relee, cómo se cosecha una sola vez
+y qué exige su retiro se definen allá y **no se redefinen acá**. La correspondencia entre cada dato
+que este descriptor llevaba y dónde vive hoy está en su sección "Mapeo del descriptor Herdr", y lo que
+es propio de esta vía viaja en la extensión de transporte del `scope`. Qué escribe cada skill sigue
+estando en su adaptador —`transporte-herdr.md` → "Entradas y salidas"— y no se duplica acá. **No** hay
+máquina de estados persistente, ni esquema formal, ni validador propio, ni versionado: ese nivel de
+estado persistido ya se rechazó por escrito en este ecosistema, y este mecanismo nunca se ejercitó.
 
-**Sus cuatro transiciones**, que son justamente lo que evita un callback doble y el cierre de un pane
-ajeno:
+**Su lista de panes propios es la única autorización de cierre que existe**, y eso sí es propio de
+esta vía: un pane que la corrida no creó no está en la lista, y no se cierra ni se hereda por
+vecindad. De ahí salen las dos cláusulas de arriba —el descriptor entra al conjunto que se trunca, y
+un pane propio vivo bloquea el truncado y el redespacho sobre esas rutas—, porque truncarlo borraría
+la lista que autoriza cerrar ese pane.
 
-1. **Se crea antes del dispatch.** Escribirlo después deja una ventana con un worker lanzado y sin
-   sobre: si el conductor no llega a esa escritura, queda un pane que ninguna lista reclama.
-2. **Se relee al despertar.** El callback no reconstruye la corrida por inferencia ni por lectura de
-   pantalla: la lee del descriptor.
-3. **Se cosecha exactamente una vez.** El campo de gate pendiente es lo que lo dice: mientras esté
-   marcado, la corrida no cosechó; una vez cosechada y validada deja de estarlo, y un segundo callback
-   que despierte más tarde lee eso y no vuelve a presentar el gate ni a publicar la degradación.
-4. **Solo autoriza cerrar los panes que la corrida creó.** Su lista de panes propios es la única
-   autorización de cierre que existe. Un pane que la corrida no creó no está en la lista, y no se
-   cierra ni se hereda por vecindad.
+**El retiro es el del contrato; acá solo se dice qué cuenta como recurso propio vivo.** Las tres
+condiciones simultáneas —terminal comprobado, artefacto adjudicado, y sin recursos propios en pie o
+transferidos a un registro de cierre— son las de `corridas-en-vuelo.md`, y esta vía no agrega ni
+relaja ninguna. Lo que aporta es el referente: un **pane propio vivo** es un recurso propio en pie,
+así que llegar a un final comprobado no alcanza —una degradación terminal puede liberar el gate
+conservando el pane, y ese pane no se puede cerrar sin artefacto válido, y retirar ahí borraría la
+única lista de panes propios que existe—. El **tombstone** es el registro de cierre de esta vía:
+cuando la corrida termina con un pane propio en pie, la lista de panes propios y la próxima acción
+pasan a él, y recién entonces el sobre activo se retira.
 
-**El retiro va en las dos direcciones, y las dos hacen falta.**
-
-- **No se retira mientras quede un pane propio vivo.** Alcanzar un estado terminal **no** basta: una
-  degradación terminal puede liberar el gate conservando el pane, y ese pane no se puede cerrar sin
-  artefacto válido. Retirar el descriptor ahí borraría la única lista de panes propios que existe.
-- **Se retira cuando todos sus panes propios están confirmados cerrados.** Es la única salida en esta
-  versión —la transferencia de ownership al usuario, que sería la segunda, quedó fuera—. Sin esta
-  mitad, una implementación que lo conserve para siempre cumpliría igual la mitad negativa, y el
-  descriptor se volvería el estado persistente que este diseño excluye.
-
-**Un pane propio vivo no es, por sí solo, un resultado incierto.** La cláusula anterior impide truncar
-y redespachar; no clasifica nada ni dispara recovery. Lo dispara una **causa registrada** por el
+**Un pane propio vivo no es, por sí solo, un resultado incierto.** Lo que las cláusulas de arriba
+impiden es truncar, redespachar y retirar; ninguna clasifica nada ni dispara recovery. Lo dispara
+una **causa registrada** por el
 descriptor de la skill que produce o consume ese pane. Sin esta dirección, el pane que se conserva a
 propósito y con salud —el que una fase posterior va a consumir— quedaría clasificado como resultado
 incierto por el solo hecho de estar vivo, y arrastraría el recovery sobre un caso donde no hay nada

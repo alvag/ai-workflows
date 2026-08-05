@@ -68,6 +68,15 @@ Sin PR id, detecta el PR **OPEN** de la rama actual.
 - MCP de **Atlassian** (opcional) para el ensamblado del contexto de spec (grafo de tickets + AC);
   solo lectura, degrada sin bloquear.
 
+**Si tienes varias de estas skills instaladas, cuidado con las copias mezcladas.** Cada skill que
+despacha trabajo delegado lleva su propio `corridas-en-vuelo.md` —el contrato del sobre— y las siete
+copias son byte-idénticas por construcción. Actualizar esta skill sin actualizar `co-explore/`, que
+es la que atiende el debate cuando los veredictos del panel difieren, deja una instalación con
+versiones **mezcladas**: el debate saldría bajo un contrato distinto del que usó el panel que lo
+provocó. Nada en tu entorno lo detecta, porque el chequeo de identidad vive en el repo de autoría; lo
+que sí tienes a mano es la **primera línea** de cada copia, que nombra su **sede canónica**
+(`cross-review/corridas-en-vuelo.md`) para que la que quedó atrás se reconozca a ojo.
+
 ## Garantías
 
 - **Lectura libre, escritura con gate.** Todo `bb_post`/`bb_delete` pasa por un preview con recurso,
@@ -96,5 +105,21 @@ Todo eso es local y untracked, y la skill **no toca tu `.gitignore`** (es un arc
 ignorarlo es decisión tuya): agrega `.pr-review/` y `.cross-model/` a `.git/info/exclude` si prefieres
 que git deje de nombrarlos. El manifest se apaga con `cross_model.manifest.mode: "off"`; esquema en
 `cross-review/reference.md` → "Manifest de corrida".
+
+Mientras el panel está despachado hay un archivo más, en `.cross-model/active/bitbucket-code-review/`:
+el **sobre de la corrida en vuelo**, con **cada revisor externo nombrado** —no un agregado que
+esconda cuál falta—, dónde escribe cada uno, por qué transporte viaja y si su veredicto ya se
+cosechó. Con un panel de varios modelos esa granularidad es el punto: un informe que diga "el
+externo" cuando hay tres no dice nada, y sin el sobre una sesión que retoma no tiene con qué saber
+cuál de ellos todavía debe su veredicto ni cuál ya se consolidó. El archivo se retira cuando la
+corrida termina y sus hallazgos quedaron adjudicados —`runs/` guarda lo que ya pasó y `active/`,
+únicamente lo que sigue en vuelo—; el contrato completo está en `corridas-en-vuelo.md`, hermano de
+`reference.md`.
+
+**El sobre no es telemetría, y `cross_model.manifest.mode` no lo apaga.** Esa clave gobierna el
+manifest —el registro de la corrida ya terminada— y nada más: el sobre es obligatorio e
+**independiente** de ella. Un equipo que decidió no medir sus revisiones sigue necesitando saber qué
+panel tiene en vuelo sobre el PR de otra persona, sobre todo cuando lo que falta es justo el revisor
+que iba a decidir entre aprobar y solicitar cambios. Tampoco hay una clave propia que lo desactive.
 
 Funciona en Claude Code y Codex (detección de tools por capacidad).

@@ -129,6 +129,20 @@ comparan**.
    disparador. Cuatro cosas no son explorar y siguen vigentes — ver "Lectura selectiva" y
    `reference.md` → "Carve-outs de la regla del conductor".
 
+## Corridas delegadas en vuelo
+
+Todo worker que esta skill despacha nace con su **sobre** en `.cross-model/active/<skill>/`, escrito
+**antes** del despacho, y mientras el sobre siga activo cada turno del conductor cierra informando su
+estado. Los puntos de despacho propios son dos:
+
+- **fan-out dual** — un worker por familia en `explore`, `counter-plan` e `investigate`, los dos
+  lanzados antes de esperar a ninguno
+- un worker por ronda del modo `debate`, incluida la ronda 0
+
+Campos del sobre, transiciones, sonda por turno, cosecha y condiciones del retiro:
+`corridas-en-vuelo.md`, hermano de este archivo. Es la regla normativa; acá solo se enumera dónde
+aplica.
+
 ## Red flags — detente y reconsidera
 
 Las reglas de arriba dicen *qué* hacer; esta sección frena los atajos que aparecen *en el
@@ -321,9 +335,11 @@ conductor en modo directo. Vive acá una sola vez para que nadie la duplique.
    el artefacto de cierre. Las divergencias no resueltas se presentan como **posiciones alternativas
    con su evidencia**, sin atribuirlas.
 
-   **Dos excepciones acotadas, ambas conversacionales.** La **nota de límite** y la **advertencia de
-   una sola voz** sí hablan del método, y deben hacerlo: sin ellas el usuario no sabe con qué
-   cobertura está decidiendo.
+   **Tres excepciones acotadas, todas conversacionales.** La **nota de límite**, la **advertencia de
+   una sola voz** y el **aviso de corridas delegadas en vuelo** sí hablan del método, y deben
+   hacerlo: sin ellas el usuario no sabe con qué cobertura está decidiendo, ni qué trabajo delegado
+   sigue corriendo cuando cierra el turno. La lista es **cerrada**: nada más del método sale del
+   artefacto de cierre.
 
 Plantillas, cabecera de campos cerrados y el predicado completo del cierre: `reference.md` →
 "Plantillas de cierre" y "Predicado del artefacto de cierre".

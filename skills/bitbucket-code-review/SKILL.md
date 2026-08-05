@@ -87,6 +87,22 @@ stack de results (Angular + verticales air/accommodations/packages).
     `.git/info/exclude`), no algo que la skill commitee al repo. Los revisores externos ya corren
     read-only (regla 4); esta regla extiende lo mismo al **conductor** sobre el filesystem local.
 
+## Corridas delegadas en vuelo
+
+Todo revisor externo que esta skill despacha nace con su **sobre** en `.cross-model/active/<skill>/`,
+escrito **antes** del despacho, y mientras el sobre siga activo cada turno del conductor cierra
+informando su estado. Los puntos de despacho propios son dos:
+
+- el **panel de revisores** externos del Paso 7, uno por cada familia disponible, sync o background
+  con tope duro
+- el **validador adversarial** por hallazgo del Paso 8, cuando la refutación se delega a una familia
+  externa en vez de resolverla el conductor
+
+Campos del sobre, transiciones, sonda por turno, cosecha y condiciones del retiro:
+`corridas-en-vuelo.md`, hermano de este archivo. Es la regla normativa; acá solo se enumera dónde
+aplica. El `debate` que se ofrece ante una discrepancia de veredicto lo despacha `co-explore`, que
+escribe el sobre de su propia corrida.
+
 ## Detección de herramientas (por capacidad)
 
 Esta skill corre en distintos entornos (Claude Code, Codex, otros) donde los **nombres de las

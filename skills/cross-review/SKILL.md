@@ -78,6 +78,19 @@ artefacto escrito ──► [cross-review] ──► artefacto (quizá revisado)
    escritorio, IDE, web) — y el revisor es siempre el de la otra. Detalle en `reference.md` →
    "Descubrir el revisor".
 
+## Corridas delegadas en vuelo
+
+Todo revisor que esta skill despacha nace con su **sobre** en `.cross-model/active/<skill>/`, escrito
+**antes** del despacho, y mientras el sobre siga activo cada turno del conductor cierra informando su
+estado. El punto de despacho propio es uno:
+
+- el **revisor por ronda** del loop de revisión — la ronda 1 y cada ronda siguiente que reanuda el
+  mismo thread, por cualquiera de las vías A/B/C
+
+Campos del sobre, transiciones, sonda por turno, cosecha y condiciones del retiro:
+`corridas-en-vuelo.md`, hermano de este archivo. Es la regla normativa; acá solo se enumera dónde
+aplica.
+
 ## Red flags — detente y reconsidera
 
 Las reglas de arriba dicen *qué* hacer; esta sección frena los atajos al procesar la crítica. Ley fundamental:

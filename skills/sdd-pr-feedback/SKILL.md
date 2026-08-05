@@ -57,6 +57,20 @@ El workspace/repo se derivan del remote, así que sirve para cualquier repo de B
 7. **Nunca loguear** `ATLASSIAN_API_TOKEN`, `BITBUCKET_*`, claves SSH ni cookies.
 8. Hacer una **todo-list** al inicio.
 
+## Corridas delegadas en vuelo
+
+Todo subagente que esta skill despacha nace con su **sobre** en `.cross-model/active/<skill>/`,
+escrito **antes** del despacho, y mientras el sobre siga activo cada turno del conductor cierra
+informando su estado. El punto de despacho propio es uno:
+
+- el **implement delegado** del Paso 5: el subagente que corre la Vía B de `sdd-flow` sobre
+  `.plans/<id>/` y frena antes de commitear
+
+Campos del sobre, transiciones, sonda por turno, cosecha y condiciones del retiro:
+`corridas-en-vuelo.md`, hermano de este archivo. Es la regla normativa; acá solo se enumera dónde
+aplica. Los cross-review de los Pasos 3 y 4 los despacha `cross-review`, que escribe el sobre de su
+propia corrida.
+
 ## Red flags — detente y reconsidera
 
 Ley fundamental:

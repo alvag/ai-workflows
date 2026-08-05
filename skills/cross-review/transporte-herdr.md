@@ -97,39 +97,38 @@ renderizada del revisor, con el cromo de la TUI entremezclado, que no es el vere
 historial alcance a devolver una lectura es un dato de la plataforma —depende de la versión del
 multiplexor y del estado del agente— y por eso no se apoya un contrato ahí.
 
-**Qué campos del descriptor de corrida escribe esta skill.** El descriptor es de la corrida y tiene
-**doce** campos; `cross-review` completa los suyos **antes** del dispatch:
+**Qué escribe esta skill en el sobre de la corrida.** El sobre es de la corrida y `cross-review`
+completa lo suyo **antes** del dispatch. **Los campos no se enumeran acá:** la lista y la
+correspondencia con cada dato que este adaptador escribía viven en `corridas-en-vuelo.md` → "Mapeo del
+descriptor Herdr". Una enumeración local sobrevive a los cambios del esquema y empieza a describir un
+sobre que ya no existe, y ahí un adaptador termina implementado contra un campo que el esquema ya no
+tiene. Lo que sí decide esta skill, y no se lee de esa tabla:
 
-1. **run ID** — el sufijo corto de corrida.
-2. **skill** — `cross-review`.
-3. **modo** — el tipo de artefacto: `spec`, `plan`, `tasks`, `master-spec`, `reparto` o `draft`.
-4. **nombre del agente** — uno solo, el del revisor, con el sufijo de corrida: un nombre fijo choca
-   entre dos gates concurrentes de la misma tanda.
-5. **panes propios** — los que **esta** corrida creó, y solo esos: es la lista que autoriza el
-   cierre. El pane que se toma prestado **no entra acá** (ver "Continuidad entre rondas").
-6. **prompt esperado** — la ruta exclusiva de la ronda.
-7. **outputs esperados** — el veredicto crudo de la ronda.
-8. **deadline** — el presupuesto de pared de la fase, corriendo desde el propio lanzamiento.
-9. **estados terminales** — los tres veredictos que la skill ya devuelve.
-10. **gate pendiente** — el de la llamadora, marcado mientras la corrida no cosechó y validó.
-11. **próxima acción** — qué hace el conductor al despertar: parsear, arbitrar, abrir otra ronda o
-    presentar la degradación.
-12. **transporte** — la vía resuelta, **replicada** de la intención de la llamadora para que el
-    callback la lea. El descriptor es copia, no sede.
+- **un solo revisor**, con el sufijo de corrida en su nombre: un nombre fijo choca entre dos gates
+  concurrentes de la misma tanda;
+- **los panes que esta corrida creó**, y solo esos: es la lista que autoriza el cierre, y el pane que
+  se toma prestado **no entra ahí** (ver "Continuidad entre rondas");
+- **las rutas exclusivas de la ronda** —el prompt y el veredicto crudo— y el presupuesto de pared de
+  la fase, corriendo desde el propio lanzamiento;
+- **la vía resuelta**, replicada de la intención de la llamadora para que el callback la lea: el sobre
+  es copia, no sede.
 
-**Descriptor y tombstone son cosas distintas y no se mezclan.** El descriptor de arriba es el sobre de
-una corrida activa, tiene los doce campos de la lista y muere con ella. El **tombstone** es el sobre
-reducido que sobrevive cuando la corrida terminó y todavía queda un pane propio vivo, y guarda
-exactamente dos piezas: la lista de panes propios y la próxima acción. El del pane prestado pertenece
-a `co-explore`, que lo creó, y esta skill no le escribe nada. El transporte **no** va al tombstone: es
-un dato de la corrida que ya cerró, y quien lo necesite lo resuelve de nuevo por activación.
+**Sobre activo y tombstone son cosas distintas y no se mezclan.** El sobre de arriba es el de una
+corrida activa y muere con ella. El **tombstone** es el sobre reducido que sobrevive cuando la corrida
+terminó y todavía queda un pane propio vivo, y guarda exactamente dos piezas: la lista de panes
+propios y la próxima acción. El del pane prestado pertenece a `co-explore`, que lo creó, y esta skill
+no le escribe nada. El transporte **no** va al tombstone: es un dato de la corrida que ya cerró, y
+quien lo necesite lo resuelve de nuevo por activación.
 
-**Cuándo se retira el descriptor, en las dos direcciones.** No se retira mientras quede un pane propio
-vivo —alcanzar un veredicto terminal no basta: una degradación terminal libera el gate y conserva el
-pane, y retirarlo ahí borraría la única lista de panes propios que existe—. Y se retira **cuando todos
-sus panes propios están confirmados cerrados**, que en esta versión es la única salida, porque la
-transferencia de ownership quedó fuera. El pane prestado no entra en esa cuenta: no es propio. Para los
-dos vale el mismo límite del ecosistema: no hay máquina de estados persistente, ni esquema formal, ni validador propio, ni versionado.
+**Cuándo se retira: las tres condiciones del contrato, con el pane propio como recurso.** El retiro lo
+fijan las condiciones de `corridas-en-vuelo.md` y este adaptador no agrega ninguna regla suya; lo
+único que aporta es qué cuenta acá como recurso en pie. Un **pane propio vivo** lo es, así que llegar
+a un veredicto terminal no alcanza: una degradación terminal libera el gate y conserva el pane, y
+retirar ahí borraría la lista que autoriza cerrarlo. El pane prestado no entra en esa cuenta: no es
+propio. Cuando la corrida termina con un pane propio en pie, la lista y la próxima acción pasan al
+tombstone —el registro de cierre de esta vía— y recién entonces se retira el sobre activo. Para el
+sobre y para el tombstone vale el mismo límite del ecosistema: no hay máquina de estados persistente,
+ni esquema formal, ni validador propio, ni versionado.
 Ese nivel de estado persistido ya se rechazó por escrito, y este ítem nunca se ejercitó.
 
 ## Independencia

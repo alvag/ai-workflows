@@ -98,8 +98,19 @@ portable (no solo SDD), conviene scope usuario (`~/.claude/skills/` en Claude Co
 └─ cross-implement/
    ├─ SKILL.md
    ├─ reference.md
+   ├─ corridas-en-vuelo.md
    └─ README.md
 ```
+
+**Cuidado con las copias mezcladas.** El contrato del sobre viaja replicado: cada skill que despacha
+lleva su propio `corridas-en-vuelo.md`, y las siete copias son byte-idénticas por construcción.
+Actualizar `cross-implement/` sin actualizar sus vecinas —o al revés— deja una instalación con
+versiones **mezcladas**, y nada en tu entorno lo detecta: el chequeo de identidad vive en el repo de
+autoría, no en tu directorio de skills. Acá el costo no es cosmético, porque de ese contrato salen
+las reglas del relanzamiento seguro —cese confirmado del implementador anterior y rutas exclusivas
+por intento—: dos copias distintas son dos ideas distintas de cuándo es seguro despachar un segundo
+escritor sobre el mismo árbol. Para reconocer a ojo la que quedó atrás, la **primera línea** de cada
+copia nombra su **sede canónica**, `cross-review/corridas-en-vuelo.md`.
 
 ## Ejemplos de uso
 
@@ -132,9 +143,25 @@ haciendo el conductor. Local y untracked; agrega `.cross-model/` a `.git/info/ex
 que git deje de nombrarlo, y apágalo con `cross_model.manifest.mode: "off"`. Esquema en
 `cross-review/reference.md` → "Manifest de corrida".
 
+Mientras la delegación está en curso hay un archivo más, en `.cross-model/active/cross-implement/`:
+el **sobre de la corrida en vuelo**, con el implementador despachado, la ruta exclusiva donde escribe
+su salida, el transporte de este intento y hasta cuándo se lo espera. Acá pesa más que en las skills
+read-only, porque este worker **escribe en tu working tree**: si el turno se corta y nada lo registra,
+no queda con qué saber si todavía hay un proceso con escritura viva sobre tus archivos, y relanzar a
+ciegas pondría dos implementadores sobre el mismo árbol —con un diff que ya no es el de ninguno de
+los dos—. El archivo se retira cuando la corrida llega a un final comprobado y su diff quedó
+adjudicado; el contrato completo está en `corridas-en-vuelo.md`, hermano de `reference.md`.
+
+**El sobre no es telemetría, y `cross_model.manifest.mode` no lo apaga.** Esa clave gobierna el
+manifest —el registro de la delegación **ya terminada**, que existe para poder mirar cien juntas— y
+nada más. El sobre es obligatorio e **independiente** de ella: decidir no medir las delegaciones no
+vuelve menos necesario saber quién quedó con escritura viva en tu repo. Tampoco hay una clave propia
+que lo desactive.
+
 ## Archivos
 
 - `SKILL.md` — reglas, contrato de invocación, pasos, degradación.
 - `reference.md` — vías de invocación por familia (con matriz de verificación end-to-end),
   prompt-contrato, revisión del conductor, fix loop, tiempos, scratch y log.
+- `corridas-en-vuelo.md` — el contrato del sobre, copia byte-idéntica de su sede canónica.
 - `README.md` — este archivo.

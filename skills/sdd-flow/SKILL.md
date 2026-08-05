@@ -73,6 +73,22 @@ Como `.plans/` y `.specify/` son **locales (untracked)**, git no los mueve al ca
 9. **Commit y push siempre confirmados.** Ofrecer revisión manual antes del commit (gate que se ofrece siempre, salteable). Antes de ejecutar el commit, mostrar archivos staged + mensaje + comando exacto (salvo que el usuario haya dicho "commitea directo"). El push se ofrece y se ejecuta solo con confirmación afirmativa.
 10. **Nada de lo que genera la skill se trackea.** Este es un flujo **personal**, no del equipo: `.specify/` y `.plans/` son locales. La skill **nunca** los stagea, comitea ni los agrega a un `.gitignore` compartido, y los excluye de todo `git add` y de las listas de archivos a commitear. El ignore local (p. ej. `.git/info/exclude`) lo gestiona el usuario por su cuenta; la skill no lo toca.
 
+## Corridas delegadas en vuelo
+
+Todo agente que este flujo despacha nace con su **sobre** en `.cross-model/active/<skill>/`, escrito
+**antes** del despacho, y mientras el sobre siga activo cada turno del conductor cierra informando su
+estado. Los puntos de despacho propios son cuatro:
+
+- los subagentes de exploración de `analyze`, cuando el entorno los soporta y el alcance lo amerita
+- el **implementer por task** del modo `subagent`, uno por task y siempre secuencial
+- el **reviewer por task** del modo `subagent`, cuando el entorno puede despacharlo
+- el reviewer de la **revisión final de diff**, dentro del gate de revisión manual
+
+Campos del sobre, transiciones, sonda por turno, cosecha y condiciones del retiro:
+`corridas-en-vuelo.md`, hermano de este archivo. Es la regla normativa; acá solo se enumera dónde
+aplica. Invocar `co-explore`, `cross-review` o el modo `cross` (que delega en `cross-implement`) **no**
+suma puntos propios: cada una de esas skills escribe el sobre de su propia corrida.
+
 ## Red flags — detente y reconsidera
 
 Las reglas de arriba dicen *qué* hacer; esta sección frena los atajos que aparecen *en el momento*. Ley fundamental:
@@ -277,7 +293,10 @@ y el contra-enfoque; `cross_review.mode` gobierna las críticas en los gates de 
   síntesis a la vista pero redactados de forma autónoma: sin referencias a la co-exploración,
   a los informes del revisor, a `co-explore/` ni al vocabulario conductor/revisor (ver
   `co-explore` → "La síntesis", paso 5). La trazabilidad queda en `.plans/<id>/co-explore/`.
-  El checkpoint informativo conversacional no está alcanzado por esta regla.
+  El checkpoint informativo conversacional no está alcanzado por esta regla, y tampoco lo están las
+  **tres excepciones** que declara la lista cerrada de esa misma regla de `co-explore` —nota de
+  límite, advertencia de una sola voz y **aviso de corridas delegadas en vuelo**—, que valen igual
+  cuando `co-explore` corre standalone.
 - **Efecto en `analyze`.** Con co-exploración **nominal** (rama 1), este paso **no explora**: el
   contra-enfoque de `counter-plan` ya cubrió el terreno, y `analyze` queda acotado a comprobar
   **vigencia sobre el HEAD** real de la rama (archivos movidos, código cambiado) y a las

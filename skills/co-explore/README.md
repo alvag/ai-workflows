@@ -133,12 +133,23 @@ Copia (o symlinkea) la carpeta `co-explore/` al directorio de skills de tu entor
 └─ co-explore/
    ├─ SKILL.md
    ├─ reference.md
+   ├─ corridas-en-vuelo.md
    └─ README.md
 ```
 
 Como `investigate` es standalone (no SDD), conviene instalarla a **scope usuario**
 (`~/.claude/skills/` para Claude Code, `~/.agents/skills/` para Codex) en vez de por proyecto:
 así está disponible en cualquier repo y es inmune a los worktrees (el cwd deja de importar).
+
+**Cuidado con las copias mezcladas.** El contrato del sobre viaja replicado: cada skill que despacha
+trabajo delegado lleva su propio `corridas-en-vuelo.md`, y las siete copias son byte-idénticas por
+construcción. Si actualizas `co-explore/` y dejas `cross-review/` o `cross-implement/` en una versión
+anterior, tu instalación queda con versiones **mezcladas** —dos skills despachando sobre el mismo
+repo bajo dos contratos distintos, que es exactamente lo que la copia byte-idéntica existe para
+impedir— y nada en tu entorno lo detecta: el chequeo de identidad vive en el repo de autoría, no en
+tu directorio de skills. Para reconocer a ojo cuál quedó atrás, la **primera línea** de cada copia
+nombra su **sede canónica**, `cross-review/corridas-en-vuelo.md`: compara cada copia contra esa y
+actualiza la que difiera.
 
 ## Configuración
 
@@ -192,16 +203,33 @@ verificación**, y ofrece verificar la líder con `systematic-debugging`.
 
 ## Qué escribe en tu repo
 
-Los informes y el scratch viven junto al flujo que la invoca. Lo único que se escribe fuera es el
-**manifest de corrida**: un JSON de unos 300 bytes en `.cross-model/runs/` por cada exploración,
-incluidas las que se degradaron a una sola voz — que son las que dicen con qué frecuencia la
-topología dual no se sostiene. Local y untracked; agrega `.cross-model/` a `.git/info/exclude` si
-prefieres que git deje de nombrarlo, y apágalo con `cross_model.manifest.mode: "off"`. Esquema en
-`cross-review/reference.md` → "Manifest de corrida".
+Los informes y el scratch viven junto al flujo que la invoca. Fuera de ahí se escriben dos archivos,
+y los dos cuelgan de `.cross-model/`. El primero es el **manifest de corrida**, en `runs/`: un JSON
+de unos 300 bytes por cada exploración **ya terminada**, incluidas las que se degradaron a una sola
+voz — que son las que dicen con qué frecuencia la topología dual no se sostiene. Local y untracked;
+agrega `.cross-model/` a `.git/info/exclude` si prefieres que git deje de nombrarlo, y apágalo con
+`cross_model.manifest.mode: "off"`. Esquema en `cross-review/reference.md` → "Manifest de corrida".
+
+El segundo es el **sobre de la corrida en vuelo**, en `.cross-model/active/co-explore/`: mientras los
+dos exploradores están despachados, ahí queda registrado cuál salió por cada familia, dónde escribe
+cada uno, por qué transporte viaja y hasta cuándo se lo espera. Es lo que permite que una sesión que
+arranca de cero —o el mismo conductor, después de que su turno se cortó respondiendo otra cosa—
+encuentre la exploración en vuelo en vez de darla por perdida o lanzar otra encima. El archivo se
+retira cuando la corrida llega a un final comprobado y sus dos informes quedaron adjudicados, así que
+`active/` contiene únicamente lo que sigue corriendo. El contrato completo está en
+`corridas-en-vuelo.md`, hermano de `reference.md`.
+
+**El sobre no es telemetría, y por eso `cross_model.manifest.mode` no lo apaga.** Esa clave gobierna
+el manifest, que se escribe cuando la corrida ya terminó y existe para poder mirar cien juntas y
+decidir si la segunda voz se gana su costo. El sobre resuelve otro problema —no perder el hilo de lo
+que está corriendo ahora—, así que es obligatorio e **independiente** de esa clave: un proyecto que
+decidió no medir sus exploraciones sigue necesitando saber qué workers tiene despachados. Tampoco hay
+una clave propia que lo desactive.
 
 ## Archivos
 
 - `SKILL.md` — el flujo, las reglas, el contrato de invocación y la guía de síntesis.
 - `reference.md` — prompts de exploración por modo, formato del informe, plantilla de
   `synthesis.md`, descubrimiento del revisor, latencia y deadlines, archivos de trabajo.
+- `corridas-en-vuelo.md` — el contrato del sobre, copia byte-idéntica de su sede canónica.
 - `README.md` — este archivo.

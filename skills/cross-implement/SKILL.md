@@ -76,6 +76,20 @@ work order congelado ──► [implementador de otra familia: escribe, corre la
    revisor"; acá la tabla invertida (con escritura) vive en `reference.md` → "Descubrir el
    implementador".
 
+## Corridas delegadas en vuelo
+
+Todo implementador que esta skill despacha nace con su **sobre** en `.cross-model/active/<skill>/`,
+escrito **antes** del despacho, y mientras el sobre siga activo cada turno del conductor cierra
+informando su estado. Los puntos de despacho propios son dos:
+
+- el **implementador inicial**, lanzado con el prompt-contrato tras los gates previos
+- cada ronda del **fix loop**, que reanuda esa misma sesión con el delta
+
+Campos del sobre, transiciones, sonda por turno, cosecha y condiciones del retiro:
+`corridas-en-vuelo.md`, hermano de este archivo. Es la regla normativa; acá solo se enumera dónde
+aplica. Un implementador es **escritor**: su sobre lo declara, y el relanzamiento no ocurre hasta
+confirmar el cese del anterior.
+
 ## Red flags — detente y reconsidera
 
 Ley fundamental:

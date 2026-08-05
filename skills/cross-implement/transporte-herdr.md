@@ -131,37 +131,36 @@ silencio, y un reporte truncado se confunde con un reporte que no parsea —que 
 regla propia y benigna: el diff sigue estando—. Cosechar del archivo es lo que mantiene esa regla
 honesta en vez de convertirla en una excusa.
 
-**Qué campos del descriptor de corrida escribe esta skill.** El descriptor es de la corrida y tiene
-**doce** campos; `cross-implement` completa los suyos **antes** del dispatch:
+**Qué escribe esta skill en el sobre de la corrida.** El sobre es de la corrida y `cross-implement`
+completa lo suyo **antes** del dispatch. **Los campos no se enumeran acá:** la lista y la
+correspondencia con cada dato que este adaptador escribía viven en `corridas-en-vuelo.md` → "Mapeo del
+descriptor Herdr". Una enumeración local sobrevive a los cambios del esquema y empieza a describir un
+sobre que ya no existe, y ahí un adaptador termina implementado contra un campo que el esquema ya no
+tiene. Lo que sí decide esta skill, y no se lee de esa tabla:
 
-1. **run ID** — el sufijo corto de corrida.
-2. **skill** — `cross-implement`.
-3. **modo** — `directo` o `embebido`.
-4. **nombres de agentes** — uno solo, el implementador, con el sufijo de corrida: un nombre fijo choca
-   entre dos flujos concurrentes, y acá un choque de nombres es un choque de escritores.
-5. **panes propios** — los que **esta** corrida creó, y solo esos: es la lista que autoriza el cierre.
-6. **prompt esperado** — la ruta exclusiva del intento.
-7. **outputs esperados** — el reporte del implementador, más el working tree como artefacto que no es
-   un archivo y por eso se declara aparte.
-8. **deadline** — el de la corrida, corriendo desde el lanzamiento.
-9. **estados terminales** — los de la salida de esta skill, que son los de siempre.
-10. **gate pendiente** — el gate humano del diff, marcado mientras la corrida no cosechó.
-11. **próxima acción** — qué hace el conductor al despertar: revisar el diff y correr la prueba, no
-    aceptar el reporte.
-12. **transporte** — la vía resuelta, **replicada** de la intención de la llamadora para que el
-    callback la lea. El descriptor es copia, no sede.
+- **un solo implementador**, con el sufijo de corrida en su nombre: un nombre fijo choca entre dos
+  flujos concurrentes, y acá un choque de nombres es un choque de escritores;
+- **los panes que esta corrida creó**, y solo esos: es la lista que autoriza el cierre;
+- **las rutas exclusivas del intento** —el prompt-contrato y el reporte del implementador—, más el
+  working tree, que es un artefacto que no es un archivo y por eso se declara aparte;
+- **la vía resuelta**, replicada de la intención de la llamadora para que el callback la lea: el sobre
+  es copia, no sede.
 
-**Descriptor y tombstone son cosas distintas y no se mezclan.** El descriptor de arriba es el sobre de
-una corrida activa, con sus doce campos, y muere con ella. El **tombstone** es otro mecanismo, de
-`co-explore`: existe porque esa skill reserva un pane para una fase posterior y necesita algo que
-sobreviva a la corrida, y guarda exactamente **dos piezas**, la lista de panes propios y la próxima
-acción. `cross-implement` **no reserva ningún pane** (ver "Continuidad entre rondas"), así que no
-produce tombstones. Cuando le sobrevive un pane propio es por una degradación y no por una reserva, y
-lo que sobrevive entonces es el **descriptor**, que no se retira mientras quede un pane propio vivo:
-retirarlo ahí borraría la única lista de panes propios que existe. Y se retira **cuando todos sus panes
-propios están confirmados cerrados** —la única salida de esta versión, porque la transferencia de
-ownership quedó fuera—; sin esa mitad, conservarlo para siempre cumpliría igual la otra. Para los dos
-vale el mismo límite del ecosistema:
+**Sobre activo y tombstone son cosas distintas y no se mezclan.** El sobre de arriba es el de una
+corrida activa y muere con ella. El **tombstone** es otro mecanismo, de `co-explore`: existe porque esa
+skill reserva un pane para una fase posterior y necesita algo que sobreviva a la corrida, y guarda
+exactamente **dos piezas**, la lista de panes propios y la próxima acción. `cross-implement` **no
+reserva ningún pane** (ver "Continuidad entre rondas"), así que no produce tombstones: cuando le
+sobrevive un pane propio es por una degradación y no por una reserva.
+
+**Cuándo se retira: las tres condiciones del contrato, con el pane propio como recurso.** El retiro lo
+fijan las condiciones de `corridas-en-vuelo.md` y este adaptador no agrega ninguna regla suya; lo
+único que aporta es qué cuenta acá como recurso en pie. Un **pane propio vivo** lo es, así que llegar
+a un final comprobado no alcanza: retirar ahí borraría la lista que autoriza cerrarlo. Como esta skill
+no produce tombstones, el sobre activo es lo que sobrevive a la degradación, y el pane se cierra por
+sus propias precondiciones antes de que el retiro pueda evaluarse; si el cierre queda pendiente de una
+decisión, su propiedad y su próxima acción se transfieren a un registro de cierre y recién entonces se
+retira. Para el sobre y para el tombstone vale el mismo límite del ecosistema:
 no hay máquina de estados persistente, ni esquema formal, ni validador propio, ni versionado.
 Ese nivel de estado persistido ya se rechazó por escrito, y este ítem nunca se ejercitó.
 

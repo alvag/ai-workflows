@@ -86,6 +86,25 @@ Cobertura del **100 %** de los `AC-n` de la `master-spec.md`, con la **misma** c
 
 Las dos últimas cláusulas son el mismo defecto de ubicación en sentidos opuestos, y por eso se declaran las dos: un AC cubierto en el lugar equivocado no está cubierto. Un `[integration]` anotado en un repo lo cerraría el `verify` local, que es lo que prohíbe la ley fundamental de "Red flags"; un `[repo-local]` anotado en una tarea de orquestación se lo saca de las manos al único que puede probarlo. Ninguna sub-task referencia un AC inexistente, y todo esto se valida antes de salir de Fase 1.
 
+## Corridas delegadas en vuelo
+
+Todo agente que esta skill despacha nace con su **sobre** en `.cross-model/active/<skill>/`, y
+mientras el sobre siga activo cada turno del conductor cierra informando su estado. El punto de
+despacho propio es uno:
+
+- el **fan-out por repo** de la Fase 2.3: un agente por repo elegible y libre, corriendo la Vía B de
+  `sdd-flow`
+
+El orden es fijo y no se altera: **bitácora** → **sobre** → **despacho**. Primero se registra el
+intento de la transición en la bitácora, después se escribe el sobre bajo `.cross-model/active/`, y
+recién entonces se hace la tool call que lanza al agente. Es la única skill donde los tres registros
+existen a la vez, y por eso es la única que los ordena: la bitácora registra el intento aunque el
+despacho no llegue a ocurrir, y el sobre no puede nacer después de un worker que ya está corriendo.
+
+Campos del sobre, transiciones, sonda por turno, cosecha y condiciones del retiro:
+`corridas-en-vuelo.md`, hermano de este archivo. Es la regla normativa; acá solo se enumera dónde
+aplica.
+
 ## Red flags — detente y reconsidera
 
 Las reglas de arriba dicen *qué* hacer; esta sección frena los atajos del flujo multi-repo. Ley fundamental:

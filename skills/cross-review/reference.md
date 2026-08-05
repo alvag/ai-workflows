@@ -1216,6 +1216,14 @@ manifest existe para poder mirar **cien corridas juntas** y decidir si la capaci
 costo. De ahí que sea chico, plano y uniforme: lo que no se puede comparar entre corridas no vale
 la pena registrarlo acá.
 
+**Su hermano en vuelo es el sobre de corrida delegada, definido en `corridas-en-vuelo.md`.** El
+manifest vive en `.cross-model/runs/` y registra corridas **terminadas**; el sobre vive en
+`.cross-model/active/` y registra las que se están **ejecutando ahora**. La relación entre los dos es
+de posta, y en un solo punto del tiempo: **el sobre se retira cuando el manifest se escribe**. Si el
+terminal deja algo pendiente —una salida sin adjudicar, un recurso propio en pie—, lo que se demora
+es el retiro del sobre y nunca la escritura del manifest. El sobre además es **obligatorio** y no lo
+apaga `mode: "off"`: esa clave apaga la telemetría, no la continuidad del trabajo en vuelo.
+
 ### El archivo
 
 ```
