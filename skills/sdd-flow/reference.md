@@ -915,7 +915,7 @@ Tests+build completos, `verify` de los AC, revisión manual, staging selectivo, 
 
 ## Prompt del subagente reviewer
 
-Para el **reviewer por-task** del modo `subagent` (ver `SKILL.md` → "Modo de ejecución", paso 2). Un agente fresco que **solo revisa** el diff de una task contra sus artefactos — no edita ni implementa. Distinto de `cross-review`: aquel es **cross-model** y revisa *artefactos de diseño* (spec/plan/tasks); este es un agente **del mismo modelo** que revisa el *diff* de una task ya implementada. Despacharlo por capacidad, igual que el implementer (sin capacidad → degradar a la revisión liviana del conductor). El conductor **interpola la lista `FILES`** del reporte del implementer en el prompt (el reviewer es un agente fresco: sin ella no sabe qué archivos revisar). Plantilla:
+Para el **reviewer por-task** del modo `subagent` (ver `SKILL.md` → "Modo de ejecución", paso 3). Un agente fresco que **solo revisa** el diff de una task contra sus artefactos — no edita ni implementa. Distinto de `cross-review`: aquel es **cross-model** y revisa *artefactos de diseño* (spec/plan/tasks); este es un agente **del mismo modelo** que revisa el *diff* de una task ya implementada. Despacharlo por capacidad, igual que el implementer (sin capacidad → degradar a la revisión liviana del conductor). El conductor **interpola la lista `FILES`** del reporte del implementer en el prompt (el reviewer es un agente fresco: sin ella no sabe qué archivos revisar). Plantilla:
 
 ```
 Trabaja en modo SOLO LECTURA sobre el repo <ruta-absoluta-al-working-dir>. No edites nada.
