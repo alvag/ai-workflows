@@ -1662,6 +1662,12 @@ serie—, nunca por criterio de quien mira.
 # Entradas: $raw $base (prefijo de ruta sin extensión) $por_pagina
 set -u
 t=$(mktemp -d)
+# Sin `## Detalle` no hay nada que partir, y hay que DECIRLO. Antes esto moría en el `mv` de abajo
+# con un "No such file or directory" sobre un temporal que el awk nunca llegó a crear: un mensaje
+# que no menciona la sección faltante y que deja al lector buscando un problema de permisos.
+grep -qE '^## Detalle[[:space:]]*$' "$raw" || {
+  printf 'GUARD:split-sin-detalle el informe no trae la sección `## Detalle`\n' >&2
+  rm -rf "$t"; exit 1; }
 awk '/^## Índice[[:space:]]*$/{m=1;next} /^## Detalle[[:space:]]*$/{m=2;next}
      /^STATUS: done[[:space:]]*$/{next}
      m==1{print > IDX} m==2{print > DET}' IDX="$t/idx" DET="${base}-detalle.tmp" "$raw"
@@ -1691,7 +1697,10 @@ printf '\n' >> "$meta"
 { echo "## Páginas"; echo "| Página | Ruta | Entradas | IDs |"; echo "|---|---|---|---|"
   while IFS="$(printf '\t')" read -r p ruta ids; do
     [ -n "${p:-}" ] || continue
-    printf '| %s | %s | %s | %s |\n' "$p" "$ruta" "$(printf '%s' "$ids" | wc -w | tr -d ' ')" "$ids"
+    # `${ids% }` recorta el espacio que deja la acumulación de arriba (`printf '%s '` por ID).
+    # Sin eso la celda queda `E1 E2  |` acá y `E1 E2 |` en la variante PowerShell, que une con
+    # `-join ' '`: misma tabla, distinto byte.
+    printf '| %s | %s | %s | %s |\n' "$p" "$ruta" "$(printf '%s' "$ids" | wc -w | tr -d ' ')" "${ids% }"
   done < "$meta"
 } > "${base}.md.tmp"
 mv "${base}.md.tmp" "${base}.md"
@@ -1704,17 +1713,24 @@ rm -rf "$t"
 # Predicado: la salida cruda se parte en detalle único y páginas de índice de a lo sumo
 # $por_pagina entradas, sin perder ninguna, y el metaíndice se publica al final.
 # Entradas: $raw $base (prefijo de ruta sin extensión) $por_pagina
+$crudo = @(Get-Content -LiteralPath $raw)
+# Sin `## Detalle` no hay nada que partir, y hay que DECIRLO. Antes esto escribía un archivo de
+# detalle VACÍO y salía 0: daba por buena una publicación que perdió todo el desarrollo.
+if (-not ($crudo | Where-Object { $_ -cmatch '^## Detalle\s*$' })) {
+  Write-Error 'GUARD:split-sin-detalle el informe no trae la sección `## Detalle`'
+  exit 1
+}
 $modo = 0; $idx = @(); $det = @()
-foreach ($l in (Get-Content -LiteralPath $raw)) {
-  if ($l -match '^## Índice\s*$')       { $modo = 1; continue }
-  if ($l -match '^## Detalle\s*$')      { $modo = 2; continue }
-  if ($l -match '^STATUS: done\s*$')    { continue }
+foreach ($l in $crudo) {
+  if ($l -cmatch '^## Índice\s*$')       { $modo = 1; continue }
+  if ($l -cmatch '^## Detalle\s*$')      { $modo = 2; continue }
+  if ($l -cmatch '^STATUS: done\s*$')    { continue }
   if ($modo -eq 1) { $idx += $l } elseif ($modo -eq 2) { $det += $l }
 }
 $det | Set-Content -LiteralPath (Join-Path (Split-Path $base) ("detail-" + (Split-Path $base -Leaf) + ".md"))
-$cab = $idx | Where-Object { $_ -match '^\|\s*ID\s*\|' } | Select-Object -First 1
-$sep = $idx | Where-Object { $_ -match '^\|[-: |]+\|$' } | Select-Object -First 1
-$filas = @($idx | Where-Object { $_ -match '^\|' -and $_ -notmatch '^\|\s*(ID\s*\||[-: |]+\|)' })
+$cab = $idx | Where-Object { $_ -cmatch '^\|\s*ID\s*\|' } | Select-Object -First 1
+$sep = $idx | Where-Object { $_ -cmatch '^\|[-: |]+\|$' } | Select-Object -First 1
+$filas = @($idx | Where-Object { $_ -cmatch '^\|' -and $_ -cnotmatch '^\|\s*(ID\s*\||[-: |]+\|)' })
 $meta = @()
 for ($i = 0; $i -lt $filas.Count; $i += [int]$por_pagina) {
   $p = '{0:d2}' -f ([int]($i / [int]$por_pagina) + 1)
@@ -1792,28 +1808,36 @@ rm -rf "$t"; exit $rc
 $rc = 0
 if (-not (Test-Path -LiteralPath "$base.md")) { Write-Error 'GUARD:metaindice-completo no existe el metaíndice'; exit 1 }
 $dir = Split-Path $base
-$decl = Get-Content -LiteralPath "$base.md" | Where-Object { $_ -match '^\|' -and $_ -notmatch '^\|\s*(Página\s*\||[-: |]+\|)' }
+# Todo comparador va en su variante case-sensitive: el par POSIX filtra con `grep`, agrupa con
+# `sort`/`uniq -d`, resta con `comm` y compara los IDs con `cmp`, y los cuatro distinguen mayúsculas.
+# Con los de .NET, dos rutas `p01.md`/`P01.md` contarían como duplicadas, una página huérfana con el
+# casing cambiado pasaría por listada, y `ABC-A-XYZ-001` cerraría contra `abc-a-xyz-001`.
+$decl = Get-Content -LiteralPath "$base.md" | Where-Object { $_ -cmatch '^\|' -and $_ -cnotmatch '^\|\s*(Página\s*\||[-: |]+\|)' }
 $rutas = @($decl | ForEach-Object { ($_ -split '\|')[2].Trim() })
 foreach ($r in $rutas) {
   if (-not (Test-Path -LiteralPath (Join-Path $dir $r))) { Write-Error "GUARD:pagina-declarada-existe el metaíndice declara $r y no existe"; $rc = 1 }
 }
-$dup = $rutas | Group-Object | Where-Object Count -gt 1
+$dup = $rutas | Group-Object -CaseSensitive | Where-Object Count -gt 1
 if ($dup) { Write-Error "GUARD:pagina-declarada-existe página declarada dos veces: $($dup.Name -join ' ')"; $rc = 1 }
 $enDisco = @(Get-ChildItem -LiteralPath $dir -Filter "$(Split-Path $base -Leaf)-p??.md" | ForEach-Object { $_.Name })
-$huerf = $enDisco | Where-Object { $_ -notin $rutas }
+$huerf = $enDisco | Where-Object { $_ -cnotin $rutas }
 if ($huerf) { Write-Error "GUARD:pagina-declarada-existe página huérfana, no listada: $($huerf -join ' ')"; $rc = 1 }
-$idsMeta = @($decl | ForEach-Object { ($_ -split '\|')[4].Trim() -split '\s+' } | Where-Object { $_ } | Sort-Object)
+$idsMeta = @($decl | ForEach-Object { ($_ -split '\|')[4].Trim() -split '\s+' } | Where-Object { $_ })
 $idsPag = @()
 foreach ($r in $rutas) {
   $f = Join-Path $dir $r; if (-not (Test-Path -LiteralPath $f)) { continue }
-  $idsPag += Get-Content -LiteralPath $f | Where-Object { $_ -match '^\|' -and $_ -notmatch '^\|\s*(ID\s*\||[-: |]+\|)' } | ForEach-Object { ($_ -split '\|')[1].Trim() }
+  $idsPag += Get-Content -LiteralPath $f | Where-Object { $_ -cmatch '^\|' -and $_ -cnotmatch '^\|\s*(ID\s*\||[-: |]+\|)' } | ForEach-Object { ($_ -split '\|')[1].Trim() }
 }
-$idsPag = @($idsPag | Sort-Object)
-if (Compare-Object $idsMeta $idsPag) { Write-Error "GUARD:metaindice-completo meta=[$($idsMeta -join ' ')] paginas=[$($idsPag -join ' ')]"; $rc = 1 }
+# El orden lo fija `[StringComparer]::Ordinal` y no `Sort-Object`, que compara por cultura y produce
+# una secuencia distinta de la de `sort`: los dos lados van al mensaje del evento, así que un orden
+# ajeno divergiría en el payload aunque los conjuntos coincidan.
+$idsMeta = [string[]]@($idsMeta); [array]::Sort($idsMeta, [StringComparer]::Ordinal)
+$idsPag  = [string[]]@($idsPag);  [array]::Sort($idsPag,  [StringComparer]::Ordinal)
+if (Compare-Object $idsMeta $idsPag -CaseSensitive) { Write-Error "GUARD:metaindice-completo meta=[$($idsMeta -join ' ')] paginas=[$($idsPag -join ' ')]"; $rc = 1 }
 foreach ($fila in $decl) {
   $c = $fila -split '\|'; $r = $c[2].Trim(); $n = $c[3].Trim()
   $f = Join-Path $dir $r; if (-not (Test-Path -LiteralPath $f)) { continue }
-  $real = @(Get-Content -LiteralPath $f | Where-Object { $_ -match '^\|' -and $_ -notmatch '^\|\s*(ID\s*\||[-: |]+\|)' }).Count
+  $real = @(Get-Content -LiteralPath $f | Where-Object { $_ -cmatch '^\|' -and $_ -cnotmatch '^\|\s*(ID\s*\||[-: |]+\|)' }).Count
   if ("$n" -ne "$real") { Write-Error "GUARD:paridad-por-pagina $r declara $n entradas y tiene $real"; $rc = 1 }
 }
 exit $rc
@@ -1855,18 +1879,25 @@ rm -rf "$t"; exit $rc
 # sin desarrollo, ni un desarrollo sin entrada en ninguna página.
 # Entradas: $base (prefijo de ruta sin extensión) $detail
 $rc = 0; $dir = Split-Path $base
-$rutas = @(Get-Content -LiteralPath "$base.md" | Where-Object { $_ -match '^\|' -and $_ -notmatch '^\|\s*(Página\s*\||[-: |]+\|)' } | ForEach-Object { ($_ -split '\|')[2].Trim() })
+# Case-sensitive en todo: el par POSIX filtra con `grep`, extrae los IDs del detalle con un `sed -E`
+# cuyo `[A-Z]{3}-[A-Z]-[A-Z]{3}-[0-9]{3}` no admite minúsculas, y resta con `comm`. Con los
+# operadores de .NET, un `### abc-a-xyz-001` contaría como desarrollo y cerraría contra el ID
+# indexado en mayúsculas, que es justo la pérdida que esta paridad existe para detectar.
+$rutas = @(Get-Content -LiteralPath "$base.md" | Where-Object { $_ -cmatch '^\|' -and $_ -cnotmatch '^\|\s*(Página\s*\||[-: |]+\|)' } | ForEach-Object { ($_ -split '\|')[2].Trim() })
 $union = @()
 foreach ($r in $rutas) {
   $f = Join-Path $dir $r; if (-not (Test-Path -LiteralPath $f)) { continue }
-  $union += Get-Content -LiteralPath $f | Where-Object { $_ -match '^\|' -and $_ -notmatch '^\|\s*(ID\s*\||[-: |]+\|)' } | ForEach-Object { ($_ -split '\|')[1].Trim() }
+  $union += Get-Content -LiteralPath $f | Where-Object { $_ -cmatch '^\|' -and $_ -cnotmatch '^\|\s*(ID\s*\||[-: |]+\|)' } | ForEach-Object { ($_ -split '\|')[1].Trim() }
 }
-$union = @($union | Sort-Object)
-$det = @(Get-Content -LiteralPath $detail | Where-Object { $_ -match '^###\s+[A-Z]{3}-[A-Z]-[A-Z]{3}-\d{3}\s*$' } | ForEach-Object { ($_ -replace '^###\s+', '').Trim() } | Sort-Object)
+# Orden ordinal y no `Sort-Object`, que compara por cultura: los dos conjuntos van al mensaje del
+# evento, así que el orden es parte de lo observable.
+$union = [string[]]@($union); [array]::Sort($union, [StringComparer]::Ordinal)
+$det = [string[]]@(Get-Content -LiteralPath $detail | Where-Object { $_ -cmatch '^###\s+[A-Z]{3}-[A-Z]-[A-Z]{3}-\d{3}\s*$' } | ForEach-Object { ($_ -creplace '^###\s+', '').Trim() })
+[array]::Sort($det, [StringComparer]::Ordinal)
 # La paridad se comprueba contra la UNIÓN, no página por página.
-$sinDet = $union | Where-Object { $_ -notin $det }
+$sinDet = $union | Where-Object { $_ -cnotin $det }
 if ($sinDet) { Write-Error "GUARD:paridad-union indexado sin desarrollo: $($sinDet -join ' ')"; $rc = 1 }
-$sinIdx = $det | Where-Object { $_ -notin $union }
+$sinIdx = $det | Where-Object { $_ -cnotin $union }
 if ($sinIdx) { Write-Error "GUARD:paridad-union desarrollo sin entrada: $($sinIdx -join ' ')"; $rc = 1 }
 if ($union.Count -eq 0) { Write-Error 'GUARD:paridad-union la unión de las páginas está vacía'; $rc = 1 }
 exit $rc
@@ -1978,13 +2009,15 @@ exit $rc
 # Entradas: $informe
 $rc = 0
 $doc = Get-Content -LiteralPath $informe
+# `-cmatch` y no `-match`: el par POSIX busca con `grep`, que distingue mayúsculas, así que un
+# `Pregunta:` o un `## índice` no cumplen el contrato de campos ni el de entrega parcial.
 foreach ($campo in @('pregunta:', 'impacto:', 'supuesto-seguro:')) {
-  if (-not ($doc | Where-Object { $_ -match "^$campo\s*\S" })) {
+  if (-not ($doc | Where-Object { $_ -cmatch "^$campo\s*\S" })) {
     Write-Error "GUARD:clarification-completa falta o está vacío el campo `"$campo`""; $rc = 1
   }
 }
-if (-not ($doc | Where-Object { $_ -match '^## Índice' }))  { Write-Error 'GUARD:clarification-completa no entrega el índice de lo mapeado'; $rc = 1 }
-if (-not ($doc | Where-Object { $_ -match '^## Detalle' })) { Write-Error 'GUARD:clarification-completa no entrega el detalle de lo mapeado'; $rc = 1 }
+if (-not ($doc | Where-Object { $_ -cmatch '^## Índice' }))  { Write-Error 'GUARD:clarification-completa no entrega el índice de lo mapeado'; $rc = 1 }
+if (-not ($doc | Where-Object { $_ -cmatch '^## Detalle' })) { Write-Error 'GUARD:clarification-completa no entrega el detalle de lo mapeado'; $rc = 1 }
 exit $rc
 # @fin:clarificacion-completa-ps
 ```
@@ -2017,7 +2050,8 @@ exit $rc
 # Entradas: $bitacora
 $rc = 0
 $doc = Get-Content -LiteralPath $bitacora
-function Idx($p) { for ($i = 0; $i -lt $doc.Count; $i++) { if ($doc[$i] -match "``paso: $p``") { return $i + 1 } }; return 0 }
+# `-cmatch`: el par POSIX localiza los pasos con `grep -n`, que distingue mayúsculas.
+function Idx($p) { for ($i = 0; $i -lt $doc.Count; $i++) { if ($doc[$i] -cmatch "``paso: $p``") { return $i + 1 } }; return 0 }
 $esc = Idx 'preguntar-al-usuario'
 if ($esc -eq 0) { exit 0 }
 foreach ($p in @('buscar-en-paquete', 'buscar-en-repo')) {
@@ -2036,9 +2070,15 @@ exit $rc
 # Entradas: $scratch (directorio) $hash_v1 (checksum del paquete entregado)
 set -u
 rc=0
+# SHA-256 hex en minúsculas, el mismo algoritmo y la misma forma que la cadena de `cross-implement`.
+# Antes acá había un CRC decimal de `cksum` contra el que ningún hash de PowerShell podía cerrar:
+# el predicado era incomparable entre sabores, no solo divergente. `sha256sum` no existe en macOS,
+# de ahí el fallback.
+sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d' ' -f1
+        else shasum -a 256 | cut -d' ' -f1; fi; }
 v1=$(ls "$scratch" 2>/dev/null | grep -E '^paquete-.*-v1\.txt$' | head -1)
 if [ -n "$v1" ]; then
-  actual=$(cksum < "$scratch/$v1" | awk '{print $1}')
+  actual=$(sha < "$scratch/$v1")
   [ "$actual" = "$hash_v1" ] || {
     printf 'GUARD:paquete-inmutable el paquete entregado cambió (%s ≠ %s)\n' "$actual" "$hash_v1" >&2
     rc=1; }
@@ -2063,8 +2103,11 @@ exit $rc
 $rc = 0
 $v1 = Get-ChildItem -LiteralPath $scratch -Filter 'paquete-*-v1.txt' -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($v1) {
-  $actual = (Get-FileHash -LiteralPath $v1.FullName -Algorithm MD5).Hash
-  if ($actual -ne $hash_v1) { Write-Error "GUARD:paquete-inmutable el paquete entregado cambió ($actual ≠ $hash_v1)"; $rc = 1 }
+  # SHA-256 y no MD5, y en minúsculas: `Get-FileHash` devuelve el hex en MAYÚSCULAS y el par POSIX
+  # lo produce en minúsculas. `-cne` porque, unificado el algoritmo, un `hash_v1` con otro casing es
+  # un valor que ningún productor escribe.
+  $actual = (Get-FileHash -LiteralPath $v1.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+  if ($actual -cne $hash_v1) { Write-Error "GUARD:paquete-inmutable el paquete entregado cambió ($actual ≠ $hash_v1)"; $rc = 1 }
 }
 if ($env:redespachado -eq '1') {
   $quedan = @(Get-ChildItem -LiteralPath $scratch -Filter 'paquete-*-v*.txt' -ErrorAction SilentlyContinue).Count
@@ -2108,19 +2151,22 @@ exit $rc
 $rc = 0
 # Se descuentan los PUNTEROS antes de buscar: una sección que solo cita el estado de paso no le
 # dice al lector qué pasa con él.
+# Todo va en variante case-sensitive, `-creplace` incluido: el par POSIX recorta con `awk`, descuenta
+# los punteros con `sed -E` y busca con `grep -q`, y los tres distinguen mayúsculas. El `-replace`
+# por defecto de .NET borraría un puntero escrito `Reference.md`, que el `sed` deja en pie.
 function Seccion($archivo, $h) {
   $out = @(); $on = $false
   foreach ($l in (Get-Content -LiteralPath $archivo)) {
-    if ($l -match "^#+ $([regex]::Escape($h))$") { $on = $true; continue }
-    if ($on -and $l -match '^#{2,3} ') { break }
-    if ($on) { $out += ($l -replace '`[a-z0-9-]+\.md` → "[^"]*"', '') }
+    if ($l -cmatch "^#+ $([regex]::Escape($h))$") { $on = $true; continue }
+    if ($on -and $l -cmatch '^#{2,3} ') { break }
+    if ($on) { $out += ($l -creplace '`[a-z0-9-]+\.md` → "[^"]*"', '') }
   }
   $out -join "`n"
 }
-if ((Seccion $ref 'Envelope de retorno') -notmatch 'clarification-needed')      { Write-Error 'GUARD:cuarto-estado-en-consumidores el envelope no admite clarification-needed'; $rc = 1 }
-if ((Seccion $ref 'Escalera de degradación') -notmatch 'clarification-needed')  { Write-Error 'GUARD:cuarto-estado-en-consumidores la escalera de degradación lo ignora'; $rc = 1 }
-if ((Seccion $skill 'Degradación') -notmatch 'clarification-needed')            { Write-Error 'GUARD:cuarto-estado-en-consumidores la vista Degradación del SKILL.md lo ignora'; $rc = 1 }
-if ((Seccion $skill 'Salida — el envelope') -notmatch 'clarification-needed')   { Write-Error 'GUARD:cuarto-estado-en-consumidores la vista del envelope del SKILL.md lo ignora'; $rc = 1 }
+if ((Seccion $ref 'Envelope de retorno') -cnotmatch 'clarification-needed')      { Write-Error 'GUARD:cuarto-estado-en-consumidores el envelope no admite clarification-needed'; $rc = 1 }
+if ((Seccion $ref 'Escalera de degradación') -cnotmatch 'clarification-needed')  { Write-Error 'GUARD:cuarto-estado-en-consumidores la escalera de degradación lo ignora'; $rc = 1 }
+if ((Seccion $skill 'Degradación') -cnotmatch 'clarification-needed')            { Write-Error 'GUARD:cuarto-estado-en-consumidores la vista Degradación del SKILL.md lo ignora'; $rc = 1 }
+if ((Seccion $skill 'Salida — el envelope') -cnotmatch 'clarification-needed')   { Write-Error 'GUARD:cuarto-estado-en-consumidores la vista del envelope del SKILL.md lo ignora'; $rc = 1 }
 exit $rc
 # @fin:cuarto-estado-consumidores-ps
 ```
@@ -2216,12 +2262,15 @@ rm -rf "$t"; exit $rc
 # Entradas: $log
 $rc = 0
 $doc = Get-Content -LiteralPath $log
-$vistas = @($doc | Where-Object { $_ -match '^- `[a-zA-Z]+:' } | ForEach-Object { [regex]::Match($_, '^- `([a-zA-Z]+):').Groups[1].Value } | Sort-Object -Unique)
-$raras = $vistas | Where-Object { $_ -notin @('transportAttempt', 'formatRepair', 'semanticAttempt') }
+# Case-sensitive en todo: el par POSIX extrae con `grep -oE`, unifica con `sort -u` y descarta las
+# tres conocidas con `grep -vE`. Con los operadores por defecto de .NET, `FormatRepair` pasaría por
+# una identidad conocida en vez de delatarse como la cuarta que esta sección existe para impedir.
+$vistas = @($doc | Where-Object { $_ -cmatch '^- `[a-zA-Z]+:' } | ForEach-Object { [regex]::Match($_, '^- `([a-zA-Z]+):').Groups[1].Value } | Sort-Object -Unique -CaseSensitive)
+$raras = $vistas | Where-Object { $_ -cnotin @('transportAttempt', 'formatRepair', 'semanticAttempt') }
 if ($raras) { Write-Error "GUARD:identidades-reintento identidad desconocida: $($raras -join ' ')"; $rc = 1 }
-$n = @($doc | Where-Object { $_ -match '^- `formatRepair:' }).Count
+$n = @($doc | Where-Object { $_ -cmatch '^- `formatRepair:' }).Count
 if ($n -gt 1) { Write-Error "GUARD:identidades-reintento $n reparaciones de formato (el tope es 1)"; $rc = 1 }
-if ($n -ge 1 -and -not ($doc | Where-Object { $_ -match '`mismos_ids: sí`' })) {
+if ($n -ge 1 -and -not ($doc | Where-Object { $_ -cmatch '`mismos_ids: sí`' })) {
   Write-Error 'GUARD:identidades-reintento la reparación no declara haber conservado los IDs'; $rc = 1
 }
 exit $rc
@@ -2255,15 +2304,22 @@ exit $rc
 $rc = 0
 $doc = Get-Content -LiteralPath $log
 $rec = -1; $res = $doc.Count
+# `-cmatch`: el par POSIX localiza los tres literales con `grep -n` y `awk`, que distinguen
+# mayúsculas. Con `-match`, un `Recovery-Required` bloquearía reintentos que POSIX deja pasar.
 for ($i = 0; $i -lt $doc.Count; $i++) {
-  if ($rec -lt 0 -and $doc[$i] -match 'recovery-required') { $rec = $i }
-  if ($doc[$i] -match '`recurso: resuelto`') { $res = $i; break }
+  if ($rec -lt 0 -and $doc[$i] -cmatch 'recovery-required') { $rec = $i }
+  if ($doc[$i] -cmatch '`recurso: resuelto`') { $res = $i; break }
 }
 if ($rec -lt 0) { exit 0 }
-for ($i = $rec + 1; $i -lt $res; $i++) {
-  if ($doc[$i] -match '`(semanticAttempt|transportAttempt):') {
-    Write-Error "GUARD:recovery-bloquea hubo reintento con el recurso sin resolver: $($doc[$i])"; $rc = 1
-  }
+# Un solo evento con TODOS los reintentos y su número de línea, como el `awk` del par: emitir uno
+# por ítem obligaba a reconstruir el conjunto desde varios mensajes, y sin el número de línea el
+# lector no sabe a qué altura del log mirar.
+$post = @(for ($i = $rec + 1; $i -lt $res; $i++) {
+  if ($doc[$i] -cmatch '`(semanticAttempt|transportAttempt):') { "$($i + 1): $($doc[$i])" }
+})
+if ($post.Count -gt 0) {
+  Write-Error "GUARD:recovery-bloquea hubo reintento con el recurso sin resolver:`n$($post -join "`n")"
+  $rc = 1
 }
 exit $rc
 # @fin:recovery-bloquea-ps

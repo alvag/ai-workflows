@@ -13,6 +13,9 @@ tipo de artefacto.
 - [Resume entre rondas](#resume-entre-rondas)
 - [Prompt de revisión](#prompt-de-revisión)
 - [Formato de salida](#formato-de-salida)
+- [Ingesta y arbitraje](#ingesta-y-arbitraje)
+- [Tandas y salida de rondas](#tandas-y-salida-de-rondas)
+- [Checkpoint durable](#checkpoint-durable)
 - [Foco por tipo de artefacto](#foco-por-tipo-de-artefacto)
 - [Plantilla de review-log.md](#plantilla-de-review-logmd)
 - [Configuración](#configuración)
@@ -22,14 +25,20 @@ tipo de artefacto.
 
 ## Documentos de esta referencia
 
-La referencia de esta skill son **dos** archivos, partidos por el momento en que se los lee, no por
-tamaño. Cargar el segundo en toda corrida gastaría contexto en las corridas que no usan ese
-transporte:
+La referencia de esta skill son **tres** archivos, partidos por el momento en que se los lee, no por
+tamaño. Cargar los otros dos en toda corrida gastaría contexto en las corridas que no los usan:
 
 | Archivo | Qué trae | Cuándo se lee |
 |---|---|---|
 | `reference.md` (este) | portabilidad entre shells, descubrimiento e invocación del revisor, resume entre rondas, prompt, formato de salida, foco por tipo de artefacto, latencia y topes, matriz de resume y manifest | en toda corrida |
+| `ciclo-de-vida.md` | identidad del finding, estados y transiciones, ledger append-only y su esquema, presupuestos, vara de admisión de la defensa, cierre y adopción de logs legacy | ante la **primera salida conforme que traiga al menos un finding**, cualquiera sea el veredicto |
 | `transporte-herdr.md` | el adaptador del transporte por panes: activación, perfil de permisos, entradas y salidas, independencia, deadline, continuidad entre rondas, validación del artefacto y cleanup | **solo** cuando la activación del flujo resolvió a la vía de panes |
+
+**El predicado de `ciclo-de-vida.md` es literal y no se parafrasea.** No es "al primer rechazo": la
+ingesta —identidad, dedup, ledger y veredicto derivado— ya está gobernada por ese contrato, así que
+hace falta aunque el conductor aplique o escale todo y no rechace nada. Y no es "al primer `REVISE`
+con findings": este contrato admite `APPROVED` con findings `low` opcionales, y esa corrida también
+lo necesita. Una corrida que termina en `APPROVED` **sin** findings no lo carga.
 
 ## Portabilidad entre shells (POSIX / PowerShell)
 
@@ -669,9 +678,19 @@ cuelgue que esta tabla elimina.
 
 El loop reusa el **mismo thread del revisor** para que tenga memoria de lo ya discutido:
 
-- No re-mandar el artefacto completo en cada ronda. Mandar solo el **delta**: qué findings se
-  aplicaron, cuáles se rechazaron y por qué, y pedir una nueva pasada sobre el artefacto
-  actualizado. (Si la edición fue grande, incluir el fragmento cambiado.)
+- No re-mandar el artefacto completo en cada ronda. Mandar solo el **delta**, y pedir una nueva
+  pasada sobre el artefacto actualizado. (Si la edición fue grande, incluir el fragmento cambiado.)
+
+  **El delta se proyecta exclusivamente desde el ledger; no se redacta por separado.** Es una
+  proyección, no un resumen escrito a mano: una sola fuente hace imposible que lo registrado y lo
+  comunicado difieran. El registro de identidad de cada finding provee además el contenido con que
+  el revisor evalúa el rechazo — sin el tema y sus anclas, las filas del ledger le dan el evento
+  pero no con qué juzgarlo.
+
+  Lo que el delta lleva por cada finding vivo: su ID, su estado actual, el evento que lo llevó ahí,
+  el rationale del rechazo si lo hubo, y el tema con sus anclas. Y **la lista explícita de IDs
+  rechazados sobre los que se espera respuesta** — es lo que el prompt de ronda N convierte en su
+  bloque de respuestas obligatorias.
 - Vía A: `--resume` (→ `task --resume-last`). Vía B: `codex exec resume <thread_id>
   -c sandbox_mode="read-only"` (el override es obligatorio: resume NO hereda el sandbox de la
   sesión — ver la Vía B). Vía C:
@@ -756,30 +775,253 @@ la llamadora declara explícitamente que su lista es exhaustiva.
 
 ## Formato de salida
 
-Pedirle al revisor exactamente esta estructura (fácil de parsear y de loguear):
+Pedirle al revisor exactamente esta estructura (fácil de parsear y de loguear). **Ronda 1:**
 
 ```
 VERDICT: APPROVED | REVISE
 
 FINDINGS:
 - [high|medium|low] <título corto del problema>
+  proposed_id: <ID propuesto por el revisor para este tema>
   why: <por qué importa — qué se rompe / qué falta>
   suggestion: <cambio concreto propuesto>
   refs: <AC-n | sección del artefacto | path:line>
   confidence: <high|medium|low>
+
+STATUS: done
 ```
 
+**Ronda N (con rechazos que responder): dos bloques separados**, con reglas de validación distintas:
+
+```
+VERDICT: APPROVED | REVISE
+
+RESPUESTAS A RECHAZOS:
+- <ID>: ACEPTO | DEFIENDO
+  argumento: <si defiende, el argumento nuevo; si acepta, una línea>
+
+FINDINGS NUEVOS:
+- [high|medium|low] <título corto del problema>
+  proposed_id: <ID propuesto>
+  why: … · suggestion: … · refs: … · confidence: …
+
+STATUS: done
+```
+
+- **`proposed_id` va en todo finding nuevo, con la ronda 1 incluida** — ahí todos lo son. El
+  conductor lo valida, normaliza y deduplica: propone el revisor, asigna el conductor
+  (`ciclo-de-vida.md` → "Identidad").
+- **Un finding genuinamente nuevo en una ronda tardía es comportamiento esperado del loop, no una
+  anomalía.** En corridas reales el valor escaló con las rondas en vez de agotarse. Una regla que
+  invalide la salida por traer un ID desconocido mataría esa propiedad.
 - `APPROVED` sin findings (o solo con findings `low` opcionales) → corta el loop.
 - `REVISE` → hay al menos un finding `high`/`medium` que el revisor considera bloqueante.
+- **El revisor debe emitir `REVISE` si defiende algún rechazo:** una defensa sin evaluar es, por
+  definición, algo sin resolver.
+
+### Señal de cierre
+
+La salida termina con una **marca final**, y el predicado es el mismo que valida `co-explore` para
+sus informes —**aparece exactamente una vez y como última línea no vacía**—: se cita por puntero
+(`co-explore/reference.md` → "Formato de dos capas"), no se reescribe.
+
+**La conformidad se juzga solo sobre salida completa.** El marcador de apertura del bloque no
+alcanza: con dos bloques, distinguir "omitió una respuesta" de "no llegó a escribirla" es imposible
+sin una marca final.
+
+**La causa se asigna por lo que efectivamente pasó, no por la ausencia de marca:**
+
+| Qué se observó | Causa |
+|---|---|
+| venció el tope de pared y no hay marca | `deadline_exceeded` |
+| el proceso **terminó** y entregó salida ausente, incompleta o sin marca válida | `runtime_failure` |
+
+Confundirlas elige la palanca de recuperación equivocada: subir el tope no arregla un revisor que
+entrega mal.
+
+### Validación por bloque
+
+La regla **no** es global — es distinta en cada bloque, y confundirlas rompe una de las dos
+propiedades:
+
+| Bloque | Qué invalida | Qué es normal |
+|---|---|---|
+| **respuestas a rechazos** | un ID esperado **omitido**, **duplicado**, o un ID **desconocido** | — |
+| **findings nuevos** | — | un `proposed_id` que el conductor no conoce: pasa por asignación, unicidad y dedup |
+
+Una salida no conforme entra en la degradación vigente: **parseo tolerante** y, si no recupera el
+bloque exacto, **`runtime_failure`**. Y entonces **ningún bloque de esa salida se arbitra** —
+descartar el bloque roto y seguir con los findings nuevos arbitraría una salida cuya integridad ya
+falló.
+
+**La omisión nunca cierra nada.** Un finding se cierra solo por aceptación explícita del revisor o
+por una defensa evaluada como inadmisible (`ciclo-de-vida.md` → "Cierre"). La aceptación silenciosa
+permitiría cerrar findings por truncamiento en vez de por una decisión auditable.
 - **`confidence` es señal de triage, no un atajo.** Es ortogonal a la severidad: la severidad `[high|medium|low]` es *qué tan grave si es real*; la confianza es *qué tan seguro está el revisor de que lo es*. El árbitro la usa para **priorizar** qué verificar primero y calibrar el escrutinio (un finding `high` con `confidence: low` es «vale la pena mirarlo, pero sin certeza»), nunca para saltarse la verificación de la regla 3 — todo finding se evalúa antes de aplicar. Si el revisor no la emite, tratarla como `medium` y seguir.
 - Si la salida no respeta el formato, intentar un parseo tolerante; si no se puede, tratarlo como
   fallo de runtime (degradación).
 
+## Ingesta y arbitraje
+
+**El orden de procesamiento es normativo**, no una sugerencia:
+
+1. **Validar** los dos bloques (ver "Validación por bloque"). Si la salida no es conforme, no se
+   arbitra nada.
+2. **Asignar identidad y deduplicar por tema** los findings nuevos — antes de cualquier arbitraje
+   (`ciclo-de-vida.md` → "Identidad").
+3. **Arbitrar** las respuestas a rechazos: evaluar cada defensa contra la vara de admisión.
+4. **Arbitrar** los findings nuevos.
+5. **Derivar** el veredicto del estado del ledger.
+
 **Árbitro (lado Claude).** Para cada finding, decidir con `superpowers:receiving-code-review`:
-- *Aplicar* — el finding es correcto y relevante → editar el artefacto.
-- *Rechazar* — incorrecto, fuera de alcance, o ya cubierto → no tocar, registrar el motivo.
-- *Escalar* — disputa genuina o decisión de producto → anotarla para el gate humano.
-Nunca aplicar sin entender; nunca descartar sin razón. Todo va al `review-log.md`.
+- *Aplicar* — el finding es correcto y relevante → editar el artefacto → `aplicado`.
+- *Rechazar* — incorrecto, fuera de alcance, o ya cubierto → no tocar, **registrar el motivo** →
+  `rechazado`. Un rechazo sin motivo es un estado inválido, no un default.
+- *Escalar* — disputa genuina o decisión de producto → `en-disputa`, para el gate humano.
+
+Y para cada defensa recibida: *admisible* → `reabierto` y **se re-arbitra**; *inadmisible* →
+`cerrado`. Una defensa admisible obliga a re-arbitrar, **no** a aceptar.
+
+Nunca aplicar sin entender; nunca descartar sin razón. Todo va al ledger del `review-log.md`.
+
+### Veredicto derivado
+
+**El veredicto de la corrida se deriva del ledger, no del bloque del revisor.** Con dos bloques, un
+revisor puede emitir `DEFIENDO F-01`, cero findings nuevos y `APPROVED` porque el bloque de findings
+quedó vacío — y un loop que corte ahí no arbitraría nunca esa defensa.
+
+| Estado del ledger tras arbitrar | Veredicto | Efecto sobre la tanda |
+|---|---|---|
+| todos los findings en `aplicado` o `cerrado` | `APPROVED` | corta: convergió |
+| existe al menos uno en estado **no terminal** | `REVISE` | sigue: hay margen de resolución |
+| solo terminales, pero con ≥1 `en-disputa` | `REVISE` | **corta la tanda** y abre el gate humano |
+
+El predicado no admite dos lecturas para un mismo ledger. El `APPROVED` del revisor **no corta el
+loop por sí solo** si quedan defensas sin evaluar; y a la inversa, tras un arbitraje que no deja nada
+abierto la corrida converge **sin** gastar otra ronda para confirmarlo.
+
+*Por qué la tercera fila corta:* una disputa es terminal por definición — ninguna ronda adicional
+puede resolverla, porque su destino es el arbitraje humano. Seguir gastando la tanda sobre un ledger
+que solo tiene disputas es desperdicio puro.
+
+## Tandas y salida de rondas
+
+Agotar el presupuesto **no cierra la revisión**: abre un **checkpoint** donde decide el humano. Una
+**tanda** son `max_rounds` rondas (default 3); las tandas son **sucesivas y finitas**, y **ninguna se
+concede sin autorización explícita**. No existe un modo que corra hasta `APPROVED` sin tope.
+
+### Qué consume ronda
+
+La ronda que obtiene del revisor su `ACEPTO | DEFIENDO` **sí** cuenta dentro de la tanda: es trabajo
+del revisor y arbitraje del conductor. Lo que **no** consume ronda es el finding ya `cerrado` — no
+genera arbitraje ni obliga a abrir una ronda por él. Tampoco los eventos del complemento, que se
+descartan con motivo.
+
+### Rechazos sin responder al agotarse la tanda
+
+Un finding rechazado en la **última ronda** de una tanda no alcanzó a tener su oportunidad de
+defensa. Su destino está **fijado, no es elegible**:
+
+| Salida del checkpoint | Destino de los pendientes |
+|---|---|
+| el humano **concede** una tanda | siguen `rechazado`, esperando respuesta en la tanda nueva |
+| el humano **no concede** | pasan a **`en-disputa`** — nunca a `cerrado` |
+
+*Por qué `en-disputa` y no `cerrado`:* cerrarlo sería cerrarlo por agotamiento del presupuesto y no
+por una decisión sobre su mérito — el revisor nunca pudo responder. `en-disputa` lo deja donde el
+humano del gate puede arbitrarlo.
+
+**En las dos salidas el checkpoint escribe dos clases de fila en el ledger, no una:** una
+`transicion` **por cada finding pendiente** —con su origen, destino, ronda, actor, decisión y
+rationale— **más** una `control-corrida` con `evento_corrida: checkpoint`, `finding_id` nulo y la
+`decision_humana` elegida. Los dos errores simétricos rompen la auditoría: registrar solo la
+`control-corrida` no deja traza de **qué** rechazos se procesaron; registrar solo las `transicion`
+pierde **qué opción** abrió o cerró la tanda.
+
+### Las cuatro opciones del checkpoint
+
+Sin solapamiento, cada una con postcondición fijada sobre **tres ejes**:
+
+| Opción | Artefacto | Revisión | Pendientes sin respuesta |
+|---|---|---|---|
+| **continuar así** (aprobar pese al `REVISE`) | aprobado, el flujo sigue | cerrada | → `en-disputa`, registrados |
+| **conceder una tanda** | sin resolver, el gate no se cierra | continúa una tanda, y vuelve a preguntar | siguen `rechazado`, esperan respuesta |
+| **seguir hasta `APPROVED`** | sin resolver, el gate no se cierra | continúa **sin volver a preguntar** hasta `APPROVED` o hasta el tope total | siguen `rechazado`, esperan respuesta |
+| **cerrar la revisión** | **sin aprobar**, el flujo no sigue | cerrada | → `en-disputa`, registrados |
+
+Ningún par comparte los tres ejes: "continuar así" y "cerrar" difieren en el artefacto (una lo
+aprueba, la otra no); "conceder una tanda" y "seguir hasta `APPROVED`" difieren en si el humano
+vuelve a decidir. **"Cerrar la revisión" es una salida adicional** —para cuando la revisión dejó de
+rendir pero el artefacto no convence—, nunca un reemplazo de "seguir hasta `APPROVED`".
+
+**Las cuatro se ofrecen siempre**, incluso cuando el dato de retorno avisa que conceder no puede
+converger: ese dato **advierte, no deshabilita** (ver `SKILL.md` → "Salida").
+
+### "Seguir hasta `APPROVED`" y su tope total
+
+Concede tandas **automáticamente**, sin volver a preguntar, hasta que ocurra **uno** de tres cortes:
+
+| Corte | Qué pasa |
+|---|---|
+| el veredicto derivado es `APPROVED` | la revisión converge y cierra |
+| se alcanza el **tope total** | vuelve al checkpoint con las cuatro opciones |
+| el predicado derivado da `REVISE` con **solo disputas** | **corte anticipado obligatorio**: vuelve al checkpoint aunque falten rondas |
+
+El tercero no es opcional: ninguna ronda puede resolver una disputa, así que seguir sería gastar el
+tope sin posibilidad de converger.
+
+**Mientras el modo esté activo y queden rondas hasta el tope, el límite de tanda es una frontera
+interna:** la barrera del gate **permanece marcada** y el fin de tanda **no** abre checkpoint. Se
+libera en los tres cortes de la tabla, y solo ahí. Sin esa frontera, el modo automático preguntaría
+en cada agotamiento y sería idéntico a "conceder una tanda".
+
+**El tope se captura en la opción, no en el config.** Al elegir este modo el humano fija el límite
+**acumulado** de rondas de la corrida; el **default sugerido es determinista**: `consumido + 2 ×
+max_rounds` (con `max_rounds` en 3, seis rondas más). Una **reelección** tras alcanzarlo aplica la
+misma fórmula sobre lo consumido hasta ese momento, de modo que siempre resulta **absoluto y mayor**;
+un valor ≤ consumido se rechaza, porque volvería al checkpoint de inmediato.
+
+Cada elección o reelección deja una fila `control-corrida` con su `tope_efectivo`, para que el corte
+sea auditable: un tope que vive solo en memoria no se puede reconstruir después. **No se agrega clave
+al bloque `cross_review`**: fuera de este modo no gobernaría nada.
+
+*La regla 2 se conserva:* sigue sin existir un loop sin límite. Lo que cambia es **quién** autoriza
+cada tramo — una vez al inicio en vez de tanda a tanda.
+
+### Dónde no se pregunta
+
+Donde **no hay forma de presentar un gate humano**, no se pregunta: se agota, se cierra en `REVISE`
+con las disputas abiertas y se escala. La excepción se funda en la **capacidad de presentar un
+gate**, y **no** en `execution` ni en el transporte — `execution: background` solo decide cómo se
+espera al revisor, y su gate humano sigue existiendo — ni en el fan-out de Fase 2 del orquestador,
+que corre con `cross_review.mode: off` y por lo tanto no tiene revisión que gobernar. Los gates de
+Fase 1 del orquestador **sí** son interactivos.
+
+## Checkpoint durable
+
+Una corrida con checkpoint humano puede abarcar días y varias sesiones. Para que una **sesión nueva**
+descubra que hay una revisión abierta y la rehidrate en vez de arrancar otra, el checkpoint persiste
+un **descriptor por `run_id`**:
+
+| Campo | Qué guarda |
+|---|---|
+| `run_id` | el de la corrida, estable entre tandas |
+| `ledger` | la ruta del `review-log.md` y la sección de esta corrida |
+| `ronda_acumulada` | la última ronda completada |
+| `tope_vigente` | el `tope_efectivo` de la última `control-corrida`, si el modo automático está activo |
+| `causa_corte` | `tanda_agotada` \| `solo_disputas` |
+| `gate_pendiente` | qué STOP quedó esperando decisión |
+| `revisor` | la referencia de sesión o pane con que reanudar |
+
+Se **escribe al abrir el checkpoint** y se **retira al terminal** de la corrida.
+
+**Quién lo consulta, por modo:** en **embebido**, el `resume` de la llamadora, **antes** de iniciar
+otra revisión; en **directo** y **draft**, `cross-review` misma, que es quien presenta. En los tres,
+una corrida abierta se **rehidrata**: no se inicia otra, no se recargan presupuestos y no se toma el
+scratch de otra corrida.
+
+**Frontera declarada:** es local y untracked como el resto de `.plans/`, así que sobrevive entre
+sesiones **en la misma copia del directorio**, no entre máquinas ni entre checkouts.
 
 ## Foco por tipo de artefacto
 
@@ -801,32 +1043,69 @@ subsección por ronda. Acumulativo (no se pisa entre artefactos del mismo `<id>`
 # Cross-review log — <id>
 
 ## <artifact_type> (<artifact_path>) — <ISO-8601>
-Revisor: <codex-rescue | codex exec | claude -p | …>  ·  modelo: <model de config | CLI default | opus>  ·  max_rounds: <n>
+Revisor: <codex-rescue | codex exec | claude -p | …>  ·  modelo: <model de config | CLI default | opus>
+run_id: <estable en toda la corrida, incluidas las tandas siguientes>  ·  max_rounds: <n> (por tanda)
 
-### Ronda 1
-**Veredicto del revisor:** REVISE
-**Findings:**
-- [high] <título>  · confidence: <high|medium|low>
-  - why: <…>  · suggestion: <…>  · refs: AC-2
-  - **Decisión de Claude:** APLICADO — <qué se cambió y por qué el finding era correcto>
-- [medium] <título>  · confidence: <high|medium|low>
-  - why: <…>  · suggestion: <…>  · refs: sección "Enfoque"
-  - **Decisión de Claude:** RECHAZADO — <razón técnica del rechazo>
+### Registro de identidad
+Solo lo que no cambia. Las transiciones apuntan acá.
 
-### Ronda 2
-**Veredicto del revisor:** APPROVED
-(sin findings bloqueantes)
+| ID | Tema (ubicación semántica + problema/causa) | Anclas |
+|---|---|---|
+| F-01 | plantilla del log · el ledger no distingue emisión de transición | `reference.md:794` |
+
+### Ledger (append-only — ninguna fila se sobrescribe)
+
+| Ronda | ID | tipo | evento | actor | decisión / campos | rationale |
+|---|---|---|---|---|---|---|
+| 1 | F-01 | emision | — | revisor | severidad: high | — |
+| 1 | F-01 | transicion | rechaza con motivo | conductor | abierto → rechazado · presupuesto: null | <razón> |
+| 2 | F-01 | transicion | defiende, con presupuesto | revisor | rechazado → defendido · presupuesto: defensa | <argumento> |
+| 2 | F-01 | transicion | evalúa: admisible | conductor | defendido → reabierto · presupuesto: null | <por qué el argumento es nuevo> |
+| 2 | F-02 | descarte | re-emite uno cerrado | revisor | — | <motivo del descarte> |
+| 3 | — | control-corrida | checkpoint | humano | decision_humana: conceder una tanda | <lo que dijo> |
+
+### Proyección (derivada — se regenera al cierre de cada ronda, nunca se edita)
+
+| ID | Estado | Severidad vigente | Defensa | Re-apertura |
+|---|---|---|---|---|
+| F-01 | reabierto | high | consumida | disponible |
+| F-02 | cerrado | medium | consumida | disponible |
 
 ### Resultado
-Veredicto final: APPROVED en 2 rondas. 1 aplicado, 1 rechazado, 0 disputas abiertas.
+
+**Eventos de arbitraje** (qué escrutinio hubo): aplicados <n> · rechazados <n> ·
+defensas recibidas <n> · defensas admisibles <n>.
+**Estados terminales** (dónde quedó cada finding): aplicado <n> · cerrado <n> · en-disputa <n>.
+
+Veredicto final: <APPROVED | REVISE> en <n> rondas y <n> tanda(s).
 Revisor: codex <modelo> (effort <esfuerzo>).
 
 **Límite:** un revisor independiente de otra familia aporta una crítica adicional; sigue siendo
 una sola revisión. No prueba correctitud y no reemplaza el gate humano.
 ```
 
-Si se agotan las rondas sin `APPROVED`, el "Resultado" lista las **disputas abiertas** para que
-el humano las arbitre en el gate.
+**Las dos familias de conteo del `Resultado` van separadas, y las dos son obligatorias.** Los
+**eventos** miden el escrutinio; los **estados terminales**, el desenlace. Un rechazo que después se
+corrigió cuenta como evento y no desaparece del conteo — si solo se listaran los estados finales, una
+corrida de "18 hallazgos, 0 rechazos" sería indistinguible de una con escrutinio real, que es
+exactamente lo que este bloque existe para hacer legible de un vistazo.
+
+**Ledger y proyección no son dos vistas intercambiables.** El ledger es la única sede de escritura;
+la proyección se **regenera** al cierre de cada ronda desde el fold de todas las entradas hasta esa
+ronda **inclusive** —la última transición incluida— y nunca se edita a mano. Una proyección que se
+regenera solo al final de la tanda, o que excluye la última transición, deja el log una transición
+atrás justo cuando se lo consulta para armar el delta.
+
+Esquema completo de las cuatro clases de fila y sus campos: `ciclo-de-vida.md` → "Ledger".
+
+Si se agota una tanda sin `APPROVED`, el "Resultado" lista las **disputas abiertas** y los
+**rechazos sin responder** para que el humano decida en el gate (ver "Tandas y salida de rondas").
+
+**Logs escritos con el formato anterior.** Un `review-log.md` que ya existe sin ledger ni IDs es
+**historial opaco e inmutable**: no se migra, no se sobrescribe y **se excluye del fold**. La corrida
+nueva abre su propia sección identificada por formato y `run_id`, y ninguna identidad se infiere de
+lo viejo. Una corrida legacy no terminal se termina con el contrato anterior. Detalle y fundamento en
+`ciclo-de-vida.md` → "Adopción de logs escritos con el formato anterior".
 
 El bloque **Límite** va una vez por corrida, en `Resultado` — no por ronda ni en el veredicto
 crudo del revisor. Junto al modelo efectivo (ver "Prechequeos"), es lo que permite leer meses
@@ -842,7 +1121,7 @@ cross_review:
   mode: auto            # auto (por complejidad) | "on" | "off"  (entre comillas: sin ellas YAML los parsea como booleanos)
   execution: auto       # auto (por capacidad del conductor) | sync | background
   artifacts: [spec, plan, tasks]   # tipos a revisar (orchestrator: [master-spec, reparto])
-  max_rounds: 3
+  max_rounds: 3         # rondas POR TANDA, no de la corrida entera; al agotarse se abre el checkpoint
   reviewer: auto        # auto (descubre por capacidad; nunca la familia del autor) | claude | codex
 ```
 
@@ -860,8 +1139,13 @@ cross_review:
   `codex` fuerzan la vía; si la forzada coincide con la familia del autor, se avisa y se respeta.
 - Precedencia: override conversacional de la corrida > `cross_review` de config > default por
   complejidad. Misma regla que el resto de overrides SDD.
-- `max_rounds` chico (2-3) suele alcanzar: los artefactos son chicos comparados con una
-  implementación; más rondas dan rendimientos decrecientes.
+- **`max_rounds` es el presupuesto de una tanda, no el tope de la corrida.** Al agotarse se le
+  pregunta al humano, y si concede, la corrida sigue con otra tanda de `max_rounds` rondas. La
+  **numeración del ledger acumula a lo largo de toda la corrida**: una segunda tanda arranca en la
+  ronda 4, no en la 1. Lo que la regla 2 garantiza es que **el loop nunca corre sin tope**, no que la
+  corrida entera tenga ≤ `max_rounds` rondas (ver "Tandas y salida de rondas").
+- `max_rounds` chico (2-3) suele alcanzar por tanda: los artefactos son chicos comparados con una
+  implementación; más rondas seguidas dan rendimientos decrecientes, y si hacen falta, se conceden.
 
 ## Consumo de co-exploración dual
 
@@ -949,6 +1233,21 @@ skills. El usuario borra el directorio cuando quiera; ninguna skill lo hace por 
 **Se escribe con la tool de escritura de archivos del conductor, nunca con `echo` ni heredoc** —
 misma regla que los prompts, y por el mismo motivo: el quoting. Por eso acá no hay bloque de
 escritura; los bloques verificables son validar y leer.
+
+**Una corrida de `cross-review` con varias tandas escribe UN solo manifest.** Se escribe **una vez,
+al outcome terminal de la corrida**, tal como ya lo define este contrato — y con tandas el terminal
+es el **último**: un checkpoint intermedio **no** escribe manifest, ni parcial ni provisorio (este
+esquema no admite estados intermedios ni `.partial + rename`).
+
+**Quién lo finaliza es la llamadora, no `cross-review`:** al devolver el control en un checkpoint,
+`cross-review` todavía no sabe si habrá otra tanda. La llamadora sí lo sabe apenas el humano decide,
+así que es ella quien cierra el manifest tras el gate cuando la opción elegida es terminal.
+
+`started_at` es el del **primer** despacho de la corrida, y `duration_s` sigue siendo **wall clock
+hasta el outcome terminal**, tal como lo fija este contrato para las tres skills — lo que con tandas
+**incluye la espera en el gate humano**. Se acepta a propósito: excluirla obligaría a cambiar la
+definición canónica de `duration_s` de las tres, y lo que este campo mide es cuánto tarda la
+capacidad en devolver un resultado utilizable, espera humana incluida.
 
 ### Los campos
 
@@ -1111,20 +1410,24 @@ exit $rc
 # Entradas: $manifest
 $rc = 0
 $m = Get-Content -Raw $manifest
+# Los operadores van en su variante case-sensitive (`-cmatch`, `-cnotmatch`, `-cnotcontains`,
+# `switch -CaseSensitive`) porque el par POSIX compara con `grep`/`case`/`grep -qxF`, que distinguen
+# mayúsculas. Con los operadores por defecto de .NET, `Started_at` cuenta como el campo `started_at`
+# y `HERDR` como el transporte `herdr`.
 foreach ($c in 'skill','mode','started_at','duration_s','families','transport','outcome','degradation') {
-  if ($m -notmatch "`"$c`"\s*:") { Write-Error "GUARD:manifest-valido falta el campo `"$c`""; $rc = 1 }
+  if ($m -cnotmatch "`"$c`"\s*:") { Write-Error "GUARD:manifest-valido falta el campo `"$c`""; $rc = 1 }
 }
 foreach ($c in 'attempts','schema_version','usage','parent') {
-  if ($m -match "`"$c`"\s*:") { Write-Error "GUARD:manifest-valido campo recortado presente: `"$c`""; $rc = 1 }
+  if ($m -cmatch "`"$c`"\s*:") { Write-Error "GUARD:manifest-valido campo recortado presente: `"$c`""; $rc = 1 }
 }
-if ($m -notmatch '"families"\s*:\s*\[') { Write-Error 'GUARD:manifest-valido "families" no es una lista'; $rc = 1 }
-function Val($k) { if ($m -match "`"$k`"\s*:\s*`"([^`"]*)`"") { $Matches[1] } else { '' } }
+if ($m -cnotmatch '"families"\s*:\s*\[') { Write-Error 'GUARD:manifest-valido "families" no es una lista'; $rc = 1 }
+function Val($k) { if ($m -cmatch "`"$k`"\s*:\s*`"([^`"]*)`"") { $Matches[1] } else { '' } }
 $sk = Val 'skill'
 $comunes = @('none','confirmed_wall','launch_flake','runtime_failure')
 # 'deadline_exceeded' y 'transport_fallback' NO van en $comunes: ese conjunto lo comparten las cuatro
 # filas, y meterlas ahí las filtraría a bitbucket-code-review, que no delega a través de las tres
 # skills que las producen. Se suman fila por fila, solo en esas tres.
-switch ($sk) {
+switch -CaseSensitive ($sk) {
   'co-explore'      { $outs = @('completed','map_failure')
                       $degs = $comunes + @('branch-2','branch-3','branch-4','deadline_exceeded','transport_fallback')
                       $trans = @('subagent','cli-exec','cli-resume','herdr') }
@@ -1142,7 +1445,7 @@ switch ($sk) {
 foreach ($par in @(@('outcome',$outs), @('degradation',$degs), @('transport',$trans))) {
   if ($par[1].Count -eq 0) { continue }
   $v = Val $par[0]
-  if ($par[1] -notcontains $v) {
+  if ($par[1] -cnotcontains $v) {
     Write-Error "GUARD:manifest-valido $($par[0]) `"$v`" no pertenece a $sk"; $rc = 1
   }
 }
@@ -1191,15 +1494,26 @@ Write-Output "corridas leídas: $($archivos.Count)"
 if ($archivos.Count -eq 0) { exit 0 }
 $filas = foreach ($f in $archivos) {
   $j = Get-Content -Raw $f.FullName
-  function C($k) { if ($j -match "`"$k`"\s*:\s*`"?([^`",}]*)") { $Matches[1].Trim() } else { '' } }
+  function C($k) { if ($j -cmatch "`"$k`"\s*:\s*`"?([^`",}]*)") { $Matches[1].Trim() } else { '' } }
   [pscustomobject]@{ skill = (C 'skill'); degradation = (C 'degradation'); duration = [int](C 'duration_s') }
 }
-foreach ($g in ($filas | Group-Object skill | Sort-Object Name)) {
-  if (-not $g.Name) { continue }
-  $deg = @($g.Group | Where-Object { $_.degradation -ne 'none' }).Count
+$grupos = @($filas | Group-Object skill -CaseSensitive)
+# El orden lo fija `[StringComparer]::Ordinal` y no `Sort-Object`: el par POSIX ordena con `sort`
+# bajo colación por bytes, donde `Cross-Review` precede a `cross-review`. `Sort-Object` compara por
+# cultura y devuelve el orden inverso para ese par — también con `-CaseSensitive`, que decide qué
+# strings son iguales pero no con qué comparador se ordenan.
+$nombres = [string[]]@($grupos.Name)
+[array]::Sort($nombres, [StringComparer]::Ordinal)
+foreach ($nombre in $nombres) {
+  if (-not $nombre) { continue }
+  $g = @($grupos | Where-Object { $_.Name -ceq $nombre })[0]
+  $deg = @($g.Group | Where-Object { $_.degradation -cne 'none' }).Count
   $ord = @($g.Group.duration | Sort-Object)
-  $med = if ($ord.Count) { $ord[[int](($ord.Count + 1) / 2) - 1] } else { '-' }
-  Write-Output "$($g.Name): $($g.Count) corridas · $deg degradadas · mediana $($med)s"
+  # `[Math]::Floor` y no `[int]`: con cardinalidad par el índice medio cae en .5, y `[int]` aplica
+  # redondeo bancario —`[int]1.5` es 2— así que devolvía el MAYOR de los dos centrales donde el
+  # `int()` de awk trunca y devuelve el menor. La mediana definida es el menor.
+  $med = if ($ord.Count) { $ord[[int][Math]::Floor(($ord.Count + 1) / 2) - 1] } else { '-' }
+  Write-Output "$($nombre): $($g.Count) corridas · $deg degradadas · mediana $($med)s"
 }
 # @fin:manifest-resumen-ps
 ```

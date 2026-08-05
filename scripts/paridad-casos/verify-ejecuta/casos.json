@@ -1,0 +1,135 @@
+{
+  "par": "verify-ejecuta",
+  "clausulas": [
+    {
+      "id": "verify-no-carga",
+      "compara_cadenas": true
+    },
+    {
+      "id": "verify-sigue-identificando",
+      "compara_cadenas": true
+    },
+    {
+      "id": "verify-perdio-revert",
+      "compara_cadenas": true
+    }
+  ],
+  "casos": [
+    {
+      "nombre": "positivo",
+      "particion": "positivo",
+      "clase_esperada": "aceptacion",
+      "objetivos": [
+        "verify-no-carga",
+        "verify-sigue-identificando",
+        "verify-perdio-revert"
+      ],
+      "precondicion": "el skill.md lleva `**CARGAR**`, no lleva `**IDENTIFICAR**` y conserva `revert-to-confirm`: las tres cláusulas en su lado válido",
+      "clausulas": {
+        "verify-no-carga": "valido",
+        "verify-sigue-identificando": "valido",
+        "verify-perdio-revert": "valido"
+      },
+      "fixture": "positivo",
+      "entradas": {
+        "skill": "{dir}/skill.md"
+      }
+    },
+    {
+      "nombre": "sin-cargar",
+      "particion": "invalido",
+      "objetivo": "verify-no-carga",
+      "clase_esperada": "rechazo",
+      "precondicion": "se quita `**CARGAR**` del skill.md y no aparece en ninguna otra forma",
+      "clausulas": {
+        "verify-no-carga": "invalido",
+        "verify-sigue-identificando": "valido",
+        "verify-perdio-revert": "valido"
+      },
+      "fixture": "sin-cargar",
+      "entradas": {
+        "skill": "{dir}/skill.md"
+      }
+    },
+    {
+      "nombre": "cargar-minuscula",
+      "particion": "casing",
+      "objetivo": "verify-no-carga",
+      "clase_esperada": "rechazo",
+      "precondicion": "`**cargar**` en minúsculas: el literal `**CARGAR**` NO está, así que la cláusula queda del lado inválido para el predicado escrito",
+      "clausulas": {
+        "verify-no-carga": "invalido",
+        "verify-sigue-identificando": "valido",
+        "verify-perdio-revert": "valido"
+      },
+      "fixture": "cargar-minuscula",
+      "entradas": {
+        "skill": "{dir}/skill.md"
+      }
+    },
+    {
+      "nombre": "con-identificar",
+      "particion": "invalido",
+      "objetivo": "verify-sigue-identificando",
+      "clase_esperada": "rechazo",
+      "precondicion": "aparece `**IDENTIFICAR**`, que es el paso que elegía la evidencia después",
+      "clausulas": {
+        "verify-no-carga": "valido",
+        "verify-sigue-identificando": "invalido",
+        "verify-perdio-revert": "valido"
+      },
+      "fixture": "con-identificar",
+      "entradas": {
+        "skill": "{dir}/skill.md"
+      }
+    },
+    {
+      "nombre": "identificar-minuscula",
+      "particion": "casing",
+      "objetivo": "verify-sigue-identificando",
+      "clase_esperada": "aceptacion",
+      "precondicion": "`**identificar**` en minúsculas: el literal prohibido `**IDENTIFICAR**` sigue ausente, así que la cláusula queda del lado VÁLIDO y el caso no es un mutante",
+      "clausulas": {
+        "verify-no-carga": "valido",
+        "verify-sigue-identificando": "valido",
+        "verify-perdio-revert": "valido"
+      },
+      "fixture": "identificar-minuscula",
+      "entradas": {
+        "skill": "{dir}/skill.md"
+      }
+    },
+    {
+      "nombre": "sin-revert",
+      "particion": "invalido",
+      "objetivo": "verify-perdio-revert",
+      "clase_esperada": "rechazo",
+      "precondicion": "se borra `revert-to-confirm`: control positivo de que el cambio no fue poda",
+      "clausulas": {
+        "verify-no-carga": "valido",
+        "verify-sigue-identificando": "valido",
+        "verify-perdio-revert": "invalido"
+      },
+      "fixture": "sin-revert",
+      "entradas": {
+        "skill": "{dir}/skill.md"
+      }
+    },
+    {
+      "nombre": "revert-mayuscula",
+      "particion": "casing",
+      "objetivo": "verify-perdio-revert",
+      "clase_esperada": "aceptacion",
+      "precondicion": "`REVERT-TO-CONFIRM`: los DOS sabores buscan sin distinguir mayúsculas (`grep -qi` y `(?i)`), así que acá se espera paridad — es el control de que la partición de casing no marca divergencia por sí sola",
+      "clausulas": {
+        "verify-no-carga": "valido",
+        "verify-sigue-identificando": "valido",
+        "verify-perdio-revert": "valido"
+      },
+      "fixture": "revert-mayuscula",
+      "entradas": {
+        "skill": "{dir}/skill.md"
+      }
+    }
+  ]
+}

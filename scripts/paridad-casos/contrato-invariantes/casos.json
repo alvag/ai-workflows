@@ -1,0 +1,93 @@
+{
+  "par": "contrato-invariantes",
+  "clausulas": [
+    {
+      "id": "ids-cambian",
+      "compara_cadenas": true
+    },
+    {
+      "id": "requisito-esperado-cambian",
+      "compara_cadenas": true
+    }
+  ],
+  "casos": [
+    {
+      "nombre": "positivo",
+      "particion": "positivo",
+      "clase_esperada": "aceptacion",
+      "objetivos": [
+        "ids-cambian",
+        "requisito-esperado-cambian"
+      ],
+      "precondicion": "v1 y v2 con el mismo conjunto de ID y el mismo requisito y esperado",
+      "clausulas": {
+        "ids-cambian": "valido",
+        "requisito-esperado-cambian": "valido"
+      },
+      "fixture": "positivo",
+      "entradas": {
+        "contrato": "{dir}/contrato.md"
+      }
+    },
+    {
+      "nombre": "id-agregado",
+      "particion": "invalido",
+      "objetivo": "ids-cambian",
+      "clase_esperada": "rechazo",
+      "precondicion": "v2 suma el ID D; los ID comunes conservan requisito y esperado",
+      "clausulas": {
+        "ids-cambian": "invalido",
+        "requisito-esperado-cambian": "valido"
+      },
+      "fixture": "id-agregado",
+      "entradas": {
+        "contrato": "{dir}/contrato.md"
+      }
+    },
+    {
+      "nombre": "requisito-cambia",
+      "particion": "invalido",
+      "objetivo": "requisito-esperado-cambian",
+      "clase_esperada": "rechazo",
+      "precondicion": "el conjunto de ID es idéntico y el requisito de A cambia de texto",
+      "clausulas": {
+        "ids-cambian": "valido",
+        "requisito-esperado-cambian": "invalido"
+      },
+      "fixture": "requisito-cambia",
+      "entradas": {
+        "contrato": "{dir}/contrato.md"
+      }
+    },
+    {
+      "nombre": "id-a-minuscula",
+      "particion": "casing",
+      "objetivo": "ids-cambian",
+      "clase_esperada": "rechazo",
+      "precondicion": "v1 declara el ID `A` y v2 lo escribe `a`: es el defecto `A→a` AISLADO del plan. POSIX compara con `cmp` sobre listas ordenadas (case-sensitive) y PowerShell con `Compare-Object` sobre claves de hashtable (case-insensitive), así que la divergencia aparece en la CLASE",
+      "clausulas": {
+        "ids-cambian": "invalido",
+        "requisito-esperado-cambian": "valido"
+      },
+      "fixture": "id-a-minuscula",
+      "entradas": {
+        "contrato": "{dir}/contrato.md"
+      }
+    },
+    {
+      "nombre": "esperado-a-minuscula",
+      "particion": "casing",
+      "objetivo": "requisito-esperado-cambian",
+      "clase_esperada": "rechazo",
+      "precondicion": "el Esperado de A pasa de `RED` a `red`; el conjunto de ID no cambia. POSIX compara con awk (`!=`, case-sensitive) y PowerShell con `-ne` (case-insensitive)",
+      "clausulas": {
+        "ids-cambian": "valido",
+        "requisito-esperado-cambian": "invalido"
+      },
+      "fixture": "esperado-a-minuscula",
+      "entradas": {
+        "contrato": "{dir}/contrato.md"
+      }
+    }
+  ]
+}

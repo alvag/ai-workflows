@@ -46,7 +46,8 @@ cross_review:                  # opcional; segunda opinión cross-model EN LOS G
   mode: auto                   # auto | "on" | "off"  (entre comillas: sin ellas YAML los parsea como booleanos)
   execution: auto              # auto (por capacidad del conductor) | sync | background
   artifacts: [master-spec, reparto]
-  max_rounds: 3
+  max_rounds: 3                # rondas POR TANDA, no de la corrida entera; al agotarse se abre el checkpoint
+  reviewer: auto               # auto (descubre por capacidad; nunca la familia del autor) | claude | codex
 co_explore: {mode: auto, deadline: 600}  # co-exploración cross-repo ANTES del reparto; ORTOGONAL a cross_review (bloque hermano, no anidado); default on en orquestación; ver SKILL.md → Co-exploración cross-model
 cross_model: {schema_version: 1, transport: cli}  # opcional; intención de transporte que heredan los sdd-flow delegados para SUS corridas delegadas: cli (default) | herdr — nunca para el fan-out por repos. `schema_version` es obligatorio si el bloque existe; ver "Transporte de las corridas delegadas"
 repos:
@@ -3558,8 +3559,8 @@ exit 1
 ```bash
 # @bloque:gate-fase-3
 # Predicado: la Fase 3 revalida la versión vigente del contrato antes de ejecutar evidencia y nunca
-# agrega ni quita IDs —la invariancia del conjunto entre versiones la hace cumplir
-# @bloque:orchestration-contract; acá se comprueba que el documento lo declare así y no como un
+# agrega ni quita IDs —la invariancia del conjunto entre versiones la hace cumplir el bloque
+# `orchestration-contract`; acá se comprueba que el documento lo declare así y no como un
 # congelado de la Fase 3—, y la agregación no puede dar verde con filas ausentes o BLOCKED.
 # Entradas: $skill_orq (el SKILL.md de sdd-orchestrator)
 [ -f "$skill_orq" ] || { printf 'ARNES:no existe %s\n' "$skill_orq" >&2; exit 99; }
@@ -3586,8 +3587,8 @@ exit $rc
 ```powershell
 # @bloque:gate-fase-3-ps
 # Predicado: la Fase 3 revalida la versión vigente del contrato antes de ejecutar evidencia y nunca
-# agrega ni quita IDs —la invariancia del conjunto entre versiones la hace cumplir
-# @bloque:orchestration-contract; acá se comprueba que el documento lo declare así y no como un
+# agrega ni quita IDs —la invariancia del conjunto entre versiones la hace cumplir el bloque
+# `orchestration-contract`; acá se comprueba que el documento lo declare así y no como un
 # congelado de la Fase 3—, y la agregación no puede dar verde con filas ausentes o BLOCKED.
 # Entradas: $skill_orq (el SKILL.md de sdd-orchestrator)
 if (-not (Test-Path -LiteralPath $skill_orq)) { Write-Output "ARNES:no existe $skill_orq"; exit 99 }
@@ -3595,7 +3596,10 @@ $rc = 0
 $doc = (Get-Content -LiteralPath $skill_orq) -join "`n"
 # `Write-Output` y no `Write-Error`: el renderizado de un ErrorRecord antepone su propio prefijo y la
 # línea deja de empezar por GUARD:, así que el marcador no se puede comparar entero.
-if ($doc -notmatch 'Gate de apertura del contrato de integración') {
+# Los operadores van en su variante case-sensitive: el par POSIX busca con `grep -q`, que distingue
+# mayúsculas. Con el operador por defecto de .NET, un `no Verificado` en la skill daría por cumplida
+# la cláusula, y un `Congelarlo **antes**` que sobrevivió en otra caja dejaría de detectarse.
+if ($doc -cnotmatch 'Gate de apertura del contrato de integración') {
   Write-Output 'GUARD:gate-fase-3 sin-gate-de-apertura'
   Write-Output '  la Fase 3 no declara el gate previo a ejecutar evidencia'
   $rc = 1
@@ -3603,12 +3607,12 @@ if ($doc -notmatch 'Gate de apertura del contrato de integración') {
 # Un solo marcador para las dos mitades. El documento tiene que declarar la revalidación Y no
 # conservar el congelado anclado a esta fase: emitirlas por separado daría DOS líneas GUARD: ante un
 # documento migrado a medias —el que dice las dos cosas—, y el arnés compara una línea entera.
-if (($doc -notmatch 'revalida la versión vigente') -or ($doc -match 'Congelarlo \*\*antes\*\*')) {
+if (($doc -cnotmatch 'revalida la versión vigente') -or ($doc -cmatch 'Congelarlo \*\*antes\*\*')) {
   Write-Output 'GUARD:gate-fase-3 no-revalida-version-vigente'
   Write-Output '  la Fase 3 no declara que revalida la versión vigente del contrato antes de ejecutar evidencia'
   $rc = 1
 }
-if ($doc -notmatch 'no verificado') {
+if ($doc -cnotmatch 'no verificado') {
   Write-Output 'GUARD:gate-fase-3 sin-veredicto-no-verificado'
   Write-Output '  la agregación no declara que una fila ausente impide el verde'
   $rc = 1

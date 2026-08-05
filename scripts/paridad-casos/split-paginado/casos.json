@@ -1,0 +1,169 @@
+{
+  "par": "split-paginado",
+  "clausulas": [
+    {
+      "id": "obs:seccion-detalle",
+      "tipo": "observable",
+      "compara_cadenas": true
+    },
+    {
+      "id": "obs:paginas",
+      "tipo": "observable",
+      "agrega": true
+    },
+    {
+      "id": "obs:metaindice",
+      "tipo": "observable",
+      "agrega": true
+    }
+  ],
+  "casos": [
+    {
+      "nombre": "positivo",
+      "particion": "positivo",
+      "clase_esperada": "aceptacion",
+      "objetivos": [
+        "obs:seccion-detalle",
+        "obs:paginas",
+        "obs:metaindice"
+      ],
+      "precondicion": "4 entradas con por_pagina 2: dos páginas llenas y las dos secciones presentes",
+      "clausulas": {
+        "obs:seccion-detalle": "valido",
+        "obs:paginas": "valido",
+        "obs:metaindice": "valido"
+      },
+      "fixture": "positivo",
+      "entradas": {
+        "raw": "{dir}/raw.md",
+        "base": "{dir}/salida",
+        "por_pagina": "2"
+      }
+    },
+    {
+      "nombre": "sin-detalle",
+      "particion": "invalido",
+      "objetivo": "obs:seccion-detalle",
+      "clase_esperada": "rechazo",
+      "precondicion": "el crudo no tiene la sección `## Detalle`. Los dos sabores lo comprueban ANTES de partir y rechazan con diagnóstico; antes POSIX moría en un `mv` sobre un temporal que el awk nunca creó y PowerShell escribía un detalle vacío y salía 0",
+      "clausulas": {
+        "obs:seccion-detalle": "invalido",
+        "obs:paginas": "valido",
+        "obs:metaindice": "valido"
+      },
+      "fixture": "sin-detalle",
+      "entradas": {
+        "raw": "{dir}/raw.md",
+        "base": "{dir}/salida",
+        "por_pagina": "2"
+      }
+    },
+    {
+      "nombre": "seccion-minuscula",
+      "particion": "casing",
+      "objetivo": "obs:seccion-detalle",
+      "clase_esperada": "rechazo",
+      "precondicion": "los títulos van `## índice` y `## detalle` en minúsculas: los literales normativos NO están, así que para los dos sabores no hay sección de detalle y los dos rechazan por la misma cláusula que `sin-detalle`",
+      "clausulas": {
+        "obs:seccion-detalle": "invalido",
+        "obs:paginas": "valido",
+        "obs:metaindice": "valido"
+      },
+      "fixture": "seccion-minuscula",
+      "entradas": {
+        "raw": "{dir}/raw.md",
+        "base": "{dir}/salida",
+        "por_pagina": "2"
+      }
+    },
+    {
+      "nombre": "vacio",
+      "particion": "vacio",
+      "objetivos": [
+        "obs:paginas",
+        "obs:metaindice"
+      ],
+      "clase_esperada": "aceptacion",
+      "precondicion": "el índice tiene cabecera y separador pero ninguna fila: cero páginas",
+      "clausulas": {
+        "obs:seccion-detalle": "valido",
+        "obs:paginas": "valido",
+        "obs:metaindice": "valido"
+      },
+      "fixture": "vacio",
+      "entradas": {
+        "raw": "{dir}/raw.md",
+        "base": "{dir}/salida",
+        "por_pagina": "2"
+      }
+    },
+    {
+      "nombre": "singleton",
+      "particion": "singleton",
+      "objetivos": [
+        "obs:paginas",
+        "obs:metaindice"
+      ],
+      "clase_esperada": "aceptacion",
+      "precondicion": "una sola entrada: una página con una fila",
+      "clausulas": {
+        "obs:seccion-detalle": "valido",
+        "obs:paginas": "valido",
+        "obs:metaindice": "valido"
+      },
+      "fixture": "singleton",
+      "entradas": {
+        "raw": "{dir}/raw.md",
+        "base": "{dir}/salida",
+        "por_pagina": "2"
+      }
+    },
+    {
+      "nombre": "paginas-desiguales",
+      "particion": "impar",
+      "objetivos": [
+        "obs:paginas",
+        "obs:metaindice"
+      ],
+      "clase_esperada": "aceptacion",
+      "precondicion": "3 entradas con por_pagina 2: la última página queda con una sola fila. Los dos sabores salen 0, no emiten eventos y su stdout es vacío, así que si difieren solo puede gobernarlo la dimensión de artefactos",
+      "clausulas": {
+        "obs:seccion-detalle": "valido",
+        "obs:paginas": "valido",
+        "obs:metaindice": "valido"
+      },
+      "fixture": "paginas-desiguales",
+      "entradas": {
+        "raw": "{dir}/raw.md",
+        "base": "{dir}/salida",
+        "por_pagina": "2"
+      }
+    },
+    {
+      "nombre": "residuo-detectable",
+      "particion": "par",
+      "objetivos": [
+        "obs:paginas",
+        "obs:metaindice"
+      ],
+      "clase_esperada": "aceptacion",
+      "entradas": {
+        "raw": "{dir}/raw.md",
+        "base": "{dir}/salida",
+        "por_pagina": "3"
+      },
+      "precondicion": "4 entradas con por_pagina 3: una página llena y un residuo de una. Se usa para comprobar que invertir el orden de ejecución no cambia el veredicto y que el fixture fuente queda byte-idéntico",
+      "clausulas": {
+        "obs:seccion-detalle": "valido",
+        "obs:paginas": "valido",
+        "obs:metaindice": "valido"
+      },
+      "fixture": "residuo-detectable"
+    }
+  ],
+  "observables": {
+    "obs:seccion-detalle": "el archivo `detail-<base>.md` con el contenido de `## Detalle`",
+    "obs:paginas": "los archivos `<base>-pNN.md`, de a lo sumo $por_pagina filas cada uno",
+    "obs:metaindice": "el archivo `<base>.md` con una fila por página y su conteo de entradas"
+  }
+}

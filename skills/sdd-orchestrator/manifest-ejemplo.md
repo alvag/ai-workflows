@@ -9,11 +9,11 @@ dueño.** Existe para poder mirar el archivo completo y copiar lo que sirva; no 
 autoridad de ninguna clave.
 
 **Solo configuración.** El esquema completo de `manifest.yml` (`sdd-orchestrator/reference.md` →
-"Esquema de `manifest.yml`") tiene 16 hojas; 5 son **estado de corrida** de la orquestación, no
+"Esquema de `manifest.yml`") tiene 17 hojas; 5 son **estado de corrida** de la orquestación, no
 configuración, y no aparecen acá: `id`, `created_at`, `master_spec`, `repos` y
 `orchestration_tasks`. Las dos últimas anidan estado propio: `repos` incluye, por cada repo del DAG,
 `branch`, `status`, `depends_on` y `covers_ac`; y `orchestration_tasks`, por cada tarea, su `phase`,
-`owner`, `status` y `done_when` — también estado, no config. Este archivo documenta las 11
+`owner`, `status` y `done_when` — también estado, no config. Este archivo documenta las 12
 restantes.
 
 **Copialo entero o por bloques.** Una clave que borres vuelve a su default —salvo las marcadas
@@ -43,7 +43,8 @@ cross_review:
   mode: auto                     # auto (por complejidad) | "on" | "off" — [def]
   execution: auto                # auto (por capacidad del conductor) | sync | background — [def]
   artifacts: [master-spec, reparto]   # [def] qué artefactos revisar (difiere del default de sdd-flow)
-  max_rounds: 3                  # [def] tope de rondas
+  max_rounds: 3                  # [def] rondas por TANDA, no de la corrida entera
+  reviewer: auto                 # auto | claude | codex — [def] nunca la familia del autor
 
 # ── dueño: co-explore/SKILL.md → "Configuración" ──
 co_explore:

@@ -1,0 +1,86 @@
+{
+  "par": "contrato-cobertura",
+  "clausulas": [
+    {
+      "id": "requisito-sin-fila",
+      "compara_cadenas": true
+    },
+    {
+      "id": "fila-sin-requisito",
+      "compara_cadenas": true
+    }
+  ],
+  "casos": [
+    {
+      "nombre": "positivo",
+      "particion": "positivo",
+      "clase_esperada": "aceptacion",
+      "objetivos": [
+        "requisito-sin-fila",
+        "fila-sin-requisito"
+      ],
+      "precondicion": "alcance {A, C} y la v1 vigente tiene una fila por cada uno",
+      "clausulas": {
+        "requisito-sin-fila": "valido",
+        "fila-sin-requisito": "valido"
+      },
+      "fixture": "positivo",
+      "entradas": {
+        "contrato": "{dir}/contrato.md",
+        "reqs": "{dir}/reqs.txt"
+      }
+    },
+    {
+      "nombre": "requisito-sin-fila",
+      "particion": "invalido",
+      "objetivo": "requisito-sin-fila",
+      "clase_esperada": "rechazo",
+      "precondicion": "C está en alcance y ninguna fila lo cita; ninguna fila cita nada de fuera",
+      "clausulas": {
+        "requisito-sin-fila": "invalido",
+        "fila-sin-requisito": "valido"
+      },
+      "fixture": "requisito-sin-fila",
+      "entradas": {
+        "contrato": "{dir}/contrato.md",
+        "reqs": "{dir}/reqs.txt"
+      }
+    },
+    {
+      "nombre": "fila-sin-requisito",
+      "particion": "invalido",
+      "objetivo": "fila-sin-requisito",
+      "clase_esperada": "rechazo",
+      "precondicion": "una fila cita Z, que no está en alcance; todo requisito tiene fila",
+      "clausulas": {
+        "requisito-sin-fila": "valido",
+        "fila-sin-requisito": "invalido"
+      },
+      "fixture": "fila-sin-requisito",
+      "entradas": {
+        "contrato": "{dir}/contrato.md",
+        "reqs": "{dir}/reqs.txt"
+      }
+    },
+    {
+      "nombre": "case-mixto",
+      "particion": "casing",
+      "objetivos": [
+        "requisito-sin-fila",
+        "fila-sin-requisito"
+      ],
+      "clase_esperada": "rechazo",
+      "exento_mono_causa": "el casing mueve las dos direcciones con una sola edición, igual que el `A→a` documentado en el plan: A/C en alcance contra a/B citados",
+      "precondicion": "alcance {A, C}; las filas citan {a, B}. POSIX compara con `comm` case-sensitive y PowerShell con `-notin` case-insensitive: la divergencia vive en el PAYLOAD (ausentes `A C` contra `C`) y no en la cantidad de eventos, que es la misma",
+      "clausulas": {
+        "requisito-sin-fila": "invalido",
+        "fila-sin-requisito": "invalido"
+      },
+      "fixture": "case-mixto",
+      "entradas": {
+        "contrato": "{dir}/contrato.md",
+        "reqs": "{dir}/reqs.txt"
+      }
+    }
+  ]
+}

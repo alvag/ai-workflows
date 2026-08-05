@@ -43,13 +43,21 @@ artefacto escrito ──► [cross-review] ──► artefacto (quizá revisado)
    de escritura y el veredicto lo captura el conductor, pero en la vía de panes lo escribe él mismo
    y el perfil que lo habilita le abre todo el working dir (`transporte-herdr.md` → "Perfil de
    permisos"). Quien edita el artefacto —si hay algo que aplicar— es Claude, no el revisor.
-2. **Loop acotado.** Máximo `max_rounds` rondas (default 3). Termina por veredicto `APPROVED` o
-   por agotar las rondas. Nunca un loop abierto.
-3. **Claude/el usuario son el árbitro final — sin sycophancy.** Los findings del revisor son
-   *insumo*, no órdenes. Antes de aplicar cualquiera, evaluarlo con la disciplina de
+2. **Loop acotado — el tope existe siempre, y quien lo extiende es el humano.** `max_rounds`
+   (default 3) es el presupuesto de **una tanda**, no de la corrida entera: al agotarse **no se
+   cierra**, se abre un checkpoint donde el humano elige entre cuatro opciones, y si concede, la
+   corrida sigue con otra tanda finita. Lo que esta regla garantiza es que **el loop nunca corre sin
+   tope**; no existe un modo que corra hasta `APPROVED` sin límite, ni siquiera el automático, que
+   captura el suyo al elegirse. **Donde no hay forma de presentar un gate humano no se pregunta:** se
+   agota, se cierra en `REVISE` con las disputas abiertas y se escala. Esa excepción se funda en la
+   **capacidad de presentar un gate**, nunca en `execution` ni en el transporte.
+3. **Claude/el usuario son el árbitro final — sin sycophancy, en las dos direcciones.** Los findings
+   del revisor son *insumo*, no órdenes. Antes de aplicar cualquiera, evaluarlo con la disciplina de
    `superpowers:receiving-code-review`: verificar técnicamente, rebatir lo incorrecto o
-   inaplicable, y **registrar el porqué** de cada decisión (aplicado o rechazado). Aceptar a
-   ciegas es tan dañino como ignorar a ciegas.
+   inaplicable, y **registrar el porqué** de cada decisión — un rechazo sin motivo es un estado
+   inválido. Aceptar a ciegas es tan dañino como ignorar a ciegas. **Y vale igual del otro lado:**
+   una defensa admisible del revisor obliga a **re-arbitrar**, no a aceptar; nadie se vuelve árbitro
+   por defender bien.
 4. **Foco, no estilo.** La revisión apunta a correctitud del enfoque, AC faltantes o
    contradictorios, riesgos, testeabilidad de los AC y gaps de contrato (en multi-repo). **No**
    a wording, formato ni preferencias cosméticas — eso es "review theater" y mete ruido.
@@ -186,11 +194,15 @@ Antes de nada, resolver si hay un segundo modelo disponible (algoritmo y opcione
    `receiving-code-review`): aplicar / rechazar / escalar. Ordenar el triage por severidad×confianza
    (atacar primero lo grave y probable), pero **verificar cada finding igual** — la confianza no
    saltea la regla 3. Aplicar los aceptados editando el artefacto (Claude edita, no el revisor).
-   Registrar todo en `review-log.md` con el rationale, incluidos los rechazos.
-5. **Siguiente ronda** reanudando el mismo thread del revisor (resume; mandar solo el delta:
-   "apliqué X e Y; rechacé Z porque…; revisa de nuevo"). Repetir desde el paso 2.
-6. **Corte por `max_rounds`.** Si se agotan las rondas sin `APPROVED`, parar y escalar al humano
-   las disputas abiertas (findings no resueltos), con el estado en `review-log.md`.
+   **Todo rechazo lleva motivo: un rechazo sin motivo es un estado inválido, no un default.**
+   Registrar cada evento en el **ledger** del `review-log.md`.
+5. **Siguiente ronda** reanudando el mismo thread, con el asset `review-round-n.md`: el delta se
+   **proyecta desde el ledger** y el revisor debe pronunciarse por cada rechazo —aceptarlo o
+   defenderlo con argumento nuevo—. Repetir desde el paso 2.
+6. **Corte por tanda.** `max_rounds` es el presupuesto de **una tanda**, no de la corrida: al
+   agotarse se abre el **checkpoint** donde el humano elige entre cuatro opciones, y la numeración
+   de rondas acumula si concede. Ver `ciclo-de-vida.md` y `reference.md` → "Tandas y salida de
+   rondas".
 
 ## Salida
 
@@ -203,6 +215,13 @@ Devolver a la skill llamadora (o presentar, en modo directo):
 - **Resumen de la crítica:** qué marcó el revisor, qué aplicó Claude y qué rechazó (con el porqué).
 - **Diff del artefacto** si hubo cambios.
 - **Ruta del `review-log.md`.**
+- **`tandas_concedibles`** — presente en **todo `REVISE` que abra el checkpoint**, por cualquiera de
+  sus dos causas: `disponibles` (bool) · `rondas_consumidas` (entero, de la corrida) ·
+  `tamano_tanda` (entero, el `max_rounds` vigente) · `causa_corte` (`tanda_agotada` |
+  `solo_disputas`) · `run_id`, con el que la llamadora reanuda **la misma** corrida.
+  `disponibles` es **falso** solo cuando la causa es `solo_disputas` —ninguna ronda las resuelve—, y
+  **no oculta ni deshabilita ninguna opción**: las cuatro se ofrecen siempre; lo que hace es advertir
+  que conceder no puede converger.
 - **Nota de límite** (obligatoria, una vez por corrida):
 
   > Un revisor independiente de otra familia aporta una crítica adicional; sigue siendo **una
@@ -214,7 +233,9 @@ Devolver a la skill llamadora (o presentar, en modo directo):
   autor, no dos voces simétricas como en `co-explore`.
 
 La llamadora presenta este resumen **junto al artefacto** en su gate humano (mismo STOP, sin gate
-extra). El humano aprueba con la segunda opinión ya a la vista.
+extra). El humano aprueba con la segunda opinión ya a la vista, y ahí mismo elige entre las **cuatro
+opciones** del checkpoint si la corrida lo abrió. En modo **directo** y **draft** no hay llamadora:
+las presenta `cross-review`, que ya presenta su propio resultado.
 
 Además, al resolver el veredicto se escribe el **manifest de corrida** — los tres veredictos, no
 solo `APPROVED`: una serie que registra las revisiones que convergieron y omite las que agotaron
@@ -268,7 +289,7 @@ cross_review:
   mode: auto            # auto (por complejidad) | "on" | "off"  (entre comillas: sin ellas YAML los parsea como booleanos)
   execution: auto       # auto (por capacidad del conductor) | sync | background
   artifacts: [spec, plan, tasks]   # qué tipos revisar (sdd-orchestrator: [master-spec, reparto])
-  max_rounds: 3
+  max_rounds: 3         # rondas POR TANDA, no de la corrida entera; al agotarse se abre el checkpoint
   reviewer: auto        # auto (descubre por capacidad; nunca la familia del autor) | claude | codex
 ```
 
@@ -301,6 +322,12 @@ nunca espera indefinida (ver `reference.md` → "Latencia y timeout (Claude revi
   read-only / resume entre rondas), **portabilidad entre shells (POSIX / PowerShell)**, plantilla
   del prompt, formato de salida, plantilla del `review-log.md`, y el foco de revisión por tipo de
   artefacto.
+- `ciclo-de-vida.md` — identidad del finding, estados y transiciones, ledger y su esquema,
+  presupuestos, vara de admisión de la defensa, cierre y adopción de logs legacy. Se carga ante la
+  **primera salida conforme que traiga al menos un finding, cualquiera sea el veredicto** — no al
+  primer rechazo (la ingesta ya está gobernada por ese contrato) y no al primer `REVISE` (un
+  `APPROVED` con findings `low` también lo necesita). Una corrida `APPROVED` **sin** findings no lo
+  carga.
 - `transporte-herdr.md` — el adaptador del transporte por panes: activación, perfil de permisos,
   entradas y salidas, independencia, deadline, continuidad entre rondas, validación del artefacto y
   cleanup. Se lee **solo cuando la activación del flujo resolvió a esa vía**; con el transporte CLI

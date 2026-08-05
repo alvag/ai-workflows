@@ -1017,8 +1017,8 @@ exit $rc
 $cab = '| ID | Requisito | Evidencia | Comando/observación | Esperado | Baseline |'
 $rc = 0
 $doc = Get-Content -LiteralPath $plan
-if ($doc -notcontains $cab) { Write-Error 'GUARD:materializacion-unica el plan no materializa la cabecera normativa'; $rc = 1 }
-$otras = @($doc | Where-Object { $_ -match '^\|\s*ID\s*\|' -and $_ -ne $cab })
+if ($doc -cnotcontains $cab) { Write-Error 'GUARD:materializacion-unica el plan no materializa la cabecera normativa'; $rc = 1 }
+$otras = @($doc | Where-Object { $_ -cmatch '^\|\s*ID\s*\|' -and $_ -cne $cab })
 if ($otras.Count -gt 0) { Write-Error "GUARD:materializacion-unica hay una tabla de contrato con otro esquema: $($otras -join ' | ')"; $rc = 1 }
 exit $rc
 # @fin:materializacion-contrato-ps
@@ -1048,13 +1048,13 @@ rm -rf "$t"; exit $rc
 # Entradas: $plan
 $rc = 0
 $doc = Get-Content -LiteralPath $plan
-$ac = @($doc | Where-Object { $_ -match '^- \*\*(AC-[0-9a-z]+)' } | ForEach-Object { [regex]::Match($_, '^- \*\*(AC-[0-9a-z]+)').Groups[1].Value } | Sort-Object -Unique)
-$citados = @($doc | Where-Object { $_ -match '^\|' -and $_ -notmatch '^\|\s*(ID\s*\||[-: |]+\|)' } |
+$ac = @($doc | Where-Object { $_ -cmatch '^- \*\*(AC-[0-9a-z]+)' } | ForEach-Object { [regex]::Match($_, '^- \*\*(AC-[0-9a-z]+)').Groups[1].Value } | Sort-Object -Unique -CaseSensitive)
+$citados = @($doc | Where-Object { $_ -cmatch '^\|' -and $_ -cnotmatch '^\|\s*(ID\s*\||[-: |]+\|)' } |
   ForEach-Object { ($_ -split '\|')[2].Trim() -split '\s+' | Select-Object -First 1 } |
-  Where-Object { $_ } | Sort-Object -Unique)
-$sinFila = $ac | Where-Object { $_ -notin $citados }
+  Where-Object { $_ } | Sort-Object -Unique -CaseSensitive)
+$sinFila = $ac | Where-Object { $_ -cnotin $citados }
 if ($sinFila) { Write-Error "GUARD:cobertura-ac-fila AC sin fila: $($sinFila -join ' ')"; $rc = 1 }
-$sinAc = $citados | Where-Object { $_ -notin $ac }
+$sinAc = $citados | Where-Object { $_ -cnotin $ac }
 if ($sinAc) { Write-Error "GUARD:cobertura-ac-fila fila sin AC declarado: $($sinAc -join ' ')"; $rc = 1 }
 exit $rc
 # @fin:cobertura-ac-fila-ps
@@ -1086,8 +1086,8 @@ exit $rc
 # Entradas: $skill (el SKILL.md de sdd-flow)
 $rc = 0
 $doc = (Get-Content -LiteralPath $skill) -join "`n"
-if ($doc -notmatch '\*\*CARGAR\*\*') { Write-Error 'GUARD:verify-solo-ejecuta el paso verify no carga la fila del contrato'; $rc = 1 }
-if ($doc -match '\*\*IDENTIFICAR\*\*') { Write-Error 'GUARD:verify-solo-ejecuta el paso verify sigue eligiendo evidencia (IDENTIFICAR)'; $rc = 1 }
+if ($doc -cnotmatch '\*\*CARGAR\*\*') { Write-Error 'GUARD:verify-solo-ejecuta el paso verify no carga la fila del contrato'; $rc = 1 }
+if ($doc -cmatch '\*\*IDENTIFICAR\*\*') { Write-Error 'GUARD:verify-solo-ejecuta el paso verify sigue eligiendo evidencia (IDENTIFICAR)'; $rc = 1 }
 if ($doc -notmatch '(?i)revert-to-confirm') { Write-Error 'GUARD:verify-solo-ejecuta se perdió revert-to-confirm'; $rc = 1 }
 exit $rc
 # @fin:verify-ejecuta-ps

@@ -1,0 +1,214 @@
+{
+  "par": "manifest-valido",
+  "clausulas": [
+    {
+      "id": "falta-campo",
+      "compara_cadenas": true
+    },
+    {
+      "id": "campo-recortado",
+      "compara_cadenas": true
+    },
+    {
+      "id": "families-no-lista",
+      "compara_cadenas": false,
+      "nota": "el discriminador es el corchete `[`, que no tiene casing que alterar"
+    },
+    {
+      "id": "skill-fuera-del-ecosistema",
+      "compara_cadenas": true
+    },
+    {
+      "id": "valor-fuera-de-vocabulario",
+      "compara_cadenas": true
+    }
+  ],
+  "casos": [
+    {
+      "nombre": "positivo",
+      "particion": "positivo",
+      "clase_esperada": "aceptacion",
+      "objetivos": [
+        "falta-campo",
+        "campo-recortado",
+        "families-no-lista",
+        "skill-fuera-del-ecosistema",
+        "valor-fuera-de-vocabulario"
+      ],
+      "precondicion": "los ocho campos del núcleo, ninguno recortado, families como lista y los tres valores dentro del vocabulario de cross-review",
+      "clausulas": {
+        "falta-campo": "valido",
+        "campo-recortado": "valido",
+        "families-no-lista": "valido",
+        "skill-fuera-del-ecosistema": "valido",
+        "valor-fuera-de-vocabulario": "valido"
+      },
+      "fixture": "positivo",
+      "entradas": {
+        "manifest": "{dir}/manifest.json"
+      }
+    },
+    {
+      "nombre": "falta-started-at",
+      "particion": "invalido",
+      "objetivo": "falta-campo",
+      "clase_esperada": "rechazo",
+      "precondicion": "falta `started_at`, que ninguna otra cláusula consume",
+      "clausulas": {
+        "falta-campo": "invalido",
+        "campo-recortado": "valido",
+        "families-no-lista": "valido",
+        "skill-fuera-del-ecosistema": "valido",
+        "valor-fuera-de-vocabulario": "valido"
+      },
+      "fixture": "falta-started-at",
+      "entradas": {
+        "manifest": "{dir}/manifest.json"
+      }
+    },
+    {
+      "nombre": "started-at-casing",
+      "particion": "casing",
+      "objetivo": "falta-campo",
+      "clase_esperada": "rechazo",
+      "precondicion": "el campo se escribe `Started_at`: el nombre normativo `started_at` NO está. Se elige ese campo justamente porque ninguna otra cláusula lo lee, así que el mutante sigue siendo mono-causa",
+      "clausulas": {
+        "falta-campo": "invalido",
+        "campo-recortado": "valido",
+        "families-no-lista": "valido",
+        "skill-fuera-del-ecosistema": "valido",
+        "valor-fuera-de-vocabulario": "valido"
+      },
+      "fixture": "started-at-casing",
+      "entradas": {
+        "manifest": "{dir}/manifest.json"
+      }
+    },
+    {
+      "nombre": "campo-recortado-presente",
+      "particion": "invalido",
+      "objetivo": "campo-recortado",
+      "clase_esperada": "rechazo",
+      "precondicion": "aparece `attempts`, uno de los cuatro campos recortados del esquema",
+      "clausulas": {
+        "falta-campo": "valido",
+        "campo-recortado": "invalido",
+        "families-no-lista": "valido",
+        "skill-fuera-del-ecosistema": "valido",
+        "valor-fuera-de-vocabulario": "valido"
+      },
+      "fixture": "campo-recortado-presente",
+      "entradas": {
+        "manifest": "{dir}/manifest.json"
+      }
+    },
+    {
+      "nombre": "campo-recortado-casing",
+      "particion": "casing",
+      "objetivo": "campo-recortado",
+      "clase_esperada": "aceptacion",
+      "precondicion": "aparece `Attempts`, que NO es el nombre recortado `attempts`: la cláusula queda del lado válido para el predicado escrito y el caso no es mutante",
+      "clausulas": {
+        "falta-campo": "valido",
+        "campo-recortado": "valido",
+        "families-no-lista": "valido",
+        "skill-fuera-del-ecosistema": "valido",
+        "valor-fuera-de-vocabulario": "valido"
+      },
+      "fixture": "campo-recortado-casing",
+      "entradas": {
+        "manifest": "{dir}/manifest.json"
+      }
+    },
+    {
+      "nombre": "families-escalar",
+      "particion": "invalido",
+      "objetivo": "families-no-lista",
+      "clase_esperada": "rechazo",
+      "precondicion": "`families` es una cadena y no una lista; el campo sigue presente",
+      "clausulas": {
+        "falta-campo": "valido",
+        "campo-recortado": "valido",
+        "families-no-lista": "invalido",
+        "skill-fuera-del-ecosistema": "valido",
+        "valor-fuera-de-vocabulario": "valido"
+      },
+      "fixture": "families-escalar",
+      "entradas": {
+        "manifest": "{dir}/manifest.json"
+      }
+    },
+    {
+      "nombre": "skill-desconocida",
+      "particion": "invalido",
+      "objetivo": "skill-fuera-del-ecosistema",
+      "clase_esperada": "rechazo",
+      "precondicion": "skill `bogus`: al no tener fila, el vocabulario queda vacío y la cláusula de valores no se evalúa, así que el mutante sigue siendo mono-causa",
+      "clausulas": {
+        "falta-campo": "valido",
+        "campo-recortado": "valido",
+        "families-no-lista": "valido",
+        "skill-fuera-del-ecosistema": "invalido",
+        "valor-fuera-de-vocabulario": "valido"
+      },
+      "fixture": "skill-desconocida",
+      "entradas": {
+        "manifest": "{dir}/manifest.json"
+      }
+    },
+    {
+      "nombre": "skill-casing",
+      "particion": "casing",
+      "objetivo": "skill-fuera-del-ecosistema",
+      "clase_esperada": "rechazo",
+      "precondicion": "skill `Cross-Review`: POSIX resuelve con `case` (case-sensitive) y cae en `*)`; PowerShell resuelve con `switch`, que es case-insensitive por defecto y sí matchea la fila",
+      "clausulas": {
+        "falta-campo": "valido",
+        "campo-recortado": "valido",
+        "families-no-lista": "valido",
+        "skill-fuera-del-ecosistema": "invalido",
+        "valor-fuera-de-vocabulario": "valido"
+      },
+      "fixture": "skill-casing",
+      "entradas": {
+        "manifest": "{dir}/manifest.json"
+      }
+    },
+    {
+      "nombre": "transport-bogus",
+      "particion": "invalido",
+      "objetivo": "valor-fuera-de-vocabulario",
+      "clase_esperada": "rechazo",
+      "precondicion": "transport `bogus`, que no pertenece al vocabulario de cross-review",
+      "clausulas": {
+        "falta-campo": "valido",
+        "campo-recortado": "valido",
+        "families-no-lista": "valido",
+        "skill-fuera-del-ecosistema": "valido",
+        "valor-fuera-de-vocabulario": "invalido"
+      },
+      "fixture": "transport-bogus",
+      "entradas": {
+        "manifest": "{dir}/manifest.json"
+      }
+    },
+    {
+      "nombre": "transport-HERDR",
+      "particion": "casing",
+      "objetivo": "valor-fuera-de-vocabulario",
+      "clase_esperada": "rechazo",
+      "precondicion": "transport `HERDR`: el valor permitido con el casing alterado. POSIX lo rechaza con `grep -qxF` y PowerShell lo acepta con `-notcontains`, que es case-insensitive. Un mutante `bogus` cualquiera NO revela esto: los dos sabores coinciden y el par se declararía en paridad",
+      "clausulas": {
+        "falta-campo": "valido",
+        "campo-recortado": "valido",
+        "families-no-lista": "valido",
+        "skill-fuera-del-ecosistema": "valido",
+        "valor-fuera-de-vocabulario": "invalido"
+      },
+      "fixture": "transport-HERDR",
+      "entradas": {
+        "manifest": "{dir}/manifest.json"
+      }
+    }
+  ]
+}

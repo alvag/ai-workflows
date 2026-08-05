@@ -1,0 +1,212 @@
+{
+  "par": "gate-congelado",
+  "clausulas": [
+    {
+      "id": "sin-tabla",
+      "compara_cadenas": true,
+      "agrega": true,
+      "nota": "cuenta las filas de la tabla vigente para decidir si hay tabla"
+    },
+    {
+      "id": "baseline-sin-resolver",
+      "compara_cadenas": true
+    },
+    {
+      "id": "bitacora-sin-congelar",
+      "compara_cadenas": true
+    }
+  ],
+  "casos": [
+    {
+      "nombre": "positivo",
+      "particion": "positivo",
+      "objetivos": [
+        "sin-tabla",
+        "baseline-sin-resolver",
+        "bitacora-sin-congelar"
+      ],
+      "clase_esperada": "aceptacion",
+      "precondicion": "hay tabla, todos los baseline resueltos y la bitácora registra el congelamiento",
+      "clausulas": {
+        "sin-tabla": "valido",
+        "baseline-sin-resolver": "valido",
+        "bitacora-sin-congelar": "valido"
+      },
+      "fixture": "positivo",
+      "entradas": {
+        "contrato": "{dir}/contrato.md",
+        "bitacora": "{dir}/bitacora.md"
+      }
+    },
+    {
+      "nombre": "baseline-vacio",
+      "particion": "invalido",
+      "objetivo": "baseline-sin-resolver",
+      "clase_esperada": "rechazo",
+      "precondicion": "una fila con el baseline en blanco; hay tabla y la bitácora congela",
+      "clausulas": {
+        "sin-tabla": "valido",
+        "baseline-sin-resolver": "invalido",
+        "bitacora-sin-congelar": "valido"
+      },
+      "fixture": "baseline-vacio",
+      "entradas": {
+        "contrato": "{dir}/contrato.md",
+        "bitacora": "{dir}/bitacora.md"
+      }
+    },
+    {
+      "nombre": "baseline-espacios",
+      "particion": "casing",
+      "objetivo": "baseline-sin-resolver",
+      "clase_esperada": "aceptacion",
+      "precondicion": "el baseline dice `red` en minúsculas: NO está vacío, así que esta cláusula —que solo mira si quedó sin resolver— se cumple. Es el control de que un cambio de casing en esa columna no la dispara",
+      "clausulas": {
+        "sin-tabla": "valido",
+        "baseline-sin-resolver": "valido",
+        "bitacora-sin-congelar": "valido"
+      },
+      "fixture": "baseline-espacios",
+      "entradas": {
+        "contrato": "{dir}/contrato.md",
+        "bitacora": "{dir}/bitacora.md"
+      }
+    },
+    {
+      "nombre": "sin-congelar",
+      "particion": "invalido",
+      "objetivo": "bitacora-sin-congelar",
+      "clase_esperada": "rechazo",
+      "precondicion": "la bitácora no registra `paso: congelar`; el contrato está bien",
+      "clausulas": {
+        "sin-tabla": "valido",
+        "baseline-sin-resolver": "valido",
+        "bitacora-sin-congelar": "invalido"
+      },
+      "fixture": "sin-congelar",
+      "entradas": {
+        "contrato": "{dir}/contrato.md",
+        "bitacora": "{dir}/bitacora.md"
+      }
+    },
+    {
+      "nombre": "congelar-casing",
+      "particion": "casing",
+      "objetivo": "bitacora-sin-congelar",
+      "clase_esperada": "rechazo",
+      "precondicion": "la bitácora escribe `paso: Congelar` con mayúscula: el literal normativo NO está. POSIX lo busca con `grep -q` case-sensitive y PowerShell con `-notmatch`, case-insensitive",
+      "clausulas": {
+        "sin-tabla": "valido",
+        "baseline-sin-resolver": "valido",
+        "bitacora-sin-congelar": "invalido"
+      },
+      "fixture": "congelar-casing",
+      "entradas": {
+        "contrato": "{dir}/contrato.md",
+        "bitacora": "{dir}/bitacora.md"
+      }
+    },
+    {
+      "nombre": "sin-version",
+      "particion": "invalido",
+      "objetivo": "sin-tabla",
+      "clase_esperada": "rechazo",
+      "precondicion": "el documento no tiene ningún encabezado `## vN`, así que no hay versión vigente de la cual extraer filas",
+      "clausulas": {
+        "sin-tabla": "invalido",
+        "baseline-sin-resolver": "valido",
+        "bitacora-sin-congelar": "valido"
+      },
+      "fixture": "sin-version",
+      "entradas": {
+        "contrato": "{dir}/contrato.md",
+        "bitacora": "{dir}/bitacora.md"
+      }
+    },
+    {
+      "nombre": "version-casing",
+      "particion": "casing",
+      "objetivo": "sin-tabla",
+      "clase_esperada": "rechazo",
+      "precondicion": "el encabezado dice `## V1` con mayúscula: el patrón normativo `#+ v[0-9]+` NO lo reconoce, así que no hay versión vigente. POSIX lo busca con `grep -oE` case-sensitive y PowerShell con `Select-String`, que es case-insensitive y sí la encuentra",
+      "clausulas": {
+        "sin-tabla": "invalido",
+        "baseline-sin-resolver": "valido",
+        "bitacora-sin-congelar": "valido"
+      },
+      "fixture": "version-casing",
+      "entradas": {
+        "contrato": "{dir}/contrato.md",
+        "bitacora": "{dir}/bitacora.md"
+      }
+    },
+    {
+      "nombre": "tabla-vacia",
+      "particion": "vacio",
+      "objetivo": "sin-tabla",
+      "clase_esperada": "rechazo",
+      "precondicion": "la versión vigente tiene cabecera y separador y ninguna fila",
+      "clausulas": {
+        "sin-tabla": "invalido",
+        "baseline-sin-resolver": "valido",
+        "bitacora-sin-congelar": "valido"
+      },
+      "fixture": "tabla-vacia",
+      "entradas": {
+        "contrato": "{dir}/contrato.md",
+        "bitacora": "{dir}/bitacora.md"
+      }
+    },
+    {
+      "nombre": "tabla-singleton",
+      "particion": "singleton",
+      "objetivo": "sin-tabla",
+      "clase_esperada": "aceptacion",
+      "precondicion": "una sola fila: el primer valor por encima del vacío",
+      "clausulas": {
+        "sin-tabla": "valido",
+        "baseline-sin-resolver": "valido",
+        "bitacora-sin-congelar": "valido"
+      },
+      "fixture": "tabla-singleton",
+      "entradas": {
+        "contrato": "{dir}/contrato.md",
+        "bitacora": "{dir}/bitacora.md"
+      }
+    },
+    {
+      "nombre": "tabla-par",
+      "particion": "par",
+      "objetivo": "sin-tabla",
+      "clase_esperada": "aceptacion",
+      "precondicion": "dos filas, las dos con baseline resuelto",
+      "clausulas": {
+        "sin-tabla": "valido",
+        "baseline-sin-resolver": "valido",
+        "bitacora-sin-congelar": "valido"
+      },
+      "fixture": "tabla-par",
+      "entradas": {
+        "contrato": "{dir}/contrato.md",
+        "bitacora": "{dir}/bitacora.md"
+      }
+    },
+    {
+      "nombre": "tabla-impar",
+      "particion": "impar",
+      "objetivo": "sin-tabla",
+      "clase_esperada": "aceptacion",
+      "precondicion": "tres filas, todas con baseline resuelto",
+      "clausulas": {
+        "sin-tabla": "valido",
+        "baseline-sin-resolver": "valido",
+        "bitacora-sin-congelar": "valido"
+      },
+      "fixture": "tabla-impar",
+      "entradas": {
+        "contrato": "{dir}/contrato.md",
+        "bitacora": "{dir}/bitacora.md"
+      }
+    }
+  ]
+}

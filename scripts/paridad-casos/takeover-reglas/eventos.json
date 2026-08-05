@@ -1,0 +1,91 @@
+[
+  {
+    "id": "design-gap-corta-takeover",
+    "sitio": {
+      "posix": {
+        "linea": 8,
+        "digest": "sha256:1b3524d2407d25a4"
+      },
+      "ps": {
+        "linea": 14,
+        "digest": "sha256:7d0a6138931faf93"
+      }
+    },
+    "posix": "(?s)^GUARD:design-gap-corta-takeover hay trabajo después del DESIGN_GAP:\\n(?P<lineas>.*)$",
+    "ps": "(?s)^GUARD:design-gap-corta-takeover hay trabajo después del DESIGN_GAP:\\n(?P<lineas>.*)$",
+    "campos": {
+      "lineas": {
+        "tipo": "conjunto",
+        "items": {
+          "posix": "\\s*([^\\n]+?)\\s*(?=\\n|$)",
+          "ps": "\\s*([^\\n]+?)\\s*(?=\\n|$)"
+        }
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:design-gap-corta-takeover hay trabajo después del DESIGN_GAP:\n## Ronda CENTINELA",
+        "campos": {
+          "lineas": [
+            "## Ronda CENTINELA"
+          ]
+        }
+      },
+      "ps": {
+        "texto": "GUARD:design-gap-corta-takeover hay trabajo después del DESIGN_GAP:\n## Ronda CENTINELA",
+        "campos": {
+          "lineas": [
+            "## Ronda CENTINELA"
+          ]
+        }
+      }
+    },
+    "literal": {
+      "posix": "GUARD:design-gap-corta-takeover hay trabajo después del DESIGN_GAP:\\n%s\\n",
+      "ps": "GUARD:design-gap-corta-takeover hay trabajo después del DESIGN_GAP:`n$($post -join "
+    }
+  },
+  {
+    "id": "takeover-no-ablanda",
+    "sitio": {
+      "posix": {
+        "linea": 16,
+        "digest": "sha256:6b2f24443ad8064d"
+      },
+      "ps": {
+        "linea": 24,
+        "digest": "sha256:eb7c8d156369bf95"
+      }
+    },
+    "posix": "^GUARD:takeover-no-ablanda el contrato pasó de (?P<antes>\\S+) a (?P<durante>\\S+) durante el takeover$",
+    "ps": "^GUARD:takeover-no-ablanda el contrato pasó de (?P<antes>\\S+) a (?P<durante>\\S+) durante el takeover$",
+    "campos": {
+      "antes": {
+        "tipo": "texto"
+      },
+      "durante": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:takeover-no-ablanda el contrato pasó de v1 a v2 durante el takeover",
+        "campos": {
+          "antes": "v1",
+          "durante": "v2"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:takeover-no-ablanda el contrato pasó de v1 a v2 durante el takeover",
+        "campos": {
+          "antes": "v1",
+          "durante": "v2"
+        }
+      }
+    },
+    "literal": {
+      "posix": "GUARD:takeover-no-ablanda el contrato pasó de %s a %s durante el takeover\\n",
+      "ps": "GUARD:takeover-no-ablanda el contrato pasó de $antes a $durante durante el takeover"
+    }
+  }
+]

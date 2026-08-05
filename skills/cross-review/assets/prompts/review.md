@@ -36,6 +36,17 @@ Emite tu veredicto en el formato pedido y termina el turno.
 
 <structured_output_contract>
 {ver "Formato de salida" — respetar ese formato exacto}
+
+Cada finding lleva un `proposed_id`: un identificador que propones para ese tema. En esta ronda
+todos los findings son nuevos, así que todos lo llevan. El identificador es una propuesta: quien
+asigna, normaliza y deduplica es el conductor.
+
+La última línea no vacía de tu salida debe ser exactamente:
+
+STATUS: done
+
+Esa marca va una sola vez y al final. Es lo que distingue "terminé" de "me cortaron a mitad": sin
+ella tu salida se trata como incompleta, aunque el contenido parezca entero.
 </structured_output_contract>
 
 <dig_deeper_nudge>

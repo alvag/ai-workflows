@@ -1,0 +1,77 @@
+[
+  {
+    "id": "cabecera-ausente",
+    "sitio": {
+      "posix": {
+        "linea": 7,
+        "digest": "sha256:33116fc7cd97063b"
+      },
+      "ps": {
+        "linea": 7,
+        "digest": "sha256:66606c88485641b8"
+      }
+    },
+    "posix": "^GUARD:materializacion-unica el plan no materializa la cabecera normativa$",
+    "ps": "^GUARD:materializacion-unica el plan no materializa la cabecera normativa$",
+    "campos": {},
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:materializacion-unica el plan no materializa la cabecera normativa",
+        "campos": {}
+      },
+      "ps": {
+        "texto": "GUARD:materializacion-unica el plan no materializa la cabecera normativa",
+        "campos": {}
+      }
+    },
+    "literal": {
+      "posix": "GUARD:materializacion-unica el plan no materializa la cabecera normativa",
+      "ps": "GUARD:materializacion-unica el plan no materializa la cabecera normativa"
+    }
+  },
+  {
+    "id": "otro-esquema",
+    "sitio": {
+      "posix": {
+        "linea": 11,
+        "digest": "sha256:c354482d95533b08"
+      },
+      "ps": {
+        "linea": 9,
+        "digest": "sha256:4c8d9ce59fc6e8bc"
+      }
+    },
+    "posix": "(?s)^GUARD:materializacion-unica hay una tabla de contrato con otro esquema:\\n(?P<filas>.*)$",
+    "ps": "^GUARD:materializacion-unica hay una tabla de contrato con otro esquema: (?P<filas>.*)$",
+    "campos": {
+      "filas": {
+        "tipo": "conjunto",
+        "items": "\\|\\s*([^|\\n]*?)\\s*(?=\\|)"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:materializacion-unica hay una tabla de contrato con otro esquema:\n| ID | CENTINELA |",
+        "campos": {
+          "filas": [
+            "ID",
+            "CENTINELA"
+          ]
+        }
+      },
+      "ps": {
+        "texto": "GUARD:materializacion-unica hay una tabla de contrato con otro esquema: | ID | CENTINELA |",
+        "campos": {
+          "filas": [
+            "ID",
+            "CENTINELA"
+          ]
+        }
+      }
+    },
+    "literal": {
+      "posix": "GUARD:materializacion-unica hay una tabla de contrato con otro esquema:",
+      "ps": "GUARD:materializacion-unica hay una tabla de contrato con otro esquema: $($otras -join ' | ')"
+    }
+  }
+]

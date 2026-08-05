@@ -315,32 +315,42 @@ $rc = 0
 # puede refutar.
 $gen = 'no cubrió|no cubrio|faltó manejar|falto manejar|no entendió|no entendio|algún borde|algun borde|no quedó bien|no quedo bien'
 $doc = Get-Content -LiteralPath $log
-$vistos = @{}; $ronda = 0; $deltas = @{}; $on = $false
+# Los dos acumuladores son `Dictionary` con `[StringComparer]::Ordinal` y NO hashtables: las
+# hashtables de PowerShell comparan sus claves sin distinguir mayúsculas, así que fundirían dos
+# checkId `V1`/`v1` en uno —cobrándole al segundo una razón que no debe— y dos delta `D1`/`d1` en
+# uno solo repartido entre rondas. El par POSIX los separa con `awk n[$0]++` y con `sort -u`.
+$vistos = [System.Collections.Generic.Dictionary[string,int]]::new([StringComparer]::Ordinal)
+$deltas = [System.Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal)
+$ronda = 0; $on = $false
 # Solo las líneas BAJO un "Ownership:". Tomar todo `- `checkId:` del archivo arrastraría las
 # entradas del takeover, que no son clasificaciones; y filtrar por "tiene clase:" dejaría pasar en
 # silencio justo la línea a la que le falta el campo.
 foreach ($l in $doc) {
-  if ($l -match '^Ownership:') { $on = $true; continue }
-  if ($l -match '^## ' -or $l -match '^\s*$') { if ($l -match '^## Ronda ') { $ronda++ }; $on = $false; continue }
-  if (-not $on -or $l -notmatch '^- `checkId: ') { continue }
+  if ($l -cmatch '^Ownership:') { $on = $true; continue }
+  if ($l -cmatch '^## ' -or $l -match '^\s*$') { if ($l -cmatch '^## Ronda ') { $ronda++ }; $on = $false; continue }
+  if (-not $on -or $l -cnotmatch '^- `checkId: ') { continue }
   $id = [regex]::Match($l, '`checkId: ([^`]*)`').Groups[1].Value
   $cl = [regex]::Match($l, '`clase: ([^`]*)`').Groups[1].Value
   $cr = [regex]::Match($l, '`consumedRound: ([^`]*)`').Groups[1].Value
-  if ($cl -notin @('IMPLEMENTATION_DEFECT','VERIFICATION_DEFECT','ENVIRONMENT_FAILURE','DESIGN_GAP')) {
+  # Operadores case-sensitive: el par POSIX decide con `case`, `[ = ]` y `grep -q`, que distinguen
+  # mayúsculas. Con los de .NET, `implementation_defect` sería una clase válida.
+  if ($cl -cnotin @('IMPLEMENTATION_DEFECT','VERIFICATION_DEFECT','ENVIRONMENT_FAILURE','DESIGN_GAP')) {
     Write-Error "GUARD:log-clasificacion ${id}: clase inválida `"$cl`""; $rc = 1
   }
-  if ($l -notmatch '`evidencia: [^`]') { Write-Error "GUARD:log-clasificacion ${id}: sin evidencia"; $rc = 1 }
-  $esp = if ($cl -eq 'IMPLEMENTATION_DEFECT') { 'sí' } else { 'no' }
-  if ($cr -ne $esp) { Write-Error "GUARD:log-clasificacion ${id}: consumedRound=`"$cr`" y la clase $cl exige `"$esp`""; $rc = 1 }
-  if ($l -match '`delta: ([^`]*)`') {
+  if ($l -cnotmatch '`evidencia: [^`]') { Write-Error "GUARD:log-clasificacion ${id}: sin evidencia"; $rc = 1 }
+  $esp = if ($cl -ceq 'IMPLEMENTATION_DEFECT') { 'sí' } else { 'no' }
+  if ($cr -cne $esp) { Write-Error "GUARD:log-clasificacion ${id}: consumedRound=`"$cr`" y la clase $cl exige `"$esp`""; $rc = 1 }
+  if ($l -cmatch '`delta: ([^`]*)`') {
     $d = $Matches[1]
     if (-not $deltas.ContainsKey($d)) { $deltas[$d] = @() }
     if ($ronda -notin $deltas[$d]) { $deltas[$d] += $ronda }
   }
   $n = 1 + $(if ($vistos.ContainsKey($id)) { $vistos[$id] } else { 0 }); $vistos[$id] = $n
   if ($n -ge 2) {
-    if ($l -notmatch '`razón: [^`]') {
+    if ($l -cnotmatch '`razón: [^`]') {
       Write-Error "GUARD:razon-falsable ${id}: aparición $n sin razón registrada"; $rc = 1
+      # El `-match` de acá abajo es el ÚNICO que se deja insensible a propósito: su par POSIX busca
+      # la heurística con `grep -qiE`, y una razón irrefutable lo sigue siendo en mayúsculas.
     } elseif ($l -match "``razón: [^``]*($gen)") {
       Write-Error "GUARD:razon-falsable ${id}: la razón no nombra un observable que la refute"; $rc = 1
     }
@@ -379,15 +389,18 @@ $rc = 0
 # Mismo recorte que el bloque de log: solo las líneas bajo un "Ownership:".
 $on = $false
 $pares = @(foreach ($l in (Get-Content -LiteralPath $log)) {
-  if ($l -match '^Ownership:') { $on = $true; continue }
-  if ($l -match '^## ' -or $l -match '^\s*$') { $on = $false; continue }
-  if ($on -and $l -match '^- `checkId: ' -and $l -match '`clase: ') {
+  if ($l -cmatch '^Ownership:') { $on = $true; continue }
+  if ($l -cmatch '^## ' -or $l -match '^\s*$') { $on = $false; continue }
+  if ($on -and $l -cmatch '^- `checkId: ' -and $l -cmatch '`clase: ') {
     "$([regex]::Match($l, '`checkId: ([^`]*)`').Groups[1].Value)`t$([regex]::Match($l, '`clase: ([^`]*)`').Groups[1].Value)"
   }
 })
-foreach ($g in ($pares | Group-Object)) {
+# `-CaseSensitive` y `-ceq` porque el par POSIX cuenta con `sort | uniq -c` y compara en `awk`, que
+# distinguen mayúsculas: sin eso, un `design_gap` se sumaría al conteo de `DESIGN_GAP` y le gastaría
+# un presupuesto que no es el suyo.
+foreach ($g in ($pares | Group-Object -CaseSensitive)) {
   $id, $cl = $g.Name -split "`t"
-  $tope = if ($cl -eq 'IMPLEMENTATION_DEFECT') { [int]$max_fix_rounds } elseif ($cl -eq 'DESIGN_GAP') { 1 } else { 2 }
+  $tope = if ($cl -ceq 'IMPLEMENTATION_DEFECT') { [int]$max_fix_rounds } elseif ($cl -ceq 'DESIGN_GAP') { 1 } else { 2 }
   if ($g.Count -gt $tope) { Write-Error "GUARD:presupuesto-por-check $id · $cl · $($g.Count) > $tope"; $rc = 1 }
 }
 exit $rc
@@ -426,19 +439,23 @@ exit $rc
 $rc  = 0
 $doc = Get-Content -LiteralPath $log
 $gap = -1
-for ($i = 0; $i -lt $doc.Count; $i++) { if ($doc[$i] -match 'DESIGN_GAP') { $gap = $i; break } }
+# Operadores case-sensitive: el par POSIX busca con `grep` y `awk`, que distinguen mayúsculas. Con
+# los de .NET, un `design_gap` cortaría el takeover y un `contrato: V2` contaría como versión.
+for ($i = 0; $i -lt $doc.Count; $i++) { if ($doc[$i] -cmatch 'DESIGN_GAP') { $gap = $i; break } }
 if ($gap -ge 0) {
-  $post = @(for ($i = $gap + 1; $i -lt $doc.Count; $i++) { if ($doc[$i] -match '^## (Ronda |Takeover)') { $doc[$i] } })
-  if ($post.Count -gt 0) { Write-Error "GUARD:design-gap-corta-takeover hay trabajo después del DESIGN_GAP: $($post -join ' | ')"; $rc = 1 }
+  # Con el número de línea y un evento agregado, como el `awk` del par: sin la línea el lector no
+  # sabe a qué altura del log está el trabajo que no debería existir.
+  $post = @(for ($i = $gap + 1; $i -lt $doc.Count; $i++) { if ($doc[$i] -cmatch '^## (Ronda |Takeover)') { "$($i + 1): $($doc[$i])" } })
+  if ($post.Count -gt 0) { Write-Error "GUARD:design-gap-corta-takeover hay trabajo después del DESIGN_GAP:`n$($post -join "`n")"; $rc = 1 }
 }
 # El conductor no puede ablandar filas que él escribió: durante el takeover la versión del contrato
 # se congela. Una versión nueva ahí es el conductor reescribiendo su propia vara sin nadie mirando.
 $antes = $null; $durante = $null; $on = $false
 foreach ($l in $doc) {
-  if ($l -match '^## Takeover') { $on = $true }
-  if ($l -match '`contrato: (v\d+)`') { if ($on) { $durante = $Matches[1] } else { $antes = $Matches[1] } }
+  if ($l -cmatch '^## Takeover') { $on = $true }
+  if ($l -cmatch '`contrato: (v\d+)`') { if ($on) { $durante = $Matches[1] } else { $antes = $Matches[1] } }
 }
-if ($durante -and $antes -and ($durante -ne $antes)) {
+if ($durante -and $antes -and ($durante -cne $antes)) {
   Write-Error "GUARD:takeover-no-ablanda el contrato pasó de $antes a $durante durante el takeover"; $rc = 1
 }
 exit $rc

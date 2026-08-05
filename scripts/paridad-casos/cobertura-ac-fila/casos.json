@@ -1,0 +1,101 @@
+{
+  "par": "cobertura-ac-fila",
+  "clausulas": [
+    {
+      "id": "ac-sin-fila",
+      "compara_cadenas": true
+    },
+    {
+      "id": "fila-sin-ac",
+      "compara_cadenas": true
+    }
+  ],
+  "casos": [
+    {
+      "nombre": "positivo",
+      "particion": "positivo",
+      "clase_esperada": "aceptacion",
+      "objetivos": [
+        "ac-sin-fila",
+        "fila-sin-ac"
+      ],
+      "precondicion": "AC-1 y AC-2 declarados, y una fila del contrato cita cada uno",
+      "clausulas": {
+        "ac-sin-fila": "valido",
+        "fila-sin-ac": "valido"
+      },
+      "fixture": "positivo",
+      "entradas": {
+        "plan": "{dir}/plan.md"
+      }
+    },
+    {
+      "nombre": "ac-huerfano",
+      "particion": "invalido",
+      "objetivo": "ac-sin-fila",
+      "clase_esperada": "rechazo",
+      "precondicion": "AC-2 declarado y ninguna fila lo cita; toda fila sigue citando un AC declarado",
+      "clausulas": {
+        "ac-sin-fila": "invalido",
+        "fila-sin-ac": "valido"
+      },
+      "fixture": "ac-huerfano",
+      "entradas": {
+        "plan": "{dir}/plan.md"
+      }
+    },
+    {
+      "nombre": "fila-huerfana",
+      "particion": "invalido",
+      "objetivo": "fila-sin-ac",
+      "clase_esperada": "rechazo",
+      "precondicion": "una fila cita AC-9, que no está declarado; todo AC declarado tiene fila",
+      "clausulas": {
+        "ac-sin-fila": "valido",
+        "fila-sin-ac": "invalido"
+      },
+      "fixture": "fila-huerfana",
+      "entradas": {
+        "plan": "{dir}/plan.md"
+      }
+    },
+    {
+      "nombre": "multi-emision",
+      "particion": "invalido",
+      "objetivos": [
+        "ac-sin-fila",
+        "fila-sin-ac"
+      ],
+      "clase_esperada": "rechazo",
+      "exento_mono_causa": "existe para el arnés y no para el predicado: hace falta un caso con DOS emisiones para poder comprobar que un fragmento no consumido invalida el caso completo en vez de dar paridad sobre los eventos que sí matchearon",
+      "precondicion": "AC-2 sin fila y una fila citando AC-9: las dos direcciones emiten",
+      "clausulas": {
+        "ac-sin-fila": "invalido",
+        "fila-sin-ac": "invalido"
+      },
+      "fixture": "multi-emision",
+      "entradas": {
+        "plan": "{dir}/plan.md"
+      }
+    },
+    {
+      "nombre": "ac-casing",
+      "particion": "casing",
+      "objetivos": [
+        "ac-sin-fila",
+        "fila-sin-ac"
+      ],
+      "clase_esperada": "rechazo",
+      "exento_mono_causa": "una sola edición de casing mueve las DOS direcciones a la vez: `AC-1a` declarado contra `AC-1A` citado deja el AC sin fila y la fila sin AC con un único cambio. Es el `A→a` que el plan documenta, y por eso no puede ser mono-causa",
+      "precondicion": "AC-1a declarado y la fila cita AC-1A: solo difiere el casing",
+      "clausulas": {
+        "ac-sin-fila": "invalido",
+        "fila-sin-ac": "invalido"
+      },
+      "fixture": "ac-casing",
+      "entradas": {
+        "plan": "{dir}/plan.md"
+      }
+    }
+  ]
+}

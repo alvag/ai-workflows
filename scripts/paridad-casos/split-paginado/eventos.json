@@ -1,0 +1,32 @@
+[
+  {
+    "id": "sin-detalle",
+    "sitio": {
+      "posix": {
+        "linea": 10,
+        "digest": "sha256:184c3fd2bae76060"
+      },
+      "ps": {
+        "linea": 8,
+        "digest": "sha256:a47a06194a3895a9"
+      }
+    },
+    "posix": "^GUARD:split-sin-detalle el informe no trae la sección `## Detalle`$",
+    "ps": "^GUARD:split-sin-detalle el informe no trae la sección `## Detalle`$",
+    "campos": {},
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:split-sin-detalle el informe no trae la sección `## Detalle`",
+        "campos": {}
+      },
+      "ps": {
+        "texto": "GUARD:split-sin-detalle el informe no trae la sección `## Detalle`",
+        "campos": {}
+      }
+    },
+    "literal": {
+      "posix": "GUARD:split-sin-detalle el informe no trae la sección `## Detalle`\\n",
+      "ps": "GUARD:split-sin-detalle el informe no trae la sección `## Detalle`"
+    }
+  }
+]

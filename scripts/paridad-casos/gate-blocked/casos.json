@@ -1,0 +1,98 @@
+{
+  "par": "gate-blocked",
+  "clausulas": [
+    {
+      "id": "blocked-y-despacha",
+      "compara_cadenas": true
+    },
+    {
+      "id": "justificado-por-el-entorno",
+      "compara_cadenas": true
+    }
+  ],
+  "casos": [
+    {
+      "nombre": "positivo",
+      "particion": "positivo",
+      "objetivos": [
+        "blocked-y-despacha",
+        "justificado-por-el-entorno"
+      ],
+      "clase_esperada": "aceptacion",
+      "precondicion": "ninguna fila BLOCKED y la única justificación no alega el entorno",
+      "clausulas": {
+        "blocked-y-despacha": "valido",
+        "justificado-por-el-entorno": "valido"
+      },
+      "fixture": "positivo",
+      "entradas": {
+        "contrato": "{dir}/contrato.md",
+        "bitacora": "{dir}/bitacora.md"
+      }
+    },
+    {
+      "nombre": "blocked-al-despachar",
+      "particion": "invalido",
+      "objetivo": "blocked-y-despacha",
+      "clase_esperada": "rechazo",
+      "precondicion": "una fila queda en BLOCKED y la bitácora registra el despacho igual",
+      "clausulas": {
+        "blocked-y-despacha": "invalido",
+        "justificado-por-el-entorno": "valido"
+      },
+      "fixture": "blocked-al-despachar",
+      "entradas": {
+        "contrato": "{dir}/contrato.md",
+        "bitacora": "{dir}/bitacora.md"
+      }
+    },
+    {
+      "nombre": "blocked-casing",
+      "particion": "casing",
+      "objetivo": "blocked-y-despacha",
+      "clase_esperada": "aceptacion",
+      "precondicion": "el baseline dice `blocked` en minúsculas: el literal del enum NO está, así que para el predicado escrito no hay fila bloqueada y la cláusula queda del lado VÁLIDO. POSIX compara con awk `==` (case-sensitive) y PowerShell con `-eq`, case-insensitive",
+      "clausulas": {
+        "blocked-y-despacha": "valido",
+        "justificado-por-el-entorno": "valido"
+      },
+      "fixture": "blocked-casing",
+      "entradas": {
+        "contrato": "{dir}/contrato.md",
+        "bitacora": "{dir}/bitacora.md"
+      }
+    },
+    {
+      "nombre": "justificacion-por-entorno",
+      "particion": "invalido",
+      "objetivo": "justificado-por-el-entorno",
+      "clase_esperada": "rechazo",
+      "precondicion": "una justificación alega `no hay entorno`, que está en la lista cerrada; ninguna fila queda BLOCKED",
+      "clausulas": {
+        "blocked-y-despacha": "valido",
+        "justificado-por-el-entorno": "invalido"
+      },
+      "fixture": "justificacion-por-entorno",
+      "entradas": {
+        "contrato": "{dir}/contrato.md",
+        "bitacora": "{dir}/bitacora.md"
+      }
+    },
+    {
+      "nombre": "justificacion-casing",
+      "particion": "casing",
+      "objetivo": "justificado-por-el-entorno",
+      "clase_esperada": "rechazo",
+      "precondicion": "la justificación escribe `NO HAY ENTORNO` en mayúsculas. Los DOS sabores buscan la heurística sin distinguir mayúsculas —`grep -iE` y `-match`—, así que acá se espera paridad: es el control de que la partición de casing no marca divergencia por sí sola",
+      "clausulas": {
+        "blocked-y-despacha": "valido",
+        "justificado-por-el-entorno": "invalido"
+      },
+      "fixture": "justificacion-casing",
+      "entradas": {
+        "contrato": "{dir}/contrato.md",
+        "bitacora": "{dir}/bitacora.md"
+      }
+    }
+  ]
+}

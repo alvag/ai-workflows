@@ -1,0 +1,458 @@
+{
+  "par": "ownership-log",
+  "clausulas": [
+    {
+      "id": "clase-invalida",
+      "compara_cadenas": true
+    },
+    {
+      "id": "sin-evidencia",
+      "compara_cadenas": true
+    },
+    {
+      "id": "consumed-round-incoherente",
+      "compara_cadenas": true
+    },
+    {
+      "id": "delta-una-ronda",
+      "agrega": true
+    },
+    {
+      "id": "razon-ausente",
+      "agrega": true,
+      "nota": "cuenta las apariciones del checkId para saber desde cuál exige razón"
+    },
+    {
+      "id": "razon-no-falsable",
+      "compara_cadenas": true,
+      "nota": "los DOS sabores buscan la heurística sin distinguir mayúsculas —`grep -qiE` y `-match`—, así que su caso de casing es un control de paridad, no un mutante"
+    }
+  ],
+  "casos": [
+    {
+      "nombre": "positivo",
+      "particion": "positivo",
+      "objetivos": [
+        "clase-invalida",
+        "sin-evidencia",
+        "consumed-round-incoherente",
+        "delta-una-ronda",
+        "razon-ausente",
+        "razon-no-falsable"
+      ],
+      "clase_esperada": "aceptacion",
+      "precondicion": "una línea con clase válida, evidencia, consumedRound coherente y un delta; una sola aparición, así que no hace falta razón",
+      "clausulas": {
+        "clase-invalida": "valido",
+        "sin-evidencia": "valido",
+        "consumed-round-incoherente": "valido",
+        "delta-una-ronda": "valido",
+        "razon-ausente": "valido",
+        "razon-no-falsable": "valido"
+      },
+      "fixture": "positivo",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    },
+    {
+      "nombre": "clase-bogus",
+      "particion": "invalido",
+      "objetivo": "clase-invalida",
+      "clase_esperada": "rechazo",
+      "precondicion": "la clase no pertenece al vocabulario; el resto de los campos está bien y consumedRound `no` es coherente con una clase que no es IMPLEMENTATION_DEFECT",
+      "clausulas": {
+        "clase-invalida": "invalido",
+        "sin-evidencia": "valido",
+        "consumed-round-incoherente": "valido",
+        "delta-una-ronda": "valido",
+        "razon-ausente": "valido",
+        "razon-no-falsable": "valido"
+      },
+      "fixture": "clase-bogus",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    },
+    {
+      "nombre": "clase-minuscula",
+      "particion": "casing",
+      "objetivo": "clase-invalida",
+      "clase_esperada": "rechazo",
+      "precondicion": "la clase va `verification_defect` en minúsculas: no es ninguno de los cuatro literales del vocabulario. POSIX resuelve con `case` (case-sensitive) y PowerShell con `-notin` (case-insensitive)",
+      "clausulas": {
+        "clase-invalida": "invalido",
+        "sin-evidencia": "valido",
+        "consumed-round-incoherente": "valido",
+        "delta-una-ronda": "valido",
+        "razon-ausente": "valido",
+        "razon-no-falsable": "valido"
+      },
+      "fixture": "clase-minuscula",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    },
+    {
+      "nombre": "sin-campo-evidencia",
+      "particion": "invalido",
+      "objetivo": "sin-evidencia",
+      "clase_esperada": "rechazo",
+      "precondicion": "falta el campo evidencia; clase, consumedRound y delta siguen bien",
+      "clausulas": {
+        "clase-invalida": "valido",
+        "sin-evidencia": "invalido",
+        "consumed-round-incoherente": "valido",
+        "delta-una-ronda": "valido",
+        "razon-ausente": "valido",
+        "razon-no-falsable": "valido"
+      },
+      "fixture": "sin-campo-evidencia",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    },
+    {
+      "nombre": "evidencia-casing",
+      "particion": "casing",
+      "objetivo": "sin-evidencia",
+      "clase_esperada": "rechazo",
+      "precondicion": "el campo se escribe `Evidencia:` con mayúscula: el nombre normativo `evidencia:` NO está. POSIX lo busca con `grep -q` case-sensitive y PowerShell con `-notmatch`, case-insensitive",
+      "clausulas": {
+        "clase-invalida": "valido",
+        "sin-evidencia": "invalido",
+        "consumed-round-incoherente": "valido",
+        "delta-una-ronda": "valido",
+        "razon-ausente": "valido",
+        "razon-no-falsable": "valido"
+      },
+      "fixture": "evidencia-casing",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    },
+    {
+      "nombre": "consumed-round-incoherente",
+      "particion": "invalido",
+      "objetivo": "consumed-round-incoherente",
+      "clase_esperada": "rechazo",
+      "precondicion": "un IMPLEMENTATION_DEFECT con consumedRound `no`, cuando su clase exige `sí`; el resto de los campos está bien",
+      "clausulas": {
+        "clase-invalida": "valido",
+        "sin-evidencia": "valido",
+        "consumed-round-incoherente": "invalido",
+        "delta-una-ronda": "valido",
+        "razon-ausente": "valido",
+        "razon-no-falsable": "valido"
+      },
+      "fixture": "consumed-round-incoherente",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    },
+    {
+      "nombre": "consumed-round-casing",
+      "particion": "casing",
+      "objetivo": "consumed-round-incoherente",
+      "clase_esperada": "rechazo",
+      "precondicion": "consumedRound dice `Sí` con mayúscula donde la clase exige el literal `sí`. POSIX compara con `[ = ]` (case-sensitive) y PowerShell con `-ne`, case-insensitive",
+      "clausulas": {
+        "clase-invalida": "valido",
+        "sin-evidencia": "valido",
+        "consumed-round-incoherente": "invalido",
+        "delta-una-ronda": "valido",
+        "razon-ausente": "valido",
+        "razon-no-falsable": "valido"
+      },
+      "fixture": "consumed-round-casing",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    },
+    {
+      "nombre": "delta-en-dos-rondas",
+      "particion": "invalido",
+      "objetivo": "delta-una-ronda",
+      "clase_esperada": "rechazo",
+      "precondicion": "el mismo delta D1 aparece en dos rondas; la segunda aparición del checkId lleva su razón falsable, así que esa cláusula queda del lado válido",
+      "clausulas": {
+        "clase-invalida": "valido",
+        "sin-evidencia": "valido",
+        "consumed-round-incoherente": "valido",
+        "delta-una-ronda": "invalido",
+        "razon-ausente": "valido",
+        "razon-no-falsable": "valido"
+      },
+      "fixture": "delta-en-dos-rondas",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    },
+    {
+      "nombre": "delta-vacio",
+      "particion": "vacio",
+      "objetivo": "delta-una-ronda",
+      "clase_esperada": "aceptacion",
+      "precondicion": "ninguna línea declara delta: no hay nada que agrupar por ronda",
+      "clausulas": {
+        "clase-invalida": "valido",
+        "sin-evidencia": "valido",
+        "consumed-round-incoherente": "valido",
+        "delta-una-ronda": "valido",
+        "razon-ausente": "valido",
+        "razon-no-falsable": "valido"
+      },
+      "fixture": "delta-vacio",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    },
+    {
+      "nombre": "delta-singleton",
+      "particion": "singleton",
+      "objetivo": "delta-una-ronda",
+      "clase_esperada": "aceptacion",
+      "precondicion": "un delta en una sola ronda",
+      "clausulas": {
+        "clase-invalida": "valido",
+        "sin-evidencia": "valido",
+        "consumed-round-incoherente": "valido",
+        "delta-una-ronda": "valido",
+        "razon-ausente": "valido",
+        "razon-no-falsable": "valido"
+      },
+      "fixture": "delta-singleton",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    },
+    {
+      "nombre": "delta-par",
+      "particion": "par",
+      "objetivo": "delta-una-ronda",
+      "clase_esperada": "aceptacion",
+      "precondicion": "dos deltas distintos en la MISMA ronda: dos registros que no cruzan rondas, el control de que lo que se cuenta son rondas y no líneas",
+      "clausulas": {
+        "clase-invalida": "valido",
+        "sin-evidencia": "valido",
+        "consumed-round-incoherente": "valido",
+        "delta-una-ronda": "valido",
+        "razon-ausente": "valido",
+        "razon-no-falsable": "valido"
+      },
+      "fixture": "delta-par",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    },
+    {
+      "nombre": "delta-impar",
+      "particion": "impar",
+      "objetivo": "delta-una-ronda",
+      "clase_esperada": "rechazo",
+      "precondicion": "el mismo delta en TRES rondas; las apariciones 2 y 3 llevan razón falsable",
+      "clausulas": {
+        "clase-invalida": "valido",
+        "sin-evidencia": "valido",
+        "consumed-round-incoherente": "valido",
+        "delta-una-ronda": "invalido",
+        "razon-ausente": "valido",
+        "razon-no-falsable": "valido"
+      },
+      "fixture": "delta-impar",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    },
+    {
+      "nombre": "segunda-sin-razon",
+      "particion": "invalido",
+      "objetivo": "razon-ausente",
+      "clase_esperada": "rechazo",
+      "precondicion": "el checkId aparece dos veces y la segunda no trae razón; los deltas son distintos, así que la cláusula de delta queda del lado válido",
+      "clausulas": {
+        "clase-invalida": "valido",
+        "sin-evidencia": "valido",
+        "consumed-round-incoherente": "valido",
+        "delta-una-ronda": "valido",
+        "razon-ausente": "invalido",
+        "razon-no-falsable": "valido"
+      },
+      "fixture": "segunda-sin-razon",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    },
+    {
+      "nombre": "razon-casing",
+      "particion": "casing",
+      "objetivo": "razon-ausente",
+      "clase_esperada": "rechazo",
+      "precondicion": "la segunda aparición escribe el campo `Razón:` con mayúscula: el nombre normativo `razón:` NO está. POSIX lo busca con `grep -q` case-sensitive y PowerShell con `-notmatch`, case-insensitive",
+      "clausulas": {
+        "clase-invalida": "valido",
+        "sin-evidencia": "valido",
+        "consumed-round-incoherente": "valido",
+        "delta-una-ronda": "valido",
+        "razon-ausente": "invalido",
+        "razon-no-falsable": "valido"
+      },
+      "fixture": "razon-casing",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    },
+    {
+      "nombre": "razon-vacio",
+      "particion": "vacio",
+      "objetivo": "razon-ausente",
+      "clase_esperada": "aceptacion",
+      "precondicion": "no hay ninguna línea: ningún checkId llega a una segunda aparición",
+      "clausulas": {
+        "clase-invalida": "valido",
+        "sin-evidencia": "valido",
+        "consumed-round-incoherente": "valido",
+        "delta-una-ronda": "valido",
+        "razon-ausente": "valido",
+        "razon-no-falsable": "valido"
+      },
+      "fixture": "razon-vacio",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    },
+    {
+      "nombre": "razon-singleton",
+      "particion": "singleton",
+      "objetivo": "razon-ausente",
+      "clase_esperada": "aceptacion",
+      "precondicion": "una sola aparición del checkId: por debajo del umbral que exige razón",
+      "clausulas": {
+        "clase-invalida": "valido",
+        "sin-evidencia": "valido",
+        "consumed-round-incoherente": "valido",
+        "delta-una-ronda": "valido",
+        "razon-ausente": "valido",
+        "razon-no-falsable": "valido"
+      },
+      "fixture": "razon-singleton",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    },
+    {
+      "nombre": "razon-par",
+      "particion": "par",
+      "objetivo": "razon-ausente",
+      "clase_esperada": "aceptacion",
+      "precondicion": "dos apariciones del checkId y la segunda trae razón falsable: es el primer valor por ENCIMA del umbral y el lado de adentro de la frontera",
+      "clausulas": {
+        "clase-invalida": "valido",
+        "sin-evidencia": "valido",
+        "consumed-round-incoherente": "valido",
+        "delta-una-ronda": "valido",
+        "razon-ausente": "valido",
+        "razon-no-falsable": "valido"
+      },
+      "fixture": "razon-par",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    },
+    {
+      "nombre": "razon-impar",
+      "particion": "impar",
+      "objetivo": "razon-ausente",
+      "clase_esperada": "rechazo",
+      "precondicion": "tres apariciones y la TERCERA no trae razón: comprueba que el umbral se aplica a cada aparición posterior y no solo a la segunda",
+      "clausulas": {
+        "clase-invalida": "valido",
+        "sin-evidencia": "valido",
+        "consumed-round-incoherente": "valido",
+        "delta-una-ronda": "valido",
+        "razon-ausente": "invalido",
+        "razon-no-falsable": "valido"
+      },
+      "fixture": "razon-impar",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    },
+    {
+      "nombre": "razon-generica",
+      "particion": "invalido",
+      "objetivo": "razon-no-falsable",
+      "clase_esperada": "rechazo",
+      "precondicion": "la segunda aparición trae una razón de la lista de formas irrefutables (`no cubrió`); el campo existe, así que la cláusula de ausencia queda del lado válido",
+      "clausulas": {
+        "clase-invalida": "valido",
+        "sin-evidencia": "valido",
+        "consumed-round-incoherente": "valido",
+        "delta-una-ronda": "valido",
+        "razon-ausente": "valido",
+        "razon-no-falsable": "invalido"
+      },
+      "fixture": "razon-generica",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    },
+    {
+      "nombre": "razon-generica-casing",
+      "particion": "casing",
+      "objetivo": "razon-no-falsable",
+      "clase_esperada": "rechazo",
+      "precondicion": "la razón genérica va `NO CUBRIÓ` en mayúsculas. Acá se espera PARIDAD: los dos sabores buscan la heurística sin distinguir mayúsculas —`grep -qiE` y `-match`—, así que este caso es el control de que la partición de casing no marca divergencia por sí sola",
+      "clausulas": {
+        "clase-invalida": "valido",
+        "sin-evidencia": "valido",
+        "consumed-round-incoherente": "valido",
+        "delta-una-ronda": "valido",
+        "razon-ausente": "valido",
+        "razon-no-falsable": "invalido"
+      },
+      "fixture": "razon-generica-casing",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    },
+    {
+      "nombre": "checkid-casing",
+      "particion": "casing",
+      "objetivo": "razon-ausente",
+      "clase_esperada": "aceptacion",
+      "precondicion": "el mismo checkId se escribe `V1` y `v1` en dos rondas. Para el predicado escrito son DOS checkId distintos —POSIX cuenta apariciones con `awk n[$0]++`—, cada uno con una sola aparición, así que ninguno exige razón y la cláusula queda del lado válido. Los deltas son distintos para que la cláusula de delta no se active. Lo que este caso ejercita no es un operador sino la HASHTABLE `$vistos`, que en PowerShell es case-insensitive por defecto y funde las dos claves",
+      "clausulas": {
+        "clase-invalida": "valido",
+        "sin-evidencia": "valido",
+        "consumed-round-incoherente": "valido",
+        "delta-una-ronda": "valido",
+        "razon-ausente": "valido",
+        "razon-no-falsable": "valido"
+      },
+      "fixture": "checkid-casing",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    },
+    {
+      "nombre": "delta-casing",
+      "particion": "casing",
+      "objetivo": "delta-una-ronda",
+      "clase_esperada": "aceptacion",
+      "precondicion": "el mismo delta se escribe `D1` y `d1` en dos rondas. Para el predicado escrito son DOS deltas distintos —POSIX los separa con `sort -u`—, cada uno en una sola ronda, así que la cláusula queda del lado válido. Los checkId son distintos para que la cláusula de razón no se active. Ejercita la HASHTABLE `$deltas`, case-insensitive por defecto en PowerShell",
+      "clausulas": {
+        "clase-invalida": "valido",
+        "sin-evidencia": "valido",
+        "consumed-round-incoherente": "valido",
+        "delta-una-ronda": "valido",
+        "razon-ausente": "valido",
+        "razon-no-falsable": "valido"
+      },
+      "fixture": "delta-casing",
+      "entradas": {
+        "log": "{dir}/log.md"
+      }
+    }
+  ]
+}

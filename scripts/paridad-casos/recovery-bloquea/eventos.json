@@ -1,0 +1,48 @@
+[
+  {
+    "id": "reintento-con-recurso-abierto",
+    "sitio": {
+      "posix": {
+        "linea": 12,
+        "digest": "sha256:5c7f171d4777a991"
+      },
+      "ps": {
+        "linea": 21,
+        "digest": "sha256:33f406007e221c66"
+      }
+    },
+    "posix": "(?s)^GUARD:recovery-bloquea hubo reintento con el recurso sin resolver:\\n(?P<lineas>.*)$",
+    "ps": "(?s)^GUARD:recovery-bloquea hubo reintento con el recurso sin resolver:\\n(?P<lineas>.*)$",
+    "campos": {
+      "lineas": {
+        "tipo": "conjunto",
+        "items": {
+          "posix": "\\s*([^\\n]+?)\\s*(?=\\n|$)",
+          "ps": "\\s*([^\\n]+?)\\s*(?=\\n|$)"
+        }
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:recovery-bloquea hubo reintento con el recurso sin resolver:\n5: - `semanticAttempt: CENTINELA`",
+        "campos": {
+          "lineas": [
+            "5: - `semanticAttempt: CENTINELA`"
+          ]
+        }
+      },
+      "ps": {
+        "texto": "GUARD:recovery-bloquea hubo reintento con el recurso sin resolver:\n5: - `semanticAttempt: CENTINELA`",
+        "campos": {
+          "lineas": [
+            "5: - `semanticAttempt: CENTINELA`"
+          ]
+        }
+      }
+    },
+    "literal": {
+      "posix": "GUARD:recovery-bloquea hubo reintento con el recurso sin resolver:\\n%s\\n",
+      "ps": "GUARD:recovery-bloquea hubo reintento con el recurso sin resolver:`n$($post -join "
+    }
+  }
+]

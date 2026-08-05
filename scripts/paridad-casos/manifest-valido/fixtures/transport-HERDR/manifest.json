@@ -1,0 +1,10 @@
+{
+  "skill": "cross-review",
+  "mode": "auto",
+  "started_at": "2026-08-04T10:00:00Z",
+  "duration_s": 12,
+  "families": ["claude", "gpt"],
+  "transport": "HERDR",
+  "outcome": "APPROVED",
+  "degradation": "none"
+}

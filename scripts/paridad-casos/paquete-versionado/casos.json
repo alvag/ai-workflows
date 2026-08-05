@@ -1,0 +1,157 @@
+{
+  "par": "paquete-versionado",
+  "clausulas": [
+    {
+      "id": "paquete-inmutable",
+      "compara_cadenas": true
+    },
+    {
+      "id": "truncado-alcanza-versiones",
+      "agrega": true
+    }
+  ],
+  "casos": [
+    {
+      "nombre": "positivo",
+      "particion": "positivo",
+      "objetivos": [
+        "paquete-inmutable",
+        "truncado-alcanza-versiones"
+      ],
+      "clase_esperada": "aceptacion",
+      "entradas": {
+        "scratch": "{dir}/scratch",
+        "hash_v1": "590423528a8f5265b54a107bcbe6ebeb0a95f082abfb8a48d95d74789a8c64f1",
+        "redespachado": "0"
+      },
+      "precondicion": "el v1 está intacto y `hash_v1` es su SHA-256 en minúsculas, que es lo que calculan los DOS sabores desde que el algoritmo se unificó: antes acá había un CRC de `cksum` contra un MD5 de `Get-FileHash` y ningún valor podía poner verdes a los dos a la vez",
+      "clausulas": {
+        "paquete-inmutable": "valido",
+        "truncado-alcanza-versiones": "valido"
+      },
+      "fixture": "positivo"
+    },
+    {
+      "nombre": "paquete-modificado",
+      "particion": "invalido",
+      "objetivo": "paquete-inmutable",
+      "clase_esperada": "rechazo",
+      "entradas": {
+        "scratch": "{dir}/scratch",
+        "hash_v1": "1111111111111111111111111111111111111111111111111111111111111111",
+        "redespachado": "0"
+      },
+      "precondicion": "`hash_v1` es un SHA-256 bien formado que no corresponde al contenido: los dos sabores tienen que rechazar",
+      "clausulas": {
+        "paquete-inmutable": "invalido",
+        "truncado-alcanza-versiones": "valido"
+      },
+      "fixture": "paquete-modificado"
+    },
+    {
+      "nombre": "hash-casing",
+      "particion": "casing",
+      "objetivo": "paquete-inmutable",
+      "clase_esperada": "rechazo",
+      "entradas": {
+        "scratch": "{dir}/scratch",
+        "hash_v1": "590423528A8F5265B54A107BCBE6EBEB0A95F082ABFB8A48D95D74789A8C64F1",
+        "redespachado": "0"
+      },
+      "precondicion": "`hash_v1` es el SHA-256 correcto del paquete escrito en MAYÚSCULAS. Los dos sabores lo producen en minúsculas, así que un valor con otro casing es uno que ningún productor escribe y el par lo rechaza — POSIX con `[ = ]`, PowerShell con `-cne`. Antes de unificar el algoritmo este caso medía otra cosa (un MD5 contra un CRC) y no podía cerrar",
+      "clausulas": {
+        "paquete-inmutable": "invalido",
+        "truncado-alcanza-versiones": "valido"
+      },
+      "fixture": "hash-casing"
+    },
+    {
+      "nombre": "redespacho-0",
+      "particion": "positivo",
+      "objetivos": [
+        "paquete-inmutable",
+        "truncado-alcanza-versiones"
+      ],
+      "clase_esperada": "aceptacion",
+      "entradas": {
+        "scratch": "{dir}/scratch",
+        "hash_v1": "0",
+        "redespachado": "0"
+      },
+      "precondicion": "sin archivo v1 y con una v2 sobreviviente, `redespachado=0`: la cláusula del truncado ni se evalúa y los dos sabores aceptan. Es la mitad de la comprobación de que la entrada NO DECLARADA `redespachado` se inyecta: si el runner no la inyectara, este caso y `redespacho-1` darían igual",
+      "clausulas": {
+        "paquete-inmutable": "valido",
+        "truncado-alcanza-versiones": "valido"
+      },
+      "fixture": "redespacho-0"
+    },
+    {
+      "nombre": "redespacho-1",
+      "particion": "singleton",
+      "objetivo": "truncado-alcanza-versiones",
+      "clase_esperada": "rechazo",
+      "entradas": {
+        "scratch": "{dir}/scratch",
+        "hash_v1": "0",
+        "redespachado": "1"
+      },
+      "precondicion": "el MISMO scratch que `redespacho-0` con `redespachado=1`: una versión sobrevivió al redespacho y los dos sabores tienen que rechazar. `redespachado` no está en el comentario de Entradas del bloque: POSIX la lee como variable de shell y PowerShell como variable de entorno",
+      "clausulas": {
+        "paquete-inmutable": "valido",
+        "truncado-alcanza-versiones": "invalido"
+      },
+      "fixture": "redespacho-1"
+    },
+    {
+      "nombre": "truncado-vacio",
+      "particion": "vacio",
+      "objetivo": "truncado-alcanza-versiones",
+      "clase_esperada": "aceptacion",
+      "entradas": {
+        "scratch": "{dir}/scratch",
+        "hash_v1": "0",
+        "redespachado": "1"
+      },
+      "precondicion": "el truncado alcanzó a todas: cero versiones sobrevivientes",
+      "clausulas": {
+        "paquete-inmutable": "valido",
+        "truncado-alcanza-versiones": "valido"
+      },
+      "fixture": "truncado-vacio"
+    },
+    {
+      "nombre": "truncado-par",
+      "particion": "par",
+      "objetivo": "truncado-alcanza-versiones",
+      "clase_esperada": "rechazo",
+      "entradas": {
+        "scratch": "{dir}/scratch",
+        "hash_v1": "0",
+        "redespachado": "1"
+      },
+      "precondicion": "dos versiones sobrevivientes, ninguna v1",
+      "clausulas": {
+        "paquete-inmutable": "valido",
+        "truncado-alcanza-versiones": "invalido"
+      },
+      "fixture": "truncado-par"
+    },
+    {
+      "nombre": "truncado-impar",
+      "particion": "impar",
+      "objetivo": "truncado-alcanza-versiones",
+      "clase_esperada": "rechazo",
+      "entradas": {
+        "scratch": "{dir}/scratch",
+        "hash_v1": "0",
+        "redespachado": "1"
+      },
+      "precondicion": "tres versiones sobrevivientes, ninguna v1",
+      "clausulas": {
+        "paquete-inmutable": "valido",
+        "truncado-alcanza-versiones": "invalido"
+      },
+      "fixture": "truncado-impar"
+    }
+  ]
+}

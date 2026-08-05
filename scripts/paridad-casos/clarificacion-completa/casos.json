@@ -1,0 +1,135 @@
+{
+  "par": "clarificacion-completa",
+  "clausulas": [
+    {
+      "id": "campo-faltante",
+      "compara_cadenas": true
+    },
+    {
+      "id": "sin-indice",
+      "compara_cadenas": true
+    },
+    {
+      "id": "sin-detalle",
+      "compara_cadenas": true
+    }
+  ],
+  "casos": [
+    {
+      "nombre": "positivo",
+      "particion": "positivo",
+      "objetivos": [
+        "campo-faltante",
+        "sin-indice",
+        "sin-detalle"
+      ],
+      "clase_esperada": "aceptacion",
+      "precondicion": "los tres campos con valor y las dos secciones de entrega parcial presentes",
+      "clausulas": {
+        "campo-faltante": "valido",
+        "sin-indice": "valido",
+        "sin-detalle": "valido"
+      },
+      "fixture": "positivo",
+      "entradas": {
+        "informe": "{dir}/informe.md"
+      }
+    },
+    {
+      "nombre": "campo-vacio",
+      "particion": "invalido",
+      "objetivo": "campo-faltante",
+      "clase_esperada": "rechazo",
+      "precondicion": "`impacto:` queda sin valor; los otros dos campos y las dos secciones siguen bien",
+      "clausulas": {
+        "campo-faltante": "invalido",
+        "sin-indice": "valido",
+        "sin-detalle": "valido"
+      },
+      "fixture": "campo-vacio",
+      "entradas": {
+        "informe": "{dir}/informe.md"
+      }
+    },
+    {
+      "nombre": "campo-casing",
+      "particion": "casing",
+      "objetivo": "campo-faltante",
+      "clase_esperada": "rechazo",
+      "precondicion": "el campo se escribe `Impacto:` con mayúscula: el nombre normativo `impacto:` NO está. POSIX lo busca con `grep -qE` case-sensitive y PowerShell con `-match`, case-insensitive",
+      "clausulas": {
+        "campo-faltante": "invalido",
+        "sin-indice": "valido",
+        "sin-detalle": "valido"
+      },
+      "fixture": "campo-casing",
+      "entradas": {
+        "informe": "{dir}/informe.md"
+      }
+    },
+    {
+      "nombre": "sin-seccion-indice",
+      "particion": "invalido",
+      "objetivo": "sin-indice",
+      "clase_esperada": "rechazo",
+      "precondicion": "falta `## Índice`; el detalle y los tres campos siguen presentes",
+      "clausulas": {
+        "campo-faltante": "valido",
+        "sin-indice": "invalido",
+        "sin-detalle": "valido"
+      },
+      "fixture": "sin-seccion-indice",
+      "entradas": {
+        "informe": "{dir}/informe.md"
+      }
+    },
+    {
+      "nombre": "indice-casing",
+      "particion": "casing",
+      "objetivo": "sin-indice",
+      "clase_esperada": "rechazo",
+      "precondicion": "la sección dice `## índice` en minúscula: el literal normativo NO está",
+      "clausulas": {
+        "campo-faltante": "valido",
+        "sin-indice": "invalido",
+        "sin-detalle": "valido"
+      },
+      "fixture": "indice-casing",
+      "entradas": {
+        "informe": "{dir}/informe.md"
+      }
+    },
+    {
+      "nombre": "sin-seccion-detalle",
+      "particion": "invalido",
+      "objetivo": "sin-detalle",
+      "clase_esperada": "rechazo",
+      "precondicion": "falta `## Detalle`; el índice y los tres campos siguen presentes",
+      "clausulas": {
+        "campo-faltante": "valido",
+        "sin-indice": "valido",
+        "sin-detalle": "invalido"
+      },
+      "fixture": "sin-seccion-detalle",
+      "entradas": {
+        "informe": "{dir}/informe.md"
+      }
+    },
+    {
+      "nombre": "detalle-casing",
+      "particion": "casing",
+      "objetivo": "sin-detalle",
+      "clase_esperada": "rechazo",
+      "precondicion": "la sección dice `## DETALLE` en mayúsculas: el literal normativo NO está",
+      "clausulas": {
+        "campo-faltante": "valido",
+        "sin-indice": "valido",
+        "sin-detalle": "invalido"
+      },
+      "fixture": "detalle-casing",
+      "entradas": {
+        "informe": "{dir}/informe.md"
+      }
+    }
+  ]
+}

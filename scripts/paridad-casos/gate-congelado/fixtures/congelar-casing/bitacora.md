@@ -1,0 +1,1 @@
+- `paso: Congelar` `actor: conductor` `timestamp: 2026-01-01T11:00:00Z`

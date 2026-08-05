@@ -1,0 +1,194 @@
+[
+  {
+    "id": "falta-campo",
+    "sitio": {
+      "posix": {
+        "linea": 7,
+        "digest": "sha256:05a086c428d2d771"
+      },
+      "ps": {
+        "linea": 11,
+        "digest": "sha256:a3375fc9088d1f7d"
+      }
+    },
+    "posix": "^GUARD:manifest-valido falta el campo \"(?P<campo>[^\"]*)\"$",
+    "ps": "^GUARD:manifest-valido falta el campo \"(?P<campo>[^\"]*)\"$",
+    "campos": {
+      "campo": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:manifest-valido falta el campo \"CENTINELA\"",
+        "campos": {
+          "campo": "CENTINELA"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:manifest-valido falta el campo \"CENTINELA\"",
+        "campos": {
+          "campo": "CENTINELA"
+        }
+      }
+    },
+    "literal": {
+      "posix": "GUARD:manifest-valido falta el campo \"%s\"\\n",
+      "ps": "GUARD:manifest-valido falta el campo `"
+    }
+  },
+  {
+    "id": "campo-recortado",
+    "sitio": {
+      "posix": {
+        "linea": 11,
+        "digest": "sha256:2e96363ef6b52725"
+      },
+      "ps": {
+        "linea": 14,
+        "digest": "sha256:3c1f85a373c72127"
+      }
+    },
+    "posix": "^GUARD:manifest-valido campo recortado presente: \"(?P<campo>[^\"]*)\"$",
+    "ps": "^GUARD:manifest-valido campo recortado presente: \"(?P<campo>[^\"]*)\"$",
+    "campos": {
+      "campo": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:manifest-valido campo recortado presente: \"CENTINELA\"",
+        "campos": {
+          "campo": "CENTINELA"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:manifest-valido campo recortado presente: \"CENTINELA\"",
+        "campos": {
+          "campo": "CENTINELA"
+        }
+      }
+    },
+    "literal": {
+      "posix": "GUARD:manifest-valido campo recortado presente: \"%s\"\\n",
+      "ps": "GUARD:manifest-valido campo recortado presente: `"
+    }
+  },
+  {
+    "id": "families-no-lista",
+    "sitio": {
+      "posix": {
+        "linea": 14,
+        "digest": "sha256:81f082c5fb0b7768"
+      },
+      "ps": {
+        "linea": 16,
+        "digest": "sha256:c5f08c359bb83eb4"
+      }
+    },
+    "posix": "^GUARD:manifest-valido \"families\" no es una lista$",
+    "ps": "^GUARD:manifest-valido \"families\" no es una lista$",
+    "campos": {},
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:manifest-valido \"families\" no es una lista",
+        "campos": {}
+      },
+      "ps": {
+        "texto": "GUARD:manifest-valido \"families\" no es una lista",
+        "campos": {}
+      }
+    },
+    "literal": {
+      "posix": "GUARD:manifest-valido \"families\" no es una lista\\n",
+      "ps": "GUARD:manifest-valido \"families\" no es una lista"
+    }
+  },
+  {
+    "id": "skill-fuera-del-ecosistema",
+    "sitio": {
+      "posix": {
+        "linea": 34,
+        "digest": "sha256:daf333d36a20632d"
+      },
+      "ps": {
+        "linea": 35,
+        "digest": "sha256:d0f2e0af5d5553e3"
+      }
+    },
+    "posix": "^GUARD:manifest-valido skill fuera del ecosistema: \"(?P<skill>[^\"]*)\"$",
+    "ps": "^GUARD:manifest-valido skill fuera del ecosistema: \"(?P<skill>[^\"]*)\"$",
+    "campos": {
+      "skill": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:manifest-valido skill fuera del ecosistema: \"CENTINELA\"",
+        "campos": {
+          "skill": "CENTINELA"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:manifest-valido skill fuera del ecosistema: \"CENTINELA\"",
+        "campos": {
+          "skill": "CENTINELA"
+        }
+      }
+    },
+    "literal": {
+      "posix": "GUARD:manifest-valido skill fuera del ecosistema: \"%s\"\\n",
+      "ps": "GUARD:manifest-valido skill fuera del ecosistema: `"
+    }
+  },
+  {
+    "id": "valor-fuera-de-vocabulario",
+    "sitio": {
+      "posix": {
+        "linea": 42,
+        "digest": "sha256:7a8edd9ba8d6f052"
+      },
+      "ps": {
+        "linea": 42,
+        "digest": "sha256:a87ce9229506ecf1"
+      }
+    },
+    "posix": "^GUARD:manifest-valido (?P<campo>\\S+) \"(?P<valor>[^\"]*)\" no pertenece a (?P<skill>\\S+)$",
+    "ps": "^GUARD:manifest-valido (?P<campo>\\S+) \"(?P<valor>[^\"]*)\" no pertenece a (?P<skill>\\S+)$",
+    "campos": {
+      "campo": {
+        "tipo": "texto"
+      },
+      "valor": {
+        "tipo": "texto"
+      },
+      "skill": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:manifest-valido transport \"CENTINELA\" no pertenece a cross-review",
+        "campos": {
+          "campo": "transport",
+          "valor": "CENTINELA",
+          "skill": "cross-review"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:manifest-valido transport \"CENTINELA\" no pertenece a cross-review",
+        "campos": {
+          "campo": "transport",
+          "valor": "CENTINELA",
+          "skill": "cross-review"
+        }
+      }
+    },
+    "literal": {
+      "posix": "GUARD:manifest-valido %s \"%s\" no pertenece a %s\\n",
+      "ps": "GUARD:manifest-valido $($par[0]) `"
+    }
+  }
+]

@@ -145,6 +145,19 @@ inconsistencias que un humano pasa por alto. **Augmenta el gate, no lo reemplaza
 - **Degradación (nunca bloquea).** Sin revisor, invocación de la skill fallida, fallo en runtime,
   timeout/`poll_deadline` vencido, o `cross_review.mode: off` → avisar en una línea y seguir con el
   gate humano. Misma filosofía que la regla 8.
+- **Las cuatro opciones del checkpoint, en los dos gates de Fase 1.** Si la revisión devuelve
+  `tandas_concedibles`, los STOPs de `master-spec` (gate 1.3) y de `reparto` (gate 1.4) ofrecen
+  —sin gate extra— **continuar así** · **conceder una tanda** · **seguir hasta `APPROVED`** ·
+  **cerrar la revisión**. Las cuatro se ofrecen siempre: `disponibles: false` advierte que conceder
+  no puede converger, no deshabilita nada. Con el modo automático activo, el fin de tanda es una
+  **frontera interna** y la barrera del gate sigue marcada. Tras el gate, la llamadora **reanuda la
+  misma corrida por su `run_id`** si el humano concede, o **finaliza el único manifest** si eligió
+  una salida terminal; y su `resume` **consulta el descriptor durable** antes de iniciar otra
+  revisión. Postcondiciones y descriptor en `cross-review/reference.md` → "Tandas y salida de
+  rondas" y "Checkpoint durable".
+- **El fan-out de Fase 2 queda fuera:** delega con `cross_review.mode: off`, así que ahí no hay
+  revisión que gobernar. Los gates de Fase 1 **sí** son interactivos, y por eso la excepción de
+  "donde no hay gate no se pregunta" no los alcanza.
 
 > Detalle del loop, el contrato con el revisor (Codex o Claude según quién conduzca) y el formato del log viven en la propia
 > `cross-review`. Acá el orquestador solo decide **cuándo** invocarla y **presenta** su salida.

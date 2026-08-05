@@ -1,0 +1,100 @@
+[
+  {
+    "id": "campo-faltante",
+    "sitio": {
+      "posix": {
+        "linea": 8,
+        "digest": "sha256:0b99b9909b5b2709"
+      },
+      "ps": {
+        "linea": 10,
+        "digest": "sha256:49ce7097972fa321"
+      }
+    },
+    "posix": "^GUARD:clarification-completa falta o está vacío el campo \"(?P<campo>[^\"]*)\"$",
+    "ps": "^GUARD:clarification-completa falta o está vacío el campo \"(?P<campo>[^\"]*)\"$",
+    "campos": {
+      "campo": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:clarification-completa falta o está vacío el campo \"CENTINELA:\"",
+        "campos": {
+          "campo": "CENTINELA:"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:clarification-completa falta o está vacío el campo \"CENTINELA:\"",
+        "campos": {
+          "campo": "CENTINELA:"
+        }
+      }
+    },
+    "literal": {
+      "posix": "GUARD:clarification-completa falta o está vacío el campo \"%s\"\\n",
+      "ps": "GUARD:clarification-completa falta o está vacío el campo `"
+    }
+  },
+  {
+    "id": "sin-indice",
+    "sitio": {
+      "posix": {
+        "linea": 13,
+        "digest": "sha256:a07d482d1fcbdda6"
+      },
+      "ps": {
+        "linea": 13,
+        "digest": "sha256:9e7cf3655aad2f09"
+      }
+    },
+    "posix": "^GUARD:clarification-completa no entrega el índice de lo mapeado$",
+    "ps": "^GUARD:clarification-completa no entrega el índice de lo mapeado$",
+    "campos": {},
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:clarification-completa no entrega el índice de lo mapeado",
+        "campos": {}
+      },
+      "ps": {
+        "texto": "GUARD:clarification-completa no entrega el índice de lo mapeado",
+        "campos": {}
+      }
+    },
+    "literal": {
+      "posix": "GUARD:clarification-completa no entrega el índice de lo mapeado",
+      "ps": "GUARD:clarification-completa no entrega el índice de lo mapeado"
+    }
+  },
+  {
+    "id": "sin-detalle",
+    "sitio": {
+      "posix": {
+        "linea": 15,
+        "digest": "sha256:413311747b76161c"
+      },
+      "ps": {
+        "linea": 14,
+        "digest": "sha256:01c2771e77296872"
+      }
+    },
+    "posix": "^GUARD:clarification-completa no entrega el detalle de lo mapeado$",
+    "ps": "^GUARD:clarification-completa no entrega el detalle de lo mapeado$",
+    "campos": {},
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:clarification-completa no entrega el detalle de lo mapeado",
+        "campos": {}
+      },
+      "ps": {
+        "texto": "GUARD:clarification-completa no entrega el detalle de lo mapeado",
+        "campos": {}
+      }
+    },
+    "literal": {
+      "posix": "GUARD:clarification-completa no entrega el detalle de lo mapeado",
+      "ps": "GUARD:clarification-completa no entrega el detalle de lo mapeado"
+    }
+  }
+]

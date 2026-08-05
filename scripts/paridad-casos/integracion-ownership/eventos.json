@@ -1,0 +1,165 @@
+[
+  {
+    "id": "arnes-archivo-inexistente",
+    "sitio": {
+      "posix": {
+        "linea": 6,
+        "digest": "sha256:8b4c49e28f82cc7c"
+      },
+      "ps": {
+        "linea": 13,
+        "digest": "sha256:88052c3f1359c889"
+      }
+    },
+    "motivo": "Es un error de INVOCACIÓN, no una guarda: el archivo que se pasó no existe. Los dos sabores lo comprueban antes de leer y cortan con `exit 99`. Antes solo lo hacía POSIX, y PowerShell dejaba que `Get-Content` lanzara y seguía con la lista vacía, reportando que el plan no referencia ninguna fila de integración sobre un archivo que nadie escribió nunca.",
+    "posix": "^ARNES:no existe (?P<archivo>.*)$",
+    "campos": {
+      "archivo": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "ARNES:no existe {dir}/CENTINELA.md",
+        "campos": {
+          "archivo": "{dir}/CENTINELA.md"
+        }
+      },
+      "ps": {
+        "texto": "ARNES:no existe {dir}/CENTINELA.md",
+        "campos": {
+          "archivo": "{dir}/CENTINELA.md"
+        }
+      }
+    },
+    "literal": {
+      "posix": "ARNES:no existe %s\\n",
+      "ps": "ARNES:no existe $f"
+    },
+    "ps": "^ARNES:no existe (?P<archivo>.*)$"
+  },
+  {
+    "id": "not-applicable",
+    "sitio": {
+      "posix": {
+        "linea": 13,
+        "digest": "sha256:477f50e000d421cc"
+      },
+      "ps": {
+        "linea": 19,
+        "digest": "sha256:1376fa25b49c6368"
+      }
+    },
+    "posix": "^GUARD:integracion-no-local (?P<archivo>.*): fila \\[integration\\] marcada NOT_APPLICABLE \\(borraria una obligacion global\\)$",
+    "ps": "^GUARD:integracion-no-local (?P<archivo>.*): fila \\[integration\\] marcada NOT_APPLICABLE \\(borraria una obligacion global\\)$",
+    "campos": {
+      "archivo": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:integracion-no-local {dir}/CENTINELA.md: fila [integration] marcada NOT_APPLICABLE (borraria una obligacion global)",
+        "campos": {
+          "archivo": "{dir}/CENTINELA.md"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:integracion-no-local {dir}/CENTINELA.md: fila [integration] marcada NOT_APPLICABLE (borraria una obligacion global)",
+        "campos": {
+          "archivo": "{dir}/CENTINELA.md"
+        }
+      }
+    },
+    "literal": {
+      "posix": "GUARD:integracion-no-local %s: fila [integration] marcada NOT_APPLICABLE (borraria una obligacion global)\\n",
+      "ps": "GUARD:integracion-no-local ${f}: fila [integration] marcada NOT_APPLICABLE (borraria una obligacion global)"
+    }
+  },
+  {
+    "id": "evidencia-local",
+    "sitio": {
+      "posix": {
+        "linea": 14,
+        "digest": "sha256:63d5b3e92cc226cb"
+      },
+      "ps": {
+        "linea": 21,
+        "digest": "sha256:3a72631050fa69d0"
+      }
+    },
+    "posix": "^GUARD:integracion-no-local (?P<archivo>.*): fila \\[integration\\] con evidencia local \"(?P<ev>[^\"]*)\"/\"(?P<bl>[^\"]*)\"$",
+    "ps": "^GUARD:integracion-no-local (?P<archivo>.*): fila \\[integration\\] con evidencia local \"(?P<ev>[^\"]*)\"/\"(?P<bl>[^\"]*)\"$",
+    "campos": {
+      "archivo": {
+        "tipo": "texto"
+      },
+      "ev": {
+        "tipo": "texto"
+      },
+      "bl": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:integracion-no-local {dir}/CENTINELA.md: fila [integration] con evidencia local \"test\"/\"RED\"",
+        "campos": {
+          "archivo": "{dir}/CENTINELA.md",
+          "ev": "test",
+          "bl": "RED"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:integracion-no-local {dir}/CENTINELA.md: fila [integration] con evidencia local \"test\"/\"RED\"",
+        "campos": {
+          "archivo": "{dir}/CENTINELA.md",
+          "ev": "test",
+          "bl": "RED"
+        }
+      }
+    },
+    "literal": {
+      "posix": "GUARD:integracion-no-local %s: fila [integration] con evidencia local \"%s\"/\"%s\"\\n",
+      "ps": "GUARD:integracion-no-local ${f}: fila [integration] con evidencia local `"
+    }
+  },
+  {
+    "id": "sin-fila-integration",
+    "sitio": {
+      "posix": {
+        "linea": 25,
+        "digest": "sha256:0dcbf275336d6718"
+      },
+      "ps": {
+        "linea": 27,
+        "digest": "sha256:d2315445bcc8e80f"
+      }
+    },
+    "posix": "^GUARD:integracion-no-local (?P<archivo>.*): no referencia ninguna fila \\[integration\\]$",
+    "ps": "^GUARD:integracion-no-local (?P<archivo>.*): no referencia ninguna fila \\[integration\\]$",
+    "campos": {
+      "archivo": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:integracion-no-local {dir}/CENTINELA.md: no referencia ninguna fila [integration]",
+        "campos": {
+          "archivo": "{dir}/CENTINELA.md"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:integracion-no-local {dir}/CENTINELA.md: no referencia ninguna fila [integration]",
+        "campos": {
+          "archivo": "{dir}/CENTINELA.md"
+        }
+      }
+    },
+    "literal": {
+      "posix": "GUARD:integracion-no-local %s: no referencia ninguna fila [integration]\\n",
+      "ps": "GUARD:integracion-no-local ${f}: no referencia ninguna fila [integration]"
+    }
+  }
+]

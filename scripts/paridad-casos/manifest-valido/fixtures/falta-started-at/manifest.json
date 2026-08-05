@@ -1,0 +1,9 @@
+{
+  "skill": "cross-review",
+  "mode": "auto",
+  "duration_s": 12,
+  "families": ["claude", "gpt"],
+  "transport": "cli-exec",
+  "outcome": "APPROVED",
+  "degradation": "none"
+}

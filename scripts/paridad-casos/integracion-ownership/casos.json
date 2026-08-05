@@ -1,0 +1,165 @@
+{
+  "par": "integracion-ownership",
+  "clausulas": [
+    {
+      "id": "arnes-archivo-inexistente",
+      "compara_cadenas": false,
+      "nota": "el discriminador es la existencia del archivo; el sistema de archivos de esta plataforma no distingue mayúsculas, así que un caso de casing no mediría nada"
+    },
+    {
+      "id": "not-applicable",
+      "compara_cadenas": true
+    },
+    {
+      "id": "evidencia-local",
+      "compara_cadenas": true
+    },
+    {
+      "id": "sin-fila-integration",
+      "compara_cadenas": true
+    }
+  ],
+  "casos": [
+    {
+      "nombre": "positivo",
+      "particion": "positivo",
+      "objetivos": [
+        "arnes-archivo-inexistente",
+        "not-applicable",
+        "evidencia-local",
+        "sin-fila-integration"
+      ],
+      "clase_esperada": "aceptacion",
+      "precondicion": "el plan referencia una fila [integration] con `N/A: Fase 3` en evidencia y en baseline",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "not-applicable": "valido",
+        "evidencia-local": "valido",
+        "sin-fila-integration": "valido"
+      },
+      "fixture": "positivo",
+      "entradas": {
+        "repos": "{dir}/plan.md"
+      }
+    },
+    {
+      "nombre": "archivo-inexistente",
+      "particion": "invalido",
+      "objetivo": "arnes-archivo-inexistente",
+      "clase_esperada": "fallo",
+      "entradas": {
+        "repos": "{dir}/no-existe.md"
+      },
+      "precondicion": "la ruta no existe. POSIX lo comprueba con `[ -f ]` y sale 99 con prefijo `ARNES:`; PowerShell no tiene esa comprobación y `Get-Content` emite un diagnóstico del intérprete. Los dos quedan en `fallo`, que es una clase propia y NUNCA paridad",
+      "clausulas": {
+        "arnes-archivo-inexistente": "invalido",
+        "not-applicable": "valido",
+        "evidencia-local": "valido",
+        "sin-fila-integration": "valido"
+      },
+      "fixture": "archivo-inexistente"
+    },
+    {
+      "nombre": "marcada-not-applicable",
+      "particion": "invalido",
+      "objetivo": "not-applicable",
+      "clase_esperada": "rechazo",
+      "precondicion": "la fila [integration] lleva NOT_APPLICABLE en el baseline",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "not-applicable": "invalido",
+        "evidencia-local": "valido",
+        "sin-fila-integration": "valido"
+      },
+      "fixture": "marcada-not-applicable",
+      "entradas": {
+        "repos": "{dir}/plan.md"
+      }
+    },
+    {
+      "nombre": "not-applicable-minuscula",
+      "particion": "casing",
+      "objetivo": "not-applicable",
+      "clase_esperada": "rechazo",
+      "precondicion": "el baseline dice `not_applicable` en minúsculas. POSIX resuelve con un `case` case-sensitive: no matchea `*NOT_APPLICABLE*` y cae en la rama genérica, así que emite la OTRA cláusula. PowerShell resuelve con `-match`, case-insensitive, y emite esta. El id del evento difiere",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "not-applicable": "invalido",
+        "evidencia-local": "valido",
+        "sin-fila-integration": "valido"
+      },
+      "fixture": "not-applicable-minuscula",
+      "entradas": {
+        "repos": "{dir}/plan.md"
+      }
+    },
+    {
+      "nombre": "evidencia-local",
+      "particion": "invalido",
+      "objetivo": "evidencia-local",
+      "clase_esperada": "rechazo",
+      "precondicion": "la fila [integration] declara evidencia local en vez de `N/A: Fase 3`",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "not-applicable": "valido",
+        "evidencia-local": "invalido",
+        "sin-fila-integration": "valido"
+      },
+      "fixture": "evidencia-local",
+      "entradas": {
+        "repos": "{dir}/plan.md"
+      }
+    },
+    {
+      "nombre": "fase-3-minuscula",
+      "particion": "casing",
+      "objetivo": "evidencia-local",
+      "clase_esperada": "rechazo",
+      "precondicion": "la fila dice `n/a: fase 3` en minúsculas. POSIX compara con un patrón literal case-sensitive y la manda a la rama genérica; PowerShell usa `-eq`, case-insensitive, y la da por buena",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "not-applicable": "valido",
+        "evidencia-local": "invalido",
+        "sin-fila-integration": "valido"
+      },
+      "fixture": "fase-3-minuscula",
+      "entradas": {
+        "repos": "{dir}/plan.md"
+      }
+    },
+    {
+      "nombre": "sin-fila",
+      "particion": "invalido",
+      "objetivo": "sin-fila-integration",
+      "clase_esperada": "rechazo",
+      "precondicion": "el plan no referencia ninguna fila [integration]: su cobertura queda abierta. Es el control en el otro sentido",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "not-applicable": "valido",
+        "evidencia-local": "valido",
+        "sin-fila-integration": "invalido"
+      },
+      "fixture": "sin-fila",
+      "entradas": {
+        "repos": "{dir}/plan.md"
+      }
+    },
+    {
+      "nombre": "integration-mayuscula",
+      "particion": "casing",
+      "objetivo": "sin-fila-integration",
+      "clase_esperada": "rechazo",
+      "precondicion": "la fila dice `[INTEGRATION]` en mayúsculas: el literal `[integration]` NO está. POSIX busca con `grep -F` case-sensitive y no la ve; PowerShell usa `-match`, case-insensitive, y sí",
+      "clausulas": {
+        "arnes-archivo-inexistente": "valido",
+        "not-applicable": "valido",
+        "evidencia-local": "valido",
+        "sin-fila-integration": "invalido"
+      },
+      "fixture": "integration-mayuscula",
+      "entradas": {
+        "repos": "{dir}/plan.md"
+      }
+    }
+  ]
+}

@@ -1,0 +1,135 @@
+{
+  "par": "gate-fase-3",
+  "clausulas": [
+    {
+      "id": "gate-apertura-ausente",
+      "compara_cadenas": true
+    },
+    {
+      "id": "no-exige-congelar",
+      "compara_cadenas": true
+    },
+    {
+      "id": "agregacion-no-declara",
+      "compara_cadenas": true
+    }
+  ],
+  "casos": [
+    {
+      "nombre": "positivo",
+      "particion": "positivo",
+      "objetivos": [
+        "gate-apertura-ausente",
+        "no-exige-congelar",
+        "agregacion-no-declara"
+      ],
+      "clase_esperada": "aceptacion",
+      "precondicion": "el SKILL.md nombra el gate de apertura, exige congelar antes y declara `no verificado`",
+      "clausulas": {
+        "gate-apertura-ausente": "valido",
+        "no-exige-congelar": "valido",
+        "agregacion-no-declara": "valido"
+      },
+      "fixture": "positivo",
+      "entradas": {
+        "skill_orq": "{dir}/skill.md"
+      }
+    },
+    {
+      "nombre": "sin-gate-apertura",
+      "particion": "invalido",
+      "objetivo": "gate-apertura-ausente",
+      "clase_esperada": "rechazo",
+      "precondicion": "se quita la frase del gate de apertura y las otras dos siguen presentes",
+      "clausulas": {
+        "gate-apertura-ausente": "invalido",
+        "no-exige-congelar": "valido",
+        "agregacion-no-declara": "valido"
+      },
+      "fixture": "sin-gate-apertura",
+      "entradas": {
+        "skill_orq": "{dir}/skill.md"
+      }
+    },
+    {
+      "nombre": "gate-apertura-casing",
+      "particion": "casing",
+      "objetivo": "gate-apertura-ausente",
+      "clase_esperada": "rechazo",
+      "precondicion": "la frase va en minúsculas: el literal normativo NO está. POSIX busca con `grep -q` case-sensitive; PowerShell con `-notmatch`, case-insensitive",
+      "clausulas": {
+        "gate-apertura-ausente": "invalido",
+        "no-exige-congelar": "valido",
+        "agregacion-no-declara": "valido"
+      },
+      "fixture": "gate-apertura-casing",
+      "entradas": {
+        "skill_orq": "{dir}/skill.md"
+      }
+    },
+    {
+      "nombre": "sin-exigir-congelar",
+      "particion": "invalido",
+      "objetivo": "no-exige-congelar",
+      "clase_esperada": "rechazo",
+      "precondicion": "se quita `Congelarlo **antes**` y las otras dos siguen presentes",
+      "clausulas": {
+        "gate-apertura-ausente": "valido",
+        "no-exige-congelar": "invalido",
+        "agregacion-no-declara": "valido"
+      },
+      "fixture": "sin-exigir-congelar",
+      "entradas": {
+        "skill_orq": "{dir}/skill.md"
+      }
+    },
+    {
+      "nombre": "congelar-casing",
+      "particion": "casing",
+      "objetivo": "no-exige-congelar",
+      "clase_esperada": "rechazo",
+      "precondicion": "dice `congelarlo **ANTES**`: el literal normativo NO está",
+      "clausulas": {
+        "gate-apertura-ausente": "valido",
+        "no-exige-congelar": "invalido",
+        "agregacion-no-declara": "valido"
+      },
+      "fixture": "congelar-casing",
+      "entradas": {
+        "skill_orq": "{dir}/skill.md"
+      }
+    },
+    {
+      "nombre": "sin-no-verificado",
+      "particion": "invalido",
+      "objetivo": "agregacion-no-declara",
+      "clase_esperada": "rechazo",
+      "precondicion": "se quita `no verificado` y las otras dos siguen presentes",
+      "clausulas": {
+        "gate-apertura-ausente": "valido",
+        "no-exige-congelar": "valido",
+        "agregacion-no-declara": "invalido"
+      },
+      "fixture": "sin-no-verificado",
+      "entradas": {
+        "skill_orq": "{dir}/skill.md"
+      }
+    },
+    {
+      "nombre": "no-verificado-casing",
+      "particion": "casing",
+      "objetivo": "agregacion-no-declara",
+      "clase_esperada": "rechazo",
+      "precondicion": "dice `NO VERIFICADO` en mayúsculas: el literal normativo NO está",
+      "clausulas": {
+        "gate-apertura-ausente": "valido",
+        "no-exige-congelar": "valido",
+        "agregacion-no-declara": "invalido"
+      },
+      "fixture": "no-verificado-casing",
+      "entradas": {
+        "skill_orq": "{dir}/skill.md"
+      }
+    }
+  ]
+}

@@ -1,0 +1,83 @@
+[
+  {
+    "id": "paquete-inmutable",
+    "sitio": {
+      "posix": {
+        "linea": 16,
+        "digest": "sha256:19f1fd93dd0f59fc"
+      },
+      "ps": {
+        "linea": 11,
+        "digest": "sha256:ee93510a8cfb0aa3"
+      }
+    },
+    "posix": "^GUARD:paquete-inmutable el paquete entregado cambió \\((?P<actual>\\S+) ≠ (?P<esperado>\\S+)\\)$",
+    "ps": "^GUARD:paquete-inmutable el paquete entregado cambió \\((?P<actual>\\S+) ≠ (?P<esperado>\\S+)\\)$",
+    "campos": {
+      "actual": {
+        "tipo": "texto"
+      },
+      "esperado": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:paquete-inmutable el paquete entregado cambió (CENTINELA1 ≠ CENTINELA2)",
+        "campos": {
+          "actual": "CENTINELA1",
+          "esperado": "CENTINELA2"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:paquete-inmutable el paquete entregado cambió (CENTINELA1 ≠ CENTINELA2)",
+        "campos": {
+          "actual": "CENTINELA1",
+          "esperado": "CENTINELA2"
+        }
+      }
+    },
+    "literal": {
+      "posix": "GUARD:paquete-inmutable el paquete entregado cambió (%s ≠ %s)\\n",
+      "ps": "GUARD:paquete-inmutable el paquete entregado cambió ($actual ≠ $hash_v1)"
+    }
+  },
+  {
+    "id": "truncado-alcanza-versiones",
+    "sitio": {
+      "posix": {
+        "linea": 24,
+        "digest": "sha256:2d0be28e9afdcbe1"
+      },
+      "ps": {
+        "linea": 15,
+        "digest": "sha256:ddfce75967cf7dca"
+      }
+    },
+    "posix": "^GUARD:truncado-alcanza-versiones sobrevivieron (?P<cuantas>\\d+) versiones al redespacho$",
+    "ps": "^GUARD:truncado-alcanza-versiones sobrevivieron (?P<cuantas>\\d+) versiones al redespacho$",
+    "campos": {
+      "cuantas": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:truncado-alcanza-versiones sobrevivieron 3 versiones al redespacho",
+        "campos": {
+          "cuantas": "3"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:truncado-alcanza-versiones sobrevivieron 3 versiones al redespacho",
+        "campos": {
+          "cuantas": "3"
+        }
+      }
+    },
+    "literal": {
+      "posix": "GUARD:truncado-alcanza-versiones sobrevivieron %s versiones al redespacho\\n",
+      "ps": "GUARD:truncado-alcanza-versiones sobrevivieron $quedan versiones al redespacho"
+    }
+  }
+]

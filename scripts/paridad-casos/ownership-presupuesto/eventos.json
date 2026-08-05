@@ -1,0 +1,48 @@
+[
+  {
+    "id": "presupuesto-excedido",
+    "sitio": {
+      "posix": {
+        "linea": 11,
+        "digest": "sha256:c746f30000b04034"
+      },
+      "ps": {
+        "linea": 20,
+        "digest": "sha256:30f192d73ba81c08"
+      }
+    },
+    "posix": "(?s)^GUARD:presupuesto-por-check presupuesto excedido:\\n(?P<excesos>.*)$",
+    "ps": "^GUARD:presupuesto-por-check (?P<excesos>.*)$",
+    "campos": {
+      "excesos": {
+        "tipo": "conjunto",
+        "items": {
+          "posix": "\\s*([^\\n]+?)\\s*(?=\\n|$)",
+          "ps": "\\s*([^|]+?)\\s*(?=\\||$)"
+        }
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:presupuesto-por-check presupuesto excedido:\n  CENTINELA · DESIGN_GAP · 2 > 1",
+        "campos": {
+          "excesos": [
+            "CENTINELA · DESIGN_GAP · 2 > 1"
+          ]
+        }
+      },
+      "ps": {
+        "texto": "GUARD:presupuesto-por-check CENTINELA · DESIGN_GAP · 2 > 1",
+        "campos": {
+          "excesos": [
+            "CENTINELA · DESIGN_GAP · 2 > 1"
+          ]
+        }
+      }
+    },
+    "literal": {
+      "posix": "GUARD:presupuesto-por-check presupuesto excedido:",
+      "ps": "GUARD:presupuesto-por-check $id · $cl · $($g.Count) > $tope"
+    }
+  }
+]
