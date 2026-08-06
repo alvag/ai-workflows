@@ -76,11 +76,6 @@ descubierto por capacidad:
 Sin el revisor de la otra familia disponible, la skill devuelve `UNAVAILABLE` y el flujo SDD
 continúa con su gate humano.
 
-**Transporte alternativo por panes (opcional).** Si el entorno lo permite, el revisor puede alojarse
-en un pane de un multiplexor de terminales en vez de lanzarse headless por CLI. Sustituye el
-transporte, no la semántica, y si la capacidad no está la vía no se intenta: la revisión sigue por el
-transporte CLI vigente con un aviso de una línea. Detalle en `transporte-herdr.md`.
-
 ## Integración con sdd-flow y sdd-orchestrator
 
 La dependencia es **blanda**: `sdd-flow`/`sdd-orchestrator` chequean si esta skill está instalada

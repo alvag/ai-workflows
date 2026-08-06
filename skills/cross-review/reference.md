@@ -25,14 +25,13 @@ tipo de artefacto.
 
 ## Documentos de esta referencia
 
-La referencia de esta skill son **tres** archivos, partidos por el momento en que se los lee, no por
-tamaño. Cargar los otros dos en toda corrida gastaría contexto en las corridas que no los usan:
+La referencia de esta skill son **dos** archivos, partidos por el momento en que se los lee, no por
+tamaño. Cargar el segundo en toda corrida gastaría contexto en las corridas que no lo usan:
 
 | Archivo | Qué trae | Cuándo se lee |
 |---|---|---|
 | `reference.md` (este) | portabilidad entre shells, descubrimiento e invocación del revisor, resume entre rondas, prompt, formato de salida, foco por tipo de artefacto, latencia y topes, matriz de resume y manifest | en toda corrida |
 | `ciclo-de-vida.md` | identidad del finding, estados y transiciones, ledger append-only y su esquema, presupuestos, vara de admisión de la defensa, cierre y adopción de logs legacy | ante la **primera salida conforme que traiga al menos un finding**, cualquiera sea el veredicto |
-| `transporte-herdr.md` | el adaptador del transporte por panes: activación, perfil de permisos, entradas y salidas, independencia, deadline, continuidad entre rondas, validación del artefacto y cleanup | **solo** cuando la activación del flujo resolvió a la vía de panes |
 
 **El predicado de `ciclo-de-vida.md` es literal y no se parafrasea.** No es "al primer rechazo": la
 ingesta —identidad, dedup, ledger y veredicto derivado— ya está gobernada por ese contrato, así que
@@ -462,6 +461,10 @@ se le reenvía la conversación para que lo deduzca.
 
 ## Latencia y timeout (Claude revisor)
 
+Al resolver latencia, timeout o continuidad entre rondas, leer primero
+`skills/cross-review/corridas-en-vuelo.md` → "Invariantes de recuperación". También rigen la sección
+"Resume entre rondas": un corte de espera no decide por sí mismo si se puede reanudar o relanzar.
+
 La revisión con `--model opus` sobre un **prompt grande** (gate de plan/tasks: artefacto + spec/plan
 de contexto + permiso de leer el repo) puede tardar **varios minutos** en producir la primera
 salida. El default sigue siendo `opus` (la calidad de la crítica es el punto de la skill), pero hay
@@ -564,30 +567,6 @@ el corte lo puso el conductor al fijar el tope. La palanca que corresponde es di
 o bajar de modelo, como dice "Diagnóstico y palancas"—, y con un solo literal para las dos no había
 cómo elegirla leyendo la serie de manifests.
 
-**`transport_fallback` es la quinta causa y no es causa de `UNAVAILABLE`.** Registra que la corrida se
-despachó por un transporte que no era el que se había resuelto, y la corrida puede terminar
-`APPROVED`: es una causa de la **corrida**, no de una indisponibilidad. Sus cinco reglas son
-normativas para las tres skills que la emiten:
-
-1. **El literal es `transport_fallback`, y no otro.** Es un valor de enum compartido por tres
-   productores: dejarlo como "una causa propia de cada skill" habilita literales incompatibles que
-   igual cumplirían la intención. Se nombra por el **mecanismo** y no por el producto —no
-   `herdr_unavailable`— para que un transporte futuro no obligue a agregar un valor más.
-2. **El disparador se define por resultado, no por dónde falló.** Intención resuelta a la vía de
-   panes **+** transporte efectivo CLI despachado ⇒ `transport_fallback`, sin importar si la vía cayó
-   en el preflight de capacidad o en el lanzamiento. Sin esa regla, una implementación lo registraría
-   desde el preflight y otra solo tras un lanzamiento fallido, y las dos se creerían correctas.
-3. **`transport` guarda la vía que efectivamente corrió**, no la que se intentó: en un fallback es la
-   del CLI. Las dos juntas son el par que hace legible la serie — el transporte real más el hecho de
-   que hubo fallback. Sin la causa, esa corrida sería indistinguible de una CLI intencional.
-4. **La causa raíz concreta —pared confirmada, flake de lanzamiento— queda en el log de la skill**, no
-   en el manifest. El manifest guarda el hecho comparable entre corridas; el diagnóstico se consulta
-   en el log, que es donde ya se lo busca.
-5. **Excepción — resultado incierto: no hay fallback.** Si el intento por la vía de panes quedó en
-   estado incierto (no se sabe si el agente sigue vivo), **no hay fallback** hasta resolver el
-   recovery. Despachar por CLI sobre un intento que quizá siga corriendo produce dos escritores sobre
-   las mismas rutas de salida, que es peor que no tener revisión.
-
 ##### `recovery-required` bloquea retry y fallback
 
 La excepción de arriba nombra el estado; esta subsección lo define, porque es acá —donde se fija el
@@ -609,7 +588,7 @@ los dos es una señal que le llegue al revisor ni una prueba de que terminó.
 corrida ya degradada sobre la ruta que la ronda siguiente va a leer, y una crítica de la ronda 1 pasa
 por crítica de la ronda 2 sin que nada la delate: el formato es el correcto y el archivo está entero.
 De ahí las dos consecuencias — cada intento escribe en **rutas exclusivas**, y no se despacha por el
-otro transporte hasta cerrar el recovery, que es la excepción de `transport_fallback`.
+otro transporte hasta cerrar el recovery.
 
 **Esto no bloquea el gate.** Al gate lo libera el estado terminal con su aviso de degradación, como
 fija "Estados terminales que liberan el gate". `recovery-required` bloquea el reintento y el fallback;
@@ -668,11 +647,11 @@ no figura acá porque no es terminal: es la *ausencia* de observable, y es justo
 marca del gate. Y el `recovery-required` de un intento de transporte con resultado incierto tampoco es
 una sexta casilla de espera: bloquea el retry y el fallback, no el gate, que se presenta con el aviso.
 
-**Lo que libera el gate es el estado terminal, no haber cerrado el pane.** Conservar un pane para
-inspección —lo que ya se hace con un bloqueo, un deadline vencido o una salida ilegible— es compatible
-con presentar el gate: son dos decisiones independientes y ninguna espera a la otra. Un pane vivo no
-es un observable pendiente; esperar a cerrarlo antes de presentar reintroduciría exactamente el
-cuelgue que esta tabla elimina.
+**Lo que libera el gate es el estado terminal, no haber concluido el cleanup.** Conservar recursos
+propios para inspección —ante un bloqueo, un deadline vencido o una salida ilegible— es compatible con
+presentar el gate: son dos decisiones independientes y ninguna espera a la otra. Un recurso propio en
+pie no es un observable pendiente; esperar a retirarlo antes de presentar reintroduciría exactamente
+el cuelgue que esta tabla elimina.
 
 ## Resume entre rondas
 
@@ -1027,7 +1006,7 @@ un **descriptor por `run_id`**:
 | `tope_vigente` | el `tope_efectivo` de la última `control-corrida`, si el modo automático está activo |
 | `causa_corte` | `tanda_agotada` \| `solo_disputas` |
 | `gate_pendiente` | qué STOP quedó esperando decisión |
-| `revisor` | la referencia de sesión o pane con que reanudar |
+| `revisor` | la referencia de sesión con que reanudar |
 
 Se **escribe al abrir el checkpoint** y se **retira al terminal** de la corrida.
 
@@ -1285,7 +1264,7 @@ sean el mismo dato ausente.
 | `started_at` | ISO-8601 UTC del **despacho** | reloj al lanzar |
 | `duration_s` | del despacho a la resolución del outcome | reloj |
 | `families` | familias delegadas — **siempre una lista** | topología de la corrida |
-| `transport` | la vía efectiva: `subagent` · `cli-exec` · `cli-resume` · `herdr` | vía resuelta al lanzar |
+| `transport` | la vía efectiva: `subagent` · `cli-exec` · `cli-resume` | vía resuelta al lanzar |
 | `outcome` | el estado terminal que la skill ya devuelve | envelope / salida |
 | `degradation` | qué se perdió, o `none` | escalera / causa de indisponibilidad |
 
@@ -1306,9 +1285,9 @@ reanudación de una sesión ajena.
 
 | Skill | `mode` | `outcome` | `degradation` (además de `none`) |
 |---|---|---|---|
-| `co-explore` | `explore` · `counter-plan` · `investigate` · `debate` | `completed` · `map_failure` | `branch-2` · `branch-3` · `branch-4` · `confirmed_wall` · `launch_flake` · `runtime_failure` · `deadline_exceeded` · `transport_fallback` |
-| `cross-review` | `spec` · `plan` · `tasks` · `master-spec` · `reparto` · `draft` | `APPROVED` · `REVISE` · `UNAVAILABLE` | `rounds_exhausted` · `confirmed_wall` · `launch_flake` · `runtime_failure` · `deadline_exceeded` · `transport_fallback` |
-| `cross-implement` | `embebido` · `directo` | `IMPLEMENTED` · `PARTIAL` · `UNAVAILABLE` | `takeover` · `confirmed_wall` · `launch_flake` · `runtime_failure` · `deadline_exceeded` · `transport_fallback` |
+| `co-explore` | `explore` · `counter-plan` · `investigate` · `debate` | `completed` · `map_failure` | `branch-2` · `branch-3` · `branch-4` · `confirmed_wall` · `launch_flake` · `runtime_failure` · `deadline_exceeded` |
+| `cross-review` | `spec` · `plan` · `tasks` · `master-spec` · `reparto` · `draft` | `APPROVED` · `REVISE` · `UNAVAILABLE` | `rounds_exhausted` · `confirmed_wall` · `launch_flake` · `runtime_failure` · `deadline_exceeded` |
+| `cross-implement` | `embebido` · `directo` | `IMPLEMENTED` · `PARTIAL` · `UNAVAILABLE` | `takeover` · `confirmed_wall` · `launch_flake` · `runtime_failure` · `deadline_exceeded` |
 | `bitbucket-code-review` | `conductor` · `delegado` · `mixto` | `PUBLISHED` · `PROPOSED` · `UNAVAILABLE` | `revisor_invalido` · `panel_vacio` · `confirmed_wall` · `launch_flake` · `runtime_failure` |
 
 Cada uno de esos términos ya existe en la skill que lo produce: el manifest los **serializa**, no
@@ -1317,13 +1296,10 @@ los dos difieren no hay forma de saber cuál miente. Si una corrida termina en u
 en su fila, lo que falta actualizar es la fila — o el estado es uno que la skill no documenta, y eso
 es un hallazgo más valioso que el registro.
 
-**La vía de panes es vocabulario prestado como cualquier otro.** Cuando `cross-review` despacha su
-revisor en un pane de un multiplexor de terminales en vez de por CLI headless, el valor que emite es
-`transport: herdr`; la semántica no se mueve —mismos modos, mismos outcomes, misma matriz de
-resume—, solo cambia por dónde viaja el prompt. `bitbucket-code-review` **no** emite ese valor: no
-delega a través de las tres skills que lo producen, y su fila no se amplía. La sintaxis del
-multiplexor no es asunto de esta skill: la autoridad es la skill externa `herdr` y el binario
-instalado.
+**También el vocabulario del transporte es prestado.** Cada skill emite únicamente los valores de
+lanzamiento que documenta; el campo registra cómo se lanzó la corrida sin redefinir sus modos,
+outcomes ni matriz de resume. `bitbucket-code-review` no amplía su vocabulario con valores que no
+produce. La sintaxis de cada lanzamiento vive en la vía que lo ejecuta, no en este manifest.
 
 ### Cuándo se escribe
 
@@ -1397,19 +1373,19 @@ grep -qE '"families"[[:space:]]*:[[:space:]]*\[' "$manifest" || {
 val() { sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$manifest" | head -1; }
 sk=$(val skill)
 comunes="none confirmed_wall launch_flake runtime_failure"
-# `deadline_exceeded` y `transport_fallback` NO van en "comunes": ese conjunto lo comparten las
-# cuatro filas, y meterlas ahí las filtraría a bitbucket-code-review, que no delega a través de las
-# tres skills que las producen. Se suman fila por fila, solo en esas tres.
+# `deadline_exceeded` NO va en "comunes": ese conjunto lo comparten las cuatro filas y sumarlo ahí
+# lo filtraría a bitbucket-code-review. Se suma fila por fila a las tres skills que lo producen; el
+# transporte vigente para las cuatro es `subagent`, `cli-exec` y `cli-resume`.
 case "$sk" in
   co-explore)      outs="completed map_failure"
-                   degs="$comunes branch-2 branch-3 branch-4 deadline_exceeded transport_fallback"
-                   trans="subagent cli-exec cli-resume herdr" ;;
+                   degs="$comunes branch-2 branch-3 branch-4 deadline_exceeded"
+                   trans="subagent cli-exec cli-resume" ;;
   cross-review)    outs="APPROVED REVISE UNAVAILABLE"
-                   degs="$comunes rounds_exhausted deadline_exceeded transport_fallback"
-                   trans="subagent cli-exec cli-resume herdr" ;;
+                   degs="$comunes rounds_exhausted deadline_exceeded"
+                   trans="subagent cli-exec cli-resume" ;;
   cross-implement) outs="IMPLEMENTED PARTIAL UNAVAILABLE"
-                   degs="$comunes takeover deadline_exceeded transport_fallback"
-                   trans="subagent cli-exec cli-resume herdr" ;;
+                   degs="$comunes takeover deadline_exceeded"
+                   trans="subagent cli-exec cli-resume" ;;
   bitbucket-code-review)
                    outs="PUBLISHED PROPOSED UNAVAILABLE";      degs="$comunes revisor_invalido panel_vacio"
                    trans="subagent cli-exec cli-resume" ;;
@@ -1437,7 +1413,7 @@ $m = Get-Content -Raw $manifest
 # Los operadores van en su variante case-sensitive (`-cmatch`, `-cnotmatch`, `-cnotcontains`,
 # `switch -CaseSensitive`) porque el par POSIX compara con `grep`/`case`/`grep -qxF`, que distinguen
 # mayúsculas. Con los operadores por defecto de .NET, `Started_at` cuenta como el campo `started_at`
-# y `HERDR` como el transporte `herdr`.
+# y `CLI-EXEC` como el transporte `cli-exec`.
 foreach ($c in 'skill','mode','started_at','duration_s','families','transport','outcome','degradation') {
   if ($m -cnotmatch "`"$c`"\s*:") { Write-Error "GUARD:manifest-valido falta el campo `"$c`""; $rc = 1 }
 }
@@ -1448,19 +1424,19 @@ if ($m -cnotmatch '"families"\s*:\s*\[') { Write-Error 'GUARD:manifest-valido "f
 function Val($k) { if ($m -cmatch "`"$k`"\s*:\s*`"([^`"]*)`"") { $Matches[1] } else { '' } }
 $sk = Val 'skill'
 $comunes = @('none','confirmed_wall','launch_flake','runtime_failure')
-# 'deadline_exceeded' y 'transport_fallback' NO van en $comunes: ese conjunto lo comparten las cuatro
-# filas, y meterlas ahí las filtraría a bitbucket-code-review, que no delega a través de las tres
-# skills que las producen. Se suman fila por fila, solo en esas tres.
+# 'deadline_exceeded' NO va en $comunes: ese conjunto lo comparten las cuatro filas y sumarlo ahí
+# lo filtraría a bitbucket-code-review. Se suma fila por fila a las tres skills que lo producen; el
+# transporte vigente para las cuatro es 'subagent', 'cli-exec' y 'cli-resume'.
 switch -CaseSensitive ($sk) {
   'co-explore'      { $outs = @('completed','map_failure')
-                      $degs = $comunes + @('branch-2','branch-3','branch-4','deadline_exceeded','transport_fallback')
-                      $trans = @('subagent','cli-exec','cli-resume','herdr') }
+                      $degs = $comunes + @('branch-2','branch-3','branch-4','deadline_exceeded')
+                      $trans = @('subagent','cli-exec','cli-resume') }
   'cross-review'    { $outs = @('APPROVED','REVISE','UNAVAILABLE')
-                      $degs = $comunes + @('rounds_exhausted','deadline_exceeded','transport_fallback')
-                      $trans = @('subagent','cli-exec','cli-resume','herdr') }
+                      $degs = $comunes + @('rounds_exhausted','deadline_exceeded')
+                      $trans = @('subagent','cli-exec','cli-resume') }
   'cross-implement' { $outs = @('IMPLEMENTED','PARTIAL','UNAVAILABLE')
-                      $degs = $comunes + @('takeover','deadline_exceeded','transport_fallback')
-                      $trans = @('subagent','cli-exec','cli-resume','herdr') }
+                      $degs = $comunes + @('takeover','deadline_exceeded')
+                      $trans = @('subagent','cli-exec','cli-resume') }
   'bitbucket-code-review' { $outs = @('PUBLISHED','PROPOSED','UNAVAILABLE'); $degs = $comunes + @('revisor_invalido','panel_vacio')
                       $trans = @('subagent','cli-exec','cli-resume') }
   default { Write-Error "GUARD:manifest-valido skill fuera del ecosistema: `"$sk`""

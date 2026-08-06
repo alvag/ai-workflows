@@ -1,11 +1,11 @@
-# Portación CLI-first: qué rescatar de las ramas Herdr y Orca
+# Portación CLI-first: qué rescatar de dos ramas experimentales
 
 Fecha: 2026-07-30
 Actualizado: 2026-07-31 — pasos 1 y 2 de la secuencia implementados; estado por punto al día
 Estado: catálogo aprobado y **en ejecución**. Hechos: pasos 1 (`dd2f3b7`) y 2 (`97cc694`).
 Siguiente: paso 3 (puntos 2, 3, 11 y 12)
 Skills afectadas: `co-explore`, `cross-implement`, `cross-review`, `sdd-flow` (config)
-Ramas analizadas: `feat/herdr-cli-cross-model` (ffcc851), `feat/cross-model-real-sessions` (2979d6d)
+Ramas analizadas: rama de runtime `ffcc851`, `feat/cross-model-real-sessions` (`2979d6d`)
 Rama destino: `feat/cross-model` (24fc46b, idéntica a `main`)
 
 ## Objetivo
@@ -15,7 +15,7 @@ Registrar qué ideas de las dos ramas de transporte valen la pena portar al ecos
 objetivo original de las skills — **performance, usabilidad y productividad** — y no la
 capacidad de abrir sesiones interactivas visibles de la otra familia.
 
-Ninguna de las ideas de este catálogo depende de Herdr ni de Orca. Todas corren sobre el
+Ninguna de las ideas de este catálogo depende del runtime descartado ni de Orca. Todas corren sobre el
 transporte que las skills ya usan hoy: `codex exec -s read-only` y `claude -p`.
 
 ## Contexto: dónde quedó cada rama
@@ -24,21 +24,21 @@ transporte que las skills ya usan hoy: `codex exec -s read-only` y `claude -p`.
 |---|---|---|---|---|
 | `feat/cross-model` (base) | — | 0 | 0 | — |
 | `feat/cross-model-real-sessions` | +13.826 líneas | 19 | 9 | `cross-model-orca` |
-| `feat/herdr-cli-cross-model` | +79.074 líneas | 244 | 124 | `cross-model-runtime` |
+| rama de runtime (`ffcc851`) | +79.074 líneas | 244 | 124 | `cross-model-runtime` |
 
 La línea base son 7.233 líneas de Markdown sin un solo archivo ejecutable, coherente con la
 premisa del repo declarada en `CLAUDE.md`: *"No es una app: no hay build ni runtime"*.
 
-### Hallazgos verificados sobre `feat/herdr-cli-cross-model`
+### Hallazgos verificados sobre la rama de runtime `ffcc851`
 
 Estos hechos motivan no continuar por ese camino. Se verificaron leyendo código y artefactos,
-sin correr las suites ni probar Herdr en vivo.
+sin correr las suites ni probar el transporte interactivo en vivo.
 
 1. **Codex quedó sin transporte CLI.**
    `skills/cross-model-runtime/assets/adapters/codex-cli.mjs` es un stub: `preflight()` devuelve
    siempre `available: false` con razón `codex-headless-approval-unsupported` y `dispatch()`
-   lanza. Codex solo funciona vía Herdr interactivo; el CLI quedó Claude-only.
-   La decisión está registrada en `.plans/cross-model-herdr-adapter/runtime-adoption-log.md`
+   lanza. Codex solo funciona vía transporte interactivo; el CLI quedó Claude-only.
+   La decisión está registrada en el adoption log local de esa rama
    ("T17 cut Codex headless", 2026-07-30), tras cinco intentos de promoción con rollback.
 2. **El motivo es más estrecho que la consecuencia.**
    `codex exec` 0.145.0 no expone `-a/--ask-for-approval` (verificado en `codex exec --help`),
@@ -46,7 +46,7 @@ sin correr las suites ni probar Herdr en vivo.
    sentido para el rol *write*; para un worker **read-only** con `-s read-only`, `never` es el
    comportamiento deseado: el sandbox contiene y la escalada se deniega sola.
 3. **El cap de prompt excluye los casos reales grandes.**
-   Herdr acepta 65.536 bytes de prompt operacional. Los dos consumers medidos —`cross-review.max`
+   El transporte interactivo acepta 65.536 bytes de prompt operacional. Los dos consumers medidos —`cross-review.max`
    (112.160 B) y `counter-plan.max` (78.081 B)— resuelven CLI antes de crear topología y, sumado
    al punto 1, terminan `partial` / `degraded` / `single-worker`.
 4. **Costo de la opción, aunque no se use.**
@@ -91,8 +91,7 @@ Ordenadas por valor sobre costo. Cada una es independiente de las demás.
 > excepción de familia acotada y la decisión de retoma. Artefactos del flujo en
 > `.plans/punto-1-coordinador-puro/`.
 
-- **Origen:** `docs/superpowers/specs/2026-07-23-herdr-cli-cross-model-ideas.md` (rescatado del
-  worktree de esa rama, antes untracked).
+- **Origen:** catálogo de arquitectura recuperado del worktree de esa rama.
 - **Qué era:** el conductor exploraba él mismo *y además* despachaba un worker, por lo que pagaba
   el contexto completo de la exploración. La idea es que el conductor **no explore**: despacha dos
   workers frescos y actúa como árbitro. Cada worker entrega **dos capas**:
@@ -247,7 +246,7 @@ que son las que hacen que el mecanismo sea honesto en vez de decorativo:
 > **HECHO en forma reducida** — commit `dd2f3b7` (rama terminal de una sola voz). La versión
 > completa dependía del punto 1 y llegó con él en `97cc694`: escalera de cuatro ramas.
 
-- **Origen:** `docs/superpowers/specs/2026-07-23-herdr-cli-cross-model-ideas.md`.
+- **Origen:** catálogo de arquitectura recuperado del worktree de esa rama.
 - **Qué es:** hoy `co-explore` devuelve `UNAVAILABLE` si no hay revisor de la otra familia
   (regla 7, paso 1 de sus pasos de ejecución). La idea es continuar con un solo worker y
   **declarar explícitamente la diversidad reducida** en la salida.
@@ -260,7 +259,7 @@ que son las que hacen que el mecanismo sea honesto en vez de decorativo:
 
 ### 6. Perfiles de worker en `.specify/config.yml`
 
-- **Origen:** `docs/superpowers/specs/2026-07-23-herdr-cli-cross-model-ideas.md`, sección
+- **Origen:** catálogo de arquitectura recuperado del worktree de esa rama, sección
   "Decisión: perfiles nombrados de workers".
 - **Qué es:** un perfil describe **cómo ejecutar** un worker (familia, modelo, esfuerzo), nunca
   qué tarea hacer. La skill conserva la autoridad sobre rol, prompt, permisos y límites de
@@ -446,7 +445,7 @@ que son las que hacen que el mecanismo sea honesto en vez de decorativo:
 Del research original (§15, lista *Reject*) más lo que agrega este análisis:
 
 - Migración a Pi o a un harness monolítico.
-- Transporte Herdr (`skills/cross-model-runtime/`) y transporte `orca-session`
+- Transporte interactivo (`skills/cross-model-runtime/`) y transporte `orca-session`
   (`skills/cross-model-orca/`) como tales.
 - Capability manifests con verificación por bytes y SHA-256, `worker-capabilities.json`,
   integridad de entrypoints.
@@ -523,12 +522,12 @@ identidades de reintento (`transportAttempt` / `formatRepair` / `semanticAttempt
 
 ## Riesgo de pérdida de insumos
 
-`.plans/` es untracked por diseño. Dos documentos citados acá viven **solo** en el worktree de
-`feat/herdr-cli-cross-model` (`/Users/max/Personal/repos/ai-workflows`) y no están en ninguna rama:
+`.plans/` es untracked por diseño. Dos documentos citados acá viven **solo** en el worktree de la
+rama de runtime `ffcc851` (`/Users/max/Personal/repos/ai-workflows`) y no están en ninguna rama:
 
-- ~~`.plans/herdr-cli-cross-model/ideas.md`~~ — **rescatado** a
-  `docs/superpowers/specs/2026-07-23-herdr-cli-cross-model-ideas.md`.
-- `.plans/cross-model-herdr-adapter/runtime-adoption-log.md` (1.229 líneas) — la evidencia de los
+- El catálogo local de ideas —**rescatado** antes de limpiar el worktree— vuelve a quedar solo en
+  esa copia de trabajo tras retirar su publicación versionada.
+- El adoption log local (1.229 líneas) —la evidencia de los
   hallazgos verificados. **Sigue en riesgo**, y el riesgo no cambió al descartar el archivado: no
   depende de que la rama exista, sino de que el archivo es untracked. Un `git clean -xdf` o borrar
   el worktree se lo lleva, y la rama seguiría ahí sin él. Lo que sí bajó es la probabilidad: nadie
@@ -538,7 +537,7 @@ identidades de reintento (`transportAttempt` / `formatRepair` / `semanticAttempt
 
 Se verificó leyendo código y artefactos: el stub del adapter Codex, los flags de `codex exec`
 (`--help` de `codex-cli 0.145.0`), los conteos de archivos y líneas por rama, y los outcomes del
-adoption log. **No** se corrió ninguna de las suites de las ramas analizadas ni se probó Herdr u
+adoption log. **No** se corrió ninguna de las suites de las ramas analizadas ni se probó el transporte interactivo u
 Orca en vivo. El hallazgo 6 (identidad de facturación del CLI headless) no se midió: lo aportó
 Max desde su propio entorno. Las cifras de tests que aparecen en el adoption log (runtime 260/260, co-explore
 224/224, cross-review 117/117) son las que ese documento reporta, no ejecuciones propias.
@@ -554,6 +553,6 @@ Max desde su propio entorno. Las cifras de tests que aparecen en el adoption log
 - `skills/cross-implement/reference.md` en `2979d6d` — implementación del contract y el triage;
   origen de todas las reglas de congelamiento y los refinamientos del triage.
 - `docs/research/cross-model-real-sessions/README.md` (misma rama).
-- `docs/superpowers/specs/2026-07-23-herdr-cli-cross-model-ideas.md` (rescatado el 2026-07-31) y
-  `.plans/cross-model-herdr-adapter/` (aún untracked).
+- El catálogo de arquitectura y el adoption log del worktree de `ffcc851`, consultados el
+  2026-07-31.
 - `skills/cross-model-runtime/` y `skills/cross-model-orca/` en sus respectivas ramas.

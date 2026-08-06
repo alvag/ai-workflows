@@ -193,11 +193,11 @@
       }
     },
     {
-      "nombre": "transport-HERDR",
+      "nombre": "transport-CLI-EXEC",
       "particion": "casing",
       "objetivo": "valor-fuera-de-vocabulario",
       "clase_esperada": "rechazo",
-      "precondicion": "transport `HERDR`: el valor permitido con el casing alterado. POSIX lo rechaza con `grep -qxF` y PowerShell lo acepta con `-notcontains`, que es case-insensitive. Un mutante `bogus` cualquiera NO revela esto: los dos sabores coinciden y el par se declararía en paridad",
+      "precondicion": "transport `CLI-EXEC`: el valor permitido `cli-exec` con el casing alterado. POSIX y el PowerShell vigente lo rechazan de forma sensible a mayúsculas; al mutar `-cnotcontains` a `-notcontains`, solo PowerShell lo acepta y el par diverge. Un mutante `bogus` cualquiera NO revela esto: los dos sabores coinciden y el par se declararía en paridad",
       "clausulas": {
         "falta-campo": "valido",
         "campo-recortado": "valido",
@@ -205,7 +205,7 @@
         "skill-fuera-del-ecosistema": "valido",
         "valor-fuera-de-vocabulario": "invalido"
       },
-      "fixture": "transport-HERDR",
+      "fixture": "transport-CLI-EXEC",
       "entradas": {
         "manifest": "{dir}/manifest.json"
       }

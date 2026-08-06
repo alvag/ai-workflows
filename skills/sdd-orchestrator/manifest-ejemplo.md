@@ -3,17 +3,16 @@
 **Este archivo es una vista.** Está ensamblado de los bloques que cada skill posee: la config
 propia de la orquestación en `sdd-orchestrator/reference.md` → "Esquema de `manifest.yml`"
 (`branch_prefix`, `execution_mode`, `implement_mode`), `cross-review/SKILL.md` → "Configuración"
-(4 de sus 5 claves), `co-explore/SKILL.md` → "Configuración" (2 de sus 4) y `sdd-flow/reference.md`
-→ "Esquema de `.specify/config.yml`" (2 de las 3 de `cross_model`). **Ante discrepancia manda el
-dueño.** Existe para poder mirar el archivo completo y copiar lo que sirva; no para ser la
+(5 de sus 5 claves) y `co-explore/SKILL.md` → "Configuración" (2 de sus 4). **Ante discrepancia manda
+el dueño.** Existe para poder mirar el archivo completo y copiar lo que sirva; no para ser la
 autoridad de ninguna clave.
 
 **Solo configuración.** El esquema completo de `manifest.yml` (`sdd-orchestrator/reference.md` →
-"Esquema de `manifest.yml`") tiene 17 hojas; 5 son **estado de corrida** de la orquestación, no
+"Esquema de `manifest.yml`") tiene 15 hojas; 5 son **estado de corrida** de la orquestación, no
 configuración, y no aparecen acá: `id`, `created_at`, `master_spec`, `repos` y
 `orchestration_tasks`. Las dos últimas anidan estado propio: `repos` incluye, por cada repo del DAG,
 `branch`, `status`, `depends_on` y `covers_ac`; y `orchestration_tasks`, por cada tarea, su `phase`,
-`owner`, `status` y `done_when` — también estado, no config. Este archivo documenta las 12
+`owner`, `status` y `done_when` — también estado, no config. Este archivo documenta las 10
 restantes.
 
 **Copialo entero o por bloques.** Una clave que borres vuelve a su default —salvo las marcadas
@@ -51,21 +50,12 @@ co_explore:
   mode: auto                     # auto (por complejidad) | "on" | "off" — [def] default on en orquestación
   deadline: 600                  # [ej] segundos (explore; counter-plan usa 300 salvo override)
 
-# ── dueño: sdd-flow/reference.md → "Esquema de `.specify/config.yml`" ──
-cross_model:
-  schema_version: 1              # [obl] obligatorio si el bloque existe
-  transport: cli                 # cli | herdr — [def] lo heredan los sdd-flow delegados para sus corridas
 ```
 
-> **Tres claves de sus dueños no están acá, y no se agregan sin consumidor.**
+> **Dos claves de sus dueños no están acá, y no se agregan sin consumidor.**
 >
-> - **`cross_review.reviewer`** — la posee `cross-review/SKILL.md` → "Configuración"; el
->   `manifest.yml` de la orquestación no la usa.
 > - **`co_explore.debate.mode`** y **`co_explore.debate.max_rounds`** — las posee
 >   `co-explore/SKILL.md` → "Configuración"; ninguna vive en el `manifest.yml`.
-> - **`cross_model.manifest.mode`** — la posee `sdd-flow/reference.md` → "Esquema de
->   `.specify/config.yml`"; el `manifest.yml` de la orquestación solo usa `schema_version` y
->   `transport` de ese bloque.
 >
 > Ninguna se agrega en este cambio: sería una clave sin consumidor comprobado en el orquestador.
 > Si alguna hace falta, entra junto con su consumidor.

@@ -61,7 +61,7 @@ Deja las guardas escritas y **rojas contra el árbol de hoy**, más el baseline 
 # Emite: nada por sí solo.
 #
 # Desviación declarada: estas guardas usan python3 + PyYAML, no POSIX puro como las del
-# flujo herdr-transporte-skills. Motivo: acá el predicado es sobre la ESTRUCTURA de un
+# flujo de retiro del transporte interactivo. Motivo: acá el predicado es sobre la ESTRUCTURA de un
 # bloque YAML y sobre los tokens de sus comentarios, no sobre prosa. Un parser de YAML
 # escrito en sh sería más frágil que lo que verifica.
 set -u
@@ -398,7 +398,7 @@ jira_approval:                   # solo si tracker: jira
 # ── ecosistema cross-model (lo resuelve y ecoa sdd-flow) ──
 cross_model:
   schema_version: 1              # [def] obligatorio si el bloque existe
-  transport: cli                 # [def] cli | herdr — dónde se aloja cada corrida delegada
+  transport: cli                 # [def] cli — dónde se aloja cada corrida delegada
   manifest:                      # dueño: cross-review/reference.md → "Manifest de corrida"
     mode: "on"                   # [def] "on" | "off" — registro por corrida de las skills cross-model
 
@@ -522,7 +522,7 @@ co_explore:                      # dueño: co-explore/SKILL.md → "Configuraci�
   deadline: 600                  # [def] segundos
 cross_model:
   schema_version: 1              # [def] obligatorio si el bloque existe
-  transport: cli                 # [def] cli | herdr — lo heredan los sdd-flow delegados
+  transport: cli                 # [def] cli — lo heredan los sdd-flow delegados
 ```
 
 - [ ] **Step 2: Registrar la asimetría de `cross_review.reviewer`, sin resolverla**
@@ -648,7 +648,7 @@ Correr cada mutante con `REPO=/tmp/mut`. Mutar el worktree compartido es lo que 
 |---|---|---|---|
 | 1 | G1 | borrar una clave del fence de `config-ejemplo.md` | RED, nombrando esa clave en `solo-en-dueños` |
 | 2 | G1 | agregar `foo: bar` al fence de la vista | RED, nombrando `foo` en `solo-en-vista` |
-| 3 | G2 | en la vista, cambiar `transport: cli # [def] cli \| herdr` por `cli \| tmux` | RED, nombrando `transport` con los dos conjuntos |
+| 3 | G2 | en la vista, cambiar el enum de `cross_review.execution` de `auto \| sync \| background` a `auto \| foreground` | RED, nombrando `cross_review.execution` con los dos conjuntos |
 | 4 | G3 | poner `mode: on` sin comillas en `cross-review/SKILL.md` | RED, `valores sin comillas=1` |
 | 5 | G1o | borrar `execution_mode` de `manifest-ejemplo.md` | RED |
 | 6 | G4 | reponer un heading `Pantalla 2` en el paso `init` | RED, `5 de 4` |

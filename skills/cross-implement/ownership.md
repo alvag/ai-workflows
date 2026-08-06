@@ -7,6 +7,10 @@ Vive en un archivo aparte de `reference.md` porque se lee en **un momento distin
 una ronda falló, no antes de delegar— y porque no hace falta cargarlo en una corrida que sale bien a
 la primera.
 
+Al leer este archivo después de una falla, aplicar primero
+`skills/cross-review/corridas-en-vuelo.md` → "Invariantes de recuperación". Esta referencia cita esa
+autoridad y no duplica sus cuatro reglas.
+
 ## Ownership de fallas
 
 Cuando una fila del contrato falla, la primera pregunta no es "cómo lo arreglo" sino **de quién es el

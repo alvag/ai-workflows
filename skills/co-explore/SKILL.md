@@ -75,14 +75,12 @@ comparan**.
 
 ## Reglas no negociables
 
-1. **No persiste nada en tu árbol.** El invariante de seguridad tiene dos mitades y solo una está
-   garantizada en las dos vías de transporte. Garantizado: el **comportamiento read-only por
-   contrato** — el prompt del **revisor** le prohíbe escribir y modificar, y su única salida
-   permitida es su propio informe bajo `co-explore/scratch/` (ver `reference.md` → "Árbol de
-   rutas"); nada más del árbol. **No** garantizado: el **aislamiento** por permisos — por CLI se lo
-   invoca sin permiso de escritura y su salida la captura el conductor por redirección, pero en la
-   vía de panes escribe el informe él mismo y el perfil que lo habilita le abre todo el working dir
-   (`transporte-herdr.md` → "Perfil de permisos"). El **conductor** nunca persiste cambios en el
+1. **No persiste nada en tu árbol.** El invariante de seguridad tiene dos mitades, ambas garantizadas
+   en los despachos vigentes. Primero, el **comportamiento read-only por contrato**: el prompt del
+   **revisor** le prohíbe escribir y modificar, y su única salida permitida es su propio informe bajo
+   `co-explore/scratch/` (ver `reference.md` → "Árbol de rutas"); nada más del árbol. Segundo, el
+   **aislamiento por permisos**: por CLI se lo invoca sin permiso de escritura y su salida la captura
+   el conductor por redirección. El **conductor** nunca persiste cambios en el
    working tree del usuario — el único archivo que escribe fuera del scratch es el **manifest de
    corrida**, un registro local untracked de la misma clase que `.plans/`
    (`cross-review/reference.md` → "Manifest de corrida"). En `explore`/`counter-plan` el contrato de
@@ -294,10 +292,8 @@ y que `workers[]` no puede describir.
 —modo, familias, transporte, duración, `outcome` y la rama de degradación— se escriben en el mismo
 punto donde se resuelve el envelope, **incluidos** los `map_failure` y las ramas 3 y 4. Registrar
 solo las corridas nominales dejaría una serie de puros éxitos, incapaz de mostrar lo único que hay
-que vigilar acá: con qué frecuencia la topología dual se degrada a una sola voz. Su `degradation`
-admite además `transport_fallback`, que es **causa de la corrida** y no de un worker: no viaja en el
-envelope porque el worker que la produjo puede haber terminado `READY` (ver "Degradación"). Esquema,
-vocabulario y recorte en `cross-review/reference.md` → "Manifest de corrida".
+que vigilar acá: con qué frecuencia la topología dual se degrada a una sola voz. Esquema, vocabulario
+y recorte en `cross-review/reference.md` → "Manifest de corrida".
 
 **Nota de límite (obligatoria, una vez por corrida).** Toda salida presentada al usuario cierra
 declarando el techo del método:
@@ -443,20 +439,12 @@ advertencia de una línea —corrió con una sola voz, sin contraste cross-model
 el segundo) y persiste su cierre en un archivo inequívocamente distinto. La regla "DOS MAPAS
 INDEPENDIENTES O NINGUNO" no se relaja: esta rama *es* el ninguno.
 
-**Dos causas que no agregan una rama.** Son **causas de degradación**, no estados: acompañan al
-terminal que la escalera ya resolvió.
+**Una causa que no agrega una rama.** Es **causa de degradación**, no estado: acompaña al terminal
+que la escalera ya resolvió.
 
 - **`deadline_exceeded`** — un worker venció su deadline sin marcador de cierre. Antes se registraba
   como `runtime_failure`, que sugiere una falla de infraestructura que no ocurrió: arrancó bien y el
   corte lo puso el conductor. Baja a la rama que corresponda igual que cualquier worker no válido.
-- **`transport_fallback`** — se resolvió despachar por la vía de panes y el transporte efectivo fue el
-  CLI. Se registra **por resultado**, sin importar si la vía cayó en el preflight de capacidad o en el
-  lanzamiento; `transport` guarda la vía que efectivamente corrió y la causa raíz concreta va al log
-  de la skill. No degrada la diversidad: la corrida puede ser rama 1. **Excepción:** con el intento en
-  resultado incierto **no hay fallback** hasta resolver el recovery — dos workers vivos escribirían
-  las mismas rutas. Las cinco reglas, en `cross-review/reference.md` → "Latencia y timeout (Claude
-  revisor)".
-
 **Causas de indisponibilidad** (`confirmed_wall` · `launch_flake` · `runtime_failure`) y su política
 de reintento: `reference.md` → "Estados del worker". Una pared confirmada no se reintenta.
 
@@ -485,7 +473,4 @@ de reintento: `reference.md` → "Estados del worker". Una pared confirmada no s
   `investigate`", "Capacidades y worktree (`investigate`)", "Descubrir el revisor (puntero +
   fallback)", "Latencia y deadlines", "Árbol de rutas", "Prompt de debate" (ronda
   0 + cruce), "Plantilla de `debate.md`".
-- `transporte-herdr.md` — el adaptador del transporte por panes: activación, permisos, entradas y
-  salidas, independencia, deadline, continuidad, validación y cleanup. Se lee **solo cuando la
-  activación del flujo resolvió a esa vía**; con el transporte CLI vigente no se carga.
 - `README.md` — qué es, cuándo usarla, requisitos e instalación.

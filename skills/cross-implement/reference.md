@@ -24,26 +24,18 @@ conductor, el fix loop, los tiempos y los archivos de trabajo.
 
 ## Documentos de esta referencia
 
-La referencia de esta skill son **cuatro** archivos, partidos por el momento en que se los lee, no por
-tamaño. Cargar los cuatro siempre desperdicia contexto en una corrida que sale bien a la primera:
+La referencia de esta skill son **tres** archivos, partidos por el momento en que se los lee, no por
+tamaño. Cargar los tres siempre desperdicia contexto en una corrida que sale bien a la primera:
 
 | Archivo | Qué trae | Cuándo se lee |
 |---|---|---|
 | `reference.md` (este) | descubrimiento, vías de invocación, prompt, reporte, revisión, fix loop, tiempos y scratch | en toda corrida |
 | `contrato-verificacion.md` | esquema del contrato, reglas de congelamiento, adjudicación, gate previo al dispatch y sus bloques de validación | al armar y aprobar el contrato, antes de delegar |
 | `ownership.md` | las cuatro clases de falla, presupuestos, re-baseline aislado, takeover y precedencia de topes | cuando una ronda falla |
-| `transporte-herdr.md` | el adaptador del transporte por panes: activación, permisos, entradas y salidas, independencia, deadline, continuidad entre rondas, validación y cleanup | solo cuando la activación del flujo resolvió a la vía de panes |
 
-**El costo asumido de este reparto, declarado acá porque es donde se elige qué leer.** De los cuatro,
-`transporte-herdr.md` es el único que **no** es agnóstico del transporte; `ownership.md` sí lo es y se
-deja intacto a propósito, porque sus cuatro clases, sus presupuestos y su precedencia valen igual con
-cualquier transporte. La consecuencia es concreta y no está compensada: quien llega a `ownership.md`
-**por una ronda fallida** no encuentra ahí la casilla de **resultado incierto** —el estado en que no se
-sabe qué quedó escrito en el árbol ni si el implementador sigue vivo— ni la regla de que ningún
-fallback que escriba se habilita sin evidencia positiva de que ese proceso murió. Eso vive solo en
-`transporte-herdr.md` → "Validación del artefacto". En una corrida por panes, entonces, una ronda
-fallida se clasifica leyendo los **dos**: el triage no cambia, pero la pregunta de si el conductor
-puede escribir todavía no es parte del triage.
+En toda corrida, antes del primer despacho, leer también
+`skills/cross-review/corridas-en-vuelo.md` → "Invariantes de recuperación". Ese contrato gobierna el
+deadline, el relanzamiento, las rutas de salida y la elección entre aviso y sondeo.
 
 ## Portabilidad entre shells (POSIX / PowerShell)
 
@@ -84,22 +76,9 @@ Dos reglas invariantes (además de las del `SKILL.md`):
    working dir.
 2. El prompt va por **stdin desde archivo** (tool Write), igual que en las skills hermanas.
 
-Las dos valen igual si el implementador corre en un pane de un multiplexor de terminales en vez de
-por CLI headless: cambia por dónde viaja el prompt, no qué se le exige. Esa corrida registra
-`transport: herdr` en el manifest de corrida (esquema en `cross-review/reference.md` → "Manifest de
-corrida"), y ahí queda dicho por qué `bitbucket-code-review` no recibe ese valor. Los comandos
-concretos no viven acá: la autoridad de la sintaxis es la skill externa `herdr` y el binario
-instalado.
-
-**Cuando la vía de panes se resolvió pero corrió el CLI, la corrida lo declara con la causa
-`transport_fallback`.** El disparador es por **resultado**: intención resuelta a la vía de panes +
-transporte efectivo CLI despachado, sin importar si cayó en el preflight de capacidad o en el
-lanzamiento. `transport` guarda la vía que efectivamente corrió —la del CLI—, y la causa raíz concreta
-(pared confirmada, flake de lanzamiento) queda en el log de la skill, no en el manifest. **Excepción:**
-si el intento por la vía de panes quedó en resultado incierto, **no hay fallback** hasta resolver el
-recovery — con escritura acotada al working dir, dos implementadores vivos sobre el mismo árbol es el
-peor caso posible. Es una causa, no un estado: la corrida puede terminar `IMPLEMENTED`. Las cinco
-reglas completas, en `cross-review/reference.md` → "Latencia y timeout (Claude revisor)".
+Las dos se mantienen en cada intento y reanudación: cambia la ejecución concreta, no qué se le exige.
+El manifest de corrida registra la vía efectiva (esquema en `cross-review/reference.md` → "Manifest
+de corrida"). Los comandos concretos aparecen en cada vía documentada debajo.
 
 ### Vía W-B — Codex implementador (autor Claude)
 
@@ -335,9 +314,10 @@ worker tardío que completa el archivo de una corrida ya degradada, dar a cada i
 alcanza; contra un implementador tardío no, porque lo que sigue tocando es el **working tree entero**.
 Dos escritores sobre el mismo árbol dejan un diff que no es de ninguno de los dos y un estado del repo
 que ninguno explica. Por eso el recovery acá es una pregunta concreta y contestable —qué quedó escrito,
-y si hay algo que siga escribiéndolo—, y hasta contestarla no se despacha nada sobre ese árbol. Cómo
-se clasifica ese intento en el triage lo fija una sola sede, la matriz de `transporte-herdr.md` →
-"Validación del artefacto"; acá no se repite.
+y si hay algo que siga escribiéndolo—, y hasta contestarla no se despacha nada sobre ese árbol. El
+contrato general que bloquea el relanzamiento mientras el proceso anterior pueda seguir escribiendo
+vive en `skills/cross-review/corridas-en-vuelo.md` → "Invariantes de recuperación"; acá se aplica al
+working tree y no se repite.
 
 ### Callback o poll: el segundo predicado, una vez en `background`
 

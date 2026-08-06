@@ -26,18 +26,15 @@ registro de rondas, en su manifest— y acá no se duplica: dos definiciones del
 definiciones que pueden discrepar.
 
 La distinción no es de estilo. **Este ecosistema rechazó por escrito el estado persistido** —máquina
-de estados persistente, esquema formal, validador propio y versionado— en **cuatro sedes**, y esas
-cuatro cláusulas siguen vigentes y sin tocar:
+de estados persistente, esquema formal, validador propio y versionado— en **una sede**, y esa
+cláusula sigue vigente y sin tocar:
 
 - `skills/co-explore/reference.md` → "El descriptor de corrida y su retiro".
-- `skills/co-explore/transporte-herdr.md`, `skills/cross-review/transporte-herdr.md` y
-  `skills/cross-implement/transporte-herdr.md` → el mismo límite, una vez por adaptador.
 
-Un revisor que lea esas cuatro cláusulas como un bloqueo de este contrato lo estaría leyendo al revés.
+Un revisor que lea esa cláusula como un bloqueo de este contrato lo estaría leyendo al revés.
 Lo que rechazan es **reconstruir el avance** de una corrida leyendo un archivo; lo que el sobre
-registra es **quién sigue despachado y dónde escribe**, que es exactamente lo que esas mismas sedes ya
-escriben hoy para la vía de panes. El sobre generaliza ese mecanismo a los trece puntos de despacho
-del ecosistema; no lo asciende a máquina de estados.
+registra es **quién sigue despachado y dónde escribe**. El sobre aplica ese mecanismo a los trece
+puntos de despacho del ecosistema; no lo asciende a máquina de estados.
 
 ### El archivo
 
@@ -74,7 +71,7 @@ concurrentes que eligieron el mismo sufijo, y las informaría como una.
 
 ### Los campos del sobre
 
-Once campos en la raíz, uno por corrida:
+Doce campos en la raíz, uno por corrida:
 
 | campo | qué registra |
 |---|---|
@@ -86,9 +83,10 @@ Once campos en la raíz, uno por corrida:
 | `children` | los sobres que este conductor creó al despachar hacia abajo |
 | `descendants_summary` | el resumen que esta corrida publica de su propia descendencia |
 | `workers` | los workers **directos** de esta corrida, con sus intentos |
-| `scope` | el repo o worktree afectado, más lo que el transporte agregue |
+| `scope` | el repo y el worktree afectados por la corrida |
 | `transport` | la vía por la que viaja la corrida, **derivada** de los intentos vigentes |
 | `harvest_pending` | marca explícita de que la cosecha de esta corrida sigue pendiente |
+| `proxima_accion` | la próxima acción que debe ejecutar el conductor cuando recupere el control |
 
 **`run_id` no identifica solo.** Los descriptores lo llaman "sufijo corto de corrida": dos repos
 concurrentes pueden producir el mismo valor, y dos skills del mismo repo también. La identidad de una
@@ -113,8 +111,8 @@ que es la peor combinación posible: obligatorio y sin lugar donde escribirlo.
 **`transport` en la raíz es el único campo derivado del sobre.** Su valor no se escribe por decisión
 propia: es el valor **común** a los intentos vigentes de todos los workers, o `mixto` cuando difieren.
 Deriva hacia arriba y no hacia abajo, porque la vía es del intento —un mismo revisor va por
-`cli-exec` en la primera ronda y por `cli-resume` en las siguientes, y un fallback puede pasar de
-panes a CLI a mitad de corrida—. Un `transport` raíz que fuera autoridad en vez de resumen sería
+`cli-exec` en la primera ronda y por `cli-resume` en las siguientes, y una corrida multi-worker puede
+tener intentos vigentes por ambas vías—. Un `transport` raíz que fuera autoridad en vez de resumen sería
 directamente falso en cuanto un solo worker cambiara de vía.
 
 **`harvest_pending` es una marca explícita de la corrida, no un derivado.** La tentación es calcularla
@@ -124,8 +122,16 @@ parcial multi-worker necesita saber. Segundo, la marca es lo que garantiza que l
 sola vez**: una condición calculada a partir de otros campos se puede recalcular distinto tras un
 relanzamiento, y una garantía que depende de un cálculo no es una garantía.
 
-**`scope` es un nodo estructurado, no un texto.** "El repo tal, en el worktree cual, con estos panes"
-escrito como frase obliga a cada consumidor a parsearla, y cada uno la parsea distinto.
+**`proxima_accion` es una cadena opcional en la raíz.** `null` o la ausencia del campo significan
+"sin acción declarada" y son casos válidos, no un estado inválido. El conductor propietario es el
+único que la escribe en el sobre; cuando recupera el control, ese conductor la lee durante el barrido
+de corridas activas. Al cerrar la corrida, transfiere el campo al registro de cierre junto con el resto
+del sobre; la transición no depende de un tombstone. Por ejemplo, al recuperar una corrida por
+`cli-exec`, el conductor transfiere `proxima_accion` del sobre activo al registro de cierre antes de
+retirarlo.
+
+**`scope` es un nodo estructurado, no un texto.** Escribir el repo y el worktree como una frase obliga
+a cada consumidor a parsearla, y cada uno la parsea distinto.
 
 ### Los campos por worker
 
@@ -186,7 +192,7 @@ cuenta:
 
 - `wait_budget = {deadline, limite, consumidos}`
 - `process_ref = {tipo, referencia, evidencia_de_frescura, autoridad}`
-- `scope = {repo, worktree, extensión opcional por transporte}`
+- `scope = {repo, worktree}`
 
 **`wait_budget` es un nodo y no un instante.** Un `deadline` solo no alcanza: los transportes de este
 repo cuentan **iteraciones** además de tiempo, así que el presupuesto necesita su `limite` y su
@@ -195,38 +201,26 @@ corrida y lo reinicia extiende el presupuesto sin darse cuenta y sin que nada se
 invariante es `consumidos ≤ limite`: el presupuesto que ya se gastó no se devuelve.
 
 **`process_ref` lleva cuatro componentes porque una referencia sola no sirve.** El `tipo` dice qué
-clase de referencia es —proceso, sesión, pane—, la `referencia` es el identificador, la
+clase de referencia es —proceso o sesión—, la `referencia` es el identificador, la
 `evidencia_de_frescura` es lo que permite creerle, y la `autoridad` dice qué peso tiene frente a las
 otras superficies cuando discrepan. Sin los dos últimos, un identificador viejo se lee como prueba de
 vida.
 
-**`scope` fija dónde ocurre la corrida y admite una extensión por transporte.** `repo` y `worktree`
-son los dos campos fijos; la extensión opcional es donde cada vía guarda lo suyo —la vía de panes
-guarda ahí sus panes propios, su prompt esperado, sus estados terminales y su próxima acción, bajo
-`scope.herdr`—. La extensión es **opcional y del transporte**: ninguna vía puede agregar campos a la
-raíz del sobre para acomodar su mecánica.
+**`scope` fija dónde ocurre la corrida.** `repo` y `worktree` son sus dos campos y ningún consumidor
+puede ampliarlos por su cuenta.
 
-### Mapeo del descriptor Herdr
+### Invariantes de recuperación
 
-La vía de panes ya tiene su descriptor de corrida activa, con **doce campos**. No son dos mecanismos:
-es el mismo sobre, escrito antes de que existiera este contrato. Esta tabla dice dónde vive cada uno
-de esos doce campos, para que no queden dos definiciones vivas del mismo hecho y para que un adaptador
-no se implemente contra un campo que el esquema ya no tiene:
+Estas cuatro reglas gobiernan cualquier recuperación, sin importar la vía del intento:
 
-| campo del descriptor | dónde vive |
-|---|---|
-| run ID · skill · modo | `run_id` · `skill` · `mode` |
-| transporte | `workers[].attempts[].transport` |
-| nombres de agentes | `workers[].name` |
-| outputs esperados · deadline | `workers[].attempts[].output` · `workers[].attempts[].wait_budget` |
-| gate pendiente | `harvest_pending` |
-| panes propios · prompt esperado · estados terminales · próxima acción | `scope.herdr` |
-
-Los tres `transporte-herdr.md` remiten a esta tabla en vez de enumerar los doce campos por su cuenta:
-una enumeración local sobrevive a los cambios del esquema y empieza a describir un sobre que ya no
-existe. Lo que sigue siendo propio de la vía de panes —los panes propios como única autorización de
-cierre, el truncado y sus condiciones— se queda en el adaptador, porque no tiene equivalente en las
-otras vías.
+1. **Un deadline vencido no prueba que el proceso murió.** Solo termina la espera del conductor; el
+   intento permanece incierto hasta que una fuente autorizada demuestre un terminal.
+2. **No se relanza mientras el intento anterior pueda seguir escribiendo.** El nuevo despacho espera
+   el cese confirmado del anterior para no superponer escritores.
+3. **Cada intento usa una ruta de salida exclusiva.** Un reintento o una reanudación nunca reutiliza
+   la salida de otro intento.
+4. **El entorno fija si la recuperación usa aviso o sondeo.** La capacidad del conductor determina
+   cómo recibe o consulta el resultado; el transporte no elige ese mecanismo.
 
 ### Varios workers en una corrida
 
@@ -242,8 +236,8 @@ ese nombre es la unidad con la que se informa, se cosecha y se relanza. Un infor
 delegado" cuando hay tres no dice nada: al usuario le falta saber cuál de los tres.
 
 **Fuente y precedencia, también por worker.** La fuente consultable la fija el transporte del intento
-vigente de **cada** worker, no el de la corrida: un panel donde un revisor va por CLI y otro por panes
-tiene dos fuentes distintas al mismo tiempo, y el `transport` raíz vale `mixto` justamente para no
+vigente de **cada** worker, no el de la corrida: un panel donde un revisor va por `cli-exec` y otro por
+`cli-resume` tiene dos fuentes distintas al mismo tiempo, y el `transport` raíz vale `mixto` para no
 esconderlo. La precedencia ante una discrepancia se resuelve **por worker** y con su propia
 combinación de proceso y artefacto; agregar antes de resolver mezcla un caso ya cerrado con otro
 todavía incierto y produce un veredicto que no es cierto de ninguno de los dos.
@@ -368,19 +362,18 @@ El retiro exige las **tres** a la vez. No hay atajo por outcome ni por antigüed
 |---|---|
 | **terminal comprobado** | uno de los finales de la tabla anterior, con su comprobación hecha; un deadline vencido no es uno |
 | **artefacto validado o descartado** | ninguna salida del intento queda sin adjudicar: o se validó y se cosechó, o se descartó con motivo escrito |
-| **sin recursos propios vivos, o transferidos a un registro de cierre** | ningún proceso, pane ni sesión propia de la corrida queda en pie sin dueño |
+| **sin recursos propios vivos, o transferidos a un registro de cierre** | ningún proceso, sesión ni otro recurso propio de la corrida queda en pie sin dueño |
 
 **Las tres son simultáneas porque ninguna implica a las otras.** Un terminal comprobado convive con un
 artefacto sin adjudicar —el worker terminó y su salida sigue sin leerse—; un artefacto validado
-convive con un pane vivo que se conservó a propósito; y un cleanup terminado no dice nada de si el
+convive con un recurso vivo que se conservó a propósito; y un cleanup terminado no dice nada de si el
 resultado se incorporó. Retirar con dos de tres deja exactamente el hueco que la tercera cubría, y el
 sobre desaparece justo cuando todavía hacía falta.
 
 **La transferencia al registro de cierre es la alternativa a no tener recursos vivos, no un permiso
 para retirar dejándolos huérfanos.** Si la corrida terminó pero queda algo propio en pie —un proceso
-conservado para el cleanup, un pane que alguien va a leer—, la propiedad de ese recurso y su próxima
-acción pasan a un **registro de cierre**, y **recién entonces** se retira el sobre activo. La vía de
-panes ya hace esto con su tombstone; el contrato generaliza el mecanismo a las demás. Sin esa
+conservado para el cleanup, una sesión que alguien va a leer—, la propiedad de ese recurso y su próxima
+acción pasan a un **registro de cierre**, y **recién entonces** se retira el sobre activo. Sin esa
 transferencia solo quedan dos salidas, y las dos son malas: mantener el sobre en vuelo para siempre
 por un recurso que se conservó a propósito, o retirarlo y perder al único que sabía que ese recurso
 existe.
@@ -520,7 +513,7 @@ mismo turno para ver si cambió, que es un retry con otro nombre.
 ### Fuente por transporte
 
 **La fuente la fija el transporte del intento vigente**, no la skill ni la corrida: el mismo worker
-puede tener una fuente distinta en su segundo intento que en el primero. Estos son los cuatro
+puede tener una fuente distinta en su segundo intento que en el primero. Estos son los tres
 transportes y lo que cada uno ofrece:
 
 | transporte | fuente | qué se consulta, y con qué autoridad |
@@ -528,7 +521,6 @@ transportes y lo que cada uno ofrece:
 | `subagent` | `ninguna` | nada a mitad de vuelo: ni proceso propio, ni salida en disco por contrato |
 | `cli-exec` | `archivo+proceso` | la salida del intento en su ruta exclusiva y el proceso hijo; manda el archivo |
 | `cli-resume` | `archivo+proceso` | la salida de **este** intento y el proceso del resume; manda el archivo |
-| `herdr` | `archivo+proceso` | el descriptor y el lifecycle del pane; la autoridad está en el archivo |
 
 **Para `subagent` no hay fuente consultable a mitad de vuelo, y eso es el hecho, no una omisión.** Un
 subagente del entorno no expone ningún proceso que se pueda interrogar y no está obligado por su
@@ -589,7 +581,7 @@ informando.
 
 **`D4` no espera indefinidamente: `esperar_cleanup` ejecuta la transferencia.** Un artefacto completo
 con cleanup pendiente significa que el resultado está y que quedó algo propio en pie —un proceso
-conservado, un pane que alguien va a leer—. La resolución es transferir la propiedad de ese recurso y
+conservado, una sesión que alguien va a leer—. La resolución es transferir la propiedad de ese recurso y
 su próxima acción al **registro de cierre**, y recién entonces habilitar la evaluación del retiro. Sin
 la transferencia solo quedan dos salidas malas: mantener el sobre en vuelo para siempre por un recurso
 que se conservó a propósito, o retirarlo y perder al único que sabía que ese recurso existe.

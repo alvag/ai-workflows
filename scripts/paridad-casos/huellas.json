@@ -60,8 +60,8 @@
     "ps": "sha256:ab00a281488e551b"
   },
   "manifest-valido": {
-    "posix": "sha256:207216c678ed8d41",
-    "ps": "sha256:d28dbde6f2e65276"
+    "posix": "sha256:01fae59bf83c304d",
+    "ps": "sha256:70c90ca18825385e"
   },
   "materializacion-contrato": {
     "posix": "sha256:e438069a86ca77b8",

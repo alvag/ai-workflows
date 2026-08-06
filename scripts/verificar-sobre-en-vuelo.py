@@ -3,8 +3,8 @@
 
 Un modo por fila de la tabla `## Verification` del plan — diecinueve en total, `--ac 1` … `--ac 16`
 con sus variantes `1b`/`2b`/`3b` — más `--sincronizar` (genera las seis copias desde la fuente),
-`--validar-baseline` (comprueba el bloque `#### Baseline de vN` del plan) y `--autotest` (control
-positivo sobre un corpus verde temporal, y después un mutante por vez).
+`--validar-baseline` (comprueba el bloque `#### Baseline de vN` versionado bajo `scripts/`) y
+`--autotest` (control positivo sobre un corpus verde temporal, y después un mutante por vez).
 
 Tres reglas de diseño, heredadas del plan y de las tasks:
 
@@ -13,8 +13,9 @@ Tres reglas de diseño, heredadas del plan y de las tasks:
    `subprocess` se usa solo para `git show` y para invocar las guardas del repo en `--ac 16`.
 2. **Expectativas declarativas por conjunto exacto: sobra tanto como falta.** Un conteo no prueba un
    conjunto, y una coincidencia parcial no prueba una tupla fila→valor.
-3. **El verificador se congela tras la task 2.** Ningún modo se amplía después: su `sha256` entra al
-   baseline y ampliarlo obliga a versionar el contrato a `v2`.
+3. **El congelamiento original se levantó para retirar el transporte de multiplexor.** La migración
+   in-place conserva los modos y versiona su nueva identidad como baseline `v2`; cualquier cambio
+   posterior vuelve a exigir una versión nueva y el `sha256` de los bytes vigentes.
 
 Formato que este verificador espera de los artefactos que lee (lo fija él, porque es quien mide):
 
@@ -44,7 +45,10 @@ import unicodedata
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-BASE_COMMIT = "5f3ff18"
+CONTRACT_BASE_COMMIT = "5f3ff18"
+CHANGE_BASE_COMMIT = "2ed62dd"
+BASELINE_COMMIT = "2ed62dd"
+BASELINE_PATH = "scripts/baseline-sobre-en-vuelo.md"
 
 SKILLS = [
     "bitbucket-code-review",
@@ -59,46 +63,22 @@ CONTRATO_FUENTE = "skills/cross-review/corridas-en-vuelo.md"
 CONTRATO = "corridas-en-vuelo.md"
 COPIAS = [f"skills/{s}/{CONTRATO}" for s in SKILLS]
 
-# Las cuatro sedes que rechazan el estado persistido (AC-1) — son exactamente los cuatro archivos
-# que edita la T11, de ahí que su conservación textual se compruebe en `--ac 1b` y la ausencia de
-# reglas locales de retiro en `--ac 2`.
+# La sede que rechaza el estado persistido (AC-1). Su conservación textual se comprueba en
+# `--ac 1b` y la ausencia de reglas locales de retiro en `--ac 2`.
 SEDES_RECHAZO = [
     "skills/co-explore/reference.md",
-    "skills/co-explore/transporte-herdr.md",
-    "skills/cross-review/transporte-herdr.md",
-    "skills/cross-implement/transporte-herdr.md",
-]
-ADAPTADORES = [
-    "skills/co-explore/transporte-herdr.md",
-    "skills/cross-review/transporte-herdr.md",
-    "skills/cross-implement/transporte-herdr.md",
 ]
 READMES = [f"skills/{s}/README.md" for s in
            ("co-explore", "cross-review", "cross-implement", "bitbucket-code-review")]
 
 CAMPOS_RAIZ = {"run_id", "skill", "mode", "owner", "parent", "children", "descendants_summary",
-               "workers", "scope", "transport", "harvest_pending"}
+               "workers", "scope", "transport", "harvest_pending", "proxima_accion"}
 CAMPOS_WORKER = {"name", "family", "write", "attempts"}
 CAMPOS_INTENTO = {"attempt_id", "transport", "output", "process_ref", "wait_budget", "harvested"}
 SUBESQUEMAS = {
     "wait_budget": {"deadline", "limite", "consumidos"},
     "process_ref": {"tipo", "referencia", "evidencia_de_frescura", "autoridad"},
 }
-# Las doce correspondencias del descriptor Herdr: campo del descriptor → dónde vive en el sobre.
-MAPEO_HERDR = [
-    ("run id", "run_id"),
-    ("skill", "skill"),
-    ("modo", "mode"),
-    ("transporte", "attempts"),
-    ("nombres de agentes", "workers"),
-    ("outputs esperados", "output"),
-    ("deadline", "wait_budget"),
-    ("gate pendiente", "harvest_pending"),
-    ("panes propios", "scope.herdr"),
-    ("prompt esperado", "scope.herdr"),
-    ("estados terminales", "scope.herdr"),
-    ("proxima accion", "scope.herdr"),
-]
 
 TRANSICIONES = {"nace", "relee", "cosecha", "retira"}
 # Outcome de la espera → efecto del enum. `corte_presupuesto` deja el sobre activo porque "vencer el
@@ -117,7 +97,6 @@ FUENTES = [
     (("subagent",), "ninguna"),
     (("cli-exec",), "archivo+proceso"),
     (("cli-resume",), "archivo+proceso"),
-    (("herdr",), "archivo+proceso"),
 ]
 ENUM_PRECEDENCIA = ("cosechar", "clasificar_error", "informar_activo", "esperar_cleanup")
 PRECEDENCIA = [
@@ -143,24 +122,23 @@ PUNTOS_DESPACHO = {
                               "validador adversarial": ["validador adversarial"]},
 }
 
-# Frases que, sobrevivientes en las cuatro sedes, dejarían una regla local de retiro compitiendo con
+# Frases que, sobrevivientes en la sede de rechazo, dejarían una regla local de retiro compitiendo con
 # las tres condiciones del contrato (T11 paso 4).
 RETIRO_LOCAL_PROHIBIDO = ["la unica salida", "transferencia de ownership quedo fuera"]
 
-# Nombres de campo del descriptor lo bastante discriminantes como para delatar una enumeración local
-# sobreviviente. Los que la T11 autoriza conservar —panes propios, truncado, cierre— no están acá.
-CAMPOS_DESCRIPTOR_LOCAL = ["run id", "nombres de agentes", "prompt esperado", "outputs esperados",
-                           "estados terminales", "gate pendiente"]
-
-# Qué tiene que seguir presente en cada archivo que toca la T11: lo propio de panes, que remitir el
-# resto al contrato no puede llevarse puesto. La matriz está MEDIDA sobre 5f3ff18 y congelada acá a
-# propósito —"truncado" hoy no está en dos de los tres adaptadores—: un predicado que se recalculara
-# contra el árbol vigente se autoajustaría a cualquier borrado y no podría ponerse rojo.
+# Construcciones operativas que deben sobrevivir en su sección concreta. La matriz se contrasta
+# contra CHANGE_BASE_COMMIT para impedir que se autoajuste a un borrado del árbol vigente.
 CONSERVAR = {
-    "skills/co-explore/transporte-herdr.md": ["panes propios", "cierre"],
-    "skills/cross-review/transporte-herdr.md": ["panes propios", "cierre"],
-    "skills/cross-implement/transporte-herdr.md": ["panes propios", "truncad", "cierre"],
-    "skills/co-explore/reference.md": ["panes propios", "truncad", "cierre"],
+    "skills/co-explore/reference.md": [
+        ("orden posterior a la retoma", "Truncado previo al dispatch",
+         [["corre despues", "decision de retoma", "nunca al entrar"]]),
+        ("limpieza previa al lanzamiento", "Truncado previo al dispatch",
+         [["formas de cierre", "temporales", "recien despues", "lanza"]]),
+        ("descriptor incluido en la limpieza", "Truncado previo al dispatch",
+         [["descriptor", "conjunto truncado", "redespacho", "antes de lanzar"]]),
+        ("recurso vivo reserva sus rutas", "Truncado previo al dispatch",
+         [["propio vivo", "bloquea", "truncado", "redespacho", "rutas"]]),
+    ],
 }
 
 # Dueños y vistas de la config del repo (AC-15). Mismo modelo que verificar-vistas-config.py.
@@ -219,6 +197,24 @@ def seccion(texto: str, titulo: str) -> str | None:
             continue
         if inicio is None:
             if objetivo in norm(m.group(2)):
+                inicio, nivel = i, len(m.group(1))
+            continue
+        if len(m.group(1)) <= nivel:
+            return "\n".join(lineas[inicio + 1:i])
+    return None if inicio is None else "\n".join(lineas[inicio + 1:])
+
+
+def seccion_exacta(texto: str, titulo: str) -> str | None:
+    """Como `seccion`, pero exige igualdad del encabezado para no confundir comentarios de código."""
+    objetivo = norm(titulo)
+    lineas = texto.split("\n")
+    inicio = nivel = None
+    for i, linea in enumerate(lineas):
+        m = re.match(r"^(#+)\s+(.*)$", linea)
+        if not m:
+            continue
+        if inicio is None:
+            if norm(m.group(2)) == objetivo:
                 inicio, nivel = i, len(m.group(1))
             continue
         if len(m.group(1)) <= nivel:
@@ -340,6 +336,16 @@ class Ctx:
             self.check(False, f"{rel} → «{titulo}»", "no existe el encabezado")
         return s
 
+    def seccion_exacta(self, rel: str, titulo: str) -> str | None:
+        t = leer(self.raiz, rel)
+        if t is None:
+            self.check(False, f"{rel} → «{titulo}»", "el archivo no existe")
+            return None
+        s = seccion_exacta(t, titulo)
+        if s is None:
+            self.check(False, f"{rel} → «{titulo}»", "no existe el encabezado exacto")
+        return s
+
     def contrato(self) -> str | None:
         return self.texto(CONTRATO_FUENTE)
 
@@ -449,7 +455,7 @@ def _campos(ctx: Ctx, titulo: str, esperado: set, etiqueta: str) -> None:
 
 
 def ac_1(ctx: Ctx) -> None:
-    """AC-1 — los conjuntos de campos, los sub-esquemas y las doce correspondencias Herdr."""
+    """AC-1 — los conjuntos de campos y los sub-esquemas exactos."""
     _campos(ctx, "Los campos del sobre", CAMPOS_RAIZ, "campos raíz")
     _campos(ctx, "Los campos por worker", CAMPOS_WORKER, "campos por worker")
     _campos(ctx, "Los campos por intento", CAMPOS_INTENTO, "campos por intento")
@@ -466,41 +472,29 @@ def ac_1(ctx: Ctx) -> None:
     if elems is None:
         ctx.check(False, "sub-esquema scope", "falta la forma `scope = {…}`")
     else:
-        fijos = [e for e in elems if e in ("repo", "worktree")]
-        ext = [e for e in elems if "extension" in norm(e) and "transporte" in norm(e)]
-        ok = len(fijos) == 2 and len(ext) == 1 and len(elems) == 3
-        ctx.check(ok, "sub-esquema scope",
-                  "" if ok else f"esperado {{repo, worktree, extensión opcional por transporte}}, "
-                                f"leído {elems}")
+        ctx.conjunto("sub-esquema scope", {"repo", "worktree"}, set(elems))
     ctx.exigir(texto, "derivación", {
         "`transport` raíz derivado (valor común de los intentos vigentes, o `mixto`)":
             [["transport", "deriv", "mixto", "vigente"]],
     })
-    s = ctx.seccion(CONTRATO_FUENTE, "Mapeo del descriptor Herdr")
-    if s is None:
-        return
-    filas = [f for t in tablas(s) for f in t[1:]]
-    if not filas:
-        ctx.check(False, "mapeo Herdr", "la sección no tiene tabla")
-        return
-    usadas, faltan = set(), []
-    for campo, destino in MAPEO_HERDR:
-        cands = [j for j, f in enumerate(filas) if norm(campo) in norm(f[0])]
-        if not cands:
-            faltan.append(f"{campo} (sin fila)")
-            continue
-        usadas.update(cands)
-        if not any(norm(destino) in norm(" ".join(filas[j][1:])) for j in cands):
-            faltan.append(f"{campo} → esperado {destino}")
-    ctx.check(not faltan, "mapeo Herdr: las doce correspondencias",
-              "" if not faltan else "; ".join(faltan))
-    huerfanas = [filas[j][0] for j in range(len(filas)) if j not in usadas]
-    ctx.check(not huerfanas, "mapeo Herdr: sin filas sobrantes",
-              "" if not huerfanas else f"filas sin campo del descriptor: {', '.join(huerfanas)}")
+    ctx.exigir(texto, "contrato de `proxima_accion`", {
+        "campo raíz de tipo cadena": [["proxima_accion", "cadena", "raiz"]],
+        "opcional; `null` y ausencia son casos válidos":
+            [["proxima_accion", "opcional", "null", "ausencia", "valid"]],
+        "escritor: conductor propietario":
+            [["proxima_accion", "conductor propietario", "unico", "escribe"]],
+        "lector: conductor al recuperar el control durante el barrido":
+            [["recupera el control", "lee", "barrido"]],
+        "transición al registro de cierre junto con el sobre":
+            [["transfiere", "registro de cierre", "resto del sobre"]],
+        "transición independiente de tombstone": [["transicion", "no depende", "tombstone"]],
+        "recuperación `cli-exec` transfiere el campo al cierre":
+            [["cli-exec", "transfiere", "proxima_accion", "registro de cierre"]],
+    })
 
 
 def ac_1b(ctx: Ctx) -> None:
-    """AC-1 — no reconstruye estado semántico, cita sus cuatro sedes, y la frontera de la T8."""
+    """AC-1 — no reconstruye estado semántico, cita su sede de rechazo y separa registros."""
     texto = ctx.contrato()
     ctx.exigir(texto, "contrato", {
         "declara que no reconstruye el estado semántico":
@@ -510,7 +504,7 @@ def ac_1b(ctx: Ctx) -> None:
     })
     if texto is not None:
         faltan = [s for s in SEDES_RECHAZO if norm(s) not in norm(texto)]
-        ctx.check(not faltan, "contrato: cita las cuatro sedes que rechazan el estado persistido",
+        ctx.check(not faltan, "contrato: cita la sede que rechaza el estado persistido",
                   "" if not faltan else f"no citadas: {', '.join(faltan)}")
         objetivo = ["sobre", "checkpoint durable", "bitacora"]
         ok = any(all(any(o in norm(f[0]) for f in t[1:]) for o in objetivo) and len(t[0]) >= 3
@@ -688,7 +682,7 @@ def ac_5(ctx: Ctx) -> None:
 
 
 def ac_6(ctx: Ctx) -> None:
-    """AC-6 — fuente por transporte, `process_ref`, y el chequeo positivo de los adaptadores."""
+    """AC-6 — fuentes vigentes, `process_ref` y continuidad operativa anclada a su sección."""
     ctx.tuplas("fuente por transporte", ctx.seccion(CONTRATO_FUENTE, "Fuente por transporte"),
                FUENTES, ENUM_FUENTE)
     texto = ctx.contrato()
@@ -706,39 +700,32 @@ def ac_6(ctx: Ctx) -> None:
         "el subagente no tiene fuente consultable a mitad de vuelo":
             [["subagent", "no hay fuente consultable"]],
     })
-    for rel in ADAPTADORES:
-        s = seccion(leer(ctx.raiz, rel) or "", "Entradas y salidas")
-        if s is None:
-            ctx.check(False, f"{rel} → «Entradas y salidas»", "no existe la sección")
-            continue
-        sn = norm(s)
-        ok = CONTRATO in s and "mapeo" in sn
-        ctx.check(ok, f"{rel}: remite a la tabla de mapeo del contrato",
-                  "" if ok else f"la sección no cita `{CONTRATO}` con su mapeo")
-        quedan = [c for c in CAMPOS_DESCRIPTOR_LOCAL if norm(c) in sn]
-        ctx.check(len(quedan) <= 1, f"{rel}: sin enumeración local de los doce campos",
-                  "" if len(quedan) <= 1 else f"siguen enumerados: {', '.join(quedan)}")
-    s = ctx.seccion("skills/co-explore/reference.md", "El descriptor de corrida y su retiro")
+    s = ctx.seccion_exacta("skills/co-explore/reference.md", "Truncado previo al dispatch")
     if s is not None:
         sn = norm(s)
-        # Un solo chequeo con las tres señales: por separado, "es el sobre" y "vía de panes" ya
-        # están hoy y darían verde sin que la redeclaración haya ocurrido.
-        ok = CONTRATO in s and cubre(sn, [["sobre", "via de panes"]])
-        ctx.check(ok, "co-explore/reference.md: el descriptor redeclarado como el sobre por la vía "
-                      f"de panes, con remisión a `{CONTRATO}`",
-                  "" if ok else f"cita el contrato: {CONTRATO in s} · dice sobre + vía de panes: "
-                                f"{cubre(sn, [['sobre', 'via de panes']])}")
-        quedan = [c for c in CAMPOS_DESCRIPTOR_LOCAL if norm(c) in sn]
-        ctx.check(len(quedan) <= 1, "co-explore/reference.md: sin definición local de campos",
-                  "" if len(quedan) <= 1 else f"siguen definidos: {', '.join(quedan)}")
-    for rel, terminos in CONSERVAR.items():
-        t = leer(ctx.raiz, rel)
-        if t is None:
-            ctx.check(False, f"{rel}: conserva lo propio de panes", "el archivo no existe")
+        ok = (CONTRATO in s and "invariantes de recuperacion" in sn and
+              cubre(sn, [["intento anterior", "rutas"]]))
+        ctx.check(ok, "co-explore/reference.md: remite a las invariantes con el referente de rutas",
+                  "" if ok else f"cita el contrato: {CONTRATO in s} · cita invariantes: "
+                                f"{'invariantes de recuperacion' in sn} · refiere intento y rutas: "
+                                f"{cubre(sn, [['intento anterior', 'rutas']])}")
+    for rel, construcciones in CONSERVAR.items():
+        try:
+            base = subprocess.run(["git", "show", f"{CHANGE_BASE_COMMIT}:{rel}"], cwd=REPO,
+                                  capture_output=True, text=True, check=True).stdout
+        except subprocess.CalledProcessError as e:
+            ctx.check(False, f"matriz CONSERVAR: {CHANGE_BASE_COMMIT}:{rel}",
+                      e.stderr.strip()[:120])
             continue
-        faltan = [p for p in terminos if p not in norm(t)]
-        ctx.check(not faltan, f"{rel}: conserva {', '.join(terminos)}",
-                  "" if not faltan else f"ya no menciona: {', '.join(faltan)}")
+        for nombre, titulo, requisito in construcciones:
+            seccion_base = seccion_exacta(base, titulo)
+            seccion_actual = ctx.seccion_exacta(rel, titulo)
+            anclada = seccion_base is not None and cubre(norm(seccion_base), requisito)
+            ctx.check(anclada, f"CONSERVAR anclado en {CHANGE_BASE_COMMIT}: {nombre}",
+                      "" if anclada else f"la construcción no existe en «{titulo}» del commit base")
+            presente = seccion_actual is not None and cubre(norm(seccion_actual), requisito)
+            ctx.check(presente, f"{rel} → «{titulo}»: conserva {nombre}",
+                      "" if presente else f"la construcción operativa no cumple {requisito}")
 
 
 def ac_7(ctx: Ctx) -> None:
@@ -955,10 +942,10 @@ def ac_15(ctx: Ctx) -> str:
     ahora: set[str] = set()
     for rel, heading in DUENOS_CONFIG:
         try:
-            viejo = subprocess.run(["git", "show", f"{BASE_COMMIT}:{rel}"], cwd=REPO,
+            viejo = subprocess.run(["git", "show", f"{CONTRACT_BASE_COMMIT}:{rel}"], cwd=REPO,
                                    capture_output=True, text=True, check=True).stdout
         except subprocess.CalledProcessError as e:
-            ctx.check(False, f"git show {BASE_COMMIT}:{rel}", e.stderr.strip()[:120])
+            ctx.check(False, f"git show {CONTRACT_BASE_COMMIT}:{rel}", e.stderr.strip()[:120])
             continue
         nuevo = leer(ctx.raiz, rel)
         if nuevo is None:
@@ -971,7 +958,8 @@ def ac_15(ctx: Ctx) -> str:
                                                                "comparar, no un éxito")
         return "nuevas: ?"
     nuevas = sorted(ahora - antes)
-    ctx.check(not nuevas, f"claves nuevas ({len(antes)} en {BASE_COMMIT}, {len(ahora)} ahora)",
+    ctx.check(not nuevas,
+              f"claves nuevas ({len(antes)} en {CONTRACT_BASE_COMMIT}, {len(ahora)} ahora)",
               "" if not nuevas else ", ".join(nuevas))
     return f"nuevas: {len(nuevas)}"
 
@@ -992,55 +980,73 @@ def _diagnosticos(salida: str, skill: str) -> set[str]:
 
 
 def _validar_skills_ref(ctx: Ctx) -> int:
-    """`skills-ref validate` sobre el árbol contra un baseline generado en el momento desde
-    `git show 5f3ff18:` — sin leer ningún snapshot en disco."""
+    """Compara por skill `(returncode, diagnósticos)` contra el commit base del cambio."""
     if shutil.which("skills-ref") is None:
         ctx.check(False, "skills-ref", "el binario no está instalado — el predicado no es medible")
         return 1
-    antes: set[str] = set()
-    ahora: set[str] = set()
+    antes: dict[str, tuple[int, set[str]]] = {}
+    ahora: dict[str, tuple[int, set[str]]] = {}
     with tempfile.TemporaryDirectory() as tmp:
         base = Path(tmp)
         try:
-            listado = subprocess.run(["git", "ls-tree", "-r", "--name-only", BASE_COMMIT, "skills/"],
+            listado = subprocess.run(["git", "ls-tree", "-r", "--name-only",
+                                      CHANGE_BASE_COMMIT, "skills/"],
                                      cwd=REPO, capture_output=True, text=True,
                                      check=True).stdout.split()
         except subprocess.CalledProcessError as e:
-            ctx.check(False, f"git ls-tree {BASE_COMMIT}", e.stderr.strip()[:120])
+            ctx.check(False, f"git ls-tree {CHANGE_BASE_COMMIT}", e.stderr.strip()[:120])
             return 1
         for rel in listado:
-            blob = subprocess.run(["git", "show", f"{BASE_COMMIT}:{rel}"], cwd=REPO,
+            blob = subprocess.run(["git", "show", f"{CHANGE_BASE_COMMIT}:{rel}"], cwd=REPO,
                                   capture_output=True, check=True).stdout
             destino = base / rel
             destino.parent.mkdir(parents=True, exist_ok=True)
             destino.write_bytes(blob)
         for skill in SKILLS:
             viejo = base / "skills" / skill
-            if viejo.is_dir():
-                r = subprocess.run(["skills-ref", "validate", str(viejo)], capture_output=True,
-                                   text=True)
-                antes |= _diagnosticos(r.stdout + r.stderr, skill)
+            if not viejo.is_dir():
+                ctx.check(False, f"skills-ref baseline: {skill}",
+                          "la skill no existe en el commit base")
+                continue
+            r = subprocess.run(["skills-ref", "validate", str(viejo)], capture_output=True,
+                               text=True)
+            antes[skill] = (r.returncode, _diagnosticos(r.stdout + r.stderr, skill))
             nuevo = ctx.raiz / "skills" / skill
             r = subprocess.run(["skills-ref", "validate", str(nuevo)], capture_output=True,
                                text=True)
-            ahora |= _diagnosticos(r.stdout + r.stderr, skill)
-    nuevos = sorted(ahora - antes)
-    ctx.check(not nuevos, f"skills-ref: diagnósticos_actuales − diagnósticos_{BASE_COMMIT} = ∅ "
-                          f"({len(antes)} en base, {len(ahora)} ahora)",
-              "" if not nuevos else " | ".join(nuevos[:4]))
-    return len(nuevos)
+            ahora[skill] = (r.returncode, _diagnosticos(r.stdout + r.stderr, skill))
+    fallos = 0
+    for skill in SKILLS:
+        if skill not in antes or skill not in ahora:
+            fallos += 1
+            continue
+        rc_base, diagnosticos_base = antes[skill]
+        rc_actual, diagnosticos_actuales = ahora[skill]
+        conserva_exito = rc_base != 0 or rc_actual == 0
+        fallos += not ctx.check(
+            conserva_exito, f"skills-ref {skill}: un baseline exitoso sigue exitoso",
+            "" if conserva_exito else f"rc base={rc_base} · rc actual={rc_actual}")
+        nuevos = sorted(diagnosticos_actuales - diagnosticos_base)
+        fallos += not ctx.check(
+            not nuevos, f"skills-ref {skill}: diagnósticos actuales ⊆ baseline",
+            "" if not nuevos else " | ".join(nuevos[:4]))
+        salida_parseable = rc_actual == 0 or bool(diagnosticos_actuales)
+        fallos += not ctx.check(
+            salida_parseable, f"skills-ref {skill}: todo rc no cero produce diagnósticos parseables",
+            "" if salida_parseable else f"rc={rc_actual} sin diagnósticos normalizados")
+    return fallos
 
 
 def ac_16(ctx: Ctx) -> str:
-    """AC-16 — las guardas del repo con `rc` acumulado y `skills-ref` sin diagnósticos nuevos."""
+    """AC-16 — guardas del repo y pares `(returncode, diagnósticos)` sin regresión."""
     acumulado = 0
     for cmd in GUARDAS:
         r = subprocess.run(cmd, cwd=ctx.raiz, capture_output=True, text=True)
         acumulado += r.returncode
         ctx.check(r.returncode == 0, " ".join(cmd[1:]),
                   "" if r.returncode == 0 else f"rc={r.returncode}")
-    nuevos = _validar_skills_ref(ctx)
-    return f"rc={acumulado} · nuevos: {nuevos}"
+    fallos_skills_ref = _validar_skills_ref(ctx)
+    return f"rc={acumulado} · fallos skills-ref: {fallos_skills_ref}"
 
 
 # ---------------------------------------------------------------------------------------------
@@ -1075,10 +1081,10 @@ _ISO = re.compile(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?([.,]\d+)?"
 
 
 def validar_baseline(ctx: Ctx) -> None:
-    plan = ctx.texto(".plans/hilo-workers-en-vuelo/plan.md")
-    if plan is None:
+    baseline = ctx.texto(BASELINE_PATH)
+    if baseline is None:
         return
-    tabla = seccion(plan, "Verification")
+    tabla = seccion(baseline, "Verification")
     ids_tabla: list[str] = []
     for t in tablas(tabla or ""):
         for fila in t[1:]:
@@ -1089,12 +1095,12 @@ def validar_baseline(ctx: Ctx) -> None:
             break
     ctx.check(len(ids_tabla) == 19, "la tabla de `## Verification` tiene diecinueve filas",
               "" if len(ids_tabla) == 19 else f"leídas {len(ids_tabla)}")
-    versiones = sorted(int(m.group(1)) for m in re.finditer(r"^#+\s*Baseline de v(\d+)", plan,
-                                                            re.MULTILINE))
+    versiones = sorted(int(m.group(1)) for m in
+                       re.finditer(r"^#+\s*Baseline de v(\d+)", baseline, re.MULTILINE))
     if not versiones:
-        ctx.check(False, "bloque `#### Baseline de vN`", "no existe en el plan")
+        ctx.check(False, "bloque `#### Baseline de vN`", f"no existe en {BASELINE_PATH}")
         return
-    bloque = seccion(plan, f"Baseline de v{versiones[-1]}")
+    bloque = seccion(baseline, f"Baseline de v{versiones[-1]}")
     filas = [f for t in tablas(bloque or "") for f in t[1:]]
     if not filas:
         ctx.check(False, f"baseline v{versiones[-1]}", "el bloque no tiene tabla de registros")
@@ -1112,8 +1118,8 @@ def validar_baseline(ctx: Ctx) -> None:
     for fila in filas:
         campos = " | ".join(fila)
         ident = fila[0].strip()
-        if BASE_COMMIT not in campos:
-            problemas.append(f"{ident}: sin commit {BASE_COMMIT}")
+        if BASELINE_COMMIT not in campos:
+            problemas.append(f"{ident}: sin commit {BASELINE_COMMIT}")
         if sha not in campos.replace(" ", ""):
             problemas.append(f"{ident}: sha256 del verificador no coincide")
         if not any(_ISO.match(c.strip()) for c in fila):
@@ -1128,7 +1134,7 @@ def validar_baseline(ctx: Ctx) -> None:
             ctx.check(False, f"{objetivo}: adjudicación escrita", "no hay registro")
             continue
         resto = [c for c in fila[1:] if c.strip() and not _ISO.match(c.strip())
-                 and c.strip() not in ESTADOS_BASELINE and BASE_COMMIT not in c and sha not in c]
+                 and c.strip() not in ESTADOS_BASELINE and BASELINE_COMMIT not in c and sha not in c]
         ctx.check(bool(resto), f"{objetivo}: adjudicación escrita",
                   "" if resto else "el registro no la trae")
 
@@ -1138,15 +1144,15 @@ def validar_baseline(ctx: Ctx) -> None:
 # ---------------------------------------------------------------------------------------------
 
 MODOS = {
-    "1": ("AC-1 · campos, sub-esquemas y mapeo Herdr", ac_1),
-    "1b": ("AC-1 · no-estado-semántico, sedes citadas y frontera", ac_1b),
+    "1": ("AC-1 · campos y sub-esquemas exactos", ac_1),
+    "1b": ("AC-1 · no-estado-semántico, sede citada y frontera", ac_1b),
     "2": ("AC-2 · transiciones, outcomes y orden del orquestador", ac_2),
     "2b": ("AC-2 · retiro, escritor único, nacimiento y adopción", ac_2b),
     "3": ("AC-3 · agregación multi-worker", ac_3),
     "3b": ("AC-3 · el ancestro no cosecha ni retira", ac_3b),
     "4": ("AC-4 · archivo, identidad y barrido por topología", ac_4),
     "5": ("AC-5 · cierre del turno, sonda y wait_budget", ac_5),
-    "6": ("AC-6 · fuente por transporte, process_ref y adaptadores", ac_6),
+    "6": ("AC-6 · fuentes vigentes, process_ref y continuidad operativa", ac_6),
     "7": ("AC-7 · precedencia ante discrepancia", ac_7),
     "8": ("AC-8 · el límite declarado", ac_8),
     "9": ("AC-9 · el sidecar del dato nuevo", ac_9),
@@ -1187,10 +1193,8 @@ CONTRATO_VERDE = """# Corridas delegadas en vuelo
 
 **Sede canónica: `skills/cross-review/corridas-en-vuelo.md`.** Las otras seis son copias generadas.
 
-El sobre son metadatos operativos y **no reconstruye el estado semántico** de la corrida. Las cuatro
-sedes que rechazan el estado persistido —`skills/co-explore/reference.md`,
-`skills/co-explore/transporte-herdr.md`, `skills/cross-review/transporte-herdr.md` y
-`skills/cross-implement/transporte-herdr.md`— siguen vigentes.
+El sobre son metadatos operativos y **no reconstruye el estado semántico** de la corrida. La sede
+que rechaza el estado persistido —`skills/co-explore/reference.md`— sigue vigente.
 
 El sobre es **obligatorio** e **independiente** de `cross_model.manifest.mode`: apagar el manifest no
 apaga el sobre.
@@ -1219,11 +1223,19 @@ Orden fijo: evento de intento → sobre → tool call del despacho.
 | `children` | hijas, escritas por el padre |
 | `descendants_summary` | resumen de la descendencia |
 | `workers` | los workers directos |
-| `scope` | `scope = {repo, worktree, extensión opcional por transporte}` |
+| `scope` | `scope = {repo, worktree}` |
 | `transport` | derivado |
 | `harvest_pending` | marca explícita de cosecha pendiente |
+| `proxima_accion` | próxima acción al recuperar el control |
 
 `transport` raíz es el único campo **derivado**: el valor común de los intentos vigentes, o `mixto`.
+
+`proxima_accion` es una **cadena opcional en la raíz**. `null` y la ausencia del campo son casos
+**válidos**: significan "sin acción declarada". El **conductor propietario** es el **único** que la
+**escribe**; cuando **recupera el control**, la **lee** durante el **barrido**. Al cerrar la corrida,
+**transfiere** el campo al **registro de cierre** junto con el **resto del sobre**; esta **transición
+no depende** de un **tombstone**. En una recuperación `cli-exec`, el conductor **transfiere**
+`proxima_accion` del sobre activo al **registro de cierre** antes de retirarlo.
 
 ### Los campos por worker
 
@@ -1246,17 +1258,6 @@ Orden fijo: evento de intento → sobre → tool call del despacho.
 | `harvested` | si este intento ya se cosechó |
 
 Ante frescura no comprobada el proceso se clasifica **incierto** y **nunca se cancela**.
-
-### Mapeo del descriptor Herdr
-
-| campo del descriptor | dónde vive |
-|---|---|
-| run ID · skill · modo | `run_id` · `skill` · `mode` |
-| transporte | `workers[].attempts[].transport` |
-| nombres de agentes | `workers[].name` |
-| outputs esperados · deadline | `workers[].attempts[].output` · `workers[].attempts[].wait_budget` |
-| gate pendiente | `harvest_pending` |
-| panes propios · prompt esperado · estados terminales · próxima acción | `scope.herdr` |
 
 ### Varios workers en una corrida
 
@@ -1337,7 +1338,6 @@ Es **no bloqueante**, **una por turno**, **sin retry**, y **no modifica** el `de
 | `subagent` | `ninguna` — **no hay fuente consultable** a mitad de vuelo |
 | `cli-exec` | `archivo+proceso` |
 | `cli-resume` | `archivo+proceso` |
-| `herdr` | `archivo+proceso`, con la autoridad en el archivo |
 
 ### Precedencia ante discrepancia
 
@@ -1382,17 +1382,6 @@ _RECHAZO = ("Para los dos vale el mismo límite del ecosistema: no hay máquina 
             "persistente, ni esquema formal, ni validador propio, ni versionado.\n"
             "Ese nivel de estado persistido ya se rechazó por escrito, y este ítem nunca se "
             "ejercitó.\n")
-
-_ADAPTADOR = """# {skill} — transporte por panes (adaptador)
-
-## Entradas y salidas
-
-Qué campos del sobre escribe esta skill: la correspondencia completa está en el **mapeo** del
-contrato (`corridas-en-vuelo.md` → "Mapeo del descriptor Herdr"), y no se duplica acá.
-
-**Panes propios**, truncado previo al dispatch y autorización de cierre siguen siendo propios de
-panes. {rechazo}
-"""
 
 _SKILL_TPL = """---
 name: {skill}
@@ -1453,14 +1442,19 @@ def corpus_verde(raiz: Path) -> None:
     sincronizar_silencioso(raiz)
     for rel in READMES:
         (raiz / rel).write_text(_README_TPL.format(skill=Path(rel).parent.name), encoding="utf-8")
-    for rel in ADAPTADORES:
-        (raiz / rel).write_text(_ADAPTADOR.format(skill=Path(rel).parent.name, rechazo=_RECHAZO),
-                                encoding="utf-8")
     (raiz / "skills/co-explore/reference.md").write_text(
-        "# co-explore — Referencia\n\n### El descriptor de corrida y su retiro\n\n"
-        "El descriptor **es** el sobre de corrida en vuelo por la **vía de panes**: campos, "
-        "transiciones y retiro viven en `corridas-en-vuelo.md`. Acá quedan los **panes propios**, el "
-        "truncado y la autorización de cierre.\n\n" + _RECHAZO, encoding="utf-8")
+        "# co-explore — Referencia\n\n### Truncado previo al dispatch\n\n"
+        "Antes de truncar y redespachar, leer `skills/cross-review/corridas-en-vuelo.md` → "
+        "\"Invariantes de recuperación\". Esas reglas determinan cuándo el intento anterior dejó "
+        "de reservar sus rutas y cuándo puede nacer el siguiente.\n\n"
+        "Corre después de la decisión de retoma, nunca al entrar al modo.\n\n"
+        "Al redespachar se vacían las dos formas de cierre y sus temporales; recién después se "
+        "lanza.\n\n"
+        "El descriptor entra al conjunto truncado antes de lanzar; si sobrevive al redespacho, "
+        "conserva referencias obsoletas.\n\n"
+        "Un recurso propio vivo bloquea el truncado y el redespacho sobre esas rutas.\n\n"
+        "### Glosario\n\nTruncado nombra la limpieza previa al lanzamiento.\n\n"
+        "### El descriptor de corrida y su retiro\n\n" + _RECHAZO, encoding="utf-8")
     (raiz / "skills/cross-review/reference.md").write_text(
         "# cross-review — Referencia\n\n## Manifest de corrida\n\nEl manifest registra la corrida "
         "terminada; su hermano activo es el sobre de `corridas-en-vuelo.md`, y **se retira** cuando "
@@ -1479,7 +1473,30 @@ def sincronizar_silencioso(raiz: Path) -> None:
         destino.write_bytes(datos)
 
 
-BASELINE_TPL = """# Plan
+REQUISITOS_BASELINE = {
+    "1": "AC-1 — campos raíz, por worker y por intento, más sub-esquemas exactos",
+    "1b": "AC-1 — no-estado semántico, sede de rechazo y frontera entre registros",
+    "2": "AC-2 — transiciones, outcomes y orden del orquestador",
+    "2b": "AC-2 — retiro, escritor único, nacimiento y adopción",
+    "3": "AC-3 — agregación multi-worker y resumen de descendencia",
+    "3b": "AC-3 — un ancestro no cosecha ni retira sobres indirectos",
+    "4": "AC-4 — archivo, identidad y barrido por topología",
+    "5": "AC-5 — cierre de turno, sonda y presupuesto de espera",
+    "6": "AC-6 — fuentes vigentes, referencia de proceso y continuidad operativa",
+    "7": "AC-7 — precedencia ante discrepancias",
+    "8": "AC-8 — límite declarado sin afirmar ejecución",
+    "9": "AC-9 — sidecar append-only para datos nuevos",
+    "10": "AC-10 — relanzamiento seguro y rutas exclusivas",
+    "11": "AC-11 — error y cancelación como terminales propios",
+    "12": "AC-12 — trece puntos de despacho y siete punteros locales",
+    "13": "AC-13 — siete copias idénticas, trigger y README",
+    "14": "AC-14 — tercera excepción y cita normativa",
+    "15": "AC-15 — ninguna clave de configuración nueva",
+    "16": "AC-16 — guardas del repo sin regresión",
+}
+
+
+BASELINE_TPL = """# Baseline normativo del sobre en vuelo
 
 ## Verification
 
@@ -1487,9 +1504,11 @@ BASELINE_TPL = """# Plan
 |---|---|---|---|
 {filas}
 
-### v1
+### v2
 
-#### Baseline de v1
+Identidad: `({baseline_commit}, sha256 del verificador)`.
+
+#### Baseline de v2
 
 | ID | commit | sha256 | timestamp | estado | adjudicación |
 |---|---|---|---|---|---|
@@ -1498,15 +1517,17 @@ BASELINE_TPL = """# Plan
 
 
 def corpus_baseline(raiz: Path, sha: str) -> None:
-    filas = "\n".join(f"| {FILAS[m]} | AC-{m} | `--ac {m}` | ok |" for m in MODOS)
+    filas = "\n".join(
+        f"| {FILAS[m]} | {REQUISITOS_BASELINE[m]} | `--ac {m}` | ok |" for m in MODOS)
     registros = "\n".join(
-        f"| {FILAS[m]} | {BASE_COMMIT} | {sha} | 2026-08-05T10:00:00-05:00 | "
+        f"| {FILAS[m]} | {BASELINE_COMMIT} | {sha} | 2026-08-06T10:00:00-05:00 | "
         f"{'GREEN_ALREADY' if m in ('15', '16') else 'RED'} | "
         f"{'no regresión: pasa por construcción' if m in ('15', '16') else '—'} |"
         for m in MODOS)
-    destino = raiz / ".plans/hilo-workers-en-vuelo/plan.md"
+    destino = raiz / BASELINE_PATH
     destino.parent.mkdir(parents=True, exist_ok=True)
-    destino.write_text(BASELINE_TPL.format(filas=filas, registros=registros), encoding="utf-8")
+    destino.write_text(BASELINE_TPL.format(
+        filas=filas, registros=registros, baseline_commit=BASELINE_COMMIT), encoding="utf-8")
 
 
 # Mutantes: (nombre, archivo relativo, viejo, nuevo, modo que debe fallar, señal en el mensaje).
@@ -1515,6 +1536,18 @@ MUTANTES = [
     ("clave sobrante", CONTRATO_FUENTE, "| `owner` | conductor propietario |",
      "| `owner` | conductor propietario |\n| `estado_semantico` | de más |", "1",
      "estado_semantico"),
+    ("escritor de próxima acción roto", CONTRATO_FUENTE,
+     "El **conductor propietario** es el **único** que la\n**escribe**;",
+     "Cualquier conductor la escribe;", "1", "escritor"),
+    ("lector de próxima acción roto", CONTRATO_FUENTE,
+     "cuando **recupera el control**, la **lee** durante el **barrido**.",
+     "El campo no se lee durante la recuperación.", "1", "lector"),
+    ("transición de próxima acción rota", CONTRATO_FUENTE,
+     "**transfiere** el campo al **registro de cierre** junto con el **resto del sobre**;",
+     "descarta el campo al cerrar;", "1", "transición"),
+    ("dependencia de próxima acción reintroducida", CONTRATO_FUENTE,
+     "esta **transición\nno depende** de un **tombstone**.",
+     "esta transición depende de un artefacto de cierre.", "1", "tombstone"),
     ("fila faltante", CONTRATO_FUENTE, "| `cli-resume` | `archivo+proceso` |\n", "", "6",
      "cli-resume"),
     ("fila sobrante", CONTRATO_FUENTE, "| `D4` — artefacto completo + cleanup pendiente | `esperar_cleanup` |",
@@ -1531,18 +1564,21 @@ MUTANTES = [
     ("cláusula de reporte por turno borrada", CONTRATO_FUENTE,
      "Mientras haya una corrida registrada, **todo turno** del conductor cierra **informando** su "
      "estado.", "El conductor sondea.", "5", "cierre del turno"),
-    # Los dos siguientes cubren chequeos que ya estaban verdes en el árbol real —conservación de lo
-    # propio de panes y la cláusula del README—: sin un mutante propio, ninguno se probó en rojo.
-    ("conservación de panes propios borrada", "skills/cross-implement/transporte-herdr.md",
-     "**Panes propios**, truncado", "El truncado", "6", "panes propios"),
+    # Los dos siguientes cubren chequeos que ya estaban verdes en el árbol real —una construcción
+    # operativa y la cláusula del README—: sin un mutante propio, ninguno se probó en rojo.
+    ("orden operativo borrado, con el término presente en otra sección",
+     "skills/co-explore/reference.md",
+     "Corre después de la decisión de retoma, nunca al entrar al modo.",
+     "El orden se decide al ejecutar.", "6", "orden posterior a la retoma"),
     ("cláusula de independencia del README borrada", "skills/cross-review/README.md",
      "El sobre **no** lo apaga `cross_model.manifest.mode`: es obligatorio e independiente de esa "
      "clave.", "Se apaga con `cross_model.manifest.mode`.", "13", "manifest.mode"),
-    ("cláusula de rechazo del estado persistido borrada", "skills/co-explore/transporte-herdr.md",
+    ("cláusula de rechazo del estado persistido borrada", "skills/co-explore/reference.md",
      "no hay máquina de estados persistente", "hay estado", "1b", "rechazo del estado persistido"),
-    ("regla local de retiro reintroducida", "skills/cross-review/transporte-herdr.md",
-     "autorización de cierre siguen siendo", "autorización de cierre y la única salida siguen "
-     "siendo", "2", "la unica salida"),
+    ("regla local de retiro reintroducida", "skills/co-explore/reference.md",
+     "Ese nivel de estado persistido ya se rechazó por escrito",
+     "La única salida se decide aquí; ese nivel ya se rechazó por escrito",
+     "2", "la unica salida"),
 ]
 
 

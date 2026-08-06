@@ -22,14 +22,11 @@ archivos de trabajo.
 
 ## Documentos de esta referencia
 
-La referencia de esta skill son **dos** archivos, partidos por el momento en que se los lee, no por
-tamaño. Cargar el segundo en toda corrida gastaría contexto en las corridas que no usan ese
-transporte:
+La referencia de esta skill vive en este archivo y se lee en toda corrida:
 
 | Archivo | Qué trae | Cuándo se lee |
 |---|---|---|
 | `reference.md` (este) | prompts por modo, topología dual, envelope, árbol de rutas, retoma, estados del worker, latencia, `debate` e índice paginado | en toda corrida |
-| `transporte-herdr.md` | el adaptador del transporte por panes: activación, perfil de permisos, entradas y salidas, independencia, deadline, continuidad entre rondas, validación del artefacto y cleanup | **solo** cuando la activación del flujo resolvió a la vía de panes |
 
 ## Portabilidad entre shells (POSIX / PowerShell)
 
@@ -857,20 +854,10 @@ worker produjo.
 Con `outcome: map_failure`, la llamadora **ignora todo contribuyente** y no pasa contexto de
 co-explore.
 
-**El transporte no viaja en el envelope, pero esta skill lo emite.** Cuando los workers se despachan
-en panes de un multiplexor de terminales en vez de por CLI headless, el manifest de corrida
-—esquema en `cross-review/reference.md` → "Manifest de corrida"— registra `transport: herdr`. El
-envelope no cambia por eso: sustituye el transporte, no la semántica —mismos estados, mismas ramas,
-mismos artefactos—. Los comandos que lo logran no viven acá: la autoridad es la skill externa
-`herdr` y el binario instalado.
-
-**`deadline_exceeded` sí es un valor del envelope; `transport_fallback` no.** El primero es una causa
-de un worker y viaja en su `cause`. El segundo es una **causa de la corrida**: no tiene worker al que
-colgarse —el worker puede haber terminado `READY`— y el envelope no lleva campo de degradación, así
-que se emite en el mismo punto donde se resuelve el envelope pero solo aterriza en el `degradation`
-del manifest. Su disparador es por **resultado**: intención resuelta a la vía de panes **+**
-transporte efectivo CLI despachado. El detalle canónico está en `cross-review/reference.md` →
-"Latencia y timeout (Claude revisor)".
+**El transporte no viaja en el envelope, pero esta skill lo emite en el manifest de corrida.** El
+manifest —esquema en `cross-review/reference.md` → "Manifest de corrida"— registra la vía efectiva.
+El envelope no cambia por la selección: mantiene los mismos estados, ramas y artefactos. La sintaxis
+de invocación vive en las vías de despacho, no acá.
 
 ### Árbol de rutas
 
@@ -902,6 +889,10 @@ El mapa del conductor usa `<rol> = conductor` y **no** tiene entradas en `scratc
 prompt ni sesión que guardar.
 
 ### Truncado previo al dispatch
+
+Antes de truncar y redespachar, leer
+`skills/cross-review/corridas-en-vuelo.md` → "Invariantes de recuperación". Esas reglas determinan
+cuándo el intento anterior dejó de reservar sus rutas y cuándo puede nacer el siguiente.
 
 **Corre después de la decisión de retoma, nunca al entrar al modo.** El orden importa y es
 invertirlo lo que rompe todo: la decisión de retoma **lee** el artefacto de cierre para saber si la
@@ -955,58 +946,46 @@ un fallo previo al lanzamiento deja archivos vacíos y cierres ausentes → `UNA
 mitad deja un informe parcial → `INVALID`. En ninguno sobrevive un `READY` ni un cierre heredados. Un
 nonce agregaría un identificador que habría que propagar y validar en cada capa para cubrir lo mismo.
 
-**El descriptor de corrida entra al conjunto truncado, y sin eso el argumento anti-nonce no cierra.**
-Ese argumento vale **solo** si el conjunto es completo, y el descriptor efímero de la corrida es parte
-de él: se vacía en el mismo paso, antes de lanzar. Un descriptor que sobreviva al redespacho **lista
-los panes de la corrida anterior**, y con el patrón recomendado de reutilizar panes esos mismos panes
-pueden alojar hoy a **otra** corrida — cerrarlos violaría la única prohibición absoluta del cierre.
+**El sobre de corrida entra en el conjunto evaluado, y sin eso el argumento anti-nonce no cierra.**
+Ese argumento vale **solo** si el conjunto es completo: antes de redespachar, el conductor relee el
+sobre activo y aplica `skills/cross-review/corridas-en-vuelo.md` → "Invariantes de recuperación" y
+"Relanzamiento seguro". Las rutas exclusivas por intento registradas allí impiden aceptar como actual
+una salida heredada.
 
-**Un pane propio vivo bloquea el truncado y el redespacho sobre esas rutas.** Es la regla en su
-dirección positiva, y es conservadora a propósito: mientras quede un pane que la corrida anterior
-creó y esté vivo, no se trunca ni se redespacha sobre las rutas de ese modo. Truncar ahí borraría la
-lista que autoriza cerrar ese pane, y redespachar reutilizaría rutas que un proceso todavía vivo
+**Un intento anterior que aún puede escribir bloquea el truncado y el redespacho sobre esas rutas.**
+Mientras su cese no esté confirmado, no se trunca ni se redespacha. Truncar ahí borraría la evidencia
+que asocia cada salida con su intento, y redespachar reutilizaría rutas que un proceso todavía vivo
 puede estar escribiendo.
 
 ### El descriptor de corrida y su retiro
 
-Esta sección existe acá, y no en el adaptador del transporte, porque el conjunto que se trunca se
-define acá: el descriptor pertenece a ese conjunto y sus reglas de cierre son las que hacen válidas
-las dos cláusulas de arriba. Solo aplica a las corridas que fueron por la vía de panes; el resto lo
-ignora.
+Esta sección existe acá porque define la relación entre el conjunto que se trunca y el sobre genérico
+de la corrida: el sobre pertenece a ese conjunto y sus reglas de cierre hacen válidas las dos
+cláusulas de arriba.
 
-**Qué es: el sobre de la corrida delegada, escrito por la vía de panes.** No es un mecanismo aparte
-del que rige para cualquier despacho —es ese mismo sobre visto desde este transporte—, y su contrato
-vive en `corridas-en-vuelo.md`: qué registra, cuándo nace, cómo se relee, cómo se cosecha una sola vez
-y qué exige su retiro se definen allá y **no se redefinen acá**. La correspondencia entre cada dato
-que este descriptor llevaba y dónde vive hoy está en su sección "Mapeo del descriptor Herdr", y lo que
-es propio de esta vía viaja en la extensión de transporte del `scope`. Qué escribe cada skill sigue
-estando en su adaptador —`transporte-herdr.md` → "Entradas y salidas"— y no se duplica acá. **No** hay
-máquina de estados persistente, ni esquema formal, ni validador propio, ni versionado: ese nivel de
-estado persistido ya se rechazó por escrito en este ecosistema, y este mecanismo nunca se ejercitó.
+**Qué es: el sobre de la corrida delegada.** Su contrato vive en `corridas-en-vuelo.md`: qué registra,
+cuándo nace, cómo se relee, cómo se cosecha una sola vez y qué exige su retiro se definen allá y **no
+se redefinen acá**. Como cada intento registra su propia salida y referencia de proceso, la decisión
+de redespachar puede distinguir lo heredado de lo vigente sin agregar un nonce. **No** hay una máquina
+de estados persistente paralela, ni un esquema o validador propio: el sobre registra operación, no
+reconstruye el avance semántico.
 
-**Su lista de panes propios es la única autorización de cierre que existe**, y eso sí es propio de
-esta vía: un pane que la corrida no creó no está en la lista, y no se cierra ni se hereda por
-vecindad. De ahí salen las dos cláusulas de arriba —el descriptor entra al conjunto que se trunca, y
-un pane propio vivo bloquea el truncado y el redespacho sobre esas rutas—, porque truncarlo borraría
-la lista que autoriza cerrar ese pane.
+**Las rutas y referencias del intento anterior conservan su ownership hasta el cese confirmado.**
+Nada autoriza a reutilizarlas por vecindad ni por antigüedad. De ahí salen las dos cláusulas de arriba:
+el sobre entra al conjunto evaluado y un intento que todavía puede escribir bloquea el truncado y el
+redespacho sobre esas rutas.
 
-**El retiro es el del contrato; acá solo se dice qué cuenta como recurso propio vivo.** Las tres
-condiciones simultáneas —terminal comprobado, artefacto adjudicado, y sin recursos propios en pie o
-transferidos a un registro de cierre— son las de `corridas-en-vuelo.md`, y esta vía no agrega ni
-relaja ninguna. Lo que aporta es el referente: un **pane propio vivo** es un recurso propio en pie,
-así que llegar a un final comprobado no alcanza —una degradación terminal puede liberar el gate
-conservando el pane, y ese pane no se puede cerrar sin artefacto válido, y retirar ahí borraría la
-única lista de panes propios que existe—. El **tombstone** es el registro de cierre de esta vía:
-cuando la corrida termina con un pane propio en pie, la lista de panes propios y la próxima acción
-pasan a él, y recién entonces el sobre activo se retira.
+**El retiro es el del contrato genérico.** Las tres condiciones simultáneas —terminal comprobado,
+artefacto adjudicado, y sin recursos propios en pie o transferidos a un registro de cierre— son las de
+`corridas-en-vuelo.md`; esta skill no agrega ni relaja ninguna. Llegar a un final comprobado no alcanza:
+un recurso conservado a propósito sigue bajo ownership y, si permanece en pie, su propiedad y la
+próxima acción se transfieren al registro de cierre antes de retirar el sobre activo.
 
-**Un pane propio vivo no es, por sí solo, un resultado incierto.** Lo que las cláusulas de arriba
-impiden es truncar, redespachar y retirar; ninguna clasifica nada ni dispara recovery. Lo dispara
-una **causa registrada** por el
-descriptor de la skill que produce o consume ese pane. Sin esta dirección, el pane que se conserva a
-propósito y con salud —el que una fase posterior va a consumir— quedaría clasificado como resultado
-incierto por el solo hecho de estar vivo, y arrastraría el recovery sobre un caso donde no hay nada
-incierto.
+**Un recurso propio vivo no es, por sí solo, un resultado incierto.** Lo que las cláusulas de arriba
+impiden es truncar, redespachar y retirar; ninguna clasifica nada ni dispara recovery. Lo dispara una
+**causa registrada** por el sobre y por la skill que produce o consume el recurso. Sin esta dirección,
+un recurso conservado a propósito y con salud quedaría clasificado como incierto por el solo hecho de
+seguir en pie, y arrastraría el recovery sobre un caso donde no hay nada incierto.
 
 ### Split a dos archivos
 
@@ -1333,17 +1312,14 @@ arrancar bien es `runtime_failure`. Con un índice **paginado**, la serie incomp
 clasifica por el mismo criterio del observable (ver "Una serie incompleta se clasifica por el
 observable").
 
-**`transport_fallback` es la otra causa nueva y no es causa de `UNAVAILABLE`.** El enum de causas
-alimenta dos campos: el `cause` de un worker —solo cuando quedó `UNAVAILABLE`— y la degradación de la
-corrida que se persiste en el manifest. `transport_fallback` vive solo en el segundo, porque un worker
-despachado por el transporte de reemplazo puede terminar `READY`: la causa no dice que al worker le
-pasó algo, dice por dónde corrió. Su disparador está en el `SKILL.md` → "Degradación", y el detalle
-canónico en `cross-review/reference.md` → "Latencia y timeout (Claude revisor)".
-
 Un worker `INVALID` **no aporta anexo** a `counter-plan` **ni sirve de seed** a `cross-review`,
 aunque conserve una sesión técnicamente reanudable.
 
 ### Decisión de retoma
+
+Antes de decidir la retoma, leer
+`skills/cross-review/corridas-en-vuelo.md` → "Invariantes de recuperación". La existencia de un
+artefacto y el vencimiento de una espera no sustituyen esas comprobaciones.
 
 El envelope es efímero por diseño, pero un flujo SDD puede pausarse y retomarse en una sesión nueva
 entre el gate de la spec y `counter-plan`. Ahí no existe el estado que decide anexos y seeds, aunque
