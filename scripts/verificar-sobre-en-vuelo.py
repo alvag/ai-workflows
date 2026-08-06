@@ -128,15 +128,27 @@ RETIRO_LOCAL_PROHIBIDO = ["la unica salida", "transferencia de ownership quedo f
 
 # Construcciones operativas que deben sobrevivir en su sección concreta. La matriz se contrasta
 # contra CHANGE_BASE_COMMIT para impedir que se autoajuste a un borrado del árbol vigente.
+#
+# El cuarto elemento es OPCIONAL y solo aparece cuando la construcción **se dijo con otras palabras**
+# entre el commit base y hoy: entonces el anclaje se comprueba con esa redacción histórica y la
+# presencia con la vigente. No es una alternancia —una sola redacción satisface cada lado, no
+# cualquiera de las dos—, y por eso sigue siendo imposible autoajustar la matriz a un borrado: la
+# construcción tiene que existir en los dos commits, cada uno con su forma. Sin el cuarto elemento,
+# ambos lados usan el mismo requisito, que es el caso normal.
 CONSERVAR = {
     "skills/co-explore/reference.md": [
         ("orden posterior a la retoma", "Truncado previo al dispatch",
          [["corre despues", "decision de retoma", "nunca al entrar"]]),
         ("limpieza previa al lanzamiento", "Truncado previo al dispatch",
          [["formas de cierre", "temporales", "recien despues", "lanza"]]),
-        ("descriptor incluido en la limpieza", "Truncado previo al dispatch",
+        # Las dos de abajo cambiaron de referente al retirarse el transporte de multiplexor: el
+        # descriptor de esa vía pasó a ser el sobre genérico, y "propio vivo" —que venía del recurso
+        # de esa vía— pasó a ser el intento que todavía puede escribir. La garantía es la misma.
+        ("sobre incluido en la limpieza", "Truncado previo al dispatch",
+         [["sobre de corrida", "conjunto evaluado", "antes de redespachar"]],
          [["descriptor", "conjunto truncado", "redespacho", "antes de lanzar"]]),
         ("recurso vivo reserva sus rutas", "Truncado previo al dispatch",
+         [["intento anterior", "bloquea", "truncado", "redespacho", "rutas"]],
          [["propio vivo", "bloquea", "truncado", "redespacho", "rutas"]]),
     ],
 }
@@ -717,10 +729,11 @@ def ac_6(ctx: Ctx) -> None:
             ctx.check(False, f"matriz CONSERVAR: {CHANGE_BASE_COMMIT}:{rel}",
                       e.stderr.strip()[:120])
             continue
-        for nombre, titulo, requisito in construcciones:
+        for nombre, titulo, requisito, *resto in construcciones:
+            requisito_base = resto[0] if resto else requisito
             seccion_base = seccion_exacta(base, titulo)
             seccion_actual = ctx.seccion_exacta(rel, titulo)
-            anclada = seccion_base is not None and cubre(norm(seccion_base), requisito)
+            anclada = seccion_base is not None and cubre(norm(seccion_base), requisito_base)
             ctx.check(anclada, f"CONSERVAR anclado en {CHANGE_BASE_COMMIT}: {nombre}",
                       "" if anclada else f"la construcción no existe en «{titulo}» del commit base")
             presente = seccion_actual is not None and cubre(norm(seccion_actual), requisito)
@@ -1450,9 +1463,10 @@ def corpus_verde(raiz: Path) -> None:
         "Corre después de la decisión de retoma, nunca al entrar al modo.\n\n"
         "Al redespachar se vacían las dos formas de cierre y sus temporales; recién después se "
         "lanza.\n\n"
-        "El descriptor entra al conjunto truncado antes de lanzar; si sobrevive al redespacho, "
-        "conserva referencias obsoletas.\n\n"
-        "Un recurso propio vivo bloquea el truncado y el redespacho sobre esas rutas.\n\n"
+        "El sobre de corrida entra en el conjunto evaluado: antes de redespachar, el conductor lo "
+        "relee, porque si sobrevive sin releerse conserva referencias obsoletas.\n\n"
+        "Un intento anterior que aún puede escribir bloquea el truncado y el redespacho sobre esas "
+        "rutas.\n\n"
         "### Glosario\n\nTruncado nombra la limpieza previa al lanzamiento.\n\n"
         "### El descriptor de corrida y su retiro\n\n" + _RECHAZO, encoding="utf-8")
     (raiz / "skills/cross-review/reference.md").write_text(
