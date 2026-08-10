@@ -1,0 +1,202 @@
+{
+  "version": "1.0.0",
+  "escenarios": [
+    {
+      "id": "sdd-flow-subagent-con-el-entorno-entero",
+      "descripcion": "El modo `subagent` con las cinco capacidades presentes y todo encendido: es el techo observable de la matriz. Activa doce de los trece puntos y lo único que impide el trece es la exclusion mutua de `mode`, que no puede ser `explore` y `debate` a la vez. Que el tope sea doce y no menos es deliberado: un conjunto de escenarios flojos deja el criterio de AC-9 en verde sin haber tocado su frontera.",
+      "configuracion": {
+        "implement_mode": "subagent",
+        "final_diff_review.mode": "on",
+        "mode": "explore",
+        "co_explore.debate.mode": "auto",
+        "cross_implement.max_fix_rounds": "2",
+        "cross_review.mode": "auto",
+        "depends_on": "verified",
+        "orchestration_task.status": "done",
+        "triage": "cambio"
+      },
+      "capacidades": [
+        "subagentes de exploración",
+        "despachar otro agente fresco",
+        "revisor externo",
+        "familia externa en el panel",
+        "revisor read-only invocable por las Vías A/B/C"
+      ],
+      "puntos_activos": [
+        "sdd-flow-analyze-exploracion",
+        "sdd-flow-implementer-por-task",
+        "sdd-flow-reviewer-por-task",
+        "sdd-flow-revision-final-de-diff",
+        "bitbucket-code-review-panel-de-revisores",
+        "bitbucket-code-review-validador-adversarial",
+        "co-explore-fan-out-dual",
+        "cross-implement-implementador-inicial",
+        "cross-implement-ronda-de-fix-loop",
+        "cross-review-revisor-por-ronda",
+        "sdd-orchestrator-fan-out-por-repo",
+        "sdd-pr-feedback-implement-delegado"
+      ]
+    },
+    {
+      "id": "debate-standalone-sin-ninguna-capacidad",
+      "descripcion": "Degradación total: un `debate` standalone en un entorno que no puede despachar nada y con toda la configuración apagada. Los cinco átomos de capacidad se resuelven por ausencia y las claves quedan en su valor desactivador, así que solo sobreviven el punto constante y el que la propia configuración pide.",
+      "configuracion": {
+        "implement_mode": "inline",
+        "final_diff_review.mode": "off",
+        "mode": "debate",
+        "co_explore.debate.mode": "on",
+        "cross_implement.max_fix_rounds": "0",
+        "cross_review.mode": "off",
+        "depends_on": "planned",
+        "orchestration_task.status": "pending",
+        "triage": "ruido"
+      },
+      "capacidades": [],
+      "puntos_activos": [
+        "co-explore-worker-por-ronda-de-debate",
+        "cross-implement-implementador-inicial"
+      ]
+    },
+    {
+      "id": "orquestacion-con-el-gate-abierto",
+      "descripcion": "El DAG del repo está en terminal verde pero una tarea `phase: gate` que lo bloquea sigue fuera de `done`: es el par que prueba que la segunda condición de elegibilidad decide sola. El `no` del árbol del orquestador se observa acá en su rama falsa con el `o` ya verdadero, que es donde una implementación con un solo operando se delataría.",
+      "configuracion": {
+        "implement_mode": "cross",
+        "final_diff_review.mode": "auto",
+        "mode": "counter-plan",
+        "co_explore.debate.mode": "off",
+        "cross_implement.max_fix_rounds": "3",
+        "cross_review.mode": "on",
+        "depends_on": "committed",
+        "orchestration_task.status": "in-progress",
+        "triage": "duda"
+      },
+      "capacidades": [
+        "despachar otro agente fresco",
+        "revisor externo"
+      ],
+      "puntos_activos": [
+        "sdd-flow-revision-final-de-diff",
+        "bitbucket-code-review-panel-de-revisores",
+        "co-explore-fan-out-dual",
+        "cross-implement-implementador-inicial",
+        "cross-implement-ronda-de-fix-loop",
+        "cross-review-revisor-por-ronda"
+      ]
+    },
+    {
+      "id": "subagent-sin-poder-despachar-al-revisor",
+      "descripcion": "El modo `subagent` pedido en un entorno que soporta los subagentes de exploración pero no puede despachar otro agente fresco: el implementer por task sobrevive y el reviewer por task cae a la revisión liviana del conductor. Es la degradación que separa la configuración de la capacidad, y el escenario donde la revisión final de diff queda sin el reviewer fresco que su sede le exige.",
+      "configuracion": {
+        "implement_mode": "subagent",
+        "final_diff_review.mode": "auto",
+        "mode": "investigate",
+        "co_explore.debate.mode": "off",
+        "cross_implement.max_fix_rounds": "0",
+        "cross_review.mode": "off",
+        "depends_on": "pushed",
+        "orchestration_task.status": "done",
+        "triage": "cambio"
+      },
+      "capacidades": [
+        "subagentes de exploración",
+        "familia externa en el panel"
+      ],
+      "puntos_activos": [
+        "sdd-flow-analyze-exploracion",
+        "sdd-flow-implementer-por-task",
+        "bitbucket-code-review-validador-adversarial",
+        "co-explore-fan-out-dual",
+        "cross-implement-implementador-inicial",
+        "sdd-orchestrator-fan-out-por-repo",
+        "sdd-pr-feedback-implement-delegado"
+      ]
+    },
+    {
+      "id": "pr-feedback-con-revisor-read-only-por-vias",
+      "descripcion": "El panel no tiene una familia externa propia pero sí puede invocar una read-only por las Vías A/B/C: el segundo operando del `o` del validador adversarial se observa verdadero acá y solo acá, que es la rama que un `o` implementado como exclusivo rechazaría.",
+      "configuracion": {
+        "implement_mode": "inline",
+        "final_diff_review.mode": "on",
+        "mode": "explore",
+        "co_explore.debate.mode": "on",
+        "cross_implement.max_fix_rounds": "2",
+        "cross_review.mode": "auto",
+        "depends_on": "pr-open",
+        "orchestration_task.status": "done",
+        "triage": "cambio"
+      },
+      "capacidades": [
+        "revisor read-only invocable por las Vías A/B/C",
+        "despachar otro agente fresco"
+      ],
+      "puntos_activos": [
+        "sdd-flow-revision-final-de-diff",
+        "bitbucket-code-review-validador-adversarial",
+        "co-explore-fan-out-dual",
+        "cross-implement-implementador-inicial",
+        "cross-implement-ronda-de-fix-loop",
+        "cross-review-revisor-por-ronda",
+        "sdd-orchestrator-fan-out-por-repo",
+        "sdd-pr-feedback-implement-delegado"
+      ]
+    },
+    {
+      "id": "orquestacion-lista-para-el-fan-out",
+      "descripcion": "Elegibilidad completa del orquestador —dependencias en `done` y ningún gate abierto— con el modo `subagent` entero disponible y la revisión final de diff apagada por configuración. Es el contraste de `subagent-sin-poder-despachar-al-revisor`: misma configuración de implementación, capacidad presente.",
+      "configuracion": {
+        "implement_mode": "subagent",
+        "final_diff_review.mode": "off",
+        "mode": "counter-plan",
+        "co_explore.debate.mode": "auto",
+        "cross_implement.max_fix_rounds": "2",
+        "cross_review.mode": "on",
+        "depends_on": "done",
+        "orchestration_task.status": "done",
+        "triage": "ruido"
+      },
+      "capacidades": [
+        "subagentes de exploración",
+        "despachar otro agente fresco",
+        "revisor externo"
+      ],
+      "puntos_activos": [
+        "sdd-flow-analyze-exploracion",
+        "sdd-flow-implementer-por-task",
+        "sdd-flow-reviewer-por-task",
+        "bitbucket-code-review-panel-de-revisores",
+        "co-explore-fan-out-dual",
+        "cross-implement-implementador-inicial",
+        "cross-implement-ronda-de-fix-loop",
+        "cross-review-revisor-por-ronda",
+        "sdd-orchestrator-fan-out-por-repo"
+      ]
+    },
+    {
+      "id": "debate-pedido-con-la-config-apagada",
+      "descripcion": "El usuario pide `debate` y `co_explore.debate.mode` está en `off`: el punto no existe aunque el modo lo nombre. Es el único escenario donde el primer operando de esa conjunción es verdadero y el segundo falso — en los demás el `off` convive con un modo que ya cortó por el primero, así que sin este escenario la conjunción nunca se observa decidida por su segundo operando.",
+      "configuracion": {
+        "implement_mode": "cross",
+        "final_diff_review.mode": "on",
+        "mode": "debate",
+        "co_explore.debate.mode": "off",
+        "cross_implement.max_fix_rounds": "0",
+        "cross_review.mode": "off",
+        "depends_on": "planned",
+        "orchestration_task.status": "blocked",
+        "triage": "duda"
+      },
+      "capacidades": [
+        "despachar otro agente fresco",
+        "revisor externo",
+        "familia externa en el panel"
+      ],
+      "puntos_activos": [
+        "sdd-flow-revision-final-de-diff",
+        "bitbucket-code-review-panel-de-revisores",
+        "bitbucket-code-review-validador-adversarial",
+        "cross-implement-implementador-inicial"
+      ]
+    }
+  ]
+}

@@ -1117,36 +1117,63 @@
         }
       },
       "condicion_de_existencia": {
-        "tipo": "o",
+        "tipo": "y",
         "operandos": [
           {
-            "tipo": "atomo",
-            "clave": "final_diff_review.mode",
-            "operador": "igual",
-            "valor": "on",
-            "procedencia": {
-              "sede": "skills/sdd-flow/SKILL.md",
-              "tipo_de_sede": "patron_de_linea",
-              "selector": {
-                "patron": "^5\\. \\*\\*Gate de revisión manual \\(STOP\\):\\*\\*"
+            "tipo": "o",
+            "operandos": [
+              {
+                "tipo": "atomo",
+                "clave": "final_diff_review.mode",
+                "operador": "igual",
+                "valor": "on",
+                "procedencia": {
+                  "sede": "skills/sdd-flow/SKILL.md",
+                  "tipo_de_sede": "patron_de_linea",
+                  "selector": {
+                    "patron": "^5\\. \\*\\*Gate de revisión manual \\(STOP\\):\\*\\*"
+                  },
+                  "cardinalidad": {
+                    "tipo": "exactamente_una"
+                  },
+                  "extraccion": {
+                    "tipo": "captura_de_grupo",
+                    "patron": "Si `final_diff_review\\.mode` está `(on)`, o está `auto`",
+                    "grupo": 1
+                  },
+                  "normalizacion": "trim",
+                  "conversion": "cadena"
+                }
               },
-              "cardinalidad": {
-                "tipo": "exactamente_una"
-              },
-              "extraccion": {
-                "tipo": "captura_de_grupo",
-                "patron": "Si `final_diff_review\\.mode` está `(on)`, o está `auto`",
-                "grupo": 1
-              },
-              "normalizacion": "trim",
-              "conversion": "cadena"
-            }
+              {
+                "tipo": "atomo",
+                "clave": "final_diff_review.mode",
+                "operador": "igual",
+                "valor": "auto",
+                "procedencia": {
+                  "sede": "skills/sdd-flow/SKILL.md",
+                  "tipo_de_sede": "patron_de_linea",
+                  "selector": {
+                    "patron": "^5\\. \\*\\*Gate de revisión manual \\(STOP\\):\\*\\*"
+                  },
+                  "cardinalidad": {
+                    "tipo": "exactamente_una"
+                  },
+                  "extraccion": {
+                    "tipo": "captura_de_grupo",
+                    "patron": "Si `final_diff_review\\.mode` está `on`, o está `(auto)`",
+                    "grupo": 1
+                  },
+                  "normalizacion": "trim",
+                  "conversion": "cadena"
+                }
+              }
+            ]
           },
           {
             "tipo": "atomo",
-            "clave": "final_diff_review.mode",
-            "operador": "igual",
-            "valor": "auto",
+            "clave": "despachar otro agente fresco",
+            "operador": "disponible",
             "procedencia": {
               "sede": "skills/sdd-flow/SKILL.md",
               "tipo_de_sede": "patron_de_linea",
@@ -1158,7 +1185,7 @@
               },
               "extraccion": {
                 "tipo": "captura_de_grupo",
-                "patron": "Si `final_diff_review\\.mode` está `on`, o está `(auto)`",
+                "patron": "usar un reviewer fresco (por capacidad)",
                 "grupo": 1
               },
               "normalizacion": "trim",
