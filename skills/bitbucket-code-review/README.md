@@ -29,7 +29,7 @@ Bitbucket + panel cross-model + escritura con gate + seguimiento local en `.pr-r
   una verificación **independiente** que intenta refutarlo antes de reportarlo; sube la precisión.
 - **Enfocada en `cocha-digital/results`.** Aplica el checklist de **arquitectura-target**
   (Flux/adapter/Signals) y ofrece **QA local** opcional del funnel afectado (delegado a
-  `local-qa-playwright`).
+  `cocha-qa-results`).
 - **Solo líneas modificadas**, con cita verificable (archivo + rango + fragmento). Deduplica contra
   comentarios de terceros (marca ecos, no re-pide lo ya señalado).
 - **Seguimiento local.** `.pr-review/<pr-id>/` (untracked) registra `sha`, veredicto y `comment-id`
@@ -62,7 +62,7 @@ Sin PR id, detecta el PR **OPEN** de la rama actual.
 - **Revisor Codex** (subagente `codex:codex-rescue` o CLI `codex exec -s read-only`) y/o **revisor
   Claude** (CLI `claude -p`) — **opcionales**; si faltan, ese revisor queda `UNAVAILABLE` y sigue con
   los disponibles.
-- **`local-qa-playwright`** (opcional) para el QA local en vivo del Paso 7b.
+- **`cocha-qa-results`** (opcional) para el QA local en vivo del Paso 7b.
 - **`co-explore`** (opcional) para el debate cross-model cuando los veredictos del panel difieren; se
   ofrece, nunca corre sin confirmación. Sin ella, la discrepancia se escala directo al usuario.
 - MCP de **Atlassian** (opcional) para el ensamblado del contexto de spec (grafo de tickets + AC);
