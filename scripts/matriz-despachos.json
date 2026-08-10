@@ -825,15 +825,13 @@
         "valor": "skills/sdd-flow/reference.md#prompt-del-subagente-reviewer",
         "procedencia": {
           "sede": "skills/sdd-flow/reference.md",
-          "tipo_de_sede": "patron_de_linea",
+          "tipo_de_sede": "heading_markdown",
           "selector": {
-            "patron": "^SPEC: ok \\| fail \\| warn$"
+            "texto": "Prompt del subagente reviewer",
+            "nivel": 2
           },
           "cardinalidad": {
-            "tipo": "exactamente_n",
-            "n": 2,
-            "orden": "documento",
-            "colapso": "unico_si_iguales"
+            "tipo": "exactamente_una"
           },
           "extraccion": {
             "tipo": "ancla_de_seccion"
@@ -1219,15 +1217,13 @@
         "valor": "skills/sdd-flow/reference.md#revision-final-de-diff",
         "procedencia": {
           "sede": "skills/sdd-flow/reference.md",
-          "tipo_de_sede": "patron_de_linea",
+          "tipo_de_sede": "heading_markdown",
           "selector": {
-            "patron": "^QUALITY: ok \\| fail$"
+            "texto": "Revisión final de diff",
+            "nivel": 2
           },
           "cardinalidad": {
-            "tipo": "exactamente_n",
-            "n": 2,
-            "orden": "documento",
-            "colapso": "unico_si_iguales"
+            "tipo": "exactamente_una"
           },
           "extraccion": {
             "tipo": "ancla_de_seccion"
@@ -2828,7 +2824,7 @@
         }
       },
       "contrato_de_salida": {
-        "valor": "skills/co-explore/reference.md#plantilla-de-debatemd",
+        "valor": "skills/co-explore/reference.md#plantilla-de-debate-md",
         "procedencia": {
           "sede": "skills/co-explore/reference.md",
           "tipo_de_sede": "heading_markdown",
