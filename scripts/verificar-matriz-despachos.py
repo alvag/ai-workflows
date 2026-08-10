@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Verifica la matriz de despachos contra su schema cerrado.
 
-Diecisiete modos, y por ahora solo diecisiete: los demás del catálogo los construyen otras tasks.
+Diecinueve modos, y por ahora solo diecinueve: los demás del catálogo los construyen otras tasks.
 
 - `--schema [ruta]` — valida la matriz (por defecto `scripts/matriz-despachos.json`) contra
   `scripts/matriz-despachos.schema.json`. Comprueba tres cosas y no una: que el schema sea
@@ -54,6 +54,15 @@ Diecisiete modos, y por ahora solo diecisiete: los demás del catálogo los cons
 - `--autotest-cobertura-condiciones` — control positivo y negativo del modo anterior, con tres
   familias derivadas: una por escenario, una por valor de átomo y una **por exclusión** —al
   eliminar una exclusión de una condición, algún escenario pasa a fallar—.
+- `--claves-perfil [ruta]` — comprueba que ningún nombre reservado al contenedor de perfiles de
+  ejecución (por defecto los de `scripts/nombres-reservados-perfil.json`) aparezca como **clave** en
+  una superficie de configuración del árbol (`--arbol`). El inventario de superficies —dueños que
+  declaran el esquema y vistas que lo reproducen— se **deriva** del árbol, y la extracción es
+  estructural: una mención en prosa o en un comentario no es una clave del esquema. Es un criterio
+  distinto del de `verificar-vistas-config.py`, que compara vistas contra dueños y aceptaría una
+  clave reservada agregada de forma consistente en los dos lados.
+- `--autotest-claves-perfil` — control positivo y negativo del modo anterior, con un mutante **por
+  superficie derivada** —no uno por clase— y otro por cada nombre reservado.
 
 Tres reglas de diseño:
 
@@ -97,6 +106,8 @@ Uso: python3 scripts/verificar-matriz-despachos.py --schema [ruta] | --autotest-
                                                   | --condiciones [ruta] | --autotest-condiciones
                                                   | --cobertura-condiciones [ruta]
                                                   | --autotest-cobertura-condiciones
+                                                  | --claves-perfil [ruta]
+                                                  | --autotest-claves-perfil
 Exit 0 si el modo pasa, 1 si falla, 2 si la invocación es inválida.
 """
 from __future__ import annotations
@@ -5402,6 +5413,722 @@ def modo_autotest_cobertura_condiciones() -> int:
 
 
 # ---------------------------------------------------------------------------------------------
+# Claves de perfil: ningún nombre reservado al contenedor de perfiles de ejecución aparece en una
+# superficie de configuración del árbol.
+#
+# **La extracción es estructural, no textual.** Lo que se busca no es la cadena `subagents` en un
+# archivo: es una **clave** del esquema de configuración cuyo nombre sea uno de los reservados. Las
+# dos cosas se separan porque el repo ya contiene menciones legítimas en prosa —`co-explore/
+# reference.md` explica por qué se retiró `cross_model.profiles`—, y un buscador de cadenas las
+# reportaría como materialización del contenedor. Aquí se recorta el bloque YAML, se compone su
+# árbol de nodos y se recolectan **las claves de sus mappings**: la prosa de alrededor no entra, los
+# comentarios del propio bloque no entran (el parser los descarta) y los **valores** tampoco —
+# `reviewer: auto | claude | codex` nombra dos familias sin declarar ninguna clave—.
+#
+# **El inventario de superficies se deriva del árbol; lo que se congela es el criterio.** Escribir a
+# mano la lista de dueños y vistas la deja vieja en cuanto alguien agregue una skill, y nada lo
+# señalaría. Lo congelado son tres cosas: los dos artefactos de configuración que las skills
+# documentan, el nombre de la sección donde una skill declara la suya, y la carpeta que se recorre.
+# De ahí sale el inventario en dos pasos:
+#
+#   1. **Semillas por encabezado** — un bloque YAML cuyo encabezado se declara configuración: nombra
+#      uno de los dos artefactos (esquema o ejemplo) o es la sección `Configuración` de la skill.
+#   2. **Expansión por vocabulario** — cualquier otro bloque YAML cuyo mapping raíz declare al menos
+#      una de las claves raíz que las semillas declaran. Sin este paso quedaría fuera el esquema que
+#      `sdd-flow/SKILL.md` documenta bajo «Adaptación al proyecto», que es el bloque más completo del
+#      repo y el lugar donde una clave de perfil se filtraría con menos ruido.
+#
+# El frontmatter queda excluido de la expansión: los artefactos del flujo (`plan.md`, `handoff.md`)
+# comparten nombres de campo con la configuración —`id`, `created_at`, `branch_prefix`— y no son
+# superficies de configuración. Se los reconoce porque el bloque abre con el separador de documento.
+#
+# **Lo que no se recorre.** Solo `skills/`. `docs/superpowers/specs/` contiene el esquema de perfiles
+# que este flujo declara descartado, con su clave `profiles` escrita en un bloque YAML: es historia
+# de una decisión, no una superficie que un proyecto pueda escribir, y barrerla pondría la guarda en
+# rojo por un documento que registra precisamente que el contenedor no se materializó.
+# ---------------------------------------------------------------------------------------------
+
+try:
+    import yaml as _yaml
+except ImportError:  # pragma: no cover — el repo la usa en verificar-vistas-config.py
+    _yaml = None
+
+# Los dos artefactos de configuración que las skills de este repo documentan. Es criterio, no
+# inventario: de acá sale qué encabezado se declara configuración, no qué archivos la tienen.
+ARTEFACTOS_DE_CONFIGURACION = (".specify/config.yml", "manifest.yml")
+
+# El encabezado con que una skill declara la configuración que posee.
+HEADING_DE_CONFIGURACION = "Configuración"
+
+# El encabezado con que un documento se declara **vista**: reproduce el esquema de un artefacto en
+# vez de declararlo. Las dos clases importan por separado — un extractor que solo recorriera las
+# vistas dejaría los dueños sin mirar, y al revés.
+PREFIJO_DE_VISTA = "Ejemplo"
+
+# La carpeta del árbol donde viven las superficies de configuración.
+CARPETA_DE_SUPERFICIES = "skills"
+
+CODIGOS_CLAVES_PERFIL = (
+    "lista_ilegible",
+    "sin_superficies",
+    "clase_sin_superficies",
+    "bloque_ilegible",
+    "clave_reservada",
+)
+
+
+class Superficie(NamedTuple):
+    identificador: str   # `<ruta>#<encabezado>#<ordinal>`: estable aunque la mutación mueva líneas
+    ruta: str            # relativa al árbol
+    heading: str
+    linea: int           # línea del cercado de apertura, 1-based
+    clase: str           # "dueño" | "vista"
+    origen: str          # "encabezado" | "vocabulario"
+    cuerpo: str          # el bloque YAML, sin la indentación del cercado
+
+    @property
+    def donde(self) -> str:
+        return f"{self.ruta}:{self.linea} → {self.heading}"
+
+
+class ClaveYaml(NamedTuple):
+    nombre: str
+    ruta: tuple[str, ...]
+    linea: int           # relativa al cuerpo del bloque, 1-based
+
+    @property
+    def puntero(self) -> str:
+        return ".".join(self.ruta)
+
+
+def _bloques_yaml_con_encabezado(texto: str) -> list[tuple[str, int, str]]:
+    """Cada bloque YAML **de nivel superior** con el encabezado que lo domina y su línea.
+
+    Rastrea el cercado abierto y su lenguaje: un ```yaml anidado dentro del cercado de otro
+    lenguaje es el cuerpo de un ejemplo ajeno —el prompt de un subagente, una plantilla— y no un
+    bloque del documento.
+    """
+    lineas = texto.splitlines()
+    bloques: list[tuple[str, int, str]] = []
+    heading: str | None = None
+    abierto: tuple[str, int] | None = None   # (lenguaje, indentación) del cercado en curso
+    cuerpo: list[str] = []
+    inicio = 0
+    for numero, linea in enumerate(lineas, 1):
+        cercado = re.match(r"^(\s*)(`{3,})\s*([A-Za-z0-9_+-]*)\s*$", linea)
+        if abierto is not None:
+            if cercado is not None and not cercado.group(3):
+                if abierto[0] in ("yaml", "yml"):
+                    margen = abierto[1]
+                    bloques.append((heading or "", inicio, "\n".join(
+                        c[margen:] if c[:margen].strip() == "" else c.lstrip() for c in cuerpo)))
+                abierto, cuerpo = None, []
+            else:
+                cuerpo.append(linea)
+            continue
+        if cercado is not None:
+            abierto, inicio = (cercado.group(3).lower(), len(cercado.group(1))), numero
+            continue
+        encabezado = re.match(r"^(#{1,6})\s+(.*?)\s*$", linea)
+        if encabezado is not None:
+            heading = encabezado.group(2)
+    return bloques
+
+
+def _encabezado_de_configuracion(heading: str) -> bool:
+    """El encabezado se declara configuración: nombra uno de los artefactos, o es la sección con que
+    una skill declara la config que posee."""
+    if heading.strip() == HEADING_DE_CONFIGURACION:
+        return True
+    return any(artefacto in heading for artefacto in ARTEFACTOS_DE_CONFIGURACION)
+
+
+def _clase_de_superficie(heading: str) -> str:
+    return "vista" if heading.lstrip().startswith(PREFIJO_DE_VISTA) else "dueño"
+
+
+def _es_frontmatter(cuerpo: str) -> bool:
+    return cuerpo.lstrip().startswith("---")
+
+
+def _mapping_raiz(cuerpo: str) -> set[str] | None:
+    """Las claves raíz del bloque, o None si no es un mapping o no parsea."""
+    try:
+        datos = _yaml.safe_load(cuerpo)
+    except Exception:      # noqa: BLE001 — cualquier error del parser es "no es configuración"
+        return None
+    return set(datos) if isinstance(datos, dict) else None
+
+
+def claves_del_bloque(cuerpo: str) -> tuple[list[ClaveYaml], str | None]:
+    """Todas las claves de todos los mappings del bloque, con su ruta punteada y su línea.
+
+    Compone el árbol de nodos en vez de cargar a `dict`: así entran las claves repetidas —que
+    `safe_load` colapsa quedándose con la última— y las de los mappings en línea, y sale la línea de
+    cada una para el diagnóstico.
+    """
+    claves: list[ClaveYaml] = []
+
+    def recorrer(nodo: Any, ruta: tuple[str, ...]) -> None:
+        if isinstance(nodo, _yaml.MappingNode):
+            for clave, valor in nodo.value:
+                if not isinstance(clave, _yaml.ScalarNode):
+                    recorrer(clave, ruta)
+                    recorrer(valor, ruta)
+                    continue
+                nombre = str(clave.value)
+                claves.append(ClaveYaml(nombre, ruta + (nombre,), clave.start_mark.line + 1))
+                recorrer(valor, ruta + (nombre,))
+        elif isinstance(nodo, _yaml.SequenceNode):
+            for indice, item in enumerate(nodo.value):
+                recorrer(item, ruta + (f"[{indice}]",))
+
+    try:
+        documentos = list(_yaml.compose_all(cuerpo))
+    except Exception as error:      # noqa: BLE001 — el mensaje del parser es el diagnóstico
+        return [], str(error).replace("\n", " ")
+    for documento in documentos:
+        if documento is not None:
+            recorrer(documento, ())
+    return claves, None
+
+
+def derivar_superficies(arbol: Path) -> list[Superficie]:
+    """El inventario de superficies de configuración del árbol, derivado en los dos pasos."""
+    candidatos: list[tuple[str, str, int, str]] = []
+    for ruta in sorted((arbol / CARPETA_DE_SUPERFICIES).rglob("*.md")):
+        rel = ruta.relative_to(arbol).as_posix()
+        for heading, linea, cuerpo in _bloques_yaml_con_encabezado(
+                ruta.read_text(encoding="utf-8")):
+            candidatos.append((rel, heading, linea, cuerpo))
+
+    vocabulario: set[str] = set()
+    for _, heading, _, cuerpo in candidatos:
+        if _encabezado_de_configuracion(heading):
+            vocabulario |= _mapping_raiz(cuerpo) or set()
+
+    superficies: list[Superficie] = []
+    ordinales: dict[tuple[str, str], int] = {}
+    for rel, heading, linea, cuerpo in candidatos:
+        if _encabezado_de_configuracion(heading):
+            origen = "encabezado"
+        elif _es_frontmatter(cuerpo) or not ((_mapping_raiz(cuerpo) or set()) & vocabulario):
+            continue
+        else:
+            origen = "vocabulario"
+        ordinal = ordinales.get((rel, heading), 0)
+        ordinales[(rel, heading)] = ordinal + 1
+        superficies.append(Superficie(
+            f"{rel}#{heading}#{ordinal}", rel, heading, linea,
+            _clase_de_superficie(heading), origen, cuerpo))
+    return superficies
+
+
+def nombres_reservados(ruta_lista: Path) -> tuple[tuple[str, ...], tuple[str, ...], str | None]:
+    """Los nombres reservados y los admitidos, leídos del archivo. No se transcriben acá: esa lista
+    tiene un dueño y este modo es su consumidor."""
+    datos, error = _cargar_json(ruta_lista)
+    if error:
+        return (), (), error
+    if not isinstance(datos, dict):
+        return (), (), f"{ruta_lista.name} no es un objeto"
+    reservados: list[str] = []
+    admitidos: list[str] = []
+    for lista, destino in (("reservados", reservados), ("no_reservados", admitidos)):
+        entradas = datos.get(lista)
+        if not isinstance(entradas, list) or not entradas:
+            return (), (), f"{ruta_lista.name}: `{lista}` no es una lista con entradas"
+        for entrada in entradas:
+            nombre = entrada.get("nombre") if isinstance(entrada, dict) else None
+            if not isinstance(nombre, str) or not nombre.strip():
+                return (), (), f"{ruta_lista.name}: una entrada de `{lista}` no declara `nombre`"
+            destino.append(nombre)
+    return tuple(reservados), tuple(admitidos), None
+
+
+def verificar_claves_perfil(arbol: Path, ruta_lista: Path) -> tuple[list[Problema], dict]:
+    reservados, admitidos, error = nombres_reservados(ruta_lista)
+    if error:
+        return [Problema("lista_ilegible", ruta_lista.name, error)], {}
+
+    superficies = derivar_superficies(arbol)
+    resumen = {
+        "superficies": len(superficies),
+        "dueños": sum(1 for s in superficies if s.clase == "dueño"),
+        "vistas": sum(1 for s in superficies if s.clase == "vista"),
+        "por_vocabulario": sum(1 for s in superficies if s.origen == "vocabulario"),
+        "claves": 0,
+        "reservados": len(reservados),
+        "admitidos": list(admitidos),
+        "inventario": [s.donde for s in superficies],
+    }
+    if not superficies:
+        return [Problema("sin_superficies", f"{arbol}/{CARPETA_DE_SUPERFICIES}",
+                         "el árbol no produjo ninguna superficie de configuración: sin superficies "
+                         "que mirar, este modo daría verde sin haber leído nada")], resumen
+
+    # Las dos clases tienen que existir. Un inventario de una sola clase deja la otra sin inspeccionar
+    # y el verde no distingue "no hay claves reservadas" de "no se miró esa mitad del árbol".
+    problemas = [
+        Problema("clase_sin_superficies", f"{arbol}/{CARPETA_DE_SUPERFICIES}",
+                 f"ninguna superficie derivada es de clase `{clase}`: la mitad del inventario "
+                 "quedaría sin inspeccionar")
+        for clase in ("dueño", "vista") if not any(s.clase == clase for s in superficies)
+    ]
+
+    reservado = set(reservados)
+    for superficie in superficies:
+        claves, error = claves_del_bloque(superficie.cuerpo)
+        if error:
+            problemas.append(Problema(
+                "bloque_ilegible", superficie.donde,
+                f"el bloque no compone como YAML y sus claves no pueden leerse: {error}"))
+            continue
+        resumen["claves"] += len(claves)
+        for clave in claves:
+            if clave.nombre in reservado:
+                problemas.append(Problema(
+                    "clave_reservada", superficie.donde,
+                    f"la clave `{clave.puntero}` (línea {clave.linea} del bloque) se llama "
+                    f"`{clave.nombre}`, reservado al contenedor de perfiles de ejecución: el "
+                    "contenedor quedaría materializado en el esquema de configuración"))
+    return problemas, resumen
+
+
+def modo_claves_perfil(arbol: Path, ruta_lista: Path) -> int:
+    if _yaml is None:
+        print("FALLA  falta PyYAML: sin el parser no hay extracción estructural, y buscar los "
+              "nombres como cadenas confundiría la prosa con el esquema")
+        return 1
+
+    problemas, resumen = verificar_claves_perfil(arbol, ruta_lista)
+    if problemas:
+        _informar(problemas, f"claves de perfil en las superficies de configuración de {arbol}")
+        return 1
+
+    print(f"OK     {resumen['superficies']} superficies de configuración derivadas de "
+          f"{CARPETA_DE_SUPERFICIES}/: {resumen['dueños']} dueños y {resumen['vistas']} vistas "
+          f"({resumen['por_vocabulario']} por vocabulario, el resto por encabezado)")
+    print(f"OK     {resumen['claves']} claves extraídas y ninguna es uno de los "
+          f"{resumen['reservados']} nombres reservados al contenedor de perfiles")
+    print(f"OK     los {len(resumen['admitidos'])} nombres admitidos no se buscan: "
+          f"{', '.join('`' + n + '`' for n in resumen['admitidos'])}")
+    print()
+    print("RESULTADO: OK")
+    return 0
+
+
+# --- Autotest del modo -------------------------------------------------------------------------
+#
+# El fixture es **el árbol real, copiado a un temporal**, y no un corpus sintético: lo que la task
+# exige comprobar es que se inspeccione cada superficie que hoy existe, y un corpus inventado con
+# dos archivos dejaría trece sin mirar mientras el autotest cierra en verde. La copia es obligatoria
+# en la otra dirección: mutar el worktree deja un archivo alterado si el proceso muere, y ahí es
+# indistinguible de un cambio real.
+
+class CasoDeClaves(NamedTuple):
+    codigo: str | None      # el problema que el caso tiene que disparar; None = caso conforme
+    descripcion: str
+    mutar: Any              # (raíz, superficies) -> None, o None
+    superficie: str | None  # el identificador de la superficie a la que el problema debe atribuirse
+
+
+def _linea_de_cierre(lineas: list[str], apertura: int) -> int:
+    """Índice 0-based de la línea del cercado que cierra el que abre en `apertura` (1-based)."""
+    for indice in range(apertura, len(lineas)):
+        if re.match(r"^\s*`{3,}\s*$", lineas[indice]):
+            return indice
+    return len(lineas)
+
+
+def _margen(linea: str) -> str:
+    return linea[:len(linea) - len(linea.lstrip())]
+
+
+def _insertar_en_bloque(raiz: Path, superficie: Superficie, texto: str) -> None:
+    """Agrega líneas al final del bloque de una superficie, con la indentación de su cercado."""
+    ruta = raiz / superficie.ruta
+    lineas = ruta.read_text(encoding="utf-8").splitlines()
+    cierre = _linea_de_cierre(lineas, superficie.linea)
+    margen = _margen(lineas[superficie.linea - 1])
+    lineas[cierre:cierre] = [margen + l if l else l for l in texto.splitlines()]
+    ruta.write_text("\n".join(lineas) + "\n", encoding="utf-8")
+
+
+def _insertar_anidado(raiz: Path, superficie: Superficie, nombre: str) -> None:
+    """Cuelga una clave de un mapping que ya existe dentro del bloque: un reservado no deja de serlo
+    por estar anidado, y un extractor que solo mirara las claves raíz lo dejaría pasar."""
+    ruta = raiz / superficie.ruta
+    lineas = ruta.read_text(encoding="utf-8").splitlines()
+    cierre = _linea_de_cierre(lineas, superficie.linea)
+    for indice in range(superficie.linea, cierre):
+        padre = re.match(r"^(\s*)([A-Za-z_][A-Za-z0-9_]*):\s*(#.*)?$", lineas[indice])
+        if padre is not None and indice + 1 < cierre:
+            lineas.insert(indice + 1, f"{padre.group(1)}  {nombre}: opus")
+            ruta.write_text("\n".join(lineas) + "\n", encoding="utf-8")
+            return
+    raise AssertionError(f"{superficie.donde}: el bloque no tiene ningún mapping donde anidar")
+
+
+def _prosa_junto_al_bloque(raiz: Path, superficie: Superficie) -> None:
+    """Prosa que nombra el contenedor **fuera** del bloque, en el archivo de una superficie. Es lo
+    que un buscador de cadenas reportaría y una extracción de claves no."""
+    ruta = raiz / superficie.ruta
+    lineas = ruta.read_text(encoding="utf-8").splitlines()
+    cierre = _linea_de_cierre(lineas, superficie.linea)
+    lineas[cierre + 1:cierre + 1] = [
+        "",
+        "Todavía no existe el contenedor `subagents:`, con su mapa `profiles:` y sus `bindings:`;",
+        "tampoco se configuran `model:` ni `reasoning:` desde acá. Se declara en el contrato y nada más.",
+    ]
+    ruta.write_text("\n".join(lineas) + "\n", encoding="utf-8")
+
+
+def _sin_vistas(raiz: Path) -> None:
+    """Ningún encabezado se declara ya un ejemplo, así que la clase `vista` desaparece del
+    inventario. No alcanza con borrar los documentos `*-ejemplo.md`: `sdd-orchestrator/reference.md`
+    tiene tres bloques bajo «Ejemplos de `manifest.yml`» y la clase seguiría poblada — el primer
+    mutante que se escribió acá sobrevivía por eso, y el sobreviviente era el mutante, no la guarda.
+    """
+    for ruta in sorted((raiz / CARPETA_DE_SUPERFICIES).rglob("*.md")):
+        texto = ruta.read_text(encoding="utf-8")
+        nuevo = re.sub(rf"^(#{{1,6}}\s+){PREFIJO_DE_VISTA}", r"\1Muestra", texto, flags=re.M)
+        if nuevo != texto:
+            ruta.write_text(nuevo, encoding="utf-8")
+
+
+# La skill que el caso de alta agrega al árbol copiado. No existe en el repo: si existiera, el caso
+# comprobaría que la derivación ve algo que ya veía.
+SKILL_DE_ALTA = "skill-sintetica-de-alta"
+
+
+def _alta(raiz: Path) -> None:
+    """Agrega al árbol una skill con **una superficie por cada camino de la derivación**: un dueño y
+    una vista que entran por encabezado (paso 1), y un tercer bloque que solo entra por expansión de
+    vocabulario (paso 2).
+
+    El tercero es el que hace falta para que el paso 2 esté ejercido. Su encabezado no nombra ningún
+    artefacto de configuración ni es la sección `Configuración`, así que el paso 1 no lo ve; lo que
+    lo trae es su clave raíz `sintetica`, que el `SKILL.md` de esta misma skill declara bajo
+    `Configuración` y que por eso está en el vocabulario. Es autocontenido a propósito: no depende de
+    qué claves tenga el árbol real. Sin él, `derivar_superficies` puede quedarse solo con el paso 1 y
+    los cinco bloques del autotest cierran en verde —se midió: el árbol pasa de 15 superficies a 12,
+    y las tres que se pierden son las que documentan el esquema de config más grande del repo—.
+    """
+    base = raiz / CARPETA_DE_SUPERFICIES / SKILL_DE_ALTA
+    base.mkdir(parents=True, exist_ok=True)
+    (base / "SKILL.md").write_text(
+        f"---\nname: {SKILL_DE_ALTA}\n---\n\n# {SKILL_DE_ALTA}\n\nSkill sintética.\n\n"
+        f"## {HEADING_DE_CONFIGURACION}\n\n```yaml\n"
+        "sintetica:\n  mode: auto\n  deadline: 600\n```\n", encoding="utf-8")
+    (base / "config-ejemplo.md").write_text(
+        f"# {SKILL_DE_ALTA}\n\n## {PREFIJO_DE_VISTA} de `{ARTEFACTOS_DE_CONFIGURACION[0]}`\n\n"
+        "```yaml\nsintetica:\n  mode: auto\n```\n", encoding="utf-8")
+    (base / "reference.md").write_text(
+        f"# {SKILL_DE_ALTA} — referencia\n\n## Adaptación al proyecto\n\n"
+        "El esquema, documentado bajo un encabezado que no se declara configuración.\n\n"
+        "```yaml\nsintetica:\n  mode: auto\n  execution: sync\n```\n", encoding="utf-8")
+
+
+def _de_la_alta(superficies: list[Superficie]) -> list[Superficie]:
+    return [s for s in superficies
+            if s.ruta.startswith(f"{CARPETA_DE_SUPERFICIES}/{SKILL_DE_ALTA}/")]
+
+
+def _primera(superficies: list[Superficie], clase: str | None = None) -> Superficie:
+    for superficie in superficies:
+        if clase is None or superficie.clase == clase:
+            return superficie
+    raise AssertionError(f"no hay superficie de clase {clase}")
+
+
+def _con_mapping_anidable(superficies: list[Superficie]) -> Superficie:
+    for superficie in superficies:
+        for linea in superficie.cuerpo.splitlines():
+            if re.match(r"^\s*[A-Za-z_][A-Za-z0-9_]*:\s*(#.*)?$", linea):
+                return superficie
+    raise AssertionError("ninguna superficie tiene un mapping donde anidar una clave")
+
+
+# Nombres que **no** son reservados y se parecen a los que sí lo son. Un extractor que comparara por
+# subcadena —`"model" in nombre`— los rechazaría a todos, y el rojo hablaría de claves legítimas.
+PARECIDOS = ("models", "model_name", "submodel", "reasoning_effort", "subagent", "profiles_dir")
+
+
+def _casos_de_claves(superficies: list[Superficie], reservados: tuple[str, ...],
+                     admitidos: tuple[str, ...]) -> list[CasoDeClaves]:
+    """Los casos se **generan** desde el inventario derivado: la correspondencia superficie ↔ mutante
+    es por construcción, y una superficie nueva en el árbol nace con su mutante en vez de nacer sin
+    él y sin que nada lo señale."""
+    casos: list[CasoDeClaves] = [
+        CasoDeClaves(None, f"el árbol real, limpio: {len(superficies)} superficies y ninguna clave "
+                           "reservada", None, None),
+    ]
+
+    # [Conformes] Los nombres que la lista admite tienen que poder aparecer, y en cualquier
+    # superficie: son genéricos, o preexisten al contenedor. Uno por nombre, no uno por la lista
+    # entera: con un solo caso que los inserte todos, un extractor que rechace uno de los cinco cae
+    # igual y el reporte no dice cuál.
+    for nombre in admitidos:
+        casos.append(CasoDeClaves(
+            None, f"el nombre admitido `{nombre}` aparece como clave y no es materialización",
+            lambda raiz, sups, n=nombre: _insertar_en_bloque(
+                raiz, _primera(sups), f"bloque_de_prueba:\n  {n}: 1"),
+            None))
+    for nombre in PARECIDOS:
+        casos.append(CasoDeClaves(
+            None, f"`{nombre}` se parece a un reservado y no lo es: la comparación es por nombre "
+                  "completo",
+            lambda raiz, sups, n=nombre: _insertar_en_bloque(raiz, _primera(sups), f"{n}: 1"),
+            None))
+    casos.append(CasoDeClaves(
+        None, "prosa que nombra el contenedor fuera del bloque: no es una clave del esquema",
+        lambda raiz, sups: _prosa_junto_al_bloque(raiz, _primera(sups)), None))
+    casos.append(CasoDeClaves(
+        None, "un comentario dentro del bloque que nombra el contenedor: el parser lo descarta",
+        lambda raiz, sups: _insertar_en_bloque(
+            raiz, _primera(sups),
+            "# sin `subagents:` todavía — ni `profiles:`, ni `bindings:`, ni `model:`/`reasoning:`"),
+        None))
+    casos.append(CasoDeClaves(
+        None, "un reservado como **valor** y no como clave: nombrarlo no lo declara",
+        lambda raiz, sups: _insertar_en_bloque(
+            raiz, _primera(sups), "bloque_de_prueba:\n  que_delega: subagents\n  con: model"),
+        None))
+
+    # [A] Un mutante por superficie, no uno por clase. Con uno por clase, un extractor limitado al
+    # dueño y a la vista elegidos para los fixtures pasa los dos y deja el resto sin inspeccionar.
+    for superficie in superficies:
+        casos.append(CasoDeClaves(
+            "clave_reservada",
+            f"{superficie.clase} `{superficie.ruta} → {superficie.heading}`: se materializa el "
+            "contenedor en su bloque",
+            lambda raiz, sups, s=superficie: _insertar_en_bloque(
+                raiz, _buscar(sups, s.identificador), "subagents:\n  profiles: {}"),
+            superficie.identificador))
+
+    # [B] Un mutante por nombre reservado, repartidos por el inventario: la familia [A] ejerce un
+    # solo nombre, y un extractor que buscara únicamente la clave raíz pasaría los otros cuatro.
+    for indice, nombre in enumerate(reservados):
+        destino = superficies[indice % len(superficies)]
+        casos.append(CasoDeClaves(
+            "clave_reservada",
+            f"el reservado `{nombre}` como clave raíz de `{destino.ruta} → {destino.heading}`",
+            lambda raiz, sups, n=nombre, s=destino: _insertar_en_bloque(
+                raiz, _buscar(sups, s.identificador), f"{n}: valor"),
+            destino.identificador))
+
+    # [C] Anidado: el nombre no deja de estar reservado por colgar de otro bloque del esquema.
+    anidable = _con_mapping_anidable(superficies)
+    for nombre in ("model", "reasoning"):
+        casos.append(CasoDeClaves(
+            "clave_reservada",
+            f"`{nombre}` anidado bajo un mapping de `{anidable.ruta} → {anidable.heading}`",
+            lambda raiz, sups, n=nombre, s=anidable: _insertar_anidado(
+                raiz, _buscar(sups, s.identificador), n),
+            anidable.identificador))
+
+    # [D] La derivación misma. Sin estos casos, un inventario que se vaciara daría verde por no
+    # haber mirado nada, que es la forma en que esta guarda no podría ponerse roja.
+    casos += [
+        CasoDeClaves("sin_superficies", "el árbol se queda sin superficies de configuración",
+                     lambda raiz, sups: shutil.rmtree(raiz / CARPETA_DE_SUPERFICIES), None),
+        CasoDeClaves("clase_sin_superficies",
+                     "ningún encabezado se declara un ejemplo y la clase `vista` desaparece",
+                     lambda raiz, sups: _sin_vistas(raiz), None),
+        CasoDeClaves("bloque_ilegible", "el bloque de una superficie deja de componer como YAML",
+                     lambda raiz, sups: _insertar_en_bloque(
+                         raiz, _primera(sups), "clave: [sin cerrar"), None),
+        CasoDeClaves("lista_ilegible", "la lista de nombres reservados no se puede leer", None, None),
+    ]
+    return casos
+
+
+def _buscar(superficies: list[Superficie], identificador: str) -> Superficie:
+    for superficie in superficies:
+        if superficie.identificador == identificador:
+            return superficie
+    raise AssertionError(f"la superficie `{identificador}` no está en el inventario derivado")
+
+
+def _correr_caso_de_claves(caso: CasoDeClaves,
+                           ruta_lista: Path) -> tuple[list[Problema], dict, list[Superficie]]:
+    """Cada caso corre sobre una copia temporal del árbol: los mutantes escriben archivos, y hacerlo
+    sobre el worktree lo dejaría alterado si el proceso muriera a mitad."""
+    with tempfile.TemporaryDirectory() as tmp:
+        raiz = Path(tmp) / "arbol"
+        shutil.copytree(REPO / CARPETA_DE_SUPERFICIES, raiz / CARPETA_DE_SUPERFICIES)
+        if caso.mutar is not None:
+            caso.mutar(raiz, derivar_superficies(raiz))
+        problemas, resumen = verificar_claves_perfil(raiz, ruta_lista)
+        posteriores = derivar_superficies(raiz) if (raiz / CARPETA_DE_SUPERFICIES).is_dir() else []
+        return problemas, resumen, posteriores
+
+
+def _lista_ilegible() -> Path:
+    """Una ruta que no existe: el modo no puede saber qué buscar y eso es rojo, no verde."""
+    return REPO / "scripts" / "nombres-reservados-perfil.inexistente.json"
+
+
+def _bloque_de_alta(base: int) -> list[tuple[str, bool, str]]:
+    """[E] La derivación tiene que ver una skill que hasta recién no existía.
+
+    Los bloques [A]–[D] generan sus casos del **mismo** inventario que el modo deriva, así que una
+    derivación recortada recorta también sus mutantes y los cuatro cierran en verde comparando el
+    inventario contra sí mismo: un `derivar_superficies` reemplazado por una lista de rutas escrita a
+    mano los sobrevive a todos. Se comprobó mutando este archivo en una copia, y fue el único de once
+    ataques que escapó. Lo que lo caza es un árbol que el inventario a mano no puede haber previsto:
+    se agrega una skill nueva y se exige que la derivación la vea y que sus claves reservadas caigan.
+
+    **Y se exige por camino, no en total.** El mismo defecto tiene una segunda forma: recortar la
+    derivación a uno de sus dos pasos. Con un alta cuyas superficies entraran todas por encabezado,
+    el paso de expansión por vocabulario se puede borrar entero y los cinco bloques siguen en verde
+    —medido: el árbol pasa de 15 superficies a 12 sin que nada se ponga rojo—. Por eso el alta trae
+    **tres** superficies, una por cada camino, y acá se comprueba que estén los dos orígenes y las
+    dos clases: un total correcto por la suma de dos caminos, con uno de ellos muerto, no lo es.
+    """
+    limpio = CasoDeClaves(None, "alta limpia", lambda raiz, sups: _alta(raiz), None)
+    problemas, _, posteriores = _correr_caso_de_claves(limpio, RUTA_NOMBRES_RESERVADOS)
+    nuevas = _de_la_alta(posteriores)
+    clases = {s.clase for s in nuevas}
+    origenes = {s.origen for s in nuevas}
+    fallas: list[str] = []
+    if problemas:
+        fallas.append(f"el alta limpia no pasa: {problemas[0]}")
+    if len(posteriores) != base + 3:
+        fallas.append(f"la derivación ve {len(posteriores) - base} superficies nuevas, esperadas 3")
+    if clases != {"dueño", "vista"} or origenes != {"encabezado", "vocabulario"}:
+        fallas.append(f"las superficies del alta son de clases {sorted(clases)} y orígenes "
+                      f"{sorted(origenes)}: falta un camino de la derivación o una clase")
+    resultados = [(
+        "E.1/claves-perfil", not fallas,
+        f"la derivación ve la skill nueva por sus dos caminos: {base} → {len(posteriores)} "
+        "superficies, con las dos clases y los dos orígenes"
+        if not fallas else " | ".join(fallas),
+    )]
+    if fallas:
+        return resultados
+
+    sobrevivientes: list[str] = []
+    for nueva in nuevas:
+        def mutar(raiz: Path, sups: list[Superficie], destino: str = nueva.identificador) -> None:
+            _alta(raiz)
+            _insertar_en_bloque(raiz, _buscar(derivar_superficies(raiz), destino),
+                                "subagents:\n  bindings: {}")
+        caso = CasoDeClaves("clave_reservada", f"alta mutada: {nueva.donde}", mutar,
+                            nueva.identificador)
+        detectados, _, finales = _correr_caso_de_claves(caso, RUTA_NOMBRES_RESERVADOS)
+        donde = _buscar(finales, nueva.identificador).donde
+        if not any(p.codigo == "clave_reservada" and p.donde == donde for p in detectados):
+            sobrevivientes.append(f"{nueva.clase} `{donde}` — {sorted({p.donde for p in detectados})[:2]}")
+    resultados.append((
+        "E.2/claves-perfil", not sobrevivientes,
+        f"las {len(nuevas)} superficies del alta se inspeccionan, una por camino: su clave "
+        "reservada cae en las tres"
+        if not sobrevivientes else "SOBREVIVE " + " | ".join(sobrevivientes),
+    ))
+    return resultados
+
+
+def modo_autotest_claves_perfil() -> int:
+    if _yaml is None:
+        print("[0] FALLA  falta PyYAML: sin el parser no hay extracción estructural")
+        return 1
+
+    reservados, admitidos, error = nombres_reservados(RUTA_NOMBRES_RESERVADOS)
+    if error:
+        return _cierre("claves de perfil", [("0.lista", False, error)])
+    superficies = derivar_superficies(REPO)
+    resultados: list[tuple[str, bool, str]] = [
+        ("0.inventario", bool(superficies),
+         f"el inventario se deriva del árbol: {len(superficies)} superficies "
+         f"({sum(1 for s in superficies if s.clase == 'dueño')} dueños, "
+         f"{sum(1 for s in superficies if s.clase == 'vista')} vistas)"
+         if superficies else "la derivación no produjo superficies"),
+    ]
+    if not superficies:
+        return _cierre("claves de perfil", resultados)
+
+    casos = _casos_de_claves(superficies, reservados, admitidos)
+
+    # [A] El control positivo. Sin él, un extractor que devuelva siempre rojo —`return
+    # [Problema(...)]`— satisface todos los mutantes y cierra en verde sin haber aceptado jamás un
+    # árbol sano.
+    conformes = [c for c in casos if c.codigo is None]
+    fallas: list[str] = []
+    for caso in conformes:
+        problemas, _, _ = _correr_caso_de_claves(caso, RUTA_NOMBRES_RESERVADOS)
+        if problemas:
+            fallas.append(f"{caso.descripcion} — {problemas[0]}")
+    resultados.append((
+        "A/claves-perfil", not fallas,
+        f"control positivo: los {len(conformes)} casos conformes pasan, incluidos los "
+        f"{len(admitidos)} nombres admitidos y los {len(PARECIDOS)} parecidos"
+        if not fallas else "control positivo — " + " | ".join(fallas[:3]),
+    ))
+
+    # [B] Los mutantes, cada uno rechazado por su motivo **y atribuido a su superficie**: un
+    # extractor que mirara una sola superficie sobrevive a los mutantes de las demás.
+    mutantes = [c for c in casos if c.codigo is not None]
+    sobrevivientes: list[str] = []
+    desatribuidos: list[str] = []
+    emitidos: set[str] = set()
+    for caso in mutantes:
+        problemas, _, posteriores = _correr_caso_de_claves(
+            caso, _lista_ilegible() if caso.codigo == "lista_ilegible" else RUTA_NOMBRES_RESERVADOS)
+        codigos = {p.codigo for p in problemas}
+        emitidos |= codigos
+        if not codigos:
+            sobrevivientes.append(f"{caso.codigo}: {caso.descripcion}")
+            continue
+        if caso.codigo not in codigos:
+            desatribuidos.append(f"{caso.codigo}: {caso.descripcion} — rechazado por "
+                                 f"{sorted(codigos)} y no por su motivo")
+            continue
+        if caso.superficie is None:
+            continue
+        donde = _buscar(posteriores, caso.superficie).donde
+        if not any(p.codigo == caso.codigo and p.donde == donde for p in problemas):
+            desatribuidos.append(f"{caso.codigo}: {caso.descripcion} — el problema no se atribuye a "
+                                 f"`{donde}` sino a {sorted({p.donde for p in problemas})[:2]}")
+    problemas_b = ([f"SOBREVIVE {s}" for s in sobrevivientes]
+                   + [f"SIN ATRIBUIR {d}" for d in desatribuidos])
+    resultados.append((
+        "B/claves-perfil", not problemas_b,
+        f"{len(mutantes)} mutantes rechazados por su motivo, uno por cada una de las "
+        f"{len(superficies)} superficies y uno por cada uno de los {len(reservados)} nombres"
+        if not problemas_b else f"{len(problemas_b)} problemas: " + " | ".join(problemas_b[:5]),
+    ))
+
+    # [C] Un caso por código: un código sin caso es una restricción que nadie comprobó que pueda
+    # ponerse roja.
+    ejercidos = {c.codigo for c in mutantes}
+    problemas_c = [f"`{c}` está en el catálogo y ningún caso lo ejerce"
+                   for c in CODIGOS_CLAVES_PERFIL if c not in ejercidos]
+    problemas_c += [f"`{c}` lo emite el modo y no está en el catálogo"
+                    for c in sorted((emitidos | ejercidos) - set(CODIGOS_CLAVES_PERFIL))]
+    resultados.append((
+        "C/claves-perfil", not problemas_c,
+        f"los {len(CODIGOS_CLAVES_PERFIL)} códigos del modo tienen su caso"
+        if not problemas_c else f"{len(problemas_c)} huecos: " + " | ".join(problemas_c[:5]),
+    ))
+
+    # [D] Cada superficie del inventario tiene su mutante. Es la comprobación de que la familia [A]
+    # se generó del inventario y no de una lista escrita a mano que quedó corta.
+    con_mutante = {c.superficie for c in mutantes if c.superficie is not None}
+    faltantes = [s.donde for s in superficies if s.identificador not in con_mutante]
+    resultados.append((
+        "D/claves-perfil", not faltantes,
+        f"las {len(superficies)} superficies derivadas tienen su mutante, una por una"
+        if not faltantes else f"{len(faltantes)} sin mutante: " + " | ".join(faltantes[:5]),
+    ))
+
+    resultados += _bloque_de_alta(len(superficies))
+    return _cierre("ningún nombre reservado al contenedor de perfiles aparece como clave en una "
+                   "superficie de configuración, y cada superficie tiene quien la mute", resultados)
+
+
+# ---------------------------------------------------------------------------------------------
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
@@ -5487,6 +6214,16 @@ def main(argv: list[str] | None = None) -> int:
              "exclusión sobre el mismo corpus",
     )
     parser.add_argument(
+        "--claves-perfil", nargs="?", const=str(RUTA_NOMBRES_RESERVADOS), metavar="RUTA",
+        help="comprueba que ningún nombre reservado al contenedor de perfiles (por defecto los de "
+             "scripts/nombres-reservados-perfil.json) aparezca como clave en una superficie de "
+             "configuración del árbol",
+    )
+    parser.add_argument(
+        "--autotest-claves-perfil", action="store_true",
+        help="control positivo y negativo del modo anterior, con un mutante por superficie derivada",
+    )
+    parser.add_argument(
         "--escenarios", metavar="RUTA", default=None,
         help="los escenarios de configuración y capacidad; por defecto, el archivo hermano de la "
              "matriz con el sufijo `-escenarios` (solo lo usan --condiciones y "
@@ -5495,7 +6232,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--arbol", metavar="RUTA", default=str(REPO),
         help="raíz del árbol del que se deriva el inventario (por defecto, este repositorio); "
-             "solo lo usan --correspondencia y --completitud",
+             "solo lo usan --correspondencia, --completitud y --claves-perfil",
     )
     parser.add_argument(
         "--raiz", metavar="RUTA", default=str(REPO),
@@ -5527,14 +6264,16 @@ def main(argv: list[str] | None = None) -> int:
         args.autotest_condiciones,
         bool(args.cobertura_condiciones),
         args.autotest_cobertura_condiciones,
+        bool(args.claves_perfil),
+        args.autotest_claves_perfil,
     ]
     if sum(seleccionados) != 1:
         print("Invocación inválida: exactamente uno de --schema, --autotest-schema, "
               "--nombres-reservados, --autotest-nombres-reservados, --correspondencia, "
               "--autotest-correspondencia, --completitud, --autotest-completitud, --procedencia, "
               "--autotest-procedencia, --anclas, --autotest-anclas, --presupuesto-contractual, "
-              "--condiciones, --autotest-condiciones, --cobertura-condiciones o "
-              "--autotest-cobertura-condiciones.",
+              "--condiciones, --autotest-condiciones, --cobertura-condiciones, "
+              "--autotest-cobertura-condiciones, --claves-perfil o --autotest-claves-perfil.",
               file=sys.stderr)
         return 2
     if args.autotest_schema:
@@ -5562,6 +6301,10 @@ def main(argv: list[str] | None = None) -> int:
         return modo_autotest_anclas()
     if args.presupuesto_contractual:
         return modo_presupuesto_contractual(Path(args.presupuesto_contractual), Path(args.raiz))
+    if args.claves_perfil:
+        return modo_claves_perfil(Path(args.arbol), Path(args.claves_perfil))
+    if args.autotest_claves_perfil:
+        return modo_autotest_claves_perfil()
     escenarios = Path(args.escenarios) if args.escenarios else None
     if args.condiciones:
         return modo_condiciones(Path(args.condiciones), escenarios)
