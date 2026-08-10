@@ -625,3 +625,785 @@ cubrir. La completitud del contenedor se comprueba en la sección anterior y sob
   ]
 }
 ```
+
+## Familias de rol
+
+Las **cinco familias de rol** del programa —`explorer`, `investigator`, `design-reviewer`,
+`bounded-implementer` y `diff-reviewer`— no se eligen acá: se derivan de la tabla de consumidores
+del roadmap del programa, y cada una lleva el **puntero normativo** del que sale. El modo `--roles`
+resuelve ese puntero contra el árbol y exige que la sección que señala nombre a la familia, así que
+el puntero se ejerce en vez de decorar.
+
+**Ese puntero apunta a un artefacto de trabajo no versionado**
+(`.plans/doctrina-implementador/roadmap.md`), y hay que decirlo con las mismas palabras con que esta fase lo
+dijo de la propuesta doctrinal. Es el único documento del árbol que enumera las cinco familias en
+una sección legible por sección. El único **archivo versionado** que las nombra a las cinco es
+`scripts/matriz-despachos.schema.json`, que no sirve de sede por dos motivos independientes: es un
+artefacto de este mismo flujo —el resolutor de procedencias rechaza por construcción toda sede que
+lo sea, porque una hoja que se cita a sí misma coincide siempre consigo misma— y no es Markdown, así
+que no tiene secciones contra las que resolver un puntero. La consecuencia queda declarada y no
+tapada: la derivación de las cinco familias se apoya en un artefacto que el árbol versionado no
+contiene.
+
+**Cada campo del contrato de una familia declara su estado**, y son cuatro: `vigente` en una sede
+normativa, `observado` en el comportamiento, `ausente`, o `propuesto` para una fase futura. Los dos
+primeros van **anclados** y los resuelve el mismo verificador semántico que las hojas de la matriz,
+de modo que sustituir un valor por otro plausible deja de coincidir con lo que la sede dice. Los dos
+últimos no llevan puntero: declaran por qué no lo tienen.
+
+**Hoy los quince campos de las cinco familias están sin anclar, y ese es el resultado honesto de
+esta fase.** El motivo es uno solo y está medido: el repositorio declara los contratos **por punto
+de despacho**, no por familia. `scripts/matriz-despachos.json` ancla el ancla de invocación, el
+contrato de salida y los permisos efectivos de cada uno de los trece puntos contra su sección de
+`skills/`, y su
+propia hoja `rol` registra que «la taxonomía de roles conductuales de esta matriz no está declarada
+en ninguna skill del repositorio». Un contrato por familia sería una generalización sobre puntos que
+hoy declaran cosas distintas, y anclarlo a la sede de uno de ellos lo haría coincidir con una fuente
+que no lo respalda. Las entradas y las salidas quedan **ausentes con su motivo**; los scopes quedan
+**propuestos**, con la fase que el roadmap declara que los toma: la Fase 2 para las cuatro familias
+read-only y la Fase 3 para el writer, que es la que se propone adoptarlo «con scope explícito».
+
+**La autoridad final no aparece acá.** Va por punto y variante, en la sección siguiente: dos puntos
+de la misma familia pueden cerrarse en manos distintas, y de hecho lo hacen.
+
+```sh
+python3 scripts/verificar-matriz-despachos.py --roles \
+    docs/superpowers/specs/2026-08-09-subagentes-perfiles-fase-0.md
+```
+
+```json
+{
+  "familias": [
+    {
+      "familia": "explorer",
+      "puntero": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills",
+      "campos": {
+        "entrada": {
+          "estado": "ausente",
+          "motivo": "ninguna sede versionada declara qué recibe un `explorer` como familia. El paquete de contexto está descrito por punto —`skills/co-explore/reference.md` para el fan-out y `skills/sdd-flow/SKILL.md#paso-analyze` para analyze—, y el punto del fan-out sirve además a dos familias, así que su entrada no se puede leer como entrada de una sola"
+        },
+        "salida": {
+          "estado": "ausente",
+          "motivo": "la matriz ancla `contrato_de_salida` por punto y no por familia: los dos puntos de esta familia apuntan a `skills/co-explore/reference.md#envelope-de-retorno` y a `skills/sdd-flow/SKILL.md#paso-analyze`, que son dos contratos distintos"
+        },
+        "scope": {
+          "estado": "propuesto",
+          "fase": "Fase 2"
+        }
+      }
+    },
+    {
+      "familia": "investigator",
+      "puntero": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills",
+      "campos": {
+        "entrada": {
+          "estado": "ausente",
+          "motivo": "el único punto que despacha esta familia es el fan-out dual de `co-explore` en modo `investigate`, que comparte sede con el modo `explore`: la sede describe la entrada del punto, no la de la familia, y las dos familias entran por ahí"
+        },
+        "salida": {
+          "estado": "ausente",
+          "motivo": "su único punto comparte el contrato de salida con el `explorer` del mismo fan-out, así que de ahí no se puede leer una salida propia de esta familia"
+        },
+        "scope": {
+          "estado": "propuesto",
+          "fase": "Fase 2"
+        }
+      }
+    },
+    {
+      "familia": "design-reviewer",
+      "puntero": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills",
+      "campos": {
+        "entrada": {
+          "estado": "ausente",
+          "motivo": "sus dos puntos —el revisor por ronda de `cross-review` y el worker de debate de `co-explore`— reciben cosas distintas (un artefacto de diseño con su criterio, una postura en discusión) y cada sede describe la suya; ninguna declara la entrada de la familia"
+        },
+        "salida": {
+          "estado": "ausente",
+          "motivo": "sus dos puntos declaran contratos de salida distintos —un veredicto derivado de un ledger y una plantilla de debate—, y el roadmap dice explícitamente que `decision-debate` produce posturas y no `APPROVED | REVISE`: la salida es de la variante, no de la familia"
+        },
+        "scope": {
+          "estado": "propuesto",
+          "fase": "Fase 2"
+        }
+      }
+    },
+    {
+      "familia": "bounded-implementer",
+      "puntero": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills",
+      "campos": {
+        "entrada": {
+          "estado": "ausente",
+          "motivo": "sus cuatro puntos viven en cuatro skills distintas y cada una declara su propio prompt de entrada; ninguna sede versionada enuncia qué recibe la familia con independencia del punto"
+        },
+        "salida": {
+          "estado": "ausente",
+          "motivo": "sus cuatro puntos anclan tres contratos de salida distintos —los dos de `cross-implement` comparten sede y los otros dos no—; ninguna de las tres declara la salida de la familia"
+        },
+        "scope": {
+          "estado": "propuesto",
+          "fase": "Fase 3"
+        }
+      }
+    },
+    {
+      "familia": "diff-reviewer",
+      "puntero": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills",
+      "campos": {
+        "entrada": {
+          "estado": "ausente",
+          "motivo": "sus cuatro puntos declaran la entrada dentro del prompt de cada revisor, y esos prompts difieren en qué acompaña al diff; una entrada por familia sería una generalización que ninguna de las cuatro sedes hace"
+        },
+        "salida": {
+          "estado": "ausente",
+          "motivo": "sus cuatro puntos anclan cuatro contratos de salida distintos; el de la validación adversarial ni siquiera revisa el diff, sino que intenta invalidar un finding ajeno"
+        },
+        "scope": {
+          "estado": "propuesto",
+          "fase": "Fase 2"
+        }
+      }
+    }
+  ]
+}
+```
+
+## Asignaciones de despacho
+
+El mapa **punto → familia → variante** de los trece puntos de despacho. **No se deriva de ninguna
+fuente:** la tabla del roadmap mapea *skill → roles reusables*, no *punto → variante*. Está medido:
+esa tabla tiene siete filas y trece puntos, y su columna de roles enumera por skill y no por punto,
+así que en tres de las siete los números no cuadran —`co-explore` lista dos puntos y tres roles,
+`sdd-flow` cuatro puntos y tres roles, y `bitbucket-code-review` dos puntos y un solo rol con dos
+variantes—. Construir el mapa fue decidir, y por eso cada fila declara su procedencia:
+
+- **`puntero`** cuando el roadmap **nombra la variante**. Son ocho, y el modo resuelve su puntero
+  contra el árbol y exige encontrar ahí el literal de la variante: la fila lleva la carga de la
+  prueba.
+- **`decision`** cuando la asignación se tomó en esta fase. Son cinco, no tienen dónde apuntar, y
+  cada una lleva su justificación escrita. Una decisión sin argumento la vuelve a tomar distinta el
+  próximo que la necesite.
+
+**La autoridad final va por punto y variante**, y está anclada: cada fila la resuelve contra la
+misma sede de `skills/` con la que `scripts/matriz-despachos.json` la declara, de modo que
+sustituirla por otra plausible deja de coincidir. Diez puntos cierran en el conductor y tres en el
+usuario, y **los tres** pertenecen a familias cuyos otros puntos cierran en el conductor: el debate
+de `co-explore` es `design-reviewer` y el revisor por ronda de `cross-review` también, y el fan-out
+por repo y el implement delegado son `bounded-implementer` como los tres puntos que sí cierran en el
+conductor. Por eso la autoridad no puede declararse por familia: declarada ahí, cada una de esas dos
+familias tendría que elegir entre dos respuestas ciertas.
+
+**Dos variantes cuyo resultado hoy tiene forma distinta no comparten declaración de salida.** La
+declaración es la sede que la matriz ancla como contrato de salida del punto; la forma del resultado
+es un nombre corto que **decide este contrato** y que no tiene sede —ninguna existe—. Lo verificable
+no es la forma en sí sino su coherencia con la declaración: dos puntos que comparten declaración
+—los dos de `cross-implement`, que anclan la misma sección— tienen que traer la misma forma, y
+traerla distinta es el defecto que este criterio existe para impedir.
+
+```json
+{
+  "asignaciones": [
+    {
+      "punto": "co-explore · fan-out dual",
+      "familia": "explorer / investigator",
+      "variante": "fan-out en modos explore y counter-plan; root-cause en modo investigate",
+      "procedencia": "decision",
+      "forma_de_resultado": "mapa_comparable",
+      "declaracion_de_salida": "skills/co-explore/reference.md#envelope-de-retorno",
+      "autoridad": {
+        "estado": "vigente",
+        "valor": "conductor",
+        "procedencia": {
+          "sede": "skills/co-explore/SKILL.md",
+          "tipo_de_sede": "patron_de_linea",
+          "selector": {
+            "patron": "^8\\. \\*\\*El conductor arbitra, no explora\\.\\*\\*"
+          },
+          "cardinalidad": {
+            "tipo": "exactamente_una"
+          },
+          "extraccion": {
+            "tipo": "captura_de_grupo",
+            "patron": "^8\\. \\*\\*El (conductor) arbitra",
+            "grupo": 1
+          },
+          "normalizacion": "minusculas",
+          "conversion": "enum:autoridad_final"
+        }
+      },
+      "justificacion": "el roadmap lista tres roles para los dos puntos de la skill y no dice cuál va en cuál. El fan-out sirve a `explorer` en los modos `explore` y `counter-plan` y a `investigator` en `investigate`, así que la asignación es condicionada por modo y no única: la fila declara las dos familias en vez de elegir una y perder la otra"
+    },
+    {
+      "punto": "co-explore · debate",
+      "familia": "design-reviewer",
+      "variante": "decision-debate",
+      "procedencia": "puntero",
+      "forma_de_resultado": "postura_de_debate",
+      "declaracion_de_salida": "skills/co-explore/reference.md#plantilla-de-debate-md",
+      "autoridad": {
+        "estado": "vigente",
+        "valor": "usuario",
+        "procedencia": {
+          "sede": "skills/co-explore/SKILL.md",
+          "tipo_de_sede": "patron_de_linea",
+          "selector": {
+            "patron": "^voz, la otra familia es la otra, y el conductor además sintetiza"
+          },
+          "cardinalidad": {
+            "tipo": "exactamente_una"
+          },
+          "extraccion": {
+            "tipo": "captura_de_grupo",
+            "patron": "el (usuario) es el árbitro",
+            "grupo": 1
+          },
+          "normalizacion": "minusculas",
+          "conversion": "enum:autoridad_final"
+        }
+      },
+      "puntero_variante": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills"
+    },
+    {
+      "punto": "cross-review · revisor por ronda",
+      "familia": "design-reviewer",
+      "variante": "artifact-review",
+      "procedencia": "puntero",
+      "forma_de_resultado": "veredicto_de_revision_de_artefacto",
+      "declaracion_de_salida": "skills/cross-review/reference.md#formato-de-salida",
+      "autoridad": {
+        "estado": "vigente",
+        "valor": "conductor",
+        "procedencia": {
+          "sede": "skills/cross-review/reference.md",
+          "tipo_de_sede": "patron_de_linea",
+          "selector": {
+            "patron": "^del revisor y arbitraje del conductor\\."
+          },
+          "cardinalidad": {
+            "tipo": "exactamente_una"
+          },
+          "extraccion": {
+            "tipo": "captura_de_grupo",
+            "patron": "arbitraje del (conductor)\\.",
+            "grupo": 1
+          },
+          "normalizacion": "minusculas",
+          "conversion": "enum:autoridad_final"
+        }
+      },
+      "puntero_variante": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills"
+    },
+    {
+      "punto": "cross-implement · implementador inicial",
+      "familia": "bounded-implementer",
+      "variante": "work-order",
+      "procedencia": "puntero",
+      "forma_de_resultado": "diff_con_reporte",
+      "declaracion_de_salida": "skills/cross-implement/reference.md#formato-del-reporte",
+      "autoridad": {
+        "estado": "vigente",
+        "valor": "conductor",
+        "procedencia": {
+          "sede": "skills/cross-implement/SKILL.md",
+          "tipo_de_sede": "patron_de_linea",
+          "selector": {
+            "patron": "^Nunca bloquea\\. Cuatro vías de falla, mismo final — el conductor implementa inline:$"
+          },
+          "cardinalidad": {
+            "tipo": "exactamente_una"
+          },
+          "extraccion": {
+            "tipo": "captura_de_grupo",
+            "patron": "— el (conductor) implementa inline",
+            "grupo": 1
+          },
+          "normalizacion": "minusculas",
+          "conversion": "enum:autoridad_final"
+        }
+      },
+      "puntero_variante": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills"
+    },
+    {
+      "punto": "cross-implement · fix loop",
+      "familia": "bounded-implementer",
+      "variante": "fix-round",
+      "procedencia": "decision",
+      "forma_de_resultado": "diff_con_reporte",
+      "declaracion_de_salida": "skills/cross-implement/reference.md#formato-del-reporte",
+      "autoridad": {
+        "estado": "vigente",
+        "valor": "conductor",
+        "procedencia": {
+          "sede": "skills/cross-implement/reference.md",
+          "tipo_de_sede": "patron_de_linea",
+          "selector": {
+            "patron": "^- Tope `max_fix_rounds` \\(default 2\\) → \\*\\*takeover\\*\\*"
+          },
+          "cardinalidad": {
+            "tipo": "exactamente_una"
+          },
+          "extraccion": {
+            "tipo": "captura_de_grupo",
+            "patron": "el (conductor) termina directamente",
+            "grupo": 1
+          },
+          "normalizacion": "minusculas",
+          "conversion": "enum:autoridad_final"
+        }
+      },
+      "justificacion": "el roadmap escribe «`bounded-implementer[work-order]`; después `diff-reviewer`» para los dos puntos de la skill, pero el revisor del diff de `cross-implement` es el conductor y no un despacho delegado —la matriz le da autoridad final `conductor` a los dos puntos—. Lo que se despacha en el fix loop es el implementador corrigiendo contra el mismo work order, y por eso lleva variante propia en vez de repetir `work-order`"
+    },
+    {
+      "punto": "sdd-flow · analyze",
+      "familia": "explorer",
+      "variante": "codebase-survey",
+      "procedencia": "decision",
+      "forma_de_resultado": "mapa_para_el_plan",
+      "declaracion_de_salida": "skills/sdd-flow/SKILL.md#paso-analyze",
+      "autoridad": {
+        "estado": "vigente",
+        "valor": "conductor",
+        "procedencia": {
+          "sede": "skills/sdd-flow/SKILL.md",
+          "tipo_de_sede": "patron_de_linea",
+          "selector": {
+            "patron": "el mapa del conductor sí es el insumo\\.$"
+          },
+          "cardinalidad": {
+            "tipo": "exactamente_una"
+          },
+          "extraccion": {
+            "tipo": "captura_de_grupo",
+            "patron": "el mapa del (conductor) sí es el insumo",
+            "grupo": 1
+          },
+          "normalizacion": "minusculas",
+          "conversion": "enum:autoridad_final"
+        }
+      },
+      "justificacion": "el roadmap asigna la familia (`explorer`) y ninguna variante. Se separa del fan-out de `co-explore` porque el contrato de salida difiere: analyze ancla `skills/sdd-flow/SKILL.md#paso-analyze` y alimenta un plan, y el fan-out ancla `skills/co-explore/reference.md#envelope-de-retorno` y produce mapas destinados a compararse entre sí"
+    },
+    {
+      "punto": "sdd-flow · implementer por task",
+      "familia": "bounded-implementer",
+      "variante": "task",
+      "procedencia": "puntero",
+      "forma_de_resultado": "estado_de_task",
+      "declaracion_de_salida": "skills/sdd-flow/reference.md#prompt-del-subagente-por-task",
+      "autoridad": {
+        "estado": "vigente",
+        "valor": "conductor",
+        "procedencia": {
+          "sede": "skills/sdd-flow/reference.md",
+          "tipo_de_sede": "heading_markdown",
+          "selector": {
+            "texto": "Lado conductor (al volver cada subagente)",
+            "nivel": 3
+          },
+          "cardinalidad": {
+            "tipo": "exactamente_una"
+          },
+          "extraccion": {
+            "tipo": "captura_de_grupo",
+            "patron": "^Lado (conductor)",
+            "grupo": 1
+          },
+          "normalizacion": "minusculas",
+          "conversion": "enum:autoridad_final"
+        }
+      },
+      "puntero_variante": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills"
+    },
+    {
+      "punto": "sdd-flow · reviewer por task",
+      "familia": "diff-reviewer",
+      "variante": "task",
+      "procedencia": "decision",
+      "forma_de_resultado": "veredicto_de_revision_de_diff",
+      "declaracion_de_salida": "skills/sdd-flow/reference.md#prompt-del-subagente-reviewer",
+      "autoridad": {
+        "estado": "vigente",
+        "valor": "conductor",
+        "procedencia": {
+          "sede": "skills/sdd-flow/reference.md",
+          "tipo_de_sede": "patron_de_linea",
+          "selector": {
+            "patron": "^El conductor: \\*\\*SPEC ok \\+ QUALITY ok\\*\\*"
+          },
+          "cardinalidad": {
+            "tipo": "exactamente_una"
+          },
+          "extraccion": {
+            "tipo": "captura_de_grupo",
+            "patron": "^El (conductor):",
+            "grupo": 1
+          },
+          "normalizacion": "minusculas",
+          "conversion": "enum:autoridad_final"
+        }
+      },
+      "justificacion": "el roadmap nombra `diff-reviewer` dentro del alcance de `sdd-flow` sin darle variante. Se le asigna `task` —la misma que el implementador— porque la unidad de despacho es la misma: uno por task. Lo que separa a los dos puntos no es la variante sino la familia y la declaración de salida, que son distintas"
+    },
+    {
+      "punto": "sdd-flow · revisión final",
+      "familia": "diff-reviewer",
+      "variante": "final",
+      "procedencia": "decision",
+      "forma_de_resultado": "veredicto_de_revision_de_diff",
+      "declaracion_de_salida": "skills/sdd-flow/reference.md#revision-final-de-diff",
+      "autoridad": {
+        "estado": "vigente",
+        "valor": "conductor",
+        "procedencia": {
+          "sede": "skills/sdd-flow/SKILL.md",
+          "tipo_de_sede": "patron_de_linea",
+          "selector": {
+            "patron": "^5\\. \\*\\*Gate de revisión manual \\(STOP\\):\\*\\*"
+          },
+          "cardinalidad": {
+            "tipo": "exactamente_una"
+          },
+          "extraccion": {
+            "tipo": "captura_de_grupo",
+            "patron": "revisión liviana del (conductor)\\.",
+            "grupo": 1
+          },
+          "normalizacion": "minusculas",
+          "conversion": "enum:autoridad_final"
+        }
+      },
+      "justificacion": "el roadmap la enumera en el alcance de la Fase 2 sin nombrarle variante. No puede compartir `task` porque no se despacha por unidad de trabajo sino una vez por rama, sobre el diff acumulado, y su declaración de salida es otra sección"
+    },
+    {
+      "punto": "sdd-orchestrator · fan-out por repo",
+      "familia": "bounded-implementer",
+      "variante": "repo-runner",
+      "procedencia": "puntero",
+      "forma_de_resultado": "estado_de_repo_delegado",
+      "declaracion_de_salida": "skills/sdd-orchestrator/reference.md#prompt-del-agente-delegado",
+      "autoridad": {
+        "estado": "vigente",
+        "valor": "usuario",
+        "procedencia": {
+          "sede": "skills/sdd-orchestrator/SKILL.md",
+          "tipo_de_sede": "heading_markdown",
+          "selector": {
+            "texto": "Fase 3 · Cierre (centralizada, el usuario al mando)",
+            "nivel": 2
+          },
+          "cardinalidad": {
+            "tipo": "exactamente_una"
+          },
+          "extraccion": {
+            "tipo": "captura_de_grupo",
+            "patron": "\\(centralizada, el (usuario) al mando\\)$",
+            "grupo": 1
+          },
+          "normalizacion": "minusculas",
+          "conversion": "enum:autoridad_final"
+        }
+      },
+      "puntero_variante": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills"
+    },
+    {
+      "punto": "sdd-pr-feedback · implement delegado",
+      "familia": "bounded-implementer",
+      "variante": "work-order",
+      "procedencia": "puntero",
+      "forma_de_resultado": "estado_de_task",
+      "declaracion_de_salida": "skills/sdd-pr-feedback/reference.md#delegacion-a-sdd-flow-prompt-del-subagente",
+      "autoridad": {
+        "estado": "vigente",
+        "valor": "usuario",
+        "procedencia": {
+          "sede": "skills/sdd-pr-feedback/SKILL.md",
+          "tipo_de_sede": "patron_de_linea",
+          "selector": {
+            "patron": "^Tras el implement \\(el subagente frenó antes de commitear\\), con el usuario al mando\\."
+          },
+          "cardinalidad": {
+            "tipo": "exactamente_una"
+          },
+          "extraccion": {
+            "tipo": "captura_de_grupo",
+            "patron": "con el (usuario) al mando",
+            "grupo": 1
+          },
+          "normalizacion": "minusculas",
+          "conversion": "enum:autoridad_final"
+        }
+      },
+      "puntero_variante": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills"
+    },
+    {
+      "punto": "bitbucket-code-review · panel",
+      "familia": "diff-reviewer",
+      "variante": "review",
+      "procedencia": "puntero",
+      "forma_de_resultado": "findings_de_revision",
+      "declaracion_de_salida": "skills/bitbucket-code-review/reference.md#formato-de-salida-el-revisor-responde-exactamente-esto",
+      "autoridad": {
+        "estado": "vigente",
+        "valor": "conductor",
+        "procedencia": {
+          "sede": "skills/bitbucket-code-review/SKILL.md",
+          "tipo_de_sede": "patron_de_linea",
+          "selector": {
+            "patron": "^### 11\\. Publicar \\(solo el conductor, tras confirmación\\)$"
+          },
+          "cardinalidad": {
+            "tipo": "exactamente_una"
+          },
+          "extraccion": {
+            "tipo": "captura_de_grupo",
+            "patron": "\\(solo el (conductor), tras confirmación\\)",
+            "grupo": 1
+          },
+          "normalizacion": "minusculas",
+          "conversion": "enum:autoridad_final"
+        }
+      },
+      "puntero_variante": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills"
+    },
+    {
+      "punto": "bitbucket-code-review · validador adversarial",
+      "familia": "diff-reviewer",
+      "variante": "refute",
+      "procedencia": "puntero",
+      "forma_de_resultado": "refutacion_de_finding",
+      "declaracion_de_salida": "skills/bitbucket-code-review/reference.md#validacion-adversarial-de-hallazgos-find-then-validate",
+      "autoridad": {
+        "estado": "vigente",
+        "valor": "conductor",
+        "procedencia": {
+          "sede": "skills/bitbucket-code-review/SKILL.md",
+          "tipo_de_sede": "patron_de_linea",
+          "selector": {
+            "patron": "^### 11\\. Publicar \\(solo el conductor, tras confirmación\\)$"
+          },
+          "cardinalidad": {
+            "tipo": "exactamente_una"
+          },
+          "extraccion": {
+            "tipo": "captura_de_grupo",
+            "patron": "\\(solo el (conductor), tras confirmación\\)",
+            "grupo": 1
+          },
+          "normalizacion": "minusculas",
+          "conversion": "enum:autoridad_final"
+        }
+      },
+      "puntero_variante": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills"
+    }
+  ]
+}
+```
+
+## Política de diversidad
+
+Por **intento** se registran las **tres identidades** —quien conduce, quien escribió el artefacto en
+juego y quien hizo el trabajo delegado— y las **relaciones** entre ellas. Tres identidades y no dos:
+`cross_family` sin decir respecto de qué no dice nada, y la relación que importa para la evidencia
+es la que va del worker al **autor del artefacto**, que no siempre es el conductor.
+
+**La topología agregada de la corrida se deriva de los registros.** Está escrita abajo para que se
+pueda leer, y el modo `--diversidad` la recalcula desde los intentos y la coteja: si el documento
+declarara una topología que sus propios registros no producen, el modo lo dice. Declararla sin
+registros por intento es exactamente lo que esta sección existe para impedir.
+
+**Regla de evidencia independiente, ejecutable:** un resultado cuenta como evidencia independiente
+**si y solo si** el trabajo delegado es de otra familia que quien escribió el artefacto que ese
+trabajo juzga, **y** la corrida no fue de una sola voz. Una corrida de una sola voz no se confirma a
+sí misma; un resultado de la misma familia que el autor mide la misma correlación de errores dos
+veces, por más intentos que se acumulen. `same_family` puede estar presente sin ser un defecto
+—registrarlo lo es de hecho—; contarlo como independiente sí lo es.
+
+**Los cuatro intentos de abajo son los de esta corrida y no un ejemplo.** Los tres primeros son las
+tandas de cross-review que este flujo despachó a la otra familia, cada una con el `run_id` que su
+registro conserva; el cuarto es la implementación por task, que se despachó a subagentes de la
+familia del conductor. La unidad del registro es la **tanda de despacho**, no el subagente
+individual: los subagentes de la cuarta comparten conductor, autor y familia, así que una fila por
+subagente repetiría la misma relación y el agregado contaría N veces la misma medición.
+
+```sh
+python3 scripts/verificar-matriz-despachos.py --diversidad \
+    docs/superpowers/specs/2026-08-09-subagentes-perfiles-fase-0.md
+```
+
+```json
+{
+  "intentos": [
+    {
+      "id": "I-01",
+      "despacho": "cross-review de la spec de este flujo (run_id `mcs01`, 3 rondas)",
+      "conductor": "claude",
+      "autor_del_artefacto": "claude",
+      "worker": "codex",
+      "relaciones": {
+        "worker_vs_conductor": "cross_family",
+        "worker_vs_autor": "cross_family"
+      },
+      "cuenta_como_evidencia_independiente": true
+    },
+    {
+      "id": "I-02",
+      "despacho": "cross-review del plan de este flujo (run_id `mcp01`, 2 rondas)",
+      "conductor": "claude",
+      "autor_del_artefacto": "claude",
+      "worker": "codex",
+      "relaciones": {
+        "worker_vs_conductor": "cross_family",
+        "worker_vs_autor": "cross_family"
+      },
+      "cuenta_como_evidencia_independiente": true
+    },
+    {
+      "id": "I-03",
+      "despacho": "cross-review de las tasks de este flujo (run_id `mct01`, 12 rondas)",
+      "conductor": "claude",
+      "autor_del_artefacto": "claude",
+      "worker": "codex",
+      "relaciones": {
+        "worker_vs_conductor": "cross_family",
+        "worker_vs_autor": "cross_family"
+      },
+      "cuenta_como_evidencia_independiente": true
+    },
+    {
+      "id": "I-04",
+      "despacho": "implementación por task de este flujo (`implement_mode: subagent`)",
+      "conductor": "claude",
+      "autor_del_artefacto": "claude",
+      "worker": "claude",
+      "relaciones": {
+        "worker_vs_conductor": "same_family",
+        "worker_vs_autor": "same_family"
+      },
+      "cuenta_como_evidencia_independiente": false
+    }
+  ],
+  "topologia": {
+    "intentos": 4,
+    "single_voice": 1,
+    "cross_vs_conductor": 3,
+    "cross_vs_autor": 3,
+    "evidencia_independiente": 3,
+    "familias_presentes": [
+      "claude",
+      "codex"
+    ]
+  }
+}
+```
+
+## Inventario de defectos
+
+Los defectos **ya verificados** de este repositorio, cada uno con su ubicación, su naturaleza y la
+fase que lo corrige. El inventario **no los corrige**: este contrato no edita las instrucciones del
+repositorio ni las siete skills, y registrar el defecto con su destino es exactamente lo que puede
+hacer una fase cuyo rollback «no aplica: solo artefactos de diseño».
+
+**El mínimo son seis y se comparan por identidad, no por cantidad.** El modo `--defectos` conoce las
+seis identidades y exige que estén; un criterio de cardinalidad —«al menos seis»— aceptaría un
+inventario que cambió uno de los seis por otro conservando el total, que es la forma en que un
+inventario se vacía sin que el conteo se mueva. Puede contener más y no menos.
+
+```sh
+python3 scripts/verificar-matriz-despachos.py --defectos \
+    docs/superpowers/specs/2026-08-09-subagentes-perfiles-fase-0.md
+```
+
+**Cada ubicación es un puntero comprobado, y conviene decir hasta dónde llega la comprobación.** El
+modo exige que la ubicación tenga **forma** de puntero —ruta relativa, con fragmento o sin él— y no
+la resuelve contra el árbol: «documental» o «en las instrucciones» se rechazan, pero una ruta
+inventada pasaría. Las seis de abajo se resolvieron contra el árbol versionado una por una, con el
+mismo resolutor de anclas que usa `--anclas`: las seis existen y las seis contienen el texto que el
+defecto describe.
+
+**La fase de corrección sale de un criterio y no de una preferencia:** es la **primera fase cuyo
+alcance declarado ya abre la sede del defecto**. Corregir antes obliga a abrir esa sede dos veces
+—una para el arreglo suelto y otra para el cambio que la fase le va a hacer igual—, y corregir
+después deja el defecto vivo mientras alguien trabaja encima. Ninguna fila dice «Fase 0»: esta fase
+no toca ninguna de las seis sedes.
+
+```json
+{
+  "defectos": [
+    {
+      "id": "instruccion-del-repositorio-contra-guarda",
+      "descripcion": "la instrucción del repositorio que contradice el estado de una guarda",
+      "ubicacion": "CLAUDE.md#anatomia-de-una-skill-patron-obligatorio-del-repo",
+      "naturaleza": "documental: la instrucción declara que el modo `--vias` de `scripts/verificar-retiro-transporte.py` «aún no está implementado y no cuenta como guarda», y el modo está implementado — su propio encabezado lo marca «AC-15 · implementado», está declarado en el parser de argumentos y corre con código de salida 0 sobre el árbol de hoy. Quien sigue la instrucción no lo ejecuta: la guarda existe y nadie la dispara, que es el estado en el que una guarda no protege nada",
+      "fase": "Fase 1"
+    },
+    {
+      "id": "conteo-de-skills-del-manifest",
+      "descripcion": "la discrepancia entre el número declarado de skills del manifest y su tabla",
+      "ubicacion": "skills/cross-review/reference.md#manifest-de-corrida",
+      "naturaleza": "documental: la sede canónica del manifest de corrida dice «las tres» dos veces —al declararse sede y al justificar por qué la clave vive en `cross_model`— y su propia tabla de vocabulario, dentro de esa misma sección, tiene cuatro filas: `co-explore`, `cross-review`, `cross-implement` y `bitbucket-code-review`. El comentario del esquema de configuración que apunta a esa sede repite el mismo tres. Un lector que se guíe por la prosa deja una de las cuatro skills fuera de una política que la sede declara del ecosistema entero",
+      "fase": "Fase 2"
+    },
+    {
+      "id": "frontera-que-nombra-skill-inexistente",
+      "descripcion": "la regla de fronteras que nombra una skill inexistente",
+      "ubicacion": "CLAUDE.md#el-ecosistema-de-skills",
+      "naturaleza": "documental: la regla de fronteras reparte cinco actividades y le asigna «arreglar bugs» a `systematic-debugging`, que no es ninguna de las siete skills de este repositorio; es una skill externa, y las propias skills la citan con su prefijo de plugin. La lista de la misma sección enumera además seis de las siete —`bitbucket-code-review` no figura—, así que la sección reparte trabajo a un nombre sin sede en el árbol y omite a un consumidor que sí la tiene",
+      "fase": "Fase 1"
+    },
+    {
+      "id": "registro-historico-rechazado-por-su-guarda",
+      "descripcion": "los archivos del registro histórico que su propia guarda rechaza",
+      "ubicacion": "skills/cross-review/reference.md#validar-un-manifest",
+      "naturaleza": "instrumental: la guarda que valida el registro por corrida rechaza 38 de los 66 archivos que hoy viven en `.cross-model/runs/`, medido corriendo el bloque tal como está escrito, archivo por archivo. Treinta y cinco son sobres de corrida retirados —una clase de archivo que el contrato del directorio nunca admitió: declara que `runs/` acumula el manifest que cada corrida deja al terminar— y los tres restantes son manifests propios con un `transport` fuera del vocabulario de su fila —uno declara la vía de transporte que el ecosistema ya retiró y el otro declara `mixto`— o con un campo recortado presente (`attempts`). Una serie que su propia guarda rechaza no sostiene ningún baseline: el rechazo no distingue el registro inválido del registro de otra clase",
+      "fase": "Fase 2"
+    },
+    {
+      "id": "familia-dura-con-override-explicito",
+      "descripcion": "la regla de familia declarada dura que a la vez admite override explícito",
+      "ubicacion": "skills/cross-review/SKILL.md#reglas-no-negociables",
+      "naturaleza": "doctrinal: la regla no negociable declara «regla dura: el revisor nunca es de la misma familia de modelos que el autor del artefacto», y el paso de descubrimiento de la misma skill resuelve que, si la configuración fuerza una vía que coincide con la familia del autor, se avisa que se pierde el valor cross-model y se continúa porque «el override explícito manda». Las dos no pueden valer a la vez: o la regla es dura y el override se rechaza, o el override manda y lo que la regla fija es un default. Hoy conviven, y cuál gana lo decide el orden en que se leyó la skill",
+      "fase": "Fase 2"
+    },
+    {
+      "id": "sede-del-fan-out-vs-prompt",
+      "descripcion": "la divergencia entre la sede del fan-out por repo y el prompt con que ese fan-out despacha",
+      "ubicacion": "skills/sdd-orchestrator/reference.md#prompt-del-agente-delegado",
+      "naturaleza": "instrumental: la sede del fan-out por repo declara dos cosas que la plantilla del prompt no transmite. La sede apaga `cross_review.mode` y `co_explore.mode` —«ortogonales; se apagan ambos explícitos»— y el prompt declara el override de `cross_review.mode` solamente. La sede dice que el agente delegado hereda el `implement_mode` del manifest, incluido `cross`, y el prompt le ordena usar `inline` salvo que su entorno permita despachar subagentes, sin nombrar el `implement_mode` ni `cross`. El worker cumple el contrato que le llega, que es el que ninguna de las dos sedes declara",
+      "fase": "Fase 3"
+    }
+  ]
+}
+```
+
+### El séptimo candidato, evaluado y descartado
+
+El `analyze` de este flujo registró una asimetría como candidata a séptimo defecto: **seis de las
+siete skills declararían en prosa cuántos puntos de despacho propios tienen y `sdd-orchestrator`
+no**. Se evaluó contra el árbol y **no entra al inventario, porque la asimetría no existe**.
+
+Las siete lo declaran, en la sección «Corridas delegadas en vuelo» de su `SKILL.md`, y los siete
+números suman los trece puntos del inventario:
+
+| Skill | Lo que declara | Puntos |
+|---|---|---:|
+| `sdd-flow` | «Los puntos de despacho propios son cuatro:» | 4 |
+| `bitbucket-code-review` | «Los puntos de despacho propios son dos:» | 2 |
+| `co-explore` | «Los puntos de despacho propios son dos:» | 2 |
+| `cross-implement` | «Los puntos de despacho propios son dos:» | 2 |
+| `cross-review` | «El punto de despacho propio es uno:» | 1 |
+| `sdd-orchestrator` | «El punto de despacho propio es uno:» | 1 |
+| `sdd-pr-feedback` | «El punto de despacho propio es uno:» | 1 |
+
+La declaración de `sdd-orchestrator` no se agregó después de la observación: entró junto con las
+otras seis, en el commit que introdujo el sobre de corrida delegada, cuatro días antes de que el
+`analyze` la diera por ausente. **Lo que el candidato tenía de defecto no era la sede sino la
+observación**, y por eso se descarta acá en lugar de registrarse como un séptimo.
+
+### Lo que este inventario no va a incluir, y por qué se dice
+
+**Los defectos que descubra el flujo del instrumento y el baseline quedan fuera.** El criterio que
+manda cerrar este inventario pertenece a este flujo y a ningún otro: ninguna tarea del otro flujo lo
+actualiza ni lo verifica, así que decir «los va a agregar» sería una promesa sin dueño contractual.
+Quedan registrados como pendientes en los artefactos de trabajo de ese flujo. **La pérdida de alcance
+se declara acá en lugar de taparse**, que es el mismo trato que esta fase le da a la completitud del
+inventario de despachos.
