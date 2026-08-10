@@ -10,7 +10,7 @@ description: >-
   como aprobado o solicitar cambios. Mantiene seguimiento local en `.pr-review/`.
   Enfocada en el repo cocha-digital/results: valida arquitectura-target
   (Flux/adapter/Signals), cruza criterios de aceptación de Jira y ofrece QA local
-  opcional (Playwright + IAP, delegado a local-qa-playwright). Usar cuando el
+  opcional (Playwright + IAP, delegado a cocha-qa-results). Usar cuando el
   usuario pida "code review", "revisa el PR", "review del PR <id>", "review con
   codex/claude", "segunda opinión del PR", "aprueba el PR" o "solicita cambios"
   de Bitbucket. Funciona en Claude Code y Codex.
@@ -33,7 +33,7 @@ Entorno: repo `cocha-digital/results`, workspace `cocha-digital`, rama principal
 workspace/repo se derivan del remote (`git remote get-url origin`). Esta skill está **enfocada en
 results**: además del review de correctitud, aplica el checklist de **arquitectura-target**
 (Flux/adapter/Signals), cruza **criterios de aceptación de Jira** (`descocha.atlassian.net`) y puede
-correr **QA local** del funnel afectado (delegando en `local-qa-playwright`). Esas capas asumen el
+correr **QA local** del funnel afectado (delegando en `cocha-qa-results`). Esas capas asumen el
 stack de results (Angular + verticales air/accommodations/packages).
 
 ## Reglas no negociables
@@ -386,21 +386,21 @@ decir una línea sobre el QA.
      funnel / es trivial / es backend-only") **y ofrecer igual la opción** de correrlo si lo querés.
    Esta comunicación (oferta o motivo de no-oferta) va al **chat** (informe al usuario), no al
    comentario del PR.
-2. **Delegar en `local-qa-playwright`** (no reimplementar QA/IAP acá): invocarla con el **Skill
+2. **Delegar en `cocha-qa-results`** (no reimplementar QA/IAP acá): invocarla con el **Skill
    tool**; si el runtime no la expone (p. ej. Codex, sin Skill tool), **leer y seguir**
-   `.claude/skills/local-qa-playwright/SKILL.md` (vista del repo results, cwd = raíz). Pasarle: el
+   `.claude/skills/cocha-qa-results/SKILL.md` (vista del repo results, cwd = raíz). Pasarle: el
    **vertical** del Paso 5, la **rama source** del PR y, si el diff ramifica, el eje (mobile/desktop,
    B2B/B2C).
    - **Local** (`npm run qa`, `local.cocha.com:4200`) para el caso típico.
    - **Staging** (`www-qa`/`www-dev` con `/resultado/`) si el usuario lo pide o no hay entorno local.
-   - local-qa-playwright maneja checkout de la rama source, IAP (Playwright + token), smoke por
+   - cocha-qa-results maneja checkout de la rama source, IAP (Playwright + token), smoke por
      vertical e informe. Sus reglas mandan (VPN, `/resultado/`, no reusar sesión del Chrome del user).
 3. **Incorporar el resultado como insumo del Paso 8** (no es autoritativo por sí solo):
    - QA reproduce un bug que **rompe el funnel** → hallazgo 🔴 (con la evidencia: URL/vertical, síntoma).
    - QA muestra un problema menor → 🟡/🟢 según impacto.
    - QA **confirma** que el cambio funciona → refuerza 🟢; no inventar observaciones.
    - Pasos **No verificados** (IAP/VPN faltante, redirect a Google) → anotarlos; no asumir OK.
-4. **El detalle del QA va solo al chat** (informe de local-qa-playwright): nunca pegar screenshots,
+4. **El detalle del QA va solo al chat** (informe de cocha-qa-results): nunca pegar screenshots,
    URLs con token, JWT ni pasos en el comentario del PR. **Pero** el hecho de que se corrió QA —y
    **dónde** (local o staging)— **sí** se menciona en el veredicto (Paso 8/9), como evidencia de una
    línea.
@@ -660,9 +660,9 @@ correctitud, no en estilo. Cuando los revisores discrepan, el **usuario es el á
   higiene de entorno) replicado de `sdd-cross-review`; **contrato de salida del revisor**; **preview de
   publicación**; estructura de `.pr-review/` y plantilla del `review-log.md`; ejemplos de salida y
   troubleshooting.
-- `local-qa-playwright` (skill par) — **QA local/staging** del funnel con Playwright + IAP. El Paso 7b
+- `cocha-qa-results` (skill par) — **QA local/staging** del funnel con Playwright + IAP. El Paso 7b
   delega acá (Skill tool; en runtimes sin Skill tool, leer
-  `.claude/skills/local-qa-playwright/SKILL.md`); esta skill no reimplementa QA ni maneja
+  `.claude/skills/cocha-qa-results/SKILL.md`); esta skill no reimplementa QA ni maneja
   credenciales IAP.
 - `co-explore` (skill par, **opcional**) — **debate cross-model** para resolver una discrepancia de
   veredicto (Paso 8.1). Se **ofrece**, nunca corre sin confirmación; si no está instalada, la
