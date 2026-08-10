@@ -131,3 +131,128 @@ Por eso el modo termina con código distinto de cero, y ese es su resultado hone
 44 sitios sin adjudicar, no que a la matriz le falte un punto. **La señal es el campo `estado` del
 recibo, y la lista completa de zonas ciegas vive en el archivo**: la consola trunca esa lista a seis
 de las ocho, así que un lector que se guíe por la pantalla declara menos de las que hay.
+
+## Los tres ejes
+
+Una corrida delegada admite **tres preguntas distintas**, y este contrato les da **tres vocabularios
+separados**: qué pasó con la corrida *como proceso*, si lo que entregó *satisface su contrato de
+salida*, y qué dice el trabajo entregado *sobre el objeto de la delegación*. Nombrar los ejes y
+separarlos es el aporte de este documento; los literales no se inventan acá: cada uno sale de una
+sección de `skills/` que ya lo usa, y su fila declara cuál.
+
+Los tres se leen con el modo `--ejes`, que compara cada tabla contra el inventario normativo por
+igualdad exacta y resuelve además el puntero de cada literal contra el árbol:
+
+```sh
+python3 scripts/verificar-matriz-despachos.py --ejes \
+    docs/superpowers/specs/2026-08-09-subagentes-perfiles-fase-0.md
+```
+
+Tres reglas de escritura cierran las tres formas de fusionar los ejes, que son las que este contrato
+existe para impedir:
+
+1. **Cada literal se escribe con su namespace** —`<eje>.<literal>`—. Un token desnudo citado en
+   cualquier otra sección no dice de qué eje es, y esa ambigüedad es el primer paso de la fusión.
+2. **Ningún eje declara un literal que pertenece a otro.** Usar el enum de un eje en el lugar de
+   otro los funde sin decirlo: la tabla sigue pareciendo bien formada y la pregunta que ese eje
+   contestaba deja de tener respuesta.
+3. **No existe un enum unión.** Un vocabulario que responda las tres preguntas con un solo valor no
+   responde ninguna: cada respuesta pisa a las otras dos.
+
+### Eje: ciclo de vida operativo
+
+Qué pasó con la corrida **como proceso**, con independencia de lo que haya entregado. Es el eje del
+transporte: se pronuncia sobre la espera del conductor y sobre el cierre del crudo, nunca sobre el
+contenido.
+
+| literal | tipo | sede | significado |
+|---|---|---|---|
+| `ciclo_de_vida_operativo.resultado_entregado` | outcome_de_espera | `skills/cross-review/corridas-en-vuelo.md#outcome-de-la-espera` | la espera terminó con un terminal adjudicable, y eso habilita evaluar el retiro del sobre |
+| `ciclo_de_vida_operativo.corte_presupuesto` | outcome_de_espera | `skills/cross-review/corridas-en-vuelo.md#outcome-de-la-espera` | venció el presupuesto que el conductor se puso a sí mismo; lo único que terminó es la espera y la corrida sigue activa |
+| `ciclo_de_vida_operativo.error` | outcome_de_espera | `skills/cross-review/corridas-en-vuelo.md#outcome-de-la-espera` | terminal comprobado de fallo: se sabe qué pasó, así que se puede adjudicar en vez de tratarlo como incierto |
+| `ciclo_de_vida_operativo.cancelacion` | outcome_de_espera | `skills/cross-review/corridas-en-vuelo.md#outcome-de-la-espera` | terminal por decisión, con un segundo componente que dice si el cese se confirmó o quedó incierto |
+| `ciclo_de_vida_operativo.UNAVAILABLE` | terminal_sin_entrega | `skills/co-explore/reference.md#estados-del-worker` | el worker no respondió o no se pudo lanzar, así que no hay reporte que validar; lleva causa de un enum cerrado |
+| `ciclo_de_vida_operativo.done` | marcador_de_cierre | `skills/co-explore/reference.md#senal-de-finalizacion` | el crudo cerró con su marcador de fin; pertenece al transporte y no al contenido, y tras el split no queda en ninguno de los dos archivos |
+
+### Eje: validez del reporte entregado
+
+Dado que el worker **entregó** algo, si eso satisface el contrato de salida. El eje no se pronuncia
+sobre el mérito de lo entregado —eso es el tercero— ni sobre cómo terminó el proceso —eso es el
+primero—: solo sobre si el artefacto pasa sus predicados.
+
+| literal | tipo | sede | significado |
+|---|---|---|---|
+| `validez_del_reporte_entregado.READY` | clase_de_validez | `skills/co-explore/reference.md#estados-del-worker` | el reporte pasa **todos** los predicados del contrato de salida, sin excepciones |
+| `validez_del_reporte_entregado.INVALID` | clase_de_validez | `skills/co-explore/reference.md#estados-del-worker` | respondió, y lo que entregó falla alguno de esos predicados |
+| `validez_del_reporte_entregado.clarification-needed` | clase_de_validez | `skills/co-explore/reference.md#clarification-needed-el-cuarto-estado` | frenó ante una ambigüedad que le impedía seguir, entregó lo que alcanzó a mapear y adosó la pregunta |
+
+### Eje: resultado semántico
+
+Qué dice el trabajo entregado **sobre el objeto de la delegación**. Un reporte válido puede traer
+cualquiera de estos valores; uno inválido no trae ninguno, porque no hay de dónde leerlo.
+
+| literal | tipo | sede | significado |
+|---|---|---|---|
+| `resultado_semantico.APPROVED` | veredicto_de_revision | `skills/cross-review/reference.md#veredicto-derivado` | el ledger arbitrado no deja ningún finding en estado no terminal: la revisión convergió |
+| `resultado_semantico.REVISE` | veredicto_de_revision | `skills/cross-review/reference.md#veredicto-derivado` | queda al menos un finding sin resolver, o solo terminales con alguna disputa que abre el gate humano |
+| `resultado_semantico.done` | estado_de_task | `skills/sdd-flow/reference.md#prompt-del-subagente-por-task` | el subagente despachado por task ejecutó esa task tal como estaba escrita |
+| `resultado_semantico.failed` | estado_de_task | `skills/sdd-flow/reference.md#prompt-del-subagente-por-task` | el subagente se bloqueó y lo dice con su razón, en lugar de improvisar otro enfoque |
+| `resultado_semantico.verified` | estado_de_repo_delegado | `skills/sdd-orchestrator/reference.md#prompt-del-agente-delegado` | el agente delegado por repo cerró su parte con los criterios de aceptación cubiertos |
+| `resultado_semantico.PARTIAL` | cierre_de_unidad | `skills/cross-implement/ownership.md#la-matriz-de-control-de-flujo` | parte la hizo el implementador y parte la terminó el conductor por takeover al agotar las rondas de fix |
+| `resultado_semantico.BLOCKED` | cierre_de_unidad | `skills/cross-implement/ownership.md#la-matriz-de-control-de-flujo` | la fila nunca se pudo medir, así que no tiene criterio de «hecho» y su cierre no es exitoso |
+
+**`done` aparece en dos ejes y no es una fusión.** En el operativo es el marcador con el que cierra
+el crudo del worker —transporte, no contenido— y en el semántico es el veredicto con el que un
+subagente por task informa que la ejecutó. Coincide el token y no coincide nada más: distinto tipo
+—`marcador_de_cierre` contra `estado_de_task`—, distinta sede y distinto significado. Es el caso que
+más se parece a un defecto sin serlo, y por eso el verificador lo acepta a propósito: **un literal
+repetido es legítimo mientras nombre dos cosas distintas**, y deja de serlo cuando las dos
+declaraciones traen el mismo tipo y la misma sede, que es la misma cosa escrita dos veces. Escribir
+el namespace en cada celda es lo que mantiene la distinción visible sin depender de esta nota.
+
+## Capacidades de plataforma
+
+Toda afirmación de este contrato sobre lo que la plataforma puede o no puede hacer vive en esta
+tabla y **va marcada**. Son tres marcas y ninguna fila puede quedar sin una:
+
+- **`portable`** — vale en las dos plataformas del corpus, POSIX y PowerShell. No registra versión
+  porque no depende de ninguna.
+- **`dependiente`** — vale en un runtime concreto, y entonces registra **la versión con la que se
+  comprobó**.
+- **`no_verificable`** — el runtime disponible no la expone, así que se registra el motivo **en
+  lugar de afirmarla**. No es un defecto ni una fila incompleta: es lo que impide que una afirmación
+  sin respaldo entre al contrato disfrazada de dato.
+
+**Las versiones se midieron; no se transcribieron.** Cada fila `dependiente` nombra en su motivo el
+comando que la comprueba, y todos se corrieron sobre este árbol el **2026-08-10**, en macOS sobre
+arm64. Escribir un número plausible en un documento versionado es fabricar evidencia, y sale más
+caro que no tener la afirmación.
+
+Una precisión sobre la columna de versión: registra el nombre del runtime y su número. El único
+PowerShell instalado acá es `pwsh-preview`, y la salida literal de `pwsh-preview --version` es
+`PowerShell 7.7.0-preview.3`; la columna registra `PowerShell (pwsh-preview) 7.7.0` y el sufijo de
+preview queda en esta línea para no perderlo.
+
+La tabla se lee con el modo `--capacidades`, que recorre **fila por fila**: una sola afirmación sin
+marca, o una sola dependiente sin versión, alcanza para que falle.
+
+```sh
+python3 scripts/verificar-matriz-despachos.py --capacidades \
+    docs/superpowers/specs/2026-08-09-subagentes-perfiles-fase-0.md
+```
+
+| afirmación | marca | versión | motivo |
+|---|---|---|---|
+| Las dos plataformas del corpus averiguan si un binario existe sin ejecutarlo, cada una con su primitiva y su canal propio de respuesta. | portable | — | — |
+| El código de salida de un proceso hijo queda disponible para quien lo lanzó en las dos plataformas, y por eso es el canal en el que las guardas de este repositorio informan su veredicto. | portable | — | — |
+| Un prompt en Markdown no se puede interpolar dentro de comillas dobles en ninguna de las dos plataformas: las dos le dan al backtick un significado propio, sustitución de comando en POSIX y escape en PowerShell. Por eso el prompt viaja por archivo. | portable | — | — |
+| `codex exec` acota el sandbox del worker a `read-only`, `workspace-write` o `danger-full-access` con `-s/--sandbox`. | dependiente | codex-cli 0.146.1 | comprobado leyendo `codex exec --help`, que enumera los tres valores posibles |
+| `codex exec` lee el prompt de la entrada estándar cuando el argumento posicional es `-`, que es lo que permite pasarlo por archivo en vez de interpolarlo. | dependiente | codex-cli 0.146.1 | comprobado leyendo `codex exec --help` |
+| `codex exec resume` retoma una sesión previa por su identificador. | dependiente | codex-cli 0.146.1 | comprobado leyendo `codex exec resume --help` |
+| El CLI de Claude corre no interactivo con `-p/--print`. | dependiente | Claude Code 2.1.226 | comprobado leyendo `claude --help` |
+| El shell POSIX pasa un archivo por la entrada estándar con `< archivo`. | dependiente | bash (como /bin/sh) 3.2.57 | comprobado corriendo `sh -c 'cat < archivo'`, que imprime el contenido y termina en 0 |
+| PowerShell **rechaza** `<` como redirección de entrada —reserva el operador para uso futuro— y obliga a pasar el prompt por tubería. | dependiente | PowerShell (pwsh-preview) 7.7.0 | comprobado corriendo `pwsh-preview -NoProfile -Command "Get-Content -Raw < archivo"`, que corta con ParserError y termina en 1; la variante con tubería imprime el contenido |
+| `git ls-files --error-unmatch <ruta>` distingue por su código de salida una ruta versionada de una que no lo está. | dependiente | git 2.50.1 | comprobado sobre una ruta versionada (0) y una no versionada (1) |
+| Los verificadores de este contrato se ejecutan con `python3` y devuelven 0 cuando el documento cumple el modo invocado. | dependiente | Python 3.14.3 | comprobado corriendo `verificar-matriz-despachos.py --contrato` sobre este documento |
+| Las variantes PowerShell de los bloques duplicados del repositorio se comportan igual en el PowerShell 5.1 que Windows trae de fábrica. | no_verificable | — | esta máquina es macOS y el único intérprete instalado es PowerShell 7; ningún runtime disponible expone un 5.1 contra el que comprobarlo, así que la paridad con Windows de fábrica queda sin respaldo |
+| Una cancelación pedida por el conductor detuvo efectivamente el proceso del worker. | no_verificable | — | el transporte no ofrece con qué comprobar el cese, y por eso el vocabulario del eje operativo parte la cancelación en cese confirmado y cese incierto en vez de afirmar el efecto |
