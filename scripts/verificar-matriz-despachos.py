@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Verifica la matriz de despachos contra su schema cerrado.
 
-Veintitrés modos, y por ahora solo veintitrés: los demás del catálogo los construyen otras tasks.
+Veintinueve modos, y por ahora solo veintinueve: los demás del catálogo los construyen otras tasks.
 
 - `--schema [ruta]` — valida la matriz (por defecto `scripts/matriz-despachos.json`) contra
   `scripts/matriz-despachos.schema.json`. Comprueba tres cosas y no una: que el schema sea
@@ -80,6 +80,27 @@ Veintitrés modos, y por ahora solo veintitrés: los demás del catálogo los co
 - `--autotest-identidad` — control positivo y negativo del modo anterior sobre repositorios git
   sintéticos, con el caso del intercambio —el que distingue una comparación por punto de una por
   conjunto— y el que prueba que la precondición no degrada.
+- `--contrato [ruta]` — el documento de contrato: su alcance comprometido, cada corrección con sus
+  cinco componentes —texto anterior, corregido, evidencia, supersesión y documento fuente— y sus
+  decisiones diferidas con su fase de destino. **La atribución se resuelve, no se cuenta:** el texto
+  reemplazado tiene que vivir en el documento declarado como fuente, y esa fuente no puede ser el
+  propio contrato. Con `--raiz`, la raíz contra la que se resuelven las fuentes.
+- `--autotest-contrato` — control positivo y negativo del modo anterior sobre el corpus sintético de
+  `scripts/fixtures-contrato/`, con los dos mutantes de atribución que un oráculo de «hay fuente» no
+  caza y los tres que ejercen el alcance y las decisiones diferidas.
+- `--ejes [ruta]` — los tres ejes del contrato —ciclo de vida operativo, validez del reporte
+  entregado y resultado semántico— comparados por **igualdad exacta** contra `INVENTARIO_DE_EJES`,
+  con puntero por literal. Rojo ante pérdida de namespace, enum de un eje usado en otro y enum
+  unión; **verde** ante un literal compartido por dos ejes que conserve tipo, sede y significado.
+- `--autotest-ejes` — control positivo y negativo del modo anterior. Su preludio resuelve los
+  dieciséis punteros del inventario contra el árbol real: los mutantes impiden que el verificador
+  sea laxo, y solo el puntero impide que el inventario sea inventado.
+- `--capacidades [ruta]` — toda afirmación de plataforma del contrato marcada `portable`,
+  `dependiente` (con la versión con la que se comprobó) o `no_verificable` (con el motivo por el que
+  el runtime no la expone).
+- `--autotest-capacidades` — control positivo y negativo del modo anterior, con mutantes
+  **unitarios** dentro de un documento de afirmaciones válidas: el cuantificador de su criterio es
+  «toda afirmación», y con el defecto global un verificador de «alguna» quedaría verde.
 
 Tres reglas de diseño:
 
@@ -128,14 +149,20 @@ Uso: python3 scripts/verificar-matriz-despachos.py --schema [ruta] | --autotest-
                                                   | --parear-reporte <ruta|->
                                                   | --autotest-parear-reporte
                                                   | --identidad [ruta] | --autotest-identidad
-Exit 0 si el modo pasa, 1 si falla, 2 si la invocación es inválida.
+                                                  | --contrato [ruta] | --autotest-contrato
+                                                  | --ejes [ruta] | --autotest-ejes
+                                                  | --capacidades [ruta] | --autotest-capacidades
+Exit 0 si el modo pasa, 1 si falla, 2 si la invocación es inválida, y 3 cuando los tres modos del
+contrato no encuentran el documento: no hay veredicto, y una ausencia no es una conformidad.
 """
 from __future__ import annotations
 
 import argparse
 import ast
+import contextlib
 import copy
 import importlib.util
+import io
 import itertools
 import json
 import re
@@ -7716,6 +7743,1713 @@ def modo_autotest_identidad() -> int:
 
 
 # ---------------------------------------------------------------------------------------------
+# El documento de contrato: correcciones, los tres ejes y las capacidades de plataforma.
+#
+# **El documento todavía no existe.** Estos tres modos se construyen contra un corpus sintético
+# congelado —`scripts/fixtures-contrato/`— y se aplican sobre el documento real en otra task. El
+# orden no es una comodidad: al revés, el parser heredaría la interpretación de quien escribió el
+# texto y los dos pasarían de acuerdo entre sí aunque ambos estuvieran mal.
+#
+# Tres decisiones gobiernan todo lo de abajo:
+#
+# 1. **La forma es tabular, no prosa.** Cada sección del contrato declara una tabla Markdown con
+#    columnas fijas. Un predicado que rasque prosa se endurece hasta que acepta lo que el autor
+#    escribió; una tabla se lee igual la escriba quien la escriba, y este repo ya tiene su parser
+#    (`_celdas`, `_es_separadora`, `_rangos_de_secciones`).
+# 2. **El inventario de literales de los tres ejes se congela acá, con puntero por literal, y cada
+#    puntero apunta a una sede real de `skills/` que ya existe.** Los mutantes impiden que el
+#    verificador sea laxo; **no** impiden que el inventario sea inventado. Contra eso hay una sola
+#    defensa y es el puntero: el preludio resuelve los dieciséis contra el árbol real y comprueba
+#    que el literal esté ahí. Un literal que se citara a sí mismo, al documento de contrato o a
+#    estos fixtures coincidiría siempre consigo mismo, y el modo, el inventario y la fila quedarían
+#    los tres verdes sin ninguna evidencia independiente.
+# 3. **Un documento ausente no es un documento conforme.** Los tres modos terminan con
+#    `CODIGO_DOCUMENTO_AUSENTE` cuando no encuentran el archivo, que no es 0 y no es 1: no hay
+#    veredicto porque no hay nada que verificar.
+#
+# El corte del inventario, declarado para que se pueda discutir: entra un literal si (a) es valor de
+# un vocabulario **cerrado y declarado** en una sede de `skills/` —una tabla de estados, un enum del
+# contrato de salida— y (b) clasifica **la corrida delegada o su entrega**, no un objeto interno de
+# una skill. Por (b) quedan afuera el ciclo de vida del *finding* de `cross-review`, los estados de
+# baseline de `cross-implement/contrato-verificacion.md` y los `status` por repo del `manifest.yml`
+# de `sdd-orchestrator`, que clasifican otras cosas. Y las cuatro causas de `UNAVAILABLE` quedan
+# afuera por ser un sub-enum **acoplado a un solo literal**, no hermanas de los demás.
+# ---------------------------------------------------------------------------------------------
+
+# Provisional y de una sola línea: la ruta del documento la fija la task que lo escribe. Se declara
+# acá para que los tres modos tengan un default y para que renombrarlo sea un cambio y no una
+# búsqueda. Mientras no exista, los tres modos terminan con `CODIGO_DOCUMENTO_AUSENTE`.
+RUTA_CONTRATO = REPO / "docs" / "superpowers" / "specs" / "contrato-de-ejecucion.md"
+
+DIR_FIXTURES_CONTRATO = REPO / "scripts" / "fixtures-contrato"
+CONFORME_CONTRATO = DIR_FIXTURES_CONTRATO / "conforme"
+DOCUMENTO_CONFORME = CONFORME_CONTRATO / "contrato.md"
+
+# Ni 0 (pasa) ni 1 (falla): no hay veredicto. Un documento ausente que terminara en 0 sería la forma
+# más barata de cerrar las tres filas sin haber escrito el contrato.
+CODIGO_DOCUMENTO_AUSENTE = 3
+
+SLUG_ALCANCE = "alcance-comprometido"
+SLUG_CORRECCIONES = "correcciones"
+SLUG_DECISIONES = "decisiones-diferidas"
+SLUG_CAPACIDADES = "capacidades-de-plataforma"
+
+# Los encabezados se comparan **normalizados** (sin diacríticos ni backticks): «afirmación anterior»
+# y «afirmacion anterior» son la misma columna, y exigir la ortografía exacta convertiría un acento
+# en un rojo.
+COLUMNAS_ALCANCE = ("tramo", "estado")
+COLUMNAS_CORRECCIONES = ("id", "afirmacion anterior", "afirmacion corregida", "evidencia",
+                         "supersesion", "documento fuente")
+COLUMNAS_DECISIONES = ("id", "decision", "estado", "fase de destino")
+COLUMNAS_EJE = ("literal", "tipo", "sede", "significado")
+COLUMNAS_CAPACIDADES = ("afirmacion", "marca", "version", "motivo")
+
+# El texto con el que una celda dice «acá no va nada». Sin una marca declarada, una celda vacía y
+# una celda con un guion serían dos formas de lo mismo y cada consumidor elegiría una.
+MARCAS_DE_VACIO = ("", "—", "–")
+
+ESTADO_DIFERIDA = "diferida"
+
+MARCAS_DE_CAPACIDAD = ("portable", "dependiente", "no_verificable")
+
+# Una versión comprobada nombra **qué** se comprobó y **con qué número**: `3.12.0` a secas no dice
+# de qué, y `comprobado` no dice con qué. AC-3 pide «la versión con la que se comprobaron», que son
+# las dos cosas.
+PATRON_VERSION_COMPROBADA = re.compile(r"^\S.*\s+v?\d+(?:\.\d+)+$")
+
+PREFIJO_DE_SEDE_NORMATIVA = "skills/"
+
+EJES = ("ciclo_de_vida_operativo", "validez_del_reporte_entregado", "resultado_semantico")
+
+
+def _slug_de_eje(eje: str) -> str:
+    """El slug de la sección de un eje se **deriva** de su namespace. Transcribir los tres dejaría
+    dos lugares diciendo lo mismo y uno de los dos envejecería."""
+    return "eje-" + eje.replace("_", "-")
+
+
+SLUGS_DE_EJE = {eje: _slug_de_eje(eje) for eje in EJES}
+
+
+class LiteralDeEje(NamedTuple):
+    """Un literal del inventario normativo, con lo que lo hace comprobable.
+
+    `sede` es un ancla `<ruta>#<slug>` —la misma gramática que usa `ancla_de_invocacion` en la
+    matriz— y es lo único que impide que este inventario sea una lista inventada: el preludio la
+    resuelve contra el árbol real y exige que el literal aparezca ahí."""
+
+    literal: str
+    tipo: str
+    sede: str
+
+
+# ---------------------------------------------------------------------------------------------
+# INVENTARIO NORMATIVO DE LOS TRES EJES
+#
+# **Los nombres de los tres ejes no aparecen en `skills/`; sus vocabularios sí.** Nombrarlos y
+# separarlos es el aporte del contrato; los literales salen de sedes que ya existen. Cada fila lleva
+# su puntero, y `_preludio_de_ejes` los resuelve todos antes de correr un solo caso.
+#
+# `done` aparece en dos ejes **a propósito y sin ser una fusión**: en el operativo es el marcador de
+# cierre del crudo —«pertenece al transporte, no al contenido», dice su sede— y en el semántico es
+# el veredicto de una task delegada. Distinto tipo, distinta sede, distinto significado. Es el caso
+# que más se parece a un defecto sin serlo, y por eso es el control positivo del modo.
+# ---------------------------------------------------------------------------------------------
+
+INVENTARIO_DE_EJES: dict[str, tuple[LiteralDeEje, ...]] = {
+    "ciclo_de_vida_operativo": (
+        LiteralDeEje("resultado_entregado", "outcome_de_espera",
+                     "skills/cross-review/corridas-en-vuelo.md#outcome-de-la-espera"),
+        LiteralDeEje("corte_presupuesto", "outcome_de_espera",
+                     "skills/cross-review/corridas-en-vuelo.md#outcome-de-la-espera"),
+        LiteralDeEje("error", "outcome_de_espera",
+                     "skills/cross-review/corridas-en-vuelo.md#outcome-de-la-espera"),
+        LiteralDeEje("cancelacion", "outcome_de_espera",
+                     "skills/cross-review/corridas-en-vuelo.md#outcome-de-la-espera"),
+        LiteralDeEje("UNAVAILABLE", "terminal_sin_entrega",
+                     "skills/co-explore/reference.md#estados-del-worker"),
+        LiteralDeEje("done", "marcador_de_cierre",
+                     "skills/co-explore/reference.md#senal-de-finalizacion"),
+    ),
+    "validez_del_reporte_entregado": (
+        LiteralDeEje("READY", "clase_de_validez",
+                     "skills/co-explore/reference.md#estados-del-worker"),
+        LiteralDeEje("INVALID", "clase_de_validez",
+                     "skills/co-explore/reference.md#estados-del-worker"),
+        LiteralDeEje("clarification-needed", "clase_de_validez",
+                     "skills/co-explore/reference.md#clarification-needed-el-cuarto-estado"),
+    ),
+    "resultado_semantico": (
+        LiteralDeEje("APPROVED", "veredicto_de_revision",
+                     "skills/cross-review/reference.md#veredicto-derivado"),
+        LiteralDeEje("REVISE", "veredicto_de_revision",
+                     "skills/cross-review/reference.md#veredicto-derivado"),
+        LiteralDeEje("done", "estado_de_task",
+                     "skills/sdd-flow/reference.md#prompt-del-subagente-por-task"),
+        LiteralDeEje("failed", "estado_de_task",
+                     "skills/sdd-flow/reference.md#prompt-del-subagente-por-task"),
+        LiteralDeEje("verified", "estado_de_repo_delegado",
+                     "skills/sdd-orchestrator/reference.md#prompt-del-agente-delegado"),
+        LiteralDeEje("PARTIAL", "cierre_de_unidad",
+                     "skills/cross-implement/ownership.md#la-matriz-de-control-de-flujo"),
+        LiteralDeEje("BLOCKED", "cierre_de_unidad",
+                     "skills/cross-implement/ownership.md#la-matriz-de-control-de-flujo"),
+    ),
+}
+
+CODIGOS_CONTRATO = (
+    "afirmacion_inexistente_en_la_fuente",
+    "alcance_ausente",
+    "columna_ausente",
+    "correcciones_ausentes",
+    "correccion_sin_evidencia",
+    "correccion_sin_fuente",
+    "correccion_sin_supersesion",
+    "correccion_sin_texto_anterior",
+    "correccion_sin_texto_corregido",
+    "decisiones_ausentes",
+    "decision_no_diferida",
+    "decision_sin_fase",
+    "fuente_equivocada",
+    "fuente_irresoluble",
+    "fuente_no_admisible",
+    "id_duplicado",
+    "supersesion_no_nombra_la_fuente",
+)
+
+CODIGOS_EJES = (
+    "columna_ausente",
+    "compartido_sin_distincion",
+    "eje_ausente",
+    "eje_desconocido",
+    "eje_sin_literales",
+    "enum_ajeno",
+    "enum_union",
+    "literal_ausente_en_la_sede",
+    "literal_de_mas",
+    "literal_de_menos",
+    "literal_duplicado",
+    "literal_sustituido",
+    "namespace_no_coincide",
+    "perdida_de_namespace",
+    "sede_ausente",
+    "sede_fuera_de_skills",
+    "sede_irresoluble",
+    "sede_no_coincide",
+    "significado_ausente",
+    "tipo_ausente",
+    "tipo_no_coincide",
+)
+
+CODIGOS_CAPACIDADES = (
+    "afirmacion_sin_marca",
+    "afirmacion_vacia",
+    "capacidades_ausentes",
+    "columna_ausente",
+    "dependiente_sin_version",
+    "marca_desconocida",
+    "no_verificable_con_version",
+    "no_verificable_sin_motivo",
+    "version_sin_forma",
+)
+
+# Los defectos que ocurren **en una fila**, y no en la tabla entera. El cuantificador de su criterio
+# es «toda afirmación», así que sus mutantes tienen que ser unitarios: con un fixture donde el
+# defecto sea global —todas sin marca, todas sin versión— un verificador que comprobara que existe
+# *alguna* marca y *alguna* versión lo satisface. Que sean unitarios de verdad lo comprueba el
+# bloque E y no la prosa: los dos estructurales (`capacidades_ausentes` y `columna_ausente`) quedan
+# afuera porque no son de una fila.
+CODIGOS_UNITARIOS_DE_CAPACIDAD = tuple(
+    c for c in CODIGOS_CAPACIDADES if c not in ("capacidades_ausentes", "columna_ausente"))
+
+
+# --- Lectura del documento --------------------------------------------------------------------
+
+class Tabla(NamedTuple):
+    """Una tabla Markdown ubicada dentro de una sección, con las líneas que ocupa.
+
+    Las líneas no son decorativas: son lo que permite **mutar** el documento por celda en el
+    autotest en vez de por búsqueda y reemplazo de texto, que confundiría dos celdas con el mismo
+    contenido."""
+
+    encabezados: tuple[str, ...]
+    filas: tuple[tuple[str, ...], ...]
+    linea_encabezado: int
+    lineas_de_fila: tuple[int, ...]
+
+
+def _texto_de_celda(celda: str) -> str:
+    """El valor de una celda: sin backticks ni énfasis, y con la marca de vacío colapsada a `""`."""
+    limpio = celda.replace("`", "").replace("**", "").strip()
+    return "" if limpio in MARCAS_DE_VACIO else limpio
+
+
+def _norm_contrato(texto: str) -> str:
+    """La normalización del repo —minúsculas, sin diacríticos, sin backticks, espacios colapsados—,
+    reusada y no reescrita: dos normalizaciones distintas harían que un encabezado casara acá y no
+    en el resolutor de anclas."""
+    return primitiva_de_biyeccion().norm(texto)
+
+
+def _tabla_de_seccion(texto: str, slug: str) -> Tabla | None:
+    """La **primera** tabla de la sección, o `None` si la sección no existe o no tiene ninguna."""
+    rangos = _rangos_de_secciones(texto)
+    if slug not in rangos:
+        return None
+    inicio, fin = rangos[slug]
+    lineas = texto.split("\n")
+    fuera = _lineas_fuera_de_fence(texto)
+    i = inicio
+    while i < min(fin, len(fuera) - 1):
+        if not (fuera[i] and lineas[i].strip().startswith("|") and _es_separadora(lineas[i + 1])):
+            i += 1
+            continue
+        encabezados = tuple(_norm_contrato(c) for c in _celdas(lineas[i]))
+        filas: list[tuple[str, ...]] = []
+        numeros: list[int] = []
+        j = i + 2
+        while j <= fin and j < len(fuera) and fuera[j] and lineas[j].strip().startswith("|"):
+            filas.append(tuple(_celdas(lineas[j])))
+            numeros.append(j)
+            j += 1
+        return Tabla(encabezados, tuple(filas), i, tuple(numeros))
+    return None
+
+
+def _columnas_faltantes(tabla: Tabla, columnas: tuple[str, ...]) -> list[str]:
+    return [c for c in columnas if c not in tabla.encabezados]
+
+
+def _celda_de(tabla: Tabla, fila: tuple[str, ...], columna: str) -> str | None:
+    """El valor de la celda, o `None` si la tabla **no tiene** esa columna. Distinguir «la columna no
+    está» de «la celda está vacía» es lo que evita que una columna borrada emita un problema por
+    fila en vez de uno solo."""
+    if columna not in tabla.encabezados:
+        return None
+    indice = tabla.encabezados.index(columna)
+    return _texto_de_celda(fila[indice]) if indice < len(fila) else ""
+
+
+def _clave_de_fila(fila: tuple[str, ...]) -> str:
+    return _texto_de_celda(fila[0]) if fila else ""
+
+
+# --- Modo de correcciones, alcance y decisiones diferidas -------------------------------------
+
+def _fuente_no_admisible(ruta_rel: str, ruta_documento: Path, raiz: Path) -> str:
+    """Por qué esa fuente no puede respaldar una corrección, o `""` si puede.
+
+    El documento no puede ser su propia fuente ni citar un artefacto de este flujo: una afirmación
+    que se cita a sí misma coincide siempre consigo misma, y la corrección, su atribución y su fila
+    quedan las tres verdes sin ninguna evidencia independiente. Es la misma regla que gobierna las
+    procedencias de la matriz."""
+    if ruta_rel.startswith("/") or ".." in Path(ruta_rel).parts:
+        return "la fuente tiene que ser una ruta relativa dentro del árbol"
+    candidata = (raiz / ruta_rel).resolve()
+    if candidata == ruta_documento.resolve():
+        return "el documento de contrato no puede ser la fuente de su propia corrección"
+    if _sede_no_admisible(ruta_rel) or ruta_rel.startswith(".plans/"):
+        return "la fuente es un artefacto de este flujo y no una fuente independiente"
+    return ""
+
+
+def _otras_fuentes(raiz: Path, ruta_documento: Path, afirmacion: str) -> list[str]:
+    """Los documentos del árbol que **sí** contienen la afirmación.
+
+    Se calcula solo cuando la atribución ya falló: recorrer el árbol por cada corrección en el
+    camino sano costaría en toda corrida y no diría nada nuevo. Lo que separa es «la citaste mal» de
+    «no la dijo nadie», que son dos defectos distintos y piden dos arreglos distintos."""
+    buscado = _norm_contrato(afirmacion)
+    if not buscado:
+        return []
+    ignorados = {".git", ".plans", ".specify", ".cross-model", ".superpowers", "node_modules"}
+    hallados: list[str] = []
+    for archivo in sorted(raiz.rglob("*.md")):
+        if any(parte in ignorados for parte in archivo.relative_to(raiz).parts):
+            continue
+        if archivo.resolve() == ruta_documento.resolve():
+            continue
+        try:
+            cuerpo = archivo.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if buscado in _norm_contrato(cuerpo):
+            hallados.append(archivo.relative_to(raiz).as_posix())
+    return hallados
+
+
+def _verificar_alcance(texto: str, problemas: list[Problema], resumen: dict) -> None:
+    tabla = _tabla_de_seccion(texto, SLUG_ALCANCE)
+    if tabla is None or not tabla.filas:
+        problemas.append(Problema(
+            "alcance_ausente", f"sección `{SLUG_ALCANCE}`",
+            "el contrato tiene que declarar el alcance comprometido del programa como una tabla con "
+            "al menos un tramo; sin él, las correcciones y las decisiones diferidas describen un "
+            "programa cuyos límites nadie escribió"))
+        return
+    for falta in _columnas_faltantes(tabla, COLUMNAS_ALCANCE):
+        problemas.append(Problema("columna_ausente", f"sección `{SLUG_ALCANCE}`",
+                                  f"la tabla del alcance no declara la columna `{falta}`"))
+    resumen["tramos"] = len(tabla.filas)
+
+
+def _verificar_correcciones(texto: str, ruta_documento: Path, raiz: Path,
+                            problemas: list[Problema], resumen: dict) -> None:
+    tabla = _tabla_de_seccion(texto, SLUG_CORRECCIONES)
+    if tabla is None or not tabla.filas:
+        problemas.append(Problema(
+            "correcciones_ausentes", f"sección `{SLUG_CORRECCIONES}`",
+            "el contrato tiene que declarar al menos una corrección con su tabla; una sección vacía "
+            "no es «no había nada que corregir», es una sección sin escribir"))
+        return
+    faltantes = _columnas_faltantes(tabla, COLUMNAS_CORRECCIONES)
+    for falta in faltantes:
+        problemas.append(Problema("columna_ausente", f"sección `{SLUG_CORRECCIONES}`",
+                                  f"la tabla de correcciones no declara la columna `{falta}`"))
+    resumen["correcciones"] = len(tabla.filas)
+
+    vistos: set[str] = set()
+    for fila in tabla.filas:
+        ident = _clave_de_fila(fila) or "(sin id)"
+        donde = f"corrección `{ident}`"
+        if ident in vistos:
+            problemas.append(Problema("id_duplicado", donde,
+                                      "otra corrección ya usa ese identificador, y con dos filas "
+                                      "homónimas ningún reporte puede nombrar cuál falló"))
+        vistos.add(ident)
+
+        anterior = _celda_de(tabla, fila, "afirmacion anterior")
+        corregida = _celda_de(tabla, fila, "afirmacion corregida")
+        evidencia = _celda_de(tabla, fila, "evidencia")
+        supersesion = _celda_de(tabla, fila, "supersesion")
+        fuente = _celda_de(tabla, fila, "documento fuente")
+
+        if anterior == "":
+            problemas.append(Problema("correccion_sin_texto_anterior", donde,
+                                      "no declara el texto que reemplaza, así que no hay nada que "
+                                      "atribuir ni con qué cotejar la fuente"))
+        if corregida == "":
+            problemas.append(Problema("correccion_sin_texto_corregido", donde,
+                                      "no declara el texto corregido: dice qué estaba mal y no qué "
+                                      "vale ahora"))
+        if evidencia == "":
+            problemas.append(Problema("correccion_sin_evidencia", donde,
+                                      "no declara la evidencia que sostiene la corrección"))
+        if supersesion == "":
+            problemas.append(Problema("correccion_sin_supersesion", donde,
+                                      "no declara la cláusula que establece que este contrato "
+                                      "prevalece sobre la fuente corregida"))
+        if fuente == "":
+            problemas.append(Problema("correccion_sin_fuente", donde,
+                                      "no declara de qué documento sale la afirmación que "
+                                      "reemplaza"))
+        if not fuente:
+            continue
+
+        motivo = _fuente_no_admisible(fuente, ruta_documento, raiz)
+        if motivo:
+            problemas.append(Problema("fuente_no_admisible", donde, f"`{fuente}`: {motivo}"))
+            continue
+        archivo = raiz / fuente
+        if not archivo.is_file():
+            problemas.append(Problema("fuente_irresoluble", donde,
+                                      f"`{fuente}` no existe bajo la raíz `{raiz}`"))
+            continue
+        if supersesion and Path(fuente).name.lower() not in supersesion.lower():
+            problemas.append(Problema(
+                "supersesion_no_nombra_la_fuente", donde,
+                f"la cláusula de supersesión no nombra a `{Path(fuente).name}`: «este contrato "
+                "prevalece» sin decir sobre qué no supersede nada"))
+        if not anterior:
+            continue
+
+        cuerpo = _norm_contrato(archivo.read_text(encoding="utf-8"))
+        if _norm_contrato(anterior) in cuerpo:
+            resumen["atribuciones_resueltas"] += 1
+            continue
+        otras = _otras_fuentes(raiz, ruta_documento, anterior)
+        if otras:
+            problemas.append(Problema(
+                "fuente_equivocada", donde,
+                f"la afirmación reemplazada no vive en `{fuente}` sino en "
+                f"{', '.join('`' + o + '`' for o in otras[:3])}: la fuente declarada no es el "
+                "documento donde vive el texto que se corrige"))
+        else:
+            problemas.append(Problema(
+                "afirmacion_inexistente_en_la_fuente", donde,
+                f"`{fuente}` no contiene la afirmación que se le atribuye, y ningún otro documento "
+                "del árbol tampoco: la corrección le adjudica algo que no dijo"))
+
+
+def _verificar_decisiones(texto: str, problemas: list[Problema], resumen: dict) -> None:
+    tabla = _tabla_de_seccion(texto, SLUG_DECISIONES)
+    if tabla is None or not tabla.filas:
+        problemas.append(Problema(
+            "decisiones_ausentes", f"sección `{SLUG_DECISIONES}`",
+            "el contrato tiene que registrar las decisiones doctrinales abiertas como diferidas; "
+            "una sección sin filas se lee como «no quedó ninguna abierta», que es una afirmación "
+            "distinta y más fuerte que no haberlas escrito"))
+        return
+    for falta in _columnas_faltantes(tabla, COLUMNAS_DECISIONES):
+        problemas.append(Problema("columna_ausente", f"sección `{SLUG_DECISIONES}`",
+                                  f"la tabla de decisiones diferidas no declara la columna "
+                                  f"`{falta}`"))
+    resumen["decisiones"] = len(tabla.filas)
+
+    vistos: set[str] = set()
+    for fila in tabla.filas:
+        ident = _clave_de_fila(fila) or "(sin id)"
+        donde = f"decisión `{ident}`"
+        if ident in vistos:
+            problemas.append(Problema("id_duplicado", donde,
+                                      "otra decisión diferida ya usa ese identificador"))
+        vistos.add(ident)
+
+        estado = _celda_de(tabla, fila, "estado")
+        fase = _celda_de(tabla, fila, "fase de destino")
+        if estado is not None and _norm_contrato(estado) != ESTADO_DIFERIDA:
+            problemas.append(Problema(
+                "decision_no_diferida", donde,
+                f"su estado es `{estado or '(vacío)'}` y tiene que ser `{ESTADO_DIFERIDA}`: el "
+                "alcance de esta fase declara que las decisiones doctrinales quedan íntegramente "
+                "diferidas, así que resolver una acá la contradice"))
+        if fase == "":
+            problemas.append(Problema(
+                "decision_sin_fase", donde,
+                "no declara su fase de destino; diferir sin decir a dónde es postergar sin plazo"))
+        elif fase is not None:
+            resumen["decisiones_con_fase"] += 1
+
+
+def verificar_contrato(texto: str, ruta_documento: Path,
+                       raiz: Path) -> tuple[list[Problema], dict]:
+    """Las tres mitades de AC-1 en un solo recorrido: el alcance, las correcciones con su atribución
+    **resuelta contra el documento fuente**, y las decisiones diferidas con su fase.
+
+    `atribuciones_resueltas` no es decorativo: es la evidencia de que la atribución se comprobó. Un
+    oráculo de «hay fuente» pasa todas las correcciones y deja ese contador en cero."""
+    problemas: list[Problema] = []
+    resumen = {"tramos": 0, "correcciones": 0, "decisiones": 0, "decisiones_con_fase": 0,
+               "atribuciones_resueltas": 0}
+    _verificar_alcance(texto, problemas, resumen)
+    _verificar_correcciones(texto, ruta_documento, raiz, problemas, resumen)
+    _verificar_decisiones(texto, problemas, resumen)
+    return problemas, resumen
+
+
+# --- Modo de los tres ejes --------------------------------------------------------------------
+
+class FilaDeEje(NamedTuple):
+    eje: str
+    indice: int
+    celda: str        # el literal tal como lo escribe el documento, con su namespace
+    literal: str      # el literal desnudo, con el namespace ya sacado si lo tenía
+    tipo: str | None
+    sede: str | None
+    significado: str | None
+
+
+def _partir_namespace(celda: str) -> tuple[str | None, str]:
+    """(namespace, literal desnudo). El namespace es `None` cuando la celda no lo trae.
+
+    El literal desnudo se devuelve **igual traiga o no namespace**, y eso es deliberado: si una
+    celda sin namespace quedara fuera del conjunto declarado, el mutante que le saca el namespace
+    emitiría además un `literal_de_menos` y su atribución dejaría de ser propia."""
+    namespace, punto, resto = celda.partition(".")
+    if not punto:
+        return None, celda
+    return namespace, resto
+
+
+def _sede_fuera_de_skills(sede: str) -> str:
+    """Por qué esa sede no puede respaldar un literal, o `""` si puede.
+
+    La regla es más dura que la de las procedencias de la matriz y a propósito: no alcanza con que
+    no sea un artefacto de este flujo, tiene que vivir bajo `skills/`. El documento de contrato no
+    existe todavía y estos fixtures son de esta misma task; un literal que apuntara a cualquiera de
+    los dos coincidiría siempre consigo mismo."""
+    ruta = sede.partition("#")[0]
+    if ruta.startswith("/") or ".." in Path(ruta).parts:
+        return "la sede tiene que ser una ruta relativa dentro del árbol"
+    if not ruta.startswith(PREFIJO_DE_SEDE_NORMATIVA):
+        return (f"la sede tiene que vivir bajo `{PREFIJO_DE_SEDE_NORMATIVA}`: el vocabulario de "
+                "cada eje sale de las skills que ya lo usan, y un literal que se cita a sí mismo o "
+                "cita un artefacto de este flujo no aporta evidencia independiente")
+    return ""
+
+
+def _resolver_sede_de_eje(sede: str, literal: str, raiz: Path) -> str:
+    """`""` si la sede resuelve y el literal está ahí; si no, el código del problema."""
+    ruta_rel, _, fragmento = sede.partition("#")
+    archivo = raiz / ruta_rel
+    if not fragmento or not archivo.is_file():
+        return "sede_irresoluble"
+    cuerpo = archivo.read_text(encoding="utf-8")
+    rango = _rangos_de_secciones(cuerpo).get(fragmento)
+    if rango is None:
+        return "sede_irresoluble"
+    lineas = cuerpo.split("\n")[rango[0]:rango[1] + 1]
+    patron = re.compile(r"(?<![A-Za-z0-9_-])" + re.escape(literal) + r"(?![A-Za-z0-9_-])")
+    return "" if any(patron.search(l) for l in lineas) else "literal_ausente_en_la_sede"
+
+
+def _leer_ejes(texto: str, problemas: list[Problema]) -> dict[str, list[FilaDeEje]]:
+    """Las filas declaradas por eje. Un eje sin sección o con la tabla vacía no aporta filas y su
+    problema se emite acá: seguir con la comparación de conjuntos agregaría un `literal_de_menos`
+    por cada literal del inventario y taparía la causa con seis síntomas."""
+    declarados: dict[str, list[FilaDeEje]] = {}
+    rangos = _rangos_de_secciones(texto)
+
+    for slug in sorted(rangos):
+        if slug.startswith("eje-") and slug not in SLUGS_DE_EJE.values():
+            problemas.append(Problema(
+                "eje_desconocido", f"sección `{slug}`",
+                "el contrato declara un eje que no es ninguno de los tres; un cuarto eje con "
+                "vocabulario propio es exactamente la fusión que este modo existe para impedir, "
+                "solo que declarada"))
+
+    for eje in EJES:
+        slug = SLUGS_DE_EJE[eje]
+        declarados[eje] = []
+        if slug not in rangos:
+            problemas.append(Problema("eje_ausente", f"eje `{eje}`",
+                                      f"el contrato no declara la sección `{slug}`"))
+            continue
+        tabla = _tabla_de_seccion(texto, slug)
+        if tabla is None or not tabla.filas:
+            problemas.append(Problema("eje_sin_literales", f"eje `{eje}`",
+                                      "la sección existe y no declara ningún literal"))
+            continue
+        for falta in _columnas_faltantes(tabla, COLUMNAS_EJE):
+            problemas.append(Problema("columna_ausente", f"eje `{eje}`",
+                                      f"la tabla del eje no declara la columna `{falta}`"))
+        for i, fila in enumerate(tabla.filas):
+            celda = _clave_de_fila(fila)
+            _, desnudo = _partir_namespace(celda)
+            declarados[eje].append(FilaDeEje(
+                eje, i, celda, desnudo,
+                _celda_de(tabla, fila, "tipo"),
+                _celda_de(tabla, fila, "sede"),
+                _celda_de(tabla, fila, "significado")))
+    return declarados
+
+
+def _comparar_vocabulario(eje: str, filas: list[FilaDeEje],
+                          problemas: list[Problema]) -> None:
+    """La igualdad exacta contra el inventario, y las tres fusiones que AC-2 nombra.
+
+    El orden importa y no es casual: **unión primero**, porque un eje que absorbió otro entero
+    también tiene sobrantes y reportarlos uno a uno describiría el síntoma en vez de la causa;
+    después los **ajenos**, que se sacan del conjunto de sobrantes para que la sustitución no los
+    cuente; y recién entonces alta, baja y sustitución, que son las tres que solo el inventario
+    congelado puede ver."""
+    esperados = {l.literal for l in INVENTARIO_DE_EJES[eje]}
+    declarados = [f.literal for f in filas]
+    conjunto = set(declarados)
+
+    for literal in sorted({l for l in declarados if declarados.count(l) > 1}):
+        problemas.append(Problema("literal_duplicado", f"eje `{eje}`",
+                                  f"`{literal}` aparece más de una vez en el mismo eje"))
+
+    for otro in EJES:
+        if otro == eje:
+            continue
+        exclusivos = {l.literal for l in INVENTARIO_DE_EJES[otro]} - esperados
+        if exclusivos and exclusivos <= conjunto and esperados <= conjunto:
+            problemas.append(Problema(
+                "enum_union", f"eje `{eje}`",
+                f"declara su vocabulario **y** el de `{otro}` entero "
+                f"({', '.join('`' + e + '`' for e in sorted(exclusivos))}): un enum unión responde "
+                "las dos preguntas con un solo valor y deja de poder responder ninguna"))
+            return
+
+    sobrantes = conjunto - esperados
+    faltantes = esperados - conjunto
+    ajenos = {s for s in sobrantes
+              if any(s in {l.literal for l in INVENTARIO_DE_EJES[o]} for o in EJES if o != eje)}
+    for literal in sorted(ajenos):
+        duenos = [o for o in EJES
+                  if o != eje and literal in {l.literal for l in INVENTARIO_DE_EJES[o]}]
+        problemas.append(Problema(
+            "enum_ajeno", f"eje `{eje}`",
+            f"`{literal}` es del vocabulario de {', '.join('`' + d + '`' for d in duenos)} y no de "
+            "este: usar el enum de un eje en el lugar de otro los fusiona sin decirlo"))
+    sobrantes -= ajenos
+
+    if sobrantes and faltantes:
+        problemas.append(Problema(
+            "literal_sustituido", f"eje `{eje}`",
+            f"cambia {', '.join('`' + f + '`' for f in sorted(faltantes))} por "
+            f"{', '.join('`' + s + '`' for s in sorted(sobrantes))} conservando la cantidad: un "
+            "verificador que contara literales lo dejaría pasar"))
+    elif sobrantes:
+        problemas.append(Problema(
+            "literal_de_mas", f"eje `{eje}`",
+            f"declara {', '.join('`' + s + '`' for s in sorted(sobrantes))}, que el inventario "
+            "normativo no tiene"))
+    elif faltantes:
+        problemas.append(Problema(
+            "literal_de_menos", f"eje `{eje}`",
+            f"no declara {', '.join('`' + f + '`' for f in sorted(faltantes))}, que el inventario "
+            "normativo sí tiene"))
+
+
+def _compartidos_sin_distincion(declarados: dict[str, list[FilaDeEje]]) -> set[tuple[str, int]]:
+    """Las filas de un literal que aparece en dos ejes **con el mismo tipo y la misma sede**.
+
+    Es la fusión disfrazada de compartición: un literal repetido es legítimo mientras nombre dos
+    cosas distintas, y deja de serlo cuando las dos declaraciones son la misma cosa escrita dos
+    veces. Las filas que caen acá quedan exentas del cotejo de tipo y sede contra el inventario: el
+    diagnóstico específico gana, y emitir además dos genéricos escondería cuál es el problema."""
+    por_literal: dict[str, list[FilaDeEje]] = {}
+    for filas in declarados.values():
+        for fila in filas:
+            por_literal.setdefault(fila.literal, []).append(fila)
+    involucradas: set[tuple[str, int]] = set()
+    for apariciones in por_literal.values():
+        ejes_vistos = {f.eje for f in apariciones}
+        if len(ejes_vistos) < 2:
+            continue
+        for i, una in enumerate(apariciones):
+            for otra in apariciones[i + 1:]:
+                if una.eje == otra.eje:
+                    continue
+                if una.tipo == otra.tipo and una.sede == otra.sede:
+                    involucradas.add((una.eje, una.indice))
+                    involucradas.add((otra.eje, otra.indice))
+    return involucradas
+
+
+def verificar_ejes(texto: str, raiz: Path) -> tuple[list[Problema], dict]:
+    """Los tres ejes contra el inventario normativo, literal por literal y puntero por puntero.
+
+    `sedes_resueltas` es la evidencia de que los punteros se ejercieron: un modo que comparara solo
+    la forma de las columnas pasa todas las filas y deja ese contador en cero."""
+    problemas: list[Problema] = []
+    resumen = {"ejes": 0, "literales": 0, "sedes_resueltas": 0, "compartidos": 0}
+    declarados = _leer_ejes(texto, problemas)
+    resumen["ejes"] = sum(1 for eje in EJES if declarados[eje])
+    resumen["literales"] = sum(len(f) for f in declarados.values())
+
+    exentas = _compartidos_sin_distincion(declarados)
+    for literal in sorted({f.literal for filas in declarados.values() for f in filas
+                           if (f.eje, f.indice) in exentas}):
+        problemas.append(Problema(
+            "compartido_sin_distincion", f"literal `{literal}`",
+            "aparece en dos ejes con el mismo tipo y la misma sede: un literal compartido es "
+            "legítimo mientras nombre dos cosas distintas, y dos declaraciones idénticas son la "
+            "misma cosa escrita dos veces"))
+
+    contados: set[str] = set()
+    for filas in declarados.values():
+        for fila in filas:
+            if len({f.eje for fs in declarados.values() for f in fs if f.literal == fila.literal}) > 1:
+                contados.add(fila.literal)
+    resumen["compartidos"] = len(contados)
+
+    for eje in EJES:
+        filas = declarados[eje]
+        if not filas:
+            continue
+        _comparar_vocabulario(eje, filas, problemas)
+        esperado_por_literal = {l.literal: l for l in INVENTARIO_DE_EJES[eje]}
+        for fila in filas:
+            donde = f"eje `{eje}`, literal `{fila.celda or '(vacío)'}`"
+            namespace, _ = _partir_namespace(fila.celda)
+            if namespace is None:
+                problemas.append(Problema(
+                    "perdida_de_namespace", donde,
+                    f"el literal se declara sin su namespace; tiene que escribirse "
+                    f"`{eje}.{fila.literal}`, porque el mismo token citado en otra sección no dice "
+                    "de qué eje es"))
+            elif namespace != eje:
+                problemas.append(Problema(
+                    "namespace_no_coincide", donde,
+                    f"lleva el namespace `{namespace}` dentro de la sección de `{eje}`"))
+
+            if fila.tipo == "":
+                problemas.append(Problema("tipo_ausente", donde,
+                                          "no declara su tipo, que es lo que distingue un literal "
+                                          "compartido de una fusión"))
+            if fila.significado == "":
+                problemas.append(Problema("significado_ausente", donde,
+                                          "no declara su significado"))
+            if fila.sede is None:
+                continue
+            if fila.sede == "":
+                problemas.append(Problema("sede_ausente", donde,
+                                          "no declara la sede de la que sale el literal"))
+                continue
+            motivo = _sede_fuera_de_skills(fila.sede)
+            if motivo:
+                problemas.append(Problema("sede_fuera_de_skills", donde,
+                                          f"`{fila.sede}`: {motivo}"))
+                continue
+            codigo = _resolver_sede_de_eje(fila.sede, fila.literal, raiz)
+            if codigo == "sede_irresoluble":
+                problemas.append(Problema("sede_irresoluble", donde,
+                                          f"`{fila.sede}` no resuelve contra el árbol: el archivo o "
+                                          "la sección no existen"))
+                continue
+            if codigo == "literal_ausente_en_la_sede":
+                problemas.append(Problema(
+                    "literal_ausente_en_la_sede", donde,
+                    f"`{fila.sede}` resuelve y no contiene `{fila.literal}`: el puntero apunta a una "
+                    "sección real que no dice nada de este literal"))
+                continue
+            resumen["sedes_resueltas"] += 1
+
+            esperado = esperado_por_literal.get(fila.literal)
+            if esperado is None or (eje, fila.indice) in exentas:
+                continue
+            if fila.tipo and fila.tipo != esperado.tipo:
+                problemas.append(Problema(
+                    "tipo_no_coincide", donde,
+                    f"declara el tipo `{fila.tipo}` y el inventario normativo dice "
+                    f"`{esperado.tipo}`"))
+            if fila.sede != esperado.sede:
+                problemas.append(Problema(
+                    "sede_no_coincide", donde,
+                    f"declara la sede `{fila.sede}` y el inventario normativo dice "
+                    f"`{esperado.sede}`; la sede resuelve, así que solo el puntero congelado lo ve"))
+    return problemas, resumen
+
+
+# --- Modo de marcas de capacidad de plataforma ------------------------------------------------
+
+def verificar_capacidades(texto: str) -> tuple[list[Problema], dict]:
+    """AC-3 es un cuantificador universal —«toda afirmación»—, así que el recorrido es por fila y
+    ningún problema corta el resto: con un solo defecto en un documento de afirmaciones válidas, un
+    verificador que comprobara que existe *alguna* marca y *alguna* versión quedaría verde."""
+    problemas: list[Problema] = []
+    resumen = {"afirmaciones": 0, "marcadas": 0, "portables": 0, "dependientes": 0,
+               "no_verificables": 0}
+    tabla = _tabla_de_seccion(texto, SLUG_CAPACIDADES)
+    if tabla is None or not tabla.filas:
+        problemas.append(Problema(
+            "capacidades_ausentes", f"sección `{SLUG_CAPACIDADES}`",
+            "el contrato tiene que declarar sus afirmaciones de plataforma con su marca; una tabla "
+            "sin filas satisface «toda afirmación está marcada» por vacuidad"))
+        return problemas, resumen
+    for falta in _columnas_faltantes(tabla, COLUMNAS_CAPACIDADES):
+        problemas.append(Problema("columna_ausente", f"sección `{SLUG_CAPACIDADES}`",
+                                  f"la tabla de capacidades no declara la columna `{falta}`"))
+    resumen["afirmaciones"] = len(tabla.filas)
+
+    for i, fila in enumerate(tabla.filas):
+        afirmacion = _celda_de(tabla, fila, "afirmacion")
+        etiqueta = (afirmacion or "")[:60]
+        donde = f"afirmación {i + 1}" + (f" «{etiqueta}…»" if etiqueta else "")
+        if afirmacion == "":
+            problemas.append(Problema("afirmacion_vacia", donde,
+                                      "la fila no declara ninguna afirmación"))
+        marca = _celda_de(tabla, fila, "marca")
+        version = _celda_de(tabla, fila, "version")
+        motivo = _celda_de(tabla, fila, "motivo")
+        if marca is None:
+            continue
+        if marca == "":
+            problemas.append(Problema(
+                "afirmacion_sin_marca", donde,
+                "se afirma sin marca: toda afirmación de plataforma va marcada portable, "
+                "dependiente o no verificable"))
+            continue
+        if marca not in MARCAS_DE_CAPACIDAD:
+            problemas.append(Problema(
+                "marca_desconocida", donde,
+                f"`{marca}` no es una marca: el vocabulario es "
+                f"{', '.join('`' + m + '`' for m in MARCAS_DE_CAPACIDAD)}"))
+            continue
+        resumen["marcadas"] += 1
+        if marca == "portable":
+            resumen["portables"] += 1
+        elif marca == "dependiente":
+            resumen["dependientes"] += 1
+            if version == "":
+                problemas.append(Problema(
+                    "dependiente_sin_version", donde,
+                    "es dependiente de plataforma y no registra la versión con la que se comprobó"))
+            elif version is not None and not PATRON_VERSION_COMPROBADA.match(version):
+                problemas.append(Problema(
+                    "version_sin_forma", donde,
+                    f"`{version}` no dice qué se comprobó y con qué número; una versión comprobada "
+                    "nombra las dos cosas"))
+        else:
+            resumen["no_verificables"] += 1
+            if motivo == "":
+                problemas.append(Problema(
+                    "no_verificable_sin_motivo", donde,
+                    "se marca no verificable y no dice qué es lo que el runtime no expone"))
+            if version:
+                problemas.append(Problema(
+                    "no_verificable_con_version", donde,
+                    f"se marca no verificable y a la vez registra la versión `{version}` con la que "
+                    "se la comprobó; si se comprobó, es dependiente"))
+    return problemas, resumen
+
+
+# --- Los tres modos de aplicación --------------------------------------------------------------
+
+def _leer_documento_de_contrato(ruta: Path, etiqueta: str) -> tuple[str | None, int]:
+    """El texto del documento, o `None` y el código con el que hay que terminar."""
+    if _falta_la_primitiva():
+        return None, 1
+    if not ruta.is_file():
+        print(f"AUSENTE  no existe el documento de contrato en {ruta}")
+        print(f"         `--{etiqueta}` no lo lee como conforme: el documento lo escribe la task "
+              "que lo materializa, y hasta entonces no hay veredicto que dar. Este modo termina "
+              f"con {CODIGO_DOCUMENTO_AUSENTE}, que no es 0 ni 1.")
+        return None, CODIGO_DOCUMENTO_AUSENTE
+    return ruta.read_text(encoding="utf-8"), 0
+
+
+def modo_contrato(ruta: Path, raiz: Path) -> int:
+    texto, codigo = _leer_documento_de_contrato(ruta, "contrato")
+    if texto is None:
+        return codigo
+    problemas, resumen = verificar_contrato(texto, ruta, raiz)
+    if problemas:
+        _informar(problemas, f"{ruta.name} — alcance, correcciones y decisiones diferidas")
+        return 1
+    print(f"OK     {ruta.name}: alcance con {resumen['tramos']} tramos, "
+          f"{resumen['correcciones']} correcciones completas y {resumen['decisiones']} decisiones "
+          f"diferidas con su fase")
+    print(f"OK     las {resumen['atribuciones_resueltas']} atribuciones se resolvieron contra su "
+          "documento fuente: el texto reemplazado vive ahí")
+    print()
+    print("RESULTADO: OK")
+    return 0
+
+
+def modo_ejes(ruta: Path, raiz: Path) -> int:
+    texto, codigo = _leer_documento_de_contrato(ruta, "ejes")
+    if texto is None:
+        return codigo
+    problemas, resumen = verificar_ejes(texto, raiz)
+    if problemas:
+        _informar(problemas, f"{ruta.name} — los tres ejes y sus vocabularios")
+        return 1
+    print(f"OK     {ruta.name}: los {resumen['ejes']} ejes declaran {resumen['literales']} literales "
+          "en igualdad exacta con el inventario normativo")
+    print(f"OK     las {resumen['sedes_resueltas']} sedes resuelven contra el árbol y contienen su "
+          f"literal; {resumen['compartidos']} literal(es) compartido(s) conservan tipo y sede "
+          "distintos")
+    print()
+    print("RESULTADO: OK")
+    return 0
+
+
+def modo_capacidades(ruta: Path) -> int:
+    texto, codigo = _leer_documento_de_contrato(ruta, "capacidades")
+    if texto is None:
+        return codigo
+    problemas, resumen = verificar_capacidades(texto)
+    if problemas:
+        _informar(problemas, f"{ruta.name} — marcas de capacidad de plataforma")
+        return 1
+    print(f"OK     {ruta.name}: las {resumen['afirmaciones']} afirmaciones de plataforma están "
+          f"marcadas ({resumen['portables']} portables, {resumen['dependientes']} dependientes con "
+          f"su versión, {resumen['no_verificables']} no verificables con su motivo)")
+    print()
+    print("RESULTADO: OK")
+    return 0
+
+
+# --- Autotests de los tres modos ---------------------------------------------------------------
+#
+# El corpus es `scripts/fixtures-contrato/conforme/`: un documento sintético y sus dos documentos
+# fuente. Los mutantes **no** están guardados como archivos: se generan transformando el conforme
+# celda a celda, así que la correspondencia caso ↔ defecto es por construcción y una columna que
+# cambie de nombre rompe el mutante en vez de dejarlo pasando por otro motivo.
+#
+# **Nada de esto escribe en disco.** El documento se muta en memoria y la raíz que reciben los
+# verificadores es el fixture congelado, en lectura. Mutar el árbol de trabajo dejaría el fixture
+# mutado si el proceso muriera, y otro agente no distingue esa ventana de un cambio real.
+
+class CasoDeContrato(NamedTuple):
+    codigo: str | None      # el problema que el caso tiene que disparar; None = caso conforme
+    descripcion: str
+    mutar: Any = None       # (texto) -> texto
+
+
+def _texto_conforme() -> str:
+    return DOCUMENTO_CONFORME.read_text(encoding="utf-8")
+
+
+def _indice_de_columna(tabla: Tabla, columna: str) -> int:
+    if columna not in tabla.encabezados:
+        raise ValueError(f"la tabla no tiene la columna `{columna}`")
+    return tabla.encabezados.index(columna)
+
+
+def _indice_de_fila(tabla: Tabla, clave: str) -> int:
+    for i, fila in enumerate(tabla.filas):
+        if _clave_de_fila(fila) == clave:
+            return i
+    raise ValueError(f"la tabla no tiene ninguna fila con la clave `{clave}`")
+
+
+def _tabla_o_error(texto: str, slug: str) -> Tabla:
+    tabla = _tabla_de_seccion(texto, slug)
+    if tabla is None:
+        raise ValueError(f"el documento no tiene tabla en la sección `{slug}`")
+    return tabla
+
+
+def _rendir_fila(celdas: list[str] | tuple[str, ...]) -> str:
+    """La fila de vuelta a texto, **re-escapando** el `|` que `_celdas` desescapó. Sin esto, una
+    celda que contiene una tubería escapada se parte en dos al mutarla y el mutante deja de probar
+    lo suyo — el fixture tiene una a propósito, justo para que este camino no quede sin ejercer."""
+    return "| " + " | ".join(c.replace("|", "\\|") for c in celdas) + " |"
+
+
+def _mutar_celda(slug: str, clave: str, columna: str, nuevo: str) -> Any:
+    """Reemplaza una celda por su coordenada (sección, clave de la fila, encabezado de la columna).
+    Por coordenada y no por búsqueda de texto: dos celdas con el mismo contenido son un caso real —el
+    mismo documento fuente en dos correcciones— y un reemplazo textual las tocaría a las dos."""
+    def mutacion(texto: str) -> str:
+        tabla = _tabla_o_error(texto, slug)
+        k = _indice_de_columna(tabla, columna)
+        i = _indice_de_fila(tabla, clave)
+        lineas = texto.split("\n")
+        celdas = list(_celdas(lineas[tabla.lineas_de_fila[i]]))
+        while len(celdas) <= k:
+            celdas.append("")
+        celdas[k] = nuevo
+        lineas[tabla.lineas_de_fila[i]] = _rendir_fila(celdas)
+        return "\n".join(lineas)
+    return mutacion
+
+
+def _vaciar_celda(slug: str, clave: str, columna: str) -> Any:
+    return _mutar_celda(slug, clave, columna, MARCAS_DE_VACIO[1])
+
+
+def _borrar_fila(slug: str, clave: str) -> Any:
+    def mutacion(texto: str) -> str:
+        tabla = _tabla_o_error(texto, slug)
+        i = _indice_de_fila(tabla, clave)
+        lineas = texto.split("\n")
+        del lineas[tabla.lineas_de_fila[i]]
+        return "\n".join(lineas)
+    return mutacion
+
+
+def _vaciar_tabla(slug: str) -> Any:
+    def mutacion(texto: str) -> str:
+        tabla = _tabla_o_error(texto, slug)
+        lineas = texto.split("\n")
+        for numero in sorted(tabla.lineas_de_fila, reverse=True):
+            del lineas[numero]
+        return "\n".join(lineas)
+    return mutacion
+
+
+def _agregar_fila(slug: str, celdas: tuple[str, ...]) -> Any:
+    def mutacion(texto: str) -> str:
+        tabla = _tabla_o_error(texto, slug)
+        if not tabla.lineas_de_fila:
+            raise ValueError(f"la tabla de `{slug}` no tiene filas donde agregar")
+        lineas = texto.split("\n")
+        lineas.insert(tabla.lineas_de_fila[-1] + 1, _rendir_fila(celdas))
+        return "\n".join(lineas)
+    return mutacion
+
+
+def _agregar_filas(slug: str, filas: tuple[tuple[str, ...], ...]) -> Any:
+    def mutacion(texto: str) -> str:
+        for fila in filas:
+            texto = _agregar_fila(slug, fila)(texto)
+        return texto
+    return mutacion
+
+
+def _borrar_columna(slug: str, columna: str) -> Any:
+    def mutacion(texto: str) -> str:
+        tabla = _tabla_o_error(texto, slug)
+        k = _indice_de_columna(tabla, columna)
+        lineas = texto.split("\n")
+        for numero in (tabla.linea_encabezado, tabla.linea_encabezado + 1,
+                       *tabla.lineas_de_fila):
+            celdas = list(_celdas(lineas[numero]))
+            if k < len(celdas):
+                del celdas[k]
+            lineas[numero] = _rendir_fila(celdas)
+        return "\n".join(lineas)
+    return mutacion
+
+
+def _borrar_seccion(slug: str) -> Any:
+    def mutacion(texto: str) -> str:
+        rango = _rangos_de_secciones(texto).get(slug)
+        if rango is None:
+            raise ValueError(f"el documento no tiene la sección `{slug}`")
+        lineas = texto.split("\n")
+        del lineas[rango[0]:rango[1] + 1]
+        return "\n".join(lineas)
+    return mutacion
+
+
+def _componer(*mutaciones: Any) -> Any:
+    def mutacion(texto: str) -> str:
+        for m in mutaciones:
+            texto = m(texto)
+        return texto
+    return mutacion
+
+
+def _agregar_heading(despues_de: str, titulo: str) -> Any:
+    def mutacion(texto: str) -> str:
+        rango = _rangos_de_secciones(texto).get(despues_de)
+        if rango is None:
+            raise ValueError(f"el documento no tiene la sección `{despues_de}`")
+        lineas = texto.split("\n")
+        lineas.insert(rango[1] + 1, "")
+        lineas.insert(rango[1] + 2, titulo)
+        return "\n".join(lineas)
+    return mutacion
+
+
+def _reemplazar_prosa(viejo: str, nuevo: str) -> Any:
+    def mutacion(texto: str) -> str:
+        if viejo not in texto:
+            raise ValueError(f"el documento no contiene {viejo!r}")
+        return texto.replace(viejo, nuevo)
+    return mutacion
+
+
+def _fila_de_eje(eje: str, literal: str, tipo: str, sede: str) -> tuple[str, ...]:
+    return (f"`{eje}.{literal}`", tipo, f"`{sede}`", "significado sintético del caso")
+
+
+def _correr_caso_de_contrato(caso: CasoDeContrato) -> tuple[list[Problema], dict]:
+    texto = caso.mutar(_texto_conforme()) if caso.mutar else _texto_conforme()
+    return verificar_contrato(texto, DOCUMENTO_CONFORME, CONFORME_CONTRATO)
+
+
+def _correr_caso_de_ejes(caso: CasoDeContrato) -> tuple[list[Problema], dict]:
+    """Los ejes se resuelven contra el **árbol real**, no contra el fixture: la propiedad que este
+    modo ejerce es que cada literal salga de una sede que ya existe en `skills/`, y con un árbol
+    sintético el modo y el dato acordarían entre sí."""
+    texto = caso.mutar(_texto_conforme()) if caso.mutar else _texto_conforme()
+    return verificar_ejes(texto, REPO)
+
+
+def _correr_caso_de_capacidades(caso: CasoDeContrato) -> tuple[list[Problema], dict]:
+    texto = caso.mutar(_texto_conforme()) if caso.mutar else _texto_conforme()
+    return verificar_capacidades(texto)
+
+
+# Los textos del corpus que los casos citan. Se derivan del fixture leyéndolo, no se transcriben:
+# una transcripción quedaría vieja en cuanto el fixture cambiara y el mutante pasaría a fallar por
+# otro motivo.
+AFIRMACION_INEXISTENTE = "La familia gamma sintética nunca despacha dos intentos en paralelo."
+
+
+def _casos_de_contrato() -> tuple[CasoDeContrato, ...]:
+    return (
+        # Los conformes. El segundo es la variante riesgosa que la task nombra: una corrección
+        # atribuida a la propuesta doctrinal **cuando esa propuesta sí contiene** la afirmación
+        # reemplazada. Un modo que rechazara toda atribución a la propuesta pasaría los dos mutantes
+        # de atribución y caería acá.
+        CasoDeContrato(None, "el documento conforme completo"),
+        CasoDeContrato(
+            None, "una corrección de más atribuida a la propuesta doctrinal, con una afirmación que "
+                  "la propuesta sí contiene",
+            _agregar_fila(SLUG_CORRECCIONES, (
+                "C-04",
+                "Si el arbitraje sintético lo ejerce el conductor o un tercero.",
+                "El arbitraje sintético lo ejerce el conductor, y el tercero solo informa.",
+                "El corpus registra al conductor como único árbitro en los cuatro escenarios.",
+                "Este contrato prevalece sobre `propuesta-doctrinal.md` en este punto.",
+                "fuentes/propuesta-doctrinal.md"))),
+        CasoDeContrato(
+            None, "una decisión diferida de más con su fase: aceptar más no es un defecto",
+            _agregar_fila(SLUG_DECISIONES, (
+                "D-03", "Si el corpus sintético admite un tercer documento fuente.", "diferida",
+                "Fase 4"))),
+        CasoDeContrato(
+            None, "no-op: se reescribe prosa fuera de las tablas",
+            _reemplazar_prosa("Su alcance, sus correcciones", "Su alcance declarado, sus correcciones")),
+
+        # El alcance y las decisiones diferidas: las dos mitades de la fila que un modo que solo
+        # validara correcciones nunca miraría.
+        CasoDeContrato("alcance_ausente", "se retira la sección de alcance entera",
+                       _borrar_seccion(SLUG_ALCANCE)),
+        CasoDeContrato("decisiones_ausentes",
+                       "se retiran las decisiones diferidas y la sección queda sin ninguna",
+                       _vaciar_tabla(SLUG_DECISIONES)),
+        CasoDeContrato("decision_sin_fase",
+                       "una sola de las dos decisiones diferidas pierde su fase de destino",
+                       _vaciar_celda(SLUG_DECISIONES, "D-02", "fase de destino")),
+        CasoDeContrato("decision_no_diferida",
+                       "una sola de las dos decisiones se declara resuelta en vez de diferida",
+                       _mutar_celda(SLUG_DECISIONES, "D-01", "estado", "resuelta")),
+
+        # Los cinco componentes de una corrección, uno por caso y **uno por fila**: el defecto vive
+        # entre correcciones válidas, que es donde un verificador de «alguna» se disfraza de rigor.
+        CasoDeContrato("correcciones_ausentes", "la tabla de correcciones se queda sin filas",
+                       _vaciar_tabla(SLUG_CORRECCIONES)),
+        CasoDeContrato("correccion_sin_texto_anterior", "una corrección pierde el texto anterior",
+                       _vaciar_celda(SLUG_CORRECCIONES, "C-02", "afirmacion anterior")),
+        CasoDeContrato("correccion_sin_texto_corregido", "una corrección pierde el texto corregido",
+                       _vaciar_celda(SLUG_CORRECCIONES, "C-01", "afirmacion corregida")),
+        CasoDeContrato("correccion_sin_evidencia", "una corrección pierde su evidencia",
+                       _vaciar_celda(SLUG_CORRECCIONES, "C-03", "evidencia")),
+        CasoDeContrato("correccion_sin_supersesion", "una corrección pierde la cláusula de "
+                                                     "supersesión",
+                       _vaciar_celda(SLUG_CORRECCIONES, "C-01", "supersesion")),
+        CasoDeContrato("correccion_sin_fuente", "una corrección no dice de qué documento sale",
+                       _vaciar_celda(SLUG_CORRECCIONES, "C-02", "documento fuente")),
+        CasoDeContrato("columna_ausente", "la tabla de correcciones pierde la columna de evidencia",
+                       _borrar_columna(SLUG_CORRECCIONES, "evidencia")),
+        CasoDeContrato("id_duplicado", "dos correcciones comparten identificador",
+                       _mutar_celda(SLUG_CORRECCIONES, "C-03", "id", "C-01")),
+
+        # Los dos mutantes de atribución que un oráculo de «hay fuente» no caza. Los dos declaran
+        # una fuente que existe, y los dos pasan cualquier comprobación de presencia.
+        CasoDeContrato(
+            "fuente_equivocada",
+            "la fuente declarada no es el documento donde vive la afirmación reemplazada — y la "
+            "cláusula de supersesión la acompaña, así que la corrección es impecable salvo por la "
+            "atribución",
+            _componer(_mutar_celda(SLUG_CORRECCIONES, "C-02", "documento fuente",
+                                   "fuentes/propuesta-doctrinal.md"),
+                      _mutar_celda(SLUG_CORRECCIONES, "C-02", "supersesion",
+                                   "Este contrato prevalece sobre `propuesta-doctrinal.md` en este "
+                                   "punto."))),
+        CasoDeContrato(
+            "afirmacion_inexistente_en_la_fuente",
+            "se le atribuye a la propuesta doctrinal una afirmación que no contiene",
+            _mutar_celda(SLUG_CORRECCIONES, "C-01", "afirmacion anterior",
+                         AFIRMACION_INEXISTENTE)),
+        CasoDeContrato("fuente_irresoluble", "la fuente declarada no existe",
+                       _mutar_celda(SLUG_CORRECCIONES, "C-03", "documento fuente",
+                                    "fuentes/no-existe.md")),
+        CasoDeContrato(
+            "fuente_no_admisible",
+            "el documento se declara fuente de su propia corrección — y el texto sí está ahí, "
+            "porque está en su tabla: solo la regla de admisibilidad lo ve",
+            _mutar_celda(SLUG_CORRECCIONES, "C-01", "documento fuente", "contrato.md")),
+        CasoDeContrato(
+            "supersesion_no_nombra_la_fuente",
+            "la cláusula prevalece sobre «la fuente corregida» sin nombrarla",
+            _mutar_celda(SLUG_CORRECCIONES, "C-03", "supersesion",
+                         "Este contrato prevalece sobre la fuente corregida.")),
+    )
+
+
+def _casos_de_ejes() -> tuple[CasoDeContrato, ...]:
+    ciclo, validez, semantico = EJES
+    slug_ciclo, slug_validez, slug_semantico = (SLUGS_DE_EJE[e] for e in EJES)
+    sede_outcome = "skills/cross-review/corridas-en-vuelo.md#outcome-de-la-espera"
+    sede_estados = "skills/co-explore/reference.md#estados-del-worker"
+    sede_fin = "skills/co-explore/reference.md#senal-de-finalizacion"
+    exclusivos_validez = tuple(l for l in INVENTARIO_DE_EJES[validez]
+                               if l.literal not in {x.literal for x in INVENTARIO_DE_EJES[ciclo]})
+    return (
+        # Los conformes. El primero **es** el control positivo del literal compartido: `done` vive
+        # en dos ejes con tipo, sede y significado distintos, y un modo que rechazara toda
+        # repetición pasaría los mutantes de fusión y caería acá.
+        CasoDeContrato(None, "el documento conforme, con `done` compartido por dos ejes"),
+        CasoDeContrato(
+            None, "reordenar las filas de un eje: el orden no es parte del contrato",
+            _componer(_borrar_fila(slug_ciclo, f"{ciclo}.error"),
+                      _agregar_fila(slug_ciclo, _fila_de_eje(ciclo, "error", "outcome_de_espera",
+                                                             sede_outcome)))),
+        CasoDeContrato(
+            None, "no-op: se reescribe el significado, que es prosa y no está congelado",
+            _mutar_celda(slug_validez, f"{validez}.READY", "significado",
+                         "otro modo de decir lo mismo con otras palabras")),
+
+        # Las tres fusiones que AC-2 nombra por su nombre.
+        CasoDeContrato(
+            "perdida_de_namespace", "un literal se declara sin su namespace",
+            _mutar_celda(slug_validez, f"{validez}.READY", "literal", "`READY`")),
+        CasoDeContrato(
+            "namespace_no_coincide", "un literal lleva el namespace de otro eje",
+            _mutar_celda(slug_ciclo, f"{ciclo}.done", "literal", f"`{semantico}.done`")),
+        # Los dos declaran el literal ajeno con **su propio** tipo, no con el del eje de origen: con
+        # el tipo copiado además serían un `compartido_sin_distincion`, y el mutante mediría dos
+        # cosas a la vez en vez de la fusión que le toca.
+        CasoDeContrato(
+            "enum_ajeno", "el eje operativo estrena un literal del eje de validez",
+            _agregar_fila(slug_ciclo, _fila_de_eje(ciclo, "READY", "outcome_de_espera",
+                                                   sede_estados))),
+        CasoDeContrato(
+            "enum_union", "el eje operativo absorbe el vocabulario del de validez entero",
+            _agregar_filas(slug_ciclo, tuple(
+                _fila_de_eje(ciclo, l.literal, "outcome_de_espera", l.sede)
+                for l in exclusivos_validez))),
+        CasoDeContrato(
+            "compartido_sin_distincion",
+            "el `done` semántico copia el tipo y la sede del operativo: la misma cosa escrita dos "
+            "veces, disfrazada de literal compartido",
+            _componer(_mutar_celda(slug_semantico, f"{semantico}.done", "tipo",
+                                   "marcador_de_cierre"),
+                      _mutar_celda(slug_semantico, f"{semantico}.done", "sede", f"`{sede_fin}`"))),
+
+        # Alta, baja y sustitución **dentro del vocabulario correcto**: los tres pasan namespace,
+        # sede y resolución, y solo el inventario congelado los ve. `sigue_activo` es un literal
+        # real de la misma sede que el contrato deja deliberadamente fuera del eje, así que el
+        # mutante no se delata por una sede inventada.
+        CasoDeContrato(
+            "literal_de_mas", "el eje operativo estrena un literal que su sede sí contiene y el "
+                              "inventario normativo no tiene",
+            _agregar_fila(slug_ciclo, _fila_de_eje(ciclo, "sigue_activo", "outcome_de_espera",
+                                                   sede_outcome))),
+        CasoDeContrato("literal_de_menos", "el eje operativo pierde un literal del inventario",
+                       _borrar_fila(slug_ciclo, f"{ciclo}.cancelacion")),
+        CasoDeContrato(
+            "literal_sustituido",
+            "un literal del inventario se cambia por otro plausible conservando la cantidad",
+            _mutar_celda(slug_ciclo, f"{ciclo}.cancelacion", "literal", f"`{ciclo}.sigue_activo`")),
+        CasoDeContrato("literal_duplicado", "un literal se declara dos veces en el mismo eje",
+                       _agregar_fila(slug_ciclo, _fila_de_eje(ciclo, "error", "outcome_de_espera",
+                                                              sede_outcome))),
+
+        # El puntero por literal: lo único que impide que el inventario sea una lista inventada.
+        CasoDeContrato(
+            "sede_fuera_de_skills",
+            "un literal apunta a este mismo fixture — que existe y lo contiene, y por eso solo la "
+            "regla de la sede normativa lo ve",
+            _mutar_celda(slug_ciclo, f"{ciclo}.done", "sede",
+                         "`scripts/fixtures-contrato/conforme/contrato.md#eje-ciclo-de-vida-operativo`")),
+        CasoDeContrato("sede_irresoluble", "la sección de la sede no existe en el archivo",
+                       _mutar_celda(slug_validez, f"{validez}.INVALID", "sede",
+                                    "`skills/co-explore/reference.md#seccion-que-no-existe`")),
+        CasoDeContrato(
+            "literal_ausente_en_la_sede",
+            "la sede resuelve a una sección real que no menciona el literal",
+            _mutar_celda(slug_ciclo, f"{ciclo}.UNAVAILABLE", "sede", f"`{sede_fin}`")),
+        CasoDeContrato(
+            "sede_no_coincide",
+            "la sede resuelve, contiene el literal y **no** es la del inventario congelado",
+            _mutar_celda(slug_ciclo, f"{ciclo}.error", "sede",
+                         "`skills/cross-review/corridas-en-vuelo.md#transiciones-del-sobre`")),
+        CasoDeContrato("tipo_no_coincide", "el tipo declarado no es el del inventario",
+                       _mutar_celda(slug_validez, f"{validez}.READY", "tipo", "otra_clase")),
+        CasoDeContrato("sede_ausente", "un literal no declara sede",
+                       _vaciar_celda(slug_validez, f"{validez}.INVALID", "sede")),
+        CasoDeContrato("tipo_ausente", "un literal no declara tipo",
+                       _vaciar_celda(slug_semantico, f"{semantico}.APPROVED", "tipo")),
+        CasoDeContrato("significado_ausente", "un literal no declara significado",
+                       _vaciar_celda(slug_ciclo, f"{ciclo}.error", "significado")),
+
+        # La estructura de las tres secciones.
+        CasoDeContrato("eje_ausente", "el contrato no declara el eje de validez",
+                       _borrar_seccion(slug_validez)),
+        CasoDeContrato("eje_sin_literales", "el eje de validez existe y no declara ningún literal",
+                       _vaciar_tabla(slug_validez)),
+        CasoDeContrato("eje_desconocido", "el contrato estrena un cuarto eje",
+                       _agregar_heading(slug_semantico, "### Eje: transporte del intento")),
+        CasoDeContrato("columna_ausente", "la tabla de un eje pierde la columna de tipo",
+                       _borrar_columna(slug_semantico, "tipo")),
+    )
+
+
+def _casos_de_capacidades() -> tuple[CasoDeContrato, ...]:
+    # Las claves son el **valor** de la primera celda: sin backticks y con la tubería ya
+    # desescapada, que es lo que `_clave_de_fila` devuelve. Escribirlas como se ven en el Markdown
+    # las dejaría sin casar y los mutantes no correrían.
+    portable = ("El corte por | no escapado parte una fila de tabla igual en cualquier "
+                "intérprete de Markdown del corpus.")
+    dependiente = ("herramienta-sintetica exec acepta acotar el sandbox a solo lectura con una "
+                   "bandera propia.")
+    otro_dependiente = ("El intérprete sintético de la familia beta no admite redirección de "
+                        "entrada por < y exige tubería.")
+    no_verificable = ("El runtime sintético expone un identificador de proceso consultable para el "
+                      "worker delegado.")
+    return (
+        # El conforme, con sus tres marcas ejercidas. La segunda es la variante que más se parece a
+        # un defecto sin serlo: declarar algo **no verificable** es la forma correcta de tratarlo, y
+        # un modo que exigiera versión a todo la rechazaría.
+        CasoDeContrato(None, "el documento conforme: portables, dependientes con su versión "
+                             "comprobada y una no verificable con su motivo"),
+        CasoDeContrato(
+            None, "una segunda afirmación no verificable: no afirmar lo que no se puede comprobar "
+                  "no es un defecto",
+            _agregar_fila(SLUG_CAPACIDADES, (
+                "El runtime sintético informa cuánta memoria consumió el worker delegado.",
+                "no_verificable", "—",
+                "el harness del corpus no publica ninguna medición de memoria por worker"))),
+        CasoDeContrato(
+            None, "no-op: se reescribe prosa fuera de la tabla",
+            _reemplazar_prosa("Toda afirmación de plataforma va marcada.",
+                              "Toda afirmación de plataforma va marcada, sin excepciones.")),
+
+        # Los mutantes **unitarios**: un solo defecto entre cuatro afirmaciones válidas. Con el
+        # defecto global —todas sin marca, todas sin versión— un verificador que comprobara que
+        # existe *alguna* marca y *alguna* versión quedaría verde.
+        CasoDeContrato("afirmacion_sin_marca", "una sola afirmación se declara sin marca",
+                       _vaciar_celda(SLUG_CAPACIDADES, portable, "marca")),
+        CasoDeContrato("dependiente_sin_version",
+                       "una sola dependiente pierde su versión; la otra la conserva",
+                       _vaciar_celda(SLUG_CAPACIDADES, dependiente, "version")),
+        CasoDeContrato("version_sin_forma",
+                       "una versión que no dice qué se comprobó ni con qué número",
+                       _mutar_celda(SLUG_CAPACIDADES, otro_dependiente, "version",
+                                    "comprobado en el entorno del corpus")),
+        CasoDeContrato("marca_desconocida", "una marca fuera del vocabulario",
+                       _mutar_celda(SLUG_CAPACIDADES, portable, "marca", "dudosa")),
+        CasoDeContrato("no_verificable_sin_motivo",
+                       "una no verificable que no dice qué es lo que el runtime no expone",
+                       _vaciar_celda(SLUG_CAPACIDADES, no_verificable, "motivo")),
+        CasoDeContrato("no_verificable_con_version",
+                       "una no verificable que registra la versión con la que se la comprobó",
+                       _mutar_celda(SLUG_CAPACIDADES, no_verificable, "version",
+                                    "runtime-sintetico 2.0")),
+        CasoDeContrato("afirmacion_vacia", "una fila sin afirmación",
+                       _vaciar_celda(SLUG_CAPACIDADES, portable, "afirmacion")),
+        CasoDeContrato("capacidades_ausentes", "la tabla de capacidades se queda sin filas",
+                       _vaciar_tabla(SLUG_CAPACIDADES)),
+        CasoDeContrato("columna_ausente", "la tabla de capacidades pierde la columna de versión",
+                       _borrar_columna(SLUG_CAPACIDADES, "version")),
+    )
+
+
+def _bloque_de_documento(nombre: str, casos: tuple[CasoDeContrato, ...], correr: Any,
+                         catalogo: tuple[str, ...],
+                         evidencia: Any) -> list[tuple[str, bool, str]]:
+    """Los tres bloques que todo autotest de este archivo lleva, con el runner inyectado.
+
+    `evidencia(resumen) -> str` es lo que distingue «no encontró problemas» de «comprobó algo»: un
+    modo que devolviera siempre una lista vacía pasaría [A] sin haber mirado nada."""
+    resultados: list[tuple[str, bool, str]] = []
+
+    # [A] El control positivo, **por modo y no por task**: un modo cuyos casos son todos negativos
+    # lo satisface una implementación que rechace cualquier entrada.
+    conformes = [c for c in casos if c.codigo is None]
+    fallas: list[str] = []
+    for caso in conformes:
+        try:
+            problemas, resumen = correr(caso)
+        except ValueError as exc:
+            fallas.append(f"{caso.descripcion} — no corrió: {exc}")
+            continue
+        if problemas:
+            fallas.append(f"{caso.descripcion} — {problemas[0]}")
+            continue
+        falta = evidencia(resumen)
+        if falta:
+            fallas.append(f"{caso.descripcion} — {falta}")
+    resultados.append((
+        f"A/{nombre}", not fallas,
+        f"control positivo: los {len(conformes)} casos conformes de `--{nombre}` pasan y dejan "
+        "evidencia de haber comprobado"
+        if not fallas else "control positivo — " + " | ".join(fallas[:3])))
+
+    # [B] Los mutantes, cada uno rechazado **por su motivo**: un rechazo ajeno que se le parece
+    # reportaría una cobertura que no existe.
+    mutantes = [c for c in casos if c.codigo is not None]
+    sobrevivientes: list[str] = []
+    desatribuidos: list[str] = []
+    rotos: list[str] = []
+    emitidos: set[str] = set()
+    for caso in mutantes:
+        try:
+            problemas, _ = correr(caso)
+        except ValueError as exc:
+            rotos.append(f"{caso.codigo}: {caso.descripcion} — {exc}")
+            continue
+        codigos = {p.codigo for p in problemas}
+        emitidos |= codigos
+        if not codigos:
+            sobrevivientes.append(f"{caso.codigo}: {caso.descripcion}")
+        elif caso.codigo not in codigos:
+            desatribuidos.append(f"{caso.codigo}: {caso.descripcion} — rechazado por "
+                                 f"{sorted(codigos)} y no por su motivo")
+    problemas_b = ([f"SOBREVIVE {s}" for s in sobrevivientes]
+                   + [f"SIN ATRIBUIR {d}" for d in desatribuidos]
+                   + [f"NO CORRIÓ {r}" for r in rotos])
+    resultados.append((
+        f"B/{nombre}", not problemas_b,
+        f"{len(mutantes)} mutantes de `--{nombre}` y los {len(mutantes)} rechazados por su motivo"
+        if not problemas_b else f"{len(problemas_b)} problemas: " + " | ".join(problemas_b[:5])))
+
+    # [C] Un caso por código: un código sin caso es una restricción que nadie comprobó que pueda
+    # ponerse roja, y un código emitido y no catalogado es una que nadie declaró.
+    ejercidos = {c.codigo for c in mutantes}
+    problemas_c = [f"`{c}` está en el catálogo y ningún caso lo ejerce"
+                   for c in catalogo if c not in ejercidos]
+    problemas_c += [f"`{c}` lo emite el modo y no está en el catálogo"
+                    for c in sorted((emitidos | ejercidos) - set(catalogo))]
+    resultados.append((
+        f"C/{nombre}", not problemas_c,
+        f"los {len(catalogo)} códigos de `--{nombre}` tienen su caso"
+        if not problemas_c else f"{len(problemas_c)} huecos: " + " | ".join(problemas_c[:5])))
+    return resultados
+
+
+def _preludio_del_corpus() -> list[tuple[str, bool, str]]:
+    """Lo que tiene que valer antes de correr un solo caso de cualquiera de los tres modos."""
+    if not RUTA_PRIMITIVA_BIYECCION.is_file():
+        return [("0.primitiva", False,
+                 f"no está {RUTA_PRIMITIVA_BIYECCION.name}, del que sale la normalización que este "
+                 "modo reusa")]
+    faltan = [str(r) for r in (DOCUMENTO_CONFORME,
+                               CONFORME_CONTRATO / "fuentes" / "propuesta-doctrinal.md",
+                               CONFORME_CONTRATO / "fuentes" / "exploracion-previa.md")
+              if not Path(r).is_file()]
+    return [("0.corpus", not faltan,
+             f"el corpus conforme está completo ({CONFORME_CONTRATO})"
+             if not faltan else "faltan archivos del corpus: " + " | ".join(faltan))]
+
+
+def _bloque_de_ausencia(nombre: str, correr: Any) -> list[tuple[str, bool, str]]:
+    """[D] Un documento ausente **no** se lee como conforme, y uno presente sí se lee.
+
+    Las dos direcciones, porque cada una sola admite una implementación degenerada: solo la primera
+    la satisface un modo que devolviera siempre `CODIGO_DOCUMENTO_AUSENTE`, y solo la segunda, uno
+    que devolviera siempre 0."""
+    ausente = DIR_FIXTURES_CONTRATO / "conforme" / "documento-que-no-existe.md"
+    salida = io.StringIO()
+    with contextlib.redirect_stdout(salida):
+        codigo_ausente = correr(ausente)
+        codigo_presente = correr(DOCUMENTO_CONFORME)
+    return [
+        (f"D1/{nombre}", codigo_ausente == CODIGO_DOCUMENTO_AUSENTE,
+         f"sin documento, `--{nombre}` termina con {CODIGO_DOCUMENTO_AUSENTE} y no con 0: la "
+         "ausencia no es conformidad"
+         if codigo_ausente == CODIGO_DOCUMENTO_AUSENTE else
+         f"sin documento terminó con {codigo_ausente}"),
+        (f"D2/{nombre}", codigo_presente == 0,
+         f"y con el documento conforme del corpus, `--{nombre}` termina con 0"
+         if codigo_presente == 0 else
+         f"el documento conforme del corpus terminó con {codigo_presente}"),
+    ]
+
+
+def modo_autotest_contrato() -> int:
+    resultados = _preludio_del_corpus()
+    if all(ok for _, ok, _ in resultados):
+        resultados += _bloque_de_documento(
+            "contrato", _casos_de_contrato(), _correr_caso_de_contrato, CODIGOS_CONTRATO,
+            # El conteo tiene que ser positivo **y** completo. Con solo la igualdad, un modo que no
+            # leyera nada dejaría los dos contadores en cero, satisfaría `0 == 0` y pasaría el
+            # control positivo sin haber mirado una sola corrección.
+            lambda r: (f"leyó {r['correcciones']} correcciones y {r['decisiones']} decisiones: no "
+                       "recorrió el documento"
+                       if not (r["correcciones"] and r["decisiones"] and r["tramos"]) else
+                       f"resolvió {r['atribuciones_resueltas']} de {r['correcciones']} atribuciones "
+                       "contra su documento fuente"
+                       if r["atribuciones_resueltas"] != r["correcciones"] else
+                       f"{r['decisiones_con_fase']} de {r['decisiones']} decisiones con fase"
+                       if r["decisiones_con_fase"] != r["decisiones"] else ""))
+        resultados += _bloque_de_ausencia(
+            "contrato", lambda ruta: modo_contrato(ruta, CONFORME_CONTRATO))
+    return _cierre("el contrato declara su alcance, cada corrección sus cinco componentes con la "
+                   "atribución resuelta contra la fuente, y sus decisiones diferidas con su fase",
+                   resultados)
+
+
+def _preludio_de_ejes() -> list[tuple[str, bool, str]]:
+    """El bloque que sostiene todo lo demás: **cada literal del inventario apunta a una sede real de
+    `skills/` que ya existe hoy y que lo contiene.**
+
+    Los mutantes impiden que el verificador sea laxo; no impiden que el inventario sea inventado.
+    Esto sí: si un literal se lo hubiera inventado esta task, no habría sección donde encontrarlo."""
+    resultados = _preludio_del_corpus()
+    if not all(ok for _, ok, _ in resultados):
+        return resultados
+
+    fallas: list[str] = []
+    for eje, literales in INVENTARIO_DE_EJES.items():
+        for entrada in literales:
+            motivo = _sede_fuera_de_skills(entrada.sede)
+            if motivo:
+                fallas.append(f"{eje}.{entrada.literal} — {motivo}")
+                continue
+            codigo = _resolver_sede_de_eje(entrada.sede, entrada.literal, REPO)
+            if codigo:
+                fallas.append(f"{eje}.{entrada.literal} — `{entrada.sede}`: {codigo}")
+    total = sum(len(v) for v in INVENTARIO_DE_EJES.values())
+    resultados.append((
+        "0.punteros", not fallas,
+        f"los {total} literales del inventario normativo resuelven contra el árbol real bajo "
+        f"`{PREFIJO_DE_SEDE_NORMATIVA}` y su sede los contiene"
+        if not fallas else f"{len(fallas)} punteros sin respaldo: " + " | ".join(fallas[:4])))
+
+    # El literal compartido tiene que existir en el inventario, o el control positivo del modo no
+    # ejerce nada: sin él, «no falla ante un literal compartido» es cierto por vacuidad.
+    apariciones: dict[str, list[LiteralDeEje]] = {}
+    for literales in INVENTARIO_DE_EJES.values():
+        for entrada in literales:
+            apariciones.setdefault(entrada.literal, []).append(entrada)
+    compartidos = {lit: v for lit, v in apariciones.items() if len(v) > 1}
+    distinguidos = {lit for lit, v in compartidos.items()
+                    if len({e.tipo for e in v}) == len(v) and len({e.sede for e in v}) == len(v)}
+    resultados.append((
+        "0.compartido", bool(compartidos) and compartidos.keys() == distinguidos,
+        f"el inventario tiene {len(compartidos)} literal(es) compartido(s) por dos ejes "
+        f"({', '.join('`' + l + '`' for l in sorted(compartidos))}) y cada uno conserva tipo y sede "
+        "distintos"
+        if compartidos and compartidos.keys() == distinguidos else
+        "el inventario no tiene ningún literal compartido con tipo y sede distintos, así que el "
+        "control positivo del modo no ejercería nada"))
+
+    # Y los ejes no pueden ser uno subconjunto de otro, o el mutante de unión sería indistinguible
+    # de no hacer nada.
+    solapes = [f"{a} ⊆ {b}" for a in EJES for b in EJES if a != b
+               and {l.literal for l in INVENTARIO_DE_EJES[a]}
+               <= {l.literal for l in INVENTARIO_DE_EJES[b]}]
+    resultados.append((
+        "0.disjuntos", not solapes,
+        "ningún eje es subconjunto de otro, así que la unión y el enum ajeno son distinguibles"
+        if not solapes else "hay ejes contenidos en otros: " + " | ".join(solapes)))
+
+    # El fixture conforme no puede divergir del inventario: si divergiera, el control positivo del
+    # modo estaría midiendo otra cosa que la que la fila declara.
+    texto = _texto_conforme()
+    divergencias: list[str] = []
+    for eje in EJES:
+        tabla = _tabla_de_seccion(texto, SLUGS_DE_EJE[eje])
+        if tabla is None:
+            divergencias.append(f"{eje}: el fixture no declara su sección")
+            continue
+        declarado = tuple(
+            (_partir_namespace(_clave_de_fila(f))[1], _celda_de(tabla, f, "tipo"),
+             _celda_de(tabla, f, "sede"))
+            for f in tabla.filas)
+        esperado = tuple((l.literal, l.tipo, l.sede) for l in INVENTARIO_DE_EJES[eje])
+        if sorted(declarado) != sorted(esperado):
+            divergencias.append(f"{eje}: {sorted(set(declarado) ^ set(esperado))}")
+    resultados.append((
+        "0.fixture", not divergencias,
+        "el fixture conforme declara exactamente el inventario congelado, literal por literal"
+        if not divergencias else "el fixture divergió: " + " | ".join(divergencias[:3])))
+    return resultados
+
+
+def _bloque_del_compartido() -> list[tuple[str, bool, str]]:
+    """[E] Lo que separa «acepta un literal compartido» de «no mira las repeticiones».
+
+    No alcanza con que el conforme pase: hay que **mostrar** que el literal está en dos ejes y que
+    volver idénticas las dos declaraciones lo pone rojo. Sin la segunda dirección, el verde del
+    conforme sería compatible con un modo que ignorara la dimensión entera."""
+    ciclo, _, semantico = EJES
+    texto = _texto_conforme()
+    en_ambos = [eje for eje in (ciclo, semantico)
+                if any(l.literal == "done" for l in INVENTARIO_DE_EJES[eje])]
+    problemas_conforme, resumen = verificar_ejes(texto, REPO)
+
+    fusionado = _componer(
+        _mutar_celda(SLUGS_DE_EJE[semantico], f"{semantico}.done", "tipo", "marcador_de_cierre"),
+        _mutar_celda(SLUGS_DE_EJE[semantico], f"{semantico}.done", "sede",
+                     "`skills/co-explore/reference.md#senal-de-finalizacion`"))(texto)
+    problemas_fusion, _ = verificar_ejes(fusionado, REPO)
+    codigos = {p.codigo for p in problemas_fusion}
+
+    return [
+        ("E1/ejes", len(en_ambos) == 2 and resumen["compartidos"] >= 1,
+         f"`done` está declarado en {' y '.join('`' + e + '`' for e in en_ambos)} y el modo lo "
+         f"cuenta como compartido ({resumen['compartidos']})"
+         if len(en_ambos) == 2 and resumen["compartidos"] >= 1 else
+         f"el literal compartido no está en los dos ejes: {en_ambos}"),
+        ("E2/ejes", not problemas_conforme,
+         "y con tipo, sede y significado distintos el modo lo acepta: un literal repetido no es una "
+         "fusión"
+         if not problemas_conforme else
+         f"el conforme con el literal compartido falló: {problemas_conforme[0]}"),
+        ("E3/ejes", codigos == {"compartido_sin_distincion"},
+         "y al volver idénticas las dos declaraciones se pone rojo, y solo por eso"
+         if codigos == {"compartido_sin_distincion"} else
+         f"la fusión del compartido emitió {sorted(codigos)}"),
+    ]
+
+
+def modo_autotest_ejes() -> int:
+    resultados = _preludio_de_ejes()
+    if all(ok for _, ok, _ in resultados):
+        resultados += _bloque_de_documento(
+            "ejes", _casos_de_ejes(), _correr_caso_de_ejes, CODIGOS_EJES,
+            # Los tres ejes leídos, **todos** sus literales con la sede resuelta, y el compartido
+            # contado. Sin el primer término, un modo que no leyera nada dejaría `0 == 0` y pasaría
+            # el control positivo sin haber resuelto un solo puntero.
+            lambda r: (f"leyó {r['ejes']} de {len(EJES)} ejes y {r['literales']} literales: no "
+                       "recorrió el documento"
+                       if r["ejes"] != len(EJES) or not r["literales"] else
+                       f"resolvió {r['sedes_resueltas']} de {r['literales']} sedes contra el árbol"
+                       if r["sedes_resueltas"] != r["literales"] else
+                       "no contó ningún literal compartido" if not r["compartidos"] else ""))
+        resultados += _bloque_del_compartido()
+        resultados += _bloque_de_ausencia("ejes", lambda ruta: modo_ejes(ruta, REPO))
+    return _cierre("los tres ejes se comparan por igualdad exacta contra un inventario cuyos "
+                   "dieciséis literales salen de sedes reales de `skills/`", resultados)
+
+
+def _preludio_de_capacidades() -> list[tuple[str, bool, str]]:
+    """El fixture tiene que traer **varias afirmaciones válidas y las tres marcas**: con un fixture
+    de una sola afirmación, los mutantes unitarios dejarían de serlo y un verificador que
+    comprobara que existe *alguna* marca los pasaría a todos."""
+    resultados = _preludio_del_corpus()
+    if not all(ok for _, ok, _ in resultados):
+        return resultados
+    tabla = _tabla_de_seccion(_texto_conforme(), SLUG_CAPACIDADES)
+    if tabla is None:
+        return resultados + [("0.capacidades", False,
+                              f"el fixture no declara la sección `{SLUG_CAPACIDADES}`")]
+    marcas = [_celda_de(tabla, f, "marca") for f in tabla.filas]
+    faltan = [m for m in MARCAS_DE_CAPACIDAD if m not in marcas]
+    suficientes = len(tabla.filas) >= 4 and not faltan
+    resultados.append((
+        "0.capacidades", suficientes,
+        f"el fixture trae {len(tabla.filas)} afirmaciones y ejerce las "
+        f"{len(MARCAS_DE_CAPACIDAD)} marcas, así que un defecto en una convive con las demás válidas"
+        if suficientes else
+        f"el fixture no alcanza: {len(tabla.filas)} filas y sin ejercer {faltan}"))
+    return resultados
+
+
+def _bloque_unitario_de_capacidades(casos: tuple[CasoDeContrato, ...]) -> list[tuple[str, bool, str]]:
+    """[E] Los mutantes de fila son **unitarios de verdad**, y no solo por descripción.
+
+    Que un mutante dé rojo no alcanza para probar el cuantificador: si además rompiera las otras
+    afirmaciones, el rojo sería compatible con un verificador que solo mirase si existe *alguna*
+    marca. Las dos mitades: exactamente un problema, y las demás afirmaciones siguen marcadas."""
+    unitarios = [c for c in casos if c.codigo in CODIGOS_UNITARIOS_DE_CAPACIDAD]
+    fallas: list[str] = []
+    minimo = 0
+    for caso in unitarios:
+        try:
+            problemas, resumen = _correr_caso_de_capacidades(caso)
+        except ValueError as exc:
+            fallas.append(f"{caso.codigo} — no corrió: {exc}")
+            continue
+        sanas = resumen["afirmaciones"] - 1
+        minimo = max(minimo, sanas)
+        if len(problemas) != 1:
+            fallas.append(f"{caso.codigo} — emitió {len(problemas)} problemas y no uno: "
+                          f"{sorted({p.codigo for p in problemas})}")
+        elif resumen["marcadas"] < sanas:
+            fallas.append(f"{caso.codigo} — quedaron {resumen['marcadas']} afirmaciones marcadas de "
+                          f"{sanas} sanas: el defecto no fue unitario")
+    return [("E/capacidades", not fallas,
+             f"los {len(unitarios)} mutantes de fila son unitarios: uno solo cae y las otras "
+             f"{minimo} afirmaciones siguen válidas y marcadas"
+             if not fallas else f"{len(fallas)} problemas: " + " | ".join(fallas[:3]))]
+
+
+def modo_autotest_capacidades() -> int:
+    resultados = _preludio_de_capacidades()
+    if all(ok for _, ok, _ in resultados):
+        resultados += _bloque_de_documento(
+            "capacidades", _casos_de_capacidades(), _correr_caso_de_capacidades,
+            CODIGOS_CAPACIDADES,
+            lambda r: (f"leyó {r['afirmaciones']} afirmaciones: no recorrió la tabla"
+                       if not r["afirmaciones"] else
+                       f"marcó {r['marcadas']} de {r['afirmaciones']} afirmaciones"
+                       if r["marcadas"] != r["afirmaciones"] else
+                       "no ejerció las tres marcas"
+                       if not (r["portables"] and r["dependientes"] and r["no_verificables"])
+                       else ""))
+        resultados += _bloque_unitario_de_capacidades(_casos_de_capacidades())
+        resultados += _bloque_de_ausencia("capacidades", modo_capacidades)
+    return _cierre("toda afirmación de plataforma va marcada portable, dependiente con su versión "
+                   "comprobada o no verificable con su motivo", resultados)
+
+
+# ---------------------------------------------------------------------------------------------
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -7831,6 +9565,38 @@ def main(argv: list[str] | None = None) -> int:
         help="control positivo y negativo del modo anterior sobre repositorios git sintéticos",
     )
     parser.add_argument(
+        "--contrato", nargs="?", const=str(RUTA_CONTRATO), metavar="RUTA",
+        help="valida el alcance, las correcciones con su atribución resuelta contra el documento "
+             "fuente, y las decisiones diferidas con su fase (por defecto el documento de contrato "
+             "del repositorio, que todavía no existe: ahí termina con "
+             f"{CODIGO_DOCUMENTO_AUSENTE})",
+    )
+    parser.add_argument(
+        "--autotest-contrato", action="store_true",
+        help="control positivo y negativo del modo --contrato sobre el corpus sintético de "
+             "scripts/fixtures-contrato/",
+    )
+    parser.add_argument(
+        "--ejes", nargs="?", const=str(RUTA_CONTRATO), metavar="RUTA",
+        help="compara los tres ejes del contrato por igualdad exacta contra el inventario "
+             "normativo de literales, con puntero por literal",
+    )
+    parser.add_argument(
+        "--autotest-ejes", action="store_true",
+        help="control positivo y negativo del modo --ejes, con el preludio que resuelve todos los "
+             "punteros del inventario contra el árbol real",
+    )
+    parser.add_argument(
+        "--capacidades", nargs="?", const=str(RUTA_CONTRATO), metavar="RUTA",
+        help="comprueba que toda afirmación de plataforma vaya marcada portable, dependiente con su "
+             "versión comprobada, o no verificable con su motivo",
+    )
+    parser.add_argument(
+        "--autotest-capacidades", action="store_true",
+        help="control positivo y negativo del modo --capacidades, con mutantes unitarios dentro de "
+             "un documento de afirmaciones válidas",
+    )
+    parser.add_argument(
         "--pares-con-fallo", metavar="LISTA", default=None,
         help="los pares autorizados a mostrar `fallo`, separados por comas (por defecto, los que "
              "declaran un caso `clase_esperada: fallo` en scripts/paridad-casos/); solo lo usa "
@@ -7855,7 +9621,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--raiz", metavar="RUTA", default=str(REPO),
         help="raíz contra la que se interpretan las sedes, que son rutas relativas (por defecto, "
-             "este repositorio); solo la usan --anclas y --presupuesto-contractual",
+             "este repositorio); la usan --anclas, --presupuesto-contractual, --contrato (para "
+             "resolver los documentos fuente de las correcciones) y --ejes (para resolver los "
+             "punteros de los literales)",
     )
     parser.add_argument(
         "--salida", metavar="RUTA", default=None,
@@ -7888,6 +9656,12 @@ def main(argv: list[str] | None = None) -> int:
         args.autotest_parear_reporte,
         bool(args.identidad),
         args.autotest_identidad,
+        bool(args.contrato),
+        args.autotest_contrato,
+        bool(args.ejes),
+        args.autotest_ejes,
+        bool(args.capacidades),
+        args.autotest_capacidades,
     ]
     if sum(seleccionados) != 1:
         print("Invocación inválida: exactamente uno de --schema, --autotest-schema, "
@@ -7896,7 +9670,9 @@ def main(argv: list[str] | None = None) -> int:
               "--autotest-procedencia, --anclas, --autotest-anclas, --presupuesto-contractual, "
               "--condiciones, --autotest-condiciones, --cobertura-condiciones, "
               "--autotest-cobertura-condiciones, --claves-perfil, --autotest-claves-perfil, "
-              "--parear-reporte, --autotest-parear-reporte, --identidad o --autotest-identidad.",
+              "--parear-reporte, --autotest-parear-reporte, --identidad, --autotest-identidad, "
+              "--contrato, --autotest-contrato, --ejes, --autotest-ejes, --capacidades o "
+              "--autotest-capacidades.",
               file=sys.stderr)
         return 2
     if args.autotest_schema:
@@ -7938,6 +9714,18 @@ def main(argv: list[str] | None = None) -> int:
         return modo_identidad(Path(args.identidad))
     if args.autotest_identidad:
         return modo_autotest_identidad()
+    if args.contrato:
+        return modo_contrato(Path(args.contrato), Path(args.raiz))
+    if args.autotest_contrato:
+        return modo_autotest_contrato()
+    if args.ejes:
+        return modo_ejes(Path(args.ejes), Path(args.raiz))
+    if args.autotest_ejes:
+        return modo_autotest_ejes()
+    if args.capacidades:
+        return modo_capacidades(Path(args.capacidades))
+    if args.autotest_capacidades:
+        return modo_autotest_capacidades()
     escenarios = Path(args.escenarios) if args.escenarios else None
     if args.condiciones:
         return modo_condiciones(Path(args.condiciones), escenarios)
