@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Verifica la matriz de despachos contra su schema cerrado.
 
-Veintiún modos, y por ahora solo veintiuno: los demás del catálogo los construyen otras tasks.
+Veintitrés modos, y por ahora solo veintitrés: los demás del catálogo los construyen otras tasks.
 
 - `--schema [ruta]` — valida la matriz (por defecto `scripts/matriz-despachos.json`) contra
   `scripts/matriz-despachos.schema.json`. Comprueba tres cosas y no una: que el schema sea
@@ -72,6 +72,14 @@ Veintiún modos, y por ahora solo veintiuno: los demás del catálogo los constr
 - `--autotest-parear-reporte` — control positivo y negativo del modo anterior sobre el corpus
   sintético de `scripts/fixtures-matriz/paridad/`, con un mutante **por clase prohibida derivada** y
   el de sustitución que separa la igualdad de identidades de un tope de cantidad.
+- `--identidad [ruta]` — compara la identidad de los puntos contra la **atestación histórica**: el
+  blob de la matriz en el commit congelado en `COMMIT_ATESTACION`. Compara **por punto y no por
+  conjunto** —el intercambio de dos identificadores conserva el conjunto— y su clave de
+  correspondencia es el **sitio** del punto, no su posición ni su identificador. Si la atestación no
+  se puede leer se detiene: **no cae de vuelta a la matriz vigente**.
+- `--autotest-identidad` — control positivo y negativo del modo anterior sobre repositorios git
+  sintéticos, con el caso del intercambio —el que distingue una comparación por punto de una por
+  conjunto— y el que prueba que la precondición no degrada.
 
 Tres reglas de diseño:
 
@@ -119,6 +127,7 @@ Uso: python3 scripts/verificar-matriz-despachos.py --schema [ruta] | --autotest-
                                                   | --autotest-claves-perfil
                                                   | --parear-reporte <ruta|->
                                                   | --autotest-parear-reporte
+                                                  | --identidad [ruta] | --autotest-identidad
 Exit 0 si el modo pasa, 1 si falla, 2 si la invocación es inválida.
 """
 from __future__ import annotations
@@ -131,6 +140,7 @@ import itertools
 import json
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -6993,6 +7003,719 @@ def modo_autotest_parear_reporte() -> int:
 
 
 # ---------------------------------------------------------------------------------------------
+# Identidad de los puntos contra la atestación histórica.
+#
+# **Comparar la matriz contra sí misma no prueba nada.** Todos los demás modos validan contra el
+# estado *vigente*: `--correspondencia` contra el inventario que el árbol declara hoy, `--anclas`
+# contra las sedes que existen hoy. Un renombre a un identificador libre y único los deja a todos en
+# verde, porque después del renombre la matriz sigue siendo internamente coherente y ninguna skill
+# del árbol nombra identificadores. La única referencia que un renombre no puede acomodar es una
+# **anterior e inmutable**: el blob de la matriz en el commit que la atestigua.
+#
+# Cuatro decisiones gobiernan todo lo de abajo.
+#
+# 1. **La referencia se congela como constante: no se deriva y no se pasa por bandera.** Derivarla
+#    —`git log -1 -- <matriz>`, el tag más reciente, `HEAD~1`— la ata al mismo historial que este
+#    modo audita: el commit que renombra el identificador sería justamente el que la derivación
+#    elige, y el modo terminaría comparando la mutación consigo misma. Una bandera `--atestacion`
+#    tiene el defecto simétrico: deja mover la referencia desde la línea de comandos, con lo cual un
+#    verde deja de significar «contra la atestación». El costo asumido es que la constante envejece;
+#    renovarla cuando un acto nuevo congele otra matriz es editar esta línea, que es un acto
+#    deliberado y revisable, y ese es el punto de una atestación. Los parámetros `ref` y `repo` de
+#    las funciones existen para que el autotest corra contra repositorios sintéticos.
+#
+# 2. **La correspondencia punto histórico ↔ punto actual se apoya en el sitio.** Por el
+#    identificador no puede: es justamente lo que se audita, y un renombre parecería una baja más un
+#    alta. Por la posición tampoco: reordenar el arreglo es editorial y pondría los trece puntos en
+#    rojo. El **sitio** —la skill que lo declara y el ancla de invocación que lo señala— sobrevive a
+#    un reordenamiento, es único por punto (lo exige `--completitud` con `ancla_compartida`) y es
+#    independiente del identificador, que es la condición para poder cotejar uno contra el otro.
+#
+# 3. **El corte: identificador, skill y ancla. Nada más.** La etiqueta queda afuera porque AC-5 y
+#    AC-6 la declaran editorial. Y **todas las demás hojas también** —señales de detección, rol,
+#    permisos, condición de existencia, presupuesto—: su autoridad es el árbol vigente y ya tienen
+#    dueño, `--correspondencia` las re-deriva del inventario y `--anclas` las resuelve contra su
+#    sede. Congelarlas contra un blob viejo pondría este modo en rojo cada vez que alguien reescribe
+#    una frase de una skill, y duplicaría un criterio que ya se verifica en otro lado. Comparar el
+#    blob entero es el extremo de ese error: cualquier cambio legítimo de la matriz lo pondría rojo
+#    y el modo se volvería ruido que se aprende a ignorar.
+#
+# 4. **Toda divergencia de identidad es roja, incluida la legítima.** Un alta, una baja o un punto
+#    que cambia de sitio son rojos aunque el árbol los respalde. Es deliberado: si las altas y las
+#    bajas fueran informativas, renombrar un punto **y** moverlo de sitio en el mismo cambio quedaría
+#    verde —una baja informativa más un alta informativa— y esa es la evasión exacta que este modo
+#    existe para cerrar. El modo no puede distinguir un alta legítima de un renombre camuflado y
+#    fingir que sí abriría el hueco. Limpiar ese rojo es renovar la atestación, que vuelve a ser un
+#    acto deliberado.
+# ---------------------------------------------------------------------------------------------
+
+# El commit del acto 2: el estado en que la matriz alcanza sus 256 hojas resolviendo. Sha completo y
+# no abreviado, porque una abreviatura puede volverse ambigua a medida que el historial crece y
+# resolvería a otro objeto sin que nadie lo note.
+COMMIT_ATESTACION = "5e20a35a57b7f23223243b541423d49ec5b26e82"
+
+# La ruta dentro del commit se **deriva** de la ruta de la matriz: transcribirla dejaría dos lugares
+# diciendo lo mismo, y uno de los dos envejecería.
+RUTA_EN_ATESTACION = RUTA_MATRIZ.relative_to(REPO).as_posix()
+
+PATRON_SHA_COMPLETO = re.compile(r"^[0-9a-f]{40}$")
+
+# Cómo se nombra cada lado en el `donde` de un problema. Sin esto, `matriz_no_objeto` en la
+# atestación y en la matriz vigente serían indistinguibles en el reporte.
+LADO_VIGENTE = "matriz"
+LADO_HISTORICO = "atestación"
+
+# Los tres modos de fallar de la precondición. Van juntos porque comparten una consecuencia: cuando
+# alguno se dispara **no hay veredicto de identidad**, y el modo se detiene en vez de degradar la
+# referencia a la matriz que iba a auditar.
+CODIGOS_DE_ATESTACION = (
+    "atestacion_ilegible",
+    "atestacion_irresoluble",
+    "atestacion_no_inmutable",
+)
+
+CODIGOS_IDENTIDAD = tuple(sorted(CODIGOS_DE_ESTRUCTURA + CODIGOS_DE_ATESTACION + (
+    "id_ausente",
+    "id_duplicado",
+    "id_renombrado",
+    "identidad_intercambiada",
+    "punto_movido",
+    "punto_nuevo",
+    "punto_retirado",
+    "sitio_ausente",
+    "sitio_duplicado",
+)))
+
+
+class Identidad(NamedTuple):
+    """Lo único que este modo compara de un punto. Que sean tres campos y no veinte es el corte
+    declarado arriba, no una simplificación del lector."""
+
+    indice: int
+    identificador: str
+    skill: str
+    ancla: str
+
+    @property
+    def sitio(self) -> tuple[str, str]:
+        return (self.skill, self.ancla)
+
+    @property
+    def sitio_legible(self) -> str:
+        return f"{self.skill} · {self.ancla}"
+
+
+def _lee_git(repo: Path, *args: str) -> tuple[str | None, str]:
+    """La salida de un git de lectura, o `None` y el motivo. No hay ningún comando de escritura acá:
+    el modo audita el historial, no lo toca."""
+    try:
+        proc = subprocess.run(["git", "-C", str(repo), *args], capture_output=True,
+                              encoding="utf-8", errors="replace", check=False)
+    except OSError as exc:
+        return None, f"no se pudo ejecutar git: {exc}"
+    if proc.returncode != 0:
+        detalle = [l for l in (proc.stderr or proc.stdout).strip().splitlines() if l.strip()]
+        return None, detalle[0] if detalle else f"git terminó con código {proc.returncode}"
+    return proc.stdout, ""
+
+
+def leer_atestacion(ref: str, repo: Path) -> tuple[Any, Problema | None]:
+    """La matriz tal como la congeló el commit de la atestación. La precondición de T11 se comprueba
+    acá y antes de nada: si el blob no resuelve, esto devuelve el problema y **nadie construye un
+    sustituto**."""
+    donde = f"{LADO_HISTORICO} `{ref}`"
+    if not PATRON_SHA_COMPLETO.match(ref or ""):
+        return None, Problema(
+            "atestacion_no_inmutable", donde,
+            "la referencia histórica tiene que ser el sha completo de 40 hexadecimales de un "
+            "commit: un nombre simbólico —una rama, `HEAD`, un tag movible— se mueve con el mismo "
+            "cambio que este modo audita, así que no atestigua nada")
+    texto, error = _lee_git(repo, "show", f"{ref}:{RUTA_EN_ATESTACION}")
+    if texto is None:
+        return None, Problema(
+            "atestacion_irresoluble", donde,
+            f"`git show {ref}:{RUTA_EN_ATESTACION}` no resolvió: {error}")
+    try:
+        return json.loads(texto), None
+    except json.JSONDecodeError as exc:
+        return None, Problema("atestacion_ilegible", donde,
+                              f"el blob resolvió pero no es JSON válido: {exc}")
+
+
+def _con_lado(problemas: list[Problema], lado: str) -> list[Problema]:
+    return [Problema(p.codigo, f"{lado} {p.donde}", p.mensaje) for p in problemas]
+
+
+def _identidades(puntos: list[PuntoDeMatriz],
+                 lado: str) -> tuple[dict[str, Identidad], dict[tuple, Identidad], list[Problema]]:
+    """Los dos índices sobre los que se coteja —por identificador y por sitio— y lo que impide
+    construirlos. Un identificador repetido o un sitio repetido dejan la correspondencia ambigua, y
+    emparejar sobre una correspondencia ambigua da un veredicto arbitrario que se parece a uno."""
+    por_id: dict[str, Identidad] = {}
+    por_sitio: dict[tuple, Identidad] = {}
+    problemas: list[Problema] = []
+    for punto in puntos:
+        donde = f"{lado} {punto.donde}"
+        if not _es_cadena_util(punto.identificador):
+            problemas.append(Problema("id_ausente", donde,
+                                      "el punto no declara un identificador utilizable"))
+            continue
+        if not (_es_cadena_util(punto.skill) and _es_cadena_util(punto.ancla)):
+            problemas.append(Problema(
+                "sitio_ausente", donde,
+                f"el punto `{punto.identificador}` no declara su sitio (skill y ancla de "
+                "invocación), que es la clave con la que se lo coteja contra la atestación"))
+            continue
+        identidad = Identidad(punto.indice, punto.identificador.strip(),
+                              punto.skill.strip(), punto.ancla.strip())
+        if identidad.identificador in por_id:
+            problemas.append(Problema(
+                "id_duplicado", donde,
+                f"`{identidad.identificador}` ya lo declara "
+                f"$.puntos[{por_id[identidad.identificador].indice}]"))
+        else:
+            por_id[identidad.identificador] = identidad
+        if identidad.sitio in por_sitio:
+            problemas.append(Problema(
+                "sitio_duplicado", donde,
+                f"el sitio {identidad.sitio_legible} ya lo ocupa "
+                f"`{por_sitio[identidad.sitio].identificador}`: dos puntos en el mismo sitio dejan "
+                "la correspondencia con la atestación sin decidir"))
+        else:
+            por_sitio[identidad.sitio] = identidad
+    return por_id, por_sitio, problemas
+
+
+def _comparar_identidad(vigentes_por_id: dict[str, Identidad],
+                        vigentes_por_sitio: dict[tuple, Identidad],
+                        historicos_por_id: dict[str, Identidad],
+                        historicos_por_sitio: dict[tuple, Identidad]) -> list[Problema]:
+    """El cotejo **punto a punto**, con el sitio como clave.
+
+    Que sea por punto y no por conjunto es lo que separa a este modo de uno inútil:
+    `set(vigentes) == set(historicos)` acepta el cambio de etiqueta y rechaza un identificador
+    nuevo —pasa los dos primeros casos de AC-5— y deja **verde el intercambio**, porque
+    intercambiar dos identificadores conserva el conjunto.
+
+    La distinción entre renombre e intercambio es local y no necesita analizar la permutación
+    entera: si el identificador histórico de este sitio **sigue existiendo** en otro punto, los
+    identificadores se barajaron; si desapareció del todo, el punto se renombró a un nombre fresco.
+    """
+    problemas: list[Problema] = []
+    for sitio, historico in historicos_por_sitio.items():
+        vigente = vigentes_por_sitio.get(sitio)
+        if vigente is None:
+            mudado = vigentes_por_id.get(historico.identificador)
+            if mudado is not None:
+                problemas.append(Problema(
+                    "punto_movido", f"{LADO_HISTORICO} `{historico.identificador}`",
+                    f"el punto estaba en {historico.sitio_legible} y ahora está en "
+                    f"{mudado.sitio_legible}"))
+            else:
+                problemas.append(Problema(
+                    "punto_retirado", f"{LADO_HISTORICO} `{historico.identificador}`",
+                    f"la atestación lo declara en {historico.sitio_legible} y la matriz vigente ya "
+                    "no lo tiene"))
+            continue
+        if vigente.identificador == historico.identificador:
+            continue
+        if historico.identificador in vigentes_por_id:
+            ocupante = vigentes_por_id[historico.identificador]
+            problemas.append(Problema(
+                "identidad_intercambiada", f"{LADO_HISTORICO} `{historico.identificador}`",
+                f"el punto de {historico.sitio_legible} pasó a llamarse "
+                f"`{vigente.identificador}`, y `{historico.identificador}` sigue existiendo en "
+                f"{ocupante.sitio_legible}: el conjunto de identificadores se conserva y la "
+                "asignación no"))
+        else:
+            problemas.append(Problema(
+                "id_renombrado", f"{LADO_HISTORICO} `{historico.identificador}`",
+                f"el punto de {historico.sitio_legible} se llamaba `{historico.identificador}` y "
+                f"ahora se llama `{vigente.identificador}`; el identificador es inmutable y la "
+                "etiqueta es el nombre que sí puede cambiar"))
+    for sitio, vigente in vigentes_por_sitio.items():
+        if sitio in historicos_por_sitio or vigente.identificador in historicos_por_id:
+            continue  # el segundo caso ya se reportó como `punto_movido`
+        problemas.append(Problema(
+            "punto_nuevo", f"{LADO_VIGENTE} `{vigente.identificador}`",
+            f"la matriz lo declara en {vigente.sitio_legible} y la atestación no lo tiene"))
+    return problemas
+
+
+def verificar_identidad(datos: Any, ref: str, repo: Path) -> tuple[list[Problema], dict]:
+    """La identidad de los puntos vigentes contra la atestación, y el resumen de lo que se comparó.
+
+    `comparados` no es decorativo: es la evidencia de que hubo cotejo. Cuando la precondición falla
+    vale 0, y ese cero es lo que distingue detenerse de degradar la referencia a la matriz vigente
+    —que daría un verde por construcción—."""
+    resumen = {"atestacion": ref, "puntos_vigentes": 0, "puntos_historicos": 0, "comparados": 0}
+
+    historicos_crudos, problema = leer_atestacion(ref, repo)
+    if problema is not None:
+        return [problema], resumen
+
+    vigentes, estructura_v = leer_puntos(datos)
+    historicos, estructura_h = leer_puntos(historicos_crudos)
+    resumen["puntos_vigentes"] = len(vigentes)
+    resumen["puntos_historicos"] = len(historicos)
+    estructurales = _con_lado(estructura_v, LADO_VIGENTE) + _con_lado(estructura_h, LADO_HISTORICO)
+    if estructurales:
+        # Una atestación que no se puede leer como matriz **no es una atestación vacía**: seguir
+        # dejaría trece `punto_nuevo` y un rojo que atribuye mal.
+        return estructurales, resumen
+
+    vig_por_id, vig_por_sitio, problemas_v = _identidades(vigentes, LADO_VIGENTE)
+    his_por_id, his_por_sitio, problemas_h = _identidades(historicos, LADO_HISTORICO)
+    if problemas_v or problemas_h:
+        return problemas_v + problemas_h, resumen
+
+    resumen["comparados"] = len(set(his_por_sitio) & set(vig_por_sitio))
+    return _comparar_identidad(vig_por_id, vig_por_sitio, his_por_id, his_por_sitio), resumen
+
+
+def modo_identidad(ruta_matriz: Path) -> int:
+    datos, error = _cargar_json(ruta_matriz)
+    if error:
+        print(f"FALLA  identidad: {error}")
+        return 1
+
+    problemas, resumen = verificar_identidad(datos, COMMIT_ATESTACION, REPO)
+    if problemas and problemas[0].codigo in CODIGOS_DE_ATESTACION:
+        print(f"FALLA  la atestación histórica no se pudo leer: {problemas[0]}")
+        print("       el modo se detiene acá y NO cae de vuelta a la matriz vigente: comparar la "
+              "matriz contra sí misma la deja verde por construcción, que es exactamente lo que "
+              "esta comparación existe para impedir")
+        return 1
+    if problemas:
+        _informar(problemas, f"{ruta_matriz.name} contra la atestación {COMMIT_ATESTACION[:7]}")
+        return 1
+
+    print(f"OK     {resumen['comparados']} puntos cotejados uno a uno contra "
+          f"{COMMIT_ATESTACION[:7]}:{RUTA_EN_ATESTACION}, con el sitio como clave")
+    print("OK     ningún identificador renombrado, intercambiado ni movido de sitio; la etiqueta y "
+          "las demás hojas quedan fuera del corte y pueden cambiar")
+    print()
+    print("RESULTADO: OK")
+    return 0
+
+
+# --- Autotest del modo de identidad -----------------------------------------------------------
+#
+# El corpus es el fixture sintético del inventario: es la única matriz conforme del repo que trae
+# las cinco hojas que este modo lee sobre trece puntos, con anclas únicas y **varios puntos que
+# comparten skill** —lo que hace que el caso del intercambio no sea vacuo: intercambiar dos
+# identificadores dentro de una misma skill solo se detecta si el ancla entra en la
+# correspondencia—. Es sintético a propósito: un fixture copiado de la matriz real haría que el modo
+# y el dato acordaran entre sí.
+#
+# La atestación de cada caso se **commitea en un repositorio git de verdad**, en un directorio
+# temporal. El camino que se ejerce es el mismo que corre en producción —`git show <sha>:<ruta>`— y
+# no una simulación suya: si ese camino se rompiera, un doble de prueba lo taparía. Nada de esto
+# toca el repositorio real ni el árbol de trabajo.
+
+SHA_INEXISTENTE = "d" * 40
+RUTA_AJENA_EN_COMMIT = "scripts/matriz-que-no-es.json"
+
+# Config explícita para que el repositorio sintético no herede la del usuario: una firma gpg
+# obligatoria o un hook de pre-commit harían fallar el commit y el autotest reportaría un rojo que
+# no es del modo.
+CONFIG_GIT_SINTETICO = (
+    "-c", "user.name=autotest",
+    "-c", "user.email=autotest@ejemplo.invalid",
+    "-c", "commit.gpgsign=false",
+    "-c", "core.autocrlf=false",
+)
+
+
+class CasoDeIdentidad(NamedTuple):
+    codigo: str | None       # el problema que el caso tiene que disparar; None = caso conforme
+    descripcion: str
+    mutar_vigente: Any = None      # (datos) -> datos, sobre la matriz que se audita
+    mutar_atestacion: Any = None   # (datos) -> datos, sobre la matriz que se commitea
+    texto_atestacion: Any = None   # texto crudo a commitear, en vez del JSON
+    ruta_en_commit: Any = None     # dónde se commitea, si no es la ruta real
+    ref: Any = None                # la referencia que recibe el modo; None = el sha del commit
+    con_repo: bool = True          # False: el directorio no es un repositorio git
+
+
+def _matriz_de_identidad() -> dict:
+    return json.loads((CONFORME_INVENTARIO / "matriz.json").read_text(encoding="utf-8"))
+
+
+def _dos_del_mismo_skill(datos: dict) -> tuple[int, int]:
+    """Los índices de dos puntos que comparten skill, **derivados** del fixture y no transcritos: el
+    intercambio tiene que ejercer el caso donde la skill no alcanza para distinguirlos, que es donde
+    el ancla es lo único que sostiene la correspondencia."""
+    vistos: dict[str, int] = {}
+    for i, punto in enumerate(datos["puntos"]):
+        skill = punto["skill"]["valor"]
+        if skill in vistos:
+            return vistos[skill], i
+        vistos[skill] = i
+    raise ValueError("el fixture no tiene dos puntos de la misma skill")
+
+
+def _intercambiar_identificadores(datos: dict) -> dict:
+    i, j = _dos_del_mismo_skill(datos)
+    puntos = datos["puntos"]
+    puntos[i]["id"], puntos[j]["id"] = puntos[j]["id"], puntos[i]["id"]
+    return datos
+
+
+def _claves_reordenadas(datos: dict) -> dict:
+    """Un no-op de verdad: las mismas hojas con las claves de cada punto en otro orden. Un modo que
+    compare el texto del blob —o su serialización— se pone rojo acá; uno que compare la propiedad,
+    no. Sin este caso, un rojo del intercambio podría venir de estar comparando cadenas."""
+    datos["puntos"] = [dict(sorted(p.items(), reverse=True)) for p in datos["puntos"]]
+    return datos
+
+
+def _otra_skill(datos: dict) -> str:
+    """Una skill del fixture distinta de la del primer punto: mover el punto a una skill inventada
+    lo dejaría además fuera del inventario, y el caso mediría dos cosas a la vez."""
+    propia = datos["puntos"][0]["skill"]["valor"]
+    return next(p["skill"]["valor"] for p in datos["puntos"] if p["skill"]["valor"] != propia)
+
+
+PUNTO_POSTERIOR_A_LA_ATESTACION = {
+    "id": "skill-omega-recolector-tardio",
+    "etiqueta": "Recolector tardío, agregado después de la atestación",
+    "skill": {"valor": "skill-omega"},
+    "senales_de_deteccion": {"valor": ["recolector tardío"]},
+    "ancla_de_invocacion": {"valor": "skills/skill-omega/SKILL.md#recolector-tardio"},
+}
+
+
+def _casos_de_identidad() -> tuple[CasoDeIdentidad, ...]:
+    """Los casos se construyen tarde —y no como constante de módulo— porque sus mutaciones derivan
+    índices del fixture, y el preludio es el que comprueba que el fixture los tenga."""
+    return (
+        # Los conformes. Los tres últimos son la parte que se paga cara al perderla: ejercen las
+        # variantes legítimas que **más se parecen a un defecto**, que es donde un rechazo
+        # indiscriminado se disfraza mejor de rigor.
+        CasoDeIdentidad(None, "el fixture conforme contra su propia atestación"),
+        CasoDeIdentidad(
+            None, "cambiar únicamente la etiqueta legible: el nombre legible puede cambiar",
+            mutar_vigente=_mutando(
+                lambda d: d["puntos"][0].update({"etiqueta": "Otro rótulo, de otra mano"}))),
+        CasoDeIdentidad(
+            None, "reordenar el arreglo: la correspondencia no se apoya en la posición",
+            mutar_vigente=_mutando(lambda d: d["puntos"].reverse())),
+        CasoDeIdentidad(
+            None, "cambiar las señales de detección: quedan fuera del corte y las verifica "
+                  "--correspondencia contra el árbol vigente",
+            mutar_vigente=_mutando(lambda d: d["puntos"][0]["senales_de_deteccion"].update(
+                {"valor": ["otra frase que la skill dirá mañana"]}))),
+        CasoDeIdentidad(
+            None, "no-op: las mismas hojas con las claves en otro orden", _claves_reordenadas),
+
+        # Los tres casos que AC-5 y V12 nombran. El tercero es el que obliga a comparar por punto.
+        CasoDeIdentidad(
+            "id_renombrado", "cambiar el identificador de un punto por uno libre y único",
+            _mutando(lambda d: d["puntos"][0].update({"id": "skill-alfa-explorador-rebautizado"}))),
+        CasoDeIdentidad(
+            "identidad_intercambiada",
+            "intercambiar los identificadores de dos puntos de la misma skill, conservando el "
+            "conjunto", _intercambiar_identificadores),
+
+        CasoDeIdentidad(
+            "punto_movido", "un punto conserva su identificador y cambia de skill",
+            _mutando(lambda d: d["puntos"][0]["skill"].update({"valor": _otra_skill(d)}))),
+        CasoDeIdentidad(
+            "punto_movido", "un punto conserva su identificador y su skill, y cambia de ancla",
+            _mutando(lambda d: d["puntos"][0]["ancla_de_invocacion"].update(
+                {"valor": "skills/skill-alfa/SKILL.md#otra-seccion"}))),
+        CasoDeIdentidad("punto_retirado", "la matriz vigente pierde un punto",
+                        _mutando(lambda d: d["puntos"].pop(0))),
+        CasoDeIdentidad(
+            "punto_nuevo", "la matriz vigente estrena un punto que la atestación no tiene",
+            _mutando(lambda d: d["puntos"].append(copy.deepcopy(PUNTO_POSTERIOR_A_LA_ATESTACION)))),
+
+        # Lo que impide construir la correspondencia. Se ejercen los dos lados: un defecto en la
+        # atestación no puede leerse como «la atestación no decía nada».
+        CasoDeIdentidad("id_ausente", "un punto vigente se queda sin identificador",
+                        _mutando(lambda d: d["puntos"][0].pop("id"))),
+        CasoDeIdentidad(
+            "id_duplicado", "la atestación trae dos puntos con el mismo identificador",
+            mutar_atestacion=_mutando(
+                lambda d: d["puntos"][1].update({"id": d["puntos"][0]["id"]}))),
+        CasoDeIdentidad("sitio_ausente", "un punto vigente se queda sin skill",
+                        _mutando(lambda d: d["puntos"][0].pop("skill"))),
+        CasoDeIdentidad(
+            "sitio_duplicado", "dos puntos vigentes ocupan el mismo sitio",
+            _mutando(lambda d: d["puntos"][1].update({
+                "skill": copy.deepcopy(d["puntos"][0]["skill"]),
+                "ancla_de_invocacion": copy.deepcopy(d["puntos"][0]["ancla_de_invocacion"])}))),
+        CasoDeIdentidad("matriz_no_objeto", "la matriz vigente deja de ser un objeto",
+                        lambda d: [p["id"] for p in d["puntos"]]),
+        CasoDeIdentidad(
+            "puntos_no_es_arreglo",
+            "la atestación resuelve pero sus `puntos` no son un arreglo: una atestación rota no es "
+            "una atestación vacía", mutar_atestacion=_mutando(lambda d: d.update({"puntos": {}}))),
+        CasoDeIdentidad("punto_no_objeto", "un punto vigente deja de ser un objeto",
+                        _mutando(lambda d: d["puntos"].__setitem__(0, "un punto suelto"))),
+
+        # La precondición. Los cuatro corren con la matriz vigente **sin mutar**, que es lo que los
+        # vuelve el control de la degradación: una implementación que ante una atestación ilegible
+        # cayera de vuelta a la matriz vigente la compararía consigo misma y daría verde.
+        CasoDeIdentidad("atestacion_no_inmutable",
+                        "la referencia es un nombre simbólico y no un sha", ref="HEAD"),
+        CasoDeIdentidad("atestacion_irresoluble",
+                        "el sha tiene la forma correcta y no existe en el repositorio",
+                        ref=SHA_INEXISTENTE),
+        CasoDeIdentidad("atestacion_irresoluble",
+                        "el commit existe y no lleva la matriz en esa ruta",
+                        ruta_en_commit=RUTA_AJENA_EN_COMMIT, ref=SHA_INEXISTENTE),
+        CasoDeIdentidad("atestacion_irresoluble", "el directorio no es un repositorio git",
+                        con_repo=False),
+        CasoDeIdentidad("atestacion_ilegible", "el blob resuelve y no es JSON",
+                        texto_atestacion="{ esto no es una matriz, es una nota\n"),
+    )
+
+
+def _atestacion_sintetica(taller: dict, texto: str, ruta: str,
+                          con_repo: bool) -> tuple[str, Path, str]:
+    """El repositorio con la atestación commiteada, memoizado por contenido: los casos comparten
+    atestación casi siempre y crear un repo por caso multiplicaría el costo sin agregar cobertura."""
+    clave = (texto, ruta, con_repo)
+    if clave in taller["repos"]:
+        return taller["repos"][clave]
+
+    destino = taller["base"] / f"repo-{len(taller['repos'])}"
+    archivo = destino / ruta
+    archivo.parent.mkdir(parents=True, exist_ok=True)
+    archivo.write_text(texto, encoding="utf-8")
+    if not con_repo:
+        # Sin `git init`. La referencia es un sha inexistente además, para que el caso siga siendo
+        # rojo aunque el temporal cayera dentro de un repositorio ajeno.
+        taller["repos"][clave] = (SHA_INEXISTENTE, destino, "")
+        return taller["repos"][clave]
+
+    for orden in (("init", "-q"), ("add", "-f", "--", ruta),
+                  ("commit", "-q", "--no-verify", "-m", "atestación sintética")):
+        _, error = _lee_git(destino, *CONFIG_GIT_SINTETICO, *orden)
+        if error:
+            taller["repos"][clave] = ("", destino, f"`git {orden[0]}` falló: {error}")
+            return taller["repos"][clave]
+    sha, error = _lee_git(destino, "rev-parse", "HEAD")
+    if sha is None:
+        taller["repos"][clave] = ("", destino, f"`git rev-parse` falló: {error}")
+    else:
+        taller["repos"][clave] = (sha.strip(), destino, "")
+    return taller["repos"][clave]
+
+
+def _correr_caso_de_identidad(caso: CasoDeIdentidad,
+                              taller: dict) -> tuple[list[Problema], dict, str]:
+    base = _matriz_de_identidad()
+    historica = caso.mutar_atestacion(copy.deepcopy(base)) if caso.mutar_atestacion else base
+    texto = (caso.texto_atestacion if caso.texto_atestacion is not None
+             else json.dumps(historica, ensure_ascii=False, indent=2) + "\n")
+    sha, repo, error = _atestacion_sintetica(
+        taller, texto, caso.ruta_en_commit or RUTA_EN_ATESTACION, caso.con_repo)
+    if error:
+        return [], {}, error
+
+    vigente = caso.mutar_vigente(copy.deepcopy(base)) if caso.mutar_vigente else base
+    problemas, resumen = verificar_identidad(vigente, caso.ref if caso.ref is not None else sha,
+                                             repo)
+    return problemas, resumen, ""
+
+
+def _preludio_de_identidad() -> list[tuple[str, bool, str]]:
+    """Lo que tiene que valer antes de correr un solo caso: que haya git, que la constante congelada
+    sea inmutable de verdad, y que el fixture tenga las propiedades que los casos suponen. Un
+    fixture con anclas repetidas o sin dos puntos de la misma skill dejaría al caso del intercambio
+    probando menos de lo que dice."""
+    version, error = _lee_git(REPO, "--version")
+    resultados = [("0.git", version is not None,
+                   f"git disponible ({(version or '').strip()})" if version is not None
+                   else f"sin git, y este modo lee el historial con él: {error}")]
+
+    inmutable = bool(PATRON_SHA_COMPLETO.match(COMMIT_ATESTACION))
+    resultados.append((
+        "0.constante", inmutable,
+        f"`COMMIT_ATESTACION` es un sha completo ({COMMIT_ATESTACION[:7]}…) y no un nombre que se "
+        "mueva" if inmutable else
+        f"`COMMIT_ATESTACION` = {COMMIT_ATESTACION!r} no es un sha completo de 40 hexadecimales"))
+
+    if not (CONFORME_INVENTARIO / "matriz.json").is_file():
+        return resultados + [("0.fixture", False,
+                              f"no existe el fixture conforme ({CONFORME_INVENTARIO})")]
+    datos = _matriz_de_identidad()
+    puntos, estructura = leer_puntos(datos)
+    ids = [p.identificador for p in puntos]
+    sitios = [(p.skill, p.ancla) for p in puntos]
+    skills = [p.skill for p in puntos]
+    faltas = []
+    if estructura:
+        faltas.append(str(estructura[0]))
+    if len(puntos) < 2:
+        faltas.append(f"tiene {len(puntos)} puntos y hacen falta al menos dos")
+    if len(set(ids)) != len(ids):
+        faltas.append("tiene identificadores repetidos")
+    if len(set(sitios)) != len(sitios):
+        faltas.append("tiene sitios repetidos y la correspondencia sería ambigua")
+    acompanados = sum(1 for s in skills if skills.count(s) > 1)
+    if not acompanados:
+        faltas.append("no tiene dos puntos de la misma skill, así que el intercambio no ejercería "
+                      "el papel del ancla en la correspondencia")
+    resultados.append((
+        "0.fixture", not faltas,
+        f"el fixture conforme sirve: {len(puntos)} puntos, identificadores y sitios únicos, y "
+        f"{acompanados} de ellos comparten skill con otro"
+        if not faltas else "el fixture no sirve — " + " | ".join(faltas)))
+    return resultados
+
+
+def _bloque_de_identidad(casos: tuple[CasoDeIdentidad, ...],
+                         taller: dict) -> list[tuple[str, bool, str]]:
+    resultados: list[tuple[str, bool, str]] = []
+
+    # [A] El control positivo. Sin él, un modo que rechace toda matriz satisface los veinte mutantes
+    # y cierra en verde sin haber aceptado jamás una identidad intacta.
+    conformes = [c for c in casos if c.codigo is None]
+    fallas: list[str] = []
+    for caso in conformes:
+        problemas, resumen, error = _correr_caso_de_identidad(caso, taller)
+        if error:
+            fallas.append(f"{caso.descripcion} — {error}")
+        elif problemas:
+            fallas.append(f"{caso.descripcion} — {problemas[0]}")
+        elif resumen["comparados"] != resumen["puntos_historicos"]:
+            fallas.append(f"{caso.descripcion} — se cotejaron {resumen['comparados']} de "
+                          f"{resumen['puntos_historicos']} puntos históricos")
+    resultados.append((
+        "A/identidad", not fallas,
+        f"control positivo: los {len(conformes)} casos conformes pasan y cotejan los puntos, no "
+        "los saltean"
+        if not fallas else "control positivo — " + " | ".join(fallas[:3])))
+
+    # [B] Los mutantes, cada uno rechazado **por su motivo**: un rechazo ajeno que se le parece
+    # reportaría una cobertura que no existe.
+    mutantes = [c for c in casos if c.codigo is not None]
+    sobrevivientes: list[str] = []
+    desatribuidos: list[str] = []
+    rotos: list[str] = []
+    emitidos: set[str] = set()
+    for caso in mutantes:
+        problemas, _, error = _correr_caso_de_identidad(caso, taller)
+        if error:
+            rotos.append(f"{caso.codigo}: {caso.descripcion} — {error}")
+            continue
+        codigos = {p.codigo for p in problemas}
+        emitidos |= codigos
+        if not codigos:
+            sobrevivientes.append(f"{caso.codigo}: {caso.descripcion}")
+        elif caso.codigo not in codigos:
+            desatribuidos.append(f"{caso.codigo}: {caso.descripcion} — rechazado por "
+                                 f"{sorted(codigos)} y no por su motivo")
+    problemas_b = ([f"SOBREVIVE {s}" for s in sobrevivientes]
+                   + [f"SIN ATRIBUIR {d}" for d in desatribuidos]
+                   + [f"NO CORRIÓ {r}" for r in rotos])
+    resultados.append((
+        "B/identidad", not problemas_b,
+        f"{len(mutantes)} mutantes y los {len(mutantes)} rechazados por su propio motivo"
+        if not problemas_b else f"{len(problemas_b)} problemas: " + " | ".join(problemas_b[:5])))
+
+    # [C] Un caso por código: un código sin caso es una restricción que nadie comprobó que pueda
+    # ponerse roja, y un código emitido y no catalogado es una que nadie declaró.
+    ejercidos = {c.codigo for c in mutantes}
+    problemas_c = [f"`{c}` está en el catálogo y ningún caso lo ejerce"
+                   for c in CODIGOS_IDENTIDAD if c not in ejercidos]
+    problemas_c += [f"`{c}` lo emite el modo y no está en el catálogo"
+                    for c in sorted((emitidos | ejercidos) - set(CODIGOS_IDENTIDAD))]
+    resultados.append((
+        "C/identidad", not problemas_c,
+        f"los {len(CODIGOS_IDENTIDAD)} códigos del modo tienen su caso"
+        if not problemas_c else f"{len(problemas_c)} huecos: " + " | ".join(problemas_c[:5])))
+    return resultados
+
+
+def _bloque_de_precondicion(casos: tuple[CasoDeIdentidad, ...],
+                            taller: dict) -> list[tuple[str, bool, str]]:
+    """[D] La precondición se detiene y **no degrada**. Que el caso dé rojo no alcanza: hay que
+    mostrar que no hubo cotejo. Una implementación que ante una atestación ilegible cayera de vuelta
+    a la matriz vigente daría rojo igual si además reportara el problema, y estaría comparando la
+    matriz consigo misma."""
+    de_precondicion = [c for c in casos if c.codigo in CODIGOS_DE_ATESTACION]
+    fallas: list[str] = []
+    for caso in de_precondicion:
+        problemas, resumen, error = _correr_caso_de_identidad(caso, taller)
+        codigos = {p.codigo for p in problemas}
+        if error:
+            fallas.append(f"{caso.descripcion} — {error}")
+        elif codigos != {caso.codigo}:
+            fallas.append(f"{caso.descripcion} — emitió {sorted(codigos)} y no solo "
+                          f"`{caso.codigo}`")
+        elif resumen["comparados"] != 0:
+            fallas.append(f"{caso.descripcion} — cotejó {resumen['comparados']} puntos con la "
+                          "precondición fallada: cayó de vuelta a alguna referencia")
+    resultados = [(
+        "D/identidad", not fallas,
+        f"los {len(de_precondicion)} casos de precondición se detienen sin cotejar nada: la "
+        "referencia no se degrada a la matriz vigente"
+        if not fallas else f"{len(fallas)} problemas: " + " | ".join(fallas[:3]))]
+
+    # Y la otra dirección: la precondición sana **sí** cotejó. Sin esto, un modo que devolviera
+    # siempre `comparados: 0` satisfaría el bloque entero.
+    problemas, resumen, error = _correr_caso_de_identidad(
+        CasoDeIdentidad(None, "atestación sana"), taller)
+    sano = not error and not problemas and resumen["comparados"] > 0
+    resultados.append((
+        "D2/identidad", sano,
+        f"y con la atestación sana el cotejo ocurre: {resumen.get('comparados', 0)} puntos"
+        if sano else f"la atestación sana no cotejó: {error or (problemas[0] if problemas else '')}"))
+    return resultados
+
+
+def _bloque_por_punto(taller: dict) -> list[tuple[str, bool, str]]:
+    """[E] Lo que separa una comparación por punto de una por conjunto. No alcanza con que el
+    intercambio dé rojo: hay que **mostrar** que el conjunto de identificadores no cambió, o el caso
+    no distingue las dos implementaciones y su rojo podría venir de cualquier otra cosa."""
+    base = _matriz_de_identidad()
+    intercambiada = _intercambiar_identificadores(copy.deepcopy(base))
+    ids_antes = sorted(p["id"] for p in base["puntos"])
+    ids_despues = sorted(p["id"] for p in intercambiada["puntos"])
+    i, j = _dos_del_mismo_skill(base)
+    misma_skill = base["puntos"][i]["skill"]["valor"] == base["puntos"][j]["skill"]["valor"]
+
+    problemas, _, error = _correr_caso_de_identidad(
+        CasoDeIdentidad("identidad_intercambiada", "intercambio", _intercambiar_identificadores),
+        taller)
+    codigos = {p.codigo for p in problemas}
+
+    return [
+        ("E1/identidad", ids_antes == ids_despues,
+         "el intercambio conserva el conjunto de identificadores: `set(vigentes) == "
+         "set(historicos)` quedaría verde acá"
+         if ids_antes == ids_despues else "el intercambio alteró el conjunto y el caso no "
+                                          "distingue una comparación por punto de una por conjunto"),
+        ("E2/identidad", misma_skill,
+         f"y los dos puntos intercambiados comparten skill (`{base['puntos'][i]['skill']['valor']}`): "
+         "la skill no los distingue y la correspondencia se apoya en el ancla"
+         if misma_skill else "los dos puntos intercambiados no comparten skill"),
+        ("E3/identidad", not error and codigos == {"identidad_intercambiada"},
+         "y aun así el modo se pone rojo y lo atribuye al intercambio"
+         if not error and codigos == {"identidad_intercambiada"} else
+         f"el modo no atribuyó el intercambio: {error or sorted(codigos)}"),
+    ]
+
+
+def modo_autotest_identidad() -> int:
+    resultados = _preludio_de_identidad()
+    if all(ok for _, ok, _ in resultados):
+        with tempfile.TemporaryDirectory() as tmp:
+            taller = {"base": Path(tmp), "repos": {}}
+            casos = _casos_de_identidad()
+            resultados += _bloque_de_identidad(casos, taller)
+            resultados += _bloque_de_precondicion(casos, taller)
+            resultados += _bloque_por_punto(taller)
+    return _cierre("la identidad de los puntos se coteja punto a punto contra un blob anterior e "
+                   "inmutable, y el intercambio de dos identificadores es rojo", resultados)
+
+
+# ---------------------------------------------------------------------------------------------
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -7098,6 +7821,16 @@ def main(argv: list[str] | None = None) -> int:
         help="control positivo y negativo del modo anterior sobre el corpus sintético de reportes",
     )
     parser.add_argument(
+        "--identidad", nargs="?", const=str(RUTA_MATRIZ), metavar="RUTA",
+        help="coteja la identidad de los puntos contra la atestación histórica: el blob de la "
+             f"matriz en el commit {COMMIT_ATESTACION[:7]}. La referencia no se pasa por bandera a "
+             "propósito; ver el bloque de decisiones del modo",
+    )
+    parser.add_argument(
+        "--autotest-identidad", action="store_true",
+        help="control positivo y negativo del modo anterior sobre repositorios git sintéticos",
+    )
+    parser.add_argument(
         "--pares-con-fallo", metavar="LISTA", default=None,
         help="los pares autorizados a mostrar `fallo`, separados por comas (por defecto, los que "
              "declaran un caso `clase_esperada: fallo` en scripts/paridad-casos/); solo lo usa "
@@ -7153,6 +7886,8 @@ def main(argv: list[str] | None = None) -> int:
         args.autotest_claves_perfil,
         bool(args.parear_reporte),
         args.autotest_parear_reporte,
+        bool(args.identidad),
+        args.autotest_identidad,
     ]
     if sum(seleccionados) != 1:
         print("Invocación inválida: exactamente uno de --schema, --autotest-schema, "
@@ -7161,7 +7896,7 @@ def main(argv: list[str] | None = None) -> int:
               "--autotest-procedencia, --anclas, --autotest-anclas, --presupuesto-contractual, "
               "--condiciones, --autotest-condiciones, --cobertura-condiciones, "
               "--autotest-cobertura-condiciones, --claves-perfil, --autotest-claves-perfil, "
-              "--parear-reporte o --autotest-parear-reporte.",
+              "--parear-reporte, --autotest-parear-reporte, --identidad o --autotest-identidad.",
               file=sys.stderr)
         return 2
     if args.autotest_schema:
@@ -7199,6 +7934,10 @@ def main(argv: list[str] | None = None) -> int:
         return modo_parear_reporte(args.parear_reporte, autorizados, args.codigo_de_salida)
     if args.autotest_parear_reporte:
         return modo_autotest_parear_reporte()
+    if args.identidad:
+        return modo_identidad(Path(args.identidad))
+    if args.autotest_identidad:
+        return modo_autotest_identidad()
     escenarios = Path(args.escenarios) if args.escenarios else None
     if args.condiciones:
         return modo_condiciones(Path(args.condiciones), escenarios)
