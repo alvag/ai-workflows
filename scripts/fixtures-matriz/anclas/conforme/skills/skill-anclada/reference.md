@@ -15,8 +15,8 @@ token— y que un resolutor demasiado estricto rechazaría.
 
 | worker | sandbox | contrato |
 |---|---|---|
-| explorador | read-only | skills/skill-anclada/reference.md#contrato-de-salida |
-| refutador | workspace-write | skills/skill-anclada/reference.md#contrato-de-salida |
+| explorador | read-only | skills/skill-anclada/reference.md#formato-del-reporte |
+| refutador | workspace-write | skills/skill-anclada/reference.md#formato-del-reporte |
 
 ## Anclas de invocación
 
@@ -27,3 +27,10 @@ token— y que un resolutor demasiado estricto rechazaría.
 ## Contrato de salida
 
 El explorador entrega un índice compacto y el detalle por hallazgo.
+
+### Formato del reporte
+
+La línea de abajo vive **dos** encabezados adentro: su ancla es la del `###` que la contiene y no
+la del `##` de arriba, y tampoco se puede leer de su propio texto.
+
+STATUS: done | failed

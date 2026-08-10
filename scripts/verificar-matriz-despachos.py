@@ -161,6 +161,7 @@ INVENTARIO_CONGELADO: dict[str, tuple[str, ...]] = {
         'condicion_o',
         'condicion_siempre',
         'condicion_y',
+        'extraccion_ancla_de_seccion',
         'extraccion_captura_de_grupo',
         'extraccion_literal',
         'extraccion_valor_de_clave',
@@ -199,6 +200,7 @@ INVENTARIO_CONGELADO: dict[str, tuple[str, ...]] = {
         'condicion_o.tipo=o',
         'condicion_siempre.tipo=siempre',
         'condicion_y.tipo=y',
+        'extraccion_ancla_de_seccion.tipo=ancla_de_seccion',
         'extraccion_captura_de_grupo.tipo=captura_de_grupo',
         'extraccion_literal.tipo=literal',
         'extraccion_valor_de_clave.tipo=valor_de_clave',
@@ -282,6 +284,7 @@ INVENTARIO_CONGELADO: dict[str, tuple[str, ...]] = {
         'condicion_siempre.tipo',
         'condicion_y.operandos',
         'condicion_y.tipo',
+        'extraccion_ancla_de_seccion.tipo',
         'extraccion_captura_de_grupo.grupo',
         'extraccion_captura_de_grupo.patron',
         'extraccion_captura_de_grupo.tipo',
@@ -3211,39 +3214,37 @@ def _es_separadora(linea: str) -> bool:
     return bool(celdas) and all(PATRON_CELDA_SEPARADORA.fullmatch(c) for c in celdas)
 
 
-def _seleccionar_por_heading(texto: str, selector: dict) -> list[Any]:
-    """El nodo de un `heading_markdown` es el **cuerpo de la sección**, no la línea del título: el
-    schema declara este tipo de sede para «secciones normativas». La sección termina en el próximo
-    heading de nivel menor o igual."""
+class NodoSeleccionado(NamedTuple):
+    """Un nodo con su posición en la sede. La línea la consume `ancla_de_seccion`, la única
+    extracción cuyo resultado depende de **dónde** está el nodo y no solo de qué dice."""
+
+    valor: Any
+    linea: int      # 0-based, la línea de la sede donde el nodo aparece
+
+
+def _seleccionar_por_heading(texto: str, selector: dict) -> list[NodoSeleccionado]:
+    """El nodo de un `heading_markdown` es el **texto del propio encabezado** —sin los `#` ni el
+    espacio que los separa—, no el cuerpo de la sección. Es lo que el schema declara y es lo que
+    hace consistente a este tipo de sede con los otros tres: en todos, el nodo es la unidad más
+    chica que el selector nombra —la celda y no la fila, la línea y no el párrafo, el valor de la
+    ruta y no el documento—, y acá el selector nombra un encabezado."""
     lineas, fuera = texto.splitlines(), _lineas_fuera_de_fence(texto)
     buscado, nivel = selector.get("texto"), selector.get("nivel")
-    nodos: list[Any] = []
-    i = 0
-    while i < len(lineas):
-        m = PATRON_HEADING.match(lineas[i]) if fuera[i] else None
+    nodos: list[NodoSeleccionado] = []
+    for i, linea in enumerate(lineas):
+        m = PATRON_HEADING.match(linea) if fuera[i] else None
         if m and len(m.group(1)) == nivel and m.group(2).strip() == buscado:
-            j = i + 1
-            cuerpo: list[str] = []
-            while j < len(lineas):
-                otro = PATRON_HEADING.match(lineas[j]) if fuera[j] else None
-                if otro and len(otro.group(1)) <= nivel:
-                    break
-                cuerpo.append(lineas[j])
-                j += 1
-            nodos.append("\n".join(cuerpo).strip("\n"))
-            i = j
-            continue
-        i += 1
+            nodos.append(NodoSeleccionado(m.group(2).strip(), i))
     return nodos
 
 
-def _seleccionar_por_fila(texto: str, selector: dict) -> list[Any]:
+def _seleccionar_por_fila(texto: str, selector: dict) -> list[NodoSeleccionado]:
     """La celda de la columna pedida, en cada fila cuya primera celda es la clave. Una tabla que no
     tiene esa columna no aporta nodos: la sede más común del repo tiene la misma clave en varias
     tablas y solo algunas la describen en esa dimensión."""
     lineas, fuera = texto.splitlines(), _lineas_fuera_de_fence(texto)
     clave, columna = selector.get("clave_primera_celda"), selector.get("encabezado_de_columna")
-    nodos: list[Any] = []
+    nodos: list[NodoSeleccionado] = []
     i = 0
     while i < len(lineas) - 1:
         if not (fuera[i] and lineas[i].strip().startswith("|") and _es_separadora(lineas[i + 1])):
@@ -3255,28 +3256,33 @@ def _seleccionar_por_fila(texto: str, selector: dict) -> list[Any]:
         while j < len(lineas) and fuera[j] and lineas[j].strip().startswith("|"):
             celdas = _celdas(lineas[j])
             if indice is not None and celdas and celdas[0] == clave and indice < len(celdas):
-                nodos.append(celdas[indice])
+                nodos.append(NodoSeleccionado(celdas[indice], j))
             j += 1
         i = j
     return nodos
 
 
-def _bloques_cercados(texto: str, lenguaje: str) -> list[str]:
-    bloques: list[str] = []
+def _bloques_cercados(texto: str, lenguaje: str) -> list[tuple[str, int]]:
+    """Cada bloque cercado del lenguaje pedido, con la línea de su fence de apertura. La línea es
+    lo que ancla el bloque a una sección: un documento estructurado embebido no tiene encabezados
+    propios, así que su sección es la del Markdown que lo contiene."""
+    bloques: list[tuple[str, int]] = []
     cerca: str | None = None
     acumulado: list[str] = []
     coincide = False
-    for linea in texto.splitlines():
+    apertura = 0
+    for i, linea in enumerate(texto.splitlines()):
         m = PATRON_FENCE.match(linea)
         if cerca is None:
             if m:
                 cerca = m.group(1)[0] * 3
                 coincide = m.group(2) == lenguaje
                 acumulado = []
+                apertura = i
             continue
         if m and m.group(1).startswith(cerca):
             if coincide:
-                bloques.append("\n".join(acumulado))
+                bloques.append(("\n".join(acumulado), apertura))
             cerca = None
             continue
         acumulado.append(linea)
@@ -3323,35 +3329,38 @@ def _bajar(dato: Any, ruta: Any) -> Any:
     return actual
 
 
-def _seleccionar_por_clave(texto: str, selector: dict) -> tuple[list[Any], str | None]:
+def _seleccionar_por_clave(texto: str, selector: dict) -> tuple[list[NodoSeleccionado], str | None]:
     """Los documentos estructurados de la sede —el archivo entero, o cada bloque cercado del
     lenguaje declarado— y, en cada uno, el valor de la ruta. Cuando ese valor es una **lista**, sus
     elementos son los nodos: una sede genuinamente multivaluada se declara así y no como varios
     documentos."""
     formato = selector.get("formato")
     lenguaje = selector.get("lenguaje_del_bloque")
-    documentos = _bloques_cercados(texto, lenguaje) if isinstance(lenguaje, str) else [texto]
-    nodos: list[Any] = []
-    for bruto in documentos:
+    documentos = (_bloques_cercados(texto, lenguaje) if isinstance(lenguaje, str)
+                  else [(texto, 0)])
+    nodos: list[NodoSeleccionado] = []
+    for bruto, linea in documentos:
         dato, error = _parsear(bruto, formato)
         if error:
             return [], error
         valor = _bajar(dato, selector.get("ruta"))
         if valor is _SIN_VALOR:
             continue
-        nodos.extend(valor) if isinstance(valor, list) else nodos.append(valor)
+        crudos = valor if isinstance(valor, list) else [valor]
+        nodos.extend(NodoSeleccionado(v, linea) for v in crudos)
     return nodos, None
 
 
-def _seleccionar_por_patron(texto: str, selector: dict) -> tuple[list[Any], str | None]:
+def _seleccionar_por_patron(texto: str, selector: dict) -> tuple[list[NodoSeleccionado], str | None]:
     try:
         patron = re.compile(selector.get("patron", ""))
     except re.error as e:
         return [], f"el patrón del selector no compila: {e}"
-    return [linea for linea in texto.splitlines() if patron.search(linea)], None
+    return [NodoSeleccionado(linea, i) for i, linea in enumerate(texto.splitlines())
+            if patron.search(linea)], None
 
 
-def _seleccionar(procedencia: dict, texto: str) -> tuple[list[Any], str | None]:
+def _seleccionar(procedencia: dict, texto: str) -> tuple[list[NodoSeleccionado], str | None]:
     tipo = procedencia.get("tipo_de_sede")
     selector = procedencia.get("selector")
     if not isinstance(selector, dict):
@@ -3383,10 +3392,37 @@ def _texto_de_nodo(nodo: Any) -> str | None:
     return None
 
 
-def _extraer(extraccion: Any, nodo: Any) -> tuple[str | None, str]:
+def _encabezados_de(texto: str) -> list[tuple[int, str]]:
+    """Los encabezados de la sede, en orden de documento, con su línea. Los que viven dentro de un
+    bloque cercado no cuentan: ahí un `##` es texto y no una sección, el mismo criterio que usan la
+    selección por heading y la de filas."""
+    fuera = _lineas_fuera_de_fence(texto)
+    encabezados: list[tuple[int, str]] = []
+    for i, linea in enumerate(texto.splitlines()):
+        m = PATRON_HEADING.match(linea) if fuera[i] else None
+        if m:
+            encabezados.append((i, m.group(2).strip()))
+    return encabezados
+
+
+def _ancla_de_seccion(sede: str, encabezados: list[tuple[int, str]], linea: int) -> str | None:
+    """`<sede>#<slug>` de la sección que contiene al nodo: el encabezado más cercano **en o antes**
+    de su línea, de cualquier nivel. «En o antes» es lo que hace que un `heading_markdown` —cuyo
+    nodo ES el encabezado— quede anclado a su propia sección y no a la anterior.
+
+    El slug lo produce `_slug`, la misma primitiva con la que `--completitud` coteja las anclas
+    contra el árbol. Un segundo slug escrito acá daría dos ortografías del mismo fragmento y los
+    dos modos podrían estar verdes sobre anclas distintas."""
+    titulo = next((t for i, t in reversed(encabezados) if i <= linea), None)
+    return f"{sede}#{_slug(titulo)}" if titulo is not None else None
+
+
+def _extraer(extraccion: Any, nodo: Any, ancla: str | None = None) -> tuple[str | None, str]:
     if not isinstance(extraccion, dict):
         return None, "extraccion_no_declarada"
     tipo = extraccion.get("tipo")
+    if tipo == "ancla_de_seccion":
+        return (ancla, "") if ancla else (None, "ancla_sin_seccion")
     if tipo == "literal":
         texto = _texto_de_nodo(nodo)
         return (texto, "") if texto is not None else (None, "nodo_no_escalar")
@@ -3587,9 +3623,11 @@ def resolver_procedencia(procedencia: dict, raiz: Path) -> Resultado:
                       cardinalidad_observada=observada, sede_resuelta=ruta_sede)
 
     # 3 · extraer  ·  4 · normalizar
+    encabezados = _encabezados_de(texto)
     normalizados: list[str] = []
     for nodo in nodos:
-        texto_nodo, causa = _extraer(procedencia.get("extraccion"), nodo)
+        texto_nodo, causa = _extraer(procedencia.get("extraccion"), nodo.valor,
+                                     _ancla_de_seccion(sede, encabezados, nodo.linea))
         if texto_nodo is None:
             return _falla("conversion_fallida", causa,
                           f"no se pudo extraer el valor de un nodo de `{sede}`",
@@ -4013,6 +4051,30 @@ def _celda_de_perfil_efectivo(raiz: Path) -> None:
                     encoding="utf-8")
 
 
+def _sede_sin_encabezados(raiz: Path) -> None:
+    """La sede pierde todos sus encabezados y conserva todo lo demás. El nodo del contrato de salida
+    sigue estando y sigue siendo el mismo texto: lo que desaparece es la sección que lo contiene, o
+    sea lo único de lo que `ancla_de_seccion` puede sacar el fragmento."""
+    ruta = raiz / "skills" / "skill-anclada" / "reference.md"
+    lineas = ruta.read_text(encoding="utf-8").splitlines()
+    ruta.write_text("\n".join(l for l in lineas if not PATRON_HEADING.match(l)) + "\n",
+                    encoding="utf-8")
+
+
+# La procedencia que el ancla de invocación tenía antes de derivarse: la misma ancla, transcrita a
+# mano en una celda de la sede. Sostiene el caso conforme que impide que `conversion: referencia`
+# quede ejercida solo contra cadenas que este mismo resolutor fabrica.
+PROCEDENCIA_ANCLA_TRANSCRITA = {
+    "sede": "skills/skill-anclada/reference.md",
+    "tipo_de_sede": "fila_de_tabla_markdown",
+    "selector": {"clave_primera_celda": "explorador", "encabezado_de_columna": "ancla"},
+    "cardinalidad": {"tipo": "exactamente_una"},
+    "extraccion": {"tipo": "literal"},
+    "normalizacion": "trim",
+    "conversion": "referencia",
+}
+
+
 CASOS_PROCEDENCIA = (
     CasoDeAncla(None, "el fixture conforme: toda hoja con su procedencia y una ausencia legítima",
                 None, None, 1),
@@ -4081,6 +4143,11 @@ CASOS_ANCLAS = (
     CasoDeAncla(None, "el fixture conforme resuelve entero, incluida la hoja de dos nodos que "
                       "declara `exactamente_n` n=2 y colapsa a valor único porque coinciden",
                 None, None, None),
+    CasoDeAncla(None, "el ancla de invocación leída de la celda que la transcribe da el mismo valor "
+                      "que la construida con `ancla_de_seccion`: sin este caso, `referencia` solo "
+                      "quedaría ejercida contra cadenas que este resolutor fabrica",
+                _mutando(lambda d: d["puntos"][0]["ancla_de_invocacion"].__setitem__(
+                    "procedencia", copy.deepcopy(PROCEDENCIA_ANCLA_TRANSCRITA))), None, None),
     CasoDeAncla("sede_inexistente", "una hoja se ancla en un archivo que no está en el árbol",
                 _mutando(lambda d: _proc(d, "dueno").__setitem__(
                     "sede", "skills/skill-anclada/inexistente.md")), None, None),
@@ -4121,9 +4188,15 @@ CASOS_ANCLAS = (
     CasoDeAncla("conversion_fallida", "booleano: la clave extraída deja de ser un booleano",
                 _mutando(lambda d: _proc(d, "requiere_confirmacion_del_usuario")[
                     "extraccion"].__setitem__("clave", ["gate"])), None, None),
-    CasoDeAncla("conversion_fallida", "referencia: el contrato de salida apunta a una celda con espacios",
-                _mutando(lambda d: _proc(d, "contrato_de_salida")["selector"].__setitem__(
-                    "encabezado_de_columna", "familia")), None, None),
+    CasoDeAncla("conversion_fallida",
+                "referencia: el contrato de salida extrae la línea en vez de su ancla, y la línea "
+                "tiene espacios — `ancla_de_seccion` y `literal` no son intercambiables",
+                _mutando(lambda d: _proc(d, "contrato_de_salida").__setitem__(
+                    "extraccion", {"tipo": "literal"})), None, None),
+    CasoDeAncla("conversion_fallida",
+                "ancla sin sección: la sede pierde sus encabezados y el nodo deja de estar "
+                "contenido en ninguno, así que no hay fragmento que construir",
+                None, _sede_sin_encabezados, None),
     CasoDeAncla("conversion_fallida", "la extracción por captura no casa con el nodo seleccionado",
                 _mutando(lambda d: _proc(d, "skill")["extraccion"].__setitem__(
                     "patron", "^nombre: (.+)$")), None, None),

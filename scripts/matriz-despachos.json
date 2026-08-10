@@ -62,7 +62,7 @@
             "tipo": "exactamente_una"
           },
           "extraccion": {
-            "tipo": "literal"
+            "tipo": "ancla_de_seccion"
           },
           "normalizacion": "ninguna",
           "conversion": "referencia"
@@ -372,7 +372,7 @@
             "tipo": "exactamente_una"
           },
           "extraccion": {
-            "tipo": "literal"
+            "tipo": "ancla_de_seccion"
           },
           "normalizacion": "ninguna",
           "conversion": "referencia"
@@ -467,7 +467,7 @@
             "tipo": "exactamente_una"
           },
           "extraccion": {
-            "tipo": "literal"
+            "tipo": "ancla_de_seccion"
           },
           "normalizacion": "trim",
           "conversion": "referencia"
@@ -712,7 +712,7 @@
             "tipo": "exactamente_una"
           },
           "extraccion": {
-            "tipo": "literal"
+            "tipo": "ancla_de_seccion"
           },
           "normalizacion": "ninguna",
           "conversion": "referencia"
@@ -836,7 +836,7 @@
             "colapso": "unico_si_iguales"
           },
           "extraccion": {
-            "tipo": "literal"
+            "tipo": "ancla_de_seccion"
           },
           "normalizacion": "trim",
           "conversion": "referencia"
@@ -1078,7 +1078,7 @@
             "tipo": "exactamente_una"
           },
           "extraccion": {
-            "tipo": "literal"
+            "tipo": "ancla_de_seccion"
           },
           "normalizacion": "ninguna",
           "conversion": "referencia"
@@ -1203,7 +1203,7 @@
             "colapso": "unico_si_iguales"
           },
           "extraccion": {
-            "tipo": "literal"
+            "tipo": "ancla_de_seccion"
           },
           "normalizacion": "trim",
           "conversion": "referencia"
@@ -1462,7 +1462,7 @@
             "tipo": "exactamente_una"
           },
           "extraccion": {
-            "tipo": "literal"
+            "tipo": "ancla_de_seccion"
           },
           "normalizacion": "ninguna",
           "conversion": "referencia"
@@ -1557,7 +1557,7 @@
             "tipo": "exactamente_una"
           },
           "extraccion": {
-            "tipo": "literal"
+            "tipo": "ancla_de_seccion"
           },
           "normalizacion": "ninguna",
           "conversion": "referencia"
@@ -1861,7 +1861,7 @@
             "tipo": "exactamente_una"
           },
           "extraccion": {
-            "tipo": "literal"
+            "tipo": "ancla_de_seccion"
           },
           "normalizacion": "ninguna",
           "conversion": "referencia"
@@ -1981,7 +1981,7 @@
             "tipo": "exactamente_una"
           },
           "extraccion": {
-            "tipo": "literal"
+            "tipo": "ancla_de_seccion"
           },
           "normalizacion": "colapsar_espacios",
           "conversion": "referencia"
@@ -2224,7 +2224,7 @@
             "tipo": "exactamente_una"
           },
           "extraccion": {
-            "tipo": "literal"
+            "tipo": "ancla_de_seccion"
           },
           "normalizacion": "ninguna",
           "conversion": "referencia"
@@ -2328,7 +2328,7 @@
             "tipo": "exactamente_una"
           },
           "extraccion": {
-            "tipo": "literal"
+            "tipo": "ancla_de_seccion"
           },
           "normalizacion": "ninguna",
           "conversion": "referencia"
@@ -2685,7 +2685,7 @@
             "tipo": "exactamente_una"
           },
           "extraccion": {
-            "tipo": "literal"
+            "tipo": "ancla_de_seccion"
           },
           "normalizacion": "ninguna",
           "conversion": "referencia"
@@ -2813,7 +2813,7 @@
             "tipo": "exactamente_una"
           },
           "extraccion": {
-            "tipo": "literal"
+            "tipo": "ancla_de_seccion"
           },
           "normalizacion": "ninguna",
           "conversion": "referencia"
@@ -3128,7 +3128,7 @@
             "tipo": "exactamente_una"
           },
           "extraccion": {
-            "tipo": "literal"
+            "tipo": "ancla_de_seccion"
           },
           "normalizacion": "ninguna",
           "conversion": "referencia"
@@ -3222,7 +3222,7 @@
             "tipo": "exactamente_una"
           },
           "extraccion": {
-            "tipo": "literal"
+            "tipo": "ancla_de_seccion"
           },
           "normalizacion": "ninguna",
           "conversion": "referencia"
@@ -3465,7 +3465,7 @@
             "tipo": "exactamente_una"
           },
           "extraccion": {
-            "tipo": "literal"
+            "tipo": "ancla_de_seccion"
           },
           "normalizacion": "ninguna",
           "conversion": "referencia"
@@ -3565,7 +3565,7 @@
             "tipo": "exactamente_una"
           },
           "extraccion": {
-            "tipo": "literal"
+            "tipo": "ancla_de_seccion"
           },
           "normalizacion": "ninguna",
           "conversion": "referencia"
@@ -3808,7 +3808,7 @@
             "tipo": "exactamente_una"
           },
           "extraccion": {
-            "tipo": "literal"
+            "tipo": "ancla_de_seccion"
           },
           "normalizacion": "ninguna",
           "conversion": "referencia"
@@ -3909,7 +3909,7 @@
             "tipo": "exactamente_una"
           },
           "extraccion": {
-            "tipo": "literal"
+            "tipo": "ancla_de_seccion"
           },
           "normalizacion": "ninguna",
           "conversion": "referencia"
@@ -4183,7 +4183,7 @@
             "tipo": "exactamente_una"
           },
           "extraccion": {
-            "tipo": "literal"
+            "tipo": "ancla_de_seccion"
           },
           "normalizacion": "ninguna",
           "conversion": "referencia"
@@ -4406,7 +4406,7 @@
             "tipo": "exactamente_una"
           },
           "extraccion": {
-            "tipo": "literal"
+            "tipo": "ancla_de_seccion"
           },
           "normalizacion": "ninguna",
           "conversion": "referencia"
@@ -4649,7 +4649,7 @@
             "tipo": "exactamente_una"
           },
           "extraccion": {
-            "tipo": "literal"
+            "tipo": "ancla_de_seccion"
           },
           "normalizacion": "ninguna",
           "conversion": "referencia"
@@ -4745,7 +4745,7 @@
             "tipo": "exactamente_una"
           },
           "extraccion": {
-            "tipo": "literal"
+            "tipo": "ancla_de_seccion"
           },
           "normalizacion": "trim",
           "conversion": "referencia"

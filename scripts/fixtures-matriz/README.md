@@ -51,6 +51,22 @@ textos difieren en mayúsculas, que la normalización borra), y `modos` cambia s
 convertir (el orden de los textos no es el de sus tokens). Editarlos sin correr `--autotest-anclas`
 es la forma más rápida de perder esa cobertura.
 
+Otras tres hojas fijan **qué es el nodo de un `heading_markdown`** y **de dónde sale el ancla
+`<sede>#<slug>`**, que son dos cosas que el schema declara y que sin caso positivo quedarían
+declaradas y no ejercidas. Cada una se pone roja ante una lectura distinta, y por eso son tres y no
+una:
+
+| Hoja | Qué fija | Qué la pone roja |
+|---|---|---|
+| `dueno` | el nodo de un `heading_markdown` es el **texto del encabezado**: el dato vive en el propio título y la captura está anclada con `^…$` | leer el cuerpo de la sección: la captura no casa contra un cuerpo |
+| `ancla_de_invocacion` | `ancla_de_seccion` sobre un heading toma **su propia** sección | tomar el encabezado estrictamente anterior: resuelve a la sección de arriba |
+| `contrato_de_salida` | `ancla_de_seccion` sobre una línea toma el encabezado **más cercano, de cualquier nivel** — la línea vive dentro de un `###` anidado en un `##` | armar el fragmento con el texto del nodo en vez de con su posición |
+
+El segundo caso conforme lee esa misma ancla de la **celda que la transcribe** en `reference.md` y
+exige el mismo valor. Sin él, `conversion: referencia` quedaría ejercida solo contra cadenas que el
+propio resolutor fabrica —un corpus verde de autoría propia—, y además nada compararía la ancla
+construida contra una escrita a mano.
+
 ## `condiciones/` — el fixture de las condiciones de existencia
 
 `condiciones/conforme/` es una **matriz con sus escenarios**: `matriz.json` y su hermano

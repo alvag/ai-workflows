@@ -35,7 +35,7 @@
           "tipo_de_sede": "heading_markdown",
           "selector": {"texto": "implement — modo subagent", "nivel": 3},
           "cardinalidad": {"tipo": "exactamente_una"},
-          "extraccion": {"tipo": "literal"},
+          "extraccion": {"tipo": "ancla_de_seccion"},
           "normalizacion": "ninguna",
           "conversion": "referencia"
         }

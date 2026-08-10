@@ -31,12 +31,12 @@
       "ancla_de_invocacion": {
         "valor": "skills/skill-anclada/SKILL.md#como-se-despacha",
         "procedencia": {
-          "sede": "skills/skill-anclada/reference.md",
-          "tipo_de_sede": "fila_de_tabla_markdown",
-          "selector": {"clave_primera_celda": "explorador", "encabezado_de_columna": "ancla"},
+          "sede": "skills/skill-anclada/SKILL.md",
+          "tipo_de_sede": "heading_markdown",
+          "selector": {"texto": "Cómo se despacha", "nivel": 2},
           "cardinalidad": {"tipo": "exactamente_una"},
-          "extraccion": {"tipo": "literal"},
-          "normalizacion": "trim",
+          "extraccion": {"tipo": "ancla_de_seccion"},
+          "normalizacion": "ninguna",
           "conversion": "referencia"
         }
       },
@@ -123,14 +123,14 @@
         }
       },
       "contrato_de_salida": {
-        "valor": "skills/skill-anclada/reference.md#contrato-de-salida",
+        "valor": "skills/skill-anclada/reference.md#formato-del-reporte",
         "procedencia": {
           "sede": "skills/skill-anclada/reference.md",
-          "tipo_de_sede": "fila_de_tabla_markdown",
-          "selector": {"clave_primera_celda": "explorador", "encabezado_de_columna": "contrato"},
+          "tipo_de_sede": "patron_de_linea",
+          "selector": {"patron": "^STATUS: done \\| failed$"},
           "cardinalidad": {"tipo": "exactamente_una"},
-          "extraccion": {"tipo": "literal"},
-          "normalizacion": "trim",
+          "extraccion": {"tipo": "ancla_de_seccion"},
+          "normalizacion": "ninguna",
           "conversion": "referencia"
         }
       },
@@ -163,9 +163,9 @@
         "procedencia": {
           "sede": "skills/skill-anclada/SKILL.md",
           "tipo_de_sede": "heading_markdown",
-          "selector": {"texto": "Dueño del despacho", "nivel": 2},
+          "selector": {"texto": "Dueño del despacho: el conductor de skill-anclada", "nivel": 2},
           "cardinalidad": {"tipo": "exactamente_una"},
-          "extraccion": {"tipo": "literal"},
+          "extraccion": {"tipo": "captura_de_grupo", "patron": "^Dueño del despacho: (.+)$", "grupo": 1},
           "normalizacion": "trim",
           "conversion": "cadena"
         }

@@ -15,9 +15,9 @@ skill: co-explore
 Refutar el plan
 auditar el diff
 
-## Dueño del despacho
+## Dueño del despacho: el conductor de skill-anclada
 
-el conductor de skill-anclada
+El dato vive en el propio encabezado, que es lo que este tipo de sede selecciona.
 
 ## Modos y su nivel de escritura
 
