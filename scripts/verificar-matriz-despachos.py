@@ -187,6 +187,7 @@ INVENTARIO_CONGELADO: dict[str, tuple[str, ...]] = {
         'extraccion_ancla_de_seccion',
         'extraccion_captura_de_grupo',
         'extraccion_literal',
+        'extraccion_presencia_de_clausula',
         'extraccion_valor_de_clave',
         'hoja_booleano',
         'hoja_cadena_anclada',
@@ -226,6 +227,7 @@ INVENTARIO_CONGELADO: dict[str, tuple[str, ...]] = {
         'extraccion_ancla_de_seccion.tipo=ancla_de_seccion',
         'extraccion_captura_de_grupo.tipo=captura_de_grupo',
         'extraccion_literal.tipo=literal',
+        'extraccion_presencia_de_clausula.tipo=presencia_de_clausula',
         'extraccion_valor_de_clave.tipo=valor_de_clave',
         'raiz.version_schema=1.0.0',
     ),
@@ -266,6 +268,7 @@ INVENTARIO_CONGELADO: dict[str, tuple[str, ...]] = {
         'condicion_atomo_comparacion.valor.[].minLength=1',
         'condicion_atomo_comparacion.valor.minLength=1',
         'extraccion_captura_de_grupo.patron.minLength=1',
+        'extraccion_presencia_de_clausula.clausula.minLength=1',
         'hoja_cadena_anclada.valor.minLength=1',
         'hoja_lista_cadena.valor.[].minLength=1',
         'hoja_referencia.valor.minLength=1',
@@ -312,6 +315,8 @@ INVENTARIO_CONGELADO: dict[str, tuple[str, ...]] = {
         'extraccion_captura_de_grupo.patron',
         'extraccion_captura_de_grupo.tipo',
         'extraccion_literal.tipo',
+        'extraccion_presencia_de_clausula.clausula',
+        'extraccion_presencia_de_clausula.tipo',
         'extraccion_valor_de_clave.clave',
         'extraccion_valor_de_clave.tipo',
         'hoja_booleano.procedencia',
@@ -3136,6 +3141,13 @@ ARTEFACTOS_DEL_FLUJO = _artefactos_del_flujo()
 # informe de esta task. Ampliarlo por analogía sería inventar el mapeo que `x-conversiones` existe
 # para no dejar inventar.
 TEXTOS_BOOLEANOS = {"true": True, "false": False}
+
+# El texto que emite `presencia_de_clausula` cuando la cláusula está. **No se escribe a mano**: se
+# deriva de `TEXTOS_BOOLEANOS`, que es quien declara la ortografía que `conversion: booleano` sabe
+# cotejar. Dos ortografías —una acá y otra allá— dejarían la extracción produciendo un texto que su
+# propia conversión no reconoce, y el rojo aparecería lejos de su causa.
+TEXTO_AFIRMATIVO = next(t for t, v in TEXTOS_BOOLEANOS.items() if v is True)
+
 PATRON_ENTERO = re.compile(r"^-?\d+$")
 PATRON_REFERENCIA = re.compile(r"^[A-Za-z0-9._/-]+(#[A-Za-z0-9._-]+)?$")
 
@@ -3465,6 +3477,18 @@ def _extraer(extraccion: Any, nodo: Any, ancla: str | None = None) -> tuple[str 
             return None, "extraccion_grupo_inexistente"
         capturado = m.group(grupo)
         return (capturado, "") if capturado is not None else (None, "extraccion_grupo_vacio")
+    if tipo == "presencia_de_clausula":
+        texto = _texto_de_nodo(nodo)
+        if texto is None:
+            return None, "nodo_no_escalar"
+        clausula = extraccion.get("clausula")
+        if not isinstance(clausula, str) or not clausula:
+            return None, "clausula_no_declarada"
+        # `in` y no `re.search`: la cláusula es literal. Compilarla como patrón dejaría que un `.*`
+        # case cualquier cosa, que es justo la degeneración que este subtipo tiene que impedir.
+        # Se emite el texto afirmativo y nunca el negativo: la ausencia de la cláusula es rojo, no
+        # `false`, porque que la sede no lo diga no es que la sede diga lo contrario.
+        return (TEXTO_AFIRMATIVO, "") if clausula in texto else (None, "clausula_ausente")
     if tipo == "valor_de_clave":
         valor = _bajar(nodo, extraccion.get("clave"))
         if valor is _SIN_VALOR:
@@ -4074,6 +4098,28 @@ def _celda_de_perfil_efectivo(raiz: Path) -> None:
                     encoding="utf-8")
 
 
+def _clausula_borrada_de_la_sede(raiz: Path) -> None:
+    """La sede deja de afirmar el gate y **conserva la línea que el selector nombra**: lo que
+    desaparece es la cláusula, no el nodo. Borrar la línea entera daría `selector_sin_resultado` y
+    probaría el selector, que es lo que este caso justamente no está probando."""
+    ruta = raiz / "skills" / "skill-anclada" / "SKILL.md"
+    texto = ruta.read_text(encoding="utf-8")
+    ruta.write_text(texto.replace("se anuncia y se espera confirmación explícita",
+                                  "cada worker decide por su cuenta"), encoding="utf-8")
+
+
+def _sede_reescrita_alrededor_de_la_clausula(raiz: Path) -> None:
+    """Control no-op: la línea cambia en todo menos en la cláusula. Si esto también se pusiera rojo,
+    `presencia_de_clausula` estaría comparando el texto de la sede —como hace `literal`— y no la
+    presencia, y el rojo del caso de al lado no probaría lo que dice probar."""
+    ruta = raiz / "skills" / "skill-anclada" / "SKILL.md"
+    texto = ruta.read_text(encoding="utf-8")
+    ruta.write_text(
+        texto.replace("se anuncia y se espera confirmación explícita.",
+                      "se anuncia y se espera confirmación explícita, sin excepción, en cada gate."),
+        encoding="utf-8")
+
+
 def _sede_sin_encabezados(raiz: Path) -> None:
     """La sede pierde todos sus encabezados y conserva todo lo demás. El nodo del contrato de salida
     sigue estando y sigue siendo el mismo texto: lo que desaparece es la sección que lo contiene, o
@@ -4096,6 +4142,36 @@ PROCEDENCIA_ANCLA_TRANSCRITA = {
     "normalizacion": "trim",
     "conversion": "referencia",
 }
+
+
+# La procedencia con la que se ejerce `presencia_de_clausula`. **Sustituye** a la hoja booleana del
+# fixture en vez de agregarse: la del fixture resuelve `false` desde una clave que lo dice literal, y
+# esta resuelve `true` desde una sede que afirma el gate sin decir su valor, que es el caso que el
+# subtipo existe para cubrir. Las dos tienen que quedar ejercidas, y por eso la sustitución vive en
+# los casos y no en el fixture.
+PROCEDENCIA_PRESENCIA_DE_CLAUSULA = {
+    "sede": "skills/skill-anclada/SKILL.md",
+    "tipo_de_sede": "patron_de_linea",
+    "selector": {"patron": "^El punto no se despacha solo:"},
+    "cardinalidad": {"tipo": "exactamente_una"},
+    "extraccion": {"tipo": "presencia_de_clausula",
+                   "clausula": "se espera confirmación explícita"},
+    "normalizacion": "colapsar_espacios",
+    "conversion": "booleano",
+}
+
+
+def _por_presencia(datos: dict, clausula: str | None = None, valor: Any = True) -> dict:
+    """La hoja booleana del fixture pasa a resolverse por presencia de cláusula. `clausula` y
+    `valor` se parametrizan porque los mutantes del subtipo se distinguen justamente ahí: uno
+    cambia lo que se busca, otro lo que la matriz declara haber encontrado."""
+    procedencia = copy.deepcopy(PROCEDENCIA_PRESENCIA_DE_CLAUSULA)
+    if clausula is not None:
+        procedencia["extraccion"]["clausula"] = clausula
+    datos["puntos"][0]["requiere_confirmacion_del_usuario"] = {
+        "valor": valor, "procedencia": procedencia,
+    }
+    return datos
 
 
 CASOS_PROCEDENCIA = (
@@ -4223,8 +4299,33 @@ CASOS_ANCLAS = (
     CasoDeAncla("conversion_fallida", "la extracción por captura no casa con el nodo seleccionado",
                 _mutando(lambda d: _proc(d, "skill")["extraccion"].__setitem__(
                     "patron", "^nombre: (.+)$")), None, None),
+    CasoDeAncla(None, "presencia: la sede afirma el gate sin decir su valor y la hoja resuelve "
+                      "`true` por la existencia de la cláusula",
+                _mutando(_por_presencia), None, None),
+    CasoDeAncla(None, "presencia: la línea cambia en todo menos en la cláusula y la hoja sigue "
+                      "verde — el control no-op de que se comprueba la cláusula y no la línea",
+                _mutando(_por_presencia), _sede_reescrita_alrededor_de_la_clausula, None),
+    CasoDeAncla("conversion_fallida",
+                "presencia: la sede deja de decir la cláusula y conserva la línea que el selector "
+                "nombra, así que la hoja ya no puede afirmar lo que afirmaba",
+                _mutando(_por_presencia), _clausula_borrada_de_la_sede, None),
+    CasoDeAncla("conversion_fallida",
+                "presencia: la cláusula declarada no está en el nodo — una cláusula que no casa "
+                "nada NO produce `true`, que es la degeneración a «cualquier texto no vacío»",
+                _mutando(lambda d: _por_presencia(d, clausula="se despacha sin avisar a nadie")),
+                None, None),
+    CasoDeAncla("conversion_fallida",
+                "presencia: la cláusula se escribe como patrón — el `.*` se busca verbatim y no "
+                "comodinea, así que no casa este nodo. Prueba que la cláusula NO se compila; no "
+                "prueba que todo comodín caiga, porque `.*` es texto real en Markdown (`palabra.**`)",
+                _mutando(lambda d: _por_presencia(d, clausula="se espera confirmación.*")),
+                None, None),
     CasoDeAncla("valor_no_coincide", "se sustituye el rol por otro plausible conservando la procedencia",
                 _mutando(lambda d: d["puntos"][0]["rol"].__setitem__("valor", "explorer")), None, None),
+    CasoDeAncla("valor_no_coincide",
+                "presencia: la hoja declara `false` sobre una extracción que solo puede afirmar — "
+                "que el subtipo no exprese el caso simétrico no es prosa, se pone rojo",
+                _mutando(lambda d: _por_presencia(d, valor=False)), None, None),
     CasoDeAncla("valor_no_coincide", "tipo mal declarado: el booleano se declara como el entero 0",
                 _mutando(lambda d: d["puntos"][0]["requiere_confirmacion_del_usuario"].__setitem__(
                     "valor", 0)), None, None),

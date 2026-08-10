@@ -220,14 +220,14 @@
         }
       },
       "requiere_confirmacion_del_usuario": {
-        "valor": false,
+        "valor": true,
         "procedencia": {
           "sede": "skills/sdd-flow/SKILL.md",
           "tipo_de_sede": "patron_de_linea",
-          "selector": {"patron": "^disable-model-invocation: (.+)$"},
+          "selector": {"patron": "^7\\. \\*\\*STOP\\*\\* — escribir ambos"},
           "cardinalidad": {"tipo": "exactamente_una"},
-          "extraccion": {"tipo": "captura_de_grupo", "patron": "^disable-model-invocation: (.+)$", "grupo": 1},
-          "normalizacion": "minusculas",
+          "extraccion": {"tipo": "presencia_de_clausula", "clausula": "escribir ambos **solo tras confirmación**"},
+          "normalizacion": "colapsar_espacios",
           "conversion": "booleano"
         }
       },

@@ -41,3 +41,7 @@ La configuración que enciende el punto:
 co_explore: "on"
 esfuerzo: alto
 ```
+
+## Gate del despacho
+
+El punto no se despacha solo: se anuncia y se espera confirmación explícita.

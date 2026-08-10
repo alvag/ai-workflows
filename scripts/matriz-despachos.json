@@ -1333,9 +1333,8 @@
             "tipo": "exactamente_una"
           },
           "extraccion": {
-            "tipo": "captura_de_grupo",
-            "patron": "(ofrecer en este mismo gate una revisión agregada del diff completo)",
-            "grupo": 1
+            "tipo": "presencia_de_clausula",
+            "clausula": "ofrecer en este mismo gate una revisión agregada del diff completo"
           },
           "normalizacion": "colapsar_espacios",
           "conversion": "booleano"
@@ -2941,9 +2940,8 @@
             "tipo": "exactamente_una"
           },
           "extraccion": {
-            "tipo": "captura_de_grupo",
-            "patron": "^(\"sí\"\\*\\* — nunca corre el debate solo)",
-            "grupo": 1
+            "tipo": "presencia_de_clausula",
+            "clausula": "\"sí\"** — nunca corre el debate solo"
           },
           "normalizacion": "colapsar_espacios",
           "conversion": "booleano"
@@ -4528,9 +4526,8 @@
             "tipo": "exactamente_una"
           },
           "extraccion": {
-            "tipo": "captura_de_grupo",
-            "patron": "(se anuncia y se espera confirmación explícita en cada uno)\\.$",
-            "grupo": 1
+            "tipo": "presencia_de_clausula",
+            "clausula": "se anuncia y se espera confirmación explícita en cada uno"
           },
           "normalizacion": "colapsar_espacios",
           "conversion": "booleano"
@@ -4849,9 +4846,8 @@
             "tipo": "exactamente_una"
           },
           "extraccion": {
-            "tipo": "captura_de_grupo",
-            "patron": "(Sin aprobación no se delega nada)\\.",
-            "grupo": 1
+            "tipo": "presencia_de_clausula",
+            "clausula": "Sin aprobación no se delega nada"
           },
           "normalizacion": "colapsar_espacios",
           "conversion": "booleano"
