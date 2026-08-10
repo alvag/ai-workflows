@@ -256,3 +256,372 @@ python3 scripts/verificar-matriz-despachos.py --capacidades \
 | Los verificadores de este contrato se ejecutan con `python3` y devuelven 0 cuando el documento cumple el modo invocado. | dependiente | Python 3.14.3 | comprobado corriendo `verificar-matriz-despachos.py --contrato` sobre este documento |
 | Las variantes PowerShell de los bloques duplicados del repositorio se comportan igual en el PowerShell 5.1 que Windows trae de fábrica. | no_verificable | — | esta máquina es macOS y el único intérprete instalado es PowerShell 7; ningún runtime disponible expone un 5.1 contra el que comprobarlo, así que la paridad con Windows de fábrica queda sin respaldo |
 | Una cancelación pedida por el conductor detuvo efectivamente el proceso del worker. | no_verificable | — | el transporte no ofrece con qué comprobar el cese, y por eso el vocabulario del eje operativo parte la cancelación en cese confirmado y cese incierto en vez de afirmar el efecto |
+
+## Schema del perfil de ejecución
+
+El **perfil de ejecución** es lo que un punto de despacho le entrega al runtime del worker al
+lanzarlo. Esta sección lo **declara y no lo materializa**: fija su forma, y el esquema de
+configuración de las siete skills sigue sin la clave que lo alojaría. Que siga sin ella no es una
+promesa en prosa. Una guarda recorre las superficies de configuración de `skills/` y falla si
+alguno de los nombres reservados al contenedor aparece ahí:
+
+```sh
+python3 scripts/verificar-matriz-despachos.py --claves-perfil
+```
+
+Esos nombres, y el criterio por el que cada uno se reserva o se admite, viven en
+`scripts/nombres-reservados-perfil.json`, que es la **única fuente** de la forma del contenedor: de
+ahí salen la clave raíz, la ruta de cada componente, los nombres de las dos familias y la lista
+blanca de parámetros. El verificador de esta sección los deriva en lugar de transcribirlos, porque
+dos listas pueden divergir y la que envejeciera sería justo la que decide qué se acepta.
+
+**Hay dos niveles, y confundirlos invierte el criterio.**
+
+**El contenedor es obligatorio y completo.** Sus cinco componentes —versión, perfiles nombrados,
+asignaciones por rol, valor por defecto y familias— van los cinco. A un contenedor al que le falta
+uno no le falta un detalle: no declara un perfil que se pueda resolver.
+
+**El objeto de parámetros de cada perfil lleva lista blanca cerrada, y admite exactamente dos:** el
+**modelo** y el **esfuerzo de razonamiento**. Un perfil entrega esos dos al runtime y nada más.
+
+La lista blanca gobierna **solo el nivel de adentro**. Los cinco componentes del contenedor viven
+**fuera** del objeto de parámetros y ninguno se llama `model` ni `reasoning`, así que la lista no
+los alcanza: aplicársela los rechazaría a los cinco, y quien quisiera pasar la verificación los
+borraría —que es el contenedor incompleto que la regla anterior prohíbe—. Al revés, una clave de
+más colgada del contenedor no infringe este criterio; la misma clave dentro del objeto de
+parámetros de un perfil sí.
+
+**Y es una lista de admitidos, no una de prohibidos.** Un tercer parámetro que no altere
+herramientas, aislamiento, permisos, contrato de salida ni autoridad —una temperatura, por
+ejemplo— también cae, y cae por no estar admitido. Enumerar lo prohibido deja entrar todo lo que
+nadie pensó en prohibir.
+
+**Una asignación elige qué perfil se resuelve, y eso es todo lo que hace.** Nombra un perfil: no
+transporta herramientas, aislamiento, permisos, contrato de salida ni autoridad, ni como hoja del
+perfil que elige ni como objeto puesto donde iría el nombre. Una asignación capaz de alterar
+cualquiera de esos cinco convierte el perfil en una superficie de elevación de privilegios, que es
+lo contrario de lo que declara ser.
+
+El modo `--perfil-schema` comprueba las dos cosas —el contenedor completo y la lista blanca del
+objeto de parámetros— sobre el bloque que sigue:
+
+```sh
+python3 scripts/verificar-matriz-despachos.py --perfil-schema \
+    docs/superpowers/specs/2026-08-09-subagentes-perfiles-fase-0.md
+```
+
+```json
+{
+  "subagents": {
+    "schema_version": 1,
+    "profiles": {
+      "economy": {
+        "codex": {"model": "inherit", "reasoning": "low"},
+        "claude": {"model": "inherit", "reasoning": "low"}
+      },
+      "balanced": {
+        "codex": {"model": "inherit", "reasoning": "medium"},
+        "claude": {"model": "inherit", "reasoning": "medium"}
+      },
+      "deep-review": {
+        "codex": {"model": "inherit", "reasoning": "high"},
+        "claude": {"model": "inherit", "reasoning": "high"}
+      }
+    },
+    "bindings": {
+      "default": "balanced",
+      "roles": {
+        "explorer": "economy",
+        "investigator": "deep-review",
+        "design-reviewer": "deep-review",
+        "bounded-implementer": "balanced",
+        "diff-reviewer": "deep-review"
+      }
+    }
+  }
+}
+```
+
+**El bloque declara la forma con un ejemplar completo, y la forma es lo único que este contrato
+congela.** Un schema que no se puede instanciar tampoco se puede verificar, así que los perfiles
+llevan valores: `inherit` es el valor con el que un perfil declara que no fija modelo, y el
+esfuerzo de razonamiento se escribe con el literal portable de este contrato y no con el nombre
+nativo de ninguna familia. Qué perfil le toca a cada rol **no** queda congelado acá: es la decisión
+de la fase que materialice la superficie de configuración, y hasta entonces el reparto de arriba es
+el ejemplar y no el compromiso.
+
+## Precedencia del perfil de ejecución
+
+Los niveles se recorren en orden y **el primero que resuelve gana**. Lo que sigue no describe la
+precedencia: **es** la precedencia, con el corpus de escenarios contra el que se ejecuta. Cada
+escenario trae la superficie de configuración entera y declara qué tiene que resolver; el modo
+`--perfil-precedencia` corre la resolución y la coteja contra lo declarado, en vez de creerle al
+documento lo que resolvería.
+
+```sh
+python3 scripts/verificar-matriz-despachos.py --perfil-precedencia \
+    docs/superpowers/specs/2026-08-09-subagentes-perfiles-fase-0.md
+```
+
+**Antes que cualquier nivel se evalúa la validez, y falla cerrado.** Tres situaciones resuelven
+**inválidas** y no ignoradas: un perfil declarado que ninguna asignación usa, una asignación que
+nombra un perfil inexistente y una referencia rota —el valor por defecto de la superficie apuntando
+a un perfil que no existe—. Ignorarlas dejaría que una superficie mal escrita resolviera igual que
+una bien escrita, que es la forma en que un error de configuración se vuelve invisible: el despacho
+sale con un perfil que nadie pidió y nada lo dice.
+
+**La ausencia legítima resuelve al perfil default portable, y sus dos escenarios van por separado.**
+No son el mismo caso:
+
+- **(a) sin asignación, habiendo superficie de configuración** — la superficie existe, no asigna
+  perfil para ese rol y tampoco declara un valor por defecto que lo cubra. Es el escenario `P-04`.
+- **(b) sin superficie de configuración alguna** — no hay dónde buscar. Es el escenario `P-05`.
+
+Los dos caen al mismo perfil por **causas distintas**, y el corpus trae un escenario por cada una.
+Un solo caso los confundiría: leídos desde el resultado son indistinguibles, y es la causa la que
+dice si falta una asignación o falta la superficie entera. **El perfil default portable es el que
+declara el contenedor de la sección anterior** —`balanced`— y no uno de la superficie: por eso hay a
+dónde caer incluso cuando no hay superficie.
+
+**Y (a) exige que la superficie no declare su valor por defecto.** Una superficie que sí lo declara
+no produce la ausencia legítima: resuelve un nivel antes, en el valor por defecto de la superficie.
+`P-03` y `P-04` son ese par y se diferencian en **una sola clave**.
+
+**El orden declara los niveles que la precedencia ejecuta**, y cada uno tiene al menos un escenario
+que lo alcanza. Dos candidatos quedaron afuera a propósito: una asignación propia del punto de
+despacho —la precedencia resuelve por rol y esa superficie no existe todavía, así que ningún
+escenario podría alcanzar ese nivel— y el default de la sesión o de la plataforma —que es el suelo
+sobre el que se apoya el perfil default portable, no un nivel por encima de él: el portable siempre
+resuelve antes—. Un nivel que ningún escenario puede alcanzar es una afirmación que ninguna guarda
+puede poner roja; cuando una fase materialice esa superficie, el nivel entra con su escenario.
+
+**Las superficies del corpus son fragmentos y no contenedores completos.** Ejercen la precedencia,
+no el schema: la ausencia legítima (a) necesita justamente una superficie sin valor por defecto, y
+exigirle ahí los cinco componentes volvería inejecutable el escenario que ese requisito existe para
+cubrir. La completitud del contenedor se comprueba en la sección anterior y sobre el contenedor.
+
+```json
+{
+  "niveles": [
+    "override_explicito_del_usuario",
+    "asignacion_por_rol_de_la_superficie",
+    "valor_por_defecto_de_la_superficie",
+    "perfil_default_portable"
+  ],
+  "default_portable": "balanced",
+  "escenarios": [
+    {
+      "id": "P-01",
+      "descripcion": "el usuario fija el perfil de la corrida y su elección gana sobre la superficie",
+      "rol": "explorer",
+      "override": "deep-review",
+      "superficie": {
+        "subagents": {
+          "schema_version": 1,
+          "profiles": {
+            "economy": {
+              "codex": {"model": "inherit", "reasoning": "low"},
+              "claude": {"model": "inherit", "reasoning": "low"}
+            },
+            "deep-review": {
+              "codex": {"model": "inherit", "reasoning": "high"},
+              "claude": {"model": "inherit", "reasoning": "high"}
+            }
+          },
+          "bindings": {
+            "default": "economy",
+            "roles": {
+              "explorer": "economy"
+            }
+          }
+        }
+      },
+      "resolucion_esperada": {
+        "clase": "resuelto",
+        "perfil": "deep-review",
+        "nivel": "override_explicito_del_usuario"
+      }
+    },
+    {
+      "id": "P-02",
+      "descripcion": "la superficie asigna un perfil para el rol que se está resolviendo",
+      "rol": "explorer",
+      "superficie": {
+        "subagents": {
+          "schema_version": 1,
+          "profiles": {
+            "economy": {
+              "codex": {"model": "inherit", "reasoning": "low"},
+              "claude": {"model": "inherit", "reasoning": "low"}
+            },
+            "balanced": {
+              "codex": {"model": "inherit", "reasoning": "medium"},
+              "claude": {"model": "inherit", "reasoning": "medium"}
+            }
+          },
+          "bindings": {
+            "default": "balanced",
+            "roles": {
+              "explorer": "economy"
+            }
+          }
+        }
+      },
+      "resolucion_esperada": {
+        "clase": "resuelto",
+        "perfil": "economy",
+        "nivel": "asignacion_por_rol_de_la_superficie"
+      }
+    },
+    {
+      "id": "P-03",
+      "descripcion": "sin asignación para el rol, la superficie declara su valor por defecto: resuelve un nivel antes que la ausencia legítima",
+      "rol": "explorer",
+      "superficie": {
+        "subagents": {
+          "schema_version": 1,
+          "profiles": {
+            "economy": {
+              "codex": {"model": "inherit", "reasoning": "low"},
+              "claude": {"model": "inherit", "reasoning": "low"}
+            }
+          },
+          "bindings": {
+            "default": "economy",
+            "roles": {
+              "investigator": "economy"
+            }
+          }
+        }
+      },
+      "resolucion_esperada": {
+        "clase": "resuelto",
+        "perfil": "economy",
+        "nivel": "valor_por_defecto_de_la_superficie"
+      }
+    },
+    {
+      "id": "P-04",
+      "descripcion": "ausencia legítima (a): la misma superficie que P-03 sin su valor por defecto, así que nada cubre al rol",
+      "rol": "explorer",
+      "superficie": {
+        "subagents": {
+          "schema_version": 1,
+          "profiles": {
+            "economy": {
+              "codex": {"model": "inherit", "reasoning": "low"},
+              "claude": {"model": "inherit", "reasoning": "low"}
+            }
+          },
+          "bindings": {
+            "roles": {
+              "investigator": "economy"
+            }
+          }
+        }
+      },
+      "resolucion_esperada": {
+        "clase": "resuelto",
+        "perfil": "balanced",
+        "nivel": "perfil_default_portable",
+        "causa": "sin_asignacion_para_el_rol"
+      }
+    },
+    {
+      "id": "P-05",
+      "descripcion": "ausencia legítima (b): el punto no tiene superficie de configuración alguna",
+      "rol": "explorer",
+      "superficie": null,
+      "resolucion_esperada": {
+        "clase": "resuelto",
+        "perfil": "balanced",
+        "nivel": "perfil_default_portable",
+        "causa": "sin_superficie_de_configuracion"
+      }
+    },
+    {
+      "id": "P-06",
+      "descripcion": "un perfil declarado que ninguna asignación y ningún valor por defecto usa",
+      "rol": "explorer",
+      "superficie": {
+        "subagents": {
+          "schema_version": 1,
+          "profiles": {
+            "economy": {
+              "codex": {"model": "inherit", "reasoning": "low"},
+              "claude": {"model": "inherit", "reasoning": "low"}
+            },
+            "deep-review": {
+              "codex": {"model": "inherit", "reasoning": "high"},
+              "claude": {"model": "inherit", "reasoning": "high"}
+            }
+          },
+          "bindings": {
+            "default": "economy",
+            "roles": {
+              "explorer": "economy"
+            }
+          }
+        }
+      },
+      "resolucion_esperada": {
+        "clase": "invalido",
+        "causa": "perfil_sin_uso"
+      }
+    },
+    {
+      "id": "P-07",
+      "descripcion": "una asignación que nombra un perfil que la superficie no declara",
+      "rol": "explorer",
+      "superficie": {
+        "subagents": {
+          "schema_version": 1,
+          "profiles": {
+            "economy": {
+              "codex": {"model": "inherit", "reasoning": "low"},
+              "claude": {"model": "inherit", "reasoning": "low"}
+            }
+          },
+          "bindings": {
+            "default": "economy",
+            "roles": {
+              "explorer": "economy",
+              "diff-reviewer": "turbo"
+            }
+          }
+        }
+      },
+      "resolucion_esperada": {
+        "clase": "invalido",
+        "causa": "asignacion_a_perfil_inexistente"
+      }
+    },
+    {
+      "id": "P-08",
+      "descripcion": "el valor por defecto de la superficie apunta a un perfil que no existe",
+      "rol": "explorer",
+      "superficie": {
+        "subagents": {
+          "schema_version": 1,
+          "profiles": {
+            "economy": {
+              "codex": {"model": "inherit", "reasoning": "low"},
+              "claude": {"model": "inherit", "reasoning": "low"}
+            }
+          },
+          "bindings": {
+            "default": "no-existe",
+            "roles": {
+              "explorer": "economy"
+            }
+          }
+        }
+      },
+      "resolucion_esperada": {
+        "clase": "invalido",
+        "causa": "referencia_rota"
+      }
+    }
+  ]
+}
+```
