@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Verifica la matriz de despachos contra su schema cerrado.
 
-Veintinueve modos, y por ahora solo veintinueve: los demás del catálogo los construyen otras tasks.
+Treinta y nueve modos, y por ahora solo treinta y nueve: los demás del catálogo los construyen
+otras tasks.
 
 - `--schema [ruta]` — valida la matriz (por defecto `scripts/matriz-despachos.json`) contra
   `scripts/matriz-despachos.schema.json`. Comprueba tres cosas y no una: que el schema sea
@@ -101,6 +102,42 @@ Veintinueve modos, y por ahora solo veintinueve: los demás del catálogo los co
 - `--autotest-capacidades` — control positivo y negativo del modo anterior, con mutantes
   **unitarios** dentro de un documento de afirmaciones válidas: el cuantificador de su criterio es
   «toda afirmación», y con el defecto global un verificador de «alguna» quedaría verde.
+- `--perfil-schema [ruta]` — el contenedor del perfil de ejecución: sus **cinco componentes**
+  —versión, perfiles nombrados, asignaciones por rol, valor por defecto y familias— son obligatorios,
+  y lo que lleva **lista blanca cerrada** es el objeto de parámetros de cada perfil, que admite
+  exclusivamente modelo y esfuerzo de razonamiento. Son dos niveles y confundirlos invierte el
+  criterio. La forma del contenedor no se transcribe: se **deriva** de
+  `scripts/nombres-reservados-perfil.json`, que es su única fuente.
+- `--autotest-perfil-schema` — control positivo y negativo del modo anterior, con un mutante por
+  cada una de las cinco clases que una hoja de perfil no puede alterar **más uno que agrega un
+  tercer parámetro de runtime**, que no es ninguna de las cinco: sin él, una lista de prohibidos
+  pasaría por lista blanca.
+- `--perfil-precedencia [ruta]` — **ejecuta** la precedencia declarada contra el corpus de
+  escenarios del contrato y coteja cada resolución contra la que el documento declara. Perfil sin
+  uso, asignación a perfil inexistente y referencia rota resuelven **inválidos**; las dos ausencias
+  legítimas —punto sin asignación habiendo superficie, y punto sin superficie— caen al default
+  portable **por causas distintas**, y las dos son obligatorias.
+- `--autotest-perfil-precedencia` — control positivo y negativo del modo anterior, con el mutante
+  que intercambia las causas de las dos ausencias y los dos que retiran una de las dos.
+- `--roles [ruta]` — los contratos de las **cinco familias de rol** y el mapa de las **trece
+  asignaciones**, que se congelan distinto: las familias se **derivan** de la tabla del roadmap con
+  puntero por literal, y el mapa punto → variante es una **decisión escrita** que se compara por
+  igualdad exacta. Los campos vigentes u observados pasan por `resolver_procedencia`, el mismo
+  verificador semántico que las hojas de la matriz. Con `--raiz` la raíz de esas sedes y con
+  `--arbol` la del árbol contra el que se resuelven los punteros normativos.
+- `--autotest-roles` — control positivo y negativo del modo anterior, con un mutante **por
+  asignación** —trece, cada uno nombrando su propia fila— y las tres sustituciones de entrada,
+  salida y scope que solo el resolutor semántico puede ver.
+- `--diversidad [ruta]` — por intento, las tres identidades y sus relaciones; la topología agregada
+  se **deriva** de esos registros y se coteja contra la declarada; y la regla de evidencia
+  independiente como ejecutable: contar un resultado de una sola familia, o de una sola voz, es rojo.
+- `--autotest-diversidad` — control positivo y negativo del modo anterior, con el fixture cuya
+  topología declarada **contradice sus propios registros** en las dos direcciones.
+- `--defectos [ruta]` — el inventario de defectos: los **seis mínimos comparados por identidad**,
+  cada uno con ubicación, naturaleza y fase. Acepta más y rechaza menos.
+- `--autotest-defectos` — control positivo y negativo del modo anterior, con la sustitución que
+  conserva el total —lo que un `len(defectos) >= 6` no ve— y el séptimo defecto bien formado que
+  tiene que pasar.
 
 Tres reglas de diseño:
 
@@ -152,8 +189,16 @@ Uso: python3 scripts/verificar-matriz-despachos.py --schema [ruta] | --autotest-
                                                   | --contrato [ruta] | --autotest-contrato
                                                   | --ejes [ruta] | --autotest-ejes
                                                   | --capacidades [ruta] | --autotest-capacidades
-Exit 0 si el modo pasa, 1 si falla, 2 si la invocación es inválida, y 3 cuando los tres modos del
-contrato no encuentran el documento: no hay veredicto, y una ausencia no es una conformidad.
+                                                  | --perfil-schema [ruta]
+                                                  | --autotest-perfil-schema
+                                                  | --perfil-precedencia [ruta]
+                                                  | --autotest-perfil-precedencia
+                                                  | --roles [ruta] | --autotest-roles
+                                                  | --diversidad [ruta] | --autotest-diversidad
+                                                  | --defectos [ruta] | --autotest-defectos
+Exit 0 si el modo pasa, 1 si falla, 2 si la invocación es inválida, y 3 cuando los ocho modos que
+leen el documento de contrato no lo encuentran: no hay veredicto, y una ausencia no es una
+conformidad.
 """
 from __future__ import annotations
 
@@ -9449,6 +9494,2401 @@ def modo_autotest_capacidades() -> int:
                    "comprobada o no verificable con su motivo", resultados)
 
 
+# =============================================================================================
+# El perfil de ejecución, las cinco familias de rol, la diversidad y los defectos.
+#
+# Cinco modos de aplicación y sus cinco autotests. Comparten con los tres modos de contrato el
+# documento —el mismo `RUTA_CONTRATO`, el mismo corpus sintético, el mismo `CODIGO_DOCUMENTO_AUSENTE`
+# cuando no existe— y el mismo esqueleto de autotest: `[A]` control positivo, `[B]` un mutante por
+# defecto rechazado por su motivo, `[C]` un caso por código, `[D]` la ausencia en las dos
+# direcciones.
+#
+# **Lo que declaran sus secciones va en bloques `json` cercados y no en tablas**, al revés que las
+# tres secciones de contrato. El motivo es la forma del dato y no el gusto: un contenedor de perfiles
+# es un árbol de tres niveles, una procedencia anclada tiene siete campos y un escenario de
+# precedencia lleva adentro una superficie de configuración entera. Aplanar eso en celdas obligaría a
+# inventar una gramática de celda —separadores, escapes, sub-claves— que ya existe y se llama JSON.
+# =============================================================================================
+
+SLUG_PERFIL_SCHEMA = "schema-del-perfil-de-ejecucion"
+SLUG_PERFIL_PRECEDENCIA = "precedencia-del-perfil-de-ejecucion"
+SLUG_FAMILIAS = "familias-de-rol"
+SLUG_ASIGNACIONES = "asignaciones-de-despacho"
+SLUG_DIVERSIDAD = "politica-de-diversidad"
+SLUG_DEFECTOS = "inventario-de-defectos"
+
+# La sede de la que salen las cinco familias de rol. **Es lo único de esta task que se deriva de una
+# fuente**: el resto —el mapa punto → variante, los seis defectos— son decisiones, y su defensa es
+# estar escritas, no estar apuntadas.
+SEDE_DE_LAS_FAMILIAS = (".plans/doctrina-implementador/roadmap.md"
+                        "#1-que-significa-soportado-por-las-siete-skills")
+
+FAMILIAS_DE_ROL = ("explorer", "investigator", "design-reviewer", "bounded-implementer",
+                   "diff-reviewer")
+
+CAMPOS_DE_FAMILIA = ("entrada", "salida", "scope")
+
+# Los cuatro estados que AC-13 declara. Los dos primeros exigen ancla y valor; `ausente` exige motivo
+# y **no** lleva puntero; `propuesto` exige la fase que lo va a tomar.
+ESTADOS_ANCLADOS = ("vigente", "observado")
+ESTADOS_DE_CAMPO = ESTADOS_ANCLADOS + ("ausente", "propuesto")
+
+PROCEDENCIAS_DE_ASIGNACION = ("puntero", "decision")
+
+
+class Asignacion(NamedTuple):
+    """Una fila del mapa punto → familia → variante."""
+
+    punto: str
+    familia: str
+    variante: str
+    procedencia: str
+
+
+# ---------------------------------------------------------------------------------------------
+# EL MAPA DE LAS TRECE ASIGNACIONES
+#
+# **Congelar un inventario lo vuelve falso cuando el inventario es derivable; este no lo es.** Las
+# cinco familias salen de la tabla del roadmap y por eso no se transcriben: se apuntan. El mapa punto
+# → variante **no está en ninguna fuente**. Medido: esa tabla tiene siete filas, una por skill, con
+# 13 puntos y 12 menciones de rol, y en tres skills no cuadran —`co-explore` enumera 2 puntos y 3
+# roles, `sdd-flow` 4 y 3, `bitbucket-code-review` 2 y 1—. Mapea *skill → roles reusables*, no *punto
+# → variante*: construirlo es decidir.
+#
+# La decisión está tomada y escrita, y esto es su transcripción. Cinco de las trece filas admitían
+# más de una respuesta defendible con el mismo criterio, así que dejar el criterio y no el mapa no
+# alcanzaba: dos agentes frescos habrían producido dos repartos distintos y los dos habrían cerrado
+# su fila.
+#
+# Las ocho filas marcadas `puntero` llevan además la carga de la prueba: el roadmap **nombra** su
+# variante, y el modo resuelve el puntero contra el árbol real y exige encontrarla ahí. Las cinco
+# marcadas `decision` no tienen dónde apuntar, y por eso llevan justificación escrita.
+# ---------------------------------------------------------------------------------------------
+
+MAPA_DE_ASIGNACIONES: tuple[Asignacion, ...] = (
+    Asignacion("co-explore · fan-out dual", "explorer / investigator",
+               "fan-out en modos explore y counter-plan; root-cause en modo investigate",
+               "decision"),
+    Asignacion("co-explore · debate", "design-reviewer", "decision-debate", "puntero"),
+    Asignacion("cross-review · revisor por ronda", "design-reviewer", "artifact-review", "puntero"),
+    Asignacion("cross-implement · implementador inicial", "bounded-implementer", "work-order",
+               "puntero"),
+    Asignacion("cross-implement · fix loop", "bounded-implementer", "fix-round", "decision"),
+    Asignacion("sdd-flow · analyze", "explorer", "codebase-survey", "decision"),
+    Asignacion("sdd-flow · implementer por task", "bounded-implementer", "task", "puntero"),
+    Asignacion("sdd-flow · reviewer por task", "diff-reviewer", "task", "decision"),
+    Asignacion("sdd-flow · revisión final", "diff-reviewer", "final", "decision"),
+    Asignacion("sdd-orchestrator · fan-out por repo", "bounded-implementer", "repo-runner",
+               "puntero"),
+    Asignacion("sdd-pr-feedback · implement delegado", "bounded-implementer", "work-order",
+               "puntero"),
+    Asignacion("bitbucket-code-review · panel", "diff-reviewer", "review", "puntero"),
+    Asignacion("bitbucket-code-review · validador adversarial", "diff-reviewer", "refute",
+               "puntero"),
+)
+
+
+class DefectoMinimo(NamedTuple):
+    identidad: str
+    descripcion: str
+
+
+# ---------------------------------------------------------------------------------------------
+# LOS SEIS DEFECTOS MÍNIMOS
+#
+# Transcritos del criterio que los enumera, uno por uno. **La comparación es por identidad y no por
+# cantidad:** `len(defectos) >= 6` satisface todo lo que se declara acá y a la vez acepta un
+# inventario que cambió uno de los seis por otro. Puede contener más —el mínimo no es un conjunto
+# cerrado— y no menos.
+#
+# Su ubicación, su naturaleza y su fase **no** se congelan: adjudicar dónde vive cada defecto es de
+# la task que materializa el inventario, y fijarlas acá le impondría una adjudicación que su task no
+# tomó. Lo que este modo exige de esos tres campos es que estén y tengan forma.
+# ---------------------------------------------------------------------------------------------
+
+DEFECTOS_MINIMOS: tuple[DefectoMinimo, ...] = (
+    DefectoMinimo("instruccion-del-repositorio-contra-guarda",
+                  "la instrucción del repositorio que contradice el estado de una guarda"),
+    DefectoMinimo("conteo-de-skills-del-manifest",
+                  "la discrepancia entre el número declarado de skills del manifest y su tabla"),
+    DefectoMinimo("frontera-que-nombra-skill-inexistente",
+                  "la regla de fronteras que nombra una skill inexistente"),
+    DefectoMinimo("registro-historico-rechazado-por-su-guarda",
+                  "los archivos del registro histórico que su propia guarda rechaza"),
+    DefectoMinimo("familia-dura-con-override-explicito",
+                  "la regla de familia declarada dura que a la vez admite override explícito"),
+    DefectoMinimo("sede-del-fan-out-vs-prompt",
+                  "la divergencia entre la sede del fan-out por repo y el prompt con que ese "
+                  "fan-out despacha"),
+)
+
+CAMPOS_DE_DEFECTO = ("ubicacion", "naturaleza", "fase")
+
+# Una ubicación es un puntero: ruta relativa, con fragmento o sin él. No se resuelve contra el árbol
+# —ver arriba—, pero «documental» o «en el README» no son ubicaciones.
+PATRON_UBICACION = re.compile(r"^[A-Za-z0-9._][A-Za-z0-9._/-]*(#[A-Za-z0-9._-]+)?$")
+
+FAMILIAS_DE_MODELO = ("claude", "codex")
+
+RELACIONES = ("cross_family", "same_family")
+
+# Las dos causas de ausencia legítima que AC-11 distingue. **Van por separado y las dos son
+# obligatorias**: los dos resuelven al default portable, y un solo caso los confundiría — no es lo
+# mismo un punto sin asignación habiendo superficie que un punto sin superficie alguna.
+CAUSAS_DE_AUSENCIA_LEGITIMA = ("sin_asignacion_para_el_rol", "sin_superficie_de_configuracion")
+
+CAUSAS_DE_INVALIDEZ = ("asignacion_a_perfil_inexistente", "referencia_rota", "perfil_sin_uso")
+
+CLASES_DE_RESOLUCION = ("resuelto", "invalido")
+
+
+CODIGOS_PERFIL_SCHEMA = (
+    "asignacion_no_escalar",
+    "asignaciones_vacias",
+    "bloque_ilegible",
+    "clave_raiz_ausente",
+    "componente_ausente",
+    "default_no_escalar",
+    "familia_desconocida",
+    "parametro_ausente",
+    "parametro_no_admitido",
+    "parametros_no_objeto",
+    "perfil_no_objeto",
+    "perfil_sin_familias",
+    "perfiles_vacios",
+    "schema_ausente",
+)
+
+CODIGOS_PERFIL_PRECEDENCIA = (
+    "bloque_ilegible",
+    "causa_desconocida",
+    "clase_desconocida",
+    "default_portable_ausente",
+    "escenario_de_ausencia_faltante",
+    "escenario_id_duplicado",
+    "escenario_no_objeto",
+    "escenario_sin_resolucion",
+    "escenario_sin_rol",
+    "escenarios_ausentes",
+    "nivel_desconocido",
+    "nivel_duplicado",
+    "niveles_ausentes",
+    "precedencia_ausente",
+    "resolucion_no_coincide",
+    "superficie_no_objeto",
+)
+
+CODIGOS_ROLES = (
+    "asignacion_de_mas",
+    "asignacion_faltante",
+    "asignaciones_ausentes",
+    "ausente_sin_motivo",
+    "autoridad_ausente",
+    "autoridad_por_familia",
+    "bloque_ilegible",
+    "campo_ausente",
+    "campo_sin_procedencia",
+    "campo_sin_valor",
+    "declaracion_de_salida_ausente",
+    "estado_ausente",
+    "estado_desconocido",
+    "familia_ausente_en_la_sede",
+    "familia_de_mas",
+    "familia_duplicada",
+    "familia_faltante",
+    "familia_no_coincide",
+    "familias_ausentes",
+    "forma_de_resultado_ausente",
+    "justificacion_ausente",
+    "procedencia_en_campo_no_anclado",
+    "procedencia_no_coincide",
+    "procedencia_no_resuelve",
+    "propuesto_sin_fase",
+    "punto_duplicado",
+    "puntero_de_familia_ausente",
+    "puntero_de_familia_irresoluble",
+    "puntero_de_variante_ausente",
+    "puntero_de_variante_irresoluble",
+    "salida_compartida_entre_formas_distintas",
+    "valor_no_coincide",
+    "variante_ausente_en_la_sede",
+    "variante_no_coincide",
+)
+
+CODIGOS_DIVERSIDAD = (
+    "bloque_ilegible",
+    "diversidad_ausente",
+    "familia_desconocida",
+    "independencia_negada",
+    "independencia_omitida",
+    "independiente_de_una_sola_familia",
+    "independiente_de_una_sola_voz",
+    "intento_id_duplicado",
+    "intento_no_objeto",
+    "intento_sin_identidad",
+    "intentos_ausentes",
+    "relacion_ausente",
+    "relacion_desconocida",
+    "relacion_no_coincide",
+    "topologia_ausente",
+    "topologia_contradice_registros",
+)
+
+CODIGOS_DEFECTOS = (
+    "bloque_ilegible",
+    "defecto_id_duplicado",
+    "defecto_minimo_faltante",
+    "defecto_no_objeto",
+    "defecto_sin_campo",
+    "defecto_sin_identidad",
+    "defectos_ausentes",
+    "ubicacion_sin_forma",
+)
+
+
+# --- El contenedor del perfil, derivado de la lista de nombres reservados ----------------------
+
+class ContenedorDelPerfil(NamedTuple):
+    """La forma del contenedor, **derivada** de `scripts/nombres-reservados-perfil.json`.
+
+    Esa lista es la única fuente de los nombres del contenedor y ya declara, por entrada, a qué
+    componente pertenece y en qué ruta vive. Transcribir acá `subagents`, `profiles`, `model` o
+    `reasoning` daría dos listas que pueden divergir, y la que envejeciera sería justo la que decide
+    qué se acepta."""
+
+    clave_raiz: str
+    rutas: dict[str, tuple[str, ...]]      # componente → rutas declaradas
+    familias: tuple[str, ...]              # los nombres de familia que la lista declara
+    parametros: tuple[str, ...]            # la lista blanca del objeto de parámetros
+    error: str = ""
+
+    @property
+    def obligatorios(self) -> tuple[str, ...]:
+        """Los cinco componentes del contenedor: todo lo que declara la lista menos el contenedor
+        mismo —que es la clave raíz, no un componente adentro— y menos los parámetros de runtime,
+        que son el nivel **interior** y el único con lista blanca."""
+        return tuple(c for c in COMPONENTES_DEL_CONTENEDOR
+                     if c not in ("contenedor", "parametro_de_runtime") and c in self.rutas)
+
+    def rutas_exigidas(self, componente: str) -> tuple[tuple[str, ...], ...]:
+        """Las rutas **más profundas** que declaran ese componente. `asignaciones_por_rol` aparece
+        dos veces —`subagents.bindings` y `subagents.bindings.roles`— y la que hay que exigir es la
+        de adentro, porque un `bindings` vacío satisface la de afuera. `familias` aparece dos veces
+        a la misma profundidad —una por familia— y ahí son alternativas: alcanza con que una llegue.
+        """
+        candidatas = [tuple(r.split(".")) for r in self.rutas.get(componente, ())]
+        if not candidatas:
+            return ()
+        hondura = max(len(r) for r in candidatas)
+        return tuple(r for r in candidatas if len(r) == hondura)
+
+    def ruta_de(self, componente: str) -> tuple[str, ...]:
+        """La primera de las rutas exigidas. La consumen los recorridos que necesitan **una**:
+        perfiles, asignaciones y valor por defecto tienen exactamente una a su profundidad."""
+        rutas = self.rutas_exigidas(componente)
+        return rutas[0] if rutas else ()
+
+
+_contenedor_cache: ContenedorDelPerfil | None = None
+
+
+def contenedor_del_perfil() -> ContenedorDelPerfil:
+    global _contenedor_cache
+    if _contenedor_cache is not None:
+        return _contenedor_cache
+    datos, error = _cargar_json(RUTA_NOMBRES_RESERVADOS)
+    if error:
+        _contenedor_cache = ContenedorDelPerfil("", {}, (), (), error)
+        return _contenedor_cache
+    rutas: dict[str, list[str]] = {}
+    nombres: dict[str, list[str]] = {}
+    for _, _, entrada in _entradas_de(datos):
+        componente, ruta, nombre = (entrada.get("componente"), entrada.get("ruta"),
+                                    entrada.get("nombre"))
+        if not isinstance(componente, str) or not isinstance(ruta, str):
+            continue
+        rutas.setdefault(componente, []).append(ruta)
+        if isinstance(nombre, str):
+            nombres.setdefault(componente, []).append(nombre)
+    _contenedor_cache = ContenedorDelPerfil(
+        clave_raiz=str(datos.get("clave_raiz") or ""),
+        rutas={c: tuple(v) for c, v in rutas.items()},
+        familias=tuple(sorted(set(nombres.get("familias", ())))),
+        parametros=tuple(sorted(set(nombres.get("parametro_de_runtime", ())))),
+    )
+    return _contenedor_cache
+
+
+def _navegar(nodo: Any, ruta: list[str] | tuple[str, ...]) -> list[tuple[str, Any]]:
+    """Todo (ruta concreta, valor) que la ruta alcanza. Un tramo `<x>` es comodín y se expande sobre
+    las claves que haya: `subagents.profiles.<perfil>.<familia>.model` no nombra perfiles, los
+    recorre."""
+    alcanzados: list[tuple[str, Any]] = [("", nodo)]
+    for tramo in ruta:
+        siguiente: list[tuple[str, Any]] = []
+        for camino, valor in alcanzados:
+            if not isinstance(valor, dict):
+                continue
+            claves = list(valor) if PATRON_COMODIN.match(tramo) else (
+                [tramo] if tramo in valor else [])
+            for clave in claves:
+                siguiente.append((f"{camino}.{clave}" if camino else clave, valor[clave]))
+        alcanzados = siguiente
+    return alcanzados
+
+
+# --- Lectura de los bloques estructurados -----------------------------------------------------
+
+def _bloque_json(texto: str, slug: str) -> tuple[Any, str]:
+    """El primer bloque `json` cercado de la sección, ya parseado. `("", ...)` es un dato válido; el
+    segundo miembro es el motivo cuando no hay dato."""
+    rangos = _rangos_de_secciones(texto)
+    if slug not in rangos:
+        return None, f"el documento no declara la sección `{slug}`"
+    inicio, fin = rangos[slug]
+    for cuerpo, apertura in _bloques_cercados(texto, "json"):
+        if not inicio <= apertura <= fin:
+            continue
+        try:
+            return json.loads(cuerpo), ""
+        except json.JSONDecodeError as exc:
+            return None, f"el bloque `json` de `{slug}` no parsea: {exc}"
+    return None, f"la sección `{slug}` no tiene ningún bloque `json` cercado"
+
+
+def _rango_del_bloque(texto: str, slug: str) -> tuple[int, int] | None:
+    """(primera, última) línea del **contenido** del bloque, sin sus fences. Lo consume el autotest
+    para reescribirlo después de mutarlo."""
+    rangos = _rangos_de_secciones(texto)
+    if slug not in rangos:
+        return None
+    inicio, fin = rangos[slug]
+    for cuerpo, apertura in _bloques_cercados(texto, "json"):
+        if inicio <= apertura <= fin:
+            return apertura + 1, apertura + len(cuerpo.split("\n"))
+    return None
+
+
+def _texto_o_vacio(valor: Any) -> str:
+    return valor.strip() if isinstance(valor, str) else ""
+
+# --- Modo `--perfil-schema` -------------------------------------------------------------------
+
+def verificar_perfil_schema(texto: str) -> tuple[list[Problema], dict]:
+    """El contenedor completo, y la lista blanca **solo** sobre el objeto de parámetros.
+
+    Son dos niveles y confundirlos invierte el criterio. Si la lista blanca se aplicara al
+    contenedor, sus cinco componentes —que no son `model` ni `reasoning`— quedarían rechazados y un
+    agente fresco los omitiría para pasar. Si en cambio el objeto de parámetros enumerara lo
+    prohibido en vez de cerrar lo admitido, entraría todo lo que nadie pensó en prohibir: por eso el
+    tercer parámetro de runtime, que no altera herramientas ni permisos ni nada de las cinco clases,
+    también tiene que caer."""
+    problemas: list[Problema] = []
+    resumen = {"componentes": 0, "perfiles": 0, "objetos_de_parametros": 0, "asignaciones": 0,
+               "parametros": 0}
+    contenedor = contenedor_del_perfil()
+    if contenedor.error:
+        return [Problema("bloque_ilegible", "$",
+                         f"no se pudo derivar la forma del contenedor: {contenedor.error}")], resumen
+
+    datos, motivo = _bloque_json(texto, SLUG_PERFIL_SCHEMA)
+    if motivo:
+        return [Problema("schema_ausente", f"sección `{SLUG_PERFIL_SCHEMA}`", motivo)], resumen
+    if not isinstance(datos, dict):
+        return [Problema("bloque_ilegible", f"sección `{SLUG_PERFIL_SCHEMA}`",
+                         f"el bloque declara `{_nombre_tipo(datos)}` y no un objeto")], resumen
+    if contenedor.clave_raiz not in datos:
+        return [Problema("clave_raiz_ausente", f"sección `{SLUG_PERFIL_SCHEMA}`",
+                         f"el schema no cuelga de `{contenedor.clave_raiz}`, que es la clave raíz "
+                         "que la lista de nombres reservados declara")], resumen
+
+    for componente in contenedor.obligatorios:
+        rutas = contenedor.rutas_exigidas(componente)
+        if any(_navegar(datos, r) for r in rutas):
+            resumen["componentes"] += 1
+            continue
+        problemas.append(Problema(
+            "componente_ausente", f"componente `{componente}`",
+            f"el contenedor no declara {' ni '.join('`' + '.'.join(r) + '`' for r in rutas)}; el "
+            "contenedor **completo** es obligatorio, y la lista blanca gobierna el objeto de "
+            "parámetros de cada perfil, que es otro nivel"))
+
+    perfiles = dict(_navegar(datos, contenedor.ruta_de("perfiles_nombrados")))
+    mapa_de_perfiles = next(iter(perfiles.values()), None)
+    if isinstance(mapa_de_perfiles, dict) and not mapa_de_perfiles:
+        problemas.append(Problema(
+            "perfiles_vacios", "perfiles nombrados",
+            "el mapa de perfiles existe y no declara ninguno: un contenedor sin perfiles satisface "
+            "«todo perfil entrega solo modelo y esfuerzo» por vacuidad"))
+    if isinstance(mapa_de_perfiles, dict):
+        resumen["perfiles"] = len(mapa_de_perfiles)
+        for nombre, perfil in mapa_de_perfiles.items():
+            if not isinstance(perfil, dict):
+                problemas.append(Problema("perfil_no_objeto", f"perfil `{nombre}`",
+                                          f"declara `{_nombre_tipo(perfil)}` y no un objeto de "
+                                          "familias"))
+                continue
+            if not perfil:
+                problemas.append(Problema("perfil_sin_familias", f"perfil `{nombre}`",
+                                          "no declara ninguna familia, así que no entrega "
+                                          "parámetros a ningún runtime"))
+                continue
+            for familia, parametros in perfil.items():
+                donde = f"perfil `{nombre}`, familia `{familia}`"
+                if familia not in contenedor.familias:
+                    problemas.append(Problema(
+                        "familia_desconocida", donde,
+                        f"`{familia}` no es una de las familias que la lista declara "
+                        f"({', '.join('`' + f + '`' for f in contenedor.familias)})"))
+                    continue
+                if not isinstance(parametros, dict):
+                    problemas.append(Problema("parametros_no_objeto", donde,
+                                              f"los parámetros llegaron como "
+                                              f"`{_nombre_tipo(parametros)}`"))
+                    continue
+                resumen["objetos_de_parametros"] += 1
+                for clave in parametros:
+                    if clave in contenedor.parametros:
+                        resumen["parametros"] += 1
+                        continue
+                    problemas.append(Problema(
+                        "parametro_no_admitido", donde,
+                        f"`{clave}` no está en la lista blanca del objeto de parámetros, que admite "
+                        f"exclusivamente {', '.join('`' + p + '`' for p in contenedor.parametros)}. "
+                        "La lista es cerrada y no una lista de prohibidos: enumerar lo prohibido "
+                        "deja entrar todo lo que nadie pensó en prohibir"))
+                for esperado in contenedor.parametros:
+                    if esperado not in parametros:
+                        problemas.append(Problema(
+                            "parametro_ausente", donde,
+                            f"no entrega `{esperado}`, que es uno de los dos parámetros que un "
+                            "perfil sí puede entregar al runtime"))
+
+    for camino, valor in _navegar(datos, contenedor.ruta_de("valor_por_defecto")):
+        if not isinstance(valor, str) or not valor:
+            problemas.append(Problema(
+                "default_no_escalar", f"`{camino}`",
+                f"el valor por defecto llegó como `{_nombre_tipo(valor)}`: nombra un perfil, no lo "
+                "redefine"))
+
+    asignaciones = dict(_navegar(datos, contenedor.ruta_de("asignaciones_por_rol")))
+    mapa_de_roles = next(iter(asignaciones.values()), None)
+    if isinstance(mapa_de_roles, dict):
+        resumen["asignaciones"] = len(mapa_de_roles)
+        if not mapa_de_roles:
+            problemas.append(Problema(
+                "asignaciones_vacias", "asignaciones por rol",
+                "el mapa de rol a perfil existe y está vacío: sin ninguna asignación, la precedencia "
+                "no tiene nada que resolver y el contenedor no cumple su función"))
+        for rol, elegido in mapa_de_roles.items():
+            if isinstance(elegido, str) and elegido:
+                continue
+            problemas.append(Problema(
+                "asignacion_no_escalar", f"asignación del rol `{rol}`",
+                f"declara `{_nombre_tipo(elegido)}` en vez del nombre de un perfil. Una asignación "
+                "puede **seleccionar** qué perfil se resuelve; no transporta herramientas, "
+                "aislamiento, permisos, contrato de salida ni autoridad"))
+    return problemas, resumen
+
+
+# --- Modo `--perfil-precedencia` --------------------------------------------------------------
+
+def _perfiles_de(superficie: dict, contenedor: ContenedorDelPerfil) -> dict:
+    mapa = next((v for _, v in _navegar(superficie, contenedor.ruta_de("perfiles_nombrados"))), {})
+    return mapa if isinstance(mapa, dict) else {}
+
+
+def _roles_de(superficie: dict, contenedor: ContenedorDelPerfil) -> dict:
+    mapa = next((v for _, v in _navegar(superficie, contenedor.ruta_de("asignaciones_por_rol"))), {})
+    return mapa if isinstance(mapa, dict) else {}
+
+
+def _default_de(superficie: dict, contenedor: ContenedorDelPerfil) -> Any:
+    return next((v for _, v in _navegar(superficie, contenedor.ruta_de("valor_por_defecto"))), None)
+
+
+def resolver_precedencia(escenario: dict, default_portable: str,
+                         contenedor: ContenedorDelPerfil) -> dict:
+    """Ejecuta la precedencia sobre un escenario y devuelve la resolución **derivada**.
+
+    Es lo que separa una precedencia declarada de una precedencia que se puede correr: el escenario
+    trae la superficie de configuración entera y este resolutor la recorre nivel por nivel, en vez de
+    creerle al documento lo que resolvería.
+
+    Los tres inválidos van **antes** que cualquier nivel: un perfil sin uso, una asignación a un
+    perfil inexistente y una referencia rota fallan cerrado, no se ignoran. La ausencia legítima —de
+    asignación o de superficie— cae al default portable, y las dos causas se distinguen: no es lo
+    mismo no tener asignación habiendo superficie que no tener superficie."""
+    rol = _texto_o_vacio(escenario.get("rol"))
+    override = escenario.get("override")
+    superficie = escenario.get("superficie")
+
+    if superficie is None:
+        return {"clase": "resuelto", "perfil": default_portable,
+                "nivel": "perfil_default_portable",
+                "causa": "sin_superficie_de_configuracion"}
+
+    perfiles = _perfiles_de(superficie, contenedor)
+    roles = _roles_de(superficie, contenedor)
+    defecto = _default_de(superficie, contenedor)
+
+    huerfanos = set(perfiles)
+    for elegido in roles.values():
+        if isinstance(elegido, str) and elegido not in perfiles:
+            return {"clase": "invalido", "causa": "asignacion_a_perfil_inexistente"}
+        huerfanos.discard(elegido)
+    if isinstance(defecto, str):
+        if defecto not in perfiles:
+            return {"clase": "invalido", "causa": "referencia_rota"}
+        huerfanos.discard(defecto)
+    if isinstance(override, str):
+        huerfanos.discard(override)
+    if huerfanos:
+        return {"clase": "invalido", "causa": "perfil_sin_uso"}
+
+    if isinstance(override, str) and override:
+        if override not in perfiles:
+            return {"clase": "invalido", "causa": "referencia_rota"}
+        return {"clase": "resuelto", "perfil": override,
+                "nivel": "override_explicito_del_usuario"}
+    if rol in roles:
+        return {"clase": "resuelto", "perfil": roles[rol],
+                "nivel": "asignacion_por_rol_de_la_superficie"}
+    if isinstance(defecto, str) and defecto:
+        return {"clase": "resuelto", "perfil": defecto,
+                "nivel": "valor_por_defecto_de_la_superficie"}
+    return {"clase": "resuelto", "perfil": default_portable, "nivel": "perfil_default_portable",
+            "causa": "sin_asignacion_para_el_rol"}
+
+
+def verificar_perfil_precedencia(texto: str) -> tuple[list[Problema], dict]:
+    problemas: list[Problema] = []
+    resumen = {"escenarios": 0, "evaluados": 0, "invalidos": 0, "ausencias_legitimas": 0,
+               "causas_de_ausencia": 0, "niveles": 0}
+    contenedor = contenedor_del_perfil()
+    if contenedor.error:
+        return [Problema("bloque_ilegible", "$", contenedor.error)], resumen
+
+    datos, motivo = _bloque_json(texto, SLUG_PERFIL_PRECEDENCIA)
+    if motivo:
+        return [Problema("precedencia_ausente", f"sección `{SLUG_PERFIL_PRECEDENCIA}`",
+                         motivo)], resumen
+    if not isinstance(datos, dict):
+        return [Problema("bloque_ilegible", f"sección `{SLUG_PERFIL_PRECEDENCIA}`",
+                         f"el bloque declara `{_nombre_tipo(datos)}` y no un objeto")], resumen
+
+    niveles = datos.get("niveles")
+    if not isinstance(niveles, list) or not niveles:
+        problemas.append(Problema(
+            "niveles_ausentes", "precedencia",
+            "no declara sus niveles en orden; sin ellos, «resuelve por precedencia» no dice por cuál"))
+        niveles = []
+    resumen["niveles"] = len(niveles)
+    for nivel in sorted({n for n in niveles if niveles.count(n) > 1}):
+        problemas.append(Problema("nivel_duplicado", "precedencia",
+                                  f"`{nivel}` aparece más de una vez en el orden"))
+
+    default_portable = _texto_o_vacio(datos.get("default_portable"))
+    if not default_portable:
+        problemas.append(Problema(
+            "default_portable_ausente", "precedencia",
+            "no declara el perfil por defecto portable, que es a donde caen las dos ausencias "
+            "legítimas"))
+
+    escenarios = datos.get("escenarios")
+    if not isinstance(escenarios, list) or not escenarios:
+        problemas.append(Problema(
+            "escenarios_ausentes", "precedencia",
+            "no declara ningún escenario: una precedencia sin corpus contra el que correr es prosa"))
+        return problemas, resumen
+    resumen["escenarios"] = len(escenarios)
+
+    vistos: set[str] = set()
+    causas_vistas: set[str] = set()
+    for i, escenario in enumerate(escenarios):
+        if not isinstance(escenario, dict):
+            problemas.append(Problema("escenario_no_objeto", f"escenario {i + 1}",
+                                      f"llegó como `{_nombre_tipo(escenario)}`"))
+            continue
+        ident = _texto_o_vacio(escenario.get("id")) or f"(sin id, {i + 1})"
+        donde = f"escenario `{ident}`"
+        if ident in vistos:
+            problemas.append(Problema("escenario_id_duplicado", donde,
+                                      "otro escenario ya usa ese identificador"))
+        vistos.add(ident)
+        if not _texto_o_vacio(escenario.get("rol")):
+            problemas.append(Problema("escenario_sin_rol", donde,
+                                      "no dice para qué rol se resuelve el perfil"))
+            continue
+        superficie = escenario.get("superficie")
+        if superficie is not None and not isinstance(superficie, dict):
+            problemas.append(Problema("superficie_no_objeto", donde,
+                                      f"la superficie llegó como `{_nombre_tipo(superficie)}`; "
+                                      "`null` es «no hay superficie» y es otra cosa"))
+            continue
+        esperada = escenario.get("resolucion_esperada")
+        if not isinstance(esperada, dict) or not esperada:
+            problemas.append(Problema("escenario_sin_resolucion", donde,
+                                      "no declara qué tiene que resolver, así que no hay nada que "
+                                      "cotejar contra lo que la precedencia produce"))
+            continue
+        clase = _texto_o_vacio(esperada.get("clase"))
+        if clase not in CLASES_DE_RESOLUCION:
+            problemas.append(Problema(
+                "clase_desconocida", donde,
+                f"`{clase or '(vacía)'}` no es una clase de resolución; el vocabulario es "
+                f"{', '.join('`' + c + '`' for c in CLASES_DE_RESOLUCION)}"))
+            continue
+        causa = _texto_o_vacio(esperada.get("causa"))
+        if causa and causa not in CAUSAS_DE_AUSENCIA_LEGITIMA + CAUSAS_DE_INVALIDEZ:
+            problemas.append(Problema("causa_desconocida", donde,
+                                      f"`{causa}` no es ninguna de las causas declaradas"))
+            continue
+        nivel = _texto_o_vacio(esperada.get("nivel"))
+        if nivel and niveles and nivel not in niveles:
+            problemas.append(Problema("nivel_desconocido", donde,
+                                      f"resuelve en el nivel `{nivel}`, que no está entre los que "
+                                      "la precedencia declara"))
+            continue
+
+        derivada = resolver_precedencia(escenario, default_portable, contenedor)
+        resumen["evaluados"] += 1
+        if derivada["clase"] == "invalido":
+            resumen["invalidos"] += 1
+        if derivada.get("causa") in CAUSAS_DE_AUSENCIA_LEGITIMA:
+            resumen["ausencias_legitimas"] += 1
+            causas_vistas.add(derivada["causa"])
+        if derivada != esperada:
+            problemas.append(Problema(
+                "resolucion_no_coincide", donde,
+                f"la precedencia resuelve {derivada} y el documento declara {esperada}"))
+
+    resumen["causas_de_ausencia"] = len(causas_vistas & set(CAUSAS_DE_AUSENCIA_LEGITIMA))
+    for causa in CAUSAS_DE_AUSENCIA_LEGITIMA:
+        if causa in causas_vistas:
+            continue
+        problemas.append(Problema(
+            "escenario_de_ausencia_faltante", "precedencia",
+            f"ningún escenario ejerce la ausencia legítima por `{causa}`. Las dos van por separado: "
+            "un punto sin asignación habiendo superficie y un punto sin superficie alguna resuelven "
+            "los dos al default portable por caminos distintos, y un solo caso los confunde"))
+    return problemas, resumen
+
+# --- Modo `--roles` ---------------------------------------------------------------------------
+
+def _resolver_puntero(puntero: str, literal: str, arbol: Path) -> str:
+    """`""` si el puntero resuelve y el literal aparece en la sección que señala; si no, el motivo.
+
+    Reusa el resolutor de anclas de los ejes en vez de escribir otro: dos resoluciones distintas
+    harían que un puntero valiera acá y no allá."""
+    return _resolver_sede_de_eje(puntero, literal, arbol)
+
+
+def _verificar_campo(campo: Any, donde: str, raiz: Path, problemas: list[Problema],
+                     resumen: dict) -> None:
+    """Un campo con estado: los vigentes y los observados van **anclados y resueltos**; los ausentes
+    y los propuestos declaran por qué no.
+
+    Los anclados pasan por `resolver_procedencia`, el mismo verificador semántico que las hojas de la
+    matriz. No es una elección de estilo: es lo que hace que sustituir una entrada, una salida o un
+    scope por otro plausible caiga. Un campo comparado contra sí mismo no puede detectar nada."""
+    if not isinstance(campo, dict):
+        problemas.append(Problema("estado_ausente", donde,
+                                  f"el campo llegó como `{_nombre_tipo(campo)}` y no declara estado"))
+        return
+    estado = _texto_o_vacio(campo.get("estado"))
+    if not estado:
+        problemas.append(Problema("estado_ausente", donde, "no declara su estado"))
+        return
+    if estado not in ESTADOS_DE_CAMPO:
+        problemas.append(Problema(
+            "estado_desconocido", donde,
+            f"`{estado}` no es un estado; el vocabulario es "
+            f"{', '.join('`' + e + '`' for e in ESTADOS_DE_CAMPO)}"))
+        return
+
+    if estado not in ESTADOS_ANCLADOS:
+        if "procedencia" in campo:
+            problemas.append(Problema(
+                "procedencia_en_campo_no_anclado", donde,
+                f"se declara `{estado}` y trae procedencia: un campo que no está vigente ni "
+                "observado no tiene de dónde resolverse, y anclarlo igual lo haría coincidir con "
+                "una sede que no lo respalda"))
+        if estado == "ausente" and not _texto_o_vacio(campo.get("motivo")):
+            problemas.append(Problema("ausente_sin_motivo", donde,
+                                      "se declara ausente y no dice por qué no hay sede"))
+        if estado == "propuesto" and not _texto_o_vacio(campo.get("fase")):
+            problemas.append(Problema("propuesto_sin_fase", donde,
+                                      "se propone y no dice para qué fase; proponer sin fase es "
+                                      "postergar sin plazo"))
+        resumen["campos_no_anclados"] += 1
+        return
+
+    declarado = campo.get("valor")
+    if not _texto_o_vacio(declarado):
+        problemas.append(Problema("campo_sin_valor", donde,
+                                  f"se declara `{estado}` y no dice cuál es el valor que está "
+                                  "vigente"))
+    procedencia = campo.get("procedencia")
+    if not isinstance(procedencia, dict) or "ausencia" in procedencia or "sede" not in procedencia:
+        problemas.append(Problema(
+            "campo_sin_procedencia", donde,
+            f"se declara `{estado}` y no trae una procedencia anclada; un campo vigente sin sede es "
+            "una afirmación sin respaldo, y la marca de ausencia no es una procedencia"))
+        return
+    resumen["campos_anclados"] += 1
+    resultado = resolver_procedencia(procedencia, raiz)
+    if not resultado.ok:
+        problemas.append(Problema("procedencia_no_resuelve", donde,
+                                  f"{resultado.detalle} [{resultado.error}/{resultado.causa}]"))
+        return
+    resumen["campos_resueltos"] += 1
+    if not _mismo(declarado, resultado.valor):
+        problemas.append(Problema(
+            "valor_no_coincide", donde,
+            f"la sede dice {resultado.valor!r} y el documento declara {declarado!r}"))
+
+
+def _verificar_familias(datos: Any, raiz: Path, arbol: Path, problemas: list[Problema],
+                        resumen: dict) -> None:
+    if not isinstance(datos, dict) or not isinstance(datos.get("familias"), list) \
+            or not datos["familias"]:
+        problemas.append(Problema(
+            "familias_ausentes", f"sección `{SLUG_FAMILIAS}`",
+            "no declara ninguna familia de rol; una sección vacía se lee como «no hay familias», que "
+            "es una afirmación distinta de no haberlas escrito"))
+        return
+    declaradas: dict[str, dict] = {}
+    for i, fila in enumerate(datos["familias"]):
+        if not isinstance(fila, dict):
+            problemas.append(Problema("familias_ausentes", f"familia {i + 1}",
+                                      f"la entrada llegó como `{_nombre_tipo(fila)}`"))
+            continue
+        nombre = _texto_o_vacio(fila.get("familia"))
+        if nombre in declaradas:
+            problemas.append(Problema("familia_duplicada", f"familia `{nombre}`",
+                                      "se declara más de una vez"))
+            continue
+        declaradas[nombre] = fila
+
+    for nombre in FAMILIAS_DE_ROL:
+        if nombre not in declaradas:
+            problemas.append(Problema(
+                "familia_faltante", f"familia `{nombre}`",
+                "el contrato no declara una de las cinco familias que el roadmap nombra"))
+    for nombre in sorted(set(declaradas) - set(FAMILIAS_DE_ROL)):
+        problemas.append(Problema(
+            "familia_de_mas", f"familia `{nombre}`",
+            "no es ninguna de las cinco: las familias se derivan de la tabla del roadmap y una "
+            "sexta no tendría de dónde salir"))
+    resumen["familias"] = len(set(declaradas) & set(FAMILIAS_DE_ROL))
+
+    for nombre in FAMILIAS_DE_ROL:
+        fila = declaradas.get(nombre)
+        if fila is None:
+            continue
+        donde = f"familia `{nombre}`"
+        puntero = _texto_o_vacio(fila.get("puntero"))
+        if not puntero:
+            problemas.append(Problema(
+                "puntero_de_familia_ausente", donde,
+                "no declara el puntero normativo del que sale la familia. Los mutantes impiden que "
+                "el verificador sea laxo; solo el puntero impide que el inventario sea inventado"))
+        else:
+            motivo = _resolver_puntero(puntero, nombre, arbol)
+            if motivo == "sede_irresoluble":
+                problemas.append(Problema("puntero_de_familia_irresoluble", donde,
+                                          f"`{puntero}` no resuelve contra el árbol"))
+            elif motivo:
+                problemas.append(Problema(
+                    "familia_ausente_en_la_sede", donde,
+                    f"`{puntero}` resuelve y no nombra a `{nombre}`: el puntero apunta a una sección "
+                    "real que no dice nada de esta familia"))
+            else:
+                resumen["punteros_de_familia"] += 1
+
+        campos = fila.get("campos")
+        if "autoridad" in (campos if isinstance(campos, dict) else {}) or "autoridad" in fila:
+            problemas.append(Problema(
+                "autoridad_por_familia", donde,
+                "declara su autoridad final: la autoridad va **por punto y variante**, no por "
+                "familia de rol, porque dos puntos de la misma familia pueden cerrarse en manos "
+                "distintas"))
+        if not isinstance(campos, dict):
+            problemas.append(Problema("campo_ausente", donde,
+                                      f"no declara sus campos ({_nombre_tipo(campos)})"))
+            continue
+        for campo in CAMPOS_DE_FAMILIA:
+            if campo not in campos:
+                problemas.append(Problema("campo_ausente", f"{donde}, campo `{campo}`",
+                                          "el contrato de la familia no lo declara"))
+                continue
+            _verificar_campo(campos[campo], f"{donde}, campo `{campo}`", raiz, problemas, resumen)
+
+
+def _verificar_asignaciones(datos: Any, raiz: Path, arbol: Path, problemas: list[Problema],
+                            resumen: dict) -> None:
+    if not isinstance(datos, dict) or not isinstance(datos.get("asignaciones"), list) \
+            or not datos["asignaciones"]:
+        problemas.append(Problema(
+            "asignaciones_ausentes", f"sección `{SLUG_ASIGNACIONES}`",
+            "no declara ninguna asignación de punto a familia y variante"))
+        return
+
+    esperadas = {a.punto: a for a in MAPA_DE_ASIGNACIONES}
+    declaradas: dict[str, dict] = {}
+    for i, fila in enumerate(datos["asignaciones"]):
+        if not isinstance(fila, dict):
+            problemas.append(Problema("asignaciones_ausentes", f"asignación {i + 1}",
+                                      f"la entrada llegó como `{_nombre_tipo(fila)}`"))
+            continue
+        punto = _texto_o_vacio(fila.get("punto"))
+        if punto in declaradas:
+            problemas.append(Problema("punto_duplicado", f"punto `{punto}`",
+                                      "otra asignación ya lo declara, y con dos filas homónimas "
+                                      "ningún reporte puede nombrar cuál falló"))
+            continue
+        declaradas[punto] = fila
+    resumen["asignaciones"] = len(declaradas)
+
+    for punto in esperadas:
+        if punto not in declaradas:
+            problemas.append(Problema(
+                "asignacion_faltante", f"punto `{punto}`",
+                "el mapa congelado lo tiene y el documento no lo declara. La comparación es por "
+                "**igualdad exacta** y no por compatibilidad: omitir una asignación deja un punto "
+                "de despacho sin familia ni variante"))
+    for punto in sorted(set(declaradas) - set(esperadas)):
+        problemas.append(Problema(
+            "asignacion_de_mas", f"punto `{punto}`",
+            "el documento lo declara y el mapa congelado no lo tiene"))
+
+    for punto, esperada in esperadas.items():
+        fila = declaradas.get(punto)
+        if fila is None:
+            continue
+        donde = f"punto `{punto}`"
+        familia = _texto_o_vacio(fila.get("familia"))
+        variante = _texto_o_vacio(fila.get("variante"))
+        procedencia = _texto_o_vacio(fila.get("procedencia"))
+        if familia != esperada.familia:
+            problemas.append(Problema("familia_no_coincide", donde,
+                                      f"declara `{familia}` y el mapa congelado dice "
+                                      f"`{esperada.familia}`"))
+        if variante != esperada.variante:
+            problemas.append(Problema("variante_no_coincide", donde,
+                                      f"declara `{variante}` y el mapa congelado dice "
+                                      f"`{esperada.variante}`"))
+        if procedencia != esperada.procedencia:
+            problemas.append(Problema(
+                "procedencia_no_coincide", donde,
+                f"declara `{procedencia or '(vacía)'}` y el mapa congelado dice "
+                f"`{esperada.procedencia}`: una fila decidida acá y una nombrada por el roadmap no "
+                "llevan la misma carga de la prueba"))
+            continue
+
+        if procedencia == "decision":
+            if not _texto_o_vacio(fila.get("justificacion")):
+                problemas.append(Problema(
+                    "justificacion_ausente", donde,
+                    "la asignación se decidió acá y no dice por qué; una decisión sin argumento la "
+                    "vuelve a tomar distinta el próximo que la necesite"))
+            resumen["decisiones"] += 1
+        else:
+            puntero = _texto_o_vacio(fila.get("puntero_variante"))
+            if not puntero:
+                problemas.append(Problema(
+                    "puntero_de_variante_ausente", donde,
+                    "se declara derivada del roadmap y no dice de dónde"))
+            else:
+                motivo = _resolver_puntero(puntero, esperada.variante, arbol)
+                if motivo == "sede_irresoluble":
+                    problemas.append(Problema("puntero_de_variante_irresoluble", donde,
+                                              f"`{puntero}` no resuelve contra el árbol"))
+                elif motivo:
+                    problemas.append(Problema(
+                        "variante_ausente_en_la_sede", donde,
+                        f"`{puntero}` resuelve y no nombra la variante `{esperada.variante}`: la "
+                        "fila se declara derivada de una sede que no la contiene"))
+                else:
+                    resumen["punteros_de_variante"] += 1
+
+        if not _texto_o_vacio(fila.get("forma_de_resultado")):
+            problemas.append(Problema("forma_de_resultado_ausente", donde,
+                                      "no declara qué forma tiene su resultado"))
+        if not _texto_o_vacio(fila.get("declaracion_de_salida")):
+            problemas.append(Problema("declaracion_de_salida_ausente", donde,
+                                      "no declara cuál es su declaración de salida"))
+        if "autoridad" not in fila:
+            problemas.append(Problema(
+                "autoridad_ausente", donde,
+                "no declara su autoridad final, que va por punto y variante"))
+        else:
+            _verificar_campo(fila["autoridad"], f"{donde}, autoridad", raiz, problemas, resumen)
+
+    # «Dos variantes cuyo resultado hoy tiene forma distinta no comparten declaración de salida».
+    por_declaracion: dict[str, set[str]] = {}
+    for punto, fila in declaradas.items():
+        declaracion = _texto_o_vacio(fila.get("declaracion_de_salida"))
+        forma = _texto_o_vacio(fila.get("forma_de_resultado"))
+        if declaracion and forma:
+            por_declaracion.setdefault(declaracion, set()).add(forma)
+    for declaracion, formas in sorted(por_declaracion.items()):
+        if len(formas) > 1:
+            problemas.append(Problema(
+                "salida_compartida_entre_formas_distintas", f"declaración `{declaracion}`",
+                f"la comparten {len(formas)} formas de resultado distintas "
+                f"({', '.join('`' + f + '`' for f in sorted(formas))}); un contrato de salida "
+                "compartido entre resultados que hoy tienen forma distinta obliga a los dos a "
+                "mentir sobre uno"))
+
+
+def verificar_roles(texto: str, raiz: Path, arbol: Path) -> tuple[list[Problema], dict]:
+    """Los contratos de las cinco familias y el mapa de las trece asignaciones, que se congelan de
+    formas distintas y conviene no confundirlas.
+
+    Las **familias se derivan**: salen de la tabla del roadmap y cada una lleva su puntero, que se
+    resuelve contra el árbol real. El **mapa punto → variante no**: el roadmap mapea skill → roles
+    reusables y construirlo fue decidir, así que se compara contra el inventario congelado y ocho de
+    sus trece filas llevan además el puntero de la variante que el roadmap sí nombra."""
+    problemas: list[Problema] = []
+    resumen = {"familias": 0, "punteros_de_familia": 0, "campos_anclados": 0, "campos_resueltos": 0,
+               "campos_no_anclados": 0, "asignaciones": 0, "punteros_de_variante": 0,
+               "decisiones": 0}
+    familias, motivo_f = _bloque_json(texto, SLUG_FAMILIAS)
+    if motivo_f:
+        problemas.append(Problema("familias_ausentes", f"sección `{SLUG_FAMILIAS}`", motivo_f)
+                         if "no parsea" not in motivo_f else
+                         Problema("bloque_ilegible", f"sección `{SLUG_FAMILIAS}`", motivo_f))
+    else:
+        _verificar_familias(familias, raiz, arbol, problemas, resumen)
+
+    asignaciones, motivo_a = _bloque_json(texto, SLUG_ASIGNACIONES)
+    if motivo_a:
+        problemas.append(Problema("asignaciones_ausentes", f"sección `{SLUG_ASIGNACIONES}`",
+                                  motivo_a)
+                         if "no parsea" not in motivo_a else
+                         Problema("bloque_ilegible", f"sección `{SLUG_ASIGNACIONES}`", motivo_a))
+    else:
+        _verificar_asignaciones(asignaciones, raiz, arbol, problemas, resumen)
+    return problemas, resumen
+
+# --- Modo `--diversidad` ----------------------------------------------------------------------
+
+def _relacion(una: str, otra: str) -> str:
+    return "same_family" if una == otra else "cross_family"
+
+
+def _derivar_intento(intento: dict) -> dict:
+    """Las relaciones y la clase de un intento, **derivadas de sus tres identidades**.
+
+    `single_voice` no es una relación: es la propiedad de que las tres identidades sean la misma
+    familia. Tratarla como una tercera relación la volvería equivalente a `same_family`, que es
+    exactamente la equivalencia falsa que la política existe para impedir."""
+    conductor = _texto_o_vacio(intento.get("conductor"))
+    autor = _texto_o_vacio(intento.get("autor_del_artefacto"))
+    worker = _texto_o_vacio(intento.get("worker"))
+    return {
+        "worker_vs_conductor": _relacion(worker, conductor),
+        "worker_vs_autor": _relacion(worker, autor),
+        "single_voice": len({conductor, autor, worker}) == 1,
+    }
+
+
+def _cuenta_como_independiente(derivado: dict) -> bool:
+    """La regla de evidencia independiente, **ejecutable**.
+
+    Un resultado cuenta cuando quien hizo el trabajo delegado es de otra familia que quien escribió
+    el artefacto que ese trabajo juzga, y la corrida no fue de una sola voz. Un resultado de una sola
+    familia respecto del autor no es evidencia independiente por más intentos que se acumulen: mide
+    la misma correlación de errores dos veces."""
+    return not derivado["single_voice"] and derivado["worker_vs_autor"] == "cross_family"
+
+
+def verificar_diversidad(texto: str) -> tuple[list[Problema], dict]:
+    problemas: list[Problema] = []
+    resumen = {"intentos": 0, "relaciones_derivadas": 0, "independientes": 0, "single_voice": 0,
+               "topologia_comparada": 0}
+    datos, motivo = _bloque_json(texto, SLUG_DIVERSIDAD)
+    if motivo:
+        return [Problema("diversidad_ausente", f"sección `{SLUG_DIVERSIDAD}`", motivo)], resumen
+    if not isinstance(datos, dict):
+        return [Problema("bloque_ilegible", f"sección `{SLUG_DIVERSIDAD}`",
+                         f"el bloque declara `{_nombre_tipo(datos)}` y no un objeto")], resumen
+
+    intentos = datos.get("intentos")
+    if not isinstance(intentos, list) or not intentos:
+        problemas.append(Problema(
+            "intentos_ausentes", f"sección `{SLUG_DIVERSIDAD}`",
+            "la política no registra ningún intento; sin registros por intento no hay de dónde "
+            "derivar la topología, y declararla suelta es lo que AC-14 prohíbe"))
+        return problemas, resumen
+
+    vistos: set[str] = set()
+    derivados: list[dict] = []
+    for i, intento in enumerate(intentos):
+        if not isinstance(intento, dict):
+            problemas.append(Problema("intento_no_objeto", f"intento {i + 1}",
+                                      f"llegó como `{_nombre_tipo(intento)}`"))
+            continue
+        ident = _texto_o_vacio(intento.get("id")) or f"(sin id, {i + 1})"
+        donde = f"intento `{ident}`"
+        if ident in vistos:
+            problemas.append(Problema("intento_id_duplicado", donde,
+                                      "otro intento ya usa ese identificador"))
+        vistos.add(ident)
+
+        faltan = [c for c in ("conductor", "autor_del_artefacto", "worker")
+                  if not _texto_o_vacio(intento.get(c))]
+        if faltan:
+            problemas.append(Problema(
+                "intento_sin_identidad", donde,
+                f"no registra {', '.join('`' + f + '`' for f in faltan)}; `cross_family` necesita "
+                "un referente, y sin las tres identidades no se sabe respecto de qué se cruza"))
+            continue
+        desconocidas = [intento[c] for c in ("conductor", "autor_del_artefacto", "worker")
+                        if intento[c] not in FAMILIAS_DE_MODELO]
+        if desconocidas:
+            problemas.append(Problema(
+                "familia_desconocida", donde,
+                f"{', '.join('`' + d + '`' for d in desconocidas)} no es una de las dos familias "
+                f"({', '.join('`' + f + '`' for f in FAMILIAS_DE_MODELO)})"))
+            continue
+
+        derivado = _derivar_intento(intento)
+        derivados.append(derivado)
+        resumen["intentos"] += 1
+        if derivado["single_voice"]:
+            resumen["single_voice"] += 1
+
+        relaciones = intento.get("relaciones")
+        if not isinstance(relaciones, dict):
+            problemas.append(Problema(
+                "relacion_ausente", donde,
+                "no registra las relaciones entre las tres identidades; con las identidades solas, "
+                "el agregado se leería de una declaración en vez de derivarse"))
+        else:
+            for par in ("worker_vs_conductor", "worker_vs_autor"):
+                declarada = _texto_o_vacio(relaciones.get(par))
+                if not declarada:
+                    problemas.append(Problema("relacion_ausente", f"{donde}, `{par}`",
+                                              "no se registra"))
+                elif declarada not in RELACIONES:
+                    problemas.append(Problema(
+                        "relacion_desconocida", f"{donde}, `{par}`",
+                        f"`{declarada}` no es una relación; el vocabulario es "
+                        f"{', '.join('`' + r + '`' for r in RELACIONES)}"))
+                elif declarada != derivado[par]:
+                    problemas.append(Problema(
+                        "relacion_no_coincide", f"{donde}, `{par}`",
+                        f"se registra `{declarada}` y las identidades dan `{derivado[par]}`"))
+                else:
+                    resumen["relaciones_derivadas"] += 1
+
+        if "cuenta_como_evidencia_independiente" not in intento:
+            problemas.append(Problema(
+                "independencia_omitida", donde,
+                "no dice si su resultado cuenta como evidencia independiente; sin eso la regla "
+                "queda como prosa y cada consumidor la aplica a su manera"))
+            continue
+        declarada = bool(intento["cuenta_como_evidencia_independiente"])
+        real = _cuenta_como_independiente(derivado)
+        if declarada:
+            resumen["independientes"] += 1
+        if declarada and not real:
+            if derivado["single_voice"]:
+                problemas.append(Problema(
+                    "independiente_de_una_sola_voz", donde,
+                    "cuenta como evidencia independiente un resultado en el que conducen, escriben "
+                    "y trabajan la misma familia: una sola voz no se confirma a sí misma"))
+            else:
+                problemas.append(Problema(
+                    "independiente_de_una_sola_familia", donde,
+                    "cuenta como evidencia independiente un resultado en el que el trabajo delegado "
+                    "es de la misma familia que quien escribió el artefacto que juzga: mide la "
+                    "misma correlación de errores dos veces"))
+        elif real and not declarada:
+            problemas.append(Problema(
+                "independencia_negada", donde,
+                "el trabajo delegado es de otra familia que el autor del artefacto y la corrida "
+                "tiene más de una voz, y aun así no se cuenta: la regla también dice qué **sí** "
+                "cuenta, y descartar evidencia válida deja la política sin poder afirmar nada"))
+
+    if not derivados:
+        return problemas, resumen
+
+    agregada = {
+        "intentos": len(derivados),
+        "single_voice": sum(1 for d in derivados if d["single_voice"]),
+        "cross_vs_conductor": sum(1 for d in derivados
+                                  if d["worker_vs_conductor"] == "cross_family"),
+        "cross_vs_autor": sum(1 for d in derivados if d["worker_vs_autor"] == "cross_family"),
+        "evidencia_independiente": sum(1 for d in derivados if _cuenta_como_independiente(d)),
+        "familias_presentes": sorted({f for i in intentos if isinstance(i, dict)
+                                      for f in (_texto_o_vacio(i.get("conductor")),
+                                                _texto_o_vacio(i.get("autor_del_artefacto")),
+                                                _texto_o_vacio(i.get("worker"))) if f}),
+    }
+    topologia = datos.get("topologia")
+    if not isinstance(topologia, dict) or not topologia:
+        problemas.append(Problema(
+            "topologia_ausente", f"sección `{SLUG_DIVERSIDAD}`",
+            "no declara la topología agregada de la corrida. Se deriva de los registros, y por eso "
+            "mismo tiene que estar escrita: si no está, no hay nada contra qué contrastar el "
+            "derivado y el documento afirma un agregado que nadie puede leer"))
+        return problemas, resumen
+    if topologia != agregada:
+        diferencias = sorted(k for k in set(topologia) | set(agregada)
+                             if topologia.get(k) != agregada.get(k))
+        problemas.append(Problema(
+            "topologia_contradice_registros", f"sección `{SLUG_DIVERSIDAD}`",
+            f"la topología declarada no es la que sus propios registros producen; difieren en "
+            f"{', '.join('`' + d + '`' for d in diferencias)}: declarada "
+            f"{ {k: topologia.get(k) for k in diferencias} }, derivada "
+            f"{ {k: agregada.get(k) for k in diferencias} }"))
+    else:
+        resumen["topologia_comparada"] = 1
+    return problemas, resumen
+
+
+# --- Modo `--defectos` ------------------------------------------------------------------------
+
+def verificar_defectos(texto: str) -> tuple[list[Problema], dict]:
+    """Los seis mínimos **por identidad**, y de ahí para arriba.
+
+    `len(defectos) >= 6` satisface todo lo demás que este modo pide y a la vez acepta un inventario
+    que cambió uno de los seis por otro conservando el total. Acepta más y rechaza menos: el mínimo
+    no es un conjunto cerrado, y un modo que exigiera exactamente esos seis rechazaría un inventario
+    más completo que el exigido."""
+    problemas: list[Problema] = []
+    resumen = {"defectos": 0, "minimos_presentes": 0, "extra": 0}
+    datos, motivo = _bloque_json(texto, SLUG_DEFECTOS)
+    if motivo:
+        return [Problema("defectos_ausentes", f"sección `{SLUG_DEFECTOS}`", motivo)], resumen
+    if not isinstance(datos, dict):
+        return [Problema("bloque_ilegible", f"sección `{SLUG_DEFECTOS}`",
+                         f"el bloque declara `{_nombre_tipo(datos)}` y no un objeto")], resumen
+    lista = datos.get("defectos")
+    if not isinstance(lista, list) or not lista:
+        return [Problema(
+            "defectos_ausentes", f"sección `{SLUG_DEFECTOS}`",
+            "el inventario no registra ningún defecto; una lista vacía satisface «todos los "
+            "defectos registrados tienen ubicación» por vacuidad")], resumen
+
+    vistos: set[str] = set()
+    for i, defecto in enumerate(lista):
+        if not isinstance(defecto, dict):
+            problemas.append(Problema("defecto_no_objeto", f"defecto {i + 1}",
+                                      f"llegó como `{_nombre_tipo(defecto)}`"))
+            continue
+        ident = _texto_o_vacio(defecto.get("id"))
+        donde = f"defecto `{ident}`" if ident else f"defecto {i + 1}"
+        if not ident:
+            problemas.append(Problema("defecto_sin_identidad", donde,
+                                      "no declara su identidad, así que no se puede comparar contra "
+                                      "el mínimo ni nombrar en un reporte"))
+            continue
+        if ident in vistos:
+            problemas.append(Problema("defecto_id_duplicado", donde,
+                                      "otro defecto ya usa esa identidad"))
+            continue
+        vistos.add(ident)
+        resumen["defectos"] += 1
+        for campo in CAMPOS_DE_DEFECTO:
+            if not _texto_o_vacio(defecto.get(campo)):
+                problemas.append(Problema("defecto_sin_campo", donde,
+                                          f"no declara su `{campo}`"))
+        ubicacion = _texto_o_vacio(defecto.get("ubicacion"))
+        if ubicacion and not PATRON_UBICACION.match(ubicacion):
+            problemas.append(Problema(
+                "ubicacion_sin_forma", donde,
+                f"`{ubicacion}` no tiene forma de puntero (ruta relativa, con fragmento o sin él); "
+                "«documental» o «en las instrucciones» no ubican nada"))
+
+    identidades = {d.identidad for d in DEFECTOS_MINIMOS}
+    resumen["minimos_presentes"] = len(vistos & identidades)
+    resumen["extra"] = len(vistos - identidades)
+    for minimo in DEFECTOS_MINIMOS:
+        if minimo.identidad in vistos:
+            continue
+        problemas.append(Problema(
+            "defecto_minimo_faltante", f"defecto `{minimo.identidad}`",
+            f"el inventario no lo registra: {minimo.descripcion}. La comparación es **por "
+            "identidad**; con el total intacto, un conteo no vería que uno de los seis fue "
+            "reemplazado por otro"))
+    return problemas, resumen
+
+
+# --- Los cinco modos de aplicación ------------------------------------------------------------
+
+def modo_perfil_schema(ruta: Path) -> int:
+    texto, codigo = _leer_documento_de_contrato(ruta, "perfil-schema")
+    if texto is None:
+        return codigo
+    problemas, resumen = verificar_perfil_schema(texto)
+    if problemas:
+        _informar(problemas, f"{ruta.name} — el contenedor del perfil de ejecución")
+        return 1
+    print(f"OK     {ruta.name}: el contenedor declara sus {resumen['componentes']} componentes y "
+          f"{resumen['perfiles']} perfiles nombrados con {resumen['asignaciones']} asignaciones por "
+          "rol")
+    print(f"OK     los {resumen['objetos_de_parametros']} objetos de parámetros entregan al runtime "
+          f"{resumen['parametros']} valores y ninguno fuera de la lista blanca")
+    print()
+    print("RESULTADO: OK")
+    return 0
+
+
+def modo_perfil_precedencia(ruta: Path) -> int:
+    texto, codigo = _leer_documento_de_contrato(ruta, "perfil-precedencia")
+    if texto is None:
+        return codigo
+    problemas, resumen = verificar_perfil_precedencia(texto)
+    if problemas:
+        _informar(problemas, f"{ruta.name} — la precedencia del perfil de ejecución")
+        return 1
+    print(f"OK     {ruta.name}: los {resumen['evaluados']} escenarios resuelven contra los "
+          f"{resumen['niveles']} niveles declarados como el documento dice")
+    print(f"OK     {resumen['invalidos']} resuelven inválidos y no ignorados, y las "
+          f"{resumen['ausencias_legitimas']} ausencias legítimas caen al default portable por sus "
+          "dos causas distintas")
+    print()
+    print("RESULTADO: OK")
+    return 0
+
+
+def modo_roles(ruta: Path, raiz: Path, arbol: Path) -> int:
+    texto, codigo = _leer_documento_de_contrato(ruta, "roles")
+    if texto is None:
+        return codigo
+    problemas, resumen = verificar_roles(texto, raiz, arbol)
+    if problemas:
+        _informar(problemas, f"{ruta.name} — contratos de rol y mapa de asignaciones")
+        return 1
+    print(f"OK     {ruta.name}: las {resumen['familias']} familias declaran sus contratos, y sus "
+          f"{resumen['punteros_de_familia']} punteros resuelven contra el árbol")
+    print(f"OK     {resumen['campos_resueltos']} de {resumen['campos_anclados']} campos anclados "
+          f"resuelven contra su sede con el verificador semántico de la matriz; "
+          f"{resumen['campos_no_anclados']} declaran por qué no lo están")
+    print(f"OK     las {resumen['asignaciones']} asignaciones coinciden con el mapa congelado "
+          f"({resumen['punteros_de_variante']} con puntero al roadmap, {resumen['decisiones']} "
+          "decididas acá con su justificación)")
+    print()
+    print("RESULTADO: OK")
+    return 0
+
+
+def modo_diversidad(ruta: Path) -> int:
+    texto, codigo = _leer_documento_de_contrato(ruta, "diversidad")
+    if texto is None:
+        return codigo
+    problemas, resumen = verificar_diversidad(texto)
+    if problemas:
+        _informar(problemas, f"{ruta.name} — la política de diversidad")
+        return 1
+    print(f"OK     {ruta.name}: los {resumen['intentos']} intentos registran sus tres identidades y "
+          f"{resumen['relaciones_derivadas']} relaciones, y las relaciones coinciden con lo que las "
+          "identidades dan")
+    print(f"OK     la topología agregada se derivó de esos registros y coincide con la declarada; "
+          f"{resumen['independientes']} resultados cuentan como evidencia independiente y "
+          f"{resumen['single_voice']} intento(s) de una sola voz no")
+    print()
+    print("RESULTADO: OK")
+    return 0
+
+
+def modo_defectos(ruta: Path) -> int:
+    texto, codigo = _leer_documento_de_contrato(ruta, "defectos")
+    if texto is None:
+        return codigo
+    problemas, resumen = verificar_defectos(texto)
+    if problemas:
+        _informar(problemas, f"{ruta.name} — el inventario de defectos")
+        return 1
+    print(f"OK     {ruta.name}: el inventario registra {resumen['defectos']} defectos con su "
+          f"ubicación, su naturaleza y su fase")
+    print(f"OK     los {resumen['minimos_presentes']} mínimos están, comparados por identidad, y "
+          f"{resumen['extra']} más: el mínimo no es un conjunto cerrado")
+    print()
+    print("RESULTADO: OK")
+    return 0
+
+# --- Autotests de los cinco modos --------------------------------------------------------------
+#
+# Mismo corpus que los tres modos de contrato y misma regla: **nada de esto escribe en disco**. El
+# documento se muta en memoria, la raíz de las procedencias sintéticas es el fixture congelado en
+# lectura y los punteros normativos se resuelven contra el árbol real. Mutar el árbol de trabajo
+# dejaría el fixture mutado si el proceso muriera, y otro agente no distingue esa ventana de un
+# cambio real.
+
+SEDE_DE_ROL = CONFORME_CONTRATO / "fuentes" / "contratos-de-rol.md"
+
+# Una sección real del roadmap que **no** nombra ninguna de las cinco familias ni ninguna variante:
+# es lo que separa «el puntero no resuelve» de «resuelve y no dice nada de esto».
+SEDE_SIN_LOS_LITERALES = (".plans/doctrina-implementador/roadmap.md"
+                          "#2-2-identidad-de-familia-sin-ambiguedad")
+
+
+def _en_json(slug: str, mutacion: Any) -> Any:
+    """Reemplaza el bloque `json` de una sección por el resultado de mutar su dato.
+
+    Por dato y no por búsqueda y reemplazo de texto: el corpus tiene veinticuatro procedencias
+    ancladas casi idénticas, y un reemplazo textual tocaría la que no era."""
+    def aplicar(texto: str) -> str:
+        datos, motivo = _bloque_json(texto, slug)
+        rango = _rango_del_bloque(texto, slug)
+        if motivo or rango is None:
+            raise ValueError(motivo or f"no se ubicó el bloque de `{slug}`")
+        nuevo = mutacion(copy.deepcopy(datos))
+        lineas = texto.split("\n")
+        rendido = json.dumps(nuevo, ensure_ascii=False, indent=2).split("\n")
+        return "\n".join(lineas[:rango[0]] + rendido + lineas[rango[1] + 1:])
+    return aplicar
+
+
+def _romper_json(slug: str) -> Any:
+    """Deja el bloque sintácticamente inválido sin tocar nada más."""
+    def aplicar(texto: str) -> str:
+        rango = _rango_del_bloque(texto, slug)
+        if rango is None:
+            raise ValueError(f"no se ubicó el bloque de `{slug}`")
+        lineas = texto.split("\n")
+        lineas[rango[0]] = lineas[rango[0]] + " ,,"
+        return "\n".join(lineas)
+    return aplicar
+
+
+def _de_lista(datos: dict, clave: str, campo: str, valor: str) -> dict:
+    """La entrada de una lista de objetos, buscada por el valor de uno de sus campos."""
+    for entrada in datos[clave]:
+        if isinstance(entrada, dict) and entrada.get(campo) == valor:
+            return entrada
+    raise ValueError(f"el corpus no tiene ninguna entrada con {campo}={valor!r}")
+
+
+def _perfil_del_bloque(datos: dict, nombre: str) -> dict:
+    contenedor = contenedor_del_perfil()
+    perfiles = next(v for _, v in _navegar(datos, contenedor.ruta_de("perfiles_nombrados")))
+    return perfiles[nombre]
+
+
+def _bindings_del_bloque(datos: dict) -> dict:
+    contenedor = contenedor_del_perfil()
+    ruta = contenedor.ruta_de("valor_por_defecto")[:-1]
+    return next(v for _, v in _navegar(datos, ruta))
+
+
+# --- Casos de `--perfil-schema` ---------------------------------------------------------------
+
+# Las cinco clases que AC-10 nombra —herramientas, aislamiento, permisos, contrato de salida y
+# autoridad— **más una sexta que no es ninguna de las cinco**: un tercer parámetro de runtime, que no
+# eleva nada y aun así no está en la lista blanca. Sin ella, un modo que enumerara lo prohibido en vez
+# de cerrar lo admitido pasaría las cinco y dejaría entrar todo lo que nadie pensó en prohibir.
+HOJAS_QUE_NO_VAN_EN_UN_PERFIL = (
+    ("tools", ["bash", "write"], "herramientas"),
+    ("sandbox", "workspace-write", "aislamiento"),
+    ("permissions", {"edit": "allow"}, "permisos"),
+    ("output_contract", "informe-extendido", "contrato de salida"),
+    ("authority", "final", "autoridad"),
+    ("temperature", 0.2, "un tercer parámetro de runtime, que no es ninguna de las cinco clases"),
+)
+
+
+def _casos_de_perfil_schema() -> tuple[CasoDeContrato, ...]:
+    contenedor = contenedor_del_perfil()
+    familia = contenedor.familias[0] if contenedor.familias else "codex"
+    parametro = contenedor.parametros[0] if contenedor.parametros else "model"
+
+    def agregar_hoja(clave: str, valor: Any) -> Any:
+        return _en_json(SLUG_PERFIL_SCHEMA,
+                        lambda d: (_perfil_del_bloque(d, "economy")[familia].update({clave: valor})
+                                   or d))
+
+    mutantes_de_hoja = tuple(
+        CasoDeContrato(
+            "parametro_no_admitido",
+            f"un perfil agrega `{clave}` a su objeto de parámetros: {etiqueta}",
+            agregar_hoja(clave, valor))
+        for clave, valor, etiqueta in HOJAS_QUE_NO_VAN_EN_UN_PERFIL)
+
+    return (
+        # Los conformes. El primero **es** la frontera que la task nombra: sus cinco componentes se
+        # llaman `schema_version`, `profiles`, `bindings`, `default` y las familias, y ninguno está
+        # en la lista blanca. Un modo que aplicara la lista blanca al contenedor los rechazaría a
+        # todos, pasaría los seis mutantes de hoja y caería acá.
+        CasoDeContrato(None, "el contenedor completo, con perfiles que entregan solo modelo y "
+                             "esfuerzo de razonamiento"),
+        CasoDeContrato(
+            None, "un cuarto perfil con sus dos familias y sus dos parámetros: aceptar más perfiles "
+                  "no es un defecto",
+            _en_json(SLUG_PERFIL_SCHEMA, lambda d: (
+                _navegar(d, contenedor.ruta_de("perfiles_nombrados"))[0][1].update(
+                    {"exhaustivo": {f: dict(zip(contenedor.parametros,
+                                                ("inherit", "high")))
+                                    for f in contenedor.familias}})
+                or _bindings_del_bloque(d)["roles"].update({"diff-reviewer": "exhaustivo"})
+                or d))),
+        CasoDeContrato(
+            None, "una clave de más **en el contenedor**, fuera del objeto de parámetros: la lista "
+                  "blanca gobierna el nivel de adentro y no este",
+            _en_json(SLUG_PERFIL_SCHEMA,
+                     lambda d: (d[contenedor.clave_raiz].update({"notas": "libre"}) or d))),
+        CasoDeContrato(
+            None, "no-op: se reescribe prosa fuera del bloque",
+            _reemplazar_prosa("Una asignación elige qué perfil se resuelve.",
+                              "Una asignación elige cuál perfil se resuelve.")),
+
+        # El contenedor completo, componente por componente.
+        CasoDeContrato("schema_ausente", "el documento no declara la sección del schema",
+                       _borrar_seccion(SLUG_PERFIL_SCHEMA)),
+        CasoDeContrato("bloque_ilegible", "el bloque declara una lista en vez del contenedor",
+                       _en_json(SLUG_PERFIL_SCHEMA, lambda d: [d])),
+        CasoDeContrato("clave_raiz_ausente", "el schema no cuelga de la clave raíz reservada",
+                       _en_json(SLUG_PERFIL_SCHEMA,
+                                lambda d: {"agentes": d[contenedor.clave_raiz]})),
+        CasoDeContrato(
+            "componente_ausente", "el contenedor pierde su versión",
+            _en_json(SLUG_PERFIL_SCHEMA,
+                     lambda d: (d[contenedor.clave_raiz].pop(
+                         contenedor.ruta_de("version")[-1]) and d or d))),
+        CasoDeContrato(
+            "componente_ausente", "el contenedor pierde sus asignaciones por rol",
+            _en_json(SLUG_PERFIL_SCHEMA,
+                     lambda d: (_bindings_del_bloque(d).pop("roles") and d or d))),
+        CasoDeContrato(
+            "componente_ausente", "el contenedor pierde su valor por defecto",
+            _en_json(SLUG_PERFIL_SCHEMA,
+                     lambda d: (_bindings_del_bloque(d).pop("default") and d or d))),
+        CasoDeContrato(
+            "componente_ausente", "ningún perfil declara familias, así que el componente desaparece",
+            _en_json(SLUG_PERFIL_SCHEMA, lambda d: (
+                [p.clear() for _, p in _navegar(d, contenedor.ruta_de("perfiles_nombrados") + ("<p>",))]
+                and d or d))),
+        CasoDeContrato(
+            "perfiles_vacios", "el mapa de perfiles existe y no declara ninguno",
+            _en_json(SLUG_PERFIL_SCHEMA, lambda d: (
+                d[contenedor.clave_raiz].update(
+                    {contenedor.ruta_de("perfiles_nombrados")[-1]: {}}) or d))),
+        CasoDeContrato(
+            "perfil_no_objeto", "un perfil se declara como el nombre de otro",
+            _en_json(SLUG_PERFIL_SCHEMA, lambda d: (
+                _navegar(d, contenedor.ruta_de("perfiles_nombrados"))[0][1].update(
+                    {"economy": "balanced"}) or d))),
+        CasoDeContrato(
+            "perfil_sin_familias", "un solo perfil se queda sin familias",
+            _en_json(SLUG_PERFIL_SCHEMA,
+                     lambda d: (_perfil_del_bloque(d, "economy").clear() or d))),
+        CasoDeContrato(
+            "familia_desconocida", "un perfil estrena una tercera familia",
+            _en_json(SLUG_PERFIL_SCHEMA, lambda d: (
+                _perfil_del_bloque(d, "economy").update(
+                    {"familia-tercera": dict(zip(contenedor.parametros, ("inherit", "low")))})
+                or d))),
+        CasoDeContrato(
+            "parametros_no_objeto", "los parámetros de una familia se declaran como un escalar",
+            _en_json(SLUG_PERFIL_SCHEMA,
+                     lambda d: (_perfil_del_bloque(d, "economy").update({familia: "inherit"})
+                                or d))),
+        *mutantes_de_hoja,
+        CasoDeContrato(
+            "parametro_ausente", f"un perfil deja de entregar `{parametro}`",
+            _en_json(SLUG_PERFIL_SCHEMA,
+                     lambda d: (_perfil_del_bloque(d, "economy")[familia].pop(parametro)
+                                and d or d))),
+        CasoDeContrato(
+            "asignacion_no_escalar",
+            "una asignación deja de nombrar un perfil y pasa a transportar herramientas y permisos",
+            _en_json(SLUG_PERFIL_SCHEMA, lambda d: (
+                _bindings_del_bloque(d)["roles"].update(
+                    {"explorer": {"profile": "economy", "tools": ["bash"],
+                                  "permissions": {"edit": "allow"}}}) or d))),
+        CasoDeContrato(
+            "asignaciones_vacias", "el mapa de rol a perfil existe y está vacío",
+            _en_json(SLUG_PERFIL_SCHEMA,
+                     lambda d: (_bindings_del_bloque(d).update({"roles": {}}) or d))),
+        CasoDeContrato(
+            "default_no_escalar", "el valor por defecto se declara como un perfil entero",
+            _en_json(SLUG_PERFIL_SCHEMA, lambda d: (
+                _bindings_del_bloque(d).update(
+                    {"default": {f: dict(zip(contenedor.parametros, ("inherit", "low")))
+                                 for f in contenedor.familias}}) or d))),
+    )
+
+
+def _bloque_de_los_dos_niveles() -> list[tuple[str, bool, str]]:
+    """[E] La lista blanca es del **objeto de parámetros**, no del contenedor.
+
+    Tres direcciones, porque cada una sola admite una implementación degenerada: que el conforme pase
+    lo satisface un modo que no mire nada; que la hoja de adentro caiga lo satisface uno que aplique
+    la lista blanca a todo nivel —y ese rechazaría el conforme—; y que la **misma clave** puesta
+    afuera pase es lo único que muestra que los dos niveles no se confundieron."""
+    contenedor = contenedor_del_perfil()
+    texto = _texto_conforme()
+    datos, _ = _bloque_json(texto, SLUG_PERFIL_SCHEMA)
+    componentes = sorted({contenedor.ruta_de(c)[-1] for c in contenedor.obligatorios}
+                         | set(contenedor.familias))
+    fuera_de_la_lista = [c for c in componentes if c not in contenedor.parametros]
+
+    clave = HOJAS_QUE_NO_VAN_EN_UN_PERFIL[-1][0]
+    adentro = _en_json(SLUG_PERFIL_SCHEMA, lambda d: (
+        _perfil_del_bloque(d, "economy")[contenedor.familias[0]].update({clave: 0.2}) or d))(texto)
+    afuera = _en_json(SLUG_PERFIL_SCHEMA,
+                      lambda d: (d[contenedor.clave_raiz].update({clave: 0.2}) or d))(texto)
+    problemas_conforme, _ = verificar_perfil_schema(texto)
+    codigos_adentro = {p.codigo for p in verificar_perfil_schema(adentro)[0]}
+    problemas_afuera, _ = verificar_perfil_schema(afuera)
+
+    return [
+        ("E1/perfil-schema", not problemas_conforme and len(fuera_de_la_lista) >= 4,
+         f"el contenedor declara {len(fuera_de_la_lista)} nombres que **no** están en la lista "
+         f"blanca ({', '.join('`' + c + '`' for c in fuera_de_la_lista)}) y el modo los acepta: la "
+         "lista no alcanza a este nivel"
+         if not problemas_conforme and len(fuera_de_la_lista) >= 4 else
+         f"el conforme falló ({problemas_conforme[:1]}) o el contenedor no tiene nombres fuera de "
+         f"la lista blanca: {fuera_de_la_lista}"),
+        ("E2/perfil-schema", codigos_adentro == {"parametro_no_admitido"},
+         f"y la misma clave `{clave}` **dentro** del objeto de parámetros cae, y solo por eso"
+         if codigos_adentro == {"parametro_no_admitido"} else
+         f"la hoja de adentro emitió {sorted(codigos_adentro)}"),
+        ("E3/perfil-schema", not problemas_afuera,
+         f"y `{clave}` colgada del contenedor **no** cae: los dos niveles no se confundieron"
+         if not problemas_afuera else
+         f"la clave de más en el contenedor emitió {[str(p) for p in problemas_afuera[:2]]}"),
+        ("E4/perfil-schema", isinstance(datos, dict) and contenedor.clave_raiz in datos
+         and len(contenedor.obligatorios) == 5,
+         f"y los componentes obligatorios que la lista de nombres reservados declara son "
+         f"{len(contenedor.obligatorios)}: {', '.join(contenedor.obligatorios)}"
+         if len(contenedor.obligatorios) == 5 else
+         f"los componentes obligatorios derivados son {contenedor.obligatorios} y tendrían que ser "
+         "cinco"),
+    ]
+
+
+def _correr_caso_de_perfil_schema(caso: CasoDeContrato) -> tuple[list[Problema], dict]:
+    texto = caso.mutar(_texto_conforme()) if caso.mutar else _texto_conforme()
+    return verificar_perfil_schema(texto)
+
+
+def modo_autotest_perfil_schema() -> int:
+    resultados = _preludio_de_t13()
+    if all(ok for _, ok, _ in resultados):
+        casos = _casos_de_perfil_schema()
+        resultados += _bloque_de_documento(
+            "perfil-schema", casos, _correr_caso_de_perfil_schema, CODIGOS_PERFIL_SCHEMA,
+            lambda r: (f"leyó {r['componentes']} componentes y {r['perfiles']} perfiles: no "
+                       "recorrió el contenedor"
+                       if r["componentes"] != 5 or not r["perfiles"] else
+                       "no miró ningún objeto de parámetros"
+                       if not r["objetos_de_parametros"] else
+                       "no leyó ninguna asignación por rol" if not r["asignaciones"] else ""))
+        resultados += _bloque_de_los_dos_niveles()
+        resultados += _bloque_de_ausencia("perfil-schema", modo_perfil_schema)
+    return _cierre("el contenedor del perfil declara sus cinco componentes y el objeto de "
+                   "parámetros de cada perfil entrega solo modelo y esfuerzo de razonamiento",
+                   resultados)
+
+# --- Casos de `--perfil-precedencia` ----------------------------------------------------------
+
+def _escenario_con_causa(datos: dict, causa: str) -> dict:
+    for escenario in datos["escenarios"]:
+        if isinstance(escenario, dict) \
+                and isinstance(escenario.get("resolucion_esperada"), dict) \
+                and escenario["resolucion_esperada"].get("causa") == causa:
+            return escenario
+    raise ValueError(f"el corpus no tiene ningún escenario con causa {causa!r}")
+
+
+def _sin_escenario_de(causa: str) -> Any:
+    def mutacion(datos: dict) -> dict:
+        objetivo = _escenario_con_causa(datos, causa)
+        datos["escenarios"] = [e for e in datos["escenarios"] if e is not objetivo]
+        return datos
+    return _en_json(SLUG_PERFIL_PRECEDENCIA, mutacion)
+
+
+def _intercambiar_las_dos_causas(datos: dict) -> dict:
+    una, otra = (_escenario_con_causa(datos, c) for c in CAUSAS_DE_AUSENCIA_LEGITIMA)
+    una["resolucion_esperada"]["causa"], otra["resolucion_esperada"]["causa"] = (
+        CAUSAS_DE_AUSENCIA_LEGITIMA[1], CAUSAS_DE_AUSENCIA_LEGITIMA[0])
+    return datos
+
+
+def _casos_de_perfil_precedencia() -> tuple[CasoDeContrato, ...]:
+    def en(mutacion: Any) -> Any:
+        return _en_json(SLUG_PERFIL_PRECEDENCIA, mutacion)
+
+    def escenario(datos: dict, ident: str) -> dict:
+        return _de_lista(datos, "escenarios", "id", ident)
+
+    return (
+        # Los conformes. El corpus trae los **dos** escenarios de ausencia legítima por separado y un
+        # tercero que se les parece —sin asignación para el rol, pero con valor por defecto en la
+        # superficie— que resuelve por otro nivel y no es ausencia.
+        CasoDeContrato(None, "los ocho escenarios resuelven como el documento declara"),
+        CasoDeContrato(
+            None, "un escenario de más, válido: el corpus se puede ampliar",
+            en(lambda d: (d["escenarios"].append(dict(escenario(d, "E-03"), id="E-09")) or d))),
+        CasoDeContrato(
+            None, "no-op: se reescribe prosa fuera del bloque",
+            _reemplazar_prosa("Los niveles se recorren en orden y el primero que resuelve gana.",
+                              "Los niveles se recorren en orden y gana el primero que resuelve.")),
+
+        # La estructura de la sección.
+        CasoDeContrato("precedencia_ausente", "el documento no declara la sección",
+                       _borrar_seccion(SLUG_PERFIL_PRECEDENCIA)),
+        CasoDeContrato("bloque_ilegible", "el bloque declara una lista",
+                       en(lambda d: [d])),
+        CasoDeContrato("niveles_ausentes", "la precedencia no declara sus niveles",
+                       en(lambda d: (d.pop("niveles") and d or d))),
+        CasoDeContrato("nivel_duplicado", "un nivel aparece dos veces en el orden",
+                       en(lambda d: (d["niveles"].append(d["niveles"][0]) or d))),
+        CasoDeContrato("default_portable_ausente", "no declara el perfil por defecto portable",
+                       en(lambda d: (d.pop("default_portable") and d or d))),
+        CasoDeContrato("escenarios_ausentes", "la precedencia se queda sin escenarios",
+                       en(lambda d: (d.update({"escenarios": []}) or d))),
+        CasoDeContrato("escenario_no_objeto", "un escenario se declara como texto",
+                       en(lambda d: (d["escenarios"].append("el caso del override") or d))),
+        CasoDeContrato("escenario_id_duplicado", "dos escenarios comparten identificador",
+                       en(lambda d: (escenario(d, "E-02").update({"id": "E-01"}) or d))),
+        CasoDeContrato("escenario_sin_rol", "un escenario no dice para qué rol resuelve",
+                       en(lambda d: (escenario(d, "E-01").pop("rol") and d or d))),
+        CasoDeContrato("escenario_sin_resolucion", "un escenario no declara qué tiene que resolver",
+                       en(lambda d: (escenario(d, "E-04").pop("resolucion_esperada") and d or d))),
+        CasoDeContrato("superficie_no_objeto", "la superficie se declara como la ruta de un archivo",
+                       en(lambda d: (escenario(d, "E-01").update(
+                           {"superficie": ".specify/config.yml"}) or d))),
+        CasoDeContrato("clase_desconocida", "una resolución se declara `ignorado`",
+                       en(lambda d: (escenario(d, "E-04")["resolucion_esperada"].update(
+                           {"clase": "ignorado"}) or d))),
+        CasoDeContrato("causa_desconocida", "una causa fuera del vocabulario",
+                       en(lambda d: (escenario(d, "E-04")["resolucion_esperada"].update(
+                           {"causa": "quedo_afuera"}) or d))),
+        CasoDeContrato("nivel_desconocido", "una resolución dice resolver en un nivel que la "
+                                            "precedencia no declara",
+                       en(lambda d: (escenario(d, "E-01")["resolucion_esperada"].update(
+                           {"nivel": "variable_de_entorno"}) or d))),
+
+        # Los tres inválidos que AC-11 exige que **no** se ignoren, cada uno declarado como si
+        # resolviera bien: el modo ejecuta la precedencia y lo desmiente.
+        CasoDeContrato(
+            "resolucion_no_coincide",
+            "el perfil sin uso se declara resuelto en vez de inválido",
+            en(lambda d: (escenario(d, "E-04").update(
+                {"resolucion_esperada": {"clase": "resuelto", "perfil": "economy",
+                                         "nivel": "asignacion_por_rol_de_la_superficie"}}) or d))),
+        CasoDeContrato(
+            "resolucion_no_coincide",
+            "la asignación a un perfil inexistente se declara ignorada y resuelta al default",
+            en(lambda d: (escenario(d, "E-05").update(
+                {"resolucion_esperada": {"clase": "resuelto", "perfil": "balanced",
+                                         "nivel": "perfil_default_portable",
+                                         "causa": "sin_asignacion_para_el_rol"}}) or d))),
+        CasoDeContrato(
+            "resolucion_no_coincide", "la referencia rota se declara resuelta",
+            en(lambda d: (escenario(d, "E-06").update(
+                {"resolucion_esperada": {"clase": "resuelto", "perfil": "economy",
+                                         "nivel": "asignacion_por_rol_de_la_superficie"}}) or d))),
+        CasoDeContrato(
+            "resolucion_no_coincide",
+            "las dos ausencias legítimas se intercambian sus causas: los dos escenarios siguen "
+            "cayendo al default portable, y solo la causa derivada los separa",
+            en(_intercambiar_las_dos_causas)),
+
+        # Y las dos ausencias legítimas, cada una con su fixture: retirar una no la tapa la otra.
+        CasoDeContrato(
+            "escenario_de_ausencia_faltante",
+            "el corpus se queda sin el escenario de punto **sin asignación** habiendo superficie",
+            _sin_escenario_de(CAUSAS_DE_AUSENCIA_LEGITIMA[0])),
+        CasoDeContrato(
+            "escenario_de_ausencia_faltante",
+            "el corpus se queda sin el escenario de punto **sin superficie** de configuración",
+            _sin_escenario_de(CAUSAS_DE_AUSENCIA_LEGITIMA[1])),
+    )
+
+
+def _correr_caso_de_precedencia(caso: CasoDeContrato) -> tuple[list[Problema], dict]:
+    texto = caso.mutar(_texto_conforme()) if caso.mutar else _texto_conforme()
+    return verificar_perfil_precedencia(texto)
+
+
+def _bloque_de_las_dos_ausencias() -> list[tuple[str, bool, str]]:
+    """[E] Las dos ausencias legítimas van **por separado**, y un solo caso no cubre a las dos.
+
+    Que las dos resuelvan al default portable es cierto y no alcanza: si el modo no derivara la
+    causa, retirar uno de los dos escenarios dejaría al otro tapando el hueco. Las tres direcciones
+    lo muestran: con los dos, verde; sin uno, rojo nombrando **ese**; sin el otro, rojo nombrando el
+    otro."""
+    texto = _texto_conforme()
+    resultados: list[tuple[str, bool, str]] = []
+    problemas, resumen = verificar_perfil_precedencia(texto)
+    resultados.append((
+        "E1/perfil-precedencia", not problemas and resumen["ausencias_legitimas"] == 2,
+        "el corpus ejerce las dos ausencias legítimas —sin asignación habiendo superficie y sin "
+        "superficie alguna— y las dos caen al default portable"
+        if not problemas and resumen["ausencias_legitimas"] == 2 else
+        f"el conforme dio {resumen['ausencias_legitimas']} ausencias y {len(problemas)} problemas"))
+
+    for i, causa in enumerate(CAUSAS_DE_AUSENCIA_LEGITIMA):
+        mutado = _sin_escenario_de(causa)(texto)
+        faltantes = [p for p in verificar_perfil_precedencia(mutado)[0]
+                     if p.codigo == "escenario_de_ausencia_faltante"]
+        solo_esa = len(faltantes) == 1 and causa in faltantes[0].mensaje
+        resultados.append((
+            f"E{i + 2}/perfil-precedencia", solo_esa,
+            f"al retirar el escenario de `{causa}` se pone rojo por **ese** y no por el otro: el "
+            "que queda no lo tapa"
+            if solo_esa else
+            f"al retirar `{causa}` se emitieron {len(faltantes)} faltantes: "
+            f"{[p.mensaje[:60] for p in faltantes]}"))
+    return resultados
+
+
+def modo_autotest_perfil_precedencia() -> int:
+    resultados = _preludio_de_t13()
+    if all(ok for _, ok, _ in resultados):
+        resultados += _bloque_de_documento(
+            "perfil-precedencia", _casos_de_perfil_precedencia(), _correr_caso_de_precedencia,
+            CODIGOS_PERFIL_PRECEDENCIA,
+            lambda r: (f"evaluó {r['evaluados']} de {r['escenarios']} escenarios"
+                       if r["evaluados"] != r["escenarios"] or not r["escenarios"] else
+                       "ningún escenario resolvió inválido" if not r["invalidos"] else
+                       f"ejerció {r['causas_de_ausencia']} de las "
+                       f"{len(CAUSAS_DE_AUSENCIA_LEGITIMA)} causas de ausencia legítima"
+                       if r["causas_de_ausencia"] != len(CAUSAS_DE_AUSENCIA_LEGITIMA) else ""))
+        resultados += _bloque_de_las_dos_ausencias()
+        resultados += _bloque_de_ausencia("perfil-precedencia", modo_perfil_precedencia)
+    return _cierre("la precedencia se ejecuta contra su corpus: los tres inválidos fallan cerrado y "
+                   "las dos ausencias legítimas caen al default portable por causas distintas",
+                   resultados)
+
+
+# --- Casos de `--roles` -----------------------------------------------------------------------
+
+def _campo_de_familia(datos: dict, familia: str, campo: str) -> dict:
+    return _de_lista(datos, "familias", "familia", familia)["campos"][campo]
+
+
+def _mutantes_de_variante() -> tuple[CasoDeContrato, ...]:
+    """Un mutante **por asignación**, no uno por categoría.
+
+    Cada uno sustituye la variante de una fila por otra del mismo vocabulario —una que el propio
+    mapa usa en otra fila—, así que ninguno se delata por inventar un token. Un representante por
+    categoría convive con otras doce filas mal asignadas y el modo quedaría verde."""
+    vocabulario = [a.variante for a in MAPA_DE_ASIGNACIONES]
+    casos: list[CasoDeContrato] = []
+    for i, asignacion in enumerate(MAPA_DE_ASIGNACIONES):
+        otra = next(v for v in vocabulario[i + 1:] + vocabulario[:i] if v != asignacion.variante)
+        casos.append(CasoDeContrato(
+            "variante_no_coincide",
+            f"`{asignacion.punto}` cambia su variante por `{otra[:40]}`",
+            _en_json(SLUG_ASIGNACIONES,
+                     lambda d, p=asignacion.punto, v=otra: (
+                         _de_lista(d, "asignaciones", "punto", p).update({"variante": v}) or d))))
+    return tuple(casos)
+
+
+def _casos_de_roles() -> tuple[CasoDeContrato, ...]:
+    def fam(mutacion: Any) -> Any:
+        return _en_json(SLUG_FAMILIAS, mutacion)
+
+    def asig(mutacion: Any) -> Any:
+        return _en_json(SLUG_ASIGNACIONES, mutacion)
+
+    def punto(datos: dict, nombre: str) -> dict:
+        return _de_lista(datos, "asignaciones", "punto", nombre)
+
+    con_puntero = next(a for a in MAPA_DE_ASIGNACIONES if a.procedencia == "puntero")
+    con_decision = next(a for a in MAPA_DE_ASIGNACIONES if a.procedencia == "decision")
+
+    return (
+        # Los conformes. El primero trae la variante riesgosa que la task nombra: `diff-reviewer`
+        # declara su scope **ausente y sin puntero**. La ausencia declarada es legítima y no todo
+        # campo lleva puntero; un modo que exigiera puntero a todo caería acá.
+        CasoDeContrato(None, "las cinco familias con sus campos —vigentes, observados, uno ausente "
+                             "sin puntero y uno propuesto— y las trece asignaciones"),
+        CasoDeContrato(
+            None, "reordenar las asignaciones: el orden no es parte del mapa",
+            asig(lambda d: (d["asignaciones"].append(d["asignaciones"].pop(0)) or d))),
+        CasoDeContrato(
+            None, "no-op: se reescribe prosa fuera de los bloques",
+            _reemplazar_prosa("Un campo `ausente` declara su motivo",
+                              "Un campo en estado `ausente` declara su motivo")),
+
+        # Las cinco familias y su puntero normativo.
+        CasoDeContrato("familias_ausentes", "el documento no declara la sección de familias",
+                       _borrar_seccion(SLUG_FAMILIAS)),
+        CasoDeContrato("bloque_ilegible", "el bloque de familias no parsea",
+                       _romper_json(SLUG_FAMILIAS)),
+        CasoDeContrato("familia_faltante", "el contrato pierde una de las cinco familias",
+                       fam(lambda d: (d["familias"].remove(
+                           _de_lista(d, "familias", "familia", "investigator")) or d))),
+        CasoDeContrato("familia_de_mas", "el contrato estrena una sexta familia",
+                       fam(lambda d: (d["familias"].append(
+                           dict(_de_lista(d, "familias", "familia", "explorer"),
+                                familia="surveyor")) or d))),
+        CasoDeContrato("familia_duplicada", "una familia se declara dos veces",
+                       fam(lambda d: (d["familias"].append(
+                           copy.deepcopy(_de_lista(d, "familias", "familia", "explorer"))) or d))),
+        CasoDeContrato("puntero_de_familia_ausente", "una familia no declara su puntero normativo",
+                       fam(lambda d: (_de_lista(d, "familias", "familia", "explorer").pop("puntero")
+                                      and d or d))),
+        CasoDeContrato("puntero_de_familia_irresoluble",
+                       "el puntero de una familia señala una sección que no existe",
+                       fam(lambda d: (_de_lista(d, "familias", "familia", "explorer").update(
+                           {"puntero": ".plans/doctrina-implementador/roadmap.md#no-existe"})
+                           or d))),
+        CasoDeContrato(
+            "familia_ausente_en_la_sede",
+            "el puntero de una familia resuelve a una sección real del roadmap que no la nombra",
+            fam(lambda d: (_de_lista(d, "familias", "familia", "diff-reviewer").update(
+                {"puntero": SEDE_SIN_LOS_LITERALES}) or d))),
+
+        # Los campos y sus estados.
+        CasoDeContrato("campo_ausente", "una familia no declara su scope",
+                       fam(lambda d: (_de_lista(d, "familias", "familia",
+                                                "explorer")["campos"].pop("scope") and d or d))),
+        CasoDeContrato("estado_ausente", "un campo no declara su estado",
+                       fam(lambda d: (_campo_de_familia(d, "explorer", "entrada").pop("estado")
+                                      and d or d))),
+        CasoDeContrato("estado_desconocido", "un campo declara un estado fuera del vocabulario",
+                       fam(lambda d: (_campo_de_familia(d, "explorer", "entrada").update(
+                           {"estado": "en_estudio"}) or d))),
+        CasoDeContrato("campo_sin_valor", "un campo vigente no dice cuál es el valor vigente",
+                       fam(lambda d: (_campo_de_familia(d, "explorer", "salida").pop("valor")
+                                      and d or d))),
+        CasoDeContrato("campo_sin_procedencia", "un campo vigente pierde su procedencia anclada",
+                       fam(lambda d: (_campo_de_familia(d, "explorer", "salida").pop("procedencia")
+                                      and d or d))),
+        CasoDeContrato("procedencia_no_resuelve", "la sede de un campo anclado no existe",
+                       fam(lambda d: (_campo_de_familia(
+                           d, "explorer", "entrada")["procedencia"].update(
+                               {"sede": "fuentes/no-existe.md"}) or d))),
+        CasoDeContrato("ausente_sin_motivo", "el campo ausente no dice por qué no hay sede",
+                       fam(lambda d: (_campo_de_familia(d, "diff-reviewer", "scope").pop("motivo")
+                                      and d or d))),
+        CasoDeContrato("propuesto_sin_fase", "el campo propuesto no dice para qué fase",
+                       fam(lambda d: (_campo_de_familia(d, "investigator", "scope").pop("fase")
+                                      and d or d))),
+        CasoDeContrato(
+            "procedencia_en_campo_no_anclado",
+            "el campo ausente se ancla igual, contra la sede de otro campo",
+            fam(lambda d: (_campo_de_familia(d, "diff-reviewer", "scope").update(
+                {"procedencia": copy.deepcopy(
+                    _campo_de_familia(d, "explorer", "scope")["procedencia"])}) or d))),
+        CasoDeContrato(
+            "autoridad_por_familia",
+            "una familia declara su autoridad final, que va por punto y variante",
+            fam(lambda d: (_de_lista(d, "familias", "familia", "explorer")["campos"].update(
+                {"autoridad": {"estado": "vigente", "valor": "el conductor"}}) or d))),
+
+        # Las tres sustituciones de AC-13 que solo el resolutor semántico puede ver: los tres valores
+        # son plausibles, están bien escritos y la sede dice otra cosa.
+        CasoDeContrato(
+            "valor_no_coincide", "se sustituye la **entrada** de una familia por otra plausible",
+            fam(lambda d: (_campo_de_familia(d, "explorer", "entrada").update(
+                {"valor": "el diff a revisar y el contrato que ese diff dice cumplir"}) or d))),
+        CasoDeContrato(
+            "valor_no_coincide", "se sustituye la **salida** de una familia por otra plausible",
+            fam(lambda d: (_campo_de_familia(d, "design-reviewer", "salida").update(
+                {"valor": "el diff producido y el receipt de la corrida"}) or d))),
+        CasoDeContrato(
+            "valor_no_coincide", "se sustituye el **scope** de una familia por otro plausible",
+            fam(lambda d: (_campo_de_familia(d, "bounded-implementer", "scope").update(
+                {"valor": "lectura del árbol de trabajo; ninguna escritura"}) or d))),
+
+        # El mapa de las trece asignaciones, por igualdad exacta.
+        CasoDeContrato("asignaciones_ausentes", "el documento no declara la sección de asignaciones",
+                       _borrar_seccion(SLUG_ASIGNACIONES)),
+        CasoDeContrato("asignacion_faltante", "el mapa pierde una asignación",
+                       asig(lambda d: (d["asignaciones"].remove(
+                           punto(d, "sdd-flow · analyze")) or d))),
+        CasoDeContrato("asignacion_de_mas", "el mapa estrena un punto de despacho que no existe",
+                       asig(lambda d: (d["asignaciones"].append(
+                           dict(copy.deepcopy(punto(d, "co-explore · debate")),
+                                punto="co-explore · tercera ronda")) or d))),
+        CasoDeContrato("punto_duplicado", "un punto se declara dos veces",
+                       asig(lambda d: (d["asignaciones"].append(
+                           copy.deepcopy(punto(d, "co-explore · debate"))) or d))),
+        CasoDeContrato("familia_no_coincide", "una asignación cambia de familia de rol",
+                       asig(lambda d: (punto(d, "sdd-flow · analyze").update(
+                           {"familia": "investigator"}) or d))),
+        *_mutantes_de_variante(),
+        CasoDeContrato(
+            "procedencia_no_coincide",
+            "una fila decidida acá se declara derivada del roadmap",
+            asig(lambda d: (punto(d, con_decision.punto).update({"procedencia": "puntero"}) or d))),
+        CasoDeContrato("justificacion_ausente", "una fila decidida acá no dice por qué",
+                       asig(lambda d: (punto(d, con_decision.punto).pop("justificacion")
+                                       and d or d))),
+        CasoDeContrato("puntero_de_variante_ausente",
+                       "una fila derivada del roadmap no dice de dónde",
+                       asig(lambda d: (punto(d, con_puntero.punto).pop("puntero_variante")
+                                       and d or d))),
+        CasoDeContrato("puntero_de_variante_irresoluble",
+                       "el puntero de una variante señala una sección que no existe",
+                       asig(lambda d: (punto(d, con_puntero.punto).update(
+                           {"puntero_variante":
+                            ".plans/doctrina-implementador/roadmap.md#no-existe"}) or d))),
+        CasoDeContrato(
+            "variante_ausente_en_la_sede",
+            "el puntero de una variante resuelve a una sección real que no la nombra",
+            asig(lambda d: (punto(d, con_puntero.punto).update(
+                {"puntero_variante": SEDE_SIN_LOS_LITERALES}) or d))),
+        CasoDeContrato("forma_de_resultado_ausente", "una asignación no declara su forma de "
+                                                     "resultado",
+                       asig(lambda d: (punto(d, "co-explore · debate").pop("forma_de_resultado")
+                                       and d or d))),
+        CasoDeContrato("declaracion_de_salida_ausente",
+                       "una asignación no declara su contrato de salida",
+                       asig(lambda d: (punto(d, "co-explore · debate").pop("declaracion_de_salida")
+                                       and d or d))),
+        CasoDeContrato("autoridad_ausente", "una asignación no declara su autoridad final",
+                       asig(lambda d: (punto(d, "co-explore · debate").pop("autoridad")
+                                       and d or d))),
+        CasoDeContrato(
+            "valor_no_coincide",
+            "se sustituye la **autoridad** de un punto por la de otro, que es plausible y está "
+            "anclada en la misma sede",
+            asig(lambda d: (punto(d, "co-explore · debate")["autoridad"].update(
+                {"valor": "el conductor arbitra entre los dos mapas y no produce uno propio"})
+                or d))),
+        CasoDeContrato(
+            "salida_compartida_entre_formas_distintas",
+            "dos variantes cuyo resultado tiene forma distinta pasan a compartir declaración de "
+            "salida",
+            asig(lambda d: (punto(d, "co-explore · debate").update(
+                {"declaracion_de_salida": punto(
+                    d, "cross-review · revisor por ronda")["declaracion_de_salida"]}) or d))),
+    )
+
+
+def _correr_caso_de_roles(caso: CasoDeContrato) -> tuple[list[Problema], dict]:
+    """Dos raíces, y no es un descuido. Las procedencias de los campos de rol son **sintéticas** y
+    viven en el corpus; los punteros de las cinco familias y de las ocho variantes son **normativos**
+    y se resuelven contra el árbol real. Con un árbol sintético, el inventario probaría que el modo
+    sabe leer JSON y nada más."""
+    texto = caso.mutar(_texto_conforme()) if caso.mutar else _texto_conforme()
+    return verificar_roles(texto, CONFORME_CONTRATO, REPO)
+
+
+def _bloque_por_asignacion() -> list[tuple[str, bool, str]]:
+    """[E] Los mutantes de variante son **uno por asignación** y cada uno nombra la suya.
+
+    Que los trece den rojo no alcanza: si todos cayeran nombrando la misma fila, doce asignaciones
+    estarían sin cubrir y el bloque B —que solo mira el código— no lo vería."""
+    fallas: list[str] = []
+    for caso in _mutantes_de_variante():
+        try:
+            problemas, _ = _correr_caso_de_roles(caso)
+        except ValueError as exc:
+            fallas.append(f"{caso.descripcion} — no corrió: {exc}")
+            continue
+        propios = [p for p in problemas if p.codigo == "variante_no_coincide"]
+        esperado = caso.descripcion.split("`")[1]
+        if len(propios) != 1 or esperado not in propios[0].donde:
+            fallas.append(f"{esperado} — cayeron {[p.donde for p in propios]}")
+    return [("E/roles", not fallas,
+             f"los {len(MAPA_DE_ASIGNACIONES)} mutantes de variante caen de a uno y cada uno nombra "
+             "su propia fila"
+             if not fallas else f"{len(fallas)} problemas: " + " | ".join(fallas[:3]))]
+
+
+def modo_autotest_roles() -> int:
+    resultados = _preludio_de_roles()
+    if all(ok for _, ok, _ in resultados):
+        resultados += _bloque_de_documento(
+            "roles", _casos_de_roles(), _correr_caso_de_roles, CODIGOS_ROLES,
+            lambda r: (f"leyó {r['familias']} de {len(FAMILIAS_DE_ROL)} familias y "
+                       f"{r['asignaciones']} de {len(MAPA_DE_ASIGNACIONES)} asignaciones: no "
+                       "recorrió el documento"
+                       if r["familias"] != len(FAMILIAS_DE_ROL)
+                       or r["asignaciones"] != len(MAPA_DE_ASIGNACIONES) else
+                       f"resolvió {r['campos_resueltos']} de {r['campos_anclados']} campos anclados"
+                       if r["campos_resueltos"] != r["campos_anclados"] or not r["campos_anclados"]
+                       else f"resolvió {r['punteros_de_familia']} punteros de familia"
+                       if r["punteros_de_familia"] != len(FAMILIAS_DE_ROL) else
+                       "no resolvió ningún puntero de variante"
+                       if not r["punteros_de_variante"] else ""))
+        resultados += _bloque_por_asignacion()
+        resultados += _bloque_de_ausencia(
+            "roles", lambda ruta: modo_roles(ruta, CONFORME_CONTRATO, REPO))
+    return _cierre("las cinco familias se derivan del roadmap con puntero por literal, sus campos "
+                   "vigentes resuelven con el verificador semántico de la matriz, y las trece "
+                   "asignaciones coinciden por igualdad exacta con el mapa congelado", resultados)
+
+# --- Casos de `--diversidad` ------------------------------------------------------------------
+
+def _casos_de_diversidad() -> tuple[CasoDeContrato, ...]:
+    def en(mutacion: Any) -> Any:
+        return _en_json(SLUG_DIVERSIDAD, mutacion)
+
+    def intento(datos: dict, ident: str) -> dict:
+        return _de_lista(datos, "intentos", "id", ident)
+
+    def contradecir(datos: dict) -> dict:
+        """Cambia **un registro** y deja la topología declarada intacta. Es el fixture que la task
+        pide: un modo que clasificara bien las relaciones pero leyera el agregado de la declaración
+        pasaría igual."""
+        uno = intento(datos, "I-02")
+        uno["worker"] = "codex"
+        uno["relaciones"]["worker_vs_conductor"] = "cross_family"
+        uno["relaciones"]["worker_vs_autor"] = "same_family"
+        uno["cuenta_como_evidencia_independiente"] = False
+        return datos
+
+    return (
+        # Los conformes. `I-03` es la variante riesgosa: un resultado `same_family` **presente** y
+        # correctamente excluido del conteo. Estar presente no es el defecto; contarlo sí.
+        CasoDeContrato(None, "cuatro intentos con sus tres identidades, sus relaciones, la topología "
+                             "derivada y un `same_family` presente y excluido"),
+        CasoDeContrato(
+            None, "reordenar los intentos: la topología no depende del orden",
+            en(lambda d: (d["intentos"].append(d["intentos"].pop(0)) or d))),
+        CasoDeContrato(
+            None, "no-op: se reescribe prosa fuera del bloque",
+            _reemplazar_prosa("La topología agregada de la corrida se",
+                              "La topología agregada de toda la corrida se")),
+
+        # La estructura de la sección.
+        CasoDeContrato("diversidad_ausente", "el documento no declara la sección",
+                       _borrar_seccion(SLUG_DIVERSIDAD)),
+        CasoDeContrato("bloque_ilegible", "el bloque declara una lista",
+                       en(lambda d: [d])),
+        CasoDeContrato("intentos_ausentes", "la política no registra ningún intento",
+                       en(lambda d: (d.update({"intentos": []}) or d))),
+        CasoDeContrato("intento_no_objeto", "un intento se declara como texto",
+                       en(lambda d: (d["intentos"].append("la corrida del jueves") or d))),
+        CasoDeContrato("intento_id_duplicado", "dos intentos comparten identificador",
+                       en(lambda d: (intento(d, "I-02").update({"id": "I-01"}) or d))),
+
+        # Las tres identidades y las relaciones derivadas de ellas.
+        CasoDeContrato("intento_sin_identidad",
+                       "un intento no registra quién escribió el artefacto que juzga",
+                       en(lambda d: (intento(d, "I-02").pop("autor_del_artefacto") and d or d))),
+        CasoDeContrato("familia_desconocida", "una identidad fuera de las dos familias",
+                       en(lambda d: (intento(d, "I-01").update({"worker": "familia-tercera"})
+                                     or d))),
+        CasoDeContrato("relacion_ausente", "un intento no registra sus relaciones",
+                       en(lambda d: (intento(d, "I-01").pop("relaciones") and d or d))),
+        CasoDeContrato("relacion_desconocida", "una relación fuera del vocabulario",
+                       en(lambda d: (intento(d, "I-01")["relaciones"].update(
+                           {"worker_vs_autor": "parcialmente_cruzada"}) or d))),
+        CasoDeContrato(
+            "relacion_no_coincide",
+            "una relación se registra `same_family` y las identidades dicen `cross_family`",
+            en(lambda d: (intento(d, "I-01")["relaciones"].update(
+                {"worker_vs_autor": "same_family"}) or d))),
+
+        # La regla de evidencia independiente, en sus tres direcciones.
+        CasoDeContrato("independencia_omitida",
+                       "un intento no dice si cuenta como evidencia independiente",
+                       en(lambda d: (intento(d, "I-01").pop(
+                           "cuenta_como_evidencia_independiente") and d or d))),
+        CasoDeContrato(
+            "independiente_de_una_sola_familia",
+            "se cuenta como independiente un resultado cuyo trabajo delegado es de la misma familia "
+            "que el autor del artefacto",
+            en(lambda d: (intento(d, "I-03").update(
+                {"cuenta_como_evidencia_independiente": True}) or d))),
+        CasoDeContrato(
+            "independiente_de_una_sola_voz",
+            "se cuenta como independiente un resultado en el que conducen, escriben y trabajan la "
+            "misma familia",
+            en(lambda d: (intento(d, "I-04").update(
+                {"cuenta_como_evidencia_independiente": True}) or d))),
+        CasoDeContrato(
+            "independencia_negada",
+            "se descarta un resultado que sí es independiente: la regla también dice qué cuenta",
+            en(lambda d: (intento(d, "I-01").update(
+                {"cuenta_como_evidencia_independiente": False}) or d))),
+
+        # La topología, en las dos direcciones.
+        CasoDeContrato("topologia_ausente", "la política no declara su topología agregada",
+                       en(lambda d: (d.pop("topologia") and d or d))),
+        CasoDeContrato(
+            "topologia_contradice_registros",
+            "la topología declarada dice un cruce más de los que sus registros producen",
+            en(lambda d: (d["topologia"].update(
+                {"cross_vs_autor": d["topologia"]["cross_vs_autor"] + 1}) or d))),
+        CasoDeContrato(
+            "topologia_contradice_registros",
+            "cambia **un registro** y la topología declarada queda intacta: un modo que la leyera "
+            "en vez de derivarla pasaría",
+            en(contradecir)),
+    )
+
+
+def _correr_caso_de_diversidad(caso: CasoDeContrato) -> tuple[list[Problema], dict]:
+    texto = caso.mutar(_texto_conforme()) if caso.mutar else _texto_conforme()
+    return verificar_diversidad(texto)
+
+
+def _bloque_de_la_topologia_derivada() -> list[tuple[str, bool, str]]:
+    """[E] La topología se **deriva** de los registros, y las dos direcciones lo muestran.
+
+    Solo la primera la satisface un modo que leyera el agregado declarado; solo la segunda, uno que
+    lo ignorara y nunca lo comparara. Y el corpus tiene que ser no trivial: con cuatro intentos
+    idénticos, «coincide» sería cierto para cualquier derivación."""
+    texto = _texto_conforme()
+    datos, _ = _bloque_json(texto, SLUG_DIVERSIDAD)
+    problemas, resumen = verificar_diversidad(texto)
+    variado = (isinstance(datos, dict) and isinstance(datos.get("topologia"), dict)
+               and 0 < datos["topologia"].get("single_voice", 0) < resumen["intentos"]
+               and 0 < datos["topologia"].get("evidencia_independiente", 0) < resumen["intentos"])
+
+    def codigos(mutacion: Any) -> set[str]:
+        return {p.codigo for p in verificar_diversidad(_en_json(SLUG_DIVERSIDAD, mutacion)(texto))[0]}
+
+    solo_declarada = codigos(lambda d: (d["topologia"].update(
+        {"single_voice": d["topologia"]["single_voice"] + 1}) or d))
+    solo_registro = codigos(lambda d: (
+        _de_lista(d, "intentos", "id", "I-02").update({"worker": "codex"})
+        or _de_lista(d, "intentos", "id", "I-02")["relaciones"].update(
+            {"worker_vs_conductor": "cross_family", "worker_vs_autor": "same_family"})
+        or _de_lista(d, "intentos", "id", "I-02").update(
+            {"cuenta_como_evidencia_independiente": False})
+        or d))
+
+    return [
+        ("E1/diversidad", not problemas and variado and resumen["topologia_comparada"] == 1,
+         f"el corpus registra {resumen['intentos']} intentos con topología no trivial "
+         f"({resumen['single_voice']} de una sola voz, {resumen['independientes']} independientes) y "
+         "la declarada coincide con la derivada"
+         if not problemas and variado else
+         f"el conforme dio {len(problemas)} problemas o su topología es trivial: {variado}"),
+        ("E2/diversidad", solo_declarada == {"topologia_contradice_registros"},
+         "al mover un contador de la topología declarada sin tocar los registros se pone rojo, y "
+         "solo por eso"
+         if solo_declarada == {"topologia_contradice_registros"} else
+         f"mover la declarada emitió {sorted(solo_declarada)}"),
+        ("E3/diversidad", solo_registro == {"topologia_contradice_registros"},
+         "y al mover **un registro** dejando la topología declarada intacta también, que es la "
+         "dirección que un modo que la leyera en vez de derivarla no vería"
+         if solo_registro == {"topologia_contradice_registros"} else
+         f"mover un registro emitió {sorted(solo_registro)}"),
+    ]
+
+
+def modo_autotest_diversidad() -> int:
+    resultados = _preludio_de_t13()
+    if all(ok for _, ok, _ in resultados):
+        resultados += _bloque_de_documento(
+            "diversidad", _casos_de_diversidad(), _correr_caso_de_diversidad, CODIGOS_DIVERSIDAD,
+            lambda r: (f"leyó {r['intentos']} intentos: no recorrió la política"
+                       if not r["intentos"] else
+                       f"derivó {r['relaciones_derivadas']} relaciones para {r['intentos']} intentos "
+                       "y son dos por intento"
+                       if r["relaciones_derivadas"] != 2 * r["intentos"] else
+                       "no comparó la topología derivada contra la declarada"
+                       if not r["topologia_comparada"] else
+                       "ningún resultado contó como evidencia independiente"
+                       if not r["independientes"] else
+                       "ningún intento fue de una sola voz, así que esa mitad de la regla no se "
+                       "ejerció" if not r["single_voice"] else ""))
+        resultados += _bloque_de_la_topologia_derivada()
+        resultados += _bloque_de_ausencia("diversidad", modo_diversidad)
+    return _cierre("por intento se registran las tres identidades y sus relaciones, la topología se "
+                   "deriva de esos registros y la evidencia independiente es una regla ejecutable",
+                   resultados)
+
+
+# --- Casos de `--defectos` --------------------------------------------------------------------
+
+def _casos_de_defectos() -> tuple[CasoDeContrato, ...]:
+    def en(mutacion: Any) -> Any:
+        return _en_json(SLUG_DEFECTOS, mutacion)
+
+    def defecto(datos: dict, ident: str) -> dict:
+        return _de_lista(datos, "defectos", "id", ident)
+
+    septimo = {
+        "id": "presupuesto-por-defecto-sin-sede-canonica",
+        "descripcion": "el presupuesto de espera por defecto que ninguna sede declara",
+        "ubicacion": "sintetico/presupuestos-del-corpus.md#espera-por-defecto",
+        "naturaleza": "documental: el valor aparece en tres sitios y ninguno se declara canónico",
+        "fase": "Fase 1",
+    }
+    reemplazo = dict(septimo, id="otra-cosa-que-tambien-esta-mal")
+
+    return (
+        # Los conformes. El segundo es el que la task exige: **el mínimo de seis no es un conjunto
+        # cerrado**, y un modo que exigiera exactamente esos seis rechazaría un inventario más
+        # completo que el exigido.
+        CasoDeContrato(None, "los seis defectos mínimos con su ubicación, naturaleza y fase"),
+        CasoDeContrato(None, "un séptimo defecto bien formado: acepta más",
+                       en(lambda d: (d["defectos"].append(septimo) or d))),
+        CasoDeContrato(
+            None, "no-op: se reescribe prosa fuera del bloque",
+            _reemplazar_prosa("Puede contener más y no menos.",
+                              "Puede contener más, y no menos.")),
+
+        # El mínimo, comparado por identidad.
+        CasoDeContrato("defectos_ausentes", "el documento no declara la sección",
+                       _borrar_seccion(SLUG_DEFECTOS)),
+        CasoDeContrato("bloque_ilegible", "el bloque declara una lista",
+                       en(lambda d: [d])),
+        CasoDeContrato("defectos_ausentes", "el inventario se queda sin defectos",
+                       en(lambda d: (d.update({"defectos": []}) or d))),
+        CasoDeContrato(
+            "defecto_minimo_faltante",
+            "uno de los seis se cambia por otro **conservando el total**: es lo que un "
+            "`len(defectos) >= 6` no ve",
+            en(lambda d: (d["defectos"].__setitem__(
+                d["defectos"].index(defecto(d, DEFECTOS_MINIMOS[2].identidad)), reemplazo) or d))),
+        CasoDeContrato("defecto_no_objeto", "un defecto se declara como texto",
+                       en(lambda d: (d["defectos"].append("falta algo en el manifest") or d))),
+        CasoDeContrato("defecto_sin_identidad", "un defecto no declara su identidad",
+                       en(lambda d: (defecto(d, DEFECTOS_MINIMOS[0].identidad).pop("id")
+                                     and d or d))),
+        CasoDeContrato("defecto_id_duplicado", "dos defectos comparten identidad",
+                       en(lambda d: (d["defectos"].append(
+                           dict(septimo, id=DEFECTOS_MINIMOS[0].identidad)) or d))),
+        CasoDeContrato("defecto_sin_campo", "un defecto no declara su ubicación",
+                       en(lambda d: (defecto(d, DEFECTOS_MINIMOS[1].identidad).pop("ubicacion")
+                                     and d or d))),
+        CasoDeContrato("defecto_sin_campo", "un defecto no declara su naturaleza",
+                       en(lambda d: (defecto(d, DEFECTOS_MINIMOS[3].identidad).pop("naturaleza")
+                                     and d or d))),
+        CasoDeContrato("defecto_sin_campo", "un defecto no declara su fase de corrección",
+                       en(lambda d: (defecto(d, DEFECTOS_MINIMOS[4].identidad).pop("fase")
+                                     and d or d))),
+        CasoDeContrato("ubicacion_sin_forma", "una ubicación que no ubica nada",
+                       en(lambda d: (defecto(d, DEFECTOS_MINIMOS[5].identidad).update(
+                           {"ubicacion": "en las instrucciones del repositorio"}) or d))),
+    )
+
+
+def _correr_caso_de_defectos(caso: CasoDeContrato) -> tuple[list[Problema], dict]:
+    texto = caso.mutar(_texto_conforme()) if caso.mutar else _texto_conforme()
+    return verificar_defectos(texto)
+
+
+def _bloque_del_minimo_por_identidad() -> list[tuple[str, bool, str]]:
+    """[E] «Al menos seis» se comprueba por identidad y no por cantidad.
+
+    Las tres direcciones: con los seis pasa; con siete también —el mínimo no cierra el conjunto—; y
+    con seis de los cuales uno fue sustituido, se pone rojo. Solo la tercera separa la comparación
+    por identidad de un `len(defectos) >= 6`, que satisface las otras dos."""
+    casos = _casos_de_defectos()
+    conforme = _correr_caso_de_defectos(casos[0])
+    con_septimo = _correr_caso_de_defectos(casos[1])
+    sustituido = next(c for c in casos if c.codigo == "defecto_minimo_faltante")
+    problemas_sust, resumen_sust = _correr_caso_de_defectos(sustituido)
+    codigos = {p.codigo for p in problemas_sust}
+    return [
+        ("E1/defectos", not conforme[0] and conforme[1]["defectos"] == len(DEFECTOS_MINIMOS),
+         f"el conforme registra exactamente los {len(DEFECTOS_MINIMOS)} mínimos y pasa"
+         if not conforme[0] else f"el conforme falló: {conforme[0][0]}"),
+        ("E2/defectos", not con_septimo[0]
+         and con_septimo[1]["defectos"] == len(DEFECTOS_MINIMOS) + 1,
+         f"con un séptimo bien formado sigue pasando y cuenta {con_septimo[1]['defectos']}: el "
+         "mínimo no es un conjunto cerrado"
+         if not con_septimo[0] else f"el séptimo lo puso rojo: {con_septimo[0][0]}"),
+        ("E3/defectos",
+         codigos == {"defecto_minimo_faltante"}
+         and resumen_sust["defectos"] == len(DEFECTOS_MINIMOS),
+         f"y al sustituir uno de los seis por otro el total sigue en {resumen_sust['defectos']} y se "
+         "pone rojo igual: un conteo lo dejaría pasar"
+         if codigos == {"defecto_minimo_faltante"} else
+         f"la sustitución emitió {sorted(codigos)} con total {resumen_sust['defectos']}"),
+    ]
+
+
+def modo_autotest_defectos() -> int:
+    resultados = _preludio_de_t13()
+    if all(ok for _, ok, _ in resultados):
+        resultados += _bloque_de_documento(
+            "defectos", _casos_de_defectos(), _correr_caso_de_defectos, CODIGOS_DEFECTOS,
+            lambda r: (f"leyó {r['defectos']} defectos: no recorrió el inventario"
+                       if not r["defectos"] else
+                       f"encontró {r['minimos_presentes']} de los {len(DEFECTOS_MINIMOS)} mínimos"
+                       if r["minimos_presentes"] != len(DEFECTOS_MINIMOS) else ""))
+        resultados += _bloque_del_minimo_por_identidad()
+        resultados += _bloque_de_ausencia("defectos", modo_defectos)
+    return _cierre(f"el inventario registra al menos los {len(DEFECTOS_MINIMOS)} defectos mínimos "
+                   "comparados por identidad, cada uno con su ubicación, su naturaleza y su fase",
+                   resultados)
+
+
+# --- Los dos preludios ------------------------------------------------------------------------
+
+def _preludio_de_t13() -> list[tuple[str, bool, str]]:
+    """Lo que tiene que valer antes de correr un caso de cualquiera de los cinco modos."""
+    resultados = _preludio_del_corpus()
+    if not all(ok for _, ok, _ in resultados):
+        return resultados
+    contenedor = contenedor_del_perfil()
+    if contenedor.error or not contenedor.clave_raiz:
+        return resultados + [("0.contenedor", False,
+                              f"no se pudo derivar la forma del contenedor de perfiles de "
+                              f"{RUTA_NOMBRES_RESERVADOS.name}: {contenedor.error}")]
+    resultados.append((
+        "0.contenedor", len(contenedor.obligatorios) == 5 and len(contenedor.parametros) == 2,
+        f"la forma del contenedor sale de {RUTA_NOMBRES_RESERVADOS.name}: raíz "
+        f"`{contenedor.clave_raiz}`, {len(contenedor.obligatorios)} componentes obligatorios y una "
+        f"lista blanca de {len(contenedor.parametros)} parámetros "
+        f"({', '.join('`' + p + '`' for p in contenedor.parametros)})"
+        if len(contenedor.obligatorios) == 5 and len(contenedor.parametros) == 2 else
+        f"la lista declara {len(contenedor.obligatorios)} componentes obligatorios y "
+        f"{len(contenedor.parametros)} parámetros de runtime; el criterio pide cinco y dos"))
+    resultados.append((
+        "0.sede", SEDE_DE_ROL.is_file(),
+        f"está la sede sintética de las procedencias de rol ({SEDE_DE_ROL.name})"
+        if SEDE_DE_ROL.is_file() else f"falta {SEDE_DE_ROL}"))
+    return resultados
+
+
+def _preludio_de_roles() -> list[tuple[str, bool, str]]:
+    """El bloque que sostiene el modo de roles, y que separa lo derivado de lo decidido.
+
+    **Las cinco familias se derivan**: si una se la hubiera inventado esta task, no habría sección
+    del roadmap donde encontrarla. **El mapa no**: es una decisión escrita, y lo único que se puede
+    comprobar de él es que el fixture no divergió del inventario congelado y que las ocho filas que
+    dicen derivar su variante del roadmap efectivamente la tienen ahí."""
+    resultados = _preludio_de_t13()
+    if not all(ok for _, ok, _ in resultados):
+        return resultados
+
+    fallas = [f"{f} — `{SEDE_DE_LAS_FAMILIAS}`: {_resolver_puntero(SEDE_DE_LAS_FAMILIAS, f, REPO)}"
+              for f in FAMILIAS_DE_ROL if _resolver_puntero(SEDE_DE_LAS_FAMILIAS, f, REPO)]
+    resultados.append((
+        "0.familias", not fallas,
+        f"las {len(FAMILIAS_DE_ROL)} familias de rol resuelven contra la tabla real del roadmap y "
+        "aparecen ahí, así que no las inventó esta task"
+        if not fallas else f"{len(fallas)} familias sin respaldo: " + " | ".join(fallas)))
+
+    con_puntero = [a for a in MAPA_DE_ASIGNACIONES if a.procedencia == "puntero"]
+    sin_respaldo = [f"{a.punto} → `{a.variante}`" for a in con_puntero
+                    if _resolver_puntero(SEDE_DE_LAS_FAMILIAS, a.variante, REPO)]
+    resultados.append((
+        "0.variantes", not sin_respaldo and len(con_puntero) < len(MAPA_DE_ASIGNACIONES),
+        f"{len(con_puntero)} de las {len(MAPA_DE_ASIGNACIONES)} asignaciones dicen derivar su "
+        f"variante del roadmap y las {len(con_puntero)} aparecen ahí; las otras "
+        f"{len(MAPA_DE_ASIGNACIONES) - len(con_puntero)} se marcan decisión, que es lo que son"
+        if not sin_respaldo and len(con_puntero) < len(MAPA_DE_ASIGNACIONES) else
+        f"{len(sin_respaldo)} variantes marcadas puntero sin respaldo: "
+        + " | ".join(sin_respaldo[:4])))
+
+    # El fixture no puede divergir del mapa congelado: si divergiera, el control positivo del modo
+    # estaría midiendo otra cosa que la que la fila declara.
+    texto = _texto_conforme()
+    declaradas, motivo = _bloque_json(texto, SLUG_ASIGNACIONES)
+    if motivo or not isinstance(declaradas, dict):
+        resultados.append(("0.mapa", False, motivo or "el bloque de asignaciones no es un objeto"))
+        return resultados
+    del_fixture = sorted(
+        (str(f.get("punto")), str(f.get("familia")), str(f.get("variante")),
+         str(f.get("procedencia")))
+        for f in declaradas.get("asignaciones", []) if isinstance(f, dict))
+    congelado = sorted(tuple(a) for a in MAPA_DE_ASIGNACIONES)
+    resultados.append((
+        "0.mapa", del_fixture == congelado,
+        f"el fixture declara exactamente las {len(congelado)} asignaciones congeladas, fila por fila"
+        if del_fixture == congelado else
+        f"el fixture divergió del mapa: {sorted(set(del_fixture) ^ set(congelado))[:2]}"))
+    return resultados
+
+
 # ---------------------------------------------------------------------------------------------
 
 
@@ -9597,6 +12037,56 @@ def main(argv: list[str] | None = None) -> int:
              "un documento de afirmaciones válidas",
     )
     parser.add_argument(
+        "--perfil-schema", nargs="?", const=str(RUTA_CONTRATO), metavar="RUTA",
+        help="comprueba el contenedor del perfil de ejecución: sus cinco componentes obligatorios y "
+             "la lista blanca cerrada del objeto de parámetros de cada perfil",
+    )
+    parser.add_argument(
+        "--autotest-perfil-schema", action="store_true",
+        help="control positivo y negativo del modo --perfil-schema, con el bloque que separa los "
+             "dos niveles de la lista blanca",
+    )
+    parser.add_argument(
+        "--perfil-precedencia", nargs="?", const=str(RUTA_CONTRATO), metavar="RUTA",
+        help="ejecuta la precedencia declarada contra el corpus de escenarios del contrato y coteja "
+             "cada resolución contra la que el documento declara",
+    )
+    parser.add_argument(
+        "--autotest-perfil-precedencia", action="store_true",
+        help="control positivo y negativo del modo --perfil-precedencia, con las dos ausencias "
+             "legítimas por separado",
+    )
+    parser.add_argument(
+        "--roles", nargs="?", const=str(RUTA_CONTRATO), metavar="RUTA",
+        help="los contratos de las cinco familias de rol —con sus campos resueltos por el "
+             "verificador semántico de la matriz— y el mapa de las trece asignaciones por igualdad "
+             "exacta",
+    )
+    parser.add_argument(
+        "--autotest-roles", action="store_true",
+        help="control positivo y negativo del modo --roles, con un mutante por asignación",
+    )
+    parser.add_argument(
+        "--diversidad", nargs="?", const=str(RUTA_CONTRATO), metavar="RUTA",
+        help="las tres identidades y las relaciones de cada intento, la topología derivada de esos "
+             "registros y la regla de evidencia independiente",
+    )
+    parser.add_argument(
+        "--autotest-diversidad", action="store_true",
+        help="control positivo y negativo del modo --diversidad, con el fixture cuya topología "
+             "declarada contradice sus propios registros",
+    )
+    parser.add_argument(
+        "--defectos", nargs="?", const=str(RUTA_CONTRATO), metavar="RUTA",
+        help="el inventario de defectos: los seis mínimos comparados por identidad, cada uno con su "
+             "ubicación, su naturaleza y su fase",
+    )
+    parser.add_argument(
+        "--autotest-defectos", action="store_true",
+        help="control positivo y negativo del modo --defectos, con la sustitución que conserva el "
+             "total",
+    )
+    parser.add_argument(
         "--pares-con-fallo", metavar="LISTA", default=None,
         help="los pares autorizados a mostrar `fallo`, separados por comas (por defecto, los que "
              "declaran un caso `clase_esperada: fallo` en scripts/paridad-casos/); solo lo usa "
@@ -9662,6 +12152,16 @@ def main(argv: list[str] | None = None) -> int:
         args.autotest_ejes,
         bool(args.capacidades),
         args.autotest_capacidades,
+        bool(args.perfil_schema),
+        args.autotest_perfil_schema,
+        bool(args.perfil_precedencia),
+        args.autotest_perfil_precedencia,
+        bool(args.roles),
+        args.autotest_roles,
+        bool(args.diversidad),
+        args.autotest_diversidad,
+        bool(args.defectos),
+        args.autotest_defectos,
     ]
     if sum(seleccionados) != 1:
         print("Invocación inválida: exactamente uno de --schema, --autotest-schema, "
@@ -9671,8 +12171,10 @@ def main(argv: list[str] | None = None) -> int:
               "--condiciones, --autotest-condiciones, --cobertura-condiciones, "
               "--autotest-cobertura-condiciones, --claves-perfil, --autotest-claves-perfil, "
               "--parear-reporte, --autotest-parear-reporte, --identidad, --autotest-identidad, "
-              "--contrato, --autotest-contrato, --ejes, --autotest-ejes, --capacidades o "
-              "--autotest-capacidades.",
+              "--contrato, --autotest-contrato, --ejes, --autotest-ejes, --capacidades, "
+              "--autotest-capacidades, --perfil-schema, --autotest-perfil-schema, "
+              "--perfil-precedencia, --autotest-perfil-precedencia, --roles, --autotest-roles, "
+              "--diversidad, --autotest-diversidad, --defectos o --autotest-defectos.",
               file=sys.stderr)
         return 2
     if args.autotest_schema:
@@ -9726,6 +12228,26 @@ def main(argv: list[str] | None = None) -> int:
         return modo_capacidades(Path(args.capacidades))
     if args.autotest_capacidades:
         return modo_autotest_capacidades()
+    if args.perfil_schema:
+        return modo_perfil_schema(Path(args.perfil_schema))
+    if args.autotest_perfil_schema:
+        return modo_autotest_perfil_schema()
+    if args.perfil_precedencia:
+        return modo_perfil_precedencia(Path(args.perfil_precedencia))
+    if args.autotest_perfil_precedencia:
+        return modo_autotest_perfil_precedencia()
+    if args.roles:
+        return modo_roles(Path(args.roles), Path(args.raiz), Path(args.arbol))
+    if args.autotest_roles:
+        return modo_autotest_roles()
+    if args.diversidad:
+        return modo_diversidad(Path(args.diversidad))
+    if args.autotest_diversidad:
+        return modo_autotest_diversidad()
+    if args.defectos:
+        return modo_defectos(Path(args.defectos))
+    if args.autotest_defectos:
+        return modo_autotest_defectos()
     escenarios = Path(args.escenarios) if args.escenarios else None
     if args.condiciones:
         return modo_condiciones(Path(args.condiciones), escenarios)
