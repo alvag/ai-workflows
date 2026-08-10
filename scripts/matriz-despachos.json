@@ -1334,7 +1334,7 @@
           },
           "extraccion": {
             "tipo": "captura_de_grupo",
-            "patron": "ofrecer en este mismo gate (una revisión agregada del diff completo)",
+            "patron": "(ofrecer en este mismo gate una revisión agregada del diff completo)",
             "grupo": 1
           },
           "normalizacion": "colapsar_espacios",
@@ -3527,29 +3527,23 @@
         }
       },
       "condicion_de_existencia": {
-        "tipo": "atomo",
-        "clave": "cross_implement.max_fix_rounds",
-        "operador": "distinto",
-        "valor": "0",
+        "tipo": "siempre",
         "procedencia": {
           "sede": "skills/cross-implement/SKILL.md",
-          "tipo_de_sede": "clave_estructurada",
+          "tipo_de_sede": "patron_de_linea",
           "selector": {
-            "ruta": [
-              "cross_implement",
-              "max_fix_rounds"
-            ],
-            "formato": "yaml",
-            "lenguaje_del_bloque": "yaml"
+            "patron": "^- cada ronda del \\*\\*fix loop\\*\\*, que reanuda esa misma sesión con el delta$"
           },
           "cardinalidad": {
             "tipo": "exactamente_una"
           },
           "extraccion": {
-            "tipo": "literal"
+            "tipo": "captura_de_grupo",
+            "patron": "(que reanuda esa misma sesión con el delta)$",
+            "grupo": 1
           },
           "normalizacion": "trim",
-          "conversion": "entero"
+          "conversion": "cadena"
         }
       },
       "presupuesto_de_espera_contractual": {
@@ -4849,14 +4843,14 @@
           "sede": "skills/sdd-pr-feedback/SKILL.md",
           "tipo_de_sede": "patron_de_linea",
           "selector": {
-            "patron": "^Con spec \\*\\*y\\*\\* plan/tasks ya aprobados y cross-revisados"
+            "patron": "^  tasks propio\\)\\. Sin aprobación no se delega nada\\."
           },
           "cardinalidad": {
             "tipo": "exactamente_una"
           },
           "extraccion": {
             "tipo": "captura_de_grupo",
-            "patron": "^(Con spec \\*\\*y\\*\\* plan/tasks ya aprobados y cross-revisados)",
+            "patron": "(Sin aprobación no se delega nada)\\.",
             "grupo": 1
           },
           "normalizacion": "colapsar_espacios",

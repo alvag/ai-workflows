@@ -9,7 +9,6 @@
         "final_diff_review.mode": "on",
         "mode": "explore",
         "co_explore.debate.mode": "auto",
-        "cross_implement.max_fix_rounds": "2",
         "cross_review.mode": "auto",
         "depends_on": "verified",
         "orchestration_task.status": "done",
@@ -39,13 +38,12 @@
     },
     {
       "id": "debate-standalone-sin-ninguna-capacidad",
-      "descripcion": "Degradación total: un `debate` standalone en un entorno que no puede despachar nada y con toda la configuración apagada. Los cinco átomos de capacidad se resuelven por ausencia y las claves quedan en su valor desactivador, así que solo sobreviven el punto constante y el que la propia configuración pide.",
+      "descripcion": "Degradación total: un `debate` standalone en un entorno que no puede despachar nada y con toda la configuración apagada. Los cinco átomos de capacidad se resuelven por ausencia y las claves quedan en su valor desactivador, así que solo sobreviven los dos puntos constantes de `cross-implement` y el que la propia configuración pide.",
       "configuracion": {
         "implement_mode": "inline",
         "final_diff_review.mode": "off",
         "mode": "debate",
         "co_explore.debate.mode": "on",
-        "cross_implement.max_fix_rounds": "0",
         "cross_review.mode": "off",
         "depends_on": "planned",
         "orchestration_task.status": "pending",
@@ -54,7 +52,8 @@
       "capacidades": [],
       "puntos_activos": [
         "co-explore-worker-por-ronda-de-debate",
-        "cross-implement-implementador-inicial"
+        "cross-implement-implementador-inicial",
+        "cross-implement-ronda-de-fix-loop"
       ]
     },
     {
@@ -65,7 +64,6 @@
         "final_diff_review.mode": "auto",
         "mode": "counter-plan",
         "co_explore.debate.mode": "off",
-        "cross_implement.max_fix_rounds": "3",
         "cross_review.mode": "on",
         "depends_on": "committed",
         "orchestration_task.status": "in-progress",
@@ -92,7 +90,6 @@
         "final_diff_review.mode": "auto",
         "mode": "investigate",
         "co_explore.debate.mode": "off",
-        "cross_implement.max_fix_rounds": "0",
         "cross_review.mode": "off",
         "depends_on": "pushed",
         "orchestration_task.status": "done",
@@ -108,6 +105,7 @@
         "bitbucket-code-review-validador-adversarial",
         "co-explore-fan-out-dual",
         "cross-implement-implementador-inicial",
+        "cross-implement-ronda-de-fix-loop",
         "sdd-orchestrator-fan-out-por-repo",
         "sdd-pr-feedback-implement-delegado"
       ]
@@ -120,7 +118,6 @@
         "final_diff_review.mode": "on",
         "mode": "explore",
         "co_explore.debate.mode": "on",
-        "cross_implement.max_fix_rounds": "2",
         "cross_review.mode": "auto",
         "depends_on": "pr-open",
         "orchestration_task.status": "done",
@@ -149,7 +146,6 @@
         "final_diff_review.mode": "off",
         "mode": "counter-plan",
         "co_explore.debate.mode": "auto",
-        "cross_implement.max_fix_rounds": "2",
         "cross_review.mode": "on",
         "depends_on": "done",
         "orchestration_task.status": "done",
@@ -180,7 +176,6 @@
         "final_diff_review.mode": "on",
         "mode": "debate",
         "co_explore.debate.mode": "off",
-        "cross_implement.max_fix_rounds": "0",
         "cross_review.mode": "off",
         "depends_on": "planned",
         "orchestration_task.status": "blocked",
@@ -195,7 +190,8 @@
         "sdd-flow-revision-final-de-diff",
         "bitbucket-code-review-panel-de-revisores",
         "bitbucket-code-review-validador-adversarial",
-        "cross-implement-implementador-inicial"
+        "cross-implement-implementador-inicial",
+        "cross-implement-ronda-de-fix-loop"
       ]
     }
   ]
