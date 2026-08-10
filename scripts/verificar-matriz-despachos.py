@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Verifica la matriz de despachos contra su schema cerrado.
 
-Diecinueve modos, y por ahora solo diecinueve: los demás del catálogo los construyen otras tasks.
+Veintiún modos, y por ahora solo veintiuno: los demás del catálogo los construyen otras tasks.
 
 - `--schema [ruta]` — valida la matriz (por defecto `scripts/matriz-despachos.json`) contra
   `scripts/matriz-despachos.schema.json`. Comprueba tres cosas y no una: que el schema sea
@@ -63,6 +63,15 @@ Diecinueve modos, y por ahora solo diecinueve: los demás del catálogo los cons
   clave reservada agregada de forma consistente en los dos lados.
 - `--autotest-claves-perfil` — control positivo y negativo del modo anterior, con un mutante **por
   superficie derivada** —no uno por clase— y otro por cada nombre reservado.
+- `--parear-reporte <ruta|->` — clasifica un reporte de `verificar-paridad-powershell.py --reporte`
+  leyendo su **cuerpo**: cero clases prohibidas y `fallo` en un conjunto de pares **exactamente
+  igual** al autorizado. El código de salida 4 de ese arnés es su estado sano y este modo no lo lee
+  como enfermedad; con `--codigo-de-salida` se coteja contra el que el reporte declara y se informa.
+  El vocabulario de clases se deriva del arnés y los pares autorizados, de qué matriz de casos
+  declara un caso `clase_esperada: fallo`.
+- `--autotest-parear-reporte` — control positivo y negativo del modo anterior sobre el corpus
+  sintético de `scripts/fixtures-matriz/paridad/`, con un mutante **por clase prohibida derivada** y
+  el de sustitución que separa la igualdad de identidades de un tope de cantidad.
 
 Tres reglas de diseño:
 
@@ -108,11 +117,14 @@ Uso: python3 scripts/verificar-matriz-despachos.py --schema [ruta] | --autotest-
                                                   | --autotest-cobertura-condiciones
                                                   | --claves-perfil [ruta]
                                                   | --autotest-claves-perfil
+                                                  | --parear-reporte <ruta|->
+                                                  | --autotest-parear-reporte
 Exit 0 si el modo pasa, 1 si falla, 2 si la invocación es inválida.
 """
 from __future__ import annotations
 
 import argparse
+import ast
 import copy
 import importlib.util
 import itertools
@@ -6130,6 +6142,758 @@ def modo_autotest_claves_perfil() -> int:
 
 # ---------------------------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------------------------
+# El parser del reporte de paridad.
+#
+# `verificar-paridad-powershell.py --reporte` devuelve **4 y ese es su estado sano**: cinco pares
+# del arnés declaran un caso cuya clase esperada es `fallo` —invocaciones sobre una entrada
+# inexistente, que no son incumplimientos—, y la precedencia global hace que cualquier `fallo`
+# domine el código de salida. Leer ese 4 como enfermedad es el malentendido que este modo existe
+# para cerrar, así que la salud se lee del **cuerpo** del reporte.
+#
+# Tres decisiones gobiernan lo de abajo:
+#
+# 1. **La propiedad es igualdad de identidades, no un tope de cantidad.** El conjunto de pares con
+#    `fallo` tiene que ser exactamente igual al autorizado. Un parser que aceptara «hasta cinco
+#    pares con fallo» rechazaría el sexto y dejaría pasar la sustitución de un autorizado por otro
+#    que no lo es, que es el cambio que de verdad rompe la norma sin cambiar el conteo.
+# 2. **El vocabulario de clases se deriva del arnés**, no se transcribe: una clase nueva allá
+#    nacería acá sin mutante y sin prohibición. Lo que este archivo congela es el **criterio**
+#    —cualquier clase que no sea `paridad` ni `fallo` está prohibida— y el testigo de los cinco
+#    autorizados.
+# 3. **La tabla se parsea por tokens y por literales, nunca por columnas.** Está alineada por
+#    espacios y no lleva separadores: un predicado que busque `|` devuelve cero filas y con ellas
+#    un verde que contradice la norma. Ya ocurrió una vez, con `grep`.
+#
+# Y el estado de fila `sin casos` **no es una clase**: no aparece en el vocabulario y sin embargo
+# aporta `fallo` al código global. Un parser que solo buscara los literales de clase lo dejaría
+# pasar, así que se reconoce aparte.
+# ---------------------------------------------------------------------------------------------
+
+RUTA_ARNES_PARIDAD = REPO / "scripts" / "verificar-paridad-powershell.py"
+DIR_CASOS_PARIDAD = REPO / "scripts" / "paridad-casos"
+DIR_FIXTURES_PARIDAD = DIR_FIXTURES / "paridad"
+
+# Los dos estados de fila que el arnés emite y que **no** son clases de resultado. El primero es
+# una exclusión declarada —el par no se comprobó y eso está decidido en `alcance.json`—; el segundo
+# es un par cubierto que se quedó sin matriz de casos, que el arnés cuenta como `fallo` en el
+# global aunque la fila no lo diga. Se comprueba que sigan siendo estos literales en [0.formato].
+ESTADO_SIN_MATRIZ = "sin matriz (no comprobado)"
+ESTADO_SIN_CASOS = "sin casos"
+
+ENCABEZADO_TABLA = ("par", "resultado", "evidencia")
+PREFIJO_INTERPRETE = "intérprete:"
+MARCA_INTERPRETE_AUSENTE = "AUSENTE"
+PREFIJO_GLOBAL = "resultado global: "
+
+# La única clase sana por sí sola. `fallo` es sana **solo** en los pares autorizados; cualquier otra
+# está prohibida siempre, incluida una que el arnés agregue mañana (mundo cerrado a propósito).
+CLASE_SANA = "paridad"
+CLASE_FALLO = "fallo"
+
+# El testigo de los cinco pares autorizados. NO es la fuente de verdad: la fuente es qué pares
+# declaran un caso con `clase_esperada: fallo` en `scripts/paridad-casos/<par>/casos.json`, y eso se
+# **deriva** en `derivar_pares_con_fallo_declarado`. Esto es lo que permite que el modo funcione
+# sobre un reporte suelto sin el arnés al lado, y lo que hace que una divergencia entre las dos
+# fuentes sea visible en vez de silenciosa: el autotest compara las dos y se pone rojo si difieren.
+PARES_CON_FALLO_AUTORIZADO = (
+    "gate-fase-3",
+    "integracion-ownership",
+    "orchestration-contract",
+    "orchestration-model",
+    "orchestration-state",
+)
+
+CODIGOS_FIJOS_PAREAR = (
+    "reporte_ilegible",
+    "interprete_ausente",
+    "estado_no_reconocido",
+    "sin_casos",
+    "fallo_no_autorizado",
+    "fallo_autorizado_ausente",
+    "global_incoherente",
+    "codigo_incoherente",
+)
+
+
+def vocabulario_de_paridad(ruta_arnes: Path) -> tuple[list[str], dict[str, int], str | None]:
+    """El vocabulario de clases y su código, derivados del arnés **sin ejecutarlo**.
+
+    Se leen `PRECEDENCIA` y `CODIGO` del módulo por AST. Transcribirlos acá dejaría que una clase
+    nueva del arnés naciera sin prohibición ni mutante; importarlo ejecutaría su cuerpo, que detecta
+    intérpretes y toca el disco. Devuelve (precedencia, códigos, error).
+    """
+    try:
+        arbol = ast.parse(ruta_arnes.read_text(encoding="utf-8"), filename=str(ruta_arnes))
+    except (OSError, SyntaxError) as exc:
+        return [], {}, f"no se puede derivar el vocabulario de {ruta_arnes.name}: {exc}"
+
+    hallados: dict[str, Any] = {}
+    for nodo in arbol.body:
+        if not isinstance(nodo, ast.Assign):
+            continue
+        for destino in nodo.targets:
+            if isinstance(destino, ast.Name) and destino.id in ("PRECEDENCIA", "CODIGO"):
+                try:
+                    hallados[destino.id] = ast.literal_eval(nodo.value)
+                except ValueError:
+                    return [], {}, f"`{destino.id}` de {ruta_arnes.name} no es un literal"
+
+    precedencia = hallados.get("PRECEDENCIA")
+    codigos = hallados.get("CODIGO")
+    if not isinstance(precedencia, list) or not all(isinstance(c, str) for c in precedencia):
+        return [], {}, f"{ruta_arnes.name} no declara `PRECEDENCIA` como lista de clases"
+    if not isinstance(codigos, dict):
+        return [], {}, f"{ruta_arnes.name} no declara `CODIGO` como diccionario"
+    if set(precedencia) != set(codigos):
+        return [], {}, (f"`PRECEDENCIA` y `CODIGO` de {ruta_arnes.name} no cubren las mismas "
+                        f"clases: {sorted(set(precedencia) ^ set(codigos))}")
+    if CLASE_SANA not in precedencia or CLASE_FALLO not in precedencia:
+        return [], {}, (f"el vocabulario de {ruta_arnes.name} no incluye `{CLASE_SANA}` y "
+                        f"`{CLASE_FALLO}`, sobre las que este modo define la salud")
+    return precedencia, codigos, None
+
+
+def codigos_de_parear(precedencia: list[str]) -> tuple[str, ...]:
+    """El catálogo del modo: los códigos fijos más uno **por clase prohibida derivada**. Una clase
+    nueva en el arnés entra sola al catálogo, y el bloque [C] exige entonces que alguien la ejerza."""
+    return CODIGOS_FIJOS_PAREAR + tuple(
+        f"clase_{c}" for c in precedencia if c not in (CLASE_SANA, CLASE_FALLO))
+
+
+def derivar_pares_con_fallo_declarado(dir_casos: Path) -> tuple[tuple[str, ...], str | None]:
+    """Los pares autorizados a fallar, derivados de su matriz de casos: los que declaran al menos un
+    caso con `clase_esperada: fallo`. Es la definición operativa de la norma —«los pares que declaran
+    un caso de ese tipo»— y no una lista escrita a mano."""
+    if not dir_casos.is_dir():
+        return (), f"no está el directorio de casos del arnés ({dir_casos})"
+    con_fallo: list[str] = []
+    for sub in sorted(dir_casos.iterdir()):
+        ruta = sub / "casos.json"
+        if not sub.is_dir() or not ruta.is_file():
+            continue
+        datos, error = _cargar_json(ruta)
+        if error:
+            return (), error
+        casos = datos.get("casos") if isinstance(datos, dict) else None
+        if not isinstance(casos, list):
+            return (), f"{ruta}: no declara una lista `casos`"
+        if any(isinstance(c, dict) and c.get("clase_esperada") == CLASE_FALLO for c in casos):
+            con_fallo.append(sub.name)
+    return tuple(con_fallo), None
+
+
+class FilaDeReporte(NamedTuple):
+    par: str
+    estado: str
+    evidencia: str
+    linea: int
+
+
+class ReporteDeParidad(NamedTuple):
+    filas: tuple[FilaDeReporte, ...]
+    interprete: str | None
+    interprete_ausente: bool
+    clase_global: str | None
+    codigo_global: int | None
+    texto_global: str | None
+    errores: tuple[str, ...]
+
+
+def _es_raya_del_reporte(linea_de_reporte: str) -> bool:
+    desnuda = linea_de_reporte.strip()
+    return len(desnuda) >= 3 and set(desnuda) == {"-"}
+
+
+def parsear_reporte(texto: str, clases: list[str]) -> ReporteDeParidad:
+    """Lee el reporte por tokens: el primer campo de cada fila es el par —los nombres son slugs sin
+    espacios— y el resto empieza por uno de los literales conocidos. Los literales se prueban de
+    más largo a más corto porque `sin matriz (no comprobado)` y `sin casos` comparten prefijo."""
+    lineas = texto.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    errores: list[str] = []
+
+    interprete = None
+    ausente = False
+    for linea in lineas:
+        if linea.startswith(PREFIJO_INTERPRETE):
+            interprete = linea[len(PREFIJO_INTERPRETE):].strip()
+            ausente = interprete.startswith(MARCA_INTERPRETE_AUSENTE)
+            break
+    if interprete is None:
+        errores.append(f"el reporte no declara `{PREFIJO_INTERPRETE}`: está truncado o no es un "
+                       "reporte de paridad")
+
+    texto_global = None
+    for linea in lineas:
+        if linea.startswith(PREFIJO_GLOBAL):
+            texto_global = linea[len(PREFIJO_GLOBAL):].strip()
+            break
+    clase_global: str | None = None
+    codigo_global: int | None = None
+    if texto_global is None:
+        errores.append(f"el reporte no declara `{PREFIJO_GLOBAL.strip()}`")
+    else:
+        m = re.fullmatch(r"(?P<clase>.+?) \(código (?P<codigo>\d+)\)", texto_global)
+        if m:
+            clase_global = m.group("clase")
+            codigo_global = int(m.group("codigo"))
+
+    inicio = next((i for i, l in enumerate(lineas) if tuple(l.split()) == ENCABEZADO_TABLA), None)
+    filas: list[FilaDeReporte] = []
+    if inicio is None:
+        if not ausente:
+            errores.append("el reporte no tiene la tabla de pares: no se encontró el encabezado "
+                           f"`{' '.join(ENCABEZADO_TABLA)}`")
+    elif inicio + 1 >= len(lineas) or not _es_raya_del_reporte(lineas[inicio + 1]):
+        errores.append("al encabezado de la tabla no le sigue su línea separadora")
+    else:
+        cierre = next((i for i in range(inicio + 2, len(lineas)) if _es_raya_del_reporte(lineas[i])), None)
+        if cierre is None:
+            errores.append("la tabla de pares no cierra con su línea separadora")
+        else:
+            candidatos = sorted(list(clases) + [ESTADO_SIN_MATRIZ, ESTADO_SIN_CASOS],
+                                key=len, reverse=True)
+            for i in range(inicio + 2, cierre):
+                cruda = lineas[i]
+                if not cruda.strip():
+                    continue
+                partes = cruda.split(None, 1)
+                par = partes[0]
+                resto = partes[1].rstrip() if len(partes) > 1 else ""
+                estado = next((c for c in candidatos
+                               if resto == c or resto.startswith(c + " ")), None)
+                if estado is None:
+                    filas.append(FilaDeReporte(par, resto, "", i + 1))
+                else:
+                    filas.append(FilaDeReporte(par, estado, resto[len(estado):].strip(), i + 1))
+            if not filas:
+                errores.append("la tabla de pares está vacía")
+
+    return ReporteDeParidad(tuple(filas), interprete, ausente,
+                            clase_global, codigo_global, texto_global, tuple(errores))
+
+
+def verificar_reporte_de_paridad(
+    texto: str,
+    autorizados: tuple[str, ...],
+    precedencia: list[str],
+    codigos: dict[str, int],
+    codigo_de_salida: int | None = None,
+) -> tuple[list[Problema], dict]:
+    """El criterio de AC-26 sobre el cuerpo del reporte: cero clases prohibidas, `fallo` exactamente
+    en los pares autorizados, y ninguna fila con una forma que el arnés no emita.
+
+    El código de salida **no** entra en el veredicto: se coteja contra el que el propio reporte
+    declara y se informa. Un 4 coherente con la tabla es un reporte sano.
+    """
+    reporte = parsear_reporte(texto, precedencia)
+    problemas: list[Problema] = []
+    resumen: dict[str, Any] = {
+        "pares": len(reporte.filas),
+        "comprobados": 0,
+        "exclusiones": [],
+        "con_fallo": [],
+        "autorizados": list(autorizados),
+        "por_clase": {},
+        "clase_global": reporte.clase_global,
+        "codigo_global": reporte.codigo_global,
+        "codigo_de_salida": codigo_de_salida,
+        "interprete": reporte.interprete,
+    }
+
+    for error in reporte.errores:
+        problemas.append(Problema("reporte_ilegible", "reporte", error))
+    if reporte.interprete_ausente:
+        problemas.append(Problema(
+            "interprete_ausente", "reporte",
+            f"la corrida no comprobó un solo par: {reporte.interprete}"))
+    if problemas:
+        return problemas, resumen
+
+    por_clase: dict[str, list[str]] = {}
+    con_fallo: list[str] = []
+    for fila in reporte.filas:
+        if fila.estado == ESTADO_SIN_MATRIZ:
+            resumen["exclusiones"].append(fila.par)
+            continue
+        if fila.estado == ESTADO_SIN_CASOS:
+            problemas.append(Problema(
+                "sin_casos", fila.par,
+                f"línea {fila.linea}: cubierto y sin matriz de casos — el arnés lo cuenta como "
+                f"`{CLASE_FALLO}` en el global aunque la fila no lo diga"))
+            continue
+        if fila.estado not in precedencia:
+            problemas.append(Problema(
+                "estado_no_reconocido", fila.par,
+                f"línea {fila.linea}: `{fila.estado}` no es una clase del arnés ni un estado de "
+                "fila conocido — una forma no reconocida es rojo, no omisión"))
+            continue
+        resumen["comprobados"] += 1
+        por_clase.setdefault(fila.estado, []).append(fila.par)
+        if fila.estado == CLASE_FALLO:
+            con_fallo.append(fila.par)
+        elif fila.estado != CLASE_SANA:
+            problemas.append(Problema(
+                f"clase_{fila.estado}", fila.par,
+                f"línea {fila.linea}: la norma exige cero `{fila.estado}` — {fila.evidencia}"))
+
+    resumen["por_clase"] = {c: sorted(p) for c, p in sorted(por_clase.items())}
+    resumen["con_fallo"] = sorted(con_fallo)
+
+    # La igualdad de identidades, en sus dos direcciones. Solo la primera dejaría pasar un
+    # autorizado que dejó de fallar; solo la segunda, cualquier par nuevo que empiece a fallar.
+    permitidos = set(autorizados)
+    for par in sorted(set(con_fallo) - permitidos):
+        problemas.append(Problema(
+            "fallo_no_autorizado", par,
+            f"`{CLASE_FALLO}` en un par que no lo declara: los autorizados son "
+            f"{sorted(permitidos)}"))
+    for par in sorted(permitidos - set(con_fallo)):
+        problemas.append(Problema(
+            "fallo_autorizado_ausente", par,
+            f"declara un caso `{CLASE_FALLO}` y el reporte no lo muestra fallando: el conjunto con "
+            f"`{CLASE_FALLO}` tiene que ser **igual** al autorizado, no estar contenido en él"))
+
+    # Coherencia entre la tabla y la línea global. Sin ella, un reporte al que le recortaron filas
+    # —o al que le reescribieron el pie— pasaría por sano leyendo solo lo que quedó.
+    contribuciones = [f.estado for f in reporte.filas if f.estado in precedencia]
+    contribuciones += [CLASE_FALLO for f in reporte.filas if f.estado == ESTADO_SIN_CASOS]
+    peor = (max(contribuciones, key=precedencia.index) if contribuciones else CLASE_FALLO)
+    resumen["peor_observado"] = peor
+    if reporte.clase_global is None:
+        problemas.append(Problema(
+            "global_incoherente", "reporte",
+            f"la línea global dice `{reporte.texto_global}` y no declara clase con su código"))
+    else:
+        if reporte.clase_global != peor:
+            problemas.append(Problema(
+                "global_incoherente", "reporte",
+                f"la tabla da `{peor}` por precedencia y la línea global declara "
+                f"`{reporte.clase_global}`"))
+        esperado = codigos.get(reporte.clase_global)
+        if esperado is not None and esperado != reporte.codigo_global:
+            problemas.append(Problema(
+                "global_incoherente", "reporte",
+                f"`{reporte.clase_global}` es el código {esperado} en el arnés y la línea global "
+                f"declara el {reporte.codigo_global}"))
+
+    if codigo_de_salida is not None and reporte.codigo_global is not None \
+            and codigo_de_salida != reporte.codigo_global:
+        problemas.append(Problema(
+            "codigo_incoherente", "reporte",
+            f"la corrida devolvió {codigo_de_salida} y el reporte declara "
+            f"{reporte.codigo_global}: uno de los dos no es de esta corrida"))
+
+    return problemas, resumen
+
+
+# --- Modo de aplicación -----------------------------------------------------------------------
+
+def _leer_reporte(ruta: str) -> tuple[str, str | None]:
+    if ruta == "-":
+        return sys.stdin.read(), None
+    try:
+        return Path(ruta).read_text(encoding="utf-8"), None
+    except OSError as exc:
+        return "", f"no se puede leer el reporte: {exc}"
+
+
+def modo_parear_reporte(ruta: str, autorizados: tuple[str, ...] | None,
+                        codigo_de_salida: int | None) -> int:
+    precedencia, codigos, error = vocabulario_de_paridad(RUTA_ARNES_PARIDAD)
+    if error:
+        print(f"FALLA  parear-reporte: {error}")
+        return 1
+    texto, error = _leer_reporte(ruta)
+    if error:
+        print(f"FALLA  parear-reporte: {error}")
+        return 1
+
+    if autorizados is None:
+        derivados, error = derivar_pares_con_fallo_declarado(DIR_CASOS_PARIDAD)
+        if error:
+            print(f"AVISO  {error}")
+            print(f"       se usa el testigo congelado: {list(PARES_CON_FALLO_AUTORIZADO)}")
+            autorizados = PARES_CON_FALLO_AUTORIZADO
+        else:
+            autorizados = derivados
+            if set(derivados) != set(PARES_CON_FALLO_AUTORIZADO):
+                print("FALLA  parear-reporte: los pares que declaran un caso `fallo` en el arnés "
+                      f"({sorted(derivados)}) no son los del testigo congelado "
+                      f"({sorted(PARES_CON_FALLO_AUTORIZADO)}): la norma del repositorio y el arnés "
+                      "dejaron de decir lo mismo y este modo no puede decidir por su cuenta cuál "
+                      "manda")
+                return 1
+
+    problemas, resumen = verificar_reporte_de_paridad(
+        texto, autorizados, precedencia, codigos, codigo_de_salida)
+    origen = "stdin" if ruta == "-" else Path(ruta).name
+    if problemas:
+        _informar(problemas, f"{origen}: el reporte de paridad no está sano")
+        return 1
+
+    prohibidas = [c for c in precedencia if c not in (CLASE_SANA, CLASE_FALLO)]
+    excluidos = resumen["exclusiones"]
+    print(f"OK     {origen}: {resumen['comprobados']} pares comprobados y "
+          f"{len(excluidos)} {'exclusión declarada' if len(excluidos) == 1 else 'exclusiones declaradas'}"
+          f" ({', '.join(excluidos) or 'ninguna'})")
+    print(f"OK     cero {', cero '.join(prohibidas)}")
+    print(f"OK     `{CLASE_FALLO}` exactamente en los {len(resumen['con_fallo'])} pares "
+          f"autorizados: {', '.join(resumen['con_fallo'])}")
+    print(f"OK     la tabla y la línea global coinciden en `{resumen['peor_observado']}` "
+          f"(código {resumen['codigo_global']}), y ese código NO se lee como enfermedad")
+    print()
+    print("RESULTADO: OK")
+    return 0
+
+
+# --- Autotest: el corpus sintético y sus mutantes ----------------------------------------------
+#
+# Los conformes viven en disco (`scripts/fixtures-matriz/paridad/`) y los mutantes se **generan**
+# transformándolos. Guardar los mutantes como archivos los volvería una transcripción a mano de algo
+# que el vocabulario ya declara: una clase nueva en el arnés nacería sin mutante y nadie lo notaría.
+# Generándolos, la correspondencia clase ↔ mutante es por construcción.
+
+FIXTURE_CONFORME = "conforme-sintetico.txt"
+FIXTURE_IDENTIDADES = "conforme-identidades.txt"
+FIXTURE_CINCO_CLASES = "cinco-clases.txt"
+FIXTURE_SIN_INTERPRETE = "interprete-ausente.txt"
+
+# Los autorizados del conforme sintético. Sus pares no existen en el arnés real a propósito: un
+# fixture copiado del reporte real haría que el parser y el dato acordaran entre sí.
+AUTORIZADOS_SINTETICOS = ("fixture-beta", "fixture-gamma")
+
+
+class CasoDeReporte(NamedTuple):
+    codigo: str | None
+    descripcion: str
+    fixture: str
+    mutar: Any  # Callable[[str, list[str], dict[str, int]], str] | None
+    autorizados: tuple[str, ...]
+    codigo_de_salida: int | None
+
+
+def _fila_formateada(par: str, estado: str, evidencia: str) -> str:
+    """El mismo formateo que `cmd_reporte`: nombre a 30, estado a 22, evidencia libre."""
+    return f"{par:<30} {estado:<22} {evidencia}".rstrip()
+
+
+def _reescribir_fila(texto: str, par: str, estado: str, evidencia: str) -> str:
+    lineas = texto.split("\n")
+    for i, linea in enumerate(lineas):
+        partes = linea.split(None, 1)
+        if partes and partes[0] == par and not _es_raya_del_reporte(linea):
+            lineas[i] = _fila_formateada(par, estado, evidencia)
+    return "\n".join(lineas)
+
+
+def _sincronizar_global(texto: str, precedencia: list[str], codigos: dict[str, int]) -> str:
+    """Reescribe la línea global con lo que la tabla mutada implica.
+
+    Sin esto, todo mutante de clase caería además por `global_incoherente` y ninguno probaría lo
+    suyo: el mutante tiene que romper **una** cosa."""
+    reporte = parsear_reporte(texto, precedencia)
+    contribuciones = [f.estado for f in reporte.filas if f.estado in precedencia]
+    contribuciones += [CLASE_FALLO for f in reporte.filas if f.estado == ESTADO_SIN_CASOS]
+    peor = max(contribuciones, key=precedencia.index) if contribuciones else CLASE_FALLO
+    lineas = texto.split("\n")
+    for i, linea in enumerate(lineas):
+        if linea.startswith(PREFIJO_GLOBAL):
+            lineas[i] = f"{PREFIJO_GLOBAL}{peor} (código {codigos[peor]})"
+    return "\n".join(lineas)
+
+
+def _mutar_estado(par: str, estado: str, evidencia: str):
+    def mutar(texto: str, precedencia: list[str], codigos: dict[str, int]) -> str:
+        return _sincronizar_global(_reescribir_fila(texto, par, estado, evidencia),
+                                   precedencia, codigos)
+    return mutar
+
+
+def _mutar_global(clase: str):
+    def mutar(texto: str, precedencia: list[str], codigos: dict[str, int]) -> str:
+        lineas = texto.split("\n")
+        for i, linea in enumerate(lineas):
+            if linea.startswith(PREFIJO_GLOBAL):
+                lineas[i] = f"{PREFIJO_GLOBAL}{clase} (código {codigos[clase]})"
+        return "\n".join(lineas)
+    return mutar
+
+
+def _mutar_sustitucion(texto: str, precedencia: list[str], codigos: dict[str, int]) -> str:
+    """Sustituye un `fallo` autorizado por uno que no lo es **conservando la cantidad**. Es el caso
+    que separa la igualdad de identidades del tope de cantidad: un parser que contara lo pasaría."""
+    salida = _reescribir_fila(texto, "fixture-beta", CLASE_SANA, "4 casos · paridad")
+    salida = _reescribir_fila(salida, "fixture-delta", CLASE_FALLO, "12 casos · fallo, paridad")
+    return _sincronizar_global(salida, precedencia, codigos)
+
+
+def _mutar_sin_encabezado(texto: str, precedencia: list[str], codigos: dict[str, int]) -> str:
+    return "\n".join(l for l in texto.split("\n") if tuple(l.split()) != ENCABEZADO_TABLA)
+
+
+def _casos_de_reporte(precedencia: list[str]) -> tuple[CasoDeReporte, ...]:
+    """Los casos, con una familia **derivada por clase prohibida**: si el arnés agrega una clase, su
+    mutante aparece solo. Uno por clase y no uno por categoría."""
+    casos: list[CasoDeReporte] = [
+        CasoDeReporte(None, "el conforme sintético: paridad salvo sus dos autorizados, y la línea "
+                            "global en `fallo (código 4)`",
+                      FIXTURE_CONFORME, None, AUTORIZADOS_SINTETICOS, 4),
+        CasoDeReporte(None, "el conforme de identidades: `fallo` exactamente en los cinco pares "
+                            "autorizados del repositorio, con código de salida 4",
+                      FIXTURE_IDENTIDADES, None, PARES_CON_FALLO_AUTORIZADO, 4),
+    ]
+    for clase in precedencia:
+        if clase in (CLASE_SANA, CLASE_FALLO):
+            continue
+        casos.append(CasoDeReporte(
+            f"clase_{clase}", f"un par sano pasa a `{clase}`", FIXTURE_CONFORME,
+            _mutar_estado("fixture-alfa", clase, f"7 casos · {clase}, paridad"),
+            AUTORIZADOS_SINTETICOS, None))
+    casos += [
+        CasoDeReporte("fallo_no_autorizado",
+                      "aparece un `fallo` en un par que no lo declara (los dos autorizados siguen)",
+                      FIXTURE_CONFORME,
+                      _mutar_estado("fixture-delta", CLASE_FALLO, "12 casos · fallo, paridad"),
+                      AUTORIZADOS_SINTETICOS, None),
+        CasoDeReporte("fallo_autorizado_ausente",
+                      "un par autorizado deja de fallar: el conjunto se achica",
+                      FIXTURE_CONFORME,
+                      _mutar_estado("fixture-beta", CLASE_SANA, "4 casos · paridad"),
+                      AUTORIZADOS_SINTETICOS, None),
+        CasoDeReporte("fallo_no_autorizado",
+                      "se sustituye un `fallo` autorizado por uno que no lo es, **conservando la "
+                      "cantidad**",
+                      FIXTURE_CONFORME, _mutar_sustitucion, AUTORIZADOS_SINTETICOS, None),
+        CasoDeReporte("sin_casos",
+                      "un par cubierto se queda sin matriz: aporta `fallo` al global sin decirlo",
+                      FIXTURE_CONFORME,
+                      _mutar_estado("fixture-delta", ESTADO_SIN_CASOS, ""),
+                      AUTORIZADOS_SINTETICOS, None),
+        CasoDeReporte("estado_no_reconocido",
+                      "una fila trae un estado que el arnés no emite",
+                      FIXTURE_CONFORME,
+                      _mutar_estado("fixture-delta", "sospechoso", "12 casos · sospechoso"),
+                      AUTORIZADOS_SINTETICOS, None),
+        CasoDeReporte("global_incoherente",
+                      "se reescribe solo el pie: la tabla dice `fallo` y el global declara paridad",
+                      FIXTURE_CONFORME, _mutar_global(CLASE_SANA), AUTORIZADOS_SINTETICOS, None),
+        CasoDeReporte("codigo_incoherente",
+                      "el código de salida observado no es el que el reporte declara",
+                      FIXTURE_CONFORME, None, AUTORIZADOS_SINTETICOS, 0),
+        CasoDeReporte("reporte_ilegible",
+                      "el reporte llega sin el encabezado de su tabla",
+                      FIXTURE_CONFORME, _mutar_sin_encabezado, AUTORIZADOS_SINTETICOS, None),
+        CasoDeReporte("interprete_ausente",
+                      "la corrida no encontró intérprete y no comprobó un solo par",
+                      FIXTURE_SIN_INTERPRETE, None, PARES_CON_FALLO_AUTORIZADO, None),
+    ]
+    return tuple(casos)
+
+
+def _correr_caso_de_reporte(caso: CasoDeReporte, precedencia: list[str],
+                            codigos: dict[str, int]) -> tuple[list[Problema], dict, str]:
+    texto = (DIR_FIXTURES_PARIDAD / caso.fixture).read_text(encoding="utf-8")
+    if caso.mutar is not None:
+        texto = caso.mutar(texto, precedencia, codigos)
+    problemas, resumen = verificar_reporte_de_paridad(
+        texto, caso.autorizados, precedencia, codigos, caso.codigo_de_salida)
+    return problemas, resumen, texto
+
+
+def _preludio_de_parear() -> tuple[list[tuple[str, bool, str]], list[str], dict[str, int]]:
+    """[0] Lo que tiene que valer antes de correr un caso: que el vocabulario se derive del arnés y
+    que los literales que este parser reconoce sigan existiendo allá.
+
+    El segundo no es cosmético. `sin matriz (no comprobado)` y `sin casos` no están en ninguna
+    constante del arnés —son literales dentro de sus `print`—, así que acá se congelan y se comprueba
+    que el arnés los siga escribiendo. Si alguien los cambia, este parser dejaría de reconocer esas
+    filas y las contaría como estado no reconocido sin que nada explicara por qué."""
+    precedencia, codigos, error = vocabulario_de_paridad(RUTA_ARNES_PARIDAD)
+    if error:
+        return [("0.vocabulario", False, error)], [], {}
+    resultados = [(
+        "0.vocabulario", True,
+        f"el vocabulario se deriva de {RUTA_ARNES_PARIDAD.name}: {len(precedencia)} clases en "
+        f"precedencia ({' < '.join(precedencia)})",
+    )]
+    fuente = RUTA_ARNES_PARIDAD.read_text(encoding="utf-8")
+    literales = [ESTADO_SIN_MATRIZ, ESTADO_SIN_CASOS, PREFIJO_GLOBAL.strip(),
+                 PREFIJO_INTERPRETE, MARCA_INTERPRETE_AUSENTE] + list(ENCABEZADO_TABLA)
+    faltantes = [lit for lit in literales if lit not in fuente]
+    resultados.append((
+        "0.formato", not faltantes,
+        f"los {len(literales)} literales que este parser reconoce siguen escritos en "
+        f"{RUTA_ARNES_PARIDAD.name}"
+        if not faltantes else f"el arnés ya no escribe: {faltantes}",
+    ))
+    if not DIR_FIXTURES_PARIDAD.is_dir():
+        resultados.append(("0.fixtures", False, f"no existe {DIR_FIXTURES_PARIDAD}"))
+        return resultados, precedencia, codigos
+    esperados = (FIXTURE_CONFORME, FIXTURE_IDENTIDADES, FIXTURE_CINCO_CLASES,
+                 FIXTURE_SIN_INTERPRETE)
+    ausentes = [f for f in esperados if not (DIR_FIXTURES_PARIDAD / f).is_file()]
+    resultados.append((
+        "0.fixtures", not ausentes,
+        f"los {len(esperados)} fixtures del corpus están en {DIR_FIXTURES_PARIDAD.name}/"
+        if not ausentes else f"faltan fixtures: {ausentes}",
+    ))
+    return resultados, precedencia, codigos
+
+
+def _bloque_de_cardinalidad(precedencia: list[str], codigos: dict[str, int]
+                            ) -> list[tuple[str, bool, str]]:
+    """[D] La propiedad es igualdad de identidades, no un tope de cantidad.
+
+    El mutante de sustitución solo prueba eso si de verdad conserva la cantidad de pares con
+    `fallo`. Acá se mide sobre el texto mutado: si la sustitución cambiara el conteo, el mutante
+    caería por cardinalidad y un parser que contara seguiría pasando este autotest en verde."""
+    conforme = (DIR_FIXTURES_PARIDAD / FIXTURE_CONFORME).read_text(encoding="utf-8")
+    mutado = _mutar_sustitucion(conforme, precedencia, codigos)
+    antes = [f.par for f in parsear_reporte(conforme, precedencia).filas
+             if f.estado == CLASE_FALLO]
+    despues = [f.par for f in parsear_reporte(mutado, precedencia).filas
+               if f.estado == CLASE_FALLO]
+    fallas: list[str] = []
+    if len(antes) != len(despues):
+        fallas.append(f"la sustitución cambia el conteo: {len(antes)} → {len(despues)}")
+    if set(antes) == set(despues):
+        fallas.append("la sustitución no cambió las identidades: no muta nada")
+    return [(
+        "D/parear-reporte", not fallas,
+        f"el mutante de sustitución conserva la cantidad ({len(antes)} pares con `{CLASE_FALLO}`) y "
+        f"cambia las identidades ({sorted(antes)} → {sorted(despues)}): un parser que contara lo "
+        "dejaría pasar"
+        if not fallas else " | ".join(fallas),
+    )]
+
+
+def _bloque_de_clases(precedencia: list[str]) -> list[tuple[str, bool, str]]:
+    """[E] Las cinco clases, atribuidas una por una sobre el fixture que las trae juntas.
+
+    Los mutantes prueban que cada clase prohibida se rechaza; esto prueba que el parser las
+    **distingue**, que es lo que un `startswith` mal ordenado o una lectura por columnas rompen sin
+    cambiar ningún veredicto."""
+    texto = (DIR_FIXTURES_PARIDAD / FIXTURE_CINCO_CLASES).read_text(encoding="utf-8")
+    reporte = parsear_reporte(texto, precedencia)
+    observadas = {f.estado for f in reporte.filas}
+    faltantes = [c for c in precedencia if c not in observadas]
+    ajenas = sorted(observadas - set(precedencia))
+    fallas: list[str] = []
+    if faltantes:
+        fallas.append(f"el fixture no ejerce {faltantes}")
+    if ajenas:
+        fallas.append(f"el parser leyó estados que no son clases: {ajenas}")
+    if reporte.errores:
+        fallas.append(f"el fixture no parsea: {reporte.errores[0]}")
+    return [(
+        "E/parear-reporte", not fallas,
+        f"las {len(precedencia)} clases del arnés aparecen en el corpus y el parser las atribuye "
+        f"a su par, una por una: "
+        + ", ".join(f"{f.estado}→{f.par}" for f in reporte.filas)
+        if not fallas else " | ".join(fallas),
+    )]
+
+
+def _bloque_de_autorizados() -> list[tuple[str, bool, str]]:
+    """[F] El testigo congelado contra la derivación del arnés.
+
+    Los cinco pares autorizados se **derivan** de qué matriz de casos declara un caso
+    `clase_esperada: fallo`; la constante de este archivo es el testigo. Compararlos es lo que
+    convierte una divergencia silenciosa —el arnés autoriza un sexto par y la norma del repositorio
+    sigue diciendo cinco— en un rojo."""
+    derivados, error = derivar_pares_con_fallo_declarado(DIR_CASOS_PARIDAD)
+    if error:
+        return [("F/parear-reporte", False, error)]
+    coinciden = set(derivados) == set(PARES_CON_FALLO_AUTORIZADO)
+    return [(
+        "F/parear-reporte", coinciden,
+        f"los {len(derivados)} pares que declaran un caso `{CLASE_FALLO}` en el arnés son los del "
+        f"testigo congelado: {', '.join(sorted(derivados))}"
+        if coinciden else
+        f"derivados {sorted(derivados)} y congelados {sorted(PARES_CON_FALLO_AUTORIZADO)}",
+    )]
+
+
+def modo_autotest_parear_reporte() -> int:
+    resultados, precedencia, codigos = _preludio_de_parear()
+    if not all(ok for _, ok, _ in resultados):
+        return _cierre("el reporte de paridad se lee por su cuerpo", resultados)
+
+    casos = _casos_de_reporte(precedencia)
+
+    # [A] El control positivo, y acá no es un trámite: un reporte sano completo trae `fallo` en sus
+    # pares autorizados y **código de salida 4**. Sin este caso, los mutantes los pasa cualquier
+    # parser que repruebe todo reporte —incluido el que lea el código de salida y trate el 4 como
+    # enfermedad, que es exactamente el malentendido que este modo existe para cerrar—.
+    conformes = [c for c in casos if c.codigo is None]
+    fallas: list[str] = []
+    for caso in conformes:
+        problemas, resumen, _ = _correr_caso_de_reporte(caso, precedencia, codigos)
+        if problemas:
+            fallas.append(f"{caso.descripcion} — {problemas[0]}")
+        elif sorted(resumen["con_fallo"]) != sorted(caso.autorizados):
+            fallas.append(f"{caso.descripcion} — el parser vio `{CLASE_FALLO}` en "
+                          f"{resumen['con_fallo']}, esperados {sorted(caso.autorizados)}")
+        elif resumen["codigo_global"] != caso.codigo_de_salida:
+            fallas.append(f"{caso.descripcion} — el reporte declara código "
+                          f"{resumen['codigo_global']} y la corrida devolvió {caso.codigo_de_salida}")
+    resultados.append((
+        "A/parear-reporte", not fallas,
+        f"control positivo: los {len(conformes)} reportes sanos pasan con código de salida "
+        f"{conformes[0].codigo_de_salida}, que NO se lee como fallo"
+        if not fallas else "control positivo — " + " | ".join(fallas[:3]),
+    ))
+
+    # [B] Los mutantes, cada uno rechazado **por su motivo**.
+    mutantes = [c for c in casos if c.codigo is not None]
+    sobrevivientes: list[str] = []
+    desatribuidos: list[str] = []
+    emitidos: set[str] = set()
+    for caso in mutantes:
+        problemas, _, _ = _correr_caso_de_reporte(caso, precedencia, codigos)
+        obtenidos = {p.codigo for p in problemas}
+        emitidos |= obtenidos
+        if not obtenidos:
+            sobrevivientes.append(f"{caso.codigo}: {caso.descripcion}")
+        elif caso.codigo not in obtenidos:
+            desatribuidos.append(f"{caso.codigo}: {caso.descripcion} — rechazado por "
+                                 f"{sorted(obtenidos)} y no por su motivo")
+    problemas_b = ([f"SOBREVIVE {s}" for s in sobrevivientes]
+                   + [f"SIN ATRIBUIR {d}" for d in desatribuidos])
+    resultados.append((
+        "B/parear-reporte", not problemas_b,
+        f"{len(mutantes)} mutantes de `--parear-reporte` y los {len(mutantes)} rechazados por su "
+        "motivo"
+        if not problemas_b else f"{len(problemas_b)} problemas: " + " | ".join(problemas_b[:5]),
+    ))
+
+    # [C] Un caso por código: un código sin caso es una restricción que nadie comprobó que pueda
+    # ponerse roja, y un código emitido y no catalogado es una que nadie declaró.
+    catalogo = codigos_de_parear(precedencia)
+    ejercidos = {c.codigo for c in mutantes}
+    problemas_c = [f"`{c}` está en el catálogo y ningún caso lo ejerce"
+                   for c in catalogo if c not in ejercidos]
+    problemas_c += [f"`{c}` lo emite el modo y no está en el catálogo"
+                    for c in sorted((emitidos | ejercidos) - set(catalogo))]
+    resultados.append((
+        "C/parear-reporte", not problemas_c,
+        f"los {len(catalogo)} códigos del modo tienen su caso, incluido uno por cada clase "
+        "prohibida derivada del arnés"
+        if not problemas_c else f"{len(problemas_c)} huecos: " + " | ".join(problemas_c[:5]),
+    ))
+
+    resultados += _bloque_de_cardinalidad(precedencia, codigos)
+    resultados += _bloque_de_clases(precedencia)
+    resultados += _bloque_de_autorizados()
+    return _cierre("el reporte de paridad se clasifica por su cuerpo —cero clases prohibidas y "
+                   f"`{CLASE_FALLO}` exactamente en los pares autorizados— y su código de salida 4 "
+                   "no es enfermedad", resultados)
+
+
+# ---------------------------------------------------------------------------------------------
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Verifica la matriz de despachos contra su schema cerrado.",
@@ -6224,6 +6988,26 @@ def main(argv: list[str] | None = None) -> int:
         help="control positivo y negativo del modo anterior, con un mutante por superficie derivada",
     )
     parser.add_argument(
+        "--parear-reporte", metavar="RUTA",
+        help="clasifica un reporte de `verificar-paridad-powershell.py --reporte` por su cuerpo y "
+             "no por su código de salida; `-` lee de stdin",
+    )
+    parser.add_argument(
+        "--autotest-parear-reporte", action="store_true",
+        help="control positivo y negativo del modo anterior sobre el corpus sintético de reportes",
+    )
+    parser.add_argument(
+        "--pares-con-fallo", metavar="LISTA", default=None,
+        help="los pares autorizados a mostrar `fallo`, separados por comas (por defecto, los que "
+             "declaran un caso `clase_esperada: fallo` en scripts/paridad-casos/); solo lo usa "
+             "--parear-reporte",
+    )
+    parser.add_argument(
+        "--codigo-de-salida", metavar="N", type=int, default=None,
+        help="el código con que terminó la corrida que produjo el reporte; se coteja contra el que "
+             "el reporte declara y NO entra en el veredicto (solo lo usa --parear-reporte)",
+    )
+    parser.add_argument(
         "--escenarios", metavar="RUTA", default=None,
         help="los escenarios de configuración y capacidad; por defecto, el archivo hermano de la "
              "matriz con el sufijo `-escenarios` (solo lo usan --condiciones y "
@@ -6266,6 +7050,8 @@ def main(argv: list[str] | None = None) -> int:
         args.autotest_cobertura_condiciones,
         bool(args.claves_perfil),
         args.autotest_claves_perfil,
+        bool(args.parear_reporte),
+        args.autotest_parear_reporte,
     ]
     if sum(seleccionados) != 1:
         print("Invocación inválida: exactamente uno de --schema, --autotest-schema, "
@@ -6273,7 +7059,8 @@ def main(argv: list[str] | None = None) -> int:
               "--autotest-correspondencia, --completitud, --autotest-completitud, --procedencia, "
               "--autotest-procedencia, --anclas, --autotest-anclas, --presupuesto-contractual, "
               "--condiciones, --autotest-condiciones, --cobertura-condiciones, "
-              "--autotest-cobertura-condiciones, --claves-perfil o --autotest-claves-perfil.",
+              "--autotest-cobertura-condiciones, --claves-perfil, --autotest-claves-perfil, "
+              "--parear-reporte o --autotest-parear-reporte.",
               file=sys.stderr)
         return 2
     if args.autotest_schema:
@@ -6305,6 +7092,12 @@ def main(argv: list[str] | None = None) -> int:
         return modo_claves_perfil(Path(args.arbol), Path(args.claves_perfil))
     if args.autotest_claves_perfil:
         return modo_autotest_claves_perfil()
+    if args.parear_reporte:
+        autorizados = (tuple(p for p in args.pares_con_fallo.split(",") if p.strip())
+                       if args.pares_con_fallo is not None else None)
+        return modo_parear_reporte(args.parear_reporte, autorizados, args.codigo_de_salida)
+    if args.autotest_parear_reporte:
+        return modo_autotest_parear_reporte()
     escenarios = Path(args.escenarios) if args.escenarios else None
     if args.condiciones:
         return modo_condiciones(Path(args.condiciones), escenarios)

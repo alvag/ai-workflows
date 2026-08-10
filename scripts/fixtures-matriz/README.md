@@ -102,9 +102,41 @@ capacidad ausente de la lista (legítima: `no_disponible` es verdadero), una cla
 Los mutantes de estos dos modos tampoco están acá: se **derivan** del corpus —uno por átomo, uno por
 exclusión, uno por escenario y uno por valor de átomo—, así que un punto nuevo nace con sus mutantes.
 
+## `paridad/` — el corpus del parser del reporte de paridad
+
+No son matrices: son **reportes**, la salida en texto de `verificar-paridad-powershell.py --reporte`.
+El modo que los consume es `--parear-reporte`, y existe porque ese arnés **devuelve 4 en su estado
+sano** —cinco pares declaran un caso cuya clase esperada es `fallo`, y la precedencia global hace que
+cualquier `fallo` domine el código—. La salud se lee del cuerpo: cero clases prohibidas y `fallo` en
+un conjunto de pares **exactamente igual** al autorizado.
+
+| Archivo | Qué ejerce |
+|---|---|
+| `conforme-sintetico.txt` | el reporte sano completo, con su línea global en `fallo (código 4)` y una **exclusión declarada**, que no es una clase sino un par que nadie comprobó |
+| `conforme-identidades.txt` | la identidad de los **cinco pares autorizados del repositorio**, que es la única propiedad para la que hacen falta sus nombres reales |
+| `cinco-clases.txt` | las **cinco clases** del arnés en un mismo reporte: prueba que el parser las distingue y las atribuye a su par, no que las rechace |
+| `interprete-ausente.txt` | la corrida que no comprobó un solo par — el reporte sin tabla, que es rojo y no vacío |
+
+Los nombres de par son `fixture-*` y **no existen en el arnés real**: un fixture copiado del reporte
+real haría que el parser y el dato acordaran entre sí y los dos pasaran aunque ambos estuvieran mal.
+`conforme-identidades.txt` es la excepción y por un motivo: la propiedad que ejerce **es** la
+identidad de esos cinco, y con nombres inventados no probaría nada. Aun así lleva pares sintéticos
+alrededor, para no ser una copia de la corrida real.
+
+Los mutantes tampoco están acá: se **generan** desde `conforme-sintetico.txt` —uno por cada clase
+prohibida derivada del arnés, más los de identidad, cardinalidad, forma y coherencia del pie—, así
+que una clase nueva en el arnés nace con su mutante. El que separa este modo de una implementación
+que solo cuente es el de **sustitución**: cambia un `fallo` autorizado por uno que no lo es
+conservando la cantidad, y un parser que aceptara «hasta cinco» lo dejaría pasar.
+
 ## Cómo se corren
 
 ```sh
+python3 scripts/verificar-matriz-despachos.py --autotest-parear-reporte  # exit 0 sano
+python3 scripts/verificar-matriz-despachos.py --parear-reporte scripts/fixtures-matriz/paridad/conforme-sintetico.txt \
+    --pares-con-fallo fixture-beta,fixture-gamma --codigo-de-salida 4
+python3 scripts/verificar-paridad-powershell.py --reporte > /tmp/r.txt; cod=$?
+python3 scripts/verificar-matriz-despachos.py --parear-reporte /tmp/r.txt --codigo-de-salida "$cod"
 python3 scripts/verificar-matriz-despachos.py --autotest-schema          # exit 0 sano
 python3 scripts/verificar-matriz-despachos.py --schema <ruta-de-matriz>  # exit 0 si valida
 python3 scripts/verificar-matriz-despachos.py --autotest-procedencia     # exit 0 sano
