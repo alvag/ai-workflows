@@ -1,0 +1,254 @@
+{
+  "version_schema": "1.0.0",
+  "puntos": [
+    {
+      "id": "skill-anclada-explorador",
+      "etiqueta": "Explorador de skill-anclada: el punto que ancla contra el árbol sintético",
+      "senales_de_deteccion": {
+        "valor": ["auditar el diff", "refutar el plan"],
+        "procedencia": {
+          "sede": "skills/skill-anclada/SKILL.md",
+          "tipo_de_sede": "patron_de_linea",
+          "selector": {"patron": "^(Refutar el plan|auditar el diff)$"},
+          "cardinalidad": {"tipo": "al_menos_una", "orden": "lexicografico", "colapso": "lista"},
+          "extraccion": {"tipo": "literal"},
+          "normalizacion": "minusculas",
+          "conversion": "cadena"
+        }
+      },
+      "skill": {
+        "valor": "co-explore",
+        "procedencia": {
+          "sede": "skills/skill-anclada/SKILL.md",
+          "tipo_de_sede": "patron_de_linea",
+          "selector": {"patron": "^skill: (.+)$"},
+          "cardinalidad": {"tipo": "exactamente_una"},
+          "extraccion": {"tipo": "captura_de_grupo", "patron": "^skill: (.+)$", "grupo": 1},
+          "normalizacion": "trim",
+          "conversion": "enum:skill"
+        }
+      },
+      "ancla_de_invocacion": {
+        "valor": "skills/skill-anclada/SKILL.md#como-se-despacha",
+        "procedencia": {
+          "sede": "skills/skill-anclada/reference.md",
+          "tipo_de_sede": "fila_de_tabla_markdown",
+          "selector": {"clave_primera_celda": "explorador", "encabezado_de_columna": "ancla"},
+          "cardinalidad": {"tipo": "exactamente_una"},
+          "extraccion": {"tipo": "literal"},
+          "normalizacion": "trim",
+          "conversion": "referencia"
+        }
+      },
+      "rol": {
+        "valor": "design-reviewer",
+        "procedencia": {
+          "sede": "skills/skill-anclada/reference.md",
+          "tipo_de_sede": "fila_de_tabla_markdown",
+          "selector": {"clave_primera_celda": "explorador", "encabezado_de_columna": "rol"},
+          "cardinalidad": {"tipo": "exactamente_una"},
+          "extraccion": {"tipo": "literal"},
+          "normalizacion": "trim",
+          "conversion": "cadena"
+        }
+      },
+      "variante": {
+        "valor": "ninguna",
+        "procedencia": {
+          "sede": "skills/skill-anclada/reference.md",
+          "tipo_de_sede": "fila_de_tabla_markdown",
+          "selector": {"clave_primera_celda": "explorador", "encabezado_de_columna": "variante"},
+          "cardinalidad": {"tipo": "exactamente_una"},
+          "extraccion": {"tipo": "literal"},
+          "normalizacion": "trim",
+          "conversion": "cadena"
+        }
+      },
+      "permisos_efectivos": {
+        "valor": "read_only",
+        "procedencia": {
+          "sede": "skills/skill-anclada/reference.md",
+          "tipo_de_sede": "fila_de_tabla_markdown",
+          "selector": {"clave_primera_celda": "explorador", "encabezado_de_columna": "sandbox"},
+          "cardinalidad": {"tipo": "exactamente_n", "n": 2, "orden": "documento", "colapso": "unico_si_iguales"},
+          "extraccion": {"tipo": "literal"},
+          "normalizacion": "trim",
+          "conversion": "enum:permiso_efectivo"
+        }
+      },
+      "condicion_de_existencia": {
+        "tipo": "y",
+        "operandos": [
+          {
+            "tipo": "atomo",
+            "clave": "co_explore",
+            "operador": "igual",
+            "valor": "on",
+            "procedencia": {
+              "sede": "skills/skill-anclada/SKILL.md",
+              "tipo_de_sede": "clave_estructurada",
+              "selector": {"ruta": ["co_explore"], "formato": "yaml", "lenguaje_del_bloque": "yaml"},
+              "cardinalidad": {"tipo": "exactamente_una"},
+              "extraccion": {"tipo": "literal"},
+              "normalizacion": "trim",
+              "conversion": "cadena"
+            }
+          },
+          {
+            "tipo": "atomo",
+            "clave": "codex",
+            "operador": "disponible",
+            "procedencia": {
+              "sede": "skills/skill-anclada/SKILL.md",
+              "tipo_de_sede": "patron_de_linea",
+              "selector": {"patron": "^El binario codex .*$"},
+              "cardinalidad": {"tipo": "exactamente_una"},
+              "extraccion": {"tipo": "literal"},
+              "normalizacion": "colapsar_espacios",
+              "conversion": "cadena"
+            }
+          }
+        ]
+      },
+      "presupuesto_de_espera_contractual": {
+        "valor": 600,
+        "procedencia": {
+          "sede": "skills/skill-anclada/SKILL.md",
+          "tipo_de_sede": "fila_de_tabla_markdown",
+          "selector": {"clave_primera_celda": "explorador", "encabezado_de_columna": "deadline"},
+          "cardinalidad": {"tipo": "exactamente_una"},
+          "extraccion": {"tipo": "literal"},
+          "normalizacion": "trim",
+          "conversion": "entero"
+        }
+      },
+      "contrato_de_salida": {
+        "valor": "skills/skill-anclada/reference.md#contrato-de-salida",
+        "procedencia": {
+          "sede": "skills/skill-anclada/reference.md",
+          "tipo_de_sede": "fila_de_tabla_markdown",
+          "selector": {"clave_primera_celda": "explorador", "encabezado_de_columna": "contrato"},
+          "cardinalidad": {"tipo": "exactamente_una"},
+          "extraccion": {"tipo": "literal"},
+          "normalizacion": "trim",
+          "conversion": "referencia"
+        }
+      },
+      "fallback": {
+        "valor": "Sin capacidad, el conductor marca UNAVAILABLE y abre gate humano.",
+        "procedencia": {
+          "sede": "skills/skill-anclada/SKILL.md",
+          "tipo_de_sede": "patron_de_linea",
+          "selector": {"patron": "^Sin capacidad.*$"},
+          "cardinalidad": {"tipo": "exactamente_una"},
+          "extraccion": {"tipo": "literal"},
+          "normalizacion": "colapsar_espacios",
+          "conversion": "cadena"
+        }
+      },
+      "autoridad_final": {
+        "valor": "conductor",
+        "procedencia": {
+          "sede": "skills/skill-anclada/reference.md",
+          "tipo_de_sede": "fila_de_tabla_markdown",
+          "selector": {"clave_primera_celda": "explorador", "encabezado_de_columna": "autoridad"},
+          "cardinalidad": {"tipo": "exactamente_una"},
+          "extraccion": {"tipo": "literal"},
+          "normalizacion": "minusculas",
+          "conversion": "enum:autoridad_final"
+        }
+      },
+      "dueno": {
+        "valor": "el conductor de skill-anclada",
+        "procedencia": {
+          "sede": "skills/skill-anclada/SKILL.md",
+          "tipo_de_sede": "heading_markdown",
+          "selector": {"texto": "Dueño del despacho", "nivel": 2},
+          "cardinalidad": {"tipo": "exactamente_una"},
+          "extraccion": {"tipo": "literal"},
+          "normalizacion": "trim",
+          "conversion": "cadena"
+        }
+      },
+      "modos": {
+        "valor": ["read_only", "escritor"],
+        "procedencia": {
+          "sede": "skills/skill-anclada/SKILL.md",
+          "tipo_de_sede": "patron_de_linea",
+          "selector": {"patron": "^(workspace-write|solo lectura)$"},
+          "cardinalidad": {"tipo": "al_menos_una", "orden": "lexicografico", "colapso": "lista"},
+          "extraccion": {"tipo": "literal"},
+          "normalizacion": "trim",
+          "conversion": "enum:escritura"
+        }
+      },
+      "requiere_confirmacion_del_usuario": {
+        "valor": false,
+        "procedencia": {
+          "sede": "docs/contrato.json",
+          "tipo_de_sede": "clave_estructurada",
+          "selector": {"ruta": ["despacho"], "formato": "json"},
+          "cardinalidad": {"tipo": "exactamente_una"},
+          "extraccion": {"tipo": "valor_de_clave", "clave": ["requiere_confirmacion"]},
+          "normalizacion": "ninguna",
+          "conversion": "booleano"
+        }
+      },
+      "familias_cubiertas": ["opuesta_al_conductor"],
+      "transporte_agregado": "cli-exec",
+      "escritura_agregada": "read_only",
+      "trabajos_delegados": [
+        {
+          "nombre": "explorador",
+          "familia": {
+            "valor": "opuesta_al_conductor",
+            "procedencia": {
+              "sede": "skills/skill-anclada/reference.md",
+              "tipo_de_sede": "fila_de_tabla_markdown",
+              "selector": {"clave_primera_celda": "explorador", "encabezado_de_columna": "familia"},
+              "cardinalidad": {"tipo": "exactamente_una"},
+              "extraccion": {"tipo": "literal"},
+              "normalizacion": "trim",
+              "conversion": "enum:familia"
+            }
+          },
+          "escritura": {
+            "valor": "read_only",
+            "procedencia": {
+              "sede": "skills/skill-anclada/reference.md",
+              "tipo_de_sede": "fila_de_tabla_markdown",
+              "selector": {"clave_primera_celda": "explorador", "encabezado_de_columna": "escritura"},
+              "cardinalidad": {"tipo": "exactamente_una"},
+              "extraccion": {"tipo": "literal"},
+              "normalizacion": "trim",
+              "conversion": "enum:escritura"
+            }
+          },
+          "intentos": [
+            {
+              "intento_id": "1",
+              "transporte": {
+                "valor": "cli-exec",
+                "procedencia": {
+                  "sede": "skills/skill-anclada/reference.md",
+                  "tipo_de_sede": "fila_de_tabla_markdown",
+                  "selector": {"clave_primera_celda": "explorador", "encabezado_de_columna": "transporte"},
+                  "cardinalidad": {"tipo": "exactamente_una"},
+                  "extraccion": {"tipo": "literal"},
+                  "normalizacion": "trim",
+                  "conversion": "enum:transporte"
+                }
+              },
+              "deadline_declarado": {
+                "valor": 600,
+                "procedencia": {
+                  "ausencia": "skill-anclada no declara deadline por intento en ninguna sede: el valor queda como adjudicación pendiente"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

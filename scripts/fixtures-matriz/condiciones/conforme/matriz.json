@@ -1,0 +1,215 @@
+{
+  "version_schema": "1.0.0",
+  "puntos": [
+    {
+      "id": "skill-teta-siempre",
+      "etiqueta": "El punto que existe en toda corrida: la condición constante",
+      "condicion_de_existencia": {
+        "tipo": "siempre",
+        "procedencia": {
+          "sede": "skills/skill-teta/SKILL.md",
+          "tipo_de_sede": "heading_markdown",
+          "selector": {"texto": "Corridas delegadas en vuelo", "nivel": 2},
+          "cardinalidad": {"tipo": "exactamente_una"},
+          "extraccion": {"tipo": "literal"},
+          "normalizacion": "trim",
+          "conversion": "cadena"
+        }
+      }
+    },
+    {
+      "id": "skill-teta-implementador-cruzado",
+      "etiqueta": "Implementador cruzado: exige el modo `cross` y la capacidad presente",
+      "condicion_de_existencia": {
+        "tipo": "y",
+        "operandos": [
+          {
+            "tipo": "atomo",
+            "clave": "implement_mode",
+            "operador": "igual",
+            "valor": "cross",
+            "procedencia": {
+              "sede": "skills/skill-teta/SKILL.md",
+              "tipo_de_sede": "patron_de_linea",
+              "selector": {"patron": "^implement_mode: (.+)$"},
+              "cardinalidad": {"tipo": "exactamente_una"},
+              "extraccion": {"tipo": "captura_de_grupo", "patron": "^implement_mode: (.+)$", "grupo": 1},
+              "normalizacion": "trim",
+              "conversion": "cadena"
+            }
+          },
+          {
+            "tipo": "atomo",
+            "clave": "codex_cli",
+            "operador": "disponible",
+            "procedencia": {"ausencia": "la detección del binario es del entorno de corrida y ninguna sede del árbol la declara"}
+          }
+        ]
+      }
+    },
+    {
+      "id": "skill-teta-implementador-local",
+      "etiqueta": "Implementador local: excluyente con el cruzado por el mismo eje de configuración",
+      "condicion_de_existencia": {
+        "tipo": "atomo",
+        "clave": "implement_mode",
+        "operador": "igual",
+        "valor": "local",
+        "procedencia": {"ausencia": "el modo local no tiene sede propia: se lee del mismo campo que el cruzado"}
+      }
+    },
+    {
+      "id": "skill-teta-implementador-degradado",
+      "etiqueta": "Degradación del implementador cruzado: el modo pedido, sin la capacidad que lo sostiene",
+      "condicion_de_existencia": {
+        "tipo": "y",
+        "operandos": [
+          {
+            "tipo": "atomo",
+            "clave": "implement_mode",
+            "operador": "igual",
+            "valor": "cross",
+            "procedencia": {"ausencia": "misma clave que el punto cruzado; la sede es la de aquel"}
+          },
+          {
+            "tipo": "atomo",
+            "clave": "codex_cli",
+            "operador": "no_disponible",
+            "procedencia": {"ausencia": "la ausencia del binario no se declara en ninguna sede: se observa en la corrida"}
+          }
+        ]
+      }
+    },
+    {
+      "id": "skill-teta-explorador-dual",
+      "etiqueta": "Explorador dual: alcanza con una de las dos capacidades",
+      "condicion_de_existencia": {
+        "tipo": "y",
+        "operandos": [
+          {
+            "tipo": "atomo",
+            "clave": "co_explore",
+            "operador": "igual",
+            "valor": "on",
+            "procedencia": {"ausencia": "la clave existe en la configuración de la skill sintética y no en una sede del árbol"}
+          },
+          {
+            "tipo": "o",
+            "operandos": [
+              {
+                "tipo": "atomo",
+                "clave": "codex_cli",
+                "operador": "disponible",
+                "procedencia": {"ausencia": "capacidad del entorno"}
+              },
+              {
+                "tipo": "atomo",
+                "clave": "claude_cli",
+                "operador": "disponible",
+                "procedencia": {"ausencia": "capacidad del entorno"}
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "skill-teta-revision-por-profundidad",
+      "etiqueta": "Revisión por profundidad: la pertenencia a un conjunto de valores declarados",
+      "condicion_de_existencia": {
+        "tipo": "atomo",
+        "clave": "review_depth",
+        "operador": "en",
+        "valor": ["basica", "profunda"],
+        "procedencia": {"ausencia": "el vocabulario de profundidades es de la configuración sintética"}
+      }
+    },
+    {
+      "id": "skill-iota-feedback-de-pr",
+      "etiqueta": "Feedback de PR: la doble negación, que es equivalente al átomo y no a su contrario",
+      "condicion_de_existencia": {
+        "tipo": "no",
+        "operando": {
+          "tipo": "no",
+          "operando": {
+            "tipo": "atomo",
+            "clave": "pr_provider",
+            "operador": "igual",
+            "valor": "bitbucket",
+            "procedencia": {"ausencia": "el proveedor de PR es configuración del entorno de la skill sintética"}
+          }
+        }
+      }
+    },
+    {
+      "id": "skill-iota-feedback-degradado",
+      "etiqueta": "Degradación del feedback de PR: proveedor admitido y capacidad del servidor ausente",
+      "condicion_de_existencia": {
+        "tipo": "y",
+        "operandos": [
+          {
+            "tipo": "atomo",
+            "clave": "pr_provider",
+            "operador": "no_en",
+            "valor": ["github"],
+            "procedencia": {"ausencia": "misma clave que el punto anterior; la exclusión no tiene sede propia"}
+          },
+          {
+            "tipo": "atomo",
+            "clave": "mcp_bitbucket",
+            "operador": "no_disponible",
+            "procedencia": {"ausencia": "la disponibilidad del servidor MCP se observa en la corrida"}
+          }
+        ]
+      }
+    },
+    {
+      "id": "skill-iota-sin-cruzado",
+      "etiqueta": "Punto que existe salvo en el modo cruzado: la exclusión por operador negativo",
+      "condicion_de_existencia": {
+        "tipo": "atomo",
+        "clave": "implement_mode",
+        "operador": "distinto",
+        "valor": "cross",
+        "procedencia": {"ausencia": "misma clave que los puntos de implementación; la exclusión no tiene sede propia"}
+      }
+    },
+    {
+      "id": "skill-iota-sin-bitbucket",
+      "etiqueta": "Negación simple: el punto que existe justo donde el anterior no",
+      "condicion_de_existencia": {
+        "tipo": "no",
+        "operando": {
+          "tipo": "atomo",
+          "clave": "pr_provider",
+          "operador": "igual",
+          "valor": "bitbucket",
+          "procedencia": {"ausencia": "misma clave que el punto de feedback; la negación no tiene sede propia"}
+        }
+      }
+    },
+    {
+      "id": "skill-iota-doble-guarda",
+      "etiqueta": "Doble guarda: el segundo operando solo se observa falso donde el primero ya lo es",
+      "condicion_de_existencia": {
+        "tipo": "y",
+        "operandos": [
+          {
+            "tipo": "atomo",
+            "clave": "co_explore",
+            "operador": "igual",
+            "valor": "off",
+            "procedencia": {"ausencia": "misma clave que el explorador dual; la guarda invertida no tiene sede propia"}
+          },
+          {
+            "tipo": "atomo",
+            "clave": "review_depth",
+            "operador": "igual",
+            "valor": "basica",
+            "procedencia": {"ausencia": "el vocabulario de profundidades es de la configuración sintética"}
+          }
+        ]
+      }
+    }
+  ]
+}

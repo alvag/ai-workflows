@@ -30,7 +30,7 @@
       "extraer": "aplicar `extraccion` a cada nodo seleccionado",
       "normalizar": "aplicar `normalizacion` a cada valor extraído",
       "ordenar": "aplicar el `orden` de `cardinalidad` sobre los valores YA normalizados",
-      "convertir": "aplicar `conversion` a cada valor ordenado",
+      "convertir": "aplicar `conversion` a cada valor ordenado; cuando es `enum:<nombre>`, el mapeo lo declara la tabla `<nombre>` de `x-conversiones` y no se infiere",
       "colapsar": "aplicar el `colapso` de `cardinalidad` sobre los valores convertidos"
     },
     "decisiones": [
@@ -45,6 +45,77 @@
         "motivo": "Ordenar después de convertir haría que `lexicografico` dependiera del tipo —sobre enteros daría 1, 10, 2— y ordenar antes de normalizar lo haría depender de los espacios y las mayúsculas que la normalización justamente borra."
       }
     ]
+  },
+
+  "x-conversiones": {
+    "descripcion": "El mapeo texto → token de cada `conversion: enum:<nombre>`. Sin esta tabla, `enum:<nombre>` nombra un vocabulario y no dice cómo se llega a él: quien implemente el resolutor tendría que inventar el mapeo, y un mapeo inventado distinto del que usó quien pobló la matriz pone en rojo hojas que están bien. Hay pares que ninguna normalización produce —`solo lectura` → `read_only`, `mismo modelo` → `misma_del_conductor`, `otra familia` → `opuesta_al_conductor`—: eso es traducción semántica y por eso va declarada y no derivada.",
+    "entrada": "El valor YA normalizado, o sea la salida del paso `normalizar` del pipeline y no el texto crudo de la sede. Una hoja cuya `normalizacion` sea `minusculas` llega acá en minúsculas, y es en minúsculas como su texto figura en esta tabla.",
+    "cotejo": "Exacto, carácter por carácter. La conversión no pliega mayúsculas, no recorta espacios y no compara por parecido: eso ya lo hizo `normalizacion`, y hacerlo dos veces con criterios distintos daría dos resultados para el mismo par.",
+    "sin_par": "Un texto que la tabla no declara NO se convierte por analogía ni se deja pasar tal cual: la conversión falla con `conversion_sin_par`. Dejar pasar el texto crudo produciría un valor fuera del vocabulario del enum y el rojo aparecería lejos de su causa.",
+    "tabla_ausente": "Un `enum:<nombre>` que no nombre ninguna de estas tablas falla con `conversion_sin_tabla`. No se resuelve por el paso directo ni contra el `$defs` que se le parezca por el nombre: si la tabla falta, el mapeo no está declarado y adivinarlo es el defecto que esta sección existe para cerrar.",
+    "totalidad": "Cada tabla es total sobre su enum: todo token del vocabulario tiene al menos un texto que lo produce. Un token que ningún texto produce es un valor que el resolutor no puede emitir nunca desde una sede, y entonces o falta un texto o sobra el token.",
+    "identidades": "Los pares donde el texto coincide con el token también van declarados. Un resolutor que solo conociera las excepciones o bien rechazaría los casos idénticos, o bien los aceptaría por una vía distinta —el paso directo— que nadie declaró.",
+    "reglas": {
+      "autoridad_final": {
+        "enum": "enum_autoridad_final",
+        "pares": [
+          {"texto": "conductor", "token": "conductor"},
+          {"texto": "usuario", "token": "usuario"}
+        ]
+      },
+      "escritura": {
+        "enum": "enum_escritura",
+        "pares": [
+          {"texto": "crea rama, implementa task por task", "token": "escritor"},
+          {"texto": "escritor", "token": "escritor"},
+          {"texto": "read-only", "token": "read_only"},
+          {"texto": "solo lectura", "token": "read_only"},
+          {"texto": "workspace-write", "token": "escritor"}
+        ]
+      },
+      "familia": {
+        "enum": "enum_familia",
+        "pares": [
+          {"texto": "No es cross-model por defecto", "token": "misma_del_conductor"},
+          {"texto": "Subagente del entorno", "token": "misma_del_conductor"},
+          {"texto": "misma", "token": "misma_del_conductor"},
+          {"texto": "misma familia", "token": "misma_del_conductor"},
+          {"texto": "mismo modelo", "token": "misma_del_conductor"},
+          {"texto": "otra", "token": "opuesta_al_conductor"},
+          {"texto": "otra familia", "token": "opuesta_al_conductor"},
+          {"texto": "otro modelo", "token": "opuesta_al_conductor"}
+        ]
+      },
+      "permiso_efectivo": {
+        "enum": "enum_permiso_efectivo",
+        "pares": [
+          {"texto": "**parado en `<repo>/`**", "token": "workspace_write_acotado"},
+          {"texto": "read-only", "token": "read_only"},
+          {"texto": "solo lectura", "token": "read_only"},
+          {"texto": "workspace-write", "token": "workspace_write_acotado"}
+        ]
+      },
+      "skill": {
+        "enum": "enum_skill",
+        "pares": [
+          {"texto": "bitbucket-code-review", "token": "bitbucket-code-review"},
+          {"texto": "co-explore", "token": "co-explore"},
+          {"texto": "cross-implement", "token": "cross-implement"},
+          {"texto": "cross-review", "token": "cross-review"},
+          {"texto": "sdd-flow", "token": "sdd-flow"},
+          {"texto": "sdd-orchestrator", "token": "sdd-orchestrator"},
+          {"texto": "sdd-pr-feedback", "token": "sdd-pr-feedback"}
+        ]
+      },
+      "transporte": {
+        "enum": "enum_transporte",
+        "pares": [
+          {"texto": "cli-exec", "token": "cli-exec"},
+          {"texto": "cli-resume", "token": "cli-resume"},
+          {"texto": "subagent", "token": "subagent"}
+        ]
+      }
+    }
   },
 
   "x-derivaciones": {
@@ -435,7 +506,7 @@
     },
 
     "conversion": {
-      "description": "Tipo al que se convierte cada valor. `enum:<nombre>` nombra un vocabulario cerrado declarado en otro lado.",
+      "description": "Tipo al que se convierte cada valor. `enum:<nombre>` nombra una de las tablas de `x-conversiones`, que declara su vocabulario cerrado y el mapeo texto → token con el que se llega a él.",
       "oneOf": [
         {"$ref": "#/$defs/enum_conversion_base"},
         {

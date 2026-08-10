@@ -32,11 +32,72 @@ Guardarlos como archivos los volvería una transcripción a mano de algo que el 
 quedarían viejos en cuanto el schema cambiara, y un elemento nuevo nacería sin mutante sin que nada
 lo señalara. Generándolos, la correspondencia elemento ↔ mutante es por construcción.
 
+## `anclas/` — el fixture del resolutor
+
+`anclas/conforme/` no es una matriz suelta: es una **matriz con su árbol de sedes**. Ahí viven
+`matriz.json` y los archivos que sus procedencias resuelven —`skills/skill-anclada/{SKILL.md,
+reference.md}` y `docs/contrato.json`—, y las sedes son rutas relativas a esa carpeta, que es lo que
+`--raiz` recibe. `skill-anclada` no existe en el árbol real: un fixture copiado de la matriz real
+haría que el resolutor y el dato acordaran entre sí.
+
+El conforme ejerce a propósito la combinación que **más se parece a un defecto y no lo es**: la
+columna `sandbox` aparece en dos tablas, así que `permisos_efectivos` selecciona dos nodos, declara
+`exactamente_n` con `n: 2` y colapsa a valor único porque los dos textos —`solo lectura` y
+`read-only`— convergen al mismo token. Un resolutor demasiado estricto lo rechazaría.
+
+Y ejerce dos casos **sensibles al orden del pipeline**, sin los cuales el orden quedaría declarado y
+no verificado: `senales_de_deteccion` cambia de resultado si se ordena antes de normalizar (los
+textos difieren en mayúsculas, que la normalización borra), y `modos` cambia si se ordena después de
+convertir (el orden de los textos no es el de sus tokens). Editarlos sin correr `--autotest-anclas`
+es la forma más rápida de perder esa cobertura.
+
+## `condiciones/` — el fixture de las condiciones de existencia
+
+`condiciones/conforme/` es una **matriz con sus escenarios**: `matriz.json` y su hermano
+`matriz-escenarios.json`, que es donde el modo los busca por defecto (`<matriz>-escenarios.json`, o
+lo que diga `--escenarios`). Los escenarios no caben dentro de la matriz —su schema es cerrado y no
+los declara— y hornearlos en el verificador los ataría a las claves de una matriz concreta.
+
+La matriz es **reducida a propósito**: solo `id`, `etiqueta` y `condicion_de_existencia`. Lo que el
+autotest valida contra el schema son las **condiciones**, una por una contra `#/$defs/condicion`,
+que es la gramática que estos dos modos consumen; los demás campos del punto no los mira ninguno de
+los dos. `skill-teta` y `skill-iota` no existen en el árbol real.
+
+Cada escenario declara su configuración completa, las capacidades presentes y el conjunto de puntos
+que debe quedar activo. Once puntos y cuatro escenarios, y cada pieza cubre algo que las otras no:
+
+| Punto | Qué ejerce |
+|---|---|
+| `skill-teta-siempre` | la condición constante, única exenta de la rama falsa |
+| `skill-teta-implementador-{cruzado,local}` | dos modos **mutuamente excluyentes** sobre la misma clave: ningún escenario puede activar los once |
+| `skill-teta-implementador-degradado` | la **degradación**: el modo pedido sin la capacidad que lo sostiene |
+| `skill-teta-explorador-dual` | un `o` con **los dos operandos verdaderos**, que un `o` exclusivo rechazaría |
+| `skill-teta-revision-por-profundidad` | `en` con dos valores: la cobertura exige ejercer **cada uno**, no solo uno y algo de afuera |
+| `skill-iota-feedback-de-pr` | el **`no` anidado**, que equivale al átomo y no a su contrario |
+| `skill-iota-sin-bitbucket` | un `no` **simple**: sin él, un evaluador que tratara `no` como identidad pasaría, porque la doble negación lo tapa |
+| `skill-iota-feedback-degradado` | exclusión por `no_en` más capacidad ausente |
+| `skill-iota-sin-cruzado` | exclusión por operador negativo (`distinto`) |
+| `skill-iota-doble-guarda` | el operando cuyo valor falso **solo se observa donde el primero ya cortó**: es lo único que se pone rojo si la evaluación pasa a cortocircuitar |
+
+Y los escenarios ejercen las combinaciones que **más se parecen a un defecto y no lo son**: una
+capacidad ausente de la lista (legítima: `no_disponible` es verdadero), una clave presente con la
+**cadena vacía** (un valor, no una ausencia) y un escenario **sin ninguna capacidad**.
+
+Los mutantes de estos dos modos tampoco están acá: se **derivan** del corpus —uno por átomo, uno por
+exclusión, uno por escenario y uno por valor de átomo—, así que un punto nuevo nace con sus mutantes.
+
 ## Cómo se corren
 
 ```sh
 python3 scripts/verificar-matriz-despachos.py --autotest-schema          # exit 0 sano
 python3 scripts/verificar-matriz-despachos.py --schema <ruta-de-matriz>  # exit 0 si valida
+python3 scripts/verificar-matriz-despachos.py --autotest-procedencia     # exit 0 sano
+python3 scripts/verificar-matriz-despachos.py --autotest-anclas          # exit 0 sano
+python3 scripts/verificar-matriz-despachos.py --anclas <matriz> --raiz <árbol-de-sedes>
+python3 scripts/verificar-matriz-despachos.py --autotest-condiciones            # exit 0 sano
+python3 scripts/verificar-matriz-despachos.py --autotest-cobertura-condiciones  # exit 0 sano
+python3 scripts/verificar-matriz-despachos.py --condiciones <matriz> [--escenarios <ruta>]
+python3 scripts/verificar-matriz-despachos.py --cobertura-condiciones <matriz>
 ```
 
 Editar un conforme sin correr el autotest es la forma más rápida de romper la cobertura sin
