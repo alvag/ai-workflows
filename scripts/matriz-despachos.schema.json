@@ -1,0 +1,837 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "matriz-despachos.schema.json",
+  "title": "Matriz de despachos",
+  "description": "Schema cerrado y versionado de `scripts/matriz-despachos.json`. Declara los tres nodos de la jerarquía real —punto de despacho → trabajo delegado → intento—, sus cardinalidades, sus campos obligatorios, sus enums, sus reglas de derivación para los valores agregados y la firma completa del objeto de procedencia. Cada objeto es cerrado: `additionalProperties` es false en todos los niveles.",
+  "x-version": "1.0.0",
+
+  "x-notas": {
+    "por-que-tres-nodos": "Los ejes no viven en el mismo nivel. Rol, permisos efectivos, condición de existencia, fallback, autoridad final y presupuesto contractual son del punto; la familia y el nivel de escritura son del trabajo delegado, porque una corrida puede ser mixta; el transporte y el deadline son del intento, porque un mismo trabajo delegado cambia de vía entre intentos. Una matriz plana de trece filas comprime lo que el contrato vigente separó a propósito.",
+    "que-es-una-hoja": "Una hoja es un objeto `{valor, procedencia}`: todo dato de la matriz que afirma algo sobre el árbol lleva su procedencia. NO son hojas, y por eso no la llevan: (a) los campos de identidad y estructura —`id`, `etiqueta`, `nombre`, `intento_id`—, porque se asignan y no se extraen; (b) los valores agregados declarados en `x-derivaciones`, porque su justificación es su regla de derivación y no una sede; (c) los conectores de una condición (`y`, `o`, `no`), porque son estructura y no dato: las hojas de una condición son sus átomos.",
+    "identificador-etiqueta-y-senales": "`id`, `etiqueta` y `senales_de_deteccion` son tres campos distintos y no intercambiables. `id` es el identificador inmutable; `etiqueta` es editorial y puede cambiar sin que nada falle; `senales_de_deteccion` son las cadenas con las que el punto se localiza en el árbol, y por eso —a diferencia de la etiqueta— son una hoja anclada.",
+    "presupuesto-contractual-vs-deadline": "`punto.presupuesto_de_espera_contractual` es el presupuesto que el contrato le asigna al punto y NO admite la marca de ausencia: un punto sin declaración propia se ancla al presupuesto por defecto del ecosistema, que es una sede. `intento.deadline_declarado` es el deadline que la sede declara para ese intento y sí la admite, porque hay puntos sin declaración por intento.",
+    "sede-vs-ruta-de-clave": "`sede` es una ruta de archivo relativa a la raíz del repositorio, en formato POSIX. `ruta_de_clave` es la lista de segmentos —cadenas para claves de objeto, enteros para índices de arreglo— y es la MISMA gramática en los dos lugares que la usan: el `clave` de `valor_de_clave` y la `ruta` del selector de `clave_estructurada`. Son cosas distintas y por eso llevan nombres distintos."
+  },
+
+  "x-pipeline": {
+    "descripcion": "El orden en que se resuelve una procedencia anclada. Corre en este orden y no en otro, porque cambiarlo cambia el resultado.",
+    "orden": [
+      "seleccionar",
+      "comprobar_cardinalidad",
+      "extraer",
+      "normalizar",
+      "ordenar",
+      "convertir",
+      "colapsar"
+    ],
+    "pasos": {
+      "seleccionar": "aplicar `tipo_de_sede` con su `selector` sobre `sede` y obtener los nodos seleccionados",
+      "comprobar_cardinalidad": "comparar la cantidad de nodos SELECCIONADOS contra `cardinalidad`",
+      "extraer": "aplicar `extraccion` a cada nodo seleccionado",
+      "normalizar": "aplicar `normalizacion` a cada valor extraído",
+      "ordenar": "aplicar el `orden` de `cardinalidad` sobre los valores YA normalizados",
+      "convertir": "aplicar `conversion` a cada valor ordenado",
+      "colapsar": "aplicar el `colapso` de `cardinalidad` sobre los valores convertidos"
+    },
+    "decisiones": [
+      {
+        "id": "cardinalidad_antes_de_extraer",
+        "regla": "La cardinalidad se comprueba sobre los nodos seleccionados, antes de extraer.",
+        "motivo": "Comprobarla después mediría los valores extraídos, que pueden coincidir entre sí y ocultar una selección ambigua."
+      },
+      {
+        "id": "orden_sobre_el_valor_normalizado",
+        "regla": "El orden se aplica sobre el valor normalizado: después de normalizar y antes de convertir. `documento` conserva el orden de aparición de los nodos en la sede; `lexicografico` ordena por la cadena normalizada, comparando por punto de código y no por locale.",
+        "motivo": "Ordenar después de convertir haría que `lexicografico` dependiera del tipo —sobre enteros daría 1, 10, 2— y ordenar antes de normalizar lo haría depender de los espacios y las mayúsculas que la normalización justamente borra."
+      }
+    ]
+  },
+
+  "x-derivaciones": {
+    "descripcion": "Valores agregados: no se declaran por decisión propia, se derivan de las hojas que los alimentan. Ninguna entrada puede ser a su vez un valor agregado; una derivación que se alimente de otra derivación deja de tener una hoja anclada abajo y su valor deja de ser comprobable.",
+    "reglas": {
+      "transporte_agregado": {
+        "nodo": "punto",
+        "entradas": ["trabajos_delegados[].intentos[].transporte.valor"],
+        "regla": "valor_comun_o_marca_de_discrepancia",
+        "marca_de_discrepancia": "mixto",
+        "motivo": "El transporte es del intento. Un transporte de punto que fuera autoridad en vez de resumen sería falso en cuanto un solo trabajo delegado cambiara de vía."
+      },
+      "escritura_agregada": {
+        "nodo": "punto",
+        "entradas": ["trabajos_delegados[].escritura.valor"],
+        "regla": "valor_comun_o_marca_de_discrepancia",
+        "marca_de_discrepancia": "mixta",
+        "motivo": "El nivel de escritura es del trabajo delegado. Un punto puede despachar un lector y un escritor en la misma corrida."
+      },
+      "familias_cubiertas": {
+        "nodo": "punto",
+        "entradas": ["trabajos_delegados[].familia.valor"],
+        "regla": "conjunto_ordenado",
+        "motivo": "La familia es del trabajo delegado porque la corrida puede ser mixta: el fan-out dual despacha uno por familia."
+      }
+    }
+  },
+
+  "x-simultaneas": {
+    "descripcion": "Propiedades que el contrato vigente permite que tomen valores simultáneos distintos. Ninguna puede declararse como valor único, y el corpus conforme tiene que ejercer su multiplicidad: declararlas como arreglo y no ejercerlas nunca las deja tan colapsadas como declararlas escalares.",
+    "propiedades": [
+      {
+        "ruta": "punto.senales_de_deteccion.valor",
+        "motivo": "Un punto se detecta por más de una señal, y quitar una sin actualizar su ancla es un cambio real."
+      },
+      {
+        "ruta": "punto.modos.valor",
+        "motivo": "Un punto puede abarcar varios modos: el fan-out dual cubre explore, counter-plan e investigate."
+      },
+      {
+        "ruta": "punto.familias_cubiertas",
+        "motivo": "Un punto puede despachar trabajos delegados de las dos familias a la vez."
+      }
+    ]
+  },
+
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version_schema", "puntos"],
+  "properties": {
+    "version_schema": {
+      "description": "Versión del schema contra el que se escribió esta matriz. Tiene que coincidir con `x-version`.",
+      "const": "1.0.0"
+    },
+    "puntos": {
+      "description": "Los puntos de despacho. La cardinalidad exacta la fija el inventario vigente de las skills y la comprueba el modo de correspondencia, no este schema: escribir el número acá lo declararía en dos lugares.",
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/punto"}
+    }
+  },
+
+  "$defs": {
+
+    "punto": {
+      "description": "Un punto de despacho: el lugar de una skill donde se delega trabajo.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "etiqueta",
+        "senales_de_deteccion",
+        "skill",
+        "ancla_de_invocacion",
+        "rol",
+        "variante",
+        "permisos_efectivos",
+        "condicion_de_existencia",
+        "presupuesto_de_espera_contractual",
+        "contrato_de_salida",
+        "fallback",
+        "autoridad_final",
+        "dueno",
+        "modos",
+        "requiere_confirmacion_del_usuario",
+        "familias_cubiertas",
+        "transporte_agregado",
+        "escritura_agregada",
+        "trabajos_delegados"
+      ],
+      "properties": {
+        "id": {
+          "description": "Identificador inmutable. Cambiarlo es dar de baja un punto y dar de alta otro.",
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "etiqueta": {
+          "description": "Etiqueta legible. Es editorial: cambiarla no altera la identidad del punto.",
+          "type": "string",
+          "minLength": 1
+        },
+        "senales_de_deteccion": {"$ref": "#/$defs/hoja_lista_cadena"},
+        "skill": {"$ref": "#/$defs/hoja_enum_skill"},
+        "ancla_de_invocacion": {"$ref": "#/$defs/hoja_referencia"},
+        "rol": {"$ref": "#/$defs/hoja_enum_rol"},
+        "variante": {"$ref": "#/$defs/hoja_enum_variante"},
+        "permisos_efectivos": {"$ref": "#/$defs/hoja_enum_permiso_efectivo"},
+        "condicion_de_existencia": {"$ref": "#/$defs/condicion"},
+        "presupuesto_de_espera_contractual": {"$ref": "#/$defs/hoja_entero_anclada"},
+        "contrato_de_salida": {"$ref": "#/$defs/hoja_referencia"},
+        "fallback": {"$ref": "#/$defs/hoja_cadena_anclada"},
+        "autoridad_final": {"$ref": "#/$defs/hoja_enum_autoridad_final_anclada"},
+        "dueno": {"$ref": "#/$defs/hoja_cadena_anclada"},
+        "modos": {"$ref": "#/$defs/hoja_lista_cadena"},
+        "requiere_confirmacion_del_usuario": {"$ref": "#/$defs/hoja_booleano"},
+        "familias_cubiertas": {
+          "description": "Valor agregado: se deriva de la familia de cada trabajo delegado. No lleva procedencia.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/enum_familia"}
+        },
+        "transporte_agregado": {
+          "description": "Valor agregado: el transporte común a los intentos de todos los trabajos delegados, o `mixto` cuando difieren. No lleva procedencia.",
+          "$ref": "#/$defs/enum_transporte_agregado"
+        },
+        "escritura_agregada": {
+          "description": "Valor agregado: el nivel de escritura común a los trabajos delegados, o `mixta` cuando difieren. No lleva procedencia.",
+          "$ref": "#/$defs/enum_escritura_agregada"
+        },
+        "trabajos_delegados": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/trabajo_delegado"}
+        }
+      }
+    },
+
+    "trabajo_delegado": {
+      "description": "Un trabajo delegado del punto. Un punto despacha uno o más: el fan-out dual, el panel de revisores externos y el fan-out por repo despachan varios en una sola corrida.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nombre", "familia", "escritura", "intentos"],
+      "properties": {
+        "nombre": {
+          "description": "Nombre del trabajo delegado, único dentro del punto.",
+          "type": "string",
+          "minLength": 1
+        },
+        "familia": {"$ref": "#/$defs/hoja_enum_familia"},
+        "escritura": {"$ref": "#/$defs/hoja_enum_escritura"},
+        "intentos": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/intento"}
+        }
+      }
+    },
+
+    "intento": {
+      "description": "Un intento del trabajo delegado. El intento, y no el trabajo delegado, es la unidad que lleva transporte y presupuesto: la vía cambia entre intentos y cada deadline corre desde el lanzamiento del suyo.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["intento_id", "transporte", "deadline_declarado"],
+      "properties": {
+        "intento_id": {
+          "description": "Identidad del intento dentro de su trabajo delegado.",
+          "type": "string",
+          "minLength": 1
+        },
+        "transporte": {"$ref": "#/$defs/hoja_enum_transporte"},
+        "deadline_declarado": {"$ref": "#/$defs/hoja_entero"}
+      }
+    },
+
+    "procedencia": {
+      "description": "Unión discriminada de dos formas: la hoja anclada con sus siete campos, o la marca explícita de ausencia de sede.",
+      "oneOf": [
+        {"$ref": "#/$defs/procedencia_anclada"},
+        {"$ref": "#/$defs/procedencia_ausente"}
+      ]
+    },
+
+    "procedencia_anclada": {
+      "description": "Los siete campos de una hoja anclada. El orden en que se aplican está en `x-pipeline`.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sede",
+        "tipo_de_sede",
+        "selector",
+        "cardinalidad",
+        "extraccion",
+        "normalizacion",
+        "conversion"
+      ],
+      "properties": {
+        "sede": {"$ref": "#/$defs/ruta_de_archivo"},
+        "tipo_de_sede": {"$ref": "#/$defs/enum_tipo_de_sede"},
+        "selector": {"$ref": "#/$defs/selector"},
+        "cardinalidad": {"$ref": "#/$defs/cardinalidad"},
+        "extraccion": {"$ref": "#/$defs/extraccion"},
+        "normalizacion": {"$ref": "#/$defs/enum_normalizacion"},
+        "conversion": {"$ref": "#/$defs/conversion"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"tipo_de_sede": {"const": "heading_markdown"}}, "required": ["tipo_de_sede"]},
+          "then": {"properties": {"selector": {"$ref": "#/$defs/selector_heading_markdown"}}}
+        },
+        {
+          "if": {"properties": {"tipo_de_sede": {"const": "fila_de_tabla_markdown"}}, "required": ["tipo_de_sede"]},
+          "then": {"properties": {"selector": {"$ref": "#/$defs/selector_fila_de_tabla_markdown"}}}
+        },
+        {
+          "if": {"properties": {"tipo_de_sede": {"const": "clave_estructurada"}}, "required": ["tipo_de_sede"]},
+          "then": {"properties": {"selector": {"$ref": "#/$defs/selector_clave_estructurada"}}}
+        },
+        {
+          "if": {"properties": {"tipo_de_sede": {"const": "patron_de_linea"}}, "required": ["tipo_de_sede"]},
+          "then": {"properties": {"selector": {"$ref": "#/$defs/selector_patron_de_linea"}}}
+        }
+      ]
+    },
+
+    "procedencia_ausente": {
+      "description": "Marca explícita de ausencia de sede. Quien la encuentra clasifica la hoja como adjudicación pendiente, no como dato verificado.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ausencia"],
+      "properties": {
+        "ausencia": {
+          "description": "Motivo por el que la hoja no tiene sede. No se completa por analogía.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+
+    "selector": {
+      "description": "Unión cerrada de las cuatro formas de selector. Cuál corresponde lo fija el acoplamiento con `tipo_de_sede`, declarado en el `allOf` de `procedencia_anclada`: la unión sola admitiría un selector de heading en una sede de tabla.",
+      "oneOf": [
+        {"$ref": "#/$defs/selector_heading_markdown"},
+        {"$ref": "#/$defs/selector_fila_de_tabla_markdown"},
+        {"$ref": "#/$defs/selector_clave_estructurada"},
+        {"$ref": "#/$defs/selector_patron_de_linea"}
+      ]
+    },
+
+    "selector_heading_markdown": {
+      "description": "Secciones normativas de SKILL.md y reference.md.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["texto", "nivel"],
+      "properties": {
+        "texto": {"type": "string", "minLength": 1},
+        "nivel": {"type": "integer", "minimum": 1, "maximum": 6}
+      }
+    },
+
+    "selector_fila_de_tabla_markdown": {
+      "description": "La sede más común del repo: los contratos, las matrices y las tablas de guardas viven en tablas, y una fila no se identifica por heading ni por patrón de línea.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["clave_primera_celda", "encabezado_de_columna"],
+      "properties": {
+        "clave_primera_celda": {"type": "string", "minLength": 1},
+        "encabezado_de_columna": {"type": "string", "minLength": 1}
+      }
+    },
+
+    "selector_clave_estructurada": {
+      "description": "La configuración vive en bloques ```yaml dentro de Markdown, no solo en archivos sueltos: por eso el lenguaje del bloque es parte del selector cuando está embebido.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ruta", "formato"],
+      "properties": {
+        "ruta": {"$ref": "#/$defs/ruta_de_clave"},
+        "formato": {"$ref": "#/$defs/enum_formato_estructurado"},
+        "lenguaje_del_bloque": {
+          "description": "Lenguaje del fence que contiene el bloque, cuando está embebido en Markdown. Ausente significa archivo suelto.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+
+    "selector_patron_de_linea": {
+      "description": "Prosa y bloques de código donde no hay estructura.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["patron"],
+      "properties": {
+        "patron": {
+          "description": "Expresión anclada: tiene que empezar con ^ o terminar con $.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "(^\\^)|(\\$$)"
+        }
+      }
+    },
+
+    "cardinalidad": {
+      "description": "Cuántos nodos seleccionados se esperan. Es un nodo y no un escalar, porque las variantes multivaluadas necesitan además su orden y su colapso.",
+      "oneOf": [
+        {"$ref": "#/$defs/cardinalidad_exactamente_una"},
+        {"$ref": "#/$defs/cardinalidad_al_menos_una"},
+        {"$ref": "#/$defs/cardinalidad_exactamente_n"}
+      ]
+    },
+
+    "cardinalidad_exactamente_una": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tipo"],
+      "properties": {
+        "tipo": {"const": "exactamente_una"}
+      }
+    },
+
+    "cardinalidad_al_menos_una": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tipo", "orden", "colapso"],
+      "properties": {
+        "tipo": {"const": "al_menos_una"},
+        "orden": {"$ref": "#/$defs/enum_orden"},
+        "colapso": {"$ref": "#/$defs/enum_colapso"}
+      }
+    },
+
+    "cardinalidad_exactamente_n": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tipo", "n", "orden", "colapso"],
+      "properties": {
+        "tipo": {"const": "exactamente_n"},
+        "n": {
+          "description": "El mínimo es 1, no 0: cero resultados falla siempre, así que n=0 declararía una hoja que no puede resolver nunca.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "orden": {"$ref": "#/$defs/enum_orden"},
+        "colapso": {"$ref": "#/$defs/enum_colapso"}
+      }
+    },
+
+    "extraccion": {
+      "description": "Qué se toma de cada nodo seleccionado. Es un nodo y no un escalar.",
+      "oneOf": [
+        {"$ref": "#/$defs/extraccion_literal"},
+        {"$ref": "#/$defs/extraccion_captura_de_grupo"},
+        {"$ref": "#/$defs/extraccion_valor_de_clave"}
+      ]
+    },
+
+    "extraccion_literal": {
+      "description": "Toma el texto del nodo seleccionado tal cual.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tipo"],
+      "properties": {
+        "tipo": {"const": "literal"}
+      }
+    },
+
+    "extraccion_captura_de_grupo": {
+      "description": "Exige que el patrón case y devuelve ese grupo. El grupo 0 es la coincidencia completa, que no es lo mismo que el texto completo del nodo: eso último es `literal`.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tipo", "patron", "grupo"],
+      "properties": {
+        "tipo": {"const": "captura_de_grupo"},
+        "patron": {"type": "string", "minLength": 1},
+        "grupo": {"type": "integer", "minimum": 0}
+      }
+    },
+
+    "extraccion_valor_de_clave": {
+      "description": "Baja por una ruta de clave dentro del nodo ya seleccionado.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tipo", "clave"],
+      "properties": {
+        "tipo": {"const": "valor_de_clave"},
+        "clave": {"$ref": "#/$defs/ruta_de_clave"}
+      }
+    },
+
+    "conversion": {
+      "description": "Tipo al que se convierte cada valor. `enum:<nombre>` nombra un vocabulario cerrado declarado en otro lado.",
+      "oneOf": [
+        {"$ref": "#/$defs/enum_conversion_base"},
+        {
+          "type": "string",
+          "pattern": "^enum:[a-z][a-z0-9_]*$"
+        }
+      ]
+    },
+
+    "condicion": {
+      "description": "Condición de existencia del punto, como expresión estructurada. Los conectores son estructura; los átomos son las hojas y llevan su procedencia.",
+      "oneOf": [
+        {"$ref": "#/$defs/condicion_siempre"},
+        {"$ref": "#/$defs/condicion_atomo_comparacion"},
+        {"$ref": "#/$defs/condicion_atomo_capacidad"},
+        {"$ref": "#/$defs/condicion_y"},
+        {"$ref": "#/$defs/condicion_o"},
+        {"$ref": "#/$defs/condicion_no"}
+      ]
+    },
+
+    "condicion_siempre": {
+      "description": "El punto existe en toda corrida de su skill.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tipo", "procedencia"],
+      "properties": {
+        "tipo": {"const": "siempre"},
+        "procedencia": {"$ref": "#/$defs/procedencia"}
+      }
+    },
+
+    "condicion_atomo_comparacion": {
+      "description": "Átomo que compara una clave de configuración contra un valor.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tipo", "clave", "operador", "valor", "procedencia"],
+      "properties": {
+        "tipo": {"const": "atomo"},
+        "clave": {"type": "string", "minLength": 1},
+        "operador": {"$ref": "#/$defs/enum_operador_comparacion"},
+        "valor": {},
+        "procedencia": {"$ref": "#/$defs/procedencia"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"operador": {"enum": ["igual", "distinto"]}}, "required": ["operador"]},
+          "then": {"properties": {"valor": {"type": "string", "minLength": 1}}}
+        },
+        {
+          "if": {"properties": {"operador": {"enum": ["en", "no_en"]}}, "required": ["operador"]},
+          "then": {
+            "properties": {
+              "valor": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {"type": "string", "minLength": 1}
+              }
+            }
+          }
+        }
+      ]
+    },
+
+    "condicion_atomo_capacidad": {
+      "description": "Átomo que consulta la disponibilidad de una capacidad del entorno. No lleva `valor`: la capacidad está o no está.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tipo", "clave", "operador", "procedencia"],
+      "properties": {
+        "tipo": {"const": "atomo"},
+        "clave": {"type": "string", "minLength": 1},
+        "operador": {"$ref": "#/$defs/enum_operador_capacidad"},
+        "procedencia": {"$ref": "#/$defs/procedencia"}
+      }
+    },
+
+    "condicion_y": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tipo", "operandos"],
+      "properties": {
+        "tipo": {"const": "y"},
+        "operandos": {
+          "type": "array",
+          "minItems": 2,
+          "items": {"$ref": "#/$defs/condicion"}
+        }
+      }
+    },
+
+    "condicion_o": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tipo", "operandos"],
+      "properties": {
+        "tipo": {"const": "o"},
+        "operandos": {
+          "type": "array",
+          "minItems": 2,
+          "items": {"$ref": "#/$defs/condicion"}
+        }
+      }
+    },
+
+    "condicion_no": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tipo", "operando"],
+      "properties": {
+        "tipo": {"const": "no"},
+        "operando": {"$ref": "#/$defs/condicion"}
+      }
+    },
+
+    "ruta_de_archivo": {
+      "description": "Ruta de archivo relativa a la raíz del repositorio, en formato POSIX y sin segmentos `..`.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$"
+    },
+
+    "ruta_de_clave": {
+      "description": "Lista de segmentos: cadenas para claves de objeto y enteros para índices de arreglo. Una cadena con separador obligaría a elegir el separador, a escapar las claves que lo contengan y a decidir si los índices numéricos son claves o posiciones.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          {"type": "string", "minLength": 1},
+          {"type": "integer", "minimum": 0}
+        ]
+      }
+    },
+
+    "hoja_cadena_anclada": {
+      "description": "Hoja de cadena que NO admite la marca de ausencia de sede.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valor", "procedencia"],
+      "properties": {
+        "valor": {"type": "string", "minLength": 1},
+        "procedencia": {"$ref": "#/$defs/procedencia_anclada"}
+      }
+    },
+
+    "hoja_entero": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valor", "procedencia"],
+      "properties": {
+        "valor": {"type": "integer", "minimum": 0},
+        "procedencia": {"$ref": "#/$defs/procedencia"}
+      }
+    },
+
+    "hoja_entero_anclada": {
+      "description": "Hoja de entero que NO admite la marca de ausencia de sede.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valor", "procedencia"],
+      "properties": {
+        "valor": {"type": "integer", "minimum": 0},
+        "procedencia": {"$ref": "#/$defs/procedencia_anclada"}
+      }
+    },
+
+    "hoja_booleano": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valor", "procedencia"],
+      "properties": {
+        "valor": {"type": "boolean"},
+        "procedencia": {"$ref": "#/$defs/procedencia"}
+      }
+    },
+
+    "hoja_referencia": {
+      "description": "Hoja cuyo valor apunta a otro artefacto del repositorio en vez de transcribirlo.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valor", "procedencia"],
+      "properties": {
+        "valor": {"type": "string", "minLength": 1},
+        "procedencia": {"$ref": "#/$defs/procedencia"}
+      }
+    },
+
+    "hoja_lista_cadena": {
+      "description": "Hoja multivaluada: su valor es una lista y no un escalar.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valor", "procedencia"],
+      "properties": {
+        "valor": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "procedencia": {"$ref": "#/$defs/procedencia"}
+      }
+    },
+
+    "hoja_enum_skill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valor", "procedencia"],
+      "properties": {
+        "valor": {"$ref": "#/$defs/enum_skill"},
+        "procedencia": {"$ref": "#/$defs/procedencia"}
+      }
+    },
+
+    "hoja_enum_rol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valor", "procedencia"],
+      "properties": {
+        "valor": {"$ref": "#/$defs/enum_rol"},
+        "procedencia": {"$ref": "#/$defs/procedencia"}
+      }
+    },
+
+    "hoja_enum_variante": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valor", "procedencia"],
+      "properties": {
+        "valor": {"$ref": "#/$defs/enum_variante"},
+        "procedencia": {"$ref": "#/$defs/procedencia"}
+      }
+    },
+
+    "hoja_enum_permiso_efectivo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valor", "procedencia"],
+      "properties": {
+        "valor": {"$ref": "#/$defs/enum_permiso_efectivo"},
+        "procedencia": {"$ref": "#/$defs/procedencia"}
+      }
+    },
+
+    "hoja_enum_autoridad_final_anclada": {
+      "description": "Hoja de autoridad final. NO admite la marca de ausencia de sede.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valor", "procedencia"],
+      "properties": {
+        "valor": {"$ref": "#/$defs/enum_autoridad_final"},
+        "procedencia": {"$ref": "#/$defs/procedencia_anclada"}
+      }
+    },
+
+    "hoja_enum_familia": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valor", "procedencia"],
+      "properties": {
+        "valor": {"$ref": "#/$defs/enum_familia"},
+        "procedencia": {"$ref": "#/$defs/procedencia"}
+      }
+    },
+
+    "hoja_enum_escritura": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valor", "procedencia"],
+      "properties": {
+        "valor": {"$ref": "#/$defs/enum_escritura"},
+        "procedencia": {"$ref": "#/$defs/procedencia"}
+      }
+    },
+
+    "hoja_enum_transporte": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valor", "procedencia"],
+      "properties": {
+        "valor": {"$ref": "#/$defs/enum_transporte"},
+        "procedencia": {"$ref": "#/$defs/procedencia"}
+      }
+    },
+
+    "enum_skill": {
+      "description": "Las siete skills del ecosistema.",
+      "enum": [
+        "bitbucket-code-review",
+        "co-explore",
+        "cross-implement",
+        "cross-review",
+        "sdd-flow",
+        "sdd-orchestrator",
+        "sdd-pr-feedback"
+      ]
+    },
+
+    "enum_rol": {
+      "description": "Las cinco familias de rol conductual.",
+      "enum": [
+        "explorer",
+        "investigator",
+        "design-reviewer",
+        "bounded-implementer",
+        "diff-reviewer"
+      ]
+    },
+
+    "enum_variante": {
+      "description": "Variante o scope del rol. `ninguna` es el punto cuyo rol no se especializa.",
+      "enum": [
+        "ninguna",
+        "artifact-review",
+        "decision-debate",
+        "review",
+        "refute",
+        "work-order",
+        "task",
+        "repo-runner"
+      ]
+    },
+
+    "enum_permiso_efectivo": {
+      "description": "Nivel de escritura efectivo del punto. La ejecución no eleva permisos: el nivel lo fija el rol.",
+      "enum": ["read_only", "workspace_write_acotado"]
+    },
+
+    "enum_autoridad_final": {
+      "description": "Quién decide al final sobre el resultado del despacho.",
+      "enum": ["conductor", "usuario"]
+    },
+
+    "enum_familia": {
+      "description": "La familia del trabajo delegado, relativa a la del conductor: la matriz describe puntos y no corridas, así que no nombra Claude ni GPT/Codex.",
+      "enum": ["opuesta_al_conductor", "misma_del_conductor"]
+    },
+
+    "enum_escritura": {
+      "description": "Si el trabajo delegado es lector o escritor.",
+      "enum": ["read_only", "escritor"]
+    },
+
+    "enum_transporte": {
+      "description": "La vía por la que viaja el intento.",
+      "enum": ["subagent", "cli-exec", "cli-resume"]
+    },
+
+    "enum_transporte_agregado": {
+      "description": "Transporte agregado del punto. `mixto` cuando los intentos difieren.",
+      "enum": ["subagent", "cli-exec", "cli-resume", "mixto"]
+    },
+
+    "enum_escritura_agregada": {
+      "description": "Escritura agregada del punto. `mixta` cuando los trabajos delegados difieren.",
+      "enum": ["read_only", "escritor", "mixta"]
+    },
+
+    "enum_tipo_de_sede": {
+      "description": "Dónde viven realmente los datos de este repo.",
+      "enum": [
+        "heading_markdown",
+        "fila_de_tabla_markdown",
+        "clave_estructurada",
+        "patron_de_linea"
+      ]
+    },
+
+    "enum_formato_estructurado": {
+      "enum": ["json", "yaml"]
+    },
+
+    "enum_orden": {
+      "description": "`documento` conserva el orden de aparición en la sede; `lexicografico` ordena por punto de código sobre la cadena normalizada.",
+      "enum": ["documento", "lexicografico"]
+    },
+
+    "enum_colapso": {
+      "description": "`lista` devuelve todos los valores convertidos en el orden ya establecido. `unico_si_iguales` devuelve un solo valor cuando todos coinciden y falla con `colapso_no_unico` cuando difieren: declara que la sede debería decir lo mismo en varios lugares y convierte la discrepancia en rojo en vez de elegir uno en silencio.",
+      "enum": ["lista", "unico_si_iguales"]
+    },
+
+    "enum_normalizacion": {
+      "enum": ["ninguna", "trim", "colapsar_espacios", "minusculas"]
+    },
+
+    "enum_conversion_base": {
+      "enum": ["cadena", "entero", "booleano", "referencia"]
+    },
+
+    "enum_operador_comparacion": {
+      "enum": ["igual", "distinto", "en", "no_en"]
+    },
+
+    "enum_operador_capacidad": {
+      "enum": ["disponible", "no_disponible"]
+    }
+  }
+}
