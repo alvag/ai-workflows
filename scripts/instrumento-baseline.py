@@ -10789,6 +10789,546 @@ def _la_tabla_mutada_se_ve(tabla: tuple[CampoDeIdentidad, ...], esperado: dict, 
 
 
 # ---------------------------------------------------------------------------------------------
+# Modos `--sanitizar`, `--autotest-sanitizacion` y `--autotest-escaneo`.
+#
+# AC-41 pide un pipeline **ordenado**, y el orden no es prolijidad: fija sobre qué evidencia se
+# calcula el hash. Si `canonicalizacion_y_hash` corre antes de la normalización de rutas o del
+# escaneo, el número identifica un **crudo que nunca se versiona**, y el bundle que sí queda en el
+# repositorio no es el que ningún hash acredita. Las dos operaciones se aplicarían a evidencias
+# distintas sin que nada lo dijera.
+#
+# El orden canónico **no se transcribe**: sale del enum del contrato de bundle, que es donde está
+# congelado. Una copia acá envejecería en silencio, y el modo seguiría verde comparando contra una
+# lista que ya no es la del schema.
+#
+# El escaneo bloquea secretos, credenciales y rutas **absolutas del host**, y no bloquea rutas
+# relativas al repositorio: los comandos de las trece recetas y el directorio de trabajo son
+# relativos a propósito, así que un escáner que marcara toda ruta haría imposible publicar la
+# evidencia que la fase existe para publicar.
+# ---------------------------------------------------------------------------------------------
+
+DIR_FIXTURES_SANITIZACION = DIR_SCRIPTS / "fixtures-baseline" / "sanitizacion"
+RUTA_CORPUS_SANITIZACION = DIR_FIXTURES_SANITIZACION / "casos.json"
+RUTA_MANIFEST_SANITIZACION = DIR_FIXTURES_SANITIZACION / "manifest.json"
+
+CLAUSULAS_DEL_PIPELINE = (
+    "paso_faltante",
+    "hash_antes_de_sanitizar",
+    "orden_no_canonico",
+    "manifest_desordenado",
+    "manifest_sha256_discordante",
+)
+
+CLAUSULAS_DEL_ESCANEO = (
+    "secreto",
+    "credencial",
+    "ruta_absoluta_del_host",
+)
+
+
+def pasos_canonicos() -> tuple[str, ...]:
+    """El pipeline, en orden, leído del enum del contrato de bundle."""
+    schema, error = _cargar_json(CONTRATOS_POR_NOMBRE["bundle-corrida"].ruta)
+    if error:
+        return ()
+    return tuple(((schema.get("$defs") or {}).get("enum_paso_de_sanitizacion") or {})
+                 .get("enum") or [])
+
+
+class ReglaDeEscaneo(NamedTuple):
+    clave: str
+    patron: re.Pattern[str]
+    que_prueba: str
+
+
+# Cada regla busca la **forma** del contenido no publicable, no una lista de valores conocidos: una
+# allowlist de secretos concretos solo caza los que ya se filtraron alguna vez.
+#
+# `credencial` exige el par nombre **y** valor. El nombre solo no basta y no puede bastar: el runner
+# nombra `ENGRAM_CLOUD_TOKEN` y compañía al declarar de qué credenciales se retira, y una regla que
+# marcara el nombre volvería no publicable justo la evidencia de que la corrida quedó aislada.
+REGLAS_DE_ESCANEO: tuple[ReglaDeEscaneo, ...] = (
+    ReglaDeEscaneo(
+        "secreto",
+        re.compile(r"sk-[A-Za-z0-9_\-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}"
+                   r"|xox[baprs]-|-----BEGIN [A-Z ]*PRIVATE KEY-----"
+                   r"|Bearer\s+[A-Za-z0-9._\-]{20,}"),
+        "un token, una clave de API o una clave privada, por su forma"),
+    ReglaDeEscaneo(
+        "credencial",
+        re.compile(r"\b[A-Z][A-Z0-9_]*(?:TOKEN|KEY|SECRET|PASSWORD|PASSWD|CREDENTIAL)"
+                   r"[A-Z0-9_]*\s*[=:]\s*\S+"),
+        "el par nombre=valor de una variable de credencial; el nombre solo NO bloquea"),
+    ReglaDeEscaneo(
+        "ruta_absoluta_del_host",
+        re.compile(r"(?:^|[\s\"'=:(])(?:/Users/|/home/|/root/|/private/|/var/folders/|/tmp/)"
+                   r"|(?:^|[\s\"'=])[A-Za-z]:\\\\|file://"),
+        "una ruta que solo existe en la máquina que midió, incluida la de Windows y `file://`"),
+)
+
+
+def textos_del_documento(documento: Any, puntero: str = "") -> list[tuple[str, str]]:
+    """Cada cadena del documento con su puntero. El escaneo recorre la INSTANCIA y no el schema:
+    un campo de texto libre puede llevar cualquier cosa, y es justo donde el contenido no publicable
+    entra sin violar ninguna restricción estructural."""
+    if isinstance(documento, dict):
+        return [par for clave, valor in documento.items()
+                for par in textos_del_documento(valor, f"{puntero}/{clave}")]
+    if isinstance(documento, list):
+        return [par for indice, valor in enumerate(documento)
+                for par in textos_del_documento(valor, f"{puntero}/{indice}")]
+    if isinstance(documento, str):
+        return [(puntero or "/", documento)]
+    return []
+
+
+def escanear(documento: Any) -> list[Hallazgo]:
+    """AC-41: lo que no se puede publicar bloquea antes de versionarse."""
+    problemas: list[Hallazgo] = []
+    for puntero, texto in textos_del_documento(documento):
+        for regla in REGLAS_DE_ESCANEO:
+            encontrado = regla.patron.search(texto)
+            if encontrado is None:
+                continue
+            problemas.append(Hallazgo(
+                regla.clave,
+                f"{puntero}: {regla.que_prueba} — «{encontrado.group(0).strip()[:60]}»"))
+    return problemas
+
+
+def manifest_canonico(artefactos: list[dict]) -> bytes:
+    """El manifest ordenado por ruta relativa, tamaño y hash de contenido.
+
+    Es el orden que AC-41 pide y también el que hace reproducible el número: dos capturas del mismo
+    conjunto en distinto orden de recorrido tienen que dar el mismo `manifest_sha256`, o el hash
+    estaría midiendo el orden del sistema de archivos.
+    """
+    filas = sorted((str(a.get("ruta_relativa", "")), int(a.get("bytes", 0) or 0),
+                    str(a.get("sha256", ""))) for a in artefactos)
+    return "".join(f"{ruta}\t{tamano}\t{sha}\n" for ruta, tamano, sha in filas).encode("utf-8")
+
+
+def hash_del_manifest(artefactos: list[dict]) -> str:
+    return hashlib.sha256(manifest_canonico(artefactos)).hexdigest()
+
+
+def revisar_pipeline(bundle: dict) -> list[Hallazgo]:
+    """El pipeline declarado contra el canónico, y el manifest contra su hash."""
+    problemas: list[Hallazgo] = []
+    canonicos = pasos_canonicos()
+    aplicado = list((bundle.get("pipeline_de_sanitizacion") or {}).get("orden_aplicado") or [])
+
+    faltan = [paso for paso in canonicos if paso not in aplicado]
+    if faltan:
+        problemas.append(Hallazgo(
+            "paso_faltante",
+            f"el pipeline no aplicó {faltan}: un paso que no corrió no se puede declarar hecho por "
+            f"el orden de los que sí"))
+    elif aplicado != list(canonicos):
+        # El desorden que AC-41 nombra tiene clave propia: hashear antes de normalizar rutas o de
+        # escanear deja el número identificando un crudo que nunca se versiona. Cualquier otro
+        # desorden cae por la cláusula general, y así los dos negativos no se tapan entre sí.
+        posicion = {paso: indice for indice, paso in enumerate(aplicado)}
+        antes_de_hashear = [paso for paso in ("normalizacion_de_rutas", "validacion_y_escaneo")
+                            if posicion.get(paso, -1) > posicion.get("canonicalizacion_y_hash", -1)]
+        if antes_de_hashear:
+            problemas.append(Hallazgo(
+                "hash_antes_de_sanitizar",
+                f"`canonicalizacion_y_hash` corrió antes de {antes_de_hashear}: el hash identifica "
+                f"un crudo que nunca se versiona, y el bundle que queda en el repositorio no es el "
+                f"que ese número acredita"))
+        else:
+            problemas.append(Hallazgo(
+                "orden_no_canonico",
+                f"el pipeline declara {aplicado} y el orden canónico del contrato es "
+                f"{list(canonicos)}"))
+
+    artefactos = bundle.get("artefactos_producidos") or []
+    ordenadas = [(str(a.get("ruta_relativa", "")), int(a.get("bytes", 0) or 0),
+                  str(a.get("sha256", ""))) for a in artefactos]
+    if ordenadas != sorted(ordenadas):
+        problemas.append(Hallazgo(
+            "manifest_desordenado",
+            "el manifest no está ordenado por ruta relativa, tamaño y hash: el mismo conjunto "
+            "capturado en otro orden daría otro número"))
+
+    declarado = (bundle.get("pipeline_de_sanitizacion") or {}).get("manifest_sha256")
+    computado = hash_del_manifest(artefactos)
+    if declarado != computado:
+        problemas.append(Hallazgo(
+            "manifest_sha256_discordante",
+            f"el bundle declara `{declarado}` y el manifest ordenado da `{computado}`"))
+    return problemas
+
+
+def modo_sanitizar(args: argparse.Namespace) -> int:
+    raiz = Path(getattr(args, "sanitizar"))
+    if not raiz.is_absolute():
+        raiz = RAIZ / raiz
+    corridas = leer_conjunto_de_bundles(raiz)
+    if not corridas:
+        print(f"FALLA  el conjunto no tiene ninguna corrida: {raiz}")
+        return 1
+
+    problemas: list[tuple[str, Hallazgo]] = []
+    for corrida in corridas:
+        if corrida.error:
+            print(f"FALLA  {corrida.directorio}: {corrida.error}")
+            return 1
+        for hallazgo in revisar_pipeline(corrida.datos) + escanear(corrida.datos):
+            problemas.append((corrida.directorio, hallazgo))
+
+    print(f"corridas: {len(corridas)} · pipeline canónico: {list(pasos_canonicos())}")
+    for directorio, hallazgo in problemas:
+        print(f"FALLA  {directorio}: {hallazgo}")
+    print()
+    if problemas:
+        print(f"RESULTADO: FALLA — {len(problemas)} hallazgos")
+        return 1
+    print("RESULTADO: OK — el pipeline corrió en orden canónico, el hash es el de la evidencia "
+          "sanitizada y nada del contenido bloquea su publicación")
+    return 0
+
+
+# El orden del pipeline y el escaneo se registran en `--validar-bundles`; el hash del manifest
+# **no**. Los cincuenta bundles de los corpus de T4, T5, T6, T13 y T14 declaran un
+# `manifest_sha256` sintético —existen para probar otra cosa—, así que exigirlo ahí los pondría
+# rojos por una regla que no existía cuando se escribieron. Es la misma decisión que T13 tomó con
+# sus cláusulas de aislamiento, y con el mismo precio: quien quiera ese registro necesita su task y
+# su migración de corpus. El hash sí lo exige `--sanitizar`, que es la fila V29.
+
+def _comprobar_orden_del_pipeline(bundles: list[BundleEnDisco], schema: dict) -> list[str]:
+    del schema
+    fallas: list[str] = []
+    for bundle in bundles:
+        if bundle.datos is None:
+            continue
+        fallas += [f"{bundle.directorio}: {h}" for h in revisar_pipeline(bundle.datos)
+                   if h.clave in ("paso_faltante", "hash_antes_de_sanitizar", "orden_no_canonico",
+                                  "manifest_desordenado")]
+    return fallas
+
+
+def _comprobar_contenido_publicable(bundles: list[BundleEnDisco], schema: dict) -> list[str]:
+    del schema
+    fallas: list[str] = []
+    for bundle in bundles:
+        if bundle.datos is None:
+            continue
+        fallas += [f"{bundle.directorio}: {h}" for h in escanear(bundle.datos)]
+    return fallas
+
+
+registrar_comprobacion_de_bundles(
+    "F", "el pipeline de sanitización corrió en el orden canónico del contrato, y el manifest está "
+         "ordenado", _comprobar_orden_del_pipeline)
+registrar_comprobacion_de_bundles(
+    "G", "ninguna cadena del bundle lleva contenido no publicable",
+    _comprobar_contenido_publicable)
+
+
+# --- `--autotest-sanitizacion` y `--autotest-escaneo` -----------------------------------------
+
+def _insumos_de_sanitizacion() -> tuple[dict, dict, list[str]]:
+    corpus, e1 = _cargar_json(RUTA_CORPUS_SANITIZACION)
+    manifest, e2 = _cargar_json(RUTA_MANIFEST_SANITIZACION)
+    return corpus or {}, manifest or {}, [e for e in (e1, e2) if e]
+
+
+def texto_del_caso(declaracion: dict) -> str:
+    """El texto de una entrada del corpus, ensamblado desde sus `partes`.
+
+    **Ninguna cadena no publicable se escribe entera en el corpus.** El corpus vive en `scripts/`,
+    que es lo que el propio escaneo recorre: un token de ejemplo escrito completo haría que el
+    árbol quedara impublicable por el archivo que existe para probar que eso se detecta. La
+    alternativa —exceptuar el corpus del escaneo— es justo la excepción silenciosa que después
+    nadie retira, y dejaría al control ciego sobre el único directorio donde ya hubo una.
+    """
+    if "partes" in declaracion:
+        return "".join(declaracion["partes"])
+    return declaracion.get("texto", "")
+
+
+def _bundle_del_caso_de_sanitizacion(caso: dict, sano: dict) -> dict:
+    """El caso sano con el parche que el corpus declara, y su hash renovado salvo que el caso lo
+    ataque: un negativo del hash que además lo recalculara no atacaría nada."""
+    bundle = copy.deepcopy(sano)
+    if caso.get("orden_aplicado") is not None:
+        bundle["pipeline_de_sanitizacion"]["orden_aplicado"] = caso["orden_aplicado"]
+    if caso.get("artefactos_producidos") is not None:
+        bundle["artefactos_producidos"] = caso["artefactos_producidos"]
+    for puntero, valor in (caso.get("inyecciones") or {}).items():
+        _fijar_anidado(bundle, puntero, valor)
+    for puntero, partes in (caso.get("inyecciones_partidas") or {}).items():
+        _fijar_anidado(bundle, puntero, "".join(partes))
+    if caso.get("manifest_sha256_falseado"):
+        bundle["pipeline_de_sanitizacion"]["manifest_sha256"] = caso["manifest_sha256_falseado"]
+    elif not caso.get("conservar_hash"):
+        bundle["pipeline_de_sanitizacion"]["manifest_sha256"] = hash_del_manifest(
+            bundle.get("artefactos_producidos") or [])
+    return bundle
+
+
+def modo_autotest_sanitizacion(args: argparse.Namespace) -> int:
+    del args
+    corpus, manifest, errores = _insumos_de_sanitizacion()
+    if errores:
+        print(f"[A] FALLA  {' | '.join(errores)}")
+        return 1
+    sano = corpus["sano"]
+    resultados: list[tuple[str, bool, str]] = []
+
+    # [A] Corpus y manifest, en las dos direcciones.
+    fallas = []
+    del_corpus = set(corpus["casos"])
+    del_manifest = {c["caso"] for c in manifest["casos"]}
+    if del_corpus != del_manifest:
+        fallas.append(f"solo en el corpus {sorted(del_corpus - del_manifest)}, solo en el manifest "
+                      f"{sorted(del_manifest - del_corpus)}")
+    resultados.append(("A", not fallas,
+                       f"corpus ↔ manifest ({len(del_corpus)} casos)" if not fallas
+                       else " | ".join(fallas)))
+
+    # [B] El orden canónico sale del contrato y no de una copia. Se compara contra el manifest
+    # independiente: si alguien lo transcribiera acá, este control seguiría verde con el schema
+    # cambiado, y ése es justo el envejecimiento silencioso que se quiere impedir.
+    fallas = []
+    if list(pasos_canonicos()) != manifest["orden_canonico"]:
+        fallas.append(f"el contrato declara {list(pasos_canonicos())} y el manifest "
+                      f"{manifest['orden_canonico']}")
+    resultados.append(("B", not fallas,
+                       f"el orden canónico son los {len(pasos_canonicos())} pasos del contrato"
+                       if not fallas else " | ".join(fallas)))
+
+    # [C] Control positivo: el bundle sano no cae por ninguna cláusula.
+    problemas = revisar_pipeline(sano) + escanear(sano)
+    resultados.append(("C", not problemas,
+                       "el bundle sano pasa el pipeline y el escaneo"
+                       if not problemas else " | ".join(str(p) for p in problemas[:3])))
+
+    # [D] Cada caso cae por SU cláusula y por su motivo.
+    fallas = []
+    ejercidas: set[str] = set()
+    for declarado in manifest["casos"]:
+        bundle = _bundle_del_caso_de_sanitizacion(corpus["casos"][declarado["caso"]], sano)
+        problemas = revisar_pipeline(bundle) + escanear(bundle)
+        claves = sorted({p.clave for p in problemas})
+        if claves != [declarado["clausula"]]:
+            fallas.append(f"`{declarado['caso']}`: cayó por {claves} y se esperaba "
+                          f"`{declarado['clausula']}`")
+            continue
+        if not any(declarado["fragmento"] in p.detalle for p in problemas):
+            fallas.append(f"`{declarado['caso']}`: cayó por su cláusula pero no por su motivo — se "
+                          f"esperaba «{declarado['fragmento']}»")
+            continue
+        ejercidas.add(declarado["clausula"])
+    resultados.append(("D", not fallas,
+                       f"los {len(manifest['casos'])} casos caen por su cláusula y por su motivo"
+                       if not fallas else " | ".join(fallas[:5])))
+
+    # [E] El hash se calcula sobre la evidencia SANITIZADA. Se prueba con el hecho que lo
+    # distingue: normalizar una ruta cambia el manifest, así que el número de antes y el de después
+    # NO pueden coincidir. Un pipeline que hasheara el crudo daría el mismo en los dos.
+    fallas = []
+    crudo = [{"ruta_relativa": "scripts/salida.txt", "bytes": 12, "sha256": "a" * 64}]
+    normalizado = [{"ruta_relativa": "scripts/salida.txt", "bytes": 12, "sha256": "b" * 64}]
+    if hash_del_manifest(crudo) == hash_del_manifest(normalizado):
+        fallas.append("el hash no cambia cuando cambia el contenido del manifest")
+    invertido = list(reversed(sano["artefactos_producidos"]))
+    if hash_del_manifest(invertido) != hash_del_manifest(sano["artefactos_producidos"]):
+        fallas.append("el hash depende del orden de recorrido: dos capturas del mismo conjunto "
+                      "darían números distintos")
+    if sano["pipeline_de_sanitizacion"]["manifest_sha256"] != hash_del_manifest(
+            sano["artefactos_producidos"]):
+        fallas.append("el bundle sano declara un hash que no es el de su manifest ordenado")
+    resultados.append(("E", not fallas,
+                       "el hash sale del manifest ordenado, cambia con su contenido y no con el "
+                       "orden de recorrido" if not fallas else " | ".join(fallas)))
+
+    # [F] El modo entero, con su positivo y su negativo.
+    fallas = []
+    with tempfile.TemporaryDirectory(prefix="sanitizacion-") as tmp:
+        raiz = Path(tmp)
+        _materializar_bundle(raiz / "sano", sano["run_id"], sano)
+        if _codigo_de_modo(modo_sanitizar, sanitizar=str(raiz / "sano")) != 0:
+            fallas.append("`--sanitizar` devolvió distinto de 0 sobre el conjunto sano")
+        malo = _bundle_del_caso_de_sanitizacion(corpus["casos"]["c-hash-antes-de-sanitizar"], sano)
+        _materializar_bundle(raiz / "malo", malo["run_id"], malo)
+        if _codigo_de_modo(modo_sanitizar, sanitizar=str(raiz / "malo")) == 0:
+            fallas.append("`--sanitizar` devolvió 0 con el hash calculado antes de sanitizar")
+        vacio = raiz / "vacio"
+        vacio.mkdir(parents=True, exist_ok=True)
+        if _codigo_de_modo(modo_sanitizar, sanitizar=str(vacio)) == 0:
+            fallas.append("`--sanitizar` devolvió 0 sobre un directorio sin corridas")
+    resultados.append(("F", not fallas,
+                       "`--sanitizar` devuelve 0 sobre lo sano y distinto de 0 sobre sus negativos"
+                       if not fallas else " | ".join(fallas)))
+
+    # [G] Cobertura de las cláusulas del pipeline, acumulada corriendo.
+    fallas = []
+    sin_ejercer = sorted(set(CLAUSULAS_DEL_PIPELINE) - ejercidas)
+    if sin_ejercer:
+        fallas.append(f"cláusulas del pipeline sin caso que las ponga rojas: {sin_ejercer}")
+    if sorted(manifest["clausulas_del_pipeline"]) != sorted(CLAUSULAS_DEL_PIPELINE):
+        fallas.append("el manifest declara otras cláusulas del pipeline que el conjunto cerrado")
+    resultados.append(("G", not fallas,
+                       f"las {len(CLAUSULAS_DEL_PIPELINE)} cláusulas del pipeline tienen quien las "
+                       f"ponga rojas" if not fallas else " | ".join(fallas)))
+    return _cerrar(resultados)
+
+
+def _negativos_declarados_de_escaneo() -> tuple[list[Path], list[str]]:
+    """Los conjuntos de bundles que el manifest de T4 declara como negativos del escaneo.
+
+    La clave `G` no está transcrita en dos lados: es la que `registrar_comprobacion_de_bundles` le
+    dio a la comprobación de contenido publicable, y se busca por su texto en el registro. Así,
+    renumerar las comprobaciones no deja esta excepción apuntando a otra.
+    """
+    clave = next((c.clave for c in COMPROBACIONES_DE_BUNDLES
+                  if "no publicable" in c.que_prueba), None)
+    manifest, error = _cargar_json(RUTA_MANIFEST_BUNDLES)
+    if error or clave is None:
+        return [], []
+    directorios: list[Path] = []
+    sin_disparar: list[str] = []
+    for declarado in manifest.get("conjuntos") or []:
+        if clave not in (declarado.get("claves_esperadas") or []):
+            continue
+        directorio = DIR_FIXTURES_BUNDLES / "conjuntos" / declarado["conjunto"]
+        directorios.append(directorio)
+        if not any(escanear(b.datos) for b in leer_conjunto_de_bundles(directorio)
+                   if b.datos is not None):
+            sin_disparar.append(declarado["conjunto"])
+    return directorios, sin_disparar
+
+
+def modo_autotest_escaneo(args: argparse.Namespace) -> int:
+    del args
+    corpus, manifest, errores = _insumos_de_sanitizacion()
+    if errores:
+        print(f"[A] FALLA  {' | '.join(errores)}")
+        return 1
+    resultados: list[tuple[str, bool, str]] = []
+    escaneo = manifest["escaneo"]
+
+    # [A] Las reglas son las del manifest independiente, en las dos direcciones.
+    fallas = []
+    nuestras = {r.clave for r in REGLAS_DE_ESCANEO}
+    declaradas = {r["clave"] for r in escaneo["reglas"]}
+    if nuestras != declaradas:
+        fallas.append(f"reglas solo en el código {sorted(nuestras - declaradas)}, solo en el "
+                      f"manifest {sorted(declaradas - nuestras)}")
+    if nuestras != set(CLAUSULAS_DEL_ESCANEO):
+        fallas.append(f"las reglas no son el conjunto cerrado: "
+                      f"{sorted(nuestras ^ set(CLAUSULAS_DEL_ESCANEO))}")
+    resultados.append(("A", not fallas,
+                       f"las {len(nuestras)} reglas coinciden con el manifest y con el conjunto "
+                       f"cerrado" if not fallas else " | ".join(fallas)))
+
+    # [B] Lo que BLOQUEA, una entrada por regla y cada una violando solo la suya.
+    fallas = []
+    ejercidas: set[str] = set()
+    for caso in escaneo["bloquean"]:
+        problemas = escanear({"campo": texto_del_caso(caso)})
+        claves = sorted({p.clave for p in problemas})
+        if claves != [caso["regla"]]:
+            fallas.append(f"`{caso['nombre']}`: cayó por {claves} y se esperaba `{caso['regla']}`")
+            continue
+        ejercidas.add(caso["regla"])
+    resultados.append(("B", not fallas,
+                       f"las {len(escaneo['bloquean'])} entradas no publicables bloquean, cada una "
+                       f"por su regla" if not fallas else " | ".join(fallas[:5])))
+
+    # [C] Lo que NO bloquea. Es el control que impide el escáner que marca todo: con él, «bloquea
+    # todo» pasaría [B] entero y la evidencia que la fase existe para publicar sería impublicable.
+    fallas = []
+    for caso in escaneo["no_bloquean"]:
+        problemas = escanear({"campo": texto_del_caso(caso)})
+        if problemas:
+            fallas.append(f"`{caso['nombre']}`: bloqueó por {[p.clave for p in problemas]} y no "
+                          f"debía — {caso['por_que']}")
+    resultados.append(("C", not fallas,
+                       f"las {len(escaneo['no_bloquean'])} entradas publicables pasan"
+                       if not fallas else " | ".join(fallas[:5])))
+
+    # [D] Sobre el árbol REAL: ninguna de las recetas ni de los corpus de la fase queda bloqueada.
+    # Un escáner calibrado solo contra sus propios ejemplos es un corpus verde de autoría propia.
+    #
+    # Hay UNA excepción y no es silenciosa: el conjunto que pone roja la comprobación de escaneo en
+    # `--validar-bundles` tiene que llevar la cadena entera en disco —ese modo lee el archivo, no lo
+    # ensambla—, así que sería el único imposible de partir. La lista se **deriva** del manifest de
+    # bundles y no se escribe acá: exceptúa exactamente los conjuntos que declaran ejercer esa
+    # comprobación, y se exige que cada uno **efectivamente** dispare. Una excepción que dejara de
+    # ejercer nada sería una ruta que el escáner ya no mira y nadie notaría.
+    fallas = []
+    exceptuados, sin_disparar = _negativos_declarados_de_escaneo()
+    fallas += [f"el conjunto `{c}` está exceptuado del escaneo y no dispara ninguna regla: la "
+               f"excepción dejó de ejercer algo" for c in sin_disparar]
+    revisados = 0
+    for ruta in sorted(DIR_SCRIPTS.rglob("*.json")):
+        if any(ruta.is_relative_to(directorio) for directorio in exceptuados):
+            continue
+        documento, error = _cargar_json(ruta)
+        if error:
+            continue
+        revisados += 1
+        problemas = escanear(documento)
+        if problemas:
+            fallas.append(f"{ruta.relative_to(RAIZ)}: {problemas[0]}")
+    resultados.append(("D", not fallas,
+                       f"los {revisados} documentos JSON de scripts/ pasan el escaneo, con "
+                       f"{len(exceptuados)} conjunto(s) exceptuado(s) que el manifest declara y "
+                       f"que sí disparan" if not fallas else " | ".join(fallas[:4])))
+
+    # [E] El escaneo recorre la INSTANCIA: un secreto en un campo anidado y en un elemento de
+    # arreglo se ve igual que en la raíz.
+    fallas = []
+    anidado = {"a": {"b": [{"c": texto_del_caso(escaneo["bloquean"][0])}]}}
+    problemas = escanear(anidado)
+    if not problemas:
+        fallas.append("un secreto anidado en un arreglo de objetos no se ve")
+    elif "/a/b/0/c" not in problemas[0].detalle:
+        fallas.append(f"el hallazgo no señala dónde está: {problemas[0].detalle[:80]}")
+    resultados.append(("E", not fallas,
+                       "el escaneo recorre la instancia entera y señala el puntero"
+                       if not fallas else " | ".join(fallas)))
+
+    # [F] La partición del corpus es correcta en las DOS direcciones: ninguna parte suelta dispara
+    # una regla —o el árbol quedaría impublicable por el archivo que prueba que eso se detecta— y
+    # el texto ensamblado sí. Partir de más lo vería [B]; partir de menos lo ve [D], pero recién
+    # cuando ya está escrito en disco: acá se dice por qué, en vez de reportar el archivo entero.
+    fallas = []
+    partidas = 0
+    for caso in escaneo["bloquean"]:
+        if "partes" not in caso:
+            fallas.append(f"`{caso['nombre']}`: escribe su texto entero en el corpus, que es lo "
+                          f"que el escaneo recorre")
+            continue
+        partidas += 1
+        if len(caso["partes"]) < 2:
+            fallas.append(f"`{caso['nombre']}`: declara `partes` con un solo elemento, que es el "
+                          f"texto entero con otro nombre")
+        for indice, parte in enumerate(caso["partes"]):
+            problemas = escanear({"parte": parte})
+            if problemas:
+                fallas.append(f"`{caso['nombre']}`: la parte {indice} dispara "
+                              f"{[p.clave for p in problemas]} por sí sola")
+    resultados.append(("F", not fallas,
+                       f"las {partidas} entradas no publicables viven partidas, y ninguna parte "
+                       f"dispara sola" if not fallas else " | ".join(fallas[:5])))
+
+    # [G] Cobertura, acumulada corriendo.
+    fallas = []
+    sin_ejercer = sorted(set(CLAUSULAS_DEL_ESCANEO) - ejercidas)
+    if sin_ejercer:
+        fallas.append(f"reglas sin entrada que las ponga rojas: {sin_ejercer}")
+    resultados.append(("G", not fallas,
+                       f"las {len(CLAUSULAS_DEL_ESCANEO)} reglas tienen quien las ponga rojas"
+                       if not fallas else " | ".join(fallas)))
+    return _cerrar(resultados)
+
+
+# ---------------------------------------------------------------------------------------------
 # Registro de los modos de esta task. Cada task nueva agrega los suyos acá abajo, sin tocar los
 # anteriores ni `main()`.
 # ---------------------------------------------------------------------------------------------
@@ -11212,6 +11752,32 @@ registrar_modo(
     "por separado con su bloqueo o su estratificación, y una adjudicación fuera del conjunto "
     "cerrado bloquea en vez de agregar",
     modo_autotest_identidad_entorno,
+)
+
+registrar_modo(
+    "--sanitizar",
+    "juzga el pipeline de evidencia de un conjunto de corridas: el orden canónico del contrato "
+    "—con el hash DESPUÉS de normalizar rutas y escanear, para que identifique la evidencia "
+    "sanitizada y no un crudo que nunca se versiona—, el manifest ordenado por ruta, tamaño y "
+    "hash, y el contenido publicable",
+    modo_sanitizar,
+    argumento=Argumento("<dir-de-corridas>", const=RUTA_CORRIDAS_FASE_0),
+)
+
+registrar_modo(
+    "--autotest-sanitizacion",
+    "control del modo anterior sobre el corpus de scripts/fixtures-baseline/sanitizacion/: el "
+    "orden canónico sale del contrato y no de una copia, el hash cambia con el contenido del "
+    "manifest y no con el orden de recorrido, y cada ataque al pipeline cae por su cláusula",
+    modo_autotest_sanitizacion,
+)
+
+registrar_modo(
+    "--autotest-escaneo",
+    "control del escaneo: secreto, credencial y ruta absoluta del host bloquean, cada uno por su "
+    "regla; la ruta relativa al repositorio y el nombre de una credencial sin valor NO bloquean; y "
+    "ningún documento JSON del árbol real queda impublicable",
+    modo_autotest_escaneo,
 )
 
 

@@ -1,0 +1,163 @@
+{
+  "que_declara": "El manifest independiente del corpus de T16. Declara el orden canónico del pipeline —para compararlo contra el enum del contrato en las dos direcciones—, qué caso cae por qué cláusula y por qué motivo, y las entradas que el escaneo tiene que bloquear y las que NO. Las segundas son las que impiden el escáner que marca todo.",
+  "orden_canonico": [
+    "captura",
+    "normalizacion_de_rutas",
+    "validacion_y_escaneo",
+    "canonicalizacion_y_hash",
+    "recoleccion",
+    "versionado"
+  ],
+  "clausulas_del_pipeline": [
+    "paso_faltante",
+    "hash_antes_de_sanitizar",
+    "orden_no_canonico",
+    "manifest_desordenado",
+    "manifest_sha256_discordante"
+  ],
+  "casos": [
+    {
+      "caso": "c-paso-faltante",
+      "clausula": "paso_faltante",
+      "fragmento": "no se puede declarar hecho por el orden"
+    },
+    {
+      "caso": "c-hash-antes-de-sanitizar",
+      "clausula": "hash_antes_de_sanitizar",
+      "fragmento": "identifica un crudo que nunca se versiona"
+    },
+    {
+      "caso": "c-orden-no-canonico",
+      "clausula": "orden_no_canonico",
+      "fragmento": "el orden canónico del contrato es"
+    },
+    {
+      "caso": "c-manifest-desordenado",
+      "clausula": "manifest_desordenado",
+      "fragmento": "capturado en otro orden daría otro número"
+    },
+    {
+      "caso": "c-manifest-sha256-discordante",
+      "clausula": "manifest_sha256_discordante",
+      "fragmento": "y el manifest ordenado da"
+    },
+    {
+      "caso": "c-secreto-en-la-evidencia",
+      "clausula": "secreto",
+      "fragmento": "una clave de API o una clave privada"
+    },
+    {
+      "caso": "c-credencial-con-valor",
+      "clausula": "credencial",
+      "fragmento": "el nombre solo NO bloquea"
+    },
+    {
+      "caso": "c-ruta-absoluta-del-host",
+      "clausula": "ruta_absoluta_del_host",
+      "fragmento": "solo existe en la máquina que midió"
+    }
+  ],
+  "escaneo": {
+    "reglas": [
+      {
+        "clave": "secreto",
+        "que_prueba": "un token, una clave de API o una clave privada"
+      },
+      {
+        "clave": "credencial",
+        "que_prueba": "el par nombre=valor de una credencial"
+      },
+      {
+        "clave": "ruta_absoluta_del_host",
+        "que_prueba": "una ruta que solo existe en la máquina que midió"
+      }
+    ],
+    "bloquean": [
+      {
+        "nombre": "clave-de-api",
+        "regla": "secreto",
+        "partes": [
+          "sk-",
+          "proj-4f9d2b7a1c8e6503ffab"
+        ]
+      },
+      {
+        "nombre": "token-de-github",
+        "regla": "secreto",
+        "partes": [
+          "ghp",
+          "_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
+        ]
+      },
+      {
+        "nombre": "clave-privada",
+        "regla": "secreto",
+        "partes": [
+          "-----BEGIN ",
+          "OPENSSH PRIVATE ",
+          "KEY-----"
+        ]
+      },
+      {
+        "nombre": "credencial-con-valor",
+        "regla": "credencial",
+        "partes": [
+          "ORCA_BITBUCKET_API_TOKEN",
+          "=abc123def456"
+        ]
+      },
+      {
+        "nombre": "ruta-de-usuario",
+        "regla": "ruta_absoluta_del_host",
+        "partes": [
+          "cwd: /Us",
+          "ers/max/Personal/repos/ai-workflows"
+        ]
+      },
+      {
+        "nombre": "ruta-de-windows",
+        "regla": "ruta_absoluta_del_host",
+        "partes": [
+          "cwd=C:",
+          "\\\\Users\\\\max\\\\repos"
+        ]
+      },
+      {
+        "nombre": "url-de-archivo-local",
+        "regla": "ruta_absoluta_del_host",
+        "partes": [
+          "abrir fi",
+          "le:///etc/hosts para reproducir"
+        ]
+      }
+    ],
+    "no_bloquean": [
+      {
+        "nombre": "comando-de-receta",
+        "texto": "python3 scripts/instrumento-baseline.py --validar-schemas",
+        "por_que": "los comandos de las trece recetas son relativos al repositorio a propósito"
+      },
+      {
+        "nombre": "directorio-de-trabajo",
+        "texto": "cwd: .",
+        "por_que": "el directorio de trabajo de las recetas es relativo"
+      },
+      {
+        "nombre": "ruta-relativa-de-artefacto",
+        "texto": "scripts/corridas-fase-0/run-01/bundle.json",
+        "por_que": "es la forma que el contrato exige a toda ruta de evidencia"
+      },
+      {
+        "nombre": "nombre-de-credencial-sin-valor",
+        "texto": "el entorno desechable retira ENGRAM_CLOUD_TOKEN, ORCA_BITBUCKET_API_TOKEN y ZAI_API_KEY",
+        "por_que": "es la evidencia de que la corrida quedó aislada; marcarla volvería impublicable justo eso"
+      },
+      {
+        "nombre": "sesion-de-codex",
+        "texto": "codex exec resume 019a2f3e-1c4d-7b8a-9e0f-112233445566",
+        "por_que": "un identificador de sesión no es una credencial"
+      }
+    ],
+    "por_que_partido": "El corpus vive en `scripts/`, que es lo que el propio escaneo recorre. Un token de ejemplo escrito entero dejaría el árbol impublicable por el archivo que existe para probar que eso se detecta, y exceptuar el corpus del escaneo sería la excepción silenciosa que después nadie retira. Cada entrada se declara en `partes` que el control ensambla: ninguna suelta dispara una regla y el texto completo sí, y eso se comprueba."
+  }
+}
