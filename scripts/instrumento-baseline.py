@@ -4588,6 +4588,695 @@ def modo_autotest_hallazgos(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------------------------
+# Modos `--latencias`, `--autotest-latencias` y `--autotest-reloj`.
+#
+# AC-19 pide DOS magnitudes y prohíbe compararlas: el tiempo hasta el estado terminal comprobado de
+# cada trabajo delegado, y el tiempo hasta el resultado utilizable de la corrida. Viven en sedes
+# distintas de la observación justamente para que ningún agregado las junte, y ningún agregador de
+# acá toma valores de las dos.
+#
+# La interfaz de reloj vive en `scripts/interfaz-de-reloj.json` y es lo que esta task PRODUCE: el
+# conjunto cerrado de procedencias, la precisión admitida, el redondeo canónico y los invariantes.
+# El schema del bundle ya exige que todo sello declare su procedencia, pero como texto libre; sin
+# cerrar el conjunto, «declararla» y «que sea una de las que el harness implementa» son dos cosas
+# distintas, y un adaptador puede emitir tiempo de pared con la forma correcta.
+#
+# Los estratos: el de intervención humana se deriva del valor EFECTIVO registrado, y qué muestras lo
+# exigen se deriva de la MATRIZ. Un punto que la matriz marca con confirmación del usuario y una
+# corrida sin evento de confirmación no se reclasifica como automatizable: bloquea.
+# ---------------------------------------------------------------------------------------------
+
+RUTA_INTERFAZ_DE_RELOJ = DIR_SCRIPTS / "interfaz-de-reloj.json"
+RUTA_MATRIZ = DIR_SCRIPTS / "matriz-despachos.json"
+DIR_FIXTURES_LATENCIAS = DIR_SCRIPTS / "fixtures-baseline" / "latencias"
+RUTA_MANIFEST_LATENCIAS = DIR_FIXTURES_LATENCIAS / "manifest.json"
+
+RUTA_OBSERVACIONES_FASE_0 = "scripts/observaciones-fase-0"
+
+LATENCIA_DE_CORRIDA = "latencia-hasta-resultado-utilizable"
+LATENCIA_DE_TRABAJO = "latencia-hasta-estado-terminal"
+
+
+def cargar_interfaz_de_reloj() -> tuple[dict, str | None]:
+    return _cargar_json(RUTA_INTERFAZ_DE_RELOJ)
+
+
+def redondear_canonico(valor: float, interfaz: dict) -> float:
+    """El redondeo que la interfaz declara. Sin una regla escrita, el último dígito del número
+    publicado lo decide la aritmética de coma flotante, y dos corridas del mismo instrumento sobre
+    los mismos sellos pueden diferir."""
+    redondeo = interfaz.get("redondeo") or {}
+    if redondeo.get("regla") != "half_even":
+        return valor
+    return round(float(valor), int(redondeo.get("decimales", 3)))
+
+
+def _sellos_del_bundle(bundle: dict):
+    for evento in bundle.get("eventos") or []:
+        yield evento, (evento.get("sello") or {})
+
+
+def revisar_sellos(bundle: dict, interfaz: dict) -> list[str]:
+    """Cada sello contra la interfaz declarada: procedencia del conjunto cerrado, precisión dentro
+    del rango, y la fuente y la autoridad que la interfaz fija."""
+    problemas: list[str] = []
+    admitidas = {p.get("procedencia_id"): p
+                 for p in interfaz.get("procedencias_admitidas") or []}
+    rango = interfaz.get("precision_ns") or {}
+    adaptador = bundle.get("adaptador")
+
+    for evento, sello in _sellos_del_bundle(bundle):
+        etiqueta = f"{bundle.get('run_id')}/{evento.get('evento_id')}"
+        procedencia = sello.get("procedencia")
+        if procedencia not in admitidas:
+            problemas.append(f"{etiqueta}: la procedencia {procedencia!r} no está en el conjunto "
+                             "cerrado de la interfaz de reloj")
+        elif adaptador not in (admitidas[procedencia].get("adaptadores") or []):
+            problemas.append(f"{etiqueta}: la procedencia {procedencia!r} no está declarada para "
+                             f"el adaptador {adaptador!r}")
+        if sello.get("fuente") != interfaz.get("fuente"):
+            problemas.append(f"{etiqueta}: la fuente es {sello.get('fuente')!r} y la interfaz "
+                             f"declara {interfaz.get('fuente')!r}")
+        if sello.get("autoridad") != interfaz.get("autoridad"):
+            problemas.append(f"{etiqueta}: la autoridad es {sello.get('autoridad')!r} y la "
+                             f"interfaz declara {interfaz.get('autoridad')!r}")
+        precision = sello.get("precision_ns")
+        if not isinstance(precision, int) or isinstance(precision, bool):
+            problemas.append(f"{etiqueta}: la precisión no es un entero")
+        elif not (rango.get("minimo", 1) <= precision <= rango.get("maximo", 10 ** 9)):
+            problemas.append(f"{etiqueta}: precisión {precision} ns fuera del rango declarado "
+                             f"[{rango.get('minimo')}, {rango.get('maximo')}]")
+    return problemas
+
+
+def revisar_orden_de_eventos(bundle: dict, interfaz: dict) -> list[str]:
+    """Los invariantes de orden y de duración posible. Un evento fuera de orden se RECHAZA: no se
+    reordena por sello ni se promedia con el resto."""
+    problemas: list[str] = []
+    eventos = bundle.get("eventos") or []
+    tope = next((i.get("tope_ns") for i in interfaz.get("invariantes") or []
+                 if i.get("invariante_id") == "duracion-posible"), None)
+
+    # La secuencia de apertura, en el orden que el schema del bundle declara.
+    schema_bundle, error = _cargar_json(CONTRATOS_POR_NOMBRE["bundle-corrida"].ruta)
+    orden = ((schema_bundle or {}).get("x-secuencia-de-apertura") or {}).get("orden") or []
+    posicion = {tipo: i for i, tipo in enumerate(orden)}
+    if error:
+        problemas.append(f"secuencia de apertura: {error}")
+
+    ultimos: list[tuple[int, str, int]] = []
+    for evento in eventos:
+        tipo = evento.get("tipo")
+        if tipo not in posicion:
+            continue
+        ultimos.append((posicion[tipo], evento.get("evento_id"),
+                        (evento.get("sello") or {}).get("valor_ns", 0)))
+    for anterior, siguiente in zip(ultimos, ultimos[1:]):
+        if siguiente[0] < anterior[0]:
+            problemas.append(f"{bundle.get('run_id')}: el evento de apertura {siguiente[1]!r} "
+                             f"aparece después de {anterior[1]!r} y su orden declarado es el "
+                             "inverso")
+        if siguiente[2] < anterior[2]:
+            problemas.append(f"{bundle.get('run_id')}: el sello de {siguiente[1]!r} es anterior al "
+                             f"de {anterior[1]!r}: la secuencia de apertura no es monótona")
+
+    valores = [s.get("valor_ns") for _, s in _sellos_del_bundle(bundle)
+               if isinstance(s.get("valor_ns"), int)]
+    if valores and tope and (max(valores) - min(valores)) > tope:
+        problemas.append(f"{bundle.get('run_id')}: la corrida abarca "
+                         f"{max(valores) - min(valores)} ns, por encima del tope declarado "
+                         f"({tope} ns): es un sello corrupto o un reloj reiniciado, y se rechaza")
+    return problemas
+
+
+def puntos_que_exigen_confirmacion() -> tuple[set[str], str | None]:
+    """De la MATRIZ, no de una lista transcrita acá: qué muestras exigen intervención humana lo
+    declara el punto de despacho, y una copia local envejecería en silencio."""
+    matriz, error = _cargar_json(RUTA_MATRIZ)
+    if error:
+        return set(), error
+    exigen = set()
+    for punto in matriz.get("puntos") or []:
+        campo = punto.get("requiere_confirmacion_del_usuario") or {}
+        if campo.get("valor") is True:
+            exigen.add(punto.get("id"))
+    return exigen, None
+
+
+def revisar_estrato(observacion: dict, bundle: dict, exigen: set[str]) -> list[str]:
+    """El estrato contra la matriz. Un punto que exige confirmación y una corrida sin su evento no
+    se reclasifica como automatizable: **bloquea siempre**. La salida barata sería tratar la
+    ausencia del evento como prueba de que no hizo falta."""
+    problemas: list[str] = []
+    punto = observacion.get("punto_de_despacho")
+    if punto not in exigen:
+        return problemas
+    hay_evento = bool(_eventos_de_tipo(bundle, "confirmacion_humana"))
+    if observacion.get("estrato") == "automatizable":
+        problemas.append(
+            f"{observacion.get('observation_id')}: el punto «{punto}» exige confirmación del "
+            "usuario según la matriz, y la observación se clasificó `automatizable`"
+            + ("" if hay_evento else " sin ningún evento de confirmación registrado"))
+    elif not hay_evento:
+        problemas.append(
+            f"{observacion.get('observation_id')}: el punto «{punto}» exige confirmación y no hay "
+            "evento que la acredite: el intento bloquea, no se estratifica")
+    return problemas
+
+
+class ValorDeLatencia(NamedTuple):
+    observation_id: str
+    magnitud: str
+    estrato: str
+    valor: float
+
+
+def valores_de_latencia(observacion: dict) -> list[ValorDeLatencia]:
+    """Las dos magnitudes, extraídas de sus DOS sedes. Cada valor lleva su magnitud pegada: es lo
+    que permite que el agregador rechace una mezcla en vez de promediarla."""
+    salida: list[ValorDeLatencia] = []
+    estrato = observacion.get("estrato")
+    metrica = _metrica_de_la_observacion(observacion, LATENCIA_DE_CORRIDA)
+    if metrica and metrica.get("estado_de_medicion") == "medida":
+        salida.append(ValorDeLatencia(observacion.get("observation_id"), LATENCIA_DE_CORRIDA,
+                                      estrato, metrica["valor"]))
+    for trabajo in observacion.get("trabajos_delegados") or []:
+        for metrica in trabajo.get("metricas") or []:
+            if (metrica.get("metrica_id") == LATENCIA_DE_TRABAJO
+                    and metrica.get("estado_de_medicion") == "medida"):
+                salida.append(ValorDeLatencia(observacion.get("observation_id"),
+                                              LATENCIA_DE_TRABAJO, estrato, metrica["valor"]))
+    return salida
+
+
+def agregar_latencias(valores: list[ValorDeLatencia], vocabulario: dict,
+                      interfaz: dict) -> tuple[float | None, str | None]:
+    """Agrega un conjunto de latencias, o lo RECHAZA. Rechaza si mezcla las dos magnitudes —AC-19
+    prohíbe compararlas— y si mezcla estratos: un promedio global de corridas automatizables y con
+    intervención humana no es la latencia de ninguna de las dos poblaciones."""
+    if not valores:
+        return None, "sin valores que agregar"
+    magnitudes = {v.magnitud for v in valores}
+    if len(magnitudes) > 1:
+        return None, ("el conjunto mezcla las dos magnitudes de latencia, que AC-19 prohíbe "
+                      f"comparar: {sorted(magnitudes)}")
+    estratos = {v.estrato for v in valores}
+    if len(estratos) > 1:
+        return None, (f"el conjunto mezcla estratos {sorted(estratos)}: un promedio global no es "
+                      "la latencia de ninguna de las dos poblaciones")
+    magnitud = magnitudes.pop()
+    metrica = next((m for _, m in _metricas_del(vocabulario)
+                    if m.get("metrica_id") == magnitud), None)
+    if metrica is None:
+        return None, f"la magnitud «{magnitud}» no está en el vocabulario"
+    agregacion = (_por_id(vocabulario.get("agregaciones") or [], "agregacion_id")
+                  .get(metrica.get("agregacion")) or {})
+    resolvedor = RESOLVEDORES_DE_AGREGACION.get(agregacion.get("forma"))
+    if resolvedor is None:
+        return None, f"la agregación «{metrica.get('agregacion')}» no tiene resolvedor"
+    valor, error = resolvedor([v.valor for v in valores])
+    return (None, error) if error else (redondear_canonico(valor, interfaz), None)
+
+
+def revisar_reglas_de_latencia(observaciones: list[dict], bundles: dict[str, dict],
+                               manifest_de_intentos: dict | None) -> list[str]:
+    """Las cuatro reglas que AC-19 exige declarar: reintentos, despachos múltiples, presupuesto
+    vencido y muestra incompleta. Cada una tiene su negativo en el corpus."""
+    problemas: list[str] = []
+    por_muestra: dict[str, list[dict]] = {}
+    for observacion in observaciones:
+        por_muestra.setdefault(observacion.get("sample_id"), []).append(observacion)
+
+    for observacion in observaciones:
+        bundle = bundles.get((observacion.get("procedencia") or {}).get("run_id")) or {}
+        etiqueta = observacion.get("observation_id")
+
+        # Despachos múltiples: la ventana no está definida y la latencia se bloquea. Elegir uno de
+        # los despachos —el primero, el último— sería fijar metodología desde el instrumento.
+        despachos = _eventos_de_tipo(bundle, "despacho")
+        metrica = _metrica_de_la_observacion(observacion, LATENCIA_DE_CORRIDA) or {}
+        if len(despachos) > 1 and metrica.get("estado_de_medicion") == "medida":
+            problemas.append(f"{etiqueta}: la corrida tiene {len(despachos)} despachos y la "
+                             "latencia salió medida: con más de una ventana no hay duración que "
+                             "publicar")
+
+        # Presupuesto vencido: sin resultado utilizable no hay latencia de corrida, y publicarla en
+        # cero la haría indistinguible de una corrida instantánea.
+        if (not _eventos_de_tipo(bundle, "resultado_utilizable")
+                and metrica.get("estado_de_medicion") == "medida"):
+            problemas.append(f"{etiqueta}: no hay evento de resultado utilizable y la latencia "
+                             "salió medida")
+
+        # Reintentos: la latencia es POR INTENTO. Dos intentos de la misma muestra no se promedian
+        # acá: con qué intento se publica lo fija la política congelada del acta (D-12).
+        hermanas = por_muestra.get(observacion.get("sample_id")) or []
+        if len(hermanas) > 1 and manifest_de_intentos is None:
+            problemas.append(f"{etiqueta}: su muestra tiene {len(hermanas)} intentos y no hay "
+                             "política congelada que diga con cuál se publica: agregar acá sería "
+                             "elegir después de ver los números")
+
+    # Muestra incompleta: si el manifest declara intentos que no están, el agregado se rechaza en
+    # lugar de recomponerse sobre el subconjunto que llegó.
+    if manifest_de_intentos is not None:
+        esperados = {(e.get("sample_id"), e.get("attempt_ordinal"))
+                     for e in manifest_de_intentos.get("intentos") or []}
+        observados = {(o.get("sample_id"), o.get("attempt_ordinal")) for o in observaciones}
+        faltantes = sorted(esperados - observados)
+        if faltantes:
+            problemas.append(f"muestra incompleta: faltan {len(faltantes)} intentos declarados "
+                             f"({faltantes[0]} y otros): el agregado se rechaza en vez de "
+                             "recomponerse sobre lo que llegó")
+    return problemas
+
+
+def modo_latencias(args: argparse.Namespace) -> int:
+    raiz = _ruta_absoluta(getattr(args, "latencias"))
+    dir_bundles = _ruta_absoluta(getattr(args, "bundles", None) or RUTA_CORRIDAS_FASE_0)
+    interfaz, error = cargar_interfaz_de_reloj()
+    if error:
+        print(f"FALLA  interfaz de reloj: {error}")
+        return 1
+    vocabulario, esquemas, problemas = _cargar_insumos_de_recoleccion()
+    exigen, error = puntos_que_exigen_confirmacion()
+    if error:
+        problemas.append(f"matriz de despachos: {error}")
+    if problemas:
+        for p in problemas:
+            print(f"FALLA  {p}")
+        return 1
+
+    if not raiz.is_dir():
+        print(f"FALLA  {raiz}: no hay directorio de observaciones que revisar")
+        return 1
+    observaciones: list[dict] = []
+    for archivo in sorted(raiz.glob("*.json")):
+        datos, error = _cargar_json(archivo)
+        if error:
+            print(f"FALLA  {archivo.name}: {error}")
+            return 1
+        observaciones.append(datos)
+    if not observaciones:
+        print(f"FALLA  {raiz}: el directorio no tiene ninguna observación")
+        return 1
+
+    bundles: dict[str, dict] = {}
+    faltantes: list[str] = []
+    for observacion in observaciones:
+        run_id = (observacion.get("procedencia") or {}).get("run_id")
+        bundle = _leer_bundle(dir_bundles / run_id)
+        if bundle.error:
+            faltantes.append(f"{run_id}: {bundle.error}")
+            continue
+        bundles[run_id] = bundle.datos
+
+    print(f"Observaciones: {raiz} ({len(observaciones)}) · bundles: {dir_bundles}")
+    revisiones: list[tuple[str, list[str]]] = [
+        ("procedencia y precisión de cada sello",
+         faltantes + [p for b in bundles.values() for p in revisar_sellos(b, interfaz)]),
+        ("orden de la apertura y duración posible",
+         [p for b in bundles.values() for p in revisar_orden_de_eventos(b, interfaz)]),
+        ("estratos derivados del valor efectivo y exigidos por la matriz",
+         [p for o in observaciones
+          for p in revisar_estrato(o, bundles.get((o.get("procedencia") or {}).get("run_id")) or {},
+                                   exigen)]),
+        ("reglas de reintento, despacho múltiple, presupuesto vencido y muestra incompleta",
+         revisar_reglas_de_latencia(observaciones, bundles,
+                                    getattr(args, "_manifest_de_intentos", None))),
+    ]
+
+    # Y las dos magnitudes, agregadas por separado y por estrato. Es donde se ve que no se mezclan:
+    # un agregado por magnitud × estrato, nunca uno global.
+    todos = [v for o in observaciones for v in valores_de_latencia(o)]
+    grupos: dict[tuple[str, str], list[ValorDeLatencia]] = {}
+    for valor in todos:
+        grupos.setdefault((valor.magnitud, valor.estrato), []).append(valor)
+    mezcla = agregar_latencias(todos, vocabulario, interfaz)[1] if len(
+        {(v.magnitud) for v in todos}) > 1 else None
+
+    rojos = 0
+    for etiqueta, problemas_de_la_revision in revisiones:
+        if problemas_de_la_revision:
+            rojos += 1
+            print(f"FALLA  {etiqueta} — {len(problemas_de_la_revision)}:")
+            for problema in problemas_de_la_revision[:6]:
+                print(f"       - {problema}")
+        else:
+            print(f"OK     {etiqueta}")
+
+    print()
+    for (magnitud, estrato), valores in sorted(grupos.items()):
+        agregado, error = agregar_latencias(valores, vocabulario, interfaz)
+        detalle = f"{agregado:g}" if error is None else f"sin agregar — {error}"
+        print(f"       {magnitud} · {estrato}: {len(valores)} valores → {detalle}")
+    if mezcla:
+        print(f"       las dos magnitudes NO se agregan juntas: {mezcla}")
+
+    print()
+    if rojos:
+        print(f"RESULTADO: FALLA — {rojos} revisiones en rojo")
+        return 1
+    print(f"RESULTADO: OK — {len(observaciones)} observaciones con sus latencias verificadas, en "
+          f"{len(grupos)} grupos de magnitud × estrato")
+    return 0
+
+
+def _observacion_de_latencias(caso_id: str, preregistro: dict, vocabulario: dict,
+                              esquemas: dict) -> tuple[dict | None, dict | None, list[str]]:
+    bundle = _leer_bundle(DIR_FIXTURES_LATENCIAS / "casos" / caso_id)
+    if bundle.error:
+        return None, None, [f"{caso_id}: {bundle.error}"]
+    observacion, fallas = derivar_observacion(
+        bundle.datos, bundle.sha256, vocabulario, esquemas["observacion"],
+        preregistro.get("reglas_de_derivacion_de_identidad"),
+        formulas_del_preregistro(preregistro))
+    return observacion, bundle.datos, [f"{caso_id}: {f}" for f in fallas]
+
+
+def modo_autotest_latencias(args: argparse.Namespace) -> int:
+    solo_estratos = bool(getattr(args, "estratos", False))
+    manifest, error = _cargar_json(RUTA_MANIFEST_LATENCIAS)
+    if error:
+        print(f"[A] FALLA  manifest del corpus de latencias: {error}")
+        return 1
+    preregistro, error = _cargar_json(DIR_FIXTURES_LATENCIAS / "preregistro.json")
+    if error:
+        print(f"[A] FALLA  pre-registro del corpus de latencias: {error}")
+        return 1
+    interfaz, error = cargar_interfaz_de_reloj()
+    if error:
+        print(f"[A] FALLA  interfaz de reloj: {error}")
+        return 1
+    vocabulario, esquemas, problemas = _cargar_insumos_de_recoleccion()
+    exigen, error = puntos_que_exigen_confirmacion()
+    if error:
+        problemas.append(f"matriz de despachos: {error}")
+    if problemas:
+        for p in problemas:
+            print(f"[A] FALLA  {p}")
+        return 1
+
+    casos = manifest.get("casos") or []
+    resultados: list[tuple[str, bool, str]] = []
+
+    # [A] Manifest ↔ disco, en las dos direcciones (D-16).
+    raiz = DIR_FIXTURES_LATENCIAS / "casos"
+    declarados = {c["caso_id"] for c in casos}
+    en_disco = {d.name for d in raiz.iterdir() if d.is_dir()} if raiz.is_dir() else set()
+    diferencias = [f"declarado y ausente del disco: {c}" for c in sorted(declarados - en_disco)]
+    diferencias += [f"en disco y no declarado: {c}" for c in sorted(en_disco - declarados)]
+    resultados.append(("A", not diferencias,
+                       f"manifest ↔ directorio ({len(declarados)} casos)" if not diferencias
+                       else " | ".join(diferencias[:6])))
+
+    observaciones: dict[str, dict] = {}
+    bundles: dict[str, dict] = {}
+    fallas: list[str] = []
+    for entrada in casos:
+        observacion, bundle, malas = _observacion_de_latencias(entrada["caso_id"], preregistro,
+                                                               vocabulario, esquemas)
+        if bundle is not None:
+            bundles[entrada["caso_id"]] = bundle
+        if observacion is None:
+            if not entrada.get("no_derivable"):
+                fallas.append(malas[0] if malas else f"{entrada['caso_id']}: no se derivó")
+            continue
+        observaciones[entrada["caso_id"]] = observacion
+
+    if not solo_estratos:
+        # [B] Las dos magnitudes, cada una en su sede y con el valor declarado. Un caso que
+        # declarara solo «la latencia» no distinguiría cuál de las dos se movió.
+        for entrada in casos:
+            observacion = observaciones.get(entrada["caso_id"])
+            if observacion is None:
+                continue
+            for magnitud, esperado in (entrada.get("magnitudes_esperadas") or {}).items():
+                obtenido = None
+                if magnitud == LATENCIA_DE_CORRIDA:
+                    metrica = _metrica_de_la_observacion(observacion, magnitud) or {}
+                else:
+                    metrica = next((m for t in observacion.get("trabajos_delegados") or []
+                                    for m in t.get("metricas") or []
+                                    if m.get("metrica_id") == magnitud), {})
+                obtenido = (metrica.get("valor") if metrica.get("estado_de_medicion") == "medida"
+                            else metrica.get("estado_de_medicion"))
+                if isinstance(esperado, (int, float)) and isinstance(obtenido, (int, float)):
+                    if not _casi_igual(obtenido, esperado):
+                        fallas.append(f"{entrada['caso_id']}/{magnitud}: vale {obtenido} y se "
+                                      f"esperaba {esperado}")
+                elif obtenido != esperado:
+                    fallas.append(f"{entrada['caso_id']}/{magnitud}: es {obtenido!r} y se esperaba "
+                                  f"{esperado!r}")
+        resultados.append(("B", not fallas,
+                           f"{len(observaciones)} casos con sus dos magnitudes en sus dos sedes"
+                           if not fallas else " | ".join(fallas[:4])))
+
+        # [C] Un negativo por regla, cada uno con su ESCENARIO: unas reglas se rompen con una
+        # sola observación y otras necesitan un conjunto —reintentos son dos intentos de la misma
+        # muestra, y la muestra incompleta es un manifest que declara uno que no llegó—. Donde el
+        # recolector ya emite la métrica sin valor, el escenario la fuerza a `medida`: es la única
+        # forma de comprobar que la regla dispara, porque un instrumento sano nunca produce esa
+        # observación.
+        fallas_de_regla: list[str] = []
+        reglas_ejercidas: set[str] = set()
+        for escenario in manifest.get("escenarios_de_regla") or []:
+            regla = escenario["regla"]
+            reglas_ejercidas.add(regla)
+            del_escenario: list[dict] = []
+            bundles_del_escenario: dict[str, dict] = {}
+            for caso_id in escenario["casos"]:
+                observacion = observaciones.get(caso_id)
+                if observacion is None:
+                    fallas_de_regla.append(f"{regla}: el caso {caso_id} no se derivó")
+                    continue
+                observacion = copy.deepcopy(observacion)
+                if escenario.get("forzar_metrica_medida"):
+                    for metrica in observacion.get("metricas") or []:
+                        if metrica.get("metrica_id") == LATENCIA_DE_CORRIDA:
+                            metrica.clear()
+                            metrica.update({"metrica_id": LATENCIA_DE_CORRIDA,
+                                            "categoria": "latencia",
+                                            "estado_de_medicion": "medida", "valor": 1.0,
+                                            "unidad": "milisegundos"})
+                del_escenario.append(observacion)
+                bundles_del_escenario[(observacion.get("procedencia") or {}).get("run_id")] = (
+                    bundles[caso_id])
+            if not del_escenario:
+                continue
+            problemas_de_regla = revisar_reglas_de_latencia(
+                del_escenario, bundles_del_escenario, escenario.get("manifest_de_intentos"))
+            if not any(escenario["motivo_esperado"] in p for p in problemas_de_regla):
+                fallas_de_regla.append(
+                    f"{regla}: no se rompe por «{escenario['motivo_esperado']}» — se vio: "
+                    f"{problemas_de_regla[0] if problemas_de_regla else 'nada'}")
+        faltan = sorted(set(manifest.get("reglas_obligatorias") or []) - reglas_ejercidas)
+        fallas_de_regla += [f"regla obligatoria sin ningún negativo: {r}" for r in faltan]
+        sobran = sorted(reglas_ejercidas - set(manifest.get("reglas_obligatorias") or []))
+        fallas_de_regla += [f"escenario de una regla que el manifest no declara: {r}"
+                            for r in sobran]
+        resultados.append(("C", not fallas_de_regla,
+                           f"las {len(reglas_ejercidas)} reglas obligatorias, cada una con su "
+                           "negativo" if not fallas_de_regla else " | ".join(fallas_de_regla[:4])))
+
+    # [D] Los estratos: ninguna corrida sin evento de confirmación se reclasifica como
+    # automatizable, y qué muestras lo exigen sale de la MATRIZ.
+    fallas_de_estrato: list[str] = []
+    ejercido = False
+    for entrada in casos:
+        observacion = observaciones.get(entrada["caso_id"])
+        if observacion is None or "estrato_esperado" not in entrada:
+            continue
+        if observacion.get("estrato") != entrada["estrato_esperado"]:
+            fallas_de_estrato.append(f"{entrada['caso_id']}: estrato "
+                                     f"{observacion.get('estrato')!r} y se esperaba "
+                                     f"{entrada['estrato_esperado']!r}")
+        problemas_de_estrato = revisar_estrato(observacion, bundles[entrada["caso_id"]], exigen)
+        if entrada.get("reclasificacion_indebida"):
+            ejercido = True
+            if not problemas_de_estrato:
+                fallas_de_estrato.append(f"{entrada['caso_id']}: se clasificó automatizable en un "
+                                         "punto que exige confirmación y nadie lo detectó")
+        elif problemas_de_estrato:
+            fallas_de_estrato.append(f"{entrada['caso_id']}: {problemas_de_estrato[0]}")
+    if not ejercido:
+        fallas_de_estrato.append("ningún caso intenta la reclasificación indebida: el control no "
+                                 "tiene quien lo ponga rojo")
+    resultados.append(("D", not fallas_de_estrato,
+                       "los estratos salen del valor efectivo y la matriz, y la reclasificación "
+                       "indebida se detecta" if not fallas_de_estrato
+                       else " | ".join(fallas_de_estrato[:4])))
+
+    # [E] El agregador rechaza entradas mixtas: las dos magnitudes juntas, y dos estratos juntos.
+    # Y acepta lo homogéneo, que es la otra mitad: uno que rechazara todo pasaría la primera.
+    valores = [v for o in observaciones.values() for v in valores_de_latencia(o)]
+    por_grupo: dict[tuple[str, str], list[ValorDeLatencia]] = {}
+    for valor in valores:
+        por_grupo.setdefault((valor.magnitud, valor.estrato), []).append(valor)
+    problemas_de_mezcla: list[str] = []
+    # Cada mezcla se prueba AISLADA: un conjunto que mezcle las dos cosas a la vez lo rechaza el
+    # primer control que dispare, y el otro queda sin ejercer. El de magnitudes va sobre un solo
+    # estrato, y el de estratos sobre una sola magnitud.
+    mixto_por_magnitud = [v for v in valores if v.estrato == "automatizable"]
+    if len({v.magnitud for v in mixto_por_magnitud}) > 1 and agregar_latencias(
+            mixto_por_magnitud, vocabulario, interfaz)[1] is None:
+        problemas_de_mezcla.append("el agregador promedió las dos magnitudes juntas")
+    elif len({v.magnitud for v in mixto_por_magnitud}) < 2:
+        problemas_de_mezcla.append("ningún estrato del corpus tiene las dos magnitudes: la mezcla "
+                                   "de magnitudes no se ejerce")
+    mixto_por_estrato = [v for v in valores if v.magnitud == LATENCIA_DE_CORRIDA]
+    if len({v.estrato for v in mixto_por_estrato}) > 1 and agregar_latencias(
+            mixto_por_estrato, vocabulario, interfaz)[1] is None:
+        problemas_de_mezcla.append("el agregador promedió dos estratos juntos")
+    elif len({v.estrato for v in mixto_por_estrato}) < 2:
+        problemas_de_mezcla.append("la magnitud de corrida no aparece en dos estratos: la mezcla "
+                                   "de estratos no se ejerce")
+    if not por_grupo:
+        problemas_de_mezcla.append("no hay ningún grupo homogéneo que agregar")
+    for grupo, homogeneos in sorted(por_grupo.items()):
+        _, error = agregar_latencias(homogeneos, vocabulario, interfaz)
+        if error:
+            problemas_de_mezcla.append(f"el agregador rechaza el grupo homogéneo {grupo}: {error}")
+    resultados.append(("E", not problemas_de_mezcla,
+                       f"el agregador rechaza las mezclas y acepta los {len(por_grupo)} grupos "
+                       "homogéneos" if not problemas_de_mezcla
+                       else " | ".join(problemas_de_mezcla[:4])))
+
+    return _cerrar(resultados)
+
+
+def modo_autotest_reloj(args: argparse.Namespace) -> int:
+    del args
+    interfaz, error = cargar_interfaz_de_reloj()
+    if error:
+        print(f"[A] FALLA  interfaz de reloj: {error}")
+        return 1
+    vocabulario, esquemas, problemas = _cargar_insumos_de_recoleccion()
+    if problemas:
+        for p in problemas:
+            print(f"[A] FALLA  {p}")
+        return 1
+
+    resultados: list[tuple[str, bool, str]] = []
+
+    # [A] La interfaz declara lo que el schema no puede: un conjunto CERRADO de procedencias, el
+    # rango de precisión y el redondeo. Y su fuente y autoridad coinciden con las constantes que el
+    # schema del bundle fija, que es la tercera pata que nadie escribió para esta fila.
+    schema_bundle = esquemas["bundle-corrida"]
+    sello = (schema_bundle.get("$defs") or {}).get("sello") or {}
+    propiedades = sello.get("properties") or {}
+    problemas_de_interfaz: list[str] = []
+    if propiedades.get("fuente", {}).get("const") != interfaz.get("fuente"):
+        problemas_de_interfaz.append("la fuente de la interfaz no coincide con la constante del "
+                                     "schema de bundle")
+    if propiedades.get("autoridad", {}).get("const") != interfaz.get("autoridad"):
+        problemas_de_interfaz.append("la autoridad de la interfaz no coincide con la constante del "
+                                     "schema de bundle")
+    if not interfaz.get("procedencias_admitidas"):
+        problemas_de_interfaz.append("la interfaz no cierra el conjunto de procedencias")
+    adaptadores = set((schema_bundle.get("$defs") or {}).get("enum_adaptador", {}).get("enum") or [])
+    cubiertos = {a for p in interfaz.get("procedencias_admitidas") or []
+                 for a in p.get("adaptadores") or []}
+    if adaptadores - cubiertos:
+        problemas_de_interfaz.append(f"adaptadores sin ninguna procedencia declarada: "
+                                     f"{sorted(adaptadores - cubiertos)} — los DOS cargan las "
+                                     "mismas obligaciones (D-5)")
+    resultados.append(("A", not problemas_de_interfaz,
+                       f"la interfaz cierra {len(interfaz.get('procedencias_admitidas') or [])} "
+                       f"procedencias para los {len(adaptadores)} adaptadores, y coincide con el "
+                       "schema" if not problemas_de_interfaz
+                       else " | ".join(problemas_de_interfaz)))
+
+    # [B] Un evento fuera de orden y una duración imposible se RECHAZAN. Se construyen acá, en las
+    # dos direcciones: el bundle sano no dispara nada, y cada ataque dispara lo suyo.
+    base = {
+        "run_id": "run-reloj", "adaptador": "script",
+        "eventos": [
+            {"evento_id": "e1", "tipo": "validacion_de_hash_congelado",
+             "sello": {"valor_ns": 100, "fuente": "reloj_monotonico_del_harness",
+                       "autoridad": "harness", "precision_ns": 1000,
+                       "procedencia": "time.monotonic_ns del proceso del runner"}},
+            {"evento_id": "e2", "tipo": "preflight_de_receta",
+             "sello": {"valor_ns": 200, "fuente": "reloj_monotonico_del_harness",
+                       "autoridad": "harness", "precision_ns": 1000,
+                       "procedencia": "time.monotonic_ns del proceso del runner"}},
+            {"evento_id": "e3", "tipo": "despacho",
+             "sello": {"valor_ns": 300, "fuente": "reloj_monotonico_del_harness",
+                       "autoridad": "harness", "precision_ns": 1000,
+                       "procedencia": "time.monotonic_ns del proceso del runner"}},
+        ],
+    }
+    ataques: list[tuple[str, Callable[[dict], None], str]] = [
+        ("evento-fuera-de-orden",
+         lambda b: b["eventos"].insert(0, b["eventos"].pop(2)), "orden declarado es el inverso"),
+        ("sello-no-monotono",
+         lambda b: b["eventos"][2]["sello"].__setitem__("valor_ns", 50), "es anterior al de"),
+        ("duracion-imposible",
+         lambda b: b["eventos"][2]["sello"].__setitem__("valor_ns", 10 ** 15),
+         "por encima del tope declarado"),
+    ]
+    problemas_de_orden: list[str] = []
+    if revisar_orden_de_eventos(copy.deepcopy(base), interfaz):
+        problemas_de_orden.append("el bundle sano ya dispara el control de orden")
+    for nombre, aplicar, motivo in ataques:
+        copia = copy.deepcopy(base)
+        aplicar(copia)
+        detectados = revisar_orden_de_eventos(copia, interfaz)
+        if not any(motivo in d for d in detectados):
+            problemas_de_orden.append(f"«{nombre}» no se rechaza por «{motivo}» — se vio: "
+                                      f"{detectados[0] if detectados else 'nada'}")
+    resultados.append(("B", not problemas_de_orden,
+                       f"{len(ataques)} ataques al orden y a la duración se rechazan, y el bundle "
+                       "sano no" if not problemas_de_orden else " | ".join(problemas_de_orden)))
+
+    # [C] La procedencia y la precisión, en las dos direcciones.
+    ataques_de_sello: list[tuple[str, Callable[[dict], None], str]] = [
+        ("procedencia-de-pared",
+         lambda b: b["eventos"][0]["sello"].__setitem__("procedencia", "reloj de pared del host"),
+         "no está en el conjunto cerrado"),
+        ("procedencia-de-otro-adaptador",
+         lambda b: b.__setitem__("adaptador", "adaptador-inventado"),
+         "no está declarada para el adaptador"),
+        ("precision-fuera-de-rango",
+         lambda b: b["eventos"][0]["sello"].__setitem__("precision_ns", 10 ** 9),
+         "fuera del rango declarado"),
+        ("autoridad-del-worker",
+         lambda b: b["eventos"][0]["sello"].__setitem__("autoridad", "worker"),
+         "la autoridad es"),
+    ]
+    problemas_de_sello: list[str] = []
+    if revisar_sellos(copy.deepcopy(base), interfaz):
+        problemas_de_sello.append("el bundle sano ya dispara el control de sellos")
+    for nombre, aplicar, motivo in ataques_de_sello:
+        copia = copy.deepcopy(base)
+        aplicar(copia)
+        detectados = revisar_sellos(copia, interfaz)
+        if not any(motivo in d for d in detectados):
+            problemas_de_sello.append(f"«{nombre}» no se rechaza por «{motivo}» — se vio: "
+                                      f"{detectados[0] if detectados else 'nada'}")
+    resultados.append(("C", not problemas_de_sello,
+                       f"{len(ataques_de_sello)} ataques al sello se rechazan, y el sano no"
+                       if not problemas_de_sello else " | ".join(problemas_de_sello)))
+
+    # [D] El redondeo canónico, ejercido sobre los casos que lo requieren. Sin regla declarada, el
+    # último dígito lo decide la coma flotante; con `half_even`, el empate va al par.
+    casos_de_redondeo = [(1.0005, 1.0), (1.0015, 1.002), (2.5, 2.5), (184300.0, 184300.0),
+                         (0.0004, 0.0)]
+    problemas_de_redondeo = [f"{valor} redondea a {redondear_canonico(valor, interfaz)} y se "
+                             f"esperaba {esperado}"
+                             for valor, esperado in casos_de_redondeo
+                             if not _casi_igual(redondear_canonico(valor, interfaz), esperado)]
+    sin_redondeo = {"redondeo": {"regla": "ninguna"}}
+    if _casi_igual(redondear_canonico(1.0015, sin_redondeo), 1.002):
+        problemas_de_redondeo.append("el redondeo se aplica aunque la interfaz no lo declare: no "
+                                     "sale de la interfaz")
+    resultados.append(("D", not problemas_de_redondeo,
+                       f"{len(casos_de_redondeo)} casos de redondeo canónico, y la regla sale de "
+                       "la interfaz" if not problemas_de_redondeo
+                       else " | ".join(problemas_de_redondeo[:4])))
+
+    return _cerrar(resultados)
+
+
+# ---------------------------------------------------------------------------------------------
 # Registro de los modos de esta task. Cada task nueva agrega los suyos acá abajo, sin tocar los
 # anteriores ni `main()`.
 # ---------------------------------------------------------------------------------------------
@@ -4693,6 +5382,42 @@ registrar_modo(
     "derivado aparte como producto punto × repetición, la cadena append-only contra su manifest "
     "independiente, la regla de identidad congelada y la política de reintentos aplicada",
     modo_autotest_muestras_intentos,
+)
+
+registrar_modo(
+    "--latencias",
+    "las dos magnitudes de latencia de un conjunto de observaciones REALES, verificadas contra la "
+    "interfaz de reloj: procedencia y precisión de cada sello, orden de la apertura, duración "
+    "posible, estratos derivados del valor efectivo y exigidos por la matriz, y las reglas de "
+    "reintento, despacho múltiple, presupuesto vencido y muestra incompleta",
+    modo_latencias,
+    argumento=Argumento("<dir-de-observaciones>", const=RUTA_OBSERVACIONES_FASE_0),
+    auxiliares=(
+        Auxiliar("--bundles", "dónde están los bundles de los que salieron esas observaciones; "
+                              f"por omisión, {RUTA_CORRIDAS_FASE_0}",
+                 metavar="<dir-de-corridas>"),
+    ),
+)
+
+registrar_modo(
+    "--autotest-latencias",
+    "control del modo anterior sobre el corpus de scripts/fixtures-baseline/latencias/: las dos "
+    "magnitudes en sus dos sedes y un negativo por regla. Con `--estratos` se acota al estrato y "
+    "al agregador, que rechaza entradas mixtas en vez de promediarlas",
+    modo_autotest_latencias,
+    auxiliares=(
+        Auxiliar("--estratos",
+                 "acota el autotest al estrato de intervención humana y al rechazo de mezclas"),
+    ),
+)
+
+registrar_modo(
+    "--autotest-reloj",
+    "el reloj monotónico bajo autoridad del harness: la interfaz cierra el conjunto de "
+    "procedencias para los dos adaptadores y coincide con el schema; un evento fuera de orden y "
+    "una duración imposible se rechazan, no se promedian; y el redondeo canónico sale de la "
+    "interfaz",
+    modo_autotest_reloj,
 )
 
 registrar_modo(
