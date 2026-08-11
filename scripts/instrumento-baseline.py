@@ -5277,6 +5277,663 @@ def modo_autotest_reloj(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------------------------
+# Modos `--recomponer`, `--autotest-recomposicion` y `--autotest-procedencia-dag`.
+#
+# Un número publicado que no se puede reconstruir no es una medición: es una afirmación. La
+# recomposición reconstruye cada número **desde la fuente canónica de su clase** —las mediciones
+# desde las observaciones, la metodología desde el pre-registro, el presupuesto contractual desde la
+# matriz— y falla ante faltante, sobrante o duplicado EN LUGAR de recomponer sobre el subconjunto
+# que llegó. Recomponer sobre lo que hay siempre cierra: da un número, y ese número no es el del
+# conjunto que se pre-registró.
+#
+# El grafo de procedencia vive en `scripts/dag-procedencia.json` y es lo que hace comprobable la
+# frase «cada insumo con una sola fuente canónica»: sin declararlo, dos sedes para la misma clase de
+# dato se resuelven eligiendo la que da el número esperado.
+# ---------------------------------------------------------------------------------------------
+
+RUTA_DAG_PROCEDENCIA = DIR_SCRIPTS / "dag-procedencia.json"
+DIR_FIXTURES_RECOMPOSICION = DIR_SCRIPTS / "fixtures-baseline" / "recomposicion"
+RUTA_MANIFEST_RECOMPOSICION = DIR_FIXTURES_RECOMPOSICION / "manifest.json"
+
+
+def cargar_dag() -> tuple[dict, str | None]:
+    return _cargar_json(RUTA_DAG_PROCEDENCIA)
+
+
+def revisar_dag(dag: dict) -> list[str]:
+    """El grafo consigo mismo: una sola fuente canónica por clase, sin ciclos, sin dependencias que
+    apunten a nodos inexistentes y sin nodos derivados que no dependan de nada."""
+    problemas: list[str] = []
+    nodos = {n.get("nodo_id"): n for n in dag.get("nodos") or []}
+    if len(nodos) != len(dag.get("nodos") or []):
+        problemas.append("hay identificadores de nodo repetidos")
+
+    # Una clase de dato, una fuente. Con dos, una discrepancia entre ellas no tiene resolución
+    # declarada y se elige la que da el número esperado.
+    por_clase: dict[str, list[str]] = {}
+    for clase in dag.get("clases_de_dato") or []:
+        por_clase.setdefault(clase.get("clase"), []).append(clase.get("fuente_canonica"))
+    for clase, fuentes in sorted(por_clase.items()):
+        if len(fuentes) > 1:
+            problemas.append(f"la clase «{clase}» declara {len(fuentes)} fuentes canónicas "
+                             f"({sorted(fuentes)}): con dos, la discrepancia se resuelve eligiendo")
+        if fuentes[0] not in nodos:
+            problemas.append(f"la clase «{clase}» apunta a un nodo inexistente: {fuentes[0]!r}")
+
+    for nodo_id, nodo in sorted(nodos.items()):
+        dependencias = nodo.get("depende_de") or []
+        if nodo.get("es_raiz"):
+            if dependencias:
+                problemas.append(f"el nodo raíz «{nodo_id}» declara dependencias")
+            continue
+        if not dependencias:
+            problemas.append(f"el nodo derivado «{nodo_id}» no depende de nada y no es raíz")
+        if not nodo.get("formula"):
+            problemas.append(f"el nodo derivado «{nodo_id}» no declara con qué fórmula se produce")
+        for dependencia in dependencias:
+            if dependencia not in nodos:
+                problemas.append(f"«{nodo_id}» depende de «{dependencia}», que no existe")
+
+    # Aciclicidad, por recorrido en profundidad. El ciclo INDIRECTO es el que sobrevive a una
+    # revisión por inspección, así que la detección no puede ser «ningún nodo se nombra a sí mismo».
+    estado: dict[str, int] = {}
+
+    def visitar(nodo_id: str, camino: list[str]) -> None:
+        if estado.get(nodo_id) == 2:
+            return
+        if estado.get(nodo_id) == 1:
+            ciclo = camino[camino.index(nodo_id):] + [nodo_id]
+            problemas.append(f"ciclo en la procedencia: {' → '.join(ciclo)}")
+            return
+        estado[nodo_id] = 1
+        for dependencia in (nodos.get(nodo_id) or {}).get("depende_de") or []:
+            if dependencia in nodos:
+                visitar(dependencia, camino + [nodo_id])
+        estado[nodo_id] = 2
+
+    for nodo_id in nodos:
+        visitar(nodo_id, [])
+
+    for arista in dag.get("aristas") or []:
+        for extremo in ("de", "a"):
+            if arista.get(extremo) not in nodos:
+                problemas.append(f"la arista «{arista.get('arista_id')}» apunta a un nodo "
+                                 f"inexistente en `{extremo}`: {arista.get(extremo)!r}")
+        minimo = arista.get("minimo")
+        if not isinstance(minimo, int) or minimo < 0:
+            problemas.append(f"la arista «{arista.get('arista_id')}» no declara un mínimo entero")
+    return problemas
+
+
+class Cardinalidad(NamedTuple):
+    """Lo observado en una arista: por cada origen, qué destinos aparecieron."""
+    arista_id: str
+    por_origen: dict[str, list[str]]
+
+
+def revisar_cardinalidades(dag: dict, observado: dict[str, Cardinalidad],
+                           esperado: dict[str, set[str]],
+                           destinos: dict[str, dict[str, set[str]]] | None = None) -> list[str]:
+    """Cada arista contra su cardinalidad declarada, contra el conjunto ESPERADO de orígenes y
+    contra los destinos que cada origen tiene que tener.
+
+    Sin el esperado de orígenes, un origen que falta entero no se ve: sus destinos tampoco están y
+    la cardinalidad de lo que quedó cierra perfecta. Y sin el de destinos, perder UNO de los varios
+    destinos de un origen tampoco se ve: la arista `muestra-a-intentos` admite «uno o más», así que
+    una muestra con dos intentos sigue cumpliendo con uno. El conjunto de destinos lo congela el
+    manifest independiente, no el grafo."""
+    problemas: list[str] = []
+    for arista in dag.get("aristas") or []:
+        arista_id = arista.get("arista_id")
+        medida = observado.get(arista_id)
+        if medida is None:
+            continue
+        minimo, maximo = arista.get("minimo"), arista.get("maximo")
+        origenes_esperados = esperado.get(arista_id)
+        if origenes_esperados is not None:
+            faltantes = sorted(origenes_esperados - set(medida.por_origen))
+            sobrantes = sorted(set(medida.por_origen) - origenes_esperados)
+            problemas += [f"{arista_id}: falta el origen {o!r}" for o in faltantes]
+            problemas += [f"{arista_id}: sobra el origen {o!r}, que nadie declara" for o in sobrantes]
+        esperados_por_origen = (destinos or {}).get(arista_id) or {}
+        for origen, observados in sorted(medida.por_origen.items()):
+            declarados = esperados_por_origen.get(origen)
+            if declarados is not None:
+                problemas += [f"{arista_id}: al origen {origen!r} le falta el destino {d!r}"
+                              for d in sorted(declarados - set(observados))]
+                problemas += [f"{arista_id}: el origen {origen!r} tiene el destino {d!r}, que "
+                              "nadie declara" for d in sorted(set(observados) - declarados)]
+            if len(observados) != len(set(observados)):
+                repetidos = sorted({d for d in observados if observados.count(d) > 1})
+                problemas.append(f"{arista_id}: el origen {origen!r} tiene destinos duplicados "
+                                 f"{repetidos}: un duplicado no es una segunda medición")
+            if minimo is not None and len(observados) < minimo:
+                problemas.append(f"{arista_id}: el origen {origen!r} tiene {len(observados)} "
+                                 f"destinos y el mínimo declarado es {minimo}")
+            if maximo is not None and len(observados) > maximo:
+                problemas.append(f"{arista_id}: el origen {origen!r} tiene {len(observados)} "
+                                 f"destinos y el máximo declarado es {maximo}")
+    return problemas
+
+
+def cardinalidades_observadas(preregistro: dict, manifest_de_intentos: dict,
+                              observaciones: list[dict],
+                              bundles: dict[str, dict]) -> dict[str, Cardinalidad]:
+    """Lo que el conjunto real tiene, arista por arista."""
+    muestras = [m.get("sample_id") for m in
+                ((preregistro.get("cohorte") or {}).get("muestras") or [])]
+    por_muestra: dict[str, list[str]] = {}
+    por_intento: dict[str, list[str]] = {}
+    por_bundle: dict[str, list[str]] = {}
+    for observacion in observaciones:
+        muestra = observacion.get("sample_id")
+        intento = observacion.get("attempt_id")
+        run_id = (observacion.get("procedencia") or {}).get("run_id")
+        por_muestra.setdefault(muestra, []).append(intento)
+        if run_id in bundles:
+            por_intento.setdefault(intento, []).append(run_id)
+        por_bundle.setdefault(run_id, []).append(observacion.get("observation_id"))
+
+    return {
+        "manifest-a-muestras": Cardinalidad(
+            "manifest-a-muestras", {"manifest": list(muestras)}),
+        "muestra-a-intentos": Cardinalidad("muestra-a-intentos", por_muestra),
+        "intento-a-bundle": Cardinalidad("intento-a-bundle", por_intento),
+        "bundle-a-observacion": Cardinalidad("bundle-a-observacion", por_bundle),
+        "muestras-a-agregado": Cardinalidad(
+            "muestras-a-agregado", {"agregado": list(por_muestra)}),
+    }
+
+
+class Recomposicion(NamedTuple):
+    metrica_id: str
+    valor: float | None
+    error: str | None
+    por_muestra: dict[str, float]
+
+
+def insumo_de_agregacion(metrica_id: str, observaciones: list[dict], politica: dict,
+                         vocabulario: dict) -> tuple[Any, str | None]:
+    """Lo que una muestra aporta al agregado ENTRE muestras, que no siempre es su valor publicable.
+
+    En una métrica publicada como tasa, el valor de la muestra es un cociente y el agregado se hace
+    sumando numeradores y denominadores y dividiendo una sola vez: promediar los cocientes pesaría
+    igual una muestra con un elegible que una con veinte. Así que el insumo es el PAR, aunque lo que
+    se publique de esa muestra sea el cociente. Para el resto de las métricas, insumo y valor son lo
+    mismo."""
+    metrica = next((m for _, m in _metricas_del(vocabulario)
+                    if m.get("metrica_id") == metrica_id), None)
+    if metrica is None:
+        return None, f"«{metrica_id}» no está en el vocabulario"
+    if metrica.get("publicacion") != "tasa":
+        return aplicar_seleccion_por_metrica(metrica_id, observaciones, politica, vocabulario)
+
+    regla = next((s.get("regla") for s in politica.get("seleccion_por_metrica") or []
+                  if s.get("metrica_id") == metrica_id), None)
+    if regla is None:
+        return None, f"la política congelada no declara regla de selección para «{metrica_id}»"
+    ordenadas = sorted(observaciones, key=lambda o: o.get("attempt_ordinal", 0))
+    if regla == "agregacion":
+        elegidas = ordenadas
+    elif regla == "primer_intento_valido":
+        elegidas = [o for o in ordenadas
+                    if (o.get("estado") or {}).get("validez_del_reporte") == "valido"][:1]
+    elif regla == "primer_intento":
+        elegidas = ordenadas[:1]
+    elif regla == "ultimo_intento":
+        elegidas = ordenadas[-1:]
+    else:
+        return None, f"regla de selección no implementada: «{regla}»"
+
+    arriba = abajo = 0.0
+    aportaron = 0
+    for observacion in elegidas:
+        medida = _metrica_de_la_observacion(observacion, metrica_id) or {}
+        if medida.get("estado_de_medicion") != "medida" or "numerador" not in medida:
+            continue
+        arriba += medida["numerador"]
+        abajo += medida["denominador"]
+        aportaron += 1
+    if not aportaron:
+        return None, (f"ningún intento elegido por «{regla}» aporta numerador y denominador: la "
+                      "tasa de la muestra no es auditable")
+    return [arriba, abajo], None
+
+
+def recomponer_metricas(preregistro: dict, observaciones: list[dict],
+                        vocabulario: dict) -> list[Recomposicion]:
+    """Cada número del baseline, reconstruido desde su fuente canónica: el valor por muestra sale de
+    las observaciones con la regla de selección congelada, y el agregado sale de esas muestras con
+    la regla de agregación del acta. Ningún paso lee el baseline publicado."""
+    politica = preregistro.get("politica_de_reintentos") or {}
+    por_muestra: dict[str, list[dict]] = {}
+    for observacion in observaciones:
+        por_muestra.setdefault(observacion.get("sample_id"), []).append(observacion)
+
+    salida: list[Recomposicion] = []
+    for metrica_pre in preregistro.get("metricas") or []:
+        metrica_id = metrica_pre.get("metrica_id")
+        valores_por_muestra: dict[str, float] = {}
+        errores: list[str] = []
+        insumos: dict[str, Any] = {}
+        for sample_id, intentos in sorted(por_muestra.items()):
+            valor, error = aplicar_seleccion_por_metrica(metrica_id, intentos, politica,
+                                                         vocabulario)
+            insumo, error_de_insumo = insumo_de_agregacion(metrica_id, intentos, politica,
+                                                           vocabulario)
+            if error or error_de_insumo:
+                errores.append(f"{sample_id}: {error or error_de_insumo}")
+                continue
+            valores_por_muestra[sample_id] = valor
+            insumos[sample_id] = insumo
+        if errores:
+            salida.append(Recomposicion(metrica_id, None, errores[0], valores_por_muestra))
+            continue
+        agregacion = (_por_id(vocabulario.get("agregaciones") or [], "agregacion_id")
+                      .get(metrica_pre.get("agregacion")) or {})
+        resolvedor = RESOLVEDORES_DE_AGREGACION.get(agregacion.get("forma"))
+        if resolvedor is None:
+            salida.append(Recomposicion(metrica_id, None,
+                                        f"la agregación «{metrica_pre.get('agregacion')}» no tiene "
+                                        "resolvedor", valores_por_muestra))
+            continue
+        valor, error = resolvedor([insumos[k] for k in sorted(insumos)])
+        salida.append(Recomposicion(metrica_id, valor, error, valores_por_muestra))
+    return salida
+
+
+def _numeros_publicados(baseline: dict) -> dict[str, Any]:
+    return {n.get("metrica_id"): n.get("valor") for n in baseline.get("numeros") or []}
+
+
+def revisar_recomposicion(preregistro: dict, observaciones: list[dict], vocabulario: dict,
+                          baseline: dict) -> list[str]:
+    """Los números publicados contra los recompuestos, en las dos direcciones. Un número publicado
+    que nadie recompone es tan grave como uno que difiere: los dos significan que la cadena que lo
+    devuelve a un hecho está rota."""
+    problemas: list[str] = []
+    recompuestos = {r.metrica_id: r for r in recomponer_metricas(preregistro, observaciones,
+                                                                vocabulario)}
+    publicados = _numeros_publicados(baseline)
+
+    for metrica_id in sorted(set(recompuestos) | set(publicados)):
+        if metrica_id not in publicados:
+            problemas.append(f"{metrica_id}: se recompone y el baseline no lo publica")
+            continue
+        if metrica_id not in recompuestos:
+            problemas.append(f"{metrica_id}: el baseline lo publica y no sale de ninguna fuente "
+                             "canónica")
+            continue
+        recompuesto = recompuestos[metrica_id]
+        if recompuesto.error:
+            problemas.append(f"{metrica_id}: no se pudo recomponer — {recompuesto.error}")
+            continue
+        if not _casi_igual(recompuesto.valor, publicados[metrica_id]):
+            problemas.append(f"{metrica_id}: el baseline publica {publicados[metrica_id]} y la "
+                             f"recomposición da {recompuesto.valor}")
+    return problemas
+
+
+def modo_recomponer(args: argparse.Namespace) -> int:
+    raiz = _ruta_absoluta(getattr(args, "recomponer"))
+    ruta_acta = getattr(args, "preregistro", None) or RUTA_PREREGISTRO_FASE_0
+    preregistro, error = _cargar_json(_ruta_absoluta(ruta_acta))
+    if error:
+        print(f"FALLA  pre-registro: {error}")
+        return 1
+    vocabulario, esquemas, problemas = _cargar_insumos_de_recoleccion()
+    dag, error = cargar_dag()
+    if error:
+        problemas.append(f"DAG de procedencia: {error}")
+    if problemas:
+        for p in problemas:
+            print(f"FALLA  {p}")
+        return 1
+
+    observaciones: list[dict] = []
+    for archivo in sorted(raiz.glob("*.json")) if raiz.is_dir() else []:
+        datos, error = _cargar_json(archivo)
+        if error:
+            print(f"FALLA  {archivo.name}: {error}")
+            return 1
+        observaciones.append(datos)
+    if not observaciones:
+        print(f"FALLA  {raiz}: no hay observaciones desde las que recomponer")
+        return 1
+
+    problemas_del_dag = revisar_dag(dag)
+    print(f"Observaciones: {raiz} ({len(observaciones)}) · acta: {ruta_acta}")
+    if problemas_del_dag:
+        print(f"FALLA  el DAG de procedencia — {len(problemas_del_dag)}:")
+        for p in problemas_del_dag[:6]:
+            print(f"       - {p}")
+        return 1
+    print(f"OK     el DAG de procedencia: {len(dag.get('nodos') or [])} nodos, "
+          f"{len(dag.get('aristas') or [])} aristas, acíclico y con una fuente por clase")
+
+    for recomposicion in recomponer_metricas(preregistro, observaciones, vocabulario):
+        if recomposicion.error:
+            print(f"SIN    {recomposicion.metrica_id}: {recomposicion.error}")
+        else:
+            print(f"OK     {recomposicion.metrica_id}: {recomposicion.valor:g} — desde "
+                  f"{len(recomposicion.por_muestra)} muestras")
+    print()
+    print(f"RESULTADO: OK — {len(observaciones)} observaciones recompuestas desde su fuente "
+          "canónica")
+    return 0
+
+
+def _corpus_de_recomposicion() -> tuple[dict, dict, list[dict], dict, dict, list[str]]:
+    """El corpus completo: manifest, pre-registro, observaciones, bundles y baseline esperado."""
+    problemas: list[str] = []
+    manifest, error = _cargar_json(RUTA_MANIFEST_RECOMPOSICION)
+    if error:
+        problemas.append(f"manifest del corpus de recomposición: {error}")
+    preregistro, error = _cargar_json(DIR_FIXTURES_RECOMPOSICION / "preregistro.json")
+    if error:
+        problemas.append(f"pre-registro del corpus: {error}")
+    baseline, error = _cargar_json(DIR_FIXTURES_RECOMPOSICION / "baseline-esperado.json")
+    if error:
+        problemas.append(f"baseline esperado del corpus: {error}")
+
+    observaciones: list[dict] = []
+    bundles: dict[str, dict] = {}
+    raiz = DIR_FIXTURES_RECOMPOSICION / "observaciones"
+    for archivo in sorted(raiz.glob("*.json")) if raiz.is_dir() else []:
+        datos, error = _cargar_json(archivo)
+        if error:
+            problemas.append(f"{archivo.name}: {error}")
+            continue
+        observaciones.append(datos)
+        # El bundle de cada observación no se lee del disco: el corpus de recomposición prueba la
+        # cadena desde la observación en adelante, y el tramo bundle → observación ya lo prueban
+        # `--autotest-derivacion` y `--autotest-bundles`. Acá alcanza con su identidad.
+        bundles[(datos.get("procedencia") or {}).get("run_id")] = {}
+    return manifest or {}, preregistro or {}, observaciones, bundles, baseline or {}, problemas
+
+
+def esperado_de_las_aristas(preregistro: dict,
+                            manifest: dict) -> tuple[dict[str, set[str]],
+                                                     dict[str, dict[str, set[str]]]]:
+    """Orígenes y destinos esperados de cada arista. Los orígenes de la primera salen del
+    pre-registro —la cohorte congelada— y todo lo demás, del manifest INDEPENDIENTE de intentos: es
+    lo único que sabe cuántos intentos tuvo cada muestra, y sin eso perder uno no se ve."""
+    muestras = {m.get("sample_id") for m in
+                ((preregistro.get("cohorte") or {}).get("muestras") or [])}
+    intentos = manifest.get("intentos_esperados") or []
+    por_muestra: dict[str, set[str]] = {}
+    por_intento: dict[str, set[str]] = {}
+    por_bundle: dict[str, set[str]] = {}
+    for entrada in intentos:
+        por_muestra.setdefault(entrada["sample_id"], set()).add(entrada["attempt_id"])
+        por_intento.setdefault(entrada["attempt_id"], set()).add(entrada["run_id"])
+        por_bundle.setdefault(entrada["run_id"], set()).add(entrada["observation_id"])
+
+    origenes = {
+        "manifest-a-muestras": {"manifest"},
+        "muestra-a-intentos": set(por_muestra) or muestras,
+        "intento-a-bundle": set(por_intento),
+        "bundle-a-observacion": set(por_bundle),
+        "muestras-a-agregado": {"agregado"},
+    }
+    destinos = {
+        "manifest-a-muestras": {"manifest": muestras},
+        "muestra-a-intentos": por_muestra,
+        "intento-a-bundle": por_intento,
+        "bundle-a-observacion": por_bundle,
+        "muestras-a-agregado": {"agregado": set(por_muestra) or muestras},
+    }
+    return origenes, destinos
+
+
+class AtaqueALaRecomposicion(NamedTuple):
+    nombre: str
+    que_rompe: str
+    aplicar: Callable[[list[dict], dict], None]
+
+
+def _falta_una_observacion(observaciones: list[dict], baseline: dict) -> None:
+    del baseline
+    observaciones.pop()
+
+
+def _sobra_una_observacion(observaciones: list[dict], baseline: dict) -> None:
+    del baseline
+    extra = copy.deepcopy(observaciones[0])
+    extra["observation_id"] = "obs-sobrante"
+    extra["sample_id"] = "mst-sobrante-r1"
+    extra["attempt_id"] = "int-sobrante-r1-a1"
+    (extra.setdefault("procedencia", {}))["run_id"] = "run-sobrante"
+    observaciones.append(extra)
+
+
+def _duplica_una_observacion(observaciones: list[dict], baseline: dict) -> None:
+    del baseline
+    observaciones.append(copy.deepcopy(observaciones[0]))
+
+
+def _altera_un_numero(observaciones: list[dict], baseline: dict) -> None:
+    del observaciones
+    for numero in baseline.get("numeros") or []:
+        if isinstance(numero.get("valor"), (int, float)):
+            numero["valor"] = numero["valor"] + 1
+            return
+
+
+ATAQUES_A_LA_RECOMPOSICION: tuple[AtaqueALaRecomposicion, ...] = (
+    AtaqueALaRecomposicion("faltante", "se cae una observación del conjunto",
+                           _falta_una_observacion),
+    AtaqueALaRecomposicion("sobrante", "aparece una observación que nadie pre-registró",
+                           _sobra_una_observacion),
+    AtaqueALaRecomposicion("duplicado", "una observación aparece dos veces",
+                           _duplica_una_observacion),
+    AtaqueALaRecomposicion("numero-alterado", "un número publicado cambia en una unidad",
+                           _altera_un_numero),
+)
+
+
+def modo_autotest_recomposicion(args: argparse.Namespace) -> int:
+    del args
+    manifest, preregistro, observaciones, bundles, baseline, problemas = _corpus_de_recomposicion()
+    vocabulario, esquemas, mas = _cargar_insumos_de_recoleccion()
+    dag, error = cargar_dag()
+    if error:
+        mas.append(f"DAG de procedencia: {error}")
+    if problemas + mas:
+        for p in problemas + mas:
+            print(f"[A] FALLA  {p}")
+        return 1
+
+    resultados: list[tuple[str, bool, str]] = []
+
+    # [A] Manifest ↔ disco, en las dos direcciones (D-16).
+    declaradas = set(manifest.get("observaciones") or [])
+    en_disco = {o.get("observation_id") for o in observaciones}
+    diferencias = [f"declarada y ausente del disco: {o}" for o in sorted(declaradas - en_disco)]
+    diferencias += [f"en disco y no declarada: {o}" for o in sorted(en_disco - declaradas)]
+    resultados.append(("A", not diferencias,
+                       f"manifest ↔ directorio ({len(declaradas)} observaciones)"
+                       if not diferencias else " | ".join(diferencias[:6])))
+
+    # [B] El control positivo: el conjunto íntegro recompone EXACTAMENTE los números publicados.
+    # Sin él, un recompositor que fallara siempre pasaría los cuatro ataques.
+    problemas_positivos = revisar_recomposicion(preregistro, observaciones, vocabulario, baseline)
+    resultados.append(("B", not problemas_positivos,
+                       f"el conjunto íntegro recompone los {len(baseline.get('numeros') or [])} "
+                       "números publicados" if not problemas_positivos
+                       else " | ".join(problemas_positivos[:4])))
+
+    # [C] Los cuatro ataques: faltante, sobrante, duplicado y número alterado en una unidad. Cada
+    # uno tiene que romper la recomposición o las cardinalidades — «recomponer sobre lo que llegó»
+    # siempre cierra, y es exactamente lo que hay que impedir.
+    esperado, destinos = esperado_de_las_aristas(preregistro, manifest)
+    fallas: list[str] = []
+    for ataque in ATAQUES_A_LA_RECOMPOSICION:
+        copia_obs = copy.deepcopy(observaciones)
+        copia_base = copy.deepcopy(baseline)
+        ataque.aplicar(copia_obs, copia_base)
+        copia_bundles = {(o.get("procedencia") or {}).get("run_id"): {} for o in copia_obs}
+        detectado = bool(revisar_recomposicion(preregistro, copia_obs, vocabulario, copia_base))
+        detectado = detectado or bool(revisar_cardinalidades(
+            dag, cardinalidades_observadas(preregistro, {}, copia_obs, copia_bundles), esperado,
+            destinos))
+        if not detectado:
+            fallas.append(f"«{ataque.nombre}»: {ataque.que_rompe} y la recomposición cierra igual")
+    resultados.append(("C", not fallas,
+                       f"los {len(ATAQUES_A_LA_RECOMPOSICION)} ataques rompen la recomposición"
+                       if not fallas else " | ".join(fallas[:4])))
+
+    # [D] Y las cardinalidades del conjunto íntegro NO se rompen: es la otra dirección del control
+    # anterior. Uno que rechazara todo pasaría [C] entero.
+    limpias = revisar_cardinalidades(
+        dag, cardinalidades_observadas(preregistro, {}, observaciones, bundles), esperado,
+        destinos)
+    resultados.append(("D", not limpias,
+                       "las cardinalidades del conjunto íntegro cierran" if not limpias
+                       else " | ".join(limpias[:4])))
+
+    return _cerrar(resultados)
+
+
+class AtaqueAlDag(NamedTuple):
+    nombre: str
+    que_rompe: str
+    motivo_esperado: str
+    aplicar: Callable[[dict], bool]
+
+
+def _dag_ciclo_directo(dag: dict) -> bool:
+    for nodo in dag.get("nodos") or []:
+        if not nodo.get("es_raiz"):
+            nodo.setdefault("depende_de", []).append(nodo["nodo_id"])
+            return True
+    return False
+
+
+def _dag_ciclo_indirecto(dag: dict) -> bool:
+    # El que sobrevive a una revisión por inspección: ningún nodo se nombra a sí mismo.
+    nodos = {n.get("nodo_id"): n for n in dag.get("nodos") or []}
+    if "preregistro" not in nodos or "observacion" not in nodos:
+        return False
+    nodos["preregistro"].pop("es_raiz", None)
+    nodos["preregistro"]["depende_de"] = ["agregado_final"]
+    nodos["preregistro"]["formula"] = "mutante"
+    return True
+
+
+def _dag_dependencia_omitida(dag: dict) -> bool:
+    for nodo in dag.get("nodos") or []:
+        if nodo.get("nodo_id") == "observacion":
+            nodo["depende_de"] = []
+            return True
+    return False
+
+
+def _dag_dependencia_extra(dag: dict) -> bool:
+    for nodo in dag.get("nodos") or []:
+        if nodo.get("nodo_id") == "muestra":
+            nodo.setdefault("depende_de", []).append("nodo-que-no-existe")
+            return True
+    return False
+
+
+def _dag_doble_fuente_canonica(dag: dict) -> bool:
+    clases = dag.get("clases_de_dato") or []
+    if not clases:
+        return False
+    clases.append({**clases[0], "fuente_canonica": "preregistro"})
+    return True
+
+
+ATAQUES_AL_DAG: tuple[AtaqueAlDag, ...] = (
+    AtaqueAlDag("ciclo-directo", "un nodo depende de sí mismo", "ciclo en la procedencia",
+                _dag_ciclo_directo),
+    AtaqueAlDag("ciclo-indirecto", "el ciclo pasa por otros nodos y ninguno se nombra a sí mismo",
+                "ciclo en la procedencia", _dag_ciclo_indirecto),
+    AtaqueAlDag("dependencia-omitida", "un nodo derivado deja de declarar de qué depende",
+                "no depende de nada", _dag_dependencia_omitida),
+    AtaqueAlDag("dependencia-extra", "un nodo depende de algo que no existe en el grafo",
+                "que no existe", _dag_dependencia_extra),
+    AtaqueAlDag("doble-fuente-canonica", "una clase de dato declara dos fuentes",
+                "fuentes canónicas", _dag_doble_fuente_canonica),
+)
+
+
+def modo_autotest_procedencia_dag(args: argparse.Namespace) -> int:
+    del args
+    dag, error = cargar_dag()
+    if error:
+        print(f"[A] FALLA  DAG de procedencia: {error}")
+        return 1
+    manifest, preregistro, observaciones, bundles, baseline, problemas = _corpus_de_recomposicion()
+    if problemas:
+        for p in problemas:
+            print(f"[A] FALLA  {p}")
+        return 1
+
+    resultados: list[tuple[str, bool, str]] = []
+
+    # [A] El grafo real está sano: acíclico, con una fuente por clase y sin punteros rotos.
+    limpio = revisar_dag(copy.deepcopy(dag))
+    resultados.append(("A", not limpio,
+                       f"el grafo declarado: {len(dag.get('nodos') or [])} nodos y "
+                       f"{len(dag.get('aristas') or [])} aristas, sano" if not limpio
+                       else " | ".join(limpio[:4])))
+
+    # [B] Los cinco ataques al grafo, cada uno detectado POR SU MOTIVO. Uno que fallara por otra
+    # razón dejaría su cláusula sin probar.
+    fallas: list[str] = []
+    for ataque in ATAQUES_AL_DAG:
+        copia = copy.deepcopy(dag)
+        if not ataque.aplicar(copia):
+            fallas.append(f"«{ataque.nombre}»: la mutación no se pudo aplicar")
+            continue
+        detectados = revisar_dag(copia)
+        if not any(ataque.motivo_esperado in d for d in detectados):
+            fallas.append(f"«{ataque.nombre}»: {ataque.que_rompe} y no se detecta por "
+                          f"«{ataque.motivo_esperado}» — se vio: "
+                          f"{detectados[0] if detectados else 'nada'}")
+    resultados.append(("B", not fallas,
+                       f"los {len(ATAQUES_AL_DAG)} ataques al grafo se detectan por su motivo"
+                       if not fallas else " | ".join(fallas[:4])))
+
+    # [C] Cada arista, con faltante, sobrante y duplicado. Es lo que hace que la cardinalidad
+    # signifique algo: declararla y no ejercerla la deja de adorno.
+    esperado_base, destinos_base = esperado_de_las_aristas(preregistro, manifest)
+    observado_base = cardinalidades_observadas(preregistro, {}, observaciones, bundles)
+    fallas_de_arista: list[str] = []
+    if revisar_cardinalidades(dag, observado_base, esperado_base, destinos_base):
+        fallas_de_arista.append("el conjunto íntegro ya rompe alguna cardinalidad")
+    for arista in dag.get("aristas") or []:
+        arista_id = arista.get("arista_id")
+        medida = observado_base.get(arista_id)
+        if medida is None or not medida.por_origen:
+            fallas_de_arista.append(f"{arista_id}: el corpus no la ejerce")
+            continue
+        primero = sorted(medida.por_origen)[0]
+        for nombre, mutar in (
+            ("faltante", lambda p: {k: v for k, v in p.items() if k != primero}),
+            ("sobrante", lambda p: {**p, "origen-inventado": list(next(iter(p.values())))}),
+            ("duplicado", lambda p: {**p, primero: p[primero] + [p[primero][0]]}),
+            # El cuarto ataque cambia UN destino por otro nombre sin tocar el conteo: la
+            # cardinalidad sigue cerrando y los orígenes también. Solo el conjunto de destinos
+            # declarado lo caza, que es lo que prueba que esa comparación no es redundante.
+            ("destino-cambiado",
+             lambda p: {**p, primero: ["destino-inventado"] + p[primero][1:]}),
+        ):
+            mutado = dict(observado_base)
+            mutado[arista_id] = Cardinalidad(arista_id, mutar(medida.por_origen))
+            if not revisar_cardinalidades(dag, mutado, esperado_base, destinos_base):
+                fallas_de_arista.append(f"{arista_id}/{nombre}: no se detecta")
+    resultados.append(("C", not fallas_de_arista,
+                       f"las {len(dag.get('aristas') or [])} aristas, cada una con faltante, "
+                       "sobrante, duplicado y destino cambiado" if not fallas_de_arista
+                       else " | ".join(fallas_de_arista[:4])))
+
+    return _cerrar(resultados)
+
+
+# ---------------------------------------------------------------------------------------------
 # Registro de los modos de esta task. Cada task nueva agrega los suyos acá abajo, sin tocar los
 # anteriores ni `main()`.
 # ---------------------------------------------------------------------------------------------
@@ -5382,6 +6039,31 @@ registrar_modo(
     "derivado aparte como producto punto × repetición, la cadena append-only contra su manifest "
     "independiente, la regla de identidad congelada y la política de reintentos aplicada",
     modo_autotest_muestras_intentos,
+)
+
+registrar_modo(
+    "--recomponer",
+    "reconstruye cada número del baseline desde la fuente canónica de su clase —las mediciones "
+    "desde las observaciones, la metodología desde el pre-registro, el presupuesto contractual "
+    "desde la matriz— y comprueba el DAG de procedencia antes de empezar",
+    modo_recomponer,
+    argumento=Argumento("<dir-de-observaciones>", const=RUTA_OBSERVACIONES_FASE_0),
+)
+
+registrar_modo(
+    "--autotest-recomposicion",
+    "control del modo anterior sobre el corpus de scripts/fixtures-baseline/recomposicion/: el "
+    "conjunto íntegro recompone los números publicados, y faltante, sobrante, duplicado y número "
+    "alterado en una unidad lo rompen en vez de recomponer sobre el subconjunto que llegó",
+    modo_autotest_recomposicion,
+)
+
+registrar_modo(
+    "--autotest-procedencia-dag",
+    "el grafo de procedencia: aciclicidad —con el ciclo indirecto, que sobrevive a una revisión "
+    "por inspección—, una sola fuente canónica por clase de dato, dependencia omitida y extra, y "
+    "cada arista ejercida con faltante, sobrante y duplicado",
+    modo_autotest_procedencia_dag,
 )
 
 registrar_modo(

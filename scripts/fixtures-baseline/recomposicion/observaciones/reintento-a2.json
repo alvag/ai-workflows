@@ -1,0 +1,95 @@
+{
+  "version_schema": "1.0.0",
+  "observation_id": "obs-mst-cross-implement-implementador-inicial-r2-a2",
+  "sample_id": "mst-cross-implement-implementador-inicial-r2",
+  "attempt_id": "int-mst-cross-implement-implementador-inicial-r2-a2",
+  "attempt_ordinal": 2,
+  "preregistro_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+  "procedencia": {
+    "run_id": "reintento-a2",
+    "bundle_sha256": "2625e70353b6fd3cb31466b646183925306b442a6122f8ad6766c80588d09184"
+  },
+  "punto_de_despacho": "cross-implement-implementador-inicial",
+  "skill": "cross-implement",
+  "familia_de_rol": "bounded-implementer",
+  "transporte": "cli-exec",
+  "estrato": "automatizable",
+  "estado": {
+    "ciclo_operativo": "completado",
+    "validez_del_reporte": "valido",
+    "resultado_semantico": "correcto"
+  },
+  "metricas": [
+    {
+      "metrica_id": "latencia-hasta-resultado-utilizable",
+      "categoria": "latencia",
+      "estado_de_medicion": "medida",
+      "valor": 80000.0,
+      "unidad": "milisegundos"
+    },
+    {
+      "metrica_id": "tasa-de-degradacion",
+      "categoria": "degradacion",
+      "estado_de_medicion": "medida",
+      "valor": 0.0,
+      "unidad": "proporcion",
+      "numerador": 0.0,
+      "denominador": 1.0
+    },
+    {
+      "metrica_id": "conteo-de-degradaciones",
+      "categoria": "degradacion",
+      "estado_de_medicion": "medida",
+      "valor": 0.0,
+      "unidad": "conteo"
+    },
+    {
+      "metrica_id": "salidas-invalidas",
+      "categoria": "salidas_invalidas",
+      "estado_de_medicion": "medida",
+      "valor": 0.0,
+      "unidad": "conteo"
+    },
+    {
+      "metrica_id": "tasa-de-salidas-invalidas",
+      "categoria": "salidas_invalidas",
+      "estado_de_medicion": "medida",
+      "valor": 0.0,
+      "unidad": "proporcion",
+      "numerador": 0.0,
+      "denominador": 1.0
+    },
+    {
+      "metrica_id": "hallazgos-emitidos",
+      "categoria": "hallazgos",
+      "estado_de_medicion": "medida",
+      "valor": 0.0,
+      "unidad": "conteo"
+    },
+    {
+      "metrica_id": "limpieza-completa",
+      "categoria": "limpieza",
+      "estado_de_medicion": "medida",
+      "valor": 1.0,
+      "unidad": "booleano"
+    }
+  ],
+  "trabajos_delegados": [
+    {
+      "trabajo_delegado_id": "trb-1",
+      "estado_terminal": {
+        "estado": "comprobado",
+        "evento_terminal_id": "evt-terminal"
+      },
+      "metricas": [
+        {
+          "metrica_id": "latencia-hasta-estado-terminal",
+          "categoria": "latencia",
+          "estado_de_medicion": "medida",
+          "valor": 60000.0,
+          "unidad": "milisegundos"
+        }
+      ]
+    }
+  ]
+}
