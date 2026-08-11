@@ -1,0 +1,269 @@
+{
+  "version": 1,
+  "descripcion": "El conjunto cerrado de invocaciones de guarda del repositorio. `guardas` es lo que el modo `--guardas` ejecuta y de lo que emite recibo; `exclusiones` registra las invocaciones que las instrucciones mencionan como ejecutables y que NO son guardas, cada una con su motivo. El conjunto no se transcribe: el modo lo deriva del texto de las instrucciones y compara ambos conjuntos por identidad y en las dos direcciones.",
+  "instrucciones": "CLAUDE.md",
+  "guardas": [
+    {
+      "id": "vistas-config",
+      "script": "scripts/verificar-vistas-config.py",
+      "argumentos": [],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "sobre-en-vuelo-ac-13",
+      "script": "scripts/verificar-sobre-en-vuelo.py",
+      "argumentos": [
+        "--ac",
+        "13"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "sobre-en-vuelo-ac-16",
+      "script": "scripts/verificar-sobre-en-vuelo.py",
+      "argumentos": [
+        "--ac",
+        "16"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "sobre-en-vuelo-validar-baseline",
+      "script": "scripts/verificar-sobre-en-vuelo.py",
+      "argumentos": [
+        "--validar-baseline"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "retiro-ausencia",
+      "script": "scripts/verificar-retiro-transporte.py",
+      "argumentos": [
+        "--ausencia"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "retiro-clave",
+      "script": "scripts/verificar-retiro-transporte.py",
+      "argumentos": [
+        "--clave"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "retiro-adaptadores",
+      "script": "scripts/verificar-retiro-transporte.py",
+      "argumentos": [
+        "--adaptadores"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "retiro-drenaje",
+      "script": "scripts/verificar-retiro-transporte.py",
+      "argumentos": [
+        "--drenaje"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "retiro-vocabulario",
+      "script": "scripts/verificar-retiro-transporte.py",
+      "argumentos": [
+        "--vocabulario"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "retiro-docs",
+      "script": "scripts/verificar-retiro-transporte.py",
+      "argumentos": [
+        "--docs"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "retiro-autotest",
+      "script": "scripts/verificar-retiro-transporte.py",
+      "argumentos": [
+        "--autotest"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "paridad-auditar-catalogo",
+      "script": "scripts/verificar-paridad-powershell.py",
+      "argumentos": [
+        "--auditar-catalogo"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "paridad-auditar-matrices",
+      "script": "scripts/verificar-paridad-powershell.py",
+      "argumentos": [
+        "--auditar-matrices"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "paridad-autotest-catalogo",
+      "script": "scripts/verificar-paridad-powershell.py",
+      "argumentos": [
+        "--autotest-catalogo"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "paridad-autotest-clasificador",
+      "script": "scripts/verificar-paridad-powershell.py",
+      "argumentos": [
+        "--autotest-clasificador"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "paridad-autotest-comparador",
+      "script": "scripts/verificar-paridad-powershell.py",
+      "argumentos": [
+        "--autotest-comparador"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "paridad-autotest-escaner",
+      "script": "scripts/verificar-paridad-powershell.py",
+      "argumentos": [
+        "--autotest-escaner"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "paridad-autotest-extractor",
+      "script": "scripts/verificar-paridad-powershell.py",
+      "argumentos": [
+        "--autotest-extractor"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "paridad-autotest-normalizacion",
+      "script": "scripts/verificar-paridad-powershell.py",
+      "argumentos": [
+        "--autotest-normalizacion"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "paridad-autotest-precedencia",
+      "script": "scripts/verificar-paridad-powershell.py",
+      "argumentos": [
+        "--autotest-precedencia"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "paridad-reporte",
+      "script": "scripts/verificar-paridad-powershell.py",
+      "argumentos": [
+        "--reporte"
+      ],
+      "criterio": {
+        "tipo": "cuerpo_del_reporte",
+        "codigo_sano": 4
+      }
+    },
+    {
+      "id": "matriz-integracion",
+      "script": "scripts/verificar-matriz-despachos.py",
+      "argumentos": [
+        "--integracion"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    }
+  ],
+  "exclusiones": [
+    {
+      "id": "retiro-vias",
+      "script": "scripts/verificar-retiro-transporte.py",
+      "argumentos": [
+        "--vias"
+      ],
+      "origen": "negado_en_instrucciones",
+      "motivo": "Las instrucciones del repositorio lo excluyen explícitamente como guarda, y el modo comprueba esa negación en el texto: si la frase que lo excluye desapareciera, `--vias` pasaría a ser una invocación documentada sin declarar y el modo se pondría rojo. El motivo es la exclusión documentada y no la implementación: el modo está implementado en `scripts/verificar-retiro-transporte.py` (su encabezado lo declara AC-15 · implementado, su bandera está en el parser) y sobre el árbol de hoy corre con código 0. La afirmación contraria que hoy traen las instrucciones es un defecto ya inventariado, con su fase de corrección; cuando esa fase se aplique, esta exclusión se revisa con ella."
+    },
+    {
+      "id": "sobre-en-vuelo-sincronizar",
+      "script": "scripts/verificar-sobre-en-vuelo.py",
+      "argumentos": [
+        "--sincronizar"
+      ],
+      "origen": "excluido_por_el_manifiesto",
+      "motivo": "No es una guarda: es un generador. Su función hace `write_bytes` sobre las copias del contrato replicado dentro de `skills/` y devuelve 0 **después** de repararlas, así que ejecutarlo dentro de la no-regresión podría modificar las siete skills que el contrato promete intactas y salir verde por haberlas arreglado. Su verificación equivalente es `--ac 13`, que compara sin escribir, y esa sí está en `guardas`. Las instrucciones no lo niegan —lo mandan a correr—, así que la exclusión la pone este manifiesto y el modo la cuenta como documentada al comparar contra el texto."
+    }
+  ]
+}

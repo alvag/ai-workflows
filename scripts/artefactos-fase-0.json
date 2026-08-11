@@ -1,0 +1,184 @@
+{
+  "version": 1,
+  "descripcion": "Registro canónico de los artefactos de este acto: una entrada por artefacto, con su ubicación canónica, su dueño único, el dato del que es sede y si debe estar versionado. La regla de descubrimiento vive aparte, en `regla_de_descubrimiento`, y es una fuente DISTINTA de este registro: el modo `--descubrimiento` compara los dos conjuntos, y una regla transcrita del registro no probaría nada.",
+  "notas": [
+    "`dato` es la identidad de la información de la que el artefacto es sede. Sin ella el criterio «ningún dato está declarado en dos lugares como fuente» no es comprobable: `source_status` solo dice el rol, no de qué.",
+    "El dueño se nombra por dominio y no por la unidad de trabajo que lo escribió: un identificador de flujo muere con el flujo, y este registro tiene que seguir siendo cierto después.",
+    "Los directorios se registran como una unidad (terminados en `/`) porque así los declaran sus productores: sus archivos crecen con cada caso nuevo y una entrada por archivo quedaría falsa en la primera ampliación.",
+    "`versioned: true` significa «tiene que aparecer en el árbol candidato», que es `git ls-files` menos las bajas del cambio más las altas no ignoradas: un archivo nuevo sin stage no está en `git ls-files` y sí en el árbol candidato."
+  ],
+  "artefactos": [
+    {
+      "path": "scripts/matriz-despachos.schema.json",
+      "owner": "matriz-de-despachos",
+      "dato": "schema-cerrado-de-la-matriz",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/matriz-despachos.json",
+      "owner": "matriz-de-despachos",
+      "dato": "matriz-de-los-puntos-de-despacho",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/matriz-despachos-escenarios.json",
+      "owner": "matriz-de-despachos",
+      "dato": "escenarios-de-configuracion-y-capacidad",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/nombres-reservados-perfil.json",
+      "owner": "perfiles-de-ejecucion",
+      "dato": "nombres-reservados-del-contenedor-de-perfiles",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/verificar-matriz-despachos.py",
+      "owner": "verificador-de-despachos",
+      "dato": "verificador-de-la-matriz-y-del-contrato",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/fixtures-matriz/",
+      "owner": "verificador-de-despachos",
+      "dato": "corpus-sintetico-del-schema",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/fixtures-matriz/inventario/",
+      "owner": "verificador-de-despachos",
+      "dato": "corpus-sintetico-del-inventario-en-vuelo",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/fixtures-matriz/anclas/",
+      "owner": "verificador-de-despachos",
+      "dato": "corpus-sintetico-de-anclas-y-presupuesto",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/fixtures-matriz/condiciones/",
+      "owner": "verificador-de-despachos",
+      "dato": "corpus-sintetico-de-condiciones-de-existencia",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/fixtures-matriz/paridad/",
+      "owner": "verificador-de-despachos",
+      "dato": "corpus-sintetico-de-reportes-de-paridad",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/fixtures-contrato/",
+      "owner": "verificador-de-despachos",
+      "dato": "corpus-sintetico-del-documento-de-contrato",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/completitud-fase-0.json",
+      "owner": "completitud-de-despachos",
+      "dato": "recibo-de-completitud-de-los-puntos",
+      "source_status": "derivado",
+      "versioned": true
+    },
+    {
+      "path": "scripts/guardas-fase-0.json",
+      "owner": "guardas-del-repositorio",
+      "dato": "conjunto-cerrado-de-invocaciones-de-guarda",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/artefactos-fase-0.json",
+      "owner": "topologia-de-artefactos",
+      "dato": "topologia-de-los-artefactos-del-acto",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "docs/superpowers/specs/2026-08-09-subagentes-perfiles-fase-0.md",
+      "owner": "contrato-de-ejecucion",
+      "dato": "contrato-de-ejecucion-de-los-despachos-delegados",
+      "source_status": "fuente",
+      "versioned": true
+    }
+  ],
+  "regla_de_descubrimiento": {
+    "descripcion": "Cerrada y acotada a los directorios y patrones de este acto. NO se deriva del registro: se aplica al árbol candidato y produce un conjunto que después se compara contra el registro, en las dos direcciones. A cada archivo del árbol se le busca el directorio registrado más largo que lo prefije; si no hay ninguno, se lo coteja contra los patrones.",
+    "directorios": [
+      "scripts/fixtures-matriz/",
+      "scripts/fixtures-matriz/inventario/",
+      "scripts/fixtures-matriz/anclas/",
+      "scripts/fixtures-matriz/condiciones/",
+      "scripts/fixtures-matriz/paridad/",
+      "scripts/fixtures-contrato/"
+    ],
+    "patrones": [
+      "scripts/matriz-despachos.json",
+      "scripts/matriz-despachos.schema.json",
+      "scripts/matriz-despachos-escenarios.json",
+      "scripts/nombres-reservados-perfil.json",
+      "scripts/verificar-matriz-despachos.py",
+      "scripts/*-fase-0.*",
+      "docs/superpowers/specs/2026-08-09-subagentes-perfiles-fase-0.md"
+    ],
+    "excepciones": [
+      {
+        "path": "scripts/instrumento-baseline.py",
+        "tipo": "todavia_inexistente",
+        "motivo": "lo produce el acto siguiente, el del instrumento y el baseline; hoy no existe y este registro no puede declararle dueño ni ubicación canónica sin inventarlos"
+      },
+      {
+        "path": "scripts/runner-cohorte.py",
+        "tipo": "todavia_inexistente",
+        "motivo": "lo produce el acto siguiente; declararlo acá sería declarar la topología de un archivo que nadie escribió"
+      },
+      {
+        "path": "scripts/observacion.schema.json",
+        "tipo": "todavia_inexistente",
+        "motivo": "lo produce el acto siguiente: el schema de la observación por corrida"
+      },
+      {
+        "path": "scripts/bundle-corrida.schema.json",
+        "tipo": "todavia_inexistente",
+        "motivo": "lo produce el acto siguiente: el schema del bundle de cada corrida"
+      },
+      {
+        "path": "scripts/preregistro.schema.json",
+        "tipo": "todavia_inexistente",
+        "motivo": "lo produce el acto siguiente: el schema del preregistro"
+      },
+      {
+        "path": "scripts/preregistro-fase-0.json",
+        "tipo": "todavia_inexistente",
+        "motivo": "lo produce el acto siguiente y el patrón `scripts/*-fase-0.*` lo alcanzaría: sin esta excepción el descubrimiento lo encontraría antes de que exista dueño para él"
+      },
+      {
+        "path": "scripts/metricas-fase-0.json",
+        "tipo": "todavia_inexistente",
+        "motivo": "lo produce el acto siguiente y el patrón `scripts/*-fase-0.*` lo alcanzaría"
+      },
+      {
+        "path": "scripts/baseline-fase-0.md",
+        "tipo": "todavia_inexistente",
+        "motivo": "lo produce el acto siguiente y el patrón `scripts/*-fase-0.*` lo alcanzaría"
+      },
+      {
+        "path": ".plans/subagentes-fase-0/cohorte-congelada.json",
+        "tipo": "todavia_inexistente",
+        "motivo": "lo produce el acto siguiente; vive fuera del árbol candidato, así que su entrada futura nacerá con `versioned: false` y solo el predicado de vigencia puede avisar cuándo"
+      }
+    ]
+  }
+}

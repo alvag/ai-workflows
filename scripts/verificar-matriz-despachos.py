@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Verifica la matriz de despachos contra su schema cerrado.
 
-Treinta y nueve modos, y por ahora solo treinta y nueve: los demás del catálogo los construyen
+Cuarenta y seis modos, y por ahora solo cuarenta y seis: los demás del catálogo los construyen
 otras tasks.
 
 - `--schema [ruta]` — valida la matriz (por defecto `scripts/matriz-despachos.json`) contra
@@ -138,6 +138,49 @@ otras tasks.
 - `--autotest-defectos` — control positivo y negativo del modo anterior, con la sustitución que
   conserva el total —lo que un `len(defectos) >= 6` no ve— y el séptimo defecto bien formado que
   tiene que pasar.
+- `--guardas [ruta]` — el **conjunto cerrado** de invocaciones de guarda del repositorio (por
+  defecto `scripts/guardas-fase-0.json`): las ejecuta y emite un **recibo** con qué corrió, con qué
+  código de salida y qué se concluyó de cada una. **Falla si omite una del manifiesto aunque todas
+  las ejecutadas estén verdes** —la comparación con el conjunto ejercido es una igualdad y no una
+  inclusión, así que correr de más tampoco es correr bien— y falla si el manifiesto y lo que
+  documentan las instrucciones (`--instrucciones`, por defecto `CLAUDE.md`) no coinciden **en las
+  dos direcciones**. El conjunto documentado se **deriva** del texto: lo congelado es el criterio de
+  extracción, no la lista. Con `--salida` escribe el recibo, que otra fila consume.
+- `--autotest-guardas` — control positivo y negativo del modo anterior **sin ejecutar ninguna
+  guarda**: el recibo conforme se sintetiza del manifiesto y las instrucciones se mutan en memoria.
+  Los mutantes atacan las tres piezas por separado —manifiesto, recibo e instrucciones—, incluidas
+  las tres sustituciones que conservan el total, que son las únicas que separan comparar identidades
+  de contar.
+- `--topologia [ruta]` — el **registro canónico** de artefactos (por defecto
+  `scripts/artefactos-fase-0.json`): una entrada por artefacto con su ubicación canónica, su dueño
+  **único**, el dato del que es sede y si debe estar versionado. Comprueba que ningún dato esté
+  declarado como fuente en dos rutas y que la indexación cierre **en las dos direcciones**: los
+  `versioned: true` dentro del árbol candidato y los `false` fuera. El árbol candidato es
+  `git ls-files` menos las bajas del cambio más las altas no ignoradas —un archivo nuevo sin stage
+  no está en `git ls-files` y sí en el árbol candidato—, y un árbol vacío es error, no un conjunto
+  vacío. Con `--arbol`, la raíz.
+- `--descubrimiento [ruta]` — la **regla de descubrimiento** —directorios, patrones y excepciones
+  con motivo— aplicada al árbol candidato, y comparada contra el registro en las dos direcciones. Es
+  una fuente **distinta** del registro: una regla transcrita de sus rutas se rechaza, porque comparar
+  un conjunto consigo mismo no prueba nada. Cada excepción lleva **predicado de vigencia** —la ruta
+  no existe en disco—, se evalúa en cada corrida y **falla por caducidad** cuando la ruta aparece,
+  con ese motivo y no con el genérico de una ruta ausente del registro.
+- `--autotest-topologia` — control positivo y negativo de los dos modos anteriores sobre el registro
+  y el árbol reales, mutados **en memoria**. Incluye las dos direcciones de la comparación por
+  separado: el archivo descubierto sin entrada y la entrada que ninguna regla alcanza.
+- `--autotest-caducidad-excepcion` — las **dos** direcciones del predicado de vigencia sobre una
+  raíz sintética en un directorio temporal: verde con la excepción vigente, rojo **por caducidad** al
+  materializar la ruta exceptuada, y verde otra vez al retirar la excepción y darle entrada en el
+  registro. Con una sola dirección, el predicado especial puede quedar sin implementar y nada lo
+  notaría.
+- `--integracion [ruta]` — la **integración declarada** del verificador nuevo en las instrucciones
+  del repositorio (por defecto `CLAUDE.md`, vía `--instrucciones`): que la unidad que lo documenta
+  declare que es un script propio (y no un modo de uno existente), cuándo debe ejecutarse, el
+  comando exacto y el código de salida sano — y que **lo declarado sea cierto**, no solo que esté
+  escrito. Comprueba contra el árbol real: la bandera documentada aparece en el `--help` del propio
+  script, el código de salida declarado coincide con el que este modo devuelve en verde, y el
+  baseline acoplado al contenido de un archivo (`scripts/baseline-sobre-en-vuelo.md`, vía
+  `--validar-baseline`) está renovado.
 
 Tres reglas de diseño:
 
@@ -196,6 +239,12 @@ Uso: python3 scripts/verificar-matriz-despachos.py --schema [ruta] | --autotest-
                                                   | --roles [ruta] | --autotest-roles
                                                   | --diversidad [ruta] | --autotest-diversidad
                                                   | --defectos [ruta] | --autotest-defectos
+                                                  | --guardas [ruta] | --autotest-guardas
+                                                  | --topologia [ruta]
+                                                  | --descubrimiento [ruta]
+                                                  | --autotest-topologia
+                                                  | --autotest-caducidad-excepcion
+                                                  | --integracion [ruta]
 Exit 0 si el modo pasa, 1 si falla, 2 si la invocación es inválida, y 3 cuando los ocho modos que
 leen el documento de contrato no lo encuentran: no hay veredicto, y una ausencia no es una
 conformidad.
@@ -206,10 +255,12 @@ import argparse
 import ast
 import contextlib
 import copy
+import fnmatch
 import importlib.util
 import io
 import itertools
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -11889,6 +11940,2113 @@ def _preludio_de_roles() -> list[tuple[str, bool, str]]:
     return resultados
 
 
+# --- Modos `--guardas` y `--autotest-guardas` -------------------------------------------------
+#
+# La no-regresión de este flujo comparaba **listas escritas contra listas escritas**: una invocación
+# podía figurar en el contrato y no ejecutarse nunca, y nada lo habría notado. Este modo cierra esa
+# forma de falso verde con tres piezas que se comprueban por separado:
+#
+# 1. **El manifiesto contra las instrucciones, por identidad y en las dos direcciones.** El conjunto
+#    documentado NO se transcribe: se deriva del texto de las instrucciones (`CLAUDE.md`) leyendo
+#    sus unidades de guarda, y lo único congelado es el **criterio de extracción**. Un inventario
+#    transcrito queda falso en cuanto el árbol cambia; un criterio congelado, no.
+# 2. **La ejecución**, que produce un recibo con qué corrió, con qué código y qué se concluyó.
+# 3. **El recibo contra el manifiesto, también por igualdad y no por inclusión.** Correr de más no
+#    es correr bien: una ejecución ajena al manifiesto es tan rojo como una declarada que falta.
+#    Con `declarado ⊆ ejercido` los tres mutantes del recibo no cazarían nada.
+
+RUTA_MANIFIESTO_GUARDAS = REPO / "scripts" / "guardas-fase-0.json"
+RUTA_INSTRUCCIONES = REPO / "CLAUDE.md"
+
+CRITERIO_CODIGO = "codigo_de_salida"
+CRITERIO_CUERPO = "cuerpo_del_reporte"
+CRITERIOS_DE_GUARDA = (CRITERIO_CODIGO, CRITERIO_CUERPO)
+
+ORIGEN_NEGADO = "negado_en_instrucciones"
+ORIGEN_MANIFIESTO = "excluido_por_el_manifiesto"
+ORIGENES_DE_EXCLUSION = (ORIGEN_NEGADO, ORIGEN_MANIFIESTO)
+
+# El criterio de extracción, congelado; el dato que produce, derivado del texto de cada corrida.
+PATRON_UNIDAD = re.compile(r"^-\s+\S")
+PATRON_SPAN = re.compile(r"`([^`]+)`")
+PATRON_COMANDO = re.compile(r"^python3\s+(scripts/[A-Za-z0-9._-]+\.py)\s*(.*)$")
+PATRON_SOLO_BANDERAS = re.compile(r"^--[a-z0-9-]+\*?(?:\s+[^\s`]+)*$")
+PATRON_MARCA = re.compile(r"\x00(\d+)\x00")
+PATRON_ADD_ARGUMENT = re.compile(r"add_argument\(\s*\"(--[a-z0-9-]+)\"")
+
+# Una negación alcanza a las banderas que la **anteceden en su oración**. La regla no es cosmética:
+# hoy la oración que declara que cuatro banderas no son guardas termina nombrando `--reporte`, que
+# sí lo es. Una negación por oración entera lo borraría del conjunto y el modo quedaría verde con
+# una guarda menos.
+FRASES_DE_NEGACION = ("cuenta como guarda", "son guardas", "es una guarda", "es guarda")
+CUES_DE_NEGACION = tuple(
+    re.compile(r"\bno\W+" + r"\W+".join(re.escape(p) for p in frase.split()), re.IGNORECASE)
+    for frase in FRASES_DE_NEGACION)
+
+
+class Invocacion(NamedTuple):
+    script: str                      # ruta relativa desde la raíz del repo
+    argumentos: tuple[str, ...]
+
+    @property
+    def identidad(self) -> str:
+        return " ".join((self.script,) + self.argumentos)
+
+    def comando(self) -> list[str]:
+        return [sys.executable, self.script, *self.argumentos]
+
+
+def _invocacion_de(datos: Any) -> Invocacion | None:
+    if not isinstance(datos, dict):
+        return None
+    script = _texto_o_vacio(datos.get("script"))
+    argumentos = datos.get("argumentos")
+    if not script or not isinstance(argumentos, list):
+        return None
+    if any(not isinstance(a, str) for a in argumentos):
+        return None
+    return Invocacion(script, tuple(argumentos))
+
+
+def banderas_declaradas(ruta: Path) -> tuple[frozenset[str], str]:
+    """Las banderas que el parser de un verificador declara, leídas de su fuente.
+
+    Se derivan y no se transcriben: la familia `--autotest-*` de las instrucciones se expande contra
+    esto, así que un autotest nuevo en el arnés entra al conjunto solo. Un verificador sin parser
+    —`verificar-vistas-config.py` no tiene ninguno— devuelve el conjunto vacío, que es la respuesta
+    correcta y no un error."""
+    try:
+        texto = ruta.read_text(encoding="utf-8")
+    except OSError as e:
+        return frozenset(), f"no se pudo leer {ruta}: {e}"
+    return frozenset(PATRON_ADD_ARGUMENT.findall(texto)), ""
+
+
+def unidades_de_guarda(texto: str) -> list[str]:
+    """Cada ítem de primer nivel de las instrucciones, con lo que le cuelga indentado.
+
+    El bloque `>` que sigue a un ítem indentado es parte del ítem: ahí viven nueve de las
+    veintiuna invocaciones de hoy. Una línea que arranca en la columna 0 y no es ítem cierra la
+    unidad."""
+    unidades: list[str] = []
+    actual: list[str] | None = None
+    for linea in texto.splitlines():
+        if PATRON_UNIDAD.match(linea):
+            if actual is not None:
+                unidades.append("\n".join(actual))
+            actual = [linea]
+            continue
+        if actual is None:
+            continue
+        if not linea.strip() or linea[0].isspace():
+            actual.append(linea)
+            continue
+        unidades.append("\n".join(actual))
+        actual = None
+    if actual is not None:
+        unidades.append("\n".join(actual))
+    return unidades
+
+
+def _enmascarar(texto: str) -> tuple[str, list[str]]:
+    """Sustituye cada span entre backticks por una marca de posición fija.
+
+    Sin esto, cortar en oraciones parte `scripts/x.py` a la mitad: los puntos de las rutas y las
+    extensiones son mayoría dentro de los spans y ninguno cierra una oración."""
+    spans: list[str] = []
+
+    def reemplazar(m: re.Match) -> str:
+        spans.append(m.group(1))
+        return f"\x00{len(spans) - 1}\x00"
+
+    return PATRON_SPAN.sub(reemplazar, texto), spans
+
+
+def _spans_negados(mascara: str) -> set[int]:
+    oraciones: list[tuple[int, int]] = []
+    inicio = 0
+    for m in re.finditer(r"\.(?:\s|$)", mascara):
+        oraciones.append((inicio, m.end()))
+        inicio = m.end()
+    if inicio < len(mascara):
+        oraciones.append((inicio, len(mascara)))
+    negados: set[int] = set()
+    for a, b in oraciones:
+        frase = mascara[a:b]
+        posiciones = [m.start() for cue in CUES_DE_NEGACION for m in cue.finditer(frase)]
+        if not posiciones:
+            continue
+        for m in PATRON_MARCA.finditer(frase[:min(posiciones)]):
+            negados.add(int(m.group(1)))
+    return negados
+
+
+def derivar_invocaciones_documentadas(
+        texto: str, raiz: Path) -> tuple[set[Invocacion], set[Invocacion], list[Problema]]:
+    """El conjunto que las instrucciones documentan, y el que documentan **negándolo**.
+
+    Cuatro reglas, todas congeladas acá y ninguna con su resultado escrito:
+
+    - un span que empieza por `python3 scripts/<x>.py` fija el script de la unidad y, si trae
+      banderas, es una invocación; un span de solo banderas hereda ese script;
+    - la forma **pelada** (el script sin banderas) es invocación solo si la unidad no nombra
+      ninguna bandera para ese script: en la unidad del retiro el span pelado es el prefijo de las
+      siete que siguen, no una guarda más;
+    - un span con marcador de posición (`<nombre>`) no es una invocación fija y por lo tanto no es
+      una guarda: es una plantilla que alguien completa;
+    - una familia (`--autotest-*`) se expande contra las banderas que el parser de ese script
+      declara. La expansión vacía es un problema, no un conjunto vacío."""
+    documentadas: set[Invocacion] = set()
+    negadas: set[Invocacion] = set()
+    problemas: list[Problema] = []
+    for unidad in unidades_de_guarda(texto):
+        mascara, spans = _enmascarar(unidad)
+        script_de_la_unidad = ""
+        for span in spans:
+            m = PATRON_COMANDO.match(span)
+            if m:
+                script_de_la_unidad = m.group(1)
+                break
+        if not script_de_la_unidad:
+            continue
+        negados = _spans_negados(mascara)
+        candidatos: list[tuple[int, Invocacion]] = []
+        for i, span in enumerate(spans):
+            if "<" in span and ">" in span:
+                continue
+            m = PATRON_COMANDO.match(span)
+            if m:
+                candidatos.append((i, Invocacion(m.group(1), tuple(m.group(2).split()))))
+                continue
+            if PATRON_SOLO_BANDERAS.match(span):
+                candidatos.append((i, Invocacion(script_de_la_unidad, tuple(span.split()))))
+        con_banderas = {inv.script for _, inv in candidatos if inv.argumentos}
+        candidatos = [(i, inv) for i, inv in candidatos
+                      if inv.argumentos or inv.script not in con_banderas]
+        for i, inv in candidatos:
+            destino = negadas if i in negados else documentadas
+            if len(inv.argumentos) == 1 and inv.argumentos[0].endswith("*"):
+                prefijo = inv.argumentos[0][:-1]
+                declaradas, error = banderas_declaradas(raiz / inv.script)
+                if error:
+                    problemas.append(Problema("familia_sin_parser", f"`{inv.identidad}`", error))
+                    continue
+                expandida = sorted(f for f in declaradas if f.startswith(prefijo))
+                if not expandida:
+                    problemas.append(Problema(
+                        "familia_vacia", f"`{inv.identidad}`",
+                        f"el parser de `{inv.script}` no declara ninguna bandera que empiece por "
+                        f"`{prefijo}`: la familia documentada no expande a nada"))
+                    continue
+                for bandera in expandida:
+                    destino.add(Invocacion(inv.script, (bandera,)))
+                continue
+            destino.add(inv)
+    # La misma invocación documentada **y** negada no se resuelve por unión: la unión la deja
+    # documentada en silencio y borra que el texto se contradice. Medido: con la negación aplicada a
+    # la oración entera en vez de a lo que la antecede, `--reporte` cae en los dos conjuntos y todo
+    # lo demás sigue igual —aparece dos veces en su unidad—, así que sin este chequeo la regla de
+    # alcance no tiene mutante que la ponga roja.
+    for inv in sorted(documentadas & negadas):
+        problemas.append(Problema(
+            "invocacion_ambigua", f"`{inv.identidad}`",
+            "las instrucciones la documentan como ejecutable y la niegan como guarda; el texto no "
+            "decide y este modo no decide por él"))
+    return documentadas, negadas, problemas
+
+
+def verificar_manifiesto_de_guardas(
+        manifiesto: Any, documentadas: set[Invocacion],
+        negadas: set[Invocacion]) -> tuple[list[Problema], dict]:
+    """El manifiesto contra las instrucciones, por identidad y en las dos direcciones.
+
+    Nombrar **cuál** falta y **cuál** sobra no es cosmética del reporte: un booleano no distingue
+    una sustitución de un empate, y una sustitución conserva el total."""
+    problemas: list[Problema] = []
+    resumen = {"guardas": 0, "exclusiones": 0, "documentadas": len(documentadas),
+               "negadas": len(negadas), "faltantes": [], "sobrantes": []}
+    if not isinstance(manifiesto, dict):
+        return [Problema("manifiesto_ilegible", "el manifiesto",
+                         f"declara `{_nombre_tipo(manifiesto)}` y no un objeto")], resumen
+
+    guardas = manifiesto.get("guardas")
+    if not isinstance(guardas, list) or not guardas:
+        return [Problema(
+            "manifiesto_sin_guardas", "`guardas`",
+            "el manifiesto no declara ninguna guarda; un conjunto vacío satisface «todas las "
+            "declaradas se ejercieron» por vacuidad")], resumen
+
+    identidades: set[Invocacion] = set()
+    ids_vistos: set[str] = set()
+    for i, entrada in enumerate(guardas):
+        donde = f"guarda {i + 1}"
+        inv = _invocacion_de(entrada)
+        if inv is None:
+            problemas.append(Problema("guarda_mal_formada", donde,
+                                      "no declara `script` y `argumentos` como texto y lista de "
+                                      "textos"))
+            continue
+        ident = _texto_o_vacio(entrada.get("id"))
+        donde = f"guarda `{ident or inv.identidad}`"
+        if not ident:
+            problemas.append(Problema("guarda_sin_id", donde, "no declara su `id`"))
+        elif ident in ids_vistos:
+            problemas.append(Problema("guarda_id_duplicado", donde, "otra guarda ya usa ese `id`"))
+        else:
+            ids_vistos.add(ident)
+        if inv in identidades:
+            problemas.append(Problema("guarda_duplicada", donde,
+                                      "otra entrada declara la misma invocación"))
+            continue
+        identidades.add(inv)
+        criterio = entrada.get("criterio")
+        if not isinstance(criterio, dict):
+            problemas.append(Problema("guarda_sin_criterio", donde,
+                                      "no declara su `criterio` de salud; sin criterio el recibo "
+                                      "diría con qué código corrió y nada de qué se concluyó"))
+            continue
+        tipo = _texto_o_vacio(criterio.get("tipo"))
+        if tipo not in CRITERIOS_DE_GUARDA:
+            problemas.append(Problema(
+                "criterio_desconocido", donde,
+                f"declara `{tipo or '(vacío)'}` y los criterios implementados son "
+                f"{', '.join('`' + c + '`' for c in CRITERIOS_DE_GUARDA)}"))
+        elif tipo == CRITERIO_CODIGO and not isinstance(criterio.get("esperado"), int):
+            problemas.append(Problema("criterio_sin_esperado", donde,
+                                      "el criterio por código de salida no declara qué código "
+                                      "espera"))
+    resumen["guardas"] = len(identidades)
+
+    exclusiones = manifiesto.get("exclusiones")
+    if not isinstance(exclusiones, list):
+        exclusiones = []
+    excluidas_del_manifiesto: set[Invocacion] = set()
+    for i, entrada in enumerate(exclusiones):
+        inv = _invocacion_de(entrada)
+        donde = f"exclusión {i + 1}"
+        if inv is None:
+            problemas.append(Problema("exclusion_mal_formada", donde,
+                                      "no declara `script` y `argumentos`"))
+            continue
+        donde = f"exclusión `{inv.identidad}`"
+        resumen["exclusiones"] += 1
+        if not _texto_o_vacio(entrada.get("motivo")):
+            problemas.append(Problema("exclusion_sin_motivo", donde,
+                                      "no declara por qué se excluye; una exclusión sin motivo es "
+                                      "un agujero con permiso"))
+        origen = _texto_o_vacio(entrada.get("origen"))
+        if origen not in ORIGENES_DE_EXCLUSION:
+            problemas.append(Problema(
+                "exclusion_sin_origen", donde,
+                f"declara `{origen or '(vacío)'}` y los orígenes son "
+                f"{', '.join('`' + o + '`' for o in ORIGENES_DE_EXCLUSION)}"))
+            continue
+        if origen == ORIGEN_MANIFIESTO:
+            excluidas_del_manifiesto.add(inv)
+            if inv in negadas:
+                problemas.append(Problema(
+                    "exclusion_mal_atribuida", donde,
+                    "el manifiesto se atribuye la exclusión y las instrucciones ya la niegan: el "
+                    "motivo declarado no es el que rige"))
+            continue
+        if inv not in negadas:
+            problemas.append(Problema(
+                "exclusion_sin_respaldo", donde,
+                "dice excluirse porque las instrucciones la niegan, y el texto no la niega"
+                + (": la documenta como guarda" if inv in documentadas else ": ni la menciona")))
+
+    esperadas = identidades | excluidas_del_manifiesto
+    faltantes = sorted(inv.identidad for inv in documentadas - esperadas)
+    sobrantes = sorted(inv.identidad for inv in esperadas - documentadas)
+    resumen["faltantes"] = faltantes
+    resumen["sobrantes"] = sobrantes
+    for identidad in faltantes:
+        problemas.append(Problema(
+            "guarda_documentada_sin_declarar", f"`{identidad}`",
+            "las instrucciones la documentan como ejecutable y el manifiesto no la declara ni la "
+            "excluye"))
+    for identidad in sobrantes:
+        problemas.append(Problema(
+            "guarda_sin_respaldo_en_instrucciones", f"`{identidad}`",
+            "el manifiesto la declara y las instrucciones no la documentan"))
+    return problemas, resumen
+
+
+def _veredicto_de(criterio: dict, exit_code: int, detalle: str) -> tuple[str, str]:
+    tipo = _texto_o_vacio(criterio.get("tipo"))
+    if tipo == CRITERIO_CODIGO:
+        esperado = criterio.get("esperado")
+        if exit_code == esperado:
+            return "ok", f"terminó con {exit_code}, que es el código sano"
+        return "falla", f"terminó con {exit_code} y el criterio espera {esperado}"
+    if tipo == CRITERIO_CUERPO:
+        # El código de salida de este arnés **no** es su señal de salud: hoy devuelve 4 y ese es el
+        # estado sano. Lo que decide es el cuerpo, con el mismo parser de `--parear-reporte`, y
+        # `detalle` trae el motivo del rechazo o viene vacío.
+        if detalle:
+            return "falla", detalle
+        return "ok", f"el cuerpo del reporte está sano (terminó con {exit_code}, que no se lee " \
+                     "como enfermedad)"
+    return "falla", f"criterio `{tipo or '(vacío)'}` sin implementación"
+
+
+def verificar_recibo_de_guardas(manifiesto: Any, recibo: Any) -> tuple[list[Problema], dict]:
+    """El recibo contra el manifiesto, por **igualdad** y no por inclusión.
+
+    Tres direcciones y no una. Con `declarado ⊆ ejercido`, un recibo al que le sobra una ejecución
+    ajena pasa, y uno que sustituye una declarada por otra conservando el total pasa también: la
+    primera cubre a la segunda."""
+    problemas: list[Problema] = []
+    resumen = {"declaradas": 0, "ejercidas": 0, "no_ejercidas": [], "ajenas": [], "en_rojo": []}
+    if not isinstance(recibo, dict):
+        return [Problema("recibo_ilegible", "el recibo",
+                         f"declara `{_nombre_tipo(recibo)}` y no un objeto")], resumen
+
+    del_manifiesto = {inv.identidad
+                      for inv in (_invocacion_de(g) for g in manifiesto.get("guardas", []))
+                      if inv is not None}
+    resumen["declaradas"] = len(del_manifiesto)
+
+    declarado = recibo.get("conjunto_declarado")
+    ejercido = recibo.get("conjunto_ejercido")
+    if not isinstance(declarado, list) or not isinstance(ejercido, list):
+        return [Problema("recibo_sin_conjuntos", "el recibo",
+                         "no declara `conjunto_declarado` y `conjunto_ejercido` como listas; sin "
+                         "los dos la comparación sería sobre prosa y no sobre datos")], resumen
+    ejecuciones = recibo.get("ejecuciones")
+    if not isinstance(ejecuciones, list):
+        return [Problema("recibo_sin_ejecuciones", "el recibo",
+                         "no registra `ejecuciones`")], resumen
+
+    if set(declarado) != del_manifiesto:
+        for identidad in sorted(set(declarado) - del_manifiesto):
+            problemas.append(Problema("recibo_declara_de_mas", f"`{identidad}`",
+                                      "el recibo la da por declarada y el manifiesto no la trae"))
+        for identidad in sorted(del_manifiesto - set(declarado)):
+            problemas.append(Problema("recibo_declara_de_menos", f"`{identidad}`",
+                                      "el manifiesto la declara y el recibo no la registra en su "
+                                      "conjunto declarado"))
+
+    corridas: list[str] = []
+    for i, ejecucion in enumerate(ejecuciones):
+        donde = f"ejecución {i + 1}"
+        if not isinstance(ejecucion, dict):
+            problemas.append(Problema("ejecucion_mal_formada", donde,
+                                      f"llegó como `{_nombre_tipo(ejecucion)}`"))
+            continue
+        identidad = _texto_o_vacio(ejecucion.get("invocacion"))
+        donde = f"ejecución `{identidad or i + 1}`"
+        if not identidad:
+            problemas.append(Problema("ejecucion_sin_invocacion", donde,
+                                      "no dice qué invocación ejerció"))
+            continue
+        corridas.append(identidad)
+        if not _texto_o_vacio(ejecucion.get("comando")):
+            problemas.append(Problema("ejecucion_sin_comando", donde,
+                                      "no registra el `comando` con el que corrió"))
+        if not isinstance(ejecucion.get("exit_code"), int):
+            problemas.append(Problema("ejecucion_sin_codigo", donde,
+                                      "no registra su `exit_code`"))
+        criterio = ejecucion.get("criterio")
+        if not isinstance(criterio, dict):
+            problemas.append(Problema("ejecucion_sin_criterio", donde,
+                                      "no registra contra qué criterio se la juzgó"))
+            continue
+        veredicto = _texto_o_vacio(ejecucion.get("veredicto"))
+        if veredicto not in ("ok", "falla"):
+            problemas.append(Problema("veredicto_desconocido", donde,
+                                      f"declara `{veredicto or '(vacío)'}`"))
+            continue
+        if criterio.get("tipo") == CRITERIO_CODIGO and isinstance(ejecucion.get("exit_code"), int):
+            recalculado, _ = _veredicto_de(criterio, ejecucion["exit_code"], "")
+            if recalculado != veredicto:
+                problemas.append(Problema(
+                    "veredicto_incoherente", donde,
+                    f"declara `{veredicto}` y su código {ejecucion['exit_code']} contra el criterio "
+                    f"da `{recalculado}`: el recibo se contradice a sí mismo"))
+                continue
+        if veredicto == "falla":
+            resumen["en_rojo"].append(identidad)
+            problemas.append(Problema(
+                "guarda_en_rojo", donde,
+                _texto_o_vacio(ejecucion.get("detalle")) or "la guarda no pasó su criterio"))
+
+    resumen["ejercidas"] = len(set(corridas))
+    if sorted(set(corridas)) != sorted(set(ejercido)):
+        problemas.append(Problema(
+            "recibo_incoherente", "el recibo",
+            f"su `conjunto_ejercido` ({len(set(ejercido))}) no es el de sus propias ejecuciones "
+            f"({len(set(corridas))}): "
+            f"{sorted(set(ejercido) ^ set(corridas))[:3]}"))
+
+    no_ejercidas = sorted(del_manifiesto - set(ejercido))
+    ajenas = sorted(set(ejercido) - del_manifiesto)
+    resumen["no_ejercidas"] = no_ejercidas
+    resumen["ajenas"] = ajenas
+    for identidad in no_ejercidas:
+        problemas.append(Problema(
+            "guarda_no_ejercida", f"`{identidad}`",
+            "el manifiesto la declara y la corrida no la ejerció; que las ejecutadas estén todas "
+            "verdes no la reemplaza"))
+    for identidad in ajenas:
+        problemas.append(Problema(
+            "ejecucion_ajena", f"`{identidad}`",
+            "la corrida la ejerció y el manifiesto no la declara: correr de más no es correr bien, "
+            "y la comparación es una igualdad"))
+    return problemas, resumen
+
+
+def _cuerpo_del_reporte_sano(salida: str) -> str:
+    """El veredicto sobre `--reporte`, con el parser del modo `--parear-reporte`.
+
+    Devuelve el motivo del rechazo, o cadena vacía si está sano. Reusar el parser en vez de escribir
+    otro evita que el repo tenga dos lecturas distintas del mismo reporte."""
+    precedencia, codigos, error = vocabulario_de_paridad(RUTA_ARNES_PARIDAD)
+    if error:
+        return f"no se pudo derivar el vocabulario del arnés: {error}"
+    autorizados, error = derivar_pares_con_fallo_declarado(DIR_CASOS_PARIDAD)
+    if error:
+        return f"no se pudieron derivar los pares autorizados a `fallo`: {error}"
+    problemas, _ = verificar_reporte_de_paridad(salida, autorizados, precedencia, codigos, None)
+    if problemas:
+        return f"{len(problemas)} problemas en el cuerpo; el primero: {problemas[0]}"
+    return ""
+
+
+def ejecutar_guardas(manifiesto: dict, raiz: Path, ruta_manifiesto: Path) -> dict:
+    """Corre cada guarda declarada y arma el recibo. **Esto es lo único que ejecuta procesos.**
+
+    El código se captura sin tubería: `$?` después de un pipe devuelve el del último comando del
+    pipe y no el del verificador, y ese error ya costó lecturas falsas en este flujo."""
+    ejecuciones: list[dict] = []
+    for entrada in manifiesto.get("guardas", []):
+        inv = _invocacion_de(entrada)
+        if inv is None:
+            continue
+        criterio = entrada.get("criterio") if isinstance(entrada.get("criterio"), dict) else {}
+        comando = inv.comando()
+        corrida = subprocess.run(comando, cwd=raiz, capture_output=True, text=True)
+        detalle = ""
+        if _texto_o_vacio(criterio.get("tipo")) == CRITERIO_CUERPO:
+            detalle = _cuerpo_del_reporte_sano(corrida.stdout)
+        veredicto, explicacion = _veredicto_de(criterio, corrida.returncode, detalle)
+        ejecuciones.append({
+            "invocacion": inv.identidad,
+            "id": _texto_o_vacio(entrada.get("id")),
+            "comando": " ".join(comando),
+            "exit_code": corrida.returncode,
+            "criterio": criterio,
+            "veredicto": veredicto,
+            "detalle": explicacion,
+        })
+    declarado = sorted(e["invocacion"] for e in ejecuciones)
+    return {
+        "manifiesto": str(ruta_manifiesto),
+        "instrucciones": _texto_o_vacio(manifiesto.get("instrucciones")),
+        "conjunto_declarado": sorted(
+            inv.identidad for inv in (_invocacion_de(g) for g in manifiesto.get("guardas", []))
+            if inv is not None),
+        "conjunto_ejercido": declarado,
+        "ejecuciones": ejecuciones,
+        "resumen": {
+            "ejecutadas": len(ejecuciones),
+            "en_rojo": sorted(e["invocacion"] for e in ejecuciones if e["veredicto"] != "ok"),
+        },
+    }
+
+
+def modo_guardas(ruta_manifiesto: Path, ruta_instrucciones: Path, raiz: Path,
+                 salida: Path | None) -> int:
+    manifiesto, error = _cargar_json(ruta_manifiesto)
+    if error:
+        print(f"FALLA  guardas: {error}")
+        return 1
+    try:
+        texto = ruta_instrucciones.read_text(encoding="utf-8")
+    except OSError as e:
+        print(f"FALLA  guardas: no se pudieron leer las instrucciones ({e})")
+        return 1
+
+    documentadas, negadas, problemas = derivar_invocaciones_documentadas(texto, raiz)
+    de_manifiesto, resumen = verificar_manifiesto_de_guardas(manifiesto, documentadas, negadas)
+    problemas += de_manifiesto
+    if problemas:
+        _informar(problemas, f"{ruta_manifiesto.name} contra {ruta_instrucciones.name}")
+        print("       no se ejecutó ninguna guarda: un recibo contra un manifiesto que no "
+              "corresponde con las instrucciones no prueba nada")
+        return 1
+    print(f"OK     {ruta_manifiesto.name}: las {resumen['guardas']} guardas y las "
+          f"{resumen['exclusiones']} exclusiones coinciden por identidad con las "
+          f"{resumen['documentadas']} invocaciones que documenta {ruta_instrucciones.name}, en las "
+          "dos direcciones")
+
+    recibo = ejecutar_guardas(manifiesto, raiz, ruta_manifiesto)
+    problemas, resumen_recibo = verificar_recibo_de_guardas(manifiesto, recibo)
+    if salida is not None:
+        salida.parent.mkdir(parents=True, exist_ok=True)
+        salida.write_text(json.dumps(recibo, ensure_ascii=False, indent=2) + "\n",
+                          encoding="utf-8")
+        print(f"OK     recibo escrito en {salida}")
+    if problemas:
+        _informar(problemas, f"el recibo de {ruta_manifiesto.name}")
+        return 1
+    print(f"OK     las {resumen_recibo['declaradas']} declaradas se ejercieron y ninguna ajena: el "
+          "conjunto ejercido es igual al declarado, no un subconjunto")
+    print(f"OK     las {resumen_recibo['ejercidas']} pasan su criterio de salud")
+    print()
+    print("RESULTADO: OK")
+    return 0
+
+
+# --- Autotest de `--guardas` ------------------------------------------------------------------
+#
+# **Nada de esto ejecuta una guarda ni escribe en el árbol.** Las instrucciones se mutan en memoria
+# —una copia mutada en disco dejaría el árbol mutado si el proceso muriera, y otro agente no
+# distingue esa ventana de un cambio real— y el recibo conforme se **sintetiza** del manifiesto en
+# vez de cosecharse de una corrida. La fila que ejerce el conjunto sobre el árbol real es otra: si
+# esta lo hiciera, la misma task que diseña manifiesto, ejecutor y recibo estaría atestiguando que
+# el conjunto se ejerció.
+#
+# Los mutantes atacan las tres piezas por separado, que es la única forma de que ninguna se cubra
+# con otra:
+#
+# - **sobre el manifiesto** (uno de más, uno de menos): cazan que el manifiesto haya dejado de
+#   corresponder con las instrucciones;
+# - **sobre el recibo** (uno de menos, uno ajeno, y la sustitución que conserva el total): los tres,
+#   porque la comparación es una igualdad. Con solo el primero, una implementación que compruebe
+#   `declarado ⊆ ejercido` pasa y el falso verde sobrevive;
+# - **sobre las instrucciones** con el manifiesto fijo: agregar, retirar, **sustituir conservando el
+#   total** y retirar la negación. Agregar y retirar solo prueban cardinalidad —un comparador de
+#   conteos los pasa, y una lista escrita en el script con un hash del texto los pone rojos sin
+#   extraer ninguna identidad—; la sustitución solo cae si se comparan identidades. Y el control
+#   verde, que cambia prosa ajena a las guardas, impide que un verificador que rechace todo texto
+#   modificado se lleve los cuatro.
+
+
+class CasoDeGuardas(NamedTuple):
+    codigo: str | None          # el problema que el caso tiene que disparar; None = conforme
+    descripcion: str
+    mutar_instrucciones: Any = None      # (texto) -> texto
+    mutar_manifiesto: Any = None         # (manifiesto) -> manifiesto
+    mutar_recibo: Any = None             # (recibo) -> recibo
+    nombra: tuple[str, ...] = ()         # identidades que el diagnóstico tiene que nombrar
+
+
+CODIGOS_DE_GUARDAS = (
+    "guarda_documentada_sin_declarar", "guarda_sin_respaldo_en_instrucciones",
+    "exclusion_sin_respaldo", "exclusion_mal_atribuida", "exclusion_sin_motivo",
+    "exclusion_sin_origen", "manifiesto_sin_guardas", "guarda_sin_criterio",
+    "criterio_desconocido", "criterio_sin_esperado", "guarda_duplicada", "guarda_id_duplicado",
+    "guarda_sin_id", "familia_vacia", "invocacion_ambigua",
+    "guarda_no_ejercida", "ejecucion_ajena", "recibo_incoherente", "recibo_declara_de_menos",
+    "recibo_declara_de_mas", "guarda_en_rojo", "veredicto_incoherente", "recibo_sin_conjuntos",
+)
+
+INVOCACION_AJENA = "scripts/verificar-retiro-transporte.py --porcelain"
+BANDERA_SUSTITUTA = "--porcelain"
+BANDERA_SUSTITUIDA = "--drenaje"
+
+
+def _sustituir_una_vez(texto: str, viejo: str, nuevo: str) -> str:
+    """Sustituye **comprobando que había exactamente una ocurrencia**.
+
+    Un mutante que no muta da un verde que parece cobertura. Si el texto de las instrucciones cambia
+    y el patrón deja de estar —o pasa a estar dos veces—, el caso se cae acá y con el motivo, en vez
+    de correr sobre un texto intacto y declararse cubierto."""
+    apariciones = texto.count(viejo)
+    if apariciones != 1:
+        raise ValueError(f"el patrón `{viejo}` aparece {apariciones} veces y el mutante espera 1")
+    return texto.replace(viejo, nuevo)
+
+
+def _recibo_sintetico(manifiesto: dict) -> dict:
+    """El recibo que una corrida sana produciría, **sin correr nada**."""
+    ejecuciones = []
+    for entrada in manifiesto.get("guardas", []):
+        inv = _invocacion_de(entrada)
+        if inv is None:
+            continue
+        criterio = entrada.get("criterio") if isinstance(entrada.get("criterio"), dict) else {}
+        codigo = criterio.get("esperado") if criterio.get("tipo") == CRITERIO_CODIGO else 4
+        ejecuciones.append({
+            "invocacion": inv.identidad,
+            "id": _texto_o_vacio(entrada.get("id")),
+            "comando": " ".join(inv.comando()),
+            "exit_code": codigo,
+            "criterio": criterio,
+            "veredicto": "ok",
+            "detalle": "sintético: este autotest no ejecuta guardas",
+        })
+    identidades = sorted(e["invocacion"] for e in ejecuciones)
+    return {"conjunto_declarado": list(identidades), "conjunto_ejercido": list(identidades),
+            "ejecuciones": ejecuciones}
+
+
+def _sin_ejecucion(recibo: dict, identidad: str) -> dict:
+    recibo["ejecuciones"] = [e for e in recibo["ejecuciones"] if e["invocacion"] != identidad]
+    recibo["conjunto_ejercido"] = [i for i in recibo["conjunto_ejercido"] if i != identidad]
+    return recibo
+
+
+def _con_ejecucion(recibo: dict, identidad: str) -> dict:
+    recibo["ejecuciones"].append({
+        "invocacion": identidad,
+        "id": "ajena",
+        "comando": f"{sys.executable} {identidad}",
+        "exit_code": 0,
+        "criterio": {"tipo": CRITERIO_CODIGO, "esperado": 0},
+        "veredicto": "ok",
+        "detalle": "sintético",
+    })
+    recibo["conjunto_ejercido"] = sorted(recibo["conjunto_ejercido"] + [identidad])
+    return recibo
+
+
+def _sin_clave(contenedor: dict, clave: str, raiz: dict) -> dict:
+    """Quita una clave de un nodo y devuelve la **raíz** que el caso tiene que entregar.
+
+    Dos trampas, las dos ya cobradas acá: `x.pop("esperado") and d or d` funciona por accidente y
+    deja de funcionar el día que el valor quitado sea falsy —y `esperado` vale 0 en las veintiuna
+    guardas—; y devolver el nodo mutado en vez de la raíz entrega media estructura, que fue lo que
+    hizo el primer intento de este helper."""
+    contenedor.pop(clave, None)
+    return raiz
+
+
+def _identidad_testigo(manifiesto: dict) -> str:
+    """Una guarda real del manifiesto, elegida del dato y no escrita acá."""
+    for entrada in manifiesto.get("guardas", []):
+        inv = _invocacion_de(entrada)
+        if inv is not None and inv.argumentos == (BANDERA_SUSTITUIDA,):
+            return inv.identidad
+    inv = _invocacion_de(manifiesto["guardas"][0])
+    return inv.identidad if inv else ""
+
+
+def _casos_de_guardas(manifiesto: dict) -> tuple[CasoDeGuardas, ...]:
+    testigo = _identidad_testigo(manifiesto)
+
+    def sin_guarda(m: dict) -> dict:
+        m["guardas"] = [g for g in m["guardas"]
+                        if (_invocacion_de(g) or Invocacion("", ())).identidad != testigo]
+        return m
+
+    def con_guarda_de_mas(m: dict) -> dict:
+        m["guardas"].append({
+            "id": "de-mas", "script": "scripts/verificar-retiro-transporte.py",
+            "argumentos": [BANDERA_SUSTITUTA],
+            "criterio": {"tipo": CRITERIO_CODIGO, "esperado": 0}})
+        return m
+
+    return (
+        # Los conformes. Sin ellos, un verificador que rechace toda entrada satisface los once
+        # mutantes y cierra en verde sin haber aceptado jamás un manifiesto sano.
+        CasoDeGuardas(None, "el manifiesto real contra las instrucciones reales y un recibo "
+                            "completo"),
+        CasoDeGuardas(
+            None, "control verde: se reescribe prosa ajena a las guardas y sigue pasando",
+            mutar_instrucciones=lambda t: _sustituir_una_vez(
+                t, "Editar una copia a mano es una divergencia silenciosa",
+                "Editar a mano una copia es una divergencia silenciosa")),
+
+        # Los dos del manifiesto.
+        CasoDeGuardas("guarda_sin_respaldo_en_instrucciones",
+                      "el manifiesto declara una invocación de más",
+                      mutar_manifiesto=con_guarda_de_mas, nombra=(INVOCACION_AJENA,)),
+        CasoDeGuardas("guarda_documentada_sin_declarar",
+                      "el manifiesto declara una invocación de menos",
+                      mutar_manifiesto=sin_guarda, nombra=(testigo,)),
+
+        # Los tres del recibo: la comparación es una igualdad, no una inclusión.
+        CasoDeGuardas("guarda_no_ejercida",
+                      "al recibo le falta una ejecución declarada, y las demás están verdes",
+                      mutar_recibo=lambda r: _sin_ejecucion(r, testigo), nombra=(testigo,)),
+        CasoDeGuardas("ejecucion_ajena",
+                      "el recibo agrega una ejecución ajena al manifiesto: correr de más no es "
+                      "correr bien",
+                      mutar_recibo=lambda r: _con_ejecucion(r, INVOCACION_AJENA),
+                      nombra=(INVOCACION_AJENA,)),
+        CasoDeGuardas("guarda_no_ejercida",
+                      "el recibo sustituye una declarada por otra no declarada **conservando el "
+                      "total**",
+                      mutar_recibo=lambda r: _con_ejecucion(_sin_ejecucion(r, testigo),
+                                                            INVOCACION_AJENA),
+                      nombra=(testigo, INVOCACION_AJENA)),
+        CasoDeGuardas("guarda_en_rojo", "una guarda corrió y no pasó su criterio",
+                      mutar_recibo=lambda r: (r["ejecuciones"][0].update(
+                          {"exit_code": 1, "veredicto": "falla",
+                           "detalle": "terminó con 1 y el criterio espera 0"}) or r)),
+        CasoDeGuardas("veredicto_incoherente", "el recibo declara `ok` con un código que no lo es",
+                      mutar_recibo=lambda r: (r["ejecuciones"][0].update({"exit_code": 1}) or r)),
+
+        # Los cuatro de las instrucciones, con el manifiesto fijo: si el conjunto estuviera escrito
+        # dentro del script, ninguno de estos lo tocaría.
+        CasoDeGuardas("guarda_documentada_sin_declarar",
+                      "las instrucciones documentan una guarda más",
+                      mutar_instrucciones=lambda t: _sustituir_una_vez(
+                          t, "y `--autotest`. El modo",
+                          f"`--autotest` y `{BANDERA_SUSTITUTA}`. El modo"),
+                      nombra=(INVOCACION_AJENA,)),
+        CasoDeGuardas("guarda_sin_respaldo_en_instrucciones",
+                      "las instrucciones retiran una guarda",
+                      mutar_instrucciones=lambda t: _sustituir_una_vez(
+                          t, f"`{BANDERA_SUSTITUIDA}`, ", ""),
+                      nombra=(testigo,)),
+        CasoDeGuardas("guarda_sin_respaldo_en_instrucciones",
+                      "las instrucciones **sustituyen** una guarda por otra conservando el total: "
+                      "un conteo o un hash del texto no lo distinguen de un empate",
+                      mutar_instrucciones=lambda t: _sustituir_una_vez(
+                          t, f"`{BANDERA_SUSTITUIDA}`", f"`{BANDERA_SUSTITUTA}`"),
+                      nombra=(testigo, INVOCACION_AJENA)),
+        CasoDeGuardas("guarda_documentada_sin_declarar",
+                      "las instrucciones dejan de negar la exclusión: pasa a estar documentada "
+                      "como guarda",
+                      mutar_instrucciones=lambda t: _sustituir_una_vez(
+                          t, "aún no está implementado y no cuenta como guarda",
+                          "se corre igual que las demás"),
+                      nombra=("scripts/verificar-retiro-transporte.py --vias",)),
+        CasoDeGuardas("exclusion_sin_respaldo",
+                      "las instrucciones dejan de mencionar la invocación que el manifiesto excluye "
+                      "por negada",
+                      mutar_instrucciones=lambda t: _sustituir_una_vez(
+                          t, " El modo `--vias` aún no está implementado y no cuenta como guarda.",
+                          "")),
+
+        # El manifiesto mal formado, que es la otra forma de que el conjunto no signifique nada.
+        CasoDeGuardas("manifiesto_sin_guardas", "el manifiesto se queda sin guardas",
+                      mutar_manifiesto=lambda m: (m.update({"guardas": []}) or m)),
+        CasoDeGuardas("guarda_sin_criterio", "una guarda no declara su criterio de salud",
+                      mutar_manifiesto=lambda m: _sin_clave(m["guardas"][0], "criterio", m)),
+        CasoDeGuardas("criterio_desconocido", "una guarda declara un criterio sin implementación",
+                      mutar_manifiesto=lambda m: (m["guardas"][0]["criterio"].update(
+                          {"tipo": "a-ojo"}) or m)),
+        CasoDeGuardas("exclusion_sin_motivo", "una exclusión no declara su motivo",
+                      mutar_manifiesto=lambda m: _sin_clave(m["exclusiones"][0], "motivo", m)),
+        CasoDeGuardas("exclusion_mal_atribuida",
+                      "una exclusión se atribuye al manifiesto un motivo que las instrucciones ya "
+                      "declaran",
+                      mutar_manifiesto=lambda m: (m["exclusiones"][0].update(
+                          {"origen": ORIGEN_MANIFIESTO}) or m)),
+        CasoDeGuardas("exclusion_sin_origen", "una exclusión no declara de dónde sale su exclusión",
+                      mutar_manifiesto=lambda m: _sin_clave(m["exclusiones"][0], "origen", m)),
+        CasoDeGuardas("criterio_sin_esperado",
+                      "un criterio por código de salida no dice qué código espera",
+                      mutar_manifiesto=lambda m: _sin_clave(m["guardas"][0]["criterio"],
+                                                            "esperado", m)),
+        CasoDeGuardas("guarda_sin_id", "una guarda no declara su `id`",
+                      mutar_manifiesto=lambda m: _sin_clave(m["guardas"][0], "id", m)),
+        CasoDeGuardas("guarda_id_duplicado", "dos guardas comparten `id`",
+                      mutar_manifiesto=lambda m: (m["guardas"][1].update(
+                          {"id": m["guardas"][0]["id"]}) or m)),
+        CasoDeGuardas("guarda_duplicada", "dos entradas declaran la misma invocación",
+                      mutar_manifiesto=lambda m: (m["guardas"].append(
+                          dict(copy.deepcopy(m["guardas"][0]), id="repetida")) or m)),
+        CasoDeGuardas("familia_vacia",
+                      "la familia que documentan las instrucciones no expande contra ninguna "
+                      "bandera del parser",
+                      mutar_instrucciones=lambda t: _sustituir_una_vez(
+                          t, "`--autotest-*`", "`--no-existe-esta-familia-*`")),
+        CasoDeGuardas("invocacion_ambigua",
+                      "las instrucciones documentan una invocación y en otra oración la niegan: el "
+                      "texto se contradice y la unión lo taparía",
+                      mutar_instrucciones=lambda t: _sustituir_una_vez(
+                          t, f"El modo `--vias` aún no",
+                          f"El modo `{BANDERA_SUSTITUIDA}` no cuenta como guarda. El modo `--vias` "
+                          "aún no"),
+                      nombra=(f"scripts/verificar-retiro-transporte.py {BANDERA_SUSTITUIDA}",)),
+
+        # El recibo mal formado: la otra manera de que la igualdad no signifique nada.
+        CasoDeGuardas("recibo_sin_conjuntos", "el recibo no trae su conjunto declarado",
+                      mutar_recibo=lambda r: _sin_clave(r, "conjunto_declarado", r)),
+        CasoDeGuardas("recibo_declara_de_mas",
+                      "el recibo da por declarada una invocación que el manifiesto no trae",
+                      mutar_recibo=lambda r: (r["conjunto_declarado"].append(INVOCACION_AJENA)
+                                              or r),
+                      nombra=(INVOCACION_AJENA,)),
+        CasoDeGuardas("recibo_declara_de_menos",
+                      "el recibo deja fuera de su conjunto declarado una guarda del manifiesto",
+                      mutar_recibo=lambda r: (r.update(
+                          {"conjunto_declarado": [i for i in r["conjunto_declarado"]
+                                                  if i != testigo]}) or r),
+                      nombra=(testigo,)),
+        CasoDeGuardas("recibo_incoherente",
+                      "el conjunto ejercido del recibo no es el de sus propias ejecuciones",
+                      mutar_recibo=lambda r: (r["conjunto_ejercido"].append(INVOCACION_AJENA)
+                                              or r)),
+    )
+
+
+def _correr_caso_de_guardas(caso: CasoDeGuardas, manifiesto: dict,
+                            instrucciones: str) -> tuple[list[Problema], dict]:
+    texto = caso.mutar_instrucciones(instrucciones) if caso.mutar_instrucciones else instrucciones
+    datos = copy.deepcopy(manifiesto)
+    if caso.mutar_manifiesto:
+        datos = caso.mutar_manifiesto(datos)
+    documentadas, negadas, problemas = derivar_invocaciones_documentadas(texto, REPO)
+    del_manifiesto, resumen = verificar_manifiesto_de_guardas(datos, documentadas, negadas)
+    problemas = problemas + del_manifiesto
+    recibo = _recibo_sintetico(datos)
+    if caso.mutar_recibo:
+        recibo = caso.mutar_recibo(recibo)
+    del_recibo, resumen_recibo = verificar_recibo_de_guardas(datos, recibo)
+    resumen = dict(resumen, **{f"recibo_{k}": v for k, v in resumen_recibo.items()})
+    return problemas + del_recibo, resumen
+
+
+def _preludio_de_guardas() -> tuple[list[tuple[str, bool, str]], dict, str]:
+    """Lo que tiene que valer antes de correr un caso: que el manifiesto y las instrucciones estén,
+    que las banderas que el manifiesto nombra existan en el parser de su script, y que la derivación
+    lea de verdad el texto."""
+    manifiesto, error = _cargar_json(RUTA_MANIFIESTO_GUARDAS)
+    if error:
+        return [("0.manifiesto", False, error)], {}, ""
+    try:
+        instrucciones = RUTA_INSTRUCCIONES.read_text(encoding="utf-8")
+    except OSError as e:
+        return [("0.instrucciones", False, str(e))], {}, ""
+
+    resultados: list[tuple[str, bool, str]] = []
+    huerfanas: list[str] = []
+    for entrada in manifiesto.get("guardas", []):
+        inv = _invocacion_de(entrada)
+        if inv is None:
+            huerfanas.append(str(entrada)[:60])
+            continue
+        if not (REPO / inv.script).is_file():
+            huerfanas.append(f"{inv.identidad} — no existe {inv.script}")
+            continue
+        declaradas, _ = banderas_declaradas(REPO / inv.script)
+        faltan = [a for a in inv.argumentos if a.startswith("--") and a not in declaradas]
+        if faltan:
+            huerfanas.append(f"{inv.identidad} — su parser no declara {faltan}")
+    resultados.append((
+        "0.banderas", not huerfanas,
+        f"las {len(manifiesto.get('guardas', []))} guardas del manifiesto apuntan a scripts que "
+        "existen y a banderas que sus parsers declaran"
+        if not huerfanas else f"{len(huerfanas)} sin respaldo: " + " | ".join(huerfanas[:3])))
+
+    documentadas, negadas, problemas = derivar_invocaciones_documentadas(instrucciones, REPO)
+    scripts = {inv.script for inv in documentadas}
+    resultados.append((
+        "0.derivacion", bool(documentadas) and len(scripts) >= 3 and not problemas,
+        f"la derivación lee {RUTA_INSTRUCCIONES.name} y saca {len(documentadas)} invocaciones "
+        f"documentadas sobre {len(scripts)} scripts, más {len(negadas)} negadas en el texto"
+        if bool(documentadas) and len(scripts) >= 3 and not problemas else
+        f"la derivación devolvió {len(documentadas)} invocaciones y {len(problemas)} problemas: "
+        + (str(problemas[0]) if problemas else "no leyó nada")))
+
+    # El testigo de la familia: si `--autotest-*` dejara de expandir, el conjunto perdería siete
+    # invocaciones **en silencio** y la igualdad con el manifiesto lo diría, pero recién en rojo.
+    familia = sorted(inv.identidad for inv in documentadas
+                     if "--autotest-" in " ".join(inv.argumentos))
+    resultados.append((
+        "0.familia", len(familia) >= 2,
+        f"la familia `--autotest-*` de las instrucciones expandió contra el parser del arnés: "
+        f"{len(familia)} invocaciones"
+        if len(familia) >= 2 else
+        f"la familia no expandió: {familia}"))
+    return resultados, manifiesto, instrucciones
+
+
+def modo_autotest_guardas() -> int:
+    resultados, manifiesto, instrucciones = _preludio_de_guardas()
+    if not all(ok for _, ok, _ in resultados):
+        return _cierre("el runner de guardas y su recibo", resultados)
+
+    casos = _casos_de_guardas(manifiesto)
+
+    # [A] El control positivo, en sus dos formas: el manifiesto real contra las instrucciones
+    # reales, y el mismo par con prosa ajena reescrita. Sin la segunda, un verificador que
+    # rechazara todo texto que no fuera byte a byte el de hoy se llevaría los cuatro mutantes de
+    # instrucciones en verde.
+    conformes = [c for c in casos if c.codigo is None]
+    fallas: list[str] = []
+    for caso in conformes:
+        try:
+            problemas, _ = _correr_caso_de_guardas(caso, manifiesto, instrucciones)
+        except ValueError as e:
+            fallas.append(f"{caso.descripcion} — el mutante no muta: {e}")
+            continue
+        if problemas:
+            fallas.append(f"{caso.descripcion} — {problemas[0]}")
+    resultados.append((
+        "A/guardas", not fallas,
+        f"control positivo: los {len(conformes)} casos conformes pasan; el manifiesto real "
+        "corresponde con las instrucciones reales y el recibo completo cierra la igualdad"
+        if not fallas else "control positivo — " + " | ".join(fallas[:3])))
+
+    # [B] Los mutantes, cada uno rechazado **por su motivo** y nombrando las identidades en juego.
+    # Un booleano no distingue una sustitución de un empate: el que sustituye conservando el total
+    # tiene que nombrar la que falta y la que sobra.
+    mutantes = [c for c in casos if c.codigo is not None]
+    sobrevivientes: list[str] = []
+    desatribuidos: list[str] = []
+    sin_nombrar: list[str] = []
+    emitidos: set[str] = set()
+    for caso in mutantes:
+        try:
+            problemas, _ = _correr_caso_de_guardas(caso, manifiesto, instrucciones)
+        except ValueError as e:
+            sobrevivientes.append(f"{caso.codigo}: {caso.descripcion} — el mutante no muta: {e}")
+            continue
+        codigos = {p.codigo for p in problemas}
+        emitidos |= codigos
+        if not codigos:
+            sobrevivientes.append(f"{caso.codigo}: {caso.descripcion}")
+            continue
+        if caso.codigo not in codigos:
+            desatribuidos.append(f"{caso.codigo}: {caso.descripcion} — rechazado por "
+                                 f"{sorted(codigos)} y no por su motivo")
+            continue
+        texto = " ".join(f"{p.donde} {p.mensaje}" for p in problemas)
+        no_nombradas = [i for i in caso.nombra if i and i not in texto]
+        if no_nombradas:
+            sin_nombrar.append(f"{caso.codigo}: {caso.descripcion} — el diagnóstico no nombra "
+                               f"{no_nombradas}")
+    resultados.append((
+        "B/guardas", not sobrevivientes,
+        f"los {len(mutantes)} mutantes se rechazan: {len(casos) - len(mutantes)} conformes y "
+        f"{len(mutantes)} rojos sobre las tres piezas (manifiesto, recibo e instrucciones)"
+        if not sobrevivientes else "SOBREVIVE " + " | ".join(sobrevivientes[:3])))
+    resultados.append((
+        "C/guardas", not desatribuidos,
+        "cada mutante se rechaza por su propio motivo y no por otro que lo tape"
+        if not desatribuidos else " | ".join(desatribuidos[:3])))
+    resultados.append((
+        "D/guardas", not sin_nombrar,
+        "el diagnóstico nombra cuál falta y cuál sobra en los tres casos de sustitución: un "
+        "booleano no distingue una sustitución de un empate"
+        if not sin_nombrar else " | ".join(sin_nombrar[:3])))
+
+    # [E] La igualdad, en las dos direcciones y sobre el recibo. Es el eje que esta task existe
+    # para cerrar: con `declarado ⊆ ejercido`, el segundo y el tercero pasan.
+    def caso_por(fragmento: str) -> CasoDeGuardas:
+        elegidos = [c for c in mutantes if fragmento in c.descripcion]
+        if len(elegidos) != 1:
+            raise ValueError(f"`{fragmento}` selecciona {len(elegidos)} casos y no uno")
+        return elegidos[0]
+
+    falta = _correr_caso_de_guardas(caso_por("le falta una ejecución declarada"),
+                                    manifiesto, instrucciones)
+    sobra = _correr_caso_de_guardas(caso_por("agrega una ejecución ajena"),
+                                    manifiesto, instrucciones)
+    sustitucion = caso_por("el recibo sustituye una declarada")
+    problemas_sust, resumen_sust = _correr_caso_de_guardas(sustitucion, manifiesto, instrucciones)
+    codigos_sust = {p.codigo for p in problemas_sust}
+    total_igual = (resumen_sust["recibo_ejercidas"] == resumen_sust["recibo_declaradas"])
+    resultados.append((
+        "E1/guardas", {p.codigo for p in falta[0]} == {"guarda_no_ejercida"},
+        "al recibo le falta una declarada y se pone rojo aunque las demás estén verdes"
+        if {p.codigo for p in falta[0]} == {"guarda_no_ejercida"} else
+        f"emitió {sorted({p.codigo for p in falta[0]})}"))
+    resultados.append((
+        "E2/guardas", {p.codigo for p in sobra[0]} == {"ejecucion_ajena"},
+        "al recibo le sobra una ajena y se pone rojo igual: la comparación es una igualdad y no "
+        "una inclusión"
+        if {p.codigo for p in sobra[0]} == {"ejecucion_ajena"} else
+        f"emitió {sorted({p.codigo for p in sobra[0]})}"))
+    resultados.append((
+        "E3/guardas",
+        codigos_sust == {"guarda_no_ejercida", "ejecucion_ajena"} and total_igual,
+        f"y con la sustitución el total sigue en {resumen_sust['recibo_ejercidas']} y salen los dos "
+        "códigos, el de la que falta y el de la que sobra"
+        if codigos_sust == {"guarda_no_ejercida", "ejecucion_ajena"} and total_igual else
+        f"la sustitución emitió {sorted(codigos_sust)} con "
+        f"{resumen_sust['recibo_ejercidas']} ejercidas de {resumen_sust['recibo_declaradas']} "
+        "declaradas"),
+    )
+
+    # [F] Que la derivación lea el texto de verdad. Los cuatro mutantes de instrucciones corren con
+    # el manifiesto **intacto**: si el conjunto estuviera escrito dentro del script, ninguno lo
+    # tocaría y los cuatro pasarían.
+    del_texto = [c for c in mutantes if c.mutar_instrucciones]
+    vivos = []
+    for caso in del_texto:
+        problemas, _ = _correr_caso_de_guardas(caso, manifiesto, instrucciones)
+        if not problemas:
+            vivos.append(caso.descripcion)
+    resultados.append((
+        "F/guardas", not vivos and len(del_texto) >= 4,
+        f"los {len(del_texto)} mutantes de instrucciones corren con el manifiesto intacto y los "
+        f"{len(del_texto)} se ponen rojos: la derivación lee el texto y no una lista escrita acá"
+        if not vivos and len(del_texto) >= 4 else
+        f"{len(vivos)} sobrevivieron con el manifiesto intacto: {vivos[:2]}"))
+
+    # [G] Todo código declarado tiene mutante. Uno sin caso nace sin cobertura y nadie lo nota.
+    sin_caso = sorted(set(CODIGOS_DE_GUARDAS) - emitidos)
+    resultados.append((
+        "G/guardas", not sin_caso,
+        f"los mutantes ejercen los {len(CODIGOS_DE_GUARDAS)} códigos que el modo declara: uno sin "
+        "caso nacería sin cobertura y nadie lo notaría"
+        if not sin_caso else f"{len(sin_caso)} códigos sin mutante: {sin_caso}"))
+    return _cierre("el manifiesto corresponde con las instrucciones en las dos direcciones y el "
+                   "recibo prueba que el conjunto declarado se ejerció entero y nada más",
+                   resultados)
+
+
+# --- Modos `--topologia` y `--descubrimiento` -------------------------------------------------
+#
+# El registro canónico declara **una entrada por artefacto** —ubicación, dueño, el dato del que es
+# sede y si debe estar versionado—. La **regla de descubrimiento** es una fuente distinta: se aplica
+# al árbol candidato y produce un conjunto que se compara contra el del registro **en las dos
+# direcciones**.
+#
+# Las dos direcciones no son simetría decorativa. `descubiertos ⊆ registro` caza el archivo que
+# nació sin entrada; solo la inversa caza la entrada que ninguna regla alcanza, y sin ella el
+# registro acumula ubicaciones canónicas de archivos que ya no existen o que nadie descubre.
+#
+# Y una regla **derivada del registro** vuelve la comparación una tautología: comparar un conjunto
+# consigo mismo no prueba nada. Por eso el modo rechaza la regla que no es más que la lista de rutas
+# del registro transcrita.
+
+RUTA_REGISTRO_ARTEFACTOS = REPO / "scripts" / "artefactos-fase-0.json"
+
+ESTADO_FUENTE = "fuente"
+ESTADO_DERIVADO = "derivado"
+ESTADO_VISTA = "vista"
+ESTADOS_DE_ARTEFACTO = (ESTADO_FUENTE, ESTADO_DERIVADO, ESTADO_VISTA)
+
+# El único tipo de excepción implementado, y el único admisible: lleva **predicado de vigencia**.
+# Una excepción sin predicado es permanente, y una excepción permanente es un agujero con permiso:
+# el artefacto real nace fuera del registro y nadie se entera nunca. El predicado es «la ruta no
+# existe en disco», se evalúa en cada corrida, y cuando la ruta aparece el modo **falla por
+# caducidad** —con ese motivo y no con el genérico de una ruta ausente del registro— en vez de
+# seguir tapándola.
+TIPO_INEXISTENTE = "todavia_inexistente"
+TIPOS_DE_EXCEPCION = (TIPO_INEXISTENTE,)
+
+
+class Artefacto(NamedTuple):
+    path: str
+    owner: str
+    dato: str
+    source_status: str
+    versioned: bool
+
+
+def arbol_candidato_de_git(raiz: Path) -> tuple[list[str], str]:
+    """`git ls-files` − bajas efectivas + altas no ignoradas. Devuelve `(rutas, error)`.
+
+    **`git ls-files` a secas no alcanza y está medido en este repo:** un archivo nuevo sin stage no
+    aparece, y uno borrado del working tree pero aún en el índice sí. El modelo es el que
+    `verificar-retiro-transporte.py` documenta; la diferencia es que allá las altas se filtran
+    contra un manifiesto de rutas declaradas —correcto para un cambio con alcance fijo— y acá se
+    toman de `git status`, porque una lista de altas transcrita queda falsa en cuanto el acto
+    agrega un artefacto más.
+
+    Un árbol vacío es **error y no un conjunto vacío**: sobre cero archivos, «los versionados
+    aparecen» pasa por vacuidad y `git` ausente se leería como conformidad."""
+    def git(*args: str) -> tuple[str, str]:
+        try:
+            r = subprocess.run(["git", *args], cwd=str(raiz), capture_output=True, text=True)
+        except OSError as e:
+            return "", f"no se pudo ejecutar `git {' '.join(args)}` en {raiz}: {e}"
+        if r.returncode != 0:
+            detalle = (r.stderr or r.stdout).strip().splitlines()
+            return "", (f"`git {' '.join(args)}` terminó en {r.returncode} en {raiz}"
+                        + (f" — {detalle[0][:160]}" if detalle else ""))
+        return r.stdout, ""
+
+    salida, error = git("ls-files", "-z")
+    if error:
+        return [], error
+    base = [p for p in salida.split("\0") if p]
+    salida, error = git("status", "--porcelain", "-z", "-uall")
+    if error:
+        return [], error
+    campos = salida.split("\0")
+    altas: set[str] = set()
+    bajas: set[str] = set()
+    i = 0
+    while i < len(campos):
+        entrada = campos[i]
+        i += 1
+        if not entrada or len(entrada) < 4:
+            continue
+        xy, rel = entrada[:2], entrada[3:]
+        if xy[0] in ("R", "C"):
+            origen = campos[i] if i < len(campos) else ""
+            i += 1
+            if origen:
+                bajas.add(origen)
+            altas.add(rel)
+        elif xy == "??":
+            altas.add(rel)
+        elif "D" in xy:
+            bajas.add(rel)
+        elif "A" in xy:
+            altas.add(rel)
+    candidato = sorted((set(base) - bajas) | altas)
+    if not candidato:
+        return [], (f"el árbol candidato quedó vacío en {raiz}: sobre cero archivos «los "
+                    "versionados aparecen en el índice» pasa por vacuidad, así que esto es un "
+                    "error y no un conjunto vacío")
+    return candidato, ""
+
+
+def arbol_de_disco(raiz: Path) -> list[str]:
+    """Todos los archivos bajo `raiz`, en rutas relativas POSIX. Para raíces que no son un repo."""
+    return sorted(p.relative_to(raiz).as_posix()
+                  for p in raiz.rglob("*") if p.is_file())
+
+
+def _es_directorio(unidad: str) -> bool:
+    return unidad.endswith("/")
+
+
+def _en_el_arbol(unidad: str, arbol: set[str]) -> bool:
+    """Un directorio registrado está en el árbol si **algún** archivo cuelga de él; un archivo, si
+    está. Registrar el directorio y no cada archivo es lo que hace que el registro no quede falso en
+    la primera ampliación del corpus."""
+    if _es_directorio(unidad):
+        return any(rel.startswith(unidad) for rel in arbol)
+    return unidad in arbol
+
+
+def _artefactos_de(datos: Any) -> tuple[list[Artefacto], list[Problema]]:
+    """Las entradas bien formadas y los problemas de las que no lo están."""
+    problemas: list[Problema] = []
+    artefactos: list[Artefacto] = []
+    if not isinstance(datos, dict):
+        return [], [Problema("registro_ilegible", "el registro",
+                             f"declara `{_nombre_tipo(datos)}` y no un objeto")]
+    entradas = datos.get("artefactos")
+    if not isinstance(entradas, list) or not entradas:
+        return [], [Problema(
+            "registro_sin_artefactos", "`artefactos`",
+            "el registro no declara ninguna entrada; un registro vacío satisface «cada artefacto "
+            "tiene dueño» por vacuidad")]
+    for i, entrada in enumerate(entradas):
+        donde = f"artefacto {i + 1}"
+        if not isinstance(entrada, dict):
+            problemas.append(Problema("artefacto_mal_formado", donde,
+                                      f"llegó como `{_nombre_tipo(entrada)}`"))
+            continue
+        path = _texto_o_vacio(entrada.get("path"))
+        donde = f"artefacto `{path or i + 1}`"
+        if not path:
+            problemas.append(Problema("artefacto_sin_path", donde,
+                                      "no declara su ubicación canónica"))
+            continue
+        if path.startswith("/") or ".." in path.split("/"):
+            problemas.append(Problema("path_no_canonico", donde,
+                                      "la ubicación no es una ruta relativa normalizada desde la "
+                                      "raíz del árbol"))
+        owner = entrada.get("owner")
+        if isinstance(owner, list):
+            problemas.append(Problema(
+                "artefacto_con_dos_duenos", donde,
+                f"declara {len(owner)} dueños ({owner}) y el criterio es dueño **único**: con dos, "
+                "ninguno responde"))
+            owner = ""
+        elif not _texto_o_vacio(owner):
+            problemas.append(Problema("artefacto_sin_owner", donde, "no declara su dueño"))
+            owner = ""
+        else:
+            owner = _texto_o_vacio(owner)
+        dato = _texto_o_vacio(entrada.get("dato"))
+        if not dato:
+            problemas.append(Problema(
+                "artefacto_sin_dato", donde,
+                "no declara de qué dato es sede; sin eso, «ningún dato está declarado en dos "
+                "lugares como fuente» no es comprobable: `source_status` dice el rol y no de qué"))
+        estado = _texto_o_vacio(entrada.get("source_status"))
+        if estado not in ESTADOS_DE_ARTEFACTO:
+            problemas.append(Problema(
+                "estado_desconocido", donde,
+                f"declara `{estado or '(vacío)'}` y los estados implementados son "
+                f"{', '.join('`' + e + '`' for e in ESTADOS_DE_ARTEFACTO)}"))
+        versioned = entrada.get("versioned")
+        if not isinstance(versioned, bool):
+            problemas.append(Problema(
+                "versioned_no_booleano", donde,
+                f"declara `{_nombre_tipo(versioned)}` y la indexación es una decisión binaria; sin "
+                "booleano no hay nada que cotejar contra el árbol"))
+            versioned = False
+        artefactos.append(Artefacto(path, owner, dato, estado, versioned))
+    return artefactos, problemas
+
+
+def verificar_topologia(datos: Any, arbol: list[str]) -> tuple[list[Problema], dict]:
+    """Dueño único, fuente única por dato, e indexación **en las dos direcciones**.
+
+    La segunda dirección —los `versioned: false` **fuera** del árbol— no es simetría de adorno: sin
+    ella, marcar `false` sería la forma barata de que un artefacto versionado deje de comprobarse."""
+    artefactos, problemas = _artefactos_de(datos)
+    resumen = {"artefactos": len(artefactos), "duenos": 0, "fuentes": 0,
+               "versionados": 0, "fuera_del_indice": [], "en_el_indice_sin_deber": []}
+    if not artefactos:
+        return problemas, resumen
+
+    en_arbol = set(arbol)
+    por_path: dict[str, list[Artefacto]] = {}
+    for a in artefactos:
+        por_path.setdefault(a.path, []).append(a)
+    for path, entradas in sorted(por_path.items()):
+        if len(entradas) == 1:
+            continue
+        duenos = sorted({a.owner for a in entradas if a.owner})
+        if len(duenos) > 1:
+            problemas.append(Problema(
+                "artefacto_con_dos_duenos", f"artefacto `{path}`",
+                f"lo reclaman {len(entradas)} entradas con dueños distintos ({', '.join(duenos)}) "
+                "y el criterio es dueño único"))
+        else:
+            problemas.append(Problema(
+                "artefacto_duplicado", f"artefacto `{path}`",
+                f"{len(entradas)} entradas declaran la misma ubicación canónica"))
+
+    por_dato: dict[str, list[Artefacto]] = {}
+    for a in artefactos:
+        if a.dato and a.source_status == ESTADO_FUENTE:
+            por_dato.setdefault(a.dato, []).append(a)
+    for dato, entradas in sorted(por_dato.items()):
+        rutas = sorted({a.path for a in entradas})
+        if len(rutas) > 1:
+            problemas.append(Problema(
+                "dato_con_dos_fuentes", f"dato `{dato}`",
+                f"está declarado como fuente en {len(rutas)} rutas ({', '.join(rutas)}): dos sedes "
+                "del mismo dato divergen y ninguna de las dos manda"))
+    resumen["fuentes"] = len(por_dato)
+    resumen["duenos"] = len({a.owner for a in artefactos if a.owner})
+
+    for a in artefactos:
+        if a.versioned:
+            resumen["versionados"] += 1
+            if not _en_el_arbol(a.path, en_arbol):
+                resumen["fuera_del_indice"].append(a.path)
+                problemas.append(Problema(
+                    "versionado_fuera_del_indice", f"artefacto `{a.path}`",
+                    "se declara versionado y no aparece en el árbol candidato: lo que no está "
+                    "indexado no se commitea, y la guarda de ausencia ni siquiera lo mira"))
+        elif _en_el_arbol(a.path, en_arbol):
+            resumen["en_el_indice_sin_deber"].append(a.path)
+            problemas.append(Problema(
+                "no_versionado_en_el_indice", f"artefacto `{a.path}`",
+                "se declara **no** versionado y está en el árbol candidato: o la declaración miente "
+                "o el archivo se va a commitear sin que nadie lo haya decidido"))
+    return problemas, resumen
+
+
+def descubrir(directorios: list[str], patrones: list[str], arbol: list[str]) -> set[str]:
+    """La regla aplicada al árbol: a cada archivo, el directorio registrado **más largo** que lo
+    prefije; si no hay ninguno, los patrones.
+
+    El «más largo» es lo que permite que un corpus tenga sub-corpus con dueños distintos sin que un
+    archivo cuente dos veces."""
+    unidades: set[str] = set()
+    for rel in arbol:
+        prefijos = [d for d in directorios if rel.startswith(d)]
+        if prefijos:
+            unidades.add(max(prefijos, key=len))
+            continue
+        if any(fnmatch.fnmatch(rel, p) for p in patrones):
+            unidades.add(rel)
+    return unidades
+
+
+def verificar_descubrimiento(datos: Any, arbol: list[str],
+                             raiz: Path) -> tuple[list[Problema], dict]:
+    """La regla contra el registro, en las dos direcciones, con las excepciones y su vigencia."""
+    artefactos, problemas = _artefactos_de(datos)
+    resumen = {"descubiertos": 0, "registrados": len(artefactos), "excepciones": 0,
+               "sin_entrada": [], "sin_descubrir": [], "caducas": []}
+    regla = datos.get("regla_de_descubrimiento") if isinstance(datos, dict) else None
+    if not isinstance(regla, dict):
+        problemas.append(Problema(
+            "regla_ausente", "`regla_de_descubrimiento`",
+            "el registro no declara la regla; sin una segunda fuente no hay dos conjuntos que "
+            "comparar y la completitud quedaría comprobada contra sí misma"))
+        return problemas, resumen
+
+    directorios = [d for d in regla.get("directorios", []) if isinstance(d, str) and d]
+    patrones = [p for p in regla.get("patrones", []) if isinstance(p, str) and p]
+    for d in directorios:
+        if not _es_directorio(d):
+            problemas.append(Problema("directorio_sin_barra", f"`{d}`",
+                                      "un directorio de la regla tiene que terminar en `/`, o su "
+                                      "prefijo alcanzaría a hermanos con el mismo comienzo"))
+    if not directorios and not patrones:
+        problemas.append(Problema("regla_vacia", "`regla_de_descubrimiento`",
+                                  "no declara ni directorios ni patrones: descubre el conjunto "
+                                  "vacío y la comparación pasa por vacuidad"))
+
+    rutas_del_registro = {a.path for a in artefactos}
+    if rutas_del_registro and set(directorios) | set(patrones) == rutas_del_registro:
+        problemas.append(Problema(
+            "regla_derivada_del_registro", "`regla_de_descubrimiento`",
+            "sus directorios y patrones son exactamente las rutas del registro transcritas: así no "
+            "es una fuente distinta sino una segunda vista de la misma, y comparar los dos "
+            "conjuntos no prueba nada"))
+
+    excepciones = regla.get("excepciones")
+    if not isinstance(excepciones, list):
+        excepciones = []
+    exceptuadas: set[str] = set()
+    for i, entrada in enumerate(excepciones):
+        donde = f"excepción {i + 1}"
+        if not isinstance(entrada, dict):
+            problemas.append(Problema("excepcion_mal_formada", donde,
+                                      f"llegó como `{_nombre_tipo(entrada)}`"))
+            continue
+        path = _texto_o_vacio(entrada.get("path"))
+        donde = f"excepción `{path or i + 1}`"
+        if not path:
+            problemas.append(Problema("excepcion_sin_path", donde, "no dice qué ruta exceptúa"))
+            continue
+        resumen["excepciones"] += 1
+        exceptuadas.add(path)
+        if not _texto_o_vacio(entrada.get("motivo")):
+            problemas.append(Problema("excepcion_sin_motivo", donde,
+                                      "no declara por qué se exceptúa; una excepción sin motivo es "
+                                      "un agujero con permiso"))
+        tipo = _texto_o_vacio(entrada.get("tipo"))
+        if tipo not in TIPOS_DE_EXCEPCION:
+            problemas.append(Problema(
+                "excepcion_de_tipo_desconocido", donde,
+                f"declara `{tipo or '(vacío)'}` y el único tipo implementado es "
+                f"`{TIPO_INEXISTENTE}`, que es el único que lleva predicado de vigencia; una "
+                "excepción sin predicado no caduca nunca"))
+            continue
+        if path in rutas_del_registro:
+            problemas.append(Problema(
+                "excepcion_ya_registrada", donde,
+                "el registro ya le dio entrada y la excepción sigue declarada: una de las dos "
+                "sobra, y mientras las dos convivan el descubrimiento la sigue tapando"))
+        # El predicado de vigencia. Se evalúa **en cada corrida** y contra el disco, no contra el
+        # árbol candidato: un archivo que aparece sin indexar es exactamente el caso que la
+        # excepción tapaba.
+        if (raiz / path).exists():
+            resumen["caducas"].append(path)
+            problemas.append(Problema(
+                "excepcion_caduca", donde,
+                f"la excepción dice «{TIPO_INEXISTENTE}» y `{path}` ya existe en disco: el "
+                "predicado de vigencia dejó de valer, así que la ruta necesita entrada propia en "
+                "el registro y la excepción, retiro. Esto **no** es «archivo ausente del "
+                "registro»: es la excepción que caducó"))
+
+    descubiertos = descubrir(directorios, patrones, arbol) - exceptuadas
+    resumen["descubiertos"] = len(descubiertos)
+    sin_entrada = sorted(descubiertos - rutas_del_registro)
+    sin_descubrir = sorted(rutas_del_registro - descubiertos - exceptuadas)
+    resumen["sin_entrada"] = sin_entrada
+    resumen["sin_descubrir"] = sin_descubrir
+    for path in sin_entrada:
+        problemas.append(Problema(
+            "archivo_sin_entrada_en_el_registro", f"`{path}`",
+            "la regla lo descubre en el árbol y el registro no le declara dueño ni ubicación "
+            "canónica"))
+    for path in sin_descubrir:
+        problemas.append(Problema(
+            "entrada_que_la_regla_no_descubre", f"`{path}`",
+            "el registro la declara y ninguna regla la alcanza: sin esta dirección el registro "
+            "acumula entradas que nada vuelve a mirar"))
+    return problemas, resumen
+
+
+def modo_topologia(ruta: Path, raiz: Path) -> int:
+    datos, error = _cargar_json(ruta)
+    if error:
+        print(f"FALLA  topologia: {error}")
+        return 1
+    arbol, error = arbol_candidato_de_git(raiz)
+    if error:
+        print(f"FALLA  topologia: {error}")
+        return 1
+    problemas, resumen = verificar_topologia(datos, arbol)
+    if problemas:
+        _informar(problemas, f"{ruta.name} contra el árbol candidato ({len(arbol)} archivos)")
+        return 1
+    print(f"OK     {ruta.name}: los {resumen['artefactos']} artefactos tienen ubicación canónica y "
+          f"dueño único ({resumen['duenos']} dueños)")
+    print(f"OK     los {resumen['fuentes']} datos con sede declarada tienen una sola: ninguno está "
+          "declarado como fuente en dos rutas")
+    print(f"OK     los {resumen['versionados']} versionados están en el árbol candidato "
+          f"({len(arbol)} archivos) y ninguno de los no versionados aparece")
+    print()
+    print("RESULTADO: OK")
+    return 0
+
+
+def modo_descubrimiento(ruta: Path, raiz: Path) -> int:
+    datos, error = _cargar_json(ruta)
+    if error:
+        print(f"FALLA  descubrimiento: {error}")
+        return 1
+    arbol, error = arbol_candidato_de_git(raiz)
+    if error:
+        print(f"FALLA  descubrimiento: {error}")
+        return 1
+    problemas, resumen = verificar_descubrimiento(datos, arbol, raiz)
+    if problemas:
+        _informar(problemas, f"la regla de descubrimiento de {ruta.name} contra su registro")
+        return 1
+    print(f"OK     la regla descubre {resumen['descubiertos']} unidades en el árbol candidato y el "
+          f"registro declara {resumen['registrados']}: los dos conjuntos coinciden en las dos "
+          "direcciones")
+    print(f"OK     las {resumen['excepciones']} excepciones siguen vigentes: ninguna de sus rutas "
+          "existe todavía en disco")
+    print()
+    print("RESULTADO: OK")
+    return 0
+
+
+# --- Modo `--integracion` ----------------------------------------------------------------------
+#
+# AC-25: la integración del verificador nuevo en las instrucciones del repositorio tiene que estar
+# **declarada** —si es script propio, cuándo corre, con qué comando, con qué código de salida se
+# considera sano— y, si esa integración altera un baseline acoplado al contenido de un archivo, ese
+# baseline tiene que quedar renovado. La versión anterior de esta fila comprobaba con un `grep` que
+# el texto existiera; un texto presente y falso pasaba. Este modo no lee el texto como promesa: lo
+# lee como afirmación y la contrasta contra el árbol real —el `--help` del propio script, no lo que
+# las instrucciones dicen que declara— y contra la validación real del baseline, sin escribir nada.
+
+CODIGO_SANO_INTEGRACION = 0
+
+# Los cuatro scripts que las instrucciones ya documentaban antes de este disparador: si la unidad
+# declarara alguno de estos como "propio", estaría mintiendo —ya son de un verificador existente.
+SCRIPTS_EXISTENTES_ANTES_DE_INTEGRACION = (
+    "scripts/verificar-vistas-config.py",
+    "scripts/verificar-sobre-en-vuelo.py",
+    "scripts/verificar-retiro-transporte.py",
+    "scripts/verificar-paridad-powershell.py",
+)
+
+PATRON_CODIGO_SANO_INTEGRACION = re.compile(r"c[oó]digo de salida sano[^\d]{0,80}(\d+)")
+
+
+def modo_integracion(ruta_instrucciones: Path, raiz: Path) -> int:
+    problemas: list[Problema] = []
+    try:
+        texto = ruta_instrucciones.read_text(encoding="utf-8")
+    except OSError as e:
+        print(f"FALLA  integracion: no se pudo leer {ruta_instrucciones}: {e}")
+        return 1
+
+    unidad = next((u for u in unidades_de_guarda(texto)
+                    if "scripts/verificar-matriz-despachos.py" in u), None)
+    if unidad is None:
+        _informar([Problema(
+            "disparador_ausente", str(ruta_instrucciones),
+            "ninguna unidad de las instrucciones documenta `scripts/verificar-matriz-despachos.py`: "
+            "el verificador nuevo no tiene disparador")], "integración declarada")
+        return 1
+
+    # El comando completo que la unidad documenta para este script, el primero que aparece.
+    _, spans = _enmascarar(unidad)
+    script_declarado = ""
+    argumentos_declarados: tuple[str, ...] = ()
+    for span in spans:
+        m = PATRON_COMANDO.match(span)
+        if m and m.group(1) == "scripts/verificar-matriz-despachos.py":
+            script_declarado = m.group(1)
+            argumentos_declarados = tuple(m.group(2).split())
+            break
+
+    if script_declarado != "scripts/verificar-matriz-despachos.py":
+        problemas.append(Problema(
+            "comando_no_documentado", "la unidad",
+            "no documenta un comando completo `python3 scripts/verificar-matriz-despachos.py "
+            "<bandera>`"))
+    elif argumentos_declarados != ("--integracion",):
+        problemas.append(Problema(
+            "comando_distinto_del_esperado",
+            f"`{' '.join(argumentos_declarados) or '(sin banderas)'}`",
+            "el comando documentado no es exactamente `--integracion`, el modo que este disparador "
+            "describe"))
+
+    if "script propio del repo" not in unidad:
+        problemas.append(Problema(
+            "no_declara_naturaleza", "la unidad",
+            "no declara si el verificador es un script propio del repo o un modo de uno existente"))
+    elif script_declarado in SCRIPTS_EXISTENTES_ANTES_DE_INTEGRACION:
+        problemas.append(Problema(
+            "no_es_script_propio", script_declarado,
+            "el script declarado ya es uno de los cuatro documentados antes de este disparador: no "
+            "es propio"))
+
+    if not re.search(r"(?i)si la skill toca", unidad):
+        problemas.append(Problema(
+            "sin_condicion_de_disparo", "la unidad",
+            "no declara cuándo debe ejecutarse (falta la condición «si la skill toca…»)"))
+
+    m_codigo = PATRON_CODIGO_SANO_INTEGRACION.search(unidad)
+    if m_codigo is None:
+        problemas.append(Problema(
+            "codigo_sano_no_declarado", "la unidad",
+            "no declara con qué código de salida se considera sana esta invocación"))
+    else:
+        declarado = int(m_codigo.group(1))
+        if declarado != CODIGO_SANO_INTEGRACION:
+            problemas.append(Problema(
+                "codigo_sano_no_coincide", f"declara {declarado}",
+                "el código de salida que este modo devuelve en verde es "
+                f"{CODIGO_SANO_INTEGRACION}, no el que el texto declara"))
+
+    # El comando documentado tiene que existir y ser invocable: se comprueba contra el `--help` real
+    # del script, no contra el texto de las instrucciones, que puede documentar una bandera que el
+    # parser nunca declaró.
+    ruta_script = raiz / "scripts" / "verificar-matriz-despachos.py"
+    if not ruta_script.is_file():
+        problemas.append(Problema(
+            "script_ausente", str(ruta_script),
+            "el script que la unidad documenta no existe en el árbol"))
+    else:
+        try:
+            resultado = subprocess.run(
+                [sys.executable, str(ruta_script), "--help"],
+                capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            problemas.append(Problema("comando_no_invocable", "--help", f"no se pudo invocar: {e}"))
+        else:
+            if resultado.returncode != 0 or "--integracion" not in resultado.stdout:
+                problemas.append(Problema(
+                    "comando_no_invocable", "--integracion",
+                    "la bandera documentada no aparece en el `--help` real del script, o el "
+                    f"`--help` terminó con código {resultado.returncode}"))
+
+    # El baseline acoplado al contenido de un archivo: si esta fase alteró algo que lo acopla, tiene
+    # que quedar renovado. No se asume: se corre la validación real, sin escribir nada.
+    ruta_sobre_en_vuelo = raiz / "scripts" / "verificar-sobre-en-vuelo.py"
+    if not ruta_sobre_en_vuelo.is_file():
+        problemas.append(Problema(
+            "verificador_de_baseline_ausente", str(ruta_sobre_en_vuelo),
+            "no se pudo comprobar el baseline: el verificador que lo valida no está en el árbol"))
+    else:
+        try:
+            resultado = subprocess.run(
+                [sys.executable, str(ruta_sobre_en_vuelo), "--validar-baseline"],
+                capture_output=True, text=True, cwd=str(raiz), timeout=60)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            problemas.append(Problema(
+                "baseline_no_comprobable", "--validar-baseline", f"no se pudo invocar: {e}"))
+        else:
+            if resultado.returncode != 0:
+                problemas.append(Problema(
+                    "baseline_no_renovado", "scripts/baseline-sobre-en-vuelo.md",
+                    "el baseline acoplado al contenido no está renovado: `--validar-baseline` "
+                    f"terminó con código {resultado.returncode}"))
+
+    if problemas:
+        _informar(problemas, "integración declarada del verificador nuevo")
+        return 1
+
+    print(f"OK     `python3 {script_declarado} {' '.join(argumentos_declarados)}` está documentado, "
+          "es invocable y su código de salida sano coincide con el declarado")
+    print("OK     el baseline acoplado al contenido —scripts/baseline-sobre-en-vuelo.md— está "
+          "renovado")
+    print()
+    print("RESULTADO: OK")
+    return CODIGO_SANO_INTEGRACION
+
+
+# --- Autotests de `--topologia` y de la caducidad ---------------------------------------------
+#
+# **Ninguno escribe en el árbol.** El de topología muta el registro y el **árbol candidato** en
+# memoria; el de caducidad necesita disco —su predicado es la existencia de una ruta— y por eso
+# monta una raíz sintética en un directorio temporal, que borra al terminar.
+#
+# El caso conforme no es un adorno: sin él, un verificador que rechace todo registro satisface los
+# mutantes y cierra en verde sin haber aceptado jamás una topología sana. Y el verde del autotest de
+# caducidad no lo cubre, porque es otro modo con otro registro.
+
+CODIGOS_DE_TOPOLOGIA = (
+    "registro_sin_artefactos", "artefacto_mal_formado", "artefacto_sin_path", "path_no_canonico",
+    "artefacto_con_dos_duenos", "artefacto_duplicado", "artefacto_sin_owner", "artefacto_sin_dato",
+    "estado_desconocido", "versioned_no_booleano", "dato_con_dos_fuentes",
+    "versionado_fuera_del_indice", "no_versionado_en_el_indice",
+    "regla_ausente", "regla_vacia", "regla_derivada_del_registro", "directorio_sin_barra",
+    "excepcion_mal_formada", "excepcion_sin_path", "excepcion_sin_motivo",
+    "excepcion_de_tipo_desconocido", "excepcion_ya_registrada",
+    "archivo_sin_entrada_en_el_registro", "entrada_que_la_regla_no_descubre",
+)
+
+# Una ruta del árbol candidato que ninguna regla de este acto alcanza: sirve de entrada exclusiva
+# del registro. Se elige del dato —del propio árbol— y no se escribe fija más que acá, donde el
+# preludio comprueba que sigue existiendo y sin descubrir.
+RUTA_AJENA_AL_ACTO = "scripts/verificar-vistas-config.py"
+RUTA_INVENTADA = "scripts/inventado-fase-0.json"
+
+
+class CasoDeTopologia(NamedTuple):
+    codigo: str | None
+    descripcion: str
+    mutar_registro: Any = None     # (datos) -> datos
+    mutar_arbol: Any = None        # (lista) -> lista
+    nombra: tuple[str, ...] = ()
+
+
+def _sin_ruta(arbol: list[str], path: str) -> list[str]:
+    if _es_directorio(path):
+        return [r for r in arbol if not r.startswith(path)]
+    if path not in arbol:
+        raise ValueError(f"`{path}` no está en el árbol candidato y el mutante espera quitarlo")
+    return [r for r in arbol if r != path]
+
+
+def _con_ruta(arbol: list[str], path: str) -> list[str]:
+    if path in arbol:
+        raise ValueError(f"`{path}` ya está en el árbol candidato y el mutante espera agregarlo")
+    return sorted(arbol + [path])
+
+
+def _entrada_testigo(datos: dict) -> dict:
+    """Una entrada real del registro que sea un **archivo** y esté versionada."""
+    for entrada in datos.get("artefactos", []):
+        if isinstance(entrada, dict) and entrada.get("versioned") is True \
+                and not _es_directorio(_texto_o_vacio(entrada.get("path"))):
+            return entrada
+    raise ValueError("el registro no trae ninguna entrada versionada de archivo")
+
+
+def _casos_de_topologia(datos: dict) -> tuple[CasoDeTopologia, ...]:
+    testigo = _texto_o_vacio(_entrada_testigo(datos).get("path"))
+
+    def duplicar_con_otro_dueno(d: dict) -> dict:
+        clon = copy.deepcopy(_entrada_testigo(d))
+        clon["owner"] = clon["owner"] + "-bis"
+        clon["dato"] = clon["dato"] + "-bis"
+        d["artefactos"].append(clon)
+        return d
+
+    def entrada_exclusiva(d: dict) -> dict:
+        d["artefactos"].append({
+            "path": RUTA_AJENA_AL_ACTO, "owner": "otro-dominio",
+            "dato": "verificador-de-vistas-de-configuracion",
+            "source_status": ESTADO_FUENTE, "versioned": True})
+        return d
+
+    def regla_copiada(d: dict) -> dict:
+        d["regla_de_descubrimiento"] = {
+            "directorios": [], "patrones": sorted(_texto_o_vacio(e.get("path"))
+                                                  for e in d["artefactos"]),
+            "excepciones": []}
+        return d
+
+    def excepcion(d: dict, **campos: Any) -> dict:
+        d["regla_de_descubrimiento"]["excepciones"][0].update(campos)
+        return d
+
+    return (
+        # [conforme] El registro real contra el árbol candidato real.
+        CasoDeTopologia(None, "el registro real contra el árbol candidato real: dueños, fuentes, "
+                              "indexación y los dos conjuntos del descubrimiento"),
+
+        # Los seis que la tarea enumera.
+        CasoDeTopologia("artefacto_con_dos_duenos",
+                        "dos entradas reclaman el mismo artefacto con dueños distintos",
+                        mutar_registro=duplicar_con_otro_dueno, nombra=(testigo,)),
+        CasoDeTopologia("dato_con_dos_fuentes",
+                        "el mismo dato queda declarado como fuente en dos rutas",
+                        mutar_registro=lambda d: (d["artefactos"][1].update(
+                            {"dato": d["artefactos"][0]["dato"],
+                             "source_status": ESTADO_FUENTE}) or d),
+                        nombra=(_texto_o_vacio(datos["artefactos"][0].get("path")),)),
+        CasoDeTopologia("versionado_fuera_del_indice",
+                        "un artefacto versionable desaparece del árbol candidato",
+                        mutar_arbol=lambda a: _sin_ruta(a, testigo), nombra=(testigo,)),
+        CasoDeTopologia("no_versionado_en_el_indice",
+                        "un artefacto que está en el árbol se declara no versionado: la dirección "
+                        "inversa, sin la cual marcar `false` sería la forma barata de no comprobar "
+                        "nada",
+                        mutar_registro=lambda d: (_entrada_testigo(d).update(
+                            {"versioned": False}) or d),
+                        nombra=(testigo,)),
+        CasoDeTopologia("archivo_sin_entrada_en_el_registro",
+                        "un archivo del árbol que la regla descubre y el registro no declara",
+                        mutar_arbol=lambda a: _con_ruta(a, RUTA_INVENTADA),
+                        nombra=(RUTA_INVENTADA,)),
+        CasoDeTopologia("regla_derivada_del_registro",
+                        "la regla es la lista de rutas del registro transcrita: comparar un "
+                        "conjunto consigo mismo no prueba nada",
+                        mutar_registro=regla_copiada),
+        CasoDeTopologia("entrada_que_la_regla_no_descubre",
+                        "una entrada exclusiva del registro —con dueño, fuente e indexación "
+                        "válidos— que ninguna regla alcanza",
+                        mutar_registro=entrada_exclusiva, nombra=(RUTA_AJENA_AL_ACTO,)),
+
+        # El registro mal formado: la otra manera de que la topología no signifique nada.
+        CasoDeTopologia("registro_sin_artefactos", "el registro se queda sin entradas",
+                        mutar_registro=lambda d: (d.update({"artefactos": []}) or d)),
+        CasoDeTopologia("artefacto_mal_formado", "una entrada no es un objeto",
+                        mutar_registro=lambda d: (d["artefactos"].append("scripts/x.json") or d)),
+        CasoDeTopologia("artefacto_sin_path", "una entrada no declara su ubicación canónica",
+                        mutar_registro=lambda d: _sin_clave(_entrada_testigo(d), "path", d)),
+        CasoDeTopologia("path_no_canonico", "una ubicación sale del árbol con `..`",
+                        mutar_registro=lambda d: (_entrada_testigo(d).update(
+                            {"path": "scripts/../scripts/matriz-despachos.json"}) or d)),
+        CasoDeTopologia("artefacto_sin_owner", "una entrada no declara dueño",
+                        mutar_registro=lambda d: _sin_clave(_entrada_testigo(d), "owner", d)),
+        CasoDeTopologia("artefacto_con_dos_duenos",
+                        "una sola entrada declara dos dueños en una lista",
+                        mutar_registro=lambda d: (_entrada_testigo(d).update(
+                            {"owner": ["uno", "otro"]}) or d)),
+        CasoDeTopologia("artefacto_sin_dato", "una entrada no declara de qué dato es sede",
+                        mutar_registro=lambda d: _sin_clave(_entrada_testigo(d), "dato", d)),
+        CasoDeTopologia("estado_desconocido", "una entrada declara un `source_status` sin "
+                                              "implementación",
+                        mutar_registro=lambda d: (_entrada_testigo(d).update(
+                            {"source_status": "a-medias"}) or d)),
+        CasoDeTopologia("versioned_no_booleano", "la indexación deja de ser una decisión binaria",
+                        mutar_registro=lambda d: (_entrada_testigo(d).update(
+                            {"versioned": "si"}) or d)),
+        CasoDeTopologia("artefacto_duplicado", "dos entradas declaran la misma ubicación con el "
+                                               "mismo dueño",
+                        mutar_registro=lambda d: (d["artefactos"].append(
+                            copy.deepcopy(_entrada_testigo(d))) or d),
+                        nombra=(testigo,)),
+
+        # La regla y sus excepciones.
+        CasoDeTopologia("regla_ausente", "el registro se queda sin regla de descubrimiento",
+                        mutar_registro=lambda d: _sin_clave(d, "regla_de_descubrimiento", d)),
+        CasoDeTopologia("regla_vacia", "la regla no declara ni directorios ni patrones",
+                        mutar_registro=lambda d: (d["regla_de_descubrimiento"].update(
+                            {"directorios": [], "patrones": []}) or d)),
+        CasoDeTopologia("directorio_sin_barra", "un directorio de la regla pierde su `/` final",
+                        mutar_registro=lambda d: (d["regla_de_descubrimiento"]["directorios"].append(
+                            "scripts/fixtures") or d)),
+        CasoDeTopologia("excepcion_mal_formada", "una excepción no es un objeto",
+                        mutar_registro=lambda d: (
+                            d["regla_de_descubrimiento"]["excepciones"].append("scripts/x.py")
+                            or d)),
+        CasoDeTopologia("excepcion_sin_path", "una excepción no dice qué ruta exceptúa",
+                        mutar_registro=lambda d: _sin_clave(
+                            d["regla_de_descubrimiento"]["excepciones"][0], "path", d)),
+        CasoDeTopologia("excepcion_sin_motivo", "una excepción no declara su motivo",
+                        mutar_registro=lambda d: _sin_clave(
+                            d["regla_de_descubrimiento"]["excepciones"][0], "motivo", d)),
+        CasoDeTopologia("excepcion_de_tipo_desconocido",
+                        "una excepción declara un tipo sin predicado de vigencia: sin predicado no "
+                        "caduca nunca",
+                        mutar_registro=lambda d: excepcion(d, tipo="permanente")),
+        CasoDeTopologia("excepcion_ya_registrada",
+                        "una ruta queda exceptuada y registrada a la vez",
+                        mutar_registro=lambda d: excepcion(
+                            d, path=_texto_o_vacio(_entrada_testigo(d).get("path"))),
+                        nombra=(testigo,)),
+    )
+
+
+def _correr_caso_de_topologia(caso: CasoDeTopologia, datos: dict,
+                              arbol: list[str]) -> tuple[list[Problema], dict]:
+    registro = copy.deepcopy(datos)
+    if caso.mutar_registro:
+        registro = caso.mutar_registro(registro)
+    candidato = list(arbol)
+    if caso.mutar_arbol:
+        candidato = caso.mutar_arbol(candidato)
+    problemas, resumen = verificar_topologia(registro, candidato)
+    del_descubrimiento, resumen_desc = verificar_descubrimiento(registro, candidato, REPO)
+    resumen = dict(resumen, **{f"desc_{k}": v for k, v in resumen_desc.items()})
+    return problemas + del_descubrimiento, resumen
+
+
+def _preludio_de_topologia() -> tuple[list[tuple[str, bool, str]], dict, list[str]]:
+    """Lo que tiene que valer antes de correr un caso: que el registro esté, que el árbol candidato
+    se construya de verdad, y que las dos rutas testigo estén donde el mutante las supone.
+
+    La segunda no es paranoia: si `git` fallara y el árbol llegara vacío, «los versionados aparecen»
+    pasaría por vacuidad y el conforme cerraría en verde sin haber mirado nada."""
+    datos, error = _cargar_json(RUTA_REGISTRO_ARTEFACTOS)
+    if error:
+        return [("0.registro", False, error)], {}, []
+    arbol, error = arbol_candidato_de_git(REPO)
+    if error:
+        return [("0.arbol", False, error)], {}, []
+
+    resultados: list[tuple[str, bool, str]] = []
+    resultados.append((
+        "0.arbol", len(arbol) > 100,
+        f"el árbol candidato se construyó de git y trae {len(arbol)} archivos: sobre un árbol vacío "
+        "el criterio de indexación pasaría por vacuidad"
+        if len(arbol) > 100 else f"el árbol candidato trae {len(arbol)} archivos"))
+
+    regla = datos.get("regla_de_descubrimiento", {})
+    directorios = regla.get("directorios", [])
+    patrones = regla.get("patrones", [])
+    descubiertos = descubrir(directorios, patrones, arbol)
+    resultados.append((
+        "0.regla", len(descubiertos) >= 5,
+        f"la regla se aplica al árbol y descubre {len(descubiertos)} unidades sobre "
+        f"{len(directorios)} directorios y {len(patrones)} patrones"
+        if len(descubiertos) >= 5 else f"la regla descubrió {sorted(descubiertos)}"))
+
+    # Las dos rutas testigo: una tiene que estar en el árbol y **sin descubrir** (la entrada
+    # exclusiva del registro), y la otra no puede estar (el archivo inventado). Un mutante que no
+    # muta da un verde que parece cobertura.
+    ajena_ok = RUTA_AJENA_AL_ACTO in arbol and RUTA_AJENA_AL_ACTO not in descubiertos
+    resultados.append((
+        "0.ajena", ajena_ok,
+        f"`{RUTA_AJENA_AL_ACTO}` está en el árbol y ninguna regla la descubre: sirve de entrada "
+        "exclusiva del registro"
+        if ajena_ok else
+        f"`{RUTA_AJENA_AL_ACTO}` — en el árbol: {RUTA_AJENA_AL_ACTO in arbol}; descubierta: "
+        f"{RUTA_AJENA_AL_ACTO in descubiertos}"))
+    inventada_ok = (RUTA_INVENTADA not in arbol
+                    and any(fnmatch.fnmatch(RUTA_INVENTADA, p) for p in patrones))
+    resultados.append((
+        "0.inventada", inventada_ok,
+        f"`{RUTA_INVENTADA}` no está en el árbol y algún patrón la alcanzaría: el mutante del "
+        "archivo sin entrada muta de verdad"
+        if inventada_ok else f"`{RUTA_INVENTADA}` no sirve de testigo"))
+
+    excepciones = regla.get("excepciones", [])
+    vigentes = [e for e in excepciones
+                if isinstance(e, dict) and not (REPO / _texto_o_vacio(e.get("path"))).exists()]
+    resultados.append((
+        "0.excepciones", len(excepciones) > 0 and len(vigentes) == len(excepciones),
+        f"las {len(excepciones)} excepciones declaradas siguen vigentes: ninguna de sus rutas "
+        "existe en disco"
+        if excepciones and len(vigentes) == len(excepciones) else
+        f"{len(excepciones) - len(vigentes)} de {len(excepciones)} excepciones ya caducaron"))
+    return resultados, datos, arbol
+
+
+def modo_autotest_topologia() -> int:
+    resultados, datos, arbol = _preludio_de_topologia()
+    if not all(ok for _, ok, _ in resultados):
+        return _cierre("el registro canónico, su regla y la topología", resultados)
+
+    casos = _casos_de_topologia(datos)
+
+    # [A] El control positivo. El registro real, el árbol real y la regla real tienen que cerrar sin
+    # un solo problema; sin esta parte, un verificador que rechace todo satisface los mutantes.
+    conformes = [c for c in casos if c.codigo is None]
+    fallas: list[str] = []
+    for caso in conformes:
+        try:
+            problemas, _ = _correr_caso_de_topologia(caso, datos, arbol)
+        except ValueError as e:
+            fallas.append(f"{caso.descripcion} — el caso no se pudo construir: {e}")
+            continue
+        if problemas:
+            fallas.append(f"{caso.descripcion} — {problemas[0]}")
+    resultados.append((
+        "A/topologia", not fallas,
+        f"control positivo: {len(conformes)} caso(s) conforme(s) pasan; el registro real describe "
+        "el árbol real y la regla descubre exactamente lo registrado"
+        if not fallas else "control positivo — " + " | ".join(fallas[:3])))
+
+    # [B/C/D] Los mutantes, cada uno rechazado por su propio motivo y nombrando la ruta en juego.
+    mutantes = [c for c in casos if c.codigo is not None]
+    sobrevivientes: list[str] = []
+    desatribuidos: list[str] = []
+    sin_nombrar: list[str] = []
+    emitidos: set[str] = set()
+    for caso in mutantes:
+        try:
+            problemas, _ = _correr_caso_de_topologia(caso, datos, arbol)
+        except ValueError as e:
+            sobrevivientes.append(f"{caso.codigo}: {caso.descripcion} — no se pudo construir: {e}")
+            continue
+        codigos = {p.codigo for p in problemas}
+        emitidos |= codigos
+        if not codigos:
+            sobrevivientes.append(f"{caso.codigo}: {caso.descripcion}")
+            continue
+        if caso.codigo not in codigos:
+            desatribuidos.append(f"{caso.codigo}: {caso.descripcion} — rechazado por "
+                                 f"{sorted(codigos)} y no por su motivo")
+            continue
+        texto = " ".join(f"{p.donde} {p.mensaje}" for p in problemas)
+        no_nombradas = [r for r in caso.nombra if r and r not in texto]
+        if no_nombradas:
+            sin_nombrar.append(f"{caso.codigo}: {caso.descripcion} — el diagnóstico no nombra "
+                               f"{no_nombradas}")
+    resultados.append((
+        "B/topologia", not sobrevivientes,
+        f"los {len(mutantes)} mutantes se rechazan: {len(casos) - len(mutantes)} conforme y "
+        f"{len(mutantes)} rojos sobre el registro, el árbol y la regla"
+        if not sobrevivientes else "SOBREVIVE " + " | ".join(sobrevivientes[:3])))
+    resultados.append((
+        "C/topologia", not desatribuidos,
+        "cada mutante se rechaza por su propio motivo y no por otro que lo tape"
+        if not desatribuidos else " | ".join(desatribuidos[:3])))
+    resultados.append((
+        "D/topologia", not sin_nombrar,
+        "el diagnóstico nombra la ruta en juego: un booleano no dice cuál artefacto perdió su dueño"
+        if not sin_nombrar else " | ".join(sin_nombrar[:3])))
+
+    # [E] Las dos direcciones de la comparación, por separado. El de disco obliga a
+    # `descubiertos ⊆ registro`; **solo** el de la entrada exclusiva obliga a la inversa, y sin ella
+    # el registro acumula ubicaciones canónicas que ninguna regla vuelve a mirar.
+    def caso_por(fragmento: str) -> CasoDeTopologia:
+        elegidos = [c for c in mutantes if fragmento in c.descripcion]
+        if len(elegidos) != 1:
+            raise ValueError(f"`{fragmento}` selecciona {len(elegidos)} casos y no uno")
+        return elegidos[0]
+
+    de_disco, _ = _correr_caso_de_topologia(caso_por("que la regla descubre y el registro no "
+                                                     "declara"), datos, arbol)
+    exclusiva, _ = _correr_caso_de_topologia(caso_por("entrada exclusiva del registro"),
+                                             datos, arbol)
+    codigos_disco = {p.codigo for p in de_disco}
+    codigos_excl = {p.codigo for p in exclusiva}
+    resultados.append((
+        "E1/topologia", codigos_disco == {"archivo_sin_entrada_en_el_registro"},
+        "un archivo descubierto sin entrada pone rojo la dirección `descubiertos ⊆ registro`"
+        if codigos_disco == {"archivo_sin_entrada_en_el_registro"} else
+        f"emitió {sorted(codigos_disco)}"))
+    resultados.append((
+        "E2/topologia", codigos_excl == {"entrada_que_la_regla_no_descubre"},
+        "y una entrada que ninguna regla alcanza pone rojo la dirección inversa, que el caso "
+        "anterior no toca"
+        if codigos_excl == {"entrada_que_la_regla_no_descubre"} else
+        f"emitió {sorted(codigos_excl)}"))
+
+    # [F] La regla como fuente distinta. Si se la deriva del registro, la comparación se vuelve una
+    # tautología y los dos casos de [E] pasarían con cualquier árbol.
+    derivada, _ = _correr_caso_de_topologia(caso_por("la lista de rutas del registro transcrita"),
+                                            datos, arbol)
+    codigos_der = {p.codigo for p in derivada}
+    resultados.append((
+        "F/topologia", "regla_derivada_del_registro" in codigos_der,
+        "una regla transcrita del registro se rechaza: es una segunda vista de la misma fuente y "
+        "no una fuente distinta"
+        if "regla_derivada_del_registro" in codigos_der else f"emitió {sorted(codigos_der)}"))
+
+    # [G] Todo código declarado tiene mutante.
+    sin_caso = sorted(set(CODIGOS_DE_TOPOLOGIA) - emitidos)
+    resultados.append((
+        "G/topologia", not sin_caso,
+        f"los mutantes ejercen los {len(CODIGOS_DE_TOPOLOGIA)} códigos que los dos modos declaran"
+        if not sin_caso else f"{len(sin_caso)} códigos sin mutante: {sin_caso}"))
+    return _cierre("el registro tiene dueño único y ubicación canónica, ninguna fuente duplicada, "
+                   "la indexación cierra en las dos direcciones y la regla es una fuente distinta "
+                   "que descubre exactamente lo registrado", resultados)
+
+
+# --- Autotest de la caducidad de las excepciones ----------------------------------------------
+
+RUTA_PENDIENTE = "scripts/pendiente-fase-0.json"
+RUTA_MADURA = "scripts/madura-fase-0.json"
+MOTIVO_PENDIENTE = "la produce el acto siguiente y todavía no existe"
+
+
+def _dir_de_trabajo() -> Path:
+    """El directorio donde se materializan las rutas del autotest.
+
+    **Nunca el árbol.** Un archivo creado en el worktree no se distingue de un cambio real mientras
+    existe, y si el proceso muere queda ahí. `CLAUDE_JOB_DIR` cuando está; si no, el temporal del
+    sistema."""
+    base = os.environ.get("CLAUDE_JOB_DIR")
+    if base:
+        destino = Path(base) / "tmp"
+        try:
+            destino.mkdir(parents=True, exist_ok=True)
+            return destino
+        except OSError:
+            pass
+    return Path(tempfile.gettempdir())
+
+
+def _registro_de_caducidad(con_excepcion: bool, con_entrada: bool) -> dict:
+    artefactos = [{"path": RUTA_MADURA, "owner": "acto-en-curso", "dato": "artefacto-maduro",
+                   "source_status": ESTADO_FUENTE, "versioned": True}]
+    if con_entrada:
+        artefactos.append({"path": RUTA_PENDIENTE, "owner": "acto-siguiente",
+                           "dato": "artefacto-del-acto-siguiente",
+                           "source_status": ESTADO_FUENTE, "versioned": True})
+    excepciones = []
+    if con_excepcion:
+        excepciones.append({"path": RUTA_PENDIENTE, "tipo": TIPO_INEXISTENTE,
+                            "motivo": MOTIVO_PENDIENTE})
+    return {"artefactos": artefactos,
+            "regla_de_descubrimiento": {"directorios": [], "patrones": ["scripts/*-fase-0.json"],
+                                        "excepciones": excepciones}}
+
+
+def modo_autotest_caducidad_excepcion() -> int:
+    """Las **dos** direcciones del predicado de vigencia.
+
+    Con una sola, el predicado especial puede no estar implementado y nada lo notaría: el modo que
+    solo comprueba «la ruta exceptuada no aparece» da verde para siempre mientras la ruta no exista,
+    que es justo el estado en que corre la fila de aplicación."""
+    resultados: list[tuple[str, bool, str]] = []
+    raiz = Path(tempfile.mkdtemp(prefix="caducidad-", dir=str(_dir_de_trabajo())))
+    try:
+        (raiz / "scripts").mkdir(parents=True)
+        (raiz / RUTA_MADURA).write_text("{}\n", encoding="utf-8")
+
+        # [0] El preludio: la raíz sintética no puede estar dentro del árbol, y la ruta exceptuada
+        # no puede existir todavía.
+        fuera = not raiz.is_relative_to(REPO)
+        resultados.append((
+            "0.raiz", fuera and not (raiz / RUTA_PENDIENTE).exists(),
+            f"la raíz sintética vive fuera del árbol ({raiz}) y la ruta exceptuada todavía no "
+            "existe ahí"
+            if fuera and not (raiz / RUTA_PENDIENTE).exists() else
+            f"la raíz sintética quedó en {raiz}"))
+
+        # [A] **Control de que el predicado puede ponerse verde.** Excepción declarada y ruta que no
+        # existe: es el estado en que corre la fila de aplicación, y sin este control un predicado
+        # siempre-rojo pasaría por implementado.
+        problemas, resumen = verificar_descubrimiento(
+            _registro_de_caducidad(True, False), arbol_de_disco(raiz), raiz)
+        resultados.append((
+            "A/caducidad", not problemas and resumen["excepciones"] == 1,
+            "excepción vigente y ruta ausente: verde, con la excepción contada y sin taparse nada "
+            "más"
+            if not problemas and resumen["excepciones"] == 1 else
+            f"{len(problemas)} problemas: {problemas[0] if problemas else ''}"))
+
+        # [B] **Primera dirección: la excepción caduca.** Se materializa la ruta exceptuada y el
+        # modo tiene que ponerse rojo **por caducidad**, no por el genérico de «archivo ausente del
+        # registro»: con el diagnóstico genérico, retirar la excepción parecería innecesario.
+        (raiz / RUTA_PENDIENTE).write_text("{}\n", encoding="utf-8")
+        problemas, _ = verificar_descubrimiento(
+            _registro_de_caducidad(True, False), arbol_de_disco(raiz), raiz)
+        codigos = {p.codigo for p in problemas}
+        texto = " ".join(f"{p.donde} {p.mensaje}" for p in problemas)
+        solo_caducidad = codigos == {"excepcion_caduca"}
+        resultados.append((
+            "B/caducidad", solo_caducidad and RUTA_PENDIENTE in texto,
+            f"la ruta exceptuada aparece en disco y el modo se pone rojo por caducidad, nombrando "
+            f"`{RUTA_PENDIENTE}`"
+            if solo_caducidad and RUTA_PENDIENTE in texto else
+            f"emitió {sorted(codigos)} — se esperaba solo `excepcion_caduca`"))
+        resultados.append((
+            "B2/caducidad", "archivo_sin_entrada_en_el_registro" not in codigos,
+            "y **no** por el genérico de archivo ausente del registro: la excepción tapaba esa "
+            "señal, así que confundirlas dejaría la excepción en pie"
+            if "archivo_sin_entrada_en_el_registro" not in codigos else
+            "se rechazó por el motivo genérico y no por la caducidad"))
+
+        # [C] **Segunda dirección: regularizar da verde.** Se retira la excepción y la ruta entra al
+        # registro. Sin esta mitad, un modo que rechazara toda excepción cerraría [B] en verde.
+        problemas, resumen = verificar_descubrimiento(
+            _registro_de_caducidad(False, True), arbol_de_disco(raiz), raiz)
+        de_topologia, _ = verificar_topologia(_registro_de_caducidad(False, True),
+                                              arbol_de_disco(raiz))
+        verde = not problemas and not de_topologia
+        resultados.append((
+            "C/caducidad", verde,
+            "al retirar la excepción y darle entrada propia en el registro, los dos modos vuelven a "
+            "verde: la caducidad se regulariza registrando, no volviendo a exceptuar"
+            if verde else
+            f"{len(problemas) + len(de_topologia)} problemas: "
+            f"{(problemas + de_topologia)[0]}"))
+
+        # [D] Y el contra-control de la regularización a medias: si la excepción sigue declarada
+        # aunque la ruta ya esté registrada, el modo lo dice en vez de dejarlo pasar.
+        problemas, _ = verificar_descubrimiento(
+            _registro_de_caducidad(True, True), arbol_de_disco(raiz), raiz)
+        codigos = {p.codigo for p in problemas}
+        esperados = {"excepcion_caduca", "excepcion_ya_registrada"}
+        resultados.append((
+            "D/caducidad", codigos == esperados,
+            "una regularización a medias —entrada nueva y excepción sin retirar— se rechaza por las "
+            "dos cosas"
+            if codigos == esperados else f"emitió {sorted(codigos)} y se esperaba "
+                                         f"{sorted(esperados)}"))
+    finally:
+        shutil.rmtree(raiz, ignore_errors=True)
+    return _cierre("el predicado de vigencia está implementado y distingue su causa: rojo por "
+                   "caducidad mientras la excepción sigue declarada con la ruta ya existente, y "
+                   "verde una vez que la ruta entra al registro y la excepción se retira",
+                   resultados)
+
+
 # ---------------------------------------------------------------------------------------------
 
 
@@ -12087,6 +14245,53 @@ def main(argv: list[str] | None = None) -> int:
              "total",
     )
     parser.add_argument(
+        "--guardas", nargs="?", const=str(RUTA_MANIFIESTO_GUARDAS), metavar="RUTA",
+        help="ejecuta el conjunto cerrado de invocaciones de guarda del manifiesto (por defecto "
+             "scripts/guardas-fase-0.json) y emite un recibo; falla si omite una aunque las "
+             "ejecutadas estén verdes, y si el manifiesto y lo que documentan las instrucciones no "
+             "coinciden en las dos direcciones",
+    )
+    parser.add_argument(
+        "--autotest-guardas", action="store_true",
+        help="control positivo y negativo del modo anterior sobre el manifiesto y las "
+             "instrucciones reales, con mutantes sobre las tres piezas; no ejecuta ninguna guarda",
+    )
+    parser.add_argument(
+        "--topologia", nargs="?", const=str(RUTA_REGISTRO_ARTEFACTOS), metavar="RUTA",
+        help="el registro canónico de artefactos (por defecto scripts/artefactos-fase-0.json): "
+             "dueño único y ubicación canónica por artefacto, ningún dato declarado como fuente en "
+             "dos rutas, y los versionados dentro del árbol candidato y los no versionados fuera",
+    )
+    parser.add_argument(
+        "--descubrimiento", nargs="?", const=str(RUTA_REGISTRO_ARTEFACTOS), metavar="RUTA",
+        help="aplica la regla de descubrimiento —una fuente distinta del registro— al árbol "
+             "candidato y compara los dos conjuntos en las dos direcciones, evaluando en cada "
+             "corrida el predicado de vigencia de cada excepción",
+    )
+    parser.add_argument(
+        "--autotest-topologia", action="store_true",
+        help="control positivo y negativo de los dos modos anteriores sobre el registro y el árbol "
+             "reales, con el registro y el árbol candidato mutados en memoria",
+    )
+    parser.add_argument(
+        "--autotest-caducidad-excepcion", action="store_true",
+        help="las dos direcciones del predicado de vigencia sobre una raíz sintética: rojo por "
+             "caducidad al materializar una ruta exceptuada, y verde al retirar la excepción y "
+             "darle entrada en el registro",
+    )
+    parser.add_argument(
+        "--integracion", nargs="?", const=str(RUTA_INSTRUCCIONES), metavar="RUTA",
+        help="la integración declarada del verificador nuevo en las instrucciones del repositorio "
+             "(por defecto CLAUDE.md): que lo declarado —script propio, cuándo corre, comando y "
+             "código de salida sano— sea cierto contra el árbol real, y que el baseline acoplado al "
+             "contenido de un archivo alterado quede renovado",
+    )
+    parser.add_argument(
+        "--instrucciones", metavar="RUTA", default=str(RUTA_INSTRUCCIONES),
+        help="las instrucciones del repositorio de las que se deriva el conjunto documentado (por "
+             "defecto CLAUDE.md); solo lo usa --guardas",
+    )
+    parser.add_argument(
         "--pares-con-fallo", metavar="LISTA", default=None,
         help="los pares autorizados a mostrar `fallo`, separados por comas (por defecto, los que "
              "declaran un caso `clase_esperada: fallo` en scripts/paridad-casos/); solo lo usa "
@@ -12106,14 +14311,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--arbol", metavar="RUTA", default=str(REPO),
         help="raíz del árbol del que se deriva el inventario (por defecto, este repositorio); "
-             "solo lo usan --correspondencia, --completitud y --claves-perfil",
+             "solo lo usan --correspondencia, --completitud, --claves-perfil, --topologia y "
+             "--descubrimiento (para estos dos, la raíz del árbol candidato)",
     )
     parser.add_argument(
         "--raiz", metavar="RUTA", default=str(REPO),
         help="raíz contra la que se interpretan las sedes, que son rutas relativas (por defecto, "
              "este repositorio); la usan --anclas, --presupuesto-contractual, --contrato (para "
-             "resolver los documentos fuente de las correcciones) y --ejes (para resolver los "
-             "punteros de los literales)",
+             "resolver los documentos fuente de las correcciones), --ejes (para resolver los "
+             "punteros de los literales) y --integracion (para ubicar el script y el verificador "
+             "del baseline)",
     )
     parser.add_argument(
         "--salida", metavar="RUTA", default=None,
@@ -12162,6 +14369,13 @@ def main(argv: list[str] | None = None) -> int:
         args.autotest_diversidad,
         bool(args.defectos),
         args.autotest_defectos,
+        bool(args.guardas),
+        args.autotest_guardas,
+        bool(args.topologia),
+        bool(args.descubrimiento),
+        args.autotest_topologia,
+        args.autotest_caducidad_excepcion,
+        bool(args.integracion),
     ]
     if sum(seleccionados) != 1:
         print("Invocación inválida: exactamente uno de --schema, --autotest-schema, "
@@ -12174,7 +14388,9 @@ def main(argv: list[str] | None = None) -> int:
               "--contrato, --autotest-contrato, --ejes, --autotest-ejes, --capacidades, "
               "--autotest-capacidades, --perfil-schema, --autotest-perfil-schema, "
               "--perfil-precedencia, --autotest-perfil-precedencia, --roles, --autotest-roles, "
-              "--diversidad, --autotest-diversidad, --defectos o --autotest-defectos.",
+              "--diversidad, --autotest-diversidad, --defectos, --autotest-defectos, --guardas, "
+              "--autotest-guardas, --topologia, --descubrimiento, --autotest-topologia, "
+              "--autotest-caducidad-excepcion o --integracion.",
               file=sys.stderr)
         return 2
     if args.autotest_schema:
@@ -12248,6 +14464,21 @@ def main(argv: list[str] | None = None) -> int:
         return modo_defectos(Path(args.defectos))
     if args.autotest_defectos:
         return modo_autotest_defectos()
+    if args.guardas:
+        return modo_guardas(Path(args.guardas), Path(args.instrucciones), Path(args.raiz),
+                            Path(args.salida) if args.salida else None)
+    if args.autotest_guardas:
+        return modo_autotest_guardas()
+    if args.topologia:
+        return modo_topologia(Path(args.topologia), Path(args.arbol))
+    if args.descubrimiento:
+        return modo_descubrimiento(Path(args.descubrimiento), Path(args.arbol))
+    if args.autotest_topologia:
+        return modo_autotest_topologia()
+    if args.autotest_caducidad_excepcion:
+        return modo_autotest_caducidad_excepcion()
+    if args.integracion:
+        return modo_integracion(Path(args.integracion), Path(args.raiz))
     escenarios = Path(args.escenarios) if args.escenarios else None
     if args.condiciones:
         return modo_condiciones(Path(args.condiciones), escenarios)
