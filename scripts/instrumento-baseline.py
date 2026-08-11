@@ -2538,10 +2538,20 @@ class FallaDeDerivacion(NamedTuple):
         return f"{self.campo}: {self.motivo}"
 
 
-def derivar_observation_id(bundle: dict) -> str:
+def derivar_observation_id(bundle: dict, reglas: dict | None = None) -> str:
     """La observación es una por intento, así que su identidad se deriva de la del intento y no de
-    la de la corrida. T5 congela esta regla y le agrega sus mutantes de derivación; acá vive la
-    forma, en una función propia, para que congelarla sea cambiar un solo lugar."""
+    la de la corrida.
+
+    Con `reglas` —las `reglas_de_derivacion_de_identidad` que el pre-registro congela— la identidad
+    sale de la plantilla congelada, que es la única forma admitida en producción. Sin ellas queda
+    la forma por defecto, que es lo que permite recolectar un bundle antes de que exista el
+    pre-registro; una observación derivada así no satisface la regla congelada y el control de
+    derivación de T5 la reporta."""
+    if reglas:
+        valor, error = aplicar_regla_de_identidad(reglas.get("observation_id") or {},
+                                                  contexto_de_identidad(bundle))
+        if error is None:
+            return valor
     return f"obs-{bundle.get('attempt_id')}"
 
 
@@ -2668,7 +2678,8 @@ def _hechos_de_la_metrica(clase: str, bundle: dict, hecho_del_intento: dict,
 
 
 def _derivar_metrica(metrica: dict, vocabulario_por_id: dict, bundle: dict,
-                     hecho_del_intento: dict, trabajo_delegado_id: str | None) -> dict:
+                     hecho_del_intento: dict, trabajo_delegado_id: str | None,
+                     formulas_elegidas: dict | None = None) -> dict:
     """Una entrada de `metricas`. Nunca devuelve un cero por un cálculo que no cerró: la variante
     sin `valor` lleva su adjudicación escrita, que es lo que AC-21 exige."""
     metrica_id = metrica.get("metrica_id")
@@ -2679,19 +2690,27 @@ def _derivar_metrica(metrica: dict, vocabulario_por_id: dict, bundle: dict,
         "metrica_id": metrica_id,
         "categoria": categoria,
     }
-    if len(admitidas) != 1:
-        # El pre-registro es quien elige entre varias fórmulas admitidas (decisión heredada 13), y
-        # todavía no existe. Elegir acá una por defecto sería fijar metodología desde el
-        # instrumento, que es exactamente lo que el pre-registro existe para impedir.
-        return {**sin_observacion, "estado_de_medicion": "no_observada",
-                "adjudicacion": f"la métrica admite {len(admitidas)} fórmulas y el pre-registro "
-                                "todavía no eligió: la metodología no la fija el instrumento"}
+    # Quién elige la fórmula: el pre-registro, dentro del enum que la métrica admite (decisión
+    # heredada 13). El instrumento la resuelve cuando la métrica admite una sola —ahí no hay nada
+    # que elegir— y en ningún otro caso: elegir por defecto sería fijar metodología desde donde no
+    # corresponde, y es lo que el pre-registro existe para impedir.
+    elegida = (formulas_elegidas or {}).get(metrica_id)
+    if elegida is not None and elegida not in admitidas:
+        return {**sin_observacion, "estado_de_medicion": "bloqueada",
+                "adjudicacion": f"el pre-registro elige «{elegida}», que esta métrica no admite"}
+    if elegida is None:
+        if len(admitidas) != 1:
+            return {**sin_observacion, "estado_de_medicion": "no_observada",
+                    "adjudicacion": f"la métrica admite {len(admitidas)} fórmulas y el "
+                                    "pre-registro no eligió: la metodología no la fija el "
+                                    "instrumento"}
+        elegida = admitidas[0]
 
-    formula = vocabulario_por_id["formulas"].get(admitidas[0]) or {}
+    formula = vocabulario_por_id["formulas"].get(elegida) or {}
     resolvedor = RESOLVEDORES_DE_FORMA.get(formula.get("forma"))
     if resolvedor is None:
         return {**sin_observacion, "estado_de_medicion": "bloqueada",
-                "adjudicacion": f"la fórmula «{admitidas[0]}» no tiene resolvedor implementado"}
+                "adjudicacion": f"la fórmula «{elegida}» no tiene resolvedor implementado"}
 
     hechos = _hechos_de_la_metrica(formula.get("clase_de_hecho"), bundle, hecho_del_intento,
                                    trabajo_delegado_id)
@@ -2728,9 +2747,14 @@ def _indice_del_vocabulario(vocabulario: dict) -> dict:
 
 
 def derivar_observacion(bundle: dict, bundle_sha256: str, vocabulario: dict,
-                        schema_observacion: dict) -> tuple[dict | None,
-                                                           list[FallaDeDerivacion]]:
-    """El bundle entra, la observación sale. Todo campo tiene su hecho de origen acá adentro."""
+                        schema_observacion: dict,
+                        reglas_de_identidad: dict | None = None,
+                        formulas_elegidas: dict | None = None) -> tuple[dict | None,
+                                                                       list[FallaDeDerivacion]]:
+    """El bundle entra, la observación sale. Todo campo tiene su hecho de origen acá adentro.
+
+    `reglas_de_identidad` son las que el pre-registro congela: con ellas, `observation_id` sale de
+    la plantilla congelada y no de la forma por defecto del recolector."""
     estado, fallas = derivar_estado(bundle)
     if estado is None:
         return None, fallas
@@ -2740,7 +2764,7 @@ def derivar_observacion(bundle: dict, bundle_sha256: str, vocabulario: dict,
 
     observacion = {
         "version_schema": schema_observacion.get("x-version"),
-        "observation_id": derivar_observation_id(bundle),
+        "observation_id": derivar_observation_id(bundle, reglas_de_identidad),
         "sample_id": bundle.get("sample_id"),
         "attempt_id": bundle.get("attempt_id"),
         "attempt_ordinal": bundle.get("attempt_ordinal"),
@@ -2752,14 +2776,15 @@ def derivar_observacion(bundle: dict, bundle_sha256: str, vocabulario: dict,
         "transporte": bundle.get("transporte"),
         "estrato": derivar_estrato(bundle),
         "estado": estado,
-        "metricas": [_derivar_metrica(m, indice, bundle, hecho, None)
+        "metricas": [_derivar_metrica(m, indice, bundle, hecho, None, formulas_elegidas)
                      for m in indice["por_sede"]["corrida"]],
         "trabajos_delegados": [
             {
                 "trabajo_delegado_id": trabajo.get("trabajo_delegado_id"),
                 "evento_terminal_id": trabajo.get("evento_terminal_id"),
                 "metricas": [_derivar_metrica(m, indice, bundle, hecho,
-                                              trabajo.get("trabajo_delegado_id"))
+                                              trabajo.get("trabajo_delegado_id"),
+                                              formulas_elegidas)
                              for m in indice["por_sede"]["trabajo_delegado"]],
             }
             for trabajo in bundle.get("trabajos_delegados") or []
@@ -2851,8 +2876,15 @@ def modo_recolectar(args: argparse.Namespace) -> int:
             print(f"       - {e}")
         return 1
 
-    observacion, fallas = derivar_observacion(bundle.datos, bundle.sha256, vocabulario,
-                                              esquemas["observacion"])
+    # En producción el pre-registro ya está congelado y es quien fija las reglas de identidad y la
+    # fórmula de cada métrica. Antes de que exista, el recolector deriva igual y deja constancia de
+    # lo que no pudo resolver: bloquear del todo impediría probar el instrumento contra fixtures.
+    preregistro, _ = _cargar_json(RAIZ / RUTA_PREREGISTRO_FASE_0)
+    preregistro = preregistro if isinstance(preregistro, dict) else {}
+    observacion, fallas = derivar_observacion(
+        bundle.datos, bundle.sha256, vocabulario, esquemas["observacion"],
+        preregistro.get("reglas_de_derivacion_de_identidad"),
+        formulas_del_preregistro(preregistro))
     if observacion is None:
         print(f"FALLA  {directorio.name}: la observación no se pudo derivar del bundle — "
               f"{len(fallas)} campos sin hecho de origen:")
@@ -3148,6 +3180,805 @@ def modo_autotest_bundles(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------------------------
+# Modos `--autotest-recoleccion`, `--autotest-derivacion` y `--autotest-muestras-intentos`.
+#
+# Validar la ENTRADA del recolector no prueba que su TRANSFORMACIÓN sea correcta. Un recolector que
+# copiara las clasificaciones que el bundle declara pasaría la validación estructural entera y
+# produciría datos limpios y falsos. Estos tres modos atacan eso desde tres lados:
+#
+# - `--autotest-recoleccion` — un golden bundle → observación esperada, comparado CAMPO POR CAMPO,
+#   más los mutantes de transformación: clasificación copiada de un campo declarativo, identidad
+#   alterada, evento omitido y dato incorporado que el bundle no contiene.
+# - `--autotest-derivacion` — una observación se prueba derivada RE-EJECUTANDO el recolector sobre
+#   su bundle y comparando byte a byte. Nunca confiando en los campos que ella declara: una escrita
+#   a mano que copia el hash y la identidad los declara igual de bien que una legítima.
+# - `--autotest-muestras-intentos` — lo que el pre-registro congela son las MUESTRAS; los intentos
+#   se derivan (D-12). El conjunto esperado de muestras se deriva aparte, como producto punto ×
+#   repetición, y la cadena de intentos se compara contra un manifest independiente (D-16), porque
+#   borrar el último intento bloqueado —o borrarlo y renumerar— deja un conjunto final válido.
+# ---------------------------------------------------------------------------------------------
+
+DIR_FIXTURES_GOLDEN = DIR_SCRIPTS / "fixtures-baseline" / "golden"
+RUTA_MANIFEST_GOLDEN = DIR_FIXTURES_GOLDEN / "manifest.json"
+
+# Qué puede leer una plantilla de identidad. No se transcribe: sale del enum del schema de
+# pre-registro, que es donde la lista está congelada. Una copia acá envejecería en silencio.
+def _componentes_de_identidad_admitidos() -> set[str]:
+    schema, error = _cargar_json(CONTRATOS_POR_NOMBRE["preregistro"].ruta)
+    if error:
+        return set()
+    return set(((schema.get("$defs") or {}).get("enum_componente_de_identidad") or {})
+               .get("enum") or [])
+
+
+_PLACEHOLDER = re.compile(r"\{([a-z_]+)\}")
+
+
+def contexto_de_identidad(bundle: dict) -> dict:
+    """Los valores con los que se resuelve una plantilla. Salen del bundle y de ningún otro lado:
+    una identidad que se alimentara del orden de llegada de los archivos no sería derivada."""
+    return {
+        "sample_id": bundle.get("sample_id"),
+        "attempt_id": bundle.get("attempt_id"),
+        "attempt_ordinal": bundle.get("attempt_ordinal"),
+        "punto_de_despacho": bundle.get("punto_de_despacho"),
+        "run_id": bundle.get("run_id"),
+        "repeticion": bundle.get("repeticion"),
+    }
+
+
+def aplicar_regla_de_identidad(regla: dict, contexto: dict) -> tuple[str | None, str | None]:
+    """Resuelve la plantilla congelada. `componentes` es el conjunto cerrado de lo que la plantilla
+    puede leer, así que se exige que coincida EXACTAMENTE con los marcadores que usa: un marcador
+    no declarado es una entrada que el acta no congeló, y un componente declarado que la plantilla
+    no usa es una declaración que no restringe nada."""
+    plantilla = regla.get("plantilla")
+    if not isinstance(plantilla, str) or not plantilla:
+        return None, "la regla no declara plantilla"
+    declarados = set(regla.get("componentes") or [])
+    admitidos = _componentes_de_identidad_admitidos()
+    if admitidos and not declarados <= admitidos:
+        return None, (f"componentes fuera del vocabulario congelado: "
+                      f"{sorted(declarados - admitidos)}")
+    usados = set(_PLACEHOLDER.findall(plantilla))
+    if usados != declarados:
+        return None, (f"la plantilla usa {sorted(usados)} y declara {sorted(declarados)}: "
+                      "no coinciden")
+    faltantes = [c for c in usados if contexto.get(c) is None]
+    if faltantes:
+        return None, f"el bundle no aporta {sorted(faltantes)}"
+    return plantilla.format(**{c: contexto[c] for c in usados}), None
+
+
+def derivar_identidades(bundle: dict, reglas: dict) -> tuple[dict, list[str]]:
+    """Las tres identidades de D-12. `sample_id` y `attempt_id` los trae el bundle —el runner los
+    fija antes de despachar— y `observation_id` lo produce la regla congelada. Que las tres sean
+    DISTINTAS entre sí no es cosmético: el caso barato es un solo `run_id` haciendo de las tres, y
+    ahí un reintento legítimo y una observación duplicada dejan de distinguirse."""
+    problemas: list[str] = []
+    contexto = contexto_de_identidad(bundle)
+    identidades = {"sample_id": bundle.get("sample_id"), "attempt_id": bundle.get("attempt_id")}
+
+    for campo in ("attempt_id", "observation_id"):
+        valor, error = aplicar_regla_de_identidad(reglas.get(campo) or {}, contexto)
+        if error:
+            problemas.append(f"{campo}: {error}")
+            continue
+        if campo == "observation_id":
+            identidades["observation_id"] = valor
+        elif valor != bundle.get("attempt_id"):
+            problemas.append(f"attempt_id: el bundle declara {bundle.get('attempt_id')!r} y la "
+                             f"regla congelada produce {valor!r}")
+
+    distintas = {k: v for k, v in identidades.items() if v is not None}
+    if len(set(distintas.values())) != len(distintas):
+        problemas.append(f"las tres identidades no son distintas entre sí: {distintas}")
+    return identidades, problemas
+
+
+# --- La política de reintentos, aplicada. Declararla y no ejecutarla la deja a interpretación de
+# quien publique el número, que es exactamente lo que D-12 existe para impedir. ---
+
+# Qué disparador del conjunto cerrado justifica reintentar después de un intento así. Es una tabla
+# y no un juicio: sin ella, «mutar un disparador» no cambiaría ningún resultado y la política
+# quedaría declarada sin aplicarse.
+def disparador_del_intento(estado: dict) -> str | None:
+    ciclo = estado.get("ciclo_operativo")
+    if ciclo == "bloqueado":
+        return "bloqueo_de_aislamiento"
+    if ciclo == "presupuesto_vencido_con_proceso_vivo":
+        return "presupuesto_vencido"
+    if ciclo == "sin_eventos":
+        return "error_de_transporte"
+    if estado.get("validez_del_reporte") in ("malformado", "ausente"):
+        return "salida_invalida"
+    return None  # un intento que completó con reporte válido no habilita ningún reintento
+
+
+def comprobar_cadena_de_intentos(sample_id: str, observaciones: list[dict],
+                                 politica: dict) -> list[str]:
+    """La cadena de una muestra contra la política congelada: ordinales sin huecos, tope de
+    intentos, cada reintento con su disparador admitido y la terminación respetada."""
+    problemas: list[str] = []
+    ordenadas = sorted(observaciones, key=lambda o: o.get("attempt_ordinal", 0))
+    ordinales = [o.get("attempt_ordinal") for o in ordenadas]
+    if ordinales != list(range(1, len(ordenadas) + 1)):
+        problemas.append(f"{sample_id}: la cadena de intentos es {ordinales} y tiene que ser "
+                         f"1..{len(ordenadas)} sin huecos")
+
+    maximo = politica.get("maximo_de_intentos_por_muestra")
+    if isinstance(maximo, int) and len(ordenadas) > maximo:
+        problemas.append(f"{sample_id}: {len(ordenadas)} intentos y la política congela un máximo "
+                         f"de {maximo}")
+
+    admitidos = set(politica.get("disparadores") or [])
+    for previa, siguiente in zip(ordenadas, ordenadas[1:]):
+        disparador = disparador_del_intento(previa.get("estado") or {})
+        ordinal = siguiente.get("attempt_ordinal")
+        if disparador is None:
+            problemas.append(f"{sample_id}: el intento {ordinal} reintenta sobre uno que completó "
+                             "con reporte válido, y eso no lo habilita ningún disparador")
+        elif disparador not in admitidos:
+            problemas.append(f"{sample_id}: el intento {ordinal} reintenta por «{disparador}», que "
+                             f"la política congelada no admite ({sorted(admitidos) or '∅'})")
+
+    terminacion = politica.get("condicion_de_terminacion")
+    if terminacion == "sin_reintento" and len(ordenadas) > 1:
+        problemas.append(f"{sample_id}: {len(ordenadas)} intentos y la política termina "
+                         "«sin_reintento»")
+    if terminacion == "primer_intento_valido":
+        for previa, siguiente in zip(ordenadas, ordenadas[1:]):
+            if (previa.get("estado") or {}).get("validez_del_reporte") == "valido":
+                problemas.append(
+                    f"{sample_id}: el intento {siguiente.get('attempt_ordinal')} viene después de "
+                    "uno con reporte válido, y la política termina en el primero válido")
+    return problemas
+
+
+def _metrica_de_la_observacion(observacion: dict, metrica_id: str) -> dict | None:
+    for metrica in observacion.get("metricas") or []:
+        if metrica.get("metrica_id") == metrica_id:
+            return metrica
+    return None
+
+
+def aplicar_seleccion_por_metrica(metrica_id: str, observaciones: list[dict], politica: dict,
+                                  vocabulario: dict) -> tuple[float | None, str | None]:
+    """Con qué intento se publica esta métrica. La regla la congela el acta; elegirla después de
+    ver los números es quedarse con el intento favorable, y las filas seguirían verdes porque
+    estarían validando esa misma elección no congelada."""
+    regla = next((s.get("regla") for s in politica.get("seleccion_por_metrica") or []
+                  if s.get("metrica_id") == metrica_id), None)
+    if regla is None:
+        return None, f"la política congelada no declara regla de selección para «{metrica_id}»"
+    ordenadas = sorted(observaciones, key=lambda o: o.get("attempt_ordinal", 0))
+
+    if regla == "agregacion":
+        metrica = next((m for _, m in _metricas_del(vocabulario)
+                        if m.get("metrica_id") == metrica_id), None)
+        if metrica is None:
+            return None, f"«{metrica_id}» no está en el vocabulario"
+        resolvedor = RESOLVEDORES_DE_AGREGACION.get(
+            (_por_id(vocabulario.get("agregaciones") or [], "agregacion_id")
+             .get(metrica.get("agregacion")) or {}).get("forma"))
+        if resolvedor is None:
+            return None, f"la agregación de «{metrica_id}» no tiene resolvedor"
+        valores = []
+        for observacion in ordenadas:
+            medida = _metrica_de_la_observacion(observacion, metrica_id) or {}
+            if medida.get("estado_de_medicion") != "medida":
+                continue
+            valores.append([medida.get("numerador"), medida.get("denominador")]
+                           if "numerador" in medida else medida.get("valor"))
+        return resolvedor(valores)
+
+    if regla == "primer_intento_valido":
+        elegidas = [o for o in ordenadas
+                    if (o.get("estado") or {}).get("validez_del_reporte") == "valido"]
+    elif regla == "primer_intento":
+        elegidas = ordenadas[:1]
+    elif regla == "ultimo_intento":
+        elegidas = ordenadas[-1:]
+    else:
+        return None, f"regla de selección no implementada: «{regla}»"
+
+    if not elegidas:
+        return None, f"ningún intento satisface la regla «{regla}»"
+    medida = _metrica_de_la_observacion(elegidas[0], metrica_id) or {}
+    if medida.get("estado_de_medicion") != "medida":
+        return None, (f"el intento elegido por «{regla}» no tiene la métrica medida: "
+                      f"{medida.get('adjudicacion', 'no está en la observación')}")
+    return medida.get("valor"), None
+
+
+def derivar_muestras_esperadas(preregistro: dict, declaracion: dict) -> list[str]:
+    """El conjunto esperado de `sample_id`, derivado APARTE como producto punto × repetición.
+
+    Los puntos salen de `cobertura.puntos_observados` del pre-registro y las repeticiones, de la
+    DECLARACIÓN INDEPENDIENTE —igual que la plantilla con la que se arma cada identidad—. Derivar
+    las repeticiones de la propia lista de muestras sería contarlas sobre el conjunto que se quiere
+    validar: quitar una muestra bajaría el máximo, el producto la dejaría de esperar y la ausencia
+    no se vería (D-16)."""
+    plantilla = declaracion.get("plantilla_de_sample_id") or "mst-{punto_de_despacho}-r{repeticion}"
+    repeticiones = declaracion.get("repeticiones_por_punto") or {}
+    esperadas: list[str] = []
+    for punto in (preregistro.get("cobertura") or {}).get("puntos_observados") or []:
+        for repeticion in range(1, (repeticiones.get(punto) or 0) + 1):
+            esperadas.append(plantilla.format(punto_de_despacho=punto, repeticion=repeticion))
+    return esperadas
+
+
+# --- Los tres modos. ---
+
+def _cargar_corpus_golden() -> tuple[dict, dict, dict, dict, list[str]]:
+    """Manifest, pre-registro, vocabulario y schemas del corpus golden."""
+    problemas: list[str] = []
+    manifest, error = _cargar_json(RUTA_MANIFEST_GOLDEN)
+    if error:
+        problemas.append(f"manifest del corpus golden: {error}")
+    preregistro, error = _cargar_json(DIR_FIXTURES_GOLDEN / "preregistro.json")
+    if error:
+        problemas.append(f"pre-registro del corpus golden: {error}")
+    vocabulario, esquemas, mas = _cargar_insumos_de_recoleccion()
+    return manifest or {}, preregistro or {}, vocabulario, esquemas, problemas + mas
+
+
+def _bundle_golden(run_id: str) -> BundleEnDisco:
+    return _leer_bundle(DIR_FIXTURES_GOLDEN / "bundles" / run_id)
+
+
+def formulas_del_preregistro(preregistro: dict) -> dict:
+    """Qué fórmula eligió el acta para cada métrica. Es lo que el recolector resuelve en lugar de
+    elegir: el acta escoge dentro del enum que la métrica admite y no lo amplía."""
+    return {m.get("metrica_id"): m.get("formula_id")
+            for m in preregistro.get("metricas") or [] if m.get("formula_id")}
+
+
+def serializar_observacion(observacion: dict) -> bytes:
+    """La forma canónica en la que el recolector escribe una observación. Está acá para que
+    «comparar byte a byte» compare contra lo mismo que se escribe, y no contra otra serialización
+    que casualmente coincida."""
+    return (json.dumps(observacion, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+
+def _diferencias_de_campo(esperada: dict, obtenida: dict, prefijo: str = "") -> list[str]:
+    """Campo por campo, y no una igualdad global: un golden que solo dice «no coincide» obliga a
+    diffear a mano justo cuando lo que importa es qué transformación se movió."""
+    diferencias: list[str] = []
+    for clave in sorted(set(esperada) | set(obtenida)):
+        ruta = f"{prefijo}{clave}"
+        if clave not in esperada:
+            diferencias.append(f"{ruta}: sobra en lo obtenido ({obtenida[clave]!r})")
+        elif clave not in obtenida:
+            diferencias.append(f"{ruta}: falta en lo obtenido (esperaba {esperada[clave]!r})")
+        elif isinstance(esperada[clave], dict) and isinstance(obtenida[clave], dict):
+            diferencias.extend(_diferencias_de_campo(esperada[clave], obtenida[clave], ruta + "."))
+        elif esperada[clave] != obtenida[clave]:
+            diferencias.append(f"{ruta}: esperaba {esperada[clave]!r} y llegó {obtenida[clave]!r}")
+    return diferencias
+
+
+def _derivar_del_golden(run_id: str, preregistro: dict, vocabulario: dict,
+                        esquemas: dict) -> tuple[dict | None, list[str]]:
+    bundle = _bundle_golden(run_id)
+    if bundle.error:
+        return None, [f"{run_id}: {bundle.error}"]
+    observacion, fallas = derivar_observacion(
+        bundle.datos, bundle.sha256, vocabulario, esquemas["observacion"],
+        preregistro.get("reglas_de_derivacion_de_identidad"),
+        formulas_del_preregistro(preregistro))
+    return observacion, [str(f) for f in fallas]
+
+
+# Cada mutante ataca una forma concreta de que la TRANSFORMACIÓN esté mal aunque la entrada y la
+# salida sean estructuralmente impecables.
+def _mutt_clasificacion_declarada(bundle: dict) -> bool:
+    """La clasificación sale del campo declarativo en vez de los eventos observados."""
+    declarado = (bundle.get("estado_del_intento") or {}).get("resultado")
+    if declarado != "completado":
+        return False
+    for evento in list(bundle.get("eventos") or []):
+        if evento.get("tipo") == "degradacion_observada":
+            bundle["eventos"].remove(evento)
+            return True
+    return False
+
+
+def _mutt_identidad_alterada(bundle: dict) -> bool:
+    bundle["attempt_ordinal"] = (bundle.get("attempt_ordinal") or 1) + 10
+    return True
+
+
+def _mutt_evento_omitido(bundle: dict) -> bool:
+    hallazgos = _eventos_de_tipo(bundle, "hallazgo_emitido")
+    # Solo ejerce donde borrar el evento cambia el conteo: con dos re-emisiones del mismo hallazgo,
+    # perder una NO altera el conteo sin re-emisión, y eso es correcto, no un hueco del recolector.
+    detalles = [h.get("detalle") for h in hallazgos]
+    if not hallazgos or len(set(detalles)) != len(detalles):
+        return False
+    bundle["eventos"].remove(hallazgos[0])
+    return True
+
+
+def _mutt_dato_incorporado(bundle: dict) -> bool:
+    """Un dato que el bundle no contiene, incorporado a la evidencia."""
+    recursos = bundle.get("recursos") or []
+    # Solo ejerce donde la limpieza estaba completa: si ya había un recurso sin cese comprobado, la
+    # métrica valía 0 antes de agregar el inventado y el mutante no movería nada.
+    if not recursos or any(r.get("life_state") != "terminado_comprobado" for r in recursos):
+        return False
+    recursos.append({
+        "recurso_id": "rec-inventado",
+        "clase": "proceso",
+        "life_state": "vivo",
+        "ownership_state": "sin_transferir",
+        "evidencia_de_cese": "recurso que la corrida no registro",
+    })
+    return True
+
+
+MUTANTES_DE_TRANSFORMACION: tuple[MutanteDeRecoleccion, ...] = (
+    MutanteDeRecoleccion("clasificacion-declarada",
+                         "la clasificación se toma del campo declarativo del intento",
+                         _mutt_clasificacion_declarada),
+    MutanteDeRecoleccion("identidad-alterada", "el ordinal del intento cambia",
+                         _mutt_identidad_alterada),
+    MutanteDeRecoleccion("evento-omitido", "se pierde un evento de la corrida",
+                         _mutt_evento_omitido),
+    MutanteDeRecoleccion("dato-incorporado", "aparece un recurso que la corrida no registró",
+                         _mutt_dato_incorporado),
+)
+
+
+def modo_autotest_recoleccion(args: argparse.Namespace) -> int:
+    del args
+    manifest, preregistro, vocabulario, esquemas, problemas = _cargar_corpus_golden()
+    if problemas:
+        for p in problemas:
+            print(f"[A] FALLA  {p}")
+        return 1
+
+    resultados: list[tuple[str, bool, str]] = []
+    goldens = manifest.get("goldens") or []
+
+    # [A] Manifest ↔ disco, en las dos direcciones (D-16).
+    declarados = {g["run_id"] for g in goldens}
+    en_disco = {d.name for d in (DIR_FIXTURES_GOLDEN / "bundles").iterdir()
+                if d.is_dir()} if (DIR_FIXTURES_GOLDEN / "bundles").is_dir() else set()
+    diferencias = [f"declarado y ausente: {r}" for r in sorted(declarados - en_disco)]
+    diferencias += [f"en disco y no declarado: {r}" for r in sorted(en_disco - declarados)]
+    resultados.append(("A", not diferencias,
+                       f"manifest ↔ bundles del golden ({len(declarados)})" if not diferencias
+                       else " | ".join(diferencias[:6])))
+
+    # [B] El golden, campo por campo.
+    fallas: list[str] = []
+    derivadas: dict[str, dict] = {}
+    for entrada in goldens:
+        run_id = entrada["run_id"]
+        esperada, error = _cargar_json(DIR_FIXTURES_GOLDEN / "esperadas" / f"{run_id}.json")
+        if error:
+            fallas.append(f"{run_id}: observación esperada — {error}")
+            continue
+        obtenida, errores = _derivar_del_golden(run_id, preregistro, vocabulario, esquemas)
+        if obtenida is None:
+            fallas.append(f"{run_id}: no se derivó — {errores[0] if errores else 'sin motivo'}")
+            continue
+        derivadas[run_id] = obtenida
+        diferencias = _diferencias_de_campo(esperada, obtenida)
+        if diferencias:
+            fallas.append(f"{run_id}: {len(diferencias)} campos — {diferencias[0]}")
+    resultados.append(("B", not fallas,
+                       f"{len(goldens)} goldens coinciden campo por campo" if not fallas
+                       else " | ".join(fallas[:4])))
+
+    # [C] Los mutantes de transformación. Cada uno tiene que MOVER el golden: si el resultado no
+    # cambia, esa transformación no estaba leyendo lo que se mutó.
+    fallas_de_mutacion: list[str] = []
+    ejercidos: set[str] = set()
+    for run_id, base in derivadas.items():
+        bundle = _bundle_golden(run_id)
+        for mutante in MUTANTES_DE_TRANSFORMACION:
+            copia = copy.deepcopy(bundle.datos)
+            if not mutante.aplicar(copia):
+                continue
+            ejercidos.add(mutante.nombre)
+            mutada, _ = derivar_observacion(
+                copia, bundle.sha256, vocabulario, esquemas["observacion"],
+                preregistro.get("reglas_de_derivacion_de_identidad"),
+                formulas_del_preregistro(preregistro))
+            if mutada is not None and not _diferencias_de_campo(base, mutada):
+                fallas_de_mutacion.append(
+                    f"{run_id}/{mutante.nombre}: {mutante.que_rompe} y el golden no se mueve")
+    fallas_de_mutacion += [f"el mutante «{m.nombre}» no lo ejerce ningún golden"
+                           for m in MUTANTES_DE_TRANSFORMACION if m.nombre not in ejercidos]
+    resultados.append(("C", not fallas_de_mutacion,
+                       f"{len(MUTANTES_DE_TRANSFORMACION)} mutantes de transformación ejercidos y "
+                       "detectados" if not fallas_de_mutacion
+                       else " | ".join(fallas_de_mutacion[:4])))
+
+    return _cerrar(resultados)
+
+
+def comprobar_observacion_derivada(observacion: dict, preregistro: dict, vocabulario: dict,
+                                   esquemas: dict) -> list[str]:
+    """La prueba de que una observación se derivó: se re-ejecuta el recolector sobre el bundle que
+    ella dice, y se comparan los bytes. Sus propios campos NO se usan como evidencia —una escrita a
+    mano declara el hash y la identidad igual de bien que una legítima—: lo único que se toma de
+    ella es a qué bundle apunta."""
+    procedencia = observacion.get("procedencia") or {}
+    run_id = procedencia.get("run_id")
+    if not run_id:
+        return ["la observación no declara de qué corrida salió: no hay nada que re-ejecutar"]
+    bundle = _bundle_golden(run_id)
+    if bundle.error:
+        return [f"la corrida {run_id!r} que declara no se puede leer: {bundle.error}"]
+
+    problemas: list[str] = []
+    if procedencia.get("bundle_sha256") != bundle.sha256:
+        problemas.append(f"el hash declarado no es el del bundle en disco: declara "
+                         f"{procedencia.get('bundle_sha256')} y el archivo da {bundle.sha256}")
+
+    derivada, fallas = derivar_observacion(
+        bundle.datos, bundle.sha256, vocabulario, esquemas["observacion"],
+        preregistro.get("reglas_de_derivacion_de_identidad"),
+        formulas_del_preregistro(preregistro))
+    if derivada is None:
+        return problemas + [f"el bundle no produce ninguna observación: "
+                            f"{fallas[0] if fallas else 'sin motivo'}"]
+
+    if serializar_observacion(derivada) == serializar_observacion(observacion):
+        return problemas
+    diferencias = _diferencias_de_campo(derivada, observacion)
+    if diferencias:
+        problemas.append(f"re-ejecutar el recolector da otra observación: {diferencias[0]}"
+                         + (f" (y {len(diferencias) - 1} más)" if len(diferencias) > 1 else ""))
+    else:
+        problemas.append("los campos coinciden y los bytes no: la observación está reordenada o "
+                         "reformateada respecto de la que el recolector emite")
+    return problemas
+
+
+def modo_autotest_derivacion(args: argparse.Namespace) -> int:
+    del args
+    manifest, preregistro, vocabulario, esquemas, problemas = _cargar_corpus_golden()
+    if problemas:
+        for p in problemas:
+            print(f"[A] FALLA  {p}")
+        return 1
+
+    resultados: list[tuple[str, bool, str]] = []
+
+    # [A] Control positivo: lo que el recolector produce pasa su propia prueba de derivación.
+    fallas: list[str] = []
+    for entrada in manifest.get("goldens") or []:
+        run_id = entrada["run_id"]
+        derivada, errores = _derivar_del_golden(run_id, preregistro, vocabulario, esquemas)
+        if derivada is None:
+            fallas.append(f"{run_id}: no se derivó — {errores[0] if errores else 'sin motivo'}")
+            continue
+        malos = comprobar_observacion_derivada(derivada, preregistro, vocabulario, esquemas)
+        if malos:
+            fallas.append(f"{run_id}: lo que el recolector emite no pasa su prueba — {malos[0]}")
+    resultados.append(("A", not fallas,
+                       "las observaciones del recolector se prueban derivadas" if not fallas
+                       else " | ".join(fallas[:4])))
+
+    # [B] Cada observación escrita a mano falla, y falla por SU motivo. Es el control que V26 pide:
+    # una que copia el hash y la identidad tiene que caer igual.
+    fallas_a_mano: list[str] = []
+    a_mano = manifest.get("escritas_a_mano") or []
+    for entrada in a_mano:
+        instancia, error = _cargar_json(DIR_FIXTURES_GOLDEN / "a-mano" / entrada["fixture"])
+        if error:
+            fallas_a_mano.append(f"{entrada['fixture']}: {error}")
+            continue
+        if validar(instancia, esquemas["observacion"]):
+            fallas_a_mano.append(f"{entrada['fixture']}: no valida contra el schema, así que caería "
+                                 "por estructura y no por derivación")
+            continue
+        malos = comprobar_observacion_derivada(instancia, preregistro, vocabulario, esquemas)
+        if not malos:
+            fallas_a_mano.append(f"{entrada['fixture']}: se prueba derivada y no debería")
+            continue
+        if not any(entrada["motivo_esperado"] in m for m in malos):
+            fallas_a_mano.append(f"{entrada['fixture']}: falla, pero no por «"
+                                 f"{entrada['motivo_esperado']}» — se vio: {malos[0]}")
+    resultados.append(("B", not fallas_a_mano,
+                       f"{len(a_mano)} observaciones escritas a mano fallan por su motivo"
+                       if not fallas_a_mano else " | ".join(fallas_a_mano[:4])))
+
+    return _cerrar(resultados)
+
+
+class MutanteDePolitica(NamedTuple):
+    nombre: str
+    que_rompe: str
+    aplicar: Callable[[dict], bool]
+
+
+def _mutp_quitar_disparador(preregistro: dict) -> bool:
+    politica = preregistro.get("politica_de_reintentos") or {}
+    if not politica.get("disparadores"):
+        return False
+    politica["disparadores"] = politica["disparadores"][:-1]
+    return True
+
+
+def _mutp_bajar_maximo(preregistro: dict) -> bool:
+    politica = preregistro.get("politica_de_reintentos") or {}
+    if (politica.get("maximo_de_intentos_por_muestra") or 1) <= 1:
+        return False
+    politica["maximo_de_intentos_por_muestra"] = 1
+    return True
+
+
+def _mutp_terminacion_sin_reintento(preregistro: dict) -> bool:
+    politica = preregistro.get("politica_de_reintentos") or {}
+    if politica.get("condicion_de_terminacion") == "sin_reintento":
+        return False
+    politica["condicion_de_terminacion"] = "sin_reintento"
+    return True
+
+
+def _mutp_cambiar_seleccion(preregistro: dict) -> bool:
+    for seleccion in (preregistro.get("politica_de_reintentos") or {}).get(
+            "seleccion_por_metrica") or []:
+        if seleccion.get("regla") == "primer_intento_valido":
+            seleccion["regla"] = "primer_intento"
+            return True
+    return False
+
+
+MUTANTES_DE_POLITICA: tuple[MutanteDePolitica, ...] = (
+    MutanteDePolitica("disparador-retirado",
+                      "el reintento deja de tener un disparador que lo admita",
+                      _mutp_quitar_disparador),
+    MutanteDePolitica("maximo-bajado", "la cadena excede el máximo de intentos por muestra",
+                      _mutp_bajar_maximo),
+    MutanteDePolitica("terminacion-sin-reintento",
+                      "la política pasa a no admitir ningún reintento",
+                      _mutp_terminacion_sin_reintento),
+    MutanteDePolitica("seleccion-cambiada",
+                      "la métrica se publica desde otro intento del que el acta congeló",
+                      _mutp_cambiar_seleccion),
+)
+
+
+def _observaciones_por_muestra(manifest: dict, preregistro: dict, vocabulario: dict,
+                               esquemas: dict) -> tuple[dict[str, list[dict]], list[str]]:
+    por_muestra: dict[str, list[dict]] = {}
+    problemas: list[str] = []
+    for entrada in manifest.get("goldens") or []:
+        derivada, errores = _derivar_del_golden(entrada["run_id"], preregistro, vocabulario,
+                                                esquemas)
+        if derivada is None:
+            problemas.append(f"{entrada['run_id']}: {errores[0] if errores else 'no se derivó'}")
+            continue
+        por_muestra.setdefault(derivada["sample_id"], []).append(derivada)
+    return por_muestra, problemas
+
+
+def _revisar_muestras_e_intentos(manifest_intentos: dict, preregistro: dict,
+                                 por_muestra: dict[str, list[dict]],
+                                 vocabulario: dict) -> dict[str, list[str]]:
+    """Los cuatro frentes de V31, cada uno con su clave. Devolver un dict por clave —y no una lista
+    plana— es lo que permite que un mutante declare EXACTAMENTE qué frente tiene que romper."""
+    fallas: dict[str, list[str]] = {"muestras": [], "cadena": [], "identidad": [], "seleccion": []}
+    politica = preregistro.get("politica_de_reintentos") or {}
+
+    # Las muestras esperadas se derivan aparte y se comparan en las dos direcciones.
+    esperadas = set(derivar_muestras_esperadas(preregistro, manifest_intentos))
+    declaradas = {m.get("sample_id") for m in
+                  ((preregistro.get("cohorte") or {}).get("muestras") or [])}
+    fallas["muestras"] += [f"muestra derivada del producto punto × repetición y ausente de la "
+                           f"cohorte: {m}" for m in sorted(esperadas - declaradas)]
+    fallas["muestras"] += [f"muestra en la cohorte que el producto no produce: {m}"
+                           for m in sorted(declaradas - esperadas)]
+
+    # El manifest de intentos es independiente (D-16): declara qué intentos tienen que existir. Sin
+    # él, borrar el último intento bloqueado deja un conjunto final perfectamente válido.
+    esperados = {(e.get("sample_id"), e.get("attempt_ordinal")): e
+                 for e in manifest_intentos.get("intentos") or []}
+    observados = {(o["sample_id"], o["attempt_ordinal"]): o
+                  for obs in por_muestra.values() for o in obs}
+    fallas["cadena"] += [f"intento declarado en el manifest y sin observación: {s} #{n}"
+                         for s, n in sorted(esperados.keys() - observados.keys())]
+    fallas["cadena"] += [f"observación de un intento que el manifest no declara: {s} #{n}"
+                         for s, n in sorted(observados.keys() - esperados.keys())]
+
+    for sample_id, observaciones in sorted(por_muestra.items()):
+        fallas["cadena"] += comprobar_cadena_de_intentos(sample_id, observaciones, politica)
+
+    reglas = preregistro.get("reglas_de_derivacion_de_identidad") or {}
+    identidades_vistas: dict[str, str] = {}
+    for clave, observacion in sorted(observados.items()):
+        entrada = esperados.get(clave)
+        if entrada is None:
+            continue
+        for campo in ("attempt_id", "observation_id"):
+            valor, error = aplicar_regla_de_identidad(
+                reglas.get(campo) or {},
+                {**contexto_de_identidad(observacion), "attempt_id": observacion.get("attempt_id")})
+            if error:
+                fallas["identidad"].append(f"{clave[0]} #{clave[1]}: {campo} — {error}")
+                continue
+            if observacion.get(campo) != valor:
+                fallas["identidad"].append(
+                    f"{clave[0]} #{clave[1]}: {campo} es {observacion.get(campo)!r} y la regla "
+                    f"congelada produce {valor!r}")
+            duenio = identidades_vistas.get(valor)
+            if duenio is not None and duenio != f"{clave[0]}#{clave[1]}":
+                fallas["identidad"].append(
+                    f"{valor!r} lo produce {duenio} y también {clave[0]}#{clave[1]}: la regla "
+                    "colisiona entre repeticiones")
+            identidades_vistas[valor] = f"{clave[0]}#{clave[1]}"
+
+    for entrada in manifest_intentos.get("selecciones_esperadas") or []:
+        observaciones = por_muestra.get(entrada["sample_id"]) or []
+        valor, error = aplicar_seleccion_por_metrica(entrada["metrica_id"], observaciones,
+                                                     politica, vocabulario)
+        if error:
+            fallas["seleccion"].append(f"{entrada['sample_id']}/{entrada['metrica_id']}: {error}")
+        elif not _casi_igual(valor, entrada["valor_esperado"]):
+            fallas["seleccion"].append(
+                f"{entrada['sample_id']}/{entrada['metrica_id']}: la política publica {valor} y se "
+                f"esperaba {entrada['valor_esperado']}")
+    return fallas
+
+
+def modo_autotest_muestras_intentos(args: argparse.Namespace) -> int:
+    del args
+    manifest, preregistro, vocabulario, esquemas, problemas = _cargar_corpus_golden()
+    manifest_intentos, error = _cargar_json(DIR_FIXTURES_GOLDEN / "manifest-intentos.json")
+    if error:
+        problemas.append(f"manifest independiente de intentos: {error}")
+    if problemas:
+        for p in problemas:
+            print(f"[A] FALLA  {p}")
+        return 1
+
+    por_muestra, malos = _observaciones_por_muestra(manifest, preregistro, vocabulario, esquemas)
+    if malos:
+        for m in malos:
+            print(f"[A] FALLA  {m}")
+        return 1
+
+    resultados: list[tuple[str, bool, str]] = []
+    base = _revisar_muestras_e_intentos(manifest_intentos, preregistro, por_muestra, vocabulario)
+    # Qué frentes se ponen rojos DE VERDAD en los controles de abajo. Se acumula corriendo, no se
+    # transcribe: una lista escrita a mano acá dejaría de reflejar los negativos que existen.
+    ejercidos: set[str] = set()
+
+    # [A] Control positivo: el corpus conforme no rompe ninguno de los cuatro frentes. Un intento
+    # extra legítimo —el segundo de una muestra, admitido por la política— NO invalida su muestra.
+    en_rojo = {clave for clave, lista in base.items() if lista}
+    resultados.append(("A", not en_rojo,
+                       f"{len(por_muestra)} muestras y "
+                       f"{sum(len(v) for v in por_muestra.values())} intentos conformes"
+                       if not en_rojo
+                       else " | ".join(f"{c}: {base[c][0]}" for c in sorted(en_rojo))))
+
+    # [B] Los negativos de la cadena, sobre COPIAS del conjunto de observaciones. Los dos que D-12
+    # nombra: borrar el último intento bloqueado, y borrarlo renumerando la cadena.
+    fallas_de_cadena: list[str] = []
+    for caso in manifest_intentos.get("negativos_de_cadena") or []:
+        copia = copy.deepcopy(por_muestra)
+        objetivo = copia.get(caso["sample_id"]) or []
+        objetivo.sort(key=lambda o: o["attempt_ordinal"])
+        if caso["ataque"] == "borrar_ultimo":
+            objetivo.pop()
+        elif caso["ataque"] == "borrar_ultimo_y_renumerar":
+            objetivo.pop()
+            for i, observacion in enumerate(objetivo, start=1):
+                observacion["attempt_ordinal"] = i
+        elif caso["ataque"] == "attempt_id_fuera_de_la_regla":
+            objetivo[-1]["attempt_id"] = "int-inventado-a9"
+        else:
+            fallas_de_cadena.append(f"{caso['ataque']}: ataque no implementado")
+            continue
+        resultado = _revisar_muestras_e_intentos(manifest_intentos, preregistro, copia,
+                                                 vocabulario)
+        ejercidos |= {f for f, lista in resultado.items() if lista}
+        if not resultado[caso["frente_esperado"]]:
+            fallas_de_cadena.append(f"{caso['ataque']}: el frente «{caso['frente_esperado']}» no se "
+                                    "pone rojo")
+    resultados.append(("B", not fallas_de_cadena,
+                       f"{len(manifest_intentos.get('negativos_de_cadena') or [])} ataques a la "
+                       "cadena detectados" if not fallas_de_cadena
+                       else " | ".join(fallas_de_cadena[:4])))
+
+    # [C] Mutar la política congelada cambia el resultado. Es lo que prueba que la política se
+    # APLICA y no se elige a posteriori: una declarada y no ejecutada dejaría este control verde.
+    fallas_de_politica: list[str] = []
+    for mutante in MUTANTES_DE_POLITICA:
+        copia = copy.deepcopy(preregistro)
+        if not mutante.aplicar(copia):
+            fallas_de_politica.append(f"{mutante.nombre}: la mutación no se pudo aplicar, así que "
+                                      "esa parte de la política queda sin control")
+            continue
+        resultado = _revisar_muestras_e_intentos(manifest_intentos, copia, por_muestra,
+                                                 vocabulario)
+        ejercidos |= {f for f, lista in resultado.items() if lista}
+        if not any(resultado.values()):
+            fallas_de_politica.append(f"{mutante.nombre}: {mutante.que_rompe} y ningún frente se "
+                                      "pone rojo")
+    resultados.append(("C", not fallas_de_politica,
+                       f"{len(MUTANTES_DE_POLITICA)} mutantes de la política congelada cambian el "
+                       "resultado" if not fallas_de_politica
+                       else " | ".join(fallas_de_politica[:4])))
+
+    # [D] Los negativos del conjunto de muestras. Sin ellos, ese frente no tiene quien lo ponga
+    # rojo: la comparación pasaría en el vacío y nadie lo notaría.
+    fallas_de_muestras: list[str] = []
+    for caso in manifest_intentos.get("negativos_de_muestras") or []:
+        copia = copy.deepcopy(preregistro)
+        muestras = (copia.get("cohorte") or {}).get("muestras") or []
+        if caso["ataque"] == "quitar_muestra":
+            restantes = [m for m in muestras if m.get("sample_id") != caso["sample_id"]]
+            if len(restantes) == len(muestras):
+                fallas_de_muestras.append(f"{caso['ataque']}: la muestra {caso['sample_id']} no "
+                                          "está en la cohorte, así que el ataque no se aplicó")
+                continue
+            copia["cohorte"]["muestras"] = restantes
+        elif caso["ataque"] == "agregar_muestra_que_el_producto_no_produce":
+            copia["cohorte"]["muestras"] = muestras + [{**muestras[0],
+                                                        "sample_id": caso["sample_id"]}]
+        else:
+            fallas_de_muestras.append(f"{caso['ataque']}: ataque no implementado")
+            continue
+        resultado = _revisar_muestras_e_intentos(manifest_intentos, copia, por_muestra,
+                                                 vocabulario)
+        ejercidos |= {f for f, lista in resultado.items() if lista}
+        if not resultado["muestras"]:
+            fallas_de_muestras.append(f"{caso['ataque']}: el frente «muestras» no se pone rojo")
+    resultados.append(("D", not fallas_de_muestras,
+                       f"{len(manifest_intentos.get('negativos_de_muestras') or [])} ataques al "
+                       "conjunto de muestras detectados" if not fallas_de_muestras
+                       else " | ".join(fallas_de_muestras[:4])))
+
+    # [E] Los mutantes de derivación de identidad que D-12 nombra: por `run_id` solo, asignación por
+    # orden de llegada y colisión entre repeticiones.
+    fallas_de_identidad: list[str] = []
+    for caso in manifest_intentos.get("mutantes_de_identidad") or []:
+        copia = copy.deepcopy(preregistro)
+        copia.setdefault("reglas_de_derivacion_de_identidad", {})[caso["campo"]] = caso["regla"]
+        resultado = _revisar_muestras_e_intentos(manifest_intentos, copia, por_muestra,
+                                                 vocabulario)
+        ejercidos |= {f for f, lista in resultado.items() if lista}
+        if not resultado["identidad"]:
+            fallas_de_identidad.append(f"{caso['nombre']}: la regla mutada no rompe la identidad")
+    resultados.append(("E", not fallas_de_identidad,
+                       f"{len(manifest_intentos.get('mutantes_de_identidad') or [])} mutantes de "
+                       "derivación de identidad detectados" if not fallas_de_identidad
+                       else " | ".join(fallas_de_identidad[:4])))
+
+    # [F] Cada uno de los cuatro frentes se puso rojo en ALGUNO de los controles de arriba. El
+    # conjunto se acumuló corriendo: un frente que ningún negativo ejerce pasa siempre, y su verde
+    # se lee como si hubiera comprobado algo.
+    sin_negativo = sorted(set(base) - ejercidos)
+    resultados.append(("F", not sin_negativo,
+                       f"los {len(base)} frentes tienen quien los ponga rojos"
+                       if not sin_negativo
+                       else f"frentes sin ningún negativo que los ejerza: {sin_negativo}"))
+
+    return _cerrar(resultados)
+
+
+def _cerrar(resultados: list[tuple[str, bool, str]]) -> int:
+    """El cierre común de los modos de autotest: una línea por control y el veredicto."""
+    for etiqueta, ok, detalle in resultados:
+        print(f"[{etiqueta}] {'OK    ' if ok else 'FALLA '} {detalle}")
+    print()
+    rojos = [e for e, ok, _ in resultados if not ok]
+    if rojos:
+        print(f"RESULTADO: FALLA — controles en rojo: {', '.join(rojos)}")
+        return 1
+    print(f"RESULTADO: OK — {len(resultados)} controles en verde")
+    return 0
+
+
+# ---------------------------------------------------------------------------------------------
 # Registro de los modos de esta task. Cada task nueva agrega los suyos acá abajo, sin tocar los
 # anteriores ni `main()`.
 # ---------------------------------------------------------------------------------------------
@@ -3230,6 +4061,29 @@ registrar_modo(
     "scripts/fixtures-baseline/bundles/, comparado en las dos direcciones contra su manifest, más "
     "los mutantes que prueban que cada campo se deriva de su hecho y no se copia",
     modo_autotest_bundles,
+)
+
+registrar_modo(
+    "--autotest-recoleccion",
+    "golden bundle → observación esperada, comparado campo por campo, más los mutantes de "
+    "transformación: clasificación copiada de un campo declarativo, identidad alterada, evento "
+    "omitido y dato incorporado que el bundle no contiene",
+    modo_autotest_recoleccion,
+)
+
+registrar_modo(
+    "--autotest-derivacion",
+    "prueba que cada observación se derivó RE-EJECUTANDO el recolector sobre su bundle y "
+    "comparando byte a byte: una escrita a mano que copia el hash y la identidad falla igual",
+    modo_autotest_derivacion,
+)
+
+registrar_modo(
+    "--autotest-muestras-intentos",
+    "las muestras congeladas frente a los intentos derivados (D-12): el conjunto de muestras "
+    "derivado aparte como producto punto × repetición, la cadena append-only contra su manifest "
+    "independiente, la regla de identidad congelada y la política de reintentos aplicada",
+    modo_autotest_muestras_intentos,
 )
 
 registrar_modo(

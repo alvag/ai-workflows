@@ -1,0 +1,144 @@
+{
+  "descripcion": "Manifest INDEPENDIENTE de los intentos esperados (D-16). El pre-registro congela las MUESTRAS; los intentos se derivan al correr, así que la única forma de detectar que falta uno es declararlo aparte. Sin este archivo, borrar el último intento bloqueado —o borrarlo y renumerar la cadena— deja un conjunto final perfectamente válido: los ordinales son 1..N, cada intento casa con su regla y nada indica que hubo otro.",
+  "por-que-tambien-declara-los-valores": "`selecciones_esperadas` fija con qué valor se publica cada métrica de cada muestra. Es lo que convierte la política de reintentos en algo APLICADO: una política declarada y no ejecutada dejaría verde cualquier mutación de sus reglas, y quedarse con el intento favorable para degradación o limpieza no se notaría.",
+  "por-que-las-repeticiones-se-declaran-aca": "El conjunto esperado de muestras es el producto punto × repetición. Los puntos salen de la cobertura del pre-registro, pero las repeticiones NO pueden contarse sobre la lista de muestras que se quiere validar: quitar una bajaría el máximo, el producto la dejaría de esperar y la ausencia no se vería. Por eso se declaran acá, aparte y congeladas.",
+  "plantilla_de_sample_id": "mst-{punto_de_despacho}-r{repeticion}",
+  "repeticiones_por_punto": {
+    "sdd-flow-implementer-por-task": 2,
+    "cross-implement-implementador-inicial": 1
+  },
+  "intentos": [
+    {
+      "sample_id": "mst-sdd-flow-implementer-por-task-r1",
+      "attempt_ordinal": 1,
+      "descripcion": "el intento que completa con la salida malformada, y por eso habilita el reintento"
+    },
+    {
+      "sample_id": "mst-sdd-flow-implementer-por-task-r1",
+      "attempt_ordinal": 2,
+      "descripcion": "el reintento legítimo: un intento extra NO invalida su muestra"
+    },
+    {
+      "sample_id": "mst-sdd-flow-implementer-por-task-r2",
+      "attempt_ordinal": 1,
+      "descripcion": "la segunda repetición del mismo punto, que no necesitó reintento"
+    },
+    {
+      "sample_id": "mst-cross-implement-implementador-inicial-r1",
+      "attempt_ordinal": 1,
+      "descripcion": "la corrida degradada, con su proceso vivo"
+    }
+  ],
+  "selecciones_esperadas": [
+    {
+      "sample_id": "mst-sdd-flow-implementer-por-task-r1",
+      "metrica_id": "latencia-hasta-resultado-utilizable",
+      "valor_esperado": 200000.0,
+      "descripcion": "`primer_intento_valido`: se publica la del intento 2, no la del 1. Con `primer_intento` daría 100.000, y esa diferencia es lo que prueba que la regla se aplica"
+    },
+    {
+      "sample_id": "mst-sdd-flow-implementer-por-task-r1",
+      "metrica_id": "salidas-invalidas",
+      "valor_esperado": 1.0,
+      "descripcion": "`agregacion` con suma: 1 del intento 1 y 0 del 2"
+    },
+    {
+      "sample_id": "mst-sdd-flow-implementer-por-task-r1",
+      "metrica_id": "tasa-de-salidas-invalidas",
+      "valor_esperado": 0.5,
+      "descripcion": "`agregacion` de una tasa: se suman numeradores y denominadores y se divide UNA vez — 1/1 y 0/1 dan 1/2, no el promedio de los cocientes"
+    },
+    {
+      "sample_id": "mst-sdd-flow-implementer-por-task-r1",
+      "metrica_id": "hallazgos-emitidos",
+      "valor_esperado": 2.0,
+      "descripcion": "`agregacion` con suma: 1 por intento. El intento 2 emite dos eventos del mismo hallazgo y cuentan uno"
+    },
+    {
+      "sample_id": "mst-sdd-flow-implementer-por-task-r1",
+      "metrica_id": "limpieza-completa",
+      "valor_esperado": 1.0,
+      "descripcion": "`agregacion` con conjunción: los dos intentos dejaron todo con el cese comprobado"
+    },
+    {
+      "sample_id": "mst-cross-implement-implementador-inicial-r1",
+      "metrica_id": "tasa-de-degradacion",
+      "valor_esperado": 1.0,
+      "descripcion": "un solo intento, degradado, dentro de la población elegible"
+    },
+    {
+      "sample_id": "mst-cross-implement-implementador-inicial-r1",
+      "metrica_id": "limpieza-completa",
+      "valor_esperado": 0.0,
+      "descripcion": "un proceso quedó vivo: la conjunción vale 0 y arrastra a la muestra"
+    }
+  ],
+  "negativos_de_cadena": [
+    {
+      "ataque": "borrar_ultimo",
+      "sample_id": "mst-sdd-flow-implementer-por-task-r1",
+      "frente_esperado": "cadena",
+      "descripcion": "se descarta el último intento. Sin el manifest, el conjunto que queda es válido: ordinales 1..N y todo en regla"
+    },
+    {
+      "ataque": "borrar_ultimo_y_renumerar",
+      "sample_id": "mst-sdd-flow-implementer-por-task-r1",
+      "frente_esperado": "cadena",
+      "descripcion": "se descarta y además se renumera la cadena, que es lo que borra el hueco. El ordinal solo no alcanza: hace falta el conjunto esperado declarado aparte"
+    },
+    {
+      "ataque": "attempt_id_fuera_de_la_regla",
+      "sample_id": "mst-sdd-flow-implementer-por-task-r1",
+      "frente_esperado": "identidad",
+      "descripcion": "un `attempt_id` que la regla congelada no produce"
+    }
+  ],
+  "mutantes_de_identidad": [
+    {
+      "nombre": "attempt-id-sin-muestra",
+      "campo": "attempt_id",
+      "regla": {
+        "plantilla": "int-{punto_de_despacho}-a{attempt_ordinal}",
+        "componentes": [
+          "punto_de_despacho",
+          "attempt_ordinal"
+        ]
+      },
+      "descripcion": "la identidad del intento deja de depender de su muestra, así que las dos repeticiones del mismo punto COLISIONAN"
+    },
+    {
+      "nombre": "observation-id-por-ordinal",
+      "campo": "observation_id",
+      "regla": {
+        "plantilla": "obs-a{attempt_ordinal}",
+        "componentes": [
+          "attempt_ordinal"
+        ]
+      },
+      "descripcion": "la observación se identifica por su posición en la cadena: los primeros intentos de todas las muestras colisionan entre sí"
+    },
+    {
+      "nombre": "observation-id-por-run-id",
+      "campo": "observation_id",
+      "regla": {
+        "plantilla": "{run_id}",
+        "componentes": [
+          "run_id"
+        ]
+      },
+      "descripcion": "el caso barato de D-12: un solo `run_id` haciendo de las tres identidades. La regla se alimenta de algo que la observación no lleva, y ahí se rompe"
+    }
+  ],
+  "negativos_de_muestras": [
+    {
+      "ataque": "quitar_muestra",
+      "sample_id": "mst-sdd-flow-implementer-por-task-r2",
+      "descripcion": "se cae una muestra de la cohorte. El producto punto × repetición la sigue esperando porque las repeticiones se declaran acá y no se cuentan sobre la propia lista"
+    },
+    {
+      "ataque": "agregar_muestra_que_el_producto_no_produce",
+      "sample_id": "mst-sdd-flow-implementer-por-task-r9",
+      "descripcion": "una muestra que la cohorte declara y el producto no produce: la comparación es en las dos direcciones, no solo la de las ausencias"
+    }
+  ]
+}
