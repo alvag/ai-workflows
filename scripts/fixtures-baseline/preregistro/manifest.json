@@ -1,0 +1,612 @@
+{
+  "que_declara": "El manifest independiente del corpus de T15. Declara qué caso cae por qué cláusula y por qué motivo, el conjunto cerrado de cláusulas de cada fase, el conjunto conforme de observaciones y la tabla normativa de adjudicación de la identidad del entorno. Es independiente del corpus (D-16): un caso que nadie declara, o una cláusula sin caso que la ponga roja, se ven desde acá.",
+  "clausulas_del_congelado": [
+    "hash_discordante",
+    "congelamiento_no_resoluble",
+    "congelamiento_no_es_descendiente_directo",
+    "congelamiento_con_cambios_ajenos",
+    "corrida_anterior_al_congelamiento",
+    "corrida_con_otro_congelamiento",
+    "cohorte_vacia",
+    "muestras_duplicadas"
+  ],
+  "clausulas_del_manifest": [
+    "observacion_con_otro_preregistro",
+    "muestra_faltante",
+    "muestra_sobrante",
+    "cadena_rota",
+    "identidad_fuera_de_la_regla",
+    "dependencia_de_paso_rota",
+    "conjunto_vacio",
+    "entorno_divergente_incorporado",
+    "seleccion_declarada_fuera_de_su_modo"
+  ],
+  "manifest_de_intentos": {
+    "plantilla_de_sample_id": "mst-{punto_de_despacho}-r{repeticion}",
+    "repeticiones_por_punto": {
+      "sdd-flow-analyze-exploracion": 1,
+      "sdd-flow-implementer-por-task": 1,
+      "sdd-flow-reviewer-por-task": 1,
+      "sdd-flow-revision-final-de-diff": 1,
+      "bitbucket-code-review-panel-de-revisores": 1,
+      "bitbucket-code-review-validador-adversarial": 1,
+      "co-explore-fan-out-dual": 1,
+      "co-explore-worker-por-ronda-de-debate": 1,
+      "cross-implement-implementador-inicial": 1,
+      "cross-implement-ronda-de-fix-loop": 1,
+      "cross-review-revisor-por-ronda": 1,
+      "sdd-orchestrator-fan-out-por-repo": 1
+    },
+    "intentos": [
+      {
+        "sample_id": "mst-sdd-flow-analyze-exploracion-r1",
+        "attempt_ordinal": 1
+      },
+      {
+        "sample_id": "mst-sdd-flow-implementer-por-task-r1",
+        "attempt_ordinal": 1
+      },
+      {
+        "sample_id": "mst-sdd-flow-reviewer-por-task-r1",
+        "attempt_ordinal": 1
+      },
+      {
+        "sample_id": "mst-sdd-flow-revision-final-de-diff-r1",
+        "attempt_ordinal": 1
+      },
+      {
+        "sample_id": "mst-bitbucket-code-review-panel-de-revisores-r1",
+        "attempt_ordinal": 1
+      },
+      {
+        "sample_id": "mst-bitbucket-code-review-validador-adversarial-r1",
+        "attempt_ordinal": 1
+      },
+      {
+        "sample_id": "mst-co-explore-fan-out-dual-r1",
+        "attempt_ordinal": 1
+      },
+      {
+        "sample_id": "mst-co-explore-worker-por-ronda-de-debate-r1",
+        "attempt_ordinal": 1
+      },
+      {
+        "sample_id": "mst-cross-implement-implementador-inicial-r1",
+        "attempt_ordinal": 1
+      },
+      {
+        "sample_id": "mst-cross-implement-ronda-de-fix-loop-r1",
+        "attempt_ordinal": 1
+      },
+      {
+        "sample_id": "mst-cross-review-revisor-por-ronda-r1",
+        "attempt_ordinal": 1
+      },
+      {
+        "sample_id": "mst-sdd-orchestrator-fan-out-por-repo-r1",
+        "attempt_ordinal": 1
+      }
+    ]
+  },
+  "observaciones_conformes": [
+    {
+      "observation_id": "obs-mst-sdd-flow-analyze-exploracion-r1-a1",
+      "sample_id": "mst-sdd-flow-analyze-exploracion-r1",
+      "attempt_id": "int-mst-sdd-flow-analyze-exploracion-r1-a1",
+      "attempt_ordinal": 1,
+      "estado": {
+        "ciclo_operativo": "completado",
+        "validez_del_reporte": "valido",
+        "resultado_semantico": "correcto"
+      }
+    },
+    {
+      "observation_id": "obs-mst-sdd-flow-implementer-por-task-r1-a1",
+      "sample_id": "mst-sdd-flow-implementer-por-task-r1",
+      "attempt_id": "int-mst-sdd-flow-implementer-por-task-r1-a1",
+      "attempt_ordinal": 1,
+      "estado": {
+        "ciclo_operativo": "completado",
+        "validez_del_reporte": "valido",
+        "resultado_semantico": "correcto"
+      }
+    },
+    {
+      "observation_id": "obs-mst-sdd-flow-reviewer-por-task-r1-a1",
+      "sample_id": "mst-sdd-flow-reviewer-por-task-r1",
+      "attempt_id": "int-mst-sdd-flow-reviewer-por-task-r1-a1",
+      "attempt_ordinal": 1,
+      "estado": {
+        "ciclo_operativo": "completado",
+        "validez_del_reporte": "valido",
+        "resultado_semantico": "correcto"
+      }
+    },
+    {
+      "observation_id": "obs-mst-sdd-flow-revision-final-de-diff-r1-a1",
+      "sample_id": "mst-sdd-flow-revision-final-de-diff-r1",
+      "attempt_id": "int-mst-sdd-flow-revision-final-de-diff-r1-a1",
+      "attempt_ordinal": 1,
+      "estado": {
+        "ciclo_operativo": "completado",
+        "validez_del_reporte": "valido",
+        "resultado_semantico": "correcto"
+      }
+    },
+    {
+      "observation_id": "obs-mst-bitbucket-code-review-panel-de-revisores-r1-a1",
+      "sample_id": "mst-bitbucket-code-review-panel-de-revisores-r1",
+      "attempt_id": "int-mst-bitbucket-code-review-panel-de-revisores-r1-a1",
+      "attempt_ordinal": 1,
+      "estado": {
+        "ciclo_operativo": "completado",
+        "validez_del_reporte": "valido",
+        "resultado_semantico": "correcto"
+      }
+    },
+    {
+      "observation_id": "obs-mst-bitbucket-code-review-validador-adversarial-r1-a1",
+      "sample_id": "mst-bitbucket-code-review-validador-adversarial-r1",
+      "attempt_id": "int-mst-bitbucket-code-review-validador-adversarial-r1-a1",
+      "attempt_ordinal": 1,
+      "estado": {
+        "ciclo_operativo": "completado",
+        "validez_del_reporte": "valido",
+        "resultado_semantico": "correcto"
+      }
+    },
+    {
+      "observation_id": "obs-mst-co-explore-fan-out-dual-r1-a1",
+      "sample_id": "mst-co-explore-fan-out-dual-r1",
+      "attempt_id": "int-mst-co-explore-fan-out-dual-r1-a1",
+      "attempt_ordinal": 1,
+      "estado": {
+        "ciclo_operativo": "completado",
+        "validez_del_reporte": "valido",
+        "resultado_semantico": "correcto"
+      }
+    },
+    {
+      "observation_id": "obs-mst-co-explore-worker-por-ronda-de-debate-r1-a1",
+      "sample_id": "mst-co-explore-worker-por-ronda-de-debate-r1",
+      "attempt_id": "int-mst-co-explore-worker-por-ronda-de-debate-r1-a1",
+      "attempt_ordinal": 1,
+      "estado": {
+        "ciclo_operativo": "completado",
+        "validez_del_reporte": "valido",
+        "resultado_semantico": "correcto"
+      }
+    },
+    {
+      "observation_id": "obs-mst-cross-implement-implementador-inicial-r1-a1",
+      "sample_id": "mst-cross-implement-implementador-inicial-r1",
+      "attempt_id": "int-mst-cross-implement-implementador-inicial-r1-a1",
+      "attempt_ordinal": 1,
+      "estado": {
+        "ciclo_operativo": "completado",
+        "validez_del_reporte": "valido",
+        "resultado_semantico": "correcto"
+      }
+    },
+    {
+      "observation_id": "obs-mst-cross-implement-ronda-de-fix-loop-r1-a1",
+      "sample_id": "mst-cross-implement-ronda-de-fix-loop-r1",
+      "attempt_id": "int-mst-cross-implement-ronda-de-fix-loop-r1-a1",
+      "attempt_ordinal": 1,
+      "estado": {
+        "ciclo_operativo": "completado",
+        "validez_del_reporte": "valido",
+        "resultado_semantico": "correcto"
+      }
+    },
+    {
+      "observation_id": "obs-mst-cross-review-revisor-por-ronda-r1-a1",
+      "sample_id": "mst-cross-review-revisor-por-ronda-r1",
+      "attempt_id": "int-mst-cross-review-revisor-por-ronda-r1-a1",
+      "attempt_ordinal": 1,
+      "estado": {
+        "ciclo_operativo": "completado",
+        "validez_del_reporte": "valido",
+        "resultado_semantico": "correcto"
+      }
+    },
+    {
+      "observation_id": "obs-mst-sdd-orchestrator-fan-out-por-repo-r1-a1",
+      "sample_id": "mst-sdd-orchestrator-fan-out-por-repo-r1",
+      "attempt_id": "int-mst-sdd-orchestrator-fan-out-por-repo-r1-a1",
+      "attempt_ordinal": 1,
+      "estado": {
+        "ciclo_operativo": "completado",
+        "validez_del_reporte": "valido",
+        "resultado_semantico": "correcto"
+      }
+    }
+  ],
+  "casos": [
+    {
+      "caso": "c-hash-falseado",
+      "fase": "congelado",
+      "clausula": "hash_discordante",
+      "fragmento": "no identifica este contenido"
+    },
+    {
+      "caso": "c-sin-commitear",
+      "fase": "congelado",
+      "clausula": "congelamiento_no_resoluble",
+      "fragmento": "no tiene ningún commit que lo fije"
+    },
+    {
+      "caso": "c-commit-intermedio",
+      "fase": "congelado",
+      "clausula": "congelamiento_no_es_descendiente_directo",
+      "fragmento": "hay historia que nadie declaró"
+    },
+    {
+      "caso": "c-cambio-ajeno",
+      "fase": "congelado",
+      "clausula": "congelamiento_con_cambios_ajenos",
+      "fragmento": "deja de ser el que `code_commit` nombra"
+    },
+    {
+      "caso": "c-corrida-anterior",
+      "fase": "congelado",
+      "clausula": "corrida_anterior_al_congelamiento",
+      "fragmento": "una metodología que todavía podía cambiar"
+    },
+    {
+      "caso": "c-corrida-con-otro-congelamiento",
+      "fase": "congelado",
+      "clausula": "corrida_con_otro_congelamiento",
+      "fragmento": "declara haber corrido con el pre-registro fijado en"
+    },
+    {
+      "caso": "c-cohorte-vacia",
+      "fase": "congelado",
+      "clausula": "cohorte_vacia",
+      "fragmento": "no declara ninguna muestra"
+    },
+    {
+      "caso": "c-muestras-duplicadas",
+      "fase": "congelado",
+      "clausula": "muestras_duplicadas",
+      "fragmento": "son la repetición"
+    },
+    {
+      "caso": "m-otro-preregistro",
+      "fase": "manifest",
+      "clausula": "observacion_con_otro_preregistro",
+      "fragmento": "se rechaza en vez de incorporarla"
+    },
+    {
+      "caso": "m-muestra-faltante",
+      "fase": "manifest",
+      "clausula": "muestra_faltante",
+      "fragmento": "falla en vez de desaparecer de los dos lados"
+    },
+    {
+      "caso": "m-muestra-sobrante",
+      "fase": "manifest",
+      "clausula": "muestra_sobrante",
+      "fragmento": "que el acta no congela como muestra"
+    },
+    {
+      "caso": "m-cadena-rota",
+      "fase": "manifest",
+      "clausula": "cadena_rota",
+      "fragmento": "intento declarado en el manifest y sin observación"
+    },
+    {
+      "caso": "m-identidad-fuera-de-la-regla",
+      "fase": "manifest",
+      "clausula": "identidad_fuera_de_la_regla",
+      "fragmento": "la regla congelada produce"
+    },
+    {
+      "caso": "m-dependencia-rota",
+      "fase": "manifest",
+      "clausula": "dependencia_de_paso_rota",
+      "fragmento": "que el acta no congela como muestra"
+    },
+    {
+      "caso": "m-conjunto-vacio",
+      "fase": "manifest",
+      "clausula": "conjunto_vacio",
+      "fragmento": "un directorio vacío satisface en el vacío"
+    },
+    {
+      "caso": "c-corrida-anterior-en-otra-zona",
+      "fase": "congelado",
+      "clausula": "corrida_anterior_al_congelamiento",
+      "fragmento": "una metodología que todavía podía cambiar"
+    },
+    {
+      "caso": "m-cardinalidad-incumplida",
+      "fase": "manifest",
+      "clausula": "dependencia_de_paso_rota",
+      "fragmento": "que su cardinalidad declara"
+    },
+    {
+      "caso": "m-entorno-divergente-incorporado",
+      "fase": "manifest",
+      "clausula": "entorno_divergente_incorporado",
+      "fragmento": "diverge en un campo que el acta bloquea"
+    },
+    {
+      "caso": "m-seleccion-declarada-fuera-de-su-modo",
+      "fase": "manifest",
+      "clausula": "seleccion_declarada_fuera_de_su_modo",
+      "fragmento": "la haría pasar sin evaluarse"
+    },
+    {
+      "caso": "c-sin-code-commit",
+      "fase": "congelado",
+      "clausula": "congelamiento_no_es_descendiente_directo",
+      "fragmento": "hay historia que nadie declaró"
+    }
+  ],
+  "identidad_del_entorno": {
+    "que_declara": "La tabla normativa de adjudicación, independiente de la que el instrumento aplica. Dos adjudicaciones y no tres: agregar registrando la divergencia sería la salida barata de toda corrida que no cumple el protocolo.",
+    "adjudicacion_por_campo": [
+      {
+        "campo": "arbol_limpio",
+        "adjudicacion": "bloqueo"
+      },
+      {
+        "campo": "matriz_sha256",
+        "adjudicacion": "bloqueo"
+      },
+      {
+        "campo": "instrumento_sha256",
+        "adjudicacion": "bloqueo"
+      },
+      {
+        "campo": "runner_sha256",
+        "adjudicacion": "bloqueo"
+      },
+      {
+        "campo": "ejecutor.perfil_esperado",
+        "adjudicacion": "bloqueo"
+      },
+      {
+        "campo": "version_cli",
+        "adjudicacion": "estratificacion"
+      },
+      {
+        "campo": "version_runtime",
+        "adjudicacion": "estratificacion"
+      },
+      {
+        "campo": "hooks",
+        "adjudicacion": "estratificacion"
+      }
+    ],
+    "entorno_esperado": {
+      "arbol_limpio_exigido": true,
+      "matriz_sha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+      "instrumento_sha256": "9f8e7d6c5b4a39289f8e7d6c5b4a39289f8e7d6c5b4a39289f8e7d6c5b4a3928",
+      "runner_sha256": "1122334455667788112233445566778811223344556677881122334455667788",
+      "version_cli": "codex 0.146.1",
+      "version_runtime": "python 3.13",
+      "hooks": [
+        "stop-hook del conductor, declarado y desactivado"
+      ],
+      "ejecutor_esperado": "conductor local sin hooks de sesión",
+      "transportes_admitidos": [
+        "subagent",
+        "cli-exec",
+        "cli-resume"
+      ]
+    },
+    "bundle_conforme": {
+      "run_id": "run-conforme",
+      "transporte": "cli-exec",
+      "eventos": [],
+      "identidad_del_entorno": {
+        "code_commit": "6ebf46f",
+        "preregistration_commit": "3dd1ee4",
+        "arbol_limpio": true,
+        "matriz_sha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+        "instrumento_sha256": "9f8e7d6c5b4a39289f8e7d6c5b4a39289f8e7d6c5b4a39289f8e7d6c5b4a3928",
+        "runner_sha256": "1122334455667788112233445566778811223344556677881122334455667788",
+        "version_cli": "codex 0.146.1",
+        "version_runtime": "python 3.13",
+        "hooks": [
+          "stop-hook del conductor, declarado y desactivado"
+        ],
+        "ejecutor": {
+          "perfil_esperado": "conductor local sin hooks de sesión",
+          "instancia_efectiva": {
+            "estado": "expuesto",
+            "valor": "conductor-local-01"
+          }
+        },
+        "eventos_de_intervencion_humana": [],
+        "modelo": {
+          "solicitado": {
+            "estado": "expuesto",
+            "valor": "gpt-5-codex"
+          },
+          "efectivo": {
+            "estado": "expuesto",
+            "valor": "gpt-5-codex"
+          }
+        }
+      }
+    },
+    "muestra": {
+      "sample_id": "mst-co-explore-fan-out-dual-r1",
+      "estrato_esperado": "automatizable"
+    },
+    "divergencias": [
+      {
+        "nombre": "arbol-sucio",
+        "donde": "entorno",
+        "campo": "arbol_limpio",
+        "valor": false,
+        "esperada": "arbol_limpio",
+        "adjudicacion": "bloqueo"
+      },
+      {
+        "nombre": "otra-matriz",
+        "donde": "entorno",
+        "campo": "matriz_sha256",
+        "valor": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "esperada": "matriz_sha256",
+        "adjudicacion": "bloqueo"
+      },
+      {
+        "nombre": "otro-instrumento",
+        "donde": "entorno",
+        "campo": "instrumento_sha256",
+        "valor": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "esperada": "instrumento_sha256",
+        "adjudicacion": "bloqueo"
+      },
+      {
+        "nombre": "otro-runner",
+        "donde": "entorno",
+        "campo": "runner_sha256",
+        "valor": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "esperada": "runner_sha256",
+        "adjudicacion": "bloqueo"
+      },
+      {
+        "nombre": "otro-perfil-de-ejecutor",
+        "donde": "entorno",
+        "campo": "ejecutor.perfil_esperado",
+        "valor": "agente desatendido con hooks de sesión",
+        "esperada": "ejecutor.perfil_esperado",
+        "adjudicacion": "bloqueo"
+      },
+      {
+        "nombre": "otra-version-de-cli",
+        "donde": "entorno",
+        "campo": "version_cli",
+        "valor": "codex 0.147.0",
+        "esperada": "version_cli",
+        "adjudicacion": "estratificacion"
+      },
+      {
+        "nombre": "otro-runtime",
+        "donde": "entorno",
+        "campo": "version_runtime",
+        "valor": "python 3.11",
+        "esperada": "version_runtime",
+        "adjudicacion": "estratificacion"
+      },
+      {
+        "nombre": "otros-hooks",
+        "donde": "entorno",
+        "campo": "hooks",
+        "valor": [
+          "stop-hook del conductor, activo"
+        ],
+        "esperada": "hooks",
+        "adjudicacion": "estratificacion"
+      },
+      {
+        "nombre": "transporte-no-admitido",
+        "donde": "bundle",
+        "campo": "transporte",
+        "valor": "mixto",
+        "esperada": "transporte",
+        "adjudicacion": "bloqueo"
+      },
+      {
+        "nombre": "estrato-efectivo-distinto",
+        "donde": "entorno",
+        "campo": "eventos_de_intervencion_humana",
+        "valor": [
+          "evt-confirmacion-del-conductor"
+        ],
+        "esperada": "estrato",
+        "adjudicacion": "estratificacion"
+      },
+      {
+        "nombre": "modelo-solicitado-no-expuesto",
+        "donde": "entorno",
+        "campo": "modelo.solicitado",
+        "valor": {
+          "estado": "no_expuesto",
+          "adjudicacion": "estratificacion"
+        },
+        "esperada": "modelo.solicitado",
+        "adjudicacion": "estratificacion"
+      },
+      {
+        "nombre": "modelo-efectivo-no-expuesto",
+        "donde": "entorno",
+        "campo": "modelo.efectivo",
+        "valor": {
+          "estado": "no_expuesto",
+          "adjudicacion": "bloqueo"
+        },
+        "esperada": "modelo.efectivo",
+        "adjudicacion": "bloqueo"
+      },
+      {
+        "nombre": "instancia-de-ejecutor-no-expuesta",
+        "donde": "entorno",
+        "campo": "ejecutor.instancia_efectiva",
+        "valor": {
+          "estado": "no_expuesto",
+          "adjudicacion": "estratificacion"
+        },
+        "esperada": "ejecutor.instancia_efectiva",
+        "adjudicacion": "estratificacion"
+      }
+    ],
+    "mutantes_de_la_tabla": [
+      {
+        "nombre": "instrumento-degradado-a-estrato",
+        "campo": "instrumento_sha256",
+        "ataque": "cambiar_adjudicacion",
+        "nueva": "estratificacion"
+      },
+      {
+        "nombre": "hooks-sin-fila",
+        "campo": "hooks",
+        "ataque": "borrar_fila"
+      }
+    ]
+  },
+  "corrida_conforme_de_la_primera_muestra": {
+    "run_id": "run-conforme-de-la-primera",
+    "bundle": {
+      "run_id": "run-conforme-de-la-primera",
+      "transporte": "cli-exec",
+      "eventos": [],
+      "identidad_del_entorno": {
+        "code_commit": "6ebf46f",
+        "preregistration_commit": "3dd1ee4",
+        "arbol_limpio": true,
+        "matriz_sha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+        "instrumento_sha256": "9f8e7d6c5b4a39289f8e7d6c5b4a39289f8e7d6c5b4a39289f8e7d6c5b4a3928",
+        "runner_sha256": "1122334455667788112233445566778811223344556677881122334455667788",
+        "version_cli": "codex 0.146.1",
+        "version_runtime": "python 3.13",
+        "hooks": [
+          "stop-hook del conductor, declarado y desactivado"
+        ],
+        "ejecutor": {
+          "perfil_esperado": "conductor local sin hooks de sesión",
+          "instancia_efectiva": {
+            "estado": "expuesto",
+            "valor": "conductor-local-01"
+          }
+        },
+        "eventos_de_intervencion_humana": [],
+        "modelo": {
+          "solicitado": {
+            "estado": "expuesto",
+            "valor": "gpt-5-codex"
+          },
+          "efectivo": {
+            "estado": "expuesto",
+            "valor": "gpt-5-codex"
+          }
+        }
+      }
+    }
+  }
+}

@@ -54,6 +54,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import copy
+import datetime
 import hashlib
 import io
 import json
@@ -9597,6 +9598,1197 @@ def modo_autotest_promocion(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------------------------
+# Modos `--validar-preregistro-congelado`, `--validar-manifest-observaciones`,
+# `--autotest-preregistro` y `--autotest-identidad-entorno`.
+#
+# Las dos fases del ciclo del pre-registro son **dos modos y no dos banderas del mismo**, porque
+# corren en momentos donde la misma pregunta tiene respuestas opuestas: la primera pasa cuando no
+# hay ninguna observación —es su condición de uso: se corre para poder empezar a medir— y la
+# segunda exige que no falte ninguna respecto del manifest. Un solo modo que hiciera las dos cosas
+# o rechazaría el árbol antes de la primera corrida, o dejaría pasar un conjunto incompleto al
+# final; y una bandera que lo relajara sería la que se pasa sin pensar cuando el conjunto no cierra.
+#
+# La anterioridad NO se declara: se deriva. El commit que fija el pre-registro lo resuelve Git
+# sobre la ruta del archivo, y cada corrida se ordena contra su fecha con el sello de pared que el
+# bundle registra para eso —el schema lo dice con todas las letras: «sirve para ordenar la corrida
+# contra los commits y nunca para calcular duraciones»—.
+# ---------------------------------------------------------------------------------------------
+
+DIR_FIXTURES_PREREGISTRO = DIR_SCRIPTS / "fixtures-baseline" / "preregistro"
+RUTA_PREREGISTRO_SANO = DIR_FIXTURES_PREREGISTRO / "sano.json"
+RUTA_CORPUS_PREREGISTRO = DIR_FIXTURES_PREREGISTRO / "casos.json"
+RUTA_MANIFEST_PREREGISTRO = DIR_FIXTURES_PREREGISTRO / "manifest.json"
+
+# La ruta del pre-registro dentro del repositorio. El commit de congelamiento se resuelve contra
+# ella y no contra la ruta que llegue por la línea de comandos: apuntar el modo a una copia fuera
+# del árbol tiene que fallar por «no está versionado», no comprobar el commit de otro archivo.
+RUTA_CANONICA_DEL_PREREGISTRO = "scripts/preregistro-fase-0.json"
+
+CLAUSULAS_DEL_CONGELADO = (
+    "hash_discordante",
+    "congelamiento_no_resoluble",
+    "congelamiento_no_es_descendiente_directo",
+    "congelamiento_con_cambios_ajenos",
+    "corrida_anterior_al_congelamiento",
+    "corrida_con_otro_congelamiento",
+    "cohorte_vacia",
+    "muestras_duplicadas",
+)
+
+CLAUSULAS_DEL_MANIFEST = (
+    "observacion_con_otro_preregistro",
+    "muestra_faltante",
+    "muestra_sobrante",
+    "cadena_rota",
+    "identidad_fuera_de_la_regla",
+    "dependencia_de_paso_rota",
+    "conjunto_vacio",
+    "entorno_divergente_incorporado",
+    "seleccion_declarada_fuera_de_su_modo",
+)
+
+
+# --- Fase 1: el pre-registro congelado --------------------------------------------------------
+
+class Congelamiento(NamedTuple):
+    """El commit que fija el pre-registro, resuelto por Git y no declarado por nadie."""
+    commit: str | None
+    fecha: str | None
+    padres: tuple[str, ...]
+    cambios: tuple[str, ...]
+    error: str | None
+
+
+def _git(repo: Path, *argumentos: str) -> tuple[int, str]:
+    return _correr_en(["git", "-C", str(repo), *argumentos], None, dict(os.environ))
+
+
+def resolver_congelamiento(repo: Path, ruta_en_el_repo: str) -> Congelamiento:
+    """El último commit que tocó `ruta_en_el_repo`, con sus padres y su diff contra el primero.
+
+    Se resuelve con plumbing y no se lee de ningún campo del documento (D-18): un pre-registro que
+    declarara el SHA del commit que lo contiene pediría otro punto fijo, y uno que lo declarara a
+    mano sería exactamente la declaración que este modo existe para no creer.
+    """
+    codigo, salida = _git(repo, "log", "-1", "--format=%H%x00%cI", "--", ruta_en_el_repo)
+    if codigo != 0:
+        return Congelamiento(None, None, (), (), f"git no pudo resolver el historial: {salida}")
+    if not salida.strip():
+        return Congelamiento(None, None, (), (),
+                             f"`{ruta_en_el_repo}` no tiene ningún commit que lo fije: un "
+                             "pre-registro sin commit no es anterior a nada")
+    commit, _, fecha = salida.strip().partition("\0")
+
+    codigo, salida = _git(repo, "rev-list", "--parents", "-n", "1", commit)
+    if codigo != 0:
+        return Congelamiento(commit, fecha, (), (), f"no se pudieron resolver los padres: {salida}")
+    padres = tuple(salida.split()[1:])
+
+    cambios: tuple[str, ...] = ()
+    if padres:
+        codigo, salida = _git(repo, "diff", "--name-only", padres[0], commit)
+        if codigo != 0:
+            return Congelamiento(commit, fecha, padres, (),
+                                 f"no se pudo resolver el cambio del commit: {salida}")
+        cambios = tuple(línea for línea in salida.splitlines() if línea.strip())
+    return Congelamiento(commit, fecha, padres, cambios, None)
+
+
+def revisar_congelamiento(preregistro: dict, congelamiento: Congelamiento,
+                          corridas: list[BundleEnDisco]) -> list[Hallazgo]:
+    """AC-17 · D-18: hash por contenido, anterioridad demostrable y muestras sin duplicados.
+
+    **No exige observaciones**: con cero corridas, las dos cláusulas de anterioridad se cumplen en
+    el vacío, que es el estado en el que este modo se corre —antes de medir—.
+    """
+    problemas: list[Hallazgo] = []
+
+    declarado = preregistro.get("preregistro_sha256")
+    computado = hashlib.sha256(proyeccion_canonica(preregistro)).hexdigest()
+    if declarado != computado:
+        problemas.append(Hallazgo(
+            "hash_discordante",
+            f"el documento declara `{declarado}` y su proyección canónica da `{computado}`: el "
+            f"identificador por contenido no identifica este contenido"))
+
+    if congelamiento.error is not None:
+        problemas.append(Hallazgo("congelamiento_no_resoluble", congelamiento.error))
+    else:
+        problemas.extend(_revisar_relacion_de_commits(preregistro, congelamiento))
+        problemas.extend(_revisar_anterioridad(congelamiento, corridas))
+
+    muestras = (preregistro.get("cohorte") or {}).get("muestras") or []
+    if not muestras:
+        problemas.append(Hallazgo(
+            "cohorte_vacia",
+            "la cohorte no declara ninguna muestra: un conjunto vacío satisface en el vacío todo "
+            "lo que el manifest compare después"))
+    problemas.extend(_revisar_duplicados_de_muestra(muestras))
+    return problemas
+
+
+def _revisar_relacion_de_commits(preregistro: dict,
+                                 congelamiento: Congelamiento) -> list[Hallazgo]:
+    """D-18: descendiente directo de `code_commit`, con el pre-registro como único cambio."""
+    problemas: list[Hallazgo] = []
+    code_commit = preregistro.get("code_commit") or ""
+    if len(congelamiento.padres) != 1:
+        return [Hallazgo(
+            "congelamiento_no_es_descendiente_directo",
+            f"el commit que fija el pre-registro tiene {len(congelamiento.padres)} padres y tiene "
+            f"que tener exactamente uno: `code_commit`")]
+    padre = congelamiento.padres[0]
+    # Sin `code_commit` la comparación por prefijo se satisface en el vacío —todo SHA empieza con
+    # la cadena vacía—, así que un acta que no lo declare pasaría la relación que D-18 exige.
+    if not code_commit or not (padre.startswith(code_commit) or code_commit.startswith(padre)):
+        problemas.append(Hallazgo(
+            "congelamiento_no_es_descendiente_directo",
+            f"el commit que fija el pre-registro desciende de `{padre[:12]}` y el acta congela "
+            f"`code_commit` `{code_commit}`: entre el árbol medido y el congelamiento hay historia "
+            f"que nadie declaró"))
+    ajenos = [c for c in congelamiento.cambios if c != RUTA_CANONICA_DEL_PREREGISTRO]
+    if ajenos:
+        problemas.append(Hallazgo(
+            "congelamiento_con_cambios_ajenos",
+            f"el commit que fija el pre-registro cambia además {sorted(ajenos)}: el árbol que se "
+            f"midió deja de ser el que `code_commit` nombra"))
+    if not congelamiento.cambios:
+        problemas.append(Hallazgo(
+            "congelamiento_con_cambios_ajenos",
+            "el commit que fija el pre-registro no cambia el pre-registro: no es el commit que lo "
+            "congela"))
+    return problemas
+
+
+def _instante(sello: str | None) -> datetime.datetime | None:
+    """Los dos sellos que se comparan vienen en formatos distintos —Git emite `+00:00` y el bundle
+    `Z`—, así que se ordenan como instantes y nunca como cadenas: `"…Z" < "…+00:00"` es cierto para
+    el mismo momento, y la comparación textual daría «anterior» en todas las corridas."""
+    if not sello:
+        return None
+    try:
+        instante = datetime.datetime.fromisoformat(sello)
+    except ValueError:
+        return None
+    if instante.tzinfo is None:
+        return instante.replace(tzinfo=datetime.timezone.utc)
+    return instante
+
+
+def _revisar_anterioridad(congelamiento: Congelamiento,
+                          corridas: list[BundleEnDisco]) -> list[Hallazgo]:
+    """Cada corrida arrancó después del congelamiento, y cita ese mismo commit."""
+    problemas: list[Hallazgo] = []
+    fijado = _instante(congelamiento.fecha)
+    for corrida in corridas:
+        if corrida.datos is None:
+            continue
+        inicio = ((corrida.datos.get("ventana_de_pared_utc") or {}).get("inicio") or "")
+        arranque = _instante(inicio)
+        if arranque is not None and fijado is not None and arranque < fijado:
+            problemas.append(Hallazgo(
+                "corrida_anterior_al_congelamiento",
+                f"{corrida.directorio}: arrancó en {inicio} y el pre-registro se fijó en "
+                f"{congelamiento.fecha}: se midió con una metodología que todavía podía cambiar"))
+        declarado = ((corrida.datos.get("identidad_del_entorno") or {})
+                     .get("preregistration_commit") or "")
+        if declarado and congelamiento.commit and not (
+                congelamiento.commit.startswith(declarado)
+                or declarado.startswith(congelamiento.commit)):
+            problemas.append(Hallazgo(
+                "corrida_con_otro_congelamiento",
+                f"{corrida.directorio}: declara haber corrido con el pre-registro fijado en "
+                f"`{declarado[:12]}` y el que fija este documento es "
+                f"`{congelamiento.commit[:12]}`"))
+    return problemas
+
+
+def _revisar_duplicados_de_muestra(muestras: list[dict]) -> list[Hallazgo]:
+    """Dos formas de duplicar: el mismo `sample_id`, y el mismo par punto × repetición con otro.
+
+    La segunda es la que sobrevive a una revisión por inspección: los identificadores se ven
+    distintos y el producto que el manifest deriva después espera uno solo de los dos.
+    """
+    problemas: list[Hallazgo] = []
+    vistos: set[str] = set()
+    pares: dict[tuple[str, int], str] = {}
+    for muestra in muestras:
+        ident = muestra.get("sample_id")
+        if ident in vistos:
+            problemas.append(Hallazgo(
+                "muestras_duplicadas",
+                f"`{ident}` aparece más de una vez en la cohorte"))
+        vistos.add(ident)
+        par = (muestra.get("punto_de_despacho"), muestra.get("repeticion"))
+        if par in pares:
+            problemas.append(Hallazgo(
+                "muestras_duplicadas",
+                f"`{ident}` y `{pares[par]}` son la repetición {par[1]} del mismo punto "
+                f"`{par[0]}`: el producto punto × repetición produce una sola"))
+            continue
+        pares[par] = ident
+    return problemas
+
+
+def modo_validar_preregistro_congelado(args: argparse.Namespace) -> int:
+    ruta = Path(getattr(args, "validar_preregistro_congelado"))
+    if not ruta.is_absolute():
+        ruta = RAIZ / ruta
+    preregistro, error = _cargar_json(ruta)
+    if error:
+        print(f"FALLA  {error}")
+        return 1
+    if not isinstance(preregistro, dict):
+        print(f"FALLA  {ruta} no es un objeto JSON: un pre-registro que no lo sea no tiene "
+              f"proyección canónica que hashear")
+        return 1
+
+    dir_corridas = Path(getattr(args, "corridas", None) or RUTA_CORRIDAS_FASE_0)
+    if not dir_corridas.is_absolute():
+        dir_corridas = RAIZ / dir_corridas
+    repo = Path(getattr(args, "repo", None) or RAIZ)
+
+    try:
+        relativa = ruta.resolve().relative_to(repo.resolve()).as_posix()
+    except ValueError:
+        relativa = None
+    if relativa is None:
+        congelamiento = Congelamiento(None, None, (), (),
+                                      f"{ruta} está fuera del repositorio {repo}: no hay commit "
+                                      "que pueda fijarlo")
+    else:
+        congelamiento = resolver_congelamiento(repo, relativa)
+
+    corridas = leer_conjunto_de_bundles(dir_corridas)
+    problemas = revisar_congelamiento(preregistro, congelamiento, corridas)
+
+    print(f"pre-registro: {ruta}")
+    print(f"commit que lo fija: {congelamiento.commit or '∅'} · {congelamiento.fecha or '∅'}")
+    print(f"corridas contra las que se ordena: {len(corridas)}")
+    for problema in problemas:
+        print(f"FALLA  {problema}")
+    print()
+    if problemas:
+        print(f"RESULTADO: FALLA — {len(problemas)} hallazgos")
+        return 1
+    print("RESULTADO: OK — hash por contenido, anterioridad demostrable y muestras sin duplicados")
+    return 0
+
+
+# --- Fase 2: el manifest de observaciones -----------------------------------------------------
+
+def leer_observaciones(raiz: Path) -> tuple[dict[str, list[dict]], list[str]]:
+    """Las observaciones de un directorio, agrupadas por muestra. Una que no parsea es un error y
+    no una ausencia: descartarla en silencio la volvería indistinguible de una que nunca existió."""
+    por_muestra: dict[str, list[dict]] = {}
+    errores: list[str] = []
+    if not raiz.is_dir():
+        return {}, [f"no existe el directorio de observaciones: {raiz}"]
+    for ruta in sorted(raiz.glob("*.json")):
+        datos, error = _cargar_json(ruta)
+        if error:
+            errores.append(f"{ruta.name}: {error}")
+            continue
+        if not isinstance(datos, dict):
+            errores.append(f"{ruta.name}: la observación no es un objeto JSON")
+            continue
+        por_muestra.setdefault(datos.get("sample_id"), []).append(datos)
+    return por_muestra, errores
+
+
+def revisar_manifest_de_observaciones(preregistro: dict, manifest_intentos: dict,
+                                      por_muestra: dict[str, list[dict]],
+                                      vocabulario: dict,
+                                      bundles: dict[str, dict] | None = None) -> list[Hallazgo]:
+    """AC-17 · AC-22bis: cada observación cita el acta, el conjunto coincide y la cadena es
+    append-only derivada de la regla congelada, sin descartar los bloqueados (D-12, D-15).
+
+    Los cuatro frentes de la cadena, la identidad y la selección **no se reimplementan**: son los
+    mismos de `--autotest-muestras-intentos`, aplicados acá sobre observaciones leídas del disco.
+    Dos comprobaciones equivalentes escritas aparte divergen, y la que se relaja es siempre la que
+    corre sobre los datos reales.
+    """
+    problemas: list[Hallazgo] = []
+    esperado = preregistro.get("preregistro_sha256")
+
+    todas = [o for observaciones in por_muestra.values() for o in observaciones]
+    if not todas:
+        problemas.append(Hallazgo(
+            "conjunto_vacio",
+            "el conjunto no tiene ninguna observación: esta fase se corre sobre lo medido, y un "
+            "directorio vacío satisface en el vacío toda comparación que venga después"))
+
+    for observacion in sorted(todas, key=lambda o: str(o.get("observation_id"))):
+        citado = observacion.get("preregistro_sha256")
+        if citado != esperado:
+            problemas.append(Hallazgo(
+                "observacion_con_otro_preregistro",
+                f"`{observacion.get('observation_id')}` cita el pre-registro `{citado}` y el acta "
+                f"es `{esperado}`: se rechaza en vez de incorporarla"))
+
+    # Las observaciones que citan otra acta ya están rechazadas: dejarlas participar del conjunto
+    # las haría contar como cobertura de una muestra que nadie midió bajo esta metodología.
+    del_acta = {ident: [o for o in observaciones if o.get("preregistro_sha256") == esperado]
+                for ident, observaciones in por_muestra.items()}
+    del_acta = {ident: observaciones for ident, observaciones in del_acta.items() if observaciones}
+
+    # La **selección por métrica** es el cuarto frente de V31 y no se reparte en las cláusulas de
+    # este modo: la comprueba `--autotest-muestras-intentos`, que tiene el corpus con métricas para
+    # ejercerla. Que no se reparta no puede volverse silencio: un manifest que la declarara acá
+    # dejaría de comprobarse sin que nada se pusiera rojo, así que declararla es un hallazgo.
+    if manifest_intentos.get("selecciones_esperadas"):
+        problemas.append(Hallazgo(
+            "seleccion_declarada_fuera_de_su_modo",
+            "el manifest de intentos declara `selecciones_esperadas`, que este modo no aplica: "
+            "la política de selección por métrica se comprueba en `--autotest-muestras-intentos`, "
+            "y dejarla acá la haría pasar sin evaluarse"))
+
+    frentes = _revisar_muestras_e_intentos(manifest_intentos, preregistro, del_acta, vocabulario)
+    problemas.extend(_hallazgos_de_frentes(frentes, preregistro, del_acta))
+    problemas.extend(_revisar_dependencias_de_paso(preregistro, del_acta))
+    problemas.extend(_revisar_identidad_de_las_corridas(preregistro, del_acta, bundles))
+    return problemas
+
+
+def _revisar_identidad_de_las_corridas(preregistro: dict, por_muestra: dict[str, list[dict]],
+                                       bundles: dict[str, dict] | None) -> list[Hallazgo]:
+    """La adjudicación de la identidad del entorno, comprobada sobre lo que se recolectó.
+
+    Quien **aplica** la adjudicación es el runner, antes de recolectar; este modo comprueba que la
+    haya aplicado. Una divergencia que el acta bloquea no puede haber producido una observación:
+    si está en el conjunto, se incorporó una medición que el protocolo no admite, y agregarla es
+    exactamente lo que AC-17 prohíbe. Las de `estratificacion` **no** bloquean acá: su efecto es el
+    estrato, y ése lo comprueban las latencias.
+    """
+    if not bundles:
+        return []
+    problemas: list[Hallazgo] = []
+    esperado = preregistro.get("entorno_esperado") or {}
+    muestras = {m.get("sample_id"): m for m
+                in ((preregistro.get("cohorte") or {}).get("muestras") or [])}
+    for observaciones in por_muestra.values():
+        for observacion in sorted(observaciones, key=lambda o: str(o.get("observation_id"))):
+            run_id = (observacion.get("procedencia") or {}).get("run_id")
+            bundle = bundles.get(run_id)
+            if bundle is None:
+                continue  # sin bundle no hay identidad efectiva que comparar; lo ve `--validar-bundles`
+            bloqueos = [d for d in adjudicar_identidad_del_entorno(
+                esperado, bundle, muestras.get(observacion.get("sample_id")))
+                if d.adjudicacion == "bloqueo"]
+            for divergencia in bloqueos:
+                problemas.append(Hallazgo(
+                    "entorno_divergente_incorporado",
+                    f"`{observacion.get('observation_id')}` se incorporó y su corrida diverge en "
+                    f"un campo que el acta bloquea — {divergencia}"))
+    return problemas
+
+
+def _hallazgos_de_frentes(frentes: dict[str, list[str]], preregistro: dict,
+                          por_muestra: dict[str, list[dict]]) -> list[Hallazgo]:
+    """Reparte los cuatro frentes de V31 en las cláusulas de este modo.
+
+    `muestra_faltante` y `muestra_sobrante` se separan porque son fallas distintas: la primera dice
+    que algo no se midió y la segunda que se midió algo que el acta no congeló, y una sola cláusula
+    para las dos dejaría a la segunda sin negativo propio.
+    """
+    problemas: list[Hallazgo] = []
+    declaradas = {m.get("sample_id") for m
+                  in ((preregistro.get("cohorte") or {}).get("muestras") or [])}
+    observadas = set(por_muestra)
+    for ident in sorted(declaradas - observadas):
+        problemas.append(Hallazgo(
+            "muestra_faltante",
+            f"la muestra `{ident}` está congelada en el acta y no tiene ninguna observación: un "
+            f"punto con cero intentos falla en vez de desaparecer de los dos lados"))
+    for ident in sorted(observadas - declaradas):
+        problemas.append(Hallazgo(
+            "muestra_sobrante",
+            f"hay observaciones de `{ident}`, que el acta no congela como muestra"))
+    for detalle in frentes["muestras"]:
+        problemas.append(Hallazgo("muestra_faltante", detalle)
+                         if "ausente de la cohorte" in detalle
+                         else Hallazgo("muestra_sobrante", detalle))
+    problemas.extend(Hallazgo("cadena_rota", d) for d in frentes["cadena"])
+    problemas.extend(Hallazgo("identidad_fuera_de_la_regla", d) for d in frentes["identidad"])
+    return problemas
+
+
+def _revisar_dependencias_de_paso(preregistro: dict,
+                                  por_muestra: dict[str, list[dict]]) -> list[Hallazgo]:
+    """V39: los pasos encadenados conservan su dependencia con las cardinalidades declaradas.
+
+    Una muestra que declara depender de otra (D-17) no se sostiene sola: si la que produce el
+    enlace no se midió, la que lo consume mide otra cosa —una sesión fresca en vez de una
+    reanudada— y su número entra al baseline como si fuera el pre-registrado.
+    """
+    problemas: list[Hallazgo] = []
+    por_ident = {m.get("sample_id"): m for m
+                 in ((preregistro.get("cohorte") or {}).get("muestras") or [])}
+    for ident, muestra in sorted(por_ident.items()):
+        dependencia = muestra.get("dependencia")
+        if not dependencia:
+            continue
+        de = dependencia.get("de_sample_id")
+        if de not in por_ident:
+            problemas.append(Hallazgo(
+                "dependencia_de_paso_rota",
+                f"`{ident}` depende de `{de}`, que el acta no congela como muestra"))
+            continue
+        if not por_muestra.get(ident):
+            continue  # su ausencia ya la reporta `muestra_faltante`
+        alimentan = len(por_muestra.get(de) or [])
+        cardinalidad = dependencia.get("cardinalidad") or 1
+        if alimentan < cardinalidad:
+            problemas.append(Hallazgo(
+                "dependencia_de_paso_rota",
+                f"`{ident}` tiene observaciones y `{de}`, del que depende, aporta {alimentan} de "
+                f"las {cardinalidad} que su cardinalidad declara: el paso encadenado se midió sin "
+                f"el paso que lo produce"))
+    return problemas
+
+
+def modo_validar_manifest_observaciones(args: argparse.Namespace) -> int:
+    dir_observaciones = Path(getattr(args, "validar_manifest_observaciones"))
+    if not dir_observaciones.is_absolute():
+        dir_observaciones = RAIZ / dir_observaciones
+    ruta_acta = Path(getattr(args, "preregistro", None) or RUTA_PREREGISTRO_FASE_0)
+    if not ruta_acta.is_absolute():
+        ruta_acta = RAIZ / ruta_acta
+    ruta_intentos = getattr(args, "intentos", None)
+
+    preregistro, error = _cargar_json(ruta_acta)
+    if error:
+        print(f"FALLA  pre-registro: {error}")
+        return 1
+    if ruta_intentos is None:
+        print("FALLA  falta `--intentos`: el manifest de intentos esperados es independiente del "
+              "conjunto que valida (D-16), y derivarlo de las observaciones sería contarlas sobre "
+              "sí mismas")
+        return 1
+    ruta_intentos = Path(ruta_intentos)
+    if not ruta_intentos.is_absolute():
+        ruta_intentos = RAIZ / ruta_intentos
+    manifest_intentos, error = _cargar_json(ruta_intentos)
+    if error:
+        print(f"FALLA  manifest de intentos: {error}")
+        return 1
+    vocabulario, error = _cargar_json(RUTA_VOCABULARIO)
+    if error:
+        print(f"FALLA  vocabulario: {error}")
+        return 1
+
+    dir_bundles = Path(getattr(args, "bundles", None) or RUTA_CORRIDAS_FASE_0)
+    if not dir_bundles.is_absolute():
+        dir_bundles = RAIZ / dir_bundles
+    bundles = {b.datos.get("run_id"): b.datos for b in leer_conjunto_de_bundles(dir_bundles)
+               if b.datos is not None}
+
+    por_muestra, errores = leer_observaciones(dir_observaciones)
+    for problema in errores:
+        print(f"FALLA  {problema}")
+    problemas = revisar_manifest_de_observaciones(preregistro, manifest_intentos, por_muestra,
+                                                  vocabulario, bundles)
+
+    print(f"observaciones: {dir_observaciones}")
+    print(f"corridas contra las que se adjudica la identidad: {len(bundles)}")
+    print(f"muestras observadas: {len(por_muestra)} · "
+          f"intentos: {sum(len(v) for v in por_muestra.values())}")
+    for problema in problemas:
+        print(f"FALLA  {problema}")
+    print()
+    if problemas or errores:
+        print(f"RESULTADO: FALLA — {len(problemas) + len(errores)} hallazgos")
+        return 1
+    print("RESULTADO: OK — cada observación cita el acta, el conjunto coincide y la cadena es "
+          "append-only")
+    return 0
+
+
+# --- La identidad del entorno como conjunto cerrado -------------------------------------------
+#
+# La tabla dice qué hace una divergencia de cada campo, y las dos adjudicaciones son las únicas
+# expresables: **agregar registrando la divergencia no existe**. Si existiera, sería la salida
+# barata de toda corrida que no cumple el protocolo, y el baseline promediaría mediciones que el
+# pre-registro declaró idénticas y no lo son.
+
+ADJUDICACIONES_DE_DIVERGENCIA = ("bloqueo", "estratificacion")
+
+
+class CampoDeIdentidad(NamedTuple):
+    esperado: str          # campo de `entorno_esperado` del pre-registro
+    efectivo: str          # campo de `identidad_del_entorno` del bundle, con `.` para anidar
+    adjudicacion: str
+    porque: str
+
+
+CORRESPONDENCIA_DE_IDENTIDAD: tuple[CampoDeIdentidad, ...] = (
+    CampoDeIdentidad("arbol_limpio_exigido", "arbol_limpio", "bloqueo",
+                     "un árbol sucio mide un código que ningún commit nombra"),
+    CampoDeIdentidad("matriz_sha256", "matriz_sha256", "bloqueo",
+                     "la matriz define los puntos: otra matriz es otra cohorte"),
+    CampoDeIdentidad("instrumento_sha256", "instrumento_sha256", "bloqueo",
+                     "otro instrumento mide otra cosa, y el número no es comparable ni "
+                     "reproducible"),
+    CampoDeIdentidad("runner_sha256", "runner_sha256", "bloqueo",
+                     "otro runner despacha distinto, y la latencia deja de ser la del protocolo"),
+    CampoDeIdentidad("ejecutor_esperado", "ejecutor.perfil_esperado", "bloqueo",
+                     "el perfil es lo que el acta congeló: correr con otro es correr otro "
+                     "protocolo, no otra instancia del mismo"),
+    CampoDeIdentidad("version_cli", "version_cli", "estratificacion",
+                     "dos versiones del CLI dan latencias comparables solo dentro de su estrato"),
+    CampoDeIdentidad("version_runtime", "version_runtime", "estratificacion",
+                     "ídem el runtime: comparable dentro del estrato, no entre estratos"),
+    CampoDeIdentidad("hooks", "hooks", "estratificacion",
+                     "D-7: dos entornos con hooks distintos producen latencias que el "
+                     "pre-registro declara idénticas y no lo son"),
+)
+
+# Campos de la identidad efectiva sin contraparte esperada, con quién los comprueba. Están acá para
+# que el conjunto sea CERRADO en las dos direcciones: un campo nuevo en cualquiera de los dos
+# schemas que nadie adjudique tiene que poner rojo el autotest, no quedarse sin regla en silencio.
+SOLO_EFECTIVOS = {
+    "code_commit": "lo compara el acta, que congela el mismo campo",
+    "preregistration_commit": "lo comprueba `--validar-preregistro-congelado` contra Git (D-18)",
+    "eventos_de_intervencion_humana": "derivan el estrato efectivo, que se compara contra el "
+                                      "`estrato_esperado` de la muestra",
+    "modelo": "es un dato de plataforma: trae su propia adjudicación cuando no se expone",
+}
+
+SOLO_ESPERADOS = {
+    "transportes_admitidos": "se compara contra el `transporte` del bundle, que no vive dentro de "
+                             "la identidad del entorno",
+}
+
+
+class Divergencia(NamedTuple):
+    campo: str
+    esperado: Any
+    efectivo: Any
+    adjudicacion: str
+    motivo: str
+
+    def __str__(self) -> str:
+        return (f"[{self.adjudicacion}] {self.campo}: el acta esperaba {self.esperado!r} y la "
+                f"corrida registró {self.efectivo!r} — {self.motivo}")
+
+
+def _valor_anidado(datos: dict, camino: str) -> Any:
+    actual: Any = datos
+    for tramo in camino.split("."):
+        if not isinstance(actual, dict):
+            return None
+        actual = actual.get(tramo)
+    return actual
+
+
+def adjudicar_identidad_del_entorno(esperado: dict, bundle: dict,
+                                    muestra: dict | None = None) -> list[Divergencia]:
+    """Compara la identidad esperada contra la efectiva y adjudica cada divergencia.
+
+    Devuelve divergencias con su adjudicación —`bloqueo` o `estratificacion`— y nunca una tercera:
+    lo que AC-17 prohíbe es agregar registrando la divergencia, así que no hay valor de retorno que
+    lo exprese. Un campo cuya adjudicación la tabla no declare **no puede llegar acá**: el conjunto
+    cerrado se comprueba contra los dos schemas en `--autotest-identidad-entorno`.
+    """
+    efectivo = bundle.get("identidad_del_entorno") or {}
+    divergencias: list[Divergencia] = []
+
+    for campo in CORRESPONDENCIA_DE_IDENTIDAD:
+        valor_esperado = esperado.get(campo.esperado)
+        valor_efectivo = _valor_anidado(efectivo, campo.efectivo)
+        if campo.esperado == "arbol_limpio_exigido":
+            # El único par que no se compara por igualdad: el acta declara si EXIGE limpieza, y la
+            # corrida declara si lo estaba. Exigir `False` no obliga a ensuciar el árbol.
+            if valor_esperado and valor_efectivo is not True:
+                divergencias.append(Divergencia(campo.efectivo, "árbol limpio", valor_efectivo,
+                                                campo.adjudicacion, campo.porque))
+            continue
+        if _normalizar_identidad(valor_esperado) != _normalizar_identidad(valor_efectivo):
+            divergencias.append(Divergencia(campo.efectivo, valor_esperado, valor_efectivo,
+                                            campo.adjudicacion, campo.porque))
+
+    admitidos = esperado.get("transportes_admitidos") or []
+    if bundle.get("transporte") not in admitidos:
+        divergencias.append(Divergencia(
+            "transporte", admitidos, bundle.get("transporte"), "bloqueo",
+            "el transporte no está entre los que el acta admite: la muestra mide una vía que la "
+            "cohorte no congeló"))
+
+    if muestra is not None and muestra.get("estrato_esperado"):
+        efectivo_estrato = derivar_estrato(bundle)
+        if efectivo_estrato != muestra["estrato_esperado"]:
+            divergencias.append(Divergencia(
+                "estrato", muestra["estrato_esperado"], efectivo_estrato, "estratificacion",
+                "el estrato efectivo sale de los eventos registrados, y mezclarlo con el esperado "
+                "promedia intervención humana con automatización"))
+
+    divergencias.extend(_divergencias_de_plataforma(efectivo))
+    return divergencias
+
+
+def _normalizar_identidad(valor: Any) -> Any:
+    """Las listas de la identidad —hooks— son conjuntos: su orden no es un hecho de la corrida."""
+    if isinstance(valor, list):
+        return sorted(str(v) for v in valor)
+    return valor
+
+
+def _divergencias_de_plataforma(efectivo: dict) -> list[Divergencia]:
+    """Los datos que la plataforma puede no exponer traen su adjudicación adentro (D-7).
+
+    El instrumento la **respeta**, no la elige: un dato no expuesto cuya adjudicación no esté en el
+    conjunto cerrado se trata como bloqueo, que es la lectura conservadora — la alternativa sería
+    seguir midiendo con un dato que nadie sabe cuál es.
+    """
+    divergencias: list[Divergencia] = []
+    candidatos = [("modelo.solicitado", _valor_anidado(efectivo, "modelo.solicitado")),
+                  ("modelo.efectivo", _valor_anidado(efectivo, "modelo.efectivo")),
+                  ("ejecutor.instancia_efectiva",
+                   _valor_anidado(efectivo, "ejecutor.instancia_efectiva"))]
+    for campo, dato in candidatos:
+        if not isinstance(dato, dict) or dato.get("estado") != "no_expuesto":
+            continue
+        adjudicacion = dato.get("adjudicacion")
+        if adjudicacion not in ADJUDICACIONES_DE_DIVERGENCIA:
+            divergencias.append(Divergencia(
+                campo, "un dato expuesto, o una adjudicación del conjunto cerrado", adjudicacion,
+                "bloqueo",
+                "la plataforma no lo expone y el bundle no adjudica qué hacer: se bloquea, que es "
+                "lo único que no inventa el valor"))
+            continue
+        divergencias.append(Divergencia(
+            campo, "expuesto", "no expuesto", adjudicacion,
+            "la plataforma no lo expone y el acta adjudicó qué hacer con eso"))
+    return divergencias
+
+
+# --- `--autotest-preregistro` -----------------------------------------------------------------
+#
+# El repositorio de los controles se **siembra**, no se simula: la anterioridad y la relación entre
+# los dos commits las resuelve Git, así que un doble del historial probaría el doble. Cada escenario
+# es un repo temporal con dos o tres commits reales, y el modo corre sobre él sin saber que es
+# sintético.
+
+def con_hash_renovado(preregistro: dict) -> dict:
+    """El documento con su `preregistro_sha256` recomputado sobre su propia proyección canónica."""
+    copia = copy.deepcopy(preregistro)
+    copia["preregistro_sha256"] = hashlib.sha256(proyeccion_canonica(copia)).hexdigest()
+    return copia
+
+
+class RepoSembrado(NamedTuple):
+    repo: Path
+    preregistro: dict
+    ruta: Path
+    congelamiento: str
+    fecha_de_congelamiento: str
+
+
+_FECHA_ANCLA = "2026-01-01T00:00:00+00:00"
+_FECHA_CONGELAMIENTO = "2026-01-02T00:00:00+00:00"
+
+
+def _commitear(repo: Path, mensaje: str, fecha: str) -> str:
+    entorno = {**os.environ, "GIT_AUTHOR_DATE": fecha, "GIT_COMMITTER_DATE": fecha,
+               "GIT_AUTHOR_NAME": "control", "GIT_AUTHOR_EMAIL": "control@local",
+               "GIT_COMMITTER_NAME": "control", "GIT_COMMITTER_EMAIL": "control@local"}
+    _correr_en(["git", "-C", str(repo), "add", "-A"], None, entorno)
+    _correr_en(["git", "-C", str(repo), "commit", "--quiet", "-m", mensaje], None, entorno)
+    return _git(repo, "rev-parse", "HEAD")[1].strip()
+
+
+def sembrar_repo(raiz: Path, preregistro: dict, *, intermedio: bool = False,
+                 cambio_ajeno: bool = False, sin_commitear: bool = False,
+                 fecha_de_congelamiento: str = _FECHA_CONGELAMIENTO) -> RepoSembrado:
+    """Un repo con el ancla, el pre-registro congelado encima y su `code_commit` ya inyectado."""
+    repo = raiz / "repo"
+    (repo / "scripts").mkdir(parents=True, exist_ok=True)
+    _correr_en(["git", "init", "--quiet", "-b", "main", str(repo)], None, dict(os.environ))
+    (repo / "scripts" / "ancla.txt").write_text("el árbol que se mide\n", encoding="utf-8")
+    ancla = _commitear(repo, "ancla", _FECHA_ANCLA)
+
+    if intermedio:
+        (repo / "scripts" / "intermedio.txt").write_text("historia que nadie declaró\n",
+                                                         encoding="utf-8")
+        _commitear(repo, "intermedio", _FECHA_ANCLA)
+
+    congelado = con_hash_renovado({**preregistro, "code_commit": ancla})
+    ruta = repo / RUTA_CANONICA_DEL_PREREGISTRO
+    _escribir_json(ruta, congelado)
+    if cambio_ajeno:
+        (repo / "scripts" / "de-paso.txt").write_text("un cambio que viajó con el acta\n",
+                                                      encoding="utf-8")
+    if sin_commitear:
+        return RepoSembrado(repo, congelado, ruta, "", "")
+    commit = _commitear(repo, "congela el pre-registro", fecha_de_congelamiento)
+    fecha = _git(repo, "log", "-1", "--format=%cI", commit)[1].strip()
+    return RepoSembrado(repo, congelado, ruta, commit, fecha)
+
+
+def _corrida_sintetica(destino: Path, run_id: str, inicio: str, congelamiento: str) -> None:
+    """Lo mínimo que las cláusulas de anterioridad leen de una corrida: cuándo arrancó y con qué
+    pre-registro dice haber corrido. No es un bundle completo a propósito: este modo ordena
+    corridas contra commits, y validarlas contra su contrato es de `--validar-bundles`."""
+    (destino / run_id).mkdir(parents=True, exist_ok=True)
+    _escribir_json(destino / run_id / "bundle.json", {
+        "run_id": run_id,
+        "ventana_de_pared_utc": {"inicio": inicio, "fin": inicio},
+        "identidad_del_entorno": {"preregistration_commit": congelamiento},
+    })
+
+
+def _codigo_del_congelado(sembrado: RepoSembrado, corridas: Path | None = None) -> int:
+    return _codigo_de_modo(modo_validar_preregistro_congelado,
+                           validar_preregistro_congelado=str(sembrado.ruta),
+                           repo=str(sembrado.repo),
+                           corridas=str(corridas) if corridas else str(sembrado.repo / "vacio"))
+
+
+def _hallazgos_del_congelado(sembrado: RepoSembrado, corridas: Path | None = None) -> list[str]:
+    preregistro, _ = _cargar_json(sembrado.ruta)
+    congelamiento = resolver_congelamiento(sembrado.repo, RUTA_CANONICA_DEL_PREREGISTRO)
+    conjunto = leer_conjunto_de_bundles(corridas) if corridas else []
+    return sorted({p.clave for p in revisar_congelamiento(preregistro, congelamiento, conjunto)})
+
+
+def modo_autotest_preregistro(args: argparse.Namespace) -> int:
+    del args
+    resultados: list[tuple[str, bool, str]] = []
+    sano, error_sano = _cargar_json(RUTA_PREREGISTRO_SANO)
+    corpus, error_corpus = _cargar_json(RUTA_CORPUS_PREREGISTRO)
+    manifest, error_manifest = _cargar_json(RUTA_MANIFEST_PREREGISTRO)
+    vocabulario, error_vocabulario = _cargar_json(RUTA_VOCABULARIO)
+    errores = [e for e in (error_sano, error_corpus, error_manifest, error_vocabulario) if e]
+    if errores:
+        print(f"[A] FALLA  {' | '.join(errores)}")
+        return 1
+
+    # [A] Corpus y manifest, en las dos direcciones.
+    fallas = []
+    del_corpus = set(corpus["casos"])
+    del_manifest = {c["caso"] for c in manifest["casos"]}
+    if del_corpus != del_manifest:
+        fallas.append(f"corpus ↔ manifest: solo en el corpus {sorted(del_corpus - del_manifest)}, "
+                      f"solo en el manifest {sorted(del_manifest - del_corpus)}")
+    if len(manifest["casos"]) != len(corpus["casos"]):
+        fallas.append(f"el corpus tiene {len(corpus['casos'])} casos y el manifest declara "
+                      f"{len(manifest['casos'])}")
+    resultados.append(("A", not fallas,
+                       f"corpus ↔ manifest ({len(del_corpus)} casos)" if not fallas
+                       else " | ".join(fallas)))
+
+    # [B] El caso sano de esta task es el de T14 con su hash renovado, y nada más. Sin este
+    # control, dos corpus que declaran el mismo pre-registro pueden divergir sin que nadie lo note.
+    fallas = []
+    de_t14, error = _cargar_json(RUTA_PROTOCOLO_SANO)
+    if error:
+        fallas.append(f"el pre-registro de T14: {error}")
+    else:
+        diferencias = _diferencias_de_campo(
+            {k: v for k, v in de_t14.items() if k != "preregistro_sha256"},
+            {k: v for k, v in sano.items() if k != "preregistro_sha256"})
+        if diferencias:
+            fallas.append(f"el caso sano difiere del de T14 en más que el hash: {diferencias[:3]}")
+        if sano.get("preregistro_sha256") == de_t14.get("preregistro_sha256"):
+            fallas.append("el caso sano copió el hash de T14, que no es el de su proyección")
+    resultados.append(("B", not fallas,
+                       "el caso sano es el pre-registro de T14 con su hash renovado"
+                       if not fallas else " | ".join(fallas)))
+
+    ejercidas: set[str] = set()
+    with tempfile.TemporaryDirectory(prefix="preregistro-") as tmp:
+        raiz = Path(tmp)
+
+        # [C] La fase congelada pasa SIN NINGUNA observación. Es la condición de uso del modo: se
+        # corre para poder empezar a medir, cuando todavía no hay nada medido.
+        sembrado = sembrar_repo(raiz / "sano", sano)
+        vacio = raiz / "sano" / "sin-corridas"
+        vacio.mkdir(parents=True, exist_ok=True)
+        hallazgos = _hallazgos_del_congelado(sembrado, vacio)
+        resultados.append(("C", not hallazgos,
+                           "el pre-registro congelado pasa con cero corridas"
+                           if not hallazgos else f"cayó por {hallazgos}"))
+
+        # [D] …y la fase del manifest FALLA con cero observaciones. Es el otro lado del mismo
+        # hecho: si las dos pasaran en el vacío, un solo modo alcanzaría y esta task no existiría.
+        intentos = raiz / "manifest-intentos.json"
+        _escribir_json(intentos, manifest["manifest_de_intentos"])
+        observaciones = raiz / "observaciones-vacias"
+        observaciones.mkdir(parents=True, exist_ok=True)
+        acta = raiz / "acta.json"
+        _escribir_json(acta, sembrado.preregistro)
+        codigo = _codigo_de_modo(modo_validar_manifest_observaciones,
+                                 validar_manifest_observaciones=str(observaciones),
+                                 preregistro=str(acta), intentos=str(intentos))
+        # No alcanza con que el modo falle: con el acta entera, un conjunto vacío cae igual por
+        # doce muestras faltantes, así que exigir solo el código de salida dejaría este control
+        # verde aunque nadie mirara el vacío. Se exige la cláusula.
+        vacio_claves = sorted({p.clave for p in revisar_manifest_de_observaciones(
+            sembrado.preregistro, manifest["manifest_de_intentos"], {}, vocabulario)})
+        fallas = []
+        if codigo == 0:
+            fallas.append("el manifest de observaciones devolvió 0 sobre cero observaciones: "
+                          "pasa en el vacío")
+        if "conjunto_vacio" not in vacio_claves:
+            fallas.append(f"el conjunto vacío no cae por `conjunto_vacio` sino por "
+                          f"{vacio_claves}: la cláusula no la ejerce nadie")
+        resultados.append(("D", not fallas,
+                           "el manifest de observaciones falla con el conjunto vacío, y por su "
+                           "cláusula" if not fallas else " | ".join(fallas)))
+
+        # [E] Cada caso del corpus cae por SU cláusula y por su motivo.
+        fallas = []
+        for declarado in manifest["casos"]:
+            caso = corpus["casos"][declarado["caso"]]
+            claves, detalles = _ejercer_caso(raiz, declarado, caso, sano, manifest, vocabulario)
+            if claves is None:
+                fallas.append(f"`{declarado['caso']}`: {detalles}")
+                continue
+            if claves != [declarado["clausula"]]:
+                fallas.append(f"`{declarado['caso']}`: cayó por {claves} y se esperaba "
+                              f"`{declarado['clausula']}`")
+                continue
+            if not any(declarado["fragmento"] in d for d in detalles):
+                fallas.append(f"`{declarado['caso']}`: cayó por su cláusula pero no por su motivo "
+                              f"— se esperaba «{declarado['fragmento']}»")
+                continue
+            ejercidas.add(declarado["clausula"])
+        resultados.append(("E", not fallas,
+                           f"los {len(manifest['casos'])} casos caen por su cláusula y por su "
+                           f"motivo" if not fallas else " | ".join(fallas[:5])))
+
+        # [F] Los modos enteros: exit 0 sobre el caso sano y distinto de 0 sobre un negativo de
+        # cada fase. Los controles de arriba llaman a las funciones; éste, al modo.
+        fallas = []
+        if _codigo_del_congelado(sembrado, vacio) != 0:
+            fallas.append("`--validar-preregistro-congelado` devolvió distinto de 0 sobre el "
+                          "caso sano")
+        roto = sembrar_repo(raiz / "ajeno", sano, cambio_ajeno=True)
+        if _codigo_del_congelado(roto) == 0:
+            fallas.append("`--validar-preregistro-congelado` devolvió 0 con un cambio ajeno en el "
+                          "commit que congela")
+        pobladas, _ = _poblar_observaciones(raiz / "conformes", manifest, sembrado.preregistro)
+        codigo = _codigo_de_modo(modo_validar_manifest_observaciones,
+                                 validar_manifest_observaciones=str(pobladas),
+                                 preregistro=str(acta), intentos=str(intentos))
+        if codigo != 0:
+            fallas.append("`--validar-manifest-observaciones` devolvió distinto de 0 sobre el "
+                          "conjunto conforme")
+        codigo = _codigo_de_modo(modo_validar_manifest_observaciones,
+                                 validar_manifest_observaciones=str(pobladas),
+                                 preregistro=str(acta), intentos=None)
+        if codigo == 0:
+            fallas.append("`--validar-manifest-observaciones` devolvió 0 sin manifest de "
+                          "intentos: derivarlo del conjunto que valida lo cuenta sobre sí mismo")
+        # El consumidor de la adjudicación, con su positivo: una corrida conforme no bloquea nada.
+        # Sin este control, la comprobación de identidad solo se vería en su negativo, y una que
+        # bloqueara siempre daría el mismo rojo.
+        corrida = manifest["corrida_conforme_de_la_primera_muestra"]
+        con_bundles = raiz / "con-bundles"
+        _materializar_bundle(con_bundles, corrida["run_id"], corrida["bundle"])
+        conectadas, _ = _poblar_observaciones(raiz / "conectadas", manifest,
+                                              sembrado.preregistro,
+                                              procedencia={corrida["run_id"]: 0})
+        codigo = _codigo_de_modo(modo_validar_manifest_observaciones,
+                                 validar_manifest_observaciones=str(conectadas),
+                                 preregistro=str(acta), intentos=str(intentos),
+                                 bundles=str(con_bundles))
+        if codigo != 0:
+            fallas.append("`--validar-manifest-observaciones` devolvió distinto de 0 con una "
+                          "corrida conforme: la adjudicación de identidad bloquea lo que no diverge")
+        resultados.append(("F", not fallas,
+                           "los dos modos devuelven 0 sobre lo conforme y distinto de 0 sobre sus "
+                           "negativos" if not fallas else " | ".join(fallas)))
+
+    # [G] Cobertura de las cláusulas, acumulada corriendo.
+    fallas = []
+    cerradas = set(CLAUSULAS_DEL_CONGELADO) | set(CLAUSULAS_DEL_MANIFEST)
+    sin_ejercer = sorted(cerradas - ejercidas)
+    if sin_ejercer:
+        fallas.append(f"cláusulas sin caso que las ponga rojas: {sin_ejercer}")
+    inexistentes = sorted(ejercidas - cerradas)
+    if inexistentes:
+        fallas.append(f"se ejercieron cláusulas fuera del conjunto cerrado: {inexistentes}")
+    declaradas = set(manifest["clausulas_del_congelado"]) | set(manifest["clausulas_del_manifest"])
+    if declaradas != cerradas:
+        fallas.append(f"el manifest declara otras cláusulas que el conjunto cerrado: "
+                      f"{sorted(declaradas ^ cerradas)}")
+    resultados.append(("G", not fallas,
+                       f"las {len(cerradas)} cláusulas tienen quien las ponga rojas, acumulado "
+                       f"corriendo" if not fallas else " | ".join(fallas)))
+    return _cerrar(resultados)
+
+
+def _materializar_bundle(destino: Path, run_id: str, bundle: dict) -> None:
+    _escribir_json(destino / run_id / "bundle.json", {**bundle, "run_id": run_id})
+
+
+def _poblar_observaciones(destino: Path, manifest: dict, preregistro: dict,
+                          procedencia: dict[str, int] | None = None) -> tuple[Path, list[dict]]:
+    """Escribe el conjunto conforme de observaciones que el manifest declara, ya citando el acta.
+
+    `procedencia` mapea `run_id` → índice de la observación que dice haber salido de esa corrida.
+    Solo las nombradas la llevan: una observación sin procedencia no tiene identidad efectiva que
+    comparar, y darle una inventada probaría el doble.
+    """
+    destino.mkdir(parents=True, exist_ok=True)
+    de_la_corrida = {indice: run_id for run_id, indice in (procedencia or {}).items()}
+    escritas: list[dict] = []
+    for indice, plantilla in enumerate(manifest["observaciones_conformes"]):
+        observacion = {**copy.deepcopy(plantilla),
+                       "preregistro_sha256": preregistro["preregistro_sha256"]}
+        if indice in de_la_corrida:
+            observacion["procedencia"] = {"run_id": de_la_corrida[indice],
+                                          "bundle_sha256": "a" * 64}
+        _escribir_json(destino / f"{observacion['observation_id']}.json", observacion)
+        escritas.append(observacion)
+    return destino, escritas
+
+
+def _preregistro_del_caso(caso: dict, sano: dict) -> dict:
+    """El caso sano con los parches que el corpus declara.
+
+    Se parchea en vez de copiar el documento entero por caso: doce muestras transcritas por
+    variante divergirían del sano en el primer cambio, y el negativo dejaría de diferenciarse del
+    positivo en un solo punto — que es lo único que hace legible por qué cayó.
+    """
+    preregistro = copy.deepcopy(sano)
+    muestras = (preregistro.get("cohorte") or {}).get("muestras") or []
+    if caso.get("cohorte_vacia"):
+        preregistro["cohorte"]["muestras"] = []
+        muestras = preregistro["cohorte"]["muestras"]
+    for ident, dependencia in (caso.get("dependencias") or {}).items():
+        for muestra in muestras:
+            if muestra.get("sample_id") == ident:
+                muestra["dependencia"] = dependencia
+    for extra in caso.get("muestras_extra") or []:
+        muestras.append({**copy.deepcopy(muestras[0]), **extra} if muestras else dict(extra))
+    return preregistro
+
+
+def _ejercer_caso(raiz: Path, declarado: dict, caso: dict, sano: dict, manifest: dict,
+                  vocabulario: dict) -> tuple[list[str] | None, Any]:
+    """Corre un caso del corpus por la fase que declara y devuelve sus cláusulas y sus detalles."""
+    nombre = declarado["caso"]
+    if declarado["fase"] == "congelado":
+        sembrado = sembrar_repo(raiz / nombre, _preregistro_del_caso(caso, sano),
+                                intermedio=caso.get("intermedio", False),
+                                cambio_ajeno=caso.get("cambio_ajeno", False),
+                                sin_commitear=caso.get("sin_commitear", False),
+                                fecha_de_congelamiento=caso.get("fecha_de_congelamiento")
+                                or _FECHA_CONGELAMIENTO)
+        # Los parches que van DESPUÉS de sembrar: el repo inyecta `code_commit` y renueva el hash,
+        # así que atacar cualquiera de los dos antes lo dejaría pisado por el sembrado.
+        if caso.get("hash_falseado") or caso.get("code_commit_borrado"):
+            documento, _ = _cargar_json(sembrado.ruta)
+            if caso.get("hash_falseado"):
+                documento["preregistro_sha256"] = caso["hash_falseado"]
+            if caso.get("code_commit_borrado"):
+                documento.pop("code_commit", None)
+                documento = con_hash_renovado(documento)
+            _escribir_json(sembrado.ruta, documento)
+        corridas = None
+        if caso.get("corridas"):
+            corridas = raiz / nombre / "corridas"
+            for corrida in caso["corridas"]:
+                _corrida_sintetica(corridas, corrida["run_id"], corrida["inicio"],
+                                   corrida.get("preregistration_commit")
+                                   or sembrado.congelamiento)
+        documento, error = _cargar_json(sembrado.ruta)
+        if error:
+            return None, error
+        congelamiento = resolver_congelamiento(sembrado.repo, RUTA_CANONICA_DEL_PREREGISTRO)
+        problemas = revisar_congelamiento(documento, congelamiento,
+                                          leer_conjunto_de_bundles(corridas) if corridas else [])
+    elif declarado["fase"] == "manifest":
+        preregistro = con_hash_renovado(_preregistro_del_caso(caso, sano))
+        intentos = copy.deepcopy(manifest["manifest_de_intentos"])
+        intentos.update(caso.get("manifest_de_intentos") or {})
+        por_muestra: dict[str, list[dict]] = {}
+        for plantilla in caso.get("observaciones", manifest["observaciones_conformes"]):
+            observacion = {**copy.deepcopy(plantilla)}
+            observacion.setdefault("preregistro_sha256", preregistro["preregistro_sha256"])
+            por_muestra.setdefault(observacion.get("sample_id"), []).append(observacion)
+        problemas = revisar_manifest_de_observaciones(preregistro, intentos, por_muestra,
+                                                      vocabulario, caso.get("bundles"))
+    else:
+        return None, f"fase desconocida en el manifest: {declarado['fase']!r}"
+    return sorted({p.clave for p in problemas}), [p.detalle for p in problemas]
+
+
+# --- `--autotest-identidad-entorno` -----------------------------------------------------------
+
+def _campos_del_schema(nombre: str, definicion: str) -> set[str]:
+    """Los campos que un `$defs` declara. Salen del schema y no se transcriben: el conjunto cerrado
+    de AC-17 lo fija el contrato, y una copia acá envejecería sin que nada se pusiera rojo."""
+    schema, error = _cargar_json(CONTRATOS_POR_NOMBRE[nombre].ruta)
+    if error:
+        return set()
+    return set((((schema.get("$defs") or {}).get(definicion) or {}).get("properties") or {}))
+
+
+def modo_autotest_identidad_entorno(args: argparse.Namespace) -> int:
+    del args
+    resultados: list[tuple[str, bool, str]] = []
+    manifest, error = _cargar_json(RUTA_MANIFEST_PREREGISTRO)
+    if error:
+        print(f"[A] FALLA  manifest: {error}")
+        return 1
+    identidad = manifest["identidad_del_entorno"]
+
+    # [A] El conjunto es CERRADO en las dos direcciones contra los dos schemas. Un campo nuevo en
+    # cualquiera de los dos sin regla de adjudicación pone esto rojo, en vez de quedar sin
+    # adjudicar en silencio — que es como una divergencia se «agrega» sin que nadie lo decida.
+    fallas = []
+    esperados_del_schema = _campos_del_schema("preregistro", "entorno_esperado")
+    efectivos_del_schema = _campos_del_schema("bundle-corrida", "identidad_del_entorno")
+    esperados_cubiertos = {c.esperado for c in CORRESPONDENCIA_DE_IDENTIDAD} | set(SOLO_ESPERADOS)
+    efectivos_cubiertos = ({c.efectivo.split(".")[0] for c in CORRESPONDENCIA_DE_IDENTIDAD}
+                           | set(SOLO_EFECTIVOS))
+    if esperados_cubiertos != esperados_del_schema:
+        fallas.append(f"`entorno_esperado`: sin adjudicar "
+                      f"{sorted(esperados_del_schema - esperados_cubiertos)}, adjudicados y "
+                      f"ausentes del schema {sorted(esperados_cubiertos - esperados_del_schema)}")
+    if efectivos_cubiertos != efectivos_del_schema:
+        fallas.append(f"`identidad_del_entorno`: sin adjudicar "
+                      f"{sorted(efectivos_del_schema - efectivos_cubiertos)}, adjudicados y "
+                      f"ausentes del schema {sorted(efectivos_cubiertos - efectivos_del_schema)}")
+    resultados.append(("A", not fallas,
+                       f"el conjunto es cerrado contra los dos schemas "
+                       f"({len(esperados_del_schema)} esperados, {len(efectivos_del_schema)} "
+                       f"efectivos)" if not fallas else " | ".join(fallas)))
+
+    # [B] La tabla de adjudicación coincide con el manifest independiente, campo por campo.
+    fallas = []
+    declarada = {c["campo"]: c["adjudicacion"] for c in identidad["adjudicacion_por_campo"]}
+    nuestra = {c.efectivo: c.adjudicacion for c in CORRESPONDENCIA_DE_IDENTIDAD}
+    if declarada != nuestra:
+        fallas.append(f"la tabla adjudica {nuestra} y el manifest declara {declarada}")
+    fuera = [a for a in nuestra.values() if a not in ADJUDICACIONES_DE_DIVERGENCIA]
+    if fuera:
+        fallas.append(f"adjudicaciones fuera del conjunto cerrado: {sorted(set(fuera))}")
+    resultados.append(("B", not fallas,
+                       f"las {len(nuestra)} adjudicaciones coinciden con el manifest y son del "
+                       f"conjunto cerrado" if not fallas else " | ".join(fallas)))
+
+    esperado = identidad["entorno_esperado"]
+    conforme = identidad["bundle_conforme"]
+    muestra = identidad["muestra"]
+
+    # [C] Control positivo: la corrida conforme no diverge en nada.
+    divergencias = adjudicar_identidad_del_entorno(esperado, conforme, muestra)
+    resultados.append(("C", not divergencias,
+                       "la corrida conforme no diverge en ningún campo"
+                       if not divergencias else " | ".join(str(d) for d in divergencias[:3])))
+
+    # [D] Cada divergencia, ejercida POR SEPARADO y con su adjudicación. Probar dos juntas dejaría
+    # que un bloqueo enmascare la estratificación de la otra.
+    fallas = []
+    ejercidos: set[str] = set()
+    for caso in identidad["divergencias"]:
+        bundle = copy.deepcopy(conforme)
+        objetivo = bundle["identidad_del_entorno"] if caso["donde"] == "entorno" else bundle
+        _fijar_anidado(objetivo, caso["campo"], caso["valor"])
+        propia = copy.deepcopy(muestra)
+        propia.update(caso.get("muestra") or {})
+        divergencias = adjudicar_identidad_del_entorno(esperado, bundle, propia)
+        claves = sorted({d.campo for d in divergencias})
+        if claves != [caso["esperada"]]:
+            fallas.append(f"`{caso['nombre']}`: divergieron {claves} y se esperaba solo "
+                          f"`{caso['esperada']}`")
+            continue
+        if divergencias[0].adjudicacion != caso["adjudicacion"]:
+            fallas.append(f"`{caso['nombre']}`: adjudicó `{divergencias[0].adjudicacion}` y se "
+                          f"esperaba `{caso['adjudicacion']}`")
+            continue
+        ejercidos.add(caso["esperada"])
+    resultados.append(("D", not fallas,
+                       f"las {len(identidad['divergencias'])} divergencias se adjudican por "
+                       f"separado" if not fallas else " | ".join(fallas[:5])))
+
+    # [E] Cada campo de la tabla —y los que no tienen contraparte esperada— tiene quien lo ponga
+    # divergente. El conjunto se acumula corriendo.
+    fallas = []
+    comparables = ({c.efectivo for c in CORRESPONDENCIA_DE_IDENTIDAD}
+                   | {"transporte", "estrato", "modelo.solicitado", "modelo.efectivo",
+                      "ejecutor.instancia_efectiva"})
+    sin_ejercer = sorted(comparables - ejercidos)
+    if sin_ejercer:
+        fallas.append(f"campos sin ninguna divergencia que los ejerza: {sin_ejercer}")
+    resultados.append(("E", not fallas,
+                       f"los {len(comparables)} campos comparados tienen quien los ponga "
+                       f"divergentes" if not fallas else " | ".join(fallas)))
+
+    # [F] «Agregar registrando la divergencia» no es expresable. El mutante escribe esa
+    # adjudicación en un dato de plataforma; el instrumento la rechaza y bloquea, que es lo único
+    # que no inventa el valor.
+    fallas = []
+    bundle = copy.deepcopy(conforme)
+    _fijar_anidado(bundle["identidad_del_entorno"], "modelo.efectivo",
+                   {"estado": "no_expuesto", "adjudicacion": "agregar"})
+    divergencias = adjudicar_identidad_del_entorno(esperado, bundle, muestra)
+    if [d.adjudicacion for d in divergencias] != ["bloqueo"]:
+        fallas.append(f"una adjudicación fuera del conjunto cerrado produjo "
+                      f"{[d.adjudicacion for d in divergencias]} en vez de bloquear")
+    resultados.append(("F", not fallas,
+                       "una adjudicación fuera del conjunto cerrado bloquea, y no se agrega"
+                       if not fallas else " | ".join(fallas)))
+
+    # [G] Los mutantes de la tabla: cambiar la adjudicación de un campo o borrar su fila tiene que
+    # ponerse rojo. Sin esto, la tabla podría decir cualquier cosa y los controles seguirían verdes.
+    fallas = []
+    for mutante in identidad["mutantes_de_la_tabla"]:
+        tabla = tuple(c for c in CORRESPONDENCIA_DE_IDENTIDAD if c.efectivo != mutante["campo"])
+        if mutante["ataque"] == "cambiar_adjudicacion":
+            original = next(c for c in CORRESPONDENCIA_DE_IDENTIDAD
+                            if c.efectivo == mutante["campo"])
+            tabla = tabla + (original._replace(adjudicacion=mutante["nueva"]),)
+        elif mutante["ataque"] != "borrar_fila":
+            fallas.append(f"`{mutante['nombre']}`: ataque no implementado")
+            continue
+        if not _la_tabla_mutada_se_ve(tabla, esperado, conforme, muestra, identidad, mutante):
+            fallas.append(f"`{mutante['nombre']}`: la tabla mutada no cambia ningún resultado")
+    resultados.append(("G", not fallas,
+                       f"los {len(identidad['mutantes_de_la_tabla'])} mutantes de la tabla se ven"
+                       if not fallas else " | ".join(fallas[:4])))
+    return _cerrar(resultados)
+
+
+def _fijar_anidado(datos: dict, camino: str, valor: Any) -> None:
+    tramos = camino.split(".")
+    actual = datos
+    for tramo in tramos[:-1]:
+        actual = actual.setdefault(tramo, {})
+    actual[tramos[-1]] = valor
+
+
+def _la_tabla_mutada_se_ve(tabla: tuple[CampoDeIdentidad, ...], esperado: dict, conforme: dict,
+                           muestra: dict, identidad: dict, mutante: dict) -> bool:
+    """Corre la divergencia del campo mutado con la tabla alterada y mira si el resultado cambia.
+
+    Se sustituye la tabla global —y se restaura— en vez de parametrizar la función: el ataque tiene
+    que caer sobre el mismo camino de código que corre en producción, y una versión de la función
+    que aceptara la tabla por parámetro probaría esa versión y no la que se usa.
+    """
+    global CORRESPONDENCIA_DE_IDENTIDAD
+    caso = next((c for c in identidad["divergencias"] if c["esperada"] == mutante["campo"]), None)
+    if caso is None:
+        return False
+    bundle = copy.deepcopy(conforme)
+    objetivo = bundle["identidad_del_entorno"] if caso["donde"] == "entorno" else bundle
+    _fijar_anidado(objetivo, caso["campo"], caso["valor"])
+    antes = adjudicar_identidad_del_entorno(esperado, bundle, muestra)
+    original = CORRESPONDENCIA_DE_IDENTIDAD
+    try:
+        CORRESPONDENCIA_DE_IDENTIDAD = tabla
+        despues = adjudicar_identidad_del_entorno(esperado, bundle, muestra)
+    finally:
+        CORRESPONDENCIA_DE_IDENTIDAD = original
+    return ([(d.campo, d.adjudicacion) for d in antes]
+            != [(d.campo, d.adjudicacion) for d in despues])
+
+
+# ---------------------------------------------------------------------------------------------
 # Registro de los modos de esta task. Cada task nueva agrega los suyos acá abajo, sin tocar los
 # anteriores ni `main()`.
 # ---------------------------------------------------------------------------------------------
@@ -9965,6 +11157,61 @@ registrar_modo(
     "cuatro combinaciones y regla de composición en sus dos formas, con `not_evaluated` y "
     "`blocked` distinguidos",
     modo_autotest_promocion,
+)
+
+registrar_modo(
+    "--validar-preregistro-congelado",
+    "primera fase del ciclo: el hash de la proyección canónica identifica este contenido, el "
+    "commit que fija el pre-registro es descendiente directo de `code_commit` con el acta como "
+    "único cambio y es anterior a toda corrida, y las muestras no están vacías ni duplicadas. NO "
+    "exige observaciones: se corre para poder empezar a medir",
+    modo_validar_preregistro_congelado,
+    argumento=Argumento("<ruta-del-preregistro>", const=RUTA_PREREGISTRO_FASE_0),
+    auxiliares=(
+        Auxiliar("--corridas", "dónde están las corridas contra las que se ordena el "
+                               f"congelamiento; por omisión, {RUTA_CORRIDAS_FASE_0}",
+                 metavar="<dir-de-corridas>"),
+        Auxiliar("--repo", "el repositorio contra el que se resuelve el commit que fija el "
+                           "pre-registro; por omisión, la raíz de este árbol",
+                 metavar="<dir-del-repo>"),
+    ),
+)
+
+registrar_modo(
+    "--validar-manifest-observaciones",
+    "segunda fase del ciclo: cada observación cita el acta —y la que cita otra se rechaza en vez "
+    "de incorporarse—, el conjunto de muestras coincide exactamente con el pre-registro, la "
+    "cadena de intentos es append-only y derivada de la regla congelada sin descartar los "
+    "bloqueados, y los pasos encadenados conservan su dependencia",
+    modo_validar_manifest_observaciones,
+    argumento=Argumento("<dir-de-observaciones>", const=RUTA_OBSERVACIONES_FASE_0),
+    auxiliares=(
+        Auxiliar("--intentos", "el manifest independiente de intentos esperados (D-16): sin él el "
+                               "modo falla, porque derivarlo del conjunto que valida sería "
+                               "contarlo sobre sí mismo",
+                 metavar="<ruta-del-manifest>"),
+        Auxiliar("--bundles", "dónde están los bundles de los que salieron esas observaciones, "
+                              "contra los que se adjudica la identidad del entorno; por omisión, "
+                              f"{RUTA_CORRIDAS_FASE_0}",
+                 metavar="<dir-de-corridas>"),
+    ),
+)
+
+registrar_modo(
+    "--autotest-preregistro",
+    "control de las dos fases sobre repositorios SEMBRADOS con commits reales: la fase congelada "
+    "pasa con cero corridas y la del manifest falla con el conjunto vacío, y cada caso del corpus "
+    "de scripts/fixtures-baseline/preregistro/ cae por su cláusula y por su motivo",
+    modo_autotest_preregistro,
+)
+
+registrar_modo(
+    "--autotest-identidad-entorno",
+    "la identidad del entorno como conjunto cerrado: los campos salen de los dos schemas y se "
+    "comparan en las dos direcciones contra la tabla de adjudicación, cada divergencia se ejerce "
+    "por separado con su bloqueo o su estratificación, y una adjudicación fuera del conjunto "
+    "cerrado bloquea en vez de agregar",
+    modo_autotest_identidad_entorno,
 )
 
 
