@@ -1,0 +1,80 @@
+{
+  "descripcion": "Manifest INDEPENDIENTE del corpus de adaptadores. Declara aparte el intento contra el que corren los recibos, y por cada ataque la clave de control que tiene que rechazarlo. El emparejamiento es uno a uno: un ataque que cayera por otra clave dejaría la suya sin ejercer, que es el defecto que el emparejamiento ya destapó en las tasks anteriores.",
+  "intento": {
+    "sample_id": "mst-sdd-flow-implementer-por-task-r1",
+    "attempt_id": "int-mst-sdd-flow-implementer-por-task-r1-a1",
+    "attempt_ordinal": 1,
+    "preregistro_sha256": "05d883a1693e2902e413e14c170e96f7474a7e4a17d69b17150883ba179b31f1",
+    "por_que_el_hash_esta_aca": "es el pre-registro contra el que se emitieron los recibos del corpus. Derivarlo al correr lo haría coincidir siempre, y el ataque de `preregistro_coincide` no podría existir."
+  },
+  "por_que_el_prompt_del_recibo_no_hashea_el_texto_de_la_receta": "El `prompt_sha256` de la apertura hashea el CUERPO congelado de la sección, no la frase con que la receta la nombra. Si hasheara la misma cadena, un bundle que tomara el prompt de la receta en vez del recibo daría el mismo número y la mutación sería equivalente sobre este corpus: el caso existiría y no ejercería la pieza. Medido: con los dos textos iguales ese mutante sobrevivió.",
+  "bloqueos_por_adaptador": [
+    {
+      "adaptador": "script",
+      "receta": "ad-script-bloqueado",
+      "como_se_bloquea": "su comando invoca un binario que ninguna instalación tiene",
+      "causa_esperada": "adaptador_ausente"
+    },
+    {
+      "adaptador": "sesion_de_agente",
+      "receta": "ad-sesion",
+      "como_se_bloquea": "se le apunta la sede de recibos a un directorio sin el de conformance de su punto",
+      "causa_esperada": "adaptador_ausente"
+    }
+  ],
+  "por_que_hay_un_bloqueo_por_adaptador": "«los dos corren el preflight» no se prueba viendo que los dos ejecutan: se prueba viendo que a cada uno un bloqueo LE IMPIDE ejecutar. Un solo caso bloqueado dejaría al otro adaptador sin ejercer esa obligación.",
+  "ataques": [
+    {
+      "recibo": "rcb-conformance",
+      "que_ataca": "usar en producción el recibo del despacho de conformance del preflight",
+      "control_esperado": "protocolo_de_produccion"
+    },
+    {
+      "recibo": "rcb-otro-preregistro",
+      "que_ataca": "un recibo emitido contra otro pre-registro que el de esta corrida",
+      "control_esperado": "preregistro_coincide"
+    },
+    {
+      "recibo": "rcb-otro-intento",
+      "que_ataca": "un recibo que acredita otro intento del que se está ejecutando",
+      "control_esperado": "intento_coincide"
+    },
+    {
+      "recibo": "rcb-solo-apertura",
+      "que_ataca": "un recibo con un solo evento, que es la forma de uno completado modificando su apertura",
+      "control_esperado": "dos_eventos"
+    },
+    {
+      "recibo": "rcb-sellos-invertidos",
+      "que_ataca": "una apertura sellada después del retorno: no se emitió antes de despachar",
+      "control_esperado": "apertura_antes_del_retorno"
+    },
+    {
+      "recibo": "rcb-retorno-suelto",
+      "que_ataca": "un retorno que no referencia a su apertura: dos hechos sueltos y no un despacho",
+      "control_esperado": "retorno_referencia_la_apertura"
+    }
+  ],
+  "ataques_sin_archivo": [
+    {
+      "clave": "sin-recibo",
+      "que_ataca": "armar el bundle desde lo que la sesión declare de sí misma, sin recibo de frontera",
+      "control_esperado": "recibo_presente"
+    },
+    {
+      "clave": "recibo-reutilizado",
+      "que_ataca": "acreditar dos intentos con el mismo recibo",
+      "control_esperado": "recibo_no_reutilizado"
+    }
+  ],
+  "controles_ejercidos": [
+    "recibo_presente",
+    "protocolo_de_produccion",
+    "preregistro_coincide",
+    "intento_coincide",
+    "dos_eventos",
+    "apertura_antes_del_retorno",
+    "retorno_referencia_la_apertura",
+    "recibo_no_reutilizado"
+  ]
+}

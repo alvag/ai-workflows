@@ -1,0 +1,41 @@
+{
+  "descripcion": "Corpus de los dos adaptadores. Dos recetas —una por adaptador— sobre las que se comprueba que las obligaciones son LAS MISMAS: las dos validan el pre-registro, las dos corren el preflight de su receta y las dos emiten el bundle canónico. Lo que cambia entre ellas es de dónde sale lo que pasó, no qué se les exige.",
+  "recetas": [
+    {
+      "receta_id": "ad-script",
+      "punto_de_despacho": "cross-implement-implementador-inicial",
+      "transporte": "cli-exec",
+      "adaptador": "script",
+      "entrada_congelada": {"prompt": "<scratch>/impl.txt"},
+      "directorio_de_trabajo": "<arbol-desechable>",
+      "variables_admitidas": ["scratch"],
+      "salida_esperada": {"clase": "archivo", "ruta": "<scratch>/report.txt"},
+      "derivacion": {"tipo": "adjudicacion_humana", "motivo": "corpus sintético"},
+      "comando": "codex exec -s workspace-write -C . --skip-git-repo-check --json --output-last-message <scratch>/report.txt -"
+    },
+    {
+      "receta_id": "ad-sesion",
+      "punto_de_despacho": "sdd-flow-implementer-por-task",
+      "transporte": "subagent",
+      "adaptador": "sesion_de_agente",
+      "entrada_congelada": {"prompt": "la sección del implementer por task, tomada literal"},
+      "directorio_de_trabajo": "<arbol-desechable>",
+      "variables_admitidas": ["ninguna"],
+      "salida_esperada": {"clase": "reporte_estructurado"},
+      "derivacion": {"tipo": "adjudicacion_humana", "motivo": "corpus sintético"},
+      "accion": "despachar el implementer por task con el prompt de su sección"
+    },
+    {
+      "receta_id": "ad-script-bloqueado",
+      "punto_de_despacho": "cross-implement-implementador-inicial",
+      "transporte": "cli-exec",
+      "adaptador": "script",
+      "entrada_congelada": {"prompt": "<scratch>/impl.txt"},
+      "directorio_de_trabajo": "<arbol-desechable>",
+      "variables_admitidas": ["scratch"],
+      "salida_esperada": {"clase": "archivo", "ruta": "<scratch>/report.txt"},
+      "derivacion": {"tipo": "adjudicacion_humana", "motivo": "corpus sintético"},
+      "comando": "binario-que-ninguna-instalacion-tiene exec -s workspace-write -C . --output-last-message <scratch>/report.txt -"
+    }
+  ]
+}
