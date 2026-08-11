@@ -8805,6 +8805,11 @@ def _materializar_caso(directorio: Path, caso: dict) -> None:
         json.dumps(_bundle_del_caso(caso), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def _escribir_json(ruta: Path, datos: Any) -> None:
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    ruta.write_text(json.dumps(datos, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
 def _codigo_de_modo(handler: Callable[[argparse.Namespace], int], **kwargs: Any) -> int:
     """Corre un modo capturando su salida: un `RESULTADO: FALLA` de un negativo impreso en medio
     de un autotest verde se lee como una regresión y no como el negativo que es."""
@@ -8817,6 +8822,778 @@ def _snapshot_de_egreso(arbol: Path) -> tuple[str, str]:
     return (_correr_en(["git", "-C", str(arbol), "for-each-ref",
                         "--format=%(refname) %(objectname)"], None, entorno)[1],
             _correr_en(["git", "-C", str(arbol), "count-objects", "-v"], None, entorno)[1])
+
+
+# ---------------------------------------------------------------------------------------------
+# Modos `--validar-protocolo`, `--cobertura`, `--promocion`, `--cobertura-final`,
+# `--promocion-final`, `--autotest-cobertura` y `--autotest-promocion`.
+#
+# Los tres primeros leen el **pre-registro**; los dos `-final` leen el **baseline generado**. Son
+# modos distintos y no banderas del mismo porque leen artefactos distintos en momentos distintos:
+# los primeros corren antes de que exista ninguna observación, y los `-final` después de publicar.
+#
+# El evaluador de promoción vive en `evaluar_promocion` y no dentro de un modo: esta fase congela y
+# verifica **el evaluador**, y el veredicto material de cada fase se emite en su propio gate. Un
+# evaluador escrito dentro del modo que lo aplica no se podría verificar antes de aplicarlo.
+# ---------------------------------------------------------------------------------------------
+
+DIR_FIXTURES_PROTOCOLO = DIR_SCRIPTS / "fixtures-baseline" / "protocolo"
+RUTA_CORPUS_PROTOCOLO = DIR_FIXTURES_PROTOCOLO / "preregistros.json"
+RUTA_MANIFEST_PROTOCOLO = DIR_FIXTURES_PROTOCOLO / "manifest.json"
+
+# Las cinco categorías que AC-15 exige que el conjunto de métricas cubra. Se leen del vocabulario y
+# no se transcriben: una categoría nueva ahí tiene que exigirse acá sin editar este archivo.
+CLAUSULAS_DEL_PROTOCOLO = (
+    "cohorte_sin_muestras",
+    "muestra_sin_repeticion",
+    "entorno_incompleto",
+    "exclusiones_ausentes",
+    "metrica_fuera_del_vocabulario",
+    "formula_no_admitida",
+    "unidad_discordante",
+    "agregacion_discordante",
+    "categoria_sin_metrica",
+    "degradacion_sin_tasa",
+)
+
+CLAUSULAS_DE_COBERTURA = (
+    "exclusion_con_causa_no_admisible",
+    "metrica_obligatoria_sin_cohorte",
+    "minimo_de_metrica_no_pre_registrada",
+    "punto_en_las_dos_listas",
+    "ecosistema_incompleto",
+)
+
+CLAUSULAS_DE_PROMOCION = (
+    "metrica_obligatoria_sin_umbral",
+    "umbral_de_metrica_no_pre_registrada",
+    "fase_repetida",
+    "composicion_ausente",
+)
+
+
+class Hallazgo(NamedTuple):
+    clave: str
+    detalle: str
+
+    def __str__(self) -> str:
+        return f"[{self.clave}] {self.detalle}"
+
+
+def _metricas_del_vocabulario(vocabulario: dict) -> dict[str, dict]:
+    """Índice `metrica_id` → su declaración, con la categoría adentro."""
+    indice: dict[str, dict] = {}
+    for categoria in vocabulario.get("categorias") or []:
+        for metrica in categoria.get("metricas") or []:
+            indice[metrica["metrica_id"]] = dict(metrica, categoria=categoria["categoria"])
+    return indice
+
+
+def revisar_protocolo(preregistro: dict, vocabulario: dict) -> list[Hallazgo]:
+    """AC-15: casos, repeticiones, entorno, exclusiones y, por métrica, lo que el vocabulario dice.
+
+    La unidad, la agregación y las fórmulas admitidas **no se validan contra el propio
+    pre-registro**: se comparan contra el vocabulario cerrado. Un pre-registro que declarara su
+    propia unidad sería un conjunto validándose a sí mismo.
+    """
+    problemas: list[Hallazgo] = []
+    del_vocabulario = _metricas_del_vocabulario(vocabulario)
+    categorias_obligatorias = [c["categoria"] for c in vocabulario.get("categorias") or []]
+
+    muestras = (preregistro.get("cohorte") or {}).get("muestras") or []
+    if not muestras:
+        problemas.append(Hallazgo("cohorte_sin_muestras",
+                                  "el protocolo no enumera ningún caso a medir"))
+    for muestra in muestras:
+        if not isinstance(muestra.get("repeticion"), int) or muestra["repeticion"] < 1:
+            problemas.append(Hallazgo(
+                "muestra_sin_repeticion",
+                f"la muestra `{muestra.get('sample_id')}` no declara su número de repetición: sin "
+                f"él, dos muestras del mismo punto son indistinguibles"))
+
+    entorno = preregistro.get("entorno_esperado")
+    if not isinstance(entorno, dict) or not entorno:
+        problemas.append(Hallazgo("entorno_incompleto",
+                                  "el protocolo no declara el entorno esperado"))
+    if "exclusiones" not in preregistro:
+        problemas.append(Hallazgo(
+            "exclusiones_ausentes",
+            "el protocolo no declara sus exclusiones: una lista vacía dice «no excluí nada», y la "
+            "ausencia del campo no dice nada"))
+
+    categorias_vistas: set[str] = set()
+    for metrica in preregistro.get("metricas") or []:
+        ident = metrica.get("metrica_id")
+        declarada = del_vocabulario.get(ident)
+        if declarada is None:
+            problemas.append(Hallazgo(
+                "metrica_fuera_del_vocabulario",
+                f"`{ident}` no está en el vocabulario cerrado: el pre-registro elige dentro del "
+                f"vocabulario, no lo amplía"))
+            continue
+        categorias_vistas.add(declarada["categoria"])
+        if metrica.get("formula_id") not in (declarada.get("formulas_admitidas") or []):
+            problemas.append(Hallazgo(
+                "formula_no_admitida",
+                f"`{ident}` elige la fórmula `{metrica.get('formula_id')}` y el vocabulario admite "
+                f"{declarada.get('formulas_admitidas')}"))
+        if metrica.get("unidad") != declarada.get("unidad"):
+            problemas.append(Hallazgo(
+                "unidad_discordante",
+                f"`{ident}` declara la unidad `{metrica.get('unidad')}` y el vocabulario dice "
+                f"`{declarada.get('unidad')}`"))
+        if metrica.get("agregacion") != declarada.get("agregacion"):
+            problemas.append(Hallazgo(
+                "agregacion_discordante",
+                f"`{ident}` declara la agregación `{metrica.get('agregacion')}` y el vocabulario "
+                f"dice `{declarada.get('agregacion')}`"))
+        if metrica.get("categoria") != declarada.get("categoria"):
+            problemas.append(Hallazgo(
+                "metrica_fuera_del_vocabulario",
+                f"`{ident}` se declara de la categoría `{metrica.get('categoria')}` y el "
+                f"vocabulario la pone en `{declarada.get('categoria')}`"))
+
+    faltan = [c for c in categorias_obligatorias if c not in categorias_vistas]
+    if faltan:
+        problemas.append(Hallazgo(
+            "categoria_sin_metrica",
+            f"el conjunto de métricas no cubre {faltan}: las cinco categorías son obligatorias"))
+
+    problemas.extend(_revisar_tasa_de_degradacion(preregistro, del_vocabulario))
+    return problemas
+
+
+def _revisar_tasa_de_degradacion(preregistro: dict,
+                                 del_vocabulario: dict[str, dict]) -> list[Hallazgo]:
+    """La degradación se publica como al menos una TASA, con sus tres campos declarados.
+
+    Un conteo absoluto satisface «una métrica de degradación» sin contestar con qué frecuencia
+    degrada el ecosistema, y es incomparable entre cohortes de tamaños distintos.
+    """
+    tasas = []
+    for metrica in preregistro.get("metricas") or []:
+        declarada = del_vocabulario.get(metrica.get("metrica_id"))
+        if declarada is None or declarada.get("categoria") != "degradacion":
+            continue
+        if metrica.get("unidad") != "proporcion":
+            continue
+        if all(metrica.get(campo) for campo in ("numerador", "denominador",
+                                                "regla_de_elegibilidad")):
+            tasas.append(metrica["metrica_id"])
+    if tasas:
+        return []
+    return [Hallazgo(
+        "degradacion_sin_tasa",
+        "ninguna métrica de degradación se publica como tasa con numerador, denominador y regla "
+        "de elegibilidad declarados: un conteo absoluto no dice con qué frecuencia degrada el "
+        "ecosistema y no se compara entre cohortes de tamaños distintos")]
+
+
+def revisar_cobertura(preregistro: dict, puntos_del_ecosistema: set[str]) -> list[Hallazgo]:
+    """AC-16: cobertura mínima por métrica y estrato, y causas de exclusión de conjunto cerrado."""
+    problemas: list[Hallazgo] = []
+    cobertura = preregistro.get("cobertura") or {}
+    admisibles = {c["causa_id"] for c in preregistro.get("causas_admisibles_de_exclusion") or []}
+    pre_registradas = {m["metrica_id"] for m in preregistro.get("metricas") or []}
+
+    for exclusion in preregistro.get("exclusiones") or []:
+        if exclusion.get("causa_id") not in admisibles:
+            problemas.append(Hallazgo(
+                "exclusion_con_causa_no_admisible",
+                f"la exclusión de `{exclusion.get('identidad')}` cita la causa "
+                f"`{exclusion.get('causa_id')}`, que no está en el conjunto cerrado "
+                f"{sorted(admisibles)}: bloquea el cierre de la fase"))
+
+    minimos = cobertura.get("minima_por_metrica_y_estrato") or []
+    for minimo in minimos:
+        if minimo.get("metrica_id") not in pre_registradas:
+            problemas.append(Hallazgo(
+                "minimo_de_metrica_no_pre_registrada",
+                f"hay un mínimo de cobertura para `{minimo.get('metrica_id')}`, que el "
+                f"pre-registro no declara como métrica"))
+
+    con_minimo = {m["metrica_id"] for m in minimos}
+    obligatorias = {ident for fase in preregistro.get("fases_comprometidas") or []
+                    for ident in fase.get("metricas_obligatorias") or []}
+    estratos_de_la_cohorte = {m.get("estrato_esperado") for m
+                              in (preregistro.get("cohorte") or {}).get("muestras") or []}
+    for ident in sorted(obligatorias):
+        if ident not in con_minimo:
+            problemas.append(Hallazgo(
+                "metrica_obligatoria_sin_cohorte",
+                f"`{ident}` es obligatoria para alguna fase y no tiene cobertura mínima declarada: "
+                f"bloquea el cierre de la fase"))
+            continue
+        estratos_del_minimo = {m["estrato"] for m in minimos if m["metrica_id"] == ident
+                               and m["minimo_de_muestras"] > 0}
+        if estratos_del_minimo and not (estratos_del_minimo & estratos_de_la_cohorte):
+            problemas.append(Hallazgo(
+                "metrica_obligatoria_sin_cohorte",
+                f"`{ident}` exige muestras en {sorted(estratos_del_minimo)} y la cohorte solo "
+                f"tiene {sorted(e for e in estratos_de_la_cohorte if e)}: queda sin cohorte que "
+                f"la mida"))
+
+    observados = set(cobertura.get("puntos_observados") or [])
+    no_observados = set(cobertura.get("puntos_no_observados") or [])
+    en_ambas = observados & no_observados
+    if en_ambas:
+        problemas.append(Hallazgo(
+            "punto_en_las_dos_listas",
+            f"estos puntos se declaran observados y no observados a la vez: {sorted(en_ambas)}"))
+    sin_declarar = puntos_del_ecosistema - observados - no_observados
+    if sin_declarar:
+        problemas.append(Hallazgo(
+            "ecosistema_incompleto",
+            f"la cobertura no dice nada de {sorted(sin_declarar)}: declarar qué se observa sin "
+            f"declarar qué no deja el resto del ecosistema fuera del informe"))
+    return problemas
+
+
+# --- El evaluador determinista de promoción ---------------------------------------------------
+
+VEREDICTOS = ("promovible", "no_promovible", "blocked", "not_evaluated")
+
+
+class Veredicto(NamedTuple):
+    fase_id: str
+    veredicto: str
+    por_umbral: tuple[tuple[str, bool | None], ...]
+    razon: str
+
+
+def _cumple(valor: float, umbral: dict) -> bool:
+    """La comparación, con la dirección y el tratamiento del límite declarados.
+
+    Sin el tratamiento del límite el veredicto no es determinista: el valor exactamente igual al
+    umbral se resolvería por la implementación y no por el pre-registro.
+    """
+    limite = umbral["valor"]
+    inclusivo = umbral["tratamiento_del_limite"] == "inclusivo"
+    if umbral["direccion"] == "mayor_o_igual":
+        return valor >= limite if inclusivo else valor > limite
+    return valor <= limite if inclusivo else valor < limite
+
+
+def evaluar_promocion(fase: dict, valores: dict[str, float | None],
+                      la_fase_corrio: bool) -> Veredicto:
+    """El veredicto de promoción de una fase, determinista.
+
+    `not_evaluated` y `blocked` son veredictos distintos y no se funden: el primero dice que la fase
+    **todavía no corrió**, el segundo que corrió y **falta una observación obligatoria**. Fundirlos
+    haría que un baseline emitido hoy declarara bloqueadas a las fases que nadie ejecutó.
+    """
+    fase_id = fase["fase_id"]
+    if not la_fase_corrio:
+        return Veredicto(fase_id, "not_evaluated", (),
+                         "la fase todavía no corrió: no hay nada que evaluar, y eso no es un "
+                         "bloqueo")
+
+    faltantes = [m for m in fase["metricas_obligatorias"] if valores.get(m) is None]
+    if faltantes:
+        efecto = fase["efecto_de_la_ausencia"]
+        return Veredicto(fase_id, efecto, tuple((m, None) for m in faltantes),
+                         f"la fase corrió y faltan observaciones de {faltantes}; el pre-registro "
+                         f"declara que la ausencia produce `{efecto}`")
+
+    por_umbral: list[tuple[str, bool | None]] = []
+    for umbral in fase["umbrales"]:
+        valor = valores.get(umbral["metrica_id"])
+        por_umbral.append((umbral["metrica_id"],
+                           None if valor is None else _cumple(valor, umbral)))
+    comprobados = [ok for _, ok in por_umbral if ok is not None]
+    if fase["composicion"] == "todas":
+        promueve = bool(comprobados) and all(comprobados)
+    else:
+        promueve = any(comprobados)
+    return Veredicto(
+        fase_id, "promovible" if promueve else "no_promovible", tuple(por_umbral),
+        f"composición `{fase['composicion']}` sobre {len(comprobados)} umbrales comprobados")
+
+
+def revisar_promocion(preregistro: dict) -> list[Hallazgo]:
+    """Que el evaluador tenga con qué decidir: sin esto, declarar umbrales no decide nada."""
+    problemas: list[Hallazgo] = []
+    pre_registradas = {m["metrica_id"] for m in preregistro.get("metricas") or []}
+    vistas: set[str] = set()
+    for fase in preregistro.get("fases_comprometidas") or []:
+        fase_id = fase.get("fase_id")
+        if fase_id in vistas:
+            problemas.append(Hallazgo("fase_repetida",
+                                      f"la fase `{fase_id}` está declarada dos veces"))
+        vistas.add(fase_id)
+        if not fase.get("composicion"):
+            problemas.append(Hallazgo(
+                "composicion_ausente",
+                f"`{fase_id}` no declara cómo componer sus umbrales: con varios, el veredicto "
+                f"dependería de quién lo calcula"))
+        con_umbral = {u["metrica_id"] for u in fase.get("umbrales") or []}
+        for ident in fase.get("metricas_obligatorias") or []:
+            if ident not in con_umbral:
+                problemas.append(Hallazgo(
+                    "metrica_obligatoria_sin_umbral",
+                    f"`{ident}` es obligatoria para `{fase_id}` y no tiene umbral: declarar la "
+                    f"métrica sin compararla satisface la letra y no decide nada"))
+        for ident in sorted(con_umbral):
+            if ident not in pre_registradas:
+                problemas.append(Hallazgo(
+                    "umbral_de_metrica_no_pre_registrada",
+                    f"`{fase_id}` pone un umbral sobre `{ident}`, que el pre-registro no declara "
+                    f"como métrica"))
+    return problemas
+
+
+def _puntos_del_ecosistema() -> set[str]:
+    matriz, error = _cargar_json(RUTA_MATRIZ)
+    if error:
+        return set()
+    return {p["id"] for p in matriz.get("puntos") or []}
+
+
+def _reportar(titulo: str, problemas: list[Hallazgo], cuando_esta_bien: str) -> int:
+    if problemas:
+        print(f"FALLA  {titulo} — {len(problemas)} problemas:")
+        for p in problemas:
+            print(f"       - {p}")
+        print()
+        print(f"RESULTADO: FALLA — {len(problemas)} problemas bloquean el cierre de la fase")
+        return 1
+    print(f"OK     {titulo}")
+    print()
+    print(f"RESULTADO: OK — {cuando_esta_bien}")
+    return 0
+
+
+def modo_validar_protocolo(args: argparse.Namespace) -> int:
+    preregistro, error = _cargar_json(_ruta_absoluta(getattr(args, "validar_protocolo")))
+    vocabulario, error_vocabulario = _cargar_json(RUTA_VOCABULARIO)
+    for e in (error, error_vocabulario):
+        if e:
+            print(f"FALLA  {e}")
+            return 1
+    return _reportar("el protocolo del baseline", revisar_protocolo(preregistro, vocabulario),
+                     "el protocolo enumera casos, repeticiones, entorno y exclusiones, y cada "
+                     "métrica toma su fórmula, unidad y agregación del vocabulario cerrado")
+
+
+def modo_cobertura(args: argparse.Namespace) -> int:
+    preregistro, error = _cargar_json(_ruta_absoluta(getattr(args, "cobertura")))
+    if error:
+        print(f"FALLA  {error}")
+        return 1
+    return _reportar("la cobertura declarada",
+                     revisar_cobertura(preregistro, _puntos_del_ecosistema()),
+                     "la cobertura declara qué se observa y qué no, con mínimo por métrica y "
+                     "estrato, y toda exclusión cita una causa del conjunto cerrado")
+
+
+def modo_promocion(args: argparse.Namespace) -> int:
+    preregistro, error = _cargar_json(_ruta_absoluta(getattr(args, "promocion")))
+    if error:
+        print(f"FALLA  {error}")
+        return 1
+    problemas = revisar_promocion(preregistro)
+    if problemas:
+        return _reportar("el evaluador de promoción", problemas, "")
+
+    print("OK     el evaluador de promoción tiene con qué decidir en cada fase")
+    print()
+    # Sin observaciones, cada fase se evalúa como lo que es: una fase que todavía no corrió. El
+    # veredicto material de cada una se emite en su propio gate, no acá.
+    for fase in preregistro.get("fases_comprometidas") or []:
+        veredicto = evaluar_promocion(fase, {}, la_fase_corrio=False)
+        print(f"[{veredicto.fase_id}] {veredicto.veredicto} — {veredicto.razon}")
+    print()
+    print("RESULTADO: OK — el evaluador está congelado y verificado; el veredicto material de "
+          "cada fase lo emite su propio gate")
+    return 0
+
+
+def _valores_publicados(ruta: Path) -> tuple[dict[str, float | None], list[str]]:
+    """Los números del baseline publicado, leídos con la lectura inversa de su tabla normativa."""
+    try:
+        texto = ruta.read_text(encoding="utf-8")
+    except OSError as exc:
+        return {}, [f"no se pudo leer {_relativa(ruta)}: {exc}"]
+    publicados, problemas = numeros_publicados_del_markdown(texto)
+    return {ident: n.valor for ident, n in publicados.items()}, problemas
+
+
+def modo_cobertura_final(args: argparse.Namespace) -> int:
+    ruta = _ruta_absoluta(getattr(args, "cobertura_final"))
+    crudo = getattr(args, "preregistro", None)
+    if not crudo:
+        print("FALLA  `--cobertura-final` necesita `--preregistro <ruta>`", file=sys.stderr)
+        return 2
+    preregistro, error = _cargar_json(_ruta_absoluta(crudo))
+    if error:
+        print(f"FALLA  {error}")
+        return 1
+    valores, problemas_de_lectura = _valores_publicados(ruta)
+    if problemas_de_lectura:
+        for p in problemas_de_lectura:
+            print(f"FALLA  {p}")
+        return 1
+
+    problemas = revisar_cobertura(preregistro, _puntos_del_ecosistema())
+    cobertura = preregistro.get("cobertura") or {}
+    no_observados = list(cobertura.get("puntos_no_observados") or [])
+    texto = ruta.read_text(encoding="utf-8")
+    for punto in no_observados:
+        if punto not in texto:
+            problemas.append(Hallazgo(
+                "ecosistema_incompleto",
+                f"el baseline no informa que `{punto}` quedó sin observar: el criterio exige que "
+                f"el documento diga qué parte del ecosistema no pudo verse"))
+    for minimo in cobertura.get("minima_por_metrica_y_estrato") or []:
+        if minimo["minimo_de_muestras"] > 0 and valores.get(minimo["metrica_id"]) is None:
+            problemas.append(Hallazgo(
+                "metrica_obligatoria_sin_cohorte",
+                f"`{minimo['metrica_id']}` exige {minimo['minimo_de_muestras']} muestras en "
+                f"`{minimo['estrato']}` y el baseline la publica sin valor"))
+    return _reportar("la cobertura del baseline publicado", problemas,
+                     f"la cobertura mínima se cumplió y el documento informa los "
+                     f"{len(no_observados)} puntos que no pudieron observarse")
+
+
+def modo_promocion_final(args: argparse.Namespace) -> int:
+    ruta = _ruta_absoluta(getattr(args, "promocion_final"))
+    crudo = getattr(args, "preregistro", None)
+    if not crudo:
+        print("FALLA  `--promocion-final` necesita `--preregistro <ruta>`", file=sys.stderr)
+        return 2
+    preregistro, error = _cargar_json(_ruta_absoluta(crudo))
+    if error:
+        print(f"FALLA  {error}")
+        return 1
+    valores, problemas_de_lectura = _valores_publicados(ruta)
+    problemas = [Hallazgo("lectura_del_baseline", p) for p in problemas_de_lectura]
+    problemas += revisar_promocion(preregistro)
+    if problemas:
+        return _reportar("el veredicto de promoción", problemas, "")
+
+    bloqueadas = []
+    for fase in preregistro.get("fases_comprometidas") or []:
+        veredicto = evaluar_promocion(fase, valores, la_fase_corrio=True)
+        print(f"[{veredicto.fase_id}] {veredicto.veredicto} — {veredicto.razon}")
+        for metrica, cumple in veredicto.por_umbral:
+            marca = "—" if cumple is None else ("cumple" if cumple else "no cumple")
+            print(f"       {metrica}: {marca}")
+        if veredicto.veredicto == "blocked":
+            bloqueadas.append(veredicto.fase_id)
+    print()
+    if bloqueadas:
+        print(f"RESULTADO: FALLA — fases bloqueadas por observaciones obligatorias ausentes: "
+              f"{', '.join(bloqueadas)}")
+        return 1
+    print("RESULTADO: OK — el evaluador emitió un veredicto por fase sobre los números publicados")
+    return 0
+
+
+# --- `--autotest-cobertura` y `--autotest-promocion` ------------------------------------------
+#
+# Las variantes del corpus se derivan del caso sano alterando UN punto. Así la única diferencia
+# entre el positivo y cada negativo es la que el manifest declara, y una cláusula que cayera por
+# otra causa se ve en el acto.
+
+RUTA_PROTOCOLO_SANO = DIR_FIXTURES_PROTOCOLO / "sano.json"
+
+
+def _revisar_por_modo(modo: str, preregistro: dict, vocabulario: dict) -> list[Hallazgo]:
+    if modo == "protocolo":
+        return revisar_protocolo(preregistro, vocabulario)
+    if modo == "cobertura":
+        return revisar_cobertura(preregistro, _puntos_del_ecosistema())
+    if modo == "promocion":
+        return revisar_promocion(preregistro)
+    raise ValueError(f"modo desconocido en el manifest: {modo!r}")
+
+
+def _insumos_del_protocolo() -> tuple[dict, dict, dict, dict, list[str]]:
+    sano, e1 = _cargar_json(RUTA_PROTOCOLO_SANO)
+    corpus, e2 = _cargar_json(RUTA_CORPUS_PROTOCOLO)
+    manifest, e3 = _cargar_json(RUTA_MANIFEST_PROTOCOLO)
+    vocabulario, e4 = _cargar_json(RUTA_VOCABULARIO)
+    return sano, corpus, manifest, vocabulario, [e for e in (e1, e2, e3, e4) if e]
+
+
+def _controles_del_corpus(modos: tuple[str, ...], clausulas: tuple[str, ...],
+                          claves_del_manifest: tuple[str, ...]) -> list[tuple[str, bool, str]]:
+    """Los controles que comparten `--autotest-cobertura` y `--autotest-promocion`.
+
+    Comparten el corpus y la disciplina —cada variante cae por su cláusula y por su motivo—, así que
+    compartirlos evita dos copias que puedan divergir; lo que cambia es qué modos mira cada uno.
+    """
+    resultados: list[tuple[str, bool, str]] = []
+    sano, corpus, manifest, vocabulario, errores = _insumos_del_protocolo()
+    if errores:
+        return [("A", False, " | ".join(errores))]
+
+    variantes = corpus["variantes"]
+    del_manifest = [v for v in manifest["variantes"] if v["modo"] in modos]
+
+    # [A] Corpus y manifest, en las dos direcciones. Se compara el corpus ENTERO y no solo las
+    # variantes de estos modos: una variante que nadie declara tiene que verse desde los dos
+    # autotests, no quedar en la zona ciega del otro.
+    esperadas = {v["variante"] for v in del_manifest}
+    en_corpus = set(variantes)
+    faltan = sorted(esperadas - en_corpus)
+    sobran = sorted({v["variante"] for v in manifest["variantes"]} - en_corpus)
+    diferencias = ([f"declaradas en el manifest y ausentes del corpus: {faltan}"] if faltan else [])
+    diferencias += ([f"en el manifest y sin variante en el corpus: {sobran}"] if sobran else [])
+    if len(manifest["variantes"]) != len(variantes):
+        diferencias.append(f"el corpus tiene {len(variantes)} variantes y el manifest declara "
+                           f"{len(manifest['variantes'])}")
+    resultados.append(("A", not diferencias,
+                       f"corpus ↔ manifest ({len(variantes)} variantes)" if not diferencias
+                       else " | ".join(diferencias)))
+
+    # [B] El caso sano no cae por ninguna cláusula de estos modos.
+    fallas = []
+    for modo in modos:
+        problemas = _revisar_por_modo(modo, sano, vocabulario)
+        if problemas:
+            fallas.append(f"`{modo}` bloqueó el caso sano: {[str(p) for p in problemas][:3]}")
+    resultados.append(("B", not fallas,
+                       f"el pre-registro sano pasa {', '.join(modos)}"
+                       if not fallas else " | ".join(fallas)))
+
+    # [C] Cada variante cae por SU cláusula y por su motivo, y ninguna más.
+    fallas = []
+    ejercidas: set[str] = set()
+    for declarada in del_manifest:
+        problemas = _revisar_por_modo(declarada["modo"], variantes[declarada["variante"]],
+                                      vocabulario)
+        claves = sorted({p.clave for p in problemas})
+        if claves != [declarada["clausula"]]:
+            fallas.append(f"`{declarada['variante']}`: cayó por {claves} y se esperaba "
+                          f"`{declarada['clausula']}`")
+            continue
+        if not any(declarada["fragmento"] in p.detalle for p in problemas):
+            fallas.append(f"`{declarada['variante']}`: cayó por `{declarada['clausula']}` pero no "
+                          f"por su motivo — se esperaba «{declarada['fragmento']}»")
+            continue
+        ejercidas.add(declarada["clausula"])
+    resultados.append(("C", not fallas,
+                       f"las {len(del_manifest)} variantes caen por su cláusula y por su motivo"
+                       if not fallas else " | ".join(fallas[:6])))
+
+    # [D] Cobertura de las cláusulas, acumulada corriendo.
+    fallas = []
+    sin_ejercer = sorted(set(clausulas) - ejercidas)
+    inexistentes = sorted(ejercidas - set(clausulas))
+    if sin_ejercer:
+        fallas.append(f"cláusulas sin variante que las ponga rojas: {sin_ejercer}")
+    if inexistentes:
+        fallas.append(f"se ejercieron cláusulas que no existen: {inexistentes}")
+    declaradas = [c for clave in claves_del_manifest for c in manifest[clave]]
+    if sorted(declaradas) != sorted(clausulas):
+        fallas.append(f"el manifest declara otras cláusulas que el conjunto cerrado: "
+                      f"{sorted(set(declaradas) ^ set(clausulas))}")
+    resultados.append(("D", not fallas,
+                       f"las {len(clausulas)} cláusulas tienen quien las ponga rojas, acumulado "
+                       f"corriendo" if not fallas else " | ".join(fallas)))
+    return resultados
+
+
+def modo_autotest_cobertura(args: argparse.Namespace) -> int:
+    del args
+    resultados = _controles_del_corpus(
+        ("protocolo", "cobertura"), CLAUSULAS_DEL_PROTOCOLO + CLAUSULAS_DE_COBERTURA,
+        ("clausulas_del_protocolo_ejercidas", "clausulas_de_cobertura_ejercidas"))
+    sano, corpus, manifest, _, errores = _insumos_del_protocolo()
+    if errores:
+        return _cerrar(resultados)
+
+    # [D] de arriba solo cubre las del protocolo; las de cobertura se comprueban aparte porque el
+    # manifest las declara en su propia lista.
+    fallas = []
+    if sorted(manifest["clausulas_de_cobertura_ejercidas"]) != sorted(CLAUSULAS_DE_COBERTURA):
+        fallas.append("el manifest declara otras cláusulas de cobertura que el conjunto cerrado")
+    resultados.append(("E", not fallas,
+                       f"el manifest declara las {len(CLAUSULAS_DE_COBERTURA)} cláusulas de "
+                       f"cobertura del conjunto cerrado" if not fallas else " | ".join(fallas)))
+
+    # [F] Los modos enteros, con su negativo, y `--cobertura-final` sobre un baseline publicado.
+    fallas = []
+    with tempfile.TemporaryDirectory(prefix="protocolo-") as tmp:
+        raiz = Path(tmp)
+        ruta_sano = raiz / "sano.json"
+        _escribir_json(ruta_sano, sano)
+        for bandera, handler in (("validar_protocolo", modo_validar_protocolo),
+                                 ("cobertura", modo_cobertura)):
+            if _codigo_de_modo(handler, **{bandera: str(ruta_sano)}) != 0:
+                fallas.append(f"`--{bandera.replace('_', '-')}` devolvió distinto de 0 sobre el "
+                              f"caso sano")
+        ruta_mala = raiz / "mala.json"
+        _escribir_json(ruta_mala, corpus["variantes"]["c-causa-no-admisible"])
+        if _codigo_de_modo(modo_cobertura, cobertura=str(ruta_mala)) == 0:
+            fallas.append("`--cobertura` devolvió 0 sobre una exclusión con causa no admisible")
+
+        baseline = raiz / "baseline.md"
+        baseline.write_text(_baseline_sintetico(sano), encoding="utf-8")
+        if _codigo_de_modo(modo_cobertura_final, cobertura_final=str(baseline),
+                           preregistro=str(ruta_sano)) != 0:
+            fallas.append("`--cobertura-final` devolvió distinto de 0 sobre un baseline que "
+                          "informa lo que no pudo observarse y cumple los mínimos")
+        sin_informe = raiz / "sin-informe.md"
+        sin_informe.write_text(
+            _baseline_sintetico(sano).replace("sdd-pr-feedback-implement-delegado", "otro-punto"),
+            encoding="utf-8")
+        if _codigo_de_modo(modo_cobertura_final, cobertura_final=str(sin_informe),
+                           preregistro=str(ruta_sano)) == 0:
+            fallas.append("`--cobertura-final` devolvió 0 sobre un baseline que no informa qué "
+                          "parte del ecosistema quedó sin observar")
+        sin_valor = raiz / "sin-valor.md"
+        sin_valor.write_text(_baseline_sintetico(sano, sin_valores={"tasa-de-degradacion"}),
+                             encoding="utf-8")
+        if _codigo_de_modo(modo_cobertura_final, cobertura_final=str(sin_valor),
+                           preregistro=str(ruta_sano)) == 0:
+            fallas.append("`--cobertura-final` devolvió 0 con una métrica de cobertura mínima "
+                          "publicada sin valor")
+    resultados.append(("F", not fallas,
+                       "los modos devuelven 0 sobre el caso sano y distinto de 0 sobre sus "
+                       "negativos, incluido `--cobertura-final`"
+                       if not fallas else " | ".join(fallas)))
+    return _cerrar(resultados)
+
+
+def _baseline_sintetico(preregistro: dict, sin_valores: set[str] | None = None) -> str:
+    """Un baseline con la tabla normativa que fija el generador, para los modos `-final`.
+
+    Se escribe acá y no se genera con `--generar-baseline` a propósito: ese modo necesita
+    observaciones, y lo que estos controles prueban es la **lectura** del documento publicado.
+    """
+    sin_valores = sin_valores or set()
+    filas = []
+    for metrica in preregistro["metricas"]:
+        ident = metrica["metrica_id"]
+        celda = SIN_OBSERVACIONES if ident in sin_valores else "`1.0`"
+        adjudicacion = ("la cohorte no cubre esta métrica" if ident in sin_valores
+                        else SIN_ADJUDICACION)
+        filas.append(f"| `{ident}` | {celda} | {metrica['unidad']} | {metrica['agregacion']} | "
+                     f"3 | {adjudicacion} |")
+    no_observados = (preregistro.get("cobertura") or {}).get("puntos_no_observados") or []
+    sin_observar = "\n".join(f"- `{p}`" for p in no_observados) or "- ninguno"
+    return (
+        "# Baseline de la fase 0\n\n"
+        "## Números publicados\n\n"
+        "| métrica | valor | unidad | agregación | muestras | adjudicación |\n"
+        "| --- | --- | --- | --- | --- | --- |\n"
+        + "\n".join(filas) + "\n\n"
+        "## Lo que no pudo observarse\n\n" + sin_observar + "\n")
+
+
+def modo_autotest_promocion(args: argparse.Namespace) -> int:
+    del args
+    resultados = _controles_del_corpus(("promocion",), CLAUSULAS_DE_PROMOCION,
+                                       ("clausulas_de_promocion_ejercidas",))
+    sano, corpus, manifest, _, errores = _insumos_del_protocolo()
+    if errores:
+        return _cerrar(resultados)
+    evaluador = manifest["evaluador"]
+
+    # [E] La dirección del umbral y el tratamiento del límite, en las cuatro combinaciones.
+    fallas = []
+    for caso in evaluador["casos"]:
+        umbral = {"metrica_id": "m", "direccion": caso["direccion"], "valor": caso["umbral"],
+                  "tratamiento_del_limite": caso["tratamiento"]}
+        if _cumple(caso["valor"], umbral) != caso["cumple"]:
+            fallas.append(f"`{caso['caso']}`: el evaluador dijo "
+                          f"{_cumple(caso['valor'], umbral)} y se esperaba {caso['cumple']}")
+    en_el_limite = [c for c in evaluador["casos"] if c["valor"] == c["umbral"]]
+    if len({(c["direccion"], c["tratamiento"]) for c in en_el_limite}) != 4:
+        fallas.append("el valor límite no se ejerce en las cuatro combinaciones de dirección y "
+                      "tratamiento: el campo que decide ahí quedaría sin probar")
+    resultados.append(("E", not fallas,
+                       f"la dirección y el tratamiento del límite deciden en los "
+                       f"{len(evaluador['casos'])} casos, con el valor límite en las cuatro "
+                       f"combinaciones" if not fallas else " | ".join(fallas)))
+
+    # [F] La regla de composición, con `todas` y `alguna` y sus dos resultados cada una.
+    fallas = []
+    for caso in evaluador["composicion"]:
+        fase = {"fase_id": caso["caso"], "composicion": caso["composicion"],
+                "metricas_obligatorias": [],
+                "efecto_de_la_ausencia": "blocked",
+                "umbrales": [{"metrica_id": f"m{i}", "direccion": "mayor_o_igual",
+                              "valor": 1.0, "tratamiento_del_limite": "inclusivo"}
+                             for i, _ in enumerate(caso["cumplen"])]}
+        valores = {f"m{i}": (1.0 if ok else 0.0) for i, ok in enumerate(caso["cumplen"])}
+        veredicto = evaluar_promocion(fase, valores, la_fase_corrio=True)
+        esperado = "promovible" if caso["promueve"] else "no_promovible"
+        if veredicto.veredicto != esperado:
+            fallas.append(f"`{caso['caso']}`: veredicto `{veredicto.veredicto}` y se esperaba "
+                          f"`{esperado}`")
+    if len({c["composicion"] for c in evaluador["composicion"]}) != 2:
+        fallas.append("la composición no se ejerce en sus dos formas")
+    resultados.append(("F", not fallas,
+                       f"la composición decide en los {len(evaluador['composicion'])} casos, con "
+                       f"`todas` y `alguna` en sus dos resultados"
+                       if not fallas else " | ".join(fallas)))
+
+    # [G] `not_evaluated` y `blocked` son veredictos DISTINTOS y no se funden.
+    fallas = []
+    for caso in evaluador["veredictos_distinguidos"]:
+        fase = {"fase_id": caso["caso"], "composicion": "todas",
+                "metricas_obligatorias": ["m"],
+                "efecto_de_la_ausencia": caso.get("efecto_de_la_ausencia", "blocked"),
+                "umbrales": [{"metrica_id": "m", "direccion": "mayor_o_igual", "valor": 1.0,
+                              "tratamiento_del_limite": "inclusivo"}]}
+        veredicto = evaluar_promocion(fase, {}, la_fase_corrio=caso["la_fase_corrio"])
+        if veredicto.veredicto != caso["veredicto"]:
+            fallas.append(f"`{caso['caso']}`: veredicto `{veredicto.veredicto}` y se esperaba "
+                          f"`{caso['veredicto']}`")
+    distinguidos = {c["veredicto"] for c in evaluador["veredictos_distinguidos"]}
+    if {"blocked", "not_evaluated"} - distinguidos:
+        fallas.append("el corpus no ejerce los dos veredictos: fundirlos declararía bloqueadas a "
+                      "las fases que nadie ejecutó")
+    # La misma fase, con las mismas métricas ausentes, da veredictos distintos según haya corrido:
+    # si diera el mismo, los dos veredictos estarían fundidos y el corpus no lo notaría.
+    fase = {"fase_id": "f", "composicion": "todas", "metricas_obligatorias": ["m"],
+            "efecto_de_la_ausencia": "blocked",
+            "umbrales": [{"metrica_id": "m", "direccion": "mayor_o_igual", "valor": 1.0,
+                          "tratamiento_del_limite": "inclusivo"}]}
+    if (evaluar_promocion(fase, {}, True).veredicto
+            == evaluar_promocion(fase, {}, False).veredicto):
+        fallas.append("una fase que corrió y otra que no dieron el mismo veredicto con las mismas "
+                      "ausencias: los dos veredictos están fundidos")
+    if sorted(VEREDICTOS) != sorted({"promovible", "no_promovible", "blocked", "not_evaluated"}):
+        fallas.append(f"el conjunto de veredictos cambió: {VEREDICTOS}")
+    resultados.append(("G", not fallas,
+                       "`not_evaluated` y `blocked` se distinguen, y la misma ausencia da "
+                       "veredictos distintos según la fase haya corrido"
+                       if not fallas else " | ".join(fallas)))
+
+    # [H] El modo entero y `--promocion-final` sobre un baseline publicado.
+    fallas = []
+    with tempfile.TemporaryDirectory(prefix="promocion-") as tmp:
+        raiz = Path(tmp)
+        ruta_sano = raiz / "sano.json"
+        _escribir_json(ruta_sano, sano)
+        if _codigo_de_modo(modo_promocion, promocion=str(ruta_sano)) != 0:
+            fallas.append("`--promocion` devolvió distinto de 0 sobre el caso sano")
+        ruta_mala = raiz / "mala.json"
+        _escribir_json(ruta_mala, corpus["variantes"]["pr-obligatoria-sin-umbral"])
+        if _codigo_de_modo(modo_promocion, promocion=str(ruta_mala)) == 0:
+            fallas.append("`--promocion` devolvió 0 con una métrica obligatoria sin umbral")
+
+        baseline = raiz / "baseline.md"
+        baseline.write_text(_baseline_sintetico(sano), encoding="utf-8")
+        if _codigo_de_modo(modo_promocion_final, promocion_final=str(baseline),
+                           preregistro=str(ruta_sano)) != 0:
+            fallas.append("`--promocion-final` devolvió distinto de 0 con todas las obligatorias "
+                          "publicadas")
+        bloqueado = raiz / "bloqueado.md"
+        bloqueado.write_text(_baseline_sintetico(sano, sin_valores={"limpieza-completa"}),
+                             encoding="utf-8")
+        if _codigo_de_modo(modo_promocion_final, promocion_final=str(bloqueado),
+                           preregistro=str(ruta_sano)) == 0:
+            fallas.append("`--promocion-final` devolvió 0 con una métrica obligatoria publicada "
+                          "sin observaciones: la fase corrió y falta, así que está bloqueada")
+    resultados.append(("H", not fallas,
+                       "`--promocion` y `--promocion-final` devuelven 0 sobre el caso sano y "
+                       "distinto de 0 sobre sus negativos" if not fallas else " | ".join(fallas)))
+    return _cerrar(resultados)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -9129,6 +9906,65 @@ registrar_modo(
     "transferido exige dueño Y próxima acción —con un negativo por campo—, solo el terminal "
     "comprobado cuenta como limpieza, y el cese inferido por efectos en el árbol bloquea",
     modo_autotest_recursos,
+)
+
+registrar_modo(
+    "--validar-protocolo",
+    "exige que el protocolo enumere casos, repeticiones, entorno y exclusiones, y que cada métrica "
+    "tome su fórmula, su unidad y su agregación DEL VOCABULARIO CERRADO; el conjunto cubre las "
+    "cinco categorías y la degradación se publica como al menos una tasa auditable",
+    modo_validar_protocolo,
+    argumento=Argumento("<ruta-del-preregistro>", const=RUTA_PREREGISTRO_FASE_0),
+)
+
+registrar_modo(
+    "--cobertura",
+    "exige la cobertura mínima por métrica y estrato y el conjunto cerrado de causas de exclusión: "
+    "una exclusión fuera de ese conjunto, o una métrica obligatoria sin cohorte que la mida, "
+    "bloquean el cierre de la fase",
+    modo_cobertura,
+    argumento=Argumento("<ruta-del-preregistro>", const=RUTA_PREREGISTRO_FASE_0),
+)
+
+registrar_modo(
+    "--promocion",
+    "comprueba que el evaluador de promoción tenga con qué decidir en cada fase comprometida "
+    "—métricas obligatorias, umbral con su dirección y su tratamiento del límite, y regla de "
+    "composición— y emite el veredicto de una fase que todavía no corrió: `not_evaluated`",
+    modo_promocion,
+    argumento=Argumento("<ruta-del-preregistro>", const=RUTA_PREREGISTRO_FASE_0),
+)
+
+registrar_modo(
+    "--cobertura-final",
+    "sobre el BASELINE GENERADO: comprueba que la cobertura mínima se cumplió y que el documento "
+    "informa explícitamente qué parte del ecosistema no pudo observarse",
+    modo_cobertura_final,
+    argumento=Argumento("<ruta-del-baseline>", const=RUTA_BASELINE_FASE_0),
+)
+
+registrar_modo(
+    "--promocion-final",
+    "sobre el BASELINE GENERADO: corre el evaluador congelado con los números publicados y emite "
+    "el veredicto de cada fase, distinguiendo `not_evaluated` de `blocked`",
+    modo_promocion_final,
+    argumento=Argumento("<ruta-del-baseline>", const=RUTA_BASELINE_FASE_0),
+)
+
+registrar_modo(
+    "--autotest-cobertura",
+    "control positivo y negativo del protocolo y de la cobertura sobre su corpus: una exclusión "
+    "fuera del conjunto cerrado y una métrica obligatoria sin cohorte bloquean, y cada variante "
+    "cae por su cláusula y por su motivo",
+    modo_autotest_cobertura,
+)
+
+registrar_modo(
+    "--autotest-promocion",
+    "control del evaluador determinista: dirección del umbral, tratamiento del valor límite en las "
+    "cuatro combinaciones y regla de composición en sus dos formas, con `not_evaluated` y "
+    "`blocked` distinguidos",
+    modo_autotest_promocion,
 )
 
 
