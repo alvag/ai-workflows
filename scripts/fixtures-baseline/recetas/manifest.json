@@ -1,0 +1,39 @@
+{
+  "descripcion": "Manifest INDEPENDIENTE del corpus de recetas. Declara, aparte del archivo de recetas, cómo tiene que quedar clasificada cada una: derivada del ancla o adjudicada a mano. Sin esta lista, convertir una derivada en adjudicada —o al revés— no lo vería nadie: el modo informaría la partición que el propio archivo declara, y estaría validando esa declaración contra sí misma (D-16).",
+  "por-que-la-clasificacion-y-no-solo-la-lista": "Que existan trece recetas ya lo comprueba la matriz en las dos direcciones. Lo que la matriz no puede decir es si el comando de cada una se DERIVÓ o se adjudicó, que es la mitad de AC-34 y la única parte que un editor apurado puede cambiar sin que nada se rompa.",
+  "clasificacion_esperada": {
+    "rec-bitbucket-panel": "derivada",
+    "rec-co-explore-fan-out": "derivada",
+    "rec-cross-implement-inicial": "derivada",
+    "rec-cross-implement-fix-loop": "derivada",
+    "rec-bitbucket-validador": "adjudicada",
+    "rec-co-explore-debate": "adjudicada",
+    "rec-cross-review-revisor": "adjudicada",
+    "rec-sdd-flow-analyze": "derivada",
+    "rec-sdd-flow-implementer": "derivada",
+    "rec-sdd-flow-reviewer": "derivada",
+    "rec-sdd-flow-diff": "derivada",
+    "rec-sdd-orchestrator-fan-out": "derivada",
+    "rec-sdd-pr-feedback": "derivada"
+  },
+  "por-que-estas-tres-son-adjudicadas": {
+    "rec-bitbucket-validador": "su sección no tiene invocación propia: reusa la del panel de revisores, y un patrón laxo casaría esa otra línea",
+    "rec-co-explore-debate": "su sección describe el loop, no la invocación; el único `codex exec` del archivo pertenece al fan-out",
+    "rec-cross-review-revisor": "el comando no es un literal de la sede: se arma incrementalmente con `set --` y se invoca como `codex \"$@\"`"
+  },
+  "escenarios_esperados": [
+    {
+      "escenario_id": "esc-cross-implement",
+      "pasos": ["rec-cross-implement-inicial", "rec-cross-implement-fix-loop"],
+      "enlace": "session_id",
+      "por_que": "D-17: el `session_id` no existe al congelar la cohorte, así que lo congelado es la regla de enlace"
+    }
+  ],
+  "sede_sintetica": {
+    "ruta": "scripts/fixtures-baseline/recetas/sedes/sede-sintetica.md",
+    "patron_unico": "^codex exec -s read-only -C <unico> --skip-git-repo-check -$",
+    "patron_ambiguo": "^codex exec -s read-only -C <ambiguo-[ab]> --skip-git-repo-check -$",
+    "patron_sin_coincidencia": "^codex exec -s read-only -C <no-existe> --skip-git-repo-check -$",
+    "nodos_del_ambiguo": 2
+  }
+}

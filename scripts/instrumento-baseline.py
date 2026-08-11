@@ -52,11 +52,15 @@ que ese archivo pueda cambiar sin arrastrar a este.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import copy
 import hashlib
+import io
 import json
 import re
 import sys
+import tempfile
+import unicodedata
 from pathlib import Path
 from typing import Any, Callable, NamedTuple
 
@@ -5934,6 +5938,1955 @@ def modo_autotest_procedencia_dag(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------------------------
+# Modos `--generar-baseline` y `--autotest-generacion`.
+#
+# El baseline se GENERA. Un documento escrito a mano con los números copiados de una corrida no se
+# distingue de uno correcto mirándolo: los dos tienen tablas plausibles. La diferencia es que del
+# generado se puede volver, número por número, a la observación que lo produjo, y que reproducirlo
+# con el mismo insumo da los MISMOS BYTES — así que una edición manual posterior se ve como un diff.
+#
+# Dos cláusulas de AC-21 gobiernan la forma de la salida y no son negociables:
+#
+# - **Una métrica sin observaciones se declara, nunca se publica en cero.** El cero es un número
+#   medido: usarlo para «no lo medimos» destruye la distinción exacta que la fase tiene que reportar.
+#   Acá esa métrica sale con su celda de valor no numérica y con su adjudicación escrita.
+# - **La adjudicación es la del agregado Y la de cada observación.** Solo la primera diría «sin
+#   valores que agregar» para dos causas distintas —la cohorte no la cubre, o la corrida impidió
+#   medirla—, y el lector no podría saber cuál.
+#
+# La lectura inversa (`numeros_publicados_del_markdown`) es lo que hace comprobable «coincide
+# exactamente con lo publicado» sobre el artefacto real, donde no hay golden contra el cual comparar:
+# sin ella, el único control posible es volver a generar, que compara el generador consigo mismo.
+# ---------------------------------------------------------------------------------------------
+
+DIR_FIXTURES_GENERACION = DIR_SCRIPTS / "fixtures-baseline" / "generacion"
+RUTA_MANIFEST_GENERACION = DIR_FIXTURES_GENERACION / "manifest.json"
+RUTA_BASELINE_FASE_0 = "scripts/baseline-fase-0.md"
+
+# La celda de valor de una métrica que no se midió. No es un número y no se puede confundir con uno:
+# el parser la devuelve como ausencia, no como cero.
+SIN_OBSERVACIONES = "sin observaciones"
+SIN_ADJUDICACION = "—"
+
+
+def _formato_numero(valor: float) -> str:
+    """El número publicado, en una forma que vuelve a leerse EXACTA.
+
+    `repr` de un float en Python round-trips por construcción. Un formato «lindo» —dos decimales,
+    separador de miles— publicaría un número distinto del recompuesto y la comparación de AC-22bis
+    fallaría por presentación, o peor: pasaría por tolerancia y taparía una diferencia real."""
+    return repr(float(valor))
+
+
+def _celda(texto: str) -> str:
+    """Un texto libre dentro de una celda de tabla. La barra se escapa y los saltos se colapsan: sin
+    eso, una adjudicación con `|` parte la fila en columnas que nadie declaró."""
+    return " ".join(str(texto).split()).replace("|", "\\|")
+
+
+def _descelda(texto: str) -> str:
+    return texto.strip().replace("\\|", "|")
+
+
+def _fila(*celdas: str) -> str:
+    return "| " + " | ".join(celdas) + " |"
+
+
+def _metricas_sin_valor_por_observacion(observaciones: list[dict],
+                                        metrica_id: str) -> list[tuple[str, str, str]]:
+    """Qué dijo cada observación sobre una métrica que no tiene valor: su estado y su adjudicación,
+    tal como las escribió el recolector. Ordenado por identidad de la observación."""
+    detalle: list[tuple[str, str, str]] = []
+    for observacion in sorted(observaciones, key=lambda o: o.get("observation_id") or ""):
+        medida = _metrica_de_la_observacion(observacion, metrica_id)
+        if medida is None or medida.get("estado_de_medicion") == "medida":
+            continue
+        detalle.append((observacion.get("observation_id") or "",
+                        medida.get("estado_de_medicion") or "",
+                        medida.get("adjudicacion") or ""))
+    return detalle
+
+
+def generar_baseline(preregistro: dict, observaciones: list[dict],
+                     vocabulario: dict) -> tuple[str | None, list[str]]:
+    """El baseline completo, derivado. Ningún número entra por parámetro ni se lee del documento
+    anterior: todos salen de `recomponer_metricas`, que a su vez sale de las observaciones."""
+    problemas: list[str] = []
+    acta = preregistro.get("preregistro_sha256")
+    for observacion in observaciones:
+        citada = observacion.get("preregistro_sha256")
+        if citada != acta:
+            problemas.append(
+                f"{observacion.get('observation_id')} cita el acta {citada!r} y el pre-registro es "
+                f"{acta!r}: un baseline que mezcla dos cohortes no tiene una cohorte")
+    if problemas:
+        return None, problemas
+
+    recompuestas = {r.metrica_id: r for r in recomponer_metricas(preregistro, observaciones,
+                                                                 vocabulario)}
+    muestras = (preregistro.get("cohorte") or {}).get("muestras") or []
+
+    lineas = [
+        "# Baseline de la fase 0",
+        "",
+        "Documento **generado**: cada número se deriva de las observaciones y ninguno se escribe a "
+        "mano. Se",
+        "reproduce con `python3 scripts/instrumento-baseline.py --generar-baseline "
+        "<dir-de-observaciones>`.",
+        "",
+        "## Procedencia",
+        "",
+        _fila("insumo", "identidad"),
+        _fila("---", "---"),
+        _fila("acta congelada (`preregistro_sha256`)", f"`{acta}`"),
+        _fila("commit del código medido", f"`{preregistro.get('code_commit')}`"),
+        _fila("muestras de la cohorte", str(len(muestras))),
+        _fila("observaciones recolectadas", str(len(observaciones))),
+        "",
+        "## Números publicados",
+        "",
+        _fila("métrica", "valor", "unidad", "agregación", "muestras", "adjudicación"),
+        _fila("---", "---", "---", "---", "---", "---"),
+    ]
+
+    sin_valor: list[str] = []
+    for metrica_pre in preregistro.get("metricas") or []:
+        metrica_id = metrica_pre.get("metrica_id")
+        recompuesta = recompuestas.get(metrica_id)
+        if recompuesta is None or recompuesta.error is not None:
+            sin_valor.append(metrica_id)
+            adjudicacion = (recompuesta.error if recompuesta is not None
+                            else "la métrica está pre-registrada y no se recompone desde ninguna "
+                                 "fuente canónica")
+            lineas.append(_fila(f"`{metrica_id}`", SIN_OBSERVACIONES,
+                                _celda(metrica_pre.get("unidad")),
+                                _celda(metrica_pre.get("agregacion")),
+                                str(len(recompuesta.por_muestra) if recompuesta else 0),
+                                _celda(adjudicacion)))
+            continue
+        lineas.append(_fila(f"`{metrica_id}`", f"`{_formato_numero(recompuesta.valor)}`",
+                            _celda(metrica_pre.get("unidad")),
+                            _celda(metrica_pre.get("agregacion")),
+                            str(len(recompuesta.por_muestra)), SIN_ADJUDICACION))
+
+    lineas += ["", "## Valor por muestra", "",
+               _fila("métrica", "muestra", "valor"), _fila("---", "---", "---")]
+    for metrica_pre in preregistro.get("metricas") or []:
+        recompuesta = recompuestas.get(metrica_pre.get("metrica_id"))
+        if recompuesta is None or recompuesta.error is not None:
+            continue
+        for sample_id in sorted(recompuesta.por_muestra):
+            lineas.append(_fila(f"`{recompuesta.metrica_id}`", f"`{sample_id}`",
+                                f"`{_formato_numero(recompuesta.por_muestra[sample_id])}`"))
+
+    lineas += ["", "## Métricas sin observaciones", ""]
+    if not sin_valor:
+        lineas.append(f"Ninguna: las {len(preregistro.get('metricas') or [])} métricas "
+                      "pre-registradas se publican con su valor.")
+    else:
+        lineas += ["Ninguna se publica como cero. Cada una declara por qué el agregado no tiene "
+                   "valor y qué dijo",
+                   "cada observación, que es lo único que separa «la cohorte no la cubre» de «la "
+                   "corrida impidió",
+                   "medirla»."]
+        for metrica_id in sin_valor:
+            recompuesta = recompuestas.get(metrica_id)
+            lineas += ["", f"### `{metrica_id}`", "",
+                       "Adjudicación del agregado: "
+                       f"{_celda(recompuesta.error if recompuesta else 'sin recomposición')}", "",
+                       _fila("observación", "estado de la medición", "adjudicación"),
+                       _fila("---", "---", "---")]
+            detalle = _metricas_sin_valor_por_observacion(observaciones, metrica_id)
+            if not detalle:
+                lineas.append(_fila("—", "—", "ninguna observación declara esta métrica"))
+            for observation_id, estado, adjudicacion in detalle:
+                lineas.append(_fila(f"`{observation_id}`", _celda(estado), _celda(adjudicacion)))
+
+    return "\n".join(lineas) + "\n", []
+
+
+class NumeroPublicado(NamedTuple):
+    metrica_id: str
+    valor: float | None
+    unidad: str
+    adjudicacion: str
+
+
+def numeros_publicados_del_markdown(texto: str) -> tuple[dict[str, NumeroPublicado], list[str]]:
+    """Lo que el documento publica, leído de vuelta desde su tabla normativa.
+
+    Se lee la TABLA, no la prosa: la sección tiene un encabezado fijo y un orden de columnas fijo, y
+    una fila que no encaje se reporta en vez de saltearse. Un lector tolerante convertiría un
+    documento corrompido en uno con menos números, que es la forma de corrupción que nadie ve."""
+    problemas: list[str] = []
+    publicados: dict[str, NumeroPublicado] = {}
+    lineas = texto.splitlines()
+    try:
+        inicio = lineas.index("## Números publicados")
+    except ValueError:
+        return {}, ["el documento no tiene la sección «## Números publicados»"]
+
+    for linea in lineas[inicio + 1:]:
+        if linea.startswith("## "):
+            break
+        if not linea.startswith("|"):
+            continue
+        celdas = [_descelda(c) for c in re.split(r"(?<!\\)\|", linea)[1:-1]]
+        if celdas[:1] == ["métrica"] or set(celdas) == {"---"}:
+            continue
+        if len(celdas) != 6:
+            problemas.append(f"fila con {len(celdas)} columnas y no 6: {linea}")
+            continue
+        metrica_id = celdas[0].strip("`")
+        bruto = celdas[1]
+        if bruto == SIN_OBSERVACIONES:
+            valor = None
+        else:
+            try:
+                valor = float(bruto.strip("`"))
+            except ValueError:
+                problemas.append(f"«{metrica_id}»: la celda de valor no es un número ni "
+                                 f"«{SIN_OBSERVACIONES}»: {bruto!r}")
+                continue
+        if metrica_id in publicados:
+            problemas.append(f"«{metrica_id}» aparece dos veces en la tabla de números")
+            continue
+        publicados[metrica_id] = NumeroPublicado(metrica_id, valor, celdas[2], celdas[5])
+    return publicados, problemas
+
+
+def revisar_baseline(texto: str, preregistro: dict, observaciones: list[dict],
+                     vocabulario: dict) -> list[str]:
+    """El documento contra sus fuentes. Es el predicado que los ataques tienen que poner rojo, y por
+    eso trabaja sobre el TEXTO publicado y no sobre la estructura intermedia: un ataque a la
+    estructura no prueba nada sobre lo que el lector del baseline termina viendo."""
+    publicados, problemas = numeros_publicados_del_markdown(texto)
+    recompuestas = {r.metrica_id: r for r in recomponer_metricas(preregistro, observaciones,
+                                                                 vocabulario)}
+    pre_registradas = [m.get("metrica_id") for m in preregistro.get("metricas") or []]
+
+    for metrica_id in sorted(set(publicados) - set(pre_registradas)):
+        problemas.append(f"«{metrica_id}»: el documento lo publica y el acta no lo pre-registra")
+
+    for metrica_id in pre_registradas:
+        publicado = publicados.get(metrica_id)
+        recompuesta = recompuestas.get(metrica_id)
+        if publicado is None:
+            problemas.append(f"«{metrica_id}»: está pre-registrado y el documento no lo publica")
+            continue
+        if recompuesta is None or recompuesta.error is not None:
+            if publicado.valor is not None:
+                problemas.append(
+                    f"«{metrica_id}»: no se recompone desde ninguna observación y el documento "
+                    f"publica {publicado.valor!r} — una métrica sin observaciones nunca es un número")
+            elif not publicado.adjudicacion or publicado.adjudicacion == SIN_ADJUDICACION:
+                problemas.append(f"«{metrica_id}»: se declara sin observaciones y sin adjudicación: "
+                                 "quedaría sin razón escrita de por qué no tiene valor")
+            continue
+        if publicado.valor is None:
+            problemas.append(f"«{metrica_id}»: se recompone en {recompuesta.valor!r} y el documento "
+                             "lo declara sin observaciones")
+            continue
+        if not _casi_igual(publicado.valor, recompuesta.valor):
+            problemas.append(f"«{metrica_id}»: el documento publica {publicado.valor!r} y la "
+                             f"recomposición da {recompuesta.valor!r}")
+    return problemas
+
+
+def _observaciones_de(raiz: Path) -> tuple[list[dict], list[str]]:
+    """Las observaciones de un directorio, en orden de identidad y no de disco."""
+    problemas: list[str] = []
+    observaciones: list[dict] = []
+    for archivo in sorted(raiz.glob("*.json")) if raiz.is_dir() else []:
+        datos, error = _cargar_json(archivo)
+        if error:
+            problemas.append(f"{archivo.name}: {error}")
+            continue
+        observaciones.append(datos)
+    if not observaciones and not problemas:
+        problemas.append(f"{raiz}: no hay observaciones desde las que generar")
+    return observaciones, problemas
+
+
+def modo_generar_baseline(args: argparse.Namespace) -> int:
+    raiz = _ruta_absoluta(getattr(args, "generar_baseline"))
+    ruta_acta = getattr(args, "preregistro", None) or RUTA_PREREGISTRO_FASE_0
+    salida = _ruta_absoluta(getattr(args, "salida", None) or RUTA_BASELINE_FASE_0)
+
+    preregistro, error = _cargar_json(_ruta_absoluta(ruta_acta))
+    if error:
+        print(f"FALLA  pre-registro: {error}")
+        return 1
+    vocabulario, _, problemas = _cargar_insumos_de_recoleccion()
+    observaciones, mas = _observaciones_de(raiz)
+    if problemas + mas:
+        for p in problemas + mas:
+            print(f"FALLA  {p}")
+        return 1
+
+    texto, problemas = generar_baseline(preregistro, observaciones, vocabulario)
+    if texto is None:
+        for p in problemas:
+            print(f"FALLA  {p}")
+        return 1
+
+    salida.parent.mkdir(parents=True, exist_ok=True)
+    salida.write_text(texto, encoding="utf-8")
+    publicados, _ = numeros_publicados_del_markdown(texto)
+    con_valor = [n for n in publicados.values() if n.valor is not None]
+    print(f"Observaciones: {raiz} ({len(observaciones)}) · acta: {ruta_acta}")
+    print(f"OK     {salida}: {len(con_valor)} números derivados y "
+          f"{len(publicados) - len(con_valor)} métricas declaradas sin observaciones")
+    print()
+    print(f"RESULTADO: OK — baseline generado desde {len(observaciones)} observaciones")
+    return 0
+
+
+def _corpus_de_generacion() -> tuple[dict, dict, list[dict], str, list[str]]:
+    """Manifest, acta, observaciones y golden del corpus de generación."""
+    problemas: list[str] = []
+    manifest, error = _cargar_json(RUTA_MANIFEST_GENERACION)
+    if error:
+        problemas.append(f"manifest del corpus de generación: {error}")
+    preregistro, error = _cargar_json(DIR_FIXTURES_GENERACION / "preregistro.json")
+    if error:
+        problemas.append(f"acta del corpus de generación: {error}")
+    golden = ""
+    ruta_golden = DIR_FIXTURES_GENERACION / "baseline-esperado.md"
+    try:
+        golden = ruta_golden.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        problemas.append(f"golden del corpus de generación: no existe: {ruta_golden}")
+    observaciones, mas = _observaciones_de(DIR_FIXTURES_GENERACION / "observaciones")
+    return manifest or {}, preregistro or {}, observaciones, golden, problemas + mas
+
+
+class AtaqueAlBaseline(NamedTuple):
+    """Un ataque al DOCUMENTO ya generado: lo que un editor a mano podría hacerle.
+
+    Cada uno declara por qué motivo tiene que caer. Sin eso, un ataque detectado por otra cláusula
+    —la tabla que ya no parsea, una fila de más— deja sin ejercer la que decía estar probando."""
+    nombre: str
+    que_rompe: str
+    motivo_esperado: str
+    aplicar: Callable[[str, dict], str | None]
+
+
+def _ataque_numero_alterado(texto: str, manifest: dict) -> str | None:
+    del manifest
+    for linea in texto.splitlines():
+        coincidencia = re.match(r"^\| `[^`]+` \| `(-?\d+\.\d+)` \|", linea)
+        if coincidencia:
+            crudo = coincidencia.group(1)
+            alterado = _formato_numero(float(crudo) + 1)
+            return texto.replace(f"| `{crudo}` |", f"| `{alterado}` |", 1)
+    return None
+
+
+def _linea_sin_observaciones(texto: str, manifest: dict) -> str | None:
+    ids = [m.get("metrica_id") for m in manifest.get("metricas_sin_observaciones") or []]
+    for linea in texto.splitlines():
+        if linea.startswith("| `") and f"| {SIN_OBSERVACIONES} |" in linea:
+            if linea.split("`")[1] in ids:
+                return linea
+    return None
+
+
+def _ataque_sin_observaciones_omitida(texto: str, manifest: dict) -> str | None:
+    linea = _linea_sin_observaciones(texto, manifest)
+    return texto.replace(linea + "\n", "", 1) if linea else None
+
+
+def _ataque_sin_observaciones_en_cero(texto: str, manifest: dict) -> str | None:
+    linea = _linea_sin_observaciones(texto, manifest)
+    if linea is None:
+        return None
+    return texto.replace(linea, linea.replace(f"| {SIN_OBSERVACIONES} |", "| `0.0` |", 1), 1)
+
+
+def _ataque_adjudicacion_borrada(texto: str, manifest: dict) -> str | None:
+    linea = _linea_sin_observaciones(texto, manifest)
+    if linea is None:
+        return None
+    celdas = linea.split(" | ")
+    celdas[-1] = " |"
+    return texto.replace(linea, " | ".join(celdas[:-1]) + " |  |", 1)
+
+
+def _ataque_metrica_inventada(texto: str, manifest: dict) -> str | None:
+    del manifest
+    marca = "\n\n## Valor por muestra"
+    if marca not in texto:
+        return None
+    fila = _fila("`metrica-que-nadie-pre-registro`", "`0.0`", "conteo", "suma", "3",
+                 SIN_ADJUDICACION)
+    return texto.replace(marca, "\n" + fila + marca, 1)
+
+
+ATAQUES_AL_BASELINE: tuple[AtaqueAlBaseline, ...] = (
+    AtaqueAlBaseline("numero-alterado", "un número publicado cambia en una unidad",
+                     "y la recomposición da", _ataque_numero_alterado),
+    AtaqueAlBaseline("sin-observaciones-omitida",
+                     "la métrica sin observaciones desaparece de la tabla",
+                     "el documento no lo publica", _ataque_sin_observaciones_omitida),
+    AtaqueAlBaseline("sin-observaciones-en-cero",
+                     "la métrica sin observaciones se publica como cero",
+                     "nunca es un número", _ataque_sin_observaciones_en_cero),
+    AtaqueAlBaseline("adjudicacion-borrada",
+                     "la métrica sin observaciones queda sin razón escrita",
+                     "sin adjudicación", _ataque_adjudicacion_borrada),
+    AtaqueAlBaseline("metrica-inventada", "aparece una métrica que el acta no pre-registra",
+                     "el acta no lo pre-registra", _ataque_metrica_inventada),
+)
+
+
+class AtaqueAlInsumo(NamedTuple):
+    """Un ataque a las OBSERVACIONES: prueba que el número sale de ellas y no está escrito."""
+    nombre: str
+    que_rompe: str
+    aplicar: Callable[[list[dict]], bool]
+
+
+def _insumo_valor_alterado(observaciones: list[dict]) -> bool:
+    for observacion in sorted(observaciones, key=lambda o: o.get("observation_id") or ""):
+        for metrica in observacion.get("metricas") or []:
+            if metrica.get("estado_de_medicion") == "medida":
+                metrica["valor"] = metrica["valor"] + 1
+                return True
+    return False
+
+
+def _insumo_de_otra_acta(observaciones: list[dict]) -> bool:
+    if not observaciones:
+        return False
+    observaciones[0]["preregistro_sha256"] = "9" * 64
+    return True
+
+
+ATAQUES_AL_INSUMO: tuple[AtaqueAlInsumo, ...] = (
+    AtaqueAlInsumo("valor-alterado", "una observación cambia y el documento generado no",
+                   _insumo_valor_alterado),
+    AtaqueAlInsumo("observacion-de-otra-acta",
+                   "una observación cita otra acta y el baseline mezcla dos cohortes",
+                   _insumo_de_otra_acta),
+)
+
+
+def _correr_el_modo(observaciones: list[dict], etiqueta: str) -> tuple[int, str | None]:
+    """Invoca `--generar-baseline` de punta a punta sobre un conjunto de observaciones en disco, y
+    devuelve su código de salida y lo que quedó escrito. Un modo que revienta cuenta como código
+    distinto de 0: el veredicto es el código, no el mensaje."""
+    with tempfile.TemporaryDirectory() as temporal:
+        raiz = Path(temporal) / etiqueta
+        raiz.mkdir()
+        for observacion in observaciones:
+            (raiz / f"{observacion.get('observation_id')}.json").write_text(
+                json.dumps(observacion, ensure_ascii=False), encoding="utf-8")
+        destino = Path(temporal) / "baseline-fase-0.md"
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                codigo = modo_generar_baseline(argparse.Namespace(
+                    generar_baseline=str(raiz),
+                    preregistro=str(DIR_FIXTURES_GENERACION / "preregistro.json"),
+                    salida=str(destino)))
+        except Exception:  # noqa: BLE001 — reventar es una forma de no terminar bien, no un verde
+            codigo = -1
+        return codigo, destino.read_text(encoding="utf-8") if destino.exists() else None
+
+
+def modo_autotest_generacion(args: argparse.Namespace) -> int:
+    del args
+    manifest, preregistro, observaciones, golden, problemas = _corpus_de_generacion()
+    vocabulario, esquemas, mas = _cargar_insumos_de_recoleccion()
+    if problemas + mas:
+        for p in problemas + mas:
+            print(f"[A] FALLA  {p}")
+        return 1
+
+    resultados: list[tuple[str, bool, str]] = []
+
+    # [A] Manifest ↔ disco en las dos direcciones, y cada observación válida contra su contrato
+    # (D-16). Un corpus que se declara a sí mismo no ve la observación que alguien borró.
+    declaradas = set(manifest.get("observaciones") or [])
+    en_disco = {o.get("observation_id") for o in observaciones}
+    diferencias = [f"declarada y ausente del disco: {o}" for o in sorted(declaradas - en_disco)]
+    diferencias += [f"en disco y no declarada: {o}" for o in sorted(en_disco - declaradas)]
+    for observacion in observaciones:
+        for error in validar(observacion, esquemas["observacion"]):
+            diferencias.append(f"{observacion.get('observation_id')}: {error.ruta}: {error.mensaje}")
+    resultados.append(("A", not diferencias,
+                       f"manifest ↔ directorio y schema ({len(declaradas)} observaciones)"
+                       if not diferencias else " | ".join(diferencias[:4])))
+
+    # [B] El control positivo: generar da EXACTAMENTE el golden, que está escrito a mano. Un
+    # esperado producido por el propio generador probaría que su salida no cambia, no que sea la
+    # correcta.
+    texto, fallas_de_generacion = generar_baseline(preregistro, observaciones, vocabulario)
+    if texto is None:
+        resultados.append(("B", False, " | ".join(fallas_de_generacion[:4])))
+    else:
+        iguales = texto == golden
+        detalle = "el documento generado coincide byte a byte con el golden escrito a mano"
+        if not iguales:
+            esperadas, obtenidas = golden.splitlines(), texto.splitlines()
+            primera = next((i for i in range(max(len(esperadas), len(obtenidas)))
+                            if esperadas[i:i + 1] != obtenidas[i:i + 1]), 0)
+            detalle = (f"difiere del golden en la línea {primera + 1}: "
+                       f"esperada {esperadas[primera:primera + 1]} · "
+                       f"obtenida {obtenidas[primera:primera + 1]}")
+        resultados.append(("B", iguales, detalle))
+
+    # [C] Determinismo: mismo insumo, mismos bytes — y el orden en que llegan las observaciones no
+    # cambia nada. Es el control que caza un generador que ordena por el glob del disco.
+    fallas: list[str] = []
+    if texto is not None:
+        repetido, _ = generar_baseline(preregistro, copy.deepcopy(observaciones), vocabulario)
+        if repetido != texto:
+            fallas.append("dos generaciones con el mismo insumo dan bytes distintos")
+        invertido, _ = generar_baseline(preregistro,
+                                        list(reversed(copy.deepcopy(observaciones))), vocabulario)
+        if invertido != texto:
+            fallas.append("el orden en que se leen las observaciones cambia el documento")
+    resultados.append(("C", texto is not None and not fallas,
+                       "misma entrada y orden invertido dan los mismos bytes" if not fallas
+                       else " | ".join(fallas)))
+
+    # [D] Las métricas que el manifest declara sin observaciones salen declaradas como tales, con
+    # su adjudicación y con el detalle por observación de POR QUÉ. El manifest es independiente: sin
+    # él, una métrica que dejara de emitirse no tendría quién la reclame.
+    publicados, fallas_de_lectura = numeros_publicados_del_markdown(texto or "")
+    fallas = list(fallas_de_lectura)
+    for entrada in manifest.get("metricas_sin_observaciones") or []:
+        metrica_id = entrada.get("metrica_id")
+        publicado = publicados.get(metrica_id)
+        if publicado is None:
+            fallas.append(f"«{metrica_id}»: el manifest la declara sin observaciones y el documento "
+                          "no la publica")
+            continue
+        if publicado.valor is not None:
+            fallas.append(f"«{metrica_id}»: se publica como {publicado.valor!r} y el manifest la "
+                          "declara sin observaciones")
+        if not publicado.adjudicacion or publicado.adjudicacion == SIN_ADJUDICACION:
+            fallas.append(f"«{metrica_id}»: sin adjudicación en la tabla de números")
+        causa = entrada.get("causa")
+        if texto and f"| {causa} |" not in texto:
+            fallas.append(f"«{metrica_id}»: el documento no declara la causa «{causa}» que cada "
+                          "observación escribió: el agregado solo no la distingue")
+    for metrica_id in manifest.get("metricas_publicadas") or []:
+        publicado = publicados.get(metrica_id)
+        if publicado is None or publicado.valor is None:
+            fallas.append(f"«{metrica_id}»: el manifest la declara publicada con valor y el "
+                          "documento no la publica así")
+    resultados.append(("D", not fallas,
+                       f"{len(manifest.get('metricas_sin_observaciones') or [])} métricas "
+                       f"declaradas sin observaciones y "
+                       f"{len(manifest.get('metricas_publicadas') or [])} con valor, contra el "
+                       "manifest independiente" if not fallas else " | ".join(fallas[:4])))
+
+    # [E] El documento se lee de vuelta y da EXACTAMENTE lo recompuesto. Es lo que permitirá
+    # comprobar el baseline real, donde no hay golden contra el cual comparar.
+    vuelta = revisar_baseline(texto or "", preregistro, observaciones, vocabulario)
+    resultados.append(("E", not vuelta,
+                       f"los {len(publicados)} números del documento se leen de vuelta y coinciden "
+                       "con la recomposición" if not vuelta else " | ".join(vuelta[:4])))
+
+    # [F] Los ataques al documento: cada uno tiene que poner rojo a `revisar_baseline`. Un ataque que
+    # no se puede aplicar es cobertura fantasma y se reporta como falla, no se saltea.
+    fallas = []
+    for ataque in ATAQUES_AL_BASELINE:
+        atacado = ataque.aplicar(texto or "", manifest)
+        if atacado is None or atacado == texto:
+            fallas.append(f"«{ataque.nombre}»: la mutación no se pudo aplicar")
+            continue
+        detectados = revisar_baseline(atacado, preregistro, observaciones, vocabulario)
+        if not any(ataque.motivo_esperado in d for d in detectados):
+            fallas.append(f"«{ataque.nombre}»: {ataque.que_rompe} y no cae por "
+                          f"«{ataque.motivo_esperado}» — se vio: "
+                          f"{detectados[0] if detectados else 'nada'}")
+    resultados.append(("F", not fallas,
+                       f"los {len(ATAQUES_AL_BASELINE)} ataques al documento lo ponen rojo"
+                       if not fallas else " | ".join(fallas[:4])))
+
+    # [G] Los ataques al insumo: si el número estuviera escrito en el generador en vez de derivado,
+    # cambiar la observación no cambiaría el documento y esto pasaría igual.
+    fallas = []
+    for ataque in ATAQUES_AL_INSUMO:
+        copia = copy.deepcopy(observaciones)
+        if not ataque.aplicar(copia):
+            fallas.append(f"«{ataque.nombre}»: la mutación no se pudo aplicar")
+            continue
+        otro, problemas_del_ataque = generar_baseline(preregistro, copia, vocabulario)
+        if otro is None:
+            continue  # la generación se negó a producir: es la detección más fuerte
+        del problemas_del_ataque
+        if otro == texto:
+            fallas.append(f"«{ataque.nombre}»: {ataque.que_rompe}")
+    resultados.append(("G", not fallas,
+                       f"los {len(ATAQUES_AL_INSUMO)} ataques al insumo cambian o detienen la "
+                       "generación" if not fallas else " | ".join(fallas[:4])))
+
+    # [H] El MODO entero, no sus funciones: carga de rutas, escritura a disco y código de salida.
+    # Un generador correcto detrás de un modo roto deja los seis controles de arriba en verde y el
+    # comando que T22 invoca sin producir nada. Va con su NEGATIVO —un insumo que la generación
+    # rechaza— porque el camino feliz solo no distingue un modo que se detiene de uno que ignora la
+    # negativa y escribe igual.
+    fallas = []
+    codigo, escrito = _correr_el_modo(observaciones, "sano")
+    if codigo != 0:
+        fallas.append(f"sobre el corpus sano el modo devolvió {codigo}")
+    elif escrito != golden:
+        fallas.append("sobre el corpus sano el modo escribió un documento distinto del golden")
+
+    rechazadas = copy.deepcopy(observaciones)
+    if not _insumo_de_otra_acta(rechazadas):
+        fallas.append("no se pudo armar el insumo que la generación tiene que rechazar")
+    else:
+        codigo, escrito = _correr_el_modo(rechazadas, "rechazado")
+        if codigo == 0:
+            fallas.append("con una observación de otra acta el modo devolvió 0")
+        if escrito is not None:
+            fallas.append("con una observación de otra acta el modo escribió el documento igual")
+    resultados.append(("H", not fallas,
+                       "el modo escribe y sale en 0 sobre el corpus sano, y sobre el rechazado no "
+                       "escribe y sale distinto de 0" if not fallas else " | ".join(fallas[:4])))
+
+    return _cerrar(resultados)
+
+
+# ---------------------------------------------------------------------------------------------
+# El motor de extracción tipada, PORTADO (D-1).
+#
+# `resolver_procedencia()` de `scripts/verificar-matriz-despachos.py` es exactamente lo que AC-34
+# necesita para derivar cada receta de su ancla. **Se porta y no se importa**: importar ese archivo
+# como módulo ataría el comportamiento del instrumento —y por lo tanto los números del baseline— a
+# un archivo cuyo hash el pre-registro no cubre. El costo asumido es duplicación real.
+#
+# La protección contra divergencia **no es un fixture del resultado final**: es el corpus
+# diferencial de `--autotest-procedencia-portada`, que ejercita cada forma tipada que usan las trece
+# recetas, con las salidas producidas por el motor ORIGINAL y congeladas. Ese corpus es la frontera
+# de compatibilidad **declarada**: lo que no está en él puede divergir sin que nada lo note, y eso
+# queda dicho acá en vez de supuesto.
+#
+# Las cuatro adaptaciones del port, y ninguna más:
+#
+# 1. `_celdas` → `_celdas_de_fila`, porque `_celda` de este archivo hace lo contrario (emite una
+#    celda en vez de parsearla) y dos nombres a una letra de distancia con sentidos opuestos son
+#    una trampa. No cambia comportamiento.
+# 2. `RUTA_SCHEMA` → `RUTA_SCHEMA_MATRIZ`: el schema de la matriz, que es de donde
+#    `tablas_de_conversion()` lee `x-conversiones`. Sigue siendo la misma sede.
+# 3. `_slug` importaba `norm` de `verificar-sobre-en-vuelo.py` por ruta; acá esa normalización se
+#    porta como `_titulo_normalizado`, por el mismo motivo que el resto.
+# 4. `ARTEFACTOS_DEL_FLUJO` se deriva de las constantes de ESTE flujo, no de las del flujo 1. La
+#    precondición existe para impedir que una hoja se cite a sí misma, y quién es «sí misma»
+#    depende de quién resuelve. Si esta constante quedara con los artefactos del otro flujo, una
+#    receta podría declarar como sede el archivo de recetas y el resolutor le daría la razón.
+# ---------------------------------------------------------------------------------------------
+
+RUTA_SCHEMA_MATRIZ = DIR_SCRIPTS / "matriz-despachos.schema.json"
+RUTA_RECETAS = DIR_SCRIPTS / "recetas-cohorte.json"
+
+
+def _titulo_normalizado(texto: str) -> str:
+    """Minúsculas, sin diacríticos, sin énfasis markdown ni backticks, con la puntuación de
+    enumeración convertida en espacio y los espacios colapsados. Portada de la primitiva de
+    biyección: es la ortografía con la que las anclas de la matriz nombran sus secciones, y una
+    segunda ortografía escrita acá daría dos slugs del mismo encabezado."""
+    texto = unicodedata.normalize("NFD", texto)
+    texto = "".join(c for c in texto if not unicodedata.combining(c))
+    for ch in "`*·—–…":
+        texto = texto.replace(ch, " ")
+    return re.sub(r"\s+", " ", texto).strip().lower()
+
+
+def _artefactos_de_este_flujo() -> tuple[str, ...]:
+    """Lo que ESTE flujo produce, en rutas relativas al repositorio. Se deriva de las constantes del
+    módulo y no se transcribe: una lista escrita a mano quedaría vieja en cuanto un artefacto
+    cambiara de nombre, y la autorreferencia volvería a pasar como sede legítima."""
+    rutas = (RUTA_RECETAS, DIR_SCRIPTS / "preregistro-fase-0.json",
+             DIR_SCRIPTS / "metricas-fase-0.json", DIR_SCRIPTS / "dag-procedencia.json",
+             DIR_SCRIPTS / "interfaz-de-reloj.json", DIR_SCRIPTS / "fixtures-baseline",
+             DIR_SCRIPTS / "corridas-fase-0", DIR_SCRIPTS / "observaciones-fase-0",
+             Path(RUTA_BASELINE_FASE_0), Path(__file__).resolve())
+    return tuple(sorted(
+        (r if not r.is_absolute() else r.relative_to(RAIZ)).as_posix() for r in rutas))
+
+
+ARTEFACTOS_DEL_FLUJO = _artefactos_de_este_flujo()
+
+# El centinela de «la ruta no existe», distinto de un `None` que la sede sí declara.
+_SIN_VALOR = object()
+
+_tablas_de_conversion_cache: dict[str, dict[str, Any]] | None = None
+
+
+ERRORES_DE_RESOLUCION = (
+    "sede_inexistente",
+    "selector_sin_resultado",
+    "cardinalidad_no_coincide",
+    "conversion_fallida",
+    "sede_no_admisible",
+    "colapso_no_unico",
+)
+
+# Los pasos del pipeline, en el orden en que este código los ejecuta. NO es la fuente: la fuente es
+# `x-pipeline.orden` del schema, y `_pipeline_desalineado()` compara los dos. Congelarlo acá sin
+# comparar daría dos órdenes que pueden divergir en silencio.
+
+
+TEXTOS_BOOLEANOS = {"true": True, "false": False}
+
+# El texto que emite `presencia_de_clausula` cuando la cláusula está. **No se escribe a mano**: se
+# deriva de `TEXTOS_BOOLEANOS`, que es quien declara la ortografía que `conversion: booleano` sabe
+# cotejar. Dos ortografías —una acá y otra allá— dejarían la extracción produciendo un texto que su
+# propia conversión no reconoce, y el rojo aparecería lejos de su causa.
+TEXTO_AFIRMATIVO = next(t for t, v in TEXTOS_BOOLEANOS.items() if v is True)
+
+
+PATRON_ENTERO = re.compile(r"^-?\d+$")
+PATRON_REFERENCIA = re.compile(r"^[A-Za-z0-9._/-]+(#[A-Za-z0-9._-]+)?$")
+
+PATRON_HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
+PATRON_FENCE = re.compile(r"^\s*(`{3,}|~{3,})\s*(\S*)")
+PATRON_CELDA_SEPARADORA = re.compile(r"^:?-+:?$")
+PATRON_CONVERSION_ENUM = re.compile(r"^enum:([a-z][a-z0-9_]*)$")
+
+
+class Resultado(NamedTuple):
+    """Lo que devuelve `resolver_procedencia`.
+
+    En el caso exitoso trae los tres campos del contrato —`valor`, `cardinalidad_observada` y
+    `sede_resuelta`— y `error is None`. En el fallido, `error` es uno de `ERRORES_DE_RESOLUCION` y
+    `valor` es `None`: nunca hay valor y error a la vez, porque un resolutor que devolviera un valor
+    junto con su falla invitaría a usarlo.
+
+    `cardinalidad_observada` se informa también en varios fallos —es el dato que
+    `cardinalidad_no_coincide` necesita nombrar—; `causa` y `detalle` son diagnóstico."""
+
+    valor: Any = None
+    cardinalidad_observada: int | None = None
+    sede_resuelta: Path | None = None
+    error: str | None = None
+    causa: str | None = None
+    detalle: str = ""
+
+    @property
+    def ok(self) -> bool:
+        return self.error is None
+
+
+def _falla(error: str, causa: str, detalle: str, **extra: Any) -> Resultado:
+    return Resultado(error=error, causa=causa, detalle=detalle, **extra)
+
+
+# --- Lectura de la sede -----------------------------------------------------------------------
+
+
+def _lineas_fuera_de_fence(texto: str) -> list[bool]:
+    """Para cada línea, si está dentro de un bloque cercado. Lo consumen la selección por heading y
+    la de filas de tabla: un `##` dentro de un bloque de código es texto, no una sección. La
+    selección por patrón **sí** mira adentro, porque el schema la declara para «prosa y bloques de
+    código»."""
+    fuera: list[bool] = []
+    cerca: str | None = None
+    for linea in texto.splitlines():
+        m = PATRON_FENCE.match(linea)
+        if cerca is None:
+            if m:
+                cerca = m.group(1)[0] * 3
+                fuera.append(False)
+                continue
+            fuera.append(True)
+        else:
+            fuera.append(False)
+            if m and m.group(1).startswith(cerca):
+                cerca = None
+    return fuera
+
+
+def _celdas_de_fila(linea: str) -> list[str]:
+    """Las celdas de una fila de tabla Markdown. El corte es por `|` no escapado: una celda que
+    contiene `\\|` es una celda y no dos."""
+    partes = re.split(r"(?<!\\)\|", linea.strip())
+    if partes and not partes[0].strip():
+        partes = partes[1:]
+    if partes and not partes[-1].strip():
+        partes = partes[:-1]
+    return [p.replace("\\|", "|").strip() for p in partes]
+
+
+def _es_separadora(linea: str) -> bool:
+    celdas = _celdas_de_fila(linea)
+    return bool(celdas) and all(PATRON_CELDA_SEPARADORA.fullmatch(c) for c in celdas)
+
+
+class NodoSeleccionado(NamedTuple):
+    """Un nodo con su posición en la sede. La línea la consume `ancla_de_seccion`, la única
+    extracción cuyo resultado depende de **dónde** está el nodo y no solo de qué dice."""
+
+    valor: Any
+    linea: int      # 0-based, la línea de la sede donde el nodo aparece
+
+
+def _seleccionar_por_heading(texto: str, selector: dict) -> list[NodoSeleccionado]:
+    """El nodo de un `heading_markdown` es el **texto del propio encabezado** —sin los `#` ni el
+    espacio que los separa—, no el cuerpo de la sección. Es lo que el schema declara y es lo que
+    hace consistente a este tipo de sede con los otros tres: en todos, el nodo es la unidad más
+    chica que el selector nombra —la celda y no la fila, la línea y no el párrafo, el valor de la
+    ruta y no el documento—, y acá el selector nombra un encabezado."""
+    lineas, fuera = texto.splitlines(), _lineas_fuera_de_fence(texto)
+    buscado, nivel = selector.get("texto"), selector.get("nivel")
+    nodos: list[NodoSeleccionado] = []
+    for i, linea in enumerate(lineas):
+        m = PATRON_HEADING.match(linea) if fuera[i] else None
+        if m and len(m.group(1)) == nivel and m.group(2).strip() == buscado:
+            nodos.append(NodoSeleccionado(m.group(2).strip(), i))
+    return nodos
+
+
+def _seleccionar_por_fila(texto: str, selector: dict) -> list[NodoSeleccionado]:
+    """La celda de la columna pedida, en cada fila cuya primera celda es la clave. Una tabla que no
+    tiene esa columna no aporta nodos: la sede más común del repo tiene la misma clave en varias
+    tablas y solo algunas la describen en esa dimensión."""
+    lineas, fuera = texto.splitlines(), _lineas_fuera_de_fence(texto)
+    clave, columna = selector.get("clave_primera_celda"), selector.get("encabezado_de_columna")
+    nodos: list[NodoSeleccionado] = []
+    i = 0
+    while i < len(lineas) - 1:
+        if not (fuera[i] and lineas[i].strip().startswith("|") and _es_separadora(lineas[i + 1])):
+            i += 1
+            continue
+        encabezados = _celdas_de_fila(lineas[i])
+        indice = encabezados.index(columna) if columna in encabezados else None
+        j = i + 2
+        while j < len(lineas) and fuera[j] and lineas[j].strip().startswith("|"):
+            celdas = _celdas_de_fila(lineas[j])
+            if indice is not None and celdas and celdas[0] == clave and indice < len(celdas):
+                nodos.append(NodoSeleccionado(celdas[indice], j))
+            j += 1
+        i = j
+    return nodos
+
+
+def _bloques_cercados(texto: str, lenguaje: str) -> list[tuple[str, int]]:
+    """Cada bloque cercado del lenguaje pedido, con la línea de su fence de apertura. La línea es
+    lo que ancla el bloque a una sección: un documento estructurado embebido no tiene encabezados
+    propios, así que su sección es la del Markdown que lo contiene."""
+    bloques: list[tuple[str, int]] = []
+    cerca: str | None = None
+    acumulado: list[str] = []
+    coincide = False
+    apertura = 0
+    for i, linea in enumerate(texto.splitlines()):
+        m = PATRON_FENCE.match(linea)
+        if cerca is None:
+            if m:
+                cerca = m.group(1)[0] * 3
+                coincide = m.group(2) == lenguaje
+                acumulado = []
+                apertura = i
+            continue
+        if m and m.group(1).startswith(cerca):
+            if coincide:
+                bloques.append(("\n".join(acumulado), apertura))
+            cerca = None
+            continue
+        acumulado.append(linea)
+    return bloques
+
+
+def _parsear(texto: str, formato: str) -> tuple[Any, str | None]:
+    if formato == "json":
+        try:
+            return json.loads(texto), None
+        except json.JSONDecodeError as e:
+            return None, f"JSON ilegible: {e}"
+    if formato == "yaml":
+        try:
+            import yaml  # PyYAML: el repo ya lo usa en sus otras guardas
+        except ImportError:
+            return None, "sin PyYAML no se puede leer una sede `yaml`"
+        try:
+            return yaml.safe_load(texto), None
+        except yaml.YAMLError as e:
+            return None, f"YAML ilegible: {e}"
+    return None, f"formato estructurado desconocido: {formato!r}"
+
+
+def _bajar(dato: Any, ruta: Any) -> Any:
+    """Baja por una ruta de clave —lista de segmentos: cadenas para claves, enteros para índices—.
+    Devuelve el centinela cuando el camino no existe."""
+    if not isinstance(ruta, list) or not ruta:
+        return _SIN_VALOR
+    actual = dato
+    for segmento in ruta:
+        if isinstance(segmento, bool):
+            return _SIN_VALOR
+        if isinstance(segmento, int):
+            if not isinstance(actual, list) or not -len(actual) <= segmento < len(actual):
+                return _SIN_VALOR
+            actual = actual[segmento]
+        elif isinstance(segmento, str):
+            if not isinstance(actual, dict) or segmento not in actual:
+                return _SIN_VALOR
+            actual = actual[segmento]
+        else:
+            return _SIN_VALOR
+    return actual
+
+
+def _seleccionar_por_clave(texto: str, selector: dict) -> tuple[list[NodoSeleccionado], str | None]:
+    """Los documentos estructurados de la sede —el archivo entero, o cada bloque cercado del
+    lenguaje declarado— y, en cada uno, el valor de la ruta. Cuando ese valor es una **lista**, sus
+    elementos son los nodos: una sede genuinamente multivaluada se declara así y no como varios
+    documentos."""
+    formato = selector.get("formato")
+    lenguaje = selector.get("lenguaje_del_bloque")
+    documentos = (_bloques_cercados(texto, lenguaje) if isinstance(lenguaje, str)
+                  else [(texto, 0)])
+    nodos: list[NodoSeleccionado] = []
+    for bruto, linea in documentos:
+        dato, error = _parsear(bruto, formato)
+        if error:
+            return [], error
+        valor = _bajar(dato, selector.get("ruta"))
+        if valor is _SIN_VALOR:
+            continue
+        crudos = valor if isinstance(valor, list) else [valor]
+        nodos.extend(NodoSeleccionado(v, linea) for v in crudos)
+    return nodos, None
+
+
+def _seleccionar_por_patron(texto: str, selector: dict) -> tuple[list[NodoSeleccionado], str | None]:
+    try:
+        patron = re.compile(selector.get("patron", ""))
+    except re.error as e:
+        return [], f"el patrón del selector no compila: {e}"
+    return [NodoSeleccionado(linea, i) for i, linea in enumerate(texto.splitlines())
+            if patron.search(linea)], None
+
+
+def _seleccionar(procedencia: dict, texto: str) -> tuple[list[NodoSeleccionado], str | None]:
+    tipo = procedencia.get("tipo_de_sede")
+    selector = procedencia.get("selector")
+    if not isinstance(selector, dict):
+        return [], "la procedencia no trae un `selector` que ejecutar"
+    if tipo == "heading_markdown":
+        return _seleccionar_por_heading(texto, selector), None
+    if tipo == "fila_de_tabla_markdown":
+        return _seleccionar_por_fila(texto, selector), None
+    if tipo == "clave_estructurada":
+        return _seleccionar_por_clave(texto, selector)
+    if tipo == "patron_de_linea":
+        return _seleccionar_por_patron(texto, selector)
+    return [], f"`tipo_de_sede` desconocido: {tipo!r}"
+
+
+# --- Los pasos del pipeline -------------------------------------------------------------------
+
+
+def _texto_de_nodo(nodo: Any) -> str | None:
+    """El texto de un nodo. Un nodo estructurado escalar se textualiza con la ortografía de su
+    formato —`true`/`false` y no `True`/`False`—, para que la tabla de conversión coteje contra lo
+    que la sede dice. Un objeto o un arreglo no son texto: extraerlos como si lo fueran produciría
+    un valor plausible falso."""
+    if isinstance(nodo, str):
+        return nodo
+    if isinstance(nodo, bool):
+        return "true" if nodo else "false"
+    if isinstance(nodo, (int, float)):
+        return str(nodo)
+    return None
+
+
+def _encabezados_de(texto: str) -> list[tuple[int, str]]:
+    """Los encabezados de la sede, en orden de documento, con su línea. Los que viven dentro de un
+    bloque cercado no cuentan: ahí un `##` es texto y no una sección, el mismo criterio que usan la
+    selección por heading y la de filas."""
+    fuera = _lineas_fuera_de_fence(texto)
+    encabezados: list[tuple[int, str]] = []
+    for i, linea in enumerate(texto.splitlines()):
+        m = PATRON_HEADING.match(linea) if fuera[i] else None
+        if m:
+            encabezados.append((i, m.group(2).strip()))
+    return encabezados
+
+
+def _ancla_de_seccion(sede: str, encabezados: list[tuple[int, str]], linea: int) -> str | None:
+    """`<sede>#<slug>` de la sección que contiene al nodo: el encabezado más cercano **en o antes**
+    de su línea, de cualquier nivel. «En o antes» es lo que hace que un `heading_markdown` —cuyo
+    nodo ES el encabezado— quede anclado a su propia sección y no a la anterior.
+
+    El slug lo produce `_slug`, la misma primitiva con la que `--completitud` coteja las anclas
+    contra el árbol. Un segundo slug escrito acá daría dos ortografías del mismo fragmento y los
+    dos modos podrían estar verdes sobre anclas distintas."""
+    titulo = next((t for i, t in reversed(encabezados) if i <= linea), None)
+    return f"{sede}#{_slug(titulo)}" if titulo is not None else None
+
+
+def _extraer(extraccion: Any, nodo: Any, ancla: str | None = None) -> tuple[str | None, str]:
+    if not isinstance(extraccion, dict):
+        return None, "extraccion_no_declarada"
+    tipo = extraccion.get("tipo")
+    if tipo == "ancla_de_seccion":
+        return (ancla, "") if ancla else (None, "ancla_sin_seccion")
+    if tipo == "literal":
+        texto = _texto_de_nodo(nodo)
+        return (texto, "") if texto is not None else (None, "nodo_no_escalar")
+    if tipo == "captura_de_grupo":
+        texto = _texto_de_nodo(nodo)
+        if texto is None:
+            return None, "nodo_no_escalar"
+        try:
+            m = re.search(extraccion.get("patron", ""), texto)
+        except re.error:
+            return None, "extraccion_patron_invalido"
+        if m is None:
+            return None, "extraccion_sin_coincidencia"
+        grupo = extraccion.get("grupo")
+        if (not isinstance(grupo, int) or isinstance(grupo, bool)
+                or not 0 <= grupo <= len(m.groups())):
+            return None, "extraccion_grupo_inexistente"
+        capturado = m.group(grupo)
+        return (capturado, "") if capturado is not None else (None, "extraccion_grupo_vacio")
+    if tipo == "presencia_de_clausula":
+        texto = _texto_de_nodo(nodo)
+        if texto is None:
+            return None, "nodo_no_escalar"
+        clausula = extraccion.get("clausula")
+        if not isinstance(clausula, str) or not clausula:
+            return None, "clausula_no_declarada"
+        # `in` y no `re.search`: la cláusula es literal. Compilarla como patrón dejaría que un `.*`
+        # case cualquier cosa, que es justo la degeneración que este subtipo tiene que impedir.
+        # Se emite el texto afirmativo y nunca el negativo: la ausencia de la cláusula es rojo, no
+        # `false`, porque que la sede no lo diga no es que la sede diga lo contrario.
+        return (TEXTO_AFIRMATIVO, "") if clausula in texto else (None, "clausula_ausente")
+    if tipo == "valor_de_clave":
+        valor = _bajar(nodo, extraccion.get("clave"))
+        if valor is _SIN_VALOR:
+            return None, "extraccion_clave_ausente"
+        texto = _texto_de_nodo(valor)
+        return (texto, "") if texto is not None else (None, "nodo_no_escalar")
+    return None, "extraccion_desconocida"
+
+
+def _normalizar(normalizacion: Any, texto: str) -> tuple[str | None, str]:
+    if normalizacion == "ninguna":
+        return texto, ""
+    if normalizacion == "trim":
+        return texto.strip(), ""
+    if normalizacion == "colapsar_espacios":
+        return re.sub(r"\s+", " ", texto).strip(), ""
+    if normalizacion == "minusculas":
+        return texto.lower(), ""
+    return None, "normalizacion_desconocida"
+
+
+def _ordenar(orden: Any, valores: list[str]) -> tuple[list[str] | None, str]:
+    """Sobre el valor **normalizado**, antes de convertir. `lexicografico` compara por punto de
+    código —el orden natural de `str` en Python— y no por locale."""
+    if orden is None or orden == "documento":
+        return list(valores), ""
+    if orden == "lexicografico":
+        return sorted(valores), ""
+    return None, "orden_desconocido"
+
+
+def tablas_de_conversion() -> dict[str, dict[str, Any]]:
+    """El mapeo texto → token de cada `enum:<nombre>`, leído de `x-conversiones` del schema. **No se
+    reescribe acá**: una segunda tabla distinta de la que usó quien pobló la matriz pondría en rojo
+    hojas que están bien, y ese es el defecto que el bloque del schema existe para cerrar."""
+    global _tablas_de_conversion_cache
+    if _tablas_de_conversion_cache is None:
+        schema, error = _cargar_json(RUTA_SCHEMA_MATRIZ)
+        reglas = {} if error else (schema.get("x-conversiones", {}).get("reglas", {}) or {})
+        _tablas_de_conversion_cache = {
+            nombre: {par["texto"]: par["token"] for par in tabla.get("pares", [])
+                     if isinstance(par, dict) and isinstance(par.get("texto"), str)}
+            for nombre, tabla in reglas.items() if isinstance(tabla, dict)
+        }
+    return _tablas_de_conversion_cache
+
+
+def _convertir(conversion: Any, texto: str) -> tuple[Any, str]:
+    if conversion == "cadena":
+        return texto, ""
+    if conversion == "entero":
+        return (int(texto), "") if PATRON_ENTERO.fullmatch(texto) else (None, "entero_no_reconocido")
+    if conversion == "booleano":
+        if texto in TEXTOS_BOOLEANOS:
+            return TEXTOS_BOOLEANOS[texto], ""
+        return None, "booleano_sin_par"
+    if conversion == "referencia":
+        return (texto, "") if PATRON_REFERENCIA.fullmatch(texto) else (None, "referencia_mal_formada")
+    m = PATRON_CONVERSION_ENUM.fullmatch(conversion) if isinstance(conversion, str) else None
+    if m is None:
+        return None, "conversion_desconocida"
+    tabla = tablas_de_conversion().get(m.group(1))
+    if tabla is None:
+        return None, "conversion_sin_tabla"
+    if texto not in tabla:
+        return None, "conversion_sin_par"
+    return tabla[texto], ""
+
+
+def _cardinalidad_satisfecha(cardinalidad: Any, observada: int) -> tuple[bool, str]:
+    """Cada variante con su predicado, sin una regla general que los contradiga. Cero resultados no
+    llega hasta acá: lo ataja `selector_sin_resultado`, que es más específico.
+
+    Devuelve el mensaje ya armado y no una plantilla: un `tipo` que llegue como objeto mete llaves en
+    el texto, y una plantilla formateada después reventaría justo sobre el dato mal formado que se
+    estaba por reportar."""
+    if not isinstance(cardinalidad, dict):
+        return False, "la hoja no declara `cardinalidad`"
+    tipo = cardinalidad.get("tipo")
+    if tipo == "exactamente_una":
+        return observada == 1, f"se declaró `exactamente_una` y el selector devolvió {observada}"
+    if tipo == "al_menos_una":
+        return observada >= 1, f"se declaró `al_menos_una` y el selector devolvió {observada}"
+    if tipo == "exactamente_n":
+        n = cardinalidad.get("n")
+        if not isinstance(n, int) or isinstance(n, bool):
+            return False, "`exactamente_n` sin un `n` entero"
+        return observada == n, (f"se declaró `exactamente_n` con n={n} y el selector devolvió "
+                                f"{observada}")
+    return False, f"variante de cardinalidad desconocida: {tipo!r}"
+
+
+def _colapsar(cardinalidad: Any, valores: list[Any]) -> tuple[Any, str]:
+    """`exactamente_una` no declara `colapso` —su único valor es el resultado—; las otras dos sí.
+    `unico_si_iguales` opera sobre los valores **convertidos**: dos textos distintos que convergen al
+    mismo token son un colapso legítimo, y rechazarlos sería el resolutor demasiado estricto."""
+    if isinstance(cardinalidad, dict) and cardinalidad.get("tipo") == "exactamente_una":
+        return valores[0], ""
+    colapso = cardinalidad.get("colapso") if isinstance(cardinalidad, dict) else None
+    if colapso == "lista":
+        return valores, ""
+    if colapso == "unico_si_iguales":
+        primero = valores[0]
+        if all(_mismo(primero, v) for v in valores[1:]):
+            return primero, ""
+        return None, "colapso_no_unico"
+    return None, "colapso_desconocido"
+
+
+def _sede_no_admisible(sede: Any) -> bool:
+    """Una hoja que se cita a sí misma coincide siempre consigo misma: el resolutor, la matriz y su
+    fila quedan los tres verdes sin ninguna evidencia independiente."""
+    if not isinstance(sede, str):
+        return False
+    limpia = sede.strip().lstrip("./")
+    return any(limpia == a or limpia.startswith(a + "/") for a in ARTEFACTOS_DEL_FLUJO)
+
+
+def resolver_procedencia(procedencia: dict, raiz: Path) -> Resultado:
+    """Ejecuta una procedencia **anclada** contra su sede y devuelve el valor que la sede dice.
+
+    Contrato de invocación —lo consumen los modos de acá y las otras tasks que resuelven contra
+    sedes que no son la matriz—:
+
+    - `procedencia`: la forma anclada, con sus siete campos.
+    - `raiz`: la raíz contra la que se interpreta `sede`, que es una ruta relativa.
+    - Devuelve `Resultado`: `valor`, `cardinalidad_observada` y `sede_resuelta` cuando resuelve, o
+      `error` ∈ `ERRORES_DE_RESOLUCION` cuando no.
+
+    **Su dominio es solo la variante anclada.** Una procedencia `{ausencia: <motivo>}` no se le pasa:
+    no hay nada que resolver y devolver un resultado para ella obligaría a inventar un valor. Quien
+    la encuentra la clasifica como adjudicación pendiente. Pasarla igual levanta `ValueError` y no
+    un `Resultado`: un error de programa no puede confundirse con una resolución fallida."""
+    if not isinstance(procedencia, dict):
+        raise ValueError("resolver_procedencia espera un objeto de procedencia anclada")
+    if "ausencia" in procedencia:
+        raise ValueError(
+            "resolver_procedencia no admite la variante de ausencia: una hoja con `{ausencia}` es "
+            "adjudicación pendiente y se clasifica sin llamar a esta función")
+
+    sede = procedencia.get("sede")
+    # Precondición 1: la sede no puede ser un artefacto de este flujo. Va antes que la existencia.
+    if _sede_no_admisible(sede):
+        return _falla("sede_no_admisible", "artefacto_del_flujo",
+                      f"la sede `{sede}` es un artefacto que este flujo produce: una hoja que se "
+                      "cita a sí misma coincide siempre consigo misma")
+    if not isinstance(sede, str) or not sede:
+        return _falla("sede_inexistente", "sede_no_declarada", "la procedencia no declara `sede`")
+    # Precondición 2: existencia.
+    ruta_sede = (raiz / sede).resolve()
+    if not ruta_sede.is_file():
+        return _falla("sede_inexistente", "archivo_ausente",
+                      f"no existe la sede `{sede}` bajo {raiz}", sede_resuelta=ruta_sede)
+    try:
+        texto = ruta_sede.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as e:
+        return _falla("sede_inexistente", "sede_ilegible", f"no se puede leer `{sede}`: {e}",
+                      sede_resuelta=ruta_sede)
+
+    # 1 · seleccionar
+    nodos, error = _seleccionar(procedencia, texto)
+    if error:
+        return _falla("selector_sin_resultado", "selector_inejecutable", error,
+                      sede_resuelta=ruta_sede)
+    observada = len(nodos)
+    if observada == 0:
+        return _falla("selector_sin_resultado", "sin_nodos",
+                      f"el selector no seleccionó ningún nodo en `{sede}`",
+                      cardinalidad_observada=0, sede_resuelta=ruta_sede)
+
+    # 2 · comprobar cardinalidad, **sobre los nodos seleccionados y antes de extraer**
+    cardinalidad = procedencia.get("cardinalidad")
+    satisface, mensaje = _cardinalidad_satisfecha(cardinalidad, observada)
+    if not satisface:
+        return _falla("cardinalidad_no_coincide", "predicado_no_satisfecho", mensaje,
+                      cardinalidad_observada=observada, sede_resuelta=ruta_sede)
+
+    # 3 · extraer  ·  4 · normalizar
+    encabezados = _encabezados_de(texto)
+    normalizados: list[str] = []
+    for nodo in nodos:
+        texto_nodo, causa = _extraer(procedencia.get("extraccion"), nodo.valor,
+                                     _ancla_de_seccion(sede, encabezados, nodo.linea))
+        if texto_nodo is None:
+            return _falla("conversion_fallida", causa,
+                          f"no se pudo extraer el valor de un nodo de `{sede}`",
+                          cardinalidad_observada=observada, sede_resuelta=ruta_sede)
+        normalizado, causa = _normalizar(procedencia.get("normalizacion"), texto_nodo)
+        if normalizado is None:
+            return _falla("conversion_fallida", causa,
+                          f"normalizacion no declarada: {procedencia.get('normalizacion')!r}",
+                          cardinalidad_observada=observada, sede_resuelta=ruta_sede)
+        normalizados.append(normalizado)
+
+    # 5 · ordenar, sobre el valor normalizado y antes de convertir
+    orden = cardinalidad.get("orden") if isinstance(cardinalidad, dict) else None
+    ordenados, causa = _ordenar(orden, normalizados)
+    if ordenados is None:
+        return _falla("conversion_fallida", causa, f"orden no declarado: {orden!r}",
+                      cardinalidad_observada=observada, sede_resuelta=ruta_sede)
+
+    # 6 · convertir
+    convertidos: list[Any] = []
+    for normalizado in ordenados:
+        convertido, causa = _convertir(procedencia.get("conversion"), normalizado)
+        if causa:
+            return _falla("conversion_fallida", causa,
+                          f"{normalizado!r} no convierte a `{procedencia.get('conversion')}`",
+                          cardinalidad_observada=observada, sede_resuelta=ruta_sede)
+        convertidos.append(convertido)
+
+    # 7 · colapsar
+    valor, causa = _colapsar(cardinalidad, convertidos)
+    if causa == "colapso_no_unico":
+        return _falla("colapso_no_unico", causa,
+                      f"`unico_si_iguales` sobre valores que difieren: {convertidos!r}",
+                      cardinalidad_observada=observada, sede_resuelta=ruta_sede)
+    if causa:
+        return _falla("conversion_fallida", causa,
+                      f"colapso no declarado: {cardinalidad.get('colapso')!r}",
+                      cardinalidad_observada=observada, sede_resuelta=ruta_sede)
+    return Resultado(valor=valor, cardinalidad_observada=observada, sede_resuelta=ruta_sede)
+
+
+# --- El recorrido de las hojas, derivado del schema --------------------------------------------
+
+
+def _slug(titulo: str) -> str:
+    """El fragmento con el que un ancla nombra un encabezado. Se apoya en la normalización
+    portada —minúsculas, sin diacríticos, sin backticks— y colapsa el resto en guiones."""
+    return re.sub(r"[^a-z0-9]+", "-", _titulo_normalizado(titulo)).strip("-")
+
+
+# ---------------------------------------------------------------------------------------------
+# Modos `--recetas`, `--autotest-recetas` y `--autotest-procedencia-portada`.
+#
+# AC-34 nace de una medición: la mayoría de las anclas de la matriz **no permiten derivar el
+# comando**. Una cohorte que se ejecuta «siguiendo la skill» no es repetible — dos operadores leen
+# la misma sección y corren cosas distintas—, así que cada punto necesita una receta congelada.
+#
+# Lo que hace que la receta no sea una transcripción con otro nombre es la **derivación**: cada una
+# declara de dónde salió, con una procedencia tipada que se ejecuta contra la sede, o con una
+# adjudicación humana explícita cuando esa derivación no existe. Las dos son aceptables; lo que no
+# lo es es un comando sin origen declarado, que es indistinguible de uno inventado.
+#
+# La adjudicación **no** dice que el comando no exista: dice que no se pudo derivar. El comando se
+# escribe igual —el runner lo necesita— y queda marcado, con la condición que obligaría a revisarlo.
+# ---------------------------------------------------------------------------------------------
+
+DIR_FIXTURES_RECETAS = DIR_SCRIPTS / "fixtures-baseline" / "recetas"
+RUTA_MANIFEST_RECETAS = DIR_FIXTURES_RECETAS / "manifest.json"
+NOMBRE_SEDE_SINTETICA = "sede-sintetica.md"
+DIR_FIXTURES_PROCEDENCIA = DIR_SCRIPTS / "fixtures-baseline" / "procedencia"
+RUTA_MANIFEST_PROCEDENCIA = DIR_FIXTURES_PROCEDENCIA / "manifest.json"
+
+# Los seis campos que AC-34 exige por receta, más el que depende del transporte. Se enumeran acá
+# porque son la cláusula literal del criterio; que falte uno no es un detalle de forma.
+CAMPOS_DE_RECETA = ("entrada_congelada", "adaptador", "directorio_de_trabajo",
+                    "variables_admitidas", "salida_esperada", "derivacion")
+
+# Qué invocación lleva cada transporte, y con qué adaptador se ejecuta. Un punto de subagente con
+# `comando` sería indistinguible de uno CLI, y el preflight probaría un binario que no usa.
+INVOCACION_POR_TRANSPORTE = {
+    "subagent": ("accion", "sesion_de_agente"),
+    "cli-exec": ("comando", "script"),
+    "cli-resume": ("comando", "script"),
+    "mixto": ("comando", "script"),
+}
+
+
+def _recetas_por_id(recetas: list[dict]) -> dict[str, dict]:
+    return {r.get("receta_id"): r for r in recetas}
+
+
+def revisar_recetas(recetas: list[dict], matriz: dict) -> list[str]:
+    """Las recetas contra la matriz y contra AC-34. En las dos direcciones: un punto sin receta deja
+    la cohorte sin ejecutar ese caso, y una receta sin punto mide algo que la matriz no indexa."""
+    problemas: list[str] = []
+    puntos = {p.get("id"): p for p in matriz.get("puntos") or []}
+    por_punto: dict[str, list[str]] = {}
+    for receta in recetas:
+        por_punto.setdefault(receta.get("punto_de_despacho"), []).append(receta.get("receta_id"))
+
+    for punto_id in sorted(set(puntos) - set(por_punto)):
+        problemas.append(f"el punto «{punto_id}» no tiene receta: la cohorte no lo puede ejecutar")
+    for punto_id in sorted(set(por_punto) - set(puntos)):
+        problemas.append(f"la receta de «{punto_id}» apunta a un punto que la matriz no indexa")
+    for punto_id, ids in sorted(por_punto.items()):
+        if len(ids) > 1:
+            problemas.append(f"el punto «{punto_id}» tiene {len(ids)} recetas: {sorted(ids)}")
+
+    vistos: set[str] = set()
+    for receta in recetas:
+        rid = receta.get("receta_id")
+        if not isinstance(rid, str) or not rid:
+            problemas.append("hay una receta sin `receta_id`")
+            continue
+        if rid in vistos:
+            problemas.append(f"«{rid}» está declarada dos veces")
+        vistos.add(rid)
+        for campo in CAMPOS_DE_RECETA:
+            if not receta.get(campo):
+                problemas.append(f"«{rid}» no declara `{campo}`, que AC-34 exige")
+
+        punto = puntos.get(receta.get("punto_de_despacho")) or {}
+        transporte = receta.get("transporte")
+        if punto and transporte != punto.get("transporte_agregado"):
+            problemas.append(f"«{rid}» declara transporte «{transporte}» y la matriz dice "
+                             f"«{punto.get('transporte_agregado')}»")
+        esperado = INVOCACION_POR_TRANSPORTE.get(transporte)
+        if esperado is None:
+            problemas.append(f"«{rid}» declara un transporte que no está en la matriz: "
+                             f"{transporte!r}")
+            continue
+        invocacion, adaptador = esperado
+        otra = "accion" if invocacion == "comando" else "comando"
+        if not receta.get(invocacion):
+            problemas.append(f"«{rid}» es «{transporte}» y no declara `{invocacion}`")
+        if receta.get(otra):
+            problemas.append(f"«{rid}» es «{transporte}» y declara `{otra}`, que no le corresponde")
+        if receta.get("adaptador") != adaptador:
+            problemas.append(f"«{rid}» es «{transporte}» y su adaptador debería ser «{adaptador}», "
+                             f"no «{receta.get('adaptador')}»")
+    problemas += revisar_escenarios(recetas)
+    return problemas
+
+
+def revisar_escenarios(recetas: list[dict]) -> list[str]:
+    """Los pasos encadenados (D-17). Lo que se congela es la **regla de enlace**, no el valor: el
+    `session_id` que el paso dependiente consume no existe cuando la cohorte se congela, y
+    escribirlo sería congelar un valor futuro — o, peor, uno de otra corrida."""
+    problemas: list[str] = []
+    por_id = _recetas_por_id(recetas)
+    for receta in recetas:
+        escenario = receta.get("escenario")
+        if not isinstance(escenario, dict):
+            continue
+        rid = receta.get("receta_id")
+        depende_de = escenario.get("depende_de")
+        enlace = escenario.get("regla_de_enlace")
+        if depende_de is None:
+            if enlace is not None:
+                problemas.append(f"«{rid}» no depende de nadie y declara una regla de enlace")
+            if not escenario.get("produce"):
+                problemas.append(f"«{rid}» es el paso inicial de un escenario y no declara qué "
+                                 "produce para el que depende de él")
+            continue
+        if depende_de not in por_id:
+            problemas.append(f"«{rid}» depende de «{depende_de}», que no es una receta")
+            continue
+        if not isinstance(enlace, dict):
+            problemas.append(f"«{rid}» depende de «{depende_de}» y no declara `regla_de_enlace`: "
+                             "sin ella el paso se ejecutaría aislado, sobre una sesión fresca o "
+                             "ajena")
+            continue
+        if not enlace.get("entrada") or not isinstance(enlace.get("sale_de"), dict):
+            problemas.append(f"«{rid}»: la regla de enlace no dice qué entrada sale de qué salida")
+            continue
+        origen = enlace["sale_de"]
+        if origen.get("receta_id") != depende_de:
+            problemas.append(f"«{rid}»: la regla de enlace sale de «{origen.get('receta_id')}» y la "
+                             f"dependencia declarada es «{depende_de}»")
+        producidas = {p.get("nombre") for p in
+                      (por_id[depende_de].get("escenario") or {}).get("produce") or []}
+        if origen.get("salida") not in producidas:
+            problemas.append(f"«{rid}»: la regla de enlace consume «{origen.get('salida')}» y "
+                             f"«{depende_de}» no declara producirla ({sorted(producidas)})")
+        if "valor" in enlace or "valor" in origen:
+            problemas.append(f"«{rid}»: la regla de enlace congela un VALOR. El identificador de "
+                             "sesión no existe cuando la cohorte se congela: lo que se congela es "
+                             "la regla, no su resultado futuro")
+        if not enlace.get("negativos"):
+            problemas.append(f"«{rid}»: la regla de enlace no declara sus negativos —sesión "
+                             "ausente, ajena, reutilizada—, que son lo que el preflight prueba")
+    return problemas
+
+
+def revisar_derivacion(recetas: list[dict], raiz: Path) -> tuple[list[str], dict[str, str]]:
+    """Cada receta contra su origen declarado, EJECUTÁNDOLO. Devuelve los problemas y cómo quedó
+    clasificada cada una.
+
+    Una derivación tipada que no resuelve —cero nodos, o más de uno— es un problema y no una
+    adjudicación implícita: el punto de AC-34 es que la ambigüedad se declare, no que se resuelva
+    eligiendo el primero."""
+    problemas: list[str] = []
+    clasificacion: dict[str, str] = {}
+    for receta in recetas:
+        rid = receta.get("receta_id")
+        derivacion = receta.get("derivacion")
+        if not isinstance(derivacion, dict):
+            problemas.append(f"«{rid}» no declara `derivacion`: un comando sin origen declarado no "
+                             "se distingue de uno inventado")
+            continue
+        tipo = derivacion.get("tipo")
+        if tipo == "adjudicacion_humana":
+            clasificacion[rid] = "adjudicada"
+            if not derivacion.get("motivo"):
+                problemas.append(f"«{rid}» se adjudica a mano y no dice por qué no se pudo derivar")
+            if not derivacion.get("adjudicado_por"):
+                problemas.append(f"«{rid}» se adjudica a mano y no dice quién la adjudicó")
+            continue
+        if tipo != "extraccion_tipada":
+            problemas.append(f"«{rid}» declara una derivación de tipo desconocido: {tipo!r}")
+            continue
+        clasificacion[rid] = "derivada"
+        procedencia = derivacion.get("procedencia")
+        if not isinstance(procedencia, dict) or "ausencia" in procedencia:
+            problemas.append(f"«{rid}» dice derivarse y no trae una procedencia anclada que "
+                             "ejecutar")
+            continue
+        resultado = resolver_procedencia(procedencia, raiz)
+        if not resultado.ok:
+            problemas.append(f"«{rid}» no resuelve contra su sede: {resultado.error} "
+                             f"({resultado.causa}) — {resultado.detalle}")
+    return problemas, clasificacion
+
+
+def _insumos_de_recetas() -> tuple[dict, dict, list[str]]:
+    problemas: list[str] = []
+    recetas, error = _cargar_json(RUTA_RECETAS)
+    if error:
+        problemas.append(f"recetas de la cohorte: {error}")
+    matriz, error = _cargar_json(RUTA_MATRIZ)
+    if error:
+        problemas.append(f"matriz de despachos: {error}")
+    return recetas or {}, matriz or {}, problemas
+
+
+def modo_recetas(args: argparse.Namespace) -> int:
+    del args
+    documento, matriz, problemas = _insumos_de_recetas()
+    if problemas:
+        for p in problemas:
+            print(f"FALLA  {p}")
+        return 1
+    recetas = documento.get("recetas") or []
+
+    problemas = revisar_recetas(recetas, matriz)
+    de_derivacion, clasificacion = revisar_derivacion(recetas, RAIZ)
+    for receta in recetas:
+        rid = receta.get("receta_id")
+        marca = {"derivada": "deriv", "adjudicada": "adjud"}.get(clasificacion.get(rid), "  ?  ")
+        invocacion = "comando" if receta.get("comando") else "accion"
+        print(f"{marca}  {rid:32} {receta.get('transporte',''):11} {invocacion}")
+    print()
+    derivadas = sum(1 for v in clasificacion.values() if v == "derivada")
+    adjudicadas = sum(1 for v in clasificacion.values() if v == "adjudicada")
+    print(f"{len(recetas)} recetas · {derivadas} derivadas del ancla · {adjudicadas} adjudicadas")
+    todos = problemas + de_derivacion
+    if todos:
+        for p in todos[:12]:
+            print(f"FALLA  {p}")
+        print()
+        print(f"RESULTADO: FALLA — {len(todos)} problemas")
+        return 1
+    print()
+    print(f"RESULTADO: OK — {len(recetas)} recetas ejecutables contra los "
+          f"{len(matriz.get('puntos') or [])} puntos de la matriz")
+    return 0
+
+
+@contextlib.contextmanager
+def _raiz_con_sede_sintetica(manifest: dict):
+    """Una raíz temporal con la sede sintética del corpus copiada dentro, con nombre propio.
+
+    Hace falta porque la sede vive bajo `scripts/fixtures-baseline/`, y el resolutor —con razón—
+    rechaza como sede cualquier artefacto de este flujo: una hoja que se cita a sí misma coincide
+    siempre consigo misma. Copiarla afuera es lo que permite ejercer los dos extremos de AC-34
+    sin desactivar esa precondición ni editar una skill real."""
+    origen = DIR_FIXTURES_RECETAS / "sedes" / NOMBRE_SEDE_SINTETICA
+    with tempfile.TemporaryDirectory() as temporal:
+        raiz = Path(temporal)
+        (raiz / NOMBRE_SEDE_SINTETICA).write_text(origen.read_text(encoding="utf-8"),
+                                                  encoding="utf-8")
+        yield raiz
+
+class AtaqueALaReceta(NamedTuple):
+    """Un ataque al documento de recetas, con el motivo por el que tiene que caer. Sin el motivo, un
+    ataque detectado por otra cláusula deja la suya sin ejercer."""
+    nombre: str
+    que_rompe: str
+    motivo_esperado: str
+    aplicar: Callable[[list[dict]], bool]
+
+
+def _ar_borrar_una(recetas: list[dict]) -> bool:
+    recetas.pop()
+    return True
+
+
+def _ar_campo_ausente(recetas: list[dict]) -> bool:
+    recetas[0].pop("salida_esperada", None)
+    return True
+
+
+def _ar_comando_en_subagente(recetas: list[dict]) -> bool:
+    for receta in recetas:
+        if receta.get("transporte") == "subagent":
+            receta["comando"] = "codex exec -s read-only -"
+            return True
+    return False
+
+
+def _ar_transporte_cambiado(recetas: list[dict]) -> bool:
+    for receta in recetas:
+        if receta.get("transporte") == "cli-exec":
+            receta["transporte"] = "subagent"
+            return True
+    return False
+
+
+def _ar_enlace_borrado(recetas: list[dict]) -> bool:
+    for receta in recetas:
+        escenario = receta.get("escenario") or {}
+        if escenario.get("depende_de"):
+            escenario.pop("regla_de_enlace")
+            return True
+    return False
+
+
+def _ar_enlace_con_valor(recetas: list[dict]) -> bool:
+    """El defecto que D-17 existe para impedir: congelar el `session_id` en vez de la regla."""
+    for receta in recetas:
+        enlace = (receta.get("escenario") or {}).get("regla_de_enlace")
+        if isinstance(enlace, dict):
+            enlace["valor"] = "01JQZ-sesion-de-otra-corrida"
+            return True
+    return False
+
+
+def _ar_dependencia_inventada(recetas: list[dict]) -> bool:
+    for receta in recetas:
+        escenario = receta.get("escenario") or {}
+        if escenario.get("depende_de"):
+            escenario["depende_de"] = "rec-que-no-existe"
+            return True
+    return False
+
+
+def _ar_produce_desalineado(recetas: list[dict]) -> bool:
+    """El paso inicial deja de producir lo que el dependiente consume: los dos siguen declarando su
+    escenario y la cadena ya no cierra."""
+    for receta in recetas:
+        producciones = (receta.get("escenario") or {}).get("produce")
+        if producciones:
+            producciones[0]["nombre"] = "otra-cosa"
+            return True
+    return False
+
+
+ATAQUES_A_LAS_RECETAS: tuple[AtaqueALaReceta, ...] = (
+    AtaqueALaReceta("receta-faltante", "un punto de la matriz se queda sin receta",
+                    "no tiene receta", _ar_borrar_una),
+    AtaqueALaReceta("campo-ausente", "una receta pierde un campo que AC-34 exige",
+                    "no declara `salida_esperada`", _ar_campo_ausente),
+    AtaqueALaReceta("comando-en-subagente", "un punto de subagente declara un comando",
+                    "declara `comando`, que no le corresponde", _ar_comando_en_subagente),
+    AtaqueALaReceta("transporte-cambiado", "el transporte deja de coincidir con la matriz",
+                    "y la matriz dice", _ar_transporte_cambiado),
+    AtaqueALaReceta("enlace-borrado", "el paso dependiente se queda sin regla de enlace",
+                    "no declara `regla_de_enlace`", _ar_enlace_borrado),
+    AtaqueALaReceta("enlace-con-valor", "la regla de enlace congela el identificador de sesión",
+                    "congela un VALOR", _ar_enlace_con_valor),
+    AtaqueALaReceta("dependencia-inventada", "el paso depende de una receta que no existe",
+                    "que no es una receta", _ar_dependencia_inventada),
+    AtaqueALaReceta("produce-desalineado", "el paso inicial deja de producir lo que el otro consume",
+                    "no declara producirla", _ar_produce_desalineado),
+)
+
+
+class AtaqueALaDerivacion(NamedTuple):
+    """`sede_sintetica` marca los dos ataques que no se pueden montar sobre el árbol real: una
+    skill con dos invocaciones idénticas —o sin ninguna— sería un cambio al repositorio. Esos se
+    resuelven contra una raíz aparte, donde la sede del corpus se copia con nombre propio: bajo
+    `scripts/fixtures-baseline/` el resolutor la rechaza, y con razón — es un artefacto de este
+    flujo, y una hoja que se cita a sí misma coincide siempre consigo misma."""
+    nombre: str
+    que_rompe: str
+    motivo_esperado: str
+    aplicar: Callable[[list[dict], dict], bool]
+    sede_sintetica: bool = False
+
+
+def _ad_sin_derivacion(recetas: list[dict], manifest: dict) -> bool:
+    del manifest
+    recetas[0].pop("derivacion", None)
+    return True
+
+
+def _ad_adjudicacion_sin_motivo(recetas: list[dict], manifest: dict) -> bool:
+    del manifest
+    for receta in recetas:
+        derivacion = receta.get("derivacion") or {}
+        if derivacion.get("tipo") == "adjudicacion_humana":
+            derivacion.pop("motivo")
+            return True
+    return False
+
+
+def _ad_tipo_desconocido(recetas: list[dict], manifest: dict) -> bool:
+    del manifest
+    (recetas[0].get("derivacion") or {})["tipo"] = "de_memoria"
+    return True
+
+
+def _ad_cero_resultados(recetas: list[dict], manifest: dict) -> bool:
+    """El selector deja de casar: la derivación no resuelve y NO se degrada a adjudicación."""
+    sede = manifest.get("sede_sintetica") or {}
+    for receta in recetas:
+        derivacion = receta.get("derivacion") or {}
+        if derivacion.get("tipo") == "extraccion_tipada":
+            derivacion["procedencia"] = {
+                **derivacion["procedencia"], "sede": NOMBRE_SEDE_SINTETICA,
+                "tipo_de_sede": "patron_de_linea",
+                "selector": {"patron": sede.get("patron_sin_coincidencia")},
+                "cardinalidad": {"tipo": "exactamente_una"},
+                "extraccion": {"tipo": "literal"}}
+            return True
+    return False
+
+
+def _ad_multiples_resultados(recetas: list[dict], manifest: dict) -> bool:
+    """El selector casa dos invocaciones legítimas de puntos distintos. Devolver «la primera» daría
+    un comando plausible y falso; la cardinalidad es lo que lo impide."""
+    sede = manifest.get("sede_sintetica") or {}
+    for receta in recetas:
+        derivacion = receta.get("derivacion") or {}
+        if derivacion.get("tipo") == "extraccion_tipada":
+            derivacion["procedencia"] = {
+                **derivacion["procedencia"], "sede": NOMBRE_SEDE_SINTETICA,
+                "tipo_de_sede": "patron_de_linea",
+                "selector": {"patron": sede.get("patron_ambiguo")},
+                "cardinalidad": {"tipo": "exactamente_una"},
+                "extraccion": {"tipo": "literal"}}
+            return True
+    return False
+
+
+ATAQUES_A_LA_DERIVACION: tuple[AtaqueALaDerivacion, ...] = (
+    AtaqueALaDerivacion("sin-derivacion", "una receta no declara de dónde salió su comando",
+                        "no declara `derivacion`", _ad_sin_derivacion),
+    AtaqueALaDerivacion("adjudicacion-sin-motivo", "se adjudica a mano sin decir por qué",
+                        "no dice por qué no se pudo derivar", _ad_adjudicacion_sin_motivo),
+    AtaqueALaDerivacion("tipo-desconocido", "la derivación declara un tipo que nadie implementa",
+                        "tipo desconocido", _ad_tipo_desconocido),
+    AtaqueALaDerivacion("cero-resultados", "el selector no casa nada en su sede",
+                        "selector_sin_resultado", _ad_cero_resultados, sede_sintetica=True),
+    AtaqueALaDerivacion("multiples-resultados", "el selector casa dos invocaciones distintas",
+                        "cardinalidad_no_coincide", _ad_multiples_resultados,
+                        sede_sintetica=True),
+)
+
+
+def modo_autotest_recetas(args: argparse.Namespace) -> int:
+    documento, matriz, problemas = _insumos_de_recetas()
+    manifest, error = _cargar_json(RUTA_MANIFEST_RECETAS)
+    if error:
+        problemas.append(f"manifest del corpus de recetas: {error}")
+    if problemas:
+        for p in problemas:
+            print(f"[A] FALLA  {p}")
+        return 1
+    recetas = documento.get("recetas") or []
+    solo_derivacion = bool(getattr(args, "derivacion", False))
+    resultados: list[tuple[str, bool, str]] = []
+
+    if not solo_derivacion:
+        # [A] El positivo: las trece reales pasan enteras.
+        fallas = revisar_recetas(recetas, matriz)
+        resultados.append(("A", not fallas,
+                           f"las {len(recetas)} recetas contra los "
+                           f"{len(matriz.get('puntos') or [])} puntos de la matriz"
+                           if not fallas else " | ".join(fallas[:4])))
+
+        # [B] Los ataques al documento, cada uno por SU motivo.
+        fallas = []
+        for ataque in ATAQUES_A_LAS_RECETAS:
+            copia = copy.deepcopy(recetas)
+            if not ataque.aplicar(copia):
+                fallas.append(f"«{ataque.nombre}»: la mutación no se pudo aplicar")
+                continue
+            detectados = revisar_recetas(copia, matriz)
+            if not any(ataque.motivo_esperado in d for d in detectados):
+                fallas.append(f"«{ataque.nombre}»: {ataque.que_rompe} y no cae por "
+                              f"«{ataque.motivo_esperado}» — se vio: "
+                              f"{detectados[0] if detectados else 'nada'}")
+        resultados.append(("B", not fallas,
+                           f"los {len(ATAQUES_A_LAS_RECETAS)} ataques al documento caen por su "
+                           "motivo" if not fallas else " | ".join(fallas[:4])))
+
+        # [C] El escenario encadenado, contra el manifest INDEPENDIENTE: sus pasos existen, están en
+        # el orden declarado y el enlace es el que el manifest dice.
+        fallas = []
+        por_id = _recetas_por_id(recetas)
+        for esperado in manifest.get("escenarios_esperados") or []:
+            pasos = esperado.get("pasos") or []
+            ausentes = [p for p in pasos if p not in por_id]
+            if ausentes:
+                fallas.append(f"«{esperado.get('escenario_id')}»: faltan los pasos {ausentes}")
+                continue
+            del_escenario = [r.get("receta_id") for r in recetas
+                             if (r.get("escenario") or {}).get("escenario_id")
+                             == esperado.get("escenario_id")]
+            if sorted(del_escenario) != sorted(pasos):
+                fallas.append(f"«{esperado.get('escenario_id')}»: el manifest declara {sorted(pasos)}"
+                              f" y las recetas dicen {sorted(del_escenario)}")
+                continue
+            dependiente = next((p for p in pasos
+                                if (por_id[p].get("escenario") or {}).get("depende_de")), None)
+            enlace = (por_id[dependiente].get("escenario") or {}).get("regla_de_enlace") or {}
+            if enlace.get("entrada", "").lower() != (esperado.get("enlace") or "").lower():
+                fallas.append(f"«{esperado.get('escenario_id')}»: el manifest declara que el enlace "
+                              f"es «{esperado.get('enlace')}» y la receta enlaza por "
+                              f"«{enlace.get('entrada')}»")
+        resultados.append(("C", not fallas,
+                           f"{len(manifest.get('escenarios_esperados') or [])} escenario encadenado "
+                           "contra el manifest independiente" if not fallas
+                           else " | ".join(fallas[:4])))
+
+    # [D/A'] La derivación real de cada receta, EJECUTADA, y su clasificación contra el manifest.
+    de_derivacion, clasificacion = revisar_derivacion(recetas, RAIZ)
+    esperada = manifest.get("clasificacion_esperada") or {}
+    fallas = list(de_derivacion)
+    for rid in sorted(set(esperada) | set(clasificacion)):
+        if esperada.get(rid) != clasificacion.get(rid):
+            fallas.append(f"«{rid}»: el manifest la declara {esperada.get(rid)!r} y quedó "
+                          f"{clasificacion.get(rid)!r}")
+    etiqueta = "A" if solo_derivacion else "D"
+    derivadas = sum(1 for v in clasificacion.values() if v == "derivada")
+    resultados.append((etiqueta, not fallas,
+                       f"{derivadas} derivaciones resueltas contra su sede y "
+                       f"{len(clasificacion) - derivadas} adjudicadas, contra el manifest"
+                       if not fallas else " | ".join(fallas[:4])))
+
+    if solo_derivacion:
+        # [B'] Los ataques a la derivación, cada uno por su motivo. Los dos últimos son las dos
+        # formas que AC-34 nombra: cero resultados y múltiples.
+        fallas = []
+        for ataque in ATAQUES_A_LA_DERIVACION:
+            copia = copy.deepcopy(recetas)
+            if not ataque.aplicar(copia, manifest):
+                fallas.append(f"«{ataque.nombre}»: la mutación no se pudo aplicar")
+                continue
+            if ataque.sede_sintetica:
+                # Solo la receta mutada, y contra la raíz aparte: evaluarlas todas ahí sumaría doce
+                # sedes inexistentes, y el ataque caería por su motivo entre doce falsos.
+                mutadas = [r for r in copia
+                           if ((r.get("derivacion") or {}).get("procedencia") or {}).get("sede")
+                           == NOMBRE_SEDE_SINTETICA]
+                if len(mutadas) != 1:
+                    fallas.append(f"«{ataque.nombre}»: la mutación tocó {len(mutadas)} recetas y "
+                                  "tiene que tocar una")
+                    continue
+                with _raiz_con_sede_sintetica(manifest) as raiz:
+                    detectados, _ = revisar_derivacion(mutadas, raiz)
+            else:
+                detectados, _ = revisar_derivacion(copia, RAIZ)
+            if not any(ataque.motivo_esperado in d for d in detectados):
+                fallas.append(f"«{ataque.nombre}»: {ataque.que_rompe} y no cae por "
+                              f"«{ataque.motivo_esperado}» — se vio: "
+                              f"{detectados[0] if detectados else 'nada'}")
+        resultados.append(("B", not fallas,
+                           f"los {len(ATAQUES_A_LA_DERIVACION)} ataques a la derivación caen por su "
+                           "motivo" if not fallas else " | ".join(fallas[:4])))
+
+        # [C'] La sede sintética resuelve como el manifest declara: uno con el patrón único y dos
+        # con el ambiguo. Es el control POSITIVO de los dos ataques anteriores: sin él, un motor que
+        # fallara siempre los pasaría a los dos.
+        sede = manifest.get("sede_sintetica") or {}
+        fallas = []
+        base = {"sede": NOMBRE_SEDE_SINTETICA, "tipo_de_sede": "patron_de_linea",
+                "extraccion": {"tipo": "literal"}, "normalizacion": "trim", "conversion": "cadena"}
+        with _raiz_con_sede_sintetica(manifest) as raiz:
+            uno = resolver_procedencia({**base, "selector": {"patron": sede.get("patron_unico")},
+                                        "cardinalidad": {"tipo": "exactamente_una"}}, raiz)
+            dos = resolver_procedencia({**base, "selector": {"patron": sede.get("patron_ambiguo")},
+                                        "cardinalidad": {"tipo": "exactamente_n",
+                                                         "n": sede.get("nodos_del_ambiguo"),
+                                                         "colapso": "lista", "orden": "documento"}},
+                                       raiz)
+        if not uno.ok:
+            fallas.append(f"el patrón único no resuelve: {uno.error} ({uno.causa})")
+        if not dos.ok:
+            fallas.append(f"el patrón ambiguo no resuelve a {sede.get('nodos_del_ambiguo')}: "
+                          f"{dos.error} ({dos.causa})")
+        elif dos.cardinalidad_observada != sede.get("nodos_del_ambiguo"):
+            fallas.append(f"el patrón ambiguo devolvió {dos.cardinalidad_observada} nodos y el "
+                          f"manifest declara {sede.get('nodos_del_ambiguo')}")
+        resultados.append(("C", not fallas,
+                           "la sede sintética resuelve a uno y a dos como el manifest declara"
+                           if not fallas else " | ".join(fallas[:4])))
+
+    return _cerrar(resultados)
+
+def dimensiones_de(procedencia: dict) -> dict[str, str | None]:
+    """Las piezas del motor que una procedencia ejerce. Es la unidad de la frontera declarada: por
+    dimensión y no por combinación, porque las trece recetas usan dos combinaciones y declarar la
+    frontera así dejaría afuera a cualquier receta nueva."""
+    cardinalidad = procedencia.get("cardinalidad") or {}
+    return {
+        "tipo_de_sede": procedencia.get("tipo_de_sede"),
+        "cardinalidad": cardinalidad.get("tipo"),
+        "extraccion": (procedencia.get("extraccion") or {}).get("tipo"),
+        "normalizacion": procedencia.get("normalizacion"),
+        "conversion": procedencia.get("conversion"),
+        "colapso": cardinalidad.get("colapso"),
+        "orden": cardinalidad.get("orden"),
+    }
+
+
+def modo_autotest_procedencia_portada(args: argparse.Namespace) -> int:
+    del args
+    problemas: list[str] = []
+    corpus, error = _cargar_json(DIR_FIXTURES_PROCEDENCIA / "corpus.json")
+    if error:
+        problemas.append(f"corpus diferencial: {error}")
+    manifest, error = _cargar_json(RUTA_MANIFEST_PROCEDENCIA)
+    if error:
+        problemas.append(f"manifest del corpus diferencial: {error}")
+    documento, _, mas = _insumos_de_recetas()
+    if problemas + mas:
+        for p in problemas + mas:
+            print(f"[A] FALLA  {p}")
+        return 1
+
+    casos = corpus.get("casos") or []
+    resultados: list[tuple[str, bool, str]] = []
+
+    # [A] Las dimensiones declaradas ↔ las que el corpus ejerce, en las dos direcciones. Una
+    # declarada sin caso es frontera que nadie ejerce; una ejercida sin declarar es la frontera
+    # creciendo sin que nadie lo decida.
+    declaradas = {k: set(v) for k, v in (manifest.get("dimensiones_cubiertas") or {}).items()}
+    ejercidas: dict[str, set] = {}
+    for caso in casos:
+        for dimension, valor in dimensiones_de(caso.get("procedencia") or {}).items():
+            if valor is not None:
+                ejercidas.setdefault(dimension, set()).add(valor)
+    fallas: list[str] = []
+    for dimension in sorted(set(declaradas) | set(ejercidas)):
+        faltan = sorted(declaradas.get(dimension, set()) - ejercidas.get(dimension, set()))
+        sobran = sorted(ejercidas.get(dimension, set()) - declaradas.get(dimension, set()))
+        fallas += [f"{dimension}: «{v}» está declarada y ningún caso la ejerce" for v in faltan]
+        fallas += [f"{dimension}: «{v}» la ejerce un caso y el manifest no la declara"
+                   for v in sobran]
+    resultados.append(("A", not fallas,
+                       f"{sum(len(v) for v in declaradas.values())} valores de dimensión "
+                       f"declarados ↔ ejercidos por los {len(casos)} casos"
+                       if not fallas else " | ".join(fallas[:4])))
+
+    # [B] La cobertura que importa: cada dimensión que usan las TRECE RECETAS está dentro de la
+    # frontera. Es la dirección que convierte al corpus en una protección y no en una colección.
+    fallas = []
+    for receta in documento.get("recetas") or []:
+        procedencia = (receta.get("derivacion") or {}).get("procedencia")
+        if not isinstance(procedencia, dict) or "ausencia" in procedencia:
+            continue
+        for dimension, valor in dimensiones_de(procedencia).items():
+            if valor is not None and valor not in declaradas.get(dimension, set()):
+                fallas.append(f"«{receta.get('receta_id')}» usa {dimension}=«{valor}», que la "
+                              "frontera declarada no cubre: ahí el motor portado puede divergir "
+                              "sin que nada lo note")
+    resultados.append(("B", not fallas,
+                       "las trece recetas usan solo dimensiones que la frontera cubre"
+                       if not fallas else " | ".join(sorted(set(fallas))[:4])))
+
+    # [C] El control diferencial: el motor PORTADO reproduce cada salida congelada, que produjo el
+    # ORIGINAL. Es lo único que compara los dos motores; el resto compara al portado consigo mismo.
+    divergencias = corpus.get("divergencias_declaradas") or []
+    fallas = []
+    with _raiz_con_sede_del_corpus(corpus) as raiz:
+        for caso, contra, donde in ([(c, "el original", raiz) for c in casos]
+                                    + [(c, "el port", RAIZ) for c in divergencias]):
+            esperado = caso.get("esperado") or {}
+            obtenido = resolver_procedencia(caso.get("procedencia") or {}, donde)
+            visto = {"valor": obtenido.valor,
+                     "cardinalidad_observada": obtenido.cardinalidad_observada,
+                     "error": obtenido.error, "causa": obtenido.causa}
+            # Los campos salen de las CLAVES del esperado, no de una lista escrita acá: una lista
+            # se puede acortar y el corpus seguiría en verde comparando de menos.
+            if set(esperado) - set(visto):
+                fallas.append(f"«{caso.get('caso_id')}»: el esperado declara campos que el "
+                              f"resolutor no devuelve: {sorted(set(esperado) - set(visto))}")
+                continue
+            if set(visto) - set(esperado):
+                fallas.append(f"«{caso.get('caso_id')}»: el resolutor devuelve "
+                              f"{sorted(set(visto) - set(esperado))} y el esperado no lo congela")
+                continue
+            for campo, valor in sorted(esperado.items()):
+                if not _mismo(visto[campo], valor):
+                    fallas.append(f"«{caso.get('caso_id')}»: {campo} congelado por {contra} es "
+                                  f"{valor!r} y el portado da {visto[campo]!r}")
+    resultados.append(("C", not fallas,
+                       f"los {len(casos)} casos reproducen la salida que congeló el motor original, "
+                       f"y {len(divergencias)} divergencia declarada la del port"
+                       if not fallas else " | ".join(fallas[:4])))
+
+    # [D] Las causas de fallo, ejercidas. Un motor que resolviera todo bien y nunca fallara pasaría
+    # [C] entero si el corpus fuera solo de positivos.
+    ejercidos = {c["esperado"].get("error") for c in casos if (c.get("esperado") or {}).get("error")}
+    declarados = set(manifest.get("errores_ejercidos") or [])
+    en_otro_lado = set(manifest.get("error_no_ejercido_aca") or {})
+    fallas = [f"«{e}» está declarado ejercido y ningún caso lo produce" for e in
+              sorted(declarados - ejercidos)]
+    fallas += [f"«{e}» lo produce un caso y el manifest no lo declara" for e in
+               sorted(ejercidos - declarados)]
+    fallas += [f"«{e}» de ERRORES_DE_RESOLUCION no lo ejerce nadie ni se declara dónde se ejerce"
+               for e in sorted(set(ERRORES_DE_RESOLUCION) - ejercidos - en_otro_lado)]
+    resultados.append(("D", not fallas,
+                       f"las {len(ERRORES_DE_RESOLUCION)} causas de fallo del resolutor, ejercidas "
+                       f"acá ({len(ejercidos)}) o declaradas dónde ({len(en_otro_lado)})"
+                       if not fallas else " | ".join(fallas[:4])))
+
+    return _cerrar(resultados)
+
+
+@contextlib.contextmanager
+def _raiz_con_sede_del_corpus(corpus: dict):
+    """Igual que la del corpus de recetas: la sede se copia a una raíz temporal porque bajo
+    `scripts/fixtures-baseline/` el resolutor la rechaza por ser un artefacto de este flujo."""
+    nombre = corpus.get("sede")
+    origen = DIR_FIXTURES_PROCEDENCIA / "sedes" / nombre
+    with tempfile.TemporaryDirectory() as temporal:
+        raiz = Path(temporal)
+        (raiz / nombre).write_text(origen.read_text(encoding="utf-8"), encoding="utf-8")
+        yield raiz
+
+# ---------------------------------------------------------------------------------------------
 # Registro de los modos de esta task. Cada task nueva agrega los suyos acá abajo, sin tocar los
 # anteriores ni `main()`.
 # ---------------------------------------------------------------------------------------------
@@ -6144,6 +8097,64 @@ registrar_modo(
     "autónomo, que reproduce las dos degradaciones y que el instrumento lo clasifica incorrecto "
     "derivándolas",
     modo_fixture_historico,
+)
+
+registrar_modo(
+    "--recetas",
+    "enumera las trece recetas ejecutables de la cohorte y las comprueba contra la matriz: una por "
+    "punto en las dos direcciones, con los seis campos que AC-34 exige, la invocación que "
+    "corresponde a su transporte, los pasos encadenados con su regla de enlace, y la derivación de "
+    "cada una EJECUTADA contra su sede",
+    modo_recetas,
+)
+
+registrar_modo(
+    "--autotest-recetas",
+    "control del modo anterior sobre el corpus de scripts/fixtures-baseline/recetas/: las trece "
+    "recetas contra la matriz y contra el manifest independiente de clasificación, el escenario "
+    "encadenado, y los ataques al documento —receta faltante, campo ausente, comando en un punto de "
+    "subagente, transporte cambiado, enlace borrado y enlace que congela el identificador de "
+    "sesión—. Con `--derivacion` se acota al origen de cada comando: cada derivación ejecutada "
+    "contra su sede, y los dos extremos que AC-34 nombra —cero resultados y múltiples— sobre una "
+    "sede sintética",
+    modo_autotest_recetas,
+    auxiliares=(
+        Auxiliar("--derivacion",
+                 "acota el autotest al origen declarado de cada comando: derivación tipada "
+                 "ejecutada, o adjudicación humana con su motivo"),
+    ),
+)
+
+registrar_modo(
+    "--autotest-procedencia-portada",
+    "el corpus DIFERENCIAL del motor de extracción portado (D-1): cada caso ejerce una forma tipada "
+    "sobre una sede controlada y su salida esperada la congeló el motor ORIGINAL, no el portado. "
+    "Comprueba además que las dimensiones que usan las trece recetas caen dentro de la frontera "
+    "declarada, y que las seis causas de fallo del resolutor están ejercidas o dicen dónde lo están",
+    modo_autotest_procedencia_portada,
+)
+
+registrar_modo(
+    "--generar-baseline",
+    "genera el baseline en Markdown desde las observaciones: cada número derivado de su fuente "
+    "canónica, la salida determinista byte a byte, y toda métrica sin observaciones declarada como "
+    "tal —con la adjudicación del agregado y la de cada observación— y nunca en cero",
+    modo_generar_baseline,
+    argumento=Argumento("<dir-de-observaciones>", const=RUTA_OBSERVACIONES_FASE_0),
+    auxiliares=(
+        Auxiliar("--salida", "dónde escribir el documento; por omisión, "
+                             f"{RUTA_BASELINE_FASE_0}",
+                 metavar="<ruta-del-baseline>"),
+    ),
+)
+
+registrar_modo(
+    "--autotest-generacion",
+    "control del modo anterior sobre el corpus de scripts/fixtures-baseline/generacion/: golden "
+    "escrito a mano y comparado byte a byte, determinismo bajo orden invertido, lectura inversa "
+    "de la tabla de números, y los ataques al documento —número alterado, métrica sin "
+    "observaciones omitida, publicada en cero o sin adjudicación, métrica inventada— y al insumo",
+    modo_autotest_generacion,
 )
 
 registrar_modo(

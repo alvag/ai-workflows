@@ -1,0 +1,669 @@
+{
+  "version_corpus": "1.0.0",
+  "descripcion": "Corpus DIFERENCIAL del motor de extracción portado (D-1). Cada caso ejerce una forma tipada sobre una sede controlada, y su salida esperada la produjo el motor ORIGINAL de `scripts/verificar-matriz-despachos.py`, no el portado. Esa es la única razón por la que el corpus prueba compatibilidad y no consistencia interna: un esperado producido por el portado probaría que su salida no cambia, no que coincida con el motor del que salió.",
+  "como_se_congelaron": "Resolviendo cada procedencia con `resolver_procedencia()` del original contra una copia de `sedes/sede.md` en una raíz temporal. La raíz es temporal porque el resolutor rechaza —con razón— cualquier sede que sea un artefacto de este flujo, y el corpus vive bajo `scripts/fixtures-baseline/`.",
+  "frontera_declarada": "Lo que está acá es lo que se comprueba compatible. Lo que NO está puede divergir sin que nada lo note, y eso queda dicho en vez de supuesto: es la frontera que D-1 acepta a cambio de no importar el otro archivo.",
+  "sede": "sede.md",
+  "casos": [
+    {
+      "caso_id": "linea-captura-cadena",
+      "forma": "patron_de_linea · exactamente_una · captura_de_grupo · trim · cadena",
+      "procedencia": {
+        "sede": "sede.md",
+        "tipo_de_sede": "patron_de_linea",
+        "selector": {
+          "patron": "^codex exec -s read-only -C <ejemplo>"
+        },
+        "cardinalidad": {
+          "tipo": "exactamente_una"
+        },
+        "extraccion": {
+          "tipo": "captura_de_grupo",
+          "patron": "^(codex exec -s read-only -C <ejemplo>)",
+          "grupo": 1
+        },
+        "normalizacion": "trim",
+        "conversion": "cadena"
+      },
+      "esperado": {
+        "valor": "codex exec -s read-only -C <ejemplo>",
+        "cardinalidad_observada": 1,
+        "error": null,
+        "causa": null
+      }
+    },
+    {
+      "caso_id": "heading-ancla-referencia",
+      "forma": "heading_markdown · exactamente_una · ancla_de_seccion · ninguna · referencia",
+      "procedencia": {
+        "sede": "sede.md",
+        "tipo_de_sede": "heading_markdown",
+        "selector": {
+          "texto": "Invocación literal",
+          "nivel": 2
+        },
+        "cardinalidad": {
+          "tipo": "exactamente_una"
+        },
+        "extraccion": {
+          "tipo": "ancla_de_seccion"
+        },
+        "normalizacion": "ninguna",
+        "conversion": "referencia"
+      },
+      "esperado": {
+        "valor": "sede.md#invocacion-literal",
+        "cardinalidad_observada": 1,
+        "error": null,
+        "causa": null
+      }
+    },
+    {
+      "caso_id": "linea-literal-cadena",
+      "forma": "patron_de_linea · exactamente_una · literal · trim · cadena",
+      "procedencia": {
+        "sede": "sede.md",
+        "tipo_de_sede": "patron_de_linea",
+        "selector": {
+          "patron": "^Prosa con una marca"
+        },
+        "cardinalidad": {
+          "tipo": "exactamente_una"
+        },
+        "extraccion": {
+          "tipo": "literal"
+        },
+        "normalizacion": "trim",
+        "conversion": "cadena"
+      },
+      "esperado": {
+        "valor": "Prosa con una marca: presencia de la cláusula declarada.",
+        "cardinalidad_observada": 1,
+        "error": null,
+        "causa": null
+      }
+    },
+    {
+      "caso_id": "linea-n-lista-documento",
+      "forma": "patron_de_linea · exactamente_n · captura_de_grupo · trim · cadena · lista · documento",
+      "procedencia": {
+        "sede": "sede.md",
+        "tipo_de_sede": "patron_de_linea",
+        "selector": {
+          "patron": "^## Encabezado repetido$"
+        },
+        "cardinalidad": {
+          "tipo": "exactamente_n",
+          "n": 2,
+          "orden": "documento",
+          "colapso": "lista"
+        },
+        "extraccion": {
+          "tipo": "captura_de_grupo",
+          "patron": "^## (Encabezado repetido)$",
+          "grupo": 1
+        },
+        "normalizacion": "trim",
+        "conversion": "cadena"
+      },
+      "esperado": {
+        "valor": [
+          "Encabezado repetido",
+          "Encabezado repetido"
+        ],
+        "cardinalidad_observada": 2,
+        "error": null,
+        "causa": null
+      }
+    },
+    {
+      "caso_id": "fila-captura-entero",
+      "forma": "fila_de_tabla_markdown · exactamente_una · captura_de_grupo · trim · entero",
+      "procedencia": {
+        "sede": "sede.md",
+        "tipo_de_sede": "fila_de_tabla_markdown",
+        "selector": {
+          "clave_primera_celda": "beta",
+          "encabezado_de_columna": "espera"
+        },
+        "cardinalidad": {
+          "tipo": "exactamente_una"
+        },
+        "extraccion": {
+          "tipo": "captura_de_grupo",
+          "patron": "^(\\d+)$",
+          "grupo": 1
+        },
+        "normalizacion": "trim",
+        "conversion": "entero"
+      },
+      "esperado": {
+        "valor": 1800,
+        "cardinalidad_observada": 1,
+        "error": null,
+        "causa": null
+      }
+    },
+    {
+      "caso_id": "fila-captura-enum",
+      "forma": "fila_de_tabla_markdown · captura_de_grupo · trim · enum:transporte",
+      "procedencia": {
+        "sede": "sede.md",
+        "tipo_de_sede": "fila_de_tabla_markdown",
+        "selector": {
+          "clave_primera_celda": "beta",
+          "encabezado_de_columna": "transporte"
+        },
+        "cardinalidad": {
+          "tipo": "exactamente_una"
+        },
+        "extraccion": {
+          "tipo": "captura_de_grupo",
+          "patron": "^(\\S+)$",
+          "grupo": 1
+        },
+        "normalizacion": "trim",
+        "conversion": "enum:transporte"
+      },
+      "esperado": {
+        "valor": "subagent",
+        "cardinalidad_observada": 1,
+        "error": null,
+        "causa": null
+      }
+    },
+    {
+      "caso_id": "clave-valor-de-clave",
+      "forma": "clave_estructurada · exactamente_una · literal · trim · cadena",
+      "procedencia": {
+        "sede": "sede.md",
+        "tipo_de_sede": "clave_estructurada",
+        "selector": {
+          "formato": "json",
+          "lenguaje_del_bloque": "json",
+          "ruta": [
+            "comando"
+          ]
+        },
+        "cardinalidad": {
+          "tipo": "exactamente_una"
+        },
+        "extraccion": {
+          "tipo": "literal"
+        },
+        "normalizacion": "trim",
+        "conversion": "cadena"
+      },
+      "esperado": {
+        "valor": "codex exec -s read-only -",
+        "cardinalidad_observada": 1,
+        "error": null,
+        "causa": null
+      }
+    },
+    {
+      "caso_id": "clave-lista-entero",
+      "forma": "clave_estructurada · exactamente_una · literal · trim · entero",
+      "procedencia": {
+        "sede": "sede.md",
+        "tipo_de_sede": "clave_estructurada",
+        "selector": {
+          "formato": "json",
+          "lenguaje_del_bloque": "json",
+          "ruta": [
+            "repeticiones"
+          ]
+        },
+        "cardinalidad": {
+          "tipo": "exactamente_una"
+        },
+        "extraccion": {
+          "tipo": "literal"
+        },
+        "normalizacion": "trim",
+        "conversion": "entero"
+      },
+      "esperado": {
+        "valor": 3,
+        "cardinalidad_observada": 1,
+        "error": null,
+        "causa": null
+      }
+    },
+    {
+      "caso_id": "presencia-de-clausula-booleano",
+      "forma": "patron_de_linea · presencia_de_clausula · colapsar_espacios · booleano",
+      "procedencia": {
+        "sede": "sede.md",
+        "tipo_de_sede": "patron_de_linea",
+        "selector": {
+          "patron": "^Prosa con una marca"
+        },
+        "cardinalidad": {
+          "tipo": "exactamente_una"
+        },
+        "extraccion": {
+          "tipo": "presencia_de_clausula",
+          "clausula": "presencia de la cláusula"
+        },
+        "normalizacion": "colapsar_espacios",
+        "conversion": "booleano"
+      },
+      "esperado": {
+        "valor": true,
+        "cardinalidad_observada": 1,
+        "error": null,
+        "causa": null
+      }
+    },
+    {
+      "caso_id": "heading-minusculas",
+      "forma": "heading_markdown · captura_de_grupo · minusculas · cadena",
+      "procedencia": {
+        "sede": "sede.md",
+        "tipo_de_sede": "heading_markdown",
+        "selector": {
+          "texto": "Sección Con Mayúsculas Y Acentuación",
+          "nivel": 2
+        },
+        "cardinalidad": {
+          "tipo": "exactamente_una"
+        },
+        "extraccion": {
+          "tipo": "captura_de_grupo",
+          "patron": "^(.*)$",
+          "grupo": 1
+        },
+        "normalizacion": "minusculas",
+        "conversion": "cadena"
+      },
+      "esperado": {
+        "valor": "sección con mayúsculas y acentuación",
+        "cardinalidad_observada": 1,
+        "error": null,
+        "causa": null
+      }
+    },
+    {
+      "caso_id": "n-lexicografico-unico-si-iguales",
+      "forma": "exactamente_n · lexicografico · unico_si_iguales",
+      "procedencia": {
+        "sede": "sede.md",
+        "tipo_de_sede": "patron_de_linea",
+        "selector": {
+          "patron": "^## Encabezado repetido$"
+        },
+        "cardinalidad": {
+          "tipo": "exactamente_n",
+          "n": 2,
+          "orden": "lexicografico",
+          "colapso": "unico_si_iguales"
+        },
+        "extraccion": {
+          "tipo": "captura_de_grupo",
+          "patron": "^## (Encabezado repetido)$",
+          "grupo": 1
+        },
+        "normalizacion": "trim",
+        "conversion": "cadena"
+      },
+      "esperado": {
+        "valor": "Encabezado repetido",
+        "cardinalidad_observada": 2,
+        "error": null,
+        "causa": null
+      }
+    },
+    {
+      "caso_id": "negativo-sin-nodos",
+      "forma": "selector_sin_resultado · sin_nodos",
+      "procedencia": {
+        "sede": "sede.md",
+        "tipo_de_sede": "patron_de_linea",
+        "selector": {
+          "patron": "^no existe esta linea$"
+        },
+        "cardinalidad": {
+          "tipo": "exactamente_una"
+        },
+        "extraccion": {
+          "tipo": "literal"
+        },
+        "normalizacion": "trim",
+        "conversion": "cadena"
+      },
+      "esperado": {
+        "valor": null,
+        "cardinalidad_observada": 0,
+        "error": "selector_sin_resultado",
+        "causa": "sin_nodos"
+      }
+    },
+    {
+      "caso_id": "negativo-cardinalidad",
+      "forma": "cardinalidad_no_coincide · predicado_no_satisfecho",
+      "procedencia": {
+        "sede": "sede.md",
+        "tipo_de_sede": "patron_de_linea",
+        "selector": {
+          "patron": "^## Encabezado repetido$"
+        },
+        "cardinalidad": {
+          "tipo": "exactamente_una"
+        },
+        "extraccion": {
+          "tipo": "literal"
+        },
+        "normalizacion": "trim",
+        "conversion": "cadena"
+      },
+      "esperado": {
+        "valor": null,
+        "cardinalidad_observada": 2,
+        "error": "cardinalidad_no_coincide",
+        "causa": "predicado_no_satisfecho"
+      }
+    },
+    {
+      "caso_id": "negativo-conversion",
+      "forma": "conversion_fallida · entero_no_reconocido",
+      "procedencia": {
+        "sede": "sede.md",
+        "tipo_de_sede": "fila_de_tabla_markdown",
+        "selector": {
+          "clave_primera_celda": "beta",
+          "encabezado_de_columna": "transporte"
+        },
+        "cardinalidad": {
+          "tipo": "exactamente_una"
+        },
+        "extraccion": {
+          "tipo": "literal"
+        },
+        "normalizacion": "trim",
+        "conversion": "entero"
+      },
+      "esperado": {
+        "valor": null,
+        "cardinalidad_observada": 1,
+        "error": "conversion_fallida",
+        "causa": "entero_no_reconocido"
+      }
+    },
+    {
+      "caso_id": "negativo-sede-ausente",
+      "forma": "sede_inexistente · archivo_ausente",
+      "procedencia": {
+        "sede": "no-existe.md",
+        "tipo_de_sede": "patron_de_linea",
+        "selector": {
+          "patron": "^x$"
+        },
+        "cardinalidad": {
+          "tipo": "exactamente_una"
+        },
+        "extraccion": {
+          "tipo": "literal"
+        },
+        "normalizacion": "trim",
+        "conversion": "cadena"
+      },
+      "esperado": {
+        "valor": null,
+        "cardinalidad_observada": null,
+        "error": "sede_inexistente",
+        "causa": "archivo_ausente"
+      }
+    },
+    {
+      "caso_id": "negativo-colapso-no-unico",
+      "forma": "colapso_no_unico",
+      "procedencia": {
+        "sede": "sede.md",
+        "tipo_de_sede": "fila_de_tabla_markdown",
+        "selector": {
+          "clave_primera_celda": "alfa",
+          "encabezado_de_columna": "espera"
+        },
+        "cardinalidad": {
+          "tipo": "al_menos_una",
+          "orden": "documento",
+          "colapso": "unico_si_iguales"
+        },
+        "extraccion": {
+          "tipo": "literal"
+        },
+        "normalizacion": "trim",
+        "conversion": "cadena"
+      },
+      "esperado": {
+        "valor": null,
+        "cardinalidad_observada": 2,
+        "error": "colapso_no_unico",
+        "causa": "colapso_no_unico"
+      }
+    },
+    {
+      "caso_id": "orden-documento",
+      "forma": "exactamente_n · lista · documento — con valores DISTINTOS",
+      "procedencia": {
+        "sede": "sede.md",
+        "tipo_de_sede": "patron_de_linea",
+        "selector": {
+          "patron": "^Orden (zeta|alfa), "
+        },
+        "cardinalidad": {
+          "tipo": "exactamente_n",
+          "n": 2,
+          "orden": "documento",
+          "colapso": "lista"
+        },
+        "extraccion": {
+          "tipo": "captura_de_grupo",
+          "patron": "^Orden (\\w+),",
+          "grupo": 1
+        },
+        "normalizacion": "trim",
+        "conversion": "cadena"
+      },
+      "esperado": {
+        "valor": [
+          "zeta",
+          "alfa"
+        ],
+        "cardinalidad_observada": 2,
+        "error": null,
+        "causa": null
+      }
+    },
+    {
+      "caso_id": "orden-lexicografico",
+      "forma": "exactamente_n · lista · lexicografico — invierte el orden de documento",
+      "procedencia": {
+        "sede": "sede.md",
+        "tipo_de_sede": "patron_de_linea",
+        "selector": {
+          "patron": "^Orden (zeta|alfa), "
+        },
+        "cardinalidad": {
+          "tipo": "exactamente_n",
+          "n": 2,
+          "orden": "lexicografico",
+          "colapso": "lista"
+        },
+        "extraccion": {
+          "tipo": "captura_de_grupo",
+          "patron": "^Orden (\\w+),",
+          "grupo": 1
+        },
+        "normalizacion": "trim",
+        "conversion": "cadena"
+      },
+      "esperado": {
+        "valor": [
+          "alfa",
+          "zeta"
+        ],
+        "cardinalidad_observada": 2,
+        "error": null,
+        "causa": null
+      }
+    },
+    {
+      "caso_id": "entero-con-signo-mas",
+      "forma": "conversion_fallida · entero_no_reconocido — `+5` que `int()` acepta",
+      "procedencia": {
+        "sede": "sede.md",
+        "tipo_de_sede": "fila_de_tabla_markdown",
+        "selector": {
+          "clave_primera_celda": "gamma",
+          "encabezado_de_columna": "firmado"
+        },
+        "cardinalidad": {
+          "tipo": "exactamente_una"
+        },
+        "extraccion": {
+          "tipo": "literal"
+        },
+        "normalizacion": "trim",
+        "conversion": "entero"
+      },
+      "esperado": {
+        "valor": null,
+        "cardinalidad_observada": 1,
+        "error": "conversion_fallida",
+        "causa": "entero_no_reconocido"
+      }
+    },
+    {
+      "caso_id": "trim-que-recorta",
+      "forma": "normalizacion trim sobre una LÍNEA indentada — la celda de una tabla llega ya recortada por el selector, así que ahí el trim no se ejerce",
+      "procedencia": {
+        "sede": "sede.md",
+        "tipo_de_sede": "patron_de_linea",
+        "selector": {
+          "patron": "^\\s+Línea indentada:"
+        },
+        "cardinalidad": {
+          "tipo": "exactamente_una"
+        },
+        "extraccion": {
+          "tipo": "literal"
+        },
+        "normalizacion": "trim",
+        "conversion": "cadena"
+      },
+      "esperado": {
+        "valor": "Línea indentada: el trim la recorta y sin ella la normalización no se ejerce.",
+        "cardinalidad_observada": 1,
+        "error": null,
+        "causa": null
+      }
+    },
+    {
+      "caso_id": "clausula-con-metacaracter",
+      "forma": "presencia_de_clausula es LITERAL y no un patrón",
+      "procedencia": {
+        "sede": "sede.md",
+        "tipo_de_sede": "patron_de_linea",
+        "selector": {
+          "patron": "^Una línea con la marca"
+        },
+        "cardinalidad": {
+          "tipo": "exactamente_una"
+        },
+        "extraccion": {
+          "tipo": "presencia_de_clausula",
+          "clausula": "a.c"
+        },
+        "normalizacion": "trim",
+        "conversion": "booleano"
+      },
+      "esperado": {
+        "valor": null,
+        "cardinalidad_observada": 1,
+        "error": "conversion_fallida",
+        "causa": "clausula_ausente"
+      }
+    },
+    {
+      "caso_id": "ancla-de-nodo-en-seccion",
+      "forma": "ancla_de_seccion sobre un nodo que NO es el encabezado",
+      "procedencia": {
+        "sede": "sede.md",
+        "tipo_de_sede": "patron_de_linea",
+        "selector": {
+          "patron": "^La línea que ancla:"
+        },
+        "cardinalidad": {
+          "tipo": "exactamente_una"
+        },
+        "extraccion": {
+          "tipo": "ancla_de_seccion"
+        },
+        "normalizacion": "ninguna",
+        "conversion": "referencia"
+      },
+      "esperado": {
+        "valor": "sede.md#seccion-que-contiene-al-nodo",
+        "cardinalidad_observada": 1,
+        "error": null,
+        "causa": null
+      }
+    },
+    {
+      "caso_id": "heading-dentro-de-fence",
+      "forma": "un `##` dentro de un bloque cercado no es una sección",
+      "procedencia": {
+        "sede": "sede.md",
+        "tipo_de_sede": "patron_de_linea",
+        "selector": {
+          "patron": "^codex exec -s read-only -C <dentro-del-fence>"
+        },
+        "cardinalidad": {
+          "tipo": "exactamente_una"
+        },
+        "extraccion": {
+          "tipo": "ancla_de_seccion"
+        },
+        "normalizacion": "ninguna",
+        "conversion": "referencia"
+      },
+      "esperado": {
+        "valor": "sede.md#piezas-que-solo-se-ejercen-con-la-entrada-justa",
+        "cardinalidad_observada": 1,
+        "error": null,
+        "causa": null
+      }
+    }
+  ],
+  "divergencias_declaradas": [
+    {
+      "caso_id": "negativo-sede-no-admisible",
+      "forma": "sede_no_admisible · artefacto_del_flujo",
+      "procedencia": {
+        "sede": "scripts/recetas-cohorte.json",
+        "tipo_de_sede": "patron_de_linea",
+        "selector": {
+          "patron": "^x$"
+        },
+        "cardinalidad": {
+          "tipo": "exactamente_una"
+        },
+        "extraccion": {
+          "tipo": "literal"
+        },
+        "normalizacion": "trim",
+        "conversion": "cadena"
+      },
+      "esperado": {
+        "valor": null,
+        "cardinalidad_observada": null,
+        "error": "sede_no_admisible",
+        "causa": "artefacto_del_flujo"
+      },
+      "por_que_no_lo_congela_el_original": "Es la ÚNICA pieza donde los dos motores difieren a propósito. `ARTEFACTOS_DEL_FLUJO` dice qué sedes son autorreferencia, y eso depende de quién resuelve: el original protege los artefactos del flujo de la matriz, el portado los de la fase 0. Sobre `scripts/recetas-cohorte.json` el original no ve autorreferencia —no es artefacto suyo— y el portado sí. Congelarlo con el original convertiría la adaptación declarada en una divergencia oculta."
+    }
+  ],
+  "por_que_hay_divergencias_declaradas": "Portar no es copiar: una de las cuatro adaptaciones cambia comportamiento a propósito. Lo que el corpus no puede hacer es dejarlo implícito — un caso que se congela con el original y falla con el portado se lee como regresión, y uno que se saca del corpus se lee como que nadie lo probó. Va acá, con su razón y con el esperado que fija el PORT."
+}
