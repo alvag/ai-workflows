@@ -7,7 +7,7 @@
   "preregistro_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
   "procedencia": {
     "run_id": "run-g-c1",
-    "bundle_sha256": "d23566b460b863817edb92045015baa9c24e8e95c0cca318f2638870f58eed52"
+    "bundle_sha256": "f4dd7b5cd5fc7ef7ad2b4c8cb3c15e15b32f874f7ff62cd1073b71900cf98f61"
   },
   "punto_de_despacho": "cross-implement-implementador-inicial",
   "skill": "cross-implement",
@@ -77,7 +77,10 @@
   "trabajos_delegados": [
     {
       "trabajo_delegado_id": "trb-c1",
-      "evento_terminal_id": "evt-c1-terminal",
+      "estado_terminal": {
+        "estado": "comprobado",
+        "evento_terminal_id": "evt-c1-terminal"
+      },
       "metricas": [
         {
           "metrica_id": "latencia-hasta-estado-terminal",

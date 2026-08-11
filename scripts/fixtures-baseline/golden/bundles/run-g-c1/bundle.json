@@ -104,7 +104,10 @@
   "trabajos_delegados": [
     {
       "trabajo_delegado_id": "trb-c1",
-      "evento_terminal_id": "evt-c1-terminal",
+      "estado_terminal": {
+        "estado": "comprobado",
+        "evento_terminal_id": "evt-c1-terminal"
+      },
       "recursos_ids": [
         "rec-proceso-vivo"
       ]

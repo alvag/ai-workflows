@@ -7,7 +7,7 @@
   "preregistro_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
   "procedencia": {
     "run_id": "run-g-a2",
-    "bundle_sha256": "01f198b0542782679326c9bfaa73f3d908e9beacb30fa9221d3047cfbc4e21e0"
+    "bundle_sha256": "8fbb77f73c73c0b7544c9749539c05704892f1b80c21572ae83243943e5a6edc"
   },
   "punto_de_despacho": "sdd-flow-implementer-por-task",
   "skill": "sdd-flow",
@@ -77,7 +77,10 @@
   "trabajos_delegados": [
     {
       "trabajo_delegado_id": "trb-a2",
-      "evento_terminal_id": "evt-a2-terminal",
+      "estado_terminal": {
+        "estado": "comprobado",
+        "evento_terminal_id": "evt-a2-terminal"
+      },
       "metricas": [
         {
           "metrica_id": "latencia-hasta-estado-terminal",

@@ -4,7 +4,6 @@
   "title": "Observación de la fase 0",
   "description": "Schema cerrado y versionado de cada observación de `scripts/observaciones-fase-0/`. Una observación es el resultado de aplicar el recolector sobre un bundle de corrida: nunca se escribe a mano. Declara las tres identidades distintas de la decisión D-12 —muestra, intento y observación—, el identificador por contenido del pre-registro que AC-17 exige, la procedencia del bundle del que se derivó, los tres ejes de clasificación de AC-18, las métricas por corrida y las métricas por trabajo delegado. Cada objeto es cerrado: `additionalProperties` es false en todos los niveles.",
   "x-version": "1.0.0",
-
   "x-notas": {
     "tres-identidades-y-no-una": "`sample_id`, `attempt_id` y `observation_id` son TRES campos distintos y ninguno se deriva por copia de otro (D-12). La muestra es lo que el pre-registro congela; el intento es lo que la política de reintentos produce, y admite más de uno por muestra; la observación es lo que el recolector emite por intento. Fusionarlos —el caso barato: un solo `run_id` haciendo de los tres— vuelve indistinguibles un reintento legítimo y una observación duplicada, y deja al conjunto final válido después de borrar el último intento bloqueado.",
     "ordinal-aparte-del-identificador": "`attempt_ordinal` existe además de `attempt_id` porque la cadena de intentos se comprueba append-only: el ordinal es lo que hace visible un hueco cuando alguien borra un intento y renumera. Un identificador opaco solo, sin posición, deja esa renumeración sin evidencia.",
@@ -13,7 +12,6 @@
     "dos-magnitudes-de-latencia-en-dos-lugares": "El tiempo hasta el estado terminal comprobado es por trabajo delegado y vive en `trabajos_delegados[].metricas`; el tiempo hasta el resultado utilizable es de la corrida y vive en `metricas`. Están en sedes distintas justamente porque AC-19 prohíbe compararlas entre sí: una sola lista plana las dejaría a un promedio de distancia.",
     "refs-locales": "El validador de `scripts/instrumento-baseline.py` resuelve solo `$ref` locales (`#/$defs/...`). Las definiciones que se repiten entre los cinco schemas de la fase están repetidas en cada archivo a propósito: un `$ref` entre archivos sería una palabra clave que el validador no implementa, y una palabra ignorada en silencio es una restricción que nadie aplica."
   },
-
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -63,31 +61,44 @@
       "description": "De qué bundle se derivó esta observación. Es la única sede del vínculo: el recolector se re-ejecuta sobre ese bundle y compara byte a byte.",
       "$ref": "#/$defs/procedencia"
     },
-    "punto_de_despacho": {"$ref": "#/$defs/enum_punto_de_despacho"},
-    "skill": {"$ref": "#/$defs/enum_skill"},
-    "familia_de_rol": {"$ref": "#/$defs/enum_familia_de_rol"},
-    "transporte": {"$ref": "#/$defs/enum_transporte"},
+    "punto_de_despacho": {
+      "$ref": "#/$defs/enum_punto_de_despacho"
+    },
+    "skill": {
+      "$ref": "#/$defs/enum_skill"
+    },
+    "familia_de_rol": {
+      "$ref": "#/$defs/enum_familia_de_rol"
+    },
+    "transporte": {
+      "$ref": "#/$defs/enum_transporte"
+    },
     "estrato": {
       "description": "Estrato de ejecución, derivado del valor efectivo registrado en el bundle y nunca declarado por el ejecutor.",
       "$ref": "#/$defs/enum_estrato"
     },
-    "estado": {"$ref": "#/$defs/estado_derivado"},
+    "estado": {
+      "$ref": "#/$defs/estado_derivado"
+    },
     "metricas": {
       "description": "Métricas de la corrida completa. Cada `metrica_id` aparece una sola vez.",
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
-      "items": {"$ref": "#/$defs/metrica_observada"}
+      "items": {
+        "$ref": "#/$defs/metrica_observada"
+      }
     },
     "trabajos_delegados": {
       "description": "Un elemento por trabajo delegado de la corrida. Dos puntos de la matriz declaran dos trabajos cada uno, y AC-19 pide la latencia terminal por trabajo, no por corrida.",
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
-      "items": {"$ref": "#/$defs/trabajo_delegado"}
+      "items": {
+        "$ref": "#/$defs/trabajo_delegado"
+      }
     }
   },
-
   "$defs": {
     "identificador": {
       "description": "Identidad estable: minúsculas, dígitos y separadores. No lleva espacios ni rutas.",
@@ -108,7 +119,10 @@
     "procedencia": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["run_id", "bundle_sha256"],
+      "required": [
+        "run_id",
+        "bundle_sha256"
+      ],
       "properties": {
         "run_id": {
           "description": "Identidad de la corrida cuyo bundle produjo esta observación.",
@@ -162,15 +176,28 @@
     },
     "enum_transporte": {
       "description": "La vía efectiva del intento. `mixto` es un valor del punto, no de un intento: un intento viaja por una sola vía.",
-      "enum": ["subagent", "cli-exec", "cli-resume"]
+      "enum": [
+        "subagent",
+        "cli-exec",
+        "cli-resume"
+      ]
     },
     "enum_estrato": {
       "description": "Si la corrida transcurrió sin intervención humana o con ella. Sin evento de confirmación registrado, el intento bloquea: nunca se reclasifica como automatizable.",
-      "enum": ["automatizable", "con_intervencion_humana"]
+      "enum": [
+        "automatizable",
+        "con_intervencion_humana"
+      ]
     },
     "enum_categoria_de_metrica": {
       "description": "Las cinco categorías obligatorias de AC-15.",
-      "enum": ["latencia", "degradacion", "salidas_invalidas", "hallazgos", "limpieza"]
+      "enum": [
+        "latencia",
+        "degradacion",
+        "salidas_invalidas",
+        "hallazgos",
+        "limpieza"
+      ]
     },
     "enum_ciclo_operativo": {
       "description": "Eje 1: qué pasó con el ciclo de la corrida, derivado de los eventos observados.",
@@ -184,56 +211,105 @@
     },
     "enum_validez_del_reporte": {
       "description": "Eje 2: si el reporte del worker llegó y es interpretable.",
-      "enum": ["valido", "malformado", "ausente"]
+      "enum": [
+        "valido",
+        "malformado",
+        "ausente"
+      ]
     },
     "enum_resultado_semantico": {
       "description": "Eje 3: si lo entregado es correcto, incorrecto o no se puede evaluar.",
-      "enum": ["correcto", "incorrecto", "no_evaluable"]
+      "enum": [
+        "correcto",
+        "incorrecto",
+        "no_evaluable"
+      ]
     },
     "enum_estado_de_medicion": {
       "description": "Estados de una métrica sin valor. `no_observada` es que la cohorte no la cubrió; `bloqueada` es que la corrida impidió medirla.",
-      "enum": ["no_observada", "bloqueada"]
+      "enum": [
+        "no_observada",
+        "bloqueada"
+      ]
     },
     "estado_derivado": {
       "description": "Los tres ejes normativos, derivados de eventos observados y nunca de campos declarativos del bundle.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["ciclo_operativo", "validez_del_reporte", "resultado_semantico"],
+      "required": [
+        "ciclo_operativo",
+        "validez_del_reporte",
+        "resultado_semantico"
+      ],
       "properties": {
-        "ciclo_operativo": {"$ref": "#/$defs/enum_ciclo_operativo"},
-        "validez_del_reporte": {"$ref": "#/$defs/enum_validez_del_reporte"},
-        "resultado_semantico": {"$ref": "#/$defs/enum_resultado_semantico"},
+        "ciclo_operativo": {
+          "$ref": "#/$defs/enum_ciclo_operativo"
+        },
+        "validez_del_reporte": {
+          "$ref": "#/$defs/enum_validez_del_reporte"
+        },
+        "resultado_semantico": {
+          "$ref": "#/$defs/enum_resultado_semantico"
+        },
         "causa_de_bloqueo": {
           "description": "Obligatoria cuando el ciclo operativo es `bloqueado`: un bloqueo sin causa es indistinguible de una omisión.",
           "$ref": "#/$defs/texto"
         }
       },
       "if": {
-        "properties": {"ciclo_operativo": {"const": "bloqueado"}},
-        "required": ["ciclo_operativo"]
+        "properties": {
+          "ciclo_operativo": {
+            "const": "bloqueado"
+          }
+        },
+        "required": [
+          "ciclo_operativo"
+        ]
       },
-      "then": {"required": ["causa_de_bloqueo"]}
+      "then": {
+        "required": [
+          "causa_de_bloqueo"
+        ]
+      }
     },
     "metrica_observada": {
       "description": "Una métrica de esta observación: medida con su valor, o sin observación con su adjudicación escrita. Las dos variantes son disjuntas por `estado_de_medicion`.",
       "oneOf": [
-        {"$ref": "#/$defs/metrica_medida"},
-        {"$ref": "#/$defs/metrica_sin_observacion"}
+        {
+          "$ref": "#/$defs/metrica_medida"
+        },
+        {
+          "$ref": "#/$defs/metrica_sin_observacion"
+        }
       ]
     },
     "metrica_medida": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["metrica_id", "categoria", "estado_de_medicion", "valor", "unidad"],
+      "required": [
+        "metrica_id",
+        "categoria",
+        "estado_de_medicion",
+        "valor",
+        "unidad"
+      ],
       "properties": {
-        "metrica_id": {"$ref": "#/$defs/identificador"},
-        "categoria": {"$ref": "#/$defs/enum_categoria_de_metrica"},
-        "estado_de_medicion": {"const": "medida"},
+        "metrica_id": {
+          "$ref": "#/$defs/identificador"
+        },
+        "categoria": {
+          "$ref": "#/$defs/enum_categoria_de_metrica"
+        },
+        "estado_de_medicion": {
+          "const": "medida"
+        },
         "valor": {
           "description": "El valor derivado por la fórmula que el vocabulario declara para esta métrica.",
           "type": "number"
         },
-        "unidad": {"$ref": "#/$defs/texto"},
+        "unidad": {
+          "$ref": "#/$defs/texto"
+        },
         "numerador": {
           "description": "Numerador de una métrica publicada como tasa. Va con su denominador, o la tasa no es auditable.",
           "type": "number"
@@ -249,11 +325,22 @@
       "description": "Métrica sin valor. No declara la propiedad `valor`: el schema cerrado es lo que impide publicar un cero donde no hubo medición.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["metrica_id", "categoria", "estado_de_medicion", "adjudicacion"],
+      "required": [
+        "metrica_id",
+        "categoria",
+        "estado_de_medicion",
+        "adjudicacion"
+      ],
       "properties": {
-        "metrica_id": {"$ref": "#/$defs/identificador"},
-        "categoria": {"$ref": "#/$defs/enum_categoria_de_metrica"},
-        "estado_de_medicion": {"$ref": "#/$defs/enum_estado_de_medicion"},
+        "metrica_id": {
+          "$ref": "#/$defs/identificador"
+        },
+        "categoria": {
+          "$ref": "#/$defs/enum_categoria_de_metrica"
+        },
+        "estado_de_medicion": {
+          "$ref": "#/$defs/enum_estado_de_medicion"
+        },
         "adjudicacion": {
           "description": "Por qué esta métrica no tiene valor, escrita y no inferida.",
           "$ref": "#/$defs/texto"
@@ -261,21 +348,71 @@
       }
     },
     "trabajo_delegado": {
-      "description": "Un trabajo delegado de la corrida, con su evento terminal comprobado y sus métricas propias.",
+      "description": "Un trabajo delegado de la corrida, con su estado terminal y sus métricas propias.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["trabajo_delegado_id", "evento_terminal_id", "metricas"],
+      "required": [
+        "trabajo_delegado_id",
+        "estado_terminal",
+        "metricas"
+      ],
       "properties": {
-        "trabajo_delegado_id": {"$ref": "#/$defs/identificador"},
-        "evento_terminal_id": {
-          "description": "Evento del bundle que acredita el estado terminal. Sin él, la latencia terminal no está comprobada.",
+        "trabajo_delegado_id": {
           "$ref": "#/$defs/identificador"
+        },
+        "estado_terminal": {
+          "$ref": "#/$defs/estado_terminal_de_trabajo"
         },
         "metricas": {
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": {"$ref": "#/$defs/metrica_observada"}
+          "items": {
+            "$ref": "#/$defs/metrica_observada"
+          }
+        }
+      }
+    },
+    "estado_terminal_de_trabajo": {
+      "description": "Derivado del bundle, no reinterpretado. Cuando el terminal no está comprobado, la latencia terminal de este trabajo se emite sin valor y con su adjudicación escrita (AC-21), nunca en cero.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/terminal_comprobado"
+        },
+        {
+          "$ref": "#/$defs/terminal_no_comprobable"
+        }
+      ]
+    },
+    "terminal_comprobado": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "estado",
+        "evento_terminal_id"
+      ],
+      "properties": {
+        "estado": {
+          "const": "comprobado"
+        },
+        "evento_terminal_id": {
+          "$ref": "#/$defs/identificador"
+        }
+      }
+    },
+    "terminal_no_comprobable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "estado",
+        "causa"
+      ],
+      "properties": {
+        "estado": {
+          "const": "no_comprobable"
+        },
+        "causa": {
+          "$ref": "#/$defs/texto"
         }
       }
     }

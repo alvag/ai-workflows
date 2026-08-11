@@ -60,7 +60,10 @@
   "trabajos_delegados": [
     {
       "trabajo_delegado_id": "trb-implementer-1",
-      "evento_terminal_id": "evt-terminal-1",
+      "estado_terminal": {
+        "estado": "comprobado",
+        "evento_terminal_id": "evt-terminal-1"
+      },
       "metricas": [
         {
           "metrica_id": "latencia-hasta-estado-terminal",

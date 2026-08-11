@@ -1,0 +1,113 @@
+{
+  "descripcion": "Manifest INDEPENDIENTE del corpus de control de AC-18. Declara qué categorías tiene que cubrir el corpus, qué combinaciones mínimas de fallas, y —por caso— su terna de ejes normativos y sus métricas esperadas. Es independiente a propósito (D-16): un modo que comprobara «las categorías que el corpus resulta tener» no podría detectar que falta una, porque el conjunto que valida y aquel contra el que valida serían el mismo.",
+  "por-que-la-terna-y-nunca-una-etiqueta": "El resultado esperado de cada caso se declara por los TRES ejes normativos —ciclo operativo, validez del reporte y resultado semántico— más las métricas derivadas por separado. Una etiqueta única obliga a resolver por prioridad arbitraria los casos que combinan varias fallas, y una corrida real las combina: `malformada-y-degradacion` es a la vez un ciclo degradado, un reporte inválido y un resultado no evaluable, y ninguno de los tres es «el» estado del caso.",
+  "por-que-bloqueo-esta-entre-las-obligatorias": "AC-18 nombra cinco fallas —salida malformada, degradación observada, presupuesto vencido con proceso vivo, ausencia de eventos y limpieza incompleta— y el caso positivo. `bloqueo` se agrega porque es el quinto valor del enum `ciclo_operativo` del contrato, y un valor del vocabulario sin ningún caso es un valor que nadie probó que el instrumento sepa derivar.",
+
+  "categorias_obligatorias": [
+    "positivo",
+    "salida_malformada",
+    "degradacion_observada",
+    "presupuesto_vencido_con_proceso_vivo",
+    "ausencia_de_eventos",
+    "limpieza_incompleta",
+    "bloqueo"
+  ],
+
+  "combinaciones_minimas": [
+    ["degradacion_observada", "limpieza_incompleta"],
+    ["salida_malformada", "degradacion_observada"],
+    ["presupuesto_vencido_con_proceso_vivo", "salida_malformada"],
+    ["bloqueo", "limpieza_incompleta"]
+  ],
+
+  "casos": [
+    {
+      "caso_id": "positivo",
+      "categoria": "positivo",
+      "fallas": [],
+      "descripcion": "el control positivo: sin él, un clasificador que marcara todo como fallido pasaría el corpus entero de negativos",
+      "estado_esperado": {"ciclo_operativo": "completado", "validez_del_reporte": "valido", "resultado_semantico": "correcto"},
+      "metricas_esperadas": {"latencia-hasta-resultado-utilizable": 50000.0, "tasa-de-degradacion": 0.0, "salidas-invalidas": 0.0, "limpieza-completa": 1.0}
+    },
+    {
+      "caso_id": "salida-malformada",
+      "categoria": "salida_malformada",
+      "fallas": ["salida_malformada"],
+      "descripcion": "el ciclo completa y la salida no se puede interpretar: el eje 1 en verde con el eje 2 en rojo",
+      "estado_esperado": {"ciclo_operativo": "completado", "validez_del_reporte": "malformado", "resultado_semantico": "no_evaluable"},
+      "metricas_esperadas": {"salidas-invalidas": 1.0, "tasa-de-salidas-invalidas": 1.0, "limpieza-completa": 1.0}
+    },
+    {
+      "caso_id": "degradacion-observada",
+      "categoria": "degradacion_observada",
+      "fallas": ["degradacion_observada"],
+      "descripcion": "degradación derivada de su EVENTO, no del campo declarativo del intento, que sigue diciendo «completado»",
+      "estado_esperado": {"ciclo_operativo": "degradado", "validez_del_reporte": "valido", "resultado_semantico": "correcto"},
+      "metricas_esperadas": {"tasa-de-degradacion": 1.0, "conteo-de-degradaciones": 1.0, "limpieza-completa": 1.0}
+    },
+    {
+      "caso_id": "presupuesto-vencido-con-proceso-vivo",
+      "categoria": "presupuesto_vencido_con_proceso_vivo",
+      "fallas": ["presupuesto_vencido_con_proceso_vivo"],
+      "descripcion": "no hay resultado utilizable y quedó un proceso vivo. La latencia se emite SIN valor, nunca en cero",
+      "estado_esperado": {"ciclo_operativo": "presupuesto_vencido_con_proceso_vivo", "validez_del_reporte": "ausente", "resultado_semantico": "no_evaluable"},
+      "metricas_esperadas": {"latencia-hasta-resultado-utilizable": "bloqueada", "tasa-de-degradacion": 1.0, "limpieza-completa": 0.0}
+    },
+    {
+      "caso_id": "ausencia-de-eventos",
+      "categoria": "ausencia_de_eventos",
+      "fallas": ["ausencia_de_eventos"],
+      "descripcion": "la corrida no llegó a despachar. La tasa de degradación queda SIN POBLACIÓN ELEGIBLE —`sin_eventos` está fuera del denominador— así que se emite bloqueada, que es lo que el vocabulario documenta",
+      "estado_esperado": {"ciclo_operativo": "sin_eventos", "validez_del_reporte": "ausente", "resultado_semantico": "no_evaluable"},
+      "metricas_esperadas": {"latencia-hasta-resultado-utilizable": "bloqueada", "tasa-de-degradacion": "bloqueada", "tasa-de-salidas-invalidas": "bloqueada", "salidas-invalidas": 1.0}
+    },
+    {
+      "caso_id": "limpieza-incompleta",
+      "categoria": "limpieza_incompleta",
+      "fallas": ["limpieza_incompleta"],
+      "descripcion": "todo en verde salvo el cese de un recurso, que no se pudo comprobar. Es el caso donde los tres ejes están limpios y una métrica no",
+      "estado_esperado": {"ciclo_operativo": "completado", "validez_del_reporte": "valido", "resultado_semantico": "correcto"},
+      "metricas_esperadas": {"limpieza-completa": 0.0, "tasa-de-degradacion": 0.0}
+    },
+    {
+      "caso_id": "bloqueo",
+      "categoria": "bloqueo",
+      "fallas": ["bloqueo"],
+      "descripcion": "la corrida se detuvo con su causa registrada en el evento. La causa se deriva del `detalle` del evento, no del campo declarativo del intento",
+      "estado_esperado": {"ciclo_operativo": "bloqueado", "validez_del_reporte": "ausente", "resultado_semantico": "no_evaluable", "causa_de_bloqueo": "el aislamiento no se pudo comprobar y la corrida se detuvo"},
+      "metricas_esperadas": {"latencia-hasta-resultado-utilizable": "bloqueada", "limpieza-completa": 1.0}
+    },
+    {
+      "caso_id": "degradacion-y-limpieza-incompleta",
+      "categoria": "degradacion_observada",
+      "fallas": ["degradacion_observada", "limpieza_incompleta"],
+      "descripcion": "combinado: el ciclo degrada y además queda un recurso sin cese comprobado. Una etiqueta única tendría que elegir cuál de las dos es «el» estado",
+      "estado_esperado": {"ciclo_operativo": "degradado", "validez_del_reporte": "valido", "resultado_semantico": "correcto"},
+      "metricas_esperadas": {"tasa-de-degradacion": 1.0, "limpieza-completa": 0.0}
+    },
+    {
+      "caso_id": "malformada-y-degradacion",
+      "categoria": "salida_malformada",
+      "fallas": ["salida_malformada", "degradacion_observada"],
+      "descripcion": "combinado: los tres ejes en rojo a la vez y por causas distintas",
+      "estado_esperado": {"ciclo_operativo": "degradado", "validez_del_reporte": "malformado", "resultado_semantico": "no_evaluable"},
+      "metricas_esperadas": {"tasa-de-degradacion": 1.0, "salidas-invalidas": 1.0, "limpieza-completa": 1.0}
+    },
+    {
+      "caso_id": "presupuesto-vencido-y-salida-malformada",
+      "categoria": "presupuesto_vencido_con_proceso_vivo",
+      "fallas": ["presupuesto_vencido_con_proceso_vivo", "salida_malformada"],
+      "descripcion": "combinado, y el único caso con resultado INCORRECTO sobre un reporte que no se pudo interpretar: prueba que el eje 3 no se deriva del eje 2",
+      "estado_esperado": {"ciclo_operativo": "presupuesto_vencido_con_proceso_vivo", "validez_del_reporte": "malformado", "resultado_semantico": "incorrecto"},
+      "metricas_esperadas": {"latencia-hasta-resultado-utilizable": "bloqueada", "tasa-de-degradacion": 1.0, "limpieza-completa": 0.0}
+    },
+    {
+      "caso_id": "bloqueo-y-limpieza-incompleta",
+      "categoria": "bloqueo",
+      "fallas": ["bloqueo", "limpieza_incompleta"],
+      "descripcion": "combinado: la corrida se detuvo y además dejó un recurso sin cese comprobado. El bloqueo no tapa la limpieza: son dos hechos separados",
+      "estado_esperado": {"ciclo_operativo": "bloqueado", "validez_del_reporte": "ausente", "resultado_semantico": "no_evaluable", "causa_de_bloqueo": "el aislamiento no se pudo comprobar y la corrida se detuvo"},
+      "metricas_esperadas": {"latencia-hasta-resultado-utilizable": "bloqueada", "limpieza-completa": 0.0}
+    }
+  ]
+}

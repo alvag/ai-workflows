@@ -108,14 +108,20 @@
   "trabajos_delegados": [
     {
       "trabajo_delegado_id": "trb-worker-codex",
-      "evento_terminal_id": "evt-terminal-w1",
+      "estado_terminal": {
+        "estado": "comprobado",
+        "evento_terminal_id": "evt-terminal-w1"
+      },
       "recursos_ids": [
         "rec-proceso-codex"
       ]
     },
     {
       "trabajo_delegado_id": "trb-worker-claude",
-      "evento_terminal_id": "evt-terminal-w2",
+      "estado_terminal": {
+        "estado": "comprobado",
+        "evento_terminal_id": "evt-terminal-w2"
+      },
       "recursos_ids": [
         "rec-proceso-claude"
       ]

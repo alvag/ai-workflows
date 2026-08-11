@@ -117,7 +117,10 @@
   "trabajos_delegados": [
     {
       "trabajo_delegado_id": "trb-a2",
-      "evento_terminal_id": "evt-a2-terminal",
+      "estado_terminal": {
+        "estado": "comprobado",
+        "evento_terminal_id": "evt-a2-terminal"
+      },
       "recursos_ids": [
         "rec-sesion"
       ]

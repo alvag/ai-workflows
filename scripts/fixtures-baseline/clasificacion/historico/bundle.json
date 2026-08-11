@@ -1,0 +1,200 @@
+{
+  "version_schema": "1.0.0",
+  "run_id": "run-historico-contradictorio",
+  "sample_id": "mst-co-explore-fan-out-dual-r1",
+  "attempt_id": "int-mst-co-explore-fan-out-dual-r1-a1",
+  "attempt_ordinal": 1,
+  "preregistro_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+  "punto_de_despacho": "co-explore-fan-out-dual",
+  "skill": "co-explore",
+  "familia_de_rol": "explorer",
+  "transporte": "cli-exec",
+  "adaptador": "script",
+  "invocacion": {
+    "tipo": "comando",
+    "comando_literal": "codex exec -s read-only -C . --skip-git-repo-check --json < prompt.txt",
+    "directorio_de_trabajo": "arboles-desechables/run-historico-contradictorio"
+  },
+  "ventana_de_pared_utc": {
+    "inicio": "2026-08-01T21:03:00Z",
+    "fin": "2026-08-01T21:11:00Z"
+  },
+  "estado_del_intento": {
+    "resultado": "completado"
+  },
+  "eventos": [
+    {
+      "evento_id": "evt-hash",
+      "tipo": "validacion_de_hash_congelado",
+      "sello": {
+        "valor_ns": 200000000,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1000,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      }
+    },
+    {
+      "evento_id": "evt-preflight",
+      "tipo": "preflight_de_receta",
+      "sello": {
+        "valor_ns": 500000000,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1000,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      }
+    },
+    {
+      "evento_id": "evt-despacho",
+      "tipo": "despacho",
+      "sello": {
+        "valor_ns": 1000000000,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1000,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      }
+    },
+    {
+      "evento_id": "evt-degradacion-h3",
+      "tipo": "degradacion_observada",
+      "sello": {
+        "valor_ns": 120000000000,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1000,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      },
+      "detalle": "los dos exploradores se serializaron: el segundo arranco cuando el primero ya habia escrito su informe"
+    },
+    {
+      "evento_id": "evt-degradacion-h8",
+      "tipo": "degradacion_observada",
+      "sello": {
+        "valor_ns": 200000000000,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1000,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      },
+      "detalle": "el arranque encadenado del agente devolvio error y solo avanzo al reintentarlo"
+    },
+    {
+      "evento_id": "evt-terminal",
+      "tipo": "estado_terminal_de_trabajo",
+      "sello": {
+        "valor_ns": 460000000000,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1000,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      }
+    },
+    {
+      "evento_id": "evt-utilizable",
+      "tipo": "resultado_utilizable",
+      "sello": {
+        "valor_ns": 481000000000,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1000,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      }
+    }
+  ],
+  "reporte_del_worker": {
+    "estado": "interpretable",
+    "ruta_relativa": "arboles-desechables/run-historico-contradictorio/informe.md",
+    "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  },
+  "veredicto_de_conformance": {
+    "resultado": "incorrecto",
+    "evidencia": "el informe declara que no hubo degradacion y narra dos degradaciones en sus propios hallazgos"
+  },
+  "trabajos_delegados": [
+    {
+      "trabajo_delegado_id": "trb-explorador",
+      "estado_terminal": {
+        "estado": "comprobado",
+        "evento_terminal_id": "evt-terminal"
+      },
+      "recursos_ids": [
+        "rec-proceso-explorador"
+      ]
+    }
+  ],
+  "artefactos_producidos": [],
+  "recursos": [
+    {
+      "recurso_id": "rec-proceso-explorador",
+      "clase": "proceso",
+      "life_state": "terminado_comprobado",
+      "ownership_state": "sin_transferir",
+      "evidencia_de_cese": "el proceso hijo devolvio codigo de salida y no quedo en la tabla de procesos"
+    }
+  ],
+  "pruebas_de_aislamiento": {
+    "refs_y_objetos_identicos": {
+      "resultado": "not_applicable",
+      "causa": "el punto corre con permiso de solo lectura segun la matriz de despachos",
+      "permiso_efectivo": "read_only"
+    },
+    "sin_red_ni_credenciales": {
+      "resultado": "pasa",
+      "evidencia": "el sandbox de solo lectura corrio sin red alcanzable, comprobado en la frontera"
+    },
+    "arbol_original_intacto": {
+      "resultado": "not_applicable",
+      "causa": "el punto corre con permiso de solo lectura segun la matriz de despachos",
+      "permiso_efectivo": "read_only"
+    }
+  },
+  "inventario_de_egreso_reejecutado": {
+    "inventario_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "superficies": []
+  },
+  "identidad_del_entorno": {
+    "code_commit": "402396a",
+    "preregistration_commit": "9c0ffee",
+    "arbol_limpio": true,
+    "matriz_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+    "instrumento_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+    "runner_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+    "version_cli": "codex 0.146.1",
+    "version_runtime": "python 3.13",
+    "hooks": [
+      "stop-hook del entorno, declarado y sin efecto sobre esta corrida"
+    ],
+    "ejecutor": {
+      "perfil_esperado": "conductor local sin hooks de sesion",
+      "instancia_efectiva": {
+        "estado": "expuesto",
+        "valor": "conductor local"
+      }
+    },
+    "eventos_de_intervencion_humana": [],
+    "modelo": {
+      "solicitado": {
+        "estado": "expuesto",
+        "valor": "gpt-5.4-codex"
+      },
+      "efectivo": {
+        "estado": "expuesto",
+        "valor": "gpt-5.4-codex"
+      }
+    }
+  },
+  "pipeline_de_sanitizacion": {
+    "orden_aplicado": [
+      "captura",
+      "normalizacion_de_rutas",
+      "validacion_y_escaneo",
+      "canonicalizacion_y_hash",
+      "recoleccion",
+      "versionado"
+    ],
+    "manifest_sha256": "4444444444444444444444444444444444444444444444444444444444444444"
+  },
+  "journal_candidate_ids": []
+}

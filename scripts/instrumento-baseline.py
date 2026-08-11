@@ -2781,7 +2781,11 @@ def derivar_observacion(bundle: dict, bundle_sha256: str, vocabulario: dict,
         "trabajos_delegados": [
             {
                 "trabajo_delegado_id": trabajo.get("trabajo_delegado_id"),
-                "evento_terminal_id": trabajo.get("evento_terminal_id"),
+                # El estado terminal se copia tal cual: es un hecho que el runner comprobó al
+                # capturar, no algo que el recolector pueda reinterpretar. Cuando no está
+                # comprobado, la latencia terminal cae sola en su variante sin valor, porque el
+                # evento que la cierra no existe.
+                "estado_terminal": trabajo.get("estado_terminal"),
                 "metricas": [_derivar_metrica(m, indice, bundle, hecho,
                                               trabajo.get("trabajo_delegado_id"),
                                               formulas_elegidas)
@@ -3979,6 +3983,342 @@ def _cerrar(resultados: list[tuple[str, bool, str]]) -> int:
 
 
 # ---------------------------------------------------------------------------------------------
+# Modos `--autotest-clasificacion` y `--fixture-historico`.
+#
+# Una observación limpia no prueba que el instrumento clasifique bien. El corpus de control existe
+# para eso, y su forma la fija AC-18: **el resultado esperado de cada caso se declara por los TRES
+# EJES normativos —ciclo operativo, validez del reporte y resultado semántico— más las métricas
+# derivadas por separado, nunca como una etiqueta única**. Una etiqueta única obliga a resolver por
+# prioridad arbitraria los casos que combinan varias fallas, y una corrida real los combina.
+#
+# El corpus NO se valida contra sí mismo (D-16): las categorías obligatorias y las combinaciones
+# mínimas viven en un manifest independiente y se comparan en las dos direcciones, y cada caso
+# requerido lleva su mutante de eliminación — borrar el de ausencia de eventos tiene que poner el
+# modo rojo, no reducir el conjunto que valida.
+#
+# `--fixture-historico` es el caso que la serie del propio repositorio aporta: un registro que
+# **declara** que no hubo degradación y **narra** dos. Se reconstruye, no se copia (decisión
+# heredada 7): el documento original lleva un término que una guarda vigente prohíbe en el árbol
+# trackeado, y copiarlo la pondría roja por una razón ajena al cambio. El fixture reproduce solo la
+# contradicción, conserva un puntero de procedencia y es **autónomo**: no lee nada fuera de su
+# directorio, así que una clonación limpia puede ejecutarlo.
+# ---------------------------------------------------------------------------------------------
+
+DIR_FIXTURES_CLASIFICACION = DIR_SCRIPTS / "fixtures-baseline" / "clasificacion"
+RUTA_MANIFEST_CLASIFICACION = DIR_FIXTURES_CLASIFICACION / "manifest.json"
+DIR_CASO_HISTORICO = DIR_FIXTURES_CLASIFICACION / "historico"
+
+# Los tres ejes, por su nombre en el estado derivado. Un caso que no declare los tres no está
+# declarando una terna: está declarando una etiqueta con dos campos de adorno.
+EJES_NORMATIVOS: tuple[str, ...] = ("ciclo_operativo", "validez_del_reporte", "resultado_semantico")
+
+
+def _bundle_de_caso(caso_id: str) -> BundleEnDisco:
+    return _leer_bundle(DIR_FIXTURES_CLASIFICACION / "casos" / caso_id)
+
+
+def _casos_en_disco() -> set[str]:
+    raiz = DIR_FIXTURES_CLASIFICACION / "casos"
+    if not raiz.is_dir():
+        return set()
+    return {hijo.name for hijo in raiz.iterdir() if hijo.is_dir()}
+
+
+def clasificar_caso(caso_id: str, vocabulario: dict,
+                    esquemas: dict) -> tuple[dict | None, list[str]]:
+    """La observación del caso, derivada por el mismo recolector que corre en producción. El corpus
+    no ejercita un clasificador aparte: si lo hiciera, probaría un código que nadie usa."""
+    bundle = _bundle_de_caso(caso_id)
+    if bundle.error:
+        return None, [f"{caso_id}: {bundle.error}"]
+    errores = validar(bundle.datos, esquemas["bundle-corrida"])
+    if errores:
+        return None, [f"{caso_id}: el bundle no valida contra su contrato — {errores[0]}"]
+    observacion, fallas = derivar_observacion(bundle.datos, bundle.sha256, vocabulario,
+                                              esquemas["observacion"])
+    return observacion, [f"{caso_id}: {f}" for f in fallas]
+
+
+def _valor_de_metrica(observacion: dict, metrica_id: str) -> Any:
+    """Lo que el caso declara esperar de una métrica: su valor si está medida, y su estado de
+    medición si no. Las dos cosas se comparan igual, porque «bloqueada» es un resultado tan
+    declarable como un número — y es el que AC-21 exige donde no hubo medición."""
+    metrica = _metrica_de_la_observacion(observacion, metrica_id)
+    if metrica is None:
+        return None
+    if metrica.get("estado_de_medicion") != "medida":
+        return metrica.get("estado_de_medicion")
+    return metrica.get("valor")
+
+
+def revisar_caso(entrada: dict, observacion: dict) -> list[str]:
+    """Un caso contra su declaración. Los ejes y las métricas se comparan POR SEPARADO: fundirlos en
+    un veredicto único es lo que deja pasar un clasificador que acierta la etiqueta y deriva mal."""
+    problemas: list[str] = []
+    caso_id = entrada["caso_id"]
+    esperado = entrada.get("estado_esperado") or {}
+
+    faltantes = [eje for eje in EJES_NORMATIVOS if eje not in esperado]
+    if faltantes:
+        problemas.append(f"{caso_id}: el esperado no declara {faltantes}: sin los tres ejes no es "
+                         "una terna, es una etiqueta única")
+    obtenido = observacion.get("estado") or {}
+    for clave, valor in esperado.items():
+        if obtenido.get(clave) != valor:
+            problemas.append(f"{caso_id}: `{clave}` es {obtenido.get(clave)!r} y se esperaba "
+                             f"{valor!r}")
+
+    for metrica_id, valor in (entrada.get("metricas_esperadas") or {}).items():
+        obtenido_metrica = _valor_de_metrica(observacion, metrica_id)
+        if isinstance(valor, (int, float)) and isinstance(obtenido_metrica, (int, float)):
+            if not _casi_igual(obtenido_metrica, valor):
+                problemas.append(f"{caso_id}: `{metrica_id}` vale {obtenido_metrica} y se esperaba "
+                                 f"{valor}")
+        elif obtenido_metrica != valor:
+            problemas.append(f"{caso_id}: `{metrica_id}` es {obtenido_metrica!r} y se esperaba "
+                             f"{valor!r}")
+    return problemas
+
+
+def _ejes_sin_separar(observaciones: list[dict]) -> list[str]:
+    """Los pares de ejes que este corpus NO separa. Si para cada valor del primero el segundo toma
+    siempre el mismo, un clasificador que derivara el segundo del primero pasaría igual: el corpus
+    no distingue tres ejes de uno con dos campos calculados."""
+    problemas: list[str] = []
+    for primero, segundo in ((0, 1), (0, 2), (1, 2)):
+        eje_a, eje_b = EJES_NORMATIVOS[primero], EJES_NORMATIVOS[segundo]
+        por_valor: dict[Any, set] = {}
+        for observacion in observaciones:
+            estado = observacion.get("estado") or {}
+            por_valor.setdefault(estado.get(eje_a), set()).add(estado.get(eje_b))
+        if not any(len(valores) > 1 for valores in por_valor.values()):
+            problemas.append(f"ningún caso del alcance separa `{eje_b}` de `{eje_a}`: con este "
+                             "corpus, un clasificador que derivara el segundo del primero pasaría "
+                             "igual")
+    return problemas
+
+
+# Un corpus donde los tres ejes se mueven juntos. Existe solo para ejercer el predicado de arriba:
+# es el control positivo que prueba que puede ponerse rojo.
+_CORPUS_DEGENERADO: tuple[dict, ...] = (
+    {"estado": {"ciclo_operativo": "completado", "validez_del_reporte": "valido",
+                "resultado_semantico": "correcto"}},
+    {"estado": {"ciclo_operativo": "bloqueado", "validez_del_reporte": "ausente",
+                "resultado_semantico": "no_evaluable"}},
+)
+
+
+def _huecos_de_cobertura(casos: list[dict], manifest: dict, solo_combinados: bool) -> list[str]:
+    """Qué le falta al corpus, en las dos direcciones. La misma función la usan el control de
+    cobertura y su mutante de eliminación: si divergieran, el mutante probaría un criterio que el
+    control real no aplica, y quitar un caso podría pasar por un lado y fallar por el otro.
+
+    Un caso COMBINADO no cubre ninguna categoría —no representa una falla aislada—, así que las
+    categorías se miden solo sobre los simples. Si los combinados contaran, quitar el caso simple
+    de una categoría no se notaría: el combinado la mantendría cubierta."""
+    huecos: list[str] = []
+    simples = [c for c in casos if len(c.get("fallas") or []) <= 1]
+    combinados = [c for c in casos if len(c.get("fallas") or []) > 1]
+
+    if not solo_combinados:
+        requeridas = manifest.get("categorias_obligatorias") or []
+        cubiertas = {c.get("categoria") for c in simples}
+        huecos += [f"categoría obligatoria sin ningún caso simple: {c}"
+                   for c in requeridas if c not in cubiertas]
+        huecos += [f"categoría de un caso simple que el manifest no declara: {c}"
+                   for c in sorted(cubiertas - set(requeridas))]
+
+    minimas = [sorted(c) for c in manifest.get("combinaciones_minimas") or []]
+    cubiertas_c = [sorted(c.get("fallas") or []) for c in combinados]
+    huecos += [f"combinación mínima sin ningún caso: {c}" for c in minimas if c not in cubiertas_c]
+    huecos += [f"caso combinado que ninguna combinación mínima declara: {c['caso_id']}"
+               for c in combinados if sorted(c.get("fallas") or []) not in minimas]
+    return huecos
+
+
+def modo_autotest_clasificacion(args: argparse.Namespace) -> int:
+    solo_combinados = bool(getattr(args, "combinados", False))
+    manifest, error = _cargar_json(RUTA_MANIFEST_CLASIFICACION)
+    if error:
+        print(f"[A] FALLA  manifest del corpus de clasificación: {error}")
+        return 1
+    vocabulario, esquemas, problemas = _cargar_insumos_de_recoleccion()
+    if problemas:
+        for p in problemas:
+            print(f"[A] FALLA  {p}")
+        return 1
+
+    casos = manifest.get("casos") or []
+    # Un caso COMBINADO no representa una falla aislada, así que no cubre ninguna categoría: si lo
+    # hiciera, quitar el caso simple de esa categoría no se notaría —el combinado la mantendría
+    # cubierta— y el corpus no podría detectar su ausencia.
+    combinados = [c for c in casos if len(c.get("fallas") or []) > 1]
+    simples = [c for c in casos if len(c.get("fallas") or []) <= 1]
+    alcance = combinados if solo_combinados else casos
+    resultados: list[tuple[str, bool, str]] = []
+
+    # [A] Manifest ↔ disco, en las dos direcciones. Con `--combinados` se compara igual sobre el
+    # corpus entero: acotar el ALCANCE de la revisión no puede acotar la detección de una ausencia.
+    declarados = {c["caso_id"] for c in casos}
+    en_disco = _casos_en_disco()
+    diferencias = [f"declarado y ausente del disco: {c}" for c in sorted(declarados - en_disco)]
+    diferencias += [f"en disco y no declarado: {c}" for c in sorted(en_disco - declarados)]
+    resultados.append(("A", not diferencias,
+                       f"manifest ↔ directorio ({len(declarados)} casos)" if not diferencias
+                       else " | ".join(diferencias[:6])))
+
+    # [B] Las categorías obligatorias —o las combinaciones mínimas— contra el manifest
+    # independiente, en las dos direcciones. Es lo que hace que borrar el caso de ausencia de
+    # eventos ponga el modo rojo en vez de reducir el conjunto validado.
+    huecos = _huecos_de_cobertura(casos, manifest, solo_combinados)
+    etiqueta = (f"las {len(manifest.get('combinaciones_minimas') or [])} combinaciones mínimas"
+                if solo_combinados
+                else f"las {len(manifest.get('categorias_obligatorias') or [])} categorías "
+                     f"obligatorias y las {len(manifest.get('combinaciones_minimas') or [])} "
+                     "combinaciones mínimas")
+    resultados.append(("B", not huecos, f"{etiqueta}, en las dos direcciones" if not huecos
+                       else " | ".join(huecos[:6])))
+
+    # [C] Cada caso del alcance clasifica en su terna y en sus métricas, declaradas por separado.
+    fallas: list[str] = []
+    observaciones: dict[str, dict] = {}
+    for entrada in alcance:
+        observacion, malos = clasificar_caso(entrada["caso_id"], vocabulario, esquemas)
+        if observacion is None:
+            fallas.extend(malos)
+            continue
+        observaciones[entrada["caso_id"]] = observacion
+        fallas.extend(revisar_caso(entrada, observacion))
+    resultados.append(("C", not fallas,
+                       f"{len(alcance)} casos clasifican en su terna y sus métricas"
+                       if not fallas else " | ".join(fallas[:4])))
+
+    # [D] Ningún eje se resuelve por prioridad. Se comprueba sobre el corpus mostrando que cada eje
+    # toma valores DISTINTOS con el mismo valor en otro eje: si el eje 1 determinara al 2, no
+    # existirían dos casos con el mismo ciclo y distinta validez.
+    independencias = _ejes_sin_separar(list(observaciones.values()))
+    # Y el control se ejerce en las dos direcciones: sobre un corpus DEGENERADO —donde cada valor
+    # del primer eje viene siempre con el mismo del segundo— el predicado tiene que dar rojo. Sin
+    # este positivo, anularlo dejaría [D] en verde para siempre y nadie lo notaría.
+    if not _ejes_sin_separar(_CORPUS_DEGENERADO):
+        independencias.append("el predicado de independencia no se pone rojo ni sobre un corpus "
+                              "donde los tres ejes se mueven juntos: no está comprobando nada")
+    resultados.append(("D", not independencias,
+                       f"los {len(EJES_NORMATIVOS)} ejes se mueven por separado en el corpus, y el "
+                       "predicado se pone rojo cuando no" if not independencias
+                       else " | ".join(independencias[:3])))
+
+    # [E] El mutante de eliminación de cada caso requerido. Quitar un caso del corpus tiene que
+    # poner rojo el control [B]: sin esto, [B] compara dos conjuntos que se mueven juntos.
+    fallas_de_eliminacion: list[str] = []
+    for entrada in alcance:
+        restantes = [c for c in casos if c["caso_id"] != entrada["caso_id"]]
+        if not _huecos_de_cobertura(restantes, manifest, solo_combinados):
+            fallas_de_eliminacion.append(
+                f"quitar {entrada['caso_id']} del corpus no pone rojo el control de cobertura: ese "
+                "caso no lo exige nadie")
+    resultados.append(("E", not fallas_de_eliminacion,
+                       f"{len(alcance)} mutantes de eliminación detectados"
+                       if not fallas_de_eliminacion
+                       else " | ".join(fallas_de_eliminacion[:4])))
+
+    return _cerrar(resultados)
+
+
+def modo_fixture_historico(args: argparse.Namespace) -> int:
+    del args
+    vocabulario, esquemas, problemas = _cargar_insumos_de_recoleccion()
+    procedencia, error = _cargar_json(DIR_CASO_HISTORICO / "procedencia.json")
+    if error:
+        problemas.append(f"puntero de procedencia del fixture histórico: {error}")
+    if problemas:
+        for p in problemas:
+            print(f"[A] FALLA  {p}")
+        return 1
+
+    bundle = _leer_bundle(DIR_CASO_HISTORICO)
+    if bundle.error:
+        print(f"[A] FALLA  fixture histórico: {bundle.error}")
+        return 1
+
+    resultados: list[tuple[str, bool, str]] = []
+
+    # [A] El fixture es AUTÓNOMO. Es la razón de reconstruirlo en vez de copiarlo: el documento del
+    # que sale ya no está en el árbol, así que un fixture que dependiera de él no se podría ejecutar
+    # en una clonación limpia. Se comprueba que la ruta de origen NO exista y que el fixture no la
+    # necesite: todo lo que usa está en su propio directorio.
+    origen = procedencia.get("documento_de_origen") or ""
+    encontrados = sorted(str(p.relative_to(RAIZ)) for p in RAIZ.glob(origen)) if origen else []
+    problemas_de_autonomia: list[str] = []
+    if not origen:
+        problemas_de_autonomia.append("la procedencia no declara de qué documento sale")
+    if encontrados:
+        problemas_de_autonomia.append(
+            f"el documento de origen está en el árbol ({encontrados[0]}): el fixture tiene que "
+            "reproducir la contradicción, no apoyarse en él")
+    if not procedencia.get("commit_de_eliminacion"):
+        problemas_de_autonomia.append("la procedencia no declara en qué commit dejó de existir")
+    resultados.append(("A", not problemas_de_autonomia,
+                       f"fixture autónomo, con su puntero a «{origen}»"
+                       if not problemas_de_autonomia
+                       else " | ".join(problemas_de_autonomia)))
+
+    # [B] La contradicción está reproducida, y en las dos direcciones: cada degradación que la
+    # procedencia declara narrada tiene su evento en el bundle, y cada evento tiene la suya.
+    narradas = {d["identificador"]: d for d in procedencia.get("degradaciones_narradas") or []}
+    eventos = {e.get("evento_id"): e for e in _eventos_de_tipo(bundle.datos or {},
+                                                              "degradacion_observada")}
+    faltan = [f"degradación narrada sin evento en el bundle: {i}"
+              for i in sorted(narradas.keys() - eventos.keys())]
+    faltan += [f"evento de degradación que la procedencia no narra: {i}"
+               for i in sorted(eventos.keys() - narradas.keys())]
+    if len(narradas) < 2:
+        faltan.append(f"la contradicción son DOS degradaciones y la procedencia narra "
+                      f"{len(narradas)}")
+    resultados.append(("B", not faltan,
+                       f"las {len(narradas)} degradaciones narradas están reproducidas, en las dos "
+                       "direcciones" if not faltan else " | ".join(faltan[:4])))
+
+    # [C] Y el registro las DECLARA ausentes: sin esa declaración no hay contradicción que
+    # reproducir, solo una corrida degradada más.
+    declarada = procedencia.get("degradacion_declarada")
+    resultados.append(("C", declarada == "ausente",
+                       "el registro declara la degradación ausente y narra dos: esa es la "
+                       "contradicción" if declarada == "ausente"
+                       else f"la procedencia declara `degradacion_declarada` = {declarada!r}, y "
+                            "sin «ausente» no hay contradicción"))
+
+    # [D] El instrumento lo clasifica DERIVANDO las dos degradaciones, no con un rechazo genérico.
+    observacion, fallas = derivar_observacion(bundle.datos, bundle.sha256, vocabulario,
+                                              esquemas["observacion"])
+    if observacion is None:
+        resultados.append(("D", False, f"la observación no se derivó — "
+                                       f"{fallas[0] if fallas else 'sin motivo'}"))
+        return _cerrar(resultados)
+
+    estado = observacion.get("estado") or {}
+    derivadas = len(_eventos_de_tipo(bundle.datos, "degradacion_observada"))
+    malos: list[str] = []
+    if estado.get("resultado_semantico") != "incorrecto":
+        malos.append(f"`resultado_semantico` es {estado.get('resultado_semantico')!r} y tiene que "
+                     "ser «incorrecto»")
+    if estado.get("ciclo_operativo") != "degradado":
+        malos.append(f"`ciclo_operativo` es {estado.get('ciclo_operativo')!r}: las degradaciones "
+                     "narradas tienen que derivar el ciclo, no quedar como prosa")
+    if derivadas != 2:
+        malos.append(f"se derivaron {derivadas} degradaciones y son dos")
+    resultados.append(("D", not malos,
+                       f"clasificado incorrecto, con las {derivadas} degradaciones derivadas de "
+                       "sus eventos" if not malos else " | ".join(malos)))
+
+    if not any(not ok for _, ok, _ in resultados):
+        print(f"       procedencia: {origen} · commit {procedencia['commit_de_eliminacion']}")
+        for identificador, dato in sorted(narradas.items()):
+            print(f"       - {identificador}: {dato['que_se_degrado']}")
+    return _cerrar(resultados)
+
+
+# ---------------------------------------------------------------------------------------------
 # Registro de los modos de esta task. Cada task nueva agrega los suyos acá abajo, sin tocar los
 # anteriores ni `main()`.
 # ---------------------------------------------------------------------------------------------
@@ -4084,6 +4424,28 @@ registrar_modo(
     "derivado aparte como producto punto × repetición, la cadena append-only contra su manifest "
     "independiente, la regla de identidad congelada y la política de reintentos aplicada",
     modo_autotest_muestras_intentos,
+)
+
+registrar_modo(
+    "--autotest-clasificacion",
+    "el corpus de control de AC-18: cada caso declara su terna de ejes normativos y sus métricas "
+    "POR SEPARADO —nunca una etiqueta única—, comparado en las dos direcciones contra el manifest "
+    "independiente de categorías obligatorias, con el mutante de eliminación de cada caso",
+    modo_autotest_clasificacion,
+    auxiliares=(
+        Auxiliar("--combinados",
+                 "acota el autotest a los casos que combinan varias fallas, y compara contra las "
+                 "combinaciones mínimas en vez de las categorías obligatorias"),
+    ),
+)
+
+registrar_modo(
+    "--fixture-historico",
+    "el registro contradictorio de la serie del propio repositorio —degradación declarada ausente "
+    "frente a dos degradaciones narradas— reconstruido y no copiado: comprueba que el fixture es "
+    "autónomo, que reproduce las dos degradaciones y que el instrumento lo clasifica incorrecto "
+    "derivándolas",
+    modo_fixture_historico,
 )
 
 registrar_modo(
