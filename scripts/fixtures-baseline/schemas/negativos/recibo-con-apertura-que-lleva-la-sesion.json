@@ -1,0 +1,57 @@
+{
+  "version_schema": "1.0.0",
+  "recibo": {
+    "protocolo": "conformance",
+    "recibo_id": "rcb-conformance-0001",
+    "punto_de_despacho": "sdd-flow-implementer-por-task",
+    "propuesta_de_acta_sha256": "cafebabecafebabecafebabecafebabecafebabecafebabecafebabecafebabe",
+    "eventos": [
+      {
+        "evento": "dispatch_started",
+        "evento_id": "evt-apertura-c1",
+        "prompt_sha256": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+        "contexto_sha256": "0f1e2d3c4b5a69780f1e2d3c4b5a69780f1e2d3c4b5a69780f1e2d3c4b5a6978",
+        "permisos": [
+          "read-only",
+          "sin acceso a red"
+        ],
+        "sello": {
+          "valor_ns": 250000000,
+          "fuente": "reloj_monotonico_del_harness",
+          "autoridad": "harness",
+          "precision_ns": 1000,
+          "procedencia": "time.monotonic_ns del proceso del preflight"
+        },
+        "session_id": {
+          "estado": "expuesto",
+          "valor": "ses-desechable-01"
+        }
+      },
+      {
+        "evento": "dispatch_returned",
+        "evento_id": "evt-retorno-c1",
+        "referencia_evento_id": "evt-apertura-c1",
+        "session_id": {
+          "estado": "expuesto",
+          "valor": "ses-desechable-01"
+        },
+        "modelo_o_familia": {
+          "estado": "expuesto",
+          "valor": "claude"
+        },
+        "terminal": {
+          "estado": "no_expuesto",
+          "adjudicacion": "estratificacion"
+        },
+        "salida_sha256": "1122334455667788112233445566778811223344556677881122334455667788",
+        "sello": {
+          "valor_ns": 41250000000,
+          "fuente": "reloj_monotonico_del_harness",
+          "autoridad": "harness",
+          "precision_ns": 1000,
+          "procedencia": "time.monotonic_ns del proceso del preflight"
+        }
+      }
+    ]
+  }
+}

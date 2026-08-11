@@ -1,0 +1,621 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "preregistro.schema.json",
+  "title": "Pre-registro de la fase 0",
+  "description": "Schema cerrado y versionado de `scripts/preregistro-fase-0.json`. Congela, antes de cualquier corrida, el conjunto de MUESTRAS de la cohorte —no de observaciones—, las reglas de derivación de las identidades, la política cerrada de reintentos, las métricas con su fórmula, unidad y agregación, los umbrales por fase, la cobertura y sus exclusiones con causa del conjunto cerrado, la identidad esperada del entorno, el inventario de egreso materializado y el recibo del preflight. Cada objeto es cerrado: `additionalProperties` es false en todos los niveles.",
+  "x-version": "1.0.0",
+
+  "x-notas": {
+    "muestras-no-observaciones": "La cohorte congela `muestras`, y NO existe ninguna propiedad para congelar observaciones o intentos (D-12). AC-22bis admite uno o más intentos por muestra y obliga a conservar los bloqueados append-only: un conjunto de observaciones congelado antes de correr no puede predecir cuántos reintentos habrá, así que o rechaza intentos legítimos o empuja a sobrescribirlos. Lo que se congela de los intentos es su REGLA de derivación y la política que los produce.",
+    "sin-preregistration-commit": "El pre-registro declara `code_commit` y NO declara `preregistration_commit` (D-18). El acta se aprueba antes de que exista el commit que congela el pre-registro: escribir por anticipado el SHA de ese commit dentro del archivo que lo determina pide otro punto fijo. `preregistration_commit` se define por una relación verificable —descendiente directo de `code_commit` cuyo único cambio sea este archivo— y esa relación la comprueba Git, fuera de este contrato. Como el objeto raíz es cerrado, un pre-registro que lo declare se rechaza.",
+    "el-hash-vive-adentro-y-se-excluye-de-la-proyeccion": "`preregistro_sha256` es el único campo que la proyección canónica excluye al calcular el hash: es el punto fijo. `x-congelamiento` nombra los campos que la PROPUESTA de acta todavía no puede llevar, para que el gate valide la estructura completa sin exigir un hash que depende de ella.",
+    "las-causas-se-declaran-y-se-referencian": "`causas_admisibles_de_exclusion` es el conjunto cerrado que AC-16 pide, y cada exclusión lo referencia por `causa_id`. El conjunto es dato del acta y no un enum de este schema porque quien lo cierra es el gate humano; que toda `causa_id` usada exista en el conjunto lo comprueba el modo `--cobertura`, no la validación estructural.",
+    "la-politica-de-reintentos-se-congela-entera": "Sin disparadores, máximo, terminación y regla de selección o agregación POR MÉTRICA, el runner puede repetir tras observar un fallo y quedarse con el intento favorable para degradación o limpieza. Por eso `seleccion_por_metrica` es obligatoria y no admite lista vacía: elegir a posteriori con qué intento se publica cada métrica es exactamente lo que congelar la política impide.",
+    "refs-locales": "El validador de `scripts/instrumento-baseline.py` resuelve solo `$ref` locales (`#/$defs/...`). Las definiciones compartidas con los otros schemas de la fase están repetidas en cada archivo a propósito."
+  },
+
+  "x-congelamiento": {
+    "descripcion": "Campos que existen en el pre-registro materializado y NO en la propuesta de acta que el gate aprueba (decisión heredada 14, D-14). Quien valide una propuesta los exime; quien valide el pre-registro los exige.",
+    "campos": ["preregistro_sha256"]
+  },
+
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version_schema",
+    "preregistro_sha256",
+    "code_commit",
+    "cohorte",
+    "reglas_de_derivacion_de_identidad",
+    "politica_de_reintentos",
+    "metricas",
+    "fases_comprometidas",
+    "cobertura",
+    "causas_admisibles_de_exclusion",
+    "exclusiones",
+    "entorno_esperado",
+    "inventario_de_egreso",
+    "recibo_del_preflight"
+  ],
+  "properties": {
+    "version_schema": {"const": "1.0.0"},
+    "preregistro_sha256": {
+      "description": "SHA-256 de la proyección canónica de este mismo documento, calculado excluyendo este campo. Es el identificador por contenido que cada observación referencia (AC-17).",
+      "$ref": "#/$defs/sha256"
+    },
+    "code_commit": {
+      "description": "Commit del árbol con el que corre la cohorte: el que congela el instrumento, el runner y la matriz.",
+      "$ref": "#/$defs/commit"
+    },
+    "cohorte": {"$ref": "#/$defs/cohorte"},
+    "reglas_de_derivacion_de_identidad": {"$ref": "#/$defs/reglas_de_derivacion_de_identidad"},
+    "politica_de_reintentos": {"$ref": "#/$defs/politica_de_reintentos"},
+    "metricas": {
+      "description": "Las métricas pre-registradas. El conjunto publicado se compara contra este en las dos direcciones.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/metrica_pre_registrada"}
+    },
+    "fases_comprometidas": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/fase_comprometida"}
+    },
+    "cobertura": {"$ref": "#/$defs/cobertura"},
+    "causas_admisibles_de_exclusion": {
+      "description": "El conjunto CERRADO de causas de exclusión que AC-16 exige. Una exclusión que no referencie una de estas bloquea el cierre de la fase.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/causa_admisible"}
+    },
+    "exclusiones": {
+      "description": "Exclusiones declaradas, cada una con su causa tomada del conjunto cerrado. Puede estar vacía; lo que no puede es haber una exclusión sin causa.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/exclusion"}
+    },
+    "entorno_esperado": {"$ref": "#/$defs/entorno_esperado"},
+    "inventario_de_egreso": {"$ref": "#/$defs/inventario_de_egreso"},
+    "recibo_del_preflight": {"$ref": "#/$defs/recibo_del_preflight"}
+  },
+
+  "$defs": {
+    "identificador": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "commit": {
+      "description": "SHA de un commit de Git, completo o abreviado a 7 o más caracteres.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{7,40}$"
+    },
+    "texto": {
+      "type": "string",
+      "minLength": 1
+    },
+    "enum_punto_de_despacho": {
+      "description": "Los trece puntos de despacho de `scripts/matriz-despachos.json`.",
+      "enum": [
+        "sdd-flow-analyze-exploracion",
+        "sdd-flow-implementer-por-task",
+        "sdd-flow-reviewer-por-task",
+        "sdd-flow-revision-final-de-diff",
+        "bitbucket-code-review-panel-de-revisores",
+        "bitbucket-code-review-validador-adversarial",
+        "co-explore-fan-out-dual",
+        "co-explore-worker-por-ronda-de-debate",
+        "cross-implement-implementador-inicial",
+        "cross-implement-ronda-de-fix-loop",
+        "cross-review-revisor-por-ronda",
+        "sdd-orchestrator-fan-out-por-repo",
+        "sdd-pr-feedback-implement-delegado"
+      ]
+    },
+    "enum_skill": {
+      "enum": [
+        "bitbucket-code-review",
+        "co-explore",
+        "cross-implement",
+        "cross-review",
+        "sdd-flow",
+        "sdd-orchestrator",
+        "sdd-pr-feedback"
+      ]
+    },
+    "enum_familia_de_rol": {
+      "enum": [
+        "explorer",
+        "investigator",
+        "design-reviewer",
+        "bounded-implementer",
+        "diff-reviewer"
+      ]
+    },
+    "enum_transporte": {
+      "enum": ["subagent", "cli-exec", "cli-resume"]
+    },
+    "enum_estrato": {
+      "enum": ["automatizable", "con_intervencion_humana"]
+    },
+    "enum_categoria_de_metrica": {
+      "description": "Las cinco categorías obligatorias de AC-15.",
+      "enum": ["latencia", "degradacion", "salidas_invalidas", "hallazgos", "limpieza"]
+    },
+    "enum_ambito_de_exclusion": {
+      "enum": ["punto_de_despacho", "skill", "familia_de_rol", "metrica", "transporte"]
+    },
+    "enum_componente_de_identidad": {
+      "description": "Piezas admitidas para construir una identidad derivada. La regla no puede alimentarse de nada que no esté acá.",
+      "enum": [
+        "sample_id",
+        "attempt_id",
+        "attempt_ordinal",
+        "punto_de_despacho",
+        "repeticion",
+        "run_id"
+      ]
+    },
+    "enum_disparador_de_reintento": {
+      "description": "Conjunto cerrado de disparadores. Un reintento por un motivo que no esté acá no es expresable, que es justo lo que impide repetir tras ver el resultado.",
+      "enum": [
+        "error_de_transporte",
+        "salida_invalida",
+        "presupuesto_vencido",
+        "bloqueo_de_aislamiento"
+      ]
+    },
+    "enum_terminacion_de_reintentos": {
+      "enum": ["sin_reintento", "primer_intento_valido", "maximo_alcanzado"]
+    },
+    "enum_regla_de_seleccion": {
+      "description": "Con qué intento se publica cada métrica. `agregacion` usa la regla de agregación de la propia métrica sobre todos los intentos elegibles; las otras eligen uno solo, y cuál se decide acá y no después de ver los números.",
+      "enum": ["primer_intento", "ultimo_intento", "primer_intento_valido", "agregacion"]
+    },
+    "enum_direccion_de_umbral": {
+      "enum": ["mayor_o_igual", "menor_o_igual"]
+    },
+    "enum_tratamiento_del_limite": {
+      "description": "Qué pasa exactamente en el valor límite. Sin esto, el veredicto de promoción no es determinista.",
+      "enum": ["inclusivo", "exclusivo"]
+    },
+    "enum_composicion_de_umbrales": {
+      "enum": ["todas", "alguna"]
+    },
+    "enum_efecto_de_la_ausencia": {
+      "description": "Qué pasa si una métrica obligatoria de la fase no tiene observaciones. `not_evaluated` y `blocked` son veredictos distintos y no se funden (AC-21).",
+      "enum": ["blocked", "not_evaluated"]
+    },
+    "enum_clase_de_superficie": {
+      "description": "Las clases de canal que la regla de descubrimiento de egreso reconoce (AC-22).",
+      "enum": [
+        "binario_en_path",
+        "credencial_en_disco",
+        "variable_de_entorno",
+        "credential_helper_de_git",
+        "socket_o_agente_ssh",
+        "remoto_configurado",
+        "herramienta_autenticada"
+      ]
+    },
+    "enum_adjudicacion_de_preflight": {
+      "enum": ["runnable", "blocked"]
+    },
+    "enum_adaptador": {
+      "description": "Los dos adaptadores, con las mismas obligaciones (D-5).",
+      "enum": ["script", "sesion_de_agente"]
+    },
+    "cohorte": {
+      "description": "El conjunto congelado de muestras. El manifest de muestras es el producto exacto punto × repetición.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["muestras"],
+      "properties": {
+        "muestras": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/muestra"}
+        }
+      }
+    },
+    "muestra": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sample_id",
+        "punto_de_despacho",
+        "skill",
+        "familia_de_rol",
+        "transporte",
+        "repeticion",
+        "receta_id",
+        "adaptador"
+      ],
+      "properties": {
+        "sample_id": {"$ref": "#/$defs/identificador"},
+        "punto_de_despacho": {"$ref": "#/$defs/enum_punto_de_despacho"},
+        "skill": {"$ref": "#/$defs/enum_skill"},
+        "familia_de_rol": {"$ref": "#/$defs/enum_familia_de_rol"},
+        "transporte": {"$ref": "#/$defs/enum_transporte"},
+        "repeticion": {
+          "description": "Número de repetición de este punto, empezando en 1.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "receta_id": {
+          "description": "Receta ejecutable de `scripts/recetas-cohorte.json` con la que corre esta muestra.",
+          "$ref": "#/$defs/identificador"
+        },
+        "adaptador": {"$ref": "#/$defs/enum_adaptador"},
+        "estrato_esperado": {"$ref": "#/$defs/enum_estrato"},
+        "dependencia": {
+          "description": "Presente solo en un paso encadenado (D-17): lo que se congela es la regla de enlace, nunca el valor futuro que la alimenta.",
+          "$ref": "#/$defs/dependencia_de_paso"
+        }
+      }
+    },
+    "dependencia_de_paso": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["de_sample_id", "campo_de_salida", "campo_de_entrada", "cardinalidad"],
+      "properties": {
+        "de_sample_id": {"$ref": "#/$defs/identificador"},
+        "campo_de_salida": {
+          "description": "Campo del bundle del paso anterior que alimenta a este. No lleva su valor: el `session_id` no existe cuando la cohorte se congela.",
+          "$ref": "#/$defs/texto"
+        },
+        "campo_de_entrada": {"$ref": "#/$defs/texto"},
+        "cardinalidad": {
+          "description": "Cuántos pasos previos alimentan a este. Uno a uno por repetición.",
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "reglas_de_derivacion_de_identidad": {
+      "description": "Cómo se construyen `attempt_id` y `observation_id`. La regla se congela; los valores se derivan al correr.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attempt_id", "observation_id"],
+      "properties": {
+        "attempt_id": {"$ref": "#/$defs/regla_de_identidad"},
+        "observation_id": {"$ref": "#/$defs/regla_de_identidad"}
+      }
+    },
+    "regla_de_identidad": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plantilla", "componentes"],
+      "properties": {
+        "plantilla": {
+          "description": "Plantilla determinista, con cada componente entre llaves. Ejemplo: `{sample_id}-a{attempt_ordinal}`.",
+          "$ref": "#/$defs/texto"
+        },
+        "componentes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/enum_componente_de_identidad"}
+        }
+      }
+    },
+    "politica_de_reintentos": {
+      "description": "Política CERRADA de reintentos (D-12): disparadores, máximo, terminación y regla de selección o agregación por métrica.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "disparadores",
+        "maximo_de_intentos_por_muestra",
+        "condicion_de_terminacion",
+        "seleccion_por_metrica"
+      ],
+      "properties": {
+        "disparadores": {
+          "description": "Puede estar vacía: eso declara que no hay reintentos, y entonces la terminación es `sin_reintento`.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/enum_disparador_de_reintento"}
+        },
+        "maximo_de_intentos_por_muestra": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "condicion_de_terminacion": {"$ref": "#/$defs/enum_terminacion_de_reintentos"},
+        "seleccion_por_metrica": {
+          "description": "Una entrada por métrica pre-registrada. Sin ella, quedarse con el intento favorable para degradación o limpieza es una elección a posteriori que ninguna fila detecta.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/seleccion_de_metrica"}
+        }
+      }
+    },
+    "seleccion_de_metrica": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metrica_id", "regla"],
+      "properties": {
+        "metrica_id": {"$ref": "#/$defs/identificador"},
+        "regla": {"$ref": "#/$defs/enum_regla_de_seleccion"}
+      }
+    },
+    "metrica_pre_registrada": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metrica_id", "categoria", "formula_id", "unidad", "agregacion"],
+      "properties": {
+        "metrica_id": {"$ref": "#/$defs/identificador"},
+        "categoria": {"$ref": "#/$defs/enum_categoria_de_metrica"},
+        "formula_id": {
+          "description": "Fórmula elegida del enum cerrado de `scripts/metricas-fase-0.json`. El gate elige dentro de ese enum y no lo amplía.",
+          "$ref": "#/$defs/identificador"
+        },
+        "unidad": {"$ref": "#/$defs/texto"},
+        "agregacion": {
+          "description": "Regla de agregación tomada del vocabulario. Una métrica sin agregación no se puede publicar.",
+          "$ref": "#/$defs/identificador"
+        },
+        "numerador": {
+          "description": "Qué se cuenta arriba, en una métrica publicada como tasa.",
+          "$ref": "#/$defs/texto"
+        },
+        "denominador": {
+          "description": "Qué población va abajo. Sin declararlo, una tasa no es auditable.",
+          "$ref": "#/$defs/texto"
+        },
+        "regla_de_elegibilidad": {
+          "description": "Qué muestras entran al denominador.",
+          "$ref": "#/$defs/texto"
+        }
+      }
+    },
+    "fase_comprometida": {
+      "description": "Por fase: qué métricas son obligatorias, qué umbral habilita la promoción y qué pasa si falta la observación (AC-21).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fase_id",
+        "metricas_obligatorias",
+        "umbrales",
+        "composicion",
+        "efecto_de_la_ausencia"
+      ],
+      "properties": {
+        "fase_id": {"$ref": "#/$defs/identificador"},
+        "metricas_obligatorias": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/identificador"}
+        },
+        "umbrales": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/umbral"}
+        },
+        "composicion": {"$ref": "#/$defs/enum_composicion_de_umbrales"},
+        "efecto_de_la_ausencia": {"$ref": "#/$defs/enum_efecto_de_la_ausencia"}
+      }
+    },
+    "umbral": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metrica_id", "direccion", "valor", "tratamiento_del_limite"],
+      "properties": {
+        "metrica_id": {"$ref": "#/$defs/identificador"},
+        "direccion": {"$ref": "#/$defs/enum_direccion_de_umbral"},
+        "valor": {"type": "number"},
+        "tratamiento_del_limite": {"$ref": "#/$defs/enum_tratamiento_del_limite"}
+      }
+    },
+    "cobertura": {
+      "description": "Qué observa la cohorte y qué no, en las tres dimensiones que AC-16 nombra, más la cobertura mínima por métrica y estrato.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "puntos_observados",
+        "puntos_no_observados",
+        "skills_observadas",
+        "skills_no_observadas",
+        "familias_observadas",
+        "familias_no_observadas",
+        "minima_por_metrica_y_estrato"
+      ],
+      "properties": {
+        "puntos_observados": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/enum_punto_de_despacho"}
+        },
+        "puntos_no_observados": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/enum_punto_de_despacho"}
+        },
+        "skills_observadas": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/enum_skill"}
+        },
+        "skills_no_observadas": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/enum_skill"}
+        },
+        "familias_observadas": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/enum_familia_de_rol"}
+        },
+        "familias_no_observadas": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/enum_familia_de_rol"}
+        },
+        "minima_por_metrica_y_estrato": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/minimo_de_cobertura"}
+        }
+      }
+    },
+    "minimo_de_cobertura": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metrica_id", "estrato", "minimo_de_muestras"],
+      "properties": {
+        "metrica_id": {"$ref": "#/$defs/identificador"},
+        "estrato": {"$ref": "#/$defs/enum_estrato"},
+        "minimo_de_muestras": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "causa_admisible": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["causa_id", "descripcion"],
+      "properties": {
+        "causa_id": {"$ref": "#/$defs/identificador"},
+        "descripcion": {"$ref": "#/$defs/texto"}
+      }
+    },
+    "exclusion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ambito", "identidad", "causa_id"],
+      "properties": {
+        "ambito": {"$ref": "#/$defs/enum_ambito_de_exclusion"},
+        "identidad": {
+          "description": "Qué se excluye dentro de ese ámbito.",
+          "$ref": "#/$defs/texto"
+        },
+        "causa_id": {
+          "description": "Referencia al conjunto cerrado. Que exista lo comprueba `--cobertura`.",
+          "$ref": "#/$defs/identificador"
+        }
+      }
+    },
+    "entorno_esperado": {
+      "description": "La identidad del entorno como conjunto CERRADO (AC-17). Cada corrida registra su valor efectivo y una divergencia fuera de lo admitido bloquea o estratifica antes de recolectar; nunca se agrega registrando la divergencia.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "arbol_limpio_exigido",
+        "matriz_sha256",
+        "instrumento_sha256",
+        "runner_sha256",
+        "version_cli",
+        "version_runtime",
+        "hooks",
+        "ejecutor_esperado",
+        "transportes_admitidos"
+      ],
+      "properties": {
+        "arbol_limpio_exigido": {"type": "boolean"},
+        "matriz_sha256": {"$ref": "#/$defs/sha256"},
+        "instrumento_sha256": {
+          "description": "Hash de `scripts/instrumento-baseline.py` congelado. La comparación contra el efectivo la hace Git, fuera del instrumento (D-23).",
+          "$ref": "#/$defs/sha256"
+        },
+        "runner_sha256": {"$ref": "#/$defs/sha256"},
+        "version_cli": {"$ref": "#/$defs/texto"},
+        "version_runtime": {"$ref": "#/$defs/texto"},
+        "hooks": {
+          "description": "Los hooks del entorno que pueden alterar una corrida. Vacío es una declaración, no una omisión.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/texto"}
+        },
+        "ejecutor_esperado": {
+          "description": "Perfil del ejecutor, distinto de la identidad del worker.",
+          "$ref": "#/$defs/texto"
+        },
+        "transportes_admitidos": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/enum_transporte"}
+        }
+      }
+    },
+    "inventario_de_egreso": {
+      "description": "El inventario materializado por el preflight, con su hash. Cada corrida reejecuta la regla y compara contra este conjunto: cualquier alta, baja o cambio bloquea.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inventario_sha256", "superficies"],
+      "properties": {
+        "inventario_sha256": {"$ref": "#/$defs/sha256"},
+        "superficies": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/superficie_de_egreso"}
+        }
+      }
+    },
+    "superficie_de_egreso": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["superficie_id", "clase", "descripcion"],
+      "properties": {
+        "superficie_id": {"$ref": "#/$defs/identificador"},
+        "clase": {"$ref": "#/$defs/enum_clase_de_superficie"},
+        "descripcion": {"$ref": "#/$defs/texto"}
+      }
+    },
+    "recibo_del_preflight": {
+      "description": "El recibo del preflight real, adjunto al acta ANTES del STOP (D-14): lo que el usuario aprueba es la versión que ya lo lleva.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["recibo_sha256", "adjudicaciones", "recibos_de_frontera_de_conformance"],
+      "properties": {
+        "recibo_sha256": {"$ref": "#/$defs/sha256"},
+        "adjudicaciones": {
+          "description": "Una por receta seleccionada. Un bloqueo es un resultado válido, no un fallo (D-15).",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/adjudicacion_de_preflight"}
+        },
+        "recibos_de_frontera_de_conformance": {
+          "description": "Identidades de los recibos de conformance emitidos por el despacho nativo desechable del preflight. Son recibos del protocolo de conformance y NO se mezclan con los de producción (D-22).",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/identificador"}
+        }
+      }
+    },
+    "adjudicacion_de_preflight": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["receta_id", "adjudicacion"],
+      "properties": {
+        "receta_id": {"$ref": "#/$defs/identificador"},
+        "adjudicacion": {"$ref": "#/$defs/enum_adjudicacion_de_preflight"},
+        "causa_id": {
+          "description": "Obligatoria cuando la adjudicación es `blocked`: un bloqueo sin causa del conjunto cerrado no se distingue de una omisión.",
+          "$ref": "#/$defs/identificador"
+        }
+      },
+      "if": {
+        "properties": {"adjudicacion": {"const": "blocked"}},
+        "required": ["adjudicacion"]
+      },
+      "then": {"required": ["causa_id"]}
+    }
+  }
+}

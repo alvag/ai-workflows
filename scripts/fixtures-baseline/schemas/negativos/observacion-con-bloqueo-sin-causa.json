@@ -1,0 +1,75 @@
+{
+  "version_schema": "1.0.0",
+  "observation_id": "obs-sdd-flow-implementer-por-task-r1-a1",
+  "sample_id": "mst-sdd-flow-implementer-por-task-r1",
+  "attempt_id": "int-sdd-flow-implementer-por-task-r1-a1",
+  "attempt_ordinal": 1,
+  "preregistro_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "procedencia": {
+    "run_id": "run-0001",
+    "bundle_sha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+  },
+  "punto_de_despacho": "sdd-flow-implementer-por-task",
+  "skill": "sdd-flow",
+  "familia_de_rol": "bounded-implementer",
+  "transporte": "subagent",
+  "estrato": "automatizable",
+  "estado": {
+    "ciclo_operativo": "bloqueado",
+    "validez_del_reporte": "valido",
+    "resultado_semantico": "correcto"
+  },
+  "metricas": [
+    {
+      "metrica_id": "latencia-hasta-resultado-utilizable",
+      "categoria": "latencia",
+      "estado_de_medicion": "medida",
+      "valor": 184300,
+      "unidad": "milisegundos"
+    },
+    {
+      "metrica_id": "tasa-de-degradacion",
+      "categoria": "degradacion",
+      "estado_de_medicion": "medida",
+      "valor": 0.0,
+      "unidad": "proporcion",
+      "numerador": 0,
+      "denominador": 1
+    },
+    {
+      "metrica_id": "salidas-invalidas",
+      "categoria": "salidas_invalidas",
+      "estado_de_medicion": "medida",
+      "valor": 0,
+      "unidad": "conteo"
+    },
+    {
+      "metrica_id": "hallazgos-emitidos",
+      "categoria": "hallazgos",
+      "estado_de_medicion": "no_observada",
+      "adjudicacion": "el punto no emite hallazgos: la cohorte no lo cubre para esta categoria"
+    },
+    {
+      "metrica_id": "limpieza-completa",
+      "categoria": "limpieza",
+      "estado_de_medicion": "medida",
+      "valor": 1,
+      "unidad": "booleano"
+    }
+  ],
+  "trabajos_delegados": [
+    {
+      "trabajo_delegado_id": "trb-implementer-1",
+      "evento_terminal_id": "evt-terminal-1",
+      "metricas": [
+        {
+          "metrica_id": "latencia-hasta-estado-terminal",
+          "categoria": "latencia",
+          "estado_de_medicion": "medida",
+          "valor": 171900,
+          "unidad": "milisegundos"
+        }
+      ]
+    }
+  ]
+}

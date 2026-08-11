@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "recibo-frontera.schema.json",
+  "title": "Recibo de frontera del adaptador de sesión",
+  "description": "Schema cerrado y versionado de cada recibo de `scripts/recibos-frontera-fase-0/`. Un script no puede invocar la tool de subagentes, así que seis de los trece puntos los ejecuta una sesión de agente; el recibo es lo que impide que esa sesión se autoatestigüe (D-21). Se emite ANTES de la tool call con el intento, los hashes del prompt y del contexto congelados, los permisos y su sello monotónico, y al retorno se agrega un SEGUNDO evento que referencia al primero sin modificarlo. Hay dos protocolos y no se mezclan (D-22): conformance referencia el hash de la propuesta de acta, producción lleva `preregistro_sha256`. Cada objeto es cerrado: `additionalProperties` es false en todos los niveles.",
+  "x-version": "1.0.0",
+
+  "x-notas": {
+    "append-only-son-dos-entradas": "«Append-only» significa dos eventos, no una entrada completada. Si el retorno modificara la apertura, el recibo dejaría de acreditar qué se sabía antes del despacho —que es lo único que lo hace evidencia— y una reconstrucción posterior sería indistinguible del original. Por eso `dispatch_returned` es un evento propio con `referencia_evento_id`, y la apertura no declara ningún campo que solo se conozca al volver.",
+    "los-dos-protocolos-no-se-mezclan": "El despacho nativo de prueba corre en el preflight, ANTES del STOP, cuando el hash del pre-registro todavía no existe y además depende de lo que ese despacho produzca: pedirle que lo anticipe es otro punto fijo. Por eso `conformance` referencia `propuesta_de_acta_sha256` y NO declara `preregistro_sha256`, y `produccion` al revés. Como los dos objetos son cerrados, un recibo que lleve los dos hashes se rechaza por estructura y no por una comprobación que alguien podría olvidar.",
+    "solo-produccion-se-ata-a-un-intento": "`sample_id`, `attempt_id` y `attempt_ordinal` existen solo en la variante de producción: en el preflight no hay muestra congelada a la que atarlos. Un recibo de conformance que los declare no valida.",
+    "lo-que-la-plataforma-no-expone": "Los campos que la plataforma no expone se escriben como `no_expuesto` con su adjudicación —bloqueo o estratificación—, nunca rellenos. La variante no expuesta no declara `valor`, así que inventarlo no es expresable."
+  },
+
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version_schema", "recibo"],
+  "properties": {
+    "version_schema": {"const": "1.0.0"},
+    "recibo": {
+      "description": "El recibo, en una de sus dos variantes disjuntas por `protocolo`.",
+      "oneOf": [
+        {"$ref": "#/$defs/recibo_de_conformance"},
+        {"$ref": "#/$defs/recibo_de_produccion"}
+      ]
+    }
+  },
+
+  "$defs": {
+    "identificador": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "texto": {
+      "type": "string",
+      "minLength": 1
+    },
+    "enum_punto_de_despacho": {
+      "enum": [
+        "sdd-flow-analyze-exploracion",
+        "sdd-flow-implementer-por-task",
+        "sdd-flow-reviewer-por-task",
+        "sdd-flow-revision-final-de-diff",
+        "bitbucket-code-review-panel-de-revisores",
+        "bitbucket-code-review-validador-adversarial",
+        "co-explore-fan-out-dual",
+        "co-explore-worker-por-ronda-de-debate",
+        "cross-implement-implementador-inicial",
+        "cross-implement-ronda-de-fix-loop",
+        "cross-review-revisor-por-ronda",
+        "sdd-orchestrator-fan-out-por-repo",
+        "sdd-pr-feedback-implement-delegado"
+      ]
+    },
+    "recibo_de_conformance": {
+      "description": "Recibo del despacho nativo desechable del preflight. Su resultado se adjunta al acta que después se hashea.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolo", "recibo_id", "punto_de_despacho", "propuesta_de_acta_sha256", "eventos"],
+      "properties": {
+        "protocolo": {"const": "conformance"},
+        "recibo_id": {"$ref": "#/$defs/identificador"},
+        "punto_de_despacho": {"$ref": "#/$defs/enum_punto_de_despacho"},
+        "propuesta_de_acta_sha256": {
+          "description": "Hash de la propuesta de acta vigente al correr el preflight. No es el del pre-registro: ese todavía no existe.",
+          "$ref": "#/$defs/sha256"
+        },
+        "eventos": {"$ref": "#/$defs/eventos"}
+      }
+    },
+    "recibo_de_produccion": {
+      "description": "Recibo de una corrida posterior al congelamiento, capturado en el staging fuera del árbol medido e importado con el resto de la evidencia (D-19).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocolo",
+        "recibo_id",
+        "punto_de_despacho",
+        "preregistro_sha256",
+        "sample_id",
+        "attempt_id",
+        "attempt_ordinal",
+        "eventos"
+      ],
+      "properties": {
+        "protocolo": {"const": "produccion"},
+        "recibo_id": {"$ref": "#/$defs/identificador"},
+        "punto_de_despacho": {"$ref": "#/$defs/enum_punto_de_despacho"},
+        "preregistro_sha256": {"$ref": "#/$defs/sha256"},
+        "sample_id": {"$ref": "#/$defs/identificador"},
+        "attempt_id": {"$ref": "#/$defs/identificador"},
+        "attempt_ordinal": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "eventos": {"$ref": "#/$defs/eventos"}
+      }
+    },
+    "eventos": {
+      "description": "La secuencia append-only. Un recibo emitido y todavía sin retorno tiene un solo evento; uno completo tiene dos, y nunca más: un tercero sería un despacho distinto con su propio recibo.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/evento"}
+    },
+    "evento": {
+      "oneOf": [
+        {"$ref": "#/$defs/evento_de_apertura"},
+        {"$ref": "#/$defs/evento_de_retorno"}
+      ]
+    },
+    "evento_de_apertura": {
+      "description": "Emitido ANTES de la tool call. Todo lo que declara se conoce antes de despachar: no hay ningún campo acá que solo exista al volver.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evento", "evento_id", "prompt_sha256", "contexto_sha256", "permisos", "sello"],
+      "properties": {
+        "evento": {"const": "dispatch_started"},
+        "evento_id": {"$ref": "#/$defs/identificador"},
+        "prompt_sha256": {"$ref": "#/$defs/sha256"},
+        "contexto_sha256": {
+          "description": "Hash del contexto congelado que acompaña al prompt.",
+          "$ref": "#/$defs/sha256"
+        },
+        "permisos": {
+          "description": "Los permisos con los que se despacha, tal como se pasaron.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/texto"}
+        },
+        "sello": {"$ref": "#/$defs/sello"}
+      }
+    },
+    "evento_de_retorno": {
+      "description": "Emitido al retorno, desde el resultado de la plataforma. Referencia al de apertura y no lo toca.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evento",
+        "evento_id",
+        "referencia_evento_id",
+        "session_id",
+        "modelo_o_familia",
+        "terminal",
+        "salida_sha256",
+        "sello"
+      ],
+      "properties": {
+        "evento": {"const": "dispatch_returned"},
+        "evento_id": {"$ref": "#/$defs/identificador"},
+        "referencia_evento_id": {
+          "description": "El `evento_id` de la apertura. Sin esta referencia, el retorno es una entrada suelta y el recibo no acredita un despacho sino dos hechos sin relación.",
+          "$ref": "#/$defs/identificador"
+        },
+        "session_id": {"$ref": "#/$defs/dato_de_plataforma"},
+        "modelo_o_familia": {"$ref": "#/$defs/dato_de_plataforma"},
+        "terminal": {
+          "description": "El terminal que entrega el entorno. Si no lo expone, se bloquea la observación en vez de inferirlo por efectos.",
+          "$ref": "#/$defs/dato_de_plataforma"
+        },
+        "salida_sha256": {"$ref": "#/$defs/sha256"},
+        "sello": {"$ref": "#/$defs/sello"}
+      }
+    },
+    "sello": {
+      "description": "Sello monotónico bajo autoridad del harness, con la procedencia de la interfaz de reloj que lo emitió.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valor_ns", "fuente", "autoridad", "precision_ns", "procedencia"],
+      "properties": {
+        "valor_ns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fuente": {"const": "reloj_monotonico_del_harness"},
+        "autoridad": {"const": "harness"},
+        "precision_ns": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "procedencia": {"$ref": "#/$defs/texto"}
+      }
+    },
+    "dato_de_plataforma": {
+      "oneOf": [
+        {"$ref": "#/$defs/dato_expuesto"},
+        {"$ref": "#/$defs/dato_no_expuesto"}
+      ]
+    },
+    "dato_expuesto": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["estado", "valor"],
+      "properties": {
+        "estado": {"const": "expuesto"},
+        "valor": {"$ref": "#/$defs/texto"}
+      }
+    },
+    "dato_no_expuesto": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["estado", "adjudicacion"],
+      "properties": {
+        "estado": {"const": "no_expuesto"},
+        "adjudicacion": {"enum": ["bloqueo", "estratificacion"]}
+      }
+    }
+  }
+}
