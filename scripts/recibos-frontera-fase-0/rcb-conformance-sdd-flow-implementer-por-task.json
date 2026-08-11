@@ -1,0 +1,54 @@
+{
+  "version_schema": "1.0.0",
+  "recibo": {
+    "protocolo": "conformance",
+    "recibo_id": "rcb-conformance-sdd-flow-implementer-por-task",
+    "punto_de_despacho": "sdd-flow-implementer-por-task",
+    "propuesta_de_acta_sha256": "df241ad63c3cc1cc98c0fe3baa2685cddb7b0ea445a3eeda790d337b090cb109",
+    "eventos": [
+      {
+        "evento": "dispatch_started",
+        "evento_id": "ev-sdd-flow-implementer-por-task-apertura",
+        "prompt_sha256": "87b39722096d642d489ca86a86ff125c56fcc66ce8f7d59e9faf3f929c644c37",
+        "contexto_sha256": "6328f871655f65a7576d9c65ab81370685f23ce8c347d268b3a54dd4f90f4100",
+        "permisos": [
+          "despachado en read_only: la prueba de conformance no ejecuta el encargo",
+          "sin publicación: el subagente corre sobre el árbol observado y no egresa",
+          "permiso efectivo del punto en producción, según la matriz: workspace_write_acotado"
+        ],
+        "sello": {
+          "valor_ns": 4922723869606416,
+          "fuente": "reloj_monotonico_del_harness",
+          "autoridad": "harness",
+          "precision_ns": 41,
+          "procedencia": "time.monotonic_ns del proceso del runner"
+        }
+      },
+      {
+        "evento": "dispatch_returned",
+        "evento_id": "ev-sdd-flow-implementer-por-task-retorno",
+        "referencia_evento_id": "ev-sdd-flow-implementer-por-task-apertura",
+        "session_id": {
+          "estado": "expuesto",
+          "valor": "conf-implementer"
+        },
+        "modelo_o_familia": {
+          "estado": "no_expuesto",
+          "adjudicacion": "estratificacion"
+        },
+        "terminal": {
+          "estado": "expuesto",
+          "valor": "idle_notification:available"
+        },
+        "salida_sha256": "29a0914d240e33ec56f6407d5fa02291d6219a6343e8e372e089961d33be790f",
+        "sello": {
+          "valor_ns": 4923471248390333,
+          "fuente": "reloj_monotonico_del_harness",
+          "autoridad": "harness",
+          "precision_ns": 41,
+          "procedencia": "time.monotonic_ns del proceso del runner"
+        }
+      }
+    ]
+  }
+}

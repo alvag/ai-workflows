@@ -324,13 +324,19 @@ def entorno_sin_credenciales(hogar: Path) -> dict[str, str]:
     """El entorno con el que corre todo comando del árbol desechable.
 
     No se toca el HOME real: se apunta el del proceso hijo a un directorio desechable y se cortan
-    las dos vías por las que git vuelve al del usuario —el config global y el del sistema—. Lo que
-    se retira es el **alcance**, no los archivos.
+    las vías por las que git vuelve al del usuario —el config global, el del sistema y el que la
+    instalación deja junto al binario—. Lo que se retira es el **alcance**, no los archivos.
     """
     entorno = dict(os.environ)
     entorno["HOME"] = str(hogar)
     entorno["GIT_CONFIG_GLOBAL"] = os.devnull
     entorno["GIT_CONFIG_SYSTEM"] = os.devnull
+    # Apuntar `GIT_CONFIG_SYSTEM` a /dev/null NO apaga el gitconfig que la instalación deja junto
+    # al binario. Medido sobre este host con git 2.50.1 (Apple Git-155): el `credential.helper
+    # osxkeychain` de `/Applications/Xcode.app/…/git-core/gitconfig` se sigue leyendo, y solo
+    # `GIT_CONFIG_NOSYSTEM` lo apaga. Sin esta línea el retiro de credenciales se declara hecho y
+    # el worker conserva un helper que consulta el llavero.
+    entorno["GIT_CONFIG_NOSYSTEM"] = "1"
     entorno["GIT_TERMINAL_PROMPT"] = "0"
     entorno["GIT_ASKPASS"] = ""
     entorno.pop("SSH_AUTH_SOCK", None)
@@ -1034,6 +1040,28 @@ def preflightear(receta: dict[str, Any], *, recibos: Path,
             return bloqueo("lanzamiento_no_controlable",
                            "sin prompt congelado antes del despacho, dos intentos del mismo punto "
                            "no son la misma medición")
+
+        # La apertura sola NO alcanza. Se emite ANTES de la tool call, así que acredita lo que se
+        # sabía al despachar y nada sobre si el despacho ocurrió: un recibo abierto y nunca cerrado
+        # es indistinguible de un despacho que se anunció y no se hizo. Medido: con cinco recibos
+        # que solo tenían su apertura, el preflight adjudicaba los seis puntos de subagente
+        # `runnable`. V35 pide un despacho «que prueba el protocolo de frontera de punta a punta»,
+        # y la otra punta es el retorno.
+        retorno = next((e for e in recibo["recibo"]["eventos"]
+                        if e["evento"] == "dispatch_returned"), None)
+        completo = (retorno is not None
+                    and retorno.get("referencia_evento_id") == apertura.get("evento_id")
+                    and bool(retorno.get("salida_sha256")))
+        pruebas.append(Prueba(
+            "despacho-completado", completo,
+            "el recibo cierra con el retorno del despacho, referenciando su apertura y con el "
+            "hash de la salida cosechada" if completo
+            else "el recibo no acredita que el despacho haya vuelto: solo tiene la apertura, que "
+                 "se emite antes de la tool call"))
+        if not completo:
+            return bloqueo("adaptador_ausente",
+                           "el despacho nativo desechable no se probó de punta a punta: su recibo "
+                           "no tiene retorno que referencie la apertura con la salida cosechada")
     else:
         return bloqueo("adaptador_ausente", f"adaptador desconocido: {adaptador!r}")
 
@@ -1106,6 +1134,92 @@ def revisar_adjudicaciones(recetas: list[dict[str, Any]],
     return problemas
 
 
+def materializar_egreso(destino: Path) -> tuple[dict[str, Any] | None, str]:
+    """Corre el recibo de egreso del INSTRUMENTO, como proceso aparte.
+
+    El runner no importa el instrumento —el juez de lo que produce nunca comparte proceso con él—,
+    así que el inventario que el acta congela se pide por la misma frontera que la validación de
+    bundles: un subproceso, con su código de salida como veredicto. Reimplementar la regla acá la
+    volvería un dato declarado dos veces, que es lo que AC-23 prohíbe.
+    """
+    comando = [sys.executable, str(RUTA_INSTRUMENTO),
+               "--recibo-de-egreso", "--salida", str(destino)]
+    try:
+        proc = subprocess.run(comando, capture_output=True, text=True, timeout=600)
+    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        return None, f"el recibo de egreso no pudo correr: {type(exc).__name__}"
+    if proc.returncode != 0:
+        cola = (proc.stdout + proc.stderr).strip().splitlines()[-3:]
+        return None, ("el recibo de egreso falló (exit "
+                      f"{proc.returncode}): {' | '.join(cola)}")
+    recibo, error = _cargar_json(destino)
+    if error:
+        return None, error
+    return recibo, f"inventario materializado en {_relativa(destino)}"
+
+
+def adjuntar_al_acta(acta: Path, adjudicaciones: list[Adjudicacion],
+                     recibo_de_egreso: dict[str, Any],
+                     recibos: Path) -> tuple[list[str], dict[str, Any]]:
+    """Escribe en el acta el inventario materializado y el recibo del preflight (D-14).
+
+    Lo que el usuario aprueba es la versión que YA los lleva: adjuntarlos después del STOP haría
+    que lo aprobado y lo congelado fueran documentos distintos.
+    """
+    documento, error = _cargar_json(acta)
+    if error:
+        return [error], {}
+
+    identidades: list[str] = []
+    for ruta in sorted(recibos.glob("*.json")) if recibos.is_dir() else []:
+        if ruta.name.endswith(".schema.json"):
+            continue
+        datos, err = _cargar_json(ruta)
+        if err or not isinstance(datos, dict):
+            continue
+        cuerpo = datos.get("recibo") or {}
+        if cuerpo.get("protocolo") == "conformance" and cuerpo.get("recibo_id"):
+            identidades.append(cuerpo["recibo_id"])
+
+    documento["inventario_de_egreso"] = recibo_de_egreso["inventario_de_egreso"]
+    documento["recibo_del_preflight"] = {
+        "recibo_sha256": recibo_de_egreso["recibo_sha256"],
+        "adjudicaciones": [
+            {"receta_id": a.receta_id, "adjudicacion": a.estado}
+            if a.estado == "runnable"
+            else {"receta_id": a.receta_id, "adjudicacion": a.estado, "causa_id": a.causa}
+            for a in adjudicaciones
+        ],
+        "recibos_de_frontera_de_conformance": sorted(set(identidades)),
+    }
+    acta.write_text(json.dumps(documento, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return [], documento
+
+
+def revisar_cobertura_contra_bloqueos(documento: dict[str, Any],
+                                      adjudicaciones: list[Adjudicacion],
+                                      recetas: list[dict[str, Any]]) -> list[str]:
+    """Lo único por lo que un bloqueo hace fallar el modo: que viole la cobertura pre-registrada.
+
+    Un bloqueo es un resultado válido (D-15) y el acta decide qué hacer con él; pero un punto que
+    el acta declara observado y cuya receta no se puede lanzar no es una decisión pendiente: es una
+    cohorte que no se puede correr como está escrita.
+    """
+    observados = set(((documento.get("cobertura") or {}).get("puntos_observados")) or [])
+    punto_de = {r.get("receta_id"): r.get("punto_de_despacho") for r in recetas}
+    problemas: list[str] = []
+    for adjudicacion in adjudicaciones:
+        if adjudicacion.estado != "blocked":
+            continue
+        punto = punto_de.get(adjudicacion.receta_id)
+        if punto in observados:
+            problemas.append(
+                f"`{punto}` está declarado observado y su receta `{adjudicacion.receta_id}` quedó "
+                f"bloqueada por `{adjudicacion.causa}`: la cobertura pre-registrada no se puede "
+                f"cumplir con esta cohorte")
+    return problemas
+
+
 def modo_preflight(args: argparse.Namespace) -> int:
     recetas_json, error = _cargar_json(RUTA_RECETAS)
     if error:
@@ -1133,6 +1247,29 @@ def modo_preflight(args: argparse.Namespace) -> int:
     print()
     print(f"Adjudicadas {len(adjudicaciones)} de {len(recetas)} recetas: "
           f"{lanzables} lanzables, {bloqueados} bloqueadas")
+
+    crudo_acta = getattr(args, "acta", None)
+    if crudo_acta:
+        acta = _ruta_absoluta(crudo_acta)
+        if not acta.is_file():
+            print(f"FALLA  no existe el acta {_relativa(acta)}")
+            return 1
+        recibo_de_egreso, detalle = materializar_egreso(acta.parent / "recibo-de-egreso.json")
+        print(detalle)
+        if recibo_de_egreso is None:
+            problemas.append(detalle)
+        else:
+            fallas, documento = adjuntar_al_acta(acta, adjudicaciones, recibo_de_egreso, recibos)
+            problemas += fallas
+            if not fallas:
+                print(f"adjuntados al acta el inventario "
+                      f"({len(recibo_de_egreso['inventario_de_egreso']['superficies'])} "
+                      f"superficies) y el recibo del preflight "
+                      f"({len(adjudicaciones)} adjudicaciones, "
+                      f"{len(documento['recibo_del_preflight']['recibos_de_frontera_de_conformance'])}"
+                      f" recibos de conformance)")
+                problemas += revisar_cobertura_contra_bloqueos(documento, adjudicaciones, recetas)
+
     if problemas:
         for p in problemas:
             print(f"FALLA  {p}")
@@ -2714,6 +2851,10 @@ registrar_modo(
         Auxiliar("--recibos", "la sede de recibos de frontera contra la que se prueba la "
                               "disponibilidad del adaptador de sesión",
                  metavar="<dir-de-recibos>"),
+        Auxiliar("--acta", "la propuesta de acta a la que se adjuntan el inventario de egreso "
+                           "materializado y el recibo del preflight, antes del STOP (D-14); con "
+                           "ella, un bloqueo que viole la cobertura declarada hace fallar el modo",
+                 metavar="<ruta>"),
     ),
 )
 

@@ -13,7 +13,11 @@
       "sesionador": "ninguno",
       "estado_esperado": "runnable",
       "causa_esperada": null,
-      "pruebas_esperadas": ["transporte-resoluble", "adaptador-disponible", "lanzamiento-controlable"]
+      "pruebas_esperadas": [
+        "transporte-resoluble",
+        "adaptador-disponible",
+        "lanzamiento-controlable"
+      ]
     },
     {
       "receta_id": "pf-binario-ausente",
@@ -70,6 +74,13 @@
       "estado_esperado": "blocked",
       "causa_esperada": "lanzamiento_no_controlable",
       "fragmento_esperado": "sin prompt congelado antes del despacho"
+    },
+    {
+      "receta_id": "pf-sesion-recibo-sin-retorno",
+      "sesionador": "ninguno",
+      "estado_esperado": "blocked",
+      "causa_esperada": "adaptador_ausente",
+      "fragmento_esperado": "no se probó de punta a punta"
     },
     {
       "receta_id": "pf-resume-sano",

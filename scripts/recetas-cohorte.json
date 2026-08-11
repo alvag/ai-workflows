@@ -5,6 +5,7 @@
     "por-que-comando-o-accion-y-no-los-dos": "Un punto de subagente no tiene comando: su invocación es despachar un agente con el prompt de una sección. Darle un `comando` sintético lo volvería indistinguible de un punto CLI, y el preflight de T12 probaría la disponibilidad de un binario que ese punto no usa.",
     "por-que-el-comando-esta-aunque-la-derivacion-sea-adjudicada": "La adjudicación dice que el comando no se pudo DERIVAR, no que no exista. El comando adjudicado se escribe igual —el runner lo necesita— y queda marcado como decisión humana, con la condición que obligaría a revisarlo.",
     "por-que-la-derivacion-no-es-el-comando": "La procedencia resuelve al fragmento de la sede que PRUEBA que la invocación está declarada ahí, no al comando completo con sus continuaciones de línea. Un comando multilínea no es un nodo del motor de extracción, y pretender extraerlo entero obligaría a un selector que reconstruye la continuación: eso ya no sería derivar, sería parsear shell.",
+    "por-que-las-variables-admitidas-son-los-marcadores-del-comando": "`variables_admitidas` declara los marcadores `<…>` que la receta sustituye al materializar la invocación, y el preflight bloquea cualquiera que el comando traiga sin declarar: un marcador no declarado se lanza sin que nadie sepa con qué valor corre. Se escriben con el nombre EXACTO del marcador y no con su nombre conceptual —`N` y no `ronda`—, porque la comparación es contra el texto del comando congelado. Las rutas de salida de `cross-review` entran por lo mismo: la sede las escribe como marcador y la receta las sustituye.",
     "por-que-los-dos-de-cross-implement-son-un-escenario": "El paso de `cli-resume` reanuda la sesión que crea el inicial, y ese `session_id` no existe cuando la cohorte se congela (D-17). Lo que se congela es la regla de enlace entre la salida de uno y la entrada del otro."
   },
   "recetas": [
@@ -257,7 +258,7 @@
       "directorio_de_trabajo": "<arbol-desechable>",
       "variables_admitidas": [
         "working_dir",
-        "ronda",
+        "N",
         "S"
       ],
       "salida_esperada": {
@@ -284,7 +285,12 @@
       "variables_admitidas": [
         "working_dir",
         "MODEL",
-        "EFFORT"
+        "EFFORT",
+        "ruta/al/prompt-r1.txt",
+        "ruta/al/veredicto.txt",
+        "ruta/al/thread-r1.jsonl",
+        "ruta/al/r1.err.txt",
+        "ruta/al/session.txt"
       ],
       "salida_esperada": {
         "clase": "archivo",

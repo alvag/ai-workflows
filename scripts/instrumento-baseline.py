@@ -8219,6 +8219,13 @@ def _entorno_desechable(hogar: Path, inventario: dict | None = None) -> dict:
     entorno["HOME"] = str(hogar)
     entorno["GIT_CONFIG_GLOBAL"] = os.devnull
     entorno["GIT_CONFIG_SYSTEM"] = os.devnull
+    # `GIT_CONFIG_SYSTEM` NO alcanza. Medido sobre este host con git 2.50.1 (Apple Git-155): el
+    # `credential.helper osxkeychain` vive en el gitconfig que Xcode instala junto al binario, y
+    # apuntando `GIT_CONFIG_SYSTEM` a /dev/null se sigue leyendo. `GIT_CONFIG_NOSYSTEM` es lo único
+    # que lo apaga. Sin esta línea el entorno «desechable» le deja al worker un helper capaz de
+    # devolver credenciales del llavero: el mismo modo de fallar que las tres variables de token,
+    # en la superficie que quedaba.
+    entorno["GIT_CONFIG_NOSYSTEM"] = "1"
     entorno["GIT_TERMINAL_PROMPT"] = "0"
     entorno["GH_CONFIG_DIR"] = str(hogar / "gh-desechable")
     entorno.pop("SSH_AUTH_SOCK", None)
@@ -8823,6 +8830,146 @@ def _snapshot_de_egreso(arbol: Path) -> tuple[str, str]:
     return (_correr_en(["git", "-C", str(arbol), "for-each-ref",
                         "--format=%(refname) %(objectname)"], None, entorno)[1],
             _correr_en(["git", "-C", str(arbol), "count-objects", "-v"], None, entorno)[1])
+
+
+# --- Modo `--recibo-de-egreso`: materializar el inventario y probar cada superficie -------------
+#
+# `--autotest-egreso` prueba que la REGLA discrimina; este modo la APLICA sobre el entorno real y
+# emite lo que el acta adjunta. Son dos cosas distintas y por eso son dos modos: un autotest verde
+# no es un inventario, y el acta no puede congelar un conjunto de superficies que nadie materializó
+# (D-14). El preflight del runner lo invoca como PROCESO APARTE, igual que al validador de bundles:
+# quien produce la evidencia y quien la juzga no comparten proceso.
+#
+# El inventario que se congela es el del **entorno desechable**, porque ése es el que cada corrida
+# reejecuta y compara. El del host viaja al lado como evidencia del retiro —no como el congelado—:
+# sin él, «la regla no descubrió nada» y «no había nada que descubrir» se leen igual.
+
+def hash_de_objeto(objeto: dict) -> str:
+    """El hash de un objeto adjunto al acta, con la MISMA canonicalización que el pre-registro.
+
+    Reusa `proyeccion_canonica` en vez de serializar aparte: dos canonicalizaciones distintas
+    divergen, y la que se relaja es siempre la que corre sobre los datos reales. La exclusión de
+    `CAMPO_DEL_HASH` que esa proyección aplica es un no-op acá —estos objetos no lo llevan—, así
+    que el campo del hash se calcula sobre el objeto SIN él y se agrega después.
+    """
+    return hashlib.sha256(proyeccion_canonica(objeto)).hexdigest()
+
+
+def recibos_por_superficie(superficies: list[dict], corridas: list[ResultadoDeMutante],
+                           inventario: dict) -> tuple[list[dict], list[str]]:
+    """Un recibo por superficie descubierta, con el mutante de su clase y su resultado.
+
+    Una superficie cuya clase no tiene mutante queda **sin tratamiento**, y el inventario declara
+    que eso `bloquea`: se reporta como problema en vez de omitirse, porque una superficie que nadie
+    probó es exactamente la que puede publicar.
+    """
+    por_clase: dict[str, list[dict]] = {}
+    for mutante in inventario["mutantes_de_publicacion"]:
+        por_clase.setdefault(mutante["clase_de_superficie"], []).append(mutante)
+
+    recibos: list[dict] = []
+    problemas: list[str] = []
+    por_id = {c.mutante_id: c for c in corridas}
+    for superficie in superficies:
+        mutantes = por_clase.get(superficie["clase"], [])
+        if not mutantes:
+            problemas.append(f"`{superficie['superficie_id']}` es de clase "
+                             f"`{superficie['clase']}`, que no tiene mutante que la pruebe: "
+                             f"sin tratamiento, {inventario['que_pasa_sin_tratamiento']}")
+            continue
+        for mutante in mutantes:
+            corrida = por_id.get(mutante["mutante_id"])
+            if corrida is None:
+                problemas.append(f"el mutante `{mutante['mutante_id']}` de "
+                                 f"`{superficie['superficie_id']}` no corrió")
+                continue
+            recibos.append({
+                "superficie_id": superficie["superficie_id"],
+                "clase": superficie["clase"],
+                "adaptador_real": mutante["adaptador_real"],
+                "mutante_id": mutante["mutante_id"],
+                "tratamiento": mutante["tratamiento"],
+                "frontera_interceptada": mutante["frontera_interceptada"],
+                "alcanzo_el_canary": corrida.alcanzo_el_canary,
+                "alcanzo_un_servicio": corrida.alcanzo_un_servicio,
+                "resultado": corrida.evidencia,
+            })
+    return recibos, problemas
+
+
+def modo_recibo_de_egreso(args: argparse.Namespace) -> int:
+    inventario, error = _cargar_json(RUTA_SUPERFICIES)
+    if error:
+        print(f"FALLA  {error}")
+        return 1
+
+    with tempfile.TemporaryDirectory(prefix="recibo-egreso-") as tmp:
+        taller = Path(tmp)
+        hogar = taller / "hogar"
+        hogar.mkdir(parents=True, exist_ok=True)
+        entorno_desechable = _entorno_desechable(hogar, inventario)
+
+        del_host = descubrir_canales(RAIZ, dict(os.environ), inventario)
+        desechable = descubrir_canales(RAIZ, entorno_desechable, inventario)
+
+        snapshot_antes = _snapshot_de_egreso(RAIZ)
+        with Canary() as canary:
+            corridas = correr_mutantes_de_publicacion(canary, taller)
+        ceso = canary.ceso()
+        snapshot_despues = _snapshot_de_egreso(RAIZ)
+
+    problemas: list[str] = []
+    problemas += revisar_mutantes(corridas, inventario)
+    recibos, sin_tratamiento = recibos_por_superficie(desechable, corridas, inventario)
+    problemas += sin_tratamiento
+    if snapshot_antes != snapshot_despues:
+        problemas.append("el árbol observado cambió entre el snapshot previo y el posterior: un "
+                         "mutante que altera el árbol dejó de ser una prueba")
+    if not ceso:
+        problemas.append("el canary sigue escuchando: un canary vivo es un recurso sin dueño")
+
+    inventario_de_egreso = {"superficies": desechable}
+    inventario_de_egreso["inventario_sha256"] = hash_de_objeto(inventario_de_egreso)
+
+    recibo = {
+        "version_recibo": "1.0.0",
+        "inventario_de_egreso": inventario_de_egreso,
+        "superficies_del_host": del_host,
+        "recibos_por_superficie": recibos,
+        "invariantes": {
+            "entorno_desechable": True,
+            "snapshot_igual": snapshot_antes == snapshot_despues,
+            "canary_cesado": ceso,
+            "ningun_servicio_alcanzado": not any(c.alcanzo_un_servicio for c in corridas),
+        },
+    }
+    recibo["recibo_sha256"] = hash_de_objeto(recibo)
+
+    for entrada in recibos:
+        print(f"[{entrada['tratamiento']:11s}] {entrada['superficie_id']} — "
+              f"{entrada['mutante_id']} por `{entrada['adaptador_real']}`: {entrada['resultado']}")
+    print(f"\nInventario del host: {len(del_host)} superficies · "
+          f"del entorno desechable: {len(desechable)} · recibos: {len(recibos)}")
+    print(f"inventario_sha256 {inventario_de_egreso['inventario_sha256']}")
+    print(f"recibo_sha256     {recibo['recibo_sha256']}")
+
+    salida = getattr(args, "salida", None)
+    if salida:
+        ruta = _ruta_absoluta(salida)
+        ruta.parent.mkdir(parents=True, exist_ok=True)
+        ruta.write_text(json.dumps(recibo, ensure_ascii=False, indent=2) + "\n",
+                        encoding="utf-8")
+        relativa = ruta.relative_to(RAIZ) if ruta.is_relative_to(RAIZ) else ruta
+        print(f"escrito en {relativa}")
+
+    if problemas:
+        for problema in problemas:
+            print(f"  - {problema}")
+        print(f"\nRESULTADO: FALLA — {len(problemas)} problemas")
+        return 1
+    print("\nRESULTADO: OK — inventario materializado y cada superficie descubierta con su "
+          "tratamiento probado")
+    return 0
 
 
 # ---------------------------------------------------------------------------------------------
@@ -12707,6 +12854,18 @@ registrar_modo(
     "adaptador REAL interceptado en la frontera contra un canary local, en entorno desechable, con "
     "snapshot previo y posterior iguales y cese del canary comprobado",
     modo_autotest_egreso,
+)
+
+registrar_modo(
+    "--recibo-de-egreso",
+    "APLICA la regla de egreso sobre el entorno real: materializa el inventario del entorno "
+    "desechable —el que cada corrida reejecuta y compara—, con el del host al lado como evidencia "
+    "del retiro, y emite un recibo por superficie descubierta con su mutante, su frontera "
+    "interceptada y su resultado; una superficie sin tratamiento bloquea",
+    modo_recibo_de_egreso,
+    auxiliares=(
+        Auxiliar("--salida", "dónde escribir el recibo materializado", metavar="<ruta>"),
+    ),
 )
 
 registrar_modo(

@@ -1,0 +1,54 @@
+{
+  "version_schema": "1.0.0",
+  "recibo": {
+    "protocolo": "conformance",
+    "recibo_id": "rcb-conformance-sdd-pr-feedback-implement-delegado",
+    "punto_de_despacho": "sdd-pr-feedback-implement-delegado",
+    "propuesta_de_acta_sha256": "df241ad63c3cc1cc98c0fe3baa2685cddb7b0ea445a3eeda790d337b090cb109",
+    "eventos": [
+      {
+        "evento": "dispatch_started",
+        "evento_id": "ev-sdd-pr-feedback-implement-delegado-apertura",
+        "prompt_sha256": "f0c5ac9ebf163dbff51bde2a731f8718ff16cae8d0a51f9c6c5fc3a1463cb50e",
+        "contexto_sha256": "3ea2556263f70e74785a843a465c4cb42b5d4c3d5e84d6781baad9d2982cedba",
+        "permisos": [
+          "despachado en read_only: la prueba de conformance no ejecuta el encargo",
+          "sin publicación: el subagente corre sobre el árbol observado y no egresa",
+          "permiso efectivo del punto en producción, según la matriz: workspace_write_acotado"
+        ],
+        "sello": {
+          "valor_ns": 4922724182602375,
+          "fuente": "reloj_monotonico_del_harness",
+          "autoridad": "harness",
+          "precision_ns": 41,
+          "procedencia": "time.monotonic_ns del proceso del runner"
+        }
+      },
+      {
+        "evento": "dispatch_returned",
+        "evento_id": "ev-sdd-pr-feedback-implement-delegado-retorno",
+        "referencia_evento_id": "ev-sdd-pr-feedback-implement-delegado-apertura",
+        "session_id": {
+          "estado": "expuesto",
+          "valor": "conf-prfeedback"
+        },
+        "modelo_o_familia": {
+          "estado": "no_expuesto",
+          "adjudicacion": "estratificacion"
+        },
+        "terminal": {
+          "estado": "expuesto",
+          "valor": "idle_notification:available"
+        },
+        "salida_sha256": "36e77fd72ff703bcca1db5e4c040211a3251e3edebbeb2a1f89d0181cec4d8d9",
+        "sello": {
+          "valor_ns": 4923471348811333,
+          "fuente": "reloj_monotonico_del_harness",
+          "autoridad": "harness",
+          "precision_ns": 41,
+          "procedencia": "time.monotonic_ns del proceso del runner"
+        }
+      }
+    ]
+  }
+}

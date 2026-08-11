@@ -1,0 +1,54 @@
+{
+  "version_schema": "1.0.0",
+  "recibo": {
+    "protocolo": "conformance",
+    "recibo_id": "rcb-conformance-sdd-flow-revision-final-de-diff",
+    "punto_de_despacho": "sdd-flow-revision-final-de-diff",
+    "propuesta_de_acta_sha256": "df241ad63c3cc1cc98c0fe3baa2685cddb7b0ea445a3eeda790d337b090cb109",
+    "eventos": [
+      {
+        "evento": "dispatch_started",
+        "evento_id": "ev-sdd-flow-revision-final-de-diff-apertura",
+        "prompt_sha256": "ee16b1ce368a19470495e6492c478e22d0a608c5e7a4c6552e249bff5a91e64a",
+        "contexto_sha256": "2b3d9014a8177aa5524b3f73aa669b815f042194c37e5575a053ce1fa2290d51",
+        "permisos": [
+          "despachado en read_only: la prueba de conformance no ejecuta el encargo",
+          "sin publicación: el subagente corre sobre el árbol observado y no egresa",
+          "permiso efectivo del punto en producción, según la matriz: read_only"
+        ],
+        "sello": {
+          "valor_ns": 4922723988170333,
+          "fuente": "reloj_monotonico_del_harness",
+          "autoridad": "harness",
+          "precision_ns": 41,
+          "procedencia": "time.monotonic_ns del proceso del runner"
+        }
+      },
+      {
+        "evento": "dispatch_returned",
+        "evento_id": "ev-sdd-flow-revision-final-de-diff-retorno",
+        "referencia_evento_id": "ev-sdd-flow-revision-final-de-diff-apertura",
+        "session_id": {
+          "estado": "expuesto",
+          "valor": "conf-diff"
+        },
+        "modelo_o_familia": {
+          "estado": "no_expuesto",
+          "adjudicacion": "estratificacion"
+        },
+        "terminal": {
+          "estado": "expuesto",
+          "valor": "idle_notification:available"
+        },
+        "salida_sha256": "3a1ff03a1b91f305ce2443613ec11edcacf516cb0d867ce280b526967f132491",
+        "sello": {
+          "valor_ns": 4923084862957833,
+          "fuente": "reloj_monotonico_del_harness",
+          "autoridad": "harness",
+          "precision_ns": 41,
+          "procedencia": "time.monotonic_ns del proceso del runner"
+        }
+      }
+    ]
+  }
+}
