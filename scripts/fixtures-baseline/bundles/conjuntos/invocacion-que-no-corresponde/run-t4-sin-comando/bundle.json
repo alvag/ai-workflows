@@ -1,6 +1,6 @@
 {
   "version_schema": "1.0.0",
-  "run_id": "run-0002",
+  "run_id": "run-t4-sin-comando",
   "sample_id": "mst-co-explore-fan-out-dual-r1",
   "attempt_id": "int-co-explore-fan-out-dual-r1-a2",
   "attempt_ordinal": 2,
@@ -11,12 +11,10 @@
   "transporte": "cli-exec",
   "adaptador": "script",
   "invocacion": {
-    "tipo": "comando",
-    "comando_literal": "codex exec -s read-only -C . --skip-git-repo-check --json < prompt.txt",
-    "directorio_de_trabajo": "arboles-desechables/run-0002",
-    "variables_de_entorno": [
-      "CODEX_HOME"
-    ]
+    "tipo": "accion",
+    "accion_literal": "Task tool con subagente fresco",
+    "prompt_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+    "directorio_de_trabajo": "arboles-desechables/run-t4-sin-comando"
   },
   "ventana_de_pared_utc": {
     "inicio": "2026-08-11T10:02:11Z",
@@ -141,6 +139,7 @@
   "pruebas_de_aislamiento": {
     "refs_y_objetos_identicos": {
       "resultado": "not_applicable",
+      "causa": "el punto corre con permiso de solo lectura segun la matriz de despachos",
       "permiso_efectivo": "read_only"
     },
     "sin_red_ni_credenciales": {

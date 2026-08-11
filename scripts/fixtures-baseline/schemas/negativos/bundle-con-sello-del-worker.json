@@ -83,6 +83,15 @@
       }
     }
   ],
+  "reporte_del_worker": {
+    "estado": "interpretable",
+    "ruta_relativa": "arboles-desechables/run-0001/salida.md",
+    "sha256": "cafebabecafebabecafebabecafebabecafebabecafebabecafebabecafebabe"
+  },
+  "veredicto_de_conformance": {
+    "resultado": "correcto",
+    "evidencia": "la salida declara las cinco secciones que la receta exige y sus identificadores casan con los pre-registrados"
+  },
   "trabajos_delegados": [
     {
       "trabajo_delegado_id": "trb-implementer-1",

@@ -1,6 +1,6 @@
 {
   "version_schema": "1.0.0",
-  "run_id": "run-0001",
+  "run_id": "run-t4-otro-nombre",
   "sample_id": "mst-sdd-flow-implementer-por-task-r1",
   "attempt_id": "int-sdd-flow-implementer-por-task-r1-a1",
   "attempt_ordinal": 1,
@@ -119,7 +119,7 @@
     {
       "recurso_id": "rec-arbol-1",
       "clase": "arbol_de_trabajo",
-      "life_state": "transferido",
+      "life_state": "vivo",
       "ownership_state": "transferido",
       "owner": "conductor de la cohorte",
       "next_action": "retirar el arbol desechable al importar la evidencia",

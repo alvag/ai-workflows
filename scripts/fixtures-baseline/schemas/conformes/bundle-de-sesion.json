@@ -83,11 +83,22 @@
       }
     }
   ],
+  "reporte_del_worker": {
+    "estado": "interpretable",
+    "ruta_relativa": "arboles-desechables/run-0001/salida.md",
+    "sha256": "cafebabecafebabecafebabecafebabecafebabecafebabecafebabecafebabe"
+  },
+  "veredicto_de_conformance": {
+    "resultado": "correcto",
+    "evidencia": "la salida declara las cinco secciones que la receta exige y sus identificadores casan con los pre-registrados"
+  },
   "trabajos_delegados": [
     {
       "trabajo_delegado_id": "trb-implementer-1",
       "evento_terminal_id": "evt-terminal-1",
-      "recursos_ids": ["rec-sesion-1"]
+      "recursos_ids": [
+        "rec-sesion-1"
+      ]
     }
   ],
   "artefactos_producidos": [
@@ -163,8 +174,14 @@
     },
     "eventos_de_intervencion_humana": [],
     "modelo": {
-      "solicitado": {"estado": "expuesto", "valor": "claude-opus-5"},
-      "efectivo": {"estado": "no_expuesto", "adjudicacion": "estratificacion"}
+      "solicitado": {
+        "estado": "expuesto",
+        "valor": "claude-opus-5"
+      },
+      "efectivo": {
+        "estado": "no_expuesto",
+        "adjudicacion": "estratificacion"
+      }
     }
   },
   "pipeline_de_sanitizacion": {

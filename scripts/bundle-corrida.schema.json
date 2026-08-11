@@ -12,6 +12,8 @@
     "la-secuencia-tiene-un-orden": "`x-secuencia-de-apertura` declara el orden que AC-17 exige a los dos adaptadores. El schema declara el vocabulario de eventos y su forma; que aparezcan en ese orden lo comprueban los modos que leen el bundle, porque es una restricción sobre la secuencia y no sobre cada elemento.",
     "el-adaptador-de-sesion-no-se-autoatestigua": "Cuando el adaptador es `sesion_de_agente`, el bundle exige `recibo_de_frontera` (D-21): el runner lo construye desde ese recibo y nunca desde lo que declare la sesión. Un bundle de sesión sin recibo satisface todo lo demás y no acredita nada, así que la obligación es estructural.",
     "las-anomalias-se-referencian-no-se-alojan": "`journal_candidate_ids` referencia entradas del journal de anomalías, cuya sede es `scripts/journal-anomalias-fase-0/` (D-25). El bundle no es la sede: si el runner falla antes de construirlo, la anomalía tiene que existir igual.",
+    "los-tres-ejes-necesitan-tres-hechos": "AC-18 pide que la observación declare ciclo operativo, validez del reporte y resultado semántico, y que los tres se DERIVEN. El ciclo sale de `eventos` y `recursos`; los otros dos no tenían hecho de origen, así que el recolector habría tenido que inventarlos. `reporte_del_worker` y `veredicto_de_conformance` son esos dos hechos. Sin ellos, «salida malformada» —uno de los casos que AC-18 exige al corpus— no es expresable en un bundle, y las dos métricas de la categoría `salidas_invalidas` quedan sin fuente.",
+    "el-reporte-y-el-veredicto-son-uniones-disjuntas": "Las dos son `oneOf` discriminado y cerrado, por el mismo motivo que `dato_de_plataforma`: la variante sin contenido NO declara las propiedades de contenido, así que rellenar un reporte que no llegó, o afirmar conformance sin evidencia, no es expresable. Un reporte malformado exige `causa` y conserva `ruta_relativa` y `sha256` —la evidencia de lo que llegó mal se versiona igual—, y un veredicto `no_evaluable` exige `causa` en lugar de `evidencia`.",
     "refs-locales": "El validador de `scripts/instrumento-baseline.py` resuelve solo `$ref` locales (`#/$defs/...`). Las definiciones compartidas con los otros schemas de la fase están repetidas en cada archivo a propósito."
   },
 
@@ -43,6 +45,8 @@
     "ventana_de_pared_utc",
     "estado_del_intento",
     "eventos",
+    "reporte_del_worker",
+    "veredicto_de_conformance",
     "trabajos_delegados",
     "artefactos_producidos",
     "recursos",
@@ -82,6 +86,14 @@
       "minItems": 1,
       "uniqueItems": true,
       "items": {"$ref": "#/$defs/evento"}
+    },
+    "reporte_del_worker": {
+      "description": "Qué llegó del worker y si es interpretable. Es el hecho del que se deriva el eje `validez_del_reporte` de la observación: sin él, un reporte malformado y uno válido son indistinguibles desde el bundle.",
+      "$ref": "#/$defs/reporte_del_worker"
+    },
+    "veredicto_de_conformance": {
+      "description": "Si lo entregado es lo que la receta esperaba. Es el hecho del que se deriva el eje `resultado_semantico`: un ciclo completado con un reporte válido puede entregar algo incorrecto, y sin este campo esa diferencia no queda registrada en ningún lado.",
+      "$ref": "#/$defs/veredicto_de_conformance"
     },
     "trabajos_delegados": {
       "description": "Un elemento por trabajo delegado. El conjunto se compara en igualdad bidireccional contra el que la matriz y la receta declaran: sin eso, un worker faltante deja «cada recurso registrado» en verde.",
@@ -364,6 +376,83 @@
           "$ref": "#/$defs/identificador"
         },
         "detalle": {"$ref": "#/$defs/texto"}
+      }
+    },
+    "reporte_del_worker": {
+      "description": "Las tres variantes son disjuntas por `estado`. La ausente no declara `ruta_relativa` ni `sha256`: rellenar un reporte que no llegó no es expresable.",
+      "oneOf": [
+        {"$ref": "#/$defs/reporte_interpretable"},
+        {"$ref": "#/$defs/reporte_malformado"},
+        {"$ref": "#/$defs/reporte_ausente"}
+      ]
+    },
+    "reporte_interpretable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["estado", "ruta_relativa", "sha256"],
+      "properties": {
+        "estado": {"const": "interpretable"},
+        "ruta_relativa": {"$ref": "#/$defs/ruta_relativa"},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "reporte_malformado": {
+      "description": "Llegó algo y no se pudo interpretar. Conserva ruta y hash —la evidencia de lo que llegó mal se versiona igual— y exige la causa: un malformado sin causa es indistinguible de un parser que falló.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["estado", "ruta_relativa", "sha256", "causa"],
+      "properties": {
+        "estado": {"const": "malformado"},
+        "ruta_relativa": {"$ref": "#/$defs/ruta_relativa"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "causa": {"$ref": "#/$defs/texto"}
+      }
+    },
+    "reporte_ausente": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["estado", "causa"],
+      "properties": {
+        "estado": {"const": "ausente"},
+        "causa": {"$ref": "#/$defs/texto"}
+      }
+    },
+    "veredicto_de_conformance": {
+      "description": "Si lo entregado satisface lo que la receta esperaba. Las tres variantes son disjuntas por `resultado`; `no_evaluable` lleva causa en lugar de evidencia, porque no se evaluó nada que se pueda mostrar.",
+      "oneOf": [
+        {"$ref": "#/$defs/veredicto_correcto"},
+        {"$ref": "#/$defs/veredicto_incorrecto"},
+        {"$ref": "#/$defs/veredicto_no_evaluable"}
+      ]
+    },
+    "veredicto_correcto": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resultado", "evidencia"],
+      "properties": {
+        "resultado": {"const": "correcto"},
+        "evidencia": {
+          "description": "Qué se comparó contra qué esperado de la receta. Una afirmación de conformidad no es evidencia de conformidad.",
+          "$ref": "#/$defs/texto"
+        }
+      }
+    },
+    "veredicto_incorrecto": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resultado", "evidencia"],
+      "properties": {
+        "resultado": {"const": "incorrecto"},
+        "evidencia": {"$ref": "#/$defs/texto"}
+      }
+    },
+    "veredicto_no_evaluable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resultado", "causa"],
+      "properties": {
+        "resultado": {"const": "no_evaluable"},
+        "causa": {"$ref": "#/$defs/texto"}
       }
     },
     "trabajo_delegado": {

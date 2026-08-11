@@ -1,6 +1,6 @@
 {
   "version_schema": "1.0.0",
-  "run_id": "run-0002",
+  "run_id": "run-t4-script",
   "sample_id": "mst-co-explore-fan-out-dual-r1",
   "attempt_id": "int-co-explore-fan-out-dual-r1-a2",
   "attempt_ordinal": 2,
@@ -141,6 +141,7 @@
   "pruebas_de_aislamiento": {
     "refs_y_objetos_identicos": {
       "resultado": "not_applicable",
+      "causa": "el punto corre con permiso de solo lectura segun la matriz de despachos",
       "permiso_efectivo": "read_only"
     },
     "sin_red_ni_credenciales": {

@@ -1,6 +1,6 @@
 {
   "version_schema": "1.0.0",
-  "run_id": "run-0001",
+  "run_id": "run-t4-sin-recursos",
   "sample_id": "mst-sdd-flow-implementer-por-task-r1",
   "attempt_id": "int-sdd-flow-implementer-por-task-r1-a1",
   "attempt_ordinal": 1,
@@ -106,24 +106,6 @@
       "ruta_relativa": "arboles-desechables/run-0001/salida.md",
       "bytes": 2048,
       "sha256": "cafebabecafebabecafebabecafebabecafebabecafebabecafebabecafebabe"
-    }
-  ],
-  "recursos": [
-    {
-      "recurso_id": "rec-sesion-1",
-      "clase": "sesion",
-      "life_state": "terminado_comprobado",
-      "ownership_state": "sin_transferir",
-      "evidencia_de_cese": "la plataforma reporto la sesion cerrada y el terminal dejo de existir"
-    },
-    {
-      "recurso_id": "rec-arbol-1",
-      "clase": "arbol_de_trabajo",
-      "life_state": "transferido",
-      "ownership_state": "transferido",
-      "owner": "conductor de la cohorte",
-      "next_action": "retirar el arbol desechable al importar la evidencia",
-      "evidencia_de_cese": "sigue en disco: su cese se comprueba al cierre de la cohorte"
     }
   ],
   "pruebas_de_aislamiento": {

@@ -89,8 +89,7 @@
     "sha256": "cafebabecafebabecafebabecafebabecafebabecafebabecafebabecafebabe"
   },
   "veredicto_de_conformance": {
-    "resultado": "correcto",
-    "evidencia": "la salida declara las cinco secciones que la receta exige y sus identificadores casan con los pre-registrados"
+    "resultado": "correcto"
   },
   "trabajos_delegados": [
     {
@@ -119,7 +118,7 @@
     {
       "recurso_id": "rec-arbol-1",
       "clase": "arbol_de_trabajo",
-      "life_state": "transferido",
+      "life_state": "vivo",
       "ownership_state": "transferido",
       "owner": "conductor de la cohorte",
       "next_action": "retirar el arbol desechable al importar la evidencia",

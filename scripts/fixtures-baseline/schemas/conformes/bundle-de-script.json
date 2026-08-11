@@ -14,7 +14,9 @@
     "tipo": "comando",
     "comando_literal": "codex exec -s read-only -C . --skip-git-repo-check --json < prompt.txt",
     "directorio_de_trabajo": "arboles-desechables/run-0002",
-    "variables_de_entorno": ["CODEX_HOME"]
+    "variables_de_entorno": [
+      "CODEX_HOME"
+    ]
   },
   "ventana_de_pared_utc": {
     "inicio": "2026-08-11T10:02:11Z",
@@ -95,16 +97,28 @@
       "detalle": "terminal no expuesto para el segundo worker"
     }
   ],
+  "reporte_del_worker": {
+    "estado": "ausente",
+    "causa": "el intento bloqueo antes del retorno del segundo worker: no llego ninguna salida que interpretar"
+  },
+  "veredicto_de_conformance": {
+    "resultado": "no_evaluable",
+    "causa": "sin reporte del worker no hay nada que comparar contra lo que la receta espera"
+  },
   "trabajos_delegados": [
     {
       "trabajo_delegado_id": "trb-worker-codex",
       "evento_terminal_id": "evt-terminal-w1",
-      "recursos_ids": ["rec-proceso-codex"]
+      "recursos_ids": [
+        "rec-proceso-codex"
+      ]
     },
     {
       "trabajo_delegado_id": "trb-worker-claude",
       "evento_terminal_id": "evt-terminal-w2",
-      "recursos_ids": ["rec-proceso-claude"]
+      "recursos_ids": [
+        "rec-proceso-claude"
+      ]
     }
   ],
   "artefactos_producidos": [],
@@ -153,15 +167,26 @@
     "runner_sha256": "1122334455667788112233445566778811223344556677881122334455667788",
     "version_cli": "codex 0.146.1",
     "version_runtime": "python 3.13",
-    "hooks": ["stop-hook del entorno, declarado y sin efecto sobre esta corrida"],
+    "hooks": [
+      "stop-hook del entorno, declarado y sin efecto sobre esta corrida"
+    ],
     "ejecutor": {
       "perfil_esperado": "conductor local sin hooks de sesion",
-      "instancia_efectiva": {"estado": "no_expuesto", "adjudicacion": "bloqueo"}
+      "instancia_efectiva": {
+        "estado": "no_expuesto",
+        "adjudicacion": "bloqueo"
+      }
     },
     "eventos_de_intervencion_humana": [],
     "modelo": {
-      "solicitado": {"estado": "expuesto", "valor": "gpt-5.4-codex"},
-      "efectivo": {"estado": "expuesto", "valor": "gpt-5.4-codex"}
+      "solicitado": {
+        "estado": "expuesto",
+        "valor": "gpt-5.4-codex"
+      },
+      "efectivo": {
+        "estado": "expuesto",
+        "valor": "gpt-5.4-codex"
+      }
     }
   },
   "pipeline_de_sanitizacion": {
@@ -175,5 +200,7 @@
     ],
     "manifest_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
   },
-  "journal_candidate_ids": ["cnd-0007"]
+  "journal_candidate_ids": [
+    "cnd-0007"
+  ]
 }

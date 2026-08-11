@@ -1,6 +1,6 @@
 {
   "version_schema": "1.0.0",
-  "run_id": "run-0002",
+  "run_id": "run-t4-bloqueo-mudo",
   "sample_id": "mst-co-explore-fan-out-dual-r1",
   "attempt_id": "int-co-explore-fan-out-dual-r1-a2",
   "attempt_ordinal": 2,
@@ -93,8 +93,7 @@
         "autoridad": "harness",
         "precision_ns": 1000,
         "procedencia": "time.monotonic_ns del proceso del runner"
-      },
-      "detalle": "terminal no expuesto para el segundo worker"
+      }
     }
   ],
   "reporte_del_worker": {
@@ -141,6 +140,7 @@
   "pruebas_de_aislamiento": {
     "refs_y_objetos_identicos": {
       "resultado": "not_applicable",
+      "causa": "el punto corre con permiso de solo lectura segun la matriz de despachos",
       "permiso_efectivo": "read_only"
     },
     "sin_red_ni_credenciales": {

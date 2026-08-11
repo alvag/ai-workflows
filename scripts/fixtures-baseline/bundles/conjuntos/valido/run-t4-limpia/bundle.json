@@ -1,8 +1,8 @@
 {
   "version_schema": "1.0.0",
-  "run_id": "run-0001",
-  "sample_id": "mst-sdd-flow-implementer-por-task-r1",
-  "attempt_id": "int-sdd-flow-implementer-por-task-r1-a1",
+  "run_id": "run-t4-limpia",
+  "sample_id": "mst-cross-implement-implementador-inicial-r2",
+  "attempt_id": "int-cross-implement-implementador-inicial-r2-a1",
   "attempt_ordinal": 1,
   "preregistro_sha256": "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
   "punto_de_despacho": "sdd-flow-implementer-por-task",
@@ -81,16 +81,29 @@
         "precision_ns": 1000,
         "procedencia": "time.monotonic_ns del proceso del runner"
       }
+    },
+    {
+      "evento_id": "evt-hallazgo-limpia-1",
+      "tipo": "hallazgo_emitido",
+      "sello": {
+        "valor_ns": 150000000000,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1000,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      },
+      "detalle": "la ruta de degradacion del adaptador no deja constancia del retiro"
     }
   ],
   "reporte_del_worker": {
-    "estado": "interpretable",
-    "ruta_relativa": "arboles-desechables/run-0001/salida.md",
-    "sha256": "cafebabecafebabecafebabecafebabecafebabecafebabecafebabecafebabe"
+    "estado": "malformado",
+    "ruta_relativa": "arboles-desechables/run-t4-limpia/salida.md",
+    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "causa": "el reporte no cierra su bloque estructurado y ningun parseo lo recupera"
   },
   "veredicto_de_conformance": {
-    "resultado": "correcto",
-    "evidencia": "la salida declara las cinco secciones que la receta exige y sus identificadores casan con los pre-registrados"
+    "resultado": "incorrecto",
+    "evidencia": "la salida no declara las secciones que la receta exige y no hay como comparar sus identificadores"
   },
   "trabajos_delegados": [
     {
@@ -110,20 +123,18 @@
   ],
   "recursos": [
     {
-      "recurso_id": "rec-sesion-1",
+      "recurso_id": "rec-sesion-limpia",
       "clase": "sesion",
       "life_state": "terminado_comprobado",
       "ownership_state": "sin_transferir",
       "evidencia_de_cese": "la plataforma reporto la sesion cerrada y el terminal dejo de existir"
     },
     {
-      "recurso_id": "rec-arbol-1",
+      "recurso_id": "rec-arbol-limpio",
       "clase": "arbol_de_trabajo",
-      "life_state": "transferido",
-      "ownership_state": "transferido",
-      "owner": "conductor de la cohorte",
-      "next_action": "retirar el arbol desechable al importar la evidencia",
-      "evidencia_de_cese": "sigue en disco: su cese se comprueba al cierre de la cohorte"
+      "life_state": "terminado_comprobado",
+      "ownership_state": "sin_transferir",
+      "evidencia_de_cese": "el arbol desechable se retiro y su ruta ya no existe en disco"
     }
   ],
   "pruebas_de_aislamiento": {

@@ -2335,6 +2335,819 @@ def modo_autotest_canonicalizacion(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------------------------
+# Modos `--validar-bundles`, `--recolectar` y `--autotest-bundles`.
+#
+# El recolector es lo que convierte evidencia cruda en observación. Sin él, cada corrida se
+# interpreta a mano y el baseline deja de ser recomponible: el número publicado ya no tiene una
+# cadena que lo devuelva a un hecho.
+#
+# La regla que gobierna todo este bloque: **la observación se deriva SOLO del bundle**. Ningún dato
+# sale de la memoria del operador, de lo que la corrida declare sobre sí misma en prosa, ni de un
+# valor plausible puesto donde faltaba un hecho. Donde la cadena no cierra, la métrica se emite SIN
+# valor y con su adjudicación escrita —que es para lo que el schema tiene la variante sin `valor`—,
+# y donde no cierra la observación entera, la recolección FALLA en lugar de completarla.
+#
+# Frontera del bundle en disco, que hasta acá no estaba fijada: una corrida es un directorio
+# `<dir>/<run_id>/` y su bundle es el archivo `bundle.json` que está adentro. `bundle_sha256` es el
+# SHA-256 de los BYTES de ese archivo tal como quedaron en disco, así que se recomputa con
+# `shasum -a 256 <dir>/<run_id>/bundle.json` sin creerle a este programa.
+# ---------------------------------------------------------------------------------------------
+
+DIR_CORRIDAS_FASE_0 = DIR_SCRIPTS / "corridas-fase-0"
+DIR_OBSERVACIONES_FASE_0 = DIR_SCRIPTS / "observaciones-fase-0"
+DIR_FIXTURES_BUNDLES = DIR_SCRIPTS / "fixtures-baseline" / "bundles"
+RUTA_MANIFEST_BUNDLES = DIR_FIXTURES_BUNDLES / "manifest.json"
+
+NOMBRE_DEL_BUNDLE = "bundle.json"
+
+RUTA_CORRIDAS_FASE_0 = "scripts/corridas-fase-0"
+
+# Qué invocación acredita cada adaptador. Un bundle de script que registra una acción no deja
+# constancia de ningún comando, y «comando literal registrado» pasa a no exigir nada.
+INVOCACION_POR_ADAPTADOR: dict[str, tuple[str, tuple[str, ...]]] = {
+    "script": ("comando", ("comando_literal",)),
+    "sesion_de_agente": ("accion", ("accion_literal", "prompt_sha256")),
+}
+
+# Eje 2 y eje 3 de la observación, uno por hecho del bundle. Son mapeos y no juicios: el hecho lo
+# registra el runner al capturar, y el recolector no lo reinterpreta.
+VALIDEZ_POR_ESTADO_DEL_REPORTE: dict[str, str] = {
+    "interpretable": "valido",
+    "malformado": "malformado",
+    "ausente": "ausente",
+}
+SEMANTICA_POR_VEREDICTO: dict[str, str] = {
+    "correcto": "correcto",
+    "incorrecto": "incorrecto",
+    "no_evaluable": "no_evaluable",
+}
+
+
+class BundleEnDisco(NamedTuple):
+    """Una corrida leída de `<dir>/<run_id>/`. `datos` es None cuando no se pudo cargar."""
+    directorio: str
+    ruta: Path
+    datos: dict | None
+    sha256: str | None
+    error: str | None
+
+
+def _leer_bundle(directorio: Path) -> BundleEnDisco:
+    ruta = directorio / NOMBRE_DEL_BUNDLE
+    try:
+        crudo = ruta.read_bytes()
+    except FileNotFoundError:
+        return BundleEnDisco(directorio.name, ruta, None, None,
+                             f"no existe {NOMBRE_DEL_BUNDLE} en la corrida")
+    try:
+        datos = json.loads(crudo.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return BundleEnDisco(directorio.name, ruta, None, None, f"JSON inválido: {exc}")
+    if not isinstance(datos, dict):
+        return BundleEnDisco(directorio.name, ruta, None, None, "el bundle no es un objeto JSON")
+    return BundleEnDisco(directorio.name, ruta, datos, hashlib.sha256(crudo).hexdigest(), None)
+
+
+def leer_conjunto_de_bundles(raiz: Path) -> list[BundleEnDisco]:
+    """Cada hijo directorio de `raiz` es una corrida. El orden es el del nombre, para que dos
+    corridas del mismo conjunto se reporten siempre igual."""
+    if not raiz.is_dir():
+        return []
+    return [_leer_bundle(hijo) for hijo in sorted(raiz.iterdir()) if hijo.is_dir()]
+
+
+# --- Las comprobaciones del conjunto. Es una tabla y no una función larga a propósito: las tasks
+# que siguen —aislamiento, cobertura del protocolo, identidad del entorno, sanitización— agregan
+# las suyas registrándolas acá, sin reescribir ni el modo ni las anteriores. ---
+
+class ComprobacionDeBundles(NamedTuple):
+    clave: str
+    que_prueba: str
+    revisar: Callable[[list[BundleEnDisco], dict], list[str]]
+
+
+COMPROBACIONES_DE_BUNDLES: list[ComprobacionDeBundles] = []
+
+
+def registrar_comprobacion_de_bundles(clave: str, que_prueba: str,
+                                      revisar: Callable[[list[BundleEnDisco], dict],
+                                                        list[str]]) -> None:
+    if any(c.clave == clave for c in COMPROBACIONES_DE_BUNDLES):
+        raise ValueError(f"la comprobación de bundles {clave} ya está registrada")
+    COMPROBACIONES_DE_BUNDLES.append(ComprobacionDeBundles(clave, que_prueba, revisar))
+
+
+def _comprobar_conjunto_no_vacio(bundles: list[BundleEnDisco], schema: dict) -> list[str]:
+    del schema
+    if bundles:
+        return []
+    # Un conjunto vacío satisface en el vacío todo lo demás. Sin esta comprobación, apuntar el modo
+    # a un directorio equivocado da exit 0 y se lee como «los bundles están bien».
+    return ["el conjunto no tiene ninguna corrida: un directorio vacío no es un conjunto válido"]
+
+
+def _comprobar_bundle_presente_y_conforme(bundles: list[BundleEnDisco], schema: dict) -> list[str]:
+    fallas: list[str] = []
+    for bundle in bundles:
+        if bundle.error:
+            fallas.append(f"{bundle.directorio}: {bundle.error}")
+            continue
+        errores = validar(bundle.datos, schema)
+        if errores:
+            fallas.append(f"{bundle.directorio}: {len(errores)} errores contra el schema — "
+                          f"{errores[0]}")
+    return fallas
+
+
+def _comprobar_identidad_contra_el_directorio(bundles: list[BundleEnDisco],
+                                              schema: dict) -> list[str]:
+    del schema
+    fallas: list[str] = []
+    for bundle in bundles:
+        if bundle.datos is None:
+            continue  # ya lo reportó la comprobación anterior
+        declarado = bundle.datos.get("run_id")
+        if declarado != bundle.directorio:
+            fallas.append(f"{bundle.directorio}: declara `run_id` {declarado!r}, que no es el "
+                          "nombre de su directorio")
+    return fallas
+
+
+def _comprobar_run_id_unico(bundles: list[BundleEnDisco], schema: dict) -> list[str]:
+    del schema
+    vistos: dict[str, str] = {}
+    fallas: list[str] = []
+    for bundle in bundles:
+        if bundle.datos is None:
+            continue
+        declarado = bundle.datos.get("run_id")
+        if declarado in vistos:
+            fallas.append(f"{bundle.directorio}: `run_id` {declarado!r} repetido — ya lo declara "
+                          f"{vistos[declarado]}")
+            continue
+        vistos[declarado] = bundle.directorio
+    return fallas
+
+
+def _comprobar_invocacion_registrada(bundles: list[BundleEnDisco], schema: dict) -> list[str]:
+    del schema
+    fallas: list[str] = []
+    for bundle in bundles:
+        if bundle.datos is None:
+            continue
+        adaptador = bundle.datos.get("adaptador")
+        esperado = INVOCACION_POR_ADAPTADOR.get(adaptador)
+        if esperado is None:
+            fallas.append(f"{bundle.directorio}: adaptador {adaptador!r} sin invocación declarada")
+            continue
+        tipo_esperado, campos = esperado
+        invocacion = bundle.datos.get("invocacion") or {}
+        if invocacion.get("tipo") != tipo_esperado:
+            fallas.append(f"{bundle.directorio}: el adaptador {adaptador!r} despacha por "
+                          f"«{tipo_esperado}» y la invocación registrada es "
+                          f"«{invocacion.get('tipo')}»: no queda constancia de con qué corrió")
+            continue
+        for campo in campos:
+            if not invocacion.get(campo):
+                fallas.append(f"{bundle.directorio}: la invocación no registra `{campo}`")
+    return fallas
+
+
+registrar_comprobacion_de_bundles(
+    "A", "el conjunto tiene al menos una corrida", _comprobar_conjunto_no_vacio)
+registrar_comprobacion_de_bundles(
+    "B", "cada corrida lleva su bundle y valida contra el schema",
+    _comprobar_bundle_presente_y_conforme)
+registrar_comprobacion_de_bundles(
+    "C", "el `run_id` declarado es el nombre de su directorio",
+    _comprobar_identidad_contra_el_directorio)
+registrar_comprobacion_de_bundles(
+    "D", "el `run_id` es único en el conjunto", _comprobar_run_id_unico)
+registrar_comprobacion_de_bundles(
+    "E", "la invocación registra su literal, y el que corresponde a su adaptador",
+    _comprobar_invocacion_registrada)
+
+
+# --- La derivación. Cada campo de la observación dice de qué hecho del bundle sale. ---
+
+class FallaDeDerivacion(NamedTuple):
+    campo: str
+    motivo: str
+
+    def __str__(self) -> str:
+        return f"{self.campo}: {self.motivo}"
+
+
+def derivar_observation_id(bundle: dict) -> str:
+    """La observación es una por intento, así que su identidad se deriva de la del intento y no de
+    la de la corrida. T5 congela esta regla y le agrega sus mutantes de derivación; acá vive la
+    forma, en una función propia, para que congelarla sea cambiar un solo lugar."""
+    return f"obs-{bundle.get('attempt_id')}"
+
+
+def _eventos_de_tipo(bundle: dict, tipo: str) -> list[dict]:
+    return [e for e in bundle.get("eventos") or [] if e.get("tipo") == tipo]
+
+
+# Los cinco valores del ciclo operativo, con la condición que los deriva. El orden es de severidad
+# DECLARADA y no de conveniencia: un bloqueo tapa todo lo demás porque la corrida no siguió; una
+# corrida sin despacho no tiene ciclo que juzgar; y un presupuesto vencido con un proceso vivo es
+# peor que una degradación, porque además deja algo corriendo. T6 somete este orden a los casos que
+# COMBINAN fallas, que es donde una prioridad arbitraria se rompe.
+def _derivar_ciclo_operativo(bundle: dict) -> tuple[str, str | None]:
+    """Devuelve (ciclo, causa_de_bloqueo). La causa es None salvo en `bloqueado`."""
+    bloqueos = _eventos_de_tipo(bundle, "bloqueo")
+    if bloqueos:
+        return "bloqueado", bloqueos[0].get("detalle")
+    if not _eventos_de_tipo(bundle, "despacho"):
+        return "sin_eventos", None
+    utilizable = _eventos_de_tipo(bundle, "resultado_utilizable")
+    vivos = [r for r in bundle.get("recursos") or [] if r.get("life_state") == "vivo"]
+    if not utilizable and vivos:
+        return "presupuesto_vencido_con_proceso_vivo", None
+    if _eventos_de_tipo(bundle, "degradacion_observada") or not utilizable:
+        return "degradado", None
+    return "completado", None
+
+
+def derivar_estado(bundle: dict) -> tuple[dict | None, list[FallaDeDerivacion]]:
+    fallas: list[FallaDeDerivacion] = []
+    ciclo, causa = _derivar_ciclo_operativo(bundle)
+
+    estado_del_reporte = (bundle.get("reporte_del_worker") or {}).get("estado")
+    validez = VALIDEZ_POR_ESTADO_DEL_REPORTE.get(estado_del_reporte)
+    if validez is None:
+        fallas.append(FallaDeDerivacion(
+            "estado.validez_del_reporte",
+            f"el bundle no registra un `reporte_del_worker` interpretable: estado "
+            f"{estado_del_reporte!r}"))
+
+    veredicto = (bundle.get("veredicto_de_conformance") or {}).get("resultado")
+    semantica = SEMANTICA_POR_VEREDICTO.get(veredicto)
+    if semantica is None:
+        fallas.append(FallaDeDerivacion(
+            "estado.resultado_semantico",
+            f"el bundle no registra un `veredicto_de_conformance` conocido: resultado "
+            f"{veredicto!r}"))
+
+    if ciclo == "bloqueado" and not causa:
+        # La causa es obligatoria y sale del `detalle` del evento de bloqueo. Copiarla del campo
+        # declarativo `estado_del_intento` sería tomarla de lo que la corrida dice de sí misma; y
+        # rellenarla con un texto genérico dejaría un bloqueo sin causa vestido de causa.
+        fallas.append(FallaDeDerivacion(
+            "estado.causa_de_bloqueo",
+            "el evento de bloqueo no lleva `detalle`, y la causa no se toma de otro lado"))
+
+    if fallas:
+        return None, fallas
+
+    estado = {
+        "ciclo_operativo": ciclo,
+        "validez_del_reporte": validez,
+        "resultado_semantico": semantica,
+    }
+    if causa:
+        estado["causa_de_bloqueo"] = causa
+    return estado, []
+
+
+def derivar_estrato(bundle: dict) -> str:
+    """El estrato sale del valor EFECTIVO registrado: los eventos de intervención de la identidad
+    del entorno, más el evento de confirmación humana de la corrida. Se toman los dos porque son
+    dos registros distintos del mismo hecho, y con que uno lo acredite el intento ya no transcurrió
+    sin intervención. T8 le agrega qué muestras la EXIGEN, que se deriva de la matriz."""
+    entorno = bundle.get("identidad_del_entorno") or {}
+    intervenciones = entorno.get("eventos_de_intervencion_humana") or []
+    if intervenciones or _eventos_de_tipo(bundle, "confirmacion_humana"):
+        return "con_intervencion_humana"
+    return "automatizable"
+
+
+def _hecho_del_intento(bundle: dict, estado: dict) -> dict:
+    """El intento, visto como hecho contable. Es lo que consumen los predicados de clase `intento`
+    del vocabulario, y sus campos son los del estado derivado: contar sobre lo que el bundle
+    declara en vez de sobre lo derivado dejaría la métrica midiendo la declaración."""
+    return {
+        "attempt_id": bundle.get("attempt_id"),
+        "ciclo_operativo": estado["ciclo_operativo"],
+        "validez_del_reporte": estado["validez_del_reporte"],
+        "resultado_semantico": estado["resultado_semantico"],
+    }
+
+
+def _conteos_de_la_tasa(entradas: dict, hechos: list, predicados: dict) -> tuple[int, int] | None:
+    """Numerador y denominador de un cociente. El valor lo sigue produciendo el resolvedor del
+    vocabulario —esta función no lo recalcula—: acá salen los dos conteos que la tasa necesita para
+    ser auditable, y el llamador comprueba que dividirlos dé exactamente el valor resuelto."""
+    numerador = predicados.get(entradas.get("predicado_numerador"))
+    denominador = predicados.get(entradas.get("predicado_denominador"))
+    if numerador is None or denominador is None:
+        return None
+    elegibles = [h for h in hechos if _predicado_satisface(denominador, h)]
+    if not elegibles:
+        return None
+    return sum(1 for h in elegibles if _predicado_satisface(numerador, h)), len(elegibles)
+
+
+def _hechos_de_la_metrica(clase: str, bundle: dict, hecho_del_intento: dict,
+                          trabajo_delegado_id: str | None) -> list:
+    if clase == "intento":
+        return [hecho_del_intento]
+    if clase == "recurso":
+        return list(bundle.get("recursos") or [])
+    if clase != "evento":
+        return []
+    eventos = list(bundle.get("eventos") or [])
+    if trabajo_delegado_id is None:
+        return eventos
+    # Una métrica de sede `trabajo_delegado` ve los eventos de SU trabajo más los de la corrida
+    # entera —el despacho, que abre la ventana, es uno solo y no pertenece a ningún trabajo—. Sin
+    # este filtro, un bundle con dos workers tiene dos eventos terminales y la fórmula no resuelve.
+    return [e for e in eventos
+            if e.get("trabajo_delegado_id") in (None, trabajo_delegado_id)]
+
+
+def _derivar_metrica(metrica: dict, vocabulario_por_id: dict, bundle: dict,
+                     hecho_del_intento: dict, trabajo_delegado_id: str | None) -> dict:
+    """Una entrada de `metricas`. Nunca devuelve un cero por un cálculo que no cerró: la variante
+    sin `valor` lleva su adjudicación escrita, que es lo que AC-21 exige."""
+    metrica_id = metrica.get("metrica_id")
+    categoria = vocabulario_por_id["categoria_de"][metrica_id]
+    admitidas = metrica.get("formulas_admitidas") or []
+
+    sin_observacion = {
+        "metrica_id": metrica_id,
+        "categoria": categoria,
+    }
+    if len(admitidas) != 1:
+        # El pre-registro es quien elige entre varias fórmulas admitidas (decisión heredada 13), y
+        # todavía no existe. Elegir acá una por defecto sería fijar metodología desde el
+        # instrumento, que es exactamente lo que el pre-registro existe para impedir.
+        return {**sin_observacion, "estado_de_medicion": "no_observada",
+                "adjudicacion": f"la métrica admite {len(admitidas)} fórmulas y el pre-registro "
+                                "todavía no eligió: la metodología no la fija el instrumento"}
+
+    formula = vocabulario_por_id["formulas"].get(admitidas[0]) or {}
+    resolvedor = RESOLVEDORES_DE_FORMA.get(formula.get("forma"))
+    if resolvedor is None:
+        return {**sin_observacion, "estado_de_medicion": "bloqueada",
+                "adjudicacion": f"la fórmula «{admitidas[0]}» no tiene resolvedor implementado"}
+
+    hechos = _hechos_de_la_metrica(formula.get("clase_de_hecho"), bundle, hecho_del_intento,
+                                   trabajo_delegado_id)
+    entradas = metrica.get("entradas") or {}
+    valor, error = resolvedor(entradas, hechos, vocabulario_por_id["predicados"])
+    if error is not None:
+        return {**sin_observacion, "estado_de_medicion": "bloqueada", "adjudicacion": error}
+
+    medida = {**sin_observacion, "estado_de_medicion": "medida", "valor": valor,
+              "unidad": metrica.get("unidad")}
+    if metrica.get("publicacion") != "tasa":
+        return medida
+    conteos = _conteos_de_la_tasa(entradas, hechos, vocabulario_por_id["predicados"])
+    if conteos is None or not _casi_igual(conteos[0] / conteos[1], valor):
+        # Si los conteos no reproducen el valor que resolvió el vocabulario, la tasa no es
+        # auditable: publicarla igual sería publicar un cociente que sus propios términos no dan.
+        return {**sin_observacion, "estado_de_medicion": "bloqueada",
+                "adjudicacion": "el numerador y el denominador no reproducen la tasa resuelta"}
+    return {**medida, "numerador": float(conteos[0]), "denominador": float(conteos[1])}
+
+
+def _indice_del_vocabulario(vocabulario: dict) -> dict:
+    categoria_de: dict[str, str] = {}
+    por_sede: dict[str, list[dict]] = {"corrida": [], "trabajo_delegado": []}
+    for categoria, metrica in _metricas_del(vocabulario):
+        categoria_de[metrica.get("metrica_id")] = categoria.get("categoria")
+        por_sede.setdefault(metrica.get("sede"), []).append(metrica)
+    return {
+        "categoria_de": categoria_de,
+        "por_sede": por_sede,
+        "formulas": _por_id(vocabulario.get("formulas") or [], "formula_id"),
+        "predicados": _por_id(vocabulario.get("predicados") or [], "predicado_id"),
+    }
+
+
+def derivar_observacion(bundle: dict, bundle_sha256: str, vocabulario: dict,
+                        schema_observacion: dict) -> tuple[dict | None,
+                                                           list[FallaDeDerivacion]]:
+    """El bundle entra, la observación sale. Todo campo tiene su hecho de origen acá adentro."""
+    estado, fallas = derivar_estado(bundle)
+    if estado is None:
+        return None, fallas
+
+    indice = _indice_del_vocabulario(vocabulario)
+    hecho = _hecho_del_intento(bundle, estado)
+
+    observacion = {
+        "version_schema": schema_observacion.get("x-version"),
+        "observation_id": derivar_observation_id(bundle),
+        "sample_id": bundle.get("sample_id"),
+        "attempt_id": bundle.get("attempt_id"),
+        "attempt_ordinal": bundle.get("attempt_ordinal"),
+        "preregistro_sha256": bundle.get("preregistro_sha256"),
+        "procedencia": {"run_id": bundle.get("run_id"), "bundle_sha256": bundle_sha256},
+        "punto_de_despacho": bundle.get("punto_de_despacho"),
+        "skill": bundle.get("skill"),
+        "familia_de_rol": bundle.get("familia_de_rol"),
+        "transporte": bundle.get("transporte"),
+        "estrato": derivar_estrato(bundle),
+        "estado": estado,
+        "metricas": [_derivar_metrica(m, indice, bundle, hecho, None)
+                     for m in indice["por_sede"]["corrida"]],
+        "trabajos_delegados": [
+            {
+                "trabajo_delegado_id": trabajo.get("trabajo_delegado_id"),
+                "evento_terminal_id": trabajo.get("evento_terminal_id"),
+                "metricas": [_derivar_metrica(m, indice, bundle, hecho,
+                                              trabajo.get("trabajo_delegado_id"))
+                             for m in indice["por_sede"]["trabajo_delegado"]],
+            }
+            for trabajo in bundle.get("trabajos_delegados") or []
+        ],
+    }
+
+    # La observación se valida contra su propio contrato antes de salir. Un recolector que emite
+    # algo que el schema rechaza deja el error para el paso siguiente, y ahí ya no se sabe si lo
+    # produjo la derivación o la escritura.
+    errores = validar(observacion, schema_observacion)
+    if errores:
+        return None, [FallaDeDerivacion(fmt(e.ruta), e.mensaje) for e in errores]
+    return observacion, []
+
+
+def _cargar_insumos_de_recoleccion() -> tuple[dict, dict, list[str]]:
+    """Los dos contratos y el vocabulario que la recolección necesita, con sus errores de carga."""
+    problemas: list[str] = []
+    vocabulario, error = _cargar_json(RUTA_VOCABULARIO)
+    if error:
+        problemas.append(f"vocabulario de métricas: {error}")
+    esquemas: dict[str, dict] = {}
+    for nombre in ("bundle-corrida", "observacion"):
+        datos, error = _cargar_json(CONTRATOS_POR_NOMBRE[nombre].ruta)
+        if error:
+            problemas.append(f"schema de {nombre}: {error}")
+        else:
+            esquemas[nombre] = datos
+    return vocabulario or {}, esquemas, problemas
+
+
+def _ruta_absoluta(valor: str) -> Path:
+    ruta = Path(valor)
+    return ruta if ruta.is_absolute() else RAIZ / ruta
+
+
+def modo_validar_bundles(args: argparse.Namespace) -> int:
+    raiz = _ruta_absoluta(getattr(args, "validar_bundles"))
+    _, esquemas, problemas = _cargar_insumos_de_recoleccion()
+    if "bundle-corrida" not in esquemas:
+        for p in problemas:
+            print(f"FALLA  {p}")
+        return 1
+
+    bundles = leer_conjunto_de_bundles(raiz)
+    print(f"Conjunto: {raiz} — {len(bundles)} corridas")
+    rojas: list[str] = []
+    for comprobacion in COMPROBACIONES_DE_BUNDLES:
+        fallas = comprobacion.revisar(bundles, esquemas["bundle-corrida"])
+        if fallas:
+            rojas.append(comprobacion.clave)
+            print(f"[{comprobacion.clave}] FALLA  {comprobacion.que_prueba} — {len(fallas)}:")
+            for falla in fallas[:6]:
+                print(f"       - {falla}")
+        else:
+            print(f"[{comprobacion.clave}] OK     {comprobacion.que_prueba}")
+
+    print()
+    if rojas:
+        print(f"RESULTADO: FALLA — comprobaciones en rojo: {', '.join(rojas)}")
+        return 1
+    print(f"RESULTADO: OK — {len(bundles)} bundles pasan las "
+          f"{len(COMPROBACIONES_DE_BUNDLES)} comprobaciones")
+    return 0
+
+
+def modo_recolectar(args: argparse.Namespace) -> int:
+    crudo = getattr(args, "bundle", None)  # el modo se selecciona con `--recolectar`; el insumo
+    if not crudo:                          # viaja en `--bundle`, que es su auxiliar obligatoria
+        print("FALLA  `--recolectar` necesita `--bundle <ruta-de-la-corrida>`", file=sys.stderr)
+        return 2
+    directorio = _ruta_absoluta(crudo)
+
+    vocabulario, esquemas, problemas = _cargar_insumos_de_recoleccion()
+    if problemas:
+        for p in problemas:
+            print(f"FALLA  {p}")
+        return 1
+
+    bundle = _leer_bundle(directorio)
+    if bundle.error:
+        print(f"FALLA  {directorio.name}: {bundle.error}")
+        return 1
+    errores = validar(bundle.datos, esquemas["bundle-corrida"])
+    if errores:
+        print(f"FALLA  {directorio.name}: el bundle no valida contra su contrato — "
+              f"{len(errores)} errores")
+        for e in errores[:6]:
+            print(f"       - {e}")
+        return 1
+
+    observacion, fallas = derivar_observacion(bundle.datos, bundle.sha256, vocabulario,
+                                              esquemas["observacion"])
+    if observacion is None:
+        print(f"FALLA  {directorio.name}: la observación no se pudo derivar del bundle — "
+              f"{len(fallas)} campos sin hecho de origen:")
+        for falla in fallas[:8]:
+            print(f"       - {falla}")
+        return 1
+
+    salida = getattr(args, "salida", None)
+    ruta = (_ruta_absoluta(salida) if salida
+            else DIR_OBSERVACIONES_FASE_0 / f"{bundle.datos['run_id']}.json")
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    ruta.write_text(json.dumps(observacion, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8")
+
+    medidas = [m for m in observacion["metricas"] if m["estado_de_medicion"] == "medida"]
+    sin_valor = [m for m in observacion["metricas"] if m["estado_de_medicion"] != "medida"]
+    print(f"OK     {bundle.datos['run_id']} → {ruta}")
+    print(f"       procedencia: bundle_sha256 {bundle.sha256}")
+    print(f"       estado: {observacion['estado']['ciclo_operativo']} · "
+          f"{observacion['estado']['validez_del_reporte']} · "
+          f"{observacion['estado']['resultado_semantico']} · estrato "
+          f"{observacion['estrato']}")
+    print(f"       métricas de la corrida: {len(medidas)} medidas, {len(sin_valor)} sin "
+          f"observación y con su adjudicación escrita")
+    for metrica in sin_valor:
+        print(f"       - {metrica['metrica_id']}: {metrica['estado_de_medicion']} — "
+              f"{metrica['adjudicacion']}")
+    print(f"       trabajos delegados: {len(observacion['trabajos_delegados'])}")
+    return 0
+
+
+# --- `--autotest-bundles`. El corpus NO se valida contra sí mismo (D-16): el manifest declara
+# aparte qué conjuntos tienen que existir y con qué resultado, y se compara con el disco en las dos
+# direcciones. ---
+
+def _conjuntos_en_disco() -> set[str]:
+    raiz = DIR_FIXTURES_BUNDLES / "conjuntos"
+    if not raiz.is_dir():
+        return set()
+    return {hijo.name for hijo in raiz.iterdir() if hijo.is_dir()}
+
+
+def _revisar_conjunto(nombre: str, schema: dict) -> set[str]:
+    """Las claves de las comprobaciones que se ponen rojas sobre este conjunto."""
+    bundles = leer_conjunto_de_bundles(DIR_FIXTURES_BUNDLES / "conjuntos" / nombre)
+    return {c.clave for c in COMPROBACIONES_DE_BUNDLES if c.revisar(bundles, schema)}
+
+
+class MutanteDeRecoleccion(NamedTuple):
+    nombre: str
+    que_rompe: str
+    aplicar: Callable[[dict], bool]
+
+
+def _mut_borrar_evento_utilizable(bundle: dict) -> bool:
+    # Solo ejerce a una corrida que completó: donde ya hay una degradación o un bloqueo, el ciclo
+    # no depende del resultado utilizable y quitarlo daría un verde que no probó nada.
+    if _eventos_de_tipo(bundle, "degradacion_observada") or _eventos_de_tipo(bundle, "bloqueo"):
+        return False
+    eventos = bundle.get("eventos") or []
+    for i, evento in enumerate(eventos):
+        if evento.get("tipo") == "resultado_utilizable":
+            del eventos[i]
+            return True
+    return False
+
+
+def _mut_reporte_a_interpretable(bundle: dict) -> bool:
+    reporte = bundle.get("reporte_del_worker") or {}
+    if reporte.get("estado") == "interpretable":
+        return False
+    bundle["reporte_del_worker"] = {
+        "estado": "interpretable",
+        "ruta_relativa": "arboles-desechables/mutante/salida.md",
+        "sha256": "0" * 64,
+    }
+    return True
+
+
+def _mut_recurso_a_vivo(bundle: dict) -> bool:
+    recursos = bundle.get("recursos") or []
+    # Solo ejerce a una corrida cuya limpieza esté completa: donde ya hay un recurso sin cese
+    # comprobado, la métrica vale 0 antes de mutar y el mutante daría un verde que no probó nada.
+    if not recursos or any(r.get("life_state") != "terminado_comprobado" for r in recursos):
+        return False
+    recursos[0]["life_state"] = "vivo"
+    return True
+
+
+def _mut_agregar_intervencion_humana(bundle: dict) -> bool:
+    entorno = bundle.get("identidad_del_entorno") or {}
+    if entorno.get("eventos_de_intervencion_humana"):
+        return False
+    entorno["eventos_de_intervencion_humana"] = ["evt-confirmacion-inyectada"]
+    return True
+
+
+def _mut_veredicto_a_incorrecto(bundle: dict) -> bool:
+    veredicto = bundle.get("veredicto_de_conformance") or {}
+    if veredicto.get("resultado") == "incorrecto":
+        return False
+    bundle["veredicto_de_conformance"] = {
+        "resultado": "incorrecto",
+        "evidencia": "mutante: la salida no trae las secciones que la receta exige",
+    }
+    return True
+
+
+# Cada mutante altera UN hecho del bundle y nombra qué campo derivado tiene que moverse con él. Es
+# el control que prueba que la derivación lee el hecho en vez de copiar una declaración: si el
+# campo no cambia, el recolector no lo estaba derivando de ahí.
+MUTANTES_DE_RECOLECCION: tuple[tuple[MutanteDeRecoleccion, str], ...] = (
+    (MutanteDeRecoleccion("sin-resultado-utilizable",
+                          "la corrida deja de tener su evento de resultado utilizable",
+                          _mut_borrar_evento_utilizable), "estado.ciclo_operativo"),
+    (MutanteDeRecoleccion("reporte-interpretable",
+                          "el reporte del worker pasa a ser interpretable",
+                          _mut_reporte_a_interpretable), "estado.validez_del_reporte"),
+    (MutanteDeRecoleccion("recurso-vivo", "un recurso queda vivo en lugar de terminado",
+                          _mut_recurso_a_vivo), "metricas.limpieza-completa"),
+    (MutanteDeRecoleccion("con-intervencion-humana",
+                          "la identidad del entorno registra una intervención",
+                          _mut_agregar_intervencion_humana), "estrato"),
+    (MutanteDeRecoleccion("veredicto-incorrecto", "el veredicto de conformance pasa a incorrecto",
+                          _mut_veredicto_a_incorrecto), "estado.resultado_semantico"),
+)
+
+
+def _proyectar_campo(observacion: dict, campo: str) -> Any:
+    if campo == "estrato":
+        return observacion.get("estrato")
+    if campo.startswith("estado."):
+        return (observacion.get("estado") or {}).get(campo.split(".", 1)[1])
+    if campo.startswith("metricas."):
+        buscado = campo.split(".", 1)[1]
+        for metrica in observacion.get("metricas") or []:
+            if metrica.get("metrica_id") == buscado:
+                return (metrica.get("estado_de_medicion"), metrica.get("valor"))
+    return None
+
+
+def modo_autotest_bundles(args: argparse.Namespace) -> int:
+    del args
+    manifest, error = _cargar_json(RUTA_MANIFEST_BUNDLES)
+    if error:
+        print(f"[A] FALLA  manifest del corpus de bundles: {error}")
+        return 1
+    vocabulario, esquemas, problemas = _cargar_insumos_de_recoleccion()
+    if problemas:
+        for p in problemas:
+            print(f"[A] FALLA  {p}")
+        return 1
+    schema_bundle = esquemas["bundle-corrida"]
+    schema_observacion = esquemas["observacion"]
+
+    resultados: list[tuple[str, bool, str]] = []
+    conjuntos = manifest.get("conjuntos") or []
+    recolecciones = manifest.get("recolecciones") or []
+
+    # [A] Manifest ↔ disco, en las dos direcciones. Un conjunto borrado tiene que poner esto rojo,
+    # no reducir en silencio lo que el modo comprueba.
+    declarados = {c["conjunto"] for c in conjuntos}
+    en_disco = _conjuntos_en_disco()
+    diferencias = [f"declarado y ausente del disco: {c}" for c in sorted(declarados - en_disco)]
+    diferencias += [f"en disco y no declarado: {c}" for c in sorted(en_disco - declarados)]
+    resultados.append(("A", not diferencias,
+                       f"manifest ↔ directorio ({len(declarados)} conjuntos)" if not diferencias
+                       else " | ".join(diferencias[:6])))
+
+    # [B] Cada comprobación registrada tiene al menos un conjunto que la pone roja. Una
+    # comprobación sin negativo es una comprobación que nadie probó que pueda fallar.
+    ejercidas = {clave for c in conjuntos for clave in c.get("claves_esperadas") or []}
+    sin_negativo = [c.clave for c in COMPROBACIONES_DE_BUNDLES if c.clave not in ejercidas]
+    inexistentes = sorted(ejercidas - {c.clave for c in COMPROBACIONES_DE_BUNDLES})
+    problemas_de_cobertura = [f"la comprobación {c} no la ejerce ningún conjunto"
+                              for c in sin_negativo]
+    problemas_de_cobertura += [f"el manifest espera una comprobación inexistente: {c}"
+                               for c in inexistentes]
+    resultados.append(("B", not problemas_de_cobertura,
+                       f"las {len(COMPROBACIONES_DE_BUNDLES)} comprobaciones tienen quien las "
+                       "ponga rojas" if not problemas_de_cobertura
+                       else " | ".join(problemas_de_cobertura[:6])))
+
+    # [C] Cada conjunto se pone rojo exactamente en las comprobaciones que declara, ni una más ni
+    # una menos. Un negativo que además falla en otra cláusula deja la suya sin probar.
+    fallas_de_conjunto: list[str] = []
+    for entrada in conjuntos:
+        esperadas = set(entrada.get("claves_esperadas") or [])
+        obtenidas = _revisar_conjunto(entrada["conjunto"], schema_bundle)
+        if obtenidas != esperadas:
+            fallas_de_conjunto.append(
+                f"{entrada['conjunto']}: esperaba rojas {sorted(esperadas) or '∅'} y se pusieron "
+                f"rojas {sorted(obtenidas) or '∅'}")
+    resultados.append(("C", not fallas_de_conjunto,
+                       f"{len(conjuntos)} conjuntos se ponen rojos donde deben"
+                       if not fallas_de_conjunto else " | ".join(fallas_de_conjunto[:4])))
+
+    # [D] La recolección sobre cada corrida declarada da el estado y el reparto de métricas que el
+    # manifest espera. Es el control positivo: sin él, un recolector que fallara siempre pasaría
+    # todos los negativos.
+    fallas_de_recoleccion: list[str] = []
+    observaciones: dict[str, dict] = {}
+    for entrada in recolecciones:
+        directorio = DIR_FIXTURES_BUNDLES / "conjuntos" / entrada["conjunto"] / entrada["corrida"]
+        bundle = _leer_bundle(directorio)
+        etiqueta = f"{entrada['conjunto']}/{entrada['corrida']}"
+        if bundle.error:
+            fallas_de_recoleccion.append(f"{etiqueta}: {bundle.error}")
+            continue
+        observacion, fallas = derivar_observacion(bundle.datos, bundle.sha256, vocabulario,
+                                                  schema_observacion)
+        if entrada.get("no_derivable"):
+            if observacion is not None:
+                fallas_de_recoleccion.append(
+                    f"{etiqueta}: la observación se derivó y no debería — "
+                    f"{entrada['no_derivable']}")
+            elif not any(entrada["campo_sin_origen"] == f.campo for f in fallas):
+                fallas_de_recoleccion.append(
+                    f"{etiqueta}: falla, pero no en `{entrada['campo_sin_origen']}` — "
+                    f"lo que se vio: {fallas[0]}")
+            continue
+        if observacion is None:
+            fallas_de_recoleccion.append(f"{etiqueta}: no se derivó — {fallas[0]}")
+            continue
+        observaciones[etiqueta] = observacion
+        esperado = entrada["estado_esperado"]
+        obtenido = {k: v for k, v in observacion["estado"].items() if k in esperado}
+        if obtenido != esperado:
+            fallas_de_recoleccion.append(f"{etiqueta}: estado {obtenido} y se esperaba {esperado}")
+        if observacion["estrato"] != entrada["estrato_esperado"]:
+            fallas_de_recoleccion.append(
+                f"{etiqueta}: estrato {observacion['estrato']!r} y se esperaba "
+                f"{entrada['estrato_esperado']!r}")
+        # Una métrica sin observación NUNCA lleva `valor`: es el schema el que lo impide, y este
+        # control comprueba que el recolector se apoye en esa variante en vez de escribir un cero.
+        sin_valor = {m["metrica_id"] for m in observacion["metricas"]
+                     if m["estado_de_medicion"] != "medida"}
+        if sin_valor != set(entrada["metricas_sin_observacion"]):
+            fallas_de_recoleccion.append(
+                f"{etiqueta}: sin observación {sorted(sin_valor)} y se esperaba "
+                f"{sorted(entrada['metricas_sin_observacion'])}")
+        con_cero = [m["metrica_id"] for m in observacion["metricas"]
+                    if m["estado_de_medicion"] != "medida" and "valor" in m]
+        if con_cero:
+            fallas_de_recoleccion.append(f"{etiqueta}: métricas sin observación con valor escrito: "
+                                         f"{con_cero}")
+    resultados.append(("D", not fallas_de_recoleccion,
+                       f"{len(recolecciones)} recolecciones dan el estado y el reparto declarados"
+                       if not fallas_de_recoleccion else " | ".join(fallas_de_recoleccion[:4])))
+
+    # [E] La derivación se mueve con el hecho. Sobre una COPIA en memoria de cada corrida del
+    # control positivo —mutar el archivo del árbol dejaría el repo mutado si el proceso muere—,
+    # cada mutante altera un hecho y el campo que ese hecho deriva tiene que cambiar. Si no cambia,
+    # el recolector no lo estaba derivando de ahí: lo estaba copiando de algún otro lado.
+    fallas_de_mutacion: list[str] = []
+    ejercidos: set[str] = set()
+    for etiqueta, base in observaciones.items():
+        conjunto, corrida = etiqueta.split("/")
+        bundle = _leer_bundle(DIR_FIXTURES_BUNDLES / "conjuntos" / conjunto / corrida)
+        for mutante, campo in MUTANTES_DE_RECOLECCION:
+            copia = copy.deepcopy(bundle.datos)
+            if not mutante.aplicar(copia):
+                continue  # el hecho ya estaba en ese valor: esta corrida no ejerce este mutante
+            ejercidos.add(mutante.nombre)
+            if validar(copia, schema_bundle):
+                fallas_de_mutacion.append(f"{etiqueta}/{mutante.nombre}: la mutación deja el "
+                                          "bundle fuera de su contrato y no prueba nada")
+                continue
+            mutada, _ = derivar_observacion(copia, bundle.sha256, vocabulario, schema_observacion)
+            if mutada is None:
+                continue  # la mutación hace inderivable la observación: el rojo es igual de válido
+            if _proyectar_campo(mutada, campo) == _proyectar_campo(base, campo):
+                fallas_de_mutacion.append(
+                    f"{etiqueta}/{mutante.nombre}: {mutante.que_rompe} y `{campo}` no se mueve")
+    # Un mutante que ninguna corrida ejerce es cobertura fantasma: aparece en la tabla, no corre
+    # nunca, y el verde de este control se lee como si lo hubiera probado.
+    fallas_de_mutacion += [f"el mutante «{m.nombre}» no lo ejerce ninguna corrida del corpus"
+                           for m, _ in MUTANTES_DE_RECOLECCION if m.nombre not in ejercidos]
+    resultados.append(("E", not fallas_de_mutacion,
+                       f"{len(MUTANTES_DE_RECOLECCION)} mutantes ejercidos, y cada uno mueve el "
+                       "campo que deriva" if not fallas_de_mutacion
+                       else " | ".join(fallas_de_mutacion[:4])))
+
+    for etiqueta, ok, detalle in resultados:
+        print(f"[{etiqueta}] {'OK    ' if ok else 'FALLA '} {detalle}")
+    print()
+    rojos = [e for e, ok, _ in resultados if not ok]
+    if rojos:
+        print(f"RESULTADO: FALLA — controles en rojo: {', '.join(rojos)}")
+        return 1
+    print(f"RESULTADO: OK — {len(resultados)} controles en verde")
+    return 0
+
+
+# ---------------------------------------------------------------------------------------------
 # Registro de los modos de esta task. Cada task nueva agrega los suyos acá abajo, sin tocar los
 # anteriores ni `main()`.
 # ---------------------------------------------------------------------------------------------
@@ -2385,6 +3198,38 @@ registrar_modo(
                  "escribe únicamente la proyección canónica a stdout, para recomputar el hash con "
                  "una herramienta externa: `... --canonicalizar <ruta> --solo-bytes | shasum -a 256`"),
     ),
+)
+
+registrar_modo(
+    "--validar-bundles",
+    "valida un conjunto de corridas: cada `<dir>/<run_id>/bundle.json` contra su contrato, el "
+    "`run_id` declarado contra el nombre de su directorio y único en el conjunto, y la invocación "
+    "con el literal que corresponde a su adaptador",
+    modo_validar_bundles,
+    argumento=Argumento("<dir-de-corridas>", const=RUTA_CORRIDAS_FASE_0),
+)
+
+registrar_modo(
+    "--recolectar",
+    "deriva la observación de una corrida SOLO desde su bundle y la escribe: ningún dato sale de "
+    "la memoria del operador ni de lo que la corrida declare de sí misma, y toda métrica que no "
+    "cierre se emite sin valor y con su adjudicación escrita",
+    modo_recolectar,
+    auxiliares=(
+        Auxiliar("--bundle", "la corrida a recolectar: el directorio `<dir>/<run_id>/` que "
+                             "contiene su bundle.json", metavar="<ruta-de-la-corrida>"),
+        Auxiliar("--salida", "dónde escribir la observación; por omisión, "
+                             "scripts/observaciones-fase-0/<run_id>.json",
+                 metavar="<ruta-de-la-observacion>"),
+    ),
+)
+
+registrar_modo(
+    "--autotest-bundles",
+    "control positivo y negativo de los dos modos anteriores sobre el corpus de "
+    "scripts/fixtures-baseline/bundles/, comparado en las dos direcciones contra su manifest, más "
+    "los mutantes que prueban que cada campo se deriva de su hecho y no se copia",
+    modo_autotest_bundles,
 )
 
 registrar_modo(

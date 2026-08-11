@@ -1,0 +1,98 @@
+{
+  "descripcion": "Manifest INDEPENDIENTE del corpus de bundles. Declara qué conjuntos tienen que existir, qué comprobaciones de `--validar-bundles` se pone roja cada uno, y qué observación tiene que derivar `--recolectar` de cada corrida del control positivo. Es independiente a propósito (D-16): un modo que comprobara «los conjuntos que encuentra» no podría detectar una ausencia, porque el conjunto que revisa y el conjunto contra el que se compara serían el mismo. Borrar un conjunto del disco pone rojo el control [A]; borrarlo del manifest, también.",
+  "por-que-las-claves-esperadas-son-exactas": "Cada conjunto declara EXACTAMENTE las comprobaciones que debe poner rojas, ni una más ni una menos. Un negativo que además falla en otra cláusula deja la suya sin probar: el rojo lo produjo la otra. Por eso `run-id-repetido` declara las dos que rompe —la segunda corrida discorda con su directorio Y repite la identidad— en vez de ocultar una detrás de la otra.",
+
+  "conjuntos": [
+    {
+      "conjunto": "valido",
+      "descripcion": "tres corridas conformes: una sesion que completa con reporte interpretable, un script que bloquea sin reporte, y una que completa con la salida malformada y la limpieza completa. Es el control positivo: sin el, un modo que fallara siempre pasaria todos los negativos",
+      "claves_esperadas": []
+    },
+    {
+      "conjunto": "vacio",
+      "descripcion": "un directorio sin ninguna corrida: satisface en el vacio todo lo demas, y apuntar el modo a un directorio equivocado se leeria como «los bundles estan bien»",
+      "claves_esperadas": ["A"]
+    },
+    {
+      "conjunto": "sin-bundle",
+      "descripcion": "una corrida cuyo directorio existe y no lleva su bundle.json: la evidencia suelta no es un bundle",
+      "claves_esperadas": ["B"]
+    },
+    {
+      "conjunto": "bundle-que-no-valida",
+      "descripcion": "un bundle sin `recursos`, que el contrato exige: una corrida sin ningun recurso registrado es una corrida sin evidencia de limpieza (AC-22)",
+      "claves_esperadas": ["B"]
+    },
+    {
+      "conjunto": "run-id-discordante",
+      "descripcion": "el bundle declara una identidad y su directorio otra: sin esta comprobacion, la identidad declarada no queda atada a nada del disco",
+      "claves_esperadas": ["C"]
+    },
+    {
+      "conjunto": "run-id-repetido",
+      "descripcion": "dos corridas declarando la misma identidad. Rompe las dos cosas a la vez y las declara a las dos: la segunda discorda con su directorio y ademas repite el `run_id`",
+      "claves_esperadas": ["C", "D"]
+    },
+    {
+      "conjunto": "invocacion-que-no-corresponde",
+      "descripcion": "un adaptador de script que registra una accion en lugar de un comando: valida contra el contrato y no deja constancia de con que corrio, que es lo que «comando literal registrado» tiene que exigir",
+      "claves_esperadas": ["E"]
+    },
+    {
+      "conjunto": "bloqueo-sin-detalle",
+      "descripcion": "un bundle que valida limpio y del que la observacion NO se puede derivar: la causa del bloqueo saldria de un `detalle` que el evento no lleva. Existe para separar las dos preguntas — un bundle conforme no es un bundle del que se pueda derivar todo",
+      "claves_esperadas": []
+    }
+  ],
+
+  "recolecciones": [
+    {
+      "conjunto": "valido",
+      "corrida": "run-t4-sesion",
+      "descripcion": "ciclo completo con reporte interpretable y conformance correcta; un arbol de trabajo transferido sigue vivo, asi que la limpieza no esta completa",
+      "estado_esperado": {
+        "ciclo_operativo": "completado",
+        "validez_del_reporte": "valido",
+        "resultado_semantico": "correcto"
+      },
+      "estrato_esperado": "automatizable",
+      "metricas_sin_observacion": ["hallazgos-emitidos"]
+    },
+    {
+      "conjunto": "valido",
+      "corrida": "run-t4-script",
+      "descripcion": "intento bloqueado sin reporte: la latencia hasta el resultado utilizable no tiene evento de cierre y la tasa de salidas invalidas no tiene poblacion elegible. Ninguna de las dos se publica en cero (AC-21)",
+      "estado_esperado": {
+        "ciclo_operativo": "bloqueado",
+        "validez_del_reporte": "ausente",
+        "resultado_semantico": "no_evaluable",
+        "causa_de_bloqueo": "terminal no expuesto para el segundo worker"
+      },
+      "estrato_esperado": "automatizable",
+      "metricas_sin_observacion": [
+        "hallazgos-emitidos",
+        "latencia-hasta-resultado-utilizable",
+        "tasa-de-salidas-invalidas"
+      ]
+    },
+    {
+      "conjunto": "valido",
+      "corrida": "run-t4-limpia",
+      "descripcion": "el caso de SALIDA MALFORMADA que AC-18 exige al corpus, con la limpieza completa: el ciclo completa, el reporte no se puede interpretar y el veredicto es incorrecto. Es la corrida que prueba que los tres ejes se mueven por separado — un ciclo verde con una salida invalida y un resultado incorrecto",
+      "estado_esperado": {
+        "ciclo_operativo": "completado",
+        "validez_del_reporte": "malformado",
+        "resultado_semantico": "incorrecto"
+      },
+      "estrato_esperado": "automatizable",
+      "metricas_sin_observacion": ["hallazgos-emitidos"]
+    },
+    {
+      "conjunto": "bloqueo-sin-detalle",
+      "corrida": "run-t4-bloqueo-mudo",
+      "descripcion": "el evento de bloqueo no lleva `detalle`, asi que la causa saldria de un hecho que el bundle no tiene. La recoleccion FALLA en vez de copiarla del campo declarativo `estado_del_intento` o de rellenarla con un texto generico",
+      "no_derivable": "la causa del bloqueo no tiene hecho de origen",
+      "campo_sin_origen": "estado.causa_de_bloqueo"
+    }
+  ]
+}

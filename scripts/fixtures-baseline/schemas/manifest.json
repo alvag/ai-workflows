@@ -213,6 +213,27 @@
       "descripcion": "un resultado terminal que no cierra ninguna apertura: la completitud deja de derivarse del manifest de intentos (D-25)",
       "ruta_esperada": "$.entradas[1].referencia_entrada_id",
       "motivo_esperado": "falta el campo obligatorio"
+    },
+    {
+      "fixture": "negativos/bundle-con-reporte-malformado-sin-causa.json",
+      "contrato": "bundle-corrida",
+      "descripcion": "un reporte que llego mal y no dice por que: indistinguible de un parser que fallo, y el eje de validez del reporte queda sin adjudicar (AC-18)",
+      "ruta_esperada": "$.reporte_del_worker.causa",
+      "motivo_esperado": "falta el campo obligatorio"
+    },
+    {
+      "fixture": "negativos/bundle-con-reporte-ausente-con-hash.json",
+      "contrato": "bundle-corrida",
+      "descripcion": "un reporte declarado ausente que igual trae su hash: la variante sin contenido no declara contenido, asi que rellenar lo que no llego no es expresable",
+      "ruta_esperada": "$.reporte_del_worker.sha256",
+      "motivo_esperado": "propiedad no declarada"
+    },
+    {
+      "fixture": "negativos/bundle-con-conformance-sin-evidencia.json",
+      "contrato": "bundle-corrida",
+      "descripcion": "conformance afirmada sin nada que mostrar: la afirmacion ocupando el lugar de la evidencia, que es de donde sale el eje de resultado semantico (AC-18)",
+      "ruta_esperada": "$.veredicto_de_conformance.evidencia",
+      "motivo_esperado": "falta el campo obligatorio"
     }
   ]
 }
