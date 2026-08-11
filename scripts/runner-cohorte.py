@@ -90,6 +90,7 @@ DIR_SCRIPTS = RAIZ / "scripts"
 RUTA_RECETAS = DIR_SCRIPTS / "recetas-cohorte.json"
 RUTA_INTERFAZ_DE_RELOJ = DIR_SCRIPTS / "interfaz-de-reloj.json"
 RUTA_MATRIZ_DESPACHOS = DIR_SCRIPTS / "matriz-despachos.json"
+RUTA_SUPERFICIES_DE_EGRESO = DIR_SCRIPTS / "superficies-de-egreso.json"
 RUTA_INSTRUMENTO = DIR_SCRIPTS / "instrumento-baseline.py"
 DIR_RECIBOS_FASE_0 = DIR_SCRIPTS / "recibos-frontera-fase-0"
 DIR_JOURNAL_FASE_0 = DIR_SCRIPTS / "journal-anomalias-fase-0"
@@ -302,6 +303,23 @@ def registrar_juez_de_aislamiento(clave: str, que_juzga: str,
     JUECES_DE_AISLAMIENTO.append(JuezDeAislamiento(clave, que_juzga, juzgar))
 
 
+def variables_de_credencial(entorno: dict[str, str]) -> list[str]:
+    """Los nombres del entorno que la regla de egreso marcaría como credencial.
+
+    Se derivan de `scripts/superficies-de-egreso.json` y no de una lista escrita acá. Con dos
+    listas paralelas, el entorno cree haber quitado credenciales que la regla sigue descubriendo
+    —medido sobre este host: tres tokens reales sobrevivían al entorno «desechable»—, y el worker
+    recibiría justo lo que se quería retirar.
+    """
+    inventario, error = _cargar_json(RUTA_SUPERFICIES_DE_EGRESO)
+    if error:
+        return [n for n in sorted(entorno) if "TOKEN" in n or "SECRET" in n or "API_KEY" in n]
+    definidas = next(c for c in inventario["clases"] if c["clase"] == "variable_de_entorno")
+    patrones = definidas["patrones_de_nombre"]
+    return [n for n in sorted(entorno)
+            if n in definidas["variables_de_token"] or any(p in n for p in patrones)]
+
+
 def entorno_sin_credenciales(hogar: Path) -> dict[str, str]:
     """El entorno con el que corre todo comando del árbol desechable.
 
@@ -315,7 +333,8 @@ def entorno_sin_credenciales(hogar: Path) -> dict[str, str]:
     entorno["GIT_CONFIG_SYSTEM"] = os.devnull
     entorno["GIT_TERMINAL_PROMPT"] = "0"
     entorno["GIT_ASKPASS"] = ""
-    for variable in ("SSH_AUTH_SOCK", "GITHUB_TOKEN", "GH_TOKEN", "CODEX_API_KEY"):
+    entorno.pop("SSH_AUTH_SOCK", None)
+    for variable in variables_de_credencial(entorno):
         entorno.pop(variable, None)
     return entorno
 
@@ -336,8 +355,8 @@ def constatar_credenciales(hogar: Path, entorno: dict[str, str]) -> Constancia:
                f"alcanzables desde HOME={_relativa(hogar)}")
     alcanzables = [nombre for nombre in ARCHIVOS_DE_CREDENCIAL
                    if (Path(entorno["HOME"]) / nombre).exists()]
-    variables = [v for v in ("SSH_AUTH_SOCK", "GITHUB_TOKEN", "GH_TOKEN", "CODEX_API_KEY")
-                 if v in entorno]
+    variables = (["SSH_AUTH_SOCK"] if "SSH_AUTH_SOCK" in entorno else []) \
+        + variables_de_credencial(entorno)
     salida = json.dumps({"archivos_alcanzables": alcanzables, "variables_presentes": variables},
                         ensure_ascii=False)
     if alcanzables or variables:

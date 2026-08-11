@@ -57,10 +57,16 @@ import copy
 import hashlib
 import io
 import json
+import os
 import re
+import shutil
+import socket
+import subprocess
 import sys
 import tempfile
+import threading
 import unicodedata
+import urllib.request
 from pathlib import Path
 from typing import Any, Callable, NamedTuple
 
@@ -7887,6 +7893,933 @@ def _raiz_con_sede_del_corpus(corpus: dict):
         yield raiz
 
 # ---------------------------------------------------------------------------------------------
+# Modos `--aislamiento`, `--autotest-aislamiento`, `--autotest-egreso` y `--autotest-recursos`.
+#
+# Este es el modo que **juzga** la evidencia de aislamiento. Producirla es otra capacidad y vive en
+# el runner: acá no se provisiona nada, se decide si lo capturado alcanza.
+#
+# No se registra ninguna comprobación en `COMPROBACIONES_DE_BUNDLES` a propósito. Esas cláusulas
+# corren sobre **todo** conjunto que pase por `--validar-bundles`, incluidos los corpus que las
+# tasks anteriores escribieron para probar otra cosa: exigirles ahora un inventario de egreso
+# re-ejecutado los pondría rojos por una regla que no existía cuando se congelaron. El juicio de
+# aislamiento tiene su modo y su corpus, que es lo que sus tres filas del contrato invocan.
+# ---------------------------------------------------------------------------------------------
+
+RUTA_SUPERFICIES = DIR_SCRIPTS / "superficies-de-egreso.json"
+DIR_FIXTURES_AISLAMIENTO = DIR_SCRIPTS / "fixtures-baseline" / "aislamiento"
+RUTA_MANIFEST_AISLAMIENTO = DIR_FIXTURES_AISLAMIENTO / "manifest.json"
+RUTA_CORPUS_AISLAMIENTO = DIR_FIXTURES_AISLAMIENTO / "bundles.json"
+
+# Las tres pruebas son tres y se exigen por separado (decisión heredada 6): una sola prueba
+# «de aislamiento» dejaría que la que pasa cubra a la que nadie corrió.
+PRUEBAS_DE_AISLAMIENTO = (
+    "refs_y_objetos_identicos",
+    "sin_red_ni_credenciales",
+    "arbol_original_intacto",
+)
+
+
+class ProblemaDeAislamiento(NamedTuple):
+    clave: str
+    detalle: str
+
+    def __str__(self) -> str:
+        return f"[{self.clave}] {self.detalle}"
+
+
+# Las cláusulas del juicio. Como en el resto del archivo, el conjunto es cerrado y cada una tiene
+# que tener quien la ponga roja: una cláusula sin caso que la ejerza es una cláusula que nadie
+# probó que pueda fallar.
+# Las cláusulas son disjuntas a propósito. Una que se solape con otra deja que un caso «cubierto»
+# esté cayendo por la de al lado, y la suya sin ejercer.
+CLAUSULAS_DE_AISLAMIENTO = (
+    "prueba_faltante",
+    "permiso_falseado",
+    "prueba_fallida",
+    "evidencia_declarativa",
+    "evidencia_repetida",
+)
+
+CLAUSULAS_DE_RECURSOS = (
+    "sin_recursos",
+    "transferido_sin_owner",
+    "transferido_sin_next_action",
+    "vivo_sin_transferir",
+    "cese_inferido_del_arbol",
+    "evidencia_de_cese_copiada",
+)
+
+
+def _permiso_efectivo_de(punto: str, matriz: dict) -> str | None:
+    for p in matriz.get("puntos") or []:
+        if p.get("id") == punto:
+            valor = p.get("escritura_agregada")
+            valor = valor.get("valor") if isinstance(valor, dict) else valor
+            return valor if isinstance(valor, str) else None
+    return None
+
+
+def revisar_aislamiento(bundle: dict, matriz: dict) -> list[ProblemaDeAislamiento]:
+    """Las tres pruebas, exigidas según el permiso efectivo que declara **la matriz**.
+
+    El permiso no se lee del bundle: se lee de la matriz y se compara contra lo que el bundle
+    declara. Leerlo del bundle dejaría que una corrida se eximiera de las tres pruebas escribiendo
+    que es de solo lectura, que es exactamente la vía que el criterio nombra.
+    """
+    problemas: list[ProblemaDeAislamiento] = []
+    punto = bundle.get("punto_de_despacho", "<sin punto>")
+    permiso = _permiso_efectivo_de(punto, matriz)
+    pruebas = bundle.get("pruebas_de_aislamiento") or {}
+
+    faltan = [c for c in PRUEBAS_DE_AISLAMIENTO if c not in pruebas]
+    if faltan:
+        problemas.append(ProblemaDeAislamiento(
+            "prueba_faltante",
+            f"`{punto}`: faltan pruebas de aislamiento: {faltan} — una corrida con menos de las "
+            f"tres no sostiene la ausencia de publicación"))
+        return problemas
+
+    exentas = [c for c in PRUEBAS_DE_AISLAMIENTO
+               if pruebas[c].get("resultado") == "not_applicable"]
+    if exentas and permiso != "read_only":
+        # Una sola cláusula para la exención indebida: el permiso lo dice la matriz, y que el
+        # bundle escriba `read_only` no lo convierte en uno. Partirla en dos dejaría que un caso
+        # cayera por las dos y ninguna quedara ejercida sola.
+        problemas.append(ProblemaDeAislamiento(
+            "permiso_falseado",
+            f"`{punto}` se eximió de {exentas} declarando solo lectura, y la matriz dice que su "
+            f"permiso efectivo es `{permiso}`: falsear el permiso no exime de las tres pruebas"))
+        return problemas
+
+    for clave in PRUEBAS_DE_AISLAMIENTO:
+        prueba = pruebas[clave]
+        resultado = prueba.get("resultado")
+        if resultado == "falla":
+            problemas.append(ProblemaDeAislamiento(
+                "prueba_fallida",
+                f"`{punto}`: la prueba `{clave}` falló — {prueba.get('evidencia')}"))
+        elif resultado not in ("pasa", "not_applicable"):
+            problemas.append(ProblemaDeAislamiento(
+                "prueba_faltante",
+                f"`{punto}`: la prueba `{clave}` no declara un resultado del conjunto"))
+
+    if permiso != "read_only" and not problemas:
+        problemas.extend(_revisar_evidencia_de_no_publicacion(bundle, punto))
+
+    evidencias = [pruebas[c].get("evidencia") for c in PRUEBAS_DE_AISLAMIENTO
+                  if pruebas[c].get("resultado") in ("pasa", "falla")]
+    if not problemas and len(evidencias) != len(set(evidencias)):
+        problemas.append(ProblemaDeAislamiento(
+            "evidencia_repetida",
+            f"`{punto}`: dos pruebas citan la misma evidencia — tres pruebas separadas con una "
+            f"sola observación son una prueba escrita tres veces"))
+    return problemas
+
+
+def _revisar_evidencia_de_no_publicacion(bundle: dict,
+                                         punto: str) -> list[ProblemaDeAislamiento]:
+    """Una declaración de no publicación no es evidencia, y eso se comprueba por estructura.
+
+    La prueba de que no hubo red se sostiene sobre el **inventario de egreso re-ejecutado**: si el
+    bundle no trae ninguna superficie descubierta, la regla de canales no corrió y lo que hay es una
+    afirmación. Detectarlo por el texto de la evidencia sería grep sobre prosa; detectarlo por la
+    ausencia del inventario es exacto.
+    """
+    inventario = bundle.get("inventario_de_egreso_reejecutado") or {}
+    superficies = inventario.get("superficies")
+    if superficies:
+        return []
+    return [ProblemaDeAislamiento(
+        "evidencia_declarativa",
+        f"`{punto}`: la prueba de ausencia de red no trae inventario de egreso re-ejecutado — sin "
+        f"él lo que hay es una declaración de no publicación, no una auditoría")]
+
+
+def revisar_recursos(bundle: dict) -> list[ProblemaDeAislamiento]:
+    """Vida y propiedad por separado: la transferencia resuelve quién responde, no si sigue vivo."""
+    problemas: list[ProblemaDeAislamiento] = []
+    punto = bundle.get("punto_de_despacho", "<sin punto>")
+    recursos = bundle.get("recursos") or []
+    if not recursos:
+        return [ProblemaDeAislamiento(
+            "sin_recursos",
+            f"`{punto}`: la corrida no declara ningún recurso — un despacho abre al menos uno, y "
+            f"no declararlo lo deja vivo y sin dueño sin que nada lo note")]
+
+    evidencias_de_aislamiento = {
+        (bundle.get("pruebas_de_aislamiento") or {}).get(c, {}).get("evidencia")
+        for c in PRUEBAS_DE_AISLAMIENTO}
+    vistas: dict[str, str] = {}
+
+    for recurso in recursos:
+        ident = recurso.get("recurso_id", "<sin id>")
+        vida = recurso.get("life_state")
+        propiedad = recurso.get("ownership_state")
+        evidencia = recurso.get("evidencia_de_cese")
+
+        if propiedad == "transferido":
+            if not recurso.get("owner"):
+                problemas.append(ProblemaDeAislamiento(
+                    "transferido_sin_owner",
+                    f"`{ident}` está transferido y no declara dueño: la transferencia sin dueño "
+                    f"es un abandono con nombre"))
+            if not recurso.get("next_action"):
+                problemas.append(ProblemaDeAislamiento(
+                    "transferido_sin_next_action",
+                    f"`{ident}` está transferido y no declara próxima acción: un dueño sin "
+                    f"próxima acción es un recurso abandonado con dueño"))
+        elif vida != "terminado_comprobado":
+            problemas.append(ProblemaDeAislamiento(
+                "vivo_sin_transferir",
+                f"`{ident}` quedó en `{vida}` y sin transferir: solo un estado terminal "
+                f"comprobado cuenta como limpieza, y lo que no cesó necesita dueño"))
+
+        if evidencia in evidencias_de_aislamiento:
+            problemas.append(ProblemaDeAislamiento(
+                "cese_inferido_del_arbol",
+                f"`{ident}` sostiene su cese con la misma observación que una prueba del árbol: "
+                f"el cese de un recurso NUNCA se infiere por efectos en el árbol"))
+        if evidencia in vistas:
+            problemas.append(ProblemaDeAislamiento(
+                "evidencia_de_cese_copiada",
+                f"`{ident}` y `{vistas[evidencia]}` citan la misma evidencia de cese: una sola "
+                f"observación no acredita el cese de dos recursos"))
+        elif isinstance(evidencia, str):
+            vistas[evidencia] = ident
+    return problemas
+
+
+def modo_aislamiento(args: argparse.Namespace) -> int:
+    raiz = _ruta_absoluta(getattr(args, "aislamiento"))
+    matriz, error = _cargar_json(RUTA_MATRIZ)
+    if error:
+        print(f"FALLA  {error}")
+        return 1
+
+    bundles = leer_conjunto_de_bundles(raiz)
+    print(f"Conjunto: {raiz} — {len(bundles)} corridas")
+    if not bundles:
+        print()
+        print("RESULTADO: FALLA — el conjunto no tiene ninguna corrida que juzgar")
+        return 1
+
+    bloqueadas: list[str] = []
+    for bundle in bundles:
+        datos = bundle.datos or {}
+        problemas = revisar_aislamiento(datos, matriz) + revisar_recursos(datos)
+        if problemas:
+            bloqueadas.append(bundle.directorio)
+            print(f"[{bundle.directorio}] BLOQUEADA — {len(problemas)}:")
+            for p in problemas[:8]:
+                print(f"       - {p}")
+        else:
+            print(f"[{bundle.directorio}] OK     las tres pruebas y sus recursos sostienen la "
+                  f"observación")
+
+    print()
+    if bloqueadas:
+        print(f"RESULTADO: FALLA — observaciones bloqueadas: {', '.join(bloqueadas)}")
+        return 1
+    print(f"RESULTADO: OK — las {len(bundles)} observaciones sostienen su aislamiento")
+    return 0
+
+
+# --- El inventario de egreso y sus cuatro mutantes -------------------------------------------
+#
+# Los mutantes recorren su **adaptador real** y se interceptan en la frontera contra un canary
+# local. Un adaptador falso probaría el doble y el harness; permitir la publicación produciría
+# justamente lo que el criterio prohíbe. La superficie que no admite redirección segura se prueba
+# por **denegación comprobable**, y la que no admite ninguna de las dos bloquea.
+
+class Canary:
+    """Destino local que registra lo que le llega, para que nada salga del host.
+
+    Registra también el `User-Agent`, y eso no es un detalle: es lo que permite comprobar **quién**
+    llegó. Sin él, un mutante que anotara a mano una entrada en el registro sería indistinguible de
+    uno que recorrió su adaptador real, y la prueba pasaría a medir el arnés.
+    """
+
+    def __init__(self) -> None:
+        self.recibido: list[dict] = []
+        self._servidor: Any = None
+        self.puerto = 0
+
+    def __enter__(self) -> "Canary":
+        import http.server
+
+        recibido = self.recibido
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self) -> None:  # noqa: N802 - nombre impuesto por la biblioteca
+                largo = int(self.headers.get("Content-Length") or 0)
+                cuerpo = self.rfile.read(largo).decode("utf-8", "replace")
+                recibido.append({"metodo": self.command, "ruta": self.path, "cuerpo": cuerpo,
+                                 "agente": self.headers.get("User-Agent") or ""})
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"ok")
+
+            do_GET = do_POST  # noqa: N815 - misma respuesta para el otro verbo
+
+            def log_message(self, *_: Any) -> None:
+                return
+
+        self._servidor = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.puerto = self._servidor.server_address[1]
+        hilo = threading.Thread(target=self._servidor.serve_forever, daemon=True)
+        hilo.start()
+        self._hilo = hilo
+        return self
+
+    def __exit__(self, *_: Any) -> None:
+        self._servidor.shutdown()
+        self._servidor.server_close()
+        self._hilo.join(timeout=5)
+
+    def ceso(self) -> bool:
+        """Comprueba el cese conectándose: un canary vivo es un recurso sin dueño."""
+        with socket.socket() as s:
+            s.settimeout(1)
+            return s.connect_ex(("127.0.0.1", self.puerto)) != 0
+
+
+class ResultadoDeMutante(NamedTuple):
+    mutante_id: str
+    tratamiento: str
+    alcanzo_el_canary: bool
+    alcanzo_un_servicio: bool
+    evidencia: str
+    # Qué tiene que haber observado el control **por su cuenta** para creerle a este resultado. El
+    # mutante no se acredita a sí mismo: `alcanzo_el_canary` es lo que el mutante dice, y esto es
+    # con qué se comprueba. Sin esta separación, declarar el alcance sin recorrer el adaptador real
+    # es indistinguible de recorrerlo.
+    huella_esperada: str = ""
+
+
+def variables_que_la_regla_descubre(entorno: dict, inventario: dict) -> list[str]:
+    """Los nombres que la regla de descubrimiento marcaría como credencial en este entorno."""
+    definidas = next(c for c in inventario["clases"] if c["clase"] == "variable_de_entorno")
+    patrones = definidas["patrones_de_nombre"]
+    return [n for n in sorted(entorno)
+            if n in definidas["variables_de_token"] or any(p in n for p in patrones)]
+
+
+def _entorno_desechable(hogar: Path, inventario: dict | None = None) -> dict:
+    """Configuración local al proceso: nunca se toca la del usuario.
+
+    Qué variables se retiran **se deriva de la regla**, no de una lista escrita al lado. Con dos
+    listas paralelas, la regla descubre credenciales que el entorno cree haber quitado —medido: tres
+    tokens reales de este host sobrevivían—, y el entorno «desechable» le entregaría al worker
+    justo lo que se quería retirar.
+    """
+    if inventario is None:
+        inventario, _ = _cargar_json(RUTA_SUPERFICIES)
+    entorno = dict(os.environ)
+    entorno["HOME"] = str(hogar)
+    entorno["GIT_CONFIG_GLOBAL"] = os.devnull
+    entorno["GIT_CONFIG_SYSTEM"] = os.devnull
+    entorno["GIT_TERMINAL_PROMPT"] = "0"
+    entorno["GH_CONFIG_DIR"] = str(hogar / "gh-desechable")
+    entorno.pop("SSH_AUTH_SOCK", None)
+    for variable in variables_que_la_regla_descubre(entorno, inventario or {}):
+        entorno.pop(variable, None)
+    return entorno
+
+
+def _correr_en(comando: list[str], cwd: Path | None, entorno: dict) -> tuple[int, str]:
+    try:
+        proc = subprocess.run(comando, cwd=str(cwd) if cwd else None, env=entorno,
+                              capture_output=True, text=True, timeout=60)
+    except FileNotFoundError:
+        return 127, f"no se encontró {comando[0]}"
+    except subprocess.TimeoutExpired:
+        return 124, "no terminó dentro del tope"
+    return proc.returncode, (proc.stdout + proc.stderr).strip()
+
+
+def correr_mutantes_de_publicacion(canary: Canary,
+                                   taller: Path) -> list[ResultadoDeMutante]:
+    """Los cuatro mutantes, cada uno por su ruta real y con su frontera interceptada."""
+    hogar = taller / "hogar"
+    hogar.mkdir(parents=True, exist_ok=True)
+    entorno = _entorno_desechable(hogar)
+    resultados: list[ResultadoDeMutante] = []
+    url = f"http://127.0.0.1:{canary.puerto}/publicar"
+
+    # mut-shell — `git push` real, con el remoto apuntado a un repositorio bare LOCAL.
+    bare = taller / "canary.git"
+    _correr_en(["git", "init", "--quiet", "--bare", str(bare)], None, entorno)
+    repo = taller / "repo"
+    repo.mkdir(parents=True, exist_ok=True)
+    _correr_en(["git", "init", "--quiet", "-b", "main", str(repo)], None, entorno)
+    (repo / "archivo.txt").write_text("contenido a publicar\n", encoding="utf-8")
+    _correr_en(["git", "-C", str(repo), "add", "archivo.txt"], None, entorno)
+    _correr_en(["git", "-C", str(repo), "-c", "user.email=canary@local",
+                "-c", "user.name=canary", "commit", "--quiet", "-m", "canary"], None, entorno)
+    _correr_en(["git", "-C", str(repo), "remote", "add", "origin", str(bare)], None, entorno)
+    _, sha = _correr_en(["git", "-C", str(repo), "rev-parse", "HEAD"], None, entorno)
+    codigo, salida = _correr_en(["git", "-C", str(repo), "push", "--quiet", "origin", "main"],
+                                None, entorno)
+    _, refs = _correr_en(["git", "-C", str(bare), "for-each-ref"], None, entorno)
+    resultados.append(ResultadoDeMutante(
+        "mut-shell", "redireccion", bool(refs.strip()), False,
+        f"`git push` salió en {codigo}; el repositorio bare local recibió: "
+        f"{refs.strip() or 'nada'}{'' if codigo == 0 else ' — ' + salida[:120]}",
+        # La huella es el objeto en el canary: el control lo busca ahí él mismo, así que declarar
+        # el alcance sin haber empujado nada no alcanza.
+        huella_esperada=f"objeto-en-canary:{bare}:{sha.strip()}"))
+
+    # mut-url — `curl` real contra el canary.
+    antes = len(canary.recibido)
+    codigo, salida = _correr_en(
+        ["curl", "--silent", "--show-error", "--max-time", "10", "--noproxy", "127.0.0.1",
+         "-X", "POST", "--data", "contenido a publicar", url], None, entorno)
+    resultados.append(ResultadoDeMutante(
+        "mut-url", "redireccion", len(canary.recibido) > antes, False,
+        f"`curl` salió en {codigo}; el canary registró "
+        f"{len(canary.recibido) - antes} intentos{'' if codigo == 0 else ' — ' + salida[:120]}",
+        huella_esperada="agente-en-canary:curl/"))
+
+    # mut-api — cliente HTTP del runtime contra el canary.
+    antes = len(canary.recibido)
+    detalle = "publicación aceptada por el canary"
+    try:
+        peticion = urllib.request.Request(url, data=b"contenido a publicar", method="POST")
+        with urllib.request.urlopen(peticion, timeout=10) as respuesta:
+            respuesta.read()
+    except Exception as exc:  # el intento tiene que quedar registrado igual que si funciona
+        detalle = f"la publicación por API falló: {type(exc).__name__}"
+    resultados.append(ResultadoDeMutante(
+        "mut-api", "redireccion", len(canary.recibido) > antes, False,
+        f"{detalle}; el canary registró {len(canary.recibido) - antes} intentos",
+        huella_esperada="agente-en-canary:Python-urllib"))
+
+    # mut-herramienta — denegación comprobable: la herramienta autenticada del host no alcanza.
+    antes = len(canary.recibido)
+    codigo, salida = _correr_en(["gh", "auth", "status"], None, entorno)
+    denegada = codigo != 0
+    resultados.append(ResultadoDeMutante(
+        "mut-herramienta", "denegacion", len(canary.recibido) > antes, not denegada,
+        f"`gh auth status` en el entorno desechable salió en {codigo} "
+        f"({'sin sesión: denegada' if denegada else 'ENCONTRÓ SESIÓN'}); el canary registró "
+        f"{len(canary.recibido) - antes} intentos",
+        huella_esperada="ningun-agente-en-canary"))
+    return resultados
+
+
+def comprobar_huellas(resultados: list[ResultadoDeMutante], canary: Canary) -> list[str]:
+    """Comprueba, por observación propia, que cada mutante recorrió su adaptador real.
+
+    Es lo que separa «el mutante dice que llegó» de «el control lo vio llegar». Un mutante que
+    anotara su propio alcance sin ejecutar nada pasaría lo primero y no lo segundo.
+    """
+    problemas: list[str] = []
+    agentes = [r.get("agente", "") for r in canary.recibido]
+    for resultado in resultados:
+        huella = resultado.huella_esperada
+        if huella.startswith("objeto-en-canary:"):
+            _, ruta, sha = huella.split(":", 2)
+            codigo, tipo = _correr_en(["git", "-C", ruta, "cat-file", "-t", sha], None,
+                                      dict(os.environ))
+            if codigo != 0 or tipo.strip() != "commit":
+                problemas.append(f"`{resultado.mutante_id}`: el canary no tiene el objeto "
+                                 f"`{sha[:12]}` que el `push` tenía que dejarle — el adaptador "
+                                 f"real no recorrió su ruta")
+        elif huella.startswith("agente-en-canary:"):
+            esperado = huella.split(":", 1)[1]
+            if not any(a.startswith(esperado) for a in agentes):
+                problemas.append(f"`{resultado.mutante_id}`: ninguna entrada del canary viene de "
+                                 f"`{esperado}` — el intento no lo hizo su adaptador real, y los "
+                                 f"agentes vistos son {agentes}")
+        elif huella == "ningun-agente-en-canary":
+            continue
+        else:
+            problemas.append(f"`{resultado.mutante_id}`: no declara huella con la que "
+                             f"comprobarlo por observación propia")
+    return problemas
+
+
+def revisar_invariantes(snapshot_antes: tuple, snapshot_despues: tuple, canary_ceso: bool,
+                        hogar_desechable: Path, inventario: dict) -> list[str]:
+    """Los cuatro invariantes de la prueba, en una función propia y con su negativo posible."""
+    problemas: list[str] = []
+    if snapshot_antes != snapshot_despues:
+        problemas.append("el árbol observado cambió mientras corrían los mutantes: dejaron de ser "
+                         "una prueba y pasaron a ser el efecto que se quería impedir")
+    if not canary_ceso:
+        problemas.append("el canary sigue escuchando: un recurso vivo sin dueño")
+    if not hogar_desechable.is_dir():
+        problemas.append("los mutantes no corrieron sobre un HOME desechable")
+    declarados = {i["invariante_id"] for i in inventario["invariantes_de_la_prueba"]}
+    if declarados != {"entorno-desechable", "snapshot-igual", "canary-cesado",
+                      "ningun-servicio-alcanzado"}:
+        problemas.append(f"los invariantes declarados no son los que el control comprueba: "
+                         f"{sorted(declarados)}")
+    return problemas
+
+
+def revisar_mutantes(resultados: list[ResultadoDeMutante],
+                     inventario: dict) -> list[str]:
+    """Cada mutante tiene que haber recorrido su ruta y no haber alcanzado ningún servicio."""
+    problemas: list[str] = []
+    declarados = {m["mutante_id"]: m for m in inventario["mutantes_de_publicacion"]}
+    corridos = {r.mutante_id: r for r in resultados}
+
+    faltan = sorted(set(declarados) - set(corridos))
+    sobran = sorted(set(corridos) - set(declarados))
+    if faltan:
+        problemas.append(f"mutantes declarados que no se corrieron: {faltan}")
+    if sobran:
+        problemas.append(f"se corrieron mutantes que el inventario no declara: {sobran}")
+
+    admitidos = set(inventario["tratamientos_admitidos"])
+    # La superficie que el inventario declara sin un tratamiento admitido bloquea ANTES de correr
+    # nada: es la cláusula de «sin redirección segura ni denegación comprobable». Va separada de la
+    # de abajo —que compara lo corrido contra lo declarado— porque si estuvieran juntas un caso
+    # caería por las dos y ninguna quedaría ejercida sola.
+    for ident, declarado in sorted(declarados.items()):
+        if declarado["tratamiento"] not in admitidos:
+            problemas.append(f"`{ident}`: el inventario le declara el tratamiento "
+                             f"`{declarado['tratamiento']}`, que no es ni redirección segura ni "
+                             f"denegación comprobable — la superficie bloquea")
+
+    for ident, resultado in sorted(corridos.items()):
+        declarado = declarados.get(ident)
+        if declarado is None:
+            continue
+        if resultado.tratamiento != declarado["tratamiento"]:
+            problemas.append(f"`{ident}`: corrió por `{resultado.tratamiento}` y el inventario "
+                             f"declara `{declarado['tratamiento']}`")
+        if resultado.alcanzo_un_servicio:
+            problemas.append(f"`{ident}`: alcanzó un destino fuera del host — {resultado.evidencia}")
+        if resultado.tratamiento == "redireccion" and not resultado.alcanzo_el_canary:
+            problemas.append(f"`{ident}`: no llegó al canary, así que su ruta real no se recorrió "
+                             f"— {resultado.evidencia}")
+        if resultado.tratamiento == "denegacion" and resultado.alcanzo_el_canary:
+            problemas.append(f"`{ident}`: la superficie que se declaró denegada publicó igual — "
+                             f"{resultado.evidencia}")
+    return problemas
+
+
+def descubrir_canales(arbol: Path, entorno: dict, inventario: dict) -> list[dict]:
+    """La regla de descubrimiento de canales: siete clases, todas del conjunto cerrado."""
+    hogar = Path(entorno.get("HOME", str(Path.home())))
+    superficies: list[dict] = []
+
+    def agregar(clase: str, ident: str, descripcion: str) -> None:
+        superficies.append({"superficie_id": ident, "clase": clase, "descripcion": descripcion})
+
+    por_clase = {c["clase"]: c for c in inventario["clases"]}
+
+    for nombre in por_clase["binario_en_path"]["binarios_con_capacidad_de_publicar"]:
+        ruta = shutil.which(nombre, path=entorno.get("PATH"))
+        if ruta:
+            agregar("binario_en_path", f"bin-{nombre}", f"`{nombre}` alcanzable por PATH")
+
+    for relativa in por_clase["credencial_en_disco"]["rutas_de_credencial"]:
+        if (hogar / relativa).exists():
+            agregar("credencial_en_disco", f"cred-{relativa.replace('/', '-').lstrip('.')}",
+                    f"`{relativa}` alcanzable desde el HOME efectivo")
+
+    definidas = por_clase["variable_de_entorno"]
+    patrones = definidas["patrones_de_nombre"]
+    for nombre in sorted(entorno):
+        if nombre in definidas["variables_de_token"] or any(p in nombre for p in patrones):
+            agregar("variable_de_entorno", f"env-{nombre.lower().replace('_', '-')}",
+                    f"`{nombre}` presente en el entorno del proceso")
+
+    codigo, salida = _correr_en(["git", "config", "--get-all", "credential.helper"], arbol, entorno)
+    if codigo == 0 and salida.strip():
+        for linea in salida.splitlines():
+            agregar("credential_helper_de_git", f"helper-{_slug(linea)}",
+                    f"credential.helper `{linea}` resuelto en el entorno efectivo")
+
+    socket_ssh = entorno.get("SSH_AUTH_SOCK")
+    if socket_ssh and Path(socket_ssh).exists():
+        agregar("socket_o_agente_ssh", "ssh-agent", "SSH_AUTH_SOCK apunta a un socket existente")
+
+    codigo, salida = _correr_en(["git", "-C", str(arbol), "remote"], None, entorno)
+    if codigo == 0:
+        for remoto in salida.split():
+            agregar("remoto_configurado", f"remoto-{_slug(remoto)}",
+                    f"remoto `{remoto}` configurado en el árbol observado")
+
+    for herramienta in por_clase["herramienta_autenticada"]["herramientas"]:
+        if shutil.which(herramienta["nombre"], path=entorno.get("PATH")) is None:
+            continue
+        codigo, _ = _correr_en(herramienta["comando_de_estado"].split(), None, entorno)
+        if codigo == 0:
+            agregar("herramienta_autenticada", f"tool-{herramienta['nombre']}",
+                    f"`{herramienta['nombre']}` reporta sesión abierta")
+    return superficies
+
+
+def modo_autotest_egreso(args: argparse.Namespace) -> int:
+    del args
+    resultados: list[tuple[str, bool, str]] = []
+    inventario, error = _cargar_json(RUTA_SUPERFICIES)
+    if error:
+        print(f"FALLA  {error}")
+        return 1
+
+    with tempfile.TemporaryDirectory(prefix="egreso-") as tmp:
+        taller = Path(tmp)
+        hogar = taller / "hogar"
+        snapshot_antes = _snapshot_de_egreso(RAIZ)
+        with Canary() as canary:
+            corridas = correr_mutantes_de_publicacion(canary, taller)
+            recibido_por_el_canary = list(canary.recibido)
+            # El cese se comprueba en las DOS direcciones: acá adentro el canary está vivo y tiene
+            # que decirlo. Sin este positivo, un `ceso()` que devolviera siempre True pasaría.
+            vivo_mientras_escucha = not canary.ceso()
+        ceso = canary.ceso()
+        snapshot_despues = _snapshot_de_egreso(RAIZ)
+
+        # [A] Los cuatro mutantes corrieron por su ruta real, comprobado POR OBSERVACIÓN PROPIA:
+        #     el objeto que el `push` dejó en el canary, y el agente de cada intento HTTP.
+        problemas = revisar_mutantes(corridas, inventario)
+        problemas += comprobar_huellas(corridas, canary)
+        resultados.append(("A", not problemas,
+                           "los cuatro mutantes recorren su adaptador real —el objeto en el canary "
+                           "y el agente de cada intento lo prueban— y ninguno sale del host"
+                           if not problemas else " | ".join(problemas[:6])))
+
+        # [B] El canary recibió lo que las redirecciones mandaron, y nada de la denegación.
+        por_http = [r for r in corridas
+                    if r.tratamiento == "redireccion" and r.mutante_id in ("mut-url", "mut-api")]
+        fallas = []
+        if len(recibido_por_el_canary) != len(por_http):
+            fallas.append(f"el canary registró {len(recibido_por_el_canary)} intentos y los "
+                          f"mutantes por HTTP fueron {len(por_http)}")
+        if any("contenido a publicar" not in r["cuerpo"] for r in recibido_por_el_canary):
+            fallas.append("el canary registró algo que no es lo que los mutantes mandaron")
+        agentes = sorted(r["agente"].split("/")[0] for r in recibido_por_el_canary)
+        if len(set(agentes)) != len(agentes):
+            fallas.append(f"dos intentos del canary vienen del mismo agente ({agentes}): los dos "
+                          f"mutantes por HTTP tienen que recorrer adaptadores distintos")
+        resultados.append(("B", not fallas,
+                           f"el canary registró los {len(por_http)} intentos por HTTP, cada uno de "
+                           f"su adaptador ({', '.join(agentes)}), y nada más"
+                           if not fallas else " | ".join(fallas)))
+
+        # [C] Los invariantes de la prueba, con su negativo y con el cese comprobado en las dos
+        #     direcciones.
+        fallas = list(revisar_invariantes(snapshot_antes, snapshot_despues, ceso, hogar,
+                                          inventario))
+        if not vivo_mientras_escucha:
+            fallas.append("el canary se declaró cesado mientras seguía escuchando: el cese no se "
+                          "está comprobando, se está afirmando")
+        if not revisar_invariantes(("refs-a", "objs-a"), ("refs-b", "objs-b"), ceso, hogar,
+                                   inventario):
+            fallas.append("un snapshot distinto antes y después no se detectó")
+        if not revisar_invariantes(snapshot_antes, snapshot_despues, False, hogar, inventario):
+            fallas.append("un canary sin cesar no se detectó")
+        if not revisar_invariantes(snapshot_antes, snapshot_despues, ceso,
+                                   taller / "hogar-que-no-existe", inventario):
+            fallas.append("la ausencia del HOME desechable no se detectó")
+        resultados.append(("C", not fallas,
+                           "entorno desechable, snapshot igual antes y después y canary cesado, "
+                           "con el negativo de cada uno" if not fallas else " | ".join(fallas)))
+
+        # [D] La regla de descubrimiento mira EL ENTORNO, y eso se comprueba por clase: en el
+        #     desechable no puede quedar ninguna credencial, ningún token, ningún agente SSH ni
+        #     ninguna herramienta con sesión. Comparar solo los totales dejaba pasar una clase que
+        #     siguiera mirando el HOME del usuario.
+        fallas = []
+        cerradas = {c["clase"] for c in inventario["clases"]}
+        del_contrato = set(json.loads(
+            CONTRATOS_POR_NOMBRE["bundle-corrida"].ruta.read_text(encoding="utf-8"))
+            ["$defs"]["enum_clase_de_superficie"]["enum"])
+        if cerradas != del_contrato:
+            fallas.append(f"las clases de la regla no son las del contrato: {sorted(cerradas)} "
+                          f"contra {sorted(del_contrato)}")
+        del_host = descubrir_canales(RAIZ, dict(os.environ), inventario)
+        desechable = descubrir_canales(RAIZ, _entorno_desechable(hogar), inventario)
+        if not del_host:
+            fallas.append("la regla no descubrió ninguna superficie en el entorno del host")
+        por_clase_host = {c: sum(1 for s in del_host if s["clase"] == c) for c in cerradas}
+        por_clase_desechable = {c: sum(1 for s in desechable if s["clase"] == c)
+                                for c in cerradas}
+        for clase in ("credencial_en_disco", "variable_de_entorno", "socket_o_agente_ssh",
+                      "herramienta_autenticada"):
+            if por_clase_desechable[clase]:
+                fallas.append(f"el entorno desechable todavía descubre {clase}: la regla no está "
+                              f"mirando el entorno que se le pasa")
+            if not por_clase_host[clase]:
+                fallas.append(f"la regla no descubre `{clase}` ni en el entorno del host, así que "
+                              f"su cero en el desechable no prueba nada")
+        clases_vistas = {s["clase"] for s in del_host}
+        if not clases_vistas <= cerradas:
+            fallas.append(f"la regla produjo clases fuera del conjunto cerrado: "
+                          f"{sorted(clases_vistas - cerradas)}")
+        resultados.append(("D", not fallas,
+                           f"la regla descubre {len(del_host)} superficies en el host y "
+                           f"{len(desechable)} en el desechable, y las cuatro clases que dependen "
+                           f"del entorno caen a cero" if not fallas else " | ".join(fallas)))
+
+        # [E] Los negativos del revisor: cada cláusula tiene una entrada que la pone roja, y el
+        #     positivo de las huellas está en [A].
+        fallas = []
+        alcanzo = ResultadoDeMutante("mut-url", "redireccion", True, True, "e")
+        if not any("alcanzó un destino fuera del host" in p
+                   for p in revisar_mutantes([alcanzo], inventario)):
+            fallas.append("un mutante que alcanza un servicio no bloqueó por ese motivo")
+        no_llego = ResultadoDeMutante("mut-api", "redireccion", False, False, "e")
+        if not any("no llegó al canary" in p for p in revisar_mutantes([no_llego], inventario)):
+            fallas.append("un mutante redirigido que no llega al canary no bloqueó por ese motivo")
+        publico = ResultadoDeMutante("mut-herramienta", "denegacion", True, False, "e")
+        if not any("publicó igual" in p for p in revisar_mutantes([publico], inventario)):
+            fallas.append("una superficie declarada denegada que publica no bloqueó por ese motivo")
+        distinto = ResultadoDeMutante("mut-shell", "denegacion", True, False, "e")
+        if not any("y el inventario declara" in p
+                   for p in revisar_mutantes([distinto], inventario)):
+            fallas.append("un mutante corrido por otro tratamiento que el declarado no se detectó")
+        if not revisar_mutantes(corridas[:1], inventario):
+            fallas.append("correr un solo mutante de los cuatro declarados no se detectó")
+        sin_tratamiento = json.loads(json.dumps(inventario))
+        sin_tratamiento["mutantes_de_publicacion"][0]["tratamiento"] = "ninguno"
+        if not any("la superficie bloquea" in p
+                   for p in revisar_mutantes(corridas, sin_tratamiento)):
+            fallas.append("una superficie sin redirección segura ni denegación comprobable no "
+                          "bloqueó")
+        sin_huella = ResultadoDeMutante("mut-url", "redireccion", True, False, "e")
+        if not any("no declara huella" in p for p in comprobar_huellas([sin_huella], canary)):
+            fallas.append("un mutante sin huella con la que comprobarlo no se detectó")
+        resultados.append(("E", not fallas,
+                           "el revisor bloquea con servicio alcanzado, sin llegar al canary, con "
+                           "denegación que publica, con tratamiento cambiado, con mutantes "
+                           "faltantes, sin tratamiento admitido y sin huella"
+                           if not fallas else " | ".join(fallas)))
+
+    return _cerrar(resultados)
+
+
+def _bundle_del_caso(caso: dict) -> dict:
+    """El caso del corpus, visto como el bundle que el juicio lee."""
+    return {
+        "punto_de_despacho": caso["punto_de_despacho"],
+        "pruebas_de_aislamiento": caso["pruebas_de_aislamiento"],
+        "recursos": caso["recursos"],
+        "inventario_de_egreso_reejecutado": caso["inventario_de_egreso_reejecutado"],
+    }
+
+
+def modo_autotest_aislamiento(args: argparse.Namespace) -> int:
+    del args
+    resultados: list[tuple[str, bool, str]] = []
+    corpus, error_corpus = _cargar_json(RUTA_CORPUS_AISLAMIENTO)
+    manifest, error_manifest = _cargar_json(RUTA_MANIFEST_AISLAMIENTO)
+    matriz, error_matriz = _cargar_json(RUTA_MATRIZ)
+    for error in (error_corpus, error_manifest, error_matriz):
+        if error:
+            print(f"FALLA  {error}")
+            return 1
+
+    por_id = {c["caso_id"]: c for c in corpus["casos"]}
+    casos = manifest["casos"]
+    ejercidas: set[str] = set()
+
+    # [A] Corpus y manifest, comparados en las dos direcciones.
+    del_corpus = [c["caso_id"] for c in corpus["casos"]]
+    del_manifest = [c["caso_id"] for c in casos]
+    diferencias = [f"del corpus y sin caso en el manifest: {c}"
+                   for c in del_corpus if c not in del_manifest]
+    diferencias += [f"del manifest y sin caso en el corpus: {c}"
+                    for c in del_manifest if c not in del_corpus]
+    resultados.append(("A", not diferencias,
+                       f"corpus ↔ manifest ({len(del_corpus)} casos)" if not diferencias
+                       else " | ".join(diferencias[:6])))
+
+    # [B] El permiso lo resuelve LA MATRIZ, y sigue diciendo lo que el corpus supone.
+    fallas = []
+    for punto, esperado in manifest["puntos_del_corpus"].items():
+        if punto == "por_que_se_declaran":
+            continue
+        efectivo = _permiso_efectivo_de(punto, matriz)
+        if efectivo != esperado:
+            fallas.append(f"la matriz declara `{efectivo}` para `{punto}` y el corpus mide "
+                          f"suponiendo `{esperado}`")
+    if _permiso_efectivo_de("punto-que-la-matriz-no-tiene", matriz) is not None:
+        fallas.append("un punto ausente de la matriz devolvió permiso: el juicio se estaría "
+                      "apoyando en un valor por omisión")
+    resultados.append(("B", not fallas,
+                       "el permiso efectivo sale de la matriz y es el que el corpus supone"
+                       if not fallas else " | ".join(fallas)))
+
+    # [C] Cada caso cae por SU cláusula y por su motivo, y ninguna más.
+    fallas = []
+    for caso in casos:
+        datos = _bundle_del_caso(por_id[caso["caso_id"]])
+        problemas = revisar_aislamiento(datos, matriz) + revisar_recursos(datos)
+        claves = sorted({p.clave for p in problemas})
+        esperadas = sorted(caso["clausulas_esperadas"])
+        if claves != esperadas:
+            fallas.append(f"`{caso['caso_id']}`: cayó por {claves} y se esperaba {esperadas}")
+            continue
+        fragmento = caso.get("fragmento_esperado")
+        if fragmento and not any(fragmento in p.detalle for p in problemas):
+            fallas.append(f"`{caso['caso_id']}`: cayó por {claves} pero no por su motivo — se "
+                          f"esperaba «{fragmento}»")
+            continue
+        ejercidas.update(claves)
+    resultados.append(("C", not fallas,
+                       f"los {len(casos)} casos caen por su cláusula y por su motivo"
+                       if not fallas else " | ".join(fallas[:6])))
+
+    # [D] Cobertura de las dos familias de cláusulas, acumulada corriendo.
+    fallas = []
+    todas = set(CLAUSULAS_DE_AISLAMIENTO) | set(CLAUSULAS_DE_RECURSOS)
+    sin_ejercer = sorted(todas - ejercidas)
+    inexistentes = sorted(ejercidas - todas)
+    if sin_ejercer:
+        fallas.append(f"cláusulas sin ningún caso que las ponga rojas: {sin_ejercer}")
+    if inexistentes:
+        fallas.append(f"se ejercieron cláusulas que no existen: {inexistentes}")
+    declaradas = set(manifest["clausulas_de_aislamiento_ejercidas"]) | \
+        set(manifest["clausulas_de_recursos_ejercidas"])
+    if declaradas != todas:
+        fallas.append(f"el manifest declara otras cláusulas que los conjuntos cerrados: "
+                      f"{sorted(declaradas ^ todas)}")
+    resultados.append(("D", not fallas,
+                       f"las {len(todas)} cláusulas tienen quien las ponga rojas, acumulado "
+                       f"corriendo" if not fallas else " | ".join(fallas)))
+
+    # [E] El modo entero, con su negativo: un conjunto sano sale en 0 y uno bloqueado no.
+    fallas = []
+    with tempfile.TemporaryDirectory(prefix="aislamiento-") as tmp:
+        raiz = Path(tmp)
+        for caso_id in ("ais-escritor-sano", "rec-sano"):
+            _materializar_caso(raiz / f"run-{caso_id}", por_id[caso_id])
+        codigo = _codigo_de_modo(modo_aislamiento, aislamiento=str(raiz))
+        if codigo != 0:
+            fallas.append(f"un conjunto sano devolvió {codigo}")
+    with tempfile.TemporaryDirectory(prefix="aislamiento-") as tmp:
+        raiz = Path(tmp)
+        _materializar_caso(raiz / "run-ais-escritor-sano", por_id["ais-escritor-sano"])
+        _materializar_caso(raiz / "run-ais-permiso-falseado", por_id["ais-permiso-falseado"])
+        codigo = _codigo_de_modo(modo_aislamiento, aislamiento=str(raiz))
+        if codigo == 0:
+            fallas.append("un conjunto con una observación bloqueada devolvió 0")
+    with tempfile.TemporaryDirectory(prefix="aislamiento-") as tmp:
+        if _codigo_de_modo(modo_aislamiento, aislamiento=tmp) == 0:
+            fallas.append("un conjunto vacío devolvió 0: nada que juzgar no es lo mismo que "
+                          "juzgado")
+    resultados.append(("E", not fallas,
+                       "el modo devuelve 0 sobre un conjunto sano y distinto de 0 sobre uno "
+                       "bloqueado o vacío" if not fallas else " | ".join(fallas)))
+
+    return _cerrar(resultados)
+
+
+def modo_autotest_recursos(args: argparse.Namespace) -> int:
+    del args
+    resultados: list[tuple[str, bool, str]] = []
+    corpus, error_corpus = _cargar_json(RUTA_CORPUS_AISLAMIENTO)
+    manifest, error_manifest = _cargar_json(RUTA_MANIFEST_AISLAMIENTO)
+    for error in (error_corpus, error_manifest):
+        if error:
+            print(f"FALLA  {error}")
+            return 1
+    por_id = {c["caso_id"]: c for c in corpus["casos"]}
+
+    # [A] Los cuatro campos se modelan por separado: cambiar uno no cambia a los otros.
+    fallas = []
+    base = _bundle_del_caso(por_id["rec-sano"])
+    sesion = next(r for r in base["recursos"] if r["ownership_state"] == "transferido")
+    if sesion["life_state"] == "terminado_comprobado":
+        fallas.append("el caso sano no ejerce la independencia: su recurso transferido también "
+                      "está terminado, así que vida y propiedad no se distinguen")
+    terminado = next(r for r in base["recursos"] if r["ownership_state"] == "sin_transferir")
+    if terminado["life_state"] != "terminado_comprobado":
+        fallas.append("el caso sano no tiene ningún recurso terminado y sin transferir")
+    if revisar_recursos(base):
+        fallas.append(f"el caso sano fue bloqueado: {[str(p) for p in revisar_recursos(base)]}")
+    resultados.append(("A", not fallas,
+                       "vida y propiedad se modelan por separado: un recurso vivo pero "
+                       "transferido y otro terminado sin transferir conviven"
+                       if not fallas else " | ".join(fallas)))
+
+    # [B] Un negativo POR CAMPO ausente del recurso transferido.
+    fallas = []
+    for campo, clausula in (("owner", "transferido_sin_owner"),
+                            ("next_action", "transferido_sin_next_action")):
+        caso = json.loads(json.dumps(base))
+        recurso = next(r for r in caso["recursos"] if r["ownership_state"] == "transferido")
+        recurso.pop(campo, None)
+        claves = {p.clave for p in revisar_recursos(caso)}
+        if claves != {clausula}:
+            fallas.append(f"quitar `{campo}` cayó por {sorted(claves)} y se esperaba `{clausula}`")
+    resultados.append(("B", not fallas,
+                       "quitar el dueño y quitar la próxima acción bloquean por separado, un "
+                       "negativo por campo" if not fallas else " | ".join(fallas)))
+
+    # [C] Solo un estado terminal comprobado cuenta como limpieza.
+    fallas = []
+    for vida in ("vivo", "cese_no_comprobable"):
+        caso = json.loads(json.dumps(base))
+        caso["recursos"] = [dict(terminado, life_state=vida)]
+        if "vivo_sin_transferir" not in {p.clave for p in revisar_recursos(caso)}:
+            fallas.append(f"un recurso en `{vida}` y sin transferir no bloqueó")
+        caso["recursos"] = [dict(terminado, life_state=vida, ownership_state="transferido",
+                                 owner="el conductor", next_action="cerrarlo al terminar")]
+        if revisar_recursos(caso):
+            fallas.append(f"un recurso en `{vida}` pero transferido con dueño y próxima acción "
+                          f"bloqueó: la transferencia resuelve quién responde, no si sigue vivo")
+    resultados.append(("C", not fallas,
+                       "solo el terminal comprobado cuenta como limpieza, y lo que sigue vivo se "
+                       "salva transfiriéndolo" if not fallas else " | ".join(fallas)))
+
+    # [D] El cese nunca se infiere por efectos en el árbol, ni se copia entre recursos.
+    fallas = []
+    for caso_id, clausula in (("rec-cese-inferido", "cese_inferido_del_arbol"),
+                              ("rec-cese-copiado", "evidencia_de_cese_copiada")):
+        claves = {p.clave for p in revisar_recursos(_bundle_del_caso(por_id[caso_id]))}
+        if claves != {clausula}:
+            fallas.append(f"`{caso_id}` cayó por {sorted(claves)} y se esperaba `{clausula}`")
+    resultados.append(("D", not fallas,
+                       "el cese no se infiere del árbol ni se acredita copiando la evidencia de "
+                       "otro recurso" if not fallas else " | ".join(fallas)))
+
+    # [E] Cada cláusula de recursos tiene su caso, acumulado corriendo.
+    fallas = []
+    ejercidas = set()
+    for caso in manifest["casos"]:
+        claves = {p.clave for p in revisar_recursos(_bundle_del_caso(por_id[caso["caso_id"]]))}
+        ejercidas.update(claves & set(CLAUSULAS_DE_RECURSOS))
+    sin_ejercer = sorted(set(CLAUSULAS_DE_RECURSOS) - ejercidas)
+    if sin_ejercer:
+        fallas.append(f"cláusulas de recursos sin caso que las ponga rojas: {sin_ejercer}")
+    if sorted(manifest["clausulas_de_recursos_ejercidas"]) != sorted(CLAUSULAS_DE_RECURSOS):
+        fallas.append("el manifest declara otras cláusulas de recursos que el conjunto cerrado")
+    resultados.append(("E", not fallas,
+                       f"las {len(CLAUSULAS_DE_RECURSOS)} cláusulas de recursos tienen quien las "
+                       f"ponga rojas" if not fallas else " | ".join(fallas)))
+
+    return _cerrar(resultados)
+
+
+def _materializar_caso(directorio: Path, caso: dict) -> None:
+    """Escribe el caso como el bundle que el modo lee del disco."""
+    directorio.mkdir(parents=True, exist_ok=True)
+    (directorio / "bundle.json").write_text(
+        json.dumps(_bundle_del_caso(caso), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _codigo_de_modo(handler: Callable[[argparse.Namespace], int], **kwargs: Any) -> int:
+    """Corre un modo capturando su salida: un `RESULTADO: FALLA` de un negativo impreso en medio
+    de un autotest verde se lee como una regresión y no como el negativo que es."""
+    with contextlib.redirect_stdout(io.StringIO()):
+        return handler(argparse.Namespace(**kwargs))
+
+
+def _snapshot_de_egreso(arbol: Path) -> tuple[str, str]:
+    entorno = dict(os.environ)
+    return (_correr_en(["git", "-C", str(arbol), "for-each-ref",
+                        "--format=%(refname) %(objectname)"], None, entorno)[1],
+            _correr_en(["git", "-C", str(arbol), "count-objects", "-v"], None, entorno)[1])
+
+
+# ---------------------------------------------------------------------------------------------
 # Registro de los modos de esta task. Cada task nueva agrega los suyos acá abajo, sin tocar los
 # anteriores ni `main()`.
 # ---------------------------------------------------------------------------------------------
@@ -8163,6 +9096,39 @@ registrar_modo(
     "externo al schema, comparado en las dos direcciones— y que el campo del hash está fuera de "
     "ella, más los mutantes que prueban que puede ponerse rojo",
     modo_autotest_canonicalizacion,
+)
+
+registrar_modo(
+    "--aislamiento",
+    "juzga la evidencia de aislamiento de un conjunto de corridas: las tres pruebas por separado, "
+    "exigidas según el permiso efectivo que declara LA MATRIZ —no el bundle—, y los recursos con "
+    "vida y propiedad modeladas aparte; una observación que no las sostiene queda bloqueada",
+    modo_aislamiento,
+    argumento=Argumento("<dir-de-corridas>", const=RUTA_CORRIDAS_FASE_0),
+)
+
+registrar_modo(
+    "--autotest-egreso",
+    "corre los cuatro mutantes de publicación —shell, URL, API y herramienta autenticada— por su "
+    "adaptador REAL interceptado en la frontera contra un canary local, en entorno desechable, con "
+    "snapshot previo y posterior iguales y cese del canary comprobado",
+    modo_autotest_egreso,
+)
+
+registrar_modo(
+    "--autotest-aislamiento",
+    "control positivo y negativo del juicio de aislamiento sobre su corpus: un escritor con menos "
+    "de las tres pruebas queda bloqueado, un caso de solo lectura registra `not_applicable` con "
+    "causa derivada de la matriz, y falsear ese permiso para esquivarlas falla",
+    modo_autotest_aislamiento,
+)
+
+registrar_modo(
+    "--autotest-recursos",
+    "control de que vida, propiedad, dueño y próxima acción se modelan por separado: un recurso "
+    "transferido exige dueño Y próxima acción —con un negativo por campo—, solo el terminal "
+    "comprobado cuenta como limpieza, y el cese inferido por efectos en el árbol bloquea",
+    modo_autotest_recursos,
 )
 
 

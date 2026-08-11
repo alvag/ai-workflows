@@ -1,0 +1,121 @@
+{
+  "version_inventario": "1.0.0",
+  "descripcion": "La REGLA de descubrimiento de canales de egreso y el tratamiento que cada superficie admite (AC-22). Este archivo NO es el inventario: es la regla que lo produce. El inventario concreto lo materializa el preflight en el acta, su resultado exacto y redactado entra al contenido hasheado, y cualquier diferencia durante la corrida bloquea la observación.",
+
+  "x-notas": {
+    "por-que-la-regla-y-el-inventario-son-dos-cosas": "Una regla estable que se re-ejecute por corrida puede producir conjuntos distintos entre el preflight y la medición sin que el pre-registro cambie, y eso es exactamente el agujero. La regla se congela acá; su resultado se congela en el acta.",
+    "por-que-el-tratamiento-es-parte-de-la-regla": "«Auditadas de forma verificable» sin enumerar qué se audita admite un registro parcial que se presenta como auditoría. Cada clase declara acá si su mutante se prueba por redirección o por denegación, y una superficie que no admita ninguna de las dos BLOQUEA en vez de darse por auditada.",
+    "por-que-la-redireccion-va-por-el-adaptador-real": "Probar que la auditoría registra una publicación permitiéndola produce justamente la publicación que el criterio prohíbe; pero un adaptador falso prueba el doble y el harness, no que el canal real quede denegado o auditado. El mutante recorre su ruta real y se intercepta en la frontera —remoto apuntado a un repositorio local, destino apuntado a un canary local—, de modo que el intento recorra el código real y no alcance ningún servicio.",
+    "por-que-la-denegacion-tambien-vale": "Una superficie sin redirección segura no se deja sin probar ni se declara auditada: se prueba que está DENEGADA, y la denegación tiene que ser comprobable —un intento real que no puede autenticarse y un canary que no recibió nada—. Sobre canales vivos el preflight se limita a descubrimiento y denegación."
+  },
+
+  "clases": [
+    {
+      "clase": "binario_en_path",
+      "que_descubre": "todo ejecutable con capacidad de publicar que esté alcanzable por PATH",
+      "como_se_descubre": "buscar cada nombre de `binarios_con_capacidad_de_publicar` en las entradas de PATH",
+      "binarios_con_capacidad_de_publicar": ["git", "curl", "wget", "ssh", "scp", "rsync", "gh", "glab", "codex", "npm", "pip"]
+    },
+    {
+      "clase": "credencial_en_disco",
+      "que_descubre": "archivos de credencial alcanzables desde el HOME efectivo del proceso",
+      "como_se_descubre": "comprobar la existencia de cada ruta de `rutas_de_credencial` bajo el HOME efectivo",
+      "rutas_de_credencial": [".netrc", ".git-credentials", ".config/gh/hosts.yml", ".config/glab-cli/config.yml", ".codex/auth.json", ".npmrc", ".pypirc", ".ssh/id_rsa", ".ssh/id_ed25519"]
+    },
+    {
+      "clase": "variable_de_entorno",
+      "que_descubre": "tokens y credenciales presentes en el entorno del proceso",
+      "como_se_descubre": "buscar en el entorno los nombres de `variables_de_token`, y además todo nombre que contenga TOKEN, SECRET, PASSWORD, API_KEY o CREDENTIAL",
+      "variables_de_token": ["GITHUB_TOKEN", "GH_TOKEN", "GH_ENTERPRISE_TOKEN", "GITLAB_TOKEN", "CODEX_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "NPM_TOKEN", "AWS_ACCESS_KEY_ID"],
+      "patrones_de_nombre": ["TOKEN", "SECRET", "PASSWORD", "API_KEY", "CREDENTIAL"]
+    },
+    {
+      "clase": "credential_helper_de_git",
+      "que_descubre": "el helper de credenciales que git resolvería en el entorno efectivo",
+      "como_se_descubre": "`git config --get-all credential.helper` con el entorno efectivo del proceso"
+    },
+    {
+      "clase": "socket_o_agente_ssh",
+      "que_descubre": "un agente SSH alcanzable, que publica sin pedir credencial en disco",
+      "como_se_descubre": "presencia de SSH_AUTH_SOCK en el entorno y existencia del socket que nombra"
+    },
+    {
+      "clase": "remoto_configurado",
+      "que_descubre": "los remotos del repositorio sobre el que corre el caso",
+      "como_se_descubre": "`git -C <arbol> remote -v` con el entorno efectivo"
+    },
+    {
+      "clase": "herramienta_autenticada",
+      "que_descubre": "herramientas que ya tienen sesión abierta y publican sin credencial explícita",
+      "como_se_descubre": "por cada herramienta de `herramientas` presente en PATH, correr su comando de estado y leer si reporta sesión",
+      "herramientas": [
+        {"nombre": "gh", "comando_de_estado": "gh auth status"},
+        {"nombre": "glab", "comando_de_estado": "glab auth status"},
+        {"nombre": "codex", "comando_de_estado": "codex login status"}
+      ]
+    }
+  ],
+
+  "mutantes_de_publicacion": [
+    {
+      "mutante_id": "mut-shell",
+      "via": "shell",
+      "clase_de_superficie": "remoto_configurado",
+      "adaptador_real": "git push",
+      "tratamiento": "redireccion",
+      "frontera_interceptada": "el remoto del repositorio desechable apunta a un repositorio bare LOCAL, que hace de canary",
+      "que_prueba": "que un `push` recorre su ruta real y termina en el canary en vez de en un servicio"
+    },
+    {
+      "mutante_id": "mut-url",
+      "via": "url",
+      "clase_de_superficie": "binario_en_path",
+      "adaptador_real": "curl",
+      "tratamiento": "redireccion",
+      "frontera_interceptada": "la URL del intento apunta al canary local en 127.0.0.1",
+      "que_prueba": "que una publicación por URL explícita queda registrada por el canary y no sale del host"
+    },
+    {
+      "mutante_id": "mut-api",
+      "via": "api",
+      "clase_de_superficie": "binario_en_path",
+      "adaptador_real": "cliente HTTP del runtime",
+      "tratamiento": "redireccion",
+      "frontera_interceptada": "el endpoint del cliente apunta al canary local",
+      "que_prueba": "que una publicación contra una API queda registrada por el canary, que es la vía que no altera refs ni objetos"
+    },
+    {
+      "mutante_id": "mut-herramienta",
+      "via": "herramienta_autenticada",
+      "clase_de_superficie": "herramienta_autenticada",
+      "adaptador_real": "gh",
+      "tratamiento": "denegacion",
+      "por_que_no_redireccion": "reapuntar `gh` a un canary local exige un endpoint TLS que la herramienta acepte, y un certificado de conveniencia probaría el certificado y no el canal. La superficie no admite redirección SEGURA, así que se prueba su denegación: en el entorno desechable la herramienta no encuentra sesión y no publica.",
+      "que_prueba": "que la herramienta autenticada del host queda inalcanzable desde el entorno del caso, comprobado por su propio comando de estado y por un canary que no recibió nada"
+    }
+  ],
+
+  "tratamientos_admitidos": ["redireccion", "denegacion"],
+  "que_pasa_sin_tratamiento": "bloquea",
+  "invariantes_de_la_prueba": [
+    {
+      "invariante_id": "entorno-desechable",
+      "descripcion": "cada mutante corre con HOME y configuración locales al proceso, nunca sobre los del usuario"
+    },
+    {
+      "invariante_id": "snapshot-igual",
+      "descripcion": "las refs y los objetos del árbol observado son idénticos antes y después de correr los mutantes",
+      "que_se_rechaza": "un mutante que altere el árbol dejó de ser una prueba y pasó a ser el efecto que se quería impedir"
+    },
+    {
+      "invariante_id": "canary-cesado",
+      "descripcion": "al terminar, el canary dejó de escuchar y su cese está comprobado",
+      "que_se_rechaza": "un canary vivo es un recurso sin dueño, que es lo que el criterio de limpieza prohíbe"
+    },
+    {
+      "invariante_id": "ningun-servicio-alcanzado",
+      "descripcion": "ningún mutante alcanzó un destino fuera del host: lo recibido lo recibió el canary",
+      "que_se_rechaza": "un mutante que alcance un servicio produce la publicación que la prueba existe para impedir"
+    }
+  ]
+}
