@@ -635,7 +635,7 @@ resuelve ese puntero contra el árbol y exige que la sección que señala nombre
 el puntero se ejerce en vez de decorar.
 
 **Ese puntero apunta a un artefacto de trabajo no versionado**
-(`.plans/doctrina-implementador/roadmap.md`), y hay que decirlo con las mismas palabras con que esta fase lo
+(`docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md`), y hay que decirlo con las mismas palabras con que esta fase lo
 dijo de la propuesta doctrinal. Es el único documento del árbol que enumera las cinco familias en
 una sección legible por sección. El único **archivo versionado** que las nombra a las cinco es
 `scripts/matriz-despachos.schema.json`, que no sirve de sede por dos motivos independientes: es un
@@ -676,7 +676,7 @@ python3 scripts/verificar-matriz-despachos.py --roles \
   "familias": [
     {
       "familia": "explorer",
-      "puntero": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills",
+      "puntero": "docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md#1-que-significa-soportado-por-las-siete-skills",
       "campos": {
         "entrada": {
           "estado": "ausente",
@@ -694,7 +694,7 @@ python3 scripts/verificar-matriz-despachos.py --roles \
     },
     {
       "familia": "investigator",
-      "puntero": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills",
+      "puntero": "docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md#1-que-significa-soportado-por-las-siete-skills",
       "campos": {
         "entrada": {
           "estado": "ausente",
@@ -712,7 +712,7 @@ python3 scripts/verificar-matriz-despachos.py --roles \
     },
     {
       "familia": "design-reviewer",
-      "puntero": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills",
+      "puntero": "docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md#1-que-significa-soportado-por-las-siete-skills",
       "campos": {
         "entrada": {
           "estado": "ausente",
@@ -730,7 +730,7 @@ python3 scripts/verificar-matriz-despachos.py --roles \
     },
     {
       "familia": "bounded-implementer",
-      "puntero": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills",
+      "puntero": "docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md#1-que-significa-soportado-por-las-siete-skills",
       "campos": {
         "entrada": {
           "estado": "ausente",
@@ -748,7 +748,7 @@ python3 scripts/verificar-matriz-despachos.py --roles \
     },
     {
       "familia": "diff-reviewer",
-      "puntero": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills",
+      "puntero": "docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md#1-que-significa-soportado-por-las-siete-skills",
       "campos": {
         "entrada": {
           "estado": "ausente",
@@ -861,7 +861,7 @@ traerla distinta es el defecto que este criterio existe para impedir.
           "conversion": "enum:autoridad_final"
         }
       },
-      "puntero_variante": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills"
+      "puntero_variante": "docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md#1-que-significa-soportado-por-las-siete-skills"
     },
     {
       "punto": "cross-review · revisor por ronda",
@@ -891,7 +891,7 @@ traerla distinta es el defecto que este criterio existe para impedir.
           "conversion": "enum:autoridad_final"
         }
       },
-      "puntero_variante": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills"
+      "puntero_variante": "docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md#1-que-significa-soportado-por-las-siete-skills"
     },
     {
       "punto": "cross-implement · implementador inicial",
@@ -921,7 +921,7 @@ traerla distinta es el defecto que este criterio existe para impedir.
           "conversion": "enum:autoridad_final"
         }
       },
-      "puntero_variante": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills"
+      "puntero_variante": "docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md#1-que-significa-soportado-por-las-siete-skills"
     },
     {
       "punto": "cross-implement · fix loop",
@@ -1012,7 +1012,7 @@ traerla distinta es el defecto que este criterio existe para impedir.
           "conversion": "enum:autoridad_final"
         }
       },
-      "puntero_variante": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills"
+      "puntero_variante": "docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md#1-que-significa-soportado-por-las-siete-skills"
     },
     {
       "punto": "sdd-flow · reviewer por task",
@@ -1103,7 +1103,7 @@ traerla distinta es el defecto que este criterio existe para impedir.
           "conversion": "enum:autoridad_final"
         }
       },
-      "puntero_variante": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills"
+      "puntero_variante": "docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md#1-que-significa-soportado-por-las-siete-skills"
     },
     {
       "punto": "sdd-pr-feedback · implement delegado",
@@ -1133,7 +1133,7 @@ traerla distinta es el defecto que este criterio existe para impedir.
           "conversion": "enum:autoridad_final"
         }
       },
-      "puntero_variante": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills"
+      "puntero_variante": "docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md#1-que-significa-soportado-por-las-siete-skills"
     },
     {
       "punto": "bitbucket-code-review · panel",
@@ -1163,7 +1163,7 @@ traerla distinta es el defecto que este criterio existe para impedir.
           "conversion": "enum:autoridad_final"
         }
       },
-      "puntero_variante": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills"
+      "puntero_variante": "docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md#1-que-significa-soportado-por-las-siete-skills"
     },
     {
       "punto": "bitbucket-code-review · validador adversarial",
@@ -1193,7 +1193,7 @@ traerla distinta es el defecto que este criterio existe para impedir.
           "conversion": "enum:autoridad_final"
         }
       },
-      "puntero_variante": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills"
+      "puntero_variante": "docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md#1-que-significa-soportado-por-las-siete-skills"
     }
   ]
 }

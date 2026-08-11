@@ -488,7 +488,7 @@ Las cinco familias **se derivan** de la tabla del roadmap, y cada una lleva su p
   "familias": [
     {
       "familia": "explorer",
-      "puntero": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills",
+      "puntero": "docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md#1-que-significa-soportado-por-las-siete-skills",
       "campos": {
         "entrada": {
           "estado": "vigente",
@@ -509,7 +509,7 @@ Las cinco familias **se derivan** de la tabla del roadmap, y cada una lleva su p
     },
     {
       "familia": "investigator",
-      "puntero": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills",
+      "puntero": "docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md#1-que-significa-soportado-por-las-siete-skills",
       "campos": {
         "entrada": {
           "estado": "vigente",
@@ -529,7 +529,7 @@ Las cinco familias **se derivan** de la tabla del roadmap, y cada una lleva su p
     },
     {
       "familia": "design-reviewer",
-      "puntero": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills",
+      "puntero": "docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md#1-que-significa-soportado-por-las-siete-skills",
       "campos": {
         "entrada": {
           "estado": "vigente",
@@ -550,7 +550,7 @@ Las cinco familias **se derivan** de la tabla del roadmap, y cada una lleva su p
     },
     {
       "familia": "bounded-implementer",
-      "puntero": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills",
+      "puntero": "docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md#1-que-significa-soportado-por-las-siete-skills",
       "campos": {
         "entrada": {
           "estado": "vigente",
@@ -571,7 +571,7 @@ Las cinco familias **se derivan** de la tabla del roadmap, y cada una lleva su p
     },
     {
       "familia": "diff-reviewer",
-      "puntero": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills",
+      "puntero": "docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md#1-que-significa-soportado-por-las-siete-skills",
       "campos": {
         "entrada": {
           "estado": "vigente",
@@ -633,7 +633,7 @@ resultado hoy tiene forma distinta no comparten declaración de salida.
         "valor": "el conductor es voz y decide tras leer la postura",
         "procedencia": {"sede": "fuentes/contratos-de-rol.md", "tipo_de_sede": "fila_de_tabla_markdown", "selector": {"clave_primera_celda": "co-explore · debate", "encabezado_de_columna": "autoridad final"}, "cardinalidad": {"tipo": "exactamente_una"}, "extraccion": {"tipo": "literal"}, "normalizacion": "trim", "conversion": "cadena"}
       },
-      "puntero_variante": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills"
+      "puntero_variante": "docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md#1-que-significa-soportado-por-las-siete-skills"
     },
     {
       "punto": "cross-review · revisor por ronda",
@@ -647,7 +647,7 @@ resultado hoy tiene forma distinta no comparten declaración de salida.
         "valor": "el conductor adjudica cada finding y el gate humano cierra",
         "procedencia": {"sede": "fuentes/contratos-de-rol.md", "tipo_de_sede": "fila_de_tabla_markdown", "selector": {"clave_primera_celda": "cross-review · revisor por ronda", "encabezado_de_columna": "autoridad final"}, "cardinalidad": {"tipo": "exactamente_una"}, "extraccion": {"tipo": "literal"}, "normalizacion": "trim", "conversion": "cadena"}
       },
-      "puntero_variante": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills"
+      "puntero_variante": "docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md#1-que-significa-soportado-por-las-siete-skills"
     },
     {
       "punto": "cross-implement · implementador inicial",
@@ -661,7 +661,7 @@ resultado hoy tiene forma distinta no comparten declaración de salida.
         "valor": "el conductor revisa el diff como un PR ajeno y es quien commitea",
         "procedencia": {"sede": "fuentes/contratos-de-rol.md", "tipo_de_sede": "fila_de_tabla_markdown", "selector": {"clave_primera_celda": "cross-implement · implementador inicial", "encabezado_de_columna": "autoridad final"}, "cardinalidad": {"tipo": "exactamente_una"}, "extraccion": {"tipo": "literal"}, "normalizacion": "trim", "conversion": "cadena"}
       },
-      "puntero_variante": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills"
+      "puntero_variante": "docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md#1-que-significa-soportado-por-las-siete-skills"
     },
     {
       "punto": "cross-implement · fix loop",
@@ -703,7 +703,7 @@ resultado hoy tiene forma distinta no comparten declaración de salida.
         "valor": "el conductor cierra la task tras leer su reporte y su diff",
         "procedencia": {"sede": "fuentes/contratos-de-rol.md", "tipo_de_sede": "fila_de_tabla_markdown", "selector": {"clave_primera_celda": "sdd-flow · implementer por task", "encabezado_de_columna": "autoridad final"}, "cardinalidad": {"tipo": "exactamente_una"}, "extraccion": {"tipo": "literal"}, "normalizacion": "trim", "conversion": "cadena"}
       },
-      "puntero_variante": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills"
+      "puntero_variante": "docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md#1-que-significa-soportado-por-las-siete-skills"
     },
     {
       "punto": "sdd-flow · reviewer por task",
@@ -745,7 +745,7 @@ resultado hoy tiene forma distinta no comparten declaración de salida.
         "valor": "el orquestador consolida y ningún worker cierra el objetivo madre",
         "procedencia": {"sede": "fuentes/contratos-de-rol.md", "tipo_de_sede": "fila_de_tabla_markdown", "selector": {"clave_primera_celda": "sdd-orchestrator · fan-out por repo", "encabezado_de_columna": "autoridad final"}, "cardinalidad": {"tipo": "exactamente_una"}, "extraccion": {"tipo": "literal"}, "normalizacion": "trim", "conversion": "cadena"}
       },
-      "puntero_variante": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills"
+      "puntero_variante": "docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md#1-que-significa-soportado-por-las-siete-skills"
     },
     {
       "punto": "sdd-pr-feedback · implement delegado",
@@ -759,7 +759,7 @@ resultado hoy tiene forma distinta no comparten declaración de salida.
         "valor": "el conductor responde el comentario del PR y decide si se resuelve",
         "procedencia": {"sede": "fuentes/contratos-de-rol.md", "tipo_de_sede": "fila_de_tabla_markdown", "selector": {"clave_primera_celda": "sdd-pr-feedback · implement delegado", "encabezado_de_columna": "autoridad final"}, "cardinalidad": {"tipo": "exactamente_una"}, "extraccion": {"tipo": "literal"}, "normalizacion": "trim", "conversion": "cadena"}
       },
-      "puntero_variante": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills"
+      "puntero_variante": "docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md#1-que-significa-soportado-por-las-siete-skills"
     },
     {
       "punto": "bitbucket-code-review · panel",
@@ -773,7 +773,7 @@ resultado hoy tiene forma distinta no comparten declaración de salida.
         "valor": "el conductor consolida el panel en una sola conclusión",
         "procedencia": {"sede": "fuentes/contratos-de-rol.md", "tipo_de_sede": "fila_de_tabla_markdown", "selector": {"clave_primera_celda": "bitbucket-code-review · panel", "encabezado_de_columna": "autoridad final"}, "cardinalidad": {"tipo": "exactamente_una"}, "extraccion": {"tipo": "literal"}, "normalizacion": "trim", "conversion": "cadena"}
       },
-      "puntero_variante": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills"
+      "puntero_variante": "docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md#1-que-significa-soportado-por-las-siete-skills"
     },
     {
       "punto": "bitbucket-code-review · validador adversarial",
@@ -787,7 +787,7 @@ resultado hoy tiene forma distinta no comparten declaración de salida.
         "valor": "el conductor decide si la refutación tumba el finding",
         "procedencia": {"sede": "fuentes/contratos-de-rol.md", "tipo_de_sede": "fila_de_tabla_markdown", "selector": {"clave_primera_celda": "bitbucket-code-review · validador adversarial", "encabezado_de_columna": "autoridad final"}, "cardinalidad": {"tipo": "exactamente_una"}, "extraccion": {"tipo": "literal"}, "normalizacion": "trim", "conversion": "cadena"}
       },
-      "puntero_variante": ".plans/doctrina-implementador/roadmap.md#1-que-significa-soportado-por-las-siete-skills"
+      "puntero_variante": "docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md#1-que-significa-soportado-por-las-siete-skills"
     }
   ]
 }

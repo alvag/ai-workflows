@@ -92,7 +92,7 @@ el inventario y su fila quedarían los tres verdes sin ninguna evidencia indepen
 regla que gobierna las procedencias de la matriz, un grado más dura.
 
 Las **cinco familias de rol** tienen la misma defensa contra otra sede: la tabla de
-`.plans/doctrina-implementador/roadmap.md`. Y **ocho de las trece asignaciones** la tienen para su
+`docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md`. Y **ocho de las trece asignaciones** la tienen para su
 variante, porque el roadmap la nombra. Las otras cinco no: ahí el puntero no existe, y por eso llevan
 la marca `decision` y su justificación escrita. Un mapa que se declarara entero derivado del roadmap
 estaría afirmando algo falso, y es el mutante `procedencia_no_coincide` el que lo caza.

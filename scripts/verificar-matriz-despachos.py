@@ -9571,7 +9571,7 @@ SLUG_DEFECTOS = "inventario-de-defectos"
 # La sede de la que salen las cinco familias de rol. **Es lo único de esta task que se deriva de una
 # fuente**: el resto —el mapa punto → variante, los seis defectos— son decisiones, y su defensa es
 # estar escritas, no estar apuntadas.
-SEDE_DE_LAS_FAMILIAS = (".plans/doctrina-implementador/roadmap.md"
+SEDE_DE_LAS_FAMILIAS = ("docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md"
                         "#1-que-significa-soportado-por-las-siete-skills")
 
 FAMILIAS_DE_ROL = ("explorer", "investigator", "design-reviewer", "bounded-implementer",
@@ -10876,7 +10876,7 @@ SEDE_DE_ROL = CONFORME_CONTRATO / "fuentes" / "contratos-de-rol.md"
 
 # Una sección real del roadmap que **no** nombra ninguna de las cinco familias ni ninguna variante:
 # es lo que separa «el puntero no resuelve» de «resuelve y no dice nada de esto».
-SEDE_SIN_LOS_LITERALES = (".plans/doctrina-implementador/roadmap.md"
+SEDE_SIN_LOS_LITERALES = ("docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md"
                           "#2-2-identidad-de-familia-sin-ambiguedad")
 
 
@@ -11386,7 +11386,7 @@ def _casos_de_roles() -> tuple[CasoDeContrato, ...]:
         CasoDeContrato("puntero_de_familia_irresoluble",
                        "el puntero de una familia señala una sección que no existe",
                        fam(lambda d: (_de_lista(d, "familias", "familia", "explorer").update(
-                           {"puntero": ".plans/doctrina-implementador/roadmap.md#no-existe"})
+                           {"puntero": "docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md#no-existe"})
                            or d))),
         CasoDeContrato(
             "familia_ausente_en_la_sede",
@@ -11479,7 +11479,7 @@ def _casos_de_roles() -> tuple[CasoDeContrato, ...]:
                        "el puntero de una variante señala una sección que no existe",
                        asig(lambda d: (punto(d, con_puntero.punto).update(
                            {"puntero_variante":
-                            ".plans/doctrina-implementador/roadmap.md#no-existe"}) or d))),
+                            "docs/superpowers/plans/2026-08-09-subagentes-siete-skills.md#no-existe"}) or d))),
         CasoDeContrato(
             "variante_ausente_en_la_sede",
             "el puntero de una variante resuelve a una sección real que no la nombra",
