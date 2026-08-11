@@ -4,7 +4,7 @@
     "protocolo": "conformance",
     "recibo_id": "rcb-conformance-sdd-flow-implementer-por-task",
     "punto_de_despacho": "sdd-flow-implementer-por-task",
-    "propuesta_de_acta_sha256": "df241ad63c3cc1cc98c0fe3baa2685cddb7b0ea445a3eeda790d337b090cb109",
+    "propuesta_de_acta_sha256": "4c09f2d7cacc0781e2b421742b2375e120e511ee391a0a01a5add3c77faa1028",
     "eventos": [
       {
         "evento": "dispatch_started",
@@ -17,7 +17,7 @@
           "permiso efectivo del punto en producción, según la matriz: workspace_write_acotado"
         ],
         "sello": {
-          "valor_ns": 4922723869606416,
+          "valor_ns": 4924681427593333,
           "fuente": "reloj_monotonico_del_harness",
           "autoridad": "harness",
           "precision_ns": 41,
@@ -30,7 +30,7 @@
         "referencia_evento_id": "ev-sdd-flow-implementer-por-task-apertura",
         "session_id": {
           "estado": "expuesto",
-          "valor": "conf-implementer"
+          "valor": "r2-implementer"
         },
         "modelo_o_familia": {
           "estado": "no_expuesto",
@@ -40,9 +40,9 @@
           "estado": "expuesto",
           "valor": "idle_notification:available"
         },
-        "salida_sha256": "29a0914d240e33ec56f6407d5fa02291d6219a6343e8e372e089961d33be790f",
+        "salida_sha256": "32007313e61c08baed35ac470435ffac17718af9eafb42e5af3bc53067358cdc",
         "sello": {
-          "valor_ns": 4923471248390333,
+          "valor_ns": 4924832998789125,
           "fuente": "reloj_monotonico_del_harness",
           "autoridad": "harness",
           "precision_ns": 41,

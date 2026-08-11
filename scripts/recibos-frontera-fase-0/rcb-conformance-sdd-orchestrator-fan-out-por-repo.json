@@ -4,7 +4,7 @@
     "protocolo": "conformance",
     "recibo_id": "rcb-conformance-sdd-orchestrator-fan-out-por-repo",
     "punto_de_despacho": "sdd-orchestrator-fan-out-por-repo",
-    "propuesta_de_acta_sha256": "df241ad63c3cc1cc98c0fe3baa2685cddb7b0ea445a3eeda790d337b090cb109",
+    "propuesta_de_acta_sha256": "4c09f2d7cacc0781e2b421742b2375e120e511ee391a0a01a5add3c77faa1028",
     "eventos": [
       {
         "evento": "dispatch_started",
@@ -17,7 +17,7 @@
           "permiso efectivo del punto en producción, según la matriz: workspace_write_acotado"
         ],
         "sello": {
-          "valor_ns": 4922724090762666,
+          "valor_ns": 4924681595912250,
           "fuente": "reloj_monotonico_del_harness",
           "autoridad": "harness",
           "precision_ns": 41,
@@ -30,7 +30,7 @@
         "referencia_evento_id": "ev-sdd-orchestrator-fan-out-por-repo-apertura",
         "session_id": {
           "estado": "expuesto",
-          "valor": "conf-orchestrator"
+          "valor": "r2-orchestrator"
         },
         "modelo_o_familia": {
           "estado": "no_expuesto",
@@ -40,9 +40,9 @@
           "estado": "expuesto",
           "valor": "idle_notification:available"
         },
-        "salida_sha256": "c8ec0554d6dcab3c81702699c93547385876c397abc5bfe16128c00edb055acd",
+        "salida_sha256": "27701d3276ba1f8f13798df7cbd4050fe82ad2bdc00697ae2492659ea79f7f5e",
         "sello": {
-          "valor_ns": 4923471316447041,
+          "valor_ns": 4924901660206208,
           "fuente": "reloj_monotonico_del_harness",
           "autoridad": "harness",
           "precision_ns": 41,
