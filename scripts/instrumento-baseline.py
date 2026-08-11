@@ -2667,7 +2667,9 @@ def _hechos_de_la_metrica(clase: str, bundle: dict, hecho_del_intento: dict,
         return list(bundle.get("recursos") or [])
     if clase != "evento":
         return []
-    eventos = list(bundle.get("eventos") or [])
+    eventos = [{**e, "detalle": identidad_de_hallazgo(e.get("detalle"))}
+               if e.get("tipo") == "hallazgo_emitido" and "detalle" in e else e
+               for e in bundle.get("eventos") or []]
     if trabajo_delegado_id is None:
         return eventos
     # Una métrica de sede `trabajo_delegado` ve los eventos de SU trabajo más los de la corrida
@@ -4319,6 +4321,273 @@ def modo_fixture_historico(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------------------------
+# Modos `--hallazgos` y `--autotest-hallazgos`.
+#
+# AC-15 exige cinco categorías de métrica y esta era la única sin productor. El conteo se deriva de
+# los EVENTOS del bundle y de ningún campo declarativo, con la regla de agregación que el
+# vocabulario declara.
+#
+# ## Qué cuenta como hallazgo, y qué es una re-emisión
+#
+# Cuenta **un evento `hallazgo_emitido`**, y nada más: ni un artefacto producido, ni una mención en
+# el reporte del worker, ni una entrada del journal de anomalías —que es otra cosa: el journal
+# registra fallas del runner, no hallazgos del worker—.
+#
+# La **identidad** del hallazgo es su `detalle`. En un evento de hallazgo ese campo no es narración
+# libre: es el **identificador del tema**, y el runner emite el mismo para el mismo hallazgo. Dos
+# eventos con la misma identidad son **una re-emisión**: el mismo tema visto en dos rondas es un
+# hallazgo, no dos. Contarlo dos veces mide convergencia y la publica como producción.
+#
+# La identidad se compara **normalizada** —minúsculas, espacios colapsados y sin puntuación final—
+# porque la alternativa es que «El adaptador no deja constancia.» y «el adaptador no deja
+# constancia» cuenten como dos hallazgos distintos. La normalización se aplica solo a los eventos
+# de hallazgo, que son los únicos cuyo `detalle` hace de clave.
+#
+# El vocabulario admite las dos fórmulas —con y sin re-emisión— y **elige el pre-registro**. El
+# instrumento no elige: donde el acta no eligió, la métrica sale sin observación con su adjudicación
+# escrita, que es distinto de salir en cero.
+# ---------------------------------------------------------------------------------------------
+
+DIR_FIXTURES_HALLAZGOS = DIR_SCRIPTS / "fixtures-baseline" / "hallazgos"
+RUTA_MANIFEST_HALLAZGOS = DIR_FIXTURES_HALLAZGOS / "manifest.json"
+
+METRICA_DE_HALLAZGOS = "hallazgos-emitidos"
+
+_PUNTUACION_FINAL = re.compile(r"[\s.;,:!?¡¿]+$")
+_ESPACIOS = re.compile(r"\s+")
+
+
+def identidad_de_hallazgo(detalle: Any) -> Any:
+    """La identidad de un hallazgo, normalizada. Sin esto, dos emisiones del mismo tema que difieren
+    en una mayúscula o en un punto final se cuentan como dos hallazgos distintos, y la métrica pasa
+    a medir cómo se redactó el detalle en vez de cuánto hallazgo distinto se produjo."""
+    if not isinstance(detalle, str):
+        return detalle
+    return _PUNTUACION_FINAL.sub("", _ESPACIOS.sub(" ", detalle.strip()).casefold())
+
+
+def hallazgos_del_bundle(bundle: dict) -> list[dict]:
+    return _eventos_de_tipo(bundle, "hallazgo_emitido")
+
+
+def _cargar_corpus_de_hallazgos() -> tuple[dict, dict, dict, dict, list[str]]:
+    problemas: list[str] = []
+    manifest, error = _cargar_json(RUTA_MANIFEST_HALLAZGOS)
+    if error:
+        problemas.append(f"manifest del corpus de hallazgos: {error}")
+    preregistro, error = _cargar_json(DIR_FIXTURES_HALLAZGOS / "preregistro.json")
+    if error:
+        problemas.append(f"pre-registro del corpus de hallazgos: {error}")
+    vocabulario, esquemas, mas = _cargar_insumos_de_recoleccion()
+    return manifest or {}, preregistro or {}, vocabulario, esquemas, problemas + mas
+
+
+def _observacion_de_hallazgos(directorio: Path, preregistro: dict, vocabulario: dict,
+                              esquemas: dict, con_formula: bool) -> tuple[dict | None, list[str]]:
+    bundle = _leer_bundle(directorio)
+    if bundle.error:
+        return None, [bundle.error]
+    observacion, fallas = derivar_observacion(
+        bundle.datos, bundle.sha256, vocabulario, esquemas["observacion"],
+        preregistro.get("reglas_de_derivacion_de_identidad"),
+        formulas_del_preregistro(preregistro) if con_formula else None)
+    return observacion, [str(f) for f in fallas]
+
+
+# --- Las tres reglas de conteo que el corpus tiene que distinguir. La primera es la correcta; las
+# otras dos son las formas concretas de contar mal que la task nombra, y existen acá para que el
+# autotest pueda exigir que el corpus las separe. Una regla equivocada que ningún caso distingue de
+# la correcta es un mutante que el corpus no caza. ---
+
+def _conteo_correcto(bundle: dict) -> float:
+    return float(len({json.dumps(identidad_de_hallazgo(e.get("detalle")), ensure_ascii=False)
+                      for e in hallazgos_del_bundle(bundle)}))
+
+
+def _conteo_desde_campo_declarativo(bundle: dict) -> float:
+    # El journal registra anomalías del RUNNER, no hallazgos del worker. Tomarlo de ahí es contar
+    # otra cosa con el nombre correcto.
+    return float(len(bundle.get("journal_candidate_ids") or []))
+
+
+def _conteo_con_reemision(bundle: dict) -> float:
+    return float(len(hallazgos_del_bundle(bundle)))
+
+
+REGLAS_DE_CONTEO_ERRADAS: tuple[tuple[str, str, Callable[[dict], float]], ...] = (
+    ("desde-campo-declarativo", "el conteo sale de `journal_candidate_ids` en vez de los eventos",
+     _conteo_desde_campo_declarativo),
+    ("con-reemision", "cada re-emisión del mismo hallazgo cuenta como uno nuevo",
+     _conteo_con_reemision),
+)
+
+
+def modo_hallazgos(args: argparse.Namespace) -> int:
+    raiz = _ruta_absoluta(getattr(args, "hallazgos"))
+    ruta_acta = getattr(args, "preregistro", None) or RUTA_PREREGISTRO_FASE_0
+    preregistro, _ = _cargar_json(_ruta_absoluta(ruta_acta))
+    preregistro = preregistro if isinstance(preregistro, dict) else {}
+    vocabulario, esquemas, problemas = _cargar_insumos_de_recoleccion()
+    if problemas:
+        for p in problemas:
+            print(f"FALLA  {p}")
+        return 1
+
+    bundles = leer_conjunto_de_bundles(raiz)
+    if not bundles:
+        print(f"FALLA  {raiz}: el conjunto no tiene ninguna corrida")
+        return 1
+
+    print(f"Conjunto: {raiz} — {len(bundles)} corridas · acta: {ruta_acta}")
+    fallas = 0
+    medidas = 0
+    for bundle in bundles:
+        if bundle.error:
+            print(f"FALLA  {bundle.directorio}: {bundle.error}")
+            fallas += 1
+            continue
+        observacion, malas = derivar_observacion(
+            bundle.datos, bundle.sha256, vocabulario, esquemas["observacion"],
+            preregistro.get("reglas_de_derivacion_de_identidad"),
+            formulas_del_preregistro(preregistro))
+        if observacion is None:
+            print(f"FALLA  {bundle.directorio}: no se derivó — "
+                  f"{malas[0] if malas else 'sin motivo'}")
+            fallas += 1
+            continue
+        metrica = _metrica_de_la_observacion(observacion, METRICA_DE_HALLAZGOS) or {}
+        emisiones = len(hallazgos_del_bundle(bundle.datos))
+        distintos = int(_conteo_correcto(bundle.datos))
+        if metrica.get("estado_de_medicion") == "medida":
+            medidas += 1
+            print(f"OK     {bundle.directorio}: {metrica['valor']:g} {metrica.get('unidad')} — "
+                  f"{emisiones} emisiones, {distintos} distintos "
+                  f"({emisiones - distintos} re-emisiones)")
+        else:
+            # Sin observación NO es cero: se informa como lo que es, con su adjudicación escrita.
+            print(f"SIN    {bundle.directorio}: {metrica.get('estado_de_medicion')} — "
+                  f"{metrica.get('adjudicacion')}")
+    print()
+    if fallas:
+        print(f"RESULTADO: FALLA — {fallas} de {len(bundles)} corridas sin métrica de hallazgos")
+        return 1
+    # El conteo de medidas va en el veredicto: un conjunto donde NINGUNA se midió también pasa —sin
+    # observación es un resultado válido— y decir «OK» a secas se leería como que todas se midieron.
+    print(f"RESULTADO: OK — {len(bundles)} corridas revisadas: {medidas} con la métrica medida y "
+          f"{len(bundles) - medidas - fallas} sin observación, con su adjudicación escrita")
+    return 0
+
+
+def modo_autotest_hallazgos(args: argparse.Namespace) -> int:
+    del args
+    manifest, preregistro, vocabulario, esquemas, problemas = _cargar_corpus_de_hallazgos()
+    if problemas:
+        for p in problemas:
+            print(f"[A] FALLA  {p}")
+        return 1
+
+    casos = manifest.get("casos") or []
+    resultados: list[tuple[str, bool, str]] = []
+
+    # [A] Manifest ↔ disco, en las dos direcciones (D-16).
+    raiz = DIR_FIXTURES_HALLAZGOS / "casos"
+    declarados = {c["caso_id"] for c in casos}
+    en_disco = {d.name for d in raiz.iterdir() if d.is_dir()} if raiz.is_dir() else set()
+    diferencias = [f"declarado y ausente del disco: {c}" for c in sorted(declarados - en_disco)]
+    diferencias += [f"en disco y no declarado: {c}" for c in sorted(en_disco - declarados)]
+    resultados.append(("A", not diferencias,
+                       f"manifest ↔ directorio ({len(declarados)} casos)" if not diferencias
+                       else " | ".join(diferencias[:6])))
+
+    # [B] Cada caso da el valor declarado —o el estado de medición declarado—. Es donde se prueba
+    # que la ausencia NO se publica como cero: el caso sin fórmula elegida espera `no_observada`,
+    # y un cero ahí sería un hallazgo contado donde no se midió nada.
+    fallas: list[str] = []
+    bundles: dict[str, dict] = {}
+    for entrada in casos:
+        caso_id = entrada["caso_id"]
+        bundle = _leer_bundle(raiz / caso_id)
+        if bundle.error:
+            fallas.append(f"{caso_id}: {bundle.error}")
+            continue
+        bundles[caso_id] = bundle.datos
+        observacion, malas = _observacion_de_hallazgos(
+            raiz / caso_id, preregistro, vocabulario, esquemas,
+            entrada.get("formula_elegida", True))
+        if observacion is None:
+            fallas.append(f"{caso_id}: no se derivó — {malas[0] if malas else 'sin motivo'}")
+            continue
+        metrica = _metrica_de_la_observacion(observacion, METRICA_DE_HALLAZGOS) or {}
+        if "valor_esperado" in entrada:
+            if metrica.get("estado_de_medicion") != "medida":
+                fallas.append(f"{caso_id}: se esperaba {entrada['valor_esperado']} y la métrica "
+                              f"salió {metrica.get('estado_de_medicion')}")
+            elif not _casi_igual(metrica.get("valor"), entrada["valor_esperado"]):
+                fallas.append(f"{caso_id}: vale {metrica.get('valor')} y se esperaba "
+                              f"{entrada['valor_esperado']}")
+        else:
+            if metrica.get("estado_de_medicion") != entrada["estado_esperado"]:
+                fallas.append(f"{caso_id}: el estado de medición es "
+                              f"{metrica.get('estado_de_medicion')!r} y se esperaba "
+                              f"{entrada['estado_esperado']!r}")
+            elif "valor" in metrica:
+                fallas.append(f"{caso_id}: la métrica sin observación trae `valor` "
+                              f"{metrica['valor']}: la ausencia no se publica como un número")
+    resultados.append(("B", not fallas,
+                       f"{len(casos)} casos dan su valor, y la ausencia no sale en cero"
+                       if not fallas else " | ".join(fallas[:4])))
+
+    # [C] La identidad del hallazgo, en las dos direcciones: los casos que el manifest declara como
+    # re-emisión tienen que colapsar a uno, y los que declara distintos NO tienen que colapsar.
+    # Sin la segunda mitad, una normalización que fusionara todo pasaría la primera.
+    fallas_de_identidad: list[str] = []
+    for entrada in casos:
+        datos = bundles.get(entrada["caso_id"])
+        if datos is None or "emisiones_esperadas" not in entrada:
+            continue
+        emisiones = len(hallazgos_del_bundle(datos))
+        distintos = int(_conteo_correcto(datos))
+        if emisiones != entrada["emisiones_esperadas"]:
+            fallas_de_identidad.append(f"{entrada['caso_id']}: {emisiones} eventos de hallazgo y "
+                                       f"se declaran {entrada['emisiones_esperadas']}")
+        if distintos != entrada["distintos_esperados"]:
+            fallas_de_identidad.append(f"{entrada['caso_id']}: {distintos} identidades distintas y "
+                                       f"se declaran {entrada['distintos_esperados']}")
+    resultados.append(("C", not fallas_de_identidad,
+                       "emisiones e identidades distintas, declaradas por separado en cada caso"
+                       if not fallas_de_identidad else " | ".join(fallas_de_identidad[:4])))
+
+    # [D] El corpus separa la regla correcta de cada una de las formas de contar mal. Una regla
+    # equivocada que ningún caso distingue de la correcta es un mutante que este corpus no caza, y
+    # su verde se lee como si lo hubiera probado.
+    sin_separar: list[str] = []
+    for nombre, que_hace, regla in REGLAS_DE_CONTEO_ERRADAS:
+        if not any(regla(datos) != _conteo_correcto(datos) for datos in bundles.values()):
+            sin_separar.append(f"ningún caso separa la regla correcta de «{nombre}» ({que_hace})")
+    resultados.append(("D", not sin_separar,
+                       f"el corpus separa las {len(REGLAS_DE_CONTEO_ERRADAS)} formas de contar mal"
+                       if not sin_separar else " | ".join(sin_separar)))
+
+    # [E] Y la normalización se ejerce en las dos direcciones sobre entradas construidas acá: las
+    # variantes de formato del mismo texto colapsan, y dos textos distintos no.
+    variantes = ["El adaptador no deja constancia.", "el adaptador no deja constancia",
+                 "  El   adaptador  no deja constancia  "]
+    distinto = "el adaptador no deja constancia del retiro"
+    problemas_de_normalizacion: list[str] = []
+    if len({identidad_de_hallazgo(v) for v in variantes}) != 1:
+        problemas_de_normalizacion.append("las variantes de formato del mismo hallazgo no colapsan")
+    if identidad_de_hallazgo(distinto) in {identidad_de_hallazgo(v) for v in variantes}:
+        problemas_de_normalizacion.append("dos hallazgos distintos colapsan en uno: la "
+                                          "normalización fusiona lo que no debe")
+    resultados.append(("E", not problemas_de_normalizacion,
+                       "la normalización colapsa las variantes y no fusiona lo distinto"
+                       if not problemas_de_normalizacion
+                       else " | ".join(problemas_de_normalizacion)))
+
+    return _cerrar(resultados)
+
+
+# ---------------------------------------------------------------------------------------------
 # Registro de los modos de esta task. Cada task nueva agrega los suyos acá abajo, sin tocar los
 # anteriores ni `main()`.
 # ---------------------------------------------------------------------------------------------
@@ -4424,6 +4693,28 @@ registrar_modo(
     "derivado aparte como producto punto × repetición, la cadena append-only contra su manifest "
     "independiente, la regla de identidad congelada y la política de reintentos aplicada",
     modo_autotest_muestras_intentos,
+)
+
+registrar_modo(
+    "--hallazgos",
+    "la métrica de hallazgos de un conjunto de corridas, derivada de sus EVENTOS: por corrida, "
+    "emisiones totales, hallazgos distintos y re-emisiones. Donde el acta no eligió fórmula, la "
+    "métrica se informa sin observación y con su adjudicación, nunca en cero",
+    modo_hallazgos,
+    argumento=Argumento("<dir-de-corridas>", const=RUTA_CORRIDAS_FASE_0),
+    auxiliares=(
+        Auxiliar("--preregistro", "el acta congelada de la que sale la fórmula elegida; por "
+                                  f"omisión, {RUTA_PREREGISTRO_FASE_0}",
+                 metavar="<ruta-del-preregistro>"),
+    ),
+)
+
+registrar_modo(
+    "--autotest-hallazgos",
+    "control del modo anterior sobre el corpus de scripts/fixtures-baseline/hallazgos/: la "
+    "re-emisión del mismo hallazgo cuenta una vez, la ausencia no se reporta como cero, y el "
+    "corpus separa la regla correcta de las dos formas de contar mal",
+    modo_autotest_hallazgos,
 )
 
 registrar_modo(
