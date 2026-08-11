@@ -11329,6 +11329,1091 @@ def modo_autotest_escaneo(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------------------------
+# Modos del acto 3, construidos y probados ACÁ (D-20).
+#
+# `--altas-topologia`, `--integracion`, `--guardas-previas`, `--ledger`, `--seccion-defectos` y sus
+# autotests se aplican en el acto 3 —sobre datos que T25, T26 y T27 materializan—, pero se
+# construyen en el acto 1 y por una razón dura: el pre-registro congela el hash de este archivo, y
+# la cohorte corre con ese commit. Agregarlos después dejaría el árbol final con **otro**
+# instrumento, la identidad cerrada de AC-17 quedaría falsa y AC-25 obligaría a renovar el baseline
+# acoplado al archivo. Acá se prueban **solo con fixtures sintéticos**; sus datos reales llegan
+# después y esas tasks **no tocan este archivo**.
+# ---------------------------------------------------------------------------------------------
+
+DIR_FIXTURES_TOPOLOGIA = DIR_SCRIPTS / "fixtures-baseline" / "topologia"
+DIR_FIXTURES_INTEGRACION = DIR_SCRIPTS / "fixtures-baseline" / "integracion"
+DIR_FIXTURES_GUARDAS = DIR_SCRIPTS / "fixtures-baseline" / "guardas"
+DIR_FIXTURES_LEDGER = DIR_SCRIPTS / "fixtures-baseline" / "ledger"
+
+RUTA_REGISTRO_ARTEFACTOS = "scripts/artefactos-fase-0.json"
+RUTA_MANIFIESTO_GUARDAS = "scripts/guardas-fase-0.json"
+RUTA_INSTRUCCIONES = "CLAUDE.md"
+
+CLAUSULAS_DE_TOPOLOGIA = (
+    "alta_esperada_ausente",
+    "alta_no_esperada",
+    "identidad_incompleta",
+    "base_no_resoluble",
+)
+
+CLAUSULAS_DE_INTEGRACION = (
+    "unidad_ausente",
+    "no_declara_script_propio",
+    "momento_ausente",
+    "comando_ausente",
+    "codigo_sano_ausente",
+    "bandera_inexistente",
+    "codigo_declarado_falso",
+)
+
+CLAUSULAS_DE_GUARDAS_PREVIAS = (
+    "guarda_previa_ausente",
+    "guarda_previa_alterada",
+    "exclusion_previa_ausente",
+    "base_no_resoluble",
+)
+
+CLAUSULAS_DEL_LEDGER = (
+    "fuente_no_declarada",
+    "candidato_fuera_del_ledger",
+    "entrada_del_ledger_sin_fuente",
+    "candidato_sin_adjudicar",
+    "despacho_sin_reporte",
+    "incorporado_ausente_del_documento",
+    "cero_candidatos_sin_declarar",
+)
+
+CLAUSULAS_DE_LA_SECCION = (
+    "seccion_ausente",
+    "seccion_sin_ninguna_rama",
+    "incorporado_sin_ubicacion",
+    "ubicacion_no_resuelve",
+)
+
+
+# --- `--altas-topologia`: el conjunto previo se DERIVA de `base_commit` ------------------------
+
+def _json_en_commit(repo: Path, sha: str, ruta: str) -> tuple[Any, str | None]:
+    """El contenido de un archivo tal como estaba en un commit. Es plumbing y no lectura del disco:
+    el conjunto previo tiene que salir del árbol de `base_commit`, no de lo que hoy haya."""
+    codigo, salida = _correr_en(["git", "-C", str(repo), "show", f"{sha}:{ruta}"], None,
+                               dict(os.environ))
+    if codigo != 0:
+        return None, f"`{ruta}` en `{sha}`: {salida.splitlines()[0] if salida else 'sin salida'}"
+    try:
+        return json.loads(salida), None
+    except json.JSONDecodeError as exc:
+        return None, f"`{ruta}` en `{sha}` no es JSON válido: {exc}"
+
+
+CAMPOS_DE_UN_ARTEFACTO = ("path", "owner", "dato", "source_status", "versioned")
+
+
+def revisar_altas_de_topologia(previo: Any, candidato: Any, esperadas: list[dict],
+                               error_de_base: str | None) -> list[Hallazgo]:
+    """AC-23: las altas del acto, comparadas en las dos direcciones contra las esperadas.
+
+    `--topologia` valida las entradas **presentes** y no conoce la lista: un alta que faltara del
+    árbol **y** del registro lo dejaría verde. Acá el conjunto previo se deriva de `base_commit` y
+    la diferencia se compara contra un manifest independiente, que es lo único que puede decir que
+    falta algo que nadie escribió.
+    """
+    if error_de_base is not None:
+        return [Hallazgo("base_no_resoluble", error_de_base)]
+    problemas: list[Hallazgo] = []
+    antes = {a.get("path") for a in (previo or {}).get("artefactos") or []}
+    ahora = {a.get("path"): a for a in (candidato or {}).get("artefactos") or []}
+    altas = {ruta: entrada for ruta, entrada in ahora.items() if ruta not in antes}
+    de_esperadas = {e["path"]: e for e in esperadas}
+
+    for ruta in sorted(set(de_esperadas) - set(altas)):
+        problemas.append(Hallazgo(
+            "alta_esperada_ausente",
+            f"`{ruta}` está declarada como alta de este acto y no aparece en el registro"))
+    for ruta in sorted(set(altas) - set(de_esperadas)):
+        problemas.append(Hallazgo(
+            "alta_no_esperada",
+            f"`{ruta}` se dio de alta y no está entre las declaradas: un artefacto nuevo sin "
+            f"declaración es indistinguible de uno que se coló"))
+    for ruta in sorted(set(altas) & set(de_esperadas)):
+        faltan = [campo for campo in CAMPOS_DE_UN_ARTEFACTO if not altas[ruta].get(campo)
+                  and altas[ruta].get(campo) is not False]
+        if faltan:
+            problemas.append(Hallazgo(
+                "identidad_incompleta",
+                f"`{ruta}` se dio de alta sin {faltan}: una entrada sin dueño o sin dato no fija "
+                f"ninguna ubicación canónica"))
+            continue
+        distintos = [campo for campo in ("owner", "dato") if ruta in de_esperadas
+                     and de_esperadas[ruta].get(campo) is not None
+                     and altas[ruta].get(campo) != de_esperadas[ruta][campo]]
+        if distintos:
+            problemas.append(Hallazgo(
+                "identidad_incompleta",
+                f"`{ruta}` se dio de alta con {[(c, altas[ruta].get(c)) for c in distintos]} y se "
+                f"esperaba {[(c, de_esperadas[ruta][c]) for c in distintos]}"))
+    return problemas
+
+
+def modo_altas_topologia(args: argparse.Namespace) -> int:
+    base = getattr(args, "base", None)
+    if not base:
+        print("FALLA  falta `--base <sha>`: el conjunto previo se deriva del commit base y no se "
+              "escribe a mano, o el modo compararía contra la lista que quien lo corre recuerde")
+        return 1
+    repo = Path(getattr(args, "repo", None) or RAIZ)
+    ruta_esperadas = getattr(args, "esperadas", None) or (
+        DIR_FIXTURES_TOPOLOGIA / "altas-esperadas.json")
+    esperadas, error = _cargar_json(Path(ruta_esperadas))
+    if error:
+        print(f"FALLA  altas esperadas: {error}")
+        return 1
+
+    previo, error_de_base = _json_en_commit(repo, base, RUTA_REGISTRO_ARTEFACTOS)
+    candidato, error_actual = _cargar_json(RAIZ / RUTA_REGISTRO_ARTEFACTOS)
+    if error_actual:
+        print(f"FALLA  registro candidato: {error_actual}")
+        return 1
+
+    problemas = revisar_altas_de_topologia(previo, candidato, esperadas["altas"], error_de_base)
+    print(f"base: {base} · esperadas: {len(esperadas['altas'])}")
+    for problema in problemas:
+        print(f"FALLA  {problema}")
+    print()
+    if problemas:
+        print(f"RESULTADO: FALLA — {len(problemas)} hallazgos")
+        return 1
+    print(f"RESULTADO: OK — las {len(esperadas['altas'])} altas están registradas con su identidad")
+    return 0
+
+
+# --- `--integracion`: lo declarado en las instrucciones tiene que ser cierto -------------------
+#
+# El `--integracion` heredado tiene el nombre del otro verificador congelado en una constante y una
+# comparación literal (D-8): corre verde hoy y seguiría verde aunque este instrumento nunca se
+# documentara. Una fila que no puede ponerse roja. Este modo trae el mismo rigor y lo aplica a su
+# propio script.
+
+class UnidadDeIntegracion(NamedTuple):
+    texto: str
+    comando: str | None
+    codigo_sano: int | None
+
+
+def _unidad_del_instrumento(instrucciones: str, script: str) -> UnidadDeIntegracion | None:
+    """La unidad de las instrucciones que habla de este script.
+
+    Unidad es el ítem de lista con sus continuaciones indentadas: las instrucciones envuelven a 100
+    columnas, así que buscar por línea partiría la declaración justo donde está el dato.
+    """
+    unidades: list[str] = []
+    actual: list[str] = []
+    for linea in instrucciones.splitlines():
+        if linea.startswith("- "):
+            if actual:
+                unidades.append("\n".join(actual))
+            actual = [linea]
+        elif actual and (linea.startswith(("  ", "\t")) or not linea.strip()):
+            actual.append(linea)
+        elif actual:
+            unidades.append("\n".join(actual))
+            actual = []
+    if actual:
+        unidades.append("\n".join(actual))
+
+    for unidad in unidades:
+        if script not in unidad:
+            continue
+        comando = None
+        encontrado = re.search(rf"`(python3 {re.escape(script)}[^`]*)`", unidad)
+        if encontrado:
+            comando = encontrado.group(1).strip()
+        codigo = None
+        encontrado = re.search(r"c[óo]digo de salida sano[^0-9]{0,40}(\d+)", unidad,
+                               flags=re.IGNORECASE)
+        if encontrado:
+            codigo = int(encontrado.group(1))
+        return UnidadDeIntegracion(unidad, comando, codigo)
+    return None
+
+
+def revisar_integracion(instrucciones: str, script: str,
+                        correr: Callable[[str], int | None]) -> list[Hallazgo]:
+    """AC-25: la unidad declara script propio, momento, comando y código sano — y es cierta."""
+    unidad = _unidad_del_instrumento(instrucciones, script)
+    if unidad is None:
+        return [Hallazgo("unidad_ausente",
+                         f"las instrucciones no tienen ninguna unidad que hable de `{script}`")]
+    problemas: list[Hallazgo] = []
+    if not re.search(r"script propio", unidad.texto, flags=re.IGNORECASE):
+        problemas.append(Hallazgo(
+            "no_declara_script_propio",
+            "la unidad no declara que es un script propio del repo: sin eso se lee como un modo "
+            "agregado a otro verificador, y quien lo corra buscará la bandera donde no está"))
+    if not re.search(r"^\s*-\s*Si\b|cuando\b|antes de\b|después de\b|al (tocar|editar|crear)\b",
+                     unidad.texto, flags=re.IGNORECASE | re.MULTILINE):
+        problemas.append(Hallazgo(
+            "momento_ausente",
+            "la unidad no dice cuándo hay que correrlo: una guarda sin momento no se corre nunca "
+            "o se corre siempre, y las dos cosas la vacían"))
+    if unidad.comando is None:
+        problemas.append(Hallazgo(
+            "comando_ausente",
+            f"la unidad no trae el comando exacto entre backticks: `python3 {script} …`"))
+    if unidad.codigo_sano is None:
+        problemas.append(Hallazgo(
+            "codigo_sano_ausente",
+            "la unidad no declara cuál es el código de salida sano: sin él, cualquier código se "
+            "lee como el esperado"))
+    if unidad.comando is None or unidad.codigo_sano is None:
+        return problemas
+
+    devuelto = correr(unidad.comando)
+    if devuelto is None:
+        problemas.append(Hallazgo(
+            "bandera_inexistente",
+            f"el comando declarado no es invocable: `{unidad.comando}`"))
+        return problemas
+    if devuelto != unidad.codigo_sano:
+        problemas.append(Hallazgo(
+            "codigo_declarado_falso",
+            f"la unidad declara que el código sano es {unidad.codigo_sano} y `{unidad.comando}` "
+            f"devuelve {devuelto}"))
+    return problemas
+
+
+def _correr_comando_declarado(comando: str) -> int | None:
+    """Corre el comando de la unidad. Devuelve `None` si la bandera no existe: un modo inexistente
+    y un modo que falla no son lo mismo, y el argparse de este archivo los distingue con el 2."""
+    partes = comando.split()
+    if len(partes) < 2:
+        return None
+    banderas = [p for p in partes[2:] if p.startswith("--")]
+    if not banderas or not any(m.bandera in banderas for m in MODOS):
+        return None
+    codigo, _ = _correr_en([sys.executable, *partes[1:]], RAIZ, dict(os.environ))
+    return codigo
+
+
+def modo_integracion(args: argparse.Namespace) -> int:
+    ruta = Path(getattr(args, "instrucciones", None) or (RAIZ / RUTA_INSTRUCCIONES))
+    if not ruta.exists():
+        print(f"FALLA  no existe: {ruta}")
+        return 1
+    script = getattr(args, "script", None) or "scripts/instrumento-baseline.py"
+    problemas = revisar_integracion(ruta.read_text(encoding="utf-8"), script,
+                                    _correr_comando_declarado)
+    print(f"instrucciones: {ruta} · script: {script}")
+    for problema in problemas:
+        print(f"FALLA  {problema}")
+    print()
+    if problemas:
+        print(f"RESULTADO: FALLA — {len(problemas)} hallazgos")
+        return 1
+    print("RESULTADO: OK — la unidad declara script propio, momento, comando y código sano, y los "
+          "tres son ciertos contra el árbol")
+    return 0
+
+
+# --- `--guardas-previas`: el conjunto previo, derivado de `base_commit` -----------------------
+
+def _identidad_de_guarda(entrada: dict) -> tuple:
+    return (entrada.get("id"), entrada.get("script"), tuple(entrada.get("argumentos") or []),
+            json.dumps(entrada.get("criterio") or {}, sort_keys=True, ensure_ascii=False))
+
+
+def revisar_guardas_previas(previo: Any, candidato: Any,
+                            error_de_base: str | None) -> list[Hallazgo]:
+    """AC-26: las guardas de `base_commit` siguen presentes y sin cambios.
+
+    Se comparan identidad, comando **y** criterio. Con solo el `id`, cambiar el código esperado de
+    una guarda de 0 a 4 la dejaría «presente» y sin nada que comprobar.
+    """
+    if error_de_base is not None:
+        return [Hallazgo("base_no_resoluble", error_de_base)]
+    problemas: list[Hallazgo] = []
+    for clave, campo, ausente, alterada in (
+            ("guardas", "guarda", "guarda_previa_ausente", "guarda_previa_alterada"),
+            ("exclusiones", "exclusión", "exclusion_previa_ausente", "guarda_previa_alterada")):
+        antes = {e.get("id"): e for e in (previo or {}).get(clave) or []}
+        ahora = {e.get("id"): e for e in (candidato or {}).get(clave) or []}
+        for ident in sorted(set(antes) - set(ahora)):
+            problemas.append(Hallazgo(
+                ausente,
+                f"la {campo} `{ident}` estaba en el manifiesto de la base y ya no está"))
+        for ident in sorted(set(antes) & set(ahora)):
+            if _identidad_de_guarda(antes[ident]) != _identidad_de_guarda(ahora[ident]):
+                problemas.append(Hallazgo(
+                    alterada,
+                    f"la {campo} `{ident}` cambió de comando o de criterio: "
+                    f"{_identidad_de_guarda(antes[ident])[1:]} → "
+                    f"{_identidad_de_guarda(ahora[ident])[1:]}"))
+    return problemas
+
+
+def modo_guardas_previas(args: argparse.Namespace) -> int:
+    base = getattr(args, "base", None)
+    if not base:
+        print("FALLA  falta `--base <sha>`: el conjunto previo se deriva del commit base")
+        return 1
+    repo = Path(getattr(args, "repo", None) or RAIZ)
+    previo, error_de_base = _json_en_commit(repo, base, RUTA_MANIFIESTO_GUARDAS)
+    candidato, error_actual = _cargar_json(RAIZ / RUTA_MANIFIESTO_GUARDAS)
+    if error_actual:
+        print(f"FALLA  manifiesto candidato: {error_actual}")
+        return 1
+    problemas = revisar_guardas_previas(previo, candidato, error_de_base)
+
+    ejecutadas = 0
+    if not getattr(args, "sin_ejecutar", False) and not problemas:
+        for entrada in (previo or {}).get("guardas") or []:
+            comando = [sys.executable, entrada["script"], *(entrada.get("argumentos") or [])]
+            codigo, _ = _correr_en(comando, RAIZ, dict(os.environ))
+            ejecutadas += 1
+            criterio = entrada.get("criterio") or {}
+            if criterio.get("tipo") == "codigo_de_salida" and codigo != criterio.get("esperado"):
+                problemas.append(Hallazgo(
+                    "guarda_previa_alterada",
+                    f"la guarda `{entrada['id']}` devuelve {codigo} y su criterio congelado espera "
+                    f"{criterio.get('esperado')}"))
+
+    print(f"base: {base} · guardas previas: {len((previo or {}).get('guardas') or [])} · "
+          f"ejecutadas: {ejecutadas}")
+    for problema in problemas:
+        print(f"FALLA  {problema}")
+    print()
+    if problemas:
+        print(f"RESULTADO: FALLA — {len(problemas)} hallazgos")
+        return 1
+    print("RESULTADO: OK — el conjunto previo sigue presente, sin cambios de comando ni de criterio")
+    return 0
+
+
+# --- `--ledger`: las cuatro fuentes, reconciliadas en las dos direcciones ---------------------
+#
+# El `--defectos` heredado valida la **forma** del puntero y no lo resuelve contra el árbol, ni sabe
+# nada de reconciliación (D-11). Acá el ledger se compara contra cada fuente en las dos
+# direcciones y contra el **manifest de despachos**, que es lo único que puede decir que falta un
+# reporte que nadie escribió: reconciliar solo «las fuentes que encuentre» deja invisible la
+# ausencia.
+
+FUENTES_DEL_LEDGER = (
+    "anomalias_del_runner",
+    "fallos_de_fixtures",
+    "adjudicaciones_de_cohorte",
+    "reportes_de_implementacion",
+)
+
+ADJUDICACIONES_DEL_LEDGER = ("incorporado", "descartado")
+
+
+def revisar_ledger(ledger: dict, fuentes: dict, despachos: list[dict],
+                   documento: str) -> list[Hallazgo]:
+    """AC-24bis: reconciliación bidireccional, adjudicación de cada candidato y captura obligatoria.
+
+    `fuentes` mapea el nombre de cada fuente a la lista de sus candidatos; `despachos`, el manifest
+    append-only de ternas `task · actor · intento`. Los dos llegan derivados de afuera: el modo
+    reconcilia, no descubre — descubrir sobre el mismo árbol que valida sería contarlo sobre sí
+    mismo.
+    """
+    problemas: list[Hallazgo] = []
+    declaradas = {f.get("fuente"): f for f in ledger.get("fuentes") or []}
+    for nombre in FUENTES_DEL_LEDGER:
+        declarada = declaradas.get(nombre)
+        faltan = [campo for campo in ("ruta", "schema", "regla_de_identidad", "momento_de_emision")
+                  if not (declarada or {}).get(campo)]
+        if declarada is None or faltan:
+            problemas.append(Hallazgo(
+                "fuente_no_declarada",
+                f"la fuente `{nombre}` no está declarada con {faltan or 'ninguno de sus campos'}: "
+                f"sin ruta, schema, regla de identidad y momento de emisión, «reconciliar» no "
+                f"tiene contra qué"))
+    for nombre in sorted(set(declaradas) - set(FUENTES_DEL_LEDGER)):
+        problemas.append(Hallazgo(
+            "fuente_no_declarada",
+            f"`{nombre}` no es una de las cuatro fuentes cerradas: {list(FUENTES_DEL_LEDGER)}"))
+
+    entradas = {c.get("candidate_id"): c for c in ledger.get("candidatos") or []}
+    de_las_fuentes: dict[str, str] = {}
+    for nombre, candidatos in sorted(fuentes.items()):
+        for candidato in candidatos:
+            de_las_fuentes[candidato["candidate_id"]] = nombre
+
+    for ident in sorted(set(de_las_fuentes) - set(entradas)):
+        problemas.append(Hallazgo(
+            "candidato_fuera_del_ledger",
+            f"`{ident}` aparece en la fuente `{de_las_fuentes[ident]}` y no está en el ledger"))
+    for ident in sorted(set(entradas) - set(de_las_fuentes)):
+        problemas.append(Hallazgo(
+            "entrada_del_ledger_sin_fuente",
+            f"`{ident}` está en el ledger y ninguna fuente lo produjo"))
+
+    for ident in sorted(set(entradas) & set(de_las_fuentes)):
+        entrada = entradas[ident]
+        if entrada.get("adjudicacion") not in ADJUDICACIONES_DEL_LEDGER or not entrada.get("razon"):
+            problemas.append(Hallazgo(
+                "candidato_sin_adjudicar",
+                f"`{ident}` tiene adjudicación `{entrada.get('adjudicacion')}` y razón "
+                f"`{entrada.get('razon')}`: cada candidato se incorpora o se descarta, con su "
+                f"razón escrita"))
+
+    problemas.extend(_revisar_captura_obligatoria(ledger, despachos))
+    problemas.extend(_revisar_incorporados_en_el_documento(entradas, documento))
+
+    if not entradas and not ledger.get("declara_cero_candidatos"):
+        problemas.append(Hallazgo(
+            "cero_candidatos_sin_declarar",
+            "el ledger no tiene candidatos y no declara explícitamente que no se descubrió "
+            "ninguno: la ausencia de hallazgos y la ausencia de búsqueda se ven igual"))
+    return problemas
+
+
+def _revisar_captura_obligatoria(ledger: dict, despachos: list[dict]) -> list[Hallazgo]:
+    """Cada terna del manifest tiene su reporte, o su adjudicación explícita de «sin reporte».
+
+    Una task inline no produce reporte delegado, y eso es correcto; lo que no puede es verse igual
+    que un reporte que se perdió. Por eso la ausencia se **declara** y no se infiere.
+    """
+    problemas: list[Hallazgo] = []
+    capturados = {(c.get("task"), c.get("actor"), c.get("intento"))
+                  for c in ledger.get("capturas") or []}
+    sin_reporte = {(c.get("task"), c.get("actor"), c.get("intento"))
+                   for c in ledger.get("capturas") or []
+                   if c.get("adjudicacion") == "sin_reporte_delegado"}
+    for despacho in despachos:
+        terna = (despacho.get("task"), despacho.get("actor"), despacho.get("intento"))
+        if terna not in capturados:
+            problemas.append(Hallazgo(
+                "despacho_sin_reporte",
+                f"el manifest declara el despacho {terna} y el ledger no lo captura ni lo adjudica "
+                f"como «sin reporte delegado»"))
+    del sin_reporte  # la adjudicación explícita ya satisface la captura; queda nombrada a propósito
+    return problemas
+
+
+def _revisar_incorporados_en_el_documento(entradas: dict[str, dict],
+                                          documento: str) -> list[Hallazgo]:
+    return [Hallazgo(
+        "incorporado_ausente_del_documento",
+        f"`{ident}` está adjudicado como incorporado y no aparece en el inventario del documento")
+        for ident, entrada in sorted(entradas.items())
+        if entrada.get("adjudicacion") == "incorporado" and ident not in documento]
+
+
+def modo_ledger(args: argparse.Namespace) -> int:
+    ruta = Path(getattr(args, "ledger"))
+    if not ruta.is_absolute():
+        ruta = RAIZ / ruta
+    ledger, error = _cargar_json(ruta)
+    if error:
+        print(f"FALLA  ledger: {error}")
+        return 1
+    ruta_fuentes = getattr(args, "fuentes", None)
+    if ruta_fuentes is None:
+        print("FALLA  falta `--fuentes`: el conjunto de candidatos se deriva de las cuatro fuentes "
+              "y no del propio ledger, que es lo que se está validando")
+        return 1
+    reconciliacion, error = _cargar_json(Path(ruta_fuentes) if Path(ruta_fuentes).is_absolute()
+                                         else RAIZ / ruta_fuentes)
+    if error:
+        print(f"FALLA  fuentes: {error}")
+        return 1
+    # La forma se comprueba antes de usarla. Un archivo que no la cumple —el propio ledger, por
+    # ejemplo, cuya clave `fuentes` es una lista y no un mapa— tiene que reportarse y no reventar:
+    # un traceback y un hallazgo salen los dos distinto de 0, y quien lea el código de salida no
+    # los distingue.
+    if not isinstance(reconciliacion, dict) or not isinstance(
+            reconciliacion.get("fuentes"), dict) or not isinstance(
+            reconciliacion.get("despachos"), list):
+        print(f"FALLA  fuentes: `{ruta_fuentes}` no tiene la forma esperada — un objeto con "
+              f"`fuentes` (mapa de nombre a lista de candidatos) y `despachos` (lista de ternas). "
+              f"El propio ledger no sirve como fuentes: reconciliarlo contra sí mismo no compara "
+              f"nada")
+        return 1
+    ruta_documento = Path(getattr(args, "documento", None)
+                          or "docs/superpowers/specs/2026-08-09-subagentes-perfiles-fase-0.md")
+    if not ruta_documento.is_absolute():
+        ruta_documento = RAIZ / ruta_documento
+    documento = ruta_documento.read_text(encoding="utf-8") if ruta_documento.exists() else ""
+
+    problemas = revisar_ledger(ledger, reconciliacion.get("fuentes") or {},
+                               reconciliacion.get("despachos") or [], documento)
+    print(f"ledger: {ruta} · candidatos: {len(ledger.get('candidatos') or [])} · "
+          f"despachos: {len(reconciliacion.get('despachos') or [])}")
+    for problema in problemas:
+        print(f"FALLA  {problema}")
+    print()
+    if problemas:
+        print(f"RESULTADO: FALLA — {len(problemas)} hallazgos")
+        return 1
+    print("RESULTADO: OK — las cuatro fuentes reconcilian en las dos direcciones y cada candidato "
+          "está adjudicado")
+    return 0
+
+
+# --- `--seccion-defectos`: la sección se REEMPLAZA, no se borra -------------------------------
+
+TITULO_DE_LA_SECCION = "Los defectos de este flujo"
+
+
+def revisar_seccion_de_defectos(documento: str, incorporados: list[dict]) -> list[Hallazgo]:
+    """AC-24bis: la sección existe por identidad y cubre sus dos ramas.
+
+    La mera ausencia de la frase anterior no satisface nada: borrar «lo que este inventario no va a
+    incluir» deja el documento sin decir qué pasó con los defectos del flujo, que es la misma
+    omisión con menos texto.
+    """
+    problemas: list[Hallazgo] = []
+    encontrado = re.search(rf"^#+\s+.*{re.escape(TITULO_DE_LA_SECCION)}.*$", documento,
+                           flags=re.IGNORECASE | re.MULTILINE)
+    if encontrado is None:
+        return [Hallazgo(
+            "seccion_ausente",
+            f"el documento no tiene la sección «{TITULO_DE_LA_SECCION}»: sin ella no dice qué "
+            f"trato reciben los defectos de este flujo")]
+    cuerpo = documento[encontrado.end():]
+    siguiente = re.search(r"^#+\s+", cuerpo, flags=re.MULTILINE)
+    cuerpo = cuerpo[:siguiente.start()] if siguiente else cuerpo
+
+    declara_ninguno = re.search(r"no se descubri[óo] ninguno", cuerpo, flags=re.IGNORECASE)
+    if not incorporados and not declara_ninguno:
+        problemas.append(Hallazgo(
+            "seccion_sin_ninguna_rama",
+            "la sección no lista ningún defecto incorporado ni declara que no se descubrió "
+            "ninguno: las dos ramas tienen que ser explícitas"))
+    for incorporado in incorporados:
+        ident = incorporado.get("candidate_id")
+        if ident not in cuerpo:
+            problemas.append(Hallazgo(
+                "seccion_sin_ninguna_rama",
+                f"`{ident}` está incorporado y no aparece en la sección"))
+            continue
+        ubicacion = incorporado.get("ubicacion")
+        if not ubicacion:
+            problemas.append(Hallazgo(
+                "incorporado_sin_ubicacion",
+                f"`{ident}` entra al inventario sin ubicación: un defecto sin dónde no se puede "
+                f"comprobar corregido"))
+            continue
+        ruta = RAIZ / str(ubicacion).split(":")[0]
+        if not ruta.exists():
+            problemas.append(Hallazgo(
+                "ubicacion_no_resuelve",
+                f"`{ident}` apunta a `{ubicacion}`, que no existe en el árbol: la forma del "
+                f"puntero es válida y no resuelve, que es el defecto que el modo heredado no ve"))
+    return problemas
+
+
+def modo_seccion_defectos(args: argparse.Namespace) -> int:
+    ruta = Path(getattr(args, "seccion_defectos"))
+    if not ruta.is_absolute():
+        ruta = RAIZ / ruta
+    if not ruta.exists():
+        print(f"FALLA  no existe: {ruta}")
+        return 1
+    incorporados: list[dict] = []
+    ruta_ledger = getattr(args, "ledger_de_la_seccion", None)
+    if ruta_ledger:
+        ledger, error = _cargar_json(Path(ruta_ledger) if Path(ruta_ledger).is_absolute()
+                                     else RAIZ / ruta_ledger)
+        if error:
+            print(f"FALLA  ledger: {error}")
+            return 1
+        incorporados = [c for c in ledger.get("candidatos") or []
+                        if c.get("adjudicacion") == "incorporado"]
+    problemas = revisar_seccion_de_defectos(ruta.read_text(encoding="utf-8"), incorporados)
+    print(f"documento: {ruta} · incorporados: {len(incorporados)}")
+    for problema in problemas:
+        print(f"FALLA  {problema}")
+    print()
+    if problemas:
+        print(f"RESULTADO: FALLA — {len(problemas)} hallazgos")
+        return 1
+    print("RESULTADO: OK — la sección existe por identidad y declara el trato real de los defectos")
+    return 0
+
+
+# --- `--autotest-identidad-congelada`: probar que el comparador puede ponerse rojo -------------
+#
+# **El comparador es Git, no este archivo** (D-23): V55 corre `git cat-file blob …` contra
+# `git hash-object …` y compara. Este modo no reimplementa esa comparación —eso sería probar el
+# doble—: la **ejecuta** sobre copias mutadas y exige que difieran. Es lo único que puede decir que
+# la fila de identidad congelada no es un verde estructural.
+
+ARCHIVOS_CONGELADOS = ("scripts/instrumento-baseline.py", "scripts/runner-cohorte.py")
+
+
+def _hash_de_git(ruta: Path) -> str | None:
+    codigo, salida = _correr_en(["git", "hash-object", str(ruta)], RAIZ, dict(os.environ))
+    return salida.strip() if codigo == 0 else None
+
+
+def modo_autotest_identidad_congelada(args: argparse.Namespace) -> int:
+    del args
+    resultados: list[tuple[str, bool, str]] = []
+
+    # [A] Los dos archivos congelados existen y Git les da un hash. Sin esto, el resto compararía
+    # `None` contra `None` y saldría verde por vacío — y con la lista vacía, el modo entero pasaría
+    # sin mirar nada, así que se exige que sean exactamente los que el pre-registro congela.
+    fallas = []
+    esperados = {"scripts/instrumento-baseline.py", "scripts/runner-cohorte.py"}
+    if set(ARCHIVOS_CONGELADOS) != esperados:
+        fallas.append(f"los archivos congelados son {sorted(ARCHIVOS_CONGELADOS)} y el "
+                      f"pre-registro congela el hash de {sorted(esperados)}")
+    originales: dict[str, str] = {}
+    for relativa in ARCHIVOS_CONGELADOS:
+        hash_actual = _hash_de_git(RAIZ / relativa)
+        if hash_actual is None:
+            fallas.append(f"`{relativa}`: git no pudo hashearlo")
+            continue
+        originales[relativa] = hash_actual
+    resultados.append(("A", not fallas,
+                       f"los {len(originales)} archivos congelados tienen hash de Git"
+                       if not fallas else " | ".join(fallas)))
+
+    # [B] Mutilar cada uno por separado cambia SU hash y no el del otro. Por separado a propósito:
+    # mutilar los dos juntos dejaría que uno enmascare al otro, y un comparador que solo mirara el
+    # primero pasaría igual.
+    fallas = []
+    with tempfile.TemporaryDirectory(prefix="identidad-congelada-") as tmp:
+        for relativa in ARCHIVOS_CONGELADOS:
+            if relativa not in originales:
+                continue
+            copia = Path(tmp) / Path(relativa).name
+            copia.write_text((RAIZ / relativa).read_text(encoding="utf-8")
+                             + "\n# una línea que el pre-registro no congeló\n", encoding="utf-8")
+            mutilado = _hash_de_git(copia)
+            if mutilado is None:
+                fallas.append(f"`{relativa}`: git no pudo hashear la copia mutilada")
+                continue
+            if mutilado == originales[relativa]:
+                fallas.append(f"`{relativa}`: el hash no cambió al mutilarlo, así que la "
+                              f"comprobación de identidad no puede ponerse roja")
+            for otro, hash_del_otro in originales.items():
+                if otro != relativa and _hash_de_git(RAIZ / otro) != hash_del_otro:
+                    fallas.append(f"mutilar `{relativa}` cambió el hash de `{otro}`: los dos no "
+                                  f"se comprueban por separado")
+    resultados.append(("B", not fallas,
+                       f"mutilar cada uno de los {len(originales)} archivos cambia su hash y solo "
+                       f"el suyo" if not fallas else " | ".join(fallas)))
+
+    # [C] El comparador es Git y no este archivo: el hash que produce `git hash-object` coincide
+    # con el de `git cat-file blob` del mismo contenido. Si este modo calculara el hash por su
+    # cuenta, mutilar el propio modo dejaría la comprobación verde — que es el tercer caso que la
+    # fila V56 pide.
+    fallas = []
+    with tempfile.TemporaryDirectory(prefix="identidad-comparador-") as tmp:
+        copia = Path(tmp) / "contenido.txt"
+        copia.write_text("el mismo contenido\n", encoding="utf-8")
+        por_hash_object = _hash_de_git(copia)
+        codigo, salida = _correr_en(
+            ["git", "hash-object", "--stdin"], RAIZ, dict(os.environ))
+        del codigo, salida
+        crudo = copia.read_bytes()
+        esperado = hashlib.sha1(b"blob %d\0" % len(crudo) + crudo).hexdigest()  # noqa: S324
+        if por_hash_object != esperado:
+            fallas.append(f"`git hash-object` da {por_hash_object} y el formato de objeto de Git "
+                          f"da {esperado}: el comparador no es el que la fila declara")
+    resultados.append(("C", not fallas,
+                       "el hash es el del objeto de Git, no uno propio de este archivo"
+                       if not fallas else " | ".join(fallas)))
+    return _cerrar(resultados)
+
+
+# --- `--autotest-integracion` -----------------------------------------------------------------
+
+def modo_autotest_integracion(args: argparse.Namespace) -> int:
+    del args
+    corpus, error_corpus = _cargar_json(DIR_FIXTURES_INTEGRACION / "casos.json")
+    manifest, error_manifest = _cargar_json(DIR_FIXTURES_INTEGRACION / "manifest.json")
+    if error_corpus or error_manifest:
+        print(f"[A] FALLA  {error_corpus or ''} {error_manifest or ''}".strip())
+        return 1
+    resultados: list[tuple[str, bool, str]] = []
+    script = manifest["script"]
+
+    # [A] Corpus y manifest, en las dos direcciones.
+    fallas = []
+    if set(corpus["casos"]) != {c["caso"] for c in manifest["casos"]}:
+        fallas.append(f"solo en el corpus "
+                      f"{sorted(set(corpus['casos']) - {c['caso'] for c in manifest['casos']})}, "
+                      f"solo en el manifest "
+                      f"{sorted({c['caso'] for c in manifest['casos']} - set(corpus['casos']))}")
+    resultados.append(("A", not fallas,
+                       f"corpus ↔ manifest ({len(corpus['casos'])} casos)" if not fallas
+                       else " | ".join(fallas)))
+
+    # Los casos declaran qué devuelve el comando: el modo real lo ejecuta, y el control necesita
+    # decidirlo para poder ejercer `bandera_inexistente` y `codigo_declarado_falso` sin depender de
+    # que exista un script que devuelva justo eso.
+    def correr_falso(devuelve: int | None) -> Callable[[str], int | None]:
+        return lambda comando: devuelve
+
+    # [B] Control positivo: la unidad conforme pasa.
+    problemas = revisar_integracion(corpus["conforme"], script, correr_falso(0))
+    resultados.append(("B", not problemas,
+                       "la unidad conforme declara script propio, momento, comando y código sano"
+                       if not problemas else " | ".join(str(p) for p in problemas[:3])))
+
+    # [C] Cada caso cae por SU cláusula y por su motivo.
+    fallas = []
+    ejercidas: set[str] = set()
+    for declarado in manifest["casos"]:
+        caso = corpus["casos"][declarado["caso"]]
+        texto = caso.get("instrucciones", corpus["conforme"])
+        problemas = revisar_integracion(texto, script, correr_falso(caso.get("devuelve", 0)))
+        claves = sorted({p.clave for p in problemas})
+        if claves != [declarado["clausula"]]:
+            fallas.append(f"`{declarado['caso']}`: cayó por {claves} y se esperaba "
+                          f"`{declarado['clausula']}`")
+            continue
+        if not any(declarado["fragmento"] in p.detalle for p in problemas):
+            fallas.append(f"`{declarado['caso']}`: cayó por su cláusula y no por su motivo")
+            continue
+        ejercidas.add(declarado["clausula"])
+    resultados.append(("C", not fallas,
+                       f"los {len(manifest['casos'])} casos caen por su cláusula y por su motivo"
+                       if not fallas else " | ".join(fallas[:5])))
+
+    # [D] La unidad se lee ENTERA, con sus continuaciones indentadas. Las instrucciones envuelven a
+    # ~100 columnas, así que un lector por línea partiría la declaración justo donde está el dato:
+    # el caso conforme trae el comando en una línea distinta de la del script.
+    fallas = []
+    unidad = _unidad_del_instrumento(corpus["conforme"], script)
+    if unidad is None or unidad.comando is None or unidad.codigo_sano is None:
+        fallas.append("la unidad conforme no se lee completa: el comando o el código quedaron "
+                      "fuera de la unidad")
+    elif "\n" not in unidad.texto:
+        fallas.append("la unidad conforme del corpus cabe en una línea, así que este control no "
+                      "prueba nada sobre el envoltorio")
+    resultados.append(("D", not fallas,
+                       "la unidad se lee entera, con sus continuaciones indentadas"
+                       if not fallas else " | ".join(fallas)))
+
+    # [E] El modo entero contra un archivo real, con su positivo y su negativo.
+    fallas = []
+    with tempfile.TemporaryDirectory(prefix="integracion-") as tmp:
+        bueno = Path(tmp) / "CONFORME.md"
+        bueno.write_text(corpus["conforme"], encoding="utf-8")
+        # El comando del corpus conforme apunta a un modo REAL de este archivo, así que el modo
+        # entero lo ejecuta de verdad: si el comando fuera inventado, este control probaría el
+        # doble en vez del instrumento.
+        if _codigo_de_modo(modo_integracion, integracion=True, instrucciones=str(bueno),
+                           script=script) != 0:
+            fallas.append("`--integracion` devolvió distinto de 0 sobre la unidad conforme")
+        malo = Path(tmp) / "SIN-UNIDAD.md"
+        malo.write_text("- Una instrucción cualquiera que no habla del instrumento.\n",
+                        encoding="utf-8")
+        if _codigo_de_modo(modo_integracion, integracion=True, instrucciones=str(malo),
+                           script=script) == 0:
+            fallas.append("`--integracion` devolvió 0 sin ninguna unidad que hable del script")
+    resultados.append(("E", not fallas,
+                       "`--integracion` devuelve 0 sobre la unidad conforme —ejecutando su comando "
+                       "real— y distinto de 0 sin unidad" if not fallas else " | ".join(fallas)))
+
+    # [F] Cobertura, acumulada corriendo.
+    fallas = []
+    sin_ejercer = sorted(set(CLAUSULAS_DE_INTEGRACION) - ejercidas)
+    if sin_ejercer:
+        fallas.append(f"cláusulas sin caso que las ponga rojas: {sin_ejercer}")
+    resultados.append(("F", not fallas,
+                       f"las {len(CLAUSULAS_DE_INTEGRACION)} cláusulas tienen quien las ponga rojas"
+                       if not fallas else " | ".join(fallas)))
+    return _cerrar(resultados)
+
+
+# --- `--autotest-guardas-previas`: cubre los DOS modos que derivan de `base_commit` -----------
+#
+# `--guardas-previas` y `--altas-topologia` comparten mecanismo —resolver el conjunto previo con
+# plumbing sobre un commit— y comparten el modo de fallar: si la base no resuelve, los dos
+# compararían contra un conjunto vacío y saldrían verdes. Se prueban juntos y sobre repos
+# **sembrados** con commits reales, por lo mismo que en T15: un doble del historial probaría el
+# doble.
+
+def sembrar_repo_con_registros(raiz: Path, previo: dict[str, Any],
+                               candidato: dict[str, Any]) -> Path:
+    """Un repo con un commit base que trae `previo` y un HEAD que trae `candidato`."""
+    repo = raiz / "repo"
+    (repo / "scripts").mkdir(parents=True, exist_ok=True)
+    _correr_en(["git", "init", "--quiet", "-b", "main", str(repo)], None, dict(os.environ))
+    for ruta, datos in previo.items():
+        _escribir_json(repo / ruta, datos)
+    _commitear(repo, "base", _FECHA_ANCLA)
+    for ruta, datos in candidato.items():
+        _escribir_json(repo / ruta, datos)
+    _commitear(repo, "candidato", _FECHA_CONGELAMIENTO)
+    return repo
+
+
+def modo_autotest_guardas_previas(args: argparse.Namespace) -> int:
+    del args
+    corpus, error_corpus = _cargar_json(DIR_FIXTURES_GUARDAS / "casos.json")
+    manifest, error_manifest = _cargar_json(DIR_FIXTURES_GUARDAS / "manifest.json")
+    topologia, error_topologia = _cargar_json(DIR_FIXTURES_TOPOLOGIA / "casos.json")
+    if error_corpus or error_manifest or error_topologia:
+        print(f"[A] FALLA  {error_corpus or ''} {error_manifest or ''} "
+              f"{error_topologia or ''}".strip())
+        return 1
+    resultados: list[tuple[str, bool, str]] = []
+
+    # [A] Corpus y manifest, en las dos direcciones, para los dos modos.
+    fallas = []
+    del_corpus = set(corpus["casos"]) | set(topologia["casos"])
+    del_manifest = {c["caso"] for c in manifest["casos"]}
+    if del_corpus != del_manifest:
+        fallas.append(f"solo en los corpus {sorted(del_corpus - del_manifest)}, solo en el "
+                      f"manifest {sorted(del_manifest - del_corpus)}")
+    resultados.append(("A", not fallas,
+                       f"corpus ↔ manifest ({len(del_corpus)} casos entre los dos modos)"
+                       if not fallas else " | ".join(fallas)))
+
+    # [B] Control positivo de los dos: sin cambios respecto de la base, y con las altas declaradas.
+    fallas = []
+    problemas = revisar_guardas_previas(corpus["previo"], corpus["candidato_conforme"], None)
+    if problemas:
+        fallas.append(f"`--guardas-previas` bloqueó el candidato conforme: "
+                      f"{[str(p) for p in problemas[:2]]}")
+    problemas = revisar_altas_de_topologia(topologia["previo"], topologia["candidato_conforme"],
+                                           topologia["altas_esperadas"], None)
+    if problemas:
+        fallas.append(f"`--altas-topologia` bloqueó el candidato conforme: "
+                      f"{[str(p) for p in problemas[:2]]}")
+    resultados.append(("B", not fallas,
+                       "los dos modos pasan sobre su candidato conforme"
+                       if not fallas else " | ".join(fallas)))
+
+    # [C] Cada caso cae por SU cláusula y por su motivo.
+    fallas = []
+    ejercidas: set[str] = set()
+    for declarado in manifest["casos"]:
+        if declarado["modo"] == "guardas":
+            caso = corpus["casos"][declarado["caso"]]
+            problemas = revisar_guardas_previas(
+                caso.get("previo", corpus["previo"]),
+                caso.get("candidato", corpus["candidato_conforme"]),
+                caso.get("error_de_base"))
+        else:
+            caso = topologia["casos"][declarado["caso"]]
+            problemas = revisar_altas_de_topologia(
+                caso.get("previo", topologia["previo"]),
+                caso.get("candidato", topologia["candidato_conforme"]),
+                caso.get("altas_esperadas", topologia["altas_esperadas"]),
+                caso.get("error_de_base"))
+        claves = sorted({p.clave for p in problemas})
+        if claves != [declarado["clausula"]]:
+            fallas.append(f"`{declarado['caso']}`: cayó por {claves} y se esperaba "
+                          f"`{declarado['clausula']}`")
+            continue
+        if not any(declarado["fragmento"] in p.detalle for p in problemas):
+            fallas.append(f"`{declarado['caso']}`: cayó por su cláusula y no por su motivo")
+            continue
+        ejercidas.add(declarado["clausula"])
+    resultados.append(("C", not fallas,
+                       f"los {len(manifest['casos'])} casos caen por su cláusula y por su motivo"
+                       if not fallas else " | ".join(fallas[:5])))
+
+    # [D] Los dos modos sobre un repo SEMBRADO, resolviendo el conjunto previo con Git. Es lo que
+    # separa «la función compara dos dicts» de «el modo deriva el previo del commit base».
+    fallas = []
+    with tempfile.TemporaryDirectory(prefix="guardas-previas-") as tmp:
+        repo = sembrar_repo_con_registros(
+            Path(tmp),
+            {RUTA_MANIFIESTO_GUARDAS: corpus["previo"],
+             RUTA_REGISTRO_ARTEFACTOS: topologia["previo"]},
+            {RUTA_MANIFIESTO_GUARDAS: corpus["candidato_conforme"],
+             RUTA_REGISTRO_ARTEFACTOS: topologia["candidato_conforme"]})
+        base = _git(repo, "rev-parse", "HEAD~1")[1].strip()
+        recuperado, error = _json_en_commit(repo, base, RUTA_MANIFIESTO_GUARDAS)
+        if error or recuperado != corpus["previo"]:
+            fallas.append(f"el manifiesto previo no se recuperó del commit base: {error or 'difiere'}")
+        _, error = _json_en_commit(repo, "0000000000000000000000000000000000000000",
+                                   RUTA_MANIFIESTO_GUARDAS)
+        if error is None:
+            fallas.append("un commit inexistente resolvió sin error: la base no resoluble tiene "
+                          "que bloquear, no comparar contra el vacío")
+    resultados.append(("D", not fallas,
+                       "el conjunto previo se deriva del commit base con plumbing, y una base que "
+                       "no resuelve bloquea" if not fallas else " | ".join(fallas)))
+
+    # [E] Los modos enteros exigen `--base`, y **por esa causa**. No alcanza con que fallen: sin
+    # repo, o con un registro ausente, fallarían igual por otra razón y el control quedaría verde
+    # aunque nadie exigiera el argumento. Se mira el mensaje.
+    fallas = []
+    for nombre, handler, destino in (("--guardas-previas", modo_guardas_previas, "guardas_previas"),
+                                     ("--altas-topologia", modo_altas_topologia,
+                                      "altas_topologia")):
+        salida = io.StringIO()
+        with contextlib.redirect_stdout(salida):
+            codigo = handler(argparse.Namespace(**{destino: True, "base": None}))
+        if codigo == 0:
+            fallas.append(f"`{nombre}` devolvió 0 sin `--base`")
+        elif "falta `--base" not in salida.getvalue():
+            fallas.append(f"`{nombre}` falló sin `--base` pero por otra causa: "
+                          f"{salida.getvalue().strip().splitlines()[0][:80] if salida.getvalue() else '(sin salida)'}")
+    resultados.append(("E", not fallas,
+                       "los dos modos exigen `--base`, y fallan por esa causa: sin él no hay "
+                       "conjunto previo que derivar" if not fallas else " | ".join(fallas)))
+
+    # [F] Cobertura de las cláusulas de los dos modos, acumulada corriendo.
+    fallas = []
+    cerradas = set(CLAUSULAS_DE_GUARDAS_PREVIAS) | set(CLAUSULAS_DE_TOPOLOGIA)
+    sin_ejercer = sorted(cerradas - ejercidas)
+    if sin_ejercer:
+        fallas.append(f"cláusulas sin caso que las ponga rojas: {sin_ejercer}")
+    resultados.append(("F", not fallas,
+                       f"las {len(cerradas)} cláusulas de los dos modos tienen quien las ponga "
+                       f"rojas" if not fallas else " | ".join(fallas)))
+    return _cerrar(resultados)
+
+
+# --- `--autotest-ledger` ----------------------------------------------------------------------
+
+def modo_autotest_ledger(args: argparse.Namespace) -> int:
+    del args
+    corpus, error_corpus = _cargar_json(DIR_FIXTURES_LEDGER / "casos.json")
+    manifest, error_manifest = _cargar_json(DIR_FIXTURES_LEDGER / "manifest.json")
+    if error_corpus or error_manifest:
+        print(f"[A] FALLA  {error_corpus or ''} {error_manifest or ''}".strip())
+        return 1
+    resultados: list[tuple[str, bool, str]] = []
+    conforme = corpus["conforme"]
+
+    # [A] Corpus y manifest, en las dos direcciones.
+    fallas = []
+    if set(corpus["casos"]) != {c["caso"] for c in manifest["casos"]}:
+        fallas.append("el corpus y el manifest no declaran los mismos casos")
+    resultados.append(("A", not fallas,
+                       f"corpus ↔ manifest ({len(corpus['casos'])} casos)" if not fallas
+                       else " | ".join(fallas)))
+
+    # [B] Control positivo del ledger y de la sección.
+    fallas = []
+    problemas = revisar_ledger(conforme["ledger"], conforme["fuentes"], conforme["despachos"],
+                               conforme["documento"])
+    if problemas:
+        fallas.append(f"el ledger conforme cayó por {[str(p) for p in problemas[:2]]}")
+    incorporados = [c for c in conforme["ledger"]["candidatos"]
+                    if c.get("adjudicacion") == "incorporado"]
+    problemas = revisar_seccion_de_defectos(conforme["documento"], incorporados)
+    if problemas:
+        fallas.append(f"la sección conforme cayó por {[str(p) for p in problemas[:2]]}")
+    resultados.append(("B", not fallas,
+                       "el ledger y la sección conformes pasan" if not fallas
+                       else " | ".join(fallas)))
+
+    # [C] Cada caso cae por SU cláusula y por su motivo.
+    fallas = []
+    ejercidas: set[str] = set()
+    for declarado in manifest["casos"]:
+        caso = corpus["casos"][declarado["caso"]]
+        ledger = caso.get("ledger", conforme["ledger"])
+        documento = caso.get("documento", conforme["documento"])
+        if declarado["modo"] == "ledger":
+            problemas = revisar_ledger(ledger, caso.get("fuentes", conforme["fuentes"]),
+                                       caso.get("despachos", conforme["despachos"]), documento)
+        else:
+            problemas = revisar_seccion_de_defectos(
+                documento, caso.get("incorporados",
+                                    [c for c in ledger.get("candidatos") or []
+                                     if c.get("adjudicacion") == "incorporado"]))
+        claves = sorted({p.clave for p in problemas})
+        if claves != [declarado["clausula"]]:
+            fallas.append(f"`{declarado['caso']}`: cayó por {claves} y se esperaba "
+                          f"`{declarado['clausula']}`")
+            continue
+        if not any(declarado["fragmento"] in p.detalle for p in problemas):
+            fallas.append(f"`{declarado['caso']}`: cayó por su cláusula y no por su motivo")
+            continue
+        ejercidas.add(declarado["clausula"])
+    resultados.append(("C", not fallas,
+                       f"los {len(manifest['casos'])} casos caen por su cláusula y por su motivo"
+                       if not fallas else " | ".join(fallas[:5])))
+
+    # [D] La reconciliación es BIDIRECCIONAL: un candidato en la fuente y no en el ledger, y una
+    # entrada del ledger sin fuente, son fallas distintas. Con una sola dirección, escribir el
+    # ledger a mano con lo que uno recuerda pasaría entero.
+    fallas = []
+    solo_en_la_fuente = {c.clave for c in revisar_ledger(
+        {**conforme["ledger"], "candidatos": conforme["ledger"]["candidatos"][:-1]},
+        conforme["fuentes"], conforme["despachos"], conforme["documento"])}
+    if "candidato_fuera_del_ledger" not in solo_en_la_fuente:
+        fallas.append("quitar un candidato del ledger no se ve")
+    sin_fuentes = {c.clave for c in revisar_ledger(conforme["ledger"], {}, conforme["despachos"],
+                                                   conforme["documento"])}
+    if "entrada_del_ledger_sin_fuente" not in sin_fuentes:
+        fallas.append("un ledger sin ninguna fuente que lo respalde no se ve")
+    resultados.append(("D", not fallas,
+                       "la reconciliación se rompe en las dos direcciones, con fallas distintas"
+                       if not fallas else " | ".join(fallas)))
+
+    # [E] «Cero candidatos» exige declaración explícita. Sin esto, un ledger vacío —el resultado de
+    # no haber buscado— sería indistinguible de haber buscado y no encontrar nada.
+    fallas = []
+    vacio = {"fuentes": conforme["ledger"]["fuentes"], "candidatos": [], "capturas": []}
+    claves = {c.clave for c in revisar_ledger(vacio, {}, [], "")}
+    if "cero_candidatos_sin_declarar" not in claves:
+        fallas.append("un ledger vacío sin declaración explícita no se ve")
+    declarado = {**vacio, "declara_cero_candidatos": True}
+    if any(c.clave == "cero_candidatos_sin_declarar"
+           for c in revisar_ledger(declarado, {}, [], "")):
+        fallas.append("declarar cero candidatos explícitamente sigue fallando")
+    resultados.append(("E", not fallas,
+                       "la rama «no se descubrió ninguno» exige declaración, y declararla alcanza"
+                       if not fallas else " | ".join(fallas)))
+
+    # [F] Los dos modos enteros, con sus argumentos obligatorios.
+    fallas = []
+    with tempfile.TemporaryDirectory(prefix="ledger-") as tmp:
+        raiz = Path(tmp)
+        ruta_ledger = raiz / "ledger.json"
+        _escribir_json(ruta_ledger, conforme["ledger"])
+        ruta_fuentes = raiz / "fuentes.json"
+        _escribir_json(ruta_fuentes, {"fuentes": conforme["fuentes"],
+                                      "despachos": conforme["despachos"]})
+        documento = raiz / "documento.md"
+        documento.write_text(conforme["documento"], encoding="utf-8")
+        if _codigo_de_modo(modo_ledger, ledger=str(ruta_ledger), fuentes=str(ruta_fuentes),
+                           documento=str(documento)) != 0:
+            fallas.append("`--ledger` devolvió distinto de 0 sobre el conjunto conforme")
+        # Igual que el `--base` de `--autotest-guardas-previas`: no alcanza con que falle. Un modo
+        # que tomara el propio ledger como fuentes también fallaría —por forma, o por reconciliar
+        # un conjunto contra sí mismo— y este control quedaría verde sin que nadie exigiera el
+        # argumento. Se mira el mensaje.
+        salida = io.StringIO()
+        with contextlib.redirect_stdout(salida):
+            codigo = modo_ledger(argparse.Namespace(ledger=str(ruta_ledger), fuentes=None,
+                                                    documento=str(documento)))
+        if codigo == 0:
+            fallas.append("`--ledger` devolvió 0 sin `--fuentes`: reconciliaría el ledger contra "
+                          "sí mismo")
+        elif "falta `--fuentes`" not in salida.getvalue():
+            fallas.append(f"`--ledger` falló sin `--fuentes` pero por otra causa: "
+                          f"{salida.getvalue().strip().splitlines()[0][:90]}")
+        if _codigo_de_modo(modo_seccion_defectos, seccion_defectos=str(documento),
+                           ledger_de_la_seccion=str(ruta_ledger)) != 0:
+            fallas.append("`--seccion-defectos` devolvió distinto de 0 sobre el documento conforme")
+        sin_seccion = raiz / "sin-seccion.md"
+        sin_seccion.write_text("# Otro documento\n\nsin la sección.\n", encoding="utf-8")
+        if _codigo_de_modo(modo_seccion_defectos, seccion_defectos=str(sin_seccion),
+                           ledger_de_la_seccion=str(ruta_ledger)) == 0:
+            fallas.append("`--seccion-defectos` devolvió 0 sobre un documento sin la sección")
+    resultados.append(("F", not fallas,
+                       "`--ledger` y `--seccion-defectos` devuelven 0 sobre lo conforme y distinto "
+                       "de 0 sobre sus negativos" if not fallas else " | ".join(fallas)))
+
+    # [G] Cobertura de las cláusulas de los dos modos, acumulada corriendo.
+    fallas = []
+    cerradas = set(CLAUSULAS_DEL_LEDGER) | set(CLAUSULAS_DE_LA_SECCION)
+    sin_ejercer = sorted(cerradas - ejercidas)
+    if sin_ejercer:
+        fallas.append(f"cláusulas sin caso que las ponga rojas: {sin_ejercer}")
+    resultados.append(("G", not fallas,
+                       f"las {len(cerradas)} cláusulas de los dos modos tienen quien las ponga "
+                       f"rojas" if not fallas else " | ".join(fallas)))
+    return _cerrar(resultados)
+
+
+# ---------------------------------------------------------------------------------------------
 # Registro de los modos de esta task. Cada task nueva agrega los suyos acá abajo, sin tocar los
 # anteriores ni `main()`.
 # ---------------------------------------------------------------------------------------------
@@ -11778,6 +12863,112 @@ registrar_modo(
     "regla; la ruta relativa al repositorio y el nombre de una credencial sin valor NO bloquean; y "
     "ningún documento JSON del árbol real queda impublicable",
     modo_autotest_escaneo,
+)
+
+registrar_modo(
+    "--altas-topologia",
+    "las altas de este acto: el conjunto previo se DERIVA de `--base` con plumbing y la diferencia "
+    "se compara en las dos direcciones contra las identidades esperadas — `--topologia` valida las "
+    "entradas presentes y no conoce la lista, así que un alta que faltara del árbol y del registro "
+    "lo dejaría verde",
+    modo_altas_topologia,
+    auxiliares=(
+        Auxiliar("--base", "el commit del que se deriva el conjunto previo",
+                 metavar="<sha>"),
+        Auxiliar("--esperadas", "el manifest independiente de altas esperadas; por omisión, "
+                                "scripts/fixtures-baseline/topologia/altas-esperadas.json",
+                 metavar="<ruta>"),
+    ),
+)
+
+registrar_modo(
+    "--integracion",
+    "la unidad de las instrucciones que documenta este script: que declare que es script propio, "
+    "cuándo correrlo, el comando exacto y el código de salida sano, y que los tres sean CIERTOS "
+    "contra el árbol —la bandera existe y devuelve lo que se declara—",
+    modo_integracion,
+    auxiliares=(
+        Auxiliar("--instrucciones", f"el documento de instrucciones; por omisión, "
+                                    f"{RUTA_INSTRUCCIONES}", metavar="<ruta>"),
+        Auxiliar("--script", "el script cuya unidad se busca; por omisión, este mismo",
+                 metavar="<ruta>"),
+    ),
+)
+
+registrar_modo(
+    "--autotest-integracion",
+    "control del modo anterior sobre el corpus de scripts/fixtures-baseline/integracion/: "
+    "disparador ausente, comando distinto del real, código sano falso y «modo de otro script» "
+    "fallan, y la unidad se lee entera con sus continuaciones indentadas",
+    modo_autotest_integracion,
+)
+
+registrar_modo(
+    "--guardas-previas",
+    "el conjunto de guardas de `--base`, derivado con plumbing: cada identidad, comando y criterio "
+    "sigue presente sin cambios, y se ejecutan. Con `--sin-ejecutar` se acota a la comparación",
+    modo_guardas_previas,
+    auxiliares=(
+        Auxiliar("--sin-ejecutar", "compara el conjunto previo sin correr las guardas"),
+    ),
+)
+
+registrar_modo(
+    "--autotest-guardas-previas",
+    "control de los DOS modos que derivan de `base_commit` —guardas y altas de topología— sobre "
+    "sus corpus y sobre un repo sembrado con commits reales: una guarda borrada, un criterio "
+    "cambiado, un alta faltante y una base que no resuelve fallan",
+    modo_autotest_guardas_previas,
+)
+
+registrar_modo(
+    "--ledger",
+    "reconcilia el ledger de candidatos contra las cuatro fuentes cerradas en las dos direcciones "
+    "y contra el manifest de despachos: cada candidato adjudicado con su razón, cada despacho con "
+    "su reporte o su adjudicación explícita de «sin reporte delegado», y los incorporados "
+    "presentes en el documento",
+    modo_ledger,
+    argumento=Argumento("<ruta-del-ledger>", const="scripts/ledger-candidatos-fase-0.json"),
+    auxiliares=(
+        Auxiliar("--fuentes", "el conjunto de candidatos derivado de las cuatro fuentes y el "
+                              "manifest de despachos; sin él el modo falla, porque derivarlo del "
+                              "propio ledger sería reconciliarlo contra sí mismo",
+                 metavar="<ruta>"),
+        Auxiliar("--documento", "el documento cuyo inventario tiene que contener los incorporados",
+                 metavar="<ruta>"),
+    ),
+)
+
+registrar_modo(
+    "--autotest-ledger",
+    "control de `--ledger` y `--seccion-defectos` sobre el corpus de "
+    "scripts/fixtures-baseline/ledger/: un hallazgo presente en una fuente y ausente del ledger "
+    "falla, un candidato sin adjudicar falla, la rama «cero candidatos» exige declaración "
+    "explícita, y dos candidatos del mismo despacho se reconcilian por su `candidate_id`",
+    modo_autotest_ledger,
+)
+
+registrar_modo(
+    "--seccion-defectos",
+    "la sección del inventario existe POR IDENTIDAD y declara el trato real de los defectos de "
+    "este flujo, con sus dos ramas —incorporados con su ubicación resuelta contra el árbol, o «no "
+    "se descubrió ninguno»—: la mera ausencia de la frase anterior no la satisface",
+    modo_seccion_defectos,
+    argumento=Argumento("<ruta-del-documento>",
+                        const="docs/superpowers/specs/2026-08-09-subagentes-perfiles-fase-0.md"),
+    auxiliares=(
+        Auxiliar("--ledger-de-la-seccion", "el ledger del que salen los incorporados que la "
+                                           "sección tiene que listar", metavar="<ruta>"),
+    ),
+)
+
+registrar_modo(
+    "--autotest-identidad-congelada",
+    "prueba que la comprobación de identidad de los scripts congelados PUEDE ponerse roja: mutila "
+    "el instrumento y el runner por separado sobre copias y exige que su hash de Git cambie —y "
+    "solo el suyo—, y comprueba que el comparador es el objeto de Git y no un hash propio de este "
+    "archivo (D-23)",
+    modo_autotest_identidad_congelada,
 )
 
 

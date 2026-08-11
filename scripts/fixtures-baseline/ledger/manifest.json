@@ -1,0 +1,71 @@
+{
+  "que_declara": "El manifest independiente de `--ledger` y `--seccion-defectos`. Las fuentes declaran DOS candidatos del mismo `run_id` a propósito: es el caso que D-25 nombra, y el que se pierde sin diferencia visible si se reconcilia por el contenedor en vez de por `candidate_id`.",
+  "casos": [
+    {
+      "caso": "l-fuente-no-declarada",
+      "modo": "ledger",
+      "clausula": "fuente_no_declarada",
+      "fragmento": "«reconciliar» no tiene contra qué"
+    },
+    {
+      "caso": "l-candidato-fuera-del-ledger",
+      "modo": "ledger",
+      "clausula": "candidato_fuera_del_ledger",
+      "fragmento": "y no está en el ledger"
+    },
+    {
+      "caso": "l-entrada-del-ledger-sin-fuente",
+      "modo": "ledger",
+      "clausula": "entrada_del_ledger_sin_fuente",
+      "fragmento": "ninguna fuente lo produjo"
+    },
+    {
+      "caso": "l-candidato-sin-adjudicar",
+      "modo": "ledger",
+      "clausula": "candidato_sin_adjudicar",
+      "fragmento": "con su razón escrita"
+    },
+    {
+      "caso": "l-despacho-sin-reporte",
+      "modo": "ledger",
+      "clausula": "despacho_sin_reporte",
+      "fragmento": "ni lo adjudica como «sin reporte delegado»"
+    },
+    {
+      "caso": "l-incorporado-ausente-del-documento",
+      "modo": "ledger",
+      "clausula": "incorporado_ausente_del_documento",
+      "fragmento": "no aparece en el inventario del documento"
+    },
+    {
+      "caso": "l-cero-candidatos-sin-declarar",
+      "modo": "ledger",
+      "clausula": "cero_candidatos_sin_declarar",
+      "fragmento": "la ausencia de búsqueda se ven igual"
+    },
+    {
+      "caso": "s-seccion-ausente",
+      "modo": "seccion",
+      "clausula": "seccion_ausente",
+      "fragmento": "no dice qué trato reciben los defectos"
+    },
+    {
+      "caso": "s-seccion-sin-ninguna-rama",
+      "modo": "seccion",
+      "clausula": "seccion_sin_ninguna_rama",
+      "fragmento": "las dos ramas tienen que ser explícitas"
+    },
+    {
+      "caso": "s-incorporado-sin-ubicacion",
+      "modo": "seccion",
+      "clausula": "incorporado_sin_ubicacion",
+      "fragmento": "no se puede comprobar corregido"
+    },
+    {
+      "caso": "s-ubicacion-no-resuelve",
+      "modo": "seccion",
+      "clausula": "ubicacion_no_resuelve",
+      "fragmento": "es válida y no resuelve"
+    }
+  ]
+}

@@ -1,0 +1,747 @@
+{
+  "que_declara": "El manifest independiente de `--ledger` y `--seccion-defectos`. Las fuentes declaran DOS candidatos del mismo `run_id` a propósito: es el caso que D-25 nombra, y el que se pierde sin diferencia visible si se reconcilia por el contenedor en vez de por `candidate_id`.",
+  "conforme": {
+    "ledger": {
+      "fuentes": [
+        {
+          "fuente": "anomalias_del_runner",
+          "ruta": "scripts/journal-anomalias-fase-0/",
+          "schema": "scripts/journal-anomalias-fase-0/journal-anomalias.schema.json",
+          "regla_de_identidad": "candidate_id por anomalía, no por corrida",
+          "momento_de_emision": "al abrir la operación, antes de que exista el bundle"
+        },
+        {
+          "fuente": "fallos_de_fixtures",
+          "ruta": "scripts/recibos-autotest-fase-0/",
+          "schema": "scripts/recibos-autotest-fase-0/recibo-autotest.schema.json",
+          "regla_de_identidad": "por modo y caso",
+          "momento_de_emision": "al cerrar cada autotest"
+        },
+        {
+          "fuente": "adjudicaciones_de_cohorte",
+          "ruta": "scripts/preregistro-fase-0.json",
+          "schema": "scripts/preregistro.schema.json",
+          "regla_de_identidad": "por identidad de la adjudicación en el acta",
+          "momento_de_emision": "al congelar el pre-registro"
+        },
+        {
+          "fuente": "reportes_de_implementacion",
+          "ruta": ".plans/instrumento-y-baseline/work/",
+          "schema": "reporte estructurado del implementador",
+          "regla_de_identidad": "task · actor · intento",
+          "momento_de_emision": "al cerrar cada despacho"
+        }
+      ],
+      "candidatos": [
+        {
+          "candidate_id": "cand-run-07-a",
+          "adjudicacion": "descartado",
+          "razon": "el reintento lo produjo un corte de red del host, ajeno al ecosistema"
+        },
+        {
+          "candidate_id": "cand-run-07-b",
+          "adjudicacion": "incorporado",
+          "razon": "el journal no cerraba el intento bloqueado",
+          "ubicacion": "scripts/runner-cohorte.py"
+        },
+        {
+          "candidate_id": "cand-autotest-egreso-1",
+          "adjudicacion": "descartado",
+          "razon": "el fixture declaraba un canario ya cesado; se corrigió el corpus"
+        },
+        {
+          "candidate_id": "cand-acta-exclusion-1",
+          "adjudicacion": "descartado",
+          "razon": "la exclusión estaba dentro del conjunto cerrado"
+        },
+        {
+          "candidate_id": "cand-t12-resume-en-0",
+          "adjudicacion": "incorporado",
+          "razon": "`codex exec resume` con sesión inexistente sale en 0 y arranca una fresca",
+          "ubicacion": "scripts/runner-cohorte.py"
+        }
+      ],
+      "capturas": [
+        {
+          "task": "T12",
+          "actor": "implementer",
+          "intento": 1,
+          "adjudicacion": "capturado"
+        },
+        {
+          "task": "T12",
+          "actor": "reviewer",
+          "intento": 1,
+          "adjudicacion": "capturado"
+        },
+        {
+          "task": "T15",
+          "actor": "conductor-inline",
+          "intento": 1,
+          "adjudicacion": "sin_reporte_delegado"
+        }
+      ]
+    },
+    "fuentes": {
+      "anomalias_del_runner": [
+        {
+          "candidate_id": "cand-run-07-a"
+        },
+        {
+          "candidate_id": "cand-run-07-b"
+        }
+      ],
+      "fallos_de_fixtures": [
+        {
+          "candidate_id": "cand-autotest-egreso-1"
+        }
+      ],
+      "adjudicaciones_de_cohorte": [
+        {
+          "candidate_id": "cand-acta-exclusion-1"
+        }
+      ],
+      "reportes_de_implementacion": [
+        {
+          "candidate_id": "cand-t12-resume-en-0"
+        }
+      ]
+    },
+    "despachos": [
+      {
+        "task": "T12",
+        "actor": "implementer",
+        "intento": 1
+      },
+      {
+        "task": "T12",
+        "actor": "reviewer",
+        "intento": 1
+      },
+      {
+        "task": "T15",
+        "actor": "conductor-inline",
+        "intento": 1
+      }
+    ],
+    "documento": "# Inventario de defectos\n\n## Los defectos de este flujo\n\nEste flujo descubrió defectos propios y los inventaría acá, con su ubicación resuelta contra el\nárbol, su naturaleza y su fase de corrección.\n\n- `cand-run-07-b` — el journal no cerraba el intento bloqueado · `scripts/runner-cohorte.py`\n- `cand-t12-resume-en-0` — `resume` con sesión inexistente sale en 0 · `scripts/runner-cohorte.py`\n\n## Otra sección\n\ncontenido que no es del inventario.\n"
+  },
+  "casos": {
+    "l-fuente-no-declarada": {
+      "ledger": {
+        "fuentes": [
+          {
+            "fuente": "anomalias_del_runner",
+            "ruta": "scripts/journal-anomalias-fase-0/",
+            "schema": "scripts/journal-anomalias-fase-0/journal-anomalias.schema.json",
+            "regla_de_identidad": "candidate_id por anomalía, no por corrida",
+            "momento_de_emision": "al abrir la operación, antes de que exista el bundle"
+          },
+          {
+            "fuente": "fallos_de_fixtures",
+            "ruta": "scripts/recibos-autotest-fase-0/",
+            "schema": "scripts/recibos-autotest-fase-0/recibo-autotest.schema.json",
+            "regla_de_identidad": "por modo y caso",
+            "momento_de_emision": "al cerrar cada autotest"
+          },
+          {
+            "fuente": "adjudicaciones_de_cohorte",
+            "ruta": "scripts/preregistro-fase-0.json",
+            "schema": "scripts/preregistro.schema.json",
+            "regla_de_identidad": "por identidad de la adjudicación en el acta",
+            "momento_de_emision": "al congelar el pre-registro"
+          }
+        ],
+        "candidatos": [
+          {
+            "candidate_id": "cand-run-07-a",
+            "adjudicacion": "descartado",
+            "razon": "el reintento lo produjo un corte de red del host, ajeno al ecosistema"
+          },
+          {
+            "candidate_id": "cand-run-07-b",
+            "adjudicacion": "incorporado",
+            "razon": "el journal no cerraba el intento bloqueado",
+            "ubicacion": "scripts/runner-cohorte.py"
+          },
+          {
+            "candidate_id": "cand-autotest-egreso-1",
+            "adjudicacion": "descartado",
+            "razon": "el fixture declaraba un canario ya cesado; se corrigió el corpus"
+          },
+          {
+            "candidate_id": "cand-acta-exclusion-1",
+            "adjudicacion": "descartado",
+            "razon": "la exclusión estaba dentro del conjunto cerrado"
+          },
+          {
+            "candidate_id": "cand-t12-resume-en-0",
+            "adjudicacion": "incorporado",
+            "razon": "`codex exec resume` con sesión inexistente sale en 0 y arranca una fresca",
+            "ubicacion": "scripts/runner-cohorte.py"
+          }
+        ],
+        "capturas": [
+          {
+            "task": "T12",
+            "actor": "implementer",
+            "intento": 1,
+            "adjudicacion": "capturado"
+          },
+          {
+            "task": "T12",
+            "actor": "reviewer",
+            "intento": 1,
+            "adjudicacion": "capturado"
+          },
+          {
+            "task": "T15",
+            "actor": "conductor-inline",
+            "intento": 1,
+            "adjudicacion": "sin_reporte_delegado"
+          }
+        ]
+      }
+    },
+    "l-candidato-fuera-del-ledger": {
+      "ledger": {
+        "fuentes": [
+          {
+            "fuente": "anomalias_del_runner",
+            "ruta": "scripts/journal-anomalias-fase-0/",
+            "schema": "scripts/journal-anomalias-fase-0/journal-anomalias.schema.json",
+            "regla_de_identidad": "candidate_id por anomalía, no por corrida",
+            "momento_de_emision": "al abrir la operación, antes de que exista el bundle"
+          },
+          {
+            "fuente": "fallos_de_fixtures",
+            "ruta": "scripts/recibos-autotest-fase-0/",
+            "schema": "scripts/recibos-autotest-fase-0/recibo-autotest.schema.json",
+            "regla_de_identidad": "por modo y caso",
+            "momento_de_emision": "al cerrar cada autotest"
+          },
+          {
+            "fuente": "adjudicaciones_de_cohorte",
+            "ruta": "scripts/preregistro-fase-0.json",
+            "schema": "scripts/preregistro.schema.json",
+            "regla_de_identidad": "por identidad de la adjudicación en el acta",
+            "momento_de_emision": "al congelar el pre-registro"
+          },
+          {
+            "fuente": "reportes_de_implementacion",
+            "ruta": ".plans/instrumento-y-baseline/work/",
+            "schema": "reporte estructurado del implementador",
+            "regla_de_identidad": "task · actor · intento",
+            "momento_de_emision": "al cerrar cada despacho"
+          }
+        ],
+        "candidatos": [
+          {
+            "candidate_id": "cand-run-07-a",
+            "adjudicacion": "descartado",
+            "razon": "el reintento lo produjo un corte de red del host, ajeno al ecosistema"
+          },
+          {
+            "candidate_id": "cand-autotest-egreso-1",
+            "adjudicacion": "descartado",
+            "razon": "el fixture declaraba un canario ya cesado; se corrigió el corpus"
+          },
+          {
+            "candidate_id": "cand-acta-exclusion-1",
+            "adjudicacion": "descartado",
+            "razon": "la exclusión estaba dentro del conjunto cerrado"
+          },
+          {
+            "candidate_id": "cand-t12-resume-en-0",
+            "adjudicacion": "incorporado",
+            "razon": "`codex exec resume` con sesión inexistente sale en 0 y arranca una fresca",
+            "ubicacion": "scripts/runner-cohorte.py"
+          }
+        ],
+        "capturas": [
+          {
+            "task": "T12",
+            "actor": "implementer",
+            "intento": 1,
+            "adjudicacion": "capturado"
+          },
+          {
+            "task": "T12",
+            "actor": "reviewer",
+            "intento": 1,
+            "adjudicacion": "capturado"
+          },
+          {
+            "task": "T15",
+            "actor": "conductor-inline",
+            "intento": 1,
+            "adjudicacion": "sin_reporte_delegado"
+          }
+        ]
+      },
+      "documento": "# Inventario de defectos\n\n## Los defectos de este flujo\n\nEste flujo descubrió defectos propios y los inventaría acá, con su ubicación resuelta contra el\nárbol, su naturaleza y su fase de corrección.\n\n- `cand-t12-resume-en-0` — `resume` con sesión inexistente sale en 0 · `scripts/runner-cohorte.py`\n\n## Otra sección\n\ncontenido que no es del inventario.\n"
+    },
+    "l-entrada-del-ledger-sin-fuente": {
+      "ledger": {
+        "fuentes": [
+          {
+            "fuente": "anomalias_del_runner",
+            "ruta": "scripts/journal-anomalias-fase-0/",
+            "schema": "scripts/journal-anomalias-fase-0/journal-anomalias.schema.json",
+            "regla_de_identidad": "candidate_id por anomalía, no por corrida",
+            "momento_de_emision": "al abrir la operación, antes de que exista el bundle"
+          },
+          {
+            "fuente": "fallos_de_fixtures",
+            "ruta": "scripts/recibos-autotest-fase-0/",
+            "schema": "scripts/recibos-autotest-fase-0/recibo-autotest.schema.json",
+            "regla_de_identidad": "por modo y caso",
+            "momento_de_emision": "al cerrar cada autotest"
+          },
+          {
+            "fuente": "adjudicaciones_de_cohorte",
+            "ruta": "scripts/preregistro-fase-0.json",
+            "schema": "scripts/preregistro.schema.json",
+            "regla_de_identidad": "por identidad de la adjudicación en el acta",
+            "momento_de_emision": "al congelar el pre-registro"
+          },
+          {
+            "fuente": "reportes_de_implementacion",
+            "ruta": ".plans/instrumento-y-baseline/work/",
+            "schema": "reporte estructurado del implementador",
+            "regla_de_identidad": "task · actor · intento",
+            "momento_de_emision": "al cerrar cada despacho"
+          }
+        ],
+        "candidatos": [
+          {
+            "candidate_id": "cand-run-07-a",
+            "adjudicacion": "descartado",
+            "razon": "el reintento lo produjo un corte de red del host, ajeno al ecosistema"
+          },
+          {
+            "candidate_id": "cand-run-07-b",
+            "adjudicacion": "incorporado",
+            "razon": "el journal no cerraba el intento bloqueado",
+            "ubicacion": "scripts/runner-cohorte.py"
+          },
+          {
+            "candidate_id": "cand-autotest-egreso-1",
+            "adjudicacion": "descartado",
+            "razon": "el fixture declaraba un canario ya cesado; se corrigió el corpus"
+          },
+          {
+            "candidate_id": "cand-acta-exclusion-1",
+            "adjudicacion": "descartado",
+            "razon": "la exclusión estaba dentro del conjunto cerrado"
+          },
+          {
+            "candidate_id": "cand-t12-resume-en-0",
+            "adjudicacion": "incorporado",
+            "razon": "`codex exec resume` con sesión inexistente sale en 0 y arranca una fresca",
+            "ubicacion": "scripts/runner-cohorte.py"
+          },
+          {
+            "candidate_id": "cand-inventado",
+            "adjudicacion": "descartado",
+            "razon": "x"
+          }
+        ],
+        "capturas": [
+          {
+            "task": "T12",
+            "actor": "implementer",
+            "intento": 1,
+            "adjudicacion": "capturado"
+          },
+          {
+            "task": "T12",
+            "actor": "reviewer",
+            "intento": 1,
+            "adjudicacion": "capturado"
+          },
+          {
+            "task": "T15",
+            "actor": "conductor-inline",
+            "intento": 1,
+            "adjudicacion": "sin_reporte_delegado"
+          }
+        ]
+      }
+    },
+    "l-candidato-sin-adjudicar": {
+      "ledger": {
+        "fuentes": [
+          {
+            "fuente": "anomalias_del_runner",
+            "ruta": "scripts/journal-anomalias-fase-0/",
+            "schema": "scripts/journal-anomalias-fase-0/journal-anomalias.schema.json",
+            "regla_de_identidad": "candidate_id por anomalía, no por corrida",
+            "momento_de_emision": "al abrir la operación, antes de que exista el bundle"
+          },
+          {
+            "fuente": "fallos_de_fixtures",
+            "ruta": "scripts/recibos-autotest-fase-0/",
+            "schema": "scripts/recibos-autotest-fase-0/recibo-autotest.schema.json",
+            "regla_de_identidad": "por modo y caso",
+            "momento_de_emision": "al cerrar cada autotest"
+          },
+          {
+            "fuente": "adjudicaciones_de_cohorte",
+            "ruta": "scripts/preregistro-fase-0.json",
+            "schema": "scripts/preregistro.schema.json",
+            "regla_de_identidad": "por identidad de la adjudicación en el acta",
+            "momento_de_emision": "al congelar el pre-registro"
+          },
+          {
+            "fuente": "reportes_de_implementacion",
+            "ruta": ".plans/instrumento-y-baseline/work/",
+            "schema": "reporte estructurado del implementador",
+            "regla_de_identidad": "task · actor · intento",
+            "momento_de_emision": "al cerrar cada despacho"
+          }
+        ],
+        "candidatos": [
+          {
+            "candidate_id": "cand-run-07-a",
+            "adjudicacion": null,
+            "razon": null
+          },
+          {
+            "candidate_id": "cand-run-07-b",
+            "adjudicacion": "incorporado",
+            "razon": "el journal no cerraba el intento bloqueado",
+            "ubicacion": "scripts/runner-cohorte.py"
+          },
+          {
+            "candidate_id": "cand-autotest-egreso-1",
+            "adjudicacion": "descartado",
+            "razon": "el fixture declaraba un canario ya cesado; se corrigió el corpus"
+          },
+          {
+            "candidate_id": "cand-acta-exclusion-1",
+            "adjudicacion": "descartado",
+            "razon": "la exclusión estaba dentro del conjunto cerrado"
+          },
+          {
+            "candidate_id": "cand-t12-resume-en-0",
+            "adjudicacion": "incorporado",
+            "razon": "`codex exec resume` con sesión inexistente sale en 0 y arranca una fresca",
+            "ubicacion": "scripts/runner-cohorte.py"
+          }
+        ],
+        "capturas": [
+          {
+            "task": "T12",
+            "actor": "implementer",
+            "intento": 1,
+            "adjudicacion": "capturado"
+          },
+          {
+            "task": "T12",
+            "actor": "reviewer",
+            "intento": 1,
+            "adjudicacion": "capturado"
+          },
+          {
+            "task": "T15",
+            "actor": "conductor-inline",
+            "intento": 1,
+            "adjudicacion": "sin_reporte_delegado"
+          }
+        ]
+      }
+    },
+    "l-despacho-sin-reporte": {
+      "ledger": {
+        "fuentes": [
+          {
+            "fuente": "anomalias_del_runner",
+            "ruta": "scripts/journal-anomalias-fase-0/",
+            "schema": "scripts/journal-anomalias-fase-0/journal-anomalias.schema.json",
+            "regla_de_identidad": "candidate_id por anomalía, no por corrida",
+            "momento_de_emision": "al abrir la operación, antes de que exista el bundle"
+          },
+          {
+            "fuente": "fallos_de_fixtures",
+            "ruta": "scripts/recibos-autotest-fase-0/",
+            "schema": "scripts/recibos-autotest-fase-0/recibo-autotest.schema.json",
+            "regla_de_identidad": "por modo y caso",
+            "momento_de_emision": "al cerrar cada autotest"
+          },
+          {
+            "fuente": "adjudicaciones_de_cohorte",
+            "ruta": "scripts/preregistro-fase-0.json",
+            "schema": "scripts/preregistro.schema.json",
+            "regla_de_identidad": "por identidad de la adjudicación en el acta",
+            "momento_de_emision": "al congelar el pre-registro"
+          },
+          {
+            "fuente": "reportes_de_implementacion",
+            "ruta": ".plans/instrumento-y-baseline/work/",
+            "schema": "reporte estructurado del implementador",
+            "regla_de_identidad": "task · actor · intento",
+            "momento_de_emision": "al cerrar cada despacho"
+          }
+        ],
+        "candidatos": [
+          {
+            "candidate_id": "cand-run-07-a",
+            "adjudicacion": "descartado",
+            "razon": "el reintento lo produjo un corte de red del host, ajeno al ecosistema"
+          },
+          {
+            "candidate_id": "cand-run-07-b",
+            "adjudicacion": "incorporado",
+            "razon": "el journal no cerraba el intento bloqueado",
+            "ubicacion": "scripts/runner-cohorte.py"
+          },
+          {
+            "candidate_id": "cand-autotest-egreso-1",
+            "adjudicacion": "descartado",
+            "razon": "el fixture declaraba un canario ya cesado; se corrigió el corpus"
+          },
+          {
+            "candidate_id": "cand-acta-exclusion-1",
+            "adjudicacion": "descartado",
+            "razon": "la exclusión estaba dentro del conjunto cerrado"
+          },
+          {
+            "candidate_id": "cand-t12-resume-en-0",
+            "adjudicacion": "incorporado",
+            "razon": "`codex exec resume` con sesión inexistente sale en 0 y arranca una fresca",
+            "ubicacion": "scripts/runner-cohorte.py"
+          }
+        ],
+        "capturas": [
+          {
+            "task": "T12",
+            "actor": "implementer",
+            "intento": 1,
+            "adjudicacion": "capturado"
+          },
+          {
+            "task": "T12",
+            "actor": "reviewer",
+            "intento": 1,
+            "adjudicacion": "capturado"
+          }
+        ]
+      }
+    },
+    "l-incorporado-ausente-del-documento": {
+      "documento": "# Inventario de defectos\n\n## Los defectos de este flujo\n\nEste flujo descubrió defectos propios y los inventaría acá, con su ubicación resuelta contra el\nárbol, su naturaleza y su fase de corrección.\n\n- `cand-run-07-b` — el journal no cerraba el intento bloqueado · `scripts/runner-cohorte.py`\n\n## Otra sección\n\ncontenido que no es del inventario.\n"
+    },
+    "l-cero-candidatos-sin-declarar": {
+      "ledger": {
+        "fuentes": [
+          {
+            "fuente": "anomalias_del_runner",
+            "ruta": "scripts/journal-anomalias-fase-0/",
+            "schema": "scripts/journal-anomalias-fase-0/journal-anomalias.schema.json",
+            "regla_de_identidad": "candidate_id por anomalía, no por corrida",
+            "momento_de_emision": "al abrir la operación, antes de que exista el bundle"
+          },
+          {
+            "fuente": "fallos_de_fixtures",
+            "ruta": "scripts/recibos-autotest-fase-0/",
+            "schema": "scripts/recibos-autotest-fase-0/recibo-autotest.schema.json",
+            "regla_de_identidad": "por modo y caso",
+            "momento_de_emision": "al cerrar cada autotest"
+          },
+          {
+            "fuente": "adjudicaciones_de_cohorte",
+            "ruta": "scripts/preregistro-fase-0.json",
+            "schema": "scripts/preregistro.schema.json",
+            "regla_de_identidad": "por identidad de la adjudicación en el acta",
+            "momento_de_emision": "al congelar el pre-registro"
+          },
+          {
+            "fuente": "reportes_de_implementacion",
+            "ruta": ".plans/instrumento-y-baseline/work/",
+            "schema": "reporte estructurado del implementador",
+            "regla_de_identidad": "task · actor · intento",
+            "momento_de_emision": "al cerrar cada despacho"
+          }
+        ],
+        "candidatos": [],
+        "capturas": []
+      },
+      "fuentes": {},
+      "despachos": [],
+      "documento": ""
+    },
+    "s-seccion-ausente": {
+      "documento": "# Otro documento\n\nsin la sección.\n"
+    },
+    "s-seccion-sin-ninguna-rama": {
+      "documento": "# Inventario\n\n## Los defectos de este flujo\n\nnada dice acá.\n",
+      "incorporados": []
+    },
+    "s-incorporado-sin-ubicacion": {
+      "ledger": {
+        "fuentes": [
+          {
+            "fuente": "anomalias_del_runner",
+            "ruta": "scripts/journal-anomalias-fase-0/",
+            "schema": "scripts/journal-anomalias-fase-0/journal-anomalias.schema.json",
+            "regla_de_identidad": "candidate_id por anomalía, no por corrida",
+            "momento_de_emision": "al abrir la operación, antes de que exista el bundle"
+          },
+          {
+            "fuente": "fallos_de_fixtures",
+            "ruta": "scripts/recibos-autotest-fase-0/",
+            "schema": "scripts/recibos-autotest-fase-0/recibo-autotest.schema.json",
+            "regla_de_identidad": "por modo y caso",
+            "momento_de_emision": "al cerrar cada autotest"
+          },
+          {
+            "fuente": "adjudicaciones_de_cohorte",
+            "ruta": "scripts/preregistro-fase-0.json",
+            "schema": "scripts/preregistro.schema.json",
+            "regla_de_identidad": "por identidad de la adjudicación en el acta",
+            "momento_de_emision": "al congelar el pre-registro"
+          },
+          {
+            "fuente": "reportes_de_implementacion",
+            "ruta": ".plans/instrumento-y-baseline/work/",
+            "schema": "reporte estructurado del implementador",
+            "regla_de_identidad": "task · actor · intento",
+            "momento_de_emision": "al cerrar cada despacho"
+          }
+        ],
+        "candidatos": [
+          {
+            "candidate_id": "cand-run-07-a",
+            "adjudicacion": "descartado",
+            "razon": "el reintento lo produjo un corte de red del host, ajeno al ecosistema"
+          },
+          {
+            "candidate_id": "cand-run-07-b",
+            "adjudicacion": "incorporado",
+            "razon": "el journal no cerraba el intento bloqueado"
+          },
+          {
+            "candidate_id": "cand-autotest-egreso-1",
+            "adjudicacion": "descartado",
+            "razon": "el fixture declaraba un canario ya cesado; se corrigió el corpus"
+          },
+          {
+            "candidate_id": "cand-acta-exclusion-1",
+            "adjudicacion": "descartado",
+            "razon": "la exclusión estaba dentro del conjunto cerrado"
+          },
+          {
+            "candidate_id": "cand-t12-resume-en-0",
+            "adjudicacion": "incorporado",
+            "razon": "`codex exec resume` con sesión inexistente sale en 0 y arranca una fresca",
+            "ubicacion": "scripts/runner-cohorte.py"
+          }
+        ],
+        "capturas": [
+          {
+            "task": "T12",
+            "actor": "implementer",
+            "intento": 1,
+            "adjudicacion": "capturado"
+          },
+          {
+            "task": "T12",
+            "actor": "reviewer",
+            "intento": 1,
+            "adjudicacion": "capturado"
+          },
+          {
+            "task": "T15",
+            "actor": "conductor-inline",
+            "intento": 1,
+            "adjudicacion": "sin_reporte_delegado"
+          }
+        ]
+      }
+    },
+    "s-ubicacion-no-resuelve": {
+      "ledger": {
+        "fuentes": [
+          {
+            "fuente": "anomalias_del_runner",
+            "ruta": "scripts/journal-anomalias-fase-0/",
+            "schema": "scripts/journal-anomalias-fase-0/journal-anomalias.schema.json",
+            "regla_de_identidad": "candidate_id por anomalía, no por corrida",
+            "momento_de_emision": "al abrir la operación, antes de que exista el bundle"
+          },
+          {
+            "fuente": "fallos_de_fixtures",
+            "ruta": "scripts/recibos-autotest-fase-0/",
+            "schema": "scripts/recibos-autotest-fase-0/recibo-autotest.schema.json",
+            "regla_de_identidad": "por modo y caso",
+            "momento_de_emision": "al cerrar cada autotest"
+          },
+          {
+            "fuente": "adjudicaciones_de_cohorte",
+            "ruta": "scripts/preregistro-fase-0.json",
+            "schema": "scripts/preregistro.schema.json",
+            "regla_de_identidad": "por identidad de la adjudicación en el acta",
+            "momento_de_emision": "al congelar el pre-registro"
+          },
+          {
+            "fuente": "reportes_de_implementacion",
+            "ruta": ".plans/instrumento-y-baseline/work/",
+            "schema": "reporte estructurado del implementador",
+            "regla_de_identidad": "task · actor · intento",
+            "momento_de_emision": "al cerrar cada despacho"
+          }
+        ],
+        "candidatos": [
+          {
+            "candidate_id": "cand-run-07-a",
+            "adjudicacion": "descartado",
+            "razon": "el reintento lo produjo un corte de red del host, ajeno al ecosistema"
+          },
+          {
+            "candidate_id": "cand-run-07-b",
+            "adjudicacion": "incorporado",
+            "razon": "el journal no cerraba el intento bloqueado",
+            "ubicacion": "scripts/archivo-que-no-existe.py"
+          },
+          {
+            "candidate_id": "cand-autotest-egreso-1",
+            "adjudicacion": "descartado",
+            "razon": "el fixture declaraba un canario ya cesado; se corrigió el corpus"
+          },
+          {
+            "candidate_id": "cand-acta-exclusion-1",
+            "adjudicacion": "descartado",
+            "razon": "la exclusión estaba dentro del conjunto cerrado"
+          },
+          {
+            "candidate_id": "cand-t12-resume-en-0",
+            "adjudicacion": "incorporado",
+            "razon": "`codex exec resume` con sesión inexistente sale en 0 y arranca una fresca",
+            "ubicacion": "scripts/runner-cohorte.py"
+          }
+        ],
+        "capturas": [
+          {
+            "task": "T12",
+            "actor": "implementer",
+            "intento": 1,
+            "adjudicacion": "capturado"
+          },
+          {
+            "task": "T12",
+            "actor": "reviewer",
+            "intento": 1,
+            "adjudicacion": "capturado"
+          },
+          {
+            "task": "T15",
+            "actor": "conductor-inline",
+            "intento": 1,
+            "adjudicacion": "sin_reporte_delegado"
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "que_declara": "Las diecisiete altas que este acto tiene que registrar, transcritas del enunciado de T25 —el criterio congelado— y NO derivadas del registro, que es justo lo que se valida. Un conjunto esperado derivado del validado sería circular: no podría decir que falta algo que nadie escribió.",
+  "altas": [
+    {
+      "path": "scripts/instrumento-baseline.py",
+      "owner": "instrumento-de-medicion"
+    },
+    {
+      "path": "scripts/runner-cohorte.py",
+      "owner": "runner-de-cohorte"
+    },
+    {
+      "path": "scripts/observacion.schema.json",
+      "owner": "contratos-de-la-fase-0"
+    },
+    {
+      "path": "scripts/preregistro.schema.json",
+      "owner": "contratos-de-la-fase-0"
+    },
+    {
+      "path": "scripts/bundle-corrida.schema.json",
+      "owner": "contratos-de-la-fase-0"
+    },
+    {
+      "path": "scripts/recetas-cohorte.json",
+      "owner": "recetas-de-la-cohorte"
+    },
+    {
+      "path": "scripts/superficies-de-egreso.json",
+      "owner": "regla-de-egreso"
+    },
+    {
+      "path": "scripts/ledger-candidatos-fase-0.json",
+      "owner": "ledger-de-candidatos"
+    },
+    {
+      "path": "scripts/metricas-fase-0.json",
+      "owner": "vocabulario-de-metricas"
+    },
+    {
+      "path": "scripts/preregistro-fase-0.json",
+      "owner": "preregistro-congelado"
+    },
+    {
+      "path": "scripts/baseline-fase-0.md",
+      "owner": "baseline-publicado"
+    },
+    {
+      "path": "scripts/fixtures-baseline/",
+      "owner": "corpus-del-instrumento"
+    },
+    {
+      "path": "scripts/corridas-fase-0/",
+      "owner": "evidencia-de-corridas"
+    },
+    {
+      "path": "scripts/observaciones-fase-0/",
+      "owner": "observaciones-derivadas"
+    },
+    {
+      "path": "scripts/recibos-autotest-fase-0/",
+      "owner": "recibos-de-autotest"
+    },
+    {
+      "path": "scripts/recibos-frontera-fase-0/",
+      "owner": "recibos-de-frontera"
+    },
+    {
+      "path": "scripts/journal-anomalias-fase-0/",
+      "owner": "journal-de-anomalias"
+    }
+  ]
+}
