@@ -1,0 +1,96 @@
+{
+  "version_schema": "1.0.0",
+  "puntos": [
+    {
+      "id": "skill-alfa-explorador-inicial",
+      "etiqueta": "Explorador inicial, previo al primer gate",
+      "skill": {"valor": "skill-alfa"},
+      "senales_de_deteccion": {"valor": ["explorador inicial"]},
+      "ancla_de_invocacion": {"valor": "skills/skill-alfa/SKILL.md#explorador-inicial"}
+    },
+    {
+      "id": "skill-alfa-contraste-por-ronda",
+      "etiqueta": "Contraste por ronda del loop de refinamiento",
+      "skill": {"valor": "skill-alfa"},
+      "senales_de_deteccion": {"valor": ["contraste por ronda"]},
+      "ancla_de_invocacion": {"valor": "skills/skill-alfa/SKILL.md#contraste-por-ronda"}
+    },
+    {
+      "id": "skill-alfa-auditor-de-cierre",
+      "etiqueta": "Auditor de cierre del gate de revisión manual",
+      "skill": {"valor": "skill-alfa"},
+      "senales_de_deteccion": {"valor": ["auditor de cierre"]},
+      "ancla_de_invocacion": {"valor": "skills/skill-alfa/SKILL.md#auditor-de-cierre"}
+    },
+    {
+      "id": "skill-alfa-subagentes-de-muestreo",
+      "etiqueta": "Subagentes de muestreo, condicionados al entorno",
+      "skill": {"valor": "skill-alfa"},
+      "senales_de_deteccion": {"valor": ["subagentes de muestreo", "cuando el entorno los soporta"]},
+      "ancla_de_invocacion": {"valor": "skills/skill-alfa/SKILL.md#subagentes-de-muestreo"}
+    },
+    {
+      "id": "skill-beta-revisor-por-ronda",
+      "etiqueta": "Revisor por ronda del loop de revisión",
+      "skill": {"valor": "skill-beta"},
+      "senales_de_deteccion": {"valor": ["revisor por ronda"]},
+      "ancla_de_invocacion": {"valor": "skills/skill-beta/reference.md#revisor-por-ronda"}
+    },
+    {
+      "id": "skill-beta-refutador-por-hallazgo",
+      "etiqueta": "Refutador por hallazgo en disputa",
+      "skill": {"valor": "skill-beta"},
+      "senales_de_deteccion": {"valor": ["refutador por hallazgo"]},
+      "ancla_de_invocacion": {"valor": "skills/skill-beta/reference.md#refutador-por-hallazgo"}
+    },
+    {
+      "id": "skill-beta-sintetizador-final",
+      "etiqueta": "Sintetizador final de los veredictos",
+      "skill": {"valor": "skill-beta"},
+      "senales_de_deteccion": {"valor": ["sintetizador final"]},
+      "ancla_de_invocacion": {"valor": "skills/skill-beta/reference.md#sintetizador-final"}
+    },
+    {
+      "id": "skill-gamma-implementador-inicial",
+      "etiqueta": "Implementador inicial del work order congelado",
+      "skill": {"valor": "skill-gamma"},
+      "senales_de_deteccion": {"valor": ["implementador inicial"]},
+      "ancla_de_invocacion": {"valor": "skills/skill-gamma/reference.md#implementador-inicial"}
+    },
+    {
+      "id": "skill-gamma-ronda-de-fix-loop",
+      "etiqueta": "Ronda del fix loop que reanuda la sesión",
+      "skill": {"valor": "skill-gamma"},
+      "senales_de_deteccion": {"valor": ["ronda del fix loop"]},
+      "ancla_de_invocacion": {"valor": "skills/skill-gamma/reference.md#ronda-del-fix-loop"}
+    },
+    {
+      "id": "skill-gamma-verificador-de-diff",
+      "etiqueta": "Verificador del diff completo",
+      "skill": {"valor": "skill-gamma"},
+      "senales_de_deteccion": {"valor": ["verificador de diff"]},
+      "ancla_de_invocacion": {"valor": "skills/skill-gamma/SKILL.md#verificador-de-diff"}
+    },
+    {
+      "id": "skill-delta-fan-out-por-repo",
+      "etiqueta": "Fan-out por repo elegible",
+      "skill": {"valor": "skill-delta"},
+      "senales_de_deteccion": {"valor": ["fan-out por repo"]},
+      "ancla_de_invocacion": {"valor": "skills/skill-delta/SKILL.md#fan-out-por-repo"}
+    },
+    {
+      "id": "skill-delta-cierre-por-repo",
+      "etiqueta": "Cierre por repo antes del gate",
+      "skill": {"valor": "skill-delta"},
+      "senales_de_deteccion": {"valor": ["cierre por repo"]},
+      "ancla_de_invocacion": {"valor": "skills/skill-delta/SKILL.md#cierre-por-repo"}
+    },
+    {
+      "id": "skill-epsilon-implement-delegado",
+      "etiqueta": "Implement delegado del último paso",
+      "skill": {"valor": "skill-epsilon"},
+      "senales_de_deteccion": {"valor": ["implement delegado"]},
+      "ancla_de_invocacion": {"valor": "skills/skill-epsilon/SKILL.md#implement-delegado"}
+    }
+  ]
+}

@@ -38,6 +38,17 @@ Al crear o editar skills, seguí las buenas prácticas de agentskills.io (refere
 - Si la skill toca el cuerpo de un bloque `# @bloque:` que tiene variante `-ps`, correr `python3 scripts/verificar-paridad-powershell.py --reporte`: ejecuta las dos variantes sobre entradas equivalentes y compara clase, eventos, stdout y artefactos. Un cuerpo cambiado **invalida su cobertura** hasta auditar la matriz de casos y renovar el registro con `--registrar-auditoria --par <nombre>`; el alcance cubierto y el declarado sin matriz viven en `scripts/paridad-casos/alcance.json`.
 
   > **El código de salida de `--reporte` NO es la señal de salud: hoy devuelve 4 y ese es el estado sano.** Un bloque que corta con `exit 99` sobre una entrada inexistente es un error de invocación y no un incumplimiento, pero AC-3 clasifica como `fallo` cualquier código distinto de 0 y 1, y `fallo` domina la precedencia global. La señal es el cuerpo del reporte: **cero `divergencia`, cero `incumplimiento_comun`, cero `no_comprobable`, y `fallo` solo en los pares que declaran un caso de ese tipo** — hoy son cinco (`gate-fase-3`, `integracion-ownership`, `orchestration-contract`, `orchestration-model`, `orchestration-state`), cada uno con sus casos de entrada inexistente y `clase_esperada: fallo`. Un `fallo` en un caso que no lo declara sí es rojo. Las que se leen por código de salida son las **nueve** guardas propias del arnés (`--auditar-catalogo`, `--auditar-matrices` y los **siete** `--autotest-*`): 0 en verde, 4 en rojo. Las banderas `--estricto-mono-causa`, `--exigir-particiones`, `--afirmar-particiones` y `--testigos-centinela` **no** son guardas independientes: corren la suite y devuelven ese mismo 4, así que verificar con ellas exige diffear su reporte contra el de `--reporte` puro.
+- Si la skill toca los artefactos de la matriz de despachos o del contrato de fase 0
+  (`scripts/matriz-despachos.json`, `scripts/matriz-despachos.schema.json`,
+  `docs/superpowers/specs/2026-08-09-subagentes-perfiles-fase-0.md`, `scripts/artefactos-fase-0.json`,
+  `scripts/guardas-fase-0.json`, `scripts/nombres-reservados-perfil.json`), correr
+  `python3 scripts/verificar-matriz-despachos.py --integracion`. Es un script propio del repo —no un
+  modo agregado a ninguno de los cuatro anteriores— y el código de salida sano de esta invocación es
+  0. El modo comprueba, contra el árbol real, que la bandera documentada exista y sea invocable, que
+  el código de salida declarado coincida con el que devuelve, y que todo baseline acoplado al
+  contenido de un archivo que la fase haya alterado quede renovado: hoy el único es
+  `scripts/baseline-sobre-en-vuelo.md`, verificado corriendo
+  `python3 scripts/verificar-sobre-en-vuelo.py --validar-baseline`.
 
 > Nota: varios SKILL.md de este repo (p. ej. `sdd-flow`) exceden holgadamente el presupuesto de tokens sugerido. Es una tensión conocida por la complejidad del flujo; al editar, empujá contenido hacia `reference.md` antes que engordar el SKILL.md.
 

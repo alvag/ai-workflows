@@ -1,0 +1,5 @@
+intérprete: AUSENTE — no se encontró `pwsh` ni `pwsh-preview` en el PATH
+resultado global: paridad no comprobable
+
+Exclusiones declaradas (en cada corrida):
+  · no cubierto: todos — sin intérprete no se corrió un solo caso.

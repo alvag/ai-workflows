@@ -1,0 +1,344 @@
+{
+  "version_schema": "1.0.0",
+  "puntos": [
+    {
+      "id": "fixture-punto-fan-out-dual",
+      "etiqueta": "Fan-out dual: dos trabajos delegados, una por familia, con transportes distintos entre intentos",
+      "senales_de_deteccion": {
+        "valor": ["fan-out dual", "uno por familia"],
+        "procedencia": {
+          "sede": "skills/co-explore/SKILL.md",
+          "tipo_de_sede": "heading_markdown",
+          "selector": {"texto": "Corridas delegadas en vuelo", "nivel": 2},
+          "cardinalidad": {"tipo": "al_menos_una", "orden": "documento", "colapso": "lista"},
+          "extraccion": {"tipo": "literal"},
+          "normalizacion": "trim",
+          "conversion": "cadena"
+        }
+      },
+      "skill": {
+        "valor": "co-explore",
+        "procedencia": {
+          "sede": "skills/co-explore/SKILL.md",
+          "tipo_de_sede": "patron_de_linea",
+          "selector": {"patron": "^name: (.+)$"},
+          "cardinalidad": {"tipo": "exactamente_una"},
+          "extraccion": {"tipo": "captura_de_grupo", "patron": "^name: (.+)$", "grupo": 1},
+          "normalizacion": "trim",
+          "conversion": "enum:skill"
+        }
+      },
+      "ancla_de_invocacion": {
+        "valor": "skills/co-explore/reference.md#despacho-de-los-dos-workers",
+        "procedencia": {
+          "sede": "skills/co-explore/reference.md",
+          "tipo_de_sede": "heading_markdown",
+          "selector": {"texto": "Despacho de los dos workers", "nivel": 3},
+          "cardinalidad": {"tipo": "exactamente_una"},
+          "extraccion": {"tipo": "literal"},
+          "normalizacion": "ninguna",
+          "conversion": "referencia"
+        }
+      },
+      "rol": {
+        "valor": "explorer",
+        "procedencia": {
+          "sede": "skills/co-explore/SKILL.md",
+          "tipo_de_sede": "fila_de_tabla_markdown",
+          "selector": {"clave_primera_celda": "explore", "encabezado_de_columna": "rol"},
+          "cardinalidad": {"tipo": "exactamente_una"},
+          "extraccion": {"tipo": "literal"},
+          "normalizacion": "minusculas",
+          "conversion": "enum:rol"
+        }
+      },
+      "variante": {
+        "valor": "ninguna",
+        "procedencia": {
+          "sede": "skills/co-explore/SKILL.md",
+          "tipo_de_sede": "fila_de_tabla_markdown",
+          "selector": {"clave_primera_celda": "explore", "encabezado_de_columna": "variante"},
+          "cardinalidad": {"tipo": "exactamente_una"},
+          "extraccion": {"tipo": "literal"},
+          "normalizacion": "minusculas",
+          "conversion": "enum:variante"
+        }
+      },
+      "permisos_efectivos": {
+        "valor": "read_only",
+        "procedencia": {
+          "sede": "skills/co-explore/reference.md",
+          "tipo_de_sede": "heading_markdown",
+          "selector": {"texto": "Reglas duras sobre modelo y esfuerzo", "nivel": 3},
+          "cardinalidad": {"tipo": "exactamente_una"},
+          "extraccion": {"tipo": "literal"},
+          "normalizacion": "minusculas",
+          "conversion": "enum:permiso_efectivo"
+        }
+      },
+      "condicion_de_existencia": {
+        "tipo": "y",
+        "operandos": [
+          {
+            "tipo": "atomo",
+            "clave": "cross_model.co_explore",
+            "operador": "distinto",
+            "valor": "off",
+            "procedencia": {
+              "sede": "skills/co-explore/SKILL.md",
+              "tipo_de_sede": "clave_estructurada",
+              "selector": {"ruta": ["cross_model", "co_explore"], "formato": "yaml", "lenguaje_del_bloque": "yaml"},
+              "cardinalidad": {"tipo": "exactamente_una"},
+              "extraccion": {"tipo": "valor_de_clave", "clave": ["cross_model", "co_explore"]},
+              "normalizacion": "trim",
+              "conversion": "cadena"
+            }
+          },
+          {
+            "tipo": "atomo",
+            "clave": "modo",
+            "operador": "en",
+            "valor": ["explore", "counter-plan", "investigate"],
+            "procedencia": {
+              "sede": "skills/co-explore/SKILL.md",
+              "tipo_de_sede": "patron_de_linea",
+              "selector": {"patron": "^El fan-out dual cubre (.+)$"},
+              "cardinalidad": {"tipo": "al_menos_una", "orden": "documento", "colapso": "lista"},
+              "extraccion": {"tipo": "captura_de_grupo", "patron": "^El fan-out dual cubre (.+)$", "grupo": 1},
+              "normalizacion": "trim",
+              "conversion": "cadena"
+            }
+          }
+        ]
+      },
+      "presupuesto_de_espera_contractual": {
+        "valor": 1800,
+        "procedencia": {
+          "sede": "skills/co-explore/reference.md",
+          "tipo_de_sede": "fila_de_tabla_markdown",
+          "selector": {"clave_primera_celda": "explore", "encabezado_de_columna": "deadline"},
+          "cardinalidad": {"tipo": "exactamente_una"},
+          "extraccion": {"tipo": "literal"},
+          "normalizacion": "trim",
+          "conversion": "entero"
+        }
+      },
+      "contrato_de_salida": {
+        "valor": "skills/co-explore/reference.md#indice-compacto",
+        "procedencia": {
+          "sede": "skills/co-explore/reference.md",
+          "tipo_de_sede": "heading_markdown",
+          "selector": {"texto": "Índice compacto", "nivel": 3},
+          "cardinalidad": {"tipo": "exactamente_una"},
+          "extraccion": {"tipo": "literal"},
+          "normalizacion": "ninguna",
+          "conversion": "referencia"
+        }
+      },
+      "fallback": {
+        "valor": "sin la otra familia, el fan-out queda con un solo worker y se avisa la pérdida de diversidad",
+        "procedencia": {
+          "sede": "skills/co-explore/SKILL.md",
+          "tipo_de_sede": "patron_de_linea",
+          "selector": {"patron": "^Si falta el binario.*$"},
+          "cardinalidad": {"tipo": "exactamente_una"},
+          "extraccion": {"tipo": "literal"},
+          "normalizacion": "colapsar_espacios",
+          "conversion": "cadena"
+        }
+      },
+      "autoridad_final": {
+        "valor": "conductor",
+        "procedencia": {
+          "sede": "skills/co-explore/SKILL.md",
+          "tipo_de_sede": "patron_de_linea",
+          "selector": {"patron": "^El conductor NO explora.*$"},
+          "cardinalidad": {"tipo": "exactamente_una"},
+          "extraccion": {"tipo": "literal"},
+          "normalizacion": "minusculas",
+          "conversion": "enum:autoridad_final"
+        }
+      },
+      "dueno": {
+        "valor": "el conductor de co-explore",
+        "procedencia": {
+          "sede": "skills/co-explore/SKILL.md",
+          "tipo_de_sede": "heading_markdown",
+          "selector": {"texto": "El conductor arbitra", "nivel": 2},
+          "cardinalidad": {"tipo": "exactamente_una"},
+          "extraccion": {"tipo": "literal"},
+          "normalizacion": "trim",
+          "conversion": "cadena"
+        }
+      },
+      "modos": {
+        "valor": ["explore", "counter-plan", "investigate"],
+        "procedencia": {
+          "sede": "skills/co-explore/SKILL.md",
+          "tipo_de_sede": "fila_de_tabla_markdown",
+          "selector": {"clave_primera_celda": "fan-out dual", "encabezado_de_columna": "modos"},
+          "cardinalidad": {"tipo": "exactamente_n", "n": 3, "orden": "lexicografico", "colapso": "lista"},
+          "extraccion": {"tipo": "literal"},
+          "normalizacion": "trim",
+          "conversion": "cadena"
+        }
+      },
+      "requiere_confirmacion_del_usuario": {
+        "valor": false,
+        "procedencia": {
+          "sede": "skills/co-explore/SKILL.md",
+          "tipo_de_sede": "patron_de_linea",
+          "selector": {"patron": "^explore/counter-plan los invocan.*$"},
+          "cardinalidad": {"tipo": "exactamente_una"},
+          "extraccion": {"tipo": "literal"},
+          "normalizacion": "minusculas",
+          "conversion": "booleano"
+        }
+      },
+      "familias_cubiertas": ["misma_del_conductor", "opuesta_al_conductor"],
+      "transporte_agregado": "mixto",
+      "escritura_agregada": "read_only",
+      "trabajos_delegados": [
+        {
+          "nombre": "worker-familia-opuesta",
+          "familia": {
+            "valor": "opuesta_al_conductor",
+            "procedencia": {
+              "sede": "skills/co-explore/reference.md",
+              "tipo_de_sede": "fila_de_tabla_markdown",
+              "selector": {"clave_primera_celda": "worker b", "encabezado_de_columna": "familia"},
+              "cardinalidad": {"tipo": "exactamente_una"},
+              "extraccion": {"tipo": "literal"},
+              "normalizacion": "minusculas",
+              "conversion": "enum:familia"
+            }
+          },
+          "escritura": {
+            "valor": "read_only",
+            "procedencia": {
+              "sede": "skills/co-explore/reference.md",
+              "tipo_de_sede": "fila_de_tabla_markdown",
+              "selector": {"clave_primera_celda": "co-explore", "encabezado_de_columna": "sandbox"},
+              "cardinalidad": {"tipo": "exactamente_una"},
+              "extraccion": {"tipo": "literal"},
+              "normalizacion": "minusculas",
+              "conversion": "enum:escritura"
+            }
+          },
+          "intentos": [
+            {
+              "intento_id": "1",
+              "transporte": {
+                "valor": "cli-exec",
+                "procedencia": {
+                  "sede": "skills/cross-review/corridas-en-vuelo.md",
+                  "tipo_de_sede": "fila_de_tabla_markdown",
+                  "selector": {"clave_primera_celda": "cli-exec", "encabezado_de_columna": "transporte"},
+                  "cardinalidad": {"tipo": "exactamente_una"},
+                  "extraccion": {"tipo": "literal"},
+                  "normalizacion": "trim",
+                  "conversion": "enum:transporte"
+                }
+              },
+              "deadline_declarado": {
+                "valor": 1800,
+                "procedencia": {
+                  "sede": "skills/co-explore/reference.md",
+                  "tipo_de_sede": "fila_de_tabla_markdown",
+                  "selector": {"clave_primera_celda": "explore", "encabezado_de_columna": "deadline"},
+                  "cardinalidad": {"tipo": "exactamente_una"},
+                  "extraccion": {"tipo": "literal"},
+                  "normalizacion": "trim",
+                  "conversion": "entero"
+                }
+              }
+            },
+            {
+              "intento_id": "2",
+              "transporte": {
+                "valor": "cli-resume",
+                "procedencia": {
+                  "sede": "skills/cross-review/corridas-en-vuelo.md",
+                  "tipo_de_sede": "fila_de_tabla_markdown",
+                  "selector": {"clave_primera_celda": "cli-resume", "encabezado_de_columna": "transporte"},
+                  "cardinalidad": {"tipo": "exactamente_una"},
+                  "extraccion": {"tipo": "literal"},
+                  "normalizacion": "trim",
+                  "conversion": "enum:transporte"
+                }
+              },
+              "deadline_declarado": {
+                "valor": 1800,
+                "procedencia": {
+                  "sede": "skills/co-explore/reference.md",
+                  "tipo_de_sede": "fila_de_tabla_markdown",
+                  "selector": {"clave_primera_celda": "explore", "encabezado_de_columna": "deadline"},
+                  "cardinalidad": {"tipo": "exactamente_una"},
+                  "extraccion": {"tipo": "literal"},
+                  "normalizacion": "trim",
+                  "conversion": "entero"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "nombre": "worker-familia-propia",
+          "familia": {
+            "valor": "misma_del_conductor",
+            "procedencia": {
+              "sede": "skills/co-explore/reference.md",
+              "tipo_de_sede": "fila_de_tabla_markdown",
+              "selector": {"clave_primera_celda": "worker a", "encabezado_de_columna": "familia"},
+              "cardinalidad": {"tipo": "exactamente_una"},
+              "extraccion": {"tipo": "literal"},
+              "normalizacion": "minusculas",
+              "conversion": "enum:familia"
+            }
+          },
+          "escritura": {
+            "valor": "read_only",
+            "procedencia": {
+              "sede": "skills/co-explore/reference.md",
+              "tipo_de_sede": "fila_de_tabla_markdown",
+              "selector": {"clave_primera_celda": "co-explore", "encabezado_de_columna": "sandbox"},
+              "cardinalidad": {"tipo": "exactamente_una"},
+              "extraccion": {"tipo": "literal"},
+              "normalizacion": "minusculas",
+              "conversion": "enum:escritura"
+            }
+          },
+          "intentos": [
+            {
+              "intento_id": "1",
+              "transporte": {
+                "valor": "subagent",
+                "procedencia": {
+                  "sede": "skills/cross-review/corridas-en-vuelo.md",
+                  "tipo_de_sede": "fila_de_tabla_markdown",
+                  "selector": {"clave_primera_celda": "subagent", "encabezado_de_columna": "transporte"},
+                  "cardinalidad": {"tipo": "exactamente_una"},
+                  "extraccion": {"tipo": "literal"},
+                  "normalizacion": "trim",
+                  "conversion": "enum:transporte"
+                }
+              },
+              "deadline_declarado": {
+                "valor": 1800,
+                "procedencia": {
+                  "sede": "skills/co-explore/reference.md",
+                  "tipo_de_sede": "fila_de_tabla_markdown",
+                  "selector": {"clave_primera_celda": "explore", "encabezado_de_columna": "deadline"},
+                  "cardinalidad": {"tipo": "exactamente_una"},
+                  "extraccion": {"tipo": "literal"},
+                  "normalizacion": "trim",
+                  "conversion": "entero"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
