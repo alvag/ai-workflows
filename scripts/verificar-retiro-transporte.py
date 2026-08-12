@@ -98,7 +98,56 @@ _ALO = _C + _D
 # no alcanza a `scripts/corridas-fase-0-otra/`, así que un directorio de nombre parecido sigue
 # escaneándose. Y se INFORMA en cada corrida: una exclusión silenciosa convierte «no hay rastro» en
 # «no miré ahí», que es la misma frase con el sentido opuesto.
-EVIDENCIA_EXCLUIDA = ("scripts/corridas-fase-0/",)
+EVIDENCIA_EXCLUIDA = (
+    "scripts/corridas-fase-0/",
+    # La evidencia sellada del oráculo de la Fase 0.5. Uno de los veintiún flujos que el
+    # detector leyó es el que retiró esta misma vía, así que su transcripción la nombra en
+    # cada comando que corrió. Sus bytes están hasheados en `oraculo-evidencia/manifest.json`
+    # y la procedencia del oráculo apunta a esa identidad: depurarla invalida el sello y
+    # reabre el congelamiento, igual que en el caso de arriba.
+    "scripts/oraculo-evidencia/",
+)
+
+
+# Un IDENTIFICADOR del corpus no es una REFERENCIA a la vía. Los manifiestos congelados de la Fase
+# 0.5 enumeran la población de `.plans/`, y siete de esos directorios llevan el término en su
+# nombre: son hechos del árbol, no prosa del repositorio. Omitirlos falsificaría el corpus —excluir
+# los flujos incómodos es exactamente lo que su predicado de elegibilidad existe para impedir— y
+# editarlos invalidaría el sello que los congela.
+#
+# El criterio es de FORMA y no de existencia, a propósito: `.plans/` no viaja en un clon, así que un
+# predicado que preguntara «¿existe el directorio?» daría rojo en cualquier clon fresco. Un término
+# queda exento cuando cae dentro de una cadena JSON —en un archivo `.json`— cuyo contenido COMPLETO
+# es un identificador de ruta del corpus: sin espacios, y con el segmento `archived/`, su forma
+# aplanada `archived__`, o el prefijo `.plans/`.
+#
+# Las cuatro formas que el corpus tiene hoy, y que este predicado describe:
+#   "flujo": "archived/<slug>"                          · la terna y la exclusión
+#   "archived/<slug>"                                   · el elemento suelto del snapshot
+#   "ruta": ".plans/archived/<slug>/spec.md"            · la ruta canónica del artefacto sellado
+#   "evidencia": "salidas/archived__<slug>.jsonl"       · la referencia a la salida cruda
+#
+# Lo que NO queda exento, y cada uno tiene su mutante: el término suelto en prosa; el término como
+# valor de un token sin ruta (`"transport": "<término>"`); una ruta fuera del corpus
+# (`skills/.../transporte-<término>.md`); un valor con espacios, aunque esté entrecomillado; y el
+# término en el PATH del archivo, que se escanea aparte y nunca se exime.
+PATRON_CADENA_JSON = re.compile(r'"([^"\\]*)"')
+PATRON_IDENTIDAD_CORPUS = re.compile(r"^(?:\.plans/[^ ]*|[^ ]*archived(?:/|__)[^ ]*)$")
+
+
+def tramos_de_identidad(rel: str, linea: str) -> list[tuple[int, int]]:
+    """Los tramos de la línea que son identificadores del corpus. Vacío fuera de un `.json`."""
+    if not rel.endswith(".json"):
+        return []
+    return [m.span(1) for m in PATRON_CADENA_JSON.finditer(linea)
+            if PATRON_IDENTIDAD_CORPUS.match(m.group(1))]
+
+
+def ocurrencias_reportables(rel: str, linea: str, patron: "re.Pattern") -> int:
+    """Cuántas veces el patrón cae FUERA de todo identificador del corpus."""
+    tramos = tramos_de_identidad(rel, linea)
+    return sum(1 for m in patron.finditer(linea)
+               if not any(a <= m.start() and m.end() <= b for a, b in tramos))
 
 
 def es_evidencia_capturada(rel: str) -> bool:
@@ -883,6 +932,7 @@ def evaluar_ausencia(raiz: Path) -> Reporte:
         rep.nota(f"evidencia capturada excluida del escaneo: {len(evidencia)} archivos bajo "
                  f"{', '.join(EVIDENCIA_EXCLUIDA)} — transcripción de sesiones medidas, no prosa "
                  f"del repositorio, y con sus bytes hasheados en el bundle de cada corrida")
+    exentas = 0
     for rel in candidato:
         for etiqueta, patron in TERMINOS:
             if patron.search(rel):
@@ -893,8 +943,14 @@ def evaluar_ausencia(raiz: Path) -> Reporte:
             continue
         for n, linea in enumerate(texto.splitlines(), 1):
             for etiqueta, patron in TERMINOS:
-                if patron.search(linea):
+                if ocurrencias_reportables(rel, linea, patron):
                     rep.hallazgo(f"{rel}:{n} · {etiqueta} · {linea.strip()[:110]}")
+                elif patron.search(linea):
+                    exentas += 1
+    if exentas:
+        rep.nota(f"identificadores del corpus exentos: {exentas} ocurrencias dentro de una cadena "
+                 "JSON cuyo contenido completo es una ruta del corpus — nombran un flujo de "
+                 "`.plans/`, no referencian la vía")
     return rep
 
 
@@ -1017,7 +1073,18 @@ def evaluar_adaptadores(raiz: Path) -> Reporte:
     for rel in ADAPTADORES:
         if (raiz / rel).exists():
             rep.hallazgo(f"{rel} · la ruta todavía existe")
+    # La misma exclusión que `--ausencia`, por el mismo motivo: una transcripción capturada que
+    # nombra al adaptador es un DATO, no una referencia del repositorio. Que este modo no la
+    # aplicara era un hueco que solo la suerte mantenía cerrado —ninguna evidencia excluida había
+    # nombrado al adaptador todavía—, y se abrió en cuanto una lo hizo.
+    evidencia = [rel for rel in candidato if es_evidencia_capturada(rel)]
+    candidato = [rel for rel in candidato if not es_evidencia_capturada(rel)]
+    if evidencia:
+        rep.nota(f"evidencia capturada excluida del escaneo: {len(evidencia)} archivos bajo "
+                 f"{', '.join(EVIDENCIA_EXCLUIDA)} — transcripción de sesiones medidas, no prosa "
+                 f"del repositorio, y con sus bytes hasheados en el sello de cada corrida")
     patron = dict(TERMINOS)["nombre-del-adaptador"]
+    exentas = 0
     for rel in candidato:
         if patron.search(rel):
             rep.hallazgo(f"{rel} · path · referencia al adaptador")
@@ -1026,8 +1093,14 @@ def evaluar_adaptadores(raiz: Path) -> Reporte:
             rep.hallazgo(f"{rel} · ilegible")
             continue
         for n, linea in enumerate(texto.splitlines(), 1):
-            if patron.search(linea):
+            if ocurrencias_reportables(rel, linea, patron):
                 rep.hallazgo(f"{rel}:{n} · referencia al adaptador · {linea.strip()[:110]}")
+            elif patron.search(linea):
+                exentas += 1
+    if exentas:
+        rep.nota(f"identificadores del corpus exentos: {exentas} ocurrencias dentro de una cadena "
+                 "JSON cuyo contenido completo es una ruta del corpus — nombran un flujo de "
+                 "`.plans/`, no referencian el adaptador")
     rep.nota(f"las 3 rutas de adaptador resueltas contra {raiz} "
              f"(árbol candidato: {len(candidato)} archivos)")
     return rep
@@ -1618,15 +1691,48 @@ VARIANTES_VERDES = [
                             "## Los campos por intento")),
     ("intento activo por una vía vigente",
      _crear(_RUTA_SOBRE_DRENAJE, _SOBRE_DRENAJE_TPL.format(transport="cli-exec"))),
-    # Ejerce la exclusión de evidencia. Sin ella este caso sale rojo, así que es lo que impide que
-    # `EVIDENCIA_EXCLUIDA` sea código muerto: una exclusión que ningún caso atraviesa daría verde
-    # por no aplicarse nunca, y el verde parecería cobertura.
-    ("la vía nombrada dentro de una transcripción capturada",
-     _crear("scripts/corridas-fase-0/run-x-r1-a1/evidencia/salida-del-worker.txt",
-            "El worker corrió `" + _NOM + "-native-audit` y devolvió su reporte.\n")),
+    # Ejerce la exclusión de evidencia, **una variante por prefijo**. Sin ellas la exclusión sería
+    # código muerto: una que ningún caso atraviesa daría verde por no aplicarse nunca, y el verde
+    # parecería cobertura. Se derivan de `EVIDENCIA_EXCLUIDA` y no se escriben a mano, así que un
+    # prefijo agregado sin control es imposible — que es como entró el segundo.
+    *[(f"la vía y el adaptador nombrados dentro de una transcripción capturada bajo {prefijo}",
+       _crear(prefijo + "corrida/salida-del-worker.txt",
+              "El worker corrió `" + _NOM + "-native-audit` leyendo `transporte-" + _NOM
+              + ".md` y devolvió su reporte.\n"))
+      for prefijo in EVIDENCIA_EXCLUIDA],
+    # Ejercen el criterio de identidad del corpus, **una variante por forma real**. Sin ellas el
+    # criterio sería un agujero que ningún caso atraviesa: daría verde por no aplicarse nunca.
+    ("identificador del corpus como valor de campo",
+     _crear("scripts/manifiesto-de-corpus.json",
+            '{\n  "flujo": "archived/' + _NOM + '-transporte-skills"\n}\n')),
+    ("identificador del corpus como ruta canónica de artefacto",
+     _crear("scripts/manifiesto-de-rutas.json",
+            '{\n  "ruta": ".plans/archived/' + _NOM + '-transporte-skills/spec.md"\n}\n')),
+    ("identificador del corpus en su forma aplanada, y con el adaptador dentro",
+     _crear("scripts/manifiesto-de-evidencia.json",
+            '{\n  "evidencia": "salidas/archived__transporte-' + _NOM + '-flujo.jsonl"\n}\n')),
 ]
 
 MUTANTES = [
+    # El simétrico de las variantes de identidad: cada forma que el criterio NO exime, con su
+    # mutante. Sin ellos, aflojar el predicado —quitarle el ancla al corpus, admitir espacios,
+    # extenderlo fuera de los `.json`— abriría un agujero que ningún caso vería.
+    ("término como valor de un token sin ruta del corpus", ["ausencia"],
+     ["nombre-de-la-herramienta", "config-suelta.json"],
+     _con_corpus(_crear("scripts/config-suelta.json",
+                        '{\n  "transport": "' + _NOM + '"\n}\n'))),
+    ("término en una ruta fuera del corpus", ["ausencia", "adaptadores"],
+     ["rutas-ajenas.json"],
+     _con_corpus(_crear("scripts/rutas-ajenas.json",
+                        '{\n  "ruta": "skills/co-explore/transporte-' + _NOM + '.md"\n}\n'))),
+    ("término en prosa dentro de un valor JSON entrecomillado", ["ausencia"],
+     ["nombre-de-la-herramienta", "motivos.json"],
+     _con_corpus(_crear("scripts/motivos.json",
+                        '{\n  "motivo": "el ' + _NOM + ' quedó retirado"\n}\n'))),
+    ("el mismo identificador del corpus, pero fuera de un `.json`", ["ausencia"],
+     ["nombre-de-la-herramienta", "nota-suelta.md"],
+     _con_corpus(_crear("docs/nota-suelta.md",
+                        '"archived/' + _NOM + '-transporte-skills"\n'))),
     ("término de la vía reintroducido en el contenido", ["ausencia"],
      ["nombre-de-la-herramienta"],
      _con_corpus(_sustituir("docs/nota.md", "Documento de relleno",
@@ -1634,13 +1740,21 @@ MUTANTES = [
     ("término de la vía en el path de un archivo nuevo", ["ausencia"],
      ["· path ·", "alojamiento-como-palabra"],
      _con_corpus(_crear(f"docs/{_ALO}s-propios.md", "# Nota suelta\n"))),
-    # El simétrico de la variante verde: la exclusión es por prefijo terminado en `/`, así que un
-    # directorio de nombre parecido NO queda exento. Sin este mutante, cambiar el prefijo por un
-    # `in` o quitarle la barra abriría un agujero que ningún caso vería.
-    ("la vía nombrada en un directorio parecido al de la evidencia", ["ausencia"],
-     ["nombre-de-la-herramienta", "corridas-fase-0-otra"],
-     _con_corpus(_crear("scripts/corridas-fase-0-otra/salida.txt",
-                        "Reporte suelto sobre " + _NOM + ".\n"))),
+    # El simétrico de las variantes verdes: la exclusión es por prefijo terminado en `/`, así que un
+    # directorio de nombre parecido NO queda exento. Sin estos mutantes, cambiar el prefijo por un
+    # `in` o quitarle la barra abriría un agujero que ningún caso vería. También se derivan, y
+    # cubren **los dos** modos que ahora aplican la exclusión: un arreglo que la agregara a uno
+    # solo dejaría el otro escaneando lo que el primero exime.
+    *[(f"la vía nombrada en un directorio parecido a {prefijo}", ["ausencia"],
+       ["nombre-de-la-herramienta", prefijo.rstrip("/").rsplit("/", 1)[-1] + "-otra"],
+       _con_corpus(_crear(prefijo.rstrip("/") + "-otra/salida.txt",
+                          "Reporte suelto sobre " + _NOM + ".\n")))
+      for prefijo in EVIDENCIA_EXCLUIDA],
+    *[(f"el adaptador nombrado en un directorio parecido a {prefijo}", ["adaptadores"],
+       ["referencia al adaptador", prefijo.rstrip("/").rsplit("/", 1)[-1] + "-otra"],
+       _con_corpus(_crear(prefijo.rstrip("/") + "-otra/adaptador.txt",
+                          "Reporte suelto sobre `transporte-" + _NOM + ".md`.\n")))
+      for prefijo in EVIDENCIA_EXCLUIDA],
     ("construcción prohibida dentro de una sede permitida", ["clave"],
      ["clave-de-config", "clave-yaml-al-inicio-de-linea", "clave-del-mapa-overrides",
       "dentro de una sede permitida"],
