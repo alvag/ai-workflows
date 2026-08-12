@@ -1,0 +1,12 @@
+1. **Encargo:** reanudar la misma sesión del implementador para corregir un `IMPLEMENTATION_DEFECT`, sin reenviar el work order completo.
+
+2. **Entrada necesaria:** ID de sesión no vacío, directorio de trabajo y un delta concreto: **defecto · archivo · prueba que debe pasar**. Sin ese delta, la sección no contiene un fix ejecutable.
+
+3. **Salida:** cambios sin commit en el working tree y reporte `FILES / PROOF / DEVIATIONS / STATUS: done`. Luego el conductor cosecha y revisa el diff, repite la prueba y registra la ronda. Al agotar `max_fix_rounds`, toma control y cierra como `PARTIAL`.
+
+Verificado en `skills/cross-implement/reference.md`, `skills/cross-implement/ownership.md` y `scripts/matriz-despachos.json`. No ejecuté el encargo ni modifiqué archivos.
+
+## Key Learnings:
+
+1. El fix loop despacha un delta mínimo; la sesión existente conserva el work order original.
+

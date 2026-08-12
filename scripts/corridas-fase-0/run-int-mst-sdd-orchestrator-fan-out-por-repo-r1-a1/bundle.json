@@ -1,0 +1,243 @@
+{
+  "version_schema": "1.0.0",
+  "run_id": "run-int-mst-sdd-orchestrator-fan-out-por-repo-r1-a1",
+  "sample_id": "mst-sdd-orchestrator-fan-out-por-repo-r1",
+  "attempt_id": "int-mst-sdd-orchestrator-fan-out-por-repo-r1-a1",
+  "attempt_ordinal": 1,
+  "preregistro_sha256": "b93f3abeedf5dacec10b5e376fa2d7c11db3b88b60db4bd35bcbb65d39db0105",
+  "punto_de_despacho": "sdd-orchestrator-fan-out-por-repo",
+  "skill": "sdd-orchestrator",
+  "familia_de_rol": "bounded-implementer",
+  "transporte": "subagent",
+  "adaptador": "sesion_de_agente",
+  "invocacion": {
+    "tipo": "accion",
+    "accion_literal": "despachar un agente por repo con el prompt de su sección",
+    "prompt_sha256": "00154d3e3d4cc293630410c047974e7e1f66f29683adcbde144051e175fd7f4f",
+    "directorio_de_trabajo": ".plans/instrumento-y-baseline/arbol-desechable"
+  },
+  "ventana_de_pared_utc": {
+    "inicio": "2026-08-12T04:52:55Z",
+    "fin": "2026-08-12T04:52:55Z"
+  },
+  "estado_del_intento": {
+    "resultado": "completado"
+  },
+  "eventos": [
+    {
+      "evento_id": "evt-run-int-mst-sdd-orchestrator-fan-out-por-repo-r1-a1-1",
+      "tipo": "validacion_de_hash_congelado",
+      "sello": {
+        "valor_ns": 169400958,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      }
+    },
+    {
+      "evento_id": "evt-run-int-mst-sdd-orchestrator-fan-out-por-repo-r1-a1-2",
+      "tipo": "preflight_de_receta",
+      "sello": {
+        "valor_ns": 170118041,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      }
+    },
+    {
+      "evento_id": "evt-run-int-mst-sdd-orchestrator-fan-out-por-repo-r1-a1-3",
+      "tipo": "confirmacion_humana",
+      "sello": {
+        "valor_ns": 170675916,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      },
+      "detalle": "Max autorizó esta corrida de la cohorte en la sesión del 2026-08-11, punto por punto y por escrito: «dale con T21, despachá los seis en serio» y «dale, arreglá el 6 y el 7»"
+    },
+    {
+      "evento_id": "evt-run-int-mst-sdd-orchestrator-fan-out-por-repo-r1-a1-4",
+      "tipo": "despacho",
+      "sello": {
+        "valor_ns": 170751583,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      }
+    },
+    {
+      "evento_id": "evt-run-int-mst-sdd-orchestrator-fan-out-por-repo-r1-a1-5",
+      "tipo": "estado_terminal_de_trabajo",
+      "sello": {
+        "valor_ns": 170752125,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      },
+      "trabajo_delegado_id": "trb-run-int-mst-sdd-orchestrator-fan-out-por-repo-r1-a1"
+    },
+    {
+      "evento_id": "evt-run-int-mst-sdd-orchestrator-fan-out-por-repo-r1-a1-6",
+      "tipo": "resultado_utilizable",
+      "sello": {
+        "valor_ns": 170754500,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      }
+    }
+  ],
+  "reporte_del_worker": {
+    "estado": "interpretable",
+    "ruta_relativa": "evidencia/salida-del-worker.txt",
+    "sha256": "13bcf457372f0bd0416d9552afb560b1a349678c81ac1da8fe2b044b32ca5ec3"
+  },
+  "veredicto_de_conformance": {
+    "resultado": "no_evaluable",
+    "causa": "sin reporte interpretable no hay qué comparar contra el contrato"
+  },
+  "trabajos_delegados": [
+    {
+      "trabajo_delegado_id": "trb-run-int-mst-sdd-orchestrator-fan-out-por-repo-r1-a1",
+      "estado_terminal": {
+        "estado": "comprobado",
+        "evento_terminal_id": "evt-run-int-mst-sdd-orchestrator-fan-out-por-repo-r1-a1-5"
+      },
+      "recursos_ids": [
+        "rec-run-int-mst-sdd-orchestrator-fan-out-por-repo-r1-a1"
+      ]
+    }
+  ],
+  "artefactos_producidos": [
+    {
+      "ruta_relativa": "evidencia/salida-del-worker.txt",
+      "bytes": 3932,
+      "sha256": "13bcf457372f0bd0416d9552afb560b1a349678c81ac1da8fe2b044b32ca5ec3"
+    }
+  ],
+  "recursos": [
+    {
+      "recurso_id": "rec-run-int-mst-sdd-orchestrator-fan-out-por-repo-r1-a1",
+      "clase": "sesion",
+      "life_state": "terminado_comprobado",
+      "ownership_state": "sin_transferir",
+      "evidencia_de_cese": "el recibo de frontera registra el terminal que la plataforma expuso al retorno"
+    }
+  ],
+  "pruebas_de_aislamiento": {
+    "refs_y_objetos_identicos": {
+      "resultado": "pasa",
+      "evidencia": "refs y conteo de objetos del árbol desechable, leídos antes y después de la corrida y comparados"
+    },
+    "sin_red_ni_credenciales": {
+      "resultado": "pasa",
+      "evidencia": "constancias del provisionamiento: el sandbox pedido por el comando retira la red y el entorno del hijo no alcanza credenciales"
+    },
+    "arbol_original_intacto": {
+      "resultado": "pasa",
+      "evidencia": "HEAD y estado sin commitear del árbol original, leídos antes y después y comparados"
+    }
+  },
+  "inventario_de_egreso_reejecutado": {
+    "superficies": [
+      {
+        "superficie_id": "bin-git",
+        "clase": "binario_en_path",
+        "descripcion": "`git` alcanzable por PATH"
+      },
+      {
+        "superficie_id": "bin-curl",
+        "clase": "binario_en_path",
+        "descripcion": "`curl` alcanzable por PATH"
+      },
+      {
+        "superficie_id": "bin-ssh",
+        "clase": "binario_en_path",
+        "descripcion": "`ssh` alcanzable por PATH"
+      },
+      {
+        "superficie_id": "bin-scp",
+        "clase": "binario_en_path",
+        "descripcion": "`scp` alcanzable por PATH"
+      },
+      {
+        "superficie_id": "bin-rsync",
+        "clase": "binario_en_path",
+        "descripcion": "`rsync` alcanzable por PATH"
+      },
+      {
+        "superficie_id": "bin-gh",
+        "clase": "binario_en_path",
+        "descripcion": "`gh` alcanzable por PATH"
+      },
+      {
+        "superficie_id": "bin-codex",
+        "clase": "binario_en_path",
+        "descripcion": "`codex` alcanzable por PATH"
+      },
+      {
+        "superficie_id": "bin-npm",
+        "clase": "binario_en_path",
+        "descripcion": "`npm` alcanzable por PATH"
+      },
+      {
+        "superficie_id": "remoto-origin",
+        "clase": "remoto_configurado",
+        "descripcion": "remoto `origin` configurado en el árbol observado"
+      }
+    ],
+    "inventario_sha256": "f9002ab0c2e77bbbafb80e86a613ec24df7dadd611ace9804cdd3f267a674f37"
+  },
+  "identidad_del_entorno": {
+    "code_commit": "3b288f503c9f40bedeb4c33bcfb89c1425d7ad4c",
+    "preregistration_commit": "3b288f503c9f40bedeb4c33bcfb89c1425d7ad4c",
+    "arbol_limpio": true,
+    "matriz_sha256": "79f1ab52cd6fdbb477b3e0329c291215a75f1f6fe0799e131ad4ffef8632e9b6",
+    "instrumento_sha256": "cdf5837c7dfe25ce401984545ce898423ec55be7fa472522bc48e753112aab66",
+    "runner_sha256": "270a101414f00aef4421c4e2c3c48dd0d11e949687ae273eb6b3dcfdd604a6f2",
+    "version_cli": "codex-cli 0.147.0",
+    "version_runtime": "python 3.14",
+    "hooks": [],
+    "ejecutor": {
+      "perfil_esperado": "runner de la cohorte, sin hooks de sesión",
+      "instancia_efectiva": {
+        "estado": "expuesto",
+        "valor": "mst3-fan-out-por-repo"
+      }
+    },
+    "eventos_de_intervencion_humana": [],
+    "modelo": {
+      "solicitado": {
+        "estado": "no_expuesto",
+        "adjudicacion": "estratificacion"
+      },
+      "efectivo": {
+        "estado": "no_expuesto",
+        "adjudicacion": "estratificacion"
+      }
+    }
+  },
+  "pipeline_de_sanitizacion": {
+    "orden_aplicado": [
+      "captura",
+      "normalizacion_de_rutas",
+      "validacion_y_escaneo",
+      "canonicalizacion_y_hash",
+      "recoleccion",
+      "versionado"
+    ],
+    "manifest_sha256": "e79c2d7c0be07ffbb7a0ad370edb63c8b03d259151670be9af970941efc420d3"
+  },
+  "journal_candidate_ids": [],
+  "recibo_de_frontera": {
+    "recibo_id": "rcb-produccion-sdd-orchestrator-fan-out-por-repo",
+    "protocolo": "produccion",
+    "recibo_sha256": "5e8fbb9318ce5ce5bd87b48a98d883a3b66c01b259b972335fb7e9d5ca305c99"
+  }
+}

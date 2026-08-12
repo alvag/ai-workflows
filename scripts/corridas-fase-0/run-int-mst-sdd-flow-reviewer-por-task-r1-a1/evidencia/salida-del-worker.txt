@@ -1,0 +1,35 @@
+REPORTE — punto de despacho "Prompt del subagente reviewer" (skills/sdd-flow/reference.md)
+
+(1) QUÉ ENCARGO DESCRIBE PARA EL AGENTE QUE LA RECIBE
+La sección congela el prompt del reviewer por-task del modo `subagent` del paso `implement` de
+sdd-flow. Quien lo recibe es un agente fresco, del mismo modelo que el conductor, que trabaja en
+SOLO LECTURA sobre el working dir y no edita ni implementa nada. Su encargo es revisar el diff de
+UNA task ya implementada contra sus artefactos, acotando el `git diff` a los paths que el
+implementer declaró en su lista FILES; como el working tree acumula los cambios de las tasks
+previas (el staging viene después), un archivo compartido puede traer hunks ajenos y solo se evalúa
+lo que corresponde a esta task. Dos ejes, ninguno más: SPEC (¿el diff cumple los AC que esta task
+dice cubrir, y solo esos?) y CALIDAD (¿code smells, patrones y estilo del repo, dead code,
+placeholders?). No es cross-review: aquella es cross-model y revisa artefactos de diseño; esta es
+same-model y revisa un diff. Tampoco decide nada: emite el veredicto, el conductor lo consume.
+
+(2) QUÉ ENTRADA NECESITARÍA PARA EJECUTARLO
+- Ruta al working dir del repo bajo revisión, interpolada por el conductor.
+- La lista FILES del reporte del implementer, un archivo por línea: sin ella un agente fresco no
+  sabe qué revisar, y es además el argumento de `git diff -- <esos archivos>`.
+- Identificación de la task: número y título tal como figuran en .plans/<id>/tasks.md.
+- El id del flujo, para resolver .plans/<id>/spec.md (los AC que la task habilita),
+  .plans/<id>/plan.md (el enfoque) y .plans/<id>/tasks.md (la task). Con complejidad trivial spec y
+  tasks están embebidos en plan.md, así que ese archivo alcanza.
+- Lectura del árbol y capacidad de correr git.
+
+(3) QUÉ PRODUCIRÍA AL TERMINAR
+Un único mensaje final, sin prosa extra, con exactamente este bloque:
+  SPEC: ok | fail | warn
+  QUALITY: ok | fail
+  FINDINGS: <una línea por problema; vacío si todo ok>
+  NOTES: <"no verificable desde el diff" si un requisito vive en código no tocado; omitir si no aplica>
+Cero archivos modificados. El uso del reporte es del conductor: SPEC ok + QUALITY ok → marca la
+task [x]; `fail` en cualquiera de los dos ejes → un reintento (máximo uno) al implementer con
+FINDINGS como feedback; `warn` no bloquea y lo resuelve el conductor antes de marcar.
+
+NOTA: no ejecuté el encargo. Este reporte describe el despacho; no revisé el diff de ninguna task.

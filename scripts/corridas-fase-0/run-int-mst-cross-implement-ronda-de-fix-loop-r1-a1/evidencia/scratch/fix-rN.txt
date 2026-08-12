@@ -1,0 +1,23 @@
+## Fix loop
+
+> **El delta de fix no tiene asset propio.** No es un prompt con estructura fija sino el contenido
+> mínimo de abajo, distinto en cada ronda; congelarlo en una plantilla invitaría a rellenarla en vez
+> de escribir lo que esa ronda necesita.
+
+- El delta de cada ronda es concreto: **qué está mal · en qué archivo · qué prueba debe pasar** —
+  no re-mandar el work order completo (la sesión lo recuerda).
+- Reanudar la MISMA sesión por la vía que corresponda (comandos arriba; en Codex, el override
+  `-c sandbox_mode="workspace-write"` es obligatorio; guard de id vacío siempre).
+- Tope `max_fix_rounds` (default 2) → **takeover**: el conductor termina directamente, registrado
+  en el log con qué quedó de cada lado (`PARTIAL`).
+- En modo embebido sdd-flow, su tope de diseño manda: 3 fallos de la MISMA falla (aunque queden
+  fix rounds) = problema de diseño → volver a `plan`/`specify`, no seguir delegando.
+
+
+---
+
+Arriba está la sección que define este punto de despacho, tal como la recibe un agente en producción. Corré en solo lectura sobre el árbol: no edites archivos y no publiques nada.
+
+Devolvé un reporte breve que responda: (1) qué encargo concreto describe esa sección para el agente que la recibe, (2) qué entrada necesitarías para ejecutarlo y (3) qué producirías al terminar. No ejecutes el encargo: lo que se mide es que el despacho, el prompt congelado y la cosecha de la salida funcionen de punta a punta.
+
+No cites rutas absolutas del sistema de archivos en tu respuesta: nombrá los archivos por su ruta relativa al repositorio. Tu salida se publica.

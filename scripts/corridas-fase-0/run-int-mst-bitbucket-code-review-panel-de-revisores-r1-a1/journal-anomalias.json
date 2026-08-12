@@ -1,0 +1,88 @@
+{
+  "version_schema": "1.0.0",
+  "journal_id": "jrn-run-int-mst-bitbucket-code-review-panel-de-revisores-r1-a1",
+  "preregistro_sha256": "b93f3abeedf5dacec10b5e376fa2d7c11db3b88b60db4bd35bcbb65d39db0105",
+  "entradas": [
+    {
+      "evento": "operacion_abierta",
+      "entrada_id": "ap-jrn-run-int-mst-bitbucket-code-review-panel-de-revisores-r1-a1-1",
+      "sample_id": "mst-bitbucket-code-review-panel-de-revisores-r1",
+      "attempt_id": "int-mst-bitbucket-code-review-panel-de-revisores-r1-a1",
+      "operacion": "captura_de_evidencia",
+      "sello": {
+        "valor_ns": 120324167,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      }
+    },
+    {
+      "evento": "operacion_terminada",
+      "entrada_id": "tm-jrn-run-int-mst-bitbucket-code-review-panel-de-revisores-r1-a1-2",
+      "referencia_entrada_id": "ap-jrn-run-int-mst-bitbucket-code-review-panel-de-revisores-r1-a1-1",
+      "resultado": "clean",
+      "sello": {
+        "valor_ns": 101647377667,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      }
+    },
+    {
+      "evento": "operacion_abierta",
+      "entrada_id": "ap-jrn-run-int-mst-bitbucket-code-review-panel-de-revisores-r1-a1-3",
+      "sample_id": "mst-bitbucket-code-review-panel-de-revisores-r1",
+      "attempt_id": "int-mst-bitbucket-code-review-panel-de-revisores-r1-a1",
+      "operacion": "sanitizacion",
+      "sello": {
+        "valor_ns": 101647401209,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      }
+    },
+    {
+      "evento": "operacion_terminada",
+      "entrada_id": "tm-jrn-run-int-mst-bitbucket-code-review-panel-de-revisores-r1-a1-4",
+      "referencia_entrada_id": "ap-jrn-run-int-mst-bitbucket-code-review-panel-de-revisores-r1-a1-3",
+      "resultado": "clean",
+      "sello": {
+        "valor_ns": 101648358750,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      }
+    },
+    {
+      "evento": "operacion_abierta",
+      "entrada_id": "ap-jrn-run-int-mst-bitbucket-code-review-panel-de-revisores-r1-a1-5",
+      "sample_id": "mst-bitbucket-code-review-panel-de-revisores-r1",
+      "attempt_id": "int-mst-bitbucket-code-review-panel-de-revisores-r1-a1",
+      "operacion": "construccion_del_bundle",
+      "sello": {
+        "valor_ns": 101648361667,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      }
+    },
+    {
+      "evento": "operacion_terminada",
+      "entrada_id": "tm-jrn-run-int-mst-bitbucket-code-review-panel-de-revisores-r1-a1-6",
+      "referencia_entrada_id": "ap-jrn-run-int-mst-bitbucket-code-review-panel-de-revisores-r1-a1-5",
+      "resultado": "clean",
+      "sello": {
+        "valor_ns": 101975290000,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      }
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+sh: /prompt--codex-worker.txt: No such file or directory

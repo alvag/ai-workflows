@@ -1,0 +1,234 @@
+{
+  "version_schema": "1.0.0",
+  "run_id": "run-int-mst-sdd-flow-analyze-exploracion-r1-a1",
+  "sample_id": "mst-sdd-flow-analyze-exploracion-r1",
+  "attempt_id": "int-mst-sdd-flow-analyze-exploracion-r1-a1",
+  "attempt_ordinal": 1,
+  "preregistro_sha256": "b93f3abeedf5dacec10b5e376fa2d7c11db3b88b60db4bd35bcbb65d39db0105",
+  "punto_de_despacho": "sdd-flow-analyze-exploracion",
+  "skill": "sdd-flow",
+  "familia_de_rol": "explorer",
+  "transporte": "subagent",
+  "adaptador": "sesion_de_agente",
+  "invocacion": {
+    "tipo": "accion",
+    "accion_literal": "despachar los subagentes de exploración del paso `analyze` con el prompt de su sección",
+    "prompt_sha256": "16c950a5661c8a5bb2668b04c3ca1e2c2b29bea00d02bf4ecc8805978150871e",
+    "directorio_de_trabajo": ".plans/instrumento-y-baseline/arbol-desechable"
+  },
+  "ventana_de_pared_utc": {
+    "inicio": "2026-08-12T04:52:53Z",
+    "fin": "2026-08-12T04:52:53Z"
+  },
+  "estado_del_intento": {
+    "resultado": "completado"
+  },
+  "eventos": [
+    {
+      "evento_id": "evt-run-int-mst-sdd-flow-analyze-exploracion-r1-a1-1",
+      "tipo": "validacion_de_hash_congelado",
+      "sello": {
+        "valor_ns": 150013291,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      }
+    },
+    {
+      "evento_id": "evt-run-int-mst-sdd-flow-analyze-exploracion-r1-a1-2",
+      "tipo": "preflight_de_receta",
+      "sello": {
+        "valor_ns": 151306750,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      }
+    },
+    {
+      "evento_id": "evt-run-int-mst-sdd-flow-analyze-exploracion-r1-a1-3",
+      "tipo": "despacho",
+      "sello": {
+        "valor_ns": 151980375,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      }
+    },
+    {
+      "evento_id": "evt-run-int-mst-sdd-flow-analyze-exploracion-r1-a1-4",
+      "tipo": "estado_terminal_de_trabajo",
+      "sello": {
+        "valor_ns": 151981000,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      },
+      "trabajo_delegado_id": "trb-run-int-mst-sdd-flow-analyze-exploracion-r1-a1"
+    },
+    {
+      "evento_id": "evt-run-int-mst-sdd-flow-analyze-exploracion-r1-a1-5",
+      "tipo": "resultado_utilizable",
+      "sello": {
+        "valor_ns": 151983666,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      }
+    }
+  ],
+  "reporte_del_worker": {
+    "estado": "interpretable",
+    "ruta_relativa": "evidencia/salida-del-worker.txt",
+    "sha256": "12207a218d22f5dda749f852109509433ab5edf0a7ed70c5db52c632c811b07a"
+  },
+  "veredicto_de_conformance": {
+    "resultado": "no_evaluable",
+    "causa": "sin reporte interpretable no hay qué comparar contra el contrato"
+  },
+  "trabajos_delegados": [
+    {
+      "trabajo_delegado_id": "trb-run-int-mst-sdd-flow-analyze-exploracion-r1-a1",
+      "estado_terminal": {
+        "estado": "comprobado",
+        "evento_terminal_id": "evt-run-int-mst-sdd-flow-analyze-exploracion-r1-a1-4"
+      },
+      "recursos_ids": [
+        "rec-run-int-mst-sdd-flow-analyze-exploracion-r1-a1"
+      ]
+    }
+  ],
+  "artefactos_producidos": [
+    {
+      "ruta_relativa": "evidencia/salida-del-worker.txt",
+      "bytes": 4771,
+      "sha256": "12207a218d22f5dda749f852109509433ab5edf0a7ed70c5db52c632c811b07a"
+    }
+  ],
+  "recursos": [
+    {
+      "recurso_id": "rec-run-int-mst-sdd-flow-analyze-exploracion-r1-a1",
+      "clase": "sesion",
+      "life_state": "terminado_comprobado",
+      "ownership_state": "sin_transferir",
+      "evidencia_de_cese": "el recibo de frontera registra el terminal que la plataforma expuso al retorno"
+    }
+  ],
+  "pruebas_de_aislamiento": {
+    "refs_y_objetos_identicos": {
+      "resultado": "not_applicable",
+      "causa": "el permiso efectivo que declara la matriz para este punto es de solo lectura, así que no hay escritura de la que probar el aislamiento",
+      "permiso_efectivo": "read_only"
+    },
+    "sin_red_ni_credenciales": {
+      "resultado": "not_applicable",
+      "causa": "el permiso efectivo que declara la matriz para este punto es de solo lectura, así que no hay escritura de la que probar el aislamiento",
+      "permiso_efectivo": "read_only"
+    },
+    "arbol_original_intacto": {
+      "resultado": "not_applicable",
+      "causa": "el permiso efectivo que declara la matriz para este punto es de solo lectura, así que no hay escritura de la que probar el aislamiento",
+      "permiso_efectivo": "read_only"
+    }
+  },
+  "inventario_de_egreso_reejecutado": {
+    "superficies": [
+      {
+        "superficie_id": "bin-git",
+        "clase": "binario_en_path",
+        "descripcion": "`git` alcanzable por PATH"
+      },
+      {
+        "superficie_id": "bin-curl",
+        "clase": "binario_en_path",
+        "descripcion": "`curl` alcanzable por PATH"
+      },
+      {
+        "superficie_id": "bin-ssh",
+        "clase": "binario_en_path",
+        "descripcion": "`ssh` alcanzable por PATH"
+      },
+      {
+        "superficie_id": "bin-scp",
+        "clase": "binario_en_path",
+        "descripcion": "`scp` alcanzable por PATH"
+      },
+      {
+        "superficie_id": "bin-rsync",
+        "clase": "binario_en_path",
+        "descripcion": "`rsync` alcanzable por PATH"
+      },
+      {
+        "superficie_id": "bin-gh",
+        "clase": "binario_en_path",
+        "descripcion": "`gh` alcanzable por PATH"
+      },
+      {
+        "superficie_id": "bin-codex",
+        "clase": "binario_en_path",
+        "descripcion": "`codex` alcanzable por PATH"
+      },
+      {
+        "superficie_id": "bin-npm",
+        "clase": "binario_en_path",
+        "descripcion": "`npm` alcanzable por PATH"
+      },
+      {
+        "superficie_id": "remoto-origin",
+        "clase": "remoto_configurado",
+        "descripcion": "remoto `origin` configurado en el árbol observado"
+      }
+    ],
+    "inventario_sha256": "f9002ab0c2e77bbbafb80e86a613ec24df7dadd611ace9804cdd3f267a674f37"
+  },
+  "identidad_del_entorno": {
+    "code_commit": "3b288f503c9f40bedeb4c33bcfb89c1425d7ad4c",
+    "preregistration_commit": "3b288f503c9f40bedeb4c33bcfb89c1425d7ad4c",
+    "arbol_limpio": true,
+    "matriz_sha256": "79f1ab52cd6fdbb477b3e0329c291215a75f1f6fe0799e131ad4ffef8632e9b6",
+    "instrumento_sha256": "cdf5837c7dfe25ce401984545ce898423ec55be7fa472522bc48e753112aab66",
+    "runner_sha256": "270a101414f00aef4421c4e2c3c48dd0d11e949687ae273eb6b3dcfdd604a6f2",
+    "version_cli": "codex-cli 0.147.0",
+    "version_runtime": "python 3.14",
+    "hooks": [],
+    "ejecutor": {
+      "perfil_esperado": "runner de la cohorte, sin hooks de sesión",
+      "instancia_efectiva": {
+        "estado": "expuesto",
+        "valor": "mst3-analyze-exploracion"
+      }
+    },
+    "eventos_de_intervencion_humana": [],
+    "modelo": {
+      "solicitado": {
+        "estado": "no_expuesto",
+        "adjudicacion": "estratificacion"
+      },
+      "efectivo": {
+        "estado": "no_expuesto",
+        "adjudicacion": "estratificacion"
+      }
+    }
+  },
+  "pipeline_de_sanitizacion": {
+    "orden_aplicado": [
+      "captura",
+      "normalizacion_de_rutas",
+      "validacion_y_escaneo",
+      "canonicalizacion_y_hash",
+      "recoleccion",
+      "versionado"
+    ],
+    "manifest_sha256": "598fc47640751da14939e34127a7b446c8d1d3dcca7b6d9e82d8940afdcc20cb"
+  },
+  "journal_candidate_ids": [],
+  "recibo_de_frontera": {
+    "recibo_id": "rcb-produccion-sdd-flow-analyze-exploracion",
+    "protocolo": "produccion",
+    "recibo_sha256": "f47b20ee73022b00e39796d16ec2fd5fde732762d33d7f31cc96e2e176f9efd2"
+  }
+}
