@@ -1,0 +1,334 @@
+{
+  "version_schema": "1.0.0",
+  "que_declara": "El ledger de candidatos a defecto de este flujo. Sus cuatro fuentes son cerradas y están declaradas con ruta, schema, regla de identidad y momento de emisión; el conjunto de candidatos NO se escribe acá: lo deriva `scripts/derivar-fuentes-ledger.py` desde las fuentes reales, y `--ledger` reconcilia los dos en las dos direcciones.",
+  "x-criterio-de-adjudicacion": "`incorporado` es el candidato que es defecto de una skill o del mecanismo compartido del repositorio y NO está corregido: esos entran al inventario del documento con ubicación resoluble, naturaleza y fase. `descartado` es todo lo demás —defectos del instrumento de medición o del arnés de este flujo, ya corregidos y verificados acá—, cada uno con su razón y el commit que lo corrige. Un defecto corregido no tiene fase de corrección pendiente, y meterlo al inventario del ecosistema declararía deuda que no existe.",
+  "fuentes": [
+    {
+      "fuente": "anomalias_del_runner",
+      "ruta": "scripts/journal-anomalias-fase-0/",
+      "schema": "scripts/journal-anomalias-fase-0/journal-anomalias.schema.json",
+      "regla_de_identidad": "un `candidate_id` por anomalía, no por corrida: una corrida puede producir varias anomalías independientes y reconciliarlas bajo el `run_id` de su contenedor deja perder una sin diferencia visible (D-25)",
+      "momento_de_emision": "durante la corrida, apenas el runner detecta la anomalía y antes de que exista el bundle, que puede no llegar a existir"
+    },
+    {
+      "fuente": "fallos_de_fixtures",
+      "ruta": "scripts/recibos-autotest-fase-0/",
+      "schema": "schema propio del recibo de autotest, fuera del namespace de bundles",
+      "regla_de_identidad": "`fixture-<modo>-<caso>`: la identidad es el par modo y caso, no el archivo, porque un mismo caso puede fallar en varios modos",
+      "momento_de_emision": "al cerrar cada corrida de autotest, con el veredicto de cada caso"
+    },
+    {
+      "fuente": "adjudicaciones_de_cohorte",
+      "ruta": "scripts/preregistro-fase-0.json",
+      "schema": "scripts/preregistro.schema.json",
+      "regla_de_identidad": "el `candidate_id` que la adjudicación declara en el acta congelada; SOLO el pre-registro, porque la comparación acta → pre-registro prueba transcripción exacta y no reconcilia dos fuentes",
+      "momento_de_emision": "al congelar el pre-registro, antes de la primera corrida de la cohorte"
+    },
+    {
+      "fuente": "reportes_de_implementacion",
+      "ruta": ".plans/instrumento-y-baseline/work/defectos-descubiertos.json",
+      "schema": "el declarado en su propia cabecera `version_schema`",
+      "regla_de_identidad": "un `candidate_id` estable por candidato, en kebab-case y con el subsistema como prefijo",
+      "momento_de_emision": "captura obligatoria y append-only para este flujo: al cerrar cada task que descubra un candidato"
+    }
+  ],
+  "candidatos": [
+    {
+      "candidate_id": "runner-retiros-comprobados-sin-asignar",
+      "adjudicacion": "descartado",
+      "razon": "defecto del instrumento de medición o del arnés de este flujo, corregido y verificado acá en `cf6ce6e`: no es un defecto del ecosistema y no tiene fase pendiente"
+    },
+    {
+      "candidate_id": "runner-evidencia-no-persistia",
+      "adjudicacion": "descartado",
+      "razon": "defecto del instrumento de medición o del arnés de este flujo, corregido y verificado acá en `cf6ce6e`: no es un defecto del ecosistema y no tiene fase pendiente"
+    },
+    {
+      "candidate_id": "runner-manifest-sha256-de-otro-dato",
+      "adjudicacion": "descartado",
+      "razon": "defecto del instrumento de medición o del arnés de este flujo, corregido y verificado acá en `cf6ce6e`: no es un defecto del ecosistema y no tiene fase pendiente"
+    },
+    {
+      "candidate_id": "runner-salida-llevaba-el-hash",
+      "adjudicacion": "descartado",
+      "razon": "defecto del instrumento de medición o del arnés de este flujo, corregido y verificado acá en `cf6ce6e`: no es un defecto del ecosistema y no tiene fase pendiente"
+    },
+    {
+      "candidate_id": "runner-inventario-de-egreso-sin-reejecutar",
+      "adjudicacion": "descartado",
+      "razon": "defecto del instrumento de medición o del arnés de este flujo, corregido y verificado acá en `22f9911`: no es un defecto del ecosistema y no tiene fase pendiente"
+    },
+    {
+      "candidate_id": "runner-confirmacion-humana-nunca-emitida",
+      "adjudicacion": "descartado",
+      "razon": "defecto del instrumento de medición o del arnés de este flujo, corregido y verificado acá en `891d0d3`: no es un defecto del ecosistema y no tiene fase pendiente"
+    },
+    {
+      "candidate_id": "runner-reporte-del-worker-nunca-lleno",
+      "adjudicacion": "descartado",
+      "razon": "defecto del instrumento de medición o del arnés de este flujo, corregido y verificado acá en `891d0d3`: no es un defecto del ecosistema y no tiene fase pendiente"
+    },
+    {
+      "candidate_id": "acta-ejecutor-esperado-no-era-el-real",
+      "adjudicacion": "descartado",
+      "razon": "defecto del instrumento de medición o del arnés de este flujo, corregido y verificado acá en `3b288f5`: no es un defecto del ecosistema y no tiene fase pendiente"
+    },
+    {
+      "candidate_id": "runner-preregistration-commit-llevaba-head",
+      "adjudicacion": "descartado",
+      "razon": "defecto del instrumento de medición o del arnés de este flujo, corregido y verificado acá en `d68ed0e`: no es un defecto del ecosistema y no tiene fase pendiente"
+    },
+    {
+      "candidate_id": "runner-modelo-no-expuesto-bloqueaba",
+      "adjudicacion": "descartado",
+      "razon": "defecto del instrumento de medición o del arnés de este flujo, corregido y verificado acá en `3be305e`: no es un defecto del ecosistema y no tiene fase pendiente"
+    },
+    {
+      "candidate_id": "contrato-ejes-sin-hecho-de-origen",
+      "adjudicacion": "descartado",
+      "razon": "defecto del instrumento de medición o del arnés de este flujo, corregido y verificado acá en `3dd1ee4`: no es un defecto del ecosistema y no tiene fase pendiente"
+    },
+    {
+      "candidate_id": "contrato-terminal-delegado-no-se-inferia",
+      "adjudicacion": "descartado",
+      "razon": "defecto del instrumento de medición o del arnés de este flujo, corregido y verificado acá en `3911e30`: no es un defecto del ecosistema y no tiene fase pendiente"
+    },
+    {
+      "candidate_id": "entorno-desechable-entregaba-credenciales",
+      "adjudicacion": "descartado",
+      "razon": "defecto del instrumento de medición o del arnés de este flujo, corregido y verificado acá en `3957bfd`: no es un defecto del ecosistema y no tiene fase pendiente"
+    },
+    {
+      "candidate_id": "regla-de-descubrimiento-no-veia-la-fase",
+      "adjudicacion": "descartado",
+      "razon": "defecto del instrumento de medición o del arnés de este flujo, corregido y verificado acá en `47ec2bd`: no es un defecto del ecosistema y no tiene fase pendiente"
+    },
+    {
+      "candidate_id": "guarda-ausencia-no-distingue-dato-de-prosa",
+      "adjudicacion": "descartado",
+      "razon": "defecto del instrumento de medición o del arnés de este flujo, corregido y verificado acá en `bbfa466`: no es un defecto del ecosistema y no tiene fase pendiente"
+    },
+    {
+      "candidate_id": "familia-de-autotests-no-expande",
+      "adjudicacion": "incorporado",
+      "razon": "defecto de una skill o del mecanismo compartido del repo, sin corregir: entra al inventario con su fase",
+      "ubicacion": "scripts/verificar-matriz-despachos.py:12131",
+      "naturaleza": "instrumental: la derivación de una familia de guardas lee los `add_argument` literales del parser del script, y un script que arma el suyo desde una tabla devuelve el conjunto vacío. La forma que el propio extractor recomienda —el comodín— pone la guarda en rojo sobre esos scripts, y el rodeo es nombrar cada bandera a mano, que es lo que la familia existe para evitar",
+      "fase": "Fase 3"
+    },
+    {
+      "candidate_id": "cli-resume-sesion-inexistente-sale-en-cero",
+      "adjudicacion": "incorporado",
+      "razon": "defecto de una skill o del mecanismo compartido del repo, sin corregir: entra al inventario con su fase",
+      "ubicacion": "skills/cross-implement/reference.md:107",
+      "naturaleza": "instrumental: `codex exec resume <sesión inexistente>` sale en 0 y arranca una sesión fresca. El fix loop de la skill reanuda por identificador y comprueba el resultado por código de salida, así que una sesión perdida es indistinguible de una reanudada: el segundo intento corre sin el contexto del primero y nada lo señala",
+      "fase": "Fase 3"
+    },
+    {
+      "candidate_id": "cli-resume-sandbox-por-config-no-por-bandera",
+      "adjudicacion": "incorporado",
+      "razon": "defecto de una skill o del mecanismo compartido del repo, sin corregir: entra al inventario con su fase",
+      "ubicacion": "skills/cross-implement/reference.md:107",
+      "naturaleza": "doctrinal: la misma CLI pide el sandbox con `-s` en `exec` y con `-c sandbox_mode=\"…\"` en `resume`. Las dos formas conviven y las skills documentan la de `exec` como el patrón compartido, así que quien copie el patrón al reanudar pide un sandbox que esa invocación no interpreta",
+      "fase": "Fase 3"
+    },
+    {
+      "candidate_id": "cli-resume-bandera-c-no-reposiciona",
+      "adjudicacion": "descartado",
+      "razon": "descartado por comportamiento conforme a su documentación: `cross-review/reference.md` ya declara que `resume` no reposiciona el working dir, así que la skill no depende de que lo haga"
+    },
+    {
+      "candidate_id": "corpus-vuelve-equivalente-a-un-mutante",
+      "adjudicacion": "descartado",
+      "razon": "defecto del instrumento de medición o del arnés de este flujo, corregido y verificado acá en `cf6ce6e`: no es un defecto del ecosistema y no tiene fase pendiente"
+    }
+  ],
+  "capturas": [
+    {
+      "task": "T1",
+      "actor": "implementador_delegado",
+      "intento": 1,
+      "reporte": ".plans/instrumento-y-baseline/work/T1-control-mutacion.md"
+    },
+    {
+      "task": "T2",
+      "actor": "implementador_delegado",
+      "intento": 1,
+      "reporte": ".plans/instrumento-y-baseline/work/T2-control-mutacion.md"
+    },
+    {
+      "task": "T3",
+      "actor": "implementador_delegado",
+      "intento": 1,
+      "reporte": ".plans/instrumento-y-baseline/work/T3-control-mutacion.md"
+    },
+    {
+      "task": "T4",
+      "actor": "implementador_delegado",
+      "intento": 1,
+      "reporte": ".plans/instrumento-y-baseline/work/T4-control-mutacion.md"
+    },
+    {
+      "task": "T5",
+      "actor": "implementador_delegado",
+      "intento": 1,
+      "reporte": ".plans/instrumento-y-baseline/work/T5-control-mutacion.md"
+    },
+    {
+      "task": "T6",
+      "actor": "implementador_delegado",
+      "intento": 1,
+      "reporte": ".plans/instrumento-y-baseline/work/T6-control-mutacion.md"
+    },
+    {
+      "task": "T7",
+      "actor": "implementador_delegado",
+      "intento": 1,
+      "reporte": ".plans/instrumento-y-baseline/work/T7-control-mutacion.md"
+    },
+    {
+      "task": "T8",
+      "actor": "implementador_delegado",
+      "intento": 1,
+      "reporte": ".plans/instrumento-y-baseline/work/T8-control-mutacion.md"
+    },
+    {
+      "task": "T9",
+      "actor": "implementador_delegado",
+      "intento": 1,
+      "reporte": ".plans/instrumento-y-baseline/work/T9-control-mutacion.md"
+    },
+    {
+      "task": "T10",
+      "actor": "implementador_delegado",
+      "intento": 1,
+      "reporte": ".plans/instrumento-y-baseline/work/T10-control-mutacion.md"
+    },
+    {
+      "task": "T11",
+      "actor": "implementador_delegado",
+      "intento": 1,
+      "reporte": ".plans/instrumento-y-baseline/work/T11-control-mutacion.md"
+    },
+    {
+      "task": "T12",
+      "actor": "implementador_delegado",
+      "intento": 1,
+      "reporte": ".plans/instrumento-y-baseline/work/T12-control-mutacion.md"
+    },
+    {
+      "task": "T13",
+      "actor": "implementador_delegado",
+      "intento": 1,
+      "reporte": ".plans/instrumento-y-baseline/work/T13-control-mutacion.md"
+    },
+    {
+      "task": "T14",
+      "actor": "implementador_delegado",
+      "intento": 1,
+      "reporte": ".plans/instrumento-y-baseline/work/T14-control-mutacion.md"
+    },
+    {
+      "task": "T15",
+      "actor": "implementador_delegado",
+      "intento": 1,
+      "reporte": ".plans/instrumento-y-baseline/work/T15-control-mutacion.md"
+    },
+    {
+      "task": "T16",
+      "actor": "implementador_delegado",
+      "intento": 1,
+      "reporte": ".plans/instrumento-y-baseline/work/T16-control-mutacion.md"
+    },
+    {
+      "task": "T16b",
+      "actor": "implementador_delegado",
+      "intento": 1,
+      "reporte": ".plans/instrumento-y-baseline/work/T16b-control-mutacion.md"
+    },
+    {
+      "task": "T17",
+      "actor": "conductor_inline",
+      "intento": 1,
+      "adjudicacion": "sin_reporte_delegado",
+      "razon": "la task la ejecutó el conductor inline: no hubo despacho, así que no hay reporte delegado que capturar"
+    },
+    {
+      "task": "T18",
+      "actor": "conductor_inline",
+      "intento": 1,
+      "adjudicacion": "sin_reporte_delegado",
+      "razon": "la task la ejecutó el conductor inline: no hubo despacho, así que no hay reporte delegado que capturar"
+    },
+    {
+      "task": "T19",
+      "actor": "conductor_inline",
+      "intento": 1,
+      "adjudicacion": "sin_reporte_delegado",
+      "razon": "la task la ejecutó el conductor inline: no hubo despacho, así que no hay reporte delegado que capturar"
+    },
+    {
+      "task": "T20",
+      "actor": "conductor_inline",
+      "intento": 1,
+      "adjudicacion": "sin_reporte_delegado",
+      "razon": "la task la ejecutó el conductor inline: no hubo despacho, así que no hay reporte delegado que capturar"
+    },
+    {
+      "task": "T21",
+      "actor": "conductor_inline",
+      "intento": 1,
+      "adjudicacion": "sin_reporte_delegado",
+      "razon": "la task la ejecutó el conductor inline: no hubo despacho, así que no hay reporte delegado que capturar"
+    },
+    {
+      "task": "T22",
+      "actor": "conductor_inline",
+      "intento": 1,
+      "adjudicacion": "sin_reporte_delegado",
+      "razon": "la task la ejecutó el conductor inline: no hubo despacho, así que no hay reporte delegado que capturar"
+    },
+    {
+      "task": "T23",
+      "actor": "conductor_inline",
+      "intento": 1,
+      "adjudicacion": "sin_reporte_delegado",
+      "razon": "la task la ejecutó el conductor inline: no hubo despacho, así que no hay reporte delegado que capturar"
+    },
+    {
+      "task": "T24",
+      "actor": "conductor_inline",
+      "intento": 1,
+      "adjudicacion": "sin_reporte_delegado",
+      "razon": "la task la ejecutó el conductor inline: no hubo despacho, así que no hay reporte delegado que capturar"
+    },
+    {
+      "task": "T25",
+      "actor": "conductor_inline",
+      "intento": 1,
+      "adjudicacion": "sin_reporte_delegado",
+      "razon": "la task la ejecutó el conductor inline: no hubo despacho, así que no hay reporte delegado que capturar"
+    },
+    {
+      "task": "T26",
+      "actor": "conductor_inline",
+      "intento": 1,
+      "adjudicacion": "sin_reporte_delegado",
+      "razon": "la task la ejecutó el conductor inline: no hubo despacho, así que no hay reporte delegado que capturar"
+    },
+    {
+      "task": "T27",
+      "actor": "conductor_inline",
+      "intento": 1,
+      "adjudicacion": "sin_reporte_delegado",
+      "razon": "la task la ejecutó el conductor inline: no hubo despacho, así que no hay reporte delegado que capturar"
+    },
+    {
+      "task": "T27b",
+      "actor": "conductor_inline",
+      "intento": 1,
+      "adjudicacion": "sin_reporte_delegado",
+      "razon": "la task la ejecutó el conductor inline: no hubo despacho, así que no hay reporte delegado que capturar"
+    }
+  ]
+}

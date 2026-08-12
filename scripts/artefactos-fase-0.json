@@ -254,6 +254,34 @@
       "dato": "journal-de-anomalias-del-runner",
       "source_status": "fuente",
       "versioned": true
+    },
+    {
+      "path": "scripts/derivar-fuentes-ledger.py",
+      "owner": "derivador-de-fuentes-del-ledger",
+      "dato": "derivacion-de-los-candidatos-desde-las-cuatro-fuentes",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/manifest-despachos-fase-0.json",
+      "owner": "manifest-de-despachos",
+      "dato": "conjunto-esperado-de-ternas-de-despacho",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/fuentes-ledger-fase-0.json",
+      "owner": "derivador-de-fuentes-del-ledger",
+      "dato": "candidatos-derivados-de-las-cuatro-fuentes",
+      "source_status": "derivado",
+      "versioned": true
+    },
+    {
+      "path": "scripts/ledger-candidatos-fase-0.json",
+      "owner": "ledger-de-candidatos",
+      "dato": "adjudicacion-de-los-candidatos-a-defecto",
+      "source_status": "fuente",
+      "versioned": true
     }
   ],
   "regla_de_descubrimiento": {
@@ -280,6 +308,7 @@
       "scripts/instrumento-baseline.py",
       "scripts/runner-cohorte.py",
       "scripts/verificar-presupuestos.py",
+      "scripts/derivar-fuentes-ledger.py",
       "scripts/observacion.schema.json",
       "scripts/preregistro.schema.json",
       "scripts/bundle-corrida.schema.json",
