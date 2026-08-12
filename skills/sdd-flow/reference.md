@@ -826,7 +826,7 @@ seis piezas que interpola en los dos prompts —implementer y reviewer— y cóm
 serializa. Los prompts de abajo y `validar-para-despacho` citan estas reglas por su id.
 
 Transcriben el contrato de extracción del dossier, `sha256`
-`9ed1221f8e300e39ced25ea38eef6879b868ff2ac198807a8a51a69cfe316828`. **Ahí se deciden; acá se
+`fb148429f216e3f62f5fdaaccb2f3d7cf58db4d349d601dd7a91e533a0960122`. **Ahí se deciden; acá se
 aplican**: si una corrida obliga a cambiar una regla, se cambia en el contrato, no en este texto.
 
 > **Nota de límite.** Esto es **prosa normativa**: no se ejecuta. No se afirma equivalencia
@@ -888,6 +888,8 @@ Fuentes admitidas, en orden de precedencia:
 - **Conflicto entre fuentes:** si dos fuentes presentes declaran conjuntos **distintos**, es **error
   `cobertura_en_conflicto`** — no gana la de mayor precedencia. La precedencia resuelve *cuál leer
   cuando solo hay una*; dos que se contradicen son un artefacto roto y el silencio las tapa.
+- **Fuentes coincidentes:** si dos fuentes declaran el **mismo** conjunto no hay error, y la cobertura
+  se atribuye a **una sola fuente efectiva**: la de mayor precedencia de la tabla.
 - **Menciones incidentales que NO cuentan:** un `AC-n` dentro de `Pasos`, `Por qué`, `Archivos` o en
   la prosa de `Verificar`. Solo declara cobertura una de las tres fuentes de arriba.
 - **Cero AC** tras aplicar todo esto: ver la tabla de R5.
@@ -964,11 +966,16 @@ cortarlo en su primer subtítulo entregaría una fracción del contrato que dice
 |---|---|
 | dos bloques declaran el mismo slug | `bloque_global_duplicado` |
 | la cita no corresponde a ningún bloque del documento | `bloque_global_inexistente` |
-| el prefijo citado es prefijo de **dos o más** bloques | `bloque_global_ambiguo` |
+| el prefijo citado es prefijo de **dos o más** bloques, y no coincide exactamente con ninguno | `bloque_global_ambiguo` |
 
 El tercero existe porque el prefijo corto es una **concesión de escritura** y nada garantiza que siga
 siendo inequívoco cuando alguien agrega un bloque nuevo con el mismo comienzo. Ese caso no está
 ausente ni duplicado: la cita es legítima y el documento cambió debajo.
+
+**Precedencia: la coincidencia exacta se resuelve ANTES de evaluar prefijos.** Con dos bloques `foo` y
+`foo-bar`, la cita `foo` es a la vez coincidencia exacta de uno y prefijo de los dos; sin esta
+precedencia, dos implementaciones de la misma regla dan resultados distintos **aplicándola
+literalmente**. Se resuelve al bloque de slug idéntico.
 
 **Corte de las otras dos piezas:**
 
@@ -1052,11 +1059,18 @@ ahorro.
 > **manifest de casos**—: describen cómo se **mide** un conjunto de flujos ya escritos, algo que el
 > conductor no hace nunca. Traerlas acá cargaría a toda corrida con reglas que ninguna aplica.
 >
-> Quedan fuera por la misma razón **dos cláusulas que viven dentro de las reglas transcritas**, y se
-> declaran para que la omisión no sea silenciosa: que los rótulos **cuentan** en el total de bytes
-> del payload, y el censo de campos `Consume` del corpus con su advertencia de no tratarlo como piso
-> de exclusiones. Las dos son de medición: no cambian **qué** escribe el conductor, solo cómo se
-> **contabiliza** después.
+> Quedan fuera por la misma razón **tres cláusulas que viven dentro de las reglas transcritas**, y se
+> declaran para que la omisión no sea silenciosa:
+>
+> | Cláusula | Regla | Por qué no entra |
+> |---|---|---|
+> | los rótulos **cuentan** en el total de bytes del payload | R7 | es del numerador de la métrica |
+> | el censo de campos `Consume` y su advertencia de no tratarlo como piso | R5 | es del corpus histórico |
+> | el **registro de todas las ocurrencias** de fuentes coincidentes, aparte de la efectiva | R2 | el conductor solo necesita **cuál cobertura vale**; contar qué formas usa el corpus es medición |
+>
+> Las tres son de medición: no cambian **qué** escribe el conductor, solo cómo se **contabiliza**
+> después. En particular la tercera — el conductor aplica la fuente efectiva y nada más; el arnés,
+> que sí mide formas, registra además cada ocurrencia.
 
 ## Prompt del subagente por task
 
