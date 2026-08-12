@@ -417,6 +417,21 @@ def constatar_red(comandos_a_ejecutar: tuple[str, ...]) -> Constancia:
                       "todos los comandos piden sandbox, que es lo que retira la red del worker")
 
 
+def exige_confirmacion_del_usuario(punto: str) -> bool:
+    """Si la matriz declara que este punto de despacho no corre sin confirmación humana."""
+    matriz, error = _cargar_json(RUTA_MATRIZ_DESPACHOS)
+    if error:
+        raise AnomaliaDelRunner("fallo_previo_al_bundle", f"no se pudo leer la matriz: {error}")
+    for entrada in matriz.get("puntos") or []:
+        ident = entrada.get("id")
+        ident = ident["valor"] if isinstance(ident, dict) and "valor" in ident else ident
+        if ident == punto:
+            campo = entrada.get("requiere_confirmacion_del_usuario") or {}
+            valor = campo.get("valor") if isinstance(campo, dict) else campo
+            return valor is True
+    return False
+
+
 def constatar_retiros_del_caso(receta: dict[str, Any], recibo: dict[str, Any] | None) -> bool:
     """Si el retiro de red quedó comprobado para ESTE caso, por la vía de su adaptador.
 
@@ -1749,6 +1764,10 @@ class ContextoDeEjecucion(NamedTuple):
     # El directorio de la corrida, donde se cosecha la evidencia. Lo conoce quien invoca el modo,
     # no `ejecutar_caso`, así que viaja por acá.
     destino: Path | None = None
+    # Con qué se acredita la confirmación del usuario, para los puntos que la matriz declara que no
+    # corren sin ella. Vacío significa que no hay ninguna, y entonces esos puntos se bloquean: es
+    # el dato que el conductor aporta, no algo que el runner pueda deducir de su entorno.
+    confirmacion: str = ""
 
 
 class ResultadoDelDespacho(NamedTuple):
@@ -2173,6 +2192,46 @@ def reejecutar_inventario_de_egreso() -> dict[str, Any]:
         return dict(documento["inventario_de_egreso"])
 
 
+def clasificar_reporte_del_worker(contexto: ContextoDeEjecucion,
+                                  resultado: ResultadoDelDespacho,
+                                  artefactos: list[dict[str, Any]]) -> dict[str, Any]:
+    """Qué llegó del worker, contra lo que su receta declara esperar.
+
+    El campo iba fijo en `ausente`, y el vocabulario cuenta `ausente` como reporte inválido a
+    propósito (`intento-con-reporte-invalido`). Con las trece corridas así, el baseline publicaba
+    `tasa-de-salidas-invalidas = 1.0`: que el ecosistema entero produce salidas inválidas, cuando lo
+    que pasaba es que nadie evaluaba ninguna. **Ausente e inválido no son lo mismo**, y la
+    diferencia es un número publicado.
+
+    El criterio sale de `salida_esperada.clase` de la receta y no de un formato inventado acá: las
+    recetas declaran qué esperan —un archivo en una ruta, o el reporte que la sesión devuelve— y no
+    un esquema del contenido. `interpretable` dice que llegó lo que la receta espera y se puede
+    leer, no que alguien lo haya interpretado.
+    """
+    clase = (contexto.receta.get("salida_esperada") or {}).get("clase")
+    del_scratch = [a for a in artefactos if a["ruta_relativa"].startswith("evidencia/scratch/")]
+    if clase == "archivo":
+        # Lo que la receta espera es un archivo que el comando nombra por marcador. El stdout no lo
+        # reemplaza: un worker que escribe en la consola lo que debía dejar en disco no cumplió su
+        # contrato de salida, y contarlo como llegado taparía justamente ese modo de fallar.
+        candidatos = [a for a in del_scratch if a["bytes"] > 0]
+        if not candidatos:
+            return {"estado": "ausente",
+                    "causa": "la receta espera un archivo de salida y el worker no dejó ninguno "
+                             "con contenido en el scratch de la corrida"}
+        elegido = max(candidatos, key=lambda a: a["bytes"])
+    else:
+        salida = next((a for a in artefactos
+                       if a["ruta_relativa"] == NOMBRE_DE_LA_SALIDA), None)
+        if salida is None or salida["bytes"] == 0:
+            return {"estado": "ausente",
+                    "causa": "el despacho no devolvió ninguna salida que interpretar"}
+        elegido = salida
+    return {"estado": "interpretable",
+            "ruta_relativa": elegido["ruta_relativa"],
+            "sha256": elegido["sha256"]}
+
+
 def construir_bundle(contexto: ContextoDeEjecucion, adjudicacion: Adjudicacion,
                      resultado: ResultadoDelDespacho, eventos: list[dict[str, Any]],
                      journal: Journal, ventana: dict[str, str],
@@ -2216,10 +2275,8 @@ def construir_bundle(contexto: ContextoDeEjecucion, adjudicacion: Adjudicacion,
             {"resultado": "bloqueado",
              "causa_de_bloqueo": f"el despacho terminó en `{resultado.terminal}` y no completó"}),
         "eventos": eventos,
-        "reporte_del_worker": {
-            "estado": "ausente",
-            "causa": "el worker no dejó reporte consultable en esta corrida",
-        },
+        "reporte_del_worker": clasificar_reporte_del_worker(contexto, resultado,
+                                                            list(artefactos or [])),
         "veredicto_de_conformance": {
             "resultado": "no_evaluable",
             "causa": "sin reporte interpretable no hay qué comparar contra el contrato",
@@ -2419,6 +2476,21 @@ def ejecutar_caso(contexto: ContextoDeEjecucion,
             evento("validacion_de_hash_congelado")
             adjudicacion = correr_preflight_de_la_receta(contexto)
             evento("preflight_de_receta")
+            # La confirmación va DONDE LA MATRIZ LA PIDE y en su lugar de la secuencia, entre el
+            # preflight y el despacho. Nunca se emitía, así que cuatro puntos que no corren sin
+            # confirmación quedaban clasificados `automatizable` —el estrato sale de este evento— y
+            # un intento sin ella se estratificaba como si no hubiera hecho falta. Sin acreditación
+            # el intento BLOQUEA, que es lo que el juicio de estratos ya exigía: la ausencia del
+            # evento no es prueba de que la confirmación sobraba.
+            if exige_confirmacion_del_usuario(contexto.receta["punto_de_despacho"]):
+                if not contexto.confirmacion:
+                    raise AnomaliaDelRunner(
+                        "confirmacion_no_acreditada",
+                        f"la matriz declara que `{contexto.receta['punto_de_despacho']}` no corre "
+                        f"sin confirmación del usuario, y esta corrida no trae ninguna que "
+                        f"acreditarla: el intento se bloquea en vez de estratificarse como "
+                        f"automatizable")
+                evento("confirmacion_humana", contexto.confirmacion)
             resultado = despachar(contexto, adjudicacion)
             evento("despacho")
             evento("estado_terminal_de_trabajo")
@@ -2679,7 +2751,8 @@ def modo_ejecutar_caso(args: argparse.Namespace) -> int:
             scratch=arbol / ".cohorte-scratch" / run_id,
             ancla_de_invocacion=_ancla_del_punto(receta["punto_de_despacho"]),
             retiros_comprobados=constatar_retiros_del_caso(receta, recibo),
-            destino=salida / run_id)
+            destino=salida / run_id,
+            confirmacion=getattr(args, "confirmacion", None) or "")
         bundle, problemas = ejecutar_caso(contexto, journal, reloj)
 
     ruta_journal = salida / run_id / "journal-anomalias.json"
@@ -3317,6 +3390,10 @@ registrar_modo(
                              "de sesión", metavar="<ruta>"),
         Auxiliar("--salida", "dónde escribir `<run_id>/bundle.json` y su journal",
                  metavar="<dir-de-corridas>"),
+        Auxiliar("--confirmacion",
+                 "con qué se acredita la confirmación del usuario, para los puntos que la matriz "
+                 "declara que no corren sin ella; sin esto, esos puntos bloquean el intento en vez "
+                 "de estratificarse como automatizables", metavar="<texto>"),
     ),
 )
 
