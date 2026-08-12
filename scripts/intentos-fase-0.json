@@ -1,0 +1,88 @@
+{
+  "descripcion": "Los intentos que la cohorte de la fase 0 tiene que haber producido, uno por muestra congelada. Es el conjunto ESPERADO, y existe para que borrar un intento —sobre todo uno bloqueado— no deje un conjunto final perfectamente válido.",
+  "por-que-es-independiente-de-las-observaciones": "D-16: si se derivara del conjunto que valida, lo estaría contando sobre sí mismo. Se deriva del pre-registro CONGELADO, que es anterior a toda corrida y declara la cohorte y sus repeticiones; ésa es la fuente independiente, no las observaciones.",
+  "por-que-no-declara-selecciones-esperadas": "El cuarto frente de V31 —selección por métrica— no se reparte en este modo y lo comprueba `--autotest-muestras-intentos`. Declararlas acá sería reimplementar esa comprobación sobre los datos reales, y la que se relaja es siempre ésa.",
+  "repeticiones_por_punto": {
+    "bitbucket-code-review-panel-de-revisores": 1,
+    "bitbucket-code-review-validador-adversarial": 1,
+    "co-explore-fan-out-dual": 1,
+    "co-explore-worker-por-ronda-de-debate": 1,
+    "cross-implement-implementador-inicial": 1,
+    "cross-implement-ronda-de-fix-loop": 1,
+    "cross-review-revisor-por-ronda": 1,
+    "sdd-flow-analyze-exploracion": 1,
+    "sdd-flow-implementer-por-task": 1,
+    "sdd-flow-reviewer-por-task": 1,
+    "sdd-flow-revision-final-de-diff": 1,
+    "sdd-orchestrator-fan-out-por-repo": 1,
+    "sdd-pr-feedback-implement-delegado": 1
+  },
+  "intentos": [
+    {
+      "sample_id": "mst-sdd-flow-analyze-exploracion-r1",
+      "attempt_ordinal": 1,
+      "descripcion": "el intento único de `sdd-flow-analyze-exploracion`, con repetición 1 por punto"
+    },
+    {
+      "sample_id": "mst-sdd-flow-implementer-por-task-r1",
+      "attempt_ordinal": 1,
+      "descripcion": "el intento único de `sdd-flow-implementer-por-task`, con repetición 1 por punto"
+    },
+    {
+      "sample_id": "mst-sdd-flow-reviewer-por-task-r1",
+      "attempt_ordinal": 1,
+      "descripcion": "el intento único de `sdd-flow-reviewer-por-task`, con repetición 1 por punto"
+    },
+    {
+      "sample_id": "mst-sdd-flow-revision-final-de-diff-r1",
+      "attempt_ordinal": 1,
+      "descripcion": "el intento único de `sdd-flow-revision-final-de-diff`, con repetición 1 por punto"
+    },
+    {
+      "sample_id": "mst-bitbucket-code-review-panel-de-revisores-r1",
+      "attempt_ordinal": 1,
+      "descripcion": "el intento único de `bitbucket-code-review-panel-de-revisores`, con repetición 1 por punto"
+    },
+    {
+      "sample_id": "mst-bitbucket-code-review-validador-adversarial-r1",
+      "attempt_ordinal": 1,
+      "descripcion": "el intento único de `bitbucket-code-review-validador-adversarial`, con repetición 1 por punto"
+    },
+    {
+      "sample_id": "mst-co-explore-fan-out-dual-r1",
+      "attempt_ordinal": 1,
+      "descripcion": "el intento único de `co-explore-fan-out-dual`, con repetición 1 por punto"
+    },
+    {
+      "sample_id": "mst-co-explore-worker-por-ronda-de-debate-r1",
+      "attempt_ordinal": 1,
+      "descripcion": "el intento único de `co-explore-worker-por-ronda-de-debate`, con repetición 1 por punto"
+    },
+    {
+      "sample_id": "mst-cross-implement-implementador-inicial-r1",
+      "attempt_ordinal": 1,
+      "descripcion": "el intento único de `cross-implement-implementador-inicial`, con repetición 1 por punto"
+    },
+    {
+      "sample_id": "mst-cross-implement-ronda-de-fix-loop-r1",
+      "attempt_ordinal": 1,
+      "descripcion": "el intento único de `cross-implement-ronda-de-fix-loop`, con repetición 1 por punto"
+    },
+    {
+      "sample_id": "mst-cross-review-revisor-por-ronda-r1",
+      "attempt_ordinal": 1,
+      "descripcion": "el intento único de `cross-review-revisor-por-ronda`, con repetición 1 por punto"
+    },
+    {
+      "sample_id": "mst-sdd-orchestrator-fan-out-por-repo-r1",
+      "attempt_ordinal": 1,
+      "descripcion": "el intento único de `sdd-orchestrator-fan-out-por-repo`, con repetición 1 por punto"
+    },
+    {
+      "sample_id": "mst-sdd-pr-feedback-implement-delegado-r1",
+      "attempt_ordinal": 1,
+      "descripcion": "el intento único de `sdd-pr-feedback-implement-delegado`, con repetición 1 por punto"
+    }
+  ],
+  "plantilla_de_sample_id": "mst-{punto_de_despacho}-r{repeticion}"
+}
