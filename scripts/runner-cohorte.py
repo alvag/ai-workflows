@@ -2210,6 +2210,16 @@ def construir_bundle(contexto: ContextoDeEjecucion, adjudicacion: Adjudicacion,
         }],
         "pruebas_de_aislamiento": capturar_pruebas_de_aislamiento(
             permiso_efectivo_del_punto(punto), antes, despues, contexto.retiros_comprobados),
+        # PENDIENTE, con hallazgo escrito: T21 pide que cada corrida reejecute la regla de egreso y
+        # la compare contra el inventario congelado, y esto no la reejecuta — `superficies` va
+        # vacío y el `inventario_sha256` es el de la lista de archivos de credencial, otro dato bajo
+        # el nombre de éste (el congelado da `f9002ab0…`). Por eso `--aislamiento` bloquea a los dos
+        # puntos de `cross-implement` con `evidencia_declarativa`.
+        #
+        # No se arregla llamando a `materializar_egreso` por corrida: ese modo EJECUTA los 17
+        # mutantes de publicación —`curl` contra el canary y un `git push`—, así que una corrida
+        # que se acredita sin red terminaría abriéndola diecisiete veces. Lo que falta es que el
+        # instrumento exponga el descubrimiento SIN los mutantes, y ése es otro archivo congelado.
         "inventario_de_egreso_reejecutado": {
             "inventario_sha256": _sha256(json.dumps(sorted(ARCHIVOS_DE_CREDENCIAL))),
             "superficies": [],
