@@ -826,7 +826,7 @@ seis piezas que interpola en los dos prompts —implementer y reviewer— y cóm
 serializa. Los prompts de abajo y `validar-para-despacho` citan estas reglas por su id.
 
 Transcriben el contrato de extracción del dossier, `sha256`
-`fee3cb1a45ba956a578ed1471212ed4ca81250f608e3cbc9a5f6d7569bea590f`. **Ahí se deciden; acá se
+`3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef`. **Ahí se deciden; acá se
 aplican**: si una corrida obliga a cambiar una regla, se cambia en el contrato, no en este texto.
 
 > **Nota de límite.** Esto es **prosa normativa**: no se ejecuta. No se afirma equivalencia
@@ -879,7 +879,7 @@ Fuentes admitidas, en orden de precedencia:
 
 | # | Fuente | Forma | Dónde aparece |
 |---|---|---|---|
-| 1 | `· cubre:` | `· cubre: AC-3, AC-4` | en la línea del encabezado **o en la línea siguiente, indentada** |
+| 1 | `· cubre:` | `· cubre: AC-3, AC-4` | **empieza** en la línea del encabezado o en la línea siguiente indentada, y **continúa** por las indentadas que sigan (ver «Continuación multilínea») |
 | 2 | campo con viñeta | `- **AC:** AC-3, AC-4` | en el cuerpo, con cualquier indentación |
 | 3 | campo sin viñeta | `**AC:** AC-3, AC-4` | en el cuerpo, **con cualquier indentación**, bajo cualquiera de las dos formas de encabezado |
 
@@ -889,7 +889,10 @@ fuente 1, y aun así **no cuenta**—. `Verificar` es el campo donde más aparec
 legítima, y distinguir declaración de mención **dentro del mismo campo** exige un predicado frágil.
 
 - **Continuación multilínea:** una declaración continúa mientras las líneas siguientes estén
-  indentadas y no abran otro campo `- **<Nombre>:**` ni otro encabezado de R1.
+  indentadas y no abran otro campo `- **<Nombre>:**` ni otro encabezado de R1. **Vale para las tres
+  fuentes, y la 1 es donde más se pierde:** el corpus parte la lista al final de la línea, y en algún
+  caso deja el marcador solo —`· cubre:` cierra la línea del encabezado y **todos** los ids están en
+  la siguiente—. Un predicado que lea una sola línea devuelve la task entera sin cobertura.
 - **Conflicto entre fuentes:** si dos fuentes presentes declaran conjuntos **distintos**, es **error
   `cobertura_en_conflicto`** — no gana la de mayor precedencia. La precedencia resuelve *cuál leer
   cuando solo hay una*; dos que se contradicen son un artefacto roto y el silencio las tapa.
