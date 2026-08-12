@@ -2058,10 +2058,15 @@ def revisar_recibo_de_frontera(recibo: dict[str, Any] | None,
     return problemas
 
 
-def _dato_de_plataforma(valor: str | None) -> dict[str, Any]:
-    """Lo que la plataforma no expone se escribe como no expuesto, nunca relleno."""
+def _dato_de_plataforma(valor: str | None, adjudicacion: str = "bloqueo") -> dict[str, Any]:
+    """Lo que la plataforma no expone se escribe como no expuesto, nunca relleno.
+
+    La adjudicación la declara QUIEN conoce el campo, y el default sigue siendo `bloqueo`: un campo
+    nuevo que nadie adjudique tiene que caer del lado conservador, porque la alternativa es seguir
+    midiendo con un dato que nadie sabe cuál es.
+    """
     if valor is None:
-        return {"estado": "no_expuesto", "adjudicacion": "bloqueo"}
+        return {"estado": "no_expuesto", "adjudicacion": adjudicacion}
     return {"estado": "expuesto", "valor": valor}
 
 
@@ -2701,9 +2706,16 @@ def identidad_del_entorno_de_hoy(preregistration_commit: str = "") -> dict[str, 
             "instancia_efectiva": _dato_de_plataforma("runner-cohorte"),
         },
         "eventos_de_intervencion_humana": [],
+        # El modelo se ESTRATIFICA, no bloquea. Ninguna de las dos plataformas lo expone —medido en
+        # el preflight—, y el runner no lo conoce en NINGÚN punto, ni siquiera en los siete de CLI:
+        # bloquear por eso deja fuera las trece corridas y no hay medición posible. Es además la
+        # misma adjudicación que la tabla del instrumento ya le da a `version_cli`, `version_runtime`
+        # y `hooks` —los otros datos que hacen incomparables dos latencias— y la que el recibo de
+        # frontera venía escribiendo para este mismo campo, así que el productor deja de
+        # contradecirse consigo mismo.
         "modelo": {
-            "solicitado": _dato_de_plataforma(None),
-            "efectivo": _dato_de_plataforma(None),
+            "solicitado": _dato_de_plataforma(None, "estratificacion"),
+            "efectivo": _dato_de_plataforma(None, "estratificacion"),
         },
     }
 
