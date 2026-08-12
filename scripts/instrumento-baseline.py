@@ -56,6 +56,7 @@ import contextlib
 import copy
 import datetime
 import hashlib
+import inspect
 import io
 import json
 import os
@@ -8693,6 +8694,34 @@ def modo_autotest_egreso(args: argparse.Namespace) -> int:
                            "faltantes, sin tratamiento admitido y sin huella"
                            if not fallas else " | ".join(fallas)))
 
+        # [F] El inventario que una corrida reejecuta es EL MISMO que el del recibo completo, y no
+        #     ejecuta mutantes. Es la propiedad de la que depende la comparación contra el
+        #     congelado: si los dos caminos divergieran, cada corrida bloquearía por una diferencia
+        #     que nadie introdujo. No se comprueba llamando dos veces —eso probaría que la función
+        #     es determinista, no que el recibo la usa—, sino exigiendo que el recibo completo la
+        #     tenga como única fuente y que el reducido no toque el canary.
+        fallas = []
+        reducido = inventario_del_entorno_desechable(inventario)
+        if reducido["inventario_sha256"] != hash_de_objeto(
+                {"superficies": reducido["superficies"]}):
+            fallas.append("el `inventario_sha256` del reducido no es el de sus propias superficies")
+        fuente = inspect.getsource(modo_recibo_de_egreso)
+        if fuente.count("inventario_del_entorno_desechable(inventario)") < 2:
+            fallas.append("el recibo completo no toma su inventario de la misma función que el "
+                          "reducido: dos caminos que computan el mismo número por separado "
+                          "divergen, y el que se relaja es el que corre sobre los datos reales")
+        if "Canary()" in inspect.getsource(inventario_del_entorno_desechable):
+            fallas.append("el descubrimiento reducido abre el canary: una corrida que se acredita "
+                          "sin red no puede reejecutar los mutantes de publicación")
+        antes_del_reducido = list(canary.recibido)
+        inventario_del_entorno_desechable(inventario)
+        if list(canary.recibido) != antes_del_reducido:
+            fallas.append("el descubrimiento reducido llegó al canary: descubrir no es publicar")
+        resultados.append(("F", not fallas,
+                           "el inventario que cada corrida reejecuta sale de la misma función que "
+                           "el del recibo completo, y descubrir no toca el canary"
+                           if not fallas else " | ".join(fallas)))
+
     return _cerrar(resultados)
 
 
@@ -8991,20 +9020,66 @@ def recibos_por_superficie(superficies: list[dict], corridas: list[ResultadoDeMu
     return recibos, problemas
 
 
+def inventario_del_entorno_desechable(inventario: dict) -> dict[str, Any]:
+    """Descubre las superficies del entorno desechable y las sella. NO prueba tratamiento.
+
+    Es la mitad del recibo de egreso que una corrida puede reejecutar: el descubrimiento. La otra
+    mitad —los mutantes de publicación— abre la red diecisiete veces contra el canary y hace un
+    `git push`, así que una corrida que se acredita sin red no puede correrla sin contradecir
+    justamente lo que acredita. Por eso se separan, y por eso el documento reducido dice qué no
+    acredita en vez de parecerse a un recibo completo.
+
+    El `inventario_sha256` sale de la MISMA función que el del recibo completo: si el descubrimiento
+    divergiera entre los dos caminos, el número dejaría de ser comparable contra el congelado, que
+    es su único uso.
+    """
+    with tempfile.TemporaryDirectory(prefix="inventario-egreso-") as tmp:
+        hogar = Path(tmp) / "hogar"
+        hogar.mkdir(parents=True, exist_ok=True)
+        desechable = descubrir_canales(RAIZ, _entorno_desechable(hogar, inventario), inventario)
+    inventario_de_egreso = {"superficies": desechable}
+    inventario_de_egreso["inventario_sha256"] = hash_de_objeto(inventario_de_egreso)
+    return inventario_de_egreso
+
+
 def modo_recibo_de_egreso(args: argparse.Namespace) -> int:
     inventario, error = _cargar_json(RUTA_SUPERFICIES)
     if error:
         print(f"FALLA  {error}")
         return 1
 
+    if getattr(args, "solo_inventario", False):
+        inventario_de_egreso = inventario_del_entorno_desechable(inventario)
+        documento = {
+            "version_recibo": "1.0.0",
+            "inventario_de_egreso": inventario_de_egreso,
+            # Lo que este documento NO es. Sin esta marca sería indistinguible de un recibo al que
+            # le faltan campos, y el preflight lo aceptaría como si hubiera probado tratamiento.
+            "acredita_tratamiento": False,
+        }
+        print(f"Inventario del entorno desechable: "
+              f"{len(inventario_de_egreso['superficies'])} superficies · sin mutantes")
+        print(f"inventario_sha256 {inventario_de_egreso['inventario_sha256']}")
+        salida = getattr(args, "salida", None)
+        if salida:
+            ruta = _ruta_absoluta(salida)
+            ruta.parent.mkdir(parents=True, exist_ok=True)
+            ruta.write_text(json.dumps(documento, ensure_ascii=False, indent=2) + "\n",
+                            encoding="utf-8")
+            print(f"escrito en {ruta.relative_to(RAIZ) if ruta.is_relative_to(RAIZ) else ruta}")
+        print("\nRESULTADO: OK — inventario descubierto y sellado; el tratamiento de cada "
+              "superficie NO se probó acá")
+        return 0
+
     with tempfile.TemporaryDirectory(prefix="recibo-egreso-") as tmp:
         taller = Path(tmp)
-        hogar = taller / "hogar"
-        hogar.mkdir(parents=True, exist_ok=True)
-        entorno_desechable = _entorno_desechable(hogar, inventario)
-
         del_host = descubrir_canales(RAIZ, dict(os.environ), inventario)
-        desechable = descubrir_canales(RAIZ, entorno_desechable, inventario)
+        # El descubrimiento del entorno desechable sale de la MISMA función que usa
+        # `--solo-inventario`, no de una segunda llamada equivalente: dos caminos que computan el
+        # mismo número por separado divergen, y el que se relaja es siempre el que corre sobre los
+        # datos reales. Acá el único consumidor de `entorno_desechable` era esta línea.
+        inventario_de_egreso = inventario_del_entorno_desechable(inventario)
+        desechable = inventario_de_egreso["superficies"]
 
         snapshot_antes = _snapshot_de_egreso(RAIZ)
         with Canary() as canary:
@@ -9021,9 +9096,6 @@ def modo_recibo_de_egreso(args: argparse.Namespace) -> int:
                          "mutante que altera el árbol dejó de ser una prueba")
     if not ceso:
         problemas.append("el canary sigue escuchando: un canary vivo es un recurso sin dueño")
-
-    inventario_de_egreso = {"superficies": desechable}
-    inventario_de_egreso["inventario_sha256"] = hash_de_objeto(inventario_de_egreso)
 
     recibo = {
         "version_recibo": "1.0.0",
@@ -13117,6 +13189,11 @@ registrar_modo(
     modo_recibo_de_egreso,
     auxiliares=(
         Auxiliar("--salida", "dónde escribir el recibo materializado", metavar="<ruta>"),
+        Auxiliar("--solo-inventario",
+                 "descubre y sella el inventario del entorno desechable SIN ejecutar los mutantes "
+                 "de publicación: es lo que cada corrida reejecuta para comparar contra el "
+                 "congelado, porque correr los mutantes abriría la red que esa misma corrida "
+                 "acredita no tener. El documento que emite declara que no acredita tratamiento"),
     ),
 )
 

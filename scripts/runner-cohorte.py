@@ -2140,6 +2140,39 @@ def _invocacion_del_bundle(contexto: ContextoDeEjecucion) -> dict[str, Any]:
             "prompt_sha256": apertura["prompt_sha256"], "directorio_de_trabajo": directorio}
 
 
+def reejecutar_inventario_de_egreso() -> dict[str, Any]:
+    """Reejecuta la regla de descubrimiento EN ESTA CORRIDA, para compararla contra la congelada.
+
+    Es lo que T21 pide de cada corrida. El campo llevaba `superficies` vacío con un
+    `inventario_sha256` que era el de la lista de archivos de credencial —otro dato bajo el nombre
+    de éste—, así que lo que el bundle traía era una declaración de no publicación y no una
+    auditoría: `--aislamiento` bloqueaba a los cinco escritores por `evidencia_declarativa`.
+
+    Va por `--solo-inventario` y no por el recibo completo, que EJECUTA los mutantes de publicación
+    —diecisiete intentos contra el canary y un `git push`—: una corrida que se acredita sin red no
+    puede abrirla para probar que no la tiene. El instrumento se invoca como proceso aparte, igual
+    que en el resto: la regla no se reimplementa acá.
+    """
+    with tempfile.TemporaryDirectory(prefix="egreso-de-corrida-") as tmp:
+        destino = Path(tmp) / "inventario.json"
+        comando = [sys.executable, str(RUTA_INSTRUMENTO),
+                   "--recibo-de-egreso", "--solo-inventario", "--salida", str(destino)]
+        try:
+            proc = subprocess.run(comando, capture_output=True, text=True, timeout=600)
+        except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+            raise AnomaliaDelRunner("inventario_de_egreso_no_reejecutable",
+                                    f"el descubrimiento no pudo correr: {type(exc).__name__}")
+        if proc.returncode != 0:
+            cola = (proc.stdout + proc.stderr).strip().splitlines()[-3:]
+            raise AnomaliaDelRunner(
+                "inventario_de_egreso_no_reejecutable",
+                f"el descubrimiento falló (exit {proc.returncode}): {' | '.join(cola)}")
+        documento, error = _cargar_json(destino)
+        if error:
+            raise AnomaliaDelRunner("inventario_de_egreso_no_reejecutable", error)
+        return dict(documento["inventario_de_egreso"])
+
+
 def construir_bundle(contexto: ContextoDeEjecucion, adjudicacion: Adjudicacion,
                      resultado: ResultadoDelDespacho, eventos: list[dict[str, Any]],
                      journal: Journal, ventana: dict[str, str],
@@ -2210,20 +2243,7 @@ def construir_bundle(contexto: ContextoDeEjecucion, adjudicacion: Adjudicacion,
         }],
         "pruebas_de_aislamiento": capturar_pruebas_de_aislamiento(
             permiso_efectivo_del_punto(punto), antes, despues, contexto.retiros_comprobados),
-        # PENDIENTE, con hallazgo escrito: T21 pide que cada corrida reejecute la regla de egreso y
-        # la compare contra el inventario congelado, y esto no la reejecuta — `superficies` va
-        # vacío y el `inventario_sha256` es el de la lista de archivos de credencial, otro dato bajo
-        # el nombre de éste (el congelado da `f9002ab0…`). Por eso `--aislamiento` bloquea a los dos
-        # puntos de `cross-implement` con `evidencia_declarativa`.
-        #
-        # No se arregla llamando a `materializar_egreso` por corrida: ese modo EJECUTA los 17
-        # mutantes de publicación —`curl` contra el canary y un `git push`—, así que una corrida
-        # que se acredita sin red terminaría abriéndola diecisiete veces. Lo que falta es que el
-        # instrumento exponga el descubrimiento SIN los mutantes, y ése es otro archivo congelado.
-        "inventario_de_egreso_reejecutado": {
-            "inventario_sha256": _sha256(json.dumps(sorted(ARCHIVOS_DE_CREDENCIAL))),
-            "superficies": [],
-        },
+        "inventario_de_egreso_reejecutado": reejecutar_inventario_de_egreso(),
         "identidad_del_entorno": contexto.identidad_del_entorno,
         "pipeline_de_sanitizacion": {
             "orden_aplicado": list(ORDEN_DE_SANITIZACION),
