@@ -5601,19 +5601,30 @@ def modo_recomponer(args: argparse.Namespace) -> int:
             print(f"FALLA  {p}")
         return 1
 
+    # El modo acepta dos cosas y hace lo mismo con las dos: un DIRECTORIO de observaciones —desde
+    # el que recompone y reporta— o el DOCUMENTO publicado, que además compara publicado contra
+    # recompuesto con `revisar_baseline`. V40 lo invoca con el `.md`: recomponer solo desde las
+    # observaciones deja sin comprobar el artefacto que el lector termina viendo, que es donde un
+    # número escrito a mano sobreviviría.
+    documento = raiz if raiz.is_file() and raiz.suffix == ".md" else None
+    crudo_obs = getattr(args, "observaciones", None)
+    dir_observaciones = (_ruta_absoluta(crudo_obs or RUTA_OBSERVACIONES_FASE_0) if documento
+                         else raiz)
+
     observaciones: list[dict] = []
-    for archivo in sorted(raiz.glob("*.json")) if raiz.is_dir() else []:
+    for archivo in sorted(dir_observaciones.glob("*.json")) if dir_observaciones.is_dir() else []:
         datos, error = _cargar_json(archivo)
         if error:
             print(f"FALLA  {archivo.name}: {error}")
             return 1
         observaciones.append(datos)
     if not observaciones:
-        print(f"FALLA  {raiz}: no hay observaciones desde las que recomponer")
+        print(f"FALLA  {dir_observaciones}: no hay observaciones desde las que recomponer")
         return 1
 
     problemas_del_dag = revisar_dag(dag)
-    print(f"Observaciones: {raiz} ({len(observaciones)}) · acta: {ruta_acta}")
+    print(f"Observaciones: {dir_observaciones} ({len(observaciones)}) · acta: {ruta_acta}"
+          + (f" · documento: {documento}" if documento else ""))
     if problemas_del_dag:
         print(f"FALLA  el DAG de procedencia — {len(problemas_del_dag)}:")
         for p in problemas_del_dag[:6]:
@@ -5628,9 +5639,23 @@ def modo_recomponer(args: argparse.Namespace) -> int:
         else:
             print(f"OK     {recomposicion.metrica_id}: {recomposicion.valor:g} — desde "
                   f"{len(recomposicion.por_muestra)} muestras")
+
+    if documento is not None:
+        problemas = revisar_baseline(documento.read_text(encoding="utf-8"), preregistro,
+                                     observaciones, vocabulario)
+        print()
+        if problemas:
+            print(f"FALLA  el documento publicado contra lo recompuesto — {len(problemas)}:")
+            for p in problemas[:8]:
+                print(f"       - {p}")
+            print()
+            print(f"RESULTADO: FALLA — {len(problemas)} problemas")
+            return 1
+        print(f"OK     el documento publica exactamente lo recompuesto, en las dos direcciones")
+
     print()
     print(f"RESULTADO: OK — {len(observaciones)} observaciones recompuestas desde su fuente "
-          "canónica")
+          "canónica" + (" y comparadas contra el documento publicado" if documento else ""))
     return 0
 
 
@@ -5803,7 +5828,76 @@ def modo_autotest_recomposicion(args: argparse.Namespace) -> int:
                        "las cardinalidades del conjunto íntegro cierran" if not limpias
                        else " | ".join(limpias[:4])))
 
+    # [E] La rama del DOCUMENTO publicado (V40), de punta a punta por el modo entero.
+    #
+    # `revisar_baseline` ya tiene sus propios ataques; lo que este control ejerce es el CABLEADO:
+    # que pasarle un `.md` al modo lo haga comparar publicado contra recompuesto en vez de solo
+    # recomponer. Sin él, la rama sería código que ninguna corrida recorre — y su verde vendría de
+    # que nadie la ejecuta, no de que funcione.
+    fallas = []
+    with tempfile.TemporaryDirectory(prefix="recomponer-md-") as tmp:
+        raiz = Path(tmp)
+        dir_obs = raiz / "observaciones"
+        dir_obs.mkdir()
+        for observacion in observaciones:
+            _escribir_json(dir_obs / f"{observacion['observation_id']}.json", observacion)
+        ruta_acta = raiz / "preregistro.json"
+        _escribir_json(ruta_acta, preregistro)
+
+        publicado = raiz / "baseline.md"
+        publicado.write_text(_baseline_publicable(preregistro, observaciones, vocabulario),
+                             encoding="utf-8")
+        if _codigo_de_modo(modo_recomponer, recomponer=str(publicado),
+                           preregistro=str(ruta_acta), observaciones=str(dir_obs)) != 0:
+            fallas.append("el modo devolvió distinto de 0 sobre un documento que publica "
+                          "exactamente lo recompuesto")
+
+        # El ataque: un número publicado que no es el recompuesto. Es el defecto que la fila V40
+        # existe para cazar —un valor escrito a mano en el artefacto final—, y el que la versión
+        # anterior del modo no podía ver, porque nunca leía el documento.
+        texto = publicado.read_text(encoding="utf-8")
+        alterado = raiz / "alterado.md"
+        alterado.write_text(re.sub(r"`(\d+(?:\.\d+)?)`", "`999.0`", texto, count=1),
+                            encoding="utf-8")
+        if alterado.read_text(encoding="utf-8") == texto:
+            fallas.append("el ataque no alteró ningún número: el documento sintético no tiene "
+                          "valores publicados y el control no prueba nada")
+        elif _codigo_de_modo(modo_recomponer, recomponer=str(alterado),
+                             preregistro=str(ruta_acta), observaciones=str(dir_obs)) == 0:
+            fallas.append("el modo devolvió 0 sobre un documento con un número que no es el "
+                          "recompuesto")
+    resultados.append(("E", not fallas,
+                       "el modo acepta el documento publicado y lo compara contra lo recompuesto: "
+                       "pasa con el fiel y falla con un número alterado"
+                       if not fallas else " | ".join(fallas)))
+
     return _cerrar(resultados)
+
+
+def _baseline_publicable(preregistro: dict, observaciones: list[dict],
+                         vocabulario: dict) -> str:
+    """La tabla normativa de `## Números publicados`, con lo que el corpus recompone.
+
+    Se arma desde `recomponer_metricas` y no a mano: un documento sintético escrito aparte podría
+    diferir de lo recompuesto por su propia construcción, y entonces el positivo del control fallaría
+    por el fixture en vez de por el modo.
+    """
+    recompuestas = {r.metrica_id: r for r in recomponer_metricas(preregistro, observaciones,
+                                                                vocabulario)}
+    filas = []
+    for metrica in preregistro.get("metricas") or []:
+        ident = metrica["metrica_id"]
+        recompuesta = recompuestas.get(ident)
+        valor = (f"`{recompuesta.valor!r}`"
+                 if recompuesta is not None and recompuesta.error is None
+                 else "sin observaciones")
+        filas.append(f"| {ident} | {valor} | {metrica['unidad']} | {metrica['agregacion']} | "
+                     f"{len(recompuesta.por_muestra) if recompuesta and not recompuesta.error else 0}"
+                     f" | pre-registrada |")
+    cuerpo = "\n".join(filas)
+    return ("# Baseline\n\n## Números publicados\n\n"
+            "| métrica | valor | unidad | agregación | muestras | adjudicación |\n"
+            "|---|---|---|---|---|---|\n" + cuerpo + "\n")
 
 
 class AtaqueAlDag(NamedTuple):
@@ -9297,6 +9391,90 @@ def _puntos_del_ecosistema() -> set[str]:
     return {p["id"] for p in matriz.get("puntos") or []}
 
 
+def _valor_de_campo(campo: Any) -> Any:
+    """El valor de un campo de la matriz, que puede venir con su procedencia al lado."""
+    return campo["valor"] if isinstance(campo, dict) and "valor" in campo else campo
+
+
+def dimensiones_derivadas_de_la_matriz() -> tuple[dict[str, str], dict[str, str]]:
+    """Qué skill y qué familia de rol le corresponde a cada punto, según la MATRIZ.
+
+    Se derivan acá y no se leen del pre-registro a propósito: la cobertura por skill y por familia
+    que el acta declara es la **prevista**, y compararla contra sí misma no comprueba nada. La
+    efectiva sale de la matriz, que es la sede de esa relación.
+    """
+    matriz, error = _cargar_json(RUTA_MATRIZ)
+    if error:
+        return {}, {}
+    skill_de: dict[str, str] = {}
+    familia_de: dict[str, str] = {}
+    for punto in matriz.get("puntos") or []:
+        ident = _valor_de_campo(punto.get("id"))
+        skill_de[ident] = _valor_de_campo(punto.get("skill"))
+        familia_de[ident] = _valor_de_campo(punto.get("rol"))
+    return skill_de, familia_de
+
+
+def revisar_dimensiones_derivadas(preregistro: dict, skill_de: dict[str, str],
+                                  familia_de: dict[str, str]) -> list[Hallazgo]:
+    """AC-16 · V37: la cobertura por skill y por familia, contra la derivada de la matriz.
+
+    `revisar_cobertura` cruza la dimensión de **puntos** contra el ecosistema y deja las otras dos
+    declaradas sin comprobar: un acta podía omitir una skill de las dos listas —o declarar observada
+    una que ningún punto observado usa— y nada lo notaba.
+
+    Cada dimensión se comprueba en las dos direcciones y por separado, para que un hallazgo no
+    enmascare al otro: que la unión cubra el universo de la matriz, y que lo declarado observado
+    coincida exactamente con lo que los puntos observados implican.
+    """
+    problemas: list[Hallazgo] = []
+    cobertura = preregistro.get("cobertura") or {}
+    observados = set(cobertura.get("puntos_observados") or [])
+
+    for nombre, mapa, clave_si, clave_no in (
+            ("skill", skill_de, "skills_observadas", "skills_no_observadas"),
+            ("familia_de_rol", familia_de, "familias_observadas", "familias_no_observadas")):
+        if not mapa:
+            problemas.append(Hallazgo(
+                f"{nombre}_no_derivable",
+                f"la matriz no resolvió la dimensión `{nombre}` de ningún punto: sin ella, la "
+                f"cobertura declarada no se puede contrastar contra nada"))
+            continue
+
+        universo = {v for v in mapa.values() if v}
+        declarado_si = set(cobertura.get(clave_si) or [])
+        declarado_no = set(cobertura.get(clave_no) or [])
+
+        sin_declarar = universo - declarado_si - declarado_no
+        if sin_declarar:
+            problemas.append(Hallazgo(
+                f"{nombre}_sin_declarar",
+                f"la cobertura no dice nada de {sorted(sin_declarar)} en la dimensión `{nombre}`: "
+                f"la matriz las tiene y el acta no las declara ni observadas ni no observadas"))
+
+        en_ambas = declarado_si & declarado_no
+        if en_ambas:
+            problemas.append(Hallazgo(
+                f"{nombre}_en_las_dos_listas",
+                f"{sorted(en_ambas)} se declaran observadas y no observadas a la vez en la "
+                f"dimensión `{nombre}`"))
+
+        efectivas = {mapa[p] for p in observados if mapa.get(p)}
+        de_mas = declarado_si - efectivas
+        if de_mas:
+            problemas.append(Hallazgo(
+                f"{nombre}_declarada_sin_punto_que_la_observe",
+                f"la cobertura declara observadas {sorted(de_mas)} en la dimensión `{nombre}`, y "
+                f"ningún punto observado las usa según la matriz"))
+        de_menos = efectivas - declarado_si
+        if de_menos:
+            problemas.append(Hallazgo(
+                f"{nombre}_observada_y_no_declarada",
+                f"los puntos observados cubren {sorted(de_menos)} en la dimensión `{nombre}` y la "
+                f"cobertura no las declara observadas"))
+    return problemas
+
+
 def _reportar(titulo: str, problemas: list[Hallazgo], cuando_esta_bien: str) -> int:
     if problemas:
         print(f"FALLA  {titulo} — {len(problemas)} problemas:")
@@ -9328,8 +9506,10 @@ def modo_cobertura(args: argparse.Namespace) -> int:
     if error:
         print(f"FALLA  {error}")
         return 1
+    skill_de, familia_de = dimensiones_derivadas_de_la_matriz()
     return _reportar("la cobertura declarada",
-                     revisar_cobertura(preregistro, _puntos_del_ecosistema()),
+                     revisar_cobertura(preregistro, _puntos_del_ecosistema())
+                     + revisar_dimensiones_derivadas(preregistro, skill_de, familia_de),
                      "la cobertura declara qué se observa y qué no, con mínimo por métrica y "
                      "estrato, y toda exclusión cita una causa del conjunto cerrado")
 
@@ -9382,7 +9562,9 @@ def modo_cobertura_final(args: argparse.Namespace) -> int:
             print(f"FALLA  {p}")
         return 1
 
-    problemas = revisar_cobertura(preregistro, _puntos_del_ecosistema())
+    skill_de, familia_de = dimensiones_derivadas_de_la_matriz()
+    problemas = (revisar_cobertura(preregistro, _puntos_del_ecosistema())
+                 + revisar_dimensiones_derivadas(preregistro, skill_de, familia_de))
     cobertura = preregistro.get("cobertura") or {}
     no_observados = list(cobertura.get("puntos_no_observados") or [])
     texto = ruta.read_text(encoding="utf-8")
@@ -9602,7 +9784,70 @@ def modo_autotest_cobertura(args: argparse.Namespace) -> int:
                        "los modos devuelven 0 sobre el caso sano y distinto de 0 sobre sus "
                        "negativos, incluido `--cobertura-final`"
                        if not fallas else " | ".join(fallas)))
+
+    # [G] La dimensión derivada de la matriz (V37), con un ataque por cláusula y su mutante.
+    #
+    # El mutante que importa es el de **eliminación de la dimensión**: sin él, agregar la
+    # comprobación y no ejercitarla deja una guarda que nace salteada —el corpus de este autotest
+    # ya pasaba entero antes de que existiera—. Acá se anula la dimensión reemplazando los mapas
+    # derivados por vacíos y se exige que los cuatro ataques dejen de caer: si alguno sigue
+    # cayendo, lo está cazando otra cláusula y la suya no está ejercida.
+    fallas = []
+    skill_de, familia_de = dimensiones_derivadas_de_la_matriz()
+    if not skill_de or not familia_de:
+        fallas.append("la matriz no resolvió las dimensiones: el control no puede correr")
+    else:
+        def con(mutacion) -> list[Hallazgo]:
+            copia = copy.deepcopy(sano)
+            mutacion(copia)
+            return revisar_dimensiones_derivadas(copia, skill_de, familia_de)
+
+        una_skill = sorted({skill_de[p] for p in (sano["cobertura"]["puntos_observados"] or [])})[0]
+        una_familia = sorted({familia_de[p]
+                              for p in (sano["cobertura"]["puntos_observados"] or [])})[0]
+        ataques = {
+            "skill_sin_declarar":
+                lambda d: d["cobertura"]["skills_observadas"].remove(una_skill),
+            "skill_en_las_dos_listas":
+                lambda d: d["cobertura"]["skills_no_observadas"].append(una_skill),
+            "familia_de_rol_declarada_sin_punto_que_la_observe":
+                lambda d: d["cobertura"]["familias_observadas"].append("investigator"),
+            "familia_de_rol_observada_y_no_declarada":
+                lambda d: d["cobertura"]["familias_observadas"].remove(una_familia),
+        }
+        if revisar_dimensiones_derivadas(sano, skill_de, familia_de):
+            fallas.append("el caso sano tiene hallazgos en la dimensión derivada")
+        for clase, mutacion in ataques.items():
+            clases = {h.clave for h in con(mutacion)}
+            if clase not in clases:
+                fallas.append(f"el ataque de `{clase}` no cayó por su cláusula "
+                              f"(cayó por {sorted(clases) or 'ninguna'})")
+        # El mutante: sin la dimensión, ningún ataque puede caer.
+        vivos = [clase for clase, mutacion in ataques.items()
+                 if _con_dimension_anulada(sano, mutacion)]
+        if vivos:
+            fallas.append(f"con la dimensión eliminada, estos ataques siguen cayendo y por lo "
+                          f"tanto no la ejercen: {vivos}")
+    resultados.append(("G", not fallas,
+                       f"la dimensión derivada de la matriz cruza skill y familia en las dos "
+                       f"direcciones: {len(ataques) if not fallas else 0} ataques caen por su "
+                       f"cláusula y ninguno sobrevive a eliminarla"
+                       if not fallas else " | ".join(fallas)))
     return _cerrar(resultados)
+
+
+def _con_dimension_anulada(sano: dict, mutacion) -> bool:
+    """¿El ataque sigue cayendo con la dimensión derivada eliminada?
+
+    Eliminar la dimensión es pasarle los mapas vacíos: es la mutación que un implementador
+    descuidado produciría al borrar la derivación. La función reporta el hallazgo
+    `<dimension>_no_derivable`, que NO es uno de los ataques: por eso se lo excluye acá — si se
+    contara, el mutante parecería detectado por una cláusula que solo dice que la matriz no cargó.
+    """
+    copia = copy.deepcopy(sano)
+    mutacion(copia)
+    clases = {h.clave for h in revisar_dimensiones_derivadas(copia, {}, {})}
+    return bool(clases - {"skill_no_derivable", "familia_de_rol_no_derivable"})
 
 
 def _baseline_sintetico(preregistro: dict, sin_valores: set[str] | None = None) -> str:
@@ -12672,9 +12917,16 @@ registrar_modo(
     "--recomponer",
     "reconstruye cada número del baseline desde la fuente canónica de su clase —las mediciones "
     "desde las observaciones, la metodología desde el pre-registro, el presupuesto contractual "
-    "desde la matriz— y comprueba el DAG de procedencia antes de empezar",
+    "desde la matriz— y comprueba el DAG de procedencia antes de empezar; con un `.md` compara "
+    "además, en las dos direcciones, lo PUBLICADO contra lo recompuesto",
     modo_recomponer,
-    argumento=Argumento("<dir-de-observaciones>", const=RUTA_OBSERVACIONES_FASE_0),
+    argumento=Argumento("<dir-de-observaciones-o-baseline.md>",
+                        const=RUTA_OBSERVACIONES_FASE_0),
+    auxiliares=(
+        Auxiliar("--observaciones", "de dónde salen las observaciones cuando el argumento es un "
+                                    "documento publicado; por omisión, las de la fase",
+                 metavar="<dir>"),
+    ),
 )
 
 registrar_modo(
