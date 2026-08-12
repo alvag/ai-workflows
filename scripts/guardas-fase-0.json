@@ -244,6 +244,380 @@
         "tipo": "codigo_de_salida",
         "esperado": 0
       }
+    },
+    {
+      "id": "instrumento-validar-schemas",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--validar-schemas"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-vocabulario-metricas",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--vocabulario-metricas"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-recetas",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--recetas"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-fixture-historico",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--fixture-historico"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-autotest-aislamiento",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--autotest-aislamiento"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-autotest-bundles",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--autotest-bundles"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-autotest-canonicalizacion",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--autotest-canonicalizacion"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-autotest-clasificacion",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--autotest-clasificacion"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-autotest-cobertura",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--autotest-cobertura"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-autotest-derivacion",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--autotest-derivacion"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-autotest-egreso",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--autotest-egreso"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-autotest-escaneo",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--autotest-escaneo"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-autotest-generacion",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--autotest-generacion"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-autotest-guardas-previas",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--autotest-guardas-previas"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-autotest-hallazgos",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--autotest-hallazgos"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-autotest-identidad-congelada",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--autotest-identidad-congelada"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-autotest-identidad-entorno",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--autotest-identidad-entorno"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-autotest-integracion",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--autotest-integracion"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-autotest-latencias",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--autotest-latencias"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-autotest-ledger",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--autotest-ledger"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-autotest-muestras-intentos",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--autotest-muestras-intentos"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-autotest-preregistro",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--autotest-preregistro"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-autotest-procedencia-dag",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--autotest-procedencia-dag"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-autotest-procedencia-portada",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--autotest-procedencia-portada"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-autotest-promocion",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--autotest-promocion"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-autotest-recetas",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--autotest-recetas"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-autotest-recoleccion",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--autotest-recoleccion"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-autotest-recomposicion",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--autotest-recomposicion"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-autotest-recursos",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--autotest-recursos"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-autotest-reloj",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--autotest-reloj"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-autotest-sanitizacion",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--autotest-sanitizacion"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-autotest-schemas",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--autotest-schemas"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-autotest-vocabulario",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--autotest-vocabulario"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "instrumento-integracion",
+      "script": "scripts/instrumento-baseline.py",
+      "argumentos": [
+        "--integracion"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
     }
   ],
   "exclusiones": [

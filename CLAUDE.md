@@ -49,6 +49,39 @@ Al crear o editar skills, seguí las buenas prácticas de agentskills.io (refere
   contenido de un archivo que la fase haya alterado quede renovado: hoy el único es
   `scripts/baseline-sobre-en-vuelo.md`, verificado corriendo
   `python3 scripts/verificar-sobre-en-vuelo.py --validar-baseline`.
+- Si la skill toca el instrumento de medición de la fase 0 o cualquiera de los artefactos
+  que mide (`scripts/instrumento-baseline.py`, `scripts/runner-cohorte.py`, los tres
+  schemas `scripts/observacion.schema.json`, `scripts/bundle-corrida.schema.json` y
+  `scripts/preregistro.schema.json`, `scripts/metricas-fase-0.json`,
+  `scripts/recetas-cohorte.json`, `scripts/superficies-de-egreso.json`,
+  `scripts/interfaz-de-reloj.json`, `scripts/dag-procedencia.json`,
+  `scripts/preregistro-fase-0.json`, `scripts/intentos-fase-0.json`,
+  `scripts/presupuesto-de-recoleccion-fase-0.json`, `scripts/baseline-fase-0.md` o los
+  corpus de `scripts/fixtures-baseline/`), correr su batería completa empezando por
+  `python3 scripts/instrumento-baseline.py --validar-schemas`. Es un **script propio** del
+  repo —no un modo agregado a ninguno de los cinco anteriores— y el código de salida sano
+  es 0 en las 34 invocaciones. Los otros tres que leen los datos reales del acto son
+  `--vocabulario-metricas`, `--recetas` y `--fixture-historico`. La autocomprobación son
+  `--autotest-aislamiento`, `--autotest-bundles`, `--autotest-canonicalizacion`,
+  `--autotest-clasificacion`, `--autotest-cobertura`, `--autotest-derivacion`,
+  `--autotest-egreso`, `--autotest-escaneo`, `--autotest-generacion`,
+  `--autotest-guardas-previas`, `--autotest-hallazgos`, `--autotest-identidad-congelada`,
+  `--autotest-identidad-entorno`, `--autotest-integracion`, `--autotest-latencias`,
+  `--autotest-ledger`, `--autotest-muestras-intentos`, `--autotest-preregistro`,
+  `--autotest-procedencia-dag`, `--autotest-procedencia-portada`, `--autotest-promocion`,
+  `--autotest-recetas`, `--autotest-recoleccion`, `--autotest-recomposicion`,
+  `--autotest-recursos`, `--autotest-reloj`, `--autotest-sanitizacion`, `--autotest-schemas` y
+  `--autotest-vocabulario`. Y `--integracion` comprueba,
+  contra el árbol real, que esta misma unidad siga siendo cierta: que la bandera que
+  documenta exista, sea invocable y devuelva el código que acá se declara.
+
+  > **La familia de autotests no se puede declarar con comodín en esta unidad, y por eso
+  > van nombradas una por una.** La expansión de una familia se deriva de los
+  > `add_argument` literales que el parser del script declara, y este instrumento arma el
+  > suyo desde una tabla `registrar_modo(...)`: la derivación devuelve el conjunto vacío,
+  > así que un comodín acá daría `familia_vacia` y pondría la guarda en rojo. La lista no
+  > envejece porque el instrumento está congelado; si alguna vez deja de estarlo, lo que
+  > hay que arreglar es la derivación, no esta unidad.
 
 > Nota: varios SKILL.md de este repo (p. ej. `sdd-flow`) exceden holgadamente el presupuesto de tokens sugerido. Es una tensión conocida por la complejidad del flujo; al editar, empujá contenido hacia `reference.md` antes que engordar el SKILL.md.
 
