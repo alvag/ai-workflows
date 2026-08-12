@@ -367,6 +367,14 @@
           "items": {
             "$ref": "#/$defs/texto"
           }
+        },
+        "prompt_sha256": {
+          "description": "Hash del prompt materializado que el worker recibió —la sección que el ancla del punto nombra, más el encuadre de la cohorte—. Opcional porque los corpus congelados antes de que el runner materializara la entrada no lo llevan; en una corrida real es lo que hace comparable una invocación con la siguiente, igual que en la variante por acción.",
+          "$ref": "#/$defs/sha256"
+        },
+        "encuadre_id": {
+          "description": "Identidad versionada del encuadre que acompaña a la sección. Sin él, dos corridas con el mismo comando y distinto encuadre serían indistinguibles y sus latencias no compararían lo mismo.",
+          "$ref": "#/$defs/texto"
         }
       }
     },

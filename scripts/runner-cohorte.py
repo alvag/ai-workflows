@@ -80,6 +80,7 @@ import re
 import shutil
 import subprocess
 import sys
+import unicodedata
 import tempfile
 import time
 from pathlib import Path
@@ -1711,6 +1712,15 @@ class ContextoDeEjecucion(NamedTuple):
     recibos: Path
     sesionador: Sesionador | None
     despachar_comando: Callable[[str, Path], tuple[int, str]]
+    # Dónde se materializan el prompt y las salidas que el comando congelado nombra por marcador.
+    # No es el árbol del worker: ahí el worker corre, y acá deja lo que produce.
+    scratch: Path = Path(".")
+    # El ancla del punto en la matriz: de ahí sale el prompt que el worker recibe.
+    ancla_de_invocacion: str = ""
+    # Se completa al materializar la entrada, antes de lanzar. Es una lista de un
+    # elemento y no un campo suelto porque `NamedTuple` es inmutable y el bundle se
+    # arma después del despacho.
+    entrada: list[Path] = []
     retiros_comprobados: bool = False
 
 
@@ -1723,6 +1733,190 @@ class ResultadoDelDespacho(NamedTuple):
 
 def _despachador_real(comando: str, arbol: Path) -> tuple[int, str]:
     return _correr(["sh", "-c", comando], cwd=arbol)
+
+
+# --- Resolución de marcadores: del comando congelado al comando ejecutable ---------------------
+#
+# El comando de una receta CLI es el que su sede declara, con los marcadores `<…>` que esa sede
+# escribe. Ejecutarlo tal cual no lanza nada: `sh` muere en el parseo, porque `<` es redirección.
+# Medido sobre las 7 recetas de script: las 7 fallan con `syntax error near unexpected token '<'`
+# y `codex` no llega a invocarse.
+#
+# La sustitución es SOLO para ejecutar. El bundle sigue registrando el comando **congelado** —lo
+# hace `_invocacion_del_bundle`— y eso es deliberado: el literal de la receta es lo que identifica
+# la invocación y es publicable, mientras que los valores concretos son del entorno de la corrida y
+# llevarían rutas del host al artefacto final.
+#
+# Cada familia se resuelve por su significado, no por su nombre exacto, porque la misma cosa se
+# llama distinto en cada sede: el árbol del worker es `working_dir` en una receta, `dir-código` en
+# otra y `raíz-repo` en una tercera.
+
+MARCADORES_DEL_ARBOL = ("working_dir", "dir-código", "raíz-repo")
+MARCADORES_DEL_SCRATCH = ("S", "scratch")
+# Los opcionales de la sede viajan entre corchetes —`[-m <MODEL>]`—, que tampoco es shell. Si no se
+# fija un valor, el grupo entero se retira; dejarlo pondría un corchete literal en la línea.
+MARCADORES_OPCIONALES = ("MODEL", "EFFORT")
+
+
+# El encuadre que acompaña a la sección anclada. La sección DESCRIBE el punto de despacho; no le
+# pide nada a nadie, así que un worker que solo la reciba contesta preguntando qué hacer con ella
+# —medido: «¿Qué quieres que haga con este fragmento?»— y la corrida mide un encargo vacío. El
+# encuadre la convierte en una tarea concreta e idéntica para los trece puntos, que es lo que hace
+# comparables sus latencias.
+#
+# Va versionado y su identidad viaja en el bundle: dos corridas con el mismo comando y distinto
+# encuadre no miden lo mismo, y sin declararlo serían indistinguibles.
+ENCUADRE_ID = "encuadre-de-cohorte-1.0.0"
+ENCUADRE = (
+    "\n\n---\n\n"
+    "Arriba está la sección que define este punto de despacho, tal como la recibe un agente en "
+    "producción. Corré en solo lectura sobre el árbol: no edites archivos y no publiques nada.\n\n"
+    "Devolvé un reporte breve que responda: (1) qué encargo concreto describe esa sección para el "
+    "agente que la recibe, (2) qué entrada necesitarías para ejecutarlo y (3) qué producirías al "
+    "terminar. No ejecutes el encargo: lo que se mide es que el despacho, el prompt congelado y la "
+    "cosecha de la salida funcionen de punta a punta.\n\n"
+    "No cites rutas absolutas del sistema de archivos en tu respuesta: nombrá los archivos por su "
+    "ruta relativa al repositorio. Tu salida se publica.\n")
+
+
+def _slug_de_heading(texto: str) -> str:
+    """El fragmento con el que la matriz ancla una sección, desde el texto de su heading.
+
+    Es la normalización de anclas de markdown: minúsculas, sin marcas de énfasis ni código, y todo
+    lo que no sea alfanumérico colapsado a guiones. Se implementa acá y no se transcribe el
+    fragmento en ningún lado: el ancla vive en la matriz y la sección en la skill, y este predicado
+    es lo único que las une.
+    """
+    limpio = re.sub(r"[`*_]", "", texto).lower()
+    limpio = unicodedata.normalize("NFKD", limpio)
+    limpio = "".join(c for c in limpio if not unicodedata.combining(c))
+    return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", limpio)).strip("-")
+
+
+def prompt_desde_el_ancla(ancla: str, raiz: Path) -> tuple[str | None, str]:
+    """El prompt de un punto es la SECCIÓN que su ancla nombra, tomada literal de su sede.
+
+    Se resuelve en vez de transcribirse porque una copia del prompt en otro archivo diverge de la
+    sección que el punto realmente usa, y entonces la cohorte mediría un encargo que ningún punto
+    hace. El ancla es `<ruta>#<fragmento>`, y el fragmento se compara contra el slug de cada
+    heading de esa sede.
+    """
+    ruta, _, fragmento = ancla.partition("#")
+    sede = raiz / ruta
+    if not sede.is_file():
+        return None, f"la sede `{ruta}` del ancla no existe"
+    lineas = sede.read_text(encoding="utf-8").splitlines()
+    patron = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
+    inicio: int | None = None
+    nivel_de_inicio = 0
+    for numero, linea in enumerate(lineas):
+        coincide = patron.match(linea)
+        if not coincide:
+            continue
+        nivel = len(coincide.group(1))
+        if inicio is None:
+            if _slug_de_heading(coincide.group(2)) == fragmento:
+                inicio, nivel_de_inicio = numero, nivel
+            continue
+        if nivel <= nivel_de_inicio:
+            return "\n".join(lineas[inicio:numero]).strip() + "\n", f"{ruta} § {fragmento}"
+    if inicio is None:
+        return None, f"`{ruta}` no tiene ninguna sección cuyo ancla sea `{fragmento}`"
+    return "\n".join(lineas[inicio:]).strip() + "\n", f"{ruta} § {fragmento}"
+
+
+def materializar_entrada(contexto: "ContextoDeEjecucion") -> tuple[Path | None, str]:
+    """Escribe el prompt de la corrida en cada archivo de entrada que el comando lee.
+
+    El comando congelado nombra su entrada por marcador —`<scratch>/prompt.txt`,
+    `<raíz-repo>/.pr-review/<id>/prompt.txt`—; el runner tiene que dejarla escrita antes de lanzar,
+    o `sh` muere en la redirección y el intento se bloquea por un archivo que faltaba, no por el
+    transporte.
+    """
+    ancla = contexto.ancla_de_invocacion
+    if not ancla:
+        return None, "el punto no declara `ancla_de_invocacion` en la matriz"
+    seccion, detalle = prompt_desde_el_ancla(ancla, RAIZ)
+    if seccion is None:
+        return None, detalle
+    prompt = seccion + ENCUADRE
+
+    comando = contexto.receta.get("comando") or ""
+    ejecutable = resolver_comando(
+        comando, arbol=contexto.arbol, scratch=contexto.scratch, run_id=contexto.run_id,
+        ordinal=contexto.attempt_ordinal,
+        admitidas=tuple(contexto.receta.get("variables_admitidas") or ()))
+    # Las entradas son las rutas que el comando lee por `<` — lo que el worker recibe.
+    entradas = re.findall(r"<\s*(\S+)", ejecutable.linea)
+    escritas = []
+    for relativa in entradas:
+        destino = contexto.arbol / relativa
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        destino.write_text(prompt, encoding="utf-8")
+        escritas.append(destino)
+    if not escritas:
+        return None, "el comando congelado no lee ninguna entrada por redirección"
+    return escritas[0], (f"{detalle} + {ENCUADRE_ID} → {len(escritas)} entrada(s), "
+                         f"{len(prompt)} chars")
+
+
+class ComandoEjecutable(NamedTuple):
+    """El comando ya resuelto, con lo que hizo falta resolverlo. Se reporta para que la sustitución
+    quede auditable: un comando que se ejecuta sin decir con qué valores no es reproducible."""
+    linea: str
+    sustituciones: dict[str, str]
+    opcionales_retirados: tuple[str, ...]
+    sin_resolver: tuple[str, ...]
+
+
+def resolver_comando(comando: str, *, arbol: Path, scratch: Path, run_id: str, ordinal: int,
+                     admitidas: tuple[str, ...] = ()) -> ComandoEjecutable:
+    """Sustituye los marcadores del comando congelado por los valores de esta corrida.
+
+    Lo que queda sin resolver se decide contra `variables_admitidas` —la sede que declara cuáles
+    son los marcadores— y NO buscando `<…>` en la línea ya sustituida: una redirección de entrada
+    seguida de una de salida (`- < prompt.txt > salida.txt`) forma un par `<…>` que no es ningún
+    marcador. Medido: ese falso positivo bloqueaba tres de las siete recetas, todas correctamente
+    resueltas.
+    """
+    # Todo se sustituye RELATIVO al árbol, porque el comando corre con `cwd` ahí. Con rutas
+    # absolutas el comando funciona igual, pero su salida capturada las arrastra y el pipeline de
+    # sanitización rechaza la evidencia entera por `ruta_absoluta_del_host` — medido: el primer
+    # caso murió así, sin llegar a producir bundle. Una ruta del host en la evidencia es
+    # exactamente lo que ese pipeline existe para impedir, y acá la habría puesto el arnés.
+    valores: dict[str, str] = {}
+    for nombre in MARCADORES_DEL_ARBOL:
+        valores[nombre] = "."
+    relativo = scratch.relative_to(arbol).as_posix() if scratch.is_relative_to(arbol) else "."
+    for nombre in MARCADORES_DEL_SCRATCH:
+        valores[nombre] = relativo
+    valores["id"] = run_id
+    valores["N"] = str(ordinal)
+
+    # Las rutas que la sede escribe como marcador —`<ruta/al/veredicto.txt>`— se materializan en el
+    # scratch conservando su nombre de archivo: es lo que hace cosechable la salida desde disco.
+    for marcador in set(re.findall(r"<([^<>]+)>", comando)):
+        if "/" in marcador and marcador not in valores:
+            valores[marcador] = f"{relativo}/{Path(marcador).name}"
+
+    linea = comando
+    retirados: list[str] = []
+    for nombre in MARCADORES_OPCIONALES:
+        patron = re.compile(r"\[[^\[\]]*<" + re.escape(nombre) + r">[^\[\]]*\]\s*")
+        if patron.search(linea):
+            linea = patron.sub("", linea)
+            retirados.append(nombre)
+
+    usados: dict[str, str] = {}
+    for nombre, valor in valores.items():
+        marcador = f"<{nombre}>"
+        if marcador in linea:
+            linea = linea.replace(marcador, valor)
+            usados[nombre] = valor
+
+    pendientes = tuple(sorted(n for n in admitidas
+                              if n not in MARCADORES_OPCIONALES and f"<{n}>" in linea))
+    return ComandoEjecutable(linea, usados, tuple(retirados), pendientes)
 
 
 # --- Obligación 1: validar el pre-registro -----------------------------------------------------
@@ -1828,7 +2022,32 @@ def despachar(contexto: ContextoDeEjecucion,
     del adjudicacion
     adaptador = contexto.receta.get("adaptador")
     if adaptador == "script":
-        codigo, salida = contexto.despachar_comando(contexto.receta["comando"], contexto.arbol)
+        contexto.scratch.mkdir(parents=True, exist_ok=True)
+        # La entrada se materializa para los puntos REALES, que son los que la matriz ancla. Un
+        # corpus sintético corre recetas que no están en la matriz y no tiene sección que resolver:
+        # ahí no hay prompt que dejar escrito y el comando se lanza tal cual, que es lo que esos
+        # controles prueban. Exigirlo igual haría que la guarda descarrilara los controles ajenos
+        # antes de que ejerzan lo suyo — medido: rompía `--autotest-journal` y `--autotest-adaptadores`.
+        if contexto.ancla_de_invocacion:
+            entrada, detalle_entrada = materializar_entrada(contexto)
+            if entrada is None:
+                raise AnomaliaDelRunner(
+                    "entrada_no_materializable",
+                    f"el prompt del punto no se pudo dejar escrito antes de lanzar: "
+                    f"{detalle_entrada}")
+            contexto.entrada.append(entrada)
+        ejecutable = resolver_comando(
+            contexto.receta["comando"], arbol=contexto.arbol, scratch=contexto.scratch,
+            run_id=contexto.run_id, ordinal=contexto.attempt_ordinal,
+            admitidas=tuple(contexto.receta.get("variables_admitidas") or ()))
+        # Un marcador que sobrevive a la resolución NO se lanza: `sh` lo leería como redirección y
+        # el intento moriría en el parseo, que es un fallo del arnés disfrazado de fallo del worker.
+        if ejecutable.sin_resolver:
+            raise AnomaliaDelRunner(
+                "comando_sin_resolver",
+                f"el comando congelado dejó marcadores que esta corrida no sabe sustituir: "
+                f"{list(ejecutable.sin_resolver)}")
+        codigo, salida = contexto.despachar_comando(ejecutable.linea, contexto.arbol)
         return ResultadoDelDespacho(
             "completado" if codigo == 0 else "fallido", salida, None, None)
 
@@ -1851,8 +2070,16 @@ def _invocacion_del_bundle(contexto: ContextoDeEjecucion) -> dict[str, Any]:
     receta = contexto.receta
     directorio = _relativa(contexto.arbol)
     if receta.get("adaptador") == "script":
-        return {"tipo": "comando", "comando_literal": receta["comando"],
-                "directorio_de_trabajo": directorio}
+        invocacion: dict[str, Any] = {"tipo": "comando", "comando_literal": receta["comando"],
+                                      "directorio_de_trabajo": directorio}
+        # El hash es del prompt que el worker REALMENTE recibió —sección anclada + encuadre—, leído
+        # del archivo escrito y no recompuesto: recomponerlo acá permitiría que difiera de lo que
+        # se despachó sin que nada lo note.
+        materializada = contexto.entrada[0] if contexto.entrada else None
+        if materializada is not None and materializada.is_file():
+            invocacion["prompt_sha256"] = hashlib.sha256(materializada.read_bytes()).hexdigest()
+            invocacion["encuadre_id"] = ENCUADRE_ID
+        return invocacion
     apertura = next(e for e in contexto.recibo["recibo"]["eventos"]
                     if e["evento"] == "dispatch_started")
     return {"tipo": "accion", "accion_literal": receta["accion"],
@@ -2132,13 +2359,29 @@ PATRONES_PROHIBIDOS = (
     (r"ghp_[A-Za-z0-9]{16,}", "un token de GitHub"),
     (r"sk-[A-Za-z0-9]{20,}", "una clave de API"),
     (r"-----BEGIN [A-Z ]*PRIVATE KEY-----", "una clave privada"),
-    (r"/Users/[^/\s]+/", "una ruta absoluta del host"),
-    (r"/home/[^/\s]+/", "una ruta absoluta del host"),
+)
+
+# Las rutas del host se NORMALIZAN, no se rechazan, y la diferencia es de clase. Un token o una
+# clave privada no tienen forma segura de conservarse: si aparecen, la evidencia se descarta. Una
+# ruta del host es un dato de ubicación, y lo que hay que impedir es que viaje al artefacto
+# publicado, no que la corrida exista.
+#
+# Rechazarla convertía la publicabilidad en un sorteo sobre la redacción del worker. Medido: al
+# encuadre que le pide decir qué entrada necesitaría, un worker contestó citando
+# `/Users/<usuario>/.agents/skills/...` cuatro veces, y la corrida entera se perdió — la misma
+# receta había pasado minutos antes, porque esa vez contestó otra cosa. Una cohorte que depende de
+# eso no mide el transporte.
+PATRONES_DE_RUTA_DEL_HOST = (
+    (r"/Users/[^/\s]+/", "<HOME>/"),
+    (r"/home/[^/\s]+/", "<HOME>/"),
+    (r"[A-Za-z]:\\\\Users\\\\[^\\\\\s]+\\\\", "<HOME>\\\\"),
 )
 
 
 def sanitizar(texto: str) -> str:
-    """Rechaza —no enmascara— lo que no puede entrar a la evidencia."""
+    """Normaliza las rutas del host y rechaza lo que no puede conservarse de ninguna forma."""
+    for patron, marcador in PATRONES_DE_RUTA_DEL_HOST:
+        texto = re.sub(patron, marcador, texto)
     for patron, que_es in PATRONES_PROHIBIDOS:
         if re.search(patron, texto):
             raise AnomaliaDelRunner("sanitizacion_rechazada",
@@ -2205,6 +2448,20 @@ def _sha256_de(ruta: Path) -> str:
         return "0" * 64
 
 
+def _ancla_del_punto(punto: str) -> str:
+    """El `ancla_de_invocacion` que la matriz declara para este punto."""
+    matriz, error = _cargar_json(RUTA_MATRIZ_DESPACHOS)
+    if error:
+        return ""
+    for entrada in matriz.get("puntos") or []:
+        ident = entrada.get("id")
+        ident = ident["valor"] if isinstance(ident, dict) and "valor" in ident else ident
+        if ident == punto:
+            ancla = entrada.get("ancla_de_invocacion")
+            return ancla["valor"] if isinstance(ancla, dict) and "valor" in ancla else (ancla or "")
+    return ""
+
+
 def modo_ejecutar_caso(args: argparse.Namespace) -> int:
     receta_id = getattr(args, "receta", None)
     if not receta_id:
@@ -2249,7 +2506,12 @@ def modo_ejecutar_caso(args: argparse.Namespace) -> int:
             run_id=run_id, preregistro_sha256=preregistro_sha256, arbol=arbol, recibo=recibo,
             recibos_usados=set(), identidad_del_entorno=identidad_del_entorno_de_hoy(),
             recibos=recibos, sesionador=sesionador_codex(Path(tmp)),
-            despachar_comando=_despachador_real)
+            despachar_comando=_despachador_real,
+            # El scratch vive DENTRO del árbol desechable para que toda ruta del comando
+            # sea relativa a su `cwd`. El árbol es desechable; lo que se cosecha se
+            # importa al staging después, que es lo que D-19 pide sacar del árbol medido.
+            scratch=arbol / ".cohorte-scratch" / run_id,
+            ancla_de_invocacion=_ancla_del_punto(receta["punto_de_despacho"]))
         bundle, problemas = ejecutar_caso(contexto, journal, reloj)
 
     ruta_journal = salida / run_id / "journal-anomalias.json"
