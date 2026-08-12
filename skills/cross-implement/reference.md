@@ -99,8 +99,13 @@ de corrida"). Los comandos concretos aparecen en cada vía documentada debajo.
   ```
 - `-s workspace-write` limita las escrituras al `working_dir` **más `/tmp`** (por diseño del
   sandbox). Caveat: si el repo objetivo vive bajo `/tmp`, el borde efectivo es más laxo.
-- **Fix round** (resume del MISMO thread; el override de sandbox es **obligatorio** — el modo de
-  la sesión original no es garantía al reanudar, ver `cross-review/reference.md` → Vía B):
+- **Fix round** (resume del MISMO thread). Dos cosas que **no** se heredan del comando de lanzamiento
+  y que hay que mirar antes de copiarlo (detalle en `cross-review/reference.md` → "Asimetría de flags
+  entre `exec` y `exec resume`"):
+  - el **override de sandbox es obligatorio**: el modo de la sesión original no es garantía al
+    reanudar, y por eso va `-c sandbox_mode="workspace-write"` y no `-s`, que `resume` **rechaza**;
+  - **`-C` tampoco existe en `resume`**: el working dir es el **cwd del proceso**. Lanzar el fix
+    round desde otro directorio escribe en el repo equivocado **sin error**. Posicionarse antes.
   ```bash
   SESSION_ID=$(cat <scratch>/session.txt)
   echo "resume → ${SESSION_ID:?vacío}"   # id vacío = sesión fresca silenciosa; cortar acá

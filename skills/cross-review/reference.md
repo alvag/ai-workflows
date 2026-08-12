@@ -64,7 +64,7 @@ es agnóstico del shell):
 | Prompt (archivo) → stdin | `cmd … - < prompt.txt` | `Get-Content -Raw prompt.txt \| cmd … -` |
 | Capturar stdout → archivo | `cmd … > out.txt` | `cmd … > out.txt` (PS7 escribe UTF-8 sin BOM) |
 | Generar un UUID | `uuidgen` | `[guid]::NewGuid().ToString()` |
-| Ejecutar en otro cwd | `(cd dir && cmd)` | `Push-Location dir; …; Pop-Location` (o el flag `-C dir` de `codex`) |
+| Ejecutar en otro cwd | `(cd dir && cmd)` | `Push-Location dir; …; Pop-Location` (o el flag `-C dir` de `codex exec` — **`codex exec resume` no lo acepta**: ver "Asimetría de flags entre `exec` y `exec resume`") |
 | Detectar el OS | `uname -s` | `$IsWindows` |
 
 > **`uuidgen` falta en Git Bash de Windows** (solo está en macOS/Linux). Si se corre la Vía C por
@@ -299,8 +299,9 @@ Get-Content -Raw <ruta\al\prompt-r1.txt> |
   parsear; el `-` como PROMPT hace que las instrucciones se lean de **stdin**; `--json` emite el
   stream de eventos JSONL por stdout — la línea `{"type":"thread.started","thread_id":"…"}` es la
   única captura **determinística** del session id, y ese id explícito es lo que usa el resume.
-- Rondas siguientes (mismo thread): el subcomando `resume` **no** acepta `-s`/`--sandbox` ni
-  `--color` ni `-C` — y el sandbox de la sesión original **NO es una garantía al reanudar**: un
+- Rondas siguientes (mismo thread): el subcomando `resume` **rechaza nueve flags de `exec`** (ver
+  "Asimetría de flags entre `exec` y `exec resume`", abajo) — entre ellas `-s`/`--sandbox` y `-C` —
+  y el sandbox de la sesión original **NO es una garantía al reanudar**: un
   `-c sandbox_mode` en el resume lo redefine en cualquier dirección. Verificado 2026-07-09 con
   codex-cli 0.143.0: una sesión lanzada con `-s read-only` y reanudada con
   `-c sandbox_mode="workspace-write"` **escribió un archivo**. Sin flags, en esas pruebas (config
@@ -652,6 +653,36 @@ propios para inspección —ante un bloqueo, un deadline vencido o una salida il
 presentar el gate: son dos decisiones independientes y ninguna espera a la otra. Un recurso propio en
 pie no es un observable pendiente; esperar a retirarlo antes de presentar reintroduciría exactamente
 el cuelgue que esta tabla elimina.
+
+## Asimetría de flags entre `exec` y `exec resume`
+
+**`codex exec resume` no acepta el mismo conjunto de flags que `codex exec`.** Armar el comando de
+resume copiando el de la ronda 1 y cambiándole el subcomando **falla**, y es el error natural: el de
+ronda 1 está a la vista dos secciones más arriba y las flags parecen genéricas del binario.
+
+Derivado de `codex exec --help` y `codex exec resume --help` (codex-cli **0.147.0**, 2026-08-12).
+Las nueve que `resume` **rechaza**:
+
+| Flag | Qué hace en `exec` | Qué hacer en `resume` |
+|---|---|---|
+| `-C` | fija el working root | **posicionarse antes** con `cd`/`Push-Location`: el resume usa el **cwd del proceso** |
+| `-s` / `--sandbox` | fija el modo de sandbox | pasarlo como `-c sandbox_mode="…"`, que además es **obligatorio** (no hereda el de la sesión) |
+| `--add-dir` | agrega un directorio accesible | no hay equivalente; si hace falta, el resume no es la vía |
+| `--approve-for-me`, `--color`, `--local-provider`, `--oss`, `-p`, `-V` | — | no aplican a una sesión ya creada |
+
+`resume` agrega dos propias: `--last` y `--all`. Las **16 restantes** son comunes, incluidas las que
+sostienen el aislamiento (`--ignore-user-config`, `--disable`) y las que fijan modelo y salida
+(`-m`, `-c`, `-o`/`--output-last-message`, `--json`, `--skip-git-repo-check`).
+
+> **La flag rechazada no es el riesgo grave.** `-C` en un resume corta con
+> `error: unexpected argument '-C' found` — ruidoso, imposible de ignorar. Lo peligroso es su
+> ausencia **no advertida**: sin `-C`, el working dir es el **cwd del proceso**, y un resume lanzado
+> desde otro directorio opera sobre el repo equivocado **sin error, sin aviso y con exit 0**. Por eso
+> todo bloque de resume de estas skills asume que el conductor ya está posicionado en el
+> `working_dir`; si no puede garantizarlo, `cd` explícito antes de invocar.
+
+Vale igual para los otros dos puntos donde se reanuda una sesión Codex —el fix round de
+`cross-implement` y el seed desde co-exploración—: es una asimetría del CLI, no de esta skill.
 
 ## Resume entre rondas
 
