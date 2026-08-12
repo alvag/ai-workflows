@@ -50,7 +50,7 @@ DIR_FIXTURES = DIR_SCRIPTS / "fixtures-oraculo"
 
 # El contrato de extracción que esta fase congela. Es el mismo que `dossier-arnes` declara en su
 # encabezado; que sigan siendo el mismo es la mitad de AC-1.
-SHA_CONTRATO = "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef"
+SHA_CONTRATO = "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb"
 
 # La spec del consumidor vive bajo `.plans/`, que está en `.git/info/exclude:11`. Que no sea
 # versionada es exactamente el límite del cuarto proxy (AC-14): esta guarda lee el texto, no

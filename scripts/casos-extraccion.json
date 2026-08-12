@@ -1,6 +1,6 @@
 {
   "version_schema": "1",
-  "contrato_sha256": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+  "contrato_sha256": "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb",
   "corpus_identidad": "sha256:bd98d84a9d4d4e2f93a4a25d95b84b73028616e60561e858a27e995c77f6ea94",
   "reglas_cubiertas": [
     "R1",

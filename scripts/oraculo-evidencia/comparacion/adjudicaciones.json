@@ -26,7 +26,7 @@
       "clase_adjudicada": "exclusion_deliberada",
       "motivo": "El detector leyó ['AC-19', 'AC-20', 'AC-21'] del campo `Verificar:`, donde una persona los lee como cobertura y no se equivoca al hacerlo. R2 → «Lo que aparece en la línea de `Verificar:` NO declara cobertura, ni siquiera con forma de declaración». El corpus tiene el patrón `- **Verificar:** V25, V26 · **AC-21**`, con el mismo separador `·` de la fuente 1 y en posición terminal fija, y aun así no cuenta: `Verificar` es el campo donde más aparecen `AC-n` en prosa legítima, y distinguir declaración de mención dentro del mismo campo por su forma es el tipo de predicado frágil que el contrato existe para evitar. La pérdida es asumida y medida, no un descuido.",
       "evidencia": "salidas/archived__herdr-transporte-skills.jsonl",
-      "contrato": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+      "contrato": "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb",
       "vigente": true
     },
     {
@@ -43,7 +43,7 @@
       "clase_adjudicada": "exclusion_deliberada",
       "motivo": "El detector leyó ['AC-19'] del campo `Verificar:`, donde una persona los lee como cobertura y no se equivoca al hacerlo. R2 → «Lo que aparece en la línea de `Verificar:` NO declara cobertura, ni siquiera con forma de declaración». El corpus tiene el patrón `- **Verificar:** V25, V26 · **AC-21**`, con el mismo separador `·` de la fuente 1 y en posición terminal fija, y aun así no cuenta: `Verificar` es el campo donde más aparecen `AC-n` en prosa legítima, y distinguir declaración de mención dentro del mismo campo por su forma es el tipo de predicado frágil que el contrato existe para evitar. La pérdida es asumida y medida, no un descuido.",
       "evidencia": "salidas/archived__herdr-transporte-skills.jsonl",
-      "contrato": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+      "contrato": "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb",
       "vigente": true
     },
     {
@@ -60,7 +60,7 @@
       "clase_adjudicada": "exclusion_deliberada",
       "motivo": "El detector leyó ['AC-21'] del campo `Verificar:`, donde una persona los lee como cobertura y no se equivoca al hacerlo. R2 → «Lo que aparece en la línea de `Verificar:` NO declara cobertura, ni siquiera con forma de declaración». El corpus tiene el patrón `- **Verificar:** V25, V26 · **AC-21**`, con el mismo separador `·` de la fuente 1 y en posición terminal fija, y aun así no cuenta: `Verificar` es el campo donde más aparecen `AC-n` en prosa legítima, y distinguir declaración de mención dentro del mismo campo por su forma es el tipo de predicado frágil que el contrato existe para evitar. La pérdida es asumida y medida, no un descuido.",
       "evidencia": "salidas/archived__herdr-transporte-skills.jsonl",
-      "contrato": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+      "contrato": "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb",
       "vigente": true
     },
     {
@@ -77,7 +77,7 @@
       "clase_adjudicada": "exclusion_deliberada",
       "motivo": "El detector leyó ['AC-8'] del campo `Verificar:`, donde una persona los lee como cobertura y no se equivoca al hacerlo. R2 → «Lo que aparece en la línea de `Verificar:` NO declara cobertura, ni siquiera con forma de declaración». El corpus tiene el patrón `- **Verificar:** V25, V26 · **AC-21**`, con el mismo separador `·` de la fuente 1 y en posición terminal fija, y aun así no cuenta: `Verificar` es el campo donde más aparecen `AC-n` en prosa legítima, y distinguir declaración de mención dentro del mismo campo por su forma es el tipo de predicado frágil que el contrato existe para evitar. La pérdida es asumida y medida, no un descuido.",
       "evidencia": "salidas/archived__herdr-transporte-skills.jsonl",
-      "contrato": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+      "contrato": "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb",
       "vigente": true
     },
     {
@@ -95,7 +95,7 @@
       "clase_adjudicada": "exclusion_deliberada",
       "motivo": "El detector leyó ['AC-22', 'AC-8'] del campo `Verificar:`, donde una persona los lee como cobertura y no se equivoca al hacerlo. R2 → «Lo que aparece en la línea de `Verificar:` NO declara cobertura, ni siquiera con forma de declaración». El corpus tiene el patrón `- **Verificar:** V25, V26 · **AC-21**`, con el mismo separador `·` de la fuente 1 y en posición terminal fija, y aun así no cuenta: `Verificar` es el campo donde más aparecen `AC-n` en prosa legítima, y distinguir declaración de mención dentro del mismo campo por su forma es el tipo de predicado frágil que el contrato existe para evitar. La pérdida es asumida y medida, no un descuido.",
       "evidencia": "salidas/archived__herdr-transporte-skills.jsonl",
-      "contrato": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+      "contrato": "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb",
       "vigente": true
     },
     {
@@ -112,7 +112,7 @@
       "clase_adjudicada": "exclusion_deliberada",
       "motivo": "El detector leyó ['AC-8'] del campo `Verificar:`, donde una persona los lee como cobertura y no se equivoca al hacerlo. R2 → «Lo que aparece en la línea de `Verificar:` NO declara cobertura, ni siquiera con forma de declaración». El corpus tiene el patrón `- **Verificar:** V25, V26 · **AC-21**`, con el mismo separador `·` de la fuente 1 y en posición terminal fija, y aun así no cuenta: `Verificar` es el campo donde más aparecen `AC-n` en prosa legítima, y distinguir declaración de mención dentro del mismo campo por su forma es el tipo de predicado frágil que el contrato existe para evitar. La pérdida es asumida y medida, no un descuido.",
       "evidencia": "salidas/archived__herdr-transporte-skills.jsonl",
-      "contrato": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+      "contrato": "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb",
       "vigente": true
     },
     {
@@ -130,7 +130,7 @@
       "clase_adjudicada": "exclusion_deliberada",
       "motivo": "El detector leyó ['AC-21', 'AC-8'] del campo `Verificar:`, donde una persona los lee como cobertura y no se equivoca al hacerlo. R2 → «Lo que aparece en la línea de `Verificar:` NO declara cobertura, ni siquiera con forma de declaración». El corpus tiene el patrón `- **Verificar:** V25, V26 · **AC-21**`, con el mismo separador `·` de la fuente 1 y en posición terminal fija, y aun así no cuenta: `Verificar` es el campo donde más aparecen `AC-n` en prosa legítima, y distinguir declaración de mención dentro del mismo campo por su forma es el tipo de predicado frágil que el contrato existe para evitar. La pérdida es asumida y medida, no un descuido.",
       "evidencia": "salidas/archived__herdr-transporte-skills.jsonl",
-      "contrato": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+      "contrato": "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb",
       "vigente": true
     },
     {
@@ -156,7 +156,7 @@
       "clase_adjudicada": "exclusion_deliberada",
       "motivo": "El detector leyó ['AC-14', 'AC-18', 'AC-20', 'AC-24', 'AC-3', 'AC-4', 'AC-5', 'AC-6', 'AC-7', 'AC-9'] del campo `Verificar:`, donde una persona los lee como cobertura y no se equivoca al hacerlo. R2 → «Lo que aparece en la línea de `Verificar:` NO declara cobertura, ni siquiera con forma de declaración». El corpus tiene el patrón `- **Verificar:** V25, V26 · **AC-21**`, con el mismo separador `·` de la fuente 1 y en posición terminal fija, y aun así no cuenta: `Verificar` es el campo donde más aparecen `AC-n` en prosa legítima, y distinguir declaración de mención dentro del mismo campo por su forma es el tipo de predicado frágil que el contrato existe para evitar. La pérdida es asumida y medida, no un descuido.",
       "evidencia": "salidas/archived__herdr-transporte-skills.jsonl",
-      "contrato": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+      "contrato": "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb",
       "vigente": true
     },
     {
@@ -182,7 +182,7 @@
       "clase_adjudicada": "exclusion_deliberada",
       "motivo": "El detector leyó ['AC-14', 'AC-18', 'AC-20', 'AC-24', 'AC-3', 'AC-4', 'AC-5', 'AC-6', 'AC-7', 'AC-9'] del campo `Verificar:`, donde una persona los lee como cobertura y no se equivoca al hacerlo. R2 → «Lo que aparece en la línea de `Verificar:` NO declara cobertura, ni siquiera con forma de declaración». El corpus tiene el patrón `- **Verificar:** V25, V26 · **AC-21**`, con el mismo separador `·` de la fuente 1 y en posición terminal fija, y aun así no cuenta: `Verificar` es el campo donde más aparecen `AC-n` en prosa legítima, y distinguir declaración de mención dentro del mismo campo por su forma es el tipo de predicado frágil que el contrato existe para evitar. La pérdida es asumida y medida, no un descuido.",
       "evidencia": "salidas/archived__herdr-transporte-skills.jsonl",
-      "contrato": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+      "contrato": "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb",
       "vigente": true
     },
     {
@@ -207,7 +207,7 @@
       "clase_adjudicada": "exclusion_deliberada",
       "motivo": "El detector leyó ['AC-14', 'AC-18', 'AC-20', 'AC-24', 'AC-3', 'AC-4', 'AC-5', 'AC-6', 'AC-9'] del campo `Verificar:`, donde una persona los lee como cobertura y no se equivoca al hacerlo. R2 → «Lo que aparece en la línea de `Verificar:` NO declara cobertura, ni siquiera con forma de declaración». El corpus tiene el patrón `- **Verificar:** V25, V26 · **AC-21**`, con el mismo separador `·` de la fuente 1 y en posición terminal fija, y aun así no cuenta: `Verificar` es el campo donde más aparecen `AC-n` en prosa legítima, y distinguir declaración de mención dentro del mismo campo por su forma es el tipo de predicado frágil que el contrato existe para evitar. La pérdida es asumida y medida, no un descuido.",
       "evidencia": "salidas/archived__herdr-transporte-skills.jsonl",
-      "contrato": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+      "contrato": "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb",
       "vigente": true
     },
     {
@@ -224,7 +224,7 @@
       "clase_adjudicada": "exclusion_deliberada",
       "motivo": "El detector leyó ['AC-1'] del campo `Verificar:`, donde una persona los lee como cobertura y no se equivoca al hacerlo. R2 → «Lo que aparece en la línea de `Verificar:` NO declara cobertura, ni siquiera con forma de declaración». El corpus tiene el patrón `- **Verificar:** V25, V26 · **AC-21**`, con el mismo separador `·` de la fuente 1 y en posición terminal fija, y aun así no cuenta: `Verificar` es el campo donde más aparecen `AC-n` en prosa legítima, y distinguir declaración de mención dentro del mismo campo por su forma es el tipo de predicado frágil que el contrato existe para evitar. La pérdida es asumida y medida, no un descuido.",
       "evidencia": "salidas/archived__herdr-transporte-skills.jsonl",
-      "contrato": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+      "contrato": "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb",
       "vigente": true
     },
     {
@@ -241,7 +241,7 @@
       "clase_adjudicada": "exclusion_deliberada",
       "motivo": "El detector leyó ['AC-2'] del campo `Verificar:`, donde una persona los lee como cobertura y no se equivoca al hacerlo. R2 → «Lo que aparece en la línea de `Verificar:` NO declara cobertura, ni siquiera con forma de declaración». El corpus tiene el patrón `- **Verificar:** V25, V26 · **AC-21**`, con el mismo separador `·` de la fuente 1 y en posición terminal fija, y aun así no cuenta: `Verificar` es el campo donde más aparecen `AC-n` en prosa legítima, y distinguir declaración de mención dentro del mismo campo por su forma es el tipo de predicado frágil que el contrato existe para evitar. La pérdida es asumida y medida, no un descuido.",
       "evidencia": "salidas/archived__herdr-transporte-skills.jsonl",
-      "contrato": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+      "contrato": "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb",
       "vigente": true
     },
     {
@@ -258,7 +258,7 @@
       "clase_adjudicada": "exclusion_deliberada",
       "motivo": "El detector leyó ['AC-10'] del campo `Verificar:`, donde una persona los lee como cobertura y no se equivoca al hacerlo. R2 → «Lo que aparece en la línea de `Verificar:` NO declara cobertura, ni siquiera con forma de declaración». El corpus tiene el patrón `- **Verificar:** V25, V26 · **AC-21**`, con el mismo separador `·` de la fuente 1 y en posición terminal fija, y aun así no cuenta: `Verificar` es el campo donde más aparecen `AC-n` en prosa legítima, y distinguir declaración de mención dentro del mismo campo por su forma es el tipo de predicado frágil que el contrato existe para evitar. La pérdida es asumida y medida, no un descuido.",
       "evidencia": "salidas/archived__herdr-transporte-skills.jsonl",
-      "contrato": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+      "contrato": "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb",
       "vigente": true
     },
     {
@@ -276,7 +276,7 @@
       "clase_adjudicada": "exclusion_deliberada",
       "motivo": "El detector leyó ['AC-11', 'AC-24'] del campo `Verificar:`, donde una persona los lee como cobertura y no se equivoca al hacerlo. R2 → «Lo que aparece en la línea de `Verificar:` NO declara cobertura, ni siquiera con forma de declaración». El corpus tiene el patrón `- **Verificar:** V25, V26 · **AC-21**`, con el mismo separador `·` de la fuente 1 y en posición terminal fija, y aun así no cuenta: `Verificar` es el campo donde más aparecen `AC-n` en prosa legítima, y distinguir declaración de mención dentro del mismo campo por su forma es el tipo de predicado frágil que el contrato existe para evitar. La pérdida es asumida y medida, no un descuido.",
       "evidencia": "salidas/archived__herdr-transporte-skills.jsonl",
-      "contrato": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+      "contrato": "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb",
       "vigente": true
     },
     {
@@ -293,7 +293,7 @@
       "clase_adjudicada": "exclusion_deliberada",
       "motivo": "El detector leyó ['AC-12'] del campo `Verificar:`, donde una persona los lee como cobertura y no se equivoca al hacerlo. R2 → «Lo que aparece en la línea de `Verificar:` NO declara cobertura, ni siquiera con forma de declaración». El corpus tiene el patrón `- **Verificar:** V25, V26 · **AC-21**`, con el mismo separador `·` de la fuente 1 y en posición terminal fija, y aun así no cuenta: `Verificar` es el campo donde más aparecen `AC-n` en prosa legítima, y distinguir declaración de mención dentro del mismo campo por su forma es el tipo de predicado frágil que el contrato existe para evitar. La pérdida es asumida y medida, no un descuido.",
       "evidencia": "salidas/archived__herdr-transporte-skills.jsonl",
-      "contrato": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+      "contrato": "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb",
       "vigente": true
     },
     {
@@ -310,7 +310,7 @@
       "clase_adjudicada": "exclusion_deliberada",
       "motivo": "El detector leyó ['AC-13'] del campo `Verificar:`, donde una persona los lee como cobertura y no se equivoca al hacerlo. R2 → «Lo que aparece en la línea de `Verificar:` NO declara cobertura, ni siquiera con forma de declaración». El corpus tiene el patrón `- **Verificar:** V25, V26 · **AC-21**`, con el mismo separador `·` de la fuente 1 y en posición terminal fija, y aun así no cuenta: `Verificar` es el campo donde más aparecen `AC-n` en prosa legítima, y distinguir declaración de mención dentro del mismo campo por su forma es el tipo de predicado frágil que el contrato existe para evitar. La pérdida es asumida y medida, no un descuido.",
       "evidencia": "salidas/archived__herdr-transporte-skills.jsonl",
-      "contrato": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+      "contrato": "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb",
       "vigente": true
     },
     {
@@ -328,7 +328,7 @@
       "clase_adjudicada": "exclusion_deliberada",
       "motivo": "El detector leyó ['AC-15', 'AC-16'] del campo `Verificar:`, donde una persona los lee como cobertura y no se equivoca al hacerlo. R2 → «Lo que aparece en la línea de `Verificar:` NO declara cobertura, ni siquiera con forma de declaración». El corpus tiene el patrón `- **Verificar:** V25, V26 · **AC-21**`, con el mismo separador `·` de la fuente 1 y en posición terminal fija, y aun así no cuenta: `Verificar` es el campo donde más aparecen `AC-n` en prosa legítima, y distinguir declaración de mención dentro del mismo campo por su forma es el tipo de predicado frágil que el contrato existe para evitar. La pérdida es asumida y medida, no un descuido.",
       "evidencia": "salidas/archived__herdr-transporte-skills.jsonl",
-      "contrato": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+      "contrato": "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb",
       "vigente": true
     },
     {
@@ -346,7 +346,7 @@
       "clase_adjudicada": "exclusion_deliberada",
       "motivo": "El detector leyó ['AC-6', 'AC-7'] del campo `Verificar:`, donde una persona los lee como cobertura y no se equivoca al hacerlo. R2 → «Lo que aparece en la línea de `Verificar:` NO declara cobertura, ni siquiera con forma de declaración». El corpus tiene el patrón `- **Verificar:** V25, V26 · **AC-21**`, con el mismo separador `·` de la fuente 1 y en posición terminal fija, y aun así no cuenta: `Verificar` es el campo donde más aparecen `AC-n` en prosa legítima, y distinguir declaración de mención dentro del mismo campo por su forma es el tipo de predicado frágil que el contrato existe para evitar. La pérdida es asumida y medida, no un descuido.",
       "evidencia": "salidas/archived__herdr-transporte-skills.jsonl",
-      "contrato": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+      "contrato": "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb",
       "vigente": true
     },
     {
@@ -363,7 +363,7 @@
       "clase_adjudicada": "exclusion_deliberada",
       "motivo": "El detector leyó ['AC-17'] del campo `Verificar:`, donde una persona los lee como cobertura y no se equivoca al hacerlo. R2 → «Lo que aparece en la línea de `Verificar:` NO declara cobertura, ni siquiera con forma de declaración». El corpus tiene el patrón `- **Verificar:** V25, V26 · **AC-21**`, con el mismo separador `·` de la fuente 1 y en posición terminal fija, y aun así no cuenta: `Verificar` es el campo donde más aparecen `AC-n` en prosa legítima, y distinguir declaración de mención dentro del mismo campo por su forma es el tipo de predicado frágil que el contrato existe para evitar. La pérdida es asumida y medida, no un descuido.",
       "evidencia": "salidas/archived__herdr-transporte-skills.jsonl",
-      "contrato": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+      "contrato": "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb",
       "vigente": true
     },
     {
@@ -380,7 +380,7 @@
       "clase_adjudicada": "exclusion_deliberada",
       "motivo": "El detector leyó ['AC-23'] del campo `Verificar:`, donde una persona los lee como cobertura y no se equivoca al hacerlo. R2 → «Lo que aparece en la línea de `Verificar:` NO declara cobertura, ni siquiera con forma de declaración». El corpus tiene el patrón `- **Verificar:** V25, V26 · **AC-21**`, con el mismo separador `·` de la fuente 1 y en posición terminal fija, y aun así no cuenta: `Verificar` es el campo donde más aparecen `AC-n` en prosa legítima, y distinguir declaración de mención dentro del mismo campo por su forma es el tipo de predicado frágil que el contrato existe para evitar. La pérdida es asumida y medida, no un descuido.",
       "evidencia": "salidas/archived__herdr-transporte-skills.jsonl",
-      "contrato": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+      "contrato": "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb",
       "vigente": true
     },
     {
@@ -397,7 +397,7 @@
       "clase_adjudicada": "exclusion_deliberada",
       "motivo": "El detector leyó ['AC-5'] del campo `Verificar:`, donde una persona los lee como cobertura y no se equivoca al hacerlo. R2 → «Lo que aparece en la línea de `Verificar:` NO declara cobertura, ni siquiera con forma de declaración». El corpus tiene el patrón `- **Verificar:** V25, V26 · **AC-21**`, con el mismo separador `·` de la fuente 1 y en posición terminal fija, y aun así no cuenta: `Verificar` es el campo donde más aparecen `AC-n` en prosa legítima, y distinguir declaración de mención dentro del mismo campo por su forma es el tipo de predicado frágil que el contrato existe para evitar. La pérdida es asumida y medida, no un descuido.",
       "evidencia": "salidas/archived__herdr-transporte-skills.jsonl",
-      "contrato": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+      "contrato": "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb",
       "vigente": true
     },
     {
@@ -415,7 +415,7 @@
       "clase_adjudicada": "exclusion_deliberada",
       "motivo": "El detector leyó ['AC-6', 'AC-7'] del campo `Verificar:`, donde una persona los lee como cobertura y no se equivoca al hacerlo. R2 → «Lo que aparece en la línea de `Verificar:` NO declara cobertura, ni siquiera con forma de declaración». El corpus tiene el patrón `- **Verificar:** V25, V26 · **AC-21**`, con el mismo separador `·` de la fuente 1 y en posición terminal fija, y aun así no cuenta: `Verificar` es el campo donde más aparecen `AC-n` en prosa legítima, y distinguir declaración de mención dentro del mismo campo por su forma es el tipo de predicado frágil que el contrato existe para evitar. La pérdida es asumida y medida, no un descuido.",
       "evidencia": "salidas/archived__sdd2-contract-triage.jsonl",
-      "contrato": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+      "contrato": "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb",
       "vigente": true
     },
     {
@@ -433,7 +433,7 @@
       "clase_adjudicada": "exclusion_deliberada",
       "motivo": "El detector leyó ['AC-6', 'AC-7'] del campo `Verificar:`, donde una persona los lee como cobertura y no se equivoca al hacerlo. R2 → «Lo que aparece en la línea de `Verificar:` NO declara cobertura, ni siquiera con forma de declaración». El corpus tiene el patrón `- **Verificar:** V25, V26 · **AC-21**`, con el mismo separador `·` de la fuente 1 y en posición terminal fija, y aun así no cuenta: `Verificar` es el campo donde más aparecen `AC-n` en prosa legítima, y distinguir declaración de mención dentro del mismo campo por su forma es el tipo de predicado frágil que el contrato existe para evitar. La pérdida es asumida y medida, no un descuido.",
       "evidencia": "salidas/archived__sdd2-contract-triage.jsonl",
-      "contrato": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+      "contrato": "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb",
       "vigente": true
     },
     {
@@ -452,7 +452,7 @@
       "clase_adjudicada": "exclusion_deliberada",
       "motivo": "El detector leyó ['AC-1', 'AC-2', 'AC-7'] del campo `Verificar:`, donde una persona los lee como cobertura y no se equivoca al hacerlo. R2 → «Lo que aparece en la línea de `Verificar:` NO declara cobertura, ni siquiera con forma de declaración». El corpus tiene el patrón `- **Verificar:** V25, V26 · **AC-21**`, con el mismo separador `·` de la fuente 1 y en posición terminal fija, y aun así no cuenta: `Verificar` es el campo donde más aparecen `AC-n` en prosa legítima, y distinguir declaración de mención dentro del mismo campo por su forma es el tipo de predicado frágil que el contrato existe para evitar. La pérdida es asumida y medida, no un descuido.",
       "evidencia": "salidas/archived__sdd2-contract-triage.jsonl",
-      "contrato": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+      "contrato": "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb",
       "vigente": true
     },
     {
@@ -474,7 +474,7 @@
       "clase_adjudicada": "exclusion_deliberada",
       "motivo": "El detector leyó ['AC-1', 'AC-2', 'AC-3', 'AC-4', 'AC-5', 'AC-6'] del campo `Verificar:`, donde una persona los lee como cobertura y no se equivoca al hacerlo. R2 → «Lo que aparece en la línea de `Verificar:` NO declara cobertura, ni siquiera con forma de declaración». El corpus tiene el patrón `- **Verificar:** V25, V26 · **AC-21**`, con el mismo separador `·` de la fuente 1 y en posición terminal fija, y aun así no cuenta: `Verificar` es el campo donde más aparecen `AC-n` en prosa legítima, y distinguir declaración de mención dentro del mismo campo por su forma es el tipo de predicado frágil que el contrato existe para evitar. La pérdida es asumida y medida, no un descuido.",
       "evidencia": "salidas/archived__sdd2-contract-triage.jsonl",
-      "contrato": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+      "contrato": "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb",
       "vigente": true
     },
     {
@@ -497,7 +497,7 @@
       "clase_adjudicada": "exclusion_deliberada",
       "motivo": "El detector leyó ['AC-1', 'AC-2', 'AC-3', 'AC-4', 'AC-5', 'AC-6', 'AC-7'] del campo `Verificar:`, donde una persona los lee como cobertura y no se equivoca al hacerlo. R2 → «Lo que aparece en la línea de `Verificar:` NO declara cobertura, ni siquiera con forma de declaración». El corpus tiene el patrón `- **Verificar:** V25, V26 · **AC-21**`, con el mismo separador `·` de la fuente 1 y en posición terminal fija, y aun así no cuenta: `Verificar` es el campo donde más aparecen `AC-n` en prosa legítima, y distinguir declaración de mención dentro del mismo campo por su forma es el tipo de predicado frágil que el contrato existe para evitar. La pérdida es asumida y medida, no un descuido.",
       "evidencia": "salidas/archived__sdd2-contract-triage.jsonl",
-      "contrato": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+      "contrato": "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb",
       "vigente": true
     },
     {
@@ -514,7 +514,7 @@
       "clase_adjudicada": "exclusion_deliberada",
       "motivo": "El detector leyó ['AC-7'] del campo `Verificar:`, donde una persona los lee como cobertura y no se equivoca al hacerlo. R2 → «Lo que aparece en la línea de `Verificar:` NO declara cobertura, ni siquiera con forma de declaración». El corpus tiene el patrón `- **Verificar:** V25, V26 · **AC-21**`, con el mismo separador `·` de la fuente 1 y en posición terminal fija, y aun así no cuenta: `Verificar` es el campo donde más aparecen `AC-n` en prosa legítima, y distinguir declaración de mención dentro del mismo campo por su forma es el tipo de predicado frágil que el contrato existe para evitar. La pérdida es asumida y medida, no un descuido.",
       "evidencia": "salidas/archived__sdd2-contract-triage.jsonl",
-      "contrato": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+      "contrato": "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb",
       "vigente": true
     }
   ]

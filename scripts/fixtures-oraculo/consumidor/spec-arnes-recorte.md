@@ -5,9 +5,8 @@ AC-11 y de la nota histórica que lo sigue, tal como están en la spec del consu
 porque esa spec vive bajo `.plans/`, que no viaja en un clon: sin el recorte, el autotest de
 `--consumidor` no tendría corpus. Que siga siendo la copia vigente lo comprueba el propio
 autotest contra el archivo real cuando está presente.
-
 **Contrato compartido:** `contrato-extraccion.md`, hermano de este archivo ·
-`sha256 3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef`.
+`sha256 224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb`.
 
 - **AC-11 — Control positivo sobre la COBERTURA del corpus real, con conjunto esperado independiente:**
   Given el corpus congelado de AC-3, When corre el censo, Then el arnés reporta, **por flujo y por

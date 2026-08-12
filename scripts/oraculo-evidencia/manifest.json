@@ -12,7 +12,7 @@
       "ruta": "comparacion/adjudicaciones.json",
       "rol": "adjudicaciones",
       "tamano": 33992,
-      "sha256": "1a7810399dedbe3aaf2c9c44e83d0d41e4522bef2cac7e795ab4aea6f1ceabad"
+      "sha256": "2343cff56a7b88aeefee7c006034e3d1dee609f71301af43384b960915f95fa8"
     },
     {
       "ruta": "comparacion/comparacion.json",
@@ -279,5 +279,5 @@
       "sha256": "f8d737aad587f1b63df1c3d461015e2962ef9e5b05cbd043743d09da02d7c4ca"
     }
   ],
-  "sha256_canonico": "sha256:6ce0717d955197c549afe9dfb90d6092f49a750ab65988f95d70b811b0152cec"
+  "sha256_canonico": "sha256:099630cc363b769c2855c5dcfa86b085d33fb41f7cd9b3a11874f7f7c0252ec4"
 }

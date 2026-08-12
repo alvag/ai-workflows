@@ -1,6 +1,6 @@
 {
   "version_schema": "1",
-  "contrato_sha256": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+  "contrato_sha256": "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb",
   "predicado_elegibilidad": "Un flujo es un directorio hijo directo de `.plans/` o de `.plans/archived/`. Es elegible si y solo si (a) contiene spec.md, plan.md y tasks.md, los tres archivos regulares y no vacíos, y (b) no pertenece a la Fase 0.5.",
   "slugs_fase_05": [
     "dossier-arnes",
