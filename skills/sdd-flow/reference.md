@@ -826,7 +826,7 @@ seis piezas que interpola en los dos prompts —implementer y reviewer— y cóm
 serializa. Los prompts de abajo y `validar-para-despacho` citan estas reglas por su id.
 
 Transcriben el contrato de extracción del dossier, `sha256`
-`3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef`. **Ahí se deciden; acá se
+`224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb`. **Ahí se deciden; acá se
 aplican**: si una corrida obliga a cambiar una regla, se cambia en el contrato, no en este texto.
 
 > **Nota de límite.** Esto es **prosa normativa**: no se ejecuta. No se afirma equivalencia
@@ -889,7 +889,11 @@ fuente 1, y aun así **no cuenta**—. `Verificar` es el campo donde más aparec
 legítima, y distinguir declaración de mención **dentro del mismo campo** exige un predicado frágil.
 
 - **Continuación multilínea:** una declaración continúa mientras las líneas siguientes estén
-  indentadas y no abran otro campo `- **<Nombre>:**` ni otro encabezado de R1. **Vale para las tres
+  indentadas y no abran **otro campo** ni otro encabezado de R1. **Un campo abre de dos formas** —
+  `- **<Nombre>:**` y `- **<Nombre>** *(nota)*:`—: es la misma variante «nombre + nota + dos puntos»
+  que R1 ya admite para los ids, y el corpus la usa. Nombrar solo la primera deja que la
+  continuación **se coma el campo siguiente** y le atribuya a la task un id que nadie lee como
+  declarado. **Vale para las tres
   fuentes, y la 1 es donde más se pierde:** el corpus parte la lista al final de la línea, y en algún
   caso deja el marcador solo —`· cubre:` cierra la línea del encabezado y **todos** los ids están en
   la siguiente—. Un predicado que lea una sola línea devuelve la task entera sin cobertura.
@@ -989,7 +993,7 @@ literalmente**. Se resuelve al bloque de slug idéntico.
 
 | Pieza | Empieza | Termina |
 |---|---|---|
-| `Produce` de una task | la línea del campo `- **Produce:**` | el próximo campo `- **<Nombre>:**` de la misma task, o el próximo encabezado de R1 |
+| `Produce` de una task | la línea del campo `- **Produce:**` | el próximo campo de la misma task —en **cualquiera de sus dos formas**, ver «Continuación multilínea» en R2—, o el próximo encabezado de R1 |
 | `## Enfoque` del plan | su heading | el próximo heading de nivel menor o igual (`##` o `#`); los `###` internos son contenido |
 
 Ausencia de cualquiera de las dos cuando una task la cita: es una pieza que no resuelve, y se trata
