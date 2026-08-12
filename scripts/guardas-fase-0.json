@@ -618,6 +618,347 @@
         "tipo": "codigo_de_salida",
         "esperado": 0
       }
+    },
+    {
+      "id": "oraculo-consumidor",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--consumidor"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-autotest-consumidor",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--autotest-consumidor"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-autotest-elegibilidad",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--autotest-elegibilidad"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-autotest-lectura-unica",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--autotest-lectura-unica"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-insumos",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--insumos"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-autotest-insumos",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--autotest-insumos"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-evidencia",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--evidencia"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-autotest-evidencia",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--autotest-evidencia"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-cobertura-deteccion",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--cobertura-deteccion"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-autotest-cobertura-deteccion",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--autotest-cobertura-deteccion"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-adjudicacion",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--adjudicacion"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-autotest-adjudicacion",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--autotest-adjudicacion"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-exclusiones",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--exclusiones"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-autotest-exclusiones",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--autotest-exclusiones"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-prompt",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--prompt"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-autotest-prompt",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--autotest-prompt"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-adaptadores",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--adaptadores"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-autotest-adaptadores",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--autotest-adaptadores"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-casos",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--casos"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-autotest-casos",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--autotest-casos"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-casos-obligatorios",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--casos-obligatorios"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-autotest-casos-obligatorios",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--autotest-casos-obligatorios"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-forma-oraculo",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--forma-oraculo"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-autotest-forma-oraculo",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--autotest-forma-oraculo"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-proxies",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--proxies"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-autotest-proxies",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--autotest-proxies"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-proyecciones",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--proyecciones"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-autotest-proyecciones",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--autotest-proyecciones"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-invariantes-corpus",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--invariantes-corpus"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-autotest-invariantes-corpus",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--autotest-invariantes-corpus"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
+    },
+    {
+      "id": "oraculo-elegibilidad-listar",
+      "script": "scripts/oraculo-elegibilidad.py",
+      "argumentos": [
+        "--listar"
+      ],
+      "criterio": {
+        "tipo": "codigo_de_salida",
+        "esperado": 0
+      }
     }
   ],
   "exclusiones": [
@@ -638,6 +979,24 @@
       ],
       "origen": "excluido_por_el_manifiesto",
       "motivo": "No es una guarda: es un generador. Su función hace `write_bytes` sobre las copias del contrato replicado dentro de `skills/` y devuelve 0 **después** de repararlas, así que ejecutarlo dentro de la no-regresión podría modificar las siete skills que el contrato promete intactas y salir verde por haberlas arreglado. Su verificación equivalente es `--ac 13`, que compara sin escribir, y esa sí está en `guardas`. Las instrucciones no lo niegan —lo mandan a correr—, así que la exclusión la pone este manifiesto y el modo la cuenta como documentada al comparar contra el texto."
+    },
+    {
+      "id": "oraculo-gate-precommit",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--gate-precommit"
+      ],
+      "origen": "excluido_por_el_manifiesto",
+      "motivo": "El veredicto de este modo depende del working tree, no de la salud del repo: es la comprobación 2 de R9 sobre el conjunto a commitear del flujo `dossier-oraculo`, que ya ocurrió. En `dossier-arnes`, que sí modifica el parser, dará rojo por diseño, y atarlo a la no-regresión haría que una transición legítima de otro flujo pusiera roja una guarda ajena. Las instrucciones lo mandan a correr al tocar el pathset —no lo niegan—, así que la exclusión la pone este manifiesto y el modo la cuenta como documentada al comparar contra el texto."
+    },
+    {
+      "id": "oraculo-autotest-gate-precommit",
+      "script": "scripts/verificar-oraculo.py",
+      "argumentos": [
+        "--autotest-gate-precommit"
+      ],
+      "origen": "excluido_por_el_manifiesto",
+      "motivo": "El veredicto de este modo depende del working tree, no de la salud del repo: es la comprobación 2 de R9 sobre el conjunto a commitear del flujo `dossier-oraculo`, que ya ocurrió. En `dossier-arnes`, que sí modifica el parser, dará rojo por diseño, y atarlo a la no-regresión haría que una transición legítima de otro flujo pusiera roja una guarda ajena. Las instrucciones lo mandan a correr al tocar el pathset —no lo niegan—, así que la exclusión la pone este manifiesto y el modo la cuenta como documentada al comparar contra el texto."
     }
   ]
 }

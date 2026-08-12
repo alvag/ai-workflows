@@ -83,6 +83,40 @@ Al crear o editar skills, seguí las buenas prácticas de agentskills.io (refere
   > envejece porque el instrumento está congelado; si alguna vez deja de estarlo, lo que
   > hay que arreglar es la derivación, no esta unidad.
 
+- Si la skill toca los cuatro insumos congelados del oráculo de la Fase 0.5 o cualquiera de sus
+  guardas (`scripts/corpus-dossier.json`, `scripts/casos-extraccion.json`,
+  `scripts/oraculo-cobertura.json`, sus tres `*.schema.json`, `scripts/oraculo-evidencia/`,
+  `scripts/corpus-elegibles.json`, `scripts/pathset-parser.json`,
+  `scripts/oraculo-prompt.plantilla.md`, `scripts/verificar-oraculo.py`,
+  `scripts/oraculo-elegibilidad.py` o los corpus de `scripts/fixtures-oraculo/`), correr su batería
+  completa empezando por `python3 scripts/verificar-oraculo.py --insumos`. Es un **script propio**
+  del repo —no un modo agregado a ninguno de los anteriores— y el código de salida sano es 0 en las
+  33 invocaciones. Los otros catorce modos productivos son `--consumidor`, `--proyecciones`,
+  `--invariantes-corpus`, `--casos`, `--casos-obligatorios`, `--forma-oraculo`, `--exclusiones`,
+  `--proxies`, `--adjudicacion`, `--cobertura-deteccion`, `--evidencia`, `--prompt`,
+  `--adaptadores` y `--gate-precommit`. La autocomprobación son `--autotest-adaptadores`,
+  `--autotest-adjudicacion`, `--autotest-casos`, `--autotest-casos-obligatorios`,
+  `--autotest-cobertura-deteccion`, `--autotest-consumidor`, `--autotest-elegibilidad`,
+  `--autotest-evidencia`, `--autotest-exclusiones`, `--autotest-forma-oraculo`,
+  `--autotest-gate-precommit`, `--autotest-insumos`, `--autotest-invariantes-corpus`,
+  `--autotest-lectura-unica`, `--autotest-prompt`, `--autotest-proxies` y
+  `--autotest-proyecciones`. La trigésimo tercera es el predicado de elegibilidad, que es su propio
+  comando: `python3 scripts/oraculo-elegibilidad.py --listar`, y hoy emite **21** flujos.
+
+  > **`--gate-precommit` y su autotest están declarados y excluidos del manifiesto de guardas, y el
+  > motivo va escrito ahí.** Su veredicto depende del working tree, no de la salud del repo: es la
+  > comprobación 2 de R9 para el commit de `dossier-oraculo`, que ya ocurrió. En `dossier-arnes`,
+  > que **sí** toca el parser, darán rojo por diseño, y dejarlos dentro de la no-regresión ataría
+  > una guarda ajena a esa transición legítima. Se corren igual cuando se toca el pathset; lo que
+  > no hacen es formar parte del conjunto que la no-regresión ejecuta.
+
+  > **La familia de autotests no se puede declarar con comodín en esta unidad, y por eso van
+  > nombradas una por una.** Es el mismo motivo que en el instrumento de la fase 0: la expansión de
+  > una familia se deriva de los `add_argument` literales que el parser del script declara, y este
+  > validador arma el suyo desde una tabla `registrar_modo(...)`, así que la derivación devuelve el
+  > conjunto vacío y un comodín daría `familia_vacia`. La lista envejece con el archivo: cada task
+  > que agregue un modo lo agrega también acá.
+
 > Nota: varios SKILL.md de este repo (p. ej. `sdd-flow`) exceden holgadamente el presupuesto de tokens sugerido. Es una tensión conocida por la complejidad del flujo; al editar, empujá contenido hacia `reference.md` antes que engordar el SKILL.md.
 
 ## Convenciones de frontmatter propias del repo
