@@ -1,0 +1,283 @@
+{
+  "version": "1",
+  "que_es": "El conjunto cerrado de la evidencia de AC-6: los prompts, las salidas crudas del detector, la comparación, las adjudicaciones y las reconciliaciones. Va al árbol versionado y no a `.cross-model/runs/`, que está en `.git/info/exclude:13`: un clon del commit conservaría el oráculo y perdería la evidencia que lo acredita.",
+  "productor": "conductor de familia claude; detector de familia gpt-codex",
+  "familia_conductor": "claude",
+  "familia_detector": "gpt-codex",
+  "condiciones_de_lectura": "Cada corrida recibió, por archivo, un prompt derivado de `scripts/oraculo-prompt.plantilla.md` con las rutas de los tres artefactos de su flujo y nada más: sin el contrato de extracción, sin la gramática de R1–R2, sin ninguna salida del predicado ni de una comparación previa. Transporte: `codex exec -s read-only --ignore-user-config --skip-git-repo-check --json`, secuencial, una corrida por flujo, hasta 2 reintentos; el mensaje final se cosechó del último `item.type == agent_message` del stream JSONL.",
+  "corpus_identidad": "sha256:bd98d84a9d4d4e2f93a4a25d95b84b73028616e60561e858a27e995c77f6ea94",
+  "proyeccion_canonica": "sha256 sobre la concatenación, sin separador adicional, de una línea `<flujo>\\t<artefacto>\\t<sha256>\\t<tamano>\\n` por cada artefacto sellado del manifest de corpus, ordenadas ascendentemente por el par (flujo, artefacto) comparado sobre su codificación UTF-8, y codificadas en UTF-8 sin BOM. Se incluyen ruta lógica, identidad de contenido y tamaño; se excluye todo lo demás del manifest.",
+  "archivos": [
+    {
+      "ruta": "comparacion/adjudicaciones.json",
+      "rol": "adjudicaciones",
+      "tamano": 33992,
+      "sha256": "2343cff56a7b88aeefee7c006034e3d1dee609f71301af43384b960915f95fa8"
+    },
+    {
+      "ruta": "comparacion/comparacion.json",
+      "rol": "comparacion",
+      "tamano": 249253,
+      "sha256": "9ff6b6f0e11375928db604a0a0836ee4e6a813d19c1d146b4eb8acb28238cf5a"
+    },
+    {
+      "ruta": "comparacion/reconciliaciones.json",
+      "rol": "reconciliaciones",
+      "tamano": 43,
+      "sha256": "e03f98486bfea0cc98e29c6fce0102c06fb64bd5e5a05e1e962de2d6b1e31ece"
+    },
+    {
+      "ruta": "prompts/archived__cross-model-co-explore-consumer.md",
+      "rol": "prompt",
+      "tamano": 1813,
+      "sha256": "bbba30ccef352c466959d0a8404ab8e3de49fe83514d3a5f81034fe4159635c5"
+    },
+    {
+      "ruta": "prompts/archived__cross-model-co-explore-debate-runtime.md",
+      "rol": "prompt",
+      "tamano": 1837,
+      "sha256": "4c897f8e3cb6347630bd9891c1aa076fdee181443926c2b59e0e1dccdad18323"
+    },
+    {
+      "ruta": "prompts/archived__cross-model-co-explore-investigate-runtime.md",
+      "rol": "prompt",
+      "tamano": 1857,
+      "sha256": "c3698e3118fc18c5758fcbac230f3ba636555911b584f8930298bd3f76f978f2"
+    },
+    {
+      "ruta": "prompts/archived__cross-model-co-explore-readonly-modes.md",
+      "rol": "prompt",
+      "tamano": 1837,
+      "sha256": "e91ca12f7bc5202d049ec2db0cde5403737516ee0bf99d0af7fd1ec5fadabc79"
+    },
+    {
+      "ruta": "prompts/archived__cross-model-codex-adapter.md",
+      "rol": "prompt",
+      "tamano": 1789,
+      "sha256": "28896d70da256fd0ccc6339c6dcb16cc613e467dddd2c6c867079dc947b84c4b"
+    },
+    {
+      "ruta": "prompts/archived__cross-model-cross-review-runtime.md",
+      "rol": "prompt",
+      "tamano": 1817,
+      "sha256": "f58e6a3d6a486dde6b6c15c55ac4f5d107638cd0dc924bc52d3ca258e83fed96"
+    },
+    {
+      "ruta": "prompts/archived__cross-model-fanout-synthesis.md",
+      "rol": "prompt",
+      "tamano": 1801,
+      "sha256": "2996d33f0b7f233f25c52d42c47eda893effed69dd6794f8abcd2453dd8f2793"
+    },
+    {
+      "ruta": "prompts/archived__cross-model-foundation-runtime.md",
+      "rol": "prompt",
+      "tamano": 1809,
+      "sha256": "4b674bcd46bdc3227c327195a15188a32f065bc91830a16eb252e7ee09805f51"
+    },
+    {
+      "ruta": "prompts/archived__cross-model-herdr-adapter.md",
+      "rol": "prompt",
+      "tamano": 1789,
+      "sha256": "df7a76c799cea745b63ab71df65322cfe1cc73e9c15d51212497639ccc3af33d"
+    },
+    {
+      "ruta": "prompts/archived__cross-model-recovery-resume.md",
+      "rol": "prompt",
+      "tamano": 1797,
+      "sha256": "d2181be374c1f294ce972d757009681510ba45dc03c0ddfb37ffbf6b655b9d00"
+    },
+    {
+      "ruta": "prompts/archived__herdr-native-sdd-contract-audit.md",
+      "rol": "prompt",
+      "tamano": 1813,
+      "sha256": "f9081031e944956686f6c8cbb6502c58279d5090375182618ae574ece83c8e51"
+    },
+    {
+      "ruta": "prompts/archived__herdr-transporte-skills.md",
+      "rol": "prompt",
+      "tamano": 1781,
+      "sha256": "da1a380a2c37ccc1609b7eb2f1e18b79f1102ad197dc43e5829db7ba8ff75fe7"
+    },
+    {
+      "ruta": "prompts/archived__hilo-workers-en-vuelo.md",
+      "rol": "prompt",
+      "tamano": 1773,
+      "sha256": "de19cb91180171a6be1e210a6e3a30f4ed7198e283c7f06d8ec5c5bc889e862b"
+    },
+    {
+      "ruta": "prompts/archived__instrumento-y-baseline.md",
+      "rol": "prompt",
+      "tamano": 1777,
+      "sha256": "473e2b2a3b548f4d81abbfdd1b15b123b5ff60f1524aa4e52dbaef1ac6221e79"
+    },
+    {
+      "ruta": "prompts/archived__matriz-y-contrato.md",
+      "rol": "prompt",
+      "tamano": 1757,
+      "sha256": "869b7b20e0699d1b604988e79164afd74014dfa8df6a0677a026e66efe874fa5"
+    },
+    {
+      "ruta": "prompts/archived__paridad-powershell.md",
+      "rol": "prompt",
+      "tamano": 1761,
+      "sha256": "b69fa1a85fbe506dc8341c4af02d0270515814bd3e8b132a9122b5e3691a36f3"
+    },
+    {
+      "ruta": "prompts/archived__planned-desambiguacion.md",
+      "rol": "prompt",
+      "tamano": 1777,
+      "sha256": "36b1b76043406479957a8fc3b4758b9443403a82d0e7117e6d45869480fced35"
+    },
+    {
+      "ruta": "prompts/archived__retirar-transporte-panes.md",
+      "rol": "prompt",
+      "tamano": 1785,
+      "sha256": "4663fa61f0274217dff2e9c07762e60a6c96ec3dd52f47a84d696e8a63f339b6"
+    },
+    {
+      "ruta": "prompts/archived__sdd1-run-manifest.md",
+      "rol": "prompt",
+      "tamano": 1757,
+      "sha256": "7fec46fb908fcb4eb354574e00154fb03cddea153c998d666807fcf0c0d9ae35"
+    },
+    {
+      "ruta": "prompts/archived__sdd2-contract-triage.md",
+      "rol": "prompt",
+      "tamano": 1769,
+      "sha256": "79e30c1c45c0127a7f1b5481dda6a87329002c2ae2baf267ff228263241941f1"
+    },
+    {
+      "ruta": "prompts/archived__subagentes-fase-0.md",
+      "rol": "prompt",
+      "tamano": 1757,
+      "sha256": "0daad358f5b3512cbc71ffbb67e82e816c5da830495724aabd98b30c1ed95221"
+    },
+    {
+      "ruta": "salidas/archived__cross-model-co-explore-consumer.jsonl",
+      "rol": "salida",
+      "tamano": 161956,
+      "sha256": "9fc29ef21d05a0c335f3186ed82f0f72095d19d4e4ba082509f7eee979160065"
+    },
+    {
+      "ruta": "salidas/archived__cross-model-co-explore-debate-runtime.jsonl",
+      "rol": "salida",
+      "tamano": 177990,
+      "sha256": "e18700e9e55db71b59f8e00444de8aa125789754e11d787185f0eedbaa106228"
+    },
+    {
+      "ruta": "salidas/archived__cross-model-co-explore-investigate-runtime.jsonl",
+      "rol": "salida",
+      "tamano": 148752,
+      "sha256": "b21d9cd3345e364c421cf377814a48c175da1736590041307cf6fb2c520a9ad9"
+    },
+    {
+      "ruta": "salidas/archived__cross-model-co-explore-readonly-modes.jsonl",
+      "rol": "salida",
+      "tamano": 147953,
+      "sha256": "8c4b150570ad6be3789fad42a66d93d57796fbf6d6e9b4fa9d8e18314b6a3b89"
+    },
+    {
+      "ruta": "salidas/archived__cross-model-codex-adapter.jsonl",
+      "rol": "salida",
+      "tamano": 61577,
+      "sha256": "0c5ba953485db2db68a0d77ee14ca979b5040da18f6d443060a9943dd6634558"
+    },
+    {
+      "ruta": "salidas/archived__cross-model-cross-review-runtime.jsonl",
+      "rol": "salida",
+      "tamano": 197996,
+      "sha256": "02489a89ac7cb99acdeeb7524fe1338f8d55d6a2b52bd8e2559c3b8ea0a2e3a3"
+    },
+    {
+      "ruta": "salidas/archived__cross-model-fanout-synthesis.jsonl",
+      "rol": "salida",
+      "tamano": 91574,
+      "sha256": "bdb1cb6293650dc4c432d653ed5c648aae4384c9d58c21f06aa5b368debd31ff"
+    },
+    {
+      "ruta": "salidas/archived__cross-model-foundation-runtime.jsonl",
+      "rol": "salida",
+      "tamano": 127505,
+      "sha256": "8a18776b05e603f900f03f8fc079c9d2dd331819c6b70a1c172ec96c08ec560e"
+    },
+    {
+      "ruta": "salidas/archived__cross-model-herdr-adapter.jsonl",
+      "rol": "salida",
+      "tamano": 440766,
+      "sha256": "7abc5a8f6e3305509e5ec4a0d5e0d2228899fdd9eb533b64738397df5f2c050b"
+    },
+    {
+      "ruta": "salidas/archived__cross-model-recovery-resume.jsonl",
+      "rol": "salida",
+      "tamano": 180521,
+      "sha256": "a501f44c514b75795ba94a94e48948c9a908f49e961c80dc4eb785e5c83b8ea0"
+    },
+    {
+      "ruta": "salidas/archived__herdr-native-sdd-contract-audit.jsonl",
+      "rol": "salida",
+      "tamano": 21529,
+      "sha256": "1175efbd64302556d3df29bf7f27802128ce26cc38cc606e6968d1a8ecbaa723"
+    },
+    {
+      "ruta": "salidas/archived__herdr-transporte-skills.jsonl",
+      "rol": "salida",
+      "tamano": 240124,
+      "sha256": "464c63643e054aeec82671f1c334de81dfb9623e5cd11d40f367aea9a2d431b0"
+    },
+    {
+      "ruta": "salidas/archived__hilo-workers-en-vuelo.jsonl",
+      "rol": "salida",
+      "tamano": 169557,
+      "sha256": "45f236779910bfe30d771bc5668ddef1837c856c7fa1c4305d8c70f61e60e624"
+    },
+    {
+      "ruta": "salidas/archived__instrumento-y-baseline.jsonl",
+      "rol": "salida",
+      "tamano": 505393,
+      "sha256": "8539eb0d38a007312b68088fe3b78af9628372cbdb3944bb82a5be539f72414f"
+    },
+    {
+      "ruta": "salidas/archived__matriz-y-contrato.jsonl",
+      "rol": "salida",
+      "tamano": 220462,
+      "sha256": "2a29cc90b379002d1daa2c84c70fdae7ac58481bafcd578e4363af438d8a06cb"
+    },
+    {
+      "ruta": "salidas/archived__paridad-powershell.jsonl",
+      "rol": "salida",
+      "tamano": 110840,
+      "sha256": "2ba14d03a005aeb3d85f418636ac04bb81c757df3c157c7b4d7084fe133369b4"
+    },
+    {
+      "ruta": "salidas/archived__planned-desambiguacion.jsonl",
+      "rol": "salida",
+      "tamano": 40867,
+      "sha256": "6eaa64a6354e03b9932bcb42b82dd38533663fd749bfda09a93681a3f2eb7c1a"
+    },
+    {
+      "ruta": "salidas/archived__retirar-transporte-panes.jsonl",
+      "rol": "salida",
+      "tamano": 223107,
+      "sha256": "84cc4bf97799e8cc998095e2fe631736efb9395b4a196a79a2e9646168b5d732"
+    },
+    {
+      "ruta": "salidas/archived__sdd1-run-manifest.jsonl",
+      "rol": "salida",
+      "tamano": 40004,
+      "sha256": "6a306bd41f72975371d8466f390c792ba69c0b17756c01e8530a509bf0f91357"
+    },
+    {
+      "ruta": "salidas/archived__sdd2-contract-triage.jsonl",
+      "rol": "salida",
+      "tamano": 40778,
+      "sha256": "39fab944a436fb21d37fa261d4a45ac5ba700047755592f2dd2258791b9de454"
+    },
+    {
+      "ruta": "salidas/archived__subagentes-fase-0.jsonl",
+      "rol": "salida",
+      "tamano": 223417,
+      "sha256": "f8d737aad587f1b63df1c3d461015e2962ef9e5b05cbd043743d09da02d7c4ca"
+    }
+  ],
+  "sha256_canonico": "sha256:099630cc363b769c2855c5dcfa86b085d33fb41f7cd9b3a11874f7f7c0252ec4"
+}

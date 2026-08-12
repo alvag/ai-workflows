@@ -1,0 +1,48 @@
+{
+  "version_schema": "1",
+  "contrato_sha256": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+  "predicado_elegibilidad": "predicado sintético del fixture: los tres artefactos, fuera de la fase.",
+  "slugs_fase_05": [
+    "dossier-oraculo"
+  ],
+  "artefactos_exigidos": [
+    "spec.md",
+    "plan.md",
+    "tasks.md"
+  ],
+  "flujos": [
+    {
+      "flujo": "archived/flujo-sintetico",
+      "artefactos": [
+        {
+          "artefacto": "spec.md",
+          "ruta": ".plans/archived/flujo-sintetico/spec.md",
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "tamano": 10,
+          "identidad_lectura": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "artefacto": "plan.md",
+          "ruta": ".plans/archived/flujo-sintetico/plan.md",
+          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "tamano": 10,
+          "identidad_lectura": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        {
+          "artefacto": "tasks.md",
+          "ruta": ".plans/archived/flujo-sintetico/tasks.md",
+          "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "tamano": 10,
+          "identidad_lectura": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      ]
+    }
+  ],
+  "ternas": [
+    {
+      "flujo": "archived/flujo-sintetico",
+      "task_id": "T1",
+      "ocurrencia": 1
+    }
+  ]
+}
