@@ -1,6 +1,6 @@
 {
   "version_schema": "1.0.0",
-  "code_commit": "22f9911",
+  "code_commit": "891d0d3",
   "cohorte": {
     "muestras": [
       {
@@ -380,7 +380,7 @@
     "arbol_limpio_exigido": true,
     "matriz_sha256": "79f1ab52cd6fdbb477b3e0329c291215a75f1f6fe0799e131ad4ffef8632e9b6",
     "instrumento_sha256": "cdf5837c7dfe25ce401984545ce898423ec55be7fa472522bc48e753112aab66",
-    "runner_sha256": "87671da01cfb8b22887dc759e0c95afa0447953e56eb1e9048252be2e9828da7",
+    "runner_sha256": "317f8e394a8bbeb51eba5a6ede510605a9e814d1430628bd140366b54db2e696",
     "version_cli": "codex-cli 0.147.0",
     "version_runtime": "python 3.14",
     "hooks": [
@@ -508,5 +508,5 @@
       "rcb-conformance-sdd-pr-feedback-implement-delegado"
     ]
   },
-  "preregistro_sha256": "fa7ce0aaf11344016d7eda7f0ef0ee9dfba2ebaca8037b3722919527ad751547"
+  "preregistro_sha256": "bd8a5274093f582fdc69e6f9e0fcaf61b86982e8fa339381faf72b6be39b132f"
 }
