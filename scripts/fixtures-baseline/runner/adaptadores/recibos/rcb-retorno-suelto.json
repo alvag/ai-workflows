@@ -42,14 +42,15 @@
           "estado": "expuesto",
           "valor": "completado"
         },
-        "salida_sha256": "edfec426449926e9dae4085314e9ae0995bccc05e5554451b7c5e8da9d0ff49c",
+        "salida_sha256": "aae3ccf437b192be99378e02e2f3529510dbbd4bcc13ecd12dea146ae8518ee2",
         "sello": {
           "valor_ns": 87000000000,
           "fuente": "reloj_monotonico_del_harness",
           "autoridad": "harness",
           "precision_ns": 1000,
           "procedencia": "time.monotonic_ns del proceso del runner"
-        }
+        },
+        "salida_ruta_relativa": "scripts/fixtures-baseline/runner/adaptadores/salidas/rcb-retorno-suelto.txt"
       }
     ]
   }

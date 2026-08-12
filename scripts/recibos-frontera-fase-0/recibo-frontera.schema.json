@@ -166,6 +166,12 @@
           "$ref": "#/$defs/dato_de_plataforma"
         },
         "salida_sha256": {"$ref": "#/$defs/sha256"},
+        "salida_ruta_relativa": {
+          "description": "Dónde quedó escrita la salida que `salida_sha256` acredita, relativa a la raíz del repositorio. Es lo que permite COSECHAR la evidencia de una sesión: el runner no la observa, y con solo el hash lo único que puede hacer es creerle —así la evidencia de los seis puntos de subagente llegó a pasar la sanitización sin haber sido mirada nunca—. Es opcional porque el protocolo de conformance acredita el despacho y no la evidencia; una corrida de producción sin ella se bloquea.",
+          "type": "string",
+          "pattern": "^[^/][^\\u0000]*$",
+          "minLength": 1
+        },
         "sello": {"$ref": "#/$defs/sello"}
       }
     },

@@ -42,14 +42,15 @@
           "estado": "expuesto",
           "valor": "completado"
         },
-        "salida_sha256": "edfec426449926e9dae4085314e9ae0995bccc05e5554451b7c5e8da9d0ff49c",
+        "salida_sha256": "7f753c1e33887cd83ab2336524fa8b5ddc4f3a3c5bf5e1f632985362f277b847",
         "sello": {
           "valor_ns": 87000000000,
           "fuente": "reloj_monotonico_del_harness",
           "autoridad": "harness",
           "precision_ns": 1000,
           "procedencia": "time.monotonic_ns del proceso del runner"
-        }
+        },
+        "salida_ruta_relativa": "scripts/fixtures-baseline/runner/journal/salidas/rcb-jr-produccion.txt"
       }
     ]
   }

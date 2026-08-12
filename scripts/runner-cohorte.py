@@ -417,6 +417,26 @@ def constatar_red(comandos_a_ejecutar: tuple[str, ...]) -> Constancia:
                       "todos los comandos piden sandbox, que es lo que retira la red del worker")
 
 
+def constatar_retiros_del_caso(receta: dict[str, Any], recibo: dict[str, Any] | None) -> bool:
+    """Si el retiro de red quedó comprobado para ESTE caso, por la vía de su adaptador.
+
+    Los dos adaptadores cargan la misma obligación y difieren en de dónde sale lo que pasó
+    (ver `ADAPTADORES`). Un `script` la comprueba leyendo el sandbox que pide su comando congelado.
+    Una `sesion_de_agente` no tiene comando del que leerlo, y su constancia es el recibo de
+    frontera —emitido bajo autoridad del harness ANTES de la tool call—, cuyos permisos declaran
+    bajo qué régimen se despachó; la sesión no se autoatestigua. Sin recibo no hay constancia, que
+    es el mismo criterio con el que `constatar_red` trata un conjunto de comandos vacío: no se
+    asume que el entorno imponga el retiro por su cuenta.
+    """
+    if receta.get("adaptador") == "script":
+        return constatar_red((receta["comando"],)).comprobado
+    if recibo is None:
+        return False
+    apertura = next((e for e in recibo["recibo"]["eventos"]
+                     if e["evento"] == "dispatch_started"), None)
+    return bool(apertura and apertura.get("permisos"))
+
+
 def _comandos_de_las_recetas() -> tuple[str, ...]:
     recetas, error = _cargar_json(RUTA_RECETAS)
     if error:
@@ -1721,14 +1741,27 @@ class ContextoDeEjecucion(NamedTuple):
     # elemento y no un campo suelto porque `NamedTuple` es inmutable y el bundle se
     # arma después del despacho.
     entrada: list[Path] = []
+    # De dónde sale: `constatar_retiros_del_caso`, por la vía del adaptador. Tuvo default `False`
+    # y NINGUNA construcción lo asignaba, así que `sin_red_ni_credenciales` no podía dar `pasa`
+    # para ningún escritor —una guarda que no puede ponerse verde—. Lo destapó correr la cohorte
+    # real: los read_only se eximen con `not_applicable` y tapaban el caso.
     retiros_comprobados: bool = False
+    # El directorio de la corrida, donde se cosecha la evidencia. Lo conoce quien invoca el modo,
+    # no `ejecutar_caso`, así que viaja por acá.
+    destino: Path | None = None
 
 
 class ResultadoDelDespacho(NamedTuple):
     terminal: str
+    # SIEMPRE el texto de la salida del worker, en los dos adaptadores. Llevó el `salida_sha256`
+    # del recibo en la rama de sesión, y como un hash hexadecimal no contiene rutas ni credenciales,
+    # la sanitización de esos seis puntos pasaba en verde sin haber mirado nunca la evidencia.
     salida: str
     session_id: str | None
     modelo_o_familia: str | None
+    # Lo que el recibo declaró al cerrarse. Se conserva aparte para poder comprobar que el texto
+    # cosechado es el que el despacho acreditó, en vez de creerle a la ruta.
+    salida_sha256_declarado: str | None = None
 
 
 def _despachador_real(comando: str, arbol: Path) -> tuple[int, str]:
@@ -2062,8 +2095,29 @@ def despachar(contexto: ContextoDeEjecucion,
         dato = retorno[campo]
         return dato["valor"] if dato["estado"] == "expuesto" else None
 
-    return ResultadoDelDespacho(valor("terminal") or "no_expuesto", retorno["salida_sha256"],
-                                valor("session_id"), valor("modelo_o_familia"))
+    # La salida de una sesión no la observa el runner: la escribe el harness a un archivo y el
+    # recibo lo apunta. Sin esa ruta no hay evidencia que cosechar —solo su hash—, y el intento se
+    # bloquea en vez de manifestar un conjunto vacío como si fuera una corrida sin artefactos.
+    declarado = retorno["salida_sha256"]
+    relativa = retorno.get("salida_ruta_relativa")
+    if not relativa:
+        raise AnomaliaDelRunner(
+            "salida_de_la_sesion_no_localizable",
+            "el recibo declara el hash de la salida pero no dónde quedó escrita: sin la ruta, la "
+            "evidencia del despacho no se puede cosechar ni sanitizar")
+    archivo = RAIZ / relativa
+    if not archivo.is_file():
+        raise AnomaliaDelRunner(
+            "salida_de_la_sesion_no_localizable",
+            f"el recibo apunta a `{relativa}` y ahí no hay ningún archivo")
+    texto = archivo.read_text(encoding="utf-8")
+    if hashlib.sha256(archivo.read_bytes()).hexdigest() != declarado:
+        raise AnomaliaDelRunner(
+            "salida_de_la_sesion_discordante",
+            f"el archivo `{relativa}` no es el que el recibo acreditó al cerrarse: su hash no "
+            f"coincide con el declarado")
+    return ResultadoDelDespacho(valor("terminal") or "no_expuesto", texto,
+                                valor("session_id"), valor("modelo_o_familia"), declarado)
 
 
 def _invocacion_del_bundle(contexto: ContextoDeEjecucion) -> dict[str, Any]:
@@ -2089,7 +2143,8 @@ def _invocacion_del_bundle(contexto: ContextoDeEjecucion) -> dict[str, Any]:
 def construir_bundle(contexto: ContextoDeEjecucion, adjudicacion: Adjudicacion,
                      resultado: ResultadoDelDespacho, eventos: list[dict[str, Any]],
                      journal: Journal, ventana: dict[str, str],
-                     antes: Snapshot, despues: Snapshot) -> dict[str, Any]:
+                     antes: Snapshot, despues: Snapshot,
+                     artefactos: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     """Arma el bundle canónico desde lo capturado, nunca desde lo que el worker declare."""
     del adjudicacion
     transporte, _ = transporte_efectivo(contexto.receta)
@@ -2141,7 +2196,7 @@ def construir_bundle(contexto: ContextoDeEjecucion, adjudicacion: Adjudicacion,
             "estado_terminal": estado_terminal,
             "recursos_ids": [recurso_id],
         }],
-        "artefactos_producidos": [],
+        "artefactos_producidos": list(artefactos or []),
         "recursos": [{
             "recurso_id": recurso_id,
             "clase": clase_de_recurso,
@@ -2162,7 +2217,12 @@ def construir_bundle(contexto: ContextoDeEjecucion, adjudicacion: Adjudicacion,
         "identidad_del_entorno": contexto.identidad_del_entorno,
         "pipeline_de_sanitizacion": {
             "orden_aplicado": list(ORDEN_DE_SANITIZACION),
-            "manifest_sha256": _sha256(resultado.salida),
+            # El hash del MANIFEST ORDENADO de la evidencia, que es lo que AC-41 pide y lo que el
+            # instrumento recomputa. Llevó `_sha256(resultado.salida)` —el hash de la salida
+            # cruda—: un dato distinto bajo el mismo nombre, que coincidía con el correcto solo
+            # cuando la salida era vacía, porque ahí los dos son el sha256 de la cadena vacía.
+            "manifest_sha256": hashlib.sha256(
+                manifest_canonico(list(artefactos or []))).hexdigest(),
         },
         "journal_candidate_ids": journal.candidate_ids(),
     }
@@ -2334,17 +2394,24 @@ def ejecutar_caso(contexto: ContextoDeEjecucion,
             evento("estado_terminal_de_trabajo")
             eventos[-1]["trabajo_delegado_id"] = f"trb-{contexto.run_id}"
             evento("resultado_utilizable")
+            # La cosecha va DENTRO de la captura y antes del snapshot de cierre: lo que el worker
+            # dejó en el scratch se lee mientras el árbol desechable todavía existe.
+            crudos = recolectar_crudos(contexto, resultado)
             despues = tomar_snapshot(contexto.arbol)
 
         with journal.operacion("sanitizacion", contexto.sample_id, contexto.attempt_id):
-            sanitizar(resultado.salida)
+            # Toda la evidencia, no solo la salida: el pipeline canónico normaliza y escanea antes
+            # de hashear, y un artefacto del scratch que entrara sin pasar por acá haría que el
+            # `manifest_sha256` identificara un crudo que nunca se versiona.
+            sanitizados = [(relativa, sanitizar(contenido)) for relativa, contenido in crudos]
 
         with journal.operacion("construccion_del_bundle", contexto.sample_id,
                                contexto.attempt_id):
+            artefactos = escribir_evidencia(contexto.destino, sanitizados)
             ventana = {"inicio": inicio,
                        "fin": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
             bundle = construir_bundle(contexto, adjudicacion, resultado, eventos, journal, ventana,
-                                      antes, despues)
+                                      antes, despues, artefactos)
     except AnomaliaDelRunner as anomalia:
         return None, [f"[{anomalia.clase}] {anomalia.detalle}"]
 
@@ -2388,6 +2455,75 @@ def sanitizar(texto: str) -> str:
                                     f"la salida capturada contiene {que_es}: la evidencia se "
                                     f"rechaza en vez de importarse con el secreto adentro")
     return texto
+
+
+# Dónde queda la evidencia dentro del directorio de la corrida. El bundle y el journal son el
+# juicio y el registro; esto es lo que el worker produjo.
+NOMBRE_DE_LA_SALIDA = "evidencia/salida-del-worker.txt"
+
+# El formato del manifest es CONTRATO —AC-41 lo fija y el instrumento lo recomputa para juzgarlo—,
+# y por eso está acá TRANSCRITO y no importado: el runner produce la evidencia y el instrumento
+# decide si vale, y compartir el código borraría la separación que hace que ese juicio signifique
+# algo. Es el mismo dato declarado en dos lugares que `ORDEN_DE_SANITIZACION`, con el mismo dueño
+# (T23/T25). Lo que sostiene la transcripción es que el juez la recomputa: si las dos
+# serializaciones divergen, `--sanitizar` corta por `manifest_sha256_discordante` — que es
+# exactamente cómo se descubrió que este número venía siendo el de otra cosa.
+def manifest_canonico(artefactos: list[dict[str, Any]]) -> bytes:
+    filas = sorted((str(a["ruta_relativa"]), int(a["bytes"]), str(a["sha256"]))
+                   for a in artefactos)
+    return "".join(f"{ruta}\t{tamano}\t{sha}\n" for ruta, tamano, sha in filas).encode("utf-8")
+
+
+def recolectar_crudos(contexto: ContextoDeEjecucion,
+                      resultado: ResultadoDelDespacho) -> list[tuple[str, str]]:
+    """La evidencia cruda del intento: (ruta dentro de la corrida, contenido), sin sanitizar.
+
+    Son dos fuentes y las dos hacen falta. La salida del worker es lo que el despacho devolvió; los
+    archivos del scratch son los que el comando congelado nombra por marcador y el worker escribió
+    ahí. El scratch vive DENTRO del árbol desechable, así que todo lo que no se coseche en este
+    paso se va con él: sin esto el manifest hashea un conjunto vacío y el bundle acredita una
+    evidencia que ya no existe en ninguna parte.
+    """
+    crudos = [(NOMBRE_DE_LA_SALIDA, resultado.salida)]
+    # El scratch se barre SOLO en una corrida que captura a disco y tiene el suyo propio. El
+    # default del contexto es `.` —los controles no capturan—, y sin esta condición el barrido
+    # recorría el repositorio entero: la primera corrida murió por `sanitizacion_rechazada` al
+    # encontrar un token de GitHub en un archivo que no era evidencia de nada.
+    cosechable = (contexto.destino is not None
+                  and contexto.scratch != contexto.arbol
+                  and contexto.scratch.is_dir())
+    if cosechable:
+        for archivo in sorted(contexto.scratch.rglob("*")):
+            if not archivo.is_file():
+                continue
+            try:
+                contenido = archivo.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                # Lo que no es texto no se puede escanear, y publicar sin escanear es justo lo que
+                # AC-41 impide. Queda fuera del manifest en vez de entrar sin haberse mirado.
+                continue
+            relativa = archivo.relative_to(contexto.scratch).as_posix()
+            crudos.append((f"evidencia/scratch/{relativa}", contenido))
+    return crudos
+
+
+def escribir_evidencia(destino: Path | None,
+                       sanitizados: list[tuple[str, str]]) -> list[dict[str, Any]]:
+    """Escribe la evidencia ya sanitizada y devuelve su manifest ordenado.
+
+    Sin destino —los controles, que no capturan a disco— el manifest se computa igual: así el
+    camino que produce el número se ejerce en los autotests y no solo en la cohorte real.
+    """
+    artefactos: list[dict[str, Any]] = []
+    for relativa, contenido in sanitizados:
+        crudo = contenido.encode("utf-8")
+        if destino is not None:
+            archivo = destino / relativa
+            archivo.parent.mkdir(parents=True, exist_ok=True)
+            archivo.write_bytes(crudo)
+        artefactos.append({"ruta_relativa": relativa, "bytes": len(crudo),
+                           "sha256": hashlib.sha256(crudo).hexdigest()})
+    return sorted(artefactos, key=lambda a: (a["ruta_relativa"], a["bytes"], a["sha256"]))
 
 
 def revisar_secuencia_de_apertura(eventos: list[dict[str, Any]]) -> list[str]:
@@ -2511,7 +2647,9 @@ def modo_ejecutar_caso(args: argparse.Namespace) -> int:
             # sea relativa a su `cwd`. El árbol es desechable; lo que se cosecha se
             # importa al staging después, que es lo que D-19 pide sacar del árbol medido.
             scratch=arbol / ".cohorte-scratch" / run_id,
-            ancla_de_invocacion=_ancla_del_punto(receta["punto_de_despacho"]))
+            ancla_de_invocacion=_ancla_del_punto(receta["punto_de_despacho"]),
+            retiros_comprobados=constatar_retiros_del_caso(receta, recibo),
+            destino=salida / run_id)
         bundle, problemas = ejecutar_caso(contexto, journal, reloj)
 
     ruta_journal = salida / run_id / "journal-anomalias.json"
@@ -2580,6 +2718,9 @@ def _contexto_de_control(receta: dict[str, Any], intento: dict[str, Any], *,
         recibos=DIR_RECIBOS_ADAPTADORES if recibos is None else recibos,
         sesionador=sesionador_local("sano"),
         despachar_comando=_despachador_de_control,
+        # Por la misma vía que la corrida real: si los controles lo dejaran en su default, el
+        # camino que decide el aislamiento de un escritor seguiría sin ejercerse en ningún test.
+        retiros_comprobados=constatar_retiros_del_caso(receta, recibo),
     )
 
 
