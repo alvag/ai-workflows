@@ -826,7 +826,7 @@ seis piezas que interpola en los dos prompts —implementer y reviewer— y cóm
 serializa. Los prompts de abajo y `validar-para-despacho` citan estas reglas por su id.
 
 Transcriben el contrato de extracción del dossier, `sha256`
-`9c39363f536f4d550b455c725b61e1d650471489a408aefdd2584d3f0816812d`. **Ahí se deciden; acá se
+`9ed1221f8e300e39ced25ea38eef6879b868ff2ac198807a8a51a69cfe316828`. **Ahí se deciden; acá se
 aplican**: si una corrida obliga a cambiar una regla, se cambia en el contrato, no en este texto.
 
 > **Nota de límite.** Esto es **prosa normativa**: no se ejecuta. No se afirma equivalencia
@@ -956,8 +956,19 @@ adaptadores` da `interfaz-compartida-el-contrato-de-los-tres-adaptadores`, y una
 slug o con el prefijo inequívoco más corto que no colisione con otro bloque del mismo documento.
 **Termina** en el próximo heading de **nivel menor o igual al suyo** (`##` o `#`), o en el próximo
 encabezado de task de R1 — lo que ocurra primero. Un `###` interno **pertenece a su contenido**:
-cortarlo en su primer subtítulo entregaría una fracción del contrato que dice entregarse entero. **Dos
-bloques globales con el mismo slug** son error `bloque_global_duplicado`.
+cortarlo en su primer subtítulo entregaría una fracción del contrato que dice entregarse entero.
+
+**Los tres errores del bloque global**, que son tres y no dos:
+
+| Caso | Error |
+|---|---|
+| dos bloques declaran el mismo slug | `bloque_global_duplicado` |
+| la cita no corresponde a ningún bloque del documento | `bloque_global_inexistente` |
+| el prefijo citado es prefijo de **dos o más** bloques | `bloque_global_ambiguo` |
+
+El tercero existe porque el prefijo corto es una **concesión de escritura** y nada garantiza que siga
+siendo inequívoco cuando alguien agrega un bloque nuevo con el mismo comienzo. Ese caso no está
+ausente ni duplicado: la cita es legítima y el documento cambió debajo.
 
 **Corte de las otras dos piezas:**
 
@@ -1146,7 +1157,7 @@ resuelvan. **Bloquea** —la task no se despacha— ante cualquiera de estos:
 | `fila_duplicada` en `## Verification` | R3 |
 | `duplicado_normativo` — id repetido fuera del apéndice | R4 |
 | `consume_no_tipado` — `Consume` sin id de R1 ni marca de bloque global | R5 |
-| `bloque_global_duplicado` — dos bloques con el mismo slug | R5 |
+| `bloque_global_duplicado`, `bloque_global_inexistente` o `bloque_global_ambiguo` | R5 |
 | `rango_invertido`, `extremo_inexistente`, `rango_mixto` | R1 |
 
 **Excepción explícita:** una task que cubre un AC y **no cita ninguna fila** no bloquea — su dossier
