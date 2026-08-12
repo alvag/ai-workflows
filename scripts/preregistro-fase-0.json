@@ -1,6 +1,6 @@
 {
   "version_schema": "1.0.0",
-  "code_commit": "be7b5ce",
+  "code_commit": "3c222eb",
   "cohorte": {
     "muestras": [
       {
@@ -380,7 +380,7 @@
     "arbol_limpio_exigido": true,
     "matriz_sha256": "79f1ab52cd6fdbb477b3e0329c291215a75f1f6fe0799e131ad4ffef8632e9b6",
     "instrumento_sha256": "8de76f793e17bcb69d3581d1fec0db7ac42d8b2880a108512c99a5a6e0a25ddb",
-    "runner_sha256": "3c3c39de1e65f07620feac64351af9b4b07612be320d1fedc29d546119cc7165",
+    "runner_sha256": "04552240efd8f3e4e856b1a43e860920611f6cb43f0a42c1beb1b8a083f8dd94",
     "version_cli": "codex-cli 0.147.0",
     "version_runtime": "python 3.14",
     "hooks": [
@@ -444,7 +444,7 @@
     "inventario_sha256": "f9002ab0c2e77bbbafb80e86a613ec24df7dadd611ace9804cdd3f267a674f37"
   },
   "recibo_del_preflight": {
-    "recibo_sha256": "df646c40f5a0b17a4baa10a9baf803b269c601bae85d0e371bc13c5c374f16c2",
+    "recibo_sha256": "cee23548022050dfe2c6f07bb90a29d87f7d9af2a3d8dacf4813a54032e5b0cc",
     "adjudicaciones": [
       {
         "receta_id": "rec-bitbucket-panel",
@@ -508,5 +508,5 @@
       "rcb-conformance-sdd-pr-feedback-implement-delegado"
     ]
   },
-  "preregistro_sha256": "4972c89ed10e7027a0ba140fcbd2af51b444269e1d8e5131a9a3f4efa504ad0b"
+  "preregistro_sha256": "590cc2c15cae624609990af0e7d781be174eea625ff2f3eb0d0a104c26ee8e0c"
 }
