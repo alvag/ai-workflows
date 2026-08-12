@@ -4,7 +4,7 @@
     "anomalias_del_runner": "el directorio existe con su schema y sin ningún registro: el runner no emitió ninguna anomalía en las 13 corridas",
     "fallos_de_fixtures": "el directorio no existe: el punto de emisión nunca se creó",
     "adjudicaciones_de_cohorte": "sin adjudicaciones con `candidate_id`: el acta congelada no declara ninguna",
-    "reportes_de_implementacion": "20 candidatos"
+    "reportes_de_implementacion": "21 candidatos"
   },
   "fuentes": {
     "anomalias_del_runner": [],
@@ -90,6 +90,10 @@
       {
         "candidate_id": "corpus-vuelve-equivalente-a-un-mutante",
         "detalle": "El recibo hasheaba la misma cadena que el corpus, así que una mutación que cambiara las dos a la vez quedaba indetectable: el corpus podía volver equivalente a un mutante que en el árbol real sí es un defecto."
+      },
+      {
+        "candidate_id": "instrumento-rama-de-error-con-nombre-inexistente",
+        "detalle": "`_valores_publicados` referencia `_relativa(ruta)` en su rama de `except OSError` y esa función no está definida en ninguna parte del archivo: la referencia aparece una sola vez, justo ahí. Un baseline ilegible devuelve un `NameError` en vez del diagnóstico que la rama existe para dar. Los 33 autotests pasan porque ninguno ejerció ese camino, y no puede haber alterado ninguna medición: en las trece corridas el baseline se leyó."
       }
     ]
   },

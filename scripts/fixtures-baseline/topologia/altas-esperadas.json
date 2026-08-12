@@ -107,6 +107,10 @@
     {
       "path": "scripts/ledger-candidatos-fase-0.json",
       "owner": "ledger-de-candidatos"
+    },
+    {
+      "path": "scripts/defectos-descubiertos-fase-0.json",
+      "owner": "consolidacion-de-defectos"
     }
   ]
 }

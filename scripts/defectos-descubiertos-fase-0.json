@@ -1,0 +1,139 @@
+{
+  "version_schema": "1.0.0",
+  "fuente": "reportes_de_implementacion",
+  "que_declara": "Los candidatos a defecto que este flujo descubrió al construir el instrumento y correr la cohorte, con un `candidate_id` estable por candidato. Es el punto de emisión que la fuente `reportes_de_implementacion` necesitaba y que nunca se escribió: los reportes de `work/` registran controles de mutación, no candidatos, y los defectos vivían en la prosa de los handoffs sucesivos.",
+  "x-limites-de-esta-consolidacion": {
+    "es-posterior-a-los-hechos": "Cada candidato se descubrió en su momento y se registró en el handoff de esa sesión; esta consolidación los junta después. Lo que sostiene cada uno es su commit de corrección, que es verificable contra el árbol; lo que NO sostiene es el instante del descubrimiento, que solo consta en prosa.",
+    "por-que-igual-vale": "La alternativa —derivar los candidatos de los reportes de `work/`— no es posible: esos reportes enumeran mutantes y sus detecciones, no defectos. Un ledger derivado de ahí saldría vacío y cerrado, que es exactamente el ledger «perfectamente cerrado y falso» que AC-24bis nombra.",
+    "criterio-de-adjudicacion": "`incorporado` es el candidato que es un defecto de una skill o del contrato del ecosistema y tiene fase de corrección pendiente: esos entran al inventario del documento. `descartado` es todo lo demás —defectos del instrumento de medición o del arnés de este flujo, ya corregidos y verificados acá— y cada uno lleva su razón y su commit."
+  },
+  "candidatos": [
+    {
+      "candidate_id": "runner-retiros-comprobados-sin-asignar",
+      "descubierto_en": "T21",
+      "descripcion": "`retiros_comprobados` quedaba en su default `False` y ninguna de las dos construcciones del contexto lo tocaba, así que `sin_red_ni_credenciales` no podía dar `pasa` para ningún escritor. Los `read_only` se eximían con `not_applicable` y tapaban el caso.",
+      "corregido_en": "cf6ce6e"
+    },
+    {
+      "candidate_id": "runner-evidencia-no-persistia",
+      "descubierto_en": "T21",
+      "descripcion": "El worker escribía al scratch, el scratch vive dentro del árbol desechable y nadie lo cosechaba: los trece directorios tenían solo `bundle.json` y el journal.",
+      "corregido_en": "cf6ce6e"
+    },
+    {
+      "candidate_id": "runner-manifest-sha256-de-otro-dato",
+      "descubierto_en": "T21",
+      "descripcion": "`manifest_sha256` era el sha256 de `resultado.salida` — un dato distinto bajo el nombre de otro. Coincidía con el correcto solo cuando la salida era vacía, porque ahí los dos son el sha256 de la cadena vacía: tres de trece pasaban por vacuidad.",
+      "corregido_en": "cf6ce6e"
+    },
+    {
+      "candidate_id": "runner-salida-llevaba-el-hash",
+      "descubierto_en": "T21",
+      "descripcion": "`ResultadoDelDespacho.salida` llevaba el hash en la rama de sesión. Como un hash hexadecimal no contiene rutas ni credenciales, la sanitización de los seis puntos de subagente pasaba en verde sin haber mirado nunca la evidencia.",
+      "corregido_en": "cf6ce6e"
+    },
+    {
+      "candidate_id": "runner-inventario-de-egreso-sin-reejecutar",
+      "descubierto_en": "T21",
+      "descripcion": "El inventario de egreso no se reejecutaba por corrida: `superficies` vacío y un `inventario_sha256` que era el de la lista de archivos de credencial. Bloqueaba a los cinco escritores por `evidencia_declarativa` y dejaba la tasa en 0.46.",
+      "corregido_en": "22f9911"
+    },
+    {
+      "candidate_id": "runner-confirmacion-humana-nunca-emitida",
+      "descubierto_en": "T22",
+      "descripcion": "La secuencia de apertura declara `confirmacion_humana` y `ejecutar_caso` emitía los otros cuatro eventos. Cuatro puntos que la matriz marca como que exigen confirmación quedaban clasificados `automatizable` sin ningún evento que lo sostuviera.",
+      "corregido_en": "891d0d3"
+    },
+    {
+      "candidate_id": "runner-reporte-del-worker-nunca-lleno",
+      "descubierto_en": "T22",
+      "descripcion": "`validez_del_reporte: ausente` en las trece, porque el runner nunca llenaba `reporte_del_worker`. El recolector lo traducía a salida inválida y el baseline publicaba `tasa-de-salidas-invalidas = 1.0`: el 100% de las salidas serían inválidas cuando lo que pasó es que nadie evaluó ninguna. Ausente e inválido no son lo mismo.",
+      "corregido_en": "891d0d3"
+    },
+    {
+      "candidate_id": "acta-ejecutor-esperado-no-era-el-real",
+      "descubierto_en": "T22",
+      "descripcion": "El `entorno_esperado` del acta declaraba un `ejecutor.perfil_esperado` —«conductor local sin hooks de sesión, sobre el árbol desechable provisionado»— que no es quien ejecuta: el runner declara «runner de la cohorte, sin hooks de sesión». Trece divergencias por igualdad de texto. Se enmendó el acta, que es el único de los diez que exigió volver al gate humano.",
+      "corregido_en": "3b288f5"
+    },
+    {
+      "candidate_id": "runner-preregistration-commit-llevaba-head",
+      "descubierto_en": "T22",
+      "descripcion": "`identidad_del_entorno_de_hoy` aceptaba el commit de congelamiento por parámetro y ninguno de sus dos sitios de llamada se lo pasaba, así que caía al default `git rev-parse HEAD`. D-18 declara `code_commit` y `preregistration_commit` distintos y en todos los bundles llevaron el mismo dato. Coincidía por vacuidad porque el procedimiento era congelar y correr seguido.",
+      "corregido_en": "d68ed0e"
+    },
+    {
+      "candidate_id": "runner-modelo-no-expuesto-bloqueaba",
+      "descubierto_en": "T22",
+      "descripcion": "El runner escribía `bloqueo` como adjudicación del modelo no expuesto, y como no conoce el modelo en ningún punto —tampoco en los siete de CLI— honrar el bloqueo dejaba la cohorte entera fuera y no había baseline posible. Pasó a `estratificacion`, la misma que la tabla ya da a `version_cli`, `version_runtime` y `hooks`.",
+      "corregido_en": "3be305e"
+    },
+    {
+      "candidate_id": "contrato-ejes-sin-hecho-de-origen",
+      "descubierto_en": "T4",
+      "descripcion": "Dos de los tres ejes del bundle no tenían hecho de origen: `validez_del_reporte` y `resultado_semantico` no salían de ningún campo, y el caso de salida malformada que AC-18 pide al corpus no era expresable. Se agregaron `reporte_del_worker` y `veredicto_de_conformance` como uniones disjuntas y cerradas.",
+      "corregido_en": "3dd1ee4"
+    },
+    {
+      "candidate_id": "contrato-terminal-delegado-no-se-inferia",
+      "descubierto_en": "T6",
+      "descripcion": "Cada trabajo exigía `evento_terminal_id` y una corrida que nunca despachó no lo tiene: había que inventarlo, y el caso de ausencia de eventos clasificaba `bloqueado` en vez de `sin_eventos`. Se reemplazó por `estado_terminal`, unión de `comprobado` y `no_comprobable` con causa. La enmienda migró 49 fixtures.",
+      "corregido_en": "3911e30"
+    },
+    {
+      "candidate_id": "entorno-desechable-entregaba-credenciales",
+      "descubierto_en": "T13",
+      "descripcion": "El entorno declarado «desechable» retiraba una lista fija de nombres de credencial y entregaba las reales que no estuvieran en esa lista. Un aislamiento que se declara por allowlist deja pasar todo lo que la lista no anticipó.",
+      "corregido_en": "3957bfd"
+    },
+    {
+      "candidate_id": "regla-de-descubrimiento-no-veia-la-fase",
+      "descubierto_en": "T13",
+      "descripcion": "La regla de descubrimiento de artefactos no alcanzaba casi nada de esta fase: solo tres de las nueve excepciones eran alcanzables y los directorios nuevos tampoco. Retirar las excepciones sin ampliar la regla habría dejado una guarda verde sobre un árbol incompleto.",
+      "corregido_en": "47ec2bd"
+    },
+    {
+      "candidate_id": "guarda-ausencia-no-distingue-dato-de-prosa",
+      "descubierto_en": "T26",
+      "descripcion": "`verificar-retiro-transporte.py --ausencia` escanea el árbol buscando el nombre del transporte retirado y no distingue prosa del repositorio de transcripción capturada. Cuando la cohorte trajo evidencia de sesiones que lo nombraron, la guarda quedó en rojo y la salida barata —editar la evidencia— invalidaba los trece `bundle_sha256`.",
+      "corregido_en": "bbfa466"
+    },
+    {
+      "candidate_id": "familia-de-autotests-no-expande",
+      "descubierto_en": "T26",
+      "descripcion": "La expansión de una familia de guardas se deriva de los `add_argument` literales que el parser del script declara, y el instrumento arma el suyo desde una tabla `registrar_modo(...)`: la derivación devuelve el conjunto vacío y un comodín habría dado `familia_vacia`. La forma recomendada por el propio extractor pone la guarda en rojo sobre este script.",
+      "corregido_en": "43d047b"
+    },
+    {
+      "candidate_id": "cli-resume-sesion-inexistente-sale-en-cero",
+      "descubierto_en": "T12",
+      "descripcion": "`codex exec resume <sesión inexistente>` sale en 0 y arranca una sesión fresca en vez de fallar. Un adaptador que reanuda por identificador no puede distinguir una reanudación real de un arranque nuevo mirando el código de salida.",
+      "corregido_en": null
+    },
+    {
+      "candidate_id": "cli-resume-sandbox-por-config-no-por-bandera",
+      "descubierto_en": "T12",
+      "descripcion": "La invocación de `resume` pide sandbox con `-c sandbox_mode=\"…\"` y no con `-s`, al revés que `exec`. Las dos formas conviven en la misma CLI y la documentación de las skills usa la de `exec` en los dos lugares.",
+      "corregido_en": null
+    },
+    {
+      "candidate_id": "cli-resume-bandera-c-no-reposiciona",
+      "descubierto_en": "analyze",
+      "descripcion": "El `-C <dir>` de `codex exec resume` no reposiciona el working dir de la sesión reanudada como lo hace en `exec`. Es el primer candidato que este flujo registró y ya estaba adjudicado antes de escribirse el ledger.",
+      "corregido_en": null
+    },
+    {
+      "candidate_id": "corpus-vuelve-equivalente-a-un-mutante",
+      "descubierto_en": "T12",
+      "descripcion": "El recibo hasheaba la misma cadena que el corpus, así que una mutación que cambiara las dos a la vez quedaba indetectable: el corpus podía volver equivalente a un mutante que en el árbol real sí es un defecto.",
+      "corregido_en": "cf6ce6e"
+    },
+    {
+      "candidate_id": "instrumento-rama-de-error-con-nombre-inexistente",
+      "descubierto_en": "posterior al cierre, al revisar si la Fase 0 estaba completa",
+      "descripcion": "`_valores_publicados` referencia `_relativa(ruta)` en su rama de `except OSError` y esa función no está definida en ninguna parte del archivo: la referencia aparece una sola vez, justo ahí. Un baseline ilegible devuelve un `NameError` en vez del diagnóstico que la rama existe para dar. Los 33 autotests pasan porque ninguno ejerció ese camino, y no puede haber alterado ninguna medición: en las trece corridas el baseline se leyó.",
+      "corregido_en": null
+    }
+  ],
+  "x-por-que-vive-en-scripts": "Nació en `.plans/…/work/`, que es local y untracked por diseño: el ledger que lo consume queda commiteado y su única fuente poblada no, así que la reconciliación era reproducible en un solo working tree. Archivar el flujo lo movió y rompió la cadena —el derivador informó cero candidatos en las cuatro fuentes y `--ledger` emitió veinte `entrada_del_ledger_sin_fuente`—. Pasa a `scripts/` para que la fuente viva donde vive lo que la consume."
+}

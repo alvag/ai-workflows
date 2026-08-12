@@ -282,6 +282,13 @@
       "dato": "adjudicacion-de-los-candidatos-a-defecto",
       "source_status": "fuente",
       "versioned": true
+    },
+    {
+      "path": "scripts/defectos-descubiertos-fase-0.json",
+      "owner": "consolidacion-de-defectos",
+      "dato": "candidatos-a-defecto-descubiertos-por-el-flujo",
+      "source_status": "fuente",
+      "versioned": true
     }
   ],
   "regla_de_descubrimiento": {

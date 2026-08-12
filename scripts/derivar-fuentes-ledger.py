@@ -10,7 +10,7 @@ Las cuatro fuentes y de dónde sale cada una:
   anomalias_del_runner        `scripts/journal-anomalias-fase-0/`  · un candidato por anomalía
   fallos_de_fixtures          `scripts/recibos-autotest-fase-0/`   · un candidato por modo y caso
   adjudicaciones_de_cohorte   `scripts/preregistro-fase-0.json`    · un candidato por adjudicación
-  reportes_de_implementacion  `.plans/instrumento-y-baseline/work/defectos-descubiertos.json`
+  reportes_de_implementacion  `scripts/defectos-descubiertos-fase-0.json`
 
 **Una fuente vacía es un conjunto vacío, no un error** — pero la diferencia entre «no produjo
 candidatos» y «no existe» se INFORMA, porque las dos dan cero y solo una es una medición. Un
@@ -31,7 +31,7 @@ RAIZ = Path(__file__).resolve().parent.parent
 DIR_ANOMALIAS = RAIZ / "scripts/journal-anomalias-fase-0"
 DIR_RECIBOS_AUTOTEST = RAIZ / "scripts/recibos-autotest-fase-0"
 RUTA_PREREGISTRO = RAIZ / "scripts/preregistro-fase-0.json"
-RUTA_DEFECTOS = RAIZ / ".plans/instrumento-y-baseline/work/defectos-descubiertos.json"
+RUTA_DEFECTOS = RAIZ / "scripts/defectos-descubiertos-fase-0.json"
 RUTA_MANIFEST = RAIZ / "scripts/manifest-despachos-fase-0.json"
 
 

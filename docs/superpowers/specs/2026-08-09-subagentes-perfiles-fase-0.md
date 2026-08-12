@@ -1401,16 +1401,19 @@ observación**, y por eso se descarta acá en lugar de registrarse como un sépt
 
 ### Los defectos de este flujo
 
-El flujo del instrumento y el baseline descubrió **veinte candidatos** al construir el instrumento y
-correr la cohorte. Los veinte quedaron adjudicados en `scripts/ledger-candidatos-fase-0.json`, cuyas
-cuatro fuentes están declaradas de forma cerrada y se reconcilian contra el ledger en las dos
-direcciones. **Diecisiete se descartaron y tres se incorporan acá.**
+El flujo del instrumento y el baseline descubrió **veintiún candidatos** al construir el instrumento
+y correr la cohorte —veinte durante el flujo y uno posterior, al revisar si la fase estaba completa—.
+Los veintiuno quedaron adjudicados en `scripts/ledger-candidatos-fase-0.json`, cuyas cuatro fuentes
+están declaradas de forma cerrada y se reconcilian contra el ledger en las dos direcciones.
+**Diecisiete se descartaron y cuatro se incorporan acá.**
 
-El criterio de la adjudicación: se **incorpora** el candidato que es un defecto de una skill o del
-mecanismo compartido del repositorio **y no está corregido**; se **descarta** el que es un defecto
-del instrumento de medición o del arnés de ese flujo, ya corregido y verificado ahí, y cada descarte
-lleva escrito el commit que lo corrige. Un defecto ya corregido no tiene fase de corrección
-pendiente, y meterlo a este inventario declararía deuda que no existe.
+El criterio de la adjudicación reparte por **corregido o no**, y no por de quién es el defecto: se
+**incorpora** el que es un defecto real y **no está corregido**, viva en una skill, en el mecanismo
+compartido del repositorio o en el instrumento de medición; se **descarta** el que está corregido y
+verificado en ese flujo —con el commit escrito— o el que no es un defecto porque su comportamiento
+es conforme a su documentación. Un defecto ya corregido no tiene fase de corrección pendiente, y
+meterlo a este inventario declararía deuda que no existe; uno sin corregir la tiene, sea de donde
+sea.
 
 Los tres incorporados, con el mismo criterio de identidad que el resto del inventario:
 
@@ -1429,6 +1432,13 @@ Los tres incorporados, con el mismo criterio de identidad que el resto del inven
       "descripcion": "la reanudación de una sesión inexistente que sale en 0 y arranca una fresca",
       "ubicacion": "skills/cross-implement/reference.md:107",
       "naturaleza": "instrumental: `codex exec resume <sesión inexistente>` sale en 0 y arranca una sesión fresca. El fix loop de la skill reanuda por identificador y juzga el resultado por código de salida, así que una sesión perdida es indistinguible de una reanudada: el segundo intento corre sin el contexto del primero y nada lo señala",
+      "fase": "Fase 3"
+    },
+    {
+      "id": "instrumento-rama-de-error-con-nombre-inexistente",
+      "descripcion": "la rama de error que llama a una función que no existe, en el instrumento congelado",
+      "ubicacion": "scripts/instrumento-baseline.py:9616",
+      "naturaleza": "instrumental: la rama de `except OSError` de `_valores_publicados` llama a `_relativa(ruta)`, que no está definida en el archivo — la referencia aparece una sola vez, justo ahí. Un baseline ilegible produce un `NameError` en vez del diagnóstico que la rama existe para dar. Los treinta y tres autotests del instrumento pasan porque ninguno ejerció ese camino, que es la misma forma de los diez defectos que ese flujo encontró: el que nunca corrió. Arreglarlo cambia el hash que el acta congeló, así que se paga cuando el instrumento se descongele",
       "fase": "Fase 3"
     },
     {

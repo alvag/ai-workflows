@@ -1,7 +1,7 @@
 {
   "version_schema": "1.0.0",
   "que_declara": "El ledger de candidatos a defecto de este flujo. Sus cuatro fuentes son cerradas y están declaradas con ruta, schema, regla de identidad y momento de emisión; el conjunto de candidatos NO se escribe acá: lo deriva `scripts/derivar-fuentes-ledger.py` desde las fuentes reales, y `--ledger` reconcilia los dos en las dos direcciones.",
-  "x-criterio-de-adjudicacion": "`incorporado` es el candidato que es defecto de una skill o del mecanismo compartido del repositorio y NO está corregido: esos entran al inventario del documento con ubicación resoluble, naturaleza y fase. `descartado` es todo lo demás —defectos del instrumento de medición o del arnés de este flujo, ya corregidos y verificados acá—, cada uno con su razón y el commit que lo corrige. Un defecto corregido no tiene fase de corrección pendiente, y meterlo al inventario del ecosistema declararía deuda que no existe.",
+  "x-criterio-de-adjudicacion": "El eje es **corregido o no**, no de quién es el defecto. `incorporado`: es un defecto real y NO está corregido — entra al inventario del documento con ubicación resoluble, naturaleza y fase, sin importar si vive en una skill, en el mecanismo compartido del repo o en el instrumento de medición. `descartado` por una de dos razones, y la razón se escribe: (a) es un defecto real y está corregido y verificado acá, con el commit que lo corrige; (b) no es un defecto — el comportamiento es conforme a su documentación. Un defecto corregido no tiene fase pendiente y meterlo al inventario declararía deuda que no existe; uno sin corregir la tiene, sea de donde sea. La versión anterior de este criterio partía por dueño —skill contra instrumento— y dejaba sin clasificar la combinación «del instrumento y sin corregir», que el candidato 21 estrenó.",
   "fuentes": [
     {
       "fuente": "anomalias_del_runner",
@@ -26,10 +26,10 @@
     },
     {
       "fuente": "reportes_de_implementacion",
-      "ruta": ".plans/instrumento-y-baseline/work/defectos-descubiertos.json",
+      "ruta": "scripts/defectos-descubiertos-fase-0.json",
       "schema": "el declarado en su propia cabecera `version_schema`",
       "regla_de_identidad": "un `candidate_id` estable por candidato, en kebab-case y con el subsistema como prefijo",
-      "momento_de_emision": "captura obligatoria y append-only para este flujo: al cerrar cada task que descubra un candidato"
+      "momento_de_emision": "captura obligatoria y append-only para este flujo: al cerrar cada task que descubra un candidato. Vive en `scripts/` y no en `.plans/` porque el ledger que la consume está commiteado: una fuente local hace que la reconciliación valga en un solo working tree, y archivar el flujo la rompió una vez"
     }
   ],
   "candidatos": [
@@ -141,6 +141,14 @@
       "candidate_id": "corpus-vuelve-equivalente-a-un-mutante",
       "adjudicacion": "descartado",
       "razon": "defecto del instrumento de medición o del arnés de este flujo, corregido y verificado acá en `cf6ce6e`: no es un defecto del ecosistema y no tiene fase pendiente"
+    },
+    {
+      "candidate_id": "instrumento-rama-de-error-con-nombre-inexistente",
+      "adjudicacion": "incorporado",
+      "razon": "defecto real y sin corregir: arreglarlo cambia el hash que el acta congeló, así que D-20 obliga a regenerar pre-registro, corridas y baseline. Se paga cuando el instrumento se descongele, no antes: no puede haber alterado ninguna medición",
+      "ubicacion": "scripts/instrumento-baseline.py:9616",
+      "naturaleza": "instrumental: la rama de `except OSError` de `_valores_publicados` llama a `_relativa(ruta)`, que no está definida en el archivo — la referencia aparece una sola vez, justo ahí. Un baseline ilegible produce un `NameError` en vez del diagnóstico. Los 33 autotests pasan porque ninguno ejerció esa rama, que es la misma forma de los diez defectos anteriores: el camino que nunca corrió",
+      "fase": "Fase 3"
     }
   ],
   "capturas": [
