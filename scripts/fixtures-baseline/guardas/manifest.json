@@ -1,0 +1,53 @@
+{
+  "que_declara": "El manifest independiente de los DOS modos que derivan de `base_commit`. Comparten mecanismo y comparten el modo de fallar: si la base no resuelve, los dos compararían contra un conjunto vacío y saldrían verdes.",
+  "casos": [
+    {
+      "caso": "g-guarda-previa-ausente",
+      "modo": "guardas",
+      "clausula": "guarda_previa_ausente",
+      "fragmento": "estaba en el manifiesto de la base y ya no está"
+    },
+    {
+      "caso": "g-guarda-previa-alterada",
+      "modo": "guardas",
+      "clausula": "guarda_previa_alterada",
+      "fragmento": "cambió de comando o de criterio"
+    },
+    {
+      "caso": "g-exclusion-previa-ausente",
+      "modo": "guardas",
+      "clausula": "exclusion_previa_ausente",
+      "fragmento": "estaba en el manifiesto de la base"
+    },
+    {
+      "caso": "g-base-no-resoluble",
+      "modo": "guardas",
+      "clausula": "base_no_resoluble",
+      "fragmento": "invalid object name"
+    },
+    {
+      "caso": "t-alta-esperada-ausente",
+      "modo": "topologia",
+      "clausula": "alta_esperada_ausente",
+      "fragmento": "no aparece en el registro"
+    },
+    {
+      "caso": "t-alta-no-esperada",
+      "modo": "topologia",
+      "clausula": "alta_no_esperada",
+      "fragmento": "indistinguible de uno que se coló"
+    },
+    {
+      "caso": "t-identidad-incompleta",
+      "modo": "topologia",
+      "clausula": "identidad_incompleta",
+      "fragmento": "no fija ninguna ubicación canónica"
+    },
+    {
+      "caso": "t-base-no-resoluble",
+      "modo": "topologia",
+      "clausula": "base_no_resoluble",
+      "fragmento": "invalid object name"
+    }
+  ]
+}

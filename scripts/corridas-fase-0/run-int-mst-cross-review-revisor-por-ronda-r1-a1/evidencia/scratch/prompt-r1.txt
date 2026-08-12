@@ -1,0 +1,107 @@
+## Invocar al revisor (read-only)
+
+Dos reglas invariantes:
+
+1. **Read-only siempre** — el revisor no escribe; Claude es quien edita el artefacto si hay que
+   aplicar algo.
+2. **El prompt nunca se interpola inline en un comando shell.** El prompt de revisión contiene
+   markdown (backticks, asteriscos): interpolado en la línea de comandos, los backticks se
+   ejecutan como command substitution y el texto se fragmenta en palabras sueltas. Escribir el
+   prompt a un archivo con la **tool de escritura de archivos del agente** (Write o equivalente —
+   no `echo`/heredoc, que re-introducen el mismo problema de quoting) en el `scratch_dir` junto al
+   veredicto (ej: `<scratch_dir>/spec-prompt-r1.txt`) y pasarlo al CLI por **stdin**. De paso queda
+   trazabilidad de qué se le pidió al revisor en cada ronda.
+
+### Archivos de trabajo (scratch)
+
+Las Vías B/C escriben varios archivos de trabajo por ronda (prompt, veredicto, delta del resume,
+session-id, stderr). **Todos van a un subdirectorio `cross-review/` junto al artefacto**, no sueltos
+en la raíz del flujo:
+
+- **`scratch_dir` = `<dir del artefacto>/cross-review/`** — derivado del `artifact_path`
+  (`dirname(artifact_path)/cross-review/`). Resuelve a `.plans/<id>/cross-review/` (sdd-flow,
+  sdd-pr-feedback), `.sdd/<id>/cross-review/` (sdd-orchestrator) o
+  `.cross-review/<slug>/cross-review/` (modo draft, cuyo plan vive en `.cross-review/<slug>/plan.md`),
+  sin lógica especial por skill. Crearlo antes de la ronda 1.
+- **Nomenclatura**: `<artifact_type>-<tipo>-r<N>.txt`. El prefijo por `artifact_type` evita
+  colisiones entre los gates de `spec`/`plan`/`tasks`. Ejemplos:
+  `cross-review/spec-prompt-r1.txt`, `cross-review/spec-verdict-r1.txt`,
+  `cross-review/plan-delta-r2.txt`, `cross-review/plan-verdict-r2.txt`,
+  `cross-review/plan-r1.err.txt`, `cross-review/spec-thread-r1.jsonl` (stream JSONL de la ronda 1,
+  de donde se parsea el thread id), `cross-review/spec-session.txt` (el thread/session id capturado),
+  `cross-review/spec-session-meta.json` (modelo y esfuerzo efectivos de la corrida).
+- **`session-meta.json`** acompaña al `session.txt` con `{"model": "...", "effort": "..."}`. Existe
+  porque cada ronda corre en un proceso shell nuevo y las variables de la ronda 1 no sobreviven;
+  el resume las relee de ahí. Un campo vacío significa "default del CLI", nunca cadena vacía a
+  pasar como flag.
+- **`review-log.md` NO va acá.** Es el registro auditable consolidado (rondas, findings, decisiones,
+  veredicto), hermano de `spec.md`/`plan.md`/`tasks.md`: queda en `<dir del artefacto>/review-log.md`
+  (la raíz del flujo).
+- **Scratch transitorio, sin autolimpieza.** El `cross-review/` es local y untracked (igual que el
+  resto de `.plans/`/`.sdd/`). No se borra solo: el usuario puede eliminarlo cuando quiera. Una nueva
+  corrida del mismo artefacto sobrescribe los archivos de las mismas rondas (no crece sin límite).
+
+> En los bloques de comando de las Vías B y C (abajo), todas las rutas de archivo de trabajo
+> —`<ruta/al/prompt-r1.txt>`, `<ruta/al/veredicto.txt>`, `<ruta/al/delta-rN.txt>`,
+> `<ruta/al/….err.txt>` y sus variantes `<ruta\al\…>` de PowerShell— viven **dentro del
+> `scratch_dir`** (p. ej. `<scratch_dir>/spec-prompt-r1.txt`, `<scratch_dir>/plan-r2.err.txt`).
+
+### Vía A — subagente `codex:codex-rescue` (preferida en Claude Code)
+
+Despachar el subagente con el prompt de revisión como task text. El forwarder lo manda a
+`task` del runtime (`codex-companion.mjs`). Por contrato, el runtime corre **read-only** cuando
+el pedido es "review/diagnosis/research sin edits": por eso el prompt debe decir explícitamente
+que es una **revisión de solo lectura, sin modificar archivos**. No agregar `--write`.
+
+- Ronda 1: despachar fresh.
+- Rondas siguientes: incluir el token `--resume` en el pedido → el runtime lo normaliza a
+  `task --resume-last`, retomando el mismo thread de Codex (ver "Resume entre rondas").
+
+### Vía B — CLI `codex exec` (portable)
+
+Patrón (igual que grill-me-codex). Flags verificados con `codex-cli` 0.137–0.143 (el
+comportamiento del sandbox en resume y del id vacío/inválido, end-to-end en 0.143.0,
+2026-07-09); pueden variar por versión, así que ante la duda confirmar con `codex exec --help`.
+Descubrir por capacidad, no hardcodear ciegamente.
+
+#### Preflight de aislamiento (fail-closed)
+
+Antes de lanzar, comprobar que la versión instalada permite aislar al worker. Si falta cualquiera
+de las tres piezas, **no se lanza**: `UNAVAILABLE` y gate humano.
+
+```bash
+codex exec --help | grep -q -- --ignore-user-config || FAIL=1
+for f in hooks apps plugins; do
+  codex features list 2>/dev/null | grep -qE "^$f[[:space:]]" || FAIL=1
+done
+```
+
+Por qué fail-closed y no best-effort: `-s read-only` acota lo que el worker escribe **en disco**,
+no los efectos remotos de una tool MCP. Un worker "read-only" con los MCP del entorno puede
+alcanzar una tool de ejecución y correr comandos fuera del `working_dir`. Si no se puede
+garantizar el aislamiento, la degradación correcta es no tener revisor, no tener uno sin contener.
+
+#### Ronda 1
+
+Prompt escrito antes a archivo (ver regla 2 de "Invocar al revisor"). Dos detalles del comando son
+contraintuitivos y **no** se deben "simplificar":
+
+- **Los argumentos se construyen incrementalmente, nunca con expansión condicional.**
+  `${MODEL:+-m "$MODEL"}` no sirve: en zsh las expansiones de parámetros no hacen field splitting,
+  así que `-m` y su valor viajan como un solo argumento y el modelo llega con un espacio inicial.
+  La API responde `' <modelo>' model is not supported`.
+- **La lectura del config valida antes de usar.** Solo vale una asignación **raíz** —anterior a la
+  primera cabecera de tabla—, con comillas dobles y una sola ocurrencia. Cualquier otra cosa deja
+  el valor vacío y el flag no se pasa: es preferible el default del CLI a forzar un modelo sacado
+  de dentro de una tabla, que aplica a otro contexto y no a la raíz.
+
+```bash
+
+
+---
+
+Arriba está la sección que define este punto de despacho, tal como la recibe un agente en producción. Corré en solo lectura sobre el árbol: no edites archivos y no publiques nada.
+
+Devolvé un reporte breve que responda: (1) qué encargo concreto describe esa sección para el agente que la recibe, (2) qué entrada necesitarías para ejecutarlo y (3) qué producirías al terminar. No ejecutes el encargo: lo que se mide es que el despacho, el prompt congelado y la cosecha de la salida funcionen de punta a punta.
+
+No cites rutas absolutas del sistema de archivos en tu respuesta: nombrá los archivos por su ruta relativa al repositorio. Tu salida se publica.

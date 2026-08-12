@@ -1,0 +1,54 @@
+{
+  "version_schema": "1.0.0",
+  "recibo": {
+    "protocolo": "conformance",
+    "recibo_id": "rcb-conformance",
+    "punto_de_despacho": "sdd-flow-implementer-por-task",
+    "propuesta_de_acta_sha256": "85accd80e7094a097dac15231fe94e02c4c3fbaa44adb0a1e8679304a95355af",
+    "eventos": [
+      {
+        "evento": "dispatch_started",
+        "evento_id": "evt-ad-apertura",
+        "prompt_sha256": "69f25119cc7603ded2ef9d342813deb87c51c3b7957d983ab4b9d8fd3e016614",
+        "contexto_sha256": "57ae0db9de7c6c7507bf9bbb40e0e1c48af973739e5d4d9c267386a05dc7d362",
+        "permisos": [
+          "lectura del árbol desechable",
+          "escritura acotada al árbol desechable"
+        ],
+        "sello": {
+          "valor_ns": 1000000,
+          "fuente": "reloj_monotonico_del_harness",
+          "autoridad": "harness",
+          "precision_ns": 1000,
+          "procedencia": "time.monotonic_ns del proceso del runner"
+        }
+      },
+      {
+        "evento": "dispatch_returned",
+        "evento_id": "evt-ad-retorno",
+        "referencia_evento_id": "evt-ad-apertura",
+        "session_id": {
+          "estado": "expuesto",
+          "valor": "ses-implementer-desechable"
+        },
+        "modelo_o_familia": {
+          "estado": "expuesto",
+          "valor": "claude"
+        },
+        "terminal": {
+          "estado": "expuesto",
+          "valor": "completado"
+        },
+        "salida_sha256": "d6c8dbb0c51e28a063892b3719175fa5168e4f1ce4ed4c5b4b08ca0bac9d513e",
+        "sello": {
+          "valor_ns": 87000000000,
+          "fuente": "reloj_monotonico_del_harness",
+          "autoridad": "harness",
+          "precision_ns": 1000,
+          "procedencia": "time.monotonic_ns del proceso del runner"
+        },
+        "salida_ruta_relativa": "scripts/fixtures-baseline/runner/adaptadores/salidas/rcb-conformance.txt"
+      }
+    ]
+  }
+}

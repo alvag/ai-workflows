@@ -1399,11 +1399,52 @@ otras seis, en el commit que introdujo el sobre de corrida delegada, cuatro día
 `analyze` la diera por ausente. **Lo que el candidato tenía de defecto no era la sede sino la
 observación**, y por eso se descarta acá en lugar de registrarse como un séptimo.
 
-### Lo que este inventario no va a incluir, y por qué se dice
+### Los defectos de este flujo
 
-**Los defectos que descubra el flujo del instrumento y el baseline quedan fuera.** El criterio que
-manda cerrar este inventario pertenece a este flujo y a ningún otro: ninguna tarea del otro flujo lo
-actualiza ni lo verifica, así que decir «los va a agregar» sería una promesa sin dueño contractual.
-Quedan registrados como pendientes en los artefactos de trabajo de ese flujo. **La pérdida de alcance
-se declara acá en lugar de taparse**, que es el mismo trato que esta fase le da a la completitud del
-inventario de despachos.
+El flujo del instrumento y el baseline descubrió **veinte candidatos** al construir el instrumento y
+correr la cohorte. Los veinte quedaron adjudicados en `scripts/ledger-candidatos-fase-0.json`, cuyas
+cuatro fuentes están declaradas de forma cerrada y se reconcilian contra el ledger en las dos
+direcciones. **Diecisiete se descartaron y tres se incorporan acá.**
+
+El criterio de la adjudicación: se **incorpora** el candidato que es un defecto de una skill o del
+mecanismo compartido del repositorio **y no está corregido**; se **descarta** el que es un defecto
+del instrumento de medición o del arnés de ese flujo, ya corregido y verificado ahí, y cada descarte
+lleva escrito el commit que lo corrige. Un defecto ya corregido no tiene fase de corrección
+pendiente, y meterlo a este inventario declararía deuda que no existe.
+
+Los tres incorporados, con el mismo criterio de identidad que el resto del inventario:
+
+```json
+{
+  "defectos": [
+    {
+      "id": "familia-de-autotests-no-expande",
+      "descripcion": "la familia de guardas que no expande cuando el script arma su parser desde una tabla",
+      "ubicacion": "scripts/verificar-matriz-despachos.py:12131",
+      "naturaleza": "instrumental: la derivación de una familia de guardas lee los `add_argument` literales del parser del script, y un script que arma el suyo desde una tabla devuelve el conjunto vacío. La forma que el propio extractor recomienda —el comodín— pone la guarda en rojo sobre esos scripts, y el rodeo es nombrar cada bandera a mano, que es exactamente lo que la familia existe para evitar",
+      "fase": "Fase 3"
+    },
+    {
+      "id": "cli-resume-sesion-inexistente-sale-en-cero",
+      "descripcion": "la reanudación de una sesión inexistente que sale en 0 y arranca una fresca",
+      "ubicacion": "skills/cross-implement/reference.md:107",
+      "naturaleza": "instrumental: `codex exec resume <sesión inexistente>` sale en 0 y arranca una sesión fresca. El fix loop de la skill reanuda por identificador y juzga el resultado por código de salida, así que una sesión perdida es indistinguible de una reanudada: el segundo intento corre sin el contexto del primero y nada lo señala",
+      "fase": "Fase 3"
+    },
+    {
+      "id": "cli-resume-sandbox-por-config-no-por-bandera",
+      "descripcion": "el sandbox que se pide con una bandera en `exec` y con una clave de config en `resume`",
+      "ubicacion": "skills/cross-implement/reference.md:107",
+      "naturaleza": "doctrinal: la misma CLI pide el sandbox con `-s` en `exec` y con `-c sandbox_mode=\"…\"` en `resume`. Las dos formas conviven y las skills documentan la de `exec` como el patrón compartido, así que quien copie el patrón al reanudar pide un sandbox que esa invocación no interpreta",
+      "fase": "Fase 3"
+    }
+  ]
+}
+```
+
+**Por qué esta sección reemplaza a la anterior.** La versión previa declaraba que los defectos de ese
+flujo quedaban fuera, porque el criterio que manda cerrar este inventario pertenecía a este flujo y a
+ningún otro. Ese razonamiento dejó de valer cuando ese flujo se dio su propio criterio —AC-24bis, con
+su ledger, su reconciliación bidireccional y su obligación de adjudicar—: ya hay dueño contractual, y
+sostener las dos cosas a la vez —incorporarlos y declarar que no se incorporan— sería un contrato que
+se contradice.

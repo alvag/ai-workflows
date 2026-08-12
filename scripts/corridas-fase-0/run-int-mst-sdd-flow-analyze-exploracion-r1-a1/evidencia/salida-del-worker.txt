@@ -1,0 +1,75 @@
+Reporte del punto de despacho `sdd-flow` → paso `analyze` (rol: exploración)
+
+Corrido en solo lectura sobre el árbol. No ejecuté el encargo: describo qué es, qué entrada
+pediría y qué devolvería.
+
+## 1) Qué encargo concreto describe la sección
+
+Me encarga **entender el código lo suficiente para planear**, sin escribir nada de producción y
+sin proponer todavía el cómo. En concreto son cuatro obligaciones y un condicional:
+
+- **Leer primero el contexto de dominio.** Los paths resueltos de `domain_context`
+  (`context_paths` + `adr_paths`) se leen *antes* de decidir nombres, alcance técnico o
+  contratos: sirven para adoptar el vocabulario canónico y respetar ADRs vigentes. Es entrada de
+  **solo lectura**: si detecto un conflicto entre el pedido y un ADR, lo marco como incógnita, no
+  edito ni "mantengo" el documento.
+- **Bifurcación por tipo de cambio.** Si es bug, método sistemático (hipótesis → prueba →
+  refutar), apoyándome en la skill de debugging sistemático si está disponible; si es reproducible
+  en navegador y hay tool de navegador, capturo consola y network, y si no, pido captura o pasos.
+  Si es feature o refactor, mapeo archivos, módulos y utilidades existentes reutilizables, con
+  sesgo explícito a reúso sobre código nuevo.
+- **Localizar el código** con búsqueda en el repo: subagentes de exploración si el entorno los
+  soporta y el alcance lo amerita, y si no, `grep`/`ripgrep`/`find` locales.
+- **Condicional que puede vaciar casi todo lo anterior:** con **co-exploración nominal** el paso
+  *no* re-explora ni construye mapa. El terreno ya lo cubrió `counter-plan`, así que `analyze`
+  queda acotado a comprobar **vigencia sobre el HEAD** de la rama (archivos movidos, código
+  cambiado, punteros que ya no apuntan a nada) más las verificaciones puntuales que habilite un
+  disparador. Solo las **ramas degradadas** de la escalera de `co-explore` recuperan el `analyze`
+  completo, porque ahí el mapa del conductor sí es el insumo.
+
+Lo que el encargo **no** incluye: no escribo código, no arreglo el bug (eso es
+`systematic-debugging` durante `implement`), no redacto spec ni plan, y no toco los documentos de
+dominio.
+
+## 2) Qué entrada necesitaría para ejecutarlo
+
+Mínimo imprescindible:
+
+- **El pedido/ticket** con su tipo de cambio (bug vs. feature/refactor): decide cuál de las dos
+  ramas del método aplico. Si es bug, además: síntoma, pasos de reproducción, y URL de
+  reproducción si la hay.
+- **Los paths resueltos de `domain_context`** — ya resueltos por la precedencia del flujo
+  (override conversacional de la corrida > `config.yml` > default `auto`), no las rutas crudas del
+  config. Si un path configurado no existe, aviso y sigo sin bloquear.
+- **La rama y el HEAD sobre el que trabajo**, fijados por `create-branch` (`branch`,
+  `base_branch`, `base_commit`): la comprobación de vigencia no tiene sentido sin un HEAD
+  concreto.
+- **El estado de la co-exploración**: si la rama alcanzada fue **nominal** o **degradada**. Es la
+  entrada que decide si hago exploración completa o solo vigencia, y no la puedo inferir sola. Con
+  nominal, además necesito los **índices y la síntesis** de `explore`/`counter-plan` — el mapa que
+  voy a revalidar — y los disparadores que habiliten verificaciones puntuales.
+- **Capacidades del entorno**: si hay subagentes de exploración, si hay tool de navegador, si hay
+  skill de debugging sistemático. La sección manda descubrir por capacidad, no por nombre de tool.
+
+Si falta el estado de la co-exploración, el default seguro es el `analyze` completo (la rama
+degradada), y lo declararía como supuesto.
+
+## 3) Qué produciría al terminar
+
+Un único output, con forma según el tipo de cambio:
+
+- **Bug:** hipótesis de causa raíz, con la prueba que cada una predice y qué la refutaría, apoyadas
+  en referencias `path:line`. Más la evidencia capturada (consola/network) si hubo navegador.
+- **Feature/refactor:** lista de **puntos de reúso** —archivos, módulos y utilidades existentes que
+  el cambio debería aprovechar en vez de duplicar— cada uno con su referencia `path:line`.
+
+En ambos casos: las **incógnitas** detectadas, incluidos los conflictos entre el pedido y los ADRs
+vigentes, y el vocabulario canónico que los pasos siguientes (`specify`/`plan`) deben adoptar.
+
+Con co-exploración nominal el output cambia de naturaleza: no es un mapa nuevo sino un **veredicto
+de vigencia** sobre el mapa que ya existe —qué punteros siguen válidos sobre el HEAD, cuáles se
+movieron o desaparecieron— más el resultado de las verificaciones puntuales que se hayan
+disparado.
+
+Ese output es insumo directo del paso `plan`, no un artefacto en disco propio: `analyze` no
+escribe `.plans/<id>/`.

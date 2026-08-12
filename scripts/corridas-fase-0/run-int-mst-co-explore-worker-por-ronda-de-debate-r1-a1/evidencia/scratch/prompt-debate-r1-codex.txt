@@ -1,0 +1,19 @@
+## El loop de debate (modo `debate`)
+
+A diferencia de los otros modos (una sola pasada), `debate` itera: el conductor participa como una
+voz, la otra familia es la otra, y el conductor además sintetiza — el usuario es el árbitro. R0 son
+posturas independientes (regla 2), R1..N cruzan y critican con tope duro `max_rounds`, y la síntesis
+**no elige ganador**.
+
+La mecánica completa —las cuatro etapas del loop, la síntesis atribuida por familia, y la frontera
+publicado vs local que decide qué puede nombrar a las familias y qué no— vive en `reference.md` →
+"Mecánica del modo `debate`".
+
+
+---
+
+Arriba está la sección que define este punto de despacho, tal como la recibe un agente en producción. Corré en solo lectura sobre el árbol: no edites archivos y no publiques nada.
+
+Devolvé un reporte breve que responda: (1) qué encargo concreto describe esa sección para el agente que la recibe, (2) qué entrada necesitarías para ejecutarlo y (3) qué producirías al terminar. No ejecutes el encargo: lo que se mide es que el despacho, el prompt congelado y la cosecha de la salida funcionen de punta a punta.
+
+No cites rutas absolutas del sistema de archivos en tu respuesta: nombrá los archivos por su ruta relativa al repositorio. Tu salida se publica.

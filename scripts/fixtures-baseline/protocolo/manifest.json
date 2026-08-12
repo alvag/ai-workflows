@@ -1,0 +1,280 @@
+{
+  "descripcion": "Manifest INDEPENDIENTE del corpus del protocolo. Declara aparte, por cada variante, qué modo la juzga, qué cláusula tiene que ponerse roja —y solo esa— y un fragmento del mensaje que prueba que cayó por su motivo. Las variantes se derivan del caso sano alterando UN punto, así que la única diferencia entre una y el sano es la que se declara acá.",
+  "por-que-el-sano-vive-en-otro-archivo": "`sano.json` es un pre-registro completo y válido contra su schema, no un fragmento. Que el positivo sea un artefacto de la misma forma que el real es lo que impide que las cláusulas se prueben sobre estructuras que la cohorte nunca va a producir.",
+  "variantes": [
+    {
+      "variante": "p-cohorte-sin-muestras",
+      "modo": "protocolo",
+      "clausula": "cohorte_sin_muestras",
+      "fragmento": "ningún caso a medir"
+    },
+    {
+      "variante": "p-muestra-sin-repeticion",
+      "modo": "protocolo",
+      "clausula": "muestra_sin_repeticion",
+      "fragmento": "dos muestras del mismo punto son indistinguibles"
+    },
+    {
+      "variante": "p-entorno-incompleto",
+      "modo": "protocolo",
+      "clausula": "entorno_incompleto",
+      "fragmento": "no declara el entorno esperado"
+    },
+    {
+      "variante": "p-exclusiones-ausentes",
+      "modo": "protocolo",
+      "clausula": "exclusiones_ausentes",
+      "fragmento": "la ausencia del campo no dice nada"
+    },
+    {
+      "variante": "p-metrica-inventada",
+      "modo": "protocolo",
+      "clausula": "metrica_fuera_del_vocabulario",
+      "fragmento": "el pre-registro elige dentro del vocabulario, no lo amplía"
+    },
+    {
+      "variante": "p-formula-no-admitida",
+      "modo": "protocolo",
+      "clausula": "formula_no_admitida",
+      "fragmento": "y el vocabulario admite"
+    },
+    {
+      "variante": "p-unidad-discordante",
+      "modo": "protocolo",
+      "clausula": "unidad_discordante",
+      "fragmento": "declara la unidad"
+    },
+    {
+      "variante": "p-agregacion-discordante",
+      "modo": "protocolo",
+      "clausula": "agregacion_discordante",
+      "fragmento": "declara la agregación"
+    },
+    {
+      "variante": "p-categoria-faltante",
+      "modo": "protocolo",
+      "clausula": "categoria_sin_metrica",
+      "fragmento": "las cinco categorías son obligatorias"
+    },
+    {
+      "variante": "p-degradacion-sin-tasa",
+      "modo": "protocolo",
+      "clausula": "degradacion_sin_tasa",
+      "fragmento": "no se compara entre cohortes de tamaños distintos"
+    },
+    {
+      "variante": "p-conteo-con-campos-de-tasa",
+      "modo": "protocolo",
+      "clausula": "degradacion_sin_tasa",
+      "fragmento": "no se compara entre cohortes"
+    },
+    {
+      "variante": "p-tasa-sin-numerador",
+      "modo": "protocolo",
+      "clausula": "degradacion_sin_tasa",
+      "fragmento": "numerador, denominador y regla"
+    },
+    {
+      "variante": "c-causa-no-admisible",
+      "modo": "cobertura",
+      "clausula": "exclusion_con_causa_no_admisible",
+      "fragmento": "no está en el conjunto cerrado"
+    },
+    {
+      "variante": "c-obligatoria-sin-minimo",
+      "modo": "cobertura",
+      "clausula": "metrica_obligatoria_sin_cohorte",
+      "fragmento": "no tiene cobertura mínima declarada"
+    },
+    {
+      "variante": "c-estrato-sin-cohorte",
+      "modo": "cobertura",
+      "clausula": "metrica_obligatoria_sin_cohorte",
+      "fragmento": "queda sin cohorte que la mida"
+    },
+    {
+      "variante": "c-minimo-fantasma",
+      "modo": "cobertura",
+      "clausula": "minimo_de_metrica_no_pre_registrada",
+      "fragmento": "que el pre-registro no declara como métrica"
+    },
+    {
+      "variante": "c-punto-en-las-dos-listas",
+      "modo": "cobertura",
+      "clausula": "punto_en_las_dos_listas",
+      "fragmento": "observados y no observados a la vez"
+    },
+    {
+      "variante": "c-ecosistema-incompleto",
+      "modo": "cobertura",
+      "clausula": "ecosistema_incompleto",
+      "fragmento": "deja el resto del ecosistema fuera del informe"
+    },
+    {
+      "variante": "pr-obligatoria-sin-umbral",
+      "modo": "promocion",
+      "clausula": "metrica_obligatoria_sin_umbral",
+      "fragmento": "satisface la letra y no decide nada"
+    },
+    {
+      "variante": "pr-umbral-fantasma",
+      "modo": "promocion",
+      "clausula": "umbral_de_metrica_no_pre_registrada",
+      "fragmento": "que el pre-registro no declara como métrica"
+    },
+    {
+      "variante": "pr-fase-repetida",
+      "modo": "promocion",
+      "clausula": "fase_repetida",
+      "fragmento": "está declarada dos veces"
+    },
+    {
+      "variante": "pr-sin-composicion",
+      "modo": "promocion",
+      "clausula": "composicion_ausente",
+      "fragmento": "dependería de quién lo calcula"
+    }
+  ],
+  "por-que-dos-variantes-comparten-clausula": "`c-obligatoria-sin-minimo` y `c-estrato-sin-cohorte` caen las dos por `metrica_obligatoria_sin_cohorte`, y son dos casos distintos: en una la métrica no tiene mínimo declarado; en la otra lo tiene, pero sobre un estrato que la cohorte no contiene. El fragmento las separa; la clave sola las confundiría.",
+  "evaluador": {
+    "descripcion": "Los casos del evaluador determinista. No salen del corpus de pre-registros: son la tabla de decisión, y una tabla escrita como fixture es más legible que veinte pre-registros que difieren en un número.",
+    "casos": [
+      {
+        "caso": "mayor-o-igual-inclusivo-en-el-limite",
+        "direccion": "mayor_o_igual",
+        "tratamiento": "inclusivo",
+        "umbral": 1.0,
+        "valor": 1.0,
+        "cumple": true
+      },
+      {
+        "caso": "mayor-o-igual-exclusivo-en-el-limite",
+        "direccion": "mayor_o_igual",
+        "tratamiento": "exclusivo",
+        "umbral": 1.0,
+        "valor": 1.0,
+        "cumple": false
+      },
+      {
+        "caso": "mayor-o-igual-por-encima",
+        "direccion": "mayor_o_igual",
+        "tratamiento": "exclusivo",
+        "umbral": 1.0,
+        "valor": 1.5,
+        "cumple": true
+      },
+      {
+        "caso": "menor-o-igual-inclusivo-en-el-limite",
+        "direccion": "menor_o_igual",
+        "tratamiento": "inclusivo",
+        "umbral": 0.2,
+        "valor": 0.2,
+        "cumple": true
+      },
+      {
+        "caso": "menor-o-igual-exclusivo-en-el-limite",
+        "direccion": "menor_o_igual",
+        "tratamiento": "exclusivo",
+        "umbral": 0.2,
+        "valor": 0.2,
+        "cumple": false
+      },
+      {
+        "caso": "menor-o-igual-por-debajo",
+        "direccion": "menor_o_igual",
+        "tratamiento": "exclusivo",
+        "umbral": 0.2,
+        "valor": 0.1,
+        "cumple": true
+      }
+    ],
+    "por_que_el_limite_esta_en_las_cuatro_combinaciones": "El valor exactamente igual al umbral es donde el tratamiento decide. Probar solo valores lejanos daría verde con cualquier tratamiento, y el campo quedaría sin ejercer.",
+    "composicion": [
+      {
+        "caso": "todas-con-una-que-no-cumple",
+        "composicion": "todas",
+        "cumplen": [
+          true,
+          false
+        ],
+        "promueve": false
+      },
+      {
+        "caso": "todas-con-las-dos",
+        "composicion": "todas",
+        "cumplen": [
+          true,
+          true
+        ],
+        "promueve": true
+      },
+      {
+        "caso": "alguna-con-una-que-cumple",
+        "composicion": "alguna",
+        "cumplen": [
+          true,
+          false
+        ],
+        "promueve": true
+      },
+      {
+        "caso": "alguna-sin-ninguna",
+        "composicion": "alguna",
+        "cumplen": [
+          false,
+          false
+        ],
+        "promueve": false
+      }
+    ],
+    "veredictos_distinguidos": [
+      {
+        "caso": "la-fase-no-corrio",
+        "la_fase_corrio": false,
+        "faltan_observaciones": true,
+        "veredicto": "not_evaluated"
+      },
+      {
+        "caso": "corrio-y-falta-una-obligatoria-con-efecto-blocked",
+        "la_fase_corrio": true,
+        "faltan_observaciones": true,
+        "efecto_de_la_ausencia": "blocked",
+        "veredicto": "blocked"
+      },
+      {
+        "caso": "corrio-y-falta-una-obligatoria-con-efecto-not-evaluated",
+        "la_fase_corrio": true,
+        "faltan_observaciones": true,
+        "efecto_de_la_ausencia": "not_evaluated",
+        "veredicto": "not_evaluated"
+      }
+    ],
+    "por_que_los_dos_veredictos_no_se_funden": "`not_evaluated` dice que la fase todavía no corrió; `blocked` que corrió y falta una observación obligatoria. Un baseline que los fundiera declararía bloqueadas a las fases que nadie ejecutó todavía."
+  },
+  "clausulas_del_protocolo_ejercidas": [
+    "cohorte_sin_muestras",
+    "muestra_sin_repeticion",
+    "entorno_incompleto",
+    "exclusiones_ausentes",
+    "metrica_fuera_del_vocabulario",
+    "formula_no_admitida",
+    "unidad_discordante",
+    "agregacion_discordante",
+    "categoria_sin_metrica",
+    "degradacion_sin_tasa"
+  ],
+  "clausulas_de_cobertura_ejercidas": [
+    "exclusion_con_causa_no_admisible",
+    "metrica_obligatoria_sin_cohorte",
+    "minimo_de_metrica_no_pre_registrada",
+    "punto_en_las_dos_listas",
+    "ecosistema_incompleto"
+  ],
+  "clausulas_de_promocion_ejercidas": [
+    "metrica_obligatoria_sin_umbral",
+    "umbral_de_metrica_no_pre_registrada",
+    "fase_repetida",
+    "composicion_ausente"
+  ],
+  "por-que-tres-variantes-de-la-tasa-de-degradacion": "La exigencia de tasa tiene DOS cláusulas —que la unidad sea una proporción y que declare sus tres campos— y una sola variante las satisface a las dos, así que cada una cubría a la otra y ninguna quedaba ejercida sola. `p-conteo-con-campos-de-tasa` solo la puede rechazar el filtro de unidad; `p-tasa-sin-numerador`, solo la exigencia de los campos. Medido: con una sola variante, los dos mutantes de ese predicado sobrevivían."
+}

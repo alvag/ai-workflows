@@ -1,0 +1,512 @@
+{
+  "version_schema": "1.0.0",
+  "code_commit": "3be305e",
+  "cohorte": {
+    "muestras": [
+      {
+        "sample_id": "mst-sdd-flow-analyze-exploracion-r1",
+        "punto_de_despacho": "sdd-flow-analyze-exploracion",
+        "skill": "sdd-flow",
+        "familia_de_rol": "explorer",
+        "transporte": "subagent",
+        "repeticion": 1,
+        "receta_id": "rec-sdd-flow-analyze",
+        "adaptador": "sesion_de_agente",
+        "estrato_esperado": "con_intervencion_humana"
+      },
+      {
+        "sample_id": "mst-sdd-flow-implementer-por-task-r1",
+        "punto_de_despacho": "sdd-flow-implementer-por-task",
+        "skill": "sdd-flow",
+        "familia_de_rol": "bounded-implementer",
+        "transporte": "subagent",
+        "repeticion": 1,
+        "receta_id": "rec-sdd-flow-implementer",
+        "adaptador": "sesion_de_agente",
+        "estrato_esperado": "con_intervencion_humana"
+      },
+      {
+        "sample_id": "mst-sdd-flow-reviewer-por-task-r1",
+        "punto_de_despacho": "sdd-flow-reviewer-por-task",
+        "skill": "sdd-flow",
+        "familia_de_rol": "diff-reviewer",
+        "transporte": "subagent",
+        "repeticion": 1,
+        "receta_id": "rec-sdd-flow-reviewer",
+        "adaptador": "sesion_de_agente",
+        "estrato_esperado": "con_intervencion_humana"
+      },
+      {
+        "sample_id": "mst-sdd-flow-revision-final-de-diff-r1",
+        "punto_de_despacho": "sdd-flow-revision-final-de-diff",
+        "skill": "sdd-flow",
+        "familia_de_rol": "diff-reviewer",
+        "transporte": "subagent",
+        "repeticion": 1,
+        "receta_id": "rec-sdd-flow-diff",
+        "adaptador": "sesion_de_agente",
+        "estrato_esperado": "con_intervencion_humana"
+      },
+      {
+        "sample_id": "mst-bitbucket-code-review-panel-de-revisores-r1",
+        "punto_de_despacho": "bitbucket-code-review-panel-de-revisores",
+        "skill": "bitbucket-code-review",
+        "familia_de_rol": "diff-reviewer",
+        "transporte": "cli-exec",
+        "repeticion": 1,
+        "receta_id": "rec-bitbucket-panel",
+        "adaptador": "script",
+        "estrato_esperado": "automatizable"
+      },
+      {
+        "sample_id": "mst-bitbucket-code-review-validador-adversarial-r1",
+        "punto_de_despacho": "bitbucket-code-review-validador-adversarial",
+        "skill": "bitbucket-code-review",
+        "familia_de_rol": "design-reviewer",
+        "transporte": "cli-exec",
+        "repeticion": 1,
+        "receta_id": "rec-bitbucket-validador",
+        "adaptador": "script",
+        "estrato_esperado": "automatizable"
+      },
+      {
+        "sample_id": "mst-co-explore-fan-out-dual-r1",
+        "punto_de_despacho": "co-explore-fan-out-dual",
+        "skill": "co-explore",
+        "familia_de_rol": "explorer",
+        "transporte": "cli-exec",
+        "repeticion": 1,
+        "receta_id": "rec-co-explore-fan-out",
+        "adaptador": "script",
+        "estrato_esperado": "automatizable"
+      },
+      {
+        "sample_id": "mst-co-explore-worker-por-ronda-de-debate-r1",
+        "punto_de_despacho": "co-explore-worker-por-ronda-de-debate",
+        "skill": "co-explore",
+        "familia_de_rol": "explorer",
+        "transporte": "cli-exec",
+        "repeticion": 1,
+        "receta_id": "rec-co-explore-debate",
+        "adaptador": "script",
+        "estrato_esperado": "automatizable"
+      },
+      {
+        "sample_id": "mst-cross-implement-implementador-inicial-r1",
+        "punto_de_despacho": "cross-implement-implementador-inicial",
+        "skill": "cross-implement",
+        "familia_de_rol": "bounded-implementer",
+        "transporte": "cli-exec",
+        "repeticion": 1,
+        "receta_id": "rec-cross-implement-inicial",
+        "adaptador": "script",
+        "estrato_esperado": "automatizable"
+      },
+      {
+        "sample_id": "mst-cross-implement-ronda-de-fix-loop-r1",
+        "punto_de_despacho": "cross-implement-ronda-de-fix-loop",
+        "skill": "cross-implement",
+        "familia_de_rol": "bounded-implementer",
+        "transporte": "cli-resume",
+        "repeticion": 1,
+        "receta_id": "rec-cross-implement-fix-loop",
+        "adaptador": "script",
+        "estrato_esperado": "automatizable",
+        "dependencia": {
+          "de_sample_id": "mst-cross-implement-implementador-inicial-r1",
+          "campo_de_salida": "invocacion.session_id del bundle del paso inicial",
+          "campo_de_entrada": "el identificador de sesión que `codex exec resume` reanuda",
+          "cardinalidad": 1
+        }
+      },
+      {
+        "sample_id": "mst-cross-review-revisor-por-ronda-r1",
+        "punto_de_despacho": "cross-review-revisor-por-ronda",
+        "skill": "cross-review",
+        "familia_de_rol": "design-reviewer",
+        "transporte": "cli-exec",
+        "repeticion": 1,
+        "receta_id": "rec-cross-review-revisor",
+        "adaptador": "script",
+        "estrato_esperado": "automatizable"
+      },
+      {
+        "sample_id": "mst-sdd-orchestrator-fan-out-por-repo-r1",
+        "punto_de_despacho": "sdd-orchestrator-fan-out-por-repo",
+        "skill": "sdd-orchestrator",
+        "familia_de_rol": "bounded-implementer",
+        "transporte": "subagent",
+        "repeticion": 1,
+        "receta_id": "rec-sdd-orchestrator-fan-out",
+        "adaptador": "sesion_de_agente",
+        "estrato_esperado": "con_intervencion_humana"
+      },
+      {
+        "sample_id": "mst-sdd-pr-feedback-implement-delegado-r1",
+        "punto_de_despacho": "sdd-pr-feedback-implement-delegado",
+        "skill": "sdd-pr-feedback",
+        "familia_de_rol": "bounded-implementer",
+        "transporte": "subagent",
+        "repeticion": 1,
+        "receta_id": "rec-sdd-pr-feedback",
+        "adaptador": "sesion_de_agente",
+        "estrato_esperado": "con_intervencion_humana"
+      }
+    ]
+  },
+  "reglas_de_derivacion_de_identidad": {
+    "attempt_id": {
+      "plantilla": "int-{sample_id}-a{attempt_ordinal}",
+      "componentes": [
+        "sample_id",
+        "attempt_ordinal"
+      ]
+    },
+    "observation_id": {
+      "plantilla": "obs-{sample_id}-a{attempt_ordinal}",
+      "componentes": [
+        "sample_id",
+        "attempt_ordinal"
+      ]
+    }
+  },
+  "politica_de_reintentos": {
+    "disparadores": [
+      "error_de_transporte",
+      "salida_invalida",
+      "presupuesto_vencido"
+    ],
+    "maximo_de_intentos_por_muestra": 2,
+    "condicion_de_terminacion": "primer_intento_valido",
+    "seleccion_por_metrica": [
+      {
+        "metrica_id": "latencia-hasta-resultado-utilizable",
+        "regla": "primer_intento_valido"
+      },
+      {
+        "metrica_id": "latencia-hasta-estado-terminal",
+        "regla": "primer_intento_valido"
+      },
+      {
+        "metrica_id": "tasa-de-degradacion",
+        "regla": "agregacion"
+      },
+      {
+        "metrica_id": "conteo-de-degradaciones",
+        "regla": "agregacion"
+      },
+      {
+        "metrica_id": "salidas-invalidas",
+        "regla": "agregacion"
+      },
+      {
+        "metrica_id": "tasa-de-salidas-invalidas",
+        "regla": "agregacion"
+      },
+      {
+        "metrica_id": "hallazgos-emitidos",
+        "regla": "agregacion"
+      },
+      {
+        "metrica_id": "limpieza-completa",
+        "regla": "agregacion"
+      }
+    ]
+  },
+  "metricas": [
+    {
+      "metrica_id": "latencia-hasta-resultado-utilizable",
+      "categoria": "latencia",
+      "formula_id": "diferencia-de-sellos-monotonicos",
+      "unidad": "milisegundos",
+      "agregacion": "mediana"
+    },
+    {
+      "metrica_id": "latencia-hasta-estado-terminal",
+      "categoria": "latencia",
+      "formula_id": "diferencia-de-sellos-monotonicos",
+      "unidad": "milisegundos",
+      "agregacion": "mediana"
+    },
+    {
+      "metrica_id": "tasa-de-degradacion",
+      "categoria": "degradacion",
+      "formula_id": "cociente-de-conteos",
+      "unidad": "proporcion",
+      "agregacion": "suma-de-numeradores-sobre-suma-de-denominadores",
+      "numerador": "intentos con el ciclo operativo degradado o con el presupuesto vencido y el proceso vivo",
+      "denominador": "intentos elegibles de la muestra",
+      "regla_de_elegibilidad": "todo intento con al menos un evento registrado; `sin_eventos` queda fuera del denominador"
+    },
+    {
+      "metrica_id": "conteo-de-degradaciones",
+      "categoria": "degradacion",
+      "formula_id": "conteo-de-intentos",
+      "unidad": "conteo",
+      "agregacion": "suma"
+    },
+    {
+      "metrica_id": "salidas-invalidas",
+      "categoria": "salidas_invalidas",
+      "formula_id": "conteo-de-intentos",
+      "unidad": "conteo",
+      "agregacion": "suma"
+    },
+    {
+      "metrica_id": "tasa-de-salidas-invalidas",
+      "categoria": "salidas_invalidas",
+      "formula_id": "cociente-de-conteos",
+      "unidad": "proporcion",
+      "agregacion": "suma-de-numeradores-sobre-suma-de-denominadores",
+      "numerador": "intentos elegibles con el reporte malformado o ausente",
+      "denominador": "intentos que llegaron a producir una salida",
+      "regla_de_elegibilidad": "intentos cuyo ciclo operativo es completado, degradado o presupuesto vencido con proceso vivo; un bloqueo previo no tiene salida que juzgar"
+    },
+    {
+      "metrica_id": "hallazgos-emitidos",
+      "categoria": "hallazgos",
+      "formula_id": "conteo-de-eventos-sin-reemision",
+      "unidad": "conteo",
+      "agregacion": "suma"
+    },
+    {
+      "metrica_id": "limpieza-completa",
+      "categoria": "limpieza",
+      "formula_id": "conjuncion-de-estados-terminales",
+      "unidad": "booleano",
+      "agregacion": "conjuncion"
+    }
+  ],
+  "fases_comprometidas": [
+    {
+      "fase_id": "fase-0",
+      "metricas_obligatorias": [
+        "tasa-de-degradacion",
+        "limpieza-completa"
+      ],
+      "umbrales": [
+        {
+          "metrica_id": "tasa-de-degradacion",
+          "direccion": "menor_o_igual",
+          "valor": 0.2,
+          "tratamiento_del_limite": "inclusivo"
+        },
+        {
+          "metrica_id": "limpieza-completa",
+          "direccion": "mayor_o_igual",
+          "valor": 1,
+          "tratamiento_del_limite": "inclusivo"
+        }
+      ],
+      "composicion": "todas",
+      "efecto_de_la_ausencia": "blocked"
+    }
+  ],
+  "cobertura": {
+    "puntos_observados": [
+      "bitbucket-code-review-panel-de-revisores",
+      "bitbucket-code-review-validador-adversarial",
+      "co-explore-fan-out-dual",
+      "co-explore-worker-por-ronda-de-debate",
+      "cross-implement-implementador-inicial",
+      "cross-implement-ronda-de-fix-loop",
+      "cross-review-revisor-por-ronda",
+      "sdd-flow-analyze-exploracion",
+      "sdd-flow-implementer-por-task",
+      "sdd-flow-reviewer-por-task",
+      "sdd-flow-revision-final-de-diff",
+      "sdd-orchestrator-fan-out-por-repo",
+      "sdd-pr-feedback-implement-delegado"
+    ],
+    "puntos_no_observados": [],
+    "skills_observadas": [
+      "bitbucket-code-review",
+      "co-explore",
+      "cross-implement",
+      "cross-review",
+      "sdd-flow",
+      "sdd-orchestrator",
+      "sdd-pr-feedback"
+    ],
+    "skills_no_observadas": [],
+    "familias_observadas": [
+      "bounded-implementer",
+      "design-reviewer",
+      "diff-reviewer",
+      "explorer"
+    ],
+    "familias_no_observadas": [
+      "investigator"
+    ],
+    "minima_por_metrica_y_estrato": [
+      {
+        "metrica_id": "tasa-de-degradacion",
+        "estrato": "automatizable",
+        "minimo_de_muestras": 3
+      },
+      {
+        "metrica_id": "tasa-de-degradacion",
+        "estrato": "con_intervencion_humana",
+        "minimo_de_muestras": 3
+      },
+      {
+        "metrica_id": "limpieza-completa",
+        "estrato": "automatizable",
+        "minimo_de_muestras": 3
+      },
+      {
+        "metrica_id": "limpieza-completa",
+        "estrato": "con_intervencion_humana",
+        "minimo_de_muestras": 3
+      }
+    ]
+  },
+  "causas_admisibles_de_exclusion": [
+    {
+      "causa_id": "aislamiento-no-comprobable",
+      "descripcion": "la superficie no admite redirección segura ni denegación comprobable"
+    },
+    {
+      "causa_id": "adaptador-no-disponible",
+      "descripcion": "el binario o la acción de plataforma no existe en el entorno de medición"
+    },
+    {
+      "causa_id": "lanzamiento-no-controlable",
+      "descripcion": "el comando congelado no pide sandbox, o deja marcadores que su receta no declara: no se sabe con qué corre"
+    }
+  ],
+  "exclusiones": [],
+  "entorno_esperado": {
+    "arbol_limpio_exigido": true,
+    "matriz_sha256": "79f1ab52cd6fdbb477b3e0329c291215a75f1f6fe0799e131ad4ffef8632e9b6",
+    "instrumento_sha256": "cdf5837c7dfe25ce401984545ce898423ec55be7fa472522bc48e753112aab66",
+    "runner_sha256": "270a101414f00aef4421c4e2c3c48dd0d11e949687ae273eb6b3dcfdd604a6f2",
+    "version_cli": "codex-cli 0.147.0",
+    "version_runtime": "python 3.14",
+    "hooks": [
+      "ninguno: la cohorte corre con los hooks de sesión declarados y desactivados"
+    ],
+    "ejecutor_esperado": "runner de la cohorte, sin hooks de sesión",
+    "transportes_admitidos": [
+      "cli-exec",
+      "cli-resume",
+      "subagent"
+    ]
+  },
+  "inventario_de_egreso": {
+    "superficies": [
+      {
+        "superficie_id": "bin-git",
+        "clase": "binario_en_path",
+        "descripcion": "`git` alcanzable por PATH"
+      },
+      {
+        "superficie_id": "bin-curl",
+        "clase": "binario_en_path",
+        "descripcion": "`curl` alcanzable por PATH"
+      },
+      {
+        "superficie_id": "bin-ssh",
+        "clase": "binario_en_path",
+        "descripcion": "`ssh` alcanzable por PATH"
+      },
+      {
+        "superficie_id": "bin-scp",
+        "clase": "binario_en_path",
+        "descripcion": "`scp` alcanzable por PATH"
+      },
+      {
+        "superficie_id": "bin-rsync",
+        "clase": "binario_en_path",
+        "descripcion": "`rsync` alcanzable por PATH"
+      },
+      {
+        "superficie_id": "bin-gh",
+        "clase": "binario_en_path",
+        "descripcion": "`gh` alcanzable por PATH"
+      },
+      {
+        "superficie_id": "bin-codex",
+        "clase": "binario_en_path",
+        "descripcion": "`codex` alcanzable por PATH"
+      },
+      {
+        "superficie_id": "bin-npm",
+        "clase": "binario_en_path",
+        "descripcion": "`npm` alcanzable por PATH"
+      },
+      {
+        "superficie_id": "remoto-origin",
+        "clase": "remoto_configurado",
+        "descripcion": "remoto `origin` configurado en el árbol observado"
+      }
+    ],
+    "inventario_sha256": "f9002ab0c2e77bbbafb80e86a613ec24df7dadd611ace9804cdd3f267a674f37"
+  },
+  "recibo_del_preflight": {
+    "recibo_sha256": "cee23548022050dfe2c6f07bb90a29d87f7d9af2a3d8dacf4813a54032e5b0cc",
+    "adjudicaciones": [
+      {
+        "receta_id": "rec-bitbucket-panel",
+        "adjudicacion": "runnable"
+      },
+      {
+        "receta_id": "rec-co-explore-fan-out",
+        "adjudicacion": "runnable"
+      },
+      {
+        "receta_id": "rec-cross-implement-inicial",
+        "adjudicacion": "runnable"
+      },
+      {
+        "receta_id": "rec-cross-implement-fix-loop",
+        "adjudicacion": "runnable"
+      },
+      {
+        "receta_id": "rec-bitbucket-validador",
+        "adjudicacion": "runnable"
+      },
+      {
+        "receta_id": "rec-co-explore-debate",
+        "adjudicacion": "runnable"
+      },
+      {
+        "receta_id": "rec-cross-review-revisor",
+        "adjudicacion": "runnable"
+      },
+      {
+        "receta_id": "rec-sdd-flow-analyze",
+        "adjudicacion": "runnable"
+      },
+      {
+        "receta_id": "rec-sdd-flow-implementer",
+        "adjudicacion": "runnable"
+      },
+      {
+        "receta_id": "rec-sdd-flow-reviewer",
+        "adjudicacion": "runnable"
+      },
+      {
+        "receta_id": "rec-sdd-flow-diff",
+        "adjudicacion": "runnable"
+      },
+      {
+        "receta_id": "rec-sdd-orchestrator-fan-out",
+        "adjudicacion": "runnable"
+      },
+      {
+        "receta_id": "rec-sdd-pr-feedback",
+        "adjudicacion": "runnable"
+      }
+    ],
+    "recibos_de_frontera_de_conformance": [
+      "rcb-conformance-sdd-flow-analyze-exploracion",
+      "rcb-conformance-sdd-flow-implementer-por-task",
+      "rcb-conformance-sdd-flow-reviewer-por-task",
+      "rcb-conformance-sdd-flow-revision-final-de-diff",
+      "rcb-conformance-sdd-orchestrator-fan-out-por-repo",
+      "rcb-conformance-sdd-pr-feedback-implement-delegado"
+    ]
+  },
+  "preregistro_sha256": "b93f3abeedf5dacec10b5e376fa2d7c11db3b88b60db4bd35bcbb65d39db0105"
+}

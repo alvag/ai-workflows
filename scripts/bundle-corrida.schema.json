@@ -1,0 +1,1103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "bundle-corrida.schema.json",
+  "title": "Bundle de corrida de la fase 0",
+  "description": "Schema cerrado y versionado de cada `scripts/corridas-fase-0/<run_id>/`. El bundle es la evidencia cruda y sanitizada de un intento: el comando literal con el que corrió, sus eventos sellados por la interfaz de reloj del harness, los artefactos producidos, los recursos con su vida y su propiedad modeladas por separado, las tres pruebas de aislamiento, la identidad efectiva del entorno, el inventario de egreso reejecutado y la referencia a las anomalías del journal. El recolector deriva la observación SOLO de acá. Cada objeto es cerrado: `additionalProperties` es false en todos los niveles.",
+  "x-version": "1.0.0",
+  "x-notas": {
+    "vida-y-propiedad-son-dos-cosas": "`life_state` y `ownership_state` son campos distintos, y `owner` y `next_action` son otros dos. Un recurso transferido exige dueño Y próxima acción: la ausencia de cualquiera de los dos bloquea, y por eso hay un negativo por campo. Fundir vida y propiedad en un solo estado deja «transferido» ocupando el lugar de «terminado» y la corrida cierra con un proceso vivo que nadie reclama (AC-22).",
+    "el-cese-no-se-infiere": "Solo un estado terminal COMPROBADO cuenta como limpieza exitosa. `cese_no_comprobable` es un valor del enum a propósito: cuando el cese no se puede comprobar, la observación queda bloqueada en vez de contarse como limpieza.",
+    "sellos-con-procedencia": "Todo sello declara la interfaz de reloj que lo emitió, su autoridad y su precisión. Sin esa procedencia, un adaptador puede emitir tiempo de pared —o el que informe el worker— y producir números reproducibles e inválidos. `ventana_de_pared_utc` existe para ordenar la corrida contra los commits, y NUNCA para calcular duraciones: eso se hace con `valor_ns` de los sellos monotónicos.",
+    "la-secuencia-tiene-un-orden": "`x-secuencia-de-apertura` declara el orden que AC-17 exige a los dos adaptadores. El schema declara el vocabulario de eventos y su forma; que aparezcan en ese orden lo comprueban los modos que leen el bundle, porque es una restricción sobre la secuencia y no sobre cada elemento.",
+    "el-adaptador-de-sesion-no-se-autoatestigua": "Cuando el adaptador es `sesion_de_agente`, el bundle exige `recibo_de_frontera` (D-21): el runner lo construye desde ese recibo y nunca desde lo que declare la sesión. Un bundle de sesión sin recibo satisface todo lo demás y no acredita nada, así que la obligación es estructural.",
+    "las-anomalias-se-referencian-no-se-alojan": "`journal_candidate_ids` referencia entradas del journal de anomalías, cuya sede es `scripts/journal-anomalias-fase-0/` (D-25). El bundle no es la sede: si el runner falla antes de construirlo, la anomalía tiene que existir igual.",
+    "los-tres-ejes-necesitan-tres-hechos": "AC-18 pide que la observación declare ciclo operativo, validez del reporte y resultado semántico, y que los tres se DERIVEN. El ciclo sale de `eventos` y `recursos`; los otros dos no tenían hecho de origen, así que el recolector habría tenido que inventarlos. `reporte_del_worker` y `veredicto_de_conformance` son esos dos hechos. Sin ellos, «salida malformada» —uno de los casos que AC-18 exige al corpus— no es expresable en un bundle, y las dos métricas de la categoría `salidas_invalidas` quedan sin fuente.",
+    "el-reporte-y-el-veredicto-son-uniones-disjuntas": "Las dos son `oneOf` discriminado y cerrado, por el mismo motivo que `dato_de_plataforma`: la variante sin contenido NO declara las propiedades de contenido, así que rellenar un reporte que no llegó, o afirmar conformance sin evidencia, no es expresable. Un reporte malformado exige `causa` y conserva `ruta_relativa` y `sha256` —la evidencia de lo que llegó mal se versiona igual—, y un veredicto `no_evaluable` exige `causa` en lugar de `evidencia`.",
+    "refs-locales": "El validador de `scripts/instrumento-baseline.py` resuelve solo `$ref` locales (`#/$defs/...`). Las definiciones compartidas con los otros schemas de la fase están repetidas en cada archivo a propósito.",
+    "el-terminal-tampoco-se-infiere": "Los trabajos delegados los declara la matriz/receta y por eso existen aunque la corrida no los haya despachado —es lo que V38 compara en igualdad bidireccional—. Exigirle a cada uno un `evento_terminal_id` obligaba a inventarle uno a la corrida que nunca despachó o cuyo worker nunca volvió, y esa corrida es el caso más común de fallo. `estado_terminal` lo modela con el mismo criterio que `life_state` usa para los recursos."
+  },
+  "x-secuencia-de-apertura": {
+    "descripcion": "El orden que AC-17 exige a los dos adaptadores antes de despachar. La confirmación humana aparece solo donde la matriz la pide; los demás son obligatorios y en este orden.",
+    "orden": [
+      "validacion_de_hash_congelado",
+      "preflight_de_receta",
+      "confirmacion_humana",
+      "despacho"
+    ]
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version_schema",
+    "run_id",
+    "sample_id",
+    "attempt_id",
+    "attempt_ordinal",
+    "preregistro_sha256",
+    "punto_de_despacho",
+    "skill",
+    "familia_de_rol",
+    "transporte",
+    "adaptador",
+    "invocacion",
+    "ventana_de_pared_utc",
+    "estado_del_intento",
+    "eventos",
+    "reporte_del_worker",
+    "veredicto_de_conformance",
+    "trabajos_delegados",
+    "artefactos_producidos",
+    "recursos",
+    "pruebas_de_aislamiento",
+    "inventario_de_egreso_reejecutado",
+    "identidad_del_entorno",
+    "pipeline_de_sanitizacion",
+    "journal_candidate_ids"
+  ],
+  "properties": {
+    "version_schema": {
+      "const": "1.0.0"
+    },
+    "run_id": {
+      "description": "Identidad de la corrida, única en todo el conjunto de bundles.",
+      "$ref": "#/$defs/identificador"
+    },
+    "sample_id": {
+      "$ref": "#/$defs/identificador"
+    },
+    "attempt_id": {
+      "$ref": "#/$defs/identificador"
+    },
+    "attempt_ordinal": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "preregistro_sha256": {
+      "description": "El pre-registro vigente cuando corrió este intento. Un bundle de producción siempre lo lleva; los recibos de conformance del preflight son otro protocolo y viven en otra sede (D-22).",
+      "$ref": "#/$defs/sha256"
+    },
+    "punto_de_despacho": {
+      "$ref": "#/$defs/enum_punto_de_despacho"
+    },
+    "skill": {
+      "$ref": "#/$defs/enum_skill"
+    },
+    "familia_de_rol": {
+      "$ref": "#/$defs/enum_familia_de_rol"
+    },
+    "transporte": {
+      "$ref": "#/$defs/enum_transporte"
+    },
+    "adaptador": {
+      "$ref": "#/$defs/enum_adaptador"
+    },
+    "invocacion": {
+      "$ref": "#/$defs/invocacion"
+    },
+    "ventana_de_pared_utc": {
+      "$ref": "#/$defs/ventana_de_pared"
+    },
+    "estado_del_intento": {
+      "$ref": "#/$defs/estado_del_intento"
+    },
+    "eventos": {
+      "description": "Los eventos observados, con su sello. Es la fuente de la que se derivan la clasificación y las latencias: nada se toma de campos declarativos.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/evento"
+      }
+    },
+    "reporte_del_worker": {
+      "description": "Qué llegó del worker y si es interpretable. Es el hecho del que se deriva el eje `validez_del_reporte` de la observación: sin él, un reporte malformado y uno válido son indistinguibles desde el bundle.",
+      "$ref": "#/$defs/reporte_del_worker"
+    },
+    "veredicto_de_conformance": {
+      "description": "Si lo entregado es lo que la receta esperaba. Es el hecho del que se deriva el eje `resultado_semantico`: un ciclo completado con un reporte válido puede entregar algo incorrecto, y sin este campo esa diferencia no queda registrada en ningún lado.",
+      "$ref": "#/$defs/veredicto_de_conformance"
+    },
+    "trabajos_delegados": {
+      "description": "Un elemento por trabajo delegado. El conjunto se compara en igualdad bidireccional contra el que la matriz y la receta declaran: sin eso, un worker faltante deja «cada recurso registrado» en verde.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/trabajo_delegado"
+      }
+    },
+    "artefactos_producidos": {
+      "description": "Manifest ordenado por ruta relativa, con tamaño y hash de contenido.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/artefacto"
+      }
+    },
+    "recursos": {
+      "description": "Todo proceso, sesión, árbol o terminal que la corrida creó. Vacío no es una opción: una corrida sin ningún recurso registrado es una corrida sin evidencia de limpieza.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/recurso"
+      }
+    },
+    "pruebas_de_aislamiento": {
+      "$ref": "#/$defs/pruebas_de_aislamiento"
+    },
+    "inventario_de_egreso_reejecutado": {
+      "description": "El resultado de reejecutar la regla de descubrimiento en esta corrida. Se compara contra el congelado en el pre-registro: cualquier alta, baja o cambio bloquea.",
+      "$ref": "#/$defs/inventario_de_egreso"
+    },
+    "identidad_del_entorno": {
+      "$ref": "#/$defs/identidad_del_entorno"
+    },
+    "pipeline_de_sanitizacion": {
+      "$ref": "#/$defs/pipeline_de_sanitizacion"
+    },
+    "journal_candidate_ids": {
+      "description": "Anomalías del journal atribuidas a esta corrida. Vacío significa que el journal cerró todos sus intentos de esta corrida como `clean`, no que no se haya mirado.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/identificador"
+      }
+    },
+    "recibo_de_frontera": {
+      "description": "Identidad del recibo de producción desde el que el runner construyó este bundle. Obligatorio para el adaptador de sesión (D-21).",
+      "$ref": "#/$defs/referencia_a_recibo"
+    }
+  },
+  "if": {
+    "properties": {
+      "adaptador": {
+        "const": "sesion_de_agente"
+      }
+    },
+    "required": [
+      "adaptador"
+    ]
+  },
+  "then": {
+    "required": [
+      "recibo_de_frontera"
+    ]
+  },
+  "$defs": {
+    "identificador": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{7,40}$"
+    },
+    "texto": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ruta_relativa": {
+      "description": "Ruta relativa a la raíz del repositorio, en formato POSIX. Una ruta absoluta del host es contenido no publicable y la bloquea el escaneo.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^/].*$"
+    },
+    "sello_de_pared": {
+      "description": "Instante en UTC, con segundos y sufijo `Z`. Sirve para ordenar la corrida contra los commits y nunca para calcular duraciones.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "enum_punto_de_despacho": {
+      "enum": [
+        "sdd-flow-analyze-exploracion",
+        "sdd-flow-implementer-por-task",
+        "sdd-flow-reviewer-por-task",
+        "sdd-flow-revision-final-de-diff",
+        "bitbucket-code-review-panel-de-revisores",
+        "bitbucket-code-review-validador-adversarial",
+        "co-explore-fan-out-dual",
+        "co-explore-worker-por-ronda-de-debate",
+        "cross-implement-implementador-inicial",
+        "cross-implement-ronda-de-fix-loop",
+        "cross-review-revisor-por-ronda",
+        "sdd-orchestrator-fan-out-por-repo",
+        "sdd-pr-feedback-implement-delegado"
+      ]
+    },
+    "enum_skill": {
+      "enum": [
+        "bitbucket-code-review",
+        "co-explore",
+        "cross-implement",
+        "cross-review",
+        "sdd-flow",
+        "sdd-orchestrator",
+        "sdd-pr-feedback"
+      ]
+    },
+    "enum_familia_de_rol": {
+      "enum": [
+        "explorer",
+        "investigator",
+        "design-reviewer",
+        "bounded-implementer",
+        "diff-reviewer"
+      ]
+    },
+    "enum_transporte": {
+      "enum": [
+        "subagent",
+        "cli-exec",
+        "cli-resume"
+      ]
+    },
+    "enum_adaptador": {
+      "enum": [
+        "script",
+        "sesion_de_agente"
+      ]
+    },
+    "enum_tipo_de_evento": {
+      "description": "Vocabulario cerrado de eventos. Los cuatro primeros son la secuencia de apertura de AC-17; los demás son lo que la corrida produce.",
+      "enum": [
+        "validacion_de_hash_congelado",
+        "preflight_de_receta",
+        "confirmacion_humana",
+        "despacho",
+        "estado_terminal_de_trabajo",
+        "resultado_utilizable",
+        "reintento",
+        "degradacion_observada",
+        "hallazgo_emitido",
+        "bloqueo"
+      ]
+    },
+    "enum_life_state": {
+      "description": "Vida del recurso. `cese_no_comprobable` existe para que la corrida pueda decirlo en vez de declarar una limpieza que no comprobó.",
+      "enum": [
+        "terminado_comprobado",
+        "vivo",
+        "cese_no_comprobable"
+      ]
+    },
+    "enum_ownership_state": {
+      "description": "Propiedad del recurso, independiente de su vida.",
+      "enum": [
+        "sin_transferir",
+        "transferido"
+      ]
+    },
+    "enum_clase_de_recurso": {
+      "enum": [
+        "proceso",
+        "sesion",
+        "arbol_de_trabajo",
+        "terminal",
+        "canary",
+        "credencial_temporal"
+      ]
+    },
+    "enum_clase_de_superficie": {
+      "enum": [
+        "binario_en_path",
+        "credencial_en_disco",
+        "variable_de_entorno",
+        "credential_helper_de_git",
+        "socket_o_agente_ssh",
+        "remoto_configurado",
+        "herramienta_autenticada"
+      ]
+    },
+    "enum_paso_de_sanitizacion": {
+      "description": "Los pasos del pipeline de evidencia (AC-41). El orden en que se registran es el orden en que corrieron: alterarlo cambia sobre qué se calculó el hash.",
+      "enum": [
+        "captura",
+        "normalizacion_de_rutas",
+        "validacion_y_escaneo",
+        "canonicalizacion_y_hash",
+        "recoleccion",
+        "versionado"
+      ]
+    },
+    "enum_protocolo_de_recibo": {
+      "description": "Los dos protocolos de recibo, que no se mezclan (D-22). Un bundle de producción solo puede referenciar un recibo de producción.",
+      "enum": [
+        "produccion"
+      ]
+    },
+    "invocacion": {
+      "description": "Cómo se despachó el intento. Las dos variantes son disjuntas por `tipo`: un CLI lleva comando literal, una sesión de agente lleva acción con su prompt anclado.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/invocacion_por_comando"
+        },
+        {
+          "$ref": "#/$defs/invocacion_por_accion"
+        }
+      ]
+    },
+    "invocacion_por_comando": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tipo",
+        "comando_literal",
+        "directorio_de_trabajo"
+      ],
+      "properties": {
+        "tipo": {
+          "const": "comando"
+        },
+        "comando_literal": {
+          "description": "El comando tal como se ejecutó, sin reconstruir ni parafrasear.",
+          "$ref": "#/$defs/texto"
+        },
+        "directorio_de_trabajo": {
+          "$ref": "#/$defs/ruta_relativa"
+        },
+        "variables_de_entorno": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/texto"
+          }
+        },
+        "prompt_sha256": {
+          "description": "Hash del prompt materializado que el worker recibió —la sección que el ancla del punto nombra, más el encuadre de la cohorte—. Opcional porque los corpus congelados antes de que el runner materializara la entrada no lo llevan; en una corrida real es lo que hace comparable una invocación con la siguiente, igual que en la variante por acción.",
+          "$ref": "#/$defs/sha256"
+        },
+        "encuadre_id": {
+          "description": "Identidad versionada del encuadre que acompaña a la sección. Sin él, dos corridas con el mismo comando y distinto encuadre serían indistinguibles y sus latencias no compararían lo mismo.",
+          "$ref": "#/$defs/texto"
+        }
+      }
+    },
+    "invocacion_por_accion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tipo",
+        "accion_literal",
+        "prompt_sha256",
+        "directorio_de_trabajo"
+      ],
+      "properties": {
+        "tipo": {
+          "const": "accion"
+        },
+        "accion_literal": {
+          "description": "La acción de plataforma que se invocó, nombrada tal cual.",
+          "$ref": "#/$defs/texto"
+        },
+        "prompt_sha256": {
+          "description": "Hash del prompt congelado. Es lo que hace comparable una acción con la siguiente.",
+          "$ref": "#/$defs/sha256"
+        },
+        "directorio_de_trabajo": {
+          "$ref": "#/$defs/ruta_relativa"
+        }
+      }
+    },
+    "ventana_de_pared": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inicio",
+        "fin"
+      ],
+      "properties": {
+        "inicio": {
+          "$ref": "#/$defs/sello_de_pared"
+        },
+        "fin": {
+          "$ref": "#/$defs/sello_de_pared"
+        }
+      }
+    },
+    "estado_del_intento": {
+      "description": "Un intento bloqueado es canónico: se conserva append-only y no se descarta (D-15).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resultado"
+      ],
+      "properties": {
+        "resultado": {
+          "enum": [
+            "completado",
+            "bloqueado"
+          ]
+        },
+        "causa_de_bloqueo": {
+          "$ref": "#/$defs/texto"
+        }
+      },
+      "if": {
+        "properties": {
+          "resultado": {
+            "const": "bloqueado"
+          }
+        },
+        "required": [
+          "resultado"
+        ]
+      },
+      "then": {
+        "required": [
+          "causa_de_bloqueo"
+        ]
+      }
+    },
+    "sello": {
+      "description": "Sello monotónico bajo autoridad del harness, con la procedencia de la interfaz de reloj que lo emitió.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "valor_ns",
+        "fuente",
+        "autoridad",
+        "precision_ns",
+        "procedencia"
+      ],
+      "properties": {
+        "valor_ns": {
+          "description": "Lectura del reloj monotónico en nanosegundos. No es un instante del calendario y no se compara contra uno.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "fuente": {
+          "const": "reloj_monotonico_del_harness"
+        },
+        "autoridad": {
+          "description": "Quién emitió el sello. `worker` no es un valor admitido: un tiempo que informa el worker no es una medición del harness.",
+          "const": "harness"
+        },
+        "precision_ns": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "procedencia": {
+          "description": "La interfaz de reloj concreta que produjo la lectura, nombrada de forma que se pueda cotejar contra la que el instrumento declara.",
+          "$ref": "#/$defs/texto"
+        }
+      }
+    },
+    "evento": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evento_id",
+        "tipo",
+        "sello"
+      ],
+      "properties": {
+        "evento_id": {
+          "$ref": "#/$defs/identificador"
+        },
+        "tipo": {
+          "$ref": "#/$defs/enum_tipo_de_evento"
+        },
+        "sello": {
+          "$ref": "#/$defs/sello"
+        },
+        "trabajo_delegado_id": {
+          "description": "Presente en los eventos que pertenecen a un trabajo delegado y no a la corrida entera.",
+          "$ref": "#/$defs/identificador"
+        },
+        "detalle": {
+          "$ref": "#/$defs/texto"
+        }
+      }
+    },
+    "reporte_del_worker": {
+      "description": "Las tres variantes son disjuntas por `estado`. La ausente no declara `ruta_relativa` ni `sha256`: rellenar un reporte que no llegó no es expresable.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/reporte_interpretable"
+        },
+        {
+          "$ref": "#/$defs/reporte_malformado"
+        },
+        {
+          "$ref": "#/$defs/reporte_ausente"
+        }
+      ]
+    },
+    "reporte_interpretable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "estado",
+        "ruta_relativa",
+        "sha256"
+      ],
+      "properties": {
+        "estado": {
+          "const": "interpretable"
+        },
+        "ruta_relativa": {
+          "$ref": "#/$defs/ruta_relativa"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "reporte_malformado": {
+      "description": "Llegó algo y no se pudo interpretar. Conserva ruta y hash —la evidencia de lo que llegó mal se versiona igual— y exige la causa: un malformado sin causa es indistinguible de un parser que falló.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "estado",
+        "ruta_relativa",
+        "sha256",
+        "causa"
+      ],
+      "properties": {
+        "estado": {
+          "const": "malformado"
+        },
+        "ruta_relativa": {
+          "$ref": "#/$defs/ruta_relativa"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "causa": {
+          "$ref": "#/$defs/texto"
+        }
+      }
+    },
+    "reporte_ausente": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "estado",
+        "causa"
+      ],
+      "properties": {
+        "estado": {
+          "const": "ausente"
+        },
+        "causa": {
+          "$ref": "#/$defs/texto"
+        }
+      }
+    },
+    "veredicto_de_conformance": {
+      "description": "Si lo entregado satisface lo que la receta esperaba. Las tres variantes son disjuntas por `resultado`; `no_evaluable` lleva causa en lugar de evidencia, porque no se evaluó nada que se pueda mostrar.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/veredicto_correcto"
+        },
+        {
+          "$ref": "#/$defs/veredicto_incorrecto"
+        },
+        {
+          "$ref": "#/$defs/veredicto_no_evaluable"
+        }
+      ]
+    },
+    "veredicto_correcto": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resultado",
+        "evidencia"
+      ],
+      "properties": {
+        "resultado": {
+          "const": "correcto"
+        },
+        "evidencia": {
+          "description": "Qué se comparó contra qué esperado de la receta. Una afirmación de conformidad no es evidencia de conformidad.",
+          "$ref": "#/$defs/texto"
+        }
+      }
+    },
+    "veredicto_incorrecto": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resultado",
+        "evidencia"
+      ],
+      "properties": {
+        "resultado": {
+          "const": "incorrecto"
+        },
+        "evidencia": {
+          "$ref": "#/$defs/texto"
+        }
+      }
+    },
+    "veredicto_no_evaluable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resultado",
+        "causa"
+      ],
+      "properties": {
+        "resultado": {
+          "const": "no_evaluable"
+        },
+        "causa": {
+          "$ref": "#/$defs/texto"
+        }
+      }
+    },
+    "trabajo_delegado": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "trabajo_delegado_id",
+        "estado_terminal"
+      ],
+      "properties": {
+        "trabajo_delegado_id": {
+          "$ref": "#/$defs/identificador"
+        },
+        "estado_terminal": {
+          "description": "Si el estado terminal de este trabajo está comprobado, y con qué. Es el mismo patrón que `life_state` usa para los recursos: el terminal NO se infiere, y cuando no se puede comprobar se dice, en vez de apuntar a un evento que no acredita nada.",
+          "$ref": "#/$defs/estado_terminal_de_trabajo"
+        },
+        "recursos_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identificador"
+          }
+        }
+      }
+    },
+    "artefacto": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ruta_relativa",
+        "bytes",
+        "sha256"
+      ],
+      "properties": {
+        "ruta_relativa": {
+          "$ref": "#/$defs/ruta_relativa"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "recurso": {
+      "description": "Vida, propiedad, dueño y próxima acción, modelados por separado. Un transferido exige `owner` y `next_action`; la ausencia de cualquiera bloquea.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recurso_id",
+        "clase",
+        "life_state",
+        "ownership_state",
+        "evidencia_de_cese"
+      ],
+      "properties": {
+        "recurso_id": {
+          "$ref": "#/$defs/identificador"
+        },
+        "clase": {
+          "$ref": "#/$defs/enum_clase_de_recurso"
+        },
+        "life_state": {
+          "$ref": "#/$defs/enum_life_state"
+        },
+        "ownership_state": {
+          "$ref": "#/$defs/enum_ownership_state"
+        },
+        "owner": {
+          "description": "A quién quedó transferido el recurso.",
+          "$ref": "#/$defs/texto"
+        },
+        "next_action": {
+          "description": "Qué tiene que pasar después con él. Un dueño sin próxima acción es un recurso abandonado con nombre.",
+          "$ref": "#/$defs/texto"
+        },
+        "evidencia_de_cese": {
+          "description": "Qué se comprobó para afirmar el estado de vida. El cese NUNCA se infiere por efectos en el árbol.",
+          "$ref": "#/$defs/texto"
+        }
+      },
+      "if": {
+        "properties": {
+          "ownership_state": {
+            "const": "transferido"
+          }
+        },
+        "required": [
+          "ownership_state"
+        ]
+      },
+      "then": {
+        "required": [
+          "owner",
+          "next_action"
+        ]
+      }
+    },
+    "pruebas_de_aislamiento": {
+      "description": "Las tres pruebas, separadas. Se exigen según el permiso efectivo que declara la matriz: en un caso de solo lectura se registra `not_applicable` con causa verificable, y falsear el permiso para esquivarlas es lo que el modo detecta.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "refs_y_objetos_identicos",
+        "sin_red_ni_credenciales",
+        "arbol_original_intacto"
+      ],
+      "properties": {
+        "refs_y_objetos_identicos": {
+          "$ref": "#/$defs/prueba_de_aislamiento"
+        },
+        "sin_red_ni_credenciales": {
+          "$ref": "#/$defs/prueba_de_aislamiento"
+        },
+        "arbol_original_intacto": {
+          "$ref": "#/$defs/prueba_de_aislamiento"
+        }
+      }
+    },
+    "prueba_de_aislamiento": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/prueba_ejecutada"
+        },
+        {
+          "$ref": "#/$defs/prueba_no_aplicable"
+        }
+      ]
+    },
+    "prueba_ejecutada": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resultado",
+        "evidencia"
+      ],
+      "properties": {
+        "resultado": {
+          "enum": [
+            "pasa",
+            "falla"
+          ]
+        },
+        "evidencia": {
+          "description": "Qué se comparó y contra qué. Una declaración de no publicación no es evidencia.",
+          "$ref": "#/$defs/texto"
+        }
+      }
+    },
+    "prueba_no_aplicable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resultado",
+        "causa",
+        "permiso_efectivo"
+      ],
+      "properties": {
+        "resultado": {
+          "const": "not_applicable"
+        },
+        "causa": {
+          "$ref": "#/$defs/texto"
+        },
+        "permiso_efectivo": {
+          "description": "El permiso derivado de la matriz que justifica la exención. Un escritor no puede escribirlo.",
+          "enum": [
+            "read_only"
+          ]
+        }
+      }
+    },
+    "inventario_de_egreso": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inventario_sha256",
+        "superficies"
+      ],
+      "properties": {
+        "inventario_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "superficies": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/superficie_de_egreso"
+          }
+        }
+      }
+    },
+    "superficie_de_egreso": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "superficie_id",
+        "clase",
+        "descripcion"
+      ],
+      "properties": {
+        "superficie_id": {
+          "$ref": "#/$defs/identificador"
+        },
+        "clase": {
+          "$ref": "#/$defs/enum_clase_de_superficie"
+        },
+        "descripcion": {
+          "$ref": "#/$defs/texto"
+        }
+      }
+    },
+    "identidad_del_entorno": {
+      "description": "La identidad EFECTIVA de esta corrida, contra la que se compara la esperada del pre-registro. `code_commit` y `preregistration_commit` son campos distintos (D-18).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code_commit",
+        "preregistration_commit",
+        "arbol_limpio",
+        "matriz_sha256",
+        "instrumento_sha256",
+        "runner_sha256",
+        "version_cli",
+        "version_runtime",
+        "hooks",
+        "ejecutor",
+        "eventos_de_intervencion_humana",
+        "modelo"
+      ],
+      "properties": {
+        "code_commit": {
+          "$ref": "#/$defs/commit"
+        },
+        "preregistration_commit": {
+          "description": "El commit que fija el pre-registro: descendiente directo de `code_commit` cuyo único cambio es `scripts/preregistro-fase-0.json`. La relación la comprueba Git, no este contrato.",
+          "$ref": "#/$defs/commit"
+        },
+        "arbol_limpio": {
+          "type": "boolean"
+        },
+        "matriz_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "instrumento_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "runner_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "version_cli": {
+          "$ref": "#/$defs/texto"
+        },
+        "version_runtime": {
+          "$ref": "#/$defs/texto"
+        },
+        "hooks": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/texto"
+          }
+        },
+        "ejecutor": {
+          "$ref": "#/$defs/ejecutor"
+        },
+        "eventos_de_intervencion_humana": {
+          "description": "Los eventos de intervención registrados. Vacío es una afirmación comprobable, no un descuido: es lo que sostiene el estrato `automatizable`.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identificador"
+          }
+        },
+        "modelo": {
+          "$ref": "#/$defs/modelo_solicitado_y_efectivo"
+        }
+      }
+    },
+    "ejecutor": {
+      "description": "Quién corrió el caso, separado en perfil esperado e instancia efectiva. Es distinta de la identidad del worker.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "perfil_esperado",
+        "instancia_efectiva"
+      ],
+      "properties": {
+        "perfil_esperado": {
+          "$ref": "#/$defs/texto"
+        },
+        "instancia_efectiva": {
+          "$ref": "#/$defs/dato_de_plataforma"
+        }
+      }
+    },
+    "modelo_solicitado_y_efectivo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "solicitado",
+        "efectivo"
+      ],
+      "properties": {
+        "solicitado": {
+          "$ref": "#/$defs/dato_de_plataforma"
+        },
+        "efectivo": {
+          "$ref": "#/$defs/dato_de_plataforma"
+        }
+      }
+    },
+    "dato_de_plataforma": {
+      "description": "Un dato que la plataforma puede o no exponer. Cuando no lo expone, la adjudicación pre-registrada es bloqueo o estratificación: nunca relleno. La variante no expuesta NO declara `valor`, así que inventarlo no es expresable.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/dato_expuesto"
+        },
+        {
+          "$ref": "#/$defs/dato_no_expuesto"
+        }
+      ]
+    },
+    "dato_expuesto": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "estado",
+        "valor"
+      ],
+      "properties": {
+        "estado": {
+          "const": "expuesto"
+        },
+        "valor": {
+          "$ref": "#/$defs/texto"
+        }
+      }
+    },
+    "dato_no_expuesto": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "estado",
+        "adjudicacion"
+      ],
+      "properties": {
+        "estado": {
+          "const": "no_expuesto"
+        },
+        "adjudicacion": {
+          "enum": [
+            "bloqueo",
+            "estratificacion"
+          ]
+        }
+      }
+    },
+    "pipeline_de_sanitizacion": {
+      "description": "El pipeline aplicado, en el orden en que corrió, y el hash del manifest ordenado. El hash se calcula sobre la evidencia SANITIZADA, que es la que se versiona.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "orden_aplicado",
+        "manifest_sha256"
+      ],
+      "properties": {
+        "orden_aplicado": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/enum_paso_de_sanitizacion"
+          }
+        },
+        "manifest_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "referencia_a_recibo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recibo_id",
+        "protocolo",
+        "recibo_sha256"
+      ],
+      "properties": {
+        "recibo_id": {
+          "$ref": "#/$defs/identificador"
+        },
+        "protocolo": {
+          "$ref": "#/$defs/enum_protocolo_de_recibo"
+        },
+        "recibo_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "estado_terminal_de_trabajo": {
+      "description": "Las dos variantes son disjuntas por `estado`. La no comprobable NO declara `evento_terminal_id`: sin evento que lo acredite, no hay latencia terminal que registrar, y apuntar a otro evento para llenar el campo es exactamente lo que esta unión impide.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/terminal_comprobado"
+        },
+        {
+          "$ref": "#/$defs/terminal_no_comprobable"
+        }
+      ]
+    },
+    "terminal_comprobado": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "estado",
+        "evento_terminal_id"
+      ],
+      "properties": {
+        "estado": {
+          "const": "comprobado"
+        },
+        "evento_terminal_id": {
+          "description": "El evento del bundle que acredita el estado terminal de este trabajo.",
+          "$ref": "#/$defs/identificador"
+        }
+      }
+    },
+    "terminal_no_comprobable": {
+      "description": "El trabajo existe —lo declara la matriz, no la corrida— y su terminal no se comprobó: el despacho nunca se emitió, o el worker no volvió. La causa es obligatoria porque un terminal sin comprobar y sin causa es indistinguible de una omisión.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "estado",
+        "causa"
+      ],
+      "properties": {
+        "estado": {
+          "const": "no_comprobable"
+        },
+        "causa": {
+          "$ref": "#/$defs/texto"
+        }
+      }
+    }
+  }
+}

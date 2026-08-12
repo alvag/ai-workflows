@@ -1,0 +1,189 @@
+{
+  "version_schema": "1.0.0",
+  "run_id": "run-g-c1",
+  "sample_id": "mst-cross-implement-implementador-inicial-r1",
+  "attempt_id": "int-mst-cross-implement-implementador-inicial-r1-a1",
+  "attempt_ordinal": 1,
+  "preregistro_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+  "punto_de_despacho": "cross-implement-implementador-inicial",
+  "skill": "cross-implement",
+  "familia_de_rol": "bounded-implementer",
+  "transporte": "cli-exec",
+  "adaptador": "script",
+  "invocacion": {
+    "tipo": "comando",
+    "comando_literal": "codex exec -s workspace-write -C . --skip-git-repo-check --json < prompt.txt",
+    "directorio_de_trabajo": "arboles-desechables/run-g-c1"
+  },
+  "ventana_de_pared_utc": {
+    "inicio": "2026-08-11T12:00:00Z",
+    "fin": "2026-08-11T12:10:00Z"
+  },
+  "estado_del_intento": {
+    "resultado": "completado"
+  },
+  "eventos": [
+    {
+      "evento_id": "evt-c1-hash",
+      "tipo": "validacion_de_hash_congelado",
+      "sello": {
+        "valor_ns": 200000000,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1000,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      }
+    },
+    {
+      "evento_id": "evt-c1-preflight",
+      "tipo": "preflight_de_receta",
+      "sello": {
+        "valor_ns": 500000000,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1000,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      }
+    },
+    {
+      "evento_id": "evt-c1-despacho",
+      "tipo": "despacho",
+      "sello": {
+        "valor_ns": 1000000000,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1000,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      }
+    },
+    {
+      "evento_id": "evt-c1-terminal",
+      "tipo": "estado_terminal_de_trabajo",
+      "sello": {
+        "valor_ns": 21000000000,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1000,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      },
+      "trabajo_delegado_id": "trb-c1"
+    },
+    {
+      "evento_id": "evt-c1-utilizable",
+      "tipo": "resultado_utilizable",
+      "sello": {
+        "valor_ns": 31000000000,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1000,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      }
+    },
+    {
+      "evento_id": "evt-c1-degradacion",
+      "tipo": "degradacion_observada",
+      "sello": {
+        "valor_ns": 15000000000,
+        "fuente": "reloj_monotonico_del_harness",
+        "autoridad": "harness",
+        "precision_ns": 1000,
+        "procedencia": "time.monotonic_ns del proceso del runner"
+      },
+      "detalle": "el worker degrado a la via sin reanudacion"
+    }
+  ],
+  "reporte_del_worker": {
+    "estado": "interpretable",
+    "ruta_relativa": "arboles-desechables/run-g-c1/salida.md",
+    "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+  },
+  "veredicto_de_conformance": {
+    "resultado": "incorrecto",
+    "evidencia": "la salida omite dos de las secciones que la receta exige"
+  },
+  "trabajos_delegados": [
+    {
+      "trabajo_delegado_id": "trb-c1",
+      "estado_terminal": {
+        "estado": "comprobado",
+        "evento_terminal_id": "evt-c1-terminal"
+      },
+      "recursos_ids": [
+        "rec-proceso-vivo"
+      ]
+    }
+  ],
+  "artefactos_producidos": [],
+  "recursos": [
+    {
+      "recurso_id": "rec-proceso-vivo",
+      "clase": "proceso",
+      "life_state": "vivo",
+      "ownership_state": "transferido",
+      "owner": "conductor de la cohorte",
+      "next_action": "retirar el proceso al cerrar la cohorte",
+      "evidencia_de_cese": "sigue en la tabla de procesos: su cese no esta comprobado"
+    }
+  ],
+  "pruebas_de_aislamiento": {
+    "refs_y_objetos_identicos": {
+      "resultado": "pasa",
+      "evidencia": "refs y objetos del arbol desechable comparados contra el original, identicos"
+    },
+    "sin_red_ni_credenciales": {
+      "resultado": "pasa",
+      "evidencia": "sin red alcanzable ni credenciales en el entorno, comprobado en la frontera"
+    },
+    "arbol_original_intacto": {
+      "resultado": "pasa",
+      "evidencia": "el arbol original quedo con el mismo HEAD y sin cambios sin commitear"
+    }
+  },
+  "inventario_de_egreso_reejecutado": {
+    "inventario_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "superficies": []
+  },
+  "identidad_del_entorno": {
+    "code_commit": "3dd1ee4",
+    "preregistration_commit": "9c0ffee",
+    "arbol_limpio": true,
+    "matriz_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+    "instrumento_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+    "runner_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+    "version_cli": "codex 0.146.1",
+    "version_runtime": "python 3.13",
+    "hooks": [
+      "stop-hook del entorno, declarado y sin efecto sobre esta corrida"
+    ],
+    "ejecutor": {
+      "perfil_esperado": "conductor local sin hooks de sesion",
+      "instancia_efectiva": {
+        "estado": "expuesto",
+        "valor": "conductor local"
+      }
+    },
+    "eventos_de_intervencion_humana": [],
+    "modelo": {
+      "solicitado": {
+        "estado": "expuesto",
+        "valor": "claude-opus-5"
+      },
+      "efectivo": {
+        "estado": "expuesto",
+        "valor": "claude-opus-5"
+      }
+    }
+  },
+  "pipeline_de_sanitizacion": {
+    "orden_aplicado": [
+      "captura",
+      "normalizacion_de_rutas",
+      "validacion_y_escaneo",
+      "canonicalizacion_y_hash",
+      "recoleccion",
+      "versionado"
+    ],
+    "manifest_sha256": "4444444444444444444444444444444444444444444444444444444444444444"
+  },
+  "journal_candidate_ids": []
+}

@@ -89,6 +89,22 @@ _C, _D = "pa", "ne"
 _NOM = _A + _B
 _ALO = _C + _D
 
+# La evidencia medida no es prosa del repositorio, y `--ausencia` no puede distinguirlas con un
+# `grep`. Este modo existe para que el repo no REFERENCIE la vía retirada; una transcripción literal
+# de una sesión que la nombró es un DATO capturado —la sesión dijo lo que dijo— y sus bytes son el
+# `bundle_sha256` de esa corrida: editarla invalida el bundle y reabre el congelamiento del acta.
+#
+# La exclusión es por PREFIJO DE DIRECTORIO, terminado en `/` a propósito: `scripts/corridas-fase-0/`
+# no alcanza a `scripts/corridas-fase-0-otra/`, así que un directorio de nombre parecido sigue
+# escaneándose. Y se INFORMA en cada corrida: una exclusión silenciosa convierte «no hay rastro» en
+# «no miré ahí», que es la misma frase con el sentido opuesto.
+EVIDENCIA_EXCLUIDA = ("scripts/corridas-fase-0/",)
+
+
+def es_evidencia_capturada(rel: str) -> bool:
+    return any(rel.startswith(prefijo) for prefijo in EVIDENCIA_EXCLUIDA)
+
+
 # Los siete términos del criterio de ausencia, con el nombre por el que se informan.
 TERMINOS = [
     ("nombre-de-la-herramienta", re.compile(re.escape(_NOM), re.I)),
@@ -859,8 +875,14 @@ def evaluar_ausencia(raiz: Path) -> Reporte:
     except ArbolInvalido as e:
         rep.hallazgo(str(e))
         return rep
+    evidencia = [rel for rel in candidato if es_evidencia_capturada(rel)]
+    candidato = [rel for rel in candidato if not es_evidencia_capturada(rel)]
     rep.nota(f"árbol candidato: {len(candidato)} archivos "
              f"(−{len(bajas)} bajas efectivas, +{len(altas)} altas efectivas)")
+    if evidencia:
+        rep.nota(f"evidencia capturada excluida del escaneo: {len(evidencia)} archivos bajo "
+                 f"{', '.join(EVIDENCIA_EXCLUIDA)} — transcripción de sesiones medidas, no prosa "
+                 f"del repositorio, y con sus bytes hasheados en el bundle de cada corrida")
     for rel in candidato:
         for etiqueta, patron in TERMINOS:
             if patron.search(rel):
@@ -1596,6 +1618,12 @@ VARIANTES_VERDES = [
                             "## Los campos por intento")),
     ("intento activo por una vía vigente",
      _crear(_RUTA_SOBRE_DRENAJE, _SOBRE_DRENAJE_TPL.format(transport="cli-exec"))),
+    # Ejerce la exclusión de evidencia. Sin ella este caso sale rojo, así que es lo que impide que
+    # `EVIDENCIA_EXCLUIDA` sea código muerto: una exclusión que ningún caso atraviesa daría verde
+    # por no aplicarse nunca, y el verde parecería cobertura.
+    ("la vía nombrada dentro de una transcripción capturada",
+     _crear("scripts/corridas-fase-0/run-x-r1-a1/evidencia/salida-del-worker.txt",
+            "El worker corrió `" + _NOM + "-native-audit` y devolvió su reporte.\n")),
 ]
 
 MUTANTES = [
@@ -1606,6 +1634,13 @@ MUTANTES = [
     ("término de la vía en el path de un archivo nuevo", ["ausencia"],
      ["· path ·", "alojamiento-como-palabra"],
      _con_corpus(_crear(f"docs/{_ALO}s-propios.md", "# Nota suelta\n"))),
+    # El simétrico de la variante verde: la exclusión es por prefijo terminado en `/`, así que un
+    # directorio de nombre parecido NO queda exento. Sin este mutante, cambiar el prefijo por un
+    # `in` o quitarle la barra abriría un agujero que ningún caso vería.
+    ("la vía nombrada en un directorio parecido al de la evidencia", ["ausencia"],
+     ["nombre-de-la-herramienta", "corridas-fase-0-otra"],
+     _con_corpus(_crear("scripts/corridas-fase-0-otra/salida.txt",
+                        "Reporte suelto sobre " + _NOM + ".\n"))),
     ("construcción prohibida dentro de una sede permitida", ["clave"],
      ["clave-de-config", "clave-yaml-al-inicio-de-linea", "clave-del-mapa-overrides",
       "dentro de una sede permitida"],

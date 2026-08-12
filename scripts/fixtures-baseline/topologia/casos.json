@@ -1,0 +1,175 @@
+{
+  "que_declara": "Los casos de `--altas-topologia`. El conjunto previo y el candidato son registros sintéticos: lo que se prueba es la comparación de las altas contra las esperadas en las dos direcciones, no el contenido del registro real.",
+  "previo": {
+    "version": 1,
+    "artefactos": [
+      {
+        "path": "scripts/matriz-despachos.json",
+        "owner": "matriz",
+        "dato": "matriz",
+        "source_status": "fuente",
+        "versioned": true
+      }
+    ]
+  },
+  "candidato_conforme": {
+    "version": 1,
+    "artefactos": [
+      {
+        "path": "scripts/matriz-despachos.json",
+        "owner": "matriz",
+        "dato": "matriz",
+        "source_status": "fuente",
+        "versioned": true
+      },
+      {
+        "path": "scripts/instrumento-baseline.py",
+        "owner": "instrumento-de-medicion",
+        "dato": "instrumento-de-la-fase-0",
+        "source_status": "fuente",
+        "versioned": true
+      },
+      {
+        "path": "scripts/runner-cohorte.py",
+        "owner": "runner-de-cohorte",
+        "dato": "despacho-y-captura-de-la-cohorte",
+        "source_status": "fuente",
+        "versioned": true
+      },
+      {
+        "path": "scripts/preregistro.schema.json",
+        "owner": "contratos-de-la-fase-0",
+        "dato": "schema-cerrado-del-preregistro",
+        "source_status": "fuente",
+        "versioned": true
+      }
+    ]
+  },
+  "altas_esperadas": [
+    {
+      "path": "scripts/instrumento-baseline.py",
+      "owner": "instrumento-de-medicion",
+      "dato": "instrumento-de-la-fase-0"
+    },
+    {
+      "path": "scripts/runner-cohorte.py",
+      "owner": "runner-de-cohorte",
+      "dato": "despacho-y-captura-de-la-cohorte"
+    },
+    {
+      "path": "scripts/preregistro.schema.json",
+      "owner": "contratos-de-la-fase-0",
+      "dato": "schema-cerrado-del-preregistro"
+    }
+  ],
+  "casos": {
+    "t-alta-esperada-ausente": {
+      "candidato": {
+        "version": 1,
+        "artefactos": [
+          {
+            "path": "scripts/matriz-despachos.json",
+            "owner": "matriz",
+            "dato": "matriz",
+            "source_status": "fuente",
+            "versioned": true
+          },
+          {
+            "path": "scripts/instrumento-baseline.py",
+            "owner": "instrumento-de-medicion",
+            "dato": "instrumento-de-la-fase-0",
+            "source_status": "fuente",
+            "versioned": true
+          },
+          {
+            "path": "scripts/preregistro.schema.json",
+            "owner": "contratos-de-la-fase-0",
+            "dato": "schema-cerrado-del-preregistro",
+            "source_status": "fuente",
+            "versioned": true
+          }
+        ]
+      }
+    },
+    "t-alta-no-esperada": {
+      "candidato": {
+        "version": 1,
+        "artefactos": [
+          {
+            "path": "scripts/matriz-despachos.json",
+            "owner": "matriz",
+            "dato": "matriz",
+            "source_status": "fuente",
+            "versioned": true
+          },
+          {
+            "path": "scripts/instrumento-baseline.py",
+            "owner": "instrumento-de-medicion",
+            "dato": "instrumento-de-la-fase-0",
+            "source_status": "fuente",
+            "versioned": true
+          },
+          {
+            "path": "scripts/runner-cohorte.py",
+            "owner": "runner-de-cohorte",
+            "dato": "despacho-y-captura-de-la-cohorte",
+            "source_status": "fuente",
+            "versioned": true
+          },
+          {
+            "path": "scripts/preregistro.schema.json",
+            "owner": "contratos-de-la-fase-0",
+            "dato": "schema-cerrado-del-preregistro",
+            "source_status": "fuente",
+            "versioned": true
+          },
+          {
+            "path": "scripts/colado.json",
+            "owner": "x",
+            "dato": "y",
+            "source_status": "fuente",
+            "versioned": true
+          }
+        ]
+      }
+    },
+    "t-identidad-incompleta": {
+      "candidato": {
+        "version": 1,
+        "artefactos": [
+          {
+            "path": "scripts/matriz-despachos.json",
+            "owner": "matriz",
+            "dato": "matriz",
+            "source_status": "fuente",
+            "versioned": true
+          },
+          {
+            "path": "scripts/instrumento-baseline.py",
+            "owner": "instrumento-de-medicion",
+            "dato": "instrumento-de-la-fase-0",
+            "source_status": "fuente",
+            "versioned": true
+          },
+          {
+            "path": "scripts/runner-cohorte.py",
+            "owner": "runner-de-cohorte",
+            "dato": "despacho-y-captura-de-la-cohorte",
+            "source_status": "fuente",
+            "versioned": true
+          },
+          {
+            "path": "scripts/preregistro.schema.json",
+            "owner": "",
+            "dato": "schema-cerrado-del-preregistro",
+            "source_status": "fuente",
+            "versioned": true
+          }
+        ]
+      }
+    },
+    "t-base-no-resoluble": {
+      "error_de_base": "`scripts/artefactos-fase-0.json` en `deadbeef`: fatal: invalid object name"
+    }
+  }
+}

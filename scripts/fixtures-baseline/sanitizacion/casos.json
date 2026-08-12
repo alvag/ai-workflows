@@ -1,0 +1,121 @@
+{
+  "que_declara": "Los casos de T16. Cada uno parte del bundle sano y altera UN punto del pipeline o inyecta UNA cadena no publicable. El hash del manifest se renueva salvo en el caso que lo ataca: un negativo del hash que además lo recalculara no atacaría nada.",
+  "sano": {
+    "run_id": "run-sano",
+    "artefactos_producidos": [
+      {
+        "ruta_relativa": "scripts/corridas-fase-0/run-sano/salida.txt",
+        "bytes": 412,
+        "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      {
+        "ruta_relativa": "scripts/corridas-fase-0/run-sano/transcripcion.jsonl",
+        "bytes": 8231,
+        "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      {
+        "ruta_relativa": "scripts/observaciones-fase-0/obs-run-sano.json",
+        "bytes": 1904,
+        "sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+      }
+    ],
+    "pipeline_de_sanitizacion": {
+      "orden_aplicado": [
+        "captura",
+        "normalizacion_de_rutas",
+        "validacion_y_escaneo",
+        "canonicalizacion_y_hash",
+        "recoleccion",
+        "versionado"
+      ],
+      "manifest_sha256": "26839c39680e75c25b1cad54081c5e6cd2098e155c5a22e99c2b82890ae9d6bd"
+    },
+    "invocacion": {
+      "tipo": "comando",
+      "comando": "python3 scripts/instrumento-baseline.py --validar-schemas",
+      "cwd": "."
+    },
+    "notas": "el retiro de credenciales cubre ENGRAM_CLOUD_TOKEN y ZAI_API_KEY"
+  },
+  "casos": {
+    "c-paso-faltante": {
+      "orden_aplicado": [
+        "captura",
+        "validacion_y_escaneo",
+        "canonicalizacion_y_hash",
+        "recoleccion",
+        "versionado"
+      ]
+    },
+    "c-hash-antes-de-sanitizar": {
+      "orden_aplicado": [
+        "captura",
+        "canonicalizacion_y_hash",
+        "normalizacion_de_rutas",
+        "validacion_y_escaneo",
+        "recoleccion",
+        "versionado"
+      ]
+    },
+    "c-orden-no-canonico": {
+      "orden_aplicado": [
+        "captura",
+        "normalizacion_de_rutas",
+        "validacion_y_escaneo",
+        "recoleccion",
+        "canonicalizacion_y_hash",
+        "versionado"
+      ]
+    },
+    "c-manifest-desordenado": {
+      "artefactos_producidos": [
+        {
+          "ruta_relativa": "scripts/observaciones-fase-0/obs-run-sano.json",
+          "bytes": 1904,
+          "sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        },
+        {
+          "ruta_relativa": "scripts/corridas-fase-0/run-sano/transcripcion.jsonl",
+          "bytes": 8231,
+          "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+        },
+        {
+          "ruta_relativa": "scripts/corridas-fase-0/run-sano/salida.txt",
+          "bytes": 412,
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+        }
+      ]
+    },
+    "c-manifest-sha256-discordante": {
+      "manifest_sha256_falseado": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "c-secreto-en-la-evidencia": {
+      "inyecciones_partidas": {
+        "notas": [
+          "el worker respondió con Authorization: Bearer sk-",
+          "proj-4f9d2b7a1c8e6503ff"
+        ]
+      }
+    },
+    "c-credencial-con-valor": {
+      "inyecciones_partidas": {
+        "notas": [
+          "el entorno traía ANTHROPIC_API_KEY",
+          "=valor-que-el-acta-manda-retirar"
+        ]
+      }
+    },
+    "c-ruta-absoluta-del-host": {
+      "inyecciones": {
+        "invocacion.tipo": "comando",
+        "invocacion.comando": "python3 scripts/instrumento-baseline.py"
+      },
+      "inyecciones_partidas": {
+        "invocacion.cwd": [
+          "/Us",
+          "ers/max/Personal/repos/ai-workflows"
+        ]
+      }
+    }
+  }
+}

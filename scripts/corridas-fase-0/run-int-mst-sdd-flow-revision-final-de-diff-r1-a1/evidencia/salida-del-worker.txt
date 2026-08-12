@@ -1,0 +1,36 @@
+REPORTE — Punto de despacho "Revisión final de diff" (sdd-flow)
+
+(1) Qué encargo describe la sección
+Me pone en el rol de reviewer fresco, solo lectura, que corre UNA vez dentro del gate de revisión
+manual previo al commit, después de que tests/build y `verify` ya pasaron. El encargo NO es
+implementar, ni re-verificar AC por evidencia, ni hacer cross-review de artefactos de diseño: es
+leer el diff COMPLETO del flujo (no el de una task) y juzgarlo contra dos ejes fijos:
+- SPEC: el diff cumple los AC y no arrastra cambios fuera de AC que no estén declarados como Extras.
+- QUALITY: sigue los patrones del repo, sin dead code, placeholders ni deuda obvia.
+Es una revisión same-model por capacidad (no cross-model por defecto), y no reemplaza a `verify`.
+El destinatario del reporte es el conductor, que decide en el mismo gate: sin findings sigue al
+commit; con findings vuelve a `implement` o a `plan`/`specify` según el tipo de gap, sin abrir otro
+gate. Si no hay capacidad para despachar el reviewer, el conductor hace la revisión liviana y lo avisa.
+
+(2) Qué entrada necesitaría para ejecutarlo
+El prompt que recibí es la plantilla con sus placeholders sin interpolar, así que como agente fresco
+me faltaría lo que identifica la corrida:
+- `<working_dir>`: la raíz del repo sobre la que corro (acá es este repositorio).
+- `<id>` del flujo, para resolver `.plans/<id>/spec.md` (o el `## Spec` embebido en `plan.md`),
+  `.plans/<id>/plan.md` y `.plans/<id>/tasks.md` si existe.
+- El diff completo del flujo, o el criterio para acotarlo: rango de commits / rama base contra la
+  que diffear, y si el cambio está en working tree, staged o ya commiteado. La sección dice "diff
+  completo del flujo" pero no fija el comando, y a diferencia del reviewer por-task no me llega una
+  lista `FILES` que acote paths.
+- Principios del repo si existen: `AGENTS.md` / `CLAUDE.md` / `CONTRIBUTING.md` (acá hay `CLAUDE.md`
+  en la raíz).
+Opcional pero útil: la complejidad declarada del flujo y si es high-risk, que es lo que en modo
+`auto` justifica que este despacho ocurra.
+
+(3) Qué produciría al terminar
+Un único mensaje final con el reporte exacto, sin prosa alrededor:
+SPEC: ok | fail | warn
+QUALITY: ok | fail
+FINDINGS: <una línea por problema; vacío si todo ok>
+NOTES: <lo no verificable desde el diff y recomendaciones no bloqueantes>
+Sin ninguna escritura en el árbol: el rol es solo lectura y el que commitea es el conductor.

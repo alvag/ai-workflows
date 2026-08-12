@@ -1,0 +1,239 @@
+{
+  "descripcion": "Manifest INDEPENDIENTE del corpus de fixtures de los cinco contratos de datos. Declara qué fixtures tienen que existir, contra qué contrato se validan y —en los negativos— en qué ruta y por qué motivo tienen que fallar. Es independiente a propósito (D-16): un modo que validara «cada fixture que encuentra» no podría detectar una ausencia, porque el conjunto que valida y el conjunto contra el que valida serían el mismo objeto. `--autotest-schemas` lo compara contra el directorio en las DOS direcciones, así que borrar un negativo lo pone rojo en vez de reducir el conjunto validado.",
+  "como_se_agrega_un_fixture": "Escribí el archivo bajo conformes/ o negativos/ y declaralo acá. Un negativo se escribe como UNA mutación puntual de un conforme: si cambia más de una cosa, deja de estar probando la cláusula que dice probar, porque puede fallar por la otra.",
+  "conformes": [
+    {
+      "fixture": "conformes/observacion-completa.json",
+      "contrato": "observacion",
+      "descripcion": "observacion de un punto subagente, con las cinco categorias de metrica y una declarada sin observaciones"
+    },
+    {
+      "fixture": "conformes/preregistro-minimo.json",
+      "contrato": "preregistro",
+      "descripcion": "pre-registro con tres muestras, un paso encadenado, la politica de reintentos completa y el recibo del preflight adjunto"
+    },
+    {
+      "fixture": "conformes/bundle-de-sesion.json",
+      "contrato": "bundle-corrida",
+      "descripcion": "bundle del adaptador de sesion: invocacion por accion, recibo de frontera de produccion y un recurso transferido con dueno y proxima accion"
+    },
+    {
+      "fixture": "conformes/bundle-de-script.json",
+      "contrato": "bundle-corrida",
+      "descripcion": "bundle del adaptador script: invocacion por comando, dos trabajos delegados, intento bloqueado y dos pruebas de aislamiento not_applicable con causa"
+    },
+    {
+      "fixture": "conformes/recibo-de-conformance.json",
+      "contrato": "recibo-frontera",
+      "descripcion": "recibo de conformance completo: apertura y retorno como dos eventos, el segundo referenciando al primero"
+    },
+    {
+      "fixture": "conformes/recibo-de-produccion-abierto.json",
+      "contrato": "recibo-frontera",
+      "descripcion": "recibo de produccion emitido antes de la tool call y todavia sin retorno: un solo evento es una secuencia valida"
+    },
+    {
+      "fixture": "conformes/journal-con-anomalia.json",
+      "contrato": "journal-anomalias",
+      "descripcion": "journal con dos aperturas y sus dos terminales: uno clean y uno anomaly con su candidate_id"
+    }
+  ],
+  "negativos": [
+    {
+      "fixture": "negativos/observacion-sin-attempt-id.json",
+      "contrato": "observacion",
+      "descripcion": "la identidad del intento fundida con la de la muestra: sin attempt_id, un reintento legitimo y una observacion duplicada son indistinguibles (D-12)",
+      "ruta_esperada": "$.attempt_id",
+      "motivo_esperado": "falta el campo obligatorio"
+    },
+    {
+      "fixture": "negativos/observacion-con-metrica-en-cero.json",
+      "contrato": "observacion",
+      "descripcion": "una metrica sin observaciones publicada como cero (AC-21)",
+      "ruta_esperada": "$.metricas[3].valor",
+      "motivo_esperado": "propiedad no declarada"
+    },
+    {
+      "fixture": "negativos/observacion-con-estado-de-etiqueta-unica.json",
+      "contrato": "observacion",
+      "descripcion": "el estado colapsado a una etiqueta unica, sin los tres ejes normativos (AC-18)",
+      "ruta_esperada": "$.estado.validez_del_reporte",
+      "motivo_esperado": "falta el campo obligatorio"
+    },
+    {
+      "fixture": "negativos/observacion-con-familia-inventada.json",
+      "contrato": "observacion",
+      "descripcion": "una familia de rol fuera de las cinco",
+      "ruta_esperada": "$.familia_de_rol",
+      "motivo_esperado": "fuera del vocabulario cerrado"
+    },
+    {
+      "fixture": "negativos/observacion-con-campo-no-declarado.json",
+      "contrato": "observacion",
+      "descripcion": "un campo declarativo colado en la observacion: la clasificacion se deriva de eventos, no se copia de lo que la corrida declare",
+      "ruta_esperada": "$.clasificacion_declarada",
+      "motivo_esperado": "propiedad no declarada"
+    },
+    {
+      "fixture": "negativos/observacion-con-bloqueo-sin-causa.json",
+      "contrato": "observacion",
+      "descripcion": "un bloqueo sin causa escrita, indistinguible de una omision",
+      "ruta_esperada": "$.estado.causa_de_bloqueo",
+      "motivo_esperado": "falta el campo obligatorio"
+    },
+    {
+      "fixture": "negativos/preregistro-con-preregistration-commit.json",
+      "contrato": "preregistro",
+      "descripcion": "el commit que congela el pre-registro escrito por anticipado dentro del archivo que lo determina: el punto fijo que D-18 separa en dos campos distintos",
+      "ruta_esperada": "$.preregistration_commit",
+      "motivo_esperado": "propiedad no declarada"
+    },
+    {
+      "fixture": "negativos/preregistro-de-observaciones.json",
+      "contrato": "preregistro",
+      "descripcion": "congelar observaciones en vez de muestras: un conjunto que no puede predecir cuantos reintentos habra (D-12)",
+      "ruta_esperada": "$.cohorte.observaciones",
+      "motivo_esperado": "propiedad no declarada"
+    },
+    {
+      "fixture": "negativos/preregistro-sin-seleccion-por-metrica.json",
+      "contrato": "preregistro",
+      "descripcion": "la politica de reintentos sin regla de seleccion por metrica: elegir el intento favorable queda a posteriori y ninguna fila lo detecta (D-12)",
+      "ruta_esperada": "$.politica_de_reintentos.seleccion_por_metrica",
+      "motivo_esperado": "minItems"
+    },
+    {
+      "fixture": "negativos/preregistro-con-exclusion-sin-causa.json",
+      "contrato": "preregistro",
+      "descripcion": "una exclusion sin causa del conjunto cerrado (AC-16)",
+      "ruta_esperada": "$.exclusiones[0].causa_id",
+      "motivo_esperado": "falta el campo obligatorio"
+    },
+    {
+      "fixture": "negativos/preregistro-con-preflight-bloqueado-sin-causa.json",
+      "contrato": "preregistro",
+      "descripcion": "un caso bloqueado en el preflight sin causa: un bloqueo es un resultado valido, pero sin causa no se distingue de una adjudicacion faltante (D-15)",
+      "ruta_esperada": "$.recibo_del_preflight.adjudicaciones[2].causa_id",
+      "motivo_esperado": "falta el campo obligatorio"
+    },
+    {
+      "fixture": "negativos/preregistro-sin-agregacion.json",
+      "contrato": "preregistro",
+      "descripcion": "una metrica sin regla de agregacion (AC-15)",
+      "ruta_esperada": "$.metricas[0].agregacion",
+      "motivo_esperado": "falta el campo obligatorio"
+    },
+    {
+      "fixture": "negativos/bundle-con-transferido-sin-owner.json",
+      "contrato": "bundle-corrida",
+      "descripcion": "un recurso transferido sin dueno (AC-22)",
+      "ruta_esperada": "$.recursos[1].owner",
+      "motivo_esperado": "falta el campo obligatorio"
+    },
+    {
+      "fixture": "negativos/bundle-con-transferido-sin-next-action.json",
+      "contrato": "bundle-corrida",
+      "descripcion": "un recurso transferido sin proxima accion: un dueno sin proxima accion es un recurso abandonado con nombre (AC-22)",
+      "ruta_esperada": "$.recursos[1].next_action",
+      "motivo_esperado": "falta el campo obligatorio"
+    },
+    {
+      "fixture": "negativos/bundle-con-vida-y-propiedad-fundidas.json",
+      "contrato": "bundle-corrida",
+      "descripcion": "la propiedad ocupando el lugar de la vida: transferido no es un estado de vida, y fundirlos deja un proceso vivo contado como limpieza",
+      "ruta_esperada": "$.recursos[1].life_state",
+      "motivo_esperado": "fuera del vocabulario cerrado"
+    },
+    {
+      "fixture": "negativos/bundle-con-sello-sin-procedencia.json",
+      "contrato": "bundle-corrida",
+      "descripcion": "un sello sin la procedencia de la interfaz de reloj: numeros reproducibles e invalidos",
+      "ruta_esperada": "$.eventos[0].sello.procedencia",
+      "motivo_esperado": "falta el campo obligatorio"
+    },
+    {
+      "fixture": "negativos/bundle-con-sello-del-worker.json",
+      "contrato": "bundle-corrida",
+      "descripcion": "un sello bajo autoridad del worker: el tiempo que informa el worker no es una medicion del harness (AC-19)",
+      "ruta_esperada": "$.eventos[0].sello.autoridad",
+      "motivo_esperado": "se esperaba la constante"
+    },
+    {
+      "fixture": "negativos/bundle-de-sesion-sin-recibo.json",
+      "contrato": "bundle-corrida",
+      "descripcion": "un bundle del adaptador de sesion construido desde lo que la sesion declara, sin recibo de frontera: la sesion se autoatestigua (D-21)",
+      "ruta_esperada": "$.recibo_de_frontera",
+      "motivo_esperado": "falta el campo obligatorio"
+    },
+    {
+      "fixture": "negativos/bundle-con-no-aplicable-sin-causa.json",
+      "contrato": "bundle-corrida",
+      "descripcion": "una prueba de aislamiento esquivada con not_applicable sin causa verificable (AC-22)",
+      "ruta_esperada": "$.pruebas_de_aislamiento.refs_y_objetos_identicos.causa",
+      "motivo_esperado": "falta el campo obligatorio"
+    },
+    {
+      "fixture": "negativos/recibo-de-conformance-con-hash-de-preregistro.json",
+      "contrato": "recibo-frontera",
+      "descripcion": "un recibo de conformance que anticipa el hash del pre-registro, que todavia no existe y depende de el: los dos protocolos no se mezclan (D-22)",
+      "ruta_esperada": "$.recibo.preregistro_sha256",
+      "motivo_esperado": "propiedad no declarada"
+    },
+    {
+      "fixture": "negativos/recibo-de-produccion-con-hash-de-propuesta.json",
+      "contrato": "recibo-frontera",
+      "descripcion": "un recibo de produccion con el hash de la propuesta de acta: la mezcla simetrica (D-22)",
+      "ruta_esperada": "$.recibo.propuesta_de_acta_sha256",
+      "motivo_esperado": "propiedad no declarada"
+    },
+    {
+      "fixture": "negativos/recibo-con-retorno-sin-referencia.json",
+      "contrato": "recibo-frontera",
+      "descripcion": "un evento de retorno que no referencia a su apertura: dos hechos sueltos en vez de un despacho acreditado (D-22)",
+      "ruta_esperada": "$.recibo.eventos[1].referencia_evento_id",
+      "motivo_esperado": "falta el campo obligatorio"
+    },
+    {
+      "fixture": "negativos/recibo-con-apertura-que-lleva-la-sesion.json",
+      "contrato": "recibo-frontera",
+      "descripcion": "la entrada de apertura completada al retorno en vez de un segundo evento: append-only son dos entradas, no una modificada (D-22)",
+      "ruta_esperada": "$.recibo.eventos[0].session_id",
+      "motivo_esperado": "propiedad no declarada"
+    },
+    {
+      "fixture": "negativos/journal-con-anomalia-sin-candidate-id.json",
+      "contrato": "journal-anomalias",
+      "descripcion": "una anomalia sin candidate_id: dos anomalias del mismo run_id se tapan entre si al reconciliar contra el ledger (D-25)",
+      "ruta_esperada": "$.entradas[3].candidate_id",
+      "motivo_esperado": "falta el campo obligatorio"
+    },
+    {
+      "fixture": "negativos/journal-sin-terminal-referenciado.json",
+      "contrato": "journal-anomalias",
+      "descripcion": "un resultado terminal que no cierra ninguna apertura: la completitud deja de derivarse del manifest de intentos (D-25)",
+      "ruta_esperada": "$.entradas[1].referencia_entrada_id",
+      "motivo_esperado": "falta el campo obligatorio"
+    },
+    {
+      "fixture": "negativos/bundle-con-reporte-malformado-sin-causa.json",
+      "contrato": "bundle-corrida",
+      "descripcion": "un reporte que llego mal y no dice por que: indistinguible de un parser que fallo, y el eje de validez del reporte queda sin adjudicar (AC-18)",
+      "ruta_esperada": "$.reporte_del_worker.causa",
+      "motivo_esperado": "falta el campo obligatorio"
+    },
+    {
+      "fixture": "negativos/bundle-con-reporte-ausente-con-hash.json",
+      "contrato": "bundle-corrida",
+      "descripcion": "un reporte declarado ausente que igual trae su hash: la variante sin contenido no declara contenido, asi que rellenar lo que no llego no es expresable",
+      "ruta_esperada": "$.reporte_del_worker.sha256",
+      "motivo_esperado": "propiedad no declarada"
+    },
+    {
+      "fixture": "negativos/bundle-con-conformance-sin-evidencia.json",
+      "contrato": "bundle-corrida",
+      "descripcion": "conformance afirmada sin nada que mostrar: la afirmacion ocupando el lugar de la evidencia, que es de donde sale el eje de resultado semantico (AC-18)",
+      "ruta_esperada": "$.veredicto_de_conformance.evidencia",
+      "motivo_esperado": "falta el campo obligatorio"
+    }
+  ]
+}

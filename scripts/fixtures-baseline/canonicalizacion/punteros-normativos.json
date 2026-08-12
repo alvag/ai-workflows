@@ -1,0 +1,539 @@
+{
+  "descripcion": "Fixture de JSON pointers NORMATIVOS del pre-registro, externo a `scripts/preregistro.schema.json`. Enumera, por puntero de instancia, toda decisión que afecte selección, ejecución, transformación, elegibilidad, agregación o promoción (AC-17). Es externo a propósito: la completitud de la proyección canónica NO se prueba contra el schema, porque si una decisión se borra del schema Y de la proyección el conjunto esperado se reduce solo y el test sigue verde. `--autotest-canonicalizacion` lo compara contra el schema en las DOS direcciones y, además, contra la lista congelada de obligaciones de AC-17 que vive en el instrumento: una decisión borrada de los dos lados deja su obligación sin cubrir y pone el modo rojo.",
+  "como_se_agrega_un_puntero": "Un campo nuevo en el schema entra acá con su clase y —si cubre una obligación literal de AC-17— con esa obligación. Mientras no esté clasificado, el modo queda rojo: el silencio no es una clasificación. Un campo que NO decide nada se declara en `no_normativos` con su razón escrita, que es una afirmación auditable y no una omisión.",
+  "clases": {
+    "seleccion": "qué se mide: qué puntos, skills, familias y repeticiones entran a la cohorte",
+    "ejecucion": "cómo se corre: transporte, adaptador, receta, reintentos, entorno y egreso",
+    "transformacion": "cómo se convierte la evidencia en número: identidades derivadas, fórmulas y unidades",
+    "elegibilidad": "qué entra al denominador y al estrato, y qué queda excluido y por qué",
+    "agregacion": "cómo se combinan intentos y muestras en el número publicado",
+    "promocion": "qué veredicto emite la fase: umbrales, dirección, límite, composición y ausencias"
+  },
+  "obligaciones_de_ac17": {
+    "descripcion": "Las obligaciones que AC-17 nombra con todas las letras. La lista cerrada vive TAMBIÉN en `scripts/instrumento-baseline.py` (`OBLIGACIONES_DE_AC17`) y las dos se comparan en las dos direcciones: borrar una obligación exige editar dos archivos, y borrar sus punteros la deja descubierta.",
+    "nombres": [
+      "formulas",
+      "denominadores",
+      "exclusiones",
+      "cobertura_minima",
+      "reglas_de_agregacion",
+      "tratamiento_de_ausencias",
+      "recetas_de_invocacion",
+      "precision",
+      "redondeo",
+      "identidad_del_entorno"
+    ],
+    "cita": "la proyección hasheada del pre-registro cubre, por invariante cerrada, toda decisión que afecte selección, ejecución, transformación, elegibilidad, agregación o promoción —incluidas fórmulas, denominadores, exclusiones, cobertura mínima, reglas de agregación, tratamiento de ausencias, recetas de invocación, precisión y redondeo—, con esos campos enumerados en su schema",
+    "nota_sobre_precision_y_redondeo": "El schema de T1 no declara campos llamados `precision` ni `redondeo`. La cobertura es interpretativa y está escrita para poder ser desafiada: `precision` la cubren la unidad de la métrica —que es la precisión con la que se publica— y el valor del umbral —que se compara con la precisión con la que se escribió—; `redondeo` lo cubre `tratamiento_del_limite`, que decide el valor que cae justo en el umbral, que es exactamente donde el redondeo cambia el veredicto. Si el pre-registro real necesita declarar precisión y redondeo como campos propios, esta nota es el lugar donde se ve que hoy no los tiene."
+  },
+  "normativos": [
+    {
+      "puntero": "/version_schema",
+      "clase": "transformacion",
+      "obligaciones": [],
+      "por_que": "fija qué contrato interpreta el documento: leerlo con otra versión cambia qué campo significa qué"
+    },
+    {
+      "puntero": "/code_commit",
+      "clase": "ejecucion",
+      "obligaciones": [
+        "identidad_del_entorno"
+      ],
+      "por_que": "el árbol con el que corre la cohorte"
+    },
+    {
+      "puntero": "/cohorte/muestras/-/sample_id",
+      "clase": "seleccion",
+      "obligaciones": [],
+      "por_que": "la identidad de la muestra seleccionada"
+    },
+    {
+      "puntero": "/cohorte/muestras/-/punto_de_despacho",
+      "clase": "seleccion",
+      "obligaciones": [],
+      "por_que": "qué punto de la matriz se mide"
+    },
+    {
+      "puntero": "/cohorte/muestras/-/skill",
+      "clase": "seleccion",
+      "obligaciones": [],
+      "por_que": "qué skill entra a la cohorte"
+    },
+    {
+      "puntero": "/cohorte/muestras/-/familia_de_rol",
+      "clase": "seleccion",
+      "obligaciones": [],
+      "por_que": "qué familia de rol entra a la cohorte"
+    },
+    {
+      "puntero": "/cohorte/muestras/-/transporte",
+      "clase": "ejecucion",
+      "obligaciones": [],
+      "por_que": "por qué transporte se despacha"
+    },
+    {
+      "puntero": "/cohorte/muestras/-/repeticion",
+      "clase": "seleccion",
+      "obligaciones": [],
+      "por_que": "cuántas veces se mide el punto: el tamaño de la cohorte"
+    },
+    {
+      "puntero": "/cohorte/muestras/-/receta_id",
+      "clase": "ejecucion",
+      "obligaciones": [
+        "recetas_de_invocacion"
+      ],
+      "por_que": "con qué receta ejecutable corre la muestra"
+    },
+    {
+      "puntero": "/cohorte/muestras/-/adaptador",
+      "clase": "ejecucion",
+      "obligaciones": [
+        "recetas_de_invocacion"
+      ],
+      "por_que": "cuál de los dos adaptadores la ejecuta"
+    },
+    {
+      "puntero": "/cohorte/muestras/-/estrato_esperado",
+      "clase": "elegibilidad",
+      "obligaciones": [],
+      "por_que": "en qué estrato se agrega la observación y contra qué mínimo se compara"
+    },
+    {
+      "puntero": "/cohorte/muestras/-/dependencia/de_sample_id",
+      "clase": "ejecucion",
+      "obligaciones": [],
+      "por_que": "qué paso previo alimenta a este (D-17)"
+    },
+    {
+      "puntero": "/cohorte/muestras/-/dependencia/campo_de_salida",
+      "clase": "ejecucion",
+      "obligaciones": [],
+      "por_que": "qué campo del bundle previo viaja al paso siguiente"
+    },
+    {
+      "puntero": "/cohorte/muestras/-/dependencia/campo_de_entrada",
+      "clase": "ejecucion",
+      "obligaciones": [],
+      "por_que": "dónde entra ese valor en la invocación del paso siguiente"
+    },
+    {
+      "puntero": "/cohorte/muestras/-/dependencia/cardinalidad",
+      "clase": "ejecucion",
+      "obligaciones": [],
+      "por_que": "cuántos pasos previos alimentan a este"
+    },
+    {
+      "puntero": "/reglas_de_derivacion_de_identidad/attempt_id/plantilla",
+      "clase": "transformacion",
+      "obligaciones": [],
+      "por_que": "cómo se construye la identidad del intento"
+    },
+    {
+      "puntero": "/reglas_de_derivacion_de_identidad/attempt_id/componentes",
+      "clase": "transformacion",
+      "obligaciones": [],
+      "por_que": "de qué piezas se alimenta esa identidad"
+    },
+    {
+      "puntero": "/reglas_de_derivacion_de_identidad/observation_id/plantilla",
+      "clase": "transformacion",
+      "obligaciones": [],
+      "por_que": "cómo se construye la identidad de la observación"
+    },
+    {
+      "puntero": "/reglas_de_derivacion_de_identidad/observation_id/componentes",
+      "clase": "transformacion",
+      "obligaciones": [],
+      "por_que": "de qué piezas se alimenta esa identidad"
+    },
+    {
+      "puntero": "/politica_de_reintentos/disparadores",
+      "clase": "ejecucion",
+      "obligaciones": [],
+      "por_que": "por qué motivos se puede repetir un despacho"
+    },
+    {
+      "puntero": "/politica_de_reintentos/maximo_de_intentos_por_muestra",
+      "clase": "ejecucion",
+      "obligaciones": [],
+      "por_que": "cuántas veces se puede repetir"
+    },
+    {
+      "puntero": "/politica_de_reintentos/condicion_de_terminacion",
+      "clase": "ejecucion",
+      "obligaciones": [],
+      "por_que": "cuándo deja de repetirse"
+    },
+    {
+      "puntero": "/politica_de_reintentos/seleccion_por_metrica/-/metrica_id",
+      "clase": "agregacion",
+      "obligaciones": [
+        "reglas_de_agregacion"
+      ],
+      "por_que": "a qué métrica se le aplica la regla de selección entre intentos"
+    },
+    {
+      "puntero": "/politica_de_reintentos/seleccion_por_metrica/-/regla",
+      "clase": "agregacion",
+      "obligaciones": [
+        "reglas_de_agregacion"
+      ],
+      "por_que": "con qué intento se publica esa métrica: elegirlo después de ver los números es lo que congelar la política impide"
+    },
+    {
+      "puntero": "/metricas/-/metrica_id",
+      "clase": "transformacion",
+      "obligaciones": [],
+      "por_que": "qué métrica se calcula"
+    },
+    {
+      "puntero": "/metricas/-/categoria",
+      "clase": "transformacion",
+      "obligaciones": [],
+      "por_que": "en qué categoría obligatoria cae"
+    },
+    {
+      "puntero": "/metricas/-/formula_id",
+      "clase": "transformacion",
+      "obligaciones": [
+        "formulas"
+      ],
+      "por_que": "con qué fórmula del vocabulario cerrado se calcula"
+    },
+    {
+      "puntero": "/metricas/-/unidad",
+      "clase": "transformacion",
+      "obligaciones": [
+        "precision"
+      ],
+      "por_que": "en qué unidad se publica: la unidad es la precisión declarada del número"
+    },
+    {
+      "puntero": "/metricas/-/agregacion",
+      "clase": "agregacion",
+      "obligaciones": [
+        "reglas_de_agregacion"
+      ],
+      "por_que": "con qué regla se agregan las muestras"
+    },
+    {
+      "puntero": "/metricas/-/numerador",
+      "clase": "transformacion",
+      "obligaciones": [
+        "formulas"
+      ],
+      "por_que": "qué se cuenta arriba en una tasa"
+    },
+    {
+      "puntero": "/metricas/-/denominador",
+      "clase": "transformacion",
+      "obligaciones": [
+        "denominadores"
+      ],
+      "por_que": "qué población va abajo: sin declararlo la tasa no es auditable"
+    },
+    {
+      "puntero": "/metricas/-/regla_de_elegibilidad",
+      "clase": "elegibilidad",
+      "obligaciones": [],
+      "por_que": "qué muestras entran al denominador"
+    },
+    {
+      "puntero": "/fases_comprometidas/-/fase_id",
+      "clase": "promocion",
+      "obligaciones": [],
+      "por_que": "de qué fase es el veredicto"
+    },
+    {
+      "puntero": "/fases_comprometidas/-/metricas_obligatorias",
+      "clase": "promocion",
+      "obligaciones": [],
+      "por_que": "qué métricas tienen que existir para promover"
+    },
+    {
+      "puntero": "/fases_comprometidas/-/umbrales/-/metrica_id",
+      "clase": "promocion",
+      "obligaciones": [],
+      "por_que": "a qué métrica se le aplica el umbral"
+    },
+    {
+      "puntero": "/fases_comprometidas/-/umbrales/-/direccion",
+      "clase": "promocion",
+      "obligaciones": [],
+      "por_que": "de qué lado del umbral se promueve"
+    },
+    {
+      "puntero": "/fases_comprometidas/-/umbrales/-/valor",
+      "clase": "promocion",
+      "obligaciones": [
+        "precision"
+      ],
+      "por_que": "el número contra el que se compara, con la precisión con la que se escribió"
+    },
+    {
+      "puntero": "/fases_comprometidas/-/umbrales/-/tratamiento_del_limite",
+      "clase": "promocion",
+      "obligaciones": [
+        "redondeo"
+      ],
+      "por_que": "qué pasa con el valor que cae justo en el umbral: es donde el redondeo cambia el veredicto"
+    },
+    {
+      "puntero": "/fases_comprometidas/-/composicion",
+      "clase": "promocion",
+      "obligaciones": [],
+      "por_que": "cómo se componen varios umbrales concurrentes"
+    },
+    {
+      "puntero": "/fases_comprometidas/-/efecto_de_la_ausencia",
+      "clase": "promocion",
+      "obligaciones": [
+        "tratamiento_de_ausencias"
+      ],
+      "por_que": "qué veredicto emite una métrica obligatoria sin observaciones (AC-21)"
+    },
+    {
+      "puntero": "/cobertura/puntos_observados",
+      "clase": "seleccion",
+      "obligaciones": [],
+      "por_que": "qué puntos declara observar la cohorte"
+    },
+    {
+      "puntero": "/cobertura/puntos_no_observados",
+      "clase": "seleccion",
+      "obligaciones": [
+        "exclusiones"
+      ],
+      "por_que": "qué puntos declara no observar"
+    },
+    {
+      "puntero": "/cobertura/skills_observadas",
+      "clase": "seleccion",
+      "obligaciones": [],
+      "por_que": "qué skills declara observar"
+    },
+    {
+      "puntero": "/cobertura/skills_no_observadas",
+      "clase": "seleccion",
+      "obligaciones": [
+        "exclusiones"
+      ],
+      "por_que": "qué skills declara no observar"
+    },
+    {
+      "puntero": "/cobertura/familias_observadas",
+      "clase": "seleccion",
+      "obligaciones": [],
+      "por_que": "qué familias de rol declara observar"
+    },
+    {
+      "puntero": "/cobertura/familias_no_observadas",
+      "clase": "seleccion",
+      "obligaciones": [
+        "exclusiones"
+      ],
+      "por_que": "qué familias de rol declara no observar"
+    },
+    {
+      "puntero": "/cobertura/minima_por_metrica_y_estrato/-/metrica_id",
+      "clase": "elegibilidad",
+      "obligaciones": [
+        "cobertura_minima"
+      ],
+      "por_que": "a qué métrica se le exige la cobertura mínima"
+    },
+    {
+      "puntero": "/cobertura/minima_por_metrica_y_estrato/-/estrato",
+      "clase": "elegibilidad",
+      "obligaciones": [
+        "cobertura_minima"
+      ],
+      "por_que": "en qué estrato se exige"
+    },
+    {
+      "puntero": "/cobertura/minima_por_metrica_y_estrato/-/minimo_de_muestras",
+      "clase": "elegibilidad",
+      "obligaciones": [
+        "cobertura_minima"
+      ],
+      "por_que": "cuántas muestras hacen falta para que la métrica sea publicable"
+    },
+    {
+      "puntero": "/causas_admisibles_de_exclusion/-/causa_id",
+      "clase": "elegibilidad",
+      "obligaciones": [
+        "exclusiones"
+      ],
+      "por_que": "la identidad de una causa del conjunto cerrado (AC-16)"
+    },
+    {
+      "puntero": "/causas_admisibles_de_exclusion/-/descripcion",
+      "clase": "elegibilidad",
+      "obligaciones": [
+        "exclusiones"
+      ],
+      "por_que": "qué significa esa causa: es lo que decide si una exclusión cae dentro o fuera del conjunto"
+    },
+    {
+      "puntero": "/exclusiones/-/ambito",
+      "clase": "elegibilidad",
+      "obligaciones": [
+        "exclusiones"
+      ],
+      "por_que": "sobre qué dimensión se excluye"
+    },
+    {
+      "puntero": "/exclusiones/-/identidad",
+      "clase": "elegibilidad",
+      "obligaciones": [
+        "exclusiones"
+      ],
+      "por_que": "qué se excluye dentro de esa dimensión"
+    },
+    {
+      "puntero": "/exclusiones/-/causa_id",
+      "clase": "elegibilidad",
+      "obligaciones": [
+        "exclusiones"
+      ],
+      "por_que": "con qué causa del conjunto cerrado se excluye"
+    },
+    {
+      "puntero": "/entorno_esperado/arbol_limpio_exigido",
+      "clase": "ejecucion",
+      "obligaciones": [
+        "identidad_del_entorno"
+      ],
+      "por_que": "si la corrida exige árbol limpio"
+    },
+    {
+      "puntero": "/entorno_esperado/matriz_sha256",
+      "clase": "ejecucion",
+      "obligaciones": [
+        "identidad_del_entorno"
+      ],
+      "por_que": "qué matriz de despachos se congeló"
+    },
+    {
+      "puntero": "/entorno_esperado/instrumento_sha256",
+      "clase": "ejecucion",
+      "obligaciones": [
+        "identidad_del_entorno"
+      ],
+      "por_que": "qué instrumento se congeló"
+    },
+    {
+      "puntero": "/entorno_esperado/runner_sha256",
+      "clase": "ejecucion",
+      "obligaciones": [
+        "identidad_del_entorno"
+      ],
+      "por_que": "qué runner se congeló"
+    },
+    {
+      "puntero": "/entorno_esperado/version_cli",
+      "clase": "ejecucion",
+      "obligaciones": [
+        "identidad_del_entorno"
+      ],
+      "por_que": "con qué CLI corre la cohorte"
+    },
+    {
+      "puntero": "/entorno_esperado/version_runtime",
+      "clase": "ejecucion",
+      "obligaciones": [
+        "identidad_del_entorno"
+      ],
+      "por_que": "con qué runtime corre la cohorte"
+    },
+    {
+      "puntero": "/entorno_esperado/hooks",
+      "clase": "ejecucion",
+      "obligaciones": [
+        "identidad_del_entorno"
+      ],
+      "por_que": "qué hooks pueden alterar una corrida: vacío es una declaración, no una omisión"
+    },
+    {
+      "puntero": "/entorno_esperado/ejecutor_esperado",
+      "clase": "ejecucion",
+      "obligaciones": [
+        "identidad_del_entorno"
+      ],
+      "por_que": "el perfil del ejecutor, distinto de la identidad del worker"
+    },
+    {
+      "puntero": "/entorno_esperado/transportes_admitidos",
+      "clase": "ejecucion",
+      "obligaciones": [
+        "identidad_del_entorno"
+      ],
+      "por_que": "qué transportes admite la corrida"
+    },
+    {
+      "puntero": "/inventario_de_egreso/inventario_sha256",
+      "clase": "ejecucion",
+      "obligaciones": [],
+      "por_que": "el hash del inventario materializado que cada corrida reejecuta y compara"
+    },
+    {
+      "puntero": "/inventario_de_egreso/superficies/-/superficie_id",
+      "clase": "ejecucion",
+      "obligaciones": [],
+      "por_que": "la identidad de una superficie de egreso"
+    },
+    {
+      "puntero": "/inventario_de_egreso/superficies/-/clase",
+      "clase": "ejecucion",
+      "obligaciones": [],
+      "por_que": "de qué clase de canal es"
+    },
+    {
+      "puntero": "/inventario_de_egreso/superficies/-/descripcion",
+      "clase": "ejecucion",
+      "obligaciones": [],
+      "por_que": "qué es y cómo se retira o redirige"
+    },
+    {
+      "puntero": "/recibo_del_preflight/recibo_sha256",
+      "clase": "elegibilidad",
+      "obligaciones": [],
+      "por_que": "el recibo del preflight que el gate aprobó (D-14)"
+    },
+    {
+      "puntero": "/recibo_del_preflight/adjudicaciones/-/receta_id",
+      "clase": "elegibilidad",
+      "obligaciones": [
+        "recetas_de_invocacion"
+      ],
+      "por_que": "qué receta adjudicó el preflight"
+    },
+    {
+      "puntero": "/recibo_del_preflight/adjudicaciones/-/adjudicacion",
+      "clase": "elegibilidad",
+      "obligaciones": [],
+      "por_que": "si esa receta es ejecutable o queda bloqueada"
+    },
+    {
+      "puntero": "/recibo_del_preflight/adjudicaciones/-/causa_id",
+      "clase": "elegibilidad",
+      "obligaciones": [
+        "exclusiones"
+      ],
+      "por_que": "con qué causa del conjunto cerrado quedó bloqueada"
+    },
+    {
+      "puntero": "/recibo_del_preflight/recibos_de_frontera_de_conformance",
+      "clase": "ejecucion",
+      "obligaciones": [],
+      "por_que": "qué recibos de conformance emitió el despacho desechable del preflight (D-22)"
+    }
+  ],
+  "no_normativos": [
+    {
+      "puntero": "/preregistro_sha256",
+      "razon": "es el campo del hash: la proyección canónica lo excluye, porque calcular el SHA-256 del contenido y escribirlo dentro de ese mismo contenido pide un punto fijo criptográfico (decisión heredada 15)"
+    }
+  ]
+}

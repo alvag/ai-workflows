@@ -1,0 +1,41 @@
+{
+  "descripcion": "Manifest INDEPENDIENTE del corpus del journal. Declara los intentos esperados —contra los que se deriva la completitud— y, por cada mutante de D-25, la clase de anomalía que tiene que quedar registrada. La completitud NO se deriva de las entradas que el journal resulte tener: un journal que se validara contra sí mismo daría verde omitiendo una anomalía.",
+  "intento": {
+    "sample_id": "mst-journal-r1",
+    "attempt_id": "int-mst-journal-r1-a1",
+    "attempt_ordinal": 1,
+    "preregistro_sha256": "05d883a1693e2902e413e14c170e96f7474a7e4a17d69b17150883ba179b31f1"
+  },
+  "mutantes": [
+    {
+      "clave": "fallo-anterior-al-bundle",
+      "receta": "jr-sano",
+      "como_se_provoca": "se corre sin el hash del pre-registro congelado, así que la corrida se rechaza antes de llegar al bundle",
+      "clase_esperada": "fallo_previo_al_bundle",
+      "operacion_esperada": "captura_de_evidencia"
+    },
+    {
+      "clave": "sanitizacion-rechazada",
+      "receta": "jr-salida-con-secreto",
+      "como_se_provoca": "el despacho devuelve una salida con un token adentro, y el pipeline la rechaza en vez de importarla",
+      "clase_esperada": "sanitizacion_rechazada",
+      "operacion_esperada": "sanitizacion"
+    },
+    {
+      "clave": "caida-durante-la-construccion",
+      "receta": "jr-sin-accion",
+      "como_se_provoca": "la receta de sesión no declara `accion`, así que la construcción del bundle revienta con una excepción que el runner no previó",
+      "clase_esperada": "caida_durante_la_construccion",
+      "operacion_esperada": "construccion_del_bundle"
+    }
+  ],
+  "intentos_esperados": [
+    {"sample_id": "mst-journal-r1", "attempt_id": "int-mst-journal-r1-a1"}
+  ],
+  "clases_ejercidas": [
+    "fallo_previo_al_bundle",
+    "sanitizacion_rechazada",
+    "caida_durante_la_construccion"
+  ],
+  "por_que_solo_tres_de_las_cinco_clases": "El conjunto cerrado del contrato tiene cinco clases. Tres son los mutantes que D-25 nombra y se ejercen acá. `recibo_de_frontera_invalido` lo ejerce el corpus de adaptadores, donde vive el recibo y sus ocho ataques; `excepcion_del_recolector` la ejerce el recolector, que es del instrumento y no de este archivo. Declararlo acá es lo que impide que su ausencia se lea como un hueco."
+}

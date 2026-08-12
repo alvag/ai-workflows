@@ -1,0 +1,995 @@
+{
+  "que_declara": "Los casos del corpus de T15. Cada uno se deriva del caso sano alterando UN punto, así que la única diferencia entre el positivo y cada negativo es la que el manifest declara y una cláusula que cayera por otra causa se ve en el acto.",
+  "casos": {
+    "c-hash-falseado": {
+      "hash_falseado": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    "c-sin-commitear": {
+      "sin_commitear": true
+    },
+    "c-commit-intermedio": {
+      "intermedio": true
+    },
+    "c-cambio-ajeno": {
+      "cambio_ajeno": true
+    },
+    "c-corrida-anterior": {
+      "corridas": [
+        {
+          "run_id": "run-antes",
+          "inicio": "2026-01-01T12:00:00Z"
+        }
+      ]
+    },
+    "c-corrida-con-otro-congelamiento": {
+      "corridas": [
+        {
+          "run_id": "run-otro-acta",
+          "inicio": "2026-01-03T09:00:00Z",
+          "preregistration_commit": "0123456789abcdef0123456789abcdef01234567"
+        }
+      ]
+    },
+    "c-cohorte-vacia": {
+      "cohorte_vacia": true
+    },
+    "c-muestras-duplicadas": {
+      "muestras_extra": [
+        {
+          "sample_id": "mst-co-explore-fan-out-dual-r1-bis",
+          "punto_de_despacho": "co-explore-fan-out-dual",
+          "repeticion": 1
+        }
+      ]
+    },
+    "m-otro-preregistro": {
+      "observaciones": [
+        {
+          "observation_id": "obs-mst-sdd-flow-analyze-exploracion-r1-a1",
+          "sample_id": "mst-sdd-flow-analyze-exploracion-r1",
+          "attempt_id": "int-mst-sdd-flow-analyze-exploracion-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-sdd-flow-implementer-por-task-r1-a1",
+          "sample_id": "mst-sdd-flow-implementer-por-task-r1",
+          "attempt_id": "int-mst-sdd-flow-implementer-por-task-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-sdd-flow-reviewer-por-task-r1-a1",
+          "sample_id": "mst-sdd-flow-reviewer-por-task-r1",
+          "attempt_id": "int-mst-sdd-flow-reviewer-por-task-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-sdd-flow-revision-final-de-diff-r1-a1",
+          "sample_id": "mst-sdd-flow-revision-final-de-diff-r1",
+          "attempt_id": "int-mst-sdd-flow-revision-final-de-diff-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-bitbucket-code-review-panel-de-revisores-r1-a1",
+          "sample_id": "mst-bitbucket-code-review-panel-de-revisores-r1",
+          "attempt_id": "int-mst-bitbucket-code-review-panel-de-revisores-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-bitbucket-code-review-validador-adversarial-r1-a1",
+          "sample_id": "mst-bitbucket-code-review-validador-adversarial-r1",
+          "attempt_id": "int-mst-bitbucket-code-review-validador-adversarial-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-co-explore-fan-out-dual-r1-a1",
+          "sample_id": "mst-co-explore-fan-out-dual-r1",
+          "attempt_id": "int-mst-co-explore-fan-out-dual-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-co-explore-worker-por-ronda-de-debate-r1-a1",
+          "sample_id": "mst-co-explore-worker-por-ronda-de-debate-r1",
+          "attempt_id": "int-mst-co-explore-worker-por-ronda-de-debate-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-cross-implement-implementador-inicial-r1-a1",
+          "sample_id": "mst-cross-implement-implementador-inicial-r1",
+          "attempt_id": "int-mst-cross-implement-implementador-inicial-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-cross-implement-ronda-de-fix-loop-r1-a1",
+          "sample_id": "mst-cross-implement-ronda-de-fix-loop-r1",
+          "attempt_id": "int-mst-cross-implement-ronda-de-fix-loop-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-cross-review-revisor-por-ronda-r1-a1",
+          "sample_id": "mst-cross-review-revisor-por-ronda-r1",
+          "attempt_id": "int-mst-cross-review-revisor-por-ronda-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-sdd-orchestrator-fan-out-por-repo-r1-a1",
+          "sample_id": "mst-sdd-orchestrator-fan-out-por-repo-r1",
+          "attempt_id": "int-mst-sdd-orchestrator-fan-out-por-repo-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-sdd-flow-analyze-exploracion-r1-a2",
+          "sample_id": "mst-sdd-flow-analyze-exploracion-r1",
+          "attempt_id": "int-mst-sdd-flow-analyze-exploracion-r1-a2",
+          "attempt_ordinal": 2,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          },
+          "preregistro_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        }
+      ]
+    },
+    "m-muestra-faltante": {
+      "observaciones": [
+        {
+          "observation_id": "obs-mst-sdd-flow-implementer-por-task-r1-a1",
+          "sample_id": "mst-sdd-flow-implementer-por-task-r1",
+          "attempt_id": "int-mst-sdd-flow-implementer-por-task-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-sdd-flow-reviewer-por-task-r1-a1",
+          "sample_id": "mst-sdd-flow-reviewer-por-task-r1",
+          "attempt_id": "int-mst-sdd-flow-reviewer-por-task-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-sdd-flow-revision-final-de-diff-r1-a1",
+          "sample_id": "mst-sdd-flow-revision-final-de-diff-r1",
+          "attempt_id": "int-mst-sdd-flow-revision-final-de-diff-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-bitbucket-code-review-panel-de-revisores-r1-a1",
+          "sample_id": "mst-bitbucket-code-review-panel-de-revisores-r1",
+          "attempt_id": "int-mst-bitbucket-code-review-panel-de-revisores-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-bitbucket-code-review-validador-adversarial-r1-a1",
+          "sample_id": "mst-bitbucket-code-review-validador-adversarial-r1",
+          "attempt_id": "int-mst-bitbucket-code-review-validador-adversarial-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-co-explore-fan-out-dual-r1-a1",
+          "sample_id": "mst-co-explore-fan-out-dual-r1",
+          "attempt_id": "int-mst-co-explore-fan-out-dual-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-co-explore-worker-por-ronda-de-debate-r1-a1",
+          "sample_id": "mst-co-explore-worker-por-ronda-de-debate-r1",
+          "attempt_id": "int-mst-co-explore-worker-por-ronda-de-debate-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-cross-implement-implementador-inicial-r1-a1",
+          "sample_id": "mst-cross-implement-implementador-inicial-r1",
+          "attempt_id": "int-mst-cross-implement-implementador-inicial-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-cross-implement-ronda-de-fix-loop-r1-a1",
+          "sample_id": "mst-cross-implement-ronda-de-fix-loop-r1",
+          "attempt_id": "int-mst-cross-implement-ronda-de-fix-loop-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-cross-review-revisor-por-ronda-r1-a1",
+          "sample_id": "mst-cross-review-revisor-por-ronda-r1",
+          "attempt_id": "int-mst-cross-review-revisor-por-ronda-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-sdd-orchestrator-fan-out-por-repo-r1-a1",
+          "sample_id": "mst-sdd-orchestrator-fan-out-por-repo-r1",
+          "attempt_id": "int-mst-sdd-orchestrator-fan-out-por-repo-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        }
+      ],
+      "manifest_de_intentos": {
+        "intentos": [
+          {
+            "sample_id": "mst-sdd-flow-implementer-por-task-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-sdd-flow-reviewer-por-task-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-sdd-flow-revision-final-de-diff-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-bitbucket-code-review-panel-de-revisores-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-bitbucket-code-review-validador-adversarial-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-co-explore-fan-out-dual-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-co-explore-worker-por-ronda-de-debate-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-cross-implement-implementador-inicial-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-cross-implement-ronda-de-fix-loop-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-cross-review-revisor-por-ronda-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-sdd-orchestrator-fan-out-por-repo-r1",
+            "attempt_ordinal": 1
+          }
+        ]
+      }
+    },
+    "m-muestra-sobrante": {
+      "observaciones": [
+        {
+          "observation_id": "obs-mst-sdd-flow-analyze-exploracion-r1-a1",
+          "sample_id": "mst-sdd-flow-analyze-exploracion-r1",
+          "attempt_id": "int-mst-sdd-flow-analyze-exploracion-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-sdd-flow-implementer-por-task-r1-a1",
+          "sample_id": "mst-sdd-flow-implementer-por-task-r1",
+          "attempt_id": "int-mst-sdd-flow-implementer-por-task-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-sdd-flow-reviewer-por-task-r1-a1",
+          "sample_id": "mst-sdd-flow-reviewer-por-task-r1",
+          "attempt_id": "int-mst-sdd-flow-reviewer-por-task-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-sdd-flow-revision-final-de-diff-r1-a1",
+          "sample_id": "mst-sdd-flow-revision-final-de-diff-r1",
+          "attempt_id": "int-mst-sdd-flow-revision-final-de-diff-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-bitbucket-code-review-panel-de-revisores-r1-a1",
+          "sample_id": "mst-bitbucket-code-review-panel-de-revisores-r1",
+          "attempt_id": "int-mst-bitbucket-code-review-panel-de-revisores-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-bitbucket-code-review-validador-adversarial-r1-a1",
+          "sample_id": "mst-bitbucket-code-review-validador-adversarial-r1",
+          "attempt_id": "int-mst-bitbucket-code-review-validador-adversarial-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-co-explore-fan-out-dual-r1-a1",
+          "sample_id": "mst-co-explore-fan-out-dual-r1",
+          "attempt_id": "int-mst-co-explore-fan-out-dual-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-co-explore-worker-por-ronda-de-debate-r1-a1",
+          "sample_id": "mst-co-explore-worker-por-ronda-de-debate-r1",
+          "attempt_id": "int-mst-co-explore-worker-por-ronda-de-debate-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-cross-implement-implementador-inicial-r1-a1",
+          "sample_id": "mst-cross-implement-implementador-inicial-r1",
+          "attempt_id": "int-mst-cross-implement-implementador-inicial-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-cross-implement-ronda-de-fix-loop-r1-a1",
+          "sample_id": "mst-cross-implement-ronda-de-fix-loop-r1",
+          "attempt_id": "int-mst-cross-implement-ronda-de-fix-loop-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-cross-review-revisor-por-ronda-r1-a1",
+          "sample_id": "mst-cross-review-revisor-por-ronda-r1",
+          "attempt_id": "int-mst-cross-review-revisor-por-ronda-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-sdd-orchestrator-fan-out-por-repo-r1-a1",
+          "sample_id": "mst-sdd-orchestrator-fan-out-por-repo-r1",
+          "attempt_id": "int-mst-sdd-orchestrator-fan-out-por-repo-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-punto-que-el-acta-no-congela-r1-a1",
+          "sample_id": "mst-punto-que-el-acta-no-congela-r1",
+          "attempt_id": "int-mst-punto-que-el-acta-no-congela-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        }
+      ],
+      "manifest_de_intentos": {
+        "intentos": [
+          {
+            "sample_id": "mst-sdd-flow-analyze-exploracion-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-sdd-flow-implementer-por-task-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-sdd-flow-reviewer-por-task-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-sdd-flow-revision-final-de-diff-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-bitbucket-code-review-panel-de-revisores-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-bitbucket-code-review-validador-adversarial-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-co-explore-fan-out-dual-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-co-explore-worker-por-ronda-de-debate-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-cross-implement-implementador-inicial-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-cross-implement-ronda-de-fix-loop-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-cross-review-revisor-por-ronda-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-sdd-orchestrator-fan-out-por-repo-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-punto-que-el-acta-no-congela-r1",
+            "attempt_ordinal": 1
+          }
+        ]
+      }
+    },
+    "m-cadena-rota": {
+      "manifest_de_intentos": {
+        "intentos": [
+          {
+            "sample_id": "mst-sdd-flow-analyze-exploracion-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-sdd-flow-implementer-por-task-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-sdd-flow-reviewer-por-task-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-sdd-flow-revision-final-de-diff-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-bitbucket-code-review-panel-de-revisores-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-bitbucket-code-review-validador-adversarial-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-co-explore-fan-out-dual-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-co-explore-worker-por-ronda-de-debate-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-cross-implement-implementador-inicial-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-cross-implement-ronda-de-fix-loop-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-cross-review-revisor-por-ronda-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-sdd-orchestrator-fan-out-por-repo-r1",
+            "attempt_ordinal": 1
+          },
+          {
+            "sample_id": "mst-sdd-flow-analyze-exploracion-r1",
+            "attempt_ordinal": 2
+          }
+        ]
+      }
+    },
+    "m-identidad-fuera-de-la-regla": {
+      "observaciones": [
+        {
+          "observation_id": "obs-mst-sdd-flow-analyze-exploracion-r1-a1",
+          "sample_id": "mst-sdd-flow-analyze-exploracion-r1",
+          "attempt_id": "int-inventado-a9",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-sdd-flow-implementer-por-task-r1-a1",
+          "sample_id": "mst-sdd-flow-implementer-por-task-r1",
+          "attempt_id": "int-mst-sdd-flow-implementer-por-task-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-sdd-flow-reviewer-por-task-r1-a1",
+          "sample_id": "mst-sdd-flow-reviewer-por-task-r1",
+          "attempt_id": "int-mst-sdd-flow-reviewer-por-task-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-sdd-flow-revision-final-de-diff-r1-a1",
+          "sample_id": "mst-sdd-flow-revision-final-de-diff-r1",
+          "attempt_id": "int-mst-sdd-flow-revision-final-de-diff-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-bitbucket-code-review-panel-de-revisores-r1-a1",
+          "sample_id": "mst-bitbucket-code-review-panel-de-revisores-r1",
+          "attempt_id": "int-mst-bitbucket-code-review-panel-de-revisores-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-bitbucket-code-review-validador-adversarial-r1-a1",
+          "sample_id": "mst-bitbucket-code-review-validador-adversarial-r1",
+          "attempt_id": "int-mst-bitbucket-code-review-validador-adversarial-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-co-explore-fan-out-dual-r1-a1",
+          "sample_id": "mst-co-explore-fan-out-dual-r1",
+          "attempt_id": "int-mst-co-explore-fan-out-dual-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-co-explore-worker-por-ronda-de-debate-r1-a1",
+          "sample_id": "mst-co-explore-worker-por-ronda-de-debate-r1",
+          "attempt_id": "int-mst-co-explore-worker-por-ronda-de-debate-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-cross-implement-implementador-inicial-r1-a1",
+          "sample_id": "mst-cross-implement-implementador-inicial-r1",
+          "attempt_id": "int-mst-cross-implement-implementador-inicial-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-cross-implement-ronda-de-fix-loop-r1-a1",
+          "sample_id": "mst-cross-implement-ronda-de-fix-loop-r1",
+          "attempt_id": "int-mst-cross-implement-ronda-de-fix-loop-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-cross-review-revisor-por-ronda-r1-a1",
+          "sample_id": "mst-cross-review-revisor-por-ronda-r1",
+          "attempt_id": "int-mst-cross-review-revisor-por-ronda-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-sdd-orchestrator-fan-out-por-repo-r1-a1",
+          "sample_id": "mst-sdd-orchestrator-fan-out-por-repo-r1",
+          "attempt_id": "int-mst-sdd-orchestrator-fan-out-por-repo-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        }
+      ]
+    },
+    "m-dependencia-rota": {
+      "dependencias": {
+        "mst-cross-implement-ronda-de-fix-loop-r1": {
+          "de_sample_id": "mst-paso-que-nadie-congelo-r1",
+          "campo_de_salida": "session_id",
+          "campo_de_entrada": "sesion_a_reanudar",
+          "cardinalidad": 1
+        }
+      }
+    },
+    "m-conjunto-vacio": {
+      "cohorte_vacia": true,
+      "observaciones": [],
+      "manifest_de_intentos": {
+        "intentos": [],
+        "repeticiones_por_punto": {}
+      }
+    },
+    "c-corrida-anterior-en-otra-zona": {
+      "fecha_de_congelamiento": "2026-01-02T00:00:00-03:00",
+      "corridas": [
+        {
+          "run_id": "run-otra-zona",
+          "inicio": "2026-01-02T01:00:00Z"
+        }
+      ]
+    },
+    "m-cardinalidad-incumplida": {
+      "dependencias": {
+        "mst-cross-implement-ronda-de-fix-loop-r1": {
+          "de_sample_id": "mst-cross-implement-implementador-inicial-r1",
+          "campo_de_salida": "session_id",
+          "campo_de_entrada": "sesion_a_reanudar",
+          "cardinalidad": 2
+        }
+      }
+    },
+    "m-entorno-divergente-incorporado": {
+      "observaciones": [
+        {
+          "observation_id": "obs-mst-sdd-flow-analyze-exploracion-r1-a1",
+          "sample_id": "mst-sdd-flow-analyze-exploracion-r1",
+          "attempt_id": "int-mst-sdd-flow-analyze-exploracion-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          },
+          "procedencia": {
+            "run_id": "run-instrumento-distinto",
+            "bundle_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        },
+        {
+          "observation_id": "obs-mst-sdd-flow-implementer-por-task-r1-a1",
+          "sample_id": "mst-sdd-flow-implementer-por-task-r1",
+          "attempt_id": "int-mst-sdd-flow-implementer-por-task-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-sdd-flow-reviewer-por-task-r1-a1",
+          "sample_id": "mst-sdd-flow-reviewer-por-task-r1",
+          "attempt_id": "int-mst-sdd-flow-reviewer-por-task-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-sdd-flow-revision-final-de-diff-r1-a1",
+          "sample_id": "mst-sdd-flow-revision-final-de-diff-r1",
+          "attempt_id": "int-mst-sdd-flow-revision-final-de-diff-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-bitbucket-code-review-panel-de-revisores-r1-a1",
+          "sample_id": "mst-bitbucket-code-review-panel-de-revisores-r1",
+          "attempt_id": "int-mst-bitbucket-code-review-panel-de-revisores-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-bitbucket-code-review-validador-adversarial-r1-a1",
+          "sample_id": "mst-bitbucket-code-review-validador-adversarial-r1",
+          "attempt_id": "int-mst-bitbucket-code-review-validador-adversarial-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-co-explore-fan-out-dual-r1-a1",
+          "sample_id": "mst-co-explore-fan-out-dual-r1",
+          "attempt_id": "int-mst-co-explore-fan-out-dual-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-co-explore-worker-por-ronda-de-debate-r1-a1",
+          "sample_id": "mst-co-explore-worker-por-ronda-de-debate-r1",
+          "attempt_id": "int-mst-co-explore-worker-por-ronda-de-debate-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-cross-implement-implementador-inicial-r1-a1",
+          "sample_id": "mst-cross-implement-implementador-inicial-r1",
+          "attempt_id": "int-mst-cross-implement-implementador-inicial-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-cross-implement-ronda-de-fix-loop-r1-a1",
+          "sample_id": "mst-cross-implement-ronda-de-fix-loop-r1",
+          "attempt_id": "int-mst-cross-implement-ronda-de-fix-loop-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-cross-review-revisor-por-ronda-r1-a1",
+          "sample_id": "mst-cross-review-revisor-por-ronda-r1",
+          "attempt_id": "int-mst-cross-review-revisor-por-ronda-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        },
+        {
+          "observation_id": "obs-mst-sdd-orchestrator-fan-out-por-repo-r1-a1",
+          "sample_id": "mst-sdd-orchestrator-fan-out-por-repo-r1",
+          "attempt_id": "int-mst-sdd-orchestrator-fan-out-por-repo-r1-a1",
+          "attempt_ordinal": 1,
+          "estado": {
+            "ciclo_operativo": "completado",
+            "validez_del_reporte": "valido",
+            "resultado_semantico": "correcto"
+          }
+        }
+      ],
+      "bundles": {
+        "run-instrumento-distinto": {
+          "run_id": "run-instrumento-distinto",
+          "transporte": "cli-exec",
+          "eventos": [],
+          "identidad_del_entorno": {
+            "code_commit": "6ebf46f",
+            "preregistration_commit": "3dd1ee4",
+            "arbol_limpio": true,
+            "matriz_sha256": "a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718a1b2c3d4e5f60718",
+            "instrumento_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "runner_sha256": "1122334455667788112233445566778811223344556677881122334455667788",
+            "version_cli": "codex 0.146.1",
+            "version_runtime": "python 3.13",
+            "hooks": [
+              "stop-hook del conductor, declarado y desactivado"
+            ],
+            "ejecutor": {
+              "perfil_esperado": "conductor local sin hooks de sesión",
+              "instancia_efectiva": {
+                "estado": "expuesto",
+                "valor": "conductor-local-01"
+              }
+            },
+            "eventos_de_intervencion_humana": [
+              "evt-confirmacion"
+            ],
+            "modelo": {
+              "solicitado": {
+                "estado": "expuesto",
+                "valor": "gpt-5-codex"
+              },
+              "efectivo": {
+                "estado": "expuesto",
+                "valor": "gpt-5-codex"
+              }
+            }
+          }
+        }
+      }
+    },
+    "m-seleccion-declarada-fuera-de-su-modo": {
+      "manifest_de_intentos": {
+        "selecciones_esperadas": [
+          {
+            "sample_id": "mst-co-explore-fan-out-dual-r1",
+            "metrica_id": "tasa-de-degradacion",
+            "valor_esperado": 0.0
+          }
+        ]
+      }
+    },
+    "c-sin-code-commit": {
+      "code_commit_borrado": true
+    }
+  }
+}

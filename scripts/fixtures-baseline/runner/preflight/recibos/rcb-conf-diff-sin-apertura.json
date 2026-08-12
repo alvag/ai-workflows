@@ -1,0 +1,36 @@
+{
+  "version_schema": "1.0.0",
+  "recibo": {
+    "protocolo": "conformance",
+    "recibo_id": "rcb-conf-diff-sin-apertura",
+    "punto_de_despacho": "sdd-flow-revision-final-de-diff",
+    "propuesta_de_acta_sha256": "f26175d1644e786cbf35049021669417e1595263eab51e4a94176793abf7df36",
+    "eventos": [
+      {
+        "evento": "dispatch_returned",
+        "evento_id": "evt-conf-diff-retorno",
+        "referencia_evento_id": "evt-conf-diff-apertura-que-nunca-se-emitio",
+        "session_id": {
+          "estado": "expuesto",
+          "valor": "sesion-reconstruida"
+        },
+        "modelo_o_familia": {
+          "estado": "no_expuesto",
+          "adjudicacion": "bloqueo"
+        },
+        "terminal": {
+          "estado": "expuesto",
+          "valor": "completado"
+        },
+        "salida_sha256": "6976b1f0db79ccc595cf2ad63a6c197fba510d12ba67c2d8ddad560beb241186",
+        "sello": {
+          "valor_ns": 9000000000,
+          "fuente": "reloj_monotonico_del_harness",
+          "autoridad": "harness",
+          "precision_ns": 1000,
+          "procedencia": "time.monotonic_ns del proceso del runner"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,2 @@
+Reporte sintetico del corpus para `rcb-retorno-suelto`.
+Existe para que el recibo acredite una evidencia que se puede cosechar y sanitizar, y no solo un hash.

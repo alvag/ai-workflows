@@ -1,0 +1,106 @@
+{
+  "descripcion": "Manifest INDEPENDIENTE del corpus de latencias (AC-19). Declara qué casos tienen que existir, qué valor toma cada una de las DOS magnitudes en su propia sede, qué estrato le corresponde a cada uno, y un escenario por cada regla que AC-19 exige declarar. Es independiente a propósito (D-16).",
+  "por-que-las-dos-magnitudes-se-declaran-por-separado": "AC-19 prohíbe compararlas, y viven en sedes distintas de la observación justamente para que ningún agregado las junte. Un caso que declarara «la latencia» a secas no distinguiría cuál de las dos se movió: `presupuesto-vencido` es el caso que lo muestra — la de la corrida se bloquea y la del trabajo se mide igual, porque su evento terminal sí llegó.",
+  "por-que-los-negativos-de-regla-fuerzan-la-metrica": "Un instrumento sano nunca produce una observación con la latencia medida sobre dos despachos: la bloquea. Para comprobar que la REGLA dispara hay que construir la observación que el instrumento no emite, forzando la métrica a `medida`. Sin eso, el negativo pasaría por el motivo correcto —la métrica ya venía bloqueada— y la regla quedaría sin probar.",
+
+  "reglas_obligatorias": [
+    "reintentos",
+    "despachos_multiples",
+    "presupuesto_vencido",
+    "muestra_incompleta"
+  ],
+
+  "casos": [
+    {
+      "caso_id": "positivo",
+      "descripcion": "el control positivo: las dos magnitudes medidas, estrato automatizable",
+      "magnitudes_esperadas": {
+        "latencia-hasta-resultado-utilizable": 50000.0,
+        "latencia-hasta-estado-terminal": 40000.0
+      },
+      "estrato_esperado": "automatizable"
+    },
+    {
+      "caso_id": "despachos-multiples",
+      "descripcion": "dos eventos de despacho: la ventana no está definida, así que NINGUNA de las dos magnitudes se publica. Elegir uno de los despachos sería fijar metodología desde el instrumento",
+      "magnitudes_esperadas": {
+        "latencia-hasta-resultado-utilizable": "bloqueada",
+        "latencia-hasta-estado-terminal": "bloqueada"
+      },
+      "estrato_esperado": "automatizable"
+    },
+    {
+      "caso_id": "presupuesto-vencido",
+      "descripcion": "sin resultado utilizable y con el proceso vivo. La latencia de la corrida se bloquea y la del trabajo se mide: es el caso que prueba que las dos magnitudes son independientes",
+      "magnitudes_esperadas": {
+        "latencia-hasta-resultado-utilizable": "bloqueada",
+        "latencia-hasta-estado-terminal": 40000.0
+      },
+      "estrato_esperado": "automatizable"
+    },
+    {
+      "caso_id": "reintento-a1",
+      "descripcion": "primer intento de una muestra con dos. La latencia es POR INTENTO: no se promedia con la del segundo",
+      "magnitudes_esperadas": {
+        "latencia-hasta-resultado-utilizable": 40000.0,
+        "latencia-hasta-estado-terminal": 30000.0
+      },
+      "estrato_esperado": "automatizable"
+    },
+    {
+      "caso_id": "reintento-a2",
+      "descripcion": "segundo intento de la misma muestra, con latencias distintas del primero: si se promediaran, ninguno de los dos números sobreviviría",
+      "magnitudes_esperadas": {
+        "latencia-hasta-resultado-utilizable": 80000.0,
+        "latencia-hasta-estado-terminal": 60000.0
+      },
+      "estrato_esperado": "automatizable"
+    },
+    {
+      "caso_id": "con-confirmacion",
+      "descripcion": "un punto que la matriz marca con confirmación del usuario, y la corrida registra su evento: el estrato sale del valor EFECTIVO registrado",
+      "magnitudes_esperadas": {
+        "latencia-hasta-resultado-utilizable": 50000.0,
+        "latencia-hasta-estado-terminal": 40000.0
+      },
+      "estrato_esperado": "con_intervencion_humana"
+    },
+    {
+      "caso_id": "reclasificacion-indebida",
+      "descripcion": "el MISMO punto sin ningún evento de confirmación. El instrumento lo deriva `automatizable` desde el bundle —que es todo lo que el bundle dice— y el cruce con la matriz tiene que detectarlo: la ausencia del evento no es prueba de que no hizo falta",
+      "reclasificacion_indebida": true,
+      "estrato_esperado": "automatizable"
+    }
+  ],
+
+  "escenarios_de_regla": [
+    {
+      "regla": "despachos_multiples",
+      "casos": ["despachos-multiples"],
+      "forzar_metrica_medida": true,
+      "motivo_esperado": "despachos y la latencia salió medida"
+    },
+    {
+      "regla": "presupuesto_vencido",
+      "casos": ["presupuesto-vencido"],
+      "forzar_metrica_medida": true,
+      "motivo_esperado": "no hay evento de resultado utilizable y la latencia salió medida"
+    },
+    {
+      "regla": "reintentos",
+      "casos": ["reintento-a1", "reintento-a2"],
+      "motivo_esperado": "no hay política congelada que diga con cuál se publica"
+    },
+    {
+      "regla": "muestra_incompleta",
+      "casos": ["reintento-a1"],
+      "manifest_de_intentos": {
+        "intentos": [
+          {"sample_id": "mst-cross-implement-implementador-inicial-r2", "attempt_ordinal": 1},
+          {"sample_id": "mst-cross-implement-implementador-inicial-r2", "attempt_ordinal": 2}
+        ]
+      },
+      "motivo_esperado": "muestra incompleta: faltan"
+    }
+  ]
+}
