@@ -826,7 +826,7 @@ seis piezas que interpola en los dos prompts —implementer y reviewer— y cóm
 serializa. Los prompts de abajo y `validar-para-despacho` citan estas reglas por su id.
 
 Transcriben el contrato de extracción del dossier, `sha256`
-`fb148429f216e3f62f5fdaaccb2f3d7cf58db4d349d601dd7a91e533a0960122`. **Ahí se deciden; acá se
+`fee3cb1a45ba956a578ed1471212ed4ca81250f608e3cbc9a5f6d7569bea590f`. **Ahí se deciden; acá se
 aplican**: si una corrida obliga a cambiar una regla, se cambia en el contrato, no en este texto.
 
 > **Nota de límite.** Esto es **prosa normativa**: no se ejecuta. No se afirma equivalencia
@@ -839,7 +839,7 @@ aplican**: si una corrida obliga a cambiar una regla, se cambia en el contrato, 
 | Entrada | Resultado |
 |---|---|
 | `- [x] **T12 — …` / `- [ ] **T12 — …` | encabezado de task, id `T12` |
-| `## T12` | encabezado de task, id `T12` |
+| `## T12` · `## T1 — El verificador completo` | encabezado de task, id `T12` / `T1` — **el título tras el id es parte de la forma** |
 | `T16b`, `T4a`, `T9c` | id válido; el sufijo es parte del id |
 | `T15A` y `T15a` | **ids distintos**: las mayúsculas son parte del id |
 | `AC-24bis` | id válido |
@@ -877,11 +877,16 @@ declaración y quedan dos bloques para el mismo id, uno falso.
 Distinto de R1: aquella dice **cómo se escribe** un id, esta dice **dónde** se declara cobertura.
 Fuentes admitidas, en orden de precedencia:
 
-| # | Fuente | Forma |
-|---|---|---|
-| 1 | encabezado de la task | `- [x] **T12 — acción**  · cubre: AC-3, AC-4` |
-| 2 | campo del cuerpo | `  - **AC:** AC-3, AC-4` |
-| 3 | campo bajo `## T<n>` | `**AC:** AC-3, AC-4` |
+| # | Fuente | Forma | Dónde aparece |
+|---|---|---|---|
+| 1 | `· cubre:` | `· cubre: AC-3, AC-4` | en la línea del encabezado **o en la línea siguiente, indentada** |
+| 2 | campo con viñeta | `- **AC:** AC-3, AC-4` | en el cuerpo, con cualquier indentación |
+| 3 | campo sin viñeta | `**AC:** AC-3, AC-4` | en el cuerpo, **con cualquier indentación**, bajo cualquiera de las dos formas de encabezado |
+
+**Lo que aparece en la línea de `Verificar:` NO declara cobertura**, ni siquiera con forma de
+declaración —existe el patrón `- **Verificar:** V25, V26 · **AC-21**`, con el mismo separador que la
+fuente 1, y aun así **no cuenta**—. `Verificar` es el campo donde más aparecen `AC-n` en prosa
+legítima, y distinguir declaración de mención **dentro del mismo campo** exige un predicado frágil.
 
 - **Continuación multilínea:** una declaración continúa mientras las líneas siguientes estén
   indentadas y no abran otro campo `- **<Nombre>:**` ni otro encabezado de R1.
