@@ -93,6 +93,7 @@ RUTA_INTERFAZ_DE_RELOJ = DIR_SCRIPTS / "interfaz-de-reloj.json"
 RUTA_MATRIZ_DESPACHOS = DIR_SCRIPTS / "matriz-despachos.json"
 RUTA_SUPERFICIES_DE_EGRESO = DIR_SCRIPTS / "superficies-de-egreso.json"
 RUTA_INSTRUMENTO = DIR_SCRIPTS / "instrumento-baseline.py"
+RUTA_PREREGISTRO_FASE_0 = DIR_SCRIPTS / "preregistro-fase-0.json"
 DIR_RECIBOS_FASE_0 = DIR_SCRIPTS / "recibos-frontera-fase-0"
 DIR_JOURNAL_FASE_0 = DIR_SCRIPTS / "journal-anomalias-fase-0"
 DIR_FIXTURES_RUNNER = DIR_SCRIPTS / "fixtures-baseline" / "runner"
@@ -2652,14 +2653,42 @@ def revisar_secuencia_de_apertura(eventos: list[dict[str, Any]]) -> list[str]:
     return problemas
 
 
+def commit_que_fija_el_preregistro() -> tuple[str, str | None]:
+    """El último commit que tocó `scripts/preregistro-fase-0.json`, o el motivo de no resolverlo.
+
+    El observable está TRANSCRITO a propósito y no se comparte con el instrumento, que resuelve el
+    mismo commit por su cuenta para juzgar la anterioridad: dos implementaciones del mismo número
+    pueden divergir, y esa divergencia es justamente lo que el juez tiene que poder ver. Si
+    compartieran código, un productor equivocado arrastraría al juez y la comprobación no podría
+    ponerse roja.
+
+    De dónde sale que esto haga falta: `preregistration_commit` llevaba el HEAD del momento de la
+    corrida, que es el dato de `code_commit` bajo otro nombre. Coincidía con el correcto mientras el
+    congelamiento fuera el último commit del árbol —que es lo que pasa cuando se congela y se corre
+    seguido—, así que D-18 declaraba dos campos distintos y ningún bundle llegó a expresarlos.
+    """
+    codigo, salida = _correr(["git", "-C", str(RAIZ), "log", "-1", "--format=%H", "--",
+                              RUTA_PREREGISTRO_FASE_0.relative_to(RAIZ).as_posix()])
+    if codigo != 0:
+        return "", f"git no pudo resolver el congelamiento: {salida}"
+    if not salida.strip():
+        return "", ("`scripts/preregistro-fase-0.json` no tiene ningún commit que lo fije: una "
+                    "corrida no puede declararse posterior a un congelamiento que no ocurrió")
+    return salida.strip()[:40], None
+
+
 def identidad_del_entorno_de_hoy(preregistration_commit: str = "") -> dict[str, Any]:
     """La identidad efectiva del entorno, leída y no declarada."""
     _, commit = _correr(["git", "-C", str(RAIZ), "rev-parse", "HEAD"])
     _, sucio = _correr(["git", "-C", str(RAIZ), "status", "--porcelain"])
     _, version_cli = _correr(["codex", "--version"])
+    # Sin congelamiento resoluble el campo queda vacío y el schema rechaza el bundle. Rellenarlo con
+    # el HEAD sería inventar el dato, que es exactamente el defecto que este parámetro repara.
+    if not preregistration_commit:
+        preregistration_commit, _ = commit_que_fija_el_preregistro()
     return {
         "code_commit": commit[:40],
-        "preregistration_commit": preregistration_commit or commit[:40],
+        "preregistration_commit": preregistration_commit,
         "arbol_limpio": not sucio,
         "matriz_sha256": _sha256_de(RUTA_MATRIZ_DESPACHOS),
         "instrumento_sha256": _sha256_de(RUTA_INSTRUMENTO),
@@ -2737,12 +2766,20 @@ def modo_ejecutar_caso(args: argparse.Namespace) -> int:
         print(f"FALLA  {error}")
         return 1
 
+    # La corrida real resuelve su congelamiento ANTES de construir nada y corta acá si no puede: un
+    # bundle que no sabe decir contra qué congelamiento corrió no es una observación de esta cohorte.
+    congelamiento, error = commit_que_fija_el_preregistro()
+    if error:
+        print(f"FALLA  {error}")
+        return 1
+
     journal = Journal(f"jrn-{run_id}", preregistro_sha256 or "0" * 64, reloj)
     with tempfile.TemporaryDirectory(prefix="runner-caso-") as tmp:
         contexto = ContextoDeEjecucion(
             receta=receta, sample_id=sample_id, attempt_id=attempt_id, attempt_ordinal=ordinal,
             run_id=run_id, preregistro_sha256=preregistro_sha256, arbol=arbol, recibo=recibo,
-            recibos_usados=set(), identidad_del_entorno=identidad_del_entorno_de_hoy(),
+            recibos_usados=set(),
+            identidad_del_entorno=identidad_del_entorno_de_hoy(congelamiento),
             recibos=recibos, sesionador=sesionador_codex(Path(tmp)),
             despachar_comando=_despachador_real,
             # El scratch vive DENTRO del árbol desechable para que toda ruta del comando
