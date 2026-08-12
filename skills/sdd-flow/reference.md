@@ -714,7 +714,7 @@ tabla.
 
 ## Plantilla de tasks
 
-`.plans/<id>/tasks.md` — descomposición atómica. Una task = un cambio coherente y, en lo posible, testeable. El objetivo es que cada task sea **autosuficiente**: ejecutable en una sesión fresca sin re-deducir el diseño ni tener que elegir otro enfoque.
+`.plans/<id>/tasks.md` — descomposición atómica. Una task = un cambio coherente y, en lo posible, testeable. El objetivo es que cada task sea **autosuficiente**: ejecutable en una sesión fresca que solo ve **el dossier de esa task** —no los artefactos completos—, sin re-deducir el diseño ni tener que elegir otro enfoque.
 
 Cada task es un **bloque** con estos campos:
 
@@ -737,7 +737,8 @@ Cada task es un **bloque** con estos campos:
 - [ ] **T2 — <acción concreta>**  · cubre: AC-1, AC-2
   - **Por qué:** <…>
   - **Archivos:** <…>
-  - **Consume:** `nuevaFn` de T1 (no repetir la firma — referenciarla). *(solo si usa algo de otra task)*
+  - **Consume:** `nuevaFn` de T1 (no repetir la firma — referenciarla); bloque global `interfaz-compartida`.
+    *(solo si usa algo de otra task o un bloque global; un solo campo, las referencias se acumulan en él)*
   - **Pasos:** <…>
   - **Verificar:** <…>
 
@@ -747,6 +748,19 @@ Cada task es un **bloque** con estos campos:
 - **Anti-placeholder:** sin `TBD`/`TODO`/"agregar X apropiado"/"similar a T-N"/"etc." en plan ni tasks.
 - **Interfaces:** cada `Produce` coincide exacto (nombre + firma) con el `Consume` que lo referencia.
 ```
+
+> **Las dos formas de `Consume`, y cómo se declara un bloque global.** `Consume` apunta a **una
+> task** —basta el id (`T2`, `T16b`, `T15A`), con o **sin** backticks— o a un **bloque global**: una
+> sección de este mismo `tasks.md` que **ninguna task produce** y que varias consumen (una interfaz
+> compartida, un contrato transversal). Se declara escribiéndola con un heading `##` que **no** sea
+> encabezado de task; su **id es el slug de ese heading** —`## Interfaz compartida — el contrato de
+> los tres adaptadores` da `interfaz-compartida-el-contrato-de-los-tres-adaptadores`— y se cita con
+> las palabras literales `bloque global` seguidas del slug **entre backticks**. Los backticks son
+> obligatorios **solo** ahí: un id de task tiene forma propia y se reconoce solo; un título en prosa
+> no. Detalle en "Reglas de extracción del dossier" → R5.
+>
+> No es cosmética: `Produce`, `Consume` y el bloque global son **las piezas que el dossier interpola**
+> al despachar en modo `subagent`. Lo que la task no declara, el agente no recibe.
 
 > **Regla anti-sobre-especificación.** Los snippets de los Pasos son **ilustrativos**: muestran la *firma*, la *estructura* y los *casos a cubrir*, no la implementación final completa de cada archivo. El plan orienta la ejecución; el código exhaustivo se escribe en `implement`, no acá. En tasks puramente mecánicas (config, copy, bump, wiring sin seam razonable) los Pasos pueden colapsarse a 1‑2 líneas y la evidencia se cierra en `verify` — no inflar artificialmente.
 
@@ -805,23 +819,292 @@ cloud_id: <uuid del sitio>
 
 > **Precedencia:** cuando existe `plan.md`, su `status`/`wip_commit`/marcas `[x]` son la verdad operativa; el `handoff.md` aporta narrativa + overrides. Sin `plan.md` (specify/clarify/gate de Jira), el frontmatter es la fuente de verdad de esa ventana. Los campos del gate de Jira solo aparecen en pausas por aprobación externa. Detalle en `SKILL.md` → "Precedencia con `plan.md`".
 
+## Reglas de extracción del dossier
+
+Sede canónica del **conductor** para armar el **dossier** de una task en el modo `subagent`: las
+seis piezas que interpola en los dos prompts —implementer y reviewer— y cómo las identifica, corta y
+serializa. Los prompts de abajo y `validar-para-despacho` citan estas reglas por su id.
+
+Transcriben el contrato de extracción del dossier, `sha256`
+`9c39363f536f4d550b455c725b61e1d650471489a408aefdd2584d3f0816812d`. **Ahí se deciden; acá se
+aplican**: si una corrida obliga a cambiar una regla, se cambia en el contrato, no en este texto.
+
+> **Nota de límite.** Esto es **prosa normativa**: no se ejecuta. No se afirma equivalencia
+> ejecutable con ninguna implementación de estas reglas — declarar equivalente lo que no se corre es
+> una guarda que no puede ponerse roja. Quien las prueba contra fixtures es el arnés que las
+> implementa, no esta sección.
+
+### R1 — Gramática de identificadores
+
+| Entrada | Resultado |
+|---|---|
+| `- [x] **T12 — …` / `- [ ] **T12 — …` | encabezado de task, id `T12` |
+| `## T12` | encabezado de task, id `T12` |
+| `T16b`, `T4a`, `T9c` | id válido; el sufijo es parte del id |
+| `T15A` y `T15a` | **ids distintos**: las mayúsculas son parte del id |
+| `AC-24bis` | id válido |
+| `AC-1..AC-6` · `AC-1..6` | se **expande inclusivo** → `AC-1 AC-2 AC-3 AC-4 AC-5 AC-6` |
+| `T7-T9` · `T4–T6` (raya larga) | se **expande inclusivo** |
+| `AC-6..AC-1` (invertido) | **error** `rango_invertido` |
+| `AC-1..AC-99` (extremo inexistente) | **error** `extremo_inexistente` |
+| `AC-1..T6` (familias distintas) | **error** `rango_mixto` |
+
+**Corte de un bloque con id** (un AC o una task): desde su encabezado hasta el próximo encabezado que
+satisfaga **esta misma gramática**, o el próximo heading Markdown. El patrón de corte es **idéntico**
+al de inicio: un corte más laxo deja que una línea de prosa en negrita trunque un criterio.
+
+> Esta regla es de **bloques con id**. Un **bloque global** (R5) no la usa: tiene su propio corte,
+> porque un `###` interno suyo es contenido y no un corte.
+
+**Las cinco formas de declarar un AC en una spec.** Cubrir solo las que uno recuerda devuelve **cero**
+para el resto — y cero es indistinguible de "no hay AC":
+
+```
+- **AC-18:** Given …                                  id + dos puntos
+- **AC-34** *(capacidad nueva)***:** Given …          id + nota + dos puntos
+- **AC-1 — Selección de backend previa:** Given …     id + raya + título + dos puntos
+- **AC-1 — Metadatos operativos, no estado.**         id + raya + título + punto
+**AC-1** — No queda rastro de la vía…                 SIN viñeta
+```
+
+Lo invariante: arranque de línea · viñeta opcional · `**` · el id · y **un delimitador de
+declaración** —`:`, el cierre `**`, o una raya—. **El delimitador no es cosmética**: sin él, una línea
+de prosa en negrita como `**AC-24bis no es AC-24 repetido, y la diferencia importa.**` entra como
+declaración y quedan dos bloques para el mismo id, uno falso.
+
+### R2 — Dónde una task declara qué AC cubre
+
+Distinto de R1: aquella dice **cómo se escribe** un id, esta dice **dónde** se declara cobertura.
+Fuentes admitidas, en orden de precedencia:
+
+| # | Fuente | Forma |
+|---|---|---|
+| 1 | encabezado de la task | `- [x] **T12 — acción**  · cubre: AC-3, AC-4` |
+| 2 | campo del cuerpo | `  - **AC:** AC-3, AC-4` |
+| 3 | campo bajo `## T<n>` | `**AC:** AC-3, AC-4` |
+
+- **Continuación multilínea:** una declaración continúa mientras las líneas siguientes estén
+  indentadas y no abran otro campo `- **<Nombre>:**` ni otro encabezado de R1.
+- **Conflicto entre fuentes:** si dos fuentes presentes declaran conjuntos **distintos**, es **error
+  `cobertura_en_conflicto`** — no gana la de mayor precedencia. La precedencia resuelve *cuál leer
+  cuando solo hay una*; dos que se contradicen son un artefacto roto y el silencio las tapa.
+- **Menciones incidentales que NO cuentan:** un `AC-n` dentro de `Pasos`, `Por qué`, `Archivos` o en
+  la prosa de `Verificar`. Solo declara cobertura una de las tres fuentes de arriba.
+- **Cero AC** tras aplicar todo esto: ver la tabla de R5.
+
+### R3 — De dónde sale la fila `Vn`
+
+- La fila se toma de **`## Verification`** del plan, y **`## Verify` se excluye**: el mismo id puede
+  existir en ambas, y la segunda es el **resultado observado**, no el contrato.
+- Un `Vn` **duplicado dentro de `## Verification`** es **error `fila_duplicada`**.
+- **Qué filas entran:** exactamente las que la task **cita literalmente** en su campo `Verificar:`.
+  No se expande AC→V ni V→AC. Las mismas filas van al implementer y al reviewer.
+- **Task que cubre un AC y no cita ninguna fila:** el dossier lleva **cero filas** y **no bloquea**.
+  La ausencia es un defecto del **plan**, que el gate de `tasks` y el paso `verify` ya cazan;
+  bloquear el despacho castigaría a la task por un hueco ajeno.
+
+### R4 — Duplicados de un id
+
+- Se toma la **primera** declaración **si y solo si** las repeticiones caen dentro de un apéndice de
+  fidelidad reconocido (heading `## Apéndice de fidelidad`).
+- Un duplicado **fuera** de ese apéndice es **error `duplicado_normativo`**.
+- El reporte nombra siempre **id y todas sus ubicaciones** — un contador total sin ids satisface la
+  letra de "queda registrado" sin permitir saber qué se encontró. El campo `bloque_elegido` se llena
+  así:
+
+  | Caso | `bloque_elegido` |
+  |---|---|
+  | duplicado aceptado (repeticiones dentro del apéndice) | la **ubicación** del bloque tomado |
+  | `duplicado_normativo` (bloqueante) | **`ninguno`** |
+
+  Exigir "cuál bloque se eligió" **siempre** sería contradictorio: ante un error bloqueante no se
+  elige ninguno.
+
+### R5 — Las seis piezas, y qué pasa si una falta
+
+**(1)** la task literal · **(2)** los AC que cubre (R2) · **(3)** las filas `Vn` que cita (R3) ·
+**(4)** el `Produce` de cada task que consume · **(5)** cada **bloque global** que consume · **(6)**
+el `## Enfoque` del plan.
+
+La sexta no es hipótesis: un `tasks.md` puede declarar una interfaz global que **ninguna task
+produce** e instruir que el conductor la incluya íntegra en el despacho de varias tasks.
+
+**La sintaxis de `Consume`, y la de un bloque global.** `Consume` se resuelve por **lo que
+contiene**, no por una plantilla que el texto deba seguir; texto libre alrededor está siempre
+permitido:
+
+| Forma | Cómo se reconoce | Ejemplo |
+|---|---|---|
+| a una task | **cualquier token que satisfaga la gramática de id de R1** — `T2`, `T16b`, `T15A`—, con o **sin** backticks | `- **Consume:** el contrato de capabilities de T1; \`validateInvocation\` y …` |
+| a un bloque global | las palabras literales **`bloque global`** seguidas de su **slug entre backticks** | `- **Consume:** bloque global \`interfaz-compartida\`` |
+
+Un `Consume` que **no contiene ningún id de R1 ni ninguna marca de bloque global** es error
+**`consume_no_tipado`**.
+
+> **Por qué los backticks son obligatorios solo para el bloque global.** Un id de task **tiene forma
+> propia** y se reconoce solo; un título en prosa —"la interfaz compartida"— no la tiene, y sin una
+> marca explícita habría que adivinar dónde empieza y termina la referencia. La asimetría no es
+> estética: exigir backticks también para las tasks fue el primer intento de esta regla, y medido
+> contra los flujos archivados **invalidaba 186 de 186 campos `Consume`** — los backticks que ahí
+> existen envuelven nombres de artefacto, no ids. Una convención que ningún dato real satisface no es
+> un contrato, es un requisito inventado.
+
+**Un bloque global se declara** con un heading `##` de `tasks.md` que **no** satisface la gramática de
+encabezado de task de R1. Su **id es el slug de su heading**: minúsculas, sin acentos, no
+alfanuméricos → guion, colapsando repetidos — así `## Interfaz compartida — el contrato de los tres
+adaptadores` da `interfaz-compartida-el-contrato-de-los-tres-adaptadores`, y una task lo cita con ese
+slug o con el prefijo inequívoco más corto que no colisione con otro bloque del mismo documento.
+**Termina** en el próximo heading de **nivel menor o igual al suyo** (`##` o `#`), o en el próximo
+encabezado de task de R1 — lo que ocurra primero. Un `###` interno **pertenece a su contenido**:
+cortarlo en su primer subtítulo entregaría una fracción del contrato que dice entregarse entero. **Dos
+bloques globales con el mismo slug** son error `bloque_global_duplicado`.
+
+**Corte de las otras dos piezas:**
+
+| Pieza | Empieza | Termina |
+|---|---|---|
+| `Produce` de una task | la línea del campo `- **Produce:**` | el próximo campo `- **<Nombre>:**` de la misma task, o el próximo encabezado de R1 |
+| `## Enfoque` del plan | su heading | el próximo heading de nivel menor o igual (`##` o `#`); los `###` internos son contenido |
+
+Ausencia de cualquiera de las dos cuando una task la cita: es una pieza que no resuelve, y se trata
+según la tabla de abajo.
+
+**El mismo hecho tiene dos resultados, según quién pregunte** — y esto es el corazón del contrato:
+
+| Hecho | `validar-para-despacho` (conductor, producción) | `medir-historico` (arnés, corpus ya escrito) |
+|---|---|---|
+| Una de las seis piezas no resuelve | **bloquea**: la task no se despacha | **excluye** la task, con su causa registrada |
+| Task sin ningún AC (R2) | **bloquea** | **excluye**, causa `sin_cobertura` |
+| `cobertura_en_conflicto`, `fila_duplicada`, `duplicado_normativo`, `consume_no_tipado`, errores de rango de R1 | **bloquea** | **excluye**, con la causa nombrada |
+
+Una operación que **falla** ante un `Consume` sin `Produce` no puede a la vez **medir** un corpus
+histórico que contiene exactamente esos casos. Son dos operaciones, no dos configuraciones de una.
+
+### R6 — Quién ejecuta cada operación
+
+- **`validar-para-despacho` es una operación NORMATIVA del conductor**, escrita en prosa acá (ver
+  "Lado conductor (antes de despachar)"). **No es un subcomando de ningún script.** `sdd-flow` es
+  agnóstica de proyecto: si validar dependiera de un script de un repo concreto, la skill dejaría de
+  ser portable.
+- **`medir-historico` es del arnés** y no forma parte de esta skill.
+- El arnés **puede** comprobar estas reglas contra fixtures — eso es **verificación del contrato**, no
+  una dependencia de producción del conductor.
+
+### La proyección canónica del dossier
+
+Cómo se serializan las seis piezas. Se fija byte a byte porque, sin este nivel de detalle, quien
+renderiza y quien cuenta pueden producir payloads distintos, **cada uno conforme a su propia regla**.
+
+**Un rótulo por CLASE no vacía**, no por pieza. Las piezas de una misma clase van bajo su rótulo,
+separadas entre sí por una línea en blanco. Así el dossier tiene **entre 3 y 6 rótulos** —task, AC y
+enfoque están siempre; AC porque cero AC bloquea (R5)— y el conteo es determinista.
+
+**El mapa clase → rótulo, literal y cerrado:**
+
+| # | Clase | Rótulo exacto |
+|---|---|---|
+| 1 | la task | `=== TASK ===` |
+| 2 | los AC que cubre | `=== CRITERIOS DE ACEPTACIÓN ===` |
+| 3 | las filas `Vn` | `=== FILAS DEL CONTRATO ===` |
+| 4 | los `Produce` consumidos | `=== INTERFACES QUE CONSUMES ===` |
+| 5 | los bloques globales | `=== BLOQUES GLOBALES ===` |
+| 6 | el `## Enfoque` | `=== ENFOQUE DEL PLAN ===` |
+
+**Orden intra-clase:** por id **ascendente natural** —`AC-2` antes que `AC-10`, no orden
+lexicográfico—; el sufijo alfabético ordena después del número (`T16` · `T16b` · `T17`).
+
+**Clave de deduplicación**, por clase:
+
+| Clase | Clave |
+|---|---|
+| AC | `("ac", id)` |
+| fila `Vn` | `("fila", id)` |
+| `Produce` | `("produce", id_de_la_task_que_lo_produce)` |
+| bloque global | `("bloque", slug)` |
+| task y enfoque | únicas por construcción; no se deduplican |
+
+Si dos tasks consumidas producen el mismo `Vn`, o un AC llega por dos caminos, entra **una sola vez**.
+Deduplicar por **contenido** escondería un id repetido con texto distinto, que es un defecto y no un
+ahorro.
+
+**Saltos, exactos:**
+
+- el payload **empieza con el primer rótulo**, sin línea en blanco antes;
+- después de un rótulo va **un salto** y enseguida el contenido;
+- entre dos piezas de la misma clase, y entre dos clases, va **exactamente una línea en blanco**;
+- el payload **termina con un único `\n`**, sin línea en blanco final;
+- los saltos **internos** de cada pieza se conservan **tal como están en el artefacto**, sin
+  normalizar, sin recortar y sin reindentar.
+
+> **Lo que esta sección NO transcribe, y por qué.** El contrato tiene tres reglas más —la **métrica**
+> que compara el costo de contexto de un corpus histórico, la integridad de ese **corpus** y su
+> **manifest de casos**—: describen cómo se **mide** un conjunto de flujos ya escritos, algo que el
+> conductor no hace nunca. Traerlas acá cargaría a toda corrida con reglas que ninguna aplica.
+>
+> Quedan fuera por la misma razón **dos cláusulas que viven dentro de las reglas transcritas**, y se
+> declaran para que la omisión no sea silenciosa: que los rótulos **cuentan** en el total de bytes
+> del payload, y el censo de campos `Consume` del corpus con su advertencia de no tratarlo como piso
+> de exclusiones. Las dos son de medición: no cambian **qué** escribe el conductor, solo cómo se
+> **contabiliza** después.
+
 ## Prompt del subagente por task
 
 Para el modo `subagent` de `implement` (ver `SKILL.md` → "Modo de ejecución"). El conductor
 despacha **un agente fresco por task, secuencial**. El agente no puede invocar `sdd-flow` con el
-Skill tool (la skill es solo-slash): el prompt le pasa el contrato directo. Plantilla:
+Skill tool (la skill es solo-slash): el prompt le pasa el contrato directo.
+
+El prompt **interpola el dossier** de la task —las seis piezas de R5, serializadas según la proyección
+canónica (ver "Reglas de extracción del dossier")— en vez de entregar rutas a artefactos. Las clases
+vacías **no llevan rótulo**: un dossier tiene entre 3 y 6. El conductor arma y valida ese dossier
+**antes** de despachar (ver "Lado conductor (antes de despachar)"). Plantilla:
 
 ```
 Trabaja ÚNICAMENTE en el repo <ruta-absoluta-al-working-dir> (todo comando y ruta, relativos a él).
-Contexto: lee .plans/<id>/plan.md (header + enfoque), .plans/<id>/spec.md (criterios de
-aceptación) y la task "<n>. <título>" en .plans/<id>/tasks.md. (Si la complejidad es trivial,
-spec y tasks están embebidas en el propio plan.md.) Implementa SOLO esa task, siguiendo sus
-campos (Archivos / Pasos / Verificar) al pie de la letra.
+
+Abajo está tu dossier: es TODO tu contexto de diseño, ya extraído. No hay artefactos de diseño que
+abrir — lo que no esté en el dossier, no existe para esta task.
+
+=== TASK ===
+<la task literal, con todos sus campos>
+
+=== CRITERIOS DE ACEPTACIÓN ===
+<cada AC que la task declara cubrir, íntegro>
+
+=== FILAS DEL CONTRATO ===
+<cada fila Vn que la task cita en su campo Verificar, íntegra: requisito, comando/observación y
+esperado>
+
+=== INTERFACES QUE CONSUMES ===
+<el Produce de cada task que esta consume — la firma exacta>
+
+=== BLOQUES GLOBALES ===
+<cada bloque global que esta task consume, íntegro>
+
+=== ENFOQUE DEL PLAN ===
+<el ## Enfoque del plan>
+
+Implementa SOLO esa task, siguiendo sus campos (Archivos / Pasos) al pie de la letra.
 Reglas duras:
 - No re-diseñes: si la task no se puede ejecutar como está escrita, devuelve STATUS: failed con la
   razón — no improvises otro enfoque.
 - Nada de git add/commit/push. No toques .plans/ ni .specify/ (las marcas [x] las pone el conductor).
-- Ejecuta el comando del campo "Verificar" de la task (tests acotados con <test_scope_hint> si aplica).
+- Ejecuta la instrucción de cada fila de === FILAS DEL CONTRATO ===: su comando u observación, con
+  el resultado que esa fila declara esperado (tests acotados con <test_scope_hint> si aplica). El
+  campo "Verificar" de la task lleva SOLO el id de la fila, no un comando: lo que se corre es la
+  fila, que ya viene interpolada arriba.
+- Frontera de lectura. AUTORIZADO: leer el código fuente, los tests, la configuración y las
+  convenciones del repo (CLAUDE.md / AGENTS.md / CONTRIBUTING.md y equivalentes) — no puedes
+  modificar bien lo que no puedes leer. PROHIBIDO: abrir .plans/ o .specify/, por ningún motivo —
+  ni para reconstruir una pieza que falte en el dossier, ni para "confirmar" algo que el dossier ya
+  dice. Reconstruir en silencio esconde exactamente el hueco que hay que ver.
+- Un rótulo ausente NO es una pieza faltante: solo aparecen las clases no vacías. En particular, una
+  task puede legítimamente no citar ninguna fila, y entonces no hay === FILAS DEL CONTRATO === que
+  ejecutar; reporta eso en VERIFY y sigue. No lo marques como contexto faltante.
+- Si el dossier NO alcanza para ejecutar la task, no vayas a buscar la pieza al repo: devuelve
+  STATUS: failed y escribe en FAILURE_REASON el literal `MISSING_CONTEXT: <pieza>`, donde <pieza>
+  es uno de: task | ac | fila | produce | bloque-global | enfoque | otro:<texto libre>. Una marca
+  por pieza faltante, cada una en su propia línea — es el único caso en que FAILURE_REASON puede
+  pasar de 3 líneas.
 
 Tu mensaje final debe ser EXACTAMENTE este reporte (sin prosa extra):
 STATUS: done | failed
@@ -830,6 +1113,53 @@ FILES: <una línea por archivo tocado>
 VERIFY: <comando ejecutado y resultado, en una línea>
 NOTES: <decisiones/supuestos en 1-3 líneas; omitir si no hay>
 ```
+
+### Lado conductor (antes de despachar)
+
+El dossier lo arma **el conductor**, task por task, aplicando las "Reglas de extracción del dossier".
+Dos pasos, en orden.
+
+**Paso 0 — armar las seis piezas.** Cada una tiene su regla; se cita por id para que no haya dos
+gramáticas conviviendo:
+
+| # | Pieza | Cómo se obtiene |
+|---|---|---|
+| 1 | la task literal | encabezado por la gramática de **R1**, cortada con el patrón de corte de **R1** |
+| 2 | los AC que cubre | las fuentes de cobertura de **R2** (con su precedencia y su conflicto); cada AC se corta con **R1**, reconociendo sus **cinco formas** de declaración |
+| 3 | las filas `Vn` | **R3**: solo `## Verification`, solo las filas que la task **cita literalmente** en `Verificar:` |
+| 4 | el `Produce` de cada task consumida | **R5**: `Consume` se resuelve por lo que contiene; el `Produce` se corta con la tabla de R5 |
+| 5 | cada bloque global consumido | **R5**: heading `##` que no es encabezado de task, id = slug, y termina en el próximo heading de nivel ≤; sus `###` internos son contenido |
+| 6 | el `## Enfoque` del plan | **R5**: desde su heading hasta el próximo de nivel ≤ |
+
+Ante un id repetido, **R4**: primera declaración solo dentro de un apéndice de fidelidad reconocido;
+fuera de él es `duplicado_normativo`. Serializar con la **proyección canónica** — rótulos literales,
+un rótulo por clase no vacía, orden natural, dedup por clase y los saltos exactos.
+
+**Paso 1 — `validar-para-despacho`.** Antes de despachar, el conductor comprueba que las seis piezas
+resuelvan. **Bloquea** —la task no se despacha— ante cualquiera de estos:
+
+| Qué se detecta | Regla |
+|---|---|
+| una de las seis piezas que no resuelve — sea citada (`fila`, `produce`, `bloque-global`) o siempre presente (`task`, `ac`, `enfoque`) | R5 |
+| task sin ningún AC tras aplicar las tres fuentes | R2 · R5 |
+| `cobertura_en_conflicto` — dos fuentes con conjuntos distintos | R2 |
+| `fila_duplicada` en `## Verification` | R3 |
+| `duplicado_normativo` — id repetido fuera del apéndice | R4 |
+| `consume_no_tipado` — `Consume` sin id de R1 ni marca de bloque global | R5 |
+| `bloque_global_duplicado` — dos bloques con el mismo slug | R5 |
+| `rango_invertido`, `extremo_inexistente`, `rango_mixto` | R1 |
+
+**Excepción explícita:** una task que cubre un AC y **no cita ninguna fila** no bloquea — su dossier
+lleva cero filas (**R3**).
+
+El reporte del bloqueo nombra siempre **`task_id`, el tipo de pieza y el id esperado** —más el error
+de la lista de arriba cuando aplica—, y ante un duplicado bloqueante `bloque_elegido` es `ninguno`
+(**R4**). "El dossier de T7 está incompleto" no le dice a nadie qué arreglar; "T7 · pieza `fila` · se
+esperaba `V3`, citada en `Verificar:`, ausente de `## Verification`" sí.
+
+> **Esta operación es normativa del conductor, no un subcomando.** `sdd-flow` es agnóstica de
+> proyecto: si validar dependiera de un script de un repo concreto, la skill dejaría de ser portable
+> (**R6**). El conductor la ejecuta leyendo estas reglas, igual que ejecuta el resto de esta skill.
 
 ### Cómo despachar según el entorno (por capacidad, no por nombre)
 
@@ -862,17 +1192,50 @@ Tests+build completos, `verify` de los AC, revisión manual, staging selectivo, 
 
 ## Prompt del subagente reviewer
 
-Para el **reviewer por-task** del modo `subagent` (ver `SKILL.md` → "Modo de ejecución", paso 3). Un agente fresco que **solo revisa** el diff de una task contra sus artefactos — no edita ni implementa. Distinto de `cross-review`: aquel es **cross-model** y revisa *artefactos de diseño* (spec/plan/tasks); este es un agente **del mismo modelo** que revisa el *diff* de una task ya implementada. Despacharlo por capacidad, igual que el implementer (sin capacidad → degradar a la revisión liviana del conductor). El conductor **interpola la lista `FILES`** del reporte del implementer en el prompt (el reviewer es un agente fresco: sin ella no sabe qué archivos revisar). Plantilla:
+Para el **reviewer por-task** del modo `subagent` (ver `SKILL.md` → "Modo de ejecución", paso 3). Un agente fresco que **solo revisa** el diff de una task contra su dossier — no edita ni implementa. Distinto de `cross-review`: aquel es **cross-model** y revisa *artefactos de diseño* (spec/plan/tasks); este es un agente **del mismo modelo** que revisa el *diff* de una task ya implementada. Despacharlo por capacidad, igual que el implementer (sin capacidad → degradar a la revisión liviana del conductor). El conductor **interpola la lista `FILES`** del reporte del implementer en el prompt (el reviewer es un agente fresco: sin ella no sabe qué archivos revisar) y le pasa **el mismo dossier** que recibió el implementer — las mismas filas `Vn` por R3, sin volver a extraerlas. Plantilla:
 
 ```
 Trabaja en modo SOLO LECTURA sobre el repo <ruta-absoluta-al-working-dir>. No edites nada.
-Revisa el diff de la task "<n>. <título>" contra sus artefactos:
+Revisa el diff de la task "<n>. <título>" contra su dossier:
 - Archivos de la task (FILES del implementer): <lista de archivos, uno por línea>
 - Diff de la task: `git diff -- <esos archivos>`. El working tree acumula los cambios de las
   tasks previas (el staging ocurre después): limita el diff a esos paths, y si otra task ya
   tocó el mismo archivo puede haber hunks ajenos — evalúa solo lo que corresponde a esta task.
-- Contexto: .plans/<id>/spec.md (AC que la task habilita), .plans/<id>/plan.md (enfoque),
-  y la task en .plans/<id>/tasks.md. (Si la complejidad es trivial, están embebidos en plan.md.)
+
+Tu dossier es TODO tu contexto de diseño, ya extraído — el mismo que recibió el implementer. No hay
+artefactos de diseño que abrir: lo que no esté acá, no existe para esta revisión.
+
+=== TASK ===
+<la task literal, con todos sus campos>
+
+=== CRITERIOS DE ACEPTACIÓN ===
+<cada AC que la task declara cubrir, íntegro>
+
+=== FILAS DEL CONTRATO ===
+<las mismas filas Vn que recibió el implementer, íntegras>
+
+=== INTERFACES QUE CONSUMES ===
+<el Produce de cada task que esta consume — la firma exacta>
+
+=== BLOQUES GLOBALES ===
+<cada bloque global que esta task consume, íntegro>
+
+=== ENFOQUE DEL PLAN ===
+<el ## Enfoque del plan>
+
+Frontera de lectura. AUTORIZADO: leer el código fuente, los tests, la configuración y las
+convenciones del repo (CLAUDE.md / AGENTS.md / CONTRIBUTING.md y equivalentes) — los necesitas para
+juzgar el eje CALIDAD contra los patrones reales del proyecto, que no viven en el diff. PROHIBIDO:
+abrir .plans/ o .specify/, por ningún motivo — ni para reconstruir una pieza que falte en el
+dossier, ni para "confirmar" algo que el dossier ya dice.
+Un rótulo ausente NO es una pieza faltante: solo aparecen las clases no vacías, y una task puede
+legítimamente no citar ninguna fila.
+Si el dossier no alcanza para juzgar, no vayas a buscar la pieza: devuelve SPEC: warn y escribe en
+NOTES el literal `MISSING_CONTEXT: <pieza>`, donde <pieza> es uno de: task | ac | fila | produce |
+bloque-global | enfoque | otro:<texto libre>. Una marca por pieza faltante, cada una en su propia
+línea. El `warn` es lo que impide que el conductor lea `SPEC: ok + QUALITY: ok` y dé la task por
+cerrada con una pieza faltante a la vista.
+
 Evalúa dos ejes:
 - SPEC: ¿el diff cumple los AC que la task dice cubrir? (solo los suyos, no otros)
 - CALIDAD: ¿sin code smells, sigue los patrones/estilo del repo, sin dead code ni placeholders?
@@ -884,7 +1247,71 @@ FINDINGS: <una línea por problema; vacío si todo ok>
 NOTES: <"no verificable desde el diff" si un requisito vive en código no tocado; omitir si no aplica>
 ```
 
-El conductor: **SPEC ok + QUALITY ok** → marcar la task `[x]`. `fail` en cualquiera → 1 reintento al implementer con `FINDINGS` como feedback (paso 3 del modo subagent). `warn` (no verificable desde el diff) no bloquea: el conductor lo resuelve antes de marcar.
+El conductor: **SPEC ok + QUALITY ok** → marcar la task `[x]`. `fail` en cualquiera → 1 reintento al implementer con `FINDINGS` como feedback (paso 3 del modo subagent). `warn` no bloquea, pero **tampoco cierra**: el conductor lo resuelve antes de marcar. Cubre sus dos causas —"no verificable desde el diff" y una marca `MISSING_CONTEXT` en `NOTES`—, y es lo que impide que una pieza faltante viaje escondida dentro de dos ejes en verde.
+
+> **La frontera de lectura de este prompt es del reviewer por-task, y solo de él.** La "Revisión final de diff" reusa este contrato *ajustando el alcance*: revisa el diff completo de un flujo ejecutado `inline`, donde no hubo despacho ni dossier, así que conserva su propia lectura de artefactos y **no** hereda esta prohibición.
+
+## El diferimiento del recorte, y la marca `MISSING_CONTEXT`
+
+El dossier reemplaza el corpus completo por seis piezas extraídas. Puede existir contexto que hoy
+salvaba al agente **en silencio** y que la task no cita. Esta regla es el mecanismo que lo vuelve
+observable en vez de dejarlo como intuición.
+
+**Cuándo aplica.** En **toda corrida** en modo `subagent` que despache al menos un implementer **y**
+un reviewer, **hasta una retirada explícita** de esta regla. No hay "primera corrida" ni caducidad.
+
+> **La regla no tiene estado, y es deliberado.** Condicionarla a "la próxima corrida elegible"
+> exigiría una marca durable —ubicación, transiciones, autoridad para abrirla y cerrarla— que
+> `sdd-flow` **no tiene**: su estado vive en `plan.md` (por flujo) y `.cross-model/` (por corrida),
+> nunca a nivel de skill. Regir siempre es **más fuerte** —no caduca— y **más barato**: nada que
+> persistir, y la retirada, cuando llegue, es un edit versionado de este archivo, observable por
+> construcción.
+
+**La marca.** El literal `MISSING_CONTEXT: <pieza>`, en un campo que ya existe — el formato de los
+reportes **no se toca**:
+
+| Agente | Campo | Por qué ahí |
+|---|---|---|
+| implementer | `FAILURE_REASON` (con `STATUS: failed`) | no puede completar la task sin la pieza |
+| reviewer | `NOTES` | **no tiene** campo `STATUS`; `NOTES` es su único canal libre |
+
+**Por qué un literal y no prosa:** `NOTES` ya admite texto libre —"no verificable desde el diff"—, y
+sin una forma fija el conductor no distingue falta de contexto de una nota ordinaria.
+
+**Vocabulario cerrado de `<pieza>`** — las seis clases de R5, más una salida:
+
+`task` · `ac` · `fila` · `produce` · `bloque-global` · `enfoque` · `otro:<texto libre>`
+
+Es lo que hace clasificable "dentro" o "fuera" sin interpretación. Antes de clasificar, el token se
+**normaliza**: minúsculas, y guion bajo → guion. Sin eso, un `MISSING_CONTEXT: bloque_global` caería
+en `otro:` y dispararía el rollback de todo el recorte por una diferencia de tipografía. Una marca
+cuyo token normalizado no sea ninguno de los seis se lee como `otro:` con el texto crudo — nunca se
+descarta por malformada.
+
+**Resultado esperado de una corrida:** ninguna marca que nombre una pieza **fuera** de las seis. Las
+marcas *dentro* de las seis son el funcionamiento normal del mecanismo —dicen qué agregar al
+dossier—, no una falla.
+
+**Múltiples marcas en un mismo reporte:** una marca por pieza faltante, **cada una en su propia
+línea**, dentro del campo que le corresponde. El conductor las procesa **todas**; basta que una caiga
+fuera de las seis para disparar el umbral.
+
+**Tabla de acción del conductor.** Se aplica **antes** de marcar la task `[x]`:
+
+| Agente | Pieza | Qué hace el conductor |
+|---|---|---|
+| implementer | **dentro** de las seis | la pieza faltaba en el dossier, no en el diseño: rearmar el dossier con la pieza y **1 reintento** (el mismo tope del modo `subagent`). Si el reintento vuelve a marcarla, **bloquea** y escala |
+| implementer | **fuera** (`otro:`) | **no reintentar**: el dossier no tiene esa pieza porque el recorte la dejó afuera. Parar, escalar, y **dispara el umbral de rollback** |
+| reviewer | **dentro** de las seis | el reviewer devuelve `SPEC: warn` — no bloquea (mismo trato que "no verificable desde el diff"): el conductor completa la pieza y resuelve él antes de marcar `[x]` |
+| reviewer | **fuera** (`otro:`) | igual que arriba: no se marca `[x]`, se escala, y **dispara el umbral de rollback** |
+
+**Umbral de rollback: una sola marca** que nombre una pieza **fuera** de las seis, de cualquiera de
+los dos agentes. Un umbral de "dos tasks consecutivas" sería inalcanzable por construcción: el loop
+para y escala tras un reintento, así que nunca habría una segunda.
+
+**Dueño:** el conductor de esa corrida, que **reporta las marcas antes de cerrar el flujo** — estén
+dentro o fuera de las seis. Una marca que nombra su pieza faltante no es una regresión: es el dato
+que dice qué agregar al dossier.
 
 ## Revisión final de diff
 
