@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "corpus-dossier.schema.json",
+  "title": "Manifest de corpus de la Fase 0.5 — la población congelada por identidad y contenido",
+  "description": "R8 del contrato de extracción y AC-4/AC-5 de `dossier-oraculo`. Enumera las ternas (flujo, task_id, ocurrencia) y sella el sha256 y el tamaño de los tres artefactos de cada flujo elegible. La población es enumerada, no consultada: ninguna medición posterior la recalcula contra el árbol.",
+  "x-version": "1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version_schema",
+    "contrato_sha256",
+    "predicado_elegibilidad",
+    "slugs_fase_05",
+    "artefactos_exigidos",
+    "flujos",
+    "ternas"
+  ],
+  "properties": {
+    "version_schema": {
+      "const": "1",
+      "description": "La versión del contrato de datos que esta instancia declara cumplir."
+    },
+    "contrato_sha256": {
+      "$ref": "#/$defs/sha256",
+      "description": "El contrato de extracción bajo el que se congeló este corpus."
+    },
+    "predicado_elegibilidad": {
+      "type": "string",
+      "minLength": 1,
+      "description": "El predicado de AC-4bis, transcrito. Se versiona con el manifest porque el comando que lo implementa no lo define."
+    },
+    "slugs_fase_05": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 },
+      "description": "La Fase 0.5, enumerada por slugs y no por patrón de nombre. La lista se cierra al congelar."
+    },
+    "artefactos_exigidos": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/nombre_de_artefacto" }
+    },
+    "flujos": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/flujo" }
+    },
+    "ternas": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/terna" }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "nombre_de_artefacto": {
+      "type": "string",
+      "enum": ["spec.md", "plan.md", "tasks.md"]
+    },
+    "slug_de_flujo": {
+      "type": "string",
+      "pattern": "^(archived/)?[a-z0-9][a-z0-9._-]*$",
+      "description": "El flujo, como directorio hijo directo de `.plans/` o de `.plans/archived/`."
+    },
+    "flujo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["flujo", "artefactos"],
+      "properties": {
+        "flujo": { "$ref": "#/$defs/slug_de_flujo" },
+        "artefactos": {
+          "type": "array",
+          "minItems": 3,
+          "items": { "$ref": "#/$defs/artefacto" }
+        }
+      }
+    },
+    "artefacto": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artefacto", "ruta", "sha256", "tamano", "identidad_lectura"],
+      "properties": {
+        "artefacto": { "$ref": "#/$defs/nombre_de_artefacto" },
+        "ruta": {
+          "type": "string",
+          "pattern": "^\\.plans/",
+          "description": "La ruta canónica, relativa a la raíz del repo."
+        },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "tamano": { "type": "integer", "minimum": 1 },
+        "identidad_lectura": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "description": "La identidad del buffer del que salieron el hash y todo rango copiado de este artefacto (D4). Un rango cuyo `origen` declare otra identidad no salió de esta lectura."
+        }
+      }
+    },
+    "terna": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["flujo", "task_id", "ocurrencia"],
+      "properties": {
+        "flujo": { "$ref": "#/$defs/slug_de_flujo" },
+        "task_id": {
+          "type": "string",
+          "pattern": "^T[0-9]+[A-Za-z]*$",
+          "description": "El id de R1. El sufijo es parte del id y las mayúsculas también."
+        },
+        "ocurrencia": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

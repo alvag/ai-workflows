@@ -1,0 +1,441 @@
+{
+  "version_schema": "1",
+  "contrato_sha256": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+  "corpus_identidad": "sha256:bd98d84a9d4d4e2f93a4a25d95b84b73028616e60561e858a27e995c77f6ea94",
+  "reglas_cubiertas": [
+    "R1",
+    "R2",
+    "R3",
+    "R4",
+    "R5",
+    "R7",
+    "R8"
+  ],
+  "casos": [
+    {
+      "clase": "caso_corpus",
+      "id": "C1",
+      "regla": "R1",
+      "signo": "positivo",
+      "entrada": "## T1 — El verificador completo, con control positivo y mutantes `[subagente]`",
+      "origen": {
+        "flujo": "archived/hilo-workers-en-vuelo",
+        "artefacto": "tasks.md",
+        "task_id": "T1",
+        "ocurrencia": 1,
+        "rango": {
+          "inicio": 2555,
+          "fin": 2635
+        },
+        "identidad_lectura": "sha256:a07b60b4808cbeb34f4b0cdecc033e26ede508a8fa534542118f61ca86695ee3"
+      },
+      "salida_esperada": {
+        "descripcion": "el encabezado `## T<n> — <título>` es un encabezado de task, id `T1`; el título tras el id es parte de la forma",
+        "valor": [
+          "T1"
+        ]
+      }
+    },
+    {
+      "clase": "caso_corpus",
+      "id": "C2",
+      "regla": "R1",
+      "signo": "positivo",
+      "entrada": "- [x] **T12 — Probar copia instalada, smoke real y regresión completa antes de promover**  · cubre: AC-14\n  - **Por qué:** la feature no está completa si solo funciona desde el checkout o rompe una",
+      "origen": {
+        "flujo": "archived/cross-model-co-explore-debate-runtime",
+        "artefacto": "tasks.md",
+        "task_id": "T12",
+        "ocurrencia": 1,
+        "rango": {
+          "inicio": 27704,
+          "fin": 27907
+        },
+        "identidad_lectura": "sha256:76a881d3ff7bdb7d66252a2d9ea13a70e99a2aa1d7f905fb039f4b5189326c48"
+      },
+      "salida_esperada": {
+        "descripcion": "la otra forma de encabezado: viñeta con checkbox e id en negrita",
+        "valor": [
+          "T12"
+        ]
+      }
+    },
+    {
+      "clase": "caso_sintetico",
+      "id": "C3",
+      "regla": "R1",
+      "signo": "negativo",
+      "entrada": "  · cubre: AC-6..AC-1",
+      "justificacion": "ningún artefacto del corpus escribe un rango invertido: la forma existe en la gramática de R1 como error, no como uso.",
+      "construccion": "se tomó la forma de declaración `· cubre:` tal como aparece en el corpus y se invirtieron los extremos del rango `AC-1..AC-6`, que sí aparece.",
+      "error_esperado": {
+        "codigo": "rango_invertido",
+        "descripcion": "el extremo inicial es mayor que el final"
+      }
+    },
+    {
+      "clase": "caso_corpus",
+      "id": "C4",
+      "regla": "R2",
+      "signo": "positivo",
+      "entrada": "- [x] **T6 — Validar la adenda y resolver handoff por raíz padre o hija**  · cubre: AC-8, AC-9,\n    AC-10",
+      "origen": {
+        "flujo": "archived/cross-model-co-explore-readonly-modes",
+        "artefacto": "tasks.md",
+        "task_id": "T6",
+        "ocurrencia": 1,
+        "rango": {
+          "inicio": 17206,
+          "fin": 17315
+        },
+        "identidad_lectura": "sha256:d461c82b68532a1c3c504780996b5316c55100169e88b5ba95c99ed048c3c74a"
+      },
+      "salida_esperada": {
+        "descripcion": "`· cubre:` empieza en la línea del encabezado y **continúa** por la indentada siguiente: un predicado que lea una sola línea pierde tres de los tres",
+        "valor": [
+          "AC-8",
+          "AC-9",
+          "AC-10"
+        ]
+      }
+    },
+    {
+      "clase": "caso_corpus",
+      "id": "C5",
+      "regla": "R2",
+      "signo": "positivo",
+      "entrada": "- [x] **T4 — Despachar el cohort hijo con contexto idéntico y recovery prioritario**  · cubre:\n    AC-3, AC-4, AC-5, AC-9, AC-11",
+      "origen": {
+        "flujo": "archived/cross-model-co-explore-readonly-modes",
+        "artefacto": "tasks.md",
+        "task_id": "T4",
+        "ocurrencia": 1,
+        "rango": {
+          "inicio": 10152,
+          "fin": 10284
+        },
+        "identidad_lectura": "sha256:d461c82b68532a1c3c504780996b5316c55100169e88b5ba95c99ed048c3c74a"
+      },
+      "salida_esperada": {
+        "descripcion": "el marcador `· cubre:` queda **solo** al final de la línea del encabezado y todos los ids están en la siguiente: leer una línea devuelve la task entera sin cobertura",
+        "valor": [
+          "AC-3",
+          "AC-4",
+          "AC-5",
+          "AC-9",
+          "AC-11"
+        ]
+      }
+    },
+    {
+      "clase": "caso_corpus",
+      "id": "C6",
+      "regla": "R2",
+      "signo": "positivo",
+      "entrada": "  **AC:** AC-1, AC-2, AC-3.",
+      "origen": {
+        "flujo": "archived/retirar-transporte-panes",
+        "artefacto": "tasks.md",
+        "task_id": "T1",
+        "ocurrencia": 1,
+        "rango": {
+          "inicio": 7054,
+          "fin": 7081
+        },
+        "identidad_lectura": "sha256:c3a05b88dbcdeed5525405b4b214ffda8cc7f774dfcf231aef65fddf7a9ed31a"
+      },
+      "salida_esperada": {
+        "descripcion": "campo `**AC:**` sin viñeta e **indentado**, bajo un encabezado de viñeta",
+        "valor": [
+          "AC-1",
+          "AC-2",
+          "AC-3"
+        ]
+      }
+    },
+    {
+      "clase": "caso_corpus",
+      "id": "C7",
+      "regla": "R2",
+      "signo": "positivo",
+      "entrada": "**AC:** AC-16 (y habilita la verificación de todos los demás).",
+      "origen": {
+        "flujo": "archived/hilo-workers-en-vuelo",
+        "artefacto": "tasks.md",
+        "task_id": "T1",
+        "ocurrencia": 1,
+        "rango": {
+          "inicio": 2682,
+          "fin": 2746
+        },
+        "identidad_lectura": "sha256:a07b60b4808cbeb34f4b0cdecc033e26ede508a8fa534542118f61ca86695ee3"
+      },
+      "salida_esperada": {
+        "descripcion": "campo `**AC:**` sin viñeta bajo un encabezado `## T<n>`",
+        "valor": [
+          "AC-16"
+        ]
+      }
+    },
+    {
+      "clase": "caso_corpus",
+      "id": "C8",
+      "regla": "R2",
+      "signo": "positivo",
+      "entrada": "  - **AC:** AC-17, AC-22bis, AC-23.",
+      "origen": {
+        "flujo": "archived/instrumento-y-baseline",
+        "artefacto": "tasks.md",
+        "task_id": "T1",
+        "ocurrencia": 1,
+        "rango": {
+          "inicio": 4895,
+          "fin": 4930
+        },
+        "identidad_lectura": "sha256:f244e4afb816ea32b82b1050bf72efe28bcf885af371f9f60c0a2fa2a51afcef"
+      },
+      "salida_esperada": {
+        "descripcion": "campo `- **AC:**` con viñeta, la fuente 2 de R2",
+        "valor": [
+          "AC-17",
+          "AC-22bis",
+          "AC-23"
+        ]
+      }
+    },
+    {
+      "clase": "caso_corpus",
+      "id": "C9",
+      "regla": "R2",
+      "signo": "negativo",
+      "entrada": "  - **Verificar:** V25, V26 · **AC-21**",
+      "origen": {
+        "flujo": "archived/herdr-transporte-skills",
+        "artefacto": "tasks.md",
+        "task_id": "T2",
+        "ocurrencia": 1,
+        "rango": {
+          "inicio": 14790,
+          "fin": 14830
+        },
+        "identidad_lectura": "sha256:52d4d20817152ec858f3049d457004ad1cc39a400c523e164b27cadc50f9c6d3"
+      },
+      "error_esperado": {
+        "codigo": "sin_cobertura",
+        "descripcion": "lo que aparece en la línea de `Verificar:` NO declara cobertura, ni siquiera con forma de declaración y con el mismo separador `·` de la fuente 1"
+      }
+    },
+    {
+      "clase": "caso_corpus",
+      "id": "C10",
+      "regla": "R3",
+      "signo": "positivo",
+      "entrada": "  - **Verificar:** V7, V8.",
+      "origen": {
+        "flujo": "archived/instrumento-y-baseline",
+        "artefacto": "tasks.md",
+        "task_id": "T2",
+        "ocurrencia": 1,
+        "rango": {
+          "inicio": 7306,
+          "fin": 7332
+        },
+        "identidad_lectura": "sha256:f244e4afb816ea32b82b1050bf72efe28bcf885af371f9f60c0a2fa2a51afcef"
+      },
+      "salida_esperada": {
+        "descripcion": "las filas que entran al dossier son exactamente las que la task cita literalmente en `Verificar:`; no se expande AC→V ni V→AC",
+        "valor": [
+          "V7",
+          "V8"
+        ]
+      }
+    },
+    {
+      "clase": "caso_sintetico",
+      "id": "C11",
+      "regla": "R3",
+      "signo": "negativo",
+      "entrada": "| V13 | AC-2 | comando | `pytest -q` | 0 fallos | RED |\n| V13 | AC-3 | comando | `pytest -q` | 0 fallos | RED |",
+      "justificacion": "el corpus tiene el mismo id en `## Verification` y en `## Verify` —que R3 excluye— pero ninguna `## Verification` con la fila repetida dentro.",
+      "construccion": "se copió la forma de fila de `## Verification` del corpus y se duplicó su id dentro de la misma sección.",
+      "error_esperado": {
+        "codigo": "fila_duplicada",
+        "descripcion": "el id `V13` aparece dos veces dentro de `## Verification`"
+      }
+    },
+    {
+      "clase": "caso_sintetico",
+      "id": "C12",
+      "regla": "R4",
+      "signo": "positivo",
+      "entrada": "## Apéndice de fidelidad — los criterios heredados, literales\n\n- **AC-3:** Given el repo, When corre el censo, Then …",
+      "justificacion": "el corpus tiene **un solo** `## Apéndice de fidelidad`, y está en una `spec.md`; ninguna repetición de id cae dentro de un `tasks.md`, que es el artefacto sobre el que se define la terna del `origen` de AC-12.",
+      "construccion": "se copió el heading real del apéndice de `archived/instrumento-y-baseline/spec.md` y se le puso debajo una repetición de un id ya declarado antes.",
+      "salida_esperada": {
+        "descripcion": "se toma la primera declaración, y `bloque_elegido` es la ubicación del bloque tomado",
+        "valor": [
+          "AC-3"
+        ]
+      }
+    },
+    {
+      "clase": "caso_sintetico",
+      "id": "C13",
+      "regla": "R4",
+      "signo": "negativo",
+      "entrada": "- **AC-3:** Given el repo, When corre el censo, Then …\n\n- **AC-3:** Given otra cosa, When otra, Then …",
+      "justificacion": "un duplicado normativo es un artefacto roto; el corpus está compuesto de flujos que pasaron su gate, así que no contiene ninguno.",
+      "construccion": "se repitió, fuera de todo apéndice, la forma de declaración de AC que R1 fija.",
+      "error_esperado": {
+        "codigo": "duplicado_normativo",
+        "descripcion": "el id se declara dos veces fuera de un apéndice de fidelidad; `bloque_elegido` queda en `ninguno`"
+      }
+    },
+    {
+      "clase": "caso_corpus",
+      "id": "C14",
+      "regla": "R5",
+      "signo": "positivo",
+      "entrada": "  - **Consume:** contrato de capabilities de T1;",
+      "origen": {
+        "flujo": "archived/cross-model-co-explore-consumer",
+        "artefacto": "tasks.md",
+        "task_id": "T3",
+        "ocurrencia": 1,
+        "rango": {
+          "inicio": 6328,
+          "fin": 6376
+        },
+        "identidad_lectura": "sha256:ecca2b9a28850a5461d30edc5f99856dba2e4d52413e1d2d4be270c18a8c6aba"
+      },
+      "salida_esperada": {
+        "descripcion": "el `Consume` resuelve por id de task: la pieza consumida es el `Produce` de T1",
+        "valor": [
+          "T1"
+        ]
+      }
+    },
+    {
+      "clase": "caso_corpus",
+      "id": "C15",
+      "regla": "R5",
+      "signo": "negativo",
+      "entrada": "  - **Consume:** la interfaz compartida — el contrato global de este documento, que el conductor",
+      "origen": {
+        "flujo": "archived/herdr-transporte-skills",
+        "artefacto": "tasks.md",
+        "task_id": "T8",
+        "ocurrencia": 1,
+        "rango": {
+          "inicio": 24614,
+          "fin": 24712
+        },
+        "identidad_lectura": "sha256:52d4d20817152ec858f3049d457004ad1cc39a400c523e164b27cadc50f9c6d3"
+      },
+      "error_esperado": {
+        "codigo": "consume_no_tipado",
+        "descripcion": "referencia genuinamente sin forma —«la interfaz compartida»—: no es ni una task ni un bloque declarado. En `medir-historico` se excluye con causa"
+      },
+      "ambiguo_en_el_corpus": {
+        "inicio": 26953,
+        "fin": 27051
+      }
+    },
+    {
+      "clase": "caso_sintetico",
+      "id": "C16",
+      "regla": "R7",
+      "signo": "positivo",
+      "entrada": "dossier(T1) = {task literal, AC cubiertos, filas Vn citadas, Produce consumidos, bloques globales consumidos, ## Enfoque}",
+      "justificacion": "R7 es una regla sobre la **proyección** del dossier, no sobre un fragmento de artefacto: no hay bytes del corpus que la instancien.",
+      "construccion": "se enumeraron las seis piezas de R5 en el orden que R7 fija para la proyección canónica.",
+      "salida_esperada": {
+        "descripcion": "las seis piezas, en el orden canónico",
+        "valor": [
+          "task",
+          "ac",
+          "filas",
+          "produce",
+          "bloques_globales",
+          "enfoque"
+        ]
+      }
+    },
+    {
+      "clase": "caso_sintetico",
+      "id": "C17",
+      "regla": "R7",
+      "signo": "negativo",
+      "entrada": "dossier(T1) = {task literal, AC cubiertos, filas Vn citadas}",
+      "justificacion": "ídem C16: la proyección incompleta no es un fragmento del corpus.",
+      "construccion": "se quitaron tres de las seis piezas de la proyección de C16.",
+      "error_esperado": {
+        "codigo": "enfoque_ausente",
+        "descripcion": "falta el `## Enfoque` del plan, una de las dos piezas siempre presentes"
+      }
+    },
+    {
+      "clase": "caso_sintetico",
+      "id": "C18",
+      "regla": "R8",
+      "signo": "positivo",
+      "entrada": "{\"flujo\": \"archived/x\", \"task_id\": \"T1\", \"ocurrencia\": 1}",
+      "justificacion": "R8 es una regla sobre el **manifest de corpus**, no sobre un artefacto del corpus: el corpus no contiene una instancia de sí mismo.",
+      "construccion": "se copió la forma de terna que `corpus-dossier.schema.json` fija.",
+      "salida_esperada": {
+        "descripcion": "la terna enumerada, no consultada contra el árbol",
+        "valor": [
+          "archived/x",
+          "T1",
+          "1"
+        ]
+      }
+    },
+    {
+      "clase": "caso_sintetico",
+      "id": "C19",
+      "regla": "R8",
+      "signo": "negativo",
+      "entrada": "{\"consulta\": \"los flujos con tres artefactos\"}",
+      "justificacion": "ídem C18.",
+      "construccion": "se escribió la consulta que R8 prohíbe en lugar de la enumeración.",
+      "error_esperado": {
+        "codigo": "ac_inexistente",
+        "descripcion": "la población se resuelve contra el árbol al correr, así que archivar otro flujo cambiaría la medición retroactivamente"
+      }
+    }
+  ],
+  "obligatorios": [
+    {
+      "identidad": "cubre-continuado-en-lineas-indentadas",
+      "defecto": 1,
+      "descripcion": "`· cubre:` continuado en las líneas indentadas siguientes",
+      "caso_id": "C4"
+    },
+    {
+      "identidad": "cubre-con-el-marcador-solo-al-final",
+      "defecto": 2,
+      "descripcion": "`· cubre:` con el marcador solo al final de la línea del encabezado",
+      "caso_id": "C5"
+    },
+    {
+      "identidad": "ac-sin-vineta-bajo-encabezado-de-vineta",
+      "defecto": 3,
+      "descripcion": "`**AC:**` sin viñeta e indentado, bajo un encabezado de viñeta",
+      "caso_id": "C6"
+    },
+    {
+      "identidad": "ac-sin-vineta-bajo-encabezado-de-heading",
+      "defecto": 3,
+      "descripcion": "`**AC:**` sin viñeta bajo un encabezado `## T<n>`",
+      "caso_id": "C7",
+      "nota": "el corpus no tiene ninguna ocurrencia **indentada** de `**AC:**` bajo un encabezado `## T<n>`: la única bajo esa forma está a columna cero. Se copió esa, porque AC-13 manda copiar y no inventar; el margen entre la forma del defecto y lo que el corpus aporta queda acá escrito en vez de disimulado."
+    },
+    {
+      "identidad": "encabezado-de-task-con-titulo",
+      "defecto": 4,
+      "descripcion": "`## T<n> — <título>`",
+      "caso_id": "C1"
+    }
+  ]
+}

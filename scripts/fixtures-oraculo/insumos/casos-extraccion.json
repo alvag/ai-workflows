@@ -1,0 +1,307 @@
+{
+  "version_schema": "1",
+  "contrato_sha256": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+  "corpus_identidad": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "reglas_cubiertas": [
+    "R1",
+    "R2",
+    "R3",
+    "R4",
+    "R5",
+    "R7",
+    "R8"
+  ],
+  "casos": [
+    {
+      "clase": "caso_corpus",
+      "id": "C1",
+      "regla": "R1",
+      "signo": "positivo",
+      "entrada": "entrada positiva sintética de R1",
+      "origen": {
+        "flujo": "archived/flujo-sintetico",
+        "artefacto": "tasks.md",
+        "task_id": "T1",
+        "ocurrencia": 1,
+        "rango": {
+          "inicio": 0,
+          "fin": 10
+        },
+        "identidad_lectura": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "salida_esperada": {
+        "descripcion": "lo que R1 produce",
+        "valor": [
+          "AC-1"
+        ]
+      }
+    },
+    {
+      "clase": "caso_sintetico",
+      "id": "C2",
+      "regla": "R1",
+      "signo": "negativo",
+      "entrada": "entrada negativa sintética de R1",
+      "justificacion": "el corpus no contiene sintaxis inválida de esta forma",
+      "construccion": "escrita a mano invirtiendo el extremo del rango",
+      "error_esperado": {
+        "codigo": "rango_invertido",
+        "descripcion": "la entrada viola R1"
+      }
+    },
+    {
+      "clase": "caso_corpus",
+      "id": "C3",
+      "regla": "R2",
+      "signo": "positivo",
+      "entrada": "entrada positiva sintética de R2",
+      "origen": {
+        "flujo": "archived/flujo-sintetico",
+        "artefacto": "tasks.md",
+        "task_id": "T1",
+        "ocurrencia": 1,
+        "rango": {
+          "inicio": 0,
+          "fin": 10
+        },
+        "identidad_lectura": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "salida_esperada": {
+        "descripcion": "lo que R2 produce",
+        "valor": [
+          "AC-1"
+        ]
+      }
+    },
+    {
+      "clase": "caso_sintetico",
+      "id": "C4",
+      "regla": "R2",
+      "signo": "negativo",
+      "entrada": "entrada negativa sintética de R2",
+      "justificacion": "el corpus no contiene sintaxis inválida de esta forma",
+      "construccion": "escrita a mano invirtiendo el extremo del rango",
+      "error_esperado": {
+        "codigo": "rango_invertido",
+        "descripcion": "la entrada viola R2"
+      }
+    },
+    {
+      "clase": "caso_corpus",
+      "id": "C5",
+      "regla": "R3",
+      "signo": "positivo",
+      "entrada": "entrada positiva sintética de R3",
+      "origen": {
+        "flujo": "archived/flujo-sintetico",
+        "artefacto": "tasks.md",
+        "task_id": "T1",
+        "ocurrencia": 1,
+        "rango": {
+          "inicio": 0,
+          "fin": 10
+        },
+        "identidad_lectura": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "salida_esperada": {
+        "descripcion": "lo que R3 produce",
+        "valor": [
+          "AC-1"
+        ]
+      }
+    },
+    {
+      "clase": "caso_sintetico",
+      "id": "C6",
+      "regla": "R3",
+      "signo": "negativo",
+      "entrada": "entrada negativa sintética de R3",
+      "justificacion": "el corpus no contiene sintaxis inválida de esta forma",
+      "construccion": "escrita a mano invirtiendo el extremo del rango",
+      "error_esperado": {
+        "codigo": "rango_invertido",
+        "descripcion": "la entrada viola R3"
+      }
+    },
+    {
+      "clase": "caso_corpus",
+      "id": "C7",
+      "regla": "R4",
+      "signo": "positivo",
+      "entrada": "entrada positiva sintética de R4",
+      "origen": {
+        "flujo": "archived/flujo-sintetico",
+        "artefacto": "tasks.md",
+        "task_id": "T1",
+        "ocurrencia": 1,
+        "rango": {
+          "inicio": 0,
+          "fin": 10
+        },
+        "identidad_lectura": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "salida_esperada": {
+        "descripcion": "lo que R4 produce",
+        "valor": [
+          "AC-1"
+        ]
+      }
+    },
+    {
+      "clase": "caso_sintetico",
+      "id": "C8",
+      "regla": "R4",
+      "signo": "negativo",
+      "entrada": "entrada negativa sintética de R4",
+      "justificacion": "el corpus no contiene sintaxis inválida de esta forma",
+      "construccion": "escrita a mano invirtiendo el extremo del rango",
+      "error_esperado": {
+        "codigo": "rango_invertido",
+        "descripcion": "la entrada viola R4"
+      }
+    },
+    {
+      "clase": "caso_corpus",
+      "id": "C9",
+      "regla": "R5",
+      "signo": "positivo",
+      "entrada": "entrada positiva sintética de R5",
+      "origen": {
+        "flujo": "archived/flujo-sintetico",
+        "artefacto": "tasks.md",
+        "task_id": "T1",
+        "ocurrencia": 1,
+        "rango": {
+          "inicio": 0,
+          "fin": 10
+        },
+        "identidad_lectura": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "salida_esperada": {
+        "descripcion": "lo que R5 produce",
+        "valor": [
+          "AC-1"
+        ]
+      }
+    },
+    {
+      "clase": "caso_sintetico",
+      "id": "C10",
+      "regla": "R5",
+      "signo": "negativo",
+      "entrada": "entrada negativa sintética de R5",
+      "justificacion": "el corpus no contiene sintaxis inválida de esta forma",
+      "construccion": "escrita a mano invirtiendo el extremo del rango",
+      "error_esperado": {
+        "codigo": "rango_invertido",
+        "descripcion": "la entrada viola R5"
+      }
+    },
+    {
+      "clase": "caso_corpus",
+      "id": "C11",
+      "regla": "R7",
+      "signo": "positivo",
+      "entrada": "entrada positiva sintética de R7",
+      "origen": {
+        "flujo": "archived/flujo-sintetico",
+        "artefacto": "tasks.md",
+        "task_id": "T1",
+        "ocurrencia": 1,
+        "rango": {
+          "inicio": 0,
+          "fin": 10
+        },
+        "identidad_lectura": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "salida_esperada": {
+        "descripcion": "lo que R7 produce",
+        "valor": [
+          "AC-1"
+        ]
+      }
+    },
+    {
+      "clase": "caso_sintetico",
+      "id": "C12",
+      "regla": "R7",
+      "signo": "negativo",
+      "entrada": "entrada negativa sintética de R7",
+      "justificacion": "el corpus no contiene sintaxis inválida de esta forma",
+      "construccion": "escrita a mano invirtiendo el extremo del rango",
+      "error_esperado": {
+        "codigo": "rango_invertido",
+        "descripcion": "la entrada viola R7"
+      }
+    },
+    {
+      "clase": "caso_corpus",
+      "id": "C13",
+      "regla": "R8",
+      "signo": "positivo",
+      "entrada": "entrada positiva sintética de R8",
+      "origen": {
+        "flujo": "archived/flujo-sintetico",
+        "artefacto": "tasks.md",
+        "task_id": "T1",
+        "ocurrencia": 1,
+        "rango": {
+          "inicio": 0,
+          "fin": 10
+        },
+        "identidad_lectura": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "salida_esperada": {
+        "descripcion": "lo que R8 produce",
+        "valor": [
+          "AC-1"
+        ]
+      }
+    },
+    {
+      "clase": "caso_sintetico",
+      "id": "C14",
+      "regla": "R8",
+      "signo": "negativo",
+      "entrada": "entrada negativa sintética de R8",
+      "justificacion": "el corpus no contiene sintaxis inválida de esta forma",
+      "construccion": "escrita a mano invirtiendo el extremo del rango",
+      "error_esperado": {
+        "codigo": "rango_invertido",
+        "descripcion": "la entrada viola R8"
+      }
+    }
+  ],
+  "obligatorios": [
+    {
+      "identidad": "cubre-continuado-en-lineas-indentadas",
+      "defecto": 1,
+      "descripcion": "la lista se parte entre dos líneas",
+      "caso_id": "C1"
+    },
+    {
+      "identidad": "cubre-con-el-marcador-solo-al-final",
+      "defecto": 2,
+      "descripcion": "el marcador cierra la línea",
+      "caso_id": "C3"
+    },
+    {
+      "identidad": "ac-sin-vineta-bajo-encabezado-de-vineta",
+      "defecto": 3,
+      "descripcion": "`**AC:**` indentado bajo viñeta",
+      "caso_id": "C5"
+    },
+    {
+      "identidad": "ac-sin-vineta-bajo-encabezado-de-heading",
+      "defecto": 3,
+      "descripcion": "`**AC:**` indentado bajo `## T<n>`",
+      "caso_id": "C7"
+    },
+    {
+      "identidad": "encabezado-de-task-con-titulo",
+      "defecto": 4,
+      "descripcion": "`## T<n> — <título>`",
+      "caso_id": "C9"
+    }
+  ]
+}

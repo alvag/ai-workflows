@@ -1,0 +1,2272 @@
+{
+  "version_schema": "1",
+  "contrato_sha256": "3a9412cbf169e74376c00bc8a13fb3ce5669064f9a520d7c69fe30bf7c0021ef",
+  "predicado_elegibilidad": "Un flujo es un directorio hijo directo de `.plans/` o de `.plans/archived/`. Es elegible si y solo si (a) contiene spec.md, plan.md y tasks.md, los tres archivos regulares y no vacíos, y (b) no pertenece a la Fase 0.5.",
+  "slugs_fase_05": [
+    "dossier-arnes",
+    "dossier-de-task",
+    "dossier-diff-de-task",
+    "dossier-oraculo",
+    "dossier-prompts"
+  ],
+  "artefactos_exigidos": [
+    "spec.md",
+    "plan.md",
+    "tasks.md"
+  ],
+  "flujos": [
+    {
+      "flujo": "archived/cross-model-co-explore-consumer",
+      "artefactos": [
+        {
+          "artefacto": "spec.md",
+          "ruta": ".plans/archived/cross-model-co-explore-consumer/spec.md",
+          "sha256": "e6c487bae52a4576003aa16568507d29250f4fc6a977209d8fb868ec5d7b41e1",
+          "tamano": 23331,
+          "identidad_lectura": "sha256:e6c487bae52a4576003aa16568507d29250f4fc6a977209d8fb868ec5d7b41e1"
+        },
+        {
+          "artefacto": "plan.md",
+          "ruta": ".plans/archived/cross-model-co-explore-consumer/plan.md",
+          "sha256": "3657a40ac928ff71ba5610d0f8c53f657ccd7989794c9348d7657510e3e4552c",
+          "tamano": 27209,
+          "identidad_lectura": "sha256:3657a40ac928ff71ba5610d0f8c53f657ccd7989794c9348d7657510e3e4552c"
+        },
+        {
+          "artefacto": "tasks.md",
+          "ruta": ".plans/archived/cross-model-co-explore-consumer/tasks.md",
+          "sha256": "ecca2b9a28850a5461d30edc5f99856dba2e4d52413e1d2d4be270c18a8c6aba",
+          "tamano": 25478,
+          "identidad_lectura": "sha256:ecca2b9a28850a5461d30edc5f99856dba2e4d52413e1d2d4be270c18a8c6aba"
+        }
+      ]
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-debate-runtime",
+      "artefactos": [
+        {
+          "artefacto": "spec.md",
+          "ruta": ".plans/archived/cross-model-co-explore-debate-runtime/spec.md",
+          "sha256": "212d2673e4e9677f717568512cc8037f9cdd90c3ac058cd25a44f92f2e2da1bb",
+          "tamano": 16154,
+          "identidad_lectura": "sha256:212d2673e4e9677f717568512cc8037f9cdd90c3ac058cd25a44f92f2e2da1bb"
+        },
+        {
+          "artefacto": "plan.md",
+          "ruta": ".plans/archived/cross-model-co-explore-debate-runtime/plan.md",
+          "sha256": "8efd6a18f6eeb10840621dcd65f6666e8c4494646faff6850f717d7f15dc56f9",
+          "tamano": 30384,
+          "identidad_lectura": "sha256:8efd6a18f6eeb10840621dcd65f6666e8c4494646faff6850f717d7f15dc56f9"
+        },
+        {
+          "artefacto": "tasks.md",
+          "ruta": ".plans/archived/cross-model-co-explore-debate-runtime/tasks.md",
+          "sha256": "76a881d3ff7bdb7d66252a2d9ea13a70e99a2aa1d7f905fb039f4b5189326c48",
+          "tamano": 30734,
+          "identidad_lectura": "sha256:76a881d3ff7bdb7d66252a2d9ea13a70e99a2aa1d7f905fb039f4b5189326c48"
+        }
+      ]
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-investigate-runtime",
+      "artefactos": [
+        {
+          "artefacto": "spec.md",
+          "ruta": ".plans/archived/cross-model-co-explore-investigate-runtime/spec.md",
+          "sha256": "ee79f0bc0758c5ef9e87d6c04878bdea2e8166436cdbe0b7918b376934d8ffee",
+          "tamano": 22668,
+          "identidad_lectura": "sha256:ee79f0bc0758c5ef9e87d6c04878bdea2e8166436cdbe0b7918b376934d8ffee"
+        },
+        {
+          "artefacto": "plan.md",
+          "ruta": ".plans/archived/cross-model-co-explore-investigate-runtime/plan.md",
+          "sha256": "d75644b31c7750cad6f6cd867306a411e3c8cc48ce470a581b45201a457ae4fb",
+          "tamano": 31485,
+          "identidad_lectura": "sha256:d75644b31c7750cad6f6cd867306a411e3c8cc48ce470a581b45201a457ae4fb"
+        },
+        {
+          "artefacto": "tasks.md",
+          "ruta": ".plans/archived/cross-model-co-explore-investigate-runtime/tasks.md",
+          "sha256": "f6a205a4a7d018cc94e925e95cc229269387212a37039a3b3d2dadf57b37b52e",
+          "tamano": 25698,
+          "identidad_lectura": "sha256:f6a205a4a7d018cc94e925e95cc229269387212a37039a3b3d2dadf57b37b52e"
+        }
+      ]
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-readonly-modes",
+      "artefactos": [
+        {
+          "artefacto": "spec.md",
+          "ruta": ".plans/archived/cross-model-co-explore-readonly-modes/spec.md",
+          "sha256": "076adb1f5ee40dfd4afcddf841bf148a733a58eebd43f71cf3a73ebbad01233b",
+          "tamano": 18376,
+          "identidad_lectura": "sha256:076adb1f5ee40dfd4afcddf841bf148a733a58eebd43f71cf3a73ebbad01233b"
+        },
+        {
+          "artefacto": "plan.md",
+          "ruta": ".plans/archived/cross-model-co-explore-readonly-modes/plan.md",
+          "sha256": "553cca1cf34138efba0ebd5b77629d6a90e1c88e4793b3e14c7b2b73ba2f101a",
+          "tamano": 32079,
+          "identidad_lectura": "sha256:553cca1cf34138efba0ebd5b77629d6a90e1c88e4793b3e14c7b2b73ba2f101a"
+        },
+        {
+          "artefacto": "tasks.md",
+          "ruta": ".plans/archived/cross-model-co-explore-readonly-modes/tasks.md",
+          "sha256": "d461c82b68532a1c3c504780996b5316c55100169e88b5ba95c99ed048c3c74a",
+          "tamano": 26098,
+          "identidad_lectura": "sha256:d461c82b68532a1c3c504780996b5316c55100169e88b5ba95c99ed048c3c74a"
+        }
+      ]
+    },
+    {
+      "flujo": "archived/cross-model-codex-adapter",
+      "artefactos": [
+        {
+          "artefacto": "spec.md",
+          "ruta": ".plans/archived/cross-model-codex-adapter/spec.md",
+          "sha256": "43b4b2d3cf458c2f803b9aabc2e58a300c059cf31cecfd30cf837b0e15cb0ee7",
+          "tamano": 10143,
+          "identidad_lectura": "sha256:43b4b2d3cf458c2f803b9aabc2e58a300c059cf31cecfd30cf837b0e15cb0ee7"
+        },
+        {
+          "artefacto": "plan.md",
+          "ruta": ".plans/archived/cross-model-codex-adapter/plan.md",
+          "sha256": "502d8ffb2c0da26f71e97da5198e1c2bb0138aa0d6ccbbe18dd9f8ef461de7b7",
+          "tamano": 16654,
+          "identidad_lectura": "sha256:502d8ffb2c0da26f71e97da5198e1c2bb0138aa0d6ccbbe18dd9f8ef461de7b7"
+        },
+        {
+          "artefacto": "tasks.md",
+          "ruta": ".plans/archived/cross-model-codex-adapter/tasks.md",
+          "sha256": "d05eb2a20de242dbd5af5be4e0864689d594527d3c576fc1622c25731408502b",
+          "tamano": 14119,
+          "identidad_lectura": "sha256:d05eb2a20de242dbd5af5be4e0864689d594527d3c576fc1622c25731408502b"
+        }
+      ]
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "artefactos": [
+        {
+          "artefacto": "spec.md",
+          "ruta": ".plans/archived/cross-model-cross-review-runtime/spec.md",
+          "sha256": "8f71aa9795988b35d4670fb3de0448abf97189540dbb61dd887fa8f074a39d79",
+          "tamano": 20427,
+          "identidad_lectura": "sha256:8f71aa9795988b35d4670fb3de0448abf97189540dbb61dd887fa8f074a39d79"
+        },
+        {
+          "artefacto": "plan.md",
+          "ruta": ".plans/archived/cross-model-cross-review-runtime/plan.md",
+          "sha256": "879abb9a5c81916fac8e2ee993eb9ca359ebf4a98ac798ab3308a468aeba4302",
+          "tamano": 40897,
+          "identidad_lectura": "sha256:879abb9a5c81916fac8e2ee993eb9ca359ebf4a98ac798ab3308a468aeba4302"
+        },
+        {
+          "artefacto": "tasks.md",
+          "ruta": ".plans/archived/cross-model-cross-review-runtime/tasks.md",
+          "sha256": "bf80e6d637c1b4ac60def0657622e70f7e96509fab84554e8cfba2695a6e2011",
+          "tamano": 58562,
+          "identidad_lectura": "sha256:bf80e6d637c1b4ac60def0657622e70f7e96509fab84554e8cfba2695a6e2011"
+        }
+      ]
+    },
+    {
+      "flujo": "archived/cross-model-fanout-synthesis",
+      "artefactos": [
+        {
+          "artefacto": "spec.md",
+          "ruta": ".plans/archived/cross-model-fanout-synthesis/spec.md",
+          "sha256": "2c5307ed7fd4d89a0a7e38e229ffcbb0b08a4493c9ac0b9203574139fc71d34c",
+          "tamano": 18040,
+          "identidad_lectura": "sha256:2c5307ed7fd4d89a0a7e38e229ffcbb0b08a4493c9ac0b9203574139fc71d34c"
+        },
+        {
+          "artefacto": "plan.md",
+          "ruta": ".plans/archived/cross-model-fanout-synthesis/plan.md",
+          "sha256": "76e2e139a751e291fba714376bc19c15829dde73f0e1456533e6a83335099228",
+          "tamano": 26345,
+          "identidad_lectura": "sha256:76e2e139a751e291fba714376bc19c15829dde73f0e1456533e6a83335099228"
+        },
+        {
+          "artefacto": "tasks.md",
+          "ruta": ".plans/archived/cross-model-fanout-synthesis/tasks.md",
+          "sha256": "b94fac0996c71b6e653350cc2658defdc11d28d3954a73f45c3d2acf1b8f7f15",
+          "tamano": 16445,
+          "identidad_lectura": "sha256:b94fac0996c71b6e653350cc2658defdc11d28d3954a73f45c3d2acf1b8f7f15"
+        }
+      ]
+    },
+    {
+      "flujo": "archived/cross-model-foundation-runtime",
+      "artefactos": [
+        {
+          "artefacto": "spec.md",
+          "ruta": ".plans/archived/cross-model-foundation-runtime/spec.md",
+          "sha256": "78a02eb7903607e4a5324a487e01ef936548cbde527c398ca53bf2fb111cb093",
+          "tamano": 14092,
+          "identidad_lectura": "sha256:78a02eb7903607e4a5324a487e01ef936548cbde527c398ca53bf2fb111cb093"
+        },
+        {
+          "artefacto": "plan.md",
+          "ruta": ".plans/archived/cross-model-foundation-runtime/plan.md",
+          "sha256": "ad0ab38d6abbc9617a1199abf509fa93e8ee744cb31ba577b8fe75964b3fbc8a",
+          "tamano": 26448,
+          "identidad_lectura": "sha256:ad0ab38d6abbc9617a1199abf509fa93e8ee744cb31ba577b8fe75964b3fbc8a"
+        },
+        {
+          "artefacto": "tasks.md",
+          "ruta": ".plans/archived/cross-model-foundation-runtime/tasks.md",
+          "sha256": "f87ed29cdabdb66bc22c9b7f35cfe5f61ebbeef277e68f6ebd9ac96b050da000",
+          "tamano": 26659,
+          "identidad_lectura": "sha256:f87ed29cdabdb66bc22c9b7f35cfe5f61ebbeef277e68f6ebd9ac96b050da000"
+        }
+      ]
+    },
+    {
+      "flujo": "archived/cross-model-herdr-adapter",
+      "artefactos": [
+        {
+          "artefacto": "spec.md",
+          "ruta": ".plans/archived/cross-model-herdr-adapter/spec.md",
+          "sha256": "5a14f582efabe1323d7ecb65cd636c634e80907fa60da4e69fb81d3b8280f230",
+          "tamano": 61828,
+          "identidad_lectura": "sha256:5a14f582efabe1323d7ecb65cd636c634e80907fa60da4e69fb81d3b8280f230"
+        },
+        {
+          "artefacto": "plan.md",
+          "ruta": ".plans/archived/cross-model-herdr-adapter/plan.md",
+          "sha256": "370cf7f8d8ca3be7d23556adb0068b9a4ce30126aa334fc2365efb27aae30d75",
+          "tamano": 73644,
+          "identidad_lectura": "sha256:370cf7f8d8ca3be7d23556adb0068b9a4ce30126aa334fc2365efb27aae30d75"
+        },
+        {
+          "artefacto": "tasks.md",
+          "ruta": ".plans/archived/cross-model-herdr-adapter/tasks.md",
+          "sha256": "1a124a41ad9987b7cc25caef68c56160e90e09ca5639b3075c7cf0fa571a649d",
+          "tamano": 147220,
+          "identidad_lectura": "sha256:1a124a41ad9987b7cc25caef68c56160e90e09ca5639b3075c7cf0fa571a649d"
+        }
+      ]
+    },
+    {
+      "flujo": "archived/cross-model-recovery-resume",
+      "artefactos": [
+        {
+          "artefacto": "spec.md",
+          "ruta": ".plans/archived/cross-model-recovery-resume/spec.md",
+          "sha256": "2789e37102acb00b261c0638566c32c639cd4c776a7647d5e6bfb91ed34831f0",
+          "tamano": 14008,
+          "identidad_lectura": "sha256:2789e37102acb00b261c0638566c32c639cd4c776a7647d5e6bfb91ed34831f0"
+        },
+        {
+          "artefacto": "plan.md",
+          "ruta": ".plans/archived/cross-model-recovery-resume/plan.md",
+          "sha256": "f2b615061fd7bedb33298dc515a83db7fcfef1fb1068d7aba5770d7c22225f20",
+          "tamano": 38618,
+          "identidad_lectura": "sha256:f2b615061fd7bedb33298dc515a83db7fcfef1fb1068d7aba5770d7c22225f20"
+        },
+        {
+          "artefacto": "tasks.md",
+          "ruta": ".plans/archived/cross-model-recovery-resume/tasks.md",
+          "sha256": "ba43eb2be441179604911ec0412ee95fa9e9e4d9efa581de265e5716829a5b1c",
+          "tamano": 41397,
+          "identidad_lectura": "sha256:ba43eb2be441179604911ec0412ee95fa9e9e4d9efa581de265e5716829a5b1c"
+        }
+      ]
+    },
+    {
+      "flujo": "archived/herdr-native-sdd-contract-audit",
+      "artefactos": [
+        {
+          "artefacto": "spec.md",
+          "ruta": ".plans/archived/herdr-native-sdd-contract-audit/spec.md",
+          "sha256": "a69fd905fc2e16eca4df27faf00c2915edea012cfecf09606a5145acbcfdcd9c",
+          "tamano": 7992,
+          "identidad_lectura": "sha256:a69fd905fc2e16eca4df27faf00c2915edea012cfecf09606a5145acbcfdcd9c"
+        },
+        {
+          "artefacto": "plan.md",
+          "ruta": ".plans/archived/herdr-native-sdd-contract-audit/plan.md",
+          "sha256": "828be1cf7708165e59266564706ceb9c5b5039cb4290f03f77c75e97b5f06c0e",
+          "tamano": 8830,
+          "identidad_lectura": "sha256:828be1cf7708165e59266564706ceb9c5b5039cb4290f03f77c75e97b5f06c0e"
+        },
+        {
+          "artefacto": "tasks.md",
+          "ruta": ".plans/archived/herdr-native-sdd-contract-audit/tasks.md",
+          "sha256": "4fd8d7fe442062a5064976fd828e4788dee78e98da2b8fbc53ada3f4d17a39ee",
+          "tamano": 2635,
+          "identidad_lectura": "sha256:4fd8d7fe442062a5064976fd828e4788dee78e98da2b8fbc53ada3f4d17a39ee"
+        }
+      ]
+    },
+    {
+      "flujo": "archived/herdr-transporte-skills",
+      "artefactos": [
+        {
+          "artefacto": "spec.md",
+          "ruta": ".plans/archived/herdr-transporte-skills/spec.md",
+          "sha256": "3a95b62dbbc81f564983aa9f91409bef0fd6125ec2cd9c634c85cf7f5addb79a",
+          "tamano": 23288,
+          "identidad_lectura": "sha256:3a95b62dbbc81f564983aa9f91409bef0fd6125ec2cd9c634c85cf7f5addb79a"
+        },
+        {
+          "artefacto": "plan.md",
+          "ruta": ".plans/archived/herdr-transporte-skills/plan.md",
+          "sha256": "88317afc266efa3ed4a1cfe49480478add4b03c908f3dc0a0194a7753f0e7805",
+          "tamano": 35411,
+          "identidad_lectura": "sha256:88317afc266efa3ed4a1cfe49480478add4b03c908f3dc0a0194a7753f0e7805"
+        },
+        {
+          "artefacto": "tasks.md",
+          "ruta": ".plans/archived/herdr-transporte-skills/tasks.md",
+          "sha256": "52d4d20817152ec858f3049d457004ad1cc39a400c523e164b27cadc50f9c6d3",
+          "tamano": 50128,
+          "identidad_lectura": "sha256:52d4d20817152ec858f3049d457004ad1cc39a400c523e164b27cadc50f9c6d3"
+        }
+      ]
+    },
+    {
+      "flujo": "archived/hilo-workers-en-vuelo",
+      "artefactos": [
+        {
+          "artefacto": "spec.md",
+          "ruta": ".plans/archived/hilo-workers-en-vuelo/spec.md",
+          "sha256": "7a728905d275d7007543ffe81f6bd92705808d5e4fd5eb9a73dbe22cb80f4bc5",
+          "tamano": 12582,
+          "identidad_lectura": "sha256:7a728905d275d7007543ffe81f6bd92705808d5e4fd5eb9a73dbe22cb80f4bc5"
+        },
+        {
+          "artefacto": "plan.md",
+          "ruta": ".plans/archived/hilo-workers-en-vuelo/plan.md",
+          "sha256": "d487859287fe85f28855b4398548727f03fdace7b6d5290f480c0235e09904ef",
+          "tamano": 34998,
+          "identidad_lectura": "sha256:d487859287fe85f28855b4398548727f03fdace7b6d5290f480c0235e09904ef"
+        },
+        {
+          "artefacto": "tasks.md",
+          "ruta": ".plans/archived/hilo-workers-en-vuelo/tasks.md",
+          "sha256": "a07b60b4808cbeb34f4b0cdecc033e26ede508a8fa534542118f61ca86695ee3",
+          "tamano": 20307,
+          "identidad_lectura": "sha256:a07b60b4808cbeb34f4b0cdecc033e26ede508a8fa534542118f61ca86695ee3"
+        }
+      ]
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "artefactos": [
+        {
+          "artefacto": "spec.md",
+          "ruta": ".plans/archived/instrumento-y-baseline/spec.md",
+          "sha256": "70dc73b2c5f290828c25aac6c563ae434494dcb7b9cd2abf3b401d13a2029de7",
+          "tamano": 39050,
+          "identidad_lectura": "sha256:70dc73b2c5f290828c25aac6c563ae434494dcb7b9cd2abf3b401d13a2029de7"
+        },
+        {
+          "artefacto": "plan.md",
+          "ruta": ".plans/archived/instrumento-y-baseline/plan.md",
+          "sha256": "e6bb8a1589ebe4511b0a52b1d1352326cd6270af2c5b5576d65e7835430d15d1",
+          "tamano": 80718,
+          "identidad_lectura": "sha256:e6bb8a1589ebe4511b0a52b1d1352326cd6270af2c5b5576d65e7835430d15d1"
+        },
+        {
+          "artefacto": "tasks.md",
+          "ruta": ".plans/archived/instrumento-y-baseline/tasks.md",
+          "sha256": "f244e4afb816ea32b82b1050bf72efe28bcf885af371f9f60c0a2fa2a51afcef",
+          "tamano": 64897,
+          "identidad_lectura": "sha256:f244e4afb816ea32b82b1050bf72efe28bcf885af371f9f60c0a2fa2a51afcef"
+        }
+      ]
+    },
+    {
+      "flujo": "archived/matriz-y-contrato",
+      "artefactos": [
+        {
+          "artefacto": "spec.md",
+          "ruta": ".plans/archived/matriz-y-contrato/spec.md",
+          "sha256": "b45bd24f27d3be774c6c1df7742b781382b55098f72ecf24eed789f008e4df88",
+          "tamano": 23298,
+          "identidad_lectura": "sha256:b45bd24f27d3be774c6c1df7742b781382b55098f72ecf24eed789f008e4df88"
+        },
+        {
+          "artefacto": "plan.md",
+          "ruta": ".plans/archived/matriz-y-contrato/plan.md",
+          "sha256": "7740734d9053dfb43bf0cc0d2889e33d914dcefe7f54ed677450f869d6c70069",
+          "tamano": 49563,
+          "identidad_lectura": "sha256:7740734d9053dfb43bf0cc0d2889e33d914dcefe7f54ed677450f869d6c70069"
+        },
+        {
+          "artefacto": "tasks.md",
+          "ruta": ".plans/archived/matriz-y-contrato/tasks.md",
+          "sha256": "17979aeb5c81caa9da683830ffe2603ef0649023f4775aae72fb9fa0687c598a",
+          "tamano": 72295,
+          "identidad_lectura": "sha256:17979aeb5c81caa9da683830ffe2603ef0649023f4775aae72fb9fa0687c598a"
+        }
+      ]
+    },
+    {
+      "flujo": "archived/paridad-powershell",
+      "artefactos": [
+        {
+          "artefacto": "spec.md",
+          "ruta": ".plans/archived/paridad-powershell/spec.md",
+          "sha256": "6292bac3907d370386639a9b6660480c1e78783f2eb607e32f1dda2de323751d",
+          "tamano": 16317,
+          "identidad_lectura": "sha256:6292bac3907d370386639a9b6660480c1e78783f2eb607e32f1dda2de323751d"
+        },
+        {
+          "artefacto": "plan.md",
+          "ruta": ".plans/archived/paridad-powershell/plan.md",
+          "sha256": "d1a29e152ced1ff0923abd14289c33d3c05106ff79d16085cbafdb39e61a1be0",
+          "tamano": 35762,
+          "identidad_lectura": "sha256:d1a29e152ced1ff0923abd14289c33d3c05106ff79d16085cbafdb39e61a1be0"
+        },
+        {
+          "artefacto": "tasks.md",
+          "ruta": ".plans/archived/paridad-powershell/tasks.md",
+          "sha256": "24875165c2c9a94c8eeaa844cf826701029a0f90823a947ff3d51015497490c0",
+          "tamano": 17309,
+          "identidad_lectura": "sha256:24875165c2c9a94c8eeaa844cf826701029a0f90823a947ff3d51015497490c0"
+        }
+      ]
+    },
+    {
+      "flujo": "archived/planned-desambiguacion",
+      "artefactos": [
+        {
+          "artefacto": "spec.md",
+          "ruta": ".plans/archived/planned-desambiguacion/spec.md",
+          "sha256": "51474ba1f6c51828971c5fc502047a5b049fe97febaf8e6013b3ed4b47440d45",
+          "tamano": 9250,
+          "identidad_lectura": "sha256:51474ba1f6c51828971c5fc502047a5b049fe97febaf8e6013b3ed4b47440d45"
+        },
+        {
+          "artefacto": "plan.md",
+          "ruta": ".plans/archived/planned-desambiguacion/plan.md",
+          "sha256": "281d32b642b801e04931f537f9689f89cb2b3e64ac484ec2b3051d1f452aedf2",
+          "tamano": 17825,
+          "identidad_lectura": "sha256:281d32b642b801e04931f537f9689f89cb2b3e64ac484ec2b3051d1f452aedf2"
+        },
+        {
+          "artefacto": "tasks.md",
+          "ruta": ".plans/archived/planned-desambiguacion/tasks.md",
+          "sha256": "d21b7b6b378949092187907e116b0d98330a61422c641ea8d76fb0fff8ef6f75",
+          "tamano": 10634,
+          "identidad_lectura": "sha256:d21b7b6b378949092187907e116b0d98330a61422c641ea8d76fb0fff8ef6f75"
+        }
+      ]
+    },
+    {
+      "flujo": "archived/retirar-transporte-panes",
+      "artefactos": [
+        {
+          "artefacto": "spec.md",
+          "ruta": ".plans/archived/retirar-transporte-panes/spec.md",
+          "sha256": "bbf5d923c4aa9a1a6b0b180e04014bdf34093e17a9aae706e3d10835a7a39654",
+          "tamano": 23687,
+          "identidad_lectura": "sha256:bbf5d923c4aa9a1a6b0b180e04014bdf34093e17a9aae706e3d10835a7a39654"
+        },
+        {
+          "artefacto": "plan.md",
+          "ruta": ".plans/archived/retirar-transporte-panes/plan.md",
+          "sha256": "7a58e1dd8511f27ea16d1e95680d9b829d72337fd1dfc1190d42f6bb6e712412",
+          "tamano": 17763,
+          "identidad_lectura": "sha256:7a58e1dd8511f27ea16d1e95680d9b829d72337fd1dfc1190d42f6bb6e712412"
+        },
+        {
+          "artefacto": "tasks.md",
+          "ruta": ".plans/archived/retirar-transporte-panes/tasks.md",
+          "sha256": "c3a05b88dbcdeed5525405b4b214ffda8cc7f774dfcf231aef65fddf7a9ed31a",
+          "tamano": 37981,
+          "identidad_lectura": "sha256:c3a05b88dbcdeed5525405b4b214ffda8cc7f774dfcf231aef65fddf7a9ed31a"
+        }
+      ]
+    },
+    {
+      "flujo": "archived/sdd1-run-manifest",
+      "artefactos": [
+        {
+          "artefacto": "spec.md",
+          "ruta": ".plans/archived/sdd1-run-manifest/spec.md",
+          "sha256": "bb8142c2fd9ce35b1858ffa51768e0eb8c698bf5cb8271ce7e26984c56331600",
+          "tamano": 6917,
+          "identidad_lectura": "sha256:bb8142c2fd9ce35b1858ffa51768e0eb8c698bf5cb8271ce7e26984c56331600"
+        },
+        {
+          "artefacto": "plan.md",
+          "ruta": ".plans/archived/sdd1-run-manifest/plan.md",
+          "sha256": "af20d3dd0e2f55fe242c748fee5c05a0702cb62854c3210d8333ab5a40eb7948",
+          "tamano": 14179,
+          "identidad_lectura": "sha256:af20d3dd0e2f55fe242c748fee5c05a0702cb62854c3210d8333ab5a40eb7948"
+        },
+        {
+          "artefacto": "tasks.md",
+          "ruta": ".plans/archived/sdd1-run-manifest/tasks.md",
+          "sha256": "00caba8cecd3fca06355d049d2afddcb0513a1785da2dd3aefbd3b24316eec73",
+          "tamano": 15707,
+          "identidad_lectura": "sha256:00caba8cecd3fca06355d049d2afddcb0513a1785da2dd3aefbd3b24316eec73"
+        }
+      ]
+    },
+    {
+      "flujo": "archived/sdd2-contract-triage",
+      "artefactos": [
+        {
+          "artefacto": "spec.md",
+          "ruta": ".plans/archived/sdd2-contract-triage/spec.md",
+          "sha256": "3e8b6845f8d839571bb06217698045b01bf838086f9b834c21b273237246c01e",
+          "tamano": 13049,
+          "identidad_lectura": "sha256:3e8b6845f8d839571bb06217698045b01bf838086f9b834c21b273237246c01e"
+        },
+        {
+          "artefacto": "plan.md",
+          "ruta": ".plans/archived/sdd2-contract-triage/plan.md",
+          "sha256": "c48ddb79e5803ed1504817e9cbf732f44cf925a555dd4ce9f00a8184e426a8e4",
+          "tamano": 14088,
+          "identidad_lectura": "sha256:c48ddb79e5803ed1504817e9cbf732f44cf925a555dd4ce9f00a8184e426a8e4"
+        },
+        {
+          "artefacto": "tasks.md",
+          "ruta": ".plans/archived/sdd2-contract-triage/tasks.md",
+          "sha256": "0ef49638c7c7df4ce9665509e4d8477580ca41c1db2e247f8ec39a22aa3f08a4",
+          "tamano": 10938,
+          "identidad_lectura": "sha256:0ef49638c7c7df4ce9665509e4d8477580ca41c1db2e247f8ec39a22aa3f08a4"
+        }
+      ]
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "artefactos": [
+        {
+          "artefacto": "spec.md",
+          "ruta": ".plans/archived/subagentes-fase-0/spec.md",
+          "sha256": "f2b7d617c9a34456b7b1cf9f3120eccb4875baf754ab453558382ce5f4c084a8",
+          "tamano": 22210,
+          "identidad_lectura": "sha256:f2b7d617c9a34456b7b1cf9f3120eccb4875baf754ab453558382ce5f4c084a8"
+        },
+        {
+          "artefacto": "plan.md",
+          "ruta": ".plans/archived/subagentes-fase-0/plan.md",
+          "sha256": "c8ee6b168f91fdc54bd0d2a0042065bdad77e97655319260c26af96af8b36b6c",
+          "tamano": 43470,
+          "identidad_lectura": "sha256:c8ee6b168f91fdc54bd0d2a0042065bdad77e97655319260c26af96af8b36b6c"
+        },
+        {
+          "artefacto": "tasks.md",
+          "ruta": ".plans/archived/subagentes-fase-0/tasks.md",
+          "sha256": "0090bfbc20feb531811f262ff8908e9fc6052f28ced9509897aabcb3d979c61d",
+          "tamano": 43940,
+          "identidad_lectura": "sha256:0090bfbc20feb531811f262ff8908e9fc6052f28ced9509897aabcb3d979c61d"
+        }
+      ]
+    }
+  ],
+  "ternas": [
+    {
+      "flujo": "archived/cross-model-co-explore-consumer",
+      "task_id": "T1",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-consumer",
+      "task_id": "T2",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-consumer",
+      "task_id": "T3",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-consumer",
+      "task_id": "T4",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-consumer",
+      "task_id": "T5",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-consumer",
+      "task_id": "T6",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-consumer",
+      "task_id": "T7",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-consumer",
+      "task_id": "T8",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-consumer",
+      "task_id": "T9",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-consumer",
+      "task_id": "T10",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-debate-runtime",
+      "task_id": "T1",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-debate-runtime",
+      "task_id": "T2",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-debate-runtime",
+      "task_id": "T3",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-debate-runtime",
+      "task_id": "T4",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-debate-runtime",
+      "task_id": "T5",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-debate-runtime",
+      "task_id": "T6",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-debate-runtime",
+      "task_id": "T7",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-debate-runtime",
+      "task_id": "T8",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-debate-runtime",
+      "task_id": "T9",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-debate-runtime",
+      "task_id": "T10",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-debate-runtime",
+      "task_id": "T11",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-debate-runtime",
+      "task_id": "T12",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-investigate-runtime",
+      "task_id": "T1",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-investigate-runtime",
+      "task_id": "T2",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-investigate-runtime",
+      "task_id": "T3",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-investigate-runtime",
+      "task_id": "T4",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-investigate-runtime",
+      "task_id": "T5",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-investigate-runtime",
+      "task_id": "T6",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-investigate-runtime",
+      "task_id": "T7",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-investigate-runtime",
+      "task_id": "T8",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-investigate-runtime",
+      "task_id": "T9",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-readonly-modes",
+      "task_id": "T1",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-readonly-modes",
+      "task_id": "T2",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-readonly-modes",
+      "task_id": "T3",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-readonly-modes",
+      "task_id": "T4",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-readonly-modes",
+      "task_id": "T5",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-readonly-modes",
+      "task_id": "T6",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-readonly-modes",
+      "task_id": "T7",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-co-explore-readonly-modes",
+      "task_id": "T8",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-codex-adapter",
+      "task_id": "T1",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-codex-adapter",
+      "task_id": "T2",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-codex-adapter",
+      "task_id": "T3",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-codex-adapter",
+      "task_id": "T4",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-codex-adapter",
+      "task_id": "T5",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-codex-adapter",
+      "task_id": "T6",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-codex-adapter",
+      "task_id": "T7",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-codex-adapter",
+      "task_id": "T8",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T1",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T2",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T3",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T4",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T5",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T6",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T7",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T8",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T9",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T10",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T11",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T12",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T13",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T14",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T15",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T16",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T17",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T18",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T18a",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T18b",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T19a",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T19b",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T19",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T20a",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T20b",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T21a",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T21b",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T22a",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T22b",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T23a",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T23b",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T25a",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T25b",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T26a",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T26b",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T27a",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T27b",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T28a",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T28b",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T29",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T30a",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T30b",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T31",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T32",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T33",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T34",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T35",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T36",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T37",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-cross-review-runtime",
+      "task_id": "T24",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-fanout-synthesis",
+      "task_id": "T1",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-fanout-synthesis",
+      "task_id": "T2",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-fanout-synthesis",
+      "task_id": "T3",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-fanout-synthesis",
+      "task_id": "T4",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-fanout-synthesis",
+      "task_id": "T5",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-fanout-synthesis",
+      "task_id": "T6",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-fanout-synthesis",
+      "task_id": "T7",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-fanout-synthesis",
+      "task_id": "T8",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-foundation-runtime",
+      "task_id": "T1",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-foundation-runtime",
+      "task_id": "T2",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-foundation-runtime",
+      "task_id": "T3",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-foundation-runtime",
+      "task_id": "T4",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-foundation-runtime",
+      "task_id": "T5",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-foundation-runtime",
+      "task_id": "T6",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-foundation-runtime",
+      "task_id": "T7",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-foundation-runtime",
+      "task_id": "T8",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-foundation-runtime",
+      "task_id": "T9",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-foundation-runtime",
+      "task_id": "T10",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-herdr-adapter",
+      "task_id": "T1",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-herdr-adapter",
+      "task_id": "T2",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-herdr-adapter",
+      "task_id": "T3",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-herdr-adapter",
+      "task_id": "T4",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-herdr-adapter",
+      "task_id": "T5",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-herdr-adapter",
+      "task_id": "T6",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-herdr-adapter",
+      "task_id": "T7",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-herdr-adapter",
+      "task_id": "T8",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-herdr-adapter",
+      "task_id": "T9",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-herdr-adapter",
+      "task_id": "T10",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-herdr-adapter",
+      "task_id": "T11",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-herdr-adapter",
+      "task_id": "T12",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-herdr-adapter",
+      "task_id": "T13",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-herdr-adapter",
+      "task_id": "T14",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-herdr-adapter",
+      "task_id": "T15A",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-herdr-adapter",
+      "task_id": "T15B",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-herdr-adapter",
+      "task_id": "T16",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-herdr-adapter",
+      "task_id": "T17",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-recovery-resume",
+      "task_id": "T1",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-recovery-resume",
+      "task_id": "T2",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-recovery-resume",
+      "task_id": "T3",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-recovery-resume",
+      "task_id": "T4",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-recovery-resume",
+      "task_id": "T5",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-recovery-resume",
+      "task_id": "T6",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-recovery-resume",
+      "task_id": "T7",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-recovery-resume",
+      "task_id": "T8",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-recovery-resume",
+      "task_id": "T9",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-recovery-resume",
+      "task_id": "T10",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-recovery-resume",
+      "task_id": "T11",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-recovery-resume",
+      "task_id": "T12",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-recovery-resume",
+      "task_id": "T13",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-recovery-resume",
+      "task_id": "T14",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-recovery-resume",
+      "task_id": "T15",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-recovery-resume",
+      "task_id": "T16",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/cross-model-recovery-resume",
+      "task_id": "T17",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/herdr-native-sdd-contract-audit",
+      "task_id": "T1",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/herdr-native-sdd-contract-audit",
+      "task_id": "T2",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/herdr-native-sdd-contract-audit",
+      "task_id": "T3",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/herdr-native-sdd-contract-audit",
+      "task_id": "T4",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/herdr-transporte-skills",
+      "task_id": "T0",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/herdr-transporte-skills",
+      "task_id": "T1",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/herdr-transporte-skills",
+      "task_id": "T2",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/herdr-transporte-skills",
+      "task_id": "T3",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/herdr-transporte-skills",
+      "task_id": "T4",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/herdr-transporte-skills",
+      "task_id": "T5",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/herdr-transporte-skills",
+      "task_id": "T6",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/herdr-transporte-skills",
+      "task_id": "T7",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/herdr-transporte-skills",
+      "task_id": "T8",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/herdr-transporte-skills",
+      "task_id": "T9",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/herdr-transporte-skills",
+      "task_id": "T10",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/herdr-transporte-skills",
+      "task_id": "T11",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/herdr-transporte-skills",
+      "task_id": "T12",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/herdr-transporte-skills",
+      "task_id": "T13",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/herdr-transporte-skills",
+      "task_id": "T14",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/herdr-transporte-skills",
+      "task_id": "T15",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/herdr-transporte-skills",
+      "task_id": "T16",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/herdr-transporte-skills",
+      "task_id": "T17",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/herdr-transporte-skills",
+      "task_id": "T18",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/herdr-transporte-skills",
+      "task_id": "T19",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/herdr-transporte-skills",
+      "task_id": "T20",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/hilo-workers-en-vuelo",
+      "task_id": "T1",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/hilo-workers-en-vuelo",
+      "task_id": "T2",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/hilo-workers-en-vuelo",
+      "task_id": "T3",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/hilo-workers-en-vuelo",
+      "task_id": "T4",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/hilo-workers-en-vuelo",
+      "task_id": "T5",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/hilo-workers-en-vuelo",
+      "task_id": "T6",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/hilo-workers-en-vuelo",
+      "task_id": "T7",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/hilo-workers-en-vuelo",
+      "task_id": "T8",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/hilo-workers-en-vuelo",
+      "task_id": "T9",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/hilo-workers-en-vuelo",
+      "task_id": "T10",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/hilo-workers-en-vuelo",
+      "task_id": "T11",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/hilo-workers-en-vuelo",
+      "task_id": "T12",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/hilo-workers-en-vuelo",
+      "task_id": "T13",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T1",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T2",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T3",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T4",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T5",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T6",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T7",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T8",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T9",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T10",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T11",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T12",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T13",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T14",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T15",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T16",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T16b",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T17",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T18",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T19",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T20",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T21",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T22",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T23",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T24",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T25",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T26",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T27",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T27b",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/instrumento-y-baseline",
+      "task_id": "T28",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/matriz-y-contrato",
+      "task_id": "T1",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/matriz-y-contrato",
+      "task_id": "T2",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/matriz-y-contrato",
+      "task_id": "T3",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/matriz-y-contrato",
+      "task_id": "T4",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/matriz-y-contrato",
+      "task_id": "T5",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/matriz-y-contrato",
+      "task_id": "T6",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/matriz-y-contrato",
+      "task_id": "T7",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/matriz-y-contrato",
+      "task_id": "T8",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/matriz-y-contrato",
+      "task_id": "T8b",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/matriz-y-contrato",
+      "task_id": "T9",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/matriz-y-contrato",
+      "task_id": "T10",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/matriz-y-contrato",
+      "task_id": "T11",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/matriz-y-contrato",
+      "task_id": "T12",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/matriz-y-contrato",
+      "task_id": "T13",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/matriz-y-contrato",
+      "task_id": "T14",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/matriz-y-contrato",
+      "task_id": "T15",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/matriz-y-contrato",
+      "task_id": "T16",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/matriz-y-contrato",
+      "task_id": "T17",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/matriz-y-contrato",
+      "task_id": "T18",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/matriz-y-contrato",
+      "task_id": "T19",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/matriz-y-contrato",
+      "task_id": "T20",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/matriz-y-contrato",
+      "task_id": "T21",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/matriz-y-contrato",
+      "task_id": "T22",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/matriz-y-contrato",
+      "task_id": "T23",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/paridad-powershell",
+      "task_id": "T1",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/paridad-powershell",
+      "task_id": "T2",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/paridad-powershell",
+      "task_id": "T3",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/paridad-powershell",
+      "task_id": "T4",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/paridad-powershell",
+      "task_id": "T5",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/paridad-powershell",
+      "task_id": "T6",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/paridad-powershell",
+      "task_id": "T7",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/paridad-powershell",
+      "task_id": "T8",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/paridad-powershell",
+      "task_id": "T9",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/paridad-powershell",
+      "task_id": "T10",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/paridad-powershell",
+      "task_id": "T11",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/paridad-powershell",
+      "task_id": "T12a",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/paridad-powershell",
+      "task_id": "T12b",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/paridad-powershell",
+      "task_id": "T12c",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/paridad-powershell",
+      "task_id": "T12d",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/paridad-powershell",
+      "task_id": "T12e",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/paridad-powershell",
+      "task_id": "T12f",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/paridad-powershell",
+      "task_id": "T13",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/planned-desambiguacion",
+      "task_id": "T1",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/planned-desambiguacion",
+      "task_id": "T2",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/planned-desambiguacion",
+      "task_id": "T3",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/planned-desambiguacion",
+      "task_id": "T4",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/planned-desambiguacion",
+      "task_id": "T5",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/planned-desambiguacion",
+      "task_id": "T6",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/planned-desambiguacion",
+      "task_id": "T7",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/planned-desambiguacion",
+      "task_id": "T8",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/planned-desambiguacion",
+      "task_id": "T9",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/retirar-transporte-panes",
+      "task_id": "T1",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/retirar-transporte-panes",
+      "task_id": "T2",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/retirar-transporte-panes",
+      "task_id": "T3",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/retirar-transporte-panes",
+      "task_id": "T4",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/retirar-transporte-panes",
+      "task_id": "T5",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/retirar-transporte-panes",
+      "task_id": "T6",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/retirar-transporte-panes",
+      "task_id": "T7",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/retirar-transporte-panes",
+      "task_id": "T8",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/retirar-transporte-panes",
+      "task_id": "T9",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/retirar-transporte-panes",
+      "task_id": "T10",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/retirar-transporte-panes",
+      "task_id": "T11",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/retirar-transporte-panes",
+      "task_id": "T12",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/retirar-transporte-panes",
+      "task_id": "T13",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/retirar-transporte-panes",
+      "task_id": "T14",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/retirar-transporte-panes",
+      "task_id": "T15",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/retirar-transporte-panes",
+      "task_id": "T16",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/retirar-transporte-panes",
+      "task_id": "T17",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/sdd1-run-manifest",
+      "task_id": "T1",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/sdd1-run-manifest",
+      "task_id": "T2",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/sdd1-run-manifest",
+      "task_id": "T3",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/sdd1-run-manifest",
+      "task_id": "T4",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/sdd1-run-manifest",
+      "task_id": "T5",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/sdd1-run-manifest",
+      "task_id": "T6",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/sdd2-contract-triage",
+      "task_id": "T1",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/sdd2-contract-triage",
+      "task_id": "T2",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/sdd2-contract-triage",
+      "task_id": "T3",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/sdd2-contract-triage",
+      "task_id": "T4",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/sdd2-contract-triage",
+      "task_id": "T5",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/sdd2-contract-triage",
+      "task_id": "T6",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T1",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T2",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T3",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T4",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T5",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T6",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T7",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T8",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T9",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T10",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T11",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T12",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T13",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T14",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T15",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T16",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T17",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T18",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T19",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T20",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T21",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T22",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T23",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T24",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T25",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T26",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T27",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T28",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T29",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T30",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T31",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T32",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T33",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T34",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T35",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T36",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T37",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T38",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T39",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T40",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T41",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T42",
+      "ocurrencia": 1
+    },
+    {
+      "flujo": "archived/subagentes-fase-0",
+      "task_id": "T43",
+      "ocurrencia": 1
+    }
+  ]
+}
