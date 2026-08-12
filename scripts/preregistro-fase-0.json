@@ -1,6 +1,6 @@
 {
   "version_schema": "1.0.0",
-  "code_commit": "d68ed0e",
+  "code_commit": "3be305e",
   "cohorte": {
     "muestras": [
       {
@@ -380,13 +380,13 @@
     "arbol_limpio_exigido": true,
     "matriz_sha256": "79f1ab52cd6fdbb477b3e0329c291215a75f1f6fe0799e131ad4ffef8632e9b6",
     "instrumento_sha256": "cdf5837c7dfe25ce401984545ce898423ec55be7fa472522bc48e753112aab66",
-    "runner_sha256": "2474cd6a9b893ab80d0f217f9276138f0b7337bd8763603e6ee7c293ccf1f470",
+    "runner_sha256": "270a101414f00aef4421c4e2c3c48dd0d11e949687ae273eb6b3dcfdd604a6f2",
     "version_cli": "codex-cli 0.147.0",
     "version_runtime": "python 3.14",
     "hooks": [
       "ninguno: la cohorte corre con los hooks de sesión declarados y desactivados"
     ],
-    "ejecutor_esperado": "conductor local sin hooks de sesión, sobre el árbol desechable provisionado",
+    "ejecutor_esperado": "runner de la cohorte, sin hooks de sesión",
     "transportes_admitidos": [
       "cli-exec",
       "cli-resume",
@@ -508,5 +508,5 @@
       "rcb-conformance-sdd-pr-feedback-implement-delegado"
     ]
   },
-  "preregistro_sha256": "952f683addaa53381f618084203ffa2bd46fe91fb861ae18c3697780671195a5"
+  "preregistro_sha256": "b93f3abeedf5dacec10b5e376fa2d7c11db3b88b60db4bd35bcbb65d39db0105"
 }
