@@ -5,7 +5,9 @@
     "`dato` es la identidad de la información de la que el artefacto es sede. Sin ella el criterio «ningún dato está declarado en dos lugares como fuente» no es comprobable: `source_status` solo dice el rol, no de qué.",
     "El dueño se nombra por dominio y no por la unidad de trabajo que lo escribió: un identificador de flujo muere con el flujo, y este registro tiene que seguir siendo cierto después.",
     "Los directorios se registran como una unidad (terminados en `/`) porque así los declaran sus productores: sus archivos crecen con cada caso nuevo y una entrada por archivo quedaría falsa en la primera ampliación.",
-    "`versioned: true` significa «tiene que aparecer en el árbol candidato», que es `git ls-files` menos las bajas del cambio más las altas no ignoradas: un archivo nuevo sin stage no está en `git ls-files` y sí en el árbol candidato."
+    "`versioned: true` significa «tiene que aparecer en el árbol candidato», que es `git ls-files` menos las bajas del cambio más las altas no ignoradas: un archivo nuevo sin stage no está en `git ls-files` y sí en el árbol candidato.",
+    "`scripts/recibos-frontera-fase-0/` se declara versionado por su unidad, no por su contenido: lo versionado es el schema del recibo, y los recibos mismos están ignorados a propósito —emitirlos avanzaría el HEAD y dejaría atrás el `code_commit` que el acta declara—. La granularidad del registro es el directorio, y como unidad sí aparece en el árbol candidato.",
+    "La regla queda CERRADA sobre este acto y nombra sus scripts uno por uno. Un patrón amplio —`scripts/verificar-*.py`— sería más corto y arrastraría los verificadores de otros flujos, dándole a este registro un dueño que no tiene: la comodidad de un glob compraría un descubrimiento falso."
   ],
   "artefactos": [
     {
@@ -112,6 +114,146 @@
       "dato": "contrato-de-ejecucion-de-los-despachos-delegados",
       "source_status": "fuente",
       "versioned": true
+    },
+    {
+      "path": "scripts/instrumento-baseline.py",
+      "owner": "instrumento-de-medicion",
+      "dato": "instrumento-que-mide-y-genera-el-baseline",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/runner-cohorte.py",
+      "owner": "runner-de-cohorte",
+      "dato": "runner-que-provisiona-ejecuta-y-captura",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/verificar-presupuestos.py",
+      "owner": "verificador-de-presupuestos",
+      "dato": "verificador-de-los-presupuestos-de-la-fase-0",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/observacion.schema.json",
+      "owner": "contratos-de-la-fase-0",
+      "dato": "schema-cerrado-de-la-observacion",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/preregistro.schema.json",
+      "owner": "contratos-de-la-fase-0",
+      "dato": "schema-cerrado-del-preregistro",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/bundle-corrida.schema.json",
+      "owner": "contratos-de-la-fase-0",
+      "dato": "schema-cerrado-del-bundle-de-corrida",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/recetas-cohorte.json",
+      "owner": "recetas-de-la-cohorte",
+      "dato": "recetas-ejecutables-de-los-trece-puntos",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/superficies-de-egreso.json",
+      "owner": "regla-de-egreso",
+      "dato": "superficies-de-egreso-y-su-regla",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/interfaz-de-reloj.json",
+      "owner": "interfaz-de-reloj",
+      "dato": "contrato-de-medicion-del-tiempo",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/dag-procedencia.json",
+      "owner": "procedencia-de-los-datos",
+      "dato": "dag-de-procedencia-de-los-datos",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/metricas-fase-0.json",
+      "owner": "vocabulario-de-metricas",
+      "dato": "vocabulario-cerrado-de-metricas-y-formulas",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/preregistro-fase-0.json",
+      "owner": "preregistro-congelado",
+      "dato": "acta-congelada-de-la-cohorte",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/intentos-fase-0.json",
+      "owner": "manifest-de-intentos",
+      "dato": "intentos-declarados-de-la-cohorte",
+      "source_status": "derivado",
+      "versioned": true
+    },
+    {
+      "path": "scripts/presupuesto-de-recoleccion-fase-0.json",
+      "owner": "presupuesto-de-recoleccion",
+      "dato": "presupuesto-de-espera-del-harness-de-medicion",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/baseline-fase-0.md",
+      "owner": "baseline-publicado",
+      "dato": "numeros-publicados-de-la-fase-0",
+      "source_status": "derivado",
+      "versioned": true
+    },
+    {
+      "path": "scripts/fixtures-baseline/",
+      "owner": "corpus-del-instrumento",
+      "dato": "corpus-sintetico-del-instrumento",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/corridas-fase-0/",
+      "owner": "evidencia-de-corridas",
+      "dato": "evidencia-capturada-de-la-cohorte",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/observaciones-fase-0/",
+      "owner": "observaciones-derivadas",
+      "dato": "observaciones-por-corrida",
+      "source_status": "derivado",
+      "versioned": true
+    },
+    {
+      "path": "scripts/recibos-frontera-fase-0/",
+      "owner": "recibos-de-frontera",
+      "dato": "recibos-de-los-despachos-de-frontera",
+      "source_status": "fuente",
+      "versioned": true
+    },
+    {
+      "path": "scripts/journal-anomalias-fase-0/",
+      "owner": "journal-de-anomalias",
+      "dato": "journal-de-anomalias-del-runner",
+      "source_status": "fuente",
+      "versioned": true
     }
   ],
   "regla_de_descubrimiento": {
@@ -122,7 +264,12 @@
       "scripts/fixtures-matriz/anclas/",
       "scripts/fixtures-matriz/condiciones/",
       "scripts/fixtures-matriz/paridad/",
-      "scripts/fixtures-contrato/"
+      "scripts/fixtures-contrato/",
+      "scripts/fixtures-baseline/",
+      "scripts/corridas-fase-0/",
+      "scripts/observaciones-fase-0/",
+      "scripts/recibos-frontera-fase-0/",
+      "scripts/journal-anomalias-fase-0/"
     ],
     "patrones": [
       "scripts/matriz-despachos.json",
@@ -130,55 +277,19 @@
       "scripts/matriz-despachos-escenarios.json",
       "scripts/nombres-reservados-perfil.json",
       "scripts/verificar-matriz-despachos.py",
+      "scripts/instrumento-baseline.py",
+      "scripts/runner-cohorte.py",
+      "scripts/verificar-presupuestos.py",
+      "scripts/observacion.schema.json",
+      "scripts/preregistro.schema.json",
+      "scripts/bundle-corrida.schema.json",
+      "scripts/recetas-cohorte.json",
+      "scripts/superficies-de-egreso.json",
+      "scripts/interfaz-de-reloj.json",
+      "scripts/dag-procedencia.json",
       "scripts/*-fase-0.*",
       "docs/superpowers/specs/2026-08-09-subagentes-perfiles-fase-0.md"
     ],
-    "excepciones": [
-      {
-        "path": "scripts/instrumento-baseline.py",
-        "tipo": "todavia_inexistente",
-        "motivo": "lo produce el acto siguiente, el del instrumento y el baseline; hoy no existe y este registro no puede declararle dueño ni ubicación canónica sin inventarlos"
-      },
-      {
-        "path": "scripts/runner-cohorte.py",
-        "tipo": "todavia_inexistente",
-        "motivo": "lo produce el acto siguiente; declararlo acá sería declarar la topología de un archivo que nadie escribió"
-      },
-      {
-        "path": "scripts/observacion.schema.json",
-        "tipo": "todavia_inexistente",
-        "motivo": "lo produce el acto siguiente: el schema de la observación por corrida"
-      },
-      {
-        "path": "scripts/bundle-corrida.schema.json",
-        "tipo": "todavia_inexistente",
-        "motivo": "lo produce el acto siguiente: el schema del bundle de cada corrida"
-      },
-      {
-        "path": "scripts/preregistro.schema.json",
-        "tipo": "todavia_inexistente",
-        "motivo": "lo produce el acto siguiente: el schema del preregistro"
-      },
-      {
-        "path": "scripts/preregistro-fase-0.json",
-        "tipo": "todavia_inexistente",
-        "motivo": "lo produce el acto siguiente y el patrón `scripts/*-fase-0.*` lo alcanzaría: sin esta excepción el descubrimiento lo encontraría antes de que exista dueño para él"
-      },
-      {
-        "path": "scripts/metricas-fase-0.json",
-        "tipo": "todavia_inexistente",
-        "motivo": "lo produce el acto siguiente y el patrón `scripts/*-fase-0.*` lo alcanzaría"
-      },
-      {
-        "path": "scripts/baseline-fase-0.md",
-        "tipo": "todavia_inexistente",
-        "motivo": "lo produce el acto siguiente y el patrón `scripts/*-fase-0.*` lo alcanzaría"
-      },
-      {
-        "path": ".plans/subagentes-fase-0/cohorte-congelada.json",
-        "tipo": "todavia_inexistente",
-        "motivo": "lo produce el acto siguiente; vive fuera del árbol candidato, así que su entrada futura nacerá con `versioned: false` y solo el predicado de vigencia puede avisar cuándo"
-      }
-    ]
+    "excepciones": []
   }
 }

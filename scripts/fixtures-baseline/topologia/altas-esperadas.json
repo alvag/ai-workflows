@@ -1,5 +1,16 @@
 {
-  "que_declara": "Las diecisiete altas que este acto tiene que registrar, transcritas del enunciado de T25 —el criterio congelado— y NO derivadas del registro, que es justo lo que se valida. Un conjunto esperado derivado del validado sería circular: no podría decir que falta algo que nadie escribió.",
+  "que_declara": "Las altas que este acto tiene que registrar. NO se derivan del registro, que es justo lo que se valida: un conjunto esperado derivado del validado sería circular y no podría decir que falta algo que nadie escribió. Se derivan del árbol y su historia, con el comando declarado en `derivacion`.",
+  "derivacion": {
+    "comando": "git diff --name-only 6ebf46f..HEAD",
+    "que_produce": "los archivos que este flujo agregó o tocó desde el commit base, que es la fuente independiente: la historia del árbol, no el registro.",
+    "plegado_a_unidades": "Los archivos de un corpus se pliegan a su directorio, porque así los declara el registro —una entrada por archivo quedaría falsa en la primera ampliación—. Los cinco directorios de este acto son `scripts/fixtures-baseline/`, `scripts/corridas-fase-0/`, `scripts/observaciones-fase-0/`, `scripts/recibos-frontera-fase-0/` y `scripts/journal-anomalias-fase-0/`. Ese plegado, y los `owner`, son lo único transcrito a mano acá.",
+    "quedan_fuera": "Los archivos de `scripts/` que este acto NO produjo —los verificadores y corpus de otros flujos— no aparecen en el diff y por eso no son altas. La regla de descubrimiento tiene que seguir cerrada sobre este acto: un patrón amplio como `scripts/verificar-*.py` arrastraría artefactos ajenos y le daría a este registro un dueño que no tiene."
+  },
+  "por_que_no_son_las_diecisiete_del_enunciado": {
+    "dos_bajas": "`scripts/ledger-candidatos-fase-0.json` y `scripts/recibos-autotest-fase-0/` estaban declaradas y NO existen en el árbol. Registrarlas es imposible sin romper dos comprobaciones: `--topologia` emite `versionado_fuera_del_indice` y `--descubrimiento` emite `entrada_que_la_regla_no_descubre`. El ledger lo produce T27 y su alta nace con él, en el mismo cambio que lo escribe; los recibos de autotest nunca se escribieron.",
+    "cinco_altas": "`interfaz-de-reloj.json` (T8), `dag-procedencia.json` (T9), `intentos-fase-0.json` (T22), `presupuesto-de-recoleccion-fase-0.json` (T23) y `verificar-presupuestos.py` (T23) son artefactos versionados que este acto produjo después de que se escribiera el enunciado. Los dos `*-fase-0.*` ya los descubre la regla vieja, así que sin entrada dejan `--descubrimiento` en rojo: no son opcionales.",
+    "el_criterio_no_se_movio": "Sigue siendo «toda unidad versionada que este acto produjo necesita ubicación canónica y dueño único». Lo que se movió es su extensión, porque el acto produjo más. Un inventario transcrito a mano se vuelve falso; el criterio se congela, el dato se deriva."
+  },
   "altas": [
     {
       "path": "scripts/instrumento-baseline.py",
@@ -8,6 +19,10 @@
     {
       "path": "scripts/runner-cohorte.py",
       "owner": "runner-de-cohorte"
+    },
+    {
+      "path": "scripts/verificar-presupuestos.py",
+      "owner": "verificador-de-presupuestos"
     },
     {
       "path": "scripts/observacion.schema.json",
@@ -30,8 +45,12 @@
       "owner": "regla-de-egreso"
     },
     {
-      "path": "scripts/ledger-candidatos-fase-0.json",
-      "owner": "ledger-de-candidatos"
+      "path": "scripts/interfaz-de-reloj.json",
+      "owner": "interfaz-de-reloj"
+    },
+    {
+      "path": "scripts/dag-procedencia.json",
+      "owner": "procedencia-de-los-datos"
     },
     {
       "path": "scripts/metricas-fase-0.json",
@@ -40,6 +59,14 @@
     {
       "path": "scripts/preregistro-fase-0.json",
       "owner": "preregistro-congelado"
+    },
+    {
+      "path": "scripts/intentos-fase-0.json",
+      "owner": "manifest-de-intentos"
+    },
+    {
+      "path": "scripts/presupuesto-de-recoleccion-fase-0.json",
+      "owner": "presupuesto-de-recoleccion"
     },
     {
       "path": "scripts/baseline-fase-0.md",
@@ -56,10 +83,6 @@
     {
       "path": "scripts/observaciones-fase-0/",
       "owner": "observaciones-derivadas"
-    },
-    {
-      "path": "scripts/recibos-autotest-fase-0/",
-      "owner": "recibos-de-autotest"
     },
     {
       "path": "scripts/recibos-frontera-fase-0/",
