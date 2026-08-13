@@ -2116,7 +2116,8 @@ def autotest_clasificador_multicausa() -> int:
 # Ninguna etapa miró un campo `Consume`.
 #
 # El dato que lo decide: el **mismo flujo**, en el **mismo commit**, congeló el caso C15 del
-# manifest declarando que el `Consume` de `herdr-transporte-skills/T8` es `consume_no_tipado`.
+# manifest declarando que el `Consume` de la terna que su campo `origen` señala —una task de un
+# flujo archivado que el oráculo lista solo como `sin_cobertura`— es `consume_no_tipado`.
 # Exigir igualdad sobre el conjunto completo pondría a los dos insumos congelados a contradecirse
 # entre sí en tres ternas. Las causas de fuera del grupo se **reportan** en `tasks_excluidas[]`,
 # donde el desglose del piso las usa; lo que no hacen es fallar contra un oráculo que no las mira.

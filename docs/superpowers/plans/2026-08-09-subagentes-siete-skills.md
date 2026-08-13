@@ -303,7 +303,7 @@ que no existe — el mismo error que produjo el número que estas cifras reempla
 | El dossier que lo reemplaza | **8.058 b**, mediana entre flujos. Es un valor exacto y no una cota: son los bytes que el conductor escribe |
 | Reducción con dossier | **mediana entre flujos de 1,7x a 7,9x**. Por flujo, la cota inferior va de 1,2x a 2,7x y la superior de 3,3x a 21,7x |
 | Par implementer + reviewer | de 35.172 b a 152.572 b hoy, contra **16.116 b** con dossier. El reviewer recibe el mismo dossier que el implementer |
-| Máximo del corpus | `cross-model-herdr-adapter`, **282.692 b** — lo **deriva el censo**, no se cita a mano |
+| Máximo del corpus | **282.692 b**. Lo **deriva el censo** y no se cita a mano: el flujo que lo alcanza lo nombra el campo `maximo_corpus` de su salida, que es de dónde sale esta celda |
 
 Los **18 flujos medidos mejoran incluso en la cota inferior**; los otros 3 quedan fuera por
 degradación —más de la mitad de sus tasks no resuelve alguna pieza— y se nombran en la salida con su
