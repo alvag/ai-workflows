@@ -59,6 +59,14 @@ work order congelado ──► [implementador de otra familia: escribe, corre la
 4. **El reporte es advisory.** El conductor valida siempre por su cuenta: lee el **diff completo**
    como un PR de un contribuidor externo, contrasta los archivos declarados contra `git status`,
    y corre `proof_cmd` **él mismo** — la salida pegada por el implementador no cuenta como prueba.
+
+   > **Que revise el conductor no es una degradación acá.** Es arrastre del modo `inline`, donde
+   > revisaría **su propio código**. En una corrida de esta skill el conductor no escribió una
+   > línea: el código lo escribió la otra familia. Frente a un revisor fresco de su misma familia
+   > **empata** en puntos ciegos y **gana** en contexto — tiene el mapa completo y es el único con
+   > vista de la coherencia entre tasks. Lo que su revisión **no** aporta es diversidad de familia:
+   > esa ya se gastó en la posición del implementador, y después del diff no queda ninguna (ver
+   > `CLAUDE.md` → regla de fronteras, "code review sobre diffs").
 5. **Fix loop acotado, y solo para lo que se arregla implementando.** Cada falla se clasifica
    primero (`ownership.md` → "Las cuatro clases"); **solo `IMPLEMENTATION_DEFECT` reanuda la sesión**
    del implementador (con el override de sandbox explícito — el modo original no es garantía al

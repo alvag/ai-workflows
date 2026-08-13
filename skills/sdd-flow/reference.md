@@ -857,6 +857,23 @@ NOTES: <no verificable desde el diff / recomendaciones no bloqueantes>
 **tampoco lo cierra en silencio**: el conductor resuelve lo señalado —o lo declara— antes de
 commitear.
 
+> **Cuánto vale ese `ok`, y por qué no es simétrico.** El revisor es del **mismo modelo**, así que
+> su acuerdo no acredita nada: dos agentes de la misma familia coinciden en los mismos puntos
+> ciegos, y esa coincidencia produce una señal falsamente tranquilizadora. Un **hallazgo**, en
+> cambio, sigue siendo un hallazgo — si encuentra un bug real, el bug es real sin importar de qué
+> familia venga. La regla es asimétrica a propósito, y por eso es verificable: distingue dos cosas
+> observables, *findings emitidos* contra *veredicto de aprobación*.
+>
+> Lo que sí compra —y conviene nombrarlo sin exagerarlo— es **contexto fresco**: el revisor no vio
+> escribirse el código, así que no arrastra las justificaciones de quien lo escribió. Eso es real y
+> **no** es diversidad de familia; llamarlo diversidad sería el error.
+>
+> **Los dos ejes no tienen la misma red de contención.** `SPEC` tiene una segunda: `verify` recorre
+> los AC al final con evidencia fresca, así que un `SPEC: ok` equivocado se caza después. `QUALITY`
+> **no tiene ninguna**. Un `QUALITY: ok` de un revisor same-model es la señal más débil de todo el
+> flujo, y la única que no tiene nada detrás: tratarla como garantía es exactamente el error que
+> este bloque existe para impedir.
+
 Si no hay capacidad para despachar un reviewer fresco, el conductor hace la revisión liviana y lo
 avisa. Si hay findings, volver a `implement` o a `plan`/`specify` según el tipo de gap; no abrir
 otro gate nuevo.

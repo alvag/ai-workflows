@@ -110,6 +110,8 @@ barata que alcanza**. Canónica en `co-explore/reference.md` → "Escalera de ri
 
 Regla de fronteras entre skills (aparece repetida en las descripciones y hay que preservarla): `co-explore` explora/hipotetiza · `cross-review` revisa documentos de diseño · `cross-implement` escribe código · `systematic-debugging` arreglar bugs · code review sobre diffs. No solapar.
 
+> **«Code review sobre diffs» es el único ítem de esa lista que hoy no tiene skill, y con la otra familia no existe en ningún lado.** Los revisores de diff que el ecosistema sí despacha —la revisión final de `sdd-flow` y la del conductor en `cross-implement`— son **same-model** por construcción: una corrida gasta toda su diversidad de familia antes de que exista una línea de código, y ninguna después. Si esa capacidad llega alguna vez, su sede es **`cross-implement`** —es la skill que ya tiene el diff, el work order congelado y la política de familias—, y **no se crea una skill nueva**: sería una frontera nueva contra esta misma regla y competiría con `bitbucket-code-review`. Si se escribe, su dueño de configuración es `final_diff_review.mode`, que ya es el dueño conceptual de «revisión de diff agregada»; una clave nueva agregaría superficie y dispararía las vistas de config. **Nada de esto está implementado**: queda escrito para que el hueco sea visible y no se resuelva dos veces en dos lugares.
+
 ## Invocación cross-model (el mecanismo compartido)
 
 Cuando conduce Claude, la otra familia es **Codex**; el detalle canónico vive en cada `reference.md`. La delegación viaja por el **CLI headless**: el worker se lanza como proceso hijo y su salida se cosecha del disco. Patrón:
