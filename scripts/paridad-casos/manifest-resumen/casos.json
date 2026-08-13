@@ -17,6 +17,11 @@
       "agrega": true
     },
     {
+      "id": "obs:eleccion",
+      "tipo": "observable",
+      "agrega": true
+    },
+    {
       "id": "obs:mediana",
       "tipo": "observable",
       "agrega": true
@@ -31,14 +36,16 @@
         "obs:total-leido",
         "obs:agrupacion",
         "obs:degradadas",
+        "obs:eleccion",
         "obs:mediana"
       ],
-      "precondicion": "dos corridas de una skill, una degradada, con duraciones iguales",
+      "precondicion": "dos corridas de una skill, una degradada y una user_choice, con duraciones iguales",
       "clausulas": {
         "obs:total-leido": "valido",
         "obs:agrupacion": "valido",
         "obs:degradadas": "valido",
-        "obs:mediana": "valido"
+        "obs:mediana": "valido",
+        "obs:eleccion": "valido"
       },
       "fixture": "positivo",
       "entradas": {
@@ -59,7 +66,8 @@
         "obs:total-leido": "valido",
         "obs:agrupacion": "valido",
         "obs:degradadas": "valido",
-        "obs:mediana": "valido"
+        "obs:mediana": "valido",
+        "obs:eleccion": "valido"
       },
       "fixture": "vacio",
       "entradas": {
@@ -80,7 +88,8 @@
         "obs:total-leido": "valido",
         "obs:agrupacion": "valido",
         "obs:degradadas": "valido",
-        "obs:mediana": "valido"
+        "obs:mediana": "valido",
+        "obs:eleccion": "valido"
       },
       "fixture": "singleton",
       "entradas": {
@@ -101,7 +110,8 @@
         "obs:total-leido": "valido",
         "obs:agrupacion": "valido",
         "obs:degradadas": "valido",
-        "obs:mediana": "valido"
+        "obs:mediana": "valido",
+        "obs:eleccion": "valido"
       },
       "fixture": "cardinalidad-par",
       "entradas": {
@@ -122,7 +132,8 @@
         "obs:total-leido": "valido",
         "obs:agrupacion": "valido",
         "obs:degradadas": "valido",
-        "obs:mediana": "valido"
+        "obs:mediana": "valido",
+        "obs:eleccion": "valido"
       },
       "fixture": "cardinalidad-impar",
       "entradas": {
@@ -139,7 +150,8 @@
         "obs:total-leido": "valido",
         "obs:agrupacion": "invalido",
         "obs:degradadas": "valido",
-        "obs:mediana": "valido"
+        "obs:mediana": "valido",
+        "obs:eleccion": "valido"
       },
       "fixture": "agrupacion-case",
       "entradas": {
@@ -156,7 +168,8 @@
         "obs:total-leido": "valido",
         "obs:agrupacion": "invalido",
         "obs:degradadas": "valido",
-        "obs:mediana": "valido"
+        "obs:mediana": "valido",
+        "obs:eleccion": "valido"
       },
       "fixture": "skill-vacia",
       "entradas": {
@@ -168,6 +181,7 @@
     "obs:total-leido": "la línea `corridas leídas: N`, que distingue un directorio vacío de un filtro que no matcheó",
     "obs:agrupacion": "una línea por skill, ordenada por nombre",
     "obs:degradadas": "el conteo de corridas con degradation distinta de `none`",
-    "obs:mediana": "la duración mediana por skill"
+    "obs:mediana": "la duración mediana por skill",
+    "obs:eleccion": "el conteo de corridas con selection igual a `user_choice`, separado de las degradadas"
   }
 }

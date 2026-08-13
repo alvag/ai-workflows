@@ -110,16 +110,16 @@ comparan**.
    rondas de cruce (default 3, tope duro `max_rounds`), como `cross-review`; igual tiene deadline
    duro **por ronda** → al vencer se mata el proceso del explorador y se devuelve `UNAVAILABLE`
    con lo que haya. Nunca se espera de forma indefinida.
-6. **Opcional y degradable.** Es una capacidad, no un requisito. Sin revisor de otra familia
-   disponible, con un fallo en runtime, o con `mode: off`, el resultado es `UNAVAILABLE` en una
+6. **Opcional y degradable.** Es una capacidad, no un requisito. Sin CLI para un worker declarado,
+   con un fallo en runtime, o con `mode: off`, el resultado es `UNAVAILABLE` en una
    línea y la llamadora sigue con la exploración del conductor solamente.
-7. **Dos familias, y una excepción acotada.** Hay **dos** familias — Claude y GPT/Codex — y el
-   autor es la del agente que conduce la skill. En los tres modos duales se despacha **un worker de
-   cada familia**, así que uno comparte familia con el conductor: es aceptable **solo acá**, porque
-   el conductor ya no es una voz y la diversidad se conserva **entre los dos mapas comparados**. La
-   excepción **no** alcanza al revisor de `cross-review` ni al implementador de `cross-implement`,
-   donde hay una sola salida delegada y la familia opuesta es lo único que rompe la correlación de
-   errores. Descubrimiento por capacidad, nunca por nombre de tool: algoritmo canónico en
+7. **Allowlist de workers y diversidad declarada.** Hay **dos** familias —Claude y GPT/Codex— y el
+   conductor no entra en `families`. En los tres modos duales se despacha un worker por cada familia
+   seleccionada: con dos, se comparan dos mapas cross-family; con una, corre un proceso aparte y la
+   <!-- corpus-invariante:inicio:co-explore.SKILL.md.ada44733310a -->
+   escalera declara si es de la misma familia o de la opuesta al conductor. Descubrimiento por
+   <!-- corpus-invariante:fin:co-explore.SKILL.md.ada44733310a -->
+   capacidad, nunca por nombre de tool: algoritmo canónico en
    `cross-review/reference.md` → "Descubrir el revisor"; fundamento de la excepción en
    `reference.md` → "Excepción de familia (topología dual)".
 8. **El conductor arbitra, no explora.** En la rama nominal no construye un mapa propio del
@@ -168,37 +168,45 @@ Si reconoces alguno de estos pensamientos, detente y vuelve a la regla que está
 <!-- inventario-familias:inicio -->
 ### Inventario de familias
 
-Antes de cualquier preflight, la **raíz** de la corrida resuelve una vez qué familias hay. Si el
-contrato de invocación trae `family_inventory`, **no se resuelve nada**: se hereda, no se relee
-config y no se vuelve a avisar.
+Antes de cualquier preflight, la **raíz** de la corrida resuelve una vez la selección de workers
+despachables. El conductor conduce y no entra en `families`; cada worker es un proceso aparte en
+sesión fresca. Si el contrato de invocación trae `family_inventory`, **no se resuelve nada**: se
+heredan `families` y `selection`, no se relee config y no se vuelve a avisar.
 
 | Paso | Regla |
 |---|---|
-| 1 — familia del **conductor** | entra al conjunto observado **por construcción**, sin sondear: el agente está corriendo. No se le aplica el paso 2 |
-| 2 — la **otra** familia | presente si su CLI está en PATH. POSIX: `command -v codex` / `command -v claude`. PowerShell: `Get-Command codex -ErrorAction SilentlyContinue`. Nada más cuenta |
+| 1 — workers **declarados** | comprobar el CLI en PATH de cada familia de `families`, **la del conductor incluida**. Que el conductor esté corriendo por construcción no exime del preflight de su worker |
+| 2 — **sin declaración** | solo si no hay declaración, detectar qué CLIs están en PATH para proponer la selección. POSIX: `command -v codex` / `command -v claude`. PowerShell: `Get-Command codex -ErrorAction SilentlyContinue`. Nada más cuenta |
 
-El paso 2 mide el CLI porque es **condición necesaria de todas las vías**: el runtime del subagente
+Los dos pasos miden el CLI porque es **condición necesaria de todas las vías**: el runtime del subagente
 resuelve su disponibilidad corriendo `codex --version` y `codex app-server --help`, así que exige el
 CLI y algo más. No es la intersección restrictiva, es el piso común.
 
 La auditoría **no comprueba versión, auth, aislamiento ni lanzamiento**, y **no afirma capacidad
 operativa**: una familia presente puede fallar igual su preflight, y eso sigue siendo un fallo real.
 
-**Divergencia declarado ↔ observado — error en las dos direcciones:**
+`selection` conserva cómo se resolvió la lista: `full` abarca todas las familias presentes y
+`user_choice` declara menos. Se persiste con `families`, se hereda y nunca se reconstruye sondeando.
 
-| Caso | Error |
+**Declarado ↔ disponible:**
+
+| Caso | Resultado |
 |---|---|
-| declara ausente una familia presente | nombra la familia, dice que está instalada, y declara que apagar el cross-model teniendo las dos **no es una capacidad de esta clave** sino un cambio de doctrina pendiente de su propio flujo |
-| declara presente una familia ausente | nombra la familia y que la auditoría no la encuentra |
+| no declara una familia presente | preferencia válida; no se sondea ni se despacha ese worker |
+| declara una familia cuyo CLI está ausente | **error**: nombra la familia y que la auditoría no la encuentra |
 
-**Precedencia:** el chequeo de que la declaración incluya la familia del conductor **corre primero**
-y gana, porque nombra la causa raíz.
+`families: []` sigue siendo error. La allowlist admite solo `claude | codex`, sin duplicados y
+canonizada a minúsculas.
 <!-- inventario-familias:fin -->
 
-En `debate`, si `family_inventory` marca ausente a la otra familia, no se lanza worker, no se
-produce un envelope dual y se devuelve `UNAVAILABLE`. El modo hereda el inventario sin repetir
-el preflight y delega el aviso a la raíz indicada por `root`; el conductor no debate consigo
-mismo.
+<!-- corpus-invariante:inicio:co-explore.SKILL.md.47d290a6ecc7 -->
+
+En `debate`, la familia opuesta sigue siendo el default y la recomendación. Si la selección obliga
+
+<!-- corpus-invariante:fin:co-explore.SKILL.md.47d290a6ecc7 -->
+a la familia del conductor, se lanza un worker fresco de esa familia y se declara que se perdió la
+ruptura de correlación cross-family; el conductor no debate consigo mismo. El modo hereda la
+selección sin repetir el preflight ni el aviso de la raíz.
 
 ## Contrato de invocación (lo que pasa la skill llamadora)
 
@@ -232,9 +240,9 @@ Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario en modo directo) prove
   `plan`, con `spec.md`/`plan.md` como contexto.
 - **`working_dir`** — uno, o una lista de repos cuando llama el orquestador (exploración
   cross-repo).
-- **`family_inventory`** — inventario declarado y resuelto por la raíz, con `families`, `source` y
-  `root`. Opcional: si llega, se hereda sin releer config, repetir la auditoría ni reanunciar la
-  ausencia; si falta, esta invocación resuelve por su cuenta.
+- **`family_inventory`** — selección declarada y resuelta por la raíz, con `families`, `source`,
+  `selection` y `root`. La skill **hereda la elección** sin releer config, repetir la auditoría ni
+  reanunciar; si falta, esta invocación resuelve antes de despachar.
 - **`complexity`** — `trivial | normal | complex`; modula profundidad/esfuerzo.
 - **`execution`** — `auto | sync | background`. Para `explore` e `investigate` el valor útil es
   `background`: el conductor explora/investiga mientras tanto. En `counter-plan` o si el
@@ -246,11 +254,10 @@ Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario en modo directo) prove
 
 ### Pasos de ejecución
 
-1. **Preflight de aislamiento** (fail-closed) y resolución de los dos CLIs. Con
-   `family_inventory`, no ejecutar el preflight de la familia ausente; sin inventario heredado,
-   resolver como hasta ahora. Sin ninguno de los dos → `UNAVAILABLE`; con uno solo → la escalera
-   decide la rama (ver "Degradación").
-2. **Armar los dos prompts** desde `reference.md` → "Prompt de explore (dos capas)", con el mismo
+1. **Preflight de aislamiento** (fail-closed) y de cada CLI declarado. Con `family_inventory`, no
+   sondear familias fuera de la allowlist; sin selección heredada, resolverla antes. Sin CLI para un
+   worker declarado → `UNAVAILABLE`; con una sola familia seleccionada → la escalera decide la rama.
+2. **Armar uno o dos prompts** desde `reference.md` → "Prompt de explore (dos capas)", con el mismo
    paquete de contexto. En `counter-plan`, núcleo común byte-idéntico + anexo privado de la propia
    familia, concatenado por el shell.
 3. **Decidir retoma antes de truncar** (ver "Retoma"), y solo si corresponde redespachar, truncar
@@ -307,9 +314,12 @@ ejes (artefacto vs capacidad actual) en `reference.md` → "Decisión de retoma"
 ## El loop de debate (modo `debate`)
 
 A diferencia de los otros modos (una sola pasada), `debate` itera: el conductor participa como una
-voz, la otra familia es la otra, y el conductor además sintetiza — el usuario es el árbitro. R0 son
-posturas independientes (regla 2), R1..N cruzan y critican con tope duro `max_rounds`, y la síntesis
-**no elige ganador**.
+<!-- corpus-invariante:inicio:co-explore.SKILL.md.3c9f87861874 -->
+voz y el worker seleccionado forma la otra. La familia opuesta es el default; con selección
+<!-- corpus-invariante:fin:co-explore.SKILL.md.3c9f87861874 -->
+same-family se conserva una sesión fresca, se declara el costo y se recomienda revisión humana. El
+conductor sintetiza y el usuario arbitra. R0 son posturas independientes (regla 2), R1..N cruzan y
+critican con tope duro `max_rounds`, y la síntesis **no elige ganador**.
 
 La mecánica completa —las cuatro etapas del loop, la síntesis atribuida por familia, y la frontera
 publicado vs local que decide qué puede nombrar a las familias y qué no— vive en `reference.md` →

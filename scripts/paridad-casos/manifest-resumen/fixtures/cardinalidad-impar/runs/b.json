@@ -1,5 +1,6 @@
 {
   "skill": "cross-review",
   "degradation": "none",
-  "duration_s": 5
+  "duration_s": 5,
+  "selection": "full"
 }

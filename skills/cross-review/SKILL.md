@@ -17,10 +17,14 @@ description: >-
 
 # cross-review — segunda opinión cross-model para artefactos SDD
 
-Helper que toma un artefacto SDD y le pide una **crítica adversarial a un modelo de otra
-familia que el autor** (Codex cuando conduce Claude; Claude cuando conduce Codex) antes de que
+Helper que toma un artefacto SDD y le pide una **crítica adversarial a un worker seleccionado**
+<!-- corpus-invariante:inicio:cross-review.SKILL.md.be17f0869bbc -->
+—por default, de la familia opuesta al autor— antes de que
+<!-- corpus-invariante:fin:cross-review.SKILL.md.be17f0869bbc -->
 un humano lo apruebe. El valor es romper la correlación de errores: el mismo modelo que escribe
+<!-- corpus-invariante:inicio:cross-review.SKILL.md.ecc42237f1e7 -->
 la spec/plan/tasks es, hoy, el único que los revisa antes del gate. Un revisor de otra familia
+<!-- corpus-invariante:fin:cross-review.SKILL.md.ecc42237f1e7 -->
 caza huecos que ese modelo no ve — un AC faltante, un enfoque frágil, un riesgo no considerado,
 un contrato inconsistente.
 
@@ -67,14 +71,19 @@ artefacto escrito ──► [cross-review] ──► artefacto (quizá revisado)
 6. **Opcional y degradable.** Es una **capacidad**, no un requisito. Si falta el revisor o falla,
    avisar en una línea y devolver el control al gate humano. El flujo SDD sigue intacto (ver
    "Degradación").
-7. **Descubrir por capacidad, no por nombre — y nunca de la familia del autor.** El revisor se
-   busca por capacidad (un segundo modelo que pueda criticar texto en read-only), no por un
-   nombre de tool fijo. Regla dura: **el revisor nunca es de la misma familia de modelos que el
-   autor del artefacto**; misma familia = errores correlacionados, justo lo que esta revisión
-   existe para romper. Hay **dos familias**: Claude y GPT/Codex. El autor es la familia del
-   **agente que conduce la skill** — sin importar la superficie donde corre (CLI, app de
-   escritorio, IDE, web) — y el revisor es siempre el de la otra. Detalle en `reference.md` →
-   "Descubrir el revisor".
+7. <!-- corpus-invariante:inicio:cross-review.SKILL.md.34fb3b023a63 -->
+7. **Descubrir por capacidad, no por nombre; familia opuesta como default y recomendación.** El
+7. <!-- corpus-invariante:fin:cross-review.SKILL.md.34fb3b023a63 -->
+   revisor se busca por capacidad, no por un nombre de tool fijo. Con ambas familias seleccionadas,
+   se elige la opuesta al autor para romper la correlación de errores. Si la allowlist obliga a la
+   propia, la revisión **corre** con un worker fresco de esa familia: conductor Claude → worker
+   Claude; conductor Codex → worker Codex. Detalle y precedencia en `reference.md` → "Descubrir el
+   revisor".
+
+   > **Contrapeso same-family:** la salida debe decir: `Se recomienda revisión humana adicional: el
+   > <!-- corpus-invariante:inicio:cross-review.SKILL.md.07028569a2d1 -->
+   > worker ya no es de otra familia que el autor, por lo que no rompe la correlación de errores.`
+   > <!-- corpus-invariante:fin:cross-review.SKILL.md.07028569a2d1 -->
 
 ## Corridas delegadas en vuelo
 
@@ -119,8 +128,9 @@ Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario) proveen:
   "Matriz de resume desde co-exploración": nunca resuelve a la familia del autor ni a un worker
   `INVALID`.
 - **`working_dir`** — directorio desde donde el revisor puede leer el código en read-only.
-- **`family_inventory`** — inventario declarado y resuelto por la raíz, con `families`, `source` y
-  `root`. Opcional: si falta, esta invocación es la raíz y resuelve por su cuenta.
+- **`family_inventory`** — selección declarada y resuelta por la raíz, con `families`, `source`,
+  `selection` y `root`. La skill **hereda la elección**; si falta, esta invocación es la raíz y la
+  resuelve antes de despachar.
 - **`complexity`** — `trivial | normal | complex` (de `sdd-flow`); modula profundidad/esfuerzo.
 - **`execution`** — `auto | sync | background` (de la config `cross_review`); cómo se espera al
   revisor. `auto` (default) elige por la capacidad de timeout del conductor; `sync` fuerza llamada
@@ -180,15 +190,19 @@ siguen aplicando y sus fallos se informan como hasta ahora.
 1. **Identificar la familia del autor.** Es la del agente que conduce la skill, sin importar la
    superficie donde corre (CLI, app de escritorio, IDE, web): un agente **Claude** → autor
    Claude; un agente **Codex** → autor GPT/Codex.
-2. **Elegir el revisor de la OTRA familia** (regla 7 — el revisor nunca es de la familia del
-   autor):
+2. <!-- corpus-invariante:inicio:cross-review.SKILL.md.248755b760dd -->
+2. **Elegir dentro de `cross_model.families`.** Con `auto`, preferir la familia opuesta (regla 7):
+2. <!-- corpus-invariante:fin:cross-review.SKILL.md.248755b760dd -->
    - Autor **Claude** → revisor **Codex**: el subagente `codex:codex-rescue` si existe en el
      entorno; si no, el CLI `codex exec` en read-only.
    - Autor **GPT/Codex** → revisor **Claude**: el CLI `claude -p` restringido a tools de lectura.
-3. Si `cross_review.reviewer` fuerza una vía (`claude` | `codex`), usarla directo; si la vía
-   forzada coincide con la familia del autor, **avisar que se pierde el valor cross-model** y
-   continuar. El override explícito manda.
-4. Si **no hay revisor** de la otra familia disponible → no romper: devolver veredicto
+   Si la allowlist contiene solo la familia del autor, lanzar un worker fresco de esa familia y
+   emitir el contrapeso de revisión humana, en las dos direcciones.
+3. Si `cross_review.reviewer` fuerza una vía (`claude` | `codex`), solo puede elegir dentro de
+   `families`. Fuera de ella → error, sin despacho: `reviewer: <X> está fuera de
+   cross_model.families: [<Y>]`. Dentro de ella se respeta; si coincide con el autor, emitir el
+   contrapeso same-family. La matriz canónica vive en `reference.md`.
+4. Si **no hay CLI** para el revisor seleccionado → no romper: devolver veredicto
    `UNAVAILABLE` con el aviso estándar y ceder al gate humano (ver "Degradación").
 5. Si hay revisor → seguir con el loop.
 
@@ -241,7 +255,11 @@ Devolver a la skill llamadora (o presentar, en modo directo):
   que conceder no puede converger.
 - **Nota de límite** (obligatoria, una vez por corrida):
 
+  > <!-- corpus-invariante:inicio:cross-review.SKILL.md.2d888ab3fdcf -->
+
   > Un revisor independiente de otra familia aporta una crítica adicional; sigue siendo **una
+
+  > <!-- corpus-invariante:fin:cross-review.SKILL.md.2d888ab3fdcf -->
   > sola** revisión. No prueba correctitud y no reemplaza el gate humano.
 
   Va **una vez, al cierre de la corrida** — no en el formato de salida del revisor ni repetida por
@@ -264,7 +282,7 @@ rondas o nunca encontraron revisor no puede decir si esta capacidad rinde. Esque
 Tres modos de falla, todos terminan en el gate humano de siempre con un aviso de una línea
 ("revisión cross-model no disponible — sigo con el gate humano"):
 
-1. **El revisor no arranca.** Según el preflight de capacidad del CLI de la otra familia:
+1. **El revisor no arranca.** Según el preflight de capacidad del CLI seleccionado:
    - **Pared confirmada** (binario ausente, auth rechazada, versión incompatible): reintentar no
      sirve → Paso 0 devuelve `UNAVAILABLE`, **terminal para la corrida** (no se reintenta en rondas
      posteriores del loop ni en despachos siguientes de la misma tanda).
@@ -298,7 +316,7 @@ cross_review:
   execution: auto       # auto (por capacidad del conductor) | sync | background
   artifacts: [spec, plan, tasks]   # qué tipos revisar (sdd-orchestrator: [master-spec, reparto])
   max_rounds: 3         # rondas POR TANDA, no de la corrida entera; al agotarse se abre el checkpoint
-  reviewer: auto        # auto (descubre por capacidad; nunca la familia del autor) | claude | codex
+  reviewer: auto        # auto (familia opuesta si está en la allowlist) | claude | codex
 ```
 
 Precedencia (igual que el resto de overrides SDD): **override conversacional de la corrida >

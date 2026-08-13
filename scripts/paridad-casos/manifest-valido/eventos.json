@@ -109,11 +109,11 @@
     "id": "skill-fuera-del-ecosistema",
     "sitio": {
       "posix": {
-        "linea": 34,
+        "linea": 35,
         "digest": "sha256:daf333d36a20632d"
       },
       "ps": {
-        "linea": 35,
+        "linea": 36,
         "digest": "sha256:d0f2e0af5d5553e3"
       }
     },
@@ -147,11 +147,11 @@
     "id": "valor-fuera-de-vocabulario",
     "sitio": {
       "posix": {
-        "linea": 42,
+        "linea": 43,
         "digest": "sha256:7a8edd9ba8d6f052"
       },
       "ps": {
-        "linea": 42,
+        "linea": 43,
         "digest": "sha256:a87ce9229506ecf1"
       }
     },

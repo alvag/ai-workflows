@@ -40,7 +40,8 @@ implement_mode: ""               # inline | cross — [def] vacío → cada sdd-
 # ── ecosistema cross-model (lo resuelve el orquestador) ──
 cross_model:
   schema_version: 1              # [obl] obligatorio si el bloque existe
-  families: [claude, codex]      # claude | codex — [ej] debe coincidir con las familias presentes; omitir → resolución por repo
+  families: [claude, codex]      # claude | codex — [ej] allowlist de workers; el conductor no entra
+  selection: full                # full | user_choice — [obl] obligatorio con families; sin default
 
 # ── dueño: cross-review/SKILL.md → "Configuración" ──
 cross_review:
@@ -48,7 +49,7 @@ cross_review:
   execution: auto                # auto (por capacidad del conductor) | sync | background — [def]
   artifacts: [master-spec, reparto]   # [def] qué artefactos revisar (difiere del default de sdd-flow)
   max_rounds: 3                  # [def] rondas por TANDA, no de la corrida entera
-  reviewer: auto                 # auto | claude | codex — [def] nunca la familia del autor
+  reviewer: auto                 # auto | claude | codex — [def] solo dentro de families; error canónico en "Descubrir el revisor"
 
 # ── dueño: co-explore/SKILL.md → "Configuración" ──
 co_explore:

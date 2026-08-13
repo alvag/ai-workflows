@@ -35,7 +35,7 @@
         "skill-fuera-del-ecosistema",
         "valor-fuera-de-vocabulario"
       ],
-      "precondicion": "los ocho campos del núcleo, ninguno recortado, families como lista y los tres valores dentro del vocabulario de cross-review",
+      "precondicion": "los nueve campos del núcleo, ninguno recortado, families como lista y outcome, degradation, transport y selection dentro de sus vocabularios",
       "clausulas": {
         "falta-campo": "valido",
         "campo-recortado": "valido",
@@ -49,11 +49,11 @@
       }
     },
     {
-      "nombre": "falta-started-at",
+      "nombre": "falta-selection",
       "particion": "invalido",
       "objetivo": "falta-campo",
       "clase_esperada": "rechazo",
-      "precondicion": "falta `started_at`, que ninguna otra cláusula consume",
+      "precondicion": "falta `selection`, que ninguna otra cláusula consume",
       "clausulas": {
         "falta-campo": "invalido",
         "campo-recortado": "valido",
@@ -175,11 +175,11 @@
       }
     },
     {
-      "nombre": "transport-bogus",
+      "nombre": "selection-bogus",
       "particion": "invalido",
       "objetivo": "valor-fuera-de-vocabulario",
       "clase_esperada": "rechazo",
-      "precondicion": "transport `bogus`, que no pertenece al vocabulario de cross-review",
+      "precondicion": "selection `bogus`, fuera del enum común full | user_choice",
       "clausulas": {
         "falta-campo": "valido",
         "campo-recortado": "valido",
@@ -193,11 +193,11 @@
       }
     },
     {
-      "nombre": "transport-CLI-EXEC",
+      "nombre": "selection-USER-CHOICE",
       "particion": "casing",
       "objetivo": "valor-fuera-de-vocabulario",
       "clase_esperada": "rechazo",
-      "precondicion": "transport `CLI-EXEC`: el valor permitido `cli-exec` con el casing alterado. POSIX y el PowerShell vigente lo rechazan de forma sensible a mayúsculas; al mutar `-cnotcontains` a `-notcontains`, solo PowerShell lo acepta y el par diverge. Un mutante `bogus` cualquiera NO revela esto: los dos sabores coinciden y el par se declararía en paridad",
+      "precondicion": "selection `USER_CHOICE`: el valor permitido `user_choice` con casing alterado; ambos sabores deben rechazarlo de forma sensible a mayúsculas",
       "clausulas": {
         "falta-campo": "valido",
         "campo-recortado": "valido",

@@ -6,5 +6,6 @@
   "families": "claude",
   "transport": "cli-exec",
   "outcome": "APPROVED",
-  "degradation": "none"
+  "degradation": "none",
+  "selection": "full"
 }

@@ -82,60 +82,85 @@ primitiva con que ese archivo llega a stdin (`<` en POSIX, `Get-Content -Raw | �
 <!-- inventario-familias:inicio -->
 ### Inventario de familias
 
-Antes de cualquier preflight, la **raíz** de la corrida resuelve una vez qué familias hay. Si el
-contrato de invocación trae `family_inventory`, **no se resuelve nada**: se hereda, no se relee
-config y no se vuelve a avisar.
+Antes de cualquier preflight, la **raíz** de la corrida resuelve una vez la selección de workers
+despachables. El conductor conduce y no entra en `families`; cada worker es un proceso aparte en
+sesión fresca. Si el contrato de invocación trae `family_inventory`, **no se resuelve nada**: se
+heredan `families` y `selection`, no se relee config y no se vuelve a avisar.
 
 | Paso | Regla |
 |---|---|
-| 1 — familia del **conductor** | entra al conjunto observado **por construcción**, sin sondear: el agente está corriendo. No se le aplica el paso 2 |
-| 2 — la **otra** familia | presente si su CLI está en PATH. POSIX: `command -v codex` / `command -v claude`. PowerShell: `Get-Command codex -ErrorAction SilentlyContinue`. Nada más cuenta |
+| 1 — workers **declarados** | comprobar el CLI en PATH de cada familia de `families`, **la del conductor incluida**. Que el conductor esté corriendo por construcción no exime del preflight de su worker |
+| 2 — **sin declaración** | solo si no hay declaración, detectar qué CLIs están en PATH para proponer la selección. POSIX: `command -v codex` / `command -v claude`. PowerShell: `Get-Command codex -ErrorAction SilentlyContinue`. Nada más cuenta |
 
-El paso 2 mide el CLI porque es **condición necesaria de todas las vías**: el runtime del subagente
+Los dos pasos miden el CLI porque es **condición necesaria de todas las vías**: el runtime del subagente
 resuelve su disponibilidad corriendo `codex --version` y `codex app-server --help`, así que exige el
 CLI y algo más. No es la intersección restrictiva, es el piso común.
 
 La auditoría **no comprueba versión, auth, aislamiento ni lanzamiento**, y **no afirma capacidad
 operativa**: una familia presente puede fallar igual su preflight, y eso sigue siendo un fallo real.
 
-**Divergencia declarado ↔ observado — error en las dos direcciones:**
+`selection` conserva cómo se resolvió la lista: `full` abarca todas las familias presentes y
+`user_choice` declara menos. Se persiste con `families`, se hereda y nunca se reconstruye sondeando.
 
-| Caso | Error |
+**Declarado ↔ disponible:**
+
+| Caso | Resultado |
 |---|---|
-| declara ausente una familia presente | nombra la familia, dice que está instalada, y declara que apagar el cross-model teniendo las dos **no es una capacidad de esta clave** sino un cambio de doctrina pendiente de su propio flujo |
-| declara presente una familia ausente | nombra la familia y que la auditoría no la encuentra |
+| no declara una familia presente | preferencia válida; no se sondea ni se despacha ese worker |
+| declara una familia cuyo CLI está ausente | **error**: nombra la familia y que la auditoría no la encuentra |
 
-**Precedencia:** el chequeo de que la declaración incluya la familia del conductor **corre primero**
-y gana, porque nombra la causa raíz.
+`families: []` sigue siendo error. La allowlist admite solo `claude | codex`, sin duplicados y
+canonizada a minúsculas.
 <!-- inventario-familias:fin -->
 
 Esta sección es la **fuente canónica** del descubrimiento: `co-explore` la referencia por
 puntero (su fallback embebido es un resumen de esto).
 
 Los nombres de tools/MCP/agentes cambian entre entornos. Resolver el revisor por **capacidad**
-(un segundo modelo que pueda **criticar texto en read-only**) con una regla dura por delante:
-
-> **El revisor nunca es de la misma familia de modelos que el autor.** Hay dos familias: Claude
-> y GPT/Codex. Un revisor de la misma familia comparte los puntos ciegos del autor: los errores
-> correlacionados que la cross-review existe para romper.
+(un segundo modelo que pueda **criticar texto en read-only**) dentro de la allowlist heredada.
+<!-- corpus-invariante:inicio:cross-review.reference.md.ba3c7e0a3716 -->
+La familia opuesta sigue siendo el **default y la recomendación**, porque rompe la correlación de
+<!-- corpus-invariante:fin:cross-review.reference.md.ba3c7e0a3716 -->
+errores; una elección explícita puede obligar a un worker fresco de la familia del autor.
 
 **Paso 1 — identificar la familia del autor.** Es la del agente que conduce la skill, sin
 importar la superficie donde corre (CLI, app de escritorio, IDE, web): un agente Claude → autor
 Claude; un agente Codex → autor GPT/Codex.
 
-**Paso 2 — elegir el revisor de la OTRA familia** (`reviewer: auto`):
+**Paso 2 — elegir el revisor dentro de `cross_model.families`** (`reviewer: auto`):
 
 | Familia del autor | Revisor a buscar | Cómo detectarlo | Vía de invocación |
 |---|---|---|---|
 | Claude | Codex | ¿Existe el subagente `codex:codex-rescue` (plugin codex)? Si no, ¿`command -v codex`? | Vía A (preferida) o Vía B |
 | GPT/Codex | Claude | ¿`command -v claude`? | Vía C |
 
+Con solo la familia del autor seleccionada, la tabla se invierte sin reutilizar contexto: conductor
+Claude → worker Claude fresco por la Vía C; conductor Codex → worker Codex fresco por las Vías A/B.
+La salida recomienda revisión humana y nombra el costo:
+
+> <!-- corpus-invariante:inicio:cross-review.reference.md.a4df8927e829 -->
+
+> `Se recomienda revisión humana adicional: el worker ya no es de otra familia que el autor, por lo
+
+> <!-- corpus-invariante:fin:cross-review.reference.md.a4df8927e829 -->
+> que no rompe la correlación de errores.`
+
 > **En PowerShell** la detección de binarios es `Get-Command codex -ErrorAction SilentlyContinue`
 > (ídem `claude`) en vez de `command -v` — ver "Portabilidad entre shells (POSIX / PowerShell)".
 
-Con `reviewer: claude` o `reviewer: codex` forzados en config, ir directo a esa vía. Si la vía
-forzada coincide con la familia del autor (ej. autor Claude + `reviewer: claude`) → misma
-familia: avisar que se pierde el valor cross-model y continuar (el override manda).
+**Precedencia canónica entre `families` y `reviewer`.** `families` es una allowlist infranqueable;
+`reviewer` solo elige dentro de ella. Las demás sedes son vistas de esta matriz:
+
+| `families` | `reviewer` | Resultado |
+|---|---|---|
+| `[claude, codex]` | `auto` | revisor de la familia opuesta al autor |
+| `[codex]` (autor Claude) | `auto` | Codex |
+| `[claude]` (autor Claude) | `auto` | worker Claude fresco + recomendación de revisión humana |
+| `[claude]` | `codex` | **error**, no se despacha: `reviewer: codex está fuera de cross_model.families: [claude]` |
+| `[claude, codex]` | `claude` (autor Claude) | corre con la recomendación same-family; se pierde el valor cross-model |
+
+El caso simétrico para un conductor Codex aplica las mismas reglas. El override no amplía la
+allowlist y un error de precedencia ocurre antes de cualquier preflight o despacho.
 
 **Prechequeos (revisor Codex, Vías A/B).** Tres chequeos baratos antes de la ronda 1:
 
@@ -159,8 +184,84 @@ familia: avisar que se pierde el valor cross-model y continuar (el override mand
 > sobre git diff y su schema de salida exige `file`+`line` (código-céntrico): no sirven para
 > revisar un markdown. El camino correcto para documentos es `task` / `codex exec`.
 
-Si ninguna opción **de otra familia** está disponible → veredicto `UNAVAILABLE` y ceder al gate
+Si el CLI de la familia seleccionada no está disponible → veredicto `UNAVAILABLE` y ceder al gate
 humano (degradación).
+
+### Corpus del invariante
+
+Este inventario clasifica el barrido base y cada candidato vigente. Las entradas `normativa`
+corresponden uno a uno con marcas en el árbol; las `excluida` explican por qué el candidato no fija
+la política de selección.
+
+- `cross-review.README.md.b675b2c654b2` · excluida · README fuera del alcance normativo
+- `cross-review.README.md.5f9466019af3` · excluida · README fuera del alcance normativo
+- `cross-review.README.md.355c3639c7be` · excluida · README fuera del alcance normativo
+- `cross-review.SKILL.md.ecc42237f1e7` · normativa · regla vigente
+- `cross-review.SKILL.md.e87e2beaa014` · excluida · reescrita; resuelta por un ID vigente
+- `cross-review.SKILL.md.3c200bf24d03` · excluida · reescrita; resuelta por un ID vigente
+- `cross-review.SKILL.md.204178395747` · excluida · reescrita; resuelta por un ID vigente
+- `cross-review.SKILL.md.2d888ab3fdcf` · normativa · regla vigente
+- `cross-review.SKILL.md.d5edf6f83fc8` · excluida · reescrita; resuelta por un ID vigente
+- `cross-review.reference.md.8d5aaa629b3f` · excluida · reescrita; resuelta por un ID vigente
+- `cross-review.reference.md.d1fc854eb67a` · excluida · reescrita; resuelta por un ID vigente
+- `cross-review.reference.md.5790967361b2` · excluida · reescrita; resuelta por un ID vigente
+- `cross-review.reference.md.2fbdb7bf6dbf` · normativa · regla vigente
+- `cross-review.reference.md.5a03619317fd` · excluida · reescrita; resuelta por un ID vigente
+- `cross-review.reference.md.bb10b52eb68e` · excluida · reescrita; resuelta por un ID vigente
+- `cross-review.reference.md.f954aa47fbf0` · excluida · reescrita; resuelta por un ID vigente
+- `cross-implement.README.md.1fd1caaf7c1c` · excluida · README fuera del alcance normativo
+- `cross-implement.README.md.ef0bcfe6b925` · excluida · README fuera del alcance normativo
+- `cross-implement.README.md.40e253acf453` · excluida · README fuera del alcance normativo
+- `cross-implement.README.md.46055988f932` · excluida · README fuera del alcance normativo
+- `cross-implement.SKILL.md.e1b8d92f02b6` · excluida · reescrita; resuelta por un ID vigente
+- `cross-implement.SKILL.md.054d95efc251` · excluida · reescrita; resuelta por un ID vigente
+- `cross-implement.SKILL.md.24591100537b` · excluida · reescrita; resuelta por un ID vigente
+- `cross-implement.SKILL.md.54be350db410` · excluida · reescrita; resuelta por un ID vigente
+- `cross-implement.SKILL.md.fb32dce70dac` · excluida · reescrita; resuelta por un ID vigente
+- `cross-implement.SKILL.md.abc982293528` · excluida · reescrita; resuelta por un ID vigente
+- `cross-implement.reference.md.f149c2a01721` · excluida · reescrita; resuelta por un ID vigente
+- `cross-implement.reference.md.b366f06b16aa` · excluida · reescrita; resuelta por un ID vigente
+- `cross-implement.reference.md.b95da3b4ded1` · normativa · regla vigente
+- `cross-implement.reference.md.98f3d648afda` · excluida · reescrita; resuelta por un ID vigente
+- `co-explore.README.md.b2ace57744f3` · excluida · README fuera del alcance normativo
+- `co-explore.README.md.598cd38e9809` · excluida · README fuera del alcance normativo
+- `co-explore.SKILL.md.93289f9c0493` · excluida · reescrita; resuelta por un ID vigente
+- `co-explore.SKILL.md.ab989f15a702` · excluida · reescrita; resuelta por un ID vigente
+- `co-explore.SKILL.md.d20466e9d823` · excluida · reescrita; resuelta por un ID vigente
+- `co-explore.SKILL.md.21c0d964aa00` · excluida · anti-anclaje de artefactos, no selección
+- `co-explore.SKILL.md.f7b0d6f15016` · excluida · reescrita; resuelta por un ID vigente
+- `co-explore.reference.md.016809096e5f` · excluida · reescrita; resuelta por un ID vigente
+- `co-explore.reference.md.6eaa297dddb0` · excluida · reescrita; resuelta por un ID vigente
+- `co-explore.reference.md.36ca1d70e0f1` · excluida · reescrita; resuelta por un ID vigente
+- `co-explore.reference.md.0f08927e59bb` · excluida · gramática de IDs, no selección
+- `co-explore.reference.md.e75121d70002` · excluida · anti-anclaje de artefactos, no selección
+- `co-explore.reference.md.38042a6ad5b4` · excluida · armado de anexos, no selección
+- `co-explore.reference.md.6d80ff6ecce1` · excluida · reescrita; resuelta por un ID vigente
+- `co-explore.reference.md.b9ef85a664ff` · normativa · regla vigente
+- `co-explore.reference.md.2c3a0eb6bb63` · excluida · reescrita; resuelta por un ID vigente
+- `co-explore.reference.md.cafdbea24250` · excluida · reescrita; resuelta por un ID vigente
+- `cross-review.SKILL.md.be17f0869bbc` · normativa · regla vigente
+- `cross-review.SKILL.md.34fb3b023a63` · normativa · regla vigente
+- `cross-review.SKILL.md.07028569a2d1` · normativa · regla vigente
+- `cross-review.SKILL.md.248755b760dd` · normativa · regla vigente
+- `cross-review.SKILL.md.bc0af365fd1c` · excluida · vista YAML; regla canónica aquí
+- `cross-review.reference.md.ba3c7e0a3716` · normativa · regla vigente
+- `cross-review.reference.md.a4df8927e829` · normativa · regla vigente
+- `cross-review.reference.md.36a75d4a68ed` · excluida · fila de vista; regla canónica arriba
+- `cross-review.reference.md.275b7f8886d1` · normativa · regla vigente
+- `cross-implement.SKILL.md.650760997385` · normativa · regla vigente
+- `cross-implement.SKILL.md.8aaf4f376d55` · normativa · regla vigente
+- `cross-implement.SKILL.md.93fbb2190f20` · normativa · regla vigente
+- `cross-implement.reference.md.7cce0044363c` · normativa · regla vigente
+- `cross-implement.reference.md.f0d5e0198799` · normativa · regla vigente
+- `cross-implement.reference.md.919a8d9922f4` · normativa · regla vigente
+- `co-explore.SKILL.md.ada44733310a` · normativa · regla vigente
+- `co-explore.SKILL.md.47d290a6ecc7` · normativa · regla vigente
+- `co-explore.SKILL.md.3c9f87861874` · normativa · regla vigente
+- `co-explore.reference.md.682df987638d` · normativa · regla vigente
+- `co-explore.reference.md.7b096da38083` · normativa · regla vigente
+- `co-explore.reference.md.5f58c89c7e0d` · normativa · regla vigente
+- `co-explore.reference.md.5b072de65f96` · normativa · regla vigente
 
 ## Invocar al revisor (read-only)
 
@@ -1136,7 +1237,11 @@ defensas recibidas <n> · defensas admisibles <n>.
 Veredicto final: <APPROVED | REVISE> en <n> rondas y <n> tanda(s).
 Revisor: codex <modelo> (effort <esfuerzo>).
 
+<!-- corpus-invariante:inicio:cross-review.reference.md.2fbdb7bf6dbf -->
+
 **Límite:** un revisor independiente de otra familia aporta una crítica adicional; sigue siendo
+
+<!-- corpus-invariante:fin:cross-review.reference.md.2fbdb7bf6dbf -->
 una sola revisión. No prueba correctitud y no reemplaza el gate humano.
 ```
 
@@ -1211,15 +1316,21 @@ Reemplaza al seed desde un `co-explore/session.json` singular, que deja de exist
 ### Matriz de resume desde co-exploración
 
 Con dos workers hay **dos** sesiones por modo, una por familia. Cuál se reanuda **no queda a
-criterio**: elegir la de la misma familia que el autor violaría la regla 7 —el revisor nunca es de la
-familia del autor—, y sería fácil de hacer sin darse cuenta, porque las dos sesiones están ahí y
-las dos "funcionan".
+<!-- corpus-invariante:inicio:cross-review.reference.md.275b7f8886d1 -->
+criterio**: en la ruta recomendada se elige la sesión de la familia opuesta al autor. Cuando la
+<!-- corpus-invariante:fin:cross-review.reference.md.275b7f8886d1 -->
+selección obliga a la familia del autor, la regla de frescura de abajo gana y no se reanuda ninguna.
 
 | Artefacto a revisar | Sesión que se reanuda | Contexto que recibe |
 |---|---|---|
 | `spec` · `master-spec` | `explore` de la familia **opuesta al autor** | índices + síntesis |
 | `plan` · `reparto` | `counter-plan` de la familia **opuesta al autor** | índices + síntesis |
 | `tasks` | **ninguna** sesión de co-explore | índices + síntesis |
+
+Si la selección obliga a un revisor de la familia del autor, esta matriz **no reanuda** ninguna
+sesión de `explore` o `counter-plan`: esas sesiones ya traen un mapa y no son frescas. Se lanza un
+worker nuevo con índices y síntesis. El resume **entre rondas sigue** permitido, porque reanuda el
+lanzamiento inicial fresco de esta misma revisión.
 
 Reglas que acotan la matriz:
 
@@ -1229,7 +1340,7 @@ Reglas que acotan la matriz:
   rama 4 no hubo co-exploración —es el "ninguno" de la regla, nombrado— y el análisis del conductor
   ya está embebido en el artefacto que se va a revisar; pasarlo como "contexto de co-exploración"
   sería etiquetar mal algo que no lo fue.
-- **Sin sesión disponible → revisor fresco de la familia opuesta**, con índices y síntesis como
+- **Sin sesión disponible → revisor fresco de la familia seleccionada**, con índices y síntesis como
   contexto. **Salvo** que la capacidad actual sea `confirmed_wall`: ahí no hay reintento y el
   resultado es `UNAVAILABLE` terminal. Distinguirlo importa — reintentar contra una pared quema el
   deadline sin ninguna chance de éxito.
@@ -1281,7 +1392,8 @@ Ejemplo: `.cross-model/runs/20260731T140211Z-co-explore-explore.json`
   "families": ["codex", "claude"],
   "transport": "cli-exec",
   "outcome": "completed",
-  "degradation": "branch-3"
+  "degradation": "branch-3",
+  "selection": "user_choice"
 }
 ```
 
@@ -1290,9 +1402,9 @@ y dos corridas concurrentes —una tanda de `sdd-orchestrator` sobre varios repo
 Resolverlo pide locking: exactamente la infraestructura que este manifest existe para no traer. El
 timestamp va adelante del nombre para que el orden lexicográfico sea el cronológico.
 
-Con una familia ausente según `family_inventory`, el manifest **se escribe igual**: `families`
-enumera las familias efectivamente delegadas, `outcome` conserva el resultado terminal y
-`degradation` registra la rama degradada. La ausencia no suprime el registro.
+Con una selección de una entrada, el manifest **se escribe igual**: `families` enumera la familia
+delegada, `selection` distingue `full` de `user_choice`, `outcome` conserva el resultado terminal y
+`degradation` registra la rama alcanzada. La elección no suprime el registro ni pisa la rama.
 
 **Local y untracked, sin autolimpieza**, misma clase que `.plans/` y que los scratch de las tres
 skills. El usuario borra el directorio cuando quiera; ninguna skill lo hace por él. Una corrida son
@@ -1319,12 +1431,12 @@ capacidad en devolver un resultado utilizable, espera humana incluida.
 
 ### Los campos
 
-Los ocho son **obligatorios**. Un campo que solo aparece a veces hace que "no hubo" y "no se supo"
+Los nueve son **obligatorios**. Un campo que solo aparece a veces hace que "no hubo" y "no se supo"
 sean el mismo dato ausente.
 
 | Campo | Qué es | De dónde sale |
 |---|---|---|
-| `skill` | cuál de las tres corrió | fijo por skill |
+| `skill` | cuál de las cuatro corrió | fijo por skill |
 | `mode` | el modo o `artifact_type` de esta corrida | contrato de invocación |
 | `started_at` | ISO-8601 UTC del **despacho** | reloj al lanzar |
 | `duration_s` | del despacho a la resolución del outcome | reloj |
@@ -1332,6 +1444,13 @@ sean el mismo dato ausente.
 | `transport` | la vía efectiva: `subagent` · `cli-exec` · `cli-resume` | vía resuelta al lanzar |
 | `outcome` | el estado terminal que la skill ya devuelve | envelope / salida |
 | `degradation` | qué se perdió, o `none` | escalera / causa de indisponibilidad |
+| `selection` | `full | user_choice`: cómo se resolvió la allowlist | `family_inventory` persistido |
+
+`selection` no es opcional y no se reconstruye desde `families`: una lista de una entrada no dice
+si era la única presente o si el usuario excluyó otra. Los cuatro productores —`co-explore`,
+`cross-review`, `cross-implement` y `bitbucket-code-review`— lo emiten. Una corrida con
+`selection: user_choice` y `degradation: none` no cuenta como degradada: la elección es causa de una
+topología, no una degradación que pise la rama alcanzada.
 
 **`families` es lista incluso cuando hay una sola familia.** Un campo que a veces es cadena y a
 veces lista obliga a cada lector a ramificar, y el lector típico es un `grep` apurado.
@@ -1410,7 +1529,7 @@ cross_model:
     mode: "on"     # "on" (default) | "off"  (entre comillas: sin ellas YAML los parsea como booleanos)
 ```
 
-Vive en `cross_model` —política del **ecosistema**, no de una skill— porque las tres escriben el
+Vive en `cross_model` —política del **ecosistema**, no de una skill— porque las cuatro escriben el
 mismo registro: apagarlo para una sola produciría una serie con huecos sistemáticos, que es peor que
 no tenerla. Esquema completo en `sdd-flow/reference.md` → "Esquema de `.specify/config.yml`".
 
@@ -1421,11 +1540,11 @@ intuición, y el costo es un archivo de 300 bytes en un directorio untracked.
 
 ```bash
 # @bloque:manifest-valido
-# Predicado: los ocho campos del núcleo presentes, ninguno de los cuatro recortados, families como
-# lista, y outcome, degradation y transport dentro del vocabulario de la fila de esa skill.
+# Predicado: los nueve campos del núcleo presentes, ninguno de los cuatro recortados, families como
+# lista; selection dentro de su enum común; outcome, degradation y transport en la fila de la skill.
 # Entradas: $manifest
 rc=0
-for c in skill mode started_at duration_s families transport outcome degradation; do
+for c in skill mode started_at duration_s families transport outcome degradation selection; do
   grep -q "\"$c\"[[:space:]]*:" "$manifest" || {
     printf 'GUARD:manifest-valido falta el campo "%s"\n' "$c" >&2; rc=1; }
 done
@@ -1438,6 +1557,7 @@ grep -qE '"families"[[:space:]]*:[[:space:]]*\[' "$manifest" || {
 val() { sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$manifest" | head -1; }
 sk=$(val skill)
 comunes="none confirmed_wall launch_flake runtime_failure"
+selecciones="full user_choice"
 # `deadline_exceeded` NO va en "comunes": ese conjunto lo comparten las cuatro filas y sumarlo ahí
 # lo filtraría a bitbucket-code-review. Se suma fila por fila a las tres skills que lo producen; el
 # transporte vigente para las cuatro es `subagent`, `cli-exec` y `cli-resume`.
@@ -1457,7 +1577,7 @@ case "$sk" in
   *) printf 'GUARD:manifest-valido skill fuera del ecosistema: "%s"\n' "$sk" >&2
      rc=1; outs=""; degs=""; trans="" ;;
 esac
-for par in "outcome:$outs" "degradation:$degs" "transport:$trans"; do
+for par in "outcome:$outs" "degradation:$degs" "transport:$trans" "selection:$selecciones"; do
   campo=${par%%:*}; permitidos=${par#*:}
   [ -n "$permitidos" ] || continue
   v=$(val "$campo")
@@ -1470,8 +1590,8 @@ exit $rc
 
 ```powershell
 # @bloque:manifest-valido-ps
-# Predicado: los ocho campos del núcleo presentes, ninguno de los cuatro recortados, families como
-# lista, y outcome, degradation y transport dentro del vocabulario de la fila de esa skill.
+# Predicado: los nueve campos del núcleo presentes, ninguno de los cuatro recortados, families como
+# lista; selection dentro de su enum común; outcome, degradation y transport en la fila de la skill.
 # Entradas: $manifest
 $rc = 0
 $m = Get-Content -Raw $manifest
@@ -1479,7 +1599,7 @@ $m = Get-Content -Raw $manifest
 # `switch -CaseSensitive`) porque el par POSIX compara con `grep`/`case`/`grep -qxF`, que distinguen
 # mayúsculas. Con los operadores por defecto de .NET, `Started_at` cuenta como el campo `started_at`
 # y `CLI-EXEC` como el transporte `cli-exec`.
-foreach ($c in 'skill','mode','started_at','duration_s','families','transport','outcome','degradation') {
+foreach ($c in 'skill','mode','started_at','duration_s','families','transport','outcome','degradation','selection') {
   if ($m -cnotmatch "`"$c`"\s*:") { Write-Error "GUARD:manifest-valido falta el campo `"$c`""; $rc = 1 }
 }
 foreach ($c in 'attempts','schema_version','usage','parent') {
@@ -1489,6 +1609,7 @@ if ($m -cnotmatch '"families"\s*:\s*\[') { Write-Error 'GUARD:manifest-valido "f
 function Val($k) { if ($m -cmatch "`"$k`"\s*:\s*`"([^`"]*)`"") { $Matches[1] } else { '' } }
 $sk = Val 'skill'
 $comunes = @('none','confirmed_wall','launch_flake','runtime_failure')
+$selecciones = @('full','user_choice')
 # 'deadline_exceeded' NO va en $comunes: ese conjunto lo comparten las cuatro filas y sumarlo ahí
 # lo filtraría a bitbucket-code-review. Se suma fila por fila a las tres skills que lo producen; el
 # transporte vigente para las cuatro es 'subagent', 'cli-exec' y 'cli-resume'.
@@ -1507,7 +1628,7 @@ switch -CaseSensitive ($sk) {
   default { Write-Error "GUARD:manifest-valido skill fuera del ecosistema: `"$sk`""
             $rc = 1; $outs = @(); $degs = @(); $trans = @() }
 }
-foreach ($par in @(@('outcome',$outs), @('degradation',$degs), @('transport',$trans))) {
+foreach ($par in @(@('outcome',$outs), @('degradation',$degs), @('transport',$trans), @('selection',$selecciones))) {
   if ($par[1].Count -eq 0) { continue }
   $v = Val $par[0]
   if ($par[1] -cnotcontains $v) {
@@ -1525,8 +1646,8 @@ montón de JSON que nadie abre:
 
 ```bash
 # @bloque:manifest-resumen
-# Predicado: por skill, cuántas corridas, cuántas degradadas y la duración mediana; más el total
-# leído, para que un directorio vacío se distinga de un filtro que no matcheó.
+# Predicado: por skill, cuántas corridas, cuántas degradadas, cuántas por elección y la duración
+# mediana; más el total leído, para distinguir un directorio vacío de un filtro sin coincidencias.
 # Entradas: $runs
 n=$(find "$runs" -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
 printf 'corridas leídas: %s\n' "$n"
@@ -1535,15 +1656,18 @@ t=$(mktemp -d)
 for f in "$runs"/*.json; do
   [ -f "$f" ] || continue
   campo() { sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\{0,1\}\([^\",}]*\).*/\1/p" "$f" | head -1; }
-  printf '%s\t%s\t%s\n' "$(campo skill)" "$(campo degradation)" "$(campo duration_s)"
+  printf '%s\t%s\t%s\t%s\n' "$(campo skill)" "$(campo degradation)" \
+    "$(campo selection)" "$(campo duration_s)"
 done > "$t/filas"
 cut -f1 "$t/filas" | sort -u | while IFS= read -r sk; do
   [ -n "$sk" ] || continue
   tot=$(awk -F'\t' -v s="$sk" '$1==s' "$t/filas" | wc -l | tr -d ' ')
   deg=$(awk -F'\t' -v s="$sk" '$1==s && $2!="none"' "$t/filas" | wc -l | tr -d ' ')
-  med=$(awk -F'\t' -v s="$sk" '$1==s{print $3}' "$t/filas" | sort -n \
+  ele=$(awk -F'\t' -v s="$sk" '$1==s && $3=="user_choice"' "$t/filas" | wc -l | tr -d ' ')
+  med=$(awk -F'\t' -v s="$sk" '$1==s{print $4}' "$t/filas" | sort -n \
         | awk '{v[NR]=$1} END{if (NR) print v[int((NR+1)/2)]; else print "-"}')
-  printf '%s: %s corridas · %s degradadas · mediana %ss\n' "$sk" "$tot" "$deg" "$med"
+  printf '%s: %s corridas · %s degradadas · %s por eleccion · mediana %ss\n' \
+    "$sk" "$tot" "$deg" "$ele" "$med"
 done
 rm -rf "$t"
 # @fin:manifest-resumen
@@ -1551,8 +1675,8 @@ rm -rf "$t"
 
 ```powershell
 # @bloque:manifest-resumen-ps
-# Predicado: por skill, cuántas corridas, cuántas degradadas y la duración mediana; más el total
-# leído, para que un directorio vacío se distinga de un filtro que no matcheó.
+# Predicado: por skill, cuántas corridas, cuántas degradadas, cuántas por elección y la duración
+# mediana; más el total leído, para distinguir un directorio vacío de un filtro sin coincidencias.
 # Entradas: $runs
 $archivos = @(Get-ChildItem -Path $runs -Filter *.json -File -ErrorAction SilentlyContinue)
 Write-Output "corridas leídas: $($archivos.Count)"
@@ -1560,7 +1684,8 @@ if ($archivos.Count -eq 0) { exit 0 }
 $filas = foreach ($f in $archivos) {
   $j = Get-Content -Raw $f.FullName
   function C($k) { if ($j -cmatch "`"$k`"\s*:\s*`"?([^`",}]*)") { $Matches[1].Trim() } else { '' } }
-  [pscustomobject]@{ skill = (C 'skill'); degradation = (C 'degradation'); duration = [int](C 'duration_s') }
+  [pscustomobject]@{ skill = (C 'skill'); degradation = (C 'degradation');
+    selection = (C 'selection'); duration = [int](C 'duration_s') }
 }
 $grupos = @($filas | Group-Object skill -CaseSensitive)
 # El orden lo fija `[StringComparer]::Ordinal` y no `Sort-Object`: el par POSIX ordena con `sort`
@@ -1573,12 +1698,13 @@ foreach ($nombre in $nombres) {
   if (-not $nombre) { continue }
   $g = @($grupos | Where-Object { $_.Name -ceq $nombre })[0]
   $deg = @($g.Group | Where-Object { $_.degradation -cne 'none' }).Count
+  $ele = @($g.Group | Where-Object { $_.selection -ceq 'user_choice' }).Count
   $ord = @($g.Group.duration | Sort-Object)
   # `[Math]::Floor` y no `[int]`: con cardinalidad par el índice medio cae en .5, y `[int]` aplica
   # redondeo bancario —`[int]1.5` es 2— así que devolvía el MAYOR de los dos centrales donde el
   # `int()` de awk trunca y devuelve el menor. La mediana definida es el menor.
   $med = if ($ord.Count) { $ord[[int][Math]::Floor(($ord.Count + 1) / 2) - 1] } else { '-' }
-  Write-Output "$($nombre): $($g.Count) corridas · $deg degradadas · mediana $($med)s"
+  Write-Output "$($nombre): $($g.Count) corridas · $deg degradadas · $ele por eleccion · mediana $($med)s"
 }
 # @fin:manifest-resumen-ps
 ```
@@ -1588,7 +1714,7 @@ foreach ($nombre in $nombres) {
 El manifest no decide nada por sí solo; habilita tres preguntas que hoy se contestan de memoria:
 
 - **¿La capacidad está disponible donde corro?** Una proporción alta de `confirmed_wall` dice que el
-  entorno no tiene el CLI de la otra familia, no que la idea sea mala.
+  entorno no tiene el CLI seleccionado, no que la idea sea mala.
 - **¿La diversidad se está conservando?** `branch-3` y `branch-4` frecuentes en `co-explore`
   significan que la topología dual se degrada seguido: dos mapas comparados es el supuesto del que
   cuelga todo el valor del modo.

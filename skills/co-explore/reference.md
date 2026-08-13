@@ -168,23 +168,23 @@ skill aparte, tipo carrera de fixes cross-model).
 
 ## Descubrir el revisor (puntero + fallback)
 
-**Puntero.** El algoritmo canónico de descubrimiento del explorador —identificar la familia
-del autor y elegir el explorador de la otra familia— vive en `cross-review/reference.md` →
+**Puntero.** El algoritmo canónico de descubrimiento del explorador —identificar al conductor y
+elegir workers dentro de la allowlist— vive en `cross-review/reference.md` →
 "Descubrir el revisor". Si esa skill está instalada en el entorno, léelo de ahí: esta sección
 no lo duplica.
 
-**Fallback mínimo (`co-explore` sin `cross-review` instalada).** Misma regla dura: el
-explorador nunca es de la misma familia de modelos que el autor. Hay dos familias — Claude y
-GPT/Codex — y la del autor es la del agente que conduce la skill, sin importar la superficie
-donde corre (CLI, app de escritorio, IDE, web): un agente Claude → Claude; un agente Codex →
-GPT/Codex.
+**Fallback mínimo (`co-explore` sin `cross-review` instalada).** Hay dos familias —Claude y
+GPT/Codex— y la del conductor es la del agente que conduce la skill. La allowlist elige uno o dos
+<!-- corpus-invariante:inicio:co-explore.reference.md.682df987638d -->
+workers; la familia opuesta es la recomendada cuando hay una sola entrada.
+<!-- corpus-invariante:fin:co-explore.reference.md.682df987638d -->
 
 | Familia del autor | Explorador a buscar | Vía |
 |---|---|---|
 | Claude | Codex | `codex exec` en background, read-only |
 | GPT/Codex | Claude | `claude -p` en background, restringido a tools de lectura |
 
-Si el explorador de la otra familia no está disponible → `UNAVAILABLE` (regla 6 del `SKILL.md`).
+Si el CLI de un explorador seleccionado no está disponible → `UNAVAILABLE` (regla 6 del `SKILL.md`).
 
 **Invocación directa.** En topología dual se lanzan **los dos**, y el orden y los nombres de
 archivo los fija "Fan-out dual y orden de lanzamiento" — no los bloques de abajo, que quedan como
@@ -764,17 +764,24 @@ borradores de nadie.
 ### Excepción de familia (topología dual)
 
 En topología dual se lanzan un worker Codex **y** un worker Claude. Cuando conduce Claude, eso pone
-un worker de **la misma familia que el conductor** — algo que el resto del ecosistema prohíbe.
+<!-- corpus-invariante:inicio:co-explore.reference.md.7b096da38083 -->
+un worker de **la misma familia que el conductor**; la allowlist también puede elegir esa topología
+<!-- corpus-invariante:fin:co-explore.reference.md.7b096da38083 -->
+con un solo worker.
 
 **Por qué es aceptable acá, y solo acá:** el valor cross-model vive en que los **dos mapas que se
 comparan** vengan de familias distintas. En la topología anterior esos dos mapas eran el del
+<!-- corpus-invariante:inicio:co-explore.reference.md.b9ef85a664ff -->
 conductor y el del worker, así que el worker tenía que ser de la otra familia. En la topología dual
+<!-- corpus-invariante:fin:co-explore.reference.md.b9ef85a664ff -->
 el conductor **no produce mapa**: arbitra. Los dos mapas comparados son los de los dos workers, uno
 por familia, y la diversidad se conserva íntegra.
 
-**Alcance de la excepción:** los tres modos duales de `co-explore`. **No** alcanza al rol de revisor
-de `cross-review` ni al de implementador de `cross-implement`, donde sigue habiendo una sola salida
-delegada y la familia opuesta es lo único que rompe la correlación de errores.
+**Costo:** en los tres modos duales la diversidad vive entre workers. En `cross-review`,
+<!-- corpus-invariante:inicio:co-explore.reference.md.5f58c89c7e0d -->
+`cross-implement` y `debate`, la familia opuesta sigue siendo el default; elegir la misma familia es
+<!-- corpus-invariante:fin:co-explore.reference.md.5f58c89c7e0d -->
+una salida consciente que conserva un proceso aparte, pero no rompe la correlación de errores.
 
 ### Carve-outs de la regla del conductor
 
@@ -803,6 +810,12 @@ Los tres primeros conviven con la rama nominal; el cuarto la presupone descartad
 | **2** | sobrevive el de la **otra** familia | **explora** (topología anterior) | diversidad conservada, ahorro perdido |
 | **3** | sobrevive el de la **misma** familia | **explora** | **diversidad reducida** — `same_family` |
 | **4** | cero workers válidos | **explora**; cierre conductor-only, **sin síntesis** | una sola voz — `single_voice` |
+
+Con una sola entrada en `families`, no se espera un segundo worker: si el seleccionado es de la
+familia **opuesta** al conductor, se alcanza la **rama 2** con `diversity: cross_family`; si es de la
+**misma** familia, se alcanza la **rama 3** con `diversity: same_family`. El worker no seleccionado
+**no aparece en** `workers[]`: no fue despachado ni sondeado, y su ausencia se explica por
+`selection: user_choice`, no por una caída.
 
 Un worker en **`clarification-needed`** no es un worker perdido: cuenta como **válido a medias**.
 El conductor primero intenta resolver la pregunta (ver "El conductor resuelve antes de preguntar");
@@ -843,6 +856,7 @@ sin journal durable, sin estado entre corridas.
 outcome: completed | map_failure
 branch: 1 | 2 | 3 | 4 | null        # null si outcome es map_failure
 diversity: cross_family | same_family | single_voice | null
+selection: full | user_choice       # elección heredada; distingue omisión de caída
 
 workers:
   - family: codex
@@ -864,10 +878,12 @@ contributors:                        # TODO mapa aceptado, incluido el del condu
     session: <id> | null              # null para el mapa del conductor
 ```
 
-En los tres modos duales —`explore`, `counter-plan` e `investigate`—, cuando `family_inventory`
-establece que una familia está ausente, `workers[]` conserva su entrada con `state: UNAVAILABLE` y
-`cause: confirmed_wall`. La auditoría del inventario es la que establece esa pared confirmada; no
-se omite la entrada ni se agrega una causa nueva.
+`selection` llega por `family_inventory` junto a `families`, `source` y `root`; la skill **hereda
+la elección** y no la reconstruye sondeando.
+
+En los tres modos duales —`explore`, `counter-plan` e `investigate`—, un worker seleccionado que
+falla conserva su entrada con `state: UNAVAILABLE` y su causa. Una familia excluida por elección no
+aparece en `workers[]`; `selection` registra esa causa sin pisar `branch` ni `diversity`.
 
 `contributors[]` es lo que permite localizar el mapa del conductor en las ramas degradadas:
 `workers[]` solo describe procesos despachados, y en las ramas 2, 3 y 4 aparece un mapa que ningún
@@ -1441,8 +1457,12 @@ redespacho silencioso.
 
 ### El loop de debate
 
-A diferencia de los otros modos (una sola pasada), `debate` itera. El conductor participa como
-una voz y la otra familia es la otra; el conductor además sintetiza (el usuario es el árbitro).
+A diferencia de los otros modos (una sola pasada), `debate` itera. El conductor participa como una
+<!-- corpus-invariante:inicio:co-explore.reference.md.5b072de65f96 -->
+voz y el worker seleccionado forma la otra. La familia opuesta es el default; con selección
+<!-- corpus-invariante:fin:co-explore.reference.md.5b072de65f96 -->
+same-family se conserva una sesión fresca, se declara el costo y se recomienda revisión humana. El
+conductor sintetiza y el usuario arbitra.
 
 1. **R0 — posturas independientes.** El conductor escribe su propia postura sobre la decisión
    (opciones, análisis, hacia dónde se inclina y por qué) **antes** de ver nada de la otra

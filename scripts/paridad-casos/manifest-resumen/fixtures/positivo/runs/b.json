@@ -1,5 +1,6 @@
 {
   "skill": "cross-review",
   "degradation": "rounds_exhausted",
-  "duration_s": 4
+  "duration_s": 4,
+  "selection": "user_choice"
 }

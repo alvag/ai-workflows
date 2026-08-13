@@ -2,8 +2,12 @@
   "skill": "cross-review",
   "mode": "auto",
   "duration_s": 12,
-  "families": ["claude", "gpt"],
+  "families": [
+    "claude",
+    "gpt"
+  ],
   "transport": "cli-exec",
   "outcome": "APPROVED",
-  "degradation": "none"
+  "degradation": "none",
+  "started_at": "2026-08-04T10:00:00Z"
 }

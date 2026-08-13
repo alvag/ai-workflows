@@ -51,39 +51,59 @@ El algoritmo canónico de identificación de familia vive en `cross-review/refer
 "Descubrir el revisor" (autor = la familia del agente que conduce, sin importar la superficie).
 Acá cambia el rol buscado: no un crítico read-only sino un **implementador con escritura acotada**.
 
-| Familia del autor | Implementador | Cómo detectarlo | Vía |
+| Familia del autor | Implementador por default | Cómo detectarlo | Vía |
 |---|---|---|---|
 | Claude | Codex | `command -v codex` (PowerShell: `Get-Command codex -ErrorAction SilentlyContinue`) | Vía W-B (workspace-write) |
 | GPT/Codex | Claude | `command -v claude` | Vía W-C (permisos path-scoped) |
 
+<!-- corpus-invariante:inicio:cross-implement.reference.md.7cce0044363c -->
+
+La familia opuesta es el default y la recomendación. `cross_model.families` es la autoridad: si la
+
+<!-- corpus-invariante:fin:cross-implement.reference.md.7cce0044363c -->
+allowlist contiene solo la familia del autor, **corre** un implementador fresco de esa familia —
+conductor Claude → worker Claude por la Vía W-C; conductor Codex → worker Codex por la Vía W-B—.
+La salida debe incluir, en las dos direcciones:
+
+> <!-- corpus-invariante:inicio:cross-implement.reference.md.f0d5e0198799 -->
+
+> `Se recomienda revisión humana adicional: el worker ya no es de otra familia que el autor, por lo
+
+> <!-- corpus-invariante:fin:cross-implement.reference.md.f0d5e0198799 -->
+> que no rompe la correlación de errores.`
+
 <!-- inventario-familias:inicio -->
 ### Inventario de familias
 
-Antes de cualquier preflight, la **raíz** de la corrida resuelve una vez qué familias hay. Si el
-contrato de invocación trae `family_inventory`, **no se resuelve nada**: se hereda, no se relee
-config y no se vuelve a avisar.
+Antes de cualquier preflight, la **raíz** de la corrida resuelve una vez la selección de workers
+despachables. El conductor conduce y no entra en `families`; cada worker es un proceso aparte en
+sesión fresca. Si el contrato de invocación trae `family_inventory`, **no se resuelve nada**: se
+heredan `families` y `selection`, no se relee config y no se vuelve a avisar.
 
 | Paso | Regla |
 |---|---|
-| 1 — familia del **conductor** | entra al conjunto observado **por construcción**, sin sondear: el agente está corriendo. No se le aplica el paso 2 |
-| 2 — la **otra** familia | presente si su CLI está en PATH. POSIX: `command -v codex` / `command -v claude`. PowerShell: `Get-Command codex -ErrorAction SilentlyContinue`. Nada más cuenta |
+| 1 — workers **declarados** | comprobar el CLI en PATH de cada familia de `families`, **la del conductor incluida**. Que el conductor esté corriendo por construcción no exime del preflight de su worker |
+| 2 — **sin declaración** | solo si no hay declaración, detectar qué CLIs están en PATH para proponer la selección. POSIX: `command -v codex` / `command -v claude`. PowerShell: `Get-Command codex -ErrorAction SilentlyContinue`. Nada más cuenta |
 
-El paso 2 mide el CLI porque es **condición necesaria de todas las vías**: el runtime del subagente
+Los dos pasos miden el CLI porque es **condición necesaria de todas las vías**: el runtime del subagente
 resuelve su disponibilidad corriendo `codex --version` y `codex app-server --help`, así que exige el
 CLI y algo más. No es la intersección restrictiva, es el piso común.
 
 La auditoría **no comprueba versión, auth, aislamiento ni lanzamiento**, y **no afirma capacidad
 operativa**: una familia presente puede fallar igual su preflight, y eso sigue siendo un fallo real.
 
-**Divergencia declarado ↔ observado — error en las dos direcciones:**
+`selection` conserva cómo se resolvió la lista: `full` abarca todas las familias presentes y
+`user_choice` declara menos. Se persiste con `families`, se hereda y nunca se reconstruye sondeando.
 
-| Caso | Error |
+**Declarado ↔ disponible:**
+
+| Caso | Resultado |
 |---|---|
-| declara ausente una familia presente | nombra la familia, dice que está instalada, y declara que apagar el cross-model teniendo las dos **no es una capacidad de esta clave** sino un cambio de doctrina pendiente de su propio flujo |
-| declara presente una familia ausente | nombra la familia y que la auditoría no la encuentra |
+| no declara una familia presente | preferencia válida; no se sondea ni se despacha ese worker |
+| declara una familia cuyo CLI está ausente | **error**: nombra la familia y que la auditoría no la encuentra |
 
-**Precedencia:** el chequeo de que la declaración incluya la familia del conductor **corre primero**
-y gana, porque nombra la causa raíz.
+`families: []` sigue siendo error. La allowlist admite solo `claude | codex`, sin duplicados y
+canonizada a minúsculas.
 <!-- inventario-familias:fin -->
 
 **Prechequeos** — los mismos de `cross-review/reference.md` → "Descubrir el revisor" →
@@ -93,7 +113,7 @@ el `implement-log.md`.
 > **Vía A (subagente `codex:codex-rescue`) no aplica acá**: el contrato de ese runtime corre
 > read-only para pedidos de review/diagnosis. Para implementar se usa el CLI directo (Vía W-B).
 
-Sin implementador de la otra familia → `UNAVAILABLE` (regla 7 del `SKILL.md`).
+Sin CLI para el implementador seleccionado → `UNAVAILABLE` (regla 7 del `SKILL.md`).
 
 ## Vías de invocación
 
@@ -433,7 +453,9 @@ Desviaciones del work order: <lista o "ninguna">.
 > ella depende si la falla consume ronda—, pero hasta ahora se decidía y se evaporaba. Escribirla es
 > lo que deja un rastro comparable entre corridas.
 >
-> **Qué pregunta contestan.** La regla 8 manda que implemente la otra familia, y su justificación es
+> <!-- corpus-invariante:inicio:cross-implement.reference.md.919a8d9922f4 -->
+> **Qué pregunta contestan.** En la ruta recomendada la regla 8 manda a la familia opuesta, y su justificación es
+> <!-- corpus-invariante:fin:cross-implement.reference.md.919a8d9922f4 -->
 > que un implementador que no comparte los supuestos del autor **detecta la ambigüedad del contrato**
 > — un work order que admite dos lecturas se delata cuando alguien elige la otra. Eso es una
 > hipótesis, no un hecho medido. Si a lo largo de varias corridas casi todas las fallas son
@@ -447,14 +469,16 @@ Desviaciones del work order: <lista o "ninguna">.
 ### Qué hacer cuando el registro muestre algo
 
 El hueco que este registro vigila es **estrecho y de una sola clase**: el par *autor del work order
+<!-- corpus-invariante:inicio:cross-implement.reference.md.b95da3b4ded1 -->
 ↔ revisor del diff* es la misma familia, así que un contrato ambiguo lo transcribe fielmente el
+<!-- corpus-invariante:fin:cross-implement.reference.md.b95da3b4ded1 -->
 implementador y el revisor comparte el punto ciego que lo produjo. Todo lo demás ya cruza familia
 (ver `CLAUDE.md` → regla de fronteras). **Hoy no se escribe nada para cubrirlo**, y el motivo es que
 está medido en vez de discutido.
 
 **Qué cuenta como señal:** una falla clasificada `VERIFICATION_DEFECT` o `DESIGN_GAP` **con
 "¿el work order admitía otra lectura?: sí"**. Un `IMPLEMENTATION_DEFECT` con "otra lectura: no" es lo
-contrario de una señal: es el pipeline funcionando — el implementador de la otra familia hizo algo
+contrario de una señal: en una corrida cross-family, es el pipeline funcionando — el implementador hizo algo
 distinto de lo pedido y el conductor lo cazó.
 
 > **El campo lo contesta el autor del work order, y eso lo vuelve asimétrico.** El conductor de esta

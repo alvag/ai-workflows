@@ -8,7 +8,13 @@ Repositorio de **autoría de Agent Skills** (formato open de https://agentskills
 
 Las skills forman un ecosistema **cross-model** (Claude ↔ Codex) y de **Spec-Driven Development (SDD)**. El concepto central que atraviesa todo: hay **solo dos familias** de modelos, Claude y GPT/Codex. El modelo que conduce (el "conductor", autor del plan/exploración) delega en un modelo de **la otra familia** para obtener una opinión o implementación independiente, y luego sintetiza o revisa. Nunca decir "otro modelo" a secas: es "la otra familia".
 
-> **Excepción acotada — topología dual de `co-explore`.** En sus modos `explore`, `counter-plan` e `investigate`, `co-explore` despacha **dos workers, uno por familia**, así que uno comparte la del conductor. Es válido **solo ahí**, porque el conductor deja de ser una voz: no produce mapa, arbitra, y la diversidad se conserva entre **los dos mapas que se comparan**. La excepción **no** alcanza al revisor de `cross-review`, al implementador de `cross-implement` ni al modo `debate` de la propia `co-explore` —donde el conductor sí es voz—: ahí hay una sola salida delegada y la familia opuesta es lo único que rompe la correlación de errores.
+> **Familia opuesta y salida consciente.** La familia opuesta sigue siendo la **doctrina y el
+> default** de `cross-review`, `cross-implement` y `debate`: es la que rompe la correlación de
+> errores. `cross_model.families` puede elegir explícitamente un worker fresco de la misma familia
+> que el conductor. Esa **salida consciente** conserva independencia de proceso, pero pierde
+> diversidad de familia; la corrida debe nombrar ese costo y recomendar revisión humana. En la
+> topología dual de `co-explore`, la diversidad se mide entre los workers seleccionados y el
+> conductor solo arbitra.
 
 ## El techo de la verificación (tres reglas, no negociables)
 

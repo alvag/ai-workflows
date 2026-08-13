@@ -244,7 +244,8 @@ tracker: jira                    # jira | github | gitlab | linear | none
 test_scope_hint: "vitest run {name}"      # plantilla de COMANDO para acotar tests; {name} = archivo/patrón
 cross_model:                     # políticas comunes a las skills cross-model (opcional)
   schema_version: 1              # obligatorio si el bloque existe; una versión desconocida se ignora entera con aviso, nunca se interpreta a medias
-  families: [claude, codex]      # claude | codex — opcional; si se omite, se autodetecta como hasta ahora
+  families: [claude, codex]      # claude | codex — allowlist de workers; el conductor no entra
+  selection: full                # full | user_choice — obligatorio con families; sin default
   manifest:                      # registro por corrida de las skills cross-model, para decidir con datos si la capacidad rinde
     mode: "on"                   # "on" (default) | "off"  (entre comillas: sin ellas YAML los parsea como booleanos). Política del ECOSISTEMA: las tres skills escriben el mismo registro; apagarlo para una sola dejaría huecos sistemáticos. Ver `cross-review/reference.md` → "Manifest de corrida"
 jira_approval:                   # aprobación externa de la spec en Jira (opcional; solo si tracker: jira)
@@ -260,10 +261,10 @@ final_diff_review:
   mode: auto                     # auto (complex/high-risk inline) | "on" | "off"
 ```
 
-**Este bloque es dueño de las 21 claves que `sdd-flow` gobierna.** Las 12 restantes las poseen sus
+**Este bloque es dueño de las 22 claves que `sdd-flow` gobierna.** Las 12 restantes las poseen sus
 hermanas y su enum se define allá: `cross_review.*` en `cross-review/SKILL.md` → "Configuración";
 `co_explore.*` en `co-explore/SKILL.md` → "Configuración"; `cross_implement.*` en
-`cross-implement/SKILL.md` → "Configuración". El archivo **completo**, con las 33 juntas y listo
+`cross-implement/SKILL.md` → "Configuración". El archivo **completo**, con las 34 juntas y listo
 para copiar, está en `config-ejemplo.md`, que es una vista de todos estos dueños.
 
 Placeholders de `branch_format`: `{type}` (prefijo efectivo), `{ticket}` (clave del tracker, se omite si no hay), `{slug}` (2-5 palabras del título en kebab, sin acentos, `[a-z0-9-]`).
@@ -281,38 +282,47 @@ Placeholders de `branch_format`: `{type}` (prefijo efectivo), `{ticket}` (clave 
 | Duplicados | → **error**; no se deduplica en silencio |
 | Case | se acepta cualquier case y se **canoniza a minúsculas** en el eco |
 | Orden | **no semántico**: es un conjunto. `[claude, codex]` ≡ `[codex, claude]` |
-| Clave ausente | → **autodetectar**: el comportamiento de hoy, sin cambio alguno |
-| schema_version en .specify/config.yml | **no sube**: el bloque ya existe con `schema_version: 1`; `families` es opcional y su ausencia preserva el comportamiento anterior |
+| Semántica | allowlist de **workers despachables**; el **conductor no entra en ella** |
+| Proceso | cada worker corre como proceso aparte en **sesión fresca**, incluso si comparte la familia del conductor |
+| Declarar menos | es una preferencia válida: solo se despacha a las familias declaradas |
+| Preflight | comprobar el CLI en PATH de cada familia declarada, **la del conductor incluida**; que el conductor esté corriendo por construcción **no exime del preflight** de su worker |
+| Clave ausente | → resolver, preguntar y persistir antes de cualquier despacho; ver "Resolución de la selección" |
+| `selection` | obligatorio con `families`; enum `full | user_choice`, sin default |
+| schema_version en .specify/config.yml | **no sube**: el bloque ya existe con `schema_version: 1`; al crearlo se emite ese valor |
 | schema_version en manifest.yml | **se introduce en este cambio, con valor `1`**; es obligatorio si el bloque nuevo existe y la obligación nace en esa superficie |
 
 <!-- inventario-familias:inicio -->
 ### Inventario de familias
 
-Antes de cualquier preflight, la **raíz** de la corrida resuelve una vez qué familias hay. Si el
-contrato de invocación trae `family_inventory`, **no se resuelve nada**: se hereda, no se relee
-config y no se vuelve a avisar.
+Antes de cualquier preflight, la **raíz** de la corrida resuelve una vez la selección de workers
+despachables. El conductor conduce y no entra en `families`; cada worker es un proceso aparte en
+sesión fresca. Si el contrato de invocación trae `family_inventory`, **no se resuelve nada**: se
+heredan `families` y `selection`, no se relee config y no se vuelve a avisar.
 
 | Paso | Regla |
 |---|---|
-| 1 — familia del **conductor** | entra al conjunto observado **por construcción**, sin sondear: el agente está corriendo. No se le aplica el paso 2 |
-| 2 — la **otra** familia | presente si su CLI está en PATH. POSIX: `command -v codex` / `command -v claude`. PowerShell: `Get-Command codex -ErrorAction SilentlyContinue`. Nada más cuenta |
+| 1 — workers **declarados** | comprobar el CLI en PATH de cada familia de `families`, **la del conductor incluida**. Que el conductor esté corriendo por construcción no exime del preflight de su worker |
+| 2 — **sin declaración** | solo si no hay declaración, detectar qué CLIs están en PATH para proponer la selección. POSIX: `command -v codex` / `command -v claude`. PowerShell: `Get-Command codex -ErrorAction SilentlyContinue`. Nada más cuenta |
 
-El paso 2 mide el CLI porque es **condición necesaria de todas las vías**: el runtime del subagente
+Los dos pasos miden el CLI porque es **condición necesaria de todas las vías**: el runtime del subagente
 resuelve su disponibilidad corriendo `codex --version` y `codex app-server --help`, así que exige el
 CLI y algo más. No es la intersección restrictiva, es el piso común.
 
 La auditoría **no comprueba versión, auth, aislamiento ni lanzamiento**, y **no afirma capacidad
 operativa**: una familia presente puede fallar igual su preflight, y eso sigue siendo un fallo real.
 
-**Divergencia declarado ↔ observado — error en las dos direcciones:**
+`selection` conserva cómo se resolvió la lista: `full` abarca todas las familias presentes y
+`user_choice` declara menos. Se persiste con `families`, se hereda y nunca se reconstruye sondeando.
 
-| Caso | Error |
+**Declarado ↔ disponible:**
+
+| Caso | Resultado |
 |---|---|
-| declara ausente una familia presente | nombra la familia, dice que está instalada, y declara que apagar el cross-model teniendo las dos **no es una capacidad de esta clave** sino un cambio de doctrina pendiente de su propio flujo |
-| declara presente una familia ausente | nombra la familia y que la auditoría no la encuentra |
+| no declara una familia presente | preferencia válida; no se sondea ni se despacha ese worker |
+| declara una familia cuyo CLI está ausente | **error**: nombra la familia y que la auditoría no la encuentra |
 
-**Precedencia:** el chequeo de que la declaración incluya la familia del conductor **corre primero**
-y gana, porque nombra la causa raíz.
+`families: []` sigue siendo error. La allowlist admite solo `claude | codex`, sin duplicados y
+canonizada a minúsculas.
 <!-- inventario-familias:fin -->
 
 El inventario declarado viaja en el contrato de invocación con este carrier:
@@ -321,17 +331,20 @@ El inventario declarado viaja en el contrato de invocación con este carrier:
 family_inventory:                # ausente = resuélvelo tú, eres la raíz
   families: [claude]             # conjunto resuelto y canonizado a minúsculas
   source: declared               # ÚNICO valor: sin declaración no se construye el carrier
+  selection: user_choice         # elección heredada; no se recalcula
   root: sdd-flow                 # quién lo resolvió y, por lo tanto, quién ya avisó
 ```
 
-Sus tres reglas son obligatorias:
+Sus cuatro reglas son obligatorias:
 
 1. **Presente implica heredado:** el receptor no relee config, no vuelve a auditar y no vuelve a
    anunciar la ausencia.
-2. **Sin declaración no hay carrier:** solo se construye desde una declaración válida en
+2. **La skill anidada hereda la elección:** recibe `selection` junto a `families`; no sondea ni
+   reconstruye si el usuario declaró menos workers que los presentes.
+3. **Sin declaración no hay carrier:** solo se construye desde una declaración válida en
    `config.yml`, `manifest.yml` o un override conversacional. La autodetección nunca se propaga como
    `source: detected`.
-3. **`root` identifica al dueño único del aviso:** no es un dato decorativo.
+4. **`root` identifica al dueño único del aviso:** no es un dato decorativo.
 
 El conjunto cerrado de consumidores es `sdd-flow`, `sdd-orchestrator`, `cross-review` —incluido
 draft—, `cross-implement` y `co-explore` —sus cuatro modos—. `bitbucket-code-review` queda
@@ -341,6 +354,34 @@ En una invocación directa, la fuente es `<working_dir>/.specify/config.yml` y l
 override conversacional > config > autodetección. La raíz se deriva del artefacto o work order
 recibido. Si no existe una raíz única, se falla pidiendo `working_dir` explícito; nunca se busca
 config hacia arriba ni fuera del directorio nombrado.
+
+### Resolución de la selección
+
+Si `families` ya está persistida, **se lee la declaración** y no se descubren familias fuera de
+ella. El preflight sí corre, pero mira solo los workers declarados. El descubrimiento queda
+**condicionado a la ausencia** de `families`; solo si no hay declaración se ejecutan estos pasos,
+en orden y antes de invocar cualquier skill cross-model:
+
+1. Proponer una selección inicial de workers.
+2. Detectar qué familias tienen un CLI despachable.
+3. Si hay otra familia presente, preguntar si se suma a la selección.
+4. Presentar un STOP con el **delta exacto** y persistir la selección confirmada.
+5. Aplicar el ruteo de cada skill y recién entonces despachar: **ningún worker sale antes**.
+
+El STOP hace un merge **no destructivo**: preserva el resto del archivo, crea `.specify/` y el
+bloque `cross_model` si faltan y emite `schema_version: 1` cuando el bloque nace. Persiste
+`families` y `selection` en `.specify/config.yml`; en una raíz `sdd-orchestrator`, el destino es el
+`manifest.yml` de la orquestación. Una sola familia instalada recibe el mismo STOP para persistir
+`[<familia-del-conductor>]` con `selection: full`. Ninguno de los dos destinos se escribe sin
+permiso explícito tras mostrar el delta.
+
+### Migración de declaraciones sin `selection`
+
+Si una declaración vigente de `families` **no declara cómo se resolvió**, abrir un único STOP que
+muestre esa lista y ofrezca `full` o `user_choice`. Se persiste con el mismo merge no destructivo y
+el mismo delta exacto de la resolución inicial. En este STOP **no se infiere un default** ni se
+sondea el entorno para decidirlo: preguntar una vez por la clave ausente no es descubrir familias.
+Desde la respuesta rige la lectura declarada y no se vuelve a preguntar.
 
 ## Contexto de dominio
 

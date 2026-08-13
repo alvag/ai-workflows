@@ -89,31 +89,35 @@ Las dos últimas cláusulas son el mismo defecto de ubicación en sentidos opues
 <!-- inventario-familias:inicio -->
 ### Inventario de familias
 
-Antes de cualquier preflight, la **raíz** de la corrida resuelve una vez qué familias hay. Si el
-contrato de invocación trae `family_inventory`, **no se resuelve nada**: se hereda, no se relee
-config y no se vuelve a avisar.
+Antes de cualquier preflight, la **raíz** de la corrida resuelve una vez la selección de workers
+despachables. El conductor conduce y no entra en `families`; cada worker es un proceso aparte en
+sesión fresca. Si el contrato de invocación trae `family_inventory`, **no se resuelve nada**: se
+heredan `families` y `selection`, no se relee config y no se vuelve a avisar.
 
 | Paso | Regla |
 |---|---|
-| 1 — familia del **conductor** | entra al conjunto observado **por construcción**, sin sondear: el agente está corriendo. No se le aplica el paso 2 |
-| 2 — la **otra** familia | presente si su CLI está en PATH. POSIX: `command -v codex` / `command -v claude`. PowerShell: `Get-Command codex -ErrorAction SilentlyContinue`. Nada más cuenta |
+| 1 — workers **declarados** | comprobar el CLI en PATH de cada familia de `families`, **la del conductor incluida**. Que el conductor esté corriendo por construcción no exime del preflight de su worker |
+| 2 — **sin declaración** | solo si no hay declaración, detectar qué CLIs están en PATH para proponer la selección. POSIX: `command -v codex` / `command -v claude`. PowerShell: `Get-Command codex -ErrorAction SilentlyContinue`. Nada más cuenta |
 
-El paso 2 mide el CLI porque es **condición necesaria de todas las vías**: el runtime del subagente
+Los dos pasos miden el CLI porque es **condición necesaria de todas las vías**: el runtime del subagente
 resuelve su disponibilidad corriendo `codex --version` y `codex app-server --help`, así que exige el
 CLI y algo más. No es la intersección restrictiva, es el piso común.
 
 La auditoría **no comprueba versión, auth, aislamiento ni lanzamiento**, y **no afirma capacidad
 operativa**: una familia presente puede fallar igual su preflight, y eso sigue siendo un fallo real.
 
-**Divergencia declarado ↔ observado — error en las dos direcciones:**
+`selection` conserva cómo se resolvió la lista: `full` abarca todas las familias presentes y
+`user_choice` declara menos. Se persiste con `families`, se hereda y nunca se reconstruye sondeando.
 
-| Caso | Error |
+**Declarado ↔ disponible:**
+
+| Caso | Resultado |
 |---|---|
-| declara ausente una familia presente | nombra la familia, dice que está instalada, y declara que apagar el cross-model teniendo las dos **no es una capacidad de esta clave** sino un cambio de doctrina pendiente de su propio flujo |
-| declara presente una familia ausente | nombra la familia y que la auditoría no la encuentra |
+| no declara una familia presente | preferencia válida; no se sondea ni se despacha ese worker |
+| declara una familia cuyo CLI está ausente | **error**: nombra la familia y que la auditoría no la encuentra |
 
-**Precedencia:** el chequeo de que la declaración incluya la familia del conductor **corre primero**
-y gana, porque nombra la causa raíz.
+`families: []` sigue siendo error. La allowlist admite solo `claude | codex`, sin duplicados y
+canonizada a minúsculas.
 <!-- inventario-familias:fin -->
 
 Cuando el manifest declara `families`, el orquestador compara primero las declaraciones locales y
@@ -121,13 +125,30 @@ aplica esta matriz por presencia de la clave:
 
 | `families` en el manifest | `families` en el repo | Resultado |
 |---|---|---|
-| presente | presente e igual, o ausente | manda el manifest; el inventario se propaga |
-| presente | presente y distinta | **error**: contradicción entre inventarios |
-| ausente | — | **no hay centralización**: cada delegado resuelve como resolvería solo |
+| presente | presente e igual, o ausente | manda el manifest; la selección se propaga |
+| presente | presente y distinta | **error**: contradicción entre allowlists de workers |
+| ausente | — | el orquestador resuelve y persiste la selección antes de despachar |
 
-Solo después de esa comparación se entrega el mismo `family_inventory` al agente delegado o
-al camino inline. Sin `families` en el manifest no se construye ese carrier: cada repo usa su
-declaración local o su autodetección, como en una corrida independiente.
+Sin `families` en el manifest, la raíz sigue cinco pasos en orden: (1) propone la selección, (2)
+detecta las familias con CLI despachable, (3) si hay otra presente pregunta si se suma, (4) abre un
+STOP para persistir la respuesta y (5) aplica el ruteo de cada skill y recién entonces despacha:
+**ningún worker sale antes**. Si solo está instalada una familia, el mismo STOP ofrece persistir
+`[<familia-del-conductor>]` con `selection: full`.
+
+El STOP muestra el **delta exacto** y hace un merge **no destructivo** en el `manifest.yml`: preserva
+el resto, crea `cross_model` si falta y emite `schema_version: 1` cuando nace. El destino equivalente
+de una raíz `sdd-flow` es `.specify/config.yml`, creando `.specify/` si falta. Ninguno se escribe sin
+permiso explícito.
+
+Una declaración vigente de `families` sin `selection` **no declara cómo se resolvió**. Antes del
+primer despacho, abrir un STOP único que nombre la lista, ofrezca `full` y `user_choice` y persista
+la respuesta con las mismas garantías. **No se infiere un default** ni se sondea para elegirlo:
+preguntar una vez por una clave ausente no es descubrir familias. Desde la respuesta no se vuelve a
+preguntar.
+
+Solo después de esa resolución y comparación se entrega el mismo `family_inventory`, con
+`families`, `source`, `selection` y `root`, al agente delegado o al camino inline. La skill anidada
+**hereda la elección**: no la recalcula, no redetecta y no vuelve a avisar.
 
 ## Corridas delegadas en vuelo
 

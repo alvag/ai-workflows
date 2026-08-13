@@ -56,12 +56,12 @@
     "ps": "sha256:0774b7b17f8e25ec"
   },
   "manifest-resumen": {
-    "posix": "sha256:61ed6398cb102f70",
-    "ps": "sha256:ab00a281488e551b"
+    "posix": "sha256:f2c54c85e2d2a7bd",
+    "ps": "sha256:76ef9c9efc2c7a3e"
   },
   "manifest-valido": {
-    "posix": "sha256:01fae59bf83c304d",
-    "ps": "sha256:70c90ca18825385e"
+    "posix": "sha256:568e821b7709a2ce",
+    "ps": "sha256:f48ce4a39a926d1e"
   },
   "materializacion-contrato": {
     "posix": "sha256:e438069a86ca77b8",

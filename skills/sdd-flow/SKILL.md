@@ -109,36 +109,64 @@ Si reconoces alguno de estos pensamientos, es señal de detente: vuelve al paso 
 <!-- inventario-familias:inicio -->
 ### Inventario de familias
 
-Antes de cualquier preflight, la **raíz** de la corrida resuelve una vez qué familias hay. Si el
-contrato de invocación trae `family_inventory`, **no se resuelve nada**: se hereda, no se relee
-config y no se vuelve a avisar.
+Antes de cualquier preflight, la **raíz** de la corrida resuelve una vez la selección de workers
+despachables. El conductor conduce y no entra en `families`; cada worker es un proceso aparte en
+sesión fresca. Si el contrato de invocación trae `family_inventory`, **no se resuelve nada**: se
+heredan `families` y `selection`, no se relee config y no se vuelve a avisar.
 
 | Paso | Regla |
 |---|---|
-| 1 — familia del **conductor** | entra al conjunto observado **por construcción**, sin sondear: el agente está corriendo. No se le aplica el paso 2 |
-| 2 — la **otra** familia | presente si su CLI está en PATH. POSIX: `command -v codex` / `command -v claude`. PowerShell: `Get-Command codex -ErrorAction SilentlyContinue`. Nada más cuenta |
+| 1 — workers **declarados** | comprobar el CLI en PATH de cada familia de `families`, **la del conductor incluida**. Que el conductor esté corriendo por construcción no exime del preflight de su worker |
+| 2 — **sin declaración** | solo si no hay declaración, detectar qué CLIs están en PATH para proponer la selección. POSIX: `command -v codex` / `command -v claude`. PowerShell: `Get-Command codex -ErrorAction SilentlyContinue`. Nada más cuenta |
 
-El paso 2 mide el CLI porque es **condición necesaria de todas las vías**: el runtime del subagente
+Los dos pasos miden el CLI porque es **condición necesaria de todas las vías**: el runtime del subagente
 resuelve su disponibilidad corriendo `codex --version` y `codex app-server --help`, así que exige el
 CLI y algo más. No es la intersección restrictiva, es el piso común.
 
 La auditoría **no comprueba versión, auth, aislamiento ni lanzamiento**, y **no afirma capacidad
 operativa**: una familia presente puede fallar igual su preflight, y eso sigue siendo un fallo real.
 
-**Divergencia declarado ↔ observado — error en las dos direcciones:**
+`selection` conserva cómo se resolvió la lista: `full` abarca todas las familias presentes y
+`user_choice` declara menos. Se persiste con `families`, se hereda y nunca se reconstruye sondeando.
 
-| Caso | Error |
+**Declarado ↔ disponible:**
+
+| Caso | Resultado |
 |---|---|
-| declara ausente una familia presente | nombra la familia, dice que está instalada, y declara que apagar el cross-model teniendo las dos **no es una capacidad de esta clave** sino un cambio de doctrina pendiente de su propio flujo |
-| declara presente una familia ausente | nombra la familia y que la auditoría no la encuentra |
+| no declara una familia presente | preferencia válida; no se sondea ni se despacha ese worker |
+| declara una familia cuyo CLI está ausente | **error**: nombra la familia y que la auditoría no la encuentra |
 
-**Precedencia:** el chequeo de que la declaración incluya la familia del conductor **corre primero**
-y gana, porque nombra la causa raíz.
+`families: []` sigue siendo error. La allowlist admite solo `claude | codex`, sin duplicados y
+canonizada a minúsculas.
 <!-- inventario-familias:fin -->
 
 `sdd-flow` es la **raíz** de sus corridas y el dueño único del aviso. Cuando construye el
 carrier, escribe `root: sdd-flow`; ese campo prueba quién resolvió el inventario y quién ya
 anunció la ausencia, de modo que ninguna corrida anidada vuelve a hacerlo.
+
+#### Resolución y persistencia de la selección
+
+Con `families` persistida se lee la declaración, se ejecuta el preflight solo para esos workers y
+no se detectan otras familias ni se pregunta. Sin declaración, resolver antes de lanzar:
+
+1. Proponer la selección.
+2. Detectar las familias con CLI despachable.
+3. Si hay otra presente, preguntar si se suma.
+4. Presentar un STOP y persistir la respuesta.
+5. Aplicar el ruteo de cada skill y recién entonces despachar: **ningún worker sale antes**.
+
+El STOP muestra el **delta exacto** y hace un merge **no destructivo** sobre
+`.specify/config.yml`: preserva las otras claves, crea `.specify/` y `cross_model` si faltan y
+emite `schema_version: 1` cuando el bloque nace. Persiste `families` y `selection`; nunca escribe sin
+permiso. Si solo está instalada una familia, ofrece el mismo STOP para guardar
+`[<familia-del-conductor>]` con `selection: full`. En una raíz `sdd-orchestrator`, el destino
+equivalente es el `manifest.yml` de la orquestación.
+
+Una declaración vigente de `families` sin `selection` **no declara cómo se resolvió**. Antes de la
+primera corrida posterior, abrir un STOP único que nombre la lista, ofrezca `full` y `user_choice` y
+persista la respuesta con las mismas garantías. **No se infiere un default** ni se sondea para
+elegirlo: preguntar una vez por una clave ausente no es descubrir familias. Desde esa respuesta se
+lee la selección y no se vuelve a preguntar.
 
 ## Adaptación al proyecto (portabilidad)
 
@@ -159,7 +187,7 @@ branch_prefix: ""           # opcional; reemplaza {type} (p. ej. "feature/"); va
 commit_style: conventional  # conventional | plain
 tracker: jira               # jira | github | gitlab | linear | none
 test_scope_hint: "vitest run {name}"  # plantilla de COMANDO para acotar tests; {name} = archivo/patrón
-cross_model: {schema_version: 1, manifest: {mode: "on"}}  # registro por corrida; `schema_version` es obligatorio si el bloque existe
+cross_model: {schema_version: 1, families: [codex], selection: user_choice, manifest: {mode: "on"}}  # allowlist de workers + procedencia; `schema_version` es obligatorio si el bloque existe
 cross_review: {mode: auto, execution: auto}  # segunda opinión cross-model en los gates; ver "Revisión cross-model"
 co_explore: {mode: auto, deadline: 600, debate: {mode: auto, max_rounds: 3}}  # exploración paralela + modo debate (decisiones); ver "Co-exploración cross-model"
 domain_context: {mode: auto, context_paths: [], adr_paths: []}  # lectura de contexto/ADRs; ver "Contexto de dominio"

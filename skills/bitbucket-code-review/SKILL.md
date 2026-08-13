@@ -365,7 +365,8 @@ El conductor solo necesita este volcado si delega o pide segunda opinión.
   `UNAVAILABLE` (no entregó, con su causa). No responder a tiempo es `UNAVAILABLE`; responder mal **no
   lo es** — ver `reference.md` → "Estados del revisor". Al cerrar la corrida se escribe el **manifest**
   (`cross-review/reference.md` → "Manifest de corrida"), incluidas las corridas sin panel externo y las
-  que terminaron sin publicar.
+  que terminaron sin publicar. Este productor emite `selection: full`: su panel no está gobernado
+  por la allowlist `cross_model.families`.
 
 ### 7b. QA local en vivo (decisión obligatoria y explícita; la corrida es opt-in)
 

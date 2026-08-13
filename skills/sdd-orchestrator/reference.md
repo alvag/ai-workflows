@@ -43,13 +43,14 @@ implement_mode: ""             # opcional; modo de implementación que heredan l
 # outcome: aborted             # solo si la orquestación terminó abortada (sub-paso `abort`)
 cross_model:                   # opcional; inventario común de familias para toda la orquestación
   schema_version: 1            # obligatorio si el bloque existe; esta obligación se introduce aquí y no se hereda de otra superficie
-  families: [claude, codex]    # claude | codex — opcional; si se omite, no hay centralización del inventario
+  families: [claude, codex]    # claude | codex — allowlist de workers; el conductor no entra
+  selection: full              # full | user_choice — obligatorio con families; sin default
 cross_review:                  # opcional; segunda opinión cross-model EN LOS GATES (ver skill cross-review)
   mode: auto                   # auto | "on" | "off"  (entre comillas: sin ellas YAML los parsea como booleanos)
   execution: auto              # auto (por capacidad del conductor) | sync | background
   artifacts: [master-spec, reparto]
   max_rounds: 3                # rondas POR TANDA, no de la corrida entera; al agotarse se abre el checkpoint
-  reviewer: auto               # auto (descubre por capacidad; nunca la familia del autor) | claude | codex
+  reviewer: auto               # auto (familia opuesta dentro de la allowlist) | claude | codex; fuera de families → error canónico de cross-review
 co_explore: {mode: auto, deadline: 600}  # co-exploración cross-repo ANTES del reparto; ORTOGONAL a cross_review (bloque hermano, no anidado); default on en orquestación; ver SKILL.md → Co-exploración cross-model
 repos:
   - path: servicio-a          # relativo a la contenedora
@@ -84,6 +85,23 @@ orchestration_tasks:           # opcional; el trabajo del orquestador, que no vi
     participating_repos:       # mapa AC → repos, una clave por cada AC de covers_ac
       AC-4: [servicio-a, servicio-b]
 ```
+
+`families` nombra **workers despachables**; el **conductor no entra en** la lista y siempre conserva
+la conducción. Cada worker es un proceso aparte en **sesión fresca**, incluso si comparte familia
+con el conductor. Declarar menos familias que las presentes es una preferencia válida. Cada familia
+declarada —la del conductor incluida— debe superar el preflight de su CLI en PATH: que el conductor
+esté corriendo por construcción **no exime del preflight** de su worker. Los tokens admitidos son
+`claude | codex`; una lista vacía, un escalar, un duplicado o cualquier otro token es error, y el
+eco canoniza a minúsculas.
+
+`selection` persiste cómo se resolvió la allowlist: `full` abarca todas las familias presentes y
+`user_choice` declara menos. Es obligatorio con `families`, no tiene default y viaja sin
+reconstruirse en `family_inventory`.
+
+Si un `manifest.yml` vigente declara `families` pero **no declara cómo se resolvió**, abrir un STOP
+único que muestre la lista, ofrezca `full` y `user_choice` y enseñe el **delta exacto** antes de hacer
+un merge **no destructivo**. **No se infiere un default** ni se sondea el entorno: preguntar una vez
+por la clave ausente no es descubrir familias.
 
 El `branch` de cada repo se computa al hacer el reparto resolviendo el prefijo con precedencia **`branch_prefix` local del repo (`<repo>/.specify/config.yml`) > `branch_prefix` de la orquestación (este `manifest.yml`) > prefijo semántico**. Por eso dos repos de la misma orquestación pueden tener prefijos distintos (uno con config local, otro no).
 
@@ -451,6 +469,7 @@ Inventario heredado, solo si el manifest declaró `families` y ya se comparó co
 family_inventory:
   families: <lista canonizada>
   source: declared
+  selection: <full | user_choice>
   root: sdd-orchestrator
 Reglas duras:
 - FRENA antes de commitear (nada de git commit/push); no toques nada fuera del repo.

@@ -53,7 +53,8 @@ jira_approval:                   # solo si tracker: jira
 # ── ecosistema cross-model (lo resuelve y ecoa sdd-flow) ──
 cross_model:
   schema_version: 1              # [obl] obligatorio si el bloque existe
-  families: [claude, codex]      # claude | codex — [ej] debe coincidir con las familias presentes; omitir → autodetección
+  families: [claude, codex]      # claude | codex — [ej] allowlist de workers; el conductor no entra
+  selection: full                # full | user_choice — [obl] obligatorio con families; sin default
   manifest:                      # formato en cross-review/reference.md → "Manifest de corrida"
     mode: "on"                   # "on" | "off" — [def] registro por corrida de las skills cross-model
 
@@ -63,7 +64,7 @@ cross_review:
   execution: auto                # auto (por capacidad del conductor) | sync | background — [def]
   artifacts: [spec, plan, tasks] # [def] qué artefactos revisar
   max_rounds: 3                  # [def] rondas por TANDA, no de la corrida entera
-  reviewer: auto                 # auto | claude | codex — [def] nunca la familia del autor
+  reviewer: auto                 # auto | claude | codex — [def] solo dentro de families; error canónico en "Descubrir el revisor"
 
 # ── dueño: co-explore/SKILL.md → "Configuración" ──
 co_explore:

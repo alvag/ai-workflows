@@ -2,8 +2,8 @@
 name: cross-implement
 description: >-
   Implementación cruzada cross-model: el conductor (autor del plan) delega un
-  work order CONGELADO a la otra familia (Codex cuando conduce Claude; Claude
-  cuando conduce Codex), que escribe código con escritura acotada al working
+  work order CONGELADO a un worker seleccionado (por default, de la familia
+  opuesta), que escribe código con escritura acotada al working
   dir; el conductor revisa el diff completo como un PR ajeno, corre la prueba él
   mismo, itera fixes en la misma sesión del implementador (loop acotado) y es
   quien commitea tras el gate humano. Sirve para cualquier flujo donde uno
@@ -19,20 +19,20 @@ description: >-
 
 # cross-implement — uno planifica, el otro implementa, el primero revisa
 
-Helper que **cruza los roles entre familias de modelos**: el conductor (el agente que escribió
-o posee el work order) no implementa — despacha la implementación completa a un modelo de la
-otra familia, con escritura acotada, y se queda con los dos roles que más valor tienen cruzados:
-**revisor del diff** (un revisor que no escribió el código, de otra familia, es genuinamente
-externo) y **verificador de la prueba** (la corre él mismo; el reporte del implementador es
-advisory). El humano entra en dos puntos: el kickoff y el sign-off del diff.
+Helper que separa los roles: el conductor (el agente que escribió o posee el work order) no
+implementa; despacha la implementación completa a un worker fresco de la allowlist, con escritura
+<!-- corpus-invariante:inicio:cross-implement.SKILL.md.650760997385 -->
+acotada, y se queda como **revisor del diff** y **verificador de la prueba**. La familia opuesta es
+<!-- corpus-invariante:fin:cross-implement.SKILL.md.650760997385 -->
+el default recomendado; una selección same-family conserva independencia de proceso, pero no
+diversidad de familia. El humano entra en dos puntos: el kickoff y el sign-off del diff.
 
-El valor es el mismo que funda a `co-explore` y `cross-review`: romper la correlación de
-errores. Hoy, cuando un modelo implementa su propio plan, autor y revisor del código son el
-mismo modelo con los mismos puntos ciegos. Acá implementador y revisor son de familias distintas
-**por construcción**.
+El valor máximo es el mismo que funda a `co-explore` y `cross-review`: romper la correlación de
+errores. Cuando la selección es cross-family, implementador y revisor son de familias distintas;
+cuando es same-family, la salida declara el costo y recomienda revisión humana.
 
 ```
-work order congelado ──► [implementador de otra familia: escribe, corre la prueba, reporta]
+work order congelado ──► [implementador seleccionado: escribe, corre la prueba, reporta]
    (spec/plan/tasks              │ escritura acotada al working dir, nunca commitea
     aprobados, o contrato        ▼
     destilado)          diff + reporte ──► conductor: lee el diff completo como PR ajeno,
@@ -62,10 +62,12 @@ work order congelado ──► [implementador de otra familia: escribe, corre la
 
    > **Que revise el conductor no es una degradación acá.** Es arrastre del modo `inline`, donde
    > revisaría **su propio código**. En una corrida de esta skill el conductor no escribió una
-   > línea: el código lo escribió la otra familia. Frente a un revisor fresco de su misma familia
-   > **empata** en puntos ciegos y **gana** en contexto — tiene el mapa completo y es el único con
-   > vista de la coherencia entre tasks. Y **sí aporta diversidad de familia**: por la regla 8 el
-   > código lo escribió la otra, así que el conductor revisa lo que su familia no escribió. Lo que
+   > línea: el código lo escribió un worker aparte. Con selección cross-family, frente a un revisor
+   > <!-- corpus-invariante:inicio:cross-implement.SKILL.md.8aaf4f376d55 -->
+   > fresco de su misma familia **empata** en puntos ciegos y **gana** en contexto — tiene el mapa
+   > <!-- corpus-invariante:fin:cross-implement.SKILL.md.8aaf4f376d55 -->
+   > completo y es el único con vista de la coherencia entre tasks. En esa ruta sí aporta diversidad:
+   > el conductor revisa lo que su familia no escribió. Lo que
    > **no** cubre es el par **autor del work order ↔ revisor**, que es él mismo: un contrato
    > ambiguo lo transcribe fielmente el implementador y el revisor comparte el punto ciego que lo
    > produjo. Ese hueco no se discute, se mide — las dos últimas líneas de cada ronda del log.
@@ -77,14 +79,18 @@ work order congelado ──► [implementador de otra familia: escribe, corre la
    poder ablandar las filas que él escribió. Nunca ping-pong indefinido.
 6. **El commit es del conductor, tras gate humano.** Presentar diff + prueba + rondas y esperar
    confirmación. El implementador jamás commitea; el conductor tampoco auto-commitea.
-7. **Opcional y degradable.** Sin implementador de la otra familia disponible, o ante un fallo en
-   runtime o deadline vencido → `UNAVAILABLE` en una línea y el conductor implementa inline (su
-   rol de siempre). Nunca bloquea al flujo llamador.
-8. **Implementador de OTRA familia, por capacidad.** Misma regla 7 de `cross-review`: dos
-   familias (Claude y GPT/Codex), el autor es la del agente que conduce, el implementador es
-   siempre el de la otra. Algoritmo canónico en `cross-review/reference.md` → "Descubrir el
-   revisor"; acá la tabla invertida (con escritura) vive en `reference.md` → "Descubrir el
-   implementador".
+7. **Opcional y degradable.** Sin CLI para el implementador seleccionado, o ante un fallo en runtime
+   o deadline vencido → `UNAVAILABLE` en una línea y el conductor implementa inline (su rol de
+   siempre). Nunca bloquea al flujo llamador.
+8. **Familia opuesta como default y recomendación; allowlist como autoridad.** Con ambas familias
+   seleccionadas, implementa la opuesta al autor. Si la allowlist obliga a la propia, la skill
+   **corre** con un implementador fresco: conductor Claude → worker Claude; conductor Codex → worker
+   Codex. Algoritmo y vías en `reference.md` → "Descubrir el implementador".
+
+   > **Contrapeso same-family:** la salida debe decir: `Se recomienda revisión humana adicional: el
+   > <!-- corpus-invariante:inicio:cross-implement.SKILL.md.93fbb2190f20 -->
+   > worker ya no es de otra familia que el autor, por lo que no rompe la correlación de errores.`
+   > <!-- corpus-invariante:fin:cross-implement.SKILL.md.93fbb2190f20 -->
 
 ## Corridas delegadas en vuelo
 
@@ -128,8 +134,9 @@ Quien la invoca (el usuario en modo directo, o `sdd-flow` en modo embebido) prov
   la conversación y lo escribe a `cross-implement/work-order.md` ANTES de lanzar (queda auditable
   y respeta la regla 1).
 - **`working_dir`** — raíz del repo donde se implementa (límite de escritura del implementador).
-- **`family_inventory`** — inventario declarado y resuelto por la raíz, con `families`, `source` y
-  `root`. Opcional: si falta, esta invocación es la raíz y resuelve por su cuenta.
+- **`family_inventory`** — selección declarada y resuelta por la raíz, con `families`, `source`,
+  `selection` y `root`. La skill **hereda la elección**; si falta, esta invocación es la raíz y la
+  resuelve antes de despachar.
 - **`proof_cmd`** — comprobación **agregada y opcional** que el conductor corre para ver el
   conjunto de un vistazo (la suite completa, el build). No sustituye ninguna fila del contrato ni
   alcanza para dar un requisito por cumplido. El gate acepta contrato **sin** `proof_cmd`; nunca
