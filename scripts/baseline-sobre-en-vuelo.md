@@ -21,7 +21,7 @@
 | V15 | AC-12 — once puntos de despacho y siete punteros locales | `--ac 12` | ok |
 | V16 | AC-13 — siete copias idénticas, trigger y README | `--ac 13` | ok |
 | V17 | AC-14 — tercera excepción y cita normativa | `--ac 14` | ok |
-| V18 | AC-15 — ninguna clave de configuración nueva | `--ac 15` | ok |
+| V18 | AC-15 — claves nuevas del diff de la rama completas en dueño y vista; en la rama base no hay sujeto | `--ac 15` | ok |
 | V19 | AC-16 — guardas del repo sin regresión | `--ac 16` | ok |
 
 ### v2
@@ -89,3 +89,38 @@ sobre un checkout limpio de `e179fa1`.
 | V17 | e179fa1 | 4bb8d14bbb1872d871209f7f4828bf9a9aa8a460181c3b8d181f132044e542e4 | 2026-08-12T23:45:32-05:00 | GREEN_ALREADY | — |
 | V18 | e179fa1 | 4bb8d14bbb1872d871209f7f4828bf9a9aa8a460181c3b8d181f132044e542e4 | 2026-08-12T23:45:32-05:00 | GREEN_ALREADY | no regresión: pasa por construcción |
 | V19 | e179fa1 | 4bb8d14bbb1872d871209f7f4828bf9a9aa8a460181c3b8d181f132044e542e4 | 2026-08-12T23:45:32-05:00 | GREEN_ALREADY | no regresión: pasa por construcción |
+
+### v4
+
+Identidad previa al commit: `(403dca0, sha256 del verificador en el working tree)`. **Sucede a
+`v3`** porque `--ac 15` deja de prohibir toda clave nueva y pasa a comprobar que las claves nuevas
+del diff de la rama estén completas en dueño y vista. Sobre la rama base no hay sujeto.
+
+Los diecinueve modos se midieron sobre el working tree con `HEAD`
+`403dca0da0331180dab92fa463293747baba85b9`; `--validar-baseline` y `--autotest` también dieron exit
+`0`. La atadura posterior con `git show <commit>:scripts/verificar-sobre-en-vuelo.py` queda pendiente
+del commit, que este work order prohíbe crear.
+
+#### Baseline de v4
+
+| ID | commit | sha256 | timestamp | estado | adjudicación |
+|---|---|---|---|---|---|
+| V1 | 403dca0 | 115b1f046d0511c48ae04600f76b6ab0b483834add76bbf778030447ff08b716 | 2026-08-13T16:17:02Z | GREEN_ALREADY | — |
+| V2 | 403dca0 | 115b1f046d0511c48ae04600f76b6ab0b483834add76bbf778030447ff08b716 | 2026-08-13T16:17:02Z | GREEN_ALREADY | — |
+| V3 | 403dca0 | 115b1f046d0511c48ae04600f76b6ab0b483834add76bbf778030447ff08b716 | 2026-08-13T16:17:02Z | GREEN_ALREADY | — |
+| V4 | 403dca0 | 115b1f046d0511c48ae04600f76b6ab0b483834add76bbf778030447ff08b716 | 2026-08-13T16:17:02Z | GREEN_ALREADY | — |
+| V5 | 403dca0 | 115b1f046d0511c48ae04600f76b6ab0b483834add76bbf778030447ff08b716 | 2026-08-13T16:17:02Z | GREEN_ALREADY | — |
+| V6 | 403dca0 | 115b1f046d0511c48ae04600f76b6ab0b483834add76bbf778030447ff08b716 | 2026-08-13T16:17:02Z | GREEN_ALREADY | — |
+| V7 | 403dca0 | 115b1f046d0511c48ae04600f76b6ab0b483834add76bbf778030447ff08b716 | 2026-08-13T16:17:02Z | GREEN_ALREADY | — |
+| V8 | 403dca0 | 115b1f046d0511c48ae04600f76b6ab0b483834add76bbf778030447ff08b716 | 2026-08-13T16:17:02Z | GREEN_ALREADY | — |
+| V9 | 403dca0 | 115b1f046d0511c48ae04600f76b6ab0b483834add76bbf778030447ff08b716 | 2026-08-13T16:17:02Z | GREEN_ALREADY | — |
+| V10 | 403dca0 | 115b1f046d0511c48ae04600f76b6ab0b483834add76bbf778030447ff08b716 | 2026-08-13T16:17:02Z | GREEN_ALREADY | — |
+| V11 | 403dca0 | 115b1f046d0511c48ae04600f76b6ab0b483834add76bbf778030447ff08b716 | 2026-08-13T16:17:02Z | GREEN_ALREADY | — |
+| V12 | 403dca0 | 115b1f046d0511c48ae04600f76b6ab0b483834add76bbf778030447ff08b716 | 2026-08-13T16:17:02Z | GREEN_ALREADY | — |
+| V13 | 403dca0 | 115b1f046d0511c48ae04600f76b6ab0b483834add76bbf778030447ff08b716 | 2026-08-13T16:17:02Z | GREEN_ALREADY | — |
+| V14 | 403dca0 | 115b1f046d0511c48ae04600f76b6ab0b483834add76bbf778030447ff08b716 | 2026-08-13T16:17:02Z | GREEN_ALREADY | — |
+| V15 | 403dca0 | 115b1f046d0511c48ae04600f76b6ab0b483834add76bbf778030447ff08b716 | 2026-08-13T16:17:02Z | GREEN_ALREADY | — |
+| V16 | 403dca0 | 115b1f046d0511c48ae04600f76b6ab0b483834add76bbf778030447ff08b716 | 2026-08-13T16:17:02Z | GREEN_ALREADY | — |
+| V17 | 403dca0 | 115b1f046d0511c48ae04600f76b6ab0b483834add76bbf778030447ff08b716 | 2026-08-13T16:17:02Z | GREEN_ALREADY | — |
+| V18 | 403dca0 | 115b1f046d0511c48ae04600f76b6ab0b483834add76bbf778030447ff08b716 | 2026-08-13T16:17:02Z | GREEN | `--ac 15` exit 0; `--autotest` exit 0; medición del working tree |
+| V19 | 403dca0 | 115b1f046d0511c48ae04600f76b6ab0b483834add76bbf778030447ff08b716 | 2026-08-13T16:17:02Z | GREEN_ALREADY | — |

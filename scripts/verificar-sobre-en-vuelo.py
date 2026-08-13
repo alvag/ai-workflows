@@ -42,12 +42,12 @@ import subprocess
 import sys
 import tempfile
 import unicodedata
+from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-CONTRACT_BASE_COMMIT = "5f3ff18"
 CHANGE_BASE_COMMIT = "2ed62dd"
-BASELINE_COMMIT = "e179fa1"
+BASELINE_COMMIT = "403dca0"
 BASELINE_PATH = "scripts/baseline-sobre-en-vuelo.md"
 
 SKILLS = [
@@ -151,16 +151,25 @@ CONSERVAR = {
     ],
 }
 
-# Dueños y vistas de la config del repo (AC-15). Mismo modelo que verificar-vistas-config.py.
+# Dueños y vistas de la config del repo (AC-15). La primera vista refleja la unión de sus cuatro
+# dueños; la segunda refleja su dueño menos las claves de estado de corrida.
 DUENOS_CONFIG = [
     ("skills/sdd-flow/reference.md", r"Esquema de `\.specify/config\.yml`"),
-    ("skills/sdd-orchestrator/reference.md", r"Esquema de `manifest\.yml`"),
     ("skills/cross-review/SKILL.md", r"Configuración"),
     ("skills/co-explore/SKILL.md", r"Configuración"),
     ("skills/cross-implement/SKILL.md", r"Configuración"),
-    ("skills/sdd-flow/config-ejemplo.md", r"Ejemplo de `\.specify/config\.yml`"),
-    ("skills/sdd-orchestrator/manifest-ejemplo.md", r"Ejemplo de `manifest\.yml`"),
 ]
+VISTA_CONFIG = ("skills/sdd-flow/config-ejemplo.md", r"Ejemplo de `\.specify/config\.yml`")
+DUENO_MANIFEST = ("skills/sdd-orchestrator/reference.md", r"Esquema de `manifest\.yml`")
+VISTA_MANIFEST = ("skills/sdd-orchestrator/manifest-ejemplo.md", r"Ejemplo de `manifest\.yml`")
+SUPERFICIES_CONFIG = DUENOS_CONFIG + [VISTA_CONFIG, DUENO_MANIFEST, VISTA_MANIFEST]
+_VISTAS_SPEC = spec_from_file_location("verificar_vistas_config",
+                                       REPO / "scripts/verificar-vistas-config.py")
+if _VISTAS_SPEC is None or _VISTAS_SPEC.loader is None:
+    raise ImportError("no se pudo importar scripts/verificar-vistas-config.py")
+_VISTAS_CONFIG = module_from_spec(_VISTAS_SPEC)
+_VISTAS_SPEC.loader.exec_module(_VISTAS_CONFIG)
+CLAVES_ESTADO_CORRIDA = _VISTAS_CONFIG.CLAVES_ESTADO_CORRIDA
 
 GUARDAS = [
     ["python3", "scripts/verificar-vistas-config.py"],
@@ -911,68 +920,135 @@ def ac_14(ctx: Ctx) -> None:
                       "" if not faltan else f"falta: {', '.join(faltan)}")
 
 
-def _claves_config(texto: str, heading: str) -> set[str]:
-    """Hojas punteadas del primer bloque ```yaml bajo `heading`. Mismo criterio que
-    verificar-vistas-config.py, del que este modo es la contraparte de no regresión."""
+def extraer_claves(texto: str, heading: str) -> tuple[set[str], str | None]:
+    """Hojas punteadas del primer bloque YAML de la sección, o su causa de error."""
     import yaml
-    on = fence = False
+
+    nivel = None
+    fence = False
     lineas: list[str] = []
     for linea in texto.splitlines():
-        if not on:
-            if re.match(rf"^#+ {heading}", linea):
-                on = True
+        encabezado = re.match(r"^(#+)\s+(.*)$", linea)
+        if nivel is None:
+            if re.match(rf"^#+\s+{heading}(?:\s|$)", linea):
+                nivel = len(encabezado.group(1)) if encabezado else 0
             continue
         if not fence:
-            if re.match(r"^\s*```yaml", linea):
+            if encabezado:
+                if re.match(rf"^#+\s+{heading}(?:\s|$)", linea):
+                    nivel = len(encabezado.group(1))
+                    continue
+                break
+            if re.match(r"^\s*```yaml(?:\s|$)", linea):
                 fence = True
             continue
         if re.match(r"^\s*```", linea):
             break
         lineas.append(linea)
-    if not lineas:
-        return set()
+    if nivel is None:
+        return set(), "heading ausente"
+    if not fence:
+        return set(), "bloque yaml ausente"
     try:
-        datos = yaml.safe_load("\n".join(lineas)) or {}
+        datos = yaml.safe_load("\n".join(lineas))
     except yaml.YAMLError:
-        return set()
+        return set(), "yaml inválido"
+    if not isinstance(datos, dict):
+        return set(), "raíz no es un mapa"
     salida: set[str] = set()
 
     def walk(nodo, prefijo=""):
-        if isinstance(nodo, dict):
-            for k, v in nodo.items():
-                p = f"{prefijo}{k}"
-                walk(v, p + ".") if isinstance(v, dict) else salida.add(p)
+        for k, v in nodo.items():
+            p = f"{prefijo}{k}"
+            walk(v, p + ".") if isinstance(v, dict) else salida.add(p)
 
     walk(datos)
+    return salida, None
+
+
+def incompletas(base: dict[str, set[str]], ahora: dict[str, set[str]]) -> \
+        list[tuple[str, str, str]]:
+    """Claves nuevas que no están completas en los dos extremos de su grupo."""
+    salida: list[tuple[str, str, str]] = []
+
+    def revisar(duenos: list[tuple[str, str]], vista: tuple[str, str],
+                excluir: set[str]) -> None:
+        rutas_dueno = [rel for rel, _ in duenos]
+        rel_vista = vista[0]
+        base_dueno = set().union(*(base[rel] for rel in rutas_dueno)) - excluir
+        ahora_dueno = set().union(*(ahora[rel] for rel in rutas_dueno)) - excluir
+        base_vista = base[rel_vista] - excluir
+        ahora_vista = ahora[rel_vista] - excluir
+
+        for clave in sorted((ahora_dueno - base_dueno) - ahora_vista):
+            archivos = [rel for rel in rutas_dueno if clave in ahora[rel]]
+            salida.append((clave, " o ".join(archivos), rel_vista))
+        for clave in sorted((ahora_vista - base_vista) - ahora_dueno):
+            salida.append((clave, " o ".join(rutas_dueno), rel_vista))
+
+    revisar(DUENOS_CONFIG, VISTA_CONFIG, set())
+    revisar([DUENO_MANIFEST], VISTA_MANIFEST, CLAVES_ESTADO_CORRIDA)
     return salida
 
 
+def resolver_base(raiz: Path) -> tuple[str | None, str]:
+    """Resuelve el merge-base con `main` y, como fallback, con `origin/main`."""
+    errores = []
+    for ref in ("main", "origin/main"):
+        resultado = subprocess.run(["git", "merge-base", "HEAD", ref], cwd=raiz,
+                                   capture_output=True, text=True)
+        sha = resultado.stdout.strip()
+        if resultado.returncode == 0 and sha:
+            return sha, ref
+        causa = resultado.stderr.strip() or resultado.stdout.strip() or f"exit {resultado.returncode}"
+        errores.append(f"{ref}: {causa}")
+    return None, "no se pudo determinar la base; " + " | ".join(errores)
+
+
 def ac_15(ctx: Ctx) -> str:
-    """AC-15 — ninguna clave de configuración nueva respecto de `5f3ff18`."""
-    antes: set[str] = set()
-    ahora: set[str] = set()
-    for rel, heading in DUENOS_CONFIG:
+    """AC-15 — las claves nuevas del diff de la rama están completas en dueño y vista.
+
+    Sobre la rama base no hay sujeto: el merge-base es HEAD y el conjunto nuevo queda vacío.
+    """
+    sha_base, ref_base = resolver_base(ctx.raiz)
+    if sha_base is None:
+        ctx.check(False, "merge-base de la rama", ref_base)
+        return "merge-base: no resuelto · pares nuevos evaluados: ?"
+
+    base: dict[str, set[str]] = {}
+    ahora: dict[str, set[str]] = {}
+    for rel, heading in SUPERFICIES_CONFIG:
         try:
-            viejo = subprocess.run(["git", "show", f"{CONTRACT_BASE_COMMIT}:{rel}"], cwd=REPO,
+            viejo = subprocess.run(["git", "show", f"{sha_base}:{rel}"], cwd=ctx.raiz,
                                    capture_output=True, text=True, check=True).stdout
         except subprocess.CalledProcessError as e:
-            ctx.check(False, f"git show {CONTRACT_BASE_COMMIT}:{rel}", e.stderr.strip()[:120])
+            ctx.check(False, f"git show {sha_base}:{rel}", e.stderr.strip()[:120])
             continue
         nuevo = leer(ctx.raiz, rel)
         if nuevo is None:
             ctx.check(False, rel, "el archivo ya no existe en el árbol")
             continue
-        antes |= {f"{rel}:{k}" for k in _claves_config(viejo, heading)}
-        ahora |= {f"{rel}:{k}" for k in _claves_config(nuevo, heading)}
-    if not antes:
-        ctx.check(False, "claves de config en el commit base", "no se leyó ninguna — nada que "
-                                                               "comparar, no un éxito")
-        return "nuevas: ?"
-    nuevas = sorted(ahora - antes)
-    ctx.check(not nuevas,
-              f"claves nuevas ({len(antes)} en {CONTRACT_BASE_COMMIT}, {len(ahora)} ahora)",
-              "" if not nuevas else ", ".join(nuevas))
-    return f"nuevas: {len(nuevas)}"
+        claves_base, error_base = extraer_claves(viejo, heading)
+        claves_ahora, error_ahora = extraer_claves(nuevo, heading)
+        if error_base:
+            ctx.check(False, f"{rel} en merge-base {sha_base}", error_base)
+        if error_ahora:
+            ctx.check(False, rel, error_ahora)
+        if error_base or error_ahora:
+            continue
+        base[rel] = claves_base
+        ahora[rel] = claves_ahora
+
+    resumen = f"merge-base {ref_base}={sha_base}"
+    if len(base) != len(SUPERFICIES_CONFIG) or len(ahora) != len(SUPERFICIES_CONFIG):
+        return f"{resumen} · pares nuevos evaluados: ?"
+
+    fallas = incompletas(base, ahora)
+    for clave, dueno, vista in fallas:
+        ctx.check(False, f"clave incompleta `{clave}`", f"dueño: {dueno} · vista: {vista}")
+    pares_nuevos = sum(len(ahora[rel] - base[rel]) for rel, _ in SUPERFICIES_CONFIG)
+    ctx.check(not fallas, f"claves nuevas completas en dueño y vista ({pares_nuevos} pares)")
+    return f"{resumen} · pares nuevos evaluados: {pares_nuevos}"
 
 
 def _diagnosticos(salida: str, skill: str) -> set[str]:
@@ -1172,7 +1248,7 @@ MODOS = {
     "12": ("AC-12 · los once puntos y los siete punteros", ac_12),
     "13": ("AC-13 · siete copias idénticas, trigger y README", ac_13),
     "14": ("AC-14 · la tercera excepción y su cita", ac_14),
-    "15": ("AC-15 · ninguna clave de configuración nueva", ac_15),
+    "15": ("AC-15 · claves nuevas del diff de la rama completas en dueño y vista", ac_15),
     "16": ("AC-16 · las guardas del repo sin regresión", ac_16),
 }
 FILAS = {"1": "V1", "1b": "V2", "2": "V3", "2b": "V4", "3": "V5", "3b": "V6", "4": "V7",
@@ -1503,7 +1579,8 @@ REQUISITOS_BASELINE = {
     "12": "AC-12 — once puntos de despacho y siete punteros locales",
     "13": "AC-13 — siete copias idénticas, trigger y README",
     "14": "AC-14 — tercera excepción y cita normativa",
-    "15": "AC-15 — ninguna clave de configuración nueva",
+    "15": "AC-15 — claves nuevas del diff de la rama completas en dueño y vista; en la rama base "
+          "no hay sujeto",
     "16": "AC-16 — guardas del repo sin regresión",
 }
 
@@ -1595,6 +1672,76 @@ MUTANTES = [
 ]
 
 
+def _preparar_repo_config(raiz: Path) -> None:
+    """Repo mínimo para ejercitar `--ac 15` contra el merge-base por su camino real."""
+    sha_base, causa = resolver_base(REPO)
+    if sha_base is None:
+        raise RuntimeError(causa)
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=raiz, check=True)
+    for rel, _ in SUPERFICIES_CONFIG:
+        contenido = subprocess.run(["git", "show", f"{sha_base}:{rel}"], cwd=REPO,
+                                   capture_output=True, text=True, check=True).stdout
+        destino = raiz / rel
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        destino.write_text(contenido, encoding="utf-8")
+    subprocess.run(["git", "add", "skills"], cwd=raiz, check=True)
+    subprocess.run(["git", "-c", "user.name=Autotest", "-c", "user.email=autotest@example.invalid",
+                    "commit", "-q", "-m", "base"], cwd=raiz, check=True)
+    subprocess.run(["git", "switch", "-q", "-c", "feature"], cwd=raiz, check=True)
+    for rel, _ in SUPERFICIES_CONFIG:
+        destino = raiz / rel
+        destino.write_text((REPO / rel).read_text(encoding="utf-8"), encoding="utf-8")
+
+
+def _indices_bloque_config(texto: str, heading: str) -> tuple[int, int]:
+    """Índices del fence YAML completo de una superficie usada por los mutantes."""
+    lineas = texto.splitlines(keepends=True)
+    nivel = inicio = None
+    for i, linea in enumerate(lineas):
+        encabezado = re.match(r"^(#+)\s+(.*)$", linea)
+        if nivel is None:
+            if re.match(rf"^#+\s+{heading}(?:\s|$)", linea):
+                nivel = len(encabezado.group(1)) if encabezado else 0
+            continue
+        if inicio is None:
+            if encabezado:
+                if re.match(rf"^#+\s+{heading}(?:\s|$)", linea):
+                    nivel = len(encabezado.group(1))
+                    continue
+                break
+            if re.match(r"^\s*```yaml(?:\s|$)", linea):
+                inicio = i
+            continue
+        if re.match(r"^\s*```", linea):
+            return inicio, i
+    raise ValueError(f"no se encontró el bloque YAML de {heading}")
+
+
+def _reemplazar_bloque_config(texto: str, heading: str, contenido: str) -> str:
+    lineas = texto.splitlines(keepends=True)
+    inicio, fin = _indices_bloque_config(texto, heading)
+    return "".join(lineas[:inicio + 1]) + contenido.rstrip("\n") + "\n" + "".join(lineas[fin:])
+
+
+def _inyectar_clave_config(texto: str, heading: str, clave: str) -> str:
+    lineas = texto.splitlines(keepends=True)
+    inicio, _ = _indices_bloque_config(texto, heading)
+    lineas.insert(inicio + 1, f"{clave}: true\n")
+    return "".join(lineas)
+
+
+def _retirar_bloque_config(texto: str, heading: str) -> str:
+    lineas = texto.splitlines(keepends=True)
+    inicio, fin = _indices_bloque_config(texto, heading)
+    return "".join(lineas[:inicio] + lineas[fin + 1:])
+
+
+def _correr_ac15_temporal(raiz: Path) -> tuple[int, str]:
+    resultado = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--ac", "15",
+                                "--raiz", str(raiz)], capture_output=True, text=True)
+    return resultado.returncode, resultado.stdout + resultado.stderr
+
+
 def autotest() -> int:
     print("=== Control positivo: corpus verde completo")
     fallas = []
@@ -1617,13 +1764,76 @@ def autotest() -> int:
               f"{'ok' if not malas else malas}")
         if malas:
             fallas.append(f"corpus verde: --validar-baseline → {malas}")
-    print("(--ac 15 y --ac 16 quedan fuera del corpus: no leen artefactos, sino git y las guardas "
-          "del repo; su control positivo es el árbol real, donde V18 y V19 están verdes.)")
+    print("(--ac 15 se prueba abajo por integración contra repos temporales; --ac 16 queda fuera "
+          "del corpus porque ejecuta las guardas del repo.)")
     if fallas:
         print("\nRESULTADO: FALLA — el control positivo no cierra; los mutantes no probarían nada")
         for f in fallas:
             print(f"  - {f}")
         return 1
+
+    print("\n=== --ac 15 por integración: control negativo y mutante")
+
+    def cambiar_heading(texto: str) -> str:
+        return texto.replace("## Esquema de `.specify/config.yml`",
+                             "## Encabezado retirado por el autotest", 1)
+
+    def retirar_families(texto: str) -> str:
+        patron = ("  families: [claude, codex]      # claude | codex — opcional; si se omite, "
+                  "se autodetecta como hasta ahora\n")
+        if patron not in texto:
+            raise ValueError("no se encontró cross_model.families en su dueño")
+        return texto.replace(patron, "", 1)
+
+    casos_config = [
+        ("solo-en-dueno", DUENOS_CONFIG[0],
+         lambda texto: _inyectar_clave_config(texto, DUENOS_CONFIG[0][1],
+                                               "autotest_solo_dueno"),
+         ("autotest_solo_dueno", DUENOS_CONFIG[0][0], VISTA_CONFIG[0])),
+        ("solo-en-vista", VISTA_CONFIG,
+         lambda texto: _inyectar_clave_config(texto, VISTA_CONFIG[1],
+                                               "autotest_solo_vista"),
+         ("autotest_solo_vista", DUENOS_CONFIG[0][0], VISTA_CONFIG[0])),
+        ("retiro-de-dueno", DUENOS_CONFIG[0], retirar_families,
+         ("cross_model.families", DUENOS_CONFIG[0][0], VISTA_CONFIG[0])),
+        ("extractor-sin-heading", DUENOS_CONFIG[0], cambiar_heading,
+         (DUENOS_CONFIG[0][0], "heading ausente")),
+        ("extractor-sin-fence", DUENOS_CONFIG[1],
+         lambda texto: _retirar_bloque_config(texto, DUENOS_CONFIG[1][1]),
+         (DUENOS_CONFIG[1][0], "bloque yaml ausente")),
+        ("extractor-yaml-invalido", DUENOS_CONFIG[2],
+         lambda texto: _reemplazar_bloque_config(texto, DUENOS_CONFIG[2][1], "clave: ["),
+         (DUENOS_CONFIG[2][0], "yaml inválido")),
+        ("extractor-raiz-no-dict", DUENOS_CONFIG[3],
+         lambda texto: _reemplazar_bloque_config(texto, DUENOS_CONFIG[3][1], "- valor"),
+         (DUENOS_CONFIG[3][0], "raíz no es un mapa")),
+        ("extractor-bloque-posterior", DUENOS_CONFIG[0],
+         lambda texto: _retirar_bloque_config(texto, DUENOS_CONFIG[0][1]),
+         (DUENOS_CONFIG[0][0], "bloque yaml ausente")),
+    ]
+    for nombre, superficie, mutar, senales in casos_config:
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz = Path(tmp) / "repo"
+            raiz.mkdir()
+            try:
+                _preparar_repo_config(raiz)
+                rc_verde, salida_verde = _correr_ac15_temporal(raiz)
+                ruta = raiz / superficie[0]
+                ruta.write_text(mutar(ruta.read_text(encoding="utf-8")), encoding="utf-8")
+                rc_rojo, salida_roja = _correr_ac15_temporal(raiz)
+            except (OSError, RuntimeError, subprocess.CalledProcessError, ValueError) as e:
+                fallas.append(f"{nombre}: no se pudo construir el caso — {e}")
+                print(f"[FALLA] {nombre}: no se pudo construir el caso — {e}")
+                continue
+            diagnostico = norm(salida_roja)
+            ok = rc_verde == 0 and rc_rojo != 0 and all(norm(s) in diagnostico for s in senales)
+            print(f"[{'OK   ' if ok else 'FALLA'}] {nombre}: sin mutante "
+                  f"{'verde' if rc_verde == 0 else 'ROJO'} · con mutante "
+                  f"{'rojo por su causa' if rc_rojo != 0 and all(norm(s) in diagnostico for s in senales) else 'sin la señal esperada'}")
+            if not ok:
+                fallas.append(f"{nombre}: verde rc={rc_verde}; mutante rc={rc_rojo}; "
+                              f"señales={senales}; salida={salida_roja[:300]!r}; "
+                              f"control={salida_verde[:160]!r}")
 
     print("\n=== Mutantes, uno por vez")
     for nombre, rel, viejo, nuevo, modo, senal in MUTANTES:
@@ -1672,8 +1882,8 @@ def autotest() -> int:
         for f in fallas:
             print(f"  - {f}")
         return 1
-    print(f"RESULTADO: OK — control positivo sobre {len(MODOS) - 2} modos y "
-          f"{len(MUTANTES) + 1} mutantes, cada uno rojo por su motivo")
+    print(f"RESULTADO: OK — control positivo sobre {len(MODOS) - 1} modos y "
+          f"{len(MUTANTES) + len(casos_config) + 1} mutantes, cada uno rojo por su motivo")
     return 0
 
 
