@@ -18,7 +18,7 @@
 | V12 | AC-9 — sidecar append-only para datos nuevos | `--ac 9` | ok |
 | V13 | AC-10 — relanzamiento seguro y rutas exclusivas | `--ac 10` | ok |
 | V14 | AC-11 — error y cancelación como terminales propios | `--ac 11` | ok |
-| V15 | AC-12 — trece puntos de despacho y siete punteros locales | `--ac 12` | ok |
+| V15 | AC-12 — once puntos de despacho y siete punteros locales | `--ac 12` | ok |
 | V16 | AC-13 — siete copias idénticas, trigger y README | `--ac 13` | ok |
 | V17 | AC-14 — tercera excepción y cita normativa | `--ac 14` | ok |
 | V18 | AC-15 — ninguna clave de configuración nueva | `--ac 15` | ok |
@@ -51,3 +51,41 @@ Identidad: `(2ed62dd, sha256 del verificador)`.
 | V17 | 2ed62dd | 6727a31408f4312ac7c3147e231045b6a07a723eb60cf63f8205a9d3e5969c5d | 2026-08-06T15:08:26-05:00 | RED | — |
 | V18 | 2ed62dd | 6727a31408f4312ac7c3147e231045b6a07a723eb60cf63f8205a9d3e5969c5d | 2026-08-06T15:08:26-05:00 | GREEN_ALREADY | no regresión: pasa por construcción |
 | V19 | 2ed62dd | 6727a31408f4312ac7c3147e231045b6a07a723eb60cf63f8205a9d3e5969c5d | 2026-08-06T15:08:26-05:00 | GREEN_ALREADY | no regresión: pasa por construcción |
+
+### v3
+
+Identidad: `(e179fa1, sha256 del verificador)`. **Sucede a `v2`**: el vínculo `v2 → v3` existe
+porque el inventario de puntos de despacho bajó de **trece a once** al retirarse el modo de
+implementación por task, y esa identidad se ata al `sha256` del propio verificador — cambiarlo
+obliga a re-emitir el bloque. `v2` queda arriba como historial y no se toca.
+
+Los diecinueve registros son **medidos**, no asumidos: se corrió cada modo con este verificador
+sobre un checkout limpio de `e179fa1`.
+
+> **`V2` nace roja y no la vuelve verde este cambio.** Su rojo es anterior y de causa ajena
+> (`--ac 1b`, cláusula de rechazo del estado persistido en `co-explore/reference.md`). Se registra
+> como se midió; declararla verde sería un baseline falso.
+
+#### Baseline de v3
+
+| ID | commit | sha256 | timestamp | estado | adjudicación |
+|---|---|---|---|---|---|
+| V1 | e179fa1 | 4bb8d14bbb1872d871209f7f4828bf9a9aa8a460181c3b8d181f132044e542e4 | 2026-08-12T23:45:32-05:00 | GREEN_ALREADY | — |
+| V2 | e179fa1 | 4bb8d14bbb1872d871209f7f4828bf9a9aa8a460181c3b8d181f132044e542e4 | 2026-08-12T23:45:32-05:00 | RED | roja antes de este cambio, por causa ajena a él (cláusula de rechazo en co-explore) |
+| V3 | e179fa1 | 4bb8d14bbb1872d871209f7f4828bf9a9aa8a460181c3b8d181f132044e542e4 | 2026-08-12T23:45:32-05:00 | GREEN_ALREADY | — |
+| V4 | e179fa1 | 4bb8d14bbb1872d871209f7f4828bf9a9aa8a460181c3b8d181f132044e542e4 | 2026-08-12T23:45:32-05:00 | GREEN_ALREADY | — |
+| V5 | e179fa1 | 4bb8d14bbb1872d871209f7f4828bf9a9aa8a460181c3b8d181f132044e542e4 | 2026-08-12T23:45:32-05:00 | GREEN_ALREADY | — |
+| V6 | e179fa1 | 4bb8d14bbb1872d871209f7f4828bf9a9aa8a460181c3b8d181f132044e542e4 | 2026-08-12T23:45:32-05:00 | GREEN_ALREADY | — |
+| V7 | e179fa1 | 4bb8d14bbb1872d871209f7f4828bf9a9aa8a460181c3b8d181f132044e542e4 | 2026-08-12T23:45:32-05:00 | GREEN_ALREADY | — |
+| V8 | e179fa1 | 4bb8d14bbb1872d871209f7f4828bf9a9aa8a460181c3b8d181f132044e542e4 | 2026-08-12T23:45:32-05:00 | GREEN_ALREADY | — |
+| V9 | e179fa1 | 4bb8d14bbb1872d871209f7f4828bf9a9aa8a460181c3b8d181f132044e542e4 | 2026-08-12T23:45:32-05:00 | GREEN_ALREADY | — |
+| V10 | e179fa1 | 4bb8d14bbb1872d871209f7f4828bf9a9aa8a460181c3b8d181f132044e542e4 | 2026-08-12T23:45:32-05:00 | GREEN_ALREADY | — |
+| V11 | e179fa1 | 4bb8d14bbb1872d871209f7f4828bf9a9aa8a460181c3b8d181f132044e542e4 | 2026-08-12T23:45:32-05:00 | GREEN_ALREADY | — |
+| V12 | e179fa1 | 4bb8d14bbb1872d871209f7f4828bf9a9aa8a460181c3b8d181f132044e542e4 | 2026-08-12T23:45:32-05:00 | GREEN_ALREADY | — |
+| V13 | e179fa1 | 4bb8d14bbb1872d871209f7f4828bf9a9aa8a460181c3b8d181f132044e542e4 | 2026-08-12T23:45:32-05:00 | GREEN_ALREADY | — |
+| V14 | e179fa1 | 4bb8d14bbb1872d871209f7f4828bf9a9aa8a460181c3b8d181f132044e542e4 | 2026-08-12T23:45:32-05:00 | GREEN_ALREADY | — |
+| V15 | e179fa1 | 4bb8d14bbb1872d871209f7f4828bf9a9aa8a460181c3b8d181f132044e542e4 | 2026-08-12T23:45:32-05:00 | RED | el inventario del árbol declaraba trece puntos; la fila exige once |
+| V16 | e179fa1 | 4bb8d14bbb1872d871209f7f4828bf9a9aa8a460181c3b8d181f132044e542e4 | 2026-08-12T23:45:32-05:00 | GREEN_ALREADY | — |
+| V17 | e179fa1 | 4bb8d14bbb1872d871209f7f4828bf9a9aa8a460181c3b8d181f132044e542e4 | 2026-08-12T23:45:32-05:00 | GREEN_ALREADY | — |
+| V18 | e179fa1 | 4bb8d14bbb1872d871209f7f4828bf9a9aa8a460181c3b8d181f132044e542e4 | 2026-08-12T23:45:32-05:00 | GREEN_ALREADY | no regresión: pasa por construcción |
+| V19 | e179fa1 | 4bb8d14bbb1872d871209f7f4828bf9a9aa8a460181c3b8d181f132044e542e4 | 2026-08-12T23:45:32-05:00 | GREEN_ALREADY | no regresión: pasa por construcción |

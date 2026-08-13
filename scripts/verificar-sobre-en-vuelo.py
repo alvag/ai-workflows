@@ -47,7 +47,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 CONTRACT_BASE_COMMIT = "5f3ff18"
 CHANGE_BASE_COMMIT = "2ed62dd"
-BASELINE_COMMIT = "2ed62dd"
+BASELINE_COMMIT = "e179fa1"
 BASELINE_PATH = "scripts/baseline-sobre-en-vuelo.md"
 
 SKILLS = [
@@ -106,15 +106,13 @@ PRECEDENCIA = [
     (("d4",), "esperar_cleanup", ["cleanup"]),
 ]
 
-# Los trece puntos de despacho del inventario del plan, por skill, con la señal que los identifica.
+# Los once puntos de despacho del inventario del plan, por skill, con la señal que los identifica.
 PUNTOS_DESPACHO = {
     "co-explore": {"fan-out dual": ["fan-out dual"], "debate": ["debate"]},
     "cross-review": {"revisor por ronda": ["revisor por ronda"]},
     "cross-implement": {"implementador inicial": ["implementador inicial"],
                         "fix loop": ["fix loop"]},
     "sdd-flow": {"exploración en analyze": ["analyze"],
-                 "implementer por task": ["implementer por task"],
-                 "reviewer por task": ["reviewer por task"],
                  "revisión final de diff": ["revision final"]},
     "sdd-orchestrator": {"fan-out por repo": ["fan-out por repo"]},
     "sdd-pr-feedback": {"implement delegado": ["implement delegado"]},
@@ -822,7 +820,7 @@ def ac_11(ctx: Ctx) -> None:
 
 
 def ac_12(ctx: Ctx) -> str:
-    """AC-12 — los trece puntos de despacho y el puntero normativo por skill."""
+    """AC-12 — los once puntos de despacho y el puntero normativo por skill."""
     puntos = punteros = 0
     for skill, esperados in PUNTOS_DESPACHO.items():
         rel = f"skills/{skill}/SKILL.md"
@@ -1171,7 +1169,7 @@ MODOS = {
     "9": ("AC-9 · el sidecar del dato nuevo", ac_9),
     "10": ("AC-10 · relanzamiento seguro", ac_10),
     "11": ("AC-11 · la cancelación como terminal propio", ac_11),
-    "12": ("AC-12 · los trece puntos y los siete punteros", ac_12),
+    "12": ("AC-12 · los once puntos y los siete punteros", ac_12),
     "13": ("AC-13 · siete copias idénticas, trigger y README", ac_13),
     "14": ("AC-14 · la tercera excepción y su cita", ac_14),
     "15": ("AC-15 · ninguna clave de configuración nueva", ac_15),
@@ -1430,8 +1428,8 @@ def corpus_verde(raiz: Path) -> None:
                        "- worker por ronda del modo `debate`"],
         "cross-review": ["- revisor por ronda, con resume"],
         "cross-implement": ["- implementador inicial", "- rondas del fix loop"],
-        "sdd-flow": ["- subagente de exploración en `analyze`", "- implementer por task",
-                     "- reviewer por task", "- reviewer de la revisión final de diff"],
+        "sdd-flow": ["- subagente de exploración en `analyze`",
+                     "- reviewer de la revisión final de diff"],
         "sdd-orchestrator": ["- fan-out por repo (Fase 2.3)"],
         "sdd-pr-feedback": ["- implement delegado sobre la Vía B"],
         "bitbucket-code-review": ["- panel de revisores externos",
@@ -1502,7 +1500,7 @@ REQUISITOS_BASELINE = {
     "9": "AC-9 — sidecar append-only para datos nuevos",
     "10": "AC-10 — relanzamiento seguro y rutas exclusivas",
     "11": "AC-11 — error y cancelación como terminales propios",
-    "12": "AC-12 — trece puntos de despacho y siete punteros locales",
+    "12": "AC-12 — once puntos de despacho y siete punteros locales",
     "13": "AC-13 — siete copias idénticas, trigger y README",
     "14": "AC-14 — tercera excepción y cita normativa",
     "15": "AC-15 — ninguna clave de configuración nueva",
@@ -1518,11 +1516,12 @@ BASELINE_TPL = """# Baseline normativo del sobre en vuelo
 |---|---|---|---|
 {filas}
 
-### v2
+### v3
 
-Identidad: `({baseline_commit}, sha256 del verificador)`.
+Identidad: `({baseline_commit}, sha256 del verificador)`. Sucede a `v2`: el inventario de puntos de
+despacho bajó de trece a once al retirarse el modo de implementación por task.
 
-#### Baseline de v2
+#### Baseline de v3
 
 | ID | commit | sha256 | timestamp | estado | adjudicación |
 |---|---|---|---|---|---|

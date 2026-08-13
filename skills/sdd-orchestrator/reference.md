@@ -39,7 +39,7 @@ master_spec: .sdd/ABC-123/master-spec.md
 created_at: 2026-06-03T12:00:00-03:00
 branch_prefix: ""              # opcional; prefijo único de la orquestación; vacío → semántico por repo (features: feature/, nunca feat/)
 execution_mode: fanout         # fanout (agentes paralelos, default) | inline (en la sesión del orquestador, de a un repo) — opcional
-implement_mode: ""             # opcional; modo de implementación que heredan los sdd-flow delegados: inline | subagent | cross (vacío → cada sdd-flow resuelve el suyo: config del repo > default). `cross` exige la capacidad (skill cross-implement + CLI de la otra familia) en el contexto del agente delegado
+implement_mode: ""             # opcional; modo de implementación que heredan los sdd-flow delegados: inline | cross (vacío → cada sdd-flow resuelve el suyo: config del repo > default). `cross` exige la capacidad (skill cross-implement + CLI de la otra familia) en el contexto del agente delegado. Un manifest heredado con el modo retirado detiene la orquestación con error de migración (ver `SKILL.md` → "Fan-out")
 # outcome: aborted             # solo si la orquestación terminó abortada (sub-paso `abort`)
 cross_review:                  # opcional; segunda opinión cross-model EN LOS GATES (ver skill cross-review)
   mode: auto                   # auto | "on" | "off"  (entre comillas: sin ellas YAML los parsea como booleanos)

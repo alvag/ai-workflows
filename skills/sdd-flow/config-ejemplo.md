@@ -36,7 +36,7 @@ branch_format: "{type}/{ticket}-{slug}"  # [def] placeholders {type} {ticket} {s
 branch_prefix: ""                # [def] reemplaza {type} (p. ej. "feature/"); vacío → prefijo semántico
 commit_style: conventional       # conventional | plain — [def]
 tracker: jira                    # jira | github | gitlab | linear | none — [ej]
-implement_mode: ask              # ask | inline | subagent | cross — [def]
+implement_mode: ask              # ask | inline | cross — [def]
 
 # ── sdd-flow: gates opcionales ──
 domain_context:

@@ -1,5 +1,13 @@
 # Contrato de ejecución de los despachos delegados — Fase 0
 
+> **Documento histórico — no es una guía activa.** Sus comandos, rutas de `scripts/` y guardas
+> eran reproducibles desde el commit `e179fa117fd5cdc6273f3adaedce920b2678e38d`; el flujo
+> que siguió a ese commit retiró el andamiaje de las Fases 0 y 0.5 y el modo de implementación
+> por task. Para recuperar cualquier artefacto que este documento cite, leerlo desde ese árbol
+> (`git show <commit>:<ruta>`). Se conserva como registro de lo que se decidió y midió, no como
+> instrucción a ejecutar.
+
+
 **Estado:** vigente · **Fecha:** 2026-08-09 · **Alcance:** el ecosistema de siete skills de este
 repositorio y sus trece puntos de despacho de trabajo delegado.
 

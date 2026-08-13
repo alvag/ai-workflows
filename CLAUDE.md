@@ -10,6 +10,49 @@ Las skills forman un ecosistema **cross-model** (Claude ↔ Codex) y de **Spec-D
 
 > **Excepción acotada — topología dual de `co-explore`.** En sus modos `explore`, `counter-plan` e `investigate`, `co-explore` despacha **dos workers, uno por familia**, así que uno comparte la del conductor. Es válido **solo ahí**, porque el conductor deja de ser una voz: no produce mapa, arbitra, y la diversidad se conserva entre **los dos mapas que se comparan**. La excepción **no** alcanza al revisor de `cross-review`, al implementador de `cross-implement` ni al modo `debate` de la propia `co-explore` —donde el conductor sí es voz—: ahí hay una sola salida delegada y la familia opuesta es lo único que rompe la correlación de errores.
 
+## El techo de la verificación (tres reglas, no negociables)
+
+El producto de este repo son las skills. La verificación es **medio**, no producto. Sin un techo
+explícito, el endurecimiento de guardas no tiene condición de salida: cada guarda barata que resulta
+mentirosa se responde endureciéndola, endurecer produce Python, Python produce fixtures, fixtures
+producen sellos, y los sellos producen guardas que verifican sellos. Estas tres reglas son ese techo.
+Cada una lleva **disparador, efecto y excepción**: un enunciado sin las tres no es aplicable.
+
+### Regla 1 — escalera de evidencia
+
+> **Disparador:** al escribir una fila del contrato de verificación.
+> **Efecto:** usar el escalón más barato que alcance —inspección documentada → `grep`/`rg` de una
+> línea → bloque de shell → script—. El default es `grep`.
+> **Excepción:** subir un escalón exige escribir **por qué el anterior no alcanza**, y no vale
+> "podría fallar": vale *falló, acá está el caso*.
+
+### Regla 2 — techo de proporción
+
+> **Disparador:** al cerrar `implement`, **antes** del gate de revisión manual.
+> **Efecto:** si `numerador > denominador`, **el flujo se detiene**.
+> **Excepción:** continúa solo con excepción aprobada por el usuario en ese gate, con el cálculo y
+> el motivo a la vista.
+
+- **Numerador** — líneas **agregadas** a `scripts/`, más las agregadas a cualquier archivo cuyo
+  propósito declarado sea verificar. **Las líneas agregadas a un script existente cuentan igual que
+  un archivo nuevo**: si no, la regla 3 se evade engordando lo que ya está.
+- **Denominador** — líneas **agregadas** a `skills/` en el mismo diff.
+- **Borrados** — no entran al numerador. Retirar andamiaje nunca puede violar el techo.
+- **Denominador cero** — si el flujo no agrega ni una línea a `skills/`, el numerador debe ser
+  **cero**.
+- **Cuándo se mide** — con `git diff --numstat <base_commit>` **después de implementar**. Medirlo en
+  el gate de tasks daría cero en ambos términos: ahí todavía no se tocó una línea.
+- **Por qué bloquea** — un techo que solo obliga a declarar es un techo **sin condición de salida**,
+  que es exactamente la causa que estas reglas vienen a cortar.
+
+### Regla 3 — ningún archivo nuevo en `scripts/` dentro de un flujo de skills
+
+> **Disparador:** al crear un archivo bajo `scripts/` durante un flujo cuyo objeto son las skills.
+> **Efecto:** no se crea. Si de verdad hace falta, es un **flujo aparte**, con su propio gate y con
+> la evidencia de que la guarda barata falló.
+> **Excepción:** ninguna dentro del flujo en curso. La escalada es una decisión con gate propio, no
+> un atajo a mitad de una task.
+
 ## Anatomía de una skill (patrón obligatorio del repo)
 
 Cada `skills/<nombre>/` tiene tres archivos, alineados con la **divulgación progresiva** de agentskills.io:
@@ -33,116 +76,12 @@ Al crear o editar skills, seguí las buenas prácticas de agentskills.io (refere
 - Validar con `skills-ref validate ./skills/<nombre>` (de https://github.com/agentskills/agentskills).
 - Si la skill toca `config-ejemplo.md` o `manifest-ejemplo.md`, o el esquema/"Configuración" de alguno de sus cinco dueños (`sdd-flow`, `sdd-orchestrator`, `cross-review`, `co-explore`, `cross-implement`), correr `python3 scripts/verificar-vistas-config.py`: valida que esas vistas sigan fieles a sus dueños (claves, enums, valores, marcas `[def]`/`[ej]`/`[obl]` y comillas en `on`/`off`).
 - Si la skill toca `corridas-en-vuelo.md`, correr `python3 scripts/verificar-sobre-en-vuelo.py --sincronizar` y después `--ac 13`. Ese archivo es **contenido replicado**: la sede canónica es `skills/cross-review/corridas-en-vuelo.md` y las otras seis son copias byte-idénticas generadas. **Editar una copia a mano es una divergencia silenciosa**; el generador la evita y el hash la detecta.
-- El baseline de ese verificador vive en `scripts/baseline-sobre-en-vuelo.md`: correr `python3 scripts/verificar-sobre-en-vuelo.py --validar-baseline` para comprobarlo y `--ac 16` para la no-regresión del cierre de los intentos.
-- Para verificar el retiro del transporte descartado, correr `python3 scripts/verificar-retiro-transporte.py` con `--ausencia`, `--clave`, `--adaptadores`, `--drenaje`, `--vocabulario`, `--docs` y `--autotest`. El modo `--vias` aún no está implementado y no cuenta como guarda.
+- El baseline de ese verificador vive en `scripts/baseline-sobre-en-vuelo.md`: correr `python3 scripts/verificar-sobre-en-vuelo.py --validar-baseline` para comprobarlo y `--ac 16` para la no-regresión del cierre de los intentos. Su identidad se ata al `sha256` del propio verificador, así que **tocar el `.py` obliga a re-emitir el bloque `#### Baseline de vN`** —el validador lee la versión mayor— con el commit evaluado y los estados **medidos**, no asumidos.
+- Si la skill toca la sección "Corridas delegadas en vuelo" de algún `SKILL.md` —donde vive el inventario de los **once** puntos de despacho—, correr además `python3 scripts/verificar-sobre-en-vuelo.py --ac 12`: verifica biyección entre lo declarado en el árbol y el inventario del verificador, así que agregar o retirar un punto de despacho sin actualizarlo la pone roja.
+- Las **cinco** invocaciones de `verificar-sobre-en-vuelo.py` que se leen por código de salida son `--validar-baseline`, `--ac 12`, `--ac 13`, `--ac 16` y `--autotest`: **0 en verde**. Las de `verificar-vistas-config.py` (sin banderas) y las **nueve** propias de `verificar-paridad-powershell.py` (`--auditar-catalogo`, `--auditar-matrices` y los siete `--autotest-*`), lo mismo. La única que **no** se lee por código de salida es `--reporte`, abajo.
 - Si la skill toca el cuerpo de un bloque `# @bloque:` que tiene variante `-ps`, correr `python3 scripts/verificar-paridad-powershell.py --reporte`: ejecuta las dos variantes sobre entradas equivalentes y compara clase, eventos, stdout y artefactos. Un cuerpo cambiado **invalida su cobertura** hasta auditar la matriz de casos y renovar el registro con `--registrar-auditoria --par <nombre>`; el alcance cubierto y el declarado sin matriz viven en `scripts/paridad-casos/alcance.json`.
 
   > **El código de salida de `--reporte` NO es la señal de salud: hoy devuelve 4 y ese es el estado sano.** Un bloque que corta con `exit 99` sobre una entrada inexistente es un error de invocación y no un incumplimiento, pero AC-3 clasifica como `fallo` cualquier código distinto de 0 y 1, y `fallo` domina la precedencia global. La señal es el cuerpo del reporte: **cero `divergencia`, cero `incumplimiento_comun`, cero `no_comprobable`, y `fallo` solo en los pares que declaran un caso de ese tipo** — hoy son cinco (`gate-fase-3`, `integracion-ownership`, `orchestration-contract`, `orchestration-model`, `orchestration-state`), cada uno con sus casos de entrada inexistente y `clase_esperada: fallo`. Un `fallo` en un caso que no lo declara sí es rojo. Las que se leen por código de salida son las **nueve** guardas propias del arnés (`--auditar-catalogo`, `--auditar-matrices` y los **siete** `--autotest-*`): 0 en verde, 4 en rojo. Las banderas `--estricto-mono-causa`, `--exigir-particiones`, `--afirmar-particiones` y `--testigos-centinela` **no** son guardas independientes: corren la suite y devuelven ese mismo 4, así que verificar con ellas exige diffear su reporte contra el de `--reporte` puro.
-- Si la skill toca los artefactos de la matriz de despachos o del contrato de fase 0
-  (`scripts/matriz-despachos.json`, `scripts/matriz-despachos.schema.json`,
-  `docs/superpowers/specs/2026-08-09-subagentes-perfiles-fase-0.md`, `scripts/artefactos-fase-0.json`,
-  `scripts/guardas-fase-0.json`, `scripts/nombres-reservados-perfil.json`), correr
-  `python3 scripts/verificar-matriz-despachos.py --integracion`. Es un script propio del repo —no un
-  modo agregado a ninguno de los cuatro anteriores— y el código de salida sano de esta invocación es
-  0. El modo comprueba, contra el árbol real, que la bandera documentada exista y sea invocable, que
-  el código de salida declarado coincida con el que devuelve, y que todo baseline acoplado al
-  contenido de un archivo que la fase haya alterado quede renovado: hoy el único es
-  `scripts/baseline-sobre-en-vuelo.md`, verificado corriendo
-  `python3 scripts/verificar-sobre-en-vuelo.py --validar-baseline`.
-- Si la skill toca el instrumento de medición de la fase 0 o cualquiera de los artefactos
-  que mide (`scripts/instrumento-baseline.py`, `scripts/runner-cohorte.py`, los tres
-  schemas `scripts/observacion.schema.json`, `scripts/bundle-corrida.schema.json` y
-  `scripts/preregistro.schema.json`, `scripts/metricas-fase-0.json`,
-  `scripts/recetas-cohorte.json`, `scripts/superficies-de-egreso.json`,
-  `scripts/interfaz-de-reloj.json`, `scripts/dag-procedencia.json`,
-  `scripts/preregistro-fase-0.json`, `scripts/intentos-fase-0.json`,
-  `scripts/presupuesto-de-recoleccion-fase-0.json`, `scripts/baseline-fase-0.md` o los
-  corpus de `scripts/fixtures-baseline/`), correr su batería completa empezando por
-  `python3 scripts/instrumento-baseline.py --validar-schemas`. Es un **script propio** del
-  repo —no un modo agregado a ninguno de los cinco anteriores— y el código de salida sano
-  es 0 en las 34 invocaciones. Los otros tres que leen los datos reales del acto son
-  `--vocabulario-metricas`, `--recetas` y `--fixture-historico`. La autocomprobación son
-  `--autotest-aislamiento`, `--autotest-bundles`, `--autotest-canonicalizacion`,
-  `--autotest-clasificacion`, `--autotest-cobertura`, `--autotest-derivacion`,
-  `--autotest-egreso`, `--autotest-escaneo`, `--autotest-generacion`,
-  `--autotest-guardas-previas`, `--autotest-hallazgos`, `--autotest-identidad-congelada`,
-  `--autotest-identidad-entorno`, `--autotest-integracion`, `--autotest-latencias`,
-  `--autotest-ledger`, `--autotest-muestras-intentos`, `--autotest-preregistro`,
-  `--autotest-procedencia-dag`, `--autotest-procedencia-portada`, `--autotest-promocion`,
-  `--autotest-recetas`, `--autotest-recoleccion`, `--autotest-recomposicion`,
-  `--autotest-recursos`, `--autotest-reloj`, `--autotest-sanitizacion`, `--autotest-schemas` y
-  `--autotest-vocabulario`. Y `--integracion` comprueba,
-  contra el árbol real, que esta misma unidad siga siendo cierta: que la bandera que
-  documenta exista, sea invocable y devuelva el código que acá se declara.
-
-  > **La familia de autotests no se puede declarar con comodín en esta unidad, y por eso
-  > van nombradas una por una.** La expansión de una familia se deriva de los
-  > `add_argument` literales que el parser del script declara, y este instrumento arma el
-  > suyo desde una tabla `registrar_modo(...)`: la derivación devuelve el conjunto vacío,
-  > así que un comodín acá daría `familia_vacia` y pondría la guarda en rojo. La lista no
-  > envejece porque el instrumento está congelado; si alguna vez deja de estarlo, lo que
-  > hay que arreglar es la derivación, no esta unidad.
-
-- Si la skill toca los cuatro insumos congelados del oráculo de la Fase 0.5 o cualquiera de sus
-  guardas (`scripts/corpus-dossier.json`, `scripts/casos-extraccion.json`,
-  `scripts/oraculo-cobertura.json`, sus tres `*.schema.json`, `scripts/oraculo-evidencia/`,
-  `scripts/corpus-elegibles.json`, `scripts/pathset-parser.json`,
-  `scripts/oraculo-prompt.plantilla.md`, `scripts/verificar-oraculo.py`,
-  `scripts/oraculo-elegibilidad.py` o los corpus de `scripts/fixtures-oraculo/`), correr su batería
-  completa empezando por `python3 scripts/verificar-oraculo.py --insumos`. Es un **script propio**
-  del repo —no un modo agregado a ninguno de los anteriores— y el código de salida sano es 0 en las
-  33 invocaciones. Los otros catorce modos productivos son `--consumidor`, `--proyecciones`,
-  `--invariantes-corpus`, `--casos`, `--casos-obligatorios`, `--forma-oraculo`, `--exclusiones`,
-  `--proxies`, `--adjudicacion`, `--cobertura-deteccion`, `--evidencia`, `--prompt`,
-  `--adaptadores` y `--gate-precommit`. La autocomprobación son `--autotest-adaptadores`,
-  `--autotest-adjudicacion`, `--autotest-casos`, `--autotest-casos-obligatorios`,
-  `--autotest-cobertura-deteccion`, `--autotest-consumidor`, `--autotest-elegibilidad`,
-  `--autotest-evidencia`, `--autotest-exclusiones`, `--autotest-forma-oraculo`,
-  `--autotest-gate-precommit`, `--autotest-insumos`, `--autotest-invariantes-corpus`,
-  `--autotest-lectura-unica`, `--autotest-prompt`, `--autotest-proxies` y
-  `--autotest-proyecciones`. La trigésimo tercera es el predicado de elegibilidad, que es su propio
-  comando: `python3 scripts/oraculo-elegibilidad.py --listar`, y hoy emite **21** flujos.
-
-  > **`--gate-precommit` y su autotest están declarados y excluidos del manifiesto de guardas, y el
-  > motivo va escrito ahí.** Su veredicto depende del working tree, no de la salud del repo: es la
-  > comprobación 2 de R9 para el commit de `dossier-oraculo`, que ya ocurrió. En `dossier-arnes`,
-  > que **sí** toca el parser, darán rojo por diseño, y dejarlos dentro de la no-regresión ataría
-  > una guarda ajena a esa transición legítima. Se corren igual cuando se toca el pathset; lo que
-  > no hacen es formar parte del conjunto que la no-regresión ejecuta.
-
-  > **La familia de autotests no se puede declarar con comodín en esta unidad, y por eso van
-  > nombradas una por una.** Es el mismo motivo que en el instrumento de la fase 0: la expansión de
-  > una familia se deriva de los `add_argument` literales que el parser del script declara, y este
-  > validador arma el suyo desde una tabla `registrar_modo(...)`, así que la derivación devuelve el
-  > conjunto vacío y un comodín daría `familia_vacia`. La lista envejece con el archivo: cada task
-  > que agregue un modo lo agrega también acá.
-
-- Si la skill toca el arnés de extracción del dossier o los insumos que consume
-  (`scripts/medir-dossier-de-task.py`, `scripts/corpus-dossier.json`, `scripts/casos-extraccion.json`,
-  `scripts/oraculo-cobertura.json` o sus tres `*.schema.json`), correr sus **tres** subcomandos, que
-  son toda su superficie: `python3 scripts/medir-dossier-de-task.py censo` ·
-  `python3 scripts/medir-dossier-de-task.py fixtures` ·
-  `python3 scripts/medir-dossier-de-task.py medir-historico`. Es un **script propio** del repo —no
-  un modo agregado a ninguno de los anteriores— y el código de salida sano es **0** en los tres. Una
-  invocación inválida —sin subcomando o con uno desconocido— devuelve **2**, y ese 2 es parte del
-  contrato: distingue «me invocaste mal» de «encontré hallazgos», que es el 1.
-
-  > **No hay una bandera de autocomprobación, y es deliberado.** Los autotests del arnés —los
-  > mutantes del clasificador, los ocho del control positivo, los del esquema, los cuatro cruces de
-  > sellos, los fixtures de frontera de los cortes y los vectores propios de la proyección— **corren
-  > dentro de los tres subcomandos**, no como modos aparte. Agregar un cuarto comando ampliaría una
-  > lista que el contrato de este arnés cierra en tres, y el gate del flujo los invoca por su
-  > nombre de función. Lo que sí se lee por fuera es la **traza de `stderr` de `fixtures`**: enumera
-  > los once vectores propios `ARN-*` con su resultado. En verde el array de divergencias está
-  > vacío por contrato, así que sin esa traza un `fixtures` que no corriera ningún vector propio
-  > sería indistinguible de uno que los corre todos.
-
-  > **`--gate-precommit` y `--autotest-gate-precommit` del oráculo se ponen rojos cuando se toca el
-  > parser, y eso no es una regresión.** Su veredicto depende del working tree, y el parser es
-  > exactamente `scripts/medir-dossier-de-task.py`. Están excluidos del manifiesto de guardas por
-  > ese motivo, como su propia unidad ya deja escrito. La no-regresión de las guardas vecinas son
-  > los **30** modos restantes de `verificar-oraculo.py` más `oraculo-elegibilidad.py --listar`: 31
-  > invocaciones, todas con código de salida 0.
 
 > Nota: varios SKILL.md de este repo (p. ej. `sdd-flow`) exceden holgadamente el presupuesto de tokens sugerido. Es una tensión conocida por la complejidad del flujo; al editar, empujá contenido hacia `reference.md` antes que engordar el SKILL.md.
 

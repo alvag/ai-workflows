@@ -1,7 +1,40 @@
 # Roadmap — subagentes y perfiles de ejecución para las siete skills
 
-**Estado:** Fase 0 **completada y cerrada**; Fase 0.5 es la siguiente. Fases 1–7 pendientes. La secuencia no autoriza
-implementación por sí sola: cada fase entra por su propio flujo con su gate.
+> **Documento histórico — no es una guía activa.** Sus comandos, rutas de `scripts/` y guardas
+> eran reproducibles desde el commit `e179fa117fd5cdc6273f3adaedce920b2678e38d`; el flujo
+> que siguió a ese commit retiró el andamiaje de las Fases 0 y 0.5 y el modo de implementación
+> por task. Para recuperar cualquier artefacto que este documento cite, leerlo desde ese árbol
+> (`git show <commit>:<ruta>`). Se conserva como registro de lo que se decidió y midió, no como
+> instrucción a ejecutar.
+
+
+**Estado:** programa **detenido**. Fase 0 completada y cerrada; **Fase 0.5 archivada sin ejecutar**;
+Fases 1–7 pendientes y sin fecha. El flujo `retiro-andamiaje` (posterior a
+`e179fa117fd5cdc6273f3adaedce920b2678e38d`) retiró el modo de implementación por task y el andamiaje
+de las Fases 0 y 0.5. La secuencia nunca autorizó implementación por sí sola: cada fase entra por su
+propio flujo con su gate — y hoy, además, ninguna puede entrar sin re-fundar sus insumos. **El estado
+por fase, con sus dependencias invalidadas y sus diseños vigentes, está en la tabla de abajo.**
+
+### Estado de las nueve fases tras el retiro
+
+**Commit de referencia:** `e179fa117fd5cdc6273f3adaedce920b2678e38d`. Todo artefacto que este
+documento cite y ya no esté en el árbol se recupera desde ahí con `git show <commit>:<ruta>`.
+
+| Fase | Estado | Dependencias invalidadas por el retiro | Diseños que siguen vigentes |
+|---|---|---|---|
+| **0** — Spec, contrato y baseline | **completada (2026-08-12)**, y sus artefactos **retirados del árbol** | los seis entregables vivos que las fases siguientes consumían: la matriz de los trece puntos y su verificador, los tres schemas, el instrumento y el runner, el acta congelada y su baseline, el manifiesto de guardas y el ledger. Ninguno existe hoy | la **distinción de ejes** (lifecycle operacional · validez del reporte · outcome semántico) y la exigencia de que ningún perfil eleve permisos. El inventario, en cambio, ya no es 13: son **once** puntos de despacho, y su sede viva es `scripts/verificar-sobre-en-vuelo.py` |
+| **0.5** — Paquete de contexto de los subagentes | **archivada sin ejecutar** | su objeto **desapareció**: mejoraba el modo de implementación por task, que se retiró. Con él se fueron el arnés de medición, el oráculo, sus corpus y su evidencia | ninguno con consumidor. Su única pieza reutilizable era un **predicado estático** sobre las interfaces que una task declara, y se decidió no escribirlo: sería andamiaje sin consumidor |
+| **1** — Catálogo, adaptadores, perfiles e instalación | **pendiente, sin fecha** | ninguna: no consumía artefactos retirados | **íntegro**. El catálogo, los adaptadores por familia y el parser de perfiles no dependían del modo retirado. Su medición del sandbox por agente de Codex sigue exigiendo re-medición por versión |
+| **2** — Roles read-only | **pendiente, sin fecha** | ninguna: sus tres roles (`explorer`, `investigator`, `design-reviewer`, `diff-reviewer`) viven en puntos de despacho **que sobreviven** | **íntegro**, incluido su §2.a (reparto de ejes de revisión), que vale por sí solo |
+| **3** — Writers y cobertura de los despachos | **pendiente, alcance reducido** | el bullet «implementer por task de `sdd-flow`» **ya no tiene referente**, y el título «los trece despachos» quedó obsoleto: son once | el resto del alcance: implementador y fix loop de `cross-implement`, fan-out por repo de `sdd-orchestrator`, fix delegado de `sdd-pr-feedback`. El `bounded-implementer` con scope explícito sigue siendo el diseño correcto |
+| **4** — Piloto de revisión de diff | **pendiente, sin fecha** | su **baseline de comparación** se fue con la Fase 0: no hay contra qué medir el piloto hasta re-fundarlo | el diseño del **snapshot inmutable** (`base_sha`, `snapshot_sha`, hash del diff y de los artefactos) es independiente del modo retirado y sigue vigente |
+| **5** — `cross-implement` granular por task | **pendiente, sin fecha** | ninguna directa. Su granularidad es la de `cross-implement`, no la del modo retirado | **íntegro**: task ID, ownership, DAG, snapshot y ledger por task, y resume desde la última transición |
+| **6** — Pipeline limitado N/N+1 | **pendiente, sin fecha** | su dependencia de la Fase 0.5 —el recorte del paquete que hacía viable *k* agentes concurrentes— quedó **sin insumo**: ya no hay paquete que recortar en el punto que se retiró | su **lista de elegibilidad obligatoria** (seis condiciones) sigue siendo el diseño correcto, y es lo que la habilita o la bloquea |
+| **7** — Invariante dinámica y degradación same-family | **pendiente, sin fecha** | ninguna: su objeto es la doctrina de familias de `cross-implement`, intacta | **íntegro**, incluido su motivo para ir última: el autor del work order sigue sin un predicado independiente para juzgar su propia ambigüedad |
+
+**Condiciones de activación:** ninguna fase queda activable por un insumo retirado. Las dos que lo
+tenían —la Fase 0.5 como «lo que sigue» y la dependencia de la Fase 6 sobre ella— quedan declaradas
+arriba y corregidas en §7.
 
 **Fecha:** 2026-08-06 · **Última actualización:** 2026-08-12 — cierre de la Fase 0 y **absorción**
 de `implement-subagent-costo-y-diversidad/propuesta.md`, que deja de ser un plan paralelo: este
@@ -16,10 +49,10 @@ roadmap es la sede sobre la que se trabaja.
 | Fase | Estado | Dónde se ejecutó |
 |---|---|---|
 | **0 — Spec, contrato y baseline** | **COMPLETADA** (2026-08-12) | dos flujos: `matriz-y-contrato` e `instrumento-y-baseline` |
-| **0.5 — El paquete de contexto de los subagentes** | pendiente · **la siguiente** | — |
+| **0.5 — El paquete de contexto de los subagentes** | **archivada sin ejecutar** | — |
 | 1 — Catálogo, adaptadores, perfiles e instalación | pendiente | — |
 | 2 — Roles read-only | pendiente | — |
-| 3 — Writers y cobertura de los trece despachos | pendiente | — |
+| 3 — Writers y cobertura de los despachos | pendiente, alcance reducido | — |
 | 4 — Piloto de revisión de diff | pendiente | — |
 | 5 — `cross-implement` granular | pendiente, condicionada | — |
 | 6 — Pipeline N/N+1 | pendiente, condicionada | — |
@@ -34,8 +67,9 @@ propósito: el inventario de defectos del documento de contrato referencia «Fas
 
 Implementar **por fases horizontales**, no skill por skill ni como big-bang.
 
-El ecosistema tiene siete skills y trece puntos de despacho existentes
-(`scripts/verificar-sobre-en-vuelo.py:109-123`). Cambiar al mismo tiempo los agentes nativos, los
+El ecosistema tiene siete skills y **once** puntos de despacho existentes
+(`scripts/verificar-sobre-en-vuelo.py:110-121`; eran trece hasta el retiro del modo de
+implementación por task). Cambiar al mismo tiempo los agentes nativos, los
 modelos, el esfuerzo de razonamiento, la distribución, los fallbacks, la revisión de diffs y la
 concurrencia impediría atribuir una regresión a una causa y dejaría un rollback ambiguo.
 
@@ -59,14 +93,14 @@ No significa crear un agente por skill o por gate. Significa que cada punto de d
 4. conserva su contrato de entrada, salida, permisos, deadline, snapshot y fallback;
 5. funciona cuando existe una sola familia, sin presentar esa ejecución como evidencia cross-family.
 
-Los siete consumidores y sus trece puntos actuales son:
+Los siete consumidores y sus **once** puntos actuales son:
 
 | Skill | Puntos de despacho actuales | Rol reusable |
 |---|---:|---|
 | `co-explore` | fan-out dual; debate | `explorer`, `investigator`, `design-reviewer[decision-debate]` |
 | `cross-review` | revisor por ronda | `design-reviewer` variante `artifact-review` |
 | `cross-implement` | implementador inicial; fix loop | `bounded-implementer[work-order]`; después `diff-reviewer` |
-| `sdd-flow` | analyze; implementer por task; reviewer por task; revisión final | `explorer`, `bounded-implementer[task]`, `diff-reviewer` |
+| `sdd-flow` | analyze; revisión final | `explorer`, `diff-reviewer` |
 | `sdd-orchestrator` | fan-out por repo | `bounded-implementer[repo-runner]` sobre Vía B |
 | `sdd-pr-feedback` | implement delegado | `bounded-implementer[work-order]` sobre Vía B |
 | `bitbucket-code-review` | panel; validador adversarial | `diff-reviewer[review]` y `diff-reviewer[refute]` |
@@ -249,9 +283,12 @@ skills no deben parsear YAML ni traducir perfiles por separado.
 > este documento con su fase de corrección. Congelar el pre-registro antes de ejercer el flujo de
 > punta a punta costó **siete reaperturas del gate**.
 >
-> **Artefactos vivos que las fases siguientes consumen:** la matriz de los trece puntos y su
-> verificador · los tres schemas · el instrumento y el runner · el acta congelada y su baseline · el
-> registro de topología con su regla de descubrimiento · el manifiesto de las 56 guardas · el ledger.
+> **Artefactos que la fase declaró vivos, y que hoy NO están en el árbol:** la matriz de los trece
+> puntos y su verificador · los tres schemas · el instrumento y el runner · el acta congelada y su
+> baseline · el registro de topología con su regla de descubrimiento · el manifiesto de las 56
+> guardas · el ledger. Todos se retiraron; se recuperan desde el commit de referencia del banner. El
+> único artefacto de la fase que **sigue vivo** es el inventario de puntos de despacho, ya en once,
+> dentro de `scripts/verificar-sobre-en-vuelo.py`.
 
 **Objetivo:** congelar el modelo antes de cambiar conducta.
 
@@ -410,7 +447,7 @@ reportados como evidencia, nunca por intuición.
 - `co-explore`: `explorer` e `investigator`;
 - `cross-review`: `design-reviewer` sin relajar su requisito nominal de otra familia;
 - `bitbucket-code-review`: `diff-reviewer` para review y refutación;
-- `sdd-flow`: analyze, reviewer por task y revisión final;
+- `sdd-flow`: analyze y revisión final de diff (el reviewer por task se retiró con su modo);
 - `sdd-orchestrator` reutiliza resultados de revisión producidos antes del fan-out y mantiene
   `cross_review`/`co_explore` apagados dentro del worker;
 - `sdd-pr-feedback` conserva los reviews en el conductor antes de delegar. Ninguno anida un reviewer
@@ -473,13 +510,12 @@ en puntos ciegos y **gana** en coherencia.
 - **Sube el costo de tokens, no lo baja:** agrega un CLI externo. El ahorro viene de la Fase 0.5, y
   por eso esta fase va después.
 
-### Fase 3 — Writers y cobertura de los trece despachos
+### Fase 3 — Writers y cobertura de los despachos
 
 **Objetivo:** adoptar `bounded-implementer` con scope explícito, sin introducir concurrencia nueva.
 
 **Alcance**
 
-- implementer por task de `sdd-flow`;
 - implementador y fix loop de `cross-implement`;
 - fan-out por repo de `sdd-orchestrator`;
 - fix delegado de `sdd-pr-feedback`;
@@ -487,7 +523,7 @@ en puntos ciegos y **gana** en coherencia.
 
 **Gate de salida**
 
-- los trece puntos resuelven rol y perfil o ejecutan su fallback documentado;
+- los once puntos resuelven rol y perfil o ejecutan su fallback documentado;
 - escrituras fuera del `working_dir`: 0;
 - commits o push hechos por workers: 0;
 - el conductor repite la evidencia y conserva `verify` y los STOP;
@@ -744,7 +780,7 @@ Conviene separar:
 - soporte básico de las siete skills y la invariante dinámica.
 
 El cambio de schema debe pasar `scripts/verificar-vistas-config.py`. El contrato de corridas debe
-actualizarse en su sede canónica, sincronizarse y conservar la biyección de los trece puntos. Los
+actualizarse en su sede canónica, sincronizarse y conservar la biyección de los once puntos. Los
 bloques POSIX/PowerShell nuevos o modificados conservan su verificación de paridad.
 
 ## 6. Criterio de finalización del programa
@@ -763,9 +799,10 @@ que las siete skills soportan subagentes y perfiles configurables.
 
 ## 7. Lo que sigue, en orden
 
-1. **Fase 0.5 — el paquete de contexto.** La más barata, la de mayor retorno, y no prejuzga ninguna
-   decisión doctrinal. Sus tres decisiones (D1, D2, D3) ya están cerradas, así que entra a flujo SDD
-   sin nada pendiente.
+1. ~~**Fase 0.5 — el paquete de contexto.**~~ **Archivada sin ejecutar.** Su objeto era el modo de
+   implementación por task, que se retiró; sus decisiones cerradas (D1, D2, D3) quedan como registro
+   y no habilitan ningún flujo. **Nada la sucede como paso 1:** el programa no tiene próximo paso
+   automático — retomarlo exige re-fundar los insumos de la Fase 0 en un flujo propio, con su gate.
 2. **Cerrar la decisión 2** (§4.ter). Es la única que ninguna fase resuelve sola, y bloquea el §2.a
    de la Fase 2.
 3. **Fase 1 — catálogo, adaptadores, perfiles e instalación**, que cierra de paso la decisión 3.

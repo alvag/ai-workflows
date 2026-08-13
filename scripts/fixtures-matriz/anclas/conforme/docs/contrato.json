@@ -1,6 +1,0 @@
-{
-  "despacho": {
-    "requiere_confirmacion": false,
-    "gate": "humano"
-  }
-}

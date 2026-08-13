@@ -35,7 +35,7 @@ Cada valor lleva una marca, y solo una:
 ```yaml
 branch_prefix: ""                # [def] prefijo único de la orquestación; vacío → semántico por repo
 execution_mode: fanout           # fanout | inline — [def] fanout = agentes paralelos, inline = de a un repo (en la sesión del orquestador)
-implement_mode: ""               # inline | subagent | cross — [def] vacío → cada sdd-flow resuelve el suyo (config del repo > default)
+implement_mode: ""               # inline | cross — [def] vacío → cada sdd-flow resuelve el suyo (config del repo > default)
 
 # ── dueño: cross-review/SKILL.md → "Configuración" ──
 cross_review:

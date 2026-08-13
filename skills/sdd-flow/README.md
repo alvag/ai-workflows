@@ -78,7 +78,7 @@ Para fijar el comportamiento a mano, sin pasar por el wizard: crea `.specify/con
 
 > **Prefijo de rama:** por defecto la rama usa un prefijo **semántico** (`feature/`, `fix/`, `chore/`… — para features es siempre `feature`, nunca `feat`: ese queda para los commits). Si tu proyecto necesita un prefijo único para **todo** tipo de cambio (p. ej. siempre `feature/`, incluso en fixes, por CI/CD), fíjalo en `branch_prefix` o pásalo al vuelo: "con prefijo de rama feature/". El prefijo reemplaza el segmento semántico; el resto (`<ticket>-<slug>`) no cambia.
 
-> **Modo de implementación:** al aprobar las tasks puedes seguir **inline** (la misma sesión implementa, con todo el contexto cargado) o despachar **subagentes frescos por task** (cada agente recibe el **dossier** de su task —sus seis piezas ya extraídas, no rutas a artefactos que ir a leer— con contexto limpio, sin el ruido conversacional previo; la revisión por task, el commit y el push quedan siempre en tu sesión). Por defecto la skill pregunta en el mismo gate de aprobación; se fija con `implement_mode: ask | inline | subagent | cross` en config, o al vuelo: "implementa con subagentes". El modo **`cross`** delega la implementación a la skill `cross-implement` (un modelo de otra familia implementa; tu sesión revisa el diff como un PR ajeno) y solo se ofrece si esa skill y el CLI de la otra familia están disponibles; su política (`execution`/`max_fix_rounds`/`deadline`) se fija en el bloque `cross_implement` del config. En tasks de comportamiento, los pasos roja-verde se recomiendan cuando hay un seam testeable; la garantía final es `verify`.
+> **Modo de implementación:** al aprobar las tasks puedes seguir **inline** (la misma sesión implementa, con todo el contexto cargado) o delegar. Por defecto la skill pregunta en el mismo gate de aprobación; se fija con `implement_mode: ask | inline | cross` en config, o al vuelo: "implementa con Codex". El modo **`cross`** delega la implementación a la skill `cross-implement` (un modelo de otra familia implementa; tu sesión revisa el diff como un PR ajeno, y el commit y el push quedan siempre en tu sesión) y solo se ofrece si esa skill y el CLI de la otra familia están disponibles; su política (`execution`/`max_fix_rounds`/`deadline`) se fija en el bloque `cross_implement` del config. En tasks de comportamiento, los pasos roja-verde se recomiendan cuando hay un seam testeable; la garantía final es `verify`.
 
 El esquema completo está en `config-ejemplo.md`; la matriz de detección, en `reference.md`.
 
@@ -114,11 +114,11 @@ El esquema completo está en `config-ejemplo.md`; la matriz de detección, en `r
 ```
 → la rama queda `feature/PROJ-129-null-carrito` en vez del semántico `fix/…`. (También se puede fijar en `.specify/config.yml` con `branch_prefix`.)
 
-**6. Implementar con subagentes frescos:**
+**6. Delegar la implementación a la otra familia:**
 ```
-/sdd-flow empezar PROJ-130: refactor del módulo de pagos, implementa con subagentes
+/sdd-flow empezar PROJ-130: refactor del módulo de pagos, implementa con Codex
 ```
-→ tras aprobar las tasks, cada task la implementa un agente fresco que lee solo los artefactos; tu sesión revisa cada diff, marca el progreso y conserva la revisión manual, el commit y el push.
+→ tras aprobar las tasks, `cross-implement` congela el work order y lo implementa un modelo de la otra familia; tu sesión revisa el diff como un PR ajeno, marca el progreso y conserva la revisión manual, el commit y el push.
 
 ## Verificación: más que "tests en verde"
 

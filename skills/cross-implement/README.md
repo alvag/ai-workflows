@@ -109,7 +109,7 @@ copia nombra su **sede canónica**, `cross-review/corridas-en-vuelo.md`.
 ## Ejemplos de uso
 
 **1. Embebida en sdd-flow:** con tasks aprobadas y `implement_mode: ask`, el gate pregunta
-"¿implemento inline, con subagentes, o delegando a Codex (yo reviso el diff)?". Al elegir cross,
+"¿implemento inline, o delegando a Codex (yo reviso el diff)?". Al elegir cross,
 esta skill ejecuta el paso de aplicar cambios; tests+build, `verify` de AC, staging y commit
 siguen siendo de sdd-flow con sus STOPs.
 
