@@ -1362,6 +1362,16 @@ para siempre.
 contexto del conductor. Reconstruir un estado parcial exige una máquina de estados que este diseño
 no quiere tener, y el redespacho pasa por el truncado, así que no puede heredar nada.
 
+> **No es una preferencia de este diseño: es una decisión del ecosistema, y va suelta a propósito.**
+> No hay máquina de estados persistente, ni esquema formal, ni validador propio, ni versionado: ese
+> nivel de estado persistido ya se rechazó por escrito, y ninguna capacidad nueva lo reabre por su
+> cuenta — quien lo necesite abre esa discusión, no la asume.
+>
+> Se enuncia acá **sin colgar de ningún transporte, modo ni párrafo**, porque ya se perdió una vez
+> por estar colgada: vivía dentro de un bloque que describía una vía de transporte, y al retirarse
+> esa vía se fue con ella. El texto que quedó la decía como gusto del diseño, no como decisión
+> tomada, y así estuvo noventa commits. Una cláusula atada a algo retirable se retira con ello.
+
 **Por qué no se redespacha con el consumidor ya escrito.** Si el consumidor existe, la exploración
 ya hizo su trabajo y su resultado está embebido ahí. Redespacharla podría traer un riesgo `high` que
 ese artefacto —quizá ya aprobado en su gate— nunca arbitró, y **meter un hallazgo por detrás de un
