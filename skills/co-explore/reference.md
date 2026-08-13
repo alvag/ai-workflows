@@ -811,6 +811,23 @@ nuevo con su entrega completa. Si no se puede resolver, el worker baja a la rama
 las voces que quedan, y su entrega parcial **se conserva** como contribuyente: descartarla tiraría
 un mapa real por una pregunta sin contestar.
 
+> **Un redespacho con `v2` rompe la simetría de insumos, y el conductor tiene que arbitrar
+> sabiéndolo.** El diseño promete un paquete **byte-idéntico** para los dos workers: es lo que hace
+> comparables a los dos mapas. La `v2` la recibe **un solo worker**, así que a partir de ahí uno
+> mapeó con más información que el otro. El invariante se rompe, y se rompe **por una buena razón**
+> —sin la respuesta ese worker no podía seguir—, pero se rompe.
+>
+> Consecuencia concreta sobre la síntesis: una divergencia entre los dos mapas puede ser un
+> **artefacto de quién supo qué**, no un desacuerdo de criterio. Antes de tratarla como desacuerdo,
+> el conductor descarta que la explique el dato que solo uno tuvo: la respuesta está en
+> `paquete-<modo>-v2.origen.txt`, que dice qué pregunta se contestó. Si la divergencia cae sobre
+> terreno que depende de esa respuesta, no es diversidad de criterio y no se arbitra como tal.
+>
+> **Es también el motivo por el que la respuesta no viaja reanudando la sesión del worker**, que
+> sería más barato y evitaría el redespacho: la `v2` es el artefacto que deja **visible** la
+> asimetría. Reanudar la borraría —el worker seguiría con el dato extra y no quedaría archivo que lo
+> diga—, y el conductor arbitraría dos mapas desiguales creyéndolos pares.
+
 Fuera de la escalera: **`FALLO_DE_MAPA`** (ver "Contrato del mapa del conductor"), terminal, sin
 contexto de co-explore y directo al gate humano.
 
