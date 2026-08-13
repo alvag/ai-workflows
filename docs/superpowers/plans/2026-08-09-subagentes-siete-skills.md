@@ -336,7 +336,9 @@ reproducible.
   puede volver a producir.
 
 **Fuera de esta fase, y se declara.** El acotado del diff de cada task por el campo `Archivos` **se
-difirió**: no es entregable de acá y no lo verifica nadie todavía.
+difirió**: no es entregable de acá y no lo verifica nadie todavía. Lo ya trabajado —la política de
+pathspec cerrada por forma, los seis findings que hereda sin resolver y la precondición para
+retomarlo— está en `docs/superpowers/specs/2026-08-12-acotado-del-diff-por-task-diferido.md`.
 
 **Gate de salida**
 

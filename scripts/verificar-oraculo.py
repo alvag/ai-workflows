@@ -55,7 +55,14 @@ SHA_CONTRATO = "224167cf9d48ee40bc0a81e521051a0fa2ae047e2fff748cfa57c3e05555dadb
 # La spec del consumidor vive bajo `.plans/`, que está en `.git/info/exclude:11`. Que no sea
 # versionada es exactamente el límite del cuarto proxy (AC-14): esta guarda lee el texto, no
 # acredita que su gate humano haya vuelto a ocurrir.
-RUTA_SPEC_CONSUMIDOR = RAIZ / ".plans" / "dossier-arnes" / "spec.md"
+# Se busca en el directorio activo y en el de archivados, en ese orden. **Archivar es el destino
+# normal de todo flujo**, no una excepción: anclar la ruta solo al activo hacía que esta guarda se
+# pusiera roja el día que el flujo consumidor terminara su ciclo, que es exactamente cuando ya no
+# hay nada que arreglar. Si no está en ninguno de los dos sigue fallando: no degrada a verde.
+RUTA_SPEC_CONSUMIDOR = next(
+    (c for c in (RAIZ / ".plans" / "dossier-arnes" / "spec.md",
+                 RAIZ / ".plans" / "archived" / "dossier-arnes" / "spec.md")
+     if c.is_file()), RAIZ / ".plans" / "dossier-arnes" / "spec.md")
 
 
 # ---------------------------------------------------------------------------------------------
