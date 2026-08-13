@@ -124,3 +124,43 @@ del commit, que este work order prohíbe crear.
 | V17 | 403dca0 | 115b1f046d0511c48ae04600f76b6ab0b483834add76bbf778030447ff08b716 | 2026-08-13T16:17:02Z | GREEN_ALREADY | — |
 | V18 | 403dca0 | 115b1f046d0511c48ae04600f76b6ab0b483834add76bbf778030447ff08b716 | 2026-08-13T16:17:02Z | GREEN | `--ac 15` exit 0; `--autotest` exit 0; medición del working tree |
 | V19 | 403dca0 | 115b1f046d0511c48ae04600f76b6ab0b483834add76bbf778030447ff08b716 | 2026-08-13T16:17:02Z | GREEN_ALREADY | — |
+
+### v5
+
+Identidad previa al commit: `(9c78a04, sha256 del verificador en el working tree)`. **Sucede a
+`v4`** porque el caso `retiro-de-dueno` del autotest dejó de usar `cross_model.families` como sujeto
+y ahora **siembra su propia clave** en dueño y vista antes de retirarla del dueño.
+
+**Por qué el cambio.** Atar el mutante a una clave real ataba el autotest de la guarda al contenido
+de un flujo concreto: sobre una rama sin `cross_model.families` el caso no se podía construir y
+`--autotest` fallaba por una razón que nada tiene que ver con la guarda. Medido: sobre `main` el
+autotest daba rojo con «no se encontró cross_model.families en su dueño»; con la clave sembrada da
+exit `0` y el caso conserva sus dos direcciones.
+
+Los diecinueve modos, `--validar-baseline` y `--autotest` se midieron sobre el working tree con
+`HEAD` `9c78a04`; los veintiuno dieron exit `0`. La atadura posterior con
+`git show <commit>:scripts/verificar-sobre-en-vuelo.py` queda pendiente del commit.
+
+#### Baseline de v5
+
+| ID | commit | sha256 | timestamp | estado | adjudicación |
+|---|---|---|---|---|---|
+| V1 | 9c78a04 | 575a60acafca9f173c8bb1200c4c5291fb59d9c116ecb02a1f47285bd58805b5 | 2026-08-13T16:41:11Z | GREEN_ALREADY | — |
+| V2 | 9c78a04 | 575a60acafca9f173c8bb1200c4c5291fb59d9c116ecb02a1f47285bd58805b5 | 2026-08-13T16:41:11Z | GREEN_ALREADY | — |
+| V3 | 9c78a04 | 575a60acafca9f173c8bb1200c4c5291fb59d9c116ecb02a1f47285bd58805b5 | 2026-08-13T16:41:11Z | GREEN_ALREADY | — |
+| V4 | 9c78a04 | 575a60acafca9f173c8bb1200c4c5291fb59d9c116ecb02a1f47285bd58805b5 | 2026-08-13T16:41:11Z | GREEN_ALREADY | — |
+| V5 | 9c78a04 | 575a60acafca9f173c8bb1200c4c5291fb59d9c116ecb02a1f47285bd58805b5 | 2026-08-13T16:41:11Z | GREEN_ALREADY | — |
+| V6 | 9c78a04 | 575a60acafca9f173c8bb1200c4c5291fb59d9c116ecb02a1f47285bd58805b5 | 2026-08-13T16:41:11Z | GREEN_ALREADY | — |
+| V7 | 9c78a04 | 575a60acafca9f173c8bb1200c4c5291fb59d9c116ecb02a1f47285bd58805b5 | 2026-08-13T16:41:11Z | GREEN_ALREADY | — |
+| V8 | 9c78a04 | 575a60acafca9f173c8bb1200c4c5291fb59d9c116ecb02a1f47285bd58805b5 | 2026-08-13T16:41:11Z | GREEN_ALREADY | — |
+| V9 | 9c78a04 | 575a60acafca9f173c8bb1200c4c5291fb59d9c116ecb02a1f47285bd58805b5 | 2026-08-13T16:41:11Z | GREEN_ALREADY | — |
+| V10 | 9c78a04 | 575a60acafca9f173c8bb1200c4c5291fb59d9c116ecb02a1f47285bd58805b5 | 2026-08-13T16:41:11Z | GREEN_ALREADY | — |
+| V11 | 9c78a04 | 575a60acafca9f173c8bb1200c4c5291fb59d9c116ecb02a1f47285bd58805b5 | 2026-08-13T16:41:11Z | GREEN_ALREADY | — |
+| V12 | 9c78a04 | 575a60acafca9f173c8bb1200c4c5291fb59d9c116ecb02a1f47285bd58805b5 | 2026-08-13T16:41:11Z | GREEN_ALREADY | — |
+| V13 | 9c78a04 | 575a60acafca9f173c8bb1200c4c5291fb59d9c116ecb02a1f47285bd58805b5 | 2026-08-13T16:41:11Z | GREEN_ALREADY | — |
+| V14 | 9c78a04 | 575a60acafca9f173c8bb1200c4c5291fb59d9c116ecb02a1f47285bd58805b5 | 2026-08-13T16:41:11Z | GREEN_ALREADY | — |
+| V15 | 9c78a04 | 575a60acafca9f173c8bb1200c4c5291fb59d9c116ecb02a1f47285bd58805b5 | 2026-08-13T16:41:11Z | GREEN_ALREADY | — |
+| V16 | 9c78a04 | 575a60acafca9f173c8bb1200c4c5291fb59d9c116ecb02a1f47285bd58805b5 | 2026-08-13T16:41:11Z | GREEN_ALREADY | — |
+| V17 | 9c78a04 | 575a60acafca9f173c8bb1200c4c5291fb59d9c116ecb02a1f47285bd58805b5 | 2026-08-13T16:41:11Z | GREEN_ALREADY | — |
+| V18 | 9c78a04 | 575a60acafca9f173c8bb1200c4c5291fb59d9c116ecb02a1f47285bd58805b5 | 2026-08-13T16:41:11Z | GREEN_ALREADY | — |
+| V19 | 9c78a04 | 575a60acafca9f173c8bb1200c4c5291fb59d9c116ecb02a1f47285bd58805b5 | 2026-08-13T16:41:11Z | GREEN_ALREADY | — |

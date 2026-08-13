@@ -47,7 +47,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 CHANGE_BASE_COMMIT = "2ed62dd"
-BASELINE_COMMIT = "403dca0"
+BASELINE_COMMIT = "9c78a04"
 BASELINE_PATH = "scripts/baseline-sobre-en-vuelo.md"
 
 SKILLS = [
@@ -1778,11 +1778,26 @@ def autotest() -> int:
         return texto.replace("## Esquema de `.specify/config.yml`",
                              "## Encabezado retirado por el autotest", 1)
 
-    def retirar_families(texto: str) -> str:
-        patron = ("  families: [claude, codex]      # claude | codex — opcional; si se omite, "
-                  "se autodetecta como hasta ahora\n")
+    def sembrar_retiro(raiz: Path) -> None:
+        """Deja una clave NUEVA y completa en dueño y vista, para que el retiro tenga sujeto.
+
+        No se usa una clave real del repo —antes era `cross_model.families`— porque eso ata el
+        autotest de la guarda al contenido de un flujo concreto: sobre una rama sin esa clave el
+        caso no se puede construir, y la guarda queda sin poder probarse por una razón que nada
+        tiene que ver con la guarda. El sujeto tiene que ser NUEVO respecto del merge-base: el
+        predicado solo mira las claves nuevas, así que retirar una preexistente no probaría nada.
+        """
+        for rel, heading in (DUENOS_CONFIG[0], VISTA_CONFIG):
+            ruta = raiz / rel
+            ruta.write_text(
+                _inyectar_clave_config(ruta.read_text(encoding="utf-8"), heading,
+                                       "autotest_retiro"),
+                encoding="utf-8")
+
+    def retirar_sembrada(texto: str) -> str:
+        patron = "autotest_retiro: true\n"
         if patron not in texto:
-            raise ValueError("no se encontró cross_model.families en su dueño")
+            raise ValueError("la clave sembrada no está en el dueño")
         return texto.replace(patron, "", 1)
 
     casos_config = [
@@ -1794,8 +1809,8 @@ def autotest() -> int:
          lambda texto: _inyectar_clave_config(texto, VISTA_CONFIG[1],
                                                "autotest_solo_vista"),
          ("autotest_solo_vista", DUENOS_CONFIG[0][0], VISTA_CONFIG[0])),
-        ("retiro-de-dueno", DUENOS_CONFIG[0], retirar_families,
-         ("cross_model.families", DUENOS_CONFIG[0][0], VISTA_CONFIG[0])),
+        ("retiro-de-dueno", DUENOS_CONFIG[0], retirar_sembrada,
+         ("autotest_retiro", DUENOS_CONFIG[0][0], VISTA_CONFIG[0]), sembrar_retiro),
         ("extractor-sin-heading", DUENOS_CONFIG[0], cambiar_heading,
          (DUENOS_CONFIG[0][0], "heading ausente")),
         ("extractor-sin-fence", DUENOS_CONFIG[1],
@@ -1811,12 +1826,15 @@ def autotest() -> int:
          lambda texto: _retirar_bloque_config(texto, DUENOS_CONFIG[0][1]),
          (DUENOS_CONFIG[0][0], "bloque yaml ausente")),
     ]
-    for nombre, superficie, mutar, senales in casos_config:
+    for nombre, superficie, mutar, senales, *resto in casos_config:
+        sembrar = resto[0] if resto else None
         with tempfile.TemporaryDirectory() as tmp:
             raiz = Path(tmp) / "repo"
             raiz.mkdir()
             try:
                 _preparar_repo_config(raiz)
+                if sembrar is not None:
+                    sembrar(raiz)
                 rc_verde, salida_verde = _correr_ac15_temporal(raiz)
                 ruta = raiz / superficie[0]
                 ruta.write_text(mutar(ruta.read_text(encoding="utf-8")), encoding="utf-8")
