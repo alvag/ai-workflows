@@ -117,6 +117,33 @@ Al crear o editar skills, seguí las buenas prácticas de agentskills.io (refere
   > conjunto vacío y un comodín daría `familia_vacia`. La lista envejece con el archivo: cada task
   > que agregue un modo lo agrega también acá.
 
+- Si la skill toca el arnés de extracción del dossier o los insumos que consume
+  (`scripts/medir-dossier-de-task.py`, `scripts/corpus-dossier.json`, `scripts/casos-extraccion.json`,
+  `scripts/oraculo-cobertura.json` o sus tres `*.schema.json`), correr sus **tres** subcomandos, que
+  son toda su superficie: `python3 scripts/medir-dossier-de-task.py censo` ·
+  `python3 scripts/medir-dossier-de-task.py fixtures` ·
+  `python3 scripts/medir-dossier-de-task.py medir-historico`. Es un **script propio** del repo —no
+  un modo agregado a ninguno de los anteriores— y el código de salida sano es **0** en los tres. Una
+  invocación inválida —sin subcomando o con uno desconocido— devuelve **2**, y ese 2 es parte del
+  contrato: distingue «me invocaste mal» de «encontré hallazgos», que es el 1.
+
+  > **No hay una bandera de autocomprobación, y es deliberado.** Los autotests del arnés —los
+  > mutantes del clasificador, los ocho del control positivo, los del esquema, los cuatro cruces de
+  > sellos, los fixtures de frontera de los cortes y los vectores propios de la proyección— **corren
+  > dentro de los tres subcomandos**, no como modos aparte. Agregar un cuarto comando ampliaría una
+  > lista que el contrato de este arnés cierra en tres, y el gate del flujo los invoca por su
+  > nombre de función. Lo que sí se lee por fuera es la **traza de `stderr` de `fixtures`**: enumera
+  > los once vectores propios `ARN-*` con su resultado. En verde el array de divergencias está
+  > vacío por contrato, así que sin esa traza un `fixtures` que no corriera ningún vector propio
+  > sería indistinguible de uno que los corre todos.
+
+  > **`--gate-precommit` y `--autotest-gate-precommit` del oráculo se ponen rojos cuando se toca el
+  > parser, y eso no es una regresión.** Su veredicto depende del working tree, y el parser es
+  > exactamente `scripts/medir-dossier-de-task.py`. Están excluidos del manifiesto de guardas por
+  > ese motivo, como su propia unidad ya deja escrito. La no-regresión de las guardas vecinas son
+  > los **30** modos restantes de `verificar-oraculo.py` más `oraculo-elegibilidad.py --listar`: 31
+  > invocaciones, todas con código de salida 0.
+
 > Nota: varios SKILL.md de este repo (p. ej. `sdd-flow`) exceden holgadamente el presupuesto de tokens sugerido. Es una tensión conocida por la complejidad del flujo; al editar, empujá contenido hacia `reference.md` antes que engordar el SKILL.md.
 
 ## Convenciones de frontmatter propias del repo

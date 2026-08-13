@@ -286,14 +286,43 @@ recorta antes, cada fase multiplica un costo que ya está medido —y la Fase 6,
 multiplica por el ancho del paralelismo: *k* agentes ingiriendo el corpus completo chocan contra
 límites de concurrencia por el peso que nadie recortó.
 
-**Medido** con `scripts/medir-dossier-de-task.py` sobre **20 flujos archivados y 296 tasks reales**:
+**Medido** con `scripts/medir-dossier-de-task.py`, en **bytes UTF-8**. Lo que se mide es solo el
+contexto de diseño que el dossier reemplaza: lo idéntico en los dos tratamientos —el delta del diff,
+la lista de archivos, las reglas duras del prompt, el formato del reporte— queda fuera del numerador
+y del denominador, o no quedarían en la misma unidad.
+
+**El resultado es un intervalo, no un valor.** El prompt de hoy entrega **rutas a archivos
+completos**, y cuánto lea el agente de cada uno no está bajo control del conductor: los flujos
+archivados no conservan ninguna traza de lectura. Afirmar «bytes ingeridos» sería inventar un dato
+que no existe — el mismo error que produjo el número que estas cifras reemplazan.
 
 | | |
 |---|---|
-| Lo que el prompt manda leer hoy | 184.665 b en el flujo más grande |
-| La task que hay que ejecutar | 2.089 b de promedio · **ratio ~88:1** |
-| Ingesta por task de comportamiento | **~76k tokens**, sumando implementer y reviewer |
-| Reducción con dossier | **~14x mediana**, rango 4,2x a 32,8x, **los 20 flujos mejoran** |
+| Población | **21 flujos archivados y 341 tasks**; entran en la mediana **18 flujos y 258 tasks elegibles** (85,7 % de los flujos retenidos) |
+| Lo que el prompt manda leer hoy | entre **17.586 b** —solo las secciones que el prompt nombra— y **76.286 b** —los tres artefactos completos, todo lo que el agente *puede* abrir— |
+| El dossier que lo reemplaza | **8.058 b**, mediana entre flujos. Es un valor exacto y no una cota: son los bytes que el conductor escribe |
+| Reducción con dossier | **mediana entre flujos de 1,7x a 7,9x**. Por flujo, la cota inferior va de 1,2x a 2,7x y la superior de 3,3x a 21,7x |
+| Par implementer + reviewer | de 35.172 b a 152.572 b hoy, contra **16.116 b** con dossier. El reviewer recibe el mismo dossier que el implementer |
+| Máximo del corpus | `cross-model-herdr-adapter`, **282.692 b** — lo **deriva el censo**, no se cita a mano |
+
+Los **18 flujos medidos mejoran incluso en la cota inferior**; los otros 3 quedan fuera por
+degradación —más de la mitad de sus tasks no resuelve alguna pieza— y se nombran en la salida con su
+causa y su tasa. El piso de exclusiones del corpus es **24,3 %** (83 de 341), bajo el umbral de 25 %
+fijado antes de medir.
+
+**Procedencia**, para que el número siga siendo reproducible si este flujo se revierte:
+
+| | |
+|---|---|
+| Commit del script productor | `96660044c421f624cfa80b20d15a7d960785b356` |
+| Comando exacto | `python3 scripts/medir-dossier-de-task.py medir-historico` |
+| Fecha | 2026-08-12 |
+| `sha256` de los tres insumos | `scripts/corpus-dossier.json` `7e481f6c607ded899743d8f2961bd55bcb827af8140a8157d957e3739ff28223` · `scripts/casos-extraccion.json` `26703ae1f606a15e90e0b7e80d8e9730c88d460f08a16abc0549088cfc5fdd61` · `scripts/oraculo-cobertura.json` `17e02d45bf1db609c5ee7bfa265b89440d9d411dcdbe02c10953bfbd3a7efeb4` |
+
+Revertir el archivo **no elimina el productor**: el commit sigue en `git`, así que el número se
+regenera con `git worktree add` sobre él y el comando publicado, contra los insumos conservados. Solo
+la desaparición del commit o de los insumos obliga a marcar este bloque como histórico y no
+reproducible.
 
 **Entregables**
 
@@ -303,8 +332,11 @@ límites de concurrencia por el peso que nadie recortó.
 - la regla de escape: si el dossier no alcanza, `STATUS: failed` **diciendo qué pieza faltó**, sin ir
   a buscarla al repo;
 - el armado del lado conductor, con sus reglas de extracción;
-- el diff de cada task se acota por el campo `Archivos` en vez de depender de que el reporte llegue;
-- el arnés de medición, que ya existe y es el que fija el número de la fase.
+- el arnés de medición, reescrito en esta fase, que es el que fija el número de arriba y el que lo
+  puede volver a producir.
+
+**Fuera de esta fase, y se declara.** El acotado del diff de cada task por el campo `Archivos` **se
+difirió**: no es entregable de acá y no lo verifica nadie todavía.
 
 **Gate de salida**
 
@@ -324,7 +356,14 @@ cree: lo manda a leer los tres artefactos igual. Con dossier, **una task mal esc
 en vez de quedar tapada por el corpus completo. La autosuficiencia pasa de aspiración a propiedad
 falsable, y eso es insumo de todas las fases que delegan.
 
-**Rollback:** volver el prompt a las rutas. No hay estado migrado ni artefacto nuevo que revertir.
+**Rollback: enumerado, no resumido.** «Volver el prompt a las rutas» no alcanza — la validación
+previa del lado conductor **seguiría bloqueando tasks** después de un rollback que se creería
+completo. Se restauran las **ocho** secciones: el prompt del subagente por task con su orden de
+ejecución; el prompt del reviewer con su frontera de lectura; el lado conductor de ambos, incluida
+esa validación previa; la sección de reglas de extracción; la regla del diferimiento; y los tres
+puntos de `SKILL.md` y `reference.md` que la plantilla de tasks tocó. El arnés y su parser tienen su
+propio rollback, distinto: se revierte el archivo y **se conservan los tres insumos congelados**,
+porque sin ellos el número deja de ser reproducible.
 
 **Riesgo declarado.** Puede existir contexto que hoy salva al agente en silencio y que la task no
 cita. Se arranca **generoso** —el enfoque completo del plan pesa ~2 KB— y se recorta con los `failed`
