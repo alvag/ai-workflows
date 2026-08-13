@@ -135,6 +135,9 @@ a cada consumidor a parsearla, y cada uno la parsea distinto.
 
 ### Los campos por worker
 
+`workers[]` lista solo los workers **efectivamente despachados**. Una familia ausente que no generó
+un despacho no tiene entrada en el sobre: no existe proceso que sondar, cosechar o relanzar.
+
 Cuatro campos por cada entrada de `workers[]`:
 
 | campo | qué registra |

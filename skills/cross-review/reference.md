@@ -79,6 +79,36 @@ primitiva con que ese archivo llega a stdin (`<` en POSIX, `Get-Content -Raw | �
 
 ## Descubrir el revisor
 
+<!-- inventario-familias:inicio -->
+### Inventario de familias
+
+Antes de cualquier preflight, la **raíz** de la corrida resuelve una vez qué familias hay. Si el
+contrato de invocación trae `family_inventory`, **no se resuelve nada**: se hereda, no se relee
+config y no se vuelve a avisar.
+
+| Paso | Regla |
+|---|---|
+| 1 — familia del **conductor** | entra al conjunto observado **por construcción**, sin sondear: el agente está corriendo. No se le aplica el paso 2 |
+| 2 — la **otra** familia | presente si su CLI está en PATH. POSIX: `command -v codex` / `command -v claude`. PowerShell: `Get-Command codex -ErrorAction SilentlyContinue`. Nada más cuenta |
+
+El paso 2 mide el CLI porque es **condición necesaria de todas las vías**: el runtime del subagente
+resuelve su disponibilidad corriendo `codex --version` y `codex app-server --help`, así que exige el
+CLI y algo más. No es la intersección restrictiva, es el piso común.
+
+La auditoría **no comprueba versión, auth, aislamiento ni lanzamiento**, y **no afirma capacidad
+operativa**: una familia presente puede fallar igual su preflight, y eso sigue siendo un fallo real.
+
+**Divergencia declarado ↔ observado — error en las dos direcciones:**
+
+| Caso | Error |
+|---|---|
+| declara ausente una familia presente | nombra la familia, dice que está instalada, y declara que apagar el cross-model teniendo las dos **no es una capacidad de esta clave** sino un cambio de doctrina pendiente de su propio flujo |
+| declara presente una familia ausente | nombra la familia y que la auditoría no la encuentra |
+
+**Precedencia:** el chequeo de que la declaración incluya la familia del conductor **corre primero**
+y gana, porque nombra la causa raíz.
+<!-- inventario-familias:fin -->
+
 Esta sección es la **fuente canónica** del descubrimiento: `co-explore` la referencia por
 puntero (su fallback embebido es un resumen de esto).
 
@@ -206,7 +236,7 @@ de las tres piezas, **no se lanza**: `UNAVAILABLE` y gate humano.
 ```bash
 codex exec --help | grep -q -- --ignore-user-config || FAIL=1
 for f in hooks apps plugins; do
-  codex features list 2>/dev/null | grep -qE "^$f[[:space:]]" || FAIL=1
+  codex features list 2>/dev/null | grep -qE "^${f}[[:space:]]" || FAIL=1
 done
 ```
 
@@ -1259,6 +1289,10 @@ Ejemplo: `.cross-model/runs/20260731T140211Z-co-explore-explore.json`
 y dos corridas concurrentes —una tanda de `sdd-orchestrator` sobre varios repos— se pisarían.
 Resolverlo pide locking: exactamente la infraestructura que este manifest existe para no traer. El
 timestamp va adelante del nombre para que el orden lexicográfico sea el cronológico.
+
+Con una familia ausente según `family_inventory`, el manifest **se escribe igual**: `families`
+enumera las familias efectivamente delegadas, `outcome` conserva el resultado terminal y
+`degradation` registra la rama degradada. La ausencia no suprime el registro.
 
 **Local y untracked, sin autolimpieza**, misma clase que `.plans/` y que los scratch de las tres
 skills. El usuario borra el directorio cuando quiera; ninguna skill lo hace por él. Una corrida son

@@ -56,6 +56,36 @@ Acá cambia el rol buscado: no un crítico read-only sino un **implementador con
 | Claude | Codex | `command -v codex` (PowerShell: `Get-Command codex -ErrorAction SilentlyContinue`) | Vía W-B (workspace-write) |
 | GPT/Codex | Claude | `command -v claude` | Vía W-C (permisos path-scoped) |
 
+<!-- inventario-familias:inicio -->
+### Inventario de familias
+
+Antes de cualquier preflight, la **raíz** de la corrida resuelve una vez qué familias hay. Si el
+contrato de invocación trae `family_inventory`, **no se resuelve nada**: se hereda, no se relee
+config y no se vuelve a avisar.
+
+| Paso | Regla |
+|---|---|
+| 1 — familia del **conductor** | entra al conjunto observado **por construcción**, sin sondear: el agente está corriendo. No se le aplica el paso 2 |
+| 2 — la **otra** familia | presente si su CLI está en PATH. POSIX: `command -v codex` / `command -v claude`. PowerShell: `Get-Command codex -ErrorAction SilentlyContinue`. Nada más cuenta |
+
+El paso 2 mide el CLI porque es **condición necesaria de todas las vías**: el runtime del subagente
+resuelve su disponibilidad corriendo `codex --version` y `codex app-server --help`, así que exige el
+CLI y algo más. No es la intersección restrictiva, es el piso común.
+
+La auditoría **no comprueba versión, auth, aislamiento ni lanzamiento**, y **no afirma capacidad
+operativa**: una familia presente puede fallar igual su preflight, y eso sigue siendo un fallo real.
+
+**Divergencia declarado ↔ observado — error en las dos direcciones:**
+
+| Caso | Error |
+|---|---|
+| declara ausente una familia presente | nombra la familia, dice que está instalada, y declara que apagar el cross-model teniendo las dos **no es una capacidad de esta clave** sino un cambio de doctrina pendiente de su propio flujo |
+| declara presente una familia ausente | nombra la familia y que la auditoría no la encuentra |
+
+**Precedencia:** el chequeo de que la declaración incluya la familia del conductor **corre primero**
+y gana, porque nombra la causa raíz.
+<!-- inventario-familias:fin -->
+
 **Prechequeos** — los mismos de `cross-review/reference.md` → "Descubrir el revisor" →
 "Prechequeos" (versión del CLI, no pinear `-m`, eco del modelo activo), registrando el modelo en
 el `implement-log.md`.

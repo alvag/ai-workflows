@@ -165,6 +165,41 @@ Si reconoces alguno de estos pensamientos, detente y vuelve a la regla que está
 | "Trunco al entrar al modo, así arranco limpio" | Truncar antes de decidir destruye el artefacto de cierre que la retoma necesita leer, y convierte cada retoma en un redespacho. Primero decidir, después truncar. |
 | "El índice ya me dice bastante, no hace falta el detalle" | Al revés del anterior, y también un error: divergencia, `high`, `low` o una decisión a arbitrar **obligan** a abrir esa entrada. |
 
+<!-- inventario-familias:inicio -->
+### Inventario de familias
+
+Antes de cualquier preflight, la **raíz** de la corrida resuelve una vez qué familias hay. Si el
+contrato de invocación trae `family_inventory`, **no se resuelve nada**: se hereda, no se relee
+config y no se vuelve a avisar.
+
+| Paso | Regla |
+|---|---|
+| 1 — familia del **conductor** | entra al conjunto observado **por construcción**, sin sondear: el agente está corriendo. No se le aplica el paso 2 |
+| 2 — la **otra** familia | presente si su CLI está en PATH. POSIX: `command -v codex` / `command -v claude`. PowerShell: `Get-Command codex -ErrorAction SilentlyContinue`. Nada más cuenta |
+
+El paso 2 mide el CLI porque es **condición necesaria de todas las vías**: el runtime del subagente
+resuelve su disponibilidad corriendo `codex --version` y `codex app-server --help`, así que exige el
+CLI y algo más. No es la intersección restrictiva, es el piso común.
+
+La auditoría **no comprueba versión, auth, aislamiento ni lanzamiento**, y **no afirma capacidad
+operativa**: una familia presente puede fallar igual su preflight, y eso sigue siendo un fallo real.
+
+**Divergencia declarado ↔ observado — error en las dos direcciones:**
+
+| Caso | Error |
+|---|---|
+| declara ausente una familia presente | nombra la familia, dice que está instalada, y declara que apagar el cross-model teniendo las dos **no es una capacidad de esta clave** sino un cambio de doctrina pendiente de su propio flujo |
+| declara presente una familia ausente | nombra la familia y que la auditoría no la encuentra |
+
+**Precedencia:** el chequeo de que la declaración incluya la familia del conductor **corre primero**
+y gana, porque nombra la causa raíz.
+<!-- inventario-familias:fin -->
+
+En `debate`, si `family_inventory` marca ausente a la otra familia, no se lanza worker, no se
+produce un envelope dual y se devuelve `UNAVAILABLE`. El modo hereda el inventario sin repetir
+el preflight y delega el aviso a la raíz indicada por `root`; el conductor no debate consigo
+mismo.
+
 ## Contrato de invocación (lo que pasa la skill llamadora)
 
 Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario en modo directo) proveen:
@@ -197,6 +232,9 @@ Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario en modo directo) prove
   `plan`, con `spec.md`/`plan.md` como contexto.
 - **`working_dir`** — uno, o una lista de repos cuando llama el orquestador (exploración
   cross-repo).
+- **`family_inventory`** — inventario declarado y resuelto por la raíz, con `families`, `source` y
+  `root`. Opcional: si llega, se hereda sin releer config, repetir la auditoría ni reanunciar la
+  ausencia; si falta, esta invocación resuelve por su cuenta.
 - **`complexity`** — `trivial | normal | complex`; modula profundidad/esfuerzo.
 - **`execution`** — `auto | sync | background`. Para `explore` e `investigate` el valor útil es
   `background`: el conductor explora/investiga mientras tanto. En `counter-plan` o si el
@@ -208,8 +246,10 @@ Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario en modo directo) prove
 
 ### Pasos de ejecución
 
-1. **Preflight de aislamiento** (fail-closed) y resolución de los dos CLIs. Sin ninguno de los dos
-   → `UNAVAILABLE`; con uno solo → la escalera decide la rama (ver "Degradación").
+1. **Preflight de aislamiento** (fail-closed) y resolución de los dos CLIs. Con
+   `family_inventory`, no ejecutar el preflight de la familia ausente; sin inventario heredado,
+   resolver como hasta ahora. Sin ninguno de los dos → `UNAVAILABLE`; con uno solo → la escalera
+   decide la rama (ver "Degradación").
 2. **Armar los dos prompts** desde `reference.md` → "Prompt de explore (dos capas)", con el mismo
    paquete de contexto. En `counter-plan`, núcleo común byte-idéntico + anexo privado de la propia
    familia, concatenado por el shell.

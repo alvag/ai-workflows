@@ -128,6 +128,8 @@ Quien la invoca (el usuario en modo directo, o `sdd-flow` en modo embebido) prov
   la conversación y lo escribe a `cross-implement/work-order.md` ANTES de lanzar (queda auditable
   y respeta la regla 1).
 - **`working_dir`** — raíz del repo donde se implementa (límite de escritura del implementador).
+- **`family_inventory`** — inventario declarado y resuelto por la raíz, con `families`, `source` y
+  `root`. Opcional: si falta, esta invocación es la raíz y resuelve por su cuenta.
 - **`proof_cmd`** — comprobación **agregada y opcional** que el conductor corre para ver el
   conjunto de un vistazo (la suite completa, el build). No sustituye ninguna fila del contrato ni
   alcanza para dar un requisito por cumplido. El gate acepta contrato **sin** `proof_cmd`; nunca
@@ -150,8 +152,9 @@ Quien la invoca (el usuario en modo directo, o `sdd-flow` en modo embebido) prov
 ### Pasos de ejecución
 
 1. **Resolver el implementador** (regla 8) + prechequeos (versión del CLI, no pinear modelo, eco
-   del modelo activo — ver `reference.md` → "Descubrir el implementador"). Sin implementador →
-   `UNAVAILABLE`.
+   del modelo activo — ver `reference.md` → "Descubrir el implementador"). Si llega
+   `family_inventory`, heredarlo: no releer config, no ejecutar el preflight de la familia ausente
+   ni volver a anunciarla. Sin implementador → `UNAVAILABLE`.
 2. **Gates previos**: work order existe y se lee como contrato (regla 1); **contrato de
    verificación congelado** — versión vigente, cobertura bidireccional, campos obligatorios y
    baseline resuelto en toda fila, ninguna en `BLOCKED` (`contrato-verificacion.md` → "El gate

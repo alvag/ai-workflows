@@ -41,6 +41,9 @@ branch_prefix: ""              # opcional; prefijo único de la orquestación; v
 execution_mode: fanout         # fanout (agentes paralelos, default) | inline (en la sesión del orquestador, de a un repo) — opcional
 implement_mode: ""             # opcional; modo de implementación que heredan los sdd-flow delegados: inline | cross (vacío → cada sdd-flow resuelve el suyo: config del repo > default). `cross` exige la capacidad (skill cross-implement + CLI de la otra familia) en el contexto del agente delegado. Un manifest heredado con el modo retirado detiene la orquestación con error de migración (ver `SKILL.md` → "Fan-out")
 # outcome: aborted             # solo si la orquestación terminó abortada (sub-paso `abort`)
+cross_model:                   # opcional; inventario común de familias para toda la orquestación
+  schema_version: 1            # obligatorio si el bloque existe; esta obligación se introduce aquí y no se hereda de otra superficie
+  families: [claude, codex]    # claude | codex — opcional; si se omite, no hay centralización del inventario
 cross_review:                  # opcional; segunda opinión cross-model EN LOS GATES (ver skill cross-review)
   mode: auto                   # auto | "on" | "off"  (entre comillas: sin ellas YAML los parsea como booleanos)
   execution: auto              # auto (por capacidad del conductor) | sync | background
@@ -251,9 +254,9 @@ después se movió.
 
 **Este esquema mezcla estado de corrida (`id`, `created_at`, `master_spec`, `repos`,
 `orchestration_tasks`) con configuración.** Las claves de configuración son propias de esta skill (`branch_prefix`,
-`execution_mode`, `implement_mode`) salvo `cross_review.*` y `co_explore.*`, cuyo enum lo define su
+`execution_mode`, `implement_mode`, `cross_model.*`) salvo `cross_review.*` y `co_explore.*`, cuyo enum lo define su
 dueño: `cross_review.*` en `cross-review/SKILL.md` → "Configuración" y `co_explore.*` en
-`co-explore/SKILL.md` → "Configuración". Solo esas 10 claves, listas para
+`co-explore/SKILL.md` → "Configuración". Solo esas 12 claves, listas para
 copiar y con la misma vista que `config-ejemplo.md` de `sdd-flow`, están en `manifest-ejemplo.md`.
 
 ## Plantilla de `master-spec.md`
@@ -444,6 +447,11 @@ Trabaja ÚNICAMENTE en el repo <ruta-absoluta-al-repo> (todo comando y ruta, rel
 Lee <directorio-de-skills>/sdd-flow/SKILL.md (y su reference.md si lo necesitas) y ejecuta su
 Vía B: "implement .plans/<id>/", siguiendo ese contrato al pie de la letra.
 Override de esta corrida: cross_review.mode: off (el plan ya fue revisado en el reparto).
+Inventario heredado, solo si el manifest declaró `families` y ya se comparó con el repo:
+family_inventory:
+  families: <lista canonizada>
+  source: declared
+  root: sdd-orchestrator
 Reglas duras:
 - FRENA antes de commitear (nada de git commit/push); no toques nada fuera del repo.
 - Eres un agente sin usuario: NO hagas los checkpoints conversacionales de la Vía B (no

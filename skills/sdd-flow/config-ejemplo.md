@@ -1,7 +1,7 @@
 # Ejemplo de `.specify/config.yml`
 
 **Este archivo es una vista.** Está ensamblado de los bloques que cada skill posee:
-`sdd-flow/reference.md` → "Esquema" (20 claves), `cross-review/SKILL.md` → "Configuración" (5),
+`sdd-flow/reference.md` → "Esquema" (21 claves), `cross-review/SKILL.md` → "Configuración" (5),
 `co-explore/SKILL.md` → "Configuración" (4) y `cross-implement/SKILL.md` → "Configuración" (3).
 **Ante discrepancia manda el dueño.** Existe para poder mirar el archivo completo y copiar lo que
 sirva; no para ser la autoridad de ninguna clave.
@@ -53,6 +53,7 @@ jira_approval:                   # solo si tracker: jira
 # ── ecosistema cross-model (lo resuelve y ecoa sdd-flow) ──
 cross_model:
   schema_version: 1              # [obl] obligatorio si el bloque existe
+  families: [claude, codex]      # claude | codex — [ej] debe coincidir con las familias presentes; omitir → autodetección
   manifest:                      # formato en cross-review/reference.md → "Manifest de corrida"
     mode: "on"                   # "on" | "off" — [def] registro por corrida de las skills cross-model
 

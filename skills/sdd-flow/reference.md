@@ -244,6 +244,7 @@ tracker: jira                    # jira | github | gitlab | linear | none
 test_scope_hint: "vitest run {name}"      # plantilla de COMANDO para acotar tests; {name} = archivo/patrón
 cross_model:                     # políticas comunes a las skills cross-model (opcional)
   schema_version: 1              # obligatorio si el bloque existe; una versión desconocida se ignora entera con aviso, nunca se interpreta a medias
+  families: [claude, codex]      # claude | codex — opcional; si se omite, se autodetecta como hasta ahora
   manifest:                      # registro por corrida de las skills cross-model, para decidir con datos si la capacidad rinde
     mode: "on"                   # "on" (default) | "off"  (entre comillas: sin ellas YAML los parsea como booleanos). Política del ECOSISTEMA: las tres skills escriben el mismo registro; apagarlo para una sola dejaría huecos sistemáticos. Ver `cross-review/reference.md` → "Manifest de corrida"
 jira_approval:                   # aprobación externa de la spec en Jira (opcional; solo si tracker: jira)
@@ -259,10 +260,10 @@ final_diff_review:
   mode: auto                     # auto (complex/high-risk inline) | "on" | "off"
 ```
 
-**Este bloque es dueño de las 20 claves que `sdd-flow` gobierna.** Las 12 restantes las poseen sus
+**Este bloque es dueño de las 21 claves que `sdd-flow` gobierna.** Las 12 restantes las poseen sus
 hermanas y su enum se define allá: `cross_review.*` en `cross-review/SKILL.md` → "Configuración";
 `co_explore.*` en `co-explore/SKILL.md` → "Configuración"; `cross_implement.*` en
-`cross-implement/SKILL.md` → "Configuración". El archivo **completo**, con las 32 juntas y listo
+`cross-implement/SKILL.md` → "Configuración". El archivo **completo**, con las 33 juntas y listo
 para copiar, está en `config-ejemplo.md`, que es una vista de todos estos dueños.
 
 Placeholders de `branch_format`: `{type}` (prefijo efectivo), `{ticket}` (clave del tracker, se omite si no hay), `{slug}` (2-5 palabras del título en kebab, sin acentos, `[a-z0-9-]`).
@@ -270,6 +271,76 @@ Placeholders de `branch_format`: `{type}` (prefijo efectivo), `{ticket}` (clave 
 **`test_scope_hint`** es una **plantilla de comando completa**, no un glob suelto: se reemplaza `{name}` por el archivo/patrón a acotar y se ejecuta tal cual (ej.: `vitest run {name}`, `ng test --include={name}`, `pytest {name}`). En Angular, `{name}` debe ser la **ruta exacta** del `.spec.ts`, **no** un glob `**/…`: el glob arrastra `.html`/`.scss` y rompe el loader.
 
 **Prefijo efectivo (`{type}`)** = primer valor presente: (1) override conversacional de la corrida → (2) `branch_prefix` del `config.yml` → (3) prefijo semántico (tabla de abajo). Se normaliza quitando la barra final si la trae. El `branch_prefix`/override **reemplazan** el `{type}`; el mapeo semántico de abajo aplica **solo cuando no hay ninguno de los dos**.
+
+### Dominio de `families`
+
+| Aspecto | Decisión |
+|---|---|
+| Tokens | enum cerrado `claude` · `codex`. Cualquier otro → **error** |
+| Forma | lista. Escalar → **error**. Lista vacía → **error** |
+| Duplicados | → **error**; no se deduplica en silencio |
+| Case | se acepta cualquier case y se **canoniza a minúsculas** en el eco |
+| Orden | **no semántico**: es un conjunto. `[claude, codex]` ≡ `[codex, claude]` |
+| Clave ausente | → **autodetectar**: el comportamiento de hoy, sin cambio alguno |
+| schema_version en .specify/config.yml | **no sube**: el bloque ya existe con `schema_version: 1`; `families` es opcional y su ausencia preserva el comportamiento anterior |
+| schema_version en manifest.yml | **se introduce en este cambio, con valor `1`**; es obligatorio si el bloque nuevo existe y la obligación nace en esa superficie |
+
+<!-- inventario-familias:inicio -->
+### Inventario de familias
+
+Antes de cualquier preflight, la **raíz** de la corrida resuelve una vez qué familias hay. Si el
+contrato de invocación trae `family_inventory`, **no se resuelve nada**: se hereda, no se relee
+config y no se vuelve a avisar.
+
+| Paso | Regla |
+|---|---|
+| 1 — familia del **conductor** | entra al conjunto observado **por construcción**, sin sondear: el agente está corriendo. No se le aplica el paso 2 |
+| 2 — la **otra** familia | presente si su CLI está en PATH. POSIX: `command -v codex` / `command -v claude`. PowerShell: `Get-Command codex -ErrorAction SilentlyContinue`. Nada más cuenta |
+
+El paso 2 mide el CLI porque es **condición necesaria de todas las vías**: el runtime del subagente
+resuelve su disponibilidad corriendo `codex --version` y `codex app-server --help`, así que exige el
+CLI y algo más. No es la intersección restrictiva, es el piso común.
+
+La auditoría **no comprueba versión, auth, aislamiento ni lanzamiento**, y **no afirma capacidad
+operativa**: una familia presente puede fallar igual su preflight, y eso sigue siendo un fallo real.
+
+**Divergencia declarado ↔ observado — error en las dos direcciones:**
+
+| Caso | Error |
+|---|---|
+| declara ausente una familia presente | nombra la familia, dice que está instalada, y declara que apagar el cross-model teniendo las dos **no es una capacidad de esta clave** sino un cambio de doctrina pendiente de su propio flujo |
+| declara presente una familia ausente | nombra la familia y que la auditoría no la encuentra |
+
+**Precedencia:** el chequeo de que la declaración incluya la familia del conductor **corre primero**
+y gana, porque nombra la causa raíz.
+<!-- inventario-familias:fin -->
+
+El inventario declarado viaja en el contrato de invocación con este carrier:
+
+```yaml
+family_inventory:                # ausente = resuélvelo tú, eres la raíz
+  families: [claude]             # conjunto resuelto y canonizado a minúsculas
+  source: declared               # ÚNICO valor: sin declaración no se construye el carrier
+  root: sdd-flow                 # quién lo resolvió y, por lo tanto, quién ya avisó
+```
+
+Sus tres reglas son obligatorias:
+
+1. **Presente implica heredado:** el receptor no relee config, no vuelve a auditar y no vuelve a
+   anunciar la ausencia.
+2. **Sin declaración no hay carrier:** solo se construye desde una declaración válida en
+   `config.yml`, `manifest.yml` o un override conversacional. La autodetección nunca se propaga como
+   `source: detected`.
+3. **`root` identifica al dueño único del aviso:** no es un dato decorativo.
+
+El conjunto cerrado de consumidores es `sdd-flow`, `sdd-orchestrator`, `cross-review` —incluido
+draft—, `cross-implement` y `co-explore` —sus cuatro modos—. `bitbucket-code-review` queda
+explícitamente excluido.
+
+En una invocación directa, la fuente es `<working_dir>/.specify/config.yml` y la precedencia es
+override conversacional > config > autodetección. La raíz se deriva del artefacto o work order
+recibido. Si no existe una raíz única, se falla pidiendo `working_dir` explícito; nunca se busca
+config hacia arriba ni fuera del directorio nombrado.
 
 ## Contexto de dominio
 

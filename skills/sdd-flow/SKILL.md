@@ -106,11 +106,45 @@ Si reconoces alguno de estos pensamientos, es señal de detente: vuelve al paso 
 | "Stageo todo lo que está dirty y después limpio" | Stage selectivo: solo `code_touched`; los archivos ajenos se confirman uno por uno (regla 8). |
 | "Anuncio que despacho el subagente y cierro el turno" | Anunciar no es despachar: la tool call del subagente va en el **mismo turno** que la anuncias. Cerrar tras solo anunciar es un turno muerto que frena el flujo (vale para los dos puntos de despacho propios: la exploración de `analyze` y la revisión final de diff). |
 
+<!-- inventario-familias:inicio -->
+### Inventario de familias
+
+Antes de cualquier preflight, la **raíz** de la corrida resuelve una vez qué familias hay. Si el
+contrato de invocación trae `family_inventory`, **no se resuelve nada**: se hereda, no se relee
+config y no se vuelve a avisar.
+
+| Paso | Regla |
+|---|---|
+| 1 — familia del **conductor** | entra al conjunto observado **por construcción**, sin sondear: el agente está corriendo. No se le aplica el paso 2 |
+| 2 — la **otra** familia | presente si su CLI está en PATH. POSIX: `command -v codex` / `command -v claude`. PowerShell: `Get-Command codex -ErrorAction SilentlyContinue`. Nada más cuenta |
+
+El paso 2 mide el CLI porque es **condición necesaria de todas las vías**: el runtime del subagente
+resuelve su disponibilidad corriendo `codex --version` y `codex app-server --help`, así que exige el
+CLI y algo más. No es la intersección restrictiva, es el piso común.
+
+La auditoría **no comprueba versión, auth, aislamiento ni lanzamiento**, y **no afirma capacidad
+operativa**: una familia presente puede fallar igual su preflight, y eso sigue siendo un fallo real.
+
+**Divergencia declarado ↔ observado — error en las dos direcciones:**
+
+| Caso | Error |
+|---|---|
+| declara ausente una familia presente | nombra la familia, dice que está instalada, y declara que apagar el cross-model teniendo las dos **no es una capacidad de esta clave** sino un cambio de doctrina pendiente de su propio flujo |
+| declara presente una familia ausente | nombra la familia y que la auditoría no la encuentra |
+
+**Precedencia:** el chequeo de que la declaración incluya la familia del conductor **corre primero**
+y gana, porque nombra la causa raíz.
+<!-- inventario-familias:fin -->
+
+`sdd-flow` es la **raíz** de sus corridas y el dueño único del aviso. Cuando construye el
+carrier, escribe `root: sdd-flow`; ese campo prueba quién resolvió el inventario y quién ya
+anunció la ausencia, de modo que ninguna corrida anidada vuelve a hacerlo.
+
 ## Adaptación al proyecto (portabilidad)
 
 Antes de cualquier paso operativo, descubrir el entorno **una vez** por sesión y resumirlo al usuario. Orden de resolución para cada parámetro: `config.yml` → autodetección → preguntar.
 
-**Checkpoint de inicio (no salteable).** El **primer** acto operativo de toda corrida es leer `.specify/config.yml` si existe y **devolverle al usuario en una línea los valores resueltos** de al menos `tracker`, `cross_review.mode`, `co_explore.mode`, `co_explore.debate`, `domain_context.mode`, `final_diff_review.mode` y `jira_approval.mode`, **con qué implican**. Ej.: *"config: tracker jira · cross_review on · co_explore on → exploración paralela antes de la spec · co_explore.debate auto → ofrezco debate en decisiones complejas de clarify/plan · domain_context auto → leer ADRs si existen · final_diff_review auto → revisión agregada en complex inline · jira_approval on → publico la spec en Jira tras aprobarla localmente"*. Ese eco es la prueba de que el config se leyó: sin él, es fácil aplicar los defaults (`cross_review` por complejidad, `domain_context: auto`, `final_diff_review: auto`, `jira_approval: off`) y perder cross-review, contexto de dominio, revisión final y `publish-spec` en silencio (ver red-flag "Arranco el flujo sin leer el config").
+**Checkpoint de inicio (no salteable).** El **primer** acto operativo de toda corrida es leer `.specify/config.yml` si existe y **devolverle al usuario en una línea los valores resueltos** de al menos `tracker`, el inventario `cross_model.families`, `cross_review.mode`, `co_explore.mode`, `co_explore.debate`, `domain_context.mode`, `final_diff_review.mode` y `jira_approval.mode`, **con qué implican**. Ej.: *"config: tracker jira · families [claude] → inventario declarado y validado · cross_review on · co_explore on → exploración paralela antes de la spec · co_explore.debate auto → ofrezco debate en decisiones complejas de clarify/plan · domain_context auto → leer ADRs si existen · final_diff_review auto → revisión agregada en complex inline · jira_approval on → publico la spec en Jira tras aprobarla localmente"*. Ese eco es la prueba de que el config se leyó: sin él, es fácil aplicar los defaults (`cross_review` por complejidad, `domain_context: auto`, `final_diff_review: auto`, `jira_approval: off`) y perder cross-review, contexto de dominio, revisión final y `publish-spec` en silencio (ver red-flag "Arranco el flujo sin leer el config").
 
 Si existe `.specify/config.yml`, leerlo primero. Esquema (todos los campos opcionales):
 
@@ -397,7 +431,7 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
    - `.specify/config.yml` — con las selecciones del wizard + comandos/paths detectados. Esquema en `reference.md` → "Esquema de `.specify/config.yml`". Al escribirlo, emitir `cross_review.mode`, `domain_context.mode`, `final_diff_review.mode`, `jira_approval.mode` y `co_explore.debate.mode` con los valores `on`/`off` **entre comillas** (`"on"`/`"off"`; `auto` sin comillas es válido): sin ellas YAML los parsea como booleanos.
    - `.specify/constitution.md` — desde `reference.md` → "Plantilla de constitution" (definición de *Done*, formato de AC, regla de trazabilidad, y un **puntero** a los principios de código del repo —`CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`— si existen).
 7. **STOP** — escribir ambos **solo tras confirmación**. Son locales y untracked (regla #10): nunca se trackean, comitean ni se agregan a un `.gitignore` compartido.
-8. **Cierre — apuntar al resto.** Al confirmar, decir en una línea que el config admite **32 claves**, que el wizard solo preguntó lo que la skill no puede saber, y que el resto vive en `config-ejemplo.md`, listo para copiar por bloques con cada valor marcado `[def]`, `[ej]` u `[obl]`; sin este cierre, reducir el wizard convierte "no te lo pregunto" en "no existe": las seis preguntas que salieron —`commit_style`, `implement_mode`, `cross_review`, `domain_context`, `final_diff_review` y `debate`— tienen que quedar descubribles.
+8. **Cierre — apuntar al resto.** Al confirmar, decir en una línea que el config admite **33 claves**, que el wizard solo preguntó lo que la skill no puede saber, y que el resto vive en `config-ejemplo.md`, listo para copiar por bloques con cada valor marcado `[def]`, `[ej]` u `[obl]`; sin este cierre, reducir el wizard convierte "no te lo pregunto" en "no existe": las seis preguntas que salieron —`commit_style`, `implement_mode`, `cross_review`, `domain_context`, `final_diff_review` y `debate`— tienen que quedar descubribles.
 9. **Re-corrida:** si ya existían, no pisar a ciegas — el wizard mostró los valores vigentes pre-seleccionados; al confirmar, **fusionar** los cambios respetando lo que el usuario mantuvo. Si prefiere no fijar config, puede saltar `init`: el ciclo sigue con autodetección + defaults conversacionales (ver `constitution`).
 
 ## Paso `constitution`

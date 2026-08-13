@@ -119,6 +119,8 @@ Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario) proveen:
   "Matriz de resume desde co-exploración": nunca resuelve a la familia del autor ni a un worker
   `INVALID`.
 - **`working_dir`** — directorio desde donde el revisor puede leer el código en read-only.
+- **`family_inventory`** — inventario declarado y resuelto por la raíz, con `families`, `source` y
+  `root`. Opcional: si falta, esta invocación es la raíz y resuelve por su cuenta.
 - **`complexity`** — `trivial | normal | complex` (de `sdd-flow`); modula profundidad/esfuerzo.
 - **`execution`** — `auto | sync | background` (de la config `cross_review`); cómo se espera al
   revisor. `auto` (default) elige por la capacidad de timeout del conductor; `sync` fuerza llamada
@@ -170,6 +172,10 @@ stress-test portable de una idea, no un flujo de desarrollo.
 
 Antes de nada, resolver si hay un segundo modelo disponible (algoritmo y opciones en
 `reference.md` → "Descubrir el revisor"):
+
+Si el contrato trae `family_inventory`, heredarlo: no releer config, no ejecutar el preflight de la
+familia ausente y no volver a anunciar su ausencia. Los preflights reales de una familia presente
+siguen aplicando y sus fallos se informan como hasta ahora.
 
 1. **Identificar la familia del autor.** Es la del agente que conduce la skill, sin importar la
    superficie donde corre (CLI, app de escritorio, IDE, web): un agente **Claude** → autor

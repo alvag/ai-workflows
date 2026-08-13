@@ -864,6 +864,11 @@ contributors:                        # TODO mapa aceptado, incluido el del condu
     session: <id> | null              # null para el mapa del conductor
 ```
 
+En los tres modos duales —`explore`, `counter-plan` e `investigate`—, cuando `family_inventory`
+establece que una familia está ausente, `workers[]` conserva su entrada con `state: UNAVAILABLE` y
+`cause: confirmed_wall`. La auditoría del inventario es la que establece esa pared confirmada; no
+se omite la entrada ni se agrega una causa nueva.
+
 `contributors[]` es lo que permite localizar el mapa del conductor en las ramas degradadas:
 `workers[]` solo describe procesos despachados, y en las ramas 2, 3 y 4 aparece un mapa que ningún
 worker produjo.
