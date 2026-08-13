@@ -414,5 +414,34 @@ Desviaciones del work order: <lista o "ninguna">.
 > Es un registro, no un gate: no bloquea la ronda, no cambia la clasificación y no le agrega nada al
 > implementador, que ni se entera.
 
+### Qué hacer cuando el registro muestre algo
+
+El hueco que este registro vigila es **estrecho y de una sola clase**: el par *autor del work order
+↔ revisor del diff* es la misma familia, así que un contrato ambiguo lo transcribe fielmente el
+implementador y el revisor comparte el punto ciego que lo produjo. Todo lo demás ya cruza familia
+(ver `CLAUDE.md` → regla de fronteras). **Hoy no se escribe nada para cubrirlo**, y el motivo es que
+está medido en vez de discutido.
+
+**Qué cuenta como señal:** una falla clasificada `VERIFICATION_DEFECT` o `DESIGN_GAP` **con
+"¿el work order admitía otra lectura?: sí"**. Un `IMPLEMENTATION_DEFECT` con "otra lectura: no" es lo
+contrario de una señal: es el pipeline funcionando — el implementador de la otra familia hizo algo
+distinto de lo pedido y el conductor lo cazó.
+
+**Cuándo se reabre.** A la **primera** aparición se mira el caso; a la **segunda**, se abre flujo
+propio. Las dos condiciones van juntas:
+
+1. dos fallas con esa firma, y
+2. el proyecto **no** tiene por delante una revisión de PR cross-family (`bitbucket-code-review` o
+   equivalente), que cubriría el mismo punto ciego un paso después.
+
+> **El dos es un juicio, no un umbral medido, y conviene que se sepa.** Con cero corridas
+> registradas cualquier número es inventado; lo que lo fija en dos y no en diez es que las corridas
+> de esta skill son pocas, así que esperar significancia estadística es esperar para siempre. Uno
+> puede ser mala suerte; dos ya es un patrón que vale un flujo.
+
+**Qué se abre, si se abre:** sede `cross-implement`, **sin skill nueva**, y con
+`final_diff_review.mode` como dueño de configuración. Eso ya está decidido y no se re-litiga: lo
+único que faltaba era saber si hace falta.
+
 En modo embebido, sdd-flow referencia este log desde su flujo; el commit y el `verify` siguen
 siendo de sdd-flow.

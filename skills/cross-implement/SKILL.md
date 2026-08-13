@@ -64,9 +64,11 @@ work order congelado ──► [implementador de otra familia: escribe, corre la
    > revisaría **su propio código**. En una corrida de esta skill el conductor no escribió una
    > línea: el código lo escribió la otra familia. Frente a un revisor fresco de su misma familia
    > **empata** en puntos ciegos y **gana** en contexto — tiene el mapa completo y es el único con
-   > vista de la coherencia entre tasks. Lo que su revisión **no** aporta es diversidad de familia:
-   > esa ya se gastó en la posición del implementador, y después del diff no queda ninguna (ver
-   > `CLAUDE.md` → regla de fronteras, "code review sobre diffs").
+   > vista de la coherencia entre tasks. Y **sí aporta diversidad de familia**: por la regla 8 el
+   > código lo escribió la otra, así que el conductor revisa lo que su familia no escribió. Lo que
+   > **no** cubre es el par **autor del work order ↔ revisor**, que es él mismo: un contrato
+   > ambiguo lo transcribe fielmente el implementador y el revisor comparte el punto ciego que lo
+   > produjo. Ese hueco no se discute, se mide — las dos últimas líneas de cada ronda del log.
 5. **Fix loop acotado, y solo para lo que se arregla implementando.** Cada falla se clasifica
    primero (`ownership.md` → "Las cuatro clases"); **solo `IMPLEMENTATION_DEFECT` reanuda la sesión**
    del implementador (con el override de sandbox explícito — el modo original no es garantía al

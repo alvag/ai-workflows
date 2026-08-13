@@ -687,6 +687,7 @@ Durante la implementación es normal toparse con un typo o un ajuste oportunista
 
 - **Corregir lo que la skill acaba de escribir** (typo/ajuste dentro del código del feature, en `code_touched`): es parte de implementar bien el AC. **No** se declara.
 - **Cambio sin relación con ningún AC** (otro archivo, o un hunk no relacionado dentro de un archivo `propio`): se declara como `E-n` en `## Extras (fuera de AC)` del `plan.md` (`- E1 — <descripción> · path:line`) antes de stagear, y se refleja como bullet en el body del commit (paso 7).
+- **Un `QUALITY: fail` de la revisión final de diff que se decide no arreglar** (ver `reference.md` → "Revisión final de diff"): mismo `E-n`, misma sede, mismo bullet en el body. No es un cambio extra sino **deuda aceptada**, pero entra al commit por la misma puerta y por el mismo motivo — nada que se decida dejar pasar se cierra sin rastro. Se escribe qué señaló el revisor y por qué se aceptó; "lo vemos después" no es un motivo.
 
 La detección es por **disciplina del conductor** al revisar el diff (paso 5/6), no automática a nivel hunk. Si un Extra crece o se vuelve riesgoso, tratarlo como cambio aparte: su propio flujo/commit, no colgarlo de este. `## Extras` es local (vive en `.plans/`, nunca se commitea); su único efecto en el repo es el body del commit.
 

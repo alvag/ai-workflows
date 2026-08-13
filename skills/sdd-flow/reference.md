@@ -853,9 +853,17 @@ NOTES: <no verificable desde el diff / recomendaciones no bloqueantes>
 ```
 
 **Cómo lee el conductor el reporte.** `SPEC: ok` + `QUALITY: ok` → el gate sigue su curso normal.
-`fail` en cualquiera de los dos ejes → hay findings que atender. `warn` no bloquea el gate, pero
-**tampoco lo cierra en silencio**: el conductor resuelve lo señalado —o lo declara— antes de
-commitear.
+`warn` no bloquea el gate, pero **tampoco lo cierra en silencio**: el conductor resuelve lo señalado
+—o lo declara— antes de commitear. Los dos `fail` **no pesan igual**, y la diferencia no es de
+severidad sino de qué hay detrás de cada eje:
+
+| | Qué obliga | Por qué |
+|---|---|---|
+| `SPEC: fail` | **bloquea el commit.** Se resuelve antes de seguir | contradice un `verify` en verde: dos lecturas del mismo hecho no pueden convivir. Una de las dos está mal y hay que averiguar cuál |
+| `QUALITY: fail` | **no bloquea, pero no se cierra en silencio:** se arregla, o se declara como `E-n` en `## Extras` del plan con qué se dejó pasar y por qué | no toca ningún AC, así que la ley fundamental —ningún commit con un AC en rojo— no lo alcanza. Pero un finding que se descarta sin rastro convierte al revisor en decorativo, y este es el eje **sin segunda red** |
+
+El asimétrico es deliberado: a un revisor cuyo `ok` no acredita nada tampoco se le da poder de veto
+sobre el commit. Lo que sí se le exige es que su hallazgo deje rastro.
 
 > **Cuánto vale ese `ok`, y por qué no es simétrico.** El revisor es del **mismo modelo**, así que
 > su acuerdo no acredita nada: dos agentes de la misma familia coinciden en los mismos puntos

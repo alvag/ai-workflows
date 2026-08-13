@@ -101,6 +101,7 @@ Más allá del spec, estas skills usan patrones consistentes que hay que respeta
 - **`co-explore`** — exploración paralela cross-model (read-only). Modos: `explore`, `counter-plan`, `investigate`, `debate`. La invocan `sdd-flow`/`sdd-orchestrator` cuando `co_explore` está activo; `investigate`/`debate` son standalone.
 - **`cross-review`** — segunda opinión adversarial sobre **artefactos de diseño** (spec/plan/tasks), no sobre código. Modo `draft` cuando hay idea pero no artefacto.
 - **`cross-implement`** — delega la implementación de un work order **congelado** a la otra familia; el conductor revisa el diff como un PR ajeno y commitea tras el gate humano.
+- **`bitbucket-code-review`** — code review de PRs de **Bitbucket** (MCP `bb_*`): panel de revisores externos **uno por familia disponible**, author-aware, sobre el diff del PR; publica la decisión con gate. Es la sede de "code review sobre diffs" de la regla de fronteras.
 
 **Escalera de rigor.** Las fronteras dicen *qué* hace cada una; la escalera dice *cuál alcanza*:
 respuesta local → `co-explore` (mapa, causa raíz o decisión) → `cross-review` (crítica de una
@@ -110,7 +111,15 @@ barata que alcanza**. Canónica en `co-explore/reference.md` → "Escalera de ri
 
 Regla de fronteras entre skills (aparece repetida en las descripciones y hay que preservarla): `co-explore` explora/hipotetiza · `cross-review` revisa documentos de diseño · `cross-implement` escribe código · `systematic-debugging` arreglar bugs · code review sobre diffs. No solapar.
 
-> **«Code review sobre diffs» es el único ítem de esa lista que hoy no tiene skill, y con la otra familia no existe en ningún lado.** Los revisores de diff que el ecosistema sí despacha —la revisión final de `sdd-flow` y la del conductor en `cross-implement`— son **same-model** por construcción: una corrida gasta toda su diversidad de familia antes de que exista una línea de código, y ninguna después. Si esa capacidad llega alguna vez, su sede es **`cross-implement`** —es la skill que ya tiene el diff, el work order congelado y la política de familias—, y **no se crea una skill nueva**: sería una frontera nueva contra esta misma regla y competiría con `bitbucket-code-review`. Si se escribe, su dueño de configuración es `final_diff_review.mode`, que ya es el dueño conceptual de «revisión de diff agregada»; una clave nueva agregaría superficie y dispararía las vistas de config. **Nada de esto está implementado**: queda escrito para que el hueco sea visible y no se resuelva dos veces en dos lugares.
+> **«Code review sobre diffs» sí tiene skill —`bitbucket-code-review`— y el único punto ciego que sobrevive es el del autor del contrato.** Conviene tenerlo preciso porque es fácil enunciarlo de más. Quién mira un diff, y contra qué familia:
+>
+> | Revisor | ¿De otra familia que quien escribió el código? |
+> |---|---|
+> | `bitbucket-code-review` · panel externo del Paso 7 | **sí** — author-aware por contrato, uno por familia disponible. Requiere PR de Bitbucket y su MCP: es post-push |
+> | `cross-implement` · el conductor (regla 4) | **sí** — la regla 8 manda que implemente la otra familia, así que el conductor revisa código que no escribió su familia |
+> | `sdd-flow` · revisión final de diff | **no** — mismo modelo, y su sección lo declara |
+>
+> Lo que **ninguno** cubre es el par **autor del work order ↔ revisor del diff**, que en `cross-implement` es la misma familia: si el contrato se escribió ambiguo o mal, el implementador lo transcribe fielmente y el revisor comparte el punto ciego que lo produjo. Es un hueco **estrecho y de una sola clase** —no "nadie revisa diffs cross-family"—, y **hoy no se escribe nada para cubrirlo**: se mide en vez de discutirse. El log de `cross-implement` registra la clase de cada falla y si el work order admitía otra lectura, y **la condición exacta para reabrirlo vive ahí mismo**, junto al registro que la alimenta (`cross-implement/reference.md` → "Qué hacer cuando el registro muestre algo"). No se repite acá a propósito: una condición escrita en dos lados se desincroniza. Lo que sí queda decidido de este lado, porque es lo que esta regla gobierna: si alguna vez se cubre, la sede es `cross-implement` y **no se crea una skill nueva** — sería una frontera nueva contra esta misma regla y competiría con `bitbucket-code-review`.
 
 ## Invocación cross-model (el mecanismo compartido)
 
