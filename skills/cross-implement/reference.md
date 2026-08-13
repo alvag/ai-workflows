@@ -427,6 +427,24 @@ está medido en vez de discutido.
 contrario de una señal: es el pipeline funcionando — el implementador de la otra familia hizo algo
 distinto de lo pedido y el conductor lo cazó.
 
+> **El campo lo contesta el autor del work order, y eso lo vuelve asimétrico.** El conductor de esta
+> skill **es** quien escribió el contrato, así que se le está pidiendo que dictamine si lo escribió
+> ambiguo — que es exactamente quien peor puede verlo. No invalida el registro, pero decide cómo se
+> lee:
+>
+> | Lo que dice el log | Cuánto vale |
+> |---|---|
+> | **"otra lectura: sí"** | **mucho.** Es una admisión contra el propio interés: el autor reconociendo que escribió mal. Cuando aparece, es señal real |
+> | **"otra lectura: no"** | **poco.** Es el autor absolviéndose. Puede ser cierto, o puede ser el punto ciego funcionando |
+>
+> Consecuencia práctica sobre el conteo: **los "sí" se cuentan, los "no" no prueban nada.** Un log
+> lleno de "no" no acredita que no haya hueco — es lo que el hueco predice. Por eso la condición de
+> abajo cuenta apariciones de la firma y **nunca** su ausencia.
+>
+> La salida obvia sería que lo conteste otro. No la hay hoy: el único que ve el diff junto al
+> contrato es el conductor. Se registra con el sesgo declarado, que es mejor que no registrar o que
+> registrar creyéndolo neutral.
+
 **Cuándo se reabre.** A la **primera** aparición se mira el caso; a la **segunda**, se abre flujo
 propio. Las dos condiciones van juntas:
 
