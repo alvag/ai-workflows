@@ -387,6 +387,8 @@ FILES declarados: <n> · coinciden con git status: <sí/no>
 Proof (corrido por el conductor): <PASS/FAIL + evidencia>
 Veredicto del conductor: <aceptado | fix round: qué corregir>
 Drift detectado: <ninguno | lista → revertido/declarado>
+Clase de cada falla (`ownership.md`): <IMPLEMENTATION_DEFECT | VERIFICATION_DEFECT | ENVIRONMENT_FAILURE | DESIGN_GAP, una por falla — omitir la línea si el proof pasó>
+¿El work order admitía otra lectura?: <no | sí: qué se entendió y qué se quiso decir — solo si hubo falla>
 
 ## Ronda 2 — fix
 <ídem>
@@ -395,6 +397,22 @@ Drift detectado: <ninguno | lista → revertido/declarado>
 <IMPLEMENTED | PARTIAL (takeover: qué terminó el conductor) | UNAVAILABLE> en <n> rondas.
 Desviaciones del work order: <lista o "ninguna">.
 ```
+
+> **Las dos últimas líneas de cada ronda no piden trabajo nuevo: piden no tirar el que ya se hizo.**
+> La clase **ya se decide en toda corrida** —`ownership.md` la exige antes del fix loop, porque de
+> ella depende si la falla consume ronda—, pero hasta ahora se decidía y se evaporaba. Escribirla es
+> lo que deja un rastro comparable entre corridas.
+>
+> **Qué pregunta contestan.** La regla 8 manda que implemente la otra familia, y su justificación es
+> que un implementador que no comparte los supuestos del autor **detecta la ambigüedad del contrato**
+> — un work order que admite dos lecturas se delata cuando alguien elige la otra. Eso es una
+> hipótesis, no un hecho medido. Si a lo largo de varias corridas casi todas las fallas son
+> `IMPLEMENTATION_DEFECT` con "otra lectura: no", la regla 8 no está comprando ese detector y su
+> costo hay que defenderlo por otro lado. La clase sola no alcanza para saberlo: dice **por qué
+> falló la prueba**, no **si el contrato era ambiguo**; por eso van las dos.
+>
+> Es un registro, no un gate: no bloquea la ronda, no cambia la clasificación y no le agrega nada al
+> implementador, que ni se entera.
 
 En modo embebido, sdd-flow referencia este log desde su flujo; el commit y el `verify` siguen
 siendo de sdd-flow.
