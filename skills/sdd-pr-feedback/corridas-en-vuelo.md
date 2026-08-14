@@ -33,8 +33,8 @@ cláusula sigue vigente y sin tocar:
 
 Un revisor que lea esa cláusula como un bloqueo de este contrato lo estaría leyendo al revés.
 Lo que rechazan es **reconstruir el avance** de una corrida leyendo un archivo; lo que el sobre
-registra es **quién sigue despachado y dónde escribe**. El sobre aplica ese mecanismo a los trece
-puntos de despacho del ecosistema; no lo asciende a máquina de estados.
+registra es **quién sigue despachado y dónde escribe**. El sobre aplica ese mecanismo
+a los once puntos de despacho del ecosistema; no lo asciende a máquina de estados.
 
 ### El archivo
 

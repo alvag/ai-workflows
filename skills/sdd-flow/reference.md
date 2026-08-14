@@ -593,6 +593,43 @@ Reportar URL / ID / reviewers. Guardar `pr_url: <url>` en el header del `plan.md
 
 > **Nunca** el agente aprueba (`.../approve`) ni mergea (`.../merge`) el PR: solo lo crea. El merge lo hace una persona en Bitbucket.
 
+### Transición entre bloques
+
+Esta tabla es la autoridad canónica de la secuencia. Cada paso opera sobre el bloque aprobado y
+solo avanza cuando su precondición es observable; las skills consumidoras la referencian en vez de
+inventar otro orden.
+
+| # | Paso | Precondición | Postcondición |
+|---|---|---|---|
+| 1 | revisión del delta | El implementador cesó, la cosecha terminó y el delta del bloque está completo contra su commit base. | El conductor revisó todo el delta, incluidos los archivos nuevos, y resolvió cualquier drift. |
+| 2 | comprobación del bloque | La revisión del delta terminó sin hallazgos abiertos y existe al menos una fila elegible. | El outcome es admisible y todas las filas elegibles del bloque están en verde. |
+| 3 | commit de trabajo | El bloque satisface el predicado de aceptación y ningún commit de trabajo alcanzó el upstream. | El conductor creó un commit de trabajo descartable, identificado como propio de la secuencia. |
+| 4 | vínculo en el recibo | El commit de trabajo existe y coincide con el delta aceptado del bloque. | La identidad del bloque en el recibo quedó vinculada al SHA del commit de trabajo. |
+| 5 | marcas `[x]` | El vínculo entre identidad de bloque y commit de trabajo ya está persistido. | Solo las tasks efectivamente cubiertas por el bloque quedaron marcadas `[x]`. |
+| 6 | revalidación del recibo | Las marcas reflejan el bloque aceptado y el recibo conserva su fingerprint aprobado. | El recibo se revalidó contra el contenido canónico y, por separado, contra las tasks pendientes. |
+| 7 | siguiente dispatch | El recibo revalidado identifica un bloque restante y el cese del writer anterior sigue confirmado. | El siguiente bloque aprobado quedó despachado como único writer, o la secuencia pasó al cierre final. |
+
+### Formato del recibo de partición
+
+El recibo vive en la ruta persistente `.plans/<id>/partition-receipt.yml`. No es un ledger de
+avance: conserva exactamente qué partición aprobó el humano y permite comprobar que cada dispatch
+transporta ese mismo alcance. Su esquema mínimo contiene `tasks_fingerprint`, la lista `blocks` en
+su orden aprobado y, para cada bloque, `block_id`, `task_ids` y `work_commit`.
+
+El `tasks_fingerprint` se calcula sobre el contenido canónico de cada task, **normalizando únicamente
+el estado del checkbox**. El título, los pasos, los archivos y las dependencias (`Produce` y
+`Consume`) son contenido semántico: modificarlos invalida la aprobación. Hashear los bytes completos
+de `tasks.md` sería incorrecto porque la transición esperada `[ ]` → `[x]` cambiaría el fingerprint;
+hashear solamente los IDs también sería incorrecto porque no detectaría cambios en pasos, archivos o
+dependencias.
+
+Cada `block_id` es una identidad por bloque estable y única dentro del recibo. Tras aceptar el
+bloque, esa identidad se vincula al SHA de su commit de trabajo en `work_commit`; una identidad sin
+ese vínculo no autoriza marcar tasks ni avanzar. Antes de cada dispatch, el conductor revalida el
+fingerprint y el orden de los bloques restantes. El conjunto de tasks pendientes se valida por
+separado contra la unión de esos bloques: cualquier diferencia invalida el dispatch y detiene la
+secuencia.
+
 ## Plantilla de constitution
 
 `.specify/constitution.md` — principios de **proceso/calidad**, no de código.

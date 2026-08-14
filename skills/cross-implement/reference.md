@@ -15,7 +15,11 @@ conductor, el fix loop, los tiempos y los archivos de trabajo.
 - [Formato del reporte](#formato-del-reporte)
 - [Revisión del conductor](#revisión-del-conductor)
 - [Fix loop](#fix-loop)
+- [El delta revisable de un bloque](#el-delta-revisable-de-un-bloque)
+- [Secuencia Git entre bloques](#secuencia-git-entre-bloques)
+- [Orden de cierre de la secuencia](#orden-de-cierre-de-la-secuencia)
 - [Latencia, deadlines y banner](#latencia-deadlines-y-banner)
+- [Rutas por invocación](#rutas-por-invocación)
 - [Archivos de trabajo (scratch)](#archivos-de-trabajo-scratch)
 - [Log de implementación](#log-de-implementación)
 - [Cuándo un reporte ilegible no invalida la revisión](#cuándo-un-reporte-ilegible-no-invalida-la-revisión)
@@ -31,7 +35,7 @@ tamaño. Cargar los tres siempre desperdicia contexto en una corrida que sale bi
 |---|---|---|
 | `reference.md` (este) | descubrimiento, vías de invocación, prompt, reporte, revisión, fix loop, tiempos y scratch | en toda corrida |
 | `contrato-verificacion.md` | esquema del contrato, reglas de congelamiento, adjudicación, gate previo al dispatch y sus bloques de validación | al armar y aprobar el contrato, antes de delegar |
-| `ownership.md` | las cuatro clases de falla, presupuestos, re-baseline aislado, takeover y precedencia de topes | cuando una ronda falla |
+| `ownership.md` | las cuatro clases de falla, matriz de cierre por bloque, presupuestos, rollback, re-baseline aislado, takeover y precedencia de topes | al cerrar cualquier bloque, haya fallado o no |
 
 En toda corrida, antes del primer despacho, leer también
 `skills/cross-review/corridas-en-vuelo.md` → "Invariantes de recuperación". Ese contrato gobierna el
@@ -323,6 +327,51 @@ entregable.
 - En modo embebido sdd-flow, su tope de diseño manda: 3 fallos de la MISMA falla (aunque queden
   fix rounds) = problema de diseño → volver a `plan`/`specify`, no seguir delegando.
 
+### El delta revisable de un bloque
+
+La revisión del bloque compara su **commit base del bloque** contra el estado conjunto del index y
+el working tree. Para los paths trackeados, el comando base es `git diff "$block_base" --
+<pathspec...>`: incluye staged y unstaged respecto de ese commit y no es un rango entre dos commits,
+porque el commit de trabajo del bloque todavía no existe.
+
+`git diff` no incorpora archivos untracked. El conductor obtiene su lista con `git status
+--porcelain` y `git ls-files --others --exclude-standard -- <pathspec...>`, y revisa además el
+contenido completo de cada archivo listado. El conjunto resultante debe coincidir exactamente con el
+mismo set `code_dirty` que clasifica `sdd-flow`: excluye `.plans/`, `.specify/` y los
+generados reconocidos por el repo. Una diferencia entre ambos conjuntos detiene la aceptación.
+
+### Secuencia Git entre bloques
+
+Antes del primer dispatch, el conductor fija el ancla con `anchor=$(git rev-parse HEAD)` y conserva
+ese SHA en el recibo. Cada commit de trabajo lleva los trailers `Cross-Implement-Block: <block_id>` y
+`Cross-Implement-Receipt: <fingerprint>`. Para distinguir sus commits de trabajo de commits ajenos,
+ejecuta `git rev-list --reverse "$anchor..HEAD"` y, por cada SHA, `git log -1
+--format='%(trailers:key=Cross-Implement-Block,valueonly)' <sha>`; un commit sin marca o con una
+identidad ajena detiene la secuencia.
+
+El staging se reconstruye para cada bloque con pathspec explícito: `git add -- <pathspec...>`. Antes
+del commit, `git diff --cached --name-only` debe coincidir con los paths aceptados del delta; nada que
+estuviera staged previamente entra por arrastre. Si un hook falla, el conductor muestra el error y se
+detiene sin `--no-verify`. Si un hook modifica el árbol, invalida el delta revisado: se vuelve a
+clasificar y revisar el cambio antes de decidir si el bloque todavía puede aceptarse.
+
+Antes de reset, aplastado o rollback, cada SHA marcado se consulta con `git branch -r --contains
+<sha>`. Si algún commit de trabajo aparece en un upstream, la guarda detiene sin reescribir la
+historia; esos commits solo pueden aplastarse mientras sigan siendo locales.
+
+### Orden de cierre de la secuencia
+
+Tras aceptar el último bloque y confirmar el cese, el orden obligatorio es **delta acumulado →
+verificación final → gate → commit final**. Primero se valida la cadena marcada y se ejecuta `git
+reset --soft "$anchor"`; así el aplastado reconstruye en el index el delta acumulado de todos los
+commits de trabajo. Los extremos del diff presentado son el ancla previa a los bloques y el index más
+working tree resultante, inspeccionados con `git diff "$anchor"` y `git diff --cached "$anchor"` e
+incluyendo por separado cualquier untracked aceptado.
+
+Sobre ese delta se corre la verificación final. Después se presenta el mismo delta y la evidencia en
+el gate humano, y solo tras su aprobación se crea el commit final de contenido. No se aplaza el
+aplastado hasta después del gate: hacerlo dejaría el árbol limpio y mostraría un diff vacío al humano.
+
 ## Latencia, deadlines y banner
 
 Una implementación tarda mucho más que una crítica: presupuestos por encima de cross-review.
@@ -403,29 +452,43 @@ el deadline de la tabla, el `kill` al vencer y el `UNAVAILABLE` con causa `deadl
 banner obligatorio no cambia en ninguno de los dos casos — con callback es lo primero que se escribe
 al despertar; con poll, lo primero después de ver `STATUS: done`.
 
+### Rutas por invocación
+
+Cada despacho obtiene un `invocation_id` estable, distinto del `block_id` y de la ronda. Todos sus
+artefactos se escriben bajo una ruta exclusiva; una reanudación conserva el mismo identificador y un
+nuevo bloque recibe otro.
+
+| Artefacto | Plantilla de ruta |
+|---|---|
+| prompt | `<dir-del-work-order>/cross-implement/<invocation_id>/prompt.txt` |
+| report | `<dir-del-work-order>/cross-implement/<invocation_id>/report.txt` |
+| sesión | `<dir-del-work-order>/cross-implement/<invocation_id>/session.txt` |
+| registro | `<dir-del-work-order>/implement-log-<invocation_id>.md` |
+
 ## Archivos de trabajo (scratch)
 
-Junto al work order, subdirectorio `cross-implement/` (mismo criterio que `cross-review/`):
+Junto al work order, el subdirectorio `cross-implement/<invocation_id>/` conserva el scratch de una
+sola invocación (mismo criterio que `cross-review/`):
 
 ```
-<dir del work order>/cross-implement/
-├─ work-order.md          # solo en modo directo sin archivo: el contrato destilado
+<dir del work order>/cross-implement/<invocation_id>/
+├─ work-order.md          # solo en modo directo sin archivo: contrato destilado de esta invocación
 ├─ prompt.txt             # prompt-contrato (Write, nunca inline)
-├─ fix-r1.txt, fix-r2.txt # deltas del fix loop
-├─ report.txt             # reporte del implementador (se sobreescribe por ronda; queda el último)
+├─ fix-r1.txt, fix-r2.txt # deltas del fix loop de la misma sesión
+├─ report.txt             # reporte vigente de esta invocación
 ├─ thread.jsonl           # stream JSONL del lanzamiento (Vía W-B) — fuente del thread id
 ├─ session.txt            # thread/session id capturado
-├─ impl.err.txt           # stderr del implementador
-└─ implement-log.md       # NO: el log va junto al work order, no en el scratch (abajo)
+└─ impl.err.txt           # stderr del implementador
 ```
 
-En SDD resuelve a `.plans/<id>/cross-implement/`. Local y untracked, sin autolimpieza — igual
-que `cross-review/` y `co-explore/`.
+En SDD resuelve a `.plans/<id>/cross-implement/<invocation_id>/`. Local y untracked, sin
+autolimpieza — igual que `cross-review/` y `co-explore/`.
 
 ## Log de implementación
 
-`implement-log.md` junto al work order (`.plans/<id>/implement-log.md` en SDD). Registro
-auditable de la delegación:
+`implement-log-<invocation_id>.md` junto al work order
+(`.plans/<id>/implement-log-<invocation_id>.md` en SDD). Registro auditable de una delegación que no
+sobrescribe las anteriores:
 
 ```markdown
 # Cross-implement log — <id|work order> (<ISO-8601>)

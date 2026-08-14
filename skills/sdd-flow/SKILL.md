@@ -665,6 +665,20 @@ Punto de entrada cuando vuelves a un flujo ya empezado — en una sesión nueva,
 
    Al retomar en `implement` (`tasks-ready`/`implementing`), **re-resolver el modo de ejecución** (override > `implement_mode` > preguntar; ver `implement` → "Modo de ejecución"). Las tasks ya marcadas `[x]` no se repiten en ningún modo.
 
+### Guarda de retomado con bloques en vuelo
+
+Antes de retomar una secuencia por bloques, comparar como una sola guarda los cuatro estados: `HEAD`,
+la cadena de commits de trabajo identificados por la secuencia, el recibo de partición y las marcas
+de las tasks. Solo se continúa desde una combinación reconocida por `reference.md` → "Transición
+entre bloques"; toda combinación no reconocida detiene el flujo y se reporta sin corregirla por
+inferencia.
+
+La guarda incluye dos casos que un árbol limpio no revela por sí solo: tasks todavía `[ ]` cuyo
+contenido ya está en un commit de trabajo, y una caída durante el aplastado que dejó la historia
+parcialmente transformada con marcas adelantadas. En ambos se detiene. La parada fail-closed es
+responsabilidad de este flujo; reconstruir la secuencia y recuperar esos estados pertenece al
+flujo 2.
+
 ### Sub-paso `status` (alias de listado)
 
 `/sdd-flow status` no introduce un estado nuevo: es un alias read-only de `resume` en modo listar.
@@ -707,7 +721,7 @@ Disparador: `/sdd-flow implement <ruta-carpeta>` (p. ej. `.plans/ABC-123/`), o l
 Ortogonal a las Vías A/B: se llegue por la sesión actual o por bootstrap, las tasks se ejecutan en uno de dos modos.
 
 - **`inline`** — la propia sesión implementa cada task (el comportamiento de siempre). El contexto acumulado ayuda, pero arrastra el ruido de specify/plan/cross-review.
-- **`cross`** — la implementación completa la delega la skill **`cross-implement`** a un modelo de **otra familia** (Codex cuando conduce Claude; Claude cuando conduce Codex), con escritura acotada al repo; el conductor revisa el diff como un PR ajeno y corre la prueba él mismo. El valor: implementador y revisor del código son de familias distintas por construcción (en `inline` son el mismo modelo). Requiere la skill `cross-implement` instalada **y** el CLI de la otra familia disponible — descubrir ambas por capacidad; si falta cualquiera, el modo no se ofrece.
+- **`cross`** — la implementación se delega por la partición aprobada a la skill **`cross-implement`**, un bloque por invocación, con un implementador seleccionado y escritura acotada al repo; el conductor revisa cada delta como un PR ajeno y corre la prueba él mismo. Con selección cross-family, implementador y revisor del código son de familias distintas; con selección same-family se conserva independencia de proceso y se declara el costo. Requiere la skill `cross-implement` instalada **y** el CLI de la familia elegida disponible — descubrir ambas capacidades; si falta alguna, el modo no se ofrece.
 
 Resolución (misma precedencia que el resto de overrides SDD): **override conversacional de la corrida** ("implementa acá" / "implementa con Codex") > **`implement_mode`** del `config.yml` > default `ask` (preguntar en el último gate antes de implementar, dentro del mismo STOP — nunca un gate extra; la opción `cross` se incluye en la pregunta solo si su capacidad está disponible). Excepción: en *trivial* el default efectivo es `inline` sin pregunta (1-2 tasks mecánicas no ameritan delegar — delegar ~<20 líneas cuesta más que hacerlas); el override conversacional sigue valiendo. Si falta la capacidad de `cross`, avisar en una línea y seguir `inline` (degradación estándar, regla 6).
 
@@ -716,6 +730,36 @@ Resolución (misma precedencia que el resto de overrides SDD): **override conver
 > valor retirado y pide elegir entre `ask`, `inline` o `cross`. **No hay fallback silencioso:** no se
 > degrada a `inline` ni se ignora la clave — un valor inexistente que el flujo acepta calladamente es
 > una corrida ejecutándose en un modo que nadie eligió.
+
+### La partición en bloques y su aprobación
+
+Cuando el modo resuelto antes del último gate es `cross`, el conductor prepara una **propuesta de
+partición** y la presenta en el gate ya existente, sin gate nuevo. En complejidad `complex`, se
+presenta en el gate propio de `tasks`; en `normal`, acompaña plan y tasks en el gate conjunto. Las
+tasks y la partición se aprueban de forma atómica en el mismo STOP, y el flujo no despacha ningún
+bloque antes de esa aprobación.
+
+El grafo declarado es insumo, no autoridad para derivar la partición: el humano decide el corte. La
+propuesta declara, por bloque, las tasks que lo componen, por qué se cortó ahí y qué no pudo verificar
+del grafo. En particular, enumera las tasks que no declaran dependencias, sin afirmar que por eso no
+las tengan. La propuesta puede contener un solo bloque cuando su justificación explica por qué no
+conviene partirlo.
+
+El conductor, antes de presentar, comprueba mecánicamente que la unión de los bloques es igual al
+conjunto de tasks pendientes, que los bloques son disjuntos, que todos los IDs existen en `tasks.md`
+y que ninguna task ya `[x]` está incluida. También rechaza una propuesta con un bloque sin ninguna
+fila elegible; ese bloque se fusiona con el siguiente. Si falla cualquiera de estas invariantes, la
+propuesta no se presenta.
+
+Las referencias declaradas siguen siendo hechos: se rechaza mecánicamente toda referencia
+`Produce`/`Consume` inválida y toda arista `Consume` dirigida a un bloque posterior. Que el grafo sea
+incompleto no vuelve opcional lo que declara. La aprobación humana cubre solo lo que el grafo no
+permite comprobar, nunca una contradicción observable.
+
+`resume` re-resuelve el modo de ejecución. Si el flujo llegó a `tasks-ready` sin partición aprobada y
+después elige `cross`, solo hay dos salidas válidas: fallback monolítico sobre el work order completo,
+o reapertura explícita del gate existente para aprobar una propuesta. La ausencia de una partición no
+autoriza despachos por bloques ni convierte la capacidad `cross` en un error.
 
 ### Paso común — Implementación
 
@@ -729,7 +773,7 @@ Resolución (misma precedencia que el resto de overrides SDD): **override conver
      → implementación mínima → test verde). Si la task es mecánica o no tiene seam razonable, no
      inflar el plan: la garantía vive en `verify`, que exige evidencia fresca y, cuando haya test
      ligado al AC, test con dientes vía revert-to-confirm.
-   - **Modo `cross`:** invocar la skill **`cross-implement`** (Skill tool) con `work_order: .plans/<id>/` (en retomados, indicando que las tasks ya `[x]` quedan fuera del alcance), `working_dir` = raíz del repo, `proof_cmd` derivado de `test_cmd`/`test_scope_hint` acotado al cambio, y `execution` / `max_fix_rounds` / `deadline` **resueltos del bloque `cross_implement` del `config.yml`** (con los defaults de la skill como fallback: `execution: auto` → por tamaño del work order, `max_fix_rounds: 2`, `deadline: 1800`). La skill delega la implementación **completa** al modelo de la otra familia (escritura acotada, nunca commitea) y guía la revisión del conductor: diff completo como PR ajeno, archivos declarados vs `git status` (alimenta `code_touched`, regla 8), prueba corrida por el conductor, y fix loop acotado reanudando la misma sesión. Al aceptar el diff, el conductor atribuye hunks a tasks y marca `- [x]` solo las efectivamente cubiertas; el drift fuera del work order se revierte o se declara en `## Extras`. **El tope de diseño de esta skill manda:** 3 fallos de la misma falla = volver a `plan`/`specify`, aunque queden fix rounds (ver paso 3). Si la skill devuelve `UNAVAILABLE` o `PARTIAL`, el conductor sigue/termina inline con lo revisado hasta ahí. El detalle del contrato vive en `cross-implement` (dependencia blanda: sin ella, este modo no existe).
+   - **Modo `cross`:** invocar la skill **`cross-implement`** (Skill tool) con `work_order: .plans/<id>/` y el bloque aprobado como alcance parcial (en retomados, las tasks ya `[x]` quedan fuera), `working_dir` = raíz del repo, `proof_cmd` derivado de `test_cmd`/`test_scope_hint` acotado al cambio, y `execution` / `max_fix_rounds` / `deadline` **resueltos del bloque `cross_implement` del `config.yml`** (con los defaults de la skill como fallback: `execution: auto` → por tamaño del bloque, `max_fix_rounds: 2`, `deadline: 1800`). La skill delega ese bloque al implementador seleccionado (escritura acotada, nunca commitea) y guía la revisión del conductor: diff completo como PR ajeno, archivos declarados vs `git status` (alimenta `code_touched`, regla 8), prueba corrida por el conductor, y fix loop acotado reanudando la misma sesión. Al aceptar el bloque, el conductor atribuye hunks a tasks y aplica la secuencia canónica de `reference.md` → "Transición entre bloques" y "Formato del recibo de partición"; el drift fuera del work order se revierte o se declara en `## Extras`. **El tope de diseño de esta skill manda:** 3 fallos de la misma falla = volver a `plan`/`specify`, aunque queden fix rounds (ver paso 3). Si la skill devuelve `UNAVAILABLE` o `PARTIAL`, el conductor solo toma el trabajo restante cuando el cese está confirmado y la cosecha terminó; con cese incierto, detiene la secuencia. El detalle del contrato vive en `cross-implement` (dependencia blanda: sin ella, este modo no existe).
    Los pasos 3-10 de abajo (tests+build completos, `verify` de AC, revisión manual, staging, commit, push, PR opcional) los ejecuta **siempre el conductor en esta sesión**, en todos los modos: los STOPs no funcionan dentro de un subagente ni de un implementador delegado.
 3. **Tests + build** con los comandos detectados/configurados (+ `lint_cmd` si está configurado). Acotar tests al código tocado si el runner lo permite (`test_scope_hint`). Si algo falla: **no commitear**; antes de parchar, aplicar **debugging sistemático** — formular **una** hipótesis ("creo que la causa raíz es X porque Y") y probarla mínimamente, en vez de prueba y error (skill de debugging sistemático si está disponible, o el método inline; ver `analyze` y `reference.md` → "Matriz de detección por capacidad"). Mostrar el error + la hipótesis, aplicar el fix y volver al paso 2. **Tope: 3 fixes fallidos de la misma falla = problema de diseño** — parar y volver a `plan`/`specify`, no intentar un fix #4.
 4. **`verify` de los AC** (ver paso `verify`): recorrer `AC-1..N` con la gate function y marcar cumplido/no cumplido con evidencia fresca. Si alguno falla: **no commitear**, reportar y volver al paso 2 (con el mismo debugging sistemático del paso 3; mismo tope de 3 intentos), o a `plan`/`specify` si el gap es de diseño. Solo se commitea con **todos los AC en verde**; cuando lo estén, `verify` persiste el resultado y deja `status: verified`. Verificar antes del commit evita commits/push que después no cumplen lo pedido.

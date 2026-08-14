@@ -79,9 +79,12 @@ work order congelado ──► [implementador seleccionado: escribe, corre la pr
    poder ablandar las filas que él escribió. Nunca ping-pong indefinido.
 6. **El commit es del conductor, tras gate humano.** Presentar diff + prueba + rondas y esperar
    confirmación. El implementador jamás commitea; el conductor tampoco auto-commitea.
-7. **Opcional y degradable.** Sin CLI para el implementador seleccionado, o ante un fallo en runtime
-   o deadline vencido → `UNAVAILABLE` en una línea y el conductor implementa inline (su rol de
-   siempre). Nunca bloquea al flujo llamador.
+7. **Opcional y degradable.** Si la skill no está instalada o el preflight confirma la ausencia de
+   capacidad antes del dispatch, la llamadora continúa inline de inmediato: no existe writer ni
+   cosecha que esperar. Si la falla ocurre después de despachar un writer, el conductor retoma inline
+   el trabajo restante solo tras confirmar su cese y terminar la cosecha; con cese incierto, la
+   secuencia se detiene. Como dependencia blanda, nunca bloquea al flujo llamador por ausencia de la
+   skill o del CLI.
 8. **Familia opuesta como default y recomendación; allowlist como autoridad.** Con ambas familias
    seleccionadas, implementa la opuesta al autor. Si la allowlist obliga a la propia, la skill
    **corre** con un implementador fresco: conductor Claude → worker Claude; conductor Codex → worker
@@ -156,6 +159,47 @@ Quien la invoca (el usuario en modo directo, o `sdd-flow` en modo embebido) prov
 > `working_dir`, `proof_cmd`) los arma sdd-flow por corrida. La **familia** del implementador la
 > fija el conductor (no es configurable).
 
+### Alcance parcial: el bloque como unidad de despacho
+
+Cada invocación puede transportar un bloque aprobado sin convertir el contrato completo en trabajo
+ejecutable. El portador declara `block_id`, `included_tasks` y `excluded_tasks`: las tasks que entran
+son el único alcance ejecutable de la corrida; las que quedan fuera se enumeran para que una omisión
+no parezca autorización implícita. El `work_order` completo viaja como contexto congelado para
+entender interfaces, AC y decisiones, no como alcance adicional.
+
+El prompt repite el `block_id`, la lista que entra y la lista que queda fuera antes de ordenar la
+implementación. Una discrepancia entre ese portador y el recibo aprobado detiene el dispatch; el
+implementador no decide ampliar ni recomponer el bloque.
+
+### Aceptación de un bloque
+
+Un bloque queda aceptado solo cuando se cumplen juntas tres condiciones observables: su outcome es
+admisible según la matriz de `ownership.md`, el delta está completamente revisado por el conductor y
+su comprobación propia terminó en verde. Solo entonces se habilita el commit de trabajo.
+
+La comprobación usa las filas elegibles del contrato completo. Una fila es elegible cuando todas sus
+tasks de referencia están `[x]`, no cuando termina la primera; así un AC repartido entre bloques no
+se declara prematuramente. Un bloque aceptado no cierra el AC: el cierre de cada AC pertenece al
+`verify` final sobre el contrato congelado completo.
+
+### El commit de trabajo por bloque
+
+El commit de trabajo lo crea el conductor después de aceptar el bloque; nunca el implementador, que
+no commitea y no pushea. Estos commits no son el commit de contenido sometido al gate humano por la
+regla 6. Son plumbing descartable de la frontera entre bloques y el aplastado los elimina antes de
+presentar el delta acumulado.
+
+### Cese confirmado antes de mutar Git
+
+El despacho de N+1 exige el cese confirmado del implementador de N y la cosecha terminada antes de
+despachar el bloque siguiente. El mismo predicado gobierna toda mutación de Git posterior a un corte:
+commit de trabajo, reset, aplastado y rollback. Un deadline vencido o un reporte terminal no prueban
+por sí solos que el writer haya cesado.
+
+Con cese incierto, la única transición permitida es detenerse. No se abre otro implementador, no se
+aplica fallback sobre el mismo árbol y no se reescribe la historia hasta obtener evidencia positiva
+del cese y completar la cosecha.
+
 ### Pasos de ejecución
 
 1. **Resolver el implementador** (regla 8) + prechequeos (versión del CLI, no pinear modelo, eco
@@ -192,6 +236,17 @@ commit y push con sus STOPs. El contrato de verificación llega ya escrito en el
 del `plan.md`. El tope de `sdd-flow` ("3 fixes de la misma falla = problema de diseño → volver a
 plan/specify") manda por encima de `max_fix_rounds`; las clases que no consumen ronda tampoco
 cuentan para él (`ownership.md` → "Precedencia entre los tres topes de corte").
+
+### Equivalencia con la entrega única
+
+La comparación usa el mismo delta reaplicado por bloques y de una sola vez; no compara dos
+ejecuciones independientes del work order, porque ambas podrían producir soluciones distintas y
+válidas. Deben coincidir el diff final normalizado, el estado de las tasks, la evidencia por AC y
+cada par comando + exit code.
+
+La equivalencia del ledger queda fuera de esta comparación y pertenece al flujo 2, donde ese ledger
+existe. La secuencia por bloques tampoco cambia el contrato de verificación: solo cambia cuándo se
+revisa y se conserva cada porción del mismo delta.
 
 ## Salida
 
@@ -253,7 +308,12 @@ config > default de la skill**.
 
 ## Degradación
 
-Nunca bloquea. Cuatro vías de falla, mismo final — el conductor implementa inline:
+Nunca bloquea como dependencia blanda. En las vías sin writer —skill no instalada o pared confirmada
+por el preflight— la llamadora continúa inline de inmediato, sin cese ni cosecha que esperar. En las
+vías con un writer ya despachado —flake después del lanzamiento, fallo en runtime, deadline vencido o
+reporte no parseable— recupera el trabajo pendiente inline solo después de confirmar el cese y
+completar la cosecha; con cese incierto, la secuencia se detiene. Las cuatro vías aplican esa
+distinción:
 
 1. Skill no instalada → la llamadora la omite.
 2. **Fallo de arranque.** Dos casos, según el preflight de capacidad del CLI:
@@ -261,9 +321,10 @@ Nunca bloquea. Cuatro vías de falla, mismo final — el conductor implementa in
      chocar contra la misma pared → `UNAVAILABLE`. Es **terminal para la corrida**; si la llamadora
      despacha en tanda (p. ej. `sdd-orchestrator` sobre varios repos), la capacidad queda no
      disponible para toda la tanda (no se re-diagnostica por ítem).
-   - **Flake transitorio** — el binario existe pero el lanzamiento falló por arranque frío, timeout
-     de spawn o una race: 2-3 reintentos con backoff corto, no un loop abierto; solo si ninguno
-     levanta → `UNAVAILABLE`.
+   - **Flake transitorio** — el binario existe y el dispatch se intentó, pero el lanzamiento quedó
+     incierto por arranque frío, timeout de spawn o una race: antes de cada reintento se confirma el
+     cese y se termina la cosecha del intento anterior; 2-3 reintentos con backoff corto, no un loop
+     abierto. Solo si ninguno levanta → `UNAVAILABLE`.
 3. **Fallo en runtime / tarea** (deadline vencido, error de ejecución tras arrancar bien) → matar el
    proceso, conservar el diff parcial **solo si** el conductor lo revisa y decide qué mantener (por
    default, revertirlo), registrar y `UNAVAILABLE`. A diferencia del punto 2, es **por-intento**: no
@@ -285,8 +346,9 @@ Nunca bloquea. Cuatro vías de falla, mismo final — el conductor implementa in
 - `contrato-verificacion.md` — el esquema del contrato, las reglas de congelamiento, la adjudicación
   del baseline, el gate previo al dispatch y el flujo en work orders sin SDD. Se lee **al armar y
   aprobar el contrato**, antes de delegar.
-- `ownership.md` — las cuatro clases de falla, sus presupuestos, el re-baseline en worktree aislado,
-  el takeover y la precedencia de topes. Se lee **cuando una ronda falla**.
+- `ownership.md` — las cuatro clases de falla, la matriz de cierre por bloque, sus presupuestos, el
+  rollback, el re-baseline en worktree aislado, el takeover y la precedencia de topes. Se lee **al
+  cerrar cualquier bloque**; las reparaciones solo cuando una ronda falla.
 - `README.md` — qué es, cuándo usarla, requisitos e instalación.
 
 ## Atribución

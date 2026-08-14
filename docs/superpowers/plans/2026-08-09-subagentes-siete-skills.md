@@ -8,12 +8,14 @@
 > instrucción a ejecutar.
 
 
-**Estado:** programa **detenido**. Fase 0 completada y cerrada; **Fase 0.5 archivada sin ejecutar**;
-Fases 1–7 pendientes y sin fecha. El flujo `retiro-andamiaje` (posterior a
+**Estado:** programa **en curso, con la Fase 5 partida en tres flujos**. Fase 0 completada y cerrada;
+**Fase 0.5 archivada sin ejecutar**; Fases 1–4 y 6–7 siguen pendientes. El flujo
+`retiro-andamiaje` (posterior a
 `e179fa117fd5cdc6273f3adaedce920b2678e38d`) retiró el modo de implementación por task y el andamiaje
 de las Fases 0 y 0.5. La secuencia nunca autorizó implementación por sí sola: cada fase entra por su
-propio flujo con su gate — y hoy, además, ninguna puede entrar sin re-fundar sus insumos. **El estado
-por fase, con sus dependencias invalidadas y sus diseños vigentes, está en la tabla de abajo.**
+propio flujo con su gate, y las fases todavía pendientes no pueden entrar sin re-fundar sus insumos.
+**El estado por fase, con sus dependencias invalidadas y sus diseños vigentes, está en la tabla de
+abajo.**
 
 ### Estado de las nueve fases tras el retiro
 
@@ -28,7 +30,7 @@ documento cite y ya no esté en el árbol se recupera desde ahí con `git show <
 | **2** — Roles read-only | **pendiente, sin fecha** | ninguna: sus tres roles (`explorer`, `investigator`, `design-reviewer`, `diff-reviewer`) viven en puntos de despacho **que sobreviven** | **íntegro**, incluido su §2.a (reparto de ejes de revisión), que vale por sí solo |
 | **3** — Writers y cobertura de los despachos | **pendiente, alcance reducido** | el bullet «implementer por task de `sdd-flow`» **ya no tiene referente**, y el título «los trece despachos» quedó obsoleto: son once | el resto del alcance: implementador y fix loop de `cross-implement`, fan-out por repo de `sdd-orchestrator`, fix delegado de `sdd-pr-feedback`. El `bounded-implementer` con scope explícito sigue siendo el diseño correcto |
 | **4** — Piloto de revisión de diff | **pendiente, sin fecha** | su **baseline de comparación** se fue con la Fase 0: no hay contra qué medir el piloto hasta re-fundarlo | el diseño del **snapshot inmutable** (`base_sha`, `snapshot_sha`, hash del diff y de los artefactos) es independiente del modo retirado y sigue vigente |
-| **5** — `cross-implement` granular por task | **pendiente, sin fecha** | ninguna directa. Su granularidad es la de `cross-implement`, no la del modo retirado | **íntegro**: task ID, ownership, DAG, snapshot y ledger por task, y resume desde la última transición |
+| **5** — `cross-implement` granular por task | **en curso, partida en tres flujos** | ninguna directa. Su granularidad es la de `cross-implement`, no la del modo retirado | el flujo 1 cubre bloques aprobados y frontera Git; ledger durable y join por task siguen pendientes en los flujos 2 y 3, por lo que la fase no está entregada |
 | **6** — Pipeline limitado N/N+1 | **pendiente, sin fecha** | su dependencia de la Fase 0.5 —el recorte del paquete que hacía viable *k* agentes concurrentes— quedó **sin insumo**: ya no hay paquete que recortar en el punto que se retiró | su **lista de elegibilidad obligatoria** (seis condiciones) sigue siendo el diseño correcto, y es lo que la habilita o la bloquea |
 | **7** — Invariante dinámica y degradación same-family | **pendiente, sin fecha** | ninguna: su objeto es la doctrina de familias de `cross-implement`, intacta | **íntegro**, incluido su motivo para ir última: el autor del work order sigue sin un predicado independiente para juzgar su propia ambigüedad |
 
@@ -54,7 +56,7 @@ roadmap es la sede sobre la que se trabaja.
 | 2 — Roles read-only | pendiente | — |
 | 3 — Writers y cobertura de los despachos | pendiente, alcance reducido | — |
 | 4 — Piloto de revisión de diff | pendiente | — |
-| 5 — `cross-implement` granular | pendiente, condicionada | — |
+| 5 — `cross-implement` granular | en curso, partida en tres flujos | flujo 1: bloques aprobados y frontera Git; flujos 2 y 3 pendientes |
 | 6 — Pipeline N/N+1 | pendiente, condicionada | — |
 | 7 — Invariante dinámica | pendiente, condicionada a los datos de la Fase 4 | — |
 
@@ -570,6 +572,11 @@ aprobación no cuenta como evidencia independiente y su corrida no entra a la co
 
 **Objetivo:** crear la frontera que necesitaría N/N+1 sin abrir overlap.
 
+**Estado:** en curso, partida en tres flujos. El flujo 1 entrega la partición aprobada en bloques,
+el alcance parcial y la frontera Git entre bloques. El flujo 2 queda a cargo del ledger durable, la
+reconstrucción y el rollback recuperable desde crash; el flujo 3, del join, ownership, snapshot y
+atribución por task antes de marcar `[x]`. La Fase 5 no se declara entregada hasta cerrar los tres.
+
 **Entregables**
 
 - task ID, ownership y DAG explícitos;
@@ -619,11 +626,17 @@ secuencial.
 
 #### 6.a Worktrees paralelos por implementer — condición de activación y diseño
 
-Absorbido de la propuesta de costo (pieza B), que la **difiere** con una medición: sobre la corrida
-real de 30 tasks, **25 (83 %) declaran `Consume`** y tres archivos son tocados por más de una task.
-Con ese grafo el ancho real de paralelismo es mínimo y se pagaría toda la maquinaria para paralelizar
-un puñado de tasks. **Se difiere, no se descarta:** ese 83 % refleja cómo *este* repo escribe tasks;
-en proyectos con tasks independientes el rendimiento sería otro.
+Absorbido de la propuesta de costo (pieza B), que la **difiere** con una medición reproducible.
+**corpus:** los `tasks.md` de los 28 flujos bajo `.plans/archived/`, con 440 tasks. **exclusiones:**
+flujos sin tasks parseables, paths sin extensión conocida, directorios declarados sin archivo y
+rutas mencionadas fuera del campo `Archivos`. **unidad de conteo:** por flujo y por task. El
+**predicado** cuenta una task como paralelizable cuando no declara `Consume`, declara al menos un
+archivo y no comparte ninguno de esos archivos con otra task candidata.
+
+Con el umbral literal `(tasks sin Consume ni colisión de archivos) ≥ 3`, cumplen **8 de 28** flujos y
+son paralelizables **57 de 440** tasks. Es un **límite superior**: una dependencia real no declarada
+no aparece en el corpus, y la colisión solo ve los paths parseados del campo `Archivos`. Se difiere,
+no se descarta; otros proyectos pueden tener un grafo distinto.
 
 **Condición de activación**, verificable antes de construir nada: con la Fase 0.5 ya aplicada,
 `(tasks sin Consume ni colisión de archivos) ≥ 3` en una corrida concreta **y** el tiempo sigue

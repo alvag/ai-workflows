@@ -3,9 +3,9 @@
 Qué hacer cuando una fila del contrato falla: de quién es el problema, cuánto presupuesto tiene cada
 clase, y qué reglas siguen rigiendo durante el takeover.
 
-Vive en un archivo aparte de `reference.md` porque se lee en **un momento distinto** —después de que
-una ronda falló, no antes de delegar— y porque no hace falta cargarlo en una corrida que sale bien a
-la primera.
+Vive en un archivo aparte de `reference.md` porque se lee en **un momento distinto**: al cerrar
+cualquier bloque, no antes de delegar. La matriz de cierre aplica también a un bloque que sale bien a
+la primera; las secciones de reparación se consultan solo si hubo una falla.
 
 Al leer este archivo después de una falla, aplicar primero
 `skills/cross-review/corridas-en-vuelo.md` → "Invariantes de recuperación". Esta referencia cita esa
@@ -64,6 +64,23 @@ que pasa, y el contrato queda ablandado sin que ninguna regla se haya violado.
 `ENVIRONMENT_FAILURE` termina en `BLOCKED` y no en "seguimos igual": una fila que nunca se pudo medir
 no tiene criterio de "hecho", y cerrar en verde con ella presente sería afirmar algo que nadie
 comprobó.
+
+### Matriz de cierre por bloque
+
+Los tres ejes se leen por separado: `Estado` es el outcome terminal de `cross-implement`, `Causa`
+solo explica un `UNAVAILABLE`, y `Clase` pertenece al `checkId` del triage de ownership. Ninguna causa
+ni clase amplía el enum de estados. Las cuatro últimas columnas determinan la transición del bloque.
+
+| Estado | Causa | Clase | Cierra | Marca tasks | Commitea | Continúa |
+|---|---|---|---|---|---|---|
+| `IMPLEMENTED` | — | — | Sí, si satisface la aceptación. | Sí. | Sí, commit de trabajo. | Sí. |
+| `PARTIAL` | — | `IMPLEMENTATION_DEFECT` resuelto por takeover | Sí, solo si el delta final satisface la aceptación. | Sí, solo las cubiertas. | Sí, commit de trabajo. | Sí. |
+| `UNAVAILABLE` | `confirmed_wall` | `ENVIRONMENT_FAILURE` | No. | No. | No. | No; se resuelve el bloque actual tras confirmar el cese. |
+| `UNAVAILABLE` | `launch_flake` | `ENVIRONMENT_FAILURE` | No. | No. | No. | No; se reintenta el bloque actual dentro de su presupuesto. |
+| `UNAVAILABLE` | `runtime_failure` | `IMPLEMENTATION_DEFECT` | No. | No. | No. | No; primero se clasifica y cosecha el delta. |
+| `UNAVAILABLE` | `deadline_exceeded` | `ENVIRONMENT_FAILURE`; worker todavía activo o escribiendo | No. | No. | No. | No; cese incierto, la secuencia se detiene. |
+| `UNAVAILABLE` | `deadline_exceeded` | `ENVIRONMENT_FAILURE`; cese confirmado | No. | No. | No. | No; se resuelve el bloque actual, no se salta al siguiente. |
+| `UNAVAILABLE` | — | `DESIGN_GAP` | No. | No. | No. | No; vuelve al diseño. |
 
 ### Razón falsable, desde la segunda falla
 
@@ -225,6 +242,36 @@ Dos cosas no cambian por haber entrado en takeover:
    misma que está peleando con ella, y ya no hay un tercero mirando—. Las invariantes valen igual:
    `Requisito` y `Esperado` no se tocan, y un cambio de evidencia sigue siendo una versión nueva con
    su re-baseline. Que el implementador se haya ido no cambia qué prueba el contrato.
+
+### Presupuestos a través de bloques
+
+La identidad presupuestaria sigue siendo el `checkId` congelado. El conductor persiste por
+`checkId` la clase, los intentos y las rondas consumidas en cada registro de invocación, y al abrir el
+bloque siguiente carga el acumulado anterior; cambiar de bloque no reinicia la misma falla.
+
+El tope de `sdd-flow` conserva su significado: **3 fallos** de la misma falla obligan a volver a
+`plan`/`specify`, y ese conteo opera a través de bloques. Los presupuestos propios por clase también
+persisten entre bloques según la matriz de control de flujo.
+
+**tope de secuencia: 6 incidencias que consumen presupuesto.** Es un límite global por work order y
+no crece sin cota con la cantidad de bloques. No se multiplica por el número de bloques ni abre un
+presupuesto nuevo para cada dispatch; al agotarse, la secuencia se corta y aplica la matriz de cierre.
+
+### Rollback de una secuencia
+
+El rollback se ejecuta solo después de confirmar el cese de todo writer. Para los cortes normales,
+restaura la frontera previa a los bloques y deja un registro explícito del descarte; los estados de
+crash se tratan con parada, no con reconstrucción.
+
+| Corte | HEAD | Working tree | Marcas | Registros |
+|---|---|---|---|---|
+| Cancelación humana tras K bloques aceptados | Vuelve al ancla previa a los bloques. | Queda sin el delta de la secuencia y preserva cualquier cambio ajeno preexistente. | Las tasks de los K bloques vuelven a `[ ]`. | El recibo y los logs registran `rolled_back` y los SHAs descartados. |
+| `UNAVAILABLE` o `PARTIAL` no aceptado, con cese confirmado | Vuelve al ancla y elimina los commits de trabajo locales. | Descarta el delta propio incompleto; no toca archivos ajenos. | Ninguna task del bloque cortado queda `[x]`; se restauran también las de bloques revertidos. | El outcome, la causa y la cosecha quedan registrados antes del retiro. |
+| `DESIGN_GAP` o `ENVIRONMENT_FAILURE` terminal | Vuelve al ancla si hubo commits de trabajo locales. | Queda igual al estado previo a la secuencia, salvo dirty ajeno identificado. | Todas las marcas de la secuencia vuelven a su valor previo. | El corte y el presupuesto agotado permanecen auditables en recibo y logs. |
+| Crash entre transiciones o durante el aplastado | HEAD queda inmóvil en el valor observado al detectar la anomalía. | No se muta: parada fail-closed hasta diagnóstico. | No se cambian por inferencia. | Se registra la combinación observada y se detiene para recuperación del flujo 2. |
+
+Estas postcondiciones se prometen solo para cortes normales alcanzados por la matriz. La
+reconstrucción y el rollback recuperable desde crash pertenecen al flujo 2.
 
 ### Precedencia entre los tres topes de corte
 
