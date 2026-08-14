@@ -554,6 +554,7 @@ Obligatorio en cambios *complejos*; en *normales* solo si hay ambigüedad; se sa
    change_type: feat        # feat | fix | refactor | chore | docs | test | perf (vocabulario de commits: acá sí feat)
    complexity: complex      # trivial | normal | complex
    status: planned          # ver "Ciclo de status" abajo
+   # sequence_contract_version: 1  # se agrega al iniciar implement, antes de crear el ledger
    created_at: 2026-01-01T12:00:00-03:00
    ---
    ```
@@ -623,7 +624,11 @@ overrides: { branch_prefix: null, base_branch: null, cross_review: null, impleme
 ```
 
 ### Precedencia con `plan.md` (sin doble fuente de verdad)
-- **`plan.md` existe** → su `status` / `wip_commit` / marcas `[x]` son la **verdad operativa** (lo que `resume` ya usa hoy). `handoff.md` solo aporta la **narrativa** (estado, decisiones, próximos pasos) y los **overrides de la corrida** (que de otro modo no se persisten).
+- **`plan.md` existe** → su `status` / `wip_commit` / marcas `[x]` son la **verdad de fase**. Durante
+  una secuencia durable activa, el clasificador canónico de secuencia decide primero si esa fase puede
+  continuar: `status` solo enruta cuando el diagnóstico es terminal o no aplica. `handoff.md` solo
+  aporta la **narrativa** (estado, decisiones, próximos pasos) y los **overrides de la corrida** (que
+  de otro modo no se persisten).
 - **`plan.md` NO existe** (fase `specify`/`clarify`, o el gate de Jira) → el **frontmatter del `handoff.md`** lleva el snapshot operativo (complejidad, tipo de cambio, prefijo) y es la fuente de verdad de esa ventana pre-`plan`.
 
 `handoff.md` **nunca contradice** a `plan.md`: lo complementa y cubre la ventana donde antes no había nada persistido (hoy, pausar en `specify`/`clarify` pierde la narrativa). Al retomar, `resume` lo lee respetando esta precedencia.
@@ -644,9 +649,38 @@ Punto de entrada cuando vuelves a un flujo ya empezado — en una sesión nueva,
    - Antes de cambiar, exigir working tree **sin código sin commitear** en la rama actual: `git status --porcelain -- ':(exclude).plans' ':(exclude).specify'` vacío. Si hay cambios de código (p. ej. otro flujo a medias), **detener**: ofrecer commitearlos, el sub-paso `pause`, o `git stash` — nunca pisar ni arrastrar trabajo ajeno a otra rama.
    - Con el árbol limpio, `git checkout <branch>`. Los `.plans/`/`.specify/` untracked no bloquean el checkout ni se pierden.
    - Si `branch` no existe (fue borrada): avisar y ofrecer recrearla desde el commit base (`git checkout -b <branch> <base_commit>`).
-5. Coherencia: `git merge-base --is-ancestor <base_commit> HEAD` (si no: avisar que la rama divergió y pedir confirmación). Si el header trae `wip_commit`, recuperar el trabajo pausado (ver `pause`).
+5. Coherencia: `git merge-base --is-ancestor <base_commit> HEAD` (si no: avisar que la rama divergió y pedir confirmación).
 
-### Saltar al paso según `status`
+#### Retoma durable antes del routing
+
+Antes de recuperar WIP o enrutar por fase, capturar las seis autoridades y ejecutar el **clasificador
+canónico de secuencia** de `reference.md` → “Recuperación de la secuencia”. Este diagnóstico es
+read-only y ocurre después del checkout/header seguro: nunca resetea, marca tasks, publica ledger ni
+adquiere ownership mientras decide qué estado observa.
+
+1. Validar presencia, `schema_version` y forma del ledger. Inline, legacy, versión desconocida,
+   documento corrupto y ledger obligatorio ausente son clases distintas; no inferir bloques desde
+   commits o tasks.
+2. Capturar ledger, recibo, Git, plan/tasks, proceso/sobre y owner preservando procedencia y frescura.
+3. Clasificar exactamente un cutpoint/terminal. Cero o múltiples predicados, evidencia contradictoria,
+   cese incierto u owner obsoleto sin fencing fallan cerrados y no mutan.
+4. Sin secuencia aplicable o con `inline-pass-through`, permitir la retoma normal. Este último solo
+   acredita que inline no tiene un efecto externo parcial: no inventa bloques. **Si el header trae `wip_commit`,**
+   recién ahora recuperar el trabajo pausado según `pause`. Para un terminal, enrutar
+   por su subtipo, no por `plan.status`: `completed` habilita la retoma normal solo con una fase coherente con el commit
+   final; si la fase quedó atrás, continúa como C12 para sincronizarla idempotentemente. `rolled_back`
+   y `abandoned` se detienen y requieren una decisión humana explícita para iniciar otra secuencia;
+   `suspended` vuelve a diseño.
+   Ninguno recupera WIP ni continúa automáticamente una implementación anterior.
+5. Con `recoverable`, `resume agrega la propuesta` completa —digest de evidencia, efectos ordenados y
+   terminal esperado— y hace STOP en el único gate humano. Tras el sí: demostrar cese, adquirir
+   ownership, reclasificar, exigir el mismo digest y ejecutar reconciliaciones idempotentes. Si algo
+   cambió, detener y pedir nueva confirmación.
+6. Con `blocked`, `inline-unsupported`, `legacy-unsupported`, `unsupported-version`,
+   `corrupt-ledger`, `missing-required-ledger` o `conflict:<source>`, mostrar clase + evidencia y
+   detener sin recuperar WIP ni enrutar por `status`.
+
+### Routing por `status`
 6. Leer `status` y retomar en el punto exacto, **confirmando el resumen extraído** antes de actuar:
 
    | `status` | Dónde retoma |
@@ -667,17 +701,11 @@ Punto de entrada cuando vuelves a un flujo ya empezado — en una sesión nueva,
 
 ### Guarda de retomado con bloques en vuelo
 
-Antes de retomar una secuencia por bloques, comparar como una sola guarda los cuatro estados: `HEAD`,
-la cadena de commits de trabajo identificados por la secuencia, el recibo de partición y las marcas
-de las tasks. Solo se continúa desde una combinación reconocida por `reference.md` → "Transición
-entre bloques"; toda combinación no reconocida detiene el flujo y se reporta sin corregirla por
-inferencia.
-
-La guarda incluye dos casos que un árbol limpio no revela por sí solo: tasks todavía `[ ]` cuyo
-contenido ya está en un commit de trabajo, y una caída durante el aplastado que dejó la historia
-parcialmente transformada con marcas adelantadas. En ambos se detiene. La parada fail-closed es
-responsabilidad de este flujo; reconstruir la secuencia y recuperar esos estados pertenece al
-flujo 2.
+La guarda de cuatro superficies queda absorbida por el clasificador canónico de secuencia: HEAD y
+cadena Git, recibo, marcas y ledger se evalúan junto con proceso/sobre y owner. Continúan siendo
+casos críticos las tasks `[ ]` cuyo contenido ya vive en un commit y el aplastado parcialmente
+transformado; ahora se distinguen los desfases legítimos C1-C12 de `conflict:<source>` y se propone
+solo la reconciliación declarada por `reference.md` → “Recuperación de la secuencia”.
 
 ### Sub-paso `status` (alias de listado)
 
@@ -688,7 +716,9 @@ solo ese flujo. La fuente de verdad sigue siendo `plan.md` (`status` + marcas `[
 
 ### Sub-paso `doctor` (diagnóstico read-only)
 Valida la coherencia de un flujo **sin arreglar nada ni escribir archivos**: resuelve el flujo igual
-que `resume` y reporta `OK`/`WARN`/`FAIL` con evidencia concreta. Los checks, el formato de salida y
+que `resume`, consume el **clasificador canónico de secuencia** y reporta clase, fuentes y conflictos.
+`doctor solo reporta`; `resume agrega la propuesta`, el gate y la ejecución. `OK`/`WARN`/`FAIL` sigue
+siendo la severidad exterior, no una segunda clasificación. Los demás checks, el formato de salida y
 qué cuenta como ruido del working tree: `reference.md` → "Doctor read-only".
 
 ### Gate de Jira (esperando aprobación externa)
@@ -767,7 +797,12 @@ autoriza despachos por bloques ni convierte la capacidad `cross` en un error.
    - `code_touched` — código/producto que tocó la skill (candidatos a commit).
    - `sdd_local` — `.plans/`, `.specify/` (locales, nunca se commitean).
    - `generated` — artefactos de tests/build (caches, `dist/`, `__pycache__/`, …; nunca se commitean).
-2. **Aplicar cambios** según el **modo de ejecución** resuelto (ver arriba). Al iniciar este paso, poner `status: implementing` en el header del `plan.md`. En todos los modos: marcar cada task `- [x]` al completarla (es el detalle fino del progreso que `resume` usa para saber por dónde seguir) y reutilizar lo identificado en `analyze`.
+2. **Aplicar cambios** según el **modo de ejecución** resuelto (ver arriba). Antes de crear el ledger,
+   persistir `sequence_contract_version: 1` en el header del `plan.md`; después crear el ledger y solo
+   entonces poner `status: implementing`. Ese orden permite distinguir una inicialización v1
+   interrumpida de una corrida legacy aunque el ledger falte. En todos los modos: marcar cada task
+   `- [x]` al completarla (es el detalle fino del progreso que `resume` usa para saber por dónde seguir)
+   y reutilizar lo identificado en `analyze`.
    El productor del ledger es `sdd-flow` en los dos modos. Antes de escribirlo, cargar
    `reference.md` → "El ledger de secuencia" y "Vocabulario de condiciones", y
    `cross-implement/ownership.md` → "Terminales de secuencia".

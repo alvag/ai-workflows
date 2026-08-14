@@ -16,6 +16,9 @@ init (opcional) → constitution → gather-context → specify → clarify → 
 - **Estado persistido / retomable:** cada flujo guarda su fase (`status`) y su rama en el `plan.md`, y un `handoff.md` con "dónde quedé, qué decidí y cómo sigo". Puedes dejarlo a medias —en cualquier fase—, atender algo urgente en otra rama y retomarlo después desde donde quedó, incluso en otra sesión, sin re-investigar.
 - **Elección de rama, no suposición:** si ya estás parado en una rama que no es la base, el flujo **te pregunta** en vez de asumir: seguir acá, cortar una rama nueva desde la base, o cortarla desde la actual (feature dependiente). Y si esa rama es **sólo local** —la típica que abriste a mano para arrancar el worktree, antes de saber de qué se trataba—, te ofrece **renombrarla** al nombre que el flujo ya sabe construir, reparando los flujos que apuntaban al viejo.
 - **Doctor read-only:** `/sdd-flow doctor <id>` revisa coherencia del flujo sin escribir: ACs huérfanos, placeholders, Produce/Consume, branch/base, verify stale y ruido del working tree.
+- **Recuperación durable:** `doctor` y `resume` clasifican el mismo snapshot de ledger, recibo, Git,
+  tasks, proceso y owner. `doctor` solo informa; `resume` propone una reconciliación completa, espera
+  un único gate y la ejecuta de forma idempotente únicamente si el diagnóstico sigue vigente.
 - **Contexto de dominio opcional:** `domain_context` permite leer docs/ADRs existentes para usar términos y decisiones vigentes, sin crear ni editar documentación versionada.
 - **Aprobación externa de la spec (opcional):** si tu equipo lo necesita, puedes publicar la spec como **subtarea de Jira** para que el TL/PO la aprueben antes de implementar (`jira_approval` en config; off por defecto). El flujo queda en pausa y se retoma —incluso en otra sesión— sin re-explorar el ticket, gracias al `handoff.md`.
 - **Apertura de PR (opcional):** tras el push, crea el PR hacia la rama base con descripción **compacta** (Problema, Solución y los criterios de aceptación como checklist, más el link al spec de Jira si se publicó) y reviewers por defecto (de `.specify/reviewers.json` del repo, si existe). Degrada a PR manual si no hay integración del host; el agente **nunca** mergea ni aprueba, solo crea.
@@ -36,8 +39,13 @@ Frases que el router entiende: "configura el proyecto", "arma la spec", "aclarem
 Como `.plans/` es local (no trackeado), git no lo mueve al cambiar de rama: tus flujos están visibles desde **cualquier** rama, y cada `plan.md` recuerda su `branch` y su `status`. Eso permite:
 
 - **Listar lo pendiente:** "¿en qué quedé?" / "qué flujos tengo" → muestra `id · branch · status · primera task pendiente` de cada flujo activo.
-- **Diagnosticar sin tocar nada:** `/sdd-flow doctor <id>` → valida coherencia del flujo y reporta `OK/WARN/FAIL` con evidencia; no arregla ni escribe.
-- **Retomar uno puntual:** "continuemos con `<id>`" → la skill lee la rama del header, hace el `checkout` seguro (frenando si tienes código sin commitear en la rama actual) y sigue desde la fase exacta (`status`), no desde cero.
+- **Diagnosticar sin tocar nada:** `/sdd-flow doctor <id>` → valida coherencia del flujo, clasifica la
+  secuencia durable y reporta `OK/WARN/FAIL` con evidencia; no arregla ni escribe.
+- **Retomar uno puntual:** "continuemos con `<id>`" → la skill lee la rama del header, hace el
+  `checkout` seguro y clasifica la secuencia **antes** de recuperar WIP o seguir el `status`. Si es
+  recuperable, muestra todos los efectos y pide un único sí; después revalida y reconcilia sin gates
+  intermedios. Si cambió la evidencia, el proceso puede seguir vivo o el owner obsoleto carece de
+  fencing atómico, se detiene fail-closed.
 - **Pausar sin perder nada (en cualquier fase):** "pausa esto" → escribe un `handoff.md` (estado, decisiones, próximo paso) y, si hay código a medias, lo guarda como WIP commit en su propia rama (no `stash`, que se confunde entre flujos). Al retomar —incluso en otra sesión— reconstruye todo desde ahí, sin re-investigar.
 - **Cerrar y archivar:** cuando confirmas que está probado y correcto, el flujo pasa a `done` y se mueve a `.plans/archived/<id>/`. Nunca automático: lo decides tú.
 
@@ -54,6 +62,8 @@ Como `.plans/` es local (no trackeado), git no lo mueve al cambiar de rama: tus 
    │  ├─ plan.md        # SIEMPRE: header YAML (incl. status + branch) + CÓMO + resultado de verify
    │  ├─ spec.md        # en NORMAL y COMPLEJO (en trivial va embebida en plan.md → ## Spec)
    │  ├─ tasks.md       # en NORMAL y COMPLEJO (en trivial van embebidas en plan.md → ## Tasks)
+   │  ├─ sequence-ledger.yml  # versión, cursor, intenciones y efectos adjudicados
+   │  ├─ sequence-ledger.owner/ # ownership exclusivo mientras un writer publica
    │  ├─ handoff.md     # al pausar o en el gate de Jira: estado + decisiones para retomar
    │  └─ jira-spec.md   # copia de lo publicado en Jira (solo con el gate de aprobación)
    └─ archived/         # flujos cerrados (status: done), movidos solo tras tu confirmación

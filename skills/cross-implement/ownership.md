@@ -261,17 +261,20 @@ presupuesto nuevo para cada dispatch; al agotarse, la secuencia se corta y aplic
 
 El rollback se ejecuta solo después de confirmar el cese de todo writer. Para los cortes normales,
 restaura la frontera previa a los bloques y deja un registro explícito del descarte; los estados de
-crash se tratan con parada, no con reconstrucción.
+crash se diagnostican y recuperan mediante `skills/sdd-flow/reference.md` → “Recuperación de la
+secuencia”, sin inferencias locales en esta skill.
 
 | Corte | HEAD | Working tree | Marcas | Registros |
 |---|---|---|---|---|
 | Cancelación humana tras K bloques aceptados | Vuelve al ancla previa a los bloques. | Queda sin el delta de la secuencia y preserva cualquier cambio ajeno preexistente. | Las tasks de los K bloques vuelven a `[ ]`. | El recibo y los logs registran `rolled_back` y los SHAs descartados. |
 | `UNAVAILABLE` o `PARTIAL` no aceptado, con cese confirmado | Vuelve al ancla y elimina los commits de trabajo locales. | Descarta el delta propio incompleto; no toca archivos ajenos. | Ninguna task del bloque cortado queda `[x]`; se restauran también las de bloques revertidos. | El outcome, la causa y la cosecha quedan registrados antes del retiro. |
 | `DESIGN_GAP` o `ENVIRONMENT_FAILURE` terminal | Vuelve al ancla si hubo commits de trabajo locales. | Queda igual al estado previo a la secuencia, salvo dirty ajeno identificado. | Todas las marcas de la secuencia vuelven a su valor previo. | El corte y el presupuesto agotado permanecen auditables en recibo y logs. |
-| Crash entre transiciones o durante el aplastado | HEAD queda inmóvil en el valor observado al detectar la anomalía. | No se muta: parada fail-closed hasta diagnóstico. | No se cambian por inferencia. | Se registra la combinación observada y se detiene para recuperación del flujo 2. |
+| Crash entre transiciones o durante el aplastado | HEAD queda inmóvil hasta que el clasificador identifique un cutpoint recuperable. | Solo cambia tras propuesta aprobada, cese, ownership y revalidación. | Solo las marcas correlacionadas que declare la reconciliación. | Se conserva diagnóstico, digest, intención y adjudicación según “Recuperación de la secuencia”. |
 
-Estas postcondiciones se prometen solo para cortes normales alcanzados por la matriz. La
-reconstrucción y el rollback recuperable desde crash pertenecen al flujo 2.
+Estas postcondiciones se prometen solo para cortes normales alcanzados por la matriz. En crash,
+`sdd-flow` distingue cutpoint recuperable, conflicto y bloqueo. Un owner obsoleto sin una primitiva
+atómica que invalide su derecho anterior queda `blocked-manual-remediation`: no se borra el token, no
+se reclama automáticamente y no se ejecuta rollback.
 
 ### Terminales de secuencia
 

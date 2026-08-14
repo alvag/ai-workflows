@@ -658,7 +658,7 @@ invalida el artefacto.
 | `verificacion_final_en_verde` | La verificación final sobre el delta acumulado dio verde. |
 | `gate_aprobado` | El gate humano aprobó el delta acumulado y su evidencia. |
 | `commit_final_creado` | El commit final de contenido existe. |
-| `cierre_persistido` | El resultado del cierre quedó registrado en el ledger. |
+| `cierre_persistido` | El resultado quedó registrado en el ledger y `plan.status` refleja el commit final. |
 
 ### Aristas de la transición
 
@@ -697,15 +697,16 @@ ledger es la autoridad del contenido del delta y del avance de la secuencia.
 | `delta_material` | ledger | handoff | sí |
 | `resultado` | ledger | post-handoff | sí |
 | `estado_del_join` | ledger | siempre | no |
-| `versión_del_esquema` | ledger | siempre | sí |
+| `schema_version` | ledger | siempre | sí |
 
 Los campos `por-bloques` están ausentes en `inline`, porque no hay partición ni recibo; esa ausencia
 es válida y permite que ambos caminos produzcan un ledger completo. `delta_material` persiste el
 delta independientemente de la recolección de Git: un SHA que deje de ser alcanzable no constituye
 durabilidad. `estado_del_join` es un dato opaco que se persiste sin interpretarlo.
 
-El ledger vive en la ruta `.plans/<id>/sequence-ledger.yml`, hermana del recibo. Se crea al entrar a
-`implement`, cuando el flujo establece `status: implementing`. Su retención es indefinida después
+El ledger vive en la ruta `.plans/<id>/sequence-ledger.yml`, hermana del recibo. Al entrar a
+`implement`, el flujo persiste `sequence_contract_version`, crea el ledger y después establece
+`status: implementing`. Su retención es indefinida después
 del cierre y también tras un rollback. Al archivarse `.plans/`, viaja con la carpeta sin
 transformarse. El límite de su durabilidad es la misma copia del repositorio, no entre máquinas.
 
@@ -740,9 +741,12 @@ identidad; verificarlo solo al adoptar dejaría una ventana hasta el último `re
 intentan adoptar el mismo ledger, solo una obtiene el directorio, y el propietario ganador queda
 observable en el contenido del token.
 
-El abandono elimina el directorio únicamente tras cese confirmado. Si el propietario del token ya
-no está vigente, otra sesión puede reclamarlo registrando el reclamo en el ledger, nunca en silencio.
-Los temporales huérfanos de un propietario que dejó de ser vigente se ignoran y se recolectan.
+El abandono elimina el directorio únicamente tras cese confirmado. Un owner obsoleto **no** se
+reclama borrando y recreando el directorio: `mkdir` excluye adoptantes nuevos, pero no impide que el
+owner anterior publique después de releer su token. Solo una primitiva atómica existente que invalide
+al propietario anterior antes de instalar al sucesor habilita el reclamo. Sin esa garantía, el estado
+es `blocked-manual-remediation`; se ignoran sus temporales huérfanos, pero no se adopta ni se muta el
+ledger.
 
 ### La submáquina de cierre
 
@@ -757,7 +761,7 @@ postcondición del anterior.
 | 3 | verificación final | `reset_aplicado` | `verificacion_final_en_verde` |
 | 4 | decisión del gate | `verificacion_final_en_verde` | `gate_aprobado` |
 | 5 | commit final | `gate_aprobado` | `commit_final_creado` |
-| 6 | cierre persistido | `commit_final_creado` | `cierre_persistido` |
+| 6 | cierre persistido | `commit_final_creado` | `cierre_persistido` en ledger y fase del plan |
 
 ### Cutpoints de la secuencia
 
@@ -783,7 +787,7 @@ cuando no existe esa equivalencia, la tabla declara `ninguno`.
 
 ### El contrato con la recuperación
 
-Este flujo entrega al flujo 2b de recuperación un contrato compuesto por seis piezas:
+La recuperación consume un contrato compuesto por seis piezas:
 
 1. la lista de cutpoints legítimos con sus equivalencias;
 2. el esquema versionado y su versión;
@@ -792,7 +796,301 @@ Este flujo entrega al flujo 2b de recuperación un contrato compuesto por seis p
 5. el grafo declarado en la tabla de aristas; y
 6. el protocolo de adopción con su ganador observable.
 
-El flujo 2b es el consumidor de estas entregas. Este flujo las escribe; no las lee.
+Las tablas anteriores siguen siendo las autoridades de esas piezas. La sección siguiente concreta
+su serialización, lectura y reconciliación; no redefine el grafo, los cutpoints ni los terminales.
+
+## Recuperación de la secuencia
+
+### Schema v1 del ledger de secuencia
+
+La tabla de campos de “El ledger de secuencia” describe semántica; esta es la serialización canónica.
+La raíz y sus objetos son **cerrados**: cualquier clave no declarada, tipo distinto, cardinalidad
+inválida o condición de presencia incumplida produce `corrupt-ledger`. La única excepción es el valor
+de `join_state`, declarado opaco: el ledger valida que sea un nodo compatible con JSON, lo conserva y
+no interpreta sus claves internas. Una versión distinta de `schema_version: 1` produce
+`unsupported-version` y no se interpreta parcialmente.
+
+```yaml
+schema_version: 1
+sequence:
+  sequence_id: <string no vacío>
+  mode: blocks                 # blocks | inline
+  base_anchor: <sha completo>
+  coverage_fingerprint: sha256:<64 hex>
+  join_state: null             # opcional; nodo JSON opaco, preservado sin interpretación
+  receipt_ref: partition-receipt.yml  # obligatorio en blocks; se omite en inline
+  delta:
+    algorithm: sha256
+    digest: sha256:<64 hex>
+    material: |-
+      <patch durable desde base_anchor>
+  cursor:
+    machine: block-machine     # block-machine | closure-machine | inline-machine
+    cutpoint: C1               # C1..C12 | inline-active | inline-ready-to-close | inline-terminal
+  terminal: active             # active | suspended | completed | rolled_back | abandoned
+transitions:
+  - transition_id: <sequence_id>:<ordinal>:<from>:<to>
+    from_cursor: {machine: block-machine, cutpoint: C1}
+    to_cursor: {machine: block-machine, cutpoint: C2}
+    block: {id: B1, ordinal: 1}       # se omite en inline y en pasos de cierre
+    intent:
+      intent_id: <transition_id>:intent
+    effects:
+      - effect_id: <intent_id>:git-commit
+        kind: external-effect          # enum de primitivas, abajo
+        expected_effect_digest: sha256:<64 hex>
+effect_events:
+  - event_id: <effect_id>:observed
+    effect_id: <intent_id>:git-commit
+    state: observed                     # observed | adjudicated
+    observed_digest: sha256:<64 hex>
+result:
+  status: active                       # mismo enum que sequence.terminal
+  closed_at: null                      # ISO-8601 solo en terminal no continuable
+```
+
+`transitions` y `effect_events` conservan orden de publicación y son append-only: una identidad
+existente no se edita ni se reutiliza. El estado lógico de un efecto se deriva de sus eventos: sin
+evento está `pending`; un evento `observed` lo deja observado; un evento posterior `adjudicated` lo
+adjudica. El archivo completo se publica con temporal + `rename`; “append-only” describe la historia
+lógica, no una escritura por append de bytes. `transition_id`, `intent_id`, `effect_id`, `event_id` y
+`expected_effect_digest` de cada efecto correlacionan intención, efecto externo y consumo sin duplicar el SHA cuya
+autoridad permanece en el recibo.
+
+Cardinalidades:
+
+| Nodo | Cardinalidad e identidad |
+|---|---|
+| raíz | exactamente un `schema_version`, un `sequence`, una lista `transitions`, una lista `effect_events` y un `result` |
+| `sequence` / `result` | exactamente un objeto de cada uno; sus estados deben coincidir al cerrar |
+| `join_state` | 0..1; ausente, `null` o cualquier nodo compatible con JSON; se preserva sin interpretarlo |
+| `transitions` | 0..N, orden estricto de publicación y `transition_id` único dentro de la secuencia |
+| `intent` | exactamente una por transición; `intent_id` único y derivado de `transition_id` |
+| `effects` | 1..5 por transición, `effect_id` único; cada entrada usa un `kind` cerrado y su propio `expected_effect_digest` |
+| `effect_events` | 0..2 por efecto; `event_id` único, referencia válida y orden `observed` → `adjudicated` |
+| `block` | exactamente uno en transiciones C1-C7 de `blocks`; ausente en cierre e inline |
+
+Los objetos internos también son cerrados. `sequence` exige siempre `sequence_id`, `mode`,
+`base_anchor`, `coverage_fingerprint`, `delta`, `cursor` y `terminal`; admite `join_state` y
+`receipt_ref` solo bajo las condiciones siguientes. `delta` contiene exactamente `algorithm`,
+`digest` y `material`; pre-handoff `material` puede ser la cadena vacía con el digest correspondiente,
+y desde el handoff contiene el patch durable. `cursor` contiene exactamente `machine` y `cutpoint`.
+`result` existe siempre con exactamente `status` y `closed_at`: mientras está activo usa
+`status: active`/`closed_at: null`; al cerrar adopta el terminal y la fecha exigida. Cada transición,
+intención, efecto, evento y bloque contiene exclusivamente los campos mostrados en el ejemplo y
+declarados por sus cardinalidades.
+
+`from_cursor` y `to_cursor` contienen exactamente `machine` y `cutpoint`, son distintos y usan la
+máquina compatible con el modo. En bloques, C1-C8 pertenecen a `block-machine`, C8-C12 a
+`closure-machine` y solo C8 permite el handoff; inline admite únicamente sus tres cutpoints.
+`sequence.cursor` coincide con el último `to_cursor` publicado o, mientras esa transición está
+pendiente, con su `from_cursor`. Otra combinación es `corrupt-ledger`.
+
+Condiciones de presencia:
+
+| Condición | Obligatorio | Prohibido |
+|---|---|---|
+| `mode: blocks` | `receipt_ref`, `block.id`, `block.ordinal` en transiciones de bloque | bloque nulo durante C1-C7 |
+| `mode: inline` | `inline-machine` con `inline-active`, `inline-ready-to-close` o `inline-terminal` | `receipt_ref`, `block`, identidad/ordinal de bloque y cutpoints C1-C12 |
+| pre-handoff | `base_anchor` alcanzable y delta contrastable con Git | terminal post-handoff inventado |
+| post-handoff | `delta.material`, digest y `result` coherentes | depender de que los commits sigan alcanzables |
+| terminal no continuable | `result.status == sequence.terminal`, `closed_at` no nulo | nuevas transiciones |
+
+Fixtures mínimos embebidos:
+
+- **`valid-blocks-v1`:** versión 1, `mode: blocks`, recibo correlacionado, una transición C1→C2 con
+  intención y efecto sin eventos —estado derivado `pending`—; valida y entra al clasificador.
+- **`valid-inline-v1`:** versión 1, `mode: inline`, `receipt_ref` y `block` ausentes, sin efecto
+  externo parcial; valida y se clasifica `inline-pass-through`, no corrupto.
+- **`partial-inline-v1`:** misma forma inline, con una intención externa pendiente o un efecto
+  parcialmente observado; se clasifica `inline-unsupported` y no intenta reconstruir bloques.
+- **`unsupported-version`:** `schema_version: 2`; se rechaza sin leer `transitions`.
+- **`corrupt-ledger`:** versión 1 con dos `transition_id` iguales o digest mal formado; se rechaza por
+  estructura/correlación.
+- **`missing-required-ledger`:** el header del plan contiene `sequence_contract_version: 1` y no
+  existe ledger; se distingue de una corrida legacy porque esta carece de ese marcador externo.
+
+`sequence_contract_version: 1` se persiste en `plan.md` **antes** de crear el ledger y antes de cambiar
+el flujo a `status: implementing`. Es el marcador externo de obligatoriedad: si existe y el ledger no,
+la inicialización fue interrumpida y el diagnóstico es `missing-required-ledger`; si ambos faltan, la
+corrida es legacy. `status` nunca sustituye este marcador porque también existe en planes anteriores.
+
+### Snapshot y clasificación de recuperación
+
+`capture_sequence_snapshot(ledger, receipt, git, tasks, process, owner) -> SequenceSnapshot` es
+read-only. Conserva cada hecho con procedencia y frescura; nunca fusiona dos fuentes discrepantes en
+un “estado verdadero”.
+
+| Sección | Autoridad observada | No demuestra |
+|---|---|---|
+| plan/tasks | fase SDD, `wip_commit`, marcas y cobertura | que el efecto Git ocurrió |
+| recibo | fingerprint, orden, bloque y `work_commit` | contenido durable del delta |
+| Git | HEAD, ancla, cadena, trailers, localidad y dirty | intención o consumo |
+| ledger | versión, cursor, intención, adjudicación, delta y terminal | actividad/cese del proceso |
+| proceso/sobre | intento, transporte, `process_ref`, cosecha y terminalidad | ownership del ledger |
+| owner | exclusión y token observable | progreso, cese o fencing del owner anterior |
+
+`classify_sequence(snapshot: SequenceSnapshot) -> SequenceDiagnosis` evalúa predicados disjuntos.
+Cada predicado declara hechos obligatorios, hechos prohibidos, evidencia de cese, cutpoint/terminal,
+acción permitida y fuente de rechazo. Con **cero coincidencias** produce `conflict:<source>`; con
+**más de una coincidencia** demuestra ambigüedad del contrato y produce `conflict:classifier`.
+Ninguna de las dos salidas muta.
+
+Resultados cerrados:
+
+| Resultado | Significado | ¿Puede mutar? |
+|---|---|---|
+| `recoverable` | un único cutpoint y una composición idempotente demostrados | solo tras propuesta, gate y revalidación |
+| `terminal` | `completed`, `rolled_back`, `abandoned` o `suspended` coherente | no; solo `completed` habilita routing normal; rollback/abandono detienen y `suspended` vuelve a diseño |
+| `blocked` | cutpoint reconocido sin capacidad/evidencia suficiente | no |
+| `inline-pass-through` | ledger v1 inline válido sin efecto externo parcial | sí; solo permite el `resume` normal de WIP/fase, nunca reconstruye bloques |
+| `inline-unsupported` | inline válido con intención/efecto parcial cuya reconciliación no está soportada | no |
+| `legacy-unsupported` | ejecución anterior al contrato sin ledger obligatorio | no |
+| `unsupported-version` | versión no soportada | no |
+| `corrupt-ledger` | documento v1 inválido | no |
+| `missing-required-ledger` | la corrida debía producir ledger y no existe | no |
+| `conflict:<source>` | autoridades incompatibles o clasificador ambiguo | no |
+
+`terminal:completed` exige además que `plan.status` sea coherente con el commit final (`committed` o
+una fase posterior). Si el commit final existe pero el ledger o la fase del plan quedaron a medio
+publicar, el estado continúa siendo C12 y `closure-step` completa ambas superficies de forma
+idempotente. Cualquier otra combinación entre terminal y fase produce `conflict:plan`; nunca se
+reenvía un `plan.status: implementing` por debajo de un ledger ya cerrado.
+
+La máquina `block-machine` clasifica C1-C8; `closure-machine` clasifica C8-C12. **C8 es la frontera compartida**,
+no otro bloque. Los nombres y observables se toman de “Cutpoints de la secuencia”:
+
+| Cutpoint | Máquina | Evidencia pendiente que puede reconciliarse | Bloqueo obligatorio |
+|---|---|---|---|
+| C1 | block-machine | intención/dispatch todavía sin efecto material | proceso potencialmente vivo o cese no demostrable |
+| C2 | block-machine | adjudicar commit compatible y publicar cursor | commit sin identidad, trailer, ancla o árbol esperado |
+| C3 | block-machine | adjudicar vínculo compatible del recibo | recibo/fingerprint/bloque contradictorio |
+| C4 | block-machine | completar solo marcas del bloque vinculado | marcas ajenas o cobertura no correlacionada |
+| C5 | block-machine | revalidar partición | orden/fingerprint cambió |
+| C6 | block-machine | adjudicar revalidación y preparar siguiente paso | evidencia de recibo no fresca |
+| C7 | block-machine | resolver intento anterior antes de redispatch | llamada no consumada o writer posible |
+| C8 | ambas | entrar al cierre con `sin_bloque_restante` | bloque restante o cese no confirmado |
+| C9 | closure-machine | verificar delta después del reset | reset no ligado a intención/ancla |
+| C10 | closure-machine | adjudicar verificación fresca | evidencia no correlacionada o vencida |
+| C11 | closure-machine | crear commit final ligado al gate | gate ausente o digest distinto |
+| C12 | closure-machine | adjudicar commit, persistir cierre y sincronizar fase | commit final sin identidad/ancla/árbol esperado |
+
+`suspended` es terminal continuable solo por una ruta explícita de vuelta a diseño; nunca salta al
+siguiente bloque. `plan.status` permanece `implementing` durante una secuencia activa: decide la fase
+SDD únicamente cuando la clasificación es `terminal` o no aplica.
+
+### Propuesta y reconciliación autorizada
+
+`build_recovery_proposal(diagnosis: SequenceDiagnosis) -> RecoveryProposal` produce una lista cerrada
+y ordenada con clasificación, evidencias relevantes, **digest de evidencia**, efectos pendientes,
+precondiciones y terminal esperado. El único gate humano aprueba ese conjunto completo, no un permiso
+abierto para “seguir recuperando”.
+
+Después del gate y antes de mutar:
+
+1. obtener **evidencia positiva de cese** según el transporte: identidad coincidente de corrida o
+   proceso más estado terminal verificable, o ausencia comprobada por la primitiva oficial;
+2. adquirir ownership exclusivo sin borrar un token ajeno;
+3. capturar otra vez las seis autoridades, reclasificar y recalcular el digest;
+4. continuar solo si diagnóstico, propuesta y digest coinciden exactamente con lo autorizado.
+
+Timeout, silencio, salida completa, PID no correlacionado o confirmación humana por sí solos no
+prueban cese. Un owner obsoleto sin fencing/CAS atómico existente produce
+`blocked-manual-remediation`. Cualquier drift invalida el gate y exige **nueva confirmación**.
+
+`reconcile_authorized_proposal(proposal: RecoveryProposal) -> RecoveryOutcome` compone únicamente
+estas primitivas:
+
+| `kind` | Precondición | Efecto idempotente | Adjudicación |
+|---|---|---|---|
+| `external-effect` | intención durable e identidad correlacionada | observar el efecto; crearlo solo si falta | digest observado compatible |
+| `ledger-cursor` | transición válida y efecto anterior adjudicado | publicar transición/cursor con temporal + rename | cursor objetivo visible una vez |
+| `task-marks` | bloque y cobertura correlacionados | completar solo marcas pendientes del bloque | fingerprint de marcas esperado |
+| `partition-revalidation` | recibo y orden vigentes | volver a validar sin reinterpretar tasks | evidencia fresca ligada al intento |
+| `closure-step` | precondición de la submáquina satisfecha | ejecutar un estado de cierre con la mecánica Git canónica | postcondición observada y ligada; en C12 incluye `plan.status: committed` |
+
+Cada efecto avanza lógicamente `pending` → `observed` → `adjudicated` publicando eventos nuevos, sin
+editar la transición ni eventos anteriores:
+
+- `pending` y efecto ausente: aplicar una vez, publicar `observed` y luego `adjudicated`;
+- `pending` y efecto presente con el digest esperado: no repetir, publicar `observed` y luego `adjudicated`;
+- efecto presente con digest distinto: `conflict:<source>` sin adjudicar;
+- `adjudicated`: no-op aunque se repita la reconciliación.
+
+El caso **`idempotent-retry`** ejecuta la misma retoma después del terminal y exige el mismo resultado,
+**sin commits, marcas ni cursores nuevos**. La propuesta declara también la clase sucesora esperada
+después de cada primitiva. Se reclasifica en cada frontera y solo se continúa cuando coincide con esa
+cadena autorizada —incluido el terminal—; una clase o plan no previsto detiene y exige otra propuesta.
+
+### Matriz normativa de recuperación
+
+La matriz declara su universo antes de afirmar cobertura: cutpoint/terminal, modo, transporte,
+estado de proceso/cese, owner, frescura de sesión, fase pre/post-handoff, evidencia
+completa/ausente/conflictiva y primera/segunda retoma. No materializa un producto cartesiano con
+combinaciones imposibles; cubre cada C1-C12, cada terminal y al menos un representante mínimo de cada
+clase de bloqueo/conflicto.
+
+| Partición | Casos mínimos | Resultado exigido |
+|---|---|---|
+| bloques recuperables | C2-C6, C9-C12 con intención/efecto en cada frontera válida | terminal esperado; `idempotent-retry` sin efecto nuevo |
+| bloques condicionados | C1, C7 y C8 con cese positivo y con writer posible | `recoverable` solo con cese; de otro modo `blocked` |
+| terminales | `completed`, `rolled_back`, `abandoned`, `suspended` | tres no continuables; `suspended` vuelve a diseño |
+| compatibilidad | `valid-inline-v1`, legacy sin ledger, versión desconocida | clases explícitas, ninguna mutación |
+| integridad | ledger truncado, digest/identidad duplicada, recibo/Git/tasks contradictorios | `corrupt-ledger` o `conflict:<source>` |
+| ownership | libre, adoptante ganador, owner obsoleto sin fencing | solo los dos primeros avanzan; el tercero queda `blocked-manual-remediation` |
+| transporte | terminal consultable, ausencia comprobada, timeout/silencio | los dos primeros prueban cese; el último bloquea |
+
+En la tabla, `P/L/R/G/X/O` resume las seis autoridades: plan+tasks, ledger, recibo, Git,
+proceso/sobre y owner. “Seis coherentes” significa que cada una aporta los hechos obligatorios y ninguna
+aporta un hecho prohibido; la columna predicado nombra el observable que distingue el caso.
+
+| Caso | P/L/R/G/X/O | Predicado distintivo | Propuesta o bloqueo | Salida | Segunda retoma |
+|---|---|---|---|---|---|
+| C1 | seis coherentes; X cesado; O libre | dispatch identificado, sin efecto | observar/aplicar efecto → cursor | sucesor autorizado | no repite efecto/cursor |
+| C2 | seis coherentes; G con commit local | commit identificado, ledger pendiente | adjudicar commit → cursor | C3 | no crea commit |
+| C3 | seis coherentes; R aún sin vínculo | commit compatible, vínculo pendiente | persistir vínculo → cursor | C4 | no duplica vínculo |
+| C4 | seis coherentes; T parcial | ledger publicado, marcas incompletas | completar solo marcas correlacionadas | C5 | no agrega marcas |
+| C5 | seis coherentes; T completo | recibo todavía no revalidado | revalidar partición | C6 | no revalida dos veces |
+| C6 | seis coherentes; R fresco | revalidación adjudicable | publicar adjudicación/cursor | C7 o C8 | cursor único |
+| C7 | seis coherentes; X cesado; O libre | llamada previa no consumada | resolver intento; redispatch solo si corresponde | C1 o C8 | no duplica dispatch |
+| C8 | seis coherentes; sin bloque; X cesado | frontera compartida de cierre | iniciar cierre | C9 | no reinicia cierre |
+| C9 | seis coherentes; G con reset ligado | reset aplicado, verificación ausente | verificar delta | C10 | no repite reset |
+| C10 | seis coherentes; evidencia fresca | verificación verde, gate ausente | adjudicar verificación | C11 | no inventa gate |
+| C11 | seis coherentes; gate/digest iguales | aprobación persistida, commit ausente | crear commit final | C12 | no duplica commit |
+| C12 | seis coherentes; G con commit final | cierre/fase parcialmente persistidos | adjudicar commit, cerrar y sincronizar fase | completed | terminal estable |
+| terminal | seis autoridades coherentes | completed/rolled_back/abandoned/suspended | routing, STOP o diseño según subtipo | mismo terminal | cero mutaciones |
+| inline limpio | P/L/G/X/O coherentes; R ausente | sin efecto externo parcial | pass-through de WIP/fase | routing normal | no inventa bloques |
+| inline parcial | P/L/G/X/O coherentes; R ausente | intención/efecto parcial | `inline-unsupported` | bloqueo | cero mutaciones |
+| legacy | P sin marcador; L/R ausentes; G/X/O coherentes | contrato v1 no obligatorio | `legacy-unsupported` | bloqueo | cero mutaciones |
+| ledger ausente | P con marcador; L ausente; R/G/X/O observados | inicialización v1 interrumpida | `missing-required-ledger` | bloqueo | cero mutaciones |
+| versión/corrupción | documento presente inválido | versión desconocida o forma/digest inválido | rechazo tipado | bloqueo | cero mutaciones |
+| conflicto | dos autoridades discrepan | fuente concreta incompatible | `conflict:<source>` | bloqueo | cero mutaciones |
+| owner obsoleto | O stale sin fencing | exclusión no reclamable | `blocked-manual-remediation` | bloqueo | cero mutaciones |
+| cese incierto | X live/timeout/silencio | cese no demostrable | `blocked` | bloqueo | cero mutaciones |
+
+Para C1-C12, “Salida” es el sucesor inmediato y el terminal final es `completed`. La propuesta
+materializa la cadena completa desde la fila actual, enumerando cada primitiva y su sucesor esperado
+hasta ese terminal; en C6/C7 fija además cuál rama autorizó. No basta con aprobar “seguir”. Las filas
+de bloqueo y los otros terminales terminan donde indica su salida y no tienen primitivas posteriores.
+
+La matriz es un **contrato normativo**, no evidencia de que exista un runtime ejecutable. Cada caso
+debe declarar las seis autoridades, el predicado esperado, la propuesta permitida, la salida terminal
+y la condición de no mutación o idempotencia. Un arnés futuro solo podrá marcar una fila como
+ejecutada si materializa esas autoridades y usa el clasificador/reconciliador de producción; un modelo
+embebido en Markdown no cuenta como prueba end-to-end.
+
+Procedimiento por caso, siempre en un repositorio desechable:
+
+1. crear el repo temporal, commit base, artefactos y estado Git exacto del fixture;
+2. ejecutar el diagnóstico read-only y contrastar clase, fuente y digest;
+3. para `recoverable`, presentar/registrar la confirmación, adquirir ownership, revalidar y ejecutar
+   hasta el terminal declarado;
+4. registrar HEAD, diff, marcas, cursor, adjudicaciones y terminal;
+5. ejecutar una segunda retoma y exigir identidad de resultado y conteo cero de efectos nuevos;
+6. destruir el repo temporal y comprobar que el working tree real nunca cambió.
+
+Los negativos terminan después del diagnóstico y verifican cero mutaciones. Un transporte sin
+primitiva de cese comprobable se registra como `blocked`, nunca como caso verde inferido.
 
 ## Plantilla de constitution
 

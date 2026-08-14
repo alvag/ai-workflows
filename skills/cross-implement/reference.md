@@ -363,7 +363,9 @@ historia; esos commits solo pueden aplastarse mientras sigan siendo locales.
 
 Esta skill consume el ledger y no lo produce. La autoridad de sus estados está en
 `sdd-flow/reference.md` → `### La submáquina de cierre`, y su mecánica en
-`sdd-flow/reference.md` → `### Escritura del ledger`.
+`sdd-flow/reference.md` → `### Escritura del ledger`. Si una caída interrumpe estas operaciones,
+véase “Recuperación de la secuencia” en esa referencia: ahí viven diagnóstico, gate y reconciliación;
+esta sección conserva únicamente la mecánica Git y no duplica el clasificador.
 
 Tras aceptar el último bloque y confirmar el cese, el orden obligatorio es **delta acumulado →
 verificación final → gate → commit final**. Primero se valida la cadena marcada y se ejecuta `git
