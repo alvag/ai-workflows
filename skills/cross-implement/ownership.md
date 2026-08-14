@@ -273,6 +273,15 @@ crash se tratan con parada, no con reconstrucción.
 Estas postcondiciones se prometen solo para cortes normales alcanzados por la matriz. La
 reconstrucción y el rollback recuperable desde crash pertenecen al flujo 2.
 
+### Terminales de secuencia
+
+| Terminal | Intención | Resultado | Continuable |
+|---|---|---|---|
+| `completed` | cerrar la secuencia con commit final | commit final creado y cierre persistido | no |
+| `rolled_back` | descartar el delta de la secuencia | ancla restaurada y SHAs de trabajo descartados | no |
+| `abandoned` | abandonar sin rollback tras cese confirmado | ledger retenido sin cierre persistido | no |
+| `suspended` | suspender por gap de diseño | secuencia detenida con ledger vigente | sí |
+
 ### Precedencia entre los tres topes de corte
 
 Conviven tres reglas de corte y hay que decir en qué orden mandan, porque cuentan cosas distintas:

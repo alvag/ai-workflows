@@ -601,13 +601,13 @@ inventar otro orden.
 
 | # | Paso | Precondición | Postcondición |
 |---|---|---|---|
-| 1 | revisión del delta | El implementador cesó, la cosecha terminó y el delta del bloque está completo contra su commit base. | El conductor revisó todo el delta, incluidos los archivos nuevos, y resolvió cualquier drift. |
-| 2 | comprobación del bloque | La revisión del delta terminó sin hallazgos abiertos y existe al menos una fila elegible. | El outcome es admisible y todas las filas elegibles del bloque están en verde. |
-| 3 | commit de trabajo | El bloque satisface el predicado de aceptación y ningún commit de trabajo alcanzó el upstream. | El conductor creó un commit de trabajo descartable, identificado como propio de la secuencia. |
-| 4 | vínculo en el recibo | El commit de trabajo existe y coincide con el delta aceptado del bloque. | La identidad del bloque en el recibo quedó vinculada al SHA del commit de trabajo. |
-| 5 | marcas `[x]` | El vínculo entre identidad de bloque y commit de trabajo ya está persistido. | Solo las tasks efectivamente cubiertas por el bloque quedaron marcadas `[x]`. |
-| 6 | revalidación del recibo | Las marcas reflejan el bloque aceptado y el recibo conserva su fingerprint aprobado. | El recibo se revalidó contra el contenido canónico y, por separado, contra las tasks pendientes. |
-| 7 | siguiente dispatch | El recibo revalidado identifica un bloque restante y el cese del writer anterior sigue confirmado. | El siguiente bloque aprobado quedó despachado como único writer, o la secuencia pasó al cierre final. |
+| 1 | revisión del delta | `cese_confirmado` + `cosecha_terminada` + `delta_completo` | `delta_revisado` + `drift_resuelto` |
+| 2 | comprobación del bloque | `delta_revisado` + `drift_resuelto` + `sin_hallazgos_abiertos` + `fila_elegible_presente` | `bloque_aceptado` |
+| 3 | commit de trabajo | `bloque_aceptado` + `writer_unico` | `commit_de_trabajo_local` |
+| 4 | vínculo en el recibo | `commit_de_trabajo_local` + `intencion_registrada` | `vinculo_persistido` + `ledger_publicado` |
+| 5 | marcas `[x]` | `vinculo_persistido` + `ledger_publicado` | `marcas_actualizadas` |
+| 6 | revalidación del recibo | `marcas_actualizadas` | `recibo_revalidado` |
+| 7 | siguiente dispatch | `recibo_revalidado` + `cese_confirmado` | `bloque_restante` + `writer_unico` |
 
 ### Formato del recibo de partición
 
@@ -629,6 +629,170 @@ ese vínculo no autoriza marcar tasks ni avanzar. Antes de cada dispatch, el con
 fingerprint y el orden de los bloques restantes. El conjunto de tasks pendientes se valida por
 separado contra la unión de esos bloques: cualquier diferencia invalida el dispatch y detiene la
 secuencia.
+
+### Vocabulario de condiciones
+
+Este vocabulario es un conjunto cerrado. Las claves se combinan con `+`; cualquier clave ausente
+invalida el artefacto.
+
+| Clave | Significado |
+|---|---|
+| `cese_confirmado` | Todo writer del bloque anterior dejó de escribir y el cese es observable. |
+| `cosecha_terminada` | La salida del worker fue cosechada por completo. |
+| `delta_completo` | El delta del bloque está completo contra su commit base. |
+| `delta_revisado` | El conductor revisó todo el delta, incluidos los archivos nuevos. |
+| `drift_resuelto` | Todo cambio fuera del work order fue revertido o declarado. |
+| `sin_hallazgos_abiertos` | La revisión del delta terminó sin hallazgos pendientes. |
+| `fila_elegible_presente` | Existe al menos una fila del contrato elegible en el bloque. |
+| `bloque_aceptado` | El bloque satisface el predicado de aceptación. |
+| `writer_unico` | Hay exactamente un escritor activo sobre el árbol. |
+| `commit_de_trabajo_local` | Existe el commit de trabajo del bloque y no alcanzó el upstream. |
+| `intencion_registrada` | La intención durable de la transición quedó escrita antes del efecto. |
+| `vinculo_persistido` | La identidad del bloque quedó vinculada al SHA de su commit de trabajo. |
+| `ledger_publicado` | La entrada del ledger de este paso quedó publicada por rename. |
+| `marcas_actualizadas` | Las tasks cubiertas por el bloque quedaron marcadas. |
+| `recibo_revalidado` | El fingerprint y el orden de los bloques restantes se revalidaron. |
+| `bloque_restante` | El recibo revalidado identifica un bloque pendiente. |
+| `sin_bloque_restante` | No queda ningún bloque aprobado sin ejecutar. |
+| `reset_aplicado` | El `git reset --soft` sobre el ancla ya se ejecutó. |
+| `verificacion_final_en_verde` | La verificación final sobre el delta acumulado dio verde. |
+| `gate_aprobado` | El gate humano aprobó el delta acumulado y su evidencia. |
+| `commit_final_creado` | El commit final de contenido existe. |
+| `cierre_persistido` | El resultado del cierre quedó registrado en el ledger. |
+
+### Aristas de la transición
+
+El grafo se declara en esta tabla y no se infiere de filas contiguas. Cada arista exige avance no
+vacío: cambian la identidad y el ordinal del bloque, o progresa el cursor.
+
+| From | To | Condición |
+|---|---|---|
+| 1 | 2 | `delta_revisado` + `drift_resuelto` |
+| 2 | 3 | `bloque_aceptado` |
+| 3 | 4 | `commit_de_trabajo_local` |
+| 4 | 5 | `vinculo_persistido` + `ledger_publicado` |
+| 5 | 6 | `marcas_actualizadas` |
+| 6 | 7 | `recibo_revalidado` |
+| 7 | 1 | `bloque_restante` + `writer_unico` |
+| 7 | cierre | `sin_bloque_restante` + `cese_confirmado` |
+
+### El ledger de secuencia
+
+La autoridad cambia por fase en el handoff. Mientras los commits de trabajo viven, Git es la
+autoridad. Antes de destruirlos durante el aplastado, el conductor persiste una proyección validada;
+cuando esa validación termina ocurre el handoff y después el ledger pasa a ser la autoridad
+archivística. Prohibir toda copia sería incumplible, porque la proyección exige una superposición
+temporal antes de destruir los objetos de Git.
+
+El ledger referencia el recibo y no lo duplica. El recibo sigue siendo la autoridad del SHA; el
+ledger es la autoridad del contenido del delta y del avance de la secuencia.
+
+| Campo | Autoridad | Fase | Obligatorio |
+|---|---|---|---|
+| `identidad_del_bloque` | ledger | siempre | por-bloques |
+| `ordinal_del_bloque` | ledger | siempre | por-bloques |
+| `referencia_al_recibo` | recibo | siempre | por-bloques |
+| `cursor_de_transición` | ledger | siempre | por-bloques |
+| `ancla_base` | git | pre-handoff | sí |
+| `delta_material` | ledger | handoff | sí |
+| `resultado` | ledger | post-handoff | sí |
+| `estado_del_join` | ledger | siempre | no |
+| `versión_del_esquema` | ledger | siempre | sí |
+
+Los campos `por-bloques` están ausentes en `inline`, porque no hay partición ni recibo; esa ausencia
+es válida y permite que ambos caminos produzcan un ledger completo. `delta_material` persiste el
+delta independientemente de la recolección de Git: un SHA que deje de ser alcanzable no constituye
+durabilidad. `estado_del_join` es un dato opaco que se persiste sin interpretarlo.
+
+El ledger vive en la ruta `.plans/<id>/sequence-ledger.yml`, hermana del recibo. Se crea al entrar a
+`implement`, cuando el flujo establece `status: implementing`. Su retención es indefinida después
+del cierre y también tras un rollback. Al archivarse `.plans/`, viaja con la carpeta sin
+transformarse. El límite de su durabilidad es la misma copia del repositorio, no entre máquinas.
+
+Ambos caminos producen ledger. Su proyección canónica debe coincidir exactamente en cinco piezas:
+misma base, digest agregado del delta, estado terminal, cobertura y resultado del cierre. La
+cobertura es el fingerprint del alcance aprobado del work order, independiente de la partición;
+solo pueden diferir la cantidad de bloques, sus identidades y los cursores intermedios.
+
+Ningún campo del ledger duplica lo que registra el sobre. La separación es comprobable comparando
+ambos conjuntos de campos: su intersección debe estar vacía.
+
+### Escritura del ledger
+
+La atomicidad es por artefacto: cada superficie se escribe en un temporal del mismo directorio y se
+publica con `rename`. Un `rename` publica un archivo; no hace atómica una transición que también
+modifica el ledger, una referencia de Git, `tasks.md` y el sobre. Entre esas superficies rige un
+protocolo distinto: se registra una intención durable antes del efecto y luego se ejecuta una
+reconciliación idempotente.
+
+Un intento no equivale a una transición consumada. La reconciliación puede hacer replay del intento,
+pero adjudica el efecto durable una sola vez. La exigencia de avance no vacío rige sobre el grafo
+nominal; no convierte una repetición idempotente de la reconciliación en otra transición.
+
+La creación y cada actualización del ledger pertenecen a un escritor único. Para una adopción, el
+token de propietario vive en `.plans/<id>/sequence-ledger.owner/`, un directorio hermano del ledger,
+y la identidad se guarda en `owner/token`. La operación que decide la propiedad es `mkdir`: es
+atómica en los shells soportados y falla si ya existe. Quien crea el directorio adopta; quien pierde
+la carrera no adopta y se detiene, sin esperar ni reintentar.
+
+Antes de cada publicación, el escritor relee `owner/token` y comprueba que conserva su propia
+identidad; verificarlo solo al adoptar dejaría una ventana hasta el último `rename`. Si dos sesiones
+intentan adoptar el mismo ledger, solo una obtiene el directorio, y el propietario ganador queda
+observable en el contenido del token.
+
+El abandono elimina el directorio únicamente tras cese confirmado. Si el propietario del token ya
+no está vigente, otra sesión puede reclamarlo registrando el reclamo en el ledger, nunca en silencio.
+Los temporales huérfanos de un propietario que dejó de ser vigente se ignoran y se recolectan.
+
+### La submáquina de cierre
+
+La entrada al cierre termina la transición entre bloques, pero no la secuencia. El aplastado y sus
+controles avanzan por estos estados propios; la precondición de cada estado posterior sale de la
+postcondición del anterior.
+
+| # | Estado | Precondición | Postcondición |
+|---|---|---|---|
+| 1 | intención de aplastado | `sin_bloque_restante` + `cese_confirmado` | `intencion_registrada` |
+| 2 | reset aplicado | `intencion_registrada` | `reset_aplicado` |
+| 3 | verificación final | `reset_aplicado` | `verificacion_final_en_verde` |
+| 4 | decisión del gate | `verificacion_final_en_verde` | `gate_aprobado` |
+| 5 | commit final | `gate_aprobado` | `commit_final_creado` |
+| 6 | cierre persistido | `commit_final_creado` | `cierre_persistido` |
+
+### Cutpoints de la secuencia
+
+Cada cutpoint deriva de una escritura o un efecto concreto, no de contar pasos. Los IDs son estables
+y nombran tanto estados entre pasos como estados internos de una transición y de la submáquina de
+cierre. En una cadena contigua, después de un paso y antes del siguiente describen el mismo límite;
+cuando no existe esa equivalencia, la tabla declara `ninguno`.
+
+| ID | Ocurre en | Estado observable | Equivale a |
+|---|---|---|---|
+| `C1` | antes de la revisión del delta | bloque despachado, nada escrito | inicio de bloque |
+| `C2` | dentro del commit de trabajo | commit creado, ledger pendiente de publicar | ninguno |
+| `C3` | dentro del vínculo en el recibo | efecto aplicado con ledger pendiente | ninguno |
+| `C4` | dentro de las marcas | ledger publicado con marcas parciales | ninguno |
+| `C5` | tras las marcas | marcas completas sin revalidar | antes del paso 6 |
+| `C6` | tras la revalidación | recibo revalidado | antes del paso 7 |
+| `C7` | dentro del siguiente dispatch | sobre creado con la llamada no consumada | ninguno |
+| `C8` | entrada al cierre | sin bloque restante | después del paso 7 |
+| `C9` | tras el reset | reset aplicado sin verificación | ninguno |
+| `C10` | tras la verificación final | verificación en verde sin gate | ninguno |
+| `C11` | tras el gate | gate aprobado sin commit final | ninguno |
+| `C12` | tras el commit final | commit final sin cierre persistido | ninguno |
+
+### El contrato con la recuperación
+
+Este flujo entrega al flujo 2b de recuperación un contrato compuesto por seis piezas:
+
+1. la lista de cutpoints legítimos con sus equivalencias;
+2. el esquema versionado y su versión;
+3. los terminales, incluidos `rolled_back` y `abandoned`;
+4. la distinción entre intento y transición consumada;
+5. el grafo declarado en la tabla de aristas; y
+6. el protocolo de adopción con su ganador observable.
+
+El flujo 2b es el consumidor de estas entregas. Este flujo las escribe; no las lee.
 
 ## Plantilla de constitution
 

@@ -35,7 +35,7 @@ tamaño. Cargar los tres siempre desperdicia contexto en una corrida que sale bi
 |---|---|---|
 | `reference.md` (este) | descubrimiento, vías de invocación, prompt, reporte, revisión, fix loop, tiempos y scratch | en toda corrida |
 | `contrato-verificacion.md` | esquema del contrato, reglas de congelamiento, adjudicación, gate previo al dispatch y sus bloques de validación | al armar y aprobar el contrato, antes de delegar |
-| `ownership.md` | las cuatro clases de falla, matriz de cierre por bloque, presupuestos, rollback, re-baseline aislado, takeover y precedencia de topes | al cerrar cualquier bloque, haya fallado o no |
+| `ownership.md` | las cuatro clases de falla, matriz de cierre por bloque, presupuestos, rollback, re-baseline aislado, takeover, `### Terminales de secuencia` y precedencia de topes | al cerrar cualquier bloque, haya fallado o no |
 
 En toda corrida, antes del primer despacho, leer también
 `skills/cross-review/corridas-en-vuelo.md` → "Invariantes de recuperación". Ese contrato gobierna el
@@ -360,6 +360,10 @@ Antes de reset, aplastado o rollback, cada SHA marcado se consulta con `git bran
 historia; esos commits solo pueden aplastarse mientras sigan siendo locales.
 
 ### Orden de cierre de la secuencia
+
+Esta skill consume el ledger y no lo produce. La autoridad de sus estados está en
+`sdd-flow/reference.md` → `### La submáquina de cierre`, y su mecánica en
+`sdd-flow/reference.md` → `### Escritura del ledger`.
 
 Tras aceptar el último bloque y confirmar el cese, el orden obligatorio es **delta acumulado →
 verificación final → gate → commit final**. Primero se valida la cadena marcada y se ejecuta `git
