@@ -4,12 +4,104 @@ Detalle que no hace falta en cada corrida. `SKILL.md` indica cuándo abrir cada 
 
 | Sección | Cuándo se lee |
 |---|---|
+| Verificar sin investigar | En el paso 2, si el veredicto no es evidente |
+| El lote, vuelta por vuelta | Solo con `cantidad > 1` |
 | Worktree con `orca-cli` | En el paso 5.1, antes de crear nada |
 | Sembrar el entorno ignorado | En el paso 5.2 |
 | El dossier | En el paso 5.3, al redactarlo |
 | Despachar el flujo | En el paso 5.4 |
 | Retirar del registro | En el paso 6 |
 | Cuando algo falla | Solo si el despacho no arrancó o el retiro dejó residuos |
+
+---
+
+## Verificar sin investigar
+
+El paso 2 tiene que llegar a un veredicto **sin hacer el trabajo del flujo**. La diferencia no es de
+grado, es de pregunta:
+
+| El intake pregunta | El flujo pregunta |
+|---|---|
+| ¿La afirmación describe el árbol de hoy? | ¿Por qué el árbol es así? |
+| ¿La sección que cita existe y dice eso? | ¿Qué debería decir? |
+| ¿La regla que dice faltar, falta? | ¿Dónde conviene ponerla? |
+
+### Qué se comprueba
+
+Solo lo **comprobable por lectura**: valores por default, existencia de secciones y reglas, presencia
+o ausencia de una instrucción, coherencia entre lo que una skill produce y lo que otra exige. Todo eso
+sale de leer y de `grep`.
+
+Lo que **no** se comprueba acá: si el arreglo propuesto es el correcto, si hay una solución mejor, si
+el defecto tiene otras manifestaciones. Son preguntas de diseño y las contesta el flujo.
+
+### Dos comprobaciones que casi siempre pagan
+
+**La fecha contra el árbol.** Si el mecanismo que el incidente describe cambió después de que se
+registró, el diagnóstico puede haber envejecido:
+
+```
+git -C <repo_destino> log -1 --format='%h %ad %s' --date=short -S '<frase de la sección citada>' -- <archivo>
+```
+
+Si el commit es **posterior** al incidente, leer qué cambió antes de aceptar la descripción. Si es
+**anterior**, el incidente se escribió sobre el árbol actual y no hay nada que actualizar.
+
+**La regla que dice faltar.** Cuando el incidente afirma que algo no está —"la skill no dice X"— el
+`grep` que lo confirma es el que más rinde, porque una ausencia es lo más fácil de afirmar mal:
+
+```
+grep -rniE '<dos o tres formas de decir X>' <archivos de la skill>
+```
+
+Salida vacía **con patrones que de verdad cubran las formas de decirlo** confirma la ausencia. Un solo
+patrón demasiado literal da vacío siempre y no prueba nada.
+
+### Cuándo parar y admitir
+
+Si después de leer las secciones citadas y correr esos `grep` el veredicto sigue sin estar claro, **es
+confirmado y se despacha**. Se anota en el dossier qué quedó sin comprobar y por qué — el flujo tiene
+el aparato para resolverlo, el intake no.
+
+Lo que **no** es una razón para rechazar: que el incidente esté mal escrito, que le falte un campo, que
+mezcle dos cosas o que su propuesta no convenza. Nada de eso dice que el defecto no exista.
+
+---
+
+## El lote, vuelta por vuelta
+
+Con `cantidad > 1` el ciclo entero se repite, y lo que cambia entre vueltas es el registro.
+
+### El estado que se arrastra
+
+Entre vueltas solo se lleva esto:
+
+- **Cupos restantes** y **flujos abiertos** (para el reporte final).
+- **Rechazados con su evidencia** — no viven en ningún dossier, así que si se pierden acá se pierden.
+- **Descartados por agrupamiento**: un incidente que se evaluó como relacionado y no entró **sigue
+  siendo candidato** para su propio flujo en la vuelta siguiente. No queda quemado.
+
+### Lo que se relee cada vuelta
+
+El **índice**, porque la vuelta anterior lo cambió. La cabecera de reglas no: no cambia.
+
+Releer el índice no es formalidad — es lo que impide elegir un incidente que la vuelta anterior ya se
+llevó como relacionado. Elegir desde una lista en memoria es la forma exacta de despachar dos veces el
+mismo incidente y descubrirlo cuando dos worktrees tocan las mismas líneas.
+
+### Cuándo el lote termina antes
+
+- **El registro se agotó.** Se abren los que haya y se dice.
+- **Un gate quedó sin respuesta.** No se sigue con el resto: el usuario está mirando una decisión, y
+  abrir worktrees mientras tanto le cambia el terreno abajo de los pies.
+- **Un despacho no arrancó.** Se corrige ese antes de seguir; nunca se retira su incidente ni se pasa
+  al siguiente dejando el worktree inerte.
+
+### Nombres de worktree
+
+Cada flujo necesita el suyo y son de la misma tanda, así que los nombres genéricos colisionan. Derivar
+el nombre de **qué corrige**, no de la posición en el lote: `incidente-2` no le dice nada a nadie
+dentro de una semana.
 
 ---
 
@@ -83,17 +175,19 @@ El criterio de `SKILL.md` → 5.2 decide qué entra. Para cada candidato, la pre
 
 > ¿Esto es **cómo se configura el flujo en este repo**, o es **lo que otra corrida dejó**?
 
-Lo primero se siembra, lo segundo no. Casos que se ven seguido:
+Lo primero se siembra, lo segundo no. Todas las rutas de abajo se leen **dentro del
+`<repo_destino>`**, que es el repo donde va a correr el flujo — nunca el repo donde vive esta skill.
+Casos que se ven seguido:
 
-- `../../../.specify/config.yml` — **siembra**. Es el config de `sdd-flow`: comandos de test/build/lint, modo
+- `.specify/config.yml` — **siembra**. Es el config de `sdd-flow`: comandos de test/build/lint, modo
   de implementación, política cross-model. Sin él la skill entra por `init`.
 - `.specify/constitution.md` — **siembra** si existe. Son las restricciones del proyecto.
-- `../../../.claude/settings.local.json` — **siembra**. Permisos ya concedidos; sin ellos el flujo se detiene
+- `.claude/settings.local.json` — **siembra**. Permisos ya concedidos; sin ellos el flujo se detiene
   en prompts que en el árbol principal ya estaban resueltos.
-- `../../../.co-explore`, `../../../.cross-review`, `../../../.cross-implement`, `../../../.cross-model` — **no**. Artefactos de
+- `.co-explore/`, `.cross-review/`, `.cross-implement/`, `.cross-model/` — **no**. Artefactos de
   corridas.
-- `../../../.plans` — **no**, salvo retoma. En una retoma se copia **la carpeta de ese plan y solo esa**.
-- `node_modules/`, `__pycache__/`, `../../../.idea` — **no**. Si el flujo necesita dependencias, se instalan
+- `.plans/` — **no**, salvo retoma. En una retoma se copia **la carpeta de ese plan y solo esa**.
+- `node_modules/`, `__pycache__/`, `.idea/` — **no**. Si el flujo necesita dependencias, se instalan
   en el worktree; una caché copiada puede traer rutas absolutas del árbol viejo adentro.
 
 Ante un candidato que no encaja en ninguna fila: preguntarle al usuario. Es más barato que sembrar de
@@ -101,28 +195,43 @@ más.
 
 ### Copiar y comprobar
 
+**Por archivo, no por directorio, y creando los intermedios.** El directorio destino puede existir ya
+—medio versionado— y entonces copiar la unidad entera la anida adentro en vez de fusionarla:
+
 ```
-cp -a <repo_destino>/.specify <worktree>/.specify
-cp -a <repo_destino>/.claude  <worktree>/.claude
+for f in $(git -C <repo_destino> status --porcelain --ignored=matching -uall \
+             | grep '^!!' | awk '{print $2}' | grep -E '^\.(specify|claude)/'); do
+  mkdir -p "<worktree>/$(dirname "$f")"
+  cp -a "<repo_destino>/$f" "<worktree>/$f"
+done
 ```
 
 PowerShell:
 
 ```
-Copy-Item -Recurse -Force <repo_destino>\.specify <worktree>\.specify
-Copy-Item -Recurse -Force <repo_destino>\.claude  <worktree>\.claude
+git -C <repo_destino> status --porcelain --ignored=matching -uall |
+  Where-Object { $_ -like '!!*' } | ForEach-Object { ($_ -split '\s+')[1] } |
+  Where-Object { $_ -match '^\.(specify|claude)/' } | ForEach-Object {
+    $d = Split-Path "<worktree>\$_" -Parent
+    New-Item -ItemType Directory -Force -Path $d | Out-Null
+    Copy-Item -Force "<repo_destino>\$_" "<worktree>\$_"
+  }
 ```
 
-Después, **las dos comprobaciones** — sin ellas la siembra puede estar rota de dos formas distintas:
+Después, **las tres comprobaciones** — cada una caza una forma distinta de siembra rota:
 
 ```
 git -C <worktree> check-ignore -v .specify/config.yml .claude/settings.local.json
 git -C <worktree> status --porcelain
+ls <worktree>/.specify/config.yml <worktree>/.claude/settings.local.json
 ```
 
 1. `check-ignore` con salida por cada archivo → el destino los ignora. **Sin salida = no los ignora**,
    y van a terminar en un commit del flujo.
 2. `status --porcelain` sin las rutas sembradas → confirma lo anterior desde el otro lado.
+3. `ls` de cada archivo **en la ruta esperada** → caza el anidamiento. Sin ésta, un
+   `.claude/.claude/settings.local.json` pasa las dos primeras sin una queja: también está ignorado,
+   así que el árbol se ve limpio y la siembra parece hecha.
 
 Un archivo puede estar ignorado en el árbol principal por `.git/info/exclude` (que **sí** comparten
 los worktrees del mismo repo) o por el ignore global del usuario (que también aplica). Lo que **no**
@@ -169,7 +278,7 @@ sin contexto de esta sesión, y **la única copia** de los incidentes tomados.
    verificación, prohibiciones sobre directorios, guardas que hay que correr y **cómo se leen** (hay
    guardas cuyo código de salida no es la señal de salud).
 8. **Dónde se registran los incidentes** si alguna skill falla durante el flujo — con la ruta del
-   árbol principal, porque un worktree no hereda `../../../.plans`.
+   árbol principal, porque un worktree no hereda `.plans/`.
 
 ### Lo que no va
 
@@ -309,12 +418,13 @@ Los dos, no uno: la fecha caza la sección, el término caza la fila del índice
 | Síntoma | Causa probable | Qué hacer |
 |---|---|---|
 | El agente responde pero la skill no cargó | El slash quedó dentro del texto pegado, o el agente es `codex` y no tiene el slash | Reenviar nombrando la skill y su ruta. No retirar nada hasta que cargue |
-| El flujo pregunta cosas que el config ya responde | El worktree no está sembrado | Copiar `../../../.specify` y avisarle al agente que relea el config |
+| El flujo pregunta cosas que el config ya responde | El worktree no está sembrado | Sembrar `.specify/` del `<repo_destino>` y avisarle al agente que relea el config |
 | El flujo arranca un `init` que nadie pidió | Igual que arriba, caso agudo | Igual, y verificar que el `init` no haya sobrescrito nada |
 | `git status` del worktree muestra lo sembrado | El destino no ignora esos paths | Sacarlos del árbol y resolver el ignore antes de seguir |
 | El diff del flujo sale contra un árbol raro | El worktree nació en `origin/<default>` | Se previene en 5.1. Ya avanzado, es rebase — y el techo de proporción del repo, si lo tiene, se midió contra el commit equivocado |
 | El registro quedó sin la fila pero con la sección | El retiro tocó un solo lugar | Completar el retiro y **registrar el incidente**: es un defecto de procedimiento |
 
-Todo fallo atribuible a una skill SDD —esta incluida— se registra según la regla del `../../../CLAUDE.md` del
-repo: en `../../../.plans/incidentes-skills.md` del **árbol principal**, resuelto con `git worktree list` si
+Todo fallo atribuible a una skill SDD —esta incluida— se registra según la regla del archivo de
+instrucciones del `<repo_destino>`: en su `.plans/incidentes-skills.md` del **árbol principal**,
+resuelto con `git worktree list` si
 la sesión corre en un worktree.
