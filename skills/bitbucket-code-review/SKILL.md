@@ -389,7 +389,7 @@ decir una línea sobre el QA.
    comentario del PR.
 2. **Delegar en `cocha-qa-results`** (no reimplementar QA/IAP acá): invocarla con el **Skill
    tool**; si el runtime no la expone (p. ej. Codex, sin Skill tool), **leer y seguir**
-   `.claude/skills/cocha-qa-results/SKILL.md` (vista del repo results, cwd = raíz). Pasarle: el
+   `../../.agents/skills/cocha-qa-results/SKILL.md` (vista del repo results, cwd = raíz). Pasarle: el
    **vertical** del Paso 5, la **rama source** del PR y, si el diff ramifica, el eje (mobile/desktop,
    B2B/B2C).
    - **Local** (`npm run qa`, `local.cocha.com:4200`) para el caso típico.
@@ -663,7 +663,7 @@ correctitud, no en estilo. Cuando los revisores discrepan, el **usuario es el á
   troubleshooting.
 - `cocha-qa-results` (skill par) — **QA local/staging** del funnel con Playwright + IAP. El Paso 7b
   delega acá (Skill tool; en runtimes sin Skill tool, leer
-  `.claude/skills/cocha-qa-results/SKILL.md`); esta skill no reimplementa QA ni maneja
+  `../../.agents/skills/cocha-qa-results/SKILL.md`); esta skill no reimplementa QA ni maneja
   credenciales IAP.
 - `co-explore` (skill par, **opcional**) — **debate cross-model** para resolver una discrepancia de
   veredicto (Paso 8.1). Se **ofrece**, nunca corre sin confirmación; si no está instalada, la

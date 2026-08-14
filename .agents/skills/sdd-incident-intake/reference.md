@@ -85,15 +85,15 @@ El criterio de `SKILL.md` → 5.2 decide qué entra. Para cada candidato, la pre
 
 Lo primero se siembra, lo segundo no. Casos que se ven seguido:
 
-- `.specify/config.yml` — **siembra**. Es el config de `sdd-flow`: comandos de test/build/lint, modo
+- `../../../.specify/config.yml` — **siembra**. Es el config de `sdd-flow`: comandos de test/build/lint, modo
   de implementación, política cross-model. Sin él la skill entra por `init`.
 - `.specify/constitution.md` — **siembra** si existe. Son las restricciones del proyecto.
-- `.claude/settings.local.json` — **siembra**. Permisos ya concedidos; sin ellos el flujo se detiene
+- `../../../.claude/settings.local.json` — **siembra**. Permisos ya concedidos; sin ellos el flujo se detiene
   en prompts que en el árbol principal ya estaban resueltos.
-- `.co-explore/`, `.cross-review/`, `.cross-implement/`, `.cross-model/` — **no**. Artefactos de
+- `../../../.co-explore`, `../../../.cross-review`, `../../../.cross-implement`, `../../../.cross-model` — **no**. Artefactos de
   corridas.
-- `.plans/` — **no**, salvo retoma. En una retoma se copia **la carpeta de ese plan y solo esa**.
-- `node_modules/`, `__pycache__/`, `.idea/` — **no**. Si el flujo necesita dependencias, se instalan
+- `../../../.plans` — **no**, salvo retoma. En una retoma se copia **la carpeta de ese plan y solo esa**.
+- `node_modules/`, `__pycache__/`, `../../../.idea` — **no**. Si el flujo necesita dependencias, se instalan
   en el worktree; una caché copiada puede traer rutas absolutas del árbol viejo adentro.
 
 Ante un candidato que no encaja en ninguna fila: preguntarle al usuario. Es más barato que sembrar de
@@ -169,7 +169,7 @@ sin contexto de esta sesión, y **la única copia** de los incidentes tomados.
    verificación, prohibiciones sobre directorios, guardas que hay que correr y **cómo se leen** (hay
    guardas cuyo código de salida no es la señal de salud).
 8. **Dónde se registran los incidentes** si alguna skill falla durante el flujo — con la ruta del
-   árbol principal, porque un worktree no hereda `.plans/`.
+   árbol principal, porque un worktree no hereda `../../../.plans`.
 
 ### Lo que no va
 
@@ -309,12 +309,12 @@ Los dos, no uno: la fecha caza la sección, el término caza la fila del índice
 | Síntoma | Causa probable | Qué hacer |
 |---|---|---|
 | El agente responde pero la skill no cargó | El slash quedó dentro del texto pegado, o el agente es `codex` y no tiene el slash | Reenviar nombrando la skill y su ruta. No retirar nada hasta que cargue |
-| El flujo pregunta cosas que el config ya responde | El worktree no está sembrado | Copiar `.specify/` y avisarle al agente que relea el config |
+| El flujo pregunta cosas que el config ya responde | El worktree no está sembrado | Copiar `../../../.specify` y avisarle al agente que relea el config |
 | El flujo arranca un `init` que nadie pidió | Igual que arriba, caso agudo | Igual, y verificar que el `init` no haya sobrescrito nada |
 | `git status` del worktree muestra lo sembrado | El destino no ignora esos paths | Sacarlos del árbol y resolver el ignore antes de seguir |
 | El diff del flujo sale contra un árbol raro | El worktree nació en `origin/<default>` | Se previene en 5.1. Ya avanzado, es rebase — y el techo de proporción del repo, si lo tiene, se midió contra el commit equivocado |
 | El registro quedó sin la fila pero con la sección | El retiro tocó un solo lugar | Completar el retiro y **registrar el incidente**: es un defecto de procedimiento |
 
-Todo fallo atribuible a una skill SDD —esta incluida— se registra según la regla del `CLAUDE.md` del
-repo: en `.plans/incidentes-skills.md` del **árbol principal**, resuelto con `git worktree list` si
+Todo fallo atribuible a una skill SDD —esta incluida— se registra según la regla del `../../../CLAUDE.md` del
+repo: en `../../../.plans/incidentes-skills.md` del **árbol principal**, resuelto con `git worktree list` si
 la sesión corre en un worktree.

@@ -5,7 +5,7 @@ flujo `sdd-flow` corriendo en su propio worktree, y recién entonces la retira d
 
 ## El problema que resuelve
 
-El registro de incidentes (`.plans/incidentes-skills.md`) es una bandeja de entrada. Se llena solo —
+El registro de incidentes (`../../../.plans/incidentes-skills.md`) es una bandeja de entrada. Se llena solo —
 cada corrida que tropieza con un defecto de las skills deja su registro — y **no se vacía solo**.
 Vaciarlo a mano tiene cuatro trampas que se repiten:
 
@@ -49,7 +49,7 @@ Verificar → agrupar → despachar → confirmar arranque → retirar
 | Situación | Skill correcta |
 |---|---|
 | Corregir la skill defectuosa | El `sdd-flow` que esta despacha. Ésta prepara, no arregla |
-| Registrar un incidente nuevo | Es una regla del `CLAUDE.md` del repo, no una skill |
+| Registrar un incidente nuevo | Es una regla del `../../../CLAUDE.md` del repo, no una skill |
 | Criticar una spec/plan/tasks | `cross-review` |
 | Delegar la implementación | `cross-implement` |
 | Explorar terreno o buscar causa raíz | `co-explore` |
@@ -86,4 +86,4 @@ ln -s "$PWD/skills/sdd-incident-intake" ~/.agents/skills/sdd-incident-intake   #
 |---|---|
 | `SKILL.md` | El agente, en cada corrida: el invariante, los seis pasos, red flags |
 | `reference.md` | El agente, cuando `SKILL.md` lo manda: comandos de Orca, criterio de siembra, plantilla del dossier, mecánica del despacho, retiro y fallas |
-| `README.md` | Humanos. No se lee en ejecución |
+| `../../../README.md` | Humanos. No se lee en ejecución |

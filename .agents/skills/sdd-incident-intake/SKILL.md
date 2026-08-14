@@ -145,11 +145,11 @@ a preguntar decisiones que el config ya tenía resueltas.
 
 | | Qué | Por qué |
 |---|---|---|
-| **Sí** | `.specify/` (config del flujo, constitution) | Sin esto el flujo se cree no inicializado y arranca un `init` que nadie pidió |
-| **Sí** | `.claude/` (settings locales, permisos concedidos) | Sin esto el flujo se traba pidiendo permisos que en el árbol principal ya están dados |
-| **No** | Directorios de trabajo de las skills (`.co-explore/`, `.cross-review/`, `.cross-implement/`, `.cross-model/`) | Son corridas anteriores. El flujo nuevo genera las suyas; arrastrarlas le da un estado que no es el suyo |
-| **No** | El resto de `.plans/` | Son flujos ajenos. Salvo que este flujo sea una **retoma**, y entonces se copia **ese** plan y solo ese |
-| **No** | Cachés, `.idea/`, `.handoffs/` | Ruido; y una caché con rutas del árbol viejo adentro es peor que ruido |
+| **Sí** | `../../../.specify` (config del flujo, constitution) | Sin esto el flujo se cree no inicializado y arranca un `init` que nadie pidió |
+| **Sí** | `../../../.claude` (settings locales, permisos concedidos) | Sin esto el flujo se traba pidiendo permisos que en el árbol principal ya están dados |
+| **No** | Directorios de trabajo de las skills (`../../../.co-explore`, `../../../.cross-review`, `../../../.cross-implement`, `../../../.cross-model`) | Son corridas anteriores. El flujo nuevo genera las suyas; arrastrarlas le da un estado que no es el suyo |
+| **No** | El resto de `../../../.plans` | Son flujos ajenos. Salvo que este flujo sea una **retoma**, y entonces se copia **ese** plan y solo ese |
+| **No** | Cachés, `../../../.idea`, `../../../.handoffs` | Ruido; y una caché con rutas del árbol viejo adentro es peor que ruido |
 
 **El inventario se deriva, el criterio se congela.** No transcribir una lista de directorios: leerlos
 del repo en el momento, porque la lista de arriba envejece y una entrada que ya no existe se lee
@@ -231,11 +231,11 @@ registro antes y después.
 - **Ignorar y heredar son cosas distintas.** Un worktree **no hereda el contenido** untracked, pero
   **sí hereda las reglas de ignore**: comparte `info/exclude` con el commondir, y el ignore global del
   usuario aplica igual. Por eso el dossier y lo sembrado quedan fuera de git sin configurar nada — y
-  por eso mismo la ausencia de `.specify/` no se nota hasta que el flujo ya arrancó mal.
+  por eso mismo la ausencia de `../../../.specify` no se nota hasta que el flujo ya arrancó mal.
 - **El registro puede estar en un repo que no es el destino.** Es lo normal, no una anomalía.
 - **El dossier tiene que llevar las restricciones del `repo_destino`.** El flujo despachado arranca
   sin contexto de esta sesión: si el repo tiene reglas que un flujo puede violar sin darse cuenta
   (topes de verificación, prohibiciones sobre directorios, guardas que hay que correr), van escritas.
   `reference.md` → "El dossier" lo detalla.
 - **Si algo de este procedimiento falla por culpa de una skill SDD**, eso es un incidente y se
-  registra según la regla del `CLAUDE.md` del repo — en el árbol principal, nunca en el worktree.
+  registra según la regla del `../../../CLAUDE.md` del repo — en el árbol principal, nunca en el worktree.
