@@ -109,6 +109,8 @@ Más allá del spec, estas skills usan patrones consistentes que hay que respeta
 - **`cross-review`** — segunda opinión adversarial sobre **artefactos de diseño** (spec/plan/tasks), no sobre código. Modo `draft` cuando hay idea pero no artefacto.
 - **`cross-implement`** — delega la implementación de un work order **congelado** a la otra familia; el conductor revisa el diff como un PR ajeno y commitea tras el gate humano.
 - **`bitbucket-code-review`** — code review de PRs de **Bitbucket** (MCP `bb_*`): panel de revisores externos **uno por familia disponible**, author-aware, sobre el diff del PR; publica la decisión con gate. Es la sede de "code review sobre diffs" de la regla de fronteras.
+- **`sdd-incident-intake`** — admisión del registro de incidentes: verifica un incidente contra el árbol, agrupa los que se resolverían en el mismo diff, abre un worktree sembrado con la config ignorada, despacha un `sdd-flow` y recién entonces retira los incidentes tomados. **No corrige la skill** —eso es el `sdd-flow` que despacha—: es el único punto donde `.plans/incidentes-skills.md` se vacía.
+
 **Escalera de rigor.** Las fronteras dicen *qué* hace cada una; la escalera dice *cuál alcanza*:
 respuesta local → `co-explore` (mapa, causa raíz o decisión) → `cross-review` (crítica de una
 decisión escrita) → `cross-implement` (construcción desde contrato congelado) → `verify` de
