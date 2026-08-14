@@ -109,7 +109,6 @@ Más allá del spec, estas skills usan patrones consistentes que hay que respeta
 - **`cross-review`** — segunda opinión adversarial sobre **artefactos de diseño** (spec/plan/tasks), no sobre código. Modo `draft` cuando hay idea pero no artefacto.
 - **`cross-implement`** — delega la implementación de un work order **congelado** a la otra familia; el conductor revisa el diff como un PR ajeno y commitea tras el gate humano.
 - **`bitbucket-code-review`** — code review de PRs de **Bitbucket** (MCP `bb_*`): panel de revisores externos **uno por familia disponible**, author-aware, sobre el diff del PR; publica la decisión con gate. Es la sede de "code review sobre diffs" de la regla de fronteras.
-
 **Escalera de rigor.** Las fronteras dicen *qué* hace cada una; la escalera dice *cuál alcanza*:
 respuesta local → `co-explore` (mapa, causa raíz o decisión) → `cross-review` (crítica de una
 decisión escrita) → `cross-implement` (construcción desde contrato congelado) → `verify` de
@@ -146,6 +145,33 @@ Cuando conduce Claude, la otra familia es **Codex**; el detalle canónico vive e
 ## Artefactos en disco (dogfooding)
 
 Las skills SDD escriben artefactos **locales y untracked** (nunca se commitean): `.specify/config.yml` + `constitution.md` por proyecto, y `.plans/<id>/` por flujo. **Este repo se desarrolla a sí mismo con esas skills:** `.superpowers/sdd/` contiene los artefactos SDD (briefs, reports, diffs de review) usados para construir las propias skills, y `docs/superpowers/{specs,plans}/` guarda specs y planes de diseño versionados. Al retomar trabajo, esos archivos son la memoria del flujo.
+
+### Registro de incidentes con las skills
+
+**Todo incidente que tengas usando las skills SDD `sdd-flow` y sus skills hermanas (`cross-review`, `cross-implement`,
+`co-explore`, `bitbucket-code-review`, `sdd-pr-feedback`) se registra en
+`.plans/incidentes-skills.md`, en el momento en que ocurre.** Alcanza a las skills mismas, a los
+artefactos que generan y a las instrucciones erróneas que contengan: una instrucción que produce
+un artefacto que otra skill rechaza, un gate que se dispara sin salida practicable, una plantilla que no
+coincide con lo que su validador exige, un paso cuyo orden vuelve imposible cumplir el siguiente.
+
+**Siempre el archivo del árbol principal del repo, nunca el del worktree en el que estés
+corriendo.** Como `.plans/` es local y untracked, un worktree no lo hereda: escribir ahí crea un
+segundo registro que nadie lee y que desaparece cuando el worktree se remueve, y el archivo único es
+justamente lo que permite ver que un incidente se repite. Si la sesión corre en un worktree, el
+árbol principal se resuelve con `git worktree list` —es la primera entrada— y el registro va a
+`<árbol-principal>/.plans/incidentes-skills.md`.
+
+El destinatario del archivo es **el agente que va a corregir la skill**, no quien trabaja en el
+proyecto donde se usó: nada de rutas ni artefactos del proyecto, sí la skill, la sección o regla
+concreta, qué instruía frente a qué pasó, por qué el defecto es de la skill, la consecuencia y qué
+habría que cambiar.
+
+**Una reincidencia se agrega, nunca se edita.** Si el mismo defecto vuelve a aparecer, igual o
+parecido, va un registro nuevo cruzado con el anterior por su fecha y hora en el campo
+`Relacionado`. Editar el registro viejo para "actualizarlo" borra la frecuencia, que es lo único que
+distingue una trampa estructural de la skill de un descuido puntual. Las reglas completas del
+formato viven en la cabecera del propio archivo.
 
 ## Git
 
