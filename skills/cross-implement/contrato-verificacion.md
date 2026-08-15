@@ -250,16 +250,18 @@ congelar igual, es no despachar.
 
 ### `proof_cmd` frente al contrato
 
-`proof_cmd` existía antes que este contrato y **se conserva**, con un papel acotado: es una
-comprobación **agregada y opcional** —la suite completa, el build— que el conductor corre para ver
-el conjunto de un vistazo tras cada ronda.
+`proof_cmd` existía antes que este contrato y **se conserva**, con un papel acotado: es la **lista
+ordenada** de comprobaciones **agregadas y opcionales** —la suite completa, el build, el linter— que
+el conductor corre para ver el conjunto de un vistazo tras cada ronda.
 
-Lo que **no** es:
+Lo que **no** son:
 
-- no sustituye ninguna fila del contrato;
-- no alcanza para dar un requisito por cumplido, ni siquiera en verde. Lo que cierra un requisito es
-  **su fila**, con su esperado y su baseline. Un `proof_cmd` verde sobre un contrato con una fila en
-  rojo describe una suite que no cubre ese requisito, no un requisito cumplido.
+- **Ninguna de las comprobaciones agregadas** sustituye una fila del contrato. Vale para cada una y
+  para todas juntas: que sean varias no cambia su rango, solo su cardinalidad.
+- Ninguna alcanza para dar un requisito por cumplido, ni siquiera en verde. Lo que cierra un
+  requisito es **su fila**, con su esperado y su baseline. Un `proof_cmd` entero en verde sobre un
+  contrato con una fila en rojo describe una suite que no cubre ese requisito, no un requisito
+  cumplido.
 
 De ahí la asimetría del gate, que es la forma verificable de todo lo anterior:
 
