@@ -128,7 +128,7 @@ El esquema completo está en `config-ejemplo.md`; la matriz de detección, en `r
 ```
 /sdd-flow empezar PROJ-130: refactor del módulo de pagos, implementa con Codex
 ```
-→ tras aprobar las tasks, `cross-implement` congela el work order y lo implementa un modelo de la otra familia; tu sesión revisa el diff como un PR ajeno, marca el progreso y conserva la revisión manual, el commit y el push.
+→ tras aprobar las tasks, el propio flujo congela el contrato y `cross-implement` lo recibe congelado para que lo implemente un modelo de la otra familia; tu sesión revisa el diff como un PR ajeno, marca el progreso y conserva la revisión manual, el commit y el push.
 
 ## Verificación: más que "tests en verde"
 

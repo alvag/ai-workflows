@@ -229,10 +229,10 @@ arriba. La cadena es una comprobación de integridad barata, no una garantía de
 
 ### Contrato en work orders sin flujo SDD
 
-Cuando el work order es un `.plans/<id>/` de `sdd-flow`, el contrato ya viene escrito: el flujo lo
-declara en su plan y lo congela antes de delegar. Cuando **no** lo es —un `PLAN.md`, un equivalente,
-o un contrato destilado de la conversación en modo directo— no hay flujo que lo produzca, y el
-reparto de responsabilidades es este:
+Cuando el work order es un `.plans/<id>/` de `sdd-flow`, el contrato ya viene escrito y congelado por
+`sdd-flow/reference.md` → "Producción del contrato de verificación". Cuando **no** lo es —un
+`PLAN.md`, un equivalente, o un contrato destilado de la conversación en modo directo— no hay flujo
+que lo produzca, y el reparto de responsabilidades es este:
 
 | # | Quién | Qué | Por qué no otro |
 |---|---|---|---|
