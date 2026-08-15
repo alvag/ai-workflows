@@ -277,7 +277,10 @@ crítica se presenta *junto* al artefacto en el mismo STOP; tú sigues siendo el
   runtime, si vence el timeout/`poll_deadline` de la revisión (la skill garantiza un tope duro: ver
   `cross-review/reference.md` → "Latencia y timeout (Claude revisor)"), o si `cross_review.mode: off` → avisar en una línea ("revisión
   cross-model no disponible — sigo con el gate humano") y continuar con el gate normal. Es la misma
-  filosofía de la regla #6.
+  filosofía de la regla #6. **Si el retorno trae `aplicaciones_pendientes` mayor que cero, declararlo
+  con sus `ids_pendientes` antes de liberar el gate:** una degradación no abre checkpoint, así que
+  esta es la única oportunidad de decir que quedaron ediciones que ningún revisor observó, y
+  aprobarlas sin saberlo es el mismo hueco que la revisión venía a cerrar.
 - **Barrera preterminal (`review-pending`).** Mientras la revisión delegada esté pendiente, se
   apendiza `review-pending` a la línea del gate en curso —una marca, **no** un `status` nuevo de
   `plan.md`: precondición del STOP, no fase del flujo— y el STOP **no se presenta**; una aprobación
@@ -291,7 +294,9 @@ crítica se presenta *junto* al artefacto en el mismo STOP; tú sigues siendo el
   patrón de la pregunta de `implement_mode`— **continuar así** · **conceder una tanda** · **seguir
   hasta `APPROVED`** · **cerrar la revisión**. Las cuatro se ofrecen siempre: `disponibles: false`
   advierte que conceder no puede converger, no deshabilita nada. Postcondiciones de cada una en
-  `cross-review/reference.md` → "Tandas y salida de rondas".
+  `cross-review/reference.md` → "Tandas y salida de rondas". **Si `aplicaciones_pendientes` es mayor
+  que cero, mostrarlo con sus `ids_pendientes` *antes* de presentar las opciones**: "continuar así"
+  aprueba el artefacto, y quien elige tiene que saber que hay ediciones que ninguna ronda observó.
 - **Cerrar la corrida es responsabilidad de la llamadora.** Tras el gate: si el usuario concede, se
   **reanuda la misma corrida con su `run_id`** (nunca se inicia otra); si elige una salida terminal
   —aprobar así o cerrar—, se **finaliza el único manifest** de la corrida. `cross-review` no puede

@@ -1,9 +1,15 @@
 <!-- prompt `review-round-n` · lo despacha `cross-review` desde la ronda 2 · formato: xml
-     placeholders: {artifact_type}, {complexity}, {working_dir}, {ronda}, {delta}, {rechazos}
+     placeholders: {artifact_type}, {complexity}, {working_dir}, {ronda}, {delta}, {rechazos},
+                   {artefacto}
      ESTE ARCHIVO ES LA ENTRADA EXACTA DEL WORKER: lo que no esté acá no existe para él.
      Se escribe a archivo y nunca se arma inline; cómo llega al worker lo fija el transporte.
      {delta} y {rechazos} se PROYECTAN desde el ledger, nunca se redactan aparte
-     (ver reference.md → "Resume entre rondas"). -->
+     (ver reference.md → "Resume entre rondas").
+     {artefacto} es el contenido COMPLETO del artefacto actualizado. El bloque que lo contiene se
+     inserta si hay al menos una aplicación pendiente de revisión, y se OMITE ENTERO si no hay
+     ninguna — nunca se deja vacío: un bloque vacío le dice al revisor que no hubo cambios, cuando
+     lo que pasó es que no se los mandaron. Esa misma condición elige el evento con que se registra
+     el cierre de la ronda. -->
 
 <task>
 Ronda {ronda} de la revisión del artefacto "{artifact_type}". Sigue siendo una revisión de SOLO
@@ -50,6 +56,18 @@ Quien decide sigue siendo el conductor.
 Estos findings están **cerrados**: se aceptó el rechazo, o su defensa se evaluó como inadmisible.
 **No los re-emitas.** Si reaparecen, se descartan por identidad sin arbitrarse y sin abrir ronda.
 </findings_cerrados>
+
+<artefacto_actualizado>
+{artefacto}
+
+Este es el artefacto **después** de aplicar lo que dice el delta. Revisalo: aplicar un finding es
+una edición nueva que ningún revisor vio todavía, y puede no haber resuelto el problema, o haberlo
+resuelto introduciendo otro.
+
+Si una de las aplicaciones **no resolvió** el finding que reportaste, re-emitilo con su **ID
+original** y con la evidencia de que el artefacto sigue fallando. Tenés **una sola** re-apertura por
+finding: la segunda re-emisión del mismo tema pasa a disputa sin re-arbitrarse.
+</artefacto_actualizado>
 
 <grounding_rules>
 - Ancla cada finding a una sección/AC/línea concreta del artefacto o del código. No inventes.
