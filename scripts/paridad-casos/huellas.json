@@ -32,20 +32,20 @@
     "ps": "sha256:40d2fc5aa93bfa10"
   },
   "gate-blocked": {
-    "posix": "sha256:5165dae817806360",
-    "ps": "sha256:4852a151874c76b0"
+    "posix": "sha256:8ef6d6d7dde32220",
+    "ps": "sha256:1cf77e02a6865080"
   },
   "gate-congelado": {
-    "posix": "sha256:39f5c808a9bb4671",
-    "ps": "sha256:42c1e310b0d3acb8"
+    "posix": "sha256:00824a75394afc71",
+    "ps": "sha256:af4feea434a3ebdc"
   },
   "gate-fase-3": {
     "posix": "sha256:01c6586706d3a6a5",
     "ps": "sha256:986cdc741004fba3"
   },
   "gate-modo-directo": {
-    "posix": "sha256:ce1446fe6a68c9bb",
-    "ps": "sha256:c7057caef8296827"
+    "posix": "sha256:901ed227d2e0e17c",
+    "ps": "sha256:d35201e1ac14608d"
   },
   "identidades-reintento": {
     "posix": "sha256:43305d71409c4535",

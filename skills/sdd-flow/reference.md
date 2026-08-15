@@ -1188,6 +1188,12 @@ línea previa nunca se reescribe para aparentar otro orden.
 Las guardas canónicas del ecosistema ya consumen este artefacto y sus literales `paso:`. Por eso el
 formato y los actores son normativos, no texto libre del conductor.
 
+Esta bitácora la comparten dos repartos, y **su vocabulario de pasos es propio del reparto con
+gates**: el reparto con kickoff nombra sus pasos de otra manera porque su aprobación no es un gate
+sino un kickoff, y porque no distingue medir, adjudicar y sellar como pasos separados.
+Las dos formas son legítimas y cada guarda declara a cuál aplica; lo que no hay que hacer es
+renombrar los pasos de un reparto para que se parezcan a los del otro.
+
 ### Matriz de congelamiento por complejidad
 
 | Complejidad | Último gate aplicable | Ejecutor del congelamiento | Constancia |

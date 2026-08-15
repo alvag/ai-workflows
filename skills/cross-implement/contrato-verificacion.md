@@ -748,6 +748,7 @@ el orden que sea.
 
 ```bash
 # @bloque:gate-congelado
+# Aplica a: el reparto con gates y el reparto con kickoff
 # Predicado: hay contrato, su tabla no tiene ninguna fila con baseline sin resolver, y la bitácora
 # registra el congelamiento antes del despacho.
 # Entradas: $contrato $bitacora
@@ -761,7 +762,7 @@ awk -v n="$n" '
 grep -E '^\|' "$t/vig" | grep -vE '^\|[[:space:]]*(ID[[:space:]]*\||[-: |]+\|)' > "$t/filas"
 
 [ -s "$t/filas" ] || { echo "GUARD:gate-contrato-congelado el work order no trae tabla" >&2; rc=1; }
-awk -F'|' 'NF==8{gsub(/^ +| +$/,"",$7); if ($7=="") print "  "$2}' "$t/filas" > "$t/e"
+awk -F'|' 'NF==8{gsub(/^ +| +$/,"",$7); if ($7=="" || $7=="BLOCKED") print "  "$2}' "$t/filas" > "$t/e"
 [ -s "$t/e" ] && { echo "GUARD:gate-contrato-congelado baseline sin resolver:" >&2; cat "$t/e" >&2; rc=1; }
 grep -q '`paso: congelar`' "$bitacora" || {
   echo "GUARD:gate-contrato-congelado la bitácora no registra el congelamiento" >&2; rc=1; }
@@ -771,6 +772,7 @@ rm -rf "$t"; exit $rc
 
 ```powershell
 # @bloque:gate-congelado-ps
+# Aplica a: el reparto con gates y el reparto con kickoff
 # Predicado: hay contrato, su tabla no tiene ninguna fila con baseline sin resolver, y la bitácora
 # registra el congelamiento antes del despacho.
 # Entradas: $contrato $bitacora
@@ -791,7 +793,7 @@ $filas = @($vig | Where-Object { $_ -cmatch '^\|' -and $_ -cnotmatch '^\|\s*(ID\
 if ($filas.Count -eq 0) { Write-Error 'GUARD:gate-contrato-congelado el work order no trae tabla'; $rc = 1 }
 foreach ($f in $filas) {
   $c = $f -split '\|'
-  if ($c.Count -eq 8 -and $c[6].Trim() -eq '') { Write-Error "GUARD:gate-contrato-congelado baseline sin resolver: $($c[1].Trim())"; $rc = 1 }
+  if ($c.Count -eq 8 -and ($c[6].Trim() -ceq '' -or $c[6].Trim() -ceq 'BLOCKED')) { Write-Error "GUARD:gate-contrato-congelado baseline sin resolver: $($c[1].Trim())"; $rc = 1 }
 }
 if ((Get-Content -LiteralPath $bitacora) -cnotmatch '`paso: congelar`') {
   Write-Error 'GUARD:gate-contrato-congelado la bitácora no registra el congelamiento'; $rc = 1
@@ -802,6 +804,7 @@ exit $rc
 
 ```bash
 # @bloque:gate-blocked
+# Aplica a: el reparto con gates y el reparto con kickoff
 # Predicado: ninguna fila queda en BLOCKED al despachar, y ninguna justificación de NOT_APPLICABLE
 # alega indisponibilidad del entorno.
 # Entradas: $contrato $bitacora
@@ -832,6 +835,7 @@ rm -rf "$t"; exit $rc
 
 ```powershell
 # @bloque:gate-blocked-ps
+# Aplica a: el reparto con gates y el reparto con kickoff
 # Predicado: ninguna fila queda en BLOCKED al despachar, y ninguna justificación de NOT_APPLICABLE
 # alega indisponibilidad del entorno.
 # Entradas: $contrato $bitacora
@@ -873,6 +877,7 @@ exit $rc
 
 ```bash
 # @bloque:gate-modo-directo
+# Aplica a: solo el reparto con kickoff
 # Predicado: el conductor deriva la tabla y ejecuta el baseline, el usuario aprueba en el kickoff
 # antes de que se congele, el congelamiento precede al despacho, y el orden de los timestamps
 # coincide con el orden en que la bitácora los lista.
@@ -910,6 +915,7 @@ exit $rc
 
 ```powershell
 # @bloque:gate-modo-directo-ps
+# Aplica a: solo el reparto con kickoff
 # Predicado: el conductor deriva la tabla y ejecuta el baseline, el usuario aprueba en el kickoff
 # antes de que se congele, el congelamiento precede al despacho, y el orden de los timestamps
 # coincide con el orden en que la bitácora los lista.

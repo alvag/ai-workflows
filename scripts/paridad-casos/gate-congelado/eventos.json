@@ -3,11 +3,11 @@
     "id": "sin-tabla",
     "sitio": {
       "posix": {
-        "linea": 13,
+        "linea": 14,
         "digest": "sha256:bc955b23140e6242"
       },
       "ps": {
-        "linea": 18,
+        "linea": 19,
         "digest": "sha256:995bdbfa5ddb923b"
       }
     },
@@ -33,12 +33,12 @@
     "id": "baseline-sin-resolver",
     "sitio": {
       "posix": {
-        "linea": 15,
+        "linea": 16,
         "digest": "sha256:1b4c0f60c31144ae"
       },
       "ps": {
-        "linea": 21,
-        "digest": "sha256:30d50f1fde3a5cfd"
+        "linea": 22,
+        "digest": "sha256:9202a3d6ceb252e7"
       }
     },
     "posix": "(?s)^GUARD:gate-contrato-congelado baseline sin resolver:\\n(?P<filas>.*)$",
@@ -79,11 +79,11 @@
     "id": "bitacora-sin-congelar",
     "sitio": {
       "posix": {
-        "linea": 17,
+        "linea": 18,
         "digest": "sha256:d8370db2cf25ee1d"
       },
       "ps": {
-        "linea": 24,
+        "linea": 25,
         "digest": "sha256:6f0cc3bad41a7bc5"
       }
     },
