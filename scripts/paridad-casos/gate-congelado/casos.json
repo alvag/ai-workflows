@@ -56,6 +56,23 @@
       }
     },
     {
+      "nombre": "baseline-blocked",
+      "particion": "invalido",
+      "objetivo": "baseline-sin-resolver",
+      "clase_esperada": "rechazo",
+      "precondicion": "una fila con el baseline en el estado explícito que declara que no se pudo medir; hay tabla y la bitácora congela",
+      "clausulas": {
+        "sin-tabla": "valido",
+        "baseline-sin-resolver": "invalido",
+        "bitacora-sin-congelar": "valido"
+      },
+      "fixture": "baseline-blocked",
+      "entradas": {
+        "contrato": "{dir}/contrato.md",
+        "bitacora": "{dir}/bitacora.md"
+      }
+    },
+    {
       "nombre": "baseline-espacios",
       "particion": "casing",
       "objetivo": "baseline-sin-resolver",
