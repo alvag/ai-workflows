@@ -34,6 +34,11 @@ artefacto escrito ──► [cross-review] ──► artefacto (quizá revisado)
   **una tanda**, no de la corrida entera: al agotarse no se cierra sola — se abre un checkpoint donde
   elegís entre continuar así, conceder otra tanda, seguir hasta `APPROVED` (con un tope total) o
   cerrar la revisión. El loop nunca corre sin tope, y quien lo extiende sos vos.
+- **La revisión no converge sobre ediciones que nadie miró.** Aplicar un finding es un cambio nuevo y
+  sin revisar, y puede introducir un defecto propio: por eso una edición aplicada **impide** el
+  `APPROVED` **hasta** que una ronda posterior la observe con el artefacto actualizado delante. No
+  crea rondas fuera del presupuesto —el tope sigue mandando—, pero si la tanda se agota con ediciones
+  sin mirar, el checkpoint te lo dice y con cuáles, para que decidas sabiéndolo.
 - **Sin sycophancy, en las dos direcciones.** Cada finding del revisor se evalúa técnicamente (vía
   `superpowers:receiving-code-review`): se aplica si es correcto, se rechaza **con motivo** si no —
   un rechazo sin motivo es un estado inválido. Y el revisor puede **defender** un rechazo una vez,

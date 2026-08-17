@@ -191,14 +191,17 @@ archivo los fija "Fan-out dual y orden de lanzamiento" — no los bloques de aba
 referencia del preflight y de la lectura del config. Las rutas `explorer.*` que aparecen acá son
 **históricas**: el árbol vigente es "Árbol de rutas".
 
-**Preflight de aislamiento (fail-closed).** Antes de lanzar, comprobar que la versión instalada
-permite aislar al worker: que `codex exec --help` ofrezca `--ignore-user-config` y que
-`codex features list` reporte `hooks`, `apps` y `plugins`. Si falta cualquiera, **no se lanza** y
-se devuelve `UNAVAILABLE` (regla 6 del `SKILL.md`). Acá pesa más que en una invocación sync: el
-lanzamiento es en **background**, así que un fail-open dejaría un proceso sin aislar corriendo sin
-nadie mirándolo. `-s read-only` acota lo que el explorador escribe en disco, no los efectos
-remotos de una tool MCP.
+**Preflight de aislamiento (fail-closed).** Antes de lanzar, correr `preflight_aislamiento <familia>`
+por cada worker a despachar y **ramificar sobre su código de salida**: distinto de 0 → no se lanza y
+se devuelve `UNAVAILABLE` (regla 6 del `SKILL.md`). El bloque, la política por familia y el
+fundamento viven en la sede única: `cross-review/reference.md` → "Preflight de aislamiento
+(fail-closed)".
 
+> **Lo propio de esta skill, que la sede no dice:** acá pesa más que en una invocación sync, porque
+> el lanzamiento es en **background**. Un fail-open dejaría un proceso sin aislar corriendo sin nadie
+> mirándolo, y en topología dual serían dos.
+
+<!-- despacho:inicio:coex-directa-posix:codex -->
 ```bash
 # POSIX — el prompt ya está escrito a archivo con la tool Write (nunca inline, ni echo/heredoc):
 mkdir -p co-explore/scratch
@@ -231,6 +234,8 @@ codex "$@" < co-explore/scratch/prompt.txt \
 PID=$!
 echo "$PID" > co-explore/scratch/explorer.pid
 ```
+<!-- despacho:fin:coex-directa-posix -->
+<!-- despacho:inicio:coex-directa-ps:codex -->
 ```powershell
 # PowerShell:
 New-Item -ItemType Directory -Force -Path co-explore\scratch | Out-Null
@@ -258,6 +263,7 @@ $proc = Start-Process -FilePath codex -NoNewWindow -PassThru `
   -ArgumentList $CodexArgs
 $proc.Id | Out-File co-explore\scratch\explorer.pid
 ```
+<!-- despacho:fin:coex-directa-ps -->
 
 Los cuatro flags de aislamiento son lo que evita que el explorador herede los MCP del entorno, los
 hooks locales y las instrucciones de modelo del usuario. Medido en este repo: un worker sin aislar
@@ -289,6 +295,7 @@ grep -m1 -o '"thread_id":"[^"]*"' co-explore/scratch/explorer-thread.jsonl | cut
 `cross-review/reference.md` → Vía C, camino BACKGROUND (el mismo patrón que usa cross-review
 cuando el conductor tiene un exec corto, p. ej. Codex ~120s):
 
+<!-- despacho:inicio:coex-latencia-posix:claude -->
 ```bash
 # POSIX:
 SESSION_ID=$(uuidgen)   # Git Bash en Windows sin uuidgen: ver "Portabilidad entre shells" de cross-review
@@ -302,6 +309,8 @@ PID=$!
 echo "$PID" > co-explore/scratch/explorer.pid
 echo "$SESSION_ID" > co-explore/scratch/explorer-session.txt
 ```
+<!-- despacho:fin:coex-latencia-posix -->
+<!-- despacho:inicio:coex-latencia-ps:claude -->
 ```powershell
 # PowerShell:
 $SessionId = [guid]::NewGuid().ToString()
@@ -313,6 +322,7 @@ $proc = Start-Process -FilePath claude -WorkingDirectory <working_dir> -NoNewWin
 $proc.Id | Out-File co-explore\scratch\explorer.pid
 $SessionId | Out-File co-explore\scratch\explorer-session.txt
 ```
+<!-- despacho:fin:coex-latencia-ps -->
 
 `--allowedTools=Read,Grep,Glob` es lo único que garantiza read-only en `claude -p` (no existe un
 flag de sandbox equivalente a `-s read-only`); `--safe-mode` evita cargar plugins/hooks/MCP/
@@ -686,7 +696,18 @@ M=<modo>            # explore | counter-plan | investigate
 
 # 2) truncar — ver "Truncado previo al dispatch"
 
-# 3) lanzar los dos, sin esperar entre medio
+# 3) lanzar los dos, sin esperar entre medio — ver los dos bloques de abajo
+```
+
+> **El paso 3 va partido en un bloque por familia**, para que cada receta lleve su mecanismo de
+> aislamiento a la vista y se pueda comprobar leyendo el despacho. **La partición no cambia el
+> orden:** los dos se lanzan en background, uno detrás del otro, y el poll del paso 4 viene después
+> de ambos. Esperar al primero antes de lanzar el segundo duplica la latencia cumpliendo la letra.
+
+<!-- despacho:inicio:coex-fanout-posix-codex:codex -->
+
+```bash
+# 3a) worker Codex
 codex exec --ignore-user-config --disable hooks --disable apps --disable plugins \
       -s read-only -C <working_dir> --skip-git-repo-check --json \
       --output-last-message "$S/raw-$M-codex-worker.md" \
@@ -695,14 +716,25 @@ codex exec --ignore-user-config --disable hooks --disable apps --disable plugins
     > "$S/thread-$M-codex-worker.jsonl" 2> "$S/stderr-$M-codex-worker.txt" &
 echo $! > "$S/pid-$M-codex-worker.txt"
 T0_CODEX=$(date +%s)
+```
 
+<!-- despacho:fin:coex-fanout-posix-codex -->
+
+<!-- despacho:inicio:coex-fanout-posix-claude:claude -->
+
+```bash
+# 3b) worker Claude — sin esperar al anterior
 ( cd <working_dir> && claude -p --safe-mode --model opus --permission-mode default \
     --allowedTools=Read,Grep,Glob --session-id "$SID_CLAUDE" \
     < "$S/prompt-$M-claude-worker.txt" ) \
     > "$S/raw-$M-claude-worker.md" 2> "$S/stderr-$M-claude-worker.txt" &
 echo $! > "$S/pid-$M-claude-worker.txt"
 T0_CLAUDE=$(date +%s)
+```
 
+<!-- despacho:fin:coex-fanout-posix-claude -->
+
+```bash
 # 4) recién ahora, poll de ambos — cada uno contra SU T0
 ```
 
@@ -715,15 +747,51 @@ T0_CLAUDE=$(date +%s)
 
 ```powershell
 $S = "<dir>\co-explore\scratch"; $M = "<modo>"
-# ambos Start-Process ANTES de cualquier Wait-Process
+```
+
+> **Los dos `Start-Process` van ANTES de cualquier `Wait-Process`.** Los bloques están partidos por
+> familia para que cada uno lleve su aislamiento a la vista, y esa partición **no** cambia el orden:
+> se lanza el de Codex, se lanza el de Claude, y recién después se espera. Poner el `Wait` al final
+> del primer bloque serializa los workers y duplica la latencia cumpliendo la letra.
+
+<!-- despacho:inicio:coex-fanout-ps-codex:codex -->
+
+```powershell
+# Los argumentos se construyen ACÁ, en el punto de despacho: si viven lejos, la receta no muestra
+# su propio aislamiento y nadie puede comprobarlo leyendo el lanzamiento.
+$CodexArgs = @('exec','--ignore-user-config','--disable','hooks','--disable','apps',
+               '--disable','plugins','-s','read-only','-C','<working_dir>',
+               '--skip-git-repo-check','--json',
+               '--output-last-message',"$S\raw-$M-codex-worker.md")
+if ($Model)  { $CodexArgs += @('-m', $Model) }
+if ($Effort) { $CodexArgs += @('-c', "model_reasoning_effort=$Effort") }
+$CodexArgs += '-'
 $pCodex = Start-Process -FilePath codex -NoNewWindow -PassThru `
   -RedirectStandardInput  "$S\prompt-$M-codex-worker.txt" `
   -RedirectStandardOutput "$S\thread-$M-codex-worker.jsonl" `
   -RedirectStandardError  "$S\stderr-$M-codex-worker.txt" -ArgumentList $CodexArgs
+```
+
+<!-- despacho:fin:coex-fanout-ps-codex -->
+
+<!-- despacho:inicio:coex-fanout-ps-claude:claude -->
+
+```powershell
+# `--safe-mode` es el mecanismo de aislamiento de esta familia: apaga CLAUDE.md, skills, plugins,
+# hooks y MCP del usuario. `--allowedTools` entrecomillado entero, o PowerShell parsea las comas.
+$SidClaude   = [guid]::NewGuid().ToString()
+$ClaudeArgs  = @('-p','--safe-mode','--model','opus','--permission-mode','default',
+                 '--allowedTools=Read,Grep,Glob','--session-id',$SidClaude)
 $pClaude = Start-Process -FilePath claude -WorkingDirectory <working_dir> -NoNewWindow -PassThru `
   -RedirectStandardInput  "$S\prompt-$M-claude-worker.txt" `
   -RedirectStandardOutput "$S\raw-$M-claude-worker.md" `
   -RedirectStandardError  "$S\stderr-$M-claude-worker.txt" -ArgumentList $ClaudeArgs
+$SidClaude | Out-File "$S\session-$M-claude-worker.json"
+```
+
+<!-- despacho:fin:coex-fanout-ps-claude -->
+
+```powershell
 # recién acá: Wait/poll de los dos
 ```
 

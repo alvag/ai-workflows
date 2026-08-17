@@ -3,11 +3,11 @@
     "id": "blocked-y-despacha",
     "sitio": {
       "posix": {
-        "linea": 19,
+        "linea": 20,
         "digest": "sha256:c6f1e1cab7f44298"
       },
       "ps": {
-        "linea": 25,
+        "linea": 26,
         "digest": "sha256:1c3be5392c330544"
       }
     },
@@ -49,11 +49,11 @@
     "id": "justificado-por-el-entorno",
     "sitio": {
       "posix": {
-        "linea": 23,
+        "linea": 24,
         "digest": "sha256:dfd8525f91d29708"
       },
       "ps": {
-        "linea": 34,
+        "linea": 35,
         "digest": "sha256:41bbbbaf020ab1ad"
       }
     },

@@ -39,15 +39,94 @@ Cada una lleva **disparador, efecto y excepción**: un enunciado sin las tres no
 > **Excepción:** continúa solo con excepción aprobada por el usuario en ese gate, con el cálculo y
 > el motivo a la vista.
 
-- **Numerador** — líneas **agregadas** a `scripts/`, más las agregadas a cualquier archivo cuyo
-  propósito declarado sea verificar. **Las líneas agregadas a un script existente cuentan igual que
-  un archivo nuevo**: si no, la regla 3 se evade engordando lo que ya está.
-- **Denominador** — líneas **agregadas** a `skills/` en el mismo diff.
-- **Borrados** — no entran al numerador. Retirar andamiaje nunca puede violar el techo.
-- **Denominador cero** — si el flujo no agrega ni una línea a `skills/`, el numerador debe ser
-  **cero**.
-- **Cuándo se mide** — con `git diff --numstat <base_commit>` **después de implementar**. Medirlo en
-  el gate de tasks daría cero en ambos términos: ahí todavía no se tocó una línea.
+- **Los dos términos, y qué cae en cada uno.** El **andamiaje** es todo lo que está bajo `scripts/` o
+  `tests/`, más los archivos de test (`*.test.*`) y los verificadores (`verificar-*`) dondequiera que
+  vivan — los patrones van escritos porque "un archivo de verificación" no es decidible y ya se
+  resolvió distinto en dos flujos. El **producto** son
+  las dos sedes de skills: `skills/` y `.agents/skills/`. Son dos porque hay una skill del ecosistema
+  que vive fuera de `skills/`, y con una sola sede un flujo que la tocara quedaría con denominador
+  cero, bloqueando por una razón que no es la suya. De la partición se sigue que
+  `ninguna línea del diff puede contar en ambos` términos.
+- **Es una `lista cerrada`, con lo que eso cuesta.** Una lista se desactualiza sola, y su disparador
+  de actualización es concreto: agregar una sede de producto, o un patrón de verificación nuevo. Se
+  eligió sobre un criterio por tipo —"todo ejecutable es andamiaje"— porque ese criterio, medido
+  contra el repositorio, metía al numerador el runtime y el transporte cross-model, que no son
+  verificación. `tests/` se nombra de forma **preventiva**: hoy está vacío. Y hay archivos que no
+  caen en ninguno de los dos términos, como la configuración de agentes y ese transporte: eso es
+  correcto y no un hueco, porque no son ni el producto de este repo ni el andamiaje que lo verifica.
+- **Numerador** — con denominador mayor que cero, la suma de líneas agregadas menos borradas,
+  `por archivo, con piso en cero por archivo`. El piso va por archivo y no sobre el total porque
+  sobre el total un borrado grande en un archivo financiaría crecimiento en otro. Así una
+  reindexación pura —que agrega y borra la misma cantidad— da cero, que es lo que corresponde: ahí el
+  andamiaje no creció, se reordenó. **Las líneas agregadas a un script existente cuentan igual que las
+  de un archivo nuevo**: si no, la regla 3 se evade engordando lo que ya está.
+- **Denominador** — las líneas **agregadas** al producto en el mismo diff, en bruto. La asimetría con
+  el numerador es deliberada: el numerador mide cuánto **creció** el andamiaje y el denominador
+  cuánto **producto** trajo el flujo, así que borrar producto no debe inflar el término de abajo.
+- **Denominador cero** — `con denominador cero el numerador se mide bruto`, así que el flujo se detiene
+  salvo que ese numerador bruto sea **cero**. El neto existe para no castigar el reordenamiento que **acompaña** a un
+  cambio de producto; sin producto no hay nada que acompañar. Sin esta condición, 100 líneas
+  agregadas y 100 borradas en un script sin tocar el producto pasarían — y la fórmula anterior, que
+  contaba solo agregadas, sí frenaba ese caso.
+- **Borrados** — `descuentan solo cuando hay producto` en el diff, que es la rama neta. Retirar
+  andamiaje nunca puede violar el techo.
+- **Cómo y cuándo se mide** — con `git diff --numstat <base_commit>` **después de implementar**, más
+  `git ls-files --others --exclude-from=.gitignore -z` para los archivos nuevos: el diff no ve lo que
+  todavía no está trackeado, y el techo se mide antes del staging. Un rename `se atribuye al destino`, con
+  las agregadas y borradas de su contenido, así que un rename puro aporta cero. Ante una fila no
+  numérica —un binario— `la medición se detiene` y se resuelve a mano, en vez de leer el guion como
+  un cero. Medirlo en el gate de tasks daría cero en ambos términos: ahí todavía no se tocó una línea.
+- **Por qué la enumeración no usa `--exclude-standard`, que es lo que uno escribiría.** Ese flag aplica
+  **tres** fuentes de exclusión —los `.gitignore` del árbol, el `.git/info/exclude` del clon y el
+  `core.excludesFile` del usuario— y **dos de las tres no viajan con el commit**. Con él, el mismo commit
+  medido en dos clones da números distintos por la configuración de cada persona, y el veredicto deja de
+  ser una propiedad de lo que se escribió. `--exclude-from=.gitignore` lee **solo** el archivo versionado:
+  medido en un repositorio de prueba, ignora `.git/info/exclude` en las dos direcciones. Si ese archivo no
+  existe, `la medición se detiene`, porque sin fuente versionada no hay medición reproducible; degradar en
+  silencio a la enumeración vieja devolvería un número dependiente del clon con apariencia de válido.
+- **Artefactos generados: no cuentan, en ninguno de los tres términos.** Lo que ninguna persona escribió
+  no puede contar como escrito. El dominio es una `lista cerrada`, y es la tercera de esta regla:
+
+  | Patrón | Qué es |
+  |---|---|
+  | `__pycache__/` | bytecode de Python, que nace al importar un módulo |
+  | `.pytest_cache/` | cache de corridas de test |
+  | `dist/` | salida de empaquetado |
+  | `coverage/` | reportes de cobertura |
+  | `node_modules/` | dependencias instaladas |
+  | `.DS_Store` | metadatos del explorador de archivos de macOS |
+
+  El `disparador del dominio de generados: agregar o retirar un patrón` es cuando el repositorio empieza
+  o deja de producir una clase de artefacto que nadie escribe. Los seis patrones viven además en el
+  `.gitignore` versionado, y `medir-techo.py --dominio` los imprime para que las tres representaciones se
+  puedan comparar con un `diff` en vez de confiar en que alguien las mantuvo iguales.
+
+  El caso que obligó a escribir esto: un `.pyc` de 124 líneas, generado por una guarda del propio
+  repositorio al importar otra, entraba al numerador como andamiaje recién escrito. Y el simétrico es peor
+  porque **afloja** el techo: un `.DS_Store` bajo `skills/` sumaba al denominador.
+- **Los directorios de artefactos del ecosistema SDD tampoco cuentan**, y su descarte vive **acá** y no en
+  el `.gitignore`: `.plans/`, `.specify/`, `.cross-model/`, `.cross-review/`, `.co-explore/`,
+  `.cross-implement/`, `.handoffs/` y `.superpowers/`. La razón no es de estilo — la regla 10 de `sdd-flow` prohíbe
+  explícitamente agregarlos a un ignore compartido, porque son un flujo personal y no del equipo. Sin este
+  descarte, enumerar sin las fuentes locales mete al numerador los archivos de flujos viejos: medido, dos
+  rutas `*.test.mjs.before-promotion` bajo `.plans/archived/` clasifican como andamiaje.
+  `.superpowers/` está en la lista por la misma razón y no por simetría: este repositorio se desarrolla
+  a sí mismo con estas skills y ahí viven sus briefs, reports y diffs de review. Su riesgo es el mismo
+  y está medido: un archivo llamado `verificar-…` o `….test.…` ahí dentro clasifica como andamiaje.
+
+  **Lo que queda afuera, y por qué.** `.idea/` es configuración del IDE y no entra en ninguna de las dos
+  listas: hoy todo su contenido clasifica `ninguno`, y agregarlo expandiría el dominio a herramientas de
+  terceros sin un caso medido que lo pida. La regla 1 exige que un escalón se suba con evidencia de que
+  el anterior falló, no con la sospecha de que podría.
+- **Esta regla mide el techo y `no gobierna qué se stagea`.** Qué archivo entra a un commit lo decide el
+  paso `implement` de `sdd-flow`, que es portable y no puede depender de este documento. Son dos criterios
+  con dominios disjuntos, y decirlo es lo que impide que se lean como discrepantes: durante un tiempo las
+  dos sedes hablaron de archivos generados sin declarar dónde terminaba cada una, y sobre el mismo hecho
+  tres flujos resolvieron distinto.
+- **Lo que la fórmula no detecta** — mover contenido entre archivos distintos cuenta como crecimiento
+  en el destino. Es consecuencia de medir por archivo, la misma propiedad que impide que un borrado
+  financie crecimiento ajeno. No se agrega mecanismo para eso: la regla 1 pide evidencia de que el
+  escalón barato falló, y ese caso todavía no ocurrió.
 - **Por qué bloquea** — un techo que solo obliga a declarar es un techo **sin condición de salida**,
   que es exactamente la causa que estas reglas vienen a cortar.
 
@@ -58,6 +137,16 @@ Cada una lleva **disparador, efecto y excepción**: un enunciado sin las tres no
 > la evidencia de que la guarda barata falló.
 > **Excepción:** ninguna dentro del flujo en curso. La escalada es una decisión con gate propio, no
 > un atajo a mitad de una task.
+
+**Qué hace el disparador ante un artefacto generado.** La señal de esta regla comparte enumeración con
+el numerador de la regla 2, así que hay que decir qué pasa con lo que aparece bajo `scripts/` sin que
+nadie lo escriba: `un artefacto generado no dispara la señal`. Se reconoce por el dominio cerrado de la
+regla 2, y queda fuera del contador igual que del numerador.
+
+**Lo que no cambia es la prohibición.** Un archivo **escrito** bajo `scripts/` sigue prohibido sin
+excepción; lo único que se acota es qué cuenta como archivo nuevo. Sin esta distinción el bytecode de
+una guarda del propio repositorio disparaba una regla pensada para frenar andamiaje escrito a mano, y el
+veredicto pasaba a depender de si alguien había corrido un verificador antes de medir.
 
 ## Anatomía de una skill (patrón obligatorio del repo)
 
@@ -80,6 +169,7 @@ Al crear o editar skills, seguí las buenas prácticas de agentskills.io (refere
 - **Specification:** https://agentskills.io/specification — `name` (== nombre del directorio, minúsculas/números/guiones, sin guion inicial/final ni `--`), `description` (máx 1024 chars, tercera persona, qué hace **y cuándo** usarla, con keywords de trigger).
 - **Best practices:** https://agentskills.io/skill-creation/best-practices — SKILL.md idealmente <500 líneas / <5000 tokens; mover el detalle a `reference.md`; dar **un default, no un menú**; secciones "Gotchas" y "red flags"; procedimientos reutilizables, no respuestas puntuales.
 - Validar con `skills-ref validate ./skills/<nombre>` (de https://github.com/agentskills/agentskills).
+- **El techo de proporción de la regla 2 se mide con `python3 scripts/medir-techo.py <base_commit>`**, al cerrar `implement` y antes del gate de revisión manual. Imprime en una línea los archivos nuevos bajo `scripts/`, el numerador, el denominador y el veredicto, y distingue por código de salida `pasa` (0), `bloquea` (1), error de invocación (2) y **medición detenida** (3) — que no es un veredicto y no se puede leer como uno. La **sede normativa de la fórmula sigue siendo la regla 2**: el script la implementa y ancla el hash de esa sección, así que si la regla cambia se detiene en vez de calcular con una fórmula vieja. Reimplementarla a mano en un bloque del plan es lo que produjo doce defectos en tres flujos; su suite —`scripts/medir-techo.test.py`, con `--listar` y `--autotest`— los tiene mapeados uno por uno.
 - Si la skill toca `config-ejemplo.md` o `manifest-ejemplo.md`, o el esquema/"Configuración" de alguno de sus cinco dueños (`sdd-flow`, `sdd-orchestrator`, `cross-review`, `co-explore`, `cross-implement`), correr `python3 scripts/verificar-vistas-config.py`: valida que esas vistas sigan fieles a sus dueños (claves, enums, valores, marcas `[def]`/`[ej]`/`[obl]` y comillas en `on`/`off`).
 - Si la skill toca `corridas-en-vuelo.md`, correr `python3 scripts/verificar-sobre-en-vuelo.py --sincronizar` y después `--ac 13`. Ese archivo es **contenido replicado**: la sede canónica es `skills/cross-review/corridas-en-vuelo.md` y las otras seis son copias byte-idénticas generadas. **Editar una copia a mano es una divergencia silenciosa**; el generador la evita y el hash la detecta.
 - El baseline de ese verificador vive en `scripts/baseline-sobre-en-vuelo.md`: correr `python3 scripts/verificar-sobre-en-vuelo.py --validar-baseline` para comprobarlo y `--ac 16` para la no-regresión del cierre de los intentos. Su identidad se ata al `sha256` del propio verificador, así que **tocar el `.py` obliga a re-emitir el bloque `#### Baseline de vN`** —el validador lee la versión mayor— con el commit evaluado y los estados **medidos**, no asumidos.
@@ -89,6 +179,85 @@ Al crear o editar skills, seguí las buenas prácticas de agentskills.io (refere
 - Si la skill toca el cuerpo de un bloque `# @bloque:` que tiene variante `-ps`, correr `python3 scripts/verificar-paridad-powershell.py --reporte`: ejecuta las dos variantes sobre entradas equivalentes y compara clase, eventos, stdout y artefactos. Un cuerpo cambiado **invalida su cobertura** hasta auditar la matriz de casos y renovar el registro con `--registrar-auditoria --par <nombre>`; el alcance cubierto y el declarado sin matriz viven en `scripts/paridad-casos/alcance.json`.
 
   > **El código de salida de `--reporte` NO es la señal de salud: hoy devuelve 4 y ese es el estado sano.** Un bloque que corta con `exit 99` sobre una entrada inexistente es un error de invocación y no un incumplimiento, pero AC-3 clasifica como `fallo` cualquier código distinto de 0 y 1, y `fallo` domina la precedencia global. La señal es el cuerpo del reporte: **cero `divergencia`, cero `incumplimiento_comun`, cero `no_comprobable`, y `fallo` solo en los pares que declaran un caso de ese tipo** — hoy son cinco (`gate-fase-3`, `integracion-ownership`, `orchestration-contract`, `orchestration-model`, `orchestration-state`), cada uno con sus casos de entrada inexistente y `clase_esperada: fallo`. Un `fallo` en un caso que no lo declara sí es rojo. Las que se leen por código de salida son las **nueve** guardas propias del arnés (`--auditar-catalogo`, `--auditar-matrices` y los **siete** `--autotest-*`): 0 en verde, 4 en rojo. Las banderas `--estricto-mono-causa`, `--exigir-particiones`, `--afirmar-particiones` y `--testigos-centinela` **no** son guardas independientes: corren la suite y devuelven ese mismo 4, así que verificar con ellas exige diffear su reporte contra el de `--reporte` puro.
+
+- **Si el cambio toca una receta de despacho, una marca `despacho:`, la tabla de política de aislamiento o este mismo bloque, correr el verificador de aislamiento.** Son las **cuatro** superficies que pueden romperlo, y el disparador se enuncia por lo que cambia y no por el nombre de una sección: anclarlo a un título es el defecto medido de `--ac 12`, cuyo disparador documentado no dispara ante un cambio de receta. El verificador es un bloque de shell —no hay archivo bajo `scripts/`, regla 3— con dos salidas que son **dos propiedades distintas**:
+
+  ```bash
+  # uso: verificar_aislamiento <raíz> <correccion|candidatos>
+  verificar_aislamiento() {
+    raiz="${1:?raíz}" modo="${2:?modo}"
+    pol="$raiz/skills/cross-review/reference.md"
+    # la política se LEE de su tabla delimitada; duplicar los flags acá crearía una segunda sede
+    leer_pol() {
+      awk -v fam="$1" '/politica-aislamiento:inicio/{f=1;next} /politica-aislamiento:fin/{f=0}
+                       f && $0 ~ "^\\| `" fam "`"' "$pol" |
+        grep -o '`--[a-z-]*\( [a-z]*\)\?`' | tr -d '`' | paste -sd'|' -
+    }
+    CM=$(leer_pol codex); LM=$(leer_pol claude)
+    [ -n "$CM" ] && [ -n "$LM" ] || { echo "política ilegible en $pol"; return 2; }
+    archivos=$(grep -Rl --include='*.md' 'despacho:inicio:' "$raiz/skills" 2>/dev/null)
+    case "$modo" in
+      correccion)
+        salida=$(
+          printf '%s\n' "$archivos" | while IFS= read -r f; do [ -n "$f" ] && grep -o 'despacho:inicio:[a-z0-9-]*' "$f"; done \
+            | sort | uniq -d | sed 's/^/GLOBAL 0 /;s/$/ id duplicado/'
+          printf '%s\n' "$archivos" | while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            awk -v F="$f" -v CM="$CM" -v LM="$LM" '
+              /<!-- despacho:inicio:/ {
+                if (ab) { print F " " ini " " id " apertura sin cierre, o region anidada (indistinguibles desde el texto)" }
+                match($0,/despacho:inicio:[a-z0-9-]+:[a-z]+/); s=substr($0,RSTART,RLENGTH)
+                split(s,p,":"); id=p[3]; fam=p[4]
+                if (fam!="codex" && fam!="claude") print F " " NR " " id " familia no declarada"
+                ab=1; ini=NR; cuerpo=""; next }
+              /<!-- despacho:fin:/ {
+                match($0,/despacho:fin:[a-z0-9-]+/); s=substr($0,RSTART,RLENGTH); split(s,p,":")
+                if (!ab) { print F " " NR " " p[3] " cierre sin apertura"; next }
+                if (p[3]!=id) print F " " NR " " id " emparejamiento roto (cierra " p[3] ")"
+                if (cuerpo ~ /^[[:space:]]*$/) print F " " ini " " id " region vacia"
+                n=split((fam=="codex")?CM:LM, ms, "|")
+                for (i=1;i<=n;i++) {
+                  if (ms[i]=="") continue
+                  # dos formas equivalentes: POSIX `--disable hooks` y PowerShell `'"'"'--disable'"'"','"'"'hooks'"'"'`
+                  ps=ms[i]; gsub(/ /, "'"'"','"'"'", ps)
+                  if (index(cuerpo,ms[i])==0 && index(cuerpo,ps)==0)
+                    print F " " ini " " id " falta mecanismo: " ms[i] }
+                ab=0; next }
+              # los comentarios NO cuentan como mecanismo: nombrar el flag en prosa no lo aplica
+              { if (ab) { linea=$0; sub(/^[[:space:]]+/,"",linea)
+                          if (linea !~ /^#/) cuerpo = cuerpo "\n" $0 } }
+              END { if (ab) print F " " ini " " id " apertura sin cierre" }' "$f"
+          done )
+        [ -z "$salida" ] && return 0
+        printf '%s\n' "$salida"; return 1 ;;
+      candidatos)
+        grep -Rn --include='*.md' -e 'codex exec' -e 'claude -p' "$raiz/skills" 2>/dev/null |
+          while IFS= read -r linea; do
+            f=${linea%%:*}; n=$(printf '%s' "$linea" | cut -d: -f2)
+            awk -v N="$n" 'NR<=N { if (/despacho:inicio:/) d=1; if (/despacho:fin:/) d=0 }
+                           END { exit d?1:0 }' "$f" && printf '%s\n' "$linea"
+          done
+        return 0 ;;
+      *) echo "modo desconocido: $modo"; return 2 ;;
+    esac
+  }
+  ```
+
+  **Cómo se lee.** `correccion` es el **veredicto**: 0 en verde, 1 con una línea por violación
+  (`<archivo>:<línea> <id> <causa>`). `candidatos` es **evidencia de revisión**, siempre 0, y lista
+  toda invocación fuera de región para que una persona la adjudique en
+  `.plans/<id>/candidatos-despacho.md` con su clasificación y fundamento.
+
+  > **Las dos cosas que no detecta, y conviene que estén escritas al lado.** Primero, **que un
+  > conductor se desvíe de la receta en runtime**: esto verifica el texto documentado, no el comando
+  > que se ejecutó. Segundo, y más importante, **la completitud del inventario no es automatizable** —
+  > que no exista un despacho sin marcar—. No es un hueco reparable con un predicado mejor: el
+  > instrumento de escalón 4 que existió para esto (`scripts/verificar-matriz-despachos.py`, retirado
+  > en `d31fe87` como andamiaje sin consumidor) midió **64 sitios detectados en el árbol, 44 de ellos
+  > fuera de toda sección anclada**, y la mayoría eran documentación, ejemplos y tablas de vías.
+  > Distinguir un despacho real de su documentación es una adjudicación humana, y por eso `candidatos`
+  > **lista** en vez de fallar. Un verificador que prometiera completitud terminaría permanentemente en
+  > rojo, o —peor— con una allowlist congelada que se desactualiza sola.
 
 > Nota: varios SKILL.md de este repo (p. ej. `sdd-flow`) exceden holgadamente el presupuesto de tokens sugerido. Es una tensión conocida por la complejidad del flujo; al editar, empujá contenido hacia `reference.md` antes que engordar el SKILL.md.
 

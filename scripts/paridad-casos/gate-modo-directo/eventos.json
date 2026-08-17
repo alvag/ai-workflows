@@ -3,11 +3,11 @@
     "id": "paso-de-otro-actor",
     "sitio": {
       "posix": {
-        "linea": 15,
+        "linea": 16,
         "digest": "sha256:184cf090dd240550"
       },
       "ps": {
-        "linea": 19,
+        "linea": 20,
         "digest": "sha256:982f1f9c90dec4f3"
       }
     },
@@ -46,11 +46,11 @@
     "id": "orden-contradice-timestamps",
     "sitio": {
       "posix": {
-        "linea": 21,
+        "linea": 22,
         "digest": "sha256:1220253228c50796"
       },
       "ps": {
-        "linea": 26,
+        "linea": 27,
         "digest": "sha256:21c34d9173350d5a"
       }
     },
@@ -76,11 +76,11 @@
     "id": "kickoff-no-precede",
     "sitio": {
       "posix": {
-        "linea": 27,
+        "linea": 28,
         "digest": "sha256:5809e5b9f12b10df"
       },
       "ps": {
-        "linea": 33,
+        "linea": 34,
         "digest": "sha256:16dbb8a7de1fce0f"
       }
     },
@@ -106,11 +106,11 @@
     "id": "despacho-sin-congelar",
     "sitio": {
       "posix": {
-        "linea": 30,
+        "linea": 31,
         "digest": "sha256:fc3240aa3b755762"
       },
       "ps": {
-        "linea": 36,
+        "linea": 37,
         "digest": "sha256:8c92ce35af03a981"
       }
     },

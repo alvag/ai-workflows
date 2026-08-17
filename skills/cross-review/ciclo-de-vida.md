@@ -131,7 +131,7 @@ cada ronda" sí.
 | `emision` | el revisor emitió el finding, con la severidad de esa vez | sí | la de emisión |
 | `transicion` | **toda arista ejecutada** de la tabla, **incluidas las autocurvas** | sí | la del arbitraje |
 | `descarte` | evento del complemento: no cambia estado, se registra con motivo | sí | la de emisión |
-| `control-corrida` | elección o reelección del tope, y la decisión del checkpoint | **nulo** | la de la **última ronda completada** |
+| `control-corrida` | elección o reelección del tope, la decisión del checkpoint, y **el cierre de cada ronda conforme** | **nulo** | la de la ronda que registra |
 
 Una sola autoridad, no tablas paralelas: separarlas rompería la fuente única de la que se deriva el
 delta.
@@ -151,11 +151,27 @@ Ninguna sede posterior amplía este esquema en silencio: si hace falta un campo,
 | `emision` | `severidad` (`high` \| `medium` \| `low`), **obligatoria** |
 | `transicion` | `origen` y `destino` (estados del enum) · `evento` (uno de los 14) · `presupuesto_consumido` (`null` \| `defensa` \| `reapertura`) |
 | `descarte` | `motivo` (texto, obligatorio) y el evento descartado |
-| `control-corrida` | `evento_corrida` (`eleccion-tope` \| `reeleccion-tope` \| `checkpoint`) · `tope_efectivo` (entero; obligatorio en elección y reelección) · `decision_humana` (la opción elegida, obligatoria en el checkpoint) |
+| `control-corrida` | `evento_corrida` (`eleccion-tope` \| `reeleccion-tope` \| `checkpoint` \| `ronda-completada-valida` \| `ronda-completada`) · `tope_efectivo` (entero; obligatorio en elección y reelección) · `decision_humana` (la opción elegida, obligatoria en el checkpoint) |
+
+**Los dos eventos de cierre de ronda son valores del enum, no una clase nueva.** `ronda-completada-valida`
+registra el cierre de una ronda que recibió el artefacto actualizado; `ronda-completada`, el de una
+que no. Llevan `finding_id` nulo, como el resto de su clase, y **no agregan ningún campo** al
+esquema: son dos valores porque la distinción decide si la ronda libera aplicaciones pendientes, y
+un campo nuevo ampliaría el esquema para las cuatro clases a cambio de la misma información.
+
+*Por qué se registra también la ronda que no libera:* omitirla haría indistinguible "no hubo ronda"
+de "hubo una que no vio el artefacto", y la segunda es un dato que el cierre necesita para explicar
+por qué algo sigue pendiente.
 
 **Derivaciones.** La **severidad vigente** de un finding es la de su última fila `emision` — no la
 máxima histórica, y no un campo del registro de identidad. El **tope vigente** de la corrida es el
-`tope_efectivo` de la última `control-corrida`.
+`tope_efectivo` de la última `control-corrida` **cuyo `evento_corrida` sea `eleccion-tope` o
+`reeleccion-tope`**.
+
+*Por qué la derivación nombra los eventos y no toma "la última" a secas:* las filas de checkpoint y
+las de cierre de ronda no llevan `tope_efectivo`, y desde que existen son mayoría. Tomar la última
+entrada de la clase leería una fila sin tope, taparía la elección anterior y dejaría el tope
+indeterminado justo al rehidratar un checkpoint, que es cuando hace falta.
 
 **El checkpoint escribe dos clases, no una.** Al conceder o no conceder una tanda se persiste una
 fila `transicion` **por cada finding pendiente** —con su origen, destino, ronda, actor, decisión y
@@ -195,6 +211,47 @@ caer a la vez bajo el complemento.
 cada paso y nada lo corta. La tanda finita evita el cuelgue, pero un solo finding puede consumirla
 entera — el escenario que `cross-implement/ownership.md:42-53` usa para justificar presupuestos por
 unidad.
+
+## Aplicación pendiente de revisión
+
+Aplicar un finding **es una edición nueva y no revisada**. La corrección puede no resolver el
+problema, o resolverlo introduciendo otro; el presupuesto de re-apertura de arriba existe justamente
+para eso. Pero ese mecanismo solo sirve si alguna ronda llega a ejercerlo, y nada lo garantizaba: una
+corrida podía converger sobre ediciones que ningún revisor vio. Estos dos términos son los que lo
+cierran, y el resto del contrato los cita sin redefinirlos.
+
+**Ronda posterior válida** — una ronda que cumple **las dos** condiciones:
+
+1. su salida es **conforme** —formato respetado y marca final presente—, y
+2. **recibió el artefacto actualizado** en su prompt.
+
+Las dos son necesarias. Una salida conforme prueba que el revisor terminó, no que haya mirado la
+edición: si el artefacto editado no viajó en el prompt, la ronda pudo transcurrir entera sobre la
+versión anterior conservada en el hilo. Tomar la ronda por sí sola como prueba de observación sería
+sellar la integridad de un proceso que pudo no mirar nada.
+
+**Aplicación pendiente de revisión** — la de un finding en `aplicado` para el que **no existe una
+ronda posterior válida** después de su transición **más reciente** a ese estado.
+
+"Más reciente" no es un detalle: un finding puede recorrer `aplicado → abierto → aplicado`, y lo que
+importa es la última edición, no la primera. Una re-aplicación vuelve a dejar la aplicación
+pendiente aunque una ronda anterior ya hubiera observado la edición previa — porque esa ronda vio
+otro texto.
+
+**La comparación es estricta y por número de ronda:**
+
+> `ronda_del_cierre > ronda_de_la_aplicación`
+
+sobre el campo `ronda` que toda fila del ledger ya lleva, **nunca** por orden de filas. La entrada
+que cierra una ronda se apendiza después del arbitraje de esa misma ronda, así que en un registro
+append-only queda **posterior** a las transiciones que la ronda produjo. Leído por posición, una
+ronda liberaría lo que ella misma acaba de aplicar, y la garantía entera quedaría vacía. Con el
+número de ronda no ocurre: el cierre de la ronda N lleva `ronda: N`, igual que sus aplicaciones, y
+`N > N` es falso.
+
+**Una ronda conforme que no recibió el artefacto no libera nada.** Queda registrada —ocurrió, y el
+ledger no la omite—, pero no es una ronda posterior válida, así que ninguna aplicación pendiente deja
+de estarlo por su causa.
 
 ## Vara de admisión de la defensa
 

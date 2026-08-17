@@ -466,15 +466,29 @@ código del PR.
 
 #### Vía B — CLI `codex exec` (portable, revisor Codex)
 
+<!-- despacho:inicio:bbcr-viab-posix:codex -->
 ```bash
-codex exec -s read-only -C <dir-código> --skip-git-repo-check \
+codex exec --ignore-user-config --disable hooks --disable apps --disable plugins \
+  -s read-only -C <dir-código> --skip-git-repo-check \
   --output-last-message <raíz-repo>/.pr-review/<id>/codex-verdict.txt - < <raíz-repo>/.pr-review/<id>/prompt.txt
 ```
+<!-- despacho:fin:bbcr-viab-posix -->
+<!-- despacho:inicio:bbcr-viab-ps:codex -->
 ```powershell
 Get-Content -Raw <raíz-repo>\.pr-review\<id>\prompt.txt |
-  codex exec -s read-only -C <dir-código> --skip-git-repo-check `
+  codex exec --ignore-user-config --disable hooks --disable apps --disable plugins `
+    -s read-only -C <dir-código> --skip-git-repo-check `
     --output-last-message <raíz-repo>\.pr-review\<id>\codex-verdict.txt -
 ```
+<!-- despacho:fin:bbcr-viab-ps -->
+**Antes de lanzar, el preflight de aislamiento**, con el corte de la sede única:
+`cross-review/reference.md` → "Preflight de aislamiento (fail-closed)". Se corre
+`preflight_aislamiento codex` para esta vía —`claude` para la Vía C— y se **ramifica sobre su código
+de salida**: distinto de 0 → ese revisor queda `UNAVAILABLE` y el panel sigue con el que quede, que
+es la degradación que esta skill ya declara. `-s read-only` acota el disco y **no** los efectos de
+una tool MCP: sin los cuatro flags, un revisor "read-only" con los MCP del entorno alcanza una tool
+de ejecución y opera fuera del `<dir-código>`.
+
 `-s read-only` garantiza no-escritura; `-C` fija el **directorio del código del PR** (`<dir-código>` =
 worktree si se eligió esa opción, si no la raíz); `--skip-git-repo-check` permite correr;
 `--output-last-message` y el prompt de **stdin** usan **rutas absolutas a `<raíz-repo>/.pr-review/`**
@@ -485,6 +499,7 @@ worktree si se eligió esa opción, si no la raíz); `--skip-git-repo-check` per
 `claude` no tiene flag de sandbox: el read-only se garantiza **restringiendo las tools a lectura**
 (`--allowedTools=Read,Grep,Glob`; en `-p` toda tool fuera de esa lista queda denegada).
 
+<!-- despacho:inicio:bbcr-viac-posix:claude -->
 ```bash
 SESSION_ID=$(uuidgen)
 ( cd <dir-código> && claude -p --safe-mode --model opus --permission-mode default \
@@ -492,6 +507,8 @@ SESSION_ID=$(uuidgen)
     < <raíz-repo>/.pr-review/<id>/prompt.txt ) \
   > <raíz-repo>/.pr-review/<id>/claude-verdict.txt 2> <raíz-repo>/.pr-review/<id>/claude.err.txt
 ```
+<!-- despacho:fin:bbcr-viac-posix -->
+<!-- despacho:inicio:bbcr-viac-ps:claude -->
 ```powershell
 $SessionId = [guid]::NewGuid().ToString()
 Push-Location <dir-código>
@@ -502,6 +519,7 @@ try {
       > <raíz-repo>\.pr-review\<id>\claude-verdict.txt 2> <raíz-repo>\.pr-review\<id>\claude.err.txt
 } finally { Pop-Location }
 ```
+<!-- despacho:fin:bbcr-viac-ps -->
 
 `cd`/`Push-Location` fija el **directorio del código del PR** (`<dir-código>`); el prompt, el veredicto
 y el `.err` se direccionan con **rutas absolutas a `<raíz-repo>/.pr-review/`** (el worktree no contiene

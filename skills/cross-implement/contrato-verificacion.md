@@ -229,10 +229,10 @@ arriba. La cadena es una comprobación de integridad barata, no una garantía de
 
 ### Contrato en work orders sin flujo SDD
 
-Cuando el work order es un `.plans/<id>/` de `sdd-flow`, el contrato ya viene escrito: el flujo lo
-declara en su plan y lo congela antes de delegar. Cuando **no** lo es —un `PLAN.md`, un equivalente,
-o un contrato destilado de la conversación en modo directo— no hay flujo que lo produzca, y el
-reparto de responsabilidades es este:
+Cuando el work order es un `.plans/<id>/` de `sdd-flow`, el contrato ya viene escrito y congelado por
+`sdd-flow/reference.md` → "Producción del contrato de verificación". Cuando **no** lo es —un
+`PLAN.md`, un equivalente, o un contrato destilado de la conversación en modo directo— no hay flujo
+que lo produzca, y el reparto de responsabilidades es este:
 
 | # | Quién | Qué | Por qué no otro |
 |---|---|---|---|
@@ -250,16 +250,18 @@ congelar igual, es no despachar.
 
 ### `proof_cmd` frente al contrato
 
-`proof_cmd` existía antes que este contrato y **se conserva**, con un papel acotado: es una
-comprobación **agregada y opcional** —la suite completa, el build— que el conductor corre para ver
-el conjunto de un vistazo tras cada ronda.
+`proof_cmd` existía antes que este contrato y **se conserva**, con un papel acotado: es la **lista
+ordenada** de comprobaciones **agregadas y opcionales** —la suite completa, el build, el linter— que
+el conductor corre para ver el conjunto de un vistazo tras cada ronda.
 
-Lo que **no** es:
+Lo que **no** son:
 
-- no sustituye ninguna fila del contrato;
-- no alcanza para dar un requisito por cumplido, ni siquiera en verde. Lo que cierra un requisito es
-  **su fila**, con su esperado y su baseline. Un `proof_cmd` verde sobre un contrato con una fila en
-  rojo describe una suite que no cubre ese requisito, no un requisito cumplido.
+- **Ninguna de las comprobaciones agregadas** sustituye una fila del contrato. Vale para cada una y
+  para todas juntas: que sean varias no cambia su rango, solo su cardinalidad.
+- Ninguna alcanza para dar un requisito por cumplido, ni siquiera en verde. Lo que cierra un
+  requisito es **su fila**, con su esperado y su baseline. Un `proof_cmd` entero en verde sobre un
+  contrato con una fila en rojo describe una suite que no cubre ese requisito, no un requisito
+  cumplido.
 
 De ahí la asimetría del gate, que es la forma verificable de todo lo anterior:
 
@@ -748,6 +750,7 @@ el orden que sea.
 
 ```bash
 # @bloque:gate-congelado
+# Aplica a: el reparto con gates y el reparto con kickoff
 # Predicado: hay contrato, su tabla no tiene ninguna fila con baseline sin resolver, y la bitácora
 # registra el congelamiento antes del despacho.
 # Entradas: $contrato $bitacora
@@ -761,7 +764,7 @@ awk -v n="$n" '
 grep -E '^\|' "$t/vig" | grep -vE '^\|[[:space:]]*(ID[[:space:]]*\||[-: |]+\|)' > "$t/filas"
 
 [ -s "$t/filas" ] || { echo "GUARD:gate-contrato-congelado el work order no trae tabla" >&2; rc=1; }
-awk -F'|' 'NF==8{gsub(/^ +| +$/,"",$7); if ($7=="") print "  "$2}' "$t/filas" > "$t/e"
+awk -F'|' 'NF==8{gsub(/^ +| +$/,"",$7); if ($7=="" || $7=="BLOCKED") print "  "$2}' "$t/filas" > "$t/e"
 [ -s "$t/e" ] && { echo "GUARD:gate-contrato-congelado baseline sin resolver:" >&2; cat "$t/e" >&2; rc=1; }
 grep -q '`paso: congelar`' "$bitacora" || {
   echo "GUARD:gate-contrato-congelado la bitácora no registra el congelamiento" >&2; rc=1; }
@@ -771,6 +774,7 @@ rm -rf "$t"; exit $rc
 
 ```powershell
 # @bloque:gate-congelado-ps
+# Aplica a: el reparto con gates y el reparto con kickoff
 # Predicado: hay contrato, su tabla no tiene ninguna fila con baseline sin resolver, y la bitácora
 # registra el congelamiento antes del despacho.
 # Entradas: $contrato $bitacora
@@ -791,7 +795,7 @@ $filas = @($vig | Where-Object { $_ -cmatch '^\|' -and $_ -cnotmatch '^\|\s*(ID\
 if ($filas.Count -eq 0) { Write-Error 'GUARD:gate-contrato-congelado el work order no trae tabla'; $rc = 1 }
 foreach ($f in $filas) {
   $c = $f -split '\|'
-  if ($c.Count -eq 8 -and $c[6].Trim() -eq '') { Write-Error "GUARD:gate-contrato-congelado baseline sin resolver: $($c[1].Trim())"; $rc = 1 }
+  if ($c.Count -eq 8 -and ($c[6].Trim() -ceq '' -or $c[6].Trim() -ceq 'BLOCKED')) { Write-Error "GUARD:gate-contrato-congelado baseline sin resolver: $($c[1].Trim())"; $rc = 1 }
 }
 if ((Get-Content -LiteralPath $bitacora) -cnotmatch '`paso: congelar`') {
   Write-Error 'GUARD:gate-contrato-congelado la bitácora no registra el congelamiento'; $rc = 1
@@ -802,6 +806,7 @@ exit $rc
 
 ```bash
 # @bloque:gate-blocked
+# Aplica a: el reparto con gates y el reparto con kickoff
 # Predicado: ninguna fila queda en BLOCKED al despachar, y ninguna justificación de NOT_APPLICABLE
 # alega indisponibilidad del entorno.
 # Entradas: $contrato $bitacora
@@ -832,6 +837,7 @@ rm -rf "$t"; exit $rc
 
 ```powershell
 # @bloque:gate-blocked-ps
+# Aplica a: el reparto con gates y el reparto con kickoff
 # Predicado: ninguna fila queda en BLOCKED al despachar, y ninguna justificación de NOT_APPLICABLE
 # alega indisponibilidad del entorno.
 # Entradas: $contrato $bitacora
@@ -873,6 +879,7 @@ exit $rc
 
 ```bash
 # @bloque:gate-modo-directo
+# Aplica a: solo el reparto con kickoff
 # Predicado: el conductor deriva la tabla y ejecuta el baseline, el usuario aprueba en el kickoff
 # antes de que se congele, el congelamiento precede al despacho, y el orden de los timestamps
 # coincide con el orden en que la bitácora los lista.
@@ -910,6 +917,7 @@ exit $rc
 
 ```powershell
 # @bloque:gate-modo-directo-ps
+# Aplica a: solo el reparto con kickoff
 # Predicado: el conductor deriva la tabla y ejecuta el baseline, el usuario aprueba en el kickoff
 # antes de que se congele, el congelamiento precede al despacho, y el orden de los timestamps
 # coincide con el orden en que la bitácora los lista.

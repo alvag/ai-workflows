@@ -17,6 +17,7 @@ Detalle operativo de la skill `sdd-flow`. El `SKILL.md` apunta acá cuando neces
 - [Apertura de PR (opcional, tras push)](#apertura-de-pr-opcional-tras-push)
 - [Plantilla de constitution](#plantilla-de-constitution)
 - [Plantilla de spec](#plantilla-de-spec)
+- [Producción del contrato de verificación](#producción-del-contrato-de-verificación)
 - [Plantilla de plan](#plantilla-de-plan)
 - [Plantilla de plan combinado (trivial)](#plantilla-de-plan-combinado-trivial)
 - [Plantilla de `## Verify`](#plantilla-de--verify)
@@ -1141,6 +1142,123 @@ spec/plan/tasks deben respetarlos; este constitution NO los duplica.
 <Q&A registradas durante `clarify`. Vacío si no hubo.>
 - **Q:** <pregunta> — **A:** <respuesta> (afecta: AC-n)
 ```
+
+## Producción del contrato de verificación
+
+El contrato nace de medir el código sin el cambio, no de declarar un estado esperado. Este
+procedimiento rige en toda corrida, sin excepción por complejidad: también en trivial; lo que escala
+es la cantidad de filas, no la obligación de producir evidencia.
+
+### Los siete pasos de producción
+
+| Paso | Actor | Cuándo |
+|---|---|---|
+| derivar | conductor | con los requisitos en alcance fijados, antes de medir |
+| medir | conductor | tras derivar cada fila: ejecuta el comando o realiza la observación sobre el commit base y escribe el estado observado, nunca uno asumido |
+| adjudicar | conductor | tras medir, cuando el baseline observado no es `RED` |
+| sellar | conductor | con todas las filas medidas, sus registros completos y sus adjudicaciones resueltas |
+| aprobar | usuario | en el último gate aplicable a la complejidad |
+| congelar | conductor | inmediatamente después de la aprobación y antes de cualquier despacho |
+| despachar | conductor | solo con el contrato congelado y las guardas canónicas en verde |
+
+Para `adjudicar`, aplicar la regla normativa de
+`cross-implement/contrato-verificacion.md` → "Adjudicación del baseline". No se replica aquí su
+dominio cerrado: duplicarlo crearía dos autoridades para la misma decisión.
+
+Para `sellar`, obtener el hash con el procedimiento normativo completo de
+`cross-implement/contrato-verificacion.md` → "Cadena de integridad". El puntero incluye el
+encadenamiento, la frontera del bloque y la normalización; un placeholder no sustituye ese cálculo.
+
+### La bitácora del despacho
+
+La constancia persistente vive en `.plans/<id>/bitacora.md`. Es **append-only** y registra una línea
+por paso con el formato ``- `paso: <paso>` · `actor: <actor>` · `timestamp: <ISO-8601>` ``; una
+línea previa nunca se reescribe para aparentar otro orden.
+
+| Paso | Actor |
+|---|---|
+| derivar | conductor |
+| medir | conductor |
+| adjudicar | conductor |
+| sellar | conductor |
+| aprobar | usuario |
+| congelar | conductor |
+| despachar | conductor |
+
+Las guardas canónicas del ecosistema ya consumen este artefacto y sus literales `paso:`. Por eso el
+formato y los actores son normativos, no texto libre del conductor.
+
+Esta bitácora la comparten dos repartos, y **su vocabulario de pasos es propio del reparto con
+gates**: el reparto con kickoff nombra sus pasos de otra manera porque su aprobación no es un gate
+sino un kickoff, y porque no distingue medir, adjudicar y sellar como pasos separados.
+Las dos formas son legítimas y cada guarda declara a cuál aplica; lo que no hay que hacer es
+renombrar los pasos de un reparto para que se parezcan a los del otro.
+
+### Matriz de congelamiento por complejidad
+
+| Complejidad | Último gate aplicable | Ejecutor del congelamiento | Constancia |
+|---|---|---|---|
+| trivial | plan | conductor | línea `paso: congelar` en la bitácora |
+| normal | plan y tasks | conductor | línea `paso: congelar` en la bitácora |
+| complex | tasks | conductor | línea `paso: congelar` en la bitácora |
+
+**El orden de las escrituras es parte de la regla:** procedimiento completo → aprobación en el
+gate → línea `paso: congelar` en la bitácora → recién entonces marcador en el header y cambio
+de estado a listo para implementar. Si se escribe antes el marcador, una interrupción deja al flujo
+declarándose medido sin constancia del congelamiento.
+
+### El marcador de procedimiento
+
+El valor soportado es `contract_procedure: measured-v1`. La ausencia conserva la compatibilidad de
+lectura, pero nunca se interpreta como si el procedimiento se hubiera ejecutado.
+
+| Valor | Lectura | Salida |
+|---|---|---|
+| ausente | flujo anterior al procedimiento | matriz de flujos anteriores |
+| soportado | producido con `measured-v1` | continúa |
+| desconocido | versión no interpretable por esta skill | rechazo, sin interpretarlo |
+
+### Vigencia de la medición frente al HEAD
+
+| Evento | Antes de congelar | Después de congelar |
+|---|---|---|
+| el HEAD avanzó respecto del commit registrado | recomprobar la fila sobre el HEAD y actualizar su registro al commit que se va a implementar | versión nueva con registros, timestamps y hash del HEAD que se implementará |
+| se modificó la evidencia o el comando de la fila | reejecutar la fila dentro de la misma versión | reejecutar la fila y emitir una versión nueva con registro, timestamp y hash frescos |
+| se modificó el requisito o el esperado | es rediseño: vuelve al gate de diseño | es rediseño: vuelve al gate de diseño |
+
+Conservar el registro apuntando al commit anterior no es una salida en ningún caso: describiría
+otro código, no el que se va a implementar.
+
+### Flujos anteriores al procedimiento medido
+
+| Fase | Motivo | Única salida |
+|---|---|---|
+| antes del último gate | el contrato se escribió sin medición | vuelve al gate de diseño |
+| después del último gate, sin implementar | el contrato se aprobó sin medición | vuelve al gate de diseño |
+| implementando o más adelante | el árbol ya cambió y el flujo está a mitad de camino | se termina como está, en modo local, sin delegar |
+
+Ninguna salida convierte el flujo en sitio: volver a producir el contrato sobre el mismo flujo
+sería una conversión con otro nombre.
+
+**Carve-out multi-repo.** La regla fija que un plan cuyo header declara `repo:` no lleva marcador ni
+se clasifica como flujo anterior. Es un plan producido por la orquestación multi-repo, cuya
+producción del contrato queda fuera del alcance de este procedimiento.
+
+### Costo de medir y reúso de una ejecución
+
+| Regla | Decisión |
+|---|---|
+| escalón de evidencia | el más barato que alcance |
+| acotamiento del comando | acotado al cambio |
+| reúso de una ejecución | solo con comando, commit y esperado idénticos |
+
+Cuando una ejecución sirve para varias filas, cada una conserva su propio registro y referencia el
+resultado compartido. El reúso evita trabajo duplicado sin borrar la trazabilidad por requisito.
+
+La referencia solo-lectura de la orquestación multi-repo se proyecta fuera del conjunto sometido a
+las guardas canónicas. Su valor no pertenece a los enums del contrato local y su autoridad vive en
+el contrato de integración; validarla como una fila local rompería planes vigentes de la
+orquestación.
 
 ## Plantilla de plan
 
