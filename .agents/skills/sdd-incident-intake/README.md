@@ -5,7 +5,8 @@ flujo `sdd-flow` corriendo en su propio worktree, y recién entonces la retira d
 
 ## El problema que resuelve
 
-El registro de incidentes (`../../../.plans/incidentes-skills.md`) es una bandeja de entrada. Se llena solo —
+El registro de incidentes (`.plans/incidentes-skills.md` del proyecto donde ocurrió) es una bandeja
+de entrada. Se llena solo —
 cada corrida que tropieza con un defecto de las skills deja su registro — y **no se vacía solo**.
 Vaciarlo a mano tiene cuatro trampas que se repiten:
 
@@ -40,6 +41,7 @@ Verificar → agrupar → despachar → confirmar arranque → retirar
 - "toma un incidente de `<ruta>`"
 - "procesa los incidentes de skills"
 - "abrí un flujo para el incidente de `<fecha>`"
+- "revisá 3 incidentes" — abre 3 flujos, uno por vez
 - `/sdd-incident-intake <ruta-del-registro> [claude|codex]`
 
 **No se dispara sola.** Solo ante pedido explícito.
@@ -49,7 +51,7 @@ Verificar → agrupar → despachar → confirmar arranque → retirar
 | Situación | Skill correcta |
 |---|---|
 | Corregir la skill defectuosa | El `sdd-flow` que esta despacha. Ésta prepara, no arregla |
-| Registrar un incidente nuevo | Es una regla del `../../../CLAUDE.md` del repo, no una skill |
+| Registrar un incidente nuevo | Es una regla del archivo de instrucciones del repo, no una skill |
 | Criticar una spec/plan/tasks | `cross-review` |
 | Delegar la implementación | `cross-implement` |
 | Explorar terreno o buscar causa raíz | `co-explore` |
@@ -59,6 +61,7 @@ Verificar → agrupar → despachar → confirmar arranque → retirar
 | Parámetro | Default |
 |---|---|
 | `registro` | **Obligatorio.** Ruta al archivo de incidentes o al directorio que lo contiene |
+| `cantidad` | **1.** Cuántos **flujos** abrir. Cuenta worktrees, no incidentes: uno que agrupa dos consume un cupo |
 | `agente` | La familia que conduce la sesión actual (`claude` o `codex`) |
 | `incidente` | El de severidad más alta; a igualdad, el más antiguo |
 | `repo_destino` | El repo de skills donde vive esta skill |
@@ -75,10 +78,9 @@ observó, el código a corregir vive en el repo de skills.
 
 ## Instalación
 
-```bash
-ln -s "$PWD/skills/sdd-incident-intake" ~/.claude/skills/sdd-incident-intake
-ln -s "$PWD/skills/sdd-incident-intake" ~/.agents/skills/sdd-incident-intake   # cross-runtime
-```
+Vive **solo en este repo**, sin symlinks al home. Las skills están en `.agents/skills/` —el alias
+cross-runtime que reconocen ambas familias— y `.claude/skills` es un symlink relativo a ese
+directorio, así que Claude Code la ve a nivel proyecto sin duplicar contenido.
 
 ## Estructura
 
@@ -86,4 +88,4 @@ ln -s "$PWD/skills/sdd-incident-intake" ~/.agents/skills/sdd-incident-intake   #
 |---|---|
 | `SKILL.md` | El agente, en cada corrida: el invariante, los seis pasos, red flags |
 | `reference.md` | El agente, cuando `SKILL.md` lo manda: comandos de Orca, criterio de siembra, plantilla del dossier, mecánica del despacho, retiro y fallas |
-| `../../../README.md` | Humanos. No se lee en ejecución |
+| `README.md` | Humanos. No se lee en ejecución |
