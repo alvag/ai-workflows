@@ -47,7 +47,6 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 CHANGE_BASE_COMMIT = "2ed62dd"
-BASELINE_COMMIT = "34d7c41"
 BASELINE_PATH = "scripts/baseline-sobre-en-vuelo.md"
 
 SKILLS = [
@@ -1248,7 +1247,7 @@ _ISO = re.compile(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?([.,]\d+)?"
                   r"(Z|[+-]\d{2}:?\d{2})?$")
 
 
-def validar_baseline(ctx: Ctx) -> None:
+def validar_baseline(ctx: Ctx, comprobar_commit: bool = True) -> None:
     baseline = ctx.texto(BASELINE_PATH)
     if baseline is None:
         return
@@ -1281,14 +1280,26 @@ def validar_baseline(ctx: Ctx) -> None:
               "" if len(ids) == len(set(ids)) else "hay IDs repetidos")
     ctx.check(ids == ids_tabla, "mismos IDs y mismo orden que la tabla",
               "" if ids == ids_tabla else f"baseline={ids[:5]}… tabla={ids_tabla[:5]}…")
-    sha = hashlib.sha256((REPO / "scripts/verificar-sobre-en-vuelo.py").read_bytes()).hexdigest()
+    sha = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    commits = {f[1].strip().strip("`") for f in filas if len(f) > 2}
+    shas = {f[2].strip().strip("`") for f in filas if len(f) > 2}
+    commit = next(iter(commits)) if len(commits) == 1 else ""
+    sha_registrado = next(iter(shas)) if len(shas) == 1 else ""
+    ctx.check(len(commits) == 1 and bool(re.fullmatch(r"[0-9a-f]{7,40}", commit)),
+              "un único commit Git válido en todo el baseline",
+              "" if len(commits) == 1 else f"commits leídos: {sorted(commits)}")
+    ctx.check(len(shas) == 1 and bool(re.fullmatch(r"[0-9a-f]{64}", sha_registrado)),
+              "un único sha256 válido en todo el baseline",
+              "" if len(shas) == 1 else f"sha256 leídos: {sorted(shas)}")
     problemas = []
     for fila in filas:
-        campos = " | ".join(fila)
         ident = fila[0].strip()
-        if BASELINE_COMMIT not in campos:
-            problemas.append(f"{ident}: sin commit {BASELINE_COMMIT}")
-        if sha not in campos.replace(" ", ""):
+        if len(fila) < 6:
+            problemas.append(f"{ident}: registro incompleto")
+            continue
+        if fila[1].strip().strip("`") != commit:
+            problemas.append(f"{ident}: commit distinto")
+        if fila[2].strip().strip("`") != sha:
             problemas.append(f"{ident}: sha256 del verificador no coincide")
         if not any(_ISO.match(c.strip()) for c in fila):
             problemas.append(f"{ident}: sin timestamp ISO-8601")
@@ -1296,13 +1307,25 @@ def validar_baseline(ctx: Ctx) -> None:
             problemas.append(f"{ident}: sin estado de {sorted(ESTADOS_BASELINE)}")
     ctx.check(not problemas, "commit, sha256, timestamp y estado por registro",
               "" if not problemas else "; ".join(problemas[:5]))
+    if comprobar_commit and commit and sha_registrado:
+        resultado = subprocess.run(
+            ["git", "-C", str(ctx.raiz), "show",
+             f"{commit}:scripts/verificar-sobre-en-vuelo.py"],
+            capture_output=True,
+            check=False,
+        )
+        sha_commit = hashlib.sha256(resultado.stdout).hexdigest() if resultado.returncode == 0 else ""
+        ctx.check(resultado.returncode == 0 and sha_commit == sha_registrado,
+                  "el commit registrado contiene el verificador identificado por el sha256",
+                  "" if resultado.returncode == 0 and sha_commit == sha_registrado else
+                  (resultado.stderr.decode("utf-8", "replace").strip() or
+                   f"git show produjo sha256 {sha_commit or 'vacío'}"))
     for objetivo in ("V18", "V19"):
         fila = next((f for f in filas if f[0].strip().strip("`") == objetivo), None)
         if fila is None:
             ctx.check(False, f"{objetivo}: adjudicación escrita", "no hay registro")
             continue
-        resto = [c for c in fila[1:] if c.strip() and not _ISO.match(c.strip())
-                 and c.strip() not in ESTADOS_BASELINE and BASELINE_COMMIT not in c and sha not in c]
+        resto = [c for c in fila[5:] if c.strip()]
         ctx.check(bool(resto), f"{objetivo}: adjudicación escrita",
                   "" if resto else "el registro no la trae")
 
@@ -1594,7 +1617,7 @@ primera línea de cada copia.
 
 
 def corpus_verde(raiz: Path) -> None:
-    """Escribe un árbol mínimo pero completo que satisface los diecinueve modos de parser."""
+    """Escribe un árbol mínimo pero completo que satisface los veinte modos de parser."""
     def manifiesto(terminales: str, autoridades: str) -> str:
         return ("La secuencia es selección → seed/sobre → preflight → timestamp write-once "
                 f"→ primera tool call → terminal. El manifest proyecta {terminales} desde {autoridades}. "
@@ -1734,18 +1757,18 @@ despacho bajó de trece a once al retirarse el modo de implementación por task.
 """
 
 
-def corpus_baseline(raiz: Path, sha: str) -> None:
+def corpus_baseline(raiz: Path, sha: str, commit: str = "0123456") -> None:
     filas = "\n".join(
         f"| {FILAS[m]} | {REQUISITOS_BASELINE[m]} | `--ac {m}` | ok |" for m in MODOS)
     registros = "\n".join(
-        f"| {FILAS[m]} | {BASELINE_COMMIT} | {sha} | 2026-08-06T10:00:00-05:00 | "
+        f"| {FILAS[m]} | {commit} | {sha} | 2026-08-06T10:00:00-05:00 | "
         f"{'GREEN_ALREADY' if m in ('15', '16') else 'RED'} | "
         f"{'no regresión: pasa por construcción' if m in ('15', '16') else '—'} |"
         for m in MODOS)
     destino = raiz / BASELINE_PATH
     destino.parent.mkdir(parents=True, exist_ok=True)
     destino.write_text(BASELINE_TPL.format(
-        filas=filas, registros=registros, baseline_commit=BASELINE_COMMIT), encoding="utf-8")
+        filas=filas, registros=registros, baseline_commit=commit), encoding="utf-8")
 
 
 # Mutantes: (nombre, archivo relativo, viejo, nuevo, modo que debe fallar, señal en el mensaje).
@@ -1941,7 +1964,7 @@ def autotest() -> int:
                 fallas.append(f"corpus verde: --ac {modo} → {veredicto}")
                 correr(modo, raiz, verboso=True)
         ctx = Ctx(raiz)
-        validar_baseline(ctx)
+        validar_baseline(ctx, comprobar_commit=False)
         malas = [f for f in ctx.filas if not f[0]]
         print(f"[{'OK   ' if not malas else 'FALLA'}] --validar-baseline: "
               f"{'ok' if not malas else malas}")
@@ -2068,7 +2091,7 @@ def autotest() -> int:
         corpus_verde(raiz)
         corpus_baseline(raiz, "0" * 64)
         ctx = Ctx(raiz)
-        validar_baseline(ctx)
+        validar_baseline(ctx, comprobar_commit=False)
         malas = [f for f in ctx.filas if not f[0]]
         mensaje = " ".join(f"{e}: {d}" for _, e, d in malas)
         ok = bool(malas) and "sha256" in mensaje
@@ -2077,6 +2100,54 @@ def autotest() -> int:
         if not ok:
             fallas.append(f"baseline con sha ajeno: no falló por su motivo — {mensaje[:200]}")
 
+    with tempfile.TemporaryDirectory() as tmp:
+        raiz = Path(tmp) / "baseline-git"
+        raiz.mkdir()
+        corpus_verde(raiz)
+        verificador = raiz / "scripts/verificar-sobre-en-vuelo.py"
+        verificador.parent.mkdir(parents=True, exist_ok=True)
+        verificador.write_text("# verificador anterior\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(raiz), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(raiz), "add", "."], check=True)
+        subprocess.run(
+            ["git", "-C", str(raiz), "-c", "user.name=baseline-test",
+             "-c", "user.email=baseline-test@example.invalid", "commit", "-qm", "anterior"],
+            check=True,
+        )
+        commit_anterior = subprocess.run(
+            ["git", "-C", str(raiz), "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        verificador.write_bytes(Path(__file__).read_bytes())
+        subprocess.run(["git", "-C", str(raiz), "add", str(verificador)], check=True)
+        subprocess.run(
+            ["git", "-C", str(raiz), "-c", "user.name=baseline-test",
+             "-c", "user.email=baseline-test@example.invalid", "commit", "-qm", "vigente"],
+            check=True,
+        )
+        commit_vigente = subprocess.run(
+            ["git", "-C", str(raiz), "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        sha_vigente = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+        corpus_baseline(raiz, sha_vigente, commit_vigente)
+        ctx = Ctx(raiz)
+        validar_baseline(ctx)
+        malas = [f for f in ctx.filas if not f[0]]
+        print(f"[{'OK   ' if not malas else 'FALLA'}] commit y sha256 ligados por git show")
+        if malas:
+            fallas.append(f"baseline ligado al commit vigente quedó rojo — {malas[:2]}")
+
+        corpus_baseline(raiz, sha_vigente, commit_anterior)
+        ctx = Ctx(raiz)
+        validar_baseline(ctx)
+        malas = [f for f in ctx.filas if not f[0]]
+        mensaje = " ".join(f"{e}: {d}" for _, e, d in malas)
+        ok = bool(malas) and "commit registrado contiene" in mensaje
+        print(f"[{'OK   ' if ok else 'FALLA'}] commit con bytes ajenos queda rojo por git show")
+        if not ok:
+            fallas.append(f"baseline ligado a commit ajeno no falló por su motivo — {mensaje[:200]}")
+
     print()
     if fallas:
         print("RESULTADO: FALLA")
@@ -2084,7 +2155,7 @@ def autotest() -> int:
             print(f"  - {f}")
         return 1
     print(f"RESULTADO: OK — control positivo sobre {len(MODOS) - 1} modos y "
-          f"{len(MUTANTES) + len(casos_config) + 1} mutantes, cada uno rojo por su motivo")
+          f"{len(MUTANTES) + len(casos_config) + 3} mutantes, cada uno rojo por su motivo")
     return 0
 
 

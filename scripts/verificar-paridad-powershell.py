@@ -992,6 +992,9 @@ def correr_caso(raiz: Path, par: Par, matriz: dict, caso: dict, catalogo: list[d
             obs[sabor] = ejecutar(cuerpo, sabor, fixture, entradas, timeout=timeout,
                                   interprete=interprete_ps if sabor == "ps" else None,
                                   reemplazos=reemplazos)
+        except (TypeError, ValueError) as exc:
+            return ResultadoCaso(par.nombre, caso["nombre"], "fallo",
+                                 detalle=f"reemplazos inválidos: {exc}")
         except SinInterprete as exc:
             return ResultadoCaso(par.nombre, caso["nombre"], "no_comprobable", detalle=str(exc))
 
@@ -1290,6 +1293,23 @@ def autotest_reemplazos() -> int:
             _ok(False, "un contenedor de reemplazos no-lista se rechaza desde ejecutar", fallos)
         except TypeError:
             _ok(True, "un contenedor de reemplazos no-lista se rechaza desde ejecutar", fallos)
+
+        contenido = correr_caso(
+            raiz,
+            Par("sintetico", "", 0, 0, "exit 0", "exit 0"),
+            {},
+            {
+                "nombre": "reemplazo-invalido",
+                "clase_esperada": "aceptacion",
+                "entradas": {},
+                "reemplazos": [
+                    {"archivo": "ausente.txt", "buscar": "alpha", "reemplazar": "beta"}
+                ],
+            },
+            [],
+        )
+        _ok(contenido.resultado == "fallo" and "reemplazos inválidos" in contenido.detalle,
+            "un reemplazo inválido queda contenido como fallo del caso", fallos)
 
         exterior = raiz / "externo.txt"
         exterior.write_text("testigo exterior", encoding=ENCODING)

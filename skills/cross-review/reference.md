@@ -53,7 +53,9 @@ Las vías de invocación del revisor usan comandos de shell. Esos comandos se mu
 variantes**, y hay que elegir según el shell del entorno:
 
 - **POSIX** — macOS y Linux, y también **Git Bash en Windows** (la Bash tool del agente). Es la
-  forma en que están escritos los bloques `bash` de este documento; funcionan tal cual.
+  forma en que están escritos los bloques `bash` de este documento; funcionan tal cual. La guarda
+  `manifest-valido` requiere `python3` con su biblioteca estándar; si Git Bash no lo trae, usar la
+  variante PowerShell.
 - **PowerShell** — Windows nativo (shell primary). PowerShell **no** soporta la redirección de
   stdin con `<` ni el subshell `(cd … && …)`, y no trae `uuidgen`: por eso cada vía incluye su
   bloque `powershell` equivalente.
@@ -1681,14 +1683,53 @@ skills. El usuario borra el directorio cuando quiera; ninguna skill lo hace por 
 
 **Se construye como un objeto completo y nuevo y se escribe con la tool de escritura de archivos
 del conductor, nunca con `echo` ni heredoc** —misma regla que los prompts, y por el mismo motivo: el
-quoting. El archivo se crea sin reemplazo. `.cross-model/runs/` no se lee ni se copia como plantilla;
-ningún manifest anterior aporta valores. La única operación permitida sobre un cierre previo es la
-consulta de existencia de la ruta ya derivada.
+quoting. La tool escribe primero un candidato con UUID fresco en el mismo directorio
+`.cross-model/runs/`; ese candidato tampoco se deriva de un manifest anterior. Luego el shell solo
+lo promueve de forma exclusiva a la ruta final: no serializa contenido. En POSIX se usa un hard
+link, cuya creación falla si el destino ya existe:
+
+```bash
+if ln "$manifest_tmp" "$manifest" 2>/dev/null; then
+  rm -f "$manifest_tmp"
+  manifest_creado=1
+elif [ -e "$manifest" ]; then
+  rm -f "$manifest_tmp"
+  manifest_creado=0  # otro cierre ganó la carrera: no abrir ni validar el destino
+else
+  rm -f "$manifest_tmp"
+  printf 'ERROR: no se pudo publicar el manifest de corrida\n' >&2
+  manifest_creado=0
+fi
+```
+
+En PowerShell 5.1 y posteriores, `File.Move` aporta la misma exclusión porque no reemplaza un
+destino existente:
+
+```powershell
+try {
+  [System.IO.File]::Move($manifestTmp, $manifest)
+  $manifestCreado = $true
+} catch [System.IO.IOException] {
+  if (Test-Path -LiteralPath $manifest) {
+    Remove-Item -LiteralPath $manifestTmp -Force -ErrorAction SilentlyContinue
+    $manifestCreado = $false # otro cierre ganó la carrera: no abrir ni validar el destino
+  } else {
+    Remove-Item -LiteralPath $manifestTmp -Force -ErrorAction SilentlyContinue
+    Write-Error 'No se pudo publicar el manifest de corrida'
+    $manifestCreado = $false
+  }
+}
+```
+
+El candidato se elimina tanto al publicar como al perder la carrera. `.cross-model/runs/` no se lee
+ni se copia como plantilla; ningún manifest anterior aporta valores. La única operación permitida
+sobre un cierre previo es la consulta de existencia de la ruta ya derivada.
 El objeto nuevo queda escrito antes del retiro terminal del último carrier activo. Esta regla no
 aplica al retiro no terminal del sobre cuando el carrier pasa a un checkpoint. Después de una
 creación exitosa se retira el sobre terminal; si la escritura está deshabilitada o falla, se informa
 la causa y el sobre se retira al cumplir las demás condiciones operativas, sin quedar activo por la
-telemetría. Por eso acá no hay bloque de escritura; los bloques verificables son validar y leer.
+telemetría. Los bloques anteriores solo materializan el objeto ya construido; los bloques de abajo
+validan y leen sus bytes.
 
 **Una corrida de `cross-review` con varias tandas escribe UN solo manifest.** Se escribe **una vez,
 al outcome terminal de la corrida**, tal como ya lo define este contrato — y con tandas el terminal
@@ -1845,6 +1886,10 @@ intuición, y el costo es un archivo de 300 bytes en un directorio untracked.
 # outcome, degradation y transport en la fila de skill.
 # Entradas: $manifest
 rc=0; t=$(mktemp -d)
+command -v python3 >/dev/null 2>&1 || {
+  printf 'ERROR: manifest-valido requiere python3 en la variante POSIX\n' >&2
+  rm -rf "$t"; exit 99
+}
 if ! python3 -c 'import json,sys; v=json.load(open(sys.argv[1], encoding="utf-8")); sys.exit(0 if isinstance(v, dict) else 1)' "$manifest" >/dev/null 2>&1; then
   printf 'GUARD:manifest-valido el archivo no es un objeto JSON válido\n' >&2
   rm -rf "$t"; exit 1
@@ -1882,9 +1927,7 @@ if [ "$(grep -cxF duration_s "$t/claves")" = 1 ]; then
     printf 'GUARD:manifest-valido duration_s no es entero no negativo: "%s"\n' "$duracion" >&2; rc=1; }
 fi
 
-families_lista=0
 if grep -qE '"families"[[:space:]]*:[[:space:]]*\[' "$manifest"; then
-  families_lista=1
   families_body=$(tr '\n' ' ' < "$manifest" \
     | sed -E 's/^.*"families"[[:space:]]*:[[:space:]]*\[([^]]*)\].*$/\1/')
   printf '%s\n' "$families_body" | grep -oE '"[^"]*"' | tr -d '"' > "$t/familias"
@@ -1946,11 +1989,16 @@ rm -rf "$t"; exit $rc
 $rc = 0
 $m = Get-Content -Raw $manifest
 try {
-  $documento = [System.Text.Json.JsonDocument]::Parse($m)
-  if ($documento.RootElement.ValueKind -ne [System.Text.Json.JsonValueKind]::Object) {
+  # Windows PowerShell 5.1 usa un parser permisivo: cerrar sus extensiones conocidas antes de
+  # deserializar conserva la gramática JSON estricta del par POSIX para este esquema cerrado.
+  if ($m -cmatch '"duration_s"\s*:\s*-?0\d' -or
+      $m -cmatch '(?s),\s*[}\]]' -or $m -cmatch '(?m)//|/\*|\*/') {
+    throw 'sintaxis fuera de JSON estricto'
+  }
+  $documento = $m | ConvertFrom-Json -ErrorAction Stop
+  if ($null -eq $documento -or $documento -isnot [pscustomobject]) {
     throw 'la raíz no es un objeto'
   }
-  $documento.Dispose()
 } catch {
   Write-Error 'GUARD:manifest-valido el archivo no es un objeto JSON válido'
   exit 1

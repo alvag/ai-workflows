@@ -1,12 +1,376 @@
 [
-  {"id":"json-invalido","sitio":{"posix":{"linea":7,"digest":"sha256:888343659ece021d"},"ps":{"linea":14,"digest":"sha256:a68082068e25b790"}},"posix":"^GUARD:manifest-valido el archivo no es un objeto JSON válido$","ps":"^GUARD:manifest-valido el archivo no es un objeto JSON válido$","campos":{},"testigo":{"posix":{"texto":"GUARD:manifest-valido el archivo no es un objeto JSON válido","campos":{}},"ps":{"texto":"GUARD:manifest-valido el archivo no es un objeto JSON válido","campos":{}}},"literal":{"posix":"GUARD:manifest-valido el archivo no es un objeto JSON válido\\n","ps":"GUARD:manifest-valido el archivo no es un objeto JSON válido"}},
-  {"id":"falta-campo","sitio":{"posix":{"linea":17,"digest":"sha256:05a086c428d2d771"},"ps":{"linea":25,"digest":"sha256:6959c51e37284684"}},"posix":"^GUARD:manifest-valido falta el campo \\\"(?P<campo>[^\\\"]*)\\\"$","ps":"^GUARD:manifest-valido falta el campo \\\"(?P<campo>[^\\\"]*)\\\"$","campos":{"campo":{"tipo":"texto"}},"testigo":{"posix":{"texto":"GUARD:manifest-valido falta el campo \"CENTINELA\"","campos":{"campo":"CENTINELA"}},"ps":{"texto":"GUARD:manifest-valido falta el campo \"CENTINELA\"","campos":{"campo":"CENTINELA"}}},"literal":{"posix":"GUARD:manifest-valido falta el campo \"%s\"\\n","ps":"GUARD:manifest-valido falta el campo `"}},
-  {"id":"clave-duplicada","sitio":{"posix":{"linea":19,"digest":"sha256:c2c6fb41ffa79fed"},"ps":{"linea":26,"digest":"sha256:51f5ff07c5011622"}},"posix":"^GUARD:manifest-valido clave requerida duplicada: \\\"(?P<campo>[^\\\"]*)\\\"$","ps":"^GUARD:manifest-valido clave requerida duplicada: \\\"(?P<campo>[^\\\"]*)\\\"$","campos":{"campo":{"tipo":"texto"}},"testigo":{"posix":{"texto":"GUARD:manifest-valido clave requerida duplicada: \"CENTINELA\"","campos":{"campo":"CENTINELA"}},"ps":{"texto":"GUARD:manifest-valido clave requerida duplicada: \"CENTINELA\"","campos":{"campo":"CENTINELA"}}},"literal":{"posix":"GUARD:manifest-valido clave requerida duplicada: \"%s\"\\n","ps":"GUARD:manifest-valido clave requerida duplicada: `"}},
-  {"id":"clave-desconocida","sitio":{"posix":{"linea":23,"digest":"sha256:201ef3206321df64"},"ps":{"linea":30,"digest":"sha256:a13e0490cee67e11"}},"posix":"^GUARD:manifest-valido clave raíz desconocida: \\\"(?P<campo>[^\\\"]*)\\\"$","ps":"^GUARD:manifest-valido clave raíz desconocida: \\\"(?P<campo>[^\\\"]*)\\\"$","campos":{"campo":{"tipo":"texto"}},"testigo":{"posix":{"texto":"GUARD:manifest-valido clave raíz desconocida: \"CENTINELA\"","campos":{"campo":"CENTINELA"}},"ps":{"texto":"GUARD:manifest-valido clave raíz desconocida: \"CENTINELA\"","campos":{"campo":"CENTINELA"}}},"literal":{"posix":"GUARD:manifest-valido clave raíz desconocida: \"%s\"\\n","ps":"GUARD:manifest-valido clave raíz desconocida: `"}},
-  {"id":"started-at-invalido","sitio":{"posix":{"linea":35,"digest":"sha256:9e74cb5ca1f501e9"},"ps":{"linea":40,"digest":"sha256:084e172575331963"}},"posix":"^GUARD:manifest-valido started_at no es UTC ISO-8601: \\\"(?P<valor>[^\\\"]*)\\\"$","ps":"^GUARD:manifest-valido started_at no es UTC ISO-8601: \\\"(?P<valor>[^\\\"]*)\\\"$","campos":{"valor":{"tipo":"texto"}},"testigo":{"posix":{"texto":"GUARD:manifest-valido started_at no es UTC ISO-8601: \"CENTINELA\"","campos":{"valor":"CENTINELA"}},"ps":{"texto":"GUARD:manifest-valido started_at no es UTC ISO-8601: \"CENTINELA\"","campos":{"valor":"CENTINELA"}}},"literal":{"posix":"GUARD:manifest-valido started_at no es UTC ISO-8601: \"%s\"\\n","ps":"GUARD:manifest-valido started_at no es UTC ISO-8601: `"}},
-  {"id":"duration-invalida","sitio":{"posix":{"linea":40,"digest":"sha256:aab4807758539b24"},"ps":{"linea":46,"digest":"sha256:75cfd4766ad350cb"}},"posix":"^GUARD:manifest-valido duration_s no es entero no negativo: \\\"(?P<valor>[^\\\"]*)\\\"$","ps":"^GUARD:manifest-valido duration_s no es entero no negativo: \\\"(?P<valor>[^\\\"]*)\\\"$","campos":{"valor":{"tipo":"texto"}},"testigo":{"posix":{"texto":"GUARD:manifest-valido duration_s no es entero no negativo: \"CENTINELA\"","campos":{"valor":"CENTINELA"}},"ps":{"texto":"GUARD:manifest-valido duration_s no es entero no negativo: \"CENTINELA\"","campos":{"valor":"CENTINELA"}}},"literal":{"posix":"GUARD:manifest-valido duration_s no es entero no negativo: \"%s\"\\n","ps":"GUARD:manifest-valido duration_s no es entero no negativo: `"}},
-  {"id":"family-invalida","sitio":{"posix":{"linea":55,"digest":"sha256:59ae69ac5d436f92"},"ps":{"linea":59,"digest":"sha256:554afd4a179b6565"}},"posix":"^GUARD:manifest-valido family inválida o duplicada: \\\"(?P<familia>[^\\\"]*)\\\"$","ps":"^GUARD:manifest-valido family inválida o duplicada: \\\"(?P<familia>[^\\\"]*)\\\"$","campos":{"familia":{"tipo":"texto"}},"testigo":{"posix":{"texto":"GUARD:manifest-valido family inválida o duplicada: \"CENTINELA\"","campos":{"familia":"CENTINELA"}},"ps":{"texto":"GUARD:manifest-valido family inválida o duplicada: \"CENTINELA\"","campos":{"familia":"CENTINELA"}}},"literal":{"posix":"GUARD:manifest-valido family inválida o duplicada: \"%s\"\\n","ps":"GUARD:manifest-valido family inválida o duplicada: `"}},
-  {"id":"families-no-lista","sitio":{"posix":{"linea":60,"digest":"sha256:1c06484b5e13eddd"},"ps":{"linea":63,"digest":"sha256:db937233ee2702db"}},"posix":"^GUARD:manifest-valido \\\"families\\\" no es una lista$","ps":"^GUARD:manifest-valido \\\"families\\\" no es una lista$","campos":{},"testigo":{"posix":{"texto":"GUARD:manifest-valido \"families\" no es una lista","campos":{}},"ps":{"texto":"GUARD:manifest-valido \"families\" no es una lista","campos":{}}},"literal":{"posix":"GUARD:manifest-valido \"families\" no es una lista\\n","ps":"GUARD:manifest-valido \"families\" no es una lista"}},
-  {"id":"skill-fuera-del-ecosistema","sitio":{"posix":{"linea":83,"digest":"sha256:daf333d36a20632d"},"ps":{"linea":83,"digest":"sha256:d0f2e0af5d5553e3"}},"posix":"^GUARD:manifest-valido skill fuera del ecosistema: \\\"(?P<skill>[^\\\"]*)\\\"$","ps":"^GUARD:manifest-valido skill fuera del ecosistema: \\\"(?P<skill>[^\\\"]*)\\\"$","campos":{"skill":{"tipo":"texto"}},"testigo":{"posix":{"texto":"GUARD:manifest-valido skill fuera del ecosistema: \"CENTINELA\"","campos":{"skill":"CENTINELA"}},"ps":{"texto":"GUARD:manifest-valido skill fuera del ecosistema: \"CENTINELA\"","campos":{"skill":"CENTINELA"}}},"literal":{"posix":"GUARD:manifest-valido skill fuera del ecosistema: \"%s\"\\n","ps":"GUARD:manifest-valido skill fuera del ecosistema: `"}},
-  {"id":"valor-fuera-de-vocabulario","sitio":{"posix":{"linea":92,"digest":"sha256:7a8edd9ba8d6f052"},"ps":{"linea":91,"digest":"sha256:a87ce9229506ecf1"}},"posix":"^GUARD:manifest-valido (?P<campo>\\S+) \\\"(?P<valor>[^\\\"]*)\\\" no pertenece a (?P<skill>\\S+)$","ps":"^GUARD:manifest-valido (?P<campo>\\S+) \\\"(?P<valor>[^\\\"]*)\\\" no pertenece a (?P<skill>\\S+)$","campos":{"campo":{"tipo":"texto"},"valor":{"tipo":"texto"},"skill":{"tipo":"texto"}},"testigo":{"posix":{"texto":"GUARD:manifest-valido transport \"CENTINELA\" no pertenece a cross-review","campos":{"campo":"transport","valor":"CENTINELA","skill":"cross-review"}},"ps":{"texto":"GUARD:manifest-valido transport \"CENTINELA\" no pertenece a cross-review","campos":{"campo":"transport","valor":"CENTINELA","skill":"cross-review"}}},"literal":{"posix":"GUARD:manifest-valido %s \"%s\" no pertenece a %s\\n","ps":"GUARD:manifest-valido $($par[0]) `"}}
+  {
+    "id": "json-invalido",
+    "sitio": {
+      "posix": {
+        "linea": 11,
+        "digest": "sha256:888343659ece021d"
+      },
+      "ps": {
+        "linea": 19,
+        "digest": "sha256:a68082068e25b790"
+      }
+    },
+    "posix": "^GUARD:manifest-valido el archivo no es un objeto JSON válido$",
+    "ps": "^GUARD:manifest-valido el archivo no es un objeto JSON válido$",
+    "campos": {},
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:manifest-valido el archivo no es un objeto JSON válido",
+        "campos": {}
+      },
+      "ps": {
+        "texto": "GUARD:manifest-valido el archivo no es un objeto JSON válido",
+        "campos": {}
+      }
+    },
+    "literal": {
+      "posix": "GUARD:manifest-valido el archivo no es un objeto JSON válido\\n",
+      "ps": "GUARD:manifest-valido el archivo no es un objeto JSON válido"
+    }
+  },
+  {
+    "id": "falta-campo",
+    "sitio": {
+      "posix": {
+        "linea": 21,
+        "digest": "sha256:05a086c428d2d771"
+      },
+      "ps": {
+        "linea": 30,
+        "digest": "sha256:6959c51e37284684"
+      }
+    },
+    "posix": "^GUARD:manifest-valido falta el campo \\\"(?P<campo>[^\\\"]*)\\\"$",
+    "ps": "^GUARD:manifest-valido falta el campo \\\"(?P<campo>[^\\\"]*)\\\"$",
+    "campos": {
+      "campo": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:manifest-valido falta el campo \"CENTINELA\"",
+        "campos": {
+          "campo": "CENTINELA"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:manifest-valido falta el campo \"CENTINELA\"",
+        "campos": {
+          "campo": "CENTINELA"
+        }
+      }
+    },
+    "literal": {
+      "posix": "GUARD:manifest-valido falta el campo \"%s\"\\n",
+      "ps": "GUARD:manifest-valido falta el campo `"
+    }
+  },
+  {
+    "id": "clave-duplicada",
+    "sitio": {
+      "posix": {
+        "linea": 23,
+        "digest": "sha256:c2c6fb41ffa79fed"
+      },
+      "ps": {
+        "linea": 31,
+        "digest": "sha256:51f5ff07c5011622"
+      }
+    },
+    "posix": "^GUARD:manifest-valido clave requerida duplicada: \\\"(?P<campo>[^\\\"]*)\\\"$",
+    "ps": "^GUARD:manifest-valido clave requerida duplicada: \\\"(?P<campo>[^\\\"]*)\\\"$",
+    "campos": {
+      "campo": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:manifest-valido clave requerida duplicada: \"CENTINELA\"",
+        "campos": {
+          "campo": "CENTINELA"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:manifest-valido clave requerida duplicada: \"CENTINELA\"",
+        "campos": {
+          "campo": "CENTINELA"
+        }
+      }
+    },
+    "literal": {
+      "posix": "GUARD:manifest-valido clave requerida duplicada: \"%s\"\\n",
+      "ps": "GUARD:manifest-valido clave requerida duplicada: `"
+    }
+  },
+  {
+    "id": "clave-desconocida",
+    "sitio": {
+      "posix": {
+        "linea": 27,
+        "digest": "sha256:201ef3206321df64"
+      },
+      "ps": {
+        "linea": 35,
+        "digest": "sha256:a13e0490cee67e11"
+      }
+    },
+    "posix": "^GUARD:manifest-valido clave raíz desconocida: \\\"(?P<campo>[^\\\"]*)\\\"$",
+    "ps": "^GUARD:manifest-valido clave raíz desconocida: \\\"(?P<campo>[^\\\"]*)\\\"$",
+    "campos": {
+      "campo": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:manifest-valido clave raíz desconocida: \"CENTINELA\"",
+        "campos": {
+          "campo": "CENTINELA"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:manifest-valido clave raíz desconocida: \"CENTINELA\"",
+        "campos": {
+          "campo": "CENTINELA"
+        }
+      }
+    },
+    "literal": {
+      "posix": "GUARD:manifest-valido clave raíz desconocida: \"%s\"\\n",
+      "ps": "GUARD:manifest-valido clave raíz desconocida: `"
+    }
+  },
+  {
+    "id": "started-at-invalido",
+    "sitio": {
+      "posix": {
+        "linea": 39,
+        "digest": "sha256:9e74cb5ca1f501e9"
+      },
+      "ps": {
+        "linea": 45,
+        "digest": "sha256:084e172575331963"
+      }
+    },
+    "posix": "^GUARD:manifest-valido started_at no es UTC ISO-8601: \\\"(?P<valor>[^\\\"]*)\\\"$",
+    "ps": "^GUARD:manifest-valido started_at no es UTC ISO-8601: \\\"(?P<valor>[^\\\"]*)\\\"$",
+    "campos": {
+      "valor": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:manifest-valido started_at no es UTC ISO-8601: \"CENTINELA\"",
+        "campos": {
+          "valor": "CENTINELA"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:manifest-valido started_at no es UTC ISO-8601: \"CENTINELA\"",
+        "campos": {
+          "valor": "CENTINELA"
+        }
+      }
+    },
+    "literal": {
+      "posix": "GUARD:manifest-valido started_at no es UTC ISO-8601: \"%s\"\\n",
+      "ps": "GUARD:manifest-valido started_at no es UTC ISO-8601: `"
+    }
+  },
+  {
+    "id": "duration-invalida",
+    "sitio": {
+      "posix": {
+        "linea": 44,
+        "digest": "sha256:aab4807758539b24"
+      },
+      "ps": {
+        "linea": 51,
+        "digest": "sha256:75cfd4766ad350cb"
+      }
+    },
+    "posix": "^GUARD:manifest-valido duration_s no es entero no negativo: \\\"(?P<valor>[^\\\"]*)\\\"$",
+    "ps": "^GUARD:manifest-valido duration_s no es entero no negativo: \\\"(?P<valor>[^\\\"]*)\\\"$",
+    "campos": {
+      "valor": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:manifest-valido duration_s no es entero no negativo: \"CENTINELA\"",
+        "campos": {
+          "valor": "CENTINELA"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:manifest-valido duration_s no es entero no negativo: \"CENTINELA\"",
+        "campos": {
+          "valor": "CENTINELA"
+        }
+      }
+    },
+    "literal": {
+      "posix": "GUARD:manifest-valido duration_s no es entero no negativo: \"%s\"\\n",
+      "ps": "GUARD:manifest-valido duration_s no es entero no negativo: `"
+    }
+  },
+  {
+    "id": "family-invalida",
+    "sitio": {
+      "posix": {
+        "linea": 57,
+        "digest": "sha256:59ae69ac5d436f92"
+      },
+      "ps": {
+        "linea": 64,
+        "digest": "sha256:554afd4a179b6565"
+      }
+    },
+    "posix": "^GUARD:manifest-valido family inválida o duplicada: \\\"(?P<familia>[^\\\"]*)\\\"$",
+    "ps": "^GUARD:manifest-valido family inválida o duplicada: \\\"(?P<familia>[^\\\"]*)\\\"$",
+    "campos": {
+      "familia": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:manifest-valido family inválida o duplicada: \"CENTINELA\"",
+        "campos": {
+          "familia": "CENTINELA"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:manifest-valido family inválida o duplicada: \"CENTINELA\"",
+        "campos": {
+          "familia": "CENTINELA"
+        }
+      }
+    },
+    "literal": {
+      "posix": "GUARD:manifest-valido family inválida o duplicada: \"%s\"\\n",
+      "ps": "GUARD:manifest-valido family inválida o duplicada: `"
+    }
+  },
+  {
+    "id": "families-no-lista",
+    "sitio": {
+      "posix": {
+        "linea": 62,
+        "digest": "sha256:1c06484b5e13eddd"
+      },
+      "ps": {
+        "linea": 68,
+        "digest": "sha256:db937233ee2702db"
+      }
+    },
+    "posix": "^GUARD:manifest-valido \\\"families\\\" no es una lista$",
+    "ps": "^GUARD:manifest-valido \\\"families\\\" no es una lista$",
+    "campos": {},
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:manifest-valido \"families\" no es una lista",
+        "campos": {}
+      },
+      "ps": {
+        "texto": "GUARD:manifest-valido \"families\" no es una lista",
+        "campos": {}
+      }
+    },
+    "literal": {
+      "posix": "GUARD:manifest-valido \"families\" no es una lista\\n",
+      "ps": "GUARD:manifest-valido \"families\" no es una lista"
+    }
+  },
+  {
+    "id": "skill-fuera-del-ecosistema",
+    "sitio": {
+      "posix": {
+        "linea": 85,
+        "digest": "sha256:daf333d36a20632d"
+      },
+      "ps": {
+        "linea": 88,
+        "digest": "sha256:d0f2e0af5d5553e3"
+      }
+    },
+    "posix": "^GUARD:manifest-valido skill fuera del ecosistema: \\\"(?P<skill>[^\\\"]*)\\\"$",
+    "ps": "^GUARD:manifest-valido skill fuera del ecosistema: \\\"(?P<skill>[^\\\"]*)\\\"$",
+    "campos": {
+      "skill": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:manifest-valido skill fuera del ecosistema: \"CENTINELA\"",
+        "campos": {
+          "skill": "CENTINELA"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:manifest-valido skill fuera del ecosistema: \"CENTINELA\"",
+        "campos": {
+          "skill": "CENTINELA"
+        }
+      }
+    },
+    "literal": {
+      "posix": "GUARD:manifest-valido skill fuera del ecosistema: \"%s\"\\n",
+      "ps": "GUARD:manifest-valido skill fuera del ecosistema: `"
+    }
+  },
+  {
+    "id": "valor-fuera-de-vocabulario",
+    "sitio": {
+      "posix": {
+        "linea": 94,
+        "digest": "sha256:7a8edd9ba8d6f052"
+      },
+      "ps": {
+        "linea": 96,
+        "digest": "sha256:a87ce9229506ecf1"
+      }
+    },
+    "posix": "^GUARD:manifest-valido (?P<campo>\\S+) \\\"(?P<valor>[^\\\"]*)\\\" no pertenece a (?P<skill>\\S+)$",
+    "ps": "^GUARD:manifest-valido (?P<campo>\\S+) \\\"(?P<valor>[^\\\"]*)\\\" no pertenece a (?P<skill>\\S+)$",
+    "campos": {
+      "campo": {
+        "tipo": "texto"
+      },
+      "valor": {
+        "tipo": "texto"
+      },
+      "skill": {
+        "tipo": "texto"
+      }
+    },
+    "testigo": {
+      "posix": {
+        "texto": "GUARD:manifest-valido transport \"CENTINELA\" no pertenece a cross-review",
+        "campos": {
+          "campo": "transport",
+          "valor": "CENTINELA",
+          "skill": "cross-review"
+        }
+      },
+      "ps": {
+        "texto": "GUARD:manifest-valido transport \"CENTINELA\" no pertenece a cross-review",
+        "campos": {
+          "campo": "transport",
+          "valor": "CENTINELA",
+          "skill": "cross-review"
+        }
+      }
+    },
+    "literal": {
+      "posix": "GUARD:manifest-valido %s \"%s\" no pertenece a %s\\n",
+      "ps": "GUARD:manifest-valido $($par[0]) `"
+    }
+  }
 ]
