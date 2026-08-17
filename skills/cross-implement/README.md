@@ -2,9 +2,9 @@
 
 **Implementación cruzada cross-model.** El conductor (autor del plan) delega la implementación de
 un work order **congelado** a un modelo de **otra familia** (Codex cuando conduce Claude; Claude
-cuando conduce Codex), con escritura acotada al working dir; el conductor revisa el diff completo
-como un PR ajeno, corre la prueba él mismo, itera fixes en la misma sesión (loop acotado) y es
-quien commitea tras el gate humano.
+cuando conduce Codex), cuya única salida durable son el diff en el working dir y su reporte final;
+el conductor revisa ese diff completo como un PR ajeno, corre la prueba él mismo, itera fixes en la
+misma sesión (loop acotado) y es quien commitea tras el gate humano.
 
 ## Qué es
 
@@ -22,7 +22,7 @@ construcción, y el reporte del implementador es **advisory**: el conductor lee 
 corre la prueba él mismo antes de aceptar nada.
 
 ```
-work order congelado ──► implementador (otra familia, escritura acotada, nunca commitea)
+work order congelado ──► implementador (otra familia, salida durable = diff y reporte, nunca commitea)
                               ▼
                     diff + reporte ──► conductor revisa como PR ajeno + corre la prueba
                               ▼
@@ -63,7 +63,20 @@ el primero al armar y aprobar el contrato, el segundo cuando una ronda falla.
 - **Para revisar código existente** (eso es code review) ni artefactos de diseño (eso es
   `cross-review`).
 - **Tasks que dependen de tools de sesión** (MCPs, secretos, navegador): el implementador
-  delegado no las ve.
+  delegado no las tiene. Se lanza con los **canales heredados** del entorno apagados por
+  construcción —los cuatro flags de aislamiento en Codex, `--safe-mode` en Claude—, así que no
+  hereda tus servidores MCP ni tus hooks. Decía "no las ve" cuando el aislamiento todavía no
+  existía, y era falso: un worker llegó a escribir en una memoria persistente compartida.
+
+## Pendiente conocido
+
+La integración de `.opencode/` reproduce este contrato en TypeScript y **acepta un solo comando de
+prueba**, así que ahí el hueco de las comprobaciones agregadas sigue abierto: un flujo iniciado
+desde `/sdd` en OpenCode puede entregar deuda de lint o de build igual que antes. El de los canales
+heredados sí está cerrado ahí, y por construcción: esa integración lanza con `--safe-mode` y una
+allowlist explícita de tools, con el prompt como defensa adicional. Es trabajo de otro flujo —el producto de este
+repo son las skills en Markdown— y se declara acá para que la exclusión sea una decisión visible y
+no un olvido.
 
 ## Requisitos
 

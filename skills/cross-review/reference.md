@@ -384,13 +384,35 @@ Devuelve **0** si la familia pedida se puede aislar y **≠ 0** si no. Es una en
 un bloque que comprueba las dos: comprobar ambas marcaría `UNAVAILABLE` cuando falta el CLI de la
 familia **que no se va a despachar**, que es el caso corriente de una allowlist con una sola familia.
 
+**`exec` y `exec resume` se comprueban por separado, y `--disable` no se da por comprobado.** Son dos
+afirmaciones distintas y ninguna implica la otra:
+
+- Que el flag exista en `exec` **no** dice que la reanudación lo acepte. `exec resume` ya rechaza
+  `-C`, `-s` y seis flags más (ver "Asimetría de flags entre `exec` y `exec resume`"), así que la
+  suposición tiene precedente. Comprobar solo el lanzamiento deja pasar el primer dispatch y descubre
+  el problema en el **fix round**, cuando ya hay un writer despachado y el árbol tocado.
+- Que `features list` enumere `hooks`/`apps`/`plugins` dice que **existen**, no que el subcomando
+  acepte `--disable` para apagarlas.
+
+El bloque **no itera sobre nombres de subcomando** guardados en una variable, y eso es deliberado:
+`for sub in "exec" "exec resume"; do codex $sub --help; done` **no funciona bajo zsh**, que no divide
+expansiones sin comillas. La segunda vuelta invoca `codex "exec resume"`, un subcomando inexistente
+que imprime la ayuda de nivel superior **con exit 0**; el `grep` no encuentra el flag y el preflight
+devuelve `UNAVAILABLE` en **toda** corrida sin despachar nunca. Medido acá con `codex-cli` 0.147.0.
+Dos llamadas explícitas no tienen esa forma y no la pueden recuperar en una edición futura.
+
 ```bash
 # POSIX
+comprobar_flags_codex() {   # $1 = la ayuda COMPLETA de un subcomando, ya capturada
+  printf '%s\n' "$1" | grep -q -- --ignore-user-config || return 1
+  printf '%s\n' "$1" | grep -q -- --disable            || return 1
+}
 preflight_aislamiento() {
   fam="$1"
   case "$fam" in
     codex)
-      codex exec --help 2>/dev/null | grep -q -- --ignore-user-config || return 1
+      comprobar_flags_codex "$(codex exec --help 2>/dev/null)"        || return 1
+      comprobar_flags_codex "$(codex exec resume --help 2>/dev/null)" || return 1
       for f in hooks apps plugins; do
         codex features list 2>/dev/null | grep -qE "^${f}[[:space:]]" || return 1
       done
@@ -407,11 +429,20 @@ preflight_aislamiento codex || { echo "UNAVAILABLE: aislamiento no garantizado (
 
 ```powershell
 # PowerShell
+function Test-FlagsCodex {
+  # una ayuda por llamada, no un loop sobre las dos: `--help` devuelve un array de líneas y
+  # @($exec, $resume) las aplanaría en una sola lista, donde un flag presente en uno solo pasaría.
+  param([string[]]$Ayuda)
+  if (-not ($Ayuda -match '--ignore-user-config')) { return $false }
+  if (-not ($Ayuda -match '--disable'))            { return $false }
+  return $true
+}
 function Preflight-Aislamiento {
   param([string]$Familia)
   switch ($Familia) {
     'codex' {
-      if (-not ((codex exec --help 2>$null) -match '--ignore-user-config')) { return 1 }
+      if (-not (Test-FlagsCodex (codex exec --help 2>$null)))        { return 1 }
+      if (-not (Test-FlagsCodex (codex exec resume --help 2>$null))) { return 1 }
       $feats = codex features list 2>$null
       foreach ($f in 'hooks','apps','plugins') {
         if (-not ($feats -match "^$f\s")) { return 1 }

@@ -13,6 +13,7 @@ conductor, el fix loop, los tiempos y los archivos de trabajo.
 - [Matriz de verificación](#matriz-de-verificación)
 - [Prompt del implementador](#prompt-del-implementador)
 - [Formato del reporte](#formato-del-reporte)
+- [Medición de base y adjudicación](#medición-de-base-y-adjudicación)
 - [Revisión del conductor](#revisión-del-conductor)
 - [Fix loop](#fix-loop)
 - [El delta revisable de un bloque](#el-delta-revisable-de-un-bloque)
@@ -148,11 +149,13 @@ de corrida"). Los comandos concretos aparecen en cada vía documentada debajo.
 
 ### Vía W-B — Codex implementador (autor Claude)
 
-- **Lanzamiento** (sesión fresca; captura del thread id igual que la Vía B de cross-review):
+- **Lanzamiento** (sesión fresca; captura del thread id igual que la Vía B de cross-review). `$MODEL`
+  y `$EFFORT` salen de la lectura previa del config — ver "Modelo y esfuerzo bajo aislamiento":
   <!-- despacho:inicio:ci-wb-posix:codex -->
   ```bash
   codex exec --ignore-user-config --disable hooks --disable apps --disable plugins \
     -s workspace-write -C <working_dir> --skip-git-repo-check --json \
+    ${MODEL:+-m} ${MODEL:+"$MODEL"} ${EFFORT:+-c} ${EFFORT:+"model_reasoning_effort=$EFFORT"} \
     --output-last-message <scratch>/report.txt - < <scratch>/prompt.txt \
     > <scratch>/thread.jsonl 2> <scratch>/impl.err.txt
   grep -m1 -o '"thread_id":"[^"]*"' <scratch>/thread.jsonl | cut -d'"' -f4 > <scratch>/session.txt
@@ -161,16 +164,23 @@ de corrida"). Los comandos concretos aparecen en cada vía documentada debajo.
   En **PowerShell**:
   <!-- despacho:inicio:ci-wb-ps:codex -->
   ```powershell
+  $CodexArgs = @('exec','--ignore-user-config','--disable','hooks','--disable','apps',
+                 '--disable','plugins','-s','workspace-write','-C','<working_dir>',
+                 '--skip-git-repo-check','--json',
+                 '--output-last-message','<scratch>\report.txt')
+  if ($Model)  { $CodexArgs += @('-m', $Model) }
+  if ($Effort) { $CodexArgs += @('-c', "model_reasoning_effort=$Effort") }
+  $CodexArgs += '-'          # el posicional de stdin va ÚLTIMO, como en POSIX
   Get-Content -Raw <scratch>\prompt.txt |
-    codex exec --ignore-user-config --disable hooks --disable apps --disable plugins `
-      -s workspace-write -C <working_dir> --skip-git-repo-check --json `
-      --output-last-message <scratch>\report.txt - > <scratch>\thread.jsonl 2> <scratch>\impl.err.txt
+    codex @CodexArgs > <scratch>\thread.jsonl 2> <scratch>\impl.err.txt
   (Select-String -Path <scratch>\thread.jsonl -Pattern '"thread_id":"([^"]+)"' |
     Select-Object -First 1).Matches.Groups[1].Value > <scratch>\session.txt
   ```
   <!-- despacho:fin:ci-wb-ps -->
 - `-s workspace-write` limita las escrituras al `working_dir` **más `/tmp`** (por diseño del
-  sandbox). Caveat: si el repo objetivo vive bajo `/tmp`, el borde efectivo es más laxo.
+  sandbox). Caveat: si el repo objetivo vive bajo `/tmp`, el borde efectivo es más laxo. Por eso la
+  regla 3 del `SKILL.md` enuncia la superficie —salida durable y autoritativa— y no solo el
+  mecanismo: `/tmp` sirve para scratch efímero y nunca para lo que el conductor deba leer.
 - **Fix round** (resume del MISMO thread). **Tres** cosas que **no** se heredan del comando de
   lanzamiento y que hay que mirar antes de copiarlo (detalle en `cross-review/reference.md` →
   "Asimetría de flags entre `exec` y `exec resume`"):
@@ -181,20 +191,109 @@ de corrida"). Los comandos concretos aparecen en cada vía documentada debajo.
   - **el aislamiento tampoco se hereda, y esta es la que más fácil se olvida**: la configuración se
     relee en **cada** invocación de `codex`, así que un resume sin los cuatro flags vuelve a levantar
     los MCP, hooks y plugins del usuario por más que el lanzamiento los haya apagado. `exec resume`
-    **sí** los acepta —a diferencia de `-s` y `-C`—, así que van repetidos enteros.
+    **sí** los acepta —a diferencia de `-s` y `-C`—, así que van repetidos enteros. Lo mismo vale
+    para `-m` / `model_reasoning_effort`: los recarga de `session-meta.json`, no de la sesión.
   <!-- despacho:inicio:ci-wb-resume:codex -->
   ```bash
   SESSION_ID=$(cat <scratch>/session.txt)
   echo "resume → ${SESSION_ID:?vacío}"   # id vacío = sesión fresca silenciosa; cortar acá
-  codex exec resume "$SESSION_ID" --ignore-user-config \
-    --disable hooks --disable apps --disable plugins \
-    -c sandbox_mode="workspace-write" --skip-git-repo-check --json \
-    --output-last-message <scratch>/report.txt - < <scratch>/fix-rN.txt \
+  ( cd <working_dir> &&                  # `resume` no acepta -C: el working dir es el cwd
+    codex exec resume "$SESSION_ID" --ignore-user-config \
+      --disable hooks --disable apps --disable plugins \
+      -c sandbox_mode="workspace-write" --skip-git-repo-check --json \
+      ${MODEL:+-m} ${MODEL:+"$MODEL"} ${EFFORT:+-c} ${EFFORT:+"model_reasoning_effort=$EFFORT"} \
+      --output-last-message <scratch>/report.txt - < <scratch>/fix-rN.txt ) \
     > <scratch>/thread-fix-rN.jsonl 2> <scratch>/impl.err.txt
   ```
   <!-- despacho:fin:ci-wb-resume -->
-  En **PowerShell**: mismo patrón que la Vía B de cross-review (pipe + `$SessionId` con guard),
-  cambiando el valor del override a `workspace-write`.
+  El `cd` va en **subshell**: fuera de él cambiaría el cwd del conductor para todo lo que siga, y el
+  siguiente comando —medir el baseline, leer el diff— operaría sobre el directorio equivocado sin
+  error. Misma razón por la que la Vía W-C usa `( cd … )` y PowerShell usa `Push-Location`.
+  En **PowerShell** el equivalente del `-C` ausente es `Push-Location`:
+  <!-- despacho:inicio:ci-wb-resume-ps:codex -->
+  ```powershell
+  $SessionId = (Get-Content <scratch>\session.txt -Raw).Trim()
+  if (-not $SessionId) { throw 'session id vacío: sería una sesión fresca silenciosa' }
+  $ResumeArgs = @('exec','resume',$SessionId,'--ignore-user-config','--disable','hooks',
+                  '--disable','apps','--disable','plugins',
+                  '-c','sandbox_mode=workspace-write','--skip-git-repo-check','--json',
+                  '--output-last-message','<scratch>\report.txt')
+  if ($Model)  { $ResumeArgs += @('-m', $Model) }
+  if ($Effort) { $ResumeArgs += @('-c', "model_reasoning_effort=$Effort") }
+  $ResumeArgs += '-'         # el posicional de stdin va ÚLTIMO, como en POSIX
+  Push-Location <working_dir>
+  try {
+    Get-Content -Raw <scratch>\fix-rN.txt |
+      codex @ResumeArgs > <scratch>\thread-fix-rN.jsonl 2> <scratch>\impl.err.txt
+  } finally { Pop-Location }
+  ```
+  <!-- despacho:fin:ci-wb-resume-ps -->
+  El `try/finally` no es cosmético: sin él, un throw del pipe deja al conductor parado en el working
+  dir del worker, que es el mismo modo de falla que el subshell evita en POSIX.
+
+#### Modelo y esfuerzo bajo aislamiento
+
+`--ignore-user-config` descarta el config del usuario **entero**, y ahí viven `model` y
+`model_reasoning_effort`. Cerrar el canal sin compensarlo cambia en silencio con qué modelo corre el
+worker, que es un efecto que nadie pidió y que no se nota hasta comparar salidas.
+
+El orden es: **leer del config → aislar → pasar explícito → ecoar lo resuelto**. Solo vale una
+asignación **raíz** inequívoca del TOML (anterior a la primera cabecera de tabla, comillas dobles,
+una sola ocurrencia).
+
+```bash
+CODEX_CFG="${CODEX_HOME:-$HOME/.codex}/config.toml"
+ROOT=$(awk '/^[[:space:]]*\[/{exit} {print}' "$CODEX_CFG" 2>/dev/null)
+read_root_key() {
+  n=$(printf '%s\n' "$ROOT" | grep -cE "^$1[[:space:]]*=[[:space:]]*\"[^\"]*\"[[:space:]]*$")
+  [ "$n" -eq 1 ] && printf '%s\n' "$ROOT" | sed -n "s/^$1[[:space:]]*=[[:space:]]*\"\([^\"]*\)\".*/\1/p"
+}
+MODEL=$(read_root_key model); EFFORT=$(read_root_key model_reasoning_effort)
+```
+```powershell
+$CodexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME '.codex' }
+$Root = @()
+foreach ($l in (Get-Content (Join-Path $CodexHome 'config.toml') -ErrorAction SilentlyContinue)) {
+  if ($l -match '^\s*\[') { break }
+  $Root += $l
+}
+function Read-RootKey([string]$K) {
+  $m = @($Root | Where-Object { $_ -match "^$K\s*=\s*""[^""]*""\s*$" })
+  if ($m.Count -eq 1) { $m[0] -replace "^$K\s*=\s*""([^""]*)""\s*$", '$1' }
+}
+$Model = Read-RootKey 'model'; $Effort = Read-RootKey 'model_reasoning_effort'
+```
+
+**Las dos variantes existen porque el efecto es el mismo en los dos shells.** Documentar solo el
+lector POSIX deja a Windows con `$Model`/`$Effort` **sin asignar nunca**: los `if ($Model)` de las
+recetas dan falso, no se pasa ningún flag y `--ignore-user-config` descarta modelo y esfuerzo en
+silencio — exactamente el efecto que esta sección existe para evitar, y sin nada que lo señale.
+
+**Reproducir el modelo del usuario no es "pinear".** El prechequeo que prohíbe pinear prohíbe que la
+skill **elija** un modelo por su cuenta; preservar el que el aislamiento acaba de descartar es lo
+contrario de elegir. **Fallback fijado:** si la lectura no es inequívoca, no se pasa el flag y se usa
+el **default del CLI**, registrado como tal en el `implement-log.md`. No se aborta ni se fuerza un
+modelo canónico.
+
+Los dos valores se **persisten en disco**, no solo en variables del proceso: el resume puede correr
+en otro proceso —o en otro turno— y ahí una variable de shell ya no existe. Van a
+`<scratch>/session-meta.json`, hermano de `session.txt`, y **se recargan** antes de cada resume:
+
+```bash
+printf '{"model":"%s","effort":"%s"}\n' "$MODEL" "$EFFORT" > <scratch>/session-meta.json
+# antes de cada resume:
+MODEL=$(sed -n 's/.*"model":"\([^"]*\)".*/\1/p'  <scratch>/session-meta.json)
+EFFORT=$(sed -n 's/.*"effort":"\([^"]*\)".*/\1/p' <scratch>/session-meta.json)
+```
+```powershell
+@{model=$Model; effort=$Effort} | ConvertTo-Json | Set-Content <scratch>\session-meta.json
+# antes de cada resume:
+$m = Get-Content <scratch>\session-meta.json | ConvertFrom-Json
+$Model = $m.model; $Effort = $m.effort
+```
+
+Sin esto, la afirmación "se persisten" es falsa y el fix round corre con el default del CLI sin que
+nada lo señale — que es exactamente el efecto silencioso que el aislamiento vino a evitar.
 
 ### Vía W-C — Claude implementador (autor GPT/Codex)
 
@@ -215,10 +314,22 @@ limitan la escritura al working dir:
   <!-- despacho:fin:ci-wc-lanzamiento -->
   En **PowerShell** (mismo patrón `Start-Process`/pipe que la Vía C de cross-review, con estas
   tools; entrecomillar el `--allowedTools=…` completo para que las comas no se parseen como array).
-- **`Bash(<proof_bin>:*)`**: derivar el patrón del primer token de `proof_cmd` (p. ej.
-  `proof_cmd: "node check.js"` → `Bash(node:*)`; `npm test` → `Bash(npm:*)`). Sumar los binarios
-  de build/lint que el work order exija — la lista mínima que el contrato necesita, nunca `Bash`
-  a secas.
+- **`Bash(<proof_bin>:*)`**: derivar un patrón por **cada comando** de la lista `proof_cmd`, del
+  primer token de cada uno (p. ej. `["node check.js", "npm run lint"]` → `Bash(node:*)` y
+  `Bash(npm:*)`). La lista mínima que el contrato necesita, nunca `Bash` a secas.
+
+  **Cuál es la forma admitida, y qué pasa si un comando no la tiene.** Un elemento es
+  representable cuando es un comando
+  simple con su ejecutable en el **primer token**. Un comando compuesto (`cd app && npm run lint`),
+  con wrapper o con asignaciones de entorno delante **no** es representable: su ejecutable real no
+  está en el primer token, y autorizar solo ese token bloquea la comprobación. Ante una forma no
+  representable **se detiene el dispatch** y se arregla el comando — nunca se relaja a `Bash` entero
+  para acomodarlo, que es cambiar el mínimo privilegio por comodidad.
+
+  **Con la lista vacía no se emite ningún `Bash(...)`**, y `--allowedTools` queda en
+  `'Read,Grep,Glob,Edit(./**),Write(./**)'`. No hay comprobación que correr, así que autorizar un
+  binario "por las dudas" sería conceder ejecución sin nadie que la pida. Es el caso coherente con
+  la ranura `PROOF` que tampoco se emite.
 - **NUNCA `--permission-mode acceptEdits`** como forma canónica: verificado que escribe **fuera**
   del working dir sin restricción (ver matriz). Tampoco `--dangerously-skip-permissions`.
 - Las reglas `Edit(./**)`/`Write(./**)` son relativas al cwd: por eso el `cd <working_dir>`
@@ -268,8 +379,21 @@ El prompt vive en `assets/prompts/implement.md` — es la **entrada exacta** del
 
 
 Cuando el work order es SDD (`.plans/<id>/`), derivar GOAL del objetivo de la spec, KEY PATHS de
-los campos Archivos de las tasks, CONSTRAINTS/NON-GOALS del alcance, y PROOF del `test_cmd`
-acotado (o el Verificar agregado de las tasks).
+los campos Archivos de las tasks, CONSTRAINTS/NON-GOALS del alcance, y PROOF **del conjunto de comandos**
+que el flujo llamador va a correr —tests, build y lint, los que estén configurados—, no
+solo del de tests.
+
+**Render de la ranura `PROOF`:** **una línea por comando**, en el orden de la lista, y cada comando
+va literal y entero, sin abreviar ni resumir: el worker no puede reconstruir uno truncado, y un comando
+a medias falla de un modo que parece un defecto del código.
+
+Con la **lista vacía** la ranura **no se emite** —ni el encabezado—, en vez de emitirse con un
+hueco: una ranura presente y vacía le dice al worker que se esperaba algo que no llegó, y eso es
+peor que no pedir nada. **Y arrastra a todo lo que la referencia:** con la lista vacía tampoco se
+emiten las dos cláusulas de `CONSTRAINTS` que hablan de los comandos de PROOF, ni el bloque `PROOF`
+del reporte — quedarían apuntando a una ranura ausente, que es el mismo defecto con otra forma. La
+línea de **canales heredados** de `CONSTRAINTS` sí se emite siempre: no depende de que haya
+comandos, y es la que cierra la superficie de escritura.
 
 ## Handoff destilado, nunca transcript crudo
 
@@ -288,23 +412,161 @@ se le reenvía la conversación para que lo deduzca.
 
 ## Formato del reporte
 
-Pedir al implementador exactamente:
+**El bloque literal vive en `assets/prompts/implement.md`, ranura `OUTPUT`, y esa es su única
+sede.** Acá va lo que el conductor **consume**, no una segunda copia: el worker solo ve el prompt,
+así que una transcripción de este lado no gobierna nada y diverge sin que nada la ponga roja —
+ya divergió una vez, en el texto del placeholder del comando.
 
-```
-FILES:
-- <path> — <qué cambió y por qué, una línea>
+Lo que el conductor puede dar por contratado:
 
-PROOF:
-<salida verbatim de proof_cmd + exit code>
+- **`STATUS: done` en la columna 0** es la señal de fin del poll en background, y el prompt pide el
+  reporte sin sangría justamente porque el predicado está anclado al margen. Un reporte indentado
+  haría que el conductor matara por deadline a un worker que ya cerró.
+- **Un bloque `COMMAND` / `EXIT_CODE` / `OUTPUT` por comando**, en el mismo orden en que se pidieron
+  — es lo que vuelve comparable la medición de base contra el resultado del bloque.
+- Reporte no parseable → el diff sigue siendo la verdad (regla 4): revisarlo igual; se pierde solo
+  la narrativa.
 
-DEVIATIONS:
-- <desviación del work order + razón>   (o "ninguna")
+## Medición de base y adjudicación
 
-STATUS: done
-```
+La aceptación de un bloque se juzga por **no empeoró**, no por verde absoluto (`SKILL.md` →
+"Aceptación de un bloque"). Eso exige saber qué daba cada comando **antes**, y ese "antes" deja de
+existir en cuanto el implementador escribe: la medición va **antes del dispatch**, no después.
 
-`STATUS: done` es la señal de fin para el poll en background. Reporte no parseable → el diff
-sigue siendo la verdad (regla 4): revisarlo igual; se pierde solo la narrativa.
+Orden, y cada paso está donde está por una razón:
+
+1. **Normalizar y validar** la lista de `proof_cmd`: escalar → lista de un elemento; rechazar toda
+   forma no representable (ver "Vía W-C" → forma admitida).
+2. **Resolver `block_base`** — el commit base **del bloque**, no el ancla de la secuencia. Con el
+   ancla, un diagnóstico que introdujo el bloque N-1 se le atribuye al N. En un despacho monolítico
+   coinciden; en una secuencia particionada, no.
+3. **Medir cada comando por separado** en un **worktree** **detached** sobre `block_base`. Se reusa
+   el ciclo de vida del re-baseline aislado de `ownership.md` → "Re-baseline en worktree aislado"
+   (crear detached, ejecutar, remover, comprobar la desaparición) **sin editar ese bloque**. Lo que
+   se agrega acá es la **captura**: aquel reduce el resultado a verde/rojo y borra la salida; esto
+   conserva, por comando, **el comando exacto, su salida completa y su exit code**.
+
+   > **Un worktree detached no trae el entorno, y sin él la medición miente en la dirección
+   > peligrosa.** El bloque reusado se diseñó para **filas de contrato** —comprobaciones acotadas—,
+   > pero `proof_cmd` es la suite completa, el build y el linter. Un worktree recién creado no tiene
+   > `node_modules`, `.venv`, `target/` ni el equivalente del stack, así que en cualquier proyecto con
+   > dependencias instaladas **todos** los comandos salen distinto de cero en la base. Y un baseline
+   > todo en rojo hace que cualquier fallo posterior "no empeore": la condición de aceptación queda
+   > satisfecha siempre, que es exactamente el fallo que no se nota.
+   >
+   > **Antes de medir, el worktree tiene que poder ejecutar el comando.** Lo barato y suficiente es
+   > **compartir el directorio de dependencias** del árbol activo —que ya está instalado y ya
+   > corresponde a este repo— en vez de reinstalarlo:
+   >
+   > ```sh
+   > # ejemplo para Node; el equivalente según el stack (.venv, vendor/, target/…)
+   > ln -s "$(git rev-parse --show-toplevel)/node_modules" "$WT/node_modules"
+   > ```
+   >
+   > **Y hay una comprobación que no cuesta nada y caza el resto: si al medir la base salen rojos
+   > TODOS los comandos, sospechar del entorno antes que de la deuda del repo.** Un repo con linter
+   > rojo es común; uno donde además fallan la suite y el build a la vez es raro. Ante ese caso, la
+   > base **no se da por válida**: se comprueba a mano un comando en el árbol activo —que está en
+   > `block_base` y sí tiene entorno— y, si ahí pasa, el worktree es el problema.
+   >
+   > **Si un comando no se puede medir en la base, no se puede adjudicar por "no empeoró".** Ese
+   > comando queda **fuera del criterio de aceptación** y se declara así en `proof-baseline.md`, con
+   > el motivo. Contarlo como rojo es lo que produce la aceptación vacua; excluirlo es honesto y deja
+   > el hueco a la vista. Lo que **no** cambia por eso es la tercera condición de la aceptación: las
+   > filas del contrato se siguen exigiendo en verde, y no dependen de esta medición.
+4. **Descartar el worktree** y comprobar que se fue. Correr los comandos sobre el árbol activo no es
+   una alternativa: un linter con autofix o un build que deja artefactos ensucian el árbol justo
+   antes de un despacho cuyo clean-tree gate exige lo contrario.
+5. Recién entonces, el clean-tree gate y el dispatch.
+
+**Dónde se guarda.** En `<scratch>/proof-baseline.md`, un artefacto por invocación, con una entrada
+por comando: el comando exacto, su exit code y su salida completa, más el `block_base` sobre el que
+se midió. Sin sede declarada, "conservar la salida" es una intención que nadie puede auditar después.
+
+> **Ese archivo está al alcance del worker, y prohibírselo en el prompt no lo protege.** El scratch
+> vive bajo el `working_dir`, que es justo lo que `-s workspace-write` concede; `session-meta.json`
+> está en la misma situación. Sacarlos de ahí no resuelve nada —el sandbox concede `/tmp` también—,
+> así que la garantía disponible no es prevención sino **detección**, y hay que decirlo con ese
+> nombre: es la única superficie donde esta skill depende de que el worker obedezca.
+>
+> Los dos son **load-bearing y untracked**: `proof-baseline.md` es el "antes" contra el que se juzga
+> `no empeoró`, `session-meta.json` fija con qué modelo corre cada resume, y una escritura del worker
+> en cualquiera de los dos **no aparece en el diff**. Por eso, antes del dispatch se registra el
+> `sha256` de ambos y se recomprueba **al cosechar, antes de leerlos**.
+>
+> **Dónde vive el testigo decide qué prueba, y es fácil escribirlo mal.** Si el `sha256` se guarda en
+> el mismo `<scratch>`, queda en la superficie que vigila: un worker que reescriba `proof-baseline.md`
+> reescribe el testigo en el mismo movimiento y la recomprobación pasa. Entonces:
+>
+> - **El testigo es el par de digests que el conductor acaba de calcular**, y los conserva **él**,
+>   fuera de `working_dir`, junto al resto de su estado de la corrida. Contra eso se compara.
+> - Si por reanudación entre sesiones hace falta una copia en disco dentro del scratch, esa copia
+>   **degrada la garantía a detección de accidente**, no de manipulación, y hay que declararlo con ese
+>   nombre en el log. No es lo mismo cazar un proceso que truncó un archivo que cazar a un worker que
+>   decidió reescribirlo.
+>
+> ```bash
+> # POSIX (`sha256sum` en Linux, `shasum -a 256` en macOS: elegir el que exista)
+> # al despachar — el digest queda en el estado del conductor, NO bajo <scratch>:
+> shasum -a 256 <scratch>/proof-baseline.md <scratch>/session-meta.json > <estado-conductor>/scratch.sha256
+> # al cosechar, antes de leer el baseline o de reanudar:
+> if ! shasum -a 256 -c <estado-conductor>/scratch.sha256 >/dev/null 2>&1; then
+>   printf 'ENVIRONMENT_FAILURE: scratch alterado\n' >&2
+>   exit 1
+> fi
+> ```
+> ```powershell
+> # al despachar:
+> Get-FileHash <scratch>\proof-baseline.md, <scratch>\session-meta.json -Algorithm SHA256 |
+>   Export-Csv <estado-conductor>\scratch.sha256 -NoTypeInformation
+> # al cosechar, antes de leer el baseline o de reanudar:
+> $alterado = $false
+> foreach ($e in (Import-Csv <estado-conductor>\scratch.sha256)) {
+>   if (-not (Test-Path $e.Path) -or (Get-FileHash $e.Path -Algorithm SHA256).Hash -ne $e.Hash) {
+>     Write-Error "ENVIRONMENT_FAILURE: scratch alterado ($($e.Path))"; $alterado = $true
+>   }
+> }
+> if ($alterado) { exit 1 }
+> ```
+>
+> **El código de salida es la señal, y por eso el `|| echo` no sirve:** `echo` devuelve 0, así que
+> `shasum -c … || echo …` **sale 0 ante un mismatch** y quien ramifique por exit code lee un scratch
+> alterado como limpio. Las dos variantes cortan con `exit 1`. La de PowerShell comprueba además que
+> el archivo exista, en vez de reventar por una ruta ausente.
+>
+> Un `sha256` que no cierra **no es un fallo de implementación**: es `ENVIRONMENT_FAILURE` —la
+> comprobación no llegó a tener veredicto, porque el comparador perdió su base— y se clasifica con
+> esa clase, sin inventar una quinta (`ownership.md` → "Las cuatro clases"). **No consume ronda.**
+>
+> Las otras consecuencias de esa clase están indexadas por `checkId`, y acá no hay fila: la unidad de
+> identidad de un agregado es **el string exacto del comando**, como en el resto de esta sección. Los
+> dos intentos de reparación se cargan a esa unidad, y la reparación es distinta para cada archivo:
+> `proof-baseline.md` se regenera volviendo a medir sobre `block_base`, que sigue disponible porque
+> es un commit; `session-meta.json` **no se repara midiendo** — se reescribe releyendo modelo y
+> esfuerzo del config, que es de donde salieron. Agotados los dos intentos, ese comando **queda fuera
+> del criterio de aceptación** —la misma salida que un comando que no se pudo medir en la base— y se
+> declara con su motivo. Las filas del contrato no se ven afectadas: son la tercera condición de la
+> aceptación y no dependen de esta medición.
+
+Tras la ronda, se repiten los mismos comandos sobre el árbol con el delta y se compara contra ese
+archivo.
+
+**Comparar exige un comparador, y no siempre hay uno.** Los elementos de `proof_cmd` son **opacos**:
+dos corridas pueden devolver el mismo exit code distinto de cero con más diagnósticos, y comparar la
+salida literal no es fiable (timestamps, rutas, orden no determinista). Entonces:
+
+| Situación | Qué se hace |
+|---|---|
+| el comando tiene un **comparador** explícito y auditable (p. ej. un conteo de diagnósticos que él mismo reporta) | se compara y se registra el resultado como medición, con el comparador usado |
+| no hay comparador representable | **adjudicación humana**: el conductor muestra el estado de la base y el del bloque, y el humano decide. Se registra **como decisión, no como medición**, con la evidencia de base, la del bloque y quién decidió |
+
+Nunca se afirma "no empeoró" sobre una comparación que nadie puede hacer. Y no se detiene el
+dispatch por esto: un repo con deuda preexistente es el caso común, y es donde más se delega.
+
+> **No hay sede para transportar comparadores reutilizables**, y es deliberado: el contrato de
+> invocación no tiene dónde, y convertir la lista en objetos `{comando, comparador}` dejaría de ser
+> una lista de comandos opacos. Si alguna vez hace falta, es un cambio de contrato con su propio
+> gate, no una clave agregada de paso.
 
 ## Revisión del conductor
 
@@ -315,8 +577,10 @@ Checklist tras cada ronda (regla 4 del `SKILL.md`) — como PR de un contribuido
 2. **Diff completo** (`git diff`): correctitud, fidelidad al work order, estilo del repo,
    nada fuera de alcance. **Drift** (hunks que no mapean al work order) → pedir reversión en el
    fix round o declararlo explícitamente (en SDD: `## Extras` de sdd-flow).
-3. **Prueba propia**: correr `proof_cmd` fresco; leer salida completa + exit code. La del reporte
-   no cuenta.
+3. **Prueba propia**: correr **cada comando** de `proof_cmd` fresco —todos, no solo el primero— y
+   leer salida completa y exit code de cada uno. La del reporte no cuenta. Comparar cada resultado
+   contra su medición de base: la condición es **no empeoró**, no verde
+   (ver "Medición de base y adjudicación").
 4. **En SDD**: atribuir hunks a tasks y marcar `- [x]` solo las efectivamente cubiertas; los AC
    los verifica después el `verify` de sdd-flow (esta revisión no lo reemplaza).
 5. Registrar el veredicto de la ronda en el log (qué pasó, qué va al fix round).
@@ -514,6 +778,8 @@ sola invocación (mismo criterio que `cross-review/`):
 ├─ report.txt             # reporte vigente de esta invocación
 ├─ thread.jsonl           # stream JSONL del lanzamiento (Vía W-B) — fuente del thread id
 ├─ session.txt            # thread/session id capturado
+├─ session-meta.json      # modelo y esfuerzo resueltos; se recargan antes de cada resume
+├─ proof-baseline.md      # medición de cada comando sobre block_base, antes del dispatch
 └─ impl.err.txt           # stderr del implementador
 ```
 
@@ -529,14 +795,24 @@ sobrescribe las anteriores:
 ```markdown
 # Cross-implement log — <id|work order> (<ISO-8601>)
 Implementador: <codex exec | claude -p>  ·  modelo: <model | CLI default>  ·  max_fix_rounds: <n>
-Proof: `<proof_cmd>`
+Proof (lista): `<comando 1>`, `<comando 2>`, …   ·   salida y exit code por comando, cada ronda
 
 ## Ronda 1 — implementación
 FILES declarados: <n> · coinciden con git status: <sí/no>
-Proof (corrido por el conductor): <PASS/FAIL + evidencia>
+Proof por comando (corridos por el conductor):
+  - `<comando exacto>` → exit <n> · <PASS / REGRESIÓN vs base / falla preexistente adjudicada>
+  (una línea por comando; el **comando exacto** es su identidad — es lo que nombra una regresión
+  en el triage, porque una comprobación agregada no tiene `checkId`)
 Veredicto del conductor: <aceptado | fix round: qué corregir>
 Drift detectado: <ninguno | lista → revertido/declarado>
 Clase de cada falla (`ownership.md`): <IMPLEMENTATION_DEFECT | VERIFICATION_DEFECT | ENVIRONMENT_FAILURE | DESIGN_GAP, una por falla — omitir la línea si el proof pasó>
+Regresiones de comprobación agregada (una línea por comando, si las hubo):
+  - comando: `<el comando exacto — es su identidad, no tiene checkId>`
+    clase: IMPLEMENTATION_DEFECT · ronda consumida: <sí/no, contra max_fix_rounds>
+    evidencia base: <exit code + resumen, de proof-baseline.md> · evidencia del bloque: <ídem>
+    decisión: <regresión confirmada | falla preexistente adjudicada por <quién>, con su motivo>
+  (sin estas cuatro líneas, decir que la regresión "consume una ronda" no deja nada auditable:
+   `ownership.md` presupuesta por `checkId` y una comprobación agregada no tiene uno)
 ¿El work order admitía otra lectura?: <no | sí: qué se entendió y qué se quiso decir — solo si hubo falla>
 
 ## Ronda 2 — fix

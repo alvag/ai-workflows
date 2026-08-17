@@ -3,8 +3,9 @@ name: cross-implement
 description: >-
   Implementación cruzada cross-model: el conductor (autor del plan) delega un
   work order CONGELADO a un worker seleccionado (por default, de la familia
-  opuesta), que escribe código con escritura acotada al working
-  dir; el conductor revisa el diff completo como un PR ajeno, corre la prueba él
+  opuesta), cuya única salida durable son el diff en el working dir y su
+  reporte, sin canales heredados; el conductor revisa el diff
+  completo como un PR ajeno, corre la prueba él
   mismo, itera fixes en la misma sesión del implementador (loop acotado) y es
   quien commitea tras el gate humano. Sirve para cualquier flujo donde uno
   planifica y el otro implementa; también la
@@ -27,13 +28,17 @@ acotada, y se queda como **revisor del diff** y **verificador de la prueba**. La
 el default recomendado; una selección same-family conserva independencia de proceso, pero no
 diversidad de familia. El humano entra en dos puntos: el kickoff y el sign-off del diff.
 
+"Acotada" acá quiere decir **una sola superficie de salida durable** —el diff en el working dir y el
+reporte—, no solo un límite de paths: los **canales heredados** del entorno (MCP, hooks, apps,
+plugins) se apagan por construcción antes de lanzar. La regla 3 lo desarrolla.
+
 El valor máximo es el mismo que funda a `co-explore` y `cross-review`: romper la correlación de
 errores. Cuando la selección es cross-family, implementador y revisor son de familias distintas;
 cuando es same-family, la salida declara el costo y recomienda revisión humana.
 
 ```
-work order congelado ──► [implementador seleccionado: escribe, corre la prueba, reporta]
-   (spec/plan/tasks              │ escritura acotada al working dir, nunca commitea
+work order congelado ──► [implementador seleccionado: escribe, corre los checks, reporta]
+   (spec/plan/tasks              │ salida durable: el diff y su reporte; nunca commitea
     aprobados, o contrato        ▼
     destilado)          diff + reporte ──► conductor: lee el diff completo como PR ajeno,
                                             corre la prueba él mismo, itera fixes (loop
@@ -52,13 +57,35 @@ work order congelado ──► [implementador seleccionado: escribe, corre la pr
 2. **Clean-tree gate.** Antes de lanzar, `git status` limpio de código sin commitear (los locales
    `.plans/`/`.specify/` no cuentan). Innegociable: el implementador escribe con libertad dentro
    del working dir, y un árbol sucio impide aislar o revertir su diff.
-3. **Escritura acotada, nunca commit.** El implementador escribe SOLO dentro del `working_dir`
-   (sandbox `workspace-write` en Codex; permisos path-scoped en Claude — ver `reference.md` →
-   "Vías de invocación"; **nunca** modos de bypass total). No commitea, no pushea, no toca
-   `.plans/`/`.specify/` ni los archivos de trabajo de esta skill.
+3. **Una sola superficie de salida, nunca commit.** La única **salida durable** y autoritativa del
+   implementador son **el diff dentro del `working_dir` y su reporte**. Se enuncia como superficie y
+   no como lista de mecanismos a propósito: enumerar mecanismos deja afuera todo canal que aparezca
+   después, y así fue como un worker escribió en una memoria persistente compartida sin que ninguna
+   regla lo prohibiera. Que la salida sea **una** exige cerrar **tres** superficies por las que el
+   worker podría producir otra; abajo, cada una con lo que sostiene su cierre:
+
+   - **Filesystem** — acotado por sandbox `workspace-write` en Codex y por permisos path-scoped en
+     Claude (`reference.md` → "Vías de invocación"; **nunca** modos de bypass total). Caveat honesto:
+     `workspace-write` alcanza el `working_dir` **más `/tmp`**, así que `/tmp` es escribible por
+     diseño del sandbox. Vale para scratch efímero y **nunca** para salida autoritativa: nada que el
+     conductor deba leer para revisar o aceptar vive ahí.
+   - **Canales heredados del entorno** — servidores **MCP**, **hooks**, **apps** y **plugins**.
+     Prohibidos, y **apagados por construcción**: los cuatro flags de aislamiento en Codex y
+     `--safe-mode` en Claude (`reference.md` → "Vías de invocación"). Un servidor MCP es un canal de
+     escritura que **no pasa por el sandbox de paths**, así que prohibirlo solo en el prompt deja el
+     invariante a cargo de que el worker obedezca.
+   - **Historia de Git** — no commitea, no pushea, no toca `.plans/`/`.specify/` ni los archivos de
+     trabajo de esta skill.
+
+   > **Lo que esta regla no promete.** Cierra los canales que el worker **hereda del entorno** y
+   > acota el filesystem. No impide que un comando que el propio work order autoriza tenga efectos
+   > externos: eso lo gobierna qué comandos entran en `proof_cmd`, no el aislamiento. Prometer más
+   > sería repetir el defecto que esta regla vino a corregir — acotar un mecanismo y declarar una
+   > superficie.
 4. **El reporte es advisory.** El conductor valida siempre por su cuenta: lee el **diff completo**
    como un PR de un contribuidor externo, contrasta los archivos declarados contra `git status`,
-   y corre `proof_cmd` **él mismo** — la salida pegada por el implementador no cuenta como prueba.
+   y corre **cada comando** de `proof_cmd` **él mismo** — la salida pegada por el implementador no
+   cuenta como prueba.
 
    > **Que revise el conductor no es una degradación acá.** Es arrastre del modo `inline`, donde
    > revisaría **su propio código**. En una corrida de esta skill el conductor no escribió una
@@ -118,7 +145,8 @@ Ley fundamental:
 
 | Racionalización | Realidad |
 |---|---|
-| "El reporte dice que la prueba pasó, avanzo" | La salida pegada no es evidencia. Correr `proof_cmd` fresco, leer salida + exit code (regla 4). |
+| "El reporte dice que la prueba pasó, avanzo" | La salida pegada no es evidencia. Correr **cada comando** de `proof_cmd` fresco, leer salida + exit code de cada uno (regla 4). |
+| "Le prohíbo MCP en el prompt y con eso alcanza" | El prompt no apaga el canal. Sin los cuatro flags de aislamiento el worker hereda los servidores del entorno igual, y `-s workspace-write` acota el disco, no los efectos remotos de una tool MCP (regla 3). |
 | "Es un cambio chico, igual lo delego" | ~<20 líneas: el overhead de delegar supera al cambio. Implementar inline. |
 | "El work order tiene un hueco, que el implementador decida" | Un hueco de diseño se resuelve ANTES de delegar (con el usuario o el flujo llamador), no en el prompt (regla 1). |
 | "Le doy acceso total así no falla por permisos" | Bypass de sandbox/permisos = regla 3 rota. Si el work order necesita escribir fuera del working dir, está mal recortado. |
@@ -140,10 +168,20 @@ Quien la invoca (el usuario en modo directo, o `sdd-flow` en modo embebido) prov
 - **`family_inventory`** — selección declarada y resuelta por la raíz, con `families`, `source`,
   `selection` y `root`. La skill **hereda la elección**; si falta, esta invocación es la raíz y la
   resuelve antes de despachar.
-- **`proof_cmd`** — comprobación **agregada y opcional** que el conductor corre para ver el
-  conjunto de un vistazo (la suite completa, el build). No sustituye ninguna fila del contrato ni
-  alcanza para dar un requisito por cumplido. El gate acepta contrato **sin** `proof_cmd`; nunca
-  `proof_cmd` sin contrato (`contrato-verificacion.md` → "`proof_cmd` frente al contrato").
+- **`proof_cmd`** — **lista ordenada** de comprobaciones **agregadas y opcionales** que el conductor
+  corre para ver el conjunto de un vistazo: la suite completa, el build, el linter. Es una **lista**
+  y no un comando porque el conductor corre **varios** checks y el prompt transportaba uno solo —
+  todo lo que él corría y el prompt no decía era deuda que el worker entregaba sin enterarse.
+  - **Cardinalidad.** Cero, uno o varios. Con la **lista vacía** la ranura `PROOF` **no se emite**.
+    Un valor escalar heredado se **normaliza** a una lista de un elemento, así que todo lo escrito
+    antes sobre `proof_cmd` en singular sigue valiendo.
+  - **Los elementos son opacos y los separadores de shell no son estructura de transporte.** Un
+    `&&` dentro de un elemento no lo convierte en dos comandos, y juntar dos comandos con `&&` para
+    pasarlos como uno viola la ejecución independiente: si el primero falla, el segundo nunca corre
+    y su deuda vuelve a viajar invisible.
+  - **Su rango no cambia:** ninguna comprobación agregada sustituye una fila del contrato ni alcanza
+    para dar un requisito por cumplido. El gate acepta contrato **sin** `proof_cmd`; nunca
+    `proof_cmd` sin contrato (`contrato-verificacion.md` → "`proof_cmd` frente al contrato").
 - **`max_fix_rounds`** — default 2.
 - **`execution`** — `auto | sync | background`. `auto`: sync con timeout largo si el conductor
   puede fijarlo (Claude Code: Bash hasta 600000ms) y el work order es chico; background con
@@ -173,14 +211,40 @@ implementador no decide ampliar ni recomponer el bloque.
 
 ### Aceptación de un bloque
 
-Un bloque queda aceptado solo cuando se cumplen juntas tres condiciones observables: su outcome es
-admisible según la matriz de `ownership.md`, el delta está completamente revisado por el conductor y
-su comprobación propia terminó en verde. Solo entonces se habilita el commit de trabajo.
+Un bloque queda aceptado solo cuando se cumplen juntas **cuatro** condiciones observables: su outcome
+es admisible según la matriz de `ownership.md`, el delta está completamente revisado por el conductor,
+**sus filas elegibles del contrato terminaron en verde**, y **ninguna de sus comprobaciones agregadas
+empeoró** respecto de `block_base`. Solo entonces se habilita el commit de trabajo.
 
-La comprobación usa las filas elegibles del contrato completo. Una fila es elegible cuando todas sus
-tasks de referencia están `[x]`, no cuando termina la primera; así un AC repartido entre bloques no
-se declara prematuramente. Un bloque aceptado no cierra el AC: el cierre de cada AC pertenece al
-`verify` final sobre el contrato congelado completo.
+> **Las dos últimas son condiciones distintas y ninguna sustituye a la otra.** Las filas del contrato
+> son el criterio de "hecho" de cada requisito y se exigen **en verde**; `proof_cmd` es una
+> comprobación **agregada y opcional** que se exige **"no empeorada"**. Colapsarlas en una sola rompe
+> el gate en el caso más común: `proof_cmd` admite la **lista vacía** —el gate acepta contrato sin
+> `proof_cmd`, y `sdd-flow` la manda vacía cuando no hay `test_cmd`/`build_cmd`/`lint_cmd`
+> configurados—, y "ninguna empeoró" sobre un conjunto vacío es **vacuamente cierto**. Con la
+> condición del contrato ausente, un bloque con sus filas en rojo quedaría aceptado y habilitaría el
+> commit. Es la misma regla que `contrato-verificacion.md` ya enuncia desde el otro lado: *"un
+> `proof_cmd` entero en verde no alcanza para dar un requisito por cumplido"*.
+
+**La condición de los agregados es "no empeoró", no "verde".** Exigir verde absoluto vuelve **todo** bloque
+inaceptable en cualquier repo que ya arrastre un linter o un build en rojo — que es el caso común, y
+justamente donde más se delega. El estado de cada comando se mide sobre `block_base` **antes** de
+despachar (`reference.md` → "Medición de base y adjudicación"); el commit de referencia es el del
+**bloque**, no el ancla de la secuencia: con el ancla, un diagnóstico que introdujo el bloque N-1 se
+le atribuiría al bloque N.
+
+**Una regresión sí bloquea, y tiene transición.** Si un comando empeoró, la falla es un
+`IMPLEMENTATION_DEFECT` —la causó el bloque, por definición de regresión—, consume el
+`max_fix_rounds` que ya existe y vuelve al implementador. Como el triage de `ownership.md` está
+indexado por `checkId` y una comprobación agregada **no es una fila**, su unidad de identidad es
+**el string exacto del comando**: así se nombra en el log, así se referencia en el delta del fix
+round y así se reanuda entre bloques. Las otras tres clases no aplican acá: no hay fila que reparar
+ni versión de contrato que emitir.
+
+**La tercera condición** usa las filas elegibles del contrato completo. Una fila es elegible cuando
+todas sus tasks de referencia están `[x]`, no cuando termina la primera; así un AC repartido entre
+bloques no se declara prematuramente. Un bloque aceptado no cierra el AC: el cierre de cada AC
+pertenece al `verify` final sobre el contrato congelado completo.
 
 ### El commit de trabajo por bloque
 
@@ -206,6 +270,15 @@ del cese y completar la cosecha.
    del modelo activo — ver `reference.md` → "Descubrir el implementador"). Si llega
    `family_inventory`, heredarlo: no releer config, no ejecutar el preflight de la familia ausente
    ni volver a anunciarla. Sin implementador → `UNAVAILABLE`.
+
+   **Preflight de aislamiento, fail-closed**, con la sede única del ecosistema:
+   `cross-review/reference.md` → "Preflight de aislamiento (fail-closed)". Si la
+   versión instalada no permite aislar al worker, **no se lanza**. Su resultado está contratado y no
+   queda a criterio de quien implemente: `UNAVAILABLE` con causa `confirmed_wall`, **sin writer**
+   despachado y **sin cosecha** pendiente —no hay proceso que haya llegado a existir—, y devolución
+   **inmediata** a la llamadora para que continúe **inline**. No es un bloqueo permanente del flujo:
+   esta skill es una dependencia blanda, y un preflight que detuviera la corrida entera convertiría
+   una capacidad ausente en un flujo roto.
 2. **Gates previos**: work order existe y se lee como contrato (regla 1); **contrato de
    verificación congelado** — versión vigente, cobertura bidireccional, campos obligatorios y
    baseline resuelto en toda fila, ninguna en `BLOCKED` (`contrato-verificacion.md` → "El gate
@@ -213,13 +286,23 @@ del cese y completar la cosecha.
    ejecuta el baseline, el usuario la aprueba en el kickoff y recién ahí se congela
    (`contrato-verificacion.md` → "Contrato en work orders sin flujo SDD"). Cualquiera falla → no se
    lanza.
+
+   **Y la medición de base de las comprobaciones agregadas**, en este paso y no después: se mide
+   cada comando de `proof_cmd` sobre `block_base` en un worktree aislado, se conserva su salida y su
+   exit code, y se descarta el worktree (`reference.md` → "Medición de base y adjudicación"). Es lo
+   que vuelve comparable el "no empeoró" de la aceptación: una vez despachado, el árbol ya contiene
+   el diff y el "antes" dejó de existir. **La medición va antes que el clean-tree gate**, que es el
+   último de estos gates y queda pegado al dispatch: el worktree de medición se crea y se remueve, y
+   comprobar el árbol limpio antes de que se haya ido mediría un estado que todavía va a cambiar. El
+   orden exacto lo fija la sede de la medición; acá solo se declara cuál va último.
 3. **Armar el prompt-contrato** (`reference.md` → "Prompt del implementador": GOAL / SPEC / KEY
    PATHS / CONSTRAINTS / NON-GOALS / PROOF / OUTPUT), escrito a archivo con la tool Write, y
    **lanzar** por la vía de la familia (`reference.md` → "Vías de invocación"), capturando la
    referencia de sesión para el fix loop.
 4. **Revisión del conductor** (regla 4): diff completo como PR ajeno; archivos declarados vs
-   `git status`; drift fuera del work order; `proof_cmd` fresco corrido por el conductor. Si el
-   work order es SDD, atribuir hunks a tasks y marcar `- [x]` las cubiertas. Checklist en
+   `git status`; drift fuera del work order; **los comandos** de `proof_cmd` frescos, corridos por
+   el conductor. Si el work order es SDD, atribuir hunks a tasks y marcar `- [x]` las cubiertas.
+   Checklist en
    `reference.md` → "Revisión del conductor".
 5. **Fix loop** (regla 5): con problemas concretos, reanudar la misma sesión con el delta (qué
    está mal, en qué archivo, qué prueba debe pasar). Re-revisar (paso 4) tras cada ronda. Al
@@ -252,12 +335,15 @@ revisa y se conserva cada porción del mismo delta.
 
 A la llamadora (o presentada al usuario en modo directo):
 
-- **Estado:** `IMPLEMENTED` (diff revisado + prueba en verde) | `PARTIAL` (takeover: qué quedó
+- **Estado:** `IMPLEMENTED` — diff revisado y **ninguna comprobación agregada con regresión**, con
+  las fallas preexistentes adjudicadas y registradas. **No** es "todo en verde": eso contradiría la
+  condición de aceptación. | `PARTIAL` (takeover: qué quedó
   hecho por el implementador y qué terminó el conductor) | `UNAVAILABLE`. El `UNAVAILABLE` va con su
   **causa** del enum compartido —`confirmed_wall` · `launch_flake` · `runtime_failure` ·
   `deadline_exceeded`—: son causas, no estados nuevos (`cross-review/reference.md` → "Latencia y
   timeout (Claude revisor)").
-- **Resumen del diff** (archivos, qué cambió) + salida de `proof_cmd` corrida por el conductor.
+- **Resumen del diff** (archivos, qué cambió) + la salida y el exit code de **cada comando** de
+  `proof_cmd`, corridos por el conductor.
 - **Rondas usadas** y desviaciones del work order reportadas por el implementador.
 - **Ruta del log** (`implement-log.md`).
 
