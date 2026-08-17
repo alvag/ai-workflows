@@ -16,9 +16,13 @@ solo registro y solo se procesa el primer archivo. El formato NUL es obligatorio
 con tabuladores o saltos de línea en el nombre.
 
 Uso:
-    medir-techo.py <base>            mide contra el árbol de trabajo, sumando untracked no ignorados
-    medir-techo.py <base> <head>     mide el rango; NO suma untracked (un rango no tiene árbol)
+    medir-techo.py <base>            mide contra el árbol de trabajo, sumando los untracked que el
+                                     .gitignore versionado no excluye; exige que ese archivo exista
+    medir-techo.py <base> <head>     mide el rango; NO suma untracked (un rango no tiene árbol), y por
+                                     eso tampoco exige el .gitignore
     medir-techo.py --ancla           imprime el hash esperado y el actual de la sección normativa
+    medir-techo.py --dominio         imprime los patrones del dominio de generados, uno por línea y
+                                     ordenados, para diffear contra el .gitignore
 
 Salida:
     stdout  un resumen de UNA línea, sin ninguna ruta:
@@ -42,22 +46,67 @@ import re
 import subprocess
 import sys
 
-ANCLA_SHA256 = "0a50c2a4720e719a349fa15ac51238e7e7ae98051552686494aa2e5a858aaf00"
+ANCLA_SHA256 = "8b3db0fdce090f7d00e5271c8bf60aa20c28a4ec8a5bf498d9e05b1767992d76"
 # Hash de la sección `### Regla 2 …` de CLAUDE.md, desde su encabezado hasta el siguiente de nivel <= 3,
 # con los finales de línea recortados y sin líneas vacías al cierre.
 #
 # CÓMO SE RENUEVA cuando la regla cambia a propósito:
 #   1. correr `medir-techo.py --ancla` y ver los dos valores;
 #   2. leer el diff de la sección y confirmar que el cambio es el que se quería;
-#   3. **releer la función clasificar() y calcular() contra la regla nueva** — este es el paso que no
-#      se puede saltear;
-#   4. recién entonces actualizar esta constante.
+#   3. **releer, contra la regla nueva, las cuatro superficies que la implementan** — este es el paso
+#      que no se puede saltear, y hay que recorrerlas todas porque ninguna sola contiene la fórmula:
+#        · `clasificar()`  — la partición andamiaje / producto / ninguno;
+#        · `generado()`    — qué se descarta antes de clasificar, en los tres términos;
+#        · la enumeración de untracked en `main()` — de qué fuente sale y qué exige;
+#        · el cálculo de `num`, `den` y `nuevos_en_scripts` en `main()`;
+#   4. escribir el **resultado** de esa relectura, no la afirmación de haberla hecho;
+#   5. recién entonces actualizar esta constante.
 # Renovar el hash sin releer la fórmula es peor que no tener ancla: deja el script declarando
 # conformidad con una regla que ya no implementa.
+#
+# QUÉ PROTEGE ESTA CONSTANTE, Y QUÉ NO. Detecta que la sección normativa cambió **sin que el hash se
+# renovara**, y ahí corta. NO detecta una renovación semánticamente incorrecta: actualizar el valor
+# dejando la clasificación vieja pasa sin que nada se ponga rojo, y el caso de la suite que ejerce el
+# ancla sigue verde, porque comprueba la detección del desajuste y no la fidelidad de la fórmula.
+# Contra eso protege `--autotest-dominio`, que muta cada superficie conservando el hash vigente.
+# Atribuirle más a esta constante es lo que hizo que se diera por cubierto un hueco que estaba abierto.
 
 ANDAMIAJE = "andamiaje"
 PRODUCTO = "producto"
 NINGUNO = "ninguno"
+
+# El dominio cerrado de artefactos generados de la regla 2. Los mismos seis patrones viven en el
+# .gitignore versionado, y `--dominio` los imprime para que un `diff` compare las tres
+# representaciones en vez de confiar en que alguien las mantuvo iguales.
+GENERADOS_DIR = ("__pycache__", ".pytest_cache", "dist", "coverage", "node_modules")
+GENERADOS_ARCHIVO = (".DS_Store",)
+
+# Los directorios de artefactos del ecosistema SDD. Su descarte vive acá y NO en el .gitignore: la
+# regla 10 de sdd-flow prohíbe agregarlos a un ignore compartido porque son un flujo personal. Sin
+# esto, enumerar sin las fuentes locales mete archivos de flujos viejos al numerador.
+ARTEFACTOS_SDD = (".plans/", ".specify/", ".cross-model/", ".cross-review/", ".co-explore/",
+                  ".cross-implement/", ".handoffs/", ".superpowers/")
+
+
+def dominio():
+    """Los patrones del dominio de generados, ordenados, tal como van en el .gitignore."""
+    return sorted([d + "/" for d in GENERADOS_DIR] + list(GENERADOS_ARCHIVO))
+
+
+def generado(ruta):
+    """Verdadero si la ruta la produjo una herramienta y no una persona.
+
+    Se aplica ANTES de clasificar y alcanza a los tres términos —numerador, denominador y el contador
+    de archivos nuevos bajo scripts/—. Los tres, porque el mismo untracked los alimenta: un cache
+    bajo scripts/ inflaba el numerador y el contador, y uno bajo skills/ inflaba el denominador, que
+    es peor porque AFLOJA el techo.
+    """
+    partes = ruta.split("/")
+    if partes[-1] in GENERADOS_ARCHIVO:
+        return True
+    if any(p in GENERADOS_DIR for p in partes[:-1]):
+        return True
+    return any(ruta.startswith(a) for a in ARTEFACTOS_SDD)
 
 
 class Detener(Exception):
@@ -163,6 +212,11 @@ def contar_lineas(ruta):
 
 
 def main(argv):
+    if argv[1:2] == ["--dominio"]:
+        for p in dominio():
+            print(p)
+        return 0
+
     if argv[1:2] == ["--ancla"]:
         raiz = correr(["git", "rev-parse", "--show-toplevel"], "rev-parse").decode().strip()
         import pathlib
@@ -201,23 +255,34 @@ def main(argv):
         "diff-altas",
     )
 
+    # La enumeración lee SOLO el archivo versionado. `--exclude-standard` aplica tres fuentes y dos
+    # son del clon (.git/info/exclude y core.excludesFile), así que con él el mismo commit medido en
+    # dos clones da números distintos por la configuración de cada persona.
     nuevos = b""
     if head is None:
-        nuevos = correr(["git", "ls-files", "--others", "--exclude-standard", "-z"], "ls-files")
+        if not (raiz / ".gitignore").exists():
+            raise Detener("ls-files", "no existe .gitignore: sin fuente de exclusión versionada la "
+                                      "medición no sería reproducible entre clones")
+        nuevos = correr(
+            ["git", "ls-files", "--others", "--exclude-from=.gitignore", "-z"], "ls-files")
+    # El modo rango no pasa por acá a propósito: no enumera untracked y no consulta ningún ignore,
+    # así que exigirle el archivo lo rompería por una razón que no es la suya.
 
     def rutas(blob):
         return [r.decode("utf-8", "surrogateescape") for r in blob.split(b"\0") if r]
 
-    filas = list(registros(diff))
+    filas = [f for f in registros(diff) if not generado(f[2])]
     if head is None:
         for r in rutas(nuevos):
-            filas.append((contar_lineas(raiz / r), 0, r))
+            if not generado(r):
+                filas.append((contar_lineas(raiz / r), 0, r))
 
     # El conjunto de archivos nuevos bajo scripts/: las altas del diff, más los untracked SOLO en el
-    # modo de árbol de trabajo, deduplicados.
-    conjunto = set(rutas(altas))
+    # modo de árbol de trabajo, deduplicados. El descarte se aplica también acá: un cache no es un
+    # script nuevo, y contarlo disparaba la señal de la regla 3 por algo que nadie escribió.
+    conjunto = {r for r in rutas(altas) if not generado(r)}
     if head is None:
-        conjunto |= set(rutas(nuevos))
+        conjunto |= {r for r in rutas(nuevos) if not generado(r)}
     nuevos_en_scripts = sum(1 for r in conjunto if r.startswith("scripts/"))
 
     bruto = neto = den = 0

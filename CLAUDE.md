@@ -71,11 +71,58 @@ Cada una lleva **disparador, efecto y excepción**: un enunciado sin las tres no
 - **Borrados** — `descuentan solo cuando hay producto` en el diff, que es la rama neta. Retirar
   andamiaje nunca puede violar el techo.
 - **Cómo y cuándo se mide** — con `git diff --numstat <base_commit>` **después de implementar**, más
-  `git ls-files --others --exclude-standard` para los archivos nuevos: el diff no ve lo que todavía
-  no está trackeado, y el techo se mide antes del staging. Un rename `se atribuye al destino`, con
+  `git ls-files --others --exclude-from=.gitignore -z` para los archivos nuevos: el diff no ve lo que
+  todavía no está trackeado, y el techo se mide antes del staging. Un rename `se atribuye al destino`, con
   las agregadas y borradas de su contenido, así que un rename puro aporta cero. Ante una fila no
   numérica —un binario— `la medición se detiene` y se resuelve a mano, en vez de leer el guion como
   un cero. Medirlo en el gate de tasks daría cero en ambos términos: ahí todavía no se tocó una línea.
+- **Por qué la enumeración no usa `--exclude-standard`, que es lo que uno escribiría.** Ese flag aplica
+  **tres** fuentes de exclusión —los `.gitignore` del árbol, el `.git/info/exclude` del clon y el
+  `core.excludesFile` del usuario— y **dos de las tres no viajan con el commit**. Con él, el mismo commit
+  medido en dos clones da números distintos por la configuración de cada persona, y el veredicto deja de
+  ser una propiedad de lo que se escribió. `--exclude-from=.gitignore` lee **solo** el archivo versionado:
+  medido en un repositorio de prueba, ignora `.git/info/exclude` en las dos direcciones. Si ese archivo no
+  existe, `la medición se detiene`, porque sin fuente versionada no hay medición reproducible; degradar en
+  silencio a la enumeración vieja devolvería un número dependiente del clon con apariencia de válido.
+- **Artefactos generados: no cuentan, en ninguno de los tres términos.** Lo que ninguna persona escribió
+  no puede contar como escrito. El dominio es una `lista cerrada`, y es la tercera de esta regla:
+
+  | Patrón | Qué es |
+  |---|---|
+  | `__pycache__/` | bytecode de Python, que nace al importar un módulo |
+  | `.pytest_cache/` | cache de corridas de test |
+  | `dist/` | salida de empaquetado |
+  | `coverage/` | reportes de cobertura |
+  | `node_modules/` | dependencias instaladas |
+  | `.DS_Store` | metadatos del explorador de archivos de macOS |
+
+  El `disparador del dominio de generados: agregar o retirar un patrón` es cuando el repositorio empieza
+  o deja de producir una clase de artefacto que nadie escribe. Los seis patrones viven además en el
+  `.gitignore` versionado, y `medir-techo.py --dominio` los imprime para que las tres representaciones se
+  puedan comparar con un `diff` en vez de confiar en que alguien las mantuvo iguales.
+
+  El caso que obligó a escribir esto: un `.pyc` de 124 líneas, generado por una guarda del propio
+  repositorio al importar otra, entraba al numerador como andamiaje recién escrito. Y el simétrico es peor
+  porque **afloja** el techo: un `.DS_Store` bajo `skills/` sumaba al denominador.
+- **Los directorios de artefactos del ecosistema SDD tampoco cuentan**, y su descarte vive **acá** y no en
+  el `.gitignore`: `.plans/`, `.specify/`, `.cross-model/`, `.cross-review/`, `.co-explore/`,
+  `.cross-implement/`, `.handoffs/` y `.superpowers/`. La razón no es de estilo — la regla 10 de `sdd-flow` prohíbe
+  explícitamente agregarlos a un ignore compartido, porque son un flujo personal y no del equipo. Sin este
+  descarte, enumerar sin las fuentes locales mete al numerador los archivos de flujos viejos: medido, dos
+  rutas `*.test.mjs.before-promotion` bajo `.plans/archived/` clasifican como andamiaje.
+  `.superpowers/` está en la lista por la misma razón y no por simetría: este repositorio se desarrolla
+  a sí mismo con estas skills y ahí viven sus briefs, reports y diffs de review. Su riesgo es el mismo
+  y está medido: un archivo llamado `verificar-…` o `….test.…` ahí dentro clasifica como andamiaje.
+
+  **Lo que queda afuera, y por qué.** `.idea/` es configuración del IDE y no entra en ninguna de las dos
+  listas: hoy todo su contenido clasifica `ninguno`, y agregarlo expandiría el dominio a herramientas de
+  terceros sin un caso medido que lo pida. La regla 1 exige que un escalón se suba con evidencia de que
+  el anterior falló, no con la sospecha de que podría.
+- **Esta regla mide el techo y `no gobierna qué se stagea`.** Qué archivo entra a un commit lo decide el
+  paso `implement` de `sdd-flow`, que es portable y no puede depender de este documento. Son dos criterios
+  con dominios disjuntos, y decirlo es lo que impide que se lean como discrepantes: durante un tiempo las
+  dos sedes hablaron de archivos generados sin declarar dónde terminaba cada una, y sobre el mismo hecho
+  tres flujos resolvieron distinto.
 - **Lo que la fórmula no detecta** — mover contenido entre archivos distintos cuenta como crecimiento
   en el destino. Es consecuencia de medir por archivo, la misma propiedad que impide que un borrado
   financie crecimiento ajeno. No se agrega mecanismo para eso: la regla 1 pide evidencia de que el
@@ -90,6 +137,16 @@ Cada una lleva **disparador, efecto y excepción**: un enunciado sin las tres no
 > la evidencia de que la guarda barata falló.
 > **Excepción:** ninguna dentro del flujo en curso. La escalada es una decisión con gate propio, no
 > un atajo a mitad de una task.
+
+**Qué hace el disparador ante un artefacto generado.** La señal de esta regla comparte enumeración con
+el numerador de la regla 2, así que hay que decir qué pasa con lo que aparece bajo `scripts/` sin que
+nadie lo escriba: `un artefacto generado no dispara la señal`. Se reconoce por el dominio cerrado de la
+regla 2, y queda fuera del contador igual que del numerador.
+
+**Lo que no cambia es la prohibición.** Un archivo **escrito** bajo `scripts/` sigue prohibido sin
+excepción; lo único que se acota es qué cuenta como archivo nuevo. Sin esta distinción el bytecode de
+una guarda del propio repositorio disparaba una regla pensada para frenar andamiaje escrito a mano, y el
+veredicto pasaba a depender de si alguien había corrido un verificador antes de medir.
 
 ## Anatomía de una skill (patrón obligatorio del repo)
 

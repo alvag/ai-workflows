@@ -31,6 +31,23 @@ instrumento —ninguno leyéndolo— a lo largo de tres flujos:
     11. la detección de renames dependía de la config del entorno ............. rename-sin-deteccion
     12. el parseo por tabulador se rompe con un tabulador en el nombre ........ nombre-con-tab
 
+GRUPO `dominio` — los seis casos del criterio de artefactos generados, y qué mutante ejerce cada uno.
+Su control positivo es `--autotest-dominio`, que muta **una superficie por vez** conservando el hash del
+ancla: un rojo por `punto=ancla` sería el exit code mintiendo sobre la causa, y el arnés lo rechaza.
+
+| Caso | Qué prueba | Mutante que lo pone rojo |
+|---|---|---|
+| `invariancia-generados` | los seis patrones, en `scripts/` y `skills/`, por las dos vías | `numerador-y-denominador`, `contador` |
+| `invariancia-ignore-designora` | des-ignorar localmente no incorpora | — (lo cubre la enumeración versionada) |
+| `invariancia-ignore-oculta-legitimo` | ignorar localmente no saca producto ni andamiaje | — (ídem, en la otra dirección) |
+| `descarte-artefactos-sdd` | un artefacto de flujo viejo no entra a ningún término | `numerador-y-denominador`, `untracked` |
+| `script-nuevo-no-generado` | control inverso: un script escrito sí dispara la señal | — (es el positivo del contador) |
+| `ignore-ausente-arbol-y-rango` | el `Detener` es del modo árbol y no del rango | — (rama de ausencia) |
+
+Los cuatro casos sin mutante propio no son huecos: dos comprueban **invariancia frente al entorno**, que
+ninguna mutación del descarte altera, y los otros dos son el control inverso y la rama de ausencia. Que
+se declare cuál cubre qué es lo que impide contar como cubierto un mutante que su precondición saltea.
+
 DESVIACIÓN DECLARADA respecto de AC-5. El criterio enumeraba cinco puntos de fallo —diff, enumeración
 de untracked, creación del área temporal, cada escritura a ella, y conteo—, y esa lista describía el
 instrumento cuando iba a ser un script de shell. La implementación es Python y **no crea área
@@ -42,6 +59,7 @@ no cambió: todo punto de fallo corta con el código de corte y nombra su punto.
 
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -102,14 +120,27 @@ def esperar(cond, detalle):
         raise Diverge(detalle)
 
 
-def repo(base_claude=True):
+# Los seis patrones del dominio, **literales y no derivados del instrumento**. Generar el fixture
+# llamando a `--dominio` haría que un mutante del dominio mutara también el fixture, y el caso quedaría
+# verde por comparar el mutante contra sí mismo.
+GITIGNORE_FIXTURE = ".DS_Store\n.pytest_cache/\n__pycache__/\ncoverage/\ndist/\nnode_modules/\n"
+
+
+def repo(base_claude=True, con_gitignore=True):
     """Un repositorio temporal fuera del árbol, con la sección normativa copiada para que el ancla del
     instrumento coincida. Los fixtures nunca se siembran dentro del repo real: la regla 3 lo prohíbe y
-    además contaminaría las mediciones."""
+    además contaminaría las mediciones.
+
+    `con_gitignore` existe por la misma razón que `base_claude`: el modo árbol del instrumento **exige**
+    el archivo versionado, así que sin él todos los casos de ese modo se detendrían. Y no se crea
+    siempre porque entonces la rama de ausencia no se podría ejercer nunca.
+    """
     d = pathlib.Path(tempfile.mkdtemp(prefix="medir-techo-"))
     git(d, "init", "-q", ".")
     git(d, "config", "user.email", "t@t")
     git(d, "config", "user.name", "t")
+    if con_gitignore:
+        (d / ".gitignore").write_text(GITIGNORE_FIXTURE)
     if base_claude:
         shutil.copy(RAIZ / "CLAUDE.md", d / "CLAUDE.md")
     (d / "scripts").mkdir(exist_ok=True)
@@ -319,6 +350,136 @@ def caso_modo_rango(_):
     shutil.rmtree(d)
 
 
+PATRONES = [("__pycache__", "x.pyc"), (".pytest_cache", "x"), ("dist", "x"),
+            ("coverage", "x"), ("node_modules", "x"), (None, ".DS_Store")]
+
+
+def _tupla(salida):
+    """La tupla completa del resumen. Comparar la tupla y no un fragmento: un caso que solo mire `num`
+    no ve que el generado se fue al denominador o al contador."""
+    m = re.search(r"nuevos_en_scripts=(\d+) num=(\d+) den=(\d+) (\w+)", salida)
+    esperar(m is not None, f"resumen ilegible: {salida}")
+    return m.groups()
+
+
+def caso_invariancia_generados(_):
+    """Ninguno de los seis patrones altera la tupla, bajo scripts/ y bajo skills/, por las dos vías."""
+    for dire, nombre in PATRONES:
+        for superficie in ("scripts", "skills"):
+            rel = f"{superficie}/{dire}/{nombre}" if dire else f"{superficie}/{nombre}"
+            # vía A — untracked: ejerce la ENUMERACIÓN (el archivo no llega al descarte)
+            d = repo()
+            escribir(d, "skills/s.md", 3)
+            base = commit(d)
+            _, limpio, _ = medir(d, base)
+            escribir(d, rel, 40)                      # contenido NO vacío: uno vacío no altera nada
+            _, con, _ = medir(d, base)
+            esperar(_tupla(limpio) == _tupla(con),
+                    f"[untracked {rel}] la tupla cambió: {_tupla(limpio)} → {_tupla(con)}")
+            shutil.rmtree(d)
+            # vía B — forzado al diff: es la ÚNICA que ejerce el descarte, porque el ignore impide que
+            # un untracked llegue hasta ahí y `commit()` usa `git add -A`, que no toma ignorados
+            d = repo()
+            escribir(d, "skills/s.md", 3)
+            base = commit(d)
+            escribir(d, rel, 40)
+            git(d, "add", "-f", rel)
+            git(d, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "forzado")
+            _, con_b, _ = medir(d, base)
+            esperar(_tupla(con_b) == _tupla(limpio),
+                    f"[diff {rel}] la tupla cambió: {_tupla(limpio)} → {_tupla(con_b)}")
+            shutil.rmtree(d)
+
+
+def caso_invariancia_ignore_designora(_):
+    """Un ignore local que des-ignora un generado no lo incorpora a la cuenta."""
+    d = repo()
+    escribir(d, "skills/s.md", 3)
+    base = commit(d)
+    escribir(d, "scripts/__pycache__/x.pyc", 40)
+    _, sin, _ = medir(d, base)
+    (d / ".git/info/exclude").write_text("!__pycache__/\n")
+    _, con, _ = medir(d, base)
+    esperar(_tupla(sin) == _tupla(con), f"la config local movió la tupla: {_tupla(sin)} → {_tupla(con)}")
+    shutil.rmtree(d)
+
+
+def caso_invariancia_ignore_oculta_legitimo(_):
+    """La SEGUNDA dirección: un ignore local no puede sacar de la cuenta producto ni andamiaje.
+
+    Es la que se olvida, y la que un fixture vacío dejaría sin probar: los dos archivos llevan
+    contenido y la tupla esperada exige que ambos aporten observablemente.
+    """
+    d = repo()
+    escribir(d, "skills/viejo.md", 1)
+    base = commit(d)
+    escribir(d, "skills/nuevo.md", 7)        # producto → denominador
+    escribir(d, "scripts/nuevo.py", 5)       # andamiaje → numerador y contador
+    _, sin, _ = medir(d, base)
+    n, num, den, _v = _tupla(sin)
+    esperar((n, num, den) == ("1", "5", "7"),
+            f"el fixture no aporta a los tres términos: nuevos={n} num={num} den={den}")
+    (d / ".git/info/exclude").write_text("nuevo.md\nnuevo.py\n")
+    _, con, _ = medir(d, base)
+    esperar(_tupla(sin) == _tupla(con),
+            f"un ignore local sacó archivos legítimos: {_tupla(sin)} → {_tupla(con)}")
+    shutil.rmtree(d)
+
+
+def caso_descarte_artefactos_sdd(_):
+    """Un artefacto de un flujo viejo no entra a ningún término, ni por el diff.
+
+    La ruta es la clase real medida en el repositorio: un `*.test.*` bajo `.plans/archived/`, que
+    `clasificar()` manda a andamiaje y que sin este descarte suma al numerador.
+    """
+    d = repo()
+    escribir(d, "skills/s.md", 3)
+    base = commit(d)
+    _, limpio, _ = medir(d, base)
+    rel = ".plans/archived/x/work/install.test.mjs.before-promotion"
+    escribir(d, rel, 60)
+    _, untracked, _ = medir(d, base)
+    esperar(_tupla(limpio) == _tupla(untracked), f"[untracked] {_tupla(limpio)} → {_tupla(untracked)}")
+    git(d, "add", "-f", rel)
+    git(d, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "sdd")
+    _, en_diff, _ = medir(d, base)
+    esperar(_tupla(limpio) == _tupla(en_diff), f"[diff] {_tupla(limpio)} → {_tupla(en_diff)}")
+    shutil.rmtree(d)
+
+
+def caso_script_nuevo_no_generado(_):
+    """Control inverso: un archivo nuevo fuera del dominio SIGUE contando y disparando la señal.
+
+    Sin este caso, "los generados no cuentan" se podría implementar silenciando el contador entero y
+    todos los demás casos seguirían verdes.
+    """
+    d = repo()
+    escribir(d, "skills/s.md", 3)
+    base = commit(d)
+    escribir(d, "scripts/nuevo_de_verdad.py", 12)
+    _, out, _ = medir(d, base)
+    n, num, den, _v = _tupla(out)
+    esperar(n == "1", f"esperaba nuevos_en_scripts=1 para un script escrito, dio {n}: {out}")
+    esperar(num == "12", f"esperaba num=12, dio {num}: {out}")
+    shutil.rmtree(d)
+
+
+def caso_ignore_ausente_arbol_y_rango(_):
+    """Sin archivo de ignore, el modo árbol se detiene y el modo rango NO: no consulta ignores."""
+    d = repo(con_gitignore=False)
+    escribir(d, "skills/s.md", 3)
+    base = commit(d)
+    escribir(d, "skills/s.md", 9)
+    head = commit(d, "mas")
+    rc_arbol, out_arbol, _ = medir(d, base)
+    esperar(rc_arbol == DETENIDA, f"el modo árbol debía detenerse, dio {rc_arbol}: {out_arbol}")
+    esperar("punto=ls-files" in out_arbol, f"no nombró el punto: {out_arbol}")
+    rc_rango, out_rango, _ = medir(d, base, head)
+    esperar(rc_rango in (PASA, BLOQUEA), f"el modo rango no debía detenerse, dio {rc_rango}: {out_rango}")
+    esperar("den=6" in out_rango, f"el modo rango perdió su resultado: {out_rango}")
+    shutil.rmtree(d)
+
+
 def _formula(nombre, construir, esperado):
     def caso(_):
         d = repo()
@@ -411,6 +572,12 @@ CASOS = [
     ("untracked-sin-salto",   "rutas",   caso_untracked_sin_salto),
     ("rename-sin-deteccion",  "rutas",   caso_rename_sin_deteccion),
     ("divergencia-normativa", "rutas",   caso_divergencia_normativa),
+    ("invariancia-generados",            "dominio", caso_invariancia_generados),
+    ("invariancia-ignore-designora",     "dominio", caso_invariancia_ignore_designora),
+    ("invariancia-ignore-oculta-legitimo", "dominio", caso_invariancia_ignore_oculta_legitimo),
+    ("descarte-artefactos-sdd",          "dominio", caso_descarte_artefactos_sdd),
+    ("script-nuevo-no-generado",         "dominio", caso_script_nuevo_no_generado),
+    ("ignore-ausente-arbol-y-rango",     "dominio", caso_ignore_ausente_arbol_y_rango),
     ("fallo-rev-parse",       "fallos",  _fallo("rev-parse", "rev-parse")),
     ("fallo-diff",            "fallos",  _fallo("diff", "--numstat")),
     ("fallo-diff-altas",      "fallos",  _fallo("diff-altas", "--diff-filter=A")),
@@ -495,7 +662,84 @@ def autotest():
     return 0
 
 
+# Un mutante por superficie del descarte. Las tres son distintas y ninguna cubre a las otras: el
+# descarte del diff alimenta numerador y denominador, el de los untracked alimenta el numerador por la
+# otra vía, y el del conjunto alimenta el contador de archivos nuevos.
+MUTANTES_DOMINIO = [
+    ("numerador-y-denominador",
+     "filas = [f for f in registros(diff) if not generado(f[2])]",
+     "filas = list(registros(diff))"),
+    ("untracked",
+     "            if not generado(r):",
+     "            if True:"),
+    ("contador",
+     "conjunto = {r for r in rutas(altas) if not generado(r)}",
+     "conjunto = set(rutas(altas))"),
+]
+
+# **Por qué el mutante del contador apunta a las ALTAS y no a los untracked.** La primera versión mutaba
+# `conjunto |= {r for r in rutas(nuevos) …}` y **ningún caso lo detectaba**; el arnés lo reportó en vez de
+# darlo por cubierto. La causa es real y no del arnés: con el archivo de ignore sincronizado, un cache
+# untracked no aparece en `ls-files`, y los artefactos SDD —que sí aparecen, porque el ignore no los
+# cubre— nunca viven bajo `scripts/`. Esa línea es inalcanzable **para el contador**, así que mutarla no
+# puede poner nada rojo. La superficie que sí lo gobierna de forma observable es el descarte de las altas
+# del diff, que la vía forzada de `invariancia-generados` ejerce. La línea de untracked se conserva en el
+# instrumento —es correcta y barata— pero no se pretende cubrirla con un mutante que no puede caer.
+
+
+def autotest_dominio():
+    """Control positivo del criterio: cada superficie del descarte, mutada por separado, tiene que
+    poner rojo a algún caso del grupo `dominio`.
+
+    Dos condiciones que lo vuelven un control y no un adorno. **El hash del ancla se conserva**: se muta
+    el código y nunca `CLAUDE.md`, así que un rojo por `punto=ancla` sería el exit code mintiendo sobre
+    la causa y acá se rechaza explícitamente. Y **se reporta qué caso cayó** por cada mutante: un
+    mutante cuya precondición ningún caso ejerce daría verde y se leería como cobertura.
+    """
+    global INSTRUMENTO
+    casos = [c for c in CASOS if c[1] == "dominio"]
+    if not casos:
+        print("autotest-dominio: FALLA — no hay casos en el grupo 'dominio'", file=sys.stderr)
+        return 4
+    fuente = INSTRUMENTO.read_text(encoding="utf-8")
+    problemas = []
+    for nombre, viejo, nuevo in MUTANTES_DOMINIO:
+        if fuente.count(viejo) != 1:
+            problemas.append(f"{nombre}: el ancla del mutante aparece {fuente.count(viejo)} veces, "
+                             "no 1 — el mutante no se puede aplicar donde se cree")
+            continue
+        tmp = pathlib.Path(tempfile.mkdtemp(prefix="mutante-"))
+        copia = tmp / "medir-techo.py"
+        copia.write_text(fuente.replace(viejo, nuevo, 1), encoding="utf-8")
+        original, INSTRUMENTO = INSTRUMENTO, copia
+        caidos, por_ancla = [], []
+        for cid, _g, fn in casos:
+            try:
+                fn(None)
+            except Diverge as exc:
+                (por_ancla if "punto=ancla" in str(exc) else caidos).append(cid)
+            except Exception as exc:                     # noqa: BLE001 — cualquier fallo cuenta
+                caidos.append(f"{cid}({type(exc).__name__})")
+        INSTRUMENTO = original
+        shutil.rmtree(tmp, ignore_errors=True)
+        if por_ancla:
+            problemas.append(f"{nombre}: cayó por punto=ancla ({por_ancla}) — el rojo no vino del "
+                             "criterio; el hash debía conservarse")
+        if not caidos:
+            problemas.append(f"{nombre}: NINGÚN caso lo detectó — su precondición no se ejerce")
+        else:
+            print(f"mutante {nombre}: detectado por {caidos}")
+    if problemas:
+        for p in problemas:
+            print(f"autotest-dominio: FALLA — {p}", file=sys.stderr)
+        return 4
+    print(f"autotest-dominio: {len(MUTANTES_DOMINIO)} mutantes, los {len(MUTANTES_DOMINIO)} detectados")
+    return 0
+
+
 def main(argv):
+    if "--autotest-dominio" in argv:
+        return autotest_dominio()
     if "--listar" in argv:
         return listar()
     if "--autotest" in argv:
