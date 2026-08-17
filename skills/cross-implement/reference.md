@@ -445,6 +445,35 @@ Orden, y cada paso está donde está por una razón:
    (crear detached, ejecutar, remover, comprobar la desaparición) **sin editar ese bloque**. Lo que
    se agrega acá es la **captura**: aquel reduce el resultado a verde/rojo y borra la salida; esto
    conserva, por comando, **el comando exacto, su salida completa y su exit code**.
+
+   > **Un worktree detached no trae el entorno, y sin él la medición miente en la dirección
+   > peligrosa.** El bloque reusado se diseñó para **filas de contrato** —comprobaciones acotadas—,
+   > pero `proof_cmd` es la suite completa, el build y el linter. Un worktree recién creado no tiene
+   > `node_modules`, `.venv`, `target/` ni el equivalente del stack, así que en cualquier proyecto con
+   > dependencias instaladas **todos** los comandos salen distinto de cero en la base. Y un baseline
+   > todo en rojo hace que cualquier fallo posterior "no empeore": la condición de aceptación queda
+   > satisfecha siempre, que es exactamente el fallo que no se nota.
+   >
+   > **Antes de medir, el worktree tiene que poder ejecutar el comando.** Lo barato y suficiente es
+   > **compartir el directorio de dependencias** del árbol activo —que ya está instalado y ya
+   > corresponde a este repo— en vez de reinstalarlo:
+   >
+   > ```sh
+   > # ejemplo para Node; el equivalente según el stack (.venv, vendor/, target/…)
+   > ln -s "$(git rev-parse --show-toplevel)/node_modules" "$WT/node_modules"
+   > ```
+   >
+   > **Y hay una comprobación que no cuesta nada y caza el resto: si al medir la base salen rojos
+   > TODOS los comandos, sospechar del entorno antes que de la deuda del repo.** Un repo con linter
+   > rojo es común; uno donde además fallan la suite y el build a la vez es raro. Ante ese caso, la
+   > base **no se da por válida**: se comprueba a mano un comando en el árbol activo —que está en
+   > `block_base` y sí tiene entorno— y, si ahí pasa, el worktree es el problema.
+   >
+   > **Si un comando no se puede medir en la base, no se puede adjudicar por "no empeoró".** Ese
+   > comando queda **fuera del criterio de aceptación** y se declara así en `proof-baseline.md`, con
+   > el motivo. Contarlo como rojo es lo que produce la aceptación vacua; excluirlo es honesto y deja
+   > el hueco a la vista. Lo que **no** cambia por eso es la tercera condición de la aceptación: las
+   > filas del contrato se siguen exigiendo en verde, y no dependen de esta medición.
 4. **Descartar el worktree** y comprobar que se fue. Correr los comandos sobre el árbol activo no es
    una alternativa: un linter con autofix o un build que deja artefactos ensucian el árbol justo
    antes de un despacho cuyo clean-tree gate exige lo contrario.

@@ -211,12 +211,22 @@ implementador no decide ampliar ni recomponer el bloque.
 
 ### Aceptación de un bloque
 
-Un bloque queda aceptado solo cuando se cumplen juntas tres condiciones observables: su outcome es
-admisible según la matriz de `ownership.md`, el delta está completamente revisado por el conductor y
-**ninguna de sus comprobaciones agregadas empeoró** respecto de `block_base`. Solo entonces se
-habilita el commit de trabajo.
+Un bloque queda aceptado solo cuando se cumplen juntas **cuatro** condiciones observables: su outcome
+es admisible según la matriz de `ownership.md`, el delta está completamente revisado por el conductor,
+**sus filas elegibles del contrato terminaron en verde**, y **ninguna de sus comprobaciones agregadas
+empeoró** respecto de `block_base`. Solo entonces se habilita el commit de trabajo.
 
-**La condición es "no empeoró", no "verde".** Exigir verde absoluto vuelve **todo** bloque
+> **Las dos últimas son condiciones distintas y ninguna sustituye a la otra.** Las filas del contrato
+> son el criterio de "hecho" de cada requisito y se exigen **en verde**; `proof_cmd` es una
+> comprobación **agregada y opcional** que se exige **"no empeorada"**. Colapsarlas en una sola rompe
+> el gate en el caso más común: `proof_cmd` admite la **lista vacía** —el gate acepta contrato sin
+> `proof_cmd`, y `sdd-flow` la manda vacía cuando no hay `test_cmd`/`build_cmd`/`lint_cmd`
+> configurados—, y "ninguna empeoró" sobre un conjunto vacío es **vacuamente cierto**. Con la
+> condición del contrato ausente, un bloque con sus filas en rojo quedaría aceptado y habilitaría el
+> commit. Es la misma regla que `contrato-verificacion.md` ya enuncia desde el otro lado: *"un
+> `proof_cmd` entero en verde no alcanza para dar un requisito por cumplido"*.
+
+**La condición de los agregados es "no empeoró", no "verde".** Exigir verde absoluto vuelve **todo** bloque
 inaceptable en cualquier repo que ya arrastre un linter o un build en rojo — que es el caso común, y
 justamente donde más se delega. El estado de cada comando se mide sobre `block_base` **antes** de
 despachar (`reference.md` → "Medición de base y adjudicación"); el commit de referencia es el del
@@ -231,10 +241,10 @@ indexado por `checkId` y una comprobación agregada **no es una fila**, su unida
 round y así se reanuda entre bloques. Las otras tres clases no aplican acá: no hay fila que reparar
 ni versión de contrato que emitir.
 
-La comprobación usa las filas elegibles del contrato completo. Una fila es elegible cuando todas sus
-tasks de referencia están `[x]`, no cuando termina la primera; así un AC repartido entre bloques no
-se declara prematuramente. Un bloque aceptado no cierra el AC: el cierre de cada AC pertenece al
-`verify` final sobre el contrato congelado completo.
+**La tercera condición** usa las filas elegibles del contrato completo. Una fila es elegible cuando
+todas sus tasks de referencia están `[x]`, no cuando termina la primera; así un AC repartido entre
+bloques no se declara prematuramente. Un bloque aceptado no cierra el AC: el cierre de cada AC
+pertenece al `verify` final sobre el contrato congelado completo.
 
 ### El commit de trabajo por bloque
 
