@@ -39,15 +39,47 @@ Cada una lleva **disparador, efecto y excepción**: un enunciado sin las tres no
 > **Excepción:** continúa solo con excepción aprobada por el usuario en ese gate, con el cálculo y
 > el motivo a la vista.
 
-- **Numerador** — líneas **agregadas** a `scripts/`, más las agregadas a cualquier archivo cuyo
-  propósito declarado sea verificar. **Las líneas agregadas a un script existente cuentan igual que
-  un archivo nuevo**: si no, la regla 3 se evade engordando lo que ya está.
-- **Denominador** — líneas **agregadas** a `skills/` en el mismo diff.
-- **Borrados** — no entran al numerador. Retirar andamiaje nunca puede violar el techo.
-- **Denominador cero** — si el flujo no agrega ni una línea a `skills/`, el numerador debe ser
-  **cero**.
-- **Cuándo se mide** — con `git diff --numstat <base_commit>` **después de implementar**. Medirlo en
-  el gate de tasks daría cero en ambos términos: ahí todavía no se tocó una línea.
+- **Los dos términos, y qué cae en cada uno.** El **andamiaje** es todo lo que está bajo `scripts/` o
+  `tests/`, más los archivos de test (`*.test.*`) y los verificadores (`verificar-*`) dondequiera que
+  vivan — los patrones van escritos porque "un archivo de verificación" no es decidible y ya se
+  resolvió distinto en dos flujos. El **producto** son
+  las dos sedes de skills: `skills/` y `.agents/skills/`. Son dos porque hay una skill del ecosistema
+  que vive fuera de `skills/`, y con una sola sede un flujo que la tocara quedaría con denominador
+  cero, bloqueando por una razón que no es la suya. De la partición se sigue que
+  `ninguna línea del diff puede contar en ambos` términos.
+- **Es una `lista cerrada`, con lo que eso cuesta.** Una lista se desactualiza sola, y su disparador
+  de actualización es concreto: agregar una sede de producto, o un patrón de verificación nuevo. Se
+  eligió sobre un criterio por tipo —"todo ejecutable es andamiaje"— porque ese criterio, medido
+  contra el repositorio, metía al numerador el runtime y el transporte cross-model, que no son
+  verificación. `tests/` se nombra de forma **preventiva**: hoy está vacío. Y hay archivos que no
+  caen en ninguno de los dos términos, como la configuración de agentes y ese transporte: eso es
+  correcto y no un hueco, porque no son ni el producto de este repo ni el andamiaje que lo verifica.
+- **Numerador** — con denominador mayor que cero, la suma de líneas agregadas menos borradas,
+  `por archivo, con piso en cero por archivo`. El piso va por archivo y no sobre el total porque
+  sobre el total un borrado grande en un archivo financiaría crecimiento en otro. Así una
+  reindexación pura —que agrega y borra la misma cantidad— da cero, que es lo que corresponde: ahí el
+  andamiaje no creció, se reordenó. **Las líneas agregadas a un script existente cuentan igual que las
+  de un archivo nuevo**: si no, la regla 3 se evade engordando lo que ya está.
+- **Denominador** — las líneas **agregadas** al producto en el mismo diff, en bruto. La asimetría con
+  el numerador es deliberada: el numerador mide cuánto **creció** el andamiaje y el denominador
+  cuánto **producto** trajo el flujo, así que borrar producto no debe inflar el término de abajo.
+- **Denominador cero** — `con denominador cero el numerador se mide bruto`, así que el flujo se detiene
+  salvo que ese numerador bruto sea **cero**. El neto existe para no castigar el reordenamiento que **acompaña** a un
+  cambio de producto; sin producto no hay nada que acompañar. Sin esta condición, 100 líneas
+  agregadas y 100 borradas en un script sin tocar el producto pasarían — y la fórmula anterior, que
+  contaba solo agregadas, sí frenaba ese caso.
+- **Borrados** — `descuentan solo cuando hay producto` en el diff, que es la rama neta. Retirar
+  andamiaje nunca puede violar el techo.
+- **Cómo y cuándo se mide** — con `git diff --numstat <base_commit>` **después de implementar**, más
+  `git ls-files --others --exclude-standard` para los archivos nuevos: el diff no ve lo que todavía
+  no está trackeado, y el techo se mide antes del staging. Un rename `se atribuye al destino`, con
+  las agregadas y borradas de su contenido, así que un rename puro aporta cero. Ante una fila no
+  numérica —un binario— `la medición se detiene` y se resuelve a mano, en vez de leer el guion como
+  un cero. Medirlo en el gate de tasks daría cero en ambos términos: ahí todavía no se tocó una línea.
+- **Lo que la fórmula no detecta** — mover contenido entre archivos distintos cuenta como crecimiento
+  en el destino. Es consecuencia de medir por archivo, la misma propiedad que impide que un borrado
+  financie crecimiento ajeno. No se agrega mecanismo para eso: la regla 1 pide evidencia de que el
+  escalón barato falló, y ese caso todavía no ocurrió.
 - **Por qué bloquea** — un techo que solo obliga a declarar es un techo **sin condición de salida**,
   que es exactamente la causa que estas reglas vienen a cortar.
 
