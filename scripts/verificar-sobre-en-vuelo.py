@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Verifica el contrato del **sobre de corrida delegada en vuelo** (flujo `hilo-workers-en-vuelo`).
 
-Un modo por fila de la tabla `## Verification` del plan — diecinueve en total, `--ac 1` … `--ac 16`
+Un modo por fila de la tabla `## Verification` del plan — veinte en total, `--ac 1` … `--ac 17`
 con sus variantes `1b`/`2b`/`3b` — más `--sincronizar` (genera las seis copias desde la fuente),
 `--validar-baseline` (comprueba el bloque `#### Baseline de vN` versionado bajo `scripts/`) y
 `--autotest` (control positivo sobre un corpus verde temporal, y después un mutante por vez).
@@ -47,7 +47,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 CHANGE_BASE_COMMIT = "2ed62dd"
-BASELINE_COMMIT = "9c78a04"
+BASELINE_COMMIT = "34d7c41"
 BASELINE_PATH = "scripts/baseline-sobre-en-vuelo.md"
 
 SKILLS = [
@@ -72,7 +72,8 @@ READMES = [f"skills/{s}/README.md" for s in
            ("co-explore", "cross-review", "cross-implement", "bitbucket-code-review")]
 
 CAMPOS_RAIZ = {"run_id", "skill", "mode", "owner", "parent", "children", "descendants_summary",
-               "workers", "scope", "transport", "harvest_pending", "proxima_accion"}
+               "workers", "scope", "transport", "harvest_pending", "proxima_accion",
+               "manifest_seed", "manifest_first_dispatch_at"}
 CAMPOS_WORKER = {"name", "family", "write", "attempts"}
 CAMPOS_INTENTO = {"attempt_id", "transport", "output", "process_ref", "wait_budget", "harvested"}
 SUBESQUEMAS = {
@@ -1136,6 +1137,86 @@ def ac_16(ctx: Ctx) -> str:
     return f"rc={acumulado} · fallos skills-ref: {fallos_skills_ref}"
 
 
+def ac_17(ctx: Ctx) -> str:
+    """AC-17 — autoridades frescas del manifest, carriers, productores y cierre idempotente."""
+    contrato = ctx.seccion(CONTRATO_FUENTE, "Los campos del sobre")
+    ctx.exigir(contrato, "carrier activo", {
+        "par condicional e indivisible": [["manifest_seed", "manifest_first_dispatch_at", "condicional", "indivisible"]],
+        "seed exacto, inmutable y anterior al preflight": [["antes", "preflight", "exactamente", "skill", "mode", "preflight_started_at", "families", "transport", "selection", "inmutable"]],
+        "timestamp null y write-once antes de la primera tool call": [["manifest_first_dispatch_at", "null", "inmediatamente antes", "primera tool call", "una sola vez"]],
+        "terminal sin worker conserva el fallback": [["ningun worker", "seleccionado", "ninguna via", "null", "workers[]", "none"]],
+        "preflight con vía resuelta conserva la vía candidata": [["falla", "preflight", "via", "families", "manifest_seed.transport", "conserva"]],
+        "modo off mantiene ausente el par": [["modo off", "ambos nodos", "ausentes", "no se vuelven", "retomar"], ["modo off", "ambos nodos", "ausentes", "no se vuelve", "retomar"]],
+    })
+    retiro = norm(ctx.seccion(CONTRATO_FUENTE, "Condiciones del retiro") or "")
+    checkpoint_sin_manifest = bool(re.search(r"checkpoint intermedio[^.]*carrier[^.]*no materializa[^.]*manifest", retiro))
+    terminal_resuelve_manifest = bool(re.search(r"outcome terminal[^.]*manifest[^.]*retiro terminal", retiro))
+    ctx.check(checkpoint_sin_manifest and terminal_resuelve_manifest,
+              "carrier canónico distingue checkpoint y retiro terminal",
+              "" if checkpoint_sin_manifest and terminal_resuelve_manifest else "el retiro canónico no distingue la transferencia no terminal")
+
+    checkpoint = ctx.seccion("skills/cross-review/reference.md", "Checkpoint durable")
+    ctx.exigir(checkpoint, "checkpoint durable", {
+        "igualdad estructural exacta con el sobre": [["manifest_seed", "exactamente", "diferencia de valor", "invalida"]],
+        "timestamp write-once no usa reloj de rehidratación": [["manifest_first_dispatch_at", "null", "timestamp", "nunca", "rehidratacion"]],
+        "off conserva ambos nodos ausentes": [["manifest deshabilitado", "dos nodos", "ausentes", "no se serializan"]],
+        "resume rehidrata autoridades sin abrir otra corrida": [["resume", "rehidrata", "autoridades", "no se inicia otra"]],
+    })
+
+    manifest = ctx.seccion("skills/cross-review/reference.md", "Manifest de corrida")
+    ctx.exigir(manifest, "objeto y ruta del manifest", {
+        "run_id separa dos rutas del mismo segundo": [["mismo segundo", "run_id distintos", "no colisionan"]],
+        "segundo cierre conserva bytes idénticos": [["segundo cierre", "bytes identicos"]],
+        "manifest anterior ilegible es irrelevante": [["manifest anterior", "ilegible", "irrelevante"]],
+        "runs nunca es fuente o plantilla": [[".cross-model/runs/ no se lee ni se copia como plantilla"]],
+    })
+    if manifest is not None:
+        manifest_norm = norm(manifest)
+        retry_consulta = bool(re.search(r"retry[^.]*consulta[^.]*existe", manifest_norm))
+        existencia_idempotente = bool(re.search(
+            r"si la ruta existe[^.]*sin abrir[^.]*validar[^.]*recalcular[^.]*reescribir",
+            manifest_norm))
+        retry_idempotente = retry_consulta and existencia_idempotente
+        ctx.check(retry_idempotente,
+                  "objeto y ruta del manifest: consulta existencia sin leer el cierre",
+                  "" if retry_idempotente else
+                  "el retry no liga existencia con no abrir, validar, recalcular ni reescribir")
+        eexist_idempotente = bool(re.search(
+            r"eexist[^.]*cierre[^.]*sin abrir[^.]*recalcular[^.]*reescribir",
+            manifest_norm))
+        ctx.check(eexist_idempotente, "objeto y ruta del manifest: EEXIST cierra sin recalcular",
+                  "" if eexist_idempotente else
+                  "EEXIST no está ligado al cierre sin abrir, recalcular ni reescribir")
+        checkpoint_transfiere = bool(re.search(r"checkpoint intermedio[^.]*transfiere[^.]*carrier[^.]*no materializa[^.]*manifest", manifest_norm))
+        ctx.check(checkpoint_transfiere, "checkpoint transfiere el carrier sin cerrar el manifest",
+                  "" if checkpoint_transfiere else "el checkpoint no distingue transferencia de carrier y retiro terminal")
+        sentinelas = re.search(
+            r"corrida A.*?started_at:\s*([0-9TZ:+-]+).*?duration_s:\s*(\d+).*?"
+            r"corrida B.*?started_at:\s*([0-9TZ:+-]+).*?duration_s:\s*(\d+)",
+            manifest, re.IGNORECASE | re.DOTALL)
+        distintos = bool(sentinelas and sentinelas.group(1) != sentinelas.group(3)
+                         and sentinelas.group(2) != sentinelas.group(4))
+        ctx.check(distintos, "sentinelas: timestamp y duración distintos entre A y B",
+                  "" if distintos else "no se encontraron dos pares de sentinelas distintos")
+
+    productores = {
+        "co-explore": ("skills/co-explore/SKILL.md", ("completed", "map_failure")),
+        "cross-review": ("skills/cross-review/SKILL.md", ("approved", "revise", "unavailable")),
+        "cross-implement": ("skills/cross-implement/SKILL.md", ("implemented", "partial", "unavailable")),
+        "bitbucket-code-review": ("skills/bitbucket-code-review/SKILL.md", ("published", "proposed", "unavailable")),
+    }
+    for productor, (rel, terminales) in productores.items():
+        texto = ctx.texto(rel)
+        ctx.exigir(texto, f"productor {productor}", {
+            "secuencia selección a terminal": [["seleccion", "seed", "sobre", "preflight", "timestamp", "tool call", "terminal"]],
+            "terminales proyectados desde autoridades frescas": [["manifest", "autoridad", *terminales], ["manifest", "manifest_authorities", *terminales], ["manifest", "manifest_seed", "manifest_first_dispatch_at", *terminales]],
+            "preflight sin despacho usa null, inicio de preflight y none": [["preflight", "null", "preflight_started_at", "transport", "none"]],
+            "preflight con vía resuelta no degrada a none": [["via", "resuelta", "preflight", "seed", "conserva", "no haya"]],
+            "runs no es fuente": [[".cross-model/runs/", "no", "fuente"]],
+        })
+    return f"{len(productores)} productores · carriers, checkpoint, objeto/ruta y guardas"
+
+
 # ---------------------------------------------------------------------------------------------
 # Modos auxiliares: sincronizar y validar el baseline.
 # ---------------------------------------------------------------------------------------------
@@ -1180,8 +1261,8 @@ def validar_baseline(ctx: Ctx) -> None:
                 ids_tabla.append(fila[0].strip().strip("`"))
         if ids_tabla:
             break
-    ctx.check(len(ids_tabla) == 19, "la tabla de `## Verification` tiene diecinueve filas",
-              "" if len(ids_tabla) == 19 else f"leídas {len(ids_tabla)}")
+    ctx.check(len(ids_tabla) == 20, "la tabla de `## Verification` tiene veinte filas",
+              "" if len(ids_tabla) == 20 else f"leídas {len(ids_tabla)}")
     versiones = sorted(int(m.group(1)) for m in
                        re.finditer(r"^#+\s*Baseline de v(\d+)", baseline, re.MULTILINE))
     if not versiones:
@@ -1250,10 +1331,11 @@ MODOS = {
     "14": ("AC-14 · la tercera excepción y su cita", ac_14),
     "15": ("AC-15 · claves nuevas del diff de la rama completas en dueño y vista", ac_15),
     "16": ("AC-16 · las guardas del repo sin regresión", ac_16),
+    "17": ("AC-17 · autoridades frescas y cierre idempotente del manifest", ac_17),
 }
 FILAS = {"1": "V1", "1b": "V2", "2": "V3", "2b": "V4", "3": "V5", "3b": "V6", "4": "V7",
          "5": "V8", "6": "V9", "7": "V10", "8": "V11", "9": "V12", "10": "V13", "11": "V14",
-         "12": "V15", "13": "V16", "14": "V17", "15": "V18", "16": "V19"}
+         "12": "V15", "13": "V16", "14": "V17", "15": "V18", "16": "V19", "17": "V20"}
 
 
 def correr(modo: str, raiz: Path, verboso: bool = True) -> tuple[int, str]:
@@ -1314,6 +1396,8 @@ Orden fijo: evento de intento → sobre → tool call del despacho.
 | `transport` | derivado |
 | `harvest_pending` | marca explícita de cosecha pendiente |
 | `proxima_accion` | próxima acción al recuperar el control |
+| `manifest_seed` | seed inmutable del manifest habilitado |
+| `manifest_first_dispatch_at` | timestamp write-once, inicialmente `null` |
 
 `transport` raíz es el único campo **derivado**: el valor común de los intentos vigentes, o `mixto`.
 
@@ -1323,6 +1407,15 @@ Orden fijo: evento de intento → sobre → tool call del despacho.
 **transfiere** el campo al **registro de cierre** junto con el **resto del sobre**; esta **transición
 no depende** de un **tombstone**. En una recuperación `cli-exec`, el conductor **transfiere**
 `proxima_accion` del sobre activo al **registro de cierre** antes de retirarlo.
+
+**El par del manifest es condicional e indivisible.** Antes de cualquier preflight, el sobre nace
+con ambos nodos cuando el manifest está habilitado. `manifest_seed` contiene exactamente `skill`,
+`mode`, `preflight_started_at`, `families`, `transport` y `selection`, y es inmutable.
+`manifest_first_dispatch_at` nace en `null` y se fija una sola vez inmediatamente antes de la
+primera tool call. Si ningún worker fue seleccionado o no se resolvió ninguna vía, queda `null`,
+`workers[]` puede quedar vacío y el `transport` del seed usa `none`. Si un worker falla su preflight
+después de resolver la vía, `families` y `manifest_seed.transport` conservan ese worker y esa vía.
+En modo off ambos nodos permanecen ausentes; no se vuelven a leer ni inventar al retomar.
 
 ### Los campos por worker
 
@@ -1393,6 +1486,9 @@ deadline nunca retira el sobre.
 | sin recursos propios vivos, o transferidos a un **registro de cierre** | propiedad y próxima acción transferidas |
 
 Las tres son **simultáneas**.
+
+Un checkpoint intermedio transfiere el carrier y no materializa el manifest. Solo un outcome
+terminal resuelve el manifest antes del retiro terminal.
 
 ### Adopción
 
@@ -1498,7 +1594,15 @@ primera línea de cada copia.
 
 
 def corpus_verde(raiz: Path) -> None:
-    """Escribe un árbol mínimo pero completo que satisface los diecisiete modos de parser."""
+    """Escribe un árbol mínimo pero completo que satisface los diecinueve modos de parser."""
+    def manifiesto(terminales: str, autoridades: str) -> str:
+        return ("La secuencia es selección → seed/sobre → preflight → timestamp write-once "
+                f"→ primera tool call → terminal. El manifest proyecta {terminales} desde {autoridades}. "
+                "Un preflight sin worker seleccionado o sin vía resuelta conserva `null` y usa "
+                "`preflight_started_at`/`transport: none`. Si la vía estaba resuelta y falla el "
+                "preflight, el seed conserva esa vía aunque no haya despacho. `.cross-model/runs/` "
+                "nunca es fuente.")
+
     puntos = {
         "co-explore": ["- fan-out dual (`explore`/`counter-plan`/`investigate`)",
                        "- worker por ronda del modo `debate`"],
@@ -1511,6 +1615,12 @@ def corpus_verde(raiz: Path) -> None:
         "bitbucket-code-review": ["- panel de revisores externos",
                                   "- validador adversarial por hallazgo"],
     }
+    manifiestos = {
+        "co-explore": manifiesto("`completed` y `map_failure`", "esas autoridades"),
+        "cross-review": manifiesto("`APPROVED`, `REVISE` y `UNAVAILABLE`", "`manifest_authorities`"),
+        "cross-implement": manifiesto("`IMPLEMENTED`, `PARTIAL` y `UNAVAILABLE`", "esas autoridades"),
+        "bitbucket-code-review": manifiesto("`PUBLISHED`, `PROPOSED` y `UNAVAILABLE`", "esas autoridades"),
+    }
     extras = {
         "sdd-orchestrator": "El orden es fijo: **bitácora** → **sobre** → **despacho**.",
         "co-explore": ("**Tres excepciones acotadas, todas conversacionales.** La nota de límite, la "
@@ -1522,8 +1632,9 @@ def corpus_verde(raiz: Path) -> None:
     for skill in SKILLS:
         d = raiz / "skills" / skill
         d.mkdir(parents=True, exist_ok=True)
+        extra = "\n\n".join(p for p in (extras.get(skill, ""), manifiestos.get(skill, "")) if p)
         (d / "SKILL.md").write_text(_SKILL_TPL.format(
-            skill=skill, puntos="\n".join(puntos[skill]), extra=extras.get(skill, "")),
+            skill=skill, puntos="\n".join(puntos[skill]), extra=extra),
             encoding="utf-8")
     (raiz / CONTRATO_FUENTE).write_text(CONTRATO_VERDE, encoding="utf-8")
     sincronizar_silencioso(raiz)
@@ -1544,9 +1655,25 @@ def corpus_verde(raiz: Path) -> None:
         "### Glosario\n\nTruncado nombra la limpieza previa al lanzamiento.\n\n"
         "### El descriptor de corrida y su retiro\n\n" + _RECHAZO, encoding="utf-8")
     (raiz / "skills/cross-review/reference.md").write_text(
-        "# cross-review — Referencia\n\n## Manifest de corrida\n\nEl manifest registra la corrida "
-        "terminada; su hermano activo es el sobre de `corridas-en-vuelo.md`, y **se retira** cuando "
-        "el manifest se escribe.\n", encoding="utf-8")
+        "# cross-review — Referencia\n\n"
+        "## Checkpoint durable\n\n"
+        "El checkpoint conserva `manifest_seed` exactamente: una diferencia de valor frente al "
+        "sobre invalida el descriptor. `manifest_first_dispatch_at` conserva `null` o el timestamp "
+        "write-once, nunca un reloj de rehidratación. Con manifest deshabilitado los dos nodos "
+        "permanecen ausentes y no se serializan. El `resume` rehidrata estas autoridades y no se "
+        "inicia otra corrida.\n\n"
+        "## Manifest de corrida\n\n"
+        "El manifest registra la corrida terminada; su hermano activo es el sobre de "
+        "`corridas-en-vuelo.md`, y **se retira** cuando el manifest se escribe. Dos corridas del "
+        "mismo segundo usan `run_id` distintos y no colisionan. Un retry consulta si la ruta existe. "
+        "Si la ruta existe, termina sin abrir, validar, recalcular ni reescribir. Si la creación "
+        "pierde una carrera `EEXIST`, el cierre termina sin abrir, recalcular ni reescribir. Un segundo cierre conserva "
+        "bytes idénticos. Un manifest anterior ilegible es irrelevante. `.cross-model/runs/` no se "
+        "lee ni se copia como plantilla. Un checkpoint intermedio transfiere el carrier y no "
+        "materializa el manifest.\n\n"
+        "**Centinelas.** La corrida A usa `started_at: 2026-07-31T14:02:11Z` y `duration_s: 412`; "
+        "la corrida B usa `started_at: 2026-08-01T09:00:03Z` y `duration_s: 7`.\n",
+        encoding="utf-8")
     (raiz / "CLAUDE.md").write_text(
         "# CLAUDE.md\n\n- Si la skill toca `corridas-en-vuelo.md`, correr "
         "`python3 scripts/verificar-sobre-en-vuelo.py --sincronizar` y `--ac 13`.\n",
@@ -1582,6 +1709,7 @@ REQUISITOS_BASELINE = {
     "15": "AC-15 — claves nuevas del diff de la rama completas en dueño y vista; en la rama base "
           "no hay sujeto",
     "16": "AC-16 — guardas del repo sin regresión",
+    "17": "AC-17 — autoridades frescas, carriers y cierre idempotente del manifest",
 }
 
 
@@ -1669,6 +1797,61 @@ MUTANTES = [
      "Ese nivel de estado persistido ya se rechazó por escrito",
      "La única salida se decide aquí; ese nivel ya se rechazó por escrito",
      "2", "la unica salida"),
+    ("manifest: par off deja de estar ausente", CONTRATO_FUENTE,
+     "En modo off ambos nodos permanecen ausentes; no se vuelven a leer",
+     "En modo off ambos nodos se reconstruyen al cerrar; no se vuelven a leer", "17",
+     "modo off mantiene ausente"),
+    ("manifest: terminal sin worker pierde fallback", CONTRATO_FUENTE,
+     "Si ningún worker fue seleccionado o no se resolvió ninguna vía, queda `null`,\n"
+     "`workers[]` puede quedar vacío y el `transport` del seed usa `none`.",
+     "Si ningún worker fue seleccionado, se inventa un lanzamiento.", "17",
+     "terminal sin worker"),
+    ("manifest: preflight con vía resuelta degrada a none", CONTRATO_FUENTE,
+     "Si un worker falla su preflight\ndespués de resolver la vía, `families` y "
+     "`manifest_seed.transport` conservan ese worker y esa vía.",
+     "Si un worker falla su preflight después de resolver la vía, el seed cambia a `none`.", "17",
+     "preflight con vía resuelta"),
+    ("manifest: checkpoint acepta seed divergente", "skills/cross-review/reference.md",
+     "una diferencia de valor frente al sobre invalida el descriptor",
+     "una diferencia de valor frente al sobre se corrige al cerrar", "17", "igualdad estructural"),
+    ("manifest: resume abre otra corrida", "skills/cross-review/reference.md",
+     "El `resume` rehidrata estas autoridades y no se inicia otra corrida.",
+     "El `resume` descarta estas autoridades e inicia otra corrida.", "17", "resume rehidrata"),
+    ("manifest: sentinelas heredados", "skills/cross-review/reference.md",
+     "la corrida B usa `started_at: 2026-08-01T09:00:03Z` y `duration_s: 7`",
+     "la corrida B usa `started_at: 2026-07-31T14:02:11Z` y `duration_s: 412`", "17", "sentinelas"),
+    ("manifest: rutas del mismo segundo colisionan", "skills/cross-review/reference.md",
+     "mismo segundo usan `run_id` distintos y no colisionan",
+     "mismo segundo colisionan aunque usen `run_id` distintos", "17", "dos rutas del mismo segundo"),
+    ("manifest: retry abre cierre existente", "skills/cross-review/reference.md",
+     "Si la ruta existe, termina sin abrir, validar, recalcular ni reescribir.",
+     "Si la ruta existe, la abre, valida, recalcula y reescribe.", "17", "consulta existencia sin leer"),
+    ("manifest: EEXIST deja de ser idempotente", "skills/cross-review/reference.md",
+     "Si la creación pierde una carrera `EEXIST`, el cierre termina sin abrir, recalcular ni reescribir.",
+     "Si la creación pierde una carrera `EEXIST`, recalcula y reemplaza el cierre.", "17", "EEXIST cierra"),
+    ("manifest: segundo cierre cambia bytes", "skills/cross-review/reference.md",
+     "Un segundo cierre conserva bytes idénticos.",
+     "Un segundo cierre actualiza los bytes.", "17", "segundo cierre conserva bytes"),
+    ("manifest: cierre previo ilegible bloquea", "skills/cross-review/reference.md",
+     "Un manifest anterior ilegible es irrelevante.",
+     "Un manifest anterior ilegible bloquea el cierre.", "17", "manifest anterior ilegible"),
+    ("manifest: runs vuelve a ser plantilla", "skills/cross-review/reference.md",
+     "`.cross-model/runs/` no se lee ni se copia como plantilla.",
+     "`.cross-model/runs/` no se lee y se copia como plantilla.", "17", "runs nunca es fuente"),
+    ("manifest: checkpoint se confunde con terminal", "skills/cross-review/reference.md", "Un checkpoint intermedio transfiere el carrier y no materializa el manifest.", "Un checkpoint intermedio materializa el manifest antes de transferir el carrier.", "17", "checkpoint transfiere el carrier"),
+    ("manifest: carrier canónico cierra en checkpoint", CONTRATO_FUENTE, "Un checkpoint intermedio transfiere el carrier y no materializa el manifest.", "Un checkpoint intermedio materializa el manifest al transferir el carrier.", "17", "carrier canónico distingue checkpoint"),
+    ("manifest: secuencia co-explore rota", "skills/co-explore/SKILL.md",
+     "primera tool call → terminal. El manifest proyecta `completed`",
+     "primera tool call. El manifest proyecta `completed`", "17", "productor co-explore: secuencia"),
+    ("manifest: terminal cross-review omitido", "skills/cross-review/SKILL.md",
+     "`APPROVED`, `REVISE` y `UNAVAILABLE`",
+     "`APPROVED` y `REVISE`", "17", "productor cross-review: terminales"),
+    ("manifest: fallback cross-implement roto", "skills/cross-implement/SKILL.md",
+     "`preflight_started_at`/`transport: none`",
+     "un timestamp terminal y transporte inventado", "17", "productor cross-implement: preflight"),
+    ("manifest: bitbucket lee runs", "skills/bitbucket-code-review/SKILL.md",
+     "`.cross-model/runs/` nunca es fuente.",
+     "`.cross-model/runs/` es la plantilla del cierre.", "17", "productor bitbucket-code-review: runs"),
 ]
 
 

@@ -98,8 +98,11 @@ work order congelado ──► [implementador seleccionado: escribe, corre la pr
 ## Corridas delegadas en vuelo
 
 Todo implementador que esta skill despacha nace con su **sobre** en `.cross-model/active/<skill>/`,
-escrito **antes** del despacho, y mientras el sobre siga activo cada turno del conductor cierra
-informando su estado. Los puntos de despacho propios son dos:
+escrito **antes del preflight**, y mientras el sobre siga activo cada turno del conductor cierra
+informando su estado. Con manifest habilitado, la selección fija el `manifest_seed` inmutable y el
+sobre nace con `manifest_first_dispatch_at: null`; ese timestamp se fija una vez, inmediatamente
+antes de la primera tool call. Resume y fix loop conservan la vía y el inicio del lanzamiento
+original. Los puntos de despacho propios son dos:
 
 - el **implementador inicial**, lanzado con el prompt-contrato tras los gates previos
 - cada ronda del **fix loop**, que reanuda esa misma sesión con el delta
@@ -202,6 +205,14 @@ del cese y completar la cosecha.
 
 ### Pasos de ejecución
 
+La secuencia exterior es selección → seed/sobre → preflight → timestamp write-once → tool call →
+terminal. Si el preflight termina sin implementador seleccionado o sin vía resuelta, el timestamp
+permanece `null` y el manifest usa `preflight_started_at`/`transport: none`; si la vía candidata ya
+estaba resuelta y luego falla su preflight, el seed conserva esa vía aunque no haya lanzamiento.
+`IMPLEMENTED`, `PARTIAL`, `UNAVAILABLE`, `takeover` y
+las causas de pared, flake, runtime o deadline se proyectan desde esas autoridades sin leer
+`.cross-model/runs/` como fuente.
+
 1. **Resolver el implementador** (regla 8) + prechequeos (versión del CLI, no pinear modelo, eco
    del modelo activo — ver `reference.md` → "Descubrir el implementador"). Si llega
    `family_inventory`, heredarlo: no releer config, no ejecutar el preflight de la familia ausente
@@ -261,11 +272,10 @@ A la llamadora (o presentada al usuario en modo directo):
 - **Rondas usadas** y desviaciones del work order reportadas por el implementador.
 - **Ruta del log** (`implement-log.md`).
 
-Al resolver el estado se escribe además el **manifest de corrida**, en los tres casos: un
-`UNAVAILABLE` por pared confirmada es el dato que dice que la capacidad no existe en este entorno, y
-un `PARTIAL` es el que dice cuánto termina haciendo el conductor. Registrar solo los `IMPLEMENTED`
-dejaría una serie que responde "siempre funciona" porque solo se anotó cuando funcionó. Esquema y
-vocabulario en `cross-review/reference.md` → "Manifest de corrida".
+Al resolver `IMPLEMENTED`, `PARTIAL` o `UNAVAILABLE` se proyecta además el **manifest de corrida**
+desde las autoridades del seed, la frontera write-once y el terminal adjudicado. La creación es
+nueva, sin reemplazo y no usa otro manifest como plantilla. Esquema, comparabilidad y vocabulario en `cross-review/reference.md` →
+"Manifest de corrida".
 
 ## Configuración
 

@@ -1,14 +1,13 @@
 {
   "skill": "cross-review",
-  "mode": "auto",
-  "Started_at": "2026-08-04T10:00:00Z",
+  "mode": "tasks",
   "duration_s": 12,
   "families": [
-    "claude",
-    "gpt"
+    "codex"
   ],
   "transport": "cli-exec",
   "outcome": "APPROVED",
   "degradation": "none",
-  "selection": "full"
+  "selection": "full",
+  "Started_at": "2026-08-04T10:00:00Z"
 }

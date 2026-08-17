@@ -130,8 +130,11 @@ comparan**.
 ## Corridas delegadas en vuelo
 
 Todo worker que esta skill despacha nace con su **sobre** en `.cross-model/active/<skill>/`, escrito
-**antes** del despacho, y mientras el sobre siga activo cada turno del conductor cierra informando su
-estado. Los puntos de despacho propios son dos:
+**antes del preflight**, y mientras el sobre siga activo cada turno del conductor cierra informando
+su estado. Con manifest habilitado, la selección fija `families`/`selection`, el sobre nace con
+`manifest_seed` inmutable y `manifest_first_dispatch_at: null`, y el orden de `families` gobierna el
+fan-out. Inmediatamente antes de la primera tool call se fija el timestamp una sola vez; los
+despachos posteriores no cambian el transporte ni el inicio históricos. Los puntos propios son dos:
 
 - **fan-out dual** — un worker por familia en `explore`, `counter-plan` e `investigate`, los dos
   lanzados antes de esperar a ninguno
@@ -338,12 +341,14 @@ nullable). Esquema campo por campo en `reference.md` → "Envelope de retorno".
 `contributors[]` existe porque en las ramas 2, 3 y 4 aparece un mapa que **ningún worker produjo**
 y que `workers[]` no puede describir.
 
-**El envelope se persiste además como manifest de corrida.** Sus campos comparables entre corridas
-—modo, familias, transporte, duración, `outcome` y la rama de degradación— se escriben en el mismo
-punto donde se resuelve el envelope, **incluidos** los `map_failure` y las ramas 3 y 4. Registrar
-solo las corridas nominales dejaría una serie de puros éxitos, incapaz de mostrar lo único que hay
-que vigilar acá: con qué frecuencia la topología dual se degrada a una sola voz. Esquema, vocabulario
-y recorte en `cross-review/reference.md` → "Manifest de corrida".
+**El envelope proyecta además el manifest de corrida.** La secuencia es selección → seed/sobre →
+preflight → timestamp write-once → primera tool call → terminal. `completed`, `map_failure`, las
+ramas 1–4 y las causas `confirmed_wall`, `launch_flake`, `runtime_failure` y `deadline_exceeded`
+cierran desde esas autoridades; un preflight sin worker seleccionado o sin vía resuelta conserva
+`manifest_first_dispatch_at: null` y usa `preflight_started_at`/`transport: none`. Si la vía ya
+estaba resuelta y su preflight falla, el seed conserva esa vía aunque no haya despacho. El objeto nuevo nunca toma `.cross-model/runs/` como
+fuente. Esquema, comparabilidad y creación sin reemplazo en `cross-review/reference.md` → "Manifest
+de corrida".
 
 **Nota de límite (obligatoria, una vez por corrida).** Toda salida presentada al usuario cierra
 declarando el techo del método:

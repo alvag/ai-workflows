@@ -71,7 +71,7 @@ concurrentes que eligieron el mismo sufijo, y las informaría como una.
 
 ### Los campos del sobre
 
-Doce campos en la raíz, uno por corrida:
+Doce campos operativos en la raíz, más un par condicional de autoridades del manifest:
 
 | campo | qué registra |
 |---|---|
@@ -87,6 +87,24 @@ Doce campos en la raíz, uno por corrida:
 | `transport` | la vía por la que viaja la corrida, **derivada** de los intentos vigentes |
 | `harvest_pending` | marca explícita de que la cosecha de esta corrida sigue pendiente |
 | `proxima_accion` | la próxima acción que debe ejecutar el conductor cuando recupere el control |
+| `manifest_seed` | seed inmutable de la proyección terminal, presente solo con manifest habilitado |
+| `manifest_first_dispatch_at` | timestamp UTC write-once del primer despacho; nace en `null` |
+
+**El par del manifest es condicional e indivisible.** La habilitación se resuelve una vez, antes de
+cualquier preflight capaz de terminar la corrida. Con manifest habilitado, el sobre nace con los dos
+nodos; `manifest_seed` contiene exactamente `skill`, `mode`, `preflight_started_at`, `families`,
+`transport` y `selection`, mientras `manifest_first_dispatch_at` nace en `null`. El seed es inmutable.
+Inmediatamente antes de la primera tool call de despacho se fija una sola vez
+`manifest_first_dispatch_at`; reanudar, cosechar o cerrar no lo recalcula. Si ningún worker fue
+seleccionado o no se resolvió ninguna vía de lanzamiento, permanece `null`, `workers[]` puede quedar
+vacío, el `transport` operativo de la raíz es `null` y el fallback del seed para el manifest es
+`none`. Si un worker seleccionado falla su preflight después de resolver la vía, no hubo despacho
+pero `families` conserva ese worker y `manifest_seed.transport` conserva esa vía candidata.
+
+Con manifest deshabilitado (**modo off**), **ambos nodos están ausentes** desde el nacimiento hasta el retiro: no
+se escriben como `null`, no se vuelve a leer la configuración al retomar y no se inventa una mitad
+del par. Cualquier estado con uno presente y el otro ausente, un seed con otra clave o un timestamp
+modificado después de fijarse es un sobre inválido.
 
 **`run_id` no identifica solo.** Los descriptores lo llaman "sufijo corto de corrida": dos repos
 concurrentes pueden producir el mismo valor, y dos skills del mismo repo también. La identidad de una
@@ -270,16 +288,18 @@ Cuatro transiciones, y el momento de cada una es parte del contrato:
 
 | transición | cuándo ocurre | qué la habilita |
 |---|---|---|
-| `nace` | antes del despacho, en el mismo paso que lo prepara | nada la precede: es la primera escritura de la corrida |
+| `nace` | antes del preflight y del despacho, en el mismo paso que prepara la corrida | nada la precede: es la primera escritura de la corrida |
 | `relee` | cada vez que el conductor recupera el control | que el sobre exista y siga activo; releer no cambia nada |
 | `cosecha` | cuando hay un resultado que adjudicar | `harvest_pending` en verdadero, y una sola vez por intento |
 | `retira` | al final de todo | las tres condiciones del retiro, cumplidas a la vez |
 
-**El sobre nace antes del despacho, nunca después.** Escribirlo después deja una ventana —corta, pero
-real— con un worker ya lanzado y ningún archivo que lo registre: si el turno se corta ahí, la corrida
+**El sobre nace antes del preflight y antes del despacho, nunca después.** Escribirlo después deja una
+ventana —corta, pero real— donde un preflight puede terminar la corrida o un worker quedar ya lanzado
+sin ningún archivo que lo registre: si el turno se corta ahí, la corrida
 existe, está consumiendo tiempo y recursos, y no hay nada en disco que la nombre. Ese es exactamente
 el modo de falla que este contrato existe para cerrar, así que el orden no es negociable: primero el
-sobre, después la tool call que lanza al worker. Un sobre que nace de más —porque el despacho falló
+seed y el sobre, después el preflight; si habrá despacho, se fija el timestamp write-once y recién
+después ocurre la tool call que lanza al worker. Un sobre que nace de más —porque el despacho falló
 al lanzarse— se retira con un `error` comprobado, que es barato; un despacho sin sobre no se recupera.
 
 **`harvest_pending` impide una segunda cosecha.** Cosechar es adjudicar un resultado: leerlo,
@@ -367,6 +387,15 @@ El retiro exige las **tres** a la vez. No hay atajo por outcome ni por antigüed
 | **artefacto validado o descartado** | ninguna salida del intento queda sin adjudicar: o se validó y se cosechó, o se descartó con motivo escrito |
 | **sin recursos propios vivos, o transferidos a un registro de cierre** | ningún proceso, sesión ni otro recurso propio de la corrida queda en pie sin dueño |
 
+Cuando las tres condiciones habilitan el retiro, primero se distingue el destino del carrier. Un
+checkpoint intermedio transfiere el carrier y no materializa el manifest: después de escribir y
+validar su descriptor, retira este sobre activo sin cerrar la corrida. Solo un outcome terminal
+resuelve el manifest con las autoridades del propio sobre antes del retiro terminal. Si está
+habilitado y la escritura tiene éxito, el objeto completo nuevo queda publicado antes del retiro.
+Si el modo estaba deshabilitado o la escritura falla, se registra `manifest no escrito: <causa>` y
+se retira igual: la telemetría nunca mantiene activa una corrida ya cerrada. Ningún camino abre
+`.cross-model/runs/` para construir el objeto.
+
 **Las tres son simultáneas porque ninguna implica a las otras.** Un terminal comprobado convive con un
 artefacto sin adjudicar —el worker terminó y su salida sigue sin leerse—; un artefacto validado
 convive con un recurso vivo que se conservó a propósito; y un cleanup terminado no dice nada de si el
@@ -380,6 +409,13 @@ acción pasan a un **registro de cierre**, y **recién entonces** se retira el s
 transferencia solo quedan dos salidas, y las dos son malas: mantener el sobre en vuelo para siempre
 por un recurso que se conservó a propósito, o retirarlo y perder al único que sabía que ese recurso
 existe.
+
+### Destino del carrier al retirar
+
+| destino del carrier | efecto sobre el manifest | estado de la corrida |
+|---|---|---|
+| checkpoint intermedio | no se materializa | abierta; el descriptor conserva las autoridades |
+| outcome terminal | se resuelve antes del retiro terminal | cerrada al cumplir las demás condiciones |
 
 ### Adopción
 

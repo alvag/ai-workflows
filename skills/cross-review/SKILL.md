@@ -88,8 +88,10 @@ artefacto escrito ──► [cross-review] ──► artefacto (quizá revisado)
 ## Corridas delegadas en vuelo
 
 Todo revisor que esta skill despacha nace con su **sobre** en `.cross-model/active/<skill>/`, escrito
-**antes** del despacho, y mientras el sobre siga activo cada turno del conductor cierra informando su
-estado. El punto de despacho propio es uno:
+**antes del preflight**, y mientras el sobre siga activo cada turno del conductor cierra informando
+su estado. Con manifest habilitado, el sobre nace con `manifest_seed` inmutable y
+`manifest_first_dispatch_at: null`; inmediatamente antes de la primera tool call se fija ese
+timestamp una sola vez. El punto de despacho propio es uno:
 
 - el **revisor por ronda** del loop de revisión — la ronda 1 y cada ronda siguiente que reanuda el
   mismo thread, por cualquiera de las vías A/B/C
@@ -183,6 +185,14 @@ stress-test portable de una idea, no un flujo de desarrollo.
 Antes de nada, resolver si hay un segundo modelo disponible (algoritmo y opciones en
 `reference.md` → "Descubrir el revisor"):
 
+El orden operativo de esta corrida es: resolver la selección heredada o local → crear el seed y el
+sobre → ejecutar el preflight → fijar `manifest_first_dispatch_at` → lanzar la primera tool call →
+resolver el terminal. Si
+el preflight termina sin worker seleccionado o sin vía resuelta, el timestamp queda `null` y el cierre usa
+`manifest_seed.preflight_started_at` con `transport: none`; si falla después de resolver la vía,
+el seed conserva esa vía candidata aunque no haya despacho. Ningún terminal lee
+`.cross-model/runs/` como fuente para construir el objeto.
+
 Si el contrato trae `family_inventory`, heredarlo: no releer config, no ejecutar el preflight de la
 familia ausente y no volver a anunciar su ausencia. Los preflights reales de una familia presente
 siguen aplicando y sus fallos se informan como hasta ahora.
@@ -246,6 +256,9 @@ Devolver a la skill llamadora (o presentar, en modo directo):
 - **Resumen de la crítica:** qué marcó el revisor, qué aplicó Claude y qué rechazó (con el porqué).
 - **Diff del artefacto** si hubo cambios.
 - **Ruta del `review-log.md`.**
+- **`manifest_authorities`** — siempre trae `run_id`; con manifest habilitado agrega el
+  `manifest_seed` exacto y `manifest_first_dispatch_at` write-once. En directo/draft lo consume esta
+  skill; en embebido lo consume la llamadora propietaria del cierre.
 - **`tandas_concedibles`** — presente en **todo `REVISE` que abra el checkpoint**, por cualquiera de
   sus dos causas: `disponibles` (bool) · `rondas_consumidas` (entero, de la corrida) ·
   `tamano_tanda` (entero, el `max_rounds` vigente) · `causa_corte` (`tanda_agotada` |
@@ -272,10 +285,11 @@ extra). El humano aprueba con la segunda opinión ya a la vista, y ahí mismo el
 opciones** del checkpoint si la corrida lo abrió. En modo **directo** y **draft** no hay llamadora:
 las presenta `cross-review`, que ya presenta su propio resultado.
 
-Además, al resolver el veredicto se escribe el **manifest de corrida** — los tres veredictos, no
-solo `APPROVED`: una serie que registra las revisiones que convergieron y omite las que agotaron
-rondas o nunca encontraron revisor no puede decir si esta capacidad rinde. Esquema y vocabulario en
-`reference.md` → "Manifest de corrida".
+Además, al resolver un terminal se proyecta el **manifest de corrida** para `APPROVED`, `REVISE` y
+`UNAVAILABLE` desde `manifest_authorities` y el resultado adjudicado. En un checkpoint intermedio todavía no hay
+terminal: se devuelve el carrier. Tras la decisión humana terminal, la llamadora embebida finaliza el
+único manifest; en directo/draft lo hace esta skill. Todos siguen la matriz de comparabilidad,
+creación sin reemplazo y orden de retiro de `reference.md` → "Manifest de corrida".
 
 ## Degradación (nunca bloquea el flujo SDD)
 
