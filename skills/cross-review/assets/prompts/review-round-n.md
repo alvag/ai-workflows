@@ -9,7 +9,12 @@
      inserta si hay al menos una aplicación pendiente de revisión, y se OMITE ENTERO si no hay
      ninguna — nunca se deja vacío: un bloque vacío le dice al revisor que no hubo cambios, cuando
      lo que pasó es que no se los mandaron. Esa misma condición elige el evento con que se registra
-     el cierre de la ronda. -->
+     el cierre de la ronda.
+     LA OMISIÓN SOLO APLICA CUANDO LA RONDA REUSA EL THREAD. En rondas independientes (resume no
+     disponible) el bloque va SIEMPRE: no hay hilo que conserve la versión anterior, y sin él este
+     archivo no le entrega al revisor ningún artefacto que revisar. El evento de cierre no cambia por
+     eso: lo sigue decidiendo si hubo aplicaciones pendientes.
+     Sede normativa: reference.md → "Resume entre rondas". -->
 
 <task>
 Ronda {ronda} de la revisión del artefacto "{artifact_type}". Sigue siendo una revisión de SOLO

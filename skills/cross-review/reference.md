@@ -839,6 +839,24 @@ El loop reusa el **mismo thread del revisor** para que tenga memoria de lo ya di
   esto elige con qué evento se registra el cierre de la ronda (`ciclo-de-vida.md` → "Aplicación
   pendiente de revisión").
 
+> **La omisión se apoya en el resume, y sin él se vuelve un agujero.** La premisa que la sostiene es
+> la del primer punto: el revisor corre en el **mismo hilo** y ya tiene delante la versión que se le
+> mandó antes, así que omitir el bloque solo le quita algo que ya tenía. En **rondas independientes**
+> —la degradación de abajo— esa premisa no existe: la sesión es nueva y el asset declara que *lo que
+> no esté acá no existe para él*.
+>
+> **Precedencia, para que no queden dos reglas ciertas y contradictorias:** con el transporte
+> degradado a rondas independientes, **el artefacto viaja siempre**, haya o no aplicaciones
+> pendientes; la condición de omisión se evalúa **solo** cuando la ronda reusa el thread.
+>
+> Lo que **no** cambia es el evento de cierre: sigue dependiendo de si hubo aplicaciones pendientes, y
+> no de si el artefacto viajó por una razón de transporte. Una ronda independiente sin aplicaciones
+> pendientes **recibe el artefacto y cierra como `ronda-completada`** — separar las dos cosas es lo
+> que impide que el modo degradado libere aplicaciones que nadie observó.
+>
+> Sin esta precedencia el camino era concreto: resume no disponible, la ronda 1 rechaza todo, y la
+> ronda 2 se despacha a una sesión fresca **sin ningún artefacto que revisar** — y cierra conforme.
+
 **Las dos reglas que siguen valen en los dos casos, con artefacto o sin él.**
 
 - **El delta se proyecta exclusivamente desde el ledger; no se redacta por separado.** Es una
@@ -857,7 +875,9 @@ El loop reusa el **mismo thread del revisor** para que tenga memoria de lo ya di
   `claude -p --resume <session_id>`. El delta se pasa por stdin con la primitiva de cada shell
   (`<` en POSIX, `Get-Content -Raw | …` en PowerShell — ver "Portabilidad entre shells").
 - Si el resume no está disponible en el entorno, degradar a rondas independientes re-enviando el
-  artefacto actualizado completo (más caro, pero válido).
+  artefacto actualizado completo (más caro, pero válido). **Siempre**, incluso sin aplicaciones
+  pendientes: acá no hay hilo que conserve la versión anterior, así que la omisión de arriba no
+  aplica — ver la precedencia declarada junto a esa regla.
 
 **Seed desde co-exploración:** con dos workers hay **dos** sesiones por modo, así que cuál se
 reanuda no es una elección libre — la fija la matriz normativa de "Matriz de resume desde
@@ -1263,19 +1283,37 @@ Solo lo que no cambia. Las transiciones apuntan acá.
 |---|---|---|---|---|---|---|
 | 1 | F-01 | emision | — | revisor | severidad: high | — |
 | 1 | F-01 | transicion | rechaza con motivo | conductor | abierto → rechazado · presupuesto: null | <razón> |
+| 1 | — | control-corrida | ronda-completada | conductor | — | no se aplicó nada: la ronda 2 no recibirá artefacto |
 | 2 | F-01 | transicion | defiende, con presupuesto | revisor | rechazado → defendido · presupuesto: defensa | <argumento> |
 | 2 | F-01 | transicion | evalúa: admisible | conductor | defendido → reabierto · presupuesto: null | <por qué el argumento es nuevo> |
 | 2 | F-02 | descarte | re-emite uno cerrado | revisor | — | <motivo del descarte> |
-| 2 | — | control-corrida | ronda-completada-valida | conductor | — | recibió el artefacto actualizado |
-| 3 | — | control-corrida | ronda-completada | conductor | — | sin aplicaciones pendientes: el artefacto no viajó |
-| 3 | — | control-corrida | checkpoint | humano | decision_humana: conceder una tanda | <lo que dijo> |
+| 2 | — | control-corrida | ronda-completada | conductor | — | al cerrar la 1 no había aplicaciones: esta ronda no recibió artefacto |
+| 3 | F-01 | transicion | aplica | conductor | reabierto → aplicado · presupuesto: null | <qué se editó> |
+| 3 | — | control-corrida | ronda-completada | conductor | — | al cerrar la 2 no había aplicaciones: esta ronda no recibió artefacto |
+| 3 | — | control-corrida | checkpoint | humano | decision_humana: conceder una tanda | queda 1 aplicación sin revisar (F-01) |
+| 4 | — | control-corrida | ronda-completada-valida | conductor | — | recibió el artefacto con la aplicación de F-01 |
 
 ### Proyección (derivada — se regenera al cierre de cada ronda, nunca se edita)
 
 | ID | Estado | Severidad vigente | Defensa | Re-apertura |
 |---|---|---|---|---|
-| F-01 | reabierto | high | consumida | disponible |
+| F-01 | aplicado | high | consumida | disponible |
 | F-02 | cerrado | medium | consumida | disponible |
+
+> **Cómo se lee el cierre de cada ronda, que es lo que el ejemplo enseña.** El evento lo decide **qué
+> recibió esa ronda al despacharse**, no qué pasó durante ella. Por eso las rondas 1, 2 y 3 cierran
+> como `ronda-completada` —ninguna recibió artefacto, porque al cerrar la anterior no había
+> aplicaciones pendientes— aunque en la 3 el conductor **sí** aplica F-01. Esa aplicación es la que
+> hace que la ronda 4 reciba el artefacto y cierre como `ronda-completada-valida`.
+>
+> **La ronda 1 también deja fila.** Una ronda conforme que no aplicó nada y no cerró ningún finding no
+> produciría ninguna entrada, y entonces "la ronda 1 ocurrió" sería indistinguible de "la ronda 1 nunca
+> corrió". Es la razón por la que el evento existe.
+>
+> **Y el checkpoint de la ronda 3 no puede converger:** F-01 quedó `aplicado` y ninguna ronda posterior
+> válida lo observó todavía. Por eso el presentador declara `aplicaciones_pendientes: 1` antes de
+> ofrecer las opciones, y por eso la tanda concedida sirve para algo: la ronda 4 es la que cierra el
+> ciclo.
 
 ### Resultado
 
