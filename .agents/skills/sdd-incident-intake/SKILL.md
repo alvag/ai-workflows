@@ -57,11 +57,15 @@ el trabajo** y encima lo hace sin el aparato del flujo.
 
 ## El invariante
 
-> **Verificar → decidir → agrupar → despachar → confirmar arranque → retirar.**
+> **Verificar → decidir → agrupar → mirar aguas arriba → despachar → confirmar arranque → retirar.**
 
 El orden **es** el procedimiento. Cada flecha depende de la anterior y ninguna se adelanta:
 
 - Agrupar sin verificar agrupa por lo que el incidente **dice**, no por lo que pasa.
+- Mirar aguas arriba antes de agrupar no tiene contra qué mirar: el filtro es la superficie que sale
+  del agrupamiento.
+- Despachar sin mirar aguas arriba abre un flujo contra un defecto que ya se arregló en el remoto, o
+  una segunda rama sobre las mismas líneas que un PR abierto.
 - Retirar antes de despachar borra la única copia si el despacho falla.
 - Retirar sin confirmar que el flujo arrancó deja un registro vacío y un worktree inerte.
 
@@ -88,7 +92,8 @@ lo que evita que dos flujos se pisen el mismo incidente.
 
 ```
 por cada cupo:
-  elegir → verificar → decidir → agrupar → [gate si hay duda] → worktree → despachar → retirar
+  elegir → verificar → decidir → agrupar → aguas arriba → [gate si hay duda]
+         → worktree → despachar → retirar
 ```
 
 **Un rechazo no consume cupo.** Si el incidente no se sostiene, se retira igual (ver "El veredicto") y
@@ -101,7 +106,7 @@ inventa un tercero ni parte un grupo para llegar al número.
 
 Leer el archivo completo, no solo el índice ni la sección del incidente elegido. La cabecera declara
 el formato (cómo se forma el ID, qué campos son obligatorios, qué está prohibido escribir); el retiro
-del paso 6 tiene que respetarlo y no se puede respetar un formato que no se leyó.
+del paso 7 tiene que respetarlo y no se puede respetar un formato que no se leyó.
 
 Con `cantidad > 1` se lee **una vez**, al principio del lote. Lo que sí se relee en cada vuelta es el
 índice, que cambió.
@@ -163,7 +168,45 @@ Señales de que **no**:
 Cada candidato a relacionado **se verifica también** (paso 2) antes de entrar al grupo. Un incidente
 sin verificar entra al dossier como una premisa que nadie comprobó.
 
-## Paso 4 — Gate, pero solo si hay duda
+## Paso 4 — Mirar aguas arriba antes de despachar
+
+El paso 2 comprobó el incidente contra el **árbol local**, y el árbol local no es todo lo que existe.
+Dos cosas pueden haberlo resuelto ya sin que ningún `grep` las vea:
+
+> **Un commit en `origin/<default>` que el local no tiene** — y el worktree del paso 6 **nace ahí**,
+> así que ese commit ya va a estar adentro del flujo que se despacha, mientras el veredicto se midió
+> sin él. **O un PR abierto que toca la misma superficie** — el defecto sigue en `origin`, pero
+> alguien ya lo está arreglando, y despachar abre una segunda rama sobre las mismas líneas.
+
+Se hace **acá y no antes**: el filtro es la superficie editable, y esa recién existe después de
+verificar y agrupar. Comandos exactos en `reference.md` → "Mirar aguas arriba".
+
+**El `fetch` no es opcional.** Sin él `origin/<default>` es la foto de la última sincronización, y el
+chequeo devuelve verde por estar mirando un remoto viejo. Es un `fetch` de refs: no toca el árbol.
+
+Se cruza por **archivo tocado**, no por título ni por rama: un PR titulado sobre otra cosa puede
+tocar la sección exacta del incidente, y un título parecido puede no tocar nada. Como complemento, y
+solo como complemento, buscar la **frase literal que el incidente cita** entre esos commits — es lo
+único que caza un arreglo aguas arriba que resolvió lo mismo **en otro archivo**, que el cruce por
+ruta no ve.
+
+### Las tres salidas
+
+| Qué apareció | Qué pasa |
+|---|---|
+| **Nada** toca la superficie | Se sigue con el veredicto del paso 2 |
+| Un **commit** aguas arriba la toca | Se rehace **contra `origin/<default>`** la parte de la tabla del paso 2 que ese commit afecta. Si el defecto ya no está → **rechazado por resuelto aguas arriba**. Si sigue, el veredicto se re-emite y el commit va al dossier |
+| Un **PR abierto** la toca | **Gate obligatorio.** Nunca lo resuelve el intake |
+
+Un PR abierto no se adjudica solo porque no se sabe si va a mergear ni si cubre el defecto entero.
+Las tres salidas —esperar el PR, despachar igual con el alcance acotado, o retirar el incidente
+cruzándolo con el PR— son del usuario.
+
+**Si no hay con qué mirar** —sin `gh`, sin el MCP de Bitbucket, sin remoto—, se dice y se sigue. Lo
+que no se hace es dar el chequeo por verde: queda anotado en el dossier y en el cierre como
+**no comprobado**.
+
+## Paso 5 — Gate, pero solo si hay duda
 
 Con la verificación limpia y la agrupación evidente, **se despacha derecho**. Parar en cada flujo
 convierte un lote de tres en tres interrupciones y no agrega información: el usuario ya sabe lo que
@@ -177,19 +220,21 @@ pidió.
 3. La verificación destapó que **el arreglo correcto es otro** que el que el incidente propone.
 4. El grupo cruza **más de una skill dueña**: el diff toca a dos, y quién manda no lo decide el intake.
 5. El grupo pasa de **tres** incidentes. Un diff que resuelve muchos ya no es evidente para nadie.
+6. El paso 4 encontró **un PR abierto** sobre la superficie, o **un commit aguas arriba** que cambió
+   el veredicto.
 
 Ninguna se cumple → no se pregunta. Al menos una → se para y se muestra: incidentes elegidos y su
 causa raíz en una frase, la tabla de verificación, las decisiones abiertas y los descartados.
 
 Sin respuesta no se avanza — **ni en ese flujo ni en el resto del lote**: un "no contestó" no es un sí.
 
-## Paso 5 — Worktree, siembra, dossier y despacho
+## Paso 6 — Worktree, siembra, dossier y despacho
 
 Los cuatro son un solo paso porque el orden entre ellos también es el invariante: **el worktree está
 sembrado antes de que el flujo arranque**, el dossier existe antes de que el prompt se mande, y el
 prompt se manda antes de que el registro se toque.
 
-### 5.1 — Worktree
+### 6.1 — Worktree
 
 Con `orca-cli`, desde la rama base del `repo_destino`, con `--agent <agente>`. Comandos exactos en
 `reference.md` → "Worktree con orca-cli".
@@ -198,7 +243,12 @@ Con `orca-cli`, desde la rama base del `repo_destino`, con `--agent <agente>`. C
 > `main` local. Si el local está adelante, el worktree nace atrasado y nada lo señala.** Comparar el
 > `head` del JSON contra `git rev-parse main` y realinear si difieren.
 
-### 5.2 — Sembrar el entorno ignorado
+> **Realinear es solo hacia adelante.** El paso 4 ya midió de qué lado está cada uno: si el que está
+> adelante es **`origin`**, el worktree nació **bien** y resetearlo al `main` local **le borra el
+> arreglo aguas arriba** — que es justamente lo que el paso 4 fue a buscar. Comprobarlo antes de
+> tocar nada, en `reference.md` → "Verificar la base — no es opcional".
+
+### 6.2 — Sembrar el entorno ignorado
 
 **Un worktree nace sin nada de lo que git no versiona.** El flujo SDD depende de archivos que están
 justamente ahí: su config, su constitution, los permisos locales. Sin ellos `sdd-flow` no falla —
@@ -241,19 +291,19 @@ detectan el anidamiento; la tercera sí.
 > `hookSettings.scripts.setup`). Si ya sembró, no volver a copiar encima: se pisan archivos que el
 > hook pudo adaptar al worktree.
 
-### 5.3 — Dossier
+### 6.3 — Dossier
 
 En `<worktree>/.plans/incidentes-a-corregir.md`. Plantilla y contrato de contenido en `reference.md`
 → "El dossier". La regla que lo gobierna:
 
-> **El dossier es la única copia.** Después del paso 6 los incidentes no existen en ningún otro lado.
+> **El dossier es la única copia.** Después del paso 7 los incidentes no existen en ningún otro lado.
 > Van **verbatim**, no resumidos.
 
 Si el veredicto fue **redimensionado**, el dossier lleva las dos versiones: el incidente tal como se
 escribió y el diagnóstico corregido, marcado como tal. Reemplazar una por la otra borra la evidencia
 de que hubo una corrección.
 
-### 5.4 — Despacho
+### 6.4 — Despacho
 
 Mandar el flujo al agente del worktree y **confirmar que arrancó** leyendo el terminal. Mecánica del
 envío y modos de falla del transporte en `reference.md` → "Despachar el flujo".
@@ -264,11 +314,11 @@ envío y modos de falla del transporte en `reference.md` → "Despachar el flujo
 > un arranque exitoso.
 
 > **`mandé el prompt` no es `el flujo arrancó`.** Leer el terminal y confirmar que la skill cargó. Si
-> no cargó, corregir el envío — nunca continuar al paso 6.
+> no cargó, corregir el envío — nunca continuar al paso 7.
 
-## Paso 6 — Retirar del registro
+## Paso 7 — Retirar del registro
 
-Recién ahora, y solo si el paso 5 confirmó el arranque (o si el veredicto fue **rechazado** y el
+Recién ahora, y solo si el paso 6 confirmó el arranque (o si el veredicto fue **rechazado** y el
 usuario lo aprobó en el gate). **Dos lugares, siempre los dos:**
 
 1. **El índice** — la fila de cada incidente tomado.
@@ -288,7 +338,9 @@ En modo lote, este paso cierra la vuelta: recién con el registro actualizado se
 ## Cierre
 
 Reportar, por cada flujo: incidentes tomados, **veredicto de cada uno**, por qué se agruparon, tabla
-de verificación, decisiones abiertas que quedaron en el dossier, worktree y rama, y estado del flujo.
+de verificación, **el resultado del chequeo aguas arriba** —qué commits y qué PRs se cruzaron contra
+la superficie, o que no se pudo mirar y por qué—, decisiones abiertas que quedaron en el dossier,
+worktree y rama, y estado del flujo.
 
 Y una vez para todo el lote: los **rechazados con su evidencia** —es lo único que queda de ellos—, los
 cupos que se repusieron, y el conteo del registro antes y después.
@@ -304,6 +356,11 @@ cupos que se repusieron, y el conteo del registro antes y después.
 | "Mandé el prompt, sigo" | El prefijo puede haber quedado dentro del texto pegado, o ser el de la otra familia. Leer el terminal. |
 | "Son de la misma skill, van juntos" | La misma skill en otra fase es otro diff. El criterio es la superficie. |
 | "Orca lo creó, está en main" | Está en `origin/main`. Comparar contra `git rev-parse main`. |
+| "El local está distinto de origin, lo realineo" | Solo si el que está adelante es el **local**. Al revés, el reset borra el arreglo que vino de arriba. |
+| "Verifiqué contra el árbol, alcanza" | El árbol local no tiene lo que está en `origin` ni lo que está en un PR. Y el worktree nace de `origin`. |
+| "`git log origin/main` no trajo nada" | ¿Hubo `fetch`? Sin él estás mirando la foto de la última vez que sincronizaste. |
+| "Ningún PR se llama parecido al incidente" | El cruce es por **archivo tocado**. El título no dice qué toca un PR. |
+| "Hay un PR abierto que lo cubre, lo retiro" | Un PR abierto no es un PR mergeado. Eso lo decide el usuario en el gate. |
 | "Es el mismo repo, el worktree tiene todo" | Tiene lo **versionado**. El config del flujo SDD, por diseño, no lo está. |
 | "Copio el directorio entero y listo" | Puede estar medio versionado: la copia se anida y la comprobación pasa igual. Por archivo. |
 | "Al dossier le pongo un resumen" | Es la única copia. Verbatim. |

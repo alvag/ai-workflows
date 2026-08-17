@@ -6,11 +6,12 @@ Detalle que no hace falta en cada corrida. `SKILL.md` indica cuándo abrir cada 
 |---|---|
 | Verificar sin investigar | En el paso 2, si el veredicto no es evidente |
 | El lote, vuelta por vuelta | Solo con `cantidad > 1` |
-| Worktree con `orca-cli` | En el paso 5.1, antes de crear nada |
-| Sembrar el entorno ignorado | En el paso 5.2 |
-| El dossier | En el paso 5.3, al redactarlo |
-| Despachar el flujo | En el paso 5.4 |
-| Retirar del registro | En el paso 6 |
+| Mirar aguas arriba | En el paso 4, siempre |
+| Worktree con `orca-cli` | En el paso 6.1, antes de crear nada |
+| Sembrar el entorno ignorado | En el paso 6.2 |
+| El dossier | En el paso 6.3, al redactarlo |
+| Despachar el flujo | En el paso 6.4 |
+| Retirar del registro | En el paso 7 |
 | Cuando algo falla | Solo si el despacho no arrancó o el retiro dejó residuos |
 
 ---
@@ -105,6 +106,97 @@ dentro de una semana.
 
 ---
 
+## Mirar aguas arriba
+
+El paso 4 contesta dos preguntas que el árbol local no puede contestar: **¿esto ya se arregló en el
+remoto?** y **¿alguien lo está arreglando ahora?**. La entrada es la **superficie editable** que salió
+del paso 3 — los archivos que el diff iba a tocar.
+
+Los comandos de acá **no usan pipes ni redirecciones**, así que corren igual en POSIX y en PowerShell
+sin una segunda variante. Mantenerlos así al editarlos.
+
+### 1. Sincronizar las refs
+
+```
+git -C <repo_destino> fetch --quiet origin
+```
+
+Sin esto, `origin/<default>` es la foto de la última sincronización y **todo lo que sigue devuelve
+vacío por mirar un remoto viejo** — un verde que se lee igual que un verde real. Actualiza refs
+remotas: no toca el árbol, no mueve ramas locales, no necesita árbol limpio.
+
+Resolver el nombre de la rama por default en vez de asumir `main`:
+
+```
+git -C <repo_destino> rev-parse --abbrev-ref origin/HEAD
+```
+
+Devuelve **`origin/<default>`, con el prefijo puesto** — `origin/main`, no `main`. La rama local es
+esa cadena sin el `origin/`, y confundirlas produce un `origin/origin/main` que corta con "unknown
+revision" en el mejor caso.
+
+### 2. Commits que están arriba y no acá
+
+```
+git -C <repo_destino> log --oneline main..origin/main -- <archivo> <archivo>
+```
+
+`main..origin/main` es exactamente "lo que tiene el remoto y no tiene el local". Sin el `--` y la
+lista de archivos trae todo el retraso, que no dice nada; con ellos, trae solo lo que toca la
+superficie del incidente.
+
+**El complemento que caza lo que el cruce por ruta no ve** — un arreglo que resolvió lo mismo en otro
+archivo:
+
+```
+git -C <repo_destino> log --oneline -S "<frase literal que el incidente cita>" main..origin/main
+```
+
+Es complemento, no reemplazo: `-S` cuenta apariciones de una cadena, así que solo encuentra el commit
+si el arreglo movió esa frase exacta.
+
+### 3. Releer contra `origin`, no contra el árbol
+
+Si algo apareció, la tabla del paso 2 se midió sobre archivos viejos. Rehacer **las filas que ese
+commit toca**, leyendo la versión del remoto:
+
+```
+git -C <repo_destino> show origin/main:<archivo>
+git -C <repo_destino> diff main origin/main -- <archivo>
+```
+
+El `show` sirve para volver a correr el `grep` del paso 2 sobre el contenido de arriba; el `diff` para
+ver qué cambió y decidir si el defecto sobrevivió. **El veredicto se re-emite sobre `origin/<default>`
+porque ahí nace el worktree**, no sobre el árbol local.
+
+### 4. PRs abiertos
+
+Con GitHub, si `gh` está y está autenticado:
+
+```
+gh pr list --state open --json number,title,headRefName,url
+gh pr diff <número> --name-only
+```
+
+El primero da los candidatos; **el segundo es el que decide**, cruzando sus archivos contra la
+superficie. Filtrar por título es lo que produce los dos errores simétricos: un PR con título ajeno
+que toca la sección exacta, y uno con título parecido que no toca nada.
+
+Con Bitbucket, el mismo cruce con las herramientas de listado de PR y de diff del MCP `bb_*` — las
+que usa `bitbucket-code-review`. La forma de la comprobación no cambia: **archivos del PR ∩
+superficie del incidente**.
+
+**Degradación.** Sin `gh` (o sin auth), sin MCP, o sin remoto configurado: se reporta
+`PRs: no comprobado — <razón>` y se sigue. Lo que no se puede hacer es omitirlo del reporte: un
+chequeo que no corrió y uno que salió limpio se leen igual si nadie los distingue.
+
+### Qué queda escrito
+
+Sea cual sea el resultado, el dossier lleva la sección "Estado aguas arriba" (ver "El dossier" →
+sección 6). Un flujo que no sabe que hay un PR abierto sobre sus archivos lo descubre en el conflicto.
+
+---
+
 ## Worktree con `orca-cli`
 
 **Antes de nada, resolver el ejecutable** siguiendo la skill `orca-cli` (`ORCA_CLI_COMMAND` →
@@ -119,7 +211,7 @@ guía del binario**, que cambia entre releases.
 ```
 
 Buscar la entrada cuyo `path` sea el `repo_destino` y copiar su `id`. Del mismo JSON sale
-`hookSettings.scripts.setup`, que hace falta en el paso 5.2.
+`hookSettings.scripts.setup`, que hace falta en el paso 6.2.
 
 ### 2. Crear
 
@@ -144,7 +236,19 @@ ninguno de los dos dice "estás atrasado".
 git -C <repo_destino> rev-parse main origin/main
 ```
 
-Si difieren y el worktree está **limpio y recién creado**:
+**Que difieran no dice de qué lado está el retraso, y el reset solo es correcto en una dirección:**
+
+```
+git -C <repo_destino> merge-base --is-ancestor origin/main main
+```
+
+Sale 0 cuando el **local contiene a `origin`** — es decir, el local está adelante y el worktree nació
+atrasado. Ese es el único caso donde se realinea. Si sale distinto de 0, el que está adelante es
+`origin` (o las ramas divergieron), y **resetear al `main` local le borra al worktree el arreglo que
+vino de arriba** — que es justamente lo que el paso 4 fue a buscar. Ante divergencia real, se para y
+se le muestra al usuario.
+
+Con el ancestro confirmado y el worktree **limpio y recién creado**:
 
 ```
 git -C <worktree> status --porcelain      # tiene que salir vacío ANTES del reset
@@ -171,7 +275,7 @@ se lee igual de bien que una viva.
 
 ### Clasificar
 
-El criterio de `SKILL.md` → 5.2 decide qué entra. Para cada candidato, la pregunta es:
+El criterio de `SKILL.md` → 6.2 decide qué entra. Para cada candidato, la pregunta es:
 
 > ¿Esto es **cómo se configura el flujo en este repo**, o es **lo que otra corrida dejó**?
 
@@ -271,13 +375,19 @@ sin contexto de esta sesión, y **la única copia** de los incidentes tomados.
 3. **La superficie común** — archivos y secciones que el diff va a tocar.
 4. **Cada incidente verbatim**, con su tabla de metadatos completa. No resumidos, no parafraseados.
 5. **La verificación previa** — la tabla del paso 2, con las citas textuales que la sostienen
-   (`archivo:línea` sirve acá; el registro de origen las prohíbe, el dossier las necesita).
-6. **Las decisiones abiertas** — dónde el árbol ya cambió respecto de lo que el incidente asume, con
+   (`archivo:línea` sirve acá; el registro de origen las prohíbe, el dossier las necesita). Si el
+   paso 4 obligó a rehacer filas contra `origin`, decir cuáles y contra qué commit.
+6. **El estado aguas arriba** — el resultado del paso 4, en tres líneas: los commits de
+   `origin/<default>` que tocan la superficie y **ya están en la base de este worktree**, los PRs
+   abiertos que la tocan con su número y sus archivos, y —si no se pudo mirar— que no se comprobó y
+   por qué. Un PR abierto sobre los mismos archivos es una restricción para este flujo, no un dato de
+   color: cambia el alcance que conviene tomar.
+7. **Las decisiones abiertas** — dónde el árbol ya cambió respecto de lo que el incidente asume, con
    las opciones nombradas y **sin recomendar una**. Decir explícitamente que no está pre-decidida.
-7. **Las restricciones del repo destino** que este flujo puede violar sin darse cuenta: topes de
+8. **Las restricciones del repo destino** que este flujo puede violar sin darse cuenta: topes de
    verificación, prohibiciones sobre directorios, guardas que hay que correr y **cómo se leen** (hay
    guardas cuyo código de salida no es la señal de salud).
-8. **Dónde se registran los incidentes** si alguna skill falla durante el flujo — con la ruta del
+9. **Dónde se registran los incidentes** si alguna skill falla durante el flujo — con la ruta del
    árbol principal, porque un worktree no hereda `.plans/`.
 
 ### Lo que no va
@@ -310,7 +420,9 @@ huérfano en el buffer.
 Contenido: qué se corrige, la causa raíz compartida en una frase, **la ruta del dossier con la orden
 de leerlo entero antes de cualquier otra cosa y la advertencia de que es la única copia**, la
 superficie a tocar, la decisión abierta señalada como no pre-decidida, y las restricciones del repo
-que el dossier detalla.
+que el dossier detalla. **Si el paso 4 encontró un PR abierto sobre la superficie, va en el prompt**
+con su número: es una condición de contorno del trabajo, y el dossier solo se lee si el agente llegó
+a leerlo.
 
 ### Enviar en dos tiempos
 
@@ -421,8 +533,11 @@ Los dos, no uno: la fecha caza la sección, el término caza la fila del índice
 | El flujo pregunta cosas que el config ya responde | El worktree no está sembrado | Sembrar `.specify/` del `<repo_destino>` y avisarle al agente que relea el config |
 | El flujo arranca un `init` que nadie pidió | Igual que arriba, caso agudo | Igual, y verificar que el `init` no haya sobrescrito nada |
 | `git status` del worktree muestra lo sembrado | El destino no ignora esos paths | Sacarlos del árbol y resolver el ignore antes de seguir |
-| El diff del flujo sale contra un árbol raro | El worktree nació en `origin/<default>` | Se previene en 5.1. Ya avanzado, es rebase — y el techo de proporción del repo, si lo tiene, se midió contra el commit equivocado |
+| El diff del flujo sale contra un árbol raro | El worktree nació en `origin/<default>` | Se previene en 6.1. Ya avanzado, es rebase — y el techo de proporción del repo, si lo tiene, se midió contra el commit equivocado |
 | El registro quedó sin la fila pero con la sección | El retiro tocó un solo lugar | Completar el retiro y **registrar el incidente**: es un defecto de procedimiento |
+| El flujo abre un diff sobre líneas que ya no existen | El paso 4 no corrió, o corrió sin `fetch` | Rehacer el paso 4 y re-emitir el veredicto contra `origin/<default>`. Si el defecto ya no está, el flujo se cierra y el incidente se reporta como resuelto aguas arriba |
+| El PR del flujo entra en conflicto con otro PR abierto | El cruce del paso 4 se hizo por título y no por archivos | Cruzar `gh pr diff --name-only` contra la superficie. Con el conflicto ya abierto, el orden de merge lo decide el usuario |
+| El worktree perdió commits que estaban en `origin` | El realineo de 6.1 se hizo sin comprobar la dirección | `reset --hard origin/<default>` y rehacer 6.2. Es un defecto de procedimiento: se registra |
 
 Todo fallo atribuible a una skill SDD —esta incluida— se registra según la regla del archivo de
 instrucciones del `<repo_destino>`: en su `.plans/incidentes-skills.md` del **árbol principal**,

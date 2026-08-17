@@ -8,7 +8,7 @@ flujo `sdd-flow` corriendo en su propio worktree, y recién entonces la retira d
 El registro de incidentes (`.plans/incidentes-skills.md` del proyecto donde ocurrió) es una bandeja
 de entrada. Se llena solo —
 cada corrida que tropieza con un defecto de las skills deja su registro — y **no se vacía solo**.
-Vaciarlo a mano tiene cuatro trampas que se repiten:
+Vaciarlo a mano tiene cinco trampas que se repiten:
 
 1. **El incidente se despacha sin verificar.** Lo escribió otra corrida sobre un árbol que pudo
    cambiar. A veces el defecto sigue pero el mecanismo se refactorizó, y el arreglo se diseña contra
@@ -16,14 +16,17 @@ Vaciarlo a mano tiene cuatro trampas que se repiten:
 2. **Se agrupan por skill en vez de por diff.** Dos incidentes de la misma skill en fases distintas
    producen un diff que hace dos cosas y una revisión que no puede juzgar ninguna.
 3. **Se retiran antes de despachar.** Si el despacho falla, se perdió la única copia.
-4. **El worktree nace sin el entorno.** Git no versiona el config del flujo SDD, así que el worktree
+4. **Se despacha sin mirar el remoto.** El `grep` mira el árbol local: no ve el commit que `origin`
+   ya tiene ni el PR abierto que está tocando esas mismas líneas. Y el worktree nace de `origin`, así
+   que el flujo arranca sobre una base que el veredicto nunca midió.
+5. **El worktree nace sin el entorno.** Git no versiona el config del flujo SDD, así que el worktree
    no lo hereda — y `sdd-flow` no falla: cree que el proyecto no está inicializado y arranca un
    wizard que nadie pidió.
 
 ## Qué hace
 
 ```
-Verificar → agrupar → despachar → confirmar arranque → retirar
+Verificar → agrupar → mirar aguas arriba → despachar → confirmar arranque → retirar
 ```
 
 1. Lee el registro entero, incluidas sus reglas de formato.
@@ -31,10 +34,14 @@ Verificar → agrupar → despachar → confirmar arranque → retirar
    cambió. Eso se convierte en una **decisión abierta** para el flujo, sin pre-decidirla.
 3. Busca los incidentes que se resolverían en el mismo diff — el criterio es la superficie editable,
    no la skill.
-4. **Gate:** presenta la agrupación, la verificación y los descartados. Sin respuesta no avanza.
-5. Crea el worktree con Orca, **lo siembra** con la configuración ignorada que el flujo necesita,
+4. **Mira aguas arriba:** con `fetch`, cruza la superficie del incidente contra los commits que
+   `origin` tiene y el local no, y contra los PRs abiertos. Un defecto ya resuelto arriba no se
+   despacha; un PR abierto sobre los mismos archivos va al gate.
+5. **Gate:** presenta la agrupación, la verificación, el estado aguas arriba y los descartados. Sin
+   respuesta no avanza.
+6. Crea el worktree con Orca, **lo siembra** con la configuración ignorada que el flujo necesita,
    escribe un dossier autocontenido y despacha el flujo — confirmando que arrancó de verdad.
-6. Retira los incidentes tomados del índice **y** del cuerpo, y comprueba que no quedaron residuos.
+7. Retira los incidentes tomados del índice **y** del cuerpo, y comprueba que no quedaron residuos.
 
 ## Cuándo usarla
 
@@ -72,6 +79,9 @@ observó, el código a corregir vive en el repo de skills.
 ## Requisitos
 
 - **Orca** corriendo, con el `repo_destino` agregado (`orca repo list`).
+- Acceso al **remoto** del `repo_destino` para el `fetch` del paso 4. Para los PRs abiertos, `gh`
+  autenticado (GitHub) o el MCP `bb_*` (Bitbucket): si no hay ninguno, el chequeo se reporta como
+  no comprobado en vez de darse por limpio.
 - **`sdd-flow`** instalada para la familia elegida: en Claude se invoca `/sdd-flow`, en Codex
   `$sdd-flow` — y ahí se resuelve desde `~/.agents/skills/sdd-flow`.
 - Un registro de incidentes con el formato que declara su propia cabecera.
@@ -106,6 +116,6 @@ idéntico:
 
 | Archivo | Para quién |
 |---|---|
-| `SKILL.md` | El agente, en cada corrida: el invariante, los seis pasos, red flags |
+| `SKILL.md` | El agente, en cada corrida: el invariante, los siete pasos, red flags |
 | `reference.md` | El agente, cuando `SKILL.md` lo manda: comandos de Orca, criterio de siembra, plantilla del dossier, mecánica del despacho, retiro y fallas |
 | `README.md` | Humanos. No se lee en ejecución |
