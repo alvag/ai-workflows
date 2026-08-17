@@ -331,20 +331,103 @@ Descubrir por capacidad, no hardcodear ciegamente.
 
 #### Preflight de aislamiento (fail-closed)
 
-Antes de lanzar, comprobar que la versión instalada permite aislar al worker. Si falta cualquiera
-de las tres piezas, **no se lanza**: `UNAVAILABLE` y gate humano.
+**Sede única del ecosistema.** Toda skill que despache un worker por CLI cita esta sección en vez de
+parafrasearla: `co-explore`, `cross-implement`, `bitbucket-code-review` y `sdd-pr-feedback`. Dos
+copias del mismo argumento divergen sin que nadie lo note, y ya divergieron: una cubría una familia
+y la otra no.
+
+Antes de lanzar, comprobar que la versión instalada permite aislar al worker **de la familia que se
+va a despachar**. Si falta el mecanismo, **no se lanza**: `UNAVAILABLE` y gate humano.
+
+**Por qué fail-closed y no best-effort.** El sandbox del CLI acota lo que el worker escribe **en
+disco dentro del working dir** —`-s read-only` en un revisor, `-s workspace-write` en un
+implementador—, y **no acota los efectos de una tool MCP**. Un worker con los MCP del entorno puede
+alcanzar una tool de ejecución y operar fuera del `working_dir`, con el sandbox intacto. Si no se
+puede garantizar el aislamiento, la degradación correcta es no tener worker, no tener uno sin
+contener. **Vale igual —o más— para un worker con permiso de escritura:** que su sandbox sea más
+laxo no ablanda este preflight, lo hace más necesario.
+
+##### La política, por familia
+
+Cada familia tiene su mecanismo y no son intercambiables: los flags de Codex no existen en el CLI de
+Claude, así que buscarlos ahí reporta "sin aislar" siempre.
+
+<!-- politica-aislamiento:inicio -->
+
+| Familia | Mecanismo requerido |
+|---|---|
+| `codex` | `--ignore-user-config` `--disable hooks` `--disable apps` `--disable plugins` |
+| `claude` | `--safe-mode` |
+
+<!-- politica-aislamiento:fin -->
+
+`--safe-mode` alcanza para la familia Claude porque desactiva de una vez lo mismo que los cuatro
+flags de Codex: su ayuda declara que arranca con *"CLAUDE.md, skills, plugins, hooks, **MCP
+servers**, custom commands and agents, output styles, workflows…"* deshabilitados. En esa lista, lo
+que este preflight persigue es **MCP servers**; el resto viene de arrastre y no molesta.
+
+**Esta tabla es lo único congelado del criterio, y no enumera recetas.** Un inventario de recetas
+transcrito a mano se desactualiza solo y pasa a mentir con apariencia de norma; el inventario se
+deriva de las marcas `despacho:` del árbol.
+
+##### El bloque, con una entrada por familia
+
+Devuelve **0** si la familia pedida se puede aislar y **≠ 0** si no. Es una entrada por familia y no
+un bloque que comprueba las dos: comprobar ambas marcaría `UNAVAILABLE` cuando falta el CLI de la
+familia **que no se va a despachar**, que es el caso corriente de una allowlist con una sola familia.
 
 ```bash
-codex exec --help | grep -q -- --ignore-user-config || FAIL=1
-for f in hooks apps plugins; do
-  codex features list 2>/dev/null | grep -qE "^${f}[[:space:]]" || FAIL=1
-done
+# POSIX
+preflight_aislamiento() {
+  fam="$1"
+  case "$fam" in
+    codex)
+      codex exec --help 2>/dev/null | grep -q -- --ignore-user-config || return 1
+      for f in hooks apps plugins; do
+        codex features list 2>/dev/null | grep -qE "^${f}[[:space:]]" || return 1
+      done
+      return 0 ;;
+    claude)
+      claude --help 2>/dev/null | grep -q -- --safe-mode || return 1
+      return 0 ;;
+    *) return 2 ;;   # familia no declarada en la política
+  esac
+}
+
+preflight_aislamiento codex || { echo "UNAVAILABLE: aislamiento no garantizado (codex)"; }
 ```
 
-Por qué fail-closed y no best-effort: `-s read-only` acota lo que el worker escribe **en disco**,
-no los efectos remotos de una tool MCP. Un worker "read-only" con los MCP del entorno puede
-alcanzar una tool de ejecución y correr comandos fuera del `working_dir`. Si no se puede
-garantizar el aislamiento, la degradación correcta es no tener revisor, no tener uno sin contener.
+```powershell
+# PowerShell
+function Preflight-Aislamiento {
+  param([string]$Familia)
+  switch ($Familia) {
+    'codex' {
+      if (-not ((codex exec --help 2>$null) -match '--ignore-user-config')) { return 1 }
+      $feats = codex features list 2>$null
+      foreach ($f in 'hooks','apps','plugins') {
+        if (-not ($feats -match "^$f\s")) { return 1 }
+      }
+      return 0
+    }
+    'claude' {
+      if (-not ((claude --help 2>$null) -match '--safe-mode')) { return 1 }
+      return 0
+    }
+    default { return 2 }
+  }
+}
+```
+
+**El código de salida es el punto, y antes no lo era.** La versión anterior de este bloque asignaba
+`FAIL=1` en sus ramas y **nunca inicializaba esa variable, nunca la consumía y no devolvía nada**:
+medido con un CLI que no ofrecía ninguno de los mecanismos, el bloque completo devolvía `0`. Una
+doctrina fail-closed cuya comprobación no puede cortar es una comprobación que no existe. Quien la
+consuma tiene que **ramificar sobre el código**, no correr el bloque y seguir.
+
+**Un mecanismo ausente ya hace fallar el lanzamiento por su cuenta** —un flag que el CLI no conoce es
+un error de invocación—, así que el preflight no agrega seguridad: agrega **diagnóstico**. Convierte
+un fallo de arranque confuso, a mitad de una corrida, en un `UNAVAILABLE` limpio antes de despachar.
 
 #### Ronda 1
 
@@ -360,6 +443,7 @@ contraintuitivos y **no** se deben "simplificar":
   el valor vacío y el flag no se pasa: es preferible el default del CLI a forzar un modelo sacado
   de dentro de una tabla, que aplica a otro contexto y no a la raíz.
 
+<!-- despacho:inicio:cr-ronda1-posix:codex -->
 ```bash
 # POSIX
 CODEX_CFG="${CODEX_HOME:-$HOME/.codex}/config.toml"
@@ -389,7 +473,9 @@ grep -m1 -o '"thread_id":"[^"]*"' <ruta/al/thread-r1.jsonl> | cut -d'"' -f4 \
   > <ruta/al/session.txt>
 printf '{"model":"%s","effort":"%s"}\n' "$MODEL" "$EFFORT" > <ruta/al/session-meta.json>
 ```
+<!-- despacho:fin:cr-ronda1-posix -->
 
+<!-- despacho:inicio:cr-ronda1-ps:codex -->
 ```powershell
 # PowerShell
 $CodexCfg = Join-Path ($env:CODEX_HOME ?? "$HOME\.codex") 'config.toml'
@@ -417,6 +503,7 @@ Get-Content -Raw <ruta\al\prompt-r1.txt> |
   Select-Object -First 1).Matches.Groups[1].Value > <ruta\al\session.txt>
 @{ model = $Model; effort = $Effort } | ConvertTo-Json -Compress > <ruta\al\session-meta.json>
 ```
+<!-- despacho:fin:cr-ronda1-ps -->
 
   Los cuatro flags de aislamiento —`--ignore-user-config --disable hooks --disable apps
   --disable plugins`— son el corazón del cambio: sin ellos el worker hereda los MCP del entorno,
@@ -450,6 +537,7 @@ Get-Content -Raw <ruta\al\prompt-r1.txt> |
   nuevo: `$MODEL`/`$EFFORT` de la ronda 1 no existen acá. Por eso la ronda 1 los persistió en
   `session-meta.json` junto al `session.txt`.
 
+  <!-- despacho:inicio:cr-resume-posix:codex -->
   ```bash
   SESSION_ID=$(cat <ruta/al/session.txt>)
   echo "resume → ${SESSION_ID:?vacío}"   # eco visible + corte si quedó vacío (ver nota --last)
@@ -459,14 +547,16 @@ Get-Content -Raw <ruta\al\prompt-r1.txt> |
 
   set -- exec resume "$SESSION_ID" --ignore-user-config \
          --disable hooks --disable apps --disable plugins \
-         -c sandbox_mode=read-only --skip-git-repo-check \
+         -c sandbox_mode=read-only --skip-git-repo-check --json \
          --output-last-message <ruta/veredicto.txt>
   [ -n "$MODEL" ]  && set -- "$@" -m "$MODEL"
   [ -n "$EFFORT" ] && set -- "$@" -c "model_reasoning_effort=$EFFORT"
   set -- "$@" -
   codex "$@" < <ruta/al/delta-rN.txt> > <ruta/al/thread-rN.jsonl> 2> <ruta/al/rN.err.txt>
   ```
+  <!-- despacho:fin:cr-resume-posix -->
   En **PowerShell**:
+  <!-- despacho:inicio:cr-resume-ps:codex -->
   ```powershell
   $SessionId = (Get-Content <ruta\al\session.txt>).Trim()
   if (-not $SessionId) { throw 'session id vacío' }; "resume → $SessionId"
@@ -476,13 +566,15 @@ Get-Content -Raw <ruta\al\prompt-r1.txt> |
 
   $CodexArgs = @('exec','resume',$SessionId,'--ignore-user-config','--disable','hooks',
                  '--disable','apps','--disable','plugins','-c','sandbox_mode=read-only',
-                 '--skip-git-repo-check','--output-last-message','<ruta\veredicto.txt>')
+                 '--skip-git-repo-check','--json',
+                 '--output-last-message','<ruta\veredicto.txt>')
   if ($Model)  { $CodexArgs += @('-m', $Model) }
   if ($Effort) { $CodexArgs += @('-c', "model_reasoning_effort=$Effort") }
   $CodexArgs += '-'
   Get-Content -Raw <ruta\al\delta-rN.txt> |
     & codex @CodexArgs > <ruta\al\thread-rN.jsonl> 2> <ruta\al\rN.err.txt>
   ```
+  <!-- despacho:fin:cr-resume-ps -->
   Capturar el stderr no es opcional: es donde aparecen los fallos de refresh de OAuth y los
   errores de metadata de modelo, que de otro modo pasan invisibles.
   **`--last` es solo fallback** (si el thread id no se pudo capturar): filtra por cwd — elige la
@@ -531,6 +623,7 @@ Trampas de este CLI que la invocación debe esquivar:
   revisión.
 
 - Ronda 1 (fijar un session id propio para poder reanudar después; prompt escrito antes a archivo):
+  <!-- despacho:inicio:cr-viac-r1-posix:claude -->
   ```bash
   SESSION_ID=$(uuidgen)   # Git Bash en Windows no trae uuidgen → ver "Portabilidad entre shells"
   (cd <working_dir> && claude -p --safe-mode \
@@ -540,8 +633,10 @@ Trampas de este CLI que la invocación debe esquivar:
       --session-id "$SESSION_ID" \
       < <ruta/al/prompt-r1.txt>) > <ruta/al/veredicto.txt>
   ```
+  <!-- despacho:fin:cr-viac-r1-posix -->
   En **PowerShell** (`uuidgen` → `[guid]::NewGuid()`; el subshell `(cd … && …)` →
   `Push-Location`/`Pop-Location`; `<` → pipe):
+  <!-- despacho:inicio:cr-viac-r1-ps:claude -->
   ```powershell
   $SessionId = [guid]::NewGuid().ToString()
   Push-Location <working_dir>
@@ -551,9 +646,11 @@ Trampas de este CLI que la invocación debe esquivar:
         '--allowedTools=Read,Grep,Glob' --session-id $SessionId > <ruta\al\veredicto.txt>
   } finally { Pop-Location }
   ```
+  <!-- despacho:fin:cr-viac-r1-ps -->
   El mensaje final (veredicto + findings) sale por stdout → redirigirlo a archivo para parsear,
   igual que `--output-last-message` en la Vía B.
 - Rondas siguientes (mismo thread, con memoria de lo ya discutido):
+  <!-- despacho:inicio:cr-viac-resume-posix:claude -->
   ```bash
   (cd <working_dir> && claude -p --safe-mode \
       --model opus \
@@ -562,7 +659,9 @@ Trampas de este CLI que la invocación debe esquivar:
       --resume "$SESSION_ID" \
       < <ruta/al/delta-rN.txt>) > <ruta/al/veredicto.txt>
   ```
+  <!-- despacho:fin:cr-viac-resume-posix -->
   En **PowerShell**:
+  <!-- despacho:inicio:cr-viac-resume-ps:claude -->
   ```powershell
   Push-Location <working_dir>
   try {
@@ -571,6 +670,7 @@ Trampas de este CLI que la invocación debe esquivar:
         '--allowedTools=Read,Grep,Glob' --resume $SessionId > <ruta\al\veredicto.txt>
   } finally { Pop-Location }
   ```
+  <!-- despacho:fin:cr-viac-resume-ps -->
 - Fallback si la invocación cuelga pese a todo: agregar `--no-session-persistence` (solo `-p`).
   Deshabilita el resume → degradar a rondas independientes (ver "Resume entre rondas").
 - El prompt debe decir igualmente que es una revisión de SOLO lectura: la restricción de tools
@@ -618,12 +718,14 @@ hasta **600000ms** (300000 para `normal`, 600000 para `complex`). No hay loop de
 cuelgue posible**, porque el propio exec mata el comando al vencer el tope. Es el default en `auto`
 cuando el conductor puede sostener ese timeout, y lo que fuerza `execution: sync`.
 
+<!-- despacho:inicio:cr-latencia-sync:claude -->
 ```bash
 # Sync (POSIX) — el conductor fija el tope vía su exec (Claude Code: Bash timeout 300000/600000):
 ( cd <working_dir> && claude -p --safe-mode --model opus --permission-mode default \
     --allowedTools=Read,Grep,Glob --session-id "$SESSION_ID" \
     < <ruta/al/prompt-r1.txt> ) > <ruta/al/veredicto.txt> 2> <ruta/al/claude-r1.err.txt>
 ```
+<!-- despacho:fin:cr-latencia-sync -->
 Si el comando excede el `timeout` del conductor → `UNAVAILABLE`. Vías A/B (Codex revisor) ya son
 bloqueantes por naturaleza: mismo contrato, el tope lo da el timeout del conductor.
 
@@ -640,6 +742,7 @@ comando único bloquea más que el límite del conductor. Lo fuerza `execution: 
 > **sin** ver `^VERDICT:` → **abandonar, marcar `UNAVAILABLE`, degradar al gate humano** y matar el
 > proceso en background si se puede (`kill <pid>`). Nunca seguir poleando indefinida.
 
+<!-- despacho:inicio:cr-latencia-background:claude -->
 ```bash
 # Lanzar en background (POSIX) — capturar el PID para poder matarlo al vencer el deadline:
 ( cd <working_dir> && claude -p --safe-mode --model opus --permission-mode default \
@@ -651,6 +754,7 @@ PID=$!
 grep -q '^VERDICT:' <ruta/al/veredicto.txt> 2>/dev/null && cat <ruta/al/veredicto.txt> || echo 'corriendo…'
 # Si se agotan los intentos sin VERDICT: → kill "$PID"; tratar como UNAVAILABLE.
 ```
+<!-- despacho:fin:cr-latencia-background -->
 ```powershell
 # Lanzar en background (PowerShell; Start-Process toma el prompt como archivo de stdin):
 $SessionId = [guid]::NewGuid().ToString()
@@ -832,9 +936,12 @@ El loop reusa el **mismo thread del revisor** para que tenga memoria de lo ya di
   el rationale del rechazo si lo hubo, y el tema con sus anclas. Y **la lista explícita de IDs
   rechazados sobre los que se espera respuesta** — es lo que el prompt de ronda N convierte en su
   bloque de respuestas obligatorias.
-- Vía A: `--resume` (→ `task --resume-last`). Vía B: `codex exec resume <thread_id>
-  -c sandbox_mode="read-only"` (el override es obligatorio: resume NO hereda el sandbox de la
-  sesión — ver la Vía B). Vía C:
+- Vía A: `--resume` (→ `task --resume-last`). Vía B: `codex exec resume`, **con la forma completa de
+  la receta de la Vía B y no una abreviada** — lleva los cuatro flags de aislamiento, el override
+  `-c sandbox_mode="read-only"` (obligatorio: resume NO hereda el sandbox de la sesión) y `--json`.
+  Acá no se transcribe el comando a propósito: una invocación recortada en una enumeración es
+  copiable, y copiarla sin los flags relevanta los MCP del usuario, que es exactamente lo que la Vía
+  B advierte cuatro párrafos más arriba. Vía C:
   `claude -p --resume <session_id>`. El delta se pasa por stdin con la primitiva de cada shell
   (`<` en POSIX, `Get-Content -Raw | …` en PowerShell — ver "Portabilidad entre shells").
 - Si el resume no está disponible en el entorno, degradar a rondas independientes re-enviando el
@@ -858,6 +965,7 @@ los otros dos:
   descarta, y sin repetirlos la crítica seguiría con un modelo distinto del que exploró. Si el
   `session.json` no los trae, se usa el default del CLI y se declara en el eco.
 
+<!-- despacho:inicio:cr-seed-posix:codex -->
 ```bash
 # POSIX — resume del seed
 SEED=<sesión que resuelva la matriz de resume>
@@ -875,7 +983,9 @@ set -- exec resume "$SESSION_ID" --ignore-user-config \
 set -- "$@" -
 codex "$@" < <ruta/al/prompt-r1.txt> > <ruta/al/thread-r1.jsonl> 2> <ruta/al/r1.err.txt>
 ```
+<!-- despacho:fin:cr-seed-posix -->
 
+<!-- despacho:inicio:cr-seed-ps:codex -->
 ```powershell
 # PowerShell — resume del seed
 $Seed = Get-Content -Raw co-explore\session.json | ConvertFrom-Json
@@ -892,6 +1002,7 @@ $CodexArgs += '-'
 Get-Content -Raw <ruta\al\prompt-r1.txt> |
   & codex @CodexArgs > <ruta\al\thread-r1.jsonl> 2> <ruta\al\r1.err.txt>
 ```
+<!-- despacho:fin:cr-seed-ps -->
 
 Tras el seed, persistir `session-meta.json` en el scratch de esta skill igual que en una ronda 1
 normal, para que las rondas siguientes no dependan del `session.json` de otra skill.

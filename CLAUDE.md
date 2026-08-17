@@ -180,6 +180,85 @@ Al crear o editar skills, seguí las buenas prácticas de agentskills.io (refere
 
   > **El código de salida de `--reporte` NO es la señal de salud: hoy devuelve 4 y ese es el estado sano.** Un bloque que corta con `exit 99` sobre una entrada inexistente es un error de invocación y no un incumplimiento, pero AC-3 clasifica como `fallo` cualquier código distinto de 0 y 1, y `fallo` domina la precedencia global. La señal es el cuerpo del reporte: **cero `divergencia`, cero `incumplimiento_comun`, cero `no_comprobable`, y `fallo` solo en los pares que declaran un caso de ese tipo** — hoy son cinco (`gate-fase-3`, `integracion-ownership`, `orchestration-contract`, `orchestration-model`, `orchestration-state`), cada uno con sus casos de entrada inexistente y `clase_esperada: fallo`. Un `fallo` en un caso que no lo declara sí es rojo. Las que se leen por código de salida son las **nueve** guardas propias del arnés (`--auditar-catalogo`, `--auditar-matrices` y los **siete** `--autotest-*`): 0 en verde, 4 en rojo. Las banderas `--estricto-mono-causa`, `--exigir-particiones`, `--afirmar-particiones` y `--testigos-centinela` **no** son guardas independientes: corren la suite y devuelven ese mismo 4, así que verificar con ellas exige diffear su reporte contra el de `--reporte` puro.
 
+- **Si el cambio toca una receta de despacho, una marca `despacho:`, la tabla de política de aislamiento o este mismo bloque, correr el verificador de aislamiento.** Son las **cuatro** superficies que pueden romperlo, y el disparador se enuncia por lo que cambia y no por el nombre de una sección: anclarlo a un título es el defecto medido de `--ac 12`, cuyo disparador documentado no dispara ante un cambio de receta. El verificador es un bloque de shell —no hay archivo bajo `scripts/`, regla 3— con dos salidas que son **dos propiedades distintas**:
+
+  ```bash
+  # uso: verificar_aislamiento <raíz> <correccion|candidatos>
+  verificar_aislamiento() {
+    raiz="${1:?raíz}" modo="${2:?modo}"
+    pol="$raiz/skills/cross-review/reference.md"
+    # la política se LEE de su tabla delimitada; duplicar los flags acá crearía una segunda sede
+    leer_pol() {
+      awk -v fam="$1" '/politica-aislamiento:inicio/{f=1;next} /politica-aislamiento:fin/{f=0}
+                       f && $0 ~ "^\\| `" fam "`"' "$pol" |
+        grep -o '`--[a-z-]*\( [a-z]*\)\?`' | tr -d '`' | paste -sd'|' -
+    }
+    CM=$(leer_pol codex); LM=$(leer_pol claude)
+    [ -n "$CM" ] && [ -n "$LM" ] || { echo "política ilegible en $pol"; return 2; }
+    archivos=$(grep -Rl --include='*.md' 'despacho:inicio:' "$raiz/skills" 2>/dev/null)
+    case "$modo" in
+      correccion)
+        salida=$(
+          printf '%s\n' "$archivos" | while IFS= read -r f; do [ -n "$f" ] && grep -o 'despacho:inicio:[a-z0-9-]*' "$f"; done \
+            | sort | uniq -d | sed 's/^/GLOBAL 0 /;s/$/ id duplicado/'
+          printf '%s\n' "$archivos" | while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            awk -v F="$f" -v CM="$CM" -v LM="$LM" '
+              /<!-- despacho:inicio:/ {
+                if (ab) { print F " " ini " " id " apertura sin cierre, o region anidada (indistinguibles desde el texto)" }
+                match($0,/despacho:inicio:[a-z0-9-]+:[a-z]+/); s=substr($0,RSTART,RLENGTH)
+                split(s,p,":"); id=p[3]; fam=p[4]
+                if (fam!="codex" && fam!="claude") print F " " NR " " id " familia no declarada"
+                ab=1; ini=NR; cuerpo=""; next }
+              /<!-- despacho:fin:/ {
+                match($0,/despacho:fin:[a-z0-9-]+/); s=substr($0,RSTART,RLENGTH); split(s,p,":")
+                if (!ab) { print F " " NR " " p[3] " cierre sin apertura"; next }
+                if (p[3]!=id) print F " " NR " " id " emparejamiento roto (cierra " p[3] ")"
+                if (cuerpo ~ /^[[:space:]]*$/) print F " " ini " " id " region vacia"
+                n=split((fam=="codex")?CM:LM, ms, "|")
+                for (i=1;i<=n;i++) {
+                  if (ms[i]=="") continue
+                  # dos formas equivalentes: POSIX `--disable hooks` y PowerShell `'"'"'--disable'"'"','"'"'hooks'"'"'`
+                  ps=ms[i]; gsub(/ /, "'"'"','"'"'", ps)
+                  if (index(cuerpo,ms[i])==0 && index(cuerpo,ps)==0)
+                    print F " " ini " " id " falta mecanismo: " ms[i] }
+                ab=0; next }
+              # los comentarios NO cuentan como mecanismo: nombrar el flag en prosa no lo aplica
+              { if (ab) { linea=$0; sub(/^[[:space:]]+/,"",linea)
+                          if (linea !~ /^#/) cuerpo = cuerpo "\n" $0 } }
+              END { if (ab) print F " " ini " " id " apertura sin cierre" }' "$f"
+          done )
+        [ -z "$salida" ] && return 0
+        printf '%s\n' "$salida"; return 1 ;;
+      candidatos)
+        grep -Rn --include='*.md' -e 'codex exec' -e 'claude -p' "$raiz/skills" 2>/dev/null |
+          while IFS= read -r linea; do
+            f=${linea%%:*}; n=$(printf '%s' "$linea" | cut -d: -f2)
+            awk -v N="$n" 'NR<=N { if (/despacho:inicio:/) d=1; if (/despacho:fin:/) d=0 }
+                           END { exit d?1:0 }' "$f" && printf '%s\n' "$linea"
+          done
+        return 0 ;;
+      *) echo "modo desconocido: $modo"; return 2 ;;
+    esac
+  }
+  ```
+
+  **Cómo se lee.** `correccion` es el **veredicto**: 0 en verde, 1 con una línea por violación
+  (`<archivo>:<línea> <id> <causa>`). `candidatos` es **evidencia de revisión**, siempre 0, y lista
+  toda invocación fuera de región para que una persona la adjudique en
+  `.plans/<id>/candidatos-despacho.md` con su clasificación y fundamento.
+
+  > **Las dos cosas que no detecta, y conviene que estén escritas al lado.** Primero, **que un
+  > conductor se desvíe de la receta en runtime**: esto verifica el texto documentado, no el comando
+  > que se ejecutó. Segundo, y más importante, **la completitud del inventario no es automatizable** —
+  > que no exista un despacho sin marcar—. No es un hueco reparable con un predicado mejor: el
+  > instrumento de escalón 4 que existió para esto (`scripts/verificar-matriz-despachos.py`, retirado
+  > en `d31fe87` como andamiaje sin consumidor) midió **64 sitios detectados en el árbol, 44 de ellos
+  > fuera de toda sección anclada**, y la mayoría eran documentación, ejemplos y tablas de vías.
+  > Distinguir un despacho real de su documentación es una adjudicación humana, y por eso `candidatos`
+  > **lista** en vez de fallar. Un verificador que prometiera completitud terminaría permanentemente en
+  > rojo, o —peor— con una allowlist congelada que se desactualiza sola.
+
 > Nota: varios SKILL.md de este repo (p. ej. `sdd-flow`) exceden holgadamente el presupuesto de tokens sugerido. Es una tensión conocida por la complejidad del flujo; al editar, empujá contenido hacia `reference.md` antes que engordar el SKILL.md.
 
 ## Convenciones de frontmatter propias del repo

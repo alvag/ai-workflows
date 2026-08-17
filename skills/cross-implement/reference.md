@@ -121,52 +121,78 @@ Sin CLI para el implementador seleccionado → `UNAVAILABLE` (regla 7 del `SKILL
 
 ## Vías de invocación
 
-Dos reglas invariantes (además de las del `SKILL.md`):
+Tres reglas invariantes (además de las del `SKILL.md`):
 
 1. **Escritura acotada por construcción, nunca por confianza**: sandbox `workspace-write` en
    Codex, permisos path-scoped en Claude. **Nunca** `--yolo` /
    `--dangerously-bypass-approvals-and-sandbox` / `--dangerously-skip-permissions` /
    `acceptEdits` sin scoping — ver la matriz de verificación: `acceptEdits` escribe fuera del
    working dir.
-2. El prompt va por **stdin desde archivo** (tool Write), igual que en las skills hermanas.
+2. **Aislamiento fail-closed antes de lanzar**, con el preflight de la sede única:
+   `cross-review/reference.md` → "Preflight de aislamiento (fail-closed)". Se ejecuta
+   `preflight_aislamiento <familia>` para la familia del implementador seleccionado y **se ramifica
+   sobre su código de salida**: distinto de 0 → `UNAVAILABLE`, y no se despacha.
 
-Las dos se mantienen en cada intento y reanudación: cambia la ejecución concreta, no qué se le exige.
+   > **Acá pesa más que en una skill de revisión, no menos.** El sandbox `workspace-write` acota lo
+   > que el implementador escribe **en disco dentro del working dir**, y no acota los efectos de una
+   > tool MCP: un implementador con los MCP del entorno puede alcanzar una tool de ejecución y operar
+   > **fuera** de ese borde, con el sandbox intacto. Este es el único worker del ecosistema con
+   > permiso de escritura, así que un sandbox más laxo no ablanda el preflight — lo vuelve más
+   > necesario. La degradación correcta es no tener implementador, no tener uno sin contener; para
+   > `sdd-flow`, eso es el modo `cross` cayendo a `inline`.
+3. El prompt va por **stdin desde archivo** (tool Write), igual que en las skills hermanas.
+
+Las tres se mantienen en cada intento y reanudación: cambia la ejecución concreta, no qué se le exige.
 El manifest de corrida registra la vía efectiva (esquema en `cross-review/reference.md` → "Manifest
 de corrida"). Los comandos concretos aparecen en cada vía documentada debajo.
 
 ### Vía W-B — Codex implementador (autor Claude)
 
 - **Lanzamiento** (sesión fresca; captura del thread id igual que la Vía B de cross-review):
+  <!-- despacho:inicio:ci-wb-posix:codex -->
   ```bash
-  codex exec -s workspace-write -C <working_dir> --skip-git-repo-check --json \
+  codex exec --ignore-user-config --disable hooks --disable apps --disable plugins \
+    -s workspace-write -C <working_dir> --skip-git-repo-check --json \
     --output-last-message <scratch>/report.txt - < <scratch>/prompt.txt \
     > <scratch>/thread.jsonl 2> <scratch>/impl.err.txt
   grep -m1 -o '"thread_id":"[^"]*"' <scratch>/thread.jsonl | cut -d'"' -f4 > <scratch>/session.txt
   ```
+  <!-- despacho:fin:ci-wb-posix -->
   En **PowerShell**:
+  <!-- despacho:inicio:ci-wb-ps:codex -->
   ```powershell
   Get-Content -Raw <scratch>\prompt.txt |
-    codex exec -s workspace-write -C <working_dir> --skip-git-repo-check --json `
+    codex exec --ignore-user-config --disable hooks --disable apps --disable plugins `
+      -s workspace-write -C <working_dir> --skip-git-repo-check --json `
       --output-last-message <scratch>\report.txt - > <scratch>\thread.jsonl 2> <scratch>\impl.err.txt
   (Select-String -Path <scratch>\thread.jsonl -Pattern '"thread_id":"([^"]+)"' |
     Select-Object -First 1).Matches.Groups[1].Value > <scratch>\session.txt
   ```
+  <!-- despacho:fin:ci-wb-ps -->
 - `-s workspace-write` limita las escrituras al `working_dir` **más `/tmp`** (por diseño del
   sandbox). Caveat: si el repo objetivo vive bajo `/tmp`, el borde efectivo es más laxo.
-- **Fix round** (resume del MISMO thread). Dos cosas que **no** se heredan del comando de lanzamiento
-  y que hay que mirar antes de copiarlo (detalle en `cross-review/reference.md` → "Asimetría de flags
-  entre `exec` y `exec resume`"):
+- **Fix round** (resume del MISMO thread). **Tres** cosas que **no** se heredan del comando de
+  lanzamiento y que hay que mirar antes de copiarlo (detalle en `cross-review/reference.md` →
+  "Asimetría de flags entre `exec` y `exec resume`"):
   - el **override de sandbox es obligatorio**: el modo de la sesión original no es garantía al
     reanudar, y por eso va `-c sandbox_mode="workspace-write"` y no `-s`, que `resume` **rechaza**;
   - **`-C` tampoco existe en `resume`**: el working dir es el **cwd del proceso**. Lanzar el fix
     round desde otro directorio escribe en el repo equivocado **sin error**. Posicionarse antes.
+  - **el aislamiento tampoco se hereda, y esta es la que más fácil se olvida**: la configuración se
+    relee en **cada** invocación de `codex`, así que un resume sin los cuatro flags vuelve a levantar
+    los MCP, hooks y plugins del usuario por más que el lanzamiento los haya apagado. `exec resume`
+    **sí** los acepta —a diferencia de `-s` y `-C`—, así que van repetidos enteros.
+  <!-- despacho:inicio:ci-wb-resume:codex -->
   ```bash
   SESSION_ID=$(cat <scratch>/session.txt)
   echo "resume → ${SESSION_ID:?vacío}"   # id vacío = sesión fresca silenciosa; cortar acá
-  codex exec resume "$SESSION_ID" -c sandbox_mode="workspace-write" --skip-git-repo-check --json \
+  codex exec resume "$SESSION_ID" --ignore-user-config \
+    --disable hooks --disable apps --disable plugins \
+    -c sandbox_mode="workspace-write" --skip-git-repo-check --json \
     --output-last-message <scratch>/report.txt - < <scratch>/fix-rN.txt \
     > <scratch>/thread-fix-rN.jsonl 2> <scratch>/impl.err.txt
   ```
+  <!-- despacho:fin:ci-wb-resume -->
   En **PowerShell**: mismo patrón que la Vía B de cross-review (pipe + `$SessionId` con guard),
   cambiando el valor del override a `workspace-write`.
 
@@ -177,6 +203,7 @@ deniega en headless toda tool fuera de `--allowedTools`, y las reglas `Edit(./**
 limitan la escritura al working dir:
 
 - **Lanzamiento** (sesión fresca, con session id propio para el resume):
+  <!-- despacho:inicio:ci-wc-lanzamiento:claude -->
   ```bash
   SESSION_ID=$(uuidgen)   # Git Bash en Windows: ver "Portabilidad" de cross-review
   ( cd <working_dir> && claude -p --safe-mode --model sonnet --permission-mode default \
@@ -185,6 +212,7 @@ limitan la escritura al working dir:
       < <scratch>/prompt.txt ) > <scratch>/report.txt 2> <scratch>/impl.err.txt
   echo "$SESSION_ID" > <scratch>/session.txt
   ```
+  <!-- despacho:fin:ci-wc-lanzamiento -->
   En **PowerShell** (mismo patrón `Start-Process`/pipe que la Vía C de cross-review, con estas
   tools; entrecomillar el `--allowedTools=…` completo para que las comas no se parseen como array).
 - **`Bash(<proof_bin>:*)`**: derivar el patrón del primer token de `proof_cmd` (p. ej.
@@ -199,12 +227,14 @@ limitan la escritura al working dir:
   order congelado + la revisión del conductor). Subir a `opus` es decisión consciente de la
   llamadora para work orders complejos.
 - **Fix round** (mismo thread):
+  <!-- despacho:inicio:ci-wc-fix:claude -->
   ```bash
   ( cd <working_dir> && claude -p --safe-mode --model sonnet --permission-mode default \
       --allowedTools='Read,Grep,Glob,Edit(./**),Write(./**),Bash(<proof_bin>:*)' \
       --resume "$SESSION_ID" \
       < <scratch>/fix-rN.txt ) > <scratch>/report.txt 2> <scratch>/impl.err.txt
   ```
+  <!-- despacho:fin:ci-wc-fix -->
 - Con conductor de exec corto (Codex ~120s): lanzar en background y pollear el `report.txt`
   buscando `STATUS: done` — mismo patrón BACKGROUND de `cross-review/reference.md` → "Latencia
   y timeout (Claude revisor)", con el deadline de esta skill.

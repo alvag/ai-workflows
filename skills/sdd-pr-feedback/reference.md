@@ -243,11 +243,31 @@ created_at: <ISO-8601>
 
 ### Cómo despachar según el entorno
 
+<!-- despacho:inicio:prfb-codex:codex -->
+
 | Conductor | Mecanismo |
 |---|---|
 | Claude Code | Subagente del entorno (`Agent`/`Task`), un despacho. |
-| Codex CLI | `codex exec -s workspace-write -C <repo> --skip-git-repo-check --output-last-message <out.txt> - < <prompt.txt>` (prompt a archivo, nunca inline). |
+| Codex CLI | `codex exec --ignore-user-config --disable hooks --disable apps --disable plugins -s workspace-write -C <repo> --skip-git-repo-check --output-last-message <out.txt> - < <prompt.txt>` (prompt a archivo, nunca inline). |
 | Sin subagentes | El conductor implementa inline siguiendo la Vía B de `sdd-flow` (degradación). |
+
+<!-- despacho:fin:prfb-codex -->
+
+> **Por qué la marca envuelve la tabla entera y no la fila.** Una línea que no es fila **corta la
+> tabla** en Markdown, así que marcar solo la fila del despacho la partiría en dos. La tabla tiene un
+> único despacho por CLI y es de familia `codex`, de modo que la región completa se comprueba contra
+> esa política sin ambigüedad. Si algún día esta tabla sumara una fila con un despacho de otra
+> familia, hay que partir la tabla —igual que se parten los fences compartidos—, no anidar marcas.
+
+**Antes de despachar por CLI, el preflight de aislamiento**, con el corte de la sede única:
+`cross-review/reference.md` → "Preflight de aislamiento (fail-closed)". Se corre
+`preflight_aislamiento codex` y se **ramifica sobre su código de salida**: distinto de 0 → no se
+despacha por CLI y se cae a la última fila de esta tabla, que es la degradación que ya existe.
+
+El corte vale **igual que para un worker read-only, y por el mismo motivo con más peso**: este
+despacho usa `-s workspace-write`, que acota lo que el agente escribe **en disco dentro del repo** y
+no acota los efectos de una tool MCP. Un implementador con los MCP del entorno alcanza una tool de
+ejecución y opera fuera de ese borde con el sandbox intacto.
 
 ---
 
