@@ -217,42 +217,81 @@ siguen aplicando y sus fallos se informan como hasta ahora.
    `<structured_output_contract>`, `<dig_deeper_nudge>`), incluyendo el **contenido** del
    artefacto inline (grounding) y el foco según `artifact_type`. Invocar al revisor en
    **read-only**. Guardar referencia del thread para poder reanudarlo en rondas siguientes.
-2. **Parsear la respuesta** al formato estructurado (`reference.md` → "Formato de salida"):
-   lista de `findings` `[severidad, confianza, qué, por qué, cambio sugerido, AC/sección]` + un
-   veredicto `APPROVED | REVISE`.
-3. **Si `APPROVED`** → cortar el loop. Ir a "Salida".
-4. **Si `REVISE`** → para cada finding, **decidir como árbitro** (regla 3, vía
-   `receiving-code-review`): aplicar / rechazar / escalar. Ordenar el triage por severidad×confianza
-   (atacar primero lo grave y probable), pero **verificar cada finding igual** — la confianza no
-   saltea la regla 3. Aplicar los aceptados editando el artefacto (Claude edita, no el revisor).
-   **Todo rechazo lleva motivo: un rechazo sin motivo es un estado inválido, no un default.**
-   Registrar cada evento en el **ledger** del `review-log.md`.
-5. **Siguiente ronda** reanudando el mismo thread, con el asset `review-round-n.md`: el delta se
-   **proyecta desde el ledger** y el revisor debe pronunciarse por cada rechazo —aceptarlo o
-   defenderlo con argumento nuevo—. Repetir desde el paso 2.
-6. **Corte por tanda.** `max_rounds` es el presupuesto de **una tanda**, no de la corrida: al
+2. **Validar la conformidad** de la respuesta contra el formato estructurado (`reference.md` →
+   "Formato de salida"): lista de `findings` `[severidad, confianza, qué, por qué, cambio sugerido,
+   AC/sección]` + un veredicto `APPROVED | REVISE`, con su marca final. Una salida no conforme no se
+   arbitra (ver "Degradación").
+3. **Asignar identidad y deduplicar por tema.** El ID lo asigna el conductor, no el revisor, y dos
+   emisiones del mismo tema se unifican **antes** de cualquier arbitraje (`ciclo-de-vida.md` →
+   "Identidad").
+4. **Arbitrar, en dos pasadas y en este orden:** primero las **respuestas a rechazos** —aceptaciones
+   y defensas, evaluando su admisibilidad—, después los **findings nuevos**. Para cada uno, **decidir
+   como árbitro** (regla 3, vía `receiving-code-review`): aplicar / rechazar / escalar. Ordenar el
+   triage por severidad×confianza (atacar primero lo grave y probable), pero **verificar cada finding
+   igual** — la confianza no saltea la regla 3. Aplicar los aceptados editando el artefacto (Claude
+   edita, no el revisor). **Todo rechazo lleva motivo: un rechazo sin motivo es un estado inválido,
+   no un default.** Registrar cada evento en el **ledger** del `review-log.md`.
+5. **Registrar el cierre de la ronda.** Ante **toda** salida conforme —incluida la que no trae
+   findings nuevos ni respuestas— apendizar al ledger una entrada `control-corrida` con
+   `ronda-completada-valida` si esta ronda recibió el artefacto actualizado, o `ronda-completada` si
+   no. **Registra una ronda ya ejecutada: no despacha ninguna ni obliga a correr una adicional.**
+6. **Derivar el veredicto del ledger** —no del bloque del revisor— y recién entonces **evaluar el
+   corte**: `APPROVED` cierra el loop y va a "Salida"; `REVISE` sigue. La tabla del predicado, con
+   sus cuatro ramas, está en `reference.md` → "Veredicto derivado".
+7. **Siguiente ronda** reanudando el mismo thread, con el asset `review-round-n.md`: el delta se
+   **proyecta desde el ledger**, el revisor debe pronunciarse por cada rechazo —aceptarlo o
+   defenderlo con argumento nuevo— y, **si hay aplicaciones pendientes de revisión, el artefacto
+   actualizado viaja completo en el prompt**. Repetir desde el paso 2.
+8. **Corte por tanda.** `max_rounds` es el presupuesto de **una tanda**, no de la corrida: al
    agotarse se abre el **checkpoint** donde el humano elige entre cuatro opciones, y la numeración
    de rondas acumula si concede. Ver `ciclo-de-vida.md` y `reference.md` → "Tandas y salida de
    rondas".
+
+> **Por qué el corte va después de arbitrar, y no antes.** El veredicto se deriva del ledger una vez
+> arbitrado todo, así que evaluarlo antes leería un estado que todavía no existe: una defensa sin
+> evaluar quedaría sin arbitrar para siempre, y una edición recién aplicada contaría como convergida
+> sin que nadie la haya visto. El registro del cierre va en el medio a propósito — después del
+> arbitraje, para que la ronda no libere lo que ella misma aplicó; antes del corte, para que una
+> ronda limpia quede registrada aunque el veredicto cierre el loop enseguida.
 
 ## Salida
 
 Devolver a la skill llamadora (o presentar, en modo directo):
 
-- **Veredicto final:** `APPROVED` | `REVISE (rondas agotadas, N disputas abiertas)` | `UNAVAILABLE`.
+- **Veredicto final:** `APPROVED` | `REVISE (rondas agotadas, N disputas abiertas, M aplicaciones
+  pendientes de revisión)` | `UNAVAILABLE`.
   El `UNAVAILABLE` va con su **causa** —`confirmed_wall` · `launch_flake` · `runtime_failure` ·
   `deadline_exceeded`—: son causas del enum compartido, no veredictos nuevos (`reference.md` →
-  "Latencia y timeout (Claude revisor)").
+  "Latencia y timeout (Claude revisor)"). **El conteo `M` va en el texto del veredicto, no solo en el
+  log:** un `REVISE (rondas agotadas, 0 disputas abiertas)` se lee como cierre limpio, y puede estar
+  ocultando tres ediciones que nadie revisó.
+- **`aplicaciones_pendientes` e `ids_pendientes`, también cuando el veredicto es `UNAVAILABLE`.** Una
+  degradación **no abre checkpoint**, así que no lleva `tandas_concedibles` y la señal se perdería
+  entera por esa ruta: si una ronda aplicó findings y la siguiente murió por timeout, error o salida
+  ilegible, el gate humano se libera igual y el artefacto se aprueba sin que nadie sepa que hay
+  ediciones sin mirar. Los dos campos viajan con los **mismos nombres** que abajo, en el retorno de
+  la degradación. El enum de causas **no cambia**: esto agrega datos al retorno, no una causa nueva.
 - **Resumen de la crítica:** qué marcó el revisor, qué aplicó Claude y qué rechazó (con el porqué).
 - **Diff del artefacto** si hubo cambios.
 - **Ruta del `review-log.md`.**
 - **`tandas_concedibles`** — presente en **todo `REVISE` que abra el checkpoint**, por cualquiera de
   sus dos causas: `disponibles` (bool) · `rondas_consumidas` (entero, de la corrida) ·
   `tamano_tanda` (entero, el `max_rounds` vigente) · `causa_corte` (`tanda_agotada` |
-  `solo_disputas`) · `run_id`, con el que la llamadora reanuda **la misma** corrida.
+  `solo_disputas`) · **`aplicaciones_pendientes`** (entero no negativo) · **`ids_pendientes`** (lista
+  de IDs) · `run_id`, con el que la llamadora reanuda **la misma** corrida.
   `disponibles` es **falso** solo cuando la causa es `solo_disputas` —ninguna ronda las resuelve—, y
   **no oculta ni deshabilita ninguna opción**: las cuatro se ofrecen siempre; lo que hace es advertir
   que conceder no puede converger.
+
+  **`aplicaciones_pendientes` e `ids_pendientes` son obligatorios aunque valgan `0` y lista vacía.**
+  Un campo que desaparece cuando no hay nada que reportar es indistinguible de un productor que no lo
+  implementó, y quien presenta el checkpoint no puede distinguir "no hay pendientes" de "no me lo
+  dijeron". Se derivan contando los IDs cuya transición **más reciente** a `aplicado` sigue sin una
+  ronda posterior válida (`ciclo-de-vida.md` → "Aplicación pendiente de revisión").
+
+  **`causa_corte` no gana un valor nuevo por esto.** El checkpoint se abre porque se agotó la tanda:
+  la aplicación pendiente describe el **estado** del ledger, no la **causa** del corte. Un valor
+  nuevo mezclaría las dos cosas y obligaría a cada consumidor a desambiguarlas.
 - **Nota de límite** (obligatoria, una vez por corrida):
 
   > <!-- corpus-invariante:inicio:cross-review.SKILL.md.2d888ab3fdcf -->
@@ -271,6 +310,16 @@ La llamadora presenta este resumen **junto al artefacto** en su gate humano (mis
 extra). El humano aprueba con la segunda opinión ya a la vista, y ahí mismo elige entre las **cuatro
 opciones** del checkpoint si la corrida lo abrió. En modo **directo** y **draft** no hay llamadora:
 las presenta `cross-review`, que ya presenta su propio resultado.
+
+> **Con `aplicaciones_pendientes` mayor que cero, el conteo y sus IDs se declaran ANTES de ofrecer
+> las opciones.** Vale para **todo** presentador del checkpoint —hoy `sdd-flow`, `sdd-orchestrator`,
+> `sdd-pr-feedback`, y esta misma skill en directo y draft—, y también cuando lo que se devuelve es
+> un `UNAVAILABLE` que libera el gate sin abrir checkpoint. La obligación es de **quien presenta**,
+> no de una lista: cualquier skill que ofrezca las cuatro opciones queda alcanzada, y enumerarlas es
+> una ayuda de lectura, no la condición. Quien elige "continuar así" está
+> aprobando el artefacto: si no sabe que hay ediciones que ningún revisor miró, decide sin el único
+> dato que este loop existe para darle, y el hueco reaparece en la interfaz después de haberse
+> cerrado en el predicado.
 
 Además, al resolver el veredicto se escribe el **manifest de corrida** — los tres veredictos, no
 solo `APPROVED`: una serie que registra las revisiones que convergieron y omite las que agotaron
@@ -349,11 +398,12 @@ nunca espera indefinida (ver `reference.md` → "Latencia y timeout (Claude revi
   del prompt, formato de salida, plantilla del `review-log.md`, y el foco de revisión por tipo de
   artefacto.
 - `ciclo-de-vida.md` — identidad del finding, estados y transiciones, ledger y su esquema,
-  presupuestos, vara de admisión de la defensa, cierre y adopción de logs legacy. Se carga ante la
-  **primera salida conforme que traiga al menos un finding, cualquiera sea el veredicto** — no al
-  primer rechazo (la ingesta ya está gobernada por ese contrato) y no al primer `REVISE` (un
-  `APPROVED` con findings `low` también lo necesita). Una corrida `APPROVED` **sin** findings no lo
-  carga.
+  presupuestos, **aplicación pendiente de revisión**, vara de admisión de la defensa, cierre y
+  adopción de logs legacy. Se carga ante la **primera salida conforme que traiga al menos un finding,
+  cualquiera sea el veredicto** — no al primer rechazo (la ingesta ya está gobernada por ese
+  contrato) y no al primer `REVISE` (un `APPROVED` con findings `low` también lo necesita). Una
+  corrida `APPROVED` **sin** findings no lo carga: apendiza igual su fila de cierre de ronda, pero
+  para eso alcanza con el paso 5 del loop, que nombra la clase, el campo y sus dos valores.
 - `README.md` — qué es, cuándo usarla, requisitos e instalación.
 
 ## Atribución

@@ -31,13 +31,21 @@ tamaño. Cargar el segundo en toda corrida gastaría contexto en las corridas qu
 | Archivo | Qué trae | Cuándo se lee |
 |---|---|---|
 | `reference.md` (este) | portabilidad entre shells, descubrimiento e invocación del revisor, resume entre rondas, prompt, formato de salida, foco por tipo de artefacto, latencia y topes, matriz de resume y manifest | en toda corrida |
-| `ciclo-de-vida.md` | identidad del finding, estados y transiciones, ledger append-only y su esquema, presupuestos, vara de admisión de la defensa, cierre y adopción de logs legacy | ante la **primera salida conforme que traiga al menos un finding**, cualquiera sea el veredicto |
+| `ciclo-de-vida.md` | identidad del finding, estados y transiciones, ledger append-only y su esquema, presupuestos, **aplicación pendiente de revisión**, vara de admisión de la defensa, cierre y adopción de logs legacy | ante la **primera salida conforme que traiga al menos un finding**, cualquiera sea el veredicto |
 
 **El predicado de `ciclo-de-vida.md` es literal y no se parafrasea.** No es "al primer rechazo": la
 ingesta —identidad, dedup, ledger y veredicto derivado— ya está gobernada por ese contrato, así que
 hace falta aunque el conductor aplique o escale todo y no rechace nada. Y no es "al primer `REVISE`
 con findings": este contrato admite `APPROVED` con findings `low` opcionales, y esa corrida también
 lo necesita. Una corrida que termina en `APPROVED` **sin** findings no lo carga.
+
+**Esa corrida igual escribe en el ledger, y no es una contradicción.** Toda salida conforme apendiza
+su fila de cierre de ronda, incluida la limpia. Lo que la exime de cargar este archivo es que la
+instrucción del loop es **autosuficiente para ese caso**: nombra la clase de entrada, el campo y sus
+dos valores posibles, que es todo lo que hace falta para apendizar esa fila. Lo que se carga ante la
+primera salida con findings es el **resto** —identidad, transiciones, presupuestos, cierre—, que solo
+hace falta cuando hay findings que gobernar. El ahorro sigue siendo real; lo que no vale es fundarlo
+en que sin findings no se escribe nada.
 
 ## Portabilidad entre shells (POSIX / PowerShell)
 
@@ -923,10 +931,39 @@ Vale igual para los otros dos puntos donde se reanuda una sesión Codex —el fi
 
 El loop reusa el **mismo thread del revisor** para que tenga memoria de lo ya discutido:
 
-- No re-mandar el artefacto completo en cada ronda. Mandar solo el **delta**, y pedir una nueva
-  pasada sobre el artefacto actualizado. (Si la edición fue grande, incluir el fragmento cambiado.)
+- **Con al menos una aplicación pendiente de revisión, el artefacto actualizado viaja completo, sin
+  excepción.** Va en el bloque `<artefacto_actualizado>` del asset de ronda, junto al delta. No
+  alcanza con pedir "una nueva pasada sobre el artefacto actualizado": el revisor corre en un hilo
+  que conserva la versión **anterior**, así que sin el texto nuevo delante puede completar la ronda
+  entera sobre lo que ya tenía. Y entonces esa ronda no probaría nada sobre la edición, que es
+  justamente lo que hay que probar.
+- **Sin aplicaciones pendientes, se omite el bloque entero** y viaja solo el delta — el ahorro se
+  conserva donde no hay nada nuevo que mirar. Omitido, no vacío: un bloque vacío le dice al revisor
+  que no hubo cambios, cuando lo que pasó es que no se los mandaron. La misma condición que decide
+  esto elige con qué evento se registra el cierre de la ronda (`ciclo-de-vida.md` → "Aplicación
+  pendiente de revisión").
 
-  **El delta se proyecta exclusivamente desde el ledger; no se redacta por separado.** Es una
+> **La omisión se apoya en el resume, y sin él se vuelve un agujero.** La premisa que la sostiene es
+> la del primer punto: el revisor corre en el **mismo hilo** y ya tiene delante la versión que se le
+> mandó antes, así que omitir el bloque solo le quita algo que ya tenía. En **rondas independientes**
+> —la degradación de abajo— esa premisa no existe: la sesión es nueva y el asset declara que *lo que
+> no esté acá no existe para él*.
+>
+> **Precedencia, para que no queden dos reglas ciertas y contradictorias:** con el transporte
+> degradado a rondas independientes, **el artefacto viaja siempre**, haya o no aplicaciones
+> pendientes; la condición de omisión se evalúa **solo** cuando la ronda reusa el thread.
+>
+> Lo que **no** cambia es el evento de cierre: sigue dependiendo de si hubo aplicaciones pendientes, y
+> no de si el artefacto viajó por una razón de transporte. Una ronda independiente sin aplicaciones
+> pendientes **recibe el artefacto y cierra como `ronda-completada`** — separar las dos cosas es lo
+> que impide que el modo degradado libere aplicaciones que nadie observó.
+>
+> Sin esta precedencia el camino era concreto: resume no disponible, la ronda 1 rechaza todo, y la
+> ronda 2 se despacha a una sesión fresca **sin ningún artefacto que revisar** — y cierra conforme.
+
+**Las dos reglas que siguen valen en los dos casos, con artefacto o sin él.**
+
+- **El delta se proyecta exclusivamente desde el ledger; no se redacta por separado.** Es una
   proyección, no un resumen escrito a mano: una sola fuente hace imposible que lo registrado y lo
   comunicado difieran. El registro de identidad de cada finding provee además el contenido con que
   el revisor evalúa el rechazo — sin el tema y sus anclas, las filas del ledger le dan el evento
@@ -945,7 +982,9 @@ El loop reusa el **mismo thread del revisor** para que tenga memoria de lo ya di
   `claude -p --resume <session_id>`. El delta se pasa por stdin con la primitiva de cada shell
   (`<` en POSIX, `Get-Content -Raw | …` en PowerShell — ver "Portabilidad entre shells").
 - Si el resume no está disponible en el entorno, degradar a rondas independientes re-enviando el
-  artefacto actualizado completo (más caro, pero válido).
+  artefacto actualizado completo (más caro, pero válido). **Siempre**, incluso sin aplicaciones
+  pendientes: acá no hay hilo que conserve la versión anterior, así que la omisión de arriba no
+  aplica — ver la precedencia declarada junto a esa regla.
 
 **Seed desde co-exploración:** con dos workers hay **dos** sesiones por modo, así que cuál se
 reanuda no es una elección libre — la fija la matriz normativa de "Matriz de resume desde
@@ -1139,7 +1178,11 @@ permitiría cerrar findings por truncamiento en vez de por una decisión auditab
    (`ciclo-de-vida.md` → "Identidad").
 3. **Arbitrar** las respuestas a rechazos: evaluar cada defensa contra la vara de admisión.
 4. **Arbitrar** los findings nuevos.
-5. **Derivar** el veredicto del estado del ledger.
+5. **Registrar el cierre de la ronda**: apendizar una fila `control-corrida` con
+   `ronda-completada-valida` si esta ronda recibió el artefacto actualizado, o `ronda-completada` si
+   no. Va acá —después de arbitrar, antes de derivar— para que la ronda no libere lo que ella misma
+   aplicó y para que una ronda limpia quede registrada aunque el veredicto cierre el loop enseguida.
+6. **Derivar** el veredicto del estado del ledger.
 
 **Árbitro (lado Claude).** Para cada finding, decidir con `superpowers:receiving-code-review`:
 - *Aplicar* — el finding es correcto y relevante → editar el artefacto → `aplicado`.
@@ -1158,19 +1201,40 @@ Nunca aplicar sin entender; nunca descartar sin razón. Todo va al ledger del `r
 revisor puede emitir `DEFIENDO F-01`, cero findings nuevos y `APPROVED` porque el bloque de findings
 quedó vacío — y un loop que corte ahí no arbitraría nunca esa defensa.
 
-| Estado del ledger tras arbitrar | Veredicto | Efecto sobre la tanda |
-|---|---|---|
-| todos los findings en `aplicado` o `cerrado` | `APPROVED` | corta: convergió |
-| existe al menos uno en estado **no terminal** | `REVISE` | sigue: hay margen de resolución |
-| solo terminales, pero con ≥1 `en-disputa` | `REVISE` | **corta la tanda** y abre el gate humano |
+Las ramas se evalúan **en este orden** y la primera que aplica decide. Son exhaustivas: ningún ledger
+cae fuera, y ninguna se solapa con otra.
+
+| # | Estado del ledger tras arbitrar | Veredicto | Efecto sobre la tanda |
+|---|---|---|---|
+| 1 | existe ≥1 **aplicación pendiente de revisión** | `REVISE` | sigue: una ronda más puede resolverlo |
+| 2 | sin pendientes, pero con ≥1 finding en estado **no terminal** | `REVISE` | sigue: hay margen de resolución |
+| 3 | sin pendientes, solo terminales, con ≥1 `en-disputa` | `REVISE` | **corta la tanda** y abre el gate humano |
+| 4 | sin pendientes y todo en `aplicado` o `cerrado` | `APPROVED` | corta: convergió |
 
 El predicado no admite dos lecturas para un mismo ledger. El `APPROVED` del revisor **no corta el
 loop por sí solo** si quedan defensas sin evaluar; y a la inversa, tras un arbitraje que no deja nada
-abierto la corrida converge **sin** gastar otra ronda para confirmarlo.
+abierto ni pendiente, la corrida converge **sin** gastar otra ronda para confirmarlo.
 
-*Por qué la tercera fila corta:* una disputa es terminal por definición — ninguna ronda adicional
-puede resolverla, porque su destino es el arbitraje humano. Seguir gastando la tanda sobre un ledger
-que solo tiene disputas es desperdicio puro.
+*Por qué la primera rama existe:* `aplicado` y `cerrado` no son terminales equivalentes. `cerrado` lo
+resolvió una **decisión sobre su mérito** —el revisor aceptó el rechazo, o su defensa resultó
+inadmisible—; `aplicado` es una **edición del conductor que ningún revisor vio**. Contarlos igual
+permitía que una corrida convergiera sobre correcciones no revisadas, y aplicar un finding puede
+introducir un defecto propio: es el caso que el presupuesto de re-apertura ya contempla, pero que
+nadie podía ejercer si el loop cortaba antes. Definiciones en `ciclo-de-vida.md` → "Aplicación
+pendiente de revisión".
+
+*La re-aplicación no es una rama, es un caso de la primera.* Un finding `aplicado` en la ronda en
+curso vuelve a estar pendiente aunque una ronda anterior hubiera observado su edición previa: la
+condición mira la transición **más reciente** a `aplicado`, y esa ronda anterior vio otro texto.
+
+*Por qué la tercera rama corta:* una disputa es terminal por definición — ninguna ronda adicional
+puede resolverla, porque su destino es el arbitraje humano. Pero corta **solo cuando no quedan
+aplicaciones pendientes**: con ellas todavía hay trabajo que una ronda sí resuelve, y cortar ahí
+sería abandonarlo.
+
+*Por qué `aplicado` sigue siendo terminal para el finding:* son dos terminalidades distintas. El
+estado del finding no cambia —ninguna transición sale de `aplicado` salvo la re-apertura con
+evidencia, que ya existe—; lo que deja de alcanzar es su contribución al veredicto **de la corrida**.
 
 ## Tandas y salida de rondas
 
@@ -1233,10 +1297,13 @@ Concede tandas **automáticamente**, sin volver a preguntar, hasta que ocurra **
 |---|---|
 | el veredicto derivado es `APPROVED` | la revisión converge y cierra |
 | se alcanza el **tope total** | vuelve al checkpoint con las cuatro opciones |
-| el predicado derivado da `REVISE` con **solo disputas** | **corte anticipado obligatorio**: vuelve al checkpoint aunque falten rondas |
+| el predicado derivado da `REVISE` con **solo disputas y sin aplicaciones pendientes** | **corte anticipado obligatorio**: vuelve al checkpoint aunque falten rondas |
 
 El tercero no es opcional: ninguna ronda puede resolver una disputa, así que seguir sería gastar el
-tope sin posibilidad de converger.
+tope sin posibilidad de converger. **Pero exige las dos condiciones a la vez.** Un ledger puede tener
+disputas *y además* aplicaciones pendientes de revisión, y ahí cortar sería abandonar trabajo que una
+ronda sí resuelve: las disputas no se van a resolver, las ediciones sin revisar sí se pueden mirar.
+Mientras quede una pendiente, este corte no dispara y el modo sigue hasta uno de los otros dos.
 
 **Mientras el modo esté activo y queden rondas hasta el tope, el límite de tanda es una frontera
 interna:** la barrera del gate **permanece marcada** y el fin de tanda **no** abre checkpoint. Se
@@ -1276,7 +1343,7 @@ un **descriptor por `run_id`**:
 | `run_id` | el de la corrida, estable entre tandas |
 | `ledger` | la ruta del `review-log.md` y la sección de esta corrida |
 | `ronda_acumulada` | la última ronda completada |
-| `tope_vigente` | el `tope_efectivo` de la última `control-corrida`, si el modo automático está activo |
+| `tope_vigente` | el `tope_efectivo` de la última `control-corrida` **cuyo evento fije tope** —`eleccion-tope` o `reeleccion-tope`—, si el modo automático está activo. Las filas de checkpoint y de cierre de ronda no llevan tope: tomar la última de la clase leería una fila vacía y dejaría el tope indeterminado justo al rehidratar |
 | `causa_corte` | `tanda_agotada` \| `solo_disputas` |
 | `gate_pendiente` | qué STOP quedó esperando decisión |
 | `revisor` | la referencia de sesión con que reanudar |
@@ -1327,25 +1394,48 @@ Solo lo que no cambia. Las transiciones apuntan acá.
 |---|---|---|---|---|---|---|
 | 1 | F-01 | emision | — | revisor | severidad: high | — |
 | 1 | F-01 | transicion | rechaza con motivo | conductor | abierto → rechazado · presupuesto: null | <razón> |
+| 1 | — | control-corrida | ronda-completada | conductor | — | no se aplicó nada: la ronda 2 no recibirá artefacto |
 | 2 | F-01 | transicion | defiende, con presupuesto | revisor | rechazado → defendido · presupuesto: defensa | <argumento> |
 | 2 | F-01 | transicion | evalúa: admisible | conductor | defendido → reabierto · presupuesto: null | <por qué el argumento es nuevo> |
 | 2 | F-02 | descarte | re-emite uno cerrado | revisor | — | <motivo del descarte> |
-| 3 | — | control-corrida | checkpoint | humano | decision_humana: conceder una tanda | <lo que dijo> |
+| 2 | — | control-corrida | ronda-completada | conductor | — | al cerrar la 1 no había aplicaciones: esta ronda no recibió artefacto |
+| 3 | F-01 | transicion | aplica | conductor | reabierto → aplicado · presupuesto: null | <qué se editó> |
+| 3 | — | control-corrida | ronda-completada | conductor | — | al cerrar la 2 no había aplicaciones: esta ronda no recibió artefacto |
+| 3 | — | control-corrida | checkpoint | humano | decision_humana: conceder una tanda | queda 1 aplicación sin revisar (F-01) |
+| 4 | — | control-corrida | ronda-completada-valida | conductor | — | recibió el artefacto con la aplicación de F-01 |
 
 ### Proyección (derivada — se regenera al cierre de cada ronda, nunca se edita)
 
 | ID | Estado | Severidad vigente | Defensa | Re-apertura |
 |---|---|---|---|---|
-| F-01 | reabierto | high | consumida | disponible |
+| F-01 | aplicado | high | consumida | disponible |
 | F-02 | cerrado | medium | consumida | disponible |
+
+> **Cómo se lee el cierre de cada ronda, que es lo que el ejemplo enseña.** El evento lo decide **qué
+> recibió esa ronda al despacharse**, no qué pasó durante ella. Por eso las rondas 1, 2 y 3 cierran
+> como `ronda-completada` —ninguna recibió artefacto, porque al cerrar la anterior no había
+> aplicaciones pendientes— aunque en la 3 el conductor **sí** aplica F-01. Esa aplicación es la que
+> hace que la ronda 4 reciba el artefacto y cierre como `ronda-completada-valida`.
+>
+> **La ronda 1 también deja fila.** Una ronda conforme que no aplicó nada y no cerró ningún finding no
+> produciría ninguna entrada, y entonces "la ronda 1 ocurrió" sería indistinguible de "la ronda 1 nunca
+> corrió". Es la razón por la que el evento existe.
+>
+> **Y el checkpoint de la ronda 3 no puede converger:** F-01 quedó `aplicado` y ninguna ronda posterior
+> válida lo observó todavía. Por eso el presentador declara `aplicaciones_pendientes: 1` antes de
+> ofrecer las opciones, y por eso la tanda concedida sirve para algo: la ronda 4 es la que cierra el
+> ciclo.
 
 ### Resultado
 
 **Eventos de arbitraje** (qué escrutinio hubo): aplicados <n> · rechazados <n> ·
 defensas recibidas <n> · defensas admisibles <n>.
 **Estados terminales** (dónde quedó cada finding): aplicado <n> · cerrado <n> · en-disputa <n>.
+**Aplicaciones pendientes de revisión**: <n> — <IDs>. Ediciones que ninguna ronda posterior válida
+observó; vacío si no quedó ninguna.
 
-Veredicto final: <APPROVED | REVISE> en <n> rondas y <n> tanda(s).
+Veredicto final: <APPROVED | REVISE (…, <n> aplicaciones pendientes de revisión)> en <n> rondas y
+<n> tanda(s).
 Revisor: codex <modelo> (effort <esfuerzo>).
 
 <!-- corpus-invariante:inicio:cross-review.reference.md.2fbdb7bf6dbf -->
@@ -1370,8 +1460,10 @@ atrás justo cuando se lo consulta para armar el delta.
 
 Esquema completo de las cuatro clases de fila y sus campos: `ciclo-de-vida.md` → "Ledger".
 
-Si se agota una tanda sin `APPROVED`, el "Resultado" lista las **disputas abiertas** y los
-**rechazos sin responder** para que el humano decida en el gate (ver "Tandas y salida de rondas").
+Si se agota una tanda sin `APPROVED`, el "Resultado" lista las **disputas abiertas**, los **rechazos
+sin responder** y las **aplicaciones pendientes de revisión** para que el humano decida en el gate
+(ver "Tandas y salida de rondas"). Las tres, no dos: un cierre con cero disputas y cero rechazos sin
+responder se lee como limpio, y puede estar tapando ediciones que ningún revisor miró.
 
 **Logs escritos con el formato anterior.** Un `review-log.md` que ya existe sin ledger ni IDs es
 **historial opaco e inmutable**: no se migra, no se sobrescribe y **se excluye del fold**. La corrida
@@ -1416,8 +1508,13 @@ cross_review:
   **numeración del ledger acumula a lo largo de toda la corrida**: una segunda tanda arranca en la
   ronda 4, no en la 1. Lo que la regla 2 garantiza es que **el loop nunca corre sin tope**, no que la
   corrida entera tenga ≤ `max_rounds` rondas (ver "Tandas y salida de rondas").
-- `max_rounds` chico (2-3) suele alcanzar por tanda: los artefactos son chicos comparados con una
-  implementación; más rondas seguidas dan rendimientos decrecientes, y si hacen falta, se conceden.
+- **`max_rounds` fija la cadencia del checkpoint, no una cantidad esperada para converger.** Una
+  tanda chica acota cuánto trabajo consecutivo queda autorizado antes de devolver el control al
+  humano; no predice en cuántas rondas se llega a `APPROVED`. La convergencia no la decide este
+  número sino el predicado derivado: mientras queden aplicaciones pendientes de revisión no hay
+  `APPROVED`, así que una aplicación en la última ronda de una tanda deja `REVISE` y continuar exige
+  una autorización nueva. Ese es el efecto buscado del tope: que la decisión de seguir sea de una
+  persona, con lo que falta a la vista.
 
 ## Consumo de co-exploración dual
 

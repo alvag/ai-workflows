@@ -173,8 +173,13 @@ solo ruido/dudas → *trivial*; con cambios → *normal*/*complex*, y con ella l
   del cross-review. El usuario puede reclasificar. Sin aprobación no se escribe nada ni se avanza al plan.
   Si la revisión devolvió `tandas_concedibles`, ofrecer en **este mismo STOP** las cuatro opciones —
   continuar así · conceder una tanda · seguir hasta `APPROVED` · cerrar la revisión — y cerrar la
-  corrida según lo elegido (ver `reference.md` → "Contrato del cross-review").
-- Degradación: sin revisor / timeout → aviso de una línea y sigue al gate humano.
+  corrida según lo elegido (ver `reference.md` → "Contrato del cross-review"). **Si
+  `aplicaciones_pendientes` es mayor que cero, mostrarlo con sus `ids_pendientes` antes de ofrecer
+  las opciones:** "continuar así" aprueba el artefacto, y quien elige tiene que saber que hay
+  ediciones que ninguna ronda observó.
+- Degradación: sin revisor / timeout → aviso de una línea y sigue al gate humano. Si el retorno trae
+  `aplicaciones_pendientes` mayor que cero, declararlo con sus `ids_pendientes` antes de liberar el
+  gate: una degradación no abre checkpoint, así que es la única oportunidad de decirlo.
 
 > **Sincronizar la spec de Jira (si aplica).** Si el flujo tenía **subtarea SPEC** en Jira
 > (`jira_subtask_url`/`jira_subtask` en el `plan.md` de la ronda previa, del gate `publish-spec` de
@@ -203,7 +208,8 @@ commit: nada que publicar).
 - **Gate del plan**: presentar el `plan.md` (+`tasks.md`) y el resumen del cross-review. Escala como
   `sdd-flow`: *normal* → plan (tasks aprobadas en el mismo gate); *complex* → plan + tasks (gate de
   tasks propio). Sin aprobación no se delega nada. Con `tandas_concedibles` en la salida, este STOP
-  ofrece las mismas cuatro opciones que el de triage.
+  ofrece las mismas cuatro opciones que el de triage, y con la misma condición: si
+  `aplicaciones_pendientes` es mayor que cero, se muestra con sus `ids_pendientes` antes de elegir.
 
 ### Paso 5 — Implement (delegado) para los `cambio`
 

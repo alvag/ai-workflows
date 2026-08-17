@@ -227,12 +227,16 @@ inconsistencias que un humano pasa por alto. **Augmenta el gate, no lo reemplaza
   skill garantiza un **tope duro** → `UNAVAILABLE`, nunca espera indefinida.
 - **Degradación (nunca bloquea).** Sin revisor, invocación de la skill fallida, fallo en runtime,
   timeout/`poll_deadline` vencido, o `cross_review.mode: off` → avisar en una línea y seguir con el
-  gate humano. Misma filosofía que la regla 8.
+  gate humano. Misma filosofía que la regla 8. **Si el retorno trae `aplicaciones_pendientes` mayor
+  que cero, declararlo con sus `ids_pendientes` antes de liberar el gate:** una degradación no abre
+  checkpoint, así que es la única oportunidad de decir que quedaron ediciones sin observar.
 - **Las cuatro opciones del checkpoint, en los dos gates de Fase 1.** Si la revisión devuelve
   `tandas_concedibles`, los STOPs de `master-spec` (gate 1.3) y de `reparto` (gate 1.4) ofrecen
   —sin gate extra— **continuar así** · **conceder una tanda** · **seguir hasta `APPROVED`** ·
   **cerrar la revisión**. Las cuatro se ofrecen siempre: `disponibles: false` advierte que conceder
-  no puede converger, no deshabilita nada. Con el modo automático activo, el fin de tanda es una
+  no puede converger, no deshabilita nada. **Si `aplicaciones_pendientes` es mayor que cero,
+  mostrarlo con sus `ids_pendientes` *antes* de presentar las opciones**: "continuar así" aprueba el
+  artefacto, y quien elige tiene que saber que hay ediciones que ninguna ronda observó. Con el modo automático activo, el fin de tanda es una
   **frontera interna** y la barrera del gate sigue marcada. Tras el gate, la llamadora **reanuda la
   misma corrida por su `run_id`** si el humano concede, o **finaliza el único manifest** si eligió
   una salida terminal; y su `resume` **consulta el descriptor durable** antes de iniciar otra
