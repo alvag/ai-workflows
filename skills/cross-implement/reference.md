@@ -492,33 +492,61 @@ se midió. Sin sede declarada, "conservar la salida" es una intención que nadie
 > Los dos son **load-bearing y untracked**: `proof-baseline.md` es el "antes" contra el que se juzga
 > `no empeoró`, `session-meta.json` fija con qué modelo corre cada resume, y una escritura del worker
 > en cualquiera de los dos **no aparece en el diff**. Por eso, antes del dispatch se registra el
-> `sha256` de ambos y se recomprueba **al cosechar, antes de leerlos**:
+> `sha256` de ambos y se recomprueba **al cosechar, antes de leerlos**.
+>
+> **Dónde vive el testigo decide qué prueba, y es fácil escribirlo mal.** Si el `sha256` se guarda en
+> el mismo `<scratch>`, queda en la superficie que vigila: un worker que reescriba `proof-baseline.md`
+> reescribe el testigo en el mismo movimiento y la recomprobación pasa. Entonces:
+>
+> - **El testigo es el par de digests que el conductor acaba de calcular**, y los conserva **él**,
+>   fuera de `working_dir`, junto al resto de su estado de la corrida. Contra eso se compara.
+> - Si por reanudación entre sesiones hace falta una copia en disco dentro del scratch, esa copia
+>   **degrada la garantía a detección de accidente**, no de manipulación, y hay que declararlo con ese
+>   nombre en el log. No es lo mismo cazar un proceso que truncó un archivo que cazar a un worker que
+>   decidió reescribirlo.
 >
 > ```bash
 > # POSIX (`sha256sum` en Linux, `shasum -a 256` en macOS: elegir el que exista)
-> shasum -a 256 <scratch>/proof-baseline.md <scratch>/session-meta.json > <scratch>/scratch.sha256
+> # al despachar — el digest queda en el estado del conductor, NO bajo <scratch>:
+> shasum -a 256 <scratch>/proof-baseline.md <scratch>/session-meta.json > <estado-conductor>/scratch.sha256
 > # al cosechar, antes de leer el baseline o de reanudar:
-> shasum -a 256 -c <scratch>/scratch.sha256 || echo "ENVIRONMENT_FAILURE: scratch alterado"
+> if ! shasum -a 256 -c <estado-conductor>/scratch.sha256 >/dev/null 2>&1; then
+>   printf 'ENVIRONMENT_FAILURE: scratch alterado\n' >&2
+>   exit 1
+> fi
 > ```
 > ```powershell
+> # al despachar:
 > Get-FileHash <scratch>\proof-baseline.md, <scratch>\session-meta.json -Algorithm SHA256 |
->   Export-Csv <scratch>\scratch.sha256 -NoTypeInformation
+>   Export-Csv <estado-conductor>\scratch.sha256 -NoTypeInformation
 > # al cosechar, antes de leer el baseline o de reanudar:
-> $esperado = Import-Csv <scratch>\scratch.sha256
-> foreach ($e in $esperado) {
->   if ((Get-FileHash $e.Path -Algorithm SHA256).Hash -ne $e.Hash) {
->     Write-Output "ENVIRONMENT_FAILURE: scratch alterado ($($e.Path))"
+> $alterado = $false
+> foreach ($e in (Import-Csv <estado-conductor>\scratch.sha256)) {
+>   if (-not (Test-Path $e.Path) -or (Get-FileHash $e.Path -Algorithm SHA256).Hash -ne $e.Hash) {
+>     Write-Error "ENVIRONMENT_FAILURE: scratch alterado ($($e.Path))"; $alterado = $true
 >   }
 > }
+> if ($alterado) { exit 1 }
 > ```
+>
+> **El código de salida es la señal, y por eso el `|| echo` no sirve:** `echo` devuelve 0, así que
+> `shasum -c … || echo …` **sale 0 ante un mismatch** y quien ramifique por exit code lee un scratch
+> alterado como limpio. Las dos variantes cortan con `exit 1`. La de PowerShell comprueba además que
+> el archivo exista, en vez de reventar por una ruta ausente.
 >
 > Un `sha256` que no cierra **no es un fallo de implementación**: es `ENVIRONMENT_FAILURE` —la
 > comprobación no llegó a tener veredicto, porque el comparador perdió su base— y se clasifica con
-> esa clase, sin inventar una quinta (`ownership.md` → "Las cuatro clases"). Consecuencias, todas
-> las que esa clase ya define: **no consume ronda**, gasta uno de sus dos intentos de reparación, y
-> la reparación acá es concreta y barata — volver a medir sobre `block_base` en un worktree nuevo,
-> que sigue disponible porque es un commit. Agotados los dos, la fila queda `BLOCKED` y el cierre
-> no es exitoso.
+> esa clase, sin inventar una quinta (`ownership.md` → "Las cuatro clases"). **No consume ronda.**
+>
+> Las otras consecuencias de esa clase están indexadas por `checkId`, y acá no hay fila: la unidad de
+> identidad de un agregado es **el string exacto del comando**, como en el resto de esta sección. Los
+> dos intentos de reparación se cargan a esa unidad, y la reparación es distinta para cada archivo:
+> `proof-baseline.md` se regenera volviendo a medir sobre `block_base`, que sigue disponible porque
+> es un commit; `session-meta.json` **no se repara midiendo** — se reescribe releyendo modelo y
+> esfuerzo del config, que es de donde salieron. Agotados los dos intentos, ese comando **queda fuera
+> del criterio de aceptación** —la misma salida que un comando que no se pudo medir en la base— y se
+> declara con su motivo. Las filas del contrato no se ven afectadas: son la tercera condición de la
+> aceptación y no dependen de esta medición.
 
 Tras la ronda, se repiten los mismos comandos sobre el árbol con el delta y se compara contra ese
 archivo.
