@@ -318,3 +318,37 @@ Identidad previa al commit: `(34d7c41, sha256 del verificador en el working tree
 | V18 | 34d7c41 | d6f05945149cc3aaa89b13717582b40c4429c6817cedf8b1dde808032d06a64d | 2026-08-15T17:56:07Z | GREEN_ALREADY | no regresión: pasa por construcción |
 | V19 | 34d7c41 | d6f05945149cc3aaa89b13717582b40c4429c6817cedf8b1dde808032d06a64d | 2026-08-15T17:56:07Z | GREEN_ALREADY | no regresión: pasa por construcción |
 | V20 | 34d7c41 | d6f05945149cc3aaa89b13717582b40c4429c6817cedf8b1dde808032d06a64d | 2026-08-15T17:56:07Z | GREEN | `--ac 17` y sus 43 mutantes estructurales dieron exit 0 |
+
+### v11
+
+Identidad comprobable: `(9b58ce6, 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36)`.
+**Sucede a `v10`** porque el validador ahora comprueba con `git show` que el commit registrado
+contiene exactamente el verificador identificado por el `sha256`; además incorpora las correcciones
+de portabilidad y contención surgidas de la revisión del PR.
+
+Los veinte modos y `--autotest` se midieron sobre el commit `9b58ce6`; todos dieron exit `0`.
+
+#### Baseline de v11
+
+| ID | commit | sha256 | timestamp | estado | adjudicación |
+|---|---|---|---|---|---|
+| V1 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V2 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V3 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V4 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V5 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V6 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V7 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V8 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V9 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V10 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V11 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V12 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V13 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V14 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V15 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V16 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V17 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V18 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | no regresión: pasa por construcción |
+| V19 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | no regresión: pasa por construcción |
+| V20 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | `--ac 17` y sus 43 mutantes estructurales dieron exit 0 |
