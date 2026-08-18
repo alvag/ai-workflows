@@ -294,9 +294,50 @@ def _recolectar_artefactos(base: Path) -> dict[str, bytes]:
     return salida
 
 
+def aplicar_reemplazos(caso_dir: Path, reemplazos: list[dict[str, str]]) -> None:
+    """Aplica reemplazos UTF-8 ordenados, exactos y confinados a la copia del caso."""
+    if not isinstance(reemplazos, list):
+        raise TypeError("reemplazos debe ser una lista")
+
+    raiz = caso_dir.resolve(strict=True)
+    for indice, reemplazo in enumerate(reemplazos):
+        if not isinstance(reemplazo, dict):
+            raise TypeError(f"reemplazos[{indice}] debe ser un objeto")
+        if set(reemplazo) != {"archivo", "buscar", "reemplazar"}:
+            raise ValueError(
+                f"reemplazos[{indice}] debe tener exactamente archivo, buscar y reemplazar")
+
+        archivo = reemplazo["archivo"]
+        buscar = reemplazo["buscar"]
+        reemplazar = reemplazo["reemplazar"]
+        if not all(isinstance(valor, str) for valor in (archivo, buscar, reemplazar)):
+            raise TypeError(f"reemplazos[{indice}] exige valores string")
+
+        ruta_relativa = Path(archivo)
+        if ruta_relativa.is_absolute() or ".." in ruta_relativa.parts:
+            raise ValueError(f"reemplazos[{indice}].archivo debe ser una ruta relativa confinada")
+        try:
+            destino = (raiz / ruta_relativa).resolve(strict=True)
+            destino.relative_to(raiz)
+        except (FileNotFoundError, RuntimeError, ValueError) as exc:
+            raise ValueError(
+                f"reemplazos[{indice}].archivo sale del caso o no existe") from exc
+        if not destino.is_file():
+            raise ValueError(f"reemplazos[{indice}].archivo no es un archivo regular")
+
+        contenido = destino.read_text(encoding=ENCODING)
+        coincidencias = contenido.count(buscar)
+        if coincidencias != 1:
+            raise ValueError(
+                f"reemplazos[{indice}].buscar debe aparecer exactamente una vez;"
+                f" aparece {coincidencias}")
+        destino.write_text(contenido.replace(buscar, reemplazar, 1), encoding=ENCODING)
+
+
 def ejecutar(cuerpo: str, sabor: str, fixture_dir: Path | None, entradas: dict[str, str],
              timeout: int = TIMEOUT_DEFECTO, raiz_tmp: Path | None = None,
-             interprete: str | None = None) -> Observacion:
+             interprete: str | None = None,
+             reemplazos: list[dict[str, str]] | None = None) -> Observacion:
     """Corre un cuerpo sobre su PROPIA copia del fixture, fuera del árbol del repositorio."""
     tmp = Path(tempfile.mkdtemp(prefix=f"paridad-{sabor}-", dir=str(raiz_tmp) if raiz_tmp else None))
     caso_dir = tmp / "caso"
@@ -304,6 +345,7 @@ def ejecutar(cuerpo: str, sabor: str, fixture_dir: Path | None, entradas: dict[s
     if fixture_dir is not None and fixture_dir.is_dir():
         shutil.copytree(fixture_dir, caso_dir, dirs_exist_ok=True)
 
+    aplicar_reemplazos(caso_dir, [] if reemplazos is None else reemplazos)
     resueltas = {k: str(v).replace("{dir}", str(caso_dir)) for k, v in entradas.items()}
 
     entorno = dict(os.environ)
@@ -937,6 +979,7 @@ def correr_caso(raiz: Path, par: Par, matriz: dict, caso: dict, catalogo: list[d
         fixture = raiz / DIR_CASOS / par.nombre / "fixtures" / caso["fixture"]
     entradas = caso.get("entradas", {})
     timeout = caso.get("timeout", TIMEOUT_DEFECTO)
+    reemplazos = caso.get("reemplazos", [])
 
     ok, detalle_locale = locale_usable()
     if not ok:
@@ -947,7 +990,11 @@ def correr_caso(raiz: Path, par: Par, matriz: dict, caso: dict, catalogo: list[d
         cuerpo = par.cuerpo_posix if sabor == "posix" else par.cuerpo_ps
         try:
             obs[sabor] = ejecutar(cuerpo, sabor, fixture, entradas, timeout=timeout,
-                                  interprete=interprete_ps if sabor == "ps" else None)
+                                  interprete=interprete_ps if sabor == "ps" else None,
+                                  reemplazos=reemplazos)
+        except (TypeError, ValueError) as exc:
+            return ResultadoCaso(par.nombre, caso["nombre"], "fallo",
+                                 detalle=f"reemplazos inválidos: {exc}")
         except SinInterprete as exc:
             return ResultadoCaso(par.nombre, caso["nombre"], "no_comprobable", detalle=str(exc))
 
@@ -1188,6 +1235,110 @@ def autotest_comparador(dimension: str | None) -> int:
     if not dimension:
         v = comparar("aceptacion", base_ev, base_obs, "aceptacion", base_ev, base_obs)
         _ok(v.iguales, "observaciones idénticas → sin divergencia", fallos)
+    reemplazos_rc = autotest_reemplazos()
+    return 0 if not fallos and reemplazos_rc == 0 else CODIGO["fallo"]
+
+
+def autotest_reemplazos() -> int:
+    print("autotest de reemplazos declarativos (exactitud, confinamiento y aislamiento)")
+    fallos: list[str] = []
+
+    with tempfile.TemporaryDirectory(prefix="paridad-reemplazos-") as tmp_crudo:
+        raiz = Path(tmp_crudo)
+
+        def caso(contenido: str = "alpha") -> Path:
+            destino = Path(tempfile.mkdtemp(prefix="caso-", dir=raiz))
+            (destino / "manifest.json").write_text(contenido, encoding=ENCODING)
+            return destino
+
+        simple = caso()
+        aplicar_reemplazos(simple, [
+            {"archivo": "manifest.json", "buscar": "alpha", "reemplazar": "beta"}
+        ])
+        _ok((simple / "manifest.json").read_text(encoding=ENCODING) == "beta",
+            "una coincidencia exacta se reemplaza", fallos)
+
+        encadenado = caso()
+        aplicar_reemplazos(encadenado, [
+            {"archivo": "manifest.json", "buscar": "alpha", "reemplazar": "bridge"},
+            {"archivo": "manifest.json", "buscar": "bridge", "reemplazar": "omega"},
+        ])
+        _ok((encadenado / "manifest.json").read_text(encoding=ENCODING) == "omega",
+            "los reemplazos son secuenciales", fallos)
+
+        mutantes = [
+            ("ausencia", caso(),
+             [{"archivo": "manifest.json", "buscar": "missing", "reemplazar": "x"}]),
+            ("duplicación", caso("alpha alpha"),
+             [{"archivo": "manifest.json", "buscar": "alpha", "reemplazar": "x"}]),
+            ("ruta absoluta", caso(),
+             [{"archivo": str((raiz / "externo.txt").resolve()),
+               "buscar": "alpha", "reemplazar": "x"}]),
+            ("traversal", caso(),
+             [{"archivo": "../externo.txt", "buscar": "alpha", "reemplazar": "x"}]),
+            ("esquema incompleto", caso(),
+             [{"archivo": "manifest.json", "buscar": "alpha"}]),
+            ("tipo inválido", caso(),
+             [{"archivo": "manifest.json", "buscar": 7, "reemplazar": "x"}]),
+        ]
+        for etiqueta, destino, reemplazos in mutantes:
+            try:
+                aplicar_reemplazos(destino, reemplazos)
+                _ok(False, f"{etiqueta} se rechaza", fallos)
+            except (TypeError, ValueError):
+                _ok(True, f"{etiqueta} se rechaza", fallos)
+
+        try:
+            ejecutar("exit 0", "posix", caso(), {}, raiz_tmp=raiz, reemplazos={})
+            _ok(False, "un contenedor de reemplazos no-lista se rechaza desde ejecutar", fallos)
+        except TypeError:
+            _ok(True, "un contenedor de reemplazos no-lista se rechaza desde ejecutar", fallos)
+
+        contenido = correr_caso(
+            raiz,
+            Par("sintetico", "", 0, 0, "exit 0", "exit 0"),
+            {},
+            {
+                "nombre": "reemplazo-invalido",
+                "clase_esperada": "aceptacion",
+                "entradas": {},
+                "reemplazos": [
+                    {"archivo": "ausente.txt", "buscar": "alpha", "reemplazar": "beta"}
+                ],
+            },
+            [],
+        )
+        _ok(contenido.resultado == "fallo" and "reemplazos inválidos" in contenido.detalle,
+            "un reemplazo inválido queda contenido como fallo del caso", fallos)
+
+        exterior = raiz / "externo.txt"
+        exterior.write_text("testigo exterior", encoding=ENCODING)
+        con_enlace = caso()
+        (con_enlace / "escape.json").symlink_to(exterior)
+        try:
+            aplicar_reemplazos(con_enlace, [
+                {"archivo": "escape.json", "buscar": "testigo", "reemplazar": "alterado"}
+            ])
+            _ok(False, "un symlink exterior se rechaza", fallos)
+        except (TypeError, ValueError):
+            _ok(exterior.read_text(encoding=ENCODING) == "testigo exterior",
+                "un symlink exterior se rechaza sin tocar el testigo", fallos)
+
+        fixture = raiz / "fixture"
+        fixture.mkdir()
+        fuente = fixture / "manifest.json"
+        fuente.write_text("alpha", encoding=ENCODING)
+        huella_fuente = hashlib.sha256(fuente.read_bytes()).hexdigest()
+        huella_exterior = hashlib.sha256(exterior.read_bytes()).hexdigest()
+        observacion = ejecutar(
+            "exit 0", "posix", fixture, {}, raiz_tmp=raiz,
+            reemplazos=[{"archivo": "manifest.json", "buscar": "alpha", "reemplazar": "beta"}],
+        )
+        _ok(observacion.artefactos.get("manifest.json") == b"beta"
+            and hashlib.sha256(fuente.read_bytes()).hexdigest() == huella_fuente
+            and hashlib.sha256(exterior.read_bytes()).hexdigest() == huella_exterior,
+            "reemplazos exactos: éxito, ausencia, duplicación e inmutabilidad", fallos)
+
     return 0 if not fallos else CODIGO["fallo"]
 
 

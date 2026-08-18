@@ -90,8 +90,12 @@ stack de results (Angular + verticales air/accommodations/packages).
 ## Corridas delegadas en vuelo
 
 Todo revisor externo que esta skill despacha nace con su **sobre** en `.cross-model/active/<skill>/`,
-escrito **antes** del despacho, y mientras el sobre siga activo cada turno del conductor cierra
-informando su estado. Los puntos de despacho propios son dos:
+escrito **antes del preflight**, y mientras el sobre siga activo cada turno del conductor cierra
+informando su estado. Antes del sobre, el panel externo se normaliza en el orden único `codex` →
+`claude`; ese orden gobierna `families`, la primera vía, el timestamp write-once y las tool calls.
+Con manifest habilitado, el sobre nace con `manifest_seed` inmutable y
+`manifest_first_dispatch_at: null`, que se fija inmediatamente antes del primer despacho externo.
+Los puntos de despacho propios son dos:
 
 - el **panel de revisores** externos del Paso 7, uno por cada familia disponible, sync o background
   con tope duro
@@ -134,6 +138,10 @@ Reglas del panel:
 
 - **Default = `[conductor]`.** Cuando el panel es solo el conductor, al terminar **ofrecer una
   segunda opinión**: "¿Con esto basta o quieres una segunda opinión (Claude / Codex / ambos)?".
+- **Orden externo único = `codex` → `claude`.** Se deduplican las familias del panel planificado y
+  se ordenan así antes del preflight. Ese mismo orden se usa para `families`, el primer transporte,
+  `manifest_first_dispatch_at` y el orden real de tool calls; la presentación puede conservar el
+  orden pedido por el usuario, pero no redefine estas autoridades.
 - **Si hay >1 revisor**, al final se **consolida** en una sola conclusión (ver "Consolidación").
 - **Author-aware (clave del cross-model).** Los revisores externos elegidos por
   descubrimiento o por la segunda opinión deben ser de **otra familia** que el conductor — mismo
@@ -364,9 +372,12 @@ El conductor solo necesita este volcado si delega o pide segunda opinión.
   (entregó y no valida → **una** reemisión de formato en la misma sesión, sin volver a mirar el diff) ·
   `UNAVAILABLE` (no entregó, con su causa). No responder a tiempo es `UNAVAILABLE`; responder mal **no
   lo es** — ver `reference.md` → "Estados del revisor". Al cerrar la corrida se escribe el **manifest**
-  (`cross-review/reference.md` → "Manifest de corrida"), incluidas las corridas sin panel externo y las
-  que terminaron sin publicar. Este productor emite `selection: full`: su panel no está gobernado
-  por la allowlist `cross_model.families`.
+  (`cross-review/reference.md` → "Manifest de corrida"), incluidas las corridas sin panel externo y
+  las que terminaron sin publicar. La secuencia es panel/selección → seed/sobre → preflight →
+  timestamp write-once → tool call → terminal. Sin externo, `families: []`, el timestamp queda
+  `null` y el cierre usa `preflight_started_at`/`transport: none`. Si un externo seleccionado ya
+  tiene vía resuelta y falla su preflight, el seed conserva esa vía aunque no haya despacho. Este productor emite
+  `selection: full`: su panel no está gobernado por la allowlist `cross_model.families`.
 
 ### 7b. QA local en vivo (decisión obligatoria y explícita; la corrida es opt-in)
 
@@ -511,8 +522,9 @@ regla del template).
 - **Estado de la corrida:** `PUBLISHED` (la decisión se publicó en el PR) | `PROPOSED` (se revisó y
   el texto quedó propuesto sin publicar: gate declinado o MCP sin escritura) | `UNAVAILABLE` (no hubo
   revisión: panel vacío sin conductor, o PR no apto). Es lo que se registra en el **manifest de
-  corrida**, y se escriben los tres: una serie con solo `PUBLISHED` no puede decir cuántas veces esta
-  skill llegó al final sin servir de nada (`cross-review/reference.md` → "Manifest de corrida").
+  corrida** desde `manifest_seed`, `manifest_first_dispatch_at` y el terminal adjudicado. Los tres
+  estados, incluidos panel vacío y preflight sin despacho, usan el mismo cierre fresco y nunca leen
+  `.cross-model/runs/` como fuente (`cross-review/reference.md` → "Manifest de corrida").
 - **Revisores que se perdieron**, si los hubo: cuál, en qué estado quedó y con qué causa. Un revisor
   `INVALID` que no se pudo rescatar es una revisión hecha y tirada; callarlo hace que el reporte se
   lea como "esto es todo lo que había".

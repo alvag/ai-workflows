@@ -53,7 +53,9 @@ Las vías de invocación del revisor usan comandos de shell. Esos comandos se mu
 variantes**, y hay que elegir según el shell del entorno:
 
 - **POSIX** — macOS y Linux, y también **Git Bash en Windows** (la Bash tool del agente). Es la
-  forma en que están escritos los bloques `bash` de este documento; funcionan tal cual.
+  forma en que están escritos los bloques `bash` de este documento; funcionan tal cual. La guarda
+  `manifest-valido` requiere `python3` con su biblioteca estándar; si Git Bash no lo trae, usar la
+  variante PowerShell.
 - **PowerShell** — Windows nativo (shell primary). PowerShell **no** soporta la redirección de
   stdin con `<` ni el subshell `(cd … && …)`, y no trae `uuidgen`: por eso cada vía incluye su
   bloque `powershell` equivalente.
@@ -1378,13 +1380,26 @@ un **descriptor por `run_id`**:
 | `causa_corte` | `tanda_agotada` \| `solo_disputas` |
 | `gate_pendiente` | qué STOP quedó esperando decisión |
 | `revisor` | la referencia de sesión con que reanudar |
+| `manifest_seed` | copia estructuralmente idéntica del seed inmutable del sobre, si el manifest está habilitado |
+| `manifest_first_dispatch_at` | el mismo timestamp write-once del sobre; puede seguir en `null` sin despacho |
 
-Se **escribe al abrir el checkpoint** y se **retira al terminal** de la corrida.
+El descriptor se construye y valida **antes** de retirar el sobre activo y transferir el carrier al
+checkpoint. Con manifest
+deshabilitado, los dos nodos permanecen ausentes; no se serializan como `null`. Con manifest
+habilitado, ambos son obligatorios y `manifest_seed` conserva exactamente `skill`, `mode`,
+`preflight_started_at`, `families`, `transport` y `selection`: una clave de más, una de menos o una
+diferencia de valor frente al sobre invalida el checkpoint. `manifest_first_dispatch_at` solo admite
+el `null` original o el timestamp ya fijado; nunca un reloj de rehidratación.
+
+El checkpoint se **escribe al abrirlo** y se **retira al terminal** de la corrida. Si una interrupción
+deja sobre y checkpoint coexistiendo, el checkpoint válido tiene precedencia únicamente para
+rehidratar la revisión y estas dos autoridades del manifest. El sobre sigue siendo autoridad de
+intentos, cosecha, recursos y retiro: el checkpoint no permite declarar cese ni consumir una salida.
 
 **Quién lo consulta, por modo:** en **embebido**, el `resume` de la llamadora, **antes** de iniciar
 otra revisión; en **directo** y **draft**, `cross-review` misma, que es quien presenta. En los tres,
-una corrida abierta se **rehidrata**: no se inicia otra, no se recargan presupuestos y no se toma el
-scratch de otra corrida.
+una corrida abierta se **rehidrata** con estas autoridades: no se inicia otra, no se recargan
+presupuestos y no se toma el scratch de otra corrida.
 
 **Frontera declarada:** es local y untracked como el resto de `.plans/`, así que sobrevive entre
 sesiones **en la misma copia del directorio**, no entre máquinas ni entre checkouts.
@@ -1598,8 +1613,8 @@ sin estado.
 ## Manifest de corrida
 
 Un registro por corrida de una skill cross-model, con lo mínimo para responder **"¿esto me está
-sirviendo?"**. Es la sede canónica de las tres: `co-explore` y `cross-implement` apuntan acá y no
-duplican el esquema.
+sirviendo?"**. Es la sede canónica de los cuatro productores: `co-explore`, `cross-review`,
+`cross-implement` y `bitbucket-code-review` apuntan acá y no duplican el esquema.
 
 No es un log. El log de cada skill cuenta *qué pasó en una corrida* para poder auditarla; el
 manifest existe para poder mirar **cien corridas juntas** y decidir si la capacidad se gana su
@@ -1608,19 +1623,26 @@ la pena registrarlo acá.
 
 **Su hermano en vuelo es el sobre de corrida delegada, definido en `corridas-en-vuelo.md`.** El
 manifest vive en `.cross-model/runs/` y registra corridas **terminadas**; el sobre vive en
-`.cross-model/active/` y registra las que se están **ejecutando ahora**. La relación entre los dos es
-de posta, y en un solo punto del tiempo: **el sobre se retira cuando el manifest se escribe**. Si el
-terminal deja algo pendiente —una salida sin adjudicar, un recurso propio en pie—, lo que se demora
-es el retiro del sobre y nunca la escritura del manifest. El sobre además es **obligatorio** y no lo
-apaga `mode: "off"`: esa clave apaga la telemetría, no la continuidad del trabajo en vuelo.
+`.cross-model/active/` y registra las que se están **ejecutando ahora**. Un checkpoint intermedio
+transfiere el carrier y no materializa el manifest. Solo la posta terminal escribe el objeto
+completo nuevo antes de retirar el último carrier activo.
+
+| Transición | Manifest | Retiro del sobre |
+|---|---|---|
+| checkpoint intermedio | no se escribe | después de validar el descriptor y cumplir las condiciones operativas; la corrida sigue abierta en el checkpoint |
+| outcome terminal | se escribe si está habilitado | después del manifest; si está deshabilitado o falla, la telemetría no bloquea las demás condiciones |
+
+Si el terminal deja algo pendiente —una salida sin adjudicar, un recurso propio en pie—, lo que se
+demora es el retiro terminal y nunca la escritura del manifest. El sobre además es **obligatorio** y
+no lo apaga `mode: "off"`: esa clave apaga la telemetría, no la continuidad del trabajo en vuelo.
 
 ### El archivo
 
 ```
-<repo>/.cross-model/runs/<started_at compacto>-<skill>-<mode>.json
+<repo>/.cross-model/runs/<started_at compacto>-<skill>-<mode>-<run_id>.json
 ```
 
-Ejemplo: `.cross-model/runs/20260731T140211Z-co-explore-explore.json`
+Ejemplo: `.cross-model/runs/20260731T140211Z-co-explore-explore-95b6d861.json`
 
 ```json
 {
@@ -1641,6 +1663,16 @@ y dos corridas concurrentes —una tanda de `sdd-orchestrator` sobre varios repo
 Resolverlo pide locking: exactamente la infraestructura que este manifest existe para no traer. El
 timestamp va adelante del nombre para que el orden lexicográfico sea el cronológico.
 
+La ruta se deriva solo de `started_at`, `skill`, `mode` y el `run_id` estable de la corrida, y se
+crea **sin reemplazo**. Dos corridas que empiezan en el mismo segundo no colisionan porque tienen
+`run_id` distintos. Un retry del mismo `run_id` consulta únicamente si esa ruta existe. Si la ruta
+existe, el cierre ya está materializado y termina sin abrir, validar, recalcular ni reescribir sus
+bytes. Si la ruta falta, se intenta la creación exclusiva; si pierde esa carrera con `EEXIST`, el
+cierre también termina sin abrir, validar, recalcular ni reescribir. La consulta de existencia no
+convierte al archivo en autoridad; primero se deriva la ruta desde las autoridades persistidas. Un
+segundo cierre conserva bytes idénticos. Que cualquier manifest anterior sea ilegible es
+irrelevante: nunca participa en la derivación de la ruta ni del objeto actual.
+
 Con una selección de una entrada, el manifest **se escribe igual**: `families` enumera la familia
 delegada, `selection` distingue `full` de `user_choice`, `outcome` conserva el resultado terminal y
 `degradation` registra la rama alcanzada. La elección no suprime el registro ni pisa la rama.
@@ -1649,9 +1681,55 @@ delegada, `selection` distingue `full` de `user_choice`, `outcome` conserva el r
 skills. El usuario borra el directorio cuando quiera; ninguna skill lo hace por él. Una corrida son
 ~300 bytes.
 
-**Se escribe con la tool de escritura de archivos del conductor, nunca con `echo` ni heredoc** —
-misma regla que los prompts, y por el mismo motivo: el quoting. Por eso acá no hay bloque de
-escritura; los bloques verificables son validar y leer.
+**Se construye como un objeto completo y nuevo y se escribe con la tool de escritura de archivos
+del conductor, nunca con `echo` ni heredoc** —misma regla que los prompts, y por el mismo motivo: el
+quoting. La tool escribe primero un candidato con UUID fresco en el mismo directorio
+`.cross-model/runs/`; ese candidato tampoco se deriva de un manifest anterior. Luego el shell solo
+lo promueve de forma exclusiva a la ruta final: no serializa contenido. En POSIX se usa un hard
+link, cuya creación falla si el destino ya existe:
+
+```bash
+if ln "$manifest_tmp" "$manifest" 2>/dev/null; then
+  rm -f "$manifest_tmp"
+  manifest_creado=1
+elif [ -e "$manifest" ]; then
+  rm -f "$manifest_tmp"
+  manifest_creado=0  # otro cierre ganó la carrera: no abrir ni validar el destino
+else
+  rm -f "$manifest_tmp"
+  printf 'ERROR: no se pudo publicar el manifest de corrida\n' >&2
+  manifest_creado=0
+fi
+```
+
+En PowerShell 5.1 y posteriores, `File.Move` aporta la misma exclusión porque no reemplaza un
+destino existente:
+
+```powershell
+try {
+  [System.IO.File]::Move($manifestTmp, $manifest)
+  $manifestCreado = $true
+} catch [System.IO.IOException] {
+  if (Test-Path -LiteralPath $manifest) {
+    Remove-Item -LiteralPath $manifestTmp -Force -ErrorAction SilentlyContinue
+    $manifestCreado = $false # otro cierre ganó la carrera: no abrir ni validar el destino
+  } else {
+    Remove-Item -LiteralPath $manifestTmp -Force -ErrorAction SilentlyContinue
+    Write-Error 'No se pudo publicar el manifest de corrida'
+    $manifestCreado = $false
+  }
+}
+```
+
+El candidato se elimina tanto al publicar como al perder la carrera. `.cross-model/runs/` no se lee
+ni se copia como plantilla; ningún manifest anterior aporta valores. La única operación permitida
+sobre un cierre previo es la consulta de existencia de la ruta ya derivada.
+El objeto nuevo queda escrito antes del retiro terminal del último carrier activo. Esta regla no
+aplica al retiro no terminal del sobre cuando el carrier pasa a un checkpoint. Después de una
+creación exitosa se retira el sobre terminal; si la escritura está deshabilitada o falla, se informa
+la causa y el sobre se retira al cumplir las demás condiciones operativas, sin quedar activo por la
+telemetría. Los bloques anteriores solo materializan el objeto ya construido; los bloques de abajo
+validan y leen sus bytes.
 
 **Una corrida de `cross-review` con varias tandas escribe UN solo manifest.** Se escribe **una vez,
 al outcome terminal de la corrida**, tal como ya lo define este contrato — y con tandas el terminal
@@ -1661,12 +1739,42 @@ esquema no admite estados intermedios ni `.partial + rename`).
 **Quién lo finaliza es la llamadora, no `cross-review`:** al devolver el control en un checkpoint,
 `cross-review` todavía no sabe si habrá otra tanda. La llamadora sí lo sabe apenas el humano decide,
 así que es ella quien cierra el manifest tras el gate cuando la opción elegida es terminal.
+El retorno que cruza esa frontera es
+`manifest_authorities = {run_id, manifest_seed, manifest_first_dispatch_at}`. Con manifest en modo
+off contiene solo `{run_id}`; no inventa los dos nodos ausentes. En modo directo o draft,
+`cross-review` consume localmente el mismo retorno y conserva el mismo algoritmo canónico.
 
-`started_at` es el del **primer** despacho de la corrida, y `duration_s` sigue siendo **wall clock
-hasta el outcome terminal**, tal como lo fija este contrato para las tres skills — lo que con tandas
-**incluye la espera en el gate humano**. Se acepta a propósito: excluirla obligaría a cambiar la
-definición canónica de `duration_s` de las tres, y lo que este campo mide es cuánto tarda la
-capacidad en devolver un resultado utilizable, espera humana incluida.
+`started_at` es el del **primer** despacho de la corrida y, cuando no hubo ninguno, el inicio del
+preflight; `duration_s` es **wall clock hasta el outcome terminal** —lo que con tandas incluye la
+espera en el gate humano. Se acepta a propósito: lo que este campo mide es cuánto tarda la capacidad
+en devolver un resultado utilizable, espera humana incluida.
+
+### Autoridades y proyección fresca
+
+La habilitación se resuelve una vez antes del preflight. Con telemetría activa, el sobre nace con
+un `manifest_seed` inmutable y `manifest_first_dispatch_at: null`; con **modo off** los dos nodos
+permanecen ausentes durante toda la corrida y el terminal informa `manifest no escrito: modo off`.
+El seed contiene exactamente `skill`, `mode`, `preflight_started_at`, `families`, `transport` y
+`selection`. `manifest_first_dispatch_at` es write-once: se fija inmediatamente antes de la primera
+tool call de despacho y nunca se recalcula al reanudar.
+
+| Campo final | Autoridad de la corrida |
+|---|---|
+| `skill` · `mode` · `families` · `selection` | `manifest_seed` |
+| `started_at` | `manifest_first_dispatch_at`; sin despacho, fallback a `manifest_seed.preflight_started_at` |
+| `duration_s` | entero no negativo entre `started_at` y el único reloj capturado al terminal |
+| `transport` | vía candidata inicial resuelta según el orden operativo; `none` si no se resolvió ninguna |
+| `outcome` · `degradation` | terminal adjudicado por el productor, dentro de su fila de vocabulario |
+
+Con varias vías planificadas, el orden operativo del productor decide el escalar histórico:
+`bitbucket-code-review` ordena `codex` antes de `claude`; los demás conservan el orden ya declarado
+por su selector. Ese orden gobierna `families`, `transport`, el timestamp write-once y las tool calls.
+
+**Centinelas de no-herencia.** La corrida A puede cerrar con
+`started_at: 2026-07-31T14:02:11Z` y `duration_s: 412`; la corrida B, nacida de otro seed y otro
+reloj terminal, cierra con `started_at: 2026-08-01T09:00:03Z` y `duration_s: 7`. El objeto B se
+proyecta exclusivamente desde sus autoridades: no se lee A, y copiar `412` o el timestamp de A
+violaría la comparabilidad que justifica el manifest aunque el JSON siguiera pareciendo válido.
 
 ### Los campos
 
@@ -1677,10 +1785,10 @@ sean el mismo dato ausente.
 |---|---|---|
 | `skill` | cuál de las cuatro corrió | fijo por skill |
 | `mode` | el modo o `artifact_type` de esta corrida | contrato de invocación |
-| `started_at` | ISO-8601 UTC del **despacho** | reloj al lanzar |
-| `duration_s` | del despacho a la resolución del outcome | reloj |
+| `started_at` | ISO-8601 UTC del primer despacho o del preflight sin despacho | `manifest_first_dispatch_at` o fallback del seed |
+| `duration_s` | entero no negativo hasta la resolución del outcome | reloj terminal menos `started_at` |
 | `families` | familias delegadas — **siempre una lista** | topología de la corrida |
-| `transport` | la vía efectiva: `subagent` · `cli-exec` · `cli-resume` | vía resuelta al lanzar |
+| `transport` | la vía candidata inicial o `none` si ninguna se resolvió | `manifest_seed` + frontera write-once |
 | `outcome` | el estado terminal que la skill ya devuelve | envelope / salida |
 | `degradation` | qué se perdió, o `none` | escalera / causa de indisponibilidad |
 | `selection` | `full | user_choice`: cómo se resolvió la allowlist | `family_inventory` persistido |
@@ -1694,15 +1802,15 @@ topología, no una degradación que pise la rama alcanzada.
 **`families` es lista incluso cuando hay una sola familia.** Un campo que a veces es cadena y a
 veces lista obliga a cada lector a ramificar, y el lector típico es un `grep` apurado.
 
-**`duration_s` mide del despacho a la resolución del outcome**, no la corrida entera de la skill.
+**`duration_s` mide del inicio proyectado a la resolución del outcome**, no la corrida entera de la skill.
 Preparar el paquete y arbitrar es trabajo del conductor, no de la capacidad delegada: incluirlo hace
 que dos corridas midan cosas distintas según cuánto tardó el conductor en leer. En `co-explore`,
 donde el despacho son dos lanzamientos en paralelo, es del primer lanzamiento al último outcome
 resuelto — wall clock, no suma.
 
-**`transport` es el del lanzamiento.** Una corrida que arranca con `cli-exec` y reanuda su sesión en
+**`transport` es el del primer lanzamiento.** Una corrida que arranca con `cli-exec` y reanuda su sesión en
 las rondas siguientes sigue siendo `cli-exec`; `cli-resume` es para la corrida que *entera* fue una
-reanudación de una sesión ajena.
+reanudación de una sesión ajena. Un terminal de preflight sin worker ni tool call usa `none`.
 
 ### El vocabulario es prestado, nunca propio
 
@@ -1728,16 +1836,10 @@ produce. La sintaxis de cada lanzamiento vive en la vía que lo ejecuta, no en e
 
 > **En el punto donde se resuelve el outcome, y todos los caminos de salida pasan por ese punto.**
 
-Es la única regla del manifest que no es de forma, y la que decide si sirve. Un manifest escrito al
-cerrar bien una corrida registra **solo éxitos** — y entonces responde "¿esto me está sirviendo?"
-con la única muestra incapaz de contestarlo. Las corridas que informan si la capacidad vale son las
-que se degradaron, las que vencieron el deadline y las que nunca arrancaron. Una serie de puros
-`completed` no dice que la capacidad funciona: dice que se registró cuando funcionó.
-
-En la práctica, **cada estado terminal documentado escribe su manifest**, incluidos los que
-devuelven `UNAVAILABLE` antes de despachar nada. Un preflight que choca contra una pared confirmada
-es una corrida de duración corta con outcome `UNAVAILABLE`: es un dato, no una no-corrida — y es
-justamente el dato que dice que la capacidad no está disponible en este entorno.
+Es la única regla del manifest que no es de forma, y la que decide si sirve. **Cada estado terminal
+documentado proyecta su objeto nuevo**, incluidos los que devuelven `UNAVAILABLE` antes de despachar
+nada. Esos terminales comparten los nueve ejes comparables de la serie; omitirlos o redactarlos desde
+otro cierre rompería justamente la comparación entre corridas para la que existe este registro.
 
 ### Nunca bloquea
 
@@ -1779,21 +1881,70 @@ intuición, y el costo es un archivo de 300 bytes en un directorio untracked.
 
 ```bash
 # @bloque:manifest-valido
-# Predicado: los nueve campos del núcleo presentes, ninguno de los cuatro recortados, families como
-# lista; selection dentro de su enum común; outcome, degradation y transport en la fila de la skill.
+# Predicado: objeto JSON con exactamente nueve claves raíz, una vez cada una; started_at UTC real,
+# duration_s entero no negativo, families como lista de valores válidos (también vacía); mode,
+# outcome, degradation y transport en la fila de skill.
 # Entradas: $manifest
-rc=0
+rc=0; t=$(mktemp -d)
+command -v python3 >/dev/null 2>&1 || {
+  printf 'ERROR: manifest-valido requiere python3 en la variante POSIX\n' >&2
+  rm -rf "$t"; exit 99
+}
+if ! python3 -c 'import json,sys; v=json.load(open(sys.argv[1], encoding="utf-8")); sys.exit(0 if isinstance(v, dict) else 1)' "$manifest" >/dev/null 2>&1; then
+  printf 'GUARD:manifest-valido el archivo no es un objeto JSON válido\n' >&2
+  rm -rf "$t"; exit 1
+fi
+printf '%s\n' skill mode started_at duration_s families transport outcome degradation selection \
+  | sort > "$t/esperadas"
+grep -oE '"[^"]+"[[:space:]]*:' "$manifest" \
+  | sed -E 's/^"([^"]+)"[[:space:]]*:$/\1/' > "$t/claves"
 for c in skill mode started_at duration_s families transport outcome degradation selection; do
-  grep -q "\"$c\"[[:space:]]*:" "$manifest" || {
+  n=$(grep -cxF "$c" "$t/claves")
+  [ "$n" -gt 0 ] || {
     printf 'GUARD:manifest-valido falta el campo "%s"\n' "$c" >&2; rc=1; }
+  [ "$n" -le 1 ] || {
+    printf 'GUARD:manifest-valido clave requerida duplicada: "%s"\n' "$c" >&2; rc=1; }
 done
-for c in attempts schema_version usage parent; do
-  grep -q "\"$c\"[[:space:]]*:" "$manifest" && {
-    printf 'GUARD:manifest-valido campo recortado presente: "%s"\n' "$c" >&2; rc=1; }
+sort -u "$t/claves" > "$t/unicas"
+comm -13 "$t/esperadas" "$t/unicas" | while IFS= read -r c; do
+  printf 'GUARD:manifest-valido clave raíz desconocida: "%s"\n' "$c" >&2
+  printf x >> "$t/error"
 done
-grep -qE '"families"[[:space:]]*:[[:space:]]*\[' "$manifest" || {
-  printf 'GUARD:manifest-valido "families" no es una lista\n' >&2; rc=1; }
+[ -s "$t/error" ] && rc=1
 val() { sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$manifest" | head -1; }
+raw() { sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\([^,}]*\).*/\1/p" "$manifest" \
+          | head -1 | sed -E 's/^[[:space:]]+|[[:space:]]+$//g'; }
+
+if [ "$(grep -cxF started_at "$t/claves")" = 1 ]; then
+  inicio=$(val started_at)
+  printf '%s\n' "$inicio" | grep -qxE '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z' \
+    && python3 -c 'from datetime import datetime; import sys; datetime.strptime(sys.argv[1], "%Y-%m-%dT%H:%M:%SZ")' "$inicio" >/dev/null 2>&1 || {
+    printf 'GUARD:manifest-valido started_at no es UTC ISO-8601: "%s"\n' "$inicio" >&2; rc=1; }
+fi
+if [ "$(grep -cxF duration_s "$t/claves")" = 1 ]; then
+  duracion=$(raw duration_s)
+  printf '%s\n' "$duracion" | grep -qxE '[0-9]+' || {
+    printf 'GUARD:manifest-valido duration_s no es entero no negativo: "%s"\n' "$duracion" >&2; rc=1; }
+fi
+
+if grep -qE '"families"[[:space:]]*:[[:space:]]*\[' "$manifest"; then
+  families_body=$(tr '\n' ' ' < "$manifest" \
+    | sed -E 's/^.*"families"[[:space:]]*:[[:space:]]*\[([^]]*)\].*$/\1/')
+  printf '%s\n' "$families_body" | grep -oE '"[^"]*"' | tr -d '"' > "$t/familias"
+  printf '%s\n' "$families_body" \
+    | grep -qxE '[[:space:]]*("[^"]*"[[:space:]]*(,[[:space:]]*"[^"]*"[[:space:]]*)*)?' \
+    || printf '%s\n' '<elemento no string>' >> "$t/familias"
+  sort -u "$t/familias" | while IFS= read -r familia; do
+    n=$(grep -cxF "$familia" "$t/familias")
+    case "$familia:$n" in claude:1|codex:1) ;; *)
+      printf 'GUARD:manifest-valido family inválida o duplicada: "%s"\n' "$familia" >&2
+      printf x >> "$t/error-familia" ;; esac
+  done
+  [ -s "$t/error-familia" ] && rc=1
+elif [ "$(grep -cxF families "$t/claves")" = 1 ]; then
+  printf 'GUARD:manifest-valido "families" no es una lista\n' >&2; rc=1
+fi
+
 sk=$(val skill)
 comunes="none confirmed_wall launch_flake runtime_failure"
 selecciones="full user_choice"
@@ -1801,51 +1952,105 @@ selecciones="full user_choice"
 # lo filtraría a bitbucket-code-review. Se suma fila por fila a las tres skills que lo producen; el
 # transporte vigente para las cuatro es `subagent`, `cli-exec` y `cli-resume`.
 case "$sk" in
-  co-explore)      outs="completed map_failure"
+  co-explore)      modos="explore counter-plan investigate debate"; outs="completed map_failure"
                    degs="$comunes branch-2 branch-3 branch-4 deadline_exceeded"
-                   trans="subagent cli-exec cli-resume" ;;
-  cross-review)    outs="APPROVED REVISE UNAVAILABLE"
+                   trans="none subagent cli-exec cli-resume" ;;
+  cross-review)    modos="spec plan tasks master-spec reparto draft"; outs="APPROVED REVISE UNAVAILABLE"
                    degs="$comunes rounds_exhausted deadline_exceeded"
-                   trans="subagent cli-exec cli-resume" ;;
-  cross-implement) outs="IMPLEMENTED PARTIAL UNAVAILABLE"
+                   trans="none subagent cli-exec cli-resume" ;;
+  cross-implement) modos="embebido directo"; outs="IMPLEMENTED PARTIAL UNAVAILABLE"
                    degs="$comunes takeover deadline_exceeded"
-                   trans="subagent cli-exec cli-resume" ;;
+                   trans="none subagent cli-exec cli-resume" ;;
   bitbucket-code-review)
-                   outs="PUBLISHED PROPOSED UNAVAILABLE";      degs="$comunes revisor_invalido panel_vacio"
-                   trans="subagent cli-exec cli-resume" ;;
+                   modos="conductor delegado mixto"; outs="PUBLISHED PROPOSED UNAVAILABLE"
+                   degs="$comunes revisor_invalido panel_vacio"
+                   trans="none subagent cli-exec cli-resume" ;;
   *) printf 'GUARD:manifest-valido skill fuera del ecosistema: "%s"\n' "$sk" >&2
-     rc=1; outs=""; degs=""; trans="" ;;
+     rc=1; modos=""; outs=""; degs=""; trans="" ;;
 esac
-for par in "outcome:$outs" "degradation:$degs" "transport:$trans" "selection:$selecciones"; do
+for par in "mode:$modos" "outcome:$outs" "degradation:$degs" "transport:$trans" "selection:$selecciones"; do
   campo=${par%%:*}; permitidos=${par#*:}
   [ -n "$permitidos" ] || continue
+  [ "$(grep -cxF "$campo" "$t/claves")" = 1 ] || continue
   v=$(val "$campo")
   printf '%s\n' "$permitidos" | tr ' ' '\n' | grep -qxF "$v" || {
     printf 'GUARD:manifest-valido %s "%s" no pertenece a %s\n' "$campo" "$v" "$sk" >&2; rc=1; }
 done
-exit $rc
+rm -rf "$t"; exit $rc
 # @fin:manifest-valido
 ```
 
 ```powershell
 # @bloque:manifest-valido-ps
-# Predicado: los nueve campos del núcleo presentes, ninguno de los cuatro recortados, families como
-# lista; selection dentro de su enum común; outcome, degradation y transport en la fila de la skill.
+# Predicado: objeto JSON con exactamente nueve claves raíz, una vez cada una; started_at UTC real,
+# duration_s entero no negativo, families como lista de valores válidos (también vacía); mode,
+# outcome, degradation y transport en la fila de skill.
 # Entradas: $manifest
 $rc = 0
 $m = Get-Content -Raw $manifest
+try {
+  # Windows PowerShell 5.1 usa un parser permisivo: cerrar sus extensiones conocidas antes de
+  # deserializar conserva la gramática JSON estricta del par POSIX para este esquema cerrado.
+  if ($m -cmatch '"duration_s"\s*:\s*-?0\d' -or
+      $m -cmatch '(?s),\s*[}\]]' -or $m -cmatch '(?m)//|/\*|\*/') {
+    throw 'sintaxis fuera de JSON estricto'
+  }
+  $documento = $m | ConvertFrom-Json -ErrorAction Stop
+  if ($null -eq $documento -or $documento -isnot [pscustomobject]) {
+    throw 'la raíz no es un objeto'
+  }
+} catch {
+  Write-Error 'GUARD:manifest-valido el archivo no es un objeto JSON válido'
+  exit 1
+}
 # Los operadores van en su variante case-sensitive (`-cmatch`, `-cnotmatch`, `-cnotcontains`,
 # `switch -CaseSensitive`) porque el par POSIX compara con `grep`/`case`/`grep -qxF`, que distinguen
 # mayúsculas. Con los operadores por defecto de .NET, `Started_at` cuenta como el campo `started_at`
 # y `CLI-EXEC` como el transporte `cli-exec`.
-foreach ($c in 'skill','mode','started_at','duration_s','families','transport','outcome','degradation','selection') {
-  if ($m -cnotmatch "`"$c`"\s*:") { Write-Error "GUARD:manifest-valido falta el campo `"$c`""; $rc = 1 }
+$esperadas = @('skill','mode','started_at','duration_s','families','transport','outcome','degradation','selection')
+$claves = @([regex]::Matches($m, '"([^"]+)"\s*:') | ForEach-Object { $_.Groups[1].Value })
+foreach ($c in $esperadas) {
+  $n = @($claves | Where-Object { $_ -ceq $c }).Count
+  if ($n -eq 0) { Write-Error "GUARD:manifest-valido falta el campo `"$c`""; $rc = 1 }
+  if ($n -gt 1) { Write-Error "GUARD:manifest-valido clave requerida duplicada: `"$c`""; $rc = 1 }
 }
-foreach ($c in 'attempts','schema_version','usage','parent') {
-  if ($m -cmatch "`"$c`"\s*:") { Write-Error "GUARD:manifest-valido campo recortado presente: `"$c`""; $rc = 1 }
+foreach ($c in @($claves | Sort-Object -Unique -CaseSensitive)) {
+  if ($esperadas -cnotcontains $c) {
+    Write-Error "GUARD:manifest-valido clave raíz desconocida: `"$c`""; $rc = 1
+  }
 }
-if ($m -cnotmatch '"families"\s*:\s*\[') { Write-Error 'GUARD:manifest-valido "families" no es una lista'; $rc = 1 }
 function Val($k) { if ($m -cmatch "`"$k`"\s*:\s*`"([^`"]*)`"") { $Matches[1] } else { '' } }
+if (@($claves | Where-Object { $_ -ceq 'started_at' }).Count -eq 1) {
+  $inicio = Val 'started_at'
+  $fecha = [datetime]::MinValue
+  $fechaValida = [datetime]::TryParseExact($inicio, "yyyy-MM-dd'T'HH:mm:ss'Z'",
+    [cultureinfo]::InvariantCulture, [Globalization.DateTimeStyles]::AssumeUniversal, [ref]$fecha)
+  if ($inicio -cnotmatch '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$' -or -not $fechaValida) {
+    Write-Error "GUARD:manifest-valido started_at no es UTC ISO-8601: `"$inicio`""; $rc = 1
+  }
+}
+if (@($claves | Where-Object { $_ -ceq 'duration_s' }).Count -eq 1) {
+  $duracion = if ($m -cmatch '"duration_s"\s*:\s*([^,}\r\n]*)') { $Matches[1].Trim() } else { '' }
+  if ($duracion -cnotmatch '^\d+$') {
+    Write-Error "GUARD:manifest-valido duration_s no es entero no negativo: `"$duracion`""; $rc = 1
+  }
+}
+
+if ($m -cmatch '(?s)"families"\s*:\s*\[(.*?)\]') {
+  $familiesBody = $Matches[1]
+  $familias = @([regex]::Matches($familiesBody, '"([^"]*)"') | ForEach-Object { $_.Groups[1].Value })
+  if ($familiesBody -cnotmatch '^\s*(?:"[^"]*"\s*(?:,\s*"[^"]*"\s*)*)?$') {
+    $familias += '<elemento no string>'
+  }
+  foreach ($familia in @($familias | Sort-Object -Unique -CaseSensitive)) {
+    if ($familia -cnotin @('claude','codex') -or
+        @($familias | Where-Object { $_ -ceq $familia }).Count -gt 1) {
+      Write-Error "GUARD:manifest-valido family inválida o duplicada: `"$familia`""; $rc = 1
+    }
+  }
+} elseif (@($claves | Where-Object { $_ -ceq 'families' }).Count -eq 1) {
+  Write-Error 'GUARD:manifest-valido "families" no es una lista'; $rc = 1
+}
 $sk = Val 'skill'
 $comunes = @('none','confirmed_wall','launch_flake','runtime_failure')
 $selecciones = @('full','user_choice')
@@ -1853,22 +2058,23 @@ $selecciones = @('full','user_choice')
 # lo filtraría a bitbucket-code-review. Se suma fila por fila a las tres skills que lo producen; el
 # transporte vigente para las cuatro es 'subagent', 'cli-exec' y 'cli-resume'.
 switch -CaseSensitive ($sk) {
-  'co-explore'      { $outs = @('completed','map_failure')
+  'co-explore'      { $modos = @('explore','counter-plan','investigate','debate'); $outs = @('completed','map_failure')
                       $degs = $comunes + @('branch-2','branch-3','branch-4','deadline_exceeded')
-                      $trans = @('subagent','cli-exec','cli-resume') }
-  'cross-review'    { $outs = @('APPROVED','REVISE','UNAVAILABLE')
+                      $trans = @('none','subagent','cli-exec','cli-resume') }
+  'cross-review'    { $modos = @('spec','plan','tasks','master-spec','reparto','draft'); $outs = @('APPROVED','REVISE','UNAVAILABLE')
                       $degs = $comunes + @('rounds_exhausted','deadline_exceeded')
-                      $trans = @('subagent','cli-exec','cli-resume') }
-  'cross-implement' { $outs = @('IMPLEMENTED','PARTIAL','UNAVAILABLE')
+                      $trans = @('none','subagent','cli-exec','cli-resume') }
+  'cross-implement' { $modos = @('embebido','directo'); $outs = @('IMPLEMENTED','PARTIAL','UNAVAILABLE')
                       $degs = $comunes + @('takeover','deadline_exceeded')
-                      $trans = @('subagent','cli-exec','cli-resume') }
-  'bitbucket-code-review' { $outs = @('PUBLISHED','PROPOSED','UNAVAILABLE'); $degs = $comunes + @('revisor_invalido','panel_vacio')
-                      $trans = @('subagent','cli-exec','cli-resume') }
+                      $trans = @('none','subagent','cli-exec','cli-resume') }
+  'bitbucket-code-review' { $modos = @('conductor','delegado','mixto'); $outs = @('PUBLISHED','PROPOSED','UNAVAILABLE'); $degs = $comunes + @('revisor_invalido','panel_vacio')
+                      $trans = @('none','subagent','cli-exec','cli-resume') }
   default { Write-Error "GUARD:manifest-valido skill fuera del ecosistema: `"$sk`""
-            $rc = 1; $outs = @(); $degs = @(); $trans = @() }
+            $rc = 1; $modos = @(); $outs = @(); $degs = @(); $trans = @() }
 }
-foreach ($par in @(@('outcome',$outs), @('degradation',$degs), @('transport',$trans), @('selection',$selecciones))) {
+foreach ($par in @(@('mode',$modos), @('outcome',$outs), @('degradation',$degs), @('transport',$trans), @('selection',$selecciones))) {
   if ($par[1].Count -eq 0) { continue }
+  if (@($claves | Where-Object { $_ -ceq $par[0] }).Count -ne 1) { continue }
   $v = Val $par[0]
   if ($par[1] -cnotcontains $v) {
     Write-Error "GUARD:manifest-valido $($par[0]) `"$v`" no pertenece a $sk"; $rc = 1

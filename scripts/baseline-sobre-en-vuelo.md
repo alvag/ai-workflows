@@ -23,6 +23,7 @@
 | V17 | AC-14 — tercera excepción y cita normativa | `--ac 14` | ok |
 | V18 | AC-15 — claves nuevas del diff de la rama completas en dueño y vista; en la rama base no hay sujeto | `--ac 15` | ok |
 | V19 | AC-16 — guardas del repo sin regresión | `--ac 16` | ok |
+| V20 | AC-17 — autoridades frescas, carriers y cierre idempotente del manifest | `--ac 17` | ok |
 
 ### v2
 
@@ -164,3 +165,38 @@ Los diecinueve modos, `--validar-baseline` y `--autotest` se midieron sobre el w
 | V17 | 9c78a04 | 575a60acafca9f173c8bb1200c4c5291fb59d9c116ecb02a1f47285bd58805b5 | 2026-08-13T16:41:11Z | GREEN_ALREADY | — |
 | V18 | 9c78a04 | 575a60acafca9f173c8bb1200c4c5291fb59d9c116ecb02a1f47285bd58805b5 | 2026-08-13T16:41:11Z | GREEN_ALREADY | — |
 | V19 | 9c78a04 | 575a60acafca9f173c8bb1200c4c5291fb59d9c116ecb02a1f47285bd58805b5 | 2026-08-13T16:41:11Z | GREEN_ALREADY | — |
+
+### v11
+
+Identidad comprobable: `(9b58ce6, 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36)`.
+**Sucede a `v5`** y consolida los baselines transitorios v6–v10, retirados porque nunca
+quedaron ligados a bytes commiteados. El validador ahora comprueba con `git show` que el commit
+registrado contiene exactamente el verificador identificado por el `sha256`; además incorpora las
+correcciones de portabilidad y contención surgidas de la revisión del PR.
+
+Los veinte modos y `--autotest` se midieron sobre el commit `9b58ce6`; todos dieron exit `0`.
+
+#### Baseline de v11
+
+| ID | commit | sha256 | timestamp | estado | adjudicación |
+|---|---|---|---|---|---|
+| V1 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V2 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V3 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V4 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V5 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V6 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V7 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V8 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V9 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V10 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V11 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V12 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V13 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V14 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V15 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V16 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V17 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | — |
+| V18 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | no regresión: pasa por construcción |
+| V19 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | no regresión: pasa por construcción |
+| V20 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | `--ac 17` y sus 43 mutantes estructurales dieron exit 0 |
