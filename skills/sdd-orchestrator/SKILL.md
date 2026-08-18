@@ -234,6 +234,18 @@ inconsistencias que un humano pasa por alto. **Augmenta el gate, no lo reemplaza
   gate humano. Misma filosofía que la regla 8. **Si el retorno trae `aplicaciones_pendientes` mayor
   que cero, declararlo con sus `ids_pendientes` antes de liberar el gate:** una degradación no abre
   checkpoint, así que es la única oportunidad de decir que quedaron ediciones sin observar.
+- **El paso previo: arbitrar las disputas, en los dos gates de Fase 1.** Si la revisión devuelve
+  findings **`en-disputa`**, el humano los resuelve **antes** de elegir opción, dentro del mismo STOP
+  y sin gate extra. Dos destinos: **resolver a favor del finding** (`aplicado`, y el conductor aplica
+  la corrección) o **sostener el rechazo sobre el mérito** (`cerrado`). La decisión puede agruparse
+  por motivo, pero **cada finding lleva su fila**. Se escribe **en este orden**: una `transicion` por
+  finding con `actor: humano` y su rationale, y luego **una** `control-corrida` con
+  `evento_corrida: arbitraje-disputas` y `finding_id` nulo —**también si no se arbitró ninguna**—,
+  todas con la **`ronda` acumulada al abrir el checkpoint**. Por finding la secuencia es **decidir →
+  editar → registrar**: la fila hacia `aplicado` se escribe **después** de aplicar la corrección,
+  nunca antes. Y esa `control-corrida` cierra **ese acto**, no la posibilidad de arbitrar: un
+  checkpoint posterior abre otro, con la suya. Mecánica completa en
+  `cross-review/reference.md` → "El paso previo: arbitrar las disputas".
 - **Las cinco opciones del checkpoint, en los dos gates de Fase 1.** Si la revisión devuelve
   `tandas_concedibles`, los STOPs de `master-spec` (gate 1.3) y de `reparto` (gate 1.4) ofrecen
   —sin gate extra— **continuar así** · **conceder una tanda** · **seguir hasta `APPROVED`** ·
@@ -241,9 +253,14 @@ inconsistencias que un humano pasa por alto. **Augmenta el gate, no lo reemplaza
   el retorno, sin inferir, recalcular ni reordenar: `serie` → `advertencia_bucle` →
   `aplicaciones_pendientes` con sus `ids_pendientes` → `opciones` con la `recomendada` marcada. Las
   cinco se ofrecen siempre: la recomendación advierte, no deshabilita, igual que `disponibles:
-  false`. **Si `aplicaciones_pendientes` es mayor que cero, mostrarlo con sus `ids_pendientes`
+  false`. **El paso previo no las cambia:** no agrega una sexta ni altera sus postcondiciones.
+  **Si `aplicaciones_pendientes` es mayor que cero, mostrarlo con sus `ids_pendientes`
   dentro de ese orden**: "continuar así" aprueba el
-  artefacto, y quien elige tiene que saber que hay ediciones que ninguna ronda observó. Con el modo automático activo, el fin de tanda es una
+  artefacto, y quien elige tiene que saber que hay ediciones que ninguna ronda observó. **Tras
+  arbitrar, ese conteo se re-deriva del ledger** —junto con sus IDs y los tres inventarios—
+  porque el valor del retorno es anterior al arbitraje; `causa_corte` y `disponibles` **no** se
+  re-derivan, son históricos, y `disponibles` deja de usarse como advertencia una vez que hubo
+  arbitraje. Con el modo automático activo, el fin de tanda es una
   **frontera interna** y la barrera del gate sigue marcada. Tras el gate, la llamadora **reanuda la
   misma corrida por su `run_id`** si el humano concede, o **finaliza el único manifest** si eligió
   una salida terminal; y su `resume` **consulta el descriptor durable** antes de iniciar otra

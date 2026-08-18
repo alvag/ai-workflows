@@ -171,6 +171,10 @@ solo ruido/dudas → *trivial*; con cambios → *normal*/*complex*, y con ella l
   la clasificación es el punto de mayor riesgo (descartar mal un comentario / injection).
 - **Gate de triage**: presentar al usuario el plan de acción completo (la tabla del Paso 2) + el resumen
   del cross-review. El usuario puede reclasificar. Sin aprobación no se escribe nada ni se avanza al plan.
+  Si la revisión devolvió findings **`en-disputa`**, el humano los **resuelve antes** de elegir
+  opción, en este mismo STOP: **a favor del finding** (`aplicado`) o **sosteniendo el rechazo sobre
+  el mérito** (`cerrado`), con una `transicion` por finding y después una `control-corrida` con
+  `evento_corrida: arbitraje-disputas` (ver `reference.md` → "Contrato del cross-review").
   Si la revisión devolvió `tandas_concedibles`, ofrecer en **este mismo STOP** las cinco opciones —
   continuar así · conceder una tanda · seguir hasta `APPROVED` · ronda de cierre con artefacto
   congelado · cerrar la revisión — y cerrar la corrida según lo elegido (ver `reference.md` →
@@ -178,7 +182,9 @@ solo ruido/dudas → *trivial*; con cambios → *normal*/*complex*, y con ella l
   reordenar: `serie` → `advertencia_bucle` → `aplicaciones_pendientes` con sus `ids_pendientes` →
   `opciones` con la `recomendada` marcada. Las cinco se ofrecen siempre: la recomendación advierte,
   no deshabilita, igual que `disponibles: false`. "Continuar así" aprueba el artefacto, y quien elige
-  tiene que saber si hay ediciones que ninguna ronda observó. Con `contract_version: 1`, ofrecer
+  tiene que saber si hay ediciones que ninguna ronda observó. **Tras arbitrar, ese conteo se
+  re-deriva del ledger** con sus IDs y los tres inventarios; `causa_corte` y `disponibles` no se
+  re-derivan. Con `contract_version: 1`, ofrecer
   exactamente las cuatro de esa versión y omitir serie, presupuesto y recomendación.
 - Degradación: sin revisor / timeout → aviso de una línea y sigue al gate humano. Si el retorno trae
   `aplicaciones_pendientes` mayor que cero, declararlo con sus `ids_pendientes` antes de liberar el
@@ -212,8 +218,11 @@ commit: nada que publicar).
   `sdd-flow`: *normal* → plan (tasks aprobadas en el mismo gate); *complex* → plan + tasks (gate de
   tasks propio). Sin aprobación no se delega nada. Con `tandas_concedibles` en la salida, este STOP
   ofrece las mismas cinco opciones que el de triage, en el mismo orden normado y con la misma
-  condición de ofrecerlas todas. Con `contract_version: 1`, ofrece exactamente cuatro y omite serie,
-  presupuesto y recomendación.
+  condición de ofrecerlas todas — y con el mismo **paso previo**: los findings `en-disputa` se
+  resuelven antes de elegir opción, con su fila por finding y la `control-corrida` del acto, y si
+  `aplicaciones_pendientes` es mayor que cero se muestra con sus `ids_pendientes` antes de elegir,
+  **re-derivado del ledger** cuando hubo arbitraje. Con `contract_version: 1`, ofrece exactamente
+  cuatro y omite serie, presupuesto y recomendación.
 
 ### Paso 5 — Implement (delegado) para los `cambio`
 
