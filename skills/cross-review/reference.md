@@ -1,8 +1,8 @@
 # cross-review — Referencia
 
 Detalle operativo de la skill `cross-review`. El `SKILL.md` apunta acá cuando necesita el
-contrato de invocación del revisor, la plantilla del prompt, el formato de salida o el foco por
-tipo de artefacto.
+contrato de invocación del revisor, la plantilla del prompt, el formato de salida o las dimensiones
+de inspección.
 
 ## Tabla de contenidos
 
@@ -16,7 +16,7 @@ tipo de artefacto.
 - [Ingesta y arbitraje](#ingesta-y-arbitraje)
 - [Tandas y salida de rondas](#tandas-y-salida-de-rondas)
 - [Checkpoint durable](#checkpoint-durable)
-- [Foco por tipo de artefacto](#foco-por-tipo-de-artefacto)
+- [Dimensiones de inspección](#dimensiones-de-inspección)
 - [Plantilla de review-log.md](#plantilla-de-review-logmd)
 - [Configuración](#configuración)
 - [Manifest de corrida](#manifest-de-corrida)
@@ -30,7 +30,7 @@ tamaño. Cargar el segundo en toda corrida gastaría contexto en las corridas qu
 
 | Archivo | Qué trae | Cuándo se lee |
 |---|---|---|
-| `reference.md` (este) | portabilidad entre shells, descubrimiento e invocación del revisor, resume entre rondas, prompt, formato de salida, foco por tipo de artefacto, latencia y topes, matriz de resume y manifest | en toda corrida |
+| `reference.md` (este) | portabilidad entre shells, descubrimiento e invocación del revisor, resume entre rondas, prompt, formato de salida, dimensiones de inspección, latencia y topes, matriz de resume y manifest | en toda corrida |
 | `ciclo-de-vida.md` | identidad del finding, estados y transiciones, ledger append-only y su esquema, presupuestos, **aplicación pendiente de revisión**, vara de admisión de la defensa, cierre y adopción de logs legacy | ante la **primera salida conforme que traiga al menos un finding**, cualquiera sea el veredicto |
 
 **El predicado de `ciclo-de-vida.md` es literal y no se parafrasea.** No es "al primer rechazo": la
@@ -1084,6 +1084,28 @@ Get-Content -Raw <ruta\al\prompt-r1.txt> |
 Tras el seed, persistir `session-meta.json` en el scratch de esta skill igual que en una ronda 1
 normal, para que las rondas siguientes no dependan del `session.json` de otra skill.
 
+### El bloque de self-review
+
+Viaja al revisor como tabla cerrada: `comprobación · resultado · evidencia`, con resultado en
+`sin-hallazgos` · `con-hallazgos` · **`no-corrida`**. La ausencia de una fila **no** significa nada:
+`no-corrida` se representa explícitamente.
+
+Qué produce cada llamadora, medido en el árbol:
+
+| Llamadora | Comprobaciones que aporta | Sede |
+|---|---|---|
+| `sdd-flow` | cobertura de spec (AC↔task) · scan anti-placeholder · consistencia de interfaces Produce/Consume · cobertura AC↔fila del contrato | `sdd-flow/SKILL.md` → paso `tasks`, punto 3 "Self-review antes del gate" |
+| `sdd-orchestrator` | cobertura AC por repo y por tarea · ubicación en los dos sentidos · cardinalidad tarea↔fila · invariantes del grafo · participación | `sdd-orchestrator/SKILL.md` → "Cross-artifact check (regla 5)", los cinco grupos |
+| `sdd-pr-feedback` | **ninguna**: lo que tiene en `reference.md:164` es un *foco por gate*, no un self-review. Su bloque va **ausente**, igual que directo/draft | `sdd-pr-feedback/reference.md:164` |
+| `cross-review` directo/draft | ninguna: no hay llamadora que las produzca. Bloque **ausente**, no vacío | — |
+
+**`no-corrida` se aplica por fila, no por bloque.** Sirve cuando una llamadora que **sí** tiene
+catálogo omitió una de sus comprobaciones — el caso de `sdd-flow` que salta una de sus cuatro. Una
+llamadora **sin** catálogo no emite bloque: "todas las filas" no tiene referente y un implementador
+podría inventar las cuatro de `sdd-flow`, las cinco del orquestador, o convertir el foco por gate en
+comprobaciones. **Bloque ausente y bloque con filas `no-corrida` son estados distintos y ambos
+válidos**, y el prompt los distingue.
+
 ## Prompt de revisión
 
 Estructura XML compacta (estilo `gpt-5-4-prompting`: operador, no colaborador). Plantilla base:
@@ -1092,7 +1114,9 @@ Estructura XML compacta (estilo `gpt-5-4-prompting`: operador, no colaborador). 
 El prompt vive en `assets/prompts/review.md` — es la **entrada exacta** del worker y se escribe a archivo con la tool Write. Placeholders que hay que sustituir antes de despachar: `{artifact_type}`, `{complexity}`, `{working_dir}`.
 
 
-`{foco según tipo}` se completa con la fila correspondiente de "Foco por tipo de artefacto".
+`{dimensiones}` se sustituye por la fila completa del `artifact_type` de "Dimensiones de
+inspección" más los cuatro encargos de forma, como lista enumerada `D1..D10`. `D1..D6` siguen el
+orden de la fila; `D7..D10`, el orden de los encargos de forma.
 
 Sobre `<constraints>`: las tres prohibiciones evitan que el revisor se disperse —sin ellas, uno
 consultó memoria y buscó en la web antes de mirar el artefacto—, pero la cuarta línea es igual de
@@ -1233,6 +1257,62 @@ Y para cada defensa recibida: *admisible* → `reabierto` y **se re-arbitra**; *
 
 Nunca aplicar sin entender; nunca descartar sin razón. Todo va al ledger del `review-log.md`.
 
+### La serie de convergencia
+
+Una fila por ronda completada. Cada columna con selección, agrupación, reducción, unidad, corte y
+valor vacío:
+
+| Columna | Selección | Reducción | Unidad | Corte | Valor con ronda vacía |
+|---|---|---|---|---|---|
+| `emisiones` | filas `tipo=emision` con `ronda=r` | conteo | **emisión**, no identidad: una re-emisión cuenta, y es la señal | tras el arbitraje | `0` |
+| `severidad_max` | las mismas | máximo del orden `low<medium<high` | nivel | tras el arbitraje | **`no evaluable`** |
+| `procedencia` | las mismas, con `procedencia` presente | conteo por valor; denominador = emisiones con el campo | conteo absoluto **y** proporción | tras el arbitraje | **`no evaluable`**, nunca `0/0` |
+| `descartes` | filas `tipo=descarte` con `ronda=r` | conteo | evento | tras el arbitraje | `0` |
+| `pendientes` | findings cuya última transición a `aplicado` tiene `ronda ≤ r` sin `control-corrida` de cierre **válida** con ronda mayor | conteo | finding | **tras el cierre** de la ronda | `0` |
+| `aplico` | existe `tipo=transicion` con evento de aplicación y `ronda=r` | booleano | — | tras el arbitraje | `false` |
+| `tamano` | campo nuevo de la fila de cierre | valor registrado | **líneas del artefacto** | **al cierre, sobre el artefacto resultante tras arbitrar** | el valor de la ronda anterior |
+
+**La severidad vigente de un finding sigue siendo la de su última `emision`**, como ya define la sede
+de derivaciones: la serie no introduce una segunda definición.
+
+**El tamaño es la única columna no derivable**, y se declara como campo `tamano_artefacto` en el
+ámbito `control-corrida`, válido en los dos eventos de cierre de ronda. Unidad: **líneas**. Momento:
+**el artefacto resultante tras arbitrar esa ronda** — no el recibido, porque lo que la señal de
+crecimiento mide es el efecto de las aplicaciones de esa ronda. En una ronda **no conforme o con
+timeout** no hay cierre y por lo tanto no hay fila de serie: la ronda no aparece.
+
+#### Ledger de ejemplo para ejercer S4
+
+Trae los seis casos que el fold tiene que resolver: ronda con emisiones, **ronda vacía**, descarte,
+re-emisión, aplicación y una ronda que no aplica nada.
+
+| Ronda | ID | tipo | evento | severidad | procedencia |
+|---|---|---|---|---|---|
+| 1 | F-01 | emision | — | high | *(ausente: ronda 1)* |
+| 1 | F-02 | emision | — | medium | *(ausente)* |
+| 1 | F-01 | transicion | aplica | — | — |
+| 1 | — | control-corrida | ronda-completada-valida · `tamano_artefacto: 100` | — | — |
+| 2 | F-01 | emision | re-emite (1ª) | high | `reemision` |
+| 2 | F-03 | emision | — | low | `regresion` |
+| 2 | F-04 | descarte | re-emite uno cerrado | — | — |
+| 2 | F-01 | transicion | aplica | — | — |
+| 2 | — | control-corrida | ronda-completada-valida · `tamano_artefacto: 130` | — | — |
+| 3 | — | control-corrida | ronda-completada-valida · `tamano_artefacto: 130` | — | — |
+
+**Serie esperada:**
+
+| ronda | emisiones | severidad_max | procedencia | descartes | pendientes | aplico | tamano |
+|---|---|---|---|---|---|---|---|
+| 1 | 2 | `high` | **no evaluable** (campo ausente en ronda 1) | 0 | 1 | sí | 100 |
+| 2 | 2 | `high` | `reemision` 1/2 · `regresion` 1/2 · `original` 0/2 | 1 | 1 | sí | 130 |
+| 3 | **0** | **no evaluable** | **no evaluable** (sin emisiones) | 0 | **0** | no | 130 |
+
+Tres cosas que este ejemplo fija y que el texto solo enuncia: la ronda 1 da `no evaluable` y **no**
+`original 2/2`, porque el campo está ausente por contrato y no vacío; la ronda 3 vacía da
+`no evaluable` y **no** `0/0`; y las pendientes de la ronda 2 bajan a cero recién en la 3, porque el
+cierre de la 2 lleva `ronda: 2` y `2 > 2` es falso — que es el mecanismo entero de este cambio,
+visible en una tabla.
+
 ### Veredicto derivado
 
 **El veredicto de la corrida se deriva del ledger, no del bloque del revisor.** Con dos bloques, un
@@ -1287,6 +1367,52 @@ del revisor y arbitraje del conductor. Lo que **no** consume ronda es el finding
 genera arbitraje ni obliga a abrir una ronda por él. Tampoco los eventos del complemento, que se
 descartan con motivo.
 
+### Suficiencia de presupuesto
+
+```
+alcanza = rondas_disponibles >= 1 + (aplicacion_esperada ? 1 : 0)
+```
+
+`aplicacion_esperada` es verdadera si al corte existe **alguna** de tres condiciones de estado —no se
+cuentan findings, porque todos pueden arbitrarse en una sola ronda:
+
+1. un rechazo pendiente con defensa disponible,
+2. un finding no terminal que todavía puede terminar aplicado,
+3. una aplicación pendiente con re-apertura disponible.
+
+`rondas_disponibles` se evalúa sobre **la modalidad que la opción autorizaría**, nunca sobre la tanda
+agotada —que en el checkpoint vale cero y volvería inalcanzable toda otra fila:
+
+| Modalidad | `rondas_disponibles` |
+|---|---|
+| conceder una tanda | `max_rounds` |
+| seguir hasta `APPROVED` | `tope_efectivo − consumidas` |
+| continuación dentro de una tanda activa | las no consumidas de esa tanda |
+| ronda de cierre | `1`, y **no** se presenta como presupuesto para una validación posterior |
+
+El checkpoint muestra `rondas_disponibles`, `aplicacion_esperada`, `rondas_minimas_requeridas` y
+`alcanza` — **los cuatro, no un booleano**: esconder la fórmula obliga a confiar en ella. Es una
+estimación conservadora, no una promesa: una ronda posterior puede descubrir otro finding.
+
+### Retorno v2 y orden de presentación
+
+Esquema único, dentro de `tandas_concedibles`. Los cuatro presentadores **solo muestran**: no
+infieren, no recalculan, no reordenan.
+
+| Campo | Tipo | Obligatorio | Autoridad |
+|---|---|---|---|
+| `contract_version` | `1 \| 2` | sí | la corrida |
+| `serie` | lista de filas, una por ronda completada, con las siete columnas de la decisión 4 | sí en v2 | derivada del ledger |
+| `presupuesto` | objeto con `rondas_disponibles`, `aplicacion_esperada`, `rondas_minimas_requeridas`, `alcanza` | sí en v2 | derivado |
+| `opciones` | lista de 5 en v2, de 4 en v1 | sí | fija por versión |
+| `recomendada` | id de opción, y `regla` con el número de fila de la tabla que la produjo | sí en v2 | derivada de `serie` |
+| `advertencia_bucle` | texto o `null` | sí en v2 | derivada de `pendientes` y `presupuesto` |
+| `aplicaciones_pendientes` · `ids_pendientes` | entero · lista | sí en las dos versiones | ya existen |
+
+**Orden de presentación, normado y no a criterio:** `serie` → `advertencia_bucle` →
+`aplicaciones_pendientes` con sus ids → `opciones` con la `recomendada` marcada. El presentador no
+elige el orden.
+
 ### Rechazos sin responder al agotarse la tanda
 
 Un finding rechazado en la **última ronda** de una tanda no alcanzó a tener su oportunidad de
@@ -1308,7 +1434,7 @@ rationale— **más** una `control-corrida` con `evento_corrida: checkpoint`, `f
 `control-corrida` no deja traza de **qué** rechazos se procesaron; registrar solo las `transicion`
 pierde **qué opción** abrió o cerró la tanda.
 
-### Las cuatro opciones del checkpoint
+### Las cinco opciones del checkpoint
 
 Sin solapamiento, cada una con postcondición fijada sobre **tres ejes**:
 
@@ -1317,6 +1443,7 @@ Sin solapamiento, cada una con postcondición fijada sobre **tres ejes**:
 | **continuar así** (aprobar pese al `REVISE`) | aprobado, el flujo sigue | cerrada | → `en-disputa`, registrados |
 | **conceder una tanda** | sin resolver, el gate no se cierra | continúa una tanda, y vuelve a preguntar | siguen `rechazado`, esperan respuesta |
 | **seguir hasta `APPROVED`** | sin resolver, el gate no se cierra | continúa **sin volver a preguntar** hasta `APPROVED` o hasta el tope total | siguen `rechazado`, esperan respuesta |
+| **ronda de cierre con artefacto congelado** | **congelado**, salvo la fase 6 | **exactamente una** ronda, y vuelve al checkpoint; no es terminal por sí misma | a `en-disputa` **al cerrar**, no al elegir |
 | **cerrar la revisión** | **sin aprobar**, el flujo no sigue | cerrada | → `en-disputa`, registrados |
 
 Ningún par comparte los tres ejes: "continuar así" y "cerrar" difieren en el artefacto (una lo
@@ -1324,8 +1451,94 @@ aprueba, la otra no); "conceder una tanda" y "seguir hasta `APPROVED`" difieren 
 vuelve a decidir. **"Cerrar la revisión" es una salida adicional** —para cuando la revisión dejó de
 rendir pero el artefacto no convence—, nunca un reemplazo de "seguir hasta `APPROVED`".
 
-**Las cuatro se ofrecen siempre**, incluso cuando el dato de retorno avisa que conceder no puede
+**Las cinco se ofrecen siempre**, incluso cuando el dato de retorno avisa que conceder no puede
 converger: ese dato **advierte, no deshabilita** (ver `SKILL.md` → "Salida").
+
+### La ronda de cierre: modalidad y máquina de procesamiento
+
+#### Dónde vive
+
+`modalidad: cierre` se persiste en **el descriptor de checkpoint**, que es la autoridad durable que
+rehidrata la corrida, y se **refleja** en el prompt de esa ronda. El prompt no puede ser la
+autoridad: no sobrevive a una pausa. Se usa `review-round-n.md` con el marcador; **no** hay asset
+nuevo, porque un tercer prompt se desincroniza de los otros dos.
+
+#### Orden exacto del procesamiento
+
+Conserva el del loop, y solo cambia qué decisiones editan:
+
+1. validar conformidad de la salida; no conforme o timeout → **no se arbitra nada**, el artefacto
+   sigue congelado y se vuelve al checkpoint (degradación vigente, sin causa nueva);
+2. deduplicar por tema y normalizar identidad y `procedencia`;
+3. arbitrar **las respuestas a rechazos**: `ACEPTO` cierra; defensa se evalúa por admisibilidad;
+4. arbitrar **los findings nuevos**, con el procedimiento normal —verificar, y decidir aplicar,
+   rechazar o escalar—;
+5. **lote de transiciones sin edición**, con el evento nuevo de la decisión 6.b: todo lo que el
+   conductor decidiría aplicar y no es `high` pasa a `en-disputa` por **diferimiento por
+   congelamiento**; toda defensa admisible no `high` pasa a `reabierto` y de ahí a `en-disputa` por
+   el mismo evento; rechazo y escalamiento siguen el grafo con sus eventos de siempre; segunda
+   re-emisión y presupuestos consumidos mantienen su comportamiento;
+6. **fase atómica de edición**: se aplican **todos** los `high` que el conductor verificó y decidió
+   aplicar —no el primero—, y después se registran todas sus transiciones a `aplicado`;
+7. los rechazos que **sigan** sin respuesta pasan a `en-disputa`. **Nunca antes**: transicionarlos al
+   elegir la opción los volvería terminales y su `ACEPTO`/`DEFIENDO` sería inalcanzable;
+8. registrar el cierre de ronda con su `tamano_artefacto`;
+9. derivar el veredicto con **el mismo predicado de cuatro ramas**, sin excepción. Si se aplicó algún
+   `high`, esas aplicaciones quedan pendientes porque el número de cierre iguala al de aplicación;
+10. volver al checkpoint.
+
+#### 6.b — Dos eventos nuevos en el grafo, y por qué no alcanzaba con los existentes
+
+Los catorce eventos que el grafo tenía antes de esta modalidad no expresaban *"el finding es
+válido, pero esta modalidad prohíbe editar"*. Desde `abierto`, el único evento hacia `en-disputa`
+era **escala (disputa genuina / decisión de producto)**; desde `reabierto`, **sostiene el rechazo**.
+Registrar cualquiera de los dos falsearía el evento y el rationale del ledger, que es un registro
+auditable: diría que el conductor rechazó algo que en realidad aceptaba.
+
+Por eso el grafo lleva **dos transiciones más**, y su conteo cerrado —que `ciclo-de-vida.md` declara
+literalmente en su sección "Transiciones"— es **16**:
+
+| Estado origen | Evento | Actor | Destino | Terminal |
+|---|---|---|---|---|
+| `abierto` | **difiere por congelamiento** (la modalidad de cierre prohíbe editar) | conductor | `en-disputa` | sí |
+| `reabierto` | **difiere por congelamiento** | conductor | `en-disputa` | sí |
+
+Los dos son **exclusivos de la modalidad de cierre**: fuera de ella, un conductor que quiere aplicar
+aplica. El rationale de estas filas registra qué se habría aplicado, de modo que el humano del gate
+arbitre con esa información y no con un rechazo que nunca ocurrió.
+
+#### Postcondición sobre los tres ejes
+
+| Eje | Postcondición |
+|---|---|
+| artefacto | **congelado**, salvo la fase 6 |
+| revisión | **exactamente una** ronda, y vuelve al checkpoint; no es terminal por sí misma |
+| pendientes sin respuesta | a `en-disputa` **al cerrar**, no al elegir |
+
+### Recomendación: tabla, ventana y caducidad
+
+| # | Condición (primera que aplica) | Recomendada |
+|---|---|---|
+| 1 | las dos rondas de la ventana, **ambas con `emisiones > 0`**, con `regresion` ≥ la mitad de las emisiones de cada una | ronda de cierre |
+| 2 | las dos de la ventana, **ambas con `emisiones > 0`**, sin caída de `severidad_max` **y** con `tamano` creciendo | ronda de cierre |
+| 3 | `pendientes > 0` **y** `alcanza` | conceder una tanda |
+| 4 | `pendientes > 0` **y** no `alcanza` | ronda de cierre |
+| 5 | `pendientes = 0`, solo disputas, alguna `high` | cerrar la revisión |
+| 6 | `pendientes = 0`, solo disputas, ninguna `high` | continuar así |
+| 7 | *(fallback)* | conceder una tanda |
+
+**Ventana:** las **dos rondas completadas inmediatamente anteriores** al checkpoint. Cualquier par
+histórico deja la señal clavada y eclipsa las filas 3-7.
+
+**Caducidad:** las filas 1 y 2 **no se evalúan si la ronda inmediatamente anterior fue una ronda de
+cierre**. Sin esta condición la recomendación se repite aunque el cierre haya funcionado — observado
+en el dry run de la corrida que produjo esta spec.
+
+**Por qué 1 y 2 van antes de 3:** una corrida que arrastra regresiones casi siempre tiene
+aplicaciones pendientes, así que con el cálculo de presupuesto arriba caería en la fila 3 y se le
+recomendaría seguir, que es la conducta equivocada en el caso exacto que este cambio detecta.
+
+**Las cinco opciones se ofrecen siempre.** La recomendación advierte, no deshabilita.
 
 ### "Seguir hasta `APPROVED`" y su tope total
 
@@ -1334,7 +1547,7 @@ Concede tandas **automáticamente**, sin volver a preguntar, hasta que ocurra **
 | Corte | Qué pasa |
 |---|---|
 | el veredicto derivado es `APPROVED` | la revisión converge y cierra |
-| se alcanza el **tope total** | vuelve al checkpoint con las cuatro opciones |
+| se alcanza el **tope total** | vuelve al checkpoint con las cinco opciones |
 | el predicado derivado da `REVISE` con **solo disputas y sin aplicaciones pendientes** | **corte anticipado obligatorio**: vuelve al checkpoint aunque falten rondas |
 
 El tercero no es opcional: ninguna ronda puede resolver una disputa, así que seguir sería gastar el
@@ -1370,6 +1583,45 @@ espera al revisor, y su gate humano sigue existiendo — ni en el fan-out de Fas
 que corre con `cross_review.mode: off` y por lo tanto no tiene revisión que gobernar. Los gates de
 Fase 1 del orquestador **sí** son interactivos.
 
+## No-regresión y límite de medición
+
+Los once invariantes se conservan. La evidencia de los diez textuales y el juicio explícito del
+quinto son:
+
+1. **Tope finito del loop.** “El loop nunca corre sin tope” permanece en la regla de `max_rounds`;
+   “No existe un modo que corra hasta `APPROVED` sin tope” permanece en “Tandas y salida de rondas”.
+2. **Gate humano en toda salida.** “Agotar el presupuesto no cierra la revisión: abre un checkpoint
+   donde decide el humano” permanece en “Tandas y salida de rondas”; donde no puede presentarse, la
+   corrida “se cierra en `REVISE` con las disputas abiertas y se escala”.
+3. **Ledger append-only.** La plantilla conserva “Ledger (append-only — ninguna fila se
+   sobrescribe)” y la proyección sigue siendo derivada: “se regenera al cierre de cada ronda, nunca
+   se edita”.
+4. **Dos presupuestos por finding, no recargables.** `ciclo-de-vida.md` conserva: “Los presupuestos
+   son por finding, nunca por corrida”, “Una sola defensa” y “Una sola re-apertura”; la matriz de
+   coexistencia conserva que la rehidratación no los recalcula ni recarga.
+5. **Arbitraje del conductor — juicio, no comprobación.** Se juzga preservado porque el orden
+   normativo todavía exige deduplicar antes de arbitrar, luego arbitrar respuestas y findings, y
+   solo después derivar el veredicto. Esto es una evaluación semántica de autoridad y orden; ninguna
+   cita ni verificación mecánica puede demostrar que el conductor conserve el arbitraje.
+6. **Identidad por tema y deduplicación previa.** “Asignar identidad y deduplicar por tema los
+   findings nuevos — antes de cualquier arbitraje” permanece en “Ingesta y arbitraje”.
+7. **Revisor read-only.** “Las reglas invariantes de ‘Invocar al revisor’ valen en ambos shells:
+   read-only siempre” permanece en “Vías de invocación”.
+8. **Degradación que nunca bloquea.** Los fallos y vencimientos conservan la salida
+   “`UNAVAILABLE`, degradar al gate humano”; el tope de pared sigue evitando una espera indefinida.
+9. **Predicado y cuatro ramas.** “Las ramas se evalúan en este orden y la primera que aplica decide”
+   permanece junto a la tabla byte-invariante de cuatro ramas en “Veredicto derivado”.
+10. **Finding tardío esperado, sin cuota.** “Un finding genuinamente nuevo en una ronda tardía es
+    comportamiento esperado del loop, no una anomalía” permanece en “Formato de salida”; el bloque
+    de findings nuevos sigue admitiendo un `proposed_id` desconocido sin imponer cuota.
+11. **La omisión no cierra findings.** “La omisión nunca cierra nada” permanece en “Validación por
+    bloque”; el cierre todavía exige aceptación explícita o una defensa evaluada como inadmisible.
+
+**Límite declarado.** Sin una corrida prospectiva instrumentada no puede afirmarse una mejora
+cuantitativa de la convergencia. La serie de convergencia hace posible medirla más adelante: conserva
+por ronda las siete columnas necesarias para comparar emisiones, regresiones, severidad, tamaño y
+estado, pero por sí sola no demuestra que el nuevo contrato mejore esos valores.
+
 ## Checkpoint durable
 
 Una corrida con checkpoint humano puede abarcar días y varias sesiones. Para que una **sesión nueva**
@@ -1378,15 +1630,39 @@ un **descriptor por `run_id`**:
 
 | Campo | Qué guarda |
 |---|---|
+| `contract_version` | versión del contrato (`1` \| `2`); autoridad de rehidratación frente a la cabecera de la sección del `review-log.md` |
 | `run_id` | el de la corrida, estable entre tandas |
 | `ledger` | la ruta del `review-log.md` y la sección de esta corrida |
 | `ronda_acumulada` | la última ronda completada |
 | `tope_vigente` | el `tope_efectivo` de la última `control-corrida` **cuyo evento fije tope** —`eleccion-tope` o `reeleccion-tope`—, si el modo automático está activo. Las filas de checkpoint y de cierre de ronda no llevan tope: tomar la última de la clase leería una fila vacía y dejaría el tope indeterminado justo al rehidratar |
+| `modalidad` | `cierre` cuando el checkpoint autorizó una ronda de cierre; autoridad durable que rehidrata la modalidad |
 | `causa_corte` | `tanda_agotada` \| `solo_disputas` |
 | `gate_pendiente` | qué STOP quedó esperando decisión |
 | `revisor` | la referencia de sesión con que reanudar |
 | `manifest_seed` | copia estructuralmente idéntica del seed inmutable del sobre, si el manifest está habilitado |
 | `manifest_first_dispatch_at` | el mismo timestamp write-once del sobre; puede seguir en `null` sin despacho |
+
+Si el descriptor está ausente, la corrida se lee como `contract_version: 1`. Una versión desconocida
+produce un error explícito: la corrida se detiene y se escala; nunca se elige una versión por
+default. Si el descriptor y la cabecera de la sección del `review-log.md` discrepan, prevalece el
+descriptor y se registra la discordancia. La rehidratación conserva los presupuestos consumidos: no
+hay migración que los recalcule o recargue.
+
+Matriz de resolución:
+
+| Corrida | Descriptor | Sección del log | Resultado |
+|---|---|---|---|
+| iniciada bajo v1 | v1 o ausente | v1 | **termina bajo v1**: cuatro opciones, sin serie, sin `procedencia` |
+| iniciada bajo v2 | v2 | v2 | v2 completo |
+| cualquiera | **ausente** | cualquiera | se lee **v1** |
+| cualquiera | **versión desconocida** | cualquiera | **error explícito**, no default: la corrida se detiene y se escala. Adivinar la versión es peor que fallar |
+| v2 | v2 | `emision` sin `procedencia` | esa fila queda `no disponible`; **nunca se infiere** |
+| v2 | v2 | descriptor y sección **discordantes** | gana el **descriptor**, que es la autoridad de rehidratación, y se registra la discordancia |
+
+Un presentador actualizado que reciba `contract_version: 1` ofrece **exactamente cuatro opciones** y
+omite serie, presupuesto y recomendación. Los presupuestos **no se recargan**: no hay migración que
+los recalcule. La regla de adopción de logs anteriores no se toca ni se extiende — cubre otra
+frontera, y mezclarlas haría parecer migrable una corrida legacy.
 
 El descriptor se construye y valida **antes** de retirar el sobre activo y transferir el carrier al
 checkpoint. Con manifest
@@ -1409,16 +1685,58 @@ presupuestos y no se toma el scratch de otra corrida.
 **Frontera declarada:** es local y untracked como el resto de `.plans/`, así que sobrevive entre
 sesiones **en la misma copia del directorio**, no entre máquinas ni entre checkouts.
 
-## Foco por tipo de artefacto
+## Dimensiones de inspección
 
-| `artifact_type` | Qué debe cazar el revisor |
+### Capa específica — seis dimensiones por `artifact_type`
+
+| Tipo | Dimensiones verificables |
 |---|---|
-| `spec` | AC ausentes o no observables/no verificables; alcance ambiguo o contradictorio; objetivo que no se mapea a los AC; casos borde del dominio sin cubrir. |
-| `plan` | El enfoque no satisface algún AC; reúso ignorado (reinventa lo que existe); riesgos/efectos colaterales no vistos; pasos de verificación que no prueban realmente el AC. |
-| `tasks` | Cobertura AC↔task (AC sin task, task sin AC); tasks no atómicas o no autosuficientes; orden/dependencias mal; falta el test que prueba el AC. |
-| `master-spec` | Contratos entre servicios inconsistentes o incompletos; AC `[integration]` mal definidos o no testeables; concerns cross-service faltantes; reparto que deja un AC sin dueño. |
-| `reparto` | Algún AC global sin repo que lo cubra; `depends_on` incorrectos/incompletos o con ciclos en el DAG; límites por repo mal trazados; un repo cargado con AC que no le corresponden. |
-| `sintesis` | Las **convergencias aceptadas sin contraste** (dos acuerdos independientes se leen como verificación y pueden blindar un error); el **arbitraje del conductor**, que nadie más audita; y el **orden en que presentó los enfoques**, que suele favorecer al propio. La consigna lleva los cinco ingredientes medidos: **nombrar qué desconfiar** y por qué, pedir que **recalcule** en vez de creer, preguntar si los informes fueron **representados fielmente**, exigir que **conceda** lo que se sostiene, y pedir **severidad explícita**. Ataca al conductor por contrato: en la rama 2 es autor de la mitad del insumo **y** árbitro, así que sin esa autorización el paso deja fuera lo único que nadie más mira. |
+| `spec` | **cobertura del objetivo:** cada resultado declarado tiene ≥1 AC; **observabilidad:** cada AC tiene resultado distinguible de su negación; **consistencia de alcance:** ningún AC exige algo excluido ni contradice a otro; **bordes del dominio:** precondiciones, límites y fallos tienen comportamiento decidido; **autoridad y actores:** cada decisión o escritura tiene responsable y gate; **adopción:** estados preexistentes o corridas vivas tienen resultado definido |
+| `plan` | **satisfacción AC→mecanismo:** cada AC tiene un mecanismo causal concreto; **reúso:** ninguna pieza existente aplicable se reinventa; **orden y dependencias:** cada paso consume artefactos ya producidos; **contratos entre componentes:** productor y consumidor coinciden en forma y autoridad; **efectos colaterales:** mutaciones, compatibilidad y rollback tratados; **verificación:** cada prueba distingue cumplimiento de incumplimiento |
+| `tasks` | **cobertura bidireccional AC↔task:** sin huérfanos en ningún sentido; **autosuficiencia:** cada task tiene rutas, entradas y decisiones; **atomicidad:** no mezcla cambios separables con finalizaciones distintas; **orden ejecutable:** productos antes que consumidores; **interfaces Produce/Consume:** nombres y firmas coinciden; **evidencia:** cada task referencia una verificación capaz de probar su resultado |
+| `master-spec` | **contrato extremo a extremo:** toda interacción cross-service fija entradas, salidas y errores; **propiedad del AC de integración:** cada uno tiene un único responsable de cierre; **compatibilidad temporal:** despliegues y versiones parciales con comportamiento definido; **consistencia semántica:** significado compartido de estados e identificadores; **fallos distribuidos:** timeout, reintento, duplicado y parcialidad con dueño; **verificabilidad integrada:** cada AC se ejerce atravesando límites reales |
+| `reparto` | **cobertura AC→repo:** cada AC global tiene dueño permitido; **límites de responsabilidad:** ningún repo recibe trabajo fuera de su contrato; **DAG válido:** dependencias existentes, completas y sin ciclos; **contratos de enlace:** cada dependencia declara artefacto producido y consumido; **cardinalidad:** propietarios únicos y participantes múltiples; **secuencia de integración:** gates y cierre con prerequisitos ya existentes |
+| `sintesis` | **fidelidad:** cada postura con sus condiciones y evidencia; **recálculo independiente:** cada acuerdo importante verificado contra fuentes, no por consenso; **sesgo de orden:** la conclusión no depende de cuál enfoque se presentó primero; **auditoría del arbitraje:** cada descarte del conductor con fundamento contrastable; **concesión adversarial:** toda objeción válida cambia explícitamente la síntesis; **divergencias residuales:** incógnitas y desacuerdos no aparecen falsamente resueltos |
+
+**Por qué la fila de `sintesis` autoriza atacar al conductor.** `auditoría del arbitraje` y
+`sesgo de orden` apuntan a quien encarga la revisión, y eso es deliberado: en la rama 2 de
+`co-explore` el conductor es **autor de la mitad del insumo y árbitro a la vez**, así que sin esa
+autorización explícita el paso dejaría fuera lo único que nadie más mira.
+
+### Capa transversal — cuatro encargos de forma
+
+Se entregan **además** de la fila del tipo, en todos los tipos. Ninguna dimensión específica los
+cubre, y las dos primeras destaparon en la corrida que produjo esta spec los defectos que ninguna
+lectura había cuestionado:
+
+| Encargo | Consigna literal al revisor |
+|---|---|
+| dry run | "no lo revises: **ejecutalo**. Empezá a escribir lo que este artefacto ordena y decime dónde te trabás por algo que no decidió" |
+| implementación más floja | "¿cuál es la implementación más floja que satisface **todo** lo que pide y **no** resuelve el problema? Nombrala concretamente" |
+| malentendido de buena fe | "¿qué malentendería un implementador de buena fe que no estuvo en la conversación que produjo esto?" |
+| ausencia no pedida | "¿qué falta que nadie pidió? Despliegue, migración, interacción con lo que ya existe" |
+
+### Invariantes de la sede
+
+Toda dimensión describe una prueba que puede fallar, y ninguna equivale a "correctitud general".
+Fusionar dos exige demostrar que dejaron de producir contraejemplos distintos.
+
+### Proyección al prompt
+
+`{dimensiones}` se sustituye por la fila completa del `artifact_type` más los cuatro encargos de
+forma, como lista enumerada `D1..D10` — no como frase interpolada. La rendición se pide sobre **esos
+mismos** IDs.
+
+**La correspondencia ID→dimensión es normativa y fija**, porque la rendición se emite por ID y dos
+productores que intercambien dos IDs producirían rendiciones incomparables sin que nada lo señale:
+
+| ID | Dimensión |
+|---|---|
+| D1..D6 | las seis de la fila del `artifact_type`, **en el orden en que la tabla las escribe** |
+| D7 | dry run |
+| D8 | implementación más floja |
+| D9 | malentendido de buena fe |
+| D10 | ausencia no pedida |
 
 ## Plantilla de review-log.md
 
@@ -1431,7 +1749,7 @@ subsección por ronda. Acumulativo (no se pisa entre artefactos del mismo `<id>`
 
 ## <artifact_type> (<artifact_path>) — <ISO-8601>
 Revisor: <codex-rescue | codex exec | claude -p | …>  ·  modelo: <model de config | CLI default | opus>
-run_id: <estable en toda la corrida, incluidas las tandas siguientes>  ·  max_rounds: <n> (por tanda)
+run_id: <estable en toda la corrida, incluidas las tandas siguientes>  ·  contract_version: <1 | 2>  ·  max_rounds: <n> (por tanda)
 
 ### Registro de identidad
 Solo lo que no cambia. Las transiciones apuntan acá.

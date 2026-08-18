@@ -289,14 +289,19 @@ crítica se presenta *junto* al artefacto en el mismo STOP; tú sigues siendo el
   gate, así que no puede colgar el flujo (`cross-review/reference.md` → "Estados terminales que liberan el gate").
   **Con el modo automático activo, el fin de una tanda es una frontera interna y la barrera sigue
   marcada:** se libera en los tres cortes de ese modo, no al agotarse cada tanda.
-- **Las cuatro opciones del checkpoint, dentro del STOP existente.** Si la revisión devuelve
+- **Las cinco opciones del checkpoint, dentro del STOP existente.** Si la revisión devuelve
   `tandas_concedibles` (todo `REVISE` que abra checkpoint), el gate ofrece —sin gate extra, con el
   patrón de la pregunta de `implement_mode`— **continuar así** · **conceder una tanda** · **seguir
-  hasta `APPROVED`** · **cerrar la revisión**. Las cuatro se ofrecen siempre: `disponibles: false`
-  advierte que conceder no puede converger, no deshabilita nada. Postcondiciones de cada una en
+  hasta `APPROVED`** · **ronda de cierre con artefacto congelado** · **cerrar la revisión**. El
+  presentador solo muestra el retorno, sin inferir, recalcular ni reordenar: `serie` →
+  `advertencia_bucle` → `aplicaciones_pendientes` con sus `ids_pendientes` → `opciones` con la
+  `recomendada` marcada. Las cinco se ofrecen siempre: la recomendación advierte, no deshabilita,
+  igual que `disponibles: false`. Postcondiciones de cada una en
   `cross-review/reference.md` → "Tandas y salida de rondas". **Si `aplicaciones_pendientes` es mayor
   que cero, mostrarlo con sus `ids_pendientes` *antes* de presentar las opciones**: "continuar así"
   aprueba el artefacto, y quien elige tiene que saber que hay ediciones que ninguna ronda observó.
+- **Compatibilidad v1.** Si el retorno trae `contract_version: 1`, el presentador ofrece exactamente
+  las cuatro de esa versión y omite serie, presupuesto y recomendación.
 - **Cerrar la corrida es responsabilidad de la llamadora.** Tras el gate: si el usuario concede, se
   **reanuda la misma corrida con su `run_id`** (nunca se inicia otra); si elige una salida terminal
   —aprobar así o cerrar—, se **finaliza el único manifest** de la corrida. `cross-review` no puede
@@ -432,7 +437,7 @@ tres se consumen explícitamente:
 |---|---|
 | `APPROVED` | continúa, y escribe el artefacto **desde la síntesis revisada** |
 | `UNAVAILABLE` | avisa en una línea y continúa con la síntesis tal como estaba |
-| `REVISE` | presenta las **cuatro opciones** del checkpoint, conserva el `run_id` para reanudar la misma corrida, y **no escribe la spec ni el plan** hasta que se resuelva |
+| `REVISE` | presenta las **cinco opciones** del checkpoint según el orden normado del retorno, conserva el `run_id` para reanudar la misma corrida, y **no escribe la spec ni el plan** hasta que se resuelva |
 
 **Qué se hace con lo que la crítica encuentre.** Cada hallazgo se arbitra por el **ledger** de
 `cross-review` —aplicado, rechazado con motivo, o escalado—, y **un hallazgo adoptado corrige la

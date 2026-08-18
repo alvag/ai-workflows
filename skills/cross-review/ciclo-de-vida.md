@@ -66,7 +66,7 @@ importa —quién decide la admisibilidad— sería inexpresable.
 
 ## Transiciones
 
-Las **14 transiciones permitidas**, con su destino y su terminalidad fijados. Terminal = ninguna
+Las **16 transiciones permitidas**, con su destino y su terminalidad fijados. Terminal = ninguna
 transición sale de ese estado para ese finding.
 
 | Estado origen | Evento | Actor | Destino | Terminal |
@@ -74,6 +74,7 @@ transición sale de ese estado para ese finding.
 | `abierto` | aplica el finding | conductor | `aplicado` | sí |
 | `abierto` | lo rechaza, con motivo | conductor | `rechazado` | no |
 | `abierto` | escala (disputa genuina / decisión de producto) | conductor | `en-disputa` | sí |
+| `abierto` | difiere por congelamiento | conductor | `en-disputa` | sí |
 | `rechazado` | acepta el rechazo | revisor | `cerrado` | sí |
 | `rechazado` | lo defiende, **con presupuesto de defensa disponible** | revisor | `defendido` | no |
 | `rechazado` | lo defiende, **con el presupuesto ya consumido** | revisor | `en-disputa` | sí |
@@ -81,10 +82,16 @@ transición sale de ese estado para ese finding.
 | `defendido` | evalúa la defensa: **admisible** | conductor | `reabierto` | no |
 | `reabierto` | **acepta** la defensa | conductor | `aplicado` | sí |
 | `reabierto` | **sostiene** el rechazo | conductor | `en-disputa` | sí |
+| `reabierto` | difiere por congelamiento | conductor | `en-disputa` | sí |
 | `rechazado` sin respuesta | concede una tanda | humano | `rechazado` | no |
 | `rechazado` sin respuesta | no concede | humano | `en-disputa` | sí |
 | `aplicado` | re-emite el mismo tema **con evidencia** de que el artefacto sigue fallando (**primera vez**) | revisor | `abierto` | no |
 | `aplicado` | re-emite el mismo tema con evidencia, **segunda vez** | revisor | `en-disputa` | sí |
+
+Las dos transiciones `difiere por congelamiento` son exclusivas de la modalidad de cierre. Los
+eventos existentes no expresan que el finding es válido pero la modalidad prohíbe editar: desde
+`abierto`, el único otro destino a `en-disputa` es `escala`; desde `reabierto`, es `sostiene el
+rechazo`. Registrar cualquiera afirmaría que el conductor rechazó algo que aceptaba.
 
 Dos de ellas son **autocurvas**: `rechazado → rechazado` al conceder una tanda no cambia el valor
 del estado, pero **sigue siendo una arista ejecutada** y se registra como tal (ver "Ledger").
@@ -148,16 +155,16 @@ Ninguna sede posterior amplía este esquema en silencio: si hace falta un campo,
 | Ámbito | Campos |
 |---|---|
 | **núcleo** (toda fila) | `ronda` (entero, **acumulado de la corrida**) · `tipo` (uno de los cuatro) · `finding_id` (**nulo solo** en `control-corrida`) · `actor` (`revisor` \| `conductor` \| `humano`) · `rationale` (texto; **obligatorio** cuando el evento es un rechazo) |
-| `emision` | `severidad` (`high` \| `medium` \| `low`), **obligatoria** |
-| `transicion` | `origen` y `destino` (estados del enum) · `evento` (uno de los 14) · `presupuesto_consumido` (`null` \| `defensa` \| `reapertura`) |
+| `emision` | `severidad` (`high` \| `medium` \| `low`), **obligatoria** · `procedencia` (`original` \| `regresion` \| `reemision`), obligatoria desde la ronda 2, físicamente ausente en la ronda 1 y en toda corrida `contract_version: 1` |
+| `transicion` | `origen` y `destino` (estados del enum) · `evento` (uno de los **15** de la tabla de transiciones: sus 16 filas comparten `difiere por congelamiento` en dos, y `origen` las desambigua) · `presupuesto_consumido` (`null` \| `defensa` \| `reapertura`) |
 | `descarte` | `motivo` (texto, obligatorio) y el evento descartado |
-| `control-corrida` | `evento_corrida` (`eleccion-tope` \| `reeleccion-tope` \| `checkpoint` \| `ronda-completada-valida` \| `ronda-completada`) · `tope_efectivo` (entero; obligatorio en elección y reelección) · `decision_humana` (la opción elegida, obligatoria en el checkpoint) |
+| `control-corrida` | `evento_corrida` (`eleccion-tope` \| `reeleccion-tope` \| `checkpoint` \| `ronda-completada-valida` \| `ronda-completada`) · `tope_efectivo` (entero; obligatorio en elección y reelección) · `decision_humana` (la opción elegida, obligatoria en el checkpoint) · `tamano_artefacto` (entero, en líneas; obligatorio en los dos eventos de cierre de ronda y medido sobre el artefacto resultante tras arbitrar) |
 
 **Los dos eventos de cierre de ronda son valores del enum, no una clase nueva.** `ronda-completada-valida`
 registra el cierre de una ronda que recibió el artefacto actualizado; `ronda-completada`, el de una
-que no. Llevan `finding_id` nulo, como el resto de su clase, y **no agregan ningún campo** al
-esquema: son dos valores porque la distinción decide si la ronda libera aplicaciones pendientes, y
-un campo nuevo ampliaría el esquema para las cuatro clases a cambio de la misma información.
+que no. Llevan `finding_id` nulo, como el resto de su clase. La distinción entre una ronda que
+libera aplicaciones pendientes y una que no se expresa con dos valores del enum, no con un campo
+booleano: ese campo ampliaría el esquema de las cuatro clases a cambio de la misma información.
 
 *Por qué se registra también la ronda que no libera:* omitirla haría indistinguible "no hubo ronda"
 de "hubo una que no vio el artefacto", y la segunda es un dato que el cierre necesita para explicar

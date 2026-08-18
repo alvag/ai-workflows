@@ -173,13 +173,19 @@ estas pasadas corran **todas en el conductor** es lo que habilita delegar el imp
 se revisó arriba.
 
 **Salida de rondas.** Cuando la revisión devuelve `tandas_concedibles` —todo `REVISE` que abra el
-checkpoint—, el STOP del gate ofrece las **cuatro opciones**: **continuar así** · **conceder una
-tanda** · **seguir hasta `APPROVED`** · **cerrar la revisión**. Se ofrecen siempre; `disponibles:
-false` advierte que conceder no puede converger, no deshabilita nada. Con el modo automático activo,
+checkpoint—, el STOP del gate ofrece las **cinco opciones**: **continuar así** · **conceder una
+tanda** · **seguir hasta `APPROVED`** · **ronda de cierre con artefacto congelado** · **cerrar la
+revisión**. El presentador solo muestra el retorno, sin inferir, recalcular ni reordenar: `serie` →
+`advertencia_bucle` → `aplicaciones_pendientes` con sus `ids_pendientes` → `opciones` con la
+`recomendada` marcada. Las cinco opciones se ofrecen siempre: la recomendación advierte, no
+deshabilita, igual que `disponibles: false`. Con el modo automático activo,
 el fin de tanda es una frontera interna y la barrera del gate sigue marcada. **Si
 `aplicaciones_pendientes` es mayor que cero, se muestra con sus `ids_pendientes` antes de ofrecer las
 opciones:** "continuar así" aprueba el artefacto, y quien elige tiene que saber que hay ediciones que
 ninguna ronda observó.
+
+Con `contract_version: 1`, el presentador ofrece exactamente las cuatro de esa versión y omite
+serie, presupuesto y recomendación.
 
 Tras el gate, y como en las otras dos llamadoras: si el humano concede se **reanuda la misma corrida
 por su `run_id`**; si elige una salida terminal se **finaliza el único manifest**; y el `resume` de

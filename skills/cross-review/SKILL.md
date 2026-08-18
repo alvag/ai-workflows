@@ -47,7 +47,7 @@ artefacto escrito ──► [cross-review] ──► artefacto (quizá revisado)
    conductor. Quien edita el artefacto —si hay algo que aplicar— es Claude, no el revisor.
 2. **Loop acotado — el tope existe siempre, y quien lo extiende es el humano.** `max_rounds`
    (default 3) es el presupuesto de **una tanda**, no de la corrida entera: al agotarse **no se
-   cierra**, se abre un checkpoint donde el humano elige entre cuatro opciones, y si concede, la
+   cierra**, se abre un checkpoint donde el humano elige entre cinco opciones, y si concede, la
    corrida sigue con otra tanda finita. Lo que esta regla garantiza es que **el loop nunca corre sin
    tope**; no existe un modo que corra hasta `APPROVED` sin límite, ni siquiera el automático, que
    captura el suyo al elegirse. **Donde no hay forma de presentar un gate humano no se pregunta:** se
@@ -119,8 +119,8 @@ Si reconoces alguno de estos pensamientos, detente y aplica la disciplina de `su
 
 Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario) proveen:
 
-- **`artifact_type`** — `spec | plan | tasks | master-spec | reparto | sintesis`. Define el foco de la
-  revisión (ver `reference.md` → "Foco por tipo de artefacto").
+- **`artifact_type`** — `spec | plan | tasks | master-spec | reparto | sintesis`. Define las
+  dimensiones de la revisión (ver `reference.md` → "Dimensiones de inspección").
 - **`artifact_path`** — ruta del artefacto a revisar (p. ej. `.plans/ABC-123/plan.md`).
 - **`context_paths`** — artefactos relacionados para grounding (p. ej. al revisar `tasks`, pasar
   también `spec` y `plan`; al revisar `reparto`, la `master-spec`). Opcional pero recomendado. Si
@@ -237,7 +237,13 @@ siguen aplicando y sus fallos se informan como hasta ahora.
    arbitra (ver "Degradación").
 3. **Asignar identidad y deduplicar por tema.** El ID lo asigna el conductor, no el revisor, y dos
    emisiones del mismo tema se unifican **antes** de cualquier arbitraje (`ciclo-de-vida.md` →
-   "Identidad").
+   "Identidad"). Después de deduplicar, el conductor normaliza `procedencia`: el revisor propone y
+   el conductor asigna, con la misma autoridad que rige para `proposed_id`. Los predicados se evalúan
+   en este orden: `reemision` si el tema ya tiene identidad en el ledger de esta corrida;
+   `regresion` si es un tema sin identidad previa cuya causa se ancla a una edición aplicada en una
+   ronda anterior; `original` en cualquier otro caso. Si una re-emisión reaparece porque el arreglo
+   introdujo otra cosa, prevalece `reemision`, porque el ledger ya la trata por identidad. En una
+   corrida `contract_version: 1`, esta normalización no corre.
 4. **Arbitrar, en dos pasadas y en este orden:** primero las **respuestas a rechazos** —aceptaciones
    y defensas, evaluando su admisibilidad—, después los **findings nuevos**. Para cada uno, **decidir
    como árbitro** (regla 3, vía `receiving-code-review`): aplicar / rechazar / escalar. Ordenar el
@@ -257,7 +263,7 @@ siguen aplicando y sus fallos se informan como hasta ahora.
    defenderlo con argumento nuevo— y, **si hay aplicaciones pendientes de revisión, el artefacto
    actualizado viaja completo en el prompt**. Repetir desde el paso 2.
 8. **Corte por tanda.** `max_rounds` es el presupuesto de **una tanda**, no de la corrida: al
-   agotarse se abre el **checkpoint** donde el humano elige entre cuatro opciones, y la numeración
+   agotarse se abre el **checkpoint** donde el humano elige entre cinco opciones, y la numeración
    de rondas acumula si concede. Ver `ciclo-de-vida.md` y `reference.md` → "Tandas y salida de
    rondas".
 
@@ -297,8 +303,28 @@ Devolver a la skill llamadora (o presentar, en modo directo):
   `solo_disputas`) · **`aplicaciones_pendientes`** (entero no negativo) · **`ids_pendientes`** (lista
   de IDs) · `run_id`, con el que la llamadora reanuda **la misma** corrida.
   `disponibles` es **falso** solo cuando la causa es `solo_disputas` —ninguna ronda las resuelve—, y
-  **no oculta ni deshabilita ninguna opción**: las cuatro se ofrecen siempre; lo que hace es advertir
+  **no oculta ni deshabilita ninguna opción**: las cinco se ofrecen siempre; lo que hace es advertir
   que conceder no puede converger.
+
+  El esquema único de retorno dentro de `tandas_concedibles` es:
+
+  | Campo | Tipo | Obligatorio | Autoridad |
+  |---|---|---|---|
+  | `contract_version` | `1 \| 2` | sí | la corrida |
+  | `serie` | lista de filas, una por ronda completada, con las siete columnas de la decisión 4 | sí en v2 | derivada del ledger |
+  | `presupuesto` | objeto con `rondas_disponibles`, `aplicacion_esperada`, `rondas_minimas_requeridas`, `alcanza` | sí en v2 | derivado |
+  | `opciones` | lista de 5 en v2, de 4 en v1 | sí | fija por versión |
+  | `recomendada` | id de opción, y `regla` con el número de fila de la tabla que la produjo | sí en v2 | derivada de `serie` |
+  | `advertencia_bucle` | texto o `null` | sí en v2 | derivada de `pendientes` y `presupuesto` |
+  | `aplicaciones_pendientes` · `ids_pendientes` | entero · lista | sí en las dos versiones | ya existen |
+
+  Los cuatro presentadores **solo muestran**: no infieren, no recalculan, no reordenan. El orden de
+  presentación, normado y no a criterio, es `serie` → `advertencia_bucle` →
+  `aplicaciones_pendientes` con sus ids → `opciones` con la `recomendada` marcada. Las cinco opciones
+  se ofrecen siempre y la recomendación **advierte, no deshabilita**.
+
+  Con `contract_version: 1`, el presentador ofrece exactamente las cuatro de esa versión y omite
+  serie, presupuesto y recomendación.
 
   **`aplicaciones_pendientes` e `ids_pendientes` son obligatorios aunque valgan `0` y lista vacía.**
   Un campo que desaparece cuando no hay nada que reportar es indistinguible de un productor que no lo
@@ -324,16 +350,21 @@ Devolver a la skill llamadora (o presentar, en modo directo):
   autor, no dos voces simétricas como en `co-explore`.
 
 La llamadora presenta este resumen **junto al artefacto** en su gate humano (mismo STOP, sin gate
-extra). El humano aprueba con la segunda opinión ya a la vista, y ahí mismo elige entre las **cuatro
-opciones** del checkpoint si la corrida lo abrió. En modo **directo** y **draft** no hay llamadora:
+extra). El humano aprueba con la segunda opinión ya a la vista, y ahí mismo elige entre las **cinco
+opciones** del checkpoint si la corrida lo abrió: **continuar así** · **conceder una tanda** ·
+**seguir hasta `APPROVED`** · **ronda de cierre con artefacto congelado** · **cerrar la revisión**.
+En modo **directo** y **draft** no hay llamadora:
 las presenta `cross-review`, que ya presenta su propio resultado.
 
 > **Con `aplicaciones_pendientes` mayor que cero, el conteo y sus IDs se declaran ANTES de ofrecer
 > las opciones.** Vale para **todo** presentador del checkpoint —hoy `sdd-flow`, `sdd-orchestrator`,
 > `sdd-pr-feedback`, y esta misma skill en directo y draft—, y también cuando lo que se devuelve es
 > un `UNAVAILABLE` que libera el gate sin abrir checkpoint. La obligación es de **quien presenta**,
-> no de una lista: cualquier skill que ofrezca las cuatro opciones queda alcanzada, y enumerarlas es
-> una ayuda de lectura, no la condición. Quien elige "continuar así" está
+> no de una lista: cualquier skill que ofrezca las cinco opciones queda alcanzada, y enumerarlas es
+> una ayuda de lectura, no la condición. El presentador solo muestra el retorno en el orden normado
+> `serie` → `advertencia_bucle` → `aplicaciones_pendientes` con sus ids → `opciones` con la
+> `recomendada` marcada; no infiere, recalcula ni reordena. Las cinco se ofrecen siempre: la
+> recomendación advierte, no deshabilita, igual que `disponibles: false`. Quien elige "continuar así" está
 > aprobando el artefacto: si no sabe que hay ediciones que ningún revisor miró, decide sin el único
 > dato que este loop existe para darle, y el hueco reaparece en la interfaz después de haberse
 > cerrado en el predicado.

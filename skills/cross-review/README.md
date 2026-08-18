@@ -152,7 +152,7 @@ sospechosa, mira contra qué archivo dice que hay que compararla, y actualiza la
 
 - `SKILL.md` — el flujo, las reglas y el contrato de invocación.
 - `reference.md` — cómo descubrir/invocar el revisor, plantilla del prompt, formato de salida,
-  plantilla del `review-log.md`, foco por tipo de artefacto, configuración.
+  plantilla del `review-log.md`, dimensiones de inspección, configuración.
 - `corridas-en-vuelo.md` — el contrato del sobre, y la **sede canónica** de la que se generan las
   copias de las otras seis skills que despachan.
 - `README.md` — este archivo.

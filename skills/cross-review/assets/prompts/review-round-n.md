@@ -1,6 +1,6 @@
 <!-- prompt `review-round-n` · lo despacha `cross-review` desde la ronda 2 · formato: xml
      placeholders: {artifact_type}, {complexity}, {working_dir}, {ronda}, {delta}, {rechazos},
-                   {artefacto}
+                   {artefacto}, {dimensiones}, {self_review}, {modalidad}
      ESTE ARCHIVO ES LA ENTRADA EXACTA DEL WORKER: lo que no esté acá no existe para él.
      Se escribe a archivo y nunca se arma inline; cómo llega al worker lo fija el transporte.
      {delta} y {rechazos} se PROYECTAN desde el ledger, nunca se redactan aparte
@@ -22,7 +22,25 @@ LECTURA: no modifiques archivos. Puedes leer el código del repo en {working_dir
 
 Esta ronda tiene dos trabajos distintos y los dos son obligatorios: responder por los rechazos que
 recibiste, y revisar el artefacto actualizado.
+
+Recorre estas dimensiones:
+
+{dimensiones — lista enumerada D1..D10: las seis dimensiones del artifact_type en su orden
+normativo, seguidas por los cuatro encargos de forma con su consigna literal}
 </task>
+
+<modalidad>
+{modalidad — se omite entero en una ronda ordinaria. En la ronda de cierre se sustituye por este
+bloque literal:
+
+modalidad: cierre
+- El artefacto está congelado.
+- Se aplican todos los findings `high` que el conductor decide aplicar y la ronda termina ahí.
+- Las respuestas a rechazos se arbitran igual, pero una defensa admisible no `high` no habilita
+  edición.
+- Los presupuestos no se recargan.
+- Una salida no conforme o un timeout no arbitran nada y devuelven al checkpoint.}
+</modalidad>
 
 <delta>
 {delta — proyección del ledger: por cada finding vivo, su ID, su estado actual, el evento que lo
@@ -74,6 +92,13 @@ original** y con la evidencia de que el artefacto sigue fallando. Tenés **una s
 finding: la segunda re-emisión del mismo tema pasa a disputa sin re-arbitrarse.
 </artefacto_actualizado>
 
+<self_review>
+{self_review — bloque cerrado aportado por la llamadora; se omite entero cuando la llamadora no
+tiene catálogo. Tabla exhaustiva con columnas cerradas: comprobación · resultado · evidencia.
+Resultado:
+sin-hallazgos | con-hallazgos | no-corrida}
+</self_review>
+
 <grounding_rules>
 - Ancla cada finding a una sección/AC/línea concreta del artefacto o del código. No inventes.
 - Si algo es hipótesis (no lo pudiste verificar en el repo), dilo explícitamente.
@@ -103,6 +128,7 @@ RESPUESTAS A RECHAZOS:
 FINDINGS NUEVOS:
 - [high|medium|low] <título corto del problema>
   proposed_id: <ID que propones para este tema>
+  procedencia: reemision | regresion | original
   why: <por qué importa — qué se rompe / qué falta>
   suggestion: <cambio concreto propuesto>
   refs: <AC-n | sección del artefacto | path:line>
@@ -118,6 +144,25 @@ Reglas de validación, distintas por bloque:
 - En **FINDINGS NUEVOS** un ID que el conductor no conoce es lo normal: para eso es `proposed_id`.
   Descubrir algo nuevo en una ronda tardía es comportamiento esperado, no una anomalía. No inventes
   hallazgos para llenar el bloque, pero tampoco te calles uno real por ser tarde.
+
+`procedencia` es obligatorio para cada finding y se determina con estos predicados literales, en
+orden de precedencia:
+
+- `reemision` — el tema ya tiene identidad en el ledger de esta corrida;
+- `regresion` — tema sin identidad previa cuya causa el revisor ancla a una edición aplicada en una
+  ronda anterior de esta corrida;
+- `original` — todo lo demás.
+
+COBERTURA:
+- D1: examinada-sin-hallazgos | examinada-con-hallazgos | no-examinable — <motivo>
+- ...
+- D10: examinada-sin-hallazgos | examinada-con-hallazgos | no-examinable — <motivo>
+
+Emite una línea por cada dimensión entregada en `{dimensiones}`, con exactamente uno de los tres
+estados. `no-examinable` exige motivo. La rendición es exhaustiva: omitir una dimensión hace la
+salida no conforme. La cobertura calibra qué se recorre y no cuántos findings se emiten. Enumerar
+una dimensión sin hallazgos no autoriza a omitir uno real ni convierte la ausencia en prueba de
+correctitud. "no queda ninguno" es una respuesta legítima.
 
 Debes emitir REVISE si defiendes algún rechazo: una defensa sin evaluar es, por definición, algo
 sin resolver.

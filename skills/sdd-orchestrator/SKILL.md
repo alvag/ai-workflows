@@ -230,18 +230,23 @@ inconsistencias que un humano pasa por alto. **Augmenta el gate, no lo reemplaza
   gate humano. Misma filosofía que la regla 8. **Si el retorno trae `aplicaciones_pendientes` mayor
   que cero, declararlo con sus `ids_pendientes` antes de liberar el gate:** una degradación no abre
   checkpoint, así que es la única oportunidad de decir que quedaron ediciones sin observar.
-- **Las cuatro opciones del checkpoint, en los dos gates de Fase 1.** Si la revisión devuelve
+- **Las cinco opciones del checkpoint, en los dos gates de Fase 1.** Si la revisión devuelve
   `tandas_concedibles`, los STOPs de `master-spec` (gate 1.3) y de `reparto` (gate 1.4) ofrecen
   —sin gate extra— **continuar así** · **conceder una tanda** · **seguir hasta `APPROVED`** ·
-  **cerrar la revisión**. Las cuatro se ofrecen siempre: `disponibles: false` advierte que conceder
-  no puede converger, no deshabilita nada. **Si `aplicaciones_pendientes` es mayor que cero,
-  mostrarlo con sus `ids_pendientes` *antes* de presentar las opciones**: "continuar así" aprueba el
+  **ronda de cierre con artefacto congelado** · **cerrar la revisión**. El presentador solo muestra
+  el retorno, sin inferir, recalcular ni reordenar: `serie` → `advertencia_bucle` →
+  `aplicaciones_pendientes` con sus `ids_pendientes` → `opciones` con la `recomendada` marcada. Las
+  cinco se ofrecen siempre: la recomendación advierte, no deshabilita, igual que `disponibles:
+  false`. **Si `aplicaciones_pendientes` es mayor que cero, mostrarlo con sus `ids_pendientes`
+  dentro de ese orden**: "continuar así" aprueba el
   artefacto, y quien elige tiene que saber que hay ediciones que ninguna ronda observó. Con el modo automático activo, el fin de tanda es una
   **frontera interna** y la barrera del gate sigue marcada. Tras el gate, la llamadora **reanuda la
   misma corrida por su `run_id`** si el humano concede, o **finaliza el único manifest** si eligió
   una salida terminal; y su `resume` **consulta el descriptor durable** antes de iniciar otra
   revisión. Postcondiciones y descriptor en `cross-review/reference.md` → "Tandas y salida de
   rondas" y "Checkpoint durable".
+  Si el retorno trae `contract_version: 1`, ofrece exactamente las cuatro de esa versión y omite
+  serie, presupuesto y recomendación.
 - **El fan-out de Fase 2 queda fuera:** delega con `cross_review.mode: off`, así que ahí no hay
   revisión que gobernar. Los gates de Fase 1 **sí** son interactivos, y por eso la excepción de
   "donde no hay gate no se pregunta" no los alcanza.
