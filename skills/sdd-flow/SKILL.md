@@ -289,14 +289,34 @@ crítica se presenta *junto* al artefacto en el mismo STOP; tú sigues siendo el
   gate, así que no puede colgar el flujo (`cross-review/reference.md` → "Estados terminales que liberan el gate").
   **Con el modo automático activo, el fin de una tanda es una frontera interna y la barrera sigue
   marcada:** se libera en los tres cortes de ese modo, no al agotarse cada tanda.
+- **El paso previo: arbitrar las disputas.** Si la revisión devuelve findings **`en-disputa`**, el
+  humano los resuelve **antes** de elegir opción, dentro de este mismo STOP y sin gate extra. Dos
+  destinos: **resolver a favor del finding** (pasa a `aplicado`, y el conductor aplica la corrección
+  al artefacto) o **sostener el rechazo sobre el mérito** (pasa a `cerrado`). La decisión puede
+  agruparse para findings que compartan motivo, pero **cada uno lleva su fila** en el ledger. Después
+  de arbitrar, escribir **en este orden**: una `transicion` por finding —con `actor: humano`, su
+  destino y el rationale— y luego **una** `control-corrida` con `evento_corrida: arbitraje-disputas`
+  y `finding_id` nulo, **también si no se arbitró ninguna** —esa fila cierra **ese acto**, y un checkpoint posterior abre otro con la suya—. Por finding la secuencia es **decidir → editar → registrar**: la fila hacia `aplicado` se escribe **después** de aplicar la corrección, nunca antes, porque si no ese caso es indistinguible
+  de que el arbitraje nunca se ofreció. Las filas llevan la **`ronda` acumulada al abrir el
+  checkpoint**. Mecánica completa y la cota de arbitrajes por finding en
+  `cross-review/reference.md` → "El paso previo: arbitrar las disputas".
 - **Las cuatro opciones del checkpoint, dentro del STOP existente.** Si la revisión devuelve
   `tandas_concedibles` (todo `REVISE` que abra checkpoint), el gate ofrece —sin gate extra, con el
   patrón de la pregunta de `implement_mode`— **continuar así** · **conceder una tanda** · **seguir
   hasta `APPROVED`** · **cerrar la revisión**. Las cuatro se ofrecen siempre: `disponibles: false`
-  advierte que conceder no puede converger, no deshabilita nada. Postcondiciones de cada una en
-  `cross-review/reference.md` → "Tandas y salida de rondas". **Si `aplicaciones_pendientes` es mayor
+  advierte que conceder no puede converger, no deshabilita nada. **El paso previo no las cambia:** no
+  agrega una quinta ni altera sus postcondiciones. Postcondiciones de cada una —incluida la de qué
+  hace con una aplicación pendiente nacida del arbitraje— en `cross-review/reference.md` → "Tandas y
+  salida de rondas". **Si `aplicaciones_pendientes` es mayor
   que cero, mostrarlo con sus `ids_pendientes` *antes* de presentar las opciones**: "continuar así"
   aprueba el artefacto, y quien elige tiene que saber que hay ediciones que ninguna ronda observó.
+- **Tras arbitrar, ese conteo se re-deriva del ledger antes de declararlo.** El valor que vino en
+  `tandas_concedibles` se calculó **antes** del arbitraje, así que queda viejo apenas el humano
+  resuelve una disputa hacia `aplicado`. Se re-derivan `aplicaciones_pendientes`, sus
+  `ids_pendientes` y los **tres inventarios** (disputas abiertas, rechazos sin responder,
+  aplicaciones pendientes). **No** se re-derivan `causa_corte` ni `disponibles`, que son históricos;
+  y `disponibles` **deja de usarse como advertencia** después de arbitrar, porque resuelta una
+  disputa hacia `aplicado` una ronda sí puede converger — eso se deriva del ledger, no del campo.
 - **Cerrar la corrida es responsabilidad de la llamadora.** Tras el gate: si el usuario concede, se
   **reanuda la misma corrida con su `run_id`** (nunca se inicia otra); si elige una salida terminal
   —aprobar así o cerrar—, se **finaliza el único manifest** de la corrida. `cross-review` no puede

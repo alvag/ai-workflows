@@ -58,7 +58,8 @@ Quien decide sigue siendo el conductor.
 <findings_cerrados>
 {IDs cerrados, si los hay}
 
-Estos findings están **cerrados**: se aceptó el rechazo, o su defensa se evaluó como inadmisible.
+Estos findings están **cerrados**: se aceptó el rechazo, su defensa se evaluó como inadmisible, o el
+humano del gate sostuvo el rechazo sobre su mérito al arbitrar una disputa.
 **No los re-emitas.** Si reaparecen, se descartan por identidad sin arbitrarse y sin abrir ronda.
 </findings_cerrados>
 
@@ -71,7 +72,8 @@ resuelto introduciendo otro.
 
 Si una de las aplicaciones **no resolvió** el finding que reportaste, re-emitilo con su **ID
 original** y con la evidencia de que el artefacto sigue fallando. Tenés **una sola** re-apertura por
-finding: la segunda re-emisión del mismo tema pasa a disputa sin re-arbitrarse.
+finding: la segunda re-emisión del mismo tema pasa a disputa, y el conductor ya no la re-arbitra —
+su resolución queda para el humano del gate.
 </artefacto_actualizado>
 
 <grounding_rules>

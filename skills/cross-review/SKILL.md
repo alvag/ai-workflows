@@ -333,6 +333,32 @@ las presenta `cross-review`, que ya presenta su propio resultado.
 > aprobando el artefacto: si no sabe que hay ediciones que ningún revisor miró, decide sin el único
 > dato que este loop existe para darle, y el hueco reaparece en la interfaz después de haberse
 > cerrado en el predicado.
+>
+> **Y con el paso previo de arbitraje, ese conteo se RE-DERIVA del ledger antes de declararlo.** El
+> valor que viaja en `tandas_concedibles` se calculó al devolverse el control, o sea **antes** de que
+> nadie arbitre: si el humano resolvió disputas hacia `aplicado`, quedó viejo. Se re-derivan
+> `aplicaciones_pendientes`, sus `ids_pendientes` y los **tres inventarios** —disputas abiertas,
+> rechazos sin responder, aplicaciones pendientes—. **No** se re-derivan `causa_corte` ni
+> `disponibles`, que son datos históricos de por qué se abrió el checkpoint; pero `disponibles` deja
+> de usarse como advertencia después de arbitrar —resuelta una disputa hacia `aplicado`, una ronda sí
+> puede converger— y eso se deriva del ledger, no del campo.
+
+### El paso previo de arbitraje
+
+Cuando el checkpoint se abre con findings `en-disputa`, **el humano los resuelve antes de elegir
+entre las cuatro opciones**. No es una quinta opción ni un subpaso de una: es un paso previo dentro
+del mismo STOP, y es lo que hace ejecutable la promesa del ciclo de vida de que `en-disputa` lo
+arbitra el humano en el gate. Los dos destinos son `aplicado` y `cerrado`, por las dos aristas con
+`actor: humano` de `ciclo-de-vida.md` → "Transiciones". Mecánica completa —qué se escribe, en qué
+orden, con qué `ronda`, la cota de arbitrajes por finding y qué hace cada opción con una aplicación
+pendiente nacida del arbitraje— en `reference.md` → "El paso previo: arbitrar las disputas".
+
+**En los modos directo y draft esta skill es a la vez árbitro y presentador**, así que ejecuta la
+secuencia entera: (a) presenta el paso previo; (b) el humano resuelve; (c) escribe las N `transicion`
+y después la `control-corrida` con `evento_corrida: arbitraje-disputas`; (d) re-deriva el conteo, los
+IDs y los tres inventarios; (e) conserva `causa_corte` y `disponibles` como históricos; (f) recién
+entonces ofrece las cuatro opciones. En modo embebido esos pasos los ejecuta la skill llamadora, que
+es quien presenta.
 
 Además, al resolver un terminal se proyecta el **manifest de corrida** para `APPROVED`, `REVISE` y
 `UNAVAILABLE` desde `manifest_authorities` y el resultado adjudicado. En un checkpoint intermedio
