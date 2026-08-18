@@ -1169,6 +1169,12 @@ Para `sellar`, obtener el hash con el procedimiento normativo completo de
 `cross-implement/contrato-verificacion.md` → "Cadena de integridad". El puntero incluye el
 encadenamiento, la frontera del bloque y la normalización; un placeholder no sustituye ese cálculo.
 
+**Ese procedimiento ya está implementado**, en el mismo archivo destino: el bloque
+`@bloque:contrato-cadena` y su gemelo `@bloque:contrato-cadena-ps`, calibrados por el corpus de
+`scripts/paridad-casos/contrato-cadena/`. Sellar es correrlos, no reescribirlos: una implementación
+propia derivada de la prosa produce hashes divergentes sobre bytes idénticos, y entonces el gate
+rechaza contratos intactos —que es exactamente lo que la cadena existe para no hacer—.
+
 ### La bitácora del despacho
 
 La constancia persistente vive en `.plans/<id>/bitacora.md`. Es **append-only** y registra una línea

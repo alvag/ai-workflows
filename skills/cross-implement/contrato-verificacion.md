@@ -216,6 +216,16 @@ línea rompe la cadena sin que nadie haya tocado el contenido.
 
 El gate previo al dispatch recomputa la cadena entera y rechaza el contrato si no cierra.
 
+**Nada de esto se implementa a mano: ya está implementado en este mismo archivo.** El bloque
+`@bloque:contrato-cadena` y su gemelo `@bloque:contrato-cadena-ps` recorren las versiones, recortan
+el bloque por la frontera de arriba, canonizan y comparan los dos hashes; el corpus de
+`scripts/paridad-casos/contrato-cadena/` los calibra, y su caso positivo calcula los hashes esperados
+con una **tercera** implementación de la canonización, independiente de los dos sabores. **Ante
+cualquier discrepancia entre esta descripción y el bloque, manda el bloque:** la descripción existe
+para que se entienda qué hace, no para que se reescriba desde ella. Escribir una implementación
+propia teniendo el bloque delante es la forma conocida de obtener un hash distinto sobre bytes
+idénticos, y ya ocurrió dos veces en una misma sesión.
+
 **Lo que esto detecta:** una edición retroactiva que no recalculó la cadena.
 
 **Lo que explícitamente NO prueba:** que una versión vieja no haya sido editada. Quien edita `v1` y
