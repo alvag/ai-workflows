@@ -271,7 +271,7 @@ Devolver a la skill llamadora (o presentar, en modo directo):
 - **Veredicto final:** `APPROVED` | `REVISE (rondas agotadas, N disputas abiertas, M aplicaciones
   pendientes de revisión)` | `UNAVAILABLE`.
   El `UNAVAILABLE` va con su **causa** —`confirmed_wall` · `launch_flake` · `runtime_failure` ·
-  `deadline_exceeded`—: son causas del enum compartido, no veredictos nuevos (`reference.md` →
+  `deadline_exceeded` · `host_sandbox_wall`—: son causas del enum compartido, no veredictos nuevos (`reference.md` →
   "Latencia y timeout (Claude revisor)"). **El conteo `M` va en el texto del veredicto, no solo en el
   log:** un `REVISE (rondas agotadas, 0 disputas abiertas)` se lee como cierre limpio, y puede estar
   ocultando tres ediciones que nadie revisó.

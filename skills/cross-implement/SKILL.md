@@ -285,11 +285,28 @@ las causas de pared, flake, runtime o deadline se proyectan desde esas autoridad
    **Preflight de aislamiento, fail-closed**, con la sede única del ecosistema:
    `cross-review/reference.md` → "Preflight de aislamiento (fail-closed)". Si la
    versión instalada no permite aislar al worker, **no se lanza**. Su resultado está contratado y no
-   queda a criterio de quien implemente: `UNAVAILABLE` con causa `confirmed_wall`, **sin writer**
+   queda a criterio de quien implemente: `UNAVAILABLE`, **sin writer**
    despachado y **sin cosecha** pendiente —no hay proceso que haya llegado a existir—, y devolución
    **inmediata** a la llamadora para que continúe **inline**. No es un bloqueo permanente del flujo:
    esta skill es una dependencia blanda, y un preflight que detuviera la corrida entera convertiría
    una capacidad ausente en un flujo roto.
+
+> **Con qué causa, y por qué no siempre es la misma.** Un preflight puede fallar por dos motivos
+> distintos, y el enum los separa:
+>
+> - **Falta o es incompatible el mecanismo declarado** —el CLI no ofrece el flag de aislamiento—:
+>   es una pared del **propio CLI**, y la causa es `confirmed_wall`.
+> - **La capa anfitriona bloqueó la ejecución del comando** —el host declara que él lo impidió—: es
+>   una pared del **sandbox del conductor**, la causa es `host_sandbox_wall`, y es removible por
+>   escalación.
+>
+> **Quién observa esa señal es el conductor que corre el preflight, no el bloque.** El bloque decide
+> por código de salida y descarta stderr, así que por sí solo no puede distinguir las dos: un
+> mecanismo ausente y un comando bloqueado le llegan igual. La distinción la hace quien lee el
+> stderr, con la vara de atribución explícita de `co-explore/reference.md` →
+> "`host_sandbox_wall` — la pared que se levanta pidiendo permiso": sin atribución explícita del
+> host, se conserva `confirmed_wall`.
+
 2. **Gates previos**: work order existe y se lee como contrato (regla 1); **contrato de
    verificación congelado** — versión vigente, cobertura bidireccional, campos obligatorios y
    baseline resuelto en toda fila, ninguna en `BLOCKED` (`contrato-verificacion.md` → "El gate
@@ -350,7 +367,7 @@ A la llamadora (o presentada al usuario en modo directo):
   las fallas preexistentes adjudicadas y registradas. **No** es "todo en verde": eso contradiría la
   condición de aceptación. | `PARTIAL` (takeover: qué quedó
   hecho por el implementador y qué terminó el conductor) | `UNAVAILABLE`. El `UNAVAILABLE` va con su
-  **causa** del enum compartido —`confirmed_wall` · `launch_flake` · `runtime_failure` ·
+  **causa** del enum compartido —`confirmed_wall` · `launch_flake` · `host_sandbox_wall` · `runtime_failure` ·
   `deadline_exceeded`—: son causas, no estados nuevos (`cross-review/reference.md` → "Latencia y
   timeout (Claude revisor)").
 - **Resumen del diff** (archivos, qué cambió) + la salida y el exit code de **cada comando** de

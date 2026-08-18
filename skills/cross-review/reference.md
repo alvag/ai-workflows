@@ -466,6 +466,42 @@ medido con un CLI que no ofrecía ninguno de los mecanismos, el bloque completo 
 doctrina fail-closed cuya comprobación no puede cortar es una comprobación que no existe. Quien la
 consuma tiene que **ramificar sobre el código**, no correr el bloque y seguir.
 
+##### Qué comprueba este preflight, y qué no
+
+Tres afirmaciones, y conviene leerlas por separado porque dicen cosas distintas:
+
+1. **Comprueba capacidad declarada.** Que el CLI *diga* ofrecer los mecanismos de aislamiento: que
+   el flag aparezca en la ayuda del subcomando, que la feature esté enumerada.
+2. **No afirma capacidad efectiva.** No prueba que el worker pueda inicializar su runtime, abrir su
+   base de estado ni alcanzar su servicio. Ninguna de esas tres cosas se toca acá, y ninguna se
+   sigue de que un flag exista. El molde es el mismo que ya usa el inventario de familias, que
+   declara su límite en vez de comprobarlo.
+3. **Un preflight en verde no impide una pared posterior.** Que este bloque devuelva `0` no es una
+   promesa sobre el despacho: la pared puede aparecer después, al lanzar o a mitad de una corrida, y
+   cuando aparece se clasifica con el enum de causas, no se le reprocha al preflight no haberla
+   anticipado.
+
+**Anticipar la capacidad efectiva es más caro de lo que parece, y para la red no alcanza.** Una
+sonda de conectividad corrida antes del despacho responde por el instante en que se corrió, no por
+el que viene: entre la sonda y el lanzamiento —o entre dos rondas del mismo thread— la pared puede
+levantarse. Es un TOCTOU, no un hueco de cobertura, y no se cierra con una sonda más cara.
+
+##### Advertencias no fatales: qué hacer cuando el comando pasa y se queja
+
+El bloque decide **por código de salida** y descarta stderr. Corriéndolo tal cual, el caso ya está
+resuelto; lo que faltaba era decir cuál es la regla, para quien corre los comandos a mano y ve las
+advertencias:
+
+- **Exit `0` con todas las capacidades requeridas presentes ⇒ se continúa.** Vale **aunque** el
+  stderr que el bloque descarta hubiera traído advertencias: un CLI que no puede limpiar su
+  directorio temporal, o crear un alias, y aun así enumera sus features y acepta sus flags,
+  demostró lo que este preflight le pide. La advertencia se registra y no cambia la decisión.
+- **Falta una capacidad, o el comando termina con código distinto de `0` ⇒ la clasificación
+  fail-closed vigente.** No se lanza, y el resultado es `UNAVAILABLE` con la causa que corresponda.
+
+Sin esta regla escrita, dos corridas del mismo comando se resolvían por criterio de quien conducía —
+que es exactamente lo que un contrato fail-closed no puede permitirse.
+
 **Un mecanismo ausente ya hace fallar el lanzamiento por su cuenta** —un flag que el CLI no conoce es
 un error de invocación—, así que el preflight no agrega seguridad: agrega **diagnóstico**. Convierte
 un fallo de arranque confuso, a mitad de una corrida, en un `UNAVAILABLE` limpio antes de despachar.
@@ -833,10 +869,11 @@ nuevo — todas acompañan al que la skill ya devuelve:
 
 | Causa | Qué la produce | Qué habilita |
 |---|---|---|
-| `confirmed_wall` | binario ausente, auth rechazada, versión incompatible | nada: terminal para la corrida |
+| `confirmed_wall` | binario ausente, auth rechazada, versión incompatible, aislamiento imposible | nada: terminal para la corrida |
 | `launch_flake` | el binario existe pero el lanzamiento flaqueó | 2-3 reintentos con backoff corto |
 | `runtime_failure` | arrancó bien y falló ejecutando: error, salida no parseable | reintento por-intento |
 | `deadline_exceeded` | arrancó bien y venció el tope de pared —`poll_deadline` o `timeout` del exec— sin `VERDICT:` | subir el presupuesto, no reintentar igual |
+| `host_sandbox_wall` | el sandbox del **conductor** impidió la operación, y el host lo declara | uno solo, **escalado fuera del sandbox**; por intento, sin degradar la corrida ni la tanda |
 
 **`deadline_exceeded` es una causa, no un estado.** Hasta acá el deadline vencido se registraba como
 `runtime_failure`, que sugiere una falla de infraestructura que no ocurrió: el revisor arrancó bien y
@@ -1816,10 +1853,10 @@ reanudación de una sesión ajena. Un terminal de preflight sin worker ni tool c
 
 | Skill | `mode` | `outcome` | `degradation` (además de `none`) |
 |---|---|---|---|
-| `co-explore` | `explore` · `counter-plan` · `investigate` · `debate` | `completed` · `map_failure` | `branch-2` · `branch-3` · `branch-4` · `confirmed_wall` · `launch_flake` · `runtime_failure` · `deadline_exceeded` |
-| `cross-review` | `spec` · `plan` · `tasks` · `master-spec` · `reparto` · `draft` | `APPROVED` · `REVISE` · `UNAVAILABLE` | `rounds_exhausted` · `confirmed_wall` · `launch_flake` · `runtime_failure` · `deadline_exceeded` |
-| `cross-implement` | `embebido` · `directo` | `IMPLEMENTED` · `PARTIAL` · `UNAVAILABLE` | `takeover` · `confirmed_wall` · `launch_flake` · `runtime_failure` · `deadline_exceeded` |
-| `bitbucket-code-review` | `conductor` · `delegado` · `mixto` | `PUBLISHED` · `PROPOSED` · `UNAVAILABLE` | `revisor_invalido` · `panel_vacio` · `confirmed_wall` · `launch_flake` · `runtime_failure` |
+| `co-explore` | `explore` · `counter-plan` · `investigate` · `debate` | `completed` · `map_failure` | `branch-2` · `branch-3` · `branch-4` · `confirmed_wall` · `launch_flake` · `runtime_failure` · `deadline_exceeded` · `host_sandbox_wall` |
+| `cross-review` | `spec` · `plan` · `tasks` · `master-spec` · `reparto` · `draft` | `APPROVED` · `REVISE` · `UNAVAILABLE` | `rounds_exhausted` · `confirmed_wall` · `launch_flake` · `runtime_failure` · `deadline_exceeded` · `host_sandbox_wall` |
+| `cross-implement` | `embebido` · `directo` | `IMPLEMENTED` · `PARTIAL` · `UNAVAILABLE` | `takeover` · `confirmed_wall` · `launch_flake` · `runtime_failure` · `deadline_exceeded` · `host_sandbox_wall` |
+| `bitbucket-code-review` | `conductor` · `delegado` · `mixto` | `PUBLISHED` · `PROPOSED` · `UNAVAILABLE` | `revisor_invalido` · `panel_vacio` · `confirmed_wall` · `launch_flake` · `runtime_failure` · `host_sandbox_wall` |
 
 Cada uno de esos términos ya existe en la skill que lo produce: el manifest los **serializa**, no
 los define. Un manifest con taxonomía propia se desincroniza del envelope que dice resumir, y cuando
@@ -1946,8 +1983,11 @@ elif [ "$(grep -cxF families "$t/claves")" = 1 ]; then
 fi
 
 sk=$(val skill)
-comunes="none confirmed_wall launch_flake runtime_failure"
+comunes="none confirmed_wall launch_flake runtime_failure host_sandbox_wall"
 selecciones="full user_choice"
+# `host_sandbox_wall` SÍ va en "comunes", por la razón inversa: la pared es del sandbox del
+# conductor, y las cuatro skills despachan workers por CLI desde un conductor que puede estar
+# sandboxeado. El criterio es el mismo, aplicado con el resultado opuesto.
 # `deadline_exceeded` NO va en "comunes": ese conjunto lo comparten las cuatro filas y sumarlo ahí
 # lo filtraría a bitbucket-code-review. Se suma fila por fila a las tres skills que lo producen; el
 # transporte vigente para las cuatro es `subagent`, `cli-exec` y `cli-resume`.
@@ -2052,7 +2092,7 @@ if ($m -cmatch '(?s)"families"\s*:\s*\[(.*?)\]') {
   Write-Error 'GUARD:manifest-valido "families" no es una lista'; $rc = 1
 }
 $sk = Val 'skill'
-$comunes = @('none','confirmed_wall','launch_flake','runtime_failure')
+$comunes = @('none','confirmed_wall','launch_flake','runtime_failure','host_sandbox_wall')
 $selecciones = @('full','user_choice')
 # 'deadline_exceeded' NO va en $comunes: ese conjunto lo comparten las cuatro filas y sumarlo ahí
 # lo filtraría a bitbucket-code-review. Se suma fila por fila a las tres skills que lo producen; el

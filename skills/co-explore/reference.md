@@ -929,7 +929,7 @@ selection: full | user_choice       # elección heredada; distingue omisión de 
 workers:
   - family: codex
     state: READY | INVALID | clarification-needed | UNAVAILABLE
-    cause: confirmed_wall | launch_flake | runtime_failure | deadline_exceeded | null  # solo si UNAVAILABLE
+    cause: confirmed_wall | launch_flake | runtime_failure | deadline_exceeded | host_sandbox_wall | null  # solo si UNAVAILABLE
     parity: pass | fail | null
     index:  co-explore/index-explore-codex-worker.md   | null
     detail: co-explore/detail-explore-codex-worker.md  | null
@@ -1404,6 +1404,7 @@ porque la omisión está en el índice *y* en el detalle— o con contenido sin 
 | `launch_flake` | el binario existe pero el lanzamiento flaqueó (arranque frío, timeout de spawn) | 2-3 con backoff corto, nunca un loop abierto |
 | `runtime_failure` | arrancó bien y falló después: error de ejecución, salida vacía | por intento; no condena la corrida ni se reintenta en bucle |
 | `deadline_exceeded` | arrancó bien y **alcanzó el deadline** sin marcador de cierre | por intento; el tope lo puso el conductor, así que la palanca es subirlo, no reintentar igual |
+| `host_sandbox_wall` | el sandbox del **conductor** impidió la operación, y el host lo declara | uno solo, **escalado fuera del sandbox**; por intento, sin degradar la corrida ni la tanda |
 
 **`deadline_exceeded` es una causa nueva, no un quinto estado.** Acompaña al `UNAVAILABLE` que ya
 existe en vez de crear un terminal propio. Hasta acá un deadline vencido se reportaba como
@@ -1420,6 +1421,50 @@ observable").
 
 Un worker `INVALID` **no aporta anexo** a `counter-plan` **ni sirve de seed** a `cross-review`,
 aunque conserve una sesión técnicamente reanudable.
+
+#### `host_sandbox_wall` — la pared que se levanta pidiendo permiso
+
+Las otras cuatro causas describen paredes del **worker**: su binario, su lanzamiento, su ejecución,
+su presupuesto. Esta describe una pared del **conductor**: el sandbox desde el que se despacha
+impidió la operación. Es la única del enum que **es removible por escalación**, y por eso no puede
+heredar ni la terminalidad de `confirmed_wall` ni la imputación de `runtime_failure`.
+
+**Cuándo se atribuye: solo con atribución explícita del host.** La causa exige una señal en la que
+la capa anfitriona **declare que ella bloqueó**. La forma medida de esa señal es
+`rejected: blocked by policy` en el stderr del worker, donde el runtime nombra al emisor del bloqueo
+y su motivo.
+
+**Cuándo NO se atribuye, aunque lo parezca.** Estos dos casos **no habilitan** la causa:
+
+- Un `ConnectionRefused` a secas. Admite firewall corporativo, proxy mal configurado, servicio caído
+  o credenciales rechazadas; nada en él identifica al sandbox del conductor como emisor.
+- Un `AccessDenied` sin emisor identificado. Un permiso denegado por el sistema de archivos del
+  worker no es una pared del sandbox llamador.
+
+**Regla de fallo cerrado.** Sin atribución explícita **no se atribuye** `host_sandbox_wall`: se
+conserva la causa vigente que corresponda y se escala para diagnóstico. Una señal indirecta
+clasificada acá convertiría un firewall corporativo en una pared removible que nadie puede remover.
+
+**Política de recuperación, en seis puntos cerrados.** No quedan a criterio de quien implemente:
+
+| Punto | Valor |
+|---|---|
+| outcome | `UNAVAILABLE` con causa `host_sandbox_wall` |
+| quién reintenta | la capa que **hospeda** al conductor; la skill no reintenta por su cuenta |
+| máximo de intentos escalados | **uno** |
+| identidad y rutas | el intento escalado usa `attempt_id` y rutas exclusivas, como cualquier reintento |
+| efecto sobre tanda y corrida | **por intento**; no degrada la tanda ni la orquestación |
+| si el intento escalado vuelve a fallar | el ítem queda `UNAVAILABLE · host_sandbox_wall`, **no se vuelve a escalar**, y la tanda continúa con el ítem siguiente, que se diagnostica por su cuenta |
+
+**La escalación se nombra, no se verifica.** Quien repite el comando fuera del sandbox es la capa que
+hospeda al conductor, no la skill: la skill no puede observar que ocurrió, ni que está disponible, ni
+que alguien la autorizó. Solo puede saber que su comando falló y que la pared es de las removibles.
+Exigirle una prueba de escalación sería pedirle que compruebe algo que no está a su alcance.
+
+**Vale igual en sesión nueva y en reanudación.** Un fallo atribuido al host devuelve
+`UNAVAILABLE · host_sandbox_wall` tanto por `cli-exec` como por `cli-resume`. Que la ronda anterior
+haya funcionado no dice nada sobre la actual: la pared puede levantarse entre dos rondas del mismo
+thread.
 
 ### Decisión de retoma
 
@@ -1751,7 +1796,7 @@ fallback y la recuperación:
 | Observable | Estado |
 |---|---|
 | el proceso terminó normalmente y la serie es inconsistente | `INVALID` — entregó, y lo que entregó no cumple el contrato |
-| el deadline venció sin señal de finalización | `UNAVAILABLE`, causa `runtime_failure` — no llegó a terminar |
+| el deadline venció sin señal de finalización | `UNAVAILABLE`, causa `deadline_exceeded` — no llegó a terminar, y el corte lo puso el conductor |
 | el resultado sobre el recurso original es incierto | `recovery-required` — no se sabe qué quedó escrito |
 
 Se decide por lo que se **observa** —estado del proceso, señal de finalización, integridad de la
