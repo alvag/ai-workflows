@@ -312,6 +312,11 @@ en la raíz del flujo:
 - **`review-log.md` NO va acá.** Es el registro auditable consolidado (rondas, findings, decisiones,
   veredicto), hermano de `spec.md`/`plan.md`/`tasks.md`: queda en `<dir del artefacto>/review-log.md`
   (la raíz del flujo).
+- **`sintesis` es el único tipo cuyo artefacto vive anidado**, bajo `.plans/<id>/co-explore/`, y por
+  eso lleva su propia regla: **solo `artifact_path` apunta a ese subdirectorio**. El `ledger`, el
+  `scratch` y el `checkpoint` se quedan en la raíz `.plans/<id>/`, con `sintesis` en los nombres para
+  no colisionar con los de `spec`/`plan`/`tasks`. Sin la regla, el ledger se fragmentaría dentro de
+  `co-explore/` y el checkpoint se rehidrataría desde un lugar distinto del que consulta `sdd-flow`.
 - **Scratch transitorio, sin autolimpieza.** El `cross-review/` es local y untracked (igual que el
   resto de `.plans/`/`.sdd/`). No se borra solo: el usuario puede eliminarlo cuando quiera. Una nueva
   corrida del mismo artefacto sobrescribe los archivos de las mismas rondas (no crece sin límite).
@@ -1413,6 +1418,7 @@ sesiones **en la misma copia del directorio**, no entre máquinas ni entre check
 | `tasks` | Cobertura AC↔task (AC sin task, task sin AC); tasks no atómicas o no autosuficientes; orden/dependencias mal; falta el test que prueba el AC. |
 | `master-spec` | Contratos entre servicios inconsistentes o incompletos; AC `[integration]` mal definidos o no testeables; concerns cross-service faltantes; reparto que deja un AC sin dueño. |
 | `reparto` | Algún AC global sin repo que lo cubra; `depends_on` incorrectos/incompletos o con ciclos en el DAG; límites por repo mal trazados; un repo cargado con AC que no le corresponden. |
+| `sintesis` | Las **convergencias aceptadas sin contraste** (dos acuerdos independientes se leen como verificación y pueden blindar un error); el **arbitraje del conductor**, que nadie más audita; y el **orden en que presentó los enfoques**, que suele favorecer al propio. La consigna lleva los cinco ingredientes medidos: **nombrar qué desconfiar** y por qué, pedir que **recalcule** en vez de creer, preguntar si los informes fueron **representados fielmente**, exigir que **conceda** lo que se sostiene, y pedir **severidad explícita**. Ataca al conductor por contrato: en la rama 2 es autor de la mitad del insumo **y** árbitro, así que sin esa autorización el paso deja fuera lo único que nadie más mira. |
 
 ## Plantilla de review-log.md
 
@@ -1580,6 +1586,17 @@ selección obliga a la familia del autor, la regla de frescura de abajo gana y n
 | `spec` · `master-spec` | `explore` de la familia **opuesta al autor** | índices + síntesis |
 | `plan` · `reparto` | `counter-plan` de la familia **opuesta al autor** | índices + síntesis |
 | `tasks` | **ninguna** sesión de co-explore | índices + síntesis |
+| `sintesis` de `explore` | **ninguna** sesión de co-explore | índices + síntesis + **los informes fuente** |
+| `sintesis` de `counter-plan` | **ninguna** sesión de co-explore | índices + síntesis + **los informes fuente** |
+
+**Las dos filas de `sintesis` no reanudan ninguna sesión, y eso resuelve sus tres ramas de una vez.**
+El crítico de una síntesis tiene que poder decir que está mal, y una sesión que la produjo —o que
+produjo la mitad de su insumo— no es fresca para eso. De ahí se sigue el resto sin caso especial: un
+worker `INVALID` no cambia nada porque no había sesión que reanudar; una selección **same-family**
+tampoco, y arrastra el contrapeso de revisión humana que ya rige para todo worker de la familia del
+autor; y en las **ramas degradadas** —donde el conductor exploró— la fila vale igual, con el
+agravante de que ahí el conductor es autor de un mapa además de árbitro, que es justamente lo que el
+foco de este tipo manda atacar.
 
 Si la selección obliga a un revisor de la familia del autor, esta matriz **no reanuda** ninguna
 sesión de `explore` o `counter-plan`: esas sesiones ya traen un mapa y no son frescas. Se lanza un
@@ -1817,7 +1834,7 @@ reanudación de una sesión ajena. Un terminal de preflight sin worker ni tool c
 | Skill | `mode` | `outcome` | `degradation` (además de `none`) |
 |---|---|---|---|
 | `co-explore` | `explore` · `counter-plan` · `investigate` · `debate` | `completed` · `map_failure` | `branch-2` · `branch-3` · `branch-4` · `confirmed_wall` · `launch_flake` · `runtime_failure` · `deadline_exceeded` |
-| `cross-review` | `spec` · `plan` · `tasks` · `master-spec` · `reparto` · `draft` | `APPROVED` · `REVISE` · `UNAVAILABLE` | `rounds_exhausted` · `confirmed_wall` · `launch_flake` · `runtime_failure` · `deadline_exceeded` |
+| `cross-review` | `spec` · `plan` · `tasks` · `master-spec` · `reparto` · `sintesis` · `draft` | `APPROVED` · `REVISE` · `UNAVAILABLE` | `rounds_exhausted` · `confirmed_wall` · `launch_flake` · `runtime_failure` · `deadline_exceeded` |
 | `cross-implement` | `embebido` · `directo` | `IMPLEMENTED` · `PARTIAL` · `UNAVAILABLE` | `takeover` · `confirmed_wall` · `launch_flake` · `runtime_failure` · `deadline_exceeded` |
 | `bitbucket-code-review` | `conductor` · `delegado` · `mixto` | `PUBLISHED` · `PROPOSED` · `UNAVAILABLE` | `revisor_invalido` · `panel_vacio` · `confirmed_wall` · `launch_flake` · `runtime_failure` |
 
@@ -1955,7 +1972,7 @@ case "$sk" in
   co-explore)      modos="explore counter-plan investigate debate"; outs="completed map_failure"
                    degs="$comunes branch-2 branch-3 branch-4 deadline_exceeded"
                    trans="none subagent cli-exec cli-resume" ;;
-  cross-review)    modos="spec plan tasks master-spec reparto draft"; outs="APPROVED REVISE UNAVAILABLE"
+  cross-review)    modos="spec plan tasks master-spec reparto sintesis draft"; outs="APPROVED REVISE UNAVAILABLE"
                    degs="$comunes rounds_exhausted deadline_exceeded"
                    trans="none subagent cli-exec cli-resume" ;;
   cross-implement) modos="embebido directo"; outs="IMPLEMENTED PARTIAL UNAVAILABLE"
@@ -2061,7 +2078,7 @@ switch -CaseSensitive ($sk) {
   'co-explore'      { $modos = @('explore','counter-plan','investigate','debate'); $outs = @('completed','map_failure')
                       $degs = $comunes + @('branch-2','branch-3','branch-4','deadline_exceeded')
                       $trans = @('none','subagent','cli-exec','cli-resume') }
-  'cross-review'    { $modos = @('spec','plan','tasks','master-spec','reparto','draft'); $outs = @('APPROVED','REVISE','UNAVAILABLE')
+  'cross-review'    { $modos = @('spec','plan','tasks','master-spec','reparto','sintesis','draft'); $outs = @('APPROVED','REVISE','UNAVAILABLE')
                       $degs = $comunes + @('rounds_exhausted','deadline_exceeded')
                       $trans = @('none','subagent','cli-exec','cli-resume') }
   'cross-implement' { $modos = @('embebido','directo'); $outs = @('IMPLEMENTED','PARTIAL','UNAVAILABLE')

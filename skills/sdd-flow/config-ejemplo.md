@@ -1,8 +1,8 @@
 # Ejemplo de `.specify/config.yml`
 
 **Este archivo es una vista.** Está ensamblado de los bloques que cada skill posee:
-`sdd-flow/reference.md` → "Esquema" (21 claves), `cross-review/SKILL.md` → "Configuración" (5),
-`co-explore/SKILL.md` → "Configuración" (4) y `cross-implement/SKILL.md` → "Configuración" (3).
+`sdd-flow/reference.md` → "Esquema" (22 claves), `cross-review/SKILL.md` → "Configuración" (5),
+`co-explore/SKILL.md` → "Configuración" (5) y `cross-implement/SKILL.md` → "Configuración" (3).
 **Ante discrepancia manda el dueño.** Existe para poder mirar el archivo completo y copiar lo que
 sirva; no para ser la autoridad de ninguna clave.
 
@@ -73,6 +73,8 @@ co_explore:
   debate:
     mode: auto                   # auto | "on" | "off" — [def] cuándo se OFRECE el debate
     max_rounds: 3                # [def] tope de rondas de cruce
+  tercera_pasada:
+    mode: auto                   # auto | "on" | "off" — [def] cuándo se OFRECE la crítica de la síntesis
 
 # ── dueño: cross-implement/SKILL.md → "Configuración" (solo con implement_mode: cross) ──
 cross_implement:

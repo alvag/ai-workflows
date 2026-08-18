@@ -262,7 +262,7 @@ final_diff_review:
   mode: auto                     # auto (complex/high-risk inline) | "on" | "off"
 ```
 
-**Este bloque es dueño de las 22 claves que `sdd-flow` gobierna.** Las 12 restantes las poseen sus
+**Este bloque es dueño de las 22 claves que `sdd-flow` gobierna.** Las 13 restantes las poseen sus
 hermanas y su enum se define allá: `cross_review.*` en `cross-review/SKILL.md` → "Configuración";
 `co_explore.*` en `co-explore/SKILL.md` → "Configuración"; `cross_implement.*` en
 `cross-implement/SKILL.md` → "Configuración". El archivo **completo**, con las 34 juntas y listo

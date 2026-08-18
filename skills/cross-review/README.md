@@ -1,7 +1,7 @@
 # cross-review
 
 **Segunda opinión cross-model** para artefactos de Spec-Driven Development. Antes de que un
-humano apruebe una `spec`, `plan`, `tasks`, `master-spec` o `reparto`, un modelo de **otra
+humano apruebe una `spec`, `plan`, `tasks`, `master-spec`, `reparto` o la `sintesis` de una co-exploración, un modelo de **otra
 familia que el autor** (Codex cuando conduce Claude; Claude cuando conduce Codex) lo critica de
 forma adversarial en un loop acotado y read-only. La crítica se
 presenta junto al artefacto en el gate de aprobación: la persona decide con esa entrada ya a la

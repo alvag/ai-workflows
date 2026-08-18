@@ -400,6 +400,69 @@ decidir** cuando una decisión abierta te deja inseguro. Se gobierna con `co_exp
 - **Degradación:** sin la otra familia, no hay debate: seguir al gate normal con un aviso de una
   línea (misma filosofía que el resto de co-exploración).
 
+### Tercera pasada adversarial sobre la síntesis
+
+Cuando una co-exploración termina con los mapas **convergiendo**, el flujo sigue derecho a escribir la
+spec o el plan: el checkpoint informativo aparece **solo si quedaron divergencias sin resolver**, así
+que la convergencia total pasa en silencio. Y la convergencia no es verificación — dos acuerdos
+independientes se leen como si lo fueran, y por eso **pueden blindar un error**. Este paso agrega una
+crítica adversarial sobre la síntesis antes de que alimente el artefacto, en los **dos momentos**:
+después de la síntesis de `explore` y después de la de `counter-plan`. Lo gobierna
+`co_explore.tercera_pasada.mode` y lo ejecuta `cross-review` con `artifact_type: sintesis`. En los
+tres valores del modo **se ofrece y se espera un "sí"**: nunca corre sola.
+
+**Cuándo se ofrece, y en qué orden.** Con `auto`, el predicado tiene las **dos** condiciones que abren
+el checkpoint informativo: que no queden **divergencias sin resolver** ni **enfoques viables
+materialmente distintos**. El orden con ese checkpoint está fijado y no se deja a criterio: primero
+se **resuelve** el checkpoint, después se **reevalúa** el predicado y recién entonces se ofrece la
+crítica, sobre la síntesis ya resuelta. Los dos pasos pueden aparecer **secuencialmente en la misma
+corrida**, y eso es correcto: uno cierra posiciones abiertas y el otro ataca el resultado. Si el
+usuario **no resuelve** las posiciones, no se inicia una crítica cuyo objeto todavía no está cerrado.
+
+**El gobierno es independiente de `cross_review`.** El "sí" sobre `co_explore.tercera_pasada`
+**autoriza esta invocación** aunque `cross_review.mode` esté en `off` o `sintesis` no figure en
+`cross_review.artifacts` — esa lista gobierna los artefactos de `cross_review.mode`, no este paso. De
+`cross_review` se heredan solo tres campos: `execution`, `max_rounds` y `reviewer`.
+
+**Qué hacer con cada terminal del retorno.** Acá **no existe** el gate de artefacto donde
+`cross-review` espera que su salida se presente —todavía no hay spec ni plan escritos—, así que los
+tres se consumen explícitamente:
+
+| Terminal | Qué hace `sdd-flow` |
+|---|---|
+| `APPROVED` | continúa, y escribe el artefacto **desde la síntesis revisada** |
+| `UNAVAILABLE` | avisa en una línea y continúa con la síntesis tal como estaba |
+| `REVISE` | presenta las **cuatro opciones** del checkpoint, conserva el `run_id` para reanudar la misma corrida, y **no escribe la spec ni el plan** hasta que se resuelva |
+
+**Qué se hace con lo que la crítica encuentre.** Cada hallazgo se arbitra por el **ledger** de
+`cross-review` —aplicado, rechazado con motivo, o escalado—, y **un hallazgo adoptado corrige la
+síntesis**: aceptarlo sin que cambie ningún insumo posterior es un estado inválido. La corrección se
+publica de forma **atómica** y vuelve a validar el **predicado de cierre** de `co-explore` **antes**
+de escribir la spec o el plan; una edición puede romper la cabecera, los IDs o una sección
+obligatoria, y entonces el flujo consumiría un cierre que `co-explore` rechazaría al retomar.
+
+**La crítica también se verifica.** Los hallazgos son insumo, no órdenes, y acá hay un dato medido:
+en la corrida que originó este paso, **uno de los ocho** hallazgos era falso — y era justamente el que
+acusaba de roto al comando de verificación del conductor. Se refutó con un control positivo de una
+línea. Aceptar una crítica sin verificarla es el mismo error que ignorarla.
+
+**La sesión que criticó no se reutiliza.** Para juzgar si la síntesis representó bien los informes, el
+crítico los recibe completos, así que esa sesión queda **contaminada** con material que la revisión
+posterior de la spec o del plan no debe ver. Esa revisión sale con **worker fresco**, y recibe los
+**índices** y la **síntesis corregida** como contexto.
+
+**Cómo se sabría que el paso paga.** Sobre las pasadas **aceptadas y completadas** —no las declinadas
+ni las degradadas—, en una ventana de al menos **seis**, se registra cuántas cambiaron una
+recomendación. Se revisa la consigna **salvo que `cambios / pasadas > 1/3`**: la evidencia pedía
+cambiar una recomendación en *más* de una de cada tres, así que exactamente un tercio no paga. El
+registro vive en una sección `### Métrica de tercera pasada` del `review-log.md`, **separada del
+ledger** —cuyo esquema es cerrado y no se amplía en silencio—, con los campos `eligible`,
+`recommendation_changed` y `run_id`, y la escribe `sdd-flow` **después** del terminal. El cálculo es
+manual y no lleva guarda.
+
+**Degradación:** sin la otra familia, o sin `cross-review` instalada, no hay tercera pasada: avisar en
+una línea y seguir. Misma filosofía que el resto de la co-exploración.
+
 ## Compatibilidad con Plan Mode / modos no mutantes
 
 Si el entorno prohíbe mutaciones (Plan Mode, modo solo-lectura, etc.):
@@ -430,6 +493,7 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
 | "sin cross-review", "salta la segunda opinión" / "con cross-review", "pide segunda opinión" | registra el **override de revisión cross-model** de la corrida (off/on; ver "Revisión cross-model") |
 | "con co-exploración", "que Codex explore en paralelo" / "sin co-exploración" | registra el **override de co-exploración** de la corrida (on/off; ver "Co-exploración cross-model") |
 | "con debate", "somételo a debate" / "sin debate" | registra el **override de debate** de la corrida (on/off; ver "Debate en decisiones") |
+| "con tercera pasada", "que critiquen la síntesis" / "sin tercera pasada" | registra el **override de la tercera pasada** de la corrida (on/off; ver "Tercera pasada adversarial sobre la síntesis") |
 | "sin aprobación de jira", "no subas la spec" / "con aprobación de jira", "sube la spec a revisión" | registra el **override de aprobación externa** de la corrida (off/on; ver `publish-spec`) |
 | "implementa acá mismo", "inline" / "implementa con Codex", "delega la implementación" | registra el **override del modo de implementación** de la corrida (inline/cross; ver `implement` → "Modo de ejecución") |
 | "analiza esto", "reproduce el bug", "dónde toco" | `analyze` |
@@ -464,7 +528,7 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
    - `.specify/config.yml` — con las selecciones del wizard + comandos/paths detectados. Esquema en `reference.md` → "Esquema de `.specify/config.yml`". Al escribirlo, emitir `cross_review.mode`, `domain_context.mode`, `final_diff_review.mode`, `jira_approval.mode` y `co_explore.debate.mode` con los valores `on`/`off` **entre comillas** (`"on"`/`"off"`; `auto` sin comillas es válido): sin ellas YAML los parsea como booleanos.
    - `.specify/constitution.md` — desde `reference.md` → "Plantilla de constitution" (definición de *Done*, formato de AC, regla de trazabilidad, y un **puntero** a los principios de código del repo —`CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`— si existen).
 7. **STOP** — escribir ambos **solo tras confirmación**. Son locales y untracked (regla #10): nunca se trackean, comitean ni se agregan a un `.gitignore` compartido.
-8. **Cierre — apuntar al resto.** Al confirmar, decir en una línea que el config admite **33 claves**, que el wizard solo preguntó lo que la skill no puede saber, y que el resto vive en `config-ejemplo.md`, listo para copiar por bloques con cada valor marcado `[def]`, `[ej]` u `[obl]`; sin este cierre, reducir el wizard convierte "no te lo pregunto" en "no existe": las seis preguntas que salieron —`commit_style`, `implement_mode`, `cross_review`, `domain_context`, `final_diff_review` y `debate`— tienen que quedar descubribles.
+8. **Cierre — apuntar al resto.** Al confirmar, decir en una línea que el config admite **35 claves**, que el wizard solo preguntó lo que la skill no puede saber, y que el resto vive en `config-ejemplo.md`, listo para copiar por bloques con cada valor marcado `[def]`, `[ej]` u `[obl]`; sin este cierre, reducir el wizard convierte "no te lo pregunto" en "no existe": las seis preguntas que salieron —`commit_style`, `implement_mode`, `cross_review`, `domain_context`, `final_diff_review` y `debate`— tienen que quedar descubribles.
 9. **Re-corrida:** si ya existían, no pisar a ciegas — el wizard mostró los valores vigentes pre-seleccionados; al confirmar, **fusionar** los cambios respetando lo que el usuario mantuvo. Si prefiere no fijar config, puede saltar `init`: el ciclo sigue con autodetección + defaults conversacionales (ver `constitution`).
 
 ## Paso `constitution`

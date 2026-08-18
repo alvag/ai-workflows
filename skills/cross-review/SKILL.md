@@ -119,14 +119,18 @@ Si reconoces alguno de estos pensamientos, detente y aplica la disciplina de `su
 
 Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario) proveen:
 
-- **`artifact_type`** — `spec | plan | tasks | master-spec | reparto`. Define el foco de la
+- **`artifact_type`** — `spec | plan | tasks | master-spec | reparto | sintesis`. Define el foco de la
   revisión (ver `reference.md` → "Foco por tipo de artefacto").
 - **`artifact_path`** — ruta del artefacto a revisar (p. ej. `.plans/ABC-123/plan.md`).
 - **`context_paths`** — artefactos relacionados para grounding (p. ej. al revisar `tasks`, pasar
   también `spec` y `plan`; al revisar `reparto`, la `master-spec`). Opcional pero recomendado. Si
   el flujo corrió **co-exploración** (`co-explore`), la llamadora pasa acá los **índices** y la
   **síntesis** —nunca los `detail-*` completos, que reintroducirían el costo que la lectura
-  selectiva elimina—. Qué sesión se reanuda lo fija la matriz normativa de `reference.md` →
+  selectiva elimina—. **`sintesis` es la única excepción, y por una razón que no vale para
+  los demás tipos:** ahí los informes **son el objeto de la comprobación** —se le pide al crítico que
+  juzgue si la síntesis los representó fielmente— y no contexto de fondo, así que los `detail-*` sí
+  viajan. Con los índices solos esa pregunta no se puede contestar. La regla original sigue
+  gobernando `spec`, `plan`, `tasks`, `master-spec` y `reparto`. Qué sesión se reanuda lo fija la matriz normativa de `reference.md` →
   "Matriz de resume desde co-exploración": nunca resuelve a la familia del autor ni a un worker
   `INVALID`.
 - **`working_dir`** — directorio desde donde el revisor puede leer el código en read-only.

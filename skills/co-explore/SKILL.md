@@ -445,6 +445,8 @@ co_explore:
   debate:           # modo debate — soporte a decisiones (independiente de mode; lo ofrece sdd-flow)
     mode: auto      # "off" | "on" | auto  — cuándo se OFRECE el debate (nunca corre sin confirmación)
     max_rounds: 3   # tope de rondas de cruce
+  tercera_pasada:   # crítica adversarial de la síntesis (independiente de mode; la ofrece sdd-flow)
+    mode: auto      # "off" | "on" | auto  — cuándo se OFRECE la crítica (nunca corre sin confirmación)
                      # NO hay bloque `workers`: cuántos se despachan y de qué familia lo fija la topología dual (regla 7), no el config
 ```
 
@@ -461,6 +463,20 @@ cambios difíciles de revertir) o cuando el conductor está genuinamente insegur
 cualquier decisión contestable de `clarify`/`plan`. En **todos** los casos **ofrece y espera un
 "sí"** — nunca corre el debate solo. `investigate` sigue sin leer config; `debate` standalone
 tampoco.
+
+El sub-bloque `tercera_pasada` es **independiente** de `co_explore.mode` por la misma razón, y con
+la misma precedencia —override de la corrida > config > default—; su default es `auto`. Gobierna
+**cuándo se ofrece** someter la síntesis a una crítica adversarial, que ejecuta `cross-review` y
+ofrece `sdd-flow`: esta skill es dueña del esquema de la clave, no su lectora.
+
+| `mode` | Cuándo se ofrece |
+|---|---|
+| `"off"` | nunca |
+| `auto` | solo cuando la síntesis **no** dejó divergencias sin resolver **ni** enfoques viables materialmente distintos — las dos condiciones que abren el checkpoint informativo |
+| `"on"` | ante toda síntesis |
+
+En los tres casos **se ofrece y se espera un "sí"**: la crítica nunca corre sola. Y aplica solo a
+`explore` y `counter-plan` — `investigate` y `debate` no leen config.
 
 `co_explore` es **ortogonal** a `cross_review.mode`: esta clave gobierna la exploración
 paralela y el contra-enfoque; `cross_review.mode` gobierna las críticas en los gates. Quien
