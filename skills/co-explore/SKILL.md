@@ -337,7 +337,8 @@ publicado vs local que decide qué puede nombrar a las familias y qué no— viv
 `co-explore` devuelve un **envelope agregado**, no un estado singular. La llamadora decide con él
 sin abrir ningún informe: `outcome` (`completed` | `map_failure`) · `branch` · `diversity` ·
 `workers[]` (familia, **estado** —`READY` · `INVALID` · `clarification-needed` · `UNAVAILABLE`—,
-**causa** —`confirmed_wall` · `launch_flake` · `runtime_failure` · `deadline_exceeded`—, paridad,
+**causa** —`confirmed_wall` · `launch_flake` · `runtime_failure` · `deadline_exceeded` ·
+`host_sandbox_wall`—, paridad,
 rutas de índice y detalle, sesión) ·
 `contributors[]` (todo mapa aceptado, incluido el del conductor en ramas degradadas, con `session`
 nullable). Esquema campo por campo en `reference.md` → "Envelope de retorno".
@@ -520,7 +521,8 @@ que la escalera ya resolvió.
 - **`deadline_exceeded`** — un worker venció su deadline sin marcador de cierre. Antes se registraba
   como `runtime_failure`, que sugiere una falla de infraestructura que no ocurrió: arrancó bien y el
   corte lo puso el conductor. Baja a la rama que corresponda igual que cualquier worker no válido.
-**Causas de indisponibilidad** (`confirmed_wall` · `launch_flake` · `runtime_failure`) y su política
+**Causas de indisponibilidad** (`confirmed_wall` · `launch_flake` · `runtime_failure` ·
+`deadline_exceeded` · `host_sandbox_wall`) y su política
 de reintento: `reference.md` → "Estados del worker". Una pared confirmada no se reintenta.
 
 ## Router de intención

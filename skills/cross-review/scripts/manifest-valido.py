@@ -20,25 +20,25 @@ ROWS: Dict[str, Tuple[set[str], set[str], set[str], set[str]]] = {
     "co-explore": (
         {"explore", "counter-plan", "investigate", "debate"},
         {"completed", "map_failure"},
-        {"none", "confirmed_wall", "launch_flake", "runtime_failure", "branch-2", "branch-3", "branch-4", "deadline_exceeded"},
+        {"none", "confirmed_wall", "launch_flake", "runtime_failure", "host_sandbox_wall", "branch-2", "branch-3", "branch-4", "deadline_exceeded"},
         {"none", "subagent", "cli-exec", "cli-resume"},
     ),
     "cross-review": (
         {"spec", "plan", "tasks", "master-spec", "reparto", "sintesis", "draft"},
         {"APPROVED", "REVISE", "UNAVAILABLE"},
-        {"none", "confirmed_wall", "launch_flake", "runtime_failure", "rounds_exhausted", "deadline_exceeded"},
+        {"none", "confirmed_wall", "launch_flake", "runtime_failure", "host_sandbox_wall", "rounds_exhausted", "deadline_exceeded"},
         {"none", "subagent", "cli-exec", "cli-resume"},
     ),
     "cross-implement": (
         {"embebido", "directo"},
         {"IMPLEMENTED", "PARTIAL", "UNAVAILABLE"},
-        {"none", "confirmed_wall", "launch_flake", "runtime_failure", "takeover", "deadline_exceeded"},
+        {"none", "confirmed_wall", "launch_flake", "runtime_failure", "host_sandbox_wall", "takeover", "deadline_exceeded"},
         {"none", "subagent", "cli-exec", "cli-resume"},
     ),
     "bitbucket-code-review": (
         {"conductor", "delegado", "mixto"},
         {"PUBLISHED", "PROPOSED", "UNAVAILABLE"},
-        {"none", "confirmed_wall", "launch_flake", "runtime_failure", "revisor_invalido", "panel_vacio"},
+        {"none", "confirmed_wall", "launch_flake", "runtime_failure", "host_sandbox_wall", "revisor_invalido", "panel_vacio"},
         {"none", "subagent", "cli-exec", "cli-resume"},
     ),
 }
