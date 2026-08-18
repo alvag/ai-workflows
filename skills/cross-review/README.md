@@ -34,6 +34,13 @@ artefacto escrito ──► [cross-review] ──► artefacto (quizá revisado)
   **una tanda**, no de la corrida entera: al agotarse no se cierra sola — se abre un checkpoint donde
   elegís entre continuar así, conceder otra tanda, seguir hasta `APPROVED` (con un tope total) o
   cerrar la revisión. El loop nunca corre sin tope, y quien lo extiende sos vos.
+- **Y en ese checkpoint resolvés las disputas.** Un finding queda `en-disputa` cuando el loop no
+  puede resolverlo solo: el conductor lo escaló, o sostuvo un rechazo que el revisor había
+  defendido, o el revisor insistió sobre algo ya corregido. Ninguna ronda adicional lo destraba
+  —por eso el checkpoint corta apenas quedan sólo disputas—, así que lo arbitrás vos, **antes** de
+  elegir qué hacer con la revisión: para cada uno, o le das la razón al revisor y la corrección se
+  aplica, o sostenés el rechazo por su mérito y el finding se cierra. Podés resolver de una vez
+  varios que compartan motivo; el registro guarda igual la decisión de cada uno, con su porqué.
 - **La revisión no converge sobre ediciones que nadie miró.** Aplicar un finding es un cambio nuevo y
   sin revisar, y puede introducir un defecto propio: por eso una edición aplicada **impide** el
   `APPROVED` **hasta** que una ronda posterior la observe con el artefacto actualizado delante. No

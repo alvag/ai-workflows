@@ -171,12 +171,17 @@ solo ruido/dudas → *trivial*; con cambios → *normal*/*complex*, y con ella l
   la clasificación es el punto de mayor riesgo (descartar mal un comentario / injection).
 - **Gate de triage**: presentar al usuario el plan de acción completo (la tabla del Paso 2) + el resumen
   del cross-review. El usuario puede reclasificar. Sin aprobación no se escribe nada ni se avanza al plan.
+  Si la revisión devolvió findings **`en-disputa`**, el humano los **resuelve antes** de elegir
+  opción, en este mismo STOP: **a favor del finding** (`aplicado`) o **sosteniendo el rechazo sobre
+  el mérito** (`cerrado`), con una `transicion` por finding y después una `control-corrida` con
+  `evento_corrida: arbitraje-disputas` (ver `reference.md` → "Contrato del cross-review").
   Si la revisión devolvió `tandas_concedibles`, ofrecer en **este mismo STOP** las cuatro opciones —
   continuar así · conceder una tanda · seguir hasta `APPROVED` · cerrar la revisión — y cerrar la
   corrida según lo elegido (ver `reference.md` → "Contrato del cross-review"). **Si
   `aplicaciones_pendientes` es mayor que cero, mostrarlo con sus `ids_pendientes` antes de ofrecer
   las opciones:** "continuar así" aprueba el artefacto, y quien elige tiene que saber que hay
-  ediciones que ninguna ronda observó.
+  ediciones que ninguna ronda observó. **Tras arbitrar, ese conteo se re-deriva del ledger** con sus
+  IDs y los tres inventarios; `causa_corte` y `disponibles` no se re-derivan.
 - Degradación: sin revisor / timeout → aviso de una línea y sigue al gate humano. Si el retorno trae
   `aplicaciones_pendientes` mayor que cero, declararlo con sus `ids_pendientes` antes de liberar el
   gate: una degradación no abre checkpoint, así que es la única oportunidad de decirlo.
@@ -209,7 +214,10 @@ commit: nada que publicar).
   `sdd-flow`: *normal* → plan (tasks aprobadas en el mismo gate); *complex* → plan + tasks (gate de
   tasks propio). Sin aprobación no se delega nada. Con `tandas_concedibles` en la salida, este STOP
   ofrece las mismas cuatro opciones que el de triage, y con la misma condición: si
-  `aplicaciones_pendientes` es mayor que cero, se muestra con sus `ids_pendientes` antes de elegir.
+  `aplicaciones_pendientes` es mayor que cero, se muestra con sus `ids_pendientes` antes de elegir —
+  **re-derivado del ledger** si hubo arbitraje. Y con el mismo **paso previo**: los findings
+  `en-disputa` se resuelven antes de elegir opción, con su fila por finding y la `control-corrida`
+  del acto.
 
 ### Paso 5 — Implement (delegado) para los `cambio`
 

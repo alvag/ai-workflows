@@ -172,14 +172,30 @@ estas pasadas corran **todas en el conductor** es lo que habilita delegar el imp
 `cross_review.mode: off` (ver "Delegación"): el subagente no re-revisa porque el diseño completo ya
 se revisó arriba.
 
+**El paso previo: arbitrar las disputas.** Si la revisión devuelve findings **`en-disputa`**, el
+humano los resuelve **antes** de elegir opción, dentro del mismo STOP y sin gate extra. Dos destinos:
+**resolver a favor del finding** (`aplicado`, y el conductor aplica la corrección) o **sostener el
+rechazo sobre el mérito** (`cerrado`). La decisión puede agruparse por motivo, pero **cada finding
+lleva su fila**. Se escribe en este orden: una `transicion` por finding con `actor: humano` y su
+rationale, y luego **una** `control-corrida` con `evento_corrida: arbitraje-disputas` y `finding_id`
+nulo —**también si no se arbitró ninguna**—, todas con la **`ronda` acumulada al abrir el
+checkpoint**. Por finding la secuencia es **decidir → editar → registrar**: la fila hacia `aplicado`
+se escribe **después** de aplicar la corrección, nunca antes. Y esa `control-corrida` cierra **ese
+acto**, no la posibilidad de arbitrar: un checkpoint posterior abre otro, con la suya. Mecánica
+completa en `cross-review/reference.md` → "El paso previo: arbitrar las disputas".
+
 **Salida de rondas.** Cuando la revisión devuelve `tandas_concedibles` —todo `REVISE` que abra el
 checkpoint—, el STOP del gate ofrece las **cuatro opciones**: **continuar así** · **conceder una
 tanda** · **seguir hasta `APPROVED`** · **cerrar la revisión**. Se ofrecen siempre; `disponibles:
-false` advierte que conceder no puede converger, no deshabilita nada. Con el modo automático activo,
+false` advierte que conceder no puede converger, no deshabilita nada. **El paso previo no las
+cambia:** no agrega una quinta ni altera sus postcondiciones. Con el modo automático activo,
 el fin de tanda es una frontera interna y la barrera del gate sigue marcada. **Si
 `aplicaciones_pendientes` es mayor que cero, se muestra con sus `ids_pendientes` antes de ofrecer las
 opciones:** "continuar así" aprueba el artefacto, y quien elige tiene que saber que hay ediciones que
-ninguna ronda observó.
+ninguna ronda observó. **Tras arbitrar, ese conteo se re-deriva del ledger** —con sus IDs y los tres
+inventarios— porque el valor del retorno es anterior al arbitraje; `causa_corte` y `disponibles`
+**no** se re-derivan, son históricos, y `disponibles` deja de usarse como advertencia una vez que
+hubo arbitraje.
 
 Tras el gate, y como en las otras dos llamadoras: si el humano concede se **reanuda la misma corrida
 por su `run_id`**; si elige una salida terminal se **finaliza el único manifest**; y el `resume` de

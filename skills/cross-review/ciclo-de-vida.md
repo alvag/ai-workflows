@@ -66,8 +66,23 @@ importa —quién decide la admisibilidad— sería inexpresable.
 
 ## Transiciones
 
-Las **14 transiciones permitidas**, con su destino y su terminalidad fijados. Terminal = ninguna
-transición sale de ese estado para ese finding.
+Las **16 transiciones permitidas**, con su destino y su terminalidad fijados. Terminal = ninguna
+transición **del loop de rondas** sale de ese estado para ese finding. Las dos excepciones ocurren
+**fuera** del loop y están listadas en la tabla: la **re-apertura con evidencia** desde `aplicado`,
+y el **arbitraje humano** desde `en-disputa`, que sucede en el gate y no en una ronda.
+
+*Por qué la definición nombra el loop y no las transiciones a secas:* sin esa precisión la palabra
+sería falsa para `aplicado`, que está marcado terminal y tiene dos aristas de salida en esta misma
+tabla. La distinción entre la terminalidad **del finding** y la de su **contribución al veredicto de
+la corrida** ya está fundamentada en `reference.md` → "Veredicto derivado"; acá se cita, no se
+duplica.
+
+**Que un estado sea terminal no depende de que el humano pueda arbitrarlo.** `en-disputa` conserva
+`Terminal: sí` en las cinco filas que desembocan en él, y eso es una condición de que el mecanismo
+funcione, no una formalidad: las ramas del veredicto derivado se evalúan en orden, así que un
+`en-disputa` reclasificado como no terminal haría que todo ledger de solo disputas cayera en la rama
+2 —cuyo efecto es *sigue*— y volvería **inalcanzable** la rama 3, que es la única que corta la tanda
+y abre el gate donde el arbitraje ocurre.
 
 | Estado origen | Evento | Actor | Destino | Terminal |
 |---|---|---|---|---|
@@ -85,8 +100,16 @@ transición sale de ese estado para ese finding.
 | `rechazado` sin respuesta | no concede | humano | `en-disputa` | sí |
 | `aplicado` | re-emite el mismo tema **con evidencia** de que el artefacto sigue fallando (**primera vez**) | revisor | `abierto` | no |
 | `aplicado` | re-emite el mismo tema con evidencia, **segunda vez** | revisor | `en-disputa` | sí |
+| `en-disputa` | arbitra la disputa: resuelve a favor del finding | humano | `aplicado` | sí |
+| `en-disputa` | arbitra la disputa: sostiene el rechazo sobre el mérito | humano | `cerrado` | sí |
 
-Dos de ellas son **autocurvas**: `rechazado → rechazado` al conceder una tanda no cambia el valor
+**Las dos últimas son el arbitraje humano del gate**, y son lo que convierte a `en-disputa` en un
+estado con salida. Ocurren en el **paso previo** del checkpoint, antes de que el humano elija entre
+las cuatro opciones; el protocolo completo está en `reference.md` → "Tandas y salida de rondas".
+Estar **listadas acá** es lo que las saca de la regla de cierre del complemento: una fila listada en
+la tabla no puede caer a la vez bajo el complemento.
+
+Una de ellas es **autocurva**: `rechazado → rechazado` al conceder una tanda no cambia el valor
 del estado, pero **sigue siendo una arista ejecutada** y se registra como tal (ver "Ledger").
 
 **Por qué la tabla fija destinos y no solo cobertura.** Completitud no implica correctitud. Sin
@@ -113,6 +136,18 @@ queda protegida por el ledger.
 *Por qué una regla y no ampliar la tabla:* enumerar las combinaciones inválidas la haría crecer sin
 agregar semántica, y dejaría el mismo hueco ante la primera combinación no prevista. La regla cerrada
 cubre el complemento entero.
+
+**El arbitraje humano no cae acá, y el motivo es que está listado.** Las dos aristas
+`en-disputa → aplicado` y `en-disputa → cerrado` son filas de la tabla, así que quedan fuera del
+complemento por la misma regla de precedencia que ya rige para el resto: una fila listada no puede
+caer a la vez bajo el complemento. **No hace falta ninguna excepción nueva**, y no se agrega: un
+arbitraje descrito sólo en la prosa del checkpoint, sin fila, sí caería acá y se descartaría con
+motivo — que es exactamente lo que la fila evita.
+
+**Lo que `en-disputa` conserva en este complemento.** Una **segunda defensa** sobre un finding
+`en-disputa` sigue siendo un evento del complemento y se sigue descartando: la enumeración de arriba
+no se recorta. Lo que cambió es que ese estado ahora tiene **dos** salidas listadas, no que haya
+dejado de estar cubierto por esta regla para todo lo demás.
 
 ## Ledger
 
@@ -149,9 +184,25 @@ Ninguna sede posterior amplía este esquema en silencio: si hace falta un campo,
 |---|---|
 | **núcleo** (toda fila) | `ronda` (entero, **acumulado de la corrida**) · `tipo` (uno de los cuatro) · `finding_id` (**nulo solo** en `control-corrida`) · `actor` (`revisor` \| `conductor` \| `humano`) · `rationale` (texto; **obligatorio** cuando el evento es un rechazo) |
 | `emision` | `severidad` (`high` \| `medium` \| `low`), **obligatoria** |
-| `transicion` | `origen` y `destino` (estados del enum) · `evento` (uno de los 14) · `presupuesto_consumido` (`null` \| `defensa` \| `reapertura`) |
+| `transicion` | `origen` y `destino` (estados del enum) · `evento` (uno de los 16) · `presupuesto_consumido` (`null` \| `defensa` \| `reapertura`) |
 | `descarte` | `motivo` (texto, obligatorio) y el evento descartado |
-| `control-corrida` | `evento_corrida` (`eleccion-tope` \| `reeleccion-tope` \| `checkpoint` \| `ronda-completada-valida` \| `ronda-completada`) · `tope_efectivo` (entero; obligatorio en elección y reelección) · `decision_humana` (la opción elegida, obligatoria en el checkpoint) |
+| `control-corrida` | `evento_corrida` (`eleccion-tope` \| `reeleccion-tope` \| `checkpoint` \| `arbitraje-disputas` \| `ronda-completada-valida` \| `ronda-completada`) · `tope_efectivo` (entero; obligatorio en elección y reelección) · `decision_humana` (la opción elegida, obligatoria en el checkpoint) |
+
+**`arbitraje-disputas` registra el acto de arbitraje del gate**, con `finding_id` nulo como el resto
+de su clase, y **acompaña** —no reemplaza— a las N filas `transicion` que el arbitraje produce, una
+por finding aunque la decisión se haya tomado en grupo. Es un valor del enum y **no agrega ningún
+campo** al esquema.
+
+*Por qué hace falta y no alcanza con las transiciones:* el humano puede mirar las disputas y decidir
+**no arbitrar ninguna**, y sin esta fila ese caso es indistinguible de «nunca se ofreció el
+arbitraje». Es el mismo razonamiento con que abajo se justifica registrar la ronda que no libera
+nada. Su **orden** también es normativo —primero las `transicion`, después esta fila— y de ahí se
+deriva la señal de finalización del acto (`reference.md` → "Tandas y salida de rondas").
+
+**Un `cerrado` por arbitraje se distingue de uno del flujo normal sin campos nuevos**, leyendo la
+fila `transicion` que lo produjo: `origen: en-disputa` con `actor: humano` es inconfundible frente a
+`origen: rechazado` (el revisor aceptó el rechazo) u `origen: defendido` (defensa inadmisible). El
+dato ya está en el esquema; lo que hacía falta era la regla de lectura.
 
 **Los dos eventos de cierre de ronda son valores del enum, no una clase nueva.** `ronda-completada-valida`
 registra el cierre de una ronda que recibió el artefacto actualizado; `ronda-completada`, el de una
@@ -195,7 +246,9 @@ patológica consumiría el presupuesto de todas las demás. Son dos, simétricos
   La **segunda** re-emisión sobre el mismo tema pasa a `en-disputa` sin re-arbitrar.
 
 **Son de la vida entera del finding, no del tramo.** Se consumen una vez y **no se recargan al
-cambiar de estado**. Un finding que recorrió `rechazado → defendido → reabierto → aplicado → abierto
+cambiar de estado, al arbitrarse en el gate ni al reanudar la corrida en otra sesión**. Un finding
+que llega al arbitraje con la defensa y la re-apertura ya gastadas sale de él igual de gastado: el
+arbitraje resuelve su estado, no le devuelve presupuesto. Un finding que recorrió `rechazado → defendido → reabierto → aplicado → abierto
 → rechazado` llega a ese segundo `rechazado` **sin** presupuesto de defensa, y una defensa ahí lo
 lleva a `en-disputa` —registrada, sin re-arbitraje—, que es terminal. El consumo queda en el
 `presupuesto_consumido` de la fila `transicion` que lo gastó; el grafo lo impone en la transición, no
@@ -275,9 +328,22 @@ regla 3 de `SKILL.md` aplicada al otro extremo del loop.
 
 ## Cierre
 
-Un finding se cierra **solo** por aceptación explícita del revisor o por una defensa evaluada como
-inadmisible. **Nunca por omisión**: la aceptación silenciosa permitiría cerrar findings por
+Un finding se cierra **solo** por aceptación explícita del revisor, por una defensa evaluada como
+inadmisible, o por **arbitraje humano en el gate** —con una decisión explícita sobre su mérito y su
+rationale registrado—. **Nunca por omisión**: la aceptación silenciosa permitiría cerrar findings por
 truncamiento o pérdida de contexto en vez de por una decisión auditable.
+
+**Y nunca por presupuesto.** El tercer origen no ablanda la regla: un `cerrado` **no** se deriva del
+agotamiento de la tanda, ni de la mera elección de terminar la revisión, ni de que nadie haya llegado
+a mirarlo. Los dos primeros ya están fundados en `reference.md` → "Rechazos sin responder al agotarse
+la tanda" —cerrar ahí sería cerrar por presupuesto y no por mérito, y por eso esos pendientes van a
+`en-disputa` y no a `cerrado`—, y esa fundamentación se **cita**, no se duplica. Un cierre por
+arbitraje exige que el humano decida **sobre el mérito de ese finding**; una decisión agrupada vale
+si su rationale es sobre el mérito de todos los que agrupa, nunca si es sobre el cansancio de la
+corrida.
+
+**Cómo se distingue un `cerrado` por arbitraje de uno del flujo normal:** por la fila `transicion`
+que lo produjo, sin ningún campo nuevo (ver "Ledger" → "Esquema de campos").
 
 Un finding `cerrado` **no se re-arbitra**, el revisor **tiene prohibido re-emitirlo**, y si reaparece
 el conductor lo descarta por identidad —sin arbitrarlo y sin abrir ronda por él—. Y **permanece en el
