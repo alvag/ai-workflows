@@ -1094,7 +1094,7 @@ Qué produce cada llamadora, medido en el árbol:
 
 | Llamadora | Comprobaciones que aporta | Sede |
 |---|---|---|
-| `sdd-flow` | cobertura de spec (AC↔task) · scan anti-placeholder · consistencia de interfaces Produce/Consume · cobertura AC↔fila del contrato | `sdd-flow/SKILL.md` → paso `tasks`, punto 3 "Self-review antes del gate" |
+| `sdd-flow` | cobertura de spec (AC↔task) · scan anti-placeholder · consistencia de interfaces Produce/Consume · existencia y pertinencia AC↔fila del contrato | `sdd-flow/SKILL.md` → paso `tasks`, punto 3 "Self-review antes del gate" |
 | `sdd-orchestrator` | cobertura AC por repo y por tarea · ubicación en los dos sentidos · cardinalidad tarea↔fila · invariantes del grafo · participación | `sdd-orchestrator/SKILL.md` → "Cross-artifact check (regla 5)", los cinco grupos |
 | `sdd-pr-feedback` | **ninguna**: lo que tiene en `reference.md:164` es un *foco por gate*, no un self-review. Su bloque va **ausente**, igual que directo/draft | `sdd-pr-feedback/reference.md:164` |
 | `cross-review` directo/draft | ninguna: no hay llamadora que las produzca. Bloque **ausente**, no vacío | — |

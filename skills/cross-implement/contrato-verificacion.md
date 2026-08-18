@@ -158,6 +158,30 @@ direcciones**, y cada dirección bloquea por su cuenta:
 Una sola dirección no alcanza: un contrato con una fila por requisito **más** tres filas huérfanas
 cumple "todo requisito tiene fila" y sigue roto.
 
+### Pertinencia: poder discriminante por fila
+
+La **pertinencia** exige que la observación de cada fila distinga la afirmación de su requisito de
+su negación. Ese es el poder discriminante de la fila; la existencia del mapeo entre requisito y
+fila no lo garantiza.
+
+Compartir sujeto es necesario y no suficiente. Si el requisito afirma que *la emisión lleva el
+identificador normalizado*, una fila que solo observa que se invoca la emisión comparte el sujeto,
+pero su resultado puede cumplirse sin que la emisión lleve ese identificador.
+
+La unidad de comparación es la **subafirmación declarada** por la fila. Cada fila declara qué parte
+del requisito discrimina y se evalúa contra esa subafirmación; el conjunto cierra cuando la unión de
+las subafirmaciones declaradas cubre la afirmación entera. Así, ante un requisito `A ∧ B`, una fila
+puede discriminar `A` sin pretender discriminar por sí sola el requisito completo.
+
+Al evaluar la pertinencia hay **dos cosas que establecer y un solo test**:
+
+1. cargar el requisito **autoritativo** desde su sede, no la paráfrasis de la columna `Requisito`;
+2. identificar qué observa la combinación de `Comando/observación` **más** `Esperado`.
+
+Con esos dos insumos se aplica un único contrafactual: *¿puede cumplirse el `Esperado` mientras la
+afirmación del requisito es falsa?* Si la respuesta es sí, la fila no es pertinente. El mismo test
+se aplica cuando `Comando/observación` contiene una observación sin comando.
+
 ### Qué es invariante entre versiones
 
 El contrato se puede corregir; lo que no se puede es **ablandar**. Dos invariantes lo sostienen, y
@@ -178,6 +202,21 @@ La segunda invariante es la que hace útil a la primera. Sin ella basta clasific
 `VERIFICATION_DEFECT` y emitir una versión donde la misma fila espera `HTTP 200` en vez de
 `HTTP 201`, o donde el comando pasa siempre: los IDs no cambiaron, la cobertura sigue completa, la
 cadena cierra — y el contrato quedó vacío.
+
+#### Reparación de una fila no pertinente
+
+Si el gate de «Pertinencia: poder discriminante por fila» encuentra una fila no pertinente, la
+reparación depende del momento y de los campos que sea necesario cambiar:
+
+| Momento o cambio necesario | Clasificación y salida |
+|---|---|
+| Antes de congelar | Reescribir la fila y volver a medirla. |
+| Ya congelada; alcanza con cambiar `Comando/observación` **o** `Evidencia` | `VERIFICATION_DEFECT`: emitir una versión nueva. Son exactamente los campos que las invariantes autorizan a cambiar. |
+| Ya congelada; hay que cambiar `Requisito` o `Esperado` | `DESIGN_GAP`: volver al diseño. |
+| Ya congelada; hay que agregar o quitar un `ID` | `DESIGN_GAP`: volver al gate de diseño, porque el conjunto de `ID` es invariante entre versiones. |
+
+Un contrato congelado antes de esta regla no necesita discriminador: si su gate encuentra una fila
+no pertinente, la reparación entra por esta misma matriz.
 
 ### Versiones y vigencia
 
@@ -246,7 +285,7 @@ que lo produzca, y el reparto de responsabilidades es este:
 
 | # | Quién | Qué | Por qué no otro |
 |---|---|---|---|
-| 1 | el conductor | **deriva** la tabla del work order | pedirle al implementador que derive sus propias comprobaciones lo pone a calificar su propio trabajo, y borra lo único contra lo que el gate podía contrastar su entrega. |
+| 1 | el conductor | **deriva** la tabla del work order según «Pertinencia: poder discriminante por fila» | pedirle al implementador que derive sus propias comprobaciones lo pone a calificar su propio trabajo, y borra lo único contra lo que el gate podía contrastar su entrega. |
 | 2 | el conductor | **ejecuta el baseline**, sobre el código sin el cambio | delegarlo tiene el mismo defecto y además es imposible después: una vez despachado, el árbol ya contiene el diff y "antes" dejó de existir. |
 | 3 | el usuario | **aprueba** la tabla, junto con el work order, en el gate de kickoff que esta skill ya tiene | no hay derivación implícita: un contrato que nadie aprobó no es un contrato, es una lista que escribió el conductor. |
 | 4 | el conductor | **congela** inmediatamente después de esa aprobación y **antes** del dispatch | congelar antes de aprobar vuelve el gate un trámite sobre algo ya cerrado; despachar sin congelar deja el contrato editable mientras corre la implementación, que es justamente cuando aparece la tentación de ablandarlo. |
@@ -254,6 +293,8 @@ que lo produzca, y el reparto de responsabilidades es este:
 El **orden es parte de la regla**, no una sugerencia de redacción: derivar → medir el baseline →
 aprobar → congelar → despachar. Cada paso fuera de lugar rompe una garantía distinta, así que
 ninguno de los cuatro se comprueba mirando solo el resultado final.
+
+Al **derivar** cada fila se aplica el test de «Pertinencia: poder discriminante por fila».
 
 Sin gate de kickoff no hay aprobación posible y el modo directo no despacha: la salida no es
 congelar igual, es no despachar.
@@ -285,7 +326,7 @@ De ahí la asimetría del gate, que es la forma verificable de todo lo anterior:
 > order y su tabla de verificación congelada**: un work order sin tabla, o con una tabla sin
 > congelar, no se delega.
 
-El conductor valida el contrato antes de lanzar. Cinco comprobaciones; cualquiera que falle **detiene
+El conductor valida el contrato antes de lanzar. Seis comprobaciones; cualquiera que falle **detiene
 el dispatch**, con el mismo tratamiento que el clean-tree gate: no se lanza y se reporta como gate
 fallido.
 
@@ -296,6 +337,11 @@ fallido.
 | 3 | **cobertura bidireccional** | queda un requisito en alcance sin fila, o una fila sin requisito. |
 | 4 | **campos obligatorios presentes** | falta una columna o sobra una; un valor cae fuera de los enums; una fila no tiene registro de baseline, o el registro no tiene `commit` y `timestamp`; un `GREEN_ALREADY` sin `adjudicación` o un `NOT_APPLICABLE` sin `justificación`. |
 | 5 | **baseline resuelto en toda fila** | alguna fila quedó sin estado, o en `BLOCKED`. |
+| 6 | **pertinencia** | una fila no establece los dos insumos exigidos en «Pertinencia: poder discriminante por fila»; el contrafactual responde que sí; o la unión de las subafirmaciones declaradas no cubre la afirmación entera. |
+
+La comprobación de pertinencia **no está mecanizada**. La guarda
+`@bloque:contrato-cobertura` y su gemelo PowerShell implementan la existencia del mapeo y nada más;
+que esa guarda pase no acredita el poder discriminante de las filas.
 
 Una tabla presente pero incompleta, sin congelar, o con baseline pendiente **no habilita el
 dispatch**. Es la diferencia entre cumplir esto documentalmente y cumplirlo en operación: un gate que

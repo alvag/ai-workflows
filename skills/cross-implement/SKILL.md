@@ -298,6 +298,9 @@ las causas de pared, flake, runtime o deadline se proyectan desde esas autoridad
    (`contrato-verificacion.md` → "Contrato en work orders sin flujo SDD"). Cualquiera falla → no se
    lanza.
 
+   La enumeración inmediata no es exhaustiva; manda el conjunto canónico completo de «El gate
+   previo al dispatch».
+
    **Y la medición de base de las comprobaciones agregadas**, en este paso y no después: se mide
    cada comando de `proof_cmd` sobre `block_base` en un worktree aislado, se conserva su salida y su
    exit code, y se descarta el worktree (`reference.md` → "Medición de base y adjudicación"). Es lo

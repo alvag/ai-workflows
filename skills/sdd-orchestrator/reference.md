@@ -433,6 +433,8 @@ Fase 3 revalida esa misma versión antes de la primera evidencia. La segunda pas
 versión ni toca el conjunto de filas: si algo no cierra, la Fase 3 se detiene en vez de reparar el
 contrato sobre la marcha.
 
+La enumeración inmediata no es exhaustiva; manda el conjunto canónico completo de la sede enlazada.
+
 El gate no es un trámite copiado: es lo que hace que sacar estas filas del contrato de cada repo sea
 **moverlas a otro gate** y no dejarlas sin ninguno. Sin él, la separación las volvería invisibles —
 que es peor que el problema original de cerrarlas localmente con media evidencia.

@@ -1153,7 +1153,7 @@ es la cantidad de filas, no la obligación de producir evidencia.
 
 | Paso | Actor | Cuándo |
 |---|---|---|
-| derivar | conductor | con los requisitos en alcance fijados, antes de medir |
+| derivar | conductor | con los requisitos en alcance fijados, antes de medir; ver `cross-implement/contrato-verificacion.md` → «Pertinencia: poder discriminante por fila» |
 | medir | conductor | tras derivar cada fila: ejecuta el comando o realiza la observación sobre el commit base y escribe el estado observado, nunca uno asumido |
 | adjudicar | conductor | tras medir, cuando el baseline observado no es `RED` |
 | sellar | conductor | con todas las filas medidas, sus registros completos y sus adjudicaciones resueltas |
@@ -1477,7 +1477,7 @@ Cada task es un **bloque** con estos campos:
 
 ## Self-review (antes del gate)
 - **Cobertura AC ↔ task:** AC-1 → T1, T2 ✓ · AC-2 → T2 ✓ (sin AC huérfanos / sin tasks sin AC).
-- **Cobertura AC ↔ fila del contrato:** AC-1 → V1 ✓ · AC-2 → V2 ✓ (bidireccional: ni AC sin fila ni fila sin AC — es lo que el gate de `cross-implement` exige para congelar).
+- **Existencia y pertinencia AC ↔ fila del contrato:** AC-1 → V1 ✓ · AC-2 → V2 ✓ (existencia bidireccional: ni AC sin fila ni fila sin AC) · contrafactual aplicado a V1 y V2 ✓ (pertinencia; ver `cross-implement/contrato-verificacion.md` → «Pertinencia: poder discriminante por fila»). Es lo que el gate de `cross-implement` exige para congelar.
 - **Anti-placeholder:** sin `TBD`/`TODO`/"agregar X apropiado"/"similar a T-N"/"etc." en plan ni tasks.
 - **Interfaces:** cada `Produce` coincide exacto (nombre + firma) con el `Consume` que lo referencia.
 ```
