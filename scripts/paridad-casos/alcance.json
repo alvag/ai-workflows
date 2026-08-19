@@ -33,6 +33,7 @@
     "verify-ejecuta"
   ],
   "declarados_sin_matriz": {
-    "rebaseline-worktree": "fuera de alcance por decisión de la spec: opera sobre worktrees de Git que crea y destruye, y probarlo exigiría que el arnés levante repositorios desechables"
+    "rebaseline-worktree": "fuera de alcance por decisión de la spec: opera sobre worktrees de Git que crea y destruye, y probarlo exigiría que el arnés levante repositorios desechables",
+    "promocion-tasks-ready": "el corpus que cubriría el par exigiría archivos nuevos bajo scripts/paridad-casos, prohibidos dentro de este flujo de skills"
   }
 }

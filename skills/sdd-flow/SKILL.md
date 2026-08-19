@@ -50,6 +50,7 @@ Artefactos en disco:
    │  ├─ spec.md          # QUÉ + por qué + criterios de aceptación (AC-n) + Clarifications
    │  ├─ plan.md          # header YAML (incluye status + branch) + CÓMO + resultado de verify
    │  ├─ tasks.md         # tareas atómicas [ ], cada una referencia AC-n
+   │  ├─ bitacora.md      # constancia append-only de los pasos del contrato
    │  ├─ handoff.md       # retomado del flujo: dónde quedó + decisiones + cómo sigue (pause / gate Jira)
    │  └─ jira-spec.md     # copia exacta de lo publicado en Jira (solo con el gate de aprobación)
    └─ archived/           # flujos cerrados (status: done), movidos solo tras tu confirmación
@@ -649,9 +650,12 @@ predicados de `cross-implement/contrato-verificacion.md` → "El gate previo al 
 versión vigente. La referencia es al conjunto, no a una cantidad fija de comprobaciones; incluye
 las invariantes que impiden ablandar una versión y la proyección solo-lectura del multi-repo.
 
-La aprobación completa el orden normativo de `reference.md` → "Producción del contrato de
-verificación": registrar `aprobar`, registrar `congelar`, escribir el marcador y recién entonces
-cambiar el estado. Antes de despachar, volver a ejecutar el conjunto completo con esa constancia.
+La aprobación del último gate aplicable completa el orden normativo de `reference.md` → "Producción
+del contrato de verificación": el conductor registra `aprobar`, registra `congelar` en la bitácora,
+escribe el marcador y recién entonces ejecuta `@bloque:promocion-tasks-ready` con el plan y la
+bitácora. El bloque muta el plan y promueve el estado; un veredicto distinto de cero impide promover.
+Es un cambio de naturaleza respecto de los demás bloques del repositorio, que solo verifican. Antes de
+despachar, volver a ejecutar el conjunto completo con esa constancia.
 
 ### Ciclo de `status` (estado persistido del flujo)
 

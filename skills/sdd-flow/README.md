@@ -62,6 +62,7 @@ Como `.plans/` es local (no trackeado), git no lo mueve al cambiar de rama: tus 
    │  ├─ plan.md        # SIEMPRE: header YAML (incl. status + branch) + CÓMO + resultado de verify
    │  ├─ spec.md        # en NORMAL y COMPLEJO (en trivial va embebida en plan.md → ## Spec)
    │  ├─ tasks.md       # en NORMAL y COMPLEJO (en trivial van embebidas en plan.md → ## Tasks)
+   │  ├─ bitacora.md    # constancia append-only de los pasos del contrato
    │  ├─ sequence-ledger.yml  # versión, cursor, intenciones y efectos adjudicados
    │  ├─ sequence-ledger.owner/ # ownership exclusivo mientras un writer publica
    │  ├─ handoff.md     # al pausar o en el gate de Jira: estado + decisiones para retomar
