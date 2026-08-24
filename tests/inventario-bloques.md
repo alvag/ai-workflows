@@ -732,6 +732,18 @@ def parsear_tabla_pipe(texto: str) -> list[list[str]]:
 
 **Hash esperado: `sha256:c25f382192e3bdae3a461d7f857a3f51ecc227cfda637d3ec1ac3ddfe34fdc06`.**
 
+## 8. Helper privado de YAML
+
+Las cuatro guardas de `sdd-orchestrator` comparten el mismo tratamiento léxico del dialecto
+restringido: eliminan comentarios de fin de línea solo cuando `#` aparece tras un espacio,
+preservan el contenido entre comillas simples o dobles hasta su cierre, desnudan esas comillas y
+separan listas inline por comas. `[]` produce una lista vacía y los elementos vacíos se omiten.
+No interpreta YAML general ni amplía el dialecto histórico.
+
+| skill | ruta | API |
+|---|---|---|
+| `sdd-orchestrator` | `skills/sdd-orchestrator/scripts/_yaml.py` | `parsear_valor_yaml(valor: str) -> str \| list[str]` |
+
 ## Adjudicación de las clases dudosas
 
 El censo marcó **ocho** filas con una clase alternativa. Las ocho las resolvió el conductor —la
