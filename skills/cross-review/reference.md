@@ -23,6 +23,66 @@ de inspección.
 
 ---
 
+## Resolución del intérprete de Python
+
+Antes de ejecutar un script Python de la skill, resolver Python 3.9 o superior mediante una prueba
+ejecutable. La presencia del nombre en `PATH` no alcanza: cada candidato debe correr código con
+`-c`. El wrapper resultante conserva `py -3` como dos argumentos.
+
+<!-- resolvedor-python:inicio -->
+```sh
+resolve_skill_python() {
+  if python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' \
+      >/dev/null 2>&1; then
+    python_skill() { python3 "$@"; }
+    PYTHON_SKILL='python3'
+    return 0
+  fi
+  if py -3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' \
+      >/dev/null 2>&1; then
+    python_skill() { py -3 "$@"; }
+    PYTHON_SKILL='py -3'
+    return 0
+  fi
+  printf '%s\n' \
+    'ERROR: no executable Python 3.9+; python3 -c and py -3 -c failed or reported an older version' \
+    >&2
+  return 1
+}
+resolve_skill_python || exit 1
+# Run scripts as: python_skill <script> [arguments...]
+```
+
+```powershell
+$script:PythonSkill = $null
+$PythonCandidates = @(
+  @{ Display = 'python3'; File = 'python3'; Prefix = @() },
+  @{ Display = 'py -3'; File = 'py'; Prefix = @('-3') }
+)
+foreach ($Candidate in $PythonCandidates) {
+  try {
+    $Prefix = @($Candidate.Prefix)
+    & $Candidate.File @Prefix -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' *> $null
+    if ($LASTEXITCODE -eq 0) {
+      $script:PythonSkill = $Candidate
+      break
+    }
+  } catch {
+    continue
+  }
+}
+if ($null -eq $script:PythonSkill) {
+  throw 'ERROR: no executable Python 3.9+; python3 -c and py -3 -c failed or reported an older version'
+}
+function Invoke-SkillPython {
+  $Prefix = @($script:PythonSkill.Prefix)
+  & $script:PythonSkill.File @Prefix @args
+}
+# Run scripts as: Invoke-SkillPython <script> [arguments...]
+```
+<!-- resolvedor-python:fin -->
+
+
 ## Documentos de esta referencia
 
 La referencia de esta skill son **dos** archivos, partidos por el momento en que se los lee, no por
