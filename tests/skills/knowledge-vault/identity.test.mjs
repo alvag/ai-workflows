@@ -16,6 +16,11 @@ import {
   computeSourceFingerprint,
   deriveFlowId,
   deriveStem,
+  normalizarRemoto,
+  parseRegistroIdentidades,
+  proponerIdentidadRepo,
+  resolverIdentidadRepo,
+  serializarRegistroIdentidades,
 } from '../../../skills/knowledge-vault/scripts/lib/identity.mjs';
 import { GOLDEN } from './fixtures/canonical-golden.mjs';
 
@@ -134,4 +139,102 @@ test('un directorio vacío mueve el fingerprint: por eso entra al inventario (AC
   const sin = computeSourceFingerprint(buildSourceInventoryV2({ files: archivos, directories: [] }));
   const con = computeSourceFingerprint(buildSourceInventoryV2({ files: archivos, directories: [{ path: 'vacio' }] }));
   assert.notEqual(sin, con);
+});
+
+// ── La identidad **declarada** del repositorio (AC-13) ────────────────────────
+//
+// Lo que se prueba acá no es que la resolución "ande": es que **no elija**. Con
+// N repositorios en N máquinas, dos clones que se llamen igual dejan de ser un
+// caso teórico, y el modo de fallar barato —quedarse con el más parecido— es
+// exactamente el que destruiría el flujo equivocado.
+
+const REGISTRO_DOS = [
+  { repoId: 'api-pagos', remoto: 'git@github.com:acme/api.git', commitRaiz: 'aaaa111', rutaObservada: '/home/ana/api' },
+  { repoId: 'api-legacy', remoto: 'https://gitlab.com/otra/api.git', commitRaiz: 'bbbb222', rutaObservada: '/home/bruno/api' },
+].map((e) => ({ ...e }));
+
+test('[AC-13] resuelve por el commit raíz, no por la ruta ni por el nombre', () => {
+  const r = resolverIdentidadRepo({
+    registro: REGISTRO_DOS,
+    // La ruta observada es la del OTRO repositorio a propósito: si la resolución
+    // la mirara, devolvería `api-legacy`.
+    senales: { commitRaiz: 'aaaa111', rutaObservada: '/home/bruno/api', nombreDirectorio: 'api' },
+  });
+  assert.equal(r.repoId, 'api-pagos');
+});
+
+test('[AC-13] dos clones con el mismo nombre de directorio no colisionan', () => {
+  const a = resolverIdentidadRepo({ registro: REGISTRO_DOS, senales: { remoto: 'git@github.com:acme/api.git' } });
+  const b = resolverIdentidadRepo({ registro: REGISTRO_DOS, senales: { remoto: 'https://gitlab.com/otra/api.git' } });
+  assert.equal(a.repoId, 'api-pagos');
+  assert.equal(b.repoId, 'api-legacy');
+  // Y el derivado de hoy los mandaría a los dos al mismo sitio del vault.
+  assert.equal(deriveStem('api'), deriveStem('api'));
+});
+
+test('[AC-13] sin identidad declarada la operación se detiene', () => {
+  rejects(
+    () => resolverIdentidadRepo({ registro: REGISTRO_DOS, senales: { commitRaiz: 'cccc333' } }),
+    'AMBIGUOUS_IDENTITY',
+  );
+  // Y con registro vacío también: "todavía nadie lo declaró" no autoriza nada.
+  rejects(() => resolverIdentidadRepo({ registro: [], senales: { commitRaiz: 'aaaa111' } }), 'AMBIGUOUS_IDENTITY');
+});
+
+test('[AC-13] dos identidades compatibles detienen en vez de elegir por proximidad', () => {
+  const registro = [
+    ...REGISTRO_DOS,
+    { repoId: 'api-fork', remoto: 'git@github.com:acme/api.git', commitRaiz: 'dddd444', rutaObservada: '/home/ana/fork' },
+  ];
+  assert.throws(
+    () => resolverIdentidadRepo({ registro, senales: { remoto: 'git@github.com:acme/api.git' } }),
+    (err) => {
+      assert.equal(err.code, 'AMBIGUOUS_IDENTITY');
+      assert.deepEqual(err.detail.candidatos.sort(), ['api-fork', 'api-pagos']);
+      return true;
+    },
+  );
+});
+
+test('[AC-13] sin ninguna señal de identidad se detiene: la ruta no es una señal', () => {
+  rejects(
+    () => resolverIdentidadRepo({ registro: REGISTRO_DOS, senales: { rutaObservada: '/home/ana/api', nombreDirectorio: 'api' } }),
+    'AMBIGUOUS_IDENTITY',
+  );
+});
+
+test('[AC-13] el remoto se compara sin protocolo, credenciales ni sufijo', () => {
+  const formas = [
+    'git@github.com:acme/api.git',
+    'https://github.com/acme/api.git',
+    'ssh://git@github.com/acme/api',
+    'https://usuario@github.com/acme/api/',
+  ];
+  const normalizadas = new Set(formas.map(normalizarRemoto));
+  assert.deepEqual([...normalizadas], ['github.com/acme/api']);
+  for (const forma of formas) {
+    assert.equal(resolverIdentidadRepo({ registro: REGISTRO_DOS, senales: { remoto: forma } }).repoId, 'api-pagos');
+  }
+});
+
+test('[AC-13] la propuesta sale del remoto y, sin remoto, del directorio', () => {
+  assert.deepEqual(
+    proponerIdentidadRepo({ remoto: 'git@github.com:acme/API v2.git', nombreDirectorio: 'otro' }),
+    { repoId: 'api-v2', origen: 'remoto' },
+  );
+  assert.deepEqual(
+    proponerIdentidadRepo({ nombreDirectorio: 'Mi_Repo' }),
+    { repoId: 'mi-repo', origen: 'directorio' },
+  );
+});
+
+test('[AC-13] el registro va y vuelve sin perder ni inventar campos', () => {
+  const texto = serializarRegistroIdentidades(REGISTRO_DOS);
+  assert.deepEqual(parseRegistroIdentidades(texto), REGISTRO_DOS);
+  assert.deepEqual(parseRegistroIdentidades('# comentario\n\n'), []);
+  rejects(() => parseRegistroIdentidades('solo-un-campo\n'), 'REGISTRO_ILEGIBLE');
+  rejects(
+    () => serializarRegistroIdentidades([{ repoId: 'a\tb', remoto: '', commitRaiz: '', rutaObservada: '' }]),
+    'CAMPO_INVALIDO',
+  );
 });

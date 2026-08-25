@@ -1,5 +1,5 @@
 /**
- * Los cuatro verbos, sus estados y sus códigos de salida.
+ * Los cinco verbos, sus estados y sus códigos de salida.
  *
  * Es una **tabla** y no una función porque su valor está en ser estable: quien
  * automatiza `kv` ramifica sobre el código de salida, y mover un estado de
@@ -22,7 +22,7 @@ export class ContractError extends Error {
   }
 }
 
-export const VERBS = Object.freeze(['archive', 'migrate', 'index', 'config']);
+export const VERBS = Object.freeze(['archive', 'migrate', 'index', 'config', 'retire']);
 
 const STATUS_BY_EXIT_CODE = Object.freeze({
   0: ['ARCHIVED', 'ALREADY_ARCHIVED', 'INDEX_OK', 'BATCH_OK', 'DRY_RUN', 'VAULT_CONFIGURED', 'VAULT_SET'],
@@ -53,6 +53,11 @@ const STATES_BY_VERB = Object.freeze({
   migrate: Object.freeze(['BATCH_OK', 'BATCH_PARTIAL', 'BATCH_FAILED', 'DRY_RUN']),
   index: Object.freeze(['INDEX_OK']),
   config: Object.freeze(['VAULT_CONFIGURED', 'VAULT_SET']),
+  // El quinto verbo **no agrega códigos**: reusa los que ya existen con el mismo
+  // significado. Un `9` que ya quería decir "el destino no verifica" no puede
+  // cambiar de sentido porque apareció un verbo nuevo, y quien automatiza `kv`
+  // ramifica sobre esos números.
+  retire: Object.freeze(['DRY_RUN', 'BATCH_OK', 'BATCH_PARTIAL', 'BATCH_FAILED']),
 });
 
 export function statesForVerb(verb) {

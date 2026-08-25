@@ -212,6 +212,7 @@ test('los schemas canónicos registrados son exactamente estos', () => {
     'kv-source-inventory/2',
     'kv-attempt/2',
     'kv-retirement/2',
+    'kv-retirement-manifest/1',
   ]);
   assert.ok(isKnownSchema('kv-manifest/1'));
   // `kv-manifest/2` sigue sin existir: subir de versión es un acto deliberado,

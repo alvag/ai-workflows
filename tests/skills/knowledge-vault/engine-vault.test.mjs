@@ -124,22 +124,37 @@ test('[AC-2] con una caída inyectada en cada seam, el origen queda idéntico', 
 });
 
 /**
- * Las llamadas destructivas y de dónde sale su destino.
+ * Quién puede destruir bajo el origen.
  *
- * El AC no dice "no hay destrucción" —hay: el staging se barre, y los temporales
- * de la escritura atómica se reemplazan—; dice que **ninguna tiene destino fuera
- * del vault**. Así que el predicado no busca el nombre de la operación sino qué
- * recibe: si el argumento de una operación destructiva menciona alguna de las
- * variables que llevan el origen, eso es exactamente lo que AC-2 prohíbe.
+ * La garantía cambió de naturaleza con el verbo de retiro. Antes se sostenía por
+ * **ausencia**: ningún módulo tenía una llamada capaz de borrar fuera del vault,
+ * y el predicado exigía cero. Eso dejó de ser cierto —y de ser deseable: el
+ * retiro existe justamente para borrar el origen—, así que la guarda **invierte
+ * su criterio** y pasa de prohibir a **enumerar quién puede**.
  *
- * `durable-fs.mjs` queda fuera del barrido a propósito: es la capa primitiva, la
- * que **implementa** `rm` y `rename` sobre la ruta que le den. Incluirla sería
- * pedirle a la primitiva que se autolimite, y el límite es de quien la llama.
+ * La frontera sigue siendo el **destino**, no la operación: `discardOrphanStagings`
+ * borra dentro del vault y es legítimo, y una guarda que prohibiera todo borrado
+ * volvería ilegal código correcto. `durable-fs.mjs` queda fuera del barrido a
+ * propósito: es la capa primitiva, la que **implementa** `rm` y `rename` sobre la
+ * ruta que le den, y el límite es de quien la llama.
+ *
+ * **La guarda estática no alcanza sola.** Reconoce nombres de variables en
+ * llamadas directas, así que un alias o un helper intermedio la evaden sin
+ * esfuerzo. Su complemento es la contención en runtime de `DurableFs`, que se
+ * ejerce abajo con esos dos casos exactos y con su control en la otra dirección.
  */
-const DESTRUCTIVAS = /\b(?:fs\.)?(rmTree|rmdir|unlink|rename)\s*\(([^;]*?)\)/g;
+const DESTRUCTIVAS = /\b(?:fs\.)?(rmTree|rmdir|unlink|rename|removeEmptyDir)\s*\(([^;]*?)\)/g;
 const LLEVA_EL_ORIGEN = /\b(flowDir|sourcePath|origen|source|from)\b/;
 
+/**
+ * Los únicos módulos autorizados a destruir bajo el origen, por su ruta relativa
+ * a `lib/`. Que la lista sea explícita es el punto: agregar un módulo que borre
+ * el origen exige agregarlo acá, y eso es una decisión visible en el diff.
+ */
+const PUEDEN_DESTRUIR = new Set(['retire-execute.mjs']);
+
 function destinosProhibidos(nombre, texto) {
+  if (PUEDEN_DESTRUIR.has(nombre)) return [];
   const hallazgos = [];
   for (const m of texto.matchAll(DESTRUCTIVAS)) {
     const args = m[2];
@@ -149,7 +164,7 @@ function destinosProhibidos(nombre, texto) {
   return hallazgos;
 }
 
-test('[AC-2] el predicado de destinos prohibidos sabe ponerse rojo', () => {
+test('[AC-14] el predicado sabe ponerse rojo, y sabe no ponerse', () => {
   // Control positivo. Sin esto, un verde no distingue "no hay violaciones" de
   // "el predicado no ve nada", que es la forma en que una guarda miente.
   assert.deepEqual(
@@ -159,19 +174,79 @@ test('[AC-2] el predicado de destinos prohibidos sabe ponerse rojo', () => {
   assert.deepEqual(destinosProhibidos('sintetico.mjs', 'await fs.rmTree(staging, label);'), []);
 });
 
-test('[AC-2] ninguna llamada destructiva recibe una ruta del origen', async () => {
+test('[AC-14] la enumeración mira quién llama, no qué se llama', () => {
+  // El simétrico del control anterior, y lo que hace que "invertir el criterio"
+  // signifique algo: el **mismo** texto es legal en el módulo de retiro e ilegal
+  // en cualquier otro. Sin este par, un predicado que ignorara el módulo pasaría.
+  const texto = 'await fs.rmTree(flowDir, label);';
+  assert.deepEqual(destinosProhibidos('retire-execute.mjs', texto), []);
+  assert.deepEqual(
+    destinosProhibidos('engine-vault.mjs', texto),
+    ['engine-vault.mjs: rmTree(flowDir, label)'],
+  );
+});
+
+test('[AC-14] sólo el módulo de retiro destruye bajo el origen', async () => {
   const lib = path.resolve('skills/knowledge-vault/scripts/lib');
   const hallazgos = [];
+  const barridos = [];
   const visitar = async (dir) => {
     for (const e of await fs.readdir(dir, { withFileTypes: true })) {
       const abs = path.join(dir, e.name);
       if (e.isDirectory()) { await visitar(abs); continue; }
       if (!e.name.endsWith('.mjs') || e.name === 'durable-fs.mjs') continue;
+      barridos.push(abs);
       hallazgos.push(...destinosProhibidos(path.relative(lib, abs), await fs.readFile(abs, 'utf8')));
     }
   };
   await visitar(lib);
-  assert.deepEqual(hallazgos, [], 'hay destrucción cuyo destino sale del origen');
+  // Un barrido que no ve un solo archivo también da la lista vacía, y ese verde
+  // no dice nada. El piso es lo que separa "no hay violaciones" de "no hay nada".
+  assert.ok(barridos.length >= 15, `el barrido vio ${barridos.length} módulos`);
+  assert.deepEqual(hallazgos, [], 'hay destrucción con destino bajo el origen fuera del módulo de retiro');
+});
+
+/** Un árbol con una raíz declarada y un vecino que queda fuera de ella. */
+async function contencion(t) {
+  const caja = await createSandbox(t);
+  const raiz = await caja.makeTree(path.join(caja.reposDir, 'declarada'), { 'adentro.md': 'vive\n' });
+  const afuera = await caja.makeTree(path.join(caja.reposDir, 'ajena'), { 'afuera.md': 'no se toca\n' });
+  return { durable: new DurableFs({ destructiveRoots: [raiz] }), raiz, afuera };
+}
+
+test('[AC-14] la contención en runtime caza el alias que la guarda estática no ve', async (t) => {
+  const { durable, afuera } = await contencion(t);
+  // Exactamente la evasión que el barrido de texto no puede ver: la llamada ya
+  // no menciona ninguna de las variables que el predicado reconoce.
+  const borrar = durable.rmTree.bind(durable);
+
+  await assert.rejects(() => borrar(afuera, 'retire.rmTree'), (error) => {
+    assert.equal(error.code, 'OUT_OF_BOUNDS');
+    return true;
+  });
+  assert.equal(await fs.readFile(path.join(afuera, 'afuera.md'), 'utf8'), 'no se toca\n');
+});
+
+test('[AC-14] la contención en runtime caza el helper intermedio', async (t) => {
+  const { durable, afuera } = await contencion(t);
+  // La segunda evasión: la ruta llega por parámetro, así que en el sitio de la
+  // llamada no hay ningún nombre que delate de dónde salió.
+  const limpiar = (io, ruta) => io.unlink(ruta, 'retire.unlink');
+  const victima = path.join(afuera, 'afuera.md');
+
+  await assert.rejects(() => limpiar(durable, victima), (error) => {
+    assert.equal(error.code, 'OUT_OF_BOUNDS');
+    return true;
+  });
+  assert.equal(await fs.readFile(victima, 'utf8'), 'no se toca\n');
+});
+
+test('[AC-14] la contención deja pasar lo que sí está bajo la raíz declarada', async (t) => {
+  // El control en la otra dirección. Sin él, una contención que lanzara siempre
+  // pasaría los dos casos de arriba sin contener nada — sólo prohibiría todo.
+  const { durable, raiz } = await contencion(t);
+  await durable.unlink(path.join(raiz, 'adentro.md'), 'retire.unlink');
+  await assert.rejects(() => fs.readFile(path.join(raiz, 'adentro.md'), 'utf8'));
 });
 
 test('[AC-3] un documento publicado alterado hace fallar el rearchivado y nombra la ruta', async (t) => {

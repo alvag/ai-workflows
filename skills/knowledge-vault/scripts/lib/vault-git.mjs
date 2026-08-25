@@ -129,7 +129,7 @@ async function identidad(vaultRoot) {
  *
  * @returns {Promise<{committed: boolean, subject: string}>}
  */
-export async function commitFlow({ vaultRoot, flowId, paths }) {
+export async function commitFlow({ vaultRoot, flowId, paths, subject = null }) {
   if (!Array.isArray(paths) || paths.length === 0) {
     throw new VaultGitError('NOTHING_TO_STAGE', `commitFlow para ${flowId} no recibió rutas`);
   }
@@ -138,25 +138,92 @@ export async function commitFlow({ vaultRoot, flowId, paths }) {
   await git(vaultRoot, ['add', '--', ...paths]);
 
   const { stdout: staged } = await git(vaultRoot, ['diff', '--cached', '--name-only']);
-  const subject = `archiva ${flowId}`;
-  if (staged.trim().length === 0) return { committed: false, subject };
+  // El asunto es parametrizable porque el vault registra **dos** actos distintos
+  // sobre el mismo flujo: archivarlo y retirarlo. Compartir el asunto los haría
+  // indistinguibles en la historia, que es donde alguien va a buscarlos.
+  const asunto = subject ?? `archiva ${flowId}`;
+  if (staged.trim().length === 0) return { committed: false, subject: asunto };
 
-  await git(vaultRoot, ['commit', '-q', '-m', subject], { config: await identidad(vaultRoot) });
-  return { committed: true, subject };
+  await git(vaultRoot, ['commit', '-q', '-m', asunto], { config: await identidad(vaultRoot) });
+  const { stdout: sha } = await git(vaultRoot, ['rev-parse', 'HEAD']);
+  return { committed: true, subject: asunto, commit: sha.trim() };
+}
+
+/** El `HEAD` del vault, o `null` si todavía no hay ningún commit. */
+export async function headDelVault(vaultRoot) {
+  try {
+    const { stdout } = await git(vaultRoot, ['rev-parse', 'HEAD']);
+    return stdout.trim();
+  } catch {
+    return null;
+  }
 }
 
 /**
- * ¿La historia del vault tiene un commit que nombre este flujo?
+ * Las señales por las que un repositorio se reconoce, **observadas**.
  *
- * Es la cuarta postcondición del archivado. Se pregunta a la historia y no a un
- * registro propio: el registro podría afirmar que sí mientras el commit no existe.
+ * Ninguna es la identidad: la identidad se declara y se confirma. Estas son lo
+ * que se coteja contra el registro del vault, y por eso las dos que sirven
+ * —remoto y commit raíz— son las que sobreviven a un clon en otra máquina,
+ * mientras que la ruta y el nombre del directorio viajan sólo como respaldo.
+ *
+ * Un repositorio sin remoto, o sin ningún commit, devuelve `null` en esa señal en
+ * vez de fallar: quien resuelve decide si con lo que queda alcanza.
  */
-export async function hasFlowCommit(vaultRoot, flowId) {
-  try {
-    const { stdout } = await git(vaultRoot, ['log', '--format=%s']);
-    return stdout.split('\n').some((asunto) => asunto.includes(flowId));
-  } catch {
-    // Un repositorio sin ningún commit: `git log` sale distinto de cero.
-    return false;
+export async function senalesDelRepositorio(repoRoot) {
+  const leer = async (args) => {
+    try {
+      const { stdout } = await git(repoRoot, args);
+      const valor = stdout.trim().split('\n')[0];
+      return valor.length === 0 ? null : valor;
+    } catch {
+      return null;
+    }
+  };
+  return {
+    remoto: await leer(['remote', 'get-url', 'origin']),
+    commitRaiz: await leer(['rev-list', '--max-parents=0', 'HEAD']),
+    rutaObservada: repoRoot,
+    nombreDirectorio: path.basename(repoRoot),
+  };
+}
+
+/**
+ * ¿Estas rutas concretas están en `HEAD` y limpias?
+ *
+ * Es la cuarta postcondición del archivado, y reemplaza a la pregunta anterior
+ * —"¿hay algún commit cuyo asunto nombre este flujo?"—, que comparaba **asuntos
+ * por subcadena**. Esa comparación no puede autorizar un borrado: el commit
+ * exacto pudo revertirse, y su asunto sigue en la historia mientras el contenido
+ * ya no está. Peor todavía, un asunto ajeno que contenga el id como subcadena la
+ * satisface sin que exista un solo byte del flujo.
+ *
+ * Se le pregunta al **árbol**, que es lo que el retiro va a destruir. Dos
+ * condiciones, y las dos hacen falta: que las rutas estén en `HEAD` —commiteadas,
+ * no sólo escritas— y que el árbol de trabajo no tenga cambios sobre ellas —lo
+ * commiteado es lo que hay—.
+ *
+ * @param {string} vaultRoot
+ * @param {string[]} rutas relativas a `vaultRoot`; archivos o directorios
+ * @returns {Promise<boolean>}
+ */
+export async function anclaEnHead(vaultRoot, rutas) {
+  if (!Array.isArray(rutas) || rutas.length === 0) {
+    throw new VaultGitError('NOTHING_TO_ANCHOR', 'anclaEnHead no recibió rutas que anclar');
   }
+  for (const ruta of rutas) {
+    let stdout;
+    try {
+      // `-r` para que un directorio se resuelva a sus blobs, y `--` para que una
+      // ruta que se parezca a un ref no se lea como revisión.
+      ({ stdout } = await git(vaultRoot, ['ls-tree', '-r', '--name-only', 'HEAD', '--', ruta]));
+    } catch {
+      // Un repositorio sin ningún commit: `HEAD` no resuelve.
+      return false;
+    }
+    if (stdout.trim().length === 0) return false;
+  }
+
+  const { stdout: sucio } = await git(vaultRoot, ['status', '--porcelain', '--', ...rutas]);
+  return sucio.trim().length === 0;
 }

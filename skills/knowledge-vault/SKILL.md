@@ -1,18 +1,17 @@
 ---
 name: knowledge-vault
 description: >-
-  Rescata el conocimiento de los flujos SDD terminados a un vault de Markdown
-  verificado por hash, versionado en Git y navegable en Obsidian, con el CLI
-  `kv` (Node, sin dependencias). Cuatro verbos: "archive" (copia los `.md` de la
-  raíz de un flujo y verifica cada byte), "migrate" (archiva un directorio
-  entero de flujos, validando la entrada completa antes de escribir), "index"
-  (regenera los índices) y "config" (lee o escribe dónde está el vault, en la
-  sección propia del `.specify/config.yml` del proyecto). Usarla para sacar de
-  `.plans/archived/` lo que se decidió y por qué, y dejarlo consultable sin
-  leerlo entero. **NO retira, borra ni mueve nada del origen**: al terminar, el
-  origen queda exactamente como estaba. NO es un gestor de notas ni un
-  indexador semántico: no resume, no enlaza por contenido ni invoca ningún
-  modelo. No invocarla espontáneamente: solo ante pedido explícito del usuario.
+  Rescata el conocimiento de los flujos SDD a un vault de Markdown verificado
+  por hash, versionado en Git y navegable en Obsidian, con el CLI `kv` (Node,
+  sin dependencias). Cinco verbos —"archive", "migrate", "index", "config" y
+  "retire"—, con el detalle de cada uno en `reference.md`. Usarla para
+  archivar un documento o un flujo, guardar algo en el vault, sacar a la
+  bóveda lo que se decidió en `.plans/archived/` y dejarlo consultable sin
+  leerlo entero, y para retirar el origen ya copiado. La garantía: el verbo
+  que copia no borra; el que borra exige verificación previa byte a byte y un
+  digest aprobado a mano. NO es un gestor de notas ni un indexador semántico:
+  no resume, no enlaza por contenido ni invoca ningún modelo. No invocarla
+  espontáneamente: solo ante pedido explícito del usuario.
 ---
 
 # knowledge-vault — el conocimiento de los flujos, consultable
@@ -27,12 +26,22 @@ entero.
 
 ## La regla que ordena todo
 
-> **El origen nunca se toca.** Ni con éxito, ni con error, ni con el proceso
-> muerto a mitad de camino. No hay en esta skill ningún componente capaz de
-> borrar, mover o modificar nada fuera del vault.
+> **El verbo que copia no borra; el que borra exige verificación previa.** El
+> archivado no toca el origen —ni con éxito, ni con error, ni con el proceso
+> muerto a mitad de camino—, y el retiro sólo destruye lo que ya verificó byte a
+> byte contra el vault.
 
-No es una limitación de alcance: es lo que la vuelve **segura de correr**. Ante
-cualquier fallo, el origen sigue ahí y el vault se descarta y se rehace.
+Lo que se perdió al escribirlo así conviene decirlo, porque no es menor. Antes la
+garantía se comprobaba por **ausencia**: no existía en la skill ningún componente
+capaz de borrar fuera del vault, y eso se leía barriendo el código. Ahora se
+comprueba por **enumeración**: un solo módulo puede destruir bajo el origen, la
+guarda lo nombra, y cualquier otro que adquiera esa capacidad la pone roja. Es
+una propiedad más fuerte de lo que suena —prohibir todo borrado volvería ilegal
+la limpieza legítima dentro del vault— pero ya no se sigue de que el código no
+exista.
+
+Sigue siendo lo que la vuelve **segura de correr**: ante cualquier fallo anterior
+al punto de no retorno, el origen sigue ahí y el vault se descarta y se rehace.
 
 ## Los cuatro verbos
 
@@ -91,11 +100,11 @@ sobrantes, así que un nodo adentro haría fallar cada rearchivado.
 
 | Racionalización | Realidad |
 |---|---|
-| "El flujo está a medias, mejor no archivarlo" | El verbo **no evalúa estado**. Exigir `status: done` tenía sentido cuando archivar borraba el origen; sin retiro, sólo deja fuera lo que ese flujo ya decidió. |
+| "El flujo está a medias, mejor no archivarlo" | Ningún verbo **evalúa estado**, tampoco el que retira. `status` vive en `plan.md`, que es opcional; lo que autoriza un retiro es que el contenido copiable esté a salvo y verifique, no en qué fase quedó el flujo. |
 | "Le genero el resumen desde el título" | Repetiría el título y dejaría al índice sin nada que agregar. El resumen se escribe leyendo el flujo. |
 | "Migré 49 de 50, ya está" | Un lote incompleto sale distinto de cero. Sin manifiesto, un vault al que le falta un flujo es indistinguible de uno completo. |
 | "El índice quedó raro, lo edito a mano" | Es un derivado: `kv index` lo regenera. Editarlo lo pierde en la próxima corrida. |
-| "Ya que está copiado, borro el original" | Esta skill **no retira nada**, y por diseño. Si hace falta, es otro flujo con su propio gate. |
+| "Ya que está copiado, borro el original" | El retiro es un **verbo aparte** que exige la verificación previa y un digest aprobado a mano. No es un efecto secundario de archivar, y ningún camino encadena el ensayo con el borrado real. |
 
 ## Referencias internas
 

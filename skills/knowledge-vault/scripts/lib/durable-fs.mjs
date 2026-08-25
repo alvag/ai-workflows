@@ -130,6 +130,20 @@ function normalizeRules(spec) {
   });
 }
 
+/**
+ * Raíces dentro de las cuales una instancia puede destruir.
+ *
+ * `null` significa **sin contención declarada**, que es lo que usa todo el
+ * camino que no destruye fuera del vault y no tiene por qué declararlo. Una
+ * lista **vacía** significa "no puede destruir nada", y no es lo mismo: quien
+ * destruye lo declara, y declarar cero es una declaración.
+ */
+function normalizeDestructiveRoots(spec) {
+  if (spec === null || spec === undefined) return null;
+  const lista = Array.isArray(spec) ? spec : [spec];
+  return lista.map((raiz) => path.resolve(raiz));
+}
+
 function matchRule(rules, op, label, paths) {
   for (const rule of rules) {
     if (rule.predicate !== undefined) {
@@ -159,11 +173,13 @@ export class DurableFs {
   #rules;
   #crashRules;
   #recorder;
+  #destructiveRoots;
 
-  constructor({ failAt = null, crashAt = null, recorder = null } = {}) {
+  constructor({ failAt = null, crashAt = null, recorder = null, destructiveRoots = null } = {}) {
     this.#rules = normalizeRules(failAt);
     this.#crashRules = normalizeRules(crashAt);
     this.#recorder = recorder ?? new Recorder();
+    this.#destructiveRoots = normalizeDestructiveRoots(destructiveRoots);
   }
 
   get recorder() {
@@ -225,6 +241,64 @@ export class DurableFs {
   }
 
   // ── Primitivas ──────────────────────────────────────────────────────────────
+  /**
+   * Declara las raíces destructivas de esta instancia, una sola vez.
+   *
+   * Existe porque quien construye el `DurableFs` —el CLI— no sabe todavía sobre
+   * qué se va a destruir: eso lo resuelve el verbo, después de leer la config y
+   * la matriz de rutas. Declarar es un acto explícito y **irrepetible**: un
+   * segundo intento con otras raíces es un error, no una ampliación, porque
+   * ampliar la contención en caliente la vuelve decorativa.
+   */
+  declararRaicesDestructivas(raices) {
+    const nuevas = normalizeDestructiveRoots(raices);
+    if (this.#destructiveRoots !== null) {
+      const iguales = this.#destructiveRoots.length === nuevas.length &&
+        this.#destructiveRoots.every((r, i) => r === nuevas[i]);
+      if (iguales) return this;
+      throw new DurableFsError(
+        'ROOTS_ALREADY_DECLARED',
+        'las raíces destructivas ya estaban declaradas y no se amplían en caliente',
+        { path: nuevas.join(', ') },
+      );
+    }
+    this.#destructiveRoots = nuevas;
+    return this;
+  }
+
+  /**
+   * Contención de las primitivas destructivas, **inmediatamente antes** de que
+   * toquen el disco.
+   *
+   * Es el complemento en runtime de la guarda estática de la suite. Esa guarda
+   * reconoce nombres de variables en llamadas directas, así que un alias
+   * (`const borrar = fs.rmTree.bind(fs)`) o un helper intermedio que reciba la
+   * ruta por parámetro la evaden sin esfuerzo. Acá no hay a quién engañar: se
+   * mira la ruta que llegó, venga de donde venga.
+   *
+   * La comprobación es **léxica** sobre la ruta normalizada, y `path.relative`
+   * en vez de `startsWith` porque un hermano con prefijo común —`/tmp/kv-1`
+   * contra `/tmp/kv-12`— es exactamente el escape que hay que atajar. Un enlace
+   * simbólico intermedio que apunte fuera de la raíz no lo caza esto: eso lo
+   * rechaza la matriz de rutas del objetivo, antes de que una ruta así llegue.
+   */
+  #assertContenido(op, targets) {
+    if (this.#destructiveRoots === null) return;
+    for (const target of targets) {
+      const abs = path.resolve(target);
+      const dentro = this.#destructiveRoots.some((raiz) => {
+        const rel = path.relative(raiz, abs);
+        return rel === '' || (!path.isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${path.sep}`));
+      });
+      if (dentro) continue;
+      throw new DurableFsError(
+        'OUT_OF_BOUNDS',
+        `${op} sobre una ruta fuera de las raíces declaradas: ${abs}`,
+        { path: abs },
+      );
+    }
+  }
+
 
   async mkdir(target, label, { recursive = false } = {}) {
     return this.#run('mkdir', label, [target], () => fs.mkdir(target, { recursive }));
@@ -302,14 +376,18 @@ export class DurableFs {
   }
 
   async rename(from, to, label) {
+    // Las dos rutas: `from` desaparece de su sitio y `to` puede quedar pisado.
+    this.#assertContenido('rename', [from, to]);
     return this.#run('rename', label, [from, to], () => fs.rename(from, to));
   }
 
   async unlink(target, label) {
+    this.#assertContenido('unlink', [target]);
     return this.#run('unlink', label, [target], () => fs.unlink(target));
   }
 
   async rmTree(target, label) {
+    this.#assertContenido('rmTree', [target]);
     return this.#run('rmTree', label, [target], async (rule) => {
       if (rule?.partial !== undefined) {
         // Borra un subconjunto **real** y después falla: es el escenario que
@@ -333,6 +411,7 @@ export class DurableFs {
    * una pérdida de datos silenciosa.
    */
   async removeEmptyDir(target, label) {
+    this.#assertContenido('removeEmptyDir', [target]);
     return this.#run('removeEmptyDir', label, [target], async () => {
       try {
         await fs.rmdir(target);

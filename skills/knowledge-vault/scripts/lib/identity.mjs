@@ -120,6 +120,124 @@ export function deriveStem(rawName) {
   return stem.length === 0 ? 'repo' : stem;
 }
 
+// ── La identidad **declarada** del repositorio ────────────────────────────────
+//
+// El `stem` de arriba proyecta un nombre legible y lo dice de sí mismo: **no es
+// identidad**. Con un solo repositorio eso alcanzaba, porque la unicidad la daba
+// el hash del contenido. Con N repositorios en N máquinas deja de alcanzar: dos
+// clones que se llamen `api` en dos computadoras distintas derivan el mismo stem
+// y comparten ruta dentro del vault, y un retiro decidiría sobre el flujo
+// equivocado.
+//
+// La salida no es derivar mejor: es **declarar**. Un identificador que una
+// persona confirmó, guardado en el vault —que viaja entre máquinas— junto a las
+// señales que lo respaldan. La configuración del proyecto no sirve de sede: es
+// local, así que el mismo repositorio tendría otra identidad en cada clon.
+
+/** Señal por la que dos observaciones son el **mismo** repositorio. */
+const SENALES_DE_IDENTIDAD = ['commitRaiz', 'remoto'];
+
+/** Un remoto se compara sin protocolo, sin credenciales y sin `.git` final. */
+export function normalizarRemoto(remoto) {
+  if (typeof remoto !== 'string' || remoto.trim().length === 0) return null;
+  return asciiLower(
+    remoto.trim()
+      .replace(/^[a-z+]+:\/\//i, '')
+      .replace(/^[^@/]+@/, '')
+      .replace(/:/g, '/')
+      .replace(/\.git$/i, '')
+      .replace(/\/+$/, ''),
+  );
+}
+
+/**
+ * La **propuesta**, que es lo único que un agente puede hacer solo.
+ *
+ * Sale del remoto si lo hay, y del directorio si no. Que sea una propuesta y no
+ * una resolución es el punto: la confirma una persona, y recién ahí se declara.
+ */
+export function proponerIdentidadRepo(senales = {}) {
+  const remoto = normalizarRemoto(senales.remoto);
+  const desdeRemoto = remoto === null ? null : deriveStem(remoto.split('/').pop() ?? '');
+  const propuesto = desdeRemoto ?? deriveStem(senales.nombreDirectorio ?? '');
+  return { repoId: propuesto, origen: desdeRemoto === null ? 'directorio' : 'remoto' };
+}
+
+/** Columnas del registro, en orden. `rutaObservada` no participa del cotejo. */
+const COLUMNAS = ['repoId', 'remoto', 'commitRaiz', 'rutaObservada'];
+
+/** Lee el registro. Formato TSV: una entrada por línea, sin cabecera. */
+export function parseRegistroIdentidades(texto) {
+  const entradas = [];
+  for (const linea of String(texto ?? '').split('\n')) {
+    if (linea.trim().length === 0 || linea.startsWith('#')) continue;
+    const campos = linea.split('\t');
+    if (campos.length !== COLUMNAS.length) {
+      throw new IdentityError('REGISTRO_ILEGIBLE', `entrada con ${campos.length} campos`, { detail: linea });
+    }
+    entradas.push(Object.fromEntries(COLUMNAS.map((c, i) => [c, campos[i]])));
+  }
+  return entradas;
+}
+
+export function serializarRegistroIdentidades(entradas) {
+  const lineas = entradas.map((e) => {
+    for (const c of COLUMNAS) {
+      if (typeof e[c] !== 'string' || e[c].includes('\t') || e[c].includes('\n')) {
+        throw new IdentityError('CAMPO_INVALIDO', `${c} no es un campo TSV válido`, { detail: e });
+      }
+    }
+    return COLUMNAS.map((c) => e[c]).join('\t');
+  });
+  return lineas.length === 0 ? '' : `${lineas.join('\n')}\n`;
+}
+
+/**
+ * Resuelve la identidad **declarada** contra el registro del vault.
+ *
+ * Función **pura**: recibe el registro ya leído. Las dos formas de la ambigüedad
+ * —ninguna entrada compatible, o más de una— **detienen**, y nunca se elige por
+ * proximidad. Que no haya ninguna no es un caso benigno que se pueda resolver
+ * inventando una: significa que nadie declaró este repositorio, y un retiro bajo
+ * una identidad sin declarar es un retiro sobre el flujo de otro.
+ *
+ * `rutaObservada` se guarda y **no se coteja**: es el dato que hoy hace de
+ * identidad de hecho, y justamente el que no puede serlo.
+ *
+ * @returns {{repoId: string, entrada: object}}
+ */
+export function resolverIdentidadRepo({ registro, senales }) {
+  const observadas = {
+    commitRaiz: typeof senales?.commitRaiz === 'string' ? senales.commitRaiz : null,
+    remoto: normalizarRemoto(senales?.remoto),
+  };
+  if (SENALES_DE_IDENTIDAD.every((s) => observadas[s] === null)) {
+    throw new IdentityError(
+      'AMBIGUOUS_IDENTITY',
+      'no hay ninguna señal de identidad observada: sin commit raíz ni remoto no se puede declarar de qué repositorio se habla',
+      { detail: { observadas } },
+    );
+  }
+
+  const compatibles = (registro ?? []).filter((e) =>
+    SENALES_DE_IDENTIDAD.some(
+      (s) => observadas[s] !== null &&
+        (s === 'remoto' ? normalizarRemoto(e.remoto) : e[s]) === observadas[s],
+    ));
+
+  const ids = [...new Set(compatibles.map((e) => e.repoId))];
+  if (ids.length !== 1) {
+    throw new IdentityError(
+      'AMBIGUOUS_IDENTITY',
+      ids.length === 0
+        ? 'ninguna identidad declarada coincide con las señales observadas'
+        : `las señales observadas coinciden con ${ids.length} identidades declaradas: ${ids.join(', ')}`,
+      { detail: { observadas, candidatos: ids } },
+    );
+  }
+  return { repoId: ids[0], entrada: compatibles[0] };
+}
+
 // ── Los tres documentos canónicos y sus digests ───────────────────────────────
 
 function assertHex64(value, field) {

@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import importlib.util
+import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -102,6 +105,53 @@ def correr(casos: list[Caso]) -> int:
     return 1 if fallos else 0
 
 
+PATRON_NODE = "tests/skills/knowledge-vault/*.test.mjs"
+
+
+def correr_node() -> int:
+    """Corre la suite Node **completa** y propaga su veredicto.
+
+    El entrypoint durable enumeraba sólo tests de Python, así que el
+    comportamiento destructivo del vault podía degradarse sin que ningún
+    verificador canónico lo notara. Correr un subconjunto no alcanza: lo que se
+    exige es la ejecución completa y el conteo a la vista.
+
+    **Falla cerrado ante cero casos recolectados.** `node --test` sale 0 sobre
+    una selección vacía, así que leer sólo el código de salida daría verde sobre
+    una suite que no corrió — que es indistinguible de una que pasó.
+    """
+    node = shutil.which("node")
+    if node is None:
+        print("ERROR-SUITE: node no está en el PATH y la suite Node es obligatoria",
+              file=sys.stderr)
+        return 1
+
+    proceso = subprocess.run(
+        [node, "--test", "--test-reporter=tap", PATRON_NODE],
+        cwd=RAIZ.parent, capture_output=True, text=True, check=False,
+    )
+    salida = proceso.stdout + proceso.stderr
+
+    def contar(clave: str) -> int:
+        hallazgo = re.search(rf"^# {clave} (\d+)$", salida, re.MULTILINE)
+        return int(hallazgo.group(1)) if hallazgo else -1
+
+    pasados, fallidos = contar("pass"), contar("fail")
+    if pasados < 0 or fallidos < 0:
+        print("ERROR-SUITE: la salida de node no trae su resumen TAP", file=sys.stderr)
+        print(salida[-2000:], file=sys.stderr)
+        return 1
+    if pasados + fallidos == 0:
+        print("ERROR-SUITE: la suite Node recolectó cero casos", file=sys.stderr)
+        return 1
+
+    print(f"{pasados} casos node ok" + (f", {fallidos} con problema" if fallidos else ""))
+    if fallidos or proceso.returncode != 0:
+        print(salida[-4000:], file=sys.stderr)
+        return 1
+    return 0
+
+
 def autotest(casos: list[Caso]) -> int:
     if correr([]) == 0:
         print("autotest: la selección vacía dio verde", file=sys.stderr)
@@ -149,7 +199,12 @@ def main(argv: list[str]) -> int:
     if argv:
         print(f"USO argumento no reconocido: {argv[0]}", file=sys.stderr)
         return 2
-    return correr(casos)
+    # Las dos suites, y el veredicto es la peor de las dos. Correr la de Python y
+    # salir cero mientras la de Node está roja es exactamente el hueco que este
+    # entrypoint tenía.
+    veredicto_py = correr(casos)
+    veredicto_node = correr_node()
+    return veredicto_py or veredicto_node
 
 
 if __name__ == "__main__":

@@ -119,6 +119,36 @@ export function resolveLayout(vaultRoot, repoSlug, flowId) {
 }
 
 /** El staging es **hermano** de la frontera: así el `rename` de publicación no cruza filesystem. */
+/**
+ * El registro de identidades declaradas del vault.
+ *
+ * Vive en un directorio con punto: Obsidian lo ignora, `renderIndexes` no lo
+ * recorre y Git sí lo versiona, que es la combinación que hace falta. La sede es
+ * el **vault** y no la configuración del proyecto porque esa es local y no viaja
+ * entre clones: el mismo repositorio tendría otra identidad en cada máquina.
+ *
+ * El parseo y la resolución viven en `identity.mjs`, que es puro. Acá está sólo
+ * la I/O, para no meterle disco a ese módulo.
+ */
+export function resolveIdentitiesPath(vaultRoot) {
+  return path.join(vaultRoot, '.kv', 'identidades.tsv');
+}
+
+/** El texto del registro, o la cadena vacía si todavía no existe. */
+export async function readIdentitiesFile({ fs, vaultRoot, label = 'identities.read' }) {
+  const bytes = await leerSiExiste(fs, resolveIdentitiesPath(vaultRoot), label);
+  return bytes === null ? '' : bytes.toString('utf8');
+}
+
+/** Publica el registro de forma atómica. Crea `.kv/` si falta. */
+export async function writeIdentitiesFile({ fs, vaultRoot, texto, label = 'identities.write' }) {
+  const destino = resolveIdentitiesPath(vaultRoot);
+  await fs.mkdir(path.dirname(destino), `${label}.mkdir`, { recursive: true });
+  await fs.writeFileAtomic(destino, Buffer.from(texto, 'utf8'), `${label}.publish`);
+  await fs.fsyncDir(path.dirname(destino), `${label}.fsync-parent`);
+  return destino;
+}
+
 export function resolveStagingPath(vaultRoot, repoSlug, flowId, token) {
   const { frontier } = resolveLayout(vaultRoot, repoSlug, flowId);
   return path.join(path.dirname(frontier), `${STAGING_PREFIX}${flowId}-${token}`);

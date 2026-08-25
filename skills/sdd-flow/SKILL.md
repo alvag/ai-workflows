@@ -980,6 +980,25 @@ Solo cuando el usuario confirma explícitamente que el cambio está **probado y 
 2. Mover la carpeta del flujo a archivados (POSIX: `mkdir -p .plans/archived` y `mv .plans/<id> .plans/archived/<id>`; PowerShell: `New-Item -ItemType Directory -Force .plans/archived` y `Move-Item .plans/<id> .plans/archived/<id>`). Movimiento plano, **no** `git mv`: sigue siendo local, no se trackea ni commitea — regla #10.
 3. Confirmar que quedó en `.plans/archived/<id>/` y que sale del listado de flujos activos de `resume`.
 
+### Rescatar el flujo antes de retirarlo (opcional, dependencia blanda)
+
+Si la skill **`knowledge-vault`** está instalada y su CLI `kv` disponible, el archivado deja de ser el final del camino: `.plans/archived/` es local, untracked e invisible, así que lo que ese flujo decidió muere ahí. La cadena es **archivar, verificar y recién entonces retirar**, y su orden no es negociable.
+
+| Paso | Qué | Ubicación observable si se corta acá |
+|---|---|---|
+| 1 | `kv archive --from .plans/archived/<id> --summary "<una línea>"` | el flujo está en `.plans/archived/<id>` y **no** en el vault |
+| 2 | `kv retire --root .plans/archived --from .plans/archived/<id> --dry-run` | el flujo está en las dos partes; el vault ya lo tiene verificado |
+| 3 | una persona lee el ensayo y **aprueba su digest** | ídem; no hay manifiesto en el vault |
+| 4 | `kv retire --root .plans/archived --from .plans/archived/<id> --approve-digest <el aprobado>` | remanente `.kv-retirando-<id>` y manifiesto commiteado: destrucción autorizada, se **termina** reintentando |
+
+Cada fila nombra dónde queda el flujo si la cadena se corta ahí, que es lo que permite reconocer el estado al reanudar — incluido el caso en que el flujo ya salió del listado de activos y todavía no llegó a destino.
+
+**El paso 3 es un gate humano y no se automatiza.** El cierre **no puede correr el ensayo y pasar su digest** al retiro en la misma corrida: un guion que copia el digest de una salida a la siguiente satisface la letra del contrato y elimina el gate, que es lo único que separa un borrado irreversible de un efecto secundario.
+
+**Ante cualquier fallo anterior al punto de no retorno el fallo es cerrado, y nunca se degrada al movimiento plano.** Vale también para la instalación del CLI que existe pero **no tiene el verbo** —una versión anterior a que se agregara—: ahí el archivado ya ocurrió y el retiro no puede, así que el flujo queda **intacto y reintentable** en `.plans/archived/<id>`. Degradar al movimiento de siempre dejaría material fuera del vault sin que nada lo señale, que es exactamente el estado que esta cadena viene a eliminar. Un fallo **posterior** a ese punto no deja un origen intacto sino un **remanente parcial, verificable y reintentable**.
+
+**Reanudar no escribe para decidir.** El estado se lee de dos señales —el remanente y el manifiesto— y de la frontera publicada en el vault. En particular, **no se rearchiva para averiguar si ya estaba archivado**: `kv archive` con un `--summary` distinto reescribe el nodo y crea un commit, así que usarlo como sonda fabrica el commit espurio que se quería evitar.
+
 ## Reporte final
 
 - Clasificación de complejidad y gates recorridos.

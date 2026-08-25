@@ -21,10 +21,14 @@ ningún agente lee. En un solo repositorio pueden ser cincuenta flujos y 168 MB.
 
 ## Qué NO hace
 
-**No retira, borra ni mueve nada del origen.** Al terminar, `.plans/archived/`
-queda exactamente como estaba. No es una limitación pendiente de completar: es lo
-que vuelve seguro correrlo, porque ante cualquier fallo el vault se descarta y se
-rehace.
+**El verbo que copia no borra.** `archive` y `migrate` dejan el origen
+exactamente como estaba, ante el éxito y ante cualquier fallo; es lo que vuelve
+seguro correrlos, porque el vault se descarta y se rehace.
+
+**El que borra exige verificación previa.** `retire` es un verbo aparte: sólo
+destruye lo que ya verificó byte a byte contra el vault, y sólo con un digest que
+una persona aprobó sobre un ensayo medido. La garantía dejó de comprobarse por
+ausencia de código y pasa a comprobarse enumerando quién puede destruir.
 
 Tampoco resume, enlaza por contenido ni invoca ningún modelo. El resumen lo
 escribe quien archiva.

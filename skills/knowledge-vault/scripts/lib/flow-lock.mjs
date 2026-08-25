@@ -3,9 +3,9 @@
  *
  * El lock del árbol de origen era transaccional —archivo en disco, dueño,
  * expiración, journal y recuperación— porque el retiro borraba el origen: una
- * corrida muerta a mitad de camino podía dejar el mundo sin ninguna copia. **Este
- * flujo no borra nada**, así que ese aparato no tiene qué proteger y se fue con
- * el retiro.
+ * corrida muerta a mitad de camino podía dejar el mundo sin ninguna copia. **El
+ * archivado no borra nada**, así que ese aparato no tiene qué proteger y se fue
+ * con el retiro.
  *
  * Queda un problema real y mucho más chico. `discardOrphanStagings` barre por
  * prefijo, así que dos archivados del **mismo** flujo a la vez harían que uno
@@ -14,8 +14,12 @@
  *
  * Lo que este lock **no** hace, dicho para que nadie lo confunda con el anterior:
  * no escribe journal, no sobrevive al proceso, y no excluye a otro proceso sobre
- * el mismo vault. Eso último no es un hueco: sin operación destructiva, lo peor
- * que puede pasar entre dos procesos es que uno reintente.
+ * el mismo vault. Eso último se justificaba en que sin operación destructiva lo
+ * peor entre dos procesos era un reintento, y esa frase dejó de ser verdadera con
+ * el verbo de retiro. La conclusión no cambia, pero por otra razón: **el retiro
+ * no se apoya en este lock**. Cierra su carrera por el **orden** —reclama el
+ * flujo renombrándolo antes de verificarlo, y desde ahí ningún otro proceso lo
+ * alcanza por su ruta original—, que es exclusión sin lock.
  */
 
 /** Clave → promesa de la última corrida encolada. */

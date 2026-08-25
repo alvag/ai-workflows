@@ -29,6 +29,11 @@
  * El motor **lee** el origen y nada más. No hay en este archivo, ni en ningún
  * módulo que importe, una llamada capaz de borrar, renombrar o escribir fuera del
  * vault. Es una propiedad de la forma del código, no del camino que tome.
+ *
+ * Lo que cambió con el quinto verbo es **cómo se comprueba esa propiedad**, no si
+ * vale acá. Antes se seguía de la ausencia: ningún módulo de la skill podía
+ * destruir. Ahora el módulo de retiro sí puede, así que la guarda enumera a los
+ * autorizados y este motor sigue del lado de los que no lo están.
  */
 
 import path from 'node:path';
@@ -50,7 +55,7 @@ import {
   resolveStagingPath,
   writeDerived,
 } from './vault-store.mjs';
-import { assertVaultClean, commitFlow, ensureVaultRepo, hasFlowCommit } from './vault-git.mjs';
+import { anclaEnHead, assertVaultClean, commitFlow, ensureVaultRepo } from './vault-git.mjs';
 
 export class EngineError extends Error {
   constructor(code, message, { path: target = null, detail = null } = {}) {
@@ -101,8 +106,13 @@ async function leerSiExiste(fs, ruta, label) {
  * Tres respuestas, no dos. `false` es "no existe todavía"; una excepción es
  * "existe y **no** coincide", que no puede tratarse como "hay que copiar de
  * nuevo": pisarla borraría la evidencia de que alguien la alteró.
+ *
+ * Es **pública** porque esas tres respuestas son exactamente las que necesita la
+ * sonda del retiro, que tiene que decidir sin escribir y sin recibir nada de
+ * quien pregunta. Reescribirla aparte habría sido más caro y menos fiel: dos
+ * predicados sobre la misma propiedad se desincronizan.
  */
-async function fronteraPublicada(fs, frontier, esperados, label) {
+export async function fronteraPublicada(fs, frontier, esperados, label) {
   if (!(await existe(fs, frontier, `${label}.frontier.lstat`))) return false;
   try {
     await verifyTree({ fs, root: frontier, expected: esperados, label: `${label}.verify.published` });
@@ -222,7 +232,7 @@ export async function runVaultTransaction({
       }
     }
 
-    const conCommit = await hasFlowCommit(vaultRoot, flowId);
+    const conCommit = await anclaEnHead(vaultRoot, propias);
     if (!conCommit || reconstruido) {
       await appendLogEntry({
         fs,

@@ -31,7 +31,7 @@
  */
 
 import { constants } from 'node:fs';
-import { realpath } from 'node:fs/promises';
+import { readdir, realpath } from 'node:fs/promises';
 import path from 'node:path';
 
 import { ConfigYamlError, readPathVault } from './config-yaml.mjs';
@@ -343,6 +343,118 @@ export async function assertPathMatrix({ vaultRoot, repoRoot, archivedRoot, flow
     );
   }
   return resueltas;
+}
+
+/**
+ * La matriz de rutas de un objetivo **destructivo** (AC-9).
+ *
+ * La de arriba vale para copiar, y para copiar alcanza. Para borrar hace falta
+ * acotar el **objetivo**, y hay una trampa concreta en el camino barato: derivar
+ * la raíz del propio objetivo —`raiz = dirname(objetivo)`— vuelve la condición de
+ * hijo directo **tautológica**. Siempre se cumple, nunca detecta nada, y el
+ * borrado queda autorizado sobre cualquier ruta del disco. Por eso el flujo y su
+ * raíz llegan por **parámetros distintos**, y quien invoca declara los dos.
+ *
+ * Además el objetivo no puede **contener un repositorio Git**. Un `.plans/` con
+ * un submódulo, un worktree o un clon adentro es material de alguien más, y el
+ * vault no tiene ninguna copia de él: la frontera verificada cubre `.md` de la
+ * raíz del flujo, nada de esto. Las tres formas se rechazan porque las tres son
+ * un repositorio y sólo una se ve como directorio:
+ *
+ * | Forma | Cómo se reconoce |
+ * |---|---|
+ * | clon normal | `.git/` es un directorio |
+ * | árbol de trabajo enlazado o submódulo | `.git` es un **archivo** con `gitdir:` |
+ * | repositorio desnudo | no hay `.git`, pero sí `HEAD`, `objects/` y `refs/` |
+ *
+ * Y un **error de permisos durante la búsqueda detiene**. Leerlo como ausencia
+ * —"no pude entrar, así que no hay nada"— es exactamente cómo un borrado se come
+ * un repositorio que no llegó a ver.
+ *
+ * @param {object} args
+ * @param {string} args.objetivo el directorio que se va a destruir
+ * @param {string} args.raizDeclarada la raíz de archivados, **declarada aparte**
+ * @param {string} args.vaultRoot
+ * @param {string} args.repoRoot
+ * @returns {Promise<{objetivo:string, raizDeclarada:string, vaultRoot:string, repoRoot:string}>}
+ */
+export async function assertObjetivoDestructivo({ objetivo, raizDeclarada, vaultRoot, repoRoot }) {
+  const entradas = { objetivo, raizDeclarada, vaultRoot, repoRoot };
+  const resueltas = {};
+  for (const [nombre, valor] of Object.entries(entradas)) {
+    if (typeof valor !== 'string' || valor.length === 0) {
+      throw invalid(`la matriz destructiva exige ${nombre}`);
+    }
+    try {
+      resueltas[nombre] = await realpath(valor);
+    } catch (error) {
+      // Un objetivo que ya no está no es un caso benigno: significa que alguien
+      // más lo movió entre la aprobación y el borrado.
+      throw invalid(`no se puede resolver ${nombre}: ${error.message}`, { path: valor });
+    }
+  }
+  const { objetivo: o, raizDeclarada: a, vaultRoot: v, repoRoot: r } = resueltas;
+
+  if (contiene(o, v) || contiene(v, o)) {
+    throw invalid(
+      `el objetivo y el vault no son disjuntos: ${JSON.stringify(o)} contra ${JSON.stringify(v)}`,
+      { objetivo: o, vaultRoot: v },
+    );
+  }
+  if (o === r) {
+    throw invalid(`el objetivo es la raíz del repositorio: ${JSON.stringify(o)}`, { objetivo: o });
+  }
+  if (o === a) {
+    throw invalid(
+      `el objetivo es la propia raíz de archivados, no un flujo: ${JSON.stringify(o)}`,
+      { objetivo: o, raizDeclarada: a },
+    );
+  }
+  if (path.dirname(o) !== a) {
+    throw invalid(
+      `el objetivo no es hijo directo de la raíz declarada: ${JSON.stringify(o)} bajo ${JSON.stringify(a)}`,
+      { objetivo: o, raizDeclarada: a },
+    );
+  }
+
+  const repositorio = await buscarRepositorio(o);
+  if (repositorio !== null) {
+    throw invalid(
+      `el objetivo contiene un repositorio Git (${repositorio.forma}): ${JSON.stringify(repositorio.path)}`,
+      { objetivo: o, ...repositorio },
+    );
+  }
+  return resueltas;
+}
+
+/** Las tres formas de un repositorio, o `null`. Un error de permisos **detiene**. */
+async function buscarRepositorio(raiz) {
+  let entradas;
+  try {
+    entradas = await readdir(raiz, { withFileTypes: true });
+  } catch (error) {
+    throw invalid(
+      `no se puede enumerar ${JSON.stringify(raiz)} para descartar repositorios: ${error.message}`,
+      { path: raiz, code: error.code },
+    );
+  }
+
+  const nombres = new Set(entradas.map((e) => e.name));
+  if (nombres.has('HEAD') && nombres.has('objects') && nombres.has('refs')) {
+    return { forma: 'repositorio desnudo', path: raiz };
+  }
+  for (const entrada of entradas) {
+    const abs = path.join(raiz, entrada.name);
+    if (entrada.name === '.git') {
+      return { forma: entrada.isDirectory() ? 'clon' : 'árbol de trabajo enlazado', path: abs };
+    }
+    // Sin seguir enlaces: un symlink no se recorre, y tampoco se destruye a
+    // través suyo — el borrado quita el enlace, no su destino.
+    if (!entrada.isDirectory()) continue;
+    const adentro = await buscarRepositorio(abs);
+    if (adentro !== null) return adentro;
+  }
+  return null;
 }
 
 // ── E1: la raíz por defecto sale del config del proyecto ──────────────────────

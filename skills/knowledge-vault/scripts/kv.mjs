@@ -14,6 +14,7 @@ import { archiveCommand } from './lib/commands/archive.mjs';
 import { configCommand } from './lib/commands/config.mjs';
 import { indexCommand } from './lib/commands/index.mjs';
 import { migrateCommand } from './lib/commands/migrate.mjs';
+import { retireCommand } from './lib/commands/retire.mjs';
 import { DurableFs } from './lib/durable-fs.mjs';
 
 const comandos = {
@@ -21,6 +22,7 @@ const comandos = {
   migrate: migrateCommand,
   index: indexCommand,
   config: configCommand,
+  retire: retireCommand,
 };
 
 const resultado = await runCli({

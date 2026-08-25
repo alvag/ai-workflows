@@ -49,6 +49,10 @@ const SCHEMAS = new Map([
   // El journal no tiene arrays: se registra para que `assertKnownSchema` lo
   // acepte, no por orden.
   ['kv-retirement/2', { orderedArrays: [] }],
+  // El manifiesto del retiro: la autoridad del conjunto que se va a destruir.
+  // Sus dos listas van ordenadas porque su digest **es** la autorización, y una
+  // lista reordenada daría otro digest para el mismo árbol.
+  ['kv-retirement-manifest/1', { orderedArrays: ['inventario', 'directorios'] }],
 ]);
 
 export function isKnownSchema(schema) {

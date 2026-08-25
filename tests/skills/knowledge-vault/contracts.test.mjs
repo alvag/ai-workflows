@@ -4,7 +4,7 @@
  * Es una tabla y no una función porque su valor está en ser **estable**: un
  * consumidor que ramifica sobre el código de salida se rompe si un estado cambia
  * de familia. Lo que se verifica acá es que la tabla sea consistente consigo
- * misma —ningún estado en dos códigos, ningún verbo sin estados— y que los cuatro
+ * misma —ningún estado en dos códigos, ningún verbo sin estados— y que los cinco
  * verbos sean exactamente los que el vault ofrece.
  */
 import test from 'node:test';
@@ -14,11 +14,26 @@ import {
   STATUSES, SUCCESS_STATUSES, VERBS, exitCodeFor, isStatus, statesForVerb,
 } from '../../../skills/knowledge-vault/scripts/lib/contracts.mjs';
 
-test('los verbos son exactamente cuatro, y ninguno de los retirados sobrevive', () => {
-  assert.deepEqual([...VERBS], ['archive', 'migrate', 'index', 'config']);
+test('[AC-8] los verbos son exactamente cinco, y ninguno de los retirados sobrevive', () => {
+  assert.deepEqual([...VERBS], ['archive', 'migrate', 'index', 'config', 'retire']);
   for (const retirado of ['restore', 'doctor', 'inventory']) {
     assert.ok(!VERBS.includes(retirado), retirado);
   }
+});
+
+test('[AC-8] el quinto verbo declara sus cuatro estados sin renumerar ningún código', () => {
+  assert.deepEqual(
+    [...statesForVerb('retire')],
+    ['DRY_RUN', 'BATCH_OK', 'BATCH_PARTIAL', 'BATCH_FAILED'],
+  );
+  // Los códigos que ya existían conservan su número y su significado: el verbo
+  // nuevo reusa la tabla en vez de ampliarla.
+  assert.equal(exitCodeFor('DRY_RUN'), 0);
+  assert.equal(exitCodeFor('BATCH_OK'), 0);
+  assert.equal(exitCodeFor('BATCH_PARTIAL'), 1);
+  assert.equal(exitCodeFor('BATCH_FAILED'), 1);
+  assert.equal(exitCodeFor('VERIFY_FAILED'), 9, 'un 9 que ya significaba algo cambió de sentido');
+  assert.equal(exitCodeFor('PRECONDITION_NOT_MET'), 4);
 });
 
 test('cada verbo declara sus estados, y todos existen en la tabla', () => {
