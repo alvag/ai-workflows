@@ -14,9 +14,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import { VERBS } from '../../../skills/knowledge-vault/scripts/lib/contracts.mjs';
 import { positivas, negativas, normalizar } from './fixtures/frases-enrutamiento.mjs';
 
 const SKILL = path.resolve('skills/knowledge-vault/SKILL.md');
+const REFERENCIA = path.resolve('skills/knowledge-vault/reference.md');
 const LIMITE = 1024;
 
 /**
@@ -103,4 +105,47 @@ test('[AC-15] el evaluador sabe ponerse rojo en las dos direcciones', () => {
   assert.deepEqual(presentes({ terminos: ['flujo', 'diff'] }, sintetica), ['flujo']);
   // Y la longitud: el límite tiene que poder violarse.
   assert.ok('x'.repeat(LIMITE + 1).length > LIMITE);
+});
+
+/**
+ * Los verbos que la matriz de `reference.md` documenta, leídos de su tabla.
+ *
+ * Se **derivan** del documento en vez de transcribirse: una lista copiada a mano
+ * queda verde el día que la tabla se desactualiza, que es justo el día que hay
+ * que detectar.
+ */
+function verbosDeLaMatriz(texto) {
+  const desde = texto.indexOf('## Matriz por verbo');
+  assert.notEqual(desde, -1, 'reference.md no tiene su matriz por verbo');
+  const hasta = texto.indexOf('\n## ', desde + 1);
+  const tabla = texto.slice(desde, hasta === -1 ? undefined : hasta);
+  return [...tabla.matchAll(/^\| `([a-z-]+)` \|/gm)].map((m) => m[1]);
+}
+
+test('[AC-15] el detalle al que apunta la descripción existe de verdad', async () => {
+  // La descripción manda a `reference.md` por el detalle de cada verbo. Un
+  // puntero a un documento que no los documenta es peor que no tener puntero:
+  // el agente lo sigue, no encuentra nada, y no tiene forma de saber si el verbo
+  // no existe o si la documentación se quedó atrás.
+  assert.ok(normalizada.includes('reference.md'), 'la descripción ya no apunta a reference.md');
+
+  const referencia = await fs.readFile(REFERENCIA, 'utf8');
+  assert.deepEqual(verbosDeLaMatriz(referencia).sort(), [...VERBS].sort());
+
+  // Y estar en la tabla no es estar documentado: el verbo que destruye tiene su
+  // sección propia, porque su contrato no entra en una fila.
+  assert.match(referencia, /^#+ .*`retire`/m, 'reference.md no le dedica una sección al verbo que destruye');
+});
+
+test('[AC-15] el chequeo del puntero sabe ponerse rojo', () => {
+  // Control positivo: es exactamente la forma que tenía el defecto —una matriz
+  // con un verbo de menos mientras la descripción los declaraba todos—.
+  const conCuatro = [
+    '## Matriz por verbo', '',
+    '| Verbo | Obligatorias |', '|---|---|',
+    '| `archive` | x |', '| `migrate` | x |', '| `index` | x |', '| `config` | x |', '',
+    '## Otra sección', '',
+  ].join('\n');
+  assert.deepEqual(verbosDeLaMatriz(conCuatro), ['archive', 'migrate', 'index', 'config']);
+  assert.notDeepEqual(verbosDeLaMatriz(conCuatro).sort(), [...VERBS].sort());
 });

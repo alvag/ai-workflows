@@ -11,6 +11,7 @@ contrato exacto de un verbo, un código de salida, o entender por qué algo fall
 | `migrate` | `--from <dir>` · `--summaries <tsv>` | `--dry-run` | `--vault-root` \| `--config` \| default |
 | `index` | — | — | `--vault-root` \| `--config` \| default |
 | `config` | `--config <ruta>` | `--set-root <ruta>` | la declara él mismo |
+| `retire` | `--root <dir>` | `--from <dir>` · `--dry-run` · `--approve-digest <hex>` | `--vault-root` \| `--config` \| default |
 
 `--config` y `--vault-root` son **excluyentes**: la raíz del vault se declara de
 una sola forma, y "cuál manda" no tiene una respuesta que valga la pena inventar.
@@ -25,10 +26,10 @@ Todo entra por banderas largas. Un argumento suelto es `USAGE`.
 | 1 | `INTERNAL_ERROR` · `BATCH_PARTIAL` · `BATCH_FAILED` | fallo de la corrida o del lote |
 | 2 | `USAGE` | la invocación es inválida |
 | 3 | `CONFIG_INVALID` | el config existe y no se puede leer sin adivinar |
-| 4 | `PRECONDITION_NOT_MET` | el vault está sucio, anidado, o el nombre del flujo es reservado |
+| 4 | `PRECONDITION_NOT_MET` | el vault está sucio, anidado, el nombre del flujo es reservado, el digest aprobado no describe el lote, o el estado observado no lo produce la secuencia |
 | 5 | `NO_VAULT` | no se declaró la raíz, o el config no la trae |
 | 8 | `SOURCE_UNAVAILABLE` | el origen no se puede leer |
-| 9 | `VERIFY_FAILED` · `COPY_FAILED` · `PUBLISH_FAILED` | el destino no verifica, o la publicación falló |
+| 9 | `VERIFY_FAILED` · `COPY_FAILED` · `PUBLISH_FAILED` | el destino no verifica, el remanente no verifica contra el vault, o la publicación falló |
 
 **Un lote incompleto no sale 0.** Migrar 49 de 50 deja un vault que ningún
 criterio distingue de uno completo: no hay manifiesto que enumere lo que debía
@@ -38,6 +39,11 @@ La tabla se redujo de dieciocho códigos a ocho al retirarse `restore`, `doctor`
 `inventory` y el aparato de retiro. Los códigos que **quedaron conservan su
 número**, para no reescribirle el significado a un `9` que ya quería decir "el
 destino no verifica".
+
+Y cuando el retiro volvió, **volvió sin códigos propios**: `retire` reusa
+`DRY_RUN`, `BATCH_OK`, `BATCH_PARTIAL` y `BATCH_FAILED` con exactamente el mismo
+sentido que ya tenían. Quien automatiza `kv` ramifica sobre estos números, así que
+un verbo nuevo que renumerara le rompería el guion sin que nada avisara.
 
 ## Qué entra: el predicado
 
@@ -153,11 +159,128 @@ publicación y el commit dejaría un flujo copiado que el reintento reporta como
 completo y que no aparece en ningún índice: presente en disco e invisible para
 siempre.
 
+## `retire`: el verbo que destruye
+
+Es el único verbo que borra, y su forma entera está gobernada por una asimetría:
+copiar mal se repara borrando el vault y volviendo a copiar; **borrar mal no se
+repara**.
+
+### La secuencia, y por qué en ese orden
+
+```
+reclamar → verificar → autorizar → destruir
+```
+
+1. **Reclamar** — el flujo se renombra a un hermano reservado `.kv-retirando-<id>`.
+2. **Verificar** — sobre el remanente, con la sonda de solo lectura.
+3. **Autorizar** — se commitea el manifiesto en el vault. **Punto de no retorno.**
+4. **Destruir** — archivo por archivo, directorios vacíos en postorden.
+
+El orden natural sería verificar y después borrar, y deja una ventana: entre
+comprobar y destruir, otro proceso puede escribir en el flujo. La salida clásica
+es un lock, y acá está descartada —el lock transaccional del árbol de origen se
+retiró con el aparato viejo, y volver a meterlo era volver a meter journal, dueño,
+expiración y recuperación—. **La ventana se cierra por el orden**: tras el
+renombrado ningún proceso que busque el flujo por su ruta lo alcanza.
+
+El costo está asumido y se declara: un aborto ya no deja el origen "sin tocar"
+sino **sin cambio neto** — mismo conjunto de archivos, mismos hashes, misma ruta.
+
+### El estado durable son dos señales, y no hay journal
+
+| Objetivo | Remanente | Manifiesto | Estado | Salida |
+|---|---|---|---|---|
+| no | no | no | nada ocurrió | nada que hacer |
+| no | no | **sí** | terminal alcanzado | nada que hacer |
+| no | **sí** | no | reclamo sin autorizar | **deshacer**: el flujo vuelve |
+| no | **sí** | **sí** | destrucción autorizada | **terminar** |
+| **sí** | no | no | sin empezar | **reclamar** |
+| **sí** | \* | \* | objetivo recreado | **detener** |
+
+La fase se **deriva del estado observable** en vez de leerse de un registro que
+puede contradecir al árbol. Las tres filas que detienen —objetivo recreado,
+colisión de nombres y varios remanentes del mismo flujo— no son fallos de la
+secuencia: son estados que la secuencia **no puede producir**, así que su causa es
+externa y adivinarla sería destruir sobre una hipótesis.
+
+**La ruta original recreada tiene precedencia sobre todo lo demás.** Si el flujo
+reapareció en su sitio mientras el remanente sigue ahí, el original no se toca
+nunca y el estado del remanente viaja como detalle, no como un segundo estado en
+competencia.
+
+### El manifiesto, y por qué su commit cumple tres papeles
+
+Vive en `<vault>/.kv/retiros/<repo-id>/<flow-id>.json`, versionado. Su commit es a
+la vez **autorización durable**, **autoridad del conjunto en el reintento** y
+**registro de que el origen fue retirado**. Un solo artefacto en vez de tres
+marcas que sincronizar.
+
+Que sea la autoridad importa en el reintento: enumerar lo que quedó en disco daría
+el remanente, no el conjunto que alguien aprobó. Lo que queda tiene que ser un
+**subconjunto exacto** del manifiesto —mismos hashes, **sin sobrantes**—; ante un
+archivo nuevo o modificado el comando falla **sin tocar nada**.
+
+Su digest cubre siete cosas: identidad, alcance, inventario con hashes,
+clasificación, directorios, bytes y el commit del vault. Un digest sobre conteos
+agregados no distingue dos árboles distintos del mismo tamaño.
+
+### Dos digests, con dos alcances
+
+- **el del lote** cubre el conjunto de flujos y las precondiciones globales: si
+  cambió, no se toca nada, porque lo aprobado era otra cosa;
+- **el de cada flujo** cubre su propio árbol: si cambió, falla ese flujo y el lote
+  sigue.
+
+Uno solo obligaría a elegir entre abortar todo por un archivo ajeno o no detectar
+un cambio de alcance.
+
+### El gate humano no se automatiza
+
+`--dry-run` recorre el camino completo **sin una escritura**, clasifica cada
+entrada entre a salvo y sin copia, y emite el digest. Sale con código **cero
+siempre**, incluso al encontrar discrepancias: un ensayo que falla por lo que
+encontró es un ensayo que no se puede leer.
+
+El retiro real **exige** ese digest por argumento y lo compara contra lo que vuelve
+a escanear. No lo recalcula —eso sería aprobarse solo—, y `--dry-run` y
+`--approve-digest` son **excluyentes**: correr el ensayo y pasar su digest en la
+misma invocación es la forma exacta que tiene un guion de eliminar el gate.
+
+### La identidad del repositorio se declara, no se deriva
+
+La ruta dentro del vault sale de un identificador **declarado**, guardado en
+`<vault>/.kv/identidades.tsv` junto a sus señales de respaldo —remoto, commit raíz
+y ruta observada—. La sede es el vault y no la configuración del proyecto, que es
+local y no viaja entre clones: el mismo repositorio tendría otra identidad en cada
+máquina.
+
+Con N repositorios en N máquinas, dos clones que se llamen igual dejan de ser un
+caso teórico, y derivar el nombre del directorio los mandaría al mismo sitio del
+vault. Una resolución ambigua —ninguna identidad compatible, o más de una—
+**detiene**; nunca se elige por proximidad.
+
+### La matriz de rutas de un objetivo destructivo
+
+La de arriba vale para copiar. Para borrar, el flujo y su raíz llegan por
+**parámetros distintos** —`--from` y `--root`—, porque derivar la raíz del propio
+objetivo vuelve tautológica la condición de hijo directo: siempre se cumple, nunca
+detecta nada, y el borrado queda autorizado sobre cualquier ruta del disco.
+
+Además el objetivo no puede **contener un repositorio Git**, en sus tres formas:
+`.git` como directorio (clon), `.git` como archivo (árbol de trabajo enlazado o
+submódulo) y el repositorio desnudo (`HEAD` + `objects/` + `refs/`). Un error de
+permisos durante esa búsqueda **detiene** en vez de leerse como ausencia: leerlo
+como "no pude entrar, así que no hay nada" es cómo un borrado se come un
+repositorio que no llegó a ver.
+
 ## Casos borde
 
 - **Un flujo sin ningún `.md` en su raíz** se archiva igual: su frontera queda
   vacía y su nodo no lleva enlaces. Git no versiona directorios vacíos, así que en
-  el vault ese flujo existe como nodo y como entrada del índice.
+  el vault ese flujo existe como nodo y como entrada del índice. **Para `retire`
+  ese mismo flujo se rechaza** con `EMPTY_SET`: comparar dos conjuntos vacíos pasa
+  de forma vacua, y retirarlo destruiría el 100 % de un flujo que no tiene un byte
+  suyo a salvo. Medido en un árbol real: 1 de 50.
 - **Un archivo suelto en la raíz de archivados no es un flujo.** `migrate`
   enumera **directorios**. Medido en un árbol real: 51 entradas, 50 directorios.
 - **Un `index.md` dentro de un flujo** se copia como cualquier documento y no
