@@ -31,6 +31,7 @@ export const positivas = [
   { frase: 'retirá el origen que ya está copiado', terminos: ['retir', 'origen', 'copi'] },
   { frase: 'archivá lo que quedó en .plans/archived/', terminos: ['archiv', '.plans/archived'] },
   { frase: 'dejá esto consultable en markdown versionado', terminos: ['consult', 'markdown', 'git'] },
+  { frase: 'declará la identidad de este repositorio', terminos: ['declar', 'identidad', 'repositorio'] },
 ];
 
 export const negativas = [

@@ -12,6 +12,7 @@ contrato exacto de un verbo, un código de salida, o entender por qué algo fall
 | `index` | — | — | `--vault-root` \| `--config` \| default |
 | `config` | `--config <ruta>` | `--set-root <ruta>` | la declara él mismo |
 | `retire` | `--root <dir>` | `--from <dir>` · `--dry-run` · `--approve-digest <hex>` | `--vault-root` \| `--config` \| default |
+| `identity` | `--propose` \| `--declare <id>` | — | `--vault-root` \| `--config` \| default |
 
 `--config` y `--vault-root` son **excluyentes**: la raíz del vault se declara de
 una sola forma, y "cuál manda" no tiene una respuesta que valga la pena inventar.
@@ -22,11 +23,11 @@ Todo entra por banderas largas. Un argumento suelto es `USAGE`.
 
 | Código | Estados | Qué significa |
 |---|---|---|
-| 0 | `ARCHIVED` · `ALREADY_ARCHIVED` · `INDEX_OK` · `BATCH_OK` · `DRY_RUN` · `VAULT_CONFIGURED` · `VAULT_SET` | éxito |
+| 0 | `ARCHIVED` · `ALREADY_ARCHIVED` · `INDEX_OK` · `BATCH_OK` · `DRY_RUN` · `VAULT_CONFIGURED` · `VAULT_SET` · `IDENTITY_PROPOSED` · `IDENTITY_DECLARED` · `IDENTITY_ALREADY_DECLARED` | éxito |
 | 1 | `INTERNAL_ERROR` · `BATCH_PARTIAL` · `BATCH_FAILED` | fallo de la corrida o del lote |
 | 2 | `USAGE` | la invocación es inválida |
 | 3 | `CONFIG_INVALID` | el config existe y no se puede leer sin adivinar |
-| 4 | `PRECONDITION_NOT_MET` | el vault está sucio, anidado, el nombre del flujo es reservado, el digest aprobado no describe el lote, o el estado observado no lo produce la secuencia |
+| 4 | `PRECONDITION_NOT_MET` · `AMBIGUOUS_IDENTITY` | el vault está sucio, anidado, el nombre del flujo es reservado, el digest aprobado no describe el lote, el estado observado no lo produce la secuencia, o la identidad del repositorio no está declarada o no es única |
 | 5 | `NO_VAULT` | no se declaró la raíz, o el config no la trae |
 | 8 | `SOURCE_UNAVAILABLE` | el origen no se puede leer |
 | 9 | `VERIFY_FAILED` · `COPY_FAILED` · `PUBLISH_FAILED` | el destino no verifica, el remanente no verifica contra el vault, o la publicación falló |
@@ -44,6 +45,14 @@ Y cuando el retiro volvió, **volvió sin códigos propios**: `retire` reusa
 `DRY_RUN`, `BATCH_OK`, `BATCH_PARTIAL` y `BATCH_FAILED` con exactamente el mismo
 sentido que ya tenían. Quien automatiza `kv` ramifica sobre estos números, así que
 un verbo nuevo que renumerara le rompería el guion sin que nada avisara.
+
+`AMBIGUOUS_IDENTITY` es el único estado que se **agregó** a un código existente, y
+entra en el 4 y no en un código propio por la misma razón: los vacantes —6 y 7—
+pertenecieron a verbos retirados, y darles un sentido nuevo se lo reescribiría a
+un guion viejo. La familia además es la correcta: es una precondición que hay que
+resolver antes de operar. Antes de existir, un `retire` sobre un repositorio sin
+identidad declarada salía `INTERNAL_ERROR`, que le dice a quien automatiza que
+encontró un bug en vez de que le falta un paso.
 
 ## Qué entra: el predicado
 
@@ -158,6 +167,56 @@ Con la definición fácil —"publicado = la frontera existe"— una caída entr
 publicación y el commit dejaría un flujo copiado que el reintento reporta como
 completo y que no aparece en ningún índice: presente en disco e invisible para
 siempre.
+
+## `identity`: de qué repositorio estamos hablando
+
+La ruta dentro del vault es `projects/<repo-id>/sdd/<flujo>/`, y ese `<repo-id>`
+**se declara**. Antes se derivaba del nombre del directorio, y el propio módulo de
+identidad ya advertía que ese nombre no es identidad: con N repositorios en N
+máquinas, dos clones que se llamen `api` comparten sitio en el vault y un retiro
+decidiría sobre el flujo equivocado.
+
+### Las dos banderas son un gate, no dos modos
+
+```bash
+kv identity --propose            # lee el repositorio y propone; no escribe nada
+kv identity --declare <id>       # escribe el que le pasen, y lo commitea
+```
+
+Son **excluyentes**, y es la misma forma que tiene el retiro con `--dry-run` y
+`--approve-digest`: entre las dos hay una persona que lee la propuesta y **tipea**
+el identificador. Un solo comando que propusiera y declarara de una eliminaría esa
+confirmación sin que ninguna bandera lo delatara.
+
+La propuesta sale del **remoto** si lo hay y del **nombre del directorio** si no.
+Sin remoto y sin ningún commit se detiene: el nombre del directorio no es una
+señal, es lo que se está reemplazando.
+
+### Qué se niega a hacer, y por qué
+
+| Situación | Resultado |
+|---|---|
+| declarar dos veces el mismo identificador | **no-op**: `IDENTITY_ALREADY_DECLARED` |
+| declarar un **segundo** identificador para el mismo repositorio | **detiene**: un repositorio con dos identidades es la ambigüedad que el diseño prohíbe |
+| declarar un identificador que **ya usa otro** repositorio | **detiene**: compartirían ruta dentro del vault |
+| declarar uno distinto del derivado **con material ya archivado** | **detiene**: ese material quedaría en una ruta que ningún verbo vuelve a mirar |
+
+El último es el que menos se ve venir. Si ya se archivó sin declarar identidad, el
+material quedó bajo el derivado; declarar otro identificador lo **huerfana** —y
+`retire` reportaría todos los flujos como no-a-salvo sin decir por qué—. La salida
+es declarar el derivado, o mover ese directorio a mano antes de cambiar.
+
+### Copiar y borrar resuelven el identificador de una sola forma
+
+`archive`, `migrate` y `retire` lo piden al mismo sitio, con una **asimetría
+deliberada**: los que copian caen al derivado si no hay identidad declarada
+—copiar bajo un nombre heurístico es benigno—, y el que borra **no cae a nada**.
+Destruir bajo una identidad que nadie declaró es destruir el flujo de otro
+repositorio.
+
+Que los tres la resolvieran por su cuenta es exactamente cómo se partieron antes:
+`archive` escribía en una ruta y `retire` miraba en otra, y **ningún** flujo se
+podía retirar nunca.
 
 ## `retire`: el verbo que destruye
 

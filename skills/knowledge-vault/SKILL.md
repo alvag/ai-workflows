@@ -3,15 +3,16 @@ name: knowledge-vault
 description: >-
   Rescata el conocimiento de los flujos SDD a un vault de Markdown verificado
   por hash, versionado en Git y navegable en Obsidian, con el CLI `kv` (Node,
-  sin dependencias). Cinco verbos —"archive", "migrate", "index", "config" y
-  "retire"—, con el detalle de cada uno en `reference.md`. Usarla para
-  archivar un documento o un flujo, guardar algo en el vault, sacar a la
+  sin dependencias). Seis verbos —"archive", "migrate", "index", "config",
+  "retire" e "identity"—, con el detalle de cada uno en `reference.md`. Usarla
+  para archivar un documento o un flujo, guardar algo en el vault, sacar a la
   bóveda lo que se decidió en `.plans/archived/` y dejarlo consultable sin
-  leerlo entero, y para retirar el origen ya copiado. La garantía: el verbo
-  que copia no borra; el que borra exige verificación previa byte a byte y un
-  digest aprobado a mano. NO es un gestor de notas ni un indexador semántico:
-  no resume, no enlaza por contenido ni invoca ningún modelo. No invocarla
-  espontáneamente: solo ante pedido explícito del usuario.
+  leerlo entero, para declarar la identidad del repositorio, y para retirar el
+  origen ya copiado. La garantía: el verbo que copia no borra; el que borra
+  exige verificación previa byte a byte y un digest aprobado a mano. NO es un
+  gestor de notas ni un indexador semántico: no resume, no enlaza por
+  contenido ni invoca ningún modelo. No invocarla espontáneamente: solo ante
+  pedido explícito del usuario.
 ---
 
 # knowledge-vault — el conocimiento de los flujos, consultable

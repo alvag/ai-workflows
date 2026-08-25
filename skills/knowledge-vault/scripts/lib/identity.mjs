@@ -192,6 +192,19 @@ export function serializarRegistroIdentidades(entradas) {
   return lineas.length === 0 ? '' : `${lineas.join('\n')}\n`;
 }
 
+/** Los identificadores del registro compatibles con las señales observadas. */
+export function identidadesCompatibles({ registro, senales }) {
+  const observadas = {
+    commitRaiz: typeof senales?.commitRaiz === 'string' ? senales.commitRaiz : null,
+    remoto: normalizarRemoto(senales?.remoto),
+  };
+  return (registro ?? []).filter((e) =>
+    SENALES_DE_IDENTIDAD.some(
+      (s) => observadas[s] !== null &&
+        (s === 'remoto' ? normalizarRemoto(e.remoto) : e[s]) === observadas[s],
+    ));
+}
+
 /**
  * Resuelve la identidad **declarada** contra el registro del vault.
  *

@@ -83,9 +83,13 @@ test('[AC-15] ninguna frase negativa queda cubierta', () => {
 });
 
 test('[AC-15] declara el quinto verbo, conserva la cláusula y entra en el límite', () => {
-  for (const verbo of ['archive', 'migrate', 'index', 'config', 'retire']) {
+  // La lista se **deriva** de la tabla del contrato. Transcribirla acá dejaría
+  // el test verde el día que aparece un verbo que la descripción no nombra, que
+  // es justo el día que hay que detectar.
+  for (const verbo of VERBS) {
     assert.ok(normalizada.includes(verbo), `la descripción no declara "${verbo}"`);
   }
+  assert.ok(VERBS.length >= 5, `el contrato declara ${VERBS.length} verbos`);
   assert.ok(
     normalizada.includes('no invocarla espontaneamente'),
     'se perdió la cláusula que impide la invocación espontánea',

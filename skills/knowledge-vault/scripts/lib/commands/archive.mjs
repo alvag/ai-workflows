@@ -21,7 +21,8 @@ import {
 } from '../config.mjs';
 import { ContractError } from '../contracts.mjs';
 import { runVaultTransaction } from '../engine-vault.mjs';
-import { deriveFlowId, deriveStem } from '../identity.mjs';
+import { deriveFlowId } from '../identity.mjs';
+import { slugEfectivo } from '../repo-slug.mjs';
 
 function exigir(flags, nombre) {
   const valor = flags[nombre];
@@ -53,7 +54,7 @@ export async function archiveCommand({ fs, flags, homeDir = null, label = 'archi
   const resultado = await runVaultTransaction({
     fs,
     vaultRoot: rutas.vaultRoot,
-    repoSlug: deriveStem(path.basename(rutas.repoRoot)),
+    repoSlug: await slugEfectivo({ fs, vaultRoot: rutas.vaultRoot, repoRoot: rutas.repoRoot, label }),
     flowId: deriveFlowId(path.basename(rutas.flowDir)),
     flowDir: rutas.flowDir,
     summary,

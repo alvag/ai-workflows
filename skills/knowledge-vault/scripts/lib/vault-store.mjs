@@ -149,6 +149,37 @@ export async function writeIdentitiesFile({ fs, vaultRoot, texto, label = 'ident
   return destino;
 }
 
+/**
+ * El identificador **efectivo** de un repositorio dentro del vault.
+ *
+ * Existe porque los verbos que copian y el que borra resolvían el mismo dato de
+ * dos maneras distintas, y eso los partía: `archive` derivaba un slug del nombre
+ * del directorio y `retire` exigía la identidad declarada. Con las dos
+ * coincidiendo por casualidad nadie lo nota; en cuanto alguien declara un
+ * identificador distinto del derivado, `archive` escribe en una ruta del vault y
+ * `retire` mira en otra, y **todos** los flujos reportan que no están a salvo.
+ *
+ * La asimetría con `resolverIdentidadRepo` es deliberada y es el punto: acá, sin
+ * identidad declarada, se **cae al derivado**, porque copiar bajo un nombre
+ * heurístico es benigno —lo peor que pasa es que el vault quede ordenado con un
+ * nombre feo—. El retiro no puede caer a nada: destruir bajo una identidad que
+ * nadie declaró es destruir el flujo de otro repositorio.
+ *
+ * @param {object} args
+ * @param {string[]} args.compatibles identificadores del registro que coinciden con las señales
+ * @param {string} args.derivado el slug heurístico, que sólo se usa si no hay ninguno
+ */
+export function resolveRepoSlug({ compatibles, derivado }) {
+  const ids = [...new Set(compatibles)];
+  if (ids.length === 1) return { repoSlug: ids[0], origen: 'declarado' };
+  if (ids.length === 0) return { repoSlug: derivado, origen: 'derivado' };
+  throw new VaultStoreError(
+    'AMBIGUOUS_IDENTITY',
+    `las señales de este repositorio coinciden con ${ids.length} identidades declaradas: ${ids.join(', ')}`,
+    { detail: { candidatos: ids } },
+  );
+}
+
 export function resolveStagingPath(vaultRoot, repoSlug, flowId, token) {
   const { frontier } = resolveLayout(vaultRoot, repoSlug, flowId);
   return path.join(path.dirname(frontier), `${STAGING_PREFIX}${flowId}-${token}`);

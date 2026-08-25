@@ -19,7 +19,8 @@ import path from 'node:path';
 import { assertPathMatrix, discoverRepoRootFromDir, resolveVaultRootWithDefault } from '../config.mjs';
 import { ContractError } from '../contracts.mjs';
 import { runVaultTransaction } from '../engine-vault.mjs';
-import { deriveFlowId, deriveStem } from '../identity.mjs';
+import { deriveFlowId } from '../identity.mjs';
+import { slugEfectivo } from '../repo-slug.mjs';
 
 function exigir(flags, nombre) {
   const valor = flags[nombre];
@@ -116,7 +117,7 @@ export async function migrateCommand({ fs, flags, homeDir = null, label = 'migra
     return { status: 'DRY_RUN', vaultRoot, flujos: flujos.length, archivados: 0, yaEstaban: 0, fallidos: [] };
   }
 
-  const repoSlug = deriveStem(path.basename(repoRoot));
+  const repoSlug = await slugEfectivo({ fs, vaultRoot, repoRoot, label });
   let archivados = 0;
   let yaEstaban = 0;
   const fallidos = [];

@@ -12,6 +12,7 @@ import { homedir } from 'node:os';
 import { runCli } from './lib/cli.mjs';
 import { archiveCommand } from './lib/commands/archive.mjs';
 import { configCommand } from './lib/commands/config.mjs';
+import { identityCommand } from './lib/commands/identity.mjs';
 import { indexCommand } from './lib/commands/index.mjs';
 import { migrateCommand } from './lib/commands/migrate.mjs';
 import { retireCommand } from './lib/commands/retire.mjs';
@@ -23,6 +24,7 @@ const comandos = {
   index: indexCommand,
   config: configCommand,
   retire: retireCommand,
+  identity: identityCommand,
 };
 
 const resultado = await runCli({

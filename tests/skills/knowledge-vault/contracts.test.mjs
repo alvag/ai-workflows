@@ -4,7 +4,7 @@
  * Es una tabla y no una función porque su valor está en ser **estable**: un
  * consumidor que ramifica sobre el código de salida se rompe si un estado cambia
  * de familia. Lo que se verifica acá es que la tabla sea consistente consigo
- * misma —ningún estado en dos códigos, ningún verbo sin estados— y que los cinco
+ * misma —ningún estado en dos códigos, ningún verbo sin estados— y que los seis
  * verbos sean exactamente los que el vault ofrece.
  */
 import test from 'node:test';
@@ -14,8 +14,8 @@ import {
   STATUSES, SUCCESS_STATUSES, VERBS, exitCodeFor, isStatus, statesForVerb,
 } from '../../../skills/knowledge-vault/scripts/lib/contracts.mjs';
 
-test('[AC-8] los verbos son exactamente cinco, y ninguno de los retirados sobrevive', () => {
-  assert.deepEqual([...VERBS], ['archive', 'migrate', 'index', 'config', 'retire']);
+test('[AC-8] los verbos son exactamente seis, y ninguno de los retirados sobrevive', () => {
+  assert.deepEqual([...VERBS], ['archive', 'migrate', 'index', 'config', 'retire', 'identity']);
   for (const retirado of ['restore', 'doctor', 'inventory']) {
     assert.ok(!VERBS.includes(retirado), retirado);
   }
@@ -71,4 +71,24 @@ test('los estados de lote reportan fallo con código distinto de cero', () => {
 test('un estado desconocido no se inventa un código', () => {
   assert.equal(isStatus('NO_EXISTE'), false);
   assert.throws(() => exitCodeFor('NO_EXISTE'), /NO_EXISTE/);
+});
+
+test('[AC-13] la identidad ambigua es una precondición, no un error interno', () => {
+  // Sin esto, `retire` sobre un repositorio sin identidad declarada salía
+  // `INTERNAL_ERROR`: le decía a quien automatiza que encontró un bug en vez de
+  // que le falta declarar la identidad. Medido antes de arreglarlo.
+  assert.ok(isStatus('AMBIGUOUS_IDENTITY'));
+  assert.equal(exitCodeFor('AMBIGUOUS_IDENTITY'), exitCodeFor('PRECONDITION_NOT_MET'));
+  assert.notEqual(exitCodeFor('AMBIGUOUS_IDENTITY'), exitCodeFor('INTERNAL_ERROR'));
+  // Los códigos vacantes —6 y 7— pertenecieron a verbos retirados y siguen
+  // vacantes: darles un sentido nuevo se lo reescribiría a un guion viejo.
+  for (const s of STATUSES) assert.ok(![6, 7].includes(exitCodeFor(s)), `${s} ocupó un código vacante`);
+});
+
+test('[AC-13] el sexto verbo declara sus estados y ninguno es nuevo en la familia del éxito', () => {
+  assert.deepEqual(
+    [...statesForVerb('identity')],
+    ['IDENTITY_PROPOSED', 'IDENTITY_DECLARED', 'IDENTITY_ALREADY_DECLARED'],
+  );
+  for (const e of statesForVerb('identity')) assert.equal(exitCodeFor(e), 0);
 });
