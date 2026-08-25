@@ -200,3 +200,36 @@ Los veinte modos y `--autotest` se midieron sobre el commit `9b58ce6`; todos die
 | V18 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | no regresión: pasa por construcción |
 | V19 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | no regresión: pasa por construcción |
 | V20 | 9b58ce6 | 35b04523f65390f20cc157d8dd1184177b4f1bb9de53925683be84910a63ff36 | 2026-08-17T23:01:30Z | GREEN_ALREADY | `--ac 17` y sus 43 mutantes estructurales dieron exit 0 |
+
+La migración de `scripts-en-skills` retiró el arnés de paridad y su corpus. `GUARDAS` pasó a invocar
+el entrypoint durable `python3 -m tests`, conservando `verificar-vistas-config.py`, que no pertenecía
+al arnés y cuya entrada casi se arrastra con el retiro. Ese cambio altera los bytes del verificador,
+así que su identidad `(commit, sha256)` se re-emite.
+
+Los veinte modos y `--autotest` se midieron sobre el commit `8057282`, **una invocación por línea**;
+los veintiuno dieron exit `0`.
+
+#### Baseline de v12
+
+| ID | commit | sha256 | timestamp | estado | adjudicación |
+|---|---|---|---|---|---|
+| V1 | 8057282 | 64d62d226b92d339f4856455b04e551397de4501fe4659ef6969bba3ecbe7077 | 2026-08-25T12:22:22Z | GREEN_ALREADY | — |
+| V2 | 8057282 | 64d62d226b92d339f4856455b04e551397de4501fe4659ef6969bba3ecbe7077 | 2026-08-25T12:22:22Z | GREEN_ALREADY | — |
+| V3 | 8057282 | 64d62d226b92d339f4856455b04e551397de4501fe4659ef6969bba3ecbe7077 | 2026-08-25T12:22:22Z | GREEN_ALREADY | — |
+| V4 | 8057282 | 64d62d226b92d339f4856455b04e551397de4501fe4659ef6969bba3ecbe7077 | 2026-08-25T12:22:22Z | GREEN_ALREADY | — |
+| V5 | 8057282 | 64d62d226b92d339f4856455b04e551397de4501fe4659ef6969bba3ecbe7077 | 2026-08-25T12:22:22Z | GREEN_ALREADY | — |
+| V6 | 8057282 | 64d62d226b92d339f4856455b04e551397de4501fe4659ef6969bba3ecbe7077 | 2026-08-25T12:22:22Z | GREEN_ALREADY | — |
+| V7 | 8057282 | 64d62d226b92d339f4856455b04e551397de4501fe4659ef6969bba3ecbe7077 | 2026-08-25T12:22:22Z | GREEN_ALREADY | — |
+| V8 | 8057282 | 64d62d226b92d339f4856455b04e551397de4501fe4659ef6969bba3ecbe7077 | 2026-08-25T12:22:22Z | GREEN_ALREADY | — |
+| V9 | 8057282 | 64d62d226b92d339f4856455b04e551397de4501fe4659ef6969bba3ecbe7077 | 2026-08-25T12:22:22Z | GREEN_ALREADY | — |
+| V10 | 8057282 | 64d62d226b92d339f4856455b04e551397de4501fe4659ef6969bba3ecbe7077 | 2026-08-25T12:22:22Z | GREEN_ALREADY | — |
+| V11 | 8057282 | 64d62d226b92d339f4856455b04e551397de4501fe4659ef6969bba3ecbe7077 | 2026-08-25T12:22:22Z | GREEN_ALREADY | — |
+| V12 | 8057282 | 64d62d226b92d339f4856455b04e551397de4501fe4659ef6969bba3ecbe7077 | 2026-08-25T12:22:22Z | GREEN_ALREADY | — |
+| V13 | 8057282 | 64d62d226b92d339f4856455b04e551397de4501fe4659ef6969bba3ecbe7077 | 2026-08-25T12:22:22Z | GREEN_ALREADY | — |
+| V14 | 8057282 | 64d62d226b92d339f4856455b04e551397de4501fe4659ef6969bba3ecbe7077 | 2026-08-25T12:22:22Z | GREEN_ALREADY | — |
+| V15 | 8057282 | 64d62d226b92d339f4856455b04e551397de4501fe4659ef6969bba3ecbe7077 | 2026-08-25T12:22:22Z | GREEN_ALREADY | — |
+| V16 | 8057282 | 64d62d226b92d339f4856455b04e551397de4501fe4659ef6969bba3ecbe7077 | 2026-08-25T12:22:22Z | GREEN_ALREADY | — |
+| V17 | 8057282 | 64d62d226b92d339f4856455b04e551397de4501fe4659ef6969bba3ecbe7077 | 2026-08-25T12:22:22Z | GREEN_ALREADY | — |
+| V18 | 8057282 | 64d62d226b92d339f4856455b04e551397de4501fe4659ef6969bba3ecbe7077 | 2026-08-25T12:22:22Z | GREEN_ALREADY | no regresión: pasa por construcción |
+| V19 | 8057282 | 64d62d226b92d339f4856455b04e551397de4501fe4659ef6969bba3ecbe7077 | 2026-08-25T12:22:22Z | GREEN_ALREADY | no regresión: pasa por construcción |
+| V20 | 8057282 | 64d62d226b92d339f4856455b04e551397de4501fe4659ef6969bba3ecbe7077 | 2026-08-25T12:22:22Z | GREEN_ALREADY | — |
