@@ -1,3 +1,0 @@
-# Contrato
-
-sin versiones

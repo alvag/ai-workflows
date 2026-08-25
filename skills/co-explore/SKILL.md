@@ -129,6 +129,10 @@ comparan**.
 
 ## Corridas delegadas en vuelo
 
+Antes del primer despacho, comprobar en la raíz efectiva si existe
+`.cross-model/conmutacion.lock`. Si existe, detener la corrida antes de crear o escribir el sobre e
+informar `conmutación en curso`. No inferir que está huérfano por su PID ni borrarlo automáticamente.
+
 Todo worker que esta skill despacha nace con su **sobre** en `.cross-model/active/<skill>/`, escrito
 **antes del preflight**, y mientras el sobre siga activo cada turno del conductor cierra informando
 su estado. Con manifest habilitado, la selección fija `families`/`selection`, el sobre nace con

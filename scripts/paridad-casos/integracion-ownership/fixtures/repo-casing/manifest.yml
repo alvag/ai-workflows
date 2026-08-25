@@ -1,7 +1,0 @@
-orchestration_tasks:
-  - id: G1
-    covers_ac: [AC-1]
-    participating_repos:
-      AC-1:
-        - API
-        - web

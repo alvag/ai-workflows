@@ -1,1 +1,0 @@
-- `paso: congelar` `actor: conductor` `timestamp: 2026-01-01T10:00:00Z`

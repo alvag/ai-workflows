@@ -1,4 +1,0 @@
-- `estado: recovery-required`
-- `transportAttempt: 2`
-- `semanticAttempt: 2`
-- `transportAttempt: 3`

@@ -28,6 +28,66 @@ Detalle operativo de la skill `sdd-flow`. El `SKILL.md` apunta acá cuando neces
 
 ---
 
+## Resolución del intérprete de Python
+
+Antes de ejecutar un script Python de la skill, resolver Python 3.9 o superior mediante una prueba
+ejecutable. La presencia del nombre en `PATH` no alcanza: cada candidato debe correr código con
+`-c`. El wrapper resultante conserva `py -3` como dos argumentos.
+
+<!-- resolvedor-python:inicio -->
+```sh
+resolve_skill_python() {
+  if python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' \
+      >/dev/null 2>&1; then
+    python_skill() { python3 "$@"; }
+    PYTHON_SKILL='python3'
+    return 0
+  fi
+  if py -3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' \
+      >/dev/null 2>&1; then
+    python_skill() { py -3 "$@"; }
+    PYTHON_SKILL='py -3'
+    return 0
+  fi
+  printf '%s\n' \
+    'ERROR: no executable Python 3.9+; python3 -c and py -3 -c failed or reported an older version' \
+    >&2
+  return 1
+}
+resolve_skill_python || exit 1
+# Run scripts as: python_skill <script> [arguments...]
+```
+
+```powershell
+$script:PythonSkill = $null
+$PythonCandidates = @(
+  @{ Display = 'python3'; File = 'python3'; Prefix = @() },
+  @{ Display = 'py -3'; File = 'py'; Prefix = @('-3') }
+)
+foreach ($Candidate in $PythonCandidates) {
+  try {
+    $Prefix = @($Candidate.Prefix)
+    & $Candidate.File @Prefix -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' *> $null
+    if ($LASTEXITCODE -eq 0) {
+      $script:PythonSkill = $Candidate
+      break
+    }
+  } catch {
+    continue
+  }
+}
+if ($null -eq $script:PythonSkill) {
+  throw 'ERROR: no executable Python 3.9+; python3 -c and py -3 -c failed or reported an older version'
+}
+function Invoke-SkillPython {
+  $Prefix = @($script:PythonSkill.Prefix)
+  & $script:PythonSkill.File @Prefix @args
+}
+# Run scripts as: Invoke-SkillPython <script> [arguments...]
+```
+<!-- resolvedor-python:fin -->
+
+
 ## Matriz de detección por capacidad
 
 Los nombres de tools/MCP cambian entre entornos. Resolver por **capacidad**: probar la tool canónica, y si no existe, buscar variantes por keyword antes de degradar.
@@ -1169,11 +1229,10 @@ Para `sellar`, obtener el hash con el procedimiento normativo completo de
 `cross-implement/contrato-verificacion.md` → "Cadena de integridad". El puntero incluye el
 encadenamiento, la frontera del bloque y la normalización; un placeholder no sustituye ese cálculo.
 
-**Ese procedimiento ya está implementado**, en el mismo archivo destino: el bloque
-`@bloque:contrato-cadena` y su gemelo `@bloque:contrato-cadena-ps`, calibrados por el corpus de
-`scripts/paridad-casos/contrato-cadena/`. Sellar es correrlos, no reescribirlos: una implementación
-propia derivada de la prosa produce hashes divergentes sobre bytes idénticos, y entonces el gate
-rechaza contratos intactos —que es exactamente lo que la cadena existe para no hacer—.
+**Ese procedimiento ya está implementado** en
+`cross-implement/scripts/contrato-cadena.py`. Sellar es ejecutar ese script con el contrato, no
+reescribirlo: una implementación propia derivada de la prosa produce hashes divergentes sobre bytes
+idénticos, y entonces el gate rechaza contratos intactos.
 
 ### La bitácora del despacho
 
@@ -1210,7 +1269,7 @@ renombrar los pasos de un reparto para que se parezcan a los del otro.
 
 **El orden de las escrituras es una condición:** procedimiento completo → aprobación en el último
 gate aplicable → línea `paso: congelar` en la bitácora → marcador en el header → el conductor
-ejecuta `@bloque:promocion-tasks-ready`. El bloque corre después de escribir la bitácora y el
+ejecuta `python_skill <skill_dir>/scripts/promocion-tasks-ready.py <plan> <bitácora>`. El script corre después de escribir la bitácora y el
 marcador, y es la transición que promueve el estado a listo para implementar; un veredicto distinto
 de cero impide promover. Promover el estado por fuera del bloque es una edición manual fuera del
 procedimiento. Esta comprobación aplica a todo plan que atraviesa ese gate, sin exención por origen.
@@ -1644,540 +1703,3 @@ Contexto: feature "exportar resultados a CSV".
 ```
 
 Cada uno es observable y se puede mapear a un test o a un paso manual de verificación.
-
-## Bloques de validación del contrato en el plan
-
-Predicados sobre los artefactos que este flujo produce. Cada bloque declara su **predicado**, y esa
-línea es idéntica en las dos variantes de shell.
-
-El par `promocion-tasks-ready` nace **declarado sin corpus de paridad**: cubrir su matriz exigiría
-crear fixtures nuevos bajo `scripts/`, algo prohibido dentro de un flujo cuyo producto son las
-skills. El costo es explícito: hasta que exista ese flujo separado, la equivalencia de códigos,
-clases de mensaje y artefactos finales de ambas variantes requiere evidencia manual.
-
-```bash
-# @bloque:promocion-tasks-ready
-# Aplica a: transición o reintento de la promoción de un plan de sdd-flow a tasks-ready.
-# Predicado: el marcador y la constancia canónica acreditan el congelamiento; solo el preestado
-# propio de la complejidad se promueve, y tasks-ready se acepta como reintento sin escritura.
-# Entradas: $plan $bitacora
-LC_ALL=C
-export LC_ALL
-
-fallo_estructural() {
-  printf 'GUARD:promocion-tasks-ready %s\n' "$1" >&2
-  exit 2
-}
-fallo_contractual() {
-  printf 'GUARD:promocion-tasks-ready %s\n' "$1" >&2
-  exit 1
-}
-
-[ -n "${plan:-}" ] || fallo_estructural 'la entrada plan no fue declarada'
-[ -f "$plan" ] || fallo_estructural "el plan no existe: $plan"
-[ -r "$plan" ] || fallo_estructural "el plan no es legible: $plan"
-[ -n "${bitacora:-}" ] || fallo_estructural 'la entrada bitacora no fue declarada'
-[ -f "$bitacora" ] || fallo_estructural "la bitácora no existe: $bitacora"
-[ -r "$bitacora" ] || fallo_estructural "la bitácora no es legible: $bitacora"
-
-leer_header() {
-  awk '
-    function valor(linea, clave, v) {
-      v=linea
-      sub("^" clave ":[[:space:]]*", "", v)
-      sub(/[[:space:]]*$/, "", v)
-      return v
-    }
-    NR == 1 {
-      linea=$0; sub(/\r$/, "", linea)
-      if (linea != "---") exit 10
-      abierto=1; next
-    }
-    abierto {
-      linea=$0; sub(/\r$/, "", linea)
-      if (linea == "---") { cerrado=1; exit }
-      if (linea ~ /^status:[[:space:]]*/) {
-        status_n++; if (status_n == 1) status=valor(linea, "status")
-      } else if (linea ~ /^complexity:[[:space:]]*/) {
-        complexity_n++; if (complexity_n == 1) complexity=valor(linea, "complexity")
-      } else if (linea ~ /^contract_procedure:[[:space:]]*/) {
-        marker_n++; if (marker_n == 1) marker=valor(linea, "contract_procedure")
-      }
-    }
-    END {
-      if (!cerrado) exit 10
-      printf "status\t%d\t%s\n", status_n, status
-      printf "complexity\t%d\t%s\n", complexity_n, complexity
-      printf "contract_procedure\t%d\t%s\n", marker_n, marker
-    }
-  ' "$1"
-}
-
-header=$(leer_header "$plan")
-header_rc=$?
-case "$header_rc" in
-  0) ;;
-  10) fallo_estructural 'el frontmatter del plan está mal delimitado' ;;
-  *) fallo_estructural 'el frontmatter del plan no se pudo leer' ;;
-esac
-
-campo_cantidad() {
-  printf '%s\n' "$header" | awk -F '\t' -v clave="$1" '$1 == clave { print $2; exit }'
-}
-campo_valor() {
-  printf '%s\n' "$header" | awk -F '\t' -v clave="$1" '$1 == clave {
-    sub($1 FS $2 FS, ""); print; exit
-  }'
-}
-
-status_n=$(campo_cantidad status)
-status=$(campo_valor status)
-complexity_n=$(campo_cantidad complexity)
-complexity=$(campo_valor complexity)
-marker_n=$(campo_cantidad contract_procedure)
-marker=$(campo_valor contract_procedure)
-
-[ "$status_n" -gt 0 ] || fallo_estructural 'falta la clave status en el frontmatter'
-case "$status" in
-  planned|plan-approved|tasks-ready|implementing|verified|committed|pushed|pr-open|done) ;;
-  *) fallo_estructural "status tiene un valor no soportado: \"$status\"" ;;
-esac
-[ "$complexity_n" -gt 0 ] || fallo_estructural 'falta la clave complexity en el frontmatter'
-case "$complexity" in
-  trivial|normal|complex) ;;
-  *) fallo_estructural "complexity tiene un valor no soportado: \"$complexity\"" ;;
-esac
-[ "$status_n" -eq 1 ] || fallo_estructural 'la clave status está duplicada'
-[ "$complexity_n" -eq 1 ] || fallo_estructural 'la clave complexity está duplicada'
-[ "$marker_n" -le 1 ] || fallo_estructural 'la clave contract_procedure está duplicada'
-
-[ "$marker_n" -eq 1 ] || fallo_contractual 'falta el marcador contract_procedure'
-[ "$marker" = measured-v1 ] || \
-  fallo_contractual "contract_procedure tiene un valor no soportado: \"$marker\""
-
-constancia=$(awk '
-  function timestamp_valido(v, y, m, d, hh, mm, ss, zona, maxd, bisiesto, zh, zm) {
-    if (v !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9](Z|[+-][0-9][0-9]:[0-9][0-9])$/) return 0
-    y=substr(v,1,4)+0; m=substr(v,6,2)+0; d=substr(v,9,2)+0
-    hh=substr(v,12,2)+0; mm=substr(v,15,2)+0; ss=substr(v,18,2)+0
-    if (m < 1 || m > 12 || hh > 23 || mm > 59 || ss > 59) return 0
-    bisiesto=(y % 4 == 0 && (y % 100 != 0 || y % 400 == 0))
-    maxd=(m == 2 ? (bisiesto ? 29 : 28) : ((m == 4 || m == 6 || m == 9 || m == 11) ? 30 : 31))
-    if (d < 1 || d > maxd) return 0
-    zona=substr(v,20)
-    if (zona == "Z") return 1
-    zh=substr(zona,2,2)+0; zm=substr(zona,5,2)+0
-    return zh <= 14 && zm <= 59 && !(zh == 14 && zm != 0)
-  }
-  {
-    linea=$0; sub(/\r$/, "", linea)
-    tiene_paso = index(linea, "`paso: congelar`") > 0
-    tiene_actor = index(linea, "`actor: conductor`") > 0
-    tiene_timestamp = index(linea, "`timestamp: ") > 0
-    if (tiene_paso) paso=1
-    if (tiene_paso && tiene_actor) actor=1
-    if (tiene_paso && tiene_actor && tiene_timestamp) todos=1
-
-    prefijo="- `paso: congelar` · `actor: conductor` · `timestamp: "
-    if (substr(linea,1,length(prefijo)) == prefijo && substr(linea,length(linea),1) == "`") {
-      ts=substr(linea,length(prefijo)+1,length(linea)-length(prefijo)-1)
-      if (timestamp_valido(ts)) valida=1
-      else timestamp_invalido=1
-    }
-  }
-  END {
-    if (valida) print "ok"
-    else if (!paso) print "paso"
-    else if (!actor) print "actor"
-    else if (!todos) print "timestamp"
-    else if (timestamp_invalido) print "timestamp"
-    else print "formato/anclaje"
-  }
-' "$bitacora") || fallo_estructural 'la bitácora no se pudo leer'
-
-case "$constancia" in
-  ok) ;;
-  paso) fallo_contractual 'la constancia canónica falla en paso' ;;
-  actor) fallo_contractual 'la constancia canónica falla en actor' ;;
-  timestamp) fallo_contractual 'la constancia canónica falla en timestamp' ;;
-  formato/anclaje) fallo_contractual 'la constancia canónica falla en formato/anclaje' ;;
-  *) fallo_estructural 'la constancia no se pudo clasificar' ;;
-esac
-
-case "$complexity" in
-  trivial|normal) esperado=planned ;;
-  complex) esperado=plan-approved ;;
-esac
-
-# Reintento: vuelve a validar marcador, constancia y estado, pero no reescribe el plan.
-[ "$status" = tasks-ready ] && exit 0
-[ "$status" = "$esperado" ] || \
-  fallo_contractual "status \"$status\" no permite promover; se esperaba \"$esperado\""
-
-case "$plan" in
-  */*) plan_dir=${plan%/*}; plan_base=${plan##*/} ;;
-  *) plan_dir=.; plan_base=$plan ;;
-esac
-tmp=$(mktemp "$plan_dir/.${plan_base}.promocion.XXXXXX" 2>/dev/null) || \
-  fallo_estructural 'falló la creación del temporal hermano del plan'
-
-termina_nl=0
-[ "$(tail -c 1 "$plan" 2>/dev/null | wc -l | tr -d ' ')" = 1 ] && termina_nl=1
-if ! awk -v final_nl="$termina_nl" '
-  function emitir_previa() { if (hay_previa) printf "%s%s", previa, eol_previo }
-  {
-    linea=$0; eol="\n"
-    if (sub(/\r$/, "", linea)) eol="\r\n"
-    emitir_previa()
-    if (NR == 1 && linea == "---") dentro=1
-    else if (dentro && linea == "---") dentro=0
-    else if (dentro && !cambiado && linea ~ /^status:[[:space:]]*/) {
-      linea="status: tasks-ready"; cambiado=1
-    }
-    previa=linea; eol_previo=eol; hay_previa=1
-  }
-  END {
-    if (hay_previa) {
-      printf "%s", previa
-      if (final_nl) printf "%s", eol_previo
-    }
-    if (!cambiado) exit 20
-  }
-' "$plan" > "$tmp"; then
-  rm -f "$tmp"
-  fallo_estructural 'falló la escritura del temporal hermano del plan'
-fi
-
-candidato=$(leer_header "$tmp")
-candidato_rc=$?
-if [ "$candidato_rc" -ne 0 ]; then
-  rm -f "$tmp"
-  fallo_estructural 'falló la validación del candidato: frontmatter inválido'
-fi
-header_previo=$header
-header=$candidato
-c_status_n=$(campo_cantidad status); c_status=$(campo_valor status)
-c_complexity_n=$(campo_cantidad complexity); c_complexity=$(campo_valor complexity)
-c_marker_n=$(campo_cantidad contract_procedure); c_marker=$(campo_valor contract_procedure)
-header=$header_previo
-if [ "$c_status_n" -ne 1 ] || [ "$c_status" != tasks-ready ] || \
-   [ "$c_complexity_n" -ne 1 ] || [ "$c_complexity" != "$complexity" ] || \
-   [ "$c_marker_n" -ne 1 ] || [ "$c_marker" != measured-v1 ]; then
-  rm -f "$tmp"
-  fallo_estructural 'falló la validación del candidato: promoción o contrato inconsistente'
-fi
-
-if ! mv -f -- "$tmp" "$plan"; then
-  rm -f "$tmp"
-  fallo_estructural 'falló el reemplazo atómico del plan'
-fi
-exit 0
-# @fin:promocion-tasks-ready
-```
-
-```powershell
-# @bloque:promocion-tasks-ready-ps
-# Aplica a: transición o reintento de la promoción de un plan de sdd-flow a tasks-ready.
-# Predicado: el marcador y la constancia canónica acreditan el congelamiento; solo el preestado
-# propio de la complejidad se promueve, y tasks-ready se acepta como reintento sin escritura.
-# Entradas: $plan $bitacora
-function Stop-Structural([string]$Message) {
-  Write-Error "GUARD:promocion-tasks-ready $Message"
-  exit 2
-}
-function Stop-Contract([string]$Message) {
-  Write-Error "GUARD:promocion-tasks-ready $Message"
-  exit 1
-}
-function Read-PlanHeader([string]$Text) {
-  $lines = [regex]::Split($Text, '\r\n|\n|\r')
-  if ($lines.Count -eq 0 -or $lines[0] -cne '---') {
-    return [pscustomobject]@{ Valid = $false }
-  }
-  $values = @{ status = ''; complexity = ''; contract_procedure = '' }
-  $counts = @{ status = 0; complexity = 0; contract_procedure = 0 }
-  $closed = $false
-  for ($i = 1; $i -lt $lines.Count; $i++) {
-    if ($lines[$i] -ceq '---') { $closed = $true; break }
-    $match = [regex]::Match($lines[$i], '^(status|complexity|contract_procedure):\s*(.*?)\s*$',
-      [Text.RegularExpressions.RegexOptions]::CultureInvariant)
-    if ($match.Success) {
-      $key = $match.Groups[1].Value
-      $counts[$key]++
-      if ($counts[$key] -eq 1) { $values[$key] = $match.Groups[2].Value }
-    }
-  }
-  [pscustomobject]@{ Valid = $closed; Values = $values; Counts = $counts }
-}
-function Test-CanonicalTimestamp([string]$Value) {
-  $match = [regex]::Match($Value,
-    '^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(Z|[+-]\d{2}:\d{2})$',
-    [Text.RegularExpressions.RegexOptions]::CultureInvariant)
-  if (-not $match.Success) { return $false }
-  $parsed = [datetime]::MinValue
-  if (-not [datetime]::TryParseExact($Value.Substring(0, 19), "yyyy-MM-dd'T'HH:mm:ss",
-      [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::None,
-      [ref]$parsed)) { return $false }
-  $zone = $match.Groups[7].Value
-  if ($zone -ceq 'Z') { return $true }
-  $zoneHours = [int]$zone.Substring(1, 2)
-  $zoneMinutes = [int]$zone.Substring(4, 2)
-  $zoneHours -le 14 -and $zoneMinutes -le 59 -and
-    -not ($zoneHours -eq 14 -and $zoneMinutes -ne 0)
-}
-function Get-ConstancyClass([string]$Text) {
-  $hasStep = $false; $hasActor = $false; $hasAll = $false
-  $invalidTimestamp = $false
-  foreach ($line in [regex]::Split($Text, '\r\n|\n|\r')) {
-    $lineHasStep = $line.Contains('`paso: congelar`')
-    $lineHasActor = $line.Contains('`actor: conductor`')
-    $lineHasTimestamp = $line.Contains('`timestamp: ')
-    if ($lineHasStep) { $hasStep = $true }
-    if ($lineHasStep -and $lineHasActor) { $hasActor = $true }
-    if ($lineHasStep -and $lineHasActor -and $lineHasTimestamp) { $hasAll = $true }
-    $match = [regex]::Match($line,
-      '^- `paso: congelar` · `actor: conductor` · `timestamp: ([^`]*)`$',
-      [Text.RegularExpressions.RegexOptions]::CultureInvariant)
-    if ($match.Success) {
-      if (Test-CanonicalTimestamp $match.Groups[1].Value) { return 'ok' }
-      $invalidTimestamp = $true
-    }
-  }
-  if (-not $hasStep) { return 'paso' }
-  if (-not $hasActor) { return 'actor' }
-  if (-not $hasAll) { return 'timestamp' }
-  if ($invalidTimestamp) { return 'timestamp' }
-  'formato/anclaje'
-}
-
-if ([string]::IsNullOrEmpty($plan)) { Stop-Structural 'la entrada plan no fue declarada' }
-if (-not (Test-Path -LiteralPath $plan -PathType Leaf)) { Stop-Structural "el plan no existe: $plan" }
-try { [string]$planRaw = Get-Content -LiteralPath $plan -Raw -Encoding UTF8 -ErrorAction Stop }
-catch { Stop-Structural "el plan no es legible: $plan" }
-if ([string]::IsNullOrEmpty($bitacora)) { Stop-Structural 'la entrada bitacora no fue declarada' }
-if (-not (Test-Path -LiteralPath $bitacora -PathType Leaf)) { Stop-Structural "la bitácora no existe: $bitacora" }
-try { [string]$logRaw = Get-Content -LiteralPath $bitacora -Raw -Encoding UTF8 -ErrorAction Stop }
-catch { Stop-Structural "la bitácora no es legible: $bitacora" }
-
-$header = Read-PlanHeader $planRaw
-if (-not $header.Valid) { Stop-Structural 'el frontmatter del plan está mal delimitado' }
-$statusCount = $header.Counts.status
-$status = $header.Values.status
-$complexityCount = $header.Counts.complexity
-$complexity = $header.Values.complexity
-$markerCount = $header.Counts.contract_procedure
-$marker = $header.Values.contract_procedure
-
-if ($statusCount -eq 0) { Stop-Structural 'falta la clave status en el frontmatter' }
-if (@('planned','plan-approved','tasks-ready','implementing','verified','committed','pushed','pr-open','done') -cnotcontains $status) {
-  Stop-Structural "status tiene un valor no soportado: `"$status`""
-}
-if ($complexityCount -eq 0) { Stop-Structural 'falta la clave complexity en el frontmatter' }
-if (@('trivial','normal','complex') -cnotcontains $complexity) {
-  Stop-Structural "complexity tiene un valor no soportado: `"$complexity`""
-}
-if ($statusCount -ne 1) { Stop-Structural 'la clave status está duplicada' }
-if ($complexityCount -ne 1) { Stop-Structural 'la clave complexity está duplicada' }
-if ($markerCount -gt 1) { Stop-Structural 'la clave contract_procedure está duplicada' }
-
-if ($markerCount -eq 0) { Stop-Contract 'falta el marcador contract_procedure' }
-if ($marker -cne 'measured-v1') {
-  Stop-Contract "contract_procedure tiene un valor no soportado: `"$marker`""
-}
-
-switch -CaseSensitive (Get-ConstancyClass $logRaw) {
-  'ok' { }
-  'paso' { Stop-Contract 'la constancia canónica falla en paso' }
-  'actor' { Stop-Contract 'la constancia canónica falla en actor' }
-  'timestamp' { Stop-Contract 'la constancia canónica falla en timestamp' }
-  'formato/anclaje' { Stop-Contract 'la constancia canónica falla en formato/anclaje' }
-  default { Stop-Structural 'la constancia no se pudo clasificar' }
-}
-
-$expected = if ($complexity -ceq 'complex') { 'plan-approved' } else { 'planned' }
-# Reintento: vuelve a validar marcador, constancia y estado, pero no reescribe el plan.
-if ($status -ceq 'tasks-ready') { exit 0 }
-if ($status -cne $expected) {
-  Stop-Contract "status `"$status`" no permite promover; se esperaba `"$expected`""
-}
-
-$fullPlan = [IO.Path]::GetFullPath($plan)
-$planDirectory = [IO.Path]::GetDirectoryName($fullPlan)
-$temporary = $null
-$published = $false
-$transitionCode = 2
-$transitionMessage = $null
-try {
-  do {
-    $temporary = [IO.Path]::Combine($planDirectory,
-      ".$([IO.Path]::GetFileName($fullPlan)).promocion.$([IO.Path]::GetRandomFileName())")
-    $stream = $null
-    try {
-      $stream = [IO.File]::Open($temporary, [IO.FileMode]::CreateNew,
-        [IO.FileAccess]::Write, [IO.FileShare]::None)
-    } catch {
-      $transitionMessage = 'falló la creación del temporal hermano del plan'
-      break
-    } finally {
-      if ($null -ne $stream) { $stream.Dispose() }
-    }
-
-    $frontmatter = [regex]::Match($planRaw, '\A---(?:\r\n|\n|\r).*?(?:\r\n|\n|\r)---(?=\r\n|\n|\r|\z)',
-      [Text.RegularExpressions.RegexOptions]::Singleline)
-    $statusLine = [regex]::Match($frontmatter.Value, '(?m)^status:[ \t]*[^\r\n]*')
-    if (-not $frontmatter.Success -or -not $statusLine.Success) {
-      $transitionMessage = 'falló la validación del candidato: no se localizó status'
-      break
-    }
-    $candidateRaw = $planRaw.Remove($statusLine.Index, $statusLine.Length).
-      Insert($statusLine.Index, 'status: tasks-ready')
-    $bytes = [IO.File]::ReadAllBytes($fullPlan)
-    $withBom = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and
-      $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
-    $encoding = New-Object System.Text.UTF8Encoding($withBom)
-    try { [IO.File]::WriteAllText($temporary, $candidateRaw, $encoding) }
-    catch {
-      $transitionMessage = 'falló la escritura del temporal hermano del plan'
-      break
-    }
-
-    try { [string]$candidateStored = Get-Content -LiteralPath $temporary -Raw -Encoding UTF8 -ErrorAction Stop }
-    catch {
-      $transitionMessage = 'falló la validación del candidato: el temporal no es legible'
-      break
-    }
-    $candidateHeader = Read-PlanHeader $candidateStored
-    if (-not $candidateHeader.Valid -or
-        $candidateHeader.Counts.status -ne 1 -or
-        $candidateHeader.Values.status -cne 'tasks-ready' -or
-        $candidateHeader.Counts.complexity -ne 1 -or
-        $candidateHeader.Values.complexity -cne $complexity -or
-        $candidateHeader.Counts.contract_procedure -ne 1 -or
-        $candidateHeader.Values.contract_procedure -cne 'measured-v1') {
-      $transitionMessage = 'falló la validación del candidato: promoción o contrato inconsistente'
-      break
-    }
-
-    try { Move-Item -LiteralPath $temporary -Destination $fullPlan -Force -ErrorAction Stop }
-    catch {
-      $transitionMessage = 'falló el reemplazo atómico del plan'
-      break
-    }
-    $published = $true
-    $transitionCode = 0
-  } while ($false)
-} finally {
-  if (-not $published -and $null -ne $temporary -and
-      (Test-Path -LiteralPath $temporary -PathType Leaf)) {
-    Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
-  }
-}
-if ($null -ne $transitionMessage) {
-  Write-Error "GUARD:promocion-tasks-ready $transitionMessage"
-}
-exit $transitionCode
-# @fin:promocion-tasks-ready-ps
-```
-
-```bash
-# @bloque:materializacion-contrato
-# Predicado: toda materialización del contrato usa la MISMA cabecera normativa de seis columnas;
-# no existe una segunda forma de tabla haciéndose pasar por contrato.
-# Entradas: $plan
-CAB='| ID | Requisito | Evidencia | Comando/observación | Esperado | Baseline |'
-rc=0
-grep -qxF "$CAB" "$plan" || {
-  echo "GUARD:materializacion-unica el plan no materializa la cabecera normativa" >&2; rc=1; }
-# Una tabla que arranca en `| ID |` y NO es la cabecera normativa es un dialecto propio: es la forma
-# en que "no dupliquen la norma" deja de cumplirse sin que nada se rompa a la vista.
-grep -E '^\|[[:space:]]*ID[[:space:]]*\|' "$plan" | grep -vxF "$CAB" > /tmp/mu.$$ 2>/dev/null
-[ -s /tmp/mu.$$ ] && { echo "GUARD:materializacion-unica hay una tabla de contrato con otro esquema:" >&2
-  cat /tmp/mu.$$ >&2; rc=1; }
-rm -f /tmp/mu.$$
-exit $rc
-# @fin:materializacion-contrato
-```
-
-```powershell
-# @bloque:materializacion-contrato-ps
-# Predicado: toda materialización del contrato usa la MISMA cabecera normativa de seis columnas;
-# no existe una segunda forma de tabla haciéndose pasar por contrato.
-# Entradas: $plan
-$cab = '| ID | Requisito | Evidencia | Comando/observación | Esperado | Baseline |'
-$rc = 0
-$doc = Get-Content -LiteralPath $plan
-if ($doc -cnotcontains $cab) { Write-Error 'GUARD:materializacion-unica el plan no materializa la cabecera normativa'; $rc = 1 }
-$otras = @($doc | Where-Object { $_ -cmatch '^\|\s*ID\s*\|' -and $_ -cne $cab })
-if ($otras.Count -gt 0) { Write-Error "GUARD:materializacion-unica hay una tabla de contrato con otro esquema: $($otras -join ' | ')"; $rc = 1 }
-exit $rc
-# @fin:materializacion-contrato-ps
-```
-
-```bash
-# @bloque:cobertura-ac-fila
-# Predicado: todo AC declarado en el plan tiene al menos una fila del contrato que lo cita, y toda
-# fila cita un AC declarado. Las dos direcciones se reportan por separado.
-# Entradas: $plan
-t=$(mktemp -d); rc=0
-grep -oE '^- \*\*AC-[0-9a-z]+' "$plan" | sed 's/^- \*\*//' | sort -u > "$t/ac"
-grep -E '^\|' "$plan" | grep -vE '^\|[[:space:]]*(ID[[:space:]]*\||[-: |]+\|)' \
-  | awk -F'|' '{gsub(/^ +| +$/,"",$3); split($3,p," "); if (p[1]!="") print p[1]}' | sort -u > "$t/citados"
-comm -23 "$t/ac" "$t/citados" > "$t/e"
-[ -s "$t/e" ] && { printf 'GUARD:cobertura-ac-fila AC sin fila: %s\n' "$(tr '\n' ' ' < "$t/e")" >&2; rc=1; }
-comm -13 "$t/ac" "$t/citados" > "$t/e"
-[ -s "$t/e" ] && { printf 'GUARD:cobertura-ac-fila fila sin AC declarado: %s\n' "$(tr '\n' ' ' < "$t/e")" >&2; rc=1; }
-rm -rf "$t"; exit $rc
-# @fin:cobertura-ac-fila
-```
-
-```powershell
-# @bloque:cobertura-ac-fila-ps
-# Predicado: todo AC declarado en el plan tiene al menos una fila del contrato que lo cita, y toda
-# fila cita un AC declarado. Las dos direcciones se reportan por separado.
-# Entradas: $plan
-$rc = 0
-$doc = Get-Content -LiteralPath $plan
-$ac = @($doc | Where-Object { $_ -cmatch '^- \*\*(AC-[0-9a-z]+)' } | ForEach-Object { [regex]::Match($_, '^- \*\*(AC-[0-9a-z]+)').Groups[1].Value } | Sort-Object -Unique -CaseSensitive)
-$citados = @($doc | Where-Object { $_ -cmatch '^\|' -and $_ -cnotmatch '^\|\s*(ID\s*\||[-: |]+\|)' } |
-  ForEach-Object { ($_ -split '\|')[2].Trim() -split '\s+' | Select-Object -First 1 } |
-  Where-Object { $_ } | Sort-Object -Unique -CaseSensitive)
-$sinFila = $ac | Where-Object { $_ -cnotin $citados }
-if ($sinFila) { Write-Error "GUARD:cobertura-ac-fila AC sin fila: $($sinFila -join ' ')"; $rc = 1 }
-$sinAc = $citados | Where-Object { $_ -cnotin $ac }
-if ($sinAc) { Write-Error "GUARD:cobertura-ac-fila fila sin AC declarado: $($sinAc -join ' ')"; $rc = 1 }
-exit $rc
-# @fin:cobertura-ac-fila-ps
-```
-
-```bash
-# @bloque:verify-ejecuta
-# Predicado: el paso verify CARGA la fila declarada en vez de identificar evidencia en ese momento,
-# y revert-to-confirm sigue alcanzable.
-# Entradas: $skill (el SKILL.md de sdd-flow)
-rc=0
-grep -q '\*\*CARGAR\*\*' "$skill" || {
-  echo "GUARD:verify-solo-ejecuta el paso verify no carga la fila del contrato" >&2; rc=1; }
-# `IDENTIFICAR` era el paso que ELEGÍA la evidencia después de implementar, que es elegir la que ya
-# pasa. Se comprueba su ausencia como paso de la gate function, no la de la palabra en el documento.
-grep -q '\*\*IDENTIFICAR\*\*' "$skill" && {
-  echo "GUARD:verify-solo-ejecuta el paso verify sigue eligiendo evidencia (IDENTIFICAR)" >&2; rc=1; }
-# Control POSITIVO: el cambio es sustitutivo, no una poda. revert-to-confirm tiene que seguir ahí.
-grep -qi 'revert-to-confirm' "$skill" || {
-  echo "GUARD:verify-solo-ejecuta se perdió revert-to-confirm" >&2; rc=1; }
-exit $rc
-# @fin:verify-ejecuta
-```
-
-```powershell
-# @bloque:verify-ejecuta-ps
-# Predicado: el paso verify CARGA la fila declarada en vez de identificar evidencia en ese momento,
-# y revert-to-confirm sigue alcanzable.
-# Entradas: $skill (el SKILL.md de sdd-flow)
-$rc = 0
-$doc = (Get-Content -LiteralPath $skill) -join "`n"
-if ($doc -cnotmatch '\*\*CARGAR\*\*') { Write-Error 'GUARD:verify-solo-ejecuta el paso verify no carga la fila del contrato'; $rc = 1 }
-if ($doc -cmatch '\*\*IDENTIFICAR\*\*') { Write-Error 'GUARD:verify-solo-ejecuta el paso verify sigue eligiendo evidencia (IDENTIFICAR)'; $rc = 1 }
-if ($doc -notmatch '(?i)revert-to-confirm') { Write-Error 'GUARD:verify-solo-ejecuta se perdió revert-to-confirm'; $rc = 1 }
-exit $rc
-# @fin:verify-ejecuta-ps
-```

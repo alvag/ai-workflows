@@ -36,18 +36,23 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
+import os
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import unicodedata
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 CHANGE_BASE_COMMIT = "2ed62dd"
 BASELINE_PATH = "scripts/baseline-sobre-en-vuelo.md"
+CONMUTACION_LOCK = ".cross-model/conmutacion.lock"
 
 SKILLS = [
     "bitbucket-code-review",
@@ -173,11 +178,8 @@ CLAVES_ESTADO_CORRIDA = _VISTAS_CONFIG.CLAVES_ESTADO_CORRIDA
 
 GUARDAS = [
     ["python3", "scripts/verificar-vistas-config.py"],
-    ["python3", "scripts/verificar-paridad-powershell.py", "--auditar-catalogo"],
-    ["python3", "scripts/verificar-paridad-powershell.py", "--auditar-matrices"],
-] + [["python3", "scripts/verificar-paridad-powershell.py", f"--autotest-{n}"] for n in
-     ("extractor", "escaner", "normalizacion", "clasificador", "comparador", "precedencia",
-      "catalogo")]
+    ["python3", "-m", "tests"],
+]
 
 ESTADOS_BASELINE = {"RED", "GREEN", "GREEN_ALREADY"}
 
@@ -1217,6 +1219,191 @@ def ac_17(ctx: Ctx) -> str:
 
 
 # ---------------------------------------------------------------------------------------------
+# Cerrojo de la conmutación destructiva.
+# ---------------------------------------------------------------------------------------------
+
+
+def _git_conmutacion_bytes(raiz: Path, *args: str) -> bytes:
+    resultado = subprocess.run(
+        ["git", "-C", str(raiz), *args], capture_output=True, check=False)
+    if resultado.returncode != 0:
+        detalle = (resultado.stderr.strip() or resultado.stdout.strip()).decode(
+            "utf-8", errors="replace")
+        raise RuntimeError(detalle or "git no pudo leer el estado de la conmutación")
+    return resultado.stdout
+
+
+def _git_conmutacion(raiz: Path, *args: str) -> str:
+    return _git_conmutacion_bytes(raiz, *args).decode("utf-8").strip()
+
+
+def _huella_estado_trabajo(raiz: Path) -> str:
+    huella = hashlib.sha256()
+    huella.update(_git_conmutacion_bytes(raiz, "diff", "--binary", "HEAD", "--"))
+    no_seguidos = _git_conmutacion_bytes(
+        raiz, "ls-files", "--others", "--exclude-standard", "-z").split(b"\0")
+    for nombre_crudo in sorted(nombre for nombre in no_seguidos if nombre):
+        nombre = os.fsdecode(nombre_crudo)
+        ruta = raiz / nombre
+        huella.update(b"\0untracked\0" + nombre_crudo + b"\0")
+        if ruta.is_symlink():
+            huella.update(b"symlink\0" + os.fsencode(os.readlink(ruta)))
+        elif ruta.is_file():
+            huella.update(b"file\0" + ruta.read_bytes())
+        else:
+            huella.update(b"other\0")
+    return huella.hexdigest()
+
+
+def _estado_conmutacion(raiz: Path) -> dict[str, str | int]:
+    return {
+        "pid": os.getpid(),
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "commit": _git_conmutacion(raiz, "rev-parse", "HEAD"),
+        "arbol": _git_conmutacion(raiz, "rev-parse", "HEAD^{tree}"),
+        "estado_trabajo": _huella_estado_trabajo(raiz),
+    }
+
+
+def _corridas_activas(raiz: Path) -> list[str]:
+    active = raiz / ".cross-model/active"
+    if not active.is_dir():
+        return []
+    return sorted(
+        ruta.relative_to(raiz).as_posix()
+        for ruta in active.rglob("*.json")
+        if ruta.is_file() and not ruta.name.endswith(".datos.jsonl")
+    )
+
+
+def liberar_conmutacion(raiz: Path, registro: dict[str, str | int],
+                        completada: bool) -> tuple[bool, str]:
+    """Libera tras completar; al abortar exige volver al commit y árbol registrados."""
+    lock = raiz / CONMUTACION_LOCK
+    if not lock.is_file():
+        return False, "el cerrojo ya no existe"
+    try:
+        vigente = json.loads(lock.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return False, f"el cerrojo no se puede adjudicar: {exc}"
+    if vigente != registro:
+        return False, "el cerrojo pertenece a otro intento"
+    if not completada:
+        actual = _estado_conmutacion(raiz)
+        for campo in ("commit", "arbol", "estado_trabajo"):
+            if actual[campo] != registro[campo]:
+                return False, "la reversión no restauró el commit y árbol registrados"
+    lock.unlink()
+    return True, "cerrojo liberado"
+
+
+def tomar_conmutacion(raiz: Path) -> tuple[dict[str, str | int] | None, str]:
+    """Toma con O_EXCL y, recién entonces, enumera las corridas delegadas activas."""
+    lock = raiz / CONMUTACION_LOCK
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    registro = _estado_conmutacion(raiz)
+    try:
+        descriptor = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        return None, "conmutación en curso: el cerrojo ya existe y no se retira automáticamente"
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as salida:
+            json.dump(registro, salida, ensure_ascii=False, sort_keys=True)
+            salida.write("\n")
+    except Exception:
+        lock.unlink(missing_ok=True)
+        raise
+
+    activas = _corridas_activas(raiz)
+    if activas:
+        liberada, detalle = liberar_conmutacion(raiz, registro, completada=False)
+        sufijo = "" if liberada else f"; {detalle}; el cerrojo queda tomado"
+        return None, "corridas activas sin adjudicar: " + ", ".join(activas) + sufijo
+    return registro, "cerrojo tomado; cero corridas activas; conmutación habilitada"
+
+
+def _preparar_repo_conmutacion(raiz: Path) -> None:
+    (raiz / ".gitignore").write_text(".cross-model/\n", encoding="utf-8")
+    (raiz / "contenido.txt").write_text("estado inicial\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(raiz), "init", "-q"], check=True)
+    subprocess.run(["git", "-C", str(raiz), "add", "."], check=True)
+    subprocess.run(
+        ["git", "-C", str(raiz), "-c", "user.name=conmutacion-test",
+         "-c", "user.email=conmutacion-test@example.invalid", "commit", "-qm", "base"],
+        check=True,
+    )
+
+
+def autotest_conmutacion() -> list[str]:
+    fallas: list[str] = []
+    with tempfile.TemporaryDirectory() as tmp:
+        raiz = Path(tmp) / "repo"
+        raiz.mkdir()
+        _preparar_repo_conmutacion(raiz)
+        contenido = raiz / "contenido.txt"
+        contenido.write_text("estado previo\n", encoding="utf-8")
+        active = raiz / ".cross-model/active/co-explore"
+        active.mkdir(parents=True)
+        (active / "sembrada.json").write_text("{}\n", encoding="utf-8")
+
+        registro, detalle = tomar_conmutacion(raiz)
+        if registro is not None or "corridas activas" not in detalle or (raiz / CONMUTACION_LOCK).exists():
+            fallas.append("una corrida activa sembrada no rechazó limpiamente")
+        (active / "sembrada.json").unlink()
+
+        registro, detalle = tomar_conmutacion(raiz)
+        lock = raiz / CONMUTACION_LOCK
+        campos = set(json.loads(lock.read_text(encoding="utf-8"))) if lock.is_file() else set()
+        if registro is None or not {"pid", "timestamp", "commit", "arbol"} <= campos:
+            fallas.append("cero corridas no registró pid, timestamp, commit y árbol")
+        elif not liberar_conmutacion(raiz, registro, completada=True)[0] or lock.exists():
+            fallas.append("una conmutación completa no liberó el cerrojo")
+
+        huerfano = {"pid": 999999, "timestamp": "2026-01-01T00:00:00Z",
+                    "commit": "0" * 40, "arbol": "0" * 40, "estado_trabajo": "0" * 64}
+        lock.write_text(json.dumps(huerfano) + "\n", encoding="utf-8")
+        registro, detalle = tomar_conmutacion(raiz)
+        if registro is not None or "no se retira automáticamente" not in detalle:
+            fallas.append("un cerrojo huérfano no detuvo el gate")
+        if json.loads(lock.read_text(encoding="utf-8")) != huerfano:
+            fallas.append("el gate alteró un cerrojo huérfano")
+        lock.unlink()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            intentos = list(pool.map(lambda _n: tomar_conmutacion(raiz), range(2)))
+        ganadores = [registro for registro, _detalle in intentos if registro is not None]
+        if len(ganadores) != 1:
+            fallas.append(f"dos intentos concurrentes produjeron {len(ganadores)} ganadores")
+        elif not liberar_conmutacion(raiz, ganadores[0], completada=True)[0]:
+            fallas.append("no se pudo liberar el ganador concurrente")
+
+        registro, _detalle = tomar_conmutacion(raiz)
+        if registro is None:
+            fallas.append("no se pudo preparar el caso de reversión")
+        else:
+            contenido.write_text("edición parcial\n", encoding="utf-8")
+            if liberar_conmutacion(raiz, registro, completada=False)[0] or not lock.exists():
+                fallas.append("una reversión incompleta liberó el cerrojo")
+            contenido.write_text("estado previo\n", encoding="utf-8")
+            if not liberar_conmutacion(raiz, registro, completada=False)[0] or lock.exists():
+                fallas.append("una reversión completa no liberó el cerrojo")
+
+    for rel in (
+        "skills/co-explore/SKILL.md",
+        "skills/cross-implement/SKILL.md",
+        "skills/cross-review/SKILL.md",
+        "skills/sdd-flow/SKILL.md",
+        "skills/sdd-orchestrator/SKILL.md",
+    ):
+        texto = (REPO / rel).read_text(encoding="utf-8")
+        if (".cross-model/conmutacion.lock" not in texto
+                or "antes de crear o escribir el sobre" not in texto
+                or "borrarlo automáticamente" not in texto):
+            fallas.append(f"{rel} no consume el cerrojo antes del despacho")
+    return fallas
+
+
+# ---------------------------------------------------------------------------------------------
 # Modos auxiliares: sincronizar y validar el baseline.
 # ---------------------------------------------------------------------------------------------
 
@@ -1949,8 +2136,12 @@ def _correr_ac15_temporal(raiz: Path) -> tuple[int, str]:
 
 
 def autotest() -> int:
+    print("=== Gate de conmutación: drenaje, exclusión y recuperación")
+    fallas = autotest_conmutacion()
+    print(f"[{'OK   ' if not fallas else 'FALLA'}] protocolo de conmutación: "
+          f"{'ok' if not fallas else '; '.join(fallas)}")
+
     print("=== Control positivo: corpus verde completo")
-    fallas = []
     with tempfile.TemporaryDirectory() as tmp:
         raiz = Path(tmp) / "verde"
         raiz.mkdir()

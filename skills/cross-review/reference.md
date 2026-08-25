@@ -23,6 +23,66 @@ de inspección.
 
 ---
 
+## Resolución del intérprete de Python
+
+Antes de ejecutar un script Python de la skill, resolver Python 3.9 o superior mediante una prueba
+ejecutable. La presencia del nombre en `PATH` no alcanza: cada candidato debe correr código con
+`-c`. El wrapper resultante conserva `py -3` como dos argumentos.
+
+<!-- resolvedor-python:inicio -->
+```sh
+resolve_skill_python() {
+  if python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' \
+      >/dev/null 2>&1; then
+    python_skill() { python3 "$@"; }
+    PYTHON_SKILL='python3'
+    return 0
+  fi
+  if py -3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' \
+      >/dev/null 2>&1; then
+    python_skill() { py -3 "$@"; }
+    PYTHON_SKILL='py -3'
+    return 0
+  fi
+  printf '%s\n' \
+    'ERROR: no executable Python 3.9+; python3 -c and py -3 -c failed or reported an older version' \
+    >&2
+  return 1
+}
+resolve_skill_python || exit 1
+# Run scripts as: python_skill <script> [arguments...]
+```
+
+```powershell
+$script:PythonSkill = $null
+$PythonCandidates = @(
+  @{ Display = 'python3'; File = 'python3'; Prefix = @() },
+  @{ Display = 'py -3'; File = 'py'; Prefix = @('-3') }
+)
+foreach ($Candidate in $PythonCandidates) {
+  try {
+    $Prefix = @($Candidate.Prefix)
+    & $Candidate.File @Prefix -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' *> $null
+    if ($LASTEXITCODE -eq 0) {
+      $script:PythonSkill = $Candidate
+      break
+    }
+  } catch {
+    continue
+  }
+}
+if ($null -eq $script:PythonSkill) {
+  throw 'ERROR: no executable Python 3.9+; python3 -c and py -3 -c failed or reported an older version'
+}
+function Invoke-SkillPython {
+  $Prefix = @($script:PythonSkill.Prefix)
+  & $script:PythonSkill.File @Prefix @args
+}
+# Run scripts as: Invoke-SkillPython <script> [arguments...]
+```
+<!-- resolvedor-python:fin -->
+
+
 ## Documentos de esta referencia
 
 La referencia de esta skill son **dos** archivos, partidos por el momento en que se los lee, no por
@@ -53,9 +113,9 @@ Las vías de invocación del revisor usan comandos de shell. Esos comandos se mu
 variantes**, y hay que elegir según el shell del entorno:
 
 - **POSIX** — macOS y Linux, y también **Git Bash en Windows** (la Bash tool del agente). Es la
-  forma en que están escritos los bloques `bash` de este documento; funcionan tal cual. La guarda
-  `manifest-valido` requiere `python3` con su biblioteca estándar; si Git Bash no lo trae, usar la
-  variante PowerShell.
+  forma en que están escritos los bloques `bash` de este documento; funcionan tal cual. Para las
+  guardas Python, resolver un intérprete ejecutable 3.9+ con la receta de «Resolución del intérprete
+  de Python» y ejecutar el mismo script en cualquier shell.
 - **PowerShell** — Windows nativo (shell primary). PowerShell **no** soporta la redirección de
   stdin con `<` ni el subshell `(cd … && …)`, y no trae `uuidgen`: por eso cada vía incluye su
   bloque `powershell` equivalente.
@@ -2211,283 +2271,6 @@ no tenerla. Esquema completo en `sdd-flow/reference.md` → "Esquema de `.specif
 
 Default **on**: sin datos, cualquier decisión posterior sobre expandir o recortar el ecosistema es
 intuición, y el costo es un archivo de 300 bytes en un directorio untracked.
-
-### Validar un manifest
-
-```bash
-# @bloque:manifest-valido
-# Predicado: objeto JSON con exactamente nueve claves raíz, una vez cada una; started_at UTC real,
-# duration_s entero no negativo, families como lista de valores válidos (también vacía); mode,
-# outcome, degradation y transport en la fila de skill.
-# Entradas: $manifest
-rc=0; t=$(mktemp -d)
-command -v python3 >/dev/null 2>&1 || {
-  printf 'ERROR: manifest-valido requiere python3 en la variante POSIX\n' >&2
-  rm -rf "$t"; exit 99
-}
-if ! python3 -c 'import json,sys; v=json.load(open(sys.argv[1], encoding="utf-8")); sys.exit(0 if isinstance(v, dict) else 1)' "$manifest" >/dev/null 2>&1; then
-  printf 'GUARD:manifest-valido el archivo no es un objeto JSON válido\n' >&2
-  rm -rf "$t"; exit 1
-fi
-printf '%s\n' skill mode started_at duration_s families transport outcome degradation selection \
-  | sort > "$t/esperadas"
-grep -oE '"[^"]+"[[:space:]]*:' "$manifest" \
-  | sed -E 's/^"([^"]+)"[[:space:]]*:$/\1/' > "$t/claves"
-for c in skill mode started_at duration_s families transport outcome degradation selection; do
-  n=$(grep -cxF "$c" "$t/claves")
-  [ "$n" -gt 0 ] || {
-    printf 'GUARD:manifest-valido falta el campo "%s"\n' "$c" >&2; rc=1; }
-  [ "$n" -le 1 ] || {
-    printf 'GUARD:manifest-valido clave requerida duplicada: "%s"\n' "$c" >&2; rc=1; }
-done
-sort -u "$t/claves" > "$t/unicas"
-comm -13 "$t/esperadas" "$t/unicas" | while IFS= read -r c; do
-  printf 'GUARD:manifest-valido clave raíz desconocida: "%s"\n' "$c" >&2
-  printf x >> "$t/error"
-done
-[ -s "$t/error" ] && rc=1
-val() { sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$manifest" | head -1; }
-raw() { sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\([^,}]*\).*/\1/p" "$manifest" \
-          | head -1 | sed -E 's/^[[:space:]]+|[[:space:]]+$//g'; }
-
-if [ "$(grep -cxF started_at "$t/claves")" = 1 ]; then
-  inicio=$(val started_at)
-  printf '%s\n' "$inicio" | grep -qxE '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z' \
-    && python3 -c 'from datetime import datetime; import sys; datetime.strptime(sys.argv[1], "%Y-%m-%dT%H:%M:%SZ")' "$inicio" >/dev/null 2>&1 || {
-    printf 'GUARD:manifest-valido started_at no es UTC ISO-8601: "%s"\n' "$inicio" >&2; rc=1; }
-fi
-if [ "$(grep -cxF duration_s "$t/claves")" = 1 ]; then
-  duracion=$(raw duration_s)
-  printf '%s\n' "$duracion" | grep -qxE '[0-9]+' || {
-    printf 'GUARD:manifest-valido duration_s no es entero no negativo: "%s"\n' "$duracion" >&2; rc=1; }
-fi
-
-if grep -qE '"families"[[:space:]]*:[[:space:]]*\[' "$manifest"; then
-  families_body=$(tr '\n' ' ' < "$manifest" \
-    | sed -E 's/^.*"families"[[:space:]]*:[[:space:]]*\[([^]]*)\].*$/\1/')
-  printf '%s\n' "$families_body" | grep -oE '"[^"]*"' | tr -d '"' > "$t/familias"
-  printf '%s\n' "$families_body" \
-    | grep -qxE '[[:space:]]*("[^"]*"[[:space:]]*(,[[:space:]]*"[^"]*"[[:space:]]*)*)?' \
-    || printf '%s\n' '<elemento no string>' >> "$t/familias"
-  sort -u "$t/familias" | while IFS= read -r familia; do
-    n=$(grep -cxF "$familia" "$t/familias")
-    case "$familia:$n" in claude:1|codex:1) ;; *)
-      printf 'GUARD:manifest-valido family inválida o duplicada: "%s"\n' "$familia" >&2
-      printf x >> "$t/error-familia" ;; esac
-  done
-  [ -s "$t/error-familia" ] && rc=1
-elif [ "$(grep -cxF families "$t/claves")" = 1 ]; then
-  printf 'GUARD:manifest-valido "families" no es una lista\n' >&2; rc=1
-fi
-
-sk=$(val skill)
-comunes="none confirmed_wall launch_flake runtime_failure"
-selecciones="full user_choice"
-# `deadline_exceeded` NO va en "comunes": ese conjunto lo comparten las cuatro filas y sumarlo ahí
-# lo filtraría a bitbucket-code-review. Se suma fila por fila a las tres skills que lo producen; el
-# transporte vigente para las cuatro es `subagent`, `cli-exec` y `cli-resume`.
-case "$sk" in
-  co-explore)      modos="explore counter-plan investigate debate"; outs="completed map_failure"
-                   degs="$comunes branch-2 branch-3 branch-4 deadline_exceeded"
-                   trans="none subagent cli-exec cli-resume" ;;
-  cross-review)    modos="spec plan tasks master-spec reparto sintesis draft"; outs="APPROVED REVISE UNAVAILABLE"
-                   degs="$comunes rounds_exhausted deadline_exceeded"
-                   trans="none subagent cli-exec cli-resume" ;;
-  cross-implement) modos="embebido directo"; outs="IMPLEMENTED PARTIAL UNAVAILABLE"
-                   degs="$comunes takeover deadline_exceeded"
-                   trans="none subagent cli-exec cli-resume" ;;
-  bitbucket-code-review)
-                   modos="conductor delegado mixto"; outs="PUBLISHED PROPOSED UNAVAILABLE"
-                   degs="$comunes revisor_invalido panel_vacio"
-                   trans="none subagent cli-exec cli-resume" ;;
-  *) printf 'GUARD:manifest-valido skill fuera del ecosistema: "%s"\n' "$sk" >&2
-     rc=1; modos=""; outs=""; degs=""; trans="" ;;
-esac
-for par in "mode:$modos" "outcome:$outs" "degradation:$degs" "transport:$trans" "selection:$selecciones"; do
-  campo=${par%%:*}; permitidos=${par#*:}
-  [ -n "$permitidos" ] || continue
-  [ "$(grep -cxF "$campo" "$t/claves")" = 1 ] || continue
-  v=$(val "$campo")
-  printf '%s\n' "$permitidos" | tr ' ' '\n' | grep -qxF "$v" || {
-    printf 'GUARD:manifest-valido %s "%s" no pertenece a %s\n' "$campo" "$v" "$sk" >&2; rc=1; }
-done
-rm -rf "$t"; exit $rc
-# @fin:manifest-valido
-```
-
-```powershell
-# @bloque:manifest-valido-ps
-# Predicado: objeto JSON con exactamente nueve claves raíz, una vez cada una; started_at UTC real,
-# duration_s entero no negativo, families como lista de valores válidos (también vacía); mode,
-# outcome, degradation y transport en la fila de skill.
-# Entradas: $manifest
-$rc = 0
-$m = Get-Content -Raw $manifest
-try {
-  # Windows PowerShell 5.1 usa un parser permisivo: cerrar sus extensiones conocidas antes de
-  # deserializar conserva la gramática JSON estricta del par POSIX para este esquema cerrado.
-  if ($m -cmatch '"duration_s"\s*:\s*-?0\d' -or
-      $m -cmatch '(?s),\s*[}\]]' -or $m -cmatch '(?m)//|/\*|\*/') {
-    throw 'sintaxis fuera de JSON estricto'
-  }
-  $documento = $m | ConvertFrom-Json -ErrorAction Stop
-  if ($null -eq $documento -or $documento -isnot [pscustomobject]) {
-    throw 'la raíz no es un objeto'
-  }
-} catch {
-  Write-Error 'GUARD:manifest-valido el archivo no es un objeto JSON válido'
-  exit 1
-}
-# Los operadores van en su variante case-sensitive (`-cmatch`, `-cnotmatch`, `-cnotcontains`,
-# `switch -CaseSensitive`) porque el par POSIX compara con `grep`/`case`/`grep -qxF`, que distinguen
-# mayúsculas. Con los operadores por defecto de .NET, `Started_at` cuenta como el campo `started_at`
-# y `CLI-EXEC` como el transporte `cli-exec`.
-$esperadas = @('skill','mode','started_at','duration_s','families','transport','outcome','degradation','selection')
-$claves = @([regex]::Matches($m, '"([^"]+)"\s*:') | ForEach-Object { $_.Groups[1].Value })
-foreach ($c in $esperadas) {
-  $n = @($claves | Where-Object { $_ -ceq $c }).Count
-  if ($n -eq 0) { Write-Error "GUARD:manifest-valido falta el campo `"$c`""; $rc = 1 }
-  if ($n -gt 1) { Write-Error "GUARD:manifest-valido clave requerida duplicada: `"$c`""; $rc = 1 }
-}
-foreach ($c in @($claves | Sort-Object -Unique -CaseSensitive)) {
-  if ($esperadas -cnotcontains $c) {
-    Write-Error "GUARD:manifest-valido clave raíz desconocida: `"$c`""; $rc = 1
-  }
-}
-function Val($k) { if ($m -cmatch "`"$k`"\s*:\s*`"([^`"]*)`"") { $Matches[1] } else { '' } }
-if (@($claves | Where-Object { $_ -ceq 'started_at' }).Count -eq 1) {
-  $inicio = Val 'started_at'
-  $fecha = [datetime]::MinValue
-  $fechaValida = [datetime]::TryParseExact($inicio, "yyyy-MM-dd'T'HH:mm:ss'Z'",
-    [cultureinfo]::InvariantCulture, [Globalization.DateTimeStyles]::AssumeUniversal, [ref]$fecha)
-  if ($inicio -cnotmatch '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$' -or -not $fechaValida) {
-    Write-Error "GUARD:manifest-valido started_at no es UTC ISO-8601: `"$inicio`""; $rc = 1
-  }
-}
-if (@($claves | Where-Object { $_ -ceq 'duration_s' }).Count -eq 1) {
-  $duracion = if ($m -cmatch '"duration_s"\s*:\s*([^,}\r\n]*)') { $Matches[1].Trim() } else { '' }
-  if ($duracion -cnotmatch '^\d+$') {
-    Write-Error "GUARD:manifest-valido duration_s no es entero no negativo: `"$duracion`""; $rc = 1
-  }
-}
-
-if ($m -cmatch '(?s)"families"\s*:\s*\[(.*?)\]') {
-  $familiesBody = $Matches[1]
-  $familias = @([regex]::Matches($familiesBody, '"([^"]*)"') | ForEach-Object { $_.Groups[1].Value })
-  if ($familiesBody -cnotmatch '^\s*(?:"[^"]*"\s*(?:,\s*"[^"]*"\s*)*)?$') {
-    $familias += '<elemento no string>'
-  }
-  foreach ($familia in @($familias | Sort-Object -Unique -CaseSensitive)) {
-    if ($familia -cnotin @('claude','codex') -or
-        @($familias | Where-Object { $_ -ceq $familia }).Count -gt 1) {
-      Write-Error "GUARD:manifest-valido family inválida o duplicada: `"$familia`""; $rc = 1
-    }
-  }
-} elseif (@($claves | Where-Object { $_ -ceq 'families' }).Count -eq 1) {
-  Write-Error 'GUARD:manifest-valido "families" no es una lista'; $rc = 1
-}
-$sk = Val 'skill'
-$comunes = @('none','confirmed_wall','launch_flake','runtime_failure')
-$selecciones = @('full','user_choice')
-# 'deadline_exceeded' NO va en $comunes: ese conjunto lo comparten las cuatro filas y sumarlo ahí
-# lo filtraría a bitbucket-code-review. Se suma fila por fila a las tres skills que lo producen; el
-# transporte vigente para las cuatro es 'subagent', 'cli-exec' y 'cli-resume'.
-switch -CaseSensitive ($sk) {
-  'co-explore'      { $modos = @('explore','counter-plan','investigate','debate'); $outs = @('completed','map_failure')
-                      $degs = $comunes + @('branch-2','branch-3','branch-4','deadline_exceeded')
-                      $trans = @('none','subagent','cli-exec','cli-resume') }
-  'cross-review'    { $modos = @('spec','plan','tasks','master-spec','reparto','sintesis','draft'); $outs = @('APPROVED','REVISE','UNAVAILABLE')
-                      $degs = $comunes + @('rounds_exhausted','deadline_exceeded')
-                      $trans = @('none','subagent','cli-exec','cli-resume') }
-  'cross-implement' { $modos = @('embebido','directo'); $outs = @('IMPLEMENTED','PARTIAL','UNAVAILABLE')
-                      $degs = $comunes + @('takeover','deadline_exceeded')
-                      $trans = @('none','subagent','cli-exec','cli-resume') }
-  'bitbucket-code-review' { $modos = @('conductor','delegado','mixto'); $outs = @('PUBLISHED','PROPOSED','UNAVAILABLE'); $degs = $comunes + @('revisor_invalido','panel_vacio')
-                      $trans = @('none','subagent','cli-exec','cli-resume') }
-  default { Write-Error "GUARD:manifest-valido skill fuera del ecosistema: `"$sk`""
-            $rc = 1; $modos = @(); $outs = @(); $degs = @(); $trans = @() }
-}
-foreach ($par in @(@('mode',$modos), @('outcome',$outs), @('degradation',$degs), @('transport',$trans), @('selection',$selecciones))) {
-  if ($par[1].Count -eq 0) { continue }
-  if (@($claves | Where-Object { $_ -ceq $par[0] }).Count -ne 1) { continue }
-  $v = Val $par[0]
-  if ($par[1] -cnotcontains $v) {
-    Write-Error "GUARD:manifest-valido $($par[0]) `"$v`" no pertenece a $sk"; $rc = 1
-  }
-}
-exit $rc
-# @fin:manifest-valido-ps
-```
-
-### Leer la serie
-
-La pregunta que justifica todo lo anterior. Sin una forma de mirar los datos, el manifest es un
-montón de JSON que nadie abre:
-
-```bash
-# @bloque:manifest-resumen
-# Predicado: por skill, cuántas corridas, cuántas degradadas, cuántas por elección y la duración
-# mediana; más el total leído, para distinguir un directorio vacío de un filtro sin coincidencias.
-# Entradas: $runs
-n=$(find "$runs" -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
-printf 'corridas leídas: %s\n' "$n"
-[ "$n" -eq 0 ] && exit 0
-t=$(mktemp -d)
-for f in "$runs"/*.json; do
-  [ -f "$f" ] || continue
-  campo() { sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\{0,1\}\([^\",}]*\).*/\1/p" "$f" | head -1; }
-  printf '%s\t%s\t%s\t%s\n' "$(campo skill)" "$(campo degradation)" \
-    "$(campo selection)" "$(campo duration_s)"
-done > "$t/filas"
-cut -f1 "$t/filas" | sort -u | while IFS= read -r sk; do
-  [ -n "$sk" ] || continue
-  tot=$(awk -F'\t' -v s="$sk" '$1==s' "$t/filas" | wc -l | tr -d ' ')
-  deg=$(awk -F'\t' -v s="$sk" '$1==s && $2!="none"' "$t/filas" | wc -l | tr -d ' ')
-  ele=$(awk -F'\t' -v s="$sk" '$1==s && $3=="user_choice"' "$t/filas" | wc -l | tr -d ' ')
-  med=$(awk -F'\t' -v s="$sk" '$1==s{print $4}' "$t/filas" | sort -n \
-        | awk '{v[NR]=$1} END{if (NR) print v[int((NR+1)/2)]; else print "-"}')
-  printf '%s: %s corridas · %s degradadas · %s por eleccion · mediana %ss\n' \
-    "$sk" "$tot" "$deg" "$ele" "$med"
-done
-rm -rf "$t"
-# @fin:manifest-resumen
-```
-
-```powershell
-# @bloque:manifest-resumen-ps
-# Predicado: por skill, cuántas corridas, cuántas degradadas, cuántas por elección y la duración
-# mediana; más el total leído, para distinguir un directorio vacío de un filtro sin coincidencias.
-# Entradas: $runs
-$archivos = @(Get-ChildItem -Path $runs -Filter *.json -File -ErrorAction SilentlyContinue)
-Write-Output "corridas leídas: $($archivos.Count)"
-if ($archivos.Count -eq 0) { exit 0 }
-$filas = foreach ($f in $archivos) {
-  $j = Get-Content -Raw $f.FullName
-  function C($k) { if ($j -cmatch "`"$k`"\s*:\s*`"?([^`",}]*)") { $Matches[1].Trim() } else { '' } }
-  [pscustomobject]@{ skill = (C 'skill'); degradation = (C 'degradation');
-    selection = (C 'selection'); duration = [int](C 'duration_s') }
-}
-$grupos = @($filas | Group-Object skill -CaseSensitive)
-# El orden lo fija `[StringComparer]::Ordinal` y no `Sort-Object`: el par POSIX ordena con `sort`
-# bajo colación por bytes, donde `Cross-Review` precede a `cross-review`. `Sort-Object` compara por
-# cultura y devuelve el orden inverso para ese par — también con `-CaseSensitive`, que decide qué
-# strings son iguales pero no con qué comparador se ordenan.
-$nombres = [string[]]@($grupos.Name)
-[array]::Sort($nombres, [StringComparer]::Ordinal)
-foreach ($nombre in $nombres) {
-  if (-not $nombre) { continue }
-  $g = @($grupos | Where-Object { $_.Name -ceq $nombre })[0]
-  $deg = @($g.Group | Where-Object { $_.degradation -cne 'none' }).Count
-  $ele = @($g.Group | Where-Object { $_.selection -ceq 'user_choice' }).Count
-  $ord = @($g.Group.duration | Sort-Object)
-  # `[Math]::Floor` y no `[int]`: con cardinalidad par el índice medio cae en .5, y `[int]` aplica
-  # redondeo bancario —`[int]1.5` es 2— así que devolvía el MAYOR de los dos centrales donde el
-  # `int()` de awk trunca y devuelve el menor. La mediana definida es el menor.
-  $med = if ($ord.Count) { $ord[[int][Math]::Floor(($ord.Count + 1) / 2) - 1] } else { '-' }
-  Write-Output "$($nombre): $($g.Count) corridas · $deg degradadas · $ele por eleccion · mediana $($med)s"
-}
-# @fin:manifest-resumen-ps
-```
 
 ### Qué se hace con esto
 

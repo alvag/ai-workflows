@@ -1,5 +1,0 @@
-- `paso: derivar-tabla` `actor: conductor` `timestamp: 2026-01-01T08:00:00Z`
-- `paso: ejecutar-baseline` `actor: conductor` `timestamp: 2026-01-01T09:00:00Z`
-- `paso: aprobar-kickoff` `actor: usuario` `timestamp: 2026-01-01T10:00:00Z`
-- `paso: Congelar` `actor: conductor` `timestamp: 2026-01-01T11:00:00Z`
-- `paso: despachar` `actor: conductor` `timestamp: 2026-01-01T12:00:00Z`

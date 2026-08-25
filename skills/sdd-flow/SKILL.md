@@ -76,6 +76,10 @@ Como `.plans/` y `.specify/` son **locales (untracked)**, git no los mueve al ca
 
 ## Corridas delegadas en vuelo
 
+Antes del primer despacho, comprobar en la raíz efectiva si existe
+`.cross-model/conmutacion.lock`. Si existe, detener la corrida antes de crear o escribir el sobre e
+informar `conmutación en curso`. No inferir que está huérfano por su PID ni borrarlo automáticamente.
+
 Todo agente que este flujo despacha nace con su **sobre** en `.cross-model/active/<skill>/`, escrito
 **antes** del despacho, y mientras el sobre siga activo cada turno del conductor cierra informando su
 estado. Los puntos de despacho propios son dos:
@@ -652,9 +656,10 @@ las invariantes que impiden ablandar una versión y la proyección solo-lectura 
 
 La aprobación del último gate aplicable completa el orden normativo de `reference.md` → "Producción
 del contrato de verificación": el conductor registra `aprobar`, registra `congelar` en la bitácora,
-escribe el marcador y recién entonces ejecuta `@bloque:promocion-tasks-ready` con el plan y la
-bitácora. El bloque muta el plan y promueve el estado; un veredicto distinto de cero impide promover.
-Es un cambio de naturaleza respecto de los demás bloques del repositorio, que solo verifican. Antes de
+escribe el marcador y recién entonces ejecuta
+`python_skill <skill_dir>/scripts/promocion-tasks-ready.py <plan> <bitácora>`. El script muta el plan
+y promueve el estado; un veredicto distinto de cero impide promover. Es un cambio de naturaleza
+respecto de las demás guardas del repositorio, que solo verifican. Antes de
 despachar, volver a ejecutar el conjunto completo con esa constancia.
 
 ### Ciclo de `status` (estado persistido del flujo)

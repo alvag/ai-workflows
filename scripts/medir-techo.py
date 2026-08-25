@@ -46,7 +46,15 @@ import re
 import subprocess
 import sys
 
-ANCLA_SHA256 = "8b3db0fdce090f7d00e5271c8bf60aa20c28a4ec8a5bf498d9e05b1767992d76"
+ANCLA_SHA256 = "4442934ad7ee157cb1a103bfdde244f811cf887d515eae0a4d0ee0553cc9ee12"
+# RENOVACIÓN 2026-08-25 — la regla 2 sumó la cláusula del corpus dentro de una skill y la regla 3
+# pasó a hablar del `scripts/` **raíz**. Resultado de releer las cuatro superficies:
+#   · clasificar()          — CAMBIADA: un segmento `tests`/`casos`/`fixtures` bajo `skills/` pasa a
+#                             andamiaje. Antes daban producto, contra la cláusula nueva.
+#   · generado()            — sin cambio: la regla nueva no toca el dominio de los seis patrones.
+#   · enumeración untracked — sin cambio: sigue `--exclude-from=.gitignore`, la fuente versionada.
+#   · num/den/nuevos        — ya correcta: `startswith("scripts/")` está anclado a la raíz, que es
+#                             exactamente lo que la regla 3 nueva delimita. No hizo falta tocarla.
 # Hash de la sección `### Regla 2 …` de CLAUDE.md, desde su encabezado hasta el siguiente de nivel <= 3,
 # con los finales de línea recortados y sin líneas vacías al cierre.
 #
@@ -164,6 +172,12 @@ def clasificar(ruta):
     if ".test." in base or base.startswith("verificar-"):
         return ANDAMIAJE
     if ruta.startswith("skills/") or ruta.startswith(".agents/skills/"):
+        # La función del archivo manda sobre la sede: un corpus o una suite que viven dentro de una
+        # skill siguen siendo andamiaje. Clasificarlos como producto por su ubicación dejaría que
+        # financiaran su propia verificación, que es lo que la regla 2 prohíbe explícitamente.
+        segmentos = ruta.split("/")
+        if any(s in ("tests", "casos", "fixtures") for s in segmentos[:-1]):
+            return ANDAMIAJE
         return PRODUCTO
     return NINGUNO
 

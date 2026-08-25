@@ -1,3 +1,0 @@
-- `paso: buscar-en-paquete`
-- `paso: preguntar-al-usuario`
-- `paso: buscar-en-repo`

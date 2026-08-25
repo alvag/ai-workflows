@@ -1,2 +1,0 @@
-- `transportAttempt: 1`
-- `formatRepair: 1` `mismos_ids: sí`

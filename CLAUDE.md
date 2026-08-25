@@ -47,6 +47,10 @@ Cada una lleva **disparador, efecto y excepción**: un enunciado sin las tres no
   que vive fuera de `skills/`, y con una sola sede un flujo que la tocara quedaría con denominador
   cero, bloqueando por una razón que no es la suya. De la partición se sigue que
   `ninguna línea del diff puede contar en ambos` términos.
+- **Un corpus de casos conserva su clase aunque viva dentro de una skill.** Si una skill necesita
+  fixtures o casos para verificar sus scripts, ese corpus es **andamiaje**, no producto: cuenta en
+  el numerador y queda fuera del denominador. La función del archivo manda sobre la sede; clasificar
+  el corpus como producto solo por vivir bajo `skills/` financiaría su propia verificación.
 - **Es una `lista cerrada`, con lo que eso cuesta.** Una lista se desactualiza sola, y su disparador
   de actualización es concreto: agregar una sede de producto, o un patrón de verificación nuevo. Se
   eligió sobre un criterio por tipo —"todo ejecutable es andamiaje"— porque ese criterio, medido
@@ -130,7 +134,7 @@ Cada una lleva **disparador, efecto y excepción**: un enunciado sin las tres no
 - **Por qué bloquea** — un techo que solo obliga a declarar es un techo **sin condición de salida**,
   que es exactamente la causa que estas reglas vienen a cortar.
 
-### Regla 3 — ningún archivo nuevo en `scripts/` dentro de un flujo de skills
+### Regla 3 — ningún archivo nuevo en el `scripts/` raíz dentro de un flujo de skills
 
 > **Disparador:** al crear un archivo bajo `scripts/` durante un flujo cuyo objeto son las skills.
 > **Efecto:** no se crea. Si de verdad hace falta, es un **flujo aparte**, con su propio gate y con
@@ -147,6 +151,10 @@ regla 2, y queda fuera del contador igual que del numerador.
 excepción; lo único que se acota es qué cuenta como archivo nuevo. Sin esta distinción el bytecode de
 una guarda del propio repositorio disparaba una regla pensada para frenar andamiaje escrito a mano, y el
 veredicto pasaba a depender de si alguien había corrido un verificador antes de medir.
+
+**Los scripts propios de una skill viven en `skills/<nombre>/scripts/`.** Esa es su sede de producto
+y esta regla no prohíbe crearlos: la prohibición alcanza al directorio `scripts/` de la raíz. Sus
+tests o corpus siguen la clasificación funcional de la regla 2.
 
 ## Anatomía de una skill (patrón obligatorio del repo)
 
@@ -176,10 +184,10 @@ Al crear o editar skills, seguí las buenas prácticas de agentskills.io (refere
 - Si la skill toca la sección "Corridas delegadas en vuelo" de algún `SKILL.md` —donde vive el inventario de los **once** puntos de despacho—, correr además `python3 scripts/verificar-sobre-en-vuelo.py --ac 12`: verifica biyección entre lo declarado en el árbol y el inventario del verificador, así que agregar o retirar un punto de despacho sin actualizarlo la pone roja.
 - Si se toca el contrato del manifest de corrida en `skills/cross-review/reference.md`, sus autoridades o cierre en cualquiera de los cuatro productores (`co-explore`, `cross-review`, `cross-implement`, `bitbucket-code-review`), correr `python3 scripts/verificar-sobre-en-vuelo.py --ac 17`.
 - **Un retiro corre la batería completa, no el subconjunto documentado.** `verificar-sobre-en-vuelo.py` tiene **20 modos `--ac`** y las unidades de arriba nombran **tres**; los otros diecisiete existen, corren y pueden ponerse rojos sin que ningún procedimiento los invoque. Al **retirar** algo —una vía, un modo, una capacidad— hay que correr los veinte (`for m in 1 1b 2 2b 3 3b 4 5 6 7 8 9 10 11 12 13 14 15 16 17`), porque retirar es la operación que **arrastra cláusulas ajenas**: el texto que rodea a lo que se va se lleva puesto lo que no era suyo, y lo que queda **se lee perfecto**. Ya pasó: el retiro del transporte por panes borró una cláusula de doctrina que vivía dentro de un párrafo sobre esa vía, `--ac 1b` la cazó en el acto, y estuvo roja **noventa commits** porque nadie la corría.
-- Las **cinco** invocaciones de `verificar-sobre-en-vuelo.py` que se leen por código de salida son `--validar-baseline`, `--ac 12`, `--ac 13`, `--ac 16` y `--autotest`: **0 en verde**. Las de `verificar-vistas-config.py` (sin banderas) y las **nueve** propias de `verificar-paridad-powershell.py` (`--auditar-catalogo`, `--auditar-matrices` y los siete `--autotest-*`), lo mismo. La única que **no** se lee por código de salida es `--reporte`, abajo.
-- Si la skill toca el cuerpo de un bloque `# @bloque:` que tiene variante `-ps`, correr `python3 scripts/verificar-paridad-powershell.py --reporte`: ejecuta las dos variantes sobre entradas equivalentes y compara clase, eventos, stdout y artefactos. Un cuerpo cambiado **invalida su cobertura** hasta auditar la matriz de casos y renovar el registro con `--registrar-auditoria --par <nombre>`; el alcance cubierto y el declarado sin matriz viven en `scripts/paridad-casos/alcance.json`.
-
-  > **El código de salida de `--reporte` NO es la señal de salud: hoy devuelve 4 y ese es el estado sano.** Un bloque que corta con `exit 99` sobre una entrada inexistente es un error de invocación y no un incumplimiento, pero AC-3 clasifica como `fallo` cualquier código distinto de 0 y 1, y `fallo` domina la precedencia global. La señal es el cuerpo del reporte: **cero `divergencia`, cero `incumplimiento_comun`, cero `no_comprobable`, y `fallo` solo en los pares que declaran un caso de ese tipo** — hoy son cinco (`gate-fase-3`, `integracion-ownership`, `orchestration-contract`, `orchestration-model`, `orchestration-state`), cada uno con sus casos de entrada inexistente y `clase_esperada: fallo`. Un `fallo` en un caso que no lo declara sí es rojo. Las que se leen por código de salida son las **nueve** guardas propias del arnés (`--auditar-catalogo`, `--auditar-matrices` y los **siete** `--autotest-*`): 0 en verde, 4 en rojo. Las banderas `--estricto-mono-causa`, `--exigir-particiones`, `--afirmar-particiones` y `--testigos-centinela` **no** son guardas independientes: corren la suite y devuelven ese mismo 4, así que verificar con ellas exige diffear su reporte contra el de `--reporte` puro.
+- Las **cinco** invocaciones de `verificar-sobre-en-vuelo.py` que se leen por código de salida son `--validar-baseline`, `--ac 12`, `--ac 13`, `--ac 16` y `--autotest`: **0 en verde**. `--ac 16` invoca exactamente el entrypoint durable `python3 -m tests`. Las de `verificar-vistas-config.py` (sin banderas) y `python3 -m tests`, lo mismo.
+- La suite durable `python3 -m tests` sustituye las auditorías y el reporte del arnés retirado: un
+  código `0` acredita el catálogo migrado, las guardas portadas y las cinco dimensiones del oracle
+  durable. La evidencia dual histórica vive sellada fuera del corpus y no se regenera.
 
 - **Si el cambio toca una receta de despacho, una marca `despacho:`, la tabla de política de aislamiento o este mismo bloque, correr el verificador de aislamiento.** Son las **cuatro** superficies que pueden romperlo, y el disparador se enuncia por lo que cambia y no por el nombre de una sección: anclarlo a un título es el defecto medido de `--ac 12`, cuyo disparador documentado no dispara ante un cambio de receta. El verificador es un bloque de shell —no hay archivo bajo `scripts/`, regla 3— con dos salidas que son **dos propiedades distintas**:
 

@@ -152,6 +152,10 @@ Solo después de esa resolución y comparación se entrega el mismo `family_inve
 
 ## Corridas delegadas en vuelo
 
+Antes del primer despacho, comprobar en la raíz efectiva si existe
+`.cross-model/conmutacion.lock`. Si existe, detener la corrida antes de crear o escribir el sobre e
+informar `conmutación en curso`. No inferir que está huérfano por su PID ni borrarlo automáticamente.
+
 Todo agente que esta skill despacha nace con su **sobre** en `.cross-model/active/<skill>/`, y
 mientras el sobre siga activo cada turno del conductor cierra informando su estado. El punto de
 despacho propio es uno:
