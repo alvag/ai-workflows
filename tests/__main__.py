@@ -8,6 +8,8 @@ from pathlib import Path
 from types import ModuleType
 from typing import Callable, Optional
 
+from tests.origenes import read_targets, validate_coverage
+
 
 RAIZ = Path(__file__).resolve().parent
 Caso = tuple[str, str, Callable[[Optional[object]], None]]
@@ -68,6 +70,10 @@ def descubrir() -> list[Caso]:
         casos.extend(_inventariar_modulo(ruta, modulo, ids))
     if not casos:
         raise InventarioInvalido("la selección quedó vacía")
+    try:
+        validate_coverage(casos, read_targets())
+    except ValueError as exc:
+        raise InventarioInvalido(str(exc)) from exc
     return casos
 
 
@@ -114,7 +120,19 @@ def autotest(casos: list[Caso]) -> int:
             return 1
     finally:
         modulo.CASOS = original
+    escenario = next((caso for caso in casos if caso[0].startswith("escenario:")), None)
+    if escenario is None:
+        print("autotest: no existe un escenario para probar cobertura", file=sys.stderr)
+        return 1
+    try:
+        validate_coverage([caso for caso in casos if caso[0] != escenario[0]], read_targets())
+    except ValueError:
+        pass
+    else:
+        print("autotest: ocultar un caso migrado no puso roja la cobertura", file=sys.stderr)
+        return 1
     print(f"autotest: ocultar {identificador} fue detectado")
+    print(f"autotest: ocultar {escenario[0]} fue detectado por cobertura")
     return 0
 
 

@@ -17,5 +17,7 @@ con tuplas `(id, grupo, función)`. El conjunto de funciones `test_*` debe coinc
 el inventario del módulo: una función elegible omitida, un ID duplicado o una selección vacía ponen
 la suite en rojo. `python3 -m tests --autotest` ejerce esos controles positivos.
 
-La cobertura contra los orígenes del inventario de migración se incorporará cuando esos orígenes
-existan; este entrypoint solo establece desde ahora el mecanismo de descubrimiento cerrado.
+El mismo descubrimiento valida la procedencia en tres direcciones: cada guarda e infraestructura
+del inventario tiene al menos un test, cada par `matriz/caso` migrado conserva su test nominal y
+ningún test carece de un origen reconocido. La procedencia vive en `tests/origenes.py`; no exige
+igualdad entre conjuntos de distinta naturaleza.
