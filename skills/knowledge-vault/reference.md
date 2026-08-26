@@ -87,6 +87,9 @@ en vez de pisar un archivo generado, y la comparación va por clave de colisión
 ## El layout, completo
 
 ```
+<vault>/.gitignore                            `.obsidian/` y `.DS_Store`; sembrado al crear el vault
+<vault>/.kv/identidades.tsv                   identidad DECLARADA de cada repositorio
+<vault>/.kv/retiros/<repo>/<flujo>.json       manifiesto de retiro: autorización y registro
 <vault>/index.md                              índice raíz, agrega TODOS los flujos
 <vault>/log.md                                una línea por archivado
 <vault>/projects/index.md                     índice
@@ -96,6 +99,11 @@ en vez de pisar un archivo generado, y la comparación va por clave de colisión
 <vault>/projects/<repo>/sdd/<flujo>/          FRONTERA VERIFICADA
 <vault>/projects/<repo>/sdd/<flujo>/*.md      copiados, byte-idénticos
 ```
+
+**Los tres primeros son infraestructura y viven fuera de `projects/`**, que es donde
+Obsidian mira. `.kv/` empieza con punto porque Obsidian ignora los directorios
+ocultos y Git no: el registro de identidades y los manifiestos de retiro se
+versionan —son autoridad, no cache— sin ensuciar la bóveda de quien la consulta.
 
 **Agregación transitiva, no listado de hijos.** Un índice que liste sólo su nivel
 deja la raíz con una entrada —`projects/`— y obliga a bajar cuatro niveles. Cada
@@ -379,12 +387,18 @@ repositorio que no llegó a ver.
   carpetas, y **hacer clic en un `[[enlace]]` no resuelto crea la nota vacía** en
   la raíz del vault. Cualquiera de las tres deja el árbol sucio con cambios
   ajenos, y el archivado frena antes de escribir para no llevárselos puestos. El
-  remedio es un `.gitignore` en el vault con `.obsidian/` y `.DS_Store` —dos
-  líneas, y ninguna más: en un almacén cuyo punto es la procedencia verificada,
-  cada patrón de exclusión es un lugar donde algo puede desaparecer sin que nadie
-  lo note—. La nota vacía no se previene ignorándola: se borra, y conviene saber
-  que **todo documento archivado que contenga un wikilink sin resolver es un botón
-  que crea archivos**.
+  remedio para las dos primeras ya viene puesto: **`ensureVaultRepo` siembra el
+  `.gitignore` al crear el vault** con `.obsidian/` y `.DS_Store`, y lo commitea en
+  el mismo acto —dejarlo suelto lo convertiría en un cambio ajeno permanente que
+  bloquea el primer archivado—. Son dos patrones y ninguno más: en un almacén cuyo
+  punto es la procedencia verificada, cada exclusión es un lugar donde algo puede
+  desaparecer sin que nadie lo note. **Un vault anterior a la siembra, o uno con
+  `.gitignore` propio, no se toca**: reponer patrones sobre una decisión ajena es
+  peor que no sembrar nada, así que ahí el archivo se agrega a mano.
+  La **tercera no se previene ignorándola**, y es la que sobrevive: la nota vacía
+  es un `.md` legítimo que ningún patrón distingue de un documento real. Se borra,
+  y conviene saber que **todo documento archivado que contenga un wikilink sin
+  resolver es un botón que crea archivos**.
 
 ## Cómo correr los tests
 

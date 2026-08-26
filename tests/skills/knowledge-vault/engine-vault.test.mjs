@@ -293,8 +293,20 @@ test('[AC-6] una caída antes de los índices o del commit también se reconstru
   assert.equal((await correr(vault, flowDir)).status, 'ARCHIVED', 'índice faltante');
   await assert.doesNotReject(() => fs.stat(indexPaths[0]));
 
-  // Y sin commit que lo nombre, tampoco está archivado.
-  await git(vault, 'update-ref', '-d', 'HEAD');
+  // Y sin commit que lo nombre, tampoco está archivado. Se retrocede HEAD al
+  // commit raíz en vez de borrarlo: una caída antes del commit **no borra la
+  // historia previa del vault**, y `update-ref -d HEAD` la modelaba sólo mientras
+  // un vault nuevo no tuviera ninguna. Desde que nace con su `.gitignore`
+  // commiteado, amputar la historia entera lo deja sin trackear y el archivado
+  // frena por un cambio ajeno que ninguna caída real produciría.
+  //
+  // **`--soft` y no `--mixed`:** el índice tiene que quedar intacto. Con el índice
+  // desstageado git colapsa el árbol publicado en un solo `?? projects/`, y el
+  // predicado de limpieza —que compara rutas completas— no lo reconoce como
+  // propio. Con `--soft` cada archivo se lista con su ruta y el predicado hace su
+  // trabajo, que es lo que este caso quiere ejercer.
+  const { stdout: raiz } = await git(vault, 'rev-list', '--max-parents=0', 'HEAD');
+  await git(vault, 'reset', '--soft', '-q', raiz.trim());
   assert.equal((await correr(vault, flowDir)).status, 'ARCHIVED', 'sin commit que lo nombre');
   const { stdout } = await git(vault, 'log', '--format=%s');
   assert.ok(stdout.includes('abc-1'));

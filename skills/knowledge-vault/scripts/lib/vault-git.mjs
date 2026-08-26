@@ -49,6 +49,58 @@ async function toplevel(vaultRoot) {
 }
 
 /**
+ * Lo que un vault recién creado necesita ignorar, y **nada más**.
+ *
+ * Los dos patrones son la causa medida de que un vault se ensucie solo: Obsidian
+ * escribe su configuración al abrirlo y macOS deja `.DS_Store` al navegar sus
+ * carpetas. Cualquiera de las dos deja el árbol con cambios ajenos, y el
+ * archivado se niega a commitear encima de trabajo de otro: el resultado es un
+ * flujo que no se puede archivar por un archivo que nadie escribió a propósito.
+ *
+ * **Dos y ninguno más.** En un almacén cuyo punto es la procedencia verificada,
+ * cada patrón de exclusión es un lugar donde algo puede desaparecer sin que nadie
+ * lo note. Estos dos se ganaron el lugar con un caso reproducido; el siguiente
+ * tendrá que ganárselo igual.
+ *
+ * Lo que esto **no** cubre, y conviene saberlo: hacer clic en un `[[enlace]]` no
+ * resuelto crea una nota vacía en la raíz del vault, y esa nota es un `.md`
+ * legítimo que ningún patrón puede distinguir de un documento real. Se borra a
+ * mano.
+ */
+const IGNORADOS = `# Lo escribe knowledge-vault al crear el vault. Obsidian y macOS ensucian el
+# árbol solos, y el archivado se niega a commitear encima de cambios ajenos.
+.obsidian/
+.DS_Store
+`;
+
+/**
+ * Siembra el `.gitignore` de un vault **recién creado** y lo commitea.
+ *
+ * Va en el mismo acto que el `git init` y no en cada corrida: reponerlo sobre un
+ * vault existente pisaría una decisión del usuario que borró o editó el suyo. Por
+ * lo mismo, un `.gitignore` que ya existe **no se toca** — el directorio pudo ser
+ * un repositorio de notas antes de ser un vault.
+ *
+ * **Se commitea acá y no se deja suelto**, y esa es la parte que no es opcional:
+ * `commitFlow` stagea rutas explícitas del flujo en curso, así que un `.gitignore`
+ * sin commitear quedaría como cambio ajeno para siempre y bloquearía el primer
+ * archivado — exactamente el problema que este archivo viene a evitar.
+ */
+async function sembrarGitignore(raiz) {
+  const destino = path.join(raiz, '.gitignore');
+  try {
+    await fs.access(destino);
+    return; // ya existe: es del usuario, no se toca
+  } catch {
+    // no existe, se siembra
+  }
+  await fs.writeFile(destino, IGNORADOS, 'utf8');
+  await ejecutar('git', ['-C', raiz, 'add', '--', '.gitignore']);
+  await ejecutar('git', ['-C', raiz, ...(await identidad(raiz)),
+                         'commit', '-q', '-m', 'siembra el .gitignore del vault']);
+}
+
+/**
  * Deja el vault como repositorio Git cuya raíz es exactamente la del vault.
  *
  * Idempotente: sobre un vault ya inicializado no toca nada.
@@ -65,7 +117,10 @@ export async function ensureVaultRepo(vaultRoot) {
       { path: raiz, detail: { toplevel: actual } },
     );
   }
-  if (actual === null) await ejecutar('git', ['init', '-q', raiz]);
+  if (actual === null) {
+    await ejecutar('git', ['init', '-q', raiz]);
+    await sembrarGitignore(raiz);
+  }
 
   const verificado = await toplevel(vaultRoot);
   if (verificado !== raiz) {
