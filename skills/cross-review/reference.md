@@ -562,8 +562,13 @@ read_root_key() {   # $1 = clave; imprime el valor SOLO si hay una asignación r
   [ "$n" -eq 1 ] && printf '%s\n' "$ROOT" |
     sed -n "s/^$1[[:space:]]*=[[:space:]]*\"\([^\"]*\)\".*/\1/p"
 }
-MODEL=$(read_root_key model)
-EFFORT=$(read_root_key model_reasoning_effort)
+# Perfil del rol `design-review`, familia `codex`. Los dos campos los resuelve la cadena de
+# `sdd-flow/reference.md` → "La cadena de resolución del perfil"; el conductor los deja en PERFIL_MODEL y PERFIL_EFFORT.
+MODEL="$PERFIL_MODEL"
+EFFORT="$PERFIL_EFFORT"
+# Escalón 4 por campo — sin autoridad anterior, esta ruta conserva la raíz del config personal.
+[ -z "$MODEL" ]  && MODEL=$(read_root_key model)
+[ -z "$EFFORT" ] && EFFORT=$(read_root_key model_reasoning_effort)
 echo "revisor: codex ${MODEL:-<default del CLI: no se pudo determinar el del config>}"
 
 set -- exec --ignore-user-config --disable hooks --disable apps --disable plugins \
@@ -593,8 +598,10 @@ function Read-RootKey($Key) {
   $m = @($Root | Select-String -Pattern "^$Key\s*=\s*`"([^`"]*)`"\s*$")
   if ($m.Count -eq 1) { $m[0].Matches.Groups[1].Value }
 }
-$Model  = Read-RootKey 'model'
-$Effort = Read-RootKey 'model_reasoning_effort'
+# Perfil del rol `design-review`, familia `codex`, por la cadena de
+# `sdd-flow/reference.md` → "La cadena de resolución del perfil". Escalón 4 por campo: la raíz del config personal.
+$Model  = if ($PerfilModel)  { $PerfilModel }  else { Read-RootKey 'model' }
+$Effort = if ($PerfilEffort) { $PerfilEffort } else { Read-RootKey 'model_reasoning_effort' }
 
 $CodexArgs = @('exec','--ignore-user-config','--disable','hooks','--disable','apps',
                '--disable','plugins','-s','read-only','-C','<working_dir>',
@@ -647,6 +654,9 @@ Get-Content -Raw <ruta\al\prompt-r1.txt> |
   ```bash
   SESSION_ID=$(cat <ruta/al/session.txt>)
   echo "resume → ${SESSION_ID:?vacío}"   # eco visible + corte si quedó vacío (ver nota --last)
+  # Escalón 1 de la cadena de `sdd-flow/reference.md` → "La cadena de resolución del perfil":
+  # en una reanudación la autoridad es el perfil CONGELADO de la sesión, que reemplaza `model` y
+  # `effort` juntos. No se consulta ni se valida el archivo, ni se relee el config personal.
   # Releer del scratch: las variables del proceso de la ronda 1 no sobreviven.
   MODEL=$(sed -n 's/.*"model":"\([^"]*\)".*/\1/p'  <ruta/al/session-meta.json>)
   EFFORT=$(sed -n 's/.*"effort":"\([^"]*\)".*/\1/p' <ruta/al/session-meta.json>)
@@ -664,7 +674,9 @@ Get-Content -Raw <ruta\al\prompt-r1.txt> |
   En **PowerShell**:
   <!-- despacho:inicio:cr-resume-ps:codex -->
   ```powershell
-  $SessionId = (Get-Content <ruta\al\session.txt>).Trim()
+  # Escalón 1 de la cadena de `sdd-flow/reference.md` → "La cadena de resolución del perfil": la autoridad
+# es el perfil CONGELADO de la sesión, que reemplaza los dos campos juntos; no se consulta el archivo.
+$SessionId = (Get-Content <ruta\al\session.txt>).Trim()
   if (-not $SessionId) { throw 'session id vacío' }; "resume → $SessionId"
   $Meta   = Get-Content -Raw <ruta\al\session-meta.json> | ConvertFrom-Json
   $Model  = $Meta.model
@@ -732,12 +744,15 @@ Trampas de este CLI que la invocación debe esquivar:
   <!-- despacho:inicio:cr-viac-r1-posix:claude -->
   ```bash
   SESSION_ID=$(uuidgen)   # Git Bash en Windows no trae uuidgen → ver "Portabilidad entre shells"
-  (cd <working_dir> && claude -p --safe-mode \
-      --model opus \
-      --permission-mode default \
-      --allowedTools=Read,Grep,Glob \
-      --session-id "$SESSION_ID" \
-      < <ruta/al/prompt-r1.txt>) > <ruta/al/veredicto.txt>
+  # Perfil del rol `design-review`, familia `claude`, por la cadena de
+  # `sdd-flow/reference.md` → "La cadena de resolución del perfil". Escalón 4 por campo: `opus`, el modelo
+  # cableado de esta ruta de juicio, y ningún flag de esfuerzo.
+  MODEL="${PERFIL_MODEL:-opus}"
+  EFFORT="$PERFIL_EFFORT"
+  set -- -p --safe-mode --model "$MODEL" --permission-mode default \
+         --allowedTools=Read,Grep,Glob --session-id "$SESSION_ID"
+  [ -n "$EFFORT" ] && set -- "$@" --effort "$EFFORT"
+  (cd <working_dir> && claude "$@" < <ruta/al/prompt-r1.txt>) > <ruta/al/veredicto.txt>
   ```
   <!-- despacho:fin:cr-viac-r1-posix -->
   En **PowerShell** (`uuidgen` → `[guid]::NewGuid()`; el subshell `(cd … && …)` →
@@ -745,11 +760,16 @@ Trampas de este CLI que la invocación debe esquivar:
   <!-- despacho:inicio:cr-viac-r1-ps:claude -->
   ```powershell
   $SessionId = [guid]::NewGuid().ToString()
+  # Perfil del rol `design-review`, familia `claude`, por la cadena de
+  # `sdd-flow/reference.md` → "La cadena de resolución del perfil". Escalón 4: `opus` cableado, sin esfuerzo.
+  $Model = if ($PerfilModel) { $PerfilModel } else { 'opus' }
+  $ClaudeArgs = @('-p','--safe-mode','--model',$Model,'--permission-mode','default',
+                  '--allowedTools=Read,Grep,Glob','--session-id',$SessionId)
+  if ($PerfilEffort) { $ClaudeArgs += @('--effort', $PerfilEffort) }
   Push-Location <working_dir>
   try {
     Get-Content -Raw <ruta\al\prompt-r1.txt> |
-      claude -p --safe-mode --model opus --permission-mode default `
-        '--allowedTools=Read,Grep,Glob' --session-id $SessionId > <ruta\al\veredicto.txt>
+      claude @ClaudeArgs > <ruta\al\veredicto.txt>
   } finally { Pop-Location }
   ```
   <!-- despacho:fin:cr-viac-r1-ps -->
@@ -758,22 +778,30 @@ Trampas de este CLI que la invocación debe esquivar:
 - Rondas siguientes (mismo thread, con memoria de lo ya discutido):
   <!-- despacho:inicio:cr-viac-resume-posix:claude -->
   ```bash
-  (cd <working_dir> && claude -p --safe-mode \
-      --model opus \
-      --permission-mode default \
-      --allowedTools=Read,Grep,Glob \
-      --resume "$SESSION_ID" \
-      < <ruta/al/delta-rN.txt>) > <ruta/al/veredicto.txt>
+  # Reanudación: escalón 1 de la cadena de `sdd-flow/reference.md` → "La cadena de resolución del perfil"
+  # — la autoridad es el perfil CONGELADO de la sesión, que reemplaza los dos campos juntos; no se
+  # consulta ni se valida el archivo. Escalón 4: `opus` cableado y ningún flag.
+  MODEL="${PERFIL_CONGELADO_MODEL:-opus}"
+  EFFORT="$PERFIL_CONGELADO_EFFORT"
+  set -- -p --safe-mode --model "$MODEL" --permission-mode default \
+         --allowedTools=Read,Grep,Glob --resume "$SESSION_ID"
+  [ -n "$EFFORT" ] && set -- "$@" --effort "$EFFORT"
+  (cd <working_dir> && claude "$@" < <ruta/al/delta-rN.txt>) > <ruta/al/veredicto.txt>
   ```
   <!-- despacho:fin:cr-viac-resume-posix -->
   En **PowerShell**:
   <!-- despacho:inicio:cr-viac-resume-ps:claude -->
   ```powershell
+  # Reanudación: escalón 1 de la cadena de `sdd-flow/reference.md` → "La cadena de resolución del perfil"
+  # — la autoridad es el perfil CONGELADO, que reemplaza los dos campos juntos. Escalón 4: `opus`.
+  $Model = if ($PerfilCongeladoModel) { $PerfilCongeladoModel } else { 'opus' }
+  $ClaudeArgs = @('-p','--safe-mode','--model',$Model,'--permission-mode','default',
+                  '--allowedTools=Read,Grep,Glob','--resume',$SessionId)
+  if ($PerfilCongeladoEffort) { $ClaudeArgs += @('--effort', $PerfilCongeladoEffort) }
   Push-Location <working_dir>
   try {
     Get-Content -Raw <ruta\al\delta-rN.txt> |
-      claude -p --safe-mode --model opus --permission-mode default `
-        '--allowedTools=Read,Grep,Glob' --resume $SessionId > <ruta\al\veredicto.txt>
+      claude @ClaudeArgs > <ruta\al\veredicto.txt>
   } finally { Pop-Location }
   ```
   <!-- despacho:fin:cr-viac-resume-ps -->
@@ -827,8 +855,15 @@ cuando el conductor puede sostener ese timeout, y lo que fuerza `execution: sync
 <!-- despacho:inicio:cr-latencia-sync:claude -->
 ```bash
 # Sync (POSIX) — el conductor fija el tope vía su exec (Claude Code: Bash timeout 300000/600000):
-( cd <working_dir> && claude -p --safe-mode --model opus --permission-mode default \
-    --allowedTools=Read,Grep,Glob --session-id "$SESSION_ID" \
+# Perfil del rol `design-review`, familia `claude`, por la cadena de
+# `sdd-flow/reference.md` → "La cadena de resolución del perfil". Escalón 4 por campo: `opus`, el modelo cableado
+# de esta ruta de juicio, y ningún flag de esfuerzo.
+MODEL="${PERFIL_MODEL:-opus}"
+EFFORT="$PERFIL_EFFORT"
+set -- -p --safe-mode --model "$MODEL" --permission-mode default \
+       --allowedTools=Read,Grep,Glob --session-id "$SESSION_ID"
+[ -n "$EFFORT" ] && set -- "$@" --effort "$EFFORT"
+( cd <working_dir> && claude "$@" \
     < <ruta/al/prompt-r1.txt> ) > <ruta/al/veredicto.txt> 2> <ruta/al/claude-r1.err.txt>
 ```
 <!-- despacho:fin:cr-latencia-sync -->
@@ -851,8 +886,15 @@ comando único bloquea más que el límite del conductor. Lo fuerza `execution: 
 <!-- despacho:inicio:cr-latencia-background:claude -->
 ```bash
 # Lanzar en background (POSIX) — capturar el PID para poder matarlo al vencer el deadline:
-( cd <working_dir> && claude -p --safe-mode --model opus --permission-mode default \
-    --allowedTools=Read,Grep,Glob --session-id "$SESSION_ID" \
+# Perfil del rol `design-review`, familia `claude`, por la cadena de
+# `sdd-flow/reference.md` → "La cadena de resolución del perfil". Escalón 4 por campo: `opus`, el modelo cableado
+# de esta ruta de juicio, y ningún flag de esfuerzo.
+MODEL="${PERFIL_MODEL:-opus}"
+EFFORT="$PERFIL_EFFORT"
+set -- -p --safe-mode --model "$MODEL" --permission-mode default \
+       --allowedTools=Read,Grep,Glob --session-id "$SESSION_ID"
+[ -n "$EFFORT" ] && set -- "$@" --effort "$EFFORT"
+( cd <working_dir> && claude "$@" \
     < <ruta/al/prompt-r1.txt> > <ruta/al/veredicto.txt> 2> <ruta/al/claude-r1.err.txt> ) &
 PID=$!
 # Poll (repetir como comandos cortos separados; tope DURO: ~N intentos = poll_deadline / 10s):
@@ -1105,6 +1147,8 @@ los otros dos:
 <!-- despacho:inicio:cr-seed-posix:codex -->
 ```bash
 # POSIX — resume del seed
+# Escalón 1 de la cadena de `sdd-flow/reference.md` → "La cadena de resolución del perfil": el seed
+# transporta el perfil CONGELADO —`model` y `effort` juntos— y es la autoridad de esta reanudación.
 SEED=<sesión que resuelva la matriz de resume>
 SESSION_ID=$(sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$SEED")
 MODEL=$(sed -n 's/.*"model"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$SEED")
@@ -1125,6 +1169,8 @@ codex "$@" < <ruta/al/prompt-r1.txt> > <ruta/al/thread-r1.jsonl> 2> <ruta/al/r1.
 <!-- despacho:inicio:cr-seed-ps:codex -->
 ```powershell
 # PowerShell — resume del seed
+# Escalón 1 de la cadena de `sdd-flow/reference.md` → "La cadena de resolución del perfil": el seed
+# transporta el perfil CONGELADO —los dos campos juntos— y es la autoridad de esta reanudación.
 $Seed = Get-Content -Raw co-explore\session.json | ConvertFrom-Json
 if (-not $Seed.session_id) { throw 'session.json sin session_id' }
 "seed → $($Seed.session_id) · modelo $(if ($Seed.model) { $Seed.model } else { '<default del CLI>' })"

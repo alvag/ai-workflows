@@ -257,9 +257,17 @@ created_at: <ISO-8601>
 | Conductor | Mecanismo |
 |---|---|
 | Claude Code | Subagente del entorno (`Agent`/`Task`), un despacho. |
-| Codex CLI | `codex exec --ignore-user-config --disable hooks --disable apps --disable plugins -s workspace-write -C <repo> --skip-git-repo-check --output-last-message <out.txt> - < <prompt.txt>` (prompt a archivo, nunca inline). |
+| Codex CLI | `codex exec --ignore-user-config --disable hooks --disable apps --disable plugins -s workspace-write -C <repo> --skip-git-repo-check ${PERFIL_MODEL:+-m} ${PERFIL_MODEL:+"$PERFIL_MODEL"} ${PERFIL_EFFORT:+-c} ${PERFIL_EFFORT:+"model_reasoning_effort=$PERFIL_EFFORT"} --output-last-message <out.txt> - < <prompt.txt>` (prompt a archivo, nunca inline). |
 | Sin subagentes | El conductor implementa inline siguiendo la Vía B de `sdd-flow` (degradación). |
 
+**`PERFIL_MODEL` y `PERFIL_EFFORT` son el perfil del rol `implement`, familia `codex`**, resuelto por
+la cadena de `sdd-flow/reference.md` → "La cadena de resolución del perfil". Las dos expansiones van
+**partidas** (`${X:+-m} ${X:+"$X"}`) y no juntas: zsh no hace field splitting, así que `-m` viajaría
+pegado a su valor y la API lo rechazaría.
+
+**Escalón 4 — el valor histórico concreto de esta ruta es el `default del CLI`**, no la raíz del
+config personal: `--ignore-user-config` lo descarta y esta receta nunca lo reinyectó. Cuando la
+cadena no resuelve ninguna autoridad para un campo, ese default se conserva y el flag no se emite.
 <!-- despacho:fin:prfb-codex -->
 
 > **Por qué la marca envuelve la tabla entera y no la fila.** Una línea que no es fila **corta la

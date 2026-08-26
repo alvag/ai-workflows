@@ -14,6 +14,10 @@ from __future__ import annotations
 
 import argparse
 import re
+import tempfile
+import subprocess
+import shutil
+import os
 import sys
 import unicodedata
 from dataclasses import dataclass
@@ -98,6 +102,12 @@ class Modo:
     nombre: str
     controles: tuple[str, ...]
     ejecutar: Callable[[str], list[Chequeo]]
+    corpus: Optional[Callable[[], str]] = None
+
+    def texto_base(self) -> str:
+        """Corpus que el autotest muta para este modo. Un modo que leyera archivos por su cuenta
+        sería inmutable: su mutante existiría y no podría ponerlo rojo nunca."""
+        return self.corpus() if self.corpus is not None else corpus_verde_real()
 
 
 @dataclass(frozen=True)
@@ -538,6 +548,217 @@ def verificar_29(texto: str) -> list[Chequeo]:
     ]
 
 
+SEDES_REGIONES = (
+    "skills/cross-review/reference.md",
+    "skills/co-explore/reference.md",
+    "skills/cross-implement/reference.md",
+    "skills/bitbucket-code-review/reference.md",
+    "skills/sdd-pr-feedback/reference.md",
+)
+# Rutas de reanudación: su autoridad es el perfil congelado (escalón 1), no el archivo.
+REGIONES_RESUME = {
+    "cr-resume-posix", "cr-resume-ps", "cr-seed-posix", "cr-seed-ps",
+    "cr-viac-resume-posix", "cr-viac-resume-ps",
+    "ci-wb-resume", "ci-wb-resume-ps", "ci-wc-fix",
+}
+# Las tres que históricamente no reinyectaban: su escalón 4 es el default del CLI.
+SIN_REINYECCION_IDS = {"bbcr-viab-posix", "bbcr-viab-ps", "prfb-codex"}
+
+
+def corpus_regiones() -> str:
+    """Las 31 regiones marcadas, concatenadas. Es el corpus mutable de V8."""
+    partes = []
+    for sede in SEDES_REGIONES:
+        texto = leer_texto(REPO / sede)
+        for hallado in re.finditer(
+            r"despacho:inicio:([a-z0-9-]+):(claude|codex) -->(.*?)<!-- despacho:fin:\1", texto, re.S
+        ):
+            partes.append(f"@@R {hallado.group(1)} {hallado.group(2)}@@\n{hallado.group(3)}")
+    return "\n".join(partes)
+
+
+def _es_powershell(region: str) -> bool:
+    return region.endswith("-ps") or "-ps-" in region
+
+
+def verificar_8(texto: str) -> list[Chequeo]:
+    regiones = []
+    for trozo in texto.split("@@R ")[1:]:
+        cabecera, _, cuerpo = trozo.partition("@@\n")
+        region, familia = cabecera.split()
+        regiones.append((region, familia, cuerpo, _ejecutable(cuerpo)))
+
+    def sin(predicado) -> list[str]:
+        return [r for r, f, c, e in regiones if not predicado(r, f, c, e)]
+
+    res: list[Chequeo] = []
+    def tiene_model(r, f, c, e):
+        if r in REGIONES_RESUME:
+            return "ONGELADO" in c or "ongelado" in c or "scalón 1" in c
+        return "PERFIL_MODEL" in e or "PerfilModel" in e
+
+    def tiene_effort(r, f, c, e):
+        if r in REGIONES_RESUME:
+            return "ONGELADO" in c or "ongelado" in c or "scalón 1" in c
+        return "PERFIL_EFFORT" in e or "PerfilEffort" in e
+    mal = sin(tiene_model)
+    res.append(control("V8.model-desde-perfil", not mal,
+                       f"las {len(regiones)} regiones toman `model` del perfil",
+                       f"no toman `model` del perfil: {mal}"))
+    mal = sin(tiene_effort)
+    res.append(control("V8.effort-desde-perfil", not mal,
+                       f"las {len(regiones)} regiones toman `effort` del perfil",
+                       f"no toman `effort` del perfil: {mal}"))
+
+    claude = [x for x in regiones if x[1] == "claude"]
+    mal = [r for r, f, c, e in claude if not re.search(r"\b(opus|sonnet)\b", c)]
+    res.append(control("V8.heredado-claude-model-materializa", not mal and bool(claude),
+                       "cada ruta Claude declara el modelo cableado que materializa `heredado`",
+                       f"no declaran su modelo cableado: {mal}"))
+    mal = [r for r, f, c, e in claude if "--effort" not in e]
+    res.append(control("V8.heredado-claude-effort-omite", not mal and bool(claude),
+                       "cada ruta Claude emite `--effort` solo cuando el perfil lo resuelve",
+                       f"no contemplan la omisión del flag de esfuerzo: {mal}"))
+
+    codex = [x for x in regiones if x[1] == "codex"]
+    # `-m` como TOKEN, no como substring: "-m" está contenido en "--model", así que el predicado
+    # ingenuo no puede ponerse rojo mientras la región mencione el flag largo en cualquier parte.
+    flag_modelo = re.compile(r"(?<![\w-])-m(?![\w-])")
+    mal = [r for r, f, c, e in codex if not flag_modelo.search(e)]
+    res.append(control("V8.heredado-codex-model-materializa", not mal and bool(codex),
+                       "cada ruta Codex emite el flag de modelo con el valor resuelto",
+                       f"no emiten el flag de modelo: {mal}"))
+    mal = [r for r, f, c, e in codex if "model_reasoning_effort" not in e]
+    res.append(control("V8.heredado-codex-effort-materializa", not mal and bool(codex),
+                       "cada ruta Codex emite `model_reasoning_effort` con el valor resuelto",
+                       f"no emiten el esfuerzo: {mal}"))
+
+    cableado = re.compile(r"--model[ ',]+(opus|sonnet)\b")
+    mal = [r for r, f, c, e in regiones if cableado.search(e)]
+    res.append(control("V8.sin-modelo-cableado", not mal,
+                       "ninguna región deja un modelo cableado en su comando",
+                       f"conservan un modelo cableado: {mal}"))
+
+    posix = [x for x in regiones if not _es_powershell(x[0])]
+    pwsh = [x for x in regiones if _es_powershell(x[0])]
+    # La expansión PARTIDA es obligatoria: zsh no hace field splitting y `-m` viajaría pegado.
+    parten = [x for x in posix if "${" in x[3] and ":+" in x[3]]
+    mal = [r for r, f, c, e in parten if re.search(r"\$\{[A-Z_]+:\+-[a-z] ", e)]
+    res.append(control("V8.forma-partida-posix", not mal,
+                       f"las {len(parten)} regiones POSIX con expansión condicional la usan partida",
+                       f"expansión sin partir (el flag viajaría pegado a su valor): {mal}"))
+    def _compacto(texto: str) -> str:
+        return re.sub(r"[ \t]+", " ", texto)
+
+    mal = [r for r, f, c, e in pwsh
+           if "Args = @(" not in _compacto(e) and "Args += @(" not in _compacto(e)]
+    res.append(control("V8.forma-array-powershell", not mal and bool(pwsh),
+                       f"las {len(pwsh)} regiones PowerShell construyen sus argumentos como array",
+                       f"no usan array de argumentos: {mal}"))
+
+    mal = [r for r, f, c, e in regiones if "cadena de resolución del perfil" not in c]
+    res.append(control("V8.remite-a-la-cadena", not mal,
+                       "las 31 remiten a la sede única de la cadena",
+                       f"no remiten a la cadena: {mal}"))
+    mal = [r for r, f, c, e in regiones
+           if "scalón 4" not in c and "scalón 1" not in c and "ONGELADO" not in c]
+    res.append(control("V8.escalon-4-declarado", not mal,
+                       "cada región declara qué escalón la gobierna sin autoridad anterior",
+                       f"no declaran su escalón: {mal}"))
+    mal = [r for r, f, c, e in regiones
+           if r in REGIONES_RESUME and "ONGELADO" not in c and "scalón 1" not in c]
+    res.append(control("V8.resume-usa-congelado", not mal,
+                       f"las {len(REGIONES_RESUME)} rutas de reanudación usan el perfil congelado",
+                       f"una reanudación que no declara el congelado: {mal}"))
+
+    # Ninguna región nombra el perfil de OTRA: eso sería compensar una ruta con la de al lado.
+    ajenas = [r for r, f, c, e in regiones
+              if any(otra in e for otra, _, _, _ in regiones if otra != r and len(otra) > 8)]
+    res.append(control("V8.sin-compensacion-entre-rutas", not ajenas,
+                       "ninguna región resuelve su perfil nombrando a otra",
+                       f"regiones que nombran otra ruta en su comando: {ajenas}"))
+
+    res.append(control("V8.cobertura-31-regiones", len(regiones) == 31,
+                       f"se inspeccionaron las {len(regiones)} regiones marcadas del árbol",
+                       f"se inspeccionaron {len(regiones)} regiones; se esperaban 31"))
+    res.append(control("V8.cobertura-posix", len(posix) == 18,
+                       f"las {len(posix)} regiones POSIX entran en la inspección",
+                       f"{len(posix)} regiones POSIX; se esperaban 18"))
+    res.append(control("V8.cobertura-powershell", len(pwsh) == 13,
+                       f"las {len(pwsh)} regiones PowerShell entran en la inspección",
+                       f"{len(pwsh)} regiones PowerShell; se esperaban 13"))
+    return res
+
+
+SIN_REINYECCION = {
+    "bbcr-viab-posix": "skills/bitbucket-code-review/reference.md",
+    "bbcr-viab-ps": "skills/bitbucket-code-review/reference.md",
+    "prfb-codex": "skills/sdd-pr-feedback/reference.md",
+}
+
+
+def cuerpo_region(ruta: Path, region: str) -> str:
+    texto = leer_texto(ruta)
+    patron = r"despacho:inicio:%s:[a-z]+ -->(.*?)<!-- despacho:fin:%s" % (region, region)
+    hallado = re.search(patron, texto, re.S)
+    if hallado is None:
+        raise MedicionDetenida(f"no existe la región {region} en {ruta}")
+    return hallado.group(1)
+
+
+def corpus_sin_reinyeccion() -> str:
+    """Las tres regiones sin reinyección, concatenadas y delimitadas: es el corpus mutable de V10."""
+    partes = [
+        f"@@REGION {region}@@\n{cuerpo_region(REPO / ruta, region)}"
+        for region, ruta in SIN_REINYECCION.items()
+    ]
+    return "\n".join(partes)
+
+
+def _ejecutable(cuerpo: str) -> str:
+    """Descarta comentarios y prosa: un texto que NOMBRA el literal no lo USA, y un control que no
+    distingue las dos cosas queda verde con solo un comentario al lado."""
+    return "\n".join(
+        linea for linea in cuerpo.splitlines()
+        if not linea.strip().startswith(("#", "**", ">"))
+    )
+
+
+def _usa_perfil(cuerpo: str) -> bool:
+    vivo = _ejecutable(cuerpo)
+    return ("PERFIL_MODEL" in vivo or "PerfilModel" in vivo) and (
+        "PERFIL_EFFORT" in vivo or "PerfilEffort" in vivo
+    )
+
+
+def verificar_10(texto: str) -> list[Chequeo]:
+    cuerpos = {region: "" for region in SIN_REINYECCION}
+    for trozo in texto.split("@@REGION ")[1:]:
+        region, _, resto = trozo.partition("@@\n")
+        cuerpos[region.strip()] = resto
+
+    resultados = [
+        control(
+            f"V10.{region}", _usa_perfil(cuerpos[region]),
+            "referencia el perfil en sus dos campos",
+            "no referencia el perfil en los dos campos fuera de la prosa",
+        )
+        for region in SIN_REINYECCION
+    ]
+    resultados.append(control(
+        "V10.ambos-campos", all(_usa_perfil(c) for c in cuerpos.values()),
+        "las tres regiones usan modelo y esfuerzo",
+        "alguna región omite uno de los dos campos",
+    ))
+    resultados.append(control(
+        "V10.fallback-historico",
+        all("default del CLI" in c for c in cuerpos.values()),
+        "las tres declaran su fallback histórico: el default del CLI",
+        "alguna no declara qué se conserva cuando la cadena no resuelve",
+    ))
+    return resultados
+
+
 MODOS = {
     "1": Modo("1", "V1", "esquema cerrado", (
         "V1.schema-version",
@@ -565,6 +786,31 @@ MODOS = {
     "6": Modo("6", "V6", "literal de herencia", (
         "V6.claude-model-cableado", "V6.claude-effort-sin-flag", "V6.codex-config-personal",
     ), verificar_6),
+    "8": Modo("8", "V8", "el perfil llega al comando de cada ruta", (
+        "V8.model-desde-perfil",
+        "V8.effort-desde-perfil",
+        "V8.heredado-claude-model-materializa",
+        "V8.heredado-claude-effort-omite",
+        "V8.heredado-codex-model-materializa",
+        "V8.heredado-codex-effort-materializa",
+        "V8.sin-modelo-cableado",
+        "V8.forma-partida-posix",
+        "V8.forma-array-powershell",
+        "V8.remite-a-la-cadena",
+        "V8.escalon-4-declarado",
+        "V8.resume-usa-congelado",
+        "V8.sin-compensacion-entre-rutas",
+        "V8.cobertura-31-regiones",
+        "V8.cobertura-posix",
+        "V8.cobertura-powershell",
+    ), verificar_8, corpus_regiones),
+    "10": Modo("10", "V10", "las tres rutas sin reinyección", (
+        "V10.bbcr-viab-posix",
+        "V10.bbcr-viab-ps",
+        "V10.prfb-codex",
+        "V10.ambos-campos",
+        "V10.fallback-historico",
+    ), verificar_10, corpus_sin_reinyeccion),
     "7": Modo("7", "V7", "enum portable de esfuerzo", (
         "V7.cinco-literales",
         "V7.traduccion-claude",
@@ -648,6 +894,61 @@ MUTANTES = {
         "| `alto` | `high` | `high` |",
         "| `alto` | `high` | `higher` |",
     ),
+    "V8.model-desde-perfil": mutar("V8.model-desde-perfil",
+        'MODEL="${PERFIL_MODEL:-sonnet}"', 'MODEL="sonnet"'),
+    "V8.effort-desde-perfil": mutar("V8.effort-desde-perfil",
+        'EFFORT="$PERFIL_EFFORT"\n  set -- -p --safe-mode --model "$MODEL" --permission-mode default \\\n         \'--allowedTools=Read,Grep,Glob,Edit(./**),Write(./**),Bash(<proof_bin>:*)\' \\\n         --session-id "$SESSION_ID"',
+        'EFFORT="alto"\n  set -- -p --safe-mode --model "$MODEL" --permission-mode default \\\n         \'--allowedTools=Read,Grep,Glob,Edit(./**),Write(./**),Bash(<proof_bin>:*)\' \\\n         --session-id "$SESSION_ID"'),
+    "V8.heredado-claude-model-materializa": mutar("V8.heredado-claude-model-materializa",
+        '`sonnet`,\n  # el modelo cableado de esta ruta de implementación, y ningún flag de esfuerzo.\n  MODEL="${PERFIL_MODEL:-sonnet}"',
+        'el modelo por defecto del CLI.\n  MODEL="$PERFIL_MODEL"'),
+    "V8.heredado-claude-effort-omite": mutar("V8.heredado-claude-effort-omite",
+        '[ -n "$EFFORT" ] && set -- "$@" --effort "$EFFORT"\n  ( cd <working_dir> && claude "$@" \\\n      < <scratch>/prompt.txt )',
+        '( cd <working_dir> && claude "$@" \\\n      < <scratch>/prompt.txt )'),
+    "V8.heredado-codex-model-materializa": mutar("V8.heredado-codex-model-materializa",
+        '  if ($Model)  { $ResumeArgs += @(\'-m\', $Model) }\n  if ($Effort) { $ResumeArgs += @(\'-c\', "model_reasoning_effort=$Effort") }',
+        '  if ($Effort) { $ResumeArgs += @(\'-c\', "model_reasoning_effort=$Effort") }'),
+    "V8.heredado-codex-effort-materializa": mutar("V8.heredado-codex-effort-materializa",
+        '${PERFIL_EFFORT:+-c} ${PERFIL_EFFORT:+"model_reasoning_effort=$PERFIL_EFFORT"} ', ''),
+    "V8.sin-modelo-cableado": mutar("V8.sin-modelo-cableado",
+        'MODEL="${PERFIL_CONGELADO_MODEL:-sonnet}"', '--model sonnet'),
+    "V8.forma-partida-posix": mutar("V8.forma-partida-posix",
+        '${MODEL:+-m} ${MODEL:+"$MODEL"} \\', '${MODEL:+-m "$MODEL"} \\'),
+    "V8.forma-array-powershell": mutar("V8.forma-array-powershell",
+        "  $ClaudeArgs  = @('-p','--safe-mode','--model',$ModelClaude,'--permission-mode','default',\n                   '--allowedTools=Read,Grep,Glob','--session-id',$SessionId)\n  if ($PerfilEffort) { $ClaudeArgs += @('--effort', $PerfilEffort) }\n  Get-Content -Raw <raíz-repo>\\.pr-review\\<id>\\prompt.txt |\n    claude @ClaudeArgs `",
+        '  $ClaudeArgs  = "-p --safe-mode --model $ModelClaude --session-id $SessionId"\n  Get-Content -Raw <raíz-repo>\\.pr-review\\<id>\\prompt.txt |\n    claude $ClaudeArgs `'),
+    "V8.remite-a-la-cadena": mutar("V8.remite-a-la-cadena",
+        '# Escalón 1 de la cadena de `sdd-flow/reference.md` → "La cadena de resolución del perfil": el seed\n# transporta el perfil CONGELADO —`model` y `effort` juntos— y es la autoridad de esta reanudación.\nSEED=',
+        '# Escalón 1: el seed transporta el perfil congelado.\nSEED='),
+    "V8.escalon-4-declarado": mutar("V8.escalon-4-declarado",
+        "# Escalón 4 — el valor histórico CONCRETO de esta ruta es el **default del CLI**",
+        "# El valor de esta ruta"),
+    "V8.resume-usa-congelado": mutar("V8.resume-usa-congelado",
+        '# Escalón 1 de la cadena de `sdd-flow/reference.md` → "La cadena de resolución del perfil":\n  # en una reanudación la autoridad es el perfil CONGELADO',
+        '# Cadena de resolución del perfil: la autoridad es el archivo vigente'),
+    "V8.sin-compensacion-entre-rutas": mutar("V8.sin-compensacion-entre-rutas",
+        'SEED=<sesión que resuelva la matriz', 'SEED=coex-fanout-posix-codex <sesión que resuelva la matriz'),
+    "V8.cobertura-31-regiones": mutar("V8.cobertura-31-regiones",
+        '@@R prfb-codex codex@@',
+        '@@OCULTA prfb-codex codex@@'),
+    "V8.cobertura-posix": mutar("V8.cobertura-posix",
+        '@@R cr-ronda1-posix codex@@',
+        '@@R cr-ronda1-alt-ps codex@@'),
+    "V8.cobertura-powershell": mutar("V8.cobertura-powershell",
+        '@@R cr-ronda1-ps codex@@',
+        '@@R cr-ronda1-alterna codex@@'),
+    "V10.bbcr-viab-posix": mutar("V10.bbcr-viab-posix",
+        'MODEL="$PERFIL_MODEL"', 'MODEL="opus"'),
+    "V10.bbcr-viab-ps": mutar("V10.bbcr-viab-ps",
+        "if ($PerfilModel)  { $CodexArgs += @('-m', $PerfilModel) }",
+        "$CodexArgs += @('-m', 'gpt-5.6-sol')"),
+    "V10.prfb-codex": mutar("V10.prfb-codex",
+        '${PERFIL_MODEL:+-m} ${PERFIL_MODEL:+"$PERFIL_MODEL"}', "-m gpt-5.6-sol"),
+    "V10.ambos-campos": mutar("V10.ambos-campos",
+        'EFFORT="$PERFIL_EFFORT"', 'EFFORT="alto"'),
+    "V10.fallback-historico": mutar("V10.fallback-historico",
+        "el valor histórico CONCRETO de esta ruta es el **default del CLI**",
+        "el valor de esta ruta se toma del config personal"),
     "V7.identidad-entre-familias": mutar("V7.identidad-entre-familias",
         "| `maximo` | `max` | `max` |",
         "| `maximo` | `max` | `maximum` |",
@@ -763,7 +1064,19 @@ def inventario_hojas(ruta: Path) -> tuple[list[str], str | None]:
     if seccion is None:
         raise MedicionDetenida(f"no existe la sección #### Hojas normativas de v1 en {ruta}")
     prefijos = tuple(f"{modo.fila}." for modo in MODOS.values())
-    hojas = [hoja for hoja in re.findall(r"`(V\d+\.[^`]+)`", seccion) if hoja.startswith(prefijos)]
+    # Solo las LÍNEAS DE DECLARACIÓN (`- **Vn** — ...`). Grepear la sección entera captura además las
+    # menciones en prosa —una nota que explica que una hoja se partió en dos, por ejemplo— y las suma
+    # al inventario como si fueran hojas: el mismo defecto de medir la mención en vez de la
+    # declaración.
+    declaradas = [
+        linea for linea in seccion.splitlines()
+        if re.match(r"^\s*[-*]\s+\*\*V\d+\*\*\s+—", linea)
+    ]
+    hojas = [
+        hoja for linea in declaradas
+        for hoja in re.findall(r"`(V\d+\.[^`]+)`", linea)
+        if hoja.startswith(prefijos)
+    ]
     duplicadas = sorted({hoja for hoja in hojas if hojas.count(hoja) > 1})
     return hojas, ", ".join(duplicadas) if duplicadas else None
 
@@ -815,13 +1128,13 @@ def evaluar_consistencia_interna() -> tuple[int, list[str]]:
         return 1, lineas
 
     try:
-        corpus = corpus_verde_real()
+        corpus_por_modo = {clave: modo.texto_base() for clave, modo in MODOS.items()}
     except MedicionDetenida as exc:
         return 3, lineas + [f"MEDICIÓN DETENIDA — {exc}; no hay veredicto."]
 
     fallas: list[str] = []
-    for modo in MODOS.values():
-        resultados = modo.ejecutar(corpus)
+    for clave, modo in MODOS.items():
+        resultados = modo.ejecutar(corpus_por_modo[clave])
         ids = tuple(resultado.hoja for resultado in resultados)
         ok = ids == modo.controles and all(resultado.ok for resultado in resultados)
         lineas.append(
@@ -833,7 +1146,9 @@ def evaluar_consistencia_interna() -> tuple[int, list[str]]:
 
     for hoja in sorted(controles, key=lambda valor: (int(valor.split(".", 1)[0][1:]), valor)):
         mutante = MUTANTES[hoja]
-        modo = next(m for m in MODOS.values() if hoja in m.controles)
+        clave = next(k for k, m in MODOS.items() if hoja in m.controles)
+        modo = MODOS[clave]
+        corpus = corpus_por_modo[clave]
         apariciones = corpus.count(mutante.patron)
         if apariciones != 1:
             lineas.append(
@@ -922,7 +1237,9 @@ def ejecutar_modo(modo: Modo) -> int:
         )
         return 3
     try:
-        texto = leer_texto(REFERENCE)
+        # el corpus DEL MODO, no el reference.md por defecto: V8 y V10 miran otras sedes, y pasarles
+        # el corpus equivocado los deja en rojo por leer el archivo que no les toca
+        texto = modo.texto_base()
     except MedicionDetenida as exc:
         print(f"MEDICIÓN DETENIDA — {exc}. No es un veredicto de {modo.fila}.")
         return 3

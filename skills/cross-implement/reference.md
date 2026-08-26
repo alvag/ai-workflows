@@ -213,6 +213,15 @@ de corrida"). Los comandos concretos aparecen en cada vía documentada debajo.
   y `$EFFORT` salen de la lectura previa del config — ver "Modelo y esfuerzo bajo aislamiento":
   <!-- despacho:inicio:ci-wb-posix:codex -->
   ```bash
+  # Perfil del rol `implement`, familia `codex`, resuelto por la cadena de
+  # `sdd-flow/reference.md` → "La cadena de resolución del perfil". La asignación va ACÁ y no en otra
+  # sección: una región que toma sus valores de fuera no se puede ejercer sola, y el modo `--ac 8`
+  # del verificador ejecuta cada región y lee su `argv`.
+  MODEL="$PERFIL_MODEL"
+  EFFORT="$PERFIL_EFFORT"
+  # Escalón 4 por campo — la raíz del config personal, que "Modelo y esfuerzo bajo aislamiento" lee.
+  [ -z "$MODEL" ]  && MODEL=$(read_root_key model)
+  [ -z "$EFFORT" ] && EFFORT=$(read_root_key model_reasoning_effort)
   codex exec --ignore-user-config --disable hooks --disable apps --disable plugins \
     -s workspace-write -C <working_dir> --skip-git-repo-check --json \
     ${MODEL:+-m} ${MODEL:+"$MODEL"} ${EFFORT:+-c} ${EFFORT:+"model_reasoning_effort=$EFFORT"} \
@@ -224,6 +233,12 @@ de corrida"). Los comandos concretos aparecen en cada vía documentada debajo.
   En **PowerShell**:
   <!-- despacho:inicio:ci-wb-ps:codex -->
   ```powershell
+  # Perfil del rol `implement`, familia `codex`, por la cadena de `sdd-flow/reference.md` →
+  # "La cadena de resolución del perfil". La asignación va ACÁ: una región que toma sus valores de
+  # fuera no se puede ejercer sola, y `--ac 8` ejecuta cada región y lee su `argv`.
+  # Escalón 4 por campo: la raíz del config personal (Read-RootKey).
+  $Model  = if ($PerfilModel)  { $PerfilModel }  else { Read-RootKey 'model' }
+  $Effort = if ($PerfilEffort) { $PerfilEffort } else { Read-RootKey 'model_reasoning_effort' }
   $CodexArgs = @('exec','--ignore-user-config','--disable','hooks','--disable','apps',
                  '--disable','plugins','-s','workspace-write','-C','<working_dir>',
                  '--skip-git-repo-check','--json',
@@ -255,6 +270,9 @@ de corrida"). Los comandos concretos aparecen en cada vía documentada debajo.
     para `-m` / `model_reasoning_effort`: los recarga de `session-meta.json`, no de la sesión.
   <!-- despacho:inicio:ci-wb-resume:codex -->
   ```bash
+  # Escalón 1 de la cadena de resolución del perfil
+  # (`sdd-flow/reference.md` → "La cadena de resolución del perfil"): en una reanudación la autoridad es el perfil CONGELADO de la sesión, que reemplaza
+  # `model` y `effort` juntos; no se consulta ni se valida `.specify/workers.yml`.
   SESSION_ID=$(cat <scratch>/session.txt)
   echo "resume → ${SESSION_ID:?vacío}"   # id vacío = sesión fresca silenciosa; cortar acá
   ( cd <working_dir> &&                  # `resume` no acepta -C: el working dir es el cwd
@@ -269,9 +287,12 @@ de corrida"). Los comandos concretos aparecen en cada vía documentada debajo.
   El `cd` va en **subshell**: fuera de él cambiaría el cwd del conductor para todo lo que siga, y el
   siguiente comando —medir el baseline, leer el diff— operaría sobre el directorio equivocado sin
   error. Misma razón por la que la Vía W-C usa `( cd … )` y PowerShell usa `Push-Location`.
-  En **PowerShell** el equivalente del `-C` ausente es `Push-Location`:
+  En **PowerS
   <!-- despacho:inicio:ci-wb-resume-ps:codex -->
   ```powershell
+  # Escalón 1 de la cadena de resolución del perfil
+  # (`sdd-flow/reference.md` → "La cadena de resolución del perfil"): la autoridad es el perfil CONGELADO de la sesión —los dos campos juntos—; no se
+  # consulta el archivo. $Model y $Effort se recargan de session-meta.json, que lo transporta.
   $SessionId = (Get-Content <scratch>\session.txt -Raw).Trim()
   if (-not $SessionId) { throw 'session id vacío: sería una sesión fresca silenciosa' }
   $ResumeArgs = @('exec','resume',$SessionId,'--ignore-user-config','--disable','hooks',
@@ -287,7 +308,7 @@ de corrida"). Los comandos concretos aparecen en cada vía documentada debajo.
       codex @ResumeArgs > <scratch>\thread-fix-rN.jsonl 2> <scratch>\impl.err.txt
   } finally { Pop-Location }
   ```
-  <!-- despacho:fin:ci-wb-resume-ps -->
+<!-- despacho:fin:ci-wb-resume-ps -->
   El `try/finally` no es cosmético: sin él, un throw del pipe deja al conductor parado en el working
   dir del worker, que es el mismo modo de falla que el subshell evita en POSIX.
 
@@ -365,9 +386,16 @@ limitan la escritura al working dir:
   <!-- despacho:inicio:ci-wc-lanzamiento:claude -->
   ```bash
   SESSION_ID=$(uuidgen)   # Git Bash en Windows: ver "Portabilidad" de cross-review
-  ( cd <working_dir> && claude -p --safe-mode --model sonnet --permission-mode default \
-      --allowedTools='Read,Grep,Glob,Edit(./**),Write(./**),Bash(<proof_bin>:*)' \
-      --session-id "$SESSION_ID" \
+  # Perfil del rol `implement`, familia `claude`, resuelto por la cadena de
+  # `sdd-flow/reference.md` → "La cadena de resolución del perfil". Escalón 4 por campo: `sonnet`,
+  # el modelo cableado de esta ruta de implementación, y ningún flag de esfuerzo.
+  MODEL="${PERFIL_MODEL:-sonnet}"
+  EFFORT="$PERFIL_EFFORT"
+  set -- -p --safe-mode --model "$MODEL" --permission-mode default \
+         '--allowedTools=Read,Grep,Glob,Edit(./**),Write(./**),Bash(<proof_bin>:*)' \
+         --session-id "$SESSION_ID"
+  [ -n "$EFFORT" ] && set -- "$@" --effort "$EFFORT"
+  ( cd <working_dir> && claude "$@" \
       < <scratch>/prompt.txt ) > <scratch>/report.txt 2> <scratch>/impl.err.txt
   echo "$SESSION_ID" > <scratch>/session.txt
   ```
@@ -394,18 +422,22 @@ limitan la escritura al working dir:
   del working dir sin restricción (ver matriz). Tampoco `--dangerously-skip-permissions`.
 - Las reglas `Edit(./**)`/`Write(./**)` son relativas al cwd: por eso el `cd <working_dir>`
   previo (o `Push-Location`) es parte del contrato, no cosmético.
-- **Modelo**: default `sonnet` para implementación (velocidad; la calidad la garantiza el work
-  order congelado + la revisión del conductor). Subir a `opus` es decisión consciente de la
-  llamadora para work orders complejos.
-- **Fix round** (mismo thread):
+- **Modelo**: default `sonnet` para implementación (velocidad; la calidad la garantiza e
   <!-- despacho:inicio:ci-wc-fix:claude -->
+# Resuelto por la cadena de `sdd-flow/reference.md` → "La cadena de resolución del perfil".
   ```bash
-  ( cd <working_dir> && claude -p --safe-mode --model sonnet --permission-mode default \
-      --allowedTools='Read,Grep,Glob,Edit(./**),Write(./**),Bash(<proof_bin>:*)' \
-      --resume "$SESSION_ID" \
+  # Reanudación: la autoridad es el perfil CONGELADO de la sesión (escalón 1), que reemplaza los dos
+  # campos juntos; no se consulta el archivo. Escalón 4: `sonnet` cableado y ningún flag.
+  MODEL="${PERFIL_CONGELADO_MODEL:-sonnet}"
+  EFFORT="$PERFIL_CONGELADO_EFFORT"
+  set -- -p --safe-mode --model "$MODEL" --permission-mode default \
+         '--allowedTools=Read,Grep,Glob,Edit(./**),Write(./**),Bash(<proof_bin>:*)' \
+         --resume "$SESSION_ID"
+  [ -n "$EFFORT" ] && set -- "$@" --effort "$EFFORT"
+  ( cd <working_dir> && claude "$@" \
       < <scratch>/fix-rN.txt ) > <scratch>/report.txt 2> <scratch>/impl.err.txt
   ```
-  <!-- despacho:fin:ci-wc-fix -->
+<!-- despacho:fin:ci-wc-fix -->
 - Con conductor de exec corto (Codex ~120s): lanzar en background y pollear el `report.txt`
   buscando `STATUS: done` — mismo patrón BACKGROUND de `cross-review/reference.md` → "Latencia
   y timeout (Claude revisor)", con el deadline de esta skill.
