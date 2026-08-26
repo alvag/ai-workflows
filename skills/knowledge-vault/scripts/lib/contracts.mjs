@@ -26,7 +26,7 @@ export const VERBS = Object.freeze(['archive', 'migrate', 'index', 'config', 're
 
 const STATUS_BY_EXIT_CODE = Object.freeze({
   0: ['ARCHIVED', 'ALREADY_ARCHIVED', 'INDEX_OK', 'BATCH_OK', 'DRY_RUN', 'VAULT_CONFIGURED', 'VAULT_SET',
-      'IDENTITY_PROPOSED', 'IDENTITY_DECLARED', 'IDENTITY_ALREADY_DECLARED'],
+      'IDENTITY_PROPOSED', 'IDENTITY_DECLARED', 'IDENTITY_ALREADY_DECLARED', 'VAULTS_DISCOVERED'],
   // Un lote incompleto **no** sale 0: migrar 49 de 50 deja un vault que ningún
   // criterio distingue de uno completo, y ese es justo el error caro.
   1: ['INTERNAL_ERROR', 'BATCH_PARTIAL', 'BATCH_FAILED'],
@@ -40,7 +40,14 @@ const STATUS_BY_EXIT_CODE = Object.freeze({
   // dice a quien automatiza que encontró un bug en vez de que le falta declarar
   // la identidad.
   4: ['PRECONDITION_NOT_MET', 'AMBIGUOUS_IDENTITY'],
-  5: ['NO_VAULT'],
+  // `VAULT_ROOT_UNAVAILABLE` acompaña a `NO_VAULT` y no se queda en
+  // `INTERNAL_ERROR`, que es donde caía por no estar en esta tabla. La familia es
+  // la correcta: las dos dicen "la raíz del vault no sirve para operar" y quien
+  // automatiza actúa igual ante ambas —preguntar o degradar—, mientras que un `1`
+  // le dice que encontró un bug. Se veía en `config --set-root` con una ruta mal
+  // tipeada: el fallo aparecía después, en el `archive` siguiente, como error
+  // interno.
+  5: ['NO_VAULT', 'VAULT_ROOT_UNAVAILABLE'],
   8: ['SOURCE_UNAVAILABLE'],
   9: ['VERIFY_FAILED', 'COPY_FAILED', 'PUBLISH_FAILED'],
 });
@@ -60,7 +67,7 @@ const STATES_BY_VERB = Object.freeze({
   archive: Object.freeze(['ARCHIVED', 'ALREADY_ARCHIVED']),
   migrate: Object.freeze(['BATCH_OK', 'BATCH_PARTIAL', 'BATCH_FAILED', 'DRY_RUN']),
   index: Object.freeze(['INDEX_OK']),
-  config: Object.freeze(['VAULT_CONFIGURED', 'VAULT_SET']),
+  config: Object.freeze(['VAULT_CONFIGURED', 'VAULT_SET', 'VAULTS_DISCOVERED']),
   // El quinto verbo **no agrega códigos**: reusa los que ya existen con el mismo
   // significado. Un `9` que ya quería decir "el destino no verifica" no puede
   // cambiar de sentido porque apareció un verbo nuevo, y quien automatiza `kv`

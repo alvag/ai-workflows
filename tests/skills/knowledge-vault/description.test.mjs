@@ -153,3 +153,47 @@ test('[AC-15] el chequeo del puntero sabe ponerse rojo', () => {
   assert.deepEqual(verbosDeLaMatriz(conCuatro), ['archive', 'migrate', 'index', 'config']);
   assert.notDeepEqual(verbosDeLaMatriz(conCuatro).sort(), [...VERBS].sort());
 });
+
+/**
+ * Los verbos que la tabla del **`SKILL.md`** documenta.
+ *
+ * Su tabla no tiene título propio —vive bajo un encabezado que también cubre otra
+ * cosa—, así que se la reconoce por su cabecera literal en vez de por una sección,
+ * y se lee hasta la primera línea que no es fila. Anclar por sección la haría
+ * frágil justo ante el cambio que hay que detectar.
+ */
+function verbosDeLaTablaDelSkill(texto) {
+  const cabecera = texto.indexOf('| Verbo | Qué hace | Estados |');
+  assert.notEqual(cabecera, -1, 'SKILL.md no tiene su tabla de verbos');
+  const filas = texto.slice(cabecera).split('\n');
+  const verbos = [];
+  for (const fila of filas.slice(2)) {
+    if (!fila.startsWith('|')) break;
+    const m = fila.match(/^\| `([a-z-]+)[ `]/);
+    if (m) verbos.push(m[1]);
+  }
+  return [...new Set(verbos)];
+}
+
+test('[AC-15] la tabla del SKILL.md documenta los seis verbos, no sólo la de reference', async () => {
+  // El mismo defecto tuvo dos sedes. Se arregló en `reference.md` y la guarda se
+  // escribió sobre ese archivo, así que el `SKILL.md` siguió con cuatro filas
+  // mientras la descripción declaraba seis: un agente que lo abriera para ver qué
+  // puede hacer la skill no encontraba ni `retire` ni `identity`.
+  const skill = await fs.readFile(SKILL, 'utf8');
+  assert.deepEqual(verbosDeLaTablaDelSkill(skill).sort(), [...VERBS].sort());
+});
+
+test('[AC-15] el chequeo de la tabla del SKILL.md sabe ponerse rojo', () => {
+  // Control positivo, con la forma exacta que tenía el defecto.
+  const conCuatro = [
+    '| Verbo | Qué hace | Estados |', '|---|---|---|',
+    '| `archive --from <x>` | archiva | `ARCHIVED` |',
+    '| `migrate --from <x>` | lote | `BATCH_OK` |',
+    '| `index` | índices | `INDEX_OK` |',
+    '| `config --config <x>` | config | `VAULT_SET` |', '',
+    'texto suelto que corta la tabla',
+  ].join('\n');
+  assert.deepEqual(verbosDeLaTablaDelSkill(conCuatro), ['archive', 'migrate', 'index', 'config']);
+  assert.notDeepEqual(verbosDeLaTablaDelSkill(conCuatro).sort(), [...VERBS].sort());
+});

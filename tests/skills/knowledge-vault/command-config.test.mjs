@@ -23,7 +23,10 @@ async function escena(t, contenido = null) {
     await fsp.mkdir(path.dirname(ruta), { recursive: true });
     await fsp.writeFile(ruta, contenido, 'utf8');
   }
-  return { caja, ruta, vault: path.join(caja.vaultsDir, 'dev-memory') };
+  // El vault **existe** en disco: `--set-root` ahora comprueba la raíz antes de
+  // escribirla, y una escena que no la crea estaría probando el rechazo en vez de
+  // la escritura.
+  return { caja, ruta, vault: await caja.makeVault('dev-memory') };
 }
 
 const correr = (flags) => configCommand({ fs: new DurableFs(), flags, homeDir: '/home/nadie' });
@@ -47,11 +50,13 @@ test('crea el config si no existía', async (t) => {
 
 test('reemplaza una raíz previa en vez de agregar una segunda', async (t) => {
   const e = await escena(t, AJENO);
-  await correr({ config: e.ruta, 'set-root': '/vaults/viejo' });
+  // Las dos raíces existen: lo que se prueba es el reemplazo, no la validación.
+  const viejo = await e.caja.makeVault('viejo');
+  await correr({ config: e.ruta, 'set-root': viejo });
   await correr({ config: e.ruta, 'set-root': e.vault });
   const texto = await fsp.readFile(e.ruta, 'utf8');
   assert.equal((texto.match(/path_vault:/g) ?? []).length, 1);
-  assert.ok(!texto.includes('/vaults/viejo'));
+  assert.ok(!texto.includes(viejo));
 });
 
 test('una raíz inválida se rechaza antes de escribir', async (t) => {
@@ -75,4 +80,75 @@ test('sin --config es USAGE', async () => {
     assert.equal(error.code, 'USAGE');
     return true;
   });
+});
+
+// ── `--discover`: el primer uso, cuando no hay nada declarado ─────────────────
+
+test('discover clasifica, sugiere el único vault y nombra los ajenos sin sugerirlos', async (t) => {
+  const e = await escena(t);
+  const raiz = await e.caja.makeTree(path.join(e.caja.reposDir, 'home'), {
+    'vaults/dev-memory/.kv/identidades.tsv': 'ai\t\t\t\n',
+    'vaults/dev-memory/projects/ai/sdd/uno.md': '# uno\n',
+    'vaults/cocha/.obsidian/app.json': '{}\n',
+    'vaults/cocha/Welcome.md': '# hola\n',
+  });
+
+  const r = await correr({ discover: true, 'search-root': raiz });
+  assert.equal(r.status, 'VAULTS_DISCOVERED');
+  assert.equal(r.sugerido, path.join(raiz, 'vaults', 'dev-memory'));
+  assert.deepEqual(r.vaults.map((v) => v.root), [path.join(raiz, 'vaults', 'dev-memory')]);
+  // El ajeno se informa pero **no** entra en `vaults` ni puede ser el sugerido:
+  // callarlo dejaría a quien busca preguntándose por qué su carpeta no aparece,
+  // y sugerirlo es exactamente el daño que este verbo existe para evitar.
+  assert.deepEqual(r.ajenos, [path.join(raiz, 'vaults', 'cocha')]);
+});
+
+test('discover no sugiere nada cuando hay más de un vault', async (t) => {
+  const e = await escena(t);
+  const raiz = await e.caja.makeTree(path.join(e.caja.reposDir, 'home'), {
+    'a/.kv/x': '\n',
+    'b/.kv/x': '\n',
+  });
+
+  const r = await correr({ discover: true, 'search-root': raiz });
+  assert.equal(r.vaults.length, 2);
+  // Desempatar por número de flujos elegiría por tamaño una pregunta que es de
+  // propósito: cuál de los dos vaults es el de este proyecto.
+  assert.equal(r.sugerido, null);
+});
+
+test('discover sin candidatos sale 0 y lo dice, en vez de fallar', async (t) => {
+  const e = await escena(t);
+  const raiz = await e.caja.makeTree(path.join(e.caja.reposDir, 'desierto'), { 'a/b/nota.txt': 'x\n' });
+
+  // Mismo criterio que el ensayo de `retire`: un descubrimiento que falla por lo
+  // que encontró es un descubrimiento que no se puede leer. Cero candidatos es un
+  // resultado legítimo —hay que crear el vault—, no un error.
+  const r = await correr({ discover: true, 'search-root': raiz });
+  assert.equal(r.status, 'VAULTS_DISCOVERED');
+  assert.deepEqual(r.vaults, []);
+  assert.equal(r.sugerido, null);
+});
+
+test('discover no escribe nada: descubrir no es configurar', async (t) => {
+  const e = await escena(t, AJENO);
+  const raiz = await e.caja.makeTree(path.join(e.caja.reposDir, 'home'), { 'v/.kv/x': '\n' });
+
+  await correr({ discover: true, 'search-root': raiz, config: e.ruta });
+  assert.equal(await fsp.readFile(e.ruta, 'utf8'), AJENO, 'discover tocó el config');
+});
+
+test('set-root rechaza una raíz que no existe, antes de escribirla', async (t) => {
+  const e = await escena(t, AJENO);
+  // El defecto que esto cierra: `resolveVaultRoot` sólo valida la **forma**, así
+  // que una ruta mal tipeada se escribía sin chistar y reaparecía en el `archive`
+  // siguiente, lejos de su causa y como error interno.
+  await assert.rejects(
+    () => correr({ config: e.ruta, 'set-root': path.join(e.caja.vaultsDir, 'no-existe') }),
+    (error) => {
+      assert.equal(error.code, 'VAULT_ROOT_UNAVAILABLE');
+      return true;
+    },
+  );
+  assert.equal(await fsp.readFile(e.ruta, 'utf8'), AJENO, 'el config cambió pese al rechazo');
 });

@@ -12,8 +12,9 @@
 import path from 'node:path';
 
 import { readPathVault, upsertPathVault } from '../config-yaml.mjs';
-import { ConfigError, resolveVaultRoot } from '../config.mjs';
+import { ConfigError, assertRootUsable, resolveVaultRoot } from '../config.mjs';
 import { ContractError } from '../contracts.mjs';
+import { CLASES, descubrirVaults } from '../vault-discovery.mjs';
 
 async function leerSiExiste(fs, ruta, label) {
   try {
@@ -25,6 +26,8 @@ async function leerSiExiste(fs, ruta, label) {
 }
 
 export async function configCommand({ fs, flags, homeDir = null, label = 'config' }) {
+  if (flags.discover === true) return descubrir({ fs, flags, homeDir, label });
+
   const configPath = flags.config;
   if (typeof configPath !== 'string' || configPath.length === 0) {
     throw new ContractError('USAGE', 'config exige --config con una ruta');
@@ -45,12 +48,63 @@ export async function configCommand({ fs, flags, homeDir = null, label = 'config
 
   // Se valida **antes** de escribir: dejar en el config una raíz que después no
   // resuelve convierte un error de tipeo en un fallo que aparece mucho más tarde
-  // y lejos de su causa.
+  // y lejos de su causa. `resolveVaultRoot` sólo resuelve la **forma** —expande
+  // `~`, absolutiza—, así que durante un tiempo la promesa de este comentario no
+  // se cumplía: una ruta mal tipeada se escribía sin chistar y reaparecía en el
+  // `archive` siguiente como un `INTERNAL_ERROR` genérico, lejos de su causa
+  // igual que si no se validara nada. `assertRootUsable` es lo que la cumple:
+  // comprueba que exista, sea directorio, sea escribible y no sea el vault de
+  // notas de otro.
   const root = resolveVaultRoot(flags['set-root'], homeDir, 'set-root');
+  await assertRootUsable({ fs, root, label: `${label}.usable` });
   // `upsertPathVault` devuelve `{ text, changed }`: inserta o reemplaza **por
   // líneas**, para no reescribirle el formato al archivo de otro.
   const { text } = upsertPathVault(previo ?? '', flags['set-root']);
   await fs.mkdir(path.dirname(resuelto), `${label}.mkdir`, { recursive: true });
   await fs.writeFileAtomic(resuelto, Buffer.from(text, 'utf8'), `${label}.write`);
   return { status: 'VAULT_SET', configPath: resuelto, root };
+}
+
+/**
+ * `config --discover`: qué vaults hay en el disco, clasificados.
+ *
+ * Existe porque `kv` no tiene registro global, y esa decisión —cada proyecto
+ * apunta al suyo, sin archivo central— deja un hueco concreto en el primer uso:
+ * `NO_VAULT` dice que falta declarar la raíz y no hay dónde averiguar cuál es.
+ *
+ * **Sale 0 siempre, incluso sin candidatos**, por la misma razón que el ensayo de
+ * `retire`: un descubrimiento que falla por lo que encontró es un descubrimiento
+ * que no se puede leer. Cero candidatos es un resultado legítimo —hay que crear
+ * el vault— y no un error.
+ *
+ * **No escribe nada.** Quien elige es una persona, y persistir la elección es el
+ * otro modo de este mismo verbo (`--set-root`).
+ */
+async function descubrir({ fs, flags, homeDir, label }) {
+  const declarado = flags['search-root'];
+  const raices = typeof declarado === 'string' && declarado.length > 0 ? [declarado] : homeDir === null ? [] : [homeDir];
+  if (raices.length === 0) {
+    throw new ContractError('USAGE', 'discover exige --search-root cuando no hay home resoluble');
+  }
+
+  const { candidatos } = await descubrirVaults({ fs, raices, label: `${label}.discover` });
+  const vaults = candidatos.filter((c) => c.clase === CLASES.KV);
+  const ajenos = candidatos.filter((c) => c.clase === CLASES.OBSIDIAN);
+
+  // La sugerencia es del comando y no de quien lo lee, para que dos agentes no
+  // elijan distinto sobre la misma evidencia: con un solo vault, ese; con varios,
+  // ninguna, porque desempatar por número de flujos elegiría por tamaño una
+  // pregunta que es de propósito.
+  const sugerido = vaults.length === 1 ? vaults[0].root : null;
+
+  return {
+    status: 'VAULTS_DISCOVERED',
+    buscadoEn: raices,
+    sugerido,
+    vaults,
+    // Se informan **sin** sugerirlos: son la trampa que este verbo existe para no
+    // pisar, y callarlos dejaría a quien busca preguntándose por qué su carpeta
+    // de notas no aparece.
+    ajenos: ajenos.map((c) => c.root),
+  };
 }

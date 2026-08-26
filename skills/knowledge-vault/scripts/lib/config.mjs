@@ -36,6 +36,19 @@ import path from 'node:path';
 
 import { ConfigYamlError, readPathVault } from './config-yaml.mjs';
 import { isInjectedCrash } from './durable-fs.mjs';
+import { CLASES, clasificarDirectorio } from './vault-discovery.mjs';
+
+/**
+ * La salida de `NO_VAULT`, escrita una sola vez y agregada a los tres mensajes.
+ *
+ * Un error que nombra el estado pero no el camino obliga a quien lo recibe —un
+ * agente, casi siempre— a irse al `SKILL.md` a deducir el verbo y la clave, y
+ * durante ese rodeo puede inventar cualquiera de las dos. El estado ya decía
+ * "falta declarar la raíz"; lo que faltaba era **cómo**.
+ */
+const COMO_DECLARAR =
+  'declarala con `kv config --config <ruta-del-config> --set-root <raíz-del-vault>`, ' +
+  'o corré `kv config --discover` para ver qué vaults hay en el disco';
 
 export class ConfigError extends Error {
   constructor(code, message, { path: target = null, detail = null } = {}) {
@@ -153,7 +166,7 @@ export async function resolveVaultRootFrom({
   }
 
   if (configPath === null) {
-    throw new ConfigError('NO_VAULT', 'no se declaró la raíz del vault: falta --config o --vault-root');
+    throw new ConfigError('NO_VAULT', `no se declaró la raíz del vault: falta --config o --vault-root; ${COMO_DECLARAR}`);
   }
 
   const resuelto = path.resolve(configPath);
@@ -164,7 +177,7 @@ export async function resolveVaultRootFrom({
     // Un config ausente es la ausencia de configuración, no un archivo roto: es
     // el estado que habilita que el consumidor pregunte y configure.
     if (error?.code === 'ENOENT' || error?.cause?.code === 'ENOENT') {
-      throw new ConfigError('NO_VAULT', `el config ${resuelto} no existe`, { path: resuelto });
+      throw new ConfigError('NO_VAULT', `el config ${resuelto} no existe, así que el proyecto no declara ningún vault: ${COMO_DECLARAR}`, { path: resuelto });
     }
     if (isInvalidConfigPathError(error)) {
       throw new ConfigError('CONFIG_INVALID', `no se puede leer ${resuelto}: ${error.message}`, { path: resuelto });
@@ -174,7 +187,7 @@ export async function resolveVaultRootFrom({
 
   const declarado = readDeclaredRoot(bytes, resuelto);
   if (declarado === null) {
-    throw new ConfigError('NO_VAULT', `el config ${resuelto} no declara path_vault`, { path: resuelto });
+    throw new ConfigError('NO_VAULT', `el config ${resuelto} no declara path_vault: ${COMO_DECLARAR}`, { path: resuelto });
   }
 
   const root = resolveVaultRoot(declarado, homeDeclarado(declarado, homeDir), 'path_vault');
@@ -259,7 +272,7 @@ function homeDeclarado(raw, homeDir) {
  * hacia un volumen externo es legítimo. La prohibición de symlinks de AC-14 es
  * sobre el árbol de **origen**, no sobre el destino que el usuario eligió.
  */
-async function assertRootUsable({ fs, root, label }) {
+export async function assertRootUsable({ fs, root, label }) {
   const noUsable = (motivo) =>
     new ConfigError('VAULT_ROOT_UNAVAILABLE', `la raíz del vault ${motivo}: ${root}`, { path: root });
 
@@ -282,6 +295,23 @@ async function assertRootUsable({ fs, root, label }) {
   if (info === null) throw noUsable('no existe');
   if (!info.isDirectory()) throw noUsable('no es un directorio');
   if (!(await fs.access(root, constants.W_OK, `${label}.access`))) throw noUsable('no es escribible');
+
+  // Y la última: que el destino no sea el vault de notas de otro. Va **acá** y no
+  // en `ensureVaultRepo` porque ahí ya es tarde: lo primero que ese hace es
+  // `git init`, así que un destino equivocado se lleva un repositorio que nadie
+  // pidió antes de que ninguna otra guarda mire. Medido apuntando `archive` a un
+  // vault de Obsidian ajeno: `assertVaultClean` frenó la copia, pero el `.git`
+  // quedó escrito.
+  const { clase } = await clasificarDirectorio({ fs, dir: root, label: `${label}.clasificar` });
+  if (clase === CLASES.OBSIDIAN) {
+    throw new ConfigError(
+      'VAULT_ROOT_UNAVAILABLE',
+      `la raíz del vault ${root} parece un vault de notas ajeno: tiene .obsidian/ y documentos, ` +
+        'pero ninguna marca de knowledge-vault (.kv/ ni index.md con projects/). ' +
+        'Archivar ahí lo convertiría en un vault de kv: elegí un directorio propio, vacío o nuevo',
+      { path: root },
+    );
+  }
 }
 
 // ── La matriz de rutas (AC-15) ────────────────────────────────────────────────

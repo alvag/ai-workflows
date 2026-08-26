@@ -52,15 +52,45 @@ al punto de no retorno, el origen sigue ahí y el vault se descarta y se rehace.
 | `migrate --from <raíz> --summaries <tsv>` | archiva todos los flujos de un directorio | `BATCH_OK` (0) · `BATCH_PARTIAL` (1) · `BATCH_FAILED` (1) · `DRY_RUN` |
 | `index` | regenera los índices | `INDEX_OK` |
 | `config --config <ruta> [--set-root <ruta>]` | lee o escribe `path_vault` | `VAULT_CONFIGURED` · `VAULT_SET` |
+| `config --discover [--search-root <ruta>]` | qué vaults hay en el disco, clasificados | `VAULTS_DISCOVERED` |
+| `identity --propose \| --declare <id>` | declara la identidad del repositorio en el vault | `IDENTITY_PROPOSED` · `IDENTITY_DECLARED` · `IDENTITY_ALREADY_DECLARED` |
+| `retire --root <raíz> --dry-run \| --approve-digest <hex>` | destruye el origen ya verificado | `DRY_RUN` · `BATCH_OK` · `BATCH_PARTIAL` · `BATCH_FAILED` |
 
-Los tres primeros aceptan `--vault-root <ruta>` o `--config <ruta>`; sin ninguna
-de las dos, la raíz sale de `<raíz del repo>/.specify/config.yml`. Códigos de
-salida y enumerados completos en `reference.md` → "Estado a código de salida".
+`archive`, `migrate`, `index` y `retire` aceptan `--vault-root <ruta>` o `--config
+<ruta>`; sin ninguna de las dos, la raíz sale de
+`<raíz del repo>/.specify/config.yml`. Códigos de salida y enumerados completos en
+`reference.md` → "Estado a código de salida"; el contrato de `retire`, en
+`reference.md` → "`retire`: el verbo que destruye".
 
 ```bash
 node <skills>/knowledge-vault/scripts/kv.mjs config --config .specify/config.yml --set-root ~/vaults/dev-memory
 node <skills>/knowledge-vault/scripts/kv.mjs archive --from .plans/archived/abc-1 --summary "De qué se trató el flujo."
 ```
+
+## El primer uso en un proyecto: qué hacer ante `NO_VAULT`
+
+`kv` **no tiene registro global**: cada proyecto declara su vault en su propio
+`.specify/config.yml`, bajo una sección `knowledge-vault:` que nadie más toca. Es
+lo que permite que dos proyectos apunten a vaults distintos, y el precio es que un
+proyecto nuevo no declara ninguno y `archive` sale con `NO_VAULT` (código 5).
+
+Ante ese estado, **no inventes una ruta ni la pidas a ciegas**:
+
+1. Corré `config --discover`. Busca desde el home y devuelve `vaults` (los que
+   tienen marca de `kv`), `sugerido` (el único, si hay uno solo) y `ajenos`.
+   Sale **0 siempre**, incluso sin candidatos.
+2. Presentale al usuario lo que encontró, con su evidencia —cuántos proyectos y
+   flujos tiene cada vault—, y **esperá que elija**. Con `sugerido` no nulo,
+   ofrecelo como recomendado; con la lista vacía, ofrecé crear uno.
+3. Persistí la elección con `config --set-root`. Inserta **por líneas**: no
+   reescribe el resto del archivo ni le pierde los comentarios.
+
+**Los `ajenos` se informan y no se ofrecen.** Son directorios con `.obsidian/` y
+documentos pero sin marca de `kv`: el vault de notas de alguien. Apuntar `archive`
+ahí lo convertiría en un vault de `kv`, y `ensureVaultRepo` le haría `git init`
+antes de que ninguna otra guarda mire — por eso `assertRootUsable` los rechaza con
+`VAULT_ROOT_UNAVAILABLE` en vez de advertir y seguir. Un directorio recién abierto
+en Obsidian **sin** notas no cuenta como ajeno: esa es la forma de un vault nuevo.
 
 ## Qué entra al vault
 

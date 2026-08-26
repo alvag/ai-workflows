@@ -9,7 +9,7 @@
 import { ContractError, VERBS, exitCodeFor, isStatus } from './contracts.mjs';
 
 /** Banderas sin valor: no se comen el argumento siguiente. */
-const BOOLEANAS = new Set(['dry-run', 'propose']);
+const BOOLEANAS = new Set(['dry-run', 'propose', 'discover']);
 
 /**
  * @returns {{verb: string, flags: Record<string, string|true>}}

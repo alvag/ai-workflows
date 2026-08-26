@@ -10,12 +10,28 @@ contrato exacto de un verbo, un código de salida, o entender por qué algo fall
 | `archive` | `--from <dir>` · `--summary <línea>` | — | `--vault-root` \| `--config` \| default |
 | `migrate` | `--from <dir>` · `--summaries <tsv>` | `--dry-run` | `--vault-root` \| `--config` \| default |
 | `index` | — | — | `--vault-root` \| `--config` \| default |
-| `config` | `--config <ruta>` | `--set-root <ruta>` | la declara él mismo |
+| `config` | `--config <ruta>`, salvo con `--discover` | `--set-root <ruta>` · `--discover` · `--search-root <ruta>` | la declara él mismo |
 | `retire` | `--root <dir>` | `--from <dir>` · `--dry-run` · `--approve-digest <hex>` | `--vault-root` \| `--config` \| default |
 | `identity` | `--propose` \| `--declare <id>` | — | `--vault-root` \| `--config` \| default |
 
 `--config` y `--vault-root` son **excluyentes**: la raíz del vault se declara de
 una sola forma, y "cuál manda" no tiene una respuesta que valga la pena inventar.
+
+`config --discover` es el único modo que **no** exige `--config`: no lee ni escribe
+configuración, sólo mira el disco. Busca desde el home —o desde `--search-root`—
+hasta tres niveles, y devuelve tres cosas: `vaults` con su evidencia (cuántos
+proyectos y flujos), `sugerido` (el único vault, si hay exactamente uno) y `ajenos`.
+Sale **0 siempre**, cero candidatos incluido: un descubrimiento que falla por lo que
+encontró no se puede leer.
+
+**La clasificación es por marca estructural, no por ubicación**, y la diferencia se
+midió: un home real tenía dos directorios bajo `~/vaults/`, y sólo uno era un vault
+de `kv`. La marca es `.kv/`, o el par `index.md` + `projects/` para un vault anterior
+a `.kv`. Un directorio con `.obsidian/` **y documentos** pero sin ninguna de las dos
+es el vault de notas de alguien: se informa en `ajenos`, nunca se sugiere, y
+`assertRootUsable` lo rechaza con `VAULT_ROOT_UNAVAILABLE` si alguien lo declara
+igual. `.obsidian/` **sin** documentos no cuenta: esa es la forma de un vault de `kv`
+recién creado que se abrió en Obsidian antes de archivar nada.
 
 Todo entra por banderas largas. Un argumento suelto es `USAGE`.
 
