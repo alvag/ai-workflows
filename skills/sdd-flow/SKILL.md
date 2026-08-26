@@ -196,6 +196,7 @@ cross_model: {schema_version: 1, families: [codex], selection: user_choice, mani
 cross_review: {mode: auto, execution: auto}  # segunda opinión cross-model en los gates; ver "Revisión cross-model"
 co_explore: {mode: auto, deadline: 600, debate: {mode: auto, max_rounds: 3}}  # exploración paralela + modo debate (decisiones); ver "Co-exploración cross-model"
 domain_context: {mode: auto, context_paths: [], adr_paths: []}  # lectura de contexto/ADRs; ver "Contexto de dominio"
+knowledge_vault: {mode: auto}  # rescatar el flujo al vault al archivarlo ("auto"|"on"|"off"); el disparador es esta clave, no que la skill esté instalada
 final_diff_review: {mode: auto}  # revisión agregada de diff en cambios complex/high-risk inline
 jira_approval: {mode: "off"}  # aprobación externa de la spec en Jira ("off"|"on", entre comillas: sin ellas YAML los parsea como booleanos; solo si tracker: jira); ver paso `publish-spec`
 implement_mode: ask         # cómo ejecutar las tasks: ask (preguntar en el gate) | inline | cross
@@ -982,7 +983,15 @@ Solo cuando el usuario confirma explícitamente que el cambio está **probado y 
 
 ### Rescatar el flujo antes de retirarlo (opcional, dependencia blanda)
 
-Si la skill **`knowledge-vault`** está instalada y su CLI `kv` disponible, el archivado deja de ser el final del camino: `.plans/archived/` es local, untracked e invisible, así que lo que ese flujo decidió muere ahí. La cadena es **archivar, verificar y recién entonces retirar**, y su orden no es negociable.
+**El disparador es `knowledge_vault.mode`, no que la skill esté instalada.** Instalar una skill —a veces porque vino en un paquete, a veces para otro flujo— no es consentir que cada archivado quede encadenado a ella, y medir el CLI mide una propiedad del entorno, no una decisión. Es la misma forma que ya tiene `cross_review`, y la asimetría anterior era un hueco, no doctrina.
+
+| `mode` | Qué hace el sub-paso |
+|---|---|
+| `"off"` | el archivado **termina en el movimiento plano**. No se sondea el CLI, no se ofrece, no se vuelve a preguntar |
+| `"on"` | corre la cadena; si falta el CLI o el vault, el fallo es cerrado (ver abajo) |
+| `auto` (default) | con la skill instalada, **se ofrece una vez** —mostrando qué vaults hay con `kv config --discover`— y se **persiste la respuesta** en la clave. Sin declaración previa no se corre la cadena en silencio |
+
+Con la cadena activa el archivado deja de ser el final del camino: `.plans/archived/` es local, untracked e invisible, así que lo que ese flujo decidió muere ahí. La cadena es **archivar, verificar y recién entonces retirar**, y su orden no es negociable.
 
 | Paso | Qué | Ubicación observable si se corta acá |
 |---|---|---|
@@ -995,7 +1004,9 @@ Cada fila nombra dónde queda el flujo si la cadena se corta ahí, que es lo que
 
 **El paso 3 es un gate humano y no se automatiza.** El cierre **no puede correr el ensayo y pasar su digest** al retiro en la misma corrida: un guion que copia el digest de una salida a la siguiente satisface la letra del contrato y elimina el gate, que es lo único que separa un borrado irreversible de un efecto secundario.
 
-**Ante cualquier fallo anterior al punto de no retorno el fallo es cerrado, y nunca se degrada al movimiento plano.** Vale también para la instalación del CLI que existe pero **no tiene el verbo** —una versión anterior a que se agregara—: ahí el archivado ya ocurrió y el retiro no puede, así que el flujo queda **intacto y reintentable** en `.plans/archived/<id>`. Degradar al movimiento de siempre dejaría material fuera del vault sin que nada lo señale, que es exactamente el estado que esta cadena viene a eliminar. Un fallo **posterior** a ese punto no deja un origen intacto sino un **remanente parcial, verificable y reintentable**.
+**`NO_VAULT` no es un fallo: es la ausencia de configuración, y ahí el movimiento plano ya es el resultado completo.** La distinción importa porque las dos situaciones se parecen y no son la misma. Que el vault esté corrupto, o que el CLI falle a mitad de camino, merece un fallo cerrado: algo salió mal y seguir en silencio dejaría material fuera sin que nada lo señale. Que **no haya vault declarado** significa que el usuario todavía no eligió uno —o no quiere ninguno—, y tratarlo como error produce fricción en cada archivado sin ningún riesgo que la justifique. La propia skill del vault lo dice de su estado: es el que *habilita a preguntar y configurar*, no un archivo roto. Con `mode: auto` ese estado abre el ofrecimiento una vez; con `"off"` ni siquiera se llega a él.
+
+**Ante cualquier OTRO fallo anterior al punto de no retorno el fallo es cerrado, y nunca se degrada al movimiento plano.** Vale también para la instalación del CLI que existe pero **no tiene el verbo** —una versión anterior a que se agregara—: ahí el archivado ya ocurrió y el retiro no puede, así que el flujo queda **intacto y reintentable** en `.plans/archived/<id>`. Degradar al movimiento de siempre dejaría material fuera del vault sin que nada lo señale, que es exactamente el estado que esta cadena viene a eliminar. Un fallo **posterior** a ese punto no deja un origen intacto sino un **remanente parcial, verificable y reintentable**.
 
 **Reanudar no escribe para decidir.** El estado se lee de dos señales —el remanente y el manifiesto— y de la frontera publicada en el vault. En particular, **no se rearchiva para averiguar si ya estaba archivado**: `kv archive` con un `--summary` distinto reescribe el nodo y crea un commit, así que usarlo como sonda fabrica el commit espurio que se quería evitar.
 

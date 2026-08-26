@@ -45,6 +45,8 @@ domain_context:
   adr_paths: []                  # [def] ADRs vigentes a leer si existen
 final_diff_review:
   mode: auto                     # auto (complex/high-risk inline) | "on" | "off" — [def]
+knowledge_vault:                 # requiere la skill `knowledge-vault`; el disparador es esta clave, no la instalación
+  mode: auto                     # auto (ofrece una vez y persiste) | "on" | "off" — [def] rescatar el flujo al vault al archivarlo
 jira_approval:                   # solo si tracker: jira
   mode: "off"                    # "on" | "off" — [def] publica la spec en Jira y espera aprobación
   subtask_issuetype: auto        # auto | "Subtarea" | "Sub-task" — [def]
