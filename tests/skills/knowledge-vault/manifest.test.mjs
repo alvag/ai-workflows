@@ -72,6 +72,20 @@ test('[AC-3] los directorios son el cierre de ancestros más los que ya estaban 
   assert.deepEqual(m.directorios.map((d) => d.path), ['cross-review', 'vacio']);
 });
 
+test('[AC-3] un padre cuyos únicos hijos son directorios vacíos también se autoriza', async (t) => {
+  const caja = await createSandbox(t);
+  const m = await construir(await origen(caja, { 'transporte/bindings/': null, 'transporte/events/': null }));
+
+  // El caso que se escapaba de las dos ramas: `transporte` no es ancestro de
+  // ningún archivo —no hay ninguno debajo— y tampoco está vacío, porque contiene
+  // dos directorios. Sin él en la lista, borrar sus hijos lo deja vacío y sin
+  // autorización, y el reintento rechaza el remanente entero.
+  assert.deepEqual(
+    m.directorios.map((d) => d.path),
+    ['cross-review', 'transporte', 'transporte/bindings', 'transporte/events', 'vacio'],
+  );
+});
+
 test('[AC-3] el digest cubre las siete cosas: cambiar cualquiera lo mueve', async (t) => {
   const caja = await createSandbox(t);
   const base = await construir(await origen(caja));

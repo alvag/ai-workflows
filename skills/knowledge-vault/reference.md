@@ -349,6 +349,26 @@ repositorio que no llegó a ver.
   corrida caída no se podría completar nunca.
 - **Un staging huérfano** de una corrida muerta se barre antes de reintentar: la
   copia usa creación exclusiva, así que sin limpieza el reintento queda bloqueado.
+- **La frontera de un flujo archivado no crece.** La verificación compara
+  conjuntos exactos en las **dos** direcciones: un archivo de más en el destino es
+  sobrante, y uno de menos hace fallar la comprobación. Así que agregar un `.md` a
+  la raíz de un flujo ya archivado y volver a archivar devuelve `VERIFY_FAILED`
+  nombrando el documento nuevo, en vez de republicar la frontera. Medido, no
+  deducido. **Si un flujo gana documentos después de archivarse, van como flujo
+  propio**: la frontera vieja queda intacta y el material nuevo obtiene su nodo y
+  su entrada en el índice. Es la salida para el material de origen que vive en un
+  subdirectorio —`insumos/`, por ejemplo— y que la selección deja afuera.
+- **Abrir el vault en Obsidian lo ensucia, y eso frena el archivado.** Obsidian
+  crea `.obsidian/` con su configuración, macOS deja `.DS_Store` al navegar las
+  carpetas, y **hacer clic en un `[[enlace]]` no resuelto crea la nota vacía** en
+  la raíz del vault. Cualquiera de las tres deja el árbol sucio con cambios
+  ajenos, y el archivado frena antes de escribir para no llevárselos puestos. El
+  remedio es un `.gitignore` en el vault con `.obsidian/` y `.DS_Store` —dos
+  líneas, y ninguna más: en un almacén cuyo punto es la procedencia verificada,
+  cada patrón de exclusión es un lugar donde algo puede desaparecer sin que nadie
+  lo note—. La nota vacía no se previene ignorándola: se borra, y conviene saber
+  que **todo documento archivado que contenga un wikilink sin resolver es un botón
+  que crea archivos**.
 
 ## Cómo correr los tests
 

@@ -87,6 +87,13 @@ export async function construirManifiesto({ fs, flowDir, aSalvo, identidad, vaul
 
   const dirs = new Set(inventario.directories.map((d) => d.path));
   for (const e of entradas) for (const a of ancestros(e.path)) dirs.add(a);
+  // Y los ancestros de los que ya estaban vacíos. Un directorio cuyos únicos
+  // hijos son directorios vacíos no es ancestro de ningún archivo ni figura como
+  // vacío, así que sin esta vuelta queda fuera de las dos ramas: el borrado deja
+  // de vaciar a su padre y el reintento lo rechaza por no autorizado. Medido en
+  // `cross-model-recovery-resume`, donde `cohort/transport` contenía sólo
+  // `bindings/` y `events/`, los dos vacíos.
+  for (const d of inventario.directories) for (const a of ancestros(d.path)) dirs.add(a);
   const directorios = sortFilesByPath([...dirs].map((p) => ({ path: p })), '$.directorios');
 
   const suma = (clase) =>
