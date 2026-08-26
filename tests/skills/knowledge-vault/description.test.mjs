@@ -197,3 +197,25 @@ test('[AC-15] el chequeo de la tabla del SKILL.md sabe ponerse rojo', () => {
   assert.deepEqual(verbosDeLaTablaDelSkill(conCuatro), ['archive', 'migrate', 'index', 'config']);
   assert.notDeepEqual(verbosDeLaTablaDelSkill(conCuatro).sort(), [...VERBS].sort());
 });
+
+/** Numerales en español, para comparar el título contra la cantidad real. */
+const NUMERAL = ['cero', 'un', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez'];
+
+test('[AC-15] el título de la sección de verbos cuenta los que hay', async () => {
+  // Tercera sede del mismo defecto. Primero se desactualizó la matriz de
+  // `reference.md`, después la tabla del `SKILL.md`, y al arreglar esa tabla el
+  // **título** de su sección siguió diciendo "Los cuatro verbos" con seis filas
+  // debajo. Un párrafo más no lo iba a evitar: lo evita este caso.
+  const skill = await fs.readFile(SKILL, 'utf8');
+  const m = skill.match(/^## Los ([a-zé]+) verbos$/m);
+  assert.ok(m, 'SKILL.md no tiene la sección "## Los <n> verbos"');
+  assert.equal(m[1], NUMERAL[VERBS.length], `el título dice "${m[1]}" y hay ${VERBS.length} verbos`);
+});
+
+test('[AC-15] el chequeo del título sabe ponerse rojo', () => {
+  // Control positivo con la forma exacta del defecto.
+  const conCuatro = '## Los cuatro verbos\n';
+  const m = conCuatro.match(/^## Los ([a-zé]+) verbos$/m);
+  assert.equal(m[1], 'cuatro');
+  assert.notEqual(m[1], NUMERAL[VERBS.length]);
+});

@@ -44,7 +44,7 @@ exista.
 Sigue siendo lo que la vuelve **segura de correr**: ante cualquier fallo anterior
 al punto de no retorno, el origen sigue ahí y el vault se descarta y se rehace.
 
-## Los cuatro verbos
+## Los seis verbos
 
 | Verbo | Qué hace | Estados |
 |---|---|---|
@@ -84,6 +84,13 @@ Ante ese estado, **no inventes una ruta ni la pidas a ciegas**:
    ofrecelo como recomendado; con la lista vacía, ofrecé crear uno.
 3. Persistí la elección con `config --set-root`. Inserta **por líneas**: no
    reescribe el resto del archivo ni le pierde los comentarios.
+4. **Ofrecé dejarlo escrito para los agentes que vengan.** Un vault lleno de
+   conocimiento no sirve de nada si ningún agente sabe que existe: esta skill no
+   se auto-invoca y **no tiene verbo de búsqueda**, así que sin una instrucción
+   persistida nadie lo va a consultar. El bloque listo para copiar y las sedes
+   donde va están en `instrucciones-para-agentes.md`, hermano de este archivo. Se
+   ofrece **una sola vez** —si la sede ya lo tiene, no se repite— y se **agrega**,
+   nunca reescribiendo el archivo del usuario.
 
 **Los `ajenos` se informan y no se ofrecen.** Son directorios con `.obsidian/` y
 documentos pero sin marca de `kv`: el vault de notas de alguien. Apuntar `archive`
@@ -105,6 +112,39 @@ revisión, árboles de prueba, veredictos. Medido sobre cincuenta flujos reales,
 colaban un 65 % de material que nadie querría consultar.
 
 Con el corte posicional: **277 documentos copiados, 10.726 omitidos.**
+
+## Después de archivar: qué hacer con lo que quedó afuera
+
+`archive` devuelve `counts: {included, omitted}`, y **`omitted` es el dato que casi
+nadie mira**. Al archivar un flujo de este mismo repositorio dio `included: 9,
+omitted: 43`: nueve documentos viajaron y cuarenta y tres archivos no.
+
+Con `omitted: 0` no hay nada que hacer. Con `omitted > 0`, seguir estos pasos **en
+este orden**, y no saltear al último:
+
+1. **Medir qué quedó.** Los `.md` de subdirectorio son la clase que importa:
+   informes de exploración, veredictos de revisión, material que alguien escribió.
+   `find <flujo> -mindepth 2 -name '*.md'`.
+2. **Si los hay, ofrecer rescatarlos** como un flujo hermano `<flujo>-anexos`, con
+   las rutas aplanadas (`reports/explore.md` → `reports__explore.md`). Va como
+   hermano y no como documento agregado porque **la frontera de un flujo archivado
+   no crece**: re-archivar con un `.md` de más devuelve `VERIFY_FAILED`.
+3. **Recién entonces ofrecer el retiro**, y **siempre con el desglose a la vista**:
+   `retire --root <raíz> --dry-run` separa lo que está a salvo de lo que se
+   destruiría sin copia. Ofrecer sin ese número es pedirle a una persona que
+   apruebe un borrado a ciegas.
+
+> **Por qué el orden importa, medido.** Ofrecer el retiro apenas termina la copia es
+> donde la inercia del "sí" hace daño: el flujo del ejemplo tenía 3,1 MB sin copia
+> —los informes de los dos workers y los veredictos de revisión— y retirarlo ahí
+> habría destruido la respuesta conservando la pregunta. En un rollout real la
+> clasificación a ojo de qué material era prescindible **falló cuatro veces
+> seguidas**; lo que la corrigió no fue mejor criterio sino medir antes de ofrecer.
+
+**El agente ofrece; el CLI nunca pregunta.** `kv` escribe JSON y sale con un código:
+no hay TTY garantizado y un lote de cincuenta flujos quedaría preguntando cincuenta
+veces. La conversación vive acá, y el borrado sigue exigiendo sus tres cerrojos:
+ensayo, digest aprobado por una persona, y `--approve-digest` con ese digest exacto.
 
 ## El resumen lo provee quien llama
 
@@ -141,4 +181,7 @@ sobrantes, así que un nodo adentro haría fallar cada rearchivado.
 
 - `reference.md` — matriz por verbo, estados y códigos de salida, el layout
   completo, la capa de configuración, casos borde y cómo correr los tests.
+- `instrucciones-para-agentes.md` — el bloque que se persiste en la sede de
+  instrucciones del usuario para que un agente fresco sepa que el vault existe.
+  Se lee **una sola vez**: al configurar el primer vault.
 - `README.md` — qué es, cuándo usarla e instalación.
