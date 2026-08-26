@@ -446,6 +446,108 @@ el mismo delta exacto de la resolución inicial. En este STOP **no se infiere un
 sondea el entorno para decidirlo: preguntar una vez por la clave ausente no es descubrir familias.
 Desde la respuesta rige la lectura declarada y no se vuelve a preguntar.
 
+## Esquema de `.specify/workers.yml`
+
+Esta sección es la sede dueña del archivo de perfiles de workers. `schema_version` es obligatorio y
+su único valor admitido es `1`. La vista enumera los ocho roles y muestra, para cada uno, las dos
+familias con sus dos campos. Los valores de modelo y esfuerzo del ejemplo hacen visible la forma;
+no declaran defaults.
+
+```yaml
+schema_version: 1
+roles:
+  explore:
+    claude:
+      model: opus
+      effort: alto
+    codex:
+      model: gpt-5.6-sol
+      effort: alto
+  counter-plan:
+    claude:
+      model: opus
+      effort: alto
+    codex:
+      model: gpt-5.6-sol
+      effort: alto
+  investigate:
+    claude:
+      model: opus
+      effort: alto
+    codex:
+      model: gpt-5.6-sol
+      effort: alto
+  debate:
+    claude:
+      model: opus
+      effort: alto
+    codex:
+      model: gpt-5.6-sol
+      effort: alto
+  design-review:
+    claude:
+      model: opus
+      effort: alto
+    codex:
+      model: gpt-5.6-sol
+      effort: alto
+  implement:
+    claude:
+      model: opus
+      effort: alto
+    codex:
+      model: gpt-5.6-sol
+      effort: alto
+  refute:
+    claude:
+      model: opus
+      effort: alto
+    codex:
+      model: gpt-5.6-sol
+      effort: alto
+  pr:
+    claude:
+      model: opus
+      effort: alto
+    codex:
+      model: gpt-5.6-sol
+      effort: alto
+```
+
+`model` admite un string no vacío. `effort` admite uno de los cinco literales portables de la tabla
+de abajo. Ninguna otra clave se admite en ningún nivel.
+
+### Claves admitidas
+
+| Nivel | Claves admitidas |
+|---|---|
+| raíz | `schema_version` \| `roles` |
+| `roles` | `explore` \| `counter-plan` \| `investigate` \| `debate` \| `design-review` \| `implement` \| `refute` \| `pr` |
+| cada rol | `claude` \| `codex` |
+| cada familia | `model` \| `effort` |
+
+### Enum portable de esfuerzo
+
+El archivo usa los mismos cinco literales para ambas familias. Cada literal se traduce al valor
+nativo antes del despacho, con la misma traducción en Claude y Codex:
+
+| Portable | Claude (`--effort`) | Codex (`model_reasoning_effort`) |
+|---|---|---|
+| `bajo` | `low` | `low` |
+| `medio` | `medium` | `medium` |
+| `alto` | `high` | `high` |
+| `muy_alto` | `xhigh` | `xhigh` |
+| `maximo` | `max` | `max` |
+
+### Forma histórica descartada
+
+Este esquema sustituye la forma histórica de perfiles nombrados con indirección por asignaciones.
+
+No se adopta esa forma porque la lista blanca cerrada de `model` y `effort` aporta la misma
+garantía: una asignación no puede transportar herramientas, permisos ni autoridad, sin la maquinaria
+de la indirección. La forma directa conserva esa frontera sin perfiles intermedios ni referencias que
+resolver.
+
 ## Contexto de dominio
 
 `domain_context` es una lista de entradas **read-only** que el flujo usa para aterrizar términos,
