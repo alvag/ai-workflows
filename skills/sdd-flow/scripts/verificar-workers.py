@@ -22,7 +22,7 @@ import sys
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Optional
 
 from _tabla import parsear_tabla_pipe
 
@@ -82,6 +82,12 @@ MATRIZ_ESPERADA = frozenset(
     + [(r, "implement", "implement") for r in REGIONES_IMPLEMENT]
     + [(r, rol, rol) for r in REGIONES_BBCR for rol in ("pr", "refute")]
 )
+
+
+# Filas del contrato cuya evidencia es un comando directo —las guardas del repositorio y el
+# verificador de aislamiento—, no un modo de este script. Van por nombre y no por ausencia de modo:
+# la ausencia también la produce el olvido, y de un olvido no se puede distinguir una excepción.
+FILAS_SIN_MODO = frozenset({"V30", "V31"})
 
 
 class MedicionDetenida(RuntimeError):
@@ -548,6 +554,199 @@ def verificar_29(texto: str) -> list[Chequeo]:
     ]
 
 
+SEDE_WORKERS_MODE = "El modo `workers` de implementación"
+
+
+def _sede(texto: str) -> str:
+    return seccion_workers(texto, SEDE_WORKERS_MODE)
+
+
+def verificar_15(texto: str) -> list[Chequeo]:
+    return controles_de_frases(_sede(texto), {
+        "V15.ofrece-en-no-trivial": ("se ofrece **solo en flujos no triviales**",),
+        "V15.override-vale-en-trivial": ("override explícito de `workers` vale igual en trivial",),
+        "V15.condicion-de-capacidad": ("condicionada a la capacidad",
+                                       "el CLI de la familia del conductor está disponible"),
+        "V15.gate-unico-sin-extra": ("dentro del gate único", "sin abrir un gate nuevo"),
+    })
+
+
+def verificar_16(texto: str) -> list[Chequeo]:
+    return controles_de_frases(_sede(texto), {
+        "V16.delega-en-cross-implement": ("**delega en `cross-implement`**",),
+        "V16.sin-punto-de-despacho-nuevo": ("no suma un punto de despacho propio",),
+        "V16.familia-del-conductor": ("familia del implementador queda fijada a la del conductor",),
+    })
+
+
+def verificar_17(texto: str) -> list[Chequeo]:
+    return controles_de_frases(_sede(texto), {
+        "V17.override-acotado-a-invocacion": ("override acotado a esa invocación",),
+        "V17.no-muta-inventario": ("tiene prohibido mutar el inventario de familias de la corrida",),
+    })
+
+
+def verificar_18(texto: str) -> list[Chequeo]:
+    filas = tabla_tras(_sede(texto), "Dos casos, y son distintos:")
+
+    def caso(hoja: str, literal: str) -> Chequeo:
+        fila = next((f for f in filas[1:] if len(f) == 2 and literal in literales(f[0])), None)
+        # el efecto va en la MISMA fila: un "no se despacha" suelto en la prosa de al lado dejaría
+        # verde el control aunque el caso hubiera desaparecido de la tabla.
+        ok = fila is not None and "no se despacha" in norm(fila[1])
+        return control(hoja, ok, f"el caso `{literal}` declara su efecto",
+                       f"falta el caso `{literal}`, o su fila no dice que no se despacha")
+
+    return [caso("V18.inventario-sin-la-familia", "inventario no contiene"),
+            caso("V18.cli-no-disponible", "CLI same-family no está disponible")]
+
+
+def verificar_19(texto: str) -> list[Chequeo]:
+    sede = _sede(texto)
+    heredado = re.search(r"hereda el bloque `cross_implement` del config —(.*?)—", sede, re.S)
+    campos = set(re.findall(r"`([a-z_]+)`", heredado.group(1))) if heredado else set()
+
+    def hereda(hoja: str, campo: str) -> Chequeo:
+        return control(hoja, campo in campos, f"hereda `{campo}` de `cross_implement`",
+                       f"no declara heredar `{campo}`; declara {sorted(campos)}")
+
+    return [
+        hereda("V19.hereda-execution", "execution"),
+        hereda("V19.hereda-max-fix-rounds", "max_fix_rounds"),
+        hereda("V19.hereda-deadline", "deadline"),
+        *controles_de_frases(sede, {
+            "V19.degradacion": ("rutas de **degradación**",),
+            "V19.takeover": ("de **takeover** valen igual que en `cross`",
+                             "fallo del writer **después** del despacho"),
+        }),
+    ]
+
+
+def verificar_20(texto: str) -> list[Chequeo]:
+    return controles_de_frases(_sede(texto), {
+        "V20.particion-rige": ("**partición en bloques y su recibo** se producen y se aprueban igual que en `cross`",),
+        "V20.recibo-antes-de-cada-bloque": ("ningún bloque se despacha sin recibo aprobado",),
+    })
+
+
+def verificar_21(texto: str) -> list[Chequeo]:
+    sede = _sede(texto)
+    filas = tabla_tras(sede, "#### Qué se persiste y dónde")
+
+    def sede_de(hoja: str, clave: str, esperado: str) -> Chequeo:
+        fila = next((f for f in filas[1:] if len(f) == 2 and clave in norm(f[0])), None)
+        ok = fila is not None and esperado in literales(fila[1])
+        return control(hoja, ok, f"la sede de «{clave}» es `{esperado}`",
+                       f"la sede de «{clave}» no es `{esperado}`")
+
+    proyeccion = next((f for f in filas[1:] if len(f) == 2 and "proyeccion" in norm(f[0])), None)
+    proyecta = (proyeccion is not None and "blocks" in literales(proyeccion[1])
+                and norm("El enum del ledger no gana un valor nuevo") in norm(sede))
+    return [
+        sede_de("V21.persiste-en-header", "modo logico", "header del plan.md"),
+        control("V21.proyecta-a-blocks", proyecta,
+                "el modo lógico se proyecta a `blocks` y el enum no gana un valor",
+                "falta la proyección a `blocks`, o el enum gana un valor nuevo"),
+        sede_de("V21.congela-familia", "familia del implementador", "congelada en el header"),
+        sede_de("V21.congela-perfil", "perfil resuelto del rol", "congelado en el header"),
+    ]
+
+
+def verificar_22(texto: str) -> list[Chequeo]:
+    return controles_de_frases(_sede(texto), {
+        "V22.usa-congelado": ("usa la familia y el perfil congelados**",),
+        "V22.rechaza-archivo-vigente": ("rechaza el archivo vigente**", "no reabre la resolución"),
+        "V22.continuidad-del-punto": ("continúa en el punto correcto**",
+                                      "no cae en ledger corrupto ni en versión desconocida"),
+        "V22.compatibilidad-del-ledger": ("El ledger de una corrida `workers` es compatible**",),
+    })
+
+
+def verificar_23(texto: str) -> list[Chequeo]:
+    filas = tabla_tras(_sede(texto), "no se reinterpreta:")
+
+    def historico(hoja: str, modo: str) -> Chequeo:
+        fila = next((f for f in filas[1:] if len(f) == 2 and modo in literales(f[0])), None)
+        observado = norm(fila[1]) if fila else ""
+        ok = "sigue siendo valido" in observado and "se resuelve como antes" in observado
+        return control(hoja, ok, f"una corrida `{modo}` viva no se reinterpreta",
+                       f"falta la fila de `{modo}`, o no conserva ledger y modo")
+
+    return [historico("V23.no-reinterpreta-cross", "cross"),
+            historico("V23.no-reinterpreta-inline", "inline")]
+
+
+def verificar_26(texto: str) -> list[Chequeo]:
+    sede = _sede(texto)
+    ofrecidos = re.search(r"ofrece los modos vigentes, que son (.*?)\.", sede, re.S)
+    modos = set(re.findall(r"`([a-z]+)`", ofrecidos.group(1))) if ofrecidos else set()
+    vigentes = {"ask", "inline", "cross"}
+    return [
+        *controles_de_frases(sede, {
+            "V26.detiene-con-error": ("deteniendo el flujo con su error de migración",
+                                      "sin fallback silencioso"),
+        }),
+        control("V26.lista-modos-vigentes", vigentes <= modos,
+                f"el error ofrece los modos que ya existían: {sorted(vigentes)}",
+                f"faltan modos vigentes en el error: {sorted(vigentes - modos)}"),
+        control("V26.incluye-workers", "workers" in modos,
+                "el error ofrece `workers` entre las alternativas",
+                f"el error no ofrece `workers`; ofrece {sorted(modos)}"),
+    ]
+
+SEDE_CONTRAPESO = "skills/cross-implement/SKILL.md"
+TITULO_CONTRAPESO = "El contrapeso same-family, y cuándo NO se emite"
+
+
+def corpus_contrapeso() -> str:
+    """La sección del contrapeso en la sede de `cross-implement`. Corpus mutable de V24 y V25."""
+    seccion = extraer_seccion(leer_texto(REPO / SEDE_CONTRAPESO), TITULO_CONTRAPESO, 3)
+    if seccion is None:
+        raise MedicionDetenida(f"no existe la sección ### {TITULO_CONTRAPESO} en {SEDE_CONTRAPESO}")
+    return seccion
+
+
+def _fila_por_literal(filas: list[list[str]], literal: str) -> list[str] | None:
+    return next((f for f in filas[1:] if len(f) == 2 and literal in literales(f[0])), None)
+
+
+def verificar_24(texto: str) -> list[Chequeo]:
+    filas = tabla_tras(texto, "declaraciones, y las tres son obligatorias:")
+
+    def declara(hoja: str, literal: str, afirma: str) -> Chequeo:
+        fila = _fila_por_literal(filas, literal)
+        ok = fila is not None and norm(afirma) in norm(fila[1])
+        return control(hoja, ok, f"la declaración `{literal}` está con lo que afirma",
+                       f"falta la declaración `{literal}`, o no afirma: {afirma!r}")
+
+    return [
+        declara("V24.declara-worker-efectivo", "worker efectivo de la misma familia",
+                "un worker fresco de la misma familia que el autor"),
+        declara("V24.declara-perdida-de-correlacion", "no rompe la correlación de errores",
+                "no aporta la diversidad de familia"),
+        declara("V24.recomienda-revision-humana", "se recomienda revisión humana adicional",
+                "dirigida a quien acepta el diff"),
+    ]
+
+
+def verificar_25(texto: str) -> list[Chequeo]:
+    filas = tabla_tras(texto, "en su lugar va lo que sí ocurrió. Son dos ramas:")
+    sin_writer = _fila_por_literal(filas, "degradación sin writer")
+    takeover = _fila_por_literal(filas, "takeover")
+    observado_takeover = norm(takeover[1]) if takeover else ""
+    return [
+        control("V25.degradacion-sin-writer",
+                sin_writer is not None and "no hubo worker" in norm(sin_writer[1]),
+                "la rama sin writer declara que no hubo worker",
+                "falta la rama sin writer, o no declara que no hubo worker"),
+        control("V25.takeover-por-bloque",
+                bool(takeover) and "quien termino cada bloque" in observado_takeover
+                and "por bloque" in observado_takeover,
+                "la rama de takeover atribuye por bloque",
+                "falta la rama de takeover, o no atribuye por bloque"),
+    ]
+
+
 SEDES_REGIONES = (
     "skills/cross-review/reference.md",
     "skills/co-explore/reference.md",
@@ -759,6 +958,67 @@ def verificar_10(texto: str) -> list[Chequeo]:
     return resultados
 
 
+PRODUCTORES_DURABLES = frozenset(
+    {"co-explore", "cross-review", "cross-implement", "bitbucket-code-review", "sdd-pr-feedback"}
+)
+SEDE_MANIFEST = "skills/cross-review/reference.md"
+
+
+def corpus_registro_durable() -> str:
+    """La sección canónica del registro durable. Es el corpus mutable de V11: vive en la sede del
+    manifest y no en la de `sdd-flow`, así que el modo la lee de ahí o sus mutantes no lo tocarían."""
+    seccion = extraer_seccion(leer_texto(REPO / SEDE_MANIFEST), "El registro durable de despachos", 3)
+    if seccion is None:
+        raise MedicionDetenida(
+            f"no existe la sección ### El registro durable de despachos en {SEDE_MANIFEST}"
+        )
+    return seccion
+
+
+def verificar_11(texto: str) -> list[Chequeo]:
+    campos = tabla_tras(texto, "**Una entrada por intento**")
+    declarados = {lit for fila in campos[1:] for lit in literales(fila[0])}
+    observado = norm(texto)
+
+    def campo(hoja: str, nombre: str, frase: str) -> Chequeo:
+        return control(
+            hoja, nombre in declarados and norm(frase) in observado,
+            f"`{nombre}` declarado con su semántica",
+            f"falta `{nombre}` en la tabla de la entrada, o su semántica: {frase!r}",
+        )
+
+    tipos = tabla_tras(texto, "El archivo lleva **`record_type` con versión**")
+    valores = {lit for fila in tipos[1:] for lit in literales(fila[0])}
+    productores = re.search(r"rutas CLI gobernadas:(.*?)\.", texto, re.S)
+    nombres = set(re.findall(r"`([a-z][a-z-]+)`", productores.group(1))) if productores else set()
+
+    return [
+        campo("V11.campo-solicitado", "requested", "el **perfil solicitado**"),
+        campo("V11.campo-resuelto", "resolved", "el **perfil resuelto**"),
+        campo("V11.campo-enviado", "sent", "lo **enviado al proceso**"),
+        campo("V11.campo-resultado", "outcome", "el **resultado** del intento"),
+        campo("V11.escalon-por-campo", "origin",
+              'el **escalón de origen por campo**: `{"model": <1-4>, "effort": <1-4>}`'),
+        campo("V11.materializacion-heredado", "materialized", "son dos hechos distintos y no se colapsan"),
+        campo("V11.retry-of", "retry_of", "el intento rechazado **no se pisa**"),
+        control("V11.cinco-productores", nombres == PRODUCTORES_DURABLES,
+                f"los cinco productores exactos: {sorted(nombres)}",
+                f"el conjunto declarado no iguala al de rutas CLI gobernadas: {sorted(nombres)}"),
+        *controles_de_frases(texto, {
+            "V11.emision-incondicional": (
+                "gobierna la telemetría de corrida y **no** gobierna este registro",
+                "con el switch en `off` se publica igual un",
+            ),
+            "V11.path-canonico": (
+                "`.cross-model/runs/<started_at compacto>-<skill>-<mode>-<run_id>.json`",
+            ),
+        }),
+        control("V11.tipo-distinguible", valores == {"run-manifest/1", "dispatch-log/1"},
+                "las dos formas del registro, distinguibles por `record_type`",
+                f"las formas declaradas no son las dos esperadas: {sorted(valores)}"),
+    ]
+
+
 MODOS = {
     "1": Modo("1", "V1", "esquema cerrado", (
         "V1.schema-version",
@@ -804,6 +1064,19 @@ MODOS = {
         "V8.cobertura-posix",
         "V8.cobertura-powershell",
     ), verificar_8, corpus_regiones),
+    "11": Modo("11", "V11", "el registro durable de despachos", (
+        "V11.campo-solicitado",
+        "V11.campo-resuelto",
+        "V11.campo-enviado",
+        "V11.campo-resultado",
+        "V11.escalon-por-campo",
+        "V11.materializacion-heredado",
+        "V11.retry-of",
+        "V11.cinco-productores",
+        "V11.emision-incondicional",
+        "V11.path-canonico",
+        "V11.tipo-distinguible",
+    ), verificar_11, corpus_registro_durable),
     "10": Modo("10", "V10", "las tres rutas sin reinyección", (
         "V10.bbcr-viab-posix",
         "V10.bbcr-viab-ps",
@@ -832,6 +1105,48 @@ MODOS = {
     "14": Modo("14", "V14", "corrección del diagnóstico", (
         "V14.rama-con-diagnostico", "V14.rama-sin-correccion-fiable",
     ), verificar_14),
+    "15": Modo("15", "V15", "cuándo se ofrece el modo", (
+        "V15.ofrece-en-no-trivial", "V15.override-vale-en-trivial",
+        "V15.condicion-de-capacidad", "V15.gate-unico-sin-extra",
+    ), verificar_15),
+    "16": Modo("16", "V16", "delegación sin punto de despacho nuevo", (
+        "V16.delega-en-cross-implement", "V16.sin-punto-de-despacho-nuevo",
+        "V16.familia-del-conductor",
+    ), verificar_16),
+    "17": Modo("17", "V17", "override de familia acotado", (
+        "V17.override-acotado-a-invocacion", "V17.no-muta-inventario",
+    ), verificar_17),
+    "18": Modo("18", "V18", "los dos casos de indisponibilidad", (
+        "V18.inventario-sin-la-familia", "V18.cli-no-disponible",
+    ), verificar_18),
+    "19": Modo("19", "V19", "herencia de política de ejecución", (
+        "V19.hereda-execution", "V19.hereda-max-fix-rounds", "V19.hereda-deadline",
+        "V19.degradacion", "V19.takeover",
+    ), verificar_19),
+    "20": Modo("20", "V20", "la partición y su recibo", (
+        "V20.particion-rige", "V20.recibo-antes-de-cada-bloque",
+    ), verificar_20),
+    "21": Modo("21", "V21", "persistencia y proyección del modo lógico", (
+        "V21.persiste-en-header", "V21.proyecta-a-blocks",
+        "V21.congela-familia", "V21.congela-perfil",
+    ), verificar_21),
+    "22": Modo("22", "V22", "la retoma usa el congelado", (
+        "V22.usa-congelado", "V22.rechaza-archivo-vigente",
+        "V22.continuidad-del-punto", "V22.compatibilidad-del-ledger",
+    ), verificar_22),
+    "23": Modo("23", "V23", "compatibilidad hacia atrás", (
+        "V23.no-reinterpreta-cross", "V23.no-reinterpreta-inline",
+    ), verificar_23),
+    "26": Modo("26", "V26", "el valor retirado y los modos vigentes", (
+        "V26.detiene-con-error", "V26.lista-modos-vigentes", "V26.incluye-workers",
+    ), verificar_26),
+    "24": Modo("24", "V24", "el contrapeso same-family", (
+        "V24.declara-worker-efectivo", "V24.declara-perdida-de-correlacion",
+        "V24.recomienda-revision-humana",
+    ), verificar_24, corpus_contrapeso),
+    "25": Modo("25", "V25", "degradación sin writer y takeover", (
+        "V25.degradacion-sin-writer", "V25.takeover-por-bloque",
+    ), verificar_25, corpus_contrapeso),
     "27": Modo("27", "V27", "resolución anterior", (
         "V27.sin-archivo", "V27.sin-override", "V27.sin-congelado", "V27.alcance-embebido",
         "V27.prohibe-escritura", "V27.valor-historico",
@@ -1058,12 +1373,134 @@ MUTANTES.update({
 })
 
 
+MUTANTES.update({
+    "V11.campo-solicitado": mutar("V11.campo-solicitado",
+        "el **perfil solicitado**", "el perfil de entrada"),
+    "V11.campo-resuelto": mutar("V11.campo-resuelto",
+        "el **perfil resuelto** tras bajar", "el perfil final tras bajar"),
+    "V11.campo-enviado": mutar("V11.campo-enviado",
+        "lo **enviado al proceso**", "lo que quedó registrado"),
+    "V11.campo-resultado": mutar("V11.campo-resultado",
+        "el **resultado** del intento", "el estado del intento"),
+    "V11.escalon-por-campo": mutar("V11.escalon-por-campo",
+        'el **escalón de origen por campo**: `{"model": <1-4>, "effort": <1-4>}`',
+        "el escalón de origen del perfil: `<1-4>`"),
+    "V11.materializacion-heredado": mutar("V11.materializacion-heredado",
+        "son dos hechos distintos y no se colapsan", "se registran colapsados en un solo campo"),
+    "V11.retry-of": mutar("V11.retry-of",
+        "el intento rechazado **no se pisa**", "el intento rechazado se reemplaza"),
+    "V11.cinco-productores": mutar("V11.cinco-productores",
+        "`bitbucket-code-review` y\n`sdd-pr-feedback`.", "`bitbucket-code-review`."),
+    "V11.emision-incondicional": mutar("V11.emision-incondicional",
+        "gobierna la\ntelemetría de corrida y **no** gobierna este registro",
+        "gobierna la\ntelemetría de corrida y también gobierna este registro"),
+    "V11.path-canonico": mutar("V11.path-canonico",
+        "`.cross-model/runs/<started_at compacto>-<skill>-<mode>-<run_id>.json`",
+        "`.cross-model/runs/<run_id>.json`"),
+    "V11.tipo-distinguible": mutar("V11.tipo-distinguible",
+        "| `dispatch-log/1` | la identidad de la corrida", "| `registro` | la identidad de la corrida"),
+})
+
+
+MUTANTES.update({
+    "V15.ofrece-en-no-trivial": mutar("V15.ofrece-en-no-trivial",
+        "se ofrece **solo en flujos no triviales**", "se ofrece en todos los flujos"),
+    "V15.override-vale-en-trivial": mutar("V15.override-vale-en-trivial",
+        "override explícito de `workers` vale igual en trivial",
+        "override explícito de `workers` tampoco vale en trivial"),
+    "V15.condicion-de-capacidad": mutar("V15.condicion-de-capacidad",
+        "**condicionada a la capacidad**", "abierta sin condición previa"),
+    "V15.gate-unico-sin-extra": mutar("V15.gate-unico-sin-extra",
+        "**sin abrir un gate nuevo**", "en un gate propio"),
+    "V16.delega-en-cross-implement": mutar("V16.delega-en-cross-implement",
+        "**delega en `cross-implement`**", "implementa por su cuenta"),
+    "V16.sin-punto-de-despacho-nuevo": mutar("V16.sin-punto-de-despacho-nuevo",
+        "**no suma un punto de despacho propio**", "suma un punto de despacho propio"),
+    "V16.familia-del-conductor": mutar("V16.familia-del-conductor",
+        "**familia del implementador queda fijada a la del conductor**",
+        "familia del implementador se elige en el gate"),
+    "V17.override-acotado-a-invocacion": mutar("V17.override-acotado-a-invocacion",
+        "**override acotado a esa invocación**", "valor global de la corrida"),
+    "V17.no-muta-inventario": mutar("V17.no-muta-inventario",
+        "**tiene prohibido\nmutar el inventario de familias de la corrida**",
+        "reemplaza el inventario de familias de la corrida"),
+    "V18.inventario-sin-la-familia": mutar("V18.inventario-sin-la-familia",
+        "| el `inventario no contiene` la familia del conductor | se declara la incompatibilidad y no se despacha |\n", ""),
+    "V18.cli-no-disponible": mutar("V18.cli-no-disponible",
+        "| el `CLI same-family no está disponible` | se declara la incompatibilidad y no se despacha |\n", ""),
+    "V19.hereda-execution": mutar("V19.hereda-execution",
+        "`execution`, `max_fix_rounds` y `deadline`—", "`max_fix_rounds` y `deadline`—"),
+    "V19.hereda-max-fix-rounds": mutar("V19.hereda-max-fix-rounds",
+        "`max_fix_rounds` y `deadline`—", "`deadline`—"),
+    "V19.hereda-deadline": mutar("V19.hereda-deadline", " y `deadline`—", "—"),
+    "V19.degradacion": mutar("V19.degradacion",
+        "rutas de **degradación** y de", "rutas de recuperación y de"),
+    "V19.takeover": mutar("V19.takeover",
+        "de **takeover** valen igual que en `cross`", "de reintento valen igual que en `cross`"),
+    "V20.particion-rige": mutar("V20.particion-rige",
+        "**partición en bloques y su recibo** se producen y se aprueban igual que en `cross`",
+        "partición en bloques queda a criterio del conductor"),
+    "V20.recibo-antes-de-cada-bloque": mutar("V20.recibo-antes-de-cada-bloque",
+        "**ningún\nbloque se despacha sin recibo aprobado**", "un bloque puede despacharse sin recibo"),
+    "V21.persiste-en-header": mutar("V21.persiste-en-header",
+        "| el modo lógico `workers` | el `header del plan.md` |",
+        "| el modo lógico `workers` | el `ledger` |"),
+    "V21.proyecta-a-blocks": mutar("V21.proyecta-a-blocks",
+        "**El enum del ledger no gana un valor nuevo.**",
+        "El enum del ledger gana el valor `workers`."),
+    "V21.congela-familia": mutar("V21.congela-familia",
+        "| la familia del implementador | `congelada en el header`, junto al modo |",
+        "| la familia del implementador | se relee del archivo vigente |"),
+    "V21.congela-perfil": mutar("V21.congela-perfil",
+        "| el perfil resuelto del rol `implement` | `congelado en el header`, junto al modo |",
+        "| el perfil resuelto del rol `implement` | se relee del archivo vigente |"),
+    "V22.usa-congelado": mutar("V22.usa-congelado",
+        "**usa la familia y el perfil congelados**", "relee la familia y el perfil"),
+    "V22.rechaza-archivo-vigente": mutar("V22.rechaza-archivo-vigente",
+        "**rechaza el archivo vigente**", "adopta el archivo vigente"),
+    "V22.continuidad-del-punto": mutar("V22.continuidad-del-punto",
+        "**continúa en el punto correcto**", "reinicia la secuencia"),
+    "V22.compatibilidad-del-ledger": mutar("V22.compatibilidad-del-ledger",
+        "**El ledger de una corrida `workers` es compatible**",
+        "El ledger de una corrida `workers` tiene forma propia"),
+    "V23.no-reinterpreta-cross": mutar("V23.no-reinterpreta-cross",
+        "| `cross` | su ledger sigue siendo válido y su modo se resuelve como antes |\n", ""),
+    "V23.no-reinterpreta-inline": mutar("V23.no-reinterpreta-inline",
+        "| `inline` | su ledger sigue siendo válido y su modo se resuelve como antes |\n", ""),
+    "V26.detiene-con-error": mutar("V26.detiene-con-error",
+        "**deteniendo el flujo con su error de\nmigración**", "degradando en silencio a `inline`"),
+    "V26.lista-modos-vigentes": mutar("V26.lista-modos-vigentes",
+        "que son `ask`, `inline`,", "que son `inline`,"),
+    "V26.incluye-workers": mutar("V26.incluye-workers",
+        "`cross` y **`workers`**.", "`cross`."),
+})
+
+
+MUTANTES.update({
+    "V24.declara-worker-efectivo": mutar("V24.declara-worker-efectivo",
+        "| `worker efectivo de la misma familia` | quien escribió el código es un worker fresco de la misma familia que el autor del work order |\n", ""),
+    "V24.declara-perdida-de-correlacion": mutar("V24.declara-perdida-de-correlacion",
+        "| `no rompe la correlación de errores` | por eso esta corrida no aporta la diversidad de familia que sí aporta una selección cross-family |\n", ""),
+    "V24.recomienda-revision-humana": mutar("V24.recomienda-revision-humana",
+        "| `se recomienda revisión humana adicional` | la consecuencia práctica, dirigida a quien acepta el diff |\n", ""),
+    "V25.degradacion-sin-writer": mutar("V25.degradacion-sin-writer",
+        "que **no hubo worker**: el código lo escribió el conductor inline",
+        "que el worker same-family implementó: el código lo escribió el conductor inline"),
+    "V25.takeover-por-bloque": mutar("V25.takeover-por-bloque",
+        "la atribución es **por bloque**, nunca por corrida", "la atribución es por corrida"),
+})
+
+
 def inventario_hojas(ruta: Path) -> tuple[list[str], str | None]:
     texto = leer_texto(ruta)
     seccion = extraer_seccion(texto, "Hojas normativas de v1", 4)
     if seccion is None:
         raise MedicionDetenida(f"no existe la sección #### Hojas normativas de v1 en {ruta}")
-    prefijos = tuple(f"{modo.fila}." for modo in MODOS.values())
+    # Se excluyen POR NOMBRE las filas que se verifican con un comando directo, no con un modo de
+    # este script. Filtrar por los prefijos REGISTRADOS —que es lo que se hacía— deja fuera a esas
+    # dos y, con el mismo silencio, a cualquier fila que alguien olvide registrar: la biyección
+    # informaba "inventario completo" sobre el subconjunto que ya tenía modo.
+    excluidas = tuple(f"{fila}." for fila in FILAS_SIN_MODO)
     # Solo las LÍNEAS DE DECLARACIÓN (`- **Vn** — ...`). Grepear la sección entera captura además las
     # menciones en prosa —una nota que explica que una hoja se partió en dos, por ejemplo— y las suma
     # al inventario como si fueran hojas: el mismo defecto de medir la mención en vez de la
@@ -1075,7 +1512,7 @@ def inventario_hojas(ruta: Path) -> tuple[list[str], str | None]:
     hojas = [
         hoja for linea in declaradas
         for hoja in re.findall(r"`(V\d+\.[^`]+)`", linea)
-        if hoja.startswith(prefijos)
+        if not hoja.startswith(excluidas)
     ]
     duplicadas = sorted({hoja for hoja in hojas if hojas.count(hoja) > 1})
     return hojas, ", ".join(duplicadas) if duplicadas else None

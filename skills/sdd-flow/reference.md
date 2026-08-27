@@ -313,7 +313,7 @@ jira_approval:                   # aprobación externa de la spec en Jira (opcio
   mode: "off"                    # "off" | "on"  (default off; entre comillas: sin ellas YAML los parsea como booleanos)
   subtask_issuetype: auto        # auto (descubrir por createmeta) | "Subtarea" | "Sub-task"
   approval_signal: ask           # ask | status:"<estado Jira que cuenta como aprobado>"
-implement_mode: ask              # cómo ejecutar las tasks: ask (preguntar en el último gate) | inline | cross (delegar a la otra familia vía `cross-implement`; requiere esa skill + el CLI de la otra familia)
+implement_mode: ask              # cómo ejecutar las tasks: ask (preguntar en el último gate) | inline | cross (delegar a la otra familia vía `cross-implement`; requiere esa skill + el CLI de la otra familia) | workers (delegar a la familia del conductor con el perfil por rol de `.specify/workers.yml`; misma capacidad, y solo en flujos no triviales)
 domain_context:
   mode: auto                     # auto | "on" | "off"; solo lectura, nunca escribe ADRs/docs
   context_paths: []              # docs de dominio/glosarios/arquitectura a leer si existen
@@ -746,6 +746,106 @@ intento. Está prohibido sustituir el campo rechazado por el valor del conductor
 El aviso distingue dos ramas. Si el diagnóstico del proveedor entrega una corrección, la incorpora
 textualmente. Si no la entrega, declara expresamente que no hay una corrección fiable disponible;
 nunca inventa una desde un catálogo local.
+
+### El modo `workers` de implementación
+
+`implement_mode: workers` delega la implementación a un worker de **la familia del conductor**, con
+el perfil del rol `implement` resuelto por la cadena de arriba. Existe para que la elección de worker
+deje de ser implícita: `cross` rompe la correlación de errores cambiando de familia, y `workers`
+conserva la familia a propósito y declara lo que se pierde.
+
+#### Cuándo se ofrece
+
+`workers` se ofrece **solo en flujos no triviales**, junto a `inline` y `cross`, **dentro del gate
+único** que ya pregunta el modo y **sin abrir un gate nuevo**. En un cambio **trivial** no se ofrece:
+ahí el modo es `inline` sin pregunta, y sumar una opción abriría una decisión que ese nivel excluye a
+propósito. Un **override explícito de `workers` vale igual en trivial**, como cualquier otro override
+conversacional: lo que trivial suprime es la pregunta, no la elección del usuario.
+
+La oferta está **condicionada a la capacidad**: se ofrece solo si la skill de implementación cruzada
+está instalada y **el CLI de la familia del conductor está disponible**. Sin capacidad, la opción no
+aparece en la pregunta.
+
+#### A quién delega, y con qué familia
+
+`workers` **delega en `cross-implement`** y **no suma un punto de despacho propio**: el sobre de esa
+corrida lo escribe la skill delegada, igual que en `cross`, y el inventario de puntos de despacho de
+`sdd-flow` no cambia.
+
+La **familia del implementador queda fijada a la del conductor**, y no se elige ni se pregunta. Se
+determina por la familia del agente que conduce, nunca por el inventario.
+
+#### El override de familia no muta el inventario
+
+La familia viaja como **override acotado a esa invocación** de `cross-implement`, y **tiene prohibido
+mutar el inventario de familias de la corrida**: su lista, su procedencia y su selección quedan
+intactas para toda otra skill. Reemplazar el inventario global por la familia del conductor es
+precisamente el problema que este modo viene a evitar, y una implementación que lo haga no satisface
+el contrato.
+
+#### Cuándo no se despacha
+
+Dos casos, y son distintos:
+
+| Caso | Qué pasa |
+|---|---|
+| el `inventario no contiene` la familia del conductor | se declara la incompatibilidad y no se despacha |
+| el `CLI same-family no está disponible` | se declara la incompatibilidad y no se despacha |
+
+En ninguno de los dos se **degrada en silencio** a otra familia ni a otro modo.
+
+#### Qué hereda
+
+`workers` hereda el bloque `cross_implement` del config —`execution`, `max_fix_rounds` y `deadline`—
+y no tiene bloque propio.
+
+Sus rutas de **degradación** y de **takeover** valen igual que en `cross`, incluido el fallo del
+writer **después** del despacho: con cese confirmado el conductor toma el trabajo restante, y con
+cese incierto la secuencia se detiene.
+
+#### La partición rige igual
+
+La **partición en bloques y su recibo** se producen y se aprueban igual que en `cross`, y **ningún
+bloque se despacha sin recibo aprobado**.
+
+#### Qué se persiste y dónde
+
+| Hecho | Sede |
+|---|---|
+| el modo lógico `workers` | el `header del plan.md` |
+| su proyección | el valor `blocks` del enum `mode` del ledger |
+| la familia del implementador | `congelada en el header`, junto al modo |
+| el perfil resuelto del rol `implement` | `congelado en el header`, junto al modo |
+
+**El enum del ledger no gana un valor nuevo.** `mode` sigue admitiendo `blocks | inline`, y `workers`
+se proyecta a `blocks` porque su secuencia es la de bloques. El ledger no es la sede del modo lógico:
+es la de su proyección.
+
+#### La retoma
+
+La retoma **usa la familia y el perfil congelados** en el header, y **rechaza el archivo vigente**:
+un `.specify/workers.yml` que cambió entre la pausa y la retoma no reabre la resolución. Es el
+escalón 1 de la cadena, y acá es la única autoridad.
+
+La retoma **continúa en el punto correcto** y **no cae en ledger corrupto ni en versión desconocida**:
+el ledger sigue siendo un `mode: blocks` válido, así que el clasificador de secuencia lo lee como
+cualquier otra corrida por bloques. **El ledger de una corrida `workers` es compatible** con el de una
+corrida `cross`, y esa compatibilidad es la que evita que la retoma necesite un camino propio.
+
+#### Compatibilidad hacia atrás
+
+Una corrida **viva iniciada antes de este modo** no se reinterpreta:
+
+| Modo de origen | Al retomar |
+|---|---|
+| `cross` | su ledger sigue siendo válido y su modo se resuelve como antes |
+| `inline` | su ledger sigue siendo válido y su modo se resuelve como antes |
+
+#### El valor retirado
+
+Un `implement_mode` **retirado** —`subagent`— sigue **deteniendo el flujo con su error de
+migración**, sin fallback silencioso. Ese error ofrece los modos vigentes, que son `ask`, `inline`,
+`cross` y **`workers`**.
 
 ## Contexto de dominio
 

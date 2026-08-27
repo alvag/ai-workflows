@@ -2054,8 +2054,9 @@ sin estado.
 ## Manifest de corrida
 
 Un registro por corrida de una skill cross-model, con lo mínimo para responder **"¿esto me está
-sirviendo?"**. Es la sede canónica de los cuatro productores: `co-explore`, `cross-review`,
-`cross-implement` y `bitbucket-code-review` apuntan acá y no duplican el esquema.
+sirviendo?"**. Es la sede canónica de sus productores y ninguno duplica el esquema: los **cuatro** de la
+telemetría —`co-explore`, `cross-review`, `cross-implement` y `bitbucket-code-review`— y un
+**quinto**, `sdd-pr-feedback`, que publica el registro durable de despachos definido más abajo.
 
 No es un log. El log de cada skill cuenta *qué pasó en una corrida* para poder auditarla; el
 manifest existe para poder mirar **cien corridas juntas** y decidir si la capacidad se gana su
@@ -2253,6 +2254,112 @@ resuelto — wall clock, no suma.
 las rondas siguientes sigue siendo `cli-exec`; `cli-resume` es para la corrida que *entera* fue una
 reanudación de una sesión ajena. Un terminal de preflight sin worker ni tool call usa `none`.
 
+### El registro durable de despachos
+
+El manifest mide **corridas**; esta sección registra **despachos**. Un perfil de worker se resuelve
+por la cadena, viaja al proceso y a veces lo rechaza el proveedor, y sin un rastro que sobreviva a la
+corrida no queda después ninguna forma de saber de qué autoridad salió cada campo. El sobre no sirve
+para eso: su contrato no norma ningún destino de archivo, así que al retirarse el registro
+desaparecería.
+
+**Una entrada por intento**, en `dispatches[]`, con estos campos:
+
+| Campo | Qué es |
+|---|---|
+| `attempt` | ordinal del intento dentro de la corrida, desde 1 |
+| `at` | ISO-8601 UTC del intento |
+| `role` · `family` | el rol despachado y la familia del worker |
+| `requested` | el **perfil solicitado**: `model` y `effort` tal como los pidió la cadena, con el literal `heredado` intacto si el campo lo valía |
+| `resolved` | el **perfil resuelto** tras bajar los cuatro escalones |
+| `origin` | el **escalón de origen por campo**: `{"model": <1-4>, "effort": <1-4>}` |
+| `materialized` | el valor con que se materializó un `heredado`, por campo, o `null` en el campo que no lo valía |
+| `sent` | lo **enviado al proceso**: los valores que efectivamente viajaron en el comando, ya traducidos al vocabulario de la familia |
+| `outcome` | el **resultado** del intento |
+| `retry_of` | el `attempt` que este reintenta, o `null` si es el primero |
+
+**`origin` y `materialized` son dos hechos distintos y no se colapsan.** El escalón dice de qué
+autoridad salió el `heredado`; la materialización dice con qué valor concreto se lo reemplazó.
+Guardar uno solo pierde cuál de los dos falló, que es la única pregunta que se le hace a este
+registro cuando un despacho salió con el modelo equivocado.
+
+**`retry_of` conserva los dos intentos.** Cuando el proveedor rechaza un valor y se reintenta una
+sola vez, el intento rechazado **no se pisa**: queda con su `outcome` propio y el segundo lo apunta.
+Sin ese vínculo, dos entradas del mismo rol son indistinguibles de dos despachos independientes.
+
+El literal que declara que un valor no se pudo determinar solo es admisible en `sent` cuando el
+comando efectivo **no llevó** la opción correspondiente.
+
+#### Tipo, emisión y productores
+
+El archivo lleva **`record_type` con versión**, y es lo que lo distingue de un manifest de
+telemetría sin adivinar por sus campos:
+
+| `record_type` | Qué trae |
+|---|---|
+| `run-manifest/1` | los nueve campos comparables **más** `dispatches[]` |
+| `dispatch-log/1` | la identidad de la corrida —`skill`, `mode`, `run_id`, `started_at`— **más** `dispatches[]`, sin los campos de telemetría |
+
+Hace falta porque hoy la **sola existencia** del archivo significa "el manifest estaba habilitado", y
+publicar uno con la telemetría apagada cambia esa semántica para consumidores que ya existen.
+
+**La publicación de `dispatches[]` es incondicional.** `cross_model.manifest.mode` gobierna la
+telemetría de corrida y **no** gobierna este registro: con el switch en `off` se publica igual un
+`dispatch-log/1`, y es lo que evita que el rastro de perfiles quede incumplido en todo repositorio
+que tenga la telemetría apagada. La asimetría es deliberada: una porción incondicional dentro de un
+artefacto apagable no es un descuido.
+
+Se publica **antes de todo retiro** del sobre, terminal o no, y por lo demás sigue la ruta canónica
+—`.cross-model/runs/<started_at compacto>-<skill>-<mode>-<run_id>.json`— con su creación sin
+reemplazo y su cierre idempotente, sin excepción alguna.
+
+**De dónde sale su identidad con la telemetría apagada.** `skill`, `mode` y `run_id` son campos
+**incondicionales** de la raíz del sobre, así que están siempre. El que no está es el timestamp: con
+**modo off** los dos nodos de autoridad del manifest permanecen ausentes desde el nacimiento hasta el
+retiro, y derivar la ruta de un nodo ausente sería inventarlo. Por eso un `dispatch-log/1` toma su
+`started_at` del **`at` del primer intento**, que es un dato que ya tiene por definición. Con la
+telemetría encendida nada cambia: `started_at` conserva su autoridad de siempre.
+
+Y si con **modo off** no hubo **ningún** despacho, no se publica nada: `dispatches[]` vacío no es un
+registro con un hueco, es una corrida sin nada que registrar. La obligación nace del despacho, no del
+retiro.
+
+**Son cinco productores, no cuatro.** El conjunto que emite `dispatches[]` **iguala** al de skills
+con rutas CLI gobernadas: `co-explore`, `cross-review`, `cross-implement`, `bitbucket-code-review` y
+`sdd-pr-feedback`. El quinto entra porque su región `prfb-codex` es un despacho gobernado como
+cualquier otro; dejarlo afuera repetiría el hueco por el que el manifest tal como estaba no servía.
+Los nueve campos de telemetría siguen siendo de los cuatro: `sdd-pr-feedback` publica
+`dispatch-log/1` y no proyecta una corrida comparable.
+
+```json
+{
+  "record_type": "dispatch-log/1",
+  "skill": "sdd-pr-feedback",
+  "mode": "apply",
+  "run_id": "3f10c4ab",
+  "started_at": "2026-08-02T11:45:07Z",
+  "dispatches": [
+    {
+      "attempt": 1, "role": "implement", "family": "codex",
+      "requested": {"model": "gpt-5.6-terra", "effort": "heredado"},
+      "resolved": {"model": "gpt-5.6-terra", "effort": "heredado"},
+      "origin": {"model": 3, "effort": 4},
+      "materialized": {"model": null, "effort": "medio"},
+      "sent": {"model": "gpt-5.6-terra", "effort": "medium"},
+      "outcome": "rejected_by_provider", "retry_of": null
+    },
+    {
+      "attempt": 2, "role": "implement", "family": "codex",
+      "requested": {"model": "gpt-5.6-terra", "effort": "heredado"},
+      "resolved": {"model": "gpt-5.6-terra", "effort": "heredado"},
+      "origin": {"model": 3, "effort": 4},
+      "materialized": {"model": null, "effort": "alto"},
+      "sent": {"model": "gpt-5.6-terra", "effort": "high"},
+      "outcome": "completed", "retry_of": 1
+    }
+  ]
+}
+```
+
 ### El vocabulario es prestado, nunca propio
 
 | Skill | `mode` | `outcome` | `degradation` (además de `none`) |
@@ -2282,11 +2389,17 @@ documentado proyecta su objeto nuevo**, incluidos los que devuelven `UNAVAILABLE
 nada. Esos terminales comparten los nueve ejes comparables de la serie; omitirlos o redactarlos desde
 otro cierre rompería justamente la comparación entre corridas para la que existe este registro.
 
+Con la telemetría **apagada** no hay objeto de telemetría que proyectar y el terminal informa
+`manifest no escrito: modo off`, como siempre. Lo que sí se escribe en ese punto —si hubo algún
+despacho— es el `dispatch-log/1`: son dos artefactos con condiciones distintas en el mismo archivo,
+y el `record_type` es lo que dice cuál de los dos quedó.
+
 ### Nunca bloquea
 
 Si la escritura falla —directorio no creable, disco lleno—, la corrida **sigue** y se dice en una
-línea: `manifest no escrito: <causa>`. Un registro que puede tumbar una corrida cuesta más de lo que
-mide. El aviso no es cortesía: sin él, un directorio mal permisado produce huecos en la serie
+línea: `manifest no escrito: <causa>`, y si lo que falló fue el registro durable de despachos,
+`registro de despachos no escrito: <causa>`. Un registro que puede tumbar una corrida cuesta más de lo
+que mide. El aviso no es cortesía: sin él, un directorio mal permisado produce huecos en la serie
 indistinguibles de "no corrió", que es la lectura opuesta a la verdadera.
 
 ### Qué NO se registra
@@ -2296,8 +2409,8 @@ enterarse de por qué se fue:
 
 | Recortado | Por qué |
 |---|---|
-| `attempts[]` con owner único | era la infraestructura del fallback entre **dos transportes**, que acá no existe: hay una vía por familia y su alternativa está documentada como degradación. El número de rondas ya vive en el log de la skill, que es donde se lo consulta. |
-| schema versionado | el conjunto de campos es **fijo**. Versionarlo compra la posibilidad de expandirlo, y expandirlo es salir de "¿esto me sirve?" hacia una telemetría que nadie pidió. El día que haga falta versionar, esa es la señal de que el alcance cambió — y esa decisión se toma explícita, no se hereda de un campo que ya estaba. |
+| `attempts[]` con owner único | era la infraestructura del fallback entre **dos transportes**, que acá no existe: hay una vía por familia y su alternativa está documentada como degradación. El número de rondas ya vive en el log de la skill, que es donde se lo consulta. **No es `dispatches[]`**, que sí se registra: la unidad de aquel era el reintento de un **transporte**; la de este es el intento de despacho de un **perfil**. |
+| ~~schema versionado~~ — **el alcance cambió y la versión entró** | el conjunto de campos de telemetría sigue siendo **fijo**, por el mismo motivo de siempre: expandirlo es salir de "¿esto me sirve?" hacia una telemetría que nadie pidió. Lo que cambió es que el archivo pasó a tener **dos formas**, con y sin telemetría, y este recorte ya anticipaba esa señal. La versión entró **explícita**, en `record_type`, y no heredada de un campo que ya estaba. |
 | `usage.source` | atribuía consumo entre suscripción y API. El CLI headless corre sobre la suscripción: no hay costo por corrida que atribuir. |
 | parent/child runs | un flujo que corre tres co-exploraciones deja tres archivos con tres timestamps. Correlacionarlos es ordenar por nombre, no un campo más que mantener consistente. |
 | `.partial` + rename atómico | protegía una escritura que podía morir a la mitad porque se hacía incremental. Acá el archivo se escribe entero, una vez, cuando ya se conoce el outcome. |
@@ -2313,7 +2426,8 @@ cross_model:
 
 Vive en `cross_model` —política del **ecosistema**, no de una skill— porque las cuatro escriben el
 mismo registro: apagarlo para una sola produciría una serie con huecos sistemáticos, que es peor que
-no tenerla. Esquema completo en `sdd-flow/reference.md` → "Esquema de `.specify/config.yml`".
+no tenerla. **El switch alcanza a la telemetría y no a `dispatches[]`:** con `mode: "off"` se sigue
+publicando el registro durable de despachos, en su forma `dispatch-log/1`. Esquema completo en `sdd-flow/reference.md` → "Esquema de `.specify/config.yml`".
 
 Default **on**: sin datos, cualquier decisión posterior sobre expandir o recortar el ecosistema es
 intuición, y el costo es un archivo de 300 bytes en un directorio untracked.

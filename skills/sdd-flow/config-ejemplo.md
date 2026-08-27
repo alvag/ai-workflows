@@ -36,7 +36,7 @@ branch_format: "{type}/{ticket}-{slug}"  # [def] placeholders {type} {ticket} {s
 branch_prefix: ""                # [def] reemplaza {type} (p. ej. "feature/"); vacío → prefijo semántico
 commit_style: conventional       # conventional | plain — [def]
 tracker: jira                    # jira | github | gitlab | linear | none — [ej]
-implement_mode: ask              # ask | inline | cross — [def]
+implement_mode: ask              # ask | inline | cross | workers — [def]
 
 # ── sdd-flow: gates opcionales ──
 domain_context:
@@ -78,7 +78,7 @@ co_explore:
   tercera_pasada:
     mode: auto                   # auto | "on" | "off" — [def] cuándo se OFRECE la crítica de la síntesis
 
-# ── dueño: cross-implement/SKILL.md → "Configuración" (solo con implement_mode: cross) ──
+# ── dueño: cross-implement/SKILL.md → "Configuración" (solo con implement_mode: cross o workers) ──
 cross_implement:
   execution: auto                # auto (por tamaño del work order) | sync | background — [def]
   max_fix_rounds: 2              # [def] tope del fix loop antes del takeover

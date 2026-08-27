@@ -286,6 +286,13 @@ despacho usa `-s workspace-write`, que acota lo que el agente escribe **en disco
 no acota los efectos de una tool MCP. Un implementador con los MCP del entorno alcanza una tool de
 ejecución y opera fuera de ese borde con el sandbox intacto.
 
+**Esta ruta publica el registro durable de despachos, y por eso esta skill es el quinto productor.**
+No emite los nueve campos de telemetría del manifest —no proyecta una corrida comparable— pero sí el
+`dispatches[]` con una entrada por intento, en la forma `dispatch-log/1`, con independencia de
+`cross_model.manifest.mode`. Esquema y campos: `cross-review/reference.md` → "El registro durable de
+despachos". Que `prfb-codex` sea un despacho gobernado y no publicara nada era el hueco que la
+migración del manifest vino a cerrar.
+
 ---
 
 ## Cierre de un commit

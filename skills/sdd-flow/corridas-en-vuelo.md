@@ -396,6 +396,18 @@ Si el modo estaba deshabilitado o la escritura falla, se registra `manifest no e
 se retira igual: la telemetría nunca mantiene activa una corrida ya cerrada. Ningún camino abre
 `.cross-model/runs/` para construir el objeto.
 
+**El registro durable de despachos se publica siempre, y su condición no es la del manifest.**
+`cross_model.manifest.mode` gobierna la telemetría y no gobierna este registro: el retiro **terminal**
+publica el archivo de la corrida con su `dispatches[]` aunque el switch esté en `off`, en la forma
+`dispatch-log/1`. Sin esta cláusula una corrida con la telemetría apagada se retira sin publicar
+nada, y el rastro de qué perfil se despachó desaparece con el sobre. Un **checkpoint intermedio no lo
+publica**: crear ahí el archivo cerraría la corrida con la mitad de los intentos, y la creación sin
+reemplazo impediría completarlo después. Los intentos acumulados viajan en el descriptor del carrier
+junto con las autoridades, y es esa continuidad la que permite que el terminal publique la corrida
+entera. Si la escritura falla se informa `registro de despachos no escrito: <causa>` y el retiro
+sigue: un registro que puede dejar viva una corrida ya cerrada cuesta más de lo que rastrea. Esquema
+en `skills/cross-review/reference.md` → "El registro durable de despachos".
+
 **Las tres son simultáneas porque ninguna implica a las otras.** Un terminal comprobado convive con un
 artefacto sin adjudicar —el worker terminó y su salida sigue sin leerse—; un artefacto validado
 convive con un recurso vivo que se conservó a propósito; y un cleanup terminado no dice nada de si el
@@ -412,10 +424,10 @@ existe.
 
 ### Destino del carrier al retirar
 
-| destino del carrier | efecto sobre el manifest | estado de la corrida |
-|---|---|---|
-| checkpoint intermedio | no se materializa | abierta; el descriptor conserva las autoridades |
-| outcome terminal | se resuelve antes del retiro terminal | cerrada al cumplir las demás condiciones |
+| destino del carrier | efecto sobre el manifest | registro de despachos | estado de la corrida |
+|---|---|---|---|
+| checkpoint intermedio | no se materializa | no se publica; los intentos viajan en el descriptor | abierta; el descriptor conserva las autoridades |
+| outcome terminal | se resuelve antes del retiro terminal | se publica siempre, con el switch en `on` o en `off` | cerrada al cumplir las demás condiciones |
 
 ### Adopción
 
