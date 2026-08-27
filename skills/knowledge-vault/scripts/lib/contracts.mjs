@@ -24,6 +24,45 @@ export class ContractError extends Error {
 
 export const VERBS = Object.freeze(['archive', 'migrate', 'index', 'config', 'retire', 'identity']);
 
+/**
+ * Qué banderas acepta cada verbo, y de qué forma: `valor` consume el token
+ * siguiente, `booleana` no. Es el espejo en código de la matriz que
+ * `reference.md` → "Matriz por verbo" ya tenía congelada, y la **única** sede de
+ * la forma: antes vivía aparte, en un `Set` global de `cli.mjs`, que hacía que
+ * `identity --dry-run` se parseara como booleana de otro verbo.
+ *
+ * **No declara obligatoriedad.** Qué bandera es obligatoria lo sigue diciendo
+ * cada comando, con su propio mensaje: acá se gobiernan **nombres**, no
+ * ausencias. Partirlo así evita dos capas que pueden discrepar sobre lo mismo.
+ *
+ * Las filas nacen **sin prototipo** a propósito. Sobre un objeto normal —incluso
+ * `Object.freeze`— `fila['constructor']` devuelve una función, así que una
+ * consulta directa aceptaría `--constructor` y lo descartaría en silencio, que es
+ * exactamente el defecto que esta tabla existe para cerrar. `cli.mjs` consulta
+ * además con `Object.hasOwn`: el prototipo nulo evita la herencia y `hasOwn` la
+ * vuelve explícita para quien lea el código.
+ */
+const fila = (pares) => Object.freeze(Object.assign(Object.create(null), pares));
+
+export const FLAGS_BY_VERB = Object.freeze(Object.assign(Object.create(null), {
+  archive: fila({ from: 'valor', summary: 'valor', config: 'valor', 'vault-root': 'valor' }),
+  migrate: fila({
+    from: 'valor', summaries: 'valor', config: 'valor', 'vault-root': 'valor',
+    'dry-run': 'booleana',
+  }),
+  index: fila({ config: 'valor', 'vault-root': 'valor' }),
+  config: fila({
+    config: 'valor', 'set-root': 'valor', 'search-root': 'valor', discover: 'booleana',
+  }),
+  retire: fila({
+    root: 'valor', from: 'valor', config: 'valor', 'vault-root': 'valor',
+    'approve-digest': 'valor', 'dry-run': 'booleana',
+  }),
+  identity: fila({
+    declare: 'valor', config: 'valor', 'vault-root': 'valor', propose: 'booleana',
+  }),
+}));
+
 const STATUS_BY_EXIT_CODE = Object.freeze({
   0: ['ARCHIVED', 'ALREADY_ARCHIVED', 'INDEX_OK', 'BATCH_OK', 'DRY_RUN', 'VAULT_CONFIGURED', 'VAULT_SET',
       'IDENTITY_PROPOSED', 'IDENTITY_DECLARED', 'IDENTITY_ALREADY_DECLARED', 'VAULTS_DISCOVERED'],
@@ -39,7 +78,14 @@ const STATUS_BY_EXIT_CODE = Object.freeze({
   // operar, no un fallo de la corrida. Sin esto salía `INTERNAL_ERROR`, que le
   // dice a quien automatiza que encontró un bug en vez de que le falta declarar
   // la identidad.
-  4: ['PRECONDITION_NOT_MET', 'AMBIGUOUS_IDENTITY'],
+  // `INVALID_FLOW_ID` y `RESERVED_FLOW_NAME` entran por el mismo razonamiento, y
+  // es la tercera vez que esta tabla lo aplica. Las dos dicen "el directorio de
+  // origen se llama mal": quien automatiza tiene que renombrarlo y reintentar, que
+  // es una precondición y no un fallo de la corrida. Sin esto salían por
+  // `INTERNAL_ERROR`, así que el mensaje —el que nombra el renombre y ofrece el
+  // candidato— era inalcanzable para un consumidor que ramifica por código: leía
+  // "kv tiene un bug" sobre algo que se arregla con un `mv`.
+  4: ['PRECONDITION_NOT_MET', 'AMBIGUOUS_IDENTITY', 'INVALID_FLOW_ID', 'RESERVED_FLOW_NAME'],
   // `VAULT_ROOT_UNAVAILABLE` acompaña a `NO_VAULT` y no se queda en
   // `INTERNAL_ERROR`, que es donde caía por no estar en esta tabla. La familia es
   // la correcta: las dos dicen "la raíz del vault no sirve para operar" y quien

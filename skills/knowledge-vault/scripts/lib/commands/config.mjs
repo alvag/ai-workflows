@@ -26,7 +26,29 @@ async function leerSiExiste(fs, ruta, label) {
 }
 
 export async function configCommand({ fs, flags, homeDir = null, label = 'config' }) {
-  if (flags.discover === true) return descubrir({ fs, flags, homeDir, label });
+  if (flags.discover === true) {
+    // `--set-root` quedaba parseada y descartada en silencio: quien corría
+    // `config --discover --set-root <ruta>` obtenía exit 0 y un listado, y creía
+    // que la raíz había quedado declarada cuando no se escribió nada. Es la misma
+    // clase que el parser ya cierra para las banderas que ningún verbo declara —
+    // acá el nombre es legal para el verbo y lo que no existe es la combinación—,
+    // y con peor consecuencia, porque la bandera descartada expresa una escritura.
+    //
+    // `--config` **no** entra en esta exclusión, y la diferencia no es de grado:
+    // que el descubrimiento lo ignore es una decisión tomada y verificada —
+    // "discover no escribe nada: descubrir no es configurar"—, así que rechazarlo
+    // rompería un uso legítimo. `--set-root` no tiene esa guarda porque nadie
+    // decidió que se ignorara: simplemente se perdía.
+    if (flags['set-root'] !== undefined) {
+      throw new ContractError(
+        'USAGE',
+        '--discover y --set-root son excluyentes: el descubrimiento solo mira el disco, '
+          + 'así que no declara ninguna raíz; para fijarla, corré `config --config <ruta> '
+          + '--set-root <raíz>` con lo que el descubrimiento haya sugerido',
+      );
+    }
+    return descubrir({ fs, flags, homeDir, label });
+  }
 
   const configPath = flags.config;
   if (typeof configPath !== 'string' || configPath.length === 0) {

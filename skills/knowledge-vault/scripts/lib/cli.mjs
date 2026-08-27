@@ -6,10 +6,7 @@
  * código sale cada fallo, no lo que hace cada verbo.
  */
 
-import { ContractError, VERBS, exitCodeFor, isStatus } from './contracts.mjs';
-
-/** Banderas sin valor: no se comen el argumento siguiente. */
-const BOOLEANAS = new Set(['dry-run', 'propose', 'discover']);
+import { ContractError, FLAGS_BY_VERB, VERBS, exitCodeFor, isStatus } from './contracts.mjs';
 
 /**
  * @returns {{verb: string, flags: Record<string, string|true>}}
@@ -30,7 +27,33 @@ export function parseArgv(argv) {
       throw new ContractError('USAGE', `argumento suelto ${JSON.stringify(token)}: todo entra por banderas largas`);
     }
     const nombre = token.slice(2);
-    if (BOOLEANAS.has(nombre)) {
+    // La fila del verbo es la **única** autoridad sobre qué banderas existen y de
+    // qué forma. Aceptar cualquier nombre —que es lo que se hacía— vuelve el
+    // reintento imposible indistinguible del correcto: la bandera se parsea, se
+    // guarda y se descarta sin que nada avise.
+    //
+    // `Object.hasOwn` y no `nombre in fila` ni un acceso directo: aunque las filas
+    // nacen sin prototipo, la pertenencia explícita es lo que impide que una
+    // edición futura de `contracts.mjs` reabra el agujero de `--constructor`.
+    if (!Object.hasOwn(FLAGS_BY_VERB[verb], nombre)) {
+      // La fila es la lista completa de lo aceptado, así que nombrarla cuesta una
+      // expresión y evita que un typo o una bandera movida de verbo terminen en
+      // prueba y error. Es el mismo criterio que este PR aplica al renombre: un
+      // error que dice qué no se puede sin decir qué sí, obliga a adivinar.
+      const acepta = Object.keys(FLAGS_BY_VERB[verb]).map((f) => `--${f}`).join(', ');
+      throw new ContractError(
+        'USAGE',
+        `el verbo ${verb} no acepta la bandera --${nombre}; acepta ${acepta || '(ninguna)'}`,
+      );
+    }
+    // Repetir una bandera pisaba el valor anterior sin avisar, que es la misma
+    // clase de descarte silencioso que la tabla cierra un renglón más arriba: con
+    // `--from a --from b` se archivaba `b` y nada decía que se habían dado dos.
+    // Ahora que la fila conoce cada nombre, detectarlo es una comparación.
+    if (Object.hasOwn(flags, nombre)) {
+      throw new ContractError('USAGE', `la bandera --${nombre} está repetida: se declara una sola vez`);
+    }
+    if (FLAGS_BY_VERB[verb][nombre] === 'booleana') {
       flags[nombre] = true;
       continue;
     }
