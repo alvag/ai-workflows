@@ -257,9 +257,17 @@ created_at: <ISO-8601>
 | Conductor | Mecanismo |
 |---|---|
 | Claude Code | Subagente del entorno (`Agent`/`Task`), un despacho. |
-| Codex CLI | `codex exec --ignore-user-config --disable hooks --disable apps --disable plugins -s workspace-write -C <repo> --skip-git-repo-check --output-last-message <out.txt> - < <prompt.txt>` (prompt a archivo, nunca inline). |
+| Codex CLI | `codex exec --ignore-user-config --disable hooks --disable apps --disable plugins -s workspace-write -C <repo> --skip-git-repo-check ${PERFIL_MODEL:+-m} ${PERFIL_MODEL:+"$PERFIL_MODEL"} ${PERFIL_EFFORT:+-c} ${PERFIL_EFFORT:+"model_reasoning_effort=$PERFIL_EFFORT"} --output-last-message <out.txt> - < <prompt.txt>` (prompt a archivo, nunca inline). |
 | Sin subagentes | El conductor implementa inline siguiendo la Vía B de `sdd-flow` (degradación). |
 
+**`PERFIL_MODEL` y `PERFIL_EFFORT` son el perfil del rol `implement`, familia `codex`**, resuelto por
+la cadena de `sdd-flow/reference.md` → "La cadena de resolución del perfil". Las dos expansiones van
+**partidas** (`${X:+-m} ${X:+"$X"}`) y no juntas: zsh no hace field splitting, así que `-m` viajaría
+pegado a su valor y la API lo rechazaría.
+
+**Escalón 4 — el valor histórico concreto de esta ruta es el `default del CLI`**, no la raíz del
+config personal: `--ignore-user-config` lo descarta y esta receta nunca lo reinyectó. Cuando la
+cadena no resuelve ninguna autoridad para un campo, ese default se conserva y el flag no se emite.
 <!-- despacho:fin:prfb-codex -->
 
 > **Por qué la marca envuelve la tabla entera y no la fila.** Una línea que no es fila **corta la
@@ -277,6 +285,13 @@ El corte vale **igual que para un worker read-only, y por el mismo motivo con m�
 despacho usa `-s workspace-write`, que acota lo que el agente escribe **en disco dentro del repo** y
 no acota los efectos de una tool MCP. Un implementador con los MCP del entorno alcanza una tool de
 ejecución y opera fuera de ese borde con el sandbox intacto.
+
+**Esta ruta publica el registro durable de despachos, y por eso esta skill es el quinto productor.**
+No emite los nueve campos de telemetría del manifest —no proyecta una corrida comparable— pero sí el
+`dispatches[]` con una entrada por intento, en la forma `dispatch-log/1`, con independencia de
+`cross_model.manifest.mode`. Esquema y campos: `cross-review/reference.md` → "El registro durable de
+despachos". Que `prfb-codex` sea un despacho gobernado y no publicara nada era el hueco que la
+migración del manifest vino a cerrar.
 
 ---
 

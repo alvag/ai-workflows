@@ -36,7 +36,7 @@ branch_format: "{type}/{ticket}-{slug}"  # [def] placeholders {type} {ticket} {s
 branch_prefix: ""                # [def] reemplaza {type} (p. ej. "feature/"); vacío → prefijo semántico
 commit_style: conventional       # conventional | plain — [def]
 tracker: jira                    # jira | github | gitlab | linear | none — [ej]
-implement_mode: ask              # ask | inline | cross — [def]
+implement_mode: ask              # ask | inline | cross | workers — [def]
 
 # ── sdd-flow: gates opcionales ──
 domain_context:
@@ -78,9 +78,91 @@ co_explore:
   tercera_pasada:
     mode: auto                   # auto | "on" | "off" — [def] cuándo se OFRECE la crítica de la síntesis
 
-# ── dueño: cross-implement/SKILL.md → "Configuración" (solo con implement_mode: cross) ──
+# ── dueño: cross-implement/SKILL.md → "Configuración" (solo con implement_mode: cross o workers) ──
 cross_implement:
   execution: auto                # auto (por tamaño del work order) | sync | background — [def]
   max_fix_rounds: 2              # [def] tope del fix loop antes del takeover
   deadline: 1800                 # [def] segundos; tope duro del wait en background
 ```
+
+## Ejemplo de `.specify/workers.yml`
+
+**Esta sección es una vista.** El dueño del esquema es `sdd-flow/reference.md` → "Esquema de
+`.specify/workers.yml`". Los valores de modelo y esfuerzo muestran la forma completa; no declaran
+defaults.
+
+```yaml
+schema_version: 1
+roles:
+  explore:
+    claude:
+      model: opus
+      effort: alto
+    codex:
+      model: gpt-5.6-sol
+      effort: alto
+  counter-plan:
+    claude:
+      model: opus
+      effort: alto
+    codex:
+      model: gpt-5.6-sol
+      effort: alto
+  investigate:
+    claude:
+      model: opus
+      effort: alto
+    codex:
+      model: gpt-5.6-sol
+      effort: alto
+  debate:
+    claude:
+      model: opus
+      effort: alto
+    codex:
+      model: gpt-5.6-sol
+      effort: alto
+  design-review:
+    claude:
+      model: opus
+      effort: alto
+    codex:
+      model: gpt-5.6-sol
+      effort: alto
+  implement:
+    claude:
+      model: opus
+      effort: alto
+    codex:
+      model: gpt-5.6-sol
+      effort: alto
+  refute:
+    claude:
+      model: opus
+      effort: alto
+    codex:
+      model: gpt-5.6-sol
+      effort: alto
+  pr:
+    claude:
+      model: opus
+      effort: alto
+    codex:
+      model: gpt-5.6-sol
+      effort: alto
+```
+
+`model` admite un string no vacío. `effort` admite exactamente estos cinco literales portables; la
+traducción es idéntica para ambas familias:
+
+| Portable | Claude (`--effort`) | Codex (`model_reasoning_effort`) |
+|---|---|---|
+| `bajo` | `low` | `low` |
+| `medio` | `medium` | `medium` |
+| `alto` | `high` | `high` |
+| `muy_alto` | `xhigh` | `xhigh` |
+| `maximo` | `max` | `max` |
+
+Las únicas claves admitidas son `schema_version` y `roles` en la raíz; los ocho nombres de rol bajo
+`roles`; `claude` y `codex` bajo cada rol; y `model` y `effort` bajo cada familia. No se admite
+ninguna otra clave en ningún nivel.

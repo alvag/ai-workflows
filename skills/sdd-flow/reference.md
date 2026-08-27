@@ -313,7 +313,7 @@ jira_approval:                   # aprobación externa de la spec en Jira (opcio
   mode: "off"                    # "off" | "on"  (default off; entre comillas: sin ellas YAML los parsea como booleanos)
   subtask_issuetype: auto        # auto (descubrir por createmeta) | "Subtarea" | "Sub-task"
   approval_signal: ask           # ask | status:"<estado Jira que cuenta como aprobado>"
-implement_mode: ask              # cómo ejecutar las tasks: ask (preguntar en el último gate) | inline | cross (delegar a la otra familia vía `cross-implement`; requiere esa skill + el CLI de la otra familia)
+implement_mode: ask              # cómo ejecutar las tasks: ask (preguntar en el último gate) | inline | cross (delegar a la otra familia vía `cross-implement`; requiere esa skill + el CLI de la otra familia) | workers (delegar a la familia del conductor con el perfil por rol de `.specify/workers.yml`; misma capacidad, y solo en flujos no triviales)
 domain_context:
   mode: auto                     # auto | "on" | "off"; solo lectura, nunca escribe ADRs/docs
   context_paths: []              # docs de dominio/glosarios/arquitectura a leer si existen
@@ -446,6 +446,407 @@ el mismo delta exacto de la resolución inicial. En este STOP **no se infiere un
 sondea el entorno para decidirlo: preguntar una vez por la clave ausente no es descubrir familias.
 Desde la respuesta rige la lectura declarada y no se vuelve a preguntar.
 
+## Esquema de `.specify/workers.yml`
+
+Esta sección es la sede dueña del archivo de perfiles de workers. `schema_version` es obligatorio y
+su único valor admitido es `1`. La vista enumera los ocho roles y muestra, para cada uno, las dos
+familias con sus dos campos. Los valores de modelo y esfuerzo del ejemplo hacen visible la forma;
+no declaran defaults.
+
+```yaml
+schema_version: 1
+roles:
+  explore:
+    claude:
+      model: opus
+      effort: alto
+    codex:
+      model: gpt-5.6-sol
+      effort: alto
+  counter-plan:
+    claude:
+      model: opus
+      effort: alto
+    codex:
+      model: gpt-5.6-sol
+      effort: alto
+  investigate:
+    claude:
+      model: opus
+      effort: alto
+    codex:
+      model: gpt-5.6-sol
+      effort: alto
+  debate:
+    claude:
+      model: opus
+      effort: alto
+    codex:
+      model: gpt-5.6-sol
+      effort: alto
+  design-review:
+    claude:
+      model: opus
+      effort: alto
+    codex:
+      model: gpt-5.6-sol
+      effort: alto
+  implement:
+    claude:
+      model: opus
+      effort: alto
+    codex:
+      model: gpt-5.6-sol
+      effort: alto
+  refute:
+    claude:
+      model: opus
+      effort: alto
+    codex:
+      model: gpt-5.6-sol
+      effort: alto
+  pr:
+    claude:
+      model: opus
+      effort: alto
+    codex:
+      model: gpt-5.6-sol
+      effort: alto
+```
+
+`model` admite un string no vacío o `heredado`. `effort` admite `heredado` o uno de los cinco
+literales portables de la tabla de abajo. Ninguna otra clave se admite en ningún nivel.
+
+### Claves admitidas
+
+| Nivel | Claves admitidas |
+|---|---|
+| raíz | `schema_version` \| `roles` |
+| `roles` | `explore` \| `counter-plan` \| `investigate` \| `debate` \| `design-review` \| `implement` \| `refute` \| `pr` |
+| cada rol | `claude` \| `codex` |
+| cada familia | `model` \| `effort` |
+
+### Enum portable de esfuerzo
+
+El archivo usa los mismos cinco literales para ambas familias. Cada literal se traduce al valor
+nativo antes del despacho, con la misma traducción en Claude y Codex:
+
+| Portable | Claude (`--effort`) | Codex (`model_reasoning_effort`) |
+|---|---|---|
+| `bajo` | `low` | `low` |
+| `medio` | `medium` | `medium` |
+| `alto` | `high` | `high` |
+| `muy_alto` | `xhigh` | `xhigh` |
+| `maximo` | `max` | `max` |
+
+### Forma histórica descartada
+
+Este esquema sustituye la forma histórica de perfiles nombrados con indirección por asignaciones.
+
+No se adopta esa forma porque la lista blanca cerrada de `model` y `effort` aporta la misma
+garantía: una asignación no puede transportar herramientas, permisos ni autoridad, sin la maquinaria
+de la indirección. La forma directa conserva esa frontera sin perfiles intermedios ni referencias que
+resolver.
+
+### El literal de herencia
+
+`heredado` reproduce la resolución previa de la vía. Se admite en `model` y `effort`, pero se
+materializa por familia y por campo:
+
+| Familia | Campo | Resolución |
+|---|---|---|
+| `claude` | `model` | el modelo cableado de esa ruta: `opus` en las doce regiones de juicio y `sonnet` en las dos de implementación |
+| `claude` | `effort` | ningún flag `--effort`; rige el default del CLI |
+| `codex` | `model` y `effort` | el valor de la raíz del config personal del usuario |
+
+Definir el literal solo por familia retiraría el modelo cableado de Claude cuando `model` valiera
+`heredado`. Las rutas `bbcr-viab-posix`, `bbcr-viab-ps` y `prfb-codex` tampoco son una excepción:
+un `heredado` explícito en Codex toma el config personal, aunque su resolución anterior sin ninguna
+autoridad sea el default del CLI.
+
+### La cadena de resolución del perfil
+
+Esta sección es la sede única de la precedencia. Las demás sedes remiten aquí y no copian la cadena.
+Antes de recorrerla se aplica el gate de validez, con una asimetría deliberada:
+
+| Momento | Tratamiento de un archivo presente |
+|---|---|
+| lanzamiento fresco | se valida siempre antes de resolver, incluso con override total; si es inválido, el flujo se detiene antes de despachar |
+| sesión reanudada | no consulta ni valida el archivo; la autoridad es el perfil congelado de la sesión |
+
+Cada campo baja por separado hasta el primer escalón que lo resuelve:
+
+| Escalón | Autoridad | Alcance |
+|---|---|---|
+| 1 | perfil congelado de la sesión | solo en una reanudación; reemplaza juntos `model` y `effort` |
+| 2 | override conversacional | solo los campos que nombra; declara si alcanza a un rol, una familia o toda la corrida |
+| 3 | archivo de la raíz efectiva | el rol y la familia del archivo; la matriz de defaults completa lo que el archivo omite |
+| 4 | resolución anterior | solo el campo que ningún escalón anterior resolvió; rige en corridas standalone y embebidas |
+
+La resolución es por campo salvo en el escalón 1: un perfil congelado parcial rompería la continuidad
+de la sesión. Los defaults son relleno del escalón 3 cuando el archivo existe; nunca son fallback de
+su ausencia.
+
+La raíz efectiva es la raíz Git del directorio de trabajo de la corrida. Rige exclusivamente su
+`.specify/workers.yml`: no se consulta un árbol padre o principal y no se fusionan archivos de dos
+raíces.
+
+El valor histórico concreto del escalón 4 es el siguiente:
+
+| Familia y rutas | `model` | `effort` |
+|---|---|---|
+| Claude, rutas de juicio | modelo `opus` cableado por la receta | ningún flag; default del CLI |
+| Claude, rutas de implementación | modelo `sonnet` cableado por la receta | ningún flag; default del CLI |
+| Codex, salvo `bbcr-viab-posix`, `bbcr-viab-ps` y `prfb-codex` | raíz del config personal | raíz del config personal |
+| Codex, `bbcr-viab-posix`, `bbcr-viab-ps` y `prfb-codex` | default del CLI | default del CLI |
+
+Sin archivo confirmado, sin override aplicable y sin perfil congelado, una ruta fresca conserva ese
+valor histórico; esta regla cubre tanto invocaciones standalone como rutas embebidas en otro flujo.
+Ninguna skill escribe `.specify/workers.yml`: solo el paso `init` puede crearlo tras la confirmación.
+Toda resolución registra, por separado para `model` y `effort`, el número del escalón de origen.
+
+Descontado el estado terminal del archivo inválido, los estados alcanzables colapsan en seis. La
+sede no agrega estados porque solo elige el archivo del escalón 3; toda sesión reanudada colapsa en
+una fila porque el congelado reemplaza ambos campos.
+
+| Sesión | Override | Archivo | Resultado |
+|---|---|---|---|
+| reanudada | cualquiera | cualquiera | perfil congelado en ambos campos |
+| fresca | total | cualquiera | override en ambos campos |
+| fresca | parcial | sí | override en los campos nombrados y archivo, con defaults, en los demás |
+| fresca | parcial | no | override en los campos nombrados y resolución anterior en los demás |
+| fresca | no | sí | archivo, con defaults para lo omitido |
+| fresca | no | no | resolución anterior en ambos campos |
+
+### Matriz de defaults y delta de inicialización
+
+El archivo nuevo contiene los dieciséis perfiles siguientes:
+
+| Rol | `claude` | `codex` |
+|---|---|---|
+| `explore` | `opus` / `alto` | `gpt-5.6-sol` / `alto` |
+| `counter-plan` | `opus` / `alto` | `gpt-5.6-sol` / `alto` |
+| `investigate` | `opus` / `muy_alto` | `gpt-5.6-sol` / `muy_alto` |
+| `debate` | `opus` / `alto` | `gpt-5.6-sol` / `alto` |
+| `design-review` | `opus` / `muy_alto` | `gpt-5.6-sol` / `muy_alto` |
+| `implement` | `sonnet` / `medio` | `gpt-5.6-terra` / `medio` |
+| `refute` | `opus` / `alto` | `gpt-5.6-sol` / `alto` |
+| `pr` | `opus` / `alto` | `gpt-5.6-sol` / `alto` |
+
+`init` muestra el archivo completo con estos defaults y el delta de abajo antes de escribir. Crea
+`.specify/workers.yml` solo tras una confirmación explícita. Si el archivo ya existe y es válido, lo
+conserva sin sobrescribirlo.
+
+El delta usa tres columnas y agrupa solo rutas con el mismo baseline. `indeterminado` es un valor
+observado como dependiente del entorno, no un dato pendiente:
+
+| Región, ruta y familia | Procedencia y valor anterior | Perfil nuevo y cambio conocido |
+|---|---|---|
+| familia `claude`; todas las rutas de la matriz salvo las regiones `ci-wc-lanzamiento` y `ci-wc-fix` | procedencia: modelo cableado por la receta y default del CLI; valor anterior: `opus` / esfuerzo `indeterminado` | perfil nuevo: `explore`, `counter-plan`, `debate`, `refute` y `pr` → `opus` / `alto`; `investigate` y `design-review` → `opus` / `muy_alto`; cambio conocido: modelo no cambia, esfuerzo indeterminado |
+| familia `claude`; regiones `ci-wc-lanzamiento` y `ci-wc-fix`, ruta `implement` | procedencia: modelo cableado por la receta y default del CLI; valor anterior: `sonnet` / esfuerzo `indeterminado` | perfil nuevo: `implement` → `sonnet` / `medio`; cambio conocido: modelo no cambia, esfuerzo indeterminado |
+| familia `codex`; regiones de `cross-review`, `co-explore` y `cross-implement` | procedencia: reinyección de la raíz del config personal; valor anterior: modelo y esfuerzo `indeterminado` | perfil nuevo: `explore`, `counter-plan` y `debate` → `gpt-5.6-sol` / `alto`; `investigate` y `design-review` → `gpt-5.6-sol` / `muy_alto`; `implement` → `gpt-5.6-terra` / `medio`; cambio conocido: no, depende del config personal |
+| familia `codex`; regiones `bbcr-viab-posix`, `bbcr-viab-ps` y `prfb-codex` | procedencia: default del CLI porque la receta no reinyecta el config; valor anterior: modelo y esfuerzo `indeterminado` | perfil nuevo: `pr` y `refute` → `gpt-5.6-sol` / `alto`; `implement` → `gpt-5.6-terra` / `medio`; cambio conocido: no, depende del default efectivo del CLI |
+
+En Claude ningún rol cambia de modelo: las catorce regiones marcadas son doce regiones `opus` y dos
+regiones `sonnet`, exactamente la partición de la matriz. Todo su delta está en `effort`, que las
+recetas actuales no envían.
+
+### Matriz `(región, ruta) → rol`
+
+`ruta` identifica el uso lógico de una receta. Por eso las regiones reutilizadas aparecen una vez
+por uso: Bitbucket usa la misma receta para `pr` y `refute` según el prompt; co-exploración usa la
+misma receta para `explore`, `counter-plan`, `investigate` o `debate` según el modo.
+
+| Región | Ruta | Rol |
+|---|---|---|
+| `cr-ronda1-posix` | `design-review` | `design-review` |
+| `cr-ronda1-ps` | `design-review` | `design-review` |
+| `cr-resume-posix` | `design-review` | `design-review` |
+| `cr-resume-ps` | `design-review` | `design-review` |
+| `cr-viac-r1-posix` | `design-review` | `design-review` |
+| `cr-viac-r1-ps` | `design-review` | `design-review` |
+| `cr-viac-resume-posix` | `design-review` | `design-review` |
+| `cr-viac-resume-ps` | `design-review` | `design-review` |
+| `cr-latencia-sync` | `design-review` | `design-review` |
+| `cr-latencia-background` | `design-review` | `design-review` |
+| `cr-seed-posix` | `design-review` | `design-review` |
+| `cr-seed-ps` | `design-review` | `design-review` |
+| `coex-directa-posix` | `explore` | `explore` |
+| `coex-directa-posix` | `counter-plan` | `counter-plan` |
+| `coex-directa-posix` | `investigate` | `investigate` |
+| `coex-directa-posix` | `debate` | `debate` |
+| `coex-directa-ps` | `explore` | `explore` |
+| `coex-directa-ps` | `counter-plan` | `counter-plan` |
+| `coex-directa-ps` | `investigate` | `investigate` |
+| `coex-directa-ps` | `debate` | `debate` |
+| `coex-latencia-posix` | `explore` | `explore` |
+| `coex-latencia-posix` | `counter-plan` | `counter-plan` |
+| `coex-latencia-posix` | `investigate` | `investigate` |
+| `coex-latencia-posix` | `debate` | `debate` |
+| `coex-latencia-ps` | `explore` | `explore` |
+| `coex-latencia-ps` | `counter-plan` | `counter-plan` |
+| `coex-latencia-ps` | `investigate` | `investigate` |
+| `coex-latencia-ps` | `debate` | `debate` |
+| `coex-fanout-posix-codex` | `explore` | `explore` |
+| `coex-fanout-posix-codex` | `counter-plan` | `counter-plan` |
+| `coex-fanout-posix-codex` | `investigate` | `investigate` |
+| `coex-fanout-posix-codex` | `debate` | `debate` |
+| `coex-fanout-posix-claude` | `explore` | `explore` |
+| `coex-fanout-posix-claude` | `counter-plan` | `counter-plan` |
+| `coex-fanout-posix-claude` | `investigate` | `investigate` |
+| `coex-fanout-posix-claude` | `debate` | `debate` |
+| `coex-fanout-ps-codex` | `explore` | `explore` |
+| `coex-fanout-ps-codex` | `counter-plan` | `counter-plan` |
+| `coex-fanout-ps-codex` | `investigate` | `investigate` |
+| `coex-fanout-ps-codex` | `debate` | `debate` |
+| `coex-fanout-ps-claude` | `explore` | `explore` |
+| `coex-fanout-ps-claude` | `counter-plan` | `counter-plan` |
+| `coex-fanout-ps-claude` | `investigate` | `investigate` |
+| `coex-fanout-ps-claude` | `debate` | `debate` |
+| `ci-wb-posix` | `implement` | `implement` |
+| `ci-wb-ps` | `implement` | `implement` |
+| `ci-wb-resume` | `implement` | `implement` |
+| `ci-wb-resume-ps` | `implement` | `implement` |
+| `ci-wc-lanzamiento` | `implement` | `implement` |
+| `ci-wc-fix` | `implement` | `implement` |
+| `bbcr-viab-posix` | `pr` | `pr` |
+| `bbcr-viab-posix` | `refute` | `refute` |
+| `bbcr-viab-ps` | `pr` | `pr` |
+| `bbcr-viab-ps` | `refute` | `refute` |
+| `bbcr-viac-posix` | `pr` | `pr` |
+| `bbcr-viac-posix` | `refute` | `refute` |
+| `bbcr-viac-ps` | `pr` | `pr` |
+| `bbcr-viac-ps` | `refute` | `refute` |
+| `prfb-codex` | `implement` | `implement` |
+
+Los ocho roles tienen al menos una ruta en la matriz; la cobertura se valida por identidad de
+conjuntos, no por cardinalidad.
+
+### Momentos de resolución y valores inválidos
+
+Cada momento tiene un observable y una autoridad propios:
+
+| Momento | Observable | Autoridad |
+|---|---|---|
+| lanzamiento | perfil vigente del rol resuelto y enviado al proceso | cadena de resolución, después del gate de validez |
+| resume propio | perfil persistido por el lanzamiento de esa misma corrida | perfil congelado de la sesión; nunca el archivo vigente |
+| resume de seed | perfil persistido por la sesión de origen, aunque difiera del perfil vigente del rol | perfil congelado de la sesión de origen; nunca el archivo vigente |
+
+La forma inválida comprende: esfuerzo fuera del enum; rol o familia desconocidos; parámetro no
+admitido; `schema_version` desconocida; YAML ilegible; forma histórica de perfiles; modelo nulo,
+numérico, booleano o vacío; y claves duplicadas. La validación local se detiene antes de despachar,
+nombra el valor inválido y la ruta del archivo, y sugiere una corrección concreta.
+
+Si el proveedor o el CLI rechaza un modelo o esfuerzo que sí cumple la forma, el aviso incluye rol,
+familia, valor solicitado y valor efectivo. Se reintenta una sola vez: se omite únicamente la opción
+rechazada y se conserva el otro campo válido. El perfil del intento exitoso queda congelado para los
+resume posteriores. Si el segundo intento falla, el worker queda `UNAVAILABLE`; no existe un tercer
+intento. Está prohibido sustituir el campo rechazado por el valor del conductor.
+
+El aviso distingue dos ramas. Si el diagnóstico del proveedor entrega una corrección, la incorpora
+textualmente. Si no la entrega, declara expresamente que no hay una corrección fiable disponible;
+nunca inventa una desde un catálogo local.
+
+### El modo `workers` de implementación
+
+`implement_mode: workers` delega la implementación a un worker de **la familia del conductor**, con
+el perfil del rol `implement` resuelto por la cadena de arriba. Existe para que la elección de worker
+deje de ser implícita: `cross` rompe la correlación de errores cambiando de familia, y `workers`
+conserva la familia a propósito y declara lo que se pierde.
+
+#### Cuándo se ofrece
+
+`workers` se ofrece **solo en flujos no triviales**, junto a `inline` y `cross`, **dentro del gate
+único** que ya pregunta el modo y **sin abrir un gate nuevo**. En un cambio **trivial** no se ofrece:
+ahí el modo es `inline` sin pregunta, y sumar una opción abriría una decisión que ese nivel excluye a
+propósito. Un **override explícito de `workers` vale igual en trivial**, como cualquier otro override
+conversacional: lo que trivial suprime es la pregunta, no la elección del usuario.
+
+La oferta está **condicionada a la capacidad**: se ofrece solo si la skill de implementación cruzada
+está instalada y **el CLI de la familia del conductor está disponible**. Sin capacidad, la opción no
+aparece en la pregunta.
+
+#### A quién delega, y con qué familia
+
+`workers` **delega en `cross-implement`** y **no suma un punto de despacho propio**: el sobre de esa
+corrida lo escribe la skill delegada, igual que en `cross`, y el inventario de puntos de despacho de
+`sdd-flow` no cambia.
+
+La **familia del implementador queda fijada a la del conductor**, y no se elige ni se pregunta. Se
+determina por la familia del agente que conduce, nunca por el inventario.
+
+#### El override de familia no muta el inventario
+
+La familia viaja como **override acotado a esa invocación** de `cross-implement`, y **tiene prohibido
+mutar el inventario de familias de la corrida**: su lista, su procedencia y su selección quedan
+intactas para toda otra skill. Reemplazar el inventario global por la familia del conductor es
+precisamente el problema que este modo viene a evitar, y una implementación que lo haga no satisface
+el contrato.
+
+#### Cuándo no se despacha
+
+Dos casos, y son distintos:
+
+| Caso | Qué pasa |
+|---|---|
+| el `inventario no contiene` la familia del conductor | se declara la incompatibilidad y no se despacha |
+| el `CLI same-family no está disponible` | se declara la incompatibilidad y no se despacha |
+
+En ninguno de los dos se **degrada en silencio** a otra familia ni a otro modo.
+
+#### Qué hereda
+
+`workers` hereda el bloque `cross_implement` del config —`execution`, `max_fix_rounds` y `deadline`—
+y no tiene bloque propio.
+
+Sus rutas de **degradación** y de **takeover** valen igual que en `cross`, incluido el fallo del
+writer **después** del despacho: con cese confirmado el conductor toma el trabajo restante, y con
+cese incierto la secuencia se detiene.
+
+#### La partición rige igual
+
+La **partición en bloques y su recibo** se producen y se aprueban igual que en `cross`, y **ningún
+bloque se despacha sin recibo aprobado**.
+
+#### Qué se persiste y dónde
+
+| Hecho | Sede |
+|---|---|
+| el modo lógico `workers` | el `header del plan.md` |
+| su proyección | el valor `blocks` del enum `mode` del ledger |
+| la familia del implementador | `congelada en el header`, junto al modo |
+| el perfil resuelto del rol `implement` | `congelado en el header`, junto al modo |
+
+**El enum del ledger no gana un valor nuevo.** `mode` sigue admitiendo `blocks | inline`, y `workers`
+se proyecta a `blocks` porque su secuencia es la de bloques. El ledger no es la sede del modo lógico:
+es la de su proyección.
+
+#### La retoma
+
+La retoma **usa la familia y el perfil congelados** en el header, y **rechaza el archivo vigente**:
+un `.specify/workers.yml` que cambió entre la pausa y la retoma no reabre la resolución. Es el
+escalón 1 de la cadena, y acá es la única autoridad.
+
+La retoma **continúa en el punto correcto** y **no cae en ledger corrupto ni en versión desconocida**:
+el ledger sigue siendo un `mode: blocks` válido, así que el clasificador de secuencia lo lee como
+cualquier otra corrida por bloques. **El ledger de una corrida `workers` es compatible** con el de una
+corrida `cross`, y esa compatibilidad es la que evita que la retoma necesite un camino propio.
+
+#### Compatibilidad hacia atrás
+
+Una corrida **viva iniciada antes de este modo** no se reinterpreta:
+
+| Modo de origen | Al retomar |
+|---|---|
+| `cross` | su ledger sigue siendo válido y su modo se resuelve como antes |
+| `inline` | su ledger sigue siendo válido y su modo se resuelve como antes |
+
+#### El valor retirado
+
+Un `implement_mode` **retirado** —`subagent`— sigue **deteniendo el flujo con su error de
+migración**, sin fallback silencioso. Ese error ofrece los modos vigentes, que son `ask`, `inline`,
+`cross` y **`workers`**.
+
 ## Contexto de dominio
 
 `domain_context` es una lista de entradas **read-only** que el flujo usa para aterrizar términos,
@@ -494,7 +895,7 @@ Checks:
 
 ## Qué escribe `init`
 
-El paso `init` (ver `SKILL.md` → "Paso `init`") materializa `.specify/` a pedido mediante un **wizard** de selección (campos de decisión) + autodetección (comandos), creando **ambos** archivos con valores ya resueltos, no plantillas vacías:
+El paso `init` (ver `SKILL.md` → "Paso `init`") materializa `.specify/` a pedido mediante un **wizard** de selección (campos de decisión) + autodetección (comandos), creando los archivos con valores ya resueltos, no plantillas vacías:
 
 1. **`.specify/config.yml`** — relleno con lo que la autodetección encontró (no se deja en blanco). Ejemplo de un repo Node con Angular detectado:
 
@@ -519,7 +920,14 @@ El paso `init` (ver `SKILL.md` → "Paso `init`") materializa `.specify/` a pedi
 
 2. **`.specify/constitution.md`** — desde "Plantilla de constitution" (abajo), con el puntero a los principios de código del repo (`CLAUDE.md`/`AGENTS.md`/`CONTRIBUTING.md`) si existen.
 
-Ambos son **locales y untracked** (regla #10). Si ya existen, `init` no los pisa: el wizard muestra los valores vigentes **pre-seleccionados** para mantener o cambiar, y al confirmar fusiona respetando lo puesto a mano.
+3. **`.specify/workers.yml`** — solo si falta, desde "Matriz de defaults y delta de
+   inicialización". El preview incluye el archivo completo y el delta; un archivo válido existente
+   se conserva.
+
+Los tres son **locales y untracked** (regla #10) y solo se escriben tras confirmar el preview. Si
+`config.yml` o `constitution.md` ya existen, el wizard muestra los valores vigentes
+**pre-seleccionados** para mantener o cambiar y fusiona respetando lo puesto a mano. Un
+`workers.yml` válido nunca se sobrescribe.
 
 ## Mapeo tipo de cambio → prefijo
 

@@ -276,8 +276,14 @@ read_root_key() {
   [ "$n" -eq 1 ] && printf '%s\n' "$ROOT" |
     sed -n "s/^$1[[:space:]]*=[[:space:]]*\"\([^\"]*\)\".*/\1/p"
 }
-MODEL=$(read_root_key model)
-EFFORT=$(read_root_key model_reasoning_effort)
+# Perfil del rol de esta corrida —`explore`, `counter-plan`, `investigate` o `debate`, según
+# el modo—, resuelto por la cadena de `sdd-flow/reference.md` → "La cadena de resolución del perfil" — `sdd-flow/reference.md` → "La cadena de resolución del
+# perfil". El conductor deja PERFIL_MODEL y PERFIL_EFFORT antes de invocar.
+MODEL="$PERFIL_MODEL"
+EFFORT="$PERFIL_EFFORT"
+# Escalón 4 por campo — sin autoridad anterior, esta ruta conserva la raíz del config personal.
+[ -z "$MODEL" ]  && MODEL=$(read_root_key model)
+[ -z "$EFFORT" ] && EFFORT=$(read_root_key model_reasoning_effort)
 
 # Argumentos incrementales, NUNCA ${MODEL:+-m "$MODEL"}: en zsh esa expansión no hace field
 # splitting y `-m` viaja pegado a su valor, con lo que el modelo llega con un espacio inicial y
@@ -307,8 +313,11 @@ function Read-RootKey($Key) {
   $m = @($Root | Select-String -Pattern "^$Key\s*=\s*`"([^`"]*)`"\s*$")
   if ($m.Count -eq 1) { $m[0].Matches.Groups[1].Value }
 }
-$Model  = Read-RootKey 'model'
-$Effort = Read-RootKey 'model_reasoning_effort'
+# Perfil del rol de esta corrida (`explore`, `counter-plan`, `investigate` o `debate`), resuelto por
+# la cadena de `sdd-flow/reference.md` → "La cadena de resolución del perfil". Escalón 4 por campo:
+# la raíz del config personal.
+$Model  = if ($PerfilModel)  { $PerfilModel }  else { Read-RootKey 'model' }
+$Effort = if ($PerfilEffort) { $PerfilEffort } else { Read-RootKey 'model_reasoning_effort' }
 
 $CodexArgs = @('exec','--ignore-user-config','--disable','hooks','--disable','apps',
                '--disable','plugins','-s','read-only','-C','<working_dir>',
@@ -360,9 +369,15 @@ cuando el conductor tiene un exec corto, p. ej. Codex ~120s):
 # POSIX:
 SESSION_ID=$(uuidgen)   # Git Bash en Windows sin uuidgen: ver "Portabilidad entre shells" de cross-review
 mkdir -p co-explore/scratch
-( cd <working_dir> && claude -p --safe-mode --model opus --permission-mode default \
-    --allowedTools=Read,Grep,Glob \
-    --session-id "$SESSION_ID" \
+# Perfil del rol de esta corrida (`explore`, `counter-plan`, `investigate` o `debate`), por la
+# cadena de `sdd-flow/reference.md` → "La cadena de resolución del perfil". Escalón 4 por campo:
+# `opus` cableado en esta ruta, y ningún flag de esfuerzo.
+MODEL="${PERFIL_MODEL:-opus}"
+EFFORT="$PERFIL_EFFORT"
+set -- -p --safe-mode --model "$MODEL" --permission-mode default \
+       --allowedTools=Read,Grep,Glob --session-id "$SESSION_ID"
+[ -n "$EFFORT" ] && set -- "$@" --effort "$EFFORT"
+( cd <working_dir> && claude "$@" \
     < co-explore/scratch/prompt.txt \
   > co-explore/scratch/explorer.out 2> co-explore/scratch/explorer.err ) &
 PID=$!
@@ -374,11 +389,17 @@ echo "$SESSION_ID" > co-explore/scratch/explorer-session.txt
 ```powershell
 # PowerShell:
 $SessionId = [guid]::NewGuid().ToString()
+# Perfil del rol de esta corrida, por la cadena de `sdd-flow/reference.md` → "La cadena de resolución del perfil" — `sdd-flow/reference.md` → "La cadena de
+# resolución del perfil". Escalón 4 por campo: `opus` cableado, y ningún flag de esfuerzo.
+$ModelClaude = if ($PerfilModel) { $PerfilModel } else { 'opus' }
+$ClaudeArgs  = @('-p','--safe-mode','--model',$ModelClaude,'--permission-mode','default',
+                 '--allowedTools=Read,Grep,Glob','--session-id',$SessionId)
+if ($PerfilEffort) { $ClaudeArgs += @('--effort', $PerfilEffort) }
 $proc = Start-Process -FilePath claude -WorkingDirectory <working_dir> -NoNewWindow -PassThru `
   -RedirectStandardInput  co-explore\scratch\prompt.txt `
   -RedirectStandardOutput co-explore\scratch\explorer.out `
   -RedirectStandardError  co-explore\scratch\explorer.err `
-  -ArgumentList '-p','--safe-mode','--model','opus','--permission-mode','default','--allowedTools=Read,Grep,Glob','--session-id',$SessionId
+  -ArgumentList $ClaudeArgs
 $proc.Id | Out-File co-explore\scratch\explorer.pid
 $SessionId | Out-File co-explore\scratch\explorer-session.txt
 ```
@@ -767,11 +788,23 @@ M=<modo>            # explore | counter-plan | investigate
 <!-- despacho:inicio:coex-fanout-posix-codex:codex -->
 
 ```bash
+# Perfil del rol de esta corrida —`explore`, `counter-plan`, `investigate` o `debate`, según
+# el modo—, resuelto por la cadena de `sdd-flow/reference.md` → "La cadena de resolución del perfil" — `sdd-flow/reference.md` → "La cadena de resolución del
+# perfil". El conductor deja PERFIL_MODEL y PERFIL_EFFORT antes de invocar.
+# MODEL y EFFORT salen de ahí; las dos expansiones van PARTIDAS (`${X:+-m} ${X:+"$X"}`) porque
+# zsh no hace field splitting y `-m` viajaría pegado a su valor.
 # 3a) worker Codex
+MODEL="$PERFIL_MODEL"
+EFFORT="$PERFIL_EFFORT"
+# Escalón 4 por campo — sin ninguna autoridad anterior, esta ruta conserva la raíz del config
+# personal, leída como en la vía directa.
+[ -z "$MODEL" ]  && MODEL=$(read_root_key model)
+[ -z "$EFFORT" ] && EFFORT=$(read_root_key model_reasoning_effort)
 codex exec --ignore-user-config --disable hooks --disable apps --disable plugins \
       -s read-only -C <working_dir> --skip-git-repo-check --json \
       --output-last-message "$S/raw-$M-codex-worker.md" \
-      ${MODEL:+-m} ${MODEL:+"$MODEL"} - \
+      ${MODEL:+-m} ${MODEL:+"$MODEL"} \
+      ${EFFORT:+-c} ${EFFORT:+"model_reasoning_effort=$EFFORT"} - \
     < "$S/prompt-$M-codex-worker.txt" \
     > "$S/thread-$M-codex-worker.jsonl" 2> "$S/stderr-$M-codex-worker.txt" &
 echo $! > "$S/pid-$M-codex-worker.txt"
@@ -784,8 +817,15 @@ T0_CODEX=$(date +%s)
 
 ```bash
 # 3b) worker Claude — sin esperar al anterior
-( cd <working_dir> && claude -p --safe-mode --model opus --permission-mode default \
-    --allowedTools=Read,Grep,Glob --session-id "$SID_CLAUDE" \
+# Perfil del rol de esta corrida (`explore`, `counter-plan`, `investigate` o `debate`), por la
+# cadena de `sdd-flow/reference.md` → "La cadena de resolución del perfil". Escalón 4 por campo:
+# `opus` cableado en esta ruta, y ningún flag de esfuerzo.
+MODEL="${PERFIL_MODEL:-opus}"
+EFFORT="$PERFIL_EFFORT"
+set -- -p --safe-mode --model "$MODEL" --permission-mode default \
+       --allowedTools=Read,Grep,Glob --session-id "$SID_CLAUDE"
+[ -n "$EFFORT" ] && set -- "$@" --effort "$EFFORT"
+( cd <working_dir> && claude "$@" \
     < "$S/prompt-$M-claude-worker.txt" ) \
     > "$S/raw-$M-claude-worker.md" 2> "$S/stderr-$M-claude-worker.txt" &
 echo $! > "$S/pid-$M-claude-worker.txt"
@@ -817,12 +857,17 @@ $S = "<dir>\co-explore\scratch"; $M = "<modo>"
 <!-- despacho:inicio:coex-fanout-ps-codex:codex -->
 
 ```powershell
+# $Model y $Effort son el perfil del rol de esta corrida (`explore`, `counter-plan`, `investigate`
+# o `debate`), resuelto por la cadena de `sdd-flow/reference.md` → "La cadena de resolución del perfil" — `sdd-flow/reference.md` → "La cadena de resolución del
+# perfil"; escalón 4 por campo: la raíz del config personal.
 # Los argumentos se construyen ACÁ, en el punto de despacho: si viven lejos, la receta no muestra
 # su propio aislamiento y nadie puede comprobarlo leyendo el lanzamiento.
 $CodexArgs = @('exec','--ignore-user-config','--disable','hooks','--disable','apps',
                '--disable','plugins','-s','read-only','-C','<working_dir>',
                '--skip-git-repo-check','--json',
                '--output-last-message',"$S\raw-$M-codex-worker.md")
+$Model  = if ($PerfilModel)  { $PerfilModel }  else { $Model }
+$Effort = if ($PerfilEffort) { $PerfilEffort } else { $Effort }
 if ($Model)  { $CodexArgs += @('-m', $Model) }
 if ($Effort) { $CodexArgs += @('-c', "model_reasoning_effort=$Effort") }
 $CodexArgs += '-'
@@ -840,8 +885,12 @@ $pCodex = Start-Process -FilePath codex -NoNewWindow -PassThru `
 # `--safe-mode` es el mecanismo de aislamiento de esta familia: apaga CLAUDE.md, skills, plugins,
 # hooks y MCP del usuario. `--allowedTools` entrecomillado entero, o PowerShell parsea las comas.
 $SidClaude   = [guid]::NewGuid().ToString()
-$ClaudeArgs  = @('-p','--safe-mode','--model','opus','--permission-mode','default',
+# $PerfilModel y $PerfilEffort son el perfil del rol de esta corrida, por la cadena de
+# `sdd-flow/reference.md` → "La cadena de resolución del perfil". Escalón 4: `opus` y sin esfuerzo.
+$ModelClaude = if ($PerfilModel) { $PerfilModel } else { 'opus' }
+$ClaudeArgs  = @('-p','--safe-mode','--model',$ModelClaude,'--permission-mode','default',
                  '--allowedTools=Read,Grep,Glob','--session-id',$SidClaude)
+if ($PerfilEffort) { $ClaudeArgs += @('--effort', $PerfilEffort) }
 $pClaude = Start-Process -FilePath claude -WorkingDirectory <working_dir> -NoNewWindow -PassThru `
   -RedirectStandardInput  "$S\prompt-$M-claude-worker.txt" `
   -RedirectStandardOutput "$S\raw-$M-claude-worker.md" `

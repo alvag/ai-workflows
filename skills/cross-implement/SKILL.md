@@ -370,6 +370,32 @@ desde las autoridades del seed, la frontera write-once y el terminal adjudicado.
 nueva, sin reemplazo y no usa otro manifest como plantilla. Esquema, comparabilidad y vocabulario en `cross-review/reference.md` →
 "Manifest de corrida".
 
+### El contrapeso same-family, y cuándo NO se emite
+
+El contrapeso de la regla 8 describe **quién escribió el código**, así que su condición no es el modo
+elegido sino **si un worker efectivamente implementó**.
+
+**Con un worker efectivo** —arrancó, escribió y su delta se revisó— la salida emite las **tres**
+declaraciones, y las tres son obligatorias:
+
+| Declaración | Qué afirma |
+|---|---|
+| `worker efectivo de la misma familia` | quien escribió el código es un worker fresco de la misma familia que el autor del work order |
+| `no rompe la correlación de errores` | por eso esta corrida no aporta la diversidad de familia que sí aporta una selección cross-family |
+| `se recomienda revisión humana adicional` | la consecuencia práctica, dirigida a quien acepta el diff |
+
+**Sin worker efectivo el contrapeso no se emite**, y en su lugar va lo que sí ocurrió. Son dos ramas:
+
+| Rama | Qué declara la salida |
+|---|---|
+| `degradación sin writer` — la skill no estaba, o el preflight confirmó la pared, y ningún writer llegó a arrancar | que **no hubo worker**: el código lo escribió el conductor inline, y no hay contrapeso que emitir porque no hay worker que contrapesar |
+| `takeover` — un writer arrancó, falló después del despacho y el conductor terminó | que hubo takeover **y quién terminó cada bloque**: la atribución es **por bloque**, nunca por corrida |
+
+**Por qué la atribución del takeover va por bloque.** Una corrida partida puede tener bloques que
+cerró el worker y bloques que terminó el conductor, y una atribución por corrida los describe a todos
+igual. Afirmar el contrapeso donde no hubo worker —o negarlo donde sí lo hubo— describe mal quién
+escribió el código, que es justo lo que el contrapeso existe para que el humano sepa.
+
 ## Configuración
 
 Claves bajo `cross_implement` en el `.specify/config.yml` del repo. Solo aplican con

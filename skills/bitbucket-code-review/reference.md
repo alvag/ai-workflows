@@ -468,17 +468,36 @@ código del PR.
 
 <!-- despacho:inicio:bbcr-viab-posix:codex -->
 ```bash
-codex exec --ignore-user-config --disable hooks --disable apps --disable plugins \
-  -s read-only -C <dir-código> --skip-git-repo-check \
-  --output-last-message <raíz-repo>/.pr-review/<id>/codex-verdict.txt - < <raíz-repo>/.pr-review/<id>/prompt.txt
+# Perfil del rol de esta ruta —`pr` o `refute`, según el prompt—, familia `codex`, resuelto por la
+# cadena de `sdd-flow/reference.md` → "La cadena de resolución del perfil".
+MODEL="$PERFIL_MODEL"
+EFFORT="$PERFIL_EFFORT"
+# Escalón 4 — el valor histórico CONCRETO de esta ruta es el **default del CLI**, no la raíz del
+# config personal: `--ignore-user-config` lo descarta y esta receta nunca lo reinyectaba. Sin
+# ninguna autoridad, se conserva ese default: no se emite el flag.
+set -- exec --ignore-user-config --disable hooks --disable apps --disable plugins \
+       -s read-only -C <dir-código> --skip-git-repo-check \
+       --output-last-message <raíz-repo>/.pr-review/<id>/codex-verdict.txt
+[ -n "$MODEL" ]  && set -- "$@" -m "$MODEL"
+[ -n "$EFFORT" ] && set -- "$@" -c "model_reasoning_effort=$EFFORT"
+set -- "$@" -
+codex "$@" < <raíz-repo>/.pr-review/<id>/prompt.txt
 ```
 <!-- despacho:fin:bbcr-viab-posix -->
 <!-- despacho:inicio:bbcr-viab-ps:codex -->
 ```powershell
-Get-Content -Raw <raíz-repo>\.pr-review\<id>\prompt.txt |
-  codex exec --ignore-user-config --disable hooks --disable apps --disable plugins `
-    -s read-only -C <dir-código> --skip-git-repo-check `
-    --output-last-message <raíz-repo>\.pr-review\<id>\codex-verdict.txt -
+# Perfil del rol de esta ruta (`pr` o `refute`), familia `codex`, resuelto por la cadena de
+# `sdd-flow/reference.md` → "La cadena de resolución del perfil". Escalón 4: el valor histórico
+# CONCRETO de esta ruta es el **default del CLI** —`--ignore-user-config` descarta el config y esta
+# receta nunca lo reinyectaba—, así que sin ninguna autoridad no se emite el flag.
+$CodexArgs = @('exec','--ignore-user-config','--disable','hooks','--disable','apps',
+               '--disable','plugins','-s','read-only','-C','<dir-código>',
+               '--skip-git-repo-check',
+               '--output-last-message','<raíz-repo>\.pr-review\<id>\codex-verdict.txt')
+if ($PerfilModel)  { $CodexArgs += @('-m', $PerfilModel) }
+if ($PerfilEffort) { $CodexArgs += @('-c', "model_reasoning_effort=$PerfilEffort") }
+$CodexArgs += '-'
+Get-Content -Raw <raíz-repo>\.pr-review\<id>\prompt.txt | codex @CodexArgs
 ```
 <!-- despacho:fin:bbcr-viab-ps -->
 **Antes de lanzar, el preflight de aislamiento**, con el corte de la sede única:
@@ -502,8 +521,15 @@ worktree si se eligió esa opción, si no la raíz); `--skip-git-repo-check` per
 <!-- despacho:inicio:bbcr-viac-posix:claude -->
 ```bash
 SESSION_ID=$(uuidgen)
-( cd <dir-código> && claude -p --safe-mode --model opus --permission-mode default \
-    --allowedTools=Read,Grep,Glob --session-id "$SESSION_ID" \
+# Perfil del rol de esta ruta (`pr` o `refute`), familia `claude`, por la cadena de
+# `sdd-flow/reference.md` → "La cadena de resolución del perfil". Escalón 4 por campo: `opus`, el
+# modelo cableado de esta ruta de juicio, y ningún flag de esfuerzo.
+MODEL="${PERFIL_MODEL:-opus}"
+EFFORT="$PERFIL_EFFORT"
+set -- -p --safe-mode --model "$MODEL" --permission-mode default \
+       --allowedTools=Read,Grep,Glob --session-id "$SESSION_ID"
+[ -n "$EFFORT" ] && set -- "$@" --effort "$EFFORT"
+( cd <dir-código> && claude "$@" \
     < <raíz-repo>/.pr-review/<id>/prompt.txt ) \
   > <raíz-repo>/.pr-review/<id>/claude-verdict.txt 2> <raíz-repo>/.pr-review/<id>/claude.err.txt
 ```
@@ -513,9 +539,15 @@ SESSION_ID=$(uuidgen)
 $SessionId = [guid]::NewGuid().ToString()
 Push-Location <dir-código>
 try {
+  # Perfil del rol de esta ruta (`pr` o `refute`), familia `claude`, por la cadena de
+  # `sdd-flow/reference.md` → "La cadena de resolución del perfil". Escalón 4: `opus` cableado en
+  # esta ruta de juicio, y ningún flag de esfuerzo.
+  $ModelClaude = if ($PerfilModel) { $PerfilModel } else { 'opus' }
+  $ClaudeArgs  = @('-p','--safe-mode','--model',$ModelClaude,'--permission-mode','default',
+                   '--allowedTools=Read,Grep,Glob','--session-id',$SessionId)
+  if ($PerfilEffort) { $ClaudeArgs += @('--effort', $PerfilEffort) }
   Get-Content -Raw <raíz-repo>\.pr-review\<id>\prompt.txt |
-    claude -p --safe-mode --model opus --permission-mode default `
-      '--allowedTools=Read,Grep,Glob' --session-id $SessionId `
+    claude @ClaudeArgs `
       > <raíz-repo>\.pr-review\<id>\claude-verdict.txt 2> <raíz-repo>\.pr-review\<id>\claude.err.txt
 } finally { Pop-Location }
 ```
