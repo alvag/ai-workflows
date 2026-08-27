@@ -156,13 +156,14 @@ CONSERVAR = {
     ],
 }
 
-# Dueños y vistas de la config del repo (AC-15). La primera vista refleja la unión de sus cuatro
+# Dueños y vistas de la config del repo (AC-15). La primera vista refleja la unión de sus cinco
 # dueños; la segunda refleja su dueño menos las claves de estado de corrida.
 DUENOS_CONFIG = [
     ("skills/sdd-flow/reference.md", r"Esquema de `\.specify/config\.yml`"),
     ("skills/cross-review/SKILL.md", r"Configuración"),
     ("skills/co-explore/SKILL.md", r"Configuración"),
     ("skills/cross-implement/SKILL.md", r"Configuración"),
+    ("skills/knowledge-vault/reference.md", r"La capa de configuración"),
 ]
 VISTA_CONFIG = ("skills/sdd-flow/config-ejemplo.md", r"Ejemplo de `\.specify/config\.yml`")
 DUENO_MANIFEST = ("skills/sdd-orchestrator/reference.md", r"Esquema de `manifest\.yml`")
@@ -2249,6 +2250,44 @@ def autotest() -> int:
                 fallas.append(f"{nombre}: verde rc={rc_verde}; mutante rc={rc_rojo}; "
                               f"señales={senales}; salida={salida_roja[:300]!r}; "
                               f"control={salida_verde[:160]!r}")
+
+    print("\n=== --ac 15: retiro del dueño del vault de DUENOS_CONFIG (AC-10)")
+    linea_dueno_vault = (
+        '    ("skills/knowledge-vault/reference.md", r"La capa de configuración"),\n'
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        raiz = Path(tmp) / "repo"
+        raiz.mkdir()
+        instalacion = Path(tmp) / "instalacion" / "scripts"
+        try:
+            _preparar_repo_config(raiz)
+            instalacion.mkdir(parents=True)
+            shutil.copy(REPO / "scripts/verificar-vistas-config.py",
+                        instalacion / "verificar-vistas-config.py")
+            texto_verificador = Path(__file__).read_text(encoding="utf-8")
+            if linea_dueno_vault not in texto_verificador:
+                raise ValueError("la línea del dueño del vault no está en el verificador")
+            script_mutado = instalacion / "verificar-sobre-en-vuelo.py"
+            script_mutado.write_text(
+                texto_verificador.replace(linea_dueno_vault, "", 1), encoding="utf-8")
+            rc_verde, _salida_verde = _correr_ac15_temporal(raiz)
+            resultado = subprocess.run(
+                [sys.executable, str(script_mutado), "--ac", "15", "--raiz", str(raiz)],
+                capture_output=True, text=True)
+            rc_rojo, salida_roja = resultado.returncode, resultado.stdout + resultado.stderr
+        except (OSError, RuntimeError, subprocess.CalledProcessError, ValueError) as e:
+            fallas.append(f"retiro-dueno-vault: no se pudo construir el caso — {e}")
+            print(f"[FALLA] retiro-dueno-vault: no se pudo construir el caso — {e}")
+        else:
+            diagnostico = norm(salida_roja)
+            ok = rc_verde == 0 and rc_rojo != 0 and norm("knowledge-vault.path_vault") in diagnostico
+            print(f"[{'OK   ' if ok else 'FALLA'}] retiro-dueno-vault: sin mutar "
+                  f"{'verde' if rc_verde == 0 else 'ROJO'} · retirando la entrada del dueño del "
+                  f"vault de DUENOS_CONFIG {'rojo nombrando la clave' if ok else 'sin la señal esperada'}")
+            if not ok:
+                fallas.append(
+                    f"retiro-dueno-vault: verde rc={rc_verde}; mutante rc={rc_rojo}; "
+                    f"salida={salida_roja[:300]!r}")
 
     print("\n=== Mutantes, uno por vez")
     for nombre, rel, viejo, nuevo, modo, senal in MUTANTES:

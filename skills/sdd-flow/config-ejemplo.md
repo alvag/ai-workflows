@@ -45,8 +45,8 @@ domain_context:
   adr_paths: []                  # [def] ADRs vigentes a leer si existen
 final_diff_review:
   mode: auto                     # auto (complex/high-risk inline) | "on" | "off" — [def]
-knowledge_vault:                 # requiere la skill `knowledge-vault`; el disparador es esta clave, no la instalación
-  mode: auto                     # auto (ofrece una vez y persiste) | "on" | "off" — [def] rescatar el flujo al vault al archivarlo
+vault_archive:                   # requiere la skill `knowledge-vault`; el disparador es esta clave, no la instalación
+  mode: auto                     # auto (consulta destino declarado: ofrece activarlo, o descubre y persiste) | "on" | "off" — [def] rescatar el flujo al vault al archivarlo
 jira_approval:                   # solo si tracker: jira
   mode: "off"                    # "on" | "off" — [def] publica la spec en Jira y espera aprobación
   subtask_issuetype: auto        # auto | "Subtarea" | "Sub-task" — [def]
@@ -83,6 +83,10 @@ cross_implement:
   execution: auto                # auto (por tamaño del work order) | sync | background — [def]
   max_fix_rounds: 2              # [def] tope del fix loop antes del takeover
   deadline: 1800                 # [def] segundos; tope duro del wait en background
+
+# ── dueño: knowledge-vault/reference.md → "La capa de configuración" ──
+knowledge-vault:
+  path_vault: "/Users/alguien/vaults/dev-memory"  # [ej] raíz del vault donde `kv` archiva flujos
 ```
 
 ## Ejemplo de `.specify/workers.yml`
