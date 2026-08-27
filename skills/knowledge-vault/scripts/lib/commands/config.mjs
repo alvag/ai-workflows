@@ -90,6 +90,7 @@ async function descubrir({ fs, flags, homeDir, label }) {
   const { candidatos } = await descubrirVaults({ fs, raices, label: `${label}.discover` });
   const vaults = candidatos.filter((c) => c.clase === CLASES.KV);
   const ajenos = candidatos.filter((c) => c.clase === CLASES.OBSIDIAN);
+  const nuevos = candidatos.filter((c) => c.clase === CLASES.VACIO);
 
   // La sugerencia es del comando y no de quien lo lee, para que dos agentes no
   // elijan distinto sobre la misma evidencia: con un solo vault, ese; con varios,
@@ -102,6 +103,13 @@ async function descubrir({ fs, flags, homeDir, label }) {
     buscadoEn: raices,
     sugerido,
     vaults,
+    // Directorios con la forma de un vault nuevo: `.obsidian/` y ninguna nota.
+    // **Se ofrecen**, y por eso viajan enteros y no como rutas planas: quien elige
+    // necesita poder distinguirlos de un vault con conocimiento adentro, y ahí es
+    // donde `evidencia: null` dice lo que hay que decir. Sin esta cubeta, el único
+    // candidato que busca quien todavía no tiene vault era el único invisible.
+    // La lista se emite siempre: vacía es un resultado, no una ausencia.
+    nuevos,
     // Se informan **sin** sugerirlos: son la trampa que este verbo existe para no
     // pisar, y callarlos dejaría a quien busca preguntándose por qué su carpeta
     // de notas no aparece.

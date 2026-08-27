@@ -12,6 +12,7 @@ import path from 'node:path';
 
 import { configCommand } from '../../../skills/knowledge-vault/scripts/lib/commands/config.mjs';
 import { DurableFs } from '../../../skills/knowledge-vault/scripts/lib/durable-fs.mjs';
+import { CLASES } from '../../../skills/knowledge-vault/scripts/lib/vault-discovery.mjs';
 import { createSandbox } from './helpers/sandbox.mjs';
 
 const AJENO = 'stack: node\ntest_cmd: "npm test"\ntracker: none\n';
@@ -29,7 +30,7 @@ async function escena(t, contenido = null) {
   return { caja, ruta, vault: await caja.makeVault('dev-memory') };
 }
 
-const correr = (flags) => configCommand({ fs: new DurableFs(), flags, homeDir: '/home/nadie' });
+const correr = (flags, fs = new DurableFs()) => configCommand({ fs, flags, homeDir: '/home/nadie' });
 
 test('escribe path_vault y conserva intactas las claves ajenas', async (t) => {
   const e = await escena(t, AJENO);
@@ -151,4 +152,54 @@ test('set-root rechaza una raíz que no existe, antes de escribirla', async (t) 
     },
   );
   assert.equal(await fsp.readFile(e.ruta, 'utf8'), AJENO, 'el config cambió pese al rechazo');
+});
+
+test('[AC-2] nuevos es una lista de objetos ordenada por root y siempre presente', async (t) => {
+  const e = await escena(t);
+  const raiz = await e.caja.makeTree(path.join(e.caja.reposDir, 'mixto'), {
+    'v/dev-memory/.kv/x': '\n', 'v/dev-memory/projects/ai/sdd/uno.md': '# uno\n',
+    'v/cocha/.obsidian/app.json': '{}\n', 'v/cocha/Welcome.md': '# hola\n',
+    'v/alfa/.obsidian/app.json': '{}\n', 'v/beta/.obsidian/app.json': '{}\n',
+  });
+  const r = (n) => path.join(raiz, 'v', n);
+  // El orden de entrada se controla: crearlos al revés no determina el de `readdir`.
+  const alReves = new DurableFs();
+  const leer = alReves.readDirNames.bind(alReves);
+  alReves.readDirNames = async (d, l) => (await leer(d, l)).slice().reverse();
+
+  const res = await correr({ discover: true, 'search-root': raiz }, alReves);
+  assert.deepEqual(res.nuevos, [
+    { root: r('alfa'), clase: CLASES.VACIO, evidencia: null },
+    { root: r('beta'), clase: CLASES.VACIO, evidencia: null },
+  ], 'objetos completos, ordenados por root y no por aparición');
+  // Por igualdad y no por inclusión: AC-2 y AC-5 dicen "exactamente".
+  assert.deepEqual(res.vaults.map((c) => c.root), [r('dev-memory')]);
+  assert.deepEqual(res.ajenos, [r('cocha')]);
+  assert.equal(res.sugerido, r('dev-memory'));
+
+  // Siempre presente: quien lea `nuevos.length` no puede romperse según el disco.
+  const pelado = await e.caja.makeTree(path.join(e.caja.reposDir, 'pelado'), { 'a/b/n.txt': 'x\n' });
+  assert.deepEqual((await correr({ discover: true, 'search-root': pelado })).nuevos, []);
+});
+
+test('[AC-3] el vacío sin marca tampoco aparece en ninguna cubeta del comando', async (t) => {
+  const e = await escena(t);
+  const raiz = await e.caja.makeTree(path.join(e.caja.reposDir, 'sin-marca'), { 'ds/.DS_Store': 'x\n' });
+  await e.caja.makeTree(path.join(raiz, 'vacio'), {});
+  const res = await correr({ discover: true, 'search-root': raiz });
+  assert.deepEqual([res.nuevos, res.vaults, res.ajenos], [[], [], []]);
+});
+
+test('[AC-4] sugerido no cambia por la cubeta nueva', async (t) => {
+  const e = await escena(t);
+  const nuevos = { 'n1/.obsidian/app.json': '{}\n', 'n2/.obsidian/app.json': '{}\n' };
+  const caso = async (n, arbol) =>
+    correr({ discover: true, 'search-root': await e.caja.makeTree(path.join(e.caja.reposDir, n), arbol) });
+  // Elegir dónde crear un vault es una pregunta de propósito: el comando no la contesta.
+  assert.equal((await caso('cero', nuevos)).sugerido, null);
+  const uno = await caso('uno', { ...nuevos, 'v/.kv/x': '\n' });
+  assert.equal(uno.sugerido, path.join(e.caja.reposDir, 'uno', 'v'));
+  assert.equal(uno.nuevos.length, 2, 'el sugerido no vacía la cubeta nueva');
+  assert.equal((await caso('dos', { ...nuevos, 'a/.kv/x': '\n', 'b/.kv/x': '\n' })).sugerido, null);
+  assert.equal((await caso('nada', { 'x/y/n.txt': 'z\n' })).sugerido, null);
 });

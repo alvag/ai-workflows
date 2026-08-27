@@ -137,3 +137,28 @@ test('[AC-D3] resolver la raíz rechaza el vault de notas ajeno, antes de tocarl
   await assertRootUsable({ fs, root: path.join(raiz, 'vaults/dev-memory'), label: 'prueba' });
   await assertRootUsable({ fs, root: await caja.makeVault('nuevo'), label: 'prueba' });
 });
+
+test('[AC-1] el vacío con .obsidian real se emite como candidato; el del .obsidian falso no', async (t) => {
+  const caja = await createSandbox(t);
+  // La marca se comprueba por tipo, no por nombre: las tres formas comparten
+  // `nombres: ['.obsidian']` — `clasificarDirectorio` lo excluye antes de ver qué es.
+  const raiz = await caja.makeTree(path.join(caja.reposDir, 'marcas'), {
+    'real/.obsidian/app.json': '{}\n',
+    'enlace/.DS_Store': 'ruido\n',
+    'suelto/.obsidian': 'no soy un directorio\n',
+  });
+  await caja.makeSymlink(path.join(raiz, 'enlace/.obsidian'), path.join(raiz, 'real/.obsidian'), 'dir');
+
+  const { candidatos } = await descubrirVaults({ fs, raices: [raiz] });
+  assert.deepEqual(candidatos.map((c) => path.relative(raiz, c.root)), ['real']);
+  // `evidencia: null` y no `{proyectos: 0, …}`, que es el de un vault de `kv` recién creado.
+  assert.deepEqual(candidatos[0], { root: path.join(raiz, 'real'), clase: CLASES.VACIO, evidencia: null });
+});
+
+test('[AC-3] el vacío sin marca de Obsidian no entra en candidatos', async (t) => {
+  const caja = await createSandbox(t);
+  // Los dos subtipos sin marca: sobre un home real son diecisiete y ninguno es un vault.
+  const raiz = await caja.makeTree(path.join(caja.reposDir, 'vacios'), { 'solo-ds/.DS_Store': 'x\n' });
+  await caja.makeTree(path.join(raiz, 'del-todo-vacio'), {});
+  assert.deepEqual((await descubrirVaults({ fs, raices: [raiz] })).candidatos, []);
+});

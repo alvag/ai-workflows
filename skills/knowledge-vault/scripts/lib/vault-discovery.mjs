@@ -135,6 +135,14 @@ async function evidenciaDe(fs, root, label) {
  * Recorre las raíces hasta `maxDepth` y devuelve los candidatos ordenados por
  * ruta. No desciende dentro de un candidato: un vault no contiene otro.
  *
+ * **Un candidato es lo que se le puede ofrecer a alguien, no lo que ya es un
+ * vault**, y por eso `candidatos` trae tres de las cuatro clases: `KV` (marca de
+ * `kv`, con su evidencia), `OBSIDIAN` (el vault de notas ajeno, que se informa
+ * pero no se ofrece) y `VACIO` **con `.obsidian/` como directorio** — la forma de
+ * un vault nuevo, que es justamente lo que busca quien todavía no tiene ninguno.
+ * Un `VACIO` sin esa marca no se emite. Quien consuma esto **ramifica por
+ * `clase`**: leer `candidatos` como "la lista de vaults" cuenta de más.
+ *
  * @param {object} args
  * @param {object} args.fs sistema de archivos inyectado
  * @param {string[]} args.raices desde dónde buscar
@@ -160,6 +168,31 @@ export async function descubrirVaults({ fs, raices, maxDepth = 3, label = 'disco
       if (clase === CLASES.OBSIDIAN) {
         candidatos.push({ root: dir, clase, evidencia: null });
         continue;
+      }
+      // La marca se comprueba por **tipo**, no por nombre. `clasificarDirectorio`
+      // saca `.obsidian` de los nombres sustantivos *antes* de mirar qué es, así
+      // que un archivo regular —o un symlink— con ese nombre llega hasta acá
+      // clasificado `VACIO` y con exactamente el mismo `nombres` que el caso
+      // legítimo. Lo que la skill llama "la forma de un vault nuevo" es el
+      // directorio; el nombre suelto no lo es.
+      //
+      // Y la marca hace falta: sin ella entraría toda la clase `VACIO`, que
+      // incluye el directorio del todo vacío y el que sólo tiene `.DS_Store`.
+      // Medido sobre un home real, eso son diecisiete directorios internos de
+      // otras aplicaciones y ningún vault — enterrarían al candidato que se
+      // busca en vez de revelarlo.
+      if (
+        clase === CLASES.VACIO &&
+        nombres !== null &&
+        nombres.includes('.obsidian') &&
+        (await esDirectorio(fs, path.join(dir, '.obsidian'), `${label}.nuevo`))
+      ) {
+        // `evidencia: null` como el ajeno, y no el `{proyectos: 0, flujos: 0}` que
+        // `evidenciaDe` sabría calcular: ese valor es byte a byte el de un vault de
+        // `kv` recién creado, así que mentiría por parecido sobre algo que todavía
+        // no es un vault.
+        candidatos.push({ root: dir, clase, evidencia: null });
+        continue; // un vault no contiene otro
       }
       if (nombres === null || profundidad >= maxDepth) continue;
 
