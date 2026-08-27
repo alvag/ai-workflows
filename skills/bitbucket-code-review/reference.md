@@ -705,12 +705,14 @@ trabajo estaba hecho; lo que falló fue la emisión.
 | `INVALID` | contestó, pero lo entregado no valida | **una** reparación de formato; si sigue inválido, se pierde y se declara |
 | `UNAVAILABLE` | no contestó | sigue con los revisores disponibles, declarando la causa |
 
-Las **causas** de `UNAVAILABLE` y su política de reintento son las del ecosistema: `host_sandbox_wall`
-(el sandbox del conductor impidió la operación y el host lo declara: un solo intento escalado fuera
-del sandbox, sin degradar el panel), `confirmed_wall`
-(binario ausente, auth rechazada, versión incompatible — no se reintenta), `launch_flake` (el binario
-está y el lanzamiento flaqueó — 2-3 reintentos con backoff corto) y `runtime_failure` (arrancó bien y
-murió o venció el deadline — por-intento, no condena al resto del panel).
+Las **causas** de `UNAVAILABLE` y su política de reintento son las del ecosistema: `confirmed_wall`
+(binario ausente, auth rechazada, versión incompatible, aislamiento imposible — no se reintenta),
+`launch_flake` (el binario está y el lanzamiento flaqueó — 2-3 reintentos con backoff corto),
+`runtime_failure` (arrancó bien y murió o venció el deadline — por-intento, no condena al resto del
+panel) y `host_sandbox_wall` (el sandbox del conductor impidió la operación y el host lo declara: un
+solo intento escalado fuera del sandbox, sin degradar el panel). **`deadline_exceeded` no está en el
+enum de esta skill**, así que acá un deadline vencido queda en `runtime_failure` — no es una
+divergencia con las otras tres sedes, es la consecuencia de una fila del manifest más corta.
 
 ### Las tres identidades de reintento
 

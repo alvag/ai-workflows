@@ -971,7 +971,7 @@ parseable) → tratarlo como `UNAVAILABLE` en runtime (degradación, regla 6 del
 ##### Las causas de la indisponibilidad, y la que no lo es
 
 `UNAVAILABLE` no viaja solo: lleva una **causa** de un enum cerrado, compartido con las skills
-hermanas, porque de ella depende qué se hace después. Son cuatro, y ninguna es un estado terminal
+hermanas, porque de ella depende qué se hace después. Son cinco, y ninguna es un estado terminal
 nuevo — todas acompañan al que la skill ya devuelve:
 
 | Causa | Qué la produce | Qué habilita |
@@ -980,7 +980,7 @@ nuevo — todas acompañan al que la skill ya devuelve:
 | `launch_flake` | el binario existe pero el lanzamiento flaqueó | 2-3 reintentos con backoff corto |
 | `runtime_failure` | arrancó bien y falló ejecutando: error, salida no parseable | reintento por-intento |
 | `deadline_exceeded` | arrancó bien y venció el tope de pared —`poll_deadline` o `timeout` del exec— sin `VERDICT:` | subir el presupuesto, no reintentar igual |
-| `host_sandbox_wall` | el sandbox del **conductor** impidió la operación, y el host lo declara | uno solo, **escalado fuera del sandbox**; por intento, sin degradar la corrida ni la tanda |
+| `host_sandbox_wall` | el sandbox del **conductor** impidió la operación, y el host lo declara | uno solo, **escalado fuera del sandbox**; por intento, sin degradar la corrida |
 
 **`deadline_exceeded` es una causa, no un estado.** Hasta acá el deadline vencido se registraba como
 `runtime_failure`, que sugiere una falla de infraestructura que no ocurrió: el revisor arrancó bien y
@@ -2073,9 +2073,15 @@ Reglas que acotan la matriz:
   ya está embebido en el artefacto que se va a revisar; pasarlo como "contexto de co-exploración"
   sería etiquetar mal algo que no lo fue.
 - **Sin sesión disponible → revisor fresco de la familia seleccionada**, con índices y síntesis como
-  contexto. **Salvo** que la capacidad actual sea `confirmed_wall`: ahí no hay reintento y el
-  resultado es `UNAVAILABLE` terminal. Distinguirlo importa — reintentar contra una pared quema el
-  deadline sin ninguna chance de éxito.
+  contexto. **Salvo ante una pared**, que son dos y no se responden igual:
+  - `confirmed_wall` — no hay reintento y el resultado es `UNAVAILABLE` terminal.
+  - `host_sandbox_wall` — **tampoco hay revisor fresco**, porque relanzarlo lo emitiría el mismo
+    conductor desde el mismo sandbox que ya bloqueó. Su única recuperación sancionada es el intento
+    escalado **fuera** del sandbox, y ese no lo hace este camino.
+
+  Distinguirlo importa — reintentar contra una pared quema el deadline sin ninguna chance de éxito.
+  Y la de `host_sandbox_wall` es la que más se presta: como es removible, invita a un reintento que
+  desde acá **no puede** removerla.
 
 **Nunca se pasan los detalles completos.** El contrato de dos capas existe para que el conductor lea
 índices y abra detalle solo por disparador; volcarle a la revisión los `detail-*` enteros

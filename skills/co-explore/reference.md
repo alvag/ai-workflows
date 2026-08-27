@@ -1343,7 +1343,7 @@ porque la omisión está en el índice *y* en el detalle— o con contenido sin 
 | `launch_flake` | el binario existe pero el lanzamiento flaqueó (arranque frío, timeout de spawn) | 2-3 con backoff corto, nunca un loop abierto |
 | `runtime_failure` | arrancó bien y falló después: error de ejecución, salida vacía | por intento; no condena la corrida ni se reintenta en bucle |
 | `deadline_exceeded` | arrancó bien y **alcanzó el deadline** sin marcador de cierre | por intento; el tope lo puso el conductor, así que la palanca es subirlo, no reintentar igual |
-| `host_sandbox_wall` | el sandbox del **conductor** impidió la operación, y el host lo declara | uno solo, **escalado fuera del sandbox**; por intento, sin degradar la corrida ni la tanda |
+| `host_sandbox_wall` | el sandbox del **conductor** impidió la operación, y el host lo declara | uno solo, **escalado fuera del sandbox**; por intento, sin degradar la corrida |
 
 **`deadline_exceeded` es una causa nueva, no un quinto estado.** Acompaña al `UNAVAILABLE` que ya
 existe en vez de crear un terminal propio. Hasta acá un deadline vencido se reportaba como
@@ -1384,21 +1384,38 @@ y su motivo.
 conserva la causa vigente que corresponda y se escala para diagnóstico. Una señal indirecta
 clasificada acá convertiría un firewall corporativo en una pared removible que nadie puede remover.
 
-**Política de recuperación, en seis puntos cerrados.** No quedan a criterio de quien implemente:
+**Política de recuperación, en seis puntos cerrados.** No quedan a criterio de quien implemente. La
+tercera columna dice **de quién es cada punto**, y no es decoración: tres de los seis no son de la
+skill, y leerlos como suyos es exactamente lo que lleva a escribir dentro de ella el loop de
+reintento que esta sección le prohíbe más abajo.
 
-| Punto | Valor |
-|---|---|
-| outcome | `UNAVAILABLE` con causa `host_sandbox_wall` |
-| quién reintenta | la capa que **hospeda** al conductor; la skill no reintenta por su cuenta |
-| máximo de intentos escalados | **uno** |
-| identidad y rutas | el intento escalado usa `attempt_id` y rutas exclusivas, como cualquier reintento |
-| efecto sobre tanda y corrida | **por intento**; no degrada la tanda ni la orquestación |
-| si el intento escalado vuelve a fallar | el ítem queda `UNAVAILABLE · host_sandbox_wall`, **no se vuelve a escalar**, y la tanda continúa con el ítem siguiente, que se diagnostica por su cuenta |
+| Punto | Valor | Quién responde |
+|---|---|---|
+| outcome | `UNAVAILABLE` con causa `host_sandbox_wall` | la skill |
+| quién reintenta | la capa que **hospeda** al conductor; la skill no reintenta por su cuenta | la capa anfitriona |
+| máximo de intentos escalados | **uno** | la capa anfitriona |
+| identidad y rutas | el intento escalado usa `attempt_id` y rutas exclusivas, como cualquier reintento | la capa anfitriona |
+| efecto sobre la corrida | **por intento**: baja la unidad afectada, no la corrida ni la orquestación | la skill |
+| si el intento escalado vuelve a fallar | la unidad afectada queda `UNAVAILABLE · host_sandbox_wall` y **no se vuelve a escalar** | la capa anfitriona |
+
+**Cuál es la unidad afectada, en cada skill que cita esta sede.** La política es del ecosistema, así
+que nombra la unidad en genérico; su referente cambia según quién lea. En `co-explore` es **el
+worker** de una familia: el de la otra sigue, y la corrida baja a la rama que corresponda. En
+`cross-review` y en `bitbucket-code-review` es **el revisor** dentro de su ronda o de su panel, que
+continúa con los disponibles. En `cross-implement` es **el despacho** del implementador. En ninguna
+de las cuatro la pared de una unidad termina la corrida por sí sola.
 
 **La escalación se nombra, no se verifica.** Quien repite el comando fuera del sandbox es la capa que
 hospeda al conductor, no la skill: la skill no puede observar que ocurrió, ni que está disponible, ni
 que alguien la autorizó. Solo puede saber que su comando falló y que la pared es de las removibles.
 Exigirle una prueba de escalación sería pedirle que compruebe algo que no está a su alcance.
+
+**De ahí que el tope de uno sea de la anfitriona, y no una guarda de la skill.** Contar intentos
+escalados exige observarlos, que es justamente lo que la skill no puede hacer; un tope escrito como
+obligación suya sería inaplicable, y quien lo implementara terminaría contando los intentos que sí
+ve —los suyos— que no son los que el tope limita. Lo que la skill sí debe hacer es **no iniciar** el
+reintento escalado por su cuenta: para ella un `host_sandbox_wall` cierra la unidad afectada, y el
+segundo intento, si llega, le llega de afuera como cualquier despacho nuevo.
 
 **Vale igual en sesión nueva y en reanudación.** Un fallo atribuido al host devuelve
 `UNAVAILABLE · host_sandbox_wall` tanto por `cli-exec` como por `cli-resume`. Que la ronda anterior
