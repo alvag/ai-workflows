@@ -37,6 +37,23 @@ distintos.
 | `ENVIRONMENT_FAILURE` | la comprobación no llegó a correr | falta un binario, un servicio o una credencial. El resultado no es un veredicto sobre el código: es la ausencia de veredicto. |
 | `DESIGN_GAP` | el requisito, o el resultado que se espera de él, están mal | arreglar el código o reescribir la fila no resuelve nada; lo que hay que revisar es qué se pidió. |
 
+**Las dos filas de `host_sandbox_wall`, y qué observable las separa.** La condición que selecciona
+una u otra es **si llegó a existir un writer**: antes del despacho no hay proceso que pueda estar
+vivo ni delta que cosechar, y después sí. Es la misma razón por la que `deadline_exceeded` lleva dos
+filas, y por la que una celda condicional no alcanzaría: las dos ramas difieren en la columna de
+continuidad, que es justamente la que decide qué hace el consumidor.
+
+**El discriminador va en `Clase`, nunca en `Causa`.** Las dos filas se distinguen calificando la
+clase —`ENVIRONMENT_FAILURE`; antes del writer / posterior al despacho—, igual que el par de
+`deadline_exceeded`. `Causa` es un enum cerrado y su celda se coteja contra él tal cual: un
+`host_sandbox_wall; antes del writer` no matchea ningún miembro, así que el calificador ahí
+convertiría una fila legible en una que ningún consumidor puede resolver.
+
+**Ninguna de las dos es `IMPLEMENTATION_DEFECT`, y eso es el punto.** Una pared del sandbox del
+conductor no dice nada sobre el código entregado: es la ausencia de veredicto, no un veredicto
+adverso. Clasificarla como defecto haría que el loop de fix gastara presupuesto buscando una razón
+falsable sobre trabajo que nunca fue el problema.
+
 La frontera que más se cruza es la de las dos del medio: `ENVIRONMENT_FAILURE` es "no pude medir" y
 `VERIFICATION_DEFECT` es "medí mal". Confundirlas convierte un impedimento pasajero en una reescritura
 del contrato, o al revés, hace reintentar sin cambiar nada una comprobación que nunca iba a servir.
@@ -80,6 +97,8 @@ ni clase amplía el enum de estados. Las cuatro últimas columnas determinan la 
 | `UNAVAILABLE` | `runtime_failure` | `IMPLEMENTATION_DEFECT` | No. | No. | No. | No; primero se clasifica y cosecha el delta. |
 | `UNAVAILABLE` | `deadline_exceeded` | `ENVIRONMENT_FAILURE`; worker todavía activo o escribiendo | No. | No. | No. | No; cese incierto, la secuencia se detiene. |
 | `UNAVAILABLE` | `deadline_exceeded` | `ENVIRONMENT_FAILURE`; cese confirmado | No. | No. | No. | No; se resuelve el bloque actual, no se salta al siguiente. |
+| `UNAVAILABLE` | `host_sandbox_wall` | `ENVIRONMENT_FAILURE`; **antes del writer** | No. | No. | No. | No; se resuelve el bloque actual — no hubo writer, así que no hay cese que confirmar ni delta que cosechar. |
+| `UNAVAILABLE` | `host_sandbox_wall` | `ENVIRONMENT_FAILURE`; **posterior al despacho** | No. | No. | No. | No; cese incierto: la secuencia se detiene hasta confirmar el cese y cosechar el delta. |
 | `UNAVAILABLE` | — | `DESIGN_GAP` | No. | No. | No. | No; vuelve al diseño. |
 
 ### Razón falsable, desde la segunda falla

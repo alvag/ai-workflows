@@ -337,7 +337,8 @@ publicado vs local que decide qué puede nombrar a las familias y qué no— viv
 `co-explore` devuelve un **envelope agregado**, no un estado singular. La llamadora decide con él
 sin abrir ningún informe: `outcome` (`completed` | `map_failure`) · `branch` · `diversity` ·
 `workers[]` (familia, **estado** —`READY` · `INVALID` · `clarification-needed` · `UNAVAILABLE`—,
-**causa** —`confirmed_wall` · `launch_flake` · `runtime_failure` · `deadline_exceeded`—, paridad,
+**causa** —`confirmed_wall` · `launch_flake` · `runtime_failure` · `deadline_exceeded` ·
+`host_sandbox_wall`—, paridad,
 rutas de índice y detalle, sesión) ·
 `contributors[]` (todo mapa aceptado, incluido el del conductor en ramas degradadas, con `session`
 nullable). Esquema campo por campo en `reference.md` → "Envelope de retorno".
@@ -514,14 +515,22 @@ advertencia de una línea —corrió con una sola voz, sin contraste cross-model
 el segundo) y persiste su cierre en un archivo inequívocamente distinto. La regla "DOS MAPAS
 INDEPENDIENTES O NINGUNO" no se relaja: esta rama *es* el ninguno.
 
-**Una causa que no agrega una rama.** Es **causa de degradación**, no estado: acompaña al terminal
-que la escalera ya resolvió.
+**Dos causas que no agregan una rama.** Son **causas de degradación**, no estados: acompañan al
+terminal que la escalera ya resolvió.
 
 - **`deadline_exceeded`** — un worker venció su deadline sin marcador de cierre. Antes se registraba
   como `runtime_failure`, que sugiere una falla de infraestructura que no ocurrió: arrancó bien y el
   corte lo puso el conductor. Baja a la rama que corresponda igual que cualquier worker no válido.
-**Causas de indisponibilidad** (`confirmed_wall` · `launch_flake` · `runtime_failure`) y su política
-de reintento: `reference.md` → "Estados del worker". Una pared confirmada no se reintenta.
+- **`host_sandbox_wall`** — la pared no es del worker sino del **conductor**: el sandbox desde el que
+  se despacha impidió la operación, y el host lo declara. Se atribuye **solo con atribución explícita
+  del host**; sin ella se conserva la causa vigente. Es la única del enum **removible por
+  escalación**, así que no es terminal: admite **un** intento escalado fuera del sandbox, que inicia
+  la capa anfitriona y no la skill.
+
+**Causas de indisponibilidad** (`confirmed_wall` · `launch_flake` · `runtime_failure` ·
+`deadline_exceeded` · `host_sandbox_wall`) y su política de reintento: `reference.md` → "Estados del
+worker". Una pared **confirmada** no se reintenta; la del **host** sí, una sola vez y desde afuera —
+distinguirlas es el punto, porque las dos se llaman `..._wall` y solo una es terminal.
 
 ## Router de intención
 

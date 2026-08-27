@@ -706,9 +706,13 @@ trabajo estaba hecho; lo que falló fue la emisión.
 | `UNAVAILABLE` | no contestó | sigue con los revisores disponibles, declarando la causa |
 
 Las **causas** de `UNAVAILABLE` y su política de reintento son las del ecosistema: `confirmed_wall`
-(binario ausente, auth rechazada, versión incompatible — no se reintenta), `launch_flake` (el binario
-está y el lanzamiento flaqueó — 2-3 reintentos con backoff corto) y `runtime_failure` (arrancó bien y
-murió o venció el deadline — por-intento, no condena al resto del panel).
+(binario ausente, auth rechazada, versión incompatible, aislamiento imposible — no se reintenta),
+`launch_flake` (el binario está y el lanzamiento flaqueó — 2-3 reintentos con backoff corto),
+`runtime_failure` (arrancó bien y murió o venció el deadline — por-intento, no condena al resto del
+panel) y `host_sandbox_wall` (el sandbox del conductor impidió la operación y el host lo declara: un
+solo intento escalado fuera del sandbox, sin degradar el panel). **`deadline_exceeded` no está en el
+enum de esta skill**, así que acá un deadline vencido queda en `runtime_failure` — no es una
+divergencia con las otras tres sedes, es la consecuencia de una fila del manifest más corta.
 
 ### Las tres identidades de reintento
 
@@ -994,7 +998,7 @@ https://bitbucket.org/<ws>/<repo>/src/<sha>/<path>#lines-<n>:<m>   (rango)
 - **`bb_post` a `/approve` o `/request-changes` da 403**: el token no tiene scope de escritura de PRs
   → degradar a dejar la decisión solo en el comentario.
 - **Revisor externo no disponible / cuelga / timeout**: marcarlo `UNAVAILABLE` **con su causa**
-  (`confirmed_wall` · `launch_flake` · `runtime_failure`), matar el proceso si quedó en background,
+  (`confirmed_wall` · `launch_flake` · `runtime_failure` · `host_sandbox_wall`), matar el proceso si quedó en background,
   seguir con los disponibles. Distinguir cuelgue de entrada (parseo de flags roto) de lentitud real
   (subir el tope sync o bajar a `--model sonnet`).
 - **El revisor contestó pero el informe no parsea**: es `INVALID`, **no** `UNAVAILABLE` — llegó a
