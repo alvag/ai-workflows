@@ -300,11 +300,10 @@ test('[AC-6] una caída antes de los índices o del commit también se reconstru
   // commiteado, amputar la historia entera lo deja sin trackear y el archivado
   // frena por un cambio ajeno que ninguna caída real produciría.
   //
-  // **`--soft` y no `--mixed`:** el índice tiene que quedar intacto. Con el índice
-  // desstageado git colapsa el árbol publicado en un solo `?? projects/`, y el
-  // predicado de limpieza —que compara rutas completas— no lo reconoce como
-  // propio. Con `--soft` cada archivo se lista con su ruta y el predicado hace su
-  // trabajo, que es lo que este caso quiere ejercer.
+  // **`--soft`:** el índice queda intacto, así que cada archivo publicado se
+  // lista con su ruta completa. Es el caso simple, y el que este test ejerce.
+  // El caso duro —índice desstageado, con git colapsando el árbol a su
+  // ancestro— vive en su propio test, abajo.
   const { stdout: raiz } = await git(vault, 'rev-list', '--max-parents=0', 'HEAD');
   await git(vault, 'reset', '--soft', '-q', raiz.trim());
   assert.equal((await correr(vault, flowDir)).status, 'ARCHIVED', 'sin commit que lo nombre');
@@ -319,4 +318,51 @@ test('[AC-6] las cuatro postcondiciones quedan satisfechas tras archivar', async
   for (const p of [frontier, nodePath, ...indexPaths]) await assert.doesNotReject(() => fs.stat(p), p);
   const { stdout } = await git(vault, 'log', '--format=%s');
   assert.ok(stdout.includes('abc-1'), 'no hay commit que nombre el flujo');
+});
+
+test('el reintento reconstruye con el árbol colapsado a su ancestro', async (t) => {
+  // El caso duro del anterior: con el índice desstageado, `git status` colapsa
+  // el árbol publicado a un `?? projects/`, que es **ancestro** de la frontera y
+  // no descendiente. Un predicado que solo mire "por debajo de" lee ahí el
+  // residuo de la propia corrida como trabajo ajeno y bloquea todo reintento.
+  const { vault, flowDir } = await escena(t);
+  await correr(vault, flowDir);
+  const { stdout: raiz } = await git(vault, 'rev-list', '--max-parents=0', 'HEAD');
+  await git(vault, 'reset', '--mixed', '-q', raiz.trim());
+  assert.equal((await correr(vault, flowDir)).status, 'ARCHIVED', 'sin commit que lo nombre');
+});
+
+// Lo que puede fallar se valida **antes** de publicar. El título sale del
+// encabezado del documento, así que quien archiva no lo elige; componiendo el
+// nodo después de copiar, un valor irrepresentable fallaba con la frontera ya
+// puesta, sin nodo ni índice, y el reintento veía un vault sucio que nadie tocó.
+const ILEGIBLE = 'resumen con\ttabulador';
+
+test('archiva un flujo con numeral en el encabezado sin tocar el origen', async (t) => {
+  const encabezado = '# Ronda de feedback del PR #1264';
+  const { vault, flowDir } = await escena(t, { 'spec.md': `${encabezado}\n\ncriterios\n` });
+  const antes = await snapshotTree(flowDir);
+
+  assert.equal((await correr(vault, flowDir)).status, 'ARCHIVED');
+  assert.deepEqual(await snapshotTree(flowDir), antes, 'el archivado editó el origen');
+  const nodo = await fs.readFile(resolveLayout(vault, 'ai-workflows', 'abc-1').nodePath, 'utf8');
+  assert.ok(nodo.includes('#1264'), 'el nodo perdió el numeral del título');
+});
+
+test('un nodo irrepresentable no deja nada bajo la frontera', async (t) => {
+  const { vault, flowDir } = await escena(t);
+  await assert.rejects(() => correr(vault, flowDir, 'abc-1', { summary: ILEGIBLE }), /control/i);
+  const { frontier } = resolveLayout(vault, 'ai-workflows', 'abc-1');
+  await assert.rejects(() => fs.stat(frontier), 'quedó frontera publicada tras el fallo');
+});
+
+test('con frontera preexistente el residuo queda intacto', async (t) => {
+  // La corrida que no puede completar tampoco destruye lo que encontró.
+  const { vault, flowDir } = await escena(t);
+  await correr(vault, flowDir);
+  const { frontier } = resolveLayout(vault, 'ai-workflows', 'abc-1');
+  const antes = await snapshotTree(frontier);
+
+  await assert.rejects(() => correr(vault, flowDir, 'abc-1', { summary: ILEGIBLE }), /control/i);
+  assert.deepEqual(await snapshotTree(frontier), antes, 'el fallo se llevó puesto el residuo');
 });

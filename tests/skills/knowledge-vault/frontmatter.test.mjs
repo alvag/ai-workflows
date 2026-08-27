@@ -68,9 +68,22 @@ test('saca comillas envolventes y comentarios al final del valor', () => {
   assert.equal(parseFrontmatter('---\nstatus: "done"\n---\n').keys.get('status'), 'done');
   assert.equal(parseFrontmatter("---\nstatus: 'done'\n---\n").keys.get('status'), 'done');
   assert.equal(parseFrontmatter('---\nstatus: done  # ya cerrado\n---\n').keys.get('status'), 'done');
-  // Un `#` pegado al valor es parte del valor, como en YAML. Es la razón por la
-  // que el emisor rechaza el `#` en vez de intentar una regla más fina.
+  // Un `#` pegado al valor es parte del valor, como en YAML: el corte de
+  // comentario exige un espacio delante. Entre comillas ni siquiera hace falta
+  // ese espacio, porque ahí el `#` nunca abre comentario — ver el caso de abajo.
   assert.equal(parseFrontmatter('---\nstatus: done#x\n---\n').keys.get('status'), 'done#x');
+  // Y un valor que es SOLO comentario queda vacío, no se lee a sí mismo.
+  assert.equal(parseFrontmatter('---\nstatus:   # pendiente\n---\n').keys.get('status'), '');
+});
+
+test('un valor entrecomillado conserva su numeral', () => {
+  // En YAML un `#` entre comillas es literal, y el corte de comentario mira las
+  // comillas primero: entrecomillar es salida real para un título que cita un PR.
+  const con = (v) => parseFrontmatter(`---\nt: ${v}\n---\n`).keys.get('t');
+  assert.equal(con('"PR #1264"'), 'PR #1264');
+  assert.equal(con("'PR #1264'"), 'PR #1264');
+  // El comentario de AFUERA se descarta igual, sin partir por el `#` de adentro.
+  assert.equal(con('"valor # literal" # comentario'), 'valor # literal');
 });
 
 test('tolera BOM y finales de línea de Windows', () => {

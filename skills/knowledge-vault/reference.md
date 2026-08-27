@@ -199,16 +199,30 @@ con lo cual esa fecha sería la de la migración disfrazada de fecha del trabajo
 
 ### Lo que el frontmatter no puede representar
 
-El parser **no es YAML y no tiene escapes**. Cuatro clases de valor no vuelven
+El parser **no es YAML y no tiene escapes**. Tres clases de valor no vuelven
 idénticas, y por eso se **rechazan** en vez de escaparse — escapar sin desescapar
 produce un archivo que se ve bien y miente:
 
 | Se emite | Se lee |
 |---|---|
 | `"envuelto"` | `envuelto` |
-| `con # numeral` | `con` |
-| `#empieza` | vacío |
 | `  con espacios  ` | `con espacios` |
+| un carácter de control | otra clave, u otra línea |
+
+**El numeral sí se representa, entrecomillado.** El parser mira las comillas antes
+de descartar el comentario, así que un valor citado vuelve literal con su `#`
+adentro. Importa porque el `title` del nodo se **deriva** del encabezado del
+documento: una ronda de feedback que cita el número de su PR trae el numeral
+puesto, y quien archiva no lo elige.
+
+El delimitador lo elige el emisor según el contenido, y ahí queda la cuarta clase
+irrepresentable, que depende del valor:
+
+| El valor con `#` contiene | Se emite | Por qué |
+|---|---|---|
+| ninguna comilla simple | `'…'` | dentro de comillas simples YAML no interpreta escapes |
+| simple, pero ni doble ni barra inversa | `"…"` | no queda nada que un lector de YAML reinterprete |
+| simple **y** (doble o barra inversa) | se rechaza | no hay delimitador que lo devuelva idéntico |
 
 Los `:` y las comillas interiores sí vuelven idénticos. El emisor además **relee
 su propia salida** antes de devolverla.

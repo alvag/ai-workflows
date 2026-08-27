@@ -10,7 +10,11 @@
  * bien y el valor leído sería otro—, y este frontmatter es la única sede del
  * resumen y del estado observado, que es justo lo que no puede mutar en silencio.
  *
- * Las cuatro clases irrepresentables están medidas contra el parser, no supuestas.
+ * El numeral **sí** se representa, entrecomillando: el parser mira las comillas
+ * antes de descartar el comentario, así que un valor citado vuelve literal. El
+ * delimitador se elige según el contenido, y la única combinación que queda sin
+ * delimitador seguro se rechaza. Las tres clases irrepresentables que quedan
+ * están medidas contra el parser, no supuestas.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -60,15 +64,45 @@ test('[AC-9] un valor con salto de línea se rechaza en vez de escaparse', () =>
   assert.throws(() => emitFrontmatter({ ...OCHO, title: 'dos\nlineas' }), /control/i);
 });
 
-test('[AC-9] se rechazan las cuatro clases que el parser no puede devolver', () => {
+test('se rechazan las tres clases que el parser no puede devolver', () => {
+  // Eran cuatro: las dos del numeral salieron cuando el emisor pasó a
+  // entrecomillar. Las tres que quedan no tienen delimitador que las salve.
   const casos = [
     ['"envuelto"', /comillas/i],
-    ['con # numeral', /#/],
-    ['#empieza', /#/],
     ['  con espacios  ', /espacio/i],
+    ['dos\nlineas', /control/i],
   ];
   for (const [valor, patron] of casos) {
     assert.throws(() => emitFrontmatter({ ...OCHO, title: valor }), patron, JSON.stringify(valor));
+  }
+});
+
+test('un título con numeral vuelve idéntico', () => {
+  // Derivado del encabezado del documento: quien archiva no lo elige.
+  for (const title of ['Ronda de feedback del PR #1264', '#empieza', 'con # numeral']) {
+    assert.equal(idaYVuelta({ ...OCHO, title }).keys.get('title'), title, title);
+  }
+});
+
+test('un numeral con comillas dobles interiores vuelve idéntico', () => {
+  const title = 'Spec: con "comillas" y # numeral';
+  assert.equal(idaYVuelta({ ...OCHO, title }).keys.get('title'), title);
+  // Sin comilla simple adentro, el delimitador es la simple: YAML no interpreta
+  // nada ahí, así que la línea vale para cualquier lector, no solo para este.
+  assert.match(emitFrontmatter({ ...OCHO, title }), /^title: '.*'$/m);
+});
+
+test('un numeral con comillas simples interiores vuelve idéntico', () => {
+  const title = "lo que dice el # y el it's del medio";
+  assert.equal(idaYVuelta({ ...OCHO, title }).keys.get('title'), title);
+  assert.match(emitFrontmatter({ ...OCHO, title }), /^title: ".*"$/m);
+});
+
+test('sin delimitador seguro el valor se rechaza', () => {
+  // Con simple adentro la simple no sirve; la doble tampoco si hay barra
+  // inversa —YAML la leería como escape— o comilla doble.
+  for (const title of ["it's # C:\\ruta", 'it\'s # con "cita"']) {
+    assert.throws(() => emitFrontmatter({ ...OCHO, title }), /delimitador/i, title);
   }
 });
 

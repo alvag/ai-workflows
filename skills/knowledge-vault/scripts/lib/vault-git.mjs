@@ -144,9 +144,24 @@ export async function ensureVaultRepo(vaultRoot) {
  * reintento, y el flujo quedaba copiado e imposible de completar.
  *
  * `allowed` son las rutas del archivado en curso, relativas a la raíz del vault.
+ *
+ * **`--untracked-files=all` no es un detalle de formato.** Sin él, `git status`
+ * **colapsa** un directorio sin trackear a su ancestro más alto: en un vault
+ * donde `projects/` todavía no está trackeado, la frontera recién publicada se
+ * reporta como un solo `?? projects/`. Esa ruta es **ancestro** de la ruta
+ * propia, no descendiente, así que el predicado de abajo devuelve `false` y el
+ * residuo de la propia herramienta se lee como trabajo de una persona — dejando
+ * el reintento bloqueado justo en el estado que esta función existe para dejar
+ * reconstruir. Pedir el listado completo lo resuelve sin tocar el predicado, que
+ * es lo que importa: ampliarlo para aceptar ancestros habría tapado también el
+ * residuo de **otros** flujos del mismo proyecto, que sí es ajeno.
+ *
+ * `anclaEnHead` hace el otro `status` de este módulo y **no** necesita la
+ * bandera: consulta rutas explícitas y solo se llega a él si `ls-tree` ya las
+ * encontró en `HEAD`, o sea trackeadas, y el colapso es de untracked.
  */
 export async function assertVaultClean(vaultRoot, allowed = []) {
-  const { stdout } = await git(vaultRoot, ['status', '--porcelain']);
+  const { stdout } = await git(vaultRoot, ['status', '--porcelain', '--untracked-files=all']);
   const propio = (ruta) => allowed.some((a) => ruta === a || ruta.startsWith(`${a}/`));
   const sucio = stdout
     .split('\n')

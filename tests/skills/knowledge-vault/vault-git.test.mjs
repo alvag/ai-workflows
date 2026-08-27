@@ -95,6 +95,18 @@ test('[AC-13] con cambios ajenos sin commitear, el chequeo lanza antes de escrib
   await assert.rejects(() => assertVaultClean(vault), /sucio|sin commitear|limpio/i);
 });
 
+test('un cambio ajeno bajo el mismo ancestro se rechaza', async (t) => {
+  // Reconocer lo propio no puede volverla permisiva con lo que cuelga del mismo
+  // directorio: ahí vive el residuo de OTROS flujos, ajeno a esta corrida.
+  const { vault } = await vaultNuevo(t);
+  await ensureVaultRepo(vault);
+  const propias = ['projects/ai-workflows/sdd/aaa-1', 'projects/ai-workflows/sdd/aaa-1.md'];
+  await archivo(vault, 'projects/ai-workflows/sdd/aaa-1/spec.md');
+  await archivo(vault, 'projects/ai-workflows/sdd/otro-flujo/spec.md', 'de otro flujo\n');
+
+  await assert.rejects(() => assertVaultClean(vault, propias), /sin commitear/i);
+});
+
 test('[AC-13] con el árbol limpio el chequeo pasa', async (t) => {
   const { vault } = await vaultNuevo(t);
   await ensureVaultRepo(vault);

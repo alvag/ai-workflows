@@ -33,19 +33,48 @@ function toLines(text) {
   return sinBom.split('\n').map((line) => (line.endsWith('\r') ? line.slice(0, -1) : line));
 }
 
+/** Saca las comillas envolventes de un valor que las tenga. */
+function desenvolver(valor) {
+  if (valor.length >= 2) {
+    const primero = valor[0];
+    if ((primero === '"' || primero === "'") && valor.at(-1) === primero) return valor.slice(1, -1);
+  }
+  return valor;
+}
+
 /**
  * Limpia el valor: recorta, saca comillas envolventes y descarta un comentario
  * `#` precedido de espacio, que es como lo trata YAML.
+ *
+ * **Las comillas se miran primero, y ese orden es la regla.** En YAML un `#`
+ * dentro de comillas es literal, así que descartar el comentario antes de mirar
+ * las comillas deja truncado todo valor entrecomillado que contenga uno —y con
+ * una comilla huérfana al frente, porque el par ya no coincide—. Entrecomillar
+ * es la salida natural para un título que cita el número de un PR, y con el
+ * orden invertido esa salida no existía.
+ *
+ * Se busca la **última** aparición de la comilla de apertura, no la primera: es
+ * lo que permite que `"valor # literal" # comentario` conserve su `#` interno y
+ * pierda el comentario de afuera. Con la primera, el cierre caería en medio del
+ * valor.
  */
 function cleanValue(raw) {
-  let valor = raw.replace(/[ \t]+#.*$/, '').trim();
-  if (valor.length >= 2) {
-    const primero = valor[0];
-    if ((primero === '"' || primero === "'") && valor.at(-1) === primero) {
-      valor = valor.slice(1, -1);
+  const valor = raw.trim();
+  const comilla = valor[0];
+  if (comilla === '"' || comilla === "'") {
+    const cierre = valor.lastIndexOf(comilla);
+    // `> 0` descarta el valor que es una sola comilla: ahí apertura y cierre
+    // serían el mismo carácter. Después del cierre solo puede venir un
+    // comentario; cualquier otra cosa significa que no estaba entrecomillado.
+    if (cierre > 0 && /^[ \t]*(#.*)?$/.test(valor.slice(cierre + 1))) {
+      return valor.slice(1, cierre);
     }
   }
-  return valor;
+  // `(^|[ \t]+)` y no solo `[ \t]+`: el valor ya viene recortado, así que un
+  // valor que es **solo** comentario perdió los espacios que lo delataban y
+  // seguiría entero. El `#` pegado a un valor no vacío —`done#x`— no matchea
+  // ninguna de las dos ramas y se conserva, como en YAML.
+  return desenvolver(valor.replace(/(^|[ \t]+)#.*$/, '').trim());
 }
 
 /**
