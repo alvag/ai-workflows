@@ -84,6 +84,11 @@ test('un valor entrecomillado conserva su numeral', () => {
   assert.equal(con("'PR #1264'"), 'PR #1264');
   // El comentario de AFUERA se descarta igual, sin partir por el `#` de adentro.
   assert.equal(con('"valor # literal" # comentario'), 'valor # literal');
+  // Y se descarta aunque el comentario traiga la MISMA comilla. Este es el caso
+  // que separa las dos reglas de cierre: con la última comilla de la línea, el
+  // cierre cae adentro del comentario y el valor vuelve con él pegado.
+  assert.equal(con('"Mi flujo" # ver el "PR viejo"'), 'Mi flujo');
+  assert.equal(con("'Mi flujo' # ver el 'PR viejo'"), 'Mi flujo');
 });
 
 test('tolera BOM y finales de línea de Windows', () => {

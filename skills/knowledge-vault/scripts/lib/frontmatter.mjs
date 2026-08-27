@@ -53,21 +53,23 @@ function desenvolver(valor) {
  * es la salida natural para un título que cita el número de un PR, y con el
  * orden invertido esa salida no existía.
  *
- * Se busca la **última** aparición de la comilla de apertura, no la primera: es
- * lo que permite que `"valor # literal" # comentario` conserve su `#` interno y
- * pierda el comentario de afuera. Con la primera, el cierre caería en medio del
- * valor.
+ * El cierre es el **primer** candidato cuyo resto sea vacío o comentario, que es
+ * lo que hace YAML: la primera comilla sin escapar termina el escalar. Buscar la
+ * última rompe en cuanto el comentario trae esa misma comilla —`"Mi flujo" # ver
+ * el "PR viejo"` volvería con el comentario pegado adentro del valor—, y el caso
+ * `"valor # literal" # comentario` no distingue las dos reglas, porque ahí el
+ * primer candidato válido ya es el último.
  */
 function cleanValue(raw) {
   const valor = raw.trim();
   const comilla = valor[0];
   if (comilla === '"' || comilla === "'") {
-    const cierre = valor.lastIndexOf(comilla);
-    // `> 0` descarta el valor que es una sola comilla: ahí apertura y cierre
+    // `i > 0` descarta el valor que es una sola comilla: ahí apertura y cierre
     // serían el mismo carácter. Después del cierre solo puede venir un
-    // comentario; cualquier otra cosa significa que no estaba entrecomillado.
-    if (cierre > 0 && /^[ \t]*(#.*)?$/.test(valor.slice(cierre + 1))) {
-      return valor.slice(1, cierre);
+    // comentario; cualquier otra cosa significa que esa comilla no era el cierre,
+    // y si ninguna lo es, el valor no estaba entrecomillado.
+    for (let i = valor.indexOf(comilla, 1); i > 0; i = valor.indexOf(comilla, i + 1)) {
+      if (/^[ \t]*(#.*)?$/.test(valor.slice(i + 1))) return valor.slice(1, i);
     }
   }
   // `(^|[ \t]+)` y no solo `[ \t]+`: el valor ya viene recortado, así que un
