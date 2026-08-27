@@ -11,18 +11,23 @@
  * única sede del resumen y del estado observado del flujo: justo los dos datos
  * que no pueden mutar en silencio.
  *
- * Las cuatro clases irrepresentables están **medidas** contra el parser:
+ * **El numeral es la excepción, y no por escapes: por entrecomillado.** El parser
+ * mira las comillas antes de descartar el comentario, así que un valor citado
+ * vuelve literal con su `#` adentro. Un título derivado del encabezado de un
+ * documento no lo elige quien archiva —una ronda de feedback que cita el número
+ * de su PR lo trae puesto—, así que rechazarlo dejaba flujos inarchivables sin
+ * más salida que editar el origen.
+ *
+ * Las tres clases irrepresentables que quedan están **medidas** contra el parser:
  *
  * | Se emite           | Se lee         |
  * |--------------------|----------------|
  * | `"envuelto"`       | `envuelto`     |
- * | `con # numeral`    | `con`          |
- * | `#empieza`         | vacío          |
  * | `  con espacios  ` | `con espacios` |
+ * | con carácter de control | otra clave, u otra línea |
  *
- * Contra el corpus real —los 45 encabezados de flujo que existen— ninguna de las
- * cuatro aparece; los `:` y las comillas interiores, que sí aparecen, vuelven
- * idénticos y no hace falta hacerles nada.
+ * Y una cuarta que depende del contenido: un valor con `#` para el que no queda
+ * delimitador seguro (ver `delimitador`).
  *
  * Módulo **puro**: no toca el disco.
  */
@@ -48,6 +53,23 @@ function rechazar(message, key, value) {
   throw new FrontmatterEmitError(message, { key, value });
 }
 
+/**
+ * El delimitador con el que un valor con `#` se emite entero, o `null` si no hay
+ * ninguno seguro.
+ *
+ * La comilla **simple** es la preferida, y no por gusto: dentro de comillas
+ * simples YAML no interpreta ningún escape, así que el valor sale literal para
+ * cualquier lector. La doble solo entra cuando el valor ya trae una simple, y
+ * ahí exige que no haya ni comilla doble ni barra inversa — dentro de dobles
+ * YAML sí procesa escapes, y una ruta como `C:\ruta` volvería inválido el
+ * documento aunque el parser de acá lo releyera igual.
+ */
+function delimitador(valor) {
+  if (!valor.includes("'")) return "'";
+  if (!valor.includes('"') && !valor.includes('\\')) return '"';
+  return null;
+}
+
 function validarClave(clave) {
   if (typeof clave !== 'string' || !CLAVE_RE.test(clave)) {
     rechazar(
@@ -65,8 +87,13 @@ function validarValor(clave, valor) {
     // partiría el valor en una línea que el parser leería como otra clave.
     rechazar(`el valor de ${clave} tiene un carácter de control y no cabe en una línea`, clave, valor);
   }
-  if (valor.includes('#')) {
-    rechazar(`el valor de ${clave} tiene un # y el parser lo leería como comentario`, clave, valor);
+  if (valor.includes('#') && delimitador(valor) === null) {
+    rechazar(
+      `el valor de ${clave} tiene un # junto a una comilla simple y, además, una comilla doble o ` +
+        'una barra inversa: no queda delimitador que lo devuelva idéntico',
+      clave,
+      valor,
+    );
   }
   if (valor !== valor.trim()) {
     rechazar(`el valor de ${clave} empieza o termina en espacio, que el parser recorta`, clave, valor);
@@ -90,7 +117,10 @@ export function emitFrontmatter(fields) {
     validarValor(clave, valor);
   }
 
-  const texto = `---\n${entradas.map(([k, v]) => `${k}: ${v}\n`).join('')}---\n`;
+  // Solo se entrecomilla lo que lo necesita: un valor sin `#` se emite tal cual,
+  // como siempre, para no reescribir los nodos que ya existen en un vault.
+  const emitir = (v) => (v.includes('#') ? `${delimitador(v)}${v}${delimitador(v)}` : v);
+  const texto = `---\n${entradas.map(([k, v]) => `${k}: ${emitir(v)}\n`).join('')}---\n`;
 
   // El control que vuelve estructural la promesa de round-trip: en vez de confiar
   // en que las validaciones de arriba cubren todo lo que `cleanValue` transforma,

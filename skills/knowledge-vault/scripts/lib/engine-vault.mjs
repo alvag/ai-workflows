@@ -201,6 +201,15 @@ export async function runVaultTransaction({
       buildSourceInventoryV2({ files: incluidos, directories: [] }),
     );
 
+    // El nodo se compone **antes** de publicar, y ese orden es la garantía.
+    // `buildNode` valida contra el emisor de frontmatter, que puede rechazar un
+    // valor irrepresentable; el título sale del encabezado del documento, así
+    // que quien archiva no lo controla. Componiendo después de la publicación,
+    // ese rechazo llegaba con la frontera ya escrita y sin commitear: un
+    // residuo sin nodo ni índice que el reintento leía como trabajo ajeno.
+    const metadata = await resolveMetadata({ flowDir, flowId, repoSlug });
+    const nodo = buildNode({ metadata, documents: incluidos.map((e) => e.path), summary });
+
     // Un staging de una corrida muerta bloquea el reintento, porque `copyTree`
     // crea con exclusión. Se barre antes de intentar nada.
     await discardOrphanStagings({ fs, parentDir: path.dirname(frontier), label: `${label}.stage.discard` });
@@ -219,8 +228,6 @@ export async function runVaultTransaction({
     }
 
     // ── Postcondiciones ────────────────────────────────────────────────────────
-    const metadata = await resolveMetadata({ flowDir, flowId, repoSlug });
-    const nodo = buildNode({ metadata, documents: incluidos.map((e) => e.path), summary });
     if (await escribirSiCambia(fs, nodePath, nodo, 'NODE_WRITE_FAILED', `${label}.node`)) {
       reconstruido = true;
     }

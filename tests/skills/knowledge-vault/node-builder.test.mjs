@@ -87,8 +87,16 @@ test('[AC-11] el resumen vive en el frontmatter, que es de donde el índice lo d
 });
 
 test('[AC-11] un resumen irrepresentable se rechaza en vez de deformarse', () => {
+  // El numeral dejó de ser irrepresentable: el emisor lo entrecomilla. La
+  // propiedad sigue viva y se ejerce contra una clase que ninguna comilla salva.
   assert.throws(
-    () => buildNode({ metadata: META, documents: DOCS, summary: 'con # numeral' }),
-    /#/,
+    () => buildNode({ metadata: META, documents: DOCS, summary: 'con\ttabulador' }),
+    /control/i,
   );
+});
+
+test('un resumen con numeral sí produce nodo, y vuelve idéntico', () => {
+  const summary = 'Cierra el # 1264 sin tocar el origen.';
+  const { keys } = parseFrontmatter(buildNode({ metadata: META, documents: DOCS, summary }));
+  assert.equal(keys.get('summary'), summary);
 });
