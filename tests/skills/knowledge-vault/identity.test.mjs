@@ -96,7 +96,7 @@ test('el flow-id debe ya ser canónico: `A`/`a` y `ª`/`a` se rechazan', () => {
 // Esta guarda decía `assert.throws(..., /--flow-id/)`: acreditaba una instrucción
 // hacia un flag que ningún verbo implementa, y el reintento devolvía el error
 // idéntico byte por byte. Ahora se verifica la salida que sí existe.
-test('[AC-1] el error nombra la acción que existe, y no un flag inexistente', () => {
+test('el error nombra la acción que existe, y no un flag inexistente', () => {
   const capturar = (valor) => {
     try { deriveFlowId(valor); return null; } catch (error) { return error; }
   };
@@ -111,7 +111,7 @@ test('[AC-1] el error nombra la acción que existe, y no un flag inexistente', (
 
 // Plegado a minúsculas ASCII y nada más. `deriveStem` no sirve: borra `.` y `_`
 // —que el dominio admite—, trunca a 48 y colapsa `---`, `..` y `''` en `repo`.
-test('[AC-1] el candidato conserva la relación con la entrada', () => {
+test('el candidato conserva la relación con la entrada', () => {
   const mensaje = (valor) => {
     try { deriveFlowId(valor); return ''; } catch (error) { return error.message; }
   };
@@ -121,7 +121,7 @@ test('[AC-1] el candidato conserva la relación con la entrada', () => {
 
 // Un candidato constante haría converger todos los nombres, reintroduciendo por
 // la vía de la recomendación la colisión que justificó no normalizar.
-test('[AC-1] sin candidato válido, la cláusula se omite en vez de inventarse', () => {
+test('sin candidato válido, la cláusula se omite en vez de inventarse', () => {
   for (const valor of ['ª-546', '---', '..', '', 123, null, undefined]) {
     let error;
     try { deriveFlowId(valor); } catch (capturado) { error = capturado; }

@@ -118,7 +118,10 @@ Con el corte posicional: **277 documentos copiados, 10.726 omitidos.**
 El directorio del flujo tiene que llamarse con el **dominio canónico** del `flow-id` —minúsculas
 ASCII, con `.`, `_` y `-` adentro—, porque ese nombre **es** el identificador con el que el flujo
 queda archivado. Un nombre fuera del dominio **se rechaza sin transformarse**: `PQTCH-925` no se
-convierte en `pqtch-925` solo, y `archive` y `migrate` fallan antes de copiar nada.
+convierte en `pqtch-925` solo. `archive` falla **antes de copiar nada**; `migrate` valida el
+nombre **por flujo, dentro del lote**, así que los que ya pasaron quedan archivados y la corrida
+termina en `BATCH_PARTIAL` con el resto en `fallidos` — reintentar tras renombrar es seguro,
+porque los ya archivados devuelven `ALREADY_ARCHIVED`.
 
 La salida es **renombrar el directorio de origen** al nombre canónico y reintentar; el error te
 ofrece el candidato cuando existe. En `migrate` hay un paso más, porque el TSV de resúmenes

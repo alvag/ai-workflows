@@ -51,11 +51,17 @@ export async function archiveCommand({ fs, flags, homeDir = null, label = 'archi
   // la raíz de archivados, y el flujo tiene que ser hijo directo de esa raíz.
   const rutas = await assertPathMatrix({ vaultRoot, repoRoot, archivedRoot, flowDir });
 
+  // El `flow-id` sale del basename y no necesita tocar el vault, así que se deriva
+  // **antes** que el slug, que sí lo lee. Dentro del literal se evaluaba después, y
+  // un directorio mal nombrado pagaba una vuelta al vault para fallar por algo que
+  // se sabía sin salir de la ruta.
+  const flowId = deriveFlowId(path.basename(rutas.flowDir));
+
   const resultado = await runVaultTransaction({
     fs,
     vaultRoot: rutas.vaultRoot,
     repoSlug: await slugEfectivo({ fs, vaultRoot: rutas.vaultRoot, repoRoot: rutas.repoRoot, label }),
-    flowId: deriveFlowId(path.basename(rutas.flowDir)),
+    flowId,
     flowDir: rutas.flowDir,
     summary,
     label,

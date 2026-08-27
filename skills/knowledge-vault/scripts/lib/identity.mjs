@@ -19,6 +19,8 @@
  */
 
 import { digestDocument, sortFilesByPath } from './canonical.mjs';
+import { assertPortableSegment } from './portable-path.mjs';
+import { assertFlowNameAllowed } from './vault-store.mjs';
 
 export class IdentityError extends Error {
   constructor(code, message, { detail = null } = {}) {
@@ -85,6 +87,31 @@ export function assertFlowId(value) {
 }
 
 /**
+ * Si un nombre sería aceptado **de punta a punta**, no solo por la forma.
+ *
+ * `isFlowId` cubre la gramática; falta lo que rechaza el resto de la cadena. Con
+ * solo la gramática, un directorio `Index` recibía la recomendación `"index"` y
+ * renombrarlo devolvía `RESERVED_FLOW_NAME`; `CON` recibía `"con"` y devolvía
+ * `nombre reservado de Windows`. Recomendar una salida que no existe es
+ * exactamente el defecto que esta función corrige un nivel más arriba, así que el
+ * candidato pasa por los mismos predicados que decidirán su aceptación.
+ *
+ * Se consulta por excepción y no por un booleano propio para que la lista de
+ * nombres reservados siga teniendo **una sola** sede: duplicarla acá la volvería
+ * dos, y la copia se desactualizaría sin que nada avise.
+ */
+function esRenombreAceptable(nombre) {
+  if (!isFlowId(nombre)) return false;
+  try {
+    assertFlowNameAllowed(nombre);
+    assertPortableSegment(nombre);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Deriva el `flow-id` del basename del origen.
  *
  * **No transforma: exige que ya sea canónico.** Transformar antes de validar creaba
@@ -105,7 +132,7 @@ export function deriveFlowId(basename) {
     // sin él un número saldría por `TypeError` en vez de por el error del
     // contrato que esta función viene devolviendo.
     const candidato = typeof basename === 'string' ? asciiLower(basename) : null;
-    const ejemplo = candidato !== null && isFlowId(candidato)
+    const ejemplo = candidato !== null && esRenombreAceptable(candidato)
       ? ` — por ejemplo ${JSON.stringify(candidato)}`
       : '';
     throw new IdentityError(

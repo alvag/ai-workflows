@@ -78,7 +78,14 @@ const STATUS_BY_EXIT_CODE = Object.freeze({
   // operar, no un fallo de la corrida. Sin esto salía `INTERNAL_ERROR`, que le
   // dice a quien automatiza que encontró un bug en vez de que le falta declarar
   // la identidad.
-  4: ['PRECONDITION_NOT_MET', 'AMBIGUOUS_IDENTITY'],
+  // `INVALID_FLOW_ID` y `RESERVED_FLOW_NAME` entran por el mismo razonamiento, y
+  // es la tercera vez que esta tabla lo aplica. Las dos dicen "el directorio de
+  // origen se llama mal": quien automatiza tiene que renombrarlo y reintentar, que
+  // es una precondición y no un fallo de la corrida. Sin esto salían por
+  // `INTERNAL_ERROR`, así que el mensaje —el que nombra el renombre y ofrece el
+  // candidato— era inalcanzable para un consumidor que ramifica por código: leía
+  // "kv tiene un bug" sobre algo que se arregla con un `mv`.
+  4: ['PRECONDITION_NOT_MET', 'AMBIGUOUS_IDENTITY', 'INVALID_FLOW_ID', 'RESERVED_FLOW_NAME'],
   // `VAULT_ROOT_UNAVAILABLE` acompaña a `NO_VAULT` y no se queda en
   // `INTERNAL_ERROR`, que es donde caía por no estar en esta tabla. La familia es
   // la correcta: las dos dicen "la raíz del vault no sirve para operar" y quien

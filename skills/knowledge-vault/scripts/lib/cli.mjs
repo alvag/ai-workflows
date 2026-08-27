@@ -36,7 +36,22 @@ export function parseArgv(argv) {
     // nacen sin prototipo, la pertenencia explícita es lo que impide que una
     // edición futura de `contracts.mjs` reabra el agujero de `--constructor`.
     if (!Object.hasOwn(FLAGS_BY_VERB[verb], nombre)) {
-      throw new ContractError('USAGE', `el verbo ${verb} no acepta la bandera --${nombre}`);
+      // La fila es la lista completa de lo aceptado, así que nombrarla cuesta una
+      // expresión y evita que un typo o una bandera movida de verbo terminen en
+      // prueba y error. Es el mismo criterio que este PR aplica al renombre: un
+      // error que dice qué no se puede sin decir qué sí, obliga a adivinar.
+      const acepta = Object.keys(FLAGS_BY_VERB[verb]).map((f) => `--${f}`).join(', ');
+      throw new ContractError(
+        'USAGE',
+        `el verbo ${verb} no acepta la bandera --${nombre}; acepta ${acepta || '(ninguna)'}`,
+      );
+    }
+    // Repetir una bandera pisaba el valor anterior sin avisar, que es la misma
+    // clase de descarte silencioso que la tabla cierra un renglón más arriba: con
+    // `--from a --from b` se archivaba `b` y nada decía que se habían dado dos.
+    // Ahora que la fila conoce cada nombre, detectarlo es una comparación.
+    if (Object.hasOwn(flags, nombre)) {
+      throw new ContractError('USAGE', `la bandera --${nombre} está repetida: se declara una sola vez`);
     }
     if (FLAGS_BY_VERB[verb][nombre] === 'booleana') {
       flags[nombre] = true;

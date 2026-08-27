@@ -97,11 +97,19 @@ En prosa: **1 a 128 caracteres**, ASCII minúsculo, extremos en `[a-z0-9]`, inte
 `..` prohibido en cualquier posición. **No es "kebab-case"**, que sería más restrictivo: `v1.2.3` y
 `a_b.c-d` son canónicos.
 
+**La gramática no alcanza: hay dos exclusiones más, y las tres se aplican juntas.** Un nombre que la
+cumpla puede rechazarse igual por ser **reservado** —`index` y `log`, por la colisión que se explica
+arriba— o por ser un **nombre de dispositivo de Windows** —`con`, `prn`, `aux`, `nul`, `com1`-`com9`,
+`lpt1`-`lpt9`—. Las tres condiciones son la aceptación completa, y el candidato que ofrece el error
+al renombrar pasa por las tres antes de proponerse: recomendar un nombre que después se rechaza es
+el mismo defecto que ese mensaje vino a corregir. Cuando ninguna variante del nombre las cumple, el
+error **omite la sugerencia** en vez de inventar una.
+
 ### Por qué el nombre no se normaliza
 
 Un nombre fuera del dominio se rechaza y **no se normaliza**, aunque transformarlo sería trivial.
 Normalizar antes de validar haría converger `PQTCH-546` y `pqtch-546` al mismo `flow-id`, mezclando
-dos flujos distintos como revisiones de una sola fuente — y `AC-2c` no lo detectaría, porque
+dos flujos distintos como revisiones de una sola fuente — y la comprobación de identidad no lo detectaría, porque
 comparten `repo_identity`.
 
 Por eso el error **ofrece** el candidato y no lo aplica: la decisión de renombrar es de una persona.

@@ -99,7 +99,7 @@ const espiaTodos = () => {
   return { cuenta, comandos };
 };
 
-test('[AC-2] una bandera que ningún verbo declara es USAGE, en los seis', async () => {
+test('una bandera que ningún verbo declara es USAGE, en los seis', async () => {
   for (const verbo of VERBS) {
     for (const bandera of ['--flow-id', '--zzz', '--constructor']) {
       const { cuenta, comandos } = espiaTodos();
@@ -113,7 +113,7 @@ test('[AC-2] una bandera que ningún verbo declara es USAGE, en los seis', async
   }
 });
 
-test('[AC-3] una bandera real de otro verbo también es USAGE, con invocación por lo demás válida', async () => {
+test('una bandera real de otro verbo también es USAGE, con invocación por lo demás válida', async () => {
   // Cada caso lleva sus obligatorias: sin ellas el comando fallaría igual con USAGE/2.
   const casos = [
     ['archive', ['--from', 'x', '--summary', 'y'], '--root', '/z'],
@@ -134,7 +134,7 @@ test('[AC-3] una bandera real de otro verbo también es USAGE, con invocación p
   }
 });
 
-test('[AC-4] las seis filas de la matriz se aceptan y conservan cada valor', () => {
+test('las seis filas de la matriz se aceptan y conservan cada valor', () => {
   const filas = [
     ['archive', { from: 'x', summary: 'y', config: 'c' }],
     ['migrate', { from: 'x', summaries: 't', 'dry-run': true, 'vault-root': '/v' }],
@@ -153,7 +153,7 @@ test('[AC-4] las seis filas de la matriz se aceptan y conservan cada valor', () 
   }
 });
 
-test('[AC-5] la forma de la bandera es por verbo, no global', async () => {
+test('la forma de la bandera es por verbo, no global', async () => {
   const { flags } = parseArgv(['migrate', '--dry-run', '--from', 'x']);
   assert.equal(flags['dry-run'], true);
   assert.equal(flags.from, 'x');
