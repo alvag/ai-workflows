@@ -84,6 +84,53 @@ Nombres de flujo **reservados**: `index` y `log`. Un flujo así llamado se recha
 en vez de pisar un archivo generado, y la comparación va por clave de colisión
 —no por igualdad— porque en macOS y Windows `Index.md` pisa `index.md`.
 
+## El nombre del directorio es el `flow-id`
+
+El basename del directorio de origen **es** el identificador con el que el flujo queda archivado, así
+que tiene que ser canónico de entrada:
+
+```
+FLOW_ID_RE = /^(?!.*\.\.)[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$/
+```
+
+En prosa: **1 a 128 caracteres**, ASCII minúsculo, extremos en `[a-z0-9]`, interior `[a-z0-9._-]`, y
+`..` prohibido en cualquier posición. **No es "kebab-case"**, que sería más restrictivo: `v1.2.3` y
+`a_b.c-d` son canónicos.
+
+### Por qué el nombre no se normaliza
+
+Un nombre fuera del dominio se rechaza y **no se normaliza**, aunque transformarlo sería trivial.
+Normalizar antes de validar haría converger `PQTCH-546` y `pqtch-546` al mismo `flow-id`, mezclando
+dos flujos distintos como revisiones de una sola fuente — y `AC-2c` no lo detectaría, porque
+comparten `repo_identity`.
+
+Por eso el error **ofrece** el candidato y no lo aplica: la decisión de renombrar es de una persona.
+Cuando el plegado a minúsculas no alcanza para producir un nombre válido —`ª-546`, `---`, la cadena
+vacía—, el mensaje omite el candidato en vez de inventar uno.
+
+### Renombrar hacia un id que ya existe mezcla los dos flujos
+
+El candidato que el error propone puede **ya estar en uso** por otro flujo del mismo repositorio.
+Renombrar hacia él y archivar deja los dos **bajo una sola fuente**, que es la misma colisión que
+justifica no normalizar, llegando por la puerta de la recomendación. Antes de renombrar conviene
+mirar `<vault>/projects/<repo>/sdd/` y elegir otro nombre si el candidato ya está tomado.
+
+### En `migrate`, renombrar el directorio no alcanza
+
+`migrate` valida la biyección entre los basenames y las claves del TSV **antes** de procesar el lote
+(`commands/migrate.mjs`). Si se renombra el directorio y no se actualiza su **clave en el TSV**, el
+reintento produce dos problemas —el flujo sin resumen y el resumen sin flujo— y sale `BATCH_FAILED`
+**sin migrar ninguno**, aunque el resto del lote estuviera bien.
+
+El procedimiento completo, entonces:
+
+1. renombrar el directorio de origen al nombre canónico;
+2. actualizar su clave en el TSV de resúmenes;
+3. reintentar `migrate` con el mismo lote.
+
+El reintento es seguro: sale `BATCH_OK` y lo que ya se había archivado en la corrida parcial cuenta
+como `ALREADY_ARCHIVED` (`yaEstaban`), sin duplicar ni reescribir nada.
+
 ## El layout, completo
 
 ```

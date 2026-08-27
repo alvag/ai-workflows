@@ -11,7 +11,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  STATUSES, SUCCESS_STATUSES, VERBS, exitCodeFor, isStatus, statesForVerb,
+  FLAGS_BY_VERB, STATUSES, SUCCESS_STATUSES, VERBS, exitCodeFor, isStatus, statesForVerb,
 } from '../../../skills/knowledge-vault/scripts/lib/contracts.mjs';
 
 test('[AC-8] los verbos son exactamente seis, y ninguno de los retirados sobrevive', () => {
@@ -91,4 +91,28 @@ test('[AC-13] el sexto verbo declara sus estados y ninguno es nuevo en la famili
     ['IDENTITY_PROPOSED', 'IDENTITY_DECLARED', 'IDENTITY_ALREADY_DECLARED'],
   );
   for (const e of statesForVerb('identity')) assert.equal(exitCodeFor(e), 0);
+});
+
+test('[AC-8] la tabla de banderas cubre exactamente los seis verbos', () => {
+  assert.deepEqual(Object.keys(FLAGS_BY_VERB).sort(), [...VERBS].sort());
+});
+
+// Sobre un objeto normal —incluso congelado— `fila['constructor']` devuelve una
+// función: con acceso directo, `archive --constructor x` se aceptaría y se
+// descartaría en silencio, que es el defecto que la validación existe para cerrar.
+test('[AC-8] ninguna fila hereda banderas de la cadena de prototipos', () => {
+  for (const verbo of VERBS) {
+    for (const heredada of ['constructor', 'toString', 'valueOf', 'hasOwnProperty']) {
+      assert.equal(FLAGS_BY_VERB[verbo][heredada], undefined, `${verbo}.${heredada}`);
+      assert.equal(Object.hasOwn(FLAGS_BY_VERB[verbo], heredada), false, `${verbo}.${heredada}`);
+    }
+  }
+});
+
+test('[AC-8] cada bandera declara su forma, y solo esas dos', () => {
+  for (const verbo of VERBS) {
+    for (const [bandera, forma] of Object.entries(FLAGS_BY_VERB[verbo])) {
+      assert.ok(['valor', 'booleana'].includes(forma), `${verbo} --${bandera}: ${forma}`);
+    }
+  }
 });

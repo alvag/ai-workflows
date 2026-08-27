@@ -93,8 +93,42 @@ test('el flow-id debe ya ser canónico: `A`/`a` y `ª`/`a` se rechazan', () => {
   rejects(() => deriveFlowId('Abc'), 'INVALID_FLOW_ID');
 });
 
-test('el error de flow-id dice cómo salir del paso', () => {
-  assert.throws(() => deriveFlowId('PQTCH-546'), /--flow-id/);
+// Esta guarda decía `assert.throws(..., /--flow-id/)`: acreditaba una instrucción
+// hacia un flag que ningún verbo implementa, y el reintento devolvía el error
+// idéntico byte por byte. Ahora se verifica la salida que sí existe.
+test('[AC-1] el error nombra la acción que existe, y no un flag inexistente', () => {
+  const capturar = (valor) => {
+    try { deriveFlowId(valor); return null; } catch (error) { return error; }
+  };
+
+  const error = capturar('PQTCH-925');
+  assert.equal(error.code, 'INVALID_FLOW_ID');
+  assert.doesNotMatch(error.message, /--flow-id/);
+  assert.match(error.message, /a-z0-9\._-/);          // el dominio, no "kebab-case"
+  assert.match(error.message, /renombrar el directorio de origen/);
+  assert.match(error.message, /por ejemplo "pqtch-925"/);
+});
+
+// Plegado a minúsculas ASCII y nada más. `deriveStem` no sirve: borra `.` y `_`
+// —que el dominio admite—, trunca a 48 y colapsa `---`, `..` y `''` en `repo`.
+test('[AC-1] el candidato conserva la relación con la entrada', () => {
+  const mensaje = (valor) => {
+    try { deriveFlowId(valor); return ''; } catch (error) { return error.message; }
+  };
+  assert.match(mensaje('A_B.C'), /por ejemplo "a_b\.c"/);        // preserva `_` y `.`
+  assert.match(mensaje('X'.repeat(60)), new RegExp(`por ejemplo "${'x'.repeat(60)}"`));
+});
+
+// Un candidato constante haría converger todos los nombres, reintroduciendo por
+// la vía de la recomendación la colisión que justificó no normalizar.
+test('[AC-1] sin candidato válido, la cláusula se omite en vez de inventarse', () => {
+  for (const valor of ['ª-546', '---', '..', '', 123, null, undefined]) {
+    let error;
+    try { deriveFlowId(valor); } catch (capturado) { error = capturado; }
+    assert.equal(error.code, 'INVALID_FLOW_ID', String(valor));
+    assert.doesNotMatch(error.message, /por ejemplo/, String(valor));
+    assert.match(error.message, /renombrar el directorio de origen/, String(valor));
+  }
 });
 
 // ── repo-slug: stem legible + hash de identidad (AC-4) ────────────────────────

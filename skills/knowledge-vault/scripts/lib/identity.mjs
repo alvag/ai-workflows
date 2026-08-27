@@ -94,10 +94,25 @@ export function assertFlowId(value) {
  */
 export function deriveFlowId(basename) {
   if (!isFlowId(basename)) {
+    // El candidato se pliega a minúsculas ASCII y **nada más**, y se ofrece solo
+    // si eso ya alcanza. `deriveStem` no sirve para esto: borra `.` y `_` —que el
+    // dominio sí admite—, trunca a 48 y devuelve `repo` para entradas
+    // degeneradas, así que tres nombres distintos convergerían en una sola
+    // recomendación. Su unicidad la garantizan los 12 hex que le siguen en el
+    // `repo-slug`; un `flow-id` no los tiene.
+    //
+    // El guard de tipo no es defensivo de más: `asciiLower` itera su argumento, y
+    // sin él un número saldría por `TypeError` en vez de por el error del
+    // contrato que esta función viene devolviendo.
+    const candidato = typeof basename === 'string' ? asciiLower(basename) : null;
+    const ejemplo = candidato !== null && isFlowId(candidato)
+      ? ` — por ejemplo ${JSON.stringify(candidato)}`
+      : '';
     throw new IdentityError(
       'INVALID_FLOW_ID',
-      `el nombre del directorio ${JSON.stringify(basename)} no es un flow-id canónico; ` +
-        'pasa --flow-id explícito',
+      `el nombre del directorio ${JSON.stringify(basename)} no es un flow-id canónico ` +
+        '(1 a 128 caracteres [a-z0-9._-], sin `..`, con extremos en [a-z0-9]); ' +
+        `hay que renombrar el directorio de origen${ejemplo}`,
       { detail: basename },
     );
   }

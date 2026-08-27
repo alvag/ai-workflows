@@ -113,6 +113,18 @@ colaban un 65 % de material que nadie querría consultar.
 
 Con el corte posicional: **277 documentos copiados, 10.726 omitidos.**
 
+### El nombre del directorio también entra en el trato
+
+El directorio del flujo tiene que llamarse con el **dominio canónico** del `flow-id` —minúsculas
+ASCII, con `.`, `_` y `-` adentro—, porque ese nombre **es** el identificador con el que el flujo
+queda archivado. Un nombre fuera del dominio **se rechaza sin transformarse**: `PQTCH-925` no se
+convierte en `pqtch-925` solo, y `archive` y `migrate` fallan antes de copiar nada.
+
+La salida es **renombrar el directorio de origen** al nombre canónico y reintentar; el error te
+ofrece el candidato cuando existe. En `migrate` hay un paso más, porque el TSV de resúmenes
+referencia el nombre viejo: el dominio exacto, el porqué de no transformar y el procedimiento
+completo de los dos verbos están en `reference.md` → "El nombre del directorio es el `flow-id`".
+
 ## Después de archivar: qué hacer con lo que quedó afuera
 
 `archive` devuelve `counts: {included, omitted}`, y **`omitted` es el dato que casi
