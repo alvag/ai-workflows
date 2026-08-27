@@ -196,7 +196,7 @@ cross_model: {schema_version: 1, families: [codex], selection: user_choice, mani
 cross_review: {mode: auto, execution: auto}  # segunda opinión cross-model en los gates; ver "Revisión cross-model"
 co_explore: {mode: auto, deadline: 600, debate: {mode: auto, max_rounds: 3}}  # exploración paralela + modo debate (decisiones); ver "Co-exploración cross-model"
 domain_context: {mode: auto, context_paths: [], adr_paths: []}  # lectura de contexto/ADRs; ver "Contexto de dominio"
-knowledge_vault: {mode: auto}  # rescatar el flujo al vault al archivarlo ("auto"|"on"|"off"); el disparador es esta clave, no que la skill esté instalada
+vault_archive: {mode: auto}  # rescatar el flujo al vault al archivarlo ("auto"|"on"|"off"); el disparador es esta clave, no que la skill esté instalada
 final_diff_review: {mode: auto}  # revisión agregada de diff en cambios complex/high-risk inline
 jira_approval: {mode: "off"}  # aprobación externa de la spec en Jira ("off"|"on", entre comillas: sin ellas YAML los parsea como booleanos; solo si tracker: jira); ver paso `publish-spec`
 implement_mode: ask         # cómo ejecutar las tasks: ask (preguntar en el gate) | inline | cross | workers
@@ -992,13 +992,15 @@ Solo cuando el usuario confirma explícitamente que el cambio está **probado y 
 
 ### Rescatar el flujo antes de retirarlo (opcional, dependencia blanda)
 
-**El disparador es `knowledge_vault.mode`, no que la skill esté instalada.** Instalar una skill —a veces porque vino en un paquete, a veces para otro flujo— no es consentir que cada archivado quede encadenado a ella, y medir el CLI mide una propiedad del entorno, no una decisión. Es la misma forma que ya tiene `cross_review`, y la asimetría anterior era un hueco, no doctrina.
+**El disparador es `vault_archive.mode`, no que la skill esté instalada.** Instalar una skill —a veces porque vino en un paquete, a veces para otro flujo— no es consentir que cada archivado quede encadenado a ella, y medir el CLI mide una propiedad del entorno, no una decisión. Es la misma forma que ya tiene `cross_review`, y la asimetría anterior era un hueco, no doctrina.
 
 | `mode` | Qué hace el sub-paso |
 |---|---|
 | `"off"` | el archivado **termina en el movimiento plano**. No se sondea el CLI, no se ofrece, no se vuelve a preguntar |
 | `"on"` | corre la cadena; si falta el CLI o el vault, el fallo es cerrado (ver abajo) |
-| `auto` (default) | con la skill instalada, **se ofrece una vez** —mostrando qué vaults hay con `kv config --discover`— y se **persiste la respuesta** en la clave. Sin declaración previa no se corre la cadena en silencio |
+| `auto` (default) | con la skill instalada, consulta si hay **destino declarado** (`knowledge-vault.path_vault`) — **no** resuelve por la ausencia de su propia clave. Con destino declarado, **ofrece activar la cadena sobre ese destino** y no abre descubrimiento; sin destino declarado, abre descubrimiento —mostrando qué vaults hay con `kv config --discover`— y **persiste la respuesta** en la clave. Sin declaración previa no se corre la cadena en silencio |
+
+Que falte `.specify/config.yml`, o que falte la clave `vault_archive` dentro de él, resuelve `auto` —su default— y **no** es un fallo: el config es opcional y todos sus campos lo son, así que la ausencia es el estado normal de un proyecto nuevo, no un error que detenga el archivado.
 
 Con la cadena activa el archivado deja de ser el final del camino: `.plans/archived/` es local, untracked e invisible, así que lo que ese flujo decidió muere ahí. La cadena es **archivar, verificar y recién entonces retirar**, y su orden no es negociable.
 

@@ -103,6 +103,8 @@ def origins_for(identifier: str, group: str,
                          for name in targets.guards_by_skill.get(skill, frozenset()))
     if group == "runtime-v5":
         return frozenset({("guard", "apertura")})
+    if group == "sedes-config-vault":
+        return frozenset({("guard", "apertura")})
     if group in {"dimensiones", "normalizaciones"}:
         return frozenset({("case", "contrato-cadena/positivo")})
     if identifier == "migracion-snapshot-v13b":

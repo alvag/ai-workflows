@@ -6,11 +6,12 @@ dueña del enum, la descripción y el valor de sus propias claves; `sdd-flow/con
 y `sdd-orchestrator/manifest-ejemplo.md` son vistas ensambladas de esos dueños, pensadas para
 copiar. Ante discrepancia manda el dueño — pero nada impedía que una vista se desincronizara en
 silencio (alguien cambia un default en un dueño y la vista queda mintiendo). Este script cierra
-esa brecha con cinco chequeos: conjunto de claves, tokens de enum, valores, marcas
-`[def]`/`[ej]`/`[obl]` y comillas en `on`/`off`.
+esa brecha con seis chequeos: conjunto de claves, tokens de enum, valores, marcas
+`[def]`/`[ej]`/`[obl]`, comillas en `on`/`off` y colisión de claves de primer nivel al normalizar
+guion medio a guion bajo.
 
 Uso: python3 scripts/verificar-vistas-config.py
-Exit 0 si los cinco chequeos pasan; 1 si alguno falla (detalle impreso por chequeo).
+Exit 0 si los seis chequeos pasan; 1 si alguno falla (detalle impreso por chequeo).
 
 Requiere python3 + PyYAML. Sin otras dependencias.
 """
@@ -32,6 +33,9 @@ REPO = Path(__file__).resolve().parent.parent
 SDD_FLOW_REF = REPO / "skills/sdd-flow/reference.md"
 SDD_FLOW_ESQUEMA = r"Esquema de `\.specify/config\.yml`"
 
+SDD_FLOW_SKILL = REPO / "skills/sdd-flow/SKILL.md"
+SDD_FLOW_SKILL_ESQUEMA = r"Adaptación al proyecto"
+
 CROSS_REVIEW_SKILL = REPO / "skills/cross-review/SKILL.md"
 CO_EXPLORE_SKILL = REPO / "skills/co-explore/SKILL.md"
 CROSS_IMPLEMENT_SKILL = REPO / "skills/cross-implement/SKILL.md"
@@ -46,12 +50,33 @@ SDD_ORCH_ESQUEMA = r"Esquema de `manifest\.yml`"
 MANIFEST_EJEMPLO = REPO / "skills/sdd-orchestrator/manifest-ejemplo.md"
 MANIFEST_EJEMPLO_HEADING = r"Ejemplo de `manifest\.yml`"
 
+# La quinta sede (AC-1 de sede-config-vault): dueña de `knowledge-vault.path_vault`, la única
+# clave del config con guion medio.
+KNOWLEDGE_VAULT_REF = REPO / "skills/knowledge-vault/reference.md"
+KNOWLEDGE_VAULT_REF_HEADING = r"La capa de configuración"
+
+KNOWLEDGE_VAULT_SKILL = REPO / "skills/knowledge-vault/SKILL.md"
+KNOWLEDGE_VAULT_SKILL_HEADING = r"El primer uso en un proyecto"
+
 # Las 5 claves de ESTADO DE CORRIDA del esquema de manifest.yml (no son config, no viven en
 # manifest-ejemplo.md).
 CLAVES_ESTADO_CORRIDA = {"id", "created_at", "master_spec", "repos", "orchestration_tasks"}
 
-DUENOS_CONFIG = [
-    (SDD_FLOW_REF, SDD_FLOW_ESQUEMA),
+# El registro de sedes activas de sede-config-vault (AC-1): (ruta, ancla, rol, extraccion),
+# rol ∈ {"dueno", "consumidora", "vista"} · extraccion ∈ {"bloque", "prosa", "linea"}.
+SEDES_CONFIG = [
+    (SDD_FLOW_REF, SDD_FLOW_ESQUEMA, "dueno", "bloque"),
+    (SDD_FLOW_SKILL, SDD_FLOW_SKILL_ESQUEMA, "consumidora", "bloque"),
+    (CONFIG_EJEMPLO, CONFIG_EJEMPLO_HEADING, "vista", "linea"),
+    (KNOWLEDGE_VAULT_REF, KNOWLEDGE_VAULT_REF_HEADING, "dueno", "bloque"),
+    (KNOWLEDGE_VAULT_SKILL, KNOWLEDGE_VAULT_SKILL_HEADING, "consumidora", "prosa"),
+]
+
+# DUENOS_CONFIG se deriva de SEDES_CONFIG para la parte que le compete (los dueños del vault, que
+# antes de este flujo no estaban) y conserva los tres dueños ajenos al vault que ya tenía: no son
+# parte del registro de sedes de AC-1 (que es específico de la colisión vault_archive/knowledge-
+# vault), así que desincronizarían la cardinalidad exacta de ese registro si se sumaran ahí.
+DUENOS_CONFIG = [(ruta, ancla) for ruta, ancla, rol, _ in SEDES_CONFIG if rol == "dueno"] + [
     (CROSS_REVIEW_SKILL, CONFIG_HEADING),
     (CO_EXPLORE_SKILL, CONFIG_HEADING),
     (CROSS_IMPLEMENT_SKILL, CONFIG_HEADING),
@@ -65,15 +90,27 @@ DUENOS_CONFIG = [
 # ---------------------------------------------------------------------------------------------
 
 SEPS = ("—", "→", ". ", "; ", " - ")
-_LINEA_CLAVE = re.compile(r"^(\s*)([A-Za-z_][A-Za-z0-9_]*):(.*)$")
+_LINEA_CLAVE = re.compile(r"^(\s*)([A-Za-z_][A-Za-z0-9_-]*):(.*)$")
 _MARCA_RE = re.compile(r"\[(def|ej|obl)\]")
+
+
+class FuenteIlegible(Exception):
+    """La sede no produjo un bloque YAML legible. `causa` nombra por qué, entre
+    "archivo ausente" · "heading ausente" · "bloque vacío"."""
+
+    def __init__(self, ruta: Path, causa: str):
+        self.ruta = ruta
+        self.causa = causa
+        super().__init__(f"{ruta}: {causa}")
 
 
 def bloque_yaml(ruta: Path, heading: str) -> str:
     """Primer fence ```yaml bajo el heading que matchea `heading` (regex). Puerto de
-    yamlblock() de comun.sh."""
+    yamlblock() de comun.sh. Levanta `FuenteIlegible` en vez de devolver cadena vacía: el
+    archivo ausente, el heading ausente y el bloque vacío son fallas silenciosas si se
+    confunden con "nada que auditar"."""
     if not ruta.is_file():
-        return ""
+        raise FuenteIlegible(ruta, "archivo ausente")
     on = fence = False
     lineas: list[str] = []
     for linea in ruta.read_text(encoding="utf-8").splitlines():
@@ -88,7 +125,12 @@ def bloque_yaml(ruta: Path, heading: str) -> str:
         if re.match(r"^\s*```", linea):
             break
         lineas.append(linea)
-    return "\n".join(lineas)
+    if not on:
+        raise FuenteIlegible(ruta, "heading ausente")
+    texto = "\n".join(lineas)
+    if not texto.strip():
+        raise FuenteIlegible(ruta, "bloque vacío")
+    return texto
 
 
 def _walk_claves(nodo, prefijo=""):
@@ -103,8 +145,6 @@ def _walk_claves(nodo, prefijo=""):
 
 def _cargar_yaml(ruta: Path, heading: str):
     texto = bloque_yaml(ruta, heading)
-    if not texto.strip():
-        return None
     try:
         return yaml.safe_load(texto) or {}
     except yaml.YAMLError as e:
@@ -252,7 +292,9 @@ def _comparar_conjuntos(nombre: str, esperado: set[str], real: set[str], etq_esp
 def check1_config():
     duenos = _union_claves(DUENOS_CONFIG)
     vista = claves(CONFIG_EJEMPLO, CONFIG_EJEMPLO_HEADING)
-    return _comparar_conjuntos("config-ejemplo.md", duenos, vista, "unión de los 4 dueños", "la vista")
+    return _comparar_conjuntos(
+        "config-ejemplo.md", duenos, vista, f"unión de los {len(DUENOS_CONFIG)} dueños", "la vista"
+    )
 
 
 def check1_manifest():
@@ -462,6 +504,51 @@ def check5_comillas():
 
 
 # ---------------------------------------------------------------------------------------------
+# Check 6 (nuevo): colisión de claves de primer nivel al normalizar guion medio a guion bajo.
+# `knowledge-vault` es la única clave del config con guion medio; sin este check nada impide que
+# vuelva a coexistir con una homógrafa en guion bajo (el defecto que motivó sede-config-vault).
+# ---------------------------------------------------------------------------------------------
+
+def _fuentes_colision(sedes_config=None) -> list[tuple[Path, str]]:
+    """Las sedes de `SEDES_CONFIG` con bloque YAML extraíble. La extracción "prosa" (la
+    instrucción consumidora del vault) no tiene fence: `bloque_yaml` levantaría "bloque vacío"
+    sobre ella, así que se filtra por tipo de extracción en vez de llamar `bloque_yaml` sobre
+    las cinco sedes por igual."""
+    if sedes_config is None:
+        sedes_config = SEDES_CONFIG
+    return [(ruta, ancla) for ruta, ancla, _rol, extraccion in sedes_config if extraccion != "prosa"]
+
+
+def _claves_nivel1(ruta: Path, heading: str) -> set[str]:
+    datos = _cargar_yaml(ruta, heading)
+    if not isinstance(datos, dict):
+        return set()
+    return set(datos.keys())
+
+
+def _normalizar_guion(clave: str) -> str:
+    return clave.replace("-", "_")
+
+
+def check6_colision(sedes_config=None):
+    claves_n1: set[str] = set()
+    for ruta, heading in _fuentes_colision(sedes_config):
+        claves_n1 |= _claves_nivel1(ruta, heading)
+    if not claves_n1:
+        return False, "nada que comparar (0 claves de primer nivel entre las sedes activas)"
+    por_normal: dict[str, set[str]] = {}
+    for clave in claves_n1:
+        por_normal.setdefault(_normalizar_guion(clave), set()).add(clave)
+    colisiones = {norm: nombres for norm, nombres in por_normal.items() if len(nombres) > 1}
+    if colisiones:
+        detalle = "; ".join(
+            f"{norm}: {', '.join(sorted(nombres))}" for norm, nombres in sorted(colisiones.items())
+        )
+        return False, f"{len(colisiones)} colisión(es) al normalizar guion medio→bajo — {detalle}"
+    return True, f"{len(claves_n1)} claves de primer nivel, 0 colisiones al normalizar guion medio→bajo"
+
+
+# ---------------------------------------------------------------------------------------------
 
 
 def main() -> int:
@@ -474,10 +561,14 @@ def main() -> int:
         ("3b", "Valores — manifest-ejemplo.md", check3_manifest),
         ("4 ", "Marcas [def]/[ej]/[obl]", check4_marcas),
         ("5 ", "Comillas en on/off", check5_comillas),
+        ("6 ", "Colisión de claves de primer nivel (guion medio→bajo)", check6_colision),
     ]
     ok_total = True
     for id_, nombre, fn in checks:
-        ok, msg = fn()
+        try:
+            ok, msg = fn()
+        except FuenteIlegible as e:
+            ok, msg = False, str(e)
         ok_total = ok_total and ok
         estado = "OK   " if ok else "FALLA"
         print(f"[{id_}] {estado} {nombre}: {msg}")

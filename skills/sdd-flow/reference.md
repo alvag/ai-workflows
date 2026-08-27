@@ -318,8 +318,8 @@ domain_context:
   mode: auto                     # auto | "on" | "off"; solo lectura, nunca escribe ADRs/docs
   context_paths: []              # docs de dominio/glosarios/arquitectura a leer si existen
   adr_paths: []                  # ADRs o decisiones vigentes a leer si existen
-knowledge_vault:                 # rescatar el flujo al vault al archivarlo (opcional; requiere la skill `knowledge-vault`)
-  mode: auto                     # auto (default: ofrecer UNA vez y persistir la respuesta) | "on" | "off"  (entre comillas: sin ellas YAML los parsea como booleanos). Con `off` el archivado termina en el movimiento plano y no se vuelve a ofrecer. El disparador es esta clave, **no** que la skill esté instalada: instalarla no es consentir que cada archivado quede encadenado a ella
+vault_archive:                   # rescatar el flujo al vault al archivarlo (opcional; requiere la skill `knowledge-vault`)
+  mode: auto                     # auto (default: consulta si hay destino declarado — con destino, ofrece activar la cadena sobre él; sin destino, ofrece descubrimiento y persiste la respuesta) | "on" | "off"  (entre comillas: sin ellas YAML los parsea como booleanos). Con `off` el archivado termina en el movimiento plano y no se vuelve a ofrecer. El disparador es esta clave, **no** que la skill esté instalada: instalarla no es consentir que cada archivado quede encadenado a ella
 final_diff_review:
   mode: auto                     # auto (complex/high-risk inline) | "on" | "off"
 ```
