@@ -322,7 +322,9 @@ Devolver a la skill llamadora (o presentar, en modo directo):
   | `advertencia_bucle` | texto o `null` | sí en v2 | derivada de `pendientes` y `presupuesto` |
   | `aplicaciones_pendientes` · `ids_pendientes` | entero · lista | sí en las dos versiones | ya existen |
 
-  Los cuatro presentadores **solo muestran**: no infieren, no recalculan, no reordenan. El orden de
+  Los cuatro presentadores **solo muestran**: no infieren, no recalculan, no reordenan — **salvo lo
+  que el arbitraje de este mismo STOP haya invalidado**, que se re-deriva del ledger (`reference.md`
+  → "Contrato de retorno"). El orden de
   presentación, normado y no a criterio, es `serie` → `advertencia_bucle` →
   `aplicaciones_pendientes` con sus ids → `opciones` con la `recomendada` marcada. Las cinco opciones
   se ofrecen siempre y la recomendación **advierte, no deshabilita**.
@@ -376,7 +378,8 @@ las presenta `cross-review`, que ya presenta su propio resultado.
 > **Y con el paso previo de arbitraje, ese conteo se RE-DERIVA del ledger antes de declararlo.** El
 > valor que viaja en `tandas_concedibles` se calculó al devolverse el control, o sea **antes** de que
 > nadie arbitre: si el humano resolvió disputas hacia `aplicado`, quedó viejo. Se re-derivan
-> `aplicaciones_pendientes`, sus `ids_pendientes` y los **tres inventarios** —disputas abiertas,
+> `aplicaciones_pendientes`, sus `ids_pendientes`, `presupuesto`, `advertencia_bucle`,
+> `recomendada` y los **tres inventarios** —disputas abiertas,
 > rechazos sin responder, aplicaciones pendientes—. **No** se re-derivan `causa_corte` ni
 > `disponibles`, que son datos históricos de por qué se abrió el checkpoint; pero `disponibles` deja
 > de usarse como advertencia después de arbitrar —resuelta una disputa hacia `aplicado`, una ronda sí
@@ -388,14 +391,21 @@ Cuando el checkpoint se abre con findings `en-disputa`, **el humano los resuelve
 entre las cinco opciones**. No es una sexta opción ni un subpaso de una: es un paso previo dentro
 del mismo STOP, y es lo que hace ejecutable la promesa del ciclo de vida de que `en-disputa` lo
 arbitra el humano en el gate. Los dos destinos son `aplicado` y `cerrado`, por las dos aristas con
-`actor: humano` de `ciclo-de-vida.md` → "Transiciones". Mecánica completa —qué se escribe, en qué
-orden, con qué `ronda`, la cota de arbitrajes por finding y qué hace cada opción con una aplicación
+`actor: humano` de `ciclo-de-vida.md` → "Transiciones". Los dos tramos: el primero antes de elegir, sobre las disputas ya abiertas; y **si la opción no
+concede**, un segundo sobre los rechazos sin responder que la elección acaba de dejar
+`en-disputa` — su única oportunidad, porque esas dos opciones cierran la corrida. Mecánica
+completa —qué se escribe, en qué orden, con qué `ronda`, la cota de arbitrajes por finding y qué hace cada opción con una aplicación
 pendiente nacida del arbitraje— en `reference.md` → "El paso previo: arbitrar las disputas".
 
-**En los modos directo y draft esta skill es a la vez árbitro y presentador**, así que ejecuta la
-secuencia entera: (a) presenta el paso previo; (b) el humano resuelve; (c) escribe las N `transicion`
+**En los modos directo y draft esta skill es el presentador, nunca el árbitro** —el árbitro es el
+usuario que la invocó, igual que en modo embebido—, así que ejecuta la secuencia entera **salvo la
+decisión**, que le pide a él: (a) presenta el paso previo; (b) **el usuario** resuelve, y sin su respuesta no se
+escribe ninguna fila —el conductor no lo sustituye ni firma por él (`reference.md` → "Cuando no hay
+gate humano")—; (c) escribe las N `transicion`
 y después la `control-corrida` con `evento_corrida: arbitraje-disputas`; (d) re-deriva el conteo, los
-IDs y los tres inventarios; (e) conserva `causa_corte` y `disponibles` como históricos; (f) recién
+IDs, los tres inventarios y todo campo derivado que el arbitraje mueva —criterio y tabla en
+`reference.md` → "Los datos que se re-derivan después de arbitrar, y los que no"—; (e) conserva
+`causa_corte` y `disponibles` como históricos; (f) recién
 entonces ofrece las cinco opciones. En modo embebido esos pasos los ejecuta la skill llamadora, que
 es quien presenta.
 

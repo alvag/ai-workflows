@@ -244,20 +244,22 @@ inconsistencias que un humano pasa por alto. **Augmenta el gate, no lo reemplaza
   todas con la **`ronda` acumulada al abrir el checkpoint**. Por finding la secuencia es **decidir →
   editar → registrar**: la fila hacia `aplicado` se escribe **después** de aplicar la corrección,
   nunca antes. Y esa `control-corrida` cierra **ese acto**, no la posibilidad de arbitrar: un
-  checkpoint posterior abre otro, con la suya. Mecánica completa en
+  checkpoint posterior abre otro, con la suya. **Y si la opción elegida no concede**, los rechazos sin responder que ese paso deja `en-disputa` se arbitran en el mismo STOP, antes de cerrar: es la única oportunidad que van a tener, porque esas dos opciones cierran la corrida. Mecánica completa en
   `cross-review/reference.md` → "El paso previo: arbitrar las disputas".
 - **Las cinco opciones del checkpoint, en los dos gates de Fase 1.** Si la revisión devuelve
   `tandas_concedibles`, los STOPs de `master-spec` (gate 1.3) y de `reparto` (gate 1.4) ofrecen
   —sin gate extra— **continuar así** · **conceder una tanda** · **seguir hasta `APPROVED`** ·
   **ronda de cierre con artefacto congelado** · **cerrar la revisión**. El presentador solo muestra
-  el retorno, sin inferir, recalcular ni reordenar: `serie` → `advertencia_bucle` →
+  el retorno, sin inferir, recalcular ni reordenar —salvo lo que el arbitraje de este STOP haya
+  invalidado, que se re-deriva—: `serie` → `advertencia_bucle` →
   `aplicaciones_pendientes` con sus `ids_pendientes` → `opciones` con la `recomendada` marcada. Las
   cinco se ofrecen siempre: la recomendación advierte, no deshabilita, igual que `disponibles:
   false`. **El paso previo no las cambia:** no agrega una sexta ni altera sus postcondiciones.
   **Si `aplicaciones_pendientes` es mayor que cero, mostrarlo con sus `ids_pendientes`
   dentro de ese orden**: "continuar así" aprueba el
   artefacto, y quien elige tiene que saber que hay ediciones que ninguna ronda observó. **Tras
-  arbitrar, ese conteo se re-deriva del ledger** —junto con sus IDs y los tres inventarios—
+  arbitrar, ese conteo se re-deriva del ledger** —junto con sus IDs, los tres inventarios y todo
+  campo derivado que el arbitraje mueva (`presupuesto`, `advertencia_bucle`, `recomendada`)—
   porque el valor del retorno es anterior al arbitraje; `causa_corte` y `disponibles` **no** se
   re-derivan, son históricos, y `disponibles` deja de usarse como advertencia una vez que hubo
   arbitraje. Con el modo automático activo, el fin de tanda es una

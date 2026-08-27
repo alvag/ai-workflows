@@ -181,13 +181,14 @@ rationale, y luego **una** `control-corrida` con `evento_corrida: arbitraje-disp
 nulo —**también si no se arbitró ninguna**—, todas con la **`ronda` acumulada al abrir el
 checkpoint**. Por finding la secuencia es **decidir → editar → registrar**: la fila hacia `aplicado`
 se escribe **después** de aplicar la corrección, nunca antes. Y esa `control-corrida` cierra **ese
-acto**, no la posibilidad de arbitrar: un checkpoint posterior abre otro, con la suya. Mecánica
-completa en `cross-review/reference.md` → "El paso previo: arbitrar las disputas".
+acto**, no la posibilidad de arbitrar: un checkpoint posterior abre otro, con la suya. **Y si la opción elegida no concede**, los rechazos sin responder que ese paso deja `en-disputa` se arbitran en el mismo STOP, antes de cerrar: es la única oportunidad que van a tener, porque esas dos opciones cierran la corrida.
+Mecánica completa en `cross-review/reference.md` → "El paso previo: arbitrar las disputas".
 
 **Salida de rondas.** Cuando la revisión devuelve `tandas_concedibles` —todo `REVISE` que abra el
 checkpoint—, el STOP del gate ofrece las **cinco opciones**: **continuar así** · **conceder una
 tanda** · **seguir hasta `APPROVED`** · **ronda de cierre con artefacto congelado** · **cerrar la
-revisión**. El presentador solo muestra el retorno, sin inferir, recalcular ni reordenar: `serie` →
+revisión**. El presentador solo muestra el retorno, sin inferir, recalcular ni reordenar —salvo lo
+que el arbitraje de este STOP haya invalidado, que se re-deriva—: `serie` →
 `advertencia_bucle` → `aplicaciones_pendientes` con sus `ids_pendientes` → `opciones` con la
 `recomendada` marcada. Las cinco opciones se ofrecen siempre: la recomendación advierte, no
 deshabilita, igual que `disponibles: false`. **El paso previo no las cambia:** no agrega una sexta

@@ -32,11 +32,14 @@ artefacto escrito ──► [cross-review] ──► artefacto (quizá revisado)
 - **Read-only.** El revisor nunca escribe en el repo. Si hay algo que aplicar, lo edita Claude.
 - **Loop acotado, con salida en manos de la persona.** `max_rounds` (default 3) es el presupuesto de
   **una tanda**, no de la corrida entera: al agotarse no se cierra sola — se abre un checkpoint donde
-  elegís entre continuar así, conceder otra tanda, seguir hasta `APPROVED` (con un tope total) o
-  cerrar la revisión. El loop nunca corre sin tope, y quien lo extiende sos vos.
+  elegís entre continuar así, conceder otra tanda, seguir hasta `APPROVED` (con un tope total), una
+  ronda de cierre con el artefacto congelado, o cerrar la revisión. El loop nunca corre sin tope, y
+  quien lo extiende sos vos.
 - **Y en ese checkpoint resolvés las disputas.** Un finding queda `en-disputa` cuando el loop no
-  puede resolverlo solo: el conductor lo escaló, o sostuvo un rechazo que el revisor había
-  defendido, o el revisor insistió sobre algo ya corregido. Ninguna ronda adicional lo destraba
+  puede resolverlo solo: el conductor lo escaló o difirió por congelamiento, o sostuvo un rechazo que
+  el revisor había defendido, o el revisor insistió sobre algo ya corregido, o defendió sin
+  presupuesto — o vos mismo no concediste otra tanda y el rechazo se quedó sin respuesta. Ninguna
+  ronda adicional lo destraba
   —por eso el checkpoint corta apenas quedan sólo disputas—, así que lo arbitrás vos, **antes** de
   elegir qué hacer con la revisión: para cada uno, o le das la razón al revisor y la corrección se
   aplica, o sostenés el rechazo por su mérito y el finding se cierra. Podés resolver de una vez

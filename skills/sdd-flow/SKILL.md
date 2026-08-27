@@ -302,14 +302,21 @@ crítica se presenta *junto* al artefacto en el mismo STOP; tú sigues siendo el
   agruparse para findings que compartan motivo, pero **cada uno lleva su fila** en el ledger. Después
   de arbitrar, escribir **en este orden**: una `transicion` por finding —con `actor: humano`, su
   destino y el rationale— y luego **una** `control-corrida` con `evento_corrida: arbitraje-disputas`
-  y `finding_id` nulo, **también si no se arbitró ninguna** —esa fila cierra **ese acto**, y un checkpoint posterior abre otro con la suya—. Por finding la secuencia es **decidir → editar → registrar**: la fila hacia `aplicado` se escribe **después** de aplicar la corrección, nunca antes, porque si no ese caso es indistinguible
-  de que el arbitraje nunca se ofreció. Las filas llevan la **`ronda` acumulada al abrir el
-  checkpoint**. Mecánica completa y la cota de arbitrajes por finding en
+  y `finding_id` nulo, **también si no se arbitró ninguna** —si no, ese caso sería indistinguible de
+  que el arbitraje nunca se ofreció; y esa fila cierra **ese acto**, así que un checkpoint posterior
+  abre otro con la suya—. Por finding la secuencia es **decidir → editar → registrar**: la fila hacia
+  `aplicado` se escribe **después** de aplicar la corrección, nunca antes, porque una interrupción
+  entre las dos dejaría el ledger afirmando una edición que no existe y una aplicación pendiente
+  fantasma. Las filas llevan la **`ronda` acumulada al abrir el checkpoint**. **Y si la opción
+  elegida no concede**, los rechazos sin responder que ese paso deja `en-disputa` se arbitran en el
+  mismo STOP, antes de cerrar: es la única oportunidad que van a tener, porque esas dos opciones
+  cierran la corrida. Mecánica completa y la cota de arbitrajes por finding en
   `cross-review/reference.md` → "El paso previo: arbitrar las disputas".
 - **Tras arbitrar, ese conteo se re-deriva del ledger antes de declararlo.** El valor que vino en
   `tandas_concedibles` se calculó **antes** del arbitraje, así que queda viejo apenas el humano
   resuelve una disputa hacia `aplicado`. Se re-derivan `aplicaciones_pendientes`, sus
-  `ids_pendientes` y los **tres inventarios** (disputas abiertas, rechazos sin responder,
+  `ids_pendientes`, `presupuesto`, `advertencia_bucle`, `recomendada` y los **tres inventarios**
+  (disputas abiertas, rechazos sin responder,
   aplicaciones pendientes). **No** se re-derivan `causa_corte` ni `disponibles`, que son históricos;
   y `disponibles` **deja de usarse como advertencia** después de arbitrar, porque resuelta una
   disputa hacia `aplicado` una ronda sí puede converger — eso se deriva del ledger, no del campo.
@@ -317,7 +324,8 @@ crítica se presenta *junto* al artefacto en el mismo STOP; tú sigues siendo el
   `tandas_concedibles` (todo `REVISE` que abra checkpoint), el gate ofrece —sin gate extra, con el
   patrón de la pregunta de `implement_mode`— **continuar así** · **conceder una tanda** · **seguir
   hasta `APPROVED`** · **ronda de cierre con artefacto congelado** · **cerrar la revisión**. El
-  presentador solo muestra el retorno, sin inferir, recalcular ni reordenar: `serie` →
+  presentador solo muestra el retorno, sin inferir, recalcular ni reordenar —salvo lo que el
+  arbitraje de este STOP haya invalidado, que se re-deriva—: `serie` →
   `advertencia_bucle` → `aplicaciones_pendientes` con sus `ids_pendientes` → `opciones` con la
   `recomendada` marcada. Las cinco se ofrecen siempre: la recomendación advierte, no deshabilita,
   igual que `disponibles: false`. **El paso previo no las cambia:** no agrega una sexta ni

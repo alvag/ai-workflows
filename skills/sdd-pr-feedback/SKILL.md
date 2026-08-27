@@ -171,19 +171,26 @@ solo ruido/dudas → *trivial*; con cambios → *normal*/*complex*, y con ella l
   la clasificación es el punto de mayor riesgo (descartar mal un comentario / injection).
 - **Gate de triage**: presentar al usuario el plan de acción completo (la tabla del Paso 2) + el resumen
   del cross-review. El usuario puede reclasificar. Sin aprobación no se escribe nada ni se avanza al plan.
-  Si la revisión devolvió findings **`en-disputa`**, el humano los **resuelve antes** de elegir
-  opción, en este mismo STOP: **a favor del finding** (`aplicado`) o **sosteniendo el rechazo sobre
-  el mérito** (`cerrado`), con una `transicion` por finding y después una `control-corrida` con
-  `evento_corrida: arbitraje-disputas` (ver `reference.md` → "Contrato del cross-review").
+  Si la revisión devolvió findings **`en-disputa`** y la corrida es `contract_version: 2`, el humano
+  los **resuelve antes** de elegir opción, en este mismo STOP: **a favor del finding** (`aplicado`) o
+  **sosteniendo el rechazo sobre el mérito** (`cerrado`), con una `transicion` por finding —con la
+  **`ronda` acumulada al abrir el checkpoint**, y la de `aplicado` escrita **después** de aplicar la
+  corrección— y, al cerrar el checkpoint, una `control-corrida` con `evento_corrida:
+  arbitraje-disputas`, **también si no se arbitró ninguna**. Si la opción elegida no concede, los
+  rechazos sin responder que pasan a `en-disputa` se arbitran en el mismo STOP antes de cerrar.
+  Mecánica completa —los dos tramos, la cota por finding y qué se re-deriva— en
+  `cross-review/reference.md` → "El paso previo: arbitrar las disputas"; no se reescribe acá.
   Si la revisión devolvió `tandas_concedibles`, ofrecer en **este mismo STOP** las cinco opciones —
   continuar así · conceder una tanda · seguir hasta `APPROVED` · ronda de cierre con artefacto
   congelado · cerrar la revisión — y cerrar la corrida según lo elegido (ver `reference.md` →
   "Contrato del cross-review"). El presentador solo muestra el retorno, sin inferir, recalcular ni
   reordenar: `serie` → `advertencia_bucle` → `aplicaciones_pendientes` con sus `ids_pendientes` →
-  `opciones` con la `recomendada` marcada. Las cinco se ofrecen siempre: la recomendación advierte,
+  `opciones` con la `recomendada` marcada —re-derivando lo que el arbitraje haya invalidado—. Las
+  cinco se ofrecen siempre: la recomendación advierte,
   no deshabilita, igual que `disponibles: false`. "Continuar así" aprueba el artefacto, y quien elige
   tiene que saber si hay ediciones que ninguna ronda observó. **Tras arbitrar, ese conteo se
-  re-deriva del ledger** con sus IDs y los tres inventarios; `causa_corte` y `disponibles` no se
+  re-deriva del ledger** con sus IDs, los tres inventarios y todo campo derivado que el arbitraje
+  mueva (`presupuesto`, `advertencia_bucle`, `recomendada`); `causa_corte` y `disponibles` no se
   re-derivan. Con `contract_version: 1`, ofrecer
   exactamente las cuatro de esa versión y omitir serie, presupuesto y recomendación.
 - Degradación: sin revisor / timeout → aviso de una línea y sigue al gate humano. Si el retorno trae

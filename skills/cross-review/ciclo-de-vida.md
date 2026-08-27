@@ -67,15 +67,18 @@ importa —quién decide la admisibilidad— sería inexpresable.
 ## Transiciones
 
 Las **18 transiciones permitidas**, con su destino y su terminalidad fijados. Terminal = ninguna
-transición **del loop de rondas** sale de ese estado para ese finding. Las dos excepciones ocurren
-**fuera** del loop y están listadas en la tabla: la **re-apertura con evidencia** desde `aplicado`,
-y el **arbitraje humano** desde `en-disputa`, que sucede en el gate y no en una ronda.
+transición **de la ronda en curso** sale de ese estado para ese finding. Las dos excepciones están
+listadas en la tabla: la **re-apertura con evidencia** desde `aplicado`, que la ejecuta el revisor en
+una ronda **posterior**, y el **arbitraje humano** desde `en-disputa`, que ocurre en el gate y no en
+una ronda.
 
-*Por qué la definición nombra el loop y no las transiciones a secas:* sin esa precisión la palabra
-sería falsa para `aplicado`, que está marcado terminal y tiene dos aristas de salida en esta misma
-tabla. La distinción entre la terminalidad **del finding** y la de su **contribución al veredicto de
-la corrida** ya está fundamentada en `reference.md` → "Veredicto derivado"; acá se cita, no se
-duplica.
+*Por qué la definición nombra la ronda en curso y no el loop entero:* la re-apertura sí es del loop
+—la escribe el `revisor`, dentro de una ronda—, así que decir «fuera del loop» la describiría mal y
+volvería a hacer falsa la palabra para `aplicado`, que está marcado terminal y tiene dos aristas de
+salida en esta misma tabla. Lo que ninguna de las dos excepciones puede hacer es sacar al finding de
+su estado **dentro de la ronda que lo puso ahí**: para esa ronda, terminal significa cerrado. La
+distinción entre la terminalidad **del finding** y la de su **contribución al veredicto de la
+corrida** ya está fundamentada en `reference.md` → "Veredicto derivado"; acá se cita, no se duplica.
 
 **Que un estado sea terminal no depende de que el humano pueda arbitrarlo.** `en-disputa` conserva
 `Terminal: sí` en las siete filas que desembocan en él, y eso es una condición de que el mecanismo
@@ -189,7 +192,7 @@ Ninguna sede posterior amplía este esquema en silencio: si hace falta un campo,
 
 | Ámbito | Campos |
 |---|---|
-| **núcleo** (toda fila) | `ronda` (entero, **acumulado de la corrida**) · `tipo` (uno de los cuatro) · `finding_id` (**nulo solo** en `control-corrida`) · `actor` (`revisor` \| `conductor` \| `humano`) · `rationale` (texto; **obligatorio** cuando el evento es un rechazo) |
+| **núcleo** (toda fila) | `ronda` (entero, **acumulado de la corrida**) · `tipo` (uno de los cuatro) · `finding_id` (**nulo solo** en `control-corrida`) · `actor` (`revisor` \| `conductor` \| `humano`) · `rationale` (texto; **obligatorio** cuando el evento es un rechazo y en las dos aristas de arbitraje humano, que cierran o aplican sobre el mérito) |
 | `emision` | `severidad` (`high` \| `medium` \| `low`), **obligatoria** · `procedencia` (`original` \| `regresion` \| `reemision`), obligatoria desde la ronda 2, físicamente ausente en la ronda 1 y en toda corrida `contract_version: 1` |
 | `transicion` | `origen` y `destino` (estados del enum) · `evento` (uno de los **17** de la tabla de transiciones: sus 18 filas comparten `difiere por congelamiento` en dos, y `origen` las desambigua) · `presupuesto_consumido` (`null` \| `defensa` \| `reapertura`) |
 | `descarte` | `motivo` (texto, obligatorio) y el evento descartado |

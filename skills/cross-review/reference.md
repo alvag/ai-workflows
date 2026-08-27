@@ -1498,15 +1498,23 @@ estado del finding no cambia —ninguna transición sale de `aplicado` salvo la 
 evidencia, que ya existe—; lo que deja de alcanzar es su contribución al veredicto **de la corrida**.
 
 **Cómo se reevalúa el predicado después del arbitraje.** El paso previo cambia el ledger del que
-estas cuatro ramas se derivan, así que hay que releerlas con el estado nuevo. Los tres desenlaces:
+estas cuatro ramas se derivan, así que hay que releerlas con el estado nuevo. **No hay ramas nuevas:
+las cuatro de arriba siguen siendo exhaustivas y se siguen evaluando en orden.** Los casos que el
+arbitraje produce, y en cuál caen:
 
-| Tras arbitrar | Rama que aplica | Efecto |
+| Tras arbitrar | Rama | Efecto |
 |---|---|---|
-| todas las disputas resueltas y **alguna** hacia `aplicado` | 1 | `REVISE` — hay una edición que ninguna ronda observó |
+| **alguna** disputa resuelta hacia `aplicado` | 1 | `REVISE` — hay una edición que ninguna ronda observó. Vale también si quedan disputas sin arbitrar o pendientes previas: la rama 1 se evalúa primero |
+| ninguna hacia `aplicado`, pero **queda algún finding no terminal** | 2 | `REVISE` — sigue: hay margen de resolución dentro del loop |
+| ninguna hacia `aplicado`, **solo terminales**, y queda ≥1 `en-disputa` sin arbitrar | 3 | `REVISE` — **corta la tanda** y el gate vuelve a ser el lugar donde se resuelve |
 | todas resueltas hacia `cerrado`, sin pendientes ni no terminales | 4 | `APPROVED` — convergió |
-| **queda alguna sin arbitrar** y no hay pendientes | 3 | `REVISE`, y el gate sigue siendo el lugar donde se resuelve |
 
-`en-disputa` sigue siendo terminal en las tres, y por eso la rama 3 sigue siendo alcanzable: es lo
+La condición «solo terminales» de la rama 3 **no es opcional**: un checkpoint abierto por
+`tanda_agotada` puede tener disputas *y* findings no terminales a la vez, y ahí manda la 2 —cuyo
+efecto es *sigue*—, no la 3. Leer la fila sin esa condición manda al lector a la rama equivocada y al
+efecto contrario.
+
+`en-disputa` sigue siendo terminal en las cuatro, y por eso la rama 3 sigue siendo alcanzable: es lo
 que mantiene vivo el corte que abre este gate.
 
 ## Tandas y salida de rondas
@@ -1554,6 +1562,13 @@ estimación conservadora, no una promesa: una ronda posterior puede descubrir ot
 Esquema único, dentro de `tandas_concedibles`. Los cuatro presentadores **solo muestran**: no
 infieren, no recalculan, no reordenan.
 
+**Con una sola excepción, y es la que el propio presentador provoca:** si arbitró disputas en este
+STOP, el retorno quedó viejo —se calculó antes— y los campos que el arbitraje invalida se
+**re-derivan del ledger** antes de mostrarse. No es una grieta en la regla: la regla prohíbe inventar
+o reordenar datos que siguen siendo ciertos, y acá el presentador es el único que sabe que dejaron de
+serlo, porque el acto que los invalidó lo ejecutó él entre recibir el retorno y presentarlo. Cuáles
+se re-derivan y cuáles no, en "El paso previo: arbitrar las disputas".
+
 | Campo | Tipo | Obligatorio | Autoridad |
 |---|---|---|---|
 | `contract_version` | `1 \| 2` | sí | la corrida |
@@ -1580,7 +1595,9 @@ defensa. Su destino está **fijado, no es elegible**:
 
 *Por qué `en-disputa` y no `cerrado`:* cerrarlo sería cerrarlo por agotamiento del presupuesto y no
 por una decisión sobre su mérito — el revisor nunca pudo responder. `en-disputa` lo deja donde el
-humano del gate puede arbitrarlo.
+humano del gate puede arbitrarlo, y el **paso 2b** de los momentos de escritura es dónde lo hace:
+sin él la frase sería una promesa sin mecanismo, porque el primer tramo del arbitraje ya pasó
+cuando este finding llega a `en-disputa`.
 
 **En las dos salidas el checkpoint escribe dos clases de fila en el ledger, no una:** una
 `transicion` **por cada finding pendiente** —con su origen, destino, ronda, actor, decisión y
@@ -1589,17 +1606,35 @@ rationale— **más** una `control-corrida` con `evento_corrida: checkpoint`, `f
 `control-corrida` no deja traza de **qué** rechazos se procesaron; registrar solo las `transicion`
 pierde **qué opción** abrió o cerró la tanda.
 
-**Con el paso previo de arbitraje son tres momentos de escritura, no dos, y en este orden:**
+**Con el paso previo de arbitraje son cuatro momentos de escritura, no dos, y en este orden:**
 
 | # | Cuándo | Qué se escribe |
 |---|---|---|
-| 1 | al arbitrar las disputas | N `transicion` (una por finding) **+** una `control-corrida` con `evento_corrida: arbitraje-disputas` |
+| 1 | al arbitrar las disputas **ya abiertas** | N `transicion`, una por finding |
 | 2 | al elegir la opción | las `transicion` de los pendientes sin responder, si la opción los mueve |
-| 3 | al cerrar el checkpoint | la `control-corrida` con `evento_corrida: checkpoint` y su `decision_humana` |
+| 2b | **solo si la opción no concede** — al arbitrar los que el paso 2 acaba de dejar `en-disputa` | N `transicion`, una por finding |
+| 3 | al cerrar el checkpoint | la `control-corrida` con `evento_corrida: arbitraje-disputas`, y después la de `evento_corrida: checkpoint` con su `decision_humana` |
 
-El primero es anterior a los otros dos y ocurre en **las cuatro** opciones, porque sucede antes de
-elegir. Sin declararlo acá, un lector concluye que el checkpoint escribe exactamente lo que enumera
-el párrafo de arriba, y el arbitraje quedaría sin sede de escritura declarada.
+El primero ocurre en **las cinco** opciones, porque sucede antes de elegir. Sin declararlo acá, un
+lector concluye que el checkpoint escribe exactamente lo que enumera el párrafo de arriba, y el
+arbitraje quedaría sin sede de escritura declarada.
+
+**Por qué el arbitraje tiene dos tramos y no uno.** Un rechazo sin responder **todavía no es una
+disputa** cuando se abre el checkpoint: se vuelve `en-disputa` recién en el paso 2, y sólo si el
+humano no concede. Con un tramo único ese finding sería inarbitrable en el checkpoint que lo crea —
+y como las dos opciones que no conceden **cierran la corrida**, tampoco habría un checkpoint
+posterior: quedaría `en-disputa` para siempre, que es exactamente el callejón sin salida que este
+mecanismo existe para cerrar, reabierto un paso más adelante. El paso 2b lo cierra donde nace.
+
+**Y por qué no alcanzaba con mover el arbitraje después de elegir.** El destino de un pendiente sin
+responder **depende de la opción**, así que no puede transicionar antes de que se elija; y el conteo
+re-derivado del primer tramo es lo que informa esa elección. Los dos tramos no son una duplicación:
+son las dos poblaciones de disputas que un mismo checkpoint puede tener, y sólo la primera existe a
+tiempo para informar la decisión.
+
+**El acto de arbitraje es uno solo, con una sola `control-corrida`.** Se escribe en el paso 3, después
+del último tramo que haya corrido, y **también si no se arbitró ninguna disputa en ninguno de los
+dos**. Es la fila que dice que el acto terminó; dos filas para un mismo checkpoint lo duplicarían.
 
 **Quién escribe las tres.** El **presentador del gate**, en el turno del STOP y **antes de ejecutar
 la opción elegida**. Es el mismo actor que ya finaliza el manifest en las salidas terminales, así que
@@ -1612,7 +1647,13 @@ de escritura: eso designa **dónde** se escribe, no **quién**.
 
 **Antes de ofrecer las cinco opciones, el humano resuelve los findings `en-disputa`.** No es una
 sexta opción ni un subpaso de una: es un **paso previo dentro del mismo STOP**, y ocurre siempre que
-el checkpoint se abra con al menos una disputa. Es lo que hace ejecutable la promesa del ciclo de
+el checkpoint se abra con al menos una disputa **y la corrida sea `contract_version: 2`**.
+
+**Bajo `contract_version: 1` no hay paso previo, y no es una omisión.** Ese contrato no tiene las dos
+aristas de arbitraje ni el valor `arbitraje-disputas` en su enum, así que escribirlas en una corrida
+v1 produciría un ledger que su propio lector no puede interpretar. Una corrida iniciada bajo v1
+**termina bajo v1** —la regla ya vigente—, con sus cuatro opciones y sus disputas sin arbitrar; que
+es el estado que tenía antes de este mecanismo, no uno peor. Es lo que hace ejecutable la promesa del ciclo de
 vida —`en-disputa` *lo arbitra el humano en el gate*—, que hasta ahora no tenía mecanismo.
 
 **Los dos destinos** son las dos aristas de `ciclo-de-vida.md` → "Transiciones", con `actor: humano`:
@@ -1626,11 +1667,13 @@ findings que compartan motivo, con un rationale común; el ledger registra igual
 ya rige para conceder o no conceder una tanda: una decisión, N filas.
 
 **Qué se escribe, en este orden:** primero las N filas `transicion` —con su origen, destino, evento,
-`actor: humano` y rationale—, y después **una** `control-corrida` con `evento_corrida:
-arbitraje-disputas` y `finding_id` nulo. El orden es normativo porque de él se deriva la señal de
-finalización: **la presencia de esa fila es lo que dice que el acto terminó**, sin ningún campo nuevo.
-La fila se escribe incluso si el humano **no arbitró ninguna** disputa — si no, ese caso sería
-indistinguible de que el arbitraje nunca se ofreció.
+`actor: humano` y rationale—, las del primer tramo y, si corrió, las del segundo; y después, ya en el
+cierre del checkpoint, **una** `control-corrida` con `evento_corrida: arbitraje-disputas` y
+`finding_id` nulo. El orden es normativo porque de él se deriva la señal de finalización: **la
+presencia de esa fila es lo que dice que el acto terminó**, sin ningún campo nuevo. La fila se
+escribe incluso si el humano **no arbitró ninguna** disputa — si no, ese caso sería indistinguible de
+que el arbitraje nunca se ofreció. Los dos tramos y por qué son dos: "Rechazos sin responder al
+agotarse la tanda".
 
 **La edición va antes que su fila, y esto no es una preferencia de orden.** `aplicado` significa que
 el conductor **ya modificó el artefacto**. La `transicion` hacia ese estado se persiste **después de
@@ -1655,7 +1698,14 @@ cerrar, reabierto un paso más adelante.
 fila `control-corrida: checkpoint`. No es un detalle de forma. Una resolución hacia `aplicado`
 produce una aplicación pendiente, y la liberación se compara estrictamente por número de ronda: con
 `ronda: N+1`, la primera ronda de la tanda concedida cerraría también con `N+1`, y `N+1 > N+1` es
-falso, así que **esa aplicación no se liberaría nunca** y la corrida no podría converger.
+falso, así que esa aplicación **no se liberaría en la ronda que sí la observó** — se arrastraría una
+ronda de más, y en la modalidad de **ronda de cierre**, que concede exactamente una, no se liberaría
+nunca y la corrida no podría converger.
+
+**De dónde sale ese número.** Del descriptor durable de la corrida: `ronda_acumulada`, "la última
+ronda completada". El retorno de `tandas_concedibles` **no expone** un campo `ronda`, así que un
+llamador embebido que lo dedujera de `rondas_consumidas` estaría usando el conteo de la tanda y no el
+acumulado de la corrida — que son distintos apenas se concede la segunda.
 
 **Si el arbitraje se interrumpe a mitad.** El prefijo persistido **se cierra tal como quedó**: las
 decisiones ya escritas son válidas y no se repiten. El ledger **no registra qué findings pensaba
@@ -1677,10 +1727,16 @@ terminales. Depende del presupuesto de re-apertura al llegar a la primera disput
 
 | Rama | Recorrido | Arbitrajes |
 |---|---|---|
-| **A** — re-apertura disponible | arbitraje → `aplicado` → re-emisión **1.ª** → `abierto` → `aplicado` → re-emisión **2.ª** → `en-disputa` → arbitraje → `aplicado` → **3.ª re-emisión** | dos |
+| **A** — re-apertura disponible, sin pasar por defensa | arbitraje → `aplicado` → re-emisión **1.ª** → `abierto` → `aplicado` → re-emisión **2.ª** → `en-disputa` → arbitraje → `aplicado` → **3.ª re-emisión** | dos |
+| **A'** — re-apertura disponible, con la defensa aún sin gastar | como A, pero tras la 1.ª re-emisión el conductor rechaza y el revisor defiende: `abierto` → `rechazado` → `defendido` → `reabierto` → `en-disputa`, que **vuelve a la disputa sin gastar la re-apertura** | **tres** |
 | **B** — re-apertura ya consumida | llegó a la disputa por la segunda re-emisión: arbitraje → `aplicado` → re-emisión siguiente | uno |
 
-En las dos, **lo que corta es la regla de cierre del complemento, no un presupuesto**: la tabla lista
+**La cota es tres, y sale de que son dos presupuestos y no uno.** Cada vuelta a `en-disputa` tiene que
+gastar algo: la re-apertura, o la defensa. Con los dos intactos hay dos vueltas posibles más la
+entrada inicial, y de ahí el máximo. La rama A' es la que lo fija; contar sólo A publica una cota que
+un implementador no puede usar, porque el camino que la excede es transitable en la misma tabla.
+
+En las tres, **lo que corta es la regla de cierre del complemento, no un presupuesto**: la tabla lista
 la re-emisión *primera* y la *segunda*, y una tercera no está listada, así que se descarta con motivo
 sin cambiar estado ni abrir ronda. Decirlo importa porque el argumento fácil —"los dos destinos son
 terminales"— es circular: `aplicado` es terminal *y* tiene salida.
@@ -1702,6 +1758,21 @@ declararlas existe para cerrar, reabierto un paso más adelante.
 |---|---|
 | `aplicaciones_pendientes` y sus `ids_pendientes` | `causa_corte` |
 | los tres inventarios: disputas abiertas, rechazos sin responder, aplicaciones pendientes | `disponibles` |
+| `presupuesto`, con sus cuatro números | `serie` |
+| `advertencia_bucle` | `contract_version` |
+| `recomendada`, con su `regla` | `opciones` |
+
+**El criterio, para que la tabla no haya que memorizarla:** se re-deriva **todo campo que el contrato
+declara derivado** y que dependa de algo que el arbitraje movió; se conserva lo **histórico** —el
+porqué del corte— y lo **fijo** —la versión y la lista de opciones—. `serie` no entra aunque sea
+derivada: registra rondas completadas, y el arbitraje no completa ninguna.
+
+**Por qué los tres agregados no son opcionales.** Resolver una disputa hacia `aplicado` crea una
+aplicación pendiente, y eso satisface la condición de `aplicacion_esperada`, que a su vez entra en
+`alcanza` — así que `presupuesto` puede pasar de "una ronda alcanza" a "no alcanza" por el arbitraje
+mismo. `advertencia_bucle` se deriva de `pendientes` y `presupuesto`, y `recomendada` de la tabla de
+reglas que los lee. Mostrarlos sin re-derivar produce un panel internamente contradictorio: un
+`aplicaciones_pendientes` fresco al lado de un presupuesto que dice que alcanza cuando ya no.
 
 **Por qué esos dos no.** `causa_corte` registra **por qué se abrió** el checkpoint, y el arbitraje
 posterior no cambia ese hecho: re-derivarlo escribiría `tanda_agotada` sobre una corrida que cortó
@@ -2145,7 +2216,10 @@ corrida de "18 hallazgos, 0 rechazos" sería indistinguible de una con escrutini
 exactamente lo que este bloque existe para hacer legible de un vistazo.
 
 **Ledger y proyección no son dos vistas intercambiables.** El ledger es la única sede de escritura;
-la proyección se **regenera** al cierre de cada ronda desde el fold de todas las entradas hasta esa
+la proyección se **regenera** al cierre de cada ronda —y también al cerrar un acto de arbitraje, que
+no cierra ninguna ronda y sin embargo cambia el fold; sin ese segundo disparador, bajo las dos
+opciones terminales la proyección nunca se regeneraría y el log cerrado seguiría mostrando como
+`en-disputa` findings que el humano ya resolvió— desde el fold de todas las entradas hasta esa
 ronda **inclusive** —la última transición incluida— y nunca se edita a mano. Una proyección que se
 regenera solo al final de la tanda, o que excluye la última transición, deja el log una transición
 atrás justo cuando se lo consulta para armar el delta.
