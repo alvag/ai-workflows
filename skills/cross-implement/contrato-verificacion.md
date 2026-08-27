@@ -43,6 +43,23 @@ Seis columnas, en este orden exacto, sin agregar ni quitar ninguna:
 | `Esperado` | el resultado que cuenta como cumplido. Discriminante: si la fila pasaría igual sin el cambio, no verifica nada. |
 | `Baseline` | qué dio esa comprobación **antes** de implementar. Enum cerrado (abajo). |
 
+**Dialecto restringido: ninguna celda admite barras verticales.** Cada `|` se interpreta como un
+separador de columna; escribir `\|` no lo escapa para este parser y también divide la fila. Por eso
+la cardinalidad no se puede preservar agregando barras invertidas.
+
+Cuando un comando usaría esa sintaxis, debe reescribirse sin barras verticales:
+
+- en una alternancia, **repetir el patrón sin alternancia** o repetir el flag que lo recibe;
+- en un pipeline de shell, usar una opción nativa que haga innecesaria la segunda etapa, o pasar los
+  datos mediante redirección a un archivo intermedio y encadenar las etapas con `&&`.
+
+La reescritura no altera qué se mide: cambia `Comando/observación`, no `Requisito` ni `Esperado`.
+Antes de congelar, se reescribe la fila y se vuelve a medir. Sobre un contrato ya congelado, ese
+cambio es un `VERIFICATION_DEFECT` y exige una versión nueva.
+Solo si la reparación exige cambiar `Requisito` o `Esperado` se vuelve al diseño como
+`DESIGN_GAP`. Un comando que conserve una barra vertical no se puede incorporar al contrato, ni
+directa ni indirectamente.
+
 **Enum de `Evidencia`** — cuatro valores, cerrado:
 
 | Valor | Cuándo |
@@ -334,6 +351,13 @@ fallido.
 | 4 | **campos obligatorios presentes** | falta una columna o sobra una; un valor cae fuera de los enums; una fila no tiene registro de baseline, o el registro no tiene `commit` y `timestamp`; un `GREEN_ALREADY` sin `adjudicación` o un `NOT_APPLICABLE` sin `justificación`. |
 | 5 | **baseline resuelto en toda fila** | alguna fila quedó sin estado, o en `BLOCKED`. |
 | 6 | **pertinencia** | una fila no establece los dos insumos exigidos en «Pertinencia: poder discriminante por fila»; el contrafactual responde que sí; o la unión de las subafirmaciones declaradas no cubre la afirmación entera. |
+
+Como parte de la cuarta comprobación, ejecutar
+`python_skill <skill_dir>/scripts/contrato-esquema.py <contrato>` y leer su código de salida y stderr.
+La guarda valida la cabecera normativa, que cada fila tenga seis columnas y que `Evidencia` y
+`Baseline` usen sus enums cerrados; su éxito no sustituye las demás validaciones de esa
+comprobación. Contar columnas a ojo tampoco la sustituye: una barra dentro de una celda puede
+renderizar una tabla plausible aunque la fila ya no tenga seis columnas.
 
 La comprobación de pertinencia **no está mecanizada**. La guarda
 `python_skill <skill_dir>/scripts/contrato-cobertura.py <contrato> <requisitos>` implementa la
