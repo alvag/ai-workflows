@@ -77,11 +77,18 @@ proyecto nuevo no declara ninguno y `archive` sale con `NO_VAULT` (código 5).
 Ante ese estado, **no inventes una ruta ni la pidas a ciegas**:
 
 1. Corré `config --discover`. Busca desde el home y devuelve `vaults` (los que
-   tienen marca de `kv`), `sugerido` (el único, si hay uno solo) y `ajenos`.
-   Sale **0 siempre**, incluso sin candidatos.
-2. Presentale al usuario lo que encontró, con su evidencia —cuántos proyectos y
-   flujos tiene cada vault—, y **esperá que elija**. Con `sugerido` no nulo,
-   ofrecelo como recomendado; con la lista vacía, ofrecé crear uno.
+   tienen marca de `kv`), `nuevos` (directorios con la forma de un vault nuevo:
+   `.obsidian/` y ninguna nota, sin marca de `kv` todavía), `sugerido` (el único
+   vault, si hay uno solo) y `ajenos`. Sale **0 siempre**, incluso sin candidatos.
+2. Presentale al usuario lo que encontró y **esperá que elija**. Los `vaults` van
+   con su evidencia —cuántos proyectos y flujos tiene cada uno—; los `nuevos`, como
+   lo que son: destinos a estrenar, sin nada adentro todavía. Con `sugerido` no
+   nulo, ofrecelo como recomendado. Con las dos listas vacías, ofrecé crear uno.
+   **Antes de cerrar la elección, preguntá si el vault que busca está en la lista.**
+   El descubrimiento tiene fronteras deliberadas y no es exhaustivo: poda los
+   nombres ocultos, `node_modules`, `Library` y `Applications`; baja **tres
+   niveles** y no más; y arranca del home, o de donde apunte `--search-root`. Un
+   vault fuera de eso existe y no aparece, y la salida no tiene forma de insinuarlo.
 3. Persistí la elección con `config --set-root`. Inserta **por líneas**: no
    reescribe el resto del archivo ni le pierde los comentarios.
 4. **Ofrecé dejarlo escrito para los agentes que vengan.** Un vault lleno de
@@ -97,7 +104,15 @@ documentos pero sin marca de `kv`: el vault de notas de alguien. Apuntar `archiv
 ahí lo convertiría en un vault de `kv`, y `ensureVaultRepo` le haría `git init`
 antes de que ninguna otra guarda mire — por eso `assertRootUsable` los rechaza con
 `VAULT_ROOT_UNAVAILABLE` en vez de advertir y seguir. Un directorio recién abierto
-en Obsidian **sin** notas no cuenta como ajeno: esa es la forma de un vault nuevo.
+en Obsidian **sin** notas no cuenta como ajeno: esa es la forma de un vault nuevo,
+y por eso **se ofrece** en `nuevos` en vez de quedar invisible — que es justo el
+candidato que busca quien todavía no tiene ninguno.
+
+La marca es `.obsidian/` **como directorio**, y el corte está ahí y no en "todo
+directorio vacío" por una razón medida: sobre un home real hay diecisiete
+directorios que clasifican vacío y ninguno es un vault —son carpetas internas de
+otras aplicaciones—. Ofrecerlos a todos enterraría al candidato de verdad en vez de
+revelarlo.
 
 ## Qué entra al vault
 

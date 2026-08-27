@@ -19,10 +19,19 @@ una sola forma, y "cuál manda" no tiene una respuesta que valga la pena inventa
 
 `config --discover` es el único modo que **no** exige `--config`: no lee ni escribe
 configuración, sólo mira el disco. Busca desde el home —o desde `--search-root`—
-hasta tres niveles, y devuelve tres cosas: `vaults` con su evidencia (cuántos
-proyectos y flujos), `sugerido` (el único vault, si hay exactamente uno) y `ajenos`.
-Sale **0 siempre**, cero candidatos incluido: un descubrimiento que falla por lo que
-encontró no se puede leer.
+hasta tres niveles, y devuelve cuatro cosas: `vaults` con su evidencia (cuántos
+proyectos y flujos), `nuevos` (directorios con la forma de un vault nuevo, sin
+marca de `kv` todavía), `sugerido` (el único vault, si hay exactamente uno) y
+`ajenos`. Sale **0 siempre**, cero candidatos incluido: un descubrimiento que falla
+por lo que encontró no se puede leer.
+
+`nuevos` y `vaults` llevan candidatos completos —`root`, `clase`, `evidencia`—
+porque los dos se ofrecen; `ajenos` lleva rutas planas porque no. Un candidato de
+`nuevos` trae `evidencia: null`: no es un vault de `kv`, así que no hay proyectos ni
+flujos que contar, y exhibir un `{proyectos: 0, flujos: 0}` lo volvería
+indistinguible de un vault de `kv` recién creado. **`sugerido` sale sólo de
+`vaults`**, nunca de `nuevos`: elegir dónde *crear* un vault es todavía más una
+pregunta de propósito que elegir entre dos que ya existen.
 
 **La clasificación es por marca estructural, no por ubicación**, y la diferencia se
 midió: un home real tenía dos directorios bajo `~/vaults/`, y sólo uno era un vault
