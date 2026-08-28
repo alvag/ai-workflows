@@ -1,6 +1,7 @@
 """Predicado: un registro por fila, en el mismo orden y sin duplicados; todo registro con commit y
-timestamp ISO-8601; adjudicación already_satisfied en cada GREEN_ALREADY y justificación en cada
-NOT_APPLICABLE; y ninguno de esos cuatro campos aparece como columna de la tabla."""
+timestamp ISO-8601; observado no vacío en cada RED o GREEN_ALREADY, con exit code para evidencia
+ejecutable; adjudicación already_satisfied en cada GREEN_ALREADY y justificación en cada
+NOT_APPLICABLE; y ninguno de esos cinco campos aparece como columna de la tabla."""
 
 from __future__ import annotations
 
@@ -49,7 +50,7 @@ def main() -> int:
     registros = [linea for linea in vigente.splitlines() if re.match(r"^- `id: ", linea)]
     rc = 0
     cabecera = next((linea for linea in vigente.splitlines() if re.match(r"^\|\s*ID\s*\|", linea)), "")
-    if re.search(r"adjudicaci|justificaci|commit|timestamp", cabecera, re.IGNORECASE):
+    if re.search(r"adjudicaci|justificaci|commit|timestamp|observado", cabecera, re.IGNORECASE):
         print("GUARD:ubicacion-baseline un campo del registro está puesto como columna", file=sys.stderr)
         rc = 1
     ids_tabla = [fila[0] for fila in filas]
@@ -69,12 +70,21 @@ def main() -> int:
         print(f"GUARD:baseline-record-parity registro duplicado: {' '.join(duplicados)} ", file=sys.stderr)
         rc = 1
     estados = {fila[0]: fila[5] for fila in filas}
+    evidencias = {fila[0]: fila[2] for fila in filas}
     for identificador, registro in zip(ids_reg, registros):
         if not re.search(r"`commit: [0-9a-f]+`", registro):
             print(f"GUARD:adjudicacion-obligatoria {identificador}: sin commit", file=sys.stderr)
             rc = 1
         if not re.search(r"`timestamp: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2}|Z)`", registro):
             print(f"GUARD:adjudicacion-obligatoria {identificador}: timestamp no ISO-8601", file=sys.stderr)
+            rc = 1
+        observado = re.search(r"`observado: ([^`]*)`", registro)
+        valor_observado = observado.group(1).strip() if observado else ""
+        if estados.get(identificador) in {"RED", "GREEN_ALREADY"} and not valor_observado:
+            print(f"GUARD:adjudicacion-obligatoria {identificador}: sin observado", file=sys.stderr)
+            rc = 1
+        if valor_observado and evidencias.get(identificador) in {"test", "build", "inspección"} and not re.fullmatch(r"exit -?[0-9]+; .+", valor_observado):
+            print(f"GUARD:adjudicacion-obligatoria {identificador}: observado sin exit code", file=sys.stderr)
             rc = 1
         if estados.get(identificador) == "GREEN_ALREADY" and "`adjudicación: already_satisfied`" not in registro:
             print(

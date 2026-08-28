@@ -97,10 +97,11 @@ Un registro tiene estos campos:
 | `id` | el mismo `ID` de la fila que describe. Es lo único que los liga: por eso el orden importa pero no alcanza. |
 | `commit` | el SHA del código sobre el que se ejecutó la comprobación. |
 | `timestamp` | cuándo se ejecutó, en ISO-8601. |
+| `observado` | el observable de la corrida que produjo el baseline. |
 | `adjudicación` | por qué un `GREEN_ALREADY` cuenta igual. Solo en filas con ese estado. |
 | `justificación` | por qué un baseline es inaplicable. Solo en filas `NOT_APPLICABLE`. |
 
-**Los cuatro últimos no son columnas de la tabla, y no pueden serlo.** La tabla describe la
+**Los cinco últimos no son columnas de la tabla, y no pueden serlo.** La tabla describe la
 comprobación —lo que se repite en cada versión—; el registro describe una **medición concreta**, que
 es de una versión y de un commit. Meter la adjudicación o el timestamp en la tabla los volvería
 parte de lo que se compara entre versiones, y entonces corregir un comando obligaría a "cambiar" el
@@ -122,8 +123,8 @@ normal en `v1`: si algo arranca en otro estado, hay que adjudicarlo o justificar
 #### Baseline de v1
 `hash_previo:` · `hash: 9b1c04e2…`
 
-- `id: V1` · `commit: 4f2a9c1` · `timestamp: 2026-07-31T09:14:00-03:00`
-- `id: V2` · `commit: 4f2a9c1` · `timestamp: 2026-07-31T09:14:12-03:00`
+- `id: V1` · `commit: 4f2a9c1` · `timestamp: 2026-07-31T09:14:00-03:00` · `observado: exit 1; 1 failed, 0 passed`
+- `id: V2` · `commit: 4f2a9c1` · `timestamp: 2026-07-31T09:14:12-03:00` · `observado: exit 1; 0`
 ```
 
 Dos filas, dos registros, mismo orden, mismos IDs. `hash_previo` va vacío porque `v1` no tiene
@@ -153,13 +154,24 @@ baseline es *semánticamente* inaplicable a esa evidencia. "No tengo el entorno"
 justificación válida — eso es `BLOCKED`, y la diferencia importa porque `BLOCKED` frena el dispatch
 y `NOT_APPLICABLE` no.
 
-**Todo registro lleva `commit` y `timestamp`**, resuelto o no el estado. El `commit` es lo que
+**`observado` es obligatorio en `RED` y `GREEN_ALREADY`.** Ambos estados afirman que la comprobación
+se ejecutó; no se exige en `NOT_APPLICABLE` ni en `BLOCKED`, porque el primero declara que no hay
+medición semánticamente aplicable y el segundo que no se pudo establecerla. En evidencia `test`,
+`build` o `inspección`, el valor abre con `exit <entero>;`, donde `<entero>` sigue el dominio
+`-?[0-9]+`: el signo opcional conserva el código negativo de un proceso terminado por señal. El
+validador comprueba presencia y forma, no que el estado sea coherente con ese código: una inspección
+puede salir con cero y no coincidir con el valor concreto que espera.
+
+Un contrato congelado antes de esta regla no se repara re-midiendo: el código anterior ya no está
+disponible y escribir un observable reconstruido repetiría el defecto. La fila vuelve al diseño.
+
+**Todo registro lleva `commit` y `timestamp`; los estados ejecutados llevan además `observado`.** El `commit` es lo que
 convierte "antes" en algo verificable: sin él, un baseline leído más tarde no dice qué código midió.
 El `timestamp`, en ISO-8601, ordena las mediciones y delata la copiada de una versión anterior en
 vez de re-ejecutada.
 
 ```markdown
-- `id: V3` · `commit: 4f2a9c1` · `timestamp: 2026-07-31T09:15:03-03:00` · `adjudicación: already_satisfied`
+- `id: V3` · `commit: 4f2a9c1` · `timestamp: 2026-07-31T09:15:03-03:00` · `adjudicación: already_satisfied` · `observado: exit 0; 1 passed`
 - `id: V4` · `commit: 4f2a9c1` · `timestamp: 2026-07-31T09:15:20-03:00` · `justificación: la fila verifica el copy de un correo que este work order no envía; no hay comando que ejecutar contra el código`
 ```
 
@@ -348,7 +360,7 @@ fallido.
 | 1 | **existe un contrato** | el work order no trae tabla. |
 | 2 | **versión vigente identificada** | falta la numeración, hay un salto en la serie, o la cadena de integridad no cierra. |
 | 3 | **cobertura bidireccional** | queda un requisito en alcance sin fila, o una fila sin requisito. |
-| 4 | **campos obligatorios presentes** | falta una columna o sobra una; un valor cae fuera de los enums; una fila no tiene registro de baseline, o el registro no tiene `commit` y `timestamp`; un `GREEN_ALREADY` sin `adjudicación` o un `NOT_APPLICABLE` sin `justificación`. |
+| 4 | **campos obligatorios presentes** | falta una columna o sobra una; un valor cae fuera de los enums; una fila no tiene registro de baseline, o el registro no tiene `commit` y `timestamp`; falta `observado` en `RED` o `GREEN_ALREADY`; un `GREEN_ALREADY` sin `adjudicación` o un `NOT_APPLICABLE` sin `justificación`. |
 | 5 | **baseline resuelto en toda fila** | alguna fila quedó sin estado, o en `BLOCKED`. |
 | 6 | **pertinencia** | una fila no establece los dos insumos exigidos en «Pertinencia: poder discriminante por fila»; el contrafactual responde que sí; o la unión de las subafirmaciones declaradas no cubre la afirmación entera. |
 
@@ -358,6 +370,11 @@ La guarda valida la cabecera normativa, que cada fila tenga seis columnas y que 
 `Baseline` usen sus enums cerrados; su éxito no sustituye las demás validaciones de esa
 comprobación. Contar columnas a ojo tampoco la sustituye: una barra dentro de una celda puede
 renderizar una tabla plausible aunque la fila ya no tenga seis columnas.
+
+En la misma comprobación, ejecutar
+`python_skill <skill_dir>/scripts/contrato-baseline.py <contrato>` y leer su código de salida y stderr.
+La guarda valida la paridad entre tabla y registros, y los campos que corresponden a cada estado;
+su éxito tampoco sustituye las demás validaciones de esta comprobación.
 
 La comprobación de pertinencia **no está mecanizada**. La guarda
 `python_skill <skill_dir>/scripts/contrato-cobertura.py <contrato> <requisitos>` implementa la

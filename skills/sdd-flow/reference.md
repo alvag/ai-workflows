@@ -1801,7 +1801,7 @@ nada; un baseline que no arranca en `RED` se adjudica o se justifica antes de co
 #### Baseline de v1
 `hash_previo:` · `hash: <sha256 de los bytes canónicos de esta versión>`
 
-- `id: V1` · `commit: <SHA evaluado>` · `timestamp: <ISO-8601>`
+- `id: V1` · `commit: <SHA evaluado>` · `timestamp: <ISO-8601>` · `observado: exit <código>; <salida observada>`
 
 ## Verify
 <lo completa el paso `verify` EJECUTANDO las filas de arriba; vacío hasta entonces. No elige
@@ -1866,7 +1866,7 @@ entender dos.>
 #### Baseline de v1
 `hash_previo:` · `hash: <sha256 de los bytes canónicos>`
 
-- `id: V1` · `commit: <SHA evaluado>` · `timestamp: <ISO-8601>`
+- `id: V1` · `commit: <SHA evaluado>` · `timestamp: <ISO-8601>` · `observado: exit <código>; <salida observada>`
 
 ## Verify
 <lo completa el paso `verify` ejecutando las filas de arriba>
