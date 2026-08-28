@@ -1588,7 +1588,7 @@ promoción: sin ella, quien copiara el archivo entero a la spec estaría publica
 | `busqueda` | `not-run` · `in-progress` · `complete` · `terminal` |
 | `fuentes_terminadas` | lista de las fuentes que corrieron **completas** |
 | `terminos` | lista ordenada de los términos emitidos |
-| `fingerprints` | `head` (SHA del HEAD) · `refs` (digest de `git for-each-ref` sobre nombres y OIDs) · `flujos_activos` (digest del listado) · `terminos` (digest del conjunto) |
+| `fingerprints` | `head` (SHA del HEAD) · `refs` (digest de `git for-each-ref` sobre nombres y OIDs) · `flujos_activos` (digest del **contenido** recorrido, no del listado) · `archivados` (ídem sobre `.plans/archived/`) · `vault` (ídem sobre el subárbol consultado) · `terminos` (digest del conjunto) |
 
 **`## declaracion` — lo único que se promueve.** Su esquema está congelado acá porque hay datos que
 tienen que vivir en la parte publicable: dejarlo abierto permite promover una declaración sin la
@@ -1597,10 +1597,11 @@ evidencia que la sostiene.
 | Campo | Qué lleva |
 |---|---|
 | `terminos_buscados` | el conjunto emitido, **copiado** acá — el conjunto tiene que quedar registrado en la declaración, y `## estado` no se publica |
-| `coincidencias_crudas` | cada coincidencia con su fuente, y **su descarte** cuando no se acreditó |
+| `coincidencias_crudas` | cada coincidencia con su **fuente**, su **ref** y su **ruta**, el **SHA** cuando la fuente es histórica, y **su descarte** cuando no se acreditó |
 | `estado_por_fuente` | cada fuente como `examinada` · `no comprobada` con su razón · `no aplicable por política` |
 | `candidatos` | por cada uno: ref o ruta, celda de la matriz de salidas, qué parte del objetivo cubre, y la evidencia de las **tres** condiciones —cobertura, terminación, compatibilidad— |
-| `impacto_en_alcance` | `ninguno` · `contexto` · `residual` · `cierre`, **cualificado** por las fuentes no comprobadas |
+| `remoto` | cuál se actualizó, o por qué no se intentó — declararlo **siempre**, porque "no había remoto" y "había uno y no lo nombré" no pueden quedar indistinguibles |
+| `impacto_en_alcance` | `ninguno` · `contexto` · `incognita` · `checkpoint` · `residual` · `cierre`, **cualificado** por las fuentes no comprobadas |
 
 El archivo **sobrevive** a la promoción con su `## estado` intacto: la spec pasa a mandar sobre el
 QUÉ, y `antecedentes.md` sigue mandando sobre **qué se corrió y qué hay que re-correr**. Una sola
@@ -1608,6 +1609,18 @@ autoridad por pregunta, en cada momento.
 
 > **Señal negativa.** Si alguna de las cuatro claves de `## estado` aparece en `spec.md`, en el
 > `### Antecedentes` del plan combinado o en `master-spec.md`, la promoción se hizo mal.
+
+**Al promover se sanitiza, porque el bloque declarativo contiene mecánica del flujo.** Retener solo
+`## estado` no alcanza: `coincidencias_crudas` lleva rutas como `.plans/archived/<id>/spec.md`,
+`estado_por_fuente` nombra las seis fuentes —dos de ellas son directorios del propio flujo— y
+`candidatos` lleva **nombres de ref**. Todo eso es exactamente lo que la lista de "qué NUNCA se
+publica" retiene, y `spec.md` puede terminar en un tracker.
+
+La proyección conserva el **hecho** y descarta la **mecánica**: qué se buscó, si se encontró trabajo
+previo, qué parte del objetivo cubre y con qué impacto en el alcance. Las rutas de `.plans/`, los
+nombres de rama y los identificadores de otros flujos se reemplazan por su descripción —"un flujo
+archivado de este repositorio", "una rama con trabajo previo"—. La versión con rutas y refs vive en
+`antecedentes.md`, que es local y no se publica nunca.
 
 En la orquestación el equivalente es `.sdd/<id>/antecedentes.md`, con el mismo esquema extendido por
 repo: ver `sdd-orchestrator` → paso `1.2`.
@@ -1718,7 +1731,7 @@ git log --all --oneline -S "$T1"
 # POSIX: archivados
 grep -rIl -F -e "$T1" -e "$T2" -e "$T3" -- .plans/archived/
 # POSIX: flujos-activos
-grep -rIl -F -e "$T1" -e "$T2" -e "$T3" -- .plans/ --exclude-dir=archived --exclude-dir="$ID_ACTUAL"
+grep -rIl -F --exclude-dir=archived --exclude-dir="$ID_ACTUAL" -e "$T1" -e "$T2" -e "$T3" -- .plans/
 # POSIX: vault
 grep -rIl -F -e "$T1" -e "$T2" -e "$T3" -- <vault>/projects/<repo>/
 # POSIX: fp-head
@@ -1728,7 +1741,7 @@ git for-each-ref --format='%(refname) %(objectname)' | git hash-object --stdin
 # POSIX: fp-flujos
 ls -1 .plans/ | git hash-object --stdin
 # POSIX: fp-terminos
-printf '%s\n' "${TERMINOS[@]}" | git hash-object --stdin
+set -- $TERMINOS_SEPARADOS_POR_ESPACIO; printf '%s\n' "$@" | git hash-object --stdin
 ```
 
 ```powershell
@@ -1766,9 +1779,18 @@ $terminos | git hash-object --stdin
 
 `$ID_ACTUAL` es el `<id>` del flujo en curso: `flujos-activos` **lo excluye**, porque su propio
 artefacto contiene el objetivo palabra por palabra y sin la exclusión toda búsqueda se encuentra a sí
-misma como antecedente. `${TERMINOS[@]}` es el conjunto completo, y por eso `fp-terminos` lo hashea
-entero en vez de tres posiciones fijas: con clave de tracker son cuatro, y un fingerprint que ignora
-el cuarto no cambia cuando ese cuarto cambia.
+misma como antecedente.
+
+> **Las opciones van antes de `--`, y esto no es estilo.** `--` termina el parseo de opciones, así que
+> un `--exclude-dir` escrito **después** se lee como una **ruta**: `grep` avisa `No such file or
+> directory`, sale con **2**, no excluye nada —el flujo se encuentra a sí mismo y la fuente 5 devuelve
+> además los hits de la 4— y ese `2` puede leerse como error de la fuente entera. Medido.
+
+> **`"$@"` y no `"${arreglo[@]}"`.** La expansión de arreglos es de bash/ksh/zsh y **no** es POSIX:
+> en `dash` da `Bad substitution`, y `fp-terminos` es justamente el fingerprint que, al cambiar,
+> re-corre **todas** las fuentes — si aborta, el retomado compara contra un digest ausente. Con
+> parámetros posicionales el conjunto entra completo, sean tres términos o cuatro con clave de
+> tracker, y el bloque sigue siendo `sh` puro como el resto del repositorio.
 
 **Ningún término puede ser la cadena vacía.** `grep -F -e ""` coincide con toda línea, así que un
 término vacío convierte la búsqueda entera en un falso positivo silencioso. El algoritmo no los
@@ -1845,7 +1867,7 @@ dos fuentes sin comprobar no es lo mismo que uno con las seis examinadas, y la d
 3. **Ante ambigüedad** —dos vaults con un proyecto del mismo nombre—, **no se elige por el nombre del
    directorio**: se coteja `<vault>/.kv/identidades.tsv` contra `git remote get-url origin` y el
    commit raíz (`git rev-list --max-parents=0 HEAD`). El commit raíz es identidad; el nombre no.
-4. Si tras el cotejo **sigue ambiguo**, la fuente resuelve `no comprobado` con esa razón — y **no se
+4. Si tras el cotejo **sigue ambiguo**, la fuente resuelve `no comprobada` con esa razón — y **no se
    escribe configuración**: elegir uno y persistirlo convertiría una duda en una decisión que nadie
    tomó.
 
@@ -1931,6 +1953,18 @@ fuentes, y de esa vecindad sale la regla equivocada de que un cambio invalida "s
 | `refs` | las refs, el historial de commits y la **clasificación de todo candidato** |
 | `head` | el árbol del HEAD y la **compatibilidad de todo candidato** |
 | `flujos_activos` | esa fuente sola |
+| `archivados` | esa fuente sola |
+| `vault` | esa fuente sola |
+
+**Las seis fuentes tienen fingerprint, y ninguna queda sin quién la invalide.** Con cuatro, las
+fuentes 4 y 6 no se re-corrían nunca una vez terminadas —salvo que cambiara `terminos`, que arrastra
+a todas—, así que una pausa larga las congelaba.
+
+**El de los flujos mide contenido y no el listado**, porque la fuente recorre lo que hay *adentro* de
+`.plans/`. Con un digest del listado hay dos pérdidas medibles: otro flujo escribe el objetivo dentro
+de su `spec.md` durante la pausa y el listado no cambia, así que la fuente no se re-corre y el
+antecedente se pierde; y un flujo que se archiva **sí** cambia el listado, con lo que se re-corre la
+fuente 5 —donde ya no está— mientras la 4, donde ahora sí está, no tenía fila que la invalidara.
 
 **Los fingerprints no son independientes, y la regla es la unión.** Un commit en la rama actual mueve
 el HEAD **y** el OID de `refs/heads/<actual>`: cambian `head` y `refs` a la vez, así que "observar
