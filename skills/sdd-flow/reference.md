@@ -152,7 +152,7 @@ Es **acotada**: solo se quitan las tres cosas de abajo. **Todo lo demás se publ
 - Menciones a **cross-review** / **co-exploración** / segunda opinión / modelos / `review-log`.
 - **URLs y entornos locales o de prueba:** `localhost`, `127.0.0.1`, hosts de desarrollo (p. ej. `http://local.<proyecto>.dev:4200`), `file://`, y cualquier indicación de "dónde/cómo probar" local.
 - **Artefactos y mecánica del flujo SDD:** `.plans/`, `.specify/`, paths absolutos de la máquina local, los archivos del propio flujo (`spec.md`/`plan.md`/`tasks.md`/`handoff.md`/`antecedentes.md`), `status`, prefijos de rama, comandos de test/build, y nombres de fases del flujo (`analyze`, `clarify`, `tasks`, …).
-- **El ledger máquina de la búsqueda de antecedentes:** las cuatro claves del bloque `## estado` de `antecedentes.md` —`busqueda`, `fuentes_terminadas`, `terminos` y `fingerprints`— no salen del disco local. Lo que sí se publica es lo que la spec ya promovió: el bloque declarativo, que es la parte legible del resultado.
+- **El ledger máquina de la búsqueda de antecedentes, y también la mecánica del bloque declarativo.** Del bloque `## estado` no sale nada: ni `busqueda`, ni `fuentes_terminadas`, ni `terminos`, ni `fingerprints`. Del bloque `## declaracion` **no sale su mecánica**: rutas de `.plans/`, nombres de ref o de rama, identificadores de otros flujos, SHAs y la URL del remoto. Lo que sí se publica es la **forma sanitizada** que `specify` promovió —qué se buscó, en cuántas fuentes, si hubo trabajo previo y con qué impacto en el alcance—, descrita campo por campo en `reference.md` → "Búsqueda de antecedentes". Que un dato viva en el bloque publicable no lo vuelve publicable **tal cual**: el bloque es la sede local del resultado, y la proyección es la que decide qué sale.
 - Los `AC-n` **se mantienen con su etiqueta** en la definición técnica; en el bloque "Resumen" además se reexpresan en lenguaje de negocio.
 
 ### Comentario de ajuste (tras observaciones)
@@ -1601,7 +1601,7 @@ evidencia que la sostiene.
 | `estado_por_fuente` | cada fuente como `examinada` · `no comprobada` con su razón · `no aplicable por política` |
 | `candidatos` | por cada uno: ref o ruta, celda de la matriz de salidas, qué parte del objetivo cubre, y la evidencia de las **tres** condiciones —cobertura, terminación, compatibilidad— |
 | `remoto` | cuál se actualizó, o por qué no se intentó — declararlo **siempre**, porque "no había remoto" y "había uno y no lo nombré" no pueden quedar indistinguibles |
-| `impacto_en_alcance` | `ninguno` · `contexto` · `incognita` · `checkpoint` · `residual` · `cierre`, **cualificado** por las fuentes no comprobadas |
+| `impacto_en_alcance` | `ninguno` · `contexto` · `incognita` · `checkpoint` · `reformular` · `residual` · `cierre`, **cualificado** por las fuentes no comprobadas. Se escriben **sin tilde**, porque el valor se compara literal |
 
 El archivo **sobrevive** a la promoción con su `## estado` intacto: la spec pasa a mandar sobre el
 QUÉ, y `antecedentes.md` sigue mandando sobre **qué se corrió y qué hay que re-correr**. Una sola
@@ -1616,11 +1616,19 @@ autoridad por pregunta, en cada momento.
 `candidatos` lleva **nombres de ref**. Todo eso es exactamente lo que la lista de "qué NUNCA se
 publica" retiene, y `spec.md` puede terminar en un tracker.
 
-La proyección conserva el **hecho** y descarta la **mecánica**: qué se buscó, si se encontró trabajo
-previo, qué parte del objetivo cubre y con qué impacto en el alcance. Las rutas de `.plans/`, los
-nombres de rama y los identificadores de otros flujos se reemplazan por su descripción —"un flujo
-archivado de este repositorio", "una rama con trabajo previo"—. La versión con rutas y refs vive en
-`antecedentes.md`, que es local y no se publica nunca.
+La proyección se define **campo por campo**, y no como un criterio a interpretar:
+
+| Campo de `## declaracion` | Qué se promueve |
+|---|---|
+| `terminos_buscados` | **tal cual** — son palabras del objetivo, no mecánica |
+| `estado_por_fuente` | **agregado y sin nombrar directorios**: "seis fuentes examinadas", o "cinco examinadas y una no comprobada por \<razón\>". Se promueve **siempre**, porque es lo único que cualifica el resultado: un `ninguno` con dos fuentes sin comprobar no dice lo mismo que uno con las seis |
+| `coincidencias_crudas` | **el conteo y su descarte**, sin ref, ruta ni SHA |
+| `candidatos` | **descritos**: "un flujo archivado de este repositorio", "una rama con trabajo previo", con qué parte del objetivo cubren y la evidencia de las tres condiciones en prosa — nunca el nombre de la ref ni la ruta |
+| `impacto_en_alcance` | **tal cual**: es el valor del enum |
+| `remoto` | **no se promueve.** Un `git remote get-url` arrastra host y ruta de un repositorio que puede ser privado |
+
+La versión con rutas, refs, SHAs y remoto vive en `antecedentes.md`, que es local y no se publica
+nunca — y es la que consume el paquete de co-exploración, que corre en la máquina y no publica nada.
 
 En la orquestación el equivalente es `.sdd/<id>/antecedentes.md`, con el mismo esquema extendido por
 repo: ver `sdd-orchestrator` → paso `1.2`.
@@ -1703,10 +1711,24 @@ no se inspecciona entera** —sería recorrer todo el repositorio por cada rama�
 ### Los comandos
 
 Cada comando lleva un **ID** y aparece **dos veces**, en su variante POSIX y en su variante
-PowerShell, con el mismo conjunto de IDs en las dos. `$T1`, `$T2`, `$T3` son los términos emitidos y
-`$terminos` su lista; se pasan como **texto fijo** según "Seguridad de argumentos". Los `-e` son
-**tantos como términos haya**, no tres fijos: con clave de tracker son cuatro, porque esa clave no
-consume ninguna de las tres ranuras.
+PowerShell, con el mismo conjunto de IDs en las dos.
+
+**Los términos viajan por archivo, uno por línea, y esa es la decisión que sostiene todo lo demás.**
+`$TERMINOS` es la ruta de ese archivo, que el algoritmo escribe una vez por corrida. No es una
+preferencia de estilo: pasarlos por una variable de shell fallaba de **tres** formas a la vez, y las
+tres desaparecen con el archivo.
+
+| Lo que fallaba con una variable | Por qué |
+|---|---|
+| **dependía de la shell** | `set -- $VAR` divide en palabras en POSIX pero **no en zsh**, así que el mismo conjunto daba dos digests distintos y `terminos` parecía cambiado sin que nadie tocara un término |
+| **se rompía con espacios** | el paso 7 del algoritmo emite el título entero como **frase fija**, y esa frase se partía en varias, con lo que `{"a b"}` colisionaba con `{"a","b"}` |
+| **no era el mismo comando** | la variante POSIX y la PowerShell tenían que diferir para lograr lo mismo, y la sección exige que el par sea equivalente |
+
+Con el archivo, `grep -F -f` y `Select-String -Pattern (Get-Content …)` toman **tantos términos como
+haya** —tres, o cuatro con clave de tracker— sin enumerarlos, y `fp-terminos` es `git hash-object`
+sobre ese mismo archivo: idéntico en las dos shells y ciego al espaciado. `$T1` sigue nombrando un
+término suelto donde el comando **solo puede tomar uno**, que es el caso de `log-contenido` (`-S`
+acepta una sola cadena por invocación) y el de los `--grep` de `log-mensajes`.
 
 **Ninguno de estos comandos muta el working tree.** La única mutación admitida en todo el sub-paso es
 la de **refs locales** que produce `sync-refs`, y está declarada.
@@ -1715,66 +1737,74 @@ la de **refs locales** que produce `sync-refs`, y está declarada.
 # POSIX: sync-refs
 git fetch --quiet <remoto>
 # POSIX: head-rutas
-git ls-files -- . | grep -F -e "$T1" -e "$T2" -e "$T3"
+git ls-files -- . | grep -F -f "$TERMINOS"
 # POSIX: head-contenido
-git grep -I -n --fixed-strings -e "$T1" -e "$T2" -e "$T3" -- .
+git grep -I -n --fixed-strings -f "$TERMINOS" -- .
 # POSIX: refs-nombres
-git for-each-ref --format='%(refname:short) %(objectname)' | grep -F -e "$T1" -e "$T2" -e "$T3"
+git for-each-ref --format='%(refname:short) %(objectname)' | grep -F -f "$TERMINOS"
 # POSIX: refs-contenido
-git grep -I -n --fixed-strings -e "$T1" -e "$T2" -e "$T3" <ref> -- .
+git grep -I -n --fixed-strings -f "$TERMINOS" <ref> -- .
 # POSIX: refs-rutas
-git ls-tree -r --name-only <ref> | grep -F -e "$T1" -e "$T2" -e "$T3"
+git ls-tree -r --name-only <ref> | grep -F -f "$TERMINOS"
 # POSIX: log-mensajes
 git log --all --oneline --fixed-strings --grep="$T1" --grep="$T2" --grep="$T3"
 # POSIX: log-contenido
 git log --all --oneline -S "$T1"
 # POSIX: archivados
-grep -rIl -F -e "$T1" -e "$T2" -e "$T3" -- .plans/archived/
+grep -rIl -F -f "$TERMINOS" -- .plans/archived/
 # POSIX: flujos-activos
-grep -rIl -F --exclude-dir=archived --exclude-dir="$ID_ACTUAL" -e "$T1" -e "$T2" -e "$T3" -- .plans/
+grep -rIl -F --exclude-dir=archived --exclude-dir="$ID_ACTUAL" -f "$TERMINOS" -- .plans/
 # POSIX: vault
-grep -rIl -F -e "$T1" -e "$T2" -e "$T3" -- <vault>/projects/<repo>/
+grep -rIl -F -f "$TERMINOS" -- <vault>/projects/<repo>/
 # POSIX: fp-head
 git rev-parse HEAD
 # POSIX: fp-refs
 git for-each-ref --format='%(refname) %(objectname)' | git hash-object --stdin
 # POSIX: fp-flujos
-ls -1 .plans/ | git hash-object --stdin
+git ls-files --others --cached -- .plans/ | grep -v -e '^\.plans/archived/' -e "^\.plans/$ID_ACTUAL/" | xargs -I{} git hash-object {} | git hash-object --stdin
+# POSIX: fp-archivados
+git ls-files --others --cached -- .plans/archived/ | xargs -I{} git hash-object {} | git hash-object --stdin
+# POSIX: fp-vault
+git ls-files --others --cached -- <vault>/projects/<repo>/ | xargs -I{} git hash-object {} | git hash-object --stdin
 # POSIX: fp-terminos
-set -- $TERMINOS_SEPARADOS_POR_ESPACIO; printf '%s\n' "$@" | git hash-object --stdin
+git hash-object "$TERMINOS"
 ```
 
 ```powershell
 # PowerShell: sync-refs
 git fetch --quiet <remoto>
 # PowerShell: head-rutas
-git ls-files -- . | Select-String -SimpleMatch -Pattern $terminos
+git ls-files -- . | Select-String -SimpleMatch -Pattern (Get-Content $TERMINOS)
 # PowerShell: head-contenido
-git grep -I -n --fixed-strings -e $T1 -e $T2 -e $T3 -- .
+git grep -I -n --fixed-strings -f $TERMINOS -- .
 # PowerShell: refs-nombres
-git for-each-ref --format='%(refname:short) %(objectname)' | Select-String -SimpleMatch -Pattern $terminos
+git for-each-ref --format='%(refname:short) %(objectname)' | Select-String -SimpleMatch -Pattern (Get-Content $TERMINOS)
 # PowerShell: refs-contenido
-git grep -I -n --fixed-strings -e $T1 -e $T2 -e $T3 <ref> -- .
+git grep -I -n --fixed-strings -f $TERMINOS <ref> -- .
 # PowerShell: refs-rutas
-git ls-tree -r --name-only <ref> | Select-String -SimpleMatch -Pattern $terminos
+git ls-tree -r --name-only <ref> | Select-String -SimpleMatch -Pattern (Get-Content $TERMINOS)
 # PowerShell: log-mensajes
 git log --all --oneline --fixed-strings --grep=$T1 --grep=$T2 --grep=$T3
 # PowerShell: log-contenido
 git log --all --oneline -S $T1
 # PowerShell: archivados
-Get-ChildItem -Recurse -File .plans/archived/ | Select-String -SimpleMatch -List -Pattern $terminos
+Get-ChildItem -Recurse -File .plans/archived/ | Select-String -SimpleMatch -List -Pattern (Get-Content $TERMINOS)
 # PowerShell: flujos-activos
-Get-ChildItem -Recurse -File .plans/ | Where-Object { $_.FullName -notmatch "[\\/](archived|$ID_ACTUAL)[\\/]" } | Select-String -SimpleMatch -List -Pattern $terminos
+Get-ChildItem -Recurse -File .plans/ | Where-Object { $_.FullName -notmatch "[\\/](archived|$ID_ACTUAL)[\\/]" } | Select-String -SimpleMatch -List -Pattern (Get-Content $TERMINOS)
 # PowerShell: vault
-Get-ChildItem -Recurse -File <vault>/projects/<repo>/ | Select-String -SimpleMatch -List -Pattern $terminos
+Get-ChildItem -Recurse -File <vault>/projects/<repo>/ | Select-String -SimpleMatch -List -Pattern (Get-Content $TERMINOS)
 # PowerShell: fp-head
 git rev-parse HEAD
 # PowerShell: fp-refs
 git for-each-ref --format='%(refname) %(objectname)' | git hash-object --stdin
 # PowerShell: fp-flujos
-Get-ChildItem -Name .plans/ | git hash-object --stdin
+Get-ChildItem -Recurse -File .plans/ | Where-Object { $_.FullName -notmatch "[\\/](archived|$ID_ACTUAL)[\\/]" } | ForEach-Object { git hash-object $_.FullName } | git hash-object --stdin
+# PowerShell: fp-archivados
+Get-ChildItem -Recurse -File .plans/archived/ | ForEach-Object { git hash-object $_.FullName } | git hash-object --stdin
+# PowerShell: fp-vault
+Get-ChildItem -Recurse -File <vault>/projects/<repo>/ | ForEach-Object { git hash-object $_.FullName } | git hash-object --stdin
 # PowerShell: fp-terminos
-$terminos | git hash-object --stdin
+git hash-object $TERMINOS
 ```
 
 `$ID_ACTUAL` es el `<id>` del flujo en curso: `flujos-activos` **lo excluye**, porque su propio
@@ -1786,11 +1816,11 @@ misma como antecedente.
 > directory`, sale con **2**, no excluye nada —el flujo se encuentra a sí mismo y la fuente 5 devuelve
 > además los hits de la 4— y ese `2` puede leerse como error de la fuente entera. Medido.
 
-> **`"$@"` y no `"${arreglo[@]}"`.** La expansión de arreglos es de bash/ksh/zsh y **no** es POSIX:
-> en `dash` da `Bad substitution`, y `fp-terminos` es justamente el fingerprint que, al cambiar,
-> re-corre **todas** las fuentes — si aborta, el retomado compara contra un digest ausente. Con
-> parámetros posicionales el conjunto entra completo, sean tres términos o cuatro con clave de
-> tracker, y el bloque sigue siendo `sh` puro como el resto del repositorio.
+> **Los fingerprints de las tres fuentes de archivos miden contenido, no listados.** `ls -1` y
+> `Get-ChildItem -Name` devuelven nombres de primer nivel, y con eso otro flujo puede escribir el
+> objetivo **dentro** de su `spec.md` sin que el digest se mueva. Cada uno hashea además **el mismo
+> subárbol que recorre su fuente**: `fp-flujos` excluye `archived/` y `$ID_ACTUAL`, igual que
+> `flujos-activos`, o el fingerprint mediría un conjunto distinto del que invalida.
 
 **Ningún término puede ser la cadena vacía.** `grep -F -e ""` coincide con toda línea, así que un
 término vacío convierte la búsqueda entera en un falso positivo silencioso. El algoritmo no los
@@ -1920,8 +1950,8 @@ criterio de quien implementa**.
 
 | Cobertura ↓ · Vigencia → | vigente | no vigente | recuperable (cero conflictos) | recuperable con costo (uno o más) | no verificado |
 |---|---|---|---|---|---|
-| **total** | **no avanza**: ofrece cerrar el flujo o reformular el objetivo | contexto; alcance **intacto** | **obliga a reformular**, con confirmación humana | **checkpoint** con el número de conflictos declarado; no recorta solo | contexto o incógnita |
-| **parcial** | **residual**: matriz parte/evidencia/delta | contexto; alcance intacto | residual, con confirmación humana | checkpoint con el número declarado | contexto o incógnita |
+| **total** | **no avanza**: ofrece cerrar el flujo o reformular el objetivo → `cierre` | contexto; alcance **intacto** → `contexto` | **obliga a reformular**, con confirmación humana → `reformular` | **checkpoint** con el número de conflictos declarado; no recorta solo → `checkpoint` | contexto o incognita |
+| **parcial** | **residual**: matriz parte/evidencia/delta → `residual` | contexto; alcance intacto → `contexto` | residual, con confirmación humana → `residual` | checkpoint con el número declarado → `checkpoint` | contexto o incognita |
 | **ninguna (relacionado)** | contexto; alcance **intacto** | contexto | contexto | contexto | contexto |
 | **falso positivo** | descartado, con su descarte registrado en `coincidencias_crudas` | ídem | ídem | ídem | ídem |
 
@@ -2017,9 +2047,11 @@ spec/plan/tasks deben respetarlos; este constitution NO los duplica.
 - **No incluye:** <qué queda explícitamente afuera>
 
 ## Antecedentes
-<proyección del bloque `## declaracion` de `.plans/<id>/antecedentes.md`: términos buscados, estado de cada
-fuente con la razón de las no comprobadas, candidatos con su evidencia, e impacto en el alcance. Ninguna
-clave del bloque `## estado` se publica acá.>
+<forma **sanitizada** del bloque `## declaracion` de `.plans/<id>/antecedentes.md`, campo por campo
+según "Búsqueda de antecedentes": términos buscados; cuántas fuentes se examinaron y cuáles quedaron
+sin comprobar, con su razón; los candidatos **descritos** —"un flujo archivado de este repositorio",
+"una rama con trabajo previo"— con qué parte cubren y su evidencia en prosa; e impacto en el alcance.
+**Nunca** rutas de `.plans/`, nombres de ref o rama, SHAs, el remoto, ni ninguna clave de `## estado`.>
 
 ## Criterios de aceptación
 - **AC-1:** Given <contexto>, When <acción>, Then <resultado observable>.
@@ -2257,7 +2289,7 @@ created_at: 2026-01-01T12:00:00-03:00
 ### Problema / Objetivo
 <por qué — 1-2 párrafos>
 ### Antecedentes
-<proyección del bloque `## declaracion` de `.plans/<id>/antecedentes.md` — nunca las claves de `## estado`>
+<forma sanitizada del bloque `## declaracion` — nunca rutas, refs, SHAs, el remoto ni claves de `## estado`>
 ### Criterios de aceptación
 - **AC-1:** <observable y verificable>
 
@@ -2447,7 +2479,7 @@ cloud_id: <uuid del sitio>
 
 ## Archivos del flujo
 - spec.md — el QUÉ completo + Clarifications
-- antecedentes.md — el ledger de la búsqueda: `## estado` (nunca se publica) y `## declaracion` (lo que se promueve)
+- antecedentes.md — el ledger de la búsqueda: `## estado` (nunca se publica) y `## declaracion` (se promueve **sanitizado**)
 - jira-spec.md — exactamente lo publicado en la subtarea (solo si hubo gate de Jira)
 ```
 
