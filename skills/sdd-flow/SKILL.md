@@ -366,7 +366,15 @@ y el contra-enfoque; `cross_review.mode` gobierna las críticas en los gates de 
   pedido), `complex` on.
 - **Momento 1 — `explore` (pre-spec).** Tras confirmar el contexto y la clasificación en
   `gather-context`: (1) armar el **paquete de contexto** (digest del ticket + prompt del usuario +
-  complejidad + paths resueltos de `domain_context`), que viaja **idéntico a los dos workers**. Si el prompt/ticket trae **URLs de reproducción** ("abre esta URL para ver el
+  complejidad + paths resueltos de `domain_context`), que viaja **idéntico a los dos workers**.
+  Suma además los **hechos crudos** del bloque declarativo de la búsqueda de antecedentes:
+  los **términos buscados**, el **estado de cada fuente** con la razón de cada una no comprobada, y las
+  **coincidencias crudas** con su ref, su ruta y su SHA. Viajan **también cuando el resultado es
+  vacío**: sin los términos y los estados por fuente, "no se encontró nada" y "no se buscó en esa
+  fuente" dejan de distinguirse para quien recibe el paquete. Lo que **no** viaja es ninguna
+  clasificación ya resuelta —cobertura total o parcial, delta pendiente, impacto en el alcance—: el
+  paquete tiene prohibido llevar conclusiones del conductor, y una ya tomada contamina justamente la
+  independencia que la co-exploración compra. Si el prompt/ticket trae **URLs de reproducción** ("abre esta URL para ver el
   error") y hay tool de navegador, el conductor **reproduce antes de despachar** y suma al
   paquete un digest **observacional** de la evidencia (salida de consola, requests fallidos,
   pasos observados) — hechos, **sin hipótesis propias**, que contaminarían la independencia del
@@ -589,16 +597,32 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
 2. Si hay clave **y** el tracker detectado tiene MCP/CLI: traer el issue (resumen, tipo, descripción, prioridad, labels, estado, links). El flujo concreto por tracker —p. ej. el de Jira/Atlassian con `cloudId`— está en `reference.md` → "Flujo por tracker". Si no hay integración: pedir al usuario que pegue el resumen, o seguir solo con el prompt.
 3. Si no hay clave: usar el prompt. Si es vago, preguntar lo mínimo: **(a)** tipo de cambio, **(b)** título corto, **(c)** problema/objetivo.
 4. **Fusionar** tracker + prompt; en conflicto gana el prompt.
-5. **Clasificar complejidad** (sección de arriba), anunciarla con justificación y confirmar el contexto en 5-8 bullets antes de avanzar.
+5. **Buscar antecedentes en el repositorio.** Antes de clasificar, recorrer el árbol y su historia para saber si el objetivo ya se hizo, se está haciendo, o se descartó con motivo. El procedimiento —las seis fuentes, el algoritmo de términos, las señales que acreditan un candidato y el esquema de `.plans/<id>/antecedentes.md`, donde queda el resultado— vive en `reference.md` → "Búsqueda de antecedentes".
+   - **Es incondicional.** No hay clave que lo apague, no es una dependencia blanda y no despacha ningún agente: una búsqueda condicional es exactamente el hueco por el que un flujo aprueba una spec y corta una rama sobre la premisa de que no había nada previo. El molde es el sub-paso 1 de `clarify` —"el código responde primero"—, que ya es un acto de lectura del árbol obligatorio dentro de esta misma skill.
+   - **Crea `.plans/<id>/` acá**, adelantando la creación que de otro modo ocurre en `specify`: el recorrido termina **antes** de que exista `spec.md`, así que su resultado necesita una sede propia, que es la autoridad durante toda esa ventana.
+   - **Las cuatro transiciones**, según la celda que resuelva la matriz de salidas de `reference.md`:
+
+     | Qué se encontró | Qué pasa con el flujo |
+     |---|---|
+     | cubierto **entero y vigente** | **no avanza a `specify`**: se ofrece cerrar el flujo o reformular el objetivo, y **una reformulación requiere confirmación humana** |
+     | cubierto **en parte**, acreditado | se escribe la matriz parte/evidencia/delta y el alcance queda en el **residual** —la resta exacta—, con la modulación anunciada |
+     | meramente **relacionado** | entra como **contexto**; el alcance queda **intacto** |
+     | **falso positivo** | descartado, con su descarte registrado |
+
+   - **El resultado entra en el checkpoint del paso 6**, que ya existe: no se abre un stop nuevo ni se agrega un gate. Quien confirma el contexto lo hace con los hallazgos a la vista.
+6. **Clasificar complejidad** (sección de arriba), anunciarla con justificación y confirmar el contexto en 5-8 bullets antes de avanzar. El resumen del paso 5 —qué se buscó, qué fuentes quedaron sin comprobar y con qué impacto en el alcance— se presenta en este mismo checkpoint.
 
 ## Paso `specify` → GATE
 
 **Objetivo:** escribir el **QUÉ** y el **por qué**, con criterios de aceptación verificables — sin detalles de implementación.
 
-1. Crear `.plans/<id>/` (POSIX: `mkdir -p`; PowerShell: `New-Item -ItemType Directory -Force`).
+1. `.plans/<id>/` **ya existe**: lo creó el sub-paso 5 de `gather-context` junto con su ledger de búsqueda. Si faltara —un flujo heredado, anterior a ese paso—, crearlo (POSIX: `mkdir -p`; PowerShell: `New-Item -ItemType Directory -Force`).
 2. Escribir `spec.md` con la plantilla de `reference.md` → "Plantilla de spec". Mínimo: problema/objetivo, alcance (in/out), y **criterios de aceptación numerados `AC-1..N`** en formato verificable (Given/When/Then o checklist observable).
-3. Para cambios *triviales*, la spec puede ser un bloque breve dentro de `plan.md` en lugar de archivo aparte.
-4. **STOP** — si la **revisión cross-model** está activa para `spec` (ver "Revisión cross-model"), ejecutar `cross-review` sobre `spec.md` antes de presentar (sumar `domain_context` resuelto y, con co-exploración, los **índices + la síntesis** de `explore` — nunca los `detail-*` — ver "Co-exploración cross-model"). Presentar la spec (con el resumen de crítica, si lo hubo) y pedir aprobación. No avanzar sin ella. Si el usuario corrige, actualizar y volver a ofrecer.
+3. **Promover el resultado de la búsqueda de antecedentes.** Proyectar **únicamente el bloque `## declaracion`** de `.plans/<id>/antecedentes.md` a una sección `## Antecedentes` de `spec.md` —o al `### Antecedentes` del bloque `## Spec` en trivial—. **Nunca se copia el archivo entero:** `## estado` es el ledger máquina, y publicarlo filtra fingerprints y estado interno a un artefacto que puede terminar en un tracker.
+   - `antecedentes.md` **sobrevive** a la promoción con su `## estado` intacto. Desde acá la spec manda sobre el **QUÉ**, y el ledger sigue mandando sobre **qué se corrió y qué hay que re-correr**: una sola autoridad por pregunta, en cada momento.
+   - **La marca de promoción no es un campo nuevo.** Es la condición derivada `busqueda: complete` **y** la existencia de la sección de destino en su sede. Un quinto campo en `## estado` duplicaría una autoridad que ya vive en el destino.
+4. Para cambios *triviales*, la spec puede ser un bloque breve dentro de `plan.md` en lugar de archivo aparte.
+5. **STOP** — si la **revisión cross-model** está activa para `spec` (ver "Revisión cross-model"), ejecutar `cross-review` sobre `spec.md` antes de presentar (sumar `domain_context` resuelto y, con co-exploración, los **índices + la síntesis** de `explore` — nunca los `detail-*` — ver "Co-exploración cross-model"). Presentar la spec (con el resumen de crítica, si lo hubo) y pedir aprobación. No avanzar sin ella. Si el usuario corrige, actualizar y volver a ofrecer.
 
 ## Paso `clarify` (condicional)
 
@@ -743,7 +767,7 @@ Documento de **retomado** del flujo —"dónde quedé, qué decidí y cómo sigo
 
 ```yaml
 ---
-phase: awaiting-jira-approval   # specify | clarify | awaiting-jira-approval | implementing | ...
+phase: awaiting-jira-approval   # gather-context | specify | clarify | awaiting-jira-approval | implementing | ...
 # snapshot de gather-context (presente mientras NO exista plan.md):
 complexity: normal              # trivial | normal | complex
 change_type: feat               # feat | fix | refactor | ...
@@ -751,6 +775,8 @@ branch_prefix: feature          # el {type} ya resuelto
 slug: export-csv
 base_branch: master             # rama base resuelta (con override de base, la rama de la que se corta)
 overrides: { branch_prefix: null, base_branch: null, cross_review: null, implement_mode: null, jira_approval: null }
+# puntero al ledger de la búsqueda (solo en una pausa durante `gather-context`):
+# antecedentes: .plans/<id>/antecedentes.md   # PUNTERO, no copia: términos, fuentes y fingerprints viven solo ahí
 # campos del gate de Jira (solo si es una pausa por aprobación externa):
 # gate_status: awaiting         # awaiting | changes-requested | approved
 # parent_key: ABC-123 · subtask_key: ABC-145 · cloud_id: <uuid>
@@ -774,9 +800,13 @@ Punto de entrada cuando vuelves a un flujo ya empezado — en una sesión nueva,
 
 ### Listar / elegir el flujo
 1. Si el usuario nombró un flujo (`<id>` o ruta `.plans/<id>/`), usar ese. Si dijo algo genérico ("¿en qué quedé?", "qué flujos tengo"), **listar** los flujos activos (excluir `.plans/archived/`): para los que tienen `plan.md`, leer su header; para los **pre-`plan`** (solo `spec.md`/`handoff.md`), leer el `handoff.md` (`phase`/`gate_status`). Mostrar tabla `id · branch · estado · siguiente paso` —donde "estado" es el `status` del plan o, si no hay plan, la `phase`/`gate_status` del handoff (p. ej. "esperando aprobación Jira")—. Que el usuario elija.
-2. Si `.plans/<id>/` tiene `spec.md` pero **no** `plan.md`, el flujo quedó pre-`plan`. **Leer `handoff.md` si existe** (narrativa + snapshot de `gather-context`: complejidad, tipo de cambio, prefijo, slug, rama base, overrides) — es lo que evita re-investigar el ticket o re-clasificar. Luego:
-   - Si el `handoff.md` tiene **`gate_status: awaiting`** (o `changes-requested`) → el flujo está en el **gate de Jira**; ir a "Gate de Jira (esperando aprobación externa)" abajo.
-   - Si no (pausa común en `specify`/`clarify`) → chequear si ya existe una rama del flujo (`git branch --list "*<id>*"`): si existe, la spec ya fue aprobada y `create-branch` ya corrió → confirmarlo con el usuario, posicionarse en esa rama (checkout seguro, como abajo) y retomar en `plan` (así `base_commit` se toma del HEAD correcto, no de la rama en la que estés posicionado). Si no hay rama, retomar desde `specify`/`clarify`, sin navegación de rama.
+2. Si `.plans/<id>/` **no** tiene `plan.md`, el flujo quedó pre-`plan`. **Leer `handoff.md` si existe** (narrativa + snapshot de `gather-context`: complejidad, tipo de cambio, prefijo, slug, rama base, overrides) — es lo que evita re-investigar el ticket o re-clasificar. Luego, según lo que diga:
+   - Si tiene **`phase: gather-context`** y todavía no hay `spec.md` → la pausa ocurrió **durante la búsqueda de antecedentes**. Abrir el ledger por el puntero del frontmatter y retomar así:
+     - **Recomputar los fingerprints** —`head`, `refs`, `flujos_activos`, `terminos`— y compararlos con los persistidos. Se re-corre **solo la unión** de las filas que indique la matriz de invalidación de `reference.md` → "Búsqueda de antecedentes"; las fuentes ya terminadas que ningún fingerprint invalidó **no se vuelven a correr**.
+     - **Un parcial no es un resultado.** Con fuentes pendientes, el estado se completa antes de clasificar: leerlo como "no había nada" es el mismo error que la búsqueda viene a evitar.
+     - **Un cierre pre-spec deja `busqueda: terminal` y no se ofrece como reanudable.** Es una decisión deliberada —el objetivo ya estaba cubierto—, y su ledger sobrevive como registro de qué se buscó y qué se encontró: sigue visible en el listado con ese estado, pero sin "siguiente paso".
+   - Si tiene **`gate_status: awaiting`** (o `changes-requested`) → el flujo está en el **gate de Jira**; ir a "Gate de Jira (esperando aprobación externa)" abajo.
+   - Si no (pausa común en `specify`/`clarify`, con `spec.md` ya escrita) → chequear si ya existe una rama del flujo (`git branch --list "*<id>*"`): si existe, la spec ya fue aprobada y `create-branch` ya corrió → confirmarlo con el usuario, posicionarse en esa rama (checkout seguro, como abajo) y retomar en `plan` (así `base_commit` se toma del HEAD correcto, no de la rama en la que estés posicionado). Si no hay rama, retomar desde `specify`/`clarify`, sin navegación de rama.
 
 ### Navegar a la rama correcta (checkout seguro)
 3. Parsear el header del `plan.md` elegido: `id`, `branch`, `base_commit`, `complexity`, `status` (y `wip_commit` si está).
@@ -833,6 +863,30 @@ adquiere ownership mientras decide qué estado observa.
    **Un `planned` con `tasks.md` presente retoma igual en el gate del plan.** Es la forma que escribía un flujo complejo antes de que existiera `plan-approved`, y también la que produce un *normal* reclasificado a complejo después de escribir las tasks: en ninguno de los dos casos el artefacto dice si el gate del plan llegó a darse. Ante esa duda se repite el gate, que es barato; inferir que ya se dio saltearía un gate que quizá nadie aprobó.
 
    Al retomar en `implement` (`tasks-ready`/`implementing`), **re-resolver el modo de ejecución** (override > `implement_mode` > preguntar; ver `implement` → "Modo de ejecución"). Las tasks ya marcadas `[x]` no se repiten en ningún modo.
+
+#### Flujos heredados: los que nacieron antes de la búsqueda de antecedentes
+
+Un flujo abierto **antes** de que `gather-context` buscara antecedentes llegaría a implementar sin que
+nadie haya mirado si el trabajo ya existía. La adopción es por estado, y su alcance es cerrado:
+
+| `status` al retomar | Qué pasa |
+|---|---|
+| `tasks-ready` · `implementing`, **sin** ledger de búsqueda | **ningún commit** hasta que la búsqueda haya corrido y su salida esté reconciliada |
+| `verified` o posterior | **explícitamente excluido.** El trabajo ya está hecho y verificado; bloquearlo no evita nada y solo frena un flujo terminado |
+
+**Qué significa reconciliar, y no queda a criterio de quien implementa.** Por salida de la matriz:
+
+| Salida de la búsqueda | Qué se reconcilia |
+|---|---|
+| **sin hallazgo** | desbloquea sin tocar ningún artefacto |
+| **relacionado** | se anota en el bloque declarativo y desbloquea; el alcance queda intacto |
+| **parcial acreditado** | **reabre el gate de la spec** con el objetivo **residual**, y las tasks que cubrían la parte ya hecha **se retiran** |
+| **total vigente** | **detiene el flujo** y ofrece cerrarlo; reformular exige confirmación humana |
+
+**La condición de desbloqueo es observable, no una declaración de buena fe:** `busqueda: complete`,
+**más** la salida registrada en el bloque declarativo, **más** —si hubo reapertura— la aprobación del
+gate correspondiente. Una marca de "reconciliado" no alcanza: es exactamente la forma que permite
+marcarlo hecho y seguir, que es el no-op más barato y deja el problema intacto.
 
 ### Guarda de retomado con bloques en vuelo
 
