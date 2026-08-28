@@ -1,7 +1,8 @@
 """Predicado: un registro por fila, en el mismo orden y sin duplicados; todo registro con commit y
-timestamp ISO-8601; observado no vacío en cada RED o GREEN_ALREADY, con exit code para evidencia
-ejecutable; adjudicación already_satisfied en cada GREEN_ALREADY y justificación en cada
-NOT_APPLICABLE; y ninguno de esos cinco campos aparece como columna de la tabla."""
+timestamp ISO-8601; evidencia dentro de su enum; observado no vacío en cada RED o GREEN_ALREADY, con
+exit code si la evidencia es ejecutable y sin forma de ejecutable si es manual; adjudicación
+already_satisfied en cada GREEN_ALREADY y justificación en cada NOT_APPLICABLE; y ninguno de esos
+cinco campos aparece como columna de la tabla."""
 
 from __future__ import annotations
 
@@ -36,6 +37,15 @@ def version_vigente(texto: str) -> str:
             break
         cuerpo.append(linea)
     return "\n".join(cuerpo)
+
+
+# Los tres tipos que corren un proceso, y el enum completo. Van en constantes porque el chequeo de
+# forma necesita las dos preguntas por separado: si la evidencia es ejecutable, y si es una evidencia
+# conocida. Con un solo `in {...}` incrustado, una evidencia desconocida —`Test`, `inspeccion` sin
+# tilde— salteaba el chequeo en silencio y la guarda informaba verde sobre un registro que debía
+# juzgar, apoyada en que otra guarda de la misma comprobación rechazara el enum.
+EVIDENCIA_EJECUTABLE = {"test", "build", "inspección"}
+EVIDENCIAS = EVIDENCIA_EJECUTABLE | {"manual"}
 
 
 def main() -> int:
@@ -80,12 +90,29 @@ def main() -> int:
             rc = 1
         observado = re.search(r"`observado: ([^`]*)`", registro)
         valor_observado = observado.group(1).strip() if observado else ""
-        if estados.get(identificador) in {"RED", "GREEN_ALREADY"} and not valor_observado:
-            print(f"GUARD:adjudicacion-obligatoria {identificador}: sin observado", file=sys.stderr)
+        evidencia = evidencias.get(identificador)
+        if evidencia not in EVIDENCIAS:
+            print(f"GUARD:adjudicacion-obligatoria {identificador}: evidencia fuera del enum: {evidencia!r}",
+                  file=sys.stderr)
             rc = 1
-        if valor_observado and evidencias.get(identificador) in {"test", "build", "inspección"} and not re.fullmatch(r"exit -?[0-9]+; .+", valor_observado):
-            print(f"GUARD:adjudicacion-obligatoria {identificador}: observado sin exit code", file=sys.stderr)
-            rc = 1
+        # La forma se exige solo donde el campo se exige. `NOT_APPLICABLE` y `BLOCKED` declaran que no
+        # hubo medición aplicable o que no se pudo hacer; pedirle un código de salida a un valor que
+        # alguien dejó ahí como nota contradice el texto que dice que ahí el campo no se exige.
+        if estados.get(identificador) in {"RED", "GREEN_ALREADY"}:
+            if not valor_observado:
+                print(f"GUARD:adjudicacion-obligatoria {identificador}: sin observado", file=sys.stderr)
+                rc = 1
+            elif evidencia in EVIDENCIA_EJECUTABLE and not re.fullmatch(r"exit -?[0-9]+; .+", valor_observado):
+                print(f"GUARD:adjudicacion-obligatoria {identificador}: observado sin exit code", file=sys.stderr)
+                rc = 1
+            elif evidencia == "manual" and valor_observado.startswith("exit "):
+                # Una observación humana no tiene proceso del que leer un código, así que la forma
+                # ejecutable acá solo puede venir de copiar el marcador de relleno de la plantilla o
+                # la fila de al lado. Sin esta rama, `manual` era el único tipo sin forma exigida —y
+                # el más expuesto a escribirse de memoria, que es el defecto que el campo cierra.
+                print(f"GUARD:adjudicacion-obligatoria {identificador}: observado de evidencia manual con forma de ejecutable",
+                      file=sys.stderr)
+                rc = 1
         if estados.get(identificador) == "GREEN_ALREADY" and "`adjudicación: already_satisfied`" not in registro:
             print(
                 f"GUARD:adjudicacion-obligatoria {identificador}: GREEN_ALREADY sin adjudicación already_satisfied",

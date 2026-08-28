@@ -158,14 +158,34 @@ y `NOT_APPLICABLE` no.
 se ejecutó; no se exige en `NOT_APPLICABLE` ni en `BLOCKED`, porque el primero declara que no hay
 medición semánticamente aplicable y el segundo que no se pudo establecerla. En evidencia `test`,
 `build` o `inspección`, el valor abre con `exit <entero>;`, donde `<entero>` sigue el dominio
-`-?[0-9]+`: el signo opcional conserva el código negativo de un proceso terminado por señal. El
-validador comprueba presencia y forma, no que el estado sea coherente con ese código: una inspección
-puede salir con cero y no coincidir con el valor concreto que espera.
+`-?[0-9]+`: el signo opcional conserva el código negativo de un proceso terminado por señal. En
+evidencia `manual` no hay proceso del que leer un código, así que el valor es la observación en texto
+y la forma ejecutable ahí se **rechaza**: copiada del marcador de la plantilla o de la fila de al
+lado, sería el único cuadrante sin ninguna forma exigida.
 
-Un contrato congelado antes de esta regla no se repara re-midiendo: el código anterior ya no está
-disponible y escribir un observable reconstruido repetiría el defecto. La fila vuelve al diseño.
+**La forma se exige donde el campo se exige, y no más allá.** En `NOT_APPLICABLE` y `BLOCKED` un valor
+presente es una nota, no una medición: pedirle un código de salida contradiría el mismo párrafo que
+dice que ahí el campo no se exige.
 
-**Todo registro lleva `commit` y `timestamp`; los estados ejecutados llevan además `observado`.** El `commit` es lo que
+**Lo que este campo compra, dicho sin exagerar.** El validador comprueba **presencia y forma**, y
+nada más. No comprueba que el estado sea coherente con el código —una inspección puede salir con cero
+y no coincidir con el valor que espera—, y tampoco comprueba que el texto provenga de la corrida que
+`commit` y `timestamp` describen: quien escribe un `RED` de memoria puede escribir un observable
+plausible al lado con el mismo esfuerzo. Lo que cambia es el **costo** de fabricarlo y la superficie
+donde la mentira queda escrita, no la imposibilidad de mentir. Es la misma distinción que gobierna el
+sellado en este documento —integridad no es contenido—, y decirla acá evita que la regla prometa una
+garantía que su guarda no da.
+
+**Un contrato congelado antes de esta regla se repara re-midiendo, no volviendo al diseño.** El
+registro lleva `commit` justamente para eso: el código que se midió sigue disponible, y
+`ownership.md` → «Re-baseline en worktree aislado» es el procedimiento que lo recupera —
+`git worktree add --detach` sobre ese SHA, se ejecuta solo esa fila, se captura el observable—. Es
+`VERIFICATION_DEFECT`, no `DESIGN_GAP`: el requisito está intacto y lo que falta es un campo de la
+medición, que es exactamente lo que esa clase existe para resolver. Lo prohibido es **reconstruir el
+observable de memoria**; re-ejecutar la fila sobre el commit que su propio registro declara no es
+reconstruirlo, es medirlo.
+
+**Todo registro lleva `commit` y `timestamp`**, resuelto o no el estado. El `commit` es lo que
 convierte "antes" en algo verificable: sin él, un baseline leído más tarde no dice qué código midió.
 El `timestamp`, en ISO-8601, ordena las mediciones y delata la copiada de una versión anterior en
 vez de re-ejecutada.
@@ -360,7 +380,7 @@ fallido.
 | 1 | **existe un contrato** | el work order no trae tabla. |
 | 2 | **versión vigente identificada** | falta la numeración, hay un salto en la serie, o la cadena de integridad no cierra. |
 | 3 | **cobertura bidireccional** | queda un requisito en alcance sin fila, o una fila sin requisito. |
-| 4 | **campos obligatorios presentes** | falta una columna o sobra una; un valor cae fuera de los enums; una fila no tiene registro de baseline, o el registro no tiene `commit` y `timestamp`; falta `observado` en `RED` o `GREEN_ALREADY`; un `GREEN_ALREADY` sin `adjudicación` o un `NOT_APPLICABLE` sin `justificación`. |
+| 4 | **campos obligatorios presentes** | falta una columna o sobra una; un valor cae fuera de los enums; una fila no tiene registro de baseline, o el registro no tiene `commit` y `timestamp`; una `Evidencia` cae fuera de su enum; falta `observado` en `RED` o `GREEN_ALREADY`, o el que hay no cumple la forma que su evidencia exige; un `GREEN_ALREADY` sin `adjudicación` o un `NOT_APPLICABLE` sin `justificación`. |
 | 5 | **baseline resuelto en toda fila** | alguna fila quedó sin estado, o en `BLOCKED`. |
 | 6 | **pertinencia** | una fila no establece los dos insumos exigidos en «Pertinencia: poder discriminante por fila»; el contrafactual responde que sí; o la unión de las subafirmaciones declaradas no cubre la afirmación entera. |
 
