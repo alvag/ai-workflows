@@ -18,6 +18,36 @@ argument-hint: "[<objetivo|ticket multi-repo> | retoma <id> | estado | cierra <i
 disable-model-invocation: true
 ---
 
+<!-- parada-manual-only:inicio -->
+> **Parada por procedencia — antes de inspeccionar, crear artefactos o mutar estado.** El frontmatter
+> declara `disable-model-invocation: true`, que es una clave de Claude Code y **no viaja a la otra
+> familia**. Esta cláusula es la capa portable de ese control: si la procedencia de esta ejecución no
+> está admitida en la matriz, **detente y dilo**, antes de leer el repositorio, escribir en `.plans/`
+> o `.specify/`, crear una rama o despachar un worker.
+>
+> | Procedencia | Resultado |
+> |---|---|
+> | un mensaje con la **sintaxis explícita de invocación** de cualquiera de las dos familias (`/sdd-orchestrator` en Claude, `$sdd-orchestrator` en Codex), **lo emita una persona o una skill que despacha por esa vía** | ejecuta |
+> | ejecución **delegada** por un caller admitido y nombrado en esta misma cláusula | ejecuta |
+> | cualquier otra cosa —incluido un pedido en prosa que coincida con los triggers genéricos ("orquesta esto", "reparte el trabajo entre los repos")— | se detiene |
+>
+> **(a) Leer no es ejecutar.** Otra skill puede **leer** estos archivos para citar el contrato, copiar
+> una plantilla o resolver un puntero: eso no es una activación y no dispara nada. Lo que la segunda
+> fila admite es otra cosa —una **ejecución delegada**, donde un agente corre los pasos de esta skill
+> sobre un flujo ya escrito—, y esa sí está admitida.
+>
+> **(b) Callers admitidos: ninguno.** Hoy **ninguna** skill del ecosistema ejecuta a `sdd-orchestrator` de
+> forma delegada — se comprobó en el árbol, y la fila se escribe igual en vez de omitirse, porque una
+> matriz con una fila ausente se lee como un olvido. Mientras esta lista esté vacía, toda ejecución
+> legítima entra por la primera fila. **Agregar un caller exige gate humano**: se nombra acá antes de
+> que exista el despacho, nunca al revés.
+>
+> **(c) Lo que esta cláusula no promete.** No garantiza que un harness ajeno la respete: es texto
+> normativo, no un mecanismo del runtime, y un cliente que ignore la metadata de invocación también
+> puede ignorar esto. Y **entra en vigor en la siguiente activación** desde una instalación
+> actualizada: una sesión que ya cargó este archivo sigue corriendo la versión que cargó.
+<!-- parada-manual-only:fin -->
+
 # sdd-orchestrator — SDD multi-repo
 
 Capa de **orquestación** sobre `sdd-flow`. Coordina un cambio con **un objetivo común que se reparte entre varios repos git** ubicados bajo una carpeta contenedora (típicamente no es un repo git: un `backend/` con microservicios).

@@ -15,10 +15,44 @@ argument-hint: "[init | <ticket|descripción> | implement .plans/<id>/ | continu
 # vía Skill tool (la skill queda solo-slash: /sdd-flow). Se mantiene a propósito:
 # los triggers de esta skill son genéricos ("arma el plan", "implementa") y sin el
 # flag competiría por el auto-trigger. Consecuencia asumida: otras skills y
-# subagentes NO pueden invocarla con el Skill tool — sdd-orchestrator delega
-# leyendo estos archivos (ver su Fase 2).
+# subagentes NO pueden invocarla con el Skill tool — los callers admitidos delegan
+# leyendo estos archivos y ejecutando la Vía B. Están enumerados en la cláusula de
+# parada de abajo, que es la sede: son tres, no solo sdd-orchestrator.
 disable-model-invocation: true
 ---
+
+<!-- parada-manual-only:inicio -->
+> **Parada por procedencia — antes de inspeccionar, crear artefactos o mutar estado.** El frontmatter
+> declara `disable-model-invocation: true`, que es una clave de Claude Code y **no viaja a la otra
+> familia**. Esta cláusula es la capa portable de ese control: si la procedencia de esta ejecución no
+> está admitida en la matriz, **detente y dilo**, antes de leer el repositorio, escribir en `.plans/`
+> o `.specify/`, crear una rama o despachar un worker.
+>
+> | Procedencia | Resultado |
+> |---|---|
+> | un mensaje con la **sintaxis explícita de invocación** de cualquiera de las dos familias (`/sdd-flow` en Claude, `$sdd-flow` en Codex), **lo emita una persona o una skill que despacha por esa vía** | ejecuta |
+> | ejecución **delegada** por un caller admitido y nombrado en esta misma cláusula | ejecuta |
+> | cualquier otra cosa —incluido un pedido en prosa que coincida con los triggers genéricos ("arma el plan", "implementa", "desglosa en tareas")— | se detiene |
+>
+> **(a) Leer no es ejecutar.** Otra skill puede **leer** estos archivos para citar el contrato, copiar
+> una plantilla o resolver un puntero: eso no es una activación y no dispara nada. Lo que la segunda
+> fila admite es otra cosa —una **ejecución delegada**, donde un agente corre los pasos de esta skill
+> sobre un flujo ya escrito—, y esa sí está admitida.
+>
+> **(b) Callers admitidos, hoy tres.** El agente del **fan-out** de `sdd-orchestrator`
+> (`sdd-orchestrator/SKILL.md` → Fase 2, paso 3); el **modo inline** de esa misma fase, donde el
+> orquestador ejecuta la Vía B en su propia sesión, sin prefijo ni subagente; y el **subagente de
+> implement** de `sdd-pr-feedback` (`sdd-pr-feedback/reference.md` → "Delegación a `sdd-flow` (prompt del subagente)"). Los
+> tres ejecutan la **Vía B** sobre un `.plans/<id>/` ya escrito. `sdd-incident-intake` **no** es un
+> caller delegado: despacha emitiendo el prefijo, así que entra por la primera fila — y es la razón
+> por la que esa fila no dice "del usuario". **Agregar un caller exige gate humano**: se nombra acá
+> antes de que exista el despacho, nunca al revés.
+>
+> **(c) Lo que esta cláusula no promete.** No garantiza que un harness ajeno la respete: es texto
+> normativo, no un mecanismo del runtime, y un cliente que ignore la metadata de invocación también
+> puede ignorar esto. Y **entra en vigor en la siguiente activación** desde una instalación
+> actualizada: una sesión que ya cargó este archivo sigue corriendo la versión que cargó.
+<!-- parada-manual-only:fin -->
 
 # sdd-flow — Spec-Driven Development portable
 

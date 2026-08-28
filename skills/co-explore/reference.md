@@ -147,13 +147,17 @@ Dos prompts: uno para la **ronda 0** (postura independiente) y otro para cada **
 Ambos read-only. Estructura XML compacta (operador, no colaborador), escritos a archivo con Write
 (nunca inline).
 
-**Prompt de debate — ronda 0 (postura independiente):**
+#### Prompt de debate — ronda 0
+
+Postura independiente: cada worker la forma sin ver la del otro.
 
 
 El prompt vive en `assets/prompts/debate-round-0.md` — es la **entrada exacta** del worker y se escribe a archivo con la tool Write. Placeholders que hay que sustituir antes de despachar: `{constraints}`, `{working_dir}`.
 
 
-**Prompt de debate — cruce (rondas 1..N):**
+#### Prompt de debate — cruce
+
+Se usa en cada ronda de cruce (1..N).
 
 
 El prompt vive en `assets/prompts/debate-cross.md` — es la **entrada exacta** del worker y se escribe a archivo con la tool Write. Placeholders que hay que sustituir antes de despachar: `{constraints}`.

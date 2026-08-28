@@ -317,7 +317,7 @@ migración del manifest vino a cerrar.
 El objetivo (regla 3) es que el PR quede con **exactamente un commit**. Tras el implement (cambios
 en el working tree, sin commitear):
 
-> **Reglas del mensaje:** el commit sigue las reglas de `sdd-flow` (su `reference.md` → "Construcción
+> **Reglas del mensaje:** el commit sigue las reglas de `sdd-flow` (`sdd-flow/reference.md` → "Construcción
 > del mensaje de commit"): scope del ticket, subject **en español**, **sin** `Co-Authored-By` ni
 > firmas, y heredoc para el body multilínea. Abajo solo se detalla la **mecánica** (amend/squash a un
 > commit + force-push); las reglas del mensaje no se duplican acá.

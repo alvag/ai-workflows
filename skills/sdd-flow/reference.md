@@ -19,6 +19,7 @@ Detalle operativo de la skill `sdd-flow`. El `SKILL.md` apunta acá cuando neces
 - [Plantilla de constitution](#plantilla-de-constitution)
 - [Plantilla de spec](#plantilla-de-spec)
 - [Producción del contrato de verificación](#producción-del-contrato-de-verificación)
+- [Casos de routing al cambiar un `description`](#casos-de-routing-al-cambiar-un-description)
 - [Plantilla de plan](#plantilla-de-plan)
 - [Plantilla de plan combinado (trivial)](#plantilla-de-plan-combinado-trivial)
 - [Plantilla de `## Verify`](#plantilla-de--verify)
@@ -2131,6 +2132,10 @@ sin comprobar, con su razón; los candidatos **descritos** —"un flujo archivad
 
 ## Producción del contrato de verificación
 
+**Si este flujo modifica el `description` de una skill**, el contrato lleva además las filas de
+routing que exige "Casos de routing al cambiar un `description`" (sección propia de este archivo).
+Si no lo modifica, esa sección no aplica y no hace falta leerla.
+
 El contrato nace de medir el código sin el cambio, no de declarar un estado esperado. Este
 procedimiento rige en toda corrida, sin excepción por complejidad: también en trivial; lo que escala
 es la cantidad de filas, no la obligación de producir evidencia.
@@ -2259,6 +2264,45 @@ La referencia solo-lectura de la orquestación multi-repo se proyecta fuera del 
 las guardas canónicas. Su valor no pertenece a los enums del contrato local y su autoridad vive en
 el contrato de integración; validarla como una fila local rompería planes vigentes de la
 orquestación.
+
+## Casos de routing al cambiar un `description`
+
+Aplica **solo** cuando un flujo modifica el `description` de una skill instalable; en cualquier otro
+flujo esta sección no se lee. El `description` es el **router** que decide qué prompt activa qué
+skill, y ningún validador de esquema mide esa conducta: un `description` puede ser estructuralmente
+válido y solapar intents con otra skill.
+
+Un flujo así agrega al contrato de verificación, como **filas propias**, los casos de routing —con
+`Evidencia` dentro del enum existente, `inspección` o `manual`, sin ampliarlo—:
+
+- **3-5 prompts que deben activar** la skill (*should-trigger*).
+- **2-3 near-misses materiales** que **no** deben activarla. Un near-miss no relacionado no cumple:
+  tiene que ser un prompt que plausiblemente cae en esta skill y no debe.
+- **La adjudicación se hace leyendo solo el `description`**, sin el cuerpo del `SKILL.md`, sin el
+  `README.md` y sin el contexto de la conversación que lo escribió. Ese es el único insumo que el
+  router tiene en tiempo real; adjudicar con más es medir otra cosa.
+- **Cada near-miss nombra a quién debería quedarse con ese prompt.** Si el dueño es **otra skill**,
+  el prompt se adjudica **contra los dos `description` por separado** y la fila registra las dos
+  lecturas: que uno gane no prueba que el otro pierda. Si el dueño es un **flujo directo** —ninguna
+  skill—, se adjudica contra el `description` modificado y se escribe por qué ninguna debe
+  quedárselo.
+- **Una fila de longitud**, porque el margen contra el tope de 1024 del spec es estrecho y una
+  edición del `description` puede cruzarlo sin que el flujo lo note. El chequeo existe fuera
+  —`skills-ref validate` verifica el esquema, tope incluido—, pero corre aparte del contrato: la fila
+  lo trae **adentro del flujo que edita el `description`**, que es donde el cruce se produce. Su
+  oráculo entra en el esquema de seis columnas **sin ampliarlo**: `Comando/observación` es el
+  comando que carga el frontmatter y emite la longitud del **scalar YAML ya resuelto** —no la del
+  texto plegado del fuente, que cuenta saltos de línea e indentación que el scalar no tiene—, y
+  `Esperado` es **≤1024**. El **conteo exacto no va en la fila**: ninguna de las seis columnas lo
+  admite y `Baseline` es un enum cerrado. Es un resultado observado, así que va en la columna
+  `Evidencia` de `## Verify` al ejecutarla. **No se introduce un umbral de margen** por debajo de
+  1024: el margen medido —`co-explore` en 1019, `cross-implement` en 1011— es el hecho que motiva la
+  fila, no un límite nuevo.
+
+**`skills-ref validate` no sustituye a esta sección.** Sigue siendo el chequeo **estructural** —que
+`name` case con el directorio, que `description` no exceda el tope, que el frontmatter tenga la
+forma del spec— y se corre igual. Lo que no puede ver es la **conducta**: un `description` bien
+formado que se roba los prompts de otra skill pasa su validación sin una sola advertencia.
 
 ## Plantilla de plan
 
