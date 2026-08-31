@@ -1,10 +1,10 @@
 # Corridas delegadas en vuelo
 
-**Sede canónica: `skills/cross-review/corridas-en-vuelo.md`.** Las otras seis copias —una por cada
-skill que despacha— son **generadas** desde este archivo con
-`python3 scripts/verificar-sobre-en-vuelo.py --sincronizar` y **no se editan a mano nunca**: una copia
-editada a mano es una divergencia silenciosa, y la única defensa contra eso es que la fuente sea una
-sola.
+**Sede única: este archivo.** Las seis skills que despachan lo leen por su ruta
+(`skills/cross-review/corridas-en-vuelo.md`); no hay copias. Hubo siete, byte-idénticas y mantenidas
+por un generador, para que cada skill fuera autocontenida — pero la autocontención ya estaba rota:
+`co-explore` y `cross-implement` mandaban leer esta sede por ruta cruzada mientras tenían su copia al
+lado. `--ac 13` verifica que no reaparezca ninguna.
 
 Un conductor despacha trabajo delegado, el usuario le escribe mientras ese trabajo corre, el conductor
 responde a lo que se le preguntó y **deja de estar pendiente**. La continuidad de la corrida vivía en

@@ -170,7 +170,7 @@ existen a la vez, y por eso es la única que los ordena: la bitácora registra e
 despacho no llegue a ocurrir, y el sobre no puede nacer después de un worker que ya está corriendo.
 
 Campos del sobre, transiciones, sonda por turno, cosecha y condiciones del retiro:
-`corridas-en-vuelo.md`, hermano de este archivo. Es la regla normativa; acá solo se enumera dónde
+`skills/cross-review/corridas-en-vuelo.md`, la **sede única** del contrato. Es la regla normativa; acá solo se enumera dónde
 aplica.
 
 ## Red flags — detente y reconsidera

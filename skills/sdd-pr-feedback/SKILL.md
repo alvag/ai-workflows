@@ -67,7 +67,7 @@ informando su estado. El punto de despacho propio es uno:
   `.plans/<id>/` y frena antes de commitear
 
 Campos del sobre, transiciones, sonda por turno, cosecha y condiciones del retiro:
-`corridas-en-vuelo.md`, hermano de este archivo. Es la regla normativa; acá solo se enumera dónde
+`skills/cross-review/corridas-en-vuelo.md`, la **sede única** del contrato. Es la regla normativa; acá solo se enumera dónde
 aplica. Los cross-review de los Pasos 3 y 4 los despacha `cross-review`, que escribe el sobre de su
 propia corrida.
 

@@ -88,7 +88,7 @@ estado. Los puntos de despacho propios son dos:
 - el reviewer de la **revisión final de diff**, dentro del gate de revisión manual
 
 Campos del sobre, transiciones, sonda por turno, cosecha y condiciones del retiro:
-`corridas-en-vuelo.md`, hermano de este archivo. Es la regla normativa; acá solo se enumera dónde
+`skills/cross-review/corridas-en-vuelo.md`, la **sede única** del contrato. Es la regla normativa; acá solo se enumera dónde
 aplica. Invocar `co-explore`, `cross-review` o los modos `cross` y `workers` (que delegan en
 `cross-implement`) **no** suma puntos propios: cada una de esas skills escribe el sobre de su propia corrida.
 
