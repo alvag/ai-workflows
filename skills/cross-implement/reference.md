@@ -680,8 +680,8 @@ snapshot es **local al intento** y no amplía el esquema del recibo.
 
 | Situación | Texto |
 |---|---|
-| una fuente cambió entre la captura y el lanzamiento | `snapshot invalidado: <ruta> cambio entre la captura y el lanzamiento` |
-| la revalidación del recibo no cierra | `precondicion de recibo fallida: <campo> no coincide con el recibo aprobado` |
+| una fuente cambió entre la captura y el lanzamiento | `snapshot invalidado: <ruta> cambió entre la captura y el lanzamiento` |
+| la revalidación del recibo no cierra | `precondición de recibo fallida: <campo> no coincide con el recibo aprobado` |
 
 **Riesgo residual, declarado.** Entre la recomprobación y el lanzamiento queda una ventana que, sin un
 lock que cubra comparación, promoción y lanzamiento, no se cierra. Se declara en vez de negarla con un
