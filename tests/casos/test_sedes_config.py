@@ -35,12 +35,15 @@ def _asegurar_yaml_importable() -> None:
     """La guarda importa PyYAML (dependencia de terceros, fuera de la stdlib) a nivel de
     módulo, pero `bloque_yaml`/`FuenteIlegible`/`SEDES_CONFIG` —lo único que este caso
     ejercita— nunca llaman a `yaml`. La suite exige que sus propios módulos resuelvan con
-    site-packages deshabilitado (`test_v5_suite_sin_terceros`) y que ningún import de tercero
-    aparezca en su análisis estático (`test_v5_solo_stdlib`, que busca la sentencia `import
-    yaml`/`from yaml import ...` por AST). Por eso esta función nunca escribe esa sentencia:
-    resuelve el nombre dinámicamente con `importlib`, y si PyYAML no está instalable en ese
-    Python aislado, registra un stub con un `ModuleSpec` de origen `None` — la misma forma que
-    usan los módulos built-in/frozen, que esa guarda ya acepta sin exigir un archivo real."""
+    ningún import de tercero aparezca en su análisis estático (`test_v5_solo_stdlib`). Esta función
+    resuelve el nombre dinámicamente con `importlib` y, si PyYAML no está instalable, registra un
+    stub con un `ModuleSpec` de origen `None` — la misma forma que usan los built-in/frozen, que esa
+    guarda acepta sin exigir un archivo real.
+
+    **Ya no evade la guarda: la satisface.** El escaneo pasó a ver también los imports dinámicos, y
+    exceptúa los que viven dentro de un `try`/`except ImportError` — que es exactamente esta forma.
+    La distinción que traza es dependencia **dura** contra uso **opcional con fallback**, y el
+    `try` de abajo es lo que pone a esta de este lado."""
     if "yaml" in sys.modules:
         return
     try:

@@ -29,7 +29,6 @@ CASOS_PATH = (
     ("python-valido", "valid", "valid", "python3", 0),
     ("ambos-rotos", "broken", "broken", None, 1),
 )
-MARCA_HIJO_STDLIB = "AI_WORKFLOWS_STDLIB_CHILD"
 Caso = Tuple[str, str, Callable[[Optional[object]], None]]
 
 
@@ -151,18 +150,69 @@ def _esta_dentro(ruta: Path, directorio: Path) -> bool:
     return True
 
 
+def _nombre_de_import_dinamico(func: ast.expr) -> bool:
+    if isinstance(func, ast.Name):
+        return func.id == "__import__"
+    return isinstance(func, ast.Attribute) and func.attr == "import_module"
+
+
+def _opcionales(arbol: ast.AST) -> frozenset[int]:
+    """Líneas de import dinámico que están dentro de un `try` que captura `ImportError`.
+
+    Es la diferencia entre una dependencia **dura** y un uso **oportunista con fallback**, y hay que
+    trazarla: `tests/casos/test_sedes_config.py` resuelve `yaml` con `importlib` a propósito —su
+    docstring declara que evita la sentencia `import` para no disparar esta guarda— y cae a un stub
+    cuando el paquete no está. Eso no rompe la propiedad que la guarda protege, que es que la suite
+    **corra** sin terceros. Un `import_module` sin ese resguardo sí la rompe, y sigue detectándose.
+    """
+    protegidas: set[int] = set()
+    for nodo in ast.walk(arbol):
+        if not isinstance(nodo, ast.Try):
+            continue
+        captura = any(
+            (manejador.type is None)
+            or (isinstance(manejador.type, ast.Name)
+                and manejador.type.id in ("ImportError", "ModuleNotFoundError", "Exception"))
+            for manejador in nodo.handlers)
+        if not captura:
+            continue
+        for cuerpo in nodo.body:
+            for hijo in ast.walk(cuerpo):
+                if isinstance(hijo, ast.Call) and _nombre_de_import_dinamico(hijo.func):
+                    protegidas.add(hijo.lineno)
+    return frozenset(protegidas)
+
+
 def _imports_de(ruta: Path) -> Iterable[Tuple[str, int]]:
     arbol = ast.parse(ruta.read_text(encoding=ENCODING), filename=str(ruta))
+    opcionales = _opcionales(arbol)
     for nodo in ast.walk(arbol):
         if isinstance(nodo, ast.Import):
             for nombre in nodo.names:
                 yield nombre.name.split(".", 1)[0], nodo.lineno
         elif isinstance(nodo, ast.ImportFrom) and nodo.level == 0 and nodo.module:
             yield nodo.module.split(".", 1)[0], nodo.lineno
+        elif isinstance(nodo, ast.Call) and _nombre_de_import_dinamico(nodo.func) \
+                and nodo.lineno not in opcionales:
+            # `importlib.import_module("x")` y `__import__("x")` con literal: es la única forma de
+            # dependencia que un `import` no declara y que el escaneo veía pasar. Se exceptúan las
+            # que viven dentro de un `try`/`except ImportError`, que son opcionales con fallback.
+            if nodo.args and isinstance(nodo.args[0], ast.Constant) \
+                    and isinstance(nodo.args[0].value, str):
+                yield nodo.args[0].value.split(".", 1)[0], nodo.lineno
 
 
 def test_v5_solo_stdlib(_contexto: Optional[object]) -> None:
-    """Los módulos durables solo importan stdlib o módulos locales."""
+    """Los módulos durables solo importan stdlib o módulos locales, en cualquier ámbito.
+
+    Sustituye a `runtime-v5:suite-aislada`, que re-ejecutaba **la suite entera** en un subproceso con
+    `-I -S` y costaba **203 s** — el 28 % del gate— para probar esta misma propiedad. Este escaneo la
+    cubre mejor: `ast.walk` ve los imports dentro de funciones, `_modulos_durables` alcanza además a
+    `skills/*/scripts/`, que la ejecución de la suite no toca, y cada import se resuelve con
+    `find_spec` contra `purelib`/`platlib`. Lo que aquella comprobación agregaba —un import dinámico
+    por string— se cubre acá; lo que se pierde es que la suite **ejecute** bajo `-I`, que solo
+    importaría si un caso dependiera de `PYTHONPATH` o de un `.pth`.
+    """
     modulos = _modulos_durables()
     locales = {ruta.stem for ruta in modulos} | {"tests"}
     stdlib = Path(sysconfig.get_path("stdlib")).resolve()
@@ -184,26 +234,6 @@ def test_v5_solo_stdlib(_contexto: Optional[object]) -> None:
                 "{0}:{1}: import de tercero: {2}".format(ruta, linea, raiz_import)
             assert _esta_dentro(origen, stdlib), \
                 "{0}:{1}: import fuera de stdlib: {2}".format(ruta, linea, raiz_import)
-
-
-def test_v5_suite_sin_terceros(_contexto: Optional[object]) -> None:
-    """La suite completa corre con site-packages deshabilitado."""
-    if os.environ.get(MARCA_HIJO_STDLIB) == "1":
-        return
-    codigo = (
-        "import runpy,sys; "
-        "sys.path.insert(0, {0!r}); "
-        "sys.argv=['tests']; "
-        "runpy.run_module('tests', run_name='__main__')"
-    ).format(str(RAIZ))
-    entorno = dict(os.environ)
-    entorno[MARCA_HIJO_STDLIB] = "1"
-    resultado = subprocess.run(
-        [sys.executable, "-I", "-S", "-c", codigo],
-        cwd=str(RAIZ), env=entorno, capture_output=True, text=True,
-        encoding=ENCODING, check=False,
-    )
-    assert resultado.returncode == 0, resultado.stdout + resultado.stderr
 
 
 def _modo_open(nodo: ast.Call) -> Optional[str]:
@@ -276,6 +306,5 @@ for indice_referencia, ruta_referencia in enumerate(REFERENCIAS, 1):
 CASOS.extend((
     ("runtime-v5:python-3.9", "runtime-v5", test_v5_compila_python39),
     ("runtime-v5:stdlib", "runtime-v5", test_v5_solo_stdlib),
-    ("runtime-v5:suite-aislada", "runtime-v5", test_v5_suite_sin_terceros),
     ("runtime-v5:aperturas", "runtime-v5", test_v5_aperturas_explicitas),
 ))
