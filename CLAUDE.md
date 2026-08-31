@@ -189,11 +189,11 @@ La **regla de entrada** gobierna la lista de abajo, y por eso va antes que ella.
 **Por qué existe.** Medido el 2026-08-30: de las 4.370 líneas de `scripts/`, **3.008 (69 %)** son dos
 verificadores —`verificar-sobre-en-vuelo.py` y `verificar-vistas-config.py`— cuyo trabajo es comprobar
 que **copias de un mismo dato** no divergieron, no que una skill funcione. Correr esa batería ante un
-cambio de prosa hace pagar la deuda de una duplicación que ese cambio no introdujo, y no es barato:
-dos de las cinco invocaciones obligatorias corren la misma suite —`--ac 16` invoca `python3 -m tests`—
-y dos están **rojas en `main`**, así que cada corrida termina en un juicio a mano sobre si el rojo es
-el de siempre. La lista de abajo no se toca: lo que cambia es que **se lee para decidir si algo corre,
-no para correrlo todo**.
+cambio de prosa hace pagar la deuda de una duplicación que ese cambio no introdujo, y no era barato:
+el gate obligatorio completo medía **804 s** —de los cuales 793 eran **una sola suite corrida dos
+veces**, porque `--ac 16` invocaba `python3 -m tests`—. Tras retirar `--ac 16` y sellar el baseline
+queda en **405 s**, y en el caso ordinario de esta regla, **cero**. La lista de abajo se lee para
+decidir si algo corre, no para correrlo todo.
 
 **La matriz de superficies.** Es la **sede operativa** del disparo: si el cambio no toca ninguna de
 estas filas, no corre nada. Los bullets de más abajo conservan el **fundamento** de cada guarda —por
@@ -229,7 +229,7 @@ Al crear o editar skills, seguí las buenas prácticas de agentskills.io (refere
 - `--ac 17` cubre el contrato del manifest de corrida en `skills/cross-review/reference.md` y su cierre en los cuatro productores (`co-explore`, `cross-review`, `cross-implement`, `bitbucket-code-review`).
 - **Un retiro corre la batería completa, no el subconjunto documentado.** `verificar-sobre-en-vuelo.py` tiene **20 modos `--ac`** y las unidades de arriba nombran **tres**; los otros diecisiete existen, corren y pueden ponerse rojos sin que ningún procedimiento los invoque. Al **retirar** algo —una vía, un modo, una capacidad— hay que correr los veinte (`for m in 1 1b 2 2b 3 3b 4 5 6 7 8 9 10 11 12 13 14 15 16 17`), porque retirar es la operación que **arrastra cláusulas ajenas**: el texto que rodea a lo que se va se lleva puesto lo que no era suyo, y lo que queda **se lee perfecto**. Ya pasó: el retiro del transporte por panes borró una cláusula de doctrina que vivía dentro de un párrafo sobre esa vía, `--ac 1b` la cazó en el acto, y estuvo roja **noventa commits** porque nadie la corría.
 - Las **tres** invocaciones de `verificar-sobre-en-vuelo.py` que se leen por código de salida son `--ac 12`, `--ac 13` y `--autotest`: **0 en verde**. Las de `verificar-vistas-config.py` (sin banderas) y `python3 -m tests`, lo mismo.
-- **`--ac 16` salió de las obligaciones**, y sigue disponible para quien lo quiera correr. No verificaba nada propio: ejecutaba `verificar-vistas-config.py` y `python3 -m tests` —las dos ya obligatorias por su cuenta— más la comparación de `skills-ref` contra la base, que ahora vive en la fila del frontmatter de la matriz. Medido: **719 s**, contra **560 s** de la suite que volvía a ejecutar. Era la mitad del costo de un gate para una sola propiedad que cabe en una fila de tabla.
+- **`--ac 16` salió de las obligaciones**, y sigue disponible para quien lo quiera correr. No verificaba nada propio: ejecutaba `verificar-vistas-config.py` y `python3 -m tests` —las dos ya obligatorias por su cuenta— más la comparación de `skills-ref` contra la base, que ahora vive en la fila del frontmatter de la matriz. Medido en verde, sin carga concurrente: **398 s**, contra **395 s** de la suite que volvía a ejecutar — es decir, era la suite **más tres segundos propios**. Corría la mitad del costo del gate para una sola propiedad que cabe en una fila de tabla. Los otros diecinueve modos `--ac` juntos tardan **2 s**.
 - La suite durable `python3 -m tests` sustituye las auditorías y el reporte del arnés retirado: un
   código `0` acredita el catálogo migrado, las guardas portadas y las cinco dimensiones del oracle
   durable. La evidencia dual histórica vive sellada fuera del corpus y no se regenera.
