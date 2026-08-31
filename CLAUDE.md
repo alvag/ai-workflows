@@ -218,10 +218,19 @@ lugar.
 | `corridas-en-vuelo.md` | `verificar-sobre-en-vuelo.py --ac 13` | **código de salida** |
 | una **receta de despacho**, una marca `despacho:`, la tabla de política de aislamiento, o el inventario de puntos de despacho | `--ac 12` **y** el verificador de aislamiento (`correccion`) | **código de salida** |
 | el contrato del manifest de corrida, sus autoridades o su cierre en los cuatro productores | `--ac 17` | su salida |
-| cualquier `.py` bajo `scripts/`, o `tests/` | `python3 -m tests` **y** el autotest del verificador que tocaste | **código de salida** |
+| `tests/`, `skills/*/scripts/`, `skills/knowledge-vault/`, o `scripts/verificar-vistas-config.py` | `python3 -m tests` | **código de salida** |
+| otro `.py` bajo `scripts/` — los verificadores del repo | el `--autotest` del verificador que tocaste | **código de salida** |
 | la regla 2 o `medir-techo.py` | `medir-techo.test.py` y sus dos autotests (`--autotest-banda`, `--autotest-dominio`) | **código de salida** |
 | **retirar** una vía, un modo o una capacidad | los veinte modos `--ac` (ver el bullet del retiro) | **código de salida** |
 | cerrar `implement` con andamiaje en el diff | `python3 scripts/medir-techo.py <base_commit>` | código de salida |
+
+**Por qué la suite durable se parte en dos filas.** `python3 -m tests` corre siempre entero cuando
+se lo invoca —su contrato no cambió, y correr subconjuntos ya costó una vez que el comportamiento
+destructivo del vault se degradara sin que nadie lo notara—; lo que se afina es **cuándo la matriz lo
+exige**. Medido: de todo `scripts/` de la raíz, la suite lee **un solo archivo**,
+`verificar-vistas-config.py` (desde `tests/casos/test_sedes_config.py`). Los demás verificadores del
+repo no los toca, así que tocarlos pagaba **~160 s** de los 503 tests de `knowledge-vault` que ningún
+cambio suyo puede afectar. Cada uno lleva su propio control positivo, que es lo que sí los cubre.
 
 **Nada más dispara.** La prosa de un `SKILL.md`, un `reference.md` o un `README.md` no está en la
 tabla, y ese es el caso ordinario. La tabla se lee por **lo que el cambio toca**, nunca por el nombre
