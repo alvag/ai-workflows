@@ -38,7 +38,7 @@ Esta ranura gobierna tu trabajo, y estas son sus obligaciones observables:
 - AC-6: no viaja nada más: ni cuerpos de tasks excluidas, ni criterios que ninguna de estas tasks
   cita, ni filas que ninguna referencia, ni material ajeno al contrato.
 --- FIN ---
-KEY PATHS: <archivos/dirs a tocar, y los que debe leer primero (reúso identificado)>
+KEY PATHS: <los campos Archivos de las tasks incluidas>
 CONSTRAINTS: <"no toques X", estilo del repo, dependencias que no deben cambiar.
   Siempre incluir: no commitees, no toques .plans/ ni .specify/ ni cross-implement/>
   No uses servidores MCP, hooks, apps ni plugins de tu entorno: ni memoria persistente, ni notas

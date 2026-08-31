@@ -470,10 +470,9 @@ existe para él. Escrito a archivo con Write:
 El prompt vive en `assets/prompts/implement.md` — es la **entrada exacta** del worker y se escribe a archivo con la tool Write.
 
 
-Cuando el work order es SDD (`.plans/<id>/`), derivar GOAL del objetivo de la spec, KEY PATHS de
-los campos Archivos de las tasks, CONSTRAINTS/NON-GOALS del alcance, y PROOF **del conjunto de comandos**
-que el flujo llamador va a correr —tests, build y lint, los que estén configurados—, no
-solo del de tests.
+Cuando el work order es SDD (`.plans/<id>/`), de dónde sale cada ranura lo fija la tabla de
+"Derivación acotada por ranura", más abajo. Acá no se repite: era una segunda enumeración del mismo
+hecho, y quedó con alcance distinto en cuanto la tabla se endureció.
 
 **Render de la ranura `PROOF`:** **una línea por comando**, en el orden de la lista, y cada comando
 va literal y entero, sin abreviar ni resumir: el worker no puede reconstruir uno truncado, y un comando
@@ -545,6 +544,25 @@ pero la estructura que comprueba es de acá, así que los textos viven acá y es
 —marcador presente y ranura incompleta—, que es justamente el estado que la publicación atómica del
 asset existe para que nadie vea.
 
+**Contra qué se comprueba, y por qué se escribe acá.** Los cuatro diagnósticos exigen nombrar **qué**
+falta, y eso obliga a que la estructura esperada exista **fuera del artefacto que se valida**. Sin
+esta enumeración, la precondición compara el asset consigo mismo: prueba consistencia interna y no
+conformidad, un `--- TASKZ ---` cuenta cinco marcas y pasa, y `falta la marca <MARCA>` no tiene de
+dónde sacar el nombre. Que haya dos representaciones es deliberado y es lo que vuelve comparable la
+comprobación, el mismo recurso que el repositorio usa para la banda del techo y el dominio de
+generados.
+
+| Qué | Valor esperado, en orden |
+|---|---|
+| conjunto de ranuras | `GOAL` · `SPEC` · `SCOPE` · `KEY PATHS` · `CONSTRAINTS` · `NON-GOALS` · `PROOF` · `OUTPUT` |
+| marcas de la ranura `SCOPE` | `--- TASKS ---` · `--- CRITERIOS ---` · `--- VERIFIC ---` · `--- INTERFACES ---` · `--- CLAUSULA ---` |
+| terminador de la ranura | `--- FIN ---` |
+| marcador de capacidad | `SCOPE-CAPABILITY: v1`, indentado dentro del comentario de cabecera |
+
+El marcador va indentado y no a columna cero porque el extractor de ranuras reconoce
+`^[A-Z][A-Z -]*:`: a columna cero entraría al conjunto como una novena ranura y las sedes dejarían
+de coincidir.
+
 #### Gramática de identificadores y de encabezados
 
 - **Identificador de task:** el árbol admite `T2`, `T16b` y `T15A`, con o sin backticks. Un
@@ -588,17 +606,20 @@ correcto en bytes e imposible de verificar, así que se trata como estructura no
 
 #### Derivación acotada por ranura
 
-Cada ranura tiene **una** fuente permitida. La tabla es cerrada, y su función es impedir que el
-armazón del prompt se use para readjuntar el corpus que la ranura acota.
+Cada ranura tiene **una** fuente permitida. La tabla es cerrada —cubre **las ocho** ranuras que el
+asset emite— y su función es impedir que el armazón del prompt se use para readjuntar el corpus que
+la ranura acota. Es la **sede única** de la derivación por ranura: no hay una segunda enumeración en
+este documento, porque dos enunciados del mismo hecho se desincronizan en cuanto alguien edita uno.
 
 | Ranura | Fuente permitida |
 |---|---|
 | `GOAL` | el objetivo de la spec, sin la spec |
+| `SPEC` | en la rama (a), el work order y los identificadores del alcance —portador, tasks incluidas y excluidas—; en la rama (b), texto fijo, sin derivación. Las dos ramas son excluyentes |
 | `SCOPE` | las tasks del alcance más sus referencias transitivas declaradas |
 | `KEY PATHS` | **únicamente** los campos `Archivos` de las tasks **incluidas**. Sin excepción de reúso: si una task necesita señalar reúso, lo declara en su campo `Archivos` y viaja por ahí |
 | `CONSTRAINTS` | restricciones vigentes aplicables, sin narrativa de decisiones |
 | `NON-GOALS` | no-objetivos concretos, sin criterios que ninguna task del alcance cita |
-| `PROOF` | solo los comandos recibidos |
+| `PROOF` | solo los comandos recibidos, y **el conjunto entero** —tests, build y lint, los que estén configurados—, no solo el de tests |
 | `OUTPUT` | el asset literal |
 
 Y la cláusula normativa de la ranura declara que **ante discrepancia manda `SCOPE`**.
