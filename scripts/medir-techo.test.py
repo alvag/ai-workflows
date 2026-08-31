@@ -11,6 +11,8 @@ Uso:
     medir-techo.test.py --grupo G            corre un grupo (formula | fallos | modos | rutas)
     medir-techo.test.py --listar             imprime el inventario y el mapeo de defectos
     medir-techo.test.py --autotest           comprueba que la suite se pone roja al quitar un caso
+    medir-techo.test.py --autotest-banda     comprueba que ampliar, destapar o quitar la banda —o
+                                             cambiarle el valor— pone rojo algún caso
 
 Salida: una línea por caso —`caso ID: ok` o `caso ID: DIVERGE …`— y un cierre `N casos ok`.
 Una selección vacía **falla**: si no, un identificador mal escrito daría verde sin ejercer nada.
@@ -126,6 +128,21 @@ def esperar(cond, detalle):
 GITIGNORE_FIXTURE = ".DS_Store\n.pytest_cache/\n__pycache__/\ncoverage/\ndist/\nnode_modules/\n"
 
 
+_TEMPORALES = []
+
+
+def _limpiar_temporales():
+    """Barre los repositorios temporales que quedaron de casos que fallaron.
+
+    La limpieza vive acá y no en cada `caso_*` porque es propiedad de **la corrida**: los 21 casos que
+    no se construyen con `_formula` no tenían dónde poner su `finally`, y una corrida de mutantes hace
+    fallar casos a propósito. Medido antes de esto: `--autotest-dominio` dejaba 4 directorios y 884 KB
+    por corrida, que es justamente el número que el comentario del `finally` nombraba sin cubrir.
+    """
+    while _TEMPORALES:
+        shutil.rmtree(_TEMPORALES.pop(), ignore_errors=True)
+
+
 def repo(base_claude=True, con_gitignore=True):
     """Un repositorio temporal fuera del árbol, con la sección normativa copiada para que el ancla del
     instrumento coincida. Los fixtures nunca se siembran dentro del repo real: la regla 3 lo prohíbe y
@@ -136,6 +153,7 @@ def repo(base_claude=True, con_gitignore=True):
     siempre porque entonces la rama de ausencia no se podría ejercer nunca.
     """
     d = pathlib.Path(tempfile.mkdtemp(prefix="medir-techo-"))
+    _TEMPORALES.append(d)
     git(d, "init", "-q", ".")
     git(d, "config", "user.email", "t@t")
     git(d, "config", "user.name", "t")
@@ -481,13 +499,31 @@ def caso_ignore_ausente_arbol_y_rango(_):
 
 
 def _formula(nombre, construir, esperado):
+    # El código esperado se DERIVA del propio `esperado` en vez de venir por parámetro. Un parámetro
+    # obligaría a tocar las ocho llamadas que ya existían y, peor, dejaría declarar un código que
+    # contradiga al texto — que es exactamente lo que esta comprobación existe para impedir. Los ocho
+    # casos validaban solo el resumen: un cambio que acertara el texto y errara el código pasaba.
+    if esperado.endswith("BLOQUEA"):
+        rc_esperado = BLOQUEA
+    elif esperado.endswith("PASA"):
+        rc_esperado = PASA
+    else:
+        raise ValueError(f"'{esperado}' no termina en PASA ni en BLOQUEA: no se deriva el código")
+
     def caso(_):
         d = repo()
-        base, head = construir(d)
-        rc, out, _ = medir(d, base, *( [head] if head else [] ))
-        esperar(esperado in out, f"esperaba '{esperado}', dio '{out}'")
-        shutil.rmtree(d)
-    caso.__doc__ = f"Conformidad de la fórmula: {nombre} → {esperado}"
+        try:
+            base, head = construir(d)
+            rc, out, _ = medir(d, base, *( [head] if head else [] ))
+            esperar(esperado in out, f"esperaba '{esperado}', dio '{out}'")
+            esperar(rc == rc_esperado, f"esperaba código {rc_esperado} para '{esperado}', dio {rc}: {out}")
+        finally:
+            # El borrado va en `finally` porque el PROPÓSITO de una corrida de mutantes es que estos
+            # `esperar` fallen: con el borrado al final del cuerpo, cada mutante dejaba su repositorio
+            # temporal huérfano. Medido antes de esto: 8 directorios y 1,8 MB por corrida de
+            # `--autotest-banda`, 4 por la de `--autotest-dominio`.
+            shutil.rmtree(d, ignore_errors=True)
+    caso.__doc__ = f"Conformidad de la fórmula: {nombre} → {esperado} (código {rc_esperado})"
     return caso
 
 
@@ -552,6 +588,53 @@ def _segunda_sede(d):
     return b, commit(d, "ag")
 
 
+def caso_banda_dos_representaciones(_):
+    """El valor de la banda vive en dos sedes —la regla y el instrumento— y este caso las compara.
+
+    Sin él, `--banda` no tiene consumidor durable: la única comparación que existía vivía en la fila de
+    un contrato de flujo, que es local y desaparece al archivarlo. Es la forma «guarda que nadie
+    invoca», y acá el consumidor queda dentro de la suite.
+
+    Va en el grupo `formula`, que es lo que lo pone bajo `--autotest-banda` —el único disparador
+    documentado para un cambio de la banda— y lo deja con control positivo. Estuvo un momento en
+    `modos` con el argumento de que en `formula` «barrería» a la frontera `den > 20`, y ese argumento
+    era **falso**: `_autotest_mutantes` acumula todos los casos caídos y los reporta juntos, sin cortar
+    en el primero, así que el mutante del valor aparece detectado por los dos.
+    """
+    texto = (RAIZ / "CLAUDE.md").read_text(encoding="utf-8")
+    declarados = re.findall(r"la banda es de (\d+) líneas", texto)
+    esperar(len(declarados) == 1,
+            f"la sede normativa debe declarar el valor de la banda exactamente una vez, "
+            f"halladas {len(declarados)}")
+    # Segunda mitad, y es la que más duele: la FÓRMULA no puede reenunciar el número. Medido, el
+    # documento llegó a declararlo siete veces mientras esta guarda veía una sola, así que cambiar
+    # `BANDA` y actualizar la línea declarada la dejaba verde con seis enunciaciones viejas.
+    formulas = re.findall(r"min\(\s*\d+\s*,\s*denominador\s*\)", texto)
+    esperar(not formulas,
+            f"la sede normativa no debe reenunciar el valor dentro de la fórmula: {formulas}")
+    rc, out, _ = medir(RAIZ, "--banda")
+    esperar(rc == PASA, f"--banda debía salir {PASA}, dio {rc}: {out}")
+    esperar(out.strip() == declarados[0],
+            f"la regla declara {declarados[0]} y el instrumento imprime {out.strip()!r}")
+
+
+def _banda(altas_andamiaje, altas_producto):
+    """Un diff con exactamente `altas_andamiaje` líneas de andamiaje y `altas_producto` de producto.
+
+    Las dos rutas nacen con una línea y crecen por el final, así que `git` las lee como altas puras: el
+    numerador queda en el neto por archivo y el denominador en las altas de producto. Es lo que permite
+    pedir un par (num, den) exacto y parar justo sobre la frontera de la banda.
+    """
+    def construir(d):
+        escribir(d, "scripts/v.py", 1)
+        escribir(d, "skills/s.md", 1)
+        b = commit(d)
+        escribir(d, "scripts/v.py", 1 + altas_andamiaje)
+        escribir(d, "skills/s.md", 1 + altas_producto)
+        return b, commit(d, "banda")
+    return construir
+
+
 def caso_binario(_):
     """Un binario en el diff detiene la medición y NO imprime un veredicto después."""
     d = repo()
@@ -594,6 +677,23 @@ CASOS = [
     ("rename-puro",                 "formula", _formula("rename puro", _rename, "num=0 den=0 PASA")),
     ("binario",                     "formula", caso_binario),
     ("producto-segunda-sede",       "formula", _formula("producto en la segunda sede", _segunda_sede, "num=1 den=1 PASA")),
+    # Las ocho fronteras de la banda. Van en pares —justo dentro y justo fuera— porque solo el par
+    # distingue el umbral de un número que casualmente cae del lado correcto. Y van en CUATRO
+    # denominadores porque la banda tiene dos ramas y `den=20` es el punto de EMPATE, no el corte:
+    # con `den` en {1, 19, 20} siempre vale `min(BANDA, den) == den`, así que la fórmula se reduce a
+    # `num > 2*den` y una banda plana es indistinguible de una acotada. Medido: con `BANDA = 1000`, o
+    # con el predicado `num > den + den`, los seis primeros casos seguían dando `35 casos ok`. El par
+    # con `den=25` es el único que ata el VALOR de la banda, y por eso es el que puede ponerse rojo
+    # cuando cambia.
+    ("banda-exceso-20",             "formula", _formula("exceso de 20 con den=20", _banda(40, 20), "num=40 den=20 PASA")),
+    ("banda-exceso-21",             "formula", _formula("exceso de 21 con den=20", _banda(41, 20), "num=41 den=20 BLOQUEA")),
+    ("banda-den1-exceso1",          "formula", _formula("exceso de 1 con den=1", _banda(2, 1), "num=2 den=1 PASA")),
+    ("banda-den1-exceso2",          "formula", _formula("exceso de 2 con den=1", _banda(3, 1), "num=3 den=1 BLOQUEA")),
+    ("banda-den19-exceso19",        "formula", _formula("exceso de 19 con den=19", _banda(38, 19), "num=38 den=19 PASA")),
+    ("banda-den19-exceso20",        "formula", _formula("exceso de 20 con den=19", _banda(39, 19), "num=39 den=19 BLOQUEA")),
+    ("banda-den25-exceso20",        "formula", _formula("exceso de 20 con den=25", _banda(45, 25), "num=45 den=25 PASA")),
+    ("banda-den25-exceso21",        "formula", _formula("exceso de 21 con den=25", _banda(46, 25), "num=46 den=25 BLOQUEA")),
+    ("banda-dos-representaciones",  "formula", caso_banda_dos_representaciones),
 ]
 
 DEFECTOS = {
@@ -634,6 +734,7 @@ def correr(seleccion):
         except Exception as exc:  # un error de la propia suite no puede leerse como caso verde
             print(f"caso {cid}: ERROR-SUITE {type(exc).__name__}: {exc}")
             fallos += 1
+    _limpiar_temporales()              # un caso que falla no llega a borrar su repositorio
     print(f"{len(seleccion) - fallos} casos ok" + (f", {fallos} con problema" if fallos else ""))
     return 1 if fallos else 0
 
@@ -687,28 +788,39 @@ MUTANTES_DOMINIO = [
 # instrumento —es correcta y barata— pero no se pretende cubrirla con un mutante que no puede caer.
 
 
-def autotest_dominio():
-    """Control positivo del criterio: cada superficie del descarte, mutada por separado, tiene que
-    poner rojo a algún caso del grupo `dominio`.
+def _autotest_mutantes(etiqueta, grupo, mutantes):
+    """Motor común de los dos controles positivos: muta el instrumento una superficie por vez y exige
+    que algún caso del grupo se ponga rojo.
 
-    Dos condiciones que lo vuelven un control y no un adorno. **El hash del ancla se conserva**: se muta
-    el código y nunca `CLAUDE.md`, así que un rojo por `punto=ancla` sería el exit code mintiendo sobre
-    la causa y acá se rechaza explícitamente. Y **se reporta qué caso cayó** por cada mutante: un
-    mutante cuya precondición ningún caso ejerce daría verde y se leería como cobertura.
+    Dos condiciones lo vuelven un control y no un adorno. **El hash del ancla se conserva**: se muta el
+    código y nunca `CLAUDE.md`, así que un rojo por `punto=ancla` sería el exit code mintiendo sobre la
+    causa y acá se rechaza explícitamente. Y **se reporta qué caso cayó** por cada mutante: uno cuya
+    precondición ningún caso ejerce daría verde y se leería como cobertura.
+
+    Es uno y no dos porque las dos versiones anteriores compartían 35 de sus 50 líneas y solo diferían
+    en el grupo, la lista de mutantes y tres etiquetas: dos sedes que podían divergir sin que nada lo
+    detectara, y ~35 líneas que el techo de la regla 2 contaba en el numerador.
     """
     global INSTRUMENTO
-    casos = [c for c in CASOS if c[1] == "dominio"]
+    casos = [c for c in CASOS if c[1] == grupo]
     if not casos:
-        print("autotest-dominio: FALLA — no hay casos en el grupo 'dominio'", file=sys.stderr)
+        print(f"{etiqueta}: FALLA — no hay casos en el grupo '{grupo}'", file=sys.stderr)
         return 4
     fuente = INSTRUMENTO.read_text(encoding="utf-8")
     problemas = []
-    for nombre, viejo, nuevo in MUTANTES_DOMINIO:
+    for nombre, viejo, nuevo in mutantes:
+        if callable(viejo):
+            derivado = viejo(fuente)
+            if derivado is None:
+                problemas.append(f"{nombre}: no se pudo derivar el mutante de la fuente — la constante "
+                                 "no tiene la forma esperada")
+                continue
+            viejo, nuevo = derivado
         if fuente.count(viejo) != 1:
             problemas.append(f"{nombre}: el ancla del mutante aparece {fuente.count(viejo)} veces, "
                              "no 1 — el mutante no se puede aplicar donde se cree")
             continue
-        tmp = pathlib.Path(tempfile.mkdtemp(prefix="mutante-"))
+        tmp = pathlib.Path(tempfile.mkdtemp(prefix=f"mutante-{grupo}-"))
         copia = tmp / "medir-techo.py"
         copia.write_text(fuente.replace(viejo, nuevo, 1), encoding="utf-8")
         original, INSTRUMENTO = INSTRUMENTO, copia
@@ -722,6 +834,7 @@ def autotest_dominio():
                 caidos.append(f"{cid}({type(exc).__name__})")
         INSTRUMENTO = original
         shutil.rmtree(tmp, ignore_errors=True)
+        _limpiar_temporales()          # los casos caen a propósito acá: sus fixtures no se borran solos
         if por_ancla:
             problemas.append(f"{nombre}: cayó por punto=ancla ({por_ancla}) — el rojo no vino del "
                              "criterio; el hash debía conservarse")
@@ -731,13 +844,70 @@ def autotest_dominio():
             print(f"mutante {nombre}: detectado por {caidos}")
     if problemas:
         for p in problemas:
-            print(f"autotest-dominio: FALLA — {p}", file=sys.stderr)
+            print(f"{etiqueta}: FALLA — {p}", file=sys.stderr)
         return 4
-    print(f"autotest-dominio: {len(MUTANTES_DOMINIO)} mutantes, los {len(MUTANTES_DOMINIO)} detectados")
+    print(f"{etiqueta}: {len(mutantes)} mutantes, los {len(mutantes)} detectados")
     return 0
 
 
+def autotest_dominio():
+    """Control positivo del criterio: cada superficie del descarte, mutada por separado, tiene que
+    poner rojo a algún caso del grupo `dominio`."""
+    return _autotest_mutantes("autotest-dominio", "dominio", MUTANTES_DOMINIO)
+
+
+def _mutante_valor_banda(fuente):
+    """Deriva el mutante de la constante a partir del valor que el instrumento declara hoy.
+
+    Devuelve el par (viejo, nuevo) o `None` si la constante no se encuentra con la forma esperada, que
+    `_autotest_mutantes` reporta como problema en vez de confundirlo con un mutante inaplicable.
+
+    **Al cambiar `BANDA` hay que mover también la frontera `banda-den25-*`**, que existe para estar por
+    ENCIMA de la banda: con `BANDA >= 25` deja de ser la que ata el valor. Los casos se ponen rojos al
+    cambiar la constante, así que el cambio no pasa inadvertido, pero el arreglo correcto es subir la
+    frontera y no relajar la expectativa.
+    """
+    m = re.search(r"^BANDA = (\d+)$", fuente, re.M)
+    if not m:
+        return None
+    return (f"BANDA = {m.group(1)}", f"BANDA = {int(m.group(1)) + 1}")
+
+
+MUTANTES_BANDA = [
+    # Los tres primeros anclan la LÍNEA COMPLETA del predicado y no `min(BANDA, den)` a secas: ese texto vive
+    # también en un comentario y en el docstring del instrumento, así que un ancla corta mutaría prosa
+    # y daría un verde por vacuidad. El propio autotest exige que aparezca una sola vez.
+    ("banda-sin-cota",
+     "    bloquea = num > den + (min(BANDA, den) if den > 0 else 0)",
+     "    bloquea = num > den + (max(BANDA, den) if den > 0 else 0)"),
+    ("banda-mas-ancha",
+     "    bloquea = num > den + (min(BANDA, den) if den > 0 else 0)",
+     "    bloquea = num > den + (min(BANDA, den) + 1 if den > 0 else 0)"),
+    # Los dos de arriba solo AMPLÍAN, así que solo los casos del lado BLOQUEA pueden detectarlos y el
+    # lado PASA nunca llega a ser detector. Este la quita del todo —la regresión exacta que este cambio
+    # previene— y lo detectan los tres del lado PASA. Sin él, el control positivo cubre media banda.
+    ("banda-quitada",
+     "    bloquea = num > den + (min(BANDA, den) if den > 0 else 0)",
+     "    bloquea = num > den"),
+    # Este muta la CONSTANTE, que los tres de arriba no tocaban: sin él el control positivo no podía
+    # ponerse rojo por el NÚMERO —que la regla 2 declara como una de sus dos representaciones—. Medido:
+    # con `BANDA = 1000` la suite daba `35 casos ok` y el autotest imprimía `3 de 3`.
+    # Su ancla se DERIVA del valor vigente y no se escribe literal: anclado a `BANDA = 20`, un cambio
+    # querido del valor hacía fallar el autotest con «el ancla del mutante aparece 0 veces», que es un
+    # diagnóstico que miente sobre la causa. Medido con `BANDA = 25`.
+    ("banda-otro-valor", _mutante_valor_banda, None),
+]
+
+
+def autotest_banda():
+    """Control positivo de la banda: ampliarla, destaparla, quitarla o cambiarle el valor tiene que
+    poner rojo a algún caso del grupo `formula`."""
+    return _autotest_mutantes("autotest-banda", "formula", MUTANTES_BANDA)
+
+
 def main(argv):
+    if "--autotest-banda" in argv:
+        return autotest_banda()
     if "--autotest-dominio" in argv:
         return autotest_dominio()
     if "--listar" in argv:

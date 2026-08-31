@@ -34,10 +34,14 @@ Cada una lleva **disparador, efecto y excepción**: un enunciado sin las tres no
 
 ### Regla 2 — techo de proporción
 
-> **Disparador:** al cerrar `implement`, **antes** del gate de revisión manual.
-> **Efecto:** si `numerador > denominador`, **el flujo se detiene** — salvo que el **objeto declarado
-> del flujo sea el andamiaje**, y entonces el veredicto **informa**: se registra con su cálculo y el
-> flujo sigue. El instrumento no cambia; lo que cambia es cómo se lee su `1`.
+> **Disparador:** dos, y los dos obligan. En el **gate de tareas**, proyectar el techo por archivo
+> antes de aprobar las tareas; y al cerrar `implement`, **antes** del gate de revisión manual, medirlo.
+> **Efecto:** en el gate de tareas, **el gate no se libera sin la proyección** ni con un supuesto
+> necesario sin resolver; una proyección en rojo **no** detiene por sí sola al flujo, que sigue y
+> enfrenta el veredicto real al cerrar. Al cerrar `implement`, si el numerador supera al denominador
+> por más de la banda, **el flujo se detiene** — salvo que el **objeto declarado del flujo sea el
+> andamiaje**, y entonces el veredicto **informa**: se registra con su cálculo y el flujo sigue. El
+> instrumento no cambia; lo que cambia es cómo se lee su `1`.
 > **Excepción:** en un flujo de producto continúa solo con excepción aprobada por el usuario en ese
 > gate, con el cálculo y el motivo a la vista.
 
@@ -57,7 +61,8 @@ Cada una lleva **disparador, efecto y excepción**: un enunciado sin las tres no
   de actualización es concreto: agregar una sede de producto, o un patrón de verificación nuevo. Se
   eligió sobre un criterio por tipo —"todo ejecutable es andamiaje"— porque ese criterio, medido
   contra el repositorio, metía al numerador el runtime y el transporte cross-model, que no son
-  verificación. `tests/` se nombra de forma **preventiva**: hoy está vacío. Y hay archivos que no
+  verificación. `tests/` se nombró de forma **preventiva** y ya dejó de serlo: la suite durable vive
+  ahí, y son **57 archivos versionados** que clasifican andamiaje. Y hay archivos que no
   caen en ninguno de los dos términos, como la configuración de agentes y ese transporte: eso es
   correcto y no un hueco, porque no son ni el producto de este repo ni el andamiaje que lo verifica.
 - **Numerador** — con denominador mayor que cero, la suma de líneas agregadas menos borradas,
@@ -73,15 +78,95 @@ Cada una lleva **disparador, efecto y excepción**: un enunciado sin las tres no
   salvo que ese numerador bruto sea **cero**. El neto existe para no castigar el reordenamiento que **acompaña** a un
   cambio de producto; sin producto no hay nada que acompañar. Sin esta condición, 100 líneas
   agregadas y 100 borradas en un script sin tocar el producto pasarían — y la fórmula anterior, que
-  contaba solo agregadas, sí frenaba ese caso.
+  contaba solo agregadas, sí frenaba ese caso. **La banda de tolerancia tampoco aplica acá**:
+  sumarla con denominador cero le regalaría la banda entera de andamiaje a todo diff que no toca el
+  producto, que es exactamente la espiral que esta regla persigue.
+- **La banda de tolerancia, y por qué el umbral no es una igualdad.** Con denominador mayor que cero,
+  la banda es de 20 líneas: el numerador **pasa** mientras no supere al denominador por más que eso, y
+  bloquea recién al superarlo. Está `acotada por el denominador` cuando este es menor —el margen
+  efectivo es `min(banda, denominador)`— y esa cota no es cosmética: sin ella, agregar **una** línea de
+  producto financiaría una banda entera de andamiaje. Con la cota, esa primera línea mueve el numerador
+  permitido de **cero a dos**; sin ella lo movería a la banda más uno.
+
+  **El número se escribe una sola vez, y a propósito.** La frase de arriba es la única que lo declara
+  en dígitos; el resto de la regla lo nombra sin repetirlo, y la fórmula se enuncia con la palabra y no
+  con el valor. Es lo que vuelve comparable la sede normativa contra `--banda`: mientras el documento
+  lo declaraba en siete lugares y la comprobación veía uno, cambiar la banda y actualizar la línea
+  declarada dejaba la guarda verde con seis enunciaciones viejas — medido.
+
+  **De dónde sale el número.** No está ajustado a los casos que bloquearon, sino a una holgura medida:
+  dos flujos comprimieron la prosa de su andamiaje en **37** y en **12** líneas sin perder una sola
+  comprobación. Con una banda menor que esa holgura, lo que decide el veredicto es cómo se redactó el
+  andamiaje y no la proporción — y las dos salidas de un exceso de una línea, recortar un comentario o
+  pedir la excepción, cuestan lo mismo y solo una deja rastro. Se prefirió **absoluta** sobre
+  proporcional porque una proporcional le da más margen absoluto justo a los diffs grandes, que es
+  donde la espiral es más cara.
+
+  **La banda cubre la holgura menor, no las dos.** Conviene decirlo porque el párrafo anterior no lo
+  dice y es una decisión normativa, no una aclaración: de las dos holguras medidas —**37** y **12**—
+  el valor elegido supera la segunda y **no** la primera. Contra un caso como el de 37 líneas, la banda
+  no alcanza **en ningún denominador**, ni siquiera donde es plana; la salida de ese flujo es la
+  excepción. Cubrir también la mayor obligaría a un margen que, en los diffs de producto chico, valdría
+  más que el producto entero.
+
+  **Y cuando la holgura y la cota compiten, gana la cota.** Con `denominador < 12` el margen efectivo
+  cae por debajo incluso de la holgura menor, así que ahí el problema que el párrafo anterior describe
+  sigue entero — y son justamente los diffs de producto chico donde un flujo de andamiaje aterriza. Es una **concesión
+  deliberada**: se prefiere que una línea de producto no financie una banda entera de andamiaje antes
+  que darle a todos la holgura completa, y el flujo que quede del lado equivocado de esa elección tiene
+  la excepción, que deja rastro. Dicho de otro modo, el valor declarado es un techo del margen y no un
+  piso: la banda es absoluta **hasta** donde el denominador la sostiene, y proporcional por debajo.
+
+  El valor vive en **dos representaciones que se comparan**: esta y la del instrumento, que lo imprime
+  con `medir-techo.py --banda`. Mismo recurso que el dominio de generados: comparables con un `diff`,
+  en vez de confiar en que alguien las mantuvo iguales.
 - **Borrados** — `descuentan solo cuando hay producto` en el diff, que es la rama neta. Retirar
-  andamiaje nunca puede violar el techo.
+  andamiaje nunca puede violar el techo. **Pero el descuento es dentro del mismo archivo, así que
+  retirar andamiaje en otro archivo puede no mover nada**: si ese archivo ya tenía su piso en cero,
+  borrar ahí no baja el numerador ni una línea; si todavía le quedaban altas propias, el borrado
+  descuenta hasta anularlas y ni un renglón más. Se escribe acá, y no solo en el bullet del piso,
+  porque es acá donde se busca el remedio: un flujo que lee "los borrados descuentan", borra lo
+  primero que encuentra y vuelve a medir el mismo número no tiene desde dónde entender por qué. Cuando
+  el cargo viene de altas en un archivo, lo único que lo mueve es **borrar en ese mismo archivo**,
+  agregar producto, o la excepción.
 - **Cómo y cuándo se mide** — con `git diff --numstat <base_commit>` **después de implementar**, más
   `git ls-files --others --exclude-from=.gitignore -z` para los archivos nuevos: el diff no ve lo que
   todavía no está trackeado, y el techo se mide antes del staging. Un rename `se atribuye al destino`, con
   las agregadas y borradas de su contenido, así que un rename puro aporta cero. Ante una fila no
   numérica —un binario— `la medición se detiene` y se resuelve a mano, en vez de leer el guion como
   un cero. Medirlo en el gate de tasks daría cero en ambos términos: ahí todavía no se tocó una línea.
+- **Restauración de andamiaje que este repositorio ya tuvo.** Volver a poner líneas que ya estuvieron
+  escritas y verificadas no es andamiaje nuevo, y descontarlas del numerador exige **cuatro
+  condiciones, todas**: una referencia a un **commit del propio repositorio**; `identidad byte a byte`
+  de la unidad declarada, comprobada con `git show <commit>:<origen>`; `correspondencia de rutas`
+  explícita entre cada origen y su destino, con destinos **únicos**; y `fallo cerrado` —sin descuento,
+  y sin degradar a un descuento parcial— ante cualquier diferencia, archivo restaurado a medias o
+  referencia que no resuelve.
+
+  **Quién lo concede.** No el instrumento y no el gate de tareas: `lo concede el gate de cierre`,
+  porque es el único momento en que los archivos ya existen en el árbol y la identidad es comprobable.
+  En el gate de tareas la restauración solo se **declara**, como supuesto condicional de la
+  proyección.
+
+  **Dos resultados que no se mezclan.** El **bruto** lo produce el instrumento, que no conoce
+  restauración alguna. El **adjudicado** lo produce el gate sobre el mismo `num_base` que usó el
+  instrumento —el neto por archivo con denominador mayor que cero, el bruto con denominador cero— y se
+  computa `num_ajustado = max(0, num_base − descuentos)`, con las unidades declaradas **únicas y
+  disjuntas**, el descuento calculado sobre el conjunto único de líneas contribuyentes, y su suma
+  acotada a la contribución **conjunta** de esas unidades — no a la de cada una por separado, que
+  dejaría declarar dos veces el mismo archivo y descontar el doble de lo que aportó. **La contribución
+  de una unidad se mide en la misma rama que `num_base`**, y no en una fija: `sum(max(0, add − del))`
+  sobre los destinos declarados cuando el denominador es mayor que cero, y `sum(add)` cuando es cero.
+  Las dos mitades tienen que hablar del mismo número. Con la definición neta aplicada a las dos ramas,
+  una unidad restaurada de diez altas y tres bajas aportaba **diez** al `num_base` bruto y solo podía
+  descontar **siete**: con denominador cero se pasa únicamente con `num_ajustado` en cero, así que esa
+  restauración legítima dejaba un resto de tres y bloqueaba — y el denominador cero es justamente la
+  clase de flujo para la que el descuento existe. Con denominador mayor que cero vale lo contrario:
+  descontar las altas se comería el numerador de otro archivo, porque ahí `num_base` ya viene neto. La
+  banda se aplica
+  **después**, sobre `num_ajustado`, y con denominador cero sigue sin aplicarse. El instrumento
+  **nunca** emite el adjudicado, y los dos quedan registrados: si sobreviviera solo el segundo, nadie
+  podría recomputar qué se descontó.
 - **Por qué la enumeración no usa `--exclude-standard`, que es lo que uno escribiría.** Ese flag aplica
   **tres** fuentes de exclusión —los `.gitignore` del árbol, el `.git/info/exclude` del clon y el
   `core.excludesFile` del usuario— y **dos de las tres no viajan con el commit**. Con él, el mismo commit
@@ -129,6 +214,56 @@ Cada una lleva **disparador, efecto y excepción**: un enunciado sin las tres no
   con dominios disjuntos, y decirlo es lo que impide que se lean como discrepantes: durante un tiempo las
   dos sedes hablaron de archivos generados sin declarar dónde terminaba cada una, y sobre el mismo hecho
   tres flujos resolvieron distinto.
+- **La proyección, en el gate de tareas.** Antes de aprobar un conjunto de tareas, el flujo presenta
+  una `proyección por archivo` del techo, anclada a un `commit base` explícito: por cada ruta prevista,
+  su clase, las altas y las bajas previstas, y el descuento de restauración invocado si lo hay. Por
+  archivo y no en total, porque el piso por archivo hace que un total estimado **no reproduzca** el
+  cálculo; y anclada, porque altas y bajas cambian si la base avanza. **La produce el conductor y la
+  aprueba el usuario**: el gate no se libera si falta un supuesto necesario para computarla, y si la
+  base cambia antes de implementar, la proyección se recalcula o queda invalidada.
+
+  Acá no se mide nada, por la razón que ya da el bullet **Cómo y cuándo se mide** y que no se repite.
+  Lo que se gana es **ver el veredicto antes de gastar la implementación**, y eso vale para los dos
+  casos del `Efecto`: el flujo que bloquea, para decidir antes de gastar; y el que solo informa,
+  para que el número quede a la vista y no como un trámite al final.
+- **Qué se hace con la proyección al cerrar, y qué códigos cierran la medición.** Al medir en el
+  cierre se contrasta el resultado contra la proyección aprobada.
+  Se cuenta que **el veredicto medido difiere del proyectado** no solo cuando crece el numerador
+  agregado: también si `cae el denominador`, si cambia
+  el numerador de algún archivo, si cambia el conjunto de archivos o el objeto declarado, o si un
+  descuento invocado no se confirma. Cualquiera de esas diferencias devuelve la decisión al usuario en
+  lugar de dejar que la proyección se lea como cumplida — es lo que la vuelve rendible, porque sin
+  contraste sería una estimación que nadie coteja después.
+
+  **Y solo los códigos de salida `0` y `1` cierran la medición**: ante un `2` —invocación mal formada—
+  `se corrige la invocación` y se repite **sin adjudicar nada**; ante un `3` —medición detenida— la
+  decisión vuelve al usuario, porque un `3` no es un veredicto y leerlo como uno es leer un fallo como
+  un permiso.
+- **Qué versión rige un flujo que ya estaba en curso.** En este repositorio **conviven versiones**:
+  cada worktree tiene su propia copia del instrumento, de esta regla y del ancla que las liga. Un flujo
+  abierto antes del cambio sigue midiendo con lo que su commit contiene hasta que lo incorpore, y esta
+  matriz **describe** ese comportamiento en vez de prescribir una vigencia global que la regla no puede
+  hacer cumplir:
+
+  | Estado en que lo encuentra el cambio | Versión que rige la medición | Remedios disponibles |
+  |---|---|---|
+  | worktree que **no incorporó el commit** del cambio | la presente en ese worktree | los de esa versión; para usar los nuevos, incorporar el commit y recalcular la proyección |
+  | lo incorporó, **antes del gate de tareas** | la nueva | todos: banda, restauración, y la proyección por archivo antes de aprobar las tareas |
+  | lo incorporó, con tareas aprobadas e **implementación sin cerrar** | la nueva | banda y restauración, en el gate de cierre; la proyección **no** se exige hacia atrás, porque su gate ya pasó, salvo reapertura explícita de ese gate |
+  | lo incorporó, **implementación cerrada** y midiendo | la nueva | banda y restauración; sin proyección |
+
+  Como el ancla liga regla e instrumento **dentro de cada worktree**, una incorporación parcial —el
+  texto sin el script, o al revés— detiene la medición con código `3` en vez de calcular con una
+  fórmula que no corresponde.
+
+  **Incorporar no es fusionar dentro del rango medido.** Una adopción válida deja el cambio **antes**
+  de la base contra la que el flujo mide —actualizando esa base— y recalcula la proyección contra ella.
+  Traerlo con un merge o un cherry-pick que caiga **dentro** del rango `base..árbol` no es adopción:
+  mete las líneas de este cambio en el numerador del flujo que adopta, como si fueran andamiaje propio.
+  Medido: un flujo con dos líneas de producto que fusiona así un cambio de seis líneas de instrumento
+  mide seis contra dos y bloquea por trabajo que no es suyo. Un flujo que no puede actualizar su base
+  sin alterar su alcance conserva la versión anterior hasta cerrar, que es exactamente lo que habilita
+  la primera fila.
 - **Lo que la fórmula no detecta** — mover contenido entre archivos distintos cuenta como crecimiento
   en el destino. Es consecuencia de medir por archivo, la misma propiedad que impide que un borrado
   financie crecimiento ajeno. No se agrega mecanismo para eso: la regla 1 pide evidencia de que el
