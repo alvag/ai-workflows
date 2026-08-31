@@ -552,16 +552,32 @@ dónde sacar el nombre. Que haya dos representaciones es deliberado y es lo que 
 comprobación, el mismo recurso que el repositorio usa para la banda del techo y el dominio de
 generados.
 
-| Qué | Valor esperado, en orden |
-|---|---|
-| conjunto de ranuras | `GOAL` · `SPEC` · `SCOPE` · `KEY PATHS` · `CONSTRAINTS` · `NON-GOALS` · `PROOF` · `OUTPUT` |
-| marcas de la ranura `SCOPE` | `--- TASKS ---` · `--- CRITERIOS ---` · `--- VERIFIC ---` · `--- INTERFACES ---` · `--- CLAUSULA ---` |
-| terminador de la ranura | `--- FIN ---` |
-| marcador de capacidad | `SCOPE-CAPABILITY: v1`, indentado dentro del comentario de cabecera |
+| Qué | Valor esperado | Se compara como |
+|---|---|---|
+| conjunto de ranuras | `GOAL` · `SPEC` · `SCOPE` · `KEY PATHS` · `CONSTRAINTS` · `NON-GOALS` · `PROOF` · `OUTPUT` | **conjunto**, no secuencia |
+| marcas de la ranura `SCOPE` | `--- TASKS ---` · `--- CRITERIOS ---` · `--- VERIFIC ---` · `--- INTERFACES ---` · `--- CLAUSULA ---` | secuencia, en ese orden |
+| terminador de la ranura | `--- FIN ---` | presencia |
+| marcador de capacidad | `SCOPE-CAPABILITY: v1`, indentado dentro del comentario de cabecera | presencia |
 
-El marcador va indentado y no a columna cero porque el extractor de ranuras reconoce
-`^[A-Z][A-Z -]*:`: a columna cero entraría al conjunto como una novena ranura y las sedes dejarían
-de coincidir.
+**El extractor de ranuras, completo: patrón, frontera y deduplicación.** Los tres, porque el patrón
+solo no alcanza y su ausencia no falla en silencio: falla **cerrando sobre el asset correcto**.
+
+1. **Patrón.** Una ranura es una línea que case `^[A-Z][A-Z -]*:`; su nombre es lo que precede a los
+   dos puntos.
+2. **Frontera.** La enumeración **termina en `OUTPUT`**, inclusive. Lo que sigue es el **cuerpo del
+   reporte**, no ranuras: `FILES`, `PROOF`, `DEVIATIONS` y `STATUS` casan el patrón y están a columna
+   cero **por obligación del propio asset** —el reporte se busca anclado al margen y `STATUS: done`
+   es su última línea—, así que indentarlos rompería la cosecha y **no se los puede sacar del alcance
+   del patrón moviéndolos**. Sin esta frontera la extracción devuelve **once** nombres contra los
+   ocho declarados, la precondición de capacidad rechaza un asset sano y los modos delegados quedan
+   apagados sobre un árbol correcto.
+3. **Deduplicación.** El resultado se compara **como conjunto**: `SPEC` aparece dos veces —sus dos
+   ramas excluyentes— y `PROOF` una por comando, así que en crudo son **catorce** entradas para ocho
+   ranuras. Un comparador de secuencias falla aun con la frontera puesta.
+
+Y de la misma causa se sigue dónde va el marcador de capacidad: **indentado** dentro del comentario
+de cabecera, porque a columna cero casaría el patrón, caería antes de la frontera y entraría al
+conjunto como una novena ranura.
 
 #### Gramática de identificadores y de encabezados
 
