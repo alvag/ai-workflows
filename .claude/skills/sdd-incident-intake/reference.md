@@ -11,6 +11,7 @@ Detalle que no hace falta en cada corrida. `SKILL.md` indica cuándo abrir cada 
 | Sembrar el entorno ignorado | En el paso 6.2 |
 | El dossier | En el paso 6.3, al redactarlo |
 | Despachar el flujo | En el paso 6.4 |
+| El volcado a issues | En el modo `volcar`, antes de publicar |
 | Retirar del registro | En el paso 7 |
 | Cuando algo falla | Solo si el despacho no arrancó o el retiro dejó residuos |
 
@@ -389,6 +390,11 @@ sin contexto de esta sesión, y **la única copia** de los incidentes tomados.
    guardas cuyo código de salida no es la señal de salud).
 9. **Dónde se registran los incidentes** si alguna skill falla durante el flujo — con la ruta del
    árbol principal, porque un worktree no hereda `.plans/`.
+10. **El issue de origen**, si el incidente vino de uno: su número, su URL, y la instrucción de
+    escribir `Closes #<n>` en el PR. Sin esto el flujo no tiene cómo saber a qué issue pertenece —
+    arranca sin contexto de esta sesión— y el issue queda `en-curso` para siempre aunque el arreglo
+    se haya mergeado. Con varios incidentes agrupados van **todos** los números, uno por línea:
+    GitHub cierra tantos `Closes` como el PR declare.
 
 ### Lo que no va
 
@@ -481,6 +487,131 @@ flujo.
 Es lo que hace legible la tarjeta en Orca cuando hay varios worktrees abiertos.
 
 ---
+
+## El volcado a issues
+
+Sede del formato y de los comandos del modo `volcar`. El destino es el repositorio de las skills
+—`repo_destino`—, no el proyecto donde se observó el defecto.
+
+### Las etiquetas
+
+Tres ejes, y ninguno se inventa por incidente:
+
+| Eje | Valores | De dónde sale |
+|---|---|---|
+| skill | `skill:<nombre>` — una por cada skill que el incidente nombra | el campo `Skill` del registro; un incidente que nombra dos lleva las dos |
+| severidad | `severidad:alta` \| `severidad:media` | el campo `Severidad`. **Si el registro no lo declara, el issue va sin esta etiqueta** |
+| estado | `needs-triage` \| `en-curso` | nace `needs-triage`; pasa a `en-curso` cuando el intake lo despacha (paso 6.5) |
+
+Crear la etiqueta que falte antes de publicar (`gh label create <nombre> --color <hex> --description
+<texto>`); `gh issue create` falla si la etiqueta no existe.
+
+### El formato del issue
+
+**Título:** `[<skill>] <el titular del incidente, sin la fecha>`. El prefijo hace la lista legible y
+agrupable; la fecha no va acá porque es ilegible en una lista y su lugar es el cuerpo.
+
+**Cuerpo:** los campos del registro como líneas en negrita, después el incidente **verbatim**, y al
+pie la procedencia.
+
+```
+**ID de registro:** `DD/MM/AAAA HH:MM`
+**Skill:** `<skill>`
+**Sección:** <la seccion o regla que el incidente cita>
+**Conductor:** <herramienta → modelo>
+**Worker:** <herramienta → modelo, o — con el motivo>
+**Severidad:** <alta|media, o "no declarada en el registro de origen">
+**Relacionado:** <`DD/MM/AAAA HH:MM` (#<n>) del antecedente; la fecha sola si no tiene
+issue, con el motivo; o — si no hay>
+
+---
+
+<los bloques verbatim: Qué instruía · Qué pasó · Por qué es defecto de la
+ skill · Consecuencia · Qué habría que cambiar>
+
+---
+<sub>Volcado desde el registro local `<ruta>`. **Sin verificar contra el árbol**: la
+verificación es del paso `sdd-incident-intake`.</sub>
+```
+
+**La primera línea es el mecanismo de idempotencia**, no decoración. GitHub indexa el cuerpo, así que
+la fecha y hora se busca; y es lo que permite que el campo `Relacionado` siga cruzando incidentes por
+su ID después de que el archivo ya no exista.
+
+### Los comandos
+
+```bash
+# 1. ya volcado? — busca el ID de registro entre abiertos Y cerrados
+gh issue list --repo <owner/repo> --state all --search '"DD/MM/AAAA HH:MM"' \
+  --json number --jq '.[].number'
+
+# 2. publicar (el cuerpo va por archivo: el markdown con backticks rompe el quoting)
+gh issue create --repo <owner/repo> --title "[<skill>] <titular>" \
+  --body-file <ruta/al/cuerpo.md> \
+  --label "skill:<nombre>" --label "severidad:<n>" --label "needs-triage"
+
+# 3. cotejar lo publicado contra el original, antes de retirar
+gh issue view <n> --repo <owner/repo> --json body --jq .body > <ruta/al/publicado.md>
+```
+
+PowerShell usa los mismos comandos: `gh` no cambia de sintaxis entre shells, y el cuerpo viaja por
+`--body-file` en las dos.
+
+### Los issues relacionados
+
+El registro tiene **tres** relaciones distintas y se confunden con facilidad, porque las tres se
+dicen "está relacionado con". Cada una tiene su mecanismo:
+
+| Relación | Qué significa | Cómo se expresa |
+|---|---|---|
+| **Reincidencia** (campo `Relacionado`) | el **mismo** defecto volvió a aparecer | mención `#<n>` en el cuerpo del issue nuevo |
+| **Agrupamiento** (paso 3) | defectos **distintos** que se resuelven en el mismo diff | un flujo, y su PR declara un `Closes #<n>` por cada uno |
+| **Redimensionado** (paso 2) | el issue describe **otro** defecto del que dice | issue nuevo que lo menciona; el viejo se cierra apuntando al nuevo |
+
+> **Una reincidencia NO se cierra como duplicada.** Es el reflejo natural en GitHub y borra
+> exactamente lo que la regla 2 del registro protege: la **frecuencia** es lo único que distingue una
+> trampa estructural de la skill de un descuido puntual. Tres issues abiertos sobre el mismo defecto
+> son el dato, no ruido a limpiar. Se cierran juntos cuando el arreglo llega —un PR puede declarar
+> varios `Closes`—, nunca antes y nunca por parecidos.
+
+**La mención hace el trabajo sola, y en las dos direcciones.** Escribir `#<n>` en el cuerpo del issue
+nuevo agrega la referencia al timeline del viejo **sin editarlo**. Eso es la regla 2 del registro
+—"una reincidencia se agrega, nunca se edita"— cumplida por el mecanismo y no por disciplina.
+
+**Resolver la fecha a un número, al volcar.** El campo `Relacionado` cita una fecha y hora, que es el
+ID del registro. Buscarla como cualquier ID (el comando de idempotencia) y escribir las dos cosas:
+`` `27/08/2026 17:12` (#12) ``. La fecha se conserva porque es el ID canónico y sobrevive a que el
+issue se borre; el número, porque es lo que GitHub enlaza.
+
+**Publicar en orden cronológico ascendente** es lo que hace que el número exista cuando se lo
+necesita: una reincidencia siempre cita a su antecedente, nunca al revés. Medido sobre el registro
+vivo: de 18 incidentes con `Relacionado`, **cero** apuntan a un incidente posterior.
+
+**Si el antecedente no tiene issue**, se deja la fecha sola y se dice por qué —"antecedente retirado
+del registro antes del volcado"—. Pasa: en el mismo registro, 3 de esas 18 referencias apuntan a
+incidentes que ya no están en el archivo. Inventar un número o silenciar la referencia son las dos
+formas de perder el rastro.
+
+### El cotejo, y por qué línea por línea
+
+Antes de retirar, cada línea sustantiva del original tiene que aparecer en algún cuerpo publicado.
+Se saltean las vacías, los separadores, las cabeceras de tabla y el encabezado `##` —que vive en el
+título—; las filas de campos se cotejan por su **valor**, porque el formato las transformó.
+
+Un muestreo no alcanza: lo que se pierde en un volcado no es un bloque entero sino un **campo**, y un
+campo ausente se lee igual de bien que uno presente.
+
+### Dos formas de leer un verde que no lo es
+
+- **El campo que desaparece al parsear.** Extraer los campos con una clase de caracteres que no cubra
+  los acentos minúsculos hace que `Sección` no matchee, y el campo se cae **sin error**. Medido: se
+  perdió en los cuatro incidentes de un volcado y solo lo delató el conteo de campos, que dio seis
+  donde debía dar siete. Contar los campos extraídos contra los esperados, y no confiar en que el
+  parseo anduvo porque no tiró excepción.
+- **El `gh` que corre fuera del repo.** Sin `--repo` y con el cwd fuera del árbol, `gh` falla con
+  `not a git repository` y **escribe un archivo vacío**. Un `grep` posterior sobre ese archivo informa
+  que el contenido falta, que es lo mismo que informaría si de verdad faltara. Pasar `--repo` siempre,
+  y comprobar el tamaño de lo descargado antes de creerle a la comparación.
 
 ## Retirar del registro
 

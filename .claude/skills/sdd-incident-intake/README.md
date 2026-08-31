@@ -25,8 +25,12 @@ Vaciarlo a mano tiene cinco trampas que se repiten:
 
 ## Qué hace
 
+Dos modos. **`despachar`** (default) convierte incidentes en flujos que los corrigen; **`volcar`**
+los publica como issues de GitHub y no arregla nada.
+
 ```
-Verificar → agrupar → mirar aguas arriba → despachar → confirmar arranque → retirar
+despachar: verificar → agrupar → mirar aguas arriba → despachar → confirmar arranque → retirar
+volcar:    leer → mirar aguas arriba → publicar → cotejar → retirar
 ```
 
 1. Lee el registro entero, incluidas sus reglas de formato.
@@ -42,6 +46,30 @@ Verificar → agrupar → mirar aguas arriba → despachar → confirmar arranqu
 6. Crea el worktree con Orca, **lo siembra** con la configuración ignorada que el flujo necesita,
    escribe un dossier autocontenido y despacha el flujo — confirmando que arrancó de verdad.
 7. Retira los incidentes tomados del índice **y** del cuerpo, y comprueba que no quedaron residuos.
+   Si el incidente vino de un issue, el retiro es **cerrarlo** con su marca de resolución.
+
+### El modo `volcar`
+
+Publica cada incidente como un issue con las etiquetas `skill:<nombre>`, `severidad:<n>` y
+`needs-triage`, y lo retira del archivo. El archivo pasa a ser la **bandeja de entrada** —captura
+barata, local, que nunca falla— y el issue, el **backlog**: un incidente vive en uno o en el otro,
+nunca en los dos.
+
+No emite veredicto: un issue abierto significa lo mismo que una entrada del registro —alguien vio
+algo—, y la verificación llega cuando `despachar` lo tome. Lo único que sí comprueba antes de
+publicar es aguas arriba, para no abrir trabajo por un defecto que ya se arregló.
+
+### El ciclo de vida de un issue
+
+```
+volcar → needs-triage → despachar → en-curso → PR con `Closes #n` → cerrado al mergear
+                             └→ refutado / redimensionado → lo cierra el intake, en el acto
+```
+
+La etiqueta es lo que marca el estado, y **quitar `needs-triage` es lo que saca al issue del pool**:
+mientras la conserve, otro intake lo vuelve a tomar. Un `corregido` lo cierra el **merge** del PR, no
+el flujo — el dossier lleva el número del issue y la instrucción de escribir `Closes #<n>`, así que
+`sdd-flow` no necesita saber nada de issues.
 
 ## Cuándo usarla
 
@@ -49,6 +77,7 @@ Verificar → agrupar → mirar aguas arriba → despachar → confirmar arranqu
 - "procesa los incidentes de skills"
 - "abrí un flujo para el incidente de `<fecha>`"
 - "revisá 3 incidentes" — abre 3 flujos, uno por vez
+- "volcá los incidentes a issues" — modo `volcar`
 - `/sdd-incident-intake <ruta-del-registro> [claude|codex]`
 
 **No se dispara sola.** Solo ante pedido explícito.
@@ -67,7 +96,8 @@ Verificar → agrupar → mirar aguas arriba → despachar → confirmar arranqu
 
 | Parámetro | Default |
 |---|---|
-| `registro` | **Obligatorio.** Ruta al archivo de incidentes o al directorio que lo contiene |
+| `modo` | **`despachar`.** El otro es `volcar` |
+| `registro` | **Obligatorio.** Ruta al archivo de incidentes o al directorio que lo contiene. En `despachar` también acepta `issues` |
 | `cantidad` | **1.** Cuántos **flujos** abrir. Cuenta worktrees, no incidentes: uno que agrupa dos consume un cupo |
 | `agente` | La familia que conduce la sesión actual (`claude` o `codex`) |
 | `incidente` | El de severidad más alta; a igualdad, el más antiguo |
@@ -78,7 +108,8 @@ observó, el código a corregir vive en el repo de skills.
 
 ## Requisitos
 
-- **Orca** corriendo, con el `repo_destino` agregado (`orca repo list`).
+- **Orca** corriendo, con el `repo_destino` agregado (`orca repo list`). No hace falta en `volcar`.
+- **`gh`** autenticado, solo para `volcar` y para leer desde `issues`.
 - Acceso al **remoto** del `repo_destino` para el `fetch` del paso 4. Para los PRs abiertos, `gh`
   autenticado (GitHub) o el MCP `bb_*` (Bitbucket): si no hay ninguno, el chequeo se reporta como
   no comprobado en vez de darse por limpio.
