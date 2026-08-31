@@ -1,19 +1,20 @@
 ---
 name: sdd-incident-intake
 description: >-
-  Toma incidentes ya registrados de las skills SDD, comprueba que el defecto
-  exista, y convierte los que se sostienen en flujos `sdd-flow` corriendo cada
-  uno en su worktree de Orca, con un dossier autocontenido, retirándolos del
-  registro. Procesa uno por default o los que se le pidan ("revisá 3
-  incidentes"), siempre de a uno y en secuencia. El agente que conduce cada flujo
-  se elige entre las dos familias (`claude` o `codex`) y por default es el de la
-  sesión actual. Usar ante "toma un incidente de <ruta>", "procesa los incidentes
-  de skills", "revisá N incidentes", "/sdd-incident-intake <ruta-del-registro>".
-  NO corrige la skill: eso lo hace el `sdd-flow` que despacha. NO registra
-  incidentes nuevos —eso es la regla del CLAUDE.md del repo—, NO revisa
-  artefactos de diseño (eso es `cross-review`) ni delega implementación (eso es
-  `cross-implement`). No invocarla espontáneamente: solo ante pedido explícito
-  del usuario.
+  Admisión del registro de incidentes de las skills SDD, en dos modos.
+  `despachar` (default) comprueba que el defecto exista y convierte los que se
+  sostienen en flujos `sdd-flow`, cada uno en su worktree de Orca con un dossier
+  autocontenido, retirándolos del registro: uno por default o los que se le
+  pidan, de a uno y en secuencia, con el flujo conducido por `claude` o `codex`
+  (default: la familia de la sesión). `volcar` publica los
+  incidentes como GitHub issues con `needs-triage` y los retira del archivo, sin
+  arreglar nada. Usar ante "toma un incidente de <ruta>", "procesa los incidentes
+  de skills", "revisá N incidentes", "volcá los incidentes a issues",
+  "/sdd-incident-intake <ruta-del-registro>". NO corrige la skill: eso lo hace el
+  `sdd-flow` que despacha. NO registra incidentes nuevos —eso es la regla del
+  CLAUDE.md del repo—, NO revisa artefactos de diseño (eso es `cross-review`) ni
+  delega implementación (eso es `cross-implement`). No invocarla espontáneamente:
+  solo ante pedido explícito del usuario.
 ---
 
 # sdd-incident-intake
@@ -71,11 +72,34 @@ El orden **es** el procedimiento. Cada flecha depende de la anterior y ninguna s
 
 El paso que más se saltea es el último control: *mandé el prompt* no es *el flujo arrancó*.
 
+## Los dos modos
+
+El invariante de arriba es del modo **`despachar`**. El modo **`volcar`** publica los incidentes como
+issues de GitHub y no arregla nada: comparte los pasos 1, 4 y 7 —leer el registro, mirar aguas arriba
+y retirar— y reemplaza agrupar, worktree y despacho por publicar.
+
+| | `despachar` (default) | `volcar` |
+|---|---|---|
+| Qué produce | un worktree con un `sdd-flow` arrancado | un issue por incidente, con `needs-triage` |
+| Verificación | completa, con veredicto (paso 2) | solo aguas arriba: no publicar lo ya arreglado |
+| Cuántos | `cantidad` flujos, de a uno | todos los del registro, salvo que se pidan menos |
+| Qué deja el registro | sin lo despachado | sin lo publicado |
+
+**El volcado no emite veredicto, y por eso el issue nace `needs-triage`.** Es deliberado: un issue
+abierto significa lo mismo que una entrada del registro —alguien vio algo—, no un defecto confirmado.
+La verificación con veredicto sigue siendo del modo `despachar`, cuando tome ese issue.
+
+**Las dos fuentes nunca sostienen el mismo incidente a la vez.** El archivo es lo capturado y no
+volcado; el issue es lo volcado. Volcar retira del archivo, y despachar cierra el issue. Sin esa
+disciplina hay dos sedes del mismo incidente, que es como se pierde la frecuencia que protege la
+regla 2 del registro.
+
 ## Parámetros
 
 | Parámetro | Cómo se resuelve |
 |---|---|
-| `registro` | **Obligatorio.** Ruta al archivo de incidentes, o al directorio que lo contiene (buscar `incidentes-skills.md` adentro). Si el usuario no lo dio, preguntarlo — no adivinarlo. |
+| `modo` | `despachar` \| `volcar`. **Default: `despachar`.** "volcá los incidentes a issues" → `volcar`. |
+| `registro` | **Obligatorio.** Ruta al archivo de incidentes, o al directorio que lo contiene (buscar `incidentes-skills.md` adentro). En `despachar` también puede ser `issues`, y entonces los incidentes se leen de los issues abiertos con `needs-triage` del `repo_destino`. Si el usuario no lo dio, preguntarlo — no adivinarlo. |
 | `cantidad` | Cuántos **flujos** abrir. Default **1**. "revisá 3 incidentes" → 3. Cuenta worktrees, no incidentes: un flujo que agrupa dos consume **un** cupo. |
 | `agente` | `claude` \| `codex`. **Default: la familia que conduce esta sesión.** Es quién conduce el `sdd-flow` en el worktree, no quién ejecuta esta skill. |
 | `incidente` | Cuál tomar. Default: el de **severidad más alta**; a igualdad, el más antiguo. El usuario puede nombrarlo por su fecha y hora. |
@@ -110,6 +134,11 @@ del paso 7 tiene que respetarlo y no se puede respetar un formato que no se ley�
 
 Con `cantidad > 1` se lee **una vez**, al principio del lote. Lo que sí se relee en cada vuelta es el
 índice, que cambió.
+
+**Si la fuente son los issues** (`registro: issues`), lo que se lee son los abiertos con
+`needs-triage`, y el cuerpo de cada uno trae los mismos campos que la sección del archivo. Las reglas
+de formato no viajan en el issue: viven en el archivo, así que hay que leerlas igual de su cabecera.
+Comandos en `reference.md` → "El volcado a issues".
 
 ## Paso 2 — Comprobar contra el árbol y emitir veredicto
 
@@ -316,6 +345,20 @@ envío y modos de falla del transporte en `reference.md` → "Despachar el flujo
 > **`mandé el prompt` no es `el flujo arrancó`.** Leer el terminal y confirmar que la skill cargó. Si
 > no cargó, corregir el envío — nunca continuar al paso 7.
 
+### 6.5 — Marcar el issue como tomado
+
+Solo si el incidente vino de un issue, y **recién con el arranque confirmado**: quitarle
+`needs-triage`, ponerle `en-curso`, y comentar la rama y el worktree donde se trabaja.
+
+> **Quitar `needs-triage` es lo que lo saca del pool.** La fuente `issues` lee los abiertos **con esa
+> etiqueta**, así que mientras la conserve un segundo intake lo vuelve a tomar y abre un worktree
+> paralelo sobre las mismas líneas. Sobre archivo esto no podía pasar: retirar y despachar eran el
+> mismo acto.
+
+**Si el flujo se descarta** sin llegar a un PR, el issue vuelve a `needs-triage` con un comentario que
+diga por qué. Uno que queda `en-curso` sin nadie trabajándolo es peor que uno sin tomar: nadie lo
+elige y nadie sabe que está libre.
+
 ## Paso 7 — Retirar del registro
 
 Recién ahora, y solo si el paso 6 confirmó el arranque (o si el veredicto fue **rechazado** y el
@@ -333,7 +376,51 @@ de los que quedan. **Nunca se edita un incidente ajeno "de paso"** — la regla 
 una reincidencia se agrega y nunca se edita, y esa regla protege la frecuencia, que es el dato más
 valioso del archivo.
 
+**Si el incidente vino de un issue, el retiro es cerrarlo**, no borrar nada — y quién lo cierra
+depende del vocablo, porque no todos tienen la misma evidencia disponible:
+
+| Vocablo | Quién cierra | Cuándo |
+|---|---|---|
+| `refutado` | **el intake**, en el acto | el paso 2 lo rechazó: no hay flujo ni habrá PR, y la evidencia va en el comentario de cierre |
+| `redimensionado` sin despacho | **el intake**, en el acto | ídem, más el número del issue nuevo que lo reemplaza |
+| `corregido` | **el PR**, al mergear | el dossier manda escribir `Closes #<n>` en el PR; GitHub lo cierra solo cuando el arreglo entra a la rama default |
+
+**Un `corregido` no lo cierra ni el intake ni el flujo.** El intake se retira antes de que exista un
+diff, y un flujo que dice "terminé" no es el arreglo en `main`. `Closes #<n>` ata el cierre al merge,
+que es el único momento en que el defecto de verdad se fue — y no obliga a que `sdd-flow` sepa nada de
+issues, que sería darle una responsabilidad de otra skill.
+
+Esto tapa además un hueco del retiro sobre archivo: ahí un rechazado se va sin dejar dónde viva su
+evidencia.
+
 En modo lote, este paso cierra la vuelta: recién con el registro actualizado se elige el siguiente.
+
+## Modo `volcar` — publicar el registro como issues
+
+Sustituye los pasos 3, 5 y 6. El orden es **leer → aguas arriba → publicar → cotejar → retirar**, y
+las dos últimas no se invierten: **cotejar antes de retirar**, porque el archivo es la única copia y
+un cuerpo que no llegó entero no se recupera.
+
+1. **Leer el registro entero** (paso 1). Se vuelcan los incidentes que el índice lista **y** los que
+   no: un índice incompleto es lo habitual, y tomar el índice por inventario deja incidentes atrás.
+2. **Mirar aguas arriba** (paso 4) sobre la superficie de cada uno. Un defecto ya arreglado en
+   `origin` no se publica: se retira con su evidencia en el reporte, como un rechazado.
+3. **Publicar uno por incidente, en orden cronológico ascendente**, con el formato de `reference.md`
+   → "El volcado a issues". Antes de cada creación, buscar su **ID de registro** —la fecha y hora—
+   entre los issues abiertos **y** cerrados: si aparece, ya está volcado y se saltea. El orden no es
+   estético: una reincidencia cita a su antecedente, así que publicando de viejo a nuevo el número ya
+   existe cuando hay que escribirlo. Las referencias del campo `Relacionado` se resuelven a `#<n>` al
+   publicar — ver `reference.md` → "Los issues relacionados".
+4. **Cotejar lo publicado contra el original**, línea por línea, no por muestreo.
+5. **Retirar** (paso 7) solo lo que quedó cotejado.
+
+**Lo que no se inventa.** Un campo que el registro no declara —la severidad, el `Conductor`, el
+`Worker`— no se deduce ni se completa: se publica su ausencia, dicha. El registro ya prefiere dejar
+filas incompletas antes que inventarlas, y volcar es transportar, no mejorar.
+
+**Lo que no se verifica.** El volcado no corre el paso 2 ni emite veredicto. Correrlo sobre todo el
+registro convertiría un transporte en la investigación completa, que es justo lo que la regla 2 de
+esta skill prohíbe — y para nada, porque el veredicto lo va a emitir el `despachar` que tome el issue.
 
 ## Cierre
 
@@ -367,6 +454,16 @@ cupos que se repusieron, y el conteo del registro antes y después.
 | "Verifico los tres y después despacho los tres" | Cada retiro cambia el registro sobre el que se elige el siguiente. De a uno. |
 | "Me falta uno para llegar a tres, agrupo distinto" | El número es de flujos, no una cuota. Un grupo forzado es un diff que hace dos cosas. |
 | "Aprovecho y corrijo la skill acá" | Esta skill prepara el flujo. Corregir es del `sdd-flow` despachado. |
+| "El issue existe, ya está volcado" | Que exista no prueba que su cuerpo llegó entero. Cotejar antes de borrar la única copia. |
+| "El `grep` no encontró el ID, falta" | ¿El archivo que grepeaste tiene contenido? `gh` fuera del repo escribe vacío sin fallar, y el `grep` sobre un archivo vacío dice lo mismo que sobre uno incompleto. |
+| "Le pongo severidad media, que es lo típico" | Un campo que el registro no declara se publica ausente. |
+| "Volcar es transportar, no hace falta mirar aguas arriba" | Publicar un defecto ya arreglado abre trabajo que nadie debería tomar. |
+| "Vuelco y borro en la misma pasada" | El cotejo va entre las dos. Después de borrar no hay contra qué cotejar. |
+| "Despaché el issue, ya está marcado" | Mientras conserve `needs-triage` sigue en el pool y otro intake lo toma. |
+| "El flujo terminó, cierro el issue" | Un `corregido` lo cierra el merge, no el flujo. `Closes #<n>` en el PR. |
+| "El dossier ya tiene el incidente verbatim" | Le falta el número del issue, y sin él el PR no puede cerrarlo. |
+| "Tres issues del mismo defecto, cierro dos como duplicados" | La frecuencia es el dato que separa una trampa estructural de un descuido. Se cierran juntos al arreglarse. |
+| "El `Relacionado` apunta a una fecha sin issue, lo dejo vacío" | Se conserva la fecha y se dice por qué no tiene número. |
 
 ## Gotchas
 
