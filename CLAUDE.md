@@ -392,6 +392,18 @@ proyecto donde se usó: nada de rutas ni artefactos del proyecto, sí la skill, 
 concreta, qué instruía frente a qué pasó, por qué el defecto es de la skill, la consecuencia y qué
 habría que cambiar.
 
+**Lo que se escribe en el momento es el mínimo, no la ficha completa.** Al ocurrir alcanzan cuatro
+cosas: **fecha y hora, skill, síntoma en una línea, y la evidencia mínima** —el comando, la salida o
+la cita textual que se pierde si no se captura ahí—. El análisis (por qué el defecto es de la skill,
+la consecuencia, qué habría que cambiar) se completa en `sdd-incident-intake`, que es donde alguien
+va a leerlo con el árbol delante. Escribir la ficha entera en el momento **interrumpe el trabajo que
+produjo el incidente**, que es justo cuando el contexto vale más y cuesta más perderlo. Y la parte
+cara no es la que se pierde: la evidencia se evapora, el análisis no.
+
+El costo de no haberlo acotado está medido: el archivo lleva **2.858 líneas y 63 incidentes con seis
+marcas de resolución**, y su propio formato produjo incidentes de readmisión y de retiro imposible.
+Un registro que nadie drena no es un registro: es un backlog.
+
 **Una reincidencia se agrega, nunca se edita.** Si el mismo defecto vuelve a aparecer, igual o
 parecido, va un registro nuevo cruzado con el anterior por su fecha y hora en el campo
 `Relacionado`. Editar el registro viejo para "actualizarlo" borra la frecuencia, que es lo único que
