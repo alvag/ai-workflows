@@ -46,7 +46,11 @@ import re
 import subprocess
 import sys
 
-ANCLA_SHA256 = "4442934ad7ee157cb1a103bfdde244f811cf887d515eae0a4d0ee0553cc9ee12"
+ANCLA_SHA256 = "dec96060cd7f617ca0c2f59801c7e888f5805ede674121fd9d5707343ade3717"
+# RENOVACIÓN 2026-08-31 — la regla 2 dejó de detener al flujo cuyo objeto declarado es el andamiaje:
+# ahí el veredicto informa y se registra. La FÓRMULA no cambió —partición, numerador, denominador,
+# descartes y códigos de salida son los mismos—, así que este instrumento no se tocó salvo el hash.
+# Lo que cambió es cómo se lee su `1` fuera del flujo de producto.
 # RENOVACIÓN 2026-08-25 — la regla 2 sumó la cláusula del corpus dentro de una skill y la regla 3
 # pasó a hablar del `scripts/` **raíz**. Resultado de releer las cuatro superficies:
 #   · clasificar()          — CAMBIADA: un segmento `tests`/`casos`/`fixtures` bajo `skills/` pasa a

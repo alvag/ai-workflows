@@ -2,7 +2,7 @@
 """Verifica el contrato del **sobre de corrida delegada en vuelo** (flujo `hilo-workers-en-vuelo`).
 
 Un modo por fila de la tabla `## Verification` del plan — veinte en total, `--ac 1` … `--ac 17`
-con sus variantes `1b`/`2b`/`3b` — más `--sincronizar` (genera las seis copias desde la fuente),
+con sus variantes `1b`/`2b`/`3b` —
 `--validar-baseline` (comprueba el bloque `#### Baseline de vN` versionado bajo `scripts/`) y
 `--autotest` (control positivo sobre un corpus verde temporal, y después un mutante por vez).
 
@@ -29,7 +29,7 @@ Formato que este verificador espera de los artefactos que lee (lo fija él, porq
 - **Baseline** (`#### Baseline de vN`): tabla con columnas `ID | commit | sha256 | timestamp |
   estado | adjudicación`, un registro por fila de `## Verification`, en el mismo orden y sin rangos.
 
-Uso: python3 scripts/verificar-sobre-en-vuelo.py --ac 1 | --autotest | --sincronizar | …
+Uso: python3 scripts/verificar-sobre-en-vuelo.py --ac 1 | --autotest | --validar-baseline
 Exit 0 si el modo pasa, 1 si falla, 2 si la invocación es inválida.
 """
 from __future__ import annotations
@@ -65,7 +65,6 @@ SKILLS = [
 ]
 CONTRATO_FUENTE = "skills/cross-review/corridas-en-vuelo.md"
 CONTRATO = "corridas-en-vuelo.md"
-COPIAS = [f"skills/{s}/{CONTRATO}" for s in SKILLS]
 
 # La sede que rechaza el estado persistido (AC-1). Su conservación textual se comprueba en
 # `--ac 1b` y la ausencia de reglas locales de retiro en `--ac 2`.
@@ -850,24 +849,23 @@ def ac_12(ctx: Ctx) -> str:
 
 
 def ac_13(ctx: Ctx) -> str:
-    """AC-13 — las siete copias byte-idénticas, el trigger de CLAUDE.md y los cuatro README."""
-    fuente = leer(ctx.raiz, CONTRATO_FUENTE)
-    identicas = 0
-    if fuente is None:
+    """AC-13 — sede única del contrato, el trigger de CLAUDE.md y los cuatro README.
+
+    Antes exigía siete copias byte-idénticas. Las copias se retiraron: la autocontención que
+    justificaban ya estaba rota —`co-explore` y `cross-implement` mandaban leer la sede canónica por
+    ruta cruzada mientras tenían copia local—, así que costaban 5.747 líneas idénticas y no compraban
+    nada. La invariante pasa a ser la contraria: **ninguna copia fuera de la canónica**.
+    """
+    if leer(ctx.raiz, CONTRATO_FUENTE) is None:
         ctx.check(False, f"fuente {CONTRATO_FUENTE}", "no existe")
-    else:
-        h = hashlib.sha256(fuente.encode("utf-8")).hexdigest()
-        for rel in COPIAS:
-            otro = leer(ctx.raiz, rel)
-            if otro is None:
-                ctx.check(False, f"copia {rel}", "no existe")
-                continue
-            ok = hashlib.sha256(otro.encode("utf-8")).hexdigest() == h
-            identicas += ok
-            ctx.check(ok, f"copia {rel}", "" if ok else "diverge de la fuente (sha256 distinto)")
+    raiz_skills = ctx.raiz / "skills"
+    intrusas = sorted(str(q.relative_to(ctx.raiz)) for q in raiz_skills.rglob(CONTRATO)
+                      if str(q.relative_to(ctx.raiz)) != CONTRATO_FUENTE) if raiz_skills.is_dir() else []
+    ctx.check(not intrusas, "sede única: ninguna copia fuera de la canónica",
+              "" if not intrusas else f"copias halladas: {', '.join(intrusas)}")
     ctx.exigir(ctx.texto("CLAUDE.md"), "CLAUDE.md", {
-        f"trigger: tocar `{CONTRATO}` obliga a `--sincronizar` y `--ac 13`":
-            [[CONTRATO, "--sincronizar", "--ac 13"]],
+        f"trigger: `{CONTRATO}` tiene sede única y se lee por ruta":
+            [[CONTRATO, "sede unica"]],
     })
     for rel in READMES:
         ctx.exigir(ctx.texto(rel), rel, {
@@ -880,7 +878,7 @@ def ac_13(ctx: Ctx) -> str:
             "advierte el riesgo de copias de versiones mezcladas, con su sede canónica":
                 [["mezclad", "sede canonica"], ["mezclad", "primera linea"]],
         })
-    return f"{identicas}/{len(COPIAS)} idénticas"
+    return f"sede única · copias intrusas: {len(intrusas)}"
 
 
 def ac_14(ctx: Ctx) -> None:
@@ -1405,34 +1403,10 @@ def autotest_conmutacion() -> list[str]:
 
 
 # ---------------------------------------------------------------------------------------------
-# Modos auxiliares: sincronizar y validar el baseline.
+# Modo auxiliar: validar el baseline (sellado como historial; ya no es obligatorio).
 # ---------------------------------------------------------------------------------------------
 
 
-def sincronizar(raiz: Path) -> int:
-    fuente = raiz / CONTRATO_FUENTE
-    if not fuente.is_file():
-        print(f"FALLA — no existe la fuente {CONTRATO_FUENTE}")
-        return 1
-    datos = fuente.read_bytes()
-    copiadas = 0
-    for rel in COPIAS:
-        destino = raiz / rel
-        if destino == fuente:
-            continue
-        if not destino.parent.is_dir():
-            print(f"FALLA — no existe el directorio {destino.parent}")
-            return 1
-        if not destino.is_file() or destino.read_bytes() != datos:
-            destino.write_bytes(datos)
-            copiadas += 1
-    print(f"ok — {len(COPIAS)} copias sincronizadas desde {CONTRATO_FUENTE} "
-          f"({copiadas} reescritas)")
-    return 0
-
-
-_ISO = re.compile(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?([.,]\d+)?"
-                  r"(Z|[+-]\d{2}:?\d{2})?$")
 
 
 def validar_baseline(ctx: Ctx, comprobar_commit: bool = True) -> None:
@@ -1785,7 +1759,7 @@ name: {skill}
 
 ## Corridas delegadas en vuelo
 
-Regla canónica: `corridas-en-vuelo.md`, hermano de este archivo.
+Regla canónica: `skills/cross-review/corridas-en-vuelo.md`, la **sede única** del contrato.
 
 {puntos}
 
@@ -1848,7 +1822,6 @@ def corpus_verde(raiz: Path) -> None:
             skill=skill, puntos="\n".join(puntos[skill]), extra=extra),
             encoding="utf-8")
     (raiz / CONTRATO_FUENTE).write_text(CONTRATO_VERDE, encoding="utf-8")
-    sincronizar_silencioso(raiz)
     for rel in READMES:
         (raiz / rel).write_text(_README_TPL.format(skill=Path(rel).parent.name), encoding="utf-8")
     (raiz / "skills/co-explore/reference.md").write_text(
@@ -1886,18 +1859,15 @@ def corpus_verde(raiz: Path) -> None:
         "la corrida B usa `started_at: 2026-08-01T09:00:03Z` y `duration_s: 7`.\n",
         encoding="utf-8")
     (raiz / "CLAUDE.md").write_text(
-        "# CLAUDE.md\n\n- Si la skill toca `corridas-en-vuelo.md`, correr "
-        "`python3 scripts/verificar-sobre-en-vuelo.py --sincronizar` y `--ac 13`.\n",
+        "# CLAUDE.md\n\n- `corridas-en-vuelo.md` tiene **sede unica** en "
+        "`skills/cross-review/corridas-en-vuelo.md` y se lee por ruta; al tocarla, correr `--ac 13`.\n",
         encoding="utf-8")
 
 
-def sincronizar_silencioso(raiz: Path) -> None:
-    datos = (raiz / CONTRATO_FUENTE).read_bytes()
-    for rel in COPIAS:
-        destino = raiz / rel
-        destino.parent.mkdir(parents=True, exist_ok=True)
-        destino.write_bytes(datos)
 
+
+_ISO = re.compile(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?([.,]\d+)?"
+                  r"(Z|[+-]\d{2}:?\d{2})?$")
 
 REQUISITOS_BASELINE = {
     "1": "AC-1 — campos raíz, por worker y por intento, más sub-esquemas exactos",
@@ -1922,7 +1892,6 @@ REQUISITOS_BASELINE = {
     "16": "AC-16 — guardas del repo sin regresión",
     "17": "AC-17 — autoridades frescas, carriers y cierre idempotente del manifest",
 }
-
 
 BASELINE_TPL = """# Baseline normativo del sobre en vuelo
 
@@ -1985,10 +1954,8 @@ MUTANTES = [
     ("tupla intercambiada", CONTRATO_FUENTE,
      "| `D2` — proceso terminado + artefacto ausente o inválido | `clasificar_error` |",
      "| `D2` — proceso terminado + artefacto ausente o inválido | `cosechar` |", "7", "D2"),
-    ("copia divergente", "skills/sdd-flow/corridas-en-vuelo.md", "# Corridas delegadas en vuelo",
-     "# Corridas delegadas en vuelo (editada a mano)", "13", "sdd-flow"),
     ("puntero ausente", "skills/cross-implement/SKILL.md",
-     "Regla canónica: `corridas-en-vuelo.md`, hermano de este archivo.", "", "12",
+     "Regla canónica: `skills/cross-review/corridas-en-vuelo.md`, la **sede única** del contrato.", "", "12",
      "cross-implement"),
     ("cláusula de reporte por turno borrada", CONTRATO_FUENTE,
      "Mientras haya una corrida registrada, **todo turno** del conductor cierra **informando** su "
@@ -2066,8 +2033,15 @@ MUTANTES = [
 ]
 
 
-def _preparar_repo_config(raiz: Path) -> None:
-    """Repo mínimo para ejercitar `--ac 15` contra el merge-base por su camino real."""
+def _preparar_repo_config(raiz: Path, omitir_en_base: str | None = None) -> None:
+    """Repo mínimo para ejercitar `--ac 15` contra el merge-base por su camino real.
+
+    `omitir_en_base` quita líneas del contenido que va al commit base, y solo de ahí: la rama
+    `feature` conserva el árbol actual, así que lo omitido reaparece como **clave nueva** del diff.
+    Es lo que le permite a un caso sembrar su propio sujeto en vez de pedírselo prestado a la rama en
+    la que se corre el autotest — sin eso, en la rama base el diff es vacío, `--ac 15` evalúa 0 pares
+    y ningún mutante puede ponerlo rojo.
+    """
     sha_base, causa = resolver_base(REPO)
     if sha_base is None:
         raise RuntimeError(causa)
@@ -2075,6 +2049,8 @@ def _preparar_repo_config(raiz: Path) -> None:
     for rel, _ in SUPERFICIES_CONFIG:
         contenido = subprocess.run(["git", "show", f"{sha_base}:{rel}"], cwd=REPO,
                                    capture_output=True, text=True, check=True).stdout
+        if omitir_en_base:
+            contenido = re.sub(omitir_en_base, "", contenido, flags=re.M)
         destino = raiz / rel
         destino.parent.mkdir(parents=True, exist_ok=True)
         destino.write_text(contenido, encoding="utf-8")
@@ -2260,7 +2236,11 @@ def autotest() -> int:
         raiz.mkdir()
         instalacion = Path(tmp) / "instalacion" / "scripts"
         try:
-            _preparar_repo_config(raiz)
+            # El sujeto lo siembra el caso: `path_vault` sale del commit base y la rama `feature` la
+            # reintroduce como clave nueva. Antes se lo pedía prestado al diff de la rama en la que
+            # se corriera el autotest, y al mergearse esa rama quedó vacuo — medido: verde rc=0,
+            # mutante rc=0, «pares nuevos evaluados: 0», rojo permanente sobre la rama base.
+            _preparar_repo_config(raiz, omitir_en_base=r"^\s*path_vault:.*\n")
             instalacion.mkdir(parents=True)
             shutil.copy(REPO / "scripts/verificar-vistas-config.py",
                         instalacion / "verificar-vistas-config.py")
@@ -2280,14 +2260,19 @@ def autotest() -> int:
             print(f"[FALLA] retiro-dueno-vault: no se pudo construir el caso — {e}")
         else:
             diagnostico = norm(salida_roja)
-            ok = rc_verde == 0 and rc_rojo != 0 and norm("knowledge-vault.path_vault") in diagnostico
+            # `pares > 0` es la condición que impide que el caso vuelva a quedar vacuo en silencio:
+            # con cero pares el verde no prueba nada y el mutante no tiene sobre qué caer.
+            pares = re.search(r"pares nuevos evaluados: (\d+)", _salida_verde)
+            ejercido = bool(pares) and int(pares.group(1)) > 0
+            ok = (rc_verde == 0 and ejercido and rc_rojo != 0
+                  and norm("knowledge-vault.path_vault") in diagnostico)
             print(f"[{'OK   ' if ok else 'FALLA'}] retiro-dueno-vault: sin mutar "
                   f"{'verde' if rc_verde == 0 else 'ROJO'} · retirando la entrada del dueño del "
                   f"vault de DUENOS_CONFIG {'rojo nombrando la clave' if ok else 'sin la señal esperada'}")
             if not ok:
                 fallas.append(
-                    f"retiro-dueno-vault: verde rc={rc_verde}; mutante rc={rc_rojo}; "
-                    f"salida={salida_roja[:300]!r}")
+                    f"retiro-dueno-vault: verde rc={rc_verde}; ejercido={ejercido}; "
+                    f"mutante rc={rc_rojo}; salida={salida_roja[:300]!r}")
 
     print("\n=== Mutantes, uno por vez")
     for nombre, rel, viejo, nuevo, modo, senal in MUTANTES:
@@ -2302,8 +2287,6 @@ def autotest() -> int:
                 print(f"[FALLA] {nombre}: no se pudo aplicar (patrón ausente en {rel})")
                 continue
             ruta.write_text(texto.replace(viejo, nuevo, 1), encoding="utf-8")
-            if rel == CONTRATO_FUENTE:
-                sincronizar_silencioso(raiz)  # aislar el efecto: si no, --ac 13 también caería
             ctx = Ctx(raiz)
             resumen = MODOS[modo][1](ctx) or "ok"
             malas = [f for f in ctx.filas if not f[0]]
@@ -2394,20 +2377,16 @@ def main() -> int:
     p.add_argument("--ac", choices=list(MODOS), metavar="N",
                    help="modo de verificación: " + " ".join(MODOS))
     p.add_argument("--raiz", type=Path, default=REPO, help="raíz del árbol a verificar")
-    p.add_argument("--sincronizar", action="store_true",
-                   help="copia la fuente del contrato a las otras seis skills")
     p.add_argument("--validar-baseline", action="store_true",
                    help="valida el bloque `#### Baseline de vN` del plan")
     p.add_argument("--autotest", action="store_true",
                    help="control positivo sobre un corpus verde y después los mutantes")
     args = p.parse_args()
-    elegidos = [bool(args.ac), args.sincronizar, args.validar_baseline, args.autotest]
+    elegidos = [bool(args.ac), args.validar_baseline, args.autotest]
     if sum(elegidos) != 1:
-        p.error("elegí exactamente uno de --ac / --sincronizar / --validar-baseline / --autotest")
+        p.error("elegí exactamente uno de --ac / --validar-baseline / --autotest")
     if args.autotest:
         return autotest()
-    if args.sincronizar:
-        return sincronizar(args.raiz)
     if args.validar_baseline:
         ctx = Ctx(args.raiz)
         validar_baseline(ctx)

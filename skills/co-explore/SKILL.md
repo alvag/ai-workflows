@@ -145,7 +145,7 @@ despachos posteriores no cambian el transporte ni el inicio históricos. Los pun
 - un worker por ronda del modo `debate`, incluida la ronda 0
 
 Campos del sobre, transiciones, sonda por turno, cosecha y condiciones del retiro:
-`corridas-en-vuelo.md`, hermano de este archivo. Es la regla normativa; acá solo se enumera dónde
+`skills/cross-review/corridas-en-vuelo.md`, la **sede única** del contrato. Es la regla normativa; acá solo se enumera dónde
 aplica.
 
 ## Red flags — detente y reconsidera

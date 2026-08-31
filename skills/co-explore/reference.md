@@ -1178,7 +1178,7 @@ Esta sección existe acá porque define la relación entre el conjunto que se tr
 de la corrida: el sobre pertenece a ese conjunto y sus reglas de cierre hacen válidas las dos
 cláusulas de arriba.
 
-**Qué es: el sobre de la corrida delegada.** Su contrato vive en `corridas-en-vuelo.md`: qué registra,
+**Qué es: el sobre de la corrida delegada.** Su contrato vive en `skills/cross-review/corridas-en-vuelo.md`: qué registra,
 cuándo nace, cómo se relee, cómo se cosecha una sola vez y qué exige su retiro se definen allá y **no
 se redefinen acá**. Como cada intento registra su propia salida y referencia de proceso, la decisión
 de redespachar puede distinguir lo heredado de lo vigente sin agregar un nonce. **No** hay una máquina
@@ -1192,7 +1192,7 @@ redespacho sobre esas rutas.
 
 **El retiro es el del contrato genérico.** Las tres condiciones simultáneas —terminal comprobado,
 artefacto adjudicado, y sin recursos propios en pie o transferidos a un registro de cierre— son las de
-`corridas-en-vuelo.md`; esta skill no agrega ni relaja ninguna. Llegar a un final comprobado no alcanza:
+`skills/cross-review/corridas-en-vuelo.md`; esta skill no agrega ni relaja ninguna. Llegar a un final comprobado no alcanza:
 un recurso conservado a propósito sigue bajo ownership y, si permanece en pie, su propiedad y la
 próxima acción se transfieren al registro de cierre antes de retirar el sobre activo.
 

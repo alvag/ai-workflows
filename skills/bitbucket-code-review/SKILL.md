@@ -103,7 +103,7 @@ Los puntos de despacho propios son dos:
   externa en vez de resolverla el conductor
 
 Campos del sobre, transiciones, sonda por turno, cosecha y condiciones del retiro:
-`corridas-en-vuelo.md`, hermano de este archivo. Es la regla normativa; acá solo se enumera dónde
+`skills/cross-review/corridas-en-vuelo.md`, la **sede única** del contrato. Es la regla normativa; acá solo se enumera dónde
 aplica. El `debate` que se ofrece ante una discrepancia de veredicto lo despacha `co-explore`, que
 escribe el sobre de su propia corrida.
 

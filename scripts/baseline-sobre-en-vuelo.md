@@ -1,4 +1,17 @@
-# Baseline normativo del sobre en vuelo
+# Baseline del sobre en vuelo — **historial sellado**
+
+> **Este archivo salió del gate el 2026-08-31 y no se re-emite.** Se conserva por lo que sí vale: los
+> rojos conocidos y las transiciones de `v2` a `v13`, que explican cómo llegó cada AC a su estado.
+>
+> **Por qué dejó de ser obligatorio.** `--validar-baseline` comprueba la forma de la tabla, que haya
+> un único `sha256` y que el commit registrado contenga esos bytes. **Nunca ejecuta V1–V20 ni
+> contrasta los estados declarados contra una corrida**: una tabla inventada de veinte
+> `GREEN_ALREADY` bien formada pasa igual. A cambio, ataba su identidad al `sha256` del verificador,
+> así que **cualquier** cambio del `.py` —incluido el arreglo de dos líneas de un control positivo—
+> obligaba a re-emitir veinte estados medidos a mano. Es procedencia al precio de una ceremonia por
+> commit.
+>
+> El bloque `#### Baseline de v13` es el último emitido bajo el régimen anterior.
 
 ## Verification
 

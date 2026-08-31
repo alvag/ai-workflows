@@ -1,4 +1,24 @@
-"""Instrumenta y recalcula la evidencia de la ventana dual de migracion."""
+"""Recalculo de la evidencia irrepetible de la migracion, **fuera del gate**.
+
+Salio de `python3 -m tests` el 2026-08-31, y se corre a mano cuando alguien quiera auditar el
+snapshot:
+
+    python3 tests/migracion.py
+
+**Por que salio.** `verify_report` comprueba que el tag anotado exista, que alcance el commit
+registrado y que el arbol coincida, y despues **extrae ese commit a un temporal y recalcula la
+evidencia desde ahi**. Es decir: no verifica el codigo actual — ningun cambio en el arbol puede
+romperlo ni arreglarlo. Es un acta historica, el mismo patron que el baseline del sobre en vuelo.
+
+**Y era flaky.** Ese recalculo ejecuta subprocesos reales con `timeout=30 s` sobre el arbol viejo:
+medido, 26-29 s y verde con la maquina tranquila, 178-194 s y rojo bajo carga, con un conjunto
+distinto de identidades divergentes en cada corrida. Un caso que da resultados distintos sobre el
+mismo commit no acredita nada, y obligaba a un juicio a mano en cada gate.
+
+La cobertura no se pierde: se comprobo que `validate_coverage` cierra sin el —los 397 tests
+`escenario:` ya cubren los casos migrados y las guardas estan cubiertas por `firma:` y
+`mutante-v24:`—, asi que su aporte era redundante.
+"""
 
 from __future__ import annotations
 

@@ -139,7 +139,7 @@ original. Los puntos de despacho propios son dos:
 - cada ronda del **fix loop**, que reanuda esa misma sesión con el delta
 
 Campos del sobre, transiciones, sonda por turno, cosecha y condiciones del retiro:
-`corridas-en-vuelo.md`, hermano de este archivo. Es la regla normativa; acá solo se enumera dónde
+`skills/cross-review/corridas-en-vuelo.md`, la **sede única** del contrato. Es la regla normativa; acá solo se enumera dónde
 aplica. Un implementador es **escritor**: su sobre lo declara, y el relanzamiento no ocurre hasta
 confirmar el cese del anterior.
 
