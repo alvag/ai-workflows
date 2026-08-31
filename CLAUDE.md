@@ -173,6 +173,28 @@ desperdiciar contexto. `cross-implement` es el caso vivo — `reference.md` (tod
 `reference.md` abre con una tabla que dice cuál se lee cuándo. `SKILL.md` y `README.md` siguen
 siendo **uno** por skill.
 
+### Qué dispara verificación, y qué no
+
+La **regla de entrada** gobierna la lista de abajo, y por eso va antes que ella.
+
+> **Disparador:** al cerrar un cambio cuyo objeto son las skills.
+> **Efecto:** si el cambio **no toca ninguna** de las superficies compartidas que nombran los
+> disparadores de abajo, **no corre ninguna verificación**. Editar el texto de un `SKILL.md`, un
+> `reference.md` o un `README.md` —redactar, agregar un paso, cambiar un ejemplo, reescribir una
+> sección— es el caso ordinario y no dispara nada. El techo tampoco: si el diff no toca andamiaje, su
+> numerador es cero por construcción y medirlo no puede cambiar el veredicto.
+> **Excepción:** los disparadores de abajo, que se leen **por lo que el cambio toca** y no por lo que
+> el cambio parece.
+
+**Por qué existe.** Medido el 2026-08-30: de las 4.370 líneas de `scripts/`, **3.008 (69 %)** son dos
+verificadores —`verificar-sobre-en-vuelo.py` y `verificar-vistas-config.py`— cuyo trabajo es comprobar
+que **copias de un mismo dato** no divergieron, no que una skill funcione. Correr esa batería ante un
+cambio de prosa hace pagar la deuda de una duplicación que ese cambio no introdujo, y no es barato:
+dos de las cinco invocaciones obligatorias corren la misma suite —`--ac 16` invoca `python3 -m tests`—
+y dos están **rojas en `main`**, así que cada corrida termina en un juicio a mano sobre si el rojo es
+el de siempre. La lista de abajo no se toca: lo que cambia es que **se lee para decidir si algo corre,
+no para correrlo todo**.
+
 Al crear o editar skills, seguí las buenas prácticas de agentskills.io (referencia pedida explícitamente):
 - **Specification:** https://agentskills.io/specification — `name` (== nombre del directorio, minúsculas/números/guiones, sin guion inicial/final ni `--`), `description` (máx 1024 chars, tercera persona, qué hace **y cuándo** usarla, con keywords de trigger).
 - **Best practices:** https://agentskills.io/skill-creation/best-practices — SKILL.md idealmente <500 líneas / <5000 tokens; mover el detalle a `reference.md`; dar **un default, no un menú**; secciones "Gotchas" y "red flags"; procedimientos reutilizables, no respuestas puntuales.
