@@ -195,23 +195,45 @@ y dos están **rojas en `main`**, así que cada corrida termina en un juicio a m
 el de siempre. La lista de abajo no se toca: lo que cambia es que **se lee para decidir si algo corre,
 no para correrlo todo**.
 
+**La matriz de superficies.** Es la **sede operativa** del disparo: si el cambio no toca ninguna de
+estas filas, no corre nada. Los bullets de más abajo conservan el **fundamento** de cada guarda —por
+qué existe y qué defecto medido la produjo—, no su disparador; el disparador vive acá y en un solo
+lugar.
+
+| Si el cambio toca… | Correr | Se lee por |
+|---|---|---|
+| el **frontmatter** de una skill, su `name`, o crea/renombra una skill | `skills-ref validate ./skills/<nombre>` | su salida |
+| `config-ejemplo.md`, `manifest-ejemplo.md`, o el esquema/"Configuración" de alguno de sus seis dueños | `python3 scripts/verificar-vistas-config.py` | **código de salida** |
+| `corridas-en-vuelo.md` | `verificar-sobre-en-vuelo.py --sincronizar`, después `--ac 13` | **código de salida** |
+| una **receta de despacho**, una marca `despacho:`, la tabla de política de aislamiento, o el inventario de puntos de despacho | `--ac 12` **y** el verificador de aislamiento (`correccion`) | **código de salida** |
+| el contrato del manifest de corrida, sus autoridades o su cierre en los cuatro productores | `--ac 17` | su salida |
+| cualquier `.py` bajo `scripts/`, o `tests/` | `python3 -m tests` **y** el autotest del verificador que tocaste | **código de salida** |
+| la regla 2 o `medir-techo.py` | `medir-techo.test.py` y sus dos autotests (`--autotest-banda`, `--autotest-dominio`) | **código de salida** |
+| **retirar** una vía, un modo o una capacidad | los veinte modos `--ac` (ver el bullet del retiro) | **código de salida** |
+| cerrar `implement` con andamiaje en el diff | `python3 scripts/medir-techo.py <base_commit>` | código de salida |
+
+**Nada más dispara.** La prosa de un `SKILL.md`, un `reference.md` o un `README.md` no está en la
+tabla, y ese es el caso ordinario. La tabla se lee por **lo que el cambio toca**, nunca por el nombre
+de la sección que lo contiene: anclar un disparador a un título es el defecto medido de `--ac 12`,
+cuyo enunciado viejo no disparaba ante un cambio de receta.
+
 Al crear o editar skills, seguí las buenas prácticas de agentskills.io (referencia pedida explícitamente):
 - **Specification:** https://agentskills.io/specification — `name` (== nombre del directorio, minúsculas/números/guiones, sin guion inicial/final ni `--`), `description` (máx 1024 chars, tercera persona, qué hace **y cuándo** usarla, con keywords de trigger).
 - **Best practices:** https://agentskills.io/skill-creation/best-practices — SKILL.md idealmente <500 líneas / <5000 tokens; mover el detalle a `reference.md`; dar **un default, no un menú**; secciones "Gotchas" y "red flags"; procedimientos reutilizables, no respuestas puntuales.
-- Validar con `skills-ref validate ./skills/<nombre>` (de https://github.com/agentskills/agentskills).
+- `skills-ref validate ./skills/<nombre>` (de https://github.com/agentskills/agentskills) comprueba el spec. Su disparador es el **frontmatter**, no el cuerpo: validar prosa no cambia su veredicto.
 - **El techo de proporción de la regla 2 se mide con `python3 scripts/medir-techo.py <base_commit>`**, al cerrar `implement` y antes del gate de revisión manual. Imprime en una línea los archivos nuevos bajo `scripts/`, el numerador, el denominador y el veredicto, y distingue por código de salida `pasa` (0), `bloquea` (1), error de invocación (2) y **medición detenida** (3) — que no es un veredicto y no se puede leer como uno. La **sede normativa de la fórmula sigue siendo la regla 2**: el script la implementa y ancla el hash de esa sección, así que si la regla cambia se detiene en vez de calcular con una fórmula vieja. Reimplementarla a mano en un bloque del plan es lo que produjo doce defectos en tres flujos; su suite —`scripts/medir-techo.test.py`, con `--listar` y `--autotest`— los tiene mapeados uno por uno.
-- Si la skill toca `config-ejemplo.md` o `manifest-ejemplo.md`, o el esquema/"Configuración" de alguno de sus seis dueños (`sdd-flow`, `sdd-orchestrator`, `cross-review`, `co-explore`, `cross-implement`, `knowledge-vault`), correr `python3 scripts/verificar-vistas-config.py`: valida que esas vistas sigan fieles a sus dueños (claves, enums, valores, marcas `[def]`/`[ej]`/`[obl]` y comillas en `on`/`off`).
-- Si la skill toca `corridas-en-vuelo.md`, correr `python3 scripts/verificar-sobre-en-vuelo.py --sincronizar` y después `--ac 13`. Ese archivo es **contenido replicado**: la sede canónica es `skills/cross-review/corridas-en-vuelo.md` y las otras seis son copias byte-idénticas generadas. **Editar una copia a mano es una divergencia silenciosa**; el generador la evita y el hash la detecta.
-- El baseline de ese verificador vive en `scripts/baseline-sobre-en-vuelo.md`: correr `python3 scripts/verificar-sobre-en-vuelo.py --validar-baseline` para comprobarlo y `--ac 16` para la no-regresión del cierre de los intentos. Su identidad se ata al `sha256` del propio verificador, así que **tocar el `.py` obliga a re-emitir el bloque `#### Baseline de vN`** —el validador lee la versión mayor— con el commit evaluado y los estados **medidos**, no asumidos.
-- Si la skill toca la sección "Corridas delegadas en vuelo" de algún `SKILL.md` —donde vive el inventario de los **once** puntos de despacho—, correr además `python3 scripts/verificar-sobre-en-vuelo.py --ac 12`: verifica biyección entre lo declarado en el árbol y el inventario del verificador, así que agregar o retirar un punto de despacho sin actualizarlo la pone roja.
-- Si se toca el contrato del manifest de corrida en `skills/cross-review/reference.md`, sus autoridades o cierre en cualquiera de los cuatro productores (`co-explore`, `cross-review`, `cross-implement`, `bitbucket-code-review`), correr `python3 scripts/verificar-sobre-en-vuelo.py --ac 17`.
+- **`verificar-vistas-config.py`** cubre `config-ejemplo.md` y `manifest-ejemplo.md` contra sus **seis dueños** (`sdd-flow`, `sdd-orchestrator`, `cross-review`, `co-explore`, `cross-implement`, `knowledge-vault`): valida que esas vistas sigan fieles a sus dueños (claves, enums, valores, marcas `[def]`/`[ej]`/`[obl]` y comillas en `on`/`off`).
+- `corridas-en-vuelo.md` es **contenido replicado**: la sede canónica es `skills/cross-review/corridas-en-vuelo.md` y las otras seis son copias byte-idénticas generadas. **Editar una copia a mano es una divergencia silenciosa**; el generador la evita y el hash la detecta.
+- **El baseline está sellado como historial y salió del gate.** `scripts/baseline-sobre-en-vuelo.md` conserva los rojos conocidos y las transiciones de v2 a v13, que es su valor real; `--validar-baseline` sigue existiendo pero **ya no es obligatorio y no se re-emite**. Motivo, medido: su validador comprueba forma, `sha256` y vínculo con el commit — nunca ejecuta V1–V20 ni contrasta los estados declarados contra corridas, así que una tabla inventada de veinte `GREEN_ALREADY` bien formada pasaba igual. A cambio, ataba cada cambio del `.py` a re-emitir veinte estados a mano: procedencia al precio de una ceremonia por commit.
+- `--ac 12` cubre el inventario de los **once** puntos de despacho: verifica biyección entre lo declarado en el árbol y el inventario del verificador, así que agregar o retirar un punto de despacho sin actualizarlo la pone roja.
+- `--ac 17` cubre el contrato del manifest de corrida en `skills/cross-review/reference.md` y su cierre en los cuatro productores (`co-explore`, `cross-review`, `cross-implement`, `bitbucket-code-review`).
 - **Un retiro corre la batería completa, no el subconjunto documentado.** `verificar-sobre-en-vuelo.py` tiene **20 modos `--ac`** y las unidades de arriba nombran **tres**; los otros diecisiete existen, corren y pueden ponerse rojos sin que ningún procedimiento los invoque. Al **retirar** algo —una vía, un modo, una capacidad— hay que correr los veinte (`for m in 1 1b 2 2b 3 3b 4 5 6 7 8 9 10 11 12 13 14 15 16 17`), porque retirar es la operación que **arrastra cláusulas ajenas**: el texto que rodea a lo que se va se lleva puesto lo que no era suyo, y lo que queda **se lee perfecto**. Ya pasó: el retiro del transporte por panes borró una cláusula de doctrina que vivía dentro de un párrafo sobre esa vía, `--ac 1b` la cazó en el acto, y estuvo roja **noventa commits** porque nadie la corría.
-- Las **cinco** invocaciones de `verificar-sobre-en-vuelo.py` que se leen por código de salida son `--validar-baseline`, `--ac 12`, `--ac 13`, `--ac 16` y `--autotest`: **0 en verde**. `--ac 16` invoca exactamente el entrypoint durable `python3 -m tests`. Las de `verificar-vistas-config.py` (sin banderas) y `python3 -m tests`, lo mismo.
+- Las **cuatro** invocaciones de `verificar-sobre-en-vuelo.py` que se leen por código de salida son `--ac 12`, `--ac 13`, `--ac 16` y `--autotest`: **0 en verde**. `--ac 16` invoca exactamente el entrypoint durable `python3 -m tests`. Las de `verificar-vistas-config.py` (sin banderas) y `python3 -m tests`, lo mismo.
 - La suite durable `python3 -m tests` sustituye las auditorías y el reporte del arnés retirado: un
   código `0` acredita el catálogo migrado, las guardas portadas y las cinco dimensiones del oracle
   durable. La evidencia dual histórica vive sellada fuera del corpus y no se regenera.
 
-- **Si el cambio toca una receta de despacho, una marca `despacho:`, la tabla de política de aislamiento o este mismo bloque, correr el verificador de aislamiento.** Son las **cuatro** superficies que pueden romperlo, y el disparador se enuncia por lo que cambia y no por el nombre de una sección: anclarlo a un título es el defecto medido de `--ac 12`, cuyo disparador documentado no dispara ante un cambio de receta. El verificador es un bloque de shell —no hay archivo bajo `scripts/`, regla 3— con dos salidas que son **dos propiedades distintas**:
+- **El verificador de aislamiento** cubre cuatro superficies: una receta de despacho, una marca `despacho:`, la tabla de política de aislamiento y este mismo bloque. Es un bloque de shell —no hay archivo bajo `scripts/`, regla 3— con dos salidas que son **dos propiedades distintas**:
 
   ```bash
   # uso: verificar_aislamiento <raíz> <correccion|candidatos>
