@@ -23,6 +23,8 @@ Uso:
     medir-techo.py --ancla           imprime el hash esperado y el actual de la sección normativa
     medir-techo.py --dominio         imprime los patrones del dominio de generados, uno por línea y
                                      ordenados, para diffear contra el .gitignore
+    medir-techo.py --banda           imprime la banda de tolerancia del umbral, para comparar el
+                                     número del instrumento contra el de la sede normativa
 
 Salida:
     stdout  un resumen de UNA línea, sin ninguna ruta:
@@ -32,10 +34,15 @@ Salida:
     "nombrar la ruta" no caben juntos.
 
 Códigos de salida:
-    0  pasa        el numerador no supera al denominador
-    1  bloquea     lo supera
+    0  pasa        el numerador no supera al denominador por más de la banda de tolerancia
+    1  bloquea     la supera
     2  invocación  argumentos faltantes o mal formados
     3  detenida    no se pudo medir; el mensaje nombra el punto de fallo
+
+La banda está acotada por el denominador —el margen efectivo es min(BANDA, den)— y con denominador
+cero no aplica: ahí basta un numerador bruto mayor que cero para bloquear. El valor NO se escribe acá
+a propósito: sería una tercera sede que ninguna fila compara contra nada. Se lee con `--banda`, que
+imprime el que la fórmula usa, y ese es el número que se diffea contra la sede normativa.
 
 El 2 está sobrecargado: un módulo ausente también sale con 2. Quien lea este código debe exigir además
 la marca literal de la salida. Y nunca leer un código de salida después de un pipe.
@@ -46,11 +53,57 @@ import re
 import subprocess
 import sys
 
-ANCLA_SHA256 = "dec96060cd7f617ca0c2f59801c7e888f5805ede674121fd9d5707343ade3717"
+ANCLA_SHA256 = "6de2c47946d0d8f4d46266c1aa45ff3e846201540e2aa26a49ed06847798ec13"
 # RENOVACIÓN 2026-08-31 — la regla 2 dejó de detener al flujo cuyo objeto declarado es el andamiaje:
 # ahí el veredicto informa y se registra. La FÓRMULA no cambió —partición, numerador, denominador,
 # descartes y códigos de salida son los mismos—, así que este instrumento no se tocó salvo el hash.
 # Lo que cambió es cómo se lee su `1` fuera del flujo de producto.
+# RENOVACIÓN 2026-08-31 (bis) — la banda de tolerancia se rebasó SOBRE la renovación de arriba. La
+# regla quedó con las dos cosas: informa cuando el objeto declarado es el andamiaje, y su umbral lleva
+# banda cuando el denominador existe. Se retiró la excepción anticipada por objeto declarado, que esta
+# rama había redactado y que la renovación de arriba dejó sin objeto. Releídas las cuatro superficies
+# contra el texto resultante: las conclusiones son las mismas que las del bloque de abajo —solo
+# `num/den/nuevos` cambió, y por la banda—, porque informar en vez de detener no toca la partición, el
+# descarte, la enumeración ni el cálculo: cambia cómo se LEE el `1`, no cómo se produce.
+# RENOVACIÓN 2026-08-28 — la regla 2 sumó la banda de tolerancia del umbral, el descuento por
+# restauración, la proyección en el gate de tareas, la excepción anticipada por objeto declarado y la
+# matriz de adopción por worktree; y corrigió la afirmación de que `tests/` estaba vacío. Resultado de
+# releer las cuatro superficies contra ese texto:
+#   · clasificar()          — SIN CAMBIO: la partición es la misma. Las dos sedes de producto y los
+#                             cuatro patrones de andamiaje quedaron intactos, y `tests/` ya clasificaba
+#                             por `startswith("tests/")`: decir que tiene 57 archivos versionados en vez
+#                             de estar vacío no mueve una sola ruta de clase. El descuento por
+#                             restauración PARECE tocarla y no lo hace: la regla lo pone en el gate, y
+#                             dice que el instrumento nunca emite el adjudicado.
+#   · generado()            — SIN CAMBIO: ni los seis patrones del dominio ni los ocho directorios de
+#                             artefactos SDD aparecen en el texto nuevo.
+#   · enumeración untracked — SIN CAMBIO: sigue `--exclude-from=.gitignore` y sigue deteniéndose si ese
+#                             archivo falta. Los dos bullets que la gobiernan quedaron byte a byte.
+#   · num/den/nuevos        — CAMBIADA: acá aterriza la banda. La acumulación no se tocó —neto por
+#                             archivo con denominador mayor que cero, bruto con cero; denominador en
+#                             bruto; `nuevos_en_scripts` anclado a `startswith("scripts/")`—, pero el
+#                             umbral dejó de ser la igualdad: `num > den + min(BANDA, den)`, y con
+#                             denominador cero la banda aporta 0, que conserva exacto el comportamiento
+#                             anterior. El predicado se computa UNA vez y lo consumen el texto del
+#                             resumen y el código de salida, que antes eran dos expresiones
+#                             independientes y contiguas.
+#   Una segunda ronda del PR corrigió cinco cosas más —la contribución de una unidad restaurada se
+#   mide en la misma rama que `num_base`, el `Efecto` cubre los dos disparadores, se declara cuál de
+#   las dos holguras cubre la banda, el valor deja de enunciarse siete veces para enunciarse una, y la
+#   sede de fuera remite en vez de reenunciar—. Releídas las cuatro superficies contra esa versión:
+#   ninguna conclusión cambia; ninguna de las cinco toca la partición, el descarte, la enumeración ni
+#   el cálculo. Solo se reancló el hash.
+#   La revisión del PR refinó además cinco cosas del texto —el disparador declara las dos
+#   obligaciones, la cota gana explícitamente sobre la holgura, la contribución de una unidad
+#   restaurada se define como neto tras el piso, la línea de base del salto pasa de una línea a dos, y
+#   una justificación duplicada quedó en una sola sede—. Las cuatro superficies se releyeron contra esa
+#   versión: ninguna conclusión cambia, porque ninguna de las cinco toca la partición, el descarte, la
+#   enumeración ni el cálculo. Solo se reancló el hash.
+#   La revisión final del diff refinó antes tres cosas del texto —la cláusula de los borrados dejó
+#   de ser un absoluto, una referencia posicional pasó a nombrar su bullet, y el bullet de
+#   restauración se movió fuera del rango de una fila—. Se releyeron las cuatro superficies contra
+#   esa versión: ninguna conclusión cambia, porque ninguna de las tres toca la partición, el
+#   descarte, la enumeración ni el cálculo. Solo se reancló el hash.
 # RENOVACIÓN 2026-08-25 — la regla 2 sumó la cláusula del corpus dentro de una skill y la regla 3
 # pasó a hablar del `scripts/` **raíz**. Resultado de releer las cuatro superficies:
 #   · clasificar()          — CAMBIADA: un segmento `tests`/`casos`/`fixtures` bajo `skills/` pasa a
@@ -82,6 +135,11 @@ ANCLA_SHA256 = "dec96060cd7f617ca0c2f59801c7e888f5805ede674121fd9d5707343ade3717
 # ancla sigue verde, porque comprueba la detección del desajuste y no la fidelidad de la fórmula.
 # Contra eso protege `--autotest-dominio`, que muta cada superficie conservando el hash vigente.
 # Atribuirle más a esta constante es lo que hizo que se diera por cubierto un hueco que estaba abierto.
+
+# Banda de tolerancia del umbral (regla 2 de CLAUDE.md). El margen efectivo es min(BANDA, den), y con
+# denominador cero la banda no aplica. Es UNA sola sede: el texto del resumen, el código de salida y
+# `--banda` la consumen de acá, así que no pueden divergir.
+BANDA = 20
 
 ANDAMIAJE = "andamiaje"
 PRODUCTO = "producto"
@@ -235,6 +293,11 @@ def main(argv):
             print(p)
         return 0
 
+    if argv[1:2] == ["--banda"]:
+        # No se declara un segundo literal: se imprime el que la fórmula usa.
+        print(BANDA)
+        return 0
+
     if argv[1:2] == ["--ancla"]:
         raiz = correr(["git", "rev-parse", "--show-toplevel"], "rev-parse").decode().strip()
         import pathlib
@@ -244,7 +307,7 @@ def main(argv):
         return 0
 
     if not 1 <= len(argv[1:]) <= 2:
-        raise MalUso("medir-techo.py <base> [head]  |  medir-techo.py --ancla")
+        raise MalUso("medir-techo.py <base> [head]  |  medir-techo.py --ancla  |  --dominio  |  --banda")
     base = argv[1]
     head = argv[2] if len(argv) > 2 else None
 
@@ -322,9 +385,17 @@ def main(argv):
         canal.flush()
 
     num = neto if den > 0 else bruto
-    veredicto = "BLOQUEA" if num > den else "PASA"
+    # Un solo predicado para las dos sedes. Estaban escritas como dos expresiones independientes y
+    # contiguas, que es exactamente la forma en que se divergen sin que nada lo note.
+    # El `if den > 0` es REDUNDANTE con `min`: `min(BANDA, 0)` ya vale 0, así que no cambia ni un
+    # veredicto y la rama está muerta en producción. Se conserva a propósito, para que un cambio futuro
+    # del operador —un `max` en lugar del `min`— no abra la rama `den == 0` en silencio, que es
+    # justamente donde la banda no debe aplicar. No leerlo como load-bearing: hoy solo se enciende bajo
+    # el mutante `banda-sin-cota`.
+    bloquea = num > den + (min(BANDA, den) if den > 0 else 0)
+    veredicto = "BLOQUEA" if bloquea else "PASA"
     print(f"nuevos_en_scripts={nuevos_en_scripts} num={num} den={den} {veredicto}")
-    return 1 if num > den else 0
+    return 1 if bloquea else 0
 
 
 if __name__ == "__main__":
