@@ -2066,8 +2066,15 @@ MUTANTES = [
 ]
 
 
-def _preparar_repo_config(raiz: Path) -> None:
-    """Repo mínimo para ejercitar `--ac 15` contra el merge-base por su camino real."""
+def _preparar_repo_config(raiz: Path, omitir_en_base: str | None = None) -> None:
+    """Repo mínimo para ejercitar `--ac 15` contra el merge-base por su camino real.
+
+    `omitir_en_base` quita líneas del contenido que va al commit base, y solo de ahí: la rama
+    `feature` conserva el árbol actual, así que lo omitido reaparece como **clave nueva** del diff.
+    Es lo que le permite a un caso sembrar su propio sujeto en vez de pedírselo prestado a la rama en
+    la que se corre el autotest — sin eso, en la rama base el diff es vacío, `--ac 15` evalúa 0 pares
+    y ningún mutante puede ponerlo rojo.
+    """
     sha_base, causa = resolver_base(REPO)
     if sha_base is None:
         raise RuntimeError(causa)
@@ -2075,6 +2082,8 @@ def _preparar_repo_config(raiz: Path) -> None:
     for rel, _ in SUPERFICIES_CONFIG:
         contenido = subprocess.run(["git", "show", f"{sha_base}:{rel}"], cwd=REPO,
                                    capture_output=True, text=True, check=True).stdout
+        if omitir_en_base:
+            contenido = re.sub(omitir_en_base, "", contenido, flags=re.M)
         destino = raiz / rel
         destino.parent.mkdir(parents=True, exist_ok=True)
         destino.write_text(contenido, encoding="utf-8")
@@ -2260,7 +2269,11 @@ def autotest() -> int:
         raiz.mkdir()
         instalacion = Path(tmp) / "instalacion" / "scripts"
         try:
-            _preparar_repo_config(raiz)
+            # El sujeto lo siembra el caso: `path_vault` sale del commit base y la rama `feature` la
+            # reintroduce como clave nueva. Antes se lo pedía prestado al diff de la rama en la que
+            # se corriera el autotest, y al mergearse esa rama quedó vacuo — medido: verde rc=0,
+            # mutante rc=0, «pares nuevos evaluados: 0», rojo permanente sobre la rama base.
+            _preparar_repo_config(raiz, omitir_en_base=r"^\s*path_vault:.*\n")
             instalacion.mkdir(parents=True)
             shutil.copy(REPO / "scripts/verificar-vistas-config.py",
                         instalacion / "verificar-vistas-config.py")
@@ -2280,14 +2293,19 @@ def autotest() -> int:
             print(f"[FALLA] retiro-dueno-vault: no se pudo construir el caso — {e}")
         else:
             diagnostico = norm(salida_roja)
-            ok = rc_verde == 0 and rc_rojo != 0 and norm("knowledge-vault.path_vault") in diagnostico
+            # `pares > 0` es la condición que impide que el caso vuelva a quedar vacuo en silencio:
+            # con cero pares el verde no prueba nada y el mutante no tiene sobre qué caer.
+            pares = re.search(r"pares nuevos evaluados: (\d+)", _salida_verde)
+            ejercido = bool(pares) and int(pares.group(1)) > 0
+            ok = (rc_verde == 0 and ejercido and rc_rojo != 0
+                  and norm("knowledge-vault.path_vault") in diagnostico)
             print(f"[{'OK   ' if ok else 'FALLA'}] retiro-dueno-vault: sin mutar "
                   f"{'verde' if rc_verde == 0 else 'ROJO'} · retirando la entrada del dueño del "
                   f"vault de DUENOS_CONFIG {'rojo nombrando la clave' if ok else 'sin la señal esperada'}")
             if not ok:
                 fallas.append(
-                    f"retiro-dueno-vault: verde rc={rc_verde}; mutante rc={rc_rojo}; "
-                    f"salida={salida_roja[:300]!r}")
+                    f"retiro-dueno-vault: verde rc={rc_verde}; ejercido={ejercido}; "
+                    f"mutante rc={rc_rojo}; salida={salida_roja[:300]!r}")
 
     print("\n=== Mutantes, uno por vez")
     for nombre, rel, viejo, nuevo, modo, senal in MUTANTES:
