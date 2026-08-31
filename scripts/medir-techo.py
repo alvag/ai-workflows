@@ -53,7 +53,7 @@ import re
 import subprocess
 import sys
 
-ANCLA_SHA256 = "4510c7520be741ff6c78c91ab15b063c0cf55b49ca7161bc2aaccff087005497"
+ANCLA_SHA256 = "6de2c47946d0d8f4d46266c1aa45ff3e846201540e2aa26a49ed06847798ec13"
 # RENOVACIÓN 2026-08-31 — la regla 2 dejó de detener al flujo cuyo objeto declarado es el andamiaje:
 # ahí el veredicto informa y se registra. La FÓRMULA no cambió —partición, numerador, denominador,
 # descartes y códigos de salida son los mismos—, así que este instrumento no se tocó salvo el hash.

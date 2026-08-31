@@ -602,20 +602,44 @@ def caso_banda_dos_representaciones(_):
     en el primero, así que el mutante del valor aparece detectado por los dos.
     """
     texto = (RAIZ / "CLAUDE.md").read_text(encoding="utf-8")
-    declarados = re.findall(r"la banda es de (\d+) líneas", texto)
+    # La sección se recorta acá con la misma regla que usa el instrumento —del encabezado de la regla 2
+    # al siguiente de nivel <= 3— en vez de importarla: el instrumento se invoca como subproceso y este
+    # caso tiene que poder correr contra una copia mutada de él.
+    lineas = texto.split("\n")
+    i = next(k for k, l in enumerate(lineas) if l.startswith("### Regla 2"))
+    j = next((k for k in range(i + 1, len(lineas)) if re.match(r"^#{1,3} ", lineas[k])), len(lineas))
+    seccion = "\n".join(lineas[i:j])
+
+    declarados = re.findall(r"la banda es de (\d+) líneas", seccion)
     esperar(len(declarados) == 1,
             f"la sede normativa debe declarar el valor de la banda exactamente una vez, "
             f"halladas {len(declarados)}")
-    # Segunda mitad, y es la que más duele: la FÓRMULA no puede reenunciar el número. Medido, el
-    # documento llegó a declararlo siete veces mientras esta guarda veía una sola, así que cambiar
-    # `BANDA` y actualizar la línea declarada la dejaba verde con seis enunciaciones viejas.
-    formulas = re.findall(r"min\(\s*\d+\s*,\s*denominador\s*\)", texto)
-    esperar(not formulas,
-            f"la sede normativa no debe reenunciar el valor dentro de la fórmula: {formulas}")
+    valor = declarados[0]
+
+    # Segunda mitad: el número no puede REAPARECER en la sección, en ninguna forma. Se cuentan dígitos
+    # y no sintaxis. El predicado anterior enumeraba formas —buscaba `min(N, denominador)`— y veía UNA
+    # de cinco: dejaba pasar `min(20, den)`, `min(denominador, 20)`, la prosa «20 o el denominador, el
+    # menor» y hasta otra enunciación en dígitos con otro giro, que es la que reabre el defecto entero.
+    # Contar el valor completo es exhaustivo por construcción y no hay lista de sintaxis que mantener.
+    def apariciones(t):
+        return re.findall(r"(?<!\d)" + re.escape(valor) + r"(?!\d)", t)
+
+    # Control positivo del propio predicado, y hace falta: ningún mutante del arnés puede ponerlo rojo
+    # —`_autotest_mutantes` muta el INSTRUMENTO y rechaza un rojo por `punto=ancla`—, así que sin esto
+    # la mitad de abajo sería una guarda sin nadie que demuestre que discrimina. Se ejerce sobre texto
+    # sintético, sin tocar `CLAUDE.md`.
+    esperar(len(apariciones(seccion + f"\n\nDicho de otro modo, la banda vale {valor} líneas.\n")) == 2,
+            "el predicado no ve una segunda enunciación del valor: no puede ponerse rojo")
+
+    halladas = apariciones(seccion)
+    esperar(len(halladas) == 1,
+            f"el valor de la banda aparece {len(halladas)} veces en la sección normativa y debe "
+            f"aparecer una sola: cambiarlo dejaría enunciaciones viejas en verde")
+
     rc, out, _ = medir(RAIZ, "--banda")
     esperar(rc == PASA, f"--banda debía salir {PASA}, dio {rc}: {out}")
-    esperar(out.strip() == declarados[0],
-            f"la regla declara {declarados[0]} y el instrumento imprime {out.strip()!r}")
+    esperar(out.strip() == valor,
+            f"la regla declara {valor} y el instrumento imprime {out.strip()!r}")
 
 
 def _banda(altas_andamiaje, altas_producto):

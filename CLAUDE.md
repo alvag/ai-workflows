@@ -34,16 +34,24 @@ Cada una lleva **disparador, efecto y excepción**: un enunciado sin las tres no
 
 ### Regla 2 — techo de proporción
 
-> **Disparador:** dos, y los dos obligan. En el **gate de tareas**, proyectar el techo por archivo
-> antes de aprobar las tareas; y al cerrar `implement`, **antes** del gate de revisión manual, medirlo.
-> **Efecto:** en el gate de tareas, **el gate no se libera sin la proyección** ni con un supuesto
-> necesario sin resolver; una proyección en rojo **no** detiene por sí sola al flujo, que sigue y
-> enfrenta el veredicto real al cerrar. Al cerrar `implement`, si el numerador supera al denominador
-> por más de la banda, **el flujo se detiene** — salvo que el **objeto declarado del flujo sea el
-> andamiaje**, y entonces el veredicto **informa**: se registra con su cálculo y el flujo sigue. El
-> instrumento no cambia; lo que cambia es cómo se lee su `1`.
-> **Excepción:** en un flujo de producto continúa solo con excepción aprobada por el usuario en ese
-> gate, con el cálculo y el motivo a la vista.
+> **Disparador:** dos. En el **gate de tareas**, y **solo si el flujo prevé tocar andamiaje**,
+> proyectar el techo por archivo antes de aprobar las tareas; y al cerrar `implement`, **antes** del
+> gate de revisión manual, medirlo. La condición es la misma que ya rige la medición —si el diff no
+> toca andamiaje su numerador es cero por construcción—, y sin ella la proyección le devolvería al
+> caso ordinario el costo que el gate acaba de sacarle.
+> **Efecto:** en el gate de tareas, el gate no se libera sin esa proyección; si el flujo **no** prevé
+> andamiaje, **declararlo es la proyección** y no hay nada que computar. Una proyección en rojo **no**
+> detiene por sí sola al flujo, que sigue y enfrenta el veredicto real al cerrar. Al cerrar
+> `implement`, si el numerador supera al denominador por más de la banda, **el flujo se detiene** —
+> salvo que el **objeto declarado del flujo sea el andamiaje**, y entonces el veredicto **informa**:
+> se registra con su cálculo y el flujo sigue. El instrumento no cambia; lo que cambia es cómo se lee
+> su `1`.
+> **Excepción:** una por rama, porque partir el disparador y el efecto sin partir esta deja una
+> obligación sin salida. En el **gate de tareas**, un flujo que no puede fijar su alcance de archivos
+> hasta implementar —una investigación, un refactor exploratorio— declara ese supuesto abierto y
+> sigue; la proyección se recalcula al conocerlo. En el **gate de cierre**, y solo en un flujo de
+> producto, continúa con excepción aprobada por el usuario **en ese gate de cierre**, con el cálculo y
+> el motivo a la vista.
 
 - **Los dos términos, y qué cae en cada uno.** El **andamiaje** es todo lo que está bajo `scripts/` o
   `tests/`, más los archivos de test (`*.test.*`) y los verificadores (`verificar-*`) dondequiera que
@@ -62,7 +70,8 @@ Cada una lleva **disparador, efecto y excepción**: un enunciado sin las tres no
   eligió sobre un criterio por tipo —"todo ejecutable es andamiaje"— porque ese criterio, medido
   contra el repositorio, metía al numerador el runtime y el transporte cross-model, que no son
   verificación. `tests/` se nombró de forma **preventiva** y ya dejó de serlo: la suite durable vive
-  ahí, y son **57 archivos versionados** que clasifican andamiaje. Y hay archivos que no
+  ahí, y todo su contenido clasifica andamiaje. El conteo exacto no se escribe: transcrito a prosa
+  envejece con cualquier commit ajeno, y este envejeció al rebasar. Y hay archivos que no
   caen en ninguno de los dos términos, como la configuración de agentes y ese transporte: eso es
   correcto y no un hueco, porque no son ni el producto de este repo ni el andamiaje que lo verifica.
 - **Numerador** — con denominador mayor que cero, la suma de líneas agregadas menos borradas,
@@ -214,13 +223,21 @@ Cada una lleva **disparador, efecto y excepción**: un enunciado sin las tres no
   con dominios disjuntos, y decirlo es lo que impide que se lean como discrepantes: durante un tiempo las
   dos sedes hablaron de archivos generados sin declarar dónde terminaba cada una, y sobre el mismo hecho
   tres flujos resolvieron distinto.
-- **La proyección, en el gate de tareas.** Antes de aprobar un conjunto de tareas, el flujo presenta
-  una `proyección por archivo` del techo, anclada a un `commit base` explícito: por cada ruta prevista,
-  su clase, las altas y las bajas previstas, y el descuento de restauración invocado si lo hay. Por
-  archivo y no en total, porque el piso por archivo hace que un total estimado **no reproduzca** el
-  cálculo; y anclada, porque altas y bajas cambian si la base avanza. **La produce el conductor y la
-  aprueba el usuario**: el gate no se libera si falta un supuesto necesario para computarla, y si la
-  base cambia antes de implementar, la proyección se recalcula o queda invalidada.
+- **La proyección, en el gate de tareas, y solo si el flujo prevé tocar andamiaje.** Con esa
+  condición cumplida, antes de aprobar un conjunto de tareas el flujo presenta una `proyección por
+  archivo` del techo, anclada a un `commit base` explícito: por cada ruta prevista, su clase, las
+  altas y las bajas previstas, y el descuento de restauración invocado si lo hay. Por archivo y no en
+  total, porque el piso por archivo hace que un total estimado **no reproduzca** el cálculo; y
+  anclada, porque altas y bajas cambian si la base avanza. **La produce el conductor y la aprueba el
+  usuario**: el gate no se libera si falta un supuesto necesario para computarla, y si la base cambia
+  antes de implementar, la proyección se recalcula o queda invalidada.
+
+  **Si el flujo no prevé andamiaje, la declaración de que no lo prevé es la proyección**, y no hay
+  tabla que construir. La condición no es una comodidad: sin ella este bullet le devolvería al caso
+  ordinario —editar la prosa de una skill— un trámite documental por archivo, justo después de que el
+  gate de verificación lo dejara en cero. Medido sobre los últimos sesenta commits, **veintiocho no
+  tocan andamiaje**: para todos ellos el numerador es cero por construcción y la proyección diría lo
+  que la regla de entrada ya declara de antemano.
 
   Acá no se mide nada, por la razón que ya da el bullet **Cómo y cuándo se mide** y que no se repite.
   Lo que se gana es **ver el veredicto antes de gastar la implementación**, y eso vale para los dos
@@ -252,9 +269,16 @@ Cada una lleva **disparador, efecto y excepción**: un enunciado sin las tres no
   | lo incorporó, con tareas aprobadas e **implementación sin cerrar** | la nueva | banda y restauración, en el gate de cierre; la proyección **no** se exige hacia atrás, porque su gate ya pasó, salvo reapertura explícita de ese gate |
   | lo incorporó, **implementación cerrada** y midiendo | la nueva | banda y restauración; sin proyección |
 
-  Como el ancla liga regla e instrumento **dentro de cada worktree**, una incorporación parcial —el
-  texto sin el script, o al revés— detiene la medición con código `3` en vez de calcular con una
-  fórmula que no corresponde.
+  Como el ancla liga regla e instrumento **dentro de cada worktree**, incorporar el **texto sin el
+  script** detiene la medición con código `3` en vez de calcular con una fórmula que no corresponde.
+  **La dirección contraria no la ve, y por construcción**: el ancla hashea la sección de `CLAUDE.md`,
+  no el instrumento, así que un script con otra banda y un documento intacto **mide y emite
+  veredicto**. Y el veredicto cambia: medido sobre el mismo diff `num=46 den=25`, la banda declarada
+  bloquea y una diez líneas más ancha pasa, con la línea de salida idéntica salvo la última palabra.
+  El número no se repite acá a propósito — la guarda de la suite cuenta apariciones del valor en esta
+  sección, y este ejemplo la ponía roja. Esa mitad la
+  cubre el caso `banda-dos-representaciones` de la suite y **no la medición**, así que un flujo que
+  mide sin correr la suite no tiene esa protección.
 
   **Incorporar no es fusionar dentro del rango medido.** Una adopción válida deja el cambio **antes**
   de la base contra la que el flujo mide —actualizando esa base— y recalcula la proyección contra ella.
