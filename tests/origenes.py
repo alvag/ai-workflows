@@ -107,10 +107,6 @@ def origins_for(identifier: str, group: str,
         return frozenset({("guard", "apertura")})
     if group in {"dimensiones", "normalizaciones"}:
         return frozenset({("case", "contrato-cadena/positivo")})
-    if identifier == "migracion-snapshot-v13b":
-        matrices = {identity.split("/", 1)[0] for identity in targets.cases}
-        return targets.migrated_cases | frozenset(
-            ("guard", name) for name in targets.guards if name in matrices)
     if identifier in {"cobertura-v14:tres-direcciones", "entrypoint-v20:ids"}:
         return frozenset({("guard", "apertura")})
     return frozenset()
