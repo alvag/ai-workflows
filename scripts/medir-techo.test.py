@@ -602,9 +602,12 @@ def caso_banda_dos_representaciones(_):
     en el primero, así que el mutante del valor aparece detectado por los dos.
     """
     texto = (RAIZ / "CLAUDE.md").read_text(encoding="utf-8")
-    # La sección se recorta acá con la misma regla que usa el instrumento —del encabezado de la regla 2
-    # al siguiente de nivel <= 3— en vez de importarla: el instrumento se invoca como subproceso y este
-    # caso tiene que poder correr contra una copia mutada de él.
+    # La sección se recorta con las MISMAS FRONTERAS que usa el instrumento —del encabezado de la
+    # regla 2 al siguiente de nivel <= 3— pero **sin su normalización**: el instrumento además hace
+    # `rstrip()` por línea y poda las vacías del final, y acá no. Medido, los dos recortes difieren hoy
+    # en un `\n` terminal (23272 contra 23273 bytes), que para contar apariciones de un número no
+    # cambia nada. Se dice explícito para que nadie lea «la misma regla» y suponga que sigue al
+    # instrumento si este mueve sus fronteras.
     lineas = texto.split("\n")
     i = next(k for k, l in enumerate(lineas) if l.startswith("### Regla 2"))
     j = next((k for k in range(i + 1, len(lineas)) if re.match(r"^#{1,3} ", lineas[k])), len(lineas))
@@ -624,17 +627,29 @@ def caso_banda_dos_representaciones(_):
     def apariciones(t):
         return re.findall(r"(?<!\d)" + re.escape(valor) + r"(?!\d)", t)
 
-    # Control positivo del propio predicado, y hace falta: ningún mutante del arnés puede ponerlo rojo
-    # —`_autotest_mutantes` muta el INSTRUMENTO y rechaza un rojo por `punto=ancla`—, así que sin esto
-    # la mitad de abajo sería una guarda sin nadie que demuestre que discrimina. Se ejerce sobre texto
-    # sintético, sin tocar `CLAUDE.md`.
-    esperar(len(apariciones(seccion + f"\n\nDicho de otro modo, la banda vale {valor} líneas.\n")) == 2,
-            "el predicado no ve una segunda enunciación del valor: no puede ponerse rojo")
-
+    # La guarda VA PRIMERO, y el control positivo después. El orden importa: el control mide una
+    # propiedad del PREDICADO, no del artefacto, así que un choque de valor tiene que salir con el
+    # mensaje que lo nombra y no con el del control.
     halladas = apariciones(seccion)
     esperar(len(halladas) == 1,
             f"el valor de la banda aparece {len(halladas)} veces en la sección normativa y debe "
             f"aparecer una sola: cambiarlo dejaría enunciaciones viejas en verde")
+
+    # Control positivo del propio predicado, y hace falta: ningún mutante del arnés puede ponerlo rojo
+    # —`_autotest_mutantes` muta el INSTRUMENTO y rechaza un rojo por `punto=ancla`—, así que sin esto
+    # la guarda de arriba no tendría quién demuestre que discrimina. Se ejerce sobre texto sintético,
+    # sin tocar `CLAUDE.md`.
+    # La expectativa es RELATIVA a lo que la sección ya tiene, no el absoluto `== 2`: ese absoluto
+    # presuponía la propiedad que la guarda de arriba verifica, y cuando se rompía el diagnóstico
+    # mentía. Medido con la banda movida a 37 —un valor plausible: es la holgura mayor que esta misma
+    # sección declara no cubierta—, la sección ya contenía tres `37`, así que el control obtenía 4,
+    # fallaba con «el predicado no ve una segunda enunciación» y el mensaje correcto nunca se
+    # imprimía. De los enteros de 1 a 100, once ya aparecen en la sección, y entre ellos están los
+    # cuatro que el propio texto usa: 12, 25, 37 y 46.
+    base = len(halladas)
+    sintetico = seccion + f"\n\nDicho de otro modo, la banda vale {valor} líneas.\n"
+    esperar(len(apariciones(sintetico)) == base + 1,
+            "el predicado no ve una segunda enunciación del valor: no puede ponerse rojo")
 
     rc, out, _ = medir(RAIZ, "--banda")
     esperar(rc == PASA, f"--banda debía salir {PASA}, dio {rc}: {out}")
