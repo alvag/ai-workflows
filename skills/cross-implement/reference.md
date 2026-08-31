@@ -470,10 +470,9 @@ existe para él. Escrito a archivo con Write:
 El prompt vive en `assets/prompts/implement.md` — es la **entrada exacta** del worker y se escribe a archivo con la tool Write.
 
 
-Cuando el work order es SDD (`.plans/<id>/`), derivar GOAL del objetivo de la spec, KEY PATHS de
-los campos Archivos de las tasks, CONSTRAINTS/NON-GOALS del alcance, y PROOF **del conjunto de comandos**
-que el flujo llamador va a correr —tests, build y lint, los que estén configurados—, no
-solo del de tests.
+Cuando el work order es SDD (`.plans/<id>/`), de dónde sale cada ranura lo fija la tabla de
+"Derivación acotada por ranura", más abajo. Acá no se repite: era una segunda enumeración del mismo
+hecho, y quedó con alcance distinto en cuanto la tabla se endureció.
 
 **Render de la ranura `PROOF`:** **una línea por comando**, en el orden de la lista, y cada comando
 va literal y entero, sin abreviar ni resumir: el worker no puede reconstruir uno truncado, y un comando
@@ -487,11 +486,246 @@ del reporte — quedarían apuntando a una ranura ausente, que es el mismo defec
 línea de **canales heredados** de `CONSTRAINTS` sí se emite siempre: no depende de que haya
 comandos, y es la que cierra la superficie de escritura.
 
+### Alcance escrito del implementador
+
+Todo lo de esta sección rige **si y solo si el asset instalado declara el marcador
+`SCOPE-CAPABILITY: v1`** en su cabecera. Sin ese marcador la ranura `SCOPE` no existe, y un prompt
+que no la emite no puede quedar gobernado por reglas que hablan de ella.
+
+El prompt es la entrada exacta del worker, y hasta este cambio su **alcance ejecutable** no viajaba:
+llegaba como una lista de identificadores más la orden de leer un directorio. Con `SCOPE`, el alcance
+viaja **escrito**, con sus referencias declaradas ya resueltas, y leer el work order deja de ser
+precondición para empezar.
+
+#### Clasificación: cuándo se emite `SCOPE`
+
+El predicado es **observable, con precedencia declarada, y su resultado es ternario**. Las cuatro
+señales se evalúan **en este orden**, y el orden es parte de la regla:
+
+| Orden | Señal | Resultado |
+|---|---|---|
+| 1 | ¿el portador **declara un flujo SDD**? — una ruta `.plans/<id>/`, o un directorio con `plan.md` | si **no** declara: **(a) contrato directo**, y ahí termina |
+| 2 | ¿el `plan.md` existe, se lee, y su header trae `complexity` válida? | si falta, no se interpreta, o el valor cae fuera del enum: **(c) bloquea** |
+| 3 | fuente autoritativa: con `normal` o `complex`, el `tasks.md` hermano; con `trivial`, la sección `## Tasks` del plan | ausente o ilegible: **(c) bloquea** |
+| 4 | contar encabezados de task en la fuente elegida | cero: **(c) bloquea** nombrando la fuente; uno o más: **(b)** |
+
+**(a) queda reservado a portadores que no declaran flujo** — un plan suelto, un contrato destilado, el
+plan draft que por escrito no tiene header. **Un flujo declarado y roto nunca cae en (a):** degradarlo
+a contrato directo convertiría un error en un despacho silencioso con el prompt equivocado, que es
+exactamente lo que la rama (c) existe para impedir.
+
+**Cómo se lee el header, y hasta dónde.** Como lo lee la función `leer_header` de
+`sdd-flow/scripts/promocion-tasks-ready.py`, y **solo ese subconjunto**: delimitadores de apertura y
+cierre, unicidad de la clave, y enum cerrado de `complexity`. El resto de ese script —`status`,
+`contract_procedure`, bitácora, estado de promoción— **no se aplica acá**: es el gate de promoción, y
+arrastrarlo al clasificador bloquearía flujos válidos por precondiciones que este criterio no pide.
+
+#### Diagnósticos, literales
+
+| Rama | Texto |
+|---|---|
+| (c) fuente ausente o ilegible | `fuente de tasks esperada y ausente o no interpretable: <ruta>` |
+| alcance seleccionado vacío | `no hay trabajo que delegar: cero tasks pendientes` |
+| referencia que no resuelve a exactamente una fuente | `no resuelve a exactamente una fuente: <clase> <id>` |
+| (a) contrato directo | **no emite diagnóstico**: no es un error |
+
+**Y los de la precondición de capacidad**, que emite la skill que despacha cuando el asset instalado
+no soporta la ranura. La comprobación es de ella —es la que decide si ofrece los modos delegados—
+pero la estructura que comprueba es de acá, así que los textos viven acá y esa skill los referencia:
+
+| Qué falta en el asset | Texto |
+|---|---|
+| el marcador | `capacidad ausente: el asset instalado no declara SCOPE-CAPABILITY: v1` |
+| el conjunto de ranuras no es el esperado | `capacidad incompleta: el conjunto de ranuras del asset no es el esperado` |
+| una de las cinco marcas de la ranura | `capacidad incompleta: falta la marca <MARCA> en la ranura SCOPE` |
+| el terminador de la ranura | `capacidad incompleta: falta el terminador de la ranura SCOPE` |
+
+**Se lee todo en una sola pasada.** Comprobar solo el marcador dejaría pasar un asset **a medias**
+—marcador presente y ranura incompleta—, que es justamente el estado que la publicación atómica del
+asset existe para que nadie vea.
+
+**Contra qué se comprueba, y por qué se escribe acá.** Los cuatro diagnósticos exigen nombrar **qué**
+falta, y eso obliga a que la estructura esperada exista **fuera del artefacto que se valida**. Sin
+esta enumeración, la precondición compara el asset consigo mismo: prueba consistencia interna y no
+conformidad, un `--- TASKZ ---` cuenta cinco marcas y pasa, y `falta la marca <MARCA>` no tiene de
+dónde sacar el nombre. Que haya dos representaciones es deliberado y es lo que vuelve comparable la
+comprobación, el mismo recurso que el repositorio usa para la banda del techo y el dominio de
+generados.
+
+| Qué | Valor esperado | Se compara como |
+|---|---|---|
+| conjunto de ranuras | `GOAL` · `SPEC` · `SCOPE` · `KEY PATHS` · `CONSTRAINTS` · `NON-GOALS` · `PROOF` · `OUTPUT` | **conjunto**, no secuencia |
+| marcas de la ranura `SCOPE` | `--- TASKS ---` · `--- CRITERIOS ---` · `--- VERIFIC ---` · `--- INTERFACES ---` · `--- CLAUSULA ---` | secuencia, en ese orden |
+| terminador de la ranura | `--- FIN ---` | presencia |
+| marcador de capacidad | `SCOPE-CAPABILITY: v1`, indentado dentro del comentario de cabecera | presencia |
+
+**El extractor de ranuras, completo: patrón, frontera y deduplicación.** Los tres, porque el patrón
+solo no alcanza y su ausencia no falla en silencio: falla **cerrando sobre el asset correcto**.
+
+1. **Patrón.** Una ranura es una línea que case `^[A-Z][A-Z -]*:`; su nombre es lo que precede a los
+   dos puntos.
+2. **Frontera.** La enumeración **termina en `OUTPUT`**, inclusive. Lo que sigue es el **cuerpo del
+   reporte**, no ranuras: `FILES`, `PROOF`, `DEVIATIONS` y `STATUS` casan el patrón y están a columna
+   cero **por obligación del propio asset** —el reporte se busca anclado al margen y `STATUS: done`
+   es su última línea—, así que indentarlos rompería la cosecha y **no se los puede sacar del alcance
+   del patrón moviéndolos**. Sin esta frontera la extracción devuelve **once** nombres contra los
+   ocho declarados, la precondición de capacidad rechaza un asset sano y los modos delegados quedan
+   apagados sobre un árbol correcto.
+3. **Deduplicación.** El resultado se compara **como conjunto**: `SPEC` aparece dos veces —sus dos
+   ramas excluyentes— y `PROOF` una por comando, así que en crudo son **catorce** entradas para ocho
+   ranuras. Un comparador de secuencias falla aun con la frontera puesta.
+
+Y de la misma causa se sigue dónde va el marcador de capacidad: **indentado** dentro del comentario
+de cabecera, porque a columna cero casaría el patrón, caería antes de la frontera y entraría al
+conjunto como una novena ranura.
+
+#### Gramática de identificadores y de encabezados
+
+- **Identificador de task:** el árbol admite `T2`, `T16b` y `T15A`, con o sin backticks. Un
+  reconocedor de `Tn` a secas rechaza referencias válidas que ya existen.
+- **Encabezado de task:** las **dos** formas normativas, la compacta de un flujo trivial y la
+  completa. En la compacta, `cubre` viaja **inline** y se parsea de ahí.
+
+#### Tabla cerrada de resolución
+
+Cada pieza tiene **una** fuente autoritativa, un patrón de apertura y una frontera. Fuera de esta
+tabla no se resuelve nada: lo que no encaje **bloquea**, y no se repara con patrones tolerantes.
+
+| Pieza | Fuente autoritativa | Apertura | Frontera |
+|---|---|---|---|
+| task | la fuente elegida por la clasificación | las dos formas de encabezado | siguiente encabezado de task o de sección |
+| criterio | la `spec.md`, o la sección `## Spec` del plan en `trivial` | su ítem definitorio `AC-n` | siguiente ítem `AC-` o encabezado, con sus continuaciones indentadas |
+| fila | la versión **vigente** de `## Verification`, la de número mayor | la fila cuyo identificador coincide | la fila entera, con sus seis columnas |
+| productor | la task que declara `Produce` | el encabezado de esa task | su línea `Produce` |
+| sección compartida | el bloque global que el `Consume` nombra | su encabezado | el siguiente encabezado de igual o menor nivel |
+
+#### Cierre de referencias
+
+La **raíz** son las tasks del alcance, verbatim y **con sus referencias conservadas**. A eso se
+**adjunta** el payload resuelto de cada una. Conservar la referencia y adjuntar su contenido son las
+dos cosas, no una en lugar de la otra: el identificador es lo que ata la pieza a su fuente.
+
+Las cuatro clases de hoja —criterio, fila, productor, sección compartida— son **terminales**. Un
+`Consume` estructurado dentro de una sección compartida **bloquea nombrando la pieza** en vez de
+abrir otro nivel. Una fila citada por dos tasks del alcance viaja **una sola vez**.
+
+#### Cardinalidad
+
+Toda referencia requerida resuelve a **exactamente una** fuente autoritativa. Cero coincidencias, más
+de una, o una estructura que no se puede interpretar **bloquean la invocación** nombrando la pieza que
+falló, con el texto de la tabla de diagnósticos. Está prohibido omitir la pieza, elegir una de varias,
+reinterpretarla, o volver al work order como sustituto.
+
+**Una línea copiada que colisione con la gramática de secciones también bloquea.** Es el mismo caso:
+si un extent contiene una línea que abre o cierra una sección de la ranura, el prompt resultante es
+correcto en bytes e imposible de verificar, así que se trata como estructura no interpretable.
+
+#### Derivación acotada por ranura
+
+Cada ranura tiene **una** fuente permitida. La tabla es cerrada —cubre **las ocho** ranuras que el
+asset emite— y su función es impedir que el armazón del prompt se use para readjuntar el corpus que
+la ranura acota. Es la **sede única** de la derivación por ranura: no hay una segunda enumeración en
+este documento, porque dos enunciados del mismo hecho se desincronizan en cuanto alguien edita uno.
+
+| Ranura | Fuente permitida |
+|---|---|
+| `GOAL` | el objetivo de la spec, sin la spec |
+| `SPEC` | en la rama (a), el work order y los identificadores del alcance —portador, tasks incluidas y excluidas—; en la rama (b), texto fijo, sin derivación. Las dos ramas son excluyentes |
+| `SCOPE` | las tasks del alcance más sus referencias transitivas declaradas |
+| `KEY PATHS` | **únicamente** los campos `Archivos` de las tasks **incluidas**. Sin excepción de reúso: si una task necesita señalar reúso, lo declara en su campo `Archivos` y viaja por ahí |
+| `CONSTRAINTS` | restricciones vigentes aplicables, sin narrativa de decisiones |
+| `NON-GOALS` | no-objetivos concretos, sin criterios que ninguna task del alcance cita |
+| `PROOF` | solo los comandos recibidos, y **el conjunto entero** —tests, build y lint, los que estén configurados—, no solo el de tests |
+| `OUTPUT` | el asset literal |
+
+Y la cláusula normativa de la ranura declara que **ante discrepancia manda `SCOPE`**.
+
+#### Secuencia de composición, y por qué existe el candidato
+
+Dentro del **mismo intento**, en este orden:
+
+1. validar la selección según el camino;
+2. extraer los extents lógicos exactos, **incluyendo la representación del checkbox**;
+3. capturar su huella;
+4. componer y escribir un **candidato temporal**;
+5. volver a extraer y comparar contra la huella;
+6. **solo si coincide**, promover el candidato a `prompt.txt`;
+7. lanzar.
+
+**El candidato es lo que evita un congelado obsoleto.** Escribir `prompt.txt` antes de recomprobar
+deja, ante un bloqueo, un prompt nunca lanzado que la regla de congelamiento obliga a reutilizar y
+prohíbe corregir. El candidato se **descarta** al fallar, y no deja rastro que otro intento tenga que
+respetar.
+
+#### Precondiciones por camino, y el snapshot
+
+| Camino | Qué se revalida antes de componer |
+|---|---|
+| con partición aprobada | el recibo, su fingerprint y el orden de los bloques restantes |
+| sin partición aprobada | la selección de tasks pendientes contra su fuente vigente |
+
+En los dos casos se toma un **snapshot local único** de las **fuentes lógicas efectivamente
+presentes** —el enunciado de los criterios, el contrato de verificación y las tasks— inmediatamente
+después de validar, y se comprueba que ninguna cambió hasta escribir y lanzar el prompt. Cualquier
+discrepancia bloquea.
+
+Son fuentes **lógicas y no archivos**: en un flujo trivial las tres viven en un solo documento, y
+exigir tres archivos ahí bloquearía un caso válido.
+
+**No se reutiliza el fingerprint del recibo**, por dos razones independientes: normaliza el checkbox
+—y sin partición el checkbox **es** la selección—, y no existe cuando no hay recibo aprobado. El
+snapshot es **local al intento** y no amplía el esquema del recibo.
+
+**Diagnósticos literales de esta sede:**
+
+| Situación | Texto |
+|---|---|
+| una fuente cambió entre la captura y el lanzamiento | `snapshot invalidado: <ruta> cambió entre la captura y el lanzamiento` |
+| la revalidación del recibo no cierra | `precondición de recibo fallida: <campo> no coincide con el recibo aprobado` |
+
+**Riesgo residual, declarado.** Entre la recomprobación y el lanzamiento queda una ventana que, sin un
+lock que cubra comparación, promoción y lanzamiento, no se cierra. Se declara en vez de negarla con un
+«cualquier diferencia bloquea» que no se sostiene ante una escritura concurrente no cooperativa.
+
+#### Alcance vacío
+
+Una fuente de tasks válida cuyo alcance seleccionado resulta **vacío** —cero tasks que despachar—
+**no compone ningún prompt y no crea invocación**, con su diagnóstico propio. Es un resultado distinto
+del contrato directo y del bloqueo por fuente ausente, y los tres se distinguen en el diagnóstico.
+
+#### Ciclo de vida del prompt
+
+El congelamiento aplica **solo con evidencia de que la invocación se lanzó**. Con esa evidencia, las
+rondas de corrección reutilizan ese prompt y **reescribirlo está prohibido**. Sin ella, el intento
+siguiente es un intento nuevo, no una retoma.
+
+| Situación | Qué se usa |
+|---|---|
+| invocación anterior a este cambio | su contrato original, sin la ranura |
+| retoma de una invocación lanzada | el prompt congelado de esa invocación |
+| redespacho posterior | identificador nuevo, y se compone con las fuentes vigentes |
+
+#### El portador del camino monolítico
+
+Sin partición aprobada no hay bloque, y el prompt exige tres campos. Se fijan **sin tocar la
+proyección al ledger**:
+
+| Campo | Valor |
+|---|---|
+| identidad | la etiqueta literal `alcance monolítico` |
+| `included_tasks` | las pendientes de la fuente vigente |
+| `excluded_tasks` | las ya completadas, enumeradas por identificador igual que en el camino con partición |
+
+Son campos **del prompt, no del ledger**: fijarlos no crea ningún artefacto durable que el recibo o el
+contrato de recuperación tuvieran que observar.
+
 ## Handoff destilado, nunca transcript crudo
 
 Al modelo delegado se le pasa un **contrato destilado** —objetivo, contexto necesario, límites—,
 nunca el transcript literal de la sesión del conductor. El prompt por archivo que esta skill usa
-**ya es** un handoff destilado: no es una convención estética, es la forma correcta, y conviene
+destila el contexto, pero **no destilaba el alcance ejecutable**: hasta la ranura `SCOPE`
+viajaba como una lista de identificadores. Que ahora destile las dos cosas no es una convención
+estética, es la forma correcta, y conviene
 saber por qué para que nadie la "optimice" pasándole contexto ambiente al delegado.
 
 El porqué no es solo de diseño. Está documentado un caso real donde reproducir dentro de un modelo

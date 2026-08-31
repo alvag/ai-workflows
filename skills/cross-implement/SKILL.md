@@ -330,10 +330,13 @@ las causas de pared, flake, runtime o deadline se proyectan desde esas autoridad
    último de estos gates y queda pegado al dispatch: el worktree de medición se crea y se remueve, y
    comprobar el árbol limpio antes de que se haya ido mediría un estado que todavía va a cambiar. El
    orden exacto lo fija la sede de la medición; acá solo se declara cuál va último.
-3. **Armar el prompt-contrato** (`reference.md` → "Prompt del implementador": GOAL / SPEC / KEY
-   PATHS / CONSTRAINTS / NON-GOALS / PROOF / OUTPUT), escrito a archivo con la tool Write, y
+3. **Armar el prompt-contrato** (`reference.md` → "Prompt del implementador": GOAL / SPEC / SCOPE /
+   KEY PATHS / CONSTRAINTS / NON-GOALS / PROOF / OUTPUT), escrito a archivo con la tool Write, y
    **lanzar** por la vía de la familia (`reference.md` → "Vías de invocación"), capturando la
-   referencia de sesión para el fix loop.
+   referencia de sesión para el fix loop. `SCOPE` se emite **si y solo si el asset declara
+   `SCOPE-CAPABILITY: v1`**, y con ella emitida el work order pasa a ser **contexto consultable bajo
+   demanda**: su lectura deja de ser el paso previo, porque el alcance ejecutable ya viaja escrito
+   (`reference.md` → "Alcance escrito del implementador").
 4. **Revisión del conductor** (regla 4): diff completo como PR ajeno; archivos declarados vs
    `git status`; drift fuera del work order; **los comandos** de `proof_cmd` frescos, corridos por
    el conductor. Si el work order es SDD, atribuir hunks a tasks y marcar `- [x]` las cubiertas.
