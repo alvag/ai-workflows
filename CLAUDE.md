@@ -35,9 +35,11 @@ Cada una lleva **disparador, efecto y excepción**: un enunciado sin las tres no
 ### Regla 2 — techo de proporción
 
 > **Disparador:** al cerrar `implement`, **antes** del gate de revisión manual.
-> **Efecto:** si `numerador > denominador`, **el flujo se detiene**.
-> **Excepción:** continúa solo con excepción aprobada por el usuario en ese gate, con el cálculo y
-> el motivo a la vista.
+> **Efecto:** si `numerador > denominador`, **el flujo se detiene** — salvo que el **objeto declarado
+> del flujo sea el andamiaje**, y entonces el veredicto **informa**: se registra con su cálculo y el
+> flujo sigue. El instrumento no cambia; lo que cambia es cómo se lee su `1`.
+> **Excepción:** en un flujo de producto continúa solo con excepción aprobada por el usuario en ese
+> gate, con el cálculo y el motivo a la vista.
 
 - **Los dos términos, y qué cae en cada uno.** El **andamiaje** es todo lo que está bajo `scripts/` o
   `tests/`, más los archivos de test (`*.test.*`) y los verificadores (`verificar-*`) dondequiera que
@@ -131,8 +133,17 @@ Cada una lleva **disparador, efecto y excepción**: un enunciado sin las tres no
   en el destino. Es consecuencia de medir por archivo, la misma propiedad que impide que un borrado
   financie crecimiento ajeno. No se agrega mecanismo para eso: la regla 1 pide evidencia de que el
   escalón barato falló, y ese caso todavía no ocurrió.
-- **Por qué bloquea** — un techo que solo obliga a declarar es un techo **sin condición de salida**,
-  que es exactamente la causa que estas reglas vienen a cortar.
+- **Por qué bloquea en un flujo de producto, y por qué solo informa cuando el objeto es el
+  andamiaje.** Un techo que solo obliga a declarar es un techo **sin condición de salida**, y esa es
+  la causa que estas reglas vienen a cortar: por eso sigue bloqueando donde el denominador existe y
+  el veredicto discrimina. Donde no discrimina es en el flujo cuyo objeto **es** el andamiaje: ahí el
+  denominador es cero por construcción, el numerador se mide bruto y **cualquier** cambio bloquea,
+  incluido el que achica el aparato. Medido: los bloqueos registrados se resolvieron **todos** con
+  excepción aprobada y **ninguno rechazó un cambio**; el 2026-08-31 bloqueó tres veces en un día, una
+  de ellas al trabajo que bajó el gate obligatorio de **804 s a 405 s**. Una regla que existe para
+  frenar el crecimiento del andamiaje frenaba al trabajo que lo achica, porque mide **líneas
+  escritas** y no **costo impuesto**. Un techo que solo produce el trámite de su propia excepción no
+  tiene condición de salida tampoco: la tiene la evidencia de que el aparato baja.
 
 ### Regla 3 — ningún archivo nuevo en el `scripts/` raíz dentro de un flujo de skills
 
