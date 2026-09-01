@@ -351,6 +351,13 @@ copiar y con la misma vista que `config-ejemplo.md` de `sdd-flow`, están en `ma
 - **Incluye:** <qué entra, a nivel sistema>
 - **No incluye:** <qué queda afuera>
 
+### Antecedentes
+<forma **sanitizada** del bloque declarativo de `.sdd/<id>/antecedentes.md`, **por repo**: términos
+buscados; el conteo de **fuentes examinadas** y cuáles quedaron sin comprobar, con su razón; los candidatos
+**descritos**, con qué parte cubren y su evidencia de cobertura, terminación y compatibilidad en
+prosa; e impacto en el alcance — más el **residual global**. **Nunca** rutas, nombres de ref o rama,
+SHAs, el remoto usado, ni ninguna clave del bloque de estado.>
+
 ## Criterios de aceptación
 - **AC-1 [repo-local]:** Given <contexto>, When <acción>, Then <resultado observable en un repo>.
 - **AC-2 [repo-local]:** <...>

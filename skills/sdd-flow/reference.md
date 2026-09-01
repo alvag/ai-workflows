@@ -15,6 +15,7 @@ Detalle operativo de la skill `sdd-flow`. El `SKILL.md` apunta acá cuando neces
 - [Mapeo tipo de cambio → prefijo](#mapeo-tipo-de-cambio--prefijo)
 - [Construcción del mensaje de commit](#construcción-del-mensaje-de-commit)
 - [Apertura de PR (opcional, tras push)](#apertura-de-pr-opcional-tras-push)
+- [Búsqueda de antecedentes](#búsqueda-de-antecedentes)
 - [Plantilla de constitution](#plantilla-de-constitution)
 - [Plantilla de spec](#plantilla-de-spec)
 - [Producción del contrato de verificación](#producción-del-contrato-de-verificación)
@@ -150,7 +151,8 @@ de abajo; no se abstrae ni se reescribe el contenido técnico>
 Es **acotada**: solo se quitan las tres cosas de abajo. **Todo lo demás se publica tal cual, sin abstraer ni resumir** — incluidos los `AC-n`, las referencias a métodos/funciones, fragmentos de código y los **paths de código fuente del proyecto** (p. ej. `src/app/.../foo.service.ts`): son parte legítima del diseño técnico.
 - Menciones a **cross-review** / **co-exploración** / segunda opinión / modelos / `review-log`.
 - **URLs y entornos locales o de prueba:** `localhost`, `127.0.0.1`, hosts de desarrollo (p. ej. `http://local.<proyecto>.dev:4200`), `file://`, y cualquier indicación de "dónde/cómo probar" local.
-- **Artefactos y mecánica del flujo SDD:** `.plans/`, `.specify/`, paths absolutos de la máquina local, los archivos del propio flujo (`spec.md`/`plan.md`/`tasks.md`/`handoff.md`), `status`, prefijos de rama, comandos de test/build, y nombres de fases del flujo (`analyze`, `clarify`, `tasks`, …).
+- **Artefactos y mecánica del flujo SDD:** `.plans/`, `.specify/`, paths absolutos de la máquina local, los archivos del propio flujo (`spec.md`/`plan.md`/`tasks.md`/`handoff.md`/`antecedentes.md`), `status`, prefijos de rama, comandos de test/build, y nombres de fases del flujo (`analyze`, `clarify`, `tasks`, …).
+- **El ledger máquina de la búsqueda de antecedentes, y también la mecánica del bloque declarativo.** Del bloque `## estado` no sale nada: ni `busqueda`, ni `fuentes_terminadas`, ni `terminos`, ni `fingerprints`. Del bloque `## declaracion` **no sale su mecánica**: rutas de `.plans/`, nombres de ref o de rama, identificadores de otros flujos, SHAs y la URL del remoto. Lo que sí se publica es la **forma sanitizada** que `specify` promovió —qué se buscó, en cuántas fuentes, si hubo trabajo previo y con qué impacto en el alcance—, descrita campo por campo en `reference.md` → "Búsqueda de antecedentes". Que un dato viva en el bloque publicable no lo vuelve publicable **tal cual**: el bloque es la sede local del resultado, y la proyección es la que decide qué sale.
 - Los `AC-n` **se mantienen con su etiqueta** en la definición técnica; en el bloque "Resumen" además se reexpresan en lenguaje de negocio.
 
 ### Comentario de ajuste (tras observaciones)
@@ -1563,6 +1565,513 @@ Procedimiento por caso, siempre en un repositorio desechable:
 Los negativos terminan después del diagnóstico y verifican cero mutaciones. Un transporte sin
 primitiva de cese comprobable se registra como `blocked`, nunca como caso verde inferido.
 
+## Búsqueda de antecedentes
+
+Detalle del **sub-paso 5** de `gather-context`. `SKILL.md` lleva el mandato —que el paso corre
+siempre, sin clave que lo apague—; acá viven el algoritmo que produce los términos, las fuentes que
+se recorren con sus comandos, las señales que acreditan un candidato y el esquema del artefacto donde
+queda el resultado.
+
+### El artefacto `antecedentes.md`
+
+La búsqueda termina **antes** de que exista `spec.md`, así que no puede escribir ahí. El sub-paso 5
+crea `.plans/<id>/` —adelantando la creación que de otro modo ocurre en `specify`— y escribe
+`.plans/<id>/antecedentes.md`, que es la autoridad durante toda la ventana pre-spec.
+
+El archivo tiene **dos bloques con nombre**, y esa partición es lo que vuelve inequívoca la
+promoción: sin ella, quien copiara el archivo entero a la spec estaría publicando el ledger máquina.
+
+**`## estado` — el ledger máquina. Nunca se publica.**
+
+| Campo | Forma |
+|---|---|
+| `busqueda` | `not-run` · `in-progress` · `complete` · `terminal` |
+| `fuentes_terminadas` | lista de las fuentes que corrieron **completas** |
+| `terminos` | lista ordenada de los términos emitidos |
+| `fingerprints` | `head` (SHA del HEAD) · `refs` (digest de `git for-each-ref` sobre nombres y OIDs) · `flujos_activos` (digest del **contenido** recorrido, no del listado) · `archivados` (ídem sobre `.plans/archived/`) · `vault` (ídem sobre el subárbol consultado) · `terminos` (digest del conjunto) |
+
+**`## declaracion` — lo único que se promueve.** Su esquema está congelado acá porque hay datos que
+tienen que vivir en la parte publicable: dejarlo abierto permite promover una declaración sin la
+evidencia que la sostiene.
+
+| Campo | Qué lleva |
+|---|---|
+| `terminos_buscados` | el conjunto emitido, **copiado** acá — el conjunto tiene que quedar registrado en la declaración, y `## estado` no se publica |
+| `coincidencias_crudas` | cada coincidencia con su **fuente**, su **ref** y su **ruta**, el **SHA** cuando la fuente es histórica, y **su descarte** cuando no se acreditó |
+| `estado_por_fuente` | cada fuente como `examinada` · `no comprobada` con su razón · `no aplicable por política` |
+| `candidatos` | por cada uno: ref o ruta, celda de la matriz de salidas, qué parte del objetivo cubre, y la evidencia de las **tres** condiciones —cobertura, terminación, compatibilidad— |
+| `remoto` | cuál se actualizó, o por qué no se intentó — declararlo **siempre**, porque "no había remoto" y "había uno y no lo nombré" no pueden quedar indistinguibles |
+| `impacto_en_alcance` | `ninguno` · `contexto` · `incognita` · `checkpoint` · `reformular` · `residual` · `cierre`, **cualificado** por las fuentes no comprobadas. Se escriben **sin tilde**, porque el valor se compara literal |
+
+El archivo **sobrevive** a la promoción con su `## estado` intacto: la spec pasa a mandar sobre el
+QUÉ, y `antecedentes.md` sigue mandando sobre **qué se corrió y qué hay que re-correr**. Una sola
+autoridad por pregunta, en cada momento.
+
+> **Señal negativa.** Si alguna de las cuatro claves de `## estado` aparece en `spec.md`, en el
+> `### Antecedentes` del plan combinado o en `master-spec.md`, la promoción se hizo mal.
+
+**Al promover se sanitiza, porque el bloque declarativo contiene mecánica del flujo.** Retener solo
+`## estado` no alcanza: `coincidencias_crudas` lleva rutas como `.plans/archived/<id>/spec.md`,
+`estado_por_fuente` nombra las seis fuentes —dos de ellas son directorios del propio flujo— y
+`candidatos` lleva **nombres de ref**. Todo eso es exactamente lo que la lista de "qué NUNCA se
+publica" retiene, y `spec.md` puede terminar en un tracker.
+
+La proyección se define **campo por campo**, y no como un criterio a interpretar:
+
+| Campo de `## declaracion` | Qué se promueve |
+|---|---|
+| `terminos_buscados` | **tal cual** — son palabras del objetivo, no mecánica |
+| `estado_por_fuente` | **agregado y sin nombrar directorios**: "seis fuentes examinadas", o "cinco examinadas y una no comprobada por \<razón\>". Se promueve **siempre**, porque es lo único que cualifica el resultado: un `ninguno` con dos fuentes sin comprobar no dice lo mismo que uno con las seis |
+| `coincidencias_crudas` | **el conteo y su descarte**, sin ref, ruta ni SHA |
+| `candidatos` | **descritos**: "un flujo archivado de este repositorio", "una rama con trabajo previo", con qué parte del objetivo cubren y la evidencia de las tres condiciones en prosa — nunca el nombre de la ref ni la ruta |
+| `impacto_en_alcance` | **tal cual**: es el valor del enum |
+| `remoto` | **no se promueve.** Un `git remote get-url` arrastra host y ruta de un repositorio que puede ser privado |
+
+La versión con rutas, refs, SHAs y remoto vive en `antecedentes.md`, que es local y no se publica
+nunca — y es la que consume el paquete de co-exploración, que corre en la máquina y no publica nada.
+
+En la orquestación el equivalente es `.sdd/<id>/antecedentes.md`, con el mismo esquema extendido por
+repo: ver `sdd-orchestrator` → paso `1.2`.
+
+### El algoritmo de términos
+
+Determinista y reproducible: dos corridas sobre la misma entrada emiten el mismo conjunto en el mismo
+orden. Dice *tokens que sobreviven* y no *sustantivos* a propósito — "sustantivo" exige un
+clasificador gramatical que ninguna implementación reproduce igual.
+
+1. **Entrada:** la clave del tracker si existe, y el **título corto**. El primer párrafo del objetivo
+   **no entra**: haría depender el conjunto de la longitud de la prosa.
+2. **Normalización:** minúsculas; se descartan los diacríticos; se parte por corridas de caracteres
+   no alfanuméricos.
+3. **Descarte**, por esta **lista cerrada** de dos partes:
+   - vacías — `el la los las un una unos unas lo de del al a ante bajo con contra desde en entre
+     hacia hasta para por segun sin sobre tras y e o u que se su sus`
+   - genéricos del dominio — `flujo paso skill repo cambio agregar corregir`
+4. **Deduplicación:** se elimina todo token repetido conservando su **primera** aparición. Va acá,
+   **antes** de tomar los tres: deduplicar después devolvería menos de tres términos ante un título
+   con repeticiones, y dos implementaciones razonables darían conjuntos distintos.
+5. **Emitidos:** la clave del tracker **siempre** si existe —y **no consume una de las tres
+   ranuras**—, más los **tres primeros tokens sobrevivientes**, en orden de aparición.
+6. **Desempate:** orden de aparición, nunca frecuencia — que dependería del corpus.
+7. **Fallback:** con cero sobrevivientes, el título completo normalizado como **frase fija**.
+
+Los términos emitidos se persisten en `terminos` de `## estado` y se copian a `terminos_buscados` de
+`## declaracion`.
+
+**Ejemplo congelado.** Ticket `ABC-123`, título `Buscar antecedentes de antecedentes en el historial
+del repo` → `[ABC-123, buscar, antecedentes, historial]`. Los tokens `de`, `en`, `el` y `del` caen por
+vacías y `repo` por genérico; la segunda aparición de `antecedentes` cae por deduplicación, y por eso
+`historial` entra en la tercera ranura.
+
+### Seguridad de argumentos
+
+Los términos vienen del usuario y terminan en una shell. Se buscan como **texto fijo** —`grep -F` en
+POSIX, `Select-String -SimpleMatch` en PowerShell—, cada uno con su propio `-e`, con `--` antes de las
+rutas, con quoting, y **sin `eval`**. Así un término que empiece con `-` no puede convertirse en una
+opción, y uno con metacaracteres no se interpreta como patrón.
+
+### Las seis fuentes
+
+Se recorren **en este orden**. Las cinco primeras son **obligatorias**: ninguna se puede saltear, y
+una que no se pueda correr se declara `no comprobada` con su razón, nunca se omite en silencio. La
+sexta es **condicional** —depende de que haya un vault que consultar— y es la única que admite
+`no aplicable por política`.
+
+| # | Fuente | Qué mira | Obligatoriedad |
+|---|---|---|---|
+| 1 | **HEAD** | el árbol vigente, por **ruta** y por **contenido** | obligatoria |
+| 2 | **refs**, en dos etapas | nombres de ramas y tags; después el **contenido** de las que quedaron candidatas | obligatoria |
+| 3 | **historial de commits** | **mensajes** y **contenido introducido** | obligatoria |
+| 4 | **`.plans/archived/`** | los flujos ya cerrados de este repositorio | obligatoria |
+| 5 | **flujos activos** | los `.plans/<id>/` en curso, incluido el de otra rama y **excluido el propio** | obligatoria |
+| 6 | **vault de conocimiento** | flujos rescatados cuyo origen ya se retiró del disco | **condicional** |
+
+### Los cuatro ejes, y son cuatro
+
+Un antecedente puede ser visible por cualquiera de estas cuatro vías, y **buscar por una sola deja
+el hueco de las otras tres**. Es exactamente el modo en que este defecto se reproduce: una búsqueda
+que solo mira nombres no ve el trabajo que vive dentro de un archivo de ruta genérica, y una que solo
+mira contenido no ve el que se anunció en el mensaje de un commit o quedó en el nombre de una ruta.
+
+| Eje | Dónde | Cómo se recorre |
+|---|---|---|
+| **ruta** | HEAD y rutas históricas | los nombres de archivo del árbol vigente |
+| **contenido** | HEAD | el texto dentro de los archivos versionados |
+| **mensaje** | historial | los mensajes de commit de todas las refs |
+| **contenido introducido** | historial | el texto que un commit **agregó o quitó** (`-S`) |
+
+Los flujos —activos y archivados— se recorren por el **contenido** de sus artefactos, no por el
+nombre de su carpeta: un flujo con `<id>` opaco puede llevar adentro el objetivo exacto.
+
+**Una ref que quedó candidata por su nombre o por su historia se valida abriendo su contenido**: el
+nombre es una pista, no una acreditación. Y a la inversa: **una ref que ningún eje volvió candidata
+no se inspecciona entera** —sería recorrer todo el repositorio por cada rama—, así que esa limitación
+**se declara en la salida** en vez de dejar que la ausencia de hallazgos parezca cobertura.
+
+### Los comandos
+
+Cada comando lleva un **ID** y aparece **dos veces**, en su variante POSIX y en su variante
+PowerShell, con el mismo conjunto de IDs en las dos.
+
+**Los términos viajan por archivo, uno por línea, y esa es la decisión que sostiene todo lo demás.**
+`$TERMINOS` es la ruta de ese archivo, que el algoritmo escribe una vez por corrida. No es una
+preferencia de estilo: pasarlos por una variable de shell fallaba de **tres** formas a la vez, y las
+tres desaparecen con el archivo.
+
+| Lo que fallaba con una variable | Por qué |
+|---|---|
+| **dependía de la shell** | `set -- $VAR` divide en palabras en POSIX pero **no en zsh**, así que el mismo conjunto daba dos digests distintos y `terminos` parecía cambiado sin que nadie tocara un término |
+| **se rompía con espacios** | el paso 7 del algoritmo emite el título entero como **frase fija**, y esa frase se partía en varias, con lo que `{"a b"}` colisionaba con `{"a","b"}` |
+| **no era el mismo comando** | la variante POSIX y la PowerShell tenían que diferir para lograr lo mismo, y la sección exige que el par sea equivalente |
+
+Con el archivo, `grep -F -f` y `Select-String -Pattern (Get-Content …)` toman **tantos términos como
+haya** —tres, o cuatro con clave de tracker— sin enumerarlos, y `fp-terminos` es `git hash-object`
+sobre ese mismo archivo: idéntico en las dos shells y ciego al espaciado.
+
+**`log-mensajes` no tiene bandera de archivo, así que recorre el archivo y arma un `--grep` por
+línea.** `git log` acepta tantos como se le pasen y los une por `OR`. Enumerar tres a mano fallaba en
+las **dos** direcciones, y las dos están medidas: con clave de tracker el algoritmo emite cuatro
+términos y el cuarto no se buscaba nunca; con un título que emite dos, el `--grep=""` sobrante
+devolvía **el historial entero** —488 commits de 488 en este repositorio— donde un término real
+devuelve cero. Las líneas vacías se saltean, que es lo que impide materializar ese patrón.
+
+`$T1` queda entonces nombrando un término suelto en el **único** comando que solo puede tomar uno:
+`log-contenido`, porque `-S` acepta una sola cadena por invocación. Esa limitación de cobertura se
+declara en la salida, como cualquier otra.
+
+**Ninguno de estos comandos muta el working tree.** La única mutación admitida en todo el sub-paso es
+la de **refs locales** que produce `sync-refs`, y está declarada.
+
+```sh
+# POSIX: sync-refs
+git fetch --quiet <remoto>
+# POSIX: head-rutas
+git ls-files -- . | grep -F -f "$TERMINOS"
+# POSIX: head-contenido
+git grep -I -n --fixed-strings -f "$TERMINOS" -- .
+# POSIX: refs-nombres
+git for-each-ref --format='%(refname:short) %(objectname)' | grep -F -f "$TERMINOS"
+# POSIX: refs-contenido
+git grep -I -n --fixed-strings -f "$TERMINOS" <ref> -- .
+# POSIX: refs-rutas
+git ls-tree -r --name-only <ref> | grep -F -f "$TERMINOS"
+# POSIX: log-mensajes
+set -- --all --oneline --fixed-strings
+while IFS= read -r t; do [ -n "$t" ] && set -- "$@" --grep="$t"; done < "$TERMINOS"
+git log "$@"
+# POSIX: log-contenido
+git log --all --oneline -S "$T1"
+# POSIX: archivados
+grep -rIl -F -f "$TERMINOS" -- .plans/archived/
+# POSIX: flujos-activos
+grep -rIl -F --exclude-dir=archived --exclude-dir="$ID_ACTUAL" -f "$TERMINOS" -- .plans/
+# POSIX: vault
+grep -rIl -F -f "$TERMINOS" -- <vault>/projects/<repo>/
+# POSIX: fp-head
+git rev-parse HEAD
+# POSIX: fp-refs
+git for-each-ref --format='%(refname) %(objectname)' | git hash-object --stdin
+# POSIX: fp-flujos
+find .plans/ -type d \( -name archived -o -name "$ID_ACTUAL" \) -prune -o -type f -print | git hash-object --stdin-paths | LC_ALL=C sort | git hash-object --stdin
+# POSIX: fp-archivados
+find .plans/archived/ -type f -print | git hash-object --stdin-paths | LC_ALL=C sort | git hash-object --stdin
+# POSIX: fp-vault
+find <vault>/projects/<repo>/ -type f -print | git hash-object --stdin-paths | LC_ALL=C sort | git hash-object --stdin
+# POSIX: fp-terminos
+git hash-object "$TERMINOS"
+```
+
+```powershell
+# PowerShell: sync-refs
+git fetch --quiet <remoto>
+# PowerShell: head-rutas
+git ls-files -- . | Select-String -SimpleMatch -Pattern (Get-Content $TERMINOS)
+# PowerShell: head-contenido
+git grep -I -n --fixed-strings -f $TERMINOS -- .
+# PowerShell: refs-nombres
+git for-each-ref --format='%(refname:short) %(objectname)' | Select-String -SimpleMatch -Pattern (Get-Content $TERMINOS)
+# PowerShell: refs-contenido
+git grep -I -n --fixed-strings -f $TERMINOS <ref> -- .
+# PowerShell: refs-rutas
+git ls-tree -r --name-only <ref> | Select-String -SimpleMatch -Pattern (Get-Content $TERMINOS)
+# PowerShell: log-mensajes
+$gl = @('--all','--oneline','--fixed-strings')
+Get-Content $TERMINOS | Where-Object { $_ -ne '' } | ForEach-Object { $gl += "--grep=$_" }
+git log @gl
+# PowerShell: log-contenido
+git log --all --oneline -S $T1
+# PowerShell: archivados
+Get-ChildItem -Recurse -File .plans/archived/ | Select-String -SimpleMatch -List -Pattern (Get-Content $TERMINOS)
+# PowerShell: flujos-activos
+Get-ChildItem -Recurse -File .plans/ | Where-Object { $_.FullName -notmatch "[\\/](archived|$ID_ACTUAL)[\\/]" } | Select-String -SimpleMatch -List -Pattern (Get-Content $TERMINOS)
+# PowerShell: vault
+Get-ChildItem -Recurse -File <vault>/projects/<repo>/ | Select-String -SimpleMatch -List -Pattern (Get-Content $TERMINOS)
+# PowerShell: fp-head
+git rev-parse HEAD
+# PowerShell: fp-refs
+git for-each-ref --format='%(refname) %(objectname)' | git hash-object --stdin
+# PowerShell: fp-flujos
+$h = [string[]]@(Get-ChildItem -Recurse -File .plans/ | Where-Object { $_.FullName -notmatch "[\\/](archived|$ID_ACTUAL)[\\/]" } | ForEach-Object { $_.FullName } | git hash-object --stdin-paths)
+[Array]::Sort($h, [StringComparer]::Ordinal); $h | git hash-object --stdin
+# PowerShell: fp-archivados
+$h = [string[]]@(Get-ChildItem -Recurse -File .plans/archived/ | ForEach-Object { $_.FullName } | git hash-object --stdin-paths)
+[Array]::Sort($h, [StringComparer]::Ordinal); $h | git hash-object --stdin
+# PowerShell: fp-vault
+$h = [string[]]@(Get-ChildItem -Recurse -File <vault>/projects/<repo>/ | ForEach-Object { $_.FullName } | git hash-object --stdin-paths)
+[Array]::Sort($h, [StringComparer]::Ordinal); $h | git hash-object --stdin
+# PowerShell: fp-terminos
+git hash-object $TERMINOS
+```
+
+`$ID_ACTUAL` es el `<id>` del flujo en curso: `flujos-activos` **lo excluye**, porque su propio
+artefacto contiene el objetivo palabra por palabra y sin la exclusión toda búsqueda se encuentra a sí
+misma como antecedente.
+
+> **Las opciones van antes de `--`, y esto no es estilo.** `--` termina el parseo de opciones, así que
+> un `--exclude-dir` escrito **después** se lee como una **ruta**: `grep` avisa `No such file or
+> directory`, sale con **2**, no excluye nada —el flujo se encuentra a sí mismo y la fuente 5 devuelve
+> además los hits de la 4— y ese `2` puede leerse como error de la fuente entera. Medido.
+
+> **Los fingerprints de las tres fuentes de archivos miden contenido, no listados.** `ls -1` y
+> `Get-ChildItem -Name` devuelven nombres de primer nivel, y con eso otro flujo puede escribir el
+> objetivo **dentro** de su `spec.md` sin que el digest se mueva. Cada uno hashea además **el mismo
+> subárbol que recorre su fuente**: `fp-flujos` excluye `archived/` y `$ID_ACTUAL`, igual que
+> `flujos-activos`, o el fingerprint mediría un conjunto distinto del que invalida.
+
+> **Los tres enumeran con `find` / `Get-ChildItem`, y no con `git ls-files`.** La razón la impone el
+> vault: es el único de los tres que vive **fuera del repositorio**, y `git ls-files` rechaza un
+> pathspec externo con `is outside repository` y código **128**. El fallo no se ve, porque el
+> pipeline lo traga y `git hash-object --stdin` devuelve el **hash del vacío** (`e69de29…`) con
+> código **0** — así el digest del vault quedaba constante y la fuente 6 no se invalidaba nunca.
+> Medido. Los otros dos podrían seguir con `git ls-files`, y usan la misma vía para que las tres
+> recetas se lean y fallen igual; comprobado sobre un `.plans/` real, `find` con `-prune` devuelve el
+> **mismo conjunto de 75 archivos** que `git ls-files --others --cached` con su filtro.
+
+> **El digest se arma sobre los hashes ordenados, y no sobre el orden de la enumeración.** Ordenar
+> por ruta parece lo natural y **no funciona**, por dos razones medidas: `LC_ALL=C sort` ordena por
+> bytes mientras `Sort-Object` no distingue mayúsculas por defecto, así que con un `Z.md` y un `a.md`
+> los dos streams salen invertidos; y `Sort-Object` sobre hexadecimal es **sensible a la cultura** —
+> bajo `da-DK`, un hash `aa…` se ordena **después** de uno `b6…`, porque el danés colaciona "aa" como
+> "å"—. De ahí las dos mitades: se ordenan los **hashes**, lo que vuelve el digest independiente de
+> toda tabla de colación de rutas, y en PowerShell se ordena con `[Array]::Sort($h,
+> [StringComparer]::Ordinal)`, que da el mismo resultado en `en-US`, `da-DK` y `tr-TR`.
+>
+> **Lo que a cambio no detecta, dicho acá y no escondido:** es el digest de un **conjunto de
+> contenidos**, así que un renombre puro dentro del subárbol —o dos archivos que intercambien
+> contenido— no lo mueven. El renombre tampoco lo detectaba el diseño anterior, que nunca hasheó
+> rutas; lo que se agrega es el intercambio, y a cambio el digest deja de depender de quién lo corre.
+
+> **Las rutas nunca viajan como argumento: van por stdin a `git hash-object --stdin-paths`.** Las dos
+> vías que parecen equivalentes fallan, y las dos están medidas sobre un corpus con `it's.md`,
+> `[bracket].md`, `Z.md`, `a.md` y `sub dir/con espacio.md`:
+>
+> | Vía | Qué pasa |
+> |---|---|
+> | `xargs -I{} git hash-object {}` | `xargs` interpreta comillas: con `it's.md` aborta con `unterminated quote`, y el pipeline sigue con **código 0** y un digest **incompleto** —ni siquiera el del vacío, que al menos se vería raro— |
+> | la ruta como argumento, en PowerShell | PowerShell **expande comodines** al pasar un argumento a un comando nativo: `/bin/echo "<dir>/[bracket].md"` imprime `<dir>/a.md`, así que `git hash-object` hasheaba **otro archivo**. Ni `--` lo evita: quien expande es la shell, no git |
+>
+> Con `--stdin-paths` las dos desaparecen, y de paso se hashea todo el subárbol en **un** proceso en
+> vez de uno por archivo. Verificado: sobre ese corpus, POSIX y PowerShell dan el mismo digest, y
+> sobre los 75 archivos de un `.plans/` real el par también coincide.
+
+> **El `@()` de la variante PowerShell no es decorativo, y el conjunto vacío es el caso normal.**
+> `.plans/archived/` recién creado está vacío, y `fp-flujos` excluye el flujo en curso, así que un
+> repositorio con un solo flujo activo le deja cero archivos. Sin `@()`, `git hash-object
+> --stdin-paths` no emite nada, la conversión a `[string[]]` **preserva `$null`** en vez de dar un
+> arreglo de cero elementos, y `[Array]::Sort` corta la receta con `Value cannot be null (Parameter
+> 'array')` — mientras POSIX devuelve tranquilo el hash del vacío. Con `@()` el par coincide en los
+> **tres** tamaños medidos: cero archivos → `e69de29…`, uno → `bbbaa54…`, cinco → `6602349…`.
+
+> **Un fingerprint se calcula solo si su fuente corrió**, y esa regla cubre **una** cosa: la fuente
+> que no se pudo recorrer. Una fuente `no comprobada` no persiste fingerprint, así que al retomar se
+> la vuelve a correr en vez de compararla contra un digest que nunca midió nada. Lo que **no** cubre
+> es un fallo dentro del propio pipeline del fingerprint —ahí la fuente corrió bien y el digest sale
+> mal igual—, y por eso el pipeline ya no tiene ningún paso que pueda fallar parcialmente en
+> silencio.
+
+**Ningún término puede ser la cadena vacía.** `grep -F -e ""` coincide con toda línea, así que un
+término vacío convierte la búsqueda entera en un falso positivo silencioso. El algoritmo no los
+produce —los tokens salen de partir por corridas de no alfanuméricos—, pero el conjunto se comprueba
+antes de usarlo y un vacío se descarta.
+
+**Los fingerprints se hashean con `git hash-object --stdin`, y eso no es una preferencia de estilo.**
+`shasum` no existe en Windows, y `Get-FileHash` **no hashea una cadena**: desde un pipeline interpreta
+cada línea como una **ruta de archivo** y falla con `Cannot find path` — medido, no supuesto.
+`git hash-object` ya está presente por definición en las dos plataformas y lee de stdin en ambas, así
+que el par queda idéntico en vez de ser dos comandos distintos que parecen equivalentes.
+
+`log-contenido` se corre **una vez por término**: `-S` toma una sola cadena por invocación, y
+acumularlas en un `--grep` no es lo mismo — ese busca en el mensaje, no en el diff.
+
+### Remotos, `fetch` y fingerprints
+
+**La actualización de refs tiene tres ramas disjuntas, y ninguna se confunde con otra.** El `fetch`
+**sí muta estado de git** —modifica refs, aunque no toque el working tree—, y de ahí sale la primera:
+
+| Rama | Cuándo | Qué queda declarado |
+|---|---|---|
+| **(a) no se intenta** | sin remoto configurado, **o en un entorno que prohíbe mutaciones** —Plan Mode, modo solo-lectura— | las refs remotas quedan **`no comprobadas`** con esa razón |
+| **(b) se intenta** | hay remoto **y** el entorno admite mutación | se actualiza y se sigue |
+| **(c) el intento falla** | se intentó y no se pudo —remoto inalcanzable, credenciales, red— | **`no comprobadas`** con el **error concreto** |
+
+**(a) y (c) no se agrupan.** Un fallo solo se conoce **después** de intentar, así que meterlo en "no
+se intenta" describe un estado imposible; y al revés, declarar un error de red donde nunca se salió a
+la red inventa una causa. En la rama (b), **el `fetch` no es opcional**: sin él las refs remotas son
+la foto de la última sincronización y todo lo que las mira devuelve vacío por estar leyendo un remoto
+viejo — un verde que se lee igual que un verde real. Es un `fetch` de refs: no toca el árbol, no mueve
+ramas locales y no necesita el árbol limpio.
+
+La rama (a) cubre expresamente los **modos de solo lectura**, donde `gather-context` está permitido
+justamente por ser read-only: intentar mutar refs ahí rompería esa garantía, así que la búsqueda
+sigue con lo que tiene y lo dice.
+
+**Se actualiza un solo remoto:** `origin` si existe; si no hay `origin`, el **primero por orden
+alfabético**. Actualizarlos todos multiplicaría el costo de un paso que tiene que ser barato. **Cuál
+se usó se declara en la salida**, siempre — con un solo remoto también, porque "no había remoto" y
+"había uno y no lo nombré" no pueden quedar indistinguibles.
+
+**El `fetch` no se revierte.** Muta refs locales, eso se acepta y se declara; deshacerlo dejaría el
+repositorio en un estado que nadie pidió. Y **los fingerprints se capturan después del `fetch`**,
+nunca antes: tomados antes, el propio `fetch` los invalida y el retomado siguiente re-corre de más.
+
+### Degradación: los tres estados por fuente
+
+| Estado | Cuándo | Qué significa |
+|---|---|---|
+| `examinada` | el comando **completó** y su salida está entera | la fuente se recorrió |
+| `no comprobada` | timeout, salida truncada, error de permisos, remoto inalcanzable, herramienta ausente | la fuente **no** se recorrió, y va con su **razón** |
+| `no aplicable por política` | solo el **vault**, y solo cuando no hay ninguno que consultar | no existe la fuente |
+
+Un timeout o una salida truncada **no es una fuente examinada**: es `no comprobada`. Confundirlas es
+lo que convierte "no busqué ahí" en "busqué y no había nada", que es el error que este paso existe
+para evitar.
+
+**`.plans/archived/` es obligatoria y solo admite `no comprobada`.** Que el directorio no exista **no
+la vuelve examinada**: no hubo nada que consultar, así que queda `no comprobada` con esa razón. Leerla
+como "examinada, sin hallazgos" afirma que se buscó donde no se buscó, que es exactamente la confusión
+que estos tres estados existen para impedir. Y `no aplicable por política` tampoco le corresponde
+nunca: esa salida es solo del vault.
+
+Toda fuente `no comprobada` **cualifica el resultado global**: un `impacto_en_alcance: ninguno` con
+dos fuentes sin comprobar no es lo mismo que uno con las seis examinadas, y la declaración lo dice.
+
+### Resolver el vault
+
+1. **El config del proyecto manda.** Con `knowledge-vault.path_vault` declarado en
+   `.specify/config.yml`, ese es el vault y no hay nada que resolver.
+2. **Sin declaración**, descubrir los que haya. Si no hay ninguno, la fuente resuelve
+   `no aplicable por política`.
+3. **Ante ambigüedad** —dos vaults con un proyecto del mismo nombre—, **no se elige por el nombre del
+   directorio**: se coteja `<vault>/.kv/identidades.tsv` contra `git remote get-url origin` y el
+   commit raíz (`git rev-list --max-parents=0 HEAD`). El commit raíz es identidad; el nombre no.
+4. Si tras el cotejo **sigue ambiguo**, la fuente resuelve `no comprobada` con esa razón — y **no se
+   escribe configuración**: elegir uno y persistirlo convertiría una duda en una decisión que nadie
+   tomó.
+
+### Qué queda escrito
+
+Termine como termine, el sub-paso deja en `antecedentes.md`: los **términos emitidos**, el **estado de
+cada una de las seis fuentes** con la razón de cada `no comprobada`, las **coincidencias crudas** con
+su descarte, los **candidatos** con su evidencia, el **remoto** que se usó, y el
+**impacto en el alcance** cualificado por lo que no se pudo comprobar. Una corrida sin hallazgos
+escribe lo mismo: el registro de que se buscó vale tanto como el de lo que se encontró.
+
+### Las tres condiciones, y qué señal acredita cada una
+
+Un candidato recorta o cierra alcance **solo** si las tres están acreditadas. **Cualquiera sin su
+señal resuelve `no verificado`**, y un `no verificado` entra como contexto o como incógnita — nunca
+como recorte. Sin umbrales escritos, un candidato se clasifica por intuición y el recorte queda sin
+fundamento.
+
+**Cobertura — un mapeo escrito.** `parte del objetivo → ruta o ref que la cubre`, parte por parte.
+**Sin ese mapeo no hay cobertura acreditada**: que el término aparezca en el árbol no dice que lo que
+está ahí cubra lo que se pidió.
+
+**Terminación — el trabajo se cerró, y consta.** Un commit citado **por SHA** cuyo contenido cubra
+esa parte, **más una de estas dos**:
+
+- su **mensaje declara el cierre**, o
+- existe una **prueba asociada que se ejecuta y pasa** —o constancia de que pasó—, y esa prueba está
+  ligada **al SHA candidato**, no a la ref ni al proyecto.
+
+Que la prueba **exista** no acredita nada: un test rojo es tan existente como uno verde. Y un test
+verde en otro commit no dice nada de este.
+
+**Compatibilidad — vigencia, no inclusión histórica.** `git merge-base --is-ancestor <ref> HEAD`
+verdadero **no alcanza**: acredita que la ref entró a la historia, no que su trabajo siga en pie.
+Medido en este repositorio: el padre de `8057282` es ancestro del HEAD y tiene 1316 rutas bajo
+`scripts/paridad-casos/`; el HEAD tiene **cero** — un trabajo que entró y después se retiró. Así
+que:
+
+| Situación de la ref | Qué se exige además | Salida |
+|---|---|---|
+| **ancestro** del HEAD | que la parte mapeada **siga presente en el HEAD**, por ruta o por equivalente declarado | presente → `vigente`; ausente → **`no vigente`**, y vale como contexto histórico, nunca como recorte |
+| **divergente** | contar los archivos en conflicto con `git merge-tree` entre la base y la ref. **El umbral es cero** | cero → `recuperable`; **uno o más** → `recuperable con costo declarado`, que **no habilita recorte automático** y va al checkpoint con el número a la vista |
+
+Sin ese umbral, una ref con doscientos conflictos acreditaba "costo conocido" igual que una limpia.
+
+### La matriz de salidas
+
+Cobertura acreditada × vigencia. La celda fija la transición; **ninguna de ellas se decide por
+criterio de quien implementa**.
+
+| Cobertura ↓ · Vigencia → | vigente | no vigente | recuperable (cero conflictos) | recuperable con costo (uno o más) | no verificado |
+|---|---|---|---|---|---|
+| **total** | **no avanza**: ofrece cerrar el flujo o reformular el objetivo → `cierre` | contexto; alcance **intacto** → `contexto` | **obliga a reformular**, con confirmación humana → `reformular` | **checkpoint** con el número de conflictos declarado; no recorta solo → `checkpoint` | contexto o incognita |
+| **parcial** | **residual**: matriz parte/evidencia/delta → `residual` | contexto; alcance intacto → `contexto` | residual, con confirmación humana → `residual` | checkpoint con el número declarado → `checkpoint` | contexto o incognita |
+| **ninguna (relacionado)** | contexto; alcance **intacto** | contexto | contexto | contexto | contexto |
+| **falso positivo** | descartado, con su descarte registrado en `coincidencias_crudas` | ídem | ídem | ídem | ídem |
+
+**Una reformulación del objetivo siempre requiere confirmación humana.** Ninguna celda autoriza a
+reescribir lo que se pidió sin que una persona lo apruebe.
+
+**Cobertura parcial: la matriz parte/evidencia/delta.** Se escribe una fila por parte del objetivo,
+con la evidencia que la cubre y lo que queda pendiente:
+
+| Parte del objetivo | Evidencia que la cubre | Delta |
+|---|---|---|
+| `<parte>` | `<ref o ruta>` + las tres señales | `<lo que falta, o nada>` |
+
+**El residual es la resta exacta** de lo acreditado, no una estimación ni un redondeo: lo que ninguna
+fila acredita sigue entero en el alcance. Toda modulación del alcance **se anuncia** en el checkpoint
+del paso 6 con esta matriz a la vista.
+
+### La matriz de invalidación
+
+Al retomar, no se re-corre todo ni se reutiliza todo: se comparan los fingerprints y se re-corre lo
+que el cambio invalidó.
+
+**`terminos` no es una fuente: es la consulta que se le hace a todas.** Vive en la misma lista que las
+fuentes, y de esa vecindad sale la regla equivocada de que un cambio invalida "solo esa fuente".
+
+| Fingerprint que cambió | Qué se vuelve a correr |
+|---|---|
+| `terminos` | **todas las fuentes** — cambió la pregunta, no una respuesta |
+| `refs` | las refs, el historial de commits y la **clasificación de todo candidato** |
+| `head` | el árbol del HEAD y la **compatibilidad de todo candidato** |
+| `flujos_activos` | esa fuente sola |
+| `archivados` | esa fuente sola |
+| `vault` | esa fuente sola |
+
+**Las seis fuentes tienen fingerprint, y ninguna queda sin quién la invalide.** Con cuatro, las
+fuentes 4 y 6 no se re-corrían nunca una vez terminadas —salvo que cambiara `terminos`, que arrastra
+a todas—, así que una pausa larga las congelaba.
+
+**El de los flujos mide contenido y no el listado**, porque la fuente recorre lo que hay *adentro* de
+`.plans/`. Con un digest del listado hay dos pérdidas medibles: otro flujo escribe el objetivo dentro
+de su `spec.md` durante la pausa y el listado no cambia, así que la fuente no se re-corre y el
+antecedente se pierde; y un flujo que se archiva **sí** cambia el listado, con lo que se re-corre la
+fuente 5 —donde ya no está— mientras la 4, donde ahora sí está, no tenía fila que la invalidara.
+
+**Los fingerprints no son independientes, y la regla es la unión.** Un commit en la rama actual mueve
+el HEAD **y** el OID de `refs/heads/<actual>`: cambian `head` y `refs` a la vez, así que "observar
+exactamente una fila" describe un escenario que no existe. Cuando cambia más de uno se ejecuta la
+**unión** de sus filas; y como `terminos` arrastra a todas, cualquier combinación que lo incluya
+re-corre todo.
+
+Un tag nuevo cambia el digest de `refs` aunque el HEAD no se mueva: por eso el fingerprint de refs es
+un digest de nombres y OIDs, y no el SHA del HEAD con una fecha.
+
 ## Plantilla de constitution
 
 `.specify/constitution.md` — principios de **proceso/calidad**, no de código.
@@ -1603,6 +2112,13 @@ spec/plan/tasks deben respetarlos; este constitution NO los duplica.
 ## Alcance
 - **Incluye:** <qué entra>
 - **No incluye:** <qué queda explícitamente afuera>
+
+## Antecedentes
+<forma **sanitizada** del bloque `## declaracion` de `.plans/<id>/antecedentes.md`, campo por campo
+según "Búsqueda de antecedentes": términos buscados; cuántas fuentes se examinaron y cuáles quedaron
+sin comprobar, con su razón; los candidatos **descritos** —"un flujo archivado de este repositorio",
+"una rama con trabajo previo"— con qué parte cubren y su evidencia en prosa; e impacto en el alcance.
+**Nunca** rutas de `.plans/`, nombres de ref o rama, SHAs, el remoto, ni ninguna clave de `## estado`.>
 
 ## Criterios de aceptación
 - **AC-1:** Given <contexto>, When <acción>, Then <resultado observable>.
@@ -1839,6 +2355,8 @@ created_at: 2026-01-01T12:00:00-03:00
 ## Spec
 ### Problema / Objetivo
 <por qué — 1-2 párrafos>
+### Antecedentes
+<forma sanitizada del bloque `## declaracion` — nunca rutas, refs, SHAs, el remoto ni claves de `## estado`>
 ### Criterios de aceptación
 - **AC-1:** <observable y verificable>
 
@@ -1997,7 +2515,7 @@ Ejemplo concreto de una task:
 
 ```markdown
 ---
-phase: awaiting-jira-approval   # specify | clarify | awaiting-jira-approval | implementing | ...
+phase: awaiting-jira-approval   # gather-context | specify | clarify | awaiting-jira-approval | implementing | ...
 # snapshot de gather-context (presente mientras NO exista plan.md; cuando existe, manda plan.md):
 complexity: normal              # trivial | normal | complex
 change_type: feat               # feat | fix | refactor | chore | docs | test | perf
@@ -2005,6 +2523,8 @@ branch_prefix: feature          # el {type} ya resuelto
 slug: export-csv
 base_branch: master             # rama base resuelta (con override de base, la rama de la que se corta)
 overrides: { branch_prefix: null, base_branch: null, cross_review: null, implement_mode: null, jira_approval: null }
+# puntero al ledger de la búsqueda (solo en una pausa durante `gather-context`):
+antecedentes: .plans/<id>/antecedentes.md   # PUNTERO, no copia: términos, fuentes y fingerprints viven solo ahí
 # campos del gate de Jira (solo si es una pausa por aprobación externa):
 gate_status: awaiting           # awaiting | changes-requested | approved
 parent_key: ABC-123
@@ -2026,6 +2546,7 @@ cloud_id: <uuid del sitio>
 
 ## Archivos del flujo
 - spec.md — el QUÉ completo + Clarifications
+- antecedentes.md — el ledger de la búsqueda: `## estado` (nunca se publica) y `## declaracion` (se promueve **sanitizado**)
 - jira-spec.md — exactamente lo publicado en la subtarea (solo si hubo gate de Jira)
 ```
 
