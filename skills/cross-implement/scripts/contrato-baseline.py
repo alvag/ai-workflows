@@ -105,11 +105,14 @@ def main() -> int:
             elif evidencia in EVIDENCIA_EJECUTABLE and not re.fullmatch(r"exit -?[0-9]+; .+", valor_observado):
                 print(f"GUARD:adjudicacion-obligatoria {identificador}: observado sin exit code", file=sys.stderr)
                 rc = 1
-            elif evidencia == "manual" and valor_observado.startswith("exit "):
+            elif evidencia == "manual" and re.match(r"exit -?[0-9]+;", valor_observado):
                 # Una observación humana no tiene proceso del que leer un código, así que la forma
                 # ejecutable acá solo puede venir de copiar el marcador de relleno de la plantilla o
                 # la fila de al lado. Sin esta rama, `manual` era el único tipo sin forma exigida —y
                 # el más expuesto a escribirse de memoria, que es el defecto que el campo cierra.
+                # Se busca la forma ejecutable, no el prefijo `exit `: una observación legítima puede
+                # empezar con esa palabra —`exit button remains visible`— y rechazarla castigaría al
+                # español y al inglés por igual sin que haya nada que delate una medición fabricada.
                 print(f"GUARD:adjudicacion-obligatoria {identificador}: observado de evidencia manual con forma de ejecutable",
                       file=sys.stderr)
                 rc = 1
