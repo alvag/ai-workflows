@@ -1726,9 +1726,18 @@ tres desaparecen con el archivo.
 
 Con el archivo, `grep -F -f` y `Select-String -Pattern (Get-Content …)` toman **tantos términos como
 haya** —tres, o cuatro con clave de tracker— sin enumerarlos, y `fp-terminos` es `git hash-object`
-sobre ese mismo archivo: idéntico en las dos shells y ciego al espaciado. `$T1` sigue nombrando un
-término suelto donde el comando **solo puede tomar uno**, que es el caso de `log-contenido` (`-S`
-acepta una sola cadena por invocación) y el de los `--grep` de `log-mensajes`.
+sobre ese mismo archivo: idéntico en las dos shells y ciego al espaciado.
+
+**`log-mensajes` no tiene bandera de archivo, así que recorre el archivo y arma un `--grep` por
+línea.** `git log` acepta tantos como se le pasen y los une por `OR`. Enumerar tres a mano fallaba en
+las **dos** direcciones, y las dos están medidas: con clave de tracker el algoritmo emite cuatro
+términos y el cuarto no se buscaba nunca; con un título que emite dos, el `--grep=""` sobrante
+devolvía **el historial entero** —488 commits de 488 en este repositorio— donde un término real
+devuelve cero. Las líneas vacías se saltean, que es lo que impide materializar ese patrón.
+
+`$T1` queda entonces nombrando un término suelto en el **único** comando que solo puede tomar uno:
+`log-contenido`, porque `-S` acepta una sola cadena por invocación. Esa limitación de cobertura se
+declara en la salida, como cualquier otra.
 
 **Ninguno de estos comandos muta el working tree.** La única mutación admitida en todo el sub-paso es
 la de **refs locales** que produce `sync-refs`, y está declarada.
@@ -1747,7 +1756,9 @@ git grep -I -n --fixed-strings -f "$TERMINOS" <ref> -- .
 # POSIX: refs-rutas
 git ls-tree -r --name-only <ref> | grep -F -f "$TERMINOS"
 # POSIX: log-mensajes
-git log --all --oneline --fixed-strings --grep="$T1" --grep="$T2" --grep="$T3"
+set -- --all --oneline --fixed-strings
+while IFS= read -r t; do [ -n "$t" ] && set -- "$@" --grep="$t"; done < "$TERMINOS"
+git log "$@"
 # POSIX: log-contenido
 git log --all --oneline -S "$T1"
 # POSIX: archivados
@@ -1765,7 +1776,7 @@ git ls-files --others --cached -- .plans/ | grep -v -e '^\.plans/archived/' -e "
 # POSIX: fp-archivados
 git ls-files --others --cached -- .plans/archived/ | xargs -I{} git hash-object {} | git hash-object --stdin
 # POSIX: fp-vault
-git ls-files --others --cached -- <vault>/projects/<repo>/ | xargs -I{} git hash-object {} | git hash-object --stdin
+find <vault>/projects/<repo>/ -type f | LC_ALL=C sort | xargs -I{} git hash-object {} | git hash-object --stdin
 # POSIX: fp-terminos
 git hash-object "$TERMINOS"
 ```
@@ -1784,7 +1795,9 @@ git grep -I -n --fixed-strings -f $TERMINOS <ref> -- .
 # PowerShell: refs-rutas
 git ls-tree -r --name-only <ref> | Select-String -SimpleMatch -Pattern (Get-Content $TERMINOS)
 # PowerShell: log-mensajes
-git log --all --oneline --fixed-strings --grep=$T1 --grep=$T2 --grep=$T3
+$gl = @('--all','--oneline','--fixed-strings')
+Get-Content $TERMINOS | Where-Object { $_ -ne '' } | ForEach-Object { $gl += "--grep=$_" }
+git log @gl
 # PowerShell: log-contenido
 git log --all --oneline -S $T1
 # PowerShell: archivados
@@ -1798,11 +1811,11 @@ git rev-parse HEAD
 # PowerShell: fp-refs
 git for-each-ref --format='%(refname) %(objectname)' | git hash-object --stdin
 # PowerShell: fp-flujos
-Get-ChildItem -Recurse -File .plans/ | Where-Object { $_.FullName -notmatch "[\\/](archived|$ID_ACTUAL)[\\/]" } | ForEach-Object { git hash-object $_.FullName } | git hash-object --stdin
+Get-ChildItem -Recurse -File .plans/ | Where-Object { $_.FullName -notmatch "[\\/](archived|$ID_ACTUAL)[\\/]" } | Sort-Object FullName | ForEach-Object { git hash-object $_.FullName } | git hash-object --stdin
 # PowerShell: fp-archivados
-Get-ChildItem -Recurse -File .plans/archived/ | ForEach-Object { git hash-object $_.FullName } | git hash-object --stdin
+Get-ChildItem -Recurse -File .plans/archived/ | Sort-Object FullName | ForEach-Object { git hash-object $_.FullName } | git hash-object --stdin
 # PowerShell: fp-vault
-Get-ChildItem -Recurse -File <vault>/projects/<repo>/ | ForEach-Object { git hash-object $_.FullName } | git hash-object --stdin
+Get-ChildItem -Recurse -File <vault>/projects/<repo>/ | Sort-Object FullName | ForEach-Object { git hash-object $_.FullName } | git hash-object --stdin
 # PowerShell: fp-terminos
 git hash-object $TERMINOS
 ```
@@ -1821,6 +1834,23 @@ misma como antecedente.
 > objetivo **dentro** de su `spec.md` sin que el digest se mueva. Cada uno hashea además **el mismo
 > subárbol que recorre su fuente**: `fp-flujos` excluye `archived/` y `$ID_ACTUAL`, igual que
 > `flujos-activos`, o el fingerprint mediría un conjunto distinto del que invalida.
+
+> **El vault se enumera con `find` y no con `git ls-files`.** Es el único de los tres que vive **fuera
+> del repositorio**, y `git ls-files` rechaza un pathspec externo: `is outside repository`, código
+> 128. El fallo no se ve, porque el pipeline lo traga y `git hash-object --stdin` devuelve el **hash
+> del vacío** (`e69de29…`) con código **0** — así el digest del vault quedaba constante y la fuente 6
+> no se invalidaba nunca. Medido.
+
+> **El orden de la enumeración se fija explícitamente**, con `LC_ALL=C sort` en POSIX y `Sort-Object
+> FullName` en PowerShell. Sin eso, `Get-ChildItem -Recurse` entrega el orden del sistema de archivos
+> y el digest cambia sin que cambie un byte: medido sobre los 75 archivos de un `.plans/` real, el par
+> de `fp-flujos` daba `9157537…` en PowerShell contra `a5bb2b9…` en POSIX, y con el sort los dos dan
+> el mismo. Un fingerprint cuyo valor depende de quién lo corre no puede decidir si algo cambió.
+
+> **Un fingerprint se calcula solo si su fuente corrió.** Ese mismo pipeline convierte **cualquier**
+> enumeración fallida en el hash del vacío con código 0, que es indistinguible de "no hay nada". Una
+> fuente `no comprobada` no persiste fingerprint: al retomar se la vuelve a correr, en vez de
+> compararla contra un digest que nunca midió nada.
 
 **Ningún término puede ser la cadena vacía.** `grep -F -e ""` coincide con toda línea, así que un
 término vacío convierte la búsqueda entera en un falso positivo silencioso. El algoritmo no los
