@@ -162,7 +162,7 @@ delegado —que nadie más tiene— se pierde. Se usa un worktree temporal, mism
 
 Los ocho pasos, en orden: **resolver y validar** el SHA pre-dispatch · **crear** el temporal ·
 `git worktree add --detach` sobre ese SHA · ejecutar **solo la fila corregida**, nunca el contrato
-entero · capturar resultado, commit y timestamp · **remover** el worktree · **comprobar** que ya no
+entero · capturar resultado, observable, commit y timestamp · **remover** el worktree · **comprobar** que ya no
 figura en `git worktree list` · y ante cualquier incertidumbre de creación o de limpieza, dejar la
 fila en `BLOCKED`.
 
