@@ -606,11 +606,11 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
      | Qué se encontró | Qué pasa con el flujo |
      |---|---|
      | cubierto **entero y vigente** | **no avanza a `specify`**: se ofrece cerrar el flujo o reformular el objetivo, y **una reformulación requiere confirmación humana** |
-     | cubierto **en parte**, acreditado | se escribe la matriz parte/evidencia/delta y el alcance queda en el **residual** —la resta exacta—, con la modulación anunciada |
+     | cubierto **en parte**, acreditado **y vigente** | se escribe la matriz parte/evidencia/delta y el alcance queda en el **residual** —la resta exacta—, con la modulación anunciada |
      | meramente **relacionado** | entra como **contexto**; el alcance queda **intacto** |
      | **falso positivo** | descartado, con su descarte registrado |
 
-   - Dos celdas **no** están en esa tabla y cambian lo que el flujo hace: un hallazgo **total y recuperable sin conflictos** *obliga* a reformular —no lo ofrece—, y uno **recuperable con costo** va al **checkpoint con el número de conflictos declarado**, sin recortar por su cuenta. Ante una celda que no sea una de las cuatro de arriba, manda la matriz.
+   - **Dos de las celdas ausentes cambian lo que el flujo hace**, y por eso se nombran acá: un hallazgo **total y recuperable sin conflictos** *obliga* a reformular —no lo ofrece—, y uno **recuperable con costo** va al **checkpoint con el número de conflictos declarado**, sin recortar por su cuenta. No son las únicas que faltan: ante **cualquier** celda que no sea una de las cuatro de arriba, manda la matriz. Por eso las dos primeras filas llevan su vigencia escrita —una celda `no vigente` vale como contexto histórico y **nunca** como recorte, así que sin ese calificador la fila de cobertura parcial se leería como si cubriera también ese caso.
    - **El resultado entra en el checkpoint del paso 6**, que ya existe: no se abre un stop nuevo ni se agrega un gate. Quien confirma el contexto lo hace con los hallazgos a la vista.
 6. **Clasificar complejidad** (sección de arriba), anunciarla con justificación y confirmar el contexto en 5-8 bullets antes de avanzar. El resumen del paso 5 —qué se buscó, qué fuentes quedaron sin comprobar y con qué impacto en el alcance— se presenta en este mismo checkpoint.
 
