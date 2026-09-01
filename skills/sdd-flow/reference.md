@@ -1811,13 +1811,13 @@ git rev-parse HEAD
 # PowerShell: fp-refs
 git for-each-ref --format='%(refname) %(objectname)' | git hash-object --stdin
 # PowerShell: fp-flujos
-$h = [string[]](Get-ChildItem -Recurse -File .plans/ | Where-Object { $_.FullName -notmatch "[\\/](archived|$ID_ACTUAL)[\\/]" } | ForEach-Object { $_.FullName } | git hash-object --stdin-paths)
+$h = [string[]]@(Get-ChildItem -Recurse -File .plans/ | Where-Object { $_.FullName -notmatch "[\\/](archived|$ID_ACTUAL)[\\/]" } | ForEach-Object { $_.FullName } | git hash-object --stdin-paths)
 [Array]::Sort($h, [StringComparer]::Ordinal); $h | git hash-object --stdin
 # PowerShell: fp-archivados
-$h = [string[]](Get-ChildItem -Recurse -File .plans/archived/ | ForEach-Object { $_.FullName } | git hash-object --stdin-paths)
+$h = [string[]]@(Get-ChildItem -Recurse -File .plans/archived/ | ForEach-Object { $_.FullName } | git hash-object --stdin-paths)
 [Array]::Sort($h, [StringComparer]::Ordinal); $h | git hash-object --stdin
 # PowerShell: fp-vault
-$h = [string[]](Get-ChildItem -Recurse -File <vault>/projects/<repo>/ | ForEach-Object { $_.FullName } | git hash-object --stdin-paths)
+$h = [string[]]@(Get-ChildItem -Recurse -File <vault>/projects/<repo>/ | ForEach-Object { $_.FullName } | git hash-object --stdin-paths)
 [Array]::Sort($h, [StringComparer]::Ordinal); $h | git hash-object --stdin
 # PowerShell: fp-terminos
 git hash-object $TERMINOS
@@ -1873,6 +1873,14 @@ misma como antecedente.
 > Con `--stdin-paths` las dos desaparecen, y de paso se hashea todo el subárbol en **un** proceso en
 > vez de uno por archivo. Verificado: sobre ese corpus, POSIX y PowerShell dan el mismo digest, y
 > sobre los 75 archivos de un `.plans/` real el par también coincide.
+
+> **El `@()` de la variante PowerShell no es decorativo, y el conjunto vacío es el caso normal.**
+> `.plans/archived/` recién creado está vacío, y `fp-flujos` excluye el flujo en curso, así que un
+> repositorio con un solo flujo activo le deja cero archivos. Sin `@()`, `git hash-object
+> --stdin-paths` no emite nada, la conversión a `[string[]]` **preserva `$null`** en vez de dar un
+> arreglo de cero elementos, y `[Array]::Sort` corta la receta con `Value cannot be null (Parameter
+> 'array')` — mientras POSIX devuelve tranquilo el hash del vacío. Con `@()` el par coincide en los
+> **tres** tamaños medidos: cero archivos → `e69de29…`, uno → `bbbaa54…`, cinco → `6602349…`.
 
 > **Un fingerprint se calcula solo si su fuente corrió**, y esa regla cubre **una** cosa: la fuente
 > que no se pudo recorrer. Una fuente `no comprobada` no persiste fingerprint, así que al retomar se
