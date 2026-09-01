@@ -1,12 +1,14 @@
 """Predicado: el re-baseline corre sobre el commit pre-dispatch en un worktree temporal, conserva
 el código de salida y la última línea no vacía de la salida, saneada de caracteres de control y de
-los dos separadores del registro y leída de una cola acotada, el árbol activo queda intacto, el
+los dos separadores del registro y leída con un recorrido acotado en memoria, el árbol activo
+queda intacto, el
 temporal se remueve y deja de figurar en git worktree list, y cualquier incertidumbre de creación o
 limpieza deja la fila en BLOCKED."""
 
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import unicodedata
@@ -32,39 +34,54 @@ BLOQUE_BYTES = 65536
 # el punto medio separa los campos entre sí. Si sobreviven dentro del valor, un consumidor que
 # parsee la línea obtiene más campos que los declarados o corta el campo antes de tiempo.
 ESTRUCTURA = {"`": "", "·": "-"}
+# Qué es una línea lo define `str.splitlines()`, que corta en bastante más que `\n` —`\r` suelto, que
+# es lo que emite todo indicador de progreso, más `\v`, `\f`, los tres separadores de C1 y NEL, LS y
+# PS—. El recorrido trabaja sobre bytes, así que el corte se busca con las codificaciones UTF-8 de
+# esos separadores, DERIVADAS de Python y no transcritas: una lista escrita a mano se desincroniza
+# en silencio, y su modo de fallo es perder una línea real y afirmar `sin salida`.
+CORTE = re.compile(b"|".join(
+    re.escape(chr(punto).encode("utf-8"))
+    for punto in sorted(list(range(0x20)) + [0x85, 0x2028, 0x2029],
+                        key=lambda p: -len(chr(p).encode("utf-8")))
+    if len(f"a{chr(punto)}b".splitlines()) > 1))
 
 
-def ultima_linea_no_vacia(archivo) -> bytes:
-    """Recorre el archivo hacia atrás de a bloques y devuelve la última línea que no sea solo espacios."""
+def ultima_linea_no_vacia(archivo) -> str:
+    """Recorre el archivo hacia atrás de a bloques y devuelve la última línea que no sea solo blancos."""
     archivo.seek(0, os.SEEK_END)
-    posicion, linea = archivo.tell(), b""
+    posicion, resto = archivo.tell(), b""
     while posicion > 0:
         leer = min(BLOQUE_BYTES, posicion)
         posicion -= leer
         archivo.seek(posicion)
-        bloque = archivo.read(leer)
-        while True:
-            corte = bloque.rfind(b"\n")
-            if corte == -1:
-                # El bloque no cierra ninguna línea: lo que trae continúa hacia atrás.
-                linea = bloque + linea
-                break
-            candidata = bloque[corte + 1:] + linea
-            if candidata.strip():
-                return candidata
-            bloque, linea = bloque[:corte], b""
-    return linea
+        cola = archivo.read(leer) + resto
+        if posicion:
+            # La primera línea del buffer puede continuar hacia atrás, así que no se juzga todavía;
+            # con el archivo agotado (`posicion == 0`) ya está completa y entra entera.
+            corte = CORTE.search(cola)
+            if corte is None:
+                resto = cola
+                continue
+            cuerpo, resto = cola[corte.end():], cola[:corte.start()]
+        else:
+            cuerpo = cola
+        # Se decodifica para juzgar con `str`: `bytes.strip()` solo conoce el blanco ASCII, así que
+        # una línea de solo NBSP contaría como contenido y taparía a la última línea real.
+        for linea in reversed(cuerpo.decode("utf-8", errors="replace").splitlines()):
+            if linea.strip():
+                return linea
+    return ""
 
 
 def observable(salida: Path, codigo: int) -> str:
+    # Una línea de solo blancos no cuenta como última: el saneado la dejaría vacía y el registro
+    # afirmaría `sin salida` sobre un comando que sí produjo salida — indistinguible de no haber
+    # medido, que es justo lo que este campo existe para impedir.
     # Modo binario porque la salida del comando son bytes arbitrarios y el reemplazo de los que no
     # decodifican lo hace esta función, no el lector: abrir en texto delegaría esa decisión al
     # encoding del entorno y haría que el mismo comando produjera observables distintos por máquina.
-    # `strip()` sobre bytes acepta una línea de solo espacios: el saneado la dejaría vacía y el
-    # registro afirmaría `sin salida` sobre un comando que sí produjo salida — indistinguible de no
-    # haber medido, que es justo lo que este campo existe para impedir.
     with open(salida, "rb") as archivo:
-        ultima = ultima_linea_no_vacia(archivo).decode("utf-8", errors="replace")
+        ultima = ultima_linea_no_vacia(archivo)
     # `Cf` va junto a `Cc` y no por simetría: ahí vive U+202E, que reordena visualmente lo que sigue
     # dentro del registro. En un campo cuya única función es que un humano lea qué se observó, un
     # carácter que altera lo que se lee ataca la propiedad entera.
