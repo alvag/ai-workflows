@@ -32,6 +32,29 @@ Cada una lleva **disparador, efecto y excepción**: un enunciado sin las tres no
 > **Excepción:** subir un escalón exige escribir **por qué el anterior no alcanza**, y no vale
 > "podría fallar": vale *falló, acá está el caso*.
 
+La regla tiene un **segundo disparador**, de bajada. Sin él una guarda entra con evidencia y no sale
+nunca, aunque el procedimiento que la invocaba haya dejado de existir.
+
+> **Disparador:** al retirar o cambiar el procedimiento que invoca una guarda.
+> **Efecto:** una de dos salidas, dentro del mismo flujo —retirar la guarda, o **acreditar la cadena**
+> `procedimiento → invocación concreta → resultado leído`, verificable **contra el árbol resultante**
+> y no contra el diff—. La segunda **no se satisface nombrando un consumidor**: una referencia textual
+> a un consumidor cuya cadena de ejecución sigue muerta es exactamente el fallo que esta regla corta.
+> **Excepción:** ninguna.
+
+**Por qué contra el árbol resultante y no contra el diff.** La distinción es material siempre que una
+guarda tenga **más de un** consumidor: al retirar uno, los demás siguen vivos y **sus cadenas no
+aparecen en ese diff**, así que exigir el diff obligaría a tocar un consumidor sano solo para
+exhibirlo, o a retirar una guarda todavía consumida. El argumento es estructural y se sostiene solo:
+**no hace falta exhibir un caso actual** ni identificar qué guarda tiene hoy más de un consumidor —
+eso sería la auditoría que esta regla no ordena, entrando por la puerta de atrás.
+
+**La evidencia que la motiva, y hasta dónde llega.** El retiro del transporte por panes se llevó
+puesta una cláusula de doctrina que vivía dentro de un párrafo sobre esa vía; `--ac 1b` la cazó en el
+acto y estuvo roja **noventa commits** porque ningún procedimiento la corría. La regla es
+**prospectiva**: no alcanza a las guardas que ya estén huérfanas al adoptarla, y auditar esas es un
+flujo aparte con su propio gate.
+
 ### Regla 2 — techo de proporción
 
 > **Disparador:** dos. En el **gate de tareas**, y **solo si el flujo prevé tocar andamiaje**,

@@ -555,6 +555,6 @@ distinguirlas es el punto, porque las dos se llaman `..._wall` y solo una es ter
 - `reference.md` — "Prompt de exploración" (por modo, incluido `investigate`), "Formato del
   informe" (+ variante bug-shaped), "Plantilla de `synthesis.md`", "Plantilla de síntesis —
   `investigate`", "Capacidades y worktree (`investigate`)", "Descubrir el revisor (puntero +
-  fallback)", "Latencia y deadlines", "Árbol de rutas", "Prompt de debate" (ronda
-  0 + cruce), "Plantilla de `debate.md`".
+  fallback)", "Latencia y deadlines", "Árbol de rutas", "Prompt de debate — ronda 0",
+  "Prompt de debate — cruce", "Plantilla de `debate.md`".
 - `README.md` — qué es, cuándo usarla, requisitos e instalación.

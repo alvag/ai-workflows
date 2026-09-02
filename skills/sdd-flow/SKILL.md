@@ -15,10 +15,61 @@ argument-hint: "[init | <ticket|descripción> | implement .plans/<id>/ | continu
 # vía Skill tool (la skill queda solo-slash: /sdd-flow). Se mantiene a propósito:
 # los triggers de esta skill son genéricos ("arma el plan", "implementa") y sin el
 # flag competiría por el auto-trigger. Consecuencia asumida: otras skills y
-# subagentes NO pueden invocarla con el Skill tool — sdd-orchestrator delega
-# leyendo estos archivos (ver su Fase 2).
+# subagentes NO pueden invocarla con el Skill tool — los callers admitidos delegan
+# leyendo estos archivos y ejecutando la Vía B. Están enumerados en la cláusula de
+# parada de abajo, que es la sede: son tres, no solo sdd-orchestrator.
 disable-model-invocation: true
 ---
+
+<!-- parada-manual-only:inicio -->
+> **Parada por procedencia — antes de inspeccionar, crear artefactos o mutar estado.** El frontmatter
+> declara `disable-model-invocation: true`, que es una clave de Claude Code y **no viaja a la otra
+> familia**. Esta cláusula es la capa portable de ese control: si la procedencia de esta ejecución no
+> está admitida en la matriz, **detente y dilo**, antes de leer el repositorio, escribir en `.plans/`
+> o `.specify/`, crear una rama o despachar un worker.
+>
+> | Procedencia | Resultado |
+> |---|---|
+> | un mensaje con la **sintaxis explícita de invocación** de cualquiera de las dos familias (`/sdd-flow` en Claude, `$sdd-flow` en Codex), **lo emita una persona o una skill que despacha por esa vía** | ejecuta |
+> | el ejecutor puede **nombrar un caller admitido en (b)**, por una de estas dos vías y ninguna otra: la sesión que ejecuta **es** la de ese caller —no una que ese caller despachó—; o la sesión es **nueva** y su prompt lo declara en la línea `Procedencia:` | ejecuta |
+> | cualquier otra cosa —incluido un pedido en prosa que coincida con los triggers genéricos ("arma el plan", "implementa", "desglosa en tareas")— | se detiene |
+>
+> **(a) Leer no es ejecutar.** Otra skill puede **leer** estos archivos para citar el contrato, copiar
+> una plantilla o resolver un puntero: eso no es una activación y no dispara nada. Lo que la segunda
+> fila admite es otra cosa —correr los pasos de esta skill sobre un flujo ya escrito—, y esa sí está
+> admitida. **Pero la forma no alcanza:** un prompt que ordene correr la Vía B sobre un `.plans/<id>/`
+> ya escrito **sin declarar de quién viene** cae en la tercera fila. Sin esa exigencia la fila se
+> satisface copiando la forma, y el worker —que en la ruta headless arranca en un proceso fresco y no
+> ve más que su prompt— no tendría con qué distinguir una delegación admitida de un pedido cualquiera.
+> Por eso la fila pregunta **quién ejecuta**, no cómo llegó el pedido: los dos fundamentos que enumera
+> son los únicos con los que un ejecutor puede responder esa pregunta sobre sí mismo.
+>
+> **(b) Callers admitidos: dos skills, tres puntos de ejecución.** El caller es la **skill que
+> despacha**, nunca el agente que corre. La distinción no es de estilo: si acá se nombrara al agente,
+> un ejecutor podría identificarse con el punto de despacho que lo creó y satisfacer el primer
+> fundamento sin traer nada, que es exactamente el hueco que el segundo existe para cerrar.
+> `sdd-orchestrator` entra por **dos** puntos —el **fan-out** (`sdd-orchestrator/SKILL.md` → Fase 2,
+> paso 3), que despacha un agente fresco por repo; y el **modo inline** de esa misma fase, donde corre
+> la Vía B en su propia sesión, sin prefijo ni subagente—, y `sdd-pr-feedback` por **uno**, el
+> **subagente de implement** (`sdd-pr-feedback/reference.md` → "Delegación a `sdd-flow` (prompt del subagente)"). Los
+> tres puntos ejecutan la **Vía B** sobre un `.plans/<id>/` ya escrito. `sdd-incident-intake` **no** es un
+> caller delegado: despacha emitiendo el prefijo, así que entra por la primera fila — y es la razón
+> por la que esa fila no dice "del usuario". **Agregar un caller exige gate humano**: se nombra acá
+> antes de que exista el despacho, nunca al revés.
+>
+> **Con cuál de los dos fundamentos entra cada punto.** El **modo inline** entra por el primero: la
+> sesión que ejecuta es la de `sdd-orchestrator`, que no despachó a nadie. El **fan-out** y el
+> **subagente de implement** entran por el segundo y **solo** por él — sus agentes son sesiones nuevas
+> que su caller despachó, así que el primer fundamento los excluye por construcción. Sus plantillas
+> abren con una línea `Procedencia:` que nombra al caller, y sin ella el worker se detiene: en la ruta
+> headless su prompt es todo lo que ve, así que una procedencia que no viaje ahí no existe para él.
+> Los dos son fundamentos de la segunda fila, no una excepción a ella.
+>
+> **(c) Lo que esta cláusula no promete.** No garantiza que un harness ajeno la respete: es texto
+> normativo, no un mecanismo del runtime, y un cliente que ignore la metadata de invocación también
+> puede ignorar esto. Y **entra en vigor en la siguiente activación** desde una instalación
+> actualizada: una sesión que ya cargó este archivo sigue corriendo la versión que cargó.
+<!-- parada-manual-only:fin -->
 
 # sdd-flow — Spec-Driven Development portable
 

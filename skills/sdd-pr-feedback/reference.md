@@ -226,6 +226,8 @@ reporte es `STATUS: verified | failed` + `AC` + `FILES` (el del agente delegado 
 
 ```
 Trabajá ÚNICAMENTE en el repo <ruta-absoluta-al-repo> (todo comando y ruta, relativos a él).
+Procedencia: sdd-pr-feedback → subagente de implement. La cláusula de parada de sdd-flow
+admite esta delegación por esta línea; es lo que te habilita a ejecutar.
 Leé <directorio-de-skills>/sdd-flow/SKILL.md (y su reference.md si lo necesitás) y ejecutá su
 Vía B: "implement .plans/<id>/", siguiendo ese contrato al pie de la letra.
 Override de esta corrida: cross_review.mode: off (el conductor ya cross-revisó spec y plan/tasks).
@@ -244,6 +246,11 @@ FAILURE_REASON: <1-3 líneas si failed; omitir si verified>
 AC: <una línea por AC-n: cumplido | no cumplido — evidencia breve>
 FILES: <una línea por archivo tocado>
 ```
+
+> **La línea `Procedencia:` no es decorativa.** La cláusula de parada de `sdd-flow` —entre su
+> frontmatter y su primer encabezado— admite esta delegación **por esa línea**: sin ella el worker
+> cae en la fila que ordena detenerse. En la ruta headless arranca en un proceso fresco cuyo único
+> contexto es este prompt, así que una procedencia que no viaje acá no le llega por ningún otro lado.
 
 **Preparar antes de despachar** — en `.plans/<id>/`, respetando el contrato de la Vía B de
 `sdd-flow` (header YAML obligatorio en `plan.md`):
@@ -317,7 +324,7 @@ migración del manifest vino a cerrar.
 El objetivo (regla 3) es que el PR quede con **exactamente un commit**. Tras el implement (cambios
 en el working tree, sin commitear):
 
-> **Reglas del mensaje:** el commit sigue las reglas de `sdd-flow` (su `reference.md` → "Construcción
+> **Reglas del mensaje:** el commit sigue las reglas de `sdd-flow` (`sdd-flow/reference.md` → "Construcción
 > del mensaje de commit"): scope del ticket, subject **en español**, **sin** `Co-Authored-By` ni
 > firmas, y heredoc para el body multilínea. Abajo solo se detalla la **mecánica** (amend/squash a un
 > commit + force-push); las reglas del mensaje no se duplican acá.

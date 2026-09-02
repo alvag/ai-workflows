@@ -324,7 +324,7 @@ Devolver a la skill llamadora (o presentar, en modo directo):
 
   Los cuatro presentadores **solo muestran**: no infieren, no recalculan, no reordenan — **salvo lo
   que el arbitraje de este mismo STOP haya invalidado**, que se re-deriva del ledger (`reference.md`
-  → "Contrato de retorno"). El orden de
+  → "Retorno v2 y orden de presentación"). El orden de
   presentación, normado y no a criterio, es `serie` → `advertencia_bucle` →
   `aplicaciones_pendientes` con sus ids → `opciones` con la `recomendada` marcada. Las cinco opciones
   se ofrecen siempre y la recomendación **advierte, no deshabilita**.
