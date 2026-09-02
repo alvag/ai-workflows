@@ -439,11 +439,23 @@ def render_report(snapshot: str, evidence: dict, root: Path = ROOT) -> str:
 
 
 def _exigir_identidad(ref: str, root: Path) -> None:
-    """Exige que `ref` alcance exactamente el blob sellado del acta.
+    """Exige que `ref` sea un tag ANOTADO y que alcance exactamente el blob sellado del acta.
 
-    Sin esta comprobacion un blob con el mismo bloque JSON y prosa distinta pasaria entero,
-    porque `_parsear` ignora todo lo exterior a los marcadores.
+    Son dos condiciones y ninguna implica a la otra:
+
+    - **Forma.** `rev-parse <ref>^{}` desreferencia cualquier cosa, asi que un tag *ligero* al blob
+      correcto —o el SHA del blob a pelo— lo satisface igual. Sin comprobar el tipo, la anotacion se
+      podria perder sin que la lectura lo notara: el acta quedaria sin el mensaje que dice que es y
+      de donde salio, que es la mitad del sellado.
+    - **Identidad.** Sin ella, un blob con el mismo bloque JSON y prosa distinta pasaria entero,
+      porque `_parsear` ignora todo lo exterior a los marcadores.
     """
+    tipo = _git(root, ["cat-file", "-t", ref])
+    if tipo.returncode != 0:
+        raise AssertionError("the acta ref is absent: " + ref)
+    if tipo.stdout.strip() != "tag":
+        raise AssertionError(
+            "the acta ref is not an annotated tag: " + ref + " is a " + tipo.stdout.strip())
     resolved = _git(root, ["rev-parse", ref + "^{}"])
     if resolved.returncode != 0:
         raise AssertionError("the acta ref is absent: " + ref)

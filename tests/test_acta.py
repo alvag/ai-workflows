@@ -13,14 +13,15 @@ del corpus, y contra un `tests/` simulado no probarían esa propiedad. Esos dos 
 
 from __future__ import annotations
 
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
 import hashlib
 
-from tests.migracion import (ENCODING, EVIDENCE_END, EVIDENCE_START, REPORT_TAG, ROOT, _git,
-                             main, read_report)
+from tests.migracion import (ENCODING, EVIDENCE_END, EVIDENCE_START, REPORT_BLOB, REPORT_TAG,
+                             ROOT, _git, main, read_report)
 
 
 Case = Tuple[str, str, Callable[[Optional[object]], None]]
@@ -31,6 +32,16 @@ SENUELO = "prosa previa\n{0}\n```json\n{{\"senuelo\": true}}\n```\n{1}\nprosa po
     EVIDENCE_START, EVIDENCE_END)
 
 _IDENTIDAD = ["-c", "user.email=acta@test", "-c", "user.name=acta"]
+
+
+def _sembrar_blob_del_acta(raiz: Path) -> str:
+    """Escribe en `raiz` el mismo blob que el acta sellada, y devuelve su OID."""
+    contenido = _git(ROOT, ["cat-file", "blob", REPORT_TAG], text=False)
+    assert contenido.returncode == 0, contenido.stderr
+    sembrado = subprocess.run(["git", "hash-object", "-w", "--stdin"], cwd=raiz,
+                              input=contenido.stdout, capture_output=True)
+    assert sembrado.returncode == 0, sembrado.stderr
+    return sembrado.stdout.decode(ENCODING).strip()
 
 
 def _crear_tag_hacia_otro_blob(raiz: Path, ref: str) -> None:
@@ -73,7 +84,17 @@ def test_acta_ref_invalido(_context: Optional[object]) -> None:
         _exigir_que_levante("refs/tags/acta-ajena", raiz,
                             "does not reach the sealed blob", "ref hacia otro blob")
 
-        # 3 — senuelo: un acta legitima en la ruta retirada NO rescata la lectura
+        # 3 — forma: un tag LIGERO al blob correcto, y el SHA del blob a pelo. Los dos alcanzan
+        # el objeto esperado, asi que solo los distingue el tipo del ref: `rev-parse <ref>^{}`
+        # desreferencia cualquier cosa y no discrimina la anotacion.
+        oid = _sembrar_blob_del_acta(raiz)
+        assert oid == REPORT_BLOB, "el blob sembrado no es el del acta: " + oid
+        ligero = _git(raiz, ["tag", "acta-ligera", oid])
+        assert ligero.returncode == 0, ligero.stderr
+        _exigir_que_levante("acta-ligera", raiz, "is not an annotated tag", "tag ligero al blob correcto")
+        _exigir_que_levante(oid, raiz, "is not an annotated tag", "SHA del blob a pelo")
+
+        # 4 — senuelo: un acta legitima en la ruta retirada NO rescata la lectura
         destino = raiz / "tests" / "reporte-migracion.md"
         destino.parent.mkdir(parents=True, exist_ok=True)
         destino.write_text(SENUELO, encoding=ENCODING)
