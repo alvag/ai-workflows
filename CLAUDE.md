@@ -366,6 +366,61 @@ desperdiciar contexto. `cross-implement` es el caso vivo — `reference.md` (tod
 `reference.md` abre con una tabla que dice cuál se lee cuándo. `SKILL.md` y `README.md` siguen
 siendo **uno** por skill.
 
+### Cinco criterios de redacción
+
+Rigen **al escribir o editar** cualquier documento que un agente consume: un `SKILL.md`, su capa de
+referencia, este archivo. No hay verificador: son criterios de autoría, y su prueba es que los
+defectos que cortan dejen de aparecer en lo escrito después de adoptarlos.
+
+1. **¿Este paso pide una decisión o un cálculo?** Cómputo → va un **comando**, no la descripción de
+   cómo computarlo. Juicio → va **prosa**, que es lo que un modelo hace mejor que un programa. Hoy la
+   prosa lleva las dos cosas mezcladas y el agente tiene que adivinar cuál está leyendo. El modo de
+   falla está medido: **7 de 16 incidentes** de un corte del registro eran de la clase "procedimiento
+   determinista que vive en la prosa y el agente pierde, saltea o nunca implementa".
+
+   La forma ejecutable no reemplaza a la sede normativa, la acompaña: `scripts/medir-techo.py`
+   implementa la regla 2 **y ancla el hash de su sección**, así que si la regla cambia el script se
+   detiene en vez de calcular con una fórmula vieja. Los bloques `# @bloque:` embebidos en los `.md`
+   normativos son el mismo patrón a menor escala.
+
+   **Antes de declarar que algo determinista no está implementado, comprobarlo con `git log -S` y
+   buscar dentro de los `.md`.** Este criterio nació de una propuesta más ambiciosa que se apoyaba en
+   un ejemplo falso: la cadena que decía no implementada lo estaba desde hacía un mes, y el error fue
+   buscar por tipo de archivo (`scripts/*.py`) en vez de trazar productor → bloque → consumo.
+
+2. **Todo puntero nombra destino y condición de carga.** Un puntero es lo que decide si el material
+   se alcanza; su *redacción*, no su destino, decide cuándo y con qué fiabilidad. Un destino
+   imprescindible detrás de un puntero mal escrito es un defecto de varianza: se afila la redacción
+   primero, y recién si eso falla se inlinea el material.
+
+3. **Lo común va inline; lo exclusivo de una rama se divulga.** El test es el **ramificado**, no el
+   tamaño: se inlinea lo que toda rama necesita y se empuja tras un puntero lo que solo algunas
+   alcanzan. Es el mismo criterio que ya gobierna la capa de referencia de arriba, dicho para el
+   interior de un archivo.
+
+4. **Todo paso cierra en un criterio verificable y exhaustivo.** Dos propiedades lo hacen palanca:
+   que el agente pueda distinguir hecho de no-hecho —un límite difuso invita a terminar antes de
+   estarlo—, y cuánto exige, porque "toda entrada rendida" fuerza más trabajo que "producir una
+   lista". Se afila el límite primero; partir la secuencia para esconder los pasos siguientes es el
+   remedio caro y solo funciona a través de una frontera real de contexto.
+
+5. **Una consulta barata al entorno no se duplica como prosa.** El entorno —los scripts de
+   `package.json`, la salida de `--help`, la estructura de directorios— también es fuente de verdad,
+   y un documento que lo repite es un **caché**: se gana solo cuando la consulta es cara. Se cachea
+   lo que el agente no puede encontrar mirando: la convención no escrita, el motivo de una decisión,
+   el gotcha que ningún config confiesa.
+
+**Dos tesis de la doctrina ajena que este repo NO adopta**, y decirlo es parte del criterio porque
+las dos suenan razonables y aplicarlas sería un retroceso medible acá:
+
+- **"Prohibir vuelve más disponible lo prohibido."** Es heurística de prompting, no razón para
+  retirar límites negativos. Una negación **se conserva** cuando es frontera de efecto, de seguridad
+  o de routing entre skills: `NO es code review`, `no escribe`, `no commitea sin gate`. Esas frases
+  evitan efectos concretos entre familias y hosts.
+- **"Un no-op se borra."** Un no-op es **relativo al modelo**. En un ecosistema cross-family, borrar
+  una instrucción porque una familia la obedece por default puede romper a la otra. Acá decide la
+  evidencia comparada, no la elegancia del texto.
+
 ### Qué dispara verificación, y qué no
 
 La **regla de entrada** gobierna la lista de abajo, y por eso va antes que ella.
