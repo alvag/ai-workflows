@@ -900,8 +900,15 @@ def ac_14(ctx: Ctx) -> None:
             ok = cubre(bn, [["corridas", "en vuelo"], ["corrida", "en vuelo"]])
             ctx.check(ok, "co-explore: la tercera excepción nombra el aviso de corridas en vuelo",
                       "" if ok else "la lista no menciona las corridas en vuelo")
+    # la sede de la exención es la skill, no uno de sus archivos: el bullet puede vivir en el
+    # SKILL.md o en un hermano, así que se busca en los dos. El hermano se lee con `leer` y no con
+    # `ctx.texto` a propósito: es opcional, y exigirlo pondría rojo a todo árbol que aún no lo
+    # tenga, que es lo contrario de lo que esta comprobación mide.
     flow = ctx.texto("skills/sdd-flow/SKILL.md")
     if flow is not None:
+        hermano = leer(ctx.raiz, "skills/sdd-flow/co-exploracion.md")
+        if hermano is not None:
+            flow = f"{flow}\n\n{hermano}"
         bloque = None
         for d in declaraciones(flow) + re.split(r"\n\s*\n", flow):
             if "no citan la co-exploracion" in norm(d):

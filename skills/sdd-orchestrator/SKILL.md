@@ -331,7 +331,7 @@ en la propia `co-explore`; acá solo cuándo se despacha y qué contexto recibe.
 - **Artefactos.** `.sdd/<id>/co-explore/` (mismos nombres que en `sdd-flow`), local y untracked
   como el resto de `.sdd/` (regla 7). Los artefactos de orquestación (`master-spec.md`, el
   reparto / `manifest.yml`) no citan la co-exploración ni sus informes — misma regla que en
-  `sdd-flow` ("Los artefactos no citan la co-exploración").
+  `sdd-flow/co-exploracion.md` ("Los artefactos no citan la co-exploración").
 - **Config.** Clave **top-level** `co_explore` en el `manifest.yml` de la orquestación
   (hermana de `cross_review`, no anidada — son ortogonales; ver "Esquema de `manifest.yml`").
   Default `auto` = **on**: los artefactos de orquestación son el caso complejo por definición,
