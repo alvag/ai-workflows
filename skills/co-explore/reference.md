@@ -760,8 +760,19 @@ Los dos workers salen del mismo paquete de contexto y ninguno ve la salida del o
 **fijo** y no lo negocia `execution`:
 
 ```
-preparar prompt A  →  preparar prompt B  →  truncar rutas  →  lanzar A  →  lanzar B  →  esperar
+truncar rutas  →  preparar prompt A  →  preparar prompt B  →  comprobar prompts  →  lanzar A  →  lanzar B  →  esperar
 ```
+
+**El truncado va primero, y esa posición es la que vuelve aplicable al orden.** Su conjunto canónico
+de rutas **incluye los archivos de prompt y el núcleo**, así que truncar después de prepararlos
+vaciaba lo recién escrito y dejaba los dos despachos sin encargo. Preparar después de truncar
+conserva el conjunto completo —y con él el argumento que "Truncado previo al dispatch" da para no
+propagar un identificador por intento— sin sacrificar el insumo de los workers.
+
+**Y el truncado del paso 1 solo corre si la decisión de retoma resolvió redespachar**, igual que en
+el paso 2 del `SKILL.md`. Enunciarlo acá como incondicional era la otra mitad de la contradicción:
+la retoma **lee** el artefacto de cierre para saber si la corrida ya terminó, y truncar antes de esa
+decisión destruye la evidencia que necesita.
 
 **`execution: sync | background` gobierna cuándo vuelve el control a la llamadora, nunca la
 concurrencia interna.** Una implementación que lance A, espere A y después lance B cumple la letra
@@ -776,17 +787,107 @@ descarta al otro si quedó `READY`.
 S=<dir>/co-explore/scratch
 M=<modo>            # explore | counter-plan | investigate
 
-# 1) los DOS prompts, antes de cualquier lanzamiento
+# 1) truncar — ver "Truncado previo al dispatch". Va PRIMERO porque su conjunto de rutas
+#    incluye los prompts y el núcleo; y solo si la retoma resolvió redespachar.
+
+# 2) los DOS prompts, ya sobre las rutas truncadas
 #    (escritos con la tool Write, nunca inline: el markdown con backticks rompe el quoting)
 
-# 2) truncar — ver "Truncado previo al dispatch"
+# 3) comprobar el insumo de cada worker antes de lanzar nada.
+#    Los tokens a buscar salen de la línea `placeholders:` del asset del modo: son los que ESE
+#    asset declara, no un patrón adivinado. Con `(ninguno)` la lista queda vacía y no hay nada
+#    que buscar.
+# `investigate` NO tiene asset propio: se define por delta sobre `explore.md` (ver "Prompt de
+# investigate"). Sin este mapeo el asset no existe, la lista sale vacía y la comprobación no
+# detecta nada — en PowerShell, además, revienta al leerlo.
+case "$M" in investigate) A=explore ;; *) A="$M" ;; esac
+ASSET=<dir_skill>/assets/prompts/$A.md
+[ -f "$ASSET" ] || { echo "asset del modo ausente: $A"; exit 1; }
+DECLARADOS=$(sed -n 's/^ *placeholders: *//p' "$ASSET" | head -1 | grep -o '{[A-Za-z_]*}')
+MAL=""
+for F in $FAMILIAS_SELECCIONADAS; do
+  P="$S/prompt-$M-$F-worker.txt"
+  if [ ! -s "$P" ]; then echo "prompt vacío o ausente: $F"; MAL="$MAL $F"; continue; fi
+  # Ningún token declarado sobrevive. Con la lista vacía no se busca: `grep -F ""` casa siempre.
+  if [ -n "$DECLARADOS" ] && grep -qF "$DECLARADOS" "$P"; then
+    echo "placeholders sin sustituir: $F"; MAL="$MAL $F"; continue
+  fi
+done
+# en counter-plan, el núcleo del que se derivan los prompts va con la misma vara
+if [ "$M" = counter-plan ] && [ ! -s "$S/nucleo-$M.txt" ]; then
+  echo "núcleo vacío o ausente"; MAL="$MAL nucleo"
+fi
+# se comprueban TODAS antes de decidir, para que un fallo no oculte al siguiente
+[ -z "$MAL" ] || { echo "se detiene el despacho; corregir la preparación y reintentar:$MAL"; exit 1; }
 
-# 3) lanzar los dos, sin esperar entre medio — ver los dos bloques de abajo
+# 4) lanzar los dos, sin esperar entre medio — ver los dos bloques de abajo
 ```
 
-> **El paso 3 va partido en un bloque por familia**, para que cada receta lleve su mecanismo de
+**Qué comprueba el paso 3, y qué NO — dicho con precisión, porque la diferencia costó seis rondas de
+revisión.** El observable es acotado y se verifica en dos partes: el archivo del prompt **existe y no
+está vacío**, y **ninguno de los tokens que su asset declara sobrevive sin sustituir**. Los tokens
+salen de la línea `placeholders:` del asset, así que son los de *ese* asset y no un patrón adivinado
+—uno que buscara `{[a-z_]*}` no vería `{PREFIJO}` ni `{FORMATO_PUNTERO}`, y en cambio marcaría un
+`{value}` legítimo del paquete de contexto—. Con `placeholders: (ninguno)` no hay nada que buscar.
+
+**Lo que esta guarda NO acredita, y por qué no lo intenta.** No prueba que el prompt materialice el
+asset ni que su contexto sea el correcto. Se intentó, y cada versión falló de un modo distinto:
+exigir `<task>` deja pasar `<task>lo que sea</task>`; exigir el conjunto de etiquetas sin anclar deja
+pasar las cuatro embebidas en una línea; exigirlas ancladas deja pasar un archivo hecho **solo** de
+delimitadores; y comparar la secuencia de líneas sin placeholder **rechaza el prompt correcto**,
+porque los bloques descriptivos del asset —`{digest del ticket…}` en `explore`, la spec y el anexo en
+`counter-plan`— son regiones que la materialización reemplaza y que ningún token declarado distingue.
+Esa última versión bloqueaba el despacho legítimo, que es peor que no comprobar.
+
+Acreditar materialización de verdad exige que **cada asset declare sus regiones dinámicas**, no
+inferirlas; es un cambio a los assets y a su convención, con su propio alcance. Hasta entonces la
+garantía es la de arriba, y está escrita para que nadie la lea de más.
+
+**Y la frescura tampoco la comprueba: la garantiza el orden.** Como el truncado del paso 1 vacía los
+prompts **antes** de que el paso 2 los escriba, un prompt heredado de una corrida anterior es
+imposible por construcción, y pedirle a la guarda que lo verifique sería comprobar dos veces lo que
+el orden ya cierra.
+
+**El fallo detiene el despacho entero, y no se lanza una corrida parcial.** Se comprueban **todas**
+las familias antes de decidir —para que un fallo no oculte al siguiente— y, si alguna no pasa, no se
+lanza **ninguna**: el conductor corrige la preparación y reintenta. Un prompt mal preparado es un
+defecto del **conductor**, no una indisponibilidad del worker, y degradar la corrida por él perdería
+la diversidad que es el valor del modo dual cuando rehacer el prompt es trivial.
+
+**Y por eso este camino no emite envelope ni causa de degradación.** El fallo es anterior a todo
+despacho: no hay worker que clasificar, así que no se agrega ningún valor al enum de causas de
+`UNAVAILABLE` —que es un contrato compartido con otras skills y tiene un validador que rechaza lo que
+no conoce— ni al envelope. La skill no extiende contratos ajenos por un error propio.
+
+En **PowerShell**, el mismo paso 3, antes de cualquier `Start-Process`:
+
+```powershell
+# `investigate` deriva de `explore.md` y no tiene asset propio (ver "Prompt de investigate")
+$A = if ($M -eq 'investigate') { 'explore' } else { $M }
+$Asset = "<dir_skill>\assets\prompts\$A.md"
+if (-not (Test-Path $Asset)) { throw "asset del modo ausente: $A" }
+$Linea = (Select-String -Path $Asset -Pattern '^\s*placeholders:\s*(.*)$').Matches[0].Groups[1].Value
+$Declarados = [regex]::Matches($Linea, '{[A-Za-z_]*}') | ForEach-Object { $_.Value }
+$Mal = @()
+foreach ($F in $FamiliasSeleccionadas) {
+  $P = "$S\prompt-$M-$F-worker.txt"
+  if (-not (Test-Path $P) -or (Get-Item $P).Length -eq 0) {
+    Write-Output "prompt vacío o ausente: $F"; $Mal += $F; continue
+  }
+  $Cuerpo = Get-Content -Raw $P
+  foreach ($T in $Declarados) {
+    if ($Cuerpo.Contains($T)) { Write-Output "placeholders sin sustituir: $F"; $Mal += $F; break }
+  }
+}
+if ($M -eq 'counter-plan' -and ((-not (Test-Path "$S\nucleo-$M.txt")) -or (Get-Item "$S\nucleo-$M.txt").Length -eq 0)) {
+  Write-Output "núcleo vacío o ausente"; $Mal += 'nucleo'
+}
+if ($Mal.Count -gt 0) { throw "se detiene el despacho; corregir la preparación y reintentar: $($Mal -join ' ')" }
+```
+
+> **El paso 4 va partido en un bloque por familia**, para que cada receta lleve su mecanismo de
 > aislamiento a la vista y se pueda comprobar leyendo el despacho. **La partición no cambia el
-> orden:** los dos se lanzan en background, uno detrás del otro, y el poll del paso 4 viene después
+> orden:** los dos se lanzan en background, uno detrás del otro, y el poll del paso 5 viene después
 > de ambos. Esperar al primero antes de lanzar el segundo duplica la latencia cumpliendo la letra.
 
 <!-- despacho:inicio:coex-fanout-posix-codex:codex -->
@@ -797,7 +898,7 @@ M=<modo>            # explore | counter-plan | investigate
 # perfil". El conductor deja PERFIL_MODEL y PERFIL_EFFORT antes de invocar.
 # MODEL y EFFORT salen de ahí; las dos expansiones van PARTIDAS (`${X:+-m} ${X:+"$X"}`) porque
 # zsh no hace field splitting y `-m` viajaría pegado a su valor.
-# 3a) worker Codex
+# 4a) worker Codex
 MODEL="$PERFIL_MODEL"
 EFFORT="$PERFIL_EFFORT"
 # Escalón 4 por campo — sin ninguna autoridad anterior, esta ruta conserva la raíz del config
@@ -820,7 +921,7 @@ T0_CODEX=$(date +%s)
 <!-- despacho:inicio:coex-fanout-posix-claude:claude -->
 
 ```bash
-# 3b) worker Claude — sin esperar al anterior
+# 4b) worker Claude — sin esperar al anterior
 # Perfil del rol de esta corrida (`explore`, `counter-plan`, `investigate` o `debate`), por la
 # cadena de `sdd-flow/reference.md` → "La cadena de resolución del perfil". Escalón 4 por campo:
 # `opus` cableado en esta ruta, y ningún flag de esfuerzo.
@@ -839,7 +940,7 @@ T0_CLAUDE=$(date +%s)
 <!-- despacho:fin:coex-fanout-posix-claude -->
 
 ```bash
-# 4) recién ahora, poll de ambos — cada uno contra SU T0
+# 5) recién ahora, poll de ambos — cada uno contra SU T0
 ```
 
 > **Nota sobre `${MODEL:+-m}`**: acá funciona porque son **dos** expansiones separadas, una por
