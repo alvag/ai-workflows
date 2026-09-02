@@ -88,6 +88,16 @@ def read_targets(path: Path = INVENTORY) -> CoverageTargets:
     )
 
 
+ORIGEN_SIN_MIGRACION: frozenset = frozenset({("guard", "apertura")})
+"""Origen que se declara cuando un caso NO deriva de ninguna migracion.
+
+Existe porque `validate_coverage` exige un origen a todo caso y rechaza como huerfano al que no
+lo tiene. El literal ya vivia sin nombre en tres `return` de `origins_for`; esos se conservan como
+estan, y nombrarlo aca no los migra. El costo esta aceptado y escrito: infla nominalmente la
+cobertura de una guarda que ya esta cubierta por su propio caso, asi que no oculta ningun hueco.
+"""
+
+
 def origins_for(identifier: str, group: str,
                 targets: CoverageTargets) -> frozenset[Origin]:
     if identifier.startswith("escenario:"):
@@ -109,6 +119,8 @@ def origins_for(identifier: str, group: str,
         return frozenset({("case", "contrato-cadena/positivo")})
     if identifier in {"cobertura-v14:tres-direcciones", "entrypoint-v20:ids"}:
         return frozenset({("guard", "apertura")})
+    if identifier in {"acta-ref-invalido", "write-report-destino"}:
+        return ORIGEN_SIN_MIGRACION
     return frozenset()
 
 

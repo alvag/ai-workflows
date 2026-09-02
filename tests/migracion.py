@@ -45,7 +45,8 @@ INVENTORY = ROOT / "tests" / "inventario-bloques.md"
 CATALOG = ROOT / "tests" / "casos" / "escenarios.jsonl"
 HARNESS = ROOT / "scripts" / "verificar-paridad-powershell.py"
 CORPUS = ROOT / "scripts" / "paridad-casos"
-REPORT = ROOT / "tests" / "reporte-migracion.md"
+REPORT_TAG = "migracion/acta-dual"
+REPORT_BLOB = "b6197383abf43ba292a74370d232e52e039ee5a4"
 TAG = "migracion/snapshot-dual"
 BASE_COMMIT = "5013b4589d5b6429f9705539268eb0d8ac7ae3fc"
 EXPECTED_CASES = 397
@@ -437,14 +438,40 @@ def render_report(snapshot: str, evidence: dict, root: Path = ROOT) -> str:
     return "\n".join(lines)
 
 
-def read_report(path: Path = REPORT) -> dict:
-    text = path.read_text(encoding=ENCODING)
-    if text.count(EVIDENCE_START) != 1 or text.count(EVIDENCE_END) != 1:
+def _exigir_identidad(ref: str, root: Path) -> None:
+    """Exige que `ref` alcance exactamente el blob sellado del acta.
+
+    Sin esta comprobacion un blob con el mismo bloque JSON y prosa distinta pasaria entero,
+    porque `_parsear` ignora todo lo exterior a los marcadores.
+    """
+    resolved = _git(root, ["rev-parse", ref + "^{}"])
+    if resolved.returncode != 0:
+        raise AssertionError("the acta ref is absent: " + ref)
+    if resolved.stdout.strip() != REPORT_BLOB:
+        raise AssertionError("the acta ref does not reach the sealed blob: " + ref)
+
+
+def _parsear(texto: str) -> dict:
+    """Extrae el bloque de evidencia entre marcadores. No conoce la procedencia del texto."""
+    if texto.count(EVIDENCE_START) != 1 or texto.count(EVIDENCE_END) != 1:
         raise AssertionError("migration evidence markers are absent or duplicated")
-    block = text.split(EVIDENCE_START, 1)[1].split(EVIDENCE_END, 1)[0].strip()
+    block = texto.split(EVIDENCE_START, 1)[1].split(EVIDENCE_END, 1)[0].strip()
     if not block.startswith("```json\n") or not block.endswith("```"):
         raise AssertionError("migration evidence is not a JSON fence")
     return json.loads(block[len("```json\n"):-len("```")])
+
+
+def read_report(ref: str = REPORT_TAG, root: Path = ROOT) -> dict:
+    """Obtiene el acta EXCLUSIVAMENTE de `ref`.
+
+    No hay fallback a la ruta: el acta ya no vive en el arbol, y una lectura que cayera a
+    `tests/reporte-migracion.md` reabriria el camino que el sellado cierra.
+    """
+    _exigir_identidad(ref, root)
+    blob = _git(root, ["cat-file", "blob", ref], text=False)
+    if blob.returncode != 0:
+        raise AssertionError("the acta blob could not be read: " + ref)
+    return _parsear(blob.stdout.decode(ENCODING))
 
 
 def _extract_snapshot(root: Path, commit: str, destination: Path) -> None:
@@ -462,8 +489,8 @@ def _extract_snapshot(root: Path, commit: str, destination: Path) -> None:
         package.extractall(destination)
 
 
-def verify_report(path: Path = REPORT, root: Path = ROOT) -> dict:
-    recorded = read_report(path)
+def verify_report(ref: str = REPORT_TAG, root: Path = ROOT) -> dict:
+    recorded = read_report(ref, root)
     snapshot = recorded["snapshot"]
     tag_type = _git(root, ["cat-file", "-t", "refs/tags/" + TAG])
     if tag_type.returncode != 0 or tag_type.stdout.strip() != "tag":
@@ -511,12 +538,45 @@ def verify_report(path: Path = REPORT, root: Path = ROOT) -> dict:
     }
 
 
+def _rechazar_symlink(destino: Path) -> None:
+    """Rechaza un destino que sea un enlace simbolico, antes de resolverlo.
+
+    Va antes de `Path.resolve()` a proposito: resuelto, el enlace deja de distinguirse de su
+    destino y el rechazo no tendria a que aplicarse.
+    """
+    if destino.is_symlink():
+        raise AssertionError("the report destination is a symlink: " + str(destino))
+
+
+def _rechazar_bajo_tests(efectivo: Path) -> None:
+    """Rechaza un destino cuyo path EFECTIVO caiga bajo `tests/`.
+
+    La comparacion es sobre el path ya resuelto y no lexical: una comprobacion lexical se elude
+    con `../tests/...`.
+    """
+    if efectivo.is_relative_to(ROOT / "tests"):
+        raise AssertionError("the report destination falls under tests/: " + str(efectivo))
+
+
+def _abrir_exclusivo(efectivo: Path):
+    """Abre el path EFECTIVO en modo exclusivo. Nunca trunca lo que ya existe.
+
+    Tiene que abrir el efectivo y no el enlace: `open(<enlace>, "x")` falla siempre con
+    `FileExistsError` —incluso sobre un enlace roto— porque `O_CREAT|O_EXCL` sobre un symlink
+    falla por contrato de POSIX sin mirar el destino. Abriendo el enlace, el rechazo de
+    `_rechazar_symlink` no seria observable.
+    """
+    return open(efectivo, "x", encoding=ENCODING)
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--evidence", action="store_true")
     parser.add_argument("--write-report", action="store_true")
     parser.add_argument("--verify-report", action="store_true")
     parser.add_argument("--snapshot")
+    parser.add_argument("--output")
+    parser.add_argument("--from-acta", action="store_true")
     arguments = parser.parse_args(argv)
     selected = sum((arguments.evidence, arguments.write_report, arguments.verify_report))
     if selected != 1:
@@ -525,10 +585,26 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(json.dumps(compute_evidence(), ensure_ascii=False, sort_keys=True))
         return 0
     if arguments.write_report:
-        if not arguments.snapshot:
-            parser.error("--write-report requires --snapshot")
-        REPORT.write_text(render_report(arguments.snapshot, compute_evidence()), encoding=ENCODING)
-        print(str(REPORT))
+        if not arguments.output:
+            parser.error("--write-report requires --output")
+        if arguments.from_acta:
+            # Re-materializa el acta desde su tag: toma la evidencia y el snapshot que el acta ya
+            # trae, en vez de recalcularlos. Es la unica via que produce el acta EXACTA, porque
+            # `compute_evidence` no es ejecutable en este arbol —exige el arnes historico y su
+            # corpus, que ya no estan versionados— y aborta antes de calcular nada.
+            acta = read_report()
+            snapshot, evidencia = acta["snapshot"]["commit"], acta["evidence"]
+        else:
+            if not arguments.snapshot:
+                parser.error("--write-report requires --snapshot or --from-acta")
+            snapshot, evidencia = arguments.snapshot, compute_evidence()
+        destino = Path(arguments.output)
+        _rechazar_symlink(destino)
+        efectivo = destino.resolve()
+        _rechazar_bajo_tests(efectivo)
+        with _abrir_exclusivo(efectivo) as salida:
+            salida.write(render_report(snapshot, evidencia))
+        print(str(efectivo))
         return 0
     print(json.dumps(verify_report(), ensure_ascii=False, sort_keys=True))
     return 0
