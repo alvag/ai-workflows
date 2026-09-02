@@ -156,6 +156,14 @@ Buscar activamente, no solo confirmar: **dónde el árbol ya cambió** respecto 
 asume, y **si el arreglo que propone ataca lo que reporta** — un incidente puede describir bien el
 defecto y proponer una solución que no lo toca.
 
+> **Una ausencia no se prueba buscando por tipo de archivo.** Cuando el incidente afirma que algo
+> determinista **no está implementado**, lo que lo confirma es el **trazado** —productor → bloque →
+> consumo—, no un `grep` sobre `scripts/`: en este repositorio la implementación puede vivir embebida
+> como bloque ejecutable dentro del `.md` normativo que la manda usar. Es el modo de falla más caro
+> de este paso, porque el intake que repite la misma búsqueda que produjo el incidente **lo confirma**
+> y despacha un flujo a escribir algo que ya existe. Cómo se traza, con el caso medido:
+> `reference.md` → "Verificar sin investigar".
+
 ### El veredicto
 
 Cada incidente sale con uno de tres, y **decirlo es obligatorio**: un intake que nunca rechazó nada

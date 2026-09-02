@@ -37,7 +37,7 @@ sale de leer y de `grep`.
 Lo que **no** se comprueba acá: si el arreglo propuesto es el correcto, si hay una solución mejor, si
 el defecto tiene otras manifestaciones. Son preguntas de diseño y las contesta el flujo.
 
-### Dos comprobaciones que casi siempre pagan
+### Tres comprobaciones que casi siempre pagan
 
 **La fecha contra el árbol.** Si el mecanismo que el incidente describe cambió después de que se
 registró, el diagnóstico puede haber envejecido:
@@ -58,6 +58,29 @@ grep -rniE '<dos o tres formas de decir X>' <archivos de la skill>
 
 Salida vacía **con patrones que de verdad cubran las formas de decirlo** confirma la ausencia. Un solo
 patrón demasiado literal da vacío siempre y no prueba nada.
+
+**La implementación que dice faltar.** Es la anterior en su forma más cara, y lleva método propio
+porque el `grep` que la resuelve **no es el mismo**. Cuando el incidente afirma que un procedimiento
+determinista no está implementado, buscar por **tipo de archivo** no alcanza: acá una implementación
+puede vivir embebida como bloque ejecutable dentro del `.md` normativo. Se traza **productor → bloque
+→ consumo**, en ese orden:
+
+```
+grep -rn '@bloque:' <archivos de la skill>
+git -C <repo_destino> log --oneline -S '<ancla del bloque>' -- <archivo>
+```
+
+El primero encuentra la implementación donde de verdad vive; el segundo dice **desde cuándo**, que es
+lo que decide si el incidente nació viejo. Si el bloque existe y es anterior al incidente, la
+afirmación es falsa aunque el incidente esté impecablemente escrito.
+
+El caso que obliga a escribir esto: dos incidentes afirmaron que una cadena de integridad estaba
+especificada solo en prosa, sin implementación en ningún lado, y que por lo tanto el gate que promete
+rechazar contratos rotos no rechazaba ninguno. Era falso. La cadena existía como bloque POSIX con su
+gemelo PowerShell y un corpus de calibración de cinco casos, desde **un mes antes**. El incidente
+había buscado `sha256` entre los `scripts/*.py` y concluido de la ausencia. **Un intake que corre ese
+mismo `grep` llega a la misma conclusión falsa**, lo marca confirmado y despacha un flujo a escribir
+lo que ya está — y los dos eran la prueba estrella del informe que los citó.
 
 ### Cuándo parar y admitir
 
