@@ -31,17 +31,18 @@ disable-model-invocation: true
 > | Procedencia | Resultado |
 > |---|---|
 > | un mensaje con la **sintaxis explícita de invocación** de cualquiera de las dos familias (`/sdd-flow` en Claude, `$sdd-flow` en Codex), **lo emita una persona o una skill que despacha por esa vía** | ejecuta |
-> | ejecución **delegada** que **declara su procedencia** en su prompt, nombrando un caller admitido en (b) | ejecuta |
+> | el ejecutor puede **nombrar un caller admitido en (b)**, por una de estas dos vías y ninguna otra: **es** ese caller, corriendo la Vía B en su propia sesión; o **su prompt lo declara** en la línea `Procedencia:` | ejecuta |
 > | cualquier otra cosa —incluido un pedido en prosa que coincida con los triggers genéricos ("arma el plan", "implementa", "desglosa en tareas")— | se detiene |
 >
 > **(a) Leer no es ejecutar.** Otra skill puede **leer** estos archivos para citar el contrato, copiar
 > una plantilla o resolver un puntero: eso no es una activación y no dispara nada. Lo que la segunda
-> fila admite es otra cosa —una **ejecución delegada**, donde un agente corre los pasos de esta skill
-> sobre un flujo ya escrito—, y esa sí está admitida. **Pero la forma no alcanza:** un prompt que
-> ordene correr la Vía B sobre un `.plans/<id>/` ya escrito **sin declarar de quién viene** cae en la
-> tercera fila. Sin esa exigencia la fila se satisface copiando la forma, y el worker —que en la ruta
-> headless arranca en un proceso fresco y no ve más que su prompt— no tendría con qué distinguir una
-> delegación admitida de un pedido cualquiera.
+> fila admite es otra cosa —correr los pasos de esta skill sobre un flujo ya escrito—, y esa sí está
+> admitida. **Pero la forma no alcanza:** un prompt que ordene correr la Vía B sobre un `.plans/<id>/`
+> ya escrito **sin declarar de quién viene** cae en la tercera fila. Sin esa exigencia la fila se
+> satisface copiando la forma, y el worker —que en la ruta headless arranca en un proceso fresco y no
+> ve más que su prompt— no tendría con qué distinguir una delegación admitida de un pedido cualquiera.
+> Por eso la fila pregunta **quién ejecuta**, no cómo llegó el pedido: los dos fundamentos que enumera
+> son los únicos con los que un ejecutor puede responder esa pregunta sobre sí mismo.
 >
 > **(b) Callers admitidos, hoy tres.** El agente del **fan-out** de `sdd-orchestrator`
 > (`sdd-orchestrator/SKILL.md` → Fase 2, paso 3); el **modo inline** de esa misma fase, donde el
@@ -52,10 +53,12 @@ disable-model-invocation: true
 > por la que esa fila no dice "del usuario". **Agregar un caller exige gate humano**: se nombra acá
 > antes de que exista el despacho, nunca al revés.
 >
-> **Los dos que despachan por prompt lo declaran en él.** Sus plantillas abren con una línea
-> `Procedencia:` que nombra al caller, y sin ella el worker se detiene: en la ruta headless su prompt
-> es todo lo que ve, así que una procedencia que no viaje ahí no existe para él. El **modo inline** no
-> la lleva ni la necesita — ahí el caller es quien ejecuta, y conoce su propia identidad.
+> **Con cuál de los dos fundamentos entra cada uno.** El **fan-out** y el **subagente de implement**
+> entran por el segundo: sus plantillas abren con una línea `Procedencia:` que nombra al caller, y sin
+> ella el worker se detiene — en la ruta headless su prompt es todo lo que ve, así que una procedencia
+> que no viaje ahí no existe para él. El **modo inline** entra por el primero: no hay prompt que
+> declarar porque no hay delegación, y el ejecutor **es** el orquestador. Los dos son fundamentos de la
+> segunda fila, no una excepción a ella.
 >
 > **(c) Lo que esta cláusula no promete.** No garantiza que un harness ajeno la respete: es texto
 > normativo, no un mecanismo del runtime, y un cliente que ignore la metadata de invocación también

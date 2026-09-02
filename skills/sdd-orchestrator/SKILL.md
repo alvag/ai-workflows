@@ -28,7 +28,7 @@ disable-model-invocation: true
 > | Procedencia | Resultado |
 > |---|---|
 > | un mensaje con la **sintaxis explícita de invocación** de cualquiera de las dos familias (`/sdd-orchestrator` en Claude, `$sdd-orchestrator` en Codex), **lo emita una persona o una skill que despacha por esa vía** | ejecuta |
-> | ejecución **delegada** por un caller admitido y nombrado en esta misma cláusula | ejecuta |
+> | el ejecutor puede **nombrar un caller admitido en (b)**, por una de estas dos vías y ninguna otra: **es** ese caller, corriendo los pasos de esta skill en su propia sesión; o **su prompt lo declara** en la línea `Procedencia:` | ejecuta |
 > | cualquier otra cosa —incluido un pedido en prosa que coincida con los triggers genéricos ("orquesta esto", "reparte el trabajo entre los repos")— | se detiene |
 >
 > **(a) Leer no es ejecutar.** Otra skill puede **leer** estos archivos para citar el contrato, copiar
