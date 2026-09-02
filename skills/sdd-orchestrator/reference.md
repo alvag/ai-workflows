@@ -531,6 +531,8 @@ Skill tool. El fan-out (Fase 2.3) le pasa el contrato por prompt. Plantilla:
 
 ```
 Trabaja ÚNICAMENTE en el repo <ruta-absoluta-al-repo> (todo comando y ruta, relativos a él).
+Procedencia: sdd-orchestrator → agente del fan-out (Fase 2.3). La cláusula de parada de
+sdd-flow admite esta delegación por esta línea; es lo que te habilita a ejecutar.
 Lee <directorio-de-skills>/sdd-flow/SKILL.md (y su reference.md si lo necesitas) y ejecuta su
 Vía B: "implement .plans/<id>/", siguiendo ese contrato al pie de la letra.
 Override de esta corrida: cross_review.mode: off (el plan ya fue revisado en el reparto).
@@ -554,6 +556,11 @@ FAILURE_REASON: <1-3 líneas si failed; omitir si verified>
 AC: <una línea por AC-n: cumplido | no cumplido — evidencia breve>
 FILES: <una línea por archivo tocado>
 ```
+
+> **La línea `Procedencia:` no es decorativa.** La cláusula de parada de `sdd-flow` —entre su
+> frontmatter y su primer encabezado— admite esta delegación **por esa línea**: sin ella el worker
+> cae en la fila que ordena detenerse. En la ruta headless arranca en un proceso fresco cuyo único
+> contexto es este prompt, así que una procedencia que no viaje acá no le llega por ningún otro lado.
 
 El orquestador parsea `STATUS` para actualizar el `manifest.yml` (Fase 2.4). Red de seguridad: si
 el reporte falta o no parsea, releer el `status` persistido en `<repo>/.plans/<id>/plan.md`
