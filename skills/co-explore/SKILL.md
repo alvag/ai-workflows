@@ -168,7 +168,7 @@ Si reconoces alguno de estos pensamientos, detente y vuelve a la regla que está
 | "Su duda la respondo yo mentalmente y sigo" | Las Incógnitas que cambiarían el diseño van a `clarify`; las respuestas quedan en `## Clarifications` de la spec. |
 | "Acá el problema es el test, no el código" (en `investigate`) | Puede serlo, y por eso está en el espacio de hipótesis — con la misma vara que las demás: observable, autoridad y refutación. Sin evidencia de respaldo va como **incógnita**, nunca como hipótesis líder. |
 | "El worker con MCP explora mejor, le dejo el entorno" | El aislamiento no es opcional: sin él hereda memoria, hooks y tools que pueden alcanzar cosas fuera del working dir. Sin garantía, `UNAVAILABLE`. |
-| "Lanzo uno, veo qué devuelve, y después lanzo el otro" | Duplica la latencia cumpliendo la letra. El orden es preparar · truncar · lanzar A · lanzar B · esperar; `execution` decide cuándo vuelve el control, no la concurrencia. |
+| "Lanzo uno, veo qué devuelve, y después lanzo el otro" | Duplica la latencia cumpliendo la letra. El orden es truncar · preparar · comprobar · lanzar A · lanzar B · esperar; `execution` decide cuándo vuelve el control, no la concurrencia. |
 | "Trunco al entrar al modo, así arranco limpio" | Truncar antes de decidir destruye el artefacto de cierre que la retoma necesita leer, y convierte cada retoma en un redespacho. Primero decidir, después truncar. |
 | "El índice ya me dice bastante, no hace falta el detalle" | Al revés del anterior, y también un error: divergencia, `high`, `low` o una decisión a arbitrar **obligan** a abrir esa entrada. |
 
@@ -264,19 +264,26 @@ Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario en modo directo) prove
 1. **Preflight de aislamiento** (fail-closed) y de cada CLI declarado. Con `family_inventory`, no
    sondear familias fuera de la allowlist; sin selección heredada, resolverla antes. Sin CLI para un
    worker declarado → `UNAVAILABLE`; con una sola familia seleccionada → la escalera decide la rama.
-2. **Armar uno o dos prompts** desde `reference.md` → "Prompt de explore (dos capas)", con el mismo
-   paquete de contexto. En `counter-plan`, núcleo común byte-idéntico + anexo privado de la propia
-   familia, concatenado por el shell.
-3. **Decidir retoma antes de truncar** (ver "Retoma"), y solo si corresponde redespachar, truncar
-   las rutas exactas del modo.
-4. **Lanzar los dos, y recién entonces esperar.** El orden es fijo: preparar · truncar · lanzar A ·
-   lanzar B · esperar. `execution: sync | background` gobierna **cuándo vuelve el control a la
-   llamadora**, nunca la concurrencia: lanzar uno, esperarlo y después lanzar el otro duplica la
+2. **Decidir retoma antes de truncar** (ver "Retoma"), y solo si corresponde redespachar, truncar
+   las rutas exactas del modo. Va **antes** de armar los prompts: el conjunto que se trunca los
+   incluye, así que al revés se vacía lo recién escrito.
+3. **Armar uno o dos prompts** desde `reference.md` → "Prompt de explore (dos capas)", con el mismo
+   paquete de contexto, ya sobre las rutas truncadas. En `counter-plan`, núcleo común byte-idéntico
+   + anexo privado de la propia familia, concatenado por el shell.
+4. **Comprobar los prompts antes de lanzar nada.** Cada uno tiene que **existir, no estar vacío y no
+   conservar sin sustituir ninguno de los tokens que su asset declara**; el observable exacto y su
+   predicado viven en una sola sede, `reference.md` → "Fan-out dual y orden de lanzamiento", que
+   declara además lo que esta comprobación **no** acredita —no prueba que el prompt materialice el
+   asset ni que su contexto sea el correcto—. Si alguno no pasa **se detiene el despacho entero**
+   —no se lanza una corrida parcial— y el conductor corrige la preparación antes de reintentar.
+5. **Lanzar los dos, y recién entonces esperar.** El orden es fijo: truncar · preparar · comprobar ·
+   lanzar A · lanzar B · esperar. `execution: sync | background` gobierna **cuándo vuelve el control
+   a la llamadora**, nunca la concurrencia: lanzar uno, esperarlo y después lanzar el otro duplica la
    latencia cumpliendo la letra. Cada deadline corre desde **su** lanzamiento.
-5. **Punto de encuentro:** por cada worker, validar y clasificar en `READY` / `INVALID` /
+6. **Punto de encuentro:** por cada worker, validar y clasificar en `READY` / `INVALID` /
    `UNAVAILABLE` (`reference.md` → "Estados del worker"), partir su salida en índice y detalle, y
    resolver la rama de la escalera.
-6. **Arbitrar** con la lectura selectiva y escribir el artefacto de cierre con publicación atómica.
+7. **Arbitrar** con la lectura selectiva y escribir el artefacto de cierre con publicación atómica.
 
 Receta completa en `reference.md` → "Fan-out dual y orden de lanzamiento".
 
