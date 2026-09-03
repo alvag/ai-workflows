@@ -15,6 +15,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
@@ -298,6 +299,86 @@ test('[AC-5b] los dos digests son distintos y el del lote se mueve con el conjun
   // Y el commit del vault entra en los dos: el manifiesto autoriza destruir
   // contra una copia concreta, no contra "el vault".
   assert.equal(lote.informe.vaultCommit, solo.informe.vaultCommit);
+});
+
+// ── `omitidos` · el inventario omitido del ensayo dirigido ──────────────────
+
+test('el ensayo dirigido expone el conjunto exacto omitido', async (t) => {
+  const e = await escena(t, { archivados: ['abc-1'] });
+  const flowDir = e.flujos[0];
+  // `notas.txt` ya lo pone `escena()`, a la raíz. Se agregan anidados de las dos
+  // clases —Markdown y no Markdown— para probar que la exclusión es posicional
+  // y no de extensión.
+  const anidados = {
+    'reports/explore.md': '# hallazgos\n\nno copiable por estar anidado\n',
+    'reports/nested/data.json': '{"ok":true}\n',
+  };
+  for (const [rel, contenido] of Object.entries(anidados)) {
+    const destino = path.join(flowDir, rel);
+    await fs.mkdir(path.dirname(destino), { recursive: true });
+    await fs.writeFile(destino, contenido, 'utf8');
+  }
+
+  const oracle = [];
+  for (const rel of ['notas.txt', 'reports/explore.md', 'reports/nested/data.json']) {
+    const bytes = await fs.readFile(path.join(flowDir, rel));
+    oracle.push({ path: rel, size: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') });
+  }
+  oracle.sort((a, b) => (a.path < b.path ? -1 : 1));
+
+  const { informe } = await correr(e, { 'dry-run': true, from: flowDir });
+
+  assert.deepEqual(informe.flujos[0].omitidos, oracle);
+});
+
+test('el ensayo por lote de un único flujo conserva la salida agregada sin omitidos', async (t) => {
+  const e = await escena(t, { archivados: ['abc-1'] });
+  const { informe } = await correr(e, { 'dry-run': true });
+
+  assert.deepEqual(informe.flujos.map((f) => f.flowId), ['abc-1']);
+  assert.ok(!Object.hasOwn(informe.flujos[0], 'omitidos'), 'el lote sin --from expuso omitidos');
+});
+
+test('un flujo no seguro por VERIFY_FAILED excluye Markdown raíz de omitidos', async (t) => {
+  const e = await escena(t, { archivados: ['abc-1'] });
+  // La misma alteración de frontera que usa la prueba de AC-4 más arriba.
+  await fs.writeFile(
+    path.join(e.vault, 'projects', REPO_ID, 'sdd', 'abc-1', 'spec.md'), '# manoseado\n', 'utf8',
+  );
+
+  const { informe } = await correr(e, { 'dry-run': true, from: e.flujos[0] });
+  const flujo = informe.flujos[0];
+
+  assert.equal(flujo.causa, 'VERIFY_FAILED');
+  assert.equal(flujo.aSalvo, false);
+  // `spec.md` y `plan.md` son Markdown de raíz y copiables: no figuran, aunque
+  // el flujo entero haya quedado sin copia verificada.
+  assert.deepEqual(flujo.omitidos.map((o) => o.path), ['notas.txt']);
+});
+
+test('una medición fallida conserva omitidos null', async (t) => {
+  const e = await escena(t, { archivados: ['abc-1'] });
+  const io = new DurableFs({ failAt: 'retire.manifest.scan.readdir' });
+
+  const { informe } = await correr(e, { 'dry-run': true, from: e.flujos[0] }, { fs: io });
+  const flujo = informe.flujos[0];
+
+  assert.equal(flujo.bytes, null);
+  assert.ok(typeof flujo.error === 'string' && flujo.error.length > 0, 'no informó la medición fallida');
+  assert.equal(flujo.omitidos, null, 'un inventario fallido no puede mostrar un conjunto vacío');
+});
+
+test('el retiro real dirigido no expone omitidos', async (t) => {
+  const e = await escena(t, { archivados: ['abc-1'] });
+  const flowDir = e.flujos[0];
+  const { informe: ensayo } = await correr(e, { 'dry-run': true, from: flowDir });
+
+  const r = await correr(e, { from: flowDir, 'approve-digest': ensayo.digest }, {
+    ejecutor: async ({ flujo }) => ({ flowId: flujo.flowId, estado: 'RETIRADO' }),
+  });
+
+  assert.equal(r.status, ESTADOS.BATCH_OK);
+  assert.ok(!Object.hasOwn(r.informe.flujos[0], 'omitidos'), 'el retiro real expuso omitidos');
 });
 
 // ── La identidad declarada gobierna el verbo ─────────────────────────────────

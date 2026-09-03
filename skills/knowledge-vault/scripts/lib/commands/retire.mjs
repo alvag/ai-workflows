@@ -50,6 +50,7 @@ import {
   rutaDelRemanente,
   RESULTADOS,
 } from '../retire-execute.mjs';
+import { assertContainedPath } from '../portable-path.mjs';
 import { estaASalvo } from '../safety-probe.mjs';
 import { isCopiable } from '../selection.mjs';
 import { scanInventory } from '../tree.mjs';
@@ -183,6 +184,21 @@ async function rutasASalvo({ fs, flowDir, label }) {
   return inventario.files.filter((e) => isCopiable(e.path)).map((e) => e.path);
 }
 
+/**
+ * El complemento exacto de lo que `archive` seleccionaría, leído del manifiesto
+ * ya construido —no se reescanea el árbol—. `null` cuando la medición falló:
+ * un conjunto vacío mentiría "no quedó nada afuera".
+ */
+function proyectarOmitidos(manifiesto) {
+  if (manifiesto === null) return null;
+  return manifiesto.inventario
+    .filter((entrada) => !isCopiable(entrada.path))
+    .map((entrada) => {
+      assertContainedPath(entrada.path, 'omitidos');
+      return { path: entrada.path, size: entrada.size, sha256: entrada.sha256 };
+    });
+}
+
 export async function retireCommand({
   fs,
   flags,
@@ -225,6 +241,9 @@ export async function retireCommand({
     : [path.resolve(flags.from)];
 
   const plan = await planificarRetiro({ fs, vaultRoot, repoId, raiz, objetivos, repoRoot, label });
+  // El modo dirigido —ensayo **y** `--from` a la vez— es el único que expone
+  // `omitidos`: el lote agregado y el retiro real no lo llevan.
+  const modoDirigido = flags['dry-run'] === true && flags.from !== undefined;
   // Los sueltos no se procesan y se **nombran**: decir que la raíz quedó vacía
   // cuando no lo está es peor que no decir nada.
   const informe = {
@@ -233,7 +252,10 @@ export async function retireCommand({
     vaultRoot,
     vaultCommit: plan.vaultCommit,
     digest: plan.digestAlcance,
-    flujos: plan.flujos.map(({ manifiesto, ...resto }) => ({ ...resto, bytes: manifiesto?.bytes ?? null })),
+    flujos: plan.flujos.map(({ manifiesto, ...resto }) => {
+      const entrada = { ...resto, bytes: manifiesto?.bytes ?? null };
+      return modoDirigido ? { ...entrada, omitidos: proyectarOmitidos(manifiesto) } : entrada;
+    }),
     remanentesNoProcesados: sueltos,
   };
 
