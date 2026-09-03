@@ -217,8 +217,20 @@ def leer(texto: str) -> Dict[str, Any]:
     # Los comentarios se descartan **dentro del parseo de mapas**, nunca sobre el texto entero: un
     # escalar de bloque puede contener líneas que empiezan con almohadilla y son parte del valor.
     # Filtrarlas acá hacía que dos parches distintos produjeran el mismo digest.
-    if any(l.strip() in ("---", "...") for l in lineas):
-        raise LecturaInvalida("marcador de documento: el dialecto no admite múltiples documentos")
+    # Solo **al inicio**, y por la misma razón que el comentario de arriba da para los comentarios:
+    # un escalar de bloque puede contener una línea `---` que es parte del valor. `delta.material`
+    # guarda un parche, y un parche sobre un archivo con frontmatter lleva `---` como línea de
+    # contexto, así que barrer el texto entero rechazaba un ledger válido y le impedía recalcular su
+    # digest. Un segundo documento más abajo no se escapa: sus líneas no las consume `_mapa` y caen
+    # en la guarda de contenido sobrante.
+    for linea in lineas:
+        desnuda = linea.strip()
+        if not desnuda or desnuda.startswith("#"):
+            continue
+        if desnuda in ("---", "..."):
+            raise LecturaInvalida(
+                "marcador de documento: el dialecto no admite múltiples documentos")
+        break
     documento, consumidas = _mapa(lineas, 0, 0)
     if not isinstance(documento, dict) or not documento:
         raise LecturaInvalida("el documento no es un mapa no vacío")

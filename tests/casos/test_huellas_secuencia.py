@@ -201,7 +201,10 @@ def test_cada_guarda_del_lector_la_caza_el_corpus(_ctx: Optional[object] = None)
 
     # Cada fragmento declarado tiene que nombrar **un** sitio: si deja de ser único o desaparece,
     # la lista está describiendo un lector que ya no existe.
-    textos = [lineas[ini - 1].strip() for ini, _fin in sitios]
+    # El texto de un sitio es su **sentencia entera**, no su primera línea: partir un `raise` en
+    # dos por longitud dejaba el mensaje fuera de la clave y el fragmento declarado casaba cero
+    # sitios. La clave no puede depender de cómo se formateó el código que vigila.
+    textos = [" ".join(l.strip() for l in lineas[ini - 1:fin]) for ini, fin in sitios]
     for fragmento in SOBREVIVIENTES_DECLARADOS:
         casan = [t for t in textos if fragmento in t]
         assert len(casan) == 1, f"el fragmento declarado {fragmento!r} casa {len(casan)} sitios"

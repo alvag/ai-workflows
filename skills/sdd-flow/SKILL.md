@@ -790,7 +790,7 @@ adquiere ownership mientras decide qué estado observa.
    commits o tasks.
 2. Capturar ledger, recibo, Git, plan/tasks, proceso/sobre y owner preservando procedencia y frescura.
    **Las huellas del ledger y del recibo se recalculan, no se leen como dadas.** Cargar `reference.md` → "La receta de serialización de las huellas"
-   e invocar `python_skill <skill_dir>/scripts/huellas-secuencia.py comparar --huella coverage --fuente <tasks.md o plan> --plan <plan> --esperado <valor del ledger>`,
+   e invocar `python_skill <skill_dir>/scripts/huellas-secuencia.py comparar --huella coverage --fuente <tasks.md o plan> --forma <tasks o embebida> --plan <plan> --esperado <valor del ledger>`,
    y **con recibo presente además** `comparar --huella tasks --fuente <tasks.md o plan> --forma <tasks o embebida> --esperado <valor del recibo>`:
    son las dos que `reference.md` exige, y con una sola la recuperación afirmaba más de lo que hacía.
    Todo esto **solo con `huellas_receta: v1`**; bajo el régimen anterior no se recalcula nada.
@@ -976,7 +976,7 @@ autoriza despachos por bloques ni convierte la capacidad `cross` en un error.
    **Las huellas del ledger se calculan, no se inventan** — y solo cuando la secuencia adopta la
    receta: con `huellas_receta` ausente está en el régimen anterior y **no se calcula ninguna huella**.
    Cargar `reference.md` → "La receta de serialización de las huellas" e invocar
-   `python_skill <skill_dir>/scripts/huellas-secuencia.py calcular --huella coverage --fuente <tasks.md o plan> --plan <plan>`
+   `python_skill <skill_dir>/scripts/huellas-secuencia.py calcular --huella coverage --fuente <tasks.md o plan> --forma <tasks o embebida> --plan <plan>`
    y `calcular --huella delta --material <ruta>`. Con `0` se escribe la huella calculada; con `2` se
    corrige la invocación y se repite; con `3` **el ledger no se crea y el estado no avanza**.
    `huellas_receta: v1` se escribe en el header **antes** que esos documentos, en la misma ranura que

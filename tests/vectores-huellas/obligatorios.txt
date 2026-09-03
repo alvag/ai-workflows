@@ -86,3 +86,5 @@ esquema-status-no-coincide
 esquema-fecha-en-terminal-activo
 cobertura-self-review-task
 cobertura-id-duplicado
+delta-marcador-suelto
+delta-marcador-desde-ledger

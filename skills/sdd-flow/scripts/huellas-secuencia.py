@@ -653,7 +653,10 @@ def _parser() -> argparse.ArgumentParser:
         sub.add_argument("--material")
         sub.add_argument("--documento")
         sub.add_argument("--plan")
-        sub.add_argument("--forma", choices=("tasks", "embebida"), default="tasks")
+        # Sin default: la forma **se declara y no se infiere**, y un default silencioso es
+        # lo que dejó a las cuatro invocaciones de cobertura omitiéndola sin que nada lo
+        # dijera. `_fuentes` la exige donde decide el alcance.
+        sub.add_argument("--forma", choices=("tasks", "embebida"))
         if nombre == "comparar":
             sub.add_argument("--esperado", required=True)
     val = subs.add_parser("validar")
@@ -666,6 +669,9 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _fuentes(args: argparse.Namespace) -> None:
+    if args.huella in ("tasks", "coverage") and args.forma is None:
+        raise ValueError("--forma es obligatoria con --huella tasks o coverage: "
+                         "la forma decide el alcance y no se infiere")
     if args.huella == "delta":
         if (args.material is None) == (args.documento is None):
             raise ValueError("delta toma --material o --documento, exactamente uno de los dos")
