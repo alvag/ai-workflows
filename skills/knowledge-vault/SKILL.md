@@ -54,13 +54,20 @@ al punto de no retorno, el origen sigue ahí y el vault se descarta y se rehace.
 | `config --config <ruta> [--set-root <ruta>]` | lee o escribe `path_vault` | `VAULT_CONFIGURED` · `VAULT_SET` |
 | `config --discover [--search-root <ruta>]` | qué vaults hay en el disco, clasificados | `VAULTS_DISCOVERED` |
 | `identity --propose \| --declare <id>` | declara la identidad del repositorio en el vault | `IDENTITY_PROPOSED` · `IDENTITY_DECLARED` · `IDENTITY_ALREADY_DECLARED` |
-| `retire --root <raíz> --dry-run \| --approve-digest <hex>` | destruye el origen ya verificado | `DRY_RUN` · `BATCH_OK` · `BATCH_PARTIAL` · `BATCH_FAILED` |
+| `retire --root <raíz> [--from <ruta-del-flujo>] --dry-run \| --approve-digest <hex>` | destruye el origen ya verificado | `DRY_RUN` · `BATCH_OK` · `BATCH_PARTIAL` · `BATCH_FAILED` |
 
 `archive`, `migrate`, `index` y `retire` aceptan `--vault-root <ruta>` o `--config
 <ruta>`; sin ninguna de las dos, la raíz sale de
 `<raíz del repo>/.specify/config.yml`. Códigos de salida y enumerados completos en
 `reference.md` → "Estado a código de salida"; el contrato de `retire`, en
 `reference.md` → "`retire`: el verbo que destruye".
+
+`--from <ruta-del-flujo>` dirige el ensayo a un único flujo, hijo directo de
+`<raíz>` (`<raíz>/<flujo>`). Sólo en esa combinación —`--dry-run` **y** `--from`
+juntos— el informe trae `omitidos`: el inventario completo de lo que `archive`
+dejaría afuera, con ruta, tamaño y SHA-256. El lote sin `--from` y el retiro real
+no lo llevan; la forma exacta está en `reference.md` → "`retire`: el verbo que
+destruye".
 
 ```bash
 node <skills>/knowledge-vault/scripts/kv.mjs config --config .specify/config.yml --set-root ~/vaults/dev-memory
@@ -149,27 +156,137 @@ completo de los dos verbos están en `reference.md` → "El nombre del directori
 nadie mira**. Al archivar un flujo de este mismo repositorio dio `included: 9,
 omitted: 43`: nueve documentos viajaron y cuarenta y tres archivos no.
 
-Con `omitted: 0` no hay nada que hacer. Con `omitted > 0`, seguir estos pasos **en
-este orden**, y no saltear al último:
+Con `omitted: 0` no hay nada que hacer. Con `omitted > 0` — o al ofrecer el retiro
+de un flujo que ya se archivó bajo este mismo procedimiento — el rescate de lo
+que quedó afuera es **obligatorio**, y las dos puertas convergen en el mismo
+ensayo: `retire --root <raíz> --from <raíz>/<flujo> --dry-run`. Su campo
+`omitidos` es la **única autoridad** de candidatos — nada de `find ... -name
+'*.md'` ni ningún otro filtro por extensión o nombre. Este procedimiento gobierna
+la skill; no afirma corregir la cadena llamadora de `sdd-flow`, que queda fuera
+de alcance.
 
-1. **Medir qué quedó.** Los `.md` de subdirectorio son la clase que importa:
-   informes de exploración, veredictos de revisión, material que alguien escribió.
-   `find <flujo> -mindepth 2 -name '*.md'`.
-2. **Si los hay, ofrecer rescatarlos** como un flujo hermano `<flujo>-anexos`, con
-   las rutas aplanadas (`reports/explore.md` → `reports__explore.md`). Va como
-   hermano y no como documento agregado porque **la frontera de un flujo archivado
-   no crece**: re-archivar con un `.md` de más devuelve `VERIFY_FAILED`.
-3. **Recién entonces ofrecer el retiro**, y **siempre con el desglose a la vista**:
-   `retire --root <raíz> --dry-run` separa lo que está a salvo de lo que se
-   destruiría sin copia. Ofrecer sin ese número es pedirle a una persona que
-   apruebe un borrado a ciegas.
+### Antes de empezar: la matriz de recuperación manda
 
-> **Por qué el orden importa, medido.** Ofrecer el retiro apenas termina la copia es
-> donde la inercia del "sí" hace daño: el flujo del ejemplo tenía 3,1 MB sin copia
-> —los informes de los dos workers y los veredictos de revisión— y retirarlo ahí
-> habría destruido la respuesta conservando la pregunta. En un rollout real la
-> clasificación a ojo de qué material era prescindible **falló cuatro veces
-> seguidas**; lo que la corrigió no fue mejor criterio sino medir antes de ofrecer.
+Con `hayRemanente` o `hayManifiesto` en verdadero para el flujo, **no se inicia
+un rescate nuevo**: se sigue la matriz de recuperación existente —"El estado
+durable son dos señales" en `reference.md`—, que restaura el origen, termina una
+destrucción ya autorizada, o se detiene ante un estado imposible.
+
+Con un flujo fresco:
+
+- Si el comando no entrega informe (código de salida distinto de cero antes de
+  emitirlo), o la entrada del flujo trae `bytes: null` o `error`, `omitidos` vale
+  `null` —nunca `[]` ni ausente—. Eso bloquea **tanto el rescate como el
+  retiro**: se informa la medición fallida con su causa exacta y ahí se detiene,
+  hasta que el ensayo pueda medir.
+- `hayManifiesto: false` por sí solo no bloquea nada: sólo dice que el retiro
+  todavía no empezó.
+- Con inventario completo y `aSalvo: false` se puede evaluar `omitidos` —tiene
+  sentido decidir el rescate— pero **no se ofrece el retiro** del original.
+- Con causa `EMPTY_SET` se puede rescatar lo que `omitidos` liste, pero nunca se
+  ofrece retirar el original.
+
+### 1. Seleccionar qué rescatar
+
+De cada entrada de `omitidos` el agente decide si es **texto rescatable**:
+decodifica sus bytes con `TextDecoder` UTF-8 estricto —sin sustituciones— y
+exige la ausencia de NUL. Sólo eso califica. Dentro de lo textual, una entrada
+sólo se clasifica como **derivado recreable** —y se ofrece como descarte, no
+como rescate— si el agente puede nombrar la fuente y el comando exactos que lo
+reproducen.
+
+El agente presenta la lista completa: los candidatos recomendados para
+rescatar y los descartes propuestos, cada uno **con su motivo**. Nada se
+rescata ni se descarta sin la aprobación nominal de esa lista, entrada por
+entrada.
+
+### 2. Materializar lo aprobado en `<flujo>-anexos`
+
+Este paso corre **sólo si el paso 1 aprobó al menos un rescate**. Si no se
+aprobó ninguno, no se crea ningún anexo y el procedimiento sigue directo en el
+paso 4.
+
+Cada aprobado se vuelca a un documento Markdown en la raíz de un flujo hermano
+`<raíz>/<flujo>-anexos` —hijo directo de la misma `<raíz>` que recibió
+`--root`, nunca dentro del original—: **la frontera de un flujo archivado no
+crece**, y re-archivar con un documento de más devuelve `VERIFY_FAILED`.
+
+El nombre de cada documento es determinista:
+`anexo-<sha256(UTF-8(ruta-relativa-original))>.md`, con el digest completo de 64
+hexadecimales minúsculos. Antes de escribir el primero se comprueba que el
+conjunto completo de nombres generados sea único; cualquier colisión **detiene
+sin escribir nada**.
+
+**Toda fuente aprobada usa el mismo wrapper y el mismo verificador, Markdown
+anidado incluido.** El documento envuelve los bytes UTF-8 literales del origen
+con la metadata, el marcador y el cerco adaptativo que define `reference.md` →
+"El wrapper literal y su verificador" —esa es su única sede—; `Source format`
+declara `text/markdown` para un origen `.md` y el tipo que corresponda para
+cualquier otro, sin que el resto del wrapper cambie entre los dos casos. Antes
+de seguir se corre el verificador Node que ahí se publica: confirma que lo
+extraído iguala tamaño y SHA-256 contra los valores que trajo `omitidos`.
+
+Si `<flujo>-anexos` ya existe, no se lo toca a ciegas —una frontera ya archivada
+no se modifica—: se resuelve `repoId` desde el informe del original y se
+comprueba `<vault>/projects/<repoId>/sdd/<flujo>-anexos.md`. Si el anexo sólo
+existe local, sin archivar, se informa su estado y se pide decidir si se repara
+o se usa otro identificador; si ya está en el vault, se pide un identificador
+canónico nuevo.
+
+**El agente crea estos documentos a mano; el CLI no gana un verbo de
+conversión.**
+
+Cualquier fallo en esta materialización —creación, verificación de fidelidad o
+archivado del anexo— **detiene el procedimiento**: el original queda intacto, no
+se ofrece su retiro, se informan los archivos parciales y la causa exacta, y se
+pide decidir entre repararlos, descartarlos con aprobación nominal, o reintentar
+con otro identificador. Ningún residuo se borra automáticamente.
+
+### 3. Archivar el anexo y exigirle su propio ensayo a salvo
+
+Corre sólo cuando el paso 2 produjo al menos un documento. El agente archiva
+`<flujo>-anexos` con un resumen derivado de la lista aprobada, y exige que
+**su propio** ensayo dirigido —`retire --root <raíz> --from
+<raíz>/<flujo>-anexos --dry-run`— devuelva `aSalvo: true`. Que `archive` haya
+respondido `ARCHIVED` o `ALREADY_ARCHIVED` no alcanza: sólo ese ensayo autoriza
+seguir.
+
+### 4. Ofrecer el retiro del original, con el inventario completo a la vista
+
+Si hubo al menos un rescate aprobado, recién con el anexo a salvo (paso 3) se
+repite el ensayo original —los mismos `--root` y `--from` que va a usar el
+retiro real—, se revalida tamaño y SHA-256 de cada rescate contra el origen
+actual con el mismo verificador, y se rotula **cada** entrada de `omitidos`
+como `rescatada en anexos` o `se destruirá sin rescate`.
+
+Si no se aprobó ningún rescate, **no hace falta ningún anexo**: se repite
+directamente el ensayo dirigido del original —los mismos `--root` y `--from`—
+y se rotula **cada** entrada de `omitidos` como `se destruirá sin rescate`. La
+exigencia de un anexo a salvo del paso 3 aplica sólo cuando hubo al menos un
+rescate aprobado.
+
+En los dos casos, cualquier cambio intermedio en el origen o en el vault
+invalida el digest y obliga a repetir el ensayo antes de pedir su aprobación.
+El inventario completo se muestra **siempre**, aunque no haya un solo
+aprobado —se puede agrupar visualmente, nunca ocultar, truncar ni diferir el
+detalle— antes de solicitar la aprobación del digest.
+
+### 5. Retirar el anexo
+
+Sólo corre si hubo al menos un rescate aprobado —sin anexo, no hay nada que
+retirar acá—. El anexo se retira automáticamente cuando el original ya no
+existe en la raíz, o cuando el ensayo dirigido **del original**
+—`retire --root <raíz> --from <raíz>/<flujo> --dry-run`, no el propio ensayo
+del anexo— declara causa `EMPTY_SET`. En cualquier otro estado del original
+—presente con cualquier otra causa, incluido `aSalvo: true`— hace falta una
+declinación humana **renovada en la sesión actual** —no se persiste— antes de
+ofrecer el retiro del anexo.
+
+Mientras original y anexo coexistan, el retiro **por lote está prohibido**: cada
+uno se retira con su propio `--from` y su propio digest, para acreditar que el
+orden se respetó. Ante cualquier fallo del retiro no se borra nada adicional:
+si el original existe se conserva; se informan los residuos y la causa exacta,
+y se pide una decisión nominal.
 
 **El agente ofrece; el CLI nunca pregunta.** `kv` escribe JSON y sale con un código:
 no hay TTY garantizado y un lote de cincuenta flujos quedaría preguntando cincuenta

@@ -407,6 +407,32 @@ a escanear. No lo recalcula —eso sería aprobarse solo—, y `--dry-run` y
 `--approve-digest` son **excluyentes**: correr el ensayo y pasar su digest en la
 misma invocación es la forma exacta que tiene un guion de eliminar el gate.
 
+### `omitidos`: el inventario omitido del ensayo dirigido
+
+Con `--dry-run` **y** `--from <ruta-del-flujo>` a la vez —y sólo entonces— el
+informe agrega a la entrada de ese flujo:
+
+```
+omitidos: Array<{ path: string, size: number, sha256: string }> | null
+```
+
+`<ruta-del-flujo>` es el hijo directo `<raíz>/<flujo>` que recibió `--root`. Un
+lote sin `--from` —aunque enumere un único flujo— y el retiro real, con o sin
+`--from`, nunca llevan este campo: es exclusivo del ensayo dirigido.
+
+Con manifiesto disponible, el array es el **complemento exacto** de la
+selección de `archive`: recorre `manifiesto.inventario` en su mismo orden y
+conserva las entradas cuyo `path` no satisface `isCopiable(path)` —lo que no es
+un `.md` de raíz—, proyectando sólo `path`, `size` y `sha256`. Cada `path` pasa
+por `assertContainedPath` antes de viajar: una ruta que no se puede reportar
+hace fallar el comando entero, nunca produce un informe engañoso.
+
+Sin manifiesto —una medición fallida— `omitidos` vale `null`, nunca `[]`: un
+conjunto vacío diría "no quedó nada afuera" sobre un flujo que no se llegó a
+medir. `null` no reemplaza ni borra `causa` ni `error`, que viajan intactos
+junto a él; la interpretación es **fail-closed**: ningún consumidor puede tratar
+`omitidos: null` como "nada que rescatar" ni seguir adelante sin la medición.
+
 ### La identidad del repositorio se declara, no se deriva
 
 La ruta dentro del vault sale de un identificador **declarado**, guardado en
@@ -434,7 +460,214 @@ permisos durante esa búsqueda **detiene** en vez de leerse como ausencia: leerl
 como "no pude entrar, así que no hay nada" es cómo un borrado se come un
 repositorio que no llegó a ver.
 
+## El wrapper literal y su verificador
+
+Ésta es la sede única de la **forma exacta** que usa el rescate textual del
+procedimiento posterior a `archive` (`SKILL.md` → "Después de archivar: qué
+hacer con lo que quedó afuera"): esa sección decide **cuándo** envolver un
+archivo omitido y qué gates humanos lo rodean; acá vive **cómo** se ve el
+documento y cómo se comprueba que no miente.
+
+### El nombre del documento
+
+`anexo-<sha256(UTF-8(ruta-relativa-original))>.md`, con el digest completo — 64
+caracteres hexadecimales minúsculos. Antes de escribir el primer documento del
+lote se comprueba que **todos** los nombres generados sean únicos entre sí;
+cualquier colisión detiene el rescate sin escribir ninguno.
+
+### La forma exacta del wrapper
+
+**Toda fuente aprobada usa el mismo wrapper y el mismo verificador, Markdown
+anidado incluido** — no hay un camino separado para `.md`. El documento
+declara, en este orden y literales, antes del payload:
+
+```
+Source path (JSON): <JSON.stringify(ruta-relativa-original)>
+Source format (JSON): <JSON.stringify(formato-de-origen)>
+Source size: <tamaño en bytes, decimal>
+Source SHA-256: <64 hexadecimales minúsculos>
+<!-- kv-literal-content -->
+```
+
+`Source format` es lo único que distingue el origen: `text/markdown` para un
+`.md` anidado, y el tipo que corresponda —por ejemplo `text/plain` o
+`application/json`— para cualquier otro. El resto de la metadata, el marcador,
+el cerco y el payload son idénticos en los dos casos.
+
+El marcador estructural `<!-- kv-literal-content -->` ocupa la línea inmediata
+posterior a las cuatro líneas de metadata. El verificador lo ubica por esa
+frontera, no contando ocurrencias en el documento: la misma cadena puede
+aparecer dentro de la ruta declarada o del payload sin volverlo irrescatable.
+Inmediatamente después abre un cerco de backticks con info string `text`,
+repetidos `max(3, mayor-corrida-de-backticks-del-origen + 1)` veces: la longitud
+se **adapta** al contenido para que ninguna corrida de backticks *dentro* del
+origen pueda cerrarlo antes de tiempo. El payload arranca en el byte siguiente
+al salto de línea que abre el cerco, ocupa exactamente `Source size` bytes tal
+cual —sin transformar— y el cierre es literalmente `\n<cerco>\n`: ese salto de
+línea previo al cierre **no** es parte del contenido extraído.
+
+Ejemplo fiel y completo, listo para pegar (la corrida más larga de backticks del
+origen es de tres, así que el cerco de este wrapper usa cuatro; el origen no
+termina en salto de línea):
+
+`````
+Source path (JSON): "notas/ejemplo.txt"
+Source format (JSON): "text/plain"
+Source size: 36
+Source SHA-256: 466e4ae11e6fd4164d53e89095f364f93ba493edb3bd91d3d44690186d440d53
+<!-- kv-literal-content -->
+````text
+revisar ```bloque``` sin salto final
+````
+`````
+
+### El verificador
+
+Un comando completo, ejecutable tal cual —sin placeholders—, publicado acá y en
+ningún otro lado. `$origen` y `$wrapper` son variables de shell con las rutas a
+comparar; el quoting es POSIX válido, así que rutas con espacios no lo rompen:
+
+```bash
+node --input-type=module -e '
+import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+
+const [origenPath, wrapperPath] = process.argv.slice(1);
+const origen = readFileSync(origenPath);
+const wrapper = readFileSync(wrapperPath);
+
+function fail(msg) {
+  console.error(msg);
+  process.exit(1);
+}
+
+let texto;
+try {
+  texto = new TextDecoder("utf-8", { fatal: true }).decode(origen);
+} catch {
+  fail("el origen no es UTF-8 válido");
+}
+if (texto.includes("\0")) fail("el origen contiene NUL");
+
+const marcador = Buffer.from("<!-- kv-literal-content -->", "utf8");
+let finCabecera = 0;
+for (let linea = 0; linea < 4; linea += 1) {
+  const finLinea = wrapper.indexOf(0x0a, finCabecera);
+  if (finLinea === -1) fail("metadata incompleta: faltan las cuatro líneas iniciales");
+  finCabecera = finLinea + 1;
+}
+
+const cabecera = wrapper.subarray(0, finCabecera).toString("utf8");
+const metaMatch = cabecera.match(
+  /^Source path \(JSON\): (.+)\nSource format \(JSON\): (.+)\nSource size: (\d+)\nSource SHA-256: ([0-9a-f]{64})\n$/,
+);
+if (!metaMatch) fail("metadata inválida, incompleta o fuera de orden");
+const [, pathJson, formatJson, sizeStr, sha256Declarado] = metaMatch;
+let rutaDeclarada;
+let formatoDeclarado;
+try {
+  rutaDeclarada = JSON.parse(pathJson);
+  formatoDeclarado = JSON.parse(formatJson);
+} catch {
+  fail("Source path/format no son JSON válido");
+}
+if (typeof rutaDeclarada !== "string" || rutaDeclarada.length === 0) fail("Source path no es un string no vacío");
+if (typeof formatoDeclarado !== "string" || formatoDeclarado.length === 0) fail("Source format no es un string no vacío");
+const size = Number(sizeStr);
+
+const idx = finCabecera;
+if (!wrapper.subarray(idx, idx + marcador.length).equals(marcador)) {
+  fail("marcador estructural ausente después de la metadata");
+}
+
+const corridas = texto.match(/`+/g) ?? [];
+const maxCorrida = corridas.reduce((m, c) => Math.max(m, c.length), 0);
+const cerco = "`".repeat(Math.max(3, maxCorrida + 1));
+
+const despuesDelMarcador = wrapper.subarray(idx + marcador.length);
+const apertura = Buffer.from(`\n${cerco}text\n`, "utf8");
+if (!despuesDelMarcador.subarray(0, apertura.length).equals(apertura)) {
+  fail("cerco de apertura ausente o de longitud incorrecta");
+}
+
+const payload = despuesDelMarcador.subarray(apertura.length, apertura.length + size);
+if (payload.length !== size) fail("el wrapper quedó truncado antes del tamaño declarado");
+
+const cierre = despuesDelMarcador.subarray(apertura.length + size);
+const cierreEsperado = Buffer.from(`\n${cerco}\n`, "utf8");
+if (!cierre.equals(cierreEsperado)) fail("el cierre del cerco no coincide con el patrón salto, cerco, salto");
+
+if (!payload.equals(origen)) fail("el payload extraído no coincide byte a byte con el origen");
+
+const sha256Real = createHash("sha256").update(origen).digest("hex");
+if (sha256Real !== sha256Declarado) {
+  fail(`SHA-256 declarado no coincide: esperado ${sha256Real}, declarado ${sha256Declarado}`);
+}
+
+console.log("wrapper fiel: tamaño, cerco y SHA-256 verificados");
+' -- "$origen" "$wrapper"
+```
+
+Lee origen y wrapper como `Buffer`. Decodifica el origen con
+`new TextDecoder('utf-8', { fatal: true })` —cualquier byte inválido lo
+rechaza— y exige la ausencia de NUL. Lee exactamente cuatro líneas de metadata,
+las valida en orden, parsea `Source path` y `Source format` como JSON y exige que
+los dos den un string no vacío. Luego exige el marcador estructural en el offset
+siguiente; no interpreta como estructura las apariciones de esa cadena dentro
+de la metadata o del payload. Valida la longitud adaptativa del cerco, corta
+desde el byte posterior a la apertura exactamente `Source size` bytes, exige
+que el resto sea `\n<cerco>\n` exacto, compara el payload extraído contra el
+origen con `Buffer.equals` y recalcula su SHA-256 contra el declarado. Toda
+diferencia —metadata, marcador estructural, cerco, tamaño, bytes o hash— termina
+con código de salida distinto de cero; el caso fiel sale **0** e imprime su
+confirmación.
+
 ## Casos borde
+
+- **Sin candidatos aprobados para rescate.** No se crea ni se archiva ningún
+  anexo: se repite directamente el ensayo dirigido del original y el agente
+  muestra igual el inventario completo de `omitidos`, con cada entrada rotulada
+  `se destruirá sin rescate`, antes de pedir la aprobación del digest — ver
+  `SKILL.md` → "4. Ofrecer el retiro del original, con el inventario completo a
+  la vista".
+- **`<flujo>-anexos` ya existe, sólo local.** No se pisa: se informa su estado y
+  se pide decidir entre repararlo o usar otro identificador — ver `SKILL.md` →
+  "2. Materializar lo aprobado en `<flujo>-anexos`".
+- **`<flujo>-anexos` ya existe, archivado en el vault.** Se resuelve por
+  `repoId` contra `<vault>/projects/<repoId>/sdd/<flujo>-anexos.md` y se pide un
+  identificador canónico nuevo; una frontera ya archivada no se modifica — misma
+  sede.
+- **El ensayo dirigido del original da `EMPTY_SET`** —no el ensayo propio del
+  anexo—. El retiro del anexo se permite sin declinación humana nueva, pero
+  `EMPTY_SET` nunca autoriza el retiro del propio original — ver `SKILL.md` →
+  "5. Retirar el anexo".
+- **El original ya no existe cuando se evalúa el retiro del anexo.** Mismo
+  efecto que `EMPTY_SET`: se permite sin declinación renovada — misma sede.
+- **El original sigue presente, con cualquier otra causa.** El retiro del
+  anexo exige una declinación humana renovada en la sesión actual; no se
+  persiste entre corridas — misma sede.
+- **Original y anexo coexisten.** El retiro por lote está prohibido: cada uno se
+  retira con su propio `--from` y su propio digest, para acreditar el orden —
+  misma sede.
+- **El origen o el vault cambian entre el ensayo y la aprobación.** El digest ya
+  no describe lo que se va a destruir y el ensayo se repite antes de pedir
+  aprobación de nuevo — ver `SKILL.md` → "4. Ofrecer el retiro del original, con
+  el inventario completo a la vista".
+- **Dos rutas aprobadas producen el mismo nombre de anexo.** Se detecta antes de
+  escribir el primer documento y el rescate se detiene sin escribir ninguno —
+  ver "El nombre del documento" arriba.
+- **Un wrapper infiel** —metadata alterada, cerco corto, payload truncado o
+  bytes distintos del origen— hace que el verificador salga con código distinto
+  de cero, y el rescate de esa entrada no se da por completo.
+- **La ruta o el origen contienen `<!-- kv-literal-content -->`.** Es contenido
+  literal: sólo la aparición situada inmediatamente después de las cuatro líneas
+  de metadata funciona como marcador estructural, y las demás no afectan la
+  extracción ni la comprobación byte a byte.
+- **Un fallo a mitad de la materialización, verificación o archivado del
+  anexo.** El original queda intacto y sin ofrecerse para retiro; los archivos
+  parciales y la causa exacta se informan, y ningún residuo se limpia
+  automáticamente — ver `SKILL.md` → "2. Materializar lo aprobado en
+  `<flujo>-anexos`".
 
 - **Un flujo sin ningún `.md` en su raíz** se archiva igual: su frontera queda
   vacía y su nodo no lleva enlaces. Git no versiona directorios vacíos, así que en
