@@ -15,6 +15,7 @@ Detalle operativo de la skill `sdd-flow`. El `SKILL.md` apunta acá cuando neces
 - [Mapeo tipo de cambio → prefijo](#mapeo-tipo-de-cambio--prefijo)
 - [Construcción del mensaje de commit](#construcción-del-mensaje-de-commit)
 - [Apertura de PR (opcional, tras push)](#apertura-de-pr-opcional-tras-push)
+- [La receta de serialización de las huellas](#la-receta-de-serialización-de-las-huellas)
 - [Búsqueda de antecedentes](#búsqueda-de-antecedentes)
 - [Plantilla de constitution](#plantilla-de-constitution)
 - [Plantilla de spec](#plantilla-de-spec)
@@ -1090,12 +1091,35 @@ avance: conserva exactamente qué partición aprobó el humano y permite comprob
 transporta ese mismo alcance. Su esquema mínimo contiene `tasks_fingerprint`, la lista `blocks` en
 su orden aprobado y, para cada bloque, `block_id`, `task_ids` y `work_commit`.
 
-El `tasks_fingerprint` se calcula sobre el contenido canónico de cada task, **normalizando únicamente
-el estado del checkbox**. El título, los pasos, los archivos y las dependencias (`Produce` y
+El `tasks_fingerprint` se calcula sobre el **modelo canónico** de cada task, cuya proyección exacta
+fija «La receta de serialización de las huellas»: además de neutralizar el estado del checkbox,
+normaliza los finales de línea, recorta los espacios de cada valor y proyecta los campos a una forma
+declarada. Decir «únicamente el checkbox» describía el contrato **anterior** a esa receta, cuando la
+entrada de la huella no estaba definida. El título, los pasos, los archivos y las dependencias (`Produce` y
 `Consume`) son contenido semántico: modificarlos invalida la aprobación. Hashear los bytes completos
 de `tasks.md` sería incorrecto porque la transición esperada `[ ]` → `[x]` cambiaría el fingerprint;
 hashear solamente los IDs también sería incorrecto porque no detectaría cambios en pasos, archivos o
 dependencias.
+
+**El valor de tasks_fingerprint tiene la forma** `sha256:` seguido de
+**64 dígitos hexadecimales en minúscula**, con la misma precisión con que el ledger declara los suyos. De qué bytes se calcula lo
+fija «La receta de serialización de las huellas»; acá se declara su forma, que es lo que el recibo
+tiene que poder validar sin leer aquella sección.
+
+**El esquema del recibo, adoptado.** La raíz es **cerrada** y contiene exactamente `tasks_fingerprint`
+y `blocks`. `blocks` es una lista en su orden aprobado y cada bloque contiene exactamente `block_id`
+—cadena no vacía, única en el recibo—, `task_ids` —lista no vacía de cadenas— y `work_commit` —nulo
+hasta que el bloque se acepta, y después el SHA completo de su commit de trabajo—. Cualquier clave no
+declarada, tipo distinto o cardinalidad inválida hace que el documento **no admita cálculo**.
+
+**El esquema legado se congela con lo que el contrato anterior sí declaraba**, no con menos. Un recibo
+escrito antes de la receta sigue siendo válido comprobando **forma y no semántica**, y para eso hace
+falta un validador de esa forma; aflojar de más no es compatibilidad, porque vuelve válidos recibos
+que este contrato **ya rechazaba** antes de existir la receta. El legado conserva: presencia de
+`tasks_fingerprint` y de `blocks`, `blocks` como lista en su orden aprobado, los tres campos por
+bloque, y **la unicidad de block_id**. Relaja **solo lo que verdaderamente no estaba definido**: el
+cierre de la raíz —una clave extra pasa—, los tipos no declarados, y toda semántica recomputable de la
+huella. **Cuál rige lo decide el marcador** de adopción: ausente, el legado; `v1`, el adoptado.
 
 Cada `block_id` es una identidad por bloque estable y única dentro del recibo. Tras aceptar el
 bloque, esa identidad se vincula al SHA de su commit de trabajo en `work_commit`; una identidad sin
@@ -1565,6 +1589,290 @@ Procedimiento por caso, siempre en un repositorio desechable:
 
 Los negativos terminan después del diagnóstico y verifican cero mutaciones. Un transporte sin
 primitiva de cese comprobable se registra como `blocked`, nunca como caso verde inferido.
+
+## La receta de serialización de las huellas
+
+El recibo de partición y el ledger de secuencia fijan con precisión el **formato** de sus huellas
+—`sha256:` y 64 dígitos— y durante un tiempo dejaron indefinida su **entrada**: de qué bytes se
+calcula cada una. Esta sección la define, y `skills/sdd-flow/scripts/huellas-secuencia.py` la
+implementa. Ante una discrepancia entre las dos, **manda el ejecutable**: esta prosa existe para
+explicar su efecto, no para reescribirlo. Y un cambio semántico del ejecutable
+**exige una versión nueva de receta**: cambiar los bytes que produce conservando el mismo prefijo de
+dominio y versión queda prohibido, porque vuelve indistinguible una corrección de una alteración
+silenciosa.
+
+### La capa común, y lo que no es común
+
+Las tres huellas comparten **solo** esto, sin excepción: el prefijo `sha256:`, 64 dígitos
+hexadecimales en minúscula, codificación **UTF-8 sin BOM**, y la gramática del prefijo de dominio y
+versión que abre el preimage.
+
+En cambio **la normalización de finales de línea y de espacios no es común**: la fija la fila de cada
+huella. El material del delta es un parche y no admite el recorte de espacios finales que la huella de
+tareas sí necesita, así que una normalización común corrompería una de las tres.
+**Ninguna huella hereda de otra** una frontera ni una normalización.
+
+### Los tres prefijos, literales
+
+Cada preimage abre con estos bytes exactos, seguidos de un salto de línea, y después el cuerpo propio
+de esa huella. La versión es un entero, sin `v`.
+
+| Huella | Prefijo |
+|---|---|
+| `tasks_fingerprint` | `sdd-flow/tasks-fingerprint/1` |
+| `coverage_fingerprint` | `sdd-flow/coverage-fingerprint/1` |
+| `delta.digest` | `sdd-flow/delta-digest/1` |
+
+**El prefijo termina en** ese salto de línea y nada más lo separa del cuerpo. Vive en el preimage y
+**no agrega ninguna clave** al ledger ni al recibo.
+
+### De qué bytes se calcula cada una
+
+<!-- huellas-entrada:inicio -->
+
+| Huella | fuente | frontera | campos | orden | separador | normalización | caso vacío |
+|---|---|---|---|---|---|---|---|
+| `tasks_fingerprint` | `tasks.md`, o la sección de tareas embebida en `plan.md` | los bloques de task del alcance aprobado y todos los bloques globales | las diez claves de la lista cerrada, más el cuerpo de cada bloque global | documental, el de la fuente | tabulador entre clave, ordinal y valor; salto de línea entre líneas | espacios finales recortados; sin normalización Unicode | alcance vacío falla cerrado |
+| `coverage_fingerprint` | dos: el `tasks.md` o la sección de tareas embebida para el alcance, y el `plan.md` para las claves congeladas | los identificadores del alcance, más la huella de la versión congelada | identificadores del alcance y la huella del contrato | documental, el del alcance | salto de línea por identificador; tabulador antes de la huella | ninguna: los identificadores viajan como están | alcance vacío deja solo la línea del contrato |
+| `delta.digest` | el valor del escalar `material` del ledger | el valor lógico del escalar, sin su indentación ni el archivo | el valor completo, sin partir en campos | no aplica: es un valor único | ninguno | saltos físicos a salto de línea, se come el salto final, y **no** se recortan espacios finales | material vacío da el digest escrito abajo |
+
+<!-- huellas-entrada:fin -->
+
+### El cuerpo de `tasks_fingerprint`
+
+Es la **proyección de un modelo parseado**, no una rebanada de bytes. Las dos representaciones de una
+tarea no comparten bytes —con negritas y doble espacio en `tasks.md`, sin ninguna de las dos en la
+forma embebida— y las dos son alcanzables, porque un override explícito lleva un flujo trivial a
+delegación y por lo tanto a partición y recibo. Una rebanada de bytes daría digests distintos sobre el
+mismo alcance.
+
+Cada unidad va precedida de un **frame**: etiqueta, identificador y longitud del cuerpo en bytes
+UTF-8, separados por tabulador y cerrados por salto de línea. La etiqueta es `task` o `global`, y la
+longitud es lo que impide que contenido con separadores fingidos cambie la partición. Las unidades van
+en orden documental de la fuente.
+
+**La serialización de un campo.** Cada campo emite una o más líneas de la forma `<clave>` tabulador
+`<ordinal>` tabulador `<valor>`, con el ordinal de base 1 dentro de esa clave, **siempre presente**
+—también cuando el campo tiene un solo valor, para que la forma sea una sola—. Las claves van en el
+orden fijo `id`, `cubre`, `titulo`, `por-que`, `archivos`, `seam`, `produce`, `consume`, `pasos`,
+`verificar`, omitiendo las ausentes. Los campos de lista parten su fuente y emiten un
+valor por elemento, con **dos separadores según el campo, no uno**: `cubre` parte por **coma**, que es
+lo que la plantilla de tasks escribe en la línea del checkbox, y `archivos`, `consume` y `verificar`
+parten por `;`, que es lo que esa misma plantilla usa en sus viñetas. Unificarlos en la prosa habría
+descrito una gramática que ningún documento real usa; `pasos` emite un elemento por
+ítem de la lista ordenada; los demás emiten uno solo.
+
+El **valor** es el texto del elemento sin espacio en blanco al principio ni al final, con estos tres
+escapes y ningún otro: la barra invertida pasa a dos barras invertidas, un tabulador pasa a barra
+invertida seguida de `t`, y un salto de línea pasa a barra invertida seguida de `n`. Así ninguna
+continuación ni ningún tabulador del contenido puede fingir un separador. Una clave desconocida dentro
+de una unidad **falla cerrado**, y también **una viñeta que no sea ninguno de esos campos**:
+descartarla en silencio le daba la misma huella a dos tareas con restricciones distintas.
+
+**La igualdad entre las dos representaciones.** La forma embebida expresa `id`, `titulo` y `cubre`;
+`tasks.md` expresa además siete campos más. El modelo es una **función de los campos presentes**, y
+los dos extractores producen modelos idénticos cuando reciben el mismo contenido en los campos que
+ambos llevan. Promover un conjunto de tareas agregando campos que la fuente original no tenía es un
+**cambio de contenido** y mueve la huella. La gramática embebida no se extiende: eso cambiaría cómo se
+escribe un plan trivial, que es otra superficie.
+
+**Los bloques globales son secciones de `tasks.md`, y en la forma embebida no hay ninguno.** Ahí las
+tareas viven dentro del plan, cuyas secciones —enfoque, decisiones, contrato— son del plan y no del
+alcance: leerlas como globales metería el plan entero dentro de la huella. **La forma se declara y no
+se infiere**, con el argumento `--forma` del ejecutable, y una forma desconocida falla cerrado. Es lo
+que vuelve realizable la igualdad de la que habla el párrafo anterior: sin esta cláusula, el mismo
+conjunto de tareas da huellas distintas por las secciones del documento que las contiene.
+
+**El bloque global tiene su propio modelo**, porque no es una tarea y no lleva pares clave-valor. Su
+frame lleva la etiqueta `global`, como identificador el slug de su encabezado y la longitud en bytes
+de su cuerpo. El cuerpo son las líneas desde la siguiente al encabezado hasta la anterior al próximo
+encabezado `##` que no esté dentro de una cerca —y **cerca** es una línea que abre con tres acentos
+graves, la única forma que el lector reconoce—, con las líneas en blanco finales removidas y ninguna
+otra normalización.
+
+**El slug**, del texto del encabezado sin `##` y recortado: se mapea `A-Z` a `a-z`, cada corrida
+maximal de caracteres fuera de `a-z0-9` pasa a un solo guion, y se quitan los guiones de los extremos.
+Es lo que produce el ejemplo documentado en «Plantilla de tasks», donde el guion largo y sus espacios
+colapsan a uno solo. Consecuencia declarada: un encabezado escrito con caracteres fuera de ASCII
+colapsa esos bytes a guiones, así que dos encabezados que difieran solo ahí producen el mismo slug — y
+eso falla cerrado como slug duplicado, en vez de mezclar dos bloques distintos.
+
+### Las dieciséis decisiones de la gramática de extracción
+
+<!-- extraccion-tareas:inicio -->
+
+| Punto | Decisión |
+|---|---|
+| `inicio-de-bloque` | la línea del checkbox de la task, incluida |
+| `fin-de-bloque` | la línea anterior al próximo checkbox de task o al próximo encabezado `##` fuera de cercas |
+| `cercas` | una cerca es una línea que abre con tres acentos graves, y solo esa; un encabezado dentro de una **no** delimita nada |
+| `checkbox` | el estado se reemplaza por los bytes `- [ ] `, marcada o no, antes de proyectar |
+| `globales-que-entran` | en `tasks.md`, todos los del archivo y no solo los referenciados; en la forma embebida, ninguno |
+| `exclusiones` | no entran el encabezado `#` del archivo ni la sección cuyo encabezado `##` empieza con `Self-review` |
+| `orden` | documental, el de la fuente, para tasks y globales por igual |
+| `slug` | ASCII en minúscula, corridas fuera de `a-z0-9` a un guion, sin guiones en los extremos |
+| `unicode` | ninguna normalización: los bytes del contenido viajan como están |
+| `finales-de-linea` | `CRLF` se normaliza a `LF` antes de extraer, así que un mismo contenido da la misma huella en los dos formatos |
+| `continuaciones` | una línea de continuación se une a su valor con **un solo espacio**, que es lo que el Markdown significa; el escape de salto de línea existe para un valor que ya contenga uno |
+| `espacios-finales` | recortados al principio y al final de cada valor |
+| `id-duplicado` | falla cerrado, con el identificador repetido nombrado |
+| `id-ausente` | falla cerrado, con la línea del bloque sin identificador nombrada |
+| `alcance-vacio` | falla cerrado: un alcance sin ninguna task no produce huella |
+| `forma` | se declara y no se infiere; en la embebida el alcance se recorta a la sección `## Tasks`, con las cercas ya analizadas |
+
+<!-- extraccion-tareas:fin -->
+
+### El cuerpo de `coverage_fingerprint`
+
+Los identificadores del alcance en orden documental, uno por línea y cada uno cerrado por un salto de
+línea; y después la línea `contrato` tabulador la huella congelada, también cerrada por salto de
+línea.
+
+**Son dos fuentes y no una**, y confundirlas produce una huella sobre alcance vacío que igual parece
+válida: los identificadores salen de donde vivan las tareas —`tasks.md` cuando está separado, la
+sección embebida del plan cuando no—, y las claves congeladas salen siempre del header del `plan.md`.
+En un flujo trivial las dos fuentes son el mismo archivo; en uno normal o complejo, no. Con alcance vacío queda solo esa última línea. No toca el contenido de las tareas: el ledger no
+duplica lo que el recibo declara, y la huella se computa igual en el modo donde no hay recibo.
+
+La versión congelada del contrato de verificación y su huella viven en dos claves propias del header
+del `plan.md`, `contract_frozen_version` y `contract_frozen_hash`, escritas al crear la secuencia y
+solo **después** de validar la cadena del contrato con
+`python_skill <skill_dir>/../cross-implement/scripts/contrato-cadena.py <plan>`. Ese validador
+devuelve `0` también cuando el archivo no existe, porque lo lee como texto vacío y no encuentra
+ninguna versión: la presencia del contrato la comprueba el propio ejecutable y no se delega en ese
+código de salida.
+
+Una versión posterior del contrato que aparezca más tarde **no** mueve la huella congelada, y esa
+diferencia se declara en vez de recomputarse. Un contrato ausente o con la cadena inválida da **no
+medible**, que es el código `3` del ejecutable, y el diagnóstico distingue los dos casos: **ausente**
+es que la clave no esté, y **cadena inválida** es que esté con un valor que no son 64 dígitos
+hexadecimales en minúscula, porque esa huella es el producto de la cadena y un valor mal formado
+significa que la cadena no lo produjo.
+
+### El cuerpo de `delta.digest`
+
+Los bytes del valor lógico del escalar `material`, no los del archivo ni los de su indentación. La
+semántica del escalar de bloque se declara acá y no se delega al lector: el indicador desangra la
+indentación, convierte cada salto físico en un salto de línea y **come el salto final**; sobre ese
+valor no se aplica ninguna transformación posterior, y en particular no se recortan los espacios
+finales, que en un parche son significativos. Un indicador de chomping distinto del declarado se
+rechaza y falla cerrado.
+
+**El material llega por dos vías y las dos dan el mismo valor lógico.** Al crear el ledger el ledger
+todavía no existe, así que el material llega como archivo suelto; después se lo extrae del escalar de
+bloque del documento. A un archivo suelto se le **recortan todos los saltos finales**, que es
+exactamente lo que el indicador `|-` hace con los suyos. Recortar uno solo dejaba las dos vías
+produciendo digests distintos cuando el archivo terminaba en dos saltos, y sin esa regla el digest que
+se escribe al crear no coincide con el que se recalcula al revalidar — y esa comparación es justamente la que el contrato ordena.
+
+Con `material` vacío el preimage es solo el prefijo con su salto de línea, y su digest es
+`sha256:4019c2d0c224a0d170f9ef5e12c3e2d63d12a4e469759102fad97d30d4d39915`.
+
+### La frontera de la validación dirigida
+
+AC-17 pide validar **las estructuras que las huellas consumen**, y dice explícitamente que esto **no
+es un analizador general del formato**. La frontera es esa, y se declara acá con lo que entra y lo que
+queda fuera, porque una promesa más ancha que el criterio convierte cada hueco del esquema en un
+defecto del instrumento.
+
+| Entra | Queda fuera |
+|---|---|
+| la raíz cerrada y su `schema_version`; una versión distinta de 1 no se interpreta | el contenido de `transitions`, `effects` y `effect_events` |
+| las claves cerradas de `sequence` y sus tipos: identidad, ancla base, huella de cobertura | qué cutpoint puede seguir a cuál, y la coherencia del cursor con la última transición |
+| `delta` con sus tres claves, el algoritmo declarado y el tipo de `material` | la derivación de las identidades de intención, efecto y evento |
+| `cursor` con sus dos claves, su máquina compatible con el modo, y el cutpoint perteneciendo a esa máquina | la alcanzabilidad del `base_anchor` en Git y el contraste del delta contra Git |
+| `result` con sus dos claves y su coherencia con `sequence.terminal`, incluida la fecha de cierre de un terminal no continuable | la legalidad de cualquier transición |
+| la presencia condicionada por `mode`: `blocks` exige `receipt_ref`, `inline` lo prohíbe junto con los cutpoints C1-C12 | |
+| el esquema del recibo, adoptado o legado según el marcador | |
+
+**Por qué las transiciones quedan fuera, y no es comodidad.** Ninguna huella las lee: `delta.digest`
+se calcula sobre `sequence.delta.material` y nada más, y `coverage_fingerprint` no toca el ledger.
+Validarlas sería exactamente el analizador general que AC-17 excluye — y la exclusión tiene un costo
+que se declara en vez de esconderse: **un ledger con una transición corrupta puede producir un digest
+de delta bien formado**. Lo que ese digest afirma sigue siendo cierto —son los bytes de ese material—
+y quien clasifica la secuencia es el clasificador de recuperación, que sí lee la máquina y no es este
+instrumento.
+
+`transitions` y `effect_events` **sí** se comprueban como estructura de la raíz: tienen que existir y
+ser listas. Lo que no se interpreta es su contenido.
+
+La línea, en una frase: **presencia y forma de lo que las huellas consumen** entran; **semántica de la
+máquina de estados y hechos del mundo** quedan fuera.
+
+### El marcador de adopción
+
+`huellas_receta`, en el header del `plan.md` — la sede donde `sequence_contract_version` y
+`contract_procedure` ya viven, así que no hay superficie nueva ni riesgo de documento corrupto.
+
+<!-- marcador-huellas:inicio -->
+
+| Estado | Significa | Quién lo escribe | Desde cuándo rige |
+|---|---|---|---|
+| ausente | régimen anterior; no se recalcula ninguna huella y se valida con el esquema legado | nadie | no rige |
+| `v1` | la receta rige para esta secuencia entera | el conductor, al crear la secuencia y antes de los documentos que el modo exige | desde la secuencia entera, no desde un documento |
+
+<!-- marcador-huellas:fin -->
+
+La unidad de adopción es la **secuencia entera**, y `v1` se escribe al crearla, **antes** de los
+documentos que el modo exige — no después, o la adopción sería circular. Cuáles son esos documentos lo
+decide el **modo**: en `blocks`, el recibo y el ledger; en `inline`, solo el ledger, porque ese modo
+prohíbe el recibo. Enunciarlo como «los dos documentos» volvería el régimen adoptado inalcanzable en
+`inline`.
+
+Una secuencia **ya viva** cuando la receta se adopta **conserva el régimen anterior hasta terminar**:
+no se recalcula ninguna huella y no se muta nada. **Migrarla queda fuera de alcance** de esta receta,
+con su motivo y su seguimiento propio abajo. Toda combinación observada de regímenes distintos entre
+recibo y ledger clasifica `conflict:<source>` **sin mutar nada**.
+
+### La integración, por código de salida
+
+Nombrar el ejecutable no alcanza: el resultado tiene que gobernar la transición. Los cuatro puntos
+llevan su invocación concreta y su rama por cada código. El primero se declara acá porque hasta esta
+receta ningún documento decía quién escribe el recibo ni cuándo.
+
+<!-- integracion-huellas:inicio -->
+
+| Punto | Dónde | Invocación | 0 | 1 | 2 | 3 |
+|---|---|---|---|---|---|---|
+| escritura-recibo | tras aprobar la partición y antes de todo despacho | `python_skill <skill_dir>/scripts/huellas-secuencia.py calcular --huella tasks --fuente <tasks.md o plan> --forma <tasks o embebida>` | escribe la huella calculada en el recibo | no aplica: acá no hay comparación | no escribe; se corrige la invocación y se repite | no escribe; el flujo no despacha |
+| creacion-ledger | paso 2 de implementación, al crear la secuencia | `python_skill <skill_dir>/scripts/huellas-secuencia.py calcular --huella coverage --fuente <tasks.md o plan> --plan <plan>` y `calcular --huella delta --material <ruta>` | escribe las huellas calculadas en el ledger | no aplica | no crea; se corrige y se repite | no crea; el estado no avanza |
+| revalidacion-despacho | el recibo y el paso 6 de la tabla de la transición entre bloques | `python_skill <skill_dir>/scripts/huellas-secuencia.py comparar --huella tasks --fuente <tasks.md o plan> --forma <tasks o embebida> --esperado <valor del recibo>` | habilita la postcondición | la secuencia se detiene | se corrige y se repite; no es veredicto | la secuencia se detiene |
+| recuperacion | el snapshot de clasificación | `python_skill <skill_dir>/scripts/huellas-secuencia.py comparar --huella coverage --fuente <tasks.md o plan> --plan <plan> --esperado <valor del ledger>`, y con recibo presente además `comparar --huella tasks --fuente <tasks.md o plan> --forma <tasks o embebida> --esperado <valor del recibo>` | entra como hecho con procedencia, nunca como predicado nuevo | mapea a `conflict`, ya declarado no mutante | se corrige y se repite; no es veredicto | mapea a `blocked`, ya declarado no mutante |
+
+<!-- integracion-huellas:fin -->
+
+**Las cuatro invocaciones rigen solo con `huellas_receta: v1`.** Bajo el régimen anterior —marcador
+ausente— **no se calcula ni se recalcula ninguna huella**: el punto de integración se saltea y el flujo
+sigue como seguía. **Por eso el marcador se escribe antes de los documentos y no después:** con el
+orden inverso, `creacion-ledger` leería el marcador ausente en el único momento en que la secuencia lo
+necesita presente, saltearía el cálculo, y la secuencia quedaría declarada adoptada con un ledger sin
+huellas. La condición de régimen y el orden de escritura son una sola decisión, no dos. Sin esta condición, la garantía no mutante de AC-15 quedaba escrita en la máquina
+del marcador y **desmentida acá**, porque la revalidación previa al despacho habría recalculado la
+huella de una secuencia legado y la habría detenido por no coincidir con un valor que nadie calculó
+bajo esta receta.
+
+Un `2` **nunca** es un veredicto: es una invocación mal formada y se corrige. Leerlo como `3`
+convertiría un error de uso en una detención con causa inventada. La comprobación no se escribe como
+predicado del clasificador de recuperación: sus predicados son disjuntos por contrato, y uno nuevo que
+coincidiera con otro produciría un conflicto permanente.
+
+### Lo que esta receta deja pendiente
+
+Dos deudas, las dos con reporte de seguimiento propio para que queden rastreables fuera de un archivo
+local.
+
+**La huella de efectos** —`expected_effect_digest` y `observed_digest`— queda **declarada pendiente**.
+Lo que la hace distinta de las otras tres: no es una huella sino N por transición, cada una con un
+`kind` de un enum de cinco clases que no son comparables entre sí; `task-marks` exige además un
+fingerprint de marcas esperado que ningún incidente reportado nombra; y este contrato prohíbe que su
+valor duplique el SHA cuya autoridad vive en el recibo. Diferirla no la deja neutral: la comparación
+que la consume sigue operativa. Lo que queda por cerrar es la entrada de cada `kind`.
+`efectos-seguimiento: https://github.com/alvag/ai-workflows/issues/101`
+
+**La migración de una secuencia viva** al régimen de la receta queda **declarada pendiente**. Lo que
+sí resuelve esta receta es la garantía no mutante de arriba; lo que falta es el protocolo de
+publicación atómica que convierta una secuencia viva sin romper lo que ya tiene escrito.
+`migracion-seguimiento: https://github.com/alvag/ai-workflows/issues/102`
 
 ## Búsqueda de antecedentes
 

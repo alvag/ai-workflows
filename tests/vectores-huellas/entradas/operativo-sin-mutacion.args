@@ -1,0 +1,5 @@
+validar
+--documento
+entradas/esquema-recibo-legado-valido.yml
+--plan
+entradas/plan-legado.md
