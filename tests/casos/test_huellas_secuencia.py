@@ -278,6 +278,60 @@ def test_infraestructura_del_referenciado_da_corpus_incompleto(_ctx: Optional[ob
         "el runner no nombra el vector referenciado cuya infraestructura falló")
 
 
+PROMOCION = RAIZ / "skills" / "sdd-flow" / "scripts" / "promocion-tasks-ready.py"
+# El hash canónico del bloque de abajo, calculado por `contrato-cadena.py` sobre sus bytes. Un valor
+# distinto no es «otro hash»: es un contrato cuya huella declarada no identifica a su contenido.
+HASH_CANONICO = "bd3a154d6c9e3149aa6797ce77c5ceb975c0295a3a2eacc0f257b6b28021b7d8"
+
+
+def _plan_con_hash(destino: Path, valor: str) -> Path:
+    """Un plan que llega al gate de congelamiento, con el `hash` que se le indique."""
+    (destino / "plan.md").write_text(
+        "---\nstatus: planned\ncomplexity: normal\ncontract_procedure: measured-v1\n---\n"
+        "contenido\n## v1\n\n`hash_previo:` · `hash: " + valor + "`\n", encoding="utf-8")
+    (destino / "log.md").write_text(
+        "- `paso: congelar` · `actor: conductor` · `timestamp: 2026-08-24T12:00:00Z`\n",
+        encoding="utf-8")
+    return destino / "plan.md"
+
+
+def test_congelar_exige_una_cadena_valida(_ctx: Optional[object] = None) -> None:
+    """Congelar un contrato cuyo `hash` no corresponde a sus bytes falla cerrado y no muta el plan.
+
+    Es el **control positivo** de esa validación, y sin él la guarda entra salteada: revertirla dejaba
+    la suite entera, los veinte modos y el corpus en verde mientras el defecto volvía completo. Un
+    plan con el hash canónico pasa con y sin validación, así que la mitad que discrimina es esta.
+    """
+    import shutil
+    import subprocess
+    import tempfile
+
+    for valor, codigo, claves, etiqueta in ((HASH_CANONICO, 0, 2, "canónico"),
+                                            ("a" * 64, 1, 0, "que no corresponde")):
+        arena = Path(tempfile.mkdtemp())
+        try:
+            plan = _plan_con_hash(arena, valor)
+            corrida = subprocess.run(
+                ["python3", str(PROMOCION), str(plan), str(arena / "log.md")],
+                capture_output=True, text=True)
+            texto = plan.read_text(encoding="utf-8")
+            congeladas = [l for l in texto.split("\n") if l.startswith("contract_frozen")]
+            assert corrida.returncode == codigo, (
+                f"con un hash {etiqueta} se esperaba {codigo} y vino {corrida.returncode}: "
+                + (corrida.stdout + corrida.stderr).strip()[:120])
+            assert len(congeladas) == claves, (
+                f"con un hash {etiqueta} se esperaban {claves} claves congeladas y hay "
+                f"{len(congeladas)}")
+            if codigo != 0:
+                # El plan queda **intacto**: una promoción que no congela tampoco promueve.
+                assert "status: planned" in texto, "el plan se promovió pese a no congelar"
+                assert "recalculado" in corrida.stderr, (
+                    "el diagnóstico del validador no llega al conductor: "
+                    + corrida.stderr.strip()[:100])
+        finally:
+            shutil.rmtree(arena, ignore_errors=True)
+
+
 CASOS: List[Case] = [
     ("huellas:corpus-completo", GRUPO, test_corpus_completo),
     ("huellas:procedencia-del-manifiesto", GRUPO, test_manifiesto_declara_su_procedencia),
@@ -287,4 +341,5 @@ CASOS: List[Case] = [
     ("huellas:grupos-del-corpus", GRUPO, test_cada_grupo_rinde_por_separado),
     ("huellas:barrido-de-guardas", GRUPO, test_cada_guarda_del_lector_la_caza_el_corpus),
     ("huellas:infra-del-referenciado", GRUPO, test_infraestructura_del_referenciado_da_corpus_incompleto),
+    ("huellas:congelar-exige-cadena", GRUPO, test_congelar_exige_una_cadena_valida),
 ]

@@ -89,10 +89,18 @@ def validar_cadena(plan_arg: str) -> int:
     precondición que solo vive en prosa es una precondición que nadie ejecuta.
     """
     try:
-        return subprocess.run([sys.executable, str(ruta_cadena()), plan_arg],
-                              capture_output=True).returncode
+        corrida = subprocess.run([sys.executable, str(ruta_cadena()), plan_arg],
+                                 capture_output=True)
     except OSError:
         return 2
+    if corrida.returncode != 0:
+        # El diagnóstico del validador nombra la versión y los dos hashes; el código solo dice que
+        # algo falló. Sin reemitirlo, el conductor tiene que volver a correrlo a mano para saber qué
+        # arreglar, y el mensaje ya existía.
+        detalle = corrida.stderr.decode("utf-8", "replace").strip()
+        if detalle:
+            print(detalle, file=sys.stderr)
+    return corrida.returncode
 
 
 def congelar_contrato(texto: str) -> Optional[Tuple[int, str]]:
