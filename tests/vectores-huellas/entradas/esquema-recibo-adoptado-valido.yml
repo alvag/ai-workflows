@@ -1,0 +1,6 @@
+tasks_fingerprint: sha256:0000000000000000000000000000000000000000000000000000000000000001
+
+blocks:
+  - block_id: B1
+    task_ids: [T1, T2]
+    work_commit: null

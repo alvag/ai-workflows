@@ -1,0 +1,7 @@
+schema_version: 1
+sequence: 7
+transitions: []
+effect_events: []
+result:
+  status: active
+  closed_at: null

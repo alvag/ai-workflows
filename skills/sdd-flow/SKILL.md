@@ -789,6 +789,14 @@ adquiere ownership mientras decide qué estado observa.
    documento corrupto y ledger obligatorio ausente son clases distintas; no inferir bloques desde
    commits o tasks.
 2. Capturar ledger, recibo, Git, plan/tasks, proceso/sobre y owner preservando procedencia y frescura.
+   **Las huellas del ledger y del recibo se recalculan, no se leen como dadas.** Cargar `reference.md` → "La receta de serialización de las huellas"
+   e invocar `python_skill <skill_dir>/scripts/huellas-secuencia.py comparar --huella coverage --fuente <tasks.md o plan> --forma <tasks o embebida> --plan <plan> --esperado <valor del ledger>`,
+   y **con recibo presente además** `comparar --huella tasks --fuente <tasks.md o plan> --forma <tasks o embebida> --esperado <valor del recibo>`:
+   son las dos que `reference.md` exige, y con una sola la recuperación afirmaba más de lo que hacía.
+   Todo esto **solo con `huellas_receta: v1`**; bajo el régimen anterior no se recalcula nada.
+   El resultado entra como **hecho con procedencia**, nunca como predicado nuevo: `0` lo confirma, `1`
+   mapea a `conflict` y `3` mapea a `blocked` —los dos ya declarados no mutantes—, y `2` es una
+   invocación mal formada que se corrige y se repite, nunca un veredicto.
 3. Clasificar exactamente un cutpoint/terminal. Cero o múltiples predicados, evidencia contradictoria,
    cese incierto u owner obsoleto sin fencing fallan cerrados y no mutan.
 4. Sin secuencia aplicable o con `inline-pass-through`, permitir la retoma normal. Este último solo
@@ -965,6 +973,18 @@ autoriza despachos por bloques ni convierte la capacidad `cross` en un error.
    El productor del ledger es `sdd-flow` en los dos modos. Antes de escribirlo, cargar
    `reference.md` → "El ledger de secuencia" y "Vocabulario de condiciones", y
    `cross-implement/ownership.md` → "Terminales de secuencia".
+   **Las huellas del ledger se calculan, no se inventan** — y solo cuando la secuencia adopta la
+   receta: con `huellas_receta` ausente está en el régimen anterior y **no se calcula ninguna huella**.
+   Cargar `reference.md` → "La receta de serialización de las huellas" e invocar
+   `python_skill <skill_dir>/scripts/huellas-secuencia.py calcular --huella coverage --fuente <tasks.md o plan> --forma <tasks o embebida> --plan <plan>`
+   y `calcular --huella delta --material <ruta>`. Con `0` se escribe la huella calculada; con `2` se
+   corrige la invocación y se repite; con `3` **el ledger no se crea y el estado no avanza**.
+   `huellas_receta: v1` se escribe en el header **antes** que esos documentos, en la misma ranura que
+   `sequence_contract_version` y por el mismo motivo: escribirlo después vuelve circular la adopción
+   —al crear el ledger el marcador todavía está ausente, la condición de régimen saltea el cálculo, y
+   la secuencia queda marcada como adoptada con documentos que nacieron sin huella—, y adelantarlo
+   además distingue una adopción interrumpida de una corrida del régimen anterior. Los documentos que
+   el modo exige son el recibo y el ledger en `blocks`, y solo el ledger en `inline`.
    - **Modo `inline`:** la propia sesión implementa cada task. Para tasks de comportamiento con un
      seam testeable, seguir los Pasos roja-verde propuestos en `tasks.md` (test que debería fallar
      → implementación mínima → test verde). Si la task es mecánica o no tiene seam razonable, no

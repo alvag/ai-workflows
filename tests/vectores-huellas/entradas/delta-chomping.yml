@@ -1,0 +1,21 @@
+schema_version: 1
+sequence:
+  sequence_id: ejemplo-chomping
+  mode: inline
+  base_anchor: 06be6343e119a70c4adba7c58fef1bc759d2fee8
+  coverage_fingerprint: sha256:0000000000000000000000000000000000000000000000000000000000000001
+  join_state: null
+  delta:
+    algorithm: sha256
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000002
+    material: |
+      con chomping distinto
+  cursor:
+    machine: inline-machine
+    cutpoint: inline-active
+  terminal: active
+transitions: []
+effect_events: []
+result:
+  status: active
+  closed_at: null

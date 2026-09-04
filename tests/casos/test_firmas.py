@@ -131,9 +131,15 @@ def _argumentos_genericos(firma: Firma) -> List[str]:
 def _preparar_mutacion(firma: Firma, arena: Path) -> Tuple[Path, List[str]]:
     cwd = arena
     if firma.nombre == "promocion-tasks-ready":
+        # El plan lleva su cadena de contrato porque a este gate no se llega sin ella: el script
+        # congela la version vigente y el `hash` que ella declara, y sin cadena no hay que congelar.
         (cwd / "plan.md").write_text(
             "---\nstatus: planned\ncomplexity: normal\n"
-            "contract_procedure: measured-v1\n---\ncontenido\n",
+            "contract_procedure: measured-v1\n---\ncontenido\n"
+            # El hash es el **canónico** del bloque, no un relleno: el script valida la cadena antes
+            # de congelar, así que un valor inventado bloquea. El fixture anterior usaba sesenta y
+            # cuatro `a` y la promoción lo congelaba, que era justo el defecto.
+            "## v1\n\n`hash_previo:` · `hash: bd3a154d6c9e3149aa6797ce77c5ceb975c0295a3a2eacc0f257b6b28021b7d8`\n",
             encoding=ENCODING,
         )
         (cwd / "log.md").write_text(
@@ -186,6 +192,10 @@ def _comprobar_mutacion_correcta(firma: Firma, arena: Path,
     if firma.nombre == "promocion-tasks-ready":
         plan = (arena / "plan.md").read_text(encoding=ENCODING)
         assert "status: tasks-ready\n" in plan
+        # El congelamiento es el unico paso que escribe las dos claves congeladas: sin ellas el
+        # calculo de cobertura da 3 y la receta de huellas no arranca en ningun flujo real.
+        assert "contract_frozen_version: 1\n" in plan
+        assert "contract_frozen_hash: bd3a154d6c9e3149aa6797ce77c5ceb975c0295a3a2eacc0f257b6b28021b7d8\n" in plan
         assert not tuple(arena.glob(".plan.md.promocion.*"))
     elif firma.nombre == "split":
         assert (arena / "index.md").read_text(encoding=ENCODING) == "| A | uno |\n"

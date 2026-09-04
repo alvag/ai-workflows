@@ -1,0 +1,9 @@
+tasks_fingerprint: sha256:0000000000000000000000000000000000000000000000000000000000000001
+extra_del_legado: se admite
+blocks:
+  - block_id: B1
+    task_ids: [T1, T2]
+    work_commit: null
+  - block_id: B1
+    task_ids: [T3]
+    work_commit: null

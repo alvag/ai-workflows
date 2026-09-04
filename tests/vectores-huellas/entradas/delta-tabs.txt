@@ -1,0 +1,6 @@
+--- a/x
++++ b/x
+@@ -1,2 +1,2 @@
+ 	con tab
+-viejo
++nuevo

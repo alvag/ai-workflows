@@ -115,6 +115,12 @@ def origins_for(identifier: str, group: str,
         return frozenset({("guard", "apertura")})
     if group == "sedes-config-vault":
         return frozenset({("guard", "apertura")})
+    if group == "huellas-secuencia":
+        # No deriva de ninguna migracion: nace con la receta de serializacion de las huellas. No se
+        # reutiliza un grupo existente, que le atribuiria un flujo historico ajeno, ni entra al
+        # inventario, porque `origins_for` solo lee sus secciones 1 y 4 y una fila en la 7 no crearia
+        # un origen valido.
+        return ORIGEN_SIN_MIGRACION
     if group in {"dimensiones", "normalizaciones"}:
         return frozenset({("case", "contrato-cadena/positivo")})
     if identifier in {"cobertura-v14:tres-direcciones", "entrypoint-v20:ids"}:

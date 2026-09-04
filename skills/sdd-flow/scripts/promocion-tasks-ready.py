@@ -3,13 +3,15 @@ propio de la complejidad se promueve, y tasks-ready se acepta como reintento sin
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import re
+import subprocess
 import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 
 def fallo(mensaje: str, codigo: int) -> int:
@@ -73,6 +75,59 @@ def clasificar_constancia(texto: str) -> str:
     return "formato/anclaje"
 
 
+def ruta_cadena() -> Path:
+    return (Path(__file__).resolve().parent.parent.parent
+            / "cross-implement" / "scripts" / "contrato-cadena.py")
+
+
+def validar_cadena(plan_arg: str) -> int:
+    """Corre el validador de la cadena y devuelve su código, sin interpretarlo.
+
+    Va acá y no en la prosa de un paso: la sede normativa **decía** que la cadena se valida antes de
+    congelar y ningún paso la corría, así que un contrato cuyo `hash` declarado no correspondía a sus
+    bytes se congelaba igual y la huella congelada no identificaba al contrato que congela. Una
+    precondición que solo vive en prosa es una precondición que nadie ejecuta.
+    """
+    try:
+        corrida = subprocess.run([sys.executable, str(ruta_cadena()), plan_arg],
+                                 capture_output=True)
+    except OSError:
+        return 2
+    if corrida.returncode != 0:
+        # El diagnóstico del validador nombra la versión y los dos hashes; el código solo dice que
+        # algo falló. Sin reemitirlo, el conductor tiene que volver a correrlo a mano para saber qué
+        # arreglar, y el mensaje ya existía.
+        detalle = corrida.stderr.decode("utf-8", "replace").strip()
+        if detalle:
+            print(detalle, file=sys.stderr)
+    return corrida.returncode
+
+
+def congelar_contrato(texto: str) -> Optional[Tuple[int, str]]:
+    """La versión vigente del contrato de verificación y el `hash` que ella misma declara.
+
+    El hash no se recalcula: se **lee** el que la versión declara, que es el mismo que
+    `contrato-cadena.py` valida al encadenarla. Recomputarlo acá crearía una segunda definición del
+    mismo dato, y las dos se desincronizan en cuanto una cambie de canonicalización.
+    """
+    # El parser de versiones es el de `contrato-cadena.py`, importado y no reescrito: un segundo
+    # regex sobre el mismo formato es una segunda definición que se desincroniza con la primera en
+    # cuanto el formato cambie, y es esa cadena la que define qué versión existe.
+    especificacion = importlib.util.spec_from_file_location("contrato_cadena", ruta_cadena())
+    if especificacion is None or especificacion.loader is None:
+        return None
+    modulo = importlib.util.module_from_spec(especificacion)
+    especificacion.loader.exec_module(modulo)
+    halladas = modulo.versiones(texto)
+    if not halladas:
+        return None
+    numero, bloque = halladas[-1]
+    declarado = re.search(r"`hash: ([0-9a-f]{64})`", "\n".join(bloque))
+    if declarado is None:
+        return None
+    return numero, declarado.group(1)
+
+
 def main() -> int:
     if len(sys.argv) != 3:
         print("USO:promocion-tasks-ready plan log", file=sys.stderr)
@@ -129,9 +184,23 @@ def main() -> int:
     if status != esperado:
         return fallo(f'status "{status}" no permite promover; se esperaba "{esperado}"', 1)
 
+    # La versión que se congela es la **vigente en este gate**, no la última que llegue después: el
+    # contrato lo declara así, y por eso las dos claves nacen acá y no se recomputan. Sin este paso
+    # nadie las escribía y el ejecutable de las huellas, que las exige, devolvía `3` en todo flujo
+    # real: el ledger no se creaba y la receta no podía arrancar.
+    codigo_cadena = validar_cadena(plan_arg)
+    if codigo_cadena != 0:
+        return fallo("la cadena del contrato no valida: contrato-cadena.py devolvió "
+                     f"{codigo_cadena}, así que el hash declarado no identifica a sus bytes", 1)
+    congelada = congelar_contrato(plan)
+    if congelada is None:
+        return fallo("no se pudo determinar la versión vigente del contrato ni su hash", 1)
+    version_congelada, hash_congelado = congelada
+
     lineas = plan.splitlines(keepends=True)
     dentro = False
     cambiado = False
+    escritas = set()
     salida: List[str] = []
     for indice, linea in enumerate(lineas):
         contenido = linea.rstrip("\r\n")
@@ -139,10 +208,23 @@ def main() -> int:
         if indice == 0 and contenido == "---":
             dentro = True
         elif dentro and contenido == "---":
+            # Las dos claves congeladas se emiten al cerrar el header si no estaban; si estaban, ya
+            # se reescribieron en su lugar y el orden del header no se altera.
+            faltantes = [(k, v) for k, v in (("contract_frozen_version", str(version_congelada)),
+                                             ("contract_frozen_hash", hash_congelado))
+                         if k not in escritas]
+            for clave, valor in faltantes:
+                salida.append(f"{clave}: {valor}\n")
             dentro = False
         elif dentro and not cambiado and re.match(r"^status:\s*", contenido):
             contenido = "status: tasks-ready"
             cambiado = True
+        elif dentro and re.match(r"^contract_frozen_version:\s*", contenido):
+            contenido = f"contract_frozen_version: {version_congelada}"
+            escritas.add("contract_frozen_version")
+        elif dentro and re.match(r"^contract_frozen_hash:\s*", contenido):
+            contenido = f"contract_frozen_hash: {hash_congelado}"
+            escritas.add("contract_frozen_hash")
         salida.append(contenido + fin)
     if not cambiado:
         return fallo("falló la escritura del temporal hermano del plan", 2)

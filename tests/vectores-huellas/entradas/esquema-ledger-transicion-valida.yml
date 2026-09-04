@@ -1,0 +1,35 @@
+schema_version: 1
+sequence:
+  sequence_id: ejemplo-transicion
+  mode: blocks
+  base_anchor: 06be6343e119a70c4adba7c58fef1bc759d2fee8
+  coverage_fingerprint: sha256:0000000000000000000000000000000000000000000000000000000000000001
+  join_state: null
+  receipt_ref: partition-receipt.yml
+  delta:
+    algorithm: sha256
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000002
+    material: ""
+  cursor:
+    machine: block-machine
+    cutpoint: C2
+  terminal: active
+transitions:
+  - transition_id: ejemplo-transicion:1:C1:C2
+    from_cursor: {machine: block-machine, cutpoint: C1}
+    to_cursor: {machine: block-machine, cutpoint: C2}
+    block: {id: B1, ordinal: 1}
+    intent:
+      intent_id: ejemplo-transicion:1:C1:C2:intent
+    effects:
+      - effect_id: ejemplo-transicion:1:C1:C2:intent:ledger-cursor
+        kind: ledger-cursor
+        expected_effect_digest: sha256:0000000000000000000000000000000000000000000000000000000000000003
+effect_events:
+  - event_id: ejemplo-transicion:1:C1:C2:intent:ledger-cursor:observed
+    effect_id: ejemplo-transicion:1:C1:C2:intent:ledger-cursor
+    state: observed
+    observed_digest: sha256:0000000000000000000000000000000000000000000000000000000000000003
+result:
+  status: active
+  closed_at: null
