@@ -129,8 +129,14 @@ def _campos_de_task(cuerpo: Sequence[str]) -> Dict[str, List[str]]:
             # Descartarla en silencio daba la misma huella a dos tareas con restricciones distintas,
             # que es exactamente lo que AC-6 prohíbe.
             raise NoMedible(f"viñeta no reconocida dentro de una unidad: {linea.strip()[:50]}")
-        if linea.strip() and clave_actual and campos.get(clave_actual):
-            campos[clave_actual][-1] = campos[clave_actual][-1] + " " + linea.strip()
+        if linea.strip() and clave_actual and clave_actual in campos:
+            if campos[clave_actual]:
+                campos[clave_actual][-1] = campos[clave_actual][-1] + " " + linea.strip()
+            else:
+                # Una etiqueta cuyo valor arranca en la línea siguiente abre la clave con la lista
+                # vacía. Exigir que ya tuviera un valor descartaba ese valor **en silencio**, que es
+                # la misma clase que la viñeta no reconocida rechaza tres líneas más arriba.
+                campos[clave_actual].append(linea.strip())
     return campos
 
 
@@ -207,7 +213,7 @@ def _indices_de_task(lineas: List[str], fuera: List[bool]):
     return indices, encabezados, excluidas
 
 
-def unidades(texto: str, forma: str = "tasks") -> List[str]:
+def unidades(texto: str, forma: str) -> List[str]:
     """Las unidades del alcance, en **orden documental**: por su posición en la fuente.
 
     Los bloques globales son secciones de `tasks.md`. En la forma **embebida** las tareas viven
@@ -251,7 +257,12 @@ def unidades(texto: str, forma: str = "tasks") -> List[str]:
         if identificador in slugs:
             raise NoMedible(f"slug de bloque global duplicado: {identificador}")
         slugs.add(identificador)
-        siguientes = [i for i in encabezados if i > inicio]
+        # El cuerpo de un global termina en el próximo encabezado **o en la primera task**, lo que
+        # venga antes. Sin la segunda frontera, un global escrito antes de las tasks se tragaba sus
+        # bloques y **la marca del checkbox entraba en la huella**: marcar una task cambiaba el
+        # valor, que es exactamente lo que AC-6 prohíbe, y en un flujo real la revalidación previa
+        # al despacho detenía la secuencia después de completar la primera.
+        siguientes = [i for i in encabezados + indices if i > inicio]
         fin = min(siguientes) if siguientes else len(lineas)
         cuerpo = lineas[inicio + 1:fin]
         while cuerpo and cuerpo[-1].strip() == "":
@@ -269,11 +280,11 @@ def _digest(preimage: str) -> str:
     return "sha256:" + hashlib.sha256(preimage.encode("utf-8")).hexdigest()
 
 
-def preimage_tasks(texto: str, forma: str = "tasks") -> str:
+def preimage_tasks(texto: str, forma: str) -> str:
     return PREFIJOS["tasks"] + "\n" + "".join(unidades(texto, forma))
 
 
-def preimage_coverage(texto: str, plan: str, forma: str = "tasks") -> str:
+def preimage_coverage(texto: str, plan: str, forma: str) -> str:
     """Dos fuentes: `texto` trae el alcance y `plan` las claves congeladas del contrato.
 
     Confundirlas produce una huella sobre alcance vacío que igual parece válida, porque el `plan.md`
@@ -317,8 +328,7 @@ def preimage_delta(material: str) -> str:
 
 
 def calcular(huella: str, fuente: Optional[str], material: Optional[str],
-             documento: Optional[str], plan: Optional[str] = None,
-             forma: str = "tasks") -> str:
+             documento: Optional[str], plan: Optional[str], forma: Optional[str]) -> str:
     if huella == "tasks":
         return _digest(preimage_tasks(_leer(fuente), forma))
     if huella == "coverage":
@@ -392,7 +402,7 @@ def _regimen(plan: Optional[str]) -> str:
             if campo.group(1) != "v1":
                 raise NoMedible(f"huellas_receta con un valor no soportado: {campo.group(1)}")
             return "v1"
-        if linea.strip() == "---" and linea is not None:
+        if linea.strip() == "---":
             continue
     return "legado"
 
@@ -468,6 +478,10 @@ def _manifiesto(corpus: str) -> List[Dict[str, str]]:
     for fila in filas:
         # `preimage_hex` es el registro auditable de los bytes canónicos esperados. Si nadie lo
         # consume, se puede corromper entero sin que el corpus cambie de color.
+        if fila["huella"] in ("tasks", "coverage") and fila.get("forma") not in ("tasks", "embebida"):
+            # La forma se declara en **todas** las vías, no solo en el CLI: un default interno la
+            # devuelve por la puerta de atrás y ningún vector lo ve.
+            raise NoMedible(f"{fila['id']}: el manifiesto no declara una forma válida")
         hx, dg = fila.get("preimage_hex", "-"), fila.get("digest", "-")
         if hx == "-" or dg == "-":
             continue
@@ -535,9 +549,13 @@ def verificar_vectores(corpus: str, caso: Optional[str]) -> Tuple[int, List[str]
                     rinde, visto = False, f"{obtenido} no es su golden declarado {esperado}"
                 else:
                     visto = f"{obtenido} contra {contra}"
-        else:
+        elif relacion == "propio":
             rinde = obtenido == esperado
             visto = obtenido if obtenido is not None else detalle
+        else:
+            # Sin esta rama, una relación mal escrita caía en el juicio por igualdad y el vector
+            # imprimía `ok`: el oráculo se desactivaba con un typo del manifiesto y nada lo decía.
+            raise NoMedible(f"{fila['id']}: relación desconocida en el manifiesto: {relacion!r}")
         fallos += not rinde
         lineas.append(f"{'ok ' if rinde else 'FALLA'} {fila['id']} {relacion} {visto}")
     if infra:
@@ -583,6 +601,10 @@ def _rendir(corpus: str, fila: Dict[str, str]) -> Tuple[Optional[str], str]:
     # vectores `falla-cerrado` con solo borrarles el archivo.
     if not Path(entrada).is_file():
         return INFRA, f"la entrada del vector no existe: {fila['entrada']}"
+    # El `plan` es tan insumo como la entrada: sin él, los `falla-cerrado` del recibo pasaban por
+    # «la fuente no existe», que no es el fallo que declaran.
+    if fila.get("plan") and fila["plan"] != "-" and not (Path(corpus) / fila["plan"]).is_file():
+        return INFRA, f"el plan del vector no existe: {fila['plan']}"
     if sustitucion != "-":
         try:
             contenido = _con_sustitucion(entrada, sustitucion)
@@ -623,9 +645,9 @@ def _rendir_entrada(corpus: str, fila: Dict[str, str], entrada: str) -> Tuple[Op
             # El contrato admite las dos formas del material: el escalar de bloque del ledger y el
             # material suelto de la creación, cuando el ledger todavía no existe.
             if entrada.endswith(".yml"):
-                obtenido = calcular("delta", None, None, entrada)
+                obtenido = calcular("delta", None, None, entrada, None, None)
             else:
-                obtenido = calcular("delta", None, entrada, None)
+                obtenido = calcular("delta", None, entrada, None, None, None)
         elif fila["huella"] == "esquema":
             plan = str(Path(corpus) / fila["plan"]) if fila.get("plan") else None
             faltas = validar(entrada, plan)
@@ -633,7 +655,7 @@ def _rendir_entrada(corpus: str, fila: Dict[str, str], entrada: str) -> Tuple[Op
         else:
             plan = str(Path(corpus) / fila["plan"]) if fila.get("plan") else None
             obtenido = calcular(fila["huella"], entrada, None, None, plan,
-                                fila.get("forma") or "tasks")
+                                fila["forma"])
         return obtenido, ""
     except NoMedible as error:
         return None, str(error)[:80]

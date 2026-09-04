@@ -876,6 +876,13 @@ Uso:
 
 `/sdd-flow doctor <id>` valida coherencia sin escribir. Salida sugerida:
 
+**Es el consumidor del subcomando `validar`.** Con una secuencia bajo `huellas_receta: v1`, `doctor`
+corre `python_skill <skill_dir>/scripts/huellas-secuencia.py validar --documento <ledger>` y, con
+recibo presente, `validar --documento <recibo> --plan <plan>`, y **lee su código de salida**: `0`
+admite cálculo, `3` no es medible y va como `FAIL` con su diagnóstico. Es la única invocación de ese
+subcomando en todo el ecosistema: `calcular` y `comparar` validan por dentro antes de computar, así
+que sin este consumidor `validar` sería una guarda que ningún procedimiento invoca.
+
 ```markdown
 ## Doctor — <id>
 | Check | Resultado | Evidencia |
@@ -1361,7 +1368,7 @@ Cardinalidades:
 |---|---|
 | raíz | exactamente un `schema_version`, un `sequence`, una lista `transitions`, una lista `effect_events` y un `result` |
 | `sequence` / `result` | exactamente un objeto de cada uno; sus estados deben coincidir al cerrar |
-| `join_state` | 0..1; ausente, `null` o cualquier nodo compatible con JSON; se preserva sin interpretarlo |
+| `join_state` | 0..1; ausente, `null` o cualquier nodo compatible con JSON; se preserva sin interpretarlo. **Si anida, se escribe en forma de bloque**: el lector dirigido admite una colección en línea sin anidar, así que un nodo opaco anidado escrito en línea no se lee y su lectura dependería de cómo lo serializó el productor |
 | `transitions` | 0..N, orden estricto de publicación y `transition_id` único dentro de la secuencia |
 | `intent` | exactamente una por transición; `intent_id` único y derivado de `transition_id` |
 | `effects` | 1..5 por transición, `effect_id` único; cada entrada usa un `kind` cerrado y su propio `expected_effect_digest` |
@@ -1735,12 +1742,22 @@ En un flujo trivial las dos fuentes son el mismo archivo; en uno normal o comple
 duplica lo que el recibo declara, y la huella se computa igual en el modo donde no hay recibo.
 
 La versión congelada del contrato de verificación y su huella viven en dos claves propias del header
-del `plan.md`, `contract_frozen_version` y `contract_frozen_hash`, escritas al crear la secuencia y
-solo **después** de validar la cadena del contrato con
-`python_skill <skill_dir>/../cross-implement/scripts/contrato-cadena.py <plan>`. Ese validador
+del `plan.md`, `contract_frozen_version` y `contract_frozen_hash`. **Las escribe el congelamiento**,
+en el gate donde el contrato se congela: `scripts/promocion-tasks-ready.py` toma la versión vigente y
+el `hash` que ella misma declara —no lo recalcula, porque recomputarlo crearía una segunda definición
+del mismo dato— y las persiste en el header junto con la promoción del estado. Nacen ahí y no en
+`implement`, porque el paso que **consume** el contrato congelado no puede ser el que lo congela, y
+porque tienen que existir **antes** del primer cálculo de cobertura: el ejecutable las exige, así que
+sin ellas devuelve `3`, el ledger no se crea y la receta no arranca. La cadena del contrato se valida
+con `python_skill <skill_dir>/../cross-implement/scripts/contrato-cadena.py <plan>` **antes** de esa
+escritura. Ese validador
 devuelve `0` también cuando el archivo no existe, porque lo lee como texto vacío y no encuentra
 ninguna versión: la presencia del contrato la comprueba el propio ejecutable y no se delega en ese
 código de salida.
+
+El header se lee como **UTF-8 sin BOM**, que es lo que la receta declara para todas sus entradas: un
+BOM al inicio del plan deja el delimitador de apertura sin reconocer, así que el frontmatter no se ve
+y el diagnóstico que sale es «contrato ausente». Se nombra acá porque ese mensaje no lo sugiere.
 
 Una versión posterior del contrato que aparezca más tarde **no** mueve la huella congelada, y esa
 diferencia se declara en vez de recomputarse. Un contrato ausente o con la cadena inválida da **no
@@ -1837,7 +1854,7 @@ receta ningún documento decía quién escribe el recibo ni cuándo.
 | escritura-recibo | tras aprobar la partición y antes de todo despacho | `python_skill <skill_dir>/scripts/huellas-secuencia.py calcular --huella tasks --fuente <tasks.md o plan> --forma <tasks o embebida>` | escribe la huella calculada en el recibo | no aplica: acá no hay comparación | no escribe; se corrige la invocación y se repite | no escribe; el flujo no despacha |
 | creacion-ledger | paso 2 de implementación, al crear la secuencia | `python_skill <skill_dir>/scripts/huellas-secuencia.py calcular --huella coverage --fuente <tasks.md o plan> --forma <tasks o embebida> --plan <plan>` y `calcular --huella delta --material <ruta>` | escribe las huellas calculadas en el ledger | no aplica | no crea; se corrige y se repite | no crea; el estado no avanza |
 | revalidacion-despacho | el recibo y el paso 6 de la tabla de la transición entre bloques | `python_skill <skill_dir>/scripts/huellas-secuencia.py comparar --huella tasks --fuente <tasks.md o plan> --forma <tasks o embebida> --esperado <valor del recibo>` | habilita la postcondición | la secuencia se detiene | se corrige y se repite; no es veredicto | la secuencia se detiene |
-| recuperacion | el snapshot de clasificación | `python_skill <skill_dir>/scripts/huellas-secuencia.py comparar --huella coverage --fuente <tasks.md o plan> --forma <tasks o embebida> --plan <plan> --esperado <valor del ledger>`, y con recibo presente además `comparar --huella tasks --fuente <tasks.md o plan> --forma <tasks o embebida> --esperado <valor del recibo>` | entra como hecho con procedencia, nunca como predicado nuevo | mapea a `conflict`, ya declarado no mutante | se corrige y se repite; no es veredicto | mapea a `blocked`, ya declarado no mutante |
+| recuperacion | el snapshot de clasificación | `python_skill <skill_dir>/scripts/huellas-secuencia.py comparar --huella coverage --fuente <tasks.md o plan> --forma <tasks o embebida> --plan <plan> --esperado <valor del ledger>`, y con recibo presente además `comparar --huella tasks --fuente <tasks.md o plan> --forma <tasks o embebida> --esperado <valor del recibo>`, y `comparar --huella delta --documento <ledger> --esperado <valor del ledger>`, que es la vía por documento y la segunda fase que AC-9 declara | entra como hecho con procedencia, nunca como predicado nuevo | mapea a `conflict`, ya declarado no mutante | se corrige y se repite; no es veredicto | mapea a `blocked`, ya declarado no mutante |
 
 <!-- integracion-huellas:fin -->
 

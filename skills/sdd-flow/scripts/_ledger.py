@@ -104,17 +104,28 @@ def _valor_de_bloque(lineas: List[str], indice: int, indicador: str) -> Tuple[st
     sangria: Optional[int] = None
     while indice < len(lineas):
         linea = lineas[indice]
-        if linea.strip() == "":
+        if sangria is None:
+            if not linea.strip():
+                cuerpo.append("")
+                indice += 1
+                continue
+            # Solo la **primera línea con contenido** fija la sangría, y esa sí tiene que ser de
+            # espacios. De ahí en adelante el prefijo se compara, no se vuelve a medir.
+            sangria = _sangria(linea)
+        # Pasada la sangría del bloque, todo es **contenido**: un tabulador ahí es parte del parche
+        # —un archivo indentado con tabs lo produce en cada línea de contexto— y una línea de solo
+        # espacios conserva los que sobran del prefijo. Medir la sangría de cada línea rechazaba el
+        # primero, y colapsar las de solo espacios se comía el espacio de una línea de contexto
+        # vacía: dos digests distintos para el mismo material, y un parche que ya no aplica.
+        if len(linea) >= sangria and linea[:sangria].strip(" ") == "":
+            cuerpo.append(linea[sangria:])
+            indice += 1
+            continue
+        if not linea.strip():
             cuerpo.append("")
             indice += 1
             continue
-        actual = _sangria(linea)
-        if sangria is None:
-            sangria = actual
-        if actual < sangria:
-            break
-        cuerpo.append(linea[sangria:])
-        indice += 1
+        break
     while cuerpo and cuerpo[-1] == "":
         cuerpo.pop()
     return "\n".join(cuerpo), indice
@@ -221,8 +232,8 @@ def leer(texto: str) -> Dict[str, Any]:
     # un escalar de bloque puede contener una línea `---` que es parte del valor. `delta.material`
     # guarda un parche, y un parche sobre un archivo con frontmatter lleva `---` como línea de
     # contexto, así que barrer el texto entero rechazaba un ledger válido y le impedía recalcular su
-    # digest. Un segundo documento más abajo no se escapa: sus líneas no las consume `_mapa` y caen
-    # en la guarda de contenido sobrante.
+    # digest. Un segundo documento más abajo no se escapa: `_mapa` corta en su `---` con «línea sin
+    # clave», que es otro mecanismo y el mismo efecto — rechazado y fallando cerrado.
     for linea in lineas:
         desnuda = linea.strip()
         if not desnuda or desnuda.startswith("#"):

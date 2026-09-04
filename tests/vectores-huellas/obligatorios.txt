@@ -88,3 +88,10 @@ cobertura-self-review-task
 cobertura-id-duplicado
 delta-marcador-suelto
 delta-marcador-desde-ledger
+tasks-global-primero-marcado
+tasks-seam-continuado
+tasks-seam-continuado-distinto
+delta-contexto-vacio-suelto
+delta-contexto-vacio-desde-ledger
+delta-tabs-suelto
+delta-tabs-desde-ledger
