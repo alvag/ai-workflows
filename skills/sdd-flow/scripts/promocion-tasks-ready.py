@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import os
 import re
+import subprocess
 import sys
 import tempfile
 from datetime import datetime
@@ -74,6 +75,26 @@ def clasificar_constancia(texto: str) -> str:
     return "formato/anclaje"
 
 
+def ruta_cadena() -> Path:
+    return (Path(__file__).resolve().parent.parent.parent
+            / "cross-implement" / "scripts" / "contrato-cadena.py")
+
+
+def validar_cadena(plan_arg: str) -> int:
+    """Corre el validador de la cadena y devuelve su código, sin interpretarlo.
+
+    Va acá y no en la prosa de un paso: la sede normativa **decía** que la cadena se valida antes de
+    congelar y ningún paso la corría, así que un contrato cuyo `hash` declarado no correspondía a sus
+    bytes se congelaba igual y la huella congelada no identificaba al contrato que congela. Una
+    precondición que solo vive en prosa es una precondición que nadie ejecuta.
+    """
+    try:
+        return subprocess.run([sys.executable, str(ruta_cadena()), plan_arg],
+                              capture_output=True).returncode
+    except OSError:
+        return 2
+
+
 def congelar_contrato(texto: str) -> Optional[Tuple[int, str]]:
     """La versión vigente del contrato de verificación y el `hash` que ella misma declara.
 
@@ -84,8 +105,7 @@ def congelar_contrato(texto: str) -> Optional[Tuple[int, str]]:
     # El parser de versiones es el de `contrato-cadena.py`, importado y no reescrito: un segundo
     # regex sobre el mismo formato es una segunda definición que se desincroniza con la primera en
     # cuanto el formato cambie, y es esa cadena la que define qué versión existe.
-    cadena = Path(__file__).resolve().parent.parent.parent / "cross-implement" / "scripts" / "contrato-cadena.py"
-    especificacion = importlib.util.spec_from_file_location("contrato_cadena", cadena)
+    especificacion = importlib.util.spec_from_file_location("contrato_cadena", ruta_cadena())
     if especificacion is None or especificacion.loader is None:
         return None
     modulo = importlib.util.module_from_spec(especificacion)
@@ -160,6 +180,10 @@ def main() -> int:
     # contrato lo declara así, y por eso las dos claves nacen acá y no se recomputan. Sin este paso
     # nadie las escribía y el ejecutable de las huellas, que las exige, devolvía `3` en todo flujo
     # real: el ledger no se creaba y la receta no podía arrancar.
+    codigo_cadena = validar_cadena(plan_arg)
+    if codigo_cadena != 0:
+        return fallo("la cadena del contrato no valida: contrato-cadena.py devolvió "
+                     f"{codigo_cadena}, así que el hash declarado no identifica a sus bytes", 1)
     congelada = congelar_contrato(plan)
     if congelada is None:
         return fallo("no se pudo determinar la versión vigente del contrato ni su hash", 1)

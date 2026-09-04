@@ -1748,9 +1748,15 @@ el `hash` que ella misma declara —no lo recalcula, porque recomputarlo crearí
 del mismo dato— y las persiste en el header junto con la promoción del estado. Nacen ahí y no en
 `implement`, porque el paso que **consume** el contrato congelado no puede ser el que lo congela, y
 porque tienen que existir **antes** del primer cálculo de cobertura: el ejecutable las exige, así que
-sin ellas devuelve `3`, el ledger no se crea y la receta no arranca. La cadena del contrato se valida
-con `python_skill <skill_dir>/../cross-implement/scripts/contrato-cadena.py <plan>` **antes** de esa
-escritura. Ese validador
+sin ellas devuelve `3`, el ledger no se crea y la receta no arranca.
+
+**La cadena se valida antes de congelar, y la corre el propio script.** `promocion-tasks-ready.py`
+ejecuta `contrato-cadena.py <plan>` y **lee su código**: distinto de cero no congela y no muta el
+plan. Vive en el script y no en un paso de la prosa porque una precondición que solo vive en prosa es
+una precondición que nadie ejecuta — así entró el defecto que esto cierra: el texto declaraba la
+validación, ningún paso la corría, y un contrato cuyo `hash` declarado no correspondía a sus bytes se
+congelaba igual, dejando una huella congelada que **no identifica al contrato que congela**. Ese
+validador
 devuelve `0` también cuando el archivo no existe, porque lo lee como texto vacío y no encuentra
 ninguna versión: la presencia del contrato la comprueba el propio ejecutable y no se delega en ese
 código de salida.
