@@ -517,6 +517,21 @@ Cuando el work order es SDD (`.plans/<id>/`), de dónde sale cada ranura lo fija
 "Derivación acotada por ranura", más abajo. Acá no se repite: era una segunda enumeración del mismo
 hecho, y quedó con alcance distinto en cuanto la tabla se endureció.
 
+**Cómo NO redactar la parte variable de `CONSTRAINTS`.** El worker corre en `un solo turno`, y el
+prompt se lo dice en su línea fija. Lo que el conductor agrega no puede contradecirlo: al escribir
+las restricciones propias del work order es natural avisar que un comando `tarda varios minutos`
+para que el worker no lo mate antes de tiempo, y en un transporte de un turno esa frase **invita al
+patrón que lo rompe** — lanzar lo largo en segundo plano y cerrar el turno esperando una
+notificación que no va a llegar. Está registrado: un worker entregó el código correcto y ninguna
+prueba, con el reporte reducido a una frase diciendo que esperaba. Si hace falta prevenir el
+`timeout`, se dice que el comando es lento **y que hay que esperarlo dentro del turno**, nunca que
+se puede retomar después.
+
+**Y el presupuesto es responsabilidad de quien despacha.** El `deadline` de la corrida tiene que
+cubrir la duración prevista de las comprobaciones: si no la cubre, se pide el override antes de
+lanzar en vez de descubrirlo al vencer. Una comprobación que no termina dentro de ese presupuesto ya
+tiene terminal contratado —`deadline_exceeded`, con su cese incierto— y no se inventa otro.
+
 **Render de la ranura `PROOF`:** **una línea por comando**, en el orden de la lista, y cada comando
 va literal y entero, sin abreviar ni resumir: el worker no puede reconstruir uno truncado, y un comando
 a medias falla de un modo que parece un defecto del código.
@@ -795,6 +810,14 @@ Lo que el conductor puede dar por contratado:
   — es lo que vuelve comparable la medición de base contra el resultado del bloque.
 - Reporte no parseable → el diff sigue siendo la verdad (regla 4): revisarlo igual; se pierde solo
   la narrativa.
+- **Un reporte que `no acredita fin` no es lo mismo que uno mal formateado.** El discriminador no es
+  *parsea / no parsea* sino **acredita fin / no acredita fin**: con el proceso ya terminado y sin
+  `STATUS: done` en la columna 0, el worker cerró su turno sin declararse terminado. Eso es
+  `UNAVAILABLE` con causa `runtime_failure` —cuya definición vigente ya es "arrancó bien y falló
+  ejecutando: error, salida no parseable"—, y **no** `IMPLEMENTED`: el proceso puede haber salido con
+  código cero, así que sin este predicado el terminal es indistinguible de una corrida completa.
+  La paridad no es nueva: `cross-review/reference.md` → "Señal de cierre" fija la misma distinción
+  para su revisor, con el mismo fundamento sobre qué palanca corresponde.
 
 ## Medición de base y adjudicación
 
@@ -975,6 +998,14 @@ La prueba de si aplica es una sola pregunta: **si borro el reporte, ¿queda algo
 el principio aplica. Si no, el reporte era el artefacto y su formato no es narrativa: es el
 entregable.
 
+**Segunda condición, y es distinta de la primera:** el principio cubre el reporte que *no parsea*,
+no el que `no acredita fin`. Un reporte mal formateado describe mal un trabajo terminado; uno sin
+`STATUS: done` en la columna 0, con el proceso ya cerrado, **acredita que el trabajo no se
+completó**. El diff se revisa igual —eso no cambia—, pero ese diff no puede
+**cerrar el bloque como completo**: el worker no declaró haber terminado, así que su delta se trata
+como entrega parcial y va al fix round o al takeover. Confundir los dos casos convierte "se pierde la narrativa"
+en "se pierde la señal de que faltaba trabajo".
+
 ## Fix loop
 
 > **El delta de fix no tiene asset propio.** No es un prompt con estructura fija sino el contenido
@@ -1064,6 +1095,28 @@ Una implementación tarda mucho más que una crítica: presupuestos por encima d
   mira las tools; un build terminado nunca se desliza en silencio a la fase de revisión.
 - No matar un run background silencioso antes del deadline: las implementaciones legítimamente
   tardan.
+- **El poll observa dos cosas, no una.** Buscar solo `STATUS: done` deja un caso sin salida: el
+  worker que cerró su turno **sin** completar el trabajo. Su proceso ya terminó, así que la marca no
+  va a aparecer nunca, y esperar el deadline entero para después registrar `deadline_exceeded`
+  clasifica con la causa equivocada tras media hora de espera evitable.
+
+  **El observable del cese no se inventa acá: ya está definido.**
+  `cross-review/corridas-en-vuelo.md` da `process_ref`, con su tipo, su referencia, su evidencia de
+  frescura y su autoridad; y su matriz de precedencia resuelve la combinación en el caso `D2`
+  —proceso terminado más artefacto ausente o inválido— hacia `clasificar_error`, con el argumento de
+  por qué eso **no** es `recovery-required`: un fallo diagnosticado se adjudica, y `recovery-required`
+  es para cuando no se sabe qué pasó. Esta vía **consume** esa sede en vez de describir un mecanismo
+  paralelo, que se desincronizaría.
+
+  Aplicado acá, son dos ramas y se leen por separado:
+
+  | Lo observado | Terminal | Por qué |
+  |---|---|---|
+  | `cese confirmado sin marcador` válido | `UNAVAILABLE` con causa `runtime_failure`, **sin agotar el deadline** | el cese está confirmado por construcción —el comando retornó—, así que el fallo es conocido y se adjudica de inmediato |
+  | proceso todavía vivo al vencer el tope | `UNAVAILABLE` con causa `deadline_exceeded` | el corte lo puso el conductor y el cese queda incierto: rige lo que ya dice el primer bullet de esta sección |
+
+  La diferencia entre las dos es la **columna de continuidad**, no el síntoma: las dos carecen de
+  marca, y solo la primera puede seguir a un fix round sobre la misma sesión.
 
 ### `recovery-required` bloquea retry y fallback
 
