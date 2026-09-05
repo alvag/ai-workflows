@@ -1211,9 +1211,12 @@ MUTANTES = {
     ),
     "V8.model-desde-perfil": mutar("V8.model-desde-perfil",
         'MODEL="${PERFIL_MODEL:-sonnet}"', 'MODEL="sonnet"'),
+    # El ancla NO incluye la línea de `--allowedTools`: anclarla ahí acopla este mutante a la lista
+    # de tools, y cambiarla lo deja sin aplicarse —el arnés exige una aparición— matando el control
+    # en silencio. La unicidad la da el `MODEL` cableado, propio de esta ruta.
     "V8.effort-desde-perfil": mutar("V8.effort-desde-perfil",
-        'EFFORT="$PERFIL_EFFORT"\n  set -- -p --safe-mode --model "$MODEL" --permission-mode default \\\n         \'--allowedTools=Read,Grep,Glob,Edit(./**),Write(./**),Bash(<proof_bin>:*)\' \\\n         --session-id "$SESSION_ID"',
-        'EFFORT="alto"\n  set -- -p --safe-mode --model "$MODEL" --permission-mode default \\\n         \'--allowedTools=Read,Grep,Glob,Edit(./**),Write(./**),Bash(<proof_bin>:*)\' \\\n         --session-id "$SESSION_ID"'),
+        'MODEL="${PERFIL_MODEL:-sonnet}"\n  EFFORT="$PERFIL_EFFORT"\n  set -- -p --safe-mode --model "$MODEL" --permission-mode default',
+        'MODEL="${PERFIL_MODEL:-sonnet}"\n  EFFORT="alto"\n  set -- -p --safe-mode --model "$MODEL" --permission-mode default'),
     "V8.heredado-claude-model-materializa": mutar("V8.heredado-claude-model-materializa",
         '`sonnet`,\n  # el modelo cableado de esta ruta de implementación, y ningún flag de esfuerzo.\n  MODEL="${PERFIL_MODEL:-sonnet}"',
         'el modelo por defecto del CLI.\n  MODEL="$PERFIL_MODEL"'),

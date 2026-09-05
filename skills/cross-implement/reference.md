@@ -379,8 +379,27 @@ nada lo señale — que es exactamente el efecto silencioso que el aislamiento v
 ### Vía W-C — Claude implementador (autor GPT/Codex)
 
 La forma canónica acota la escritura con **permisos path-scoped** — `--permission-mode default`
-deniega en headless toda tool fuera de `--allowedTools`, y las reglas `Edit(./**)`/`Write(./**)`
-limitan la escritura al working dir:
+deniega en headless toda tool fuera de `--allowedTools` — y lo hace con **dos entradas que cumplen
+funciones distintas**:
+
+- **`Write`, sin scope, `habilita la herramienta`** de escritura. Es una entrada de la allowlist: sin
+  ella la tool queda denegada y `no se pueden crear archivos` nuevos, porque `Edit` no crea archivos,
+  los modifica.
+- **`Edit(./**)` es la `regla de path`** que acota dónde se escribe. La comprobación de permisos de
+  archivo del CLI **solo** consulta reglas `Edit(path)`, y esas cubren *todas* las herramientas que
+  escriben archivos, `Write` incluida.
+
+**Por eso `ninguna de las dos es redundante`, y conviene tener medido qué pasa al quitar cada una**
+(ver "Matriz de verificación"): sin `Write`, el worker no puede crear un archivo aunque el path esté
+autorizado; sin `Edit(./**)`, `el fallo es cerrado` — no escribe **nada**, ni dentro ni fuera. Lo
+segundo importa porque invita a la lectura contraria: quitar la regla de path **no** deja al worker
+escribiendo libre, lo deja sin escribir.
+
+**No escribir `Write(./**)`.** El CLI rechaza esa forma al arrancar, por `stderr`, y lo dice con
+todas las letras: *no participa de la comprobación de permisos de archivo — solo las reglas
+`Edit(path)` lo hacen*. El scope se ignora, queda la entrada de allowlist, y el aviso se repite en
+cada corrida. El texto exacto está en la "Matriz de verificación", junto a las cuatro
+configuraciones medidas.
 
 - **Lanzamiento** (sesión fresca, con session id propio para el resume):
   <!-- despacho:inicio:ci-wc-lanzamiento:claude -->
@@ -392,7 +411,7 @@ limitan la escritura al working dir:
   MODEL="${PERFIL_MODEL:-sonnet}"
   EFFORT="$PERFIL_EFFORT"
   set -- -p --safe-mode --model "$MODEL" --permission-mode default \
-         '--allowedTools=Read,Grep,Glob,Edit(./**),Write(./**),Bash(<proof_bin>:*)' \
+         '--allowedTools=Read,Grep,Glob,Edit(./**),Write,Bash(<proof_bin>:*)' \
          --session-id "$SESSION_ID"
   [ -n "$EFFORT" ] && set -- "$@" --effort "$EFFORT"
   ( cd <working_dir> && claude "$@" \
@@ -415,13 +434,15 @@ limitan la escritura al working dir:
   para acomodarlo, que es cambiar el mínimo privilegio por comodidad.
 
   **Con la lista vacía no se emite ningún `Bash(...)`**, y `--allowedTools` queda en
-  `'Read,Grep,Glob,Edit(./**),Write(./**)'`. No hay comprobación que correr, así que autorizar un
+  `'Read,Grep,Glob,Edit(./**),Write'` — las dos entradas de escritura se conservan, porque lo que
+  cae con la lista vacía es la ejecución, no la escritura. No hay comprobación que correr, así que autorizar un
   binario "por las dudas" sería conceder ejecución sin nadie que la pida. Es el caso coherente con
   la ranura `PROOF` que tampoco se emite.
 - **NUNCA `--permission-mode acceptEdits`** como forma canónica: verificado que escribe **fuera**
   del working dir sin restricción (ver matriz). Tampoco `--dangerously-skip-permissions`.
-- Las reglas `Edit(./**)`/`Write(./**)` son relativas al cwd: por eso el `cd <working_dir>`
-  previo (o `Push-Location`) es parte del contrato, no cosmético.
+- **La regla `Edit(./**)` es relativa al cwd**: por eso el `cd <working_dir>` previo (o
+  `Push-Location`) es parte del contrato, no cosmético. `Write` no lleva scope y no lo necesita —
+  quien acota su alcance es la regla de path, no ella misma.
 - **Modelo**: default `sonnet` para implementación (velocidad; la calidad la garantiza e
   <!-- despacho:inicio:ci-wc-fix:claude -->
 # Resuelto por la cadena de `sdd-flow/reference.md` → "La cadena de resolución del perfil".
@@ -431,7 +452,7 @@ limitan la escritura al working dir:
   MODEL="${PERFIL_CONGELADO_MODEL:-sonnet}"
   EFFORT="$PERFIL_CONGELADO_EFFORT"
   set -- -p --safe-mode --model "$MODEL" --permission-mode default \
-         '--allowedTools=Read,Grep,Glob,Edit(./**),Write(./**),Bash(<proof_bin>:*)' \
+         '--allowedTools=Read,Grep,Glob,Edit(./**),Write,Bash(<proof_bin>:*)' \
          --resume "$SESSION_ID"
   [ -n "$EFFORT" ] && set -- "$@" --effort "$EFFORT"
   ( cd <working_dir> && claude "$@" \
@@ -459,6 +480,28 @@ Verificado end-to-end el 2026-07-09 (codex-cli 0.143.0; Claude Code local, `clau
 | Ídem con `--resume` (fix round) | FIX OK · ESCAPE DENIED |
 | Ambas vías lanzadas en background con redirección + poll | OK |
 
+Medido el **2026-09-04** sobre `claude 2.1.261`, con el mismo prompt y modelo, cada configuración en
+un repositorio desechable. Las cuatro columnas son: qué llega en `--allowedTools`, si el arranque
+emitió advertencia por `stderr`, si el worker `crea dentro del cwd`, y si `deniega la escritura fuera`:
+
+| `--allowedTools` | Arranque | Crea dentro del cwd | Escritura fuera del cwd |
+|---|---|---|---|
+| `…,Edit(./**),Write(./**),…` — **la actual** hasta este cambio | advertencia del CLI | sí | denegada |
+| `…,Edit(./**),…` sola — **lo que #66 propone** | limpio | **no**: la tool `Write` queda fuera de la allowlist | denegada |
+| `…,Edit(./**),Write,…` — **la forma correcta**, la que esta vía usa | limpio | sí | denegada |
+| `…,Write(./**),…` sin regla de path — **el movimiento que #66 teme** | advertencia del CLI | **no** | denegada |
+
+El texto exacto de la advertencia que emiten las dos filas con scope, que es lo que fija el
+diagnóstico:
+
+> `Permission allow rule (--allowed-tools): Write(./**) is not matched by file permission checks —
+> only Edit(path) rules are. Use Edit(./**) instead (Edit rules cover all file-editing tools).`
+
+**Las dos últimas filas son el par que hay que leer junto.** La tercera es la forma que la receta
+usa; la cuarta muestra que retirar la regla de path **no** abre un escape sino que corta la escritura
+entera — el fallo es cerrado. Quien vea la cuarta y concluya "entonces sobra `Edit(./**)`" tiene la
+tercera al lado para desmentirlo.
+
 Flags pueden variar por versión: ante la duda, `codex exec --help` / `claude --help`.
 
 ## Prompt del implementador
@@ -473,6 +516,21 @@ El prompt vive en `assets/prompts/implement.md` — es la **entrada exacta** del
 Cuando el work order es SDD (`.plans/<id>/`), de dónde sale cada ranura lo fija la tabla de
 "Derivación acotada por ranura", más abajo. Acá no se repite: era una segunda enumeración del mismo
 hecho, y quedó con alcance distinto en cuanto la tabla se endureció.
+
+**Cómo NO redactar la parte variable de `CONSTRAINTS`.** El worker corre en `un solo turno`, y el
+prompt se lo dice en su línea fija. Lo que el conductor agrega no puede contradecirlo: al escribir
+las restricciones propias del work order es natural avisar que un comando `tarda varios minutos`
+para que el worker no lo mate antes de tiempo, y en un transporte de un turno esa frase **invita al
+patrón que lo rompe** — lanzar lo largo en segundo plano y cerrar el turno esperando una
+notificación que no va a llegar. Está registrado: un worker entregó el código correcto y ninguna
+prueba, con el reporte reducido a una frase diciendo que esperaba. Si hace falta prevenir el
+`timeout`, se dice que el comando es lento **y que hay que esperarlo dentro del turno**, nunca que
+se puede retomar después.
+
+**Y el presupuesto es responsabilidad de quien despacha.** El `deadline` de la corrida tiene que
+cubrir la duración prevista de las comprobaciones: si no la cubre, se pide el override antes de
+lanzar en vez de descubrirlo al vencer. Una comprobación que no termina dentro de ese presupuesto ya
+tiene terminal contratado —`deadline_exceeded`, con su cese incierto— y no se inventa otro.
 
 **Render de la ranura `PROOF`:** **una línea por comando**, en el orden de la lista, y cada comando
 va literal y entero, sin abreviar ni resumir: el worker no puede reconstruir uno truncado, y un comando
@@ -752,6 +810,14 @@ Lo que el conductor puede dar por contratado:
   — es lo que vuelve comparable la medición de base contra el resultado del bloque.
 - Reporte no parseable → el diff sigue siendo la verdad (regla 4): revisarlo igual; se pierde solo
   la narrativa.
+- **Un reporte que `no acredita fin` no es lo mismo que uno mal formateado.** El discriminador no es
+  *parsea / no parsea* sino **acredita fin / no acredita fin**: con el proceso ya terminado y sin
+  `STATUS: done` en la columna 0, el worker cerró su turno sin declararse terminado. Eso es
+  `UNAVAILABLE` con causa `runtime_failure` —cuya definición vigente ya es "arrancó bien y falló
+  ejecutando: error, salida no parseable"—, y **no** `IMPLEMENTED`: el proceso puede haber salido con
+  código cero, así que sin este predicado el terminal es indistinguible de una corrida completa.
+  La paridad no es nueva: `cross-review/reference.md` → "Señal de cierre" fija la misma distinción
+  para su revisor, con el mismo fundamento sobre qué palanca corresponde.
 
 ## Medición de base y adjudicación
 
@@ -932,6 +998,14 @@ La prueba de si aplica es una sola pregunta: **si borro el reporte, ¿queda algo
 el principio aplica. Si no, el reporte era el artefacto y su formato no es narrativa: es el
 entregable.
 
+**Segunda condición, y es distinta de la primera:** el principio cubre el reporte que *no parsea*,
+no el que `no acredita fin`. Un reporte mal formateado describe mal un trabajo terminado; uno sin
+`STATUS: done` en la columna 0, con el proceso ya cerrado, **acredita que el trabajo no se
+completó**. El diff se revisa igual —eso no cambia—, pero ese diff no puede
+**cerrar el bloque como completo**: el worker no declaró haber terminado, así que su delta se trata
+como entrega parcial y va al fix round o al takeover. Confundir los dos casos convierte "se pierde la narrativa"
+en "se pierde la señal de que faltaba trabajo".
+
 ## Fix loop
 
 > **El delta de fix no tiene asset propio.** No es un prompt con estructura fija sino el contenido
@@ -1021,6 +1095,28 @@ Una implementación tarda mucho más que una crítica: presupuestos por encima d
   mira las tools; un build terminado nunca se desliza en silencio a la fase de revisión.
 - No matar un run background silencioso antes del deadline: las implementaciones legítimamente
   tardan.
+- **El poll observa dos cosas, no una.** Buscar solo `STATUS: done` deja un caso sin salida: el
+  worker que cerró su turno **sin** completar el trabajo. Su proceso ya terminó, así que la marca no
+  va a aparecer nunca, y esperar el deadline entero para después registrar `deadline_exceeded`
+  clasifica con la causa equivocada tras media hora de espera evitable.
+
+  **El observable del cese no se inventa acá: ya está definido.**
+  `cross-review/corridas-en-vuelo.md` da `process_ref`, con su tipo, su referencia, su evidencia de
+  frescura y su autoridad; y su matriz de precedencia resuelve la combinación en el caso `D2`
+  —proceso terminado más artefacto ausente o inválido— hacia `clasificar_error`, con el argumento de
+  por qué eso **no** es `recovery-required`: un fallo diagnosticado se adjudica, y `recovery-required`
+  es para cuando no se sabe qué pasó. Esta vía **consume** esa sede en vez de describir un mecanismo
+  paralelo, que se desincronizaría.
+
+  Aplicado acá, son dos ramas y se leen por separado:
+
+  | Lo observado | Terminal | Por qué |
+  |---|---|---|
+  | `cese confirmado sin marcador` válido | `UNAVAILABLE` con causa `runtime_failure`, **sin agotar el deadline** | el cese está confirmado por construcción —el comando retornó—, así que el fallo es conocido y se adjudica de inmediato |
+  | proceso todavía vivo al vencer el tope | `UNAVAILABLE` con causa `deadline_exceeded` | el corte lo puso el conductor y el cese queda incierto: rige lo que ya dice el primer bullet de esta sección |
+
+  La diferencia entre las dos es la **columna de continuidad**, no el síntoma: las dos carecen de
+  marca, y solo la primera puede seguir a un fix round sobre la misma sesión.
 
 ### `recovery-required` bloquea retry y fallback
 
