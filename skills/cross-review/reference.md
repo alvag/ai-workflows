@@ -445,6 +445,20 @@ que este preflight persigue es **MCP servers**; el resto viene de arrastre y no 
 transcrito a mano se desactualiza solo y pasa a mentir con apariencia de norma; el inventario se
 deriva de las marcas `despacho:` del árbol.
 
+**Qué puede exigir esta tabla, y qué no.** Su consumidor —el verificador de aislamiento— extrae los
+mecanismos de cada fila con un patrón que `solo lee mecanismos escritos como flags` con `--`. Un
+mecanismo con otra forma —una regla de permisos como `Edit(./**)`, una variable de entorno, una ruta—
+se puede **declarar** acá, pero **no queda exigido**: la guarda no lo ve y la fila pasa a describir
+algo que nadie comprueba. Medido: agregar `Edit(./**)` a la fila `claude` deja el verificador en
+**cero violaciones**, mientras que un flag inexistente pone **catorce** regiones en rojo. La guarda
+funciona; lo que no entra es el literal sin guiones.
+
+De ahí el reparto de sedes, que conviene tener escrito porque la confusión ya produjo un diagnóstico
+equivocado: **esta tabla gobierna la desactivación de customizaciones del entorno** —MCP, hooks,
+plugins, comandos—, que es lo que el preflight persigue. **El acotamiento de la escritura al working
+dir es otra propiedad**, la declara la receta de cada vía en su `--allowedTools`, y no se verifica
+desde acá.
+
 ##### El bloque, con una entrada por familia
 
 Devuelve **0** si la familia pedida se puede aislar y **≠ 0** si no. Es una entrada por familia y no

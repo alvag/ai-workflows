@@ -379,8 +379,27 @@ nada lo señale — que es exactamente el efecto silencioso que el aislamiento v
 ### Vía W-C — Claude implementador (autor GPT/Codex)
 
 La forma canónica acota la escritura con **permisos path-scoped** — `--permission-mode default`
-deniega en headless toda tool fuera de `--allowedTools`, y las reglas `Edit(./**)`/`Write(./**)`
-limitan la escritura al working dir:
+deniega en headless toda tool fuera de `--allowedTools` — y lo hace con **dos entradas que cumplen
+funciones distintas**:
+
+- **`Write`, sin scope, `habilita la herramienta`** de escritura. Es una entrada de la allowlist: sin
+  ella la tool queda denegada y `no se pueden crear archivos` nuevos, porque `Edit` no crea archivos,
+  los modifica.
+- **`Edit(./**)` es la `regla de path`** que acota dónde se escribe. La comprobación de permisos de
+  archivo del CLI **solo** consulta reglas `Edit(path)`, y esas cubren *todas* las herramientas que
+  escriben archivos, `Write` incluida.
+
+**Por eso `ninguna de las dos es redundante`, y conviene tener medido qué pasa al quitar cada una**
+(ver "Matriz de verificación"): sin `Write`, el worker no puede crear un archivo aunque el path esté
+autorizado; sin `Edit(./**)`, `el fallo es cerrado` — no escribe **nada**, ni dentro ni fuera. Lo
+segundo importa porque invita a la lectura contraria: quitar la regla de path **no** deja al worker
+escribiendo libre, lo deja sin escribir.
+
+**No escribir `Write(./**)`.** El CLI rechaza esa forma al arrancar, por `stderr`, y lo dice con
+todas las letras: *no participa de la comprobación de permisos de archivo — solo las reglas
+`Edit(path)` lo hacen*. El scope se ignora, queda la entrada de allowlist, y el aviso se repite en
+cada corrida. El texto exacto está en la "Matriz de verificación", junto a las cuatro
+configuraciones medidas.
 
 - **Lanzamiento** (sesión fresca, con session id propio para el resume):
   <!-- despacho:inicio:ci-wc-lanzamiento:claude -->
@@ -392,7 +411,7 @@ limitan la escritura al working dir:
   MODEL="${PERFIL_MODEL:-sonnet}"
   EFFORT="$PERFIL_EFFORT"
   set -- -p --safe-mode --model "$MODEL" --permission-mode default \
-         '--allowedTools=Read,Grep,Glob,Edit(./**),Write(./**),Bash(<proof_bin>:*)' \
+         '--allowedTools=Read,Grep,Glob,Edit(./**),Write,Bash(<proof_bin>:*)' \
          --session-id "$SESSION_ID"
   [ -n "$EFFORT" ] && set -- "$@" --effort "$EFFORT"
   ( cd <working_dir> && claude "$@" \
@@ -415,13 +434,15 @@ limitan la escritura al working dir:
   para acomodarlo, que es cambiar el mínimo privilegio por comodidad.
 
   **Con la lista vacía no se emite ningún `Bash(...)`**, y `--allowedTools` queda en
-  `'Read,Grep,Glob,Edit(./**),Write(./**)'`. No hay comprobación que correr, así que autorizar un
+  `'Read,Grep,Glob,Edit(./**),Write'` — las dos entradas de escritura se conservan, porque lo que
+  cae con la lista vacía es la ejecución, no la escritura. No hay comprobación que correr, así que autorizar un
   binario "por las dudas" sería conceder ejecución sin nadie que la pida. Es el caso coherente con
   la ranura `PROOF` que tampoco se emite.
 - **NUNCA `--permission-mode acceptEdits`** como forma canónica: verificado que escribe **fuera**
   del working dir sin restricción (ver matriz). Tampoco `--dangerously-skip-permissions`.
-- Las reglas `Edit(./**)`/`Write(./**)` son relativas al cwd: por eso el `cd <working_dir>`
-  previo (o `Push-Location`) es parte del contrato, no cosmético.
+- **La regla `Edit(./**)` es relativa al cwd**: por eso el `cd <working_dir>` previo (o
+  `Push-Location`) es parte del contrato, no cosmético. `Write` no lleva scope y no lo necesita —
+  quien acota su alcance es la regla de path, no ella misma.
 - **Modelo**: default `sonnet` para implementación (velocidad; la calidad la garantiza e
   <!-- despacho:inicio:ci-wc-fix:claude -->
 # Resuelto por la cadena de `sdd-flow/reference.md` → "La cadena de resolución del perfil".
@@ -431,7 +452,7 @@ limitan la escritura al working dir:
   MODEL="${PERFIL_CONGELADO_MODEL:-sonnet}"
   EFFORT="$PERFIL_CONGELADO_EFFORT"
   set -- -p --safe-mode --model "$MODEL" --permission-mode default \
-         '--allowedTools=Read,Grep,Glob,Edit(./**),Write(./**),Bash(<proof_bin>:*)' \
+         '--allowedTools=Read,Grep,Glob,Edit(./**),Write,Bash(<proof_bin>:*)' \
          --resume "$SESSION_ID"
   [ -n "$EFFORT" ] && set -- "$@" --effort "$EFFORT"
   ( cd <working_dir> && claude "$@" \
@@ -458,6 +479,28 @@ Verificado end-to-end el 2026-07-09 (codex-cli 0.143.0; Claude Code local, `clau
 | Claude `-p --permission-mode default` + `Edit(./**),Write(./**),Bash(node:*)` (fresh): escribe adentro / deniega afuera / proof OK | OK |
 | Ídem con `--resume` (fix round) | FIX OK · ESCAPE DENIED |
 | Ambas vías lanzadas en background con redirección + poll | OK |
+
+Medido el **2026-09-04** sobre `claude 2.1.261`, con el mismo prompt y modelo, cada configuración en
+un repositorio desechable. Las cuatro columnas son: qué llega en `--allowedTools`, si el arranque
+emitió advertencia por `stderr`, si el worker `crea dentro del cwd`, y si `deniega la escritura fuera`:
+
+| `--allowedTools` | Arranque | Crea dentro del cwd | Escritura fuera del cwd |
+|---|---|---|---|
+| `…,Edit(./**),Write(./**),…` — **la actual** hasta este cambio | advertencia del CLI | sí | denegada |
+| `…,Edit(./**),…` sola — **lo que #66 propone** | limpio | **no**: la tool `Write` queda fuera de la allowlist | denegada |
+| `…,Edit(./**),Write,…` — **la forma correcta**, la que esta vía usa | limpio | sí | denegada |
+| `…,Write(./**),…` sin regla de path — **el movimiento que #66 teme** | advertencia del CLI | **no** | denegada |
+
+El texto exacto de la advertencia que emiten las dos filas con scope, que es lo que fija el
+diagnóstico:
+
+> `Permission allow rule (--allowed-tools): Write(./**) is not matched by file permission checks —
+> only Edit(path) rules are. Use Edit(./**) instead (Edit rules cover all file-editing tools).`
+
+**Las dos últimas filas son el par que hay que leer junto.** La tercera es la forma que la receta
+usa; la cuarta muestra que retirar la regla de path **no** abre un escape sino que corta la escritura
+entera — el fallo es cerrado. Quien vea la cuarta y concluya "entonces sobra `Edit(./**)`" tiene la
+tercera al lado para desmentirlo.
 
 Flags pueden variar por versión: ante la duda, `codex exec --help` / `claude --help`.
 
