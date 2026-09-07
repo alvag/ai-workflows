@@ -811,13 +811,22 @@ Lo que el conductor puede dar por contratado:
 - Reporte no parseable → el diff sigue siendo la verdad (regla 4): revisarlo igual; se pierde solo
   la narrativa.
 - **Un reporte que `no acredita fin` no es lo mismo que uno mal formateado.** El discriminador no es
-  *parsea / no parsea* sino **acredita fin / no acredita fin**: con el proceso ya terminado y sin
-  `STATUS: done` en la columna 0, el worker cerró su turno sin declararse terminado. Eso es
-  `UNAVAILABLE` con causa `runtime_failure` —cuya definición vigente ya es "arrancó bien y falló
-  ejecutando: error, salida no parseable"—, y **no** `IMPLEMENTED`: el proceso puede haber salido con
-  código cero, así que sin este predicado el terminal es indistinguible de una corrida completa.
-  La paridad no es nueva: `cross-review/reference.md` → "Señal de cierre" fija la misma distinción
-  para su revisor, con el mismo fundamento sobre qué palanca corresponde.
+  *parsea / no parsea* sino **acredita fin / no acredita fin**: con el proceso terminado **por su
+  cuenta, antes de que venciera el deadline**, y sin `STATUS: done` en la columna 0, el worker cerró
+  su turno sin declararse terminado. Eso es `UNAVAILABLE` con causa `runtime_failure` —cuya
+  definición vigente ya es "arrancó bien y falló ejecutando: error, salida no parseable"—, y **no**
+  `IMPLEMENTED`: el proceso puede haber salido con código cero, así que sin este predicado el
+  terminal es indistinguible de una corrida completa. La paridad no es nueva:
+  `cross-review/reference.md` → "Señal de cierre" fija la misma distinción para su revisor, con el
+  mismo fundamento sobre qué palanca corresponde.
+- **El `antes de que venciera el deadline` no adorna al bullet anterior: es lo que impide que este
+  predicado pise una causa ya asignada.** Si el deadline venció primero, sigue siendo
+  `deadline_exceeded` aunque el cese se confirme enseguida — tras el kill que ordena el tope, y
+  siempre en modo sync, donde la primitiva de `timeout` retorna con el proceso ya muerto, lo
+  observado es igual de "terminado y sin marca" que en el bullet anterior. La sede de esa partición
+  es "Latencia, deadlines y banner"; acá solo se la respeta. Y es la misma regla que enuncia la
+  sección de `cross-review` recién citada: **la causa se asigna por lo que efectivamente pasó, no por
+  la ausencia de marca.**
 
 ## Medición de base y adjudicación
 

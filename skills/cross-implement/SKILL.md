@@ -484,10 +484,12 @@ distinción:
 4. Reporte no parseable → el diff sigue siendo la verdad: revisarlo igual (regla 4); solo se
    pierde la narrativa del implementador. Vale **porque acá el artefacto es el diff**; donde el
    artefacto *es* el informe no aplica (`reference.md` → "Cuándo un reporte ilegible no invalida la
-   revisión"). **Distinto es el reporte que `no acredita fin`**: con el proceso ya terminado y sin
-   `STATUS: done` en la columna 0, el worker cerró sin declararse terminado, y eso es `UNAVAILABLE`
-   con causa `runtime_failure`, no una narrativa perdida. El diff se revisa igual pero no cierra el
-   bloque como completo; su delta es entrega parcial.
+   revisión"). **Distinto es el reporte que `no acredita fin`**: con el proceso terminado **por su
+   cuenta, antes de que venciera el deadline**, y sin `STATUS: done` en la columna 0, el worker cerró
+   sin declararse terminado, y eso es `UNAVAILABLE` con causa `runtime_failure`, no una narrativa
+   perdida. El diff se revisa igual pero no cierra el bloque como completo; su delta es entrega
+   parcial. **Si el deadline venció primero, este punto no aplica**: rige el punto 3 y la causa sigue
+   siendo `deadline_exceeded`, aunque el kill confirme el cese y lo observado sea idéntico.
 
 ## Referencias internas
 
