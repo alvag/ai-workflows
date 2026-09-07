@@ -1,20 +1,14 @@
 ---
 name: sdd-incident-intake
 description: >-
-  Admisión del registro de incidentes de las skills SDD, en dos modos.
-  `despachar` (default) comprueba que el defecto exista y convierte los que se
-  sostienen en flujos `sdd-flow`, cada uno en su worktree de Orca con un dossier
-  autocontenido, retirándolos del registro: uno por default o los que se le
-  pidan, de a uno y en secuencia, con el flujo conducido por `claude` o `codex`
-  (default: la familia de la sesión). `volcar` publica los
-  incidentes como GitHub issues con `needs-triage` y los retira del archivo, sin
-  arreglar nada. Usar ante "toma un incidente de <ruta>", "procesa los incidentes
-  de skills", "revisá N incidentes", "volcá los incidentes a issues",
-  "/sdd-incident-intake <ruta-del-registro>". NO corrige la skill: eso lo hace el
-  `sdd-flow` que despacha. NO registra incidentes nuevos —eso es la regla del
-  CLAUDE.md del repo—, NO revisa artefactos de diseño (eso es `cross-review`) ni
-  delega implementación (eso es `cross-implement`). No invocarla espontáneamente:
-  solo ante pedido explícito del usuario.
+  Admite registros de incidentes SDD. despachar verifica defectos, crea flujos
+  sdd-flow en worktrees de Orca y retira lo despachado; volcar crea GitHub issues
+  con needs-triage y retira sin arreglar. Usar ante “toma un incidente de una
+  ruta”, “procesa incidentes”, “revisa N incidentes en secuencia”, “vuelca
+  incidentes a issues” o /sdd-incident-intake seguido de la ruta. NO corrige
+  skills ni registra incidentes; no revisa diseño ni implementa: corresponden
+  a sdd-flow, CLAUDE.md, cross-review o cross-implement. No invocarla
+  espontáneamente: solo ante pedido explícito.
 ---
 
 # sdd-incident-intake

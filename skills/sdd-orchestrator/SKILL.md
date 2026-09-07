@@ -1,15 +1,10 @@
 ---
 name: sdd-orchestrator
 description: >-
-  Orquesta un cambio con un objetivo común repartido entre varios repos git que
-  viven bajo una carpeta contenedora (que puede no ser un repo). Arma una spec
-  madre con criterios de aceptación globales y contratos entre servicios, reparte
-  el trabajo en un sub-plan por repo (con dependencias declarables), implementa en
-  paralelo delegando cada repo a la skill `sdd-flow`, y cierra de forma centralizada
-  (revisión, commit, push) bajo control del usuario. Soporta varias features a la
-  vez con lock cooperativo. Usar cuando un mismo objetivo cruza 2+ repos bajo una
-  carpeta contenedora. Para un solo repo, usar `sdd-flow` directamente. Invocación
-  explícita: "/sdd-orchestrator" parado en la carpeta contenedora.
+  Orquesta con SDD un objetivo en dos o más repos: crea spec madre y contratos, reparte subplanes,
+  delega cada repo en paralelo a sdd-flow y centraliza el cierre. Soporta varias features con lock.
+  Usar en cambios multi-repo; para uno, sdd-flow. Invocación explícita: /sdd-orchestrator desde la
+  carpeta contenedora.
 argument-hint: "[<objetivo|ticket multi-repo> | retoma <id> | estado | cierra <id>]"
 # disable-model-invocation es una clave REAL de Claude Code: bloquea la invocación
 # vía Skill tool (la skill queda solo-slash: /sdd-orchestrator). Se mantiene a

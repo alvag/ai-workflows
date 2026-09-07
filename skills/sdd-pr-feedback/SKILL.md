@@ -1,15 +1,11 @@
 ---
 name: sdd-pr-feedback
 description: >-
-  Usar cuando un PR de Bitbucket tiene comentarios de revisión (de bots/revisión
-  automatizada o de humanos) que hay que procesar con criterio: decidir cuáles
-  ameritan un cambio de código, cuáles responder y cuáles descartar, sin
-  re-revisar lo ya visto. Triggers: "procesa/atiende (o procesá/atendé) el feedback
-  del PR", "responde los comentarios del PR", "qué hago con el review del PR
-  <id>", "revisa los comentarios automáticos del PR". Específico de Bitbucket (MCP
-  bb_*). No invocarla sola: solo ante pedido explícito del usuario. Invocación:
-  "/sdd-pr-feedback", "/sdd-pr-feedback <PR-id>" o
-  "/sdd-pr-feedback <PR-id> <comment-id>".
+  Procesa feedback humano o automático de un PR de Bitbucket: decide cambios, respuestas o descartes
+  sin repetir el review, que corresponde a bitbucket-code-review. Usar ante “procesa o atiende el
+  feedback del PR”, “responde los comentarios”, “qué hago con el review del PR” seguido del
+  identificador, o “revisa los comentarios automáticos”. Solo por pedido explícito. Invocación:
+  /sdd-pr-feedback, seguida opcionalmente por los identificadores del PR y comentario.
 argument-hint: "[<PR-id> [<comment-id>]]  ·  sin args = PR de la rama actual"
 disable-model-invocation: true
 ---

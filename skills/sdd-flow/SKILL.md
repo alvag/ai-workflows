@@ -1,15 +1,10 @@
 ---
 name: sdd-flow
 description: >-
-  Spec-Driven Development (SDD) portable y agnóstico de proyecto: desarrolla una
-  feature/fix/refactor con artefactos auditables (spec, plan, tasks) y gates de
-  aprobación escalados por complejidad, verificando los criterios de aceptación
-  antes de commitear. Detecta stack, host de Git y tracker por convención. Usar
-  cuando quieras llevar un cambio de punta a punta con SDD en cualquier repo, o
-  retomar un plan en una sesión fresca. Invocación explícita: "/sdd-flow" para
-  empezar, o "/sdd-flow implement" con la ruta de la carpeta del plan. Opcional:
-  indicar un prefijo de rama (p. ej. "con prefijo de rama feature/") que reemplaza
-  el prefijo semántico.
+  Desarrolla un cambio de punta a punta en un repositorio con SDD: spec, plan, tasks, gates y
+  verificación previa al commit. Invocación explícita: /sdd-flow inicia; /sdd-flow implement seguido
+  de la ruta retoma o implementa; admite prefijo de rama. Para varios repos, sdd-orchestrator; para un
+  work order aprobado, cross-implement.
 argument-hint: "[init | <ticket|descripción> | implement .plans/<id>/ | continuemos con <id>]"
 # disable-model-invocation es una clave REAL de Claude Code: bloquea la invocación
 # vía Skill tool (la skill queda solo-slash: /sdd-flow). Se mantiene a propósito:
