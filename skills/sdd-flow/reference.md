@@ -2192,6 +2192,17 @@ misma como antecedente.
 > contenidos**, así que un renombre puro dentro del subárbol —o dos archivos que intercambien
 > contenido— no lo mueven. El renombre tampoco lo detectaba el diseño anterior, que nunca hasheó
 > rutas; lo que se agrega es el intercambio, y a cambio el digest deja de depender de quién lo corre.
+>
+> **Campos** (vocabulario en `CLAUDE.md` → "La frontera de prueba de una guarda"). Clase: **evidencia**
+> — el digest es un valor que se compara contra el persistido, y quien adjudica es el retomado. **No
+> es de la que expone**, y por eso no lleva `no-aplica`: un digest RESUME el subárbol en vez de
+> mostrarlo entero, así que su resumen tiene un punto ciego propio y hay algo que su dirección puede
+> describir. No se compara acá contra cuántas unidades de la población llevan `no-aplica`: ese conteo
+> cambia solo y ya salió mal escrito una vez.
+> Dirección: **admite-de-mas**: un subárbol que cambió sin mover el digest se lee como no
+> invalidado, y esa es exactamente la lectura peligrosa. **No es una de las unidades del inventario
+> del gate**: no lo invoca la matriz de superficies, invalida búsquedas de antecedentes, y se
+> documenta acá como intervención declarada aparte.
 
 > **Las rutas nunca viajan como argumento: van por stdin a `git hash-object --stdin-paths`.** Las dos
 > vías que parecen equivalentes fallan, y las dos están medidas sobre un corpus con `it's.md`,

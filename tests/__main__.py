@@ -1,4 +1,38 @@
-"""Entrypoint canónico de la suite durable."""
+"""Entrypoint canónico de la suite durable.
+
+FRONTERA DE PRUEBA — tres unidades comparten este pasaje.
+
+`python3 -m tests` — clase: veredicto.
+    NO detecta un defecto fuera de su catálogo: su población son los casos migrados, y su verde dice
+    que ESOS pasan. Una skill sin casos en el catálogo no tiene quién la contradiga acá.
+    NO detecta que un caso ejerza lo que su nombre promete: la cobertura se mide por presencia en el
+    catálogo, no por poder discriminante.
+    Su verde autoriza a afirmar: los casos del catálogo pasan sobre el árbol actual.
+    Dirección: admite-de-mas.
+    Fallo de ejecución, distinto de su resultado, Y NO DISTINGUIBLE DE ÉL: un **1** de este modo
+    tiene al menos TRES orígenes que el código no separa —el catálogo que no se pudo cargar en
+    `descubrir()`, un caso Python en rojo, y los `ERROR-SUITE` de la suite de Node—, así que hay que
+    leer la salida para saber cuál fue. El **2** sí discrimina: es invocación mal formada —medido:
+    `python3 -m tests --loquesea` sale 2—.
+
+`--autotest` — clase: veredicto.
+    NO detecta que ocultar un caso ponga roja la comprobación CORRECTA: comprueba que la suite y la
+    cobertura reaccionen, no cuál de las dos lo hizo por la razón buena.
+    Su verde autoriza a afirmar: ocultar un caso elegible y un escenario se detecta.
+    Dirección: admite-de-mas.
+    Fallo de ejecución, distinto de su resultado, Y NO DISTINGUIBLE DE ÉL: comparte con el modo de
+    arriba la ruta de `descubrir()`, y su propio veredicto negativo también es **1**. Misma lectura:
+    el código no separa "el catálogo no se pudo cargar" de "el mutante no fue detectado".
+
+`--listar` — clase: evidencia.
+    Su salida permite concluir: qué casos y escenarios contiene el catálogo hoy. La adjudica quien
+    la lee, contrastándola contra lo que espera encontrar.
+    Dirección: no-aplica. Justificación: expone el catálogo entero sin seleccionar nada.
+    Fallo de ejecución, distinto de su resultado: `main()` corre `descubrir()` ANTES de despachar,
+    así que un catálogo inválido —incluido el fallo de cobertura que `validate_coverage` exige—
+    sale **1** sin llegar nunca a `listar()`. Ese 1 no es un veredicto sobre lo listado: dice que
+    no hubo listado.
+"""
 
 from __future__ import annotations
 

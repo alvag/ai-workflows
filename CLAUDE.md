@@ -478,6 +478,8 @@ Al crear o editar skills, seguí las buenas prácticas de agentskills.io (refere
 - **Specification:** https://agentskills.io/specification — `name` (== nombre del directorio, minúsculas/números/guiones, sin guion inicial/final ni `--`), `description` (máx 1024 chars, tercera persona, qué hace **y cuándo** usarla, con keywords de trigger).
 - **Best practices:** https://agentskills.io/skill-creation/best-practices — SKILL.md idealmente <500 líneas / <5000 tokens; mover el detalle a `reference.md`; dar **un default, no un menú**; secciones "Gotchas" y "red flags"; procedimientos reutilizables, no respuestas puntuales.
 - `skills-ref validate ./skills/<nombre>` (de https://github.com/agentskills/agentskills) comprueba el spec. Su disparador es el **frontmatter**, no el cuerpo: validar prosa no cambia su veredicto. **Y su veredicto se lee contra la base, no contra cero**: hoy fallan cuatro de las ocho skills —`bitbucket-code-review`, `sdd-flow`, `sdd-orchestrator` y `sdd-pr-feedback`— con `Unexpected fields in frontmatter: argument-hint, disable-model-invocation`. Ese rojo es **deliberado**: son claves reales de Claude Code que el spec de agentskills.io no contempla, y quitarlas para poner la validación en verde rompería el comportamiento solo-slash que la sección de frontmatter explica. Lo que hay que comprobar es que los diagnósticos de la skill tocada sean **los mismos que antes del cambio**.
+
+- **Campos de `skills-ref validate`** (vocabulario en "La frontera de prueba de una guarda"): clase **veredicto**, dirección **admite-de-mas y rechaza-de-mas**. Es de terceros y no se edita, así que su frontera se escribe acá, donde este repositorio la invoca. **Rechaza de más** porque marca `argument-hint` y `disable-model-invocation`, que son claves reales de Claude Code; **admite de más** porque su spec no conoce las convenciones propias de este repo, así que un `description` que las viole pasa. Su verde **no** autoriza a afirmar que la skill esté bien descrita: solo que su frontmatter cumple el spec de agentskills.io, leído contra la base.
 - **El techo de proporción de la regla 2 se mide con `python3 scripts/medir-techo.py <base_commit>`**, al cerrar `implement` y antes del gate de revisión manual. Imprime en una línea los archivos nuevos bajo `scripts/`, el numerador, el denominador y el veredicto, y distingue por código de salida `pasa` (0), `bloquea` (1), error de invocación (2) y **medición detenida** (3) — que no es un veredicto y no se puede leer como uno. La **sede normativa de la fórmula sigue siendo la regla 2**: el script la implementa y ancla el hash de esa sección, así que si la regla cambia se detiene en vez de calcular con una fórmula vieja. Reimplementarla a mano en un bloque del plan es lo que produjo doce defectos en tres flujos; su suite —`scripts/medir-techo.test.py`, con `--listar` y `--autotest`— los tiene mapeados uno por uno.
 - **`verificar-vistas-config.py`** cubre `config-ejemplo.md` y `manifest-ejemplo.md` contra sus **seis dueños** (`sdd-flow`, `sdd-orchestrator`, `cross-review`, `co-explore`, `cross-implement`, `knowledge-vault`): valida que esas vistas sigan fieles a sus dueños (claves, enums, valores, marcas `[def]`/`[ej]`/`[obl]` y comillas en `on`/`off`).
 - `corridas-en-vuelo.md` tiene **sede unica** en `skills/cross-review/corridas-en-vuelo.md`, y las seis skills que despachan **la leen por esa ruta**. Antes había siete copias byte-idénticas mantenidas por un generador (`--sincronizar`) y vigiladas por un hash. Se retiraron: la autocontención que las justificaba **ya estaba rota** —`co-explore` y `cross-implement` mandaban leer la sede canónica por ruta cruzada en cinco instrucciones operativas mientras tenían su copia local—, así que costaban **5.747 líneas idénticas** y no compraban lo que decían comprar. `--ac 13` pasó a verificar la invariante contraria: que **no exista ninguna copia** fuera de la canónica.
@@ -558,6 +560,8 @@ Al crear o editar skills, seguí las buenas prácticas de agentskills.io (refere
   (`<archivo>:<línea> <id> <causa>`). `candidatos` es **evidencia de revisión**, siempre 0, y lista
   toda invocación fuera de región para que una persona la adjudique en
   `.plans/<id>/candidatos-despacho.md` con su clasificación y fundamento.
+  Los **dos** comparten un tercer código, que no es veredicto de ninguno: **2** si la política de
+  aislamiento resulta ilegible. El `return 2` vive antes del `case`, así que no es propio de uno.
 
   > **Las dos cosas que no detecta, y conviene que estén escritas al lado.** Primero, **que un
   > conductor se desvíe de la receta en runtime**: esto verifica el texto documentado, no el comando
@@ -570,7 +574,110 @@ Al crear o editar skills, seguí las buenas prácticas de agentskills.io (refere
   > **lista** en vez de fallar. Un verificador que prometiera completitud terminaría permanentemente en
   > rojo, o —peor— con una allowlist congelada que se desactualiza sola.
 
+  > **Los campos de las dos unidades** (ver "La frontera de prueba de una guarda"). El párrafo de
+  > arriba ya escribe qué no detectan; esto agrega cómo fallan, que es lo que faltaba.
+  >
+  > `correccion` — clase: **veredicto**. Dirección: **admite-de-mas**. Su verde autoriza a afirmar
+  > que las regiones **marcadas** llevan su mecanismo de aislamiento; **no**, que estén todas las que
+  > deberían — esa es la segunda de las dos ausencias de arriba, y no es reparable.
+  > Fallo de ejecución, distinto de su resultado: **`2`** si la política de aislamiento es ilegible.
+  > El `return 2` vive **antes** del `case`, así que alcanza a los **dos** modos: leerlo como propio
+  > de `candidatos` deja a `correccion` con un tercer código de salida que su lectura no contempla.
+  >
+  > `candidatos` — clase: **evidencia**, y de la que **selecciona**: filtra las invocaciones que caen
+  > fuera de toda región. Su salida permite concluir qué sitios merecen adjudicación; **la adjudica
+  > una persona**, en `.plans/<id>/candidatos-despacho.md`. Dirección: **admite-de-mas y
+  > rechaza-de-mas** — emite documentación y ejemplos como si fueran despachos, y no puede ver un
+  > despacho que no coincida con sus dos patrones de búsqueda.
+  > **Su `0` no es un veredicto**: devuelve 0 en todos los casos, también cuando lista candidatos.
+  > No dice "violaciones" a propósito: las violaciones son lo que imprime `correccion`, y en este
+  > pasaje las dos salidas conviven.
+  > Fallo de ejecución, distinto de su resultado: **`2`** si la política de aislamiento es ilegible,
+  > y ese 2 sí distingue "no pude leer la política" de "no hay candidatos".
+
 > Nota: varios SKILL.md de este repo (p. ej. `sdd-flow`) exceden holgadamente el presupuesto de tokens sugerido. Es una tensión conocida por la complejidad del flujo; al editar, empujá contenido hacia `reference.md` antes que engordar el SKILL.md.
+
+### La frontera de prueba de una guarda
+
+Una guarda **en rojo** se investiga sola: alguien la mira. Una guarda **en verde** cuyo alcance nadie
+escribió se lee como cobertura, y esa lectura no tiene quién la contradiga. Las once memorias del
+proyecto sobre guardas que mienten tienen una sola causa: nadie escribió el alcance de la prueba al
+lado de la prueba. Esta convención cierra eso, y **no tiene verificador, por decisión declarada** —
+igual que los cinco criterios de redacción. Escribir un verificador que compruebe que cada guarda
+tiene su frontera sería una guarda que vigila guardas, que es la espiral que la regla 2 frena.
+
+> **Disparador:** al crear o modificar una unidad de verificación de este repositorio.
+> **Efecto:** en el pasaje de esa unidad —su docstring, o el párrafo que la explica— van **tres
+> cosas**: qué detecta, **qué no detecta**, y sus campos. Varias unidades pueden compartir pasaje.
+> **Excepción:** una herramienta de terceros no se edita, se **reconoce**: su frontera se escribe
+> donde este repositorio la invoca.
+
+**La unidad es el par `(archivo, modo)`**, por lo que se lee para decidir: dos modos del mismo archivo
+son dos unidades si se leen para decidir cosas distintas. Cada una declara su **clase de salida**, y
+la clase manda sobre qué se le exige a la frontera:
+
+| Clase | Qué es | Qué exige su frontera |
+|---|---|---|
+| `veredicto` | el código de salida discrimina la propiedad | **qué afirmación autoriza su verde**, y ninguna mayor |
+| `evidencia` | el código **no** discrimina; la salida se adjudica a mano | **qué permite concluir y quién la adjudica** — nunca "su verde", que no existe |
+| `seleccion` | parametriza otra unidad; no aporta propiedad propia | nada: se declara y no se cuenta |
+
+En las dos primeras, un **fallo de ejecución** —una salida de error que no es el resultado normal— se
+declara **aparte** del resultado, no mezclado con él.
+
+**Los campos.** La dirección **no es exclusiva**: una misma guarda puede fallar en las dos.
+
+| Campo | Valores |
+|---|---|
+| **dirección** | `admite-de-mas` · `rechaza-de-mas` · **las dos** · `no-aplica` |
+| **ante la duda** | `niega-ante-duda`, eje ortogonal, solo si aplica |
+| **clase de salida** | `veredicto` · `evidencia` · `seleccion` |
+
+`no-aplica` es solo para la `evidencia` que **expone** un dato completo en vez de **seleccionar**, y
+va **con su justificación**: llamar "omisión" a una comparación deliberadamente delegada confunde un
+alcance con un error. La implicación **no se invierte**: una `evidencia` que **resume** —un digest,
+un hash— tampoco selecciona, pero su resumen tiene un punto ciego propio, así que sí tiene dirección
+y `no-aplica` sería falso. Sin esta frase, "no selecciona" se leía como sinónimo de `no-aplica`.
+
+> **`fail-closed` no es un valor de este vocabulario, y no se toca.** En este repositorio nombra la
+> **doctrina de operación** del preflight de aislamiento —negarse a lanzar sin aislar—, que es otra
+> cosa que el poder discriminante de una prueba. Por eso los valores van en español: reusar la
+> palabra para las dos cosas produciría la ambigüedad que esta convención viene a cerrar.
+
+**La frontera se escribe en negativo y en concreto**, derivada de **leer el predicado** y no de
+describir el propósito. "No cubre todos los casos" no es una frontera. Y no vale un límite periférico
+y verdadero que deje intacta la lectura del verde: esa es la forma más barata de cumplir la letra sin
+comprar nada.
+
+**El inventario se deriva, no se transcribe** — una lista escrita a mano envejece sola. El universo
+son las invocaciones que la **matriz de superficies** nombra, más todos los modos alojados en esos
+mismos archivos:
+
+```sh
+for f in $(git ls-files -- 'scripts/*.py' 'tests/__main__.py'); do
+  echo "$f"
+  grep -ohE '"--[a-z][a-z-]*"' "$f" | tr -d '"' | sort -u | sed "s|^|$f |"
+done
+grep -oE '^      (correccion|candidatos)\)' CLAUDE.md | tr -d ' )'
+```
+
+**Emite candidatos, y la clase la adjudica una persona.** No es una limitación a reparar: derivarla
+sola falla en las **dos** direcciones, medido — un derivador sobre el AST marcó `--dominio` como
+veredicto (solo imprime) y `--validar-baseline` como sin veredicto (verifica, delegando al `main`); y
+el comando de arriba emite `--numstat` y `--find-renames`, que son flags que un script le pasa a
+`git`, no modos suyos. Es el mismo patrón `correccion`/`candidatos` que ya usa el verificador de
+aislamiento, y por la misma razón.
+
+**Lo que este vocabulario NO describe.** De las once memorias, cubre **nueve**. Las dos restantes son
+de otra clase y **no se fuerzan**:
+
+| Memoria | Por qué queda fuera |
+|---|---|
+| *"el exit code no discrimina la causa"* | el veredicto es correcto; lo que no distingue es **por qué** falló. Es una propiedad de la señal, no una dirección de error |
+| *"la guarda que nadie invoca"* | la guarda detecta perfecto y nadie la corre. El defecto está en el **procedimiento**, no en la prueba |
+
+Forzarlas dentro del vocabulario lo volvería una etiqueta que se le pone a todo, que es exactamente
+la clase de frontera genérica que esta convención rechaza.
 
 ## Convenciones de frontmatter propias del repo
 

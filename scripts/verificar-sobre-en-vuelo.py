@@ -31,6 +31,59 @@ Formato que este verificador espera de los artefactos que lee (lo fija él, porq
 
 Uso: python3 scripts/verificar-sobre-en-vuelo.py --ac 1 | --autotest | --validar-baseline
 Exit 0 si el modo pasa, 1 si falla, 2 si la invocación es inválida.
+
+FRONTERA DE PRUEBA COMPARTIDA — vale para 19 de los 20 modos `--ac`, y se escribe acá una sola vez
+para que cada frontera de abajo diga lo suyo en vez de repetir esto.
+
+    NO detectan que el comportamiento sea el declarado: verifican el TEXTO documentado. Un
+    documento que prometa lo correcto mientras el código hace otra cosa pasa entero. Alguno suma
+    un chequeo que no es de texto —`--ac 13` empieza por un invariante de sistema de archivos— y
+    lo declara en su frontera propia; este límite habla de lo que comparten, no de todo lo que hacen.
+    Dirección de ESTE límite: admite-de-mas.
+
+    Y donde el predicado es `cubre()`, tampoco entiende negaciones: es presencia de subcadenas
+    normalizadas dentro de un mismo párrafo, así que un párrafo que NIEGUE una obligación
+    conservando sus tokens —"NO es el único que escribe"— la da por declarada; y una reformulación
+    equivalente que no los conserve la da por ausente.
+    Dirección de ESTE límite: admite-de-mas y rechaza-de-mas.
+
+    Clase: veredicto.
+
+    CÓMO SE COMPONEN LAS DIRECCIONES, porque abajo cada modo declara la suya y a primera vista
+    contradice a esta. No se contradicen: el campo `Dirección` de cada modo declara la de SU límite
+    propio, y la dirección EFECTIVA de esa unidad es la UNIÓN de la suya y la de acá. Dos valores
+    para el mismo campo no son un error a resolver eligiendo uno —son dos límites distintos, y la
+    unidad falla por los dos—. Sin esta línea, dieciocho unidades quedaban con `admite-de-mas`
+    propio y `admite-de-mas y rechaza-de-mas` compartido, sin nada que dijera cuál rige.
+
+    `--ac 16` es la excepción entera y lo declara en su propia frontera: ejecuta guardas reales.
+
+    A QUÉ MODOS ALCANZA EL SEGUNDO LÍMITE, y por qué no van enumerados. Una lista escrita a mano de
+    qué modo usa qué primitiva envejece sola, y acá ya salió falsa dos veces: primero decía que
+    `--ac 6` no entraba —llama `cubre()` en cuatro sitios y vía `exigir()`—, y después nombraba
+    cinco primitivas cuando son nueve. Así que se congela el criterio y el dato se deriva: el
+    segundo límite alcanza a todo modo cuyo predicado decida por PRESENCIA DE SUBCADENAS
+    NORMALIZADAS, sin importar el nombre de la función que la implemente —`biyeccion` no llama a
+    `cubre` y hace la misma operación—.
+    Para derivar la lista vigente, buscar las decisiones que comparan contra `norm(...)` a
+    CUALQUIERA de los dos lados del `in`. El lado importa: un derivador que solo mira `norm(x) in y`
+    devuelve cinco funciones, y agregando `x in norm(y)` son nueve, porque varios modos deciden
+    inline en vez de llamar a una primitiva. Ese fue el error de la ronda anterior.
+
+    `--ac 15` queda FUERA de este segundo límite: `extraer_claves`/`incompletas` son diferencia de
+    conjuntos sobre YAML ya parseado. Pero eso NO lo deja sin `rechaza-de-mas`: lo tiene por otra
+    vía, el anclaje textual de su heading, y lo declara en su propia frontera. `--ac 6` entra por
+    los dos límites de acá.
+
+    Y NINGUNO de los veinte distingue un fallo de INFRAESTRUCTURA de un contrato en rojo. Si un
+    archivo que el modo lee no existe, sus chequeos salen rojos y el modo devuelve 1 —medido:
+    `--ac 1 --raiz` sobre un árbol vacío da 1, con "el archivo no existe" como diagnóstico—.
+    Fallo de ejecución, para los veinte: se pliega dentro del 1 y NO se distingue del veredicto;
+    el único código propio del módulo es el 2 de invocación inválida. Hay que leer la salida.
+
+`--raiz` — clase: seleccion.
+    Parametriza sobre qué árbol corre el modo elegido; no aporta propiedad propia y no se cuenta
+    como unidad. Se declara igual, por la misma razón que las otras dos de su clase.
 """
 from __future__ import annotations
 
@@ -476,7 +529,13 @@ def _campos(ctx: Ctx, titulo: str, esperado: set, etiqueta: str) -> None:
 
 
 def ac_1(ctx: Ctx) -> None:
-    """AC-1 — los conjuntos de campos y los sub-esquemas exactos."""
+    """AC-1 — los conjuntos de campos y los sub-esquemas exactos.
+
+    NO detecta que un campo declarado signifique lo que su nombre sugiere: compara
+    conjuntos de nombres contra el esquema, nunca su semántica ni su uso.
+    Su verde autoriza a afirmar: el contrato NOMBRA exactamente esos campos y sub-esquemas.
+    Dirección: admite-de-mas.
+    """
     _campos(ctx, "Los campos del sobre", CAMPOS_RAIZ, "campos raíz")
     _campos(ctx, "Los campos por worker", CAMPOS_WORKER, "campos por worker")
     _campos(ctx, "Los campos por intento", CAMPOS_INTENTO, "campos por intento")
@@ -515,7 +574,13 @@ def ac_1(ctx: Ctx) -> None:
 
 
 def ac_1b(ctx: Ctx) -> None:
-    """AC-1 — no reconstruye estado semántico, cita su sede de rechazo y separa registros."""
+    """AC-1 — no reconstruye estado semántico, cita su sede de rechazo y separa registros.
+
+    NO detecta que el código reconstruya estado semántico: comprueba que el contrato
+    DIGA que no lo hace. Un implementador que lo reconstruya con el texto intacto pasa.
+    Su verde autoriza a afirmar: la prohibición está escrita y cita su sede de rechazo.
+    Dirección: admite-de-mas.
+    """
     texto = ctx.contrato()
     ctx.exigir(texto, "contrato", {
         "declara que no reconstruye el estado semántico":
@@ -549,7 +614,20 @@ def ac_1b(ctx: Ctx) -> None:
 
 
 def ac_2(ctx: Ctx) -> None:
-    """AC-2 — transiciones y outcomes por tupla, el orden del orquestador y el retiro sin rivales."""
+    """AC-2 — transiciones y outcomes por tupla, el orden del orquestador y el retiro sin rivales.
+
+    NO detecta que una transición declarada sea alcanzable, ni que el orquestador las
+    aplique en ese orden: lee las tuplas de la tabla, no una corrida. Eso describe solo el primer
+    tercio de lo que el modo hace; los otros dos tienen límites propios:
+    el orden del orquestador se comprueba por POSICIONES DE SUBCADENA —acepta cualquier párrafo del
+    SKILL.md ajeno donde `bitacora` aparezca antes que `sobre` y este antes que `despacho`—, sin
+    mirar qué afirma ese párrafo: tres palabras en ese orden, en cualquier prosa, lo satisfacen.
+    Y el retiro sin rivales se comprueba con una BLACKLIST LITERAL de formas prohibidas sobre el
+    texto normalizado, así que una regla local de retiro redactada de otro modo es invisible.
+    Su verde autoriza a afirmar: las tuplas declaradas son exactamente las esperadas, y las otras dos
+    comprobaciones no hallaron su patrón. NO que el orden esté afirmado ni que no haya regla local.
+    Dirección: admite-de-mas.
+    """
     s = ctx.seccion(CONTRATO_FUENTE, "Transiciones del sobre")
     if s is not None:
         reales = set()
@@ -584,7 +662,22 @@ def ac_2(ctx: Ctx) -> None:
 
 
 def ac_2b(ctx: Ctx) -> None:
-    """AC-2 — las tres condiciones del retiro, escritor único, nacimiento y adopción."""
+    """AC-2 — las tres condiciones del retiro, escritor único, nacimiento y adopción.
+
+    NO detecta que el escritor único lo sea en runtime, ni que un retiro real cumpla las
+    tres condiciones: comprueba que estén escritas.
+    Y NO detecta que la declaración hable siquiera del retiro, porque sus señales de `biyeccion`
+    están mal calibradas: dos de las tres son UN SOLO token genérico —`artefacto` y `recursos`—, y
+    `biyeccion` da la señal por cubierta si todos sus tokens aparecen en la declaración. Medido:
+    reemplazando dos condiciones por enunciados ajenos que contienen esas palabras —uno sobre cómo se
+    llama el artefacto de la corrida, otro sobre facturación de recursos— el modo sale 15 chequeos y
+    0 fallidos. No es el límite documental ni el de negación que el pasaje compartido ya cubre: acá
+    pasa un enunciado que no es la obligación **ni su negación**, sino otra cosa que comparte una
+    palabra.
+    Su verde autoriza a afirmar: hay exactamente tres declaraciones que contienen `terminal
+    comprobado`, `artefacto` y `recursos`. NO que las tres condiciones del retiro estén declaradas.
+    Dirección: admite-de-mas.
+    """
     s = ctx.seccion(CONTRATO_FUENTE, "Condiciones del retiro")
     if s is not None:
         ctx.biyeccion("condiciones del retiro", declaraciones(s), {
@@ -618,7 +711,13 @@ def ac_2b(ctx: Ctx) -> None:
 
 
 def ac_3(ctx: Ctx) -> None:
-    """AC-3 — la agregación multi-worker y `descendants_summary`."""
+    """AC-3 — la agregación multi-worker y `descendants_summary`.
+
+    NO detecta que la agregación se compute bien: comprueba que el contrato la describa.
+    Un `descendants_summary` mal sumado con el texto intacto pasa.
+    Su verde autoriza a afirmar: la agregación y su resumen están documentados.
+    Dirección: admite-de-mas.
+    """
     s = ctx.seccion(CONTRATO_FUENTE, "Varios workers en una corrida")
     ctx.exigir(s, "contrato → «Varios workers en una corrida»", {
         "punto 1 — identidad por worker": [["identidad", "worker"]],
@@ -632,7 +731,13 @@ def ac_3(ctx: Ctx) -> None:
 
 
 def ac_3b(ctx: Ctx) -> None:
-    """AC-3 — un ancestro no cosecha ni retira sobres indirectos."""
+    """AC-3 — un ancestro no cosecha ni retira sobres indirectos.
+
+    NO detecta que un ancestro respete la prohibición: la prohibición vive en el texto y
+    quien la viola es un conductor en ejecución, que este modo no observa.
+    Su verde autoriza a afirmar: la prohibición está escrita.
+    Dirección: admite-de-mas.
+    """
     ctx.exigir(ctx.contrato(), "contrato", {
         "solo corridas directas": [["corridas directas"]],
         "un ancestro no cosecha ni retira sobres indirectos":
@@ -641,7 +746,13 @@ def ac_3b(ctx: Ctx) -> None:
 
 
 def ac_4(ctx: Ctx) -> None:
-    """AC-4 — el archivo, la identidad compuesta y las tres topologías del barrido."""
+    """AC-4 — el archivo, la identidad compuesta y las tres topologías del barrido.
+
+    NO detecta que el barrido real recorra las tres topologías: compara la identidad y las
+    topologías declaradas contra el esquema.
+    Su verde autoriza a afirmar: las tres topologías están declaradas con su identidad compuesta.
+    Dirección: admite-de-mas.
+    """
     ctx.exigir(ctx.seccion(CONTRATO_FUENTE, "El archivo"), "contrato → «El archivo»", {
         "ruta `.cross-model/active/<skill>/<run_id>.json`":
             [[".cross-model/active/", "run_id", ".json"]],
@@ -672,7 +783,13 @@ def ac_4(ctx: Ctx) -> None:
 
 
 def ac_5(ctx: Ctx) -> None:
-    """AC-5 — el cierre del turno, las cuatro propiedades de la sonda y `wait_budget`."""
+    """AC-5 — el cierre del turno, las cuatro propiedades de la sonda y `wait_budget`.
+
+    NO detecta que un turno real cierre informando, ni que la sonda corra: son
+    obligaciones de conducta y acá solo se comprueba su enunciado.
+    Su verde autoriza a afirmar: el cierre, las cuatro propiedades y el presupuesto están escritos.
+    Dirección: admite-de-mas.
+    """
     ctx.exigir(ctx.seccion(CONTRATO_FUENTE, "El cierre del turno"),
                "contrato → «El cierre del turno»", {
                    "todo turno cierra informando el estado de la corrida":
@@ -703,7 +820,23 @@ def ac_5(ctx: Ctx) -> None:
 
 
 def ac_6(ctx: Ctx) -> None:
-    """AC-6 — fuentes vigentes, `process_ref` y continuidad operativa anclada a su sección."""
+    """AC-6 — fuentes vigentes, `process_ref` y continuidad operativa anclada a su sección.
+
+    NO detecta un cambio anterior al commit base en lo ÚNICO que ancla ahí: `git show` se usa solo
+    para la matriz `CONSERVAR`, así que una construcción que ya estaba mal en la base pasa como
+    conservada.
+    Y NO ancla las fuentes ni el sub-esquema, pese a correr en el mismo modo: `FUENTES` y
+    `SUBESQUEMAS["process_ref"]` se comparan contra constantes de ESTE archivo, no contra la base.
+    Ese es su punto ciego de COEVOLUCIÓN, y es distinto del límite documental que comparte con los
+    demás. Medido con un mutante consistente en los TRES lugares —la constante, su enum y la celda de
+    la tabla—: control verde, mutante verde. Un mutante que toque solo dos de los tres pone el modo
+    en rojo, pero por la inconsistencia que él mismo introduce, no por detectar el cambio.
+    Tampoco comprueba que `process_ref` apunte a un proceso vivo.
+    Su verde autoriza a afirmar: la matriz `CONSERVAR` sigue anclada a la base, y las fuentes y el
+    sub-esquema coinciden con las constantes VIGENTES de este archivo. NO que no hayan cambiado
+    desde ese commit: para dos de los tres, la base no se lee.
+    Dirección: admite-de-mas.
+    """
     ctx.tuplas("fuente por transporte", ctx.seccion(CONTRATO_FUENTE, "Fuente por transporte"),
                FUENTES, ENUM_FUENTE)
     texto = ctx.contrato()
@@ -751,7 +884,13 @@ def ac_6(ctx: Ctx) -> None:
 
 
 def ac_7(ctx: Ctx) -> None:
-    """AC-7 — las cuatro discrepancias con su resolución."""
+    """AC-7 — las cuatro discrepancias con su resolución.
+
+    NO detecta que la precedencia se aplique al resolver una discrepancia real: comprueba
+    que las cuatro estén tabuladas con su resolución.
+    Su verde autoriza a afirmar: las cuatro discrepancias tienen resolución escrita.
+    Dirección: admite-de-mas.
+    """
     ctx.tuplas("precedencia ante discrepancia",
                ctx.seccion(CONTRATO_FUENTE, "Precedencia ante discrepancia"),
                [(c, v) for c, v, _ in PRECEDENCIA], ENUM_PRECEDENCIA,
@@ -763,7 +902,13 @@ def ac_7(ctx: Ctx) -> None:
 
 
 def ac_8(ctx: Ctx) -> None:
-    """AC-8 — el límite se declara y la salida no afirma ejecución."""
+    """AC-8 — el límite se declara y la salida no afirma ejecución.
+
+    NO detecta que la salida real evite afirmar ejecución: comprueba que el límite esté
+    declarado. Una salida que sí la afirme, con el texto intacto, pasa.
+    Su verde autoriza a afirmar: el límite está declarado y el texto no promete ejecución.
+    Dirección: admite-de-mas.
+    """
     ctx.exigir(ctx.seccion(CONTRATO_FUENTE, "El límite declarado"),
                "contrato → «El límite declarado»", {
                    "se declara en una línea en vez de simular una verificación":
@@ -774,7 +919,13 @@ def ac_8(ctx: Ctx) -> None:
 
 
 def ac_9(ctx: Ctx) -> None:
-    """AC-9 — el sidecar del dato nuevo y sus siete obligaciones."""
+    """AC-9 — el sidecar del dato nuevo y sus siete obligaciones.
+
+    NO detecta que un sidecar exista, ni que sea append-only en disco: las siete
+    obligaciones se comprueban como texto.
+    Su verde autoriza a afirmar: las siete obligaciones están escritas.
+    Dirección: admite-de-mas.
+    """
     s = ctx.seccion(CONTRATO_FUENTE, "El dato nuevo del usuario")
     ctx.exigir(s, "contrato → «El dato nuevo del usuario»", {
         "ruta del sidecar `.cross-model/active/<skill>/<run_id>.datos.jsonl`":
@@ -806,7 +957,13 @@ def ac_9(ctx: Ctx) -> None:
 
 
 def ac_10(ctx: Ctx) -> None:
-    """AC-10 — el relanzamiento seguro y los intentos como entradas propias."""
+    """AC-10 — el relanzamiento seguro y los intentos como entradas propias.
+
+    NO detecta que un relanzamiento real sea seguro ni que las rutas sean exclusivas en el
+    sistema de archivos: comprueba que la regla esté escrita.
+    Su verde autoriza a afirmar: el relanzamiento y los intentos están documentados.
+    Dirección: admite-de-mas.
+    """
     ctx.exigir(ctx.seccion(CONTRATO_FUENTE, "Relanzamiento seguro"),
                "contrato → «Relanzamiento seguro»", {
                    "condición 1 — cese confirmado del worker anterior": [["cese", "confirm"]],
@@ -819,7 +976,13 @@ def ac_10(ctx: Ctx) -> None:
 
 
 def ac_11(ctx: Ctx) -> None:
-    """AC-11 — `error` es outcome propio y la cancelación tiene sus dos tuplas condicionales."""
+    """AC-11 — `error` es outcome propio y la cancelación tiene sus dos tuplas condicionales.
+
+    NO detecta que un `error` real se emita como outcome propio: comprueba que el enum lo
+    incluya y que las dos tuplas condicionales estén escritas.
+    Su verde autoriza a afirmar: el vocabulario declara esos valores.
+    Dirección: admite-de-mas.
+    """
     s = ctx.seccion(CONTRATO_FUENTE, "Outcome de la espera")
     ctx.tuplas("outcome de la espera", s,
                [t for t in OUTCOMES if t[0][0] in ("error", "cancelacion")], ENUM_OUTCOME,
@@ -831,7 +994,16 @@ def ac_11(ctx: Ctx) -> None:
 
 
 def ac_12(ctx: Ctx) -> str:
-    """AC-12 — los once puntos de despacho y el puntero normativo por skill."""
+    """AC-12 — los once puntos de despacho y el puntero normativo por skill.
+
+    NO detecta un punto de despacho que NADIE declaró: comprueba la biyección entre lo
+    declarado en el árbol y el inventario, así que un despacho sin marca es invisible a los dos
+    lados. Es el mismo límite —y por la misma razón— que el verificador de aislamiento declara
+    para la completitud de su inventario: distinguir un despacho real de su documentación es
+    adjudicación humana.
+    Su verde autoriza a afirmar: lo declarado y lo inventariado coinciden. NO que estén todos.
+    Dirección: admite-de-mas.
+    """
     puntos = punteros = 0
     for skill, esperados in PUNTOS_DESPACHO.items():
         rel = f"skills/{skill}/SKILL.md"
@@ -855,6 +1027,15 @@ def ac_13(ctx: Ctx) -> str:
     justificaban ya estaba rota —`co-explore` y `cross-implement` mandaban leer la sede canónica por
     ruta cruzada mientras tenían copia local—, así que costaban 5.747 líneas idénticas y no compraban
     nada. La invariante pasa a ser la contraria: **ninguna copia fuera de la canónica**.
+
+
+    NO detecta una copia FUERA DE `skills/`, ni siquiera byte-idéntica y con el mismo nombre: el
+    predicado es `rglob(CONTRATO)` sobre `raiz/skills`, así que una copia en `docs/` o en la raíz
+    es invisible —medido: árbol con `docs/corridas-en-vuelo.md` idéntica, el modo sale 0 e imprime
+    "sede única"—. Y tampoco ve una copia bajo otro nombre, que es el caso periférico.
+    Su verde autoriza a afirmar: no hay copias del contrato **dentro de `skills/`**. NO que la sede
+    sea única en el árbol, que es lo que el nombre del chequeo invita a concluir.
+    Dirección: admite-de-mas.
     """
     if leer(ctx.raiz, CONTRATO_FUENTE) is None:
         ctx.check(False, f"fuente {CONTRATO_FUENTE}", "no existe")
@@ -882,7 +1063,16 @@ def ac_13(ctx: Ctx) -> str:
 
 
 def ac_14(ctx: Ctx) -> None:
-    """AC-14 — la tercera excepción de la regla 7 de `co-explore`, citada por `sdd-flow`."""
+    """AC-14 — la tercera excepción de la regla 7 de `co-explore`, citada por `sdd-flow`.
+
+    NO detecta que la excepción se aplique en una corrida: comprueba que el párrafo de
+    `co-explore` la enumere y que `sdd-flow` la cite. Depende además de DOS anclas textuales, no de
+    una: la frase "excepciones acotadas" para hallar el párrafo, y "no citan la co-exploracion" del
+    lado de `sdd-flow`. Si cualquiera de las dos se reescribe, el modo falla por no hallar su ancla,
+    no porque la excepción falte.
+    Su verde autoriza a afirmar: la tercera excepción está escrita y citada.
+    Dirección: admite-de-mas y rechaza-de-mas.
+    """
     texto = ctx.texto("skills/co-explore/SKILL.md")
     if texto is not None:
         bloque = None
@@ -1017,6 +1207,17 @@ def ac_15(ctx: Ctx) -> str:
     """AC-15 — las claves nuevas del diff de la rama están completas en dueño y vista.
 
     Sobre la rama base no hay sujeto: el merge-base es HEAD y el conjunto nuevo queda vacío.
+
+
+    NO detecta una clave que ya existía ANTES del merge-base: mira solo las claves que el
+    diff de la rama agrega, así que una divergencia dueño/vista preexistente pasa. Con cero claves
+    nuevas el modo pasa sin haber comprobado ninguna.
+    Y RECHAZA DE MÁS por anclaje textual: `extraer_claves` localiza cada sede con un `re.match`
+    anclado al encabezado, así que reescribir ese encabezado lo pone rojo sin que exista
+    ninguna divergencia dueño/vista. No es una conjetura: lo mide el control positivo de este mismo
+    archivo, el caso `extractor-sin-heading`, que exige rojo con la señal "heading ausente".
+    Su verde autoriza a afirmar: las claves NUEVAS de esta rama están completas en dueño y vista.
+    Dirección: admite-de-mas y rechaza-de-mas.
     """
     sha_base, ref_base = resolver_base(ctx.raiz)
     if sha_base is None:
@@ -1133,7 +1334,18 @@ def _validar_skills_ref(ctx: Ctx) -> int:
 
 
 def ac_16(ctx: Ctx) -> str:
-    """AC-16 — guardas del repo y pares `(returncode, diagnósticos)` sin regresión."""
+    """AC-16 — guardas del repo y pares `(returncode, diagnósticos)` sin regresión.
+
+    NO es documental: ejecuta las guardas de `GUARDAS` por `subprocess` y compara la salida
+    de `skills-ref`. Por eso NO le aplica la frontera compartida del módulo.
+    Lo que NO detecta es una regresión en una guarda que no esté en `GUARDAS`: su población es esa
+    lista, escrita a mano, y una guarda nueva no entra sola.
+    Su verde autoriza a afirmar: las guardas de esa lista no cambiaron de resultado.
+    Dirección: admite-de-mas.
+    Clase: veredicto. Se declara acá y no se hereda: la línea de arriba dice que la frontera
+    compartida —donde vive el `Clase:` de los otros diecinueve— NO le aplica.
+    Nota: salió de las obligaciones del gate; sigue disponible.
+    """
     acumulado = 0
     for cmd in GUARDAS:
         r = subprocess.run(cmd, cwd=ctx.raiz, capture_output=True, text=True)
@@ -1145,7 +1357,13 @@ def ac_16(ctx: Ctx) -> str:
 
 
 def ac_17(ctx: Ctx) -> str:
-    """AC-17 — autoridades frescas del manifest, carriers, productores y cierre idempotente."""
+    """AC-17 — autoridades frescas del manifest, carriers, productores y cierre idempotente.
+
+    NO detecta que el cierre sea idempotente en ejecución, ni que las autoridades estén
+    frescas en una corrida real: comprueba que los cuatro productores lo declaren.
+    Su verde autoriza a afirmar: el contrato y su cierre están escritos en los cuatro.
+    Dirección: admite-de-mas.
+    """
     contrato = ctx.seccion(CONTRATO_FUENTE, "Los campos del sobre")
     ctx.exigir(contrato, "carrier activo", {
         "par condicional e indivisible": [["manifest_seed", "manifest_first_dispatch_at", "condicional", "indivisible"]],
@@ -1417,6 +1635,20 @@ def autotest_conmutacion() -> list[str]:
 
 
 def validar_baseline(ctx: Ctx, comprobar_commit: bool = True) -> None:
+    """Comprueba forma, `sha256` y vínculo con el commit del bloque de baseline versionado.
+
+    NO ejecuta V1-V20 ni contrasta los estados declarados contra corridas: una tabla de veinte
+    estados bien formada e inventada pasa igual — medido, y es la razón por la que este modo salió
+    de las obligaciones del gate.
+    Su verde autoriza a afirmar: el bloque está bien formado y sellado. NO que sus estados
+    correspondan a corridas reales.
+    Dirección: admite-de-mas.
+    Fallo de ejecución, distinto de su resultado y NO de su código: si el archivo de baseline no
+    existe sale **1** —medido sobre un árbol vacío—, el mismo 1 de un baseline mal formado. Y su
+    verde no es alcanzable con el `.py` editado: el sello incluye el sha256 del propio verificador,
+    así que cualquier cambio de este archivo lo pone rojo hasta re-sellar.
+    Clase: veredicto. Fuera del gate obligatorio; sigue disponible.
+    """
     baseline = ctx.texto(BASELINE_PATH)
     if baseline is None:
         return
@@ -1519,7 +1751,7 @@ MODOS = {
     "10": ("AC-10 · relanzamiento seguro", ac_10),
     "11": ("AC-11 · la cancelación como terminal propio", ac_11),
     "12": ("AC-12 · los once puntos y los siete punteros", ac_12),
-    "13": ("AC-13 · siete copias idénticas, trigger y README", ac_13),
+    "13": ("AC-13 · sede única, trigger y README", ac_13),
     "14": ("AC-14 · la tercera excepción y su cita", ac_14),
     "15": ("AC-15 · claves nuevas del diff de la rama completas en dueño y vista", ac_15),
     "16": ("AC-16 · las guardas del repo sin regresión", ac_16),
@@ -2120,6 +2352,19 @@ def _correr_ac15_temporal(raiz: Path) -> tuple[int, str]:
 
 
 def autotest() -> int:
+    """Control positivo: corre el corpus verde y después un mutante por vez.
+
+    NO detecta un defecto que ningún mutante del corpus ejerza: su población son los mutantes
+    escritos a mano, así que un modo con un hueco que nadie mutó sale verde. Lo que SÍ detecta, y
+    conviene no atribuirle el hueco simétrico: que un mutante no llegue a aplicarse. El bucle falla
+    explícito si el patrón a mutar no está en el archivo, los casos de config exigen verde-sin-mutante
+    Y rojo-con-mutante, y `retiro-dueno-vault` exige además haber evaluado al menos un par.
+    Su verde autoriza a afirmar: los modos del corpus se ponen rojos ante ESOS mutantes.
+    Dirección: admite-de-mas.
+    Fallo de ejecución: ninguno propio. Un error al construir el corpus se reporta como falla y sale
+    por el mismo 1 del veredicto.
+    Clase: veredicto.
+    """
     print("=== Gate de conmutación: drenaje, exclusión y recuperación")
     fallas = autotest_conmutacion()
     print(f"[{'OK   ' if not fallas else 'FALLA'}] protocolo de conmutación: "

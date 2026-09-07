@@ -14,6 +14,38 @@ Uso:
     medir-techo.test.py --autotest-banda     comprueba que ampliar, destapar o quitar la banda —o
                                              cambiarle el valor— pone rojo algún caso
 
+FRONTERA DE PRUEBA de la suite (invocada sin argumentos) — clase: veredicto.
+    NO detecta un defecto que ningún caso del inventario ejerza: su población son los casos escritos
+    a mano de abajo, y los doce defectos que mapea se encontraron EJECUTANDO el instrumento, ninguno
+    leyéndolo. Un defecto trece no tiene quién lo cace.
+    NO detecta que la fórmula implementada sea la que la regla 2 declara: eso lo ata el ancla, no
+    esta suite. La suite puede estar entera en verde sobre una fórmula equivocada.
+    Su verde autoriza a afirmar: los casos de este inventario pasan. NO que el instrumento sea
+    correcto.
+    Dirección: admite-de-mas.
+    Fallo de ejecución, distinto de su resultado: **2** ante una invocación mal formada —argumento
+    no reconocido, o un caso que no existe—, que sí se distingue del veredicto. Pero un error de la
+    propia suite NO: `correr()` lo atrapa, lo imprime como `ERROR-SUITE` y lo suma a `fallos`, así
+    que sale **1**, el mismo código de un caso que diverge. Ese plegado es deliberado —un error de
+    la suite no puede leerse como caso verde—, y por eso hay que leer la salida, no el código.
+
+FRONTERA DE PRUEBA de `--autotest-banda` y `--autotest-dominio` — clase: veredicto.
+    NO detectan un defecto que ningún mutante de su grupo ejerza: su población son los mutantes
+    escritos a mano, igual que la suite. Y NO comprueban que el mutante haya cambiado el veredicto
+    POR SU CAUSA en todos los grupos: piden que algún caso se ponga rojo, no cuál.
+    Su verde autoriza a afirmar: cada mutante de ese grupo es detectado por al menos un caso.
+    Dirección: admite-de-mas.
+    Fallo de ejecución, distinto de su resultado Y de su código: `_autotest_mutantes` devuelve **4**
+    —no 1— cuando el grupo queda sin casos, así que un 4 dice "no había sobre qué mutar" y no "un
+    mutante pasó". Medido sobre una copia con el grupo vaciado.
+
+`--caso` · `--grupo` — clase: seleccion.
+    Parametrizan la corrida de arriba acotando qué casos se ejercen; no aportan propiedad propia y
+    por eso no se cuentan como unidades. Se declaran igual: una bandera sin clase se lee como una
+    unidad a la que le falta la frontera.
+    No son simétricas, y conviene no leerlas como si lo fueran: un `--caso` inexistente sale 2, y un
+    `--grupo` inexistente cae en la selección vacía y sale 1.
+
 Salida: una línea por caso —`caso ID: ok` o `caso ID: DIVERGE …`— y un cierre `N casos ok`.
 Una selección vacía **falla**: si no, un identificador mal escrito daría verde sin ejercer nada.
 
@@ -743,6 +775,18 @@ DEFECTOS = {
 
 
 def listar():
+    """Imprime el inventario y el mapeo de defectos, y devuelve 1 si el mapeo nombra casos que no
+    existen.
+
+    NO detecta un caso que EXISTA y que el mapeo no nombre: comprueba una sola dirección —que todo
+    defecto mapeado tenga su caso—, así que un caso huérfano del mapeo pasa. Y no comprueba que el
+    caso nombrado ejerza el defecto que dice ejercer.
+    Su verde autoriza a afirmar: todo defecto del mapeo apunta a un caso existente.
+    Fallo de ejecución: ninguno propio. Solo compara el mapeo contra el inventario en memoria; no
+    lee archivos ni lanza procesos, así que no tiene una vía de error distinta de su veredicto.
+    Dirección: admite-de-mas.
+    Clase: veredicto — el `1` de esta función es su señal, no un efecto de la impresión.
+    """
     print(f"inventario: {len(CASOS)} casos")
     for cid, grupo, fn in CASOS:
         doc = (fn.__doc__ or "").strip().split("\n")[0]
@@ -780,7 +824,17 @@ def correr(seleccion):
 
 def autotest():
     """Quitar un caso tiene que poner la suite roja. Sin esto, una suite que no ejerce nada es
-    indistinguible de una que pasa."""
+    indistinguible de una que pasa.
+
+    NO detecta que los casos comprueben lo correcto: comprueba que la suite REACCIONE al quitarlos.
+    Una suite de casos vacuos —que pasan sin ejercer nada— igual se pone roja al vaciarla, así que
+    este control no la distingue de una que sí verifica.
+    Su verde autoriza a afirmar: la selección vacía no da verde. NO que los casos tengan dientes.
+    Fallo de ejecución: ninguno propio. Delega en `correr()`, que pliega un error de la suite dentro
+    de su 1; este modo no agrega ninguna vía de error propia.
+    Dirección: admite-de-mas.
+    Clase: veredicto.
+    """
     original = list(CASOS)
     try:
         CASOS.clear()
@@ -891,7 +945,15 @@ def _autotest_mutantes(etiqueta, grupo, mutantes):
 
 def autotest_dominio():
     """Control positivo del criterio: cada superficie del descarte, mutada por separado, tiene que
-    poner rojo a algún caso del grupo `dominio`."""
+    poner rojo a algún caso del grupo `dominio`.
+
+    NO detecta un patrón que FALTE en el dominio: muta las superficies que ya están declaradas, así
+    que una clase de artefacto generado que nadie agregó a la lista no tiene mutante que la ejerza.
+    La lista cerrada envejece sola y este control no lo ve.
+    Su verde autoriza a afirmar: las superficies DECLARADAS están cubiertas por algún caso.
+    Dirección: admite-de-mas.
+    Clase: veredicto.
+    """
     return _autotest_mutantes("autotest-dominio", "dominio", MUTANTES_DOMINIO)
 
 
@@ -940,7 +1002,16 @@ MUTANTES_BANDA = [
 
 def autotest_banda():
     """Control positivo de la banda: ampliarla, destaparla, quitarla o cambiarle el valor tiene que
-    poner rojo a algún caso del grupo `formula`."""
+    poner rojo a algún caso del grupo `formula`.
+
+    NO detecta que el valor de la banda sea el que la regla 2 declara: comprueba que la suite
+    reaccione a CAMBIARLO, no que el vigente coincida con la sede normativa. Esa mitad la cubre el
+    caso `banda-dos-representaciones`, no este control, así que un flujo que mida sin correr la
+    suite no la tiene.
+    Su verde autoriza a afirmar: mover la banda pone rojo algún caso. NO que la banda sea correcta.
+    Dirección: admite-de-mas.
+    Clase: veredicto.
+    """
     return _autotest_mutantes("autotest-banda", "formula", MUTANTES_BANDA)
 
 
