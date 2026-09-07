@@ -822,10 +822,19 @@ def ac_5(ctx: Ctx) -> None:
 def ac_6(ctx: Ctx) -> None:
     """AC-6 — fuentes vigentes, `process_ref` y continuidad operativa anclada a su sección.
 
-    NO detecta un cambio anterior al commit base contra el que compara: lee esa versión con
-    `git show`, así que una fuente que ya estaba mal en la base pasa como vigente. Tampoco
-    comprueba que `process_ref` apunte a un proceso vivo.
-    Su verde autoriza a afirmar: las fuentes y el sub-esquema no cambiaron DESDE ese commit.
+    NO detecta un cambio anterior al commit base en lo ÚNICO que ancla ahí: `git show` se usa solo
+    para la matriz `CONSERVAR`, así que una construcción que ya estaba mal en la base pasa como
+    conservada.
+    Y NO ancla las fuentes ni el sub-esquema, pese a correr en el mismo modo: `FUENTES` y
+    `SUBESQUEMAS["process_ref"]` se comparan contra constantes de ESTE archivo, no contra la base.
+    Ese es su punto ciego de COEVOLUCIÓN, y es distinto del límite documental que comparte con los
+    demás. Medido con un mutante consistente en los TRES lugares —la constante, su enum y la celda de
+    la tabla—: control verde, mutante verde. Un mutante que toque solo dos de los tres pone el modo
+    en rojo, pero por la inconsistencia que él mismo introduce, no por detectar el cambio.
+    Tampoco comprueba que `process_ref` apunte a un proceso vivo.
+    Su verde autoriza a afirmar: la matriz `CONSERVAR` sigue anclada a la base, y las fuentes y el
+    sub-esquema coinciden con las constantes VIGENTES de este archivo. NO que no hayan cambiado
+    desde ese commit: para dos de los tres, la base no se lee.
     Dirección: admite-de-mas.
     """
     ctx.tuplas("fuente por transporte", ctx.seccion(CONTRATO_FUENTE, "Fuente por transporte"),
@@ -1742,7 +1751,7 @@ MODOS = {
     "10": ("AC-10 · relanzamiento seguro", ac_10),
     "11": ("AC-11 · la cancelación como terminal propio", ac_11),
     "12": ("AC-12 · los once puntos y los siete punteros", ac_12),
-    "13": ("AC-13 · siete copias idénticas, trigger y README", ac_13),
+    "13": ("AC-13 · sede única, trigger y README", ac_13),
     "14": ("AC-14 · la tercera excepción y su cita", ac_14),
     "15": ("AC-15 · claves nuevas del diff de la rama completas en dueño y vista", ac_15),
     "16": ("AC-16 · las guardas del repo sin regresión", ac_16),
