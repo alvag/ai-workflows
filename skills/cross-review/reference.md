@@ -1072,7 +1072,7 @@ casilla en la que quedarse esperando.
 | **veredicto cosechado y validado** — parseado al formato estructurado y triado | el gate **con** la crítica incorporada: es el único que aporta findings |
 | **deadline vencido** sin el marcador de cierre | el gate **igual**, con el aviso de degradación de una línea (`UNAVAILABLE` · `deadline_exceeded`) |
 | **bloqueo no resuelto** — esperó una aprobación interactiva y no se destrabó dentro de su deadline | el gate **igual**, con el aviso de degradación (`UNAVAILABLE` · `deadline_exceeded`, que es lo que ocurrió) |
-| **artefacto ausente** — terminó sin dejar salida en la ruta acordada, o dejó una que no se puede parsear ni con parseo tolerante | el gate **igual**, con el aviso de degradación (`UNAVAILABLE` · `runtime_failure`) |
+| **artefacto ausente** — terminó **por su cuenta, antes de que venciera el tope**, sin dejar salida en la ruta acordada, o dejó una que no se puede parsear ni con parseo tolerante | el gate **igual**, con el aviso de degradación (`UNAVAILABLE` · `runtime_failure`) |
 | **indisponibilidad** — no se pudo lanzar, o arrancó y falló ejecutando, con cualquiera de sus causas | el gate **igual**, con el aviso de degradación |
 
 **No son estados nuevos: son observables de estados que ya existen.** La tabla no agrega un veredicto
@@ -1360,10 +1360,19 @@ sin una marca final.
 | Qué se observó | Causa |
 |---|---|
 | venció el tope de pared y no hay marca | `deadline_exceeded` |
-| el proceso **terminó** y entregó salida ausente, incompleta o sin marca válida | `runtime_failure` |
+| el proceso **terminó por su cuenta, antes de que venciera el tope**, y entregó salida ausente, incompleta o sin marca válida | `runtime_failure` |
 
 Confundirlas elige la palanca de recuperación equivocada: subir el tope no arregla un revisor que
 entrega mal.
+
+**El `antes de que venciera el tope` de la segunda fila es lo que vuelve excluyentes a las dos.** Sin
+él, ambas describen el mismo estado: al vencer el tope se mata el proceso, así que después del kill
+—y siempre en modo sync, donde la primitiva de `timeout` retorna con el proceso ya muerto— lo
+observado es a la vez "venció el tope" y "terminó sin marca válida". Leída así, la segunda fila
+reclasificaría el `deadline_exceeded` que la primera acaba de asignar: exactamente lo que el
+encabezado de esta tabla prohíbe, aplicado contra la tabla misma. **El orden de las filas no es la
+regla** — la regla es el discriminador temporal, porque una precedencia por posición se pierde en
+cuanto alguien cita una fila suelta.
 
 ### Validación por bloque
 
