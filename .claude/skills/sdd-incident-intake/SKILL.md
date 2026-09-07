@@ -1,13 +1,13 @@
 ---
 name: sdd-incident-intake
 description: >-
-  Admite registros de incidentes SDD. despachar verifica defectos, crea flujos
-  sdd-flow en worktrees de Orca y retira lo despachado; volcar crea GitHub issues
-  con needs-triage y retira sin arreglar. Usar ante “toma un incidente de una
-  ruta”, “procesa incidentes”, “revisa N incidentes en secuencia”, “vuelca
-  incidentes a issues” o /sdd-incident-intake seguido de la ruta. NO corrige
-  skills ni registra incidentes; no revisa diseño ni implementa: corresponden
-  a sdd-flow, CLAUDE.md, cross-review o cross-implement. No invocarla
+  Admite registros de incidentes SDD. despachar verifica defectos y crea, de a
+  uno y en secuencia, flujos sdd-flow en worktrees de Orca; volcar crea GitHub
+  issues con needs-triage sin arreglar; ambos retiran lo procesado. Usar ante
+  “toma un incidente de una ruta”, “procesa incidentes”, “vuelca incidentes a
+  issues” o /sdd-incident-intake seguido de ruta. Excluye
+  corregir skills, registrar incidentes, revisar diseño e implementar; dueños
+  respectivos: sdd-flow, CLAUDE.md, cross-review y cross-implement. No invocarla
   espontáneamente: solo ante pedido explícito.
 ---
 

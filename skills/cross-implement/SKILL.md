@@ -1,11 +1,11 @@
 ---
 name: cross-implement
 description: >-
-  Delega un work order congelado, por default a la familia opuesta; el conductor revisa, prueba,
-  itera y commitea tras el gate. Cualquier flujo con work order usa /cross-implement seguido de la
-  ruta, “que Codex implemente este plan” o “implementa esto con Codex y revisas tú”; sdd-flow la
-  invoca en modo cross. Requiere work order aprobado; excluye diseño, cambios triviales y code
-  review; cross-review cubre documentos. No invocarla espontáneamente: solo por pedido o desde
+  Delega por default a la familia opuesta un work order congelado; el conductor revisa, prueba,
+  itera y commitea tras el gate. Todo flujo con work order aprobado usa /cross-implement seguido de
+  ruta, “que Codex implemente este plan” o “implementa esto con Codex y revisas tú”; sdd-flow la usa
+  en cross. Excluye diseño, cambios de 20 líneas o menos y code review; cross-review cubre
+  documentos. No invocarla espontáneamente: solo ante pedido explícito del usuario o desde
   sdd-flow.
 ---
 

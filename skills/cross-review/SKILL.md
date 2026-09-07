@@ -1,13 +1,13 @@
 ---
 name: cross-review
 description: >-
-  Revisa adversarialmente specs, planes, tasks, master-specs o repartos SDD antes de implementar o
-  de un gate; sdd-flow y sdd-orchestrator la invocan embebida. En draft redacta y revisa un plan
-  ante “stress-test de esta idea” o “arma un plan y que Codex lo critique”.
-  Usar ante “segunda opinión”, “revisión independiente o adversarial”, “cross-review”, “mirada
-  externa”, “que la otra familia critique el plan”, o mediante /cross-review seguido de la ruta. NO
-  es code review de diffs, PRs ni código. No invocarla espontáneamente: solo por pedido
-  explícito o desde una skill SDD.
+  Revisa specs, planes, tasks, master-specs o repartos SDD adversarialmente antes de implementar o
+  un gate; la embeben sdd-flow y sdd-orchestrator. Directa: /cross-review con ruta; sin ruta activa
+  draft: redacta y revisa un plan desde “stress-test de esta idea” o “arma un plan y que Codex lo
+  critique”. También activa “segunda opinión”, “revisión independiente o adversarial”,
+  “cross-review”, “mirada externa” o “que la otra familia critique el plan”. No es code review:
+  excluye diffs, PRs y código. No invocarla espontáneamente: solo por pedido explícito o desde una
+  skill SDD.
 ---
 
 # cross-review — segunda opinión cross-model para artefactos SDD
