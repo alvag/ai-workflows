@@ -1108,15 +1108,29 @@ Una implementación tarda mucho más que una crítica: presupuestos por encima d
   es para cuando no se sabe qué pasó. Esta vía **consume** esa sede en vez de describir un mecanismo
   paralelo, que se desincronizaría.
 
-  Aplicado acá, son dos ramas y se leen por separado:
+  Aplicado acá son dos ramas, y la partición es **causal**: la decide **quién puso el corte**, no lo
+  que se observa una vez que el proceso ya no está. Es el criterio que ya fija la distinción fina de
+  `co-explore/reference.md` → "Estados del worker" —el que **alcanzó el deadline** sin marcador no
+  llegó a responder; el que **falló ejecutando** tras arrancar bien es otra cosa—, y respetarlo es lo
+  que mantiene alcanzables las dos filas de `deadline_exceeded` de `ownership.md`.
 
-  | Lo observado | Terminal | Por qué |
+  | Lo observado, y cuándo | Terminal | Por qué |
   |---|---|---|
-  | `cese confirmado sin marcador` válido | `UNAVAILABLE` con causa `runtime_failure`, **sin agotar el deadline** | el cese está confirmado por construcción —el comando retornó—, así que el fallo es conocido y se adjudica de inmediato |
-  | proceso todavía vivo al vencer el tope | `UNAVAILABLE` con causa `deadline_exceeded` | el corte lo puso el conductor y el cese queda incierto: rige lo que ya dice el primer bullet de esta sección |
+  | `cese confirmado sin marcador` válido **antes de que venza el deadline** | `UNAVAILABLE` con causa `runtime_failure`, **sin agotar el deadline** | el proceso terminó por su cuenta, así que el fallo es conocido y se adjudica de inmediato en lugar de esperar un tope que ya no puede aportar nada |
+  | **el deadline venció primero** — siga el proceso vivo, o se confirme el cese enseguida | `UNAVAILABLE` con causa `deadline_exceeded` | el corte lo puso el conductor: rige lo que ya dice el primer bullet de esta sección |
 
-  La diferencia entre las dos es la **columna de continuidad**, no el síntoma: las dos carecen de
-  marca, y solo la primera puede seguir a un fix round sobre la misma sesión.
+  **La primera columna lleva `cuándo` y no solo qué, porque el observable no desempata.** Al vencer
+  el tope, el primer bullet manda matar el proceso — y el estado que queda es, palabra por palabra,
+  `cese confirmado sin marcador`. En modo sync ni siquiera hace falta el kill: la primitiva de
+  `timeout` retorna con el proceso ya muerto, así que ahí **nunca** se observa un proceso vivo al
+  vencer el tope. Leídas por el síntoma, las dos filas colapsarían en la primera y
+  `deadline_exceeded` quedaría inalcanzable — con la palanca invertida justo donde más cuesta: se
+  miraría el error de un implementador que no falló, en vez del presupuesto que sí se agotó.
+
+  **Que el cese se confirme después del vencimiento no reclasifica la causa: subdivide su fila.** Esa
+  confirmación es exactamente lo que separa las dos filas de `deadline_exceeded` en `ownership.md`
+  —`worker todavía activo o escribiendo` contra `cese confirmado`—, que difieren en la columna de
+  continuidad y no en la causa. Acá no se duplica esa sub-partición: se remite a ella.
 
 ### `recovery-required` bloquea retry y fallback
 
