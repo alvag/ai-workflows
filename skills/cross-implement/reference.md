@@ -1118,10 +1118,10 @@ Una implementación tarda mucho más que una crítica: presupuestos por encima d
   paralelo, que se desincronizaría.
 
   Aplicado acá son dos ramas, y la partición es **causal**: la decide **quién puso el corte**, no lo
-  que se observa una vez que el proceso ya no está. Es el criterio que ya fija la distinción fina de
-  `co-explore/reference.md` → "Estados del worker" —el que **alcanzó el deadline** sin marcador no
-  llegó a responder; el que **falló ejecutando** tras arrancar bien es otra cosa—, y respetarlo es lo
-  que mantiene alcanzables las dos filas de `deadline_exceeded` de `ownership.md`.
+  que se observa una vez que el proceso ya no está. Dos sedes la sostienen, y las dos la enuncian
+  como regla y no como ejemplo: `cross-review/reference.md` → "Señal de cierre", cuya tabla asigna
+  la causa **por lo que efectivamente pasó, no por la ausencia de marca**; y `ownership.md`, cuyas
+  dos filas de `deadline_exceeded` solo son alcanzables si esta partición se respeta.
 
   | Lo observado, y cuándo | Terminal | Por qué |
   |---|---|---|
