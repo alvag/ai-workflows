@@ -13,6 +13,22 @@ guion medio a guion bajo.
 Uso: python3 scripts/verificar-vistas-config.py
 Exit 0 si los seis chequeos pasan; 1 si alguno falla (detalle impreso por chequeo).
 
+FRONTERA DE PRUEBA — clase: veredicto.
+    NO detecta que el DUEÑO sea correcto: comprueba fidelidad de la vista a su dueño, y ante
+    discrepancia manda el dueño. Un default equivocado, copiado fielmente a la vista, pasa todos sus
+    chequeos.
+    NO detecta una clave que falte en LOS DOS lados: compara los dos conjuntos entre sí, así que una
+    clave que ningún dueño declara y ninguna vista muestra es invisible para todos ellos.
+    NO detecta banderas: este script IGNORA cualquier argumento y corre sus chequeos igual, así que
+    una invocación como `--autotest` devuelve 0 sin haber ejercido ningún control positivo. Ese 0 no
+    acredita nada más que los chequeos de siempre.
+    Su verde autoriza a afirmar: las vistas coinciden con sus dueños. NO que los dueños acierten.
+    Dirección: admite-de-mas.
+    Fallo de ejecución, distinto de su resultado pero NO de su código: una fuente ilegible se atrapa
+    y se pliega dentro del **1**, igual que un chequeo en rojo. El plegado es deliberado —no poder
+    leer una sede no puede salir verde— y se declara en vez de omitirse: un `1` de este script no
+    dice si la vista divergió o si no se pudo leer.
+
 Requiere python3 + PyYAML. Sin otras dependencias.
 """
 from __future__ import annotations

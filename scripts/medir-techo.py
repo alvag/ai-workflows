@@ -26,6 +26,50 @@ Uso:
     medir-techo.py --banda           imprime la banda de tolerancia del umbral, para comparar el
                                      número del instrumento contra el de la sede normativa
 
+FRONTERA DE PRUEBA — cuatro unidades comparten este pasaje.
+
+`medir-techo.py <base> [head]` — clase: veredicto.
+    NO detecta el contenido que se MUEVE entre archivos distintos: se cuenta como crecimiento en el
+    destino, porque el piso va por archivo. Es consecuencia de la misma propiedad que impide que un
+    borrado financie crecimiento ajeno, y la regla 2 la declara.
+    NO detecta si el andamiaje que se agrega hacía falta: mide líneas escritas, no costo impuesto.
+    Un flujo que achica el aparato REESCRIBIÉNDOLO —borra mucho y agrega poco— bloquea igual, y por
+    eso el veredicto informa cuando el objeto declarado del flujo es el andamiaje. Un achique de
+    solo borrados NO bloquea: con denominador cero el numerador se mide bruto sumando altas, así que
+    sin altas da cero y pasa.
+    Su verde autoriza a afirmar: la proporción del diff medido está dentro del umbral. NO que el
+    andamiaje agregado sea proporcionado a lo que compra.
+    Dirección: admite-de-mas y rechaza-de-mas.
+    Fallo de ejecución: código 2 es invocación mal formada y 3 es medición detenida; un 3 NO es un
+    veredicto y leerlo como permiso es leer un fallo como un sí.
+
+`--banda` · `--dominio` — clase: evidencia de la que EXPONE, y no emiten veredicto.
+    Imprimen un dato completo —el valor de la banda, los patrones del dominio— y su código de salida
+    no discrimina nada.
+    Su salida permite concluir: cuál es el valor vigente. La adjudica quien los invoca, comparándolo
+    —con un `diff`— contra la sede normativa.
+    Dirección: no-aplica. Justificación: exponen el dato entero y no seleccionan nada, así que no
+    pueden tener falsos candidatos ni omisiones; llamar "omisión" a la comparación que delegan
+    confundiría un alcance deliberado con un error.
+    Fallo de ejecución: ninguno. No leen el árbol.
+
+`--ancla` — clase: evidencia, y NO de la que expone: RESUME.
+    Imprime `esperado=` y `actual__=` y sale 0 AUNQUE LOS DOS HASHES DIFIERAN: su código de salida
+    no es su señal de salud, y leerlo como verde es afirmar que el ancla coincide sin comparar.
+    NO detecta un cambio de la sección normativa que su propia normalización descarte:
+    `seccion_normativa` hace `rstrip()` por línea y quita las líneas vacías del final, así que un
+    espacio al final de una línea, o una línea en blanco al final, dejan el hash IDÉNTICO —medido:
+    el mismo `actual__=` en tres variantes que solo difieren en eso—. La sangría inicial sí lo mueve.
+    Su salida permite concluir: cuál es el digest vigente de la sección. La adjudica quien lo invoca,
+    comparándolo contra el persistido.
+    Dirección: admite-de-mas — un cambio que la normalización se come se lee como "sin cambio", que
+    es la lectura peligrosa. Por eso NO lleva `no-aplica` como los otros dos: resume en vez de
+    exponer, y un resumen tiene punto ciego propio.
+    Fallo de ejecución, distinto de su resultado: sale 3 —medición detenida— ante cualquier `Detener`
+    de su camino. Las vías NO se enumeran acá: son las que el código levante —leer CLAUDE.md,
+    encontrar `### Regla 2`, resolver el commit— y una lista escrita a mano se queda corta sola.
+    Según dónde caiga puede imprimir `esperado=` sin `actual__=`, o no imprimir nada.
+
 Salida:
     stdout  un resumen de UNA línea, sin ninguna ruta:
                 nuevos_en_scripts=N num=N den=N VEREDICTO
