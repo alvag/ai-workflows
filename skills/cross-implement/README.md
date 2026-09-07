@@ -72,9 +72,10 @@ el primero al armar y aprobar el contrato, el segundo cuando una ronda falla.
 
 La integración de `.opencode/` reproduce este contrato en TypeScript y **acepta un solo comando de
 prueba**, así que ahí el hueco de las comprobaciones agregadas sigue abierto: un flujo iniciado
-desde `/sdd` en OpenCode puede entregar deuda de lint o de build igual que antes. El de los canales
-heredados sí está cerrado ahí, y por construcción: esa integración lanza con `--safe-mode` y una
-allowlist explícita de tools, con el prompt como defensa adicional. Es trabajo de otro flujo —el producto de este
+desde `/sdd` en OpenCode puede entregar deuda de lint o de build igual que antes. Y **su allowlist
+conserva `Write(./**)`**, la forma que el CLI rechaza por inefectiva: el de los canales heredados
+está cerrado ahí por `--safe-mode` y por el prompt, pero la superficie de escritura la declara con un
+scope que no se aplica. Es trabajo de otro flujo —el producto de este
 repo son las skills en Markdown— y se declara acá para que la exclusión sea una decisión visible y
 no un olvido.
 
@@ -84,9 +85,15 @@ Ninguno obligatorio: es una **capacidad opcional** que degrada a implementación
 la delegación ocurra hace falta el CLI de la otra familia:
 
 - Autor Claude → Codex: `codex exec -s workspace-write` en el PATH (codex-cli ≥ 0.130).
-- Autor GPT/Codex → Claude: `claude -p` en el PATH (escritura acotada por permisos path-scoped:
-  `--permission-mode default` + `Edit(./**),Write(./**)` — nunca `acceptEdits`, que escribe fuera
-  del working dir; ver `reference.md` → "Matriz de verificación").
+- Autor GPT/Codex → Claude: `claude -p` en el PATH, con la escritura acotada por permisos
+  path-scoped: `--permission-mode default` más **dos entradas de función distinta**, `Write` —que
+  `habilita la herramienta` de escritura, sin la cual `no se pueden crear archivos` porque `Edit` no
+  los crea— y `Edit(./**)`, que es la `regla de path`: la comprobación de permisos del CLI solo
+  consulta reglas `Edit(path)`, y esas cubren todas las herramientas que escriben.
+  Por eso `ninguna de las dos es redundante`: quitar la de path no libera la escritura sino que la
+  corta, porque `el fallo es cerrado`. Nunca `acceptEdits`, que escribe fuera del working dir; y
+  nunca `Write(./**)`, que el CLI rechaza por inefectiva al arrancar (ver `reference.md` → "Matriz
+  de verificación").
 
 `cross-review` recomendada (no obligatoria): aporta el algoritmo canónico de descubrimiento
 por familia y la sección de portabilidad de shells que esta skill referencia.

@@ -445,6 +445,20 @@ que este preflight persigue es **MCP servers**; el resto viene de arrastre y no 
 transcrito a mano se desactualiza solo y pasa a mentir con apariencia de norma; el inventario se
 deriva de las marcas `despacho:` del árbol.
 
+**Qué puede exigir esta tabla, y qué no.** Su consumidor —el verificador de aislamiento— extrae los
+mecanismos de cada fila con un patrón que `solo lee mecanismos escritos como flags` con `--`. Un
+mecanismo con otra forma —una regla de permisos como `Edit(./**)`, una variable de entorno, una ruta—
+se puede **declarar** acá, pero **no queda exigido**: la guarda no lo ve y la fila pasa a describir
+algo que nadie comprueba. Medido: agregar `Edit(./**)` a la fila `claude` deja el verificador en
+**cero violaciones**, mientras que un flag inexistente pone **catorce** regiones en rojo. La guarda
+funciona; lo que no entra es el literal sin guiones.
+
+De ahí el reparto de sedes, que conviene tener escrito porque la confusión ya produjo un diagnóstico
+equivocado: **esta tabla gobierna la desactivación de customizaciones del entorno** —MCP, hooks,
+plugins, comandos—, que es lo que el preflight persigue. **El acotamiento de la escritura al working
+dir es otra propiedad**, la declara la receta de cada vía en su `--allowedTools`, y no se verifica
+desde acá.
+
 ##### El bloque, con una entrada por familia
 
 Devuelve **0** si la familia pedida se puede aislar y **≠ 0** si no. Es una entrada por familia y no
@@ -1058,7 +1072,7 @@ casilla en la que quedarse esperando.
 | **veredicto cosechado y validado** — parseado al formato estructurado y triado | el gate **con** la crítica incorporada: es el único que aporta findings |
 | **deadline vencido** sin el marcador de cierre | el gate **igual**, con el aviso de degradación de una línea (`UNAVAILABLE` · `deadline_exceeded`) |
 | **bloqueo no resuelto** — esperó una aprobación interactiva y no se destrabó dentro de su deadline | el gate **igual**, con el aviso de degradación (`UNAVAILABLE` · `deadline_exceeded`, que es lo que ocurrió) |
-| **artefacto ausente** — terminó sin dejar salida en la ruta acordada, o dejó una que no se puede parsear ni con parseo tolerante | el gate **igual**, con el aviso de degradación (`UNAVAILABLE` · `runtime_failure`) |
+| **artefacto ausente** — terminó **por su cuenta, antes de que venciera el tope**, sin dejar salida en la ruta acordada, o dejó una que no se puede parsear ni con parseo tolerante | el gate **igual**, con el aviso de degradación (`UNAVAILABLE` · `runtime_failure`) |
 | **indisponibilidad** — no se pudo lanzar, o arrancó y falló ejecutando, con cualquiera de sus causas | el gate **igual**, con el aviso de degradación |
 
 **No son estados nuevos: son observables de estados que ya existen.** La tabla no agrega un veredicto
@@ -1346,10 +1360,19 @@ sin una marca final.
 | Qué se observó | Causa |
 |---|---|
 | venció el tope de pared y no hay marca | `deadline_exceeded` |
-| el proceso **terminó** y entregó salida ausente, incompleta o sin marca válida | `runtime_failure` |
+| el proceso **terminó por su cuenta, antes de que venciera el tope**, y entregó salida ausente, incompleta o sin marca válida | `runtime_failure` |
 
 Confundirlas elige la palanca de recuperación equivocada: subir el tope no arregla un revisor que
 entrega mal.
+
+**El `antes de que venciera el tope` de la segunda fila es lo que vuelve excluyentes a las dos.** Sin
+él, ambas describen el mismo estado: al vencer el tope se mata el proceso, así que después del kill
+—y siempre en modo sync, donde la primitiva de `timeout` retorna con el proceso ya muerto— lo
+observado es a la vez "venció el tope" y "terminó sin marca válida". Leída así, la segunda fila
+reclasificaría el `deadline_exceeded` que la primera acaba de asignar: exactamente lo que el
+encabezado de esta tabla prohíbe, aplicado contra la tabla misma. **El orden de las filas no es la
+regla** — la regla es el discriminador temporal, porque una precedencia por posición se pierde en
+cuanto alguien cita una fila suelta.
 
 ### Validación por bloque
 

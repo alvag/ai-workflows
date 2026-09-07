@@ -2,7 +2,8 @@
      placeholders: la ranura PROOF se repite una línea por comando de `proof_cmd`, en su orden;
      con la lista vacía NO se emiten ni la ranura PROOF, ni las dos cláusulas de CONSTRAINTS que
      la referencian, ni el bloque PROOF del reporte — quedarían apuntando a una ranura ausente.
-     La línea de canales heredados de CONSTRAINTS se emite SIEMPRE, haya comandos o no.
+     La línea de canales heredados de CONSTRAINTS y la del turno único se emiten SIEMPRE, haya
+     comandos o no: no dependen de que exista una comprobación que correr.
      ESTE ARCHIVO ES LA ENTRADA EXACTA DEL WORKER: lo que no esté acá no existe para él, y es la
      ÚNICA sede del formato del reporte — `reference.md` describe qué se consume, no lo transcribe.
      SCOPE-CAPABILITY: v1
@@ -44,6 +45,10 @@ CONSTRAINTS: <"no toques X", estilo del repo, dependencias que no deben cambiar.
   No uses servidores MCP, hooks, apps ni plugins de tu entorno: ni memoria persistente, ni notas
   de sesión, ni ningún canal que no sea este turno. Tu única salida durable son el diff en el
   directorio de trabajo y el reporte final.
+  Corres en `un solo turno`: `no hay un turno posterior` donde retomar, recibir una notificación ni
+  leer el resultado de algo que dejaste corriendo. Todo lo que empieces lo terminas y lo esperas
+  `dentro de este mismo turno`. Si un comando tarda, espéralo — pero espéralo aquí, sin cerrar el
+  turno para volver después: no vas a volver, y lo que quede sin terminar se pierde.
   (solo si hay comandos de PROOF) Esto NO limita los comandos de PROOF: esos están autorizados por
   el contrato y se corren aunque toquen la red o un servicio.
   (solo si hay comandos de PROOF) Si un comando de PROOF reporta problemas en archivos que tu
@@ -57,6 +62,8 @@ PROOF: Corre `<comando 2>` e incluye su salida completa y exit code en tu report
 OUTPUT: Termina con este reporte exacto. Empieza cada línea del reporte en la COLUMNA 0, sin
   sangría: la última línea se busca anclada al margen (`STATUS: done`), así que un reporte
   correcto pero indentado no se reconoce y te dan por colgado cuando ya terminaste.
+  Esa última línea `acredita que terminaste`: es lo único que distingue un trabajo completo de uno
+  que cortó a mitad de camino. Sin ella tu entrega no se da por cerrada, aunque el diff esté entero.
 
 FILES:
 - <path> — <qué cambió y por qué, una línea>
