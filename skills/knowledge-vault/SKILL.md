@@ -6,8 +6,8 @@ description: >-
   migrate, index, config, retire e identity. Usarla para archivar documentos o
   flujos, guardarlos o sacar a la bóveda lo decidido en .plans/archived, dejarlos
   consultables, declarar identidad del repositorio o retirar el origen
-  copiado. Copiar no borra; borrar exige verificación byte a byte y digest
-  aprobado. No es gestor de notas ni indexador semántico: no resume, no enlaza
+  copiado. Copiar no borra; borrar exige cotejo byte a byte y digest aprobado a
+  mano. No es gestor de notas ni indexador semántico: no resume, no enlaza
   por contenido ni invoca modelos. No invocarla espontáneamente: solo ante
   pedido explícito del usuario.
 ---
