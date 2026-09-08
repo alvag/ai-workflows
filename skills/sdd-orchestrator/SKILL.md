@@ -1,8 +1,8 @@
 ---
 name: sdd-orchestrator
 description: >-
-  Orquesta un objetivo SDD en 2+ repos: spec madre, contratos y subplanes; paraleliza repos vía
-  sdd-flow; centraliza revisión, commit y push; decide el usuario. Soporta varias features con lock.
+  Orquesta un objetivo en 2+ repos: spec madre, contratos y subplanes; delega cada repo en paralelo a
+  sdd-flow; centraliza revisión, commit y push; usuario decide. Soporta varias features con lock.
   Usar en cambios multi-repo; para uno, sdd-flow. Invocación explícita: /sdd-orchestrator desde la
   carpeta contenedora.
 argument-hint: "[<objetivo|ticket multi-repo> | retoma <id> | estado | cierra <id>]"
