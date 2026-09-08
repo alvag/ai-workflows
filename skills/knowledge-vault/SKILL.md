@@ -2,9 +2,9 @@
 name: knowledge-vault
 description: >-
   Rescata conocimiento SDD en un vault Markdown verificado por hash, versionado
-  en Git y consultable en Obsidian mediante kv. reference.md detalla archive,
+  en Git y consultable en Obsidian mediante kv. Verbos en reference.md: archive,
   migrate, index, config, retire e identity. Usarla para archivar documentos o
-  flujos, guardarlos o sacar lo decidido a la bóveda de .plans/archived, dejarlos
+  flujos, guardarlos o sacar a la bóveda lo decidido en .plans/archived, dejarlos
   consultables, declarar identidad del repositorio o retirar el origen
   copiado. Copiar no borra; borrar exige verificación byte a byte y digest
   aprobado. No es gestor de notas ni indexador semántico: no resume, no enlaza
