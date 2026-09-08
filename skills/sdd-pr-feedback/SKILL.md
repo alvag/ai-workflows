@@ -1,11 +1,11 @@
 ---
 name: sdd-pr-feedback
 description: >-
-  Procesa feedback humano o automático de un PR de Bitbucket: decide cambios, respuestas o descartes
-  sin repetir el review, que corresponde a bitbucket-code-review. Usar ante “procesa o atiende el
-  feedback del PR”, “responde los comentarios”, “qué hago con el review del PR” seguido del
-  identificador, o “revisa los comentarios automáticos”. Solo por pedido explícito. Invocación:
-  /sdd-pr-feedback, seguida opcionalmente por los identificadores del PR y comentario.
+  Procesa feedback humano o automático de PRs de Bitbucket: decide cambios, respuestas o descartes
+  sin repetir el review; bitbucket-code-review hace revisiones nuevas. Usar ante “procesa o atiende
+  el feedback del PR”, “responde comentarios”, “qué hago con el review del PR” con ID o “revisa
+  comentarios automáticos”. Solo por pedido explícito del usuario. Invocación: /sdd-pr-feedback,
+  con IDs opcionales de PR y comentario.
 argument-hint: "[<PR-id> [<comment-id>]]  ·  sin args = PR de la rama actual"
 disable-model-invocation: true
 ---

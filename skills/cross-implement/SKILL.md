@@ -4,9 +4,8 @@ description: >-
   Delega por default a la familia opuesta un work order congelado; el conductor revisa, prueba,
   itera y commitea tras el gate. Todo flujo con work order aprobado usa /cross-implement seguido de
   ruta, “que Codex implemente este plan” o “implementa esto con Codex y revisas tú”; sdd-flow la usa
-  en cross. Excluye diseño, cambios de 20 líneas o menos y code review; cross-review cubre
-  documentos. No invocarla espontáneamente: solo ante pedido explícito del usuario o desde
-  sdd-flow.
+  en cross. Excluye diseño, cambios de menos de unas 20 líneas y code review; cross-review cubre
+  documentos. No invocarla espontáneamente: solo ante pedido explícito del usuario o desde sdd-flow.
 ---
 
 # cross-implement — uno planifica, el otro implementa, el primero revisa

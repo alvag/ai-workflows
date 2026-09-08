@@ -1,12 +1,12 @@
 ---
 name: bitbucket-code-review
 description: >-
-  Revisa PRs de Bitbucket por MCP con el conductor, otra familia o ambos; consolida hallazgos. Tras
-  un gate comenta, responde, resuelve, aprueba o pide cambios; mantiene .pr-review/. En
-  cocha-digital/results cruza arquitectura/Jira y delega QA opcional a cocha-qa-results. Usar ante
-  “code review”, “revisa el PR”, “review del PR” con identificador, “review con Codex/Claude”,
-  “segunda opinión del PR”, “aprueba el PR” o “solicita cambios”. Feedback emitido:
-  sdd-pr-feedback. Opera en Claude Code y Codex.
+  Revisa por MCP PRs de Bitbucket con el conductor, otra familia o ambos; consolida una sola
+  conclusión. Tras un gate comenta, responde, resuelve, aprueba o pide cambios; mantiene
+  .pr-review/. En cocha-digital/results cruza arquitectura/Jira y delega QA opcional a
+  cocha-qa-results. Usar ante “code review”, “revisa el PR”, “review del PR” con identificador,
+  “review con Codex/Claude”, “segunda opinión del PR”, “aprueba el PR” o “solicita cambios”.
+  Feedback ajeno ya emitido: sdd-pr-feedback. Opera en Claude Code y Codex.
 disable-model-invocation: false
 ---
 
