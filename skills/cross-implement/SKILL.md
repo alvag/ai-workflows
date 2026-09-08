@@ -1,21 +1,11 @@
 ---
 name: cross-implement
 description: >-
-  Implementación cruzada cross-model: el conductor (autor del plan) delega un
-  work order CONGELADO a un worker seleccionado (por default, de la familia
-  opuesta), cuya única salida durable son el diff en el working dir y su
-  reporte, sin canales heredados; el conductor revisa el diff
-  completo como un PR ajeno, corre la prueba él
-  mismo, itera fixes en la misma sesión del implementador (loop acotado) y es
-  quien commitea tras el gate humano. Sirve para cualquier flujo donde uno
-  planifica y el otro implementa; también la
-  invoca sdd-flow cuando implement_mode es "cross". Invocación directa:
-  "/cross-implement <ruta-del-work-order>", "que Codex implemente este plan",
-  "implementa esto con Codex y revisas tú". NO es para diseñar (el work order
-  debe existir y estar aprobado), NO para cambios triviales (~<20 líneas), NO
-  para revisar código existente (eso es code review) ni artefactos de diseño
-  (eso es cross-review). No invocarla espontáneamente: solo ante un pedido
-  explícito del usuario o invocada por sdd-flow.
+  Delega por default a la familia opuesta un work order congelado; el conductor revisa, prueba,
+  itera y commitea tras el gate. Todo flujo con work order aprobado usa /cross-implement seguido de
+  ruta, “que Codex implemente este plan” o “implementa esto con Codex y revisas tú”; sdd-flow la usa
+  en cross. Excluye diseño, cambios de menos de unas 20 líneas y code review; cross-review cubre
+  documentos. No invocarla espontáneamente: solo ante pedido explícito del usuario o desde sdd-flow.
 ---
 
 # cross-implement — uno planifica, el otro implementa, el primero revisa

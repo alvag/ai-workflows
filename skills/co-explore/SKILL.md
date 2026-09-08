@@ -1,20 +1,13 @@
 ---
 name: co-explore
 description: >-
-  Exploración paralela cross-model con dos workers frescos: uno por familia
-  (Codex y Claude) explora el mismo código read-only, con el mismo paquete de
-  contexto y sin verse entre sí. El conductor NO explora — arbitra: lee el
-  índice compacto de cada uno y abre el detalle solo ante divergencia, alto
-  riesgo, baja confianza o una decisión a arbitrar. Cuatro modos: "explore"
-  (mapear terreno antes de una spec), "counter-plan" (contra-enfoque antes de un
-  plan/reparto), "investigate" (causas raíz rankeadas + plan de verificación,
-  sin arreglar) y "debate" (decidir entre opciones abiertas; único modo donde el
-  conductor es voz). explore/counter-plan los invocan sdd-flow y
-  sdd-orchestrator; investigate y debate son standalone. Invocación directa:
-  "/co-explore <ticket|bug>" o "que Codex explore esto en paralelo". NO revisa
-  artefactos escritos (eso es cross-review) ni arregla bugs (eso es
-  systematic-debugging). No invocarla espontáneamente: solo ante pedido
-  explícito del usuario o invocada por sdd-flow/sdd-orchestrator.
+  Explora código read-only en paralelo con workers Codex y Claude; el conductor arbitra sus mapas.
+  Modos: explore antes de la spec, counter-plan antes del plan, investigate causas raíz sin arreglar
+  y debate decisiones, ambos standalone. Usar mediante /co-explore seguido de ticket
+  o bug, o ante “que Codex explore esto en paralelo”; sdd-flow y sdd-orchestrator invocan
+  explore/counter-plan. NO revisa artefactos ni arregla bugs: corresponden respectivamente a
+  cross-review y systematic-debugging. No invocarla espontáneamente: solo ante pedido explícito del
+  usuario o invocada por sdd-flow/sdd-orchestrator.
 ---
 
 # co-explore — dos mapas independientes que convergen
