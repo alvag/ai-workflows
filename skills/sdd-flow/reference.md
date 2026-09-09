@@ -2010,7 +2010,7 @@ por el que `antecedentes.md` tiene su bloque máquina.
 | `actor` | `usuario` · `conductor` |
 | `productor` | `specify` · `gate-spec` · `clarify` · `trivial` · `revision-adversarial` · `tracker` — las seis filas de la tabla de puertas |
 | `tipo` | `propuesta` · `admision` · `correccion` · `retiro` · `descarte` · `confirmacion` |
-| `objetivo` | `P-k@version` · `AC-n@hash` · `-` |
+| `objetivo` | `P-k@version` · `AC-n@hash` · `digest@<sha256>` · `-` |
 | `supersede` | `E-j` · `-` |
 | `resolucion` | `admitida` · `no-admitida` · `-` |
 | `estado` | `pendiente` · `resuelta` |
@@ -2048,12 +2048,20 @@ sanitización: sin él escrito, cada publicador tenía que adivinar qué borrar.
 
 **La versión confirmada se identifica por una cadena de digests, no por un contador.** Un contador
 identifica el último literal, y el conjunto de cláusulas puede cambiar sin que ese número se mueva.
-En su lugar, cada confirmación del checkpoint anexa un evento `tipo: confirmacion` cuyo `objetivo`
-es:
+En su lugar, cada confirmación del checkpoint anexa un evento `tipo: confirmacion` cuyo `objetivo` se
+escribe **`digest@<digest_k>`**, con `digest_k` en hexadecimal minúscula de 64 caracteres y:
 
 ```
 digest_k = sha256( digest_{k-1} || serializacion_canonica_vigente )
 ```
+
+**El prefijo no es decorativo: es lo que vuelve representable al digest en esa columna.** Sin él, el
+`objetivo` de una confirmación no es ninguna de las formas que el dominio admite, y la comprobación de
+referencias lo devuelve como objetivo que no resuelve — dejando el gate de `specify` inalcanzable
+desde la primera confirmación en adelante. Se eligió un prefijo sobre una columna nueva porque la
+tabla es append-only: una columna desplaza a las que la siguen y obliga a reescribir cada fila ya
+anexada, mientras que el prefijo entra en el dominio existente y lo comprueba el mismo predicado que
+a las otras dos formas.
 
 con `digest_0` = la cadena vacía. La **serialización canónica** es la partición vigente ordenada por
 `k` numérico, una fila por línea, campos separados por tabulador en el orden
@@ -2338,6 +2346,10 @@ tiene con qué. La salida es esta, y consta de cuatro actos:
    que algo falló;
 4. **ofrecer reiniciar la captura con identidad nueva**: un `P-k` y un `n` que arrancan **después de
    los máximos observados** en el material en cuarentena, para que ningún identificador se reutilice.
+   Ese `n` inicial **se declara al invocar `pedido-jsonl`**, cuyo default es 1: sin declararlo, la
+   primera línea de la captura recuperada rompe el orden monótono contra un 1 que ya no corresponde y
+   el paquete sano vuelve a clasificar cuarentena — una recuperación que solo puede producir otra
+   cuarentena no es una salida.
 
 Requiere **confirmación humana** y **nunca es automática**: es la única salida que conserva la
 evidencia y deja el flujo operable, y las dos propiedades se pierden si alguien la corre sola.
@@ -2355,10 +2367,19 @@ cláusula está bien redactada.
 
 | Bloque | Quién lo invoca | En qué puerta | Argumentos | Qué se lee | Qué pasa si falla |
 |---|---|---|---|---|---|
-| `pedido-jsonl` | `gather-context` | al cerrar 3b, **antes** del sub-paso 4 | la ruta de `literal.jsonl` | el código de salida | **fallo cerrado**: no se avanza a la fusión |
+| `pedido-jsonl` | `gather-context` | al cerrar 3b, **antes** del sub-paso 4 | la ruta de `literal.jsonl`, y el `n` inicial cuando no es 1 | el código de salida | **fallo cerrado**: no se avanza a la fusión |
 | `pedido-unicidad` | `specify` | antes de presentar el gate de la spec | la ruta de `registro.md` | el código de salida | el gate **no se presenta** |
 | `pedido-referencias` | `specify`, y cada recálculo que la tabla de puertas declare | antes del gate que esa fila nombra | `registro.md` y la **sede de los criterios**: `spec.md`, o `plan.md` en la rama trivial | el código de salida | el gate **no se presenta** |
-| `pedido-marcador` | `resume` | **primera** comprobación del paso, antes de enrutar | la raíz del flujo | la celda, en stdout | con `1` o `2` **no se enruta** por ninguna rama |
+| `pedido-marcador` | `resume`, y `gather-context` en 3b | en `resume`, **primera** comprobación del paso, antes de enrutar; en 3b, **antes de escribir**, y solo si `.plans/<id>/` ya existe | la raíz del flujo | la celda, en stdout | con `1` o `2` **no se enruta** por ninguna rama, y en 3b no se escribe nada |
+
+**`pedido-marcador` se invoca una vez y se carga con su dependencia.** Llama a `pedido-jsonl` por
+dentro, así que quien lo invoca tiene que haber **cargado los dos bloques** en el mismo shell.
+Cargar no es invocar: lo que el routing no puede ordenar son dos *invocaciones*, porque el marcador
+no puede imprimir la celda «presente y corrupto» antes de conocer un resultado que llegaría después.
+Sin la dependencia cargada, la llamada interna moría con `127` **tapada por la redirección** y el
+bloque devolvía `1`, que el routing lee como «el árbol no encaja en ninguna celda»: un paquete
+perfectamente válido dejaba a `resume` sin rama por donde seguir. Ahora esa ausencia se comprueba y
+devuelve `2` con su causa escrita.
 
 **Por qué la obligación se declara una sola vez.** Si vive repetida en la prosa de cada paso, lo único
 que se puede comprobar barato es que ciertas palabras aparezcan cerca — y eso acepta la negación de la
@@ -2372,10 +2393,10 @@ afuera se escribe en su frontera en vez de fingirse cubierto:
 
 | Bloque | Qué comprueba | Salida y códigos |
 |---|---|---|
-| `pedido-jsonl` | por cada línea de `literal.jsonl`: que abra con `{` y cierre con `}`, que estén las siete claves obligatorias, y que `n` sea monótono desde 1 sin huecos | una línea por violación, `<n>: <causa>`; `0` sin violaciones, `1` con, `3` si el archivo no se puede leer |
+| `pedido-jsonl` | por cada línea de `literal.jsonl`: que abra con `{` y cierre con `}`, que estén las siete claves obligatorias, y que `n` sea monótono sin huecos desde el **`n` inicial**, que es 1 salvo que se declare otro | una línea por violación, `<n>: <causa>`; `0` sin violaciones, `1` con, `2` si el `n` inicial no es un entero ≥ 1, `3` si el archivo no se puede leer |
 | `pedido-unicidad` | en `registro.md`: ningún par de cláusula y versión repetido, versión monótona por cláusula, ningún `AC-n` repetido en la traza, ningún evento repetido | ídem |
 | `pedido-referencias` | que cada `fragmentos` cite una línea existente con rango dentro de su largo, que cada `AC-n` de la traza exista en la sede de los criterios, y que cada `objetivo` de evento resuelva | ídem |
-| `pedido-marcador` | resuelve la celda de la matriz del marcador desde el estado observado del árbol | **la celda en stdout**; `0` si resolvió una, `1` si el árbol no encaja en ninguna, `2` si la invocación está mal formada |
+| `pedido-marcador` | resuelve la celda de la matriz del marcador desde el estado observado del árbol | **la celda en stdout**; `0` si resolvió una, `1` si el árbol no encaja en ninguna, `2` si la invocación está mal formada o `pedido-jsonl` no está cargado |
 
 **Van en POSIX solamente, y hay precedente**: el verificador de aislamiento de este repositorio es
 también un bloque de shell sin variante PowerShell. La exigencia de ofrecer las dos variantes alcanza
@@ -2385,11 +2406,15 @@ a los comandos que **invocan un CLI** —el transporte cross-model—, que no es
 
 ```sh
 # @bloque: pedido-jsonl
-# uso: pedido_jsonl <ruta de literal.jsonl>
+# uso: pedido_jsonl <ruta de literal.jsonl> [n inicial, 1 por default]
+# el n inicial deja de ser 1 tras una cuarentena: ahí la captura arranca después del máximo observado
 pedido_jsonl() {
   f="${1:?ruta de literal.jsonl}"
+  base="${2:-1}"
+  case "$base" in ''|*[!0-9]*) echo "n inicial no es un entero: $base" >&2; return 2 ;; esac
+  if [ "$base" -lt 1 ]; then echo "n inicial menor que 1: $base" >&2; return 2; fi
   if [ ! -r "$f" ]; then echo "no se puede leer: $f" >&2; return 3; fi
-  salida=$(awk '
+  salida=$(awk -v base="$base" '
     BEGIN { split("n captado_en origen referencia medio texto sha256", claves, " ") }
     { linea=$0
       if (substr(linea,1,1) != "{" || substr(linea,length(linea),1) != "}")
@@ -2400,7 +2425,8 @@ pedido_jsonl() {
       if (faltan != "") print NR ": faltan claves obligatorias:" faltan
       if (match(linea, /"n"[ ]*:[ ]*[0-9]+/)) {
         s = substr(linea, RSTART, RLENGTH); sub(/^.*:[ ]*/, "", s)
-        if (s+0 != NR) print NR ": el campo n vale " s " y rompe el orden monótono desde 1"
+        if (s+0 != NR + base - 1)
+          print NR ": el campo n vale " s " y rompe el orden monótono desde " base
       } else print NR ": el campo n no es un entero"
     }
     END { if (NR == 0) print "0: el literal está vacío" }' "$f")
@@ -2412,12 +2438,14 @@ pedido_jsonl() {
 
 > **Frontera de prueba.** Clase **veredicto**, dirección **admite-de-más**. Su verde autoriza a
 > afirmar que cada línea tiene la **forma** esperada: llaves en los extremos, las siete claves
-> presentes y `n` monótono desde 1. **No autoriza a afirmar que la línea sea JSON válido**: no
+> presentes y `n` monótono sin huecos desde el `n` inicial **que el invocador declaró** — el bloque no
+> conoce cuál corresponde y no lo deriva: con el default de 1 comprueba una captura inicial, y una
+> base equivocada le hace dar rojo a un literal sano o verde a uno truncado por delante. **No autoriza a afirmar que la línea sea JSON válido**: no
 > detecta comillas sin cerrar, comas sobrantes, anidamiento roto, tipos incorrectos, ni que `sha256`
 > corresponda a `texto`. **No es un parser y no se lo puede leer como uno.** Se eligió así
 > deliberadamente: validar JSON en shell POSIX exige una herramienta que no está garantizada, y el
-> aparato pesaría más que la prosa que verifica. Fallo de ejecución, distinto de su resultado: `3` si
-> el archivo no se puede leer.
+> aparato pesaría más que la prosa que verifica. Fallos de ejecución, distintos de su resultado: `2`
+> si el `n` inicial no es un entero ≥ 1, y `3` si el archivo no se puede leer.
 
 #### `pedido-unicidad`
 
@@ -2478,12 +2506,17 @@ pedido_referencias() {
   salida=$(awk '
     BEGIN { FS=sprintf("%c",124) }
     FILENAME == ELIT {
-      hay[FNR]=1
+      # la cláusula cita el campo n, no la posición física de la línea: tras una cuarentena
+      # la captura arranca después del máximo observado y los dos dejan de coincidir
+      nl = FNR
+      if (match($0, /"n"[ ]*:[ ]*[0-9]+/)) {
+        v = substr($0, RSTART, RLENGTH); sub(/^.*:[ ]*/, "", v); nl = v+0 }
+      hay[nl]=1
       if (match($0, /"texto"[ ]*:[ ]*"/)) {
         cuerpo = substr($0, RSTART+RLENGTH)
         # el orden canónico deja sha256 como último campo: ese es el corte
         sub(/"[ ]*,[ ]*"sha256".*$/, "", cuerpo)
-        largo[FNR] = length(cuerpo) }
+        largo[nl] = length(cuerpo) }
       next }
     FILENAME == ESPEC { linea=$0
       while (match(linea, /AC-[0-9]+[a-z]?/)) {
@@ -2508,8 +2541,10 @@ pedido_referencias() {
       if (!(id in enspec)) print "criterio de la traza ausente en la spec: " id }
     s == "e" && id ~ /^E-[0-9]+$/ {
       ob=$7; gsub(/[ *]/,"",ob); gsub(sprintf("%c",96),"",ob)
-      if (ob != "" && ob != "-" && ob !~ /^P-[0-9]+@[0-9]+$/ && ob !~ /^AC-[0-9]+@/)
-        print "objetivo de evento que no resuelve: " ob }' \
+      resuelve = (ob == "" || ob == "-" || ob ~ /^P-[0-9]+@[0-9]+$/ || ob ~ /^AC-[0-9]+[a-z]?@/)
+      # el objetivo de una confirmación es el digest encadenado: 7 de "digest@" mas 64 de sha256
+      if (ob ~ /^digest@[0-9a-f]+$/ && length(ob) == 71) resuelve = 1
+      if (!resuelve) print "objetivo de evento que no resuelve: " ob }' \
     ELIT="$lit" ESPEC="$sp" "$lit" "$sp" "$r")
   if [ -z "$salida" ]; then return 0; fi
   printf '%s\n' "$salida"
@@ -2526,12 +2561,18 @@ pedido_referencias() {
 > escapados dentro de `texto` desplazan el largo contra el que compara—, y **depende del orden
 > canónico de campos** para saber dónde termina `texto`, así que una línea con los campos en otro
 > orden le queda invisible en vez de dar rojo. Y el reconocimiento de `AC-n` es por **forma
-> cerrada** —`AC-` seguido de dígitos y a lo sumo una letra minúscula—, **la misma en las tres sedes
-> que la usan**: un identificador escrito fuera de esa forma queda invisible en las dos puntas, ni se
+> cerrada** —`AC-` seguido de dígitos y a lo sumo una letra minúscula—, **la misma en las cuatro
+> sedes que la usan**, contando la del `objetivo` de un evento: un identificador escrito fuera de esa forma queda invisible en las dos puntas, ni se
 > indexa desde la sede de los criterios ni se comprueba desde la traza, así que pasa en silencio en
 > vez de dar rojo. Que las tres compartan el patrón es lo que evita el desacuerdo, y no es
 > hipotético: con el indexado más ancho que la consulta, un `AC-7b` colgante devolvía verde mientras
-> un `AC-7` en el mismo caso daba rojo. Fallo de ejecución: `3` si falta alguna de las tres sedes.
+> un `AC-7` en el mismo caso daba rojo. La correspondencia con el literal es por el **campo `n`**, no
+> por la posición física de la línea: mientras la captura arranca en 1 los dos coinciden, pero tras una
+> cuarentena dejan de hacerlo, y con el índice por posición todo fragmento de un paquete recuperado
+> citaba una línea «inexistente». Un `n` repetido en el literal colapsa su entrada del índice y hace
+> que el rango se compare contra el largo de la última línea que lo lleve — lo impide `pedido-jsonl`,
+> que corre antes por la matriz de invocación, no este bloque. Fallo de ejecución: `3` si falta alguna
+> de las tres sedes.
 
 #### `pedido-marcador`
 
@@ -2539,6 +2580,7 @@ pedido_referencias() {
 # @bloque: pedido-marcador
 # uso: pedido_marcador <raíz del flujo, .plans/<id>/>
 # imprime la celda de la matriz del marcador en stdout
+# requiere pedido-jsonl CARGADO en el mismo shell: lo llama por dentro, y cargar no es invocar
 pedido_marcador() {
   raiz="$1"
   if [ -z "$raiz" ] || [ ! -d "$raiz" ]; then
@@ -2566,7 +2608,16 @@ pedido_marcador() {
   if [ ! -f "$paquete/literal.jsonl" ]; then
     echo "cualquiera + presente + presente y corrupto: cuarentena (registro huérfano, falta literal.jsonl)"; return 0
   fi
-  pedido_jsonl "$paquete/literal.jsonl" >/dev/null 2>&1
+  if ! command -v pedido_jsonl >/dev/null 2>&1; then
+    echo "invocación mal formada: pedido-jsonl no está cargado en este shell" >&2; return 2
+  fi
+  # la base la fija el propio literal: tras una cuarentena arranca después del máximo observado
+  base=$(awk 'NR == 1 {
+    if (match($0, /"n"[ ]*:[ ]*[0-9]+/)) {
+      v = substr($0, RSTART, RLENGTH); sub(/^.*:[ ]*/, "", v); print v+0 }
+    exit }' "$paquete/literal.jsonl")
+  if [ -z "$base" ]; then base=1; fi
+  pedido_jsonl "$paquete/literal.jsonl" "$base" >/dev/null 2>&1
   c=$?
   if [ "$c" -eq 0 ]; then
     echo "cualquiera + presente + presente y legible: aplicable"; return 0
@@ -2582,14 +2633,21 @@ pedido_marcador() {
 > **Frontera de prueba.** Clase **veredicto**, dirección **admite-de-más**, ante la duda
 > **niega-ante-duda**. Su salida autoriza a afirmar **qué celda de la matriz del marcador describe el
 > árbol observado**; ante un árbol que no encaja en ninguna devuelve `1` y no una celda por defecto.
-> Admite de más porque «presente y legible» se apoya en la comprobación de **forma** de
-> `pedido-jsonl`: un literal con las llaves y las claves en su lugar pero JSON inválido adentro se
-> clasifica legible. **No** distingue tampoco un paquete de este flujo de uno copiado con su
-> marcador. Fallo de ejecución, distinto de su resultado: `2` si la invocación está mal formada.
+> Admite de más por dos motivos. Primero, «presente y legible» se apoya en la comprobación de
+> **forma** de `pedido-jsonl`: un literal con las llaves y las claves en su lugar pero JSON inválido
+> adentro se clasifica legible. Segundo, **la base la deriva del propio literal** —el `n` de su primera
+> línea—, porque el marcador no tiene de dónde saber si el paquete viene de una cuarentena; el precio
+> es que un literal **truncado por delante** le queda legible. Esa pérdida no queda descubierta: los
+> fragmentos de las cláusulas citan los `n` desaparecidos y `pedido-referencias` los devuelve como
+> línea inexistente en el gate de `specify`. **No** distingue tampoco un paquete de este flujo de uno
+> copiado con su marcador. Fallo de ejecución, distinto de su resultado: `2` si la invocación está mal
+> formada o si `pedido-jsonl` no está cargado en el shell.
 
 **`pedido-marcador` invoca a `pedido-jsonl` por dentro, y ese orden es único.** El routing invoca
-**un solo bloque**. Ordenar dos invocaciones desde `resume` vuelve el protocolo circular: el marcador
-no puede imprimir la celda «presente y corrupto» antes de conocer un resultado que llegaría después.
+**un solo bloque** —y **carga dos**, que no es lo mismo: la definición de la dependencia tiene que
+estar en el shell para que la llamada interna exista—. Ordenar dos invocaciones desde `resume` vuelve
+el protocolo circular: el marcador no puede imprimir la celda «presente y corrupto» antes de conocer
+un resultado que llegaría después.
 Corrupto significa corrupto **de forma**, que es lo único que ese bloque ve; una corrupción más
 profunda —JSON inválido dentro de llaves bien puestas— **no la detecta ninguno de los dos** y aparece
 más tarde, cuando algo intente leer el campo. Se escribe porque acotar `pedido-jsonl` compró ese
