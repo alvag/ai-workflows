@@ -16,6 +16,7 @@ Detalle operativo de la skill `sdd-flow`. El `SKILL.md` apunta acá cuando neces
 - [Construcción del mensaje de commit](#construcción-del-mensaje-de-commit)
 - [Apertura de PR (opcional, tras push)](#apertura-de-pr-opcional-tras-push)
 - [La receta de serialización de las huellas](#la-receta-de-serialización-de-las-huellas)
+- [El pedido congelado](#el-pedido-congelado)
 - [Búsqueda de antecedentes](#búsqueda-de-antecedentes)
 - [Plantilla de constitution](#plantilla-de-constitution)
 - [Plantilla de spec](#plantilla-de-spec)
@@ -1897,6 +1898,708 @@ sí resuelve esta receta es la garantía no mutante de arriba; lo que falta es e
 publicación atómica que convierta una secuencia viva sin romper lo que ya tiene escrito.
 `migracion-seguimiento: https://github.com/alvag/ai-workflows/issues/102`
 
+## El pedido congelado
+
+Detalle del **sub-paso 3b** de `gather-context` y de la **vara** que `specify` aplica sobre cada
+criterio antes de su gate. `SKILL.md` lleva el mandato —cuándo se captura, quién aplica la vara, cómo
+enruta `resume`—; acá viven los esquemas, las tablas normativas y los bloques deterministas que las
+comprueban.
+
+### El paquete del pedido
+
+`.plans/<id>/pedido/` es la sede del pedido, con dos archivos y **garantías distintas**, que se
+nombran por separado porque no son la misma: `literal.jsonl` **nunca se reescribe** —una línea
+capturada queda exactamente como se captó—, y a `registro.md` **se anexa**: corregir una cláusula
+`P-k` agrega una fila con la versión siguiente, y la anterior sigue siendo legible.
+
+**`literal.jsonl` — un objeto JSON por línea.** Los siete campos son obligatorios:
+
+| Campo | Tipo | Qué es |
+|---|---|---|
+| `n` | entero ≥ 1, monótono, nunca reutilizado | orden de captura |
+| `captado_en` | ISO-8601 | cuándo se captó |
+| `origen` | `usuario` · `tracker` · `adjunto` · `ruta` | qué clase de fuente |
+| `referencia` | texto | qué fuente concreta: número de mensaje, clave del ticket, nombre del adjunto, ruta |
+| `medio` | `texto` · `referencia` | si la línea trae el contenido, o solo cómo alcanzarlo |
+| `texto` | texto | la serialización canónica de la fuente, según la tabla de abajo |
+| `sha256` | hex | hash de los bytes UTF-8 de `texto`, que es el preimage declarado |
+
+**La serialización canónica, por clase de fuente.** Sin ella, `texto` guardaría «el contenido» y dos
+capturas de la misma fuente podrían diferir sin que nada lo señale:
+
+| `origen` | Qué va en `texto` |
+|---|---|
+| `usuario` | el mensaje tal como llegó, sin normalizar ni recortar |
+| `tracker` | los campos del issue, uno por línea y **en este orden**: `resumen`, `descripcion`, `tipo`, `prioridad`, `labels`, `estado`, cada uno como `<campo>: <valor>`. Nunca el JSON crudo del host, que cambia de forma entre integraciones sin que el pedido haya cambiado |
+| `adjunto` · `ruta` legible como texto | el contenido, sin normalizar |
+| `adjunto` · `ruta` no legible | `medio: referencia`, y `texto` lleva `nombre`, `tipo` y `tamaño`, uno por línea |
+
+**Mensajes múltiples**: una línea por mensaje, en orden de llegada. La fusión del sub-paso 4 no las
+toca — fusiona para describir, no para reemplazar lo capturado.
+
+**La unidad del rango de fragmentos, que la traza cita.** `desde` y `hasta` son **posiciones de
+carácter Unicode** sobre el campo `texto` de la línea `n`, **1-indexadas** e **inclusivas en los dos
+extremos**. El límite es `1 ≤ desde ≤ hasta ≤ largo(texto)`. Se eligen caracteres y no bytes porque
+el pedido se escribe en español: un rango en bytes parte una `é` al medio, y el defecto no se ve
+hasta que alguien recorta por ahí.
+
+**Una fuente que no se pudo leer no queda cubierta por vacuidad, y su bloqueo tiene salida.** Toda
+línea con `medio: referencia` **bloquea el congelamiento**; el ciclo que lo levanta son tres actos, y
+los tres son obligatorios:
+
+1. la línea obliga a una cláusula con `aplicabilidad: pendiente` cuyo **texto ordena obtener o
+   inspeccionar esa fuente** — no una cláusula genérica, sino la instrucción concreta;
+2. el usuario **acepta esa limitación en el checkpoint** del paso 6, que es donde las cláusulas se
+   congelan;
+3. esa aceptación queda como evento `tipo: admision` con `actor: usuario`.
+
+Sin los tres, el bloqueo no tiene transición y el flujo queda trabado: bloquear sin declarar quién lo
+levanta y con qué constancia es un gate sin salida practicable. Y sin la regla entera, el criterio de
+cobertura del literal se satisfacía declarando cubierto lo que nadie pudo leer.
+
+**Orden de escritura y recuperación.** Primero `literal.jsonl`, después `registro.md`: el literal es
+lo irreemplazable y el registro es re-derivable. Cada interrupción deja un **estado observable**, y
+los seis tienen su salida declarada — ninguno queda a criterio de quien retoma:
+
+| Qué se observa | Qué significa | Qué hace el flujo |
+|---|---|---|
+| `.plans/<id>/` **vacío** | la sesión cayó entre el `mkdir` y el marcador | **fallo cerrado**: re-corre 3b desde cero |
+| marcador, sin `pedido/` | cayó entre el marcador y la sede del paquete | **fallo cerrado**: re-corre 3b desde cero |
+| `literal.jsonl` sin `registro.md` | la captura terminó, la redacción no | continúa en la redacción de cláusulas |
+| una línea de `literal.jsonl` que no parsea | la sede está corrupta | **cuarentena**: no se degrada a «lo que se pueda leer» |
+| `registro.md` sin `literal.jsonl` | estado imposible por el orden de escritura | **cuarentena** |
+| digest de la última confirmación que no reproduce la partición vigente | alguien reescribió filas ya confirmadas | **cuarentena** |
+
+La última fila es la que la cadena de digests vuelve detectable: sin encadenar, una reescritura de
+cláusulas ya confirmadas no dejaba rastro.
+
+**Por qué el paquete vive en un subdirectorio, con el fundamento correcto.** El predicado del vault
+rechaza toda ruta que contenga un **separador** y, además, todo lo que no termine en `.md`: por lo
+segundo, `literal.jsonl` ya quedaba excluido aun estando en la raíz del flujo, así que el
+subdirectorio no es lo que lo protege. Lo que compra de verdad es excluir **también** `registro.md` y
+`pedido/proyeccion-clausulas.md`, que sí terminan en `.md`. Se elige excluirlos porque sus cláusulas
+son paráfrasis cercanas del texto del usuario y su traza es material de trabajo, y el vault es un
+repositorio git donde lo que entra queda publicado y commiteado. Lo que se pierde y se acepta perder
+es que la declaración operativa del pedido no llegue al vault; se acepta porque **lo decidido sí
+llega** —vive en `spec.md`, que es un `.md` de la raíz—, y `registro.md` es el ledger de trabajo que
+produjo esa decisión, no la decisión.
+
+### La serialización de `registro.md`
+
+Todo lo que el registro guarda va en **tablas de columnas fijas**, no en prosa: son transiciones
+deterministas, y una tabla se parsea igual dos veces mientras que un párrafo no. Es el mismo motivo
+por el que `antecedentes.md` tiene su bloque máquina.
+
+**`## clausulas` — una fila por versión de cláusula.**
+
+| Columna | Dominio | Qué es |
+|---|---|---|
+| `P-k` | `P-` + entero ≥ 1, **nunca reutilizado** | identidad de la cláusula |
+| `version` | entero ≥ 1, monótono por `P-k` | el par `(P-k, version)` identifica **un texto**; corregir **anexa** una fila con `version+1` y la anterior se conserva legible |
+| `aplicabilidad` | `pendiente` · `satisfecha-por-trabajo-previo` · `descartada` | los tres estados, con su vocabulario. Es aplicabilidad, **no** cobertura: dice qué se hace con la cláusula, no cuánto del literal toca |
+| `fragmentos` | lista `n:desde-hasta`, separada por `, ` | qué parte del literal origina esta cláusula |
+| `texto` | texto | la cláusula |
+| `evidencia` | referencia o `-` | **obligatoria** si `aplicabilidad` no es `pendiente`: para `satisfecha-por-trabajo-previo`, la entrada acreditada de `antecedentes.md`; para `descartada`, el `E-k` que lo autorizó |
+
+**`## eventos` — una fila por evento, append-only.**
+
+| Columna | Dominio |
+|---|---|
+| `E-k` | `E-` + entero ≥ 1, nunca reutilizado |
+| `momento` | ISO-8601 |
+| `actor` | `usuario` · `conductor` |
+| `productor` | `specify` · `gate-spec` · `clarify` · `trivial` · `revision-adversarial` · `tracker` — las seis filas de la tabla de puertas |
+| `tipo` | `propuesta` · `admision` · `correccion` · `retiro` · `descarte` · `confirmacion` |
+| `objetivo` | `P-k@version` · `AC-n@hash` · `-` |
+| `supersede` | `E-j` · `-` |
+| `resolucion` | `admitida` · `no-admitida` · `-` |
+| `estado` | `pendiente` · `resuelta` |
+
+`productor` es lo que le permite al routing de `resume` **nombrar** en qué gate retomar: sin esa
+columna, «retoma en el gate del productor que las dejó» no era implementable.
+
+**`## traza` — una fila por criterio.**
+
+| Columna | Dominio |
+|---|---|
+| `AC-n` | identidad del criterio, nunca reutilizada |
+| `hash_criterio` | `sha256` del texto del criterio al adjudicarlo |
+| `autoridad` | `pedido` · `constitution` · `repositorio` · `clarify` — **exactamente una** |
+| `referencia` | `P-k@version` · sección · regla · `Q<n>`, según la autoridad |
+| `derivacion` | la derivación adjudicada, en prosa |
+
+**La salida append-only, en concreto.** Una `correccion` anexa la fila `version+1` y deja la anterior
+donde estaba; un `retiro` anexa su evento y marca la cláusula fuera de la partición vigente sin
+borrarla. En los dos casos el texto original **se conserva** legible, que es lo que distingue anexar
+de reescribir: el registro se lee entero para reconstruir qué se pidió y cuándo dejó de pedirse.
+
+**La anotación de autoridad en `spec.md`, con su sintaxis exacta.** Cada `AC-n` la lleva al final de
+su primera línea, en una sola forma:
+
+```
+[autoridad: pedido:P-3@2]   [autoridad: constitution:Done]
+[autoridad: repositorio:regla-2]   [autoridad: clarify:Q4]
+```
+
+Cardinalidad **uno**: si las afirmaciones de un criterio dependen de autoridades distintas, el
+criterio se parte. El **patrón exacto que retiran los dos publicadores** —`publish-spec` y el
+sub-paso que abre el PR— es `\[autoridad: [^]]*\]`. Ese regex es la **sede única** de la
+sanitización: sin él escrito, cada publicador tenía que adivinar qué borrar.
+
+**La versión confirmada se identifica por una cadena de digests, no por un contador.** Un contador
+identifica el último literal, y el conjunto de cláusulas puede cambiar sin que ese número se mueva.
+En su lugar, cada confirmación del checkpoint anexa un evento `tipo: confirmacion` cuyo `objetivo`
+es:
+
+```
+digest_k = sha256( digest_{k-1} || serializacion_canonica_vigente )
+```
+
+con `digest_0` = la cadena vacía. La **serialización canónica** es la partición vigente ordenada por
+`k` numérico, una fila por línea, campos separados por tabulador en el orden
+`P-k · version · aplicabilidad · fragmentos · texto`, UTF-8, terminador LF, sin espacios finales,
+precedida de una línea `literal\t<último n>\t<sha256 del literal acumulado>`.
+
+**Qué es «el literal acumulado», porque sin definirlo la cadena no es reproducible.** Es el `sha256`
+de los **bytes del archivo `literal.jsonl` completo**, tal como está en ese momento — no la
+concatenación de los campos `texto`, ni un hash de los `sha256` por línea. Se elige el archivo entero
+porque `literal.jsonl` solo se anexa y nunca se reescribe, así que ese hash avanza de forma monótona
+con la captura y cualquier reescritura de una línea vieja lo rompe, que es exactamente lo que la
+cadena existe para detectar. Sin esta definición, el estado «digest de la última confirmación que no
+reproduce la partición vigente» no se puede evaluar, y con él se cae la fila de cuarentena que lo
+consume.
+
+**Encadenar es lo que le da autoridad independiente.** Un digest guardado al lado de las filas que
+protege no detecta nada si se reescriben los dos; encadenado, tocar una confirmación vieja rompe
+todos los eslabones posteriores. No es un mecanismo nuevo: es el mismo que este repositorio ya usa
+para sellar el contrato de verificación.
+
+### Las tres relaciones de traza
+
+Una tabla bidireccional `P-n ↔ AC-n` no demuestra que el literal esté trazado, no representa las
+autoridades que no son el pedido, y admite la implementación más floja: escribir
+`P-1: realizar el cambio solicitado` y colgar de ahí los cuarenta criterios. Las relaciones son
+**tres**, y se enuncian sobre las tablas de arriba:
+
+| Relación | Forma | Qué impide |
+|---|---|---|
+| **R1** literal → cláusula | sobre la **partición vigente**: cada fragmento tiene exactamente una cláusula, y cada cláusula **cita el fragmento o los fragmentos que la originan** | que una parte del literal desaparezca antes de existir `P-k`; y que una cláusula genérica se declare suficiente sin nombrar qué parte del pedido toca |
+| **R2** criterio → autoridad | cada `AC-n` tiene **exactamente una** autoridad —`pedido`, `constitution`, `repositorio` o `clarify`— con su referencia y su derivación adjudicada | que un criterio flote sin de dónde salió. **Si sus afirmaciones dependen de autoridades distintas, el criterio se parte** |
+| **R3** cláusula pendiente → criterio | cada cláusula con `aplicabilidad: pendiente` tiene **al menos un** `AC-n` que la atiende | que el alcance se achique en silencio |
+
+**La partición vigente, que es sobre lo que rige `R1`.** Es el conjunto de filas que son la `version`
+máxima de cada `P-k` no retirado. Sin esta precisión, corregir una cláusula en régimen append-only
+violaba `R1` por construcción: la fila vieja y la nueva citan el mismo fragmento.
+
+**El campo se llama `autoridad`, y el nombre no es intercambiable.** La revisión adversarial ya usa
+otra palabra para un enum propio suyo, con valores que no tienen nada que ver con estos cuatro;
+reusarla acá produciría dos vocabularios homónimos en artefactos que viajan juntos.
+
+**`R3` no tiene escape por «motivo escrito».** Sacar una cláusula de `pendiente` es cambiar su
+`aplicabilidad`, y eso exige la `evidencia` obligatoria: la entrada acreditada de `antecedentes.md`,
+o el evento `descarte` que lo autorizó. Un motivo en prosa no alcanzaba — era el no-op más barato:
+declarar no implementable y seguir.
+
+Las tres juntas cierran la implementación floja. `R1` obliga a la cláusula genérica a nombrar los
+fragmentos que cubre, y `R3` obliga a que cada cláusula pendiente tenga su criterio. Una cláusula
+única que abarque cuarenta partes necesita partirse en cuarenta cláusulas para poder tener cuarenta
+criterios, que es exactamente el trabajo que la implementación floja quería evitar.
+
+**El ciclo de vida de `AC-n`.** Los `AC-n` **no se reutilizan**: un criterio retirado deja su ID
+muerto y nadie lo hereda. Cada adjudicación de `R2` guarda el `hash_criterio` del texto vigente al
+adjudicarlo. Toda corrección, retiro o renumeración anexa su evento. El recálculo **falla cerrado**
+ante un hash que no coincide con el texto vigente, o ante una referencia colgante: un recálculo que
+degrada a «lo que se pueda resolver» convierte la traza en decoración.
+
+### La vara: autoridades y condiciones de validez
+
+La vara es lo que contrasta cada criterio contra el pedido congelado en vez de contra el artefacto
+que se está editando. Sin ella, el patrón de medición crece junto con lo medido: cada criterio
+aplicado se vuelve parte del alcance contra el que se juzga el siguiente, y «esto no se pidió» deja
+de tener con qué enunciarse.
+
+**Los dos actos, y son dos.** La **admisión** decide si un criterio propuesto tiene autoridad válida
+antes de que entre al artefacto; el **recálculo** de `R1`, `R2` y `R3` comprueba, después de cada
+edición admitida, que las tres relaciones siguen cerrando. Uno sin el otro no alcanza: admitir sin
+recalcular deja el registro desincronizado del artefacto, y recalcular sin admitir solo constata
+prolijamente lo que ya entró.
+
+**Cada autoridad lleva su condición de validez**, y una autoridad sin condición es una etiqueta:
+
+| Autoridad | Condición de validez | Qué acredita |
+|---|---|---|
+| `pedido` | existe una cláusula `P-k@version` en la partición vigente cuyos `fragmentos` citan la parte del literal de la que el criterio deriva, **y su `aplicabilidad` es `pendiente`** | que lo afirmado sale de algo que el usuario dijo, que se puede señalar dónde, y que todavía está por hacerse |
+| `constitution` | la sección invocada existe en `.specify/constitution.md` y su texto vigente sostiene la afirmación | que sale de un principio de proceso adoptado por el proyecto, no de una preferencia del conductor |
+| `repositorio` | la regla o convención invocada existe en el árbol —`CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`— y la afirmación cae dentro de su disparador | que sale del contrato del repositorio, y no de una lectura ampliada de él |
+| `clarify` | hay una entrada `Q<n>` en `## Clarifications` con la respuesta del usuario, y el criterio no excede lo que esa respuesta decidió | que sale de una decisión tomada por el usuario, con la pregunta a la vista |
+
+**El no-op concreto que la vara tiene que rechazar**, escrito con su ejemplo y no en abstracto: una
+cláusula `P-1: realizar el cambio solicitado`, de la que después cuelgan los cuarenta criterios. Es
+formalmente válida —hay `P-k`, hay `version`, hay autoridad `pedido`— y no acredita nada: no cita
+fragmentos, así que `R1` no la puede contrastar contra ninguna parte del literal. La cláusula
+genérica se rechaza en la admisión, no en el recálculo, y la salida es partirla en las cláusulas que
+sí citan sus fragmentos.
+
+**«Existe» no alcanza: la cláusula tiene que estar activa.** La partición vigente incluye las
+cláusulas `satisfecha-por-trabajo-previo` y `descartada` —solo excluye las retiradas—, así que una
+condición que pregunte únicamente si la cláusula existe deja que **una cláusula ya satisfecha por
+trabajo previo siga autorizando criterios para rehacerlo**. Inmutabilidad del pedido y aplicabilidad
+actual de un fragmento son cosas distintas: el pedido se conserva entero e intacto, y por separado se
+registra el estado de cada fragmento. La autoridad `pedido` solo admite un criterio **contra un
+fragmento pendiente**; contra uno satisfecho o descartado **falla cerrado**, y la salida es
+**volver a ponerlo `pendiente`**: se anexa una fila `version+1` con esa `aplicabilidad` —que no exige
+`evidencia`, porque la evidencia la exigen los otros dos estados—, y esa reapertura queda como una
+decisión con su propio rastro, no como efecto lateral de escribir un criterio.
+
+**Lo que la vara no hace.** No juzga si el criterio está bien redactado, si es alcanzable o si el
+enfoque es bueno; eso es adjudicación semántica y vive en el juicio del conductor y en el gate
+humano. La vara contesta una sola pregunta: **de dónde sale esto, y esa procedencia es válida**.
+
+### Las tres salidas de un criterio no admitido
+
+Un criterio que la vara no admite **no desaparece y no se queda flotando**: tiene tres destinos
+posibles y ninguno más. Escribirlos es lo que impide las dos degradaciones baratas — borrarlo en
+silencio, o dejarlo en el artefacto esperando que el gate lo bendiga.
+
+| Salida | Dónde queda | Qué la cierra |
+|---|---|---|
+| **descarte con motivo** | un evento `tipo: descarte` con su `resolucion: no-admitida` y el motivo en su fila | el motivo escrito; un descarte sin motivo es un estado inválido, no un default |
+| **propuesta sin resolver** | una fila de `registro.md`: la cláusula queda con `aplicabilidad: pendiente` y su evento con `estado: pendiente`, nombrando el `productor` que la originó | que alguien la resuelva en el gate de ese productor, o un `descarte` posterior que la cierre |
+| **ampliación del pedido** | una línea nueva en `literal.jsonl` más la cláusula que la traza, tras confirmación explícita del usuario | la confirmación del usuario; hasta entonces sigue siendo propuesta y no autoridad `pedido` |
+
+**La segunda es la que necesita sede durable, y por eso se nombra su archivo y su estado.** Una
+propuesta sin resolver que solo viva en la conversación se pierde al cerrar la sesión, y el flujo
+retoma sin saber que quedó algo abierto: es exactamente el estado que el routing de `resume` lee para
+volver al gate del productor que la dejó. Guardarla como fila —con su cláusula en `pendiente` y su
+evento en `pendiente`— es lo que la vuelve observable desde afuera de la sesión que la produjo.
+
+**Ninguna de las tres es «se aplica y se ve después».** Un criterio no admitido que igual entra al
+artefacto llega al gate como criterio, y ahí la aprobación general lo convalida sin que nadie haya
+decidido esa ampliación — que es precisamente el mecanismo que este contrato viene a cortar.
+
+### La tabla de puertas por productor
+
+Seis productores pueden proponer texto para la spec, y **los seis siguen la misma secuencia**. Esa
+uniformidad es la decisión: dejar que cada puerta recalcule un subconjunto distinto produce puertas
+que editan antes de confirmar, y ninguna de las dos se nota leyendo la fila sola.
+
+```
+propuesta → admisión por la vara → captura literal si la fuente es autoridad `pedido`
+   → cláusula provisional → delta visible y confirmación explícita → edición
+   → recálculo de R1, R2 y R3 → gate
+```
+
+Lo que cambia entre productores no es la secuencia sino **quién admite**, **qué autoridad resulta** y
+**qué gate espera el resultado**:
+
+| Productor | Artefacto provisional | Quién admite | Autoridad resultante | Condición de gate |
+|---|---|---|---|---|
+| escritura inicial de `specify` | borrador en memoria | el conductor con la vara | la que `R2` adjudique | el gate no se presenta con `R1`, `R2` o `R3` incompletas |
+| correcciones del usuario en el gate | el texto del usuario | **el usuario**: su corrección **es** autoridad | `pedido`, con línea nueva en `literal.jsonl` | el mismo gate, reabierto tras mostrar el delta |
+| `clarify` | la respuesta registrada en el Q&A | el conductor con la vara | `clarify`, referenciando su `Q<n>` | si altera criterios, vuelve al gate de la spec |
+| rama trivial | el bloque `## Spec` embebido en el plan | el conductor con la vara | la que `R2` adjudique | el gate único de trivial, que es el del plan combinado |
+| revisión adversarial | el finding en el ledger de esa skill | el conductor, **antes de editar**, por los dos caminos de abajo | la que `R2` adjudique | un finding no admitido no llega al gate como criterio |
+| observaciones del tracker | el comentario en la subtarea | el conductor con la vara | **`pedido` solo tras confirmación explícita del usuario**; hasta entonces sigue siendo propuesta | el gate externo sigue esperando |
+
+**Dos filas evitan sendos no-op, y conviene decir cuáles.** La **segunda**: una corrección del
+usuario en el gate no se mide contra el pedido viejo, porque **es** pedido nuevo — sin esa fila, la
+vara rechazaría lo que el usuario acaba de pedir; y lo que se persiste es la versión que él confirmó,
+no la que el conductor redactó a partir de ella. La **sexta**: la autorización tiene que ser del
+usuario actual, así que «viene del pedidor» no alcanza — un comentario en el tracker puede venir de
+cualquiera con acceso al ticket, y adoptar eso como pedido es exactamente la ampliación silenciosa
+que este contrato corta.
+
+### Los dos caminos de edición de la revisión adversarial
+
+Controlar solo el momento de la invocación **no alcanza**: esa skill arbitra, edita el artefacto y
+manda la versión editada a su ronda siguiente dentro de su propio loop, así que una ampliación puede
+entrar y salir sin cruzar ningún gate del flujo.
+
+El punto de extensión existe y **no exige tocar `cross-review`**: esa skill corre **dentro de la
+sesión del conductor** —el proceso aparte es solo el revisor—, y su propio contrato dice que quien
+arbitra y edita el artefacto es el conductor. Los caminos por los que ese artefacto se edita son
+**dos**, y los dos necesitan la vara:
+
+| Camino | Quién edita | Dónde se inserta la vara |
+|---|---|---|
+| arbitraje ordinario del conductor sobre un finding | el conductor | antes de editar; un finding no admitido se registra como **rechazo con motivo** en el ledger que esa skill ya tiene |
+| **disputa resuelta por el humano a favor del finding** | el conductor, después de la decisión humana | antes de esa edición: si el finding **amplía alcance**, corre el ciclo de cláusula provisional, delta visible y confirmación **antes** de marcar el finding como aplicado |
+
+El segundo es el que se pierde con facilidad. Sin él, una ampliación entra por el checkpoint sin
+pasar por la vara y sin actualizar el pedido — y encima con la firma del humano, que es la que menos
+se vuelve a mirar. Como el rechazo y la confirmación ocurren **antes** de la edición, la ronda
+siguiente recibe un artefacto que nunca contuvo el criterio no admitido.
+
+Se descarta extender el ciclo de vida de `cross-review`: ampliaría la superficie más allá de lo
+acordado y obligaría a actualizar sus cuentas, proyecciones y cortes derivados, a cambio de una
+propiedad que estos dos hooks ya dan.
+
+### La matriz de proyección del pedido
+
+Qué ve cada consumidor del pedido se declara **acá y una sola vez**, en celdas. Los pasos que
+consumen la apuntan y no repiten la obligación: una obligación repetida en la prosa de cada paso solo
+se puede comprobar buscando palabras cerca, y eso acepta la negación de la frase.
+
+| Consumidor | Qué recibe | Qué nunca recibe |
+|---|---|---|
+| `spec.md` | los `AC-n` llevan su anotación de autoridad, que es una referencia; la traza autoritativa **no** se copia al artefacto | el literal, el registro y las tres relaciones |
+| `publish-spec` (tracker) | el cuerpo de la spec con las anotaciones de autoridad retiradas por el regex declarado | el pedido entero, en cualquiera de sus dos archivos |
+| el sub-paso que abre el PR | el cuerpo de la spec con las anotaciones de autoridad retiradas por el mismo regex | ídem que el tracker |
+| `cross-review` como contexto | **la ruta de `pedido/proyeccion-clausulas.md`**, regenerada antes de invocar | `literal.jsonl`, y el directorio `pedido/` pasado como ruta |
+| el paso de diagnóstico | nada de la traza: reporta clase, fuentes y conflictos de la secuencia | cualquier parte del pedido |
+
+**La fila de `cross-review` es la que más se puede escribir al revés, y por eso lleva sus dos
+condiciones juntas.** El pedido tiene que viajar como autoridad explícita, y el prompt de esa skill
+**inlinea el contenido de los `context_paths`**: pasar el directorio metería el texto crudo del
+usuario en un prompt que sale hacia el CLI de la otra familia. Viaja la proyección, nunca el literal.
+
+**La regla de regeneración, sin la cual el carrier miente.** `pedido/proyeccion-clausulas.md` se
+**reescribe desde la partición vigente antes de cada invocación** de la revisión adversarial, con
+`P-k`, texto, aplicabilidad y autoridad, y **sin una sola línea del literal**. Sin regenerar, la
+segunda ronda de una misma corrida recibiría la proyección de la primera y la crítica se haría contra
+un pedido que ya cambió. Vive dentro de `pedido/`, así que el predicado del vault lo excluye por
+subdirectorio igual que al resto del paquete.
+
+### Fronteras con los productores excluidos
+
+Dos skills hermanas producen artefactos que pueden terminar en una `spec.md` y **no** quedan
+gobernadas por este contrato. Decirlo es parte del contrato: una frontera que no se escribe se lee
+como cobertura.
+
+- **`sdd-orchestrator`** reparte un objetivo entre varios repositorios y despacha un `sdd-flow` por
+  cada uno. El pedido que este contrato congela es el de **un** flujo: cada `sdd-flow` despachado
+  captura el suyo en su propio `.plans/<id>/pedido/`. La spec madre y el reparto **no** tienen
+  paquete propio y su vara no existe; si alguna vez la necesitan, es un flujo aparte con su gate, no
+  una extensión silenciosa de este.
+- **`sdd-pr-feedback`** abre flujos a partir de comentarios de revisión de un PR. Su material de
+  entrada no es un pedido del usuario sino la observación de un tercero, así que su `<id>` nace sin
+  marcador y **la vara queda no aplicable**, declarada así. El criterio negativo de la matriz del
+  marcador es por productor y existe justamente para esto: un flujo de esta skill no puede quedar
+  gobernado por el paquete de otro flujo que haya quedado en el árbol.
+
+### El marcador de adopción del pedido
+
+`.plans/<id>/contrato-pedido.md` es un archivo de una línea que declara `contrato_pedido: v1` y la
+fecha, escrito **atómicamente** —temporal y `rename`, que en el mismo sistema de archivos no deja un
+estado intermedio observable— y **antes** de crear `pedido/`.
+
+**Por qué un archivo aparte y no un campo dentro del paquete.** La señal que decide si la vara aplica
+tiene que ser **independiente del propio artefacto**: una señal alojada en él vuelve a decidir por su
+ausencia, que es la contradicción que hace falta evitar. Tampoco entra en el bloque máquina de
+`antecedentes.md`: ese bloque lo escribe el sub-paso 5, **después** del 3b, así que llegaría tarde.
+
+La matriz es exhaustiva y no deja ninguna combinación a criterio de quien la lea:
+
+| Directorio del flujo | Marcador | Paquete | Estado | Vara |
+|---|---|---|---|---|
+| vacío | ausente | ausente | caída dentro de 3b, entre el `mkdir` y el marcador | **fallo cerrado**: re-corre 3b desde cero |
+| no vacío | ausente | ausente | flujo heredado, abierto antes de este contrato | **no aplicable**, y se declara así en el retomado |
+| cualquiera | presente | ausente | adopción interrumpida entre el marcador y la sede | **fallo cerrado**: re-corre 3b; nunca se lee como heredado |
+| cualquiera | presente | presente y legible | flujo bajo el contrato | **aplicable** |
+| cualquiera | presente | presente y corrupto | sede dañada: el literal mal formado, o ausente con el registro presente | **cuarentena**, con su procedimiento |
+| cualquiera | ausente | presente | paquete de otro flujo, copiado o desarchivado | **fallo cerrado**: no se adopta un pedido ajeno |
+
+**La celda que el bloque imprime lleva entre paréntesis qué observó**, y esa cola no es adorno: la
+fila de cuarentena admite **dos** estados distintos —un `registro.md` huérfano y un `literal.jsonl`
+mal formado—, y el procedimiento pide informar la celda exacta y reiniciar con un `n` posterior al
+máximo observado. Con el literal ausente no hay `n` del que partir, así que las dos salidas no se
+resuelven igual y la celda tiene que decir cuál se resolvió.
+
+**La tercera fila y la sexta son las que hacen trabajo.** La tercera impide que una adopción a medias
+se confunda con un flujo heredado —las dos lucen parecido desde afuera y sus salidas son opuestas—.
+La sexta impide que un flujo creado por otro productor quede gobernado por un pedido que no es suyo:
+el criterio es **por productor**, y el marcador lo escribe únicamente `gather-context`.
+
+### Salidas del routing de resume ante el pedido
+
+Una sola tabla normativa, **evaluada en orden**: la primera fila que coincide manda y no se sigue
+mirando. Su primera fila va **antes de toda rama existente** del paso, incluida la del ledger de
+antecedentes terminal — insertarla después deja que un flujo terminal oculte un marcador con paquete
+ausente, contradiciendo su fallo cerrado.
+
+| # | Qué se observa | Salida |
+|---|---|---|
+| 1 | `.plans/<id>/` vacío, o marcador presente y paquete ausente | **fallo cerrado**: re-correr 3b antes de cualquier otra rama |
+| 2 | marcador ausente y paquete presente | **fallo cerrado**: pedido ajeno, no se adopta |
+| 3 | estructura corrupta: una línea que no parsea, un orden imposible, o un digest que no reproduce | **cuarentena**, con el procedimiento de abajo |
+| 4 | marcador ausente, paquete ausente y directorio no vacío | flujo heredado: sigue por las ramas vigentes, con la vara declarada no aplicable |
+| 5 | `literal.jsonl` presente y `registro.md` ausente | retoma en la redacción de cláusulas |
+| 6 | cláusulas escritas y ninguna confirmación vigente | retoma en el checkpoint del paso 6, que es donde se congelan |
+| 7 | confirmado, con eventos en `estado: pendiente` | retoma en el gate del productor que los dejó, **nombrándolo** por la columna `productor` |
+| 8 | confirmado y sin `spec.md` | sigue a `specify` con la vara activa |
+
+**El procedimiento de cuarentena, porque «va al checkpoint» no era realizable.** Una línea de
+`literal.jsonl` que no parsea no se puede reparar sin violar la inmutabilidad, y el checkpoint no
+tiene con qué. La salida es esta, y consta de cuatro actos:
+
+1. **mover** `pedido/` a `pedido-cuarentena-<timestamp>/`, en el mismo `.plans/<id>/`;
+2. **no borrar nada** — el material dañado es la única evidencia de qué se había capturado;
+3. **informar la celda exacta** que se resolvió, para que quien decide sepa qué se observó y no solo
+   que algo falló;
+4. **ofrecer reiniciar la captura con identidad nueva**: un `P-k` y un `n` que arrancan **después de
+   los máximos observados** en el material en cuarentena, para que ningún identificador se reutilice.
+
+Requiere **confirmación humana** y **nunca es automática**: es la única salida que conserva la
+evidencia y deja el flujo operable, y las dos propiedades se pierden si alguien la corre sola.
+
+### La matriz de invocación de los bloques
+
+Cuatro comprobaciones del paquete son **deterministas** y quedarían libradas a que dos agentes lean
+igual la misma prosa: validez estructural del literal, unicidad e identidad, referencias colgantes y
+la matriz del marcador. Van como **bloques embebidos acá** —no como archivos: la regla del
+repositorio prohíbe crear nada bajo el `scripts/` de la raíz, y este flujo no la elude creando su
+propia sede—. Queda en prosa lo que es adjudicación semántica: si una derivación es válida y si una
+cláusula está bien redactada.
+
+**Esta matriz es la sede única de quién invoca qué**, y cada paso solo la apunta:
+
+| Bloque | Quién lo invoca | En qué puerta | Argumentos | Qué se lee | Qué pasa si falla |
+|---|---|---|---|---|---|
+| `pedido-jsonl` | `gather-context` | al cerrar 3b, **antes** del sub-paso 4 | la ruta de `literal.jsonl` | el código de salida | **fallo cerrado**: no se avanza a la fusión |
+| `pedido-unicidad` | `specify` | antes de presentar el gate de la spec | la ruta de `registro.md` | el código de salida | el gate **no se presenta** |
+| `pedido-referencias` | `specify`, y cada recálculo que la tabla de puertas declare | antes del gate que esa fila nombra | `registro.md` y la **sede de los criterios**: `spec.md`, o `plan.md` en la rama trivial | el código de salida | el gate **no se presenta** |
+| `pedido-marcador` | `resume` | **primera** comprobación del paso, antes de enrutar | la raíz del flujo | la celda, en stdout | con `1` o `2` **no se enruta** por ninguna rama |
+
+**Por qué la obligación se declara una sola vez.** Si vive repetida en la prosa de cada paso, lo único
+que se puede comprobar barato es que ciertas palabras aparezcan cerca — y eso acepta la negación de la
+frase, el patrón truncado y el párrafo equivocado. Entonces: la obligación vive en estas celdas, y
+**cada paso que invoca lleva una directiva estructurada**, no una frase: una línea
+`<!-- invoca: <bloque> -->`. Una oración que diga «no invocar ningún bloque» satisface una
+comprobación por palabras; una directiva de máquina, no.
+
+**El contrato de cada bloque.** Los cuatro se acotan a lo que el shell hace barato, y lo que queda
+afuera se escribe en su frontera en vez de fingirse cubierto:
+
+| Bloque | Qué comprueba | Salida y códigos |
+|---|---|---|
+| `pedido-jsonl` | por cada línea de `literal.jsonl`: que abra con `{` y cierre con `}`, que estén las siete claves obligatorias, y que `n` sea monótono desde 1 sin huecos | una línea por violación, `<n>: <causa>`; `0` sin violaciones, `1` con, `3` si el archivo no se puede leer |
+| `pedido-unicidad` | en `registro.md`: ningún par de cláusula y versión repetido, versión monótona por cláusula, ningún `AC-n` repetido en la traza, ningún evento repetido | ídem |
+| `pedido-referencias` | que cada `fragmentos` cite una línea existente con rango dentro de su largo, que cada `AC-n` de la traza exista en la sede de los criterios, y que cada `objetivo` de evento resuelva | ídem |
+| `pedido-marcador` | resuelve la celda de la matriz del marcador desde el estado observado del árbol | **la celda en stdout**; `0` si resolvió una, `1` si el árbol no encaja en ninguna, `2` si la invocación está mal formada |
+
+**Van en POSIX solamente, y hay precedente**: el verificador de aislamiento de este repositorio es
+también un bloque de shell sin variante PowerShell. La exigencia de ofrecer las dos variantes alcanza
+a los comandos que **invocan un CLI** —el transporte cross-model—, que no es el caso de estos cuatro.
+
+#### `pedido-jsonl`
+
+```sh
+# @bloque: pedido-jsonl
+# uso: pedido_jsonl <ruta de literal.jsonl>
+pedido_jsonl() {
+  f="${1:?ruta de literal.jsonl}"
+  if [ ! -r "$f" ]; then echo "no se puede leer: $f" >&2; return 3; fi
+  salida=$(awk '
+    BEGIN { split("n captado_en origen referencia medio texto sha256", claves, " ") }
+    { linea=$0
+      if (substr(linea,1,1) != "{" || substr(linea,length(linea),1) != "}")
+        print NR ": la línea no abre y cierra con llaves"
+      faltan=""
+      for (i=1; i<=7; i++)
+        if (index(linea, sprintf("%c%s%c:", 34, claves[i], 34)) == 0) faltan = faltan " " claves[i]
+      if (faltan != "") print NR ": faltan claves obligatorias:" faltan
+      if (match(linea, /"n"[ ]*:[ ]*[0-9]+/)) {
+        s = substr(linea, RSTART, RLENGTH); sub(/^.*:[ ]*/, "", s)
+        if (s+0 != NR) print NR ": el campo n vale " s " y rompe el orden monótono desde 1"
+      } else print NR ": el campo n no es un entero"
+    }
+    END { if (NR == 0) print "0: el literal está vacío" }' "$f")
+  if [ -z "$salida" ]; then return 0; fi
+  printf '%s\n' "$salida"
+  return 1
+}
+```
+
+> **Frontera de prueba.** Clase **veredicto**, dirección **admite-de-más**. Su verde autoriza a
+> afirmar que cada línea tiene la **forma** esperada: llaves en los extremos, las siete claves
+> presentes y `n` monótono desde 1. **No autoriza a afirmar que la línea sea JSON válido**: no
+> detecta comillas sin cerrar, comas sobrantes, anidamiento roto, tipos incorrectos, ni que `sha256`
+> corresponda a `texto`. **No es un parser y no se lo puede leer como uno.** Se eligió así
+> deliberadamente: validar JSON en shell POSIX exige una herramienta que no está garantizada, y el
+> aparato pesaría más que la prosa que verifica. Fallo de ejecución, distinto de su resultado: `3` si
+> el archivo no se puede leer.
+
+#### `pedido-unicidad`
+
+```sh
+# @bloque: pedido-unicidad
+# uso: pedido_unicidad <ruta de registro.md>
+pedido_unicidad() {
+  f="${1:?ruta de registro.md}"
+  if [ ! -r "$f" ]; then echo "no se puede leer: $f" >&2; return 3; fi
+  salida=$(awk '
+    BEGIN { FS=sprintf("%c",124) }
+    /^## clausulas/ { s="c"; next }
+    /^## eventos/   { s="e"; next }
+    /^## traza/     { s="t"; next }
+    /^## /          { s="";  next }
+    { k=$2; v=$3; gsub(/[ *]/,"",k); gsub(sprintf("%c",96),"",k)
+      gsub(/[ *]/,"",v); gsub(sprintf("%c",96),"",v) }
+    s == "c" && k ~ /^P-[0-9]+$/ && v ~ /^[0-9]+$/ {
+      par = k "@" v
+      if (par in vistos) print "clausula repetida: " par
+      vistos[par]=1
+      if (k in maxv && v+0 <= maxv[k]) print "version no monotona en " k ": " v
+      if (!(k in maxv) || v+0 > maxv[k]) maxv[k]=v+0 }
+    s == "e" && k ~ /^E-[0-9]+$/ {
+      if (k in ev) print "evento repetido: " k
+      ev[k]=1 }
+    s == "t" && k ~ /^AC-[0-9]+[a-z]?$/ {
+      if (k in ac) print "criterio repetido en la traza: " k
+      ac[k]=1 }' "$f")
+  if [ -z "$salida" ]; then return 0; fi
+  printf '%s\n' "$salida"
+  return 1
+}
+```
+
+> **Frontera de prueba.** Clase **veredicto**, dirección **admite-de-más**. Su verde autoriza a
+> afirmar que los identificadores de las tres tablas son únicos y que la versión crece por cláusula.
+> **No** ve si el texto de la cláusula es el correcto, si la `evidencia` obligatoria está presente,
+> ni si un identificador retirado se reutiliza **fuera** de este flujo. Reconoce los `AC-n` por la
+> misma **forma cerrada** que `pedido-referencias`, así que un identificador fuera de esa forma
+> tampoco se comprueba acá: no detectaría su repetición. Fallo de ejecución: `3` si el
+> archivo no se puede leer.
+
+#### `pedido-referencias`
+
+```sh
+# @bloque: pedido-referencias
+# uso: pedido_referencias <ruta de registro.md> <sede de los criterios>
+# la sede de los criterios es spec.md, o plan.md en la rama trivial, donde la spec va embebida
+# literal.jsonl se resuelve como hermano de registro.md, que es su sede por construcción
+pedido_referencias() {
+  r="${1:?ruta de registro.md}"
+  sp="${2:?sede de los criterios: spec.md, o plan.md en trivial}"
+  lit="$(dirname "$r")/literal.jsonl"
+  if [ ! -r "$r" ] || [ ! -r "$sp" ] || [ ! -r "$lit" ]; then
+    echo "no se puede leer alguna de las tres sedes" >&2; return 3
+  fi
+  salida=$(awk '
+    BEGIN { FS=sprintf("%c",124) }
+    FILENAME == ELIT {
+      hay[FNR]=1
+      if (match($0, /"texto"[ ]*:[ ]*"/)) {
+        cuerpo = substr($0, RSTART+RLENGTH)
+        # el orden canónico deja sha256 como último campo: ese es el corte
+        sub(/"[ ]*,[ ]*"sha256".*$/, "", cuerpo)
+        largo[FNR] = length(cuerpo) }
+      next }
+    FILENAME == ESPEC { linea=$0
+      while (match(linea, /AC-[0-9]+[a-z]?/)) {
+        enspec[substr(linea, RSTART, RLENGTH)]=1
+        linea = substr(linea, RSTART+RLENGTH) }
+      next }
+    /^## clausulas/ { s="c"; next }
+    /^## eventos/   { s="e"; next }
+    /^## traza/     { s="t"; next }
+    /^## /          { s="";  next }
+    { id=$2; gsub(/[ *]/,"",id); gsub(sprintf("%c",96),"",id) }
+    s == "c" && id ~ /^P-[0-9]+$/ {
+      frags=$5; gsub(/[ *]/,"",frags); gsub(sprintf("%c",96),"",frags)
+      m = split(frags, lista, ",")
+      for (i=1; i<=m; i++) {
+        if (lista[i] !~ /^[0-9]+:[0-9]+-[0-9]+$/) continue
+        split(lista[i], p, ":"); split(p[2], q, "-")
+        if (!(p[1] in hay)) { print "fragmento cita una linea inexistente: " lista[i]; continue }
+        if (q[1]+0 < 1 || q[2]+0 < q[1]+0 || q[2]+0 > largo[p[1]]+0)
+          print "rango fuera del largo del texto: " lista[i] } }
+    s == "t" && id ~ /^AC-[0-9]+[a-z]?$/ {
+      if (!(id in enspec)) print "criterio de la traza ausente en la spec: " id }
+    s == "e" && id ~ /^E-[0-9]+$/ {
+      ob=$7; gsub(/[ *]/,"",ob); gsub(sprintf("%c",96),"",ob)
+      if (ob != "" && ob != "-" && ob !~ /^P-[0-9]+@[0-9]+$/ && ob !~ /^AC-[0-9]+@/)
+        print "objetivo de evento que no resuelve: " ob }' \
+    ELIT="$lit" ESPEC="$sp" "$lit" "$sp" "$r")
+  if [ -z "$salida" ]; then return 0; fi
+  printf '%s\n' "$salida"
+  return 1
+}
+```
+
+> **Frontera de prueba.** Clase **veredicto**, dirección **admite-de-más**. Su verde autoriza a
+> afirmar que cada referencia **resuelve**: la línea citada existe, el rango cae dentro del largo, el
+> criterio está en la spec y el objetivo tiene una forma que apunta a algo. **Nunca** autoriza a
+> afirmar que la derivación adjudicada sea **válida** —eso es juicio y queda en prosa—, ni que el
+> fragmento citado sea el que de verdad origina la cláusula. Dos límites más, propios de medir el
+> largo desde el literal serializado: **no interpreta escapes JSON** —una comilla o un salto de línea
+> escapados dentro de `texto` desplazan el largo contra el que compara—, y **depende del orden
+> canónico de campos** para saber dónde termina `texto`, así que una línea con los campos en otro
+> orden le queda invisible en vez de dar rojo. Y el reconocimiento de `AC-n` es por **forma
+> cerrada** —`AC-` seguido de dígitos y a lo sumo una letra minúscula—, **la misma en las tres sedes
+> que la usan**: un identificador escrito fuera de esa forma queda invisible en las dos puntas, ni se
+> indexa desde la sede de los criterios ni se comprueba desde la traza, así que pasa en silencio en
+> vez de dar rojo. Que las tres compartan el patrón es lo que evita el desacuerdo, y no es
+> hipotético: con el indexado más ancho que la consulta, un `AC-7b` colgante devolvía verde mientras
+> un `AC-7` en el mismo caso daba rojo. Fallo de ejecución: `3` si falta alguna de las tres sedes.
+
+#### `pedido-marcador`
+
+```sh
+# @bloque: pedido-marcador
+# uso: pedido_marcador <raíz del flujo, .plans/<id>/>
+# imprime la celda de la matriz del marcador en stdout
+pedido_marcador() {
+  raiz="$1"
+  if [ -z "$raiz" ] || [ ! -d "$raiz" ]; then
+    echo "invocación mal formada: se espera la raíz del flujo" >&2; return 2
+  fi
+  marcador="$raiz/contrato-pedido.md"
+  paquete="$raiz/pedido"
+  if [ -z "$(ls -A "$raiz" 2>/dev/null)" ]; then
+    echo "vacío + ausente + ausente: fallo cerrado, re-corre 3b"; return 0
+  fi
+  hay_m=no; if [ -f "$marcador" ]; then hay_m=si; fi
+  # el paquete está presente si existe cualquiera de sus dos archivos: un registro huérfano
+  # es un paquete dañado, no un paquete ausente, y las dos salidas no son la misma
+  hay_p=no
+  if [ -f "$paquete/literal.jsonl" ] || [ -f "$paquete/registro.md" ]; then hay_p=si; fi
+  if [ "$hay_m" = no ] && [ "$hay_p" = no ]; then
+    echo "no vacío + ausente + ausente: flujo heredado, vara no aplicable"; return 0
+  fi
+  if [ "$hay_m" = si ] && [ "$hay_p" = no ]; then
+    echo "cualquiera + presente + ausente: fallo cerrado, adopción interrumpida"; return 0
+  fi
+  if [ "$hay_m" = no ] && [ "$hay_p" = si ]; then
+    echo "cualquiera + ausente + presente: fallo cerrado, pedido ajeno"; return 0
+  fi
+  if [ ! -f "$paquete/literal.jsonl" ]; then
+    echo "cualquiera + presente + presente y corrupto: cuarentena (registro huérfano, falta literal.jsonl)"; return 0
+  fi
+  pedido_jsonl "$paquete/literal.jsonl" >/dev/null 2>&1
+  c=$?
+  if [ "$c" -eq 0 ]; then
+    echo "cualquiera + presente + presente y legible: aplicable"; return 0
+  fi
+  if [ "$c" -eq 1 ]; then
+    echo "cualquiera + presente + presente y corrupto: cuarentena (literal presente y mal formado)"; return 0
+  fi
+  echo "el árbol no encaja en ninguna celda: literal presente e ilegible" >&2
+  return 1
+}
+```
+
+> **Frontera de prueba.** Clase **veredicto**, dirección **admite-de-más**, ante la duda
+> **niega-ante-duda**. Su salida autoriza a afirmar **qué celda de la matriz del marcador describe el
+> árbol observado**; ante un árbol que no encaja en ninguna devuelve `1` y no una celda por defecto.
+> Admite de más porque «presente y legible» se apoya en la comprobación de **forma** de
+> `pedido-jsonl`: un literal con las llaves y las claves en su lugar pero JSON inválido adentro se
+> clasifica legible. **No** distingue tampoco un paquete de este flujo de uno copiado con su
+> marcador. Fallo de ejecución, distinto de su resultado: `2` si la invocación está mal formada.
+
+**`pedido-marcador` invoca a `pedido-jsonl` por dentro, y ese orden es único.** El routing invoca
+**un solo bloque**. Ordenar dos invocaciones desde `resume` vuelve el protocolo circular: el marcador
+no puede imprimir la celda «presente y corrupto» antes de conocer un resultado que llegaría después.
+Corrupto significa corrupto **de forma**, que es lo único que ese bloque ve; una corrupción más
+profunda —JSON inválido dentro de llaves bien puestas— **no la detecta ninguno de los dos** y aparece
+más tarde, cuando algo intente leer el campo. Se escribe porque acotar `pedido-jsonl` compró ese
+hueco a sabiendas.
+
+**El código de salida no codifica la celda**, y esa distinción es deliberada: darle un código a cada
+desenlace deja al protocolo sin código para el flujo heredado, que no es fallo ni cuarentena ni
+aplicable. El código dice **si resolvió**; la celda viaja por stdout y el routing ramifica por ella.
+Así la matriz del marcador puede crecer sin quedarse sin códigos.
+
 ## Búsqueda de antecedentes
 
 Detalle del **sub-paso 5** de `gather-context`. `SKILL.md` lleva el mandato —que el paso corre
@@ -1906,9 +2609,11 @@ queda el resultado.
 
 ### El artefacto `antecedentes.md`
 
-La búsqueda termina **antes** de que exista `spec.md`, así que no puede escribir ahí. El sub-paso 5
-crea `.plans/<id>/` —adelantando la creación que de otro modo ocurre en `specify`— y escribe
-`.plans/<id>/antecedentes.md`, que es la autoridad durante toda la ventana pre-spec.
+La búsqueda termina **antes** de que exista `spec.md`, así que no puede escribir ahí. La sede
+`.plans/<id>/` ya está creada cuando este sub-paso corre: la crea el sub-paso 3b al congelar el
+pedido, y el 5 la **encuentra** y escribe ahí `.plans/<id>/antecedentes.md`, que es la autoridad
+sobre la búsqueda durante toda la ventana pre-spec. En un flujo heredado, anterior a 3b, la crea
+este sub-paso.
 
 El archivo tiene **dos bloques con nombre**, y esa partición es lo que vuelve inequívoca la
 promoción: sin ella, quien copiara el archivo entero a la spec estaría publicando el ledger máquina.
@@ -2911,6 +3616,8 @@ base_branch: master             # rama base resuelta (con override de base, la r
 overrides: { branch_prefix: null, base_branch: null, cross_review: null, implement_mode: null, jira_approval: null }
 # puntero al ledger de la búsqueda (solo en una pausa durante `gather-context`):
 antecedentes: .plans/<id>/antecedentes.md   # PUNTERO, no copia: términos, fuentes y fingerprints viven solo ahí
+# puntero al pedido congelado (siempre que el flujo lo tenga):
+pedido: .plans/<id>/pedido/   # PUNTERO, no copia: el literal y el registro se leen en su sede
 # campos del gate de Jira (solo si es una pausa por aprobación externa):
 gate_status: awaiting           # awaiting | changes-requested | approved
 parent_key: ABC-123
@@ -2933,6 +3640,8 @@ cloud_id: <uuid del sitio>
 ## Archivos del flujo
 - spec.md — el QUÉ completo + Clarifications
 - antecedentes.md — el ledger de la búsqueda: `## estado` (nunca se publica) y `## declaracion` (se promueve **sanitizado**)
+- contrato-pedido.md — el marcador de adopción: su presencia decide si la vara del pedido aplica
+- pedido/ — el pedido congelado: `literal.jsonl` (inmutable) y `registro.md` (append-only); se apunta, no se copia
 - jira-spec.md — exactamente lo publicado en la subtarea (solo si hubo gate de Jira)
 ```
 

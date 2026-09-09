@@ -52,23 +52,25 @@ Como `.plans/` es local (no trackeado), git no lo mueve al cambiar de rama: tus 
 ## Artefactos en disco
 
 ```
-<repo>/                 # TODO lo de abajo es LOCAL: la skill nunca lo trackea ni commitea
+<repo>/                         # TODO lo de abajo es LOCAL: la skill nunca lo trackea ni commitea
 ├─ .specify/
-│  ├─ constitution.md   # principios de PROCESO
-│  ├─ config.yml        # overrides de adaptación (opcional)
-│  └─ reviewers.json    # reviewers por defecto del PR (opcional; lo usa `open-pr`)
+│  ├─ constitution.md           # principios de PROCESO
+│  ├─ config.yml                # overrides de adaptación (opcional)
+│  └─ reviewers.json            # reviewers por defecto del PR (opcional; lo usa `open-pr`)
 └─ .plans/
-   ├─ <id>/             # un flujo en curso
-   │  ├─ plan.md        # SIEMPRE: header YAML (incl. status + branch) + CÓMO + resultado de verify
-   │  ├─ spec.md        # en NORMAL y COMPLEJO (en trivial va embebida en plan.md → ## Spec)
-   │  ├─ tasks.md       # en NORMAL y COMPLEJO (en trivial van embebidas en plan.md → ## Tasks)
-   │  ├─ bitacora.md    # constancia append-only de los pasos del contrato
-   │  ├─ sequence-ledger.yml  # versión, cursor, intenciones y efectos adjudicados
+   ├─ <id>/                     # un flujo en curso
+   │  ├─ contrato-pedido.md     # marcador de adopción: decide si la vara del pedido aplica
+   │  ├─ pedido/                # el pedido congelado: literal.jsonl (inmutable) + registro.md (append-only)
+   │  ├─ plan.md                # SIEMPRE: header YAML (incl. status + branch) + CÓMO + resultado de verify
+   │  ├─ spec.md                # en NORMAL y COMPLEJO (en trivial va embebida en plan.md → ## Spec)
+   │  ├─ tasks.md               # en NORMAL y COMPLEJO (en trivial van embebidas en plan.md → ## Tasks)
+   │  ├─ bitacora.md            # constancia append-only de los pasos del contrato
+   │  ├─ sequence-ledger.yml    # versión, cursor, intenciones y efectos adjudicados
    │  ├─ sequence-ledger.owner/ # ownership exclusivo mientras un writer publica
-   │  ├─ handoff.md     # al pausar o en el gate de Jira: estado + decisiones para retomar
-   │  └─ jira-spec.md   # copia de lo publicado en Jira (solo con el gate de aprobación)
-   └─ archived/         # flujos cerrados (status: done), movidos solo tras tu confirmación
-      └─ <id>/          # misma estructura, ya terminada
+   │  ├─ handoff.md             # al pausar o en el gate de Jira: estado + decisiones para retomar
+   │  └─ jira-spec.md           # copia de lo publicado en Jira (solo con el gate de aprobación)
+   └─ archived/                 # flujos cerrados (status: done), movidos solo tras tu confirmación
+      └─ <id>/                  # misma estructura, ya terminada
 ```
 
 > **Artefactos por complejidad:** *trivial* genera solo `plan.md` (con `## Spec` y `## Tasks` embebidas); *normal* y *complejo* separan `spec.md` + `plan.md` + `tasks.md`. La diferencia entre normal y complejo es de **gates**, no de archivos: en *normal* las tasks se aprueban en el gate del plan; en *complejo* el gate de `tasks` es propio. La skill **siempre anuncia dónde quedaron las tasks**. La Vía B (bootstrap) y `verify` leen los archivos separados si existen, o las secciones embebidas si no.
