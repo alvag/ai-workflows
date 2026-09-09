@@ -2616,7 +2616,9 @@ pedido_marcador() {
     if (match($0, /"n"[ ]*:[ ]*[0-9]+/)) {
       v = substr($0, RSTART, RLENGTH); sub(/^.*:[ ]*/, "", v); print v+0 }
     exit }' "$paquete/literal.jsonl")
-  if [ -z "$base" ]; then base=1; fi
+  # un primer n ausente o menor que 1 es CORRUPCIÓN DEL LITERAL, no un error de quien invoca:
+  # se cae al default para que el veredicto lo dé la comprobación de forma y la celda sea cuarentena
+  if [ -z "$base" ] || [ "$base" -lt 1 ]; then base=1; fi
   pedido_jsonl "$paquete/literal.jsonl" "$base" >/dev/null 2>&1
   c=$?
   if [ "$c" -eq 0 ]; then
@@ -2625,7 +2627,7 @@ pedido_marcador() {
   if [ "$c" -eq 1 ]; then
     echo "cualquiera + presente + presente y corrupto: cuarentena (literal presente y mal formado)"; return 0
   fi
-  echo "el árbol no encaja en ninguna celda: literal presente e ilegible" >&2
+  echo "el árbol no encaja en ninguna celda: literal presente e ilegible (pedido-jsonl devolvió $c)" >&2
   return 1
 }
 ```
@@ -2642,6 +2644,17 @@ pedido_marcador() {
 > línea inexistente en el gate de `specify`. **No** distingue tampoco un paquete de este flujo de uno
 > copiado con su marcador. Fallo de ejecución, distinto de su resultado: `2` si la invocación está mal
 > formada o si `pedido-jsonl` no está cargado en el shell.
+>
+> **Su invariante, y es el que hay que conservar al tocarlo: con el literal presente, ningún contenido
+> del paquete produce un código de fallo.** Sale `0` y la celda dice si es aplicable o cuarentena. Los
+> códigos `1` y `2` quedan para lo que **no** es contenido: un árbol que no encaja en ninguna celda, y
+> un invocador que llamó mal o sin cargar la dependencia. La distinción no es teórica: la base se
+> deriva del literal y después se pasa **como argumento**, así que un primer `n` en `0` viajaba como
+> invocación inválida, `pedido-jsonl` devolvía `2` y el marcador caía hasta el último desenlace,
+> saliendo `1` —«el árbol no encaja en ninguna celda»— sobre un literal perfectamente legible y
+> dejando a `resume` sin la salida de recuperación que su tabla declara para una estructura corrupta.
+> Por eso la base se valida **antes** de usarla y un valor no positivo cae al default: el veredicto lo
+> da la comprobación de forma, que es quien puede clasificarlo como corrupción.
 
 **`pedido-marcador` invoca a `pedido-jsonl` por dentro, y ese orden es único.** El routing invoca
 **un solo bloque** —y **carga dos**, que no es lo mismo: la definición de la dependencia tiene que
