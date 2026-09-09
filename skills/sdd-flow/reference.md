@@ -2423,8 +2423,9 @@ pedido_jsonl() {
       for (i=1; i<=7; i++)
         if (index(linea, sprintf("%c%s%c:", 34, claves[i], 34)) == 0) faltan = faltan " " claves[i]
       if (faltan != "") print NR ": faltan claves obligatorias:" faltan
-      if (match(linea, /"n"[ ]*:[ ]*[0-9]+/)) {
-        s = substr(linea, RSTART, RLENGTH); sub(/^.*:[ ]*/, "", s)
+      # el token se cierra con delimitador: sin eso, "1.5" y "1e3" casan por su prefijo y valen 1
+      if (match(linea, /"n"[ ]*:[ ]*[0-9]+[ ]*[,}]/)) {
+        s = substr(linea, RSTART, RLENGTH); sub(/^.*:[ ]*/, "", s); sub(/[ ]*[,}]$/, "", s)
         if (s+0 != NR + base - 1)
           print NR ": el campo n vale " s " y rompe el orden monótono desde " base
       } else print NR ": el campo n no es un entero"
@@ -2440,9 +2441,15 @@ pedido_jsonl() {
 > afirmar que cada línea tiene la **forma** esperada: llaves en los extremos, las siete claves
 > presentes y `n` monótono sin huecos desde el `n` inicial **que el invocador declaró** — el bloque no
 > conoce cuál corresponde y no lo deriva: con el default de 1 comprueba una captura inicial, y una
-> base equivocada le hace dar rojo a un literal sano o verde a uno truncado por delante. **No autoriza a afirmar que la línea sea JSON válido**: no
+> base equivocada le hace dar rojo a un literal sano o verde a uno truncado por delante. El token de
+> `n` **se cierra con un delimitador** —coma o llave—, y no es un detalle de escritura: un `match` de
+> solo prefijo acepta `1.5` y `1e3` leyéndolos como el entero `1`, así que una identidad no entera
+> atravesaba el paquete con la celda `aplicable`. El mismo cierre va en **las tres sedes** que leen
+> este campo, por el motivo de siempre: un patrón más ancho en una que en otra las hace discrepar. **No autoriza a afirmar que la línea sea JSON válido**: no
 > detecta comillas sin cerrar, comas sobrantes, anidamiento roto, tipos incorrectos, ni que `sha256`
-> corresponda a `texto`. **No es un parser y no se lo puede leer como uno.** Se eligió así
+> corresponda a `texto`. De los **tipos**, comprueba **solo el de `n`** —porque ese campo es la
+> identidad de la línea y el resto del contrato cuelga de él—; los otros seis no se tipan. **No es un
+> parser y no se lo puede leer como uno.** Se eligió así
 > deliberadamente: validar JSON en shell POSIX exige una herramienta que no está garantizada, y el
 > aparato pesaría más que la prosa que verifica. Fallos de ejecución, distintos de su resultado: `2`
 > si el `n` inicial no es un entero ≥ 1, y `3` si el archivo no se puede leer.
@@ -2509,8 +2516,8 @@ pedido_referencias() {
       # la cláusula cita el campo n, no la posición física de la línea: tras una cuarentena
       # la captura arranca después del máximo observado y los dos dejan de coincidir
       nl = FNR
-      if (match($0, /"n"[ ]*:[ ]*[0-9]+/)) {
-        v = substr($0, RSTART, RLENGTH); sub(/^.*:[ ]*/, "", v); nl = v+0 }
+      if (match($0, /"n"[ ]*:[ ]*[0-9]+[ ]*[,}]/)) {
+        v = substr($0, RSTART, RLENGTH); sub(/^.*:[ ]*/, "", v); sub(/[ ]*[,}]$/, "", v); nl = v+0 }
       hay[nl]=1
       if (match($0, /"texto"[ ]*:[ ]*"/)) {
         cuerpo = substr($0, RSTART+RLENGTH)
@@ -2613,8 +2620,8 @@ pedido_marcador() {
   fi
   # la base la fija el propio literal: tras una cuarentena arranca después del máximo observado
   base=$(awk 'NR == 1 {
-    if (match($0, /"n"[ ]*:[ ]*[0-9]+/)) {
-      v = substr($0, RSTART, RLENGTH); sub(/^.*:[ ]*/, "", v); print v+0 }
+    if (match($0, /"n"[ ]*:[ ]*[0-9]+[ ]*[,}]/)) {
+      v = substr($0, RSTART, RLENGTH); sub(/^.*:[ ]*/, "", v); sub(/[ ]*[,}]$/, "", v); print v+0 }
     exit }' "$paquete/literal.jsonl")
   # un primer n ausente o menor que 1 es CORRUPCIÓN DEL LITERAL, no un error de quien invoca:
   # se cae al default para que el veredicto lo dé la comprobación de forma y la celda sea cuarentena
