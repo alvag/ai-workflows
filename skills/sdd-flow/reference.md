@@ -2046,6 +2046,22 @@ por el que `antecedentes.md` tiene su bloque máquina.
 | `estado` | `pendiente` · `resuelta` |
 | `motivo` | texto · `-` — **obligatorio** en un `tipo: descarte`, que sin él es un estado inválido |
 
+**La cabecera es exacta y no hay compatibilidad hacia atrás, y eso es una decisión, no un descuido.**
+Las tres tablas se comprueban **por su cabecera entera** —nombres y cantidad de columnas—, no por su
+primera celda: con solo la primera, una tabla con la forma de otra versión del esquema pasaba en
+verde, y todo lo que se lea por posición leía la columna equivocada. Un `registro.md` escrito con
+otra forma **no es legible por este contrato**.
+
+**Por qué no se versiona el esquema.** Este formato **no existe fuera de esta rama sin mergear**, y
+cada cambio que lleva —la receta del digest dos veces, la forma del objetivo, la frontera, esta
+columna— fue incompatible con el anterior sin que nadie pidiera migración. Una escalera de versiones
+para un artefacto sin consumidores liberados es maquinaria sin consumidor, que es lo que la regla 1
+de este repositorio corta. **El costo se declara en vez de esconderse:** un paquete escrito por un
+commit intermedio de esta rama da `1` en `pedido-unicidad` y se repara en el gate; si además estaba
+confirmado, corregirle la cabecera rompe la cadena —que firma cabecera y separador a propósito— y cae
+en **cuarentena**, con su procedimiento declarado. No hay forma de tener las dos cosas: o los bytes
+firmados son inmutables, o el esquema puede cambiar sin romperlos.
+
 `productor` es lo que le permite al routing de `resume` **nombrar** en qué gate retomar: sin esa
 columna, «retoma en el gate del productor que las dejó» no era implementable.
 
@@ -2289,8 +2305,13 @@ existe en `## Clarifications`. Para `constitution` y `repositorio` comprueba que
 convención desde la ruta del registro igual que `literal.jsonl` y `antecedentes.md`. Durante un
 tiempo esta frontera declaró lo contrario —«el bloque no recibe esos artefactos»— y eso era falso:
 los recibe por la misma convención que ya usaba dos veces. **La referencia es el slug del
-encabezado**, comparado entero: con una comparación por subcadena, `regla-2` acreditaba contra
-`regla-20`. Lo que sigue sin comprobarse es que la sección o la regla **digan** lo que el criterio
+encabezado que la aloja**, y el encabezado tiene que ser uno **real y único**: se cuentan los
+encabezados ATX del archivo —con hasta tres espacios de sangría, ignorando lo que esté dentro de un
+bloque de código— y la referencia resuelve solo si hay **exactamente uno** con ese slug. La propia
+referencia tiene que ser un slug canónico: `Regla 2` no identifica nada, porque el dominio son slugs.
+Con una comparación por subcadena, `regla-2` acreditaba contra `regla-20`; cortando en el primer
+encabezado, dos secciones homónimas resolvían a la primera; y sin excluir los bloques de código, un
+`## regla-2` **citado como ejemplo** acreditaba una autoridad. Lo que sigue sin comprobarse es que la sección o la regla **digan** lo que el criterio
 afirma. Y en las cuatro, «que el criterio no
 exceda lo que esa autoridad decidió» es adjudicación semántica y queda en el juicio del conductor y
 en el gate humano — declararlo acá es lo que impide leer el verde del bloque como si cubriera eso.
@@ -2697,7 +2718,13 @@ pedido_unicidad() {
                         sub("[ " sprintf("%c",9) "*" sprintf("%c",96) "]+$", "", x); return x }
     BEGIN { FS=sprintf("%c",124)
             cab["c"]="P-k"; cab["e"]="E-k"; cab["t"]="AC-n"
-            nom["c"]="clausulas"; nom["e"]="eventos"; nom["t"]="traza" }
+            nom["c"]="clausulas"; nom["e"]="eventos"; nom["t"]="traza"
+            # la cabecera ENTERA, no su primera celda: con solo la primera, una tabla con la forma
+            # de otra versión del esquema —nueve columnas donde el contrato declara diez— pasaba en
+            # verde, y todo lo que se lea por posición leía la columna equivocada
+            ent["c"]="P-k|version|aplicabilidad|fragmentos|texto|evidencia"
+            ent["e"]="E-k|momento|actor|productor|tipo|objetivo|supersede|resolucion|estado|motivo"
+            ent["t"]="AC-n|hash_criterio|autoridad|referencia|derivacion" }
     /^## clausulas/ { s="c"; fila=0; hay_sec["c"]=1; next }
     /^## eventos/   { s="e"; fila=0; hay_sec["e"]=1; next }
     /^## traza/     { s="t"; fila=0; hay_sec["t"]=1; next }
@@ -2711,11 +2738,17 @@ pedido_unicidad() {
       # la cabecera y el separador se COMPRUEBAN, no se saltan por contarlos: si faltan, saltar
       # dos filas por posición se come dos filas de datos y la tabla pasa sin comprobarse
       if (fila == 1) {
-        if (c1 == cab[s]) hay_cab[s]=1
+        act = ""
+        for (z2 = 2; z2 < NF; z2++) act = act (z2 == 2 ? "" : "|") celda($z2)
+        if (act == ent[s]) hay_cab[s]=1
+        else if (c1 == cab[s]) print "tabla de " nom[s] ": la cabecera no es la del esquema (" act ")"
         else print "tabla de " nom[s] ": la primera fila no es la cabecera (" (c1 == "" ? "vacia" : c1) ")"
         next }
       if (fila == 2) {
-        if (c1 ~ /^-+$/) hay_sep[s]=1
+        ncol = 0; for (z3 = 2; z3 < NF; z3++) ncol++
+        nesp = split(ent[s], _d2, "|")
+        if (c1 ~ /^-+$/ && ncol == nesp) hay_sep[s]=1
+        else if (c1 ~ /^-+$/) print "tabla de " nom[s] ": el separador tiene " ncol " columnas y el esquema declara " nesp
         else print "tabla de " nom[s] ": la segunda fila no es el separador (" (c1 == "" ? "vacia" : c1) ")"
         next }
       k=c1; v=$3
@@ -2859,15 +2892,23 @@ pedido_referencias() {
                        gsub(/^-+|-+$/, "", x); return x }
     # busca una sección o regla por su slug, comparado ENTERO. Devuelve 0 si el archivo no existe,
     # que es lo que corresponde: sin la sede, la autoridad no se puede acreditar
-    function buscar(arch, lit,   ln, hallado, t2) {
-      hallado = 0
+    # cuenta cuántos encabezados del archivo tienen ese slug. Un encabezado ATX admite hasta tres
+    # espacios de sangría y **no cuenta dentro de un bloque de código**: `## regla-2` citado en un
+    # fence es un ejemplo, no una sección. Y se CUENTA en vez de cortar en el primero, porque dos
+    # encabezados con el mismo slug no identifican a ninguno
+    function buscar(arch, lit,   ln, n2, t2, fence) {
+      n2 = 0; fence = 0
       while ((getline ln < arch) > 0) {
-        if (ln !~ /^#+[ ]/) continue
-        t2 = ln; sub(/^#+[ ]+/, "", t2)
-        if (slug(t2) == slug(lit)) { hallado = 1; break } }
-      close(arch); return hallado }
+        if (ln ~ /^[ ]?[ ]?[ ]?(```|~~~)/) { fence = 1 - fence; continue }
+        if (fence) continue
+        if (ln !~ /^[ ]?[ ]?[ ]?#+[ ]/) continue
+        t2 = ln; sub(/^[ ]*#+[ ]+/, "", t2); sub(/[ ]*#*[ ]*$/, "", t2)
+        if (slug(t2) == lit) n2++ }
+      close(arch); return n2 }
     BEGIN { FS=sprintf("%c",124)
             ESP = "[ " sprintf("%c",9) "]"; BT = sprintf("%c",96)
+            RAYA = sprintf("%c%c%c", 226, 128, 148)
+            BLANCO = "[ " sprintf("%c",9) sprintf("%c",11) sprintf("%c",12) sprintf("%c",13) "]"
             for (i = 128; i < 192; i++) CONT = CONT sprintf("%c", i) }
     FILENAME == ELIT {
       # la cláusula cita el campo n, no la posición física de la línea: tras una cuarentena
@@ -2900,9 +2941,14 @@ pedido_referencias() {
         # nada, y dos entradas con el mismo número no dicen cuál de las dos decidió
         if (qcl != "") { hayq[qcl]++
           # la respuesta tiene que tener CONTENIDO: el marcador vacío no decidió nada
-          cuerpo2 = $0
-          if (sub(/.*[*][*]A:[*][*]/, "", cuerpo2) || sub(/.*[*][*]A[*][*]:/, "", cuerpo2)) {
-            if (celda(cuerpo2) != "") resp[qcl] = 1 } } }
+          # la respuesta va en su POSICIÓN canónica —tras el separador de raya— y no es un
+          # placeholder: con el marcador buscado en cualquier lado, «¿Qué significa **A:**?» contaba
+          # como respondida, y `<respuesta>` contaba como respuesta
+          dq = index($0, RAYA)
+          if (dq > 0) { cuerpo2 = substr($0, dq + length(RAYA))
+            if (match(cuerpo2, /^[ ]*[*][*]A:[*][*]/)) {
+              cuerpo2 = celda(substr(cuerpo2, RLENGTH + 1))
+              if (cuerpo2 != "" && cuerpo2 !~ /^<[^>]*>$/) resp[qcl] = 1 } } } }
       ab = abrec($0)
       if (ab != "") { abre[ab]++
         # la anotación de autoridad, que el contrato obliga a poner al final de esa misma línea,
@@ -2922,7 +2968,7 @@ pedido_referencias() {
         resto3 = $0
         while (match(resto3, /\[[^][]*\]/)) {
           cor = substr(resto3, RSTART, RLENGTH)
-          if (cor ~ ("^\\[" ESP "*autoridad" ESP "*:") && cor !~ /^\[autoridad: /) mala[ab] = 1
+          if (tolower(cor) ~ ("^\\[" BLANCO "*autoridad" BLANCO "*:") && cor !~ /^\[autoridad: /) mala[ab] = 1
           resto3 = substr(resto3, RSTART + RLENGTH) } }
       next }
     /^## clausulas/ { s="c"; next }
@@ -3177,10 +3223,15 @@ pedido_referencias() {
         if (px[1] == "constitution") { arch = RAIZ "/.specify/constitution.md"; nom = "la constitucion" }
         else { arch = ""; nom = "los archivos de contrato de la raiz" }
         enc = 0
+        # la referencia TIENE que ser un slug canónico: si no lo es, no identifica un encabezado
+        if (px[2] != slug(px[2])) {
+          print "referencia de " px[1] " que no es un slug canonico en " a ": " px[2]; continue }
         if (px[1] == "constitution") { enc = buscar(arch, px[2]) }
-        else { enc = buscar(RAIZ "/CLAUDE.md", px[2]) || buscar(RAIZ "/AGENTS.md", px[2]) ||
-                     buscar(RAIZ "/CONTRIBUTING.md", px[2]) }
-        if (!enc) print "autoridad " px[1] " que no existe en " nom " en " a ": " px[2] }
+        else { enc = buscar(RAIZ "/CLAUDE.md", px[2])
+               enc = enc + buscar(RAIZ "/AGENTS.md", px[2])
+               enc = enc + buscar(RAIZ "/CONTRIBUTING.md", px[2]) }
+        if (enc == 0) print "autoridad " px[1] " que no existe en " nom " en " a ": " px[2]
+        else if (enc > 1) print "autoridad " px[1] " que resuelve a " enc " encabezados en " a ": " px[2] }
       # R3: cada cláusula vigente `pendiente` tiene al menos un criterio que la atiende. Sin este
       # predicado el alcance se achicaba en silencio: una cláusula del pedido sin ningún AC
       for (ck in vmax) {
