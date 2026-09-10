@@ -2046,6 +2046,15 @@ por el que `antecedentes.md` tiene su bloque máquina.
 | `estado` | `pendiente` · `resuelta` |
 | `motivo` | texto · `-` — **obligatorio** en un `tipo: descarte`, que sin él es un estado inválido |
 
+**El pipe se representa con el escape de GFM, `\|`, y esa es su única forma.** Una celda que necesite
+el carácter literal —`rg foo \| wc -l`— lo escribe así: Markdown lo muestra como contenido y **todo
+lector que parta una fila de estas tablas lo trata igual**, sustituyéndolo antes de partir y
+devolviéndolo al leer la celda. Lo que lee el preimage ya serializado no la lleva, porque ahí la
+representación ya se resolvió río arriba. Es reversible y no cambia la aridad. Rechazarlo, que fue el primer
+intento, dejaba **sin serialización** a todo texto que llevara un pipe y volvía inalcanzable el gate
+para contenido válido: adaptar el dominio al parser accidental en vez del parser al dominio. Un pipe
+**sin escapar** sigue separando celdas, que es lo que hace comprobable la aridad.
+
 **La cabecera es exacta y no hay compatibilidad hacia atrás, y eso es una decisión, no un descuido.**
 Las tres tablas se comprueban **por su cabecera entera** —nombres y cantidad de columnas—, no por su
 primera celda: con solo la primera, una tabla con la forma de otra versión del esquema pasaba en
@@ -2307,7 +2316,13 @@ tiempo esta frontera declaró lo contrario —«el bloque no recibe esos artefac
 los recibe por la misma convención que ya usaba dos veces. **La referencia es el slug del
 encabezado que la aloja**, y el encabezado tiene que ser uno **real y único**: se cuentan los
 encabezados ATX del archivo —con hasta tres espacios de sangría, ignorando lo que esté dentro de un
-bloque de código— y la referencia resuelve solo si hay **exactamente uno** con ese slug. La propia
+bloque de código— y la referencia resuelve solo si hay **exactamente uno** con ese slug.
+**«Bloque de código» son las dos formas que Markdown define**, y esto vale para las tres gramáticas
+que leen una sede —el criterio, la `Q` y el encabezado—: el **cercado** por comillas invertidas o
+tildes, y el **indentado** por cuatro espacios o un tabulador. Un `AC-n`, una `Q` o un encabezado que
+existan solo ahí dentro son un **ejemplo citado** y no declaran nada; con **tres** espacios sí
+declaran, que es la sangría que Markdown todavía trata como texto. Los comentarios HTML se ignoran
+igual. Cubrir una sola de las dos formas deja el verde a un caso de distancia de ser falso. La propia
 referencia tiene que ser un slug canónico: `Regla 2` no identifica nada, porque el dominio son slugs.
 Con una comparación por subcadena, `regla-2` acreditaba contra `regla-20`; cortando en el primer
 encabezado, dos secciones homónimas resolvían a la primera; y sin excluir los bloques de código, un
@@ -2315,6 +2330,22 @@ encabezado, dos secciones homónimas resolvían a la primera; y sin excluir los 
 afirma. Y en las cuatro, «que el criterio no
 exceda lo que esa autoridad decidió» es adjudicación semántica y queda en el juicio del conductor y
 en el gate humano — declararlo acá es lo que impide leer el verde del bloque como si cubriera eso.
+
+**El marcador `— **A:**` es reservado dentro de una entrada de `## Clarifications`.** Lo que separa
+la pregunta de la respuesta es esa secuencia **en texto plano**; para *nombrarla* dentro de la
+pregunta —al documentar la propia plantilla, que es cuándo aparece— va en un tramo de código
+(`` `— **A:**` ``) o escapada con `\`, y entonces no separa nada. Si aparece **más de una vez** en
+texto plano la entrada es ambigua y se reporta: no se elige la primera ni la última.
+
+**Por qué reservarla y no intentar distinguir mención de uso.** Las dos formas son el mismo texto,
+así que ninguna heurística de posición las separa: elegir la primera coincidencia escondía una
+respuesta real detrás de una raya de la pregunta, y elegir la última dejaba que una pregunta que
+termina citando el marcador fabricara su propia respuesta. Un marcador reservado con escape es la
+misma salida que GFM le da al pipe dentro de una celda, y por la misma razón: el contrato declara la
+representación en vez de adivinarla. **El costo asumido:** una entrada que use el marcador en texto
+plano sin haber querido separar nada acredita como respondida lo que venga después. Es un caso que
+el gate humano ve —la pregunta y la respuesta se presentan juntas— y el precio de no tenerlo era
+dejar sin representación a toda pregunta que necesite nombrar la plantilla.
 
 **El no-op concreto que la vara tiene que rechazar**, escrito con su ejemplo y no en abstracto: una
 cláusula `P-1: realizar el cambio solicitado`, de la que después cuelgan los cuarenta criterios. Es
@@ -2574,7 +2605,7 @@ afuera se escribe en su frontera en vez de fingirse cubierto:
 | `pedido-unicidad` | en `registro.md`: que las identidades de las tres tablas caigan dentro de su dominio y no se repitan, y que la versión crezca por cláusula | ídem |
 | `pedido-referencias` | que cada `fragmentos` exista y cite una línea con rango dentro de su largo, que cada `AC-n` de la traza exista en la sede de los criterios, y que cada `objetivo` de evento resuelva | ídem |
 | `pedido-marcador` | resuelve la celda de la matriz del marcador desde el estado observado del árbol | **la celda en stdout**; `0` si resolvió una, `1` si el árbol no encaja en ninguna, `2` si la invocación está mal formada o `pedido-jsonl` no está cargado |
-| `pedido-digest` | que **cada** confirmación reproduzca el prefijo de `## clausulas`, `## eventos` y del literal que su frontera declara, y que esa frontera no exceda, no retroceda y no sea vacua | `0` si todas reproducen o si no hay ninguna confirmación, `1` si alguna no —con el escrito y el recomputado—, `3` si falta una sede, si no hay `sha256sum` ni `shasum`, o si la herramienta está y falla |
+| `pedido-digest` | que **cada** confirmación reproduzca el prefijo de `## clausulas`, `## eventos` y del literal que su frontera declara, y que esa frontera no exceda, no retroceda y no sea vacua | `0` si todas reproducen o si no hay ninguna confirmación, `1` si alguna no —con el escrito y el recomputado—, `3` si falta una sede, si no hay `sha256sum` ni `shasum`, si la herramienta está y falla, o si **cualquiera** de sus invocaciones de `awk` no se pudo ejecutar |
 | `pedido-criterio` | que el `hash_criterio` de cada `AC-n` de la traza sea el `sha256` del bloque de ese criterio en la sede de los criterios | `0` si todos reproducen o si la traza no tiene criterios, `1` si alguno no —con el escrito y el recomputado—, `3` con los mismos fallos de ejecución que `pedido-digest` |
 
 **El `3` de los tres primeros incluye «no se pudo ejecutar», y eso es deliberado.** Una salida vacía
@@ -2715,7 +2746,13 @@ pedido_unicidad() {
       if ((a "") == (b "")) return 0
       return ((a "") < (b "")) ? -1 : 1 }
     function celda(x) { sub("^[ " sprintf("%c",9) "*" sprintf("%c",96) "]+", "", x)
-                        sub("[ " sprintf("%c",9) "*" sprintf("%c",96) "]+$", "", x); return x }
+                        sub("[ " sprintf("%c",9) "*" sprintf("%c",96) "]+$", "", x)
+                        gsub(sprintf("%c",1), sprintf("%c",124), x); return x }
+    # GFM define `\|` como CONTENIDO de celda, no como separador. Se sustituye por un byte de
+    # control antes de partir —así el pipe escapado no cambia la aridad— y `celda()` lo devuelve a
+    # su valor al leer: una representación reversible, la misma en todos los lectores. Rechazarlo
+    # dejaba sin serialización a cualquier texto que llevara un pipe
+    function despipe(ln) { gsub(/\\[|]/, sprintf("%c",1), ln); return ln }
     BEGIN { FS=sprintf("%c",124)
             cab["c"]="P-k"; cab["e"]="E-k"; cab["t"]="AC-n"
             nom["c"]="clausulas"; nom["e"]="eventos"; nom["t"]="traza"
@@ -2725,6 +2762,7 @@ pedido_unicidad() {
             ent["c"]="P-k|version|aplicabilidad|fragmentos|texto|evidencia"
             ent["e"]="E-k|momento|actor|productor|tipo|objetivo|supersede|resolucion|estado|motivo"
             ent["t"]="AC-n|hash_criterio|autoridad|referencia|derivacion" }
+    { $0 = despipe($0) }
     /^## clausulas/ { s="c"; fila=0; hay_sec["c"]=1; next }
     /^## eventos/   { s="e"; fila=0; hay_sec["e"]=1; next }
     /^## traza/     { s="t"; fila=0; hay_sec["t"]=1; next }
@@ -2733,11 +2771,6 @@ pedido_unicidad() {
     # Seleccionar por la forma del identificador dejaba fuera de toda regla lo que no la cumple,
     # y lo que no dispara ninguna regla no se reporta: se ignora
     s != "" && substr($0,1,1) != sprintf("%c",124) { next }
-    # el pipe NO es representable en una celda, ni siquiera escapado: Markdown lo lee como
-    # contenido y `awk` como separador, así que la misma fila tiene dos aridades distintas y cada
-    # lector ve otra columna. Es la restricción hermana de la que ya rige el contrato de verificación
-    s != "" && index($0, "\\" sprintf("%c",124)) > 0 {
-      print "tabla de " nom[s] ": una celda lleva un pipe escapado, que no es representable"; next }
 
     s != "" { fila++
       # la aridad de la fila se comprueba contra el esquema: sin eso, una fila con más o menos
@@ -2870,6 +2903,15 @@ pedido_referencias() {
       n = length(s); t = 0
       for (i = 1; i <= n; i++) if (index(CONT, substr(s, i, 1)) == 0) t++
       return t }
+    # enmascara los tramos de código y los escapes de una línea, conservando el LARGO para que las
+    # posiciones sigan valiendo sobre el original: lo que está en código o escapado es una cita
+    function enmascarar(ln,   i, n, ch, sal, dentro) {
+      n = length(ln); sal = ""; dentro = 0
+      for (i = 1; i <= n; i++) { ch = substr(ln, i, 1)
+        if (ch == "\\" && i < n) { sal = sal "XX"; i++; continue }
+        if (ch == BT) { dentro = 1 - dentro; sal = sal "X"; continue }
+        sal = sal (dentro ? "X" : ch) }
+      return sal }
     # el contexto Markdown, compartido por las TRES gramáticas que leen la sede —el criterio, la
     # `Q` y, con su propia copia sobre otro archivo, el encabezado—: lo que está dentro de un fence
     # o de un comentario HTML es un **ejemplo citado**, no una declaración. El fence se cierra con
@@ -2881,6 +2923,9 @@ pedido_referencias() {
         if (match(t, "^" mdchar "+")) { n = RLENGTH
           if (n >= mdlen && substr(t, n + 1) ~ /^[ ]*$/) mdfen = 0 }
         return 1 }
+      # un bloque de código INDENTADO —cuatro espacios o más— también es código: un `AC-n` ahí
+      # dentro es un ejemplo. El vecino de tres espacios sigue declarando
+      if (ln ~ /^[ ][ ][ ][ ]/ || ln ~ ("^" sprintf("%c",9))) return 1
       if (substr(t, 1, 4) == "<!--") { if (index(ln, "-->") == 0) mdcom = 1; return 1 }
       if (match(t, "^" BT "+") || match(t, /^~+/)) {
         c = substr(t, 1, 1); n = RLENGTH
@@ -2919,7 +2964,13 @@ pedido_referencias() {
     # los extremos se RECORTAN; los espacios internos no se aplastan. Con `gsub(/[ *]/,"")`,
     # `spe cify` se volvia `specify` y todo enum de este registro admitia su version con espacios
     function celda(x) { sub("^[ " sprintf("%c",9) "*" sprintf("%c",96) "]+", "", x)
-                        sub("[ " sprintf("%c",9) "*" sprintf("%c",96) "]+$", "", x); return x }
+                        sub("[ " sprintf("%c",9) "*" sprintf("%c",96) "]+$", "", x)
+                        gsub(sprintf("%c",1), sprintf("%c",124), x); return x }
+    # GFM define `\|` como CONTENIDO de celda, no como separador. Se sustituye por un byte de
+    # control antes de partir —así el pipe escapado no cambia la aridad— y `celda()` lo devuelve a
+    # su valor al leer: una representación reversible, la misma en todos los lectores. Rechazarlo
+    # dejaba sin serialización a cualquier texto que llevara un pipe
+    function despipe(ln) { gsub(/\\[|]/, sprintf("%c",1), ln); return ln }
     # el `slug` de un encabezado: minúsculas, y toda corrida fuera de a-z0-9 a un solo guion. Es
     # la identidad resoluble de una sección o una regla — sin ella la búsqueda era por SUBCADENA y
     # `regla-2` acreditaba contra `regla-20`, o el prefijo `reg` contra cualquiera de las dos
@@ -2942,17 +2993,23 @@ pedido_referencias() {
           if (match(tt, "^" fch "+")) { nn = RLENGTH
             if (nn >= fln && substr(tt, nn + 1) ~ /^[ ]*$/) fen = 0 }
           continue }
+        if (ln ~ /^[ ][ ][ ][ ]/ || ln ~ ("^" sprintf("%c",9))) continue
         if (substr(tt, 1, 4) == "<!--") { if (index(ln, "-->") == 0) com = 1; continue }
         if (match(tt, "^" BT "+") || match(tt, /^~+/)) {
           cc = substr(tt, 1, 1); nn = RLENGTH
           if (nn >= 3) { fen = 1; fch = cc; fln = nn; continue } }
         # ATX admite de UNA a SEIS almohadillas: con siete, Markdown no hace un encabezado
-        if (tt !~ /^#{1,6}[ ]/) continue
-        t2 = tt; sub(/^#+[ ]+/, "", t2); sub(/[ ]*#*[ ]*$/, "", t2)
+        # ATX separa las almohadillas del texto con espacio **o tabulador**: exigir espacio
+        # rechazaba un encabezado válido, que es un falso rojo sobre un árbol bien escrito
+        if (tt !~ ("^#{1,6}[ " sprintf("%c",9) "]")) continue
+        t2 = tt; sub("^#+[ " sprintf("%c",9) "]+", "", t2); sub("[ " sprintf("%c",9) "]*#*[ " sprintf("%c",9) "]*$", "", t2)
         if (slug(t2) == lit) n2++ }
       close(arch); return n2 }
     BEGIN { FS=sprintf("%c",124)
             ESP = "[ " sprintf("%c",9) "]"; BT = sprintf("%c",96)
+            ari["c"]="P-k|version|aplicabilidad|fragmentos|texto|evidencia"
+            ari["e"]="E-k|momento|actor|productor|tipo|objetivo|supersede|resolucion|estado|motivo"
+            ari["t"]="AC-n|hash_criterio|autoridad|referencia|derivacion"
             RAYA = sprintf("%c%c%c", 226, 128, 148)
             BLANCO = "[ " sprintf("%c",9) sprintf("%c",11) sprintf("%c",12) sprintf("%c",13) "]"
             for (i = 128; i < 192; i++) CONT = CONT sprintf("%c", i) }
@@ -2993,11 +3050,19 @@ pedido_referencias() {
           # como respondida, y `<respuesta>` contaba como respuesta
           # la raya que cuenta es la que INTRODUCE el marcador, no la primera de la línea: con
           # `index()` a secas, una raya dentro de la pregunta escondía la respuesta que venía después
-          rq = $0; dq = 0
-          while ((pq = index(rq, RAYA)) > 0) {
-            if (substr(rq, pq + length(RAYA)) ~ /^[ ]*[*][*]A:[*][*]/) { dq = pq; break }
-            rq = substr(rq, pq + length(RAYA)) }
-          if (dq > 0) { cuerpo2 = substr(rq, dq + length(RAYA))
+          # el marcador es **reservado**: para citarlo dentro de la pregunta va en un tramo de
+          # código o escapado, y solo cuenta como separador el que aparece **en texto plano**. Sin
+          # esa reserva, una pregunta que menciona la sintaxis de la plantilla fabricaba su propia
+          # respuesta; y si aparece más de una vez en texto plano, la entrada es ambigua
+          msk = enmascarar($0)
+          nsep = 0; dq = 0; bus = msk; off = 0
+          while ((pq = index(bus, RAYA)) > 0) {
+            if (substr(bus, pq + length(RAYA)) ~ /^[ ]*[*][*]A:[*][*]/) { nsep++
+              if (nsep == 1) dq = off + pq }
+            off = off + pq + length(RAYA) - 1
+            bus = substr(bus, pq + length(RAYA)) }
+          if (nsep > 1) print "entrada de Clarifications ambigua, el marcador aparece mas de una vez: " qcl
+          if (nsep == 1) { cuerpo2 = substr($0, dq + length(RAYA))
             if (match(cuerpo2, /^[ ]*[*][*]A:[*][*]/)) {
               cuerpo2 = celda(substr(cuerpo2, RLENGTH + 1))
               if (cuerpo2 != "" && cuerpo2 !~ /^<[^>]*>$/) resp[qcl] = 1 } } } }
@@ -3023,10 +3088,18 @@ pedido_referencias() {
           if (tolower(cor) ~ ("^\\[" BLANCO "*autoridad" BLANCO "*:") && cor !~ /^\[autoridad: /) mala[ab] = 1
           resto3 = substr(resto3, RSTART + RLENGTH) } }
       next }
+    FILENAME == EREG { $0 = despipe($0) }
     /^## clausulas/ { s="c"; next }
     /^## eventos/   { s="e"; next }
     /^## traza/     { s="t"; next }
     /^## /          { s="";  next }
+    # la aridad de la fila, también acá: `pedido-referencias` corre en cada recálculo y `unicidad`
+    # solo en el gate, así que leer por posición una fila de otra aridad es leer otra columna
+    s != "" && substr($0,1,1) == sprintf("%c",124) {
+      nar = 0; for (za = 2; za < NF; za++) nar++
+      nesp2 = split(ari[s], _da, "|")
+      if (nesp2 > 0 && nar != nesp2) {
+        print "tabla de " s ": una fila tiene " nar " celdas y el esquema declara " nesp2; next } }
     # la frontera de una confirmación cuenta FILAS de la sección, cabecera y separador incluidos,
     # y `hastaqui` guarda cuántas de las primeras k son filas de datos
     s == "c" && substr($0,1,1) == sprintf("%c",124) {
@@ -3320,7 +3393,7 @@ pedido_referencias() {
           if (ini[ln SUBSEP a] < esp) print "R1: la linea " ln " se solapa en " ini[ln SUBSEP a] "-" (esp-1)
           if (fin[ln SUBSEP a]+1 > esp) esp = fin[ln SUBSEP a]+1 }
         if (esp <= L) print "R1: la linea " ln " no cubre " esp "-" L } }' \
-    ELIT="$lit" ESPEC="$sp" ANT="$(dirname "$(dirname "$r")")/antecedentes.md" \
+    ELIT="$lit" ESPEC="$sp" EREG="$r" ANT="$(dirname "$(dirname "$r")")/antecedentes.md" \
     RAIZ="$(dirname "$(dirname "$(dirname "$(dirname "$r")")")")" "$lit" "$sp" "$r")
   rc=$?
   # una salida vacía NO es un verde por sí sola: awk pudo haber muerto sin escribir nada
@@ -3526,8 +3599,15 @@ pedido_digest() {
   # forma del objetivo: una propuesta que lleve un digest no confirmó nada
   confs=$(awk '
     function celda(x) { sub("^[ " sprintf("%c",9) "*" sprintf("%c",96) "]+", "", x)
-                        sub("[ " sprintf("%c",9) "*" sprintf("%c",96) "]+$", "", x); return x }
+                        sub("[ " sprintf("%c",9) "*" sprintf("%c",96) "]+$", "", x)
+                        gsub(sprintf("%c",1), sprintf("%c",124), x); return x }
+    # GFM define `\|` como CONTENIDO de celda, no como separador. Se sustituye por un byte de
+    # control antes de partir —así el pipe escapado no cambia la aridad— y `celda()` lo devuelve a
+    # su valor al leer: una representación reversible, la misma en todos los lectores. Rechazarlo
+    # dejaba sin serialización a cualquier texto que llevara un pipe
+    function despipe(ln) { gsub(/\\[|]/, sprintf("%c",1), ln); return ln }
     BEGIN { FS=sprintf("%c",124) }
+    { $0 = despipe($0) }
     /^## eventos/ { s=1; i=0; next } /^## / { s=0 }
     s && substr($0,1,1) == sprintf("%c",124) { i++
       tipo=$6; tipo = celda(tipo)
@@ -3542,19 +3622,33 @@ pedido_digest() {
   # decidirse ACÁ porque `resume` corre este bloque antes que el de unicidad. Sin esto, un paquete
   # firmado con un esquema viejo llegaba al gate como reparable, se mutaba material firmado, y la
   # corrupción aparecía recién en un `resume` posterior
-  esq=$(awk 'BEGIN { FS=sprintf("%c",124)
-      ent["## clausulas"]="P-k|version|aplicabilidad|fragmentos|texto|evidencia"
-      ent["## eventos"]="E-k|momento|actor|productor|tipo|objetivo|supersede|resolucion|estado|motivo"
-      ent["## traza"]="AC-n|hash_criterio|autoridad|referencia|derivacion" }
+  # SOLO las dos tablas que entran al preimage. `## traza` es mutable y no se firma —lo dice la
+  # frontera de este bloque—, así que una infracción suya es reparable y sigue la ruta del gate:
+  # mandarla a cuarentena manda a destruir material que nadie firmó
+  esq=$(awk '
     function celda(x) { sub("^[ " sprintf("%c",9) "*" sprintf("%c",96) "]+", "", x)
-                        sub("[ " sprintf("%c",9) "*" sprintf("%c",96) "]+$", "", x); return x }
+                        sub("[ " sprintf("%c",9) "*" sprintf("%c",96) "]+$", "", x)
+                        gsub(sprintf("%c",1), sprintf("%c",124), x); return x }
+    function despipe(ln) { gsub(/\\[|]/, sprintf("%c",1), ln); return ln }
+    BEGIN { FS=sprintf("%c",124)
+      ent["## clausulas"]="P-k|version|aplicabilidad|fragmentos|texto|evidencia"
+      ent["## eventos"]="E-k|momento|actor|productor|tipo|objetivo|supersede|resolucion|estado|motivo" }
+    { $0 = despipe($0) }
     /^## / { s=($0 in ent) ? $0 : ""; fila=0; next }
     s != "" && substr($0,1,1) == sprintf("%c",124) { fila++
-      if (fila != 1) next
-      act = ""
-      for (j=2; j<NF; j++) act = act (j == 2 ? "" : "|") celda($j)
-      if (act != ent[s]) print s }
+      nesq = split(ent[s], _d, "|")
+      if (fila == 1) {
+        act = ""
+        for (j=2; j<NF; j++) act = act (j == 2 ? "" : "|") celda($j)
+        if (act != ent[s]) print s " (cabecera)"
+        next }
+      # y la gramática de las filas FIRMADAS, no solo su cabecera: una fila mal formada dentro del
+      # prefijo sellado es material irreparable igual que una cabecera de otra versión
+      nf2 = 0; for (j=2; j<NF; j++) nf2++
+      if (nf2 != nesq) print s " (una fila tiene " nf2 " celdas y el esquema declara " nesq ")" }
     END { }' "$r")
+  rce=$?
+  if [ "$rce" -ne 0 ]; then echo "la comprobacion del esquema no pudo ejecutarse: awk salio $rce" >&2; return 3; fi
   if [ -n "$esq" ]; then
     echo "el registro tiene confirmaciones y su esquema no es el vigente:"
     printf '%s\n' "$esq"
@@ -3605,8 +3699,11 @@ pedido_digest() {
     { printf '%s' "$prev"
       printf 'frontera\t%s\t%s\nliteral\t%s\n' "$ff" "$ll" "$shalit"; } > "$base.p"
     if [ $? -ne 0 ]; then parado=1; break; fi
-    LC_ALL=C awk -v F="$ff" -v EI="$ei" 'BEGIN { PI=sprintf("%c",124); FS=PI
-                                                TB=sprintf("%c",9); CR=sprintf("%c",13) }
+    LC_ALL=C awk -v F="$ff" -v EI="$ei" '
+      function despipe(ln) { gsub(/\\[|]/, sprintf("%c",1), ln); return ln }
+      BEGIN { PI=sprintf("%c",124); FS=PI
+              TB=sprintf("%c",9); CR=sprintf("%c",13); SOH=sprintf("%c",1) }
+      { $0 = despipe($0) }
       /^## clausulas/ { s="c"; i=0; next }
       /^## eventos/   { s="e"; i=0; next }
       /^## /          { s="";  next }
@@ -3618,6 +3715,7 @@ pedido_digest() {
           # el separador se codifica dentro de la celda, y el codificador también: sin esto, dos
           # celdas repartidas distinto serializan igual y el digest COLISIONA, que en un mecanismo
           # de evidencia de manipulación es exactamente su ruina
+          gsub(SOH, PI, c)
           gsub(/%/, "%25", c); gsub(TB, "%09", c); gsub(CR, "%0D", c)
           linea = linea TB c }
         print linea }' "$r" >> "$base.p"
@@ -3626,7 +3724,10 @@ pedido_digest() {
     # cabecera y el separador, el digest reproduce y el registro entero queda fuera de la cadena
     datos=$(LC_ALL=C awk '
     function celda(x) { sub("^[ " sprintf("%c",9) "*" sprintf("%c",96) "]+", "", x)
-                        sub("[ " sprintf("%c",9) "*" sprintf("%c",96) "]+$", "", x); return x }
+                        sub("[ " sprintf("%c",9) "*" sprintf("%c",96) "]+$", "", x)
+                        gsub(sprintf("%c",1), sprintf("%c",124), x); return x }
+    # este lector NO parte una tabla: lee el preimage ya materializado, separado por tabuladores, así
+    # que no lleva `despipe` — la representación ya se resolvió río arriba, al serializar
       BEGIN { FS=sprintf("%c",9) }
       $1 == "c" { c=$2; c = celda(c)
                   if (c ~ /^P-[0-9]+$/) n++ }
@@ -3747,7 +3848,13 @@ pedido_criterio() {
   base="${TMPDIR:-/tmp}/pedido-criterio.$$"
   LC_ALL=C awk '
     function celda(x) { sub("^[ " sprintf("%c",9) "*" sprintf("%c",96) "]+", "", x)
-                        sub("[ " sprintf("%c",9) "*" sprintf("%c",96) "]+$", "", x); return x }
+                        sub("[ " sprintf("%c",9) "*" sprintf("%c",96) "]+$", "", x)
+                        gsub(sprintf("%c",1), sprintf("%c",124), x); return x }
+    # GFM define `\|` como CONTENIDO de celda, no como separador. Se sustituye por un byte de
+    # control antes de partir —así el pipe escapado no cambia la aridad— y `celda()` lo devuelve a
+    # su valor al leer: una representación reversible, la misma en todos los lectores. Rechazarlo
+    # dejaba sin serialización a cualquier texto que llevara un pipe
+    function despipe(ln) { gsub(/\\[|]/, sprintf("%c",1), ln); return ln }
     BEGIN { FS=sprintf("%c",124) }
     function norm(x) { sub(/^0+/, "", x); return (x == "" ? "0" : x) }
     function normid(x,   pre, resto, suf) {
@@ -3755,6 +3862,7 @@ pedido_criterio() {
       pre = substr(x, 1, RLENGTH); resto = substr(x, RLENGTH+1); suf = ""
       if (match(resto, /[a-z]$/)) { suf = substr(resto, RSTART); resto = substr(resto, 1, RSTART-1) }
       return pre norm(resto) suf }
+    { $0 = despipe($0) }
     /^## traza/ { s=1; next } /^## / { s=0 }
     s && substr($0,1,1) == sprintf("%c",124) {
       id=$2; id = celda(id)
@@ -3804,6 +3912,9 @@ pedido_criterio() {
           if (match(t, "^" mdchar "+")) { n = RLENGTH
             if (n >= mdlen && substr(t, n + 1) ~ /^[ ]*$/) mdfen = 0 }
           return 1 }
+        # un bloque de código INDENTADO —cuatro espacios o más— también es código: un `AC-n` ahí
+        # dentro es un ejemplo. El vecino de tres espacios sigue declarando
+        if (ln ~ /^[ ][ ][ ][ ]/ || ln ~ ("^" sprintf("%c",9))) return 1
         if (substr(t, 1, 4) == "<!--") { if (index(ln, "-->") == 0) mdcom = 1; return 1 }
         if (match(t, "^" BT "+") || match(t, /^~+/)) {
           c = substr(t, 1, 1); n = RLENGTH
@@ -4473,6 +4584,8 @@ sin comprobar, con su razón; los candidatos **descritos** —"un flujo archivad
 ## Clarifications
 <Q&A registradas durante `clarify`, **numeradas**. Vacío si no hubo.>
 - **Q1:** <pregunta> — **A:** <respuesta> (afecta: AC-n)
+<`— **A:**` es el separador reservado: para nombrarlo dentro de una pregunta, va en un tramo de
+código —`` `— **A:**` ``— o escapado. En texto plano separa, y dos veces en texto plano es ambiguo.>
 ```
 
 ## Producción del contrato de verificación
