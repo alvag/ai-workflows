@@ -4819,7 +4819,9 @@ created_at: 2026-01-01T12:00:00-03:00
 # Plan — <título corto>
 
 ## Enfoque
-<estrategia técnica elegida; no listar alternativas descartadas>
+<estrategia técnica elegida; no listar alternativas descartadas. La más simple que cumple los
+AC: lo que esté por encima —una capa, una abstracción, una validación que ningún AC pide— baja
+a Decisiones y trade-offs con su porqué, no entra acá como si fuera el default.>
 
 ## Decisiones y trade-offs
 <las elecciones contestables del plan, nombradas explícitamente: qué se eligió y qué costo/riesgo
@@ -5118,6 +5120,10 @@ Revisa el diff completo del flujo contra:
 Evalúa:
 - SPEC: ¿el diff cumple los AC y no agrega cambios fuera de AC sin estar declarados como Extras?
 - QUALITY: ¿sigue patrones del repo, sin dead code, placeholders ni deuda obvia?
+  Y en la dirección contraria, que es la que se pasa por alto: ¿**sobra** algo? Código que
+  ningún AC pide, validaciones para casos que nadie pidió, abstracciones de un solo uso,
+  comentarios que repiten lo que el código dice, "mejoras" o refactors de código adyacente
+  que no estaba roto, defectos preexistentes arreglados de paso.
 
 Tu mensaje final debe ser EXACTAMENTE este reporte (sin prosa extra):
 SPEC: ok | fail | warn
