@@ -2423,9 +2423,14 @@ afuera se escribe en su frontera en vez de fingirse cubierto:
 
 | Bloque | Qué comprueba | Salida y códigos |
 |---|---|---|
-| `pedido-jsonl` | por cada línea de `literal.jsonl`: que abra con `{` y cierre con `}`, que estén las siete claves obligatorias, y que `n` sea monótono sin huecos desde el **`n` inicial**, que es 1 salvo que se declare otro | una línea por violación, `<n>: <causa>`; `0` sin violaciones, `1` con, `2` si el `n` inicial no es un entero ≥ 1, `3` si el archivo no se puede leer |
-| `pedido-unicidad` | en `registro.md`: ningún par de cláusula y versión repetido, versión monótona por cláusula, ningún `AC-n` repetido en la traza, ningún evento repetido | ídem |
+| `pedido-jsonl` | por cada línea de `literal.jsonl`: que abra con `{` y cierre con `}`, que estén las siete claves obligatorias, y que `n` sea monótono sin huecos desde el **`n` inicial**, que es 1 salvo que se declare otro | una línea por violación, `<n>: <causa>`; `0` sin violaciones, `1` con, `2` si el `n` inicial no es un entero ≥ 1, `3` si el archivo no se puede leer **o si `awk` no pudo ejecutarse** |
+| `pedido-unicidad` | en `registro.md`: que las identidades de las tres tablas caigan dentro de su dominio y no se repitan, y que la versión crezca por cláusula | ídem |
 | `pedido-referencias` | que cada `fragmentos` cite una línea existente con rango dentro de su largo, que cada `AC-n` de la traza exista en la sede de los criterios, y que cada `objetivo` de evento resuelva | ídem |
+
+**El `3` de los tres primeros incluye «no se pudo ejecutar», y eso es deliberado.** Una salida vacía
+significa «ninguna violación» **solo si el comando terminó bien**; leerla sin mirar el estado convierte
+cualquier fallo del intérprete en un verde. Es la misma razón por la que el `3` no es un veredicto en
+ninguno de los tres: dice que no hubo comprobación, no que la comprobación pasó.
 | `pedido-marcador` | resuelve la celda de la matriz del marcador desde el estado observado del árbol | **la celda en stdout**; `0` si resolvió una, `1` si el árbol no encaja en ninguna, `2` si la invocación está mal formada o `pedido-jsonl` no está cargado |
 
 **Van en POSIX solamente, y hay precedente**: el verificador de aislamiento de este repositorio es
@@ -2449,38 +2454,48 @@ pedido_jsonl() {
     *) echo "n inicial menor que 1: $base" >&2; return 2 ;;
   esac
   if [ ! -r "$f" ]; then echo "no se puede leer: $f" >&2; return 3; fi
-  salida=$(awk -v base="$base" '
+  # la base entra por STDIN y no por argv: su tamaño lo fija el contenido del literal, y por
+  # argumento un valor grande excede ARG_MAX y mata a awk con "argument list too long"
+  salida=$(printf '%s\n' "$base" | awk '
     # las identidades se siguen en DECIMAL, sobre el lexema: sin conversión no hay rango del que
     # depender, y ninguna identidad se queda sin sucesor
     function norm(x) { sub(/^0+/, "", x); return (x == "" ? "0" : x) }
-    function incd(x,   i, d, c, r) {
-      r = ""; c = 1
-      for (i = length(x); i >= 1; i--) {
-        d = substr(x, i, 1) + c
-        if (d >= 10) { d -= 10; c = 1 } else c = 0
-        r = d r }
-      return (c ? "1" r : r) }
+    # el sucesor toca solo la cola de nueves: dígito a dígito sería cuadrático en awk, porque
+    # anteponer a una cadena la copia entera, y estas identidades no tienen máximo
+    function ceros(n,   z) { if (n <= 0) return ""
+      z = sprintf("%" n "s", ""); gsub(/ /, "0", z); return z }
+    function incd(x,   nueves, pre, d) {
+      match(x, /9*$/); nueves = RLENGTH
+      if (nueves == length(x)) return "1" ceros(nueves)
+      pre = substr(x, 1, RSTART - 2)
+      d = substr(x, RSTART - 1, 1) + 1
+      return pre d ceros(nueves) }
     BEGIN { split("n captado_en origen referencia medio texto sha256", claves, " ")
-            esperado = norm(base) }
-    { linea=$0
+            # el primer archivo es "-", que POSIX define como la entrada estándar
+            esperado = ((getline b) > 0) ? norm(b) : "1" }
+    { lit++
+      linea=$0
       if (substr(linea,1,1) != "{" || substr(linea,length(linea),1) != "}")
-        print NR ": la línea no abre y cierra con llaves"
+        print lit ": la línea no abre y cierra con llaves"
       faltan=""
       for (i=1; i<=7; i++)
         if (index(linea, sprintf("%c%s%c:", 34, claves[i], 34)) == 0) faltan = faltan " " claves[i]
-      if (faltan != "") print NR ": faltan claves obligatorias:" faltan
+      if (faltan != "") print lit ": faltan claves obligatorias:" faltan
       # el token se cierra con delimitador: sin eso, "1.5" y "1e3" casan por su prefijo y valen 1
       if (match(linea, /"n"[ ]*:[ ]*[0-9]+[ ]*[,}]/)) {
         s = substr(linea, RSTART, RLENGTH); sub(/^.*:[ ]*/, "", s); sub(/[ ]*[,}]$/, "", s)
         s = norm(s)
-        if (s == "0") print NR ": el campo n vale 0 y el dominio exige un entero desde 1"
+        if (s == "0") print lit ": el campo n vale 0 y el dominio exige un entero desde 1"
         else {
-          if (s != esperado) print NR ": el campo n vale " s " y rompe el orden, se esperaba " esperado
+          if (s != esperado) print lit ": el campo n vale " s " y rompe el orden, se esperaba " esperado
           # se sigue desde lo OBSERVADO, para que un hueco no encadene un error por línea
           esperado = incd(s) }
-      } else print NR ": el campo n no es un entero"
+      } else print lit ": el campo n no es un entero"
     }
-    END { if (NR == 0) print "0: el literal está vacío" }' "$f")
+    END { if (lit == 0) print "0: el literal está vacío" }' - "$f")
+  rc=$?
+  # una salida vacía NO es un verde por sí sola: awk pudo haber muerto sin escribir nada
+  if [ "$rc" -ne 0 ]; then echo "la comprobación no pudo ejecutarse: awk salió $rc" >&2; return 3; fi
   if [ -z "$salida" ]; then return 0; fi
   printf '%s\n' "$salida"
   return 1
@@ -2499,16 +2514,27 @@ pedido_jsonl() {
 > orden se sigue **en decimal sobre el lexema** —el esperado arranca en la base y avanza con acarreo
 > dígito a dígito—, así que el veredicto no depende del rango de `awk` ni del shell y **ninguna
 > identidad se queda sin sucesor**. Un desvío se reporta contra lo esperado y el seguimiento continúa
-> desde lo **observado**, para que un hueco no encadene un error por cada línea siguiente. **No autoriza a afirmar que la línea sea JSON válido**: no
+> desde lo **observado**, para que un hueco no encadene un error por cada línea siguiente. El sucesor
+> se calcula por la **cola de nueves** y no dígito a dígito: anteponer a una cadena copia la cadena
+> entera, así que la versión ingenua es cuadrática y con una identidad de un millón de dígitos no
+> termina — medido.
+>
+> **La base entra por la entrada estándar, no por `argv`.** Su tamaño lo fija el contenido del
+> literal, y un valor grande excede `ARG_MAX`: medido en un host con `ARG_MAX` de 1 MiB, un `n` de
+> 1 100 000 dígitos mataba a `awk` con `argument list too long`. **Y ese fallo se leía como verde**,
+> porque el bloque tomaba la salida vacía por ausencia de violaciones. Ahora **el estado de `awk` se
+> comprueba antes que su salida**: si no terminó bien, el resultado no es un veredicto. La misma
+> corrección va en los tres bloques que leen la salida de un `awk`, porque el defecto era idéntico en
+> los tres. **No autoriza a afirmar que la línea sea JSON válido**: no
 > detecta comillas sin cerrar, comas sobrantes, anidamiento roto, tipos incorrectos, ni que `sha256`
 > corresponda a `texto`. De los **tipos**, comprueba **solo el de `n`** —porque ese campo es la
 > identidad de la línea y el resto del contrato cuelga de él—; los otros seis no se tipan. **No es un
 > parser y no se lo puede leer como uno.** Se eligió así
 > deliberadamente: validar JSON en shell POSIX exige una herramienta que no está garantizada, y el
 > aparato pesaría más que la prosa que verifica. Fallos de ejecución, distintos de su resultado: `2`
-> si el `n` inicial no es un entero ≥ 1, y `3` si el archivo no se puede leer. Ese argumento se valida
-> **por texto y no con aritmética**: un valor que el shell no puede comparar como entero haría fallar el
-> propio `test` en vez de rechazarse.
+> si el `n` inicial no es un entero ≥ 1, y `3` si el archivo no se puede leer **o si `awk` no pudo
+> ejecutarse**. Ese argumento se valida **por texto y no con aritmética**: un valor que el shell no
+> puede comparar como entero haría fallar el propio `test` en vez de rechazarse.
 
 #### `pedido-unicidad`
 
@@ -2521,21 +2547,35 @@ pedido_unicidad() {
   salida=$(awk '
     # las identidades se comparan en DECIMAL, sobre el lexema y sin convertir
     function norm(x) { sub(/^0+/, "", x); return (x == "" ? "0" : x) }
+    # un identificador se normaliza en su parte numérica, conservando prefijo y sufijo de letra:
+    # sin esto P-1 y P-01 son dos identidades para el dominio y una sola para quien lo lee
+    function normid(x,   pre, resto, suf) {
+      if (!match(x, /^[A-Za-z]+-/)) return x
+      pre = substr(x, 1, RLENGTH); resto = substr(x, RLENGTH+1); suf = ""
+      if (match(resto, /[a-z]$/)) { suf = substr(resto, RSTART); resto = substr(resto, 1, RSTART-1) }
+      return pre norm(resto) suf }
     function cmpd(a, b) {
       if (length(a) != length(b)) return (length(a) < length(b)) ? -1 : 1
       if ((a "") == (b "")) return 0
       return ((a "") < (b "")) ? -1 : 1 }
     BEGIN { FS=sprintf("%c",124) }
-    /^## clausulas/ { s="c"; next }
-    /^## eventos/   { s="e"; next }
-    /^## traza/     { s="t"; next }
-    /^## /          { s="";  next }
-    { k=$2; v=$3; gsub(/[ *]/,"",k); gsub(sprintf("%c",96),"",k)
-      gsub(/[ *]/,"",v); gsub(sprintf("%c",96),"",v) }
-    s == "c" && k ~ /^P-[0-9]+$/ {
-      # el dominio se aplica ANTES de la unicidad: si la fila no filtra por forma, un valor
-      # fuera del dominio no dispara ninguna regla y pasa en silencio
-      if (norm(substr(k, 3)) == "0") { print "identidad de clausula fuera del dominio: " k; next }
+    /^## clausulas/ { s="c"; fila=0; next }
+    /^## eventos/   { s="e"; fila=0; next }
+    /^## traza/     { s="t"; fila=0; next }
+    /^## /          { s="";  fila=0; next }
+    # solo las FILAS DE DATOS entran: las dos primeras de cada tabla son cabecera y separador.
+    # Seleccionar por la forma del identificador dejaba fuera de toda regla lo que no la cumple,
+    # y lo que no dispara ninguna regla no se reporta: se ignora
+    s != "" && substr($0,1,1) != sprintf("%c",124) { next }
+    s != "" { fila++
+      if (fila <= 2) next
+      k=$2; v=$3; gsub(/[ *]/,"",k); gsub(sprintf("%c",96),"",k)
+      gsub(/[ *]/,"",v); gsub(sprintf("%c",96),"",v)
+      if (k ~ /-0([a-z])?$/ || (k ~ /^[A-Za-z]+-/ && normid(k) ~ /-0([a-z])?$/)) {
+        print "identidad fuera del dominio, no es un entero desde 1: " k; next }
+      k = normid(k) }
+    s == "c" {
+      if (k !~ /^P-[0-9]+$/) { print "identidad de clausula fuera del dominio: " (k == "" ? "(vacia)" : k); next }
       if (v !~ /^[0-9]+$/) { print "version fuera del dominio en " k ": " (v == "" ? "(vacia)" : v); next }
       v = norm(v)
       if (v == "0") { print "version fuera del dominio en " k ": el dominio exige un entero desde 1"; next }
@@ -2544,12 +2584,17 @@ pedido_unicidad() {
       vistos[par]=1
       if (k in maxv && cmpd(v, maxv[k]) <= 0) print "version no monotona en " k ": " v
       if (!(k in maxv) || cmpd(v, maxv[k]) > 0) maxv[k]=v }
-    s == "e" && k ~ /^E-[0-9]+$/ {
+    s == "e" {
+      if (k !~ /^E-[0-9]+$/) { print "identidad de evento fuera del dominio: " (k == "" ? "(vacia)" : k); next }
       if (k in ev) print "evento repetido: " k
       ev[k]=1 }
-    s == "t" && k ~ /^AC-[0-9]+[a-z]?$/ {
+    s == "t" {
+      if (k !~ /^AC-[0-9]+[a-z]?$/) { print "identidad de criterio fuera del dominio: " (k == "" ? "(vacia)" : k); next }
       if (k in ac) print "criterio repetido en la traza: " k
       ac[k]=1 }' "$f")
+  rc=$?
+  # una salida vacía NO es un verde por sí sola: awk pudo haber muerto sin escribir nada
+  if [ "$rc" -ne 0 ]; then echo "la comprobación no pudo ejecutarse: awk salió $rc" >&2; return 3; fi
   if [ -z "$salida" ]; then return 0; fi
   printf '%s\n' "$salida"
   return 1
@@ -2557,19 +2602,26 @@ pedido_unicidad() {
 ```
 
 > **Frontera de prueba.** Clase **veredicto**, dirección **admite-de-más**. Su verde autoriza a
-> afirmar que los identificadores de las tres tablas son únicos, que la versión crece por cláusula y
-> que **las dos identidades de una fila de cláusula caen dentro de su dominio**. Esto último es una
-> adquisición y no un adorno: mientras la regla **filtraba** por la forma de `version`, un valor fuera
-> del dominio —vacío, `abc`, `+1`, `-1`— no disparaba ninguna regla y el bloque devolvía verde **sin
-> haber comprobado nada**. Ahora el dominio se evalúa **dentro** de la regla y lo que no lo cumple da
-> rojo con su causa. La monotonía se compara **en decimal** —longitud y después orden lexicográfico—,
+> afirmar que los identificadores de las **tres** tablas son únicos y caen dentro de su dominio, y que
+> la versión crece por cláusula. El dominio es una adquisición y no un adorno: mientras las reglas
+> **filtraban** por la forma del identificador, lo que no la cumplía —`P-abc`, `P-`, `P-1.5`, `Q-1`,
+> `E-abc`, `AC-xyz`, o una `version` vacía, `abc`, `+1`, `-1`— **no disparaba ninguna regla** y el
+> bloque devolvía verde **sin haber comprobado nada**. Lo que no se selecciona no se reporta: se
+> ignora. Ahora se seleccionan las **filas de datos** —las dos primeras de cada tabla son cabecera y
+> separador— y el dominio se evalúa **dentro** de la regla, con su causa.
+>
+> **Los identificadores se normalizan en su parte numérica** antes de formar el par y el máximo, así
+> que `P-1` y `P-01` son **una** identidad y no dos: sin eso, un alias con ceros iniciales duplicaba la
+> cláusula ante el dominio y la unificaba ante quien la lee. La misma normalización vive en
+> `pedido-referencias`, porque una sede que normaliza contra otra que no vuelve a separar las dos
+> puntas. La monotonía se compara **en decimal** —longitud y después orden lexicográfico—,
 > sin convertir y sin máximo. Los ceros a la izquierda se normalizan antes de formar el par, así que
 > `P-1@01` y `P-1@1` cuentan como la misma versión, que es lo que dice el dominio.
 > **No** ve si el texto de la cláusula es el correcto, si la `evidencia` obligatoria está presente,
 > ni si un identificador retirado se reutiliza **fuera** de este flujo. Reconoce los `AC-n` por la
-> misma **forma cerrada** que `pedido-referencias`, así que un `AC-n` fuera de esa forma
-> tampoco se comprueba acá: no detectaría su repetición. Fallo de ejecución: `3` si el
-> archivo no se puede leer.
+> misma **forma cerrada** que `pedido-referencias`, y lo que cae fuera de ella ya no pasa en silencio:
+> da rojo por dominio. Fallo de ejecución: `3` si el archivo no se puede leer **o si `awk` no pudo
+> ejecutarse**.
 
 #### `pedido-referencias`
 
@@ -2587,6 +2639,13 @@ pedido_referencias() {
   fi
   salida=$(awk '
     function norm(x) { sub(/^0+/, "", x); return (x == "" ? "0" : x) }
+    # la MISMA normalización que usa pedido-unicidad: con una sede normalizando y la otra no,
+    # AC-01 dejaría de encontrar a AC-1 y las dos puntas volverían a discrepar
+    function normid(x,   pre, resto, suf) {
+      if (!match(x, /^[A-Za-z]+-/)) return x
+      pre = substr(x, 1, RLENGTH); resto = substr(x, RLENGTH+1); suf = ""
+      if (match(resto, /[a-z]$/)) { suf = substr(resto, RSTART); resto = substr(resto, 1, RSTART-1) }
+      return pre norm(resto) suf }
     BEGIN { FS=sprintf("%c",124) }
     FILENAME == ELIT {
       # la cláusula cita el campo n, no la posición física de la línea: tras una cuarentena
@@ -2607,8 +2666,11 @@ pedido_referencias() {
       next }
     FILENAME == ESPEC { linea=$0
       while (match(linea, /AC-[0-9]+[a-z]?/)) {
-        enspec[substr(linea, RSTART, RLENGTH)]=1
-        linea = substr(linea, RSTART+RLENGTH) }
+        # RSTART y RLENGTH se capturan ANTES de llamar a normid: esa función usa `match` por
+        # dentro y los pisa, y el avance del bucle depende de ellos — sin esto no termina
+        r = RSTART; l = RLENGTH
+        enspec[normid(substr(linea, r, l))]=1
+        linea = substr(linea, r + l) }
       next }
     /^## clausulas/ { s="c"; next }
     /^## eventos/   { s="e"; next }
@@ -2626,7 +2688,7 @@ pedido_referencias() {
         if (q[1]+0 < 1 || q[2]+0 < q[1]+0 || q[2]+0 > largo[cit]+0)
           print "rango fuera del largo del texto: " lista[i] } }
     s == "t" && id ~ /^AC-[0-9]+[a-z]?$/ {
-      if (!(id in enspec)) print "criterio de la traza ausente en la spec: " id }
+      if (!(normid(id) in enspec)) print "criterio de la traza ausente en la spec: " id }
     s == "e" && id ~ /^E-[0-9]+$/ {
       ob=$7; gsub(/[ *]/,"",ob); gsub(sprintf("%c",96),"",ob)
       resuelve = (ob == "" || ob == "-" || ob ~ /^AC-[0-9]+[a-z]?@/)
@@ -2638,6 +2700,9 @@ pedido_referencias() {
       if (ob ~ /^digest@[0-9a-f]+$/ && length(ob) == 71) resuelve = 1
       if (!resuelve) print "objetivo de evento que no resuelve: " ob }' \
     ELIT="$lit" ESPEC="$sp" "$lit" "$sp" "$r")
+  rc=$?
+  # una salida vacía NO es un verde por sí sola: awk pudo haber muerto sin escribir nada
+  if [ "$rc" -ne 0 ]; then echo "la comprobación no pudo ejecutarse: awk salió $rc" >&2; return 3; fi
   if [ -z "$salida" ]; then return 0; fi
   printf '%s\n' "$salida"
   return 1
@@ -2665,13 +2730,17 @@ pedido_referencias() {
 > valor desmesurado hace que el rango caiga fuera del largo del texto, que es rojo. El objetivo
 > `P-k@version` **lleva el mismo dominio que el registro** —las dos identidades desde 1, sin máximo—,
 > porque una forma que solo mirara el patrón admitía `P-1@0` y `P-0@1`: resolvían de forma y no de
-> dominio. La correspondencia con el literal es por el **campo `n`**, no
+> dominio. Los `AC-n` se **normalizan en las dos puntas** —al indexarlos desde la sede de los criterios
+> y al consultarlos desde la traza—, con la misma función que usa `pedido-unicidad`. Al escribirla
+> apareció un modo de falla propio de `awk` que conviene dejar anotado: **una función que usa `match`
+> por dentro pisa `RSTART` y `RLENGTH` del llamador**, y el bucle que recorre los `AC-n` de una línea
+> avanza con ellos — sin capturarlos antes de la llamada, no termina. La correspondencia con el literal es por el **campo `n`**, no
 > por la posición física de la línea: mientras la captura arranca en 1 los dos coinciden, pero tras una
 > cuarentena dejan de hacerlo, y con el índice por posición todo fragmento de un paquete recuperado
 > citaba una línea «inexistente». Un `n` repetido en el literal colapsa su entrada del índice y hace
 > que el rango se compare contra el largo de la última línea que lo lleve — lo impide `pedido-jsonl`,
 > que corre antes por la matriz de invocación, no este bloque. Fallo de ejecución: `3` si falta alguna
-> de las tres sedes.
+> de las tres sedes **o si `awk` no pudo ejecutarse**.
 
 #### `pedido-marcador`
 
@@ -2719,9 +2788,9 @@ pedido_marcador() {
       sub(/^0+/, "", v); if (v == "") v = "0"
       print v }
     exit }' "$paquete/literal.jsonl")
-  # un primer n ausente, no positivo o fuera del techo de dígitos es CORRUPCIÓN DEL LITERAL, no un
-  # error de quien invoca: se cae al default para que el veredicto lo dé la comprobación de forma,
-  # que lo clasifica cuarentena. Todo se decide por texto, sin aritmética sobre un valor no confiable
+  # un primer n ausente o no positivo es CORRUPCIÓN DEL LITERAL, no un error de quien invoca: se
+  # cae al default para que el veredicto lo dé la comprobación de forma, que lo clasifica
+  # cuarentena. Todo se decide por texto, sin aritmética sobre un valor no confiable
   case "$base" in
     ''|*[!0-9]*) base=1 ;;
     *[!0]*) ;;
