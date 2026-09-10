@@ -2048,12 +2048,26 @@ por el que `antecedentes.md` tiene su bloque máquina.
 `productor` es lo que le permite al routing de `resume` **nombrar** en qué gate retomar: sin esa
 columna, «retoma en el gate del productor que las dejó» no era implementable.
 
+**El preimage de `hash_criterio`, porque «el texto del criterio» no es un conjunto de bytes.**
+Mientras no estuviera definido, ese hash no se podía comprobar contra nada: se comparaba contra otra
+copia de sí mismo —el `hash` del objetivo de un evento— y las dos podían coincidir sin corresponder a
+ningún texto. El **bloque del criterio** es, en la sede de los criterios, desde la línea donde
+aparece su identificador hasta —**sin incluirla**— la primera de estas tres: la línea del
+identificador siguiente, una línea que empiece con `#`, o el final del archivo. De ese bloque se
+retira la anotación `\[autoridad: [^]]*\]` con el mismo patrón que usan los dos publicadores, se
+recortan los espacios al final de cada línea, se descartan las líneas vacías del final, y cada línea
+queda terminada en LF. El `sha256` se calcula sobre esos bytes UTF-8.
+
+**El corte por encabezado no es decorativo:** sin él, el bloque del último criterio llegaba hasta el
+final del archivo, y agregar una sección al final de la spec movía su hash sin que nadie hubiera
+tocado el criterio.
+
 **`## traza` — una fila por criterio.**
 
 | Columna | Dominio |
 |---|---|
 | `AC-n` | identidad del criterio, nunca reutilizada |
-| `hash_criterio` | `sha256` del texto del criterio al adjudicarlo |
+| `hash_criterio` | `sha256` del **bloque del criterio**, definido abajo |
 | `autoridad` | `pedido` · `constitution` · `repositorio` · `clarify` — **exactamente una** |
 | `referencia` | `P-k@version` · sección · regla · `Q<n>`, según la autoridad |
 | `derivacion` | la derivación adjudicada, en prosa |
@@ -2119,6 +2133,29 @@ Cada fila se emite con **todas** sus celdas, recortadas de espacios en los extre
 tabulador, en el orden en que están escritas; la marca `c`/`e` de la primera columna es lo que impide
 que una fila de una tabla se lea como de la otra. La frontera entra al preimage además de estar en el
 objetivo, para que declarar una frontera y firmar otra no sea representable.
+
+**El separador se codifica dentro de la celda, y el codificador también.** Antes de unir, en cada
+celda se reemplaza `%` por `%25`, el tabulador por `%09` y el retorno de carro por `%0D`, **en ese
+orden**. Sin esa codificación la serialización **no es inyectiva** y el digest colisiona: una fila
+con `texto: left⇥right` y `evidencia: proof` produce exactamente los mismos bytes que una con
+`texto: left` y `evidencia: right⇥proof`, así que las dos versiones del registro firman igual. En un
+mecanismo cuyo único propósito es evidenciar manipulación, una colisión construible a mano no es una
+frontera declarable: es el mecanismo roto. Se codifica con `%` y no con la barra invertida porque el
+reemplazo de `gsub` **interpreta** la barra, y el número de barras que hay que escribir para emitir
+una difiere entre implementaciones de `awk`.
+
+**El dominio de la frontera, que es más que su forma.** Además de ser dos decimales canónicos, una
+frontera tiene que cumplir tres condiciones, y las tres nacen de que las dos tablas solo se anexan:
+
+| Condición | Qué impide |
+|---|---|
+| **no excede** lo que hay hoy: `filas ≤` las filas de `## clausulas` y `lineas ≤` las líneas del literal | que una confirmación diga haber firmado filas que nunca existieron, o que se borraron |
+| **no retrocede** respecto de la confirmación anterior, en ninguna de sus dos componentes | que una confirmación posterior firme **menos** de lo que otra ya había firmado, sacando de la cadena todo lo que quedó en el medio |
+| **no es vacua**: el prefijo firmado contiene al menos una fila de datos de `## clausulas`, y `lineas ≥ 1` | una confirmación con la frontera en la cabecera y el separador, que reproduce su digest sin cubrir una sola cláusula |
+
+Las tres se comprueban **en las dos sedes que leen el objetivo** —`pedido-referencias` al resolverlo
+y `pedido-digest` al recomputar—, porque las dos corren en pasos distintos y ninguna puede apoyarse
+en que la otra haya corrido antes.
 
 **Se sellan las filas, todas, y no la partición vigente.** Una serialización que solo cubriera la
 versión máxima de cada `P-k` dejaba reescribir sin rastro **la versión anterior** —justo la que el
@@ -2422,9 +2459,9 @@ evidencia y deja el flujo operable, y las dos propiedades se pierden si alguien 
 
 ### La matriz de invocación de los bloques
 
-Cinco comprobaciones del paquete son **deterministas** y quedarían libradas a que dos agentes lean
+Seis comprobaciones del paquete son **deterministas** y quedarían libradas a que dos agentes lean
 igual la misma prosa: validez estructural del literal, unicidad e identidad, referencias colgantes, la
-matriz del marcador y la cadena de digests. Van como **bloques embebidos acá** —no como archivos: la regla del
+matriz del marcador, la cadena de digests y el hash de cada criterio. Van como **bloques embebidos acá** —no como archivos: la regla del
 repositorio prohíbe crear nada bajo el `scripts/` de la raíz, y este flujo no la elude creando su
 propia sede—. Queda en prosa lo que es adjudicación semántica: si una derivación es válida y si una
 cláusula está bien redactada.
@@ -2438,6 +2475,7 @@ cláusula está bien redactada.
 | `pedido-referencias` | `specify`, y cada recálculo que la tabla de puertas declare | antes del gate que esa fila nombra | `registro.md` y la **sede de los criterios**: `spec.md`, o `plan.md` en la rama trivial | el código de salida | el gate **no se presenta** |
 | `pedido-marcador` | `resume`, y `gather-context` en 3b | en `resume`, **primera** comprobación del paso, antes de enrutar; en 3b, **antes de escribir**, y solo si `.plans/<id>/` ya existe | la raíz del flujo | la celda, en stdout | con `1` o `2` **no se enruta** por ninguna rama, y en 3b no se escribe nada |
 | `pedido-digest` | `resume` | **después** del marcador, y solo si su celda fue «presente y legible» | la ruta de `registro.md` | el código de salida | con `1` la celda pasa a **cuarentena**; con `3` la cadena queda **sin comprobar** y se informa así, sin leerlo como verde |
+| `pedido-criterio` | `specify`, en la misma puerta que `pedido-referencias` | antes del gate que esa fila nombra | `registro.md` y la **sede de los criterios** | el código de salida | con `1` el gate **no se presenta**; con `3` los hashes quedan **sin comprobar** y se informa así, sin leerlo como verde ni bloquear el gate |
 
 **`pedido-marcador` se invoca una vez y se carga con su dependencia.** Llama a `pedido-jsonl` por
 dentro, así que quien lo invoca tiene que haber **cargado los dos bloques** en el mismo shell.
@@ -2464,7 +2502,8 @@ afuera se escribe en su frontera en vez de fingirse cubierto:
 | `pedido-unicidad` | en `registro.md`: que las identidades de las tres tablas caigan dentro de su dominio y no se repitan, y que la versión crezca por cláusula | ídem |
 | `pedido-referencias` | que cada `fragmentos` exista y cite una línea con rango dentro de su largo, que cada `AC-n` de la traza exista en la sede de los criterios, y que cada `objetivo` de evento resuelva | ídem |
 | `pedido-marcador` | resuelve la celda de la matriz del marcador desde el estado observado del árbol | **la celda en stdout**; `0` si resolvió una, `1` si el árbol no encaja en ninguna, `2` si la invocación está mal formada o `pedido-jsonl` no está cargado |
-| `pedido-digest` | que **cada** confirmación reproduzca el prefijo de `## clausulas`, `## eventos` y del literal que su frontera declara | `0` si todas reproducen o si no hay ninguna confirmación, `1` si alguna no —con el escrito y el recomputado—, `3` si falta una sede, si no hay `sha256sum` ni `shasum`, o si la herramienta está y falla |
+| `pedido-digest` | que **cada** confirmación reproduzca el prefijo de `## clausulas`, `## eventos` y del literal que su frontera declara, y que esa frontera no exceda, no retroceda y no sea vacua | `0` si todas reproducen o si no hay ninguna confirmación, `1` si alguna no —con el escrito y el recomputado—, `3` si falta una sede, si no hay `sha256sum` ni `shasum`, o si la herramienta está y falla |
+| `pedido-criterio` | que el `hash_criterio` de cada `AC-n` de la traza sea el `sha256` del bloque de ese criterio en la sede de los criterios | `0` si todos reproducen o si la traza no tiene criterios, `1` si alguno no —con el escrito y el recomputado—, `3` con los mismos fallos de ejecución que `pedido-digest` |
 
 **El `3` de los tres primeros incluye «no se pudo ejecutar», y eso es deliberado.** Una salida vacía
 significa «ninguna violación» **solo si el comando terminó bien**; leerla sin mirar el estado convierte
@@ -2475,7 +2514,7 @@ ninguno de los tres: dice que no hubo comprobación, no que la comprobación pas
 también un bloque de shell sin variante PowerShell. La exigencia de ofrecer las dos variantes alcanza
 a los comandos que **invocan un CLI** —el transporte cross-model—, que no es el caso de estos cinco.
 
-**Cuatro son POSIX puro; `pedido-digest` no puede serlo.** Calcular un `sha256` exige una herramienta
+**Cuatro son POSIX puro; `pedido-digest` y `pedido-criterio` no pueden serlo.** Calcular un `sha256` exige una herramienta
 que POSIX no define, así que ese bloque detecta `sha256sum` o `shasum` y, sin ninguna de las dos,
 devuelve `3`: **la ausencia de la herramienta no es un verde**, es la ausencia de comprobación. Se pagó
 esa dependencia porque la alternativa era dejar la cadena de digests —el mecanismo que le da autoridad
@@ -2738,6 +2777,7 @@ pedido_referencias() {
         # grande, y las dos puntas —el literal y la cita— tienen que normalizar igual
         nl = norm(v) }
       hay[nl]=1
+      nlit = FNR
       if (match($0, /"texto"[ ]*:[ ]*"/)) {
         cuerpo = substr($0, RSTART+RLENGTH)
         # el orden canónico deja sha256 como último campo: ese es el corte
@@ -2745,22 +2785,32 @@ pedido_referencias() {
         largo[nl] = ulargo(cuerpo) }
       # `largo` y `hay` comparten índice por construcción: los dos se escriben con `nl`
       next }
-    FILENAME == ESPEC { linea=$0
+    FILENAME == ESPEC { linea=$0; pos=0
       while (match(linea, /AC-[0-9]+[a-z]?/)) {
         # RSTART y RLENGTH se capturan ANTES de llamar a normid: esa función usa `match` por
         # dentro y los pisa, y el avance del bucle depende de ellos — sin esto no termina
         r = RSTART; l = RLENGTH
         # awk no tiene delimitadores de palabra: los dos extremos se cierran a mano, o AC-1ab
-        # satisface a AC-1a y AC-1A satisface a AC-1
+        # satisface a AC-1a y AC-1A satisface a AC-1. El vecino izquierdo se busca en la línea
+        # ENTERA con el desplazamiento acumulado: mirándolo en el resto recortado, el carácter
+        # anterior al segundo match de `AC-1AC-2` era el fin del primero y se leía como frontera
         sig = substr(linea, r + l, 1)
-        ant = (r > 1) ? substr(linea, r - 1, 1) : ""
+        ant = (pos + r > 1) ? substr($0, pos + r - 1, 1) : ""
         if (sig !~ /[0-9A-Za-z_]/ && ant !~ /[0-9A-Za-z_-]/) enspec[normid(substr(linea, r, l))]=1
+        pos = pos + r + l - 1
         linea = substr(linea, r + l) }
       next }
     /^## clausulas/ { s="c"; next }
     /^## eventos/   { s="e"; next }
     /^## traza/     { s="t"; next }
     /^## /          { s="";  next }
+    # la frontera de una confirmación cuenta FILAS de la sección, cabecera y separador incluidos,
+    # y `hastaqui` guarda cuántas de las primeras k son filas de datos
+    s == "c" && substr($0,1,1) == sprintf("%c",124) {
+      nfil++
+      c1=$2; gsub(/[ *]/,"",c1); gsub(sprintf("%c",96),"",c1)
+      if (c1 ~ /^P-[0-9]+$/) ndatos++
+      hastaqui[nfil] = ndatos }
     { id=$2; gsub(/[ *]/,"",id); gsub(sprintf("%c",96),"",id) }
     s == "c" && id ~ /^P-[0-9]+$/ {
       ver=$3; gsub(/[ *]/,"",ver); gsub(sprintf("%c",96),"",ver)
@@ -2808,6 +2858,18 @@ pedido_referencias() {
         split(substr(ob, 8), dp, "@"); split(dp[2], fl, ":")
         if (length(dp[1]) == 64 && fl[1] == norm(fl[1]) && fl[2] == norm(fl[2])) resuelve = 1 }
       if (!resuelve) { print "objetivo de evento que no resuelve: " ob; next }
+      # una frontera resuelve contra el registro REAL, no solo contra su forma. Se compara con
+      # cmpd —por largo y después lexicográficamente— porque convertirla pierde precisión y con
+      # treinta dígitos ni siquiera compara: awk la lleva a notación científica
+      if (tipo == "confirmacion" && ob ~ /^digest@/) {
+        split(substr(ob, 8), dg2, "@"); split(dg2[2], fr2, ":")
+        if (cmpd(fr2[1], nfil "") > 0 || cmpd(fr2[2], nlit "") > 0)
+          print "frontera de confirmacion mayor que el registro: " ob
+        else if (cmpd(fr2[1], pfr "") < 0 || cmpd(fr2[2], plt "") < 0)
+          print "frontera de confirmacion que retrocede: " ob
+        else if (hastaqui[fr2[1]+0]+0 == 0 || fr2[2] == "0")
+          print "confirmacion que no firma ninguna clausula ni linea: " ob
+        pfr = fr2[1]; plt = fr2[2] }
       # la FORMA no es el destino: el objetivo se resuelve contra las tablas, en END, cuando
       # ya se leyeron las tres — eventos viene antes que traza, así que acá todavía no se puede
       if (ob != "-") destino[ob] = 1
@@ -3035,10 +3097,11 @@ pedido_digest() {
   elif command -v shasum >/dev/null 2>&1; then HTOOL=shasum
   else echo "no hay sha256sum ni shasum: la cadena no se puede verificar" >&2; return 3; fi
   # el comando no viaja en una variable sin comillas: en zsh no se divide y la invocación se rompe.
-  # Y la SALIDA se comprueba: una herramienta presente que falla no imprime nada, y con el corte al
+  # Y la SALIDA se comprueba: una herramienta presente que falla no imprime nada, y con un corte al
   # final de la tubería el estado que llegaba era el del corte —cero—, así que el vacío pasaba por
-  # hash y el bloque devolvía «no reproduce» en vez de declarar la medición detenida
-  hashear() {
+  # hash. Esta definición es **byte a byte la misma** que la de `pedido-criterio`, y hay un caso del
+  # arnés que lo comprueba: son dos bloques que cargan en el mismo shell y no pueden divergir
+  pedido_sha() {
     case "$HTOOL" in
       sha256sum) h=$(sha256sum) ;;
       shasum)    h=$(shasum -a 256) ;;
@@ -3067,10 +3130,10 @@ pedido_digest() {
   if [ -z "$confs" ]; then return 0; fi
   base="${TMPDIR:-/tmp}/pedido-digest.$$"
   printf '%s\n' "$confs" > "$base.c"
-  prev=""; k=0; malo=0; parado=0
+  prev=""; pf=0; pl=0; k=0; malo=0; parado=0
   while IFS='	' read -r ei ob; do
     k=$((k+1))
-    # el objetivo de una confirmación lleva el digest Y la frontera que selló
+    # el objetivo de una confirmación lleva el digest Y la frontera que firmó
     case "$ob" in
       digest@*@*:*) ;;
       *) echo "la confirmacion $k no declara digest y frontera: $ob"; malo=1; continue ;;
@@ -3084,18 +3147,34 @@ pedido_digest() {
     if [ "$forma" -eq 0 ]; then
       echo "la confirmacion $k no declara digest y frontera: $ob"; malo=1; continue
     fi
-    # la frontera no puede exceder lo que hay: si excede, se borraron filas ya firmadas
-    if [ "$ll" -gt "$tot" ]; then
-      echo "la confirmacion $k firmo $ll lineas del literal y hoy quedan $tot"; malo=1; continue
-    fi
-    if [ "$ff" -gt "$filas" ]; then
+    # la frontera se compara primero por CANTIDAD DE DÍGITOS: `test -gt` convierte a entero, y con
+    # treinta dígitos aborta con «integer expression expected» dejando la comparación sin hacer y
+    # el error suelto en stderr. Pasado ese filtro, el valor cabe en el entero del shell
+    if [ ${#ff} -gt ${#filas} ] || { [ ${#ff} -eq ${#filas} ] && [ "$ff" -gt "$filas" ]; }; then
       echo "la confirmacion $k firmo $ff filas de clausulas y hoy quedan $filas"; malo=1; continue
     fi
-    shalit=$(head -n "$ll" "$lit" | hashear)
+    if [ ${#ll} -gt ${#tot} ] || { [ ${#ll} -eq ${#tot} ] && [ "$ll" -gt "$tot" ]; }; then
+      echo "la confirmacion $k firmo $ll lineas del literal y hoy quedan $tot"; malo=1; continue
+    fi
+    # las dos tablas solo se anexan, así que una frontera nunca puede retroceder: si retrocede,
+    # la confirmación declara haber firmado menos de lo que la anterior ya tenía firmado
+    if [ "$ff" -lt "$pf" ] || [ "$ll" -lt "$pl" ]; then
+      echo "la confirmacion $k retrocede la frontera: $ff:$ll despues de $pf:$pl"; malo=1; continue
+    fi
+    # el prefijo del literal se recorta con `awk` y NO con `head` en una tubería: ahí el estado que
+    # llega es el del último eslabón, así que un `head` que falla se leía como un literal vacío
+    LC_ALL=C awk -v L="$ll" 'NR <= L+0' "$lit" > "$base.l"
     if [ $? -ne 0 ]; then parado=1; break; fi
-    # el prefijo sellado: las primeras <filas> filas de clausulas y los eventos ANTERIORES a esta
-    # confirmación, cada fila con todas sus celdas y con la marca de su tabla
-    LC_ALL=C awk -v F="$ff" -v EI="$ei" 'BEGIN { PI=sprintf("%c",124); FS=PI; TB=sprintf("%c",9) }
+    shalit=$(pedido_sha < "$base.l")
+    if [ $? -ne 0 ]; then parado=1; break; fi
+    # el preimage se arma en UN archivo y se hashea desde ahí: con la serialización llegando por
+    # una tubería, el estado que llegaba era el del último eslabón y un `cat` que fallara producía
+    # un preimage corto que igual se hasheaba, o sea un rojo fabricado sobre un registro intacto
+    { printf '%s' "$prev"
+      printf 'frontera\t%s\t%s\nliteral\t%s\n' "$ff" "$ll" "$shalit"; } > "$base.p"
+    if [ $? -ne 0 ]; then parado=1; break; fi
+    LC_ALL=C awk -v F="$ff" -v EI="$ei" 'BEGIN { PI=sprintf("%c",124); FS=PI
+                                                TB=sprintf("%c",9); CR=sprintf("%c",13) }
       /^## clausulas/ { s="c"; i=0; next }
       /^## eventos/   { s="e"; i=0; next }
       /^## /          { s="";  next }
@@ -3103,12 +3182,26 @@ pedido_digest() {
         if (s == "c" && i > F+0) next
         if (s == "e" && i >= EI+0) next
         linea = s
-        for (j=2; j<NF; j++) { c=$j; gsub(/^[ ]+|[ ]+$/,"",c); linea = linea TB c }
-        print linea }' "$r" > "$base.s"
+        for (j=2; j<NF; j++) { c=$j; gsub(/^[ ]+|[ ]+$/,"",c)
+          # el separador se codifica dentro de la celda, y el codificador también: sin esto, dos
+          # celdas repartidas distinto serializan igual y el digest COLISIONA, que en un mecanismo
+          # de evidencia de manipulación es exactamente su ruina
+          gsub(/%/, "%25", c); gsub(TB, "%09", c); gsub(CR, "%0D", c)
+          linea = linea TB c }
+        print linea }' "$r" >> "$base.p"
     if [ $? -ne 0 ]; then parado=1; break; fi
-    calc=$( { printf '%s' "$prev"
-              printf 'frontera\t%s\t%s\nliteral\t%s\n' "$ff" "$ll" "$shalit"
-              cat "$base.s"; } | hashear )
+    # una confirmación que no firma ninguna fila de datos no confirma nada: con la frontera en la
+    # cabecera y el separador, el digest reproduce y el registro entero queda fuera de la cadena
+    datos=$(LC_ALL=C awk 'BEGIN { FS=sprintf("%c",9) }
+      $1 == "c" { c=$2; gsub(/[ *]/,"",c); gsub(sprintf("%c",96),"",c)
+                  if (c ~ /^P-[0-9]+$/) n++ }
+      END { print n+0 }' "$base.p")
+    if [ $? -ne 0 ]; then parado=1; break; fi
+    if [ "$datos" -eq 0 ] || [ "$ll" -eq 0 ]; then
+      echo "la confirmacion $k no firma ninguna clausula o ninguna linea del literal: $ff:$ll"
+      malo=1; pf="$ff"; pl="$ll"; prev="$dg"; continue
+    fi
+    calc=$(pedido_sha < "$base.p")
     if [ $? -ne 0 ]; then parado=1; break; fi
     if [ "$calc" != "$dg" ]; then
       echo "la confirmacion $k no reproduce lo que firmo"
@@ -3118,9 +3211,9 @@ pedido_digest() {
     fi
     # el eslabon anterior es el ESCRITO, no el recomputado: así cada eslabón se juzga solo y el
     # reporte nombra cuál se rompió, en vez de teñir de rojo a todos los que le siguen
-    prev="$dg"
+    pf="$ff"; pl="$ll"; prev="$dg"
   done < "$base.c"
-  rm -f "$base.c" "$base.s"
+  rm -f "$base.c" "$base.p" "$base.l"
   if [ "$parado" -eq 1 ]; then echo "no se pudo calcular el sha256" >&2; return 3; fi
   if [ "$malo" -eq 0 ]; then return 0; fi
   return 1
@@ -3141,15 +3234,129 @@ pedido_digest() {
 > mitad la cubre `pedido-referencias`, con el hash del último evento que nombra a cada criterio.
 > Tampoco ve un registro al que le hayan quitado **la confirmación entera**: sin ningún evento
 > `tipo: confirmacion` devuelve `0`, porque un pedido todavía sin confirmar es un estado válido, y
-> ningún otro bloque comprueba que las confirmaciones sigan ahí. Y las celdas se separan por
-> tabulador: **una celda que contenga un tabulador** serializa igual que dos celdas repartidas de
-> otro modo, así que ahí el digest colisiona — es la restricción hermana de la que ya prohíbe la
-> barra vertical, declarada y no comprobada.
+> ningún otro bloque comprueba que las confirmaciones sigan ahí. **La colisión por tabulador ya no
+> es un límite**: las celdas se codifican antes de unirse, así que la serialización es inyectiva y
+> dos repartos distintos de un mismo texto ya no firman igual. Lo que queda es que **no ve cuál**
+> celda cambió: dice que la confirmación no reproduce, no qué se tocó.
 >
 > Fallos de ejecución, distintos de su resultado: `3` si falta alguna de las dos sedes, si no hay
 > `sha256sum` ni `shasum`, si la herramienta **está y falla** —su salida se comprueba en vez de
 > suponerse— o si la serialización no se pudo producir. **La ausencia de la herramienta no es un
 > verde**: es la ausencia de comprobación, y el routing la trata como tal.
+
+#### `pedido-criterio`
+
+```sh
+# @bloque: pedido-criterio
+# uso: pedido_criterio <ruta de registro.md> <sede de los criterios>
+# requiere sha256sum o shasum: sin ninguno devuelve 3, que no es un veredicto
+pedido_criterio() {
+  cr="${1:?ruta de registro.md}"
+  cs="${2:?sede de los criterios: spec.md, o plan.md en trivial}"
+  if [ ! -r "$cr" ] || [ ! -r "$cs" ]; then
+    echo "no se puede leer alguna de las dos sedes" >&2; return 3
+  fi
+  if command -v sha256sum >/dev/null 2>&1; then HTOOL=sha256sum
+  elif command -v shasum >/dev/null 2>&1; then HTOOL=shasum
+  else echo "no hay sha256sum ni shasum: los criterios no se pueden comprobar" >&2; return 3; fi
+  # byte a byte la misma definición que la de `pedido-digest`, y con un caso del arnés que lo
+  # comprueba: los dos bloques cargan en el mismo shell y una divergencia sería silenciosa
+  pedido_sha() {
+    case "$HTOOL" in
+      sha256sum) h=$(sha256sum) ;;
+      shasum)    h=$(shasum -a 256) ;;
+    esac || return 3
+    h=${h%% *}
+    case "$h" in ''|*[!0-9a-f]*) return 3 ;; esac
+    [ ${#h} -eq 64 ] || return 3
+    printf '%s' "$h"
+  }
+  base="${TMPDIR:-/tmp}/pedido-criterio.$$"
+  LC_ALL=C awk 'BEGIN { FS=sprintf("%c",124) }
+    function norm(x) { sub(/^0+/, "", x); return (x == "" ? "0" : x) }
+    function normid(x,   pre, resto, suf) {
+      if (!match(x, /^[A-Za-z]+-/)) return x
+      pre = substr(x, 1, RLENGTH); resto = substr(x, RLENGTH+1); suf = ""
+      if (match(resto, /[a-z]$/)) { suf = substr(resto, RSTART); resto = substr(resto, 1, RSTART-1) }
+      return pre norm(resto) suf }
+    /^## traza/ { s=1; next } /^## / { s=0 }
+    s && substr($0,1,1) == sprintf("%c",124) {
+      id=$2; gsub(/[ *]/,"",id); gsub(sprintf("%c",96),"",id)
+      if (id !~ /^AC-[0-9]+[a-z]?$/) next
+      hc=$3; gsub(/[ *]/,"",hc); gsub(sprintf("%c",96),"",hc)
+      printf "%s\t%s\n", normid(id), hc }' "$cr" > "$base.t"
+  if [ $? -ne 0 ]; then rm -f "$base.t"; echo "no se pudo leer la traza" >&2; return 3; fi
+  # una traza sin criterios es un estado válido: todavía no se adjudicó ninguno
+  if [ ! -s "$base.t" ]; then rm -f "$base.t"; return 0; fi
+  malo=0; parado=0
+  while IFS='	' read -r ac hc; do
+    LC_ALL=C awk -v AC="$ac" '
+      function norm(x) { sub(/^0+/, "", x); return (x == "" ? "0" : x) }
+      function normid(x,   pre, resto, suf) {
+        if (!match(x, /^[A-Za-z]+-/)) return x
+        pre = substr(x, 1, RLENGTH); resto = substr(x, RLENGTH+1); suf = ""
+        if (match(resto, /[a-z]$/)) { suf = substr(resto, RSTART); resto = substr(resto, 1, RSTART-1) }
+        return pre norm(resto) suf }
+      # la MISMA forma cerrada por los dos extremos que usa pedido-referencias, con el vecino
+      # izquierdo buscado en la línea entera: si difieren, las dos sedes dejan de hablar del
+      # mismo identificador y el desacuerdo no da rojo en ninguna
+      function idlinea(s,   linea, pos, r, l, sig, ant) {
+        linea = s; pos = 0
+        while (match(linea, /AC-[0-9]+[a-z]?/)) {
+          r = RSTART; l = RLENGTH
+          sig = substr(linea, r + l, 1)
+          ant = (pos + r > 1) ? substr(s, pos + r - 1, 1) : ""
+          if (sig !~ /[0-9A-Za-z_]/ && ant !~ /[0-9A-Za-z_-]/) return normid(substr(linea, r, l))
+          pos = pos + r + l - 1
+          linea = substr(linea, r + l) }
+        return "" }
+      { if (hecho) next
+        id = idlinea($0)
+        # el bloque llega hasta —sin incluirla— la línea del identificador siguiente, la primera
+        # que empiece con `#`, o el final. Sin ese corte, agregar una sección al final del archivo
+        # movía el hash del último criterio sin que nadie hubiera tocado el criterio
+        if (dentro && (id != "" || substr($0,1,1) == "#")) { hecho = 1; next }
+        if (!dentro) { if (id == AC) dentro = 1; else next }
+        linea = $0
+        sub(/\[autoridad: [^]]*\]/, "", linea)
+        sub(/[ ]+$/, "", linea)
+        buf[++n] = linea }
+      END { while (n > 0 && buf[n] == "") n--
+            for (i = 1; i <= n; i++) print buf[i] }' "$cs" > "$base.b"
+    if [ $? -ne 0 ]; then parado=1; break; fi
+    if [ ! -s "$base.b" ]; then
+      echo "criterio de la traza sin texto en la sede: $ac"; malo=1; continue
+    fi
+    calc=$(pedido_sha < "$base.b")
+    if [ $? -ne 0 ]; then parado=1; break; fi
+    if [ "$calc" != "$hc" ]; then
+      echo "el hash_criterio de $ac no es el del texto vigente"
+      echo "  escrito:     $hc"
+      echo "  recomputado: $calc"
+      malo=1
+    fi
+  done < "$base.t"
+  rm -f "$base.t" "$base.b"
+  if [ "$parado" -eq 1 ]; then echo "no se pudo calcular el sha256" >&2; return 3; fi
+  if [ "$malo" -eq 0 ]; then return 0; fi
+  return 1
+}
+```
+
+> **Frontera de prueba.** Clase **veredicto**, dirección **admite-de-más**, ante la duda
+> **niega-ante-duda**. Su verde autoriza a afirmar que el `hash_criterio` de cada `AC-n` de la traza
+> es el `sha256` del **texto vigente** de ese criterio en la sede de los criterios. Es lo que
+> convierte al pin de `pedido-referencias` en una comprobación y no en el cotejo de dos copias del
+> mismo metadato: sin este bloque, el hash del evento y el de la traza podían coincidir entre sí y
+> no corresponderse con ningún texto.
+>
+> **Lo que no ve.** No juzga si el criterio está bien redactado ni si su derivación es válida —eso es
+> adjudicación semántica y queda en prosa—, ni ve un criterio que esté en la sede y **no** en la
+> traza: recorre la traza, así que un criterio sin fila propia le queda invisible; esa mitad la
+> cubre `R2` y la cobertura de la spec. Tampoco distingue **dónde** cambió el texto: dice que el
+> bloque no reproduce, no qué línea se tocó. Fallos de ejecución, distintos de su resultado: `3` si
+> falta alguna de las dos sedes, si no hay `sha256sum` ni `shasum`, si la herramienta está y falla,
+> o si el recorte del bloque no se pudo producir. **La ausencia de la herramienta no es un verde**.
 
 **`pedido-marcador` invoca a `pedido-jsonl` por dentro, y ese orden es único.** El routing invoca
 **un solo bloque** —y **carga dos**, que no es lo mismo: la definición de la dependencia tiene que
