@@ -2279,6 +2279,15 @@ prolijamente lo que ya entró.
 | `repositorio` | la regla o convención invocada existe en el árbol —`CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`— y la afirmación cae dentro de su disparador | que sale del contrato del repositorio, y no de una lectura ampliada de él |
 | `clarify` | hay una entrada `Q<n>` en `## Clarifications` con la respuesta del usuario, y el criterio no excede lo que esa respuesta decidió | que sale de una decisión tomada por el usuario, con la pregunta a la vista |
 
+**Las cuatro condiciones tienen una mitad comprobable y una mitad adjudicada, y conviene decir cuál
+es cuál.** `pedido-referencias` comprueba que la referencia **resuelva contra su destino real**: para
+`pedido`, una cláusula de la partición vigente y `pendiente`; para `clarify`, una entrada `Q<n>` que
+existe en `## Clarifications`. Para `constitution` y `repositorio` comprueba que la referencia no
+lleve la forma de otra autoridad, y **no** que la sección o la regla existan: eso exige leer
+`.specify/constitution.md` y el árbol, que el bloque no recibe. Y en las cuatro, «que el criterio no
+exceda lo que esa autoridad decidió» es adjudicación semántica y queda en el juicio del conductor y
+en el gate humano — declararlo acá es lo que impide leer el verde del bloque como si cubriera eso.
+
 **El no-op concreto que la vara tiene que rechazar**, escrito con su ejemplo y no en abstracto: una
 cláusula `P-1: realizar el cambio solicitado`, de la que después cuelgan los cuarenta criterios. Es
 formalmente válida —hay `P-k`, hay `version`, hay autoridad `pedido`— y no acredita nada: no cita
@@ -2507,7 +2516,7 @@ cláusula está bien redactada.
 |---|---|---|---|---|---|
 | `pedido-jsonl` | `gather-context` | al cerrar 3b, **antes** del sub-paso 4 | la ruta de `literal.jsonl`, y el `n` inicial cuando no es 1 | el código de salida | **fallo cerrado**: no se avanza a la fusión |
 | `pedido-unicidad` | `specify`, y `resume` | antes de presentar el gate de la spec; en `resume`, **siempre** tras la cadena, porque no necesita más que el registro | la ruta de `registro.md` | el código de salida | el gate **no se presenta**; en `resume`, con `1` se retoma en el gate de `specify` —**no** es cuarentena— y con `3` **no se enruta**: es un fallo de ejecución |
-| `pedido-referencias` | `specify`, cada recálculo que la tabla de puertas declare, y `resume` | antes del gate que esa fila nombra; en `resume`, tras la cadena y solo si el flujo ya adjudicó criterios —la disyunción de tres artefactos de `SKILL.md`— | `registro.md` y la **sede de los criterios**: `spec.md`, o `plan.md` en la rama trivial | el código de salida | el gate **no se presenta**; en `resume`, con `1` se retoma en el gate de `specify` — **no** es cuarentena |
+| `pedido-referencias` | `specify`, cada recálculo que la tabla de puertas declare, y `resume` | antes del gate que esa fila nombra; en `resume`, tras la cadena y solo si el flujo ya adjudicó criterios —la disyunción de tres artefactos de `SKILL.md`— | `registro.md` y la **sede de los criterios**: `spec.md`, o `plan.md` en la rama trivial | el código de salida | el gate **no se presenta**; en `resume`, con `1` se retoma en el gate de `specify` —**no** es cuarentena— y con `3` **no se enruta**: es un fallo de ejecución, el mismo destino que el `2` del marcador |
 | `pedido-marcador` | `resume`, y `gather-context` en 3b | en `resume`, **primera** comprobación del paso, antes de enrutar; en 3b, **antes de escribir**, y solo si `.plans/<id>/` ya existe | la raíz del flujo | la celda, en stdout | con `1` o `2` **no se enruta** por ninguna rama, y en 3b no se escribe nada |
 | `pedido-digest` | `resume` | **después** del marcador, y solo si su celda fue «presente y legible» | la ruta de `registro.md` | el código de salida | con `1` la celda pasa a **cuarentena**; con `3` la cadena queda **sin comprobar** y se informa así, sin leerlo como verde |
 | `pedido-criterio` | `specify`, en la misma puerta que `pedido-referencias`; y `resume`, **después** de la cadena y solo si el flujo ya adjudicó criterios | antes del gate que esa fila nombra; en `resume`, antes de enrutar | `registro.md` y la **sede de los criterios** | el código de salida | en `specify`, con `1` el gate **no se presenta**; en `resume`, con `1` **no es cuarentena** —el paquete está intacto— sino retomar en el gate de `specify` a re-adjudicar `R2`. Con `3` los hashes quedan **sin comprobar** y se informa así, sin leerlo como verde ni bloquear |
@@ -2817,6 +2826,19 @@ pedido_referencias() {
       sig = substr(t, r + l, 1)
       if (sig ~ /[0-9A-Za-z_]/) return ""
       return normid(substr(t, r, l)) }
+    # la misma gramática de apertura, para las entradas de `## Clarifications`: la plantilla
+    # canónica las numera —`- **Q1:** … — **A:** …`— y la referencia de una autoridad `clarify`
+    # apunta a ese número
+    function abreq(s,   t, r, l, sig) {
+      t = s
+      sub("^" ESP "+", "", t)
+      sub("^([-*+]|[0-9]+[.)])" ESP "+", "", t)
+      sub("^([*][*]|[*]|" BT ")+", "", t)
+      if (!match(t, /^Q[0-9]+/)) return ""
+      r = RSTART; l = RLENGTH
+      sig = substr(t, r + l, 1)
+      if (sig ~ /[0-9A-Za-z_]/) return ""
+      return "Q" norm(substr(t, r + 1, l - 1)) }
     BEGIN { FS=sprintf("%c",124)
             ESP = "[ " sprintf("%c",9) "]"; BT = sprintf("%c",96)
             for (i = 128; i < 192; i++) CONT = CONT sprintf("%c", i) }
@@ -2844,17 +2866,24 @@ pedido_referencias() {
     # resolvía contra cualquier aparición del identificador, así que un criterio nombrado en prosa
     # y nunca declarado la satisfacía. Las dos direcciones de R2 rigen ahora sobre `abre`
     FILENAME == ESPEC {
+      if ($0 ~ /^##[ ]+Clarifications/) { enclar = 1 }
+      else if ($0 ~ /^##[ ]/) { enclar = 0 }
+      if (enclar) { qcl = abreq($0); if (qcl != "") hayq[qcl] = 1 }
       ab = abrec($0)
       if (ab != "") { abre[ab]++
         # la anotación de autoridad, que el contrato obliga a poner al final de esa misma línea,
         # y con cardinalidad UNO: dos anotaciones son dos autoridades, y el contrato manda partir
         # el criterio en vez de acumularlas
+        # la sintaxis es UNA, y es la misma que retiran los dos publicadores: sin el espacio tras
+        # los dos puntos, la anotación pasaba las comprobaciones, entraba al preimage del criterio
+        # y **sobrevivía a la sanitización**, o sea que la autoridad se publicaba hacia afuera
         resto2 = $0; nan = 0; an = ""
-        while (match(resto2, /\[autoridad:[ ]*[^]]*\]/)) { nan++
+        while (match(resto2, /\[autoridad: [^]]*\]/)) { nan++
           if (nan == 1) { an = substr(resto2, RSTART, RLENGTH)
-            sub(/^\[autoridad:[ ]*/, "", an); sub(/[ ]*\]$/, "", an) }
+            sub(/^\[autoridad: [ ]*/, "", an); sub(/[ ]*\]$/, "", an) }
           resto2 = substr(resto2, RSTART + RLENGTH) }
-        if (!(ab in anot)) anot[ab] = (nan == 1) ? an : ((nan == 0) ? "-sin-" : "-varias-") }
+        if (!(ab in anot)) anot[ab] = (nan == 1) ? an : ((nan == 0) ? "-sin-" : "-varias-")
+        if ($0 ~ /\[autoridad:[^ ]/) mala[ab] = 1 }
       next }
     /^## clausulas/ { s="c"; next }
     /^## eventos/   { s="e"; next }
@@ -2888,6 +2917,11 @@ pedido_referencias() {
       # pendiente es gratis y es la otra forma de evadir R3
       else if (apl != "pendiente" && (evi == "" || evi == "-"))
         print "clausula " apl " sin evidencia: " id
+      # la evidencia tiene DESTINO, no solo forma: para `descartada`, el evento de descarte que la
+      # autorizó; para `satisfecha-por-trabajo-previo`, la entrada de `antecedentes.md`. Sin esto,
+      # cualquier cadena no vacía sacaba una cláusula de `R3`
+      else if (apl == "descartada") evdesc[normid(id) "@" norm(ver)] = evi
+      else if (apl == "satisfecha-por-trabajo-previo") { nsat++; evsat[normid(id) "@" norm(ver)] = evi }
       if (ver ~ /^[0-9]+$/) { ver = norm(ver)
         clausula[ck "@" ver] = 1
         if (!(ck in vmax) || cmpd(ver, vmax[ck]) > 0) {
@@ -2934,7 +2968,31 @@ pedido_referencias() {
     s == "e" && id ~ /^E-[0-9]+$/ {
       tipo=$6; gsub(/[ *]/,"",tipo); gsub(sprintf("%c",96),"",tipo)
       ob=$7; gsub(/[ *]/,"",ob); gsub(sprintf("%c",96),"",ob)
-      if (ob ~ /^P-[0-9]+@[0-9]+$/) { split(ob, pe, "@"); evclau[nev] = normid(pe[1]) "@" norm(pe[2]) }
+      # las columnas de enum cerrado gobiernan el routing de `resume` —«retoma en el gate del
+      # productor que las dejó»— y ninguna tenía predicado: un `productor` inventado nombraba un
+      # gate que no existe, y un `estado` fuera del enum dejaba el evento sin clasificar
+      acto=$4; gsub(/[ *]/,"",acto); gsub(sprintf("%c",96),"",acto)
+      prod=$5; gsub(/[ *]/,"",prod); gsub(sprintf("%c",96),"",prod)
+      sup=$8;  gsub(/[ *]/,"",sup);  gsub(sprintf("%c",96),"",sup)
+      reso=$9; gsub(/[ *]/,"",reso); gsub(sprintf("%c",96),"",reso)
+      esta=$10; gsub(/[ *]/,"",esta); gsub(sprintf("%c",96),"",esta)
+      if (acto != "usuario" && acto != "conductor")
+        print "actor fuera del dominio en " id ": " (acto == "" ? "vacio" : acto)
+      if (prod != "specify" && prod != "gate-spec" && prod != "clarify" && prod != "trivial" &&
+          prod != "revision-adversarial" && prod != "tracker")
+        print "productor fuera del dominio en " id ": " (prod == "" ? "vacio" : prod)
+      if (tipo != "propuesta" && tipo != "admision" && tipo != "correccion" && tipo != "retiro" &&
+          tipo != "descarte" && tipo != "confirmacion")
+        print "tipo fuera del dominio en " id ": " (tipo == "" ? "vacio" : tipo)
+      if (sup != "-" && sup !~ /^E-[0-9]+$/)
+        print "supersede fuera del dominio en " id ": " (sup == "" ? "vacio" : sup)
+      if (reso != "admitida" && reso != "no-admitida" && reso != "-")
+        print "resolucion fuera del dominio en " id ": " (reso == "" ? "vacia" : reso)
+      if (esta != "pendiente" && esta != "resuelta")
+        print "estado fuera del dominio en " id ": " (esta == "" ? "vacio" : esta)
+      evtipo[normid(id)] = tipo
+      if (ob ~ /^P-[0-9]+@[0-9]+$/) { split(ob, pe, "@")
+        evclau[nev] = normid(pe[1]) "@" norm(pe[2]); evobjt[normid(id)] = evclau[nev] }
       # el vacío NO resuelve: el dominio admite tres formas o el guion, y una celda vacía es una
       # fila mal formada. Y AC-n@hash exige un sha256 completo: AC-1@ y AC-1@x no apuntan a nada
       resuelve = (ob == "-")
@@ -3001,6 +3059,7 @@ pedido_referencias() {
       for (a in abre) {
         if (abre[a] > 1) print "criterio declarado mas de una vez en la sede: " a
         if (!(a in actraza)) print "criterio en la sede sin fila en la traza: " a
+        if (a in mala) print "anotacion fuera de la sintaxis canonica en " a ": falta el espacio tras los dos puntos"
         if (anot[a] == "-sin-") print "criterio en la sede sin anotacion de autoridad: " a
         else if (anot[a] == "-varias-") print "criterio con mas de una anotacion de autoridad: " a
         else if (a in actraza) {
@@ -3013,6 +3072,8 @@ pedido_referencias() {
       # la condición de validez de la autoridad `pedido`: la referencia tiene que resolver contra
       # una cláusula de la partición vigente y que esté `pendiente`
       for (a in autz) {
+        if (autz[a] == "clarify" && refz[a] ~ /^Q[0-9]+$/ && !(("Q" norm(substr(refz[a], 2))) in hayq))
+          print "autoridad clarify que apunta a una Q inexistente en " a ": " refz[a]
         if (autz[a] != "pedido") continue
         if (refz[a] !~ /^P-[0-9]+@[0-9]+$/) { print "autoridad pedido con referencia que no es P-k@version en " a ": " refz[a]; continue }
         split(refz[a], pv, "@"); rk = normid(pv[1]); rv = norm(pv[2])
@@ -3021,6 +3082,24 @@ pedido_referencias() {
         else if (aplde[rk] != "pendiente")
           print "autoridad pedido contra una clausula no pendiente en " a ": " refz[a] " esta " aplde[rk]
         else atendida[rk "@" rv] = 1 }
+      # la evidencia de un `descartada` apunta a un evento que existe, es un `descarte`, y decide
+      # sobre esa misma cláusula: las tres, o la referencia no acredita nada
+      for (u in evdesc) {
+        ev2 = evdesc[u]
+        if (ev2 !~ /^E-[0-9]+$/) { print "evidencia de descarte que no es un E-k en " u ": " ev2; continue }
+        en2 = normid(ev2)
+        if (!(en2 in evtipo)) { print "evidencia de descarte que no existe en eventos en " u ": " ev2; continue }
+        if (evtipo[en2] != "descarte") print "el evento de la evidencia no es un descarte en " u ": " ev2
+        else if (evobjt[en2] != u) print "el evento de descarte no decide sobre esa clausula en " u ": " ev2 }
+      # la de un `satisfecha-por-trabajo-previo` resuelve contra `antecedentes.md`, que es la sede
+      # que la acredita. Sin ese archivo no hay nada que acredite trabajo previo
+      if (nsat > 0) {
+        while ((getline lant < ANT) > 0) { hayant = 1; antxt = antxt lant "\n" }
+        close(ANT)
+        for (u in evsat) {
+          if (!hayant) { print "clausula satisfecha-por-trabajo-previo sin antecedentes.md que la acredite: " u; continue }
+          if (index(antxt, evsat[u]) == 0)
+            print "la evidencia de " u " no aparece en antecedentes.md: " evsat[u] } }
       # R3: cada cláusula vigente `pendiente` tiene al menos un criterio que la atiende. Sin este
       # predicado el alcance se achicaba en silencio: una cláusula del pedido sin ningún AC
       for (ck in vmax) {
@@ -3056,7 +3135,7 @@ pedido_referencias() {
           if (ini[ln SUBSEP a] < esp) print "R1: la linea " ln " se solapa en " ini[ln SUBSEP a] "-" (esp-1)
           if (fin[ln SUBSEP a]+1 > esp) esp = fin[ln SUBSEP a]+1 }
         if (esp <= L) print "R1: la linea " ln " no cubre " esp "-" L } }' \
-    ELIT="$lit" ESPEC="$sp" "$lit" "$sp" "$r")
+    ELIT="$lit" ESPEC="$sp" ANT="$(dirname "$(dirname "$r")")/antecedentes.md" "$lit" "$sp" "$r")
   rc=$?
   # una salida vacía NO es un verde por sí sola: awk pudo haber muerto sin escribir nada
   if [ "$rc" -ne 0 ]; then echo "la comprobación no pudo ejecutarse: awk salió $rc" >&2; return 3; fi
@@ -3469,7 +3548,10 @@ pedido_criterio() {
   if [ ! -s "$base.t" ]; then rm -f "$base.t"; return 0; fi
   malo=0; parado=0
   while IFS='	' read -r ac hc; do
-    LC_ALL=C awk -v AC="$ac" '
+    # el identificador NO viaja por -v: argv está acotado por ARG_MAX y las identidades no llevan
+    # máximo, así que un AC-n grande hacía fallar a awk y el bloque devolvía 3 —«sin comprobar»—
+    # sobre un registro perfectamente legible, con el gate siguiendo sin el pin del hash
+    printf '%s\n' "$ac" | LC_ALL=C awk '
       function norm(x) { sub(/^0+/, "", x); return (x == "" ? "0" : x) }
       function normid(x,   pre, resto, suf) {
         if (!match(x, /^[A-Za-z]+-/)) return x
@@ -3493,7 +3575,8 @@ pedido_criterio() {
       # además lleva la anotación de autoridad, que el contrato obliga a poner al final de la
       # primera línea de cada AC-n. Sin esa condición, una MENCIÓN anterior —«el resumen apunta a
       # AC-1»— arrancaba el preimage, y cambiar el criterio de verdad no movía el hash
-      BEGIN { ESP = "[ " sprintf("%c",9) "]"; BT = sprintf("%c",96) }
+      BEGIN { ESP = "[ " sprintf("%c",9) "]"; BT = sprintf("%c",96)
+              if ((getline AC) <= 0) { exit 3 } }
       # la MISMA noción de apertura que usa pedido-referencias: una línea abre un criterio cuando,
       # quitados los espacios y un marcador de lista inicial, empieza con su identificador. Antes
       # se exigía además la anotación de autoridad, y eso ataba este bloque a una comprobación que
@@ -3527,7 +3610,7 @@ pedido_criterio() {
       # la segunda sin comprobar, y cambiarla no movía nada. El 4 es propio y lo lee el llamador
       END { if (visto > 1) exit 4
             while (n > 0 && buf[n] == "") n--
-            for (i = 1; i <= n; i++) print buf[i] }' "$cs" > "$base.b"
+            for (i = 1; i <= n; i++) print buf[i] }' - "$cs" > "$base.b"
     rcb=$?
     if [ "$rcb" -eq 4 ]; then
       echo "criterio declarado mas de una vez en la sede: $ac"; malo=1; continue
@@ -4155,8 +4238,8 @@ sin comprobar, con su razón; los candidatos **descritos** —"un flujo archivad
 - **AC-2:** <...>
 
 ## Clarifications
-<Q&A registradas durante `clarify`. Vacío si no hubo.>
-- **Q:** <pregunta> — **A:** <respuesta> (afecta: AC-n)
+<Q&A registradas durante `clarify`, **numeradas**. Vacío si no hubo.>
+- **Q1:** <pregunta> — **A:** <respuesta> (afecta: AC-n)
 ```
 
 ## Producción del contrato de verificación
