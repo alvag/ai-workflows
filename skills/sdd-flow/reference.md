@@ -16,6 +16,7 @@ Detalle operativo de la skill `sdd-flow`. El `SKILL.md` apunta acá cuando neces
 - [Construcción del mensaje de commit](#construcción-del-mensaje-de-commit)
 - [Apertura de PR (opcional, tras push)](#apertura-de-pr-opcional-tras-push)
 - [La receta de serialización de las huellas](#la-receta-de-serialización-de-las-huellas)
+- [El pedido congelado](#el-pedido-congelado)
 - [Búsqueda de antecedentes](#búsqueda-de-antecedentes)
 - [Plantilla de constitution](#plantilla-de-constitution)
 - [Plantilla de spec](#plantilla-de-spec)
@@ -1897,6 +1898,2151 @@ sí resuelve esta receta es la garantía no mutante de arriba; lo que falta es e
 publicación atómica que convierta una secuencia viva sin romper lo que ya tiene escrito.
 `migracion-seguimiento: https://github.com/alvag/ai-workflows/issues/102`
 
+## El pedido congelado
+
+Detalle del **sub-paso 3b** de `gather-context` y de la **vara** que `specify` aplica sobre cada
+criterio antes de su gate. `SKILL.md` lleva el mandato —cuándo se captura, quién aplica la vara, cómo
+enruta `resume`—; acá viven los esquemas, las tablas normativas y los bloques deterministas que las
+comprueban.
+
+### El paquete del pedido
+
+`.plans/<id>/pedido/` es la sede del pedido, con dos archivos y **garantías distintas**, que se
+nombran por separado porque no son la misma: `literal.jsonl` **nunca se reescribe** —una línea
+capturada queda exactamente como se captó—, y a `registro.md` **se anexa**: corregir una cláusula
+`P-k` agrega una fila con la versión siguiente, y la anterior sigue siendo legible.
+
+**Las identidades no llevan máximo, y eso obliga a compararlas en decimal.** Alcanza a los dos campos
+que lo son —el `n` de la línea y la `version` de una cláusula—. La tentación es acotarlos al rango de
+las herramientas que los comprueban: `awk` compara en punto flotante y el `test` del shell en enteros
+de 64 bits, así que un techo de quince dígitos —el mayor ancho decimal exacto en las dos— vuelve
+trivial la comprobación. **Ese techo se escribió, se probó y se retiró, porque deja un borde sin
+transición:** la recuperación de una cuarentena manda reiniciar *después del máximo observado*, y con
+la identidad ya en el techo el sucesor queda prohibido; por el mismo motivo una cláusula cuya versión
+llegara al tope no se podría corregir, porque corregir anexa `version+1`. Y el estado **no exige
+capturar 10^15 líneas**: basta un literal corrupto que traiga ese valor, que es justamente el que va a
+cuarentena. Un dominio cuyo borde no tiene salida no acota: atrapa.
+
+Entonces las identidades se comparan y se incrementan **en decimal y sobre el lexema**: longitud
+primero y orden lexicográfico después para comparar, acarreo dígito a dígito para el sucesor. Son unas
+líneas más en dos de los bloques, y a cambio **ninguna comprobación depende del rango de ninguna de las
+dos herramientas** —que era lo único que el techo compraba—. La regla de evidencia de este repositorio
+pide que subir un escalón se justifique con el caso en que el barato falló: acá está medido, y es el
+sucesor del máximo.
+
+**Lo que la conversión sí rompía, y por qué el remedio es este y no otro.** Sin comparación decimal, un
+`n` de diecisiete dígitos se convertía en **otro número** —`99999999999999999` pasaba a valer
+`100000000000000000`— y el paquete se clasificaba `aplicable` **sin emitir señal alguna**; con treinta,
+la conversión devolvía notación científica, el `test` del shell fallaba con `integer expression
+expected` y una corrupción del literal terminaba como **fallo de invocación**, dejando a `resume` sin
+celda. El decimal cierra los dos sin inventar un borde.
+
+**Los rangos de `fragmentos` se siguen comparando convirtiendo, y conviene decir por qué.** No son
+identidad: un valor desmesurado hace que el rango caiga fuera del largo del texto y la comprobación da
+**rojo**. La comparación decimal se paga donde una conversión imprecisa produce un **falso verde** o un
+borde sin salida, no donde produce un fallo cerrado.
+
+**`literal.jsonl` — un objeto JSON por línea.** Los siete campos son obligatorios:
+
+| Campo | Tipo | Qué es |
+|---|---|---|
+| `n` | entero ≥ 1, **sin máximo**, monótono sin huecos, nunca reutilizado | orden de captura |
+| `captado_en` | ISO-8601 | cuándo se captó |
+| `origen` | `usuario` · `tracker` · `adjunto` · `ruta` | qué clase de fuente |
+| `referencia` | texto | qué fuente concreta: número de mensaje, clave del ticket, nombre del adjunto, ruta |
+| `medio` | `texto` · `referencia` | si la línea trae el contenido, o solo cómo alcanzarlo |
+| `texto` | texto | la serialización canónica de la fuente, según la tabla de abajo |
+| `sha256` | hex | hash de los bytes UTF-8 de `texto`, que es el preimage declarado |
+
+**La serialización canónica, por clase de fuente.** Sin ella, `texto` guardaría «el contenido» y dos
+capturas de la misma fuente podrían diferir sin que nada lo señale:
+
+| `origen` | Qué va en `texto` |
+|---|---|
+| `usuario` | el mensaje tal como llegó, sin normalizar ni recortar |
+| `tracker` | los campos del issue, uno por línea y **en este orden**: `resumen`, `descripcion`, `tipo`, `prioridad`, `labels`, `estado`, cada uno como `<campo>: <valor>`. Nunca el JSON crudo del host, que cambia de forma entre integraciones sin que el pedido haya cambiado |
+| `adjunto` · `ruta` legible como texto | el contenido, sin normalizar |
+| `adjunto` · `ruta` no legible | `medio: referencia`, y `texto` lleva `nombre`, `tipo` y `tamaño`, uno por línea |
+
+**Mensajes múltiples**: una línea por mensaje, en orden de llegada. La fusión del sub-paso 4 no las
+toca — fusiona para describir, no para reemplazar lo capturado.
+
+**La unidad del rango de fragmentos, que la traza cita.** `desde` y `hasta` son **posiciones de
+carácter Unicode** sobre el campo `texto` de la línea `n`, **1-indexadas** e **inclusivas en los dos
+extremos**. El límite es `1 ≤ desde ≤ hasta ≤ largo(texto)`. Se eligen caracteres y no bytes porque
+el pedido se escribe en español: un rango en bytes parte una `é` al medio, y el defecto no se ve
+hasta que alguien recorta por ahí.
+
+**Una fuente que no se pudo leer no queda cubierta por vacuidad, y su bloqueo tiene salida.** Toda
+línea con `medio: referencia` **bloquea el congelamiento**; el ciclo que lo levanta son tres actos, y
+los tres son obligatorios:
+
+1. la línea obliga a una cláusula con `aplicabilidad: pendiente` cuyo **texto ordena obtener o
+   inspeccionar esa fuente** — no una cláusula genérica, sino la instrucción concreta;
+2. el usuario **acepta esa limitación en el checkpoint** del paso 6, que es donde las cláusulas se
+   congelan;
+3. esa aceptación queda como evento `tipo: admision` con `actor: usuario`.
+
+Sin los tres, el bloqueo no tiene transición y el flujo queda trabado: bloquear sin declarar quién lo
+levanta y con qué constancia es un gate sin salida practicable. Y sin la regla entera, el criterio de
+cobertura del literal se satisfacía declarando cubierto lo que nadie pudo leer.
+
+**Orden de escritura y recuperación.** Primero `literal.jsonl`, después `registro.md`: el literal es
+lo irreemplazable y el registro es re-derivable. Cada interrupción deja un **estado observable**, y
+los seis tienen su salida declarada — ninguno queda a criterio de quien retoma:
+
+| Qué se observa | Qué significa | Qué hace el flujo |
+|---|---|---|
+| `.plans/<id>/` **vacío** | la sesión cayó entre el `mkdir` y el marcador | **fallo cerrado**: re-corre 3b desde cero |
+| marcador, sin `pedido/` | cayó entre el marcador y la sede del paquete | **fallo cerrado**: re-corre 3b desde cero |
+| `literal.jsonl` sin `registro.md` | la captura terminó, la redacción no | continúa en la redacción de cláusulas |
+| una línea de `literal.jsonl` que no parsea | la sede está corrupta | **cuarentena**: no se degrada a «lo que se pueda leer» |
+| `registro.md` sin `literal.jsonl` | estado imposible por el orden de escritura | **cuarentena** |
+| un eslabón de la cadena que no reproduce lo que selló | alguien reescribió filas ya confirmadas | **cuarentena** |
+
+La última fila es la que la cadena de digests vuelve detectable: sin encadenar, una reescritura de
+cláusulas ya confirmadas no dejaba rastro.
+
+**Por qué el paquete vive en un subdirectorio, con el fundamento correcto.** El predicado del vault
+rechaza toda ruta que contenga un **separador** y, además, todo lo que no termine en `.md`: por lo
+segundo, `literal.jsonl` ya quedaba excluido aun estando en la raíz del flujo, así que el
+subdirectorio no es lo que lo protege. Lo que compra de verdad es excluir **también** `registro.md` y
+`pedido/proyeccion-clausulas.md`, que sí terminan en `.md`. Se elige excluirlos porque sus cláusulas
+son paráfrasis cercanas del texto del usuario y su traza es material de trabajo, y el vault es un
+repositorio git donde lo que entra queda publicado y commiteado. Lo que se pierde y se acepta perder
+es que la declaración operativa del pedido no llegue al vault; se acepta porque **lo decidido sí
+llega** —vive en `spec.md`, que es un `.md` de la raíz—, y `registro.md` es el ledger de trabajo que
+produjo esa decisión, no la decisión.
+
+### La serialización de `registro.md`
+
+Todo lo que el registro guarda va en **tablas de columnas fijas**, no en prosa: son transiciones
+deterministas, y una tabla se parsea igual dos veces mientras que un párrafo no. Es el mismo motivo
+por el que `antecedentes.md` tiene su bloque máquina.
+
+**`## clausulas` — una fila por versión de cláusula.**
+
+| Columna | Dominio | Qué es |
+|---|---|---|
+| `P-k` | `P-` + entero ≥ 1, **nunca reutilizado** | identidad de la cláusula |
+| `version` | entero ≥ 1, **sin máximo**, monótono por `P-k` | el par `(P-k, version)` identifica **un texto**; corregir **anexa** una fila con `version+1` y la anterior se conserva legible |
+| `aplicabilidad` | `pendiente` · `satisfecha-por-trabajo-previo` · `descartada` | los tres estados, con su vocabulario. Es aplicabilidad, **no** cobertura: dice qué se hace con la cláusula, no cuánto del literal toca |
+| `fragmentos` | lista `n:desde-hasta`, separada por `, ` | qué parte del literal origina esta cláusula |
+| `texto` | texto | la cláusula |
+| `evidencia` | referencia o `-` | **obligatoria** si `aplicabilidad` no es `pendiente`: para `satisfecha-por-trabajo-previo`, la entrada acreditada de `antecedentes.md`; para `descartada`, el `E-k` que lo autorizó |
+
+**`## eventos` — una fila por evento, append-only.**
+
+| Columna | Dominio |
+|---|---|
+| `E-k` | `E-` + entero ≥ 1, nunca reutilizado |
+| `momento` | ISO-8601 |
+| `actor` | `usuario` · `conductor` |
+| `productor` | `specify` · `gate-spec` · `clarify` · `trivial` · `revision-adversarial` · `tracker` — las seis filas de la tabla de puertas |
+| `tipo` | `propuesta` · `admision` · `correccion` · `retiro` · `descarte` · `confirmacion` |
+| `objetivo` | `P-k@version` · `AC-n@hash` · `digest@<sha256>@<filas>:<lineas>` · `-` |
+| `supersede` | `E-j` · `-` |
+| `resolucion` | `admitida` · `no-admitida` · `-` |
+| `estado` | `pendiente` · `resuelta` |
+| `motivo` | texto · `-` — **obligatorio** en un `tipo: descarte`, que sin él es un estado inválido |
+
+**El pipe se representa con el escape de GFM, `\|`, y esa es su única forma.** Una celda que necesite
+el carácter literal —`rg foo \| wc -l`— lo escribe así: Markdown lo muestra como contenido y **todo
+lector que parta una fila de estas tablas lo trata igual**, sustituyéndolo antes de partir y
+devolviéndolo al leer la celda. Lo que lee el preimage ya serializado no la lleva, porque ahí la
+representación ya se resolvió río arriba. Es reversible y no cambia la aridad. Rechazarlo, que fue el primer
+intento, dejaba **sin serialización** a todo texto que llevara un pipe y volvía inalcanzable el gate
+para contenido válido: adaptar el dominio al parser accidental en vez del parser al dominio. Un pipe
+**sin escapar** sigue separando celdas, que es lo que hace comprobable la aridad.
+
+**La cabecera es exacta y no hay compatibilidad hacia atrás, y eso es una decisión, no un descuido.**
+Las tres tablas se comprueban **por su cabecera entera** —nombres y cantidad de columnas—, no por su
+primera celda: con solo la primera, una tabla con la forma de otra versión del esquema pasaba en
+verde, y todo lo que se lea por posición leía la columna equivocada. Un `registro.md` escrito con
+otra forma **no es legible por este contrato**.
+
+**Por qué no se versiona el esquema.** Este formato **no existe fuera de esta rama sin mergear**, y
+cada cambio que lleva —la receta del digest dos veces, la forma del objetivo, la frontera, esta
+columna— fue incompatible con el anterior sin que nadie pidiera migración. Una escalera de versiones
+para un artefacto sin consumidores liberados es maquinaria sin consumidor, que es lo que la regla 1
+de este repositorio corta. **El costo se declara en vez de esconderse:** un paquete escrito por un
+commit intermedio de esta rama da `1` en `pedido-unicidad` y se repara en el gate; si además estaba
+confirmado, corregirle la cabecera rompe la cadena —que firma cabecera y separador a propósito— y cae
+en **cuarentena**, con su procedimiento declarado. No hay forma de tener las dos cosas: o los bytes
+firmados son inmutables, o el esquema puede cambiar sin romperlos.
+
+`productor` es lo que le permite al routing de `resume` **nombrar** en qué gate retomar: sin esa
+columna, «retoma en el gate del productor que las dejó» no era implementable.
+
+**El preimage de `hash_criterio`, porque «el texto del criterio» no es un conjunto de bytes.**
+Mientras no estuviera definido, ese hash no se podía comprobar contra nada: se comparaba contra otra
+copia de sí mismo —el `hash` del objetivo de un evento— y las dos podían coincidir sin corresponder a
+ningún texto. El **bloque del criterio** es, en la sede de los criterios, desde la línea que lo
+**declara** hasta —**sin incluirla**— la primera de estas tres: la línea que declara el criterio
+siguiente, una línea que empiece con `#`, o el final del archivo. Una línea **declara** un criterio
+cuando su primer identificador válido es ese criterio **y** lleva la anotación de autoridad, que
+este mismo documento obliga a poner al final de la primera línea de cada `AC-n`. Sin esa condición
+el bloque arrancaba en una **mención** anterior —«el resumen apunta a `AC-1`»— y cambiar el criterio
+de verdad no movía el hash. De ese bloque se
+retira la anotación `\[autoridad: [^]]*\]` con el mismo patrón que usan los dos publicadores, se
+recortan los espacios al final de cada línea, se descartan las líneas vacías del final, y cada línea
+queda terminada en LF. El `sha256` se calcula sobre esos bytes UTF-8.
+
+**El corte por encabezado no es decorativo:** sin él, el bloque del último criterio llegaba hasta el
+final del archivo, y agregar una sección al final de la spec movía su hash sin que nadie hubiera
+tocado el criterio.
+
+**`## traza` — una fila por criterio.**
+
+| Columna | Dominio |
+|---|---|
+| `AC-n` | identidad del criterio, nunca reutilizada |
+| `hash_criterio` | `sha256` del **bloque del criterio**, definido abajo |
+| `autoridad` | `pedido` · `constitution` · `repositorio` · `clarify` — **exactamente una** |
+| `referencia` | `P-k@version` · sección · regla · `Q<n>`, según la autoridad |
+| `derivacion` | la derivación adjudicada, en prosa |
+
+**La salida append-only, en concreto.** Una `correccion` anexa la fila `version+1` y deja la anterior
+donde estaba; un `retiro` anexa su evento y marca la cláusula fuera de la partición vigente sin
+borrarla. En los dos casos el texto original **se conserva** legible, que es lo que distingue anexar
+de reescribir: el registro se lee entero para reconstruir qué se pidió y cuándo dejó de pedirse.
+
+**La anotación de autoridad en `spec.md`, con su sintaxis exacta.** Cada `AC-n` la lleva al final de
+su primera línea, en una sola forma:
+
+```
+[autoridad: pedido:P-3@2]   [autoridad: constitution:Done]
+[autoridad: repositorio:regla-2]   [autoridad: clarify:Q4]
+```
+
+Cardinalidad **uno**: si las afirmaciones de un criterio dependen de autoridades distintas, el
+criterio se parte. El **patrón exacto que retiran los dos publicadores** —`publish-spec` y el
+sub-paso que abre el PR— es `\[autoridad: [^]]*\]`. Ese regex es la **sede única** de la
+sanitización: sin él escrito, cada publicador tenía que adivinar qué borrar.
+
+**La versión confirmada se identifica por una cadena de digests, no por un contador.** Un contador
+identifica el último literal, y el conjunto de cláusulas puede cambiar sin que ese número se mueva.
+En su lugar, cada confirmación del checkpoint anexa un evento `tipo: confirmacion` cuyo `objetivo` se
+escribe **`digest@<digest_k>@<filas>:<lineas>`**, con `digest_k` en hexadecimal minúscula de 64
+caracteres y:
+
+```
+digest_k = sha256( digest_{k-1} || serializacion_canonica_sellada )
+```
+
+con `digest_0` = la cadena vacía.
+
+**La frontera va en claro, y eso es lo que vuelve verificable a la cadena.** `<filas>` es cuántas
+filas de `## clausulas` y `<lineas>` cuántas líneas de `literal.jsonl` había cuando se firmó; las dos
+en decimal sin ceros a la izquierda. Sin ellas, un digest firmado sobre el estado de ayer se
+recomputaba contra el estado de hoy, y **una anexión legítima posterior —que es el régimen normal del
+registro— lo volvía irreproducible**: el flujo mandaba a cuarentena un paquete sano, que es un gate
+sin salida practicable. Con la frontera escrita, cada eslabón se recomputa sobre **el prefijo que
+selló**, así que lo anexado después no lo toca y **todos** los eslabones son verificables, no solo el
+último.
+
+**El prefijo no es decorativo: es lo que vuelve representable al digest en esa columna.** Sin él, el
+`objetivo` de una confirmación no es ninguna de las formas que el dominio admite, y la comprobación de
+referencias lo devuelve como objetivo que no resuelve — dejando el gate de `specify` inalcanzable
+desde la primera confirmación en adelante. Se eligió un prefijo sobre una columna nueva porque la
+tabla es append-only: una columna desplaza a las que la siguen y obliga a reescribir cada fila ya
+anexada, mientras que el prefijo entra en el dominio existente y lo comprueba el mismo predicado que
+a las otras dos formas.
+
+La **serialización canónica sellada** es, en este orden y en UTF-8 con terminador LF:
+
+```
+frontera<TAB><filas><TAB><lineas>
+literal<TAB><sha256 de las primeras <lineas> líneas de literal.jsonl>
+c<TAB><celdas de la fila 1 de ## clausulas>
+…hasta la fila <filas>…
+e<TAB><celdas de cada fila de ## eventos por encima de la confirmación>
+```
+
+Cada fila se emite con **todas** sus celdas, recortadas de espacios en los extremos y separadas por
+tabulador, en el orden en que están escritas; la marca `c`/`e` de la primera columna es lo que impide
+que una fila de una tabla se lea como de la otra. La frontera entra al preimage además de estar en el
+objetivo, para que declarar una frontera y firmar otra no sea representable.
+
+**El separador se codifica dentro de la celda, y el codificador también.** Antes de unir, en cada
+celda se reemplaza `%` por `%25`, el tabulador por `%09` y el retorno de carro por `%0D`, **en ese
+orden**. Sin esa codificación la serialización **no es inyectiva** y el digest colisiona: una fila
+con `texto: left⇥right` y `evidencia: proof` produce exactamente los mismos bytes que una con
+`texto: left` y `evidencia: right⇥proof`, así que las dos versiones del registro firman igual. En un
+mecanismo cuyo único propósito es evidenciar manipulación, una colisión construible a mano no es una
+frontera declarable: es el mecanismo roto. Se codifica con `%` y no con la barra invertida porque el
+reemplazo de `gsub` **interpreta** la barra, y el número de barras que hay que escribir para emitir
+una difiere entre implementaciones de `awk`.
+
+**El dominio de la frontera, que es más que su forma.** Además de ser dos decimales canónicos, una
+frontera tiene que cumplir tres condiciones, y las tres nacen de que las dos tablas solo se anexan:
+
+| Condición | Qué impide |
+|---|---|
+| **no excede** lo que hay hoy: `filas ≤` las filas de `## clausulas` y `lineas ≤` las líneas del literal | que una confirmación diga haber firmado filas que nunca existieron, o que se borraron |
+| **no retrocede** respecto de la confirmación anterior, en ninguna de sus dos componentes | que una confirmación posterior firme **menos** de lo que otra ya había firmado, sacando de la cadena todo lo que quedó en el medio |
+| **no es vacua**: el prefijo firmado contiene al menos una fila de datos de `## clausulas`, y `lineas ≥ 1` | una confirmación con la frontera en la cabecera y el separador, que reproduce su digest sin cubrir una sola cláusula |
+| **cierra bajo sus propias referencias**: toda cláusula del prefijo cita solo líneas del literal dentro del prefijo, y todo evento del prefijo cuyo objetivo sea `P-k@version` resuelve contra una fila del prefijo | una confirmación que firma un estado **que nunca existió** — una cláusula sin el fragmento que la origina, o un evento que decide sobre una cláusula que todavía no estaba |
+
+Las cuatro se comprueban **en las dos sedes que leen el objetivo** —`pedido-referencias` al resolverlo
+y `pedido-digest` al recomputar—, porque las dos corren en pasos distintos y ninguna puede apoyarse
+en que la otra haya corrido antes.
+
+**Las tres primeras son sobre el dominio de la frontera; la cuarta es sobre la relación entre sus dos
+componentes**, y ese es el corte que faltaba: una frontera puede tener cada mitad dentro de su rango,
+no retroceder y no ser vacua, y aun así describir un estado incoherente porque las dos mitades no se
+eligieron juntas.
+
+**Se sellan las filas, todas, y no la partición vigente.** Una serialización que solo cubriera la
+versión máxima de cada `P-k` dejaba reescribir sin rastro **la versión anterior** —justo la que el
+régimen append-only promete conservar legible— y dejaba fuera la columna `evidencia`, que es lo que
+acredita un `descartada` o un `satisfecha-por-trabajo-previo`. Sellar la fila entera cubre las dos, y
+como las filas retiradas también entran, un `retiro` anexado después no mueve nada de lo ya firmado.
+Las filas de cabecera y separador cuentan como filas y se sellan igual: reescribir una cabecera es
+reescribir el registro.
+
+**`## eventos` se sella hasta la fila anterior a la confirmación**, que es la única frontera que no
+hace falta declarar: una confirmación no puede firmarse a sí misma, y lo anexado después de ella es
+por definición posterior. **`## traza` queda fuera de la cadena**, y no por omisión: es la única de
+las tres que **no es append-only** —`hash_criterio` se reescribe en cada adjudicación—, así que un
+prefijo suyo no es un estado congelable. Su integridad la cubre otra cosa: el hash del último evento
+que nombra a cada `AC-n`, que tiene que ser el del criterio vigente.
+
+**Qué se hashea del literal, porque sin definirlo la cadena no es reproducible.** Es el `sha256` de
+los **bytes de las primeras `<lineas>` líneas del archivo `literal.jsonl`** — no la concatenación de
+los campos `texto`, ni un hash de los `sha256` por línea. Se eligen bytes del archivo porque
+`literal.jsonl` solo se anexa y nunca se reescribe, así que un prefijo suyo es estable y cualquier
+reescritura de una línea vieja lo rompe, que es exactamente lo que la cadena existe para detectar.
+Sin esta definición, el estado «digest de la última confirmación que no reproduce lo que selló» no se
+puede evaluar, y con él se cae la fila de cuarentena que lo consume.
+
+**Encadenar es lo que le da autoridad independiente.** Un digest guardado al lado de las filas que
+protege no detecta nada si se reescriben los dos; encadenado, tocar una confirmación vieja rompe
+todos los eslabones posteriores. No es un mecanismo nuevo: es el mismo que este repositorio ya usa
+para sellar el contrato de verificación.
+
+### Las tres relaciones de traza
+
+Una tabla bidireccional `P-n ↔ AC-n` no demuestra que el literal esté trazado, no representa las
+autoridades que no son el pedido, y admite la implementación más floja: escribir
+`P-1: realizar el cambio solicitado` y colgar de ahí los cuarenta criterios. Las relaciones son
+**tres**, y se enuncian sobre las tablas de arriba:
+
+| Relación | Forma | Qué impide | Qué la comprueba |
+|---|---|---|---|
+| **R1** literal → cláusula | sobre la **partición vigente**: cada fragmento tiene exactamente una cláusula, y cada cláusula **cita el fragmento o los fragmentos que la originan** | que una parte del literal desaparezca antes de existir `P-k`; y que una cláusula genérica se declare suficiente sin nombrar qué parte del pedido toca | `pedido-referencias` |
+| **R2** criterio → autoridad | cada `AC-n` tiene **exactamente una** autoridad —`pedido`, `constitution`, `repositorio` o `clarify`— con su referencia y su derivación adjudicada | que un criterio flote sin de dónde salió. **Si sus afirmaciones dependen de autoridades distintas, el criterio se parte** | `pedido-referencias`, en las **dos direcciones** y con el dominio de las tres columnas; la concordancia con la anotación de la sede; y `pedido-criterio` para el hash |
+| **R3** cláusula pendiente → criterio | cada cláusula con `aplicabilidad: pendiente` tiene **al menos un** `AC-n` que la atiende | que el alcance se achique en silencio | `pedido-referencias` |
+
+**La cuarta columna no es documentación: es una obligación del documento.** Una relación enunciada sin
+ella es un estado inválido, no una fila incompleta. Se agrega porque las tres se declararon juntas y
+solo `R1` llegó a tener predicado: `R2` comprobaba **presencia** y `R3` **no comprobaba nada**, con los
+seis bloques en verde y el gate presentándose. La que más costaba era `R3`, cuyo propósito escrito
+—«que el alcance no se achique en silencio»— es el objeto entero de este flujo.
+
+**Qué comprueba `R2`, en concreto, porque «exactamente una autoridad» no es un predicado.** Son seis
+cosas: que la `autoridad` caiga en el dominio cerrado de cuatro valores; que `referencia` y
+`derivacion` no estén vacías ni en guion; que cada criterio **declarado** en la sede tenga su fila; que
+cada fila tenga su criterio en la sede; que la **anotación** de la sede y las columnas de la traza digan
+lo mismo —son dos sedes del mismo hecho, y si discrepan una miente—; y que una `autoridad: pedido`
+apunte a una cláusula **de la partición vigente y `pendiente`**, que es su condición de validez.
+
+**Y `R2` rige sobre lo que la sede *declara*, no sobre lo que menciona — en las dos direcciones.**
+Una línea **abre** un criterio cuando, quitados los espacios, un marcador de lista, una casilla de
+verificación y el énfasis, empieza con su identificador. La gramática se deriva de las **plantillas
+canónicas** de este documento —`- **AC-1:** Given …` y `- [ ] **AC-1** — …`—, y sin esa derivación
+ninguna de las dos abría un criterio: con la plantilla que el propio documento manda usar, las
+comprobaciones del lado de la declaración **se evaporaban enteras**. El guion bajo no se quita:
+`_AC-1_` es una mención en cursiva, y quitarlo la convertía en declaración.
+Nombrar un criterio ajeno en prosa —«esto no cubre `AC-9`, que es de otro flujo»— es válido y no
+exige nada; leerlo como declaración bloqueaba una spec correcta. Un identificador **abre a lo sumo
+un criterio**: dos aperturas con la misma identidad son un estado inválido, y sin comprobarlo la
+segunda quedaba sin hashear.
+
+**La partición vigente, que es sobre lo que rige `R1`.** Es el conjunto de filas que son la `version`
+máxima de cada `P-k` no retirado. Sin esta precisión, corregir una cláusula en régimen append-only
+violaba `R1` por construcción: la fila vieja y la nueva citan el mismo fragmento.
+
+**El campo se llama `autoridad`, y el nombre no es intercambiable.** La revisión adversarial ya usa
+otra palabra para un enum propio suyo, con valores que no tienen nada que ver con estos cuatro;
+reusarla acá produciría dos vocabularios homónimos en artefactos que viajan juntos.
+
+**`R3` no tiene escape por «motivo escrito».** Sacar una cláusula de `pendiente` es cambiar su
+`aplicabilidad`, y eso exige la `evidencia` obligatoria: la entrada acreditada de `antecedentes.md`,
+o el evento `descarte` que lo autorizó. Un motivo en prosa no alcanzaba — era el no-op más barato:
+declarar no implementable y seguir.
+
+Las tres juntas cierran la implementación floja. `R1` obliga a la cláusula genérica a nombrar los
+fragmentos que cubre, y `R3` obliga a que cada cláusula pendiente tenga su criterio. Una cláusula
+única que abarque cuarenta partes necesita partirse en cuarenta cláusulas para poder tener cuarenta
+criterios, que es exactamente el trabajo que la implementación floja quería evitar.
+
+**El ciclo de vida de `AC-n`.** Los `AC-n` **no se reutilizan**: un criterio retirado deja su ID
+muerto y nadie lo hereda. Cada adjudicación de `R2` guarda el `hash_criterio` del texto vigente al
+adjudicarlo. Toda corrección, retiro o renumeración anexa su evento. El recálculo **falla cerrado**
+ante un hash que no coincide con el texto vigente, o ante una referencia colgante: un recálculo que
+degrada a «lo que se pueda resolver» convierte la traza en decoración.
+
+### La vara: autoridades y condiciones de validez
+
+La vara es lo que contrasta cada criterio contra el pedido congelado en vez de contra el artefacto
+que se está editando. Sin ella, el patrón de medición crece junto con lo medido: cada criterio
+aplicado se vuelve parte del alcance contra el que se juzga el siguiente, y «esto no se pidió» deja
+de tener con qué enunciarse.
+
+**Los dos actos, y son dos.** La **admisión** decide si un criterio propuesto tiene autoridad válida
+antes de que entre al artefacto; el **recálculo** de `R1`, `R2` y `R3` comprueba, después de cada
+edición admitida, que las tres relaciones siguen cerrando. Uno sin el otro no alcanza: admitir sin
+recalcular deja el registro desincronizado del artefacto, y recalcular sin admitir solo constata
+prolijamente lo que ya entró.
+
+**Cada autoridad lleva su condición de validez**, y una autoridad sin condición es una etiqueta:
+
+| Autoridad | Condición de validez | Qué acredita |
+|---|---|---|
+| `pedido` | existe una cláusula `P-k@version` en la partición vigente cuyos `fragmentos` citan la parte del literal de la que el criterio deriva, **y su `aplicabilidad` es `pendiente`** | que lo afirmado sale de algo que el usuario dijo, que se puede señalar dónde, y que todavía está por hacerse |
+| `constitution` | la sección invocada existe en `.specify/constitution.md` y su texto vigente sostiene la afirmación | que sale de un principio de proceso adoptado por el proyecto, no de una preferencia del conductor |
+| `repositorio` | la regla o convención invocada existe en el árbol —`CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`— y la afirmación cae dentro de su disparador | que sale del contrato del repositorio, y no de una lectura ampliada de él |
+| `clarify` | hay una entrada `Q<n>` en `## Clarifications` con la respuesta del usuario, y el criterio no excede lo que esa respuesta decidió | que sale de una decisión tomada por el usuario, con la pregunta a la vista |
+
+**Las cuatro condiciones tienen una mitad comprobable y una mitad adjudicada, y conviene decir cuál
+es cuál.** `pedido-referencias` comprueba que la referencia **resuelva contra su destino real**: para
+`pedido`, una cláusula de la partición vigente y `pendiente`; para `clarify`, una entrada `Q<n>` que
+existe en `## Clarifications`. Para `constitution` y `repositorio` comprueba que la referencia
+**resuelva contra el árbol**: el `slug` de su encabezado tiene que existir en
+`.specify/constitution.md` o en uno de los tres archivos de contrato de la raíz, alcanzables por
+convención desde la ruta del registro igual que `literal.jsonl` y `antecedentes.md`. Durante un
+tiempo esta frontera declaró lo contrario —«el bloque no recibe esos artefactos»— y eso era falso:
+los recibe por la misma convención que ya usaba dos veces. **La referencia es el slug del
+encabezado que la aloja**, y el encabezado tiene que ser uno **real y único**: se cuentan los
+encabezados ATX del archivo —con hasta tres espacios de sangría, ignorando lo que esté dentro de un
+bloque de código— y la referencia resuelve solo si hay **exactamente uno** con ese slug.
+**«Bloque de código» son las dos formas que Markdown define**, y esto vale para las tres gramáticas
+que leen una sede —el criterio, la `Q` y el encabezado—: el **cercado** por comillas invertidas o
+tildes, y el **indentado** por cuatro espacios o un tabulador. Un `AC-n`, una `Q` o un encabezado que
+existan solo ahí dentro son un **ejemplo citado** y no declaran nada; con **tres** espacios sí
+declaran, que es la sangría que Markdown todavía trata como texto. Los comentarios HTML se ignoran
+igual. Cubrir una sola de las dos formas deja el verde a un caso de distancia de ser falso. La propia
+referencia tiene que ser un slug canónico: `Regla 2` no identifica nada, porque el dominio son slugs.
+Con una comparación por subcadena, `regla-2` acreditaba contra `regla-20`; cortando en el primer
+encabezado, dos secciones homónimas resolvían a la primera; y sin excluir los bloques de código, un
+`## regla-2` **citado como ejemplo** acreditaba una autoridad. Lo que sigue sin comprobarse es que la sección o la regla **digan** lo que el criterio
+afirma. Y en las cuatro, «que el criterio no
+exceda lo que esa autoridad decidió» es adjudicación semántica y queda en el juicio del conductor y
+en el gate humano — declararlo acá es lo que impide leer el verde del bloque como si cubriera eso.
+
+**El marcador `— **A:**` es reservado dentro de una entrada de `## Clarifications`.** Lo que separa
+la pregunta de la respuesta es esa secuencia **en texto plano**; para *nombrarla* dentro de la
+pregunta —al documentar la propia plantilla, que es cuándo aparece— va en un tramo de código
+(`` `— **A:**` ``) o escapada con `\`, y entonces no separa nada. Si aparece **más de una vez** en
+texto plano la entrada es ambigua y se reporta: no se elige la primera ni la última.
+
+**Por qué reservarla y no intentar distinguir mención de uso.** Las dos formas son el mismo texto,
+así que ninguna heurística de posición las separa: elegir la primera coincidencia escondía una
+respuesta real detrás de una raya de la pregunta, y elegir la última dejaba que una pregunta que
+termina citando el marcador fabricara su propia respuesta. Un marcador reservado con escape es la
+misma salida que GFM le da al pipe dentro de una celda, y por la misma razón: el contrato declara la
+representación en vez de adivinarla. **El costo asumido:** una entrada que use el marcador en texto
+plano sin haber querido separar nada acredita como respondida lo que venga después. Es un caso que
+el gate humano ve —la pregunta y la respuesta se presentan juntas— y el precio de no tenerlo era
+dejar sin representación a toda pregunta que necesite nombrar la plantilla.
+
+**El no-op concreto que la vara tiene que rechazar**, escrito con su ejemplo y no en abstracto: una
+cláusula `P-1: realizar el cambio solicitado`, de la que después cuelgan los cuarenta criterios. Es
+formalmente válida —hay `P-k`, hay `version`, hay autoridad `pedido`— y no acredita nada: no cita
+fragmentos, así que `R1` no la puede contrastar contra ninguna parte del literal. La cláusula
+genérica se rechaza en la admisión, no en el recálculo, y la salida es partirla en las cláusulas que
+sí citan sus fragmentos.
+
+**«Existe» no alcanza: la cláusula tiene que estar activa.** La partición vigente incluye las
+cláusulas `satisfecha-por-trabajo-previo` y `descartada` —solo excluye las retiradas—, así que una
+condición que pregunte únicamente si la cláusula existe deja que **una cláusula ya satisfecha por
+trabajo previo siga autorizando criterios para rehacerlo**. Inmutabilidad del pedido y aplicabilidad
+actual de un fragmento son cosas distintas: el pedido se conserva entero e intacto, y por separado se
+registra el estado de cada fragmento. La autoridad `pedido` solo admite un criterio **contra un
+fragmento pendiente**; contra uno satisfecho o descartado **falla cerrado**, y la salida es
+**volver a ponerlo `pendiente`**: se anexa una fila `version+1` con esa `aplicabilidad` —que no exige
+`evidencia`, porque la evidencia la exigen los otros dos estados—, y esa reapertura queda como una
+decisión con su propio rastro, no como efecto lateral de escribir un criterio.
+
+**Lo que la vara no hace.** No juzga si el criterio está bien redactado, si es alcanzable o si el
+enfoque es bueno; eso es adjudicación semántica y vive en el juicio del conductor y en el gate
+humano. La vara contesta una sola pregunta: **de dónde sale esto, y esa procedencia es válida**.
+
+### Las tres salidas de un criterio no admitido
+
+Un criterio que la vara no admite **no desaparece y no se queda flotando**: tiene tres destinos
+posibles y ninguno más. Escribirlos es lo que impide las dos degradaciones baratas — borrarlo en
+silencio, o dejarlo en el artefacto esperando que el gate lo bendiga.
+
+| Salida | Dónde queda | Qué la cierra |
+|---|---|---|
+| **descarte con motivo** | un evento `tipo: descarte` con su `resolucion: no-admitida` y el motivo en su fila | el motivo escrito; un descarte sin motivo es un estado inválido, no un default |
+| **propuesta sin resolver** | una fila de `registro.md`: la cláusula queda con `aplicabilidad: pendiente` y su evento con `estado: pendiente`, nombrando el `productor` que la originó | que alguien la resuelva en el gate de ese productor, o un `descarte` posterior que la cierre |
+| **ampliación del pedido** | una línea nueva en `literal.jsonl` más la cláusula que la traza, tras confirmación explícita del usuario | la confirmación del usuario; hasta entonces sigue siendo propuesta y no autoridad `pedido` |
+
+**La segunda es la que necesita sede durable, y por eso se nombra su archivo y su estado.** Una
+propuesta sin resolver que solo viva en la conversación se pierde al cerrar la sesión, y el flujo
+retoma sin saber que quedó algo abierto: es exactamente el estado que el routing de `resume` lee para
+volver al gate del productor que la dejó. Guardarla como fila —con su cláusula en `pendiente` y su
+evento en `pendiente`— es lo que la vuelve observable desde afuera de la sesión que la produjo.
+
+**Ninguna de las tres es «se aplica y se ve después».** Un criterio no admitido que igual entra al
+artefacto llega al gate como criterio, y ahí la aprobación general lo convalida sin que nadie haya
+decidido esa ampliación — que es precisamente el mecanismo que este contrato viene a cortar.
+
+### La tabla de puertas por productor
+
+Seis productores pueden proponer texto para la spec, y **los seis siguen la misma secuencia**. Esa
+uniformidad es la decisión: dejar que cada puerta recalcule un subconjunto distinto produce puertas
+que editan antes de confirmar, y ninguna de las dos se nota leyendo la fila sola.
+
+```
+propuesta → admisión por la vara → captura literal si la fuente es autoridad `pedido`
+   → cláusula provisional → delta visible y confirmación explícita → edición
+   → recálculo de R1, R2 y R3 → gate
+```
+
+Lo que cambia entre productores no es la secuencia sino **quién admite**, **qué autoridad resulta** y
+**qué gate espera el resultado**:
+
+| Productor | Artefacto provisional | Quién admite | Autoridad resultante | Condición de gate |
+|---|---|---|---|---|
+| escritura inicial de `specify` | borrador en memoria | el conductor con la vara | la que `R2` adjudique | el gate no se presenta con `R1`, `R2` o `R3` incompletas |
+| correcciones del usuario en el gate | el texto del usuario | **el usuario**: su corrección **es** autoridad | `pedido`, con línea nueva en `literal.jsonl` | el mismo gate, reabierto tras mostrar el delta |
+| `clarify` | la respuesta registrada en el Q&A | el conductor con la vara | `clarify`, referenciando su `Q<n>` | si altera criterios, vuelve al gate de la spec |
+| rama trivial | el bloque `## Spec` embebido en el plan | el conductor con la vara | la que `R2` adjudique | el gate único de trivial, que es el del plan combinado |
+| revisión adversarial | el finding en el ledger de esa skill | el conductor, **antes de editar**, por los dos caminos de abajo | la que `R2` adjudique | un finding no admitido no llega al gate como criterio |
+| observaciones del tracker | el comentario en la subtarea | el conductor con la vara | **`pedido` solo tras confirmación explícita del usuario**; hasta entonces sigue siendo propuesta | el gate externo sigue esperando |
+
+**Dos filas evitan sendos no-op, y conviene decir cuáles.** La **segunda**: una corrección del
+usuario en el gate no se mide contra el pedido viejo, porque **es** pedido nuevo — sin esa fila, la
+vara rechazaría lo que el usuario acaba de pedir; y lo que se persiste es la versión que él confirmó,
+no la que el conductor redactó a partir de ella. La **sexta**: la autorización tiene que ser del
+usuario actual, así que «viene del pedidor» no alcanza — un comentario en el tracker puede venir de
+cualquiera con acceso al ticket, y adoptar eso como pedido es exactamente la ampliación silenciosa
+que este contrato corta.
+
+### Los dos caminos de edición de la revisión adversarial
+
+Controlar solo el momento de la invocación **no alcanza**: esa skill arbitra, edita el artefacto y
+manda la versión editada a su ronda siguiente dentro de su propio loop, así que una ampliación puede
+entrar y salir sin cruzar ningún gate del flujo.
+
+El punto de extensión existe y **no exige tocar `cross-review`**: esa skill corre **dentro de la
+sesión del conductor** —el proceso aparte es solo el revisor—, y su propio contrato dice que quien
+arbitra y edita el artefacto es el conductor. Los caminos por los que ese artefacto se edita son
+**dos**, y los dos necesitan la vara:
+
+| Camino | Quién edita | Dónde se inserta la vara |
+|---|---|---|
+| arbitraje ordinario del conductor sobre un finding | el conductor | antes de editar; un finding no admitido se registra como **rechazo con motivo** en el ledger que esa skill ya tiene |
+| **disputa resuelta por el humano a favor del finding** | el conductor, después de la decisión humana | antes de esa edición: si el finding **amplía alcance**, corre el ciclo de cláusula provisional, delta visible y confirmación **antes** de marcar el finding como aplicado |
+
+El segundo es el que se pierde con facilidad. Sin él, una ampliación entra por el checkpoint sin
+pasar por la vara y sin actualizar el pedido — y encima con la firma del humano, que es la que menos
+se vuelve a mirar. Como el rechazo y la confirmación ocurren **antes** de la edición, la ronda
+siguiente recibe un artefacto que nunca contuvo el criterio no admitido.
+
+Se descarta extender el ciclo de vida de `cross-review`: ampliaría la superficie más allá de lo
+acordado y obligaría a actualizar sus cuentas, proyecciones y cortes derivados, a cambio de una
+propiedad que estos dos hooks ya dan.
+
+### La matriz de proyección del pedido
+
+Qué ve cada consumidor del pedido se declara **acá y una sola vez**, en celdas. Los pasos que
+consumen la apuntan y no repiten la obligación: una obligación repetida en la prosa de cada paso solo
+se puede comprobar buscando palabras cerca, y eso acepta la negación de la frase.
+
+| Consumidor | Qué recibe | Qué nunca recibe |
+|---|---|---|
+| `spec.md` | los `AC-n` llevan su anotación de autoridad, que es una referencia; la traza autoritativa **no** se copia al artefacto | el literal, el registro y las tres relaciones |
+| `publish-spec` (tracker) | el cuerpo de la spec con las anotaciones de autoridad retiradas por el regex declarado | el pedido entero, en cualquiera de sus dos archivos |
+| el sub-paso que abre el PR | el cuerpo de la spec con las anotaciones de autoridad retiradas por el mismo regex | ídem que el tracker |
+| `cross-review` como contexto | **la ruta de `pedido/proyeccion-clausulas.md`**, regenerada antes de invocar | `literal.jsonl`, y el directorio `pedido/` pasado como ruta |
+| el paso de diagnóstico | nada de la traza: reporta clase, fuentes y conflictos de la secuencia | cualquier parte del pedido |
+
+**La fila de `cross-review` es la que más se puede escribir al revés, y por eso lleva sus dos
+condiciones juntas.** El pedido tiene que viajar como autoridad explícita, y el prompt de esa skill
+**inlinea el contenido de los `context_paths`**: pasar el directorio metería el texto crudo del
+usuario en un prompt que sale hacia el CLI de la otra familia. Viaja la proyección, nunca el literal.
+
+**La regla de regeneración, sin la cual el carrier miente.** `pedido/proyeccion-clausulas.md` se
+**reescribe desde la partición vigente antes de cada invocación** de la revisión adversarial, con
+`P-k`, texto, aplicabilidad y autoridad, y **sin una sola línea del literal**. Sin regenerar, la
+segunda ronda de una misma corrida recibiría la proyección de la primera y la crítica se haría contra
+un pedido que ya cambió. Vive dentro de `pedido/`, así que el predicado del vault lo excluye por
+subdirectorio igual que al resto del paquete.
+
+### Fronteras con los productores excluidos
+
+Dos skills hermanas producen artefactos que pueden terminar en una `spec.md` y **no** quedan
+gobernadas por este contrato. Decirlo es parte del contrato: una frontera que no se escribe se lee
+como cobertura.
+
+- **`sdd-orchestrator`** reparte un objetivo entre varios repositorios y despacha un `sdd-flow` por
+  cada uno. El pedido que este contrato congela es el de **un** flujo: cada `sdd-flow` despachado
+  captura el suyo en su propio `.plans/<id>/pedido/`. La spec madre y el reparto **no** tienen
+  paquete propio y su vara no existe; si alguna vez la necesitan, es un flujo aparte con su gate, no
+  una extensión silenciosa de este.
+- **`sdd-pr-feedback`** abre flujos a partir de comentarios de revisión de un PR. Su material de
+  entrada no es un pedido del usuario sino la observación de un tercero, así que su `<id>` nace sin
+  marcador y **la vara queda no aplicable**, declarada así. El criterio negativo de la matriz del
+  marcador es por productor y existe justamente para esto: un flujo de esta skill no puede quedar
+  gobernado por el paquete de otro flujo que haya quedado en el árbol.
+
+### El marcador de adopción del pedido
+
+`.plans/<id>/contrato-pedido.md` es un archivo de una línea que declara `contrato_pedido: v1` y la
+fecha, escrito **atómicamente** —temporal y `rename`, que en el mismo sistema de archivos no deja un
+estado intermedio observable— y **antes** de crear `pedido/`.
+
+**Por qué un archivo aparte y no un campo dentro del paquete.** La señal que decide si la vara aplica
+tiene que ser **independiente del propio artefacto**: una señal alojada en él vuelve a decidir por su
+ausencia, que es la contradicción que hace falta evitar. Tampoco entra en el bloque máquina de
+`antecedentes.md`: ese bloque lo escribe el sub-paso 5, **después** del 3b, así que llegaría tarde.
+
+La matriz es exhaustiva y no deja ninguna combinación a criterio de quien la lea:
+
+| Directorio del flujo | Marcador | Paquete | Estado | Vara |
+|---|---|---|---|---|
+| vacío | ausente | ausente | caída dentro de 3b, entre el `mkdir` y el marcador | **fallo cerrado**: re-corre 3b desde cero |
+| no vacío | ausente | ausente | flujo heredado, abierto antes de este contrato | **no aplicable**, y se declara así en el retomado |
+| cualquiera | presente | ausente | adopción interrumpida entre el marcador y la sede | **fallo cerrado**: re-corre 3b; nunca se lee como heredado |
+| cualquiera | presente | presente y legible | flujo bajo el contrato | **aplicable** |
+| cualquiera | presente | presente y corrupto | sede dañada: el literal mal formado, o ausente con el registro presente | **cuarentena**, con su procedimiento |
+| cualquiera | ausente | presente | paquete de otro flujo, copiado o desarchivado | **fallo cerrado**: no se adopta un pedido ajeno |
+
+**La celda que el bloque imprime lleva entre paréntesis qué observó**, y esa cola no es adorno: la
+fila de cuarentena admite **dos** estados distintos —un `registro.md` huérfano y un `literal.jsonl`
+mal formado—, y el procedimiento pide informar la celda exacta y reiniciar con un `n` posterior al
+máximo observado. Con el literal ausente no hay `n` del que partir, así que las dos salidas no se
+resuelven igual y la celda tiene que decir cuál se resolvió.
+
+**La tercera fila y la sexta son las que hacen trabajo.** La tercera impide que una adopción a medias
+se confunda con un flujo heredado —las dos lucen parecido desde afuera y sus salidas son opuestas—.
+La sexta impide que un flujo creado por otro productor quede gobernado por un pedido que no es suyo:
+el criterio es **por productor**, y el marcador lo escribe únicamente `gather-context`.
+
+### Salidas del routing de resume ante el pedido
+
+Una sola tabla normativa, **evaluada en orden**: la primera fila que coincide manda y no se sigue
+mirando. Su primera fila va **antes de toda rama existente** del paso, incluida la del ledger de
+antecedentes terminal — insertarla después deja que un flujo terminal oculte un marcador con paquete
+ausente, contradiciendo su fallo cerrado.
+
+| # | Qué se observa | Salida |
+|---|---|---|
+| 1 | `.plans/<id>/` vacío, o marcador presente y paquete ausente | **fallo cerrado**: re-correr 3b antes de cualquier otra rama |
+| 2 | marcador ausente y paquete presente | **fallo cerrado**: pedido ajeno, no se adopta |
+| 3 | estructura corrupta: una línea que no parsea, un orden imposible, o un eslabón de la cadena que no reproduce lo que firmó | **cuarentena**, con el procedimiento de abajo. La cadena la comprueba `pedido-digest`, que corre **después** del marcador; su `3` la deja sin comprobar y **no** habilita esta fila |
+| 4 | marcador ausente, paquete ausente y directorio no vacío | flujo heredado: sigue por las ramas vigentes, con la vara declarada no aplicable |
+| 5 | `literal.jsonl` presente y `registro.md` ausente | retoma en la redacción de cláusulas |
+| 6 | cláusulas escritas y ninguna confirmación vigente | retoma en el checkpoint del paso 6, que es donde se congelan |
+| 7 | confirmado, con eventos en `estado: pendiente` | retoma en el gate del productor que los dejó, **nombrándolo** por la columna `productor` |
+| 8 | confirmado y sin `spec.md` | sigue a `specify` con la vara activa |
+
+**El procedimiento de cuarentena, porque «va al checkpoint» no era realizable.** Una línea de
+`literal.jsonl` que no parsea no se puede reparar sin violar la inmutabilidad, y el checkpoint no
+tiene con qué. La salida es esta, y consta de cuatro actos:
+
+1. **mover** `pedido/` a `pedido-cuarentena-<timestamp>/`, en el mismo `.plans/<id>/`;
+2. **no borrar nada** — el material dañado es la única evidencia de qué se había capturado;
+3. **informar la celda exacta** que se resolvió, para que quien decide sepa qué se observó y no solo
+   que algo falló;
+4. **ofrecer reiniciar la captura con identidad nueva**: un `P-k` y un `n` que arrancan **después de
+   los máximos observados** en el material en cuarentena, para que ningún identificador se reutilice.
+   Ese `n` inicial **se declara al invocar `pedido-jsonl`**, cuyo default es 1: sin declararlo, la
+   primera línea de la captura recuperada rompe el orden monótono contra un 1 que ya no corresponde y
+   el paquete sano vuelve a clasificar cuarentena — una recuperación que solo puede producir otra
+   cuarentena no es una salida.
+
+Requiere **confirmación humana** y **nunca es automática**: es la única salida que conserva la
+evidencia y deja el flujo operable, y las dos propiedades se pierden si alguien la corre sola.
+
+### La matriz de invocación de los bloques
+
+Seis comprobaciones del paquete son **deterministas** y quedarían libradas a que dos agentes lean
+igual la misma prosa: validez estructural del literal, unicidad e identidad, referencias colgantes, la
+matriz del marcador, la cadena de digests y el hash de cada criterio. Van como **bloques embebidos acá** —no como archivos: la regla del
+repositorio prohíbe crear nada bajo el `scripts/` de la raíz, y este flujo no la elude creando su
+propia sede—. Queda en prosa lo que es adjudicación semántica: si una derivación es válida y si una
+cláusula está bien redactada.
+
+**Esta matriz es la sede única de quién invoca qué**, y cada paso solo la apunta:
+
+| Bloque | Quién lo invoca | En qué puerta | Argumentos | Qué se lee | Qué pasa si falla |
+|---|---|---|---|---|---|
+| `pedido-jsonl` | `gather-context` | al cerrar 3b, **antes** del sub-paso 4 | la ruta de `literal.jsonl`, y el `n` inicial cuando no es 1 | el código de salida | **fallo cerrado**: no se avanza a la fusión |
+| `pedido-unicidad` | `specify`, y `resume` | antes de presentar el gate de la spec; en `resume`, **siempre** tras la cadena, porque no necesita más que el registro | la ruta de `registro.md` | el código de salida | el gate **no se presenta**; en `resume`, con `1` se retoma en **el gate que gobierna la sede de los criterios** —en trivial, el único del plan combinado— y **no** es cuarentena; con `3` **no se enruta**: es un fallo de ejecución |
+| `pedido-referencias` | `specify`, cada recálculo que la tabla de puertas declare, y `resume` | antes del gate que esa fila nombra; en `resume`, tras la cadena y solo si el flujo ya adjudicó criterios —la disyunción de tres artefactos de `SKILL.md`— | `registro.md` y la **sede de los criterios**: `spec.md`, o `plan.md` en la rama trivial | el código de salida | el gate **no se presenta**; en `resume`, con `1` se retoma en **el gate que gobierna la sede de los criterios** —en trivial, el único del plan combinado— y **no** es cuarentena; con `3` **no se enruta**: es un fallo de ejecución, el mismo destino que el `2` del marcador |
+| `pedido-marcador` | `resume`, y `gather-context` en 3b | en `resume`, **primera** comprobación del paso, antes de enrutar; en 3b, **antes de escribir**, y solo si `.plans/<id>/` ya existe | la raíz del flujo | la celda, en stdout | con `1` o `2` **no se enruta** por ninguna rama, y en 3b no se escribe nada |
+| `pedido-digest` | `resume` | **después** del marcador, y solo si su celda fue «presente y legible» | la ruta de `registro.md` | el código de salida | con `1` la celda pasa a **cuarentena**; con `3` la cadena queda **sin comprobar** y se informa así, sin leerlo como verde |
+| `pedido-criterio` | `specify`, en la misma puerta que `pedido-referencias`; y `resume`, **después** de la cadena y solo si el flujo ya adjudicó criterios | antes del gate que esa fila nombra; en `resume`, antes de enrutar | `registro.md` y la **sede de los criterios** | el código de salida | en `specify`, con `1` el gate **no se presenta**; en `resume`, con `1` **no es cuarentena** —el paquete está intacto— sino retomar en **el gate que gobierna la sede de los criterios**, que en trivial es el único del plan combinado, a re-adjudicar `R2`. Con `3` los hashes quedan **sin comprobar** y se informa así, sin leerlo como verde ni bloquear |
+
+**`pedido-marcador` se invoca una vez y se carga con su dependencia.** Llama a `pedido-jsonl` por
+dentro, así que quien lo invoca tiene que haber **cargado los dos bloques** en el mismo shell.
+Cargar no es invocar: lo que el routing no puede ordenar son dos *invocaciones*, porque el marcador
+no puede imprimir la celda «presente y corrupto» antes de conocer un resultado que llegaría después.
+Sin la dependencia cargada, la llamada interna moría con `127` **tapada por la redirección** y el
+bloque devolvía `1`, que el routing lee como «el árbol no encaja en ninguna celda»: un paquete
+perfectamente válido dejaba a `resume` sin rama por donde seguir. Ahora esa ausencia se comprueba y
+devuelve `2` con su causa escrita.
+
+**Por qué la obligación se declara una sola vez.** Si vive repetida en la prosa de cada paso, lo único
+que se puede comprobar barato es que ciertas palabras aparezcan cerca — y eso acepta la negación de la
+frase, el patrón truncado y el párrafo equivocado. Entonces: la obligación vive en estas celdas, y
+**cada paso que invoca lleva una directiva estructurada**, no una frase: una línea
+`<!-- invoca: <bloque> -->`. Una oración que diga «no invocar ningún bloque» satisface una
+comprobación por palabras; una directiva de máquina, no.
+
+**El contrato de cada bloque.** Los cuatro se acotan a lo que el shell hace barato, y lo que queda
+afuera se escribe en su frontera en vez de fingirse cubierto:
+
+| Bloque | Qué comprueba | Salida y códigos |
+|---|---|---|
+| `pedido-jsonl` | por cada línea de `literal.jsonl`: que abra con `{` y cierre con `}`, que estén las siete claves obligatorias, y que `n` sea monótono sin huecos desde el **`n` inicial**, que es 1 salvo que se declare otro | una línea por violación, `<n>: <causa>`; `0` sin violaciones, `1` con, `2` si el `n` inicial no es un entero ≥ 1, `3` si el archivo no se puede leer **o si `awk` no pudo ejecutarse** |
+| `pedido-unicidad` | en `registro.md`: que las identidades de las tres tablas caigan dentro de su dominio y no se repitan, y que la versión crezca por cláusula | ídem |
+| `pedido-referencias` | que cada `fragmentos` exista y cite una línea con rango dentro de su largo, que cada `AC-n` de la traza exista en la sede de los criterios, y que cada `objetivo` de evento resuelva | ídem |
+| `pedido-marcador` | resuelve la celda de la matriz del marcador desde el estado observado del árbol | **la celda en stdout**; `0` si resolvió una, `1` si el árbol no encaja en ninguna, `2` si la invocación está mal formada o `pedido-jsonl` no está cargado |
+| `pedido-digest` | que **cada** confirmación reproduzca el prefijo de `## clausulas`, `## eventos` y del literal que su frontera declara, y que esa frontera no exceda, no retroceda y no sea vacua | `0` si todas reproducen o si no hay ninguna confirmación, `1` si alguna no —con el escrito y el recomputado—, `3` si falta una sede, si no hay `sha256sum` ni `shasum`, si la herramienta está y falla, o si **cualquiera** de sus invocaciones de `awk` no se pudo ejecutar |
+| `pedido-criterio` | que el `hash_criterio` de cada `AC-n` de la traza sea el `sha256` del bloque de ese criterio en la sede de los criterios | `0` si todos reproducen o si la traza no tiene criterios, `1` si alguno no —con el escrito y el recomputado—, `3` con los mismos fallos de ejecución que `pedido-digest` |
+
+**El `3` de los tres primeros incluye «no se pudo ejecutar», y eso es deliberado.** Una salida vacía
+significa «ninguna violación» **solo si el comando terminó bien**; leerla sin mirar el estado convierte
+cualquier fallo del intérprete en un verde. Es la misma razón por la que el `3` no es un veredicto en
+ninguno de los tres: dice que no hubo comprobación, no que la comprobación pasó.
+
+**Van en POSIX solamente, y hay precedente**: el verificador de aislamiento de este repositorio es
+también un bloque de shell sin variante PowerShell. La exigencia de ofrecer las dos variantes alcanza
+a los comandos que **invocan un CLI** —el transporte cross-model—, que no es el caso de estos cinco.
+
+**Cuatro son POSIX puro; `pedido-digest` y `pedido-criterio` no pueden serlo.** Calcular un `sha256` exige una herramienta
+que POSIX no define, así que ese bloque detecta `sha256sum` o `shasum` y, sin ninguna de las dos,
+devuelve `3`: **la ausencia de la herramienta no es un verde**, es la ausencia de comprobación. Se pagó
+esa dependencia porque la alternativa era dejar la cadena de digests —el mecanismo que le da autoridad
+independiente al registro— sin ninguna comprobación, con una fila de cuarentena que ningún instrumento
+podía alcanzar.
+
+#### `pedido-jsonl`
+
+```sh
+# @bloque: pedido-jsonl
+# uso: pedido_jsonl <ruta de literal.jsonl> [n inicial, 1 por default]
+# el n inicial deja de ser 1 tras una cuarentena: ahí la captura arranca después del máximo observado
+pedido_jsonl() {
+  f="${1:?ruta de literal.jsonl}"
+  base="${2:-1}"
+  # se valida por texto, no con aritmética: un valor que el shell no puede comparar como entero
+  # haría fallar el propio test en vez de rechazarse
+  case "$base" in
+    ''|*[!0-9]*) echo "n inicial no es un entero: $base" >&2; return 2 ;;
+    *[!0]*) ;;
+    *) echo "n inicial menor que 1: $base" >&2; return 2 ;;
+  esac
+  if [ ! -r "$f" ]; then echo "no se puede leer: $f" >&2; return 3; fi
+  # la base entra por STDIN y no por argv: su tamaño lo fija el contenido del literal, y por
+  # argumento un valor grande excede ARG_MAX y mata a awk con "argument list too long"
+  salida=$(printf '%s\n' "$base" | awk '
+    # las identidades se siguen en DECIMAL, sobre el lexema: sin conversión no hay rango del que
+    # depender, y ninguna identidad se queda sin sucesor
+    function norm(x) { sub(/^0+/, "", x); return (x == "" ? "0" : x) }
+    # el sucesor toca solo la cola de nueves: dígito a dígito sería cuadrático en awk, porque
+    # anteponer a una cadena la copia entera, y estas identidades no tienen máximo
+    function ceros(n,   z) { if (n <= 0) return ""
+      z = sprintf("%" n "s", ""); gsub(/ /, "0", z); return z }
+    function incd(x,   nueves, pre, d) {
+      match(x, /9*$/); nueves = RLENGTH
+      if (nueves == length(x)) return "1" ceros(nueves)
+      pre = substr(x, 1, RSTART - 2)
+      d = substr(x, RSTART - 1, 1) + 1
+      return pre d ceros(nueves) }
+    BEGIN { split("n captado_en origen referencia medio texto sha256", claves, " ")
+            # el primer archivo es "-", que POSIX define como la entrada estándar
+            esperado = ((getline b) > 0) ? norm(b) : "1" }
+    { lit++
+      linea=$0
+      if (substr(linea,1,1) != "{" || substr(linea,length(linea),1) != "}")
+        print lit ": la línea no abre y cierra con llaves"
+      faltan=""
+      for (i=1; i<=7; i++)
+        if (index(linea, sprintf("%c%s%c:", 34, claves[i], 34)) == 0) faltan = faltan " " claves[i]
+      if (faltan != "") print lit ": faltan claves obligatorias:" faltan
+      # el token se cierra con delimitador: sin eso, "1.5" y "1e3" casan por su prefijo y valen 1
+      if (match(linea, /"n"[ ]*:[ ]*[0-9]+[ ]*[,}]/)) {
+        s = substr(linea, RSTART, RLENGTH); sub(/^.*:[ ]*/, "", s); sub(/[ ]*[,}]$/, "", s)
+        s = norm(s)
+        if (s == "0") print lit ": el campo n vale 0 y el dominio exige un entero desde 1"
+        else {
+          if (s != esperado) print lit ": el campo n vale " s " y rompe el orden, se esperaba " esperado
+          # se sigue desde lo OBSERVADO, para que un hueco no encadene un error por línea
+          esperado = incd(s) }
+      } else print lit ": el campo n no es un entero"
+    }
+    END { if (lit == 0) print "0: el literal está vacío" }' - "$f")
+  rc=$?
+  # una salida vacía NO es un verde por sí sola: awk pudo haber muerto sin escribir nada
+  if [ "$rc" -ne 0 ]; then echo "la comprobación no pudo ejecutarse: awk salió $rc" >&2; return 3; fi
+  if [ -z "$salida" ]; then return 0; fi
+  printf '%s\n' "$salida"
+  return 1
+}
+```
+
+> **Frontera de prueba.** Clase **veredicto**, dirección **admite-de-más**. Su verde autoriza a
+> afirmar que cada línea tiene la **forma** esperada: llaves en los extremos, las siete claves
+> presentes y `n` monótono sin huecos desde el `n` inicial **que el invocador declaró** — el bloque no
+> conoce cuál corresponde y no lo deriva: con el default de 1 comprueba una captura inicial, y una
+> base equivocada le hace dar rojo a un literal sano o verde a uno truncado por delante. El token de
+> `n` **se cierra con un delimitador** —coma o llave—, y no es un detalle de escritura: un `match` de
+> solo prefijo acepta `1.5` y `1e3` leyéndolos como el entero `1`, así que una identidad no entera
+> atravesaba el paquete con la celda `aplicable`. El mismo cierre va en **las tres sedes** que leen
+> este campo, por el motivo de siempre: un patrón más ancho en una que en otra las hace discrepar. El
+> orden se sigue **en decimal sobre el lexema** —el esperado arranca en la base y avanza con acarreo
+> dígito a dígito—, así que el veredicto no depende del rango de `awk` ni del shell y **ninguna
+> identidad se queda sin sucesor**. Un desvío se reporta contra lo esperado y el seguimiento continúa
+> desde lo **observado**, para que un hueco no encadene un error por cada línea siguiente. El sucesor
+> se calcula por la **cola de nueves** y no dígito a dígito: anteponer a una cadena copia la cadena
+> entera, así que la versión ingenua es cuadrática y con una identidad de un millón de dígitos no
+> termina — medido.
+>
+> **La base entra por la entrada estándar, no por `argv`.** Su tamaño lo fija el contenido del
+> literal, y un valor grande excede `ARG_MAX`: medido en un host con `ARG_MAX` de 1 MiB, un `n` de
+> 1 100 000 dígitos mataba a `awk` con `argument list too long`. **Y ese fallo se leía como verde**,
+> porque el bloque tomaba la salida vacía por ausencia de violaciones. Ahora **el estado de `awk` se
+> comprueba antes que su salida**: si no terminó bien, el resultado no es un veredicto. La misma
+> corrección va en los tres bloques que leen la salida de un `awk`, porque el defecto era idéntico en
+> los tres. **No autoriza a afirmar que la línea sea JSON válido**: no
+> detecta comillas sin cerrar, comas sobrantes, anidamiento roto, tipos incorrectos, ni que `sha256`
+> corresponda a `texto`. De los **tipos**, comprueba **solo el de `n`** —porque ese campo es la
+> identidad de la línea y el resto del contrato cuelga de él—; los otros seis no se tipan. **No es un
+> parser y no se lo puede leer como uno.** Se eligió así
+> deliberadamente: validar JSON en shell POSIX exige una herramienta que no está garantizada, y el
+> aparato pesaría más que la prosa que verifica. Fallos de ejecución, distintos de su resultado: `2`
+> si el `n` inicial no es un entero ≥ 1, y `3` si el archivo no se puede leer **o si `awk` no pudo
+> ejecutarse**. Ese argumento se valida **por texto y no con aritmética**: un valor que el shell no
+> puede comparar como entero haría fallar el propio `test` en vez de rechazarse.
+
+#### `pedido-unicidad`
+
+```sh
+# @bloque: pedido-unicidad
+# uso: pedido_unicidad <ruta de registro.md>
+pedido_unicidad() {
+  f="${1:?ruta de registro.md}"
+  if [ ! -r "$f" ]; then echo "no se puede leer: $f" >&2; return 3; fi
+  salida=$(awk '
+    # las identidades se comparan en DECIMAL, sobre el lexema y sin convertir
+    function norm(x) { sub(/^0+/, "", x); return (x == "" ? "0" : x) }
+    # un identificador se normaliza en su parte numérica, conservando prefijo y sufijo de letra:
+    # sin esto P-1 y P-01 son dos identidades para el dominio y una sola para quien lo lee
+    function normid(x,   pre, resto, suf) {
+      if (!match(x, /^[A-Za-z]+-/)) return x
+      pre = substr(x, 1, RLENGTH); resto = substr(x, RLENGTH+1); suf = ""
+      if (match(resto, /[a-z]$/)) { suf = substr(resto, RSTART); resto = substr(resto, 1, RSTART-1) }
+      return pre norm(resto) suf }
+    function cmpd(a, b) {
+      if (length(a) != length(b)) return (length(a) < length(b)) ? -1 : 1
+      if ((a "") == (b "")) return 0
+      return ((a "") < (b "")) ? -1 : 1 }
+    function celda(x) { sub("^[ " sprintf("%c",9) "*" sprintf("%c",96) "]+", "", x)
+                        sub("[ " sprintf("%c",9) "*" sprintf("%c",96) "]+$", "", x)
+                        gsub(sprintf("%c",1), sprintf("%c",124), x); return x }
+    # GFM define `\|` como CONTENIDO de celda, no como separador. Se sustituye por un byte de
+    # control antes de partir —así el pipe escapado no cambia la aridad— y `celda()` lo devuelve a
+    # su valor al leer: una representación reversible, la misma en todos los lectores. Rechazarlo
+    # dejaba sin serialización a cualquier texto que llevara un pipe
+    function despipe(ln) { gsub(/\\[|]/, sprintf("%c",1), ln); return ln }
+    BEGIN { FS=sprintf("%c",124)
+            cab["c"]="P-k"; cab["e"]="E-k"; cab["t"]="AC-n"
+            nom["c"]="clausulas"; nom["e"]="eventos"; nom["t"]="traza"
+            # la cabecera ENTERA, no su primera celda: con solo la primera, una tabla con la forma
+            # de otra versión del esquema —nueve columnas donde el contrato declara diez— pasaba en
+            # verde, y todo lo que se lea por posición leía la columna equivocada
+            ent["c"]="P-k|version|aplicabilidad|fragmentos|texto|evidencia"
+            ent["e"]="E-k|momento|actor|productor|tipo|objetivo|supersede|resolucion|estado|motivo"
+            ent["t"]="AC-n|hash_criterio|autoridad|referencia|derivacion" }
+    { $0 = despipe($0) }
+    /^## clausulas/ { s="c"; fila=0; hay_sec["c"]=1; next }
+    /^## eventos/   { s="e"; fila=0; hay_sec["e"]=1; next }
+    /^## traza/     { s="t"; fila=0; hay_sec["t"]=1; next }
+    /^## /          { s="";  fila=0; next }
+    # solo las FILAS DE DATOS entran: las dos primeras de cada tabla son cabecera y separador.
+    # Seleccionar por la forma del identificador dejaba fuera de toda regla lo que no la cumple,
+    # y lo que no dispara ninguna regla no se reporta: se ignora
+    s != "" && substr($0,1,1) != sprintf("%c",124) { next }
+
+    s != "" { fila++
+      # la aridad de la fila se comprueba contra el esquema: sin eso, una fila con más o menos
+      # celdas se lee por posición y cada columna cae en la de al lado. Va DESPUÉS de `fila++`,
+      # porque el contador vive en esta regla y una regla anterior lo leería con el valor previo
+      if (fila > 2) {
+        nfil2 = 0; for (z4 = 2; z4 < NF; z4++) nfil2++
+        nesq = split(ent[s], _d3, "|")
+        if (nfil2 != nesq) {
+          print "tabla de " nom[s] ": una fila tiene " nfil2 " celdas y el esquema declara " nesq; next } }
+      c1=$2; c1 = celda(c1)
+      # la cabecera y el separador se COMPRUEBAN, no se saltan por contarlos: si faltan, saltar
+      # dos filas por posición se come dos filas de datos y la tabla pasa sin comprobarse
+      if (fila == 1) {
+        act = ""
+        for (z2 = 2; z2 < NF; z2++) act = act (z2 == 2 ? "" : "|") celda($z2)
+        if (act == ent[s]) hay_cab[s]=1
+        else if (c1 == cab[s]) print "tabla de " nom[s] ": la cabecera no es la del esquema (" act ")"
+        else print "tabla de " nom[s] ": la primera fila no es la cabecera (" (c1 == "" ? "vacia" : c1) ")"
+        next }
+      if (fila == 2) {
+        ncol = 0; malas = 0
+        for (z3 = 2; z3 < NF; z3++) { ncol++
+          # TODAS las celdas del separador, no solo la primera: con una sola, una fila con una
+          # celda que no lo es pasaba por separador y la tabla entera quedaba mal alineada
+          if (celda($z3) !~ /^:?-+:?$/) malas++ }
+        nesp = split(ent[s], _d2, "|")
+        if (malas == 0 && ncol == nesp) hay_sep[s]=1
+        else if (malas > 0 && c1 ~ /^:?-+:?$/) print "tabla de " nom[s] ": el separador tiene " malas " celdas que no son separador"
+        else if (malas == 0) print "tabla de " nom[s] ": el separador tiene " ncol " columnas y el esquema declara " nesp
+        else print "tabla de " nom[s] ": la segunda fila no es el separador (" (c1 == "" ? "vacia" : c1) ")"
+        next }
+      k=c1; v=$3
+      v = celda(v)
+      if (k ~ /-0([a-z])?$/ || (k ~ /^[A-Za-z]+-/ && normid(k) ~ /-0([a-z])?$/)) {
+        print "identidad fuera del dominio, no es un entero desde 1: " k; next }
+      k = normid(k) }
+    s == "c" {
+      if (k !~ /^P-[0-9]+$/) { print "identidad de clausula fuera del dominio: " (k == "" ? "(vacia)" : k); next }
+      if (v !~ /^[0-9]+$/) { print "version fuera del dominio en " k ": " (v == "" ? "(vacia)" : v); next }
+      v = norm(v)
+      if (v == "0") { print "version fuera del dominio en " k ": el dominio exige un entero desde 1"; next }
+      par = k "@" v
+      if (par in vistos) print "clausula repetida: " par
+      vistos[par]=1
+      if (k in maxv && cmpd(v, maxv[k]) <= 0) print "version no monotona en " k ": " v
+      if (!(k in maxv) || cmpd(v, maxv[k]) > 0) maxv[k]=v }
+    s == "e" {
+      if (k !~ /^E-[0-9]+$/) { print "identidad de evento fuera del dominio: " (k == "" ? "(vacia)" : k); next }
+      if (k in ev) print "evento repetido: " k
+      ev[k]=1 }
+    s == "t" {
+      if (k !~ /^AC-[0-9]+[a-z]?$/) { print "identidad de criterio fuera del dominio: " (k == "" ? "(vacia)" : k); next }
+      if (k in ac) print "criterio repetido en la traza: " k
+      ac[k]=1 }
+    # la ausencia se cierra ACÁ y no cuando aparece una fila: un registro vacío, o una tabla que
+    # nunca llega a tener una segunda fila, no disparaba ninguna regla y pasaba en verde
+    END { split("c e t", orden, " ")
+      for (z=1; z<=3; z++) { x=orden[z]
+        if (!(x in hay_sec)) { print "falta la seccion " nom[x]; continue }
+        if (!(x in hay_cab)) print "tabla de " nom[x] ": sin cabecera"
+        if (!(x in hay_sep)) print "tabla de " nom[x] ": sin separador" } }' "$f")
+  rc=$?
+  # una salida vacía NO es un verde por sí sola: awk pudo haber muerto sin escribir nada
+  if [ "$rc" -ne 0 ]; then echo "la comprobación no pudo ejecutarse: awk salió $rc" >&2; return 3; fi
+  if [ -z "$salida" ]; then return 0; fi
+  printf '%s\n' "$salida"
+  return 1
+}
+```
+
+> **Frontera de prueba.** Clase **veredicto**, dirección **admite-de-más**. Su verde autoriza a
+> afirmar que los identificadores de las **tres** tablas son únicos y caen dentro de su dominio, y que
+> la versión crece por cláusula. El dominio es una adquisición y no un adorno: mientras las reglas
+> **filtraban** por la forma del identificador, lo que no la cumplía —`P-abc`, `P-`, `P-1.5`, `Q-1`,
+> `E-abc`, `AC-xyz`, o una `version` vacía, `abc`, `+1`, `-1`— **no disparaba ninguna regla** y el
+> bloque devolvía verde **sin haber comprobado nada**. Lo que no se selecciona no se reporta: se
+> ignora. Ahora la cabecera y el separador se **comprueban** —la primera fila lleva el nombre de la
+> columna de identidad y la segunda es el separador— y solo después se habilitan los datos. Saltarlos
+> **por posición** era otra forma del mismo defecto: en una tabla sin cabecera, las dos primeras filas
+> de datos ocupaban esos lugares y la tabla entera pasaba sin comprobarse. El dominio se evalúa
+> **dentro** de la regla, con su causa.
+>
+> **Los identificadores se normalizan en su parte numérica** antes de formar el par y el máximo, así
+> que `P-1` y `P-01` son **una** identidad y no dos: sin eso, un alias con ceros iniciales duplicaba la
+> cláusula ante el dominio y la unificaba ante quien la lee. La misma normalización vive en
+> `pedido-referencias`, porque una sede que normaliza contra otra que no vuelve a separar las dos
+> puntas. La monotonía se compara **en decimal** —longitud y después orden lexicográfico—,
+> sin convertir y sin máximo. Los ceros a la izquierda se normalizan antes de formar el par, así que
+> `P-1@01` y `P-1@1` cuentan como la misma versión, que es lo que dice el dominio.
+> **No** ve si el texto de la cláusula es el correcto, si la `evidencia` obligatoria está presente,
+> ni si un identificador retirado se reutiliza **fuera** de este flujo. Reconoce los `AC-n` por la
+> misma **forma cerrada** que `pedido-referencias`, y lo que cae fuera de ella ya no pasa en silencio:
+> da rojo por dominio. Fallo de ejecución: `3` si el archivo no se puede leer **o si `awk` no pudo
+> ejecutarse**.
+
+#### `pedido-referencias`
+
+```sh
+# @bloque: pedido-referencias
+# uso: pedido_referencias <ruta de registro.md> <sede de los criterios>
+# la sede de los criterios es spec.md, o plan.md en la rama trivial, donde la spec va embebida
+# literal.jsonl se resuelve como hermano de registro.md, que es su sede por construcción
+pedido_referencias() {
+  r="${1:?ruta de registro.md}"
+  sp="${2:?sede de los criterios: spec.md, o plan.md en trivial}"
+  lit="$(dirname "$r")/literal.jsonl"
+  if [ ! -r "$r" ] || [ ! -r "$sp" ] || [ ! -r "$lit" ]; then
+    echo "no se puede leer alguna de las tres sedes" >&2; return 3
+  fi
+  # LC_ALL=C vuelve determinista la unidad de `length`: sin fijarla, el largo del texto valía
+  # bytes o caracteres según qué awk estuviera instalado
+  salida=$(LC_ALL=C awk '
+    function norm(x) { sub(/^0+/, "", x); return (x == "" ? "0" : x) }
+    # la MISMA normalización que usa pedido-unicidad: con una sede normalizando y la otra no,
+    # AC-01 dejaría de encontrar a AC-1 y las dos puntas volverían a discrepar
+    function normid(x,   pre, resto, suf) {
+      if (!match(x, /^[A-Za-z]+-/)) return x
+      pre = substr(x, 1, RLENGTH); resto = substr(x, RLENGTH+1); suf = ""
+      if (match(resto, /[a-z]$/)) { suf = substr(resto, RSTART); resto = substr(resto, 1, RSTART-1) }
+      return pre norm(resto) suf }
+    function cmpd(a, b) {
+      if (length(a) != length(b)) return (length(a) < length(b)) ? -1 : 1
+      if ((a "") == (b "")) return 0
+      return ((a "") < (b "")) ? -1 : 1 }
+    # el rango de un fragmento son POSICIONES DE CARÁCTER Unicode, y `length` de awk mide bytes o
+    # caracteres según la implementación y la locale: la locale se fija a C —donde mide bytes— y
+    # los caracteres se cuentan acá, salteando los bytes de continuación UTF-8
+    function ulargo(s,   i, n, t) {
+      n = length(s); t = 0
+      for (i = 1; i <= n; i++) if (index(CONT, substr(s, i, 1)) == 0) t++
+      return t }
+    # enmascara los tramos de código y los escapes de una línea, conservando el LARGO para que las
+    # posiciones sigan valiendo sobre el original: lo que está en código o escapado es una cita
+    function enmascarar(ln,   i, n, ch, sal, dentro) {
+      n = length(ln); sal = ""; dentro = 0
+      for (i = 1; i <= n; i++) { ch = substr(ln, i, 1)
+        if (ch == "\\" && i < n) { sal = sal "XX"; i++; continue }
+        if (ch == BT) { dentro = 1 - dentro; sal = sal "X"; continue }
+        sal = sal (dentro ? "X" : ch) }
+      return sal }
+    # el contexto Markdown, compartido por las TRES gramáticas que leen la sede —el criterio, la
+    # `Q` y, con su propia copia sobre otro archivo, el encabezado—: lo que está dentro de un fence
+    # o de un comentario HTML es un **ejemplo citado**, no una declaración. El fence se cierra con
+    # el MISMO carácter y con al menos su largo, o un `~~~` cerraba un fence de backticks
+    function mdsalta(ln,   t, c, n) {
+      if (mdcom) { if (index(ln, "-->") > 0) mdcom = 0; return 1 }
+      t = ln; sub(/^[ ]?[ ]?[ ]?/, "", t)
+      if (mdfen) {
+        if (match(t, "^" mdchar "+")) { n = RLENGTH
+          if (n >= mdlen && substr(t, n + 1) ~ /^[ ]*$/) mdfen = 0 }
+        return 1 }
+      # un bloque de código INDENTADO —cuatro espacios o más— también es código: un `AC-n` ahí
+      # dentro es un ejemplo. El vecino de tres espacios sigue declarando
+      if (ln ~ /^[ ][ ][ ][ ]/ || ln ~ ("^" sprintf("%c",9))) return 1
+      if (substr(t, 1, 4) == "<!--") { if (index(ln, "-->") == 0) mdcom = 1; return 1 }
+      if (match(t, "^" BT "+") || match(t, /^~+/)) {
+        c = substr(t, 1, 1); n = RLENGTH
+        if (n >= 3) { mdfen = 1; mdchar = c; mdlen = n; return 1 } }
+      return 0 }
+    # una línea ABRE un criterio cuando, quitados los espacios y un marcador de lista inicial,
+    # empieza con su identificador. Una MENCIÓN en prosa no abre nada, y esa distinción es la que
+    # separa «el criterio está declarado» de «el criterio se nombra en algún lado»
+    function abrec(s,   t, r, l, sig) {
+      t = s
+      sub("^" ESP "+", "", t)
+      sub("^([-*+]|[0-9]+[.)])" ESP "+", "", t)
+      sub("^\\[[ xX]\\]" ESP "+", "", t)
+      # el énfasis y el backtick se sacan porque las plantillas canónicas los usan: `- **AC-1:**`
+      # y `- [ ] **AC-1** —`. El guion bajo NO se saca: `_AC-1` es una mención en cursiva y
+      # sacarlo la convertía en declaración
+      sub("^([*][*]|[*]|" BT ")+", "", t)
+      if (!match(t, /^AC-[0-9]+[a-z]?/)) return ""
+      r = RSTART; l = RLENGTH
+      sig = substr(t, r + l, 1)
+      if (sig ~ /[0-9A-Za-z_]/) return ""
+      return normid(substr(t, r, l)) }
+    # la misma gramática de apertura, para las entradas de `## Clarifications`: la plantilla
+    # canónica las numera —`- **Q1:** … — **A:** …`— y la referencia de una autoridad `clarify`
+    # apunta a ese número
+    function abreq(s,   t, r, l, sig) {
+      t = s
+      sub("^" ESP "+", "", t)
+      sub("^([-*+]|[0-9]+[.)])" ESP "+", "", t)
+      sub("^([*][*]|[*]|" BT ")+", "", t)
+      if (!match(t, /^Q[0-9]+/)) return ""
+      r = RSTART; l = RLENGTH
+      sig = substr(t, r + l, 1)
+      if (sig ~ /[0-9A-Za-z_]/) return ""
+      return "Q" norm(substr(t, r + 1, l - 1)) }
+    # los extremos se RECORTAN; los espacios internos no se aplastan. Con `gsub(/[ *]/,"")`,
+    # `spe cify` se volvia `specify` y todo enum de este registro admitia su version con espacios
+    function celda(x) { sub("^[ " sprintf("%c",9) "*" sprintf("%c",96) "]+", "", x)
+                        sub("[ " sprintf("%c",9) "*" sprintf("%c",96) "]+$", "", x)
+                        gsub(sprintf("%c",1), sprintf("%c",124), x); return x }
+    # GFM define `\|` como CONTENIDO de celda, no como separador. Se sustituye por un byte de
+    # control antes de partir —así el pipe escapado no cambia la aridad— y `celda()` lo devuelve a
+    # su valor al leer: una representación reversible, la misma en todos los lectores. Rechazarlo
+    # dejaba sin serialización a cualquier texto que llevara un pipe
+    function despipe(ln) { gsub(/\\[|]/, sprintf("%c",1), ln); return ln }
+    # el `slug` de un encabezado: minúsculas, y toda corrida fuera de a-z0-9 a un solo guion. Es
+    # la identidad resoluble de una sección o una regla — sin ella la búsqueda era por SUBCADENA y
+    # `regla-2` acreditaba contra `regla-20`, o el prefijo `reg` contra cualquiera de las dos
+    function slug(x) { x = tolower(x); gsub(/[^a-z0-9]+/, "-", x)
+                       gsub(/^-+|-+$/, "", x); return x }
+    # busca una sección o regla por su slug, comparado ENTERO. Devuelve 0 si el archivo no existe,
+    # que es lo que corresponde: sin la sede, la autoridad no se puede acreditar
+    # cuenta cuántos encabezados del archivo tienen ese slug. Un encabezado ATX admite hasta tres
+    # espacios de sangría y **no cuenta dentro de un bloque de código**: `## regla-2` citado en un
+    # fence es un ejemplo, no una sección. Y se CUENTA en vez de cortar en el primero, porque dos
+    # encabezados con el mismo slug no identifican a ninguno
+    function buscar(arch, lit,   ln, n2, t2, fen, fch, fln, com, tt, cc, nn) {
+      n2 = 0; fen = 0; com = 0
+      while ((getline ln < arch) > 0) {
+        # el MISMO contexto Markdown que `mdsalta`, con su estado propio porque recorre otro
+        # archivo: un encabezado citado en un fence o comentado no es una sección
+        if (com) { if (index(ln, "-->") > 0) com = 0; continue }
+        tt = ln; sub(/^[ ]?[ ]?[ ]?/, "", tt)
+        if (fen) {
+          if (match(tt, "^" fch "+")) { nn = RLENGTH
+            if (nn >= fln && substr(tt, nn + 1) ~ /^[ ]*$/) fen = 0 }
+          continue }
+        if (ln ~ /^[ ][ ][ ][ ]/ || ln ~ ("^" sprintf("%c",9))) continue
+        if (substr(tt, 1, 4) == "<!--") { if (index(ln, "-->") == 0) com = 1; continue }
+        if (match(tt, "^" BT "+") || match(tt, /^~+/)) {
+          cc = substr(tt, 1, 1); nn = RLENGTH
+          if (nn >= 3) { fen = 1; fch = cc; fln = nn; continue } }
+        # ATX admite de UNA a SEIS almohadillas: con siete, Markdown no hace un encabezado
+        # ATX separa las almohadillas del texto con espacio **o tabulador**: exigir espacio
+        # rechazaba un encabezado válido, que es un falso rojo sobre un árbol bien escrito
+        if (tt !~ ("^#{1,6}[ " sprintf("%c",9) "]")) continue
+        t2 = tt; sub("^#+[ " sprintf("%c",9) "]+", "", t2); sub("[ " sprintf("%c",9) "]*#*[ " sprintf("%c",9) "]*$", "", t2)
+        if (slug(t2) == lit) n2++ }
+      close(arch); return n2 }
+    BEGIN { FS=sprintf("%c",124)
+            ESP = "[ " sprintf("%c",9) "]"; BT = sprintf("%c",96)
+            ari["c"]="P-k|version|aplicabilidad|fragmentos|texto|evidencia"
+            ari["e"]="E-k|momento|actor|productor|tipo|objetivo|supersede|resolucion|estado|motivo"
+            ari["t"]="AC-n|hash_criterio|autoridad|referencia|derivacion"
+            RAYA = sprintf("%c%c%c", 226, 128, 148)
+            BLANCO = "[ " sprintf("%c",9) sprintf("%c",11) sprintf("%c",12) sprintf("%c",13) "]"
+            for (i = 128; i < 192; i++) CONT = CONT sprintf("%c", i) }
+    FILENAME == ELIT {
+      # la cláusula cita el campo n, no la posición física de la línea: tras una cuarentena
+      # la captura arranca después del máximo observado y los dos dejan de coincidir
+      nl = FNR ""
+      if (match($0, /"n"[ ]*:[ ]*[0-9]+[ ]*[,}]/)) {
+        v = substr($0, RSTART, RLENGTH); sub(/^.*:[ ]*/, "", v); sub(/[ ]*[,}]$/, "", v)
+        # el índice es el LEXEMA normalizado, no el número: convertirlo pierde precisión con un n
+        # grande, y las dos puntas —el literal y la cita— tienen que normalizar igual
+        nl = norm(v) }
+      hay[nl]=1
+      # la posición física, que es la unidad en que se cuenta el prefijo firmado del literal
+      poslit[nl] = FNR
+      nlit = FNR
+      if (match($0, /"texto"[ ]*:[ ]*"/)) {
+        cuerpo = substr($0, RSTART+RLENGTH)
+        # el orden canónico deja sha256 como último campo: ese es el corte
+        sub(/"[ ]*,[ ]*"sha256".*$/, "", cuerpo)
+        largo[nl] = ulargo(cuerpo) }
+      # `largo` y `hay` comparten índice por construcción: los dos se escriben con `nl`
+      next }
+    # el escaneo de MENCIONES se retiró con su único consumidor: la dirección traza -> sede
+    # resolvía contra cualquier aparición del identificador, así que un criterio nombrado en prosa
+    # y nunca declarado la satisfacía. Las dos direcciones de R2 rigen ahora sobre `abre`
+    FILENAME == ESPEC {
+      if (mdsalta($0)) next
+      if ($0 ~ /^##[ ]+Clarifications/) { enclar = 1 }
+      else if ($0 ~ /^##[ ]/) { enclar = 0 }
+      if (enclar) { qcl = abreq($0)
+        # la entrada tiene que estar RESPONDIDA y ser ÚNICA: una pregunta sin respuesta no decidió
+        # nada, y dos entradas con el mismo número no dicen cuál de las dos decidió
+        if (qcl != "") { hayq[qcl]++
+          # la respuesta tiene que tener CONTENIDO: el marcador vacío no decidió nada
+          # la respuesta va en su POSICIÓN canónica —tras el separador de raya— y no es un
+          # placeholder: con el marcador buscado en cualquier lado, «¿Qué significa **A:**?» contaba
+          # como respondida, y `<respuesta>` contaba como respuesta
+          # la raya que cuenta es la que INTRODUCE el marcador, no la primera de la línea: con
+          # `index()` a secas, una raya dentro de la pregunta escondía la respuesta que venía después
+          # el marcador es **reservado**: para citarlo dentro de la pregunta va en un tramo de
+          # código o escapado, y solo cuenta como separador el que aparece **en texto plano**. Sin
+          # esa reserva, una pregunta que menciona la sintaxis de la plantilla fabricaba su propia
+          # respuesta; y si aparece más de una vez en texto plano, la entrada es ambigua
+          msk = enmascarar($0)
+          nsep = 0; dq = 0; bus = msk; off = 0
+          while ((pq = index(bus, RAYA)) > 0) {
+            if (substr(bus, pq + length(RAYA)) ~ /^[ ]*[*][*]A:[*][*]/) { nsep++
+              if (nsep == 1) dq = off + pq }
+            off = off + pq + length(RAYA) - 1
+            bus = substr(bus, pq + length(RAYA)) }
+          if (nsep > 1) print "entrada de Clarifications ambigua, el marcador aparece mas de una vez: " qcl
+          if (nsep == 1) { cuerpo2 = substr($0, dq + length(RAYA))
+            if (match(cuerpo2, /^[ ]*[*][*]A:[*][*]/)) {
+              cuerpo2 = celda(substr(cuerpo2, RLENGTH + 1))
+              if (cuerpo2 != "" && cuerpo2 !~ /^<[^>]*>$/) resp[qcl] = 1 } } } }
+      ab = abrec($0)
+      if (ab != "") { abre[ab]++
+        # la anotación de autoridad, que el contrato obliga a poner al final de esa misma línea,
+        # y con cardinalidad UNO: dos anotaciones son dos autoridades, y el contrato manda partir
+        # el criterio en vez de acumularlas
+        # la sintaxis es UNA, y es la misma que retiran los dos publicadores: sin el espacio tras
+        # los dos puntos, la anotación pasaba las comprobaciones, entraba al preimage del criterio
+        # y **sobrevivía a la sanitización**, o sea que la autoridad se publicaba hacia afuera
+        resto2 = $0; nan = 0; an = ""
+        while (match(resto2, /\[autoridad: [^]]*\]/)) { nan++
+          if (nan == 1) { an = substr(resto2, RSTART, RLENGTH)
+            sub(/^\[autoridad: [ ]*/, "", an); sub(/[ ]*\]$/, "", an) }
+          resto2 = substr(resto2, RSTART + RLENGTH) }
+        if (!(ab in anot)) anot[ab] = (nan == 1) ? an : ((nan == 0) ? "-sin-" : "-varias-")
+        # un corchete que se PARECE a la anotación y no lo es sobrevive al sanitizador igual que
+        # el que le falta el espacio: `[autoridad : ...]` no matcheaba ni siquiera el detector
+        resto3 = $0
+        while (match(resto3, /\[[^][]*\]/)) {
+          cor = substr(resto3, RSTART, RLENGTH)
+          if (tolower(cor) ~ ("^\\[" BLANCO "*autoridad" BLANCO "*:") && cor !~ /^\[autoridad: /) mala[ab] = 1
+          resto3 = substr(resto3, RSTART + RLENGTH) } }
+      next }
+    FILENAME == EREG { $0 = despipe($0) }
+    /^## clausulas/ { s="c"; next }
+    /^## eventos/   { s="e"; next }
+    /^## traza/     { s="t"; next }
+    /^## /          { s="";  next }
+    # la aridad de la fila, también acá: `pedido-referencias` corre en cada recálculo y `unicidad`
+    # solo en el gate, así que leer por posición una fila de otra aridad es leer otra columna
+    s != "" && substr($0,1,1) == sprintf("%c",124) {
+      nar = 0; for (za = 2; za < NF; za++) nar++
+      nesp2 = split(ari[s], _da, "|")
+      if (nesp2 > 0 && nar != nesp2) {
+        print "tabla de " s ": una fila tiene " nar " celdas y el esquema declara " nesp2; next } }
+    # la frontera de una confirmación cuenta FILAS de la sección, cabecera y separador incluidos,
+    # y `hastaqui` guarda cuántas de las primeras k son filas de datos
+    s == "c" && substr($0,1,1) == sprintf("%c",124) {
+      nfil++
+      c1=$2; c1 = celda(c1)
+      if (c1 ~ /^P-[0-9]+$/) { ndatos++
+        v1=$3; v1 = celda(v1)
+        f1=$5; f1 = celda(f1)
+        if (v1 ~ /^[0-9]+$/) filaid[nfil] = normid(c1) "@" norm(v1)
+        filafrag[nfil] = f1 }
+      hastaqui[nfil] = ndatos }
+    { id=$2; id = celda(id) }
+    s == "c" && id ~ /^P-[0-9]+$/ {
+      ver=$3; ver = celda(ver)
+      frags=$5; frags = celda(frags)
+      ck = normid(id)
+      # la PARTICIÓN VIGENTE es la versión máxima de cada P-k no retirado: sobre ella rige R1,
+      # y sin quedarse con una sola versión por cláusula el régimen append-only fabrica solapamientos
+      apl=$4; apl = celda(apl)
+      evi = celda($7)
+      # el enum de aplicabilidad es cerrado, y sin comprobarlo R3 se evadía sola: un valor fuera
+      # del enum no es `pendiente`, así que la cláusula quedaba exenta de tener criterio
+      if (apl != "pendiente" && apl != "satisfecha-por-trabajo-previo" && apl != "descartada")
+        print "aplicabilidad fuera del dominio en " id ": " (apl == "" ? "vacia" : apl)
+      # la evidencia es obligatoria si la aplicabilidad no es `pendiente`: sin ella, salir de
+      # pendiente es gratis y es la otra forma de evadir R3
+      else if (apl != "pendiente" && (evi == "" || evi == "-"))
+        print "clausula " apl " sin evidencia: " id
+      # la evidencia tiene DESTINO, no solo forma: para `descartada`, el evento de descarte que la
+      # autorizó; para `satisfecha-por-trabajo-previo`, la entrada de `antecedentes.md`. Sin esto,
+      # cualquier cadena no vacía sacaba una cláusula de `R3`
+      else if (apl == "descartada") evdesc[normid(id) "@" norm(ver)] = evi
+      else if (apl == "satisfecha-por-trabajo-previo") { nsat++; evsat[normid(id) "@" norm(ver)] = evi }
+      if (ver ~ /^[0-9]+$/) { ver = norm(ver)
+        clausula[ck "@" ver] = 1
+        if (!(ck in vmax) || cmpd(ver, vmax[ck]) > 0) {
+          vmax[ck] = ver; fragde[ck] = frags; aplde[ck] = apl } }
+      # una cláusula sin fragmentos no tiene origen comprobable: descartarla en silencio dejaba
+      # la relación literal -> cláusula sin verificar, que es lo que este bloque existe para ver
+      if (frags == "" || frags == "-") { print "clausula sin fragmentos: " id; next }
+      m = split(frags, lista, ",")
+      for (i=1; i<=m; i++) {
+        # el contrato separa la lista por `, `: el espacio es del separador, no del elemento
+        lista[i] = celda(lista[i])
+        if (lista[i] !~ /^[0-9]+:[0-9]+-[0-9]+$/) {
+          print "fragmento mal formado en " id ": " (lista[i] == "" ? "vacio" : lista[i]); continue }
+        split(lista[i], p, ":"); split(p[2], q, "-")
+        cit = norm(p[1])
+        if (!(cit in hay)) { print "fragmento cita una linea inexistente: " lista[i]; continue }
+        if (q[1]+0 < 1 || q[2]+0 < q[1]+0 || q[2]+0 > largo[cit]+0)
+          print "rango fuera del largo del texto: " lista[i] } }
+    s == "t" && id ~ /^AC-[0-9]+[a-z]?$/ {
+      ac = normid(id)
+      actraza[ac] = 1
+      # el dominio de hash_criterio es un sha256: sin comprobarlo, comparar contra él no dice nada
+      hc=$3; hc = celda(hc)
+      if (hc !~ /^[0-9a-f]+$/ || length(hc) != 64) print "hash_criterio fuera del dominio: " id
+      hashtz[ac] = hc
+      # R2 no es presencia: la autoridad tiene dominio cerrado, y la referencia y la derivación
+      # son obligatorias. Una fila con autoridad inventada y las dos columnas vacías pasaba
+      au=$4; au = celda(au)
+      re=$5; re = celda(re)
+      de = celda($6)
+      if (au != "pedido" && au != "constitution" && au != "repositorio" && au != "clarify")
+        print "autoridad fuera del dominio en " id ": " (au == "" ? "vacia" : au)
+      if (re == "" || re == "-") print "criterio sin referencia: " id
+      # cada autoridad tiene su forma de referencia: `P-k@version`, `Q<n>`, una sección o una
+      # regla. Sin esto, `clarify` con una referencia libre y `constitution` con la forma del
+      # pedido pasaban — y la columna decía apuntar a algo que no existe en esa sede
+      else if (au == "clarify" && re !~ /^Q[0-9]+$/)
+        print "autoridad clarify con una referencia que no es Q<n> en " id ": " re
+      else if ((au == "constitution" || au == "repositorio") &&
+               (re ~ /^P-[0-9]+@[0-9]+$/ || re ~ /^Q[0-9]+$/))
+        print "referencia con la forma de otra autoridad en " id ": " re
+      else if (au == "constitution" || au == "repositorio") refext[id] = au SUBSEP re
+      if (de == "" || de == "-") print "criterio sin derivacion adjudicada: " id
+      autz[ac] = au; refz[ac] = re
+      if (!(ac in abre)) print "criterio de la traza sin declaracion en la sede: " id }
+    s == "e" && substr($0,1,1) == sprintf("%c",124) { nev++ }
+    s == "e" && id ~ /^E-[0-9]+$/ {
+      tipo=$6; tipo = celda(tipo)
+      ob=$7; ob = celda(ob)
+      # las columnas de enum cerrado gobiernan el routing de `resume` —«retoma en el gate del
+      # productor que las dejó»— y ninguna tenía predicado: un `productor` inventado nombraba un
+      # gate que no existe, y un `estado` fuera del enum dejaba el evento sin clasificar
+      acto=$4; acto = celda(acto)
+      prod=$5; prod = celda(prod)
+      sup=$8;  sup = celda(sup)
+      reso=$9; reso = celda(reso)
+      esta=$10; esta = celda(esta); moti=$11; moti = celda(moti)
+      if (acto != "usuario" && acto != "conductor")
+        print "actor fuera del dominio en " id ": " (acto == "" ? "vacio" : acto)
+      if (prod != "specify" && prod != "gate-spec" && prod != "clarify" && prod != "trivial" &&
+          prod != "revision-adversarial" && prod != "tracker")
+        print "productor fuera del dominio en " id ": " (prod == "" ? "vacio" : prod)
+      if (tipo != "propuesta" && tipo != "admision" && tipo != "correccion" && tipo != "retiro" &&
+          tipo != "descarte" && tipo != "confirmacion")
+        print "tipo fuera del dominio en " id ": " (tipo == "" ? "vacio" : tipo)
+      if (sup != "-" && sup !~ /^E-[0-9]+$/)
+        print "supersede fuera del dominio en " id ": " (sup == "" ? "vacio" : sup)
+      if (reso != "admitida" && reso != "no-admitida" && reso != "-")
+        print "resolucion fuera del dominio en " id ": " (reso == "" ? "vacia" : reso)
+      if (esta != "pendiente" && esta != "resuelta")
+        print "estado fuera del dominio en " id ": " (esta == "" ? "vacio" : esta)
+      evtipo[normid(id)] = tipo; evesta[normid(id)] = esta; hayev[normid(id)] = 1
+      evreso[normid(id)] = reso; evmoti[normid(id)] = moti; evorden[normid(id)] = ++norden
+      # el motivo es obligatorio en un descarte: «un descarte sin motivo es un estado inválido»
+      if (tipo == "descarte" && (moti == "" || moti == "-"))
+        print "descarte sin motivo en " id
+      if (sup ~ /^E-[0-9]+$/) supde[normid(id)] = normid(sup)
+      if (ob ~ /^P-[0-9]+@[0-9]+$/) { split(ob, pe, "@")
+        evclau[nev] = normid(pe[1]) "@" norm(pe[2]); evobjt[normid(id)] = evclau[nev] }
+      # el vacío NO resuelve: el dominio admite tres formas o el guion, y una celda vacía es una
+      # fila mal formada. Y AC-n@hash exige un sha256 completo: AC-1@ y AC-1@x no apuntan a nada
+      resuelve = (ob == "-")
+      if (!resuelve && ob ~ /^AC-[0-9]+[a-z]?@[0-9a-f]+$/ && length(ob) - index(ob, "@") == 64) resuelve = 1
+      # P-k@version lleva el MISMO dominio que en el registro: las dos identidades desde 1
+      if (!resuelve && ob ~ /^P-[0-9]+@[0-9]+$/) {
+        split(ob, pp, "@")
+        if (norm(substr(pp[1], 3)) != "0" && norm(pp[2]) != "0") resuelve = 1 }
+      # el objetivo de una confirmación lleva el digest Y la frontera que selló, y solo lo lleva
+      # una confirmación: la misma forma en una propuesta no confirma nada
+      if (!resuelve && tipo == "confirmacion" && ob ~ /^digest@[0-9a-f]+@[0-9]+:[0-9]+$/) {
+        split(substr(ob, 8), dp, "@"); split(dp[2], fl, ":")
+        if (length(dp[1]) == 64 && fl[1] == norm(fl[1]) && fl[2] == norm(fl[2])) resuelve = 1 }
+      if (!resuelve) { print "objetivo de evento que no resuelve: " ob; next }
+      # una frontera resuelve contra el registro REAL, no solo contra su forma. Se compara con
+      # cmpd —por largo y después lexicográficamente— porque convertirla pierde precisión y con
+      # treinta dígitos ni siquiera compara: awk la lleva a notación científica
+      if (tipo == "confirmacion" && ob ~ /^digest@/) {
+        split(substr(ob, 8), dg2, "@"); split(dg2[2], fr2, ":")
+        if (cmpd(fr2[1], nfil "") > 0 || cmpd(fr2[2], nlit "") > 0)
+          print "frontera de confirmacion mayor que el registro: " ob
+        else if (cmpd(fr2[1], pfr "") < 0 || cmpd(fr2[2], plt "") < 0)
+          print "frontera de confirmacion que retrocede: " ob
+        else if (hastaqui[fr2[1]+0]+0 == 0 || fr2[2] == "0")
+          print "confirmacion que no firma ninguna clausula ni linea: " ob
+        else {
+          # el prefijo firmado tiene que estar CERRADO bajo sus propias referencias: una cláusula
+          # firmada que cita una línea que no se firmó, o un evento firmado que apunta a una
+          # cláusula fuera del prefijo, describen un estado que no existió nunca
+          for (qq = 1; qq <= fr2[1]+0; qq++) {
+            if (!(qq in filaid)) continue
+            dentro[filaid[qq]] = 1
+            nm = split(filafrag[qq], lfr, ",")
+            for (ww = 1; ww <= nm; ww++) {
+              lfr[ww] = celda(lfr[ww])
+              if (lfr[ww] !~ /^[0-9]+:[0-9]+-[0-9]+$/) continue
+              split(lfr[ww], pz, ":"); cn = norm(pz[1])
+              if (!(cn in poslit) || poslit[cn] > fr2[2]+0)
+                print "clausula firmada que cita una linea no firmada: " lfr[ww] " en " ob } }
+          for (qq = 1; qq < nev; qq++) {
+            if (!(qq in evclau)) continue
+            if (!(evclau[qq] in dentro))
+              print "evento firmado que apunta a una clausula no firmada: " evclau[qq] " en " ob } }
+        pfr = fr2[1]; plt = fr2[2] }
+      # la FORMA no es el destino: el objetivo se resuelve contra las tablas, en END, cuando
+      # ya se leyeron las tres — eventos viene antes que traza, así que acá todavía no se puede
+      if (ob != "-") destino[ob] = 1
+      # el hash de un criterio lo pinea el ÚLTIMO evento que lo nombra: los anteriores son historia
+      # y el formato no conserva los textos viejos contra los que compararlos
+      if (ob ~ /^AC-/) { split(ob, pa, "@"); ultac[normid(pa[1])] = pa[2] }
+      if (tipo == "retiro" && ob ~ /^P-[0-9]+@[0-9]+$/) {
+        split(ob, pr, "@"); retirado[normid(pr[1])] = 1 } }
+    END {
+      for (ob in destino) {
+        if (ob ~ /^P-[0-9]+@[0-9]+$/) {
+          split(ob, pp, "@")
+          if (!((normid(pp[1]) "@" norm(pp[2])) in clausula))
+            print "objetivo que no existe en clausulas: " ob }
+        else if (ob ~ /^AC-/) {
+          split(ob, pa, "@")
+          if (!(normid(pa[1]) in actraza)) print "objetivo que no existe en la traza: " ob } }
+      # R2 se lee en las DOS direcciones. La cobertura rige sobre lo que la sede DECLARA, no sobre
+      # toda mención: una spec que nombra un criterio ajeno —«esto no cubre AC-9»— es válida, y
+      # exigirle una fila de traza bloqueaba un artefacto correcto
+      for (a in abre) {
+        if (abre[a] > 1) print "criterio declarado mas de una vez en la sede: " a
+        if (!(a in actraza)) print "criterio en la sede sin fila en la traza: " a
+        if (a in mala) print "anotacion fuera de la sintaxis canonica en " a ": la unica forma es [autoridad: X:Y]"
+        if (anot[a] == "-sin-") print "criterio en la sede sin anotacion de autoridad: " a
+        else if (anot[a] == "-varias-") print "criterio con mas de una anotacion de autoridad: " a
+        else if (a in actraza) {
+          # la anotación y la traza son dos sedes del MISMO hecho: si discrepan, una miente
+          nq = index(anot[a], ":")
+          aa = (nq > 0) ? substr(anot[a], 1, nq - 1) : anot[a]
+          rr = (nq > 0) ? substr(anot[a], nq + 1) : ""
+          if (aa != autz[a] || rr != refz[a])
+            print "la anotacion de la sede no concuerda con la traza en " a ": " anot[a] " contra " autz[a] ":" refz[a] } }
+      # la condición de validez de la autoridad `pedido`: la referencia tiene que resolver contra
+      # una cláusula de la partición vigente y que esté `pendiente`
+      for (a in autz) {
+        if (autz[a] == "clarify" && refz[a] ~ /^Q[0-9]+$/) {
+          qk = "Q" norm(substr(refz[a], 2))
+          if (!(qk in hayq)) print "autoridad clarify que apunta a una Q inexistente en " a ": " refz[a]
+          else if (hayq[qk] > 1) print "autoridad clarify que apunta a una Q repetida en " a ": " refz[a]
+          else if (!(qk in resp)) print "autoridad clarify que apunta a una Q sin respuesta en " a ": " refz[a] }
+        if (autz[a] != "pedido") continue
+        if (refz[a] !~ /^P-[0-9]+@[0-9]+$/) { print "autoridad pedido con referencia que no es P-k@version en " a ": " refz[a]; continue }
+        split(refz[a], pv, "@"); rk = normid(pv[1]); rv = norm(pv[2])
+        if (!(rk in vmax) || rk in retirado || vmax[rk] != rv)
+          print "autoridad pedido que no apunta a la particion vigente en " a ": " refz[a]
+        else if (aplde[rk] != "pendiente")
+          print "autoridad pedido contra una clausula no pendiente en " a ": " refz[a] " esta " aplde[rk]
+        else atendida[rk "@" rv] = 1 }
+      # un `supersede` apunta a un evento REAL: con la forma sola, E-999 superseía a nada
+      for (u in supde) {
+        if (!(supde[u] in hayev)) { print "supersede que apunta a un evento inexistente en " u ": " supde[u]; continue }
+        # la tabla es append-only: un evento solo puede superseder a uno ANTERIOR, y nunca a sí mismo
+        if (supde[u] == u) print "supersede que se apunta a si mismo en " u
+        else if (evorden[supde[u]] > evorden[u]) print "supersede que apunta a un evento posterior en " u ": " supde[u] }
+      # la evidencia de un `descartada` apunta a un evento que existe, es un `descarte`, decide
+      # sobre esa misma cláusula y **está resuelto**: las cuatro, o la referencia no acredita nada
+      for (u in evdesc) {
+        ev2 = evdesc[u]
+        if (ev2 !~ /^E-[0-9]+$/) { print "evidencia de descarte que no es un E-k en " u ": " ev2; continue }
+        en2 = normid(ev2)
+        if (!(en2 in evtipo)) { print "evidencia de descarte que no existe en eventos en " u ": " ev2; continue }
+        if (evtipo[en2] != "descarte") print "el evento de la evidencia no es un descarte en " u ": " ev2
+        else if (evobjt[en2] != u) print "el evento de descarte no decide sobre esa clausula en " u ": " ev2
+        else if (evesta[en2] != "resuelta") print "el descarte que autoriza sigue sin resolverse en " u ": " ev2
+        else if (evreso[en2] != "no-admitida") print "el descarte que autoriza no dice no-admitida en " u ": " ev2
+        else if (evmoti[en2] == "" || evmoti[en2] == "-") print "el descarte que autoriza no tiene motivo en " u ": " ev2 }
+      # la de un `satisfecha-por-trabajo-previo` resuelve contra `antecedentes.md`, que es la sede
+      # que la acredita. Sin ese archivo no hay nada que acredite trabajo previo
+      if (nsat > 0) {
+        # solo cuenta lo que vive en `## declaracion`, que es la parte promovida: `## estado` es el
+        # ledger máquina y encontrar ahí la evidencia acreditaba contra un campo interno. Y se busca
+        # como TOKEN, no como subcadena: `complete` casaba dentro de `busqueda: complete`
+        while ((getline lant < ANT) > 0) { hayant = 1
+          if (lant ~ /^##[ ]+declaracion/) { endec = 1; continue }
+          if (lant ~ /^##[ ]/) { endec = 0; continue }
+          if (endec) antxt = antxt " " lant " " }
+        close(ANT)
+        gsub(/[^A-Za-z0-9_-]/, " ", antxt)
+        for (u in evsat) {
+          if (!hayant) { print "clausula satisfecha-por-trabajo-previo sin antecedentes.md que la acredite: " u; continue }
+          if (index(" " antxt " ", " " evsat[u] " ") == 0)
+            print "la evidencia de " u " no aparece en la declaracion de antecedentes.md: " evsat[u] } }
+      # `constitution` y `repositorio` resuelven contra el ÁRBOL, que está a mano por convención:
+      # la constitución es `.specify/constitution.md` y las reglas viven en los tres archivos de
+      # contrato de la raíz. Comprobar solo que no lleven la forma de otra autoridad dejaba pasar
+      # una regla que no existe, que es una autoridad inventada con forma correcta
+      for (a in refext) {
+        split(refext[a], px, SUBSEP)
+        if (px[1] == "constitution") { arch = RAIZ "/.specify/constitution.md"; nom = "la constitucion" }
+        else { arch = ""; nom = "los archivos de contrato de la raiz" }
+        enc = 0
+        # la referencia TIENE que ser un slug canónico: si no lo es, no identifica un encabezado
+        if (px[2] != slug(px[2])) {
+          print "referencia de " px[1] " que no es un slug canonico en " a ": " px[2]; continue }
+        if (px[1] == "constitution") { enc = buscar(arch, px[2]) }
+        else { enc = buscar(RAIZ "/CLAUDE.md", px[2])
+               enc = enc + buscar(RAIZ "/AGENTS.md", px[2])
+               enc = enc + buscar(RAIZ "/CONTRIBUTING.md", px[2]) }
+        if (enc == 0) print "autoridad " px[1] " que no existe en " nom " en " a ": " px[2]
+        else if (enc > 1) print "autoridad " px[1] " que resuelve a " enc " encabezados en " a ": " px[2] }
+      # R3: cada cláusula vigente `pendiente` tiene al menos un criterio que la atiende. Sin este
+      # predicado el alcance se achicaba en silencio: una cláusula del pedido sin ningún AC
+      for (ck in vmax) {
+        if (ck in retirado) continue
+        if (aplde[ck] != "pendiente") continue
+        if (!((ck "@" vmax[ck]) in atendida))
+          print "R3: la clausula pendiente " ck "@" vmax[ck] " no la atiende ningun criterio" }
+      # el ciclo de vida de AC-n manda fallar cerrado ante un hash que no coincide con el texto
+      # vigente: sin esto, AC-n@<cualquier cosa de 64 hex> resolvía por forma contra nada
+      for (a in ultac) {
+        if (!(a in actraza)) continue
+        if (ultac[a] != hashtz[a])
+          print "el ultimo evento sobre " a " pinea un hash que no es el vigente: " ultac[a] }
+      # R1 sobre la partición vigente: cada línea del literal, cubierta EXACTAMENTE una vez
+      for (ck in vmax) {
+        if (ck in retirado) continue
+        m = split(fragde[ck], ls, ",")
+        for (i=1; i<=m; i++) {
+          ls[i] = celda(ls[i])
+          if (ls[i] !~ /^[0-9]+:[0-9]+-[0-9]+$/) continue
+          split(ls[i], p2, ":"); split(p2[2], q2, "-")
+          ln = norm(p2[1]); c = ++cnt[ln]
+          ini[ln SUBSEP c] = q2[1]+0; fin[ln SUBSEP c] = q2[2]+0 } }
+      for (ln in hay) {
+        L = largo[ln]+0; c = cnt[ln]+0
+        if (c == 0) { print "R1: la linea " ln " no la cubre ninguna clausula vigente"; continue }
+        for (a=1; a<=c; a++) for (b=a+1; b<=c; b++)
+          if (ini[ln SUBSEP b] < ini[ln SUBSEP a]) {
+            t1=ini[ln SUBSEP a]; ini[ln SUBSEP a]=ini[ln SUBSEP b]; ini[ln SUBSEP b]=t1
+            t2=fin[ln SUBSEP a]; fin[ln SUBSEP a]=fin[ln SUBSEP b]; fin[ln SUBSEP b]=t2 }
+        esp = 1
+        for (a=1; a<=c; a++) {
+          if (ini[ln SUBSEP a] > esp) print "R1: la linea " ln " no cubre " esp "-" (ini[ln SUBSEP a]-1)
+          if (ini[ln SUBSEP a] < esp) print "R1: la linea " ln " se solapa en " ini[ln SUBSEP a] "-" (esp-1)
+          if (fin[ln SUBSEP a]+1 > esp) esp = fin[ln SUBSEP a]+1 }
+        if (esp <= L) print "R1: la linea " ln " no cubre " esp "-" L } }' \
+    ELIT="$lit" ESPEC="$sp" EREG="$r" ANT="$(dirname "$(dirname "$r")")/antecedentes.md" \
+    RAIZ="$(dirname "$(dirname "$(dirname "$(dirname "$r")")")")" "$lit" "$sp" "$r")
+  rc=$?
+  # una salida vacía NO es un verde por sí sola: awk pudo haber muerto sin escribir nada
+  if [ "$rc" -ne 0 ]; then echo "la comprobación no pudo ejecutarse: awk salió $rc" >&2; return 3; fi
+  if [ -z "$salida" ]; then return 0; fi
+  printf '%s\n' "$salida"
+  return 1
+}
+```
+
+> **Frontera de prueba.** Clase **veredicto**, dirección **admite-de-más**. Su verde autoriza a
+> afirmar que cada referencia **resuelve contra su destino real**: la cláusula **tiene** fragmentos, la
+> **partición vigente cubre cada línea del literal exactamente una vez** —que es `R1` y no una parte de
+> ella—, el criterio está en la sede de los criterios, y el objetivo de cada evento **existe** en la
+> tabla que dice apuntar. Que el objetivo resolviera *de forma* era menos de lo que el contrato
+> promete: `P-999@1` y `AC-999@<hash>` pasaban sin existir en ninguna tabla. Que los fragmentos **existan** es parte del veredicto y no un supuesto: mientras
+> los elementos sin forma se descartaban en silencio, una cláusula con `fragmentos` vacío o con basura
+> pasaba en verde **sin origen comprobable**, que es justo lo que este bloque existe para ver. **Nunca** autoriza a
+> afirmar que la derivación adjudicada sea **válida** —eso es juicio y queda en prosa—, ni que el
+> fragmento citado sea el que de verdad origina la cláusula. **El largo del texto se mide en caracteres Unicode**, que es la unidad
+> que declara el rango de fragmentos: la locale se fija a `C` y los caracteres se cuentan salteando
+> los bytes de continuación, porque `length` de `awk` mide bytes o caracteres según qué
+> implementación esté instalada — con la unidad librada al host, un `1:1-2` sobre un texto de una
+> `é` pasaba en verde y el `1:1-1` correcto daba rojo, así que un pedido escrito en español no tenía
+> forma de cerrar `R1`. Dos límites más, propios de medir el
+> largo desde el literal serializado: **no interpreta escapes JSON** —una comilla o un salto de línea
+> escapados dentro de `texto` desplazan el largo contra el que compara—, y **depende del orden
+> canónico de campos** para saber dónde termina `texto`, así que una línea con los campos en otro
+> orden le queda invisible en vez de dar rojo. Y el reconocimiento de `AC-n` es por **forma
+> cerrada** —`AC-` seguido de dígitos y a lo sumo una letra minúscula—, **la misma en las cuatro
+> sedes que la usan**, contando la del `objetivo` de un evento: un identificador escrito fuera de esa forma queda invisible en las dos puntas, ni se
+> indexa desde la sede de los criterios ni se comprueba desde la traza, así que pasa en silencio en
+> vez de dar rojo. Que las tres compartan el patrón es lo que evita el desacuerdo, y no es
+> hipotético: con el indexado más ancho que la consulta, un `AC-7b` colgante devolvía verde mientras
+> un `AC-7` en el mismo caso daba rojo. **Los dos extremos del identificador se cierran a mano**,
+> porque `awk` no tiene delimitadores de palabra: sin eso, un `AC-1ab` en la sede de los criterios
+> satisfacía a un `AC-1a` de la traza, y un `AC-1A` satisfacía a `AC-1`. Por el mismo motivo la forma
+> `AC-n@hash` del objetivo **exige el hash**: `AC-1@` no apunta a nada.
+>
+> **Y el hash se resuelve contra el criterio vigente, no contra su forma.** El ciclo de vida de
+> `AC-n` manda fallar cerrado ante un hash que no coincide con el texto vigente; mientras el bloque
+> solo miraba la forma, `AC-1@<cualquier cosa de 64 hex>` pasaba en verde apuntando a nada. Quien
+> queda pineado es el **último** evento que nombra a cada criterio, en orden de tabla: los
+> anteriores son historia y **no se comprueban**, porque el formato no conserva los textos viejos
+> contra los que compararlos — pinear también a los anteriores volvía roja toda corrección
+> legítima. Ese límite es del formato y se declara acá: **una historia intermedia adulterada no se
+> ve**. El dominio de `hash_criterio` sí se comprueba, y por eso la comparación significa algo: sin
+> exigirle sus 64 hexadecimales, contrastar contra él era contrastar contra cualquier cosa.
+>
+> **El objetivo vacío no resuelve.** El dominio admite tres formas o el guion, y una celda vacía es una
+> fila mal formada, no un objetivo ausente — admitirla dejaba pasar en verde toda fila de evento a la
+> que le faltara esa columna. El índice del literal es el **lexema normalizado** de `n` —sin
+> ceros a la izquierda y sin convertir a número—, y la cita del fragmento se normaliza igual: son las
+> dos puntas de la misma correspondencia, y con una convertida y la otra cruda dejaban de encontrarse.
+> Los rangos de `fragmentos` **sí** se comparan convirtiendo, y a propósito: no son identidad, y un
+> valor desmesurado hace que el rango caiga fuera del largo del texto, que es rojo. El objetivo
+> `P-k@version` **lleva el mismo dominio que el registro** —las dos identidades desde 1, sin máximo—,
+> porque una forma que solo mirara el patrón admitía `P-1@0` y `P-0@1`: resolvían de forma y no de
+> dominio. Los `AC-n` se **normalizan en las dos puntas** —al indexarlos desde la sede de los criterios
+> y al consultarlos desde la traza—, con la misma función que usa `pedido-unicidad`. Al escribirla
+> apareció un modo de falla propio de `awk` que conviene dejar anotado: **una función que usa `match`
+> por dentro pisa `RSTART` y `RLENGTH` del llamador**, y el bucle que recorre los `AC-n` de una línea
+> avanza con ellos — sin capturarlos antes de la llamada, no termina. La correspondencia con el literal es por el **campo `n`**, no
+> por la posición física de la línea: mientras la captura arranca en 1 los dos coinciden, pero tras una
+> cuarentena dejan de hacerlo, y con el índice por posición todo fragmento de un paquete recuperado
+> citaba una línea «inexistente». Un `n` repetido en el literal colapsa su entrada del índice y hace
+> que el rango se compare contra el largo de la última línea que lo lleve — lo impide `pedido-jsonl`,
+> que corre antes por la matriz de invocación, no este bloque. Fallo de ejecución: `3` si falta alguna
+> de las tres sedes **o si `awk` no pudo ejecutarse**.
+
+#### `pedido-marcador`
+
+```sh
+# @bloque: pedido-marcador
+# uso: pedido_marcador <raíz del flujo, .plans/<id>/>
+# imprime la celda de la matriz del marcador en stdout
+# requiere pedido-jsonl CARGADO en el mismo shell: lo llama por dentro, y cargar no es invocar
+pedido_marcador() {
+  raiz="$1"
+  if [ -z "$raiz" ] || [ ! -d "$raiz" ]; then
+    echo "invocación mal formada: se espera la raíz del flujo" >&2; return 2
+  fi
+  marcador="$raiz/contrato-pedido.md"
+  paquete="$raiz/pedido"
+  if [ -z "$(ls -A "$raiz" 2>/dev/null)" ]; then
+    echo "vacío + ausente + ausente: fallo cerrado, re-corre 3b"; return 0
+  fi
+  hay_m=no; if [ -f "$marcador" ]; then hay_m=si; fi
+  # el paquete está presente si existe cualquiera de sus dos archivos: un registro huérfano
+  # es un paquete dañado, no un paquete ausente, y las dos salidas no son la misma
+  hay_p=no
+  if [ -f "$paquete/literal.jsonl" ] || [ -f "$paquete/registro.md" ]; then hay_p=si; fi
+  if [ "$hay_m" = no ] && [ "$hay_p" = no ]; then
+    echo "no vacío + ausente + ausente: flujo heredado, vara no aplicable"; return 0
+  fi
+  if [ "$hay_m" = si ] && [ "$hay_p" = no ]; then
+    echo "cualquiera + presente + ausente: fallo cerrado, adopción interrumpida"; return 0
+  fi
+  if [ "$hay_m" = no ] && [ "$hay_p" = si ]; then
+    echo "cualquiera + ausente + presente: fallo cerrado, pedido ajeno"; return 0
+  fi
+  if [ ! -f "$paquete/literal.jsonl" ]; then
+    echo "cualquiera + presente + presente y corrupto: cuarentena (registro huérfano, falta literal.jsonl)"; return 0
+  fi
+  if ! command -v pedido_jsonl >/dev/null 2>&1; then
+    echo "invocación mal formada: pedido-jsonl no está cargado en este shell" >&2; return 2
+  fi
+  # la base la fija el propio literal: tras una cuarentena arranca después del máximo observado
+  base=$(awk 'NR == 1 {
+    if (match($0, /"n"[ ]*:[ ]*[0-9]+[ ]*[,}]/)) {
+      v = substr($0, RSTART, RLENGTH); sub(/^.*:[ ]*/, "", v); sub(/[ ]*[,}]$/, "", v)
+      # el LEXEMA, sin convertir: `v+0` con un n grande devuelve notación científica, el test del
+      # shell falla con `integer expression expected` y la corrupción termina como fallo de invocación
+      sub(/^0+/, "", v); if (v == "") v = "0"
+      print v }
+    exit }' "$paquete/literal.jsonl")
+  # un primer n ausente o no positivo es CORRUPCIÓN DEL LITERAL, no un error de quien invoca: se
+  # cae al default para que el veredicto lo dé la comprobación de forma, que lo clasifica
+  # cuarentena. Todo se decide por texto, sin aritmética sobre un valor no confiable
+  case "$base" in
+    ''|*[!0-9]*) base=1 ;;
+    *[!0]*) ;;
+    *) base=1 ;;
+  esac
+  pedido_jsonl "$paquete/literal.jsonl" "$base" >/dev/null 2>&1
+  c=$?
+  if [ "$c" -eq 0 ]; then
+    echo "cualquiera + presente + presente y legible: aplicable"; return 0
+  fi
+  if [ "$c" -eq 1 ]; then
+    echo "cualquiera + presente + presente y corrupto: cuarentena (literal presente y mal formado)"; return 0
+  fi
+  echo "el árbol no encaja en ninguna celda: literal presente e ilegible (pedido-jsonl devolvió $c)" >&2
+  return 1
+}
+```
+
+> **Frontera de prueba.** Clase **veredicto**, dirección **admite-de-más**, ante la duda
+> **niega-ante-duda**. Su salida autoriza a afirmar **qué celda de la matriz del marcador describe el
+> árbol observado**; ante un árbol que no encaja en ninguna devuelve `1` y no una celda por defecto.
+> Admite de más por dos motivos. Primero, «presente y legible» se apoya en la comprobación de
+> **forma** de `pedido-jsonl`: un literal con las llaves y las claves en su lugar pero JSON inválido
+> adentro se clasifica legible. Segundo, **la base la deriva del propio literal** —el `n` de su primera
+> línea, **como lexema y sin convertirlo a número**—, porque el marcador no tiene de dónde saber si el
+> paquete viene de una cuarentena; el precio
+> es que un literal **truncado por delante** le queda legible. Esa pérdida no queda descubierta: los
+> fragmentos de las cláusulas citan los `n` desaparecidos y `pedido-referencias` los devuelve como
+> línea inexistente en el gate de `specify`. **No** distingue tampoco un paquete de este flujo de uno
+> copiado con su marcador. Fallo de ejecución, distinto de su resultado: `2` si la invocación está mal
+> formada o si `pedido-jsonl` no está cargado en el shell.
+>
+> **Su invariante, y es el que hay que conservar al tocarlo: con el literal presente, ningún contenido
+> del paquete produce un código de fallo.** Sale `0` y la celda dice si es aplicable o cuarentena. Los
+> códigos `1` y `2` quedan para lo que **no** es contenido: un árbol que no encaja en ninguna celda, y
+> un invocador que llamó mal o sin cargar la dependencia. La distinción no es teórica: la base se
+> deriva del literal y después se pasa **como argumento**, así que un primer `n` en `0` viajaba como
+> invocación inválida, `pedido-jsonl` devolvía `2` y el marcador caía hasta el último desenlace,
+> saliendo `1` —«el árbol no encaja en ninguna celda»— sobre un literal perfectamente legible y
+> dejando a `resume` sin la salida de recuperación que su tabla declara para una estructura corrupta.
+> Por eso la base se valida **antes** de usarla y un valor no positivo cae al default: el veredicto lo
+> da la comprobación de forma, que es quien puede clasificarlo como corrupción. **El mismo invariante
+> es lo que obliga a que la base viaje como lexema:** convertirla devolvía notación científica con un
+> `n` grande, el `test` del shell fallaba con `integer expression expected`, la comprobación recibía una
+> base no numérica y devolvía `2`, y el bloque volvía a salir `1` sobre un literal legible. Todo lo que
+> el marcador decide sobre la base se decide **por texto**: forma y positividad.
+
+#### `pedido-digest`
+
+```sh
+# @bloque: pedido-digest
+# uso: pedido_digest <ruta de registro.md>
+# requiere sha256sum o shasum: sin ninguno devuelve 3, que no es un veredicto
+pedido_digest() {
+  r="${1:?ruta de registro.md}"
+  lit="$(dirname "$r")/literal.jsonl"
+  if [ ! -r "$r" ] || [ ! -r "$lit" ]; then
+    echo "no se puede leer alguna de las dos sedes" >&2; return 3
+  fi
+  if command -v sha256sum >/dev/null 2>&1; then HTOOL=sha256sum
+  elif command -v shasum >/dev/null 2>&1; then HTOOL=shasum
+  else echo "no hay sha256sum ni shasum: la cadena no se puede verificar" >&2; return 3; fi
+  # el comando no viaja en una variable sin comillas: en zsh no se divide y la invocación se rompe.
+  # Y la SALIDA se comprueba: una herramienta presente que falla no imprime nada, y con un corte al
+  # final de la tubería el estado que llegaba era el del corte —cero—, así que el vacío pasaba por
+  # hash. Esta definición es **byte a byte la misma** que la de `pedido-criterio`, y hay un caso del
+  # arnés que lo comprueba: son dos bloques que cargan en el mismo shell y no pueden divergir
+  pedido_sha() {
+    case "$HTOOL" in
+      sha256sum) h=$(sha256sum) ;;
+      shasum)    h=$(shasum -a 256) ;;
+    esac || return 3
+    h=${h%% *}
+    case "$h" in ''|*[!0-9a-f]*) return 3 ;; esac
+    [ ${#h} -eq 64 ] || return 3
+    printf '%s' "$h"
+  }
+  tot=$(awk 'END { print NR+0 }' "$lit") || return 3
+  filas=$(awk 'BEGIN { FS=sprintf("%c",124) }
+    /^## clausulas/ { s=1; next } /^## / { s=0 }
+    s && substr($0,1,1) == sprintf("%c",124) { n++ }
+    END { print n+0 }' "$r") || return 3
+  # las confirmaciones, en orden de tabla, con la fila que ocupa cada una. Manda el TIPO y no la
+  # forma del objetivo: una propuesta que lleve un digest no confirmó nada
+  confs=$(awk '
+    function celda(x) { sub("^[ " sprintf("%c",9) "*" sprintf("%c",96) "]+", "", x)
+                        sub("[ " sprintf("%c",9) "*" sprintf("%c",96) "]+$", "", x)
+                        gsub(sprintf("%c",1), sprintf("%c",124), x); return x }
+    # GFM define `\|` como CONTENIDO de celda, no como separador. Se sustituye por un byte de
+    # control antes de partir —así el pipe escapado no cambia la aridad— y `celda()` lo devuelve a
+    # su valor al leer: una representación reversible, la misma en todos los lectores. Rechazarlo
+    # dejaba sin serialización a cualquier texto que llevara un pipe
+    function despipe(ln) { gsub(/\\[|]/, sprintf("%c",1), ln); return ln }
+    BEGIN { FS=sprintf("%c",124) }
+    { $0 = despipe($0) }
+    /^## eventos/ { s=1; i=0; next } /^## / { s=0 }
+    s && substr($0,1,1) == sprintf("%c",124) { i++
+      tipo=$6; tipo = celda(tipo)
+      ob=$7;   ob = celda(ob)
+      if (tipo == "confirmacion") printf "%s\t%s\n", i, ob }' "$r")
+  rc=$?
+  if [ "$rc" -ne 0 ]; then echo "la comprobación no pudo ejecutarse: awk salió $rc" >&2; return 3; fi
+  # un pedido todavía sin confirmar es un estado válido, no un fallo
+  if [ -z "$confs" ]; then return 0; fi
+  # con confirmaciones, el registro tiene bytes firmados y **no se puede reparar editándolo**: si
+  # su esquema no es el vigente, la transición no es el gate sino la cuarentena, y tiene que
+  # decidirse ACÁ porque `resume` corre este bloque antes que el de unicidad. Sin esto, un paquete
+  # firmado con un esquema viejo llegaba al gate como reparable, se mutaba material firmado, y la
+  # corrupción aparecía recién en un `resume` posterior
+  # SOLO las dos tablas que entran al preimage. `## traza` es mutable y no se firma —lo dice la
+  # frontera de este bloque—, así que una infracción suya es reparable y sigue la ruta del gate:
+  # mandarla a cuarentena manda a destruir material que nadie firmó
+  #
+  # Y SOLO hasta donde llega lo firmado. Las dos tablas son append-only, así que una fila anexada
+  # DESPUÉS del prefijo sellado no está en ningún preimage: editarla no toca un byte firmado y su
+  # captura es reparable en el gate. El límite es el mismo que usa el serializador —`## clausulas`
+  # hasta la frontera, `## eventos` por encima de la confirmación—, tomado sobre la confirmación
+  # que más abarca. Sin este corte, una fila mal formada anexada al final mandaba a cuarentena un
+  # registro cuyo material firmado estaba intacto: destruir lo irreemplazable por un defecto que
+  # `pedido-unicidad` corrige editando
+  fmax=$(printf '%s\n' "$confs" | awk -F"$(printf '\t')" '
+    { ob=$2
+      if (ob !~ /^digest@[0-9a-f]+@[0-9]+:[0-9]+$/) next
+      sub(/^digest@[0-9a-f]+@/, "", ob); sub(/:.*$/, "", ob)
+      # se compara por CANTIDAD DE DÍGITOS primero: una frontera de treinta dígitos no cabe en el
+      # entero y la comparación numérica dejaría de discriminar sin decirlo
+      if (length(ob) > length(m) || (length(ob) == length(m) && ob > m)) m = ob }
+    END { print (m == "" ? 0 : m) }') || return 3
+  eimax=$(printf '%s\n' "$confs" | awk -F"$(printf '\t')" '
+    { if (length($1) > length(m) || (length($1) == length(m) && $1 > m)) m = $1 }
+    END { print (m == "" ? 0 : m) }') || return 3
+  esq=$(awk -v FM="$fmax" -v EM="$eimax" '
+    function celda(x) { sub("^[ " sprintf("%c",9) "*" sprintf("%c",96) "]+", "", x)
+                        sub("[ " sprintf("%c",9) "*" sprintf("%c",96) "]+$", "", x)
+                        gsub(sprintf("%c",1), sprintf("%c",124), x); return x }
+    function despipe(ln) { gsub(/\\[|]/, sprintf("%c",1), ln); return ln }
+    BEGIN { FS=sprintf("%c",124)
+      ent["## clausulas"]="P-k|version|aplicabilidad|fragmentos|texto|evidencia"
+      ent["## eventos"]="E-k|momento|actor|productor|tipo|objetivo|supersede|resolucion|estado|motivo" }
+    { $0 = despipe($0) }
+    /^## / { s=($0 in ent) ? $0 : ""; fila=0; next }
+    s != "" && substr($0,1,1) == sprintf("%c",124) { fila++
+      # el mismo corte que el serializador: hasta `F` en clausulas, por debajo de `EI` en eventos.
+      # La fila de la confirmación tampoco está firmada —lleva el digest, no puede estar en su
+      # propio preimage—, así que queda del lado reparable
+      lim = (s == "## clausulas") ? FM+0 : EM+0 - 1
+      if (fila > lim) next
+      nesq = split(ent[s], _d, "|")
+      if (fila == 1) {
+        act = ""
+        for (j=2; j<NF; j++) act = act (j == 2 ? "" : "|") celda($j)
+        if (act != ent[s]) print s " (cabecera)"
+        next }
+      # y la gramática de las filas FIRMADAS, no solo su cabecera: una fila mal formada dentro del
+      # prefijo sellado es material irreparable igual que una cabecera de otra versión
+      nf2 = 0; for (j=2; j<NF; j++) nf2++
+      if (nf2 != nesq) print s " (una fila tiene " nf2 " celdas y el esquema declara " nesq ")" }
+    END { }' "$r")
+  rce=$?
+  if [ "$rce" -ne 0 ]; then echo "la comprobacion del esquema no pudo ejecutarse: awk salio $rce" >&2; return 3; fi
+  if [ -n "$esq" ]; then
+    echo "el registro tiene confirmaciones y su esquema no es el vigente:"
+    printf '%s\n' "$esq"
+    return 1
+  fi
+  base="${TMPDIR:-/tmp}/pedido-digest.$$"
+  printf '%s\n' "$confs" > "$base.c"
+  prev=""; pf=0; pl=0; k=0; malo=0; parado=0
+  while IFS='	' read -r ei ob; do
+    k=$((k+1))
+    # el objetivo de una confirmación lleva el digest Y la frontera que firmó
+    case "$ob" in
+      digest@*@*:*) ;;
+      *) echo "la confirmacion $k no declara digest y frontera: $ob"; malo=1; continue ;;
+    esac
+    resto=${ob#digest@}; dg=${resto%%@*}; fr=${resto#*@}; ff=${fr%%:*}; ll=${fr#*:}
+    forma=1
+    [ ${#dg} -eq 64 ] || forma=0
+    case "$dg" in *[!0-9a-f]*) forma=0 ;; esac
+    case "$ff" in ''|*[!0-9]*) forma=0 ;; 0) ;; 0*) forma=0 ;; esac
+    case "$ll" in ''|*[!0-9]*) forma=0 ;; 0) ;; 0*) forma=0 ;; esac
+    if [ "$forma" -eq 0 ]; then
+      echo "la confirmacion $k no declara digest y frontera: $ob"; malo=1; continue
+    fi
+    # la frontera se compara primero por CANTIDAD DE DÍGITOS: `test -gt` convierte a entero, y con
+    # treinta dígitos aborta con «integer expression expected» dejando la comparación sin hacer y
+    # el error suelto en stderr. Pasado ese filtro, el valor cabe en el entero del shell
+    if [ ${#ff} -gt ${#filas} ] || { [ ${#ff} -eq ${#filas} ] && [ "$ff" -gt "$filas" ]; }; then
+      echo "la confirmacion $k firmo $ff filas de clausulas y hoy quedan $filas"; malo=1; continue
+    fi
+    if [ ${#ll} -gt ${#tot} ] || { [ ${#ll} -eq ${#tot} ] && [ "$ll" -gt "$tot" ]; }; then
+      echo "la confirmacion $k firmo $ll lineas del literal y hoy quedan $tot"; malo=1; continue
+    fi
+    # las dos tablas solo se anexan, así que una frontera nunca puede retroceder: si retrocede,
+    # la confirmación declara haber firmado menos de lo que la anterior ya tenía firmado
+    if [ "$ff" -lt "$pf" ] || [ "$ll" -lt "$pl" ]; then
+      echo "la confirmacion $k retrocede la frontera: $ff:$ll despues de $pf:$pl"; malo=1; continue
+    fi
+    # el prefijo del literal se recorta con `awk` y NO con `head` en una tubería: ahí el estado que
+    # llega es el del último eslabón, así que un `head` que falla se leía como un literal vacío
+    LC_ALL=C awk -v L="$ll" 'NR <= L+0' "$lit" > "$base.l"
+    if [ $? -ne 0 ]; then parado=1; break; fi
+    shalit=$(pedido_sha < "$base.l")
+    if [ $? -ne 0 ]; then parado=1; break; fi
+    # el preimage se arma en UN archivo y se hashea desde ahí: con la serialización llegando por
+    # una tubería, el estado que llegaba era el del último eslabón y un `cat` que fallara producía
+    # un preimage corto que igual se hasheaba, o sea un rojo fabricado sobre un registro intacto
+    { printf '%s' "$prev"
+      printf 'frontera\t%s\t%s\nliteral\t%s\n' "$ff" "$ll" "$shalit"; } > "$base.p"
+    if [ $? -ne 0 ]; then parado=1; break; fi
+    LC_ALL=C awk -v F="$ff" -v EI="$ei" '
+      function despipe(ln) { gsub(/\\[|]/, sprintf("%c",1), ln); return ln }
+      BEGIN { PI=sprintf("%c",124); FS=PI
+              TB=sprintf("%c",9); CR=sprintf("%c",13); SOH=sprintf("%c",1) }
+      { $0 = despipe($0) }
+      /^## clausulas/ { s="c"; i=0; next }
+      /^## eventos/   { s="e"; i=0; next }
+      /^## /          { s="";  next }
+      s != "" && substr($0,1,1) == PI { i++
+        if (s == "c" && i > F+0) next
+        if (s == "e" && i >= EI+0) next
+        linea = s
+        for (j=2; j<NF; j++) { c=$j; gsub(/^[ ]+|[ ]+$/,"",c)
+          # el separador se codifica dentro de la celda, y el codificador también: sin esto, dos
+          # celdas repartidas distinto serializan igual y el digest COLISIONA, que en un mecanismo
+          # de evidencia de manipulación es exactamente su ruina
+          gsub(SOH, PI, c)
+          gsub(/%/, "%25", c); gsub(TB, "%09", c); gsub(CR, "%0D", c)
+          linea = linea TB c }
+        print linea }' "$r" >> "$base.p"
+    if [ $? -ne 0 ]; then parado=1; break; fi
+    # una confirmación que no firma ninguna fila de datos no confirma nada: con la frontera en la
+    # cabecera y el separador, el digest reproduce y el registro entero queda fuera de la cadena
+    datos=$(LC_ALL=C awk '
+    function celda(x) { sub("^[ " sprintf("%c",9) "*" sprintf("%c",96) "]+", "", x)
+                        sub("[ " sprintf("%c",9) "*" sprintf("%c",96) "]+$", "", x)
+                        gsub(sprintf("%c",1), sprintf("%c",124), x); return x }
+    # este lector NO parte una tabla: lee el preimage ya materializado, separado por tabuladores, así
+    # que no lleva `despipe` — la representación ya se resolvió río arriba, al serializar
+      BEGIN { FS=sprintf("%c",9) }
+      $1 == "c" { c=$2; c = celda(c)
+                  if (c ~ /^P-[0-9]+$/) n++ }
+      END { print n+0 }' "$base.p")
+    if [ $? -ne 0 ]; then parado=1; break; fi
+    if [ "$datos" -eq 0 ] || [ "$ll" -eq 0 ]; then
+      echo "la confirmacion $k no firma ninguna clausula o ninguna linea del literal: $ff:$ll"
+      malo=1; pf="$ff"; pl="$ll"; prev="$dg"; continue
+    fi
+    # el prefijo tiene que estar CERRADO bajo sus propias referencias: una cláusula firmada que
+    # cita una línea que no se firmó, o un evento firmado que apunta a una cláusula fuera del
+    # prefijo, describen un estado que nunca existió. Se lee del prefijo YA materializado
+    cierre=$(LC_ALL=C awk -v PRE="$base.p" '
+      function norm(x) { sub(/^0+/, "", x); return (x == "" ? "0" : x) }
+      function normid(x,   pre, resto, suf) {
+        if (!match(x, /^[A-Za-z]+-/)) return x
+        pre = substr(x, 1, RLENGTH); resto = substr(x, RLENGTH+1); suf = ""
+        if (match(resto, /[a-z]$/)) { suf = substr(resto, RSTART); resto = substr(resto, 1, RSTART-1) }
+        return pre norm(resto) suf }
+      BEGIN { FS=sprintf("%c",9)
+        while ((getline linea < PRE) > 0) {
+          n = split(linea, cc, FS)
+          if (cc[1] == "c" && cc[2] ~ /^P-[0-9]+$/ && cc[3] ~ /^[0-9]+$/) {
+            hayc[normid(cc[2]) "@" norm(cc[3])] = 1; frg[++nc] = cc[5] }
+          else if (cc[1] == "e" && cc[2] ~ /^E-[0-9]+$/ && cc[7] ~ /^P-[0-9]+@[0-9]+$/) {
+            split(cc[7], pe, "@"); obj[++ne] = normid(pe[1]) "@" norm(pe[2]) } }
+        close(PRE) }
+      { if (match($0, /"n"[ ]*:[ ]*[0-9]+[ ]*[,}]/)) {
+          v = substr($0, RSTART, RLENGTH); sub(/^.*:[ ]*/, "", v); sub(/[ ]*[,}]$/, "", v)
+          hayn[norm(v)] = 1 } }
+      END {
+        for (i = 1; i <= nc; i++) {
+          m = split(frg[i], ls, ",")
+          for (j = 1; j <= m; j++) {
+            if (ls[j] !~ /^[0-9]+:[0-9]+-[0-9]+$/) continue
+            split(ls[j], pz, ":")
+            if (!(norm(pz[1]) in hayn))
+              print "clausula firmada que cita una linea no firmada: " ls[j] } }
+        for (i = 1; i <= ne; i++)
+          if (!(obj[i] in hayc))
+            print "evento firmado que apunta a una clausula no firmada: " obj[i] }' "$base.l")
+    if [ $? -ne 0 ]; then parado=1; break; fi
+    if [ -n "$cierre" ]; then
+      printf 'la confirmacion %s no cierra sobre lo que firmo\n' "$k"
+      printf '%s\n' "$cierre"
+      malo=1; pf="$ff"; pl="$ll"; prev="$dg"; continue
+    fi
+    calc=$(pedido_sha < "$base.p")
+    if [ $? -ne 0 ]; then parado=1; break; fi
+    if [ "$calc" != "$dg" ]; then
+      echo "la confirmacion $k no reproduce lo que firmo"
+      echo "  escrito:     $dg"
+      echo "  recomputado: $calc"
+      malo=1
+    fi
+    # el eslabon anterior es el ESCRITO, no el recomputado: así cada eslabón se juzga solo y el
+    # reporte nombra cuál se rompió, en vez de teñir de rojo a todos los que le siguen
+    pf="$ff"; pl="$ll"; prev="$dg"
+  done < "$base.c"
+  rm -f "$base.c" "$base.p" "$base.l"
+  if [ "$parado" -eq 1 ]; then echo "no se pudo calcular el sha256" >&2; return 3; fi
+  if [ "$malo" -eq 0 ]; then return 0; fi
+  return 1
+}
+```
+
+> **Frontera de prueba.** Clase **veredicto**, dirección **admite-de-más**, ante la duda
+> **niega-ante-duda**. Su verde autoriza a afirmar que **cada eslabón de la cadena reproduce el
+> prefijo que firmó**: las filas de `## clausulas` hasta su frontera, las filas de `## eventos`
+> anteriores a la suya, y las líneas del literal hasta su frontera. Que la frontera se escriba en
+> claro es lo que vuelve verificable la cadena **entera** y no solo su último eslabón, y lo que
+> distingue una **anexión legítima posterior** —que no toca ningún prefijo firmado, y es el régimen
+> normal del registro— de una **reescritura**, que sí lo toca.
+>
+> **El clasificador de cuarentena alcanza lo mismo, y ni una fila más.** Cuando hay confirmaciones,
+> este bloque decide además si el registro es **irreparable** —esquema que no es el vigente— y ese
+> `1` sale por cuarentena, que destruye trabajo. Su dominio es exactamente el material firmado: las
+> filas de `## clausulas` hasta la frontera **mayor** entre las confirmaciones y las de `## eventos`
+> por debajo de la **última**. Una fila anexada después de ese prefijo —incluida la fila de la
+> confirmación, que lleva el digest y no puede estar en su propio preimage— **no está firmada**:
+> editarla no mueve ningún digest, así que su captura es reparable y la clasifica `pedido-unicidad`
+> en el gate. Sin ese corte, una fila mal formada anexada al final mandaba a destruir un registro
+> cuyo material firmado estaba intacto.
+>
+> **Lo que no ve.** `## traza` no entra en ningún preimage, y no por olvido: es la única de las tres
+> tablas que **no es append-only** —`hash_criterio` se reescribe en cada adjudicación—, así que un
+> prefijo suyo no es un estado congelable y reescribir una de sus filas no mueve ningún digest. Esa
+> mitad la cubre `pedido-referencias`, con el hash del último evento que nombra a cada criterio.
+> Tampoco ve un registro al que le hayan quitado **la confirmación entera**: sin ningún evento
+> `tipo: confirmacion` devuelve `0`, porque un pedido todavía sin confirmar es un estado válido, y
+> ningún otro bloque comprueba que las confirmaciones sigan ahí. **La colisión por tabulador ya no
+> es un límite**: las celdas se codifican antes de unirse, así que la serialización es inyectiva y
+> dos repartos distintos de un mismo texto ya no firman igual. Lo que queda es que **no ve cuál**
+> celda cambió: dice que la confirmación no reproduce, no qué se tocó.
+>
+> Fallos de ejecución, distintos de su resultado: `3` si falta alguna de las dos sedes, si no hay
+> `sha256sum` ni `shasum`, si la herramienta **está y falla** —su salida se comprueba en vez de
+> suponerse— o si la serialización no se pudo producir. **La ausencia de la herramienta no es un
+> verde**: es la ausencia de comprobación, y el routing la trata como tal.
+
+#### `pedido-criterio`
+
+```sh
+# @bloque: pedido-criterio
+# uso: pedido_criterio <ruta de registro.md> <sede de los criterios>
+# requiere sha256sum o shasum: sin ninguno devuelve 3, que no es un veredicto
+pedido_criterio() {
+  cr="${1:?ruta de registro.md}"
+  cs="${2:?sede de los criterios: spec.md, o plan.md en trivial}"
+  if [ ! -r "$cr" ] || [ ! -r "$cs" ]; then
+    echo "no se puede leer alguna de las dos sedes" >&2; return 3
+  fi
+  if command -v sha256sum >/dev/null 2>&1; then HTOOL=sha256sum
+  elif command -v shasum >/dev/null 2>&1; then HTOOL=shasum
+  else echo "no hay sha256sum ni shasum: los criterios no se pueden comprobar" >&2; return 3; fi
+  # byte a byte la misma definición que la de `pedido-digest`, y con un caso del arnés que lo
+  # comprueba: los dos bloques cargan en el mismo shell y una divergencia sería silenciosa
+  pedido_sha() {
+    case "$HTOOL" in
+      sha256sum) h=$(sha256sum) ;;
+      shasum)    h=$(shasum -a 256) ;;
+    esac || return 3
+    h=${h%% *}
+    case "$h" in ''|*[!0-9a-f]*) return 3 ;; esac
+    [ ${#h} -eq 64 ] || return 3
+    printf '%s' "$h"
+  }
+  base="${TMPDIR:-/tmp}/pedido-criterio.$$"
+  LC_ALL=C awk '
+    function celda(x) { sub("^[ " sprintf("%c",9) "*" sprintf("%c",96) "]+", "", x)
+                        sub("[ " sprintf("%c",9) "*" sprintf("%c",96) "]+$", "", x)
+                        gsub(sprintf("%c",1), sprintf("%c",124), x); return x }
+    # GFM define `\|` como CONTENIDO de celda, no como separador. Se sustituye por un byte de
+    # control antes de partir —así el pipe escapado no cambia la aridad— y `celda()` lo devuelve a
+    # su valor al leer: una representación reversible, la misma en todos los lectores. Rechazarlo
+    # dejaba sin serialización a cualquier texto que llevara un pipe
+    function despipe(ln) { gsub(/\\[|]/, sprintf("%c",1), ln); return ln }
+    BEGIN { FS=sprintf("%c",124) }
+    function norm(x) { sub(/^0+/, "", x); return (x == "" ? "0" : x) }
+    function normid(x,   pre, resto, suf) {
+      if (!match(x, /^[A-Za-z]+-/)) return x
+      pre = substr(x, 1, RLENGTH); resto = substr(x, RLENGTH+1); suf = ""
+      if (match(resto, /[a-z]$/)) { suf = substr(resto, RSTART); resto = substr(resto, 1, RSTART-1) }
+      return pre norm(resto) suf }
+    { $0 = despipe($0) }
+    /^## traza/ { s=1; next } /^## / { s=0 }
+    s && substr($0,1,1) == sprintf("%c",124) {
+      id=$2; id = celda(id)
+      if (id !~ /^AC-[0-9]+[a-z]?$/) next
+      hc=$3; hc = celda(hc)
+      printf "%s\t%s\n", normid(id), hc }' "$cr" > "$base.t"
+  if [ $? -ne 0 ]; then rm -f "$base.t"; echo "no se pudo leer la traza" >&2; return 3; fi
+  # una traza sin criterios es un estado válido: todavía no se adjudicó ninguno
+  if [ ! -s "$base.t" ]; then rm -f "$base.t"; return 0; fi
+  malo=0; parado=0
+  while IFS='	' read -r ac hc; do
+    # el identificador NO viaja por -v: argv está acotado por ARG_MAX y las identidades no llevan
+    # máximo, así que un AC-n grande hacía fallar a awk y el bloque devolvía 3 —«sin comprobar»—
+    # sobre un registro perfectamente legible, con el gate siguiendo sin el pin del hash
+    printf '%s\n' "$ac" | LC_ALL=C awk '
+      function norm(x) { sub(/^0+/, "", x); return (x == "" ? "0" : x) }
+      function normid(x,   pre, resto, suf) {
+        if (!match(x, /^[A-Za-z]+-/)) return x
+        pre = substr(x, 1, RLENGTH); resto = substr(x, RLENGTH+1); suf = ""
+        if (match(resto, /[a-z]$/)) { suf = substr(resto, RSTART); resto = substr(resto, 1, RSTART-1) }
+        return pre norm(resto) suf }
+      # la MISMA forma cerrada por los dos extremos que usa pedido-referencias, con el vecino
+      # izquierdo buscado en la línea entera: si difieren, las dos sedes dejan de hablar del
+      # mismo identificador y el desacuerdo no da rojo en ninguna
+      function idlinea(s,   linea, pos, r, l, sig, ant) {
+        linea = s; pos = 0
+        while (match(linea, /AC-[0-9]+[a-z]?/)) {
+          r = RSTART; l = RLENGTH
+          sig = substr(linea, r + l, 1)
+          ant = (pos + r > 1) ? substr(s, pos + r - 1, 1) : ""
+          if (sig !~ /[0-9A-Za-z_]/ && ant !~ /[0-9A-Za-z_-]/) return normid(substr(linea, r, l))
+          pos = pos + r + l - 1
+          linea = substr(linea, r + l) }
+        return "" }
+      # una línea DECLARA un criterio cuando su primer identificador válido es ese criterio y
+      # además lleva la anotación de autoridad, que el contrato obliga a poner al final de la
+      # primera línea de cada AC-n. Sin esa condición, una MENCIÓN anterior —«el resumen apunta a
+      # AC-1»— arrancaba el preimage, y cambiar el criterio de verdad no movía el hash
+      BEGIN { ESP = "[ " sprintf("%c",9) "]"; BT = sprintf("%c",96)
+              if ((getline AC) <= 0) { exit 3 } }
+      # el MISMO contexto Markdown que usa pedido-referencias: un criterio citado dentro de un
+      # fence o de un comentario no lo declara, y hashear ese bloque ataba el hash a un ejemplo
+      function mdsalta(ln,   t, c, n) {
+        if (mdcom) { if (index(ln, "-->") > 0) mdcom = 0; return 1 }
+        t = ln; sub(/^[ ]?[ ]?[ ]?/, "", t)
+        if (mdfen) {
+          if (match(t, "^" mdchar "+")) { n = RLENGTH
+            if (n >= mdlen && substr(t, n + 1) ~ /^[ ]*$/) mdfen = 0 }
+          return 1 }
+        # un bloque de código INDENTADO —cuatro espacios o más— también es código: un `AC-n` ahí
+        # dentro es un ejemplo. El vecino de tres espacios sigue declarando
+        if (ln ~ /^[ ][ ][ ][ ]/ || ln ~ ("^" sprintf("%c",9))) return 1
+        if (substr(t, 1, 4) == "<!--") { if (index(ln, "-->") == 0) mdcom = 1; return 1 }
+        if (match(t, "^" BT "+") || match(t, /^~+/)) {
+          c = substr(t, 1, 1); n = RLENGTH
+          if (n >= 3) { mdfen = 1; mdchar = c; mdlen = n; return 1 } }
+        return 0 }
+      # la MISMA noción de apertura que usa pedido-referencias: una línea abre un criterio cuando,
+      # quitados los espacios y un marcador de lista inicial, empieza con su identificador. Antes
+      # se exigía además la anotación de autoridad, y eso ataba este bloque a una comprobación que
+      # es de otro: un criterio abierto sin anotación tiene que hashearse igual, y la anotación
+      # ausente la reporta quien la gobierna
+      function declara(s,   t, r, l, sig) {
+        t = s
+        sub("^" ESP "+", "", t)
+        sub("^([-*+]|[0-9]+[.)])" ESP "+", "", t)
+        sub("^\\[[ xX]\\]" ESP "+", "", t)
+        sub("^([*][*]|[*]|" BT ")+", "", t)
+        if (!match(t, /^AC-[0-9]+[a-z]?/)) return ""
+        r = RSTART; l = RLENGTH
+        sig = substr(t, r + l, 1)
+        if (sig ~ /[0-9A-Za-z_]/) return ""
+        return normid(substr(t, r, l)) }
+      # el conteo va en su propia regla, sin el corte de `hecho`: contándolo dentro del bloque, una
+      # segunda apertura POSTERIOR al bloque no se veía, que es justo el caso que hay que cazar
+      { if (mdsalta($0)) next
+        d = declara($0); if (d == AC) visto++ }
+      { if (hecho) next
+        # el bloque llega hasta —sin incluirla— la línea que declara el criterio siguiente, la
+        # primera que empiece con `#`, o el final. Sin ese corte, agregar una sección al final del
+        # archivo movía el hash del último criterio sin que nadie hubiera tocado el criterio
+        if (dentro && (d != "" || substr($0,1,1) == "#")) { hecho = 1; next }
+        if (!dentro) { if (d == AC) dentro = 1; else next }
+        linea = $0
+        sub(/\[autoridad: [^]]*\]/, "", linea)
+        sub(/[ ]+$/, "", linea)
+        buf[++n] = linea }
+      # dos aperturas con la misma identidad no se colapsan en silencio: hashear la primera dejaba
+      # la segunda sin comprobar, y cambiarla no movía nada. El 4 es propio y lo lee el llamador
+      END { if (visto > 1) exit 4
+            while (n > 0 && buf[n] == "") n--
+            for (i = 1; i <= n; i++) print buf[i] }' - "$cs" > "$base.b"
+    rcb=$?
+    if [ "$rcb" -eq 4 ]; then
+      echo "criterio declarado mas de una vez en la sede: $ac"; malo=1; continue
+    fi
+    if [ "$rcb" -ne 0 ]; then parado=1; break; fi
+    if [ ! -s "$base.b" ]; then
+      echo "criterio de la traza sin declaracion en la sede: $ac"; malo=1; continue
+    fi
+    calc=$(pedido_sha < "$base.b")
+    if [ $? -ne 0 ]; then parado=1; break; fi
+    if [ "$calc" != "$hc" ]; then
+      echo "el hash_criterio de $ac no es el del texto vigente"
+      echo "  escrito:     $hc"
+      echo "  recomputado: $calc"
+      malo=1
+    fi
+  done < "$base.t"
+  rm -f "$base.t" "$base.b"
+  if [ "$parado" -eq 1 ]; then echo "no se pudo calcular el sha256" >&2; return 3; fi
+  if [ "$malo" -eq 0 ]; then return 0; fi
+  return 1
+}
+```
+
+> **Frontera de prueba.** Clase **veredicto**, dirección **admite-de-más**, ante la duda
+> **niega-ante-duda**. Su verde autoriza a afirmar que el `hash_criterio` de cada `AC-n` de la traza
+> es el `sha256` del **texto vigente** de ese criterio en la sede de los criterios. Es lo que
+> convierte al pin de `pedido-referencias` en una comprobación y no en el cotejo de dos copias del
+> mismo metadato: sin este bloque, el hash del evento y el de la traza podían coincidir entre sí y
+> no corresponderse con ningún texto.
+>
+> **Lo que no ve.** No juzga si el criterio está bien redactado ni si su derivación es válida —eso es
+> adjudicación semántica y queda en prosa—, ni ve un criterio que esté en la sede y **no** en la
+> traza: recorre la traza, así que un criterio sin fila propia le queda invisible; esa mitad la
+> cubre `R2` y la cobertura de la spec. Tampoco distingue **dónde** cambió el texto: dice que el
+> bloque no reproduce, no qué línea se tocó. Fallos de ejecución, distintos de su resultado: `3` si
+> falta alguna de las dos sedes, si no hay `sha256sum` ni `shasum`, si la herramienta está y falla,
+> o si el recorte del bloque no se pudo producir. **La ausencia de la herramienta no es un verde**.
+
+**`pedido-marcador` invoca a `pedido-jsonl` por dentro, y ese orden es único.** El routing invoca
+**un solo bloque** —y **carga dos**, que no es lo mismo: la definición de la dependencia tiene que
+estar en el shell para que la llamada interna exista—. Ordenar dos invocaciones desde `resume` vuelve
+el protocolo circular: el marcador no puede imprimir la celda «presente y corrupto» antes de conocer
+un resultado que llegaría después.
+Corrupto significa corrupto **de forma**, que es lo único que ese bloque ve; una corrupción más
+profunda —JSON inválido dentro de llaves bien puestas— **no la detecta ninguno de los dos** y aparece
+más tarde, cuando algo intente leer el campo. Se escribe porque acotar `pedido-jsonl` compró ese
+hueco a sabiendas.
+
+**El código de salida no codifica la celda**, y esa distinción es deliberada: darle un código a cada
+desenlace deja al protocolo sin código para el flujo heredado, que no es fallo ni cuarentena ni
+aplicable. El código dice **si resolvió**; la celda viaja por stdout y el routing ramifica por ella.
+Así la matriz del marcador puede crecer sin quedarse sin códigos.
+
 ## Búsqueda de antecedentes
 
 Detalle del **sub-paso 5** de `gather-context`. `SKILL.md` lleva el mandato —que el paso corre
@@ -1906,9 +4052,11 @@ queda el resultado.
 
 ### El artefacto `antecedentes.md`
 
-La búsqueda termina **antes** de que exista `spec.md`, así que no puede escribir ahí. El sub-paso 5
-crea `.plans/<id>/` —adelantando la creación que de otro modo ocurre en `specify`— y escribe
-`.plans/<id>/antecedentes.md`, que es la autoridad durante toda la ventana pre-spec.
+La búsqueda termina **antes** de que exista `spec.md`, así que no puede escribir ahí. La sede
+`.plans/<id>/` ya está creada cuando este sub-paso corre: la crea el sub-paso 3b al congelar el
+pedido, y el 5 la **encuentra** y escribe ahí `.plans/<id>/antecedentes.md`, que es la autoridad
+sobre la búsqueda durante toda la ventana pre-spec. En un flujo heredado, anterior a 3b, la crea
+este sub-paso.
 
 El archivo tiene **dos bloques con nombre**, y esa partición es lo que vuelve inequívoca la
 promoción: sin ella, quien copiara el archivo entero a la spec estaría publicando el ledger máquina.
@@ -2468,8 +4616,10 @@ sin comprobar, con su razón; los candidatos **descritos** —"un flujo archivad
 - **AC-2:** <...>
 
 ## Clarifications
-<Q&A registradas durante `clarify`. Vacío si no hubo.>
-- **Q:** <pregunta> — **A:** <respuesta> (afecta: AC-n)
+<Q&A registradas durante `clarify`, **numeradas**. Vacío si no hubo.>
+- **Q1:** <pregunta> — **A:** <respuesta> (afecta: AC-n)
+<`— **A:**` es el separador reservado: para nombrarlo dentro de una pregunta, va en un tramo de
+código —`` `— **A:**` ``— o escapado. En texto plano separa, y dos veces en texto plano es ambiguo.>
 ```
 
 ## Producción del contrato de verificación
@@ -2911,6 +5061,8 @@ base_branch: master             # rama base resuelta (con override de base, la r
 overrides: { branch_prefix: null, base_branch: null, cross_review: null, implement_mode: null, jira_approval: null }
 # puntero al ledger de la búsqueda (solo en una pausa durante `gather-context`):
 antecedentes: .plans/<id>/antecedentes.md   # PUNTERO, no copia: términos, fuentes y fingerprints viven solo ahí
+# puntero al pedido congelado (siempre que el flujo lo tenga):
+pedido: .plans/<id>/pedido/   # PUNTERO, no copia: el literal y el registro se leen en su sede
 # campos del gate de Jira (solo si es una pausa por aprobación externa):
 gate_status: awaiting           # awaiting | changes-requested | approved
 parent_key: ABC-123
@@ -2933,6 +5085,8 @@ cloud_id: <uuid del sitio>
 ## Archivos del flujo
 - spec.md — el QUÉ completo + Clarifications
 - antecedentes.md — el ledger de la búsqueda: `## estado` (nunca se publica) y `## declaracion` (se promueve **sanitizado**)
+- contrato-pedido.md — el marcador de adopción: su presencia decide si la vara del pedido aplica
+- pedido/ — el pedido congelado: `literal.jsonl` (inmutable) y `registro.md` (append-only); se apunta, no se copia
 - jira-spec.md — exactamente lo publicado en la subtarea (solo si hubo gate de Jira)
 ```
 
