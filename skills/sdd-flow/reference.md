@@ -2733,7 +2733,21 @@ pedido_unicidad() {
     # Seleccionar por la forma del identificador dejaba fuera de toda regla lo que no la cumple,
     # y lo que no dispara ninguna regla no se reporta: se ignora
     s != "" && substr($0,1,1) != sprintf("%c",124) { next }
+    # el pipe NO es representable en una celda, ni siquiera escapado: Markdown lo lee como
+    # contenido y `awk` como separador, así que la misma fila tiene dos aridades distintas y cada
+    # lector ve otra columna. Es la restricción hermana de la que ya rige el contrato de verificación
+    s != "" && index($0, "\\" sprintf("%c",124)) > 0 {
+      print "tabla de " nom[s] ": una celda lleva un pipe escapado, que no es representable"; next }
+
     s != "" { fila++
+      # la aridad de la fila se comprueba contra el esquema: sin eso, una fila con más o menos
+      # celdas se lee por posición y cada columna cae en la de al lado. Va DESPUÉS de `fila++`,
+      # porque el contador vive en esta regla y una regla anterior lo leería con el valor previo
+      if (fila > 2) {
+        nfil2 = 0; for (z4 = 2; z4 < NF; z4++) nfil2++
+        nesq = split(ent[s], _d3, "|")
+        if (nfil2 != nesq) {
+          print "tabla de " nom[s] ": una fila tiene " nfil2 " celdas y el esquema declara " nesq; next } }
       c1=$2; c1 = celda(c1)
       # la cabecera y el separador se COMPRUEBAN, no se saltan por contarlos: si faltan, saltar
       # dos filas por posición se come dos filas de datos y la tabla pasa sin comprobarse
@@ -2745,10 +2759,15 @@ pedido_unicidad() {
         else print "tabla de " nom[s] ": la primera fila no es la cabecera (" (c1 == "" ? "vacia" : c1) ")"
         next }
       if (fila == 2) {
-        ncol = 0; for (z3 = 2; z3 < NF; z3++) ncol++
+        ncol = 0; malas = 0
+        for (z3 = 2; z3 < NF; z3++) { ncol++
+          # TODAS las celdas del separador, no solo la primera: con una sola, una fila con una
+          # celda que no lo es pasaba por separador y la tabla entera quedaba mal alineada
+          if (celda($z3) !~ /^:?-+:?$/) malas++ }
         nesp = split(ent[s], _d2, "|")
-        if (c1 ~ /^-+$/ && ncol == nesp) hay_sep[s]=1
-        else if (c1 ~ /^-+$/) print "tabla de " nom[s] ": el separador tiene " ncol " columnas y el esquema declara " nesp
+        if (malas == 0 && ncol == nesp) hay_sep[s]=1
+        else if (malas > 0 && c1 ~ /^:?-+:?$/) print "tabla de " nom[s] ": el separador tiene " malas " celdas que no son separador"
+        else if (malas == 0) print "tabla de " nom[s] ": el separador tiene " ncol " columnas y el esquema declara " nesp
         else print "tabla de " nom[s] ": la segunda fila no es el separador (" (c1 == "" ? "vacia" : c1) ")"
         next }
       k=c1; v=$3
@@ -2851,6 +2870,22 @@ pedido_referencias() {
       n = length(s); t = 0
       for (i = 1; i <= n; i++) if (index(CONT, substr(s, i, 1)) == 0) t++
       return t }
+    # el contexto Markdown, compartido por las TRES gramáticas que leen la sede —el criterio, la
+    # `Q` y, con su propia copia sobre otro archivo, el encabezado—: lo que está dentro de un fence
+    # o de un comentario HTML es un **ejemplo citado**, no una declaración. El fence se cierra con
+    # el MISMO carácter y con al menos su largo, o un `~~~` cerraba un fence de backticks
+    function mdsalta(ln,   t, c, n) {
+      if (mdcom) { if (index(ln, "-->") > 0) mdcom = 0; return 1 }
+      t = ln; sub(/^[ ]?[ ]?[ ]?/, "", t)
+      if (mdfen) {
+        if (match(t, "^" mdchar "+")) { n = RLENGTH
+          if (n >= mdlen && substr(t, n + 1) ~ /^[ ]*$/) mdfen = 0 }
+        return 1 }
+      if (substr(t, 1, 4) == "<!--") { if (index(ln, "-->") == 0) mdcom = 1; return 1 }
+      if (match(t, "^" BT "+") || match(t, /^~+/)) {
+        c = substr(t, 1, 1); n = RLENGTH
+        if (n >= 3) { mdfen = 1; mdchar = c; mdlen = n; return 1 } }
+      return 0 }
     # una línea ABRE un criterio cuando, quitados los espacios y un marcador de lista inicial,
     # empieza con su identificador. Una MENCIÓN en prosa no abre nada, y esa distinción es la que
     # separa «el criterio está declarado» de «el criterio se nombra en algún lado»
@@ -2896,13 +2931,24 @@ pedido_referencias() {
     # espacios de sangría y **no cuenta dentro de un bloque de código**: `## regla-2` citado en un
     # fence es un ejemplo, no una sección. Y se CUENTA en vez de cortar en el primero, porque dos
     # encabezados con el mismo slug no identifican a ninguno
-    function buscar(arch, lit,   ln, n2, t2, fence) {
-      n2 = 0; fence = 0
+    function buscar(arch, lit,   ln, n2, t2, fen, fch, fln, com, tt, cc, nn) {
+      n2 = 0; fen = 0; com = 0
       while ((getline ln < arch) > 0) {
-        if (ln ~ /^[ ]?[ ]?[ ]?(```|~~~)/) { fence = 1 - fence; continue }
-        if (fence) continue
-        if (ln !~ /^[ ]?[ ]?[ ]?#+[ ]/) continue
-        t2 = ln; sub(/^[ ]*#+[ ]+/, "", t2); sub(/[ ]*#*[ ]*$/, "", t2)
+        # el MISMO contexto Markdown que `mdsalta`, con su estado propio porque recorre otro
+        # archivo: un encabezado citado en un fence o comentado no es una sección
+        if (com) { if (index(ln, "-->") > 0) com = 0; continue }
+        tt = ln; sub(/^[ ]?[ ]?[ ]?/, "", tt)
+        if (fen) {
+          if (match(tt, "^" fch "+")) { nn = RLENGTH
+            if (nn >= fln && substr(tt, nn + 1) ~ /^[ ]*$/) fen = 0 }
+          continue }
+        if (substr(tt, 1, 4) == "<!--") { if (index(ln, "-->") == 0) com = 1; continue }
+        if (match(tt, "^" BT "+") || match(tt, /^~+/)) {
+          cc = substr(tt, 1, 1); nn = RLENGTH
+          if (nn >= 3) { fen = 1; fch = cc; fln = nn; continue } }
+        # ATX admite de UNA a SEIS almohadillas: con siete, Markdown no hace un encabezado
+        if (tt !~ /^#{1,6}[ ]/) continue
+        t2 = tt; sub(/^#+[ ]+/, "", t2); sub(/[ ]*#*[ ]*$/, "", t2)
         if (slug(t2) == lit) n2++ }
       close(arch); return n2 }
     BEGIN { FS=sprintf("%c",124)
@@ -2934,6 +2980,7 @@ pedido_referencias() {
     # resolvía contra cualquier aparición del identificador, así que un criterio nombrado en prosa
     # y nunca declarado la satisfacía. Las dos direcciones de R2 rigen ahora sobre `abre`
     FILENAME == ESPEC {
+      if (mdsalta($0)) next
       if ($0 ~ /^##[ ]+Clarifications/) { enclar = 1 }
       else if ($0 ~ /^##[ ]/) { enclar = 0 }
       if (enclar) { qcl = abreq($0)
@@ -2944,8 +2991,13 @@ pedido_referencias() {
           # la respuesta va en su POSICIÓN canónica —tras el separador de raya— y no es un
           # placeholder: con el marcador buscado en cualquier lado, «¿Qué significa **A:**?» contaba
           # como respondida, y `<respuesta>` contaba como respuesta
-          dq = index($0, RAYA)
-          if (dq > 0) { cuerpo2 = substr($0, dq + length(RAYA))
+          # la raya que cuenta es la que INTRODUCE el marcador, no la primera de la línea: con
+          # `index()` a secas, una raya dentro de la pregunta escondía la respuesta que venía después
+          rq = $0; dq = 0
+          while ((pq = index(rq, RAYA)) > 0) {
+            if (substr(rq, pq + length(RAYA)) ~ /^[ ]*[*][*]A:[*][*]/) { dq = pq; break }
+            rq = substr(rq, pq + length(RAYA)) }
+          if (dq > 0) { cuerpo2 = substr(rq, dq + length(RAYA))
             if (match(cuerpo2, /^[ ]*[*][*]A:[*][*]/)) {
               cuerpo2 = celda(substr(cuerpo2, RLENGTH + 1))
               if (cuerpo2 != "" && cuerpo2 !~ /^<[^>]*>$/) resp[qcl] = 1 } } } }
@@ -3485,6 +3537,29 @@ pedido_digest() {
   if [ "$rc" -ne 0 ]; then echo "la comprobación no pudo ejecutarse: awk salió $rc" >&2; return 3; fi
   # un pedido todavía sin confirmar es un estado válido, no un fallo
   if [ -z "$confs" ]; then return 0; fi
+  # con confirmaciones, el registro tiene bytes firmados y **no se puede reparar editándolo**: si
+  # su esquema no es el vigente, la transición no es el gate sino la cuarentena, y tiene que
+  # decidirse ACÁ porque `resume` corre este bloque antes que el de unicidad. Sin esto, un paquete
+  # firmado con un esquema viejo llegaba al gate como reparable, se mutaba material firmado, y la
+  # corrupción aparecía recién en un `resume` posterior
+  esq=$(awk 'BEGIN { FS=sprintf("%c",124)
+      ent["## clausulas"]="P-k|version|aplicabilidad|fragmentos|texto|evidencia"
+      ent["## eventos"]="E-k|momento|actor|productor|tipo|objetivo|supersede|resolucion|estado|motivo"
+      ent["## traza"]="AC-n|hash_criterio|autoridad|referencia|derivacion" }
+    function celda(x) { sub("^[ " sprintf("%c",9) "*" sprintf("%c",96) "]+", "", x)
+                        sub("[ " sprintf("%c",9) "*" sprintf("%c",96) "]+$", "", x); return x }
+    /^## / { s=($0 in ent) ? $0 : ""; fila=0; next }
+    s != "" && substr($0,1,1) == sprintf("%c",124) { fila++
+      if (fila != 1) next
+      act = ""
+      for (j=2; j<NF; j++) act = act (j == 2 ? "" : "|") celda($j)
+      if (act != ent[s]) print s }
+    END { }' "$r")
+  if [ -n "$esq" ]; then
+    echo "el registro tiene confirmaciones y su esquema no es el vigente:"
+    printf '%s\n' "$esq"
+    return 1
+  fi
   base="${TMPDIR:-/tmp}/pedido-digest.$$"
   printf '%s\n' "$confs" > "$base.c"
   prev=""; pf=0; pl=0; k=0; malo=0; parado=0
@@ -3720,6 +3795,20 @@ pedido_criterio() {
       # AC-1»— arrancaba el preimage, y cambiar el criterio de verdad no movía el hash
       BEGIN { ESP = "[ " sprintf("%c",9) "]"; BT = sprintf("%c",96)
               if ((getline AC) <= 0) { exit 3 } }
+      # el MISMO contexto Markdown que usa pedido-referencias: un criterio citado dentro de un
+      # fence o de un comentario no lo declara, y hashear ese bloque ataba el hash a un ejemplo
+      function mdsalta(ln,   t, c, n) {
+        if (mdcom) { if (index(ln, "-->") > 0) mdcom = 0; return 1 }
+        t = ln; sub(/^[ ]?[ ]?[ ]?/, "", t)
+        if (mdfen) {
+          if (match(t, "^" mdchar "+")) { n = RLENGTH
+            if (n >= mdlen && substr(t, n + 1) ~ /^[ ]*$/) mdfen = 0 }
+          return 1 }
+        if (substr(t, 1, 4) == "<!--") { if (index(ln, "-->") == 0) mdcom = 1; return 1 }
+        if (match(t, "^" BT "+") || match(t, /^~+/)) {
+          c = substr(t, 1, 1); n = RLENGTH
+          if (n >= 3) { mdfen = 1; mdchar = c; mdlen = n; return 1 } }
+        return 0 }
       # la MISMA noción de apertura que usa pedido-referencias: una línea abre un criterio cuando,
       # quitados los espacios y un marcador de lista inicial, empieza con su identificador. Antes
       # se exigía además la anotación de autoridad, y eso ataba este bloque a una comprobación que
@@ -3738,7 +3827,8 @@ pedido_criterio() {
         return normid(substr(t, r, l)) }
       # el conteo va en su propia regla, sin el corte de `hecho`: contándolo dentro del bloque, una
       # segunda apertura POSTERIOR al bloque no se veía, que es justo el caso que hay que cazar
-      { d = declara($0); if (d == AC) visto++ }
+      { if (mdsalta($0)) next
+        d = declara($0); if (d == AC) visto++ }
       { if (hecho) next
         # el bloque llega hasta —sin incluirla— la línea que declara el criterio siguiente, la
         # primera que empiece con `#`, o el final. Sin ese corte, agregar una sección al final del
