@@ -1998,7 +1998,7 @@ los seis tienen su salida declarada — ninguno queda a criterio de quien retoma
 | `literal.jsonl` sin `registro.md` | la captura terminó, la redacción no | continúa en la redacción de cláusulas |
 | una línea de `literal.jsonl` que no parsea | la sede está corrupta | **cuarentena**: no se degrada a «lo que se pueda leer» |
 | `registro.md` sin `literal.jsonl` | estado imposible por el orden de escritura | **cuarentena** |
-| digest de la última confirmación que no reproduce la partición vigente | alguien reescribió filas ya confirmadas | **cuarentena** |
+| un eslabón de la cadena que no reproduce lo que selló | alguien reescribió filas ya confirmadas | **cuarentena** |
 
 La última fila es la que la cadena de digests vuelve detectable: sin encadenar, una reescritura de
 cláusulas ya confirmadas no dejaba rastro.
@@ -2040,7 +2040,7 @@ por el que `antecedentes.md` tiene su bloque máquina.
 | `actor` | `usuario` · `conductor` |
 | `productor` | `specify` · `gate-spec` · `clarify` · `trivial` · `revision-adversarial` · `tracker` — las seis filas de la tabla de puertas |
 | `tipo` | `propuesta` · `admision` · `correccion` · `retiro` · `descarte` · `confirmacion` |
-| `objetivo` | `P-k@version` · `AC-n@hash` · `digest@<sha256>` · `-` |
+| `objetivo` | `P-k@version` · `AC-n@hash` · `digest@<sha256>@<filas>:<lineas>` · `-` |
 | `supersede` | `E-j` · `-` |
 | `resolucion` | `admitida` · `no-admitida` · `-` |
 | `estado` | `pendiente` · `resuelta` |
@@ -2079,11 +2079,23 @@ sanitización: sin él escrito, cada publicador tenía que adivinar qué borrar.
 **La versión confirmada se identifica por una cadena de digests, no por un contador.** Un contador
 identifica el último literal, y el conjunto de cláusulas puede cambiar sin que ese número se mueva.
 En su lugar, cada confirmación del checkpoint anexa un evento `tipo: confirmacion` cuyo `objetivo` se
-escribe **`digest@<digest_k>`**, con `digest_k` en hexadecimal minúscula de 64 caracteres y:
+escribe **`digest@<digest_k>@<filas>:<lineas>`**, con `digest_k` en hexadecimal minúscula de 64
+caracteres y:
 
 ```
-digest_k = sha256( digest_{k-1} || serializacion_canonica_vigente )
+digest_k = sha256( digest_{k-1} || serializacion_canonica_sellada )
 ```
+
+con `digest_0` = la cadena vacía.
+
+**La frontera va en claro, y eso es lo que vuelve verificable a la cadena.** `<filas>` es cuántas
+filas de `## clausulas` y `<lineas>` cuántas líneas de `literal.jsonl` había cuando se firmó; las dos
+en decimal sin ceros a la izquierda. Sin ellas, un digest firmado sobre el estado de ayer se
+recomputaba contra el estado de hoy, y **una anexión legítima posterior —que es el régimen normal del
+registro— lo volvía irreproducible**: el flujo mandaba a cuarentena un paquete sano, que es un gate
+sin salida practicable. Con la frontera escrita, cada eslabón se recomputa sobre **el prefijo que
+selló**, así que lo anexado después no lo toca y **todos** los eslabones son verificables, no solo el
+último.
 
 **El prefijo no es decorativo: es lo que vuelve representable al digest en esa columna.** Sin él, el
 `objetivo` de una confirmación no es ninguna de las formas que el dominio admite, y la comprobación de
@@ -2093,19 +2105,43 @@ tabla es append-only: una columna desplaza a las que la siguen y obliga a reescr
 anexada, mientras que el prefijo entra en el dominio existente y lo comprueba el mismo predicado que
 a las otras dos formas.
 
-con `digest_0` = la cadena vacía. La **serialización canónica** es la partición vigente ordenada por
-`k` numérico, una fila por línea, campos separados por tabulador en el orden
-`P-k · version · aplicabilidad · fragmentos · texto`, UTF-8, terminador LF, sin espacios finales,
-precedida de una línea `literal\t<último n>\t<sha256 del literal acumulado>`.
+La **serialización canónica sellada** es, en este orden y en UTF-8 con terminador LF:
 
-**Qué es «el literal acumulado», porque sin definirlo la cadena no es reproducible.** Es el `sha256`
-de los **bytes del archivo `literal.jsonl` completo**, tal como está en ese momento — no la
-concatenación de los campos `texto`, ni un hash de los `sha256` por línea. Se elige el archivo entero
-porque `literal.jsonl` solo se anexa y nunca se reescribe, así que ese hash avanza de forma monótona
-con la captura y cualquier reescritura de una línea vieja lo rompe, que es exactamente lo que la
-cadena existe para detectar. Sin esta definición, el estado «digest de la última confirmación que no
-reproduce la partición vigente» no se puede evaluar, y con él se cae la fila de cuarentena que lo
-consume.
+```
+frontera<TAB><filas><TAB><lineas>
+literal<TAB><sha256 de las primeras <lineas> líneas de literal.jsonl>
+c<TAB><celdas de la fila 1 de ## clausulas>
+…hasta la fila <filas>…
+e<TAB><celdas de cada fila de ## eventos por encima de la confirmación>
+```
+
+Cada fila se emite con **todas** sus celdas, recortadas de espacios en los extremos y separadas por
+tabulador, en el orden en que están escritas; la marca `c`/`e` de la primera columna es lo que impide
+que una fila de una tabla se lea como de la otra. La frontera entra al preimage además de estar en el
+objetivo, para que declarar una frontera y firmar otra no sea representable.
+
+**Se sellan las filas, todas, y no la partición vigente.** Una serialización que solo cubriera la
+versión máxima de cada `P-k` dejaba reescribir sin rastro **la versión anterior** —justo la que el
+régimen append-only promete conservar legible— y dejaba fuera la columna `evidencia`, que es lo que
+acredita un `descartada` o un `satisfecha-por-trabajo-previo`. Sellar la fila entera cubre las dos, y
+como las filas retiradas también entran, un `retiro` anexado después no mueve nada de lo ya firmado.
+Las filas de cabecera y separador cuentan como filas y se sellan igual: reescribir una cabecera es
+reescribir el registro.
+
+**`## eventos` se sella hasta la fila anterior a la confirmación**, que es la única frontera que no
+hace falta declarar: una confirmación no puede firmarse a sí misma, y lo anexado después de ella es
+por definición posterior. **`## traza` queda fuera de la cadena**, y no por omisión: es la única de
+las tres que **no es append-only** —`hash_criterio` se reescribe en cada adjudicación—, así que un
+prefijo suyo no es un estado congelable. Su integridad la cubre otra cosa: el hash del último evento
+que nombra a cada `AC-n`, que tiene que ser el del criterio vigente.
+
+**Qué se hashea del literal, porque sin definirlo la cadena no es reproducible.** Es el `sha256` de
+los **bytes de las primeras `<lineas>` líneas del archivo `literal.jsonl`** — no la concatenación de
+los campos `texto`, ni un hash de los `sha256` por línea. Se eligen bytes del archivo porque
+`literal.jsonl` solo se anexa y nunca se reescribe, así que un prefijo suyo es estable y cualquier
+reescritura de una línea vieja lo rompe, que es exactamente lo que la cadena existe para detectar.
+Sin esta definición, el estado «digest de la última confirmación que no reproduce lo que selló» no se
+puede evaluar, y con él se cae la fila de cuarentena que lo consume.
 
 **Encadenar es lo que le da autoridad independiente.** Un digest guardado al lado de las filas que
 protege no detecta nada si se reescriben los dos; encadenado, tocar una confirmación vieja rompe
@@ -2359,7 +2395,7 @@ ausente, contradiciendo su fallo cerrado.
 |---|---|---|
 | 1 | `.plans/<id>/` vacío, o marcador presente y paquete ausente | **fallo cerrado**: re-correr 3b antes de cualquier otra rama |
 | 2 | marcador ausente y paquete presente | **fallo cerrado**: pedido ajeno, no se adopta |
-| 3 | estructura corrupta: una línea que no parsea, un orden imposible, o un digest que no reproduce | **cuarentena**, con el procedimiento de abajo. El digest lo comprueba `pedido-digest`, que corre **después** del marcador; su `3` deja la cadena sin comprobar y **no** habilita esta fila |
+| 3 | estructura corrupta: una línea que no parsea, un orden imposible, o un eslabón de la cadena que no reproduce lo que firmó | **cuarentena**, con el procedimiento de abajo. La cadena la comprueba `pedido-digest`, que corre **después** del marcador; su `3` la deja sin comprobar y **no** habilita esta fila |
 | 4 | marcador ausente, paquete ausente y directorio no vacío | flujo heredado: sigue por las ramas vigentes, con la vara declarada no aplicable |
 | 5 | `literal.jsonl` presente y `registro.md` ausente | retoma en la redacción de cláusulas |
 | 6 | cláusulas escritas y ninguna confirmación vigente | retoma en el checkpoint del paso 6, que es donde se congelan |
@@ -2388,7 +2424,7 @@ evidencia y deja el flujo operable, y las dos propiedades se pierden si alguien 
 
 Cinco comprobaciones del paquete son **deterministas** y quedarían libradas a que dos agentes lean
 igual la misma prosa: validez estructural del literal, unicidad e identidad, referencias colgantes, la
-matriz del marcador y el último eslabón de la cadena de digests. Van como **bloques embebidos acá** —no como archivos: la regla del
+matriz del marcador y la cadena de digests. Van como **bloques embebidos acá** —no como archivos: la regla del
 repositorio prohíbe crear nada bajo el `scripts/` de la raíz, y este flujo no la elude creando su
 propia sede—. Queda en prosa lo que es adjudicación semántica: si una derivación es válida y si una
 cláusula está bien redactada.
@@ -2428,7 +2464,7 @@ afuera se escribe en su frontera en vez de fingirse cubierto:
 | `pedido-unicidad` | en `registro.md`: que las identidades de las tres tablas caigan dentro de su dominio y no se repitan, y que la versión crezca por cláusula | ídem |
 | `pedido-referencias` | que cada `fragmentos` exista y cite una línea con rango dentro de su largo, que cada `AC-n` de la traza exista en la sede de los criterios, y que cada `objetivo` de evento resuelva | ídem |
 | `pedido-marcador` | resuelve la celda de la matriz del marcador desde el estado observado del árbol | **la celda en stdout**; `0` si resolvió una, `1` si el árbol no encaja en ninguna, `2` si la invocación está mal formada o `pedido-jsonl` no está cargado |
-| `pedido-digest` | que el digest de la **última** confirmación reproduzca la partición vigente y el literal de hoy | `0` si reproduce o si no hay ninguna confirmación, `1` si no reproduce —con el escrito y el recomputado—, `3` si falta una sede o no hay `sha256sum` ni `shasum` |
+| `pedido-digest` | que **cada** confirmación reproduzca el prefijo de `## clausulas`, `## eventos` y del literal que su frontera declara | `0` si todas reproducen o si no hay ninguna confirmación, `1` si alguna no —con el escrito y el recomputado—, `3` si falta una sede, si no hay `sha256sum` ni `shasum`, o si la herramienta está y falla |
 
 **El `3` de los tres primeros incluye «no se pudo ejecutar», y eso es deliberado.** Una salida vacía
 significa «ninguna violación» **solo si el comando terminó bien**; leerla sin mirar el estado convierte
@@ -2668,7 +2704,9 @@ pedido_referencias() {
   if [ ! -r "$r" ] || [ ! -r "$sp" ] || [ ! -r "$lit" ]; then
     echo "no se puede leer alguna de las tres sedes" >&2; return 3
   fi
-  salida=$(awk '
+  # LC_ALL=C vuelve determinista la unidad de `length`: sin fijarla, el largo del texto valía
+  # bytes o caracteres según qué awk estuviera instalado
+  salida=$(LC_ALL=C awk '
     function norm(x) { sub(/^0+/, "", x); return (x == "" ? "0" : x) }
     # la MISMA normalización que usa pedido-unicidad: con una sede normalizando y la otra no,
     # AC-01 dejaría de encontrar a AC-1 y las dos puntas volverían a discrepar
@@ -2681,7 +2719,15 @@ pedido_referencias() {
       if (length(a) != length(b)) return (length(a) < length(b)) ? -1 : 1
       if ((a "") == (b "")) return 0
       return ((a "") < (b "")) ? -1 : 1 }
-    BEGIN { FS=sprintf("%c",124) }
+    # el rango de un fragmento son POSICIONES DE CARÁCTER Unicode, y `length` de awk mide bytes o
+    # caracteres según la implementación y la locale: la locale se fija a C —donde mide bytes— y
+    # los caracteres se cuentan acá, salteando los bytes de continuación UTF-8
+    function ulargo(s,   i, n, t) {
+      n = length(s); t = 0
+      for (i = 1; i <= n; i++) if (index(CONT, substr(s, i, 1)) == 0) t++
+      return t }
+    BEGIN { FS=sprintf("%c",124)
+            for (i = 128; i < 192; i++) CONT = CONT sprintf("%c", i) }
     FILENAME == ELIT {
       # la cláusula cita el campo n, no la posición física de la línea: tras una cuarentena
       # la captura arranca después del máximo observado y los dos dejan de coincidir
@@ -2696,7 +2742,7 @@ pedido_referencias() {
         cuerpo = substr($0, RSTART+RLENGTH)
         # el orden canónico deja sha256 como último campo: ese es el corte
         sub(/"[ ]*,[ ]*"sha256".*$/, "", cuerpo)
-        largo[nl] = length(cuerpo) }
+        largo[nl] = ulargo(cuerpo) }
       # `largo` y `hay` comparten índice por construcción: los dos se escriben con `nl`
       next }
     FILENAME == ESPEC { linea=$0
@@ -2738,8 +2784,13 @@ pedido_referencias() {
         if (q[1]+0 < 1 || q[2]+0 < q[1]+0 || q[2]+0 > largo[cit]+0)
           print "rango fuera del largo del texto: " lista[i] } }
     s == "t" && id ~ /^AC-[0-9]+[a-z]?$/ {
-      actraza[normid(id)] = 1
-      if (!(normid(id) in enspec)) print "criterio de la traza ausente en la spec: " id }
+      ac = normid(id)
+      actraza[ac] = 1
+      # el dominio de hash_criterio es un sha256: sin comprobarlo, comparar contra él no dice nada
+      hc=$3; gsub(/[ *]/,"",hc); gsub(sprintf("%c",96),"",hc)
+      if (hc !~ /^[0-9a-f]+$/ || length(hc) != 64) print "hash_criterio fuera del dominio: " id
+      hashtz[ac] = hc
+      if (!(ac in enspec)) print "criterio de la traza ausente en la spec: " id }
     s == "e" && id ~ /^E-[0-9]+$/ {
       tipo=$6; gsub(/[ *]/,"",tipo); gsub(sprintf("%c",96),"",tipo)
       ob=$7; gsub(/[ *]/,"",ob); gsub(sprintf("%c",96),"",ob)
@@ -2751,12 +2802,18 @@ pedido_referencias() {
       if (!resuelve && ob ~ /^P-[0-9]+@[0-9]+$/) {
         split(ob, pp, "@")
         if (norm(substr(pp[1], 3)) != "0" && norm(pp[2]) != "0") resuelve = 1 }
-      # el objetivo de una confirmación es el digest encadenado: 7 de "digest@" mas 64 de sha256
-      if (ob ~ /^digest@[0-9a-f]+$/ && length(ob) == 71) resuelve = 1
+      # el objetivo de una confirmación lleva el digest Y la frontera que selló, y solo lo lleva
+      # una confirmación: la misma forma en una propuesta no confirma nada
+      if (!resuelve && tipo == "confirmacion" && ob ~ /^digest@[0-9a-f]+@[0-9]+:[0-9]+$/) {
+        split(substr(ob, 8), dp, "@"); split(dp[2], fl, ":")
+        if (length(dp[1]) == 64 && fl[1] == norm(fl[1]) && fl[2] == norm(fl[2])) resuelve = 1 }
       if (!resuelve) { print "objetivo de evento que no resuelve: " ob; next }
       # la FORMA no es el destino: el objetivo se resuelve contra las tablas, en END, cuando
       # ya se leyeron las tres — eventos viene antes que traza, así que acá todavía no se puede
       if (ob != "-") destino[ob] = 1
+      # el hash de un criterio lo pinea el ÚLTIMO evento que lo nombra: los anteriores son historia
+      # y el formato no conserva los textos viejos contra los que compararlos
+      if (ob ~ /^AC-/) { split(ob, pa, "@"); ultac[normid(pa[1])] = pa[2] }
       if (tipo == "retiro" && ob ~ /^P-[0-9]+@[0-9]+$/) {
         split(ob, pr, "@"); retirado[normid(pr[1])] = 1 } }
     END {
@@ -2768,6 +2825,12 @@ pedido_referencias() {
         else if (ob ~ /^AC-/) {
           split(ob, pa, "@")
           if (!(normid(pa[1]) in actraza)) print "objetivo que no existe en la traza: " ob } }
+      # el ciclo de vida de AC-n manda fallar cerrado ante un hash que no coincide con el texto
+      # vigente: sin esto, AC-n@<cualquier cosa de 64 hex> resolvía por forma contra nada
+      for (a in ultac) {
+        if (!(a in actraza)) continue
+        if (ultac[a] != hashtz[a])
+          print "el ultimo evento sobre " a " pinea un hash que no es el vigente: " ultac[a] }
       # R1 sobre la partición vigente: cada línea del literal, cubierta EXACTAMENTE una vez
       for (ck in vmax) {
         if (ck in retirado) continue
@@ -2809,7 +2872,12 @@ pedido_referencias() {
 > los elementos sin forma se descartaban en silencio, una cláusula con `fragmentos` vacío o con basura
 > pasaba en verde **sin origen comprobable**, que es justo lo que este bloque existe para ver. **Nunca** autoriza a
 > afirmar que la derivación adjudicada sea **válida** —eso es juicio y queda en prosa—, ni que el
-> fragmento citado sea el que de verdad origina la cláusula. Dos límites más, propios de medir el
+> fragmento citado sea el que de verdad origina la cláusula. **El largo del texto se mide en caracteres Unicode**, que es la unidad
+> que declara el rango de fragmentos: la locale se fija a `C` y los caracteres se cuentan salteando
+> los bytes de continuación, porque `length` de `awk` mide bytes o caracteres según qué
+> implementación esté instalada — con la unidad librada al host, un `1:1-2` sobre un texto de una
+> `é` pasaba en verde y el `1:1-1` correcto daba rojo, así que un pedido escrito en español no tenía
+> forma de cerrar `R1`. Dos límites más, propios de medir el
 > largo desde el literal serializado: **no interpreta escapes JSON** —una comilla o un salto de línea
 > escapados dentro de `texto` desplazan el largo contra el que compara—, y **depende del orden
 > canónico de campos** para saber dónde termina `texto`, así que una línea con los campos en otro
@@ -2823,6 +2891,16 @@ pedido_referencias() {
 > porque `awk` no tiene delimitadores de palabra: sin eso, un `AC-1ab` en la sede de los criterios
 > satisfacía a un `AC-1a` de la traza, y un `AC-1A` satisfacía a `AC-1`. Por el mismo motivo la forma
 > `AC-n@hash` del objetivo **exige el hash**: `AC-1@` no apunta a nada.
+>
+> **Y el hash se resuelve contra el criterio vigente, no contra su forma.** El ciclo de vida de
+> `AC-n` manda fallar cerrado ante un hash que no coincide con el texto vigente; mientras el bloque
+> solo miraba la forma, `AC-1@<cualquier cosa de 64 hex>` pasaba en verde apuntando a nada. Quien
+> queda pineado es el **último** evento que nombra a cada criterio, en orden de tabla: los
+> anteriores son historia y **no se comprueban**, porque el formato no conserva los textos viejos
+> contra los que compararlos — pinear también a los anteriores volvía roja toda corrección
+> legítima. Ese límite es del formato y se declara acá: **una historia intermedia adulterada no se
+> ve**. El dominio de `hash_criterio` sí se comprueba, y por eso la comparación significa algo: sin
+> exigirle sus 64 hexadecimales, contrastar contra él era contrastar contra cualquier cosa.
 >
 > **El objetivo vacío no resuelve.** El dominio admite tres formas o el guion, y una celda vacía es una
 > fila mal formada, no un objetivo ausente — admitirla dejaba pasar en verde toda fila de evento a la
@@ -2956,96 +3034,122 @@ pedido_digest() {
   if command -v sha256sum >/dev/null 2>&1; then HTOOL=sha256sum
   elif command -v shasum >/dev/null 2>&1; then HTOOL=shasum
   else echo "no hay sha256sum ni shasum: la cadena no se puede verificar" >&2; return 3; fi
-  # el comando no viaja en una variable sin comillas: en zsh no se divide y la invocación se rompe
+  # el comando no viaja en una variable sin comillas: en zsh no se divide y la invocación se rompe.
+  # Y la SALIDA se comprueba: una herramienta presente que falla no imprime nada, y con el corte al
+  # final de la tubería el estado que llegaba era el del corte —cero—, así que el vacío pasaba por
+  # hash y el bloque devolvía «no reproduce» en vez de declarar la medición detenida
   hashear() {
     case "$HTOOL" in
-      sha256sum) sha256sum ;;
-      shasum)    shasum -a 256 ;;
-    esac | cut -d" " -f1
+      sha256sum) h=$(sha256sum) ;;
+      shasum)    h=$(shasum -a 256) ;;
+    esac || return 3
+    h=${h%% *}
+    case "$h" in ''|*[!0-9a-f]*) return 3 ;; esac
+    [ ${#h} -eq 64 ] || return 3
+    printf '%s' "$h"
   }
-  shalit=$(hashear < "$lit")
-  tmp="${TMPDIR:-/tmp}/pedido-digest.$$"
-  # la serialización canónica de la partición vigente, tal como la fija "La serialización de
-  # registro.md": una línea literal, después una fila por cláusula ordenada por k numérico
-  awk -v SHALIT="$shalit" '
-    function norm(x) { sub(/^0+/, "", x); return (x == "" ? "0" : x) }
-    function normid(x,   pre, resto, suf) {
-      if (!match(x, /^[A-Za-z]+-/)) return x
-      pre = substr(x, 1, RLENGTH); resto = substr(x, RLENGTH+1); suf = ""
-      if (match(resto, /[a-z]$/)) { suf = substr(resto, RSTART); resto = substr(resto, 1, RSTART-1) }
-      return pre norm(resto) suf }
-    function cmpd(a, b) {
-      if (length(a) != length(b)) return (length(a) < length(b)) ? -1 : 1
-      if ((a "") == (b "")) return 0
-      return ((a "") < (b "")) ? -1 : 1 }
-    BEGIN { FS=sprintf("%c",124); ultimo="0" }
-    FILENAME == ELIT {
-      if (match($0, /"n"[ ]*:[ ]*[0-9]+[ ]*[,}]/)) {
-        v = substr($0, RSTART, RLENGTH); sub(/^.*:[ ]*/, "", v); sub(/[ ]*[,}]$/, "", v)
-        ultimo = norm(v) }
-      next }
-    /^## clausulas/ { s="c"; next }
-    /^## eventos/   { s="e"; next }
-    /^## traza/     { s="t"; next }
-    /^## /          { s="";  next }
-    { id=$2; gsub(/[ *]/,"",id); gsub(sprintf("%c",96),"",id) }
-    s == "c" && id ~ /^P-[0-9]+$/ {
-      ck=normid(id)
-      ver=$3; apl=$4; frg=$5; txt=$6
-      gsub(/[ *]/,"",ver); gsub(sprintf("%c",96),"",ver)
-      gsub(/^[ ]+|[ ]+$/,"",apl); gsub(/^[ ]+|[ ]+$/,"",frg); gsub(/^[ ]+|[ ]+$/,"",txt)
-      if (ver !~ /^[0-9]+$/) next
-      ver = norm(ver)
-      if (!(ck in vmax) || cmpd(ver, vmax[ck]) > 0) {
-        vmax[ck]=ver; fa[ck]=apl; ff[ck]=frg; ft[ck]=txt } }
-    s == "e" && id ~ /^E-[0-9]+$/ {
-      tipo=$6; ob=$7
-      gsub(/[ *]/,"",tipo); gsub(sprintf("%c",96),"",tipo)
-      gsub(/[ *]/,"",ob); gsub(sprintf("%c",96),"",ob)
-      if (tipo == "retiro" && ob ~ /^P-[0-9]+@[0-9]+$/) { split(ob, pr, "@"); ret[normid(pr[1])]=1 } }
-    END {
-      printf "literal\t%s\t%s\n", ultimo, SHALIT
-      n=0
-      for (ck in vmax) { if (ck in ret) continue; n++; ord[n]=ck }
-      for (a=1; a<=n; a++) for (b=a+1; b<=n; b++)
-        if (cmpd(norm(substr(ord[b],3)), norm(substr(ord[a],3))) < 0) { t=ord[a]; ord[a]=ord[b]; ord[b]=t }
-      for (a=1; a<=n; a++) { ck=ord[a]
-        printf "%s\t%s\t%s\t%s\t%s\n", ck, vmax[ck], fa[ck], ff[ck], ft[ck] } }' \
-    ELIT="$lit" "$lit" "$r" > "$tmp"
-  if [ $? -ne 0 ]; then rm -f "$tmp"; echo "no se pudo serializar la particion vigente" >&2; return 3; fi
-  # los dos últimos eslabones: el previo se lee tal como está escrito, el último se recomputa
-  prev=$(awk 'BEGIN{FS=sprintf("%c",124)} /^## eventos/{s=1;next} /^## /{s=0}
-    s { ob=$7; gsub(/[ *]/,"",ob); gsub(sprintf("%c",96),"",ob)
-        if (ob ~ /^digest@[0-9a-f]+$/) { ant=ult; ult=substr(ob,8) } }
-    END { print ant "\n" ult }' "$r")
-  ant=$(printf '%s\n' "$prev" | sed -n 1p)
-  ult=$(printf '%s\n' "$prev" | sed -n 2p)
-  if [ -z "$ult" ]; then rm -f "$tmp"; return 0; fi
-  calc=$( { printf '%s' "$ant"; cat "$tmp"; } | hashear )
-  rm -f "$tmp"
-  if [ "$calc" = "$ult" ]; then return 0; fi
-  echo "el digest de la ultima confirmacion no reproduce la particion vigente"
-  echo "  escrito:   $ult"
-  echo "  recomputado: $calc"
+  tot=$(awk 'END { print NR+0 }' "$lit") || return 3
+  filas=$(awk 'BEGIN { FS=sprintf("%c",124) }
+    /^## clausulas/ { s=1; next } /^## / { s=0 }
+    s && substr($0,1,1) == sprintf("%c",124) { n++ }
+    END { print n+0 }' "$r") || return 3
+  # las confirmaciones, en orden de tabla, con la fila que ocupa cada una. Manda el TIPO y no la
+  # forma del objetivo: una propuesta que lleve un digest no confirmó nada
+  confs=$(awk 'BEGIN { FS=sprintf("%c",124) }
+    /^## eventos/ { s=1; i=0; next } /^## / { s=0 }
+    s && substr($0,1,1) == sprintf("%c",124) { i++
+      tipo=$6; gsub(/[ *]/,"",tipo); gsub(sprintf("%c",96),"",tipo)
+      ob=$7;   gsub(/[ *]/,"",ob);   gsub(sprintf("%c",96),"",ob)
+      if (tipo == "confirmacion") printf "%s\t%s\n", i, ob }' "$r")
+  rc=$?
+  if [ "$rc" -ne 0 ]; then echo "la comprobación no pudo ejecutarse: awk salió $rc" >&2; return 3; fi
+  # un pedido todavía sin confirmar es un estado válido, no un fallo
+  if [ -z "$confs" ]; then return 0; fi
+  base="${TMPDIR:-/tmp}/pedido-digest.$$"
+  printf '%s\n' "$confs" > "$base.c"
+  prev=""; k=0; malo=0; parado=0
+  while IFS='	' read -r ei ob; do
+    k=$((k+1))
+    # el objetivo de una confirmación lleva el digest Y la frontera que selló
+    case "$ob" in
+      digest@*@*:*) ;;
+      *) echo "la confirmacion $k no declara digest y frontera: $ob"; malo=1; continue ;;
+    esac
+    resto=${ob#digest@}; dg=${resto%%@*}; fr=${resto#*@}; ff=${fr%%:*}; ll=${fr#*:}
+    forma=1
+    [ ${#dg} -eq 64 ] || forma=0
+    case "$dg" in *[!0-9a-f]*) forma=0 ;; esac
+    case "$ff" in ''|*[!0-9]*) forma=0 ;; 0) ;; 0*) forma=0 ;; esac
+    case "$ll" in ''|*[!0-9]*) forma=0 ;; 0) ;; 0*) forma=0 ;; esac
+    if [ "$forma" -eq 0 ]; then
+      echo "la confirmacion $k no declara digest y frontera: $ob"; malo=1; continue
+    fi
+    # la frontera no puede exceder lo que hay: si excede, se borraron filas ya firmadas
+    if [ "$ll" -gt "$tot" ]; then
+      echo "la confirmacion $k firmo $ll lineas del literal y hoy quedan $tot"; malo=1; continue
+    fi
+    if [ "$ff" -gt "$filas" ]; then
+      echo "la confirmacion $k firmo $ff filas de clausulas y hoy quedan $filas"; malo=1; continue
+    fi
+    shalit=$(head -n "$ll" "$lit" | hashear)
+    if [ $? -ne 0 ]; then parado=1; break; fi
+    # el prefijo sellado: las primeras <filas> filas de clausulas y los eventos ANTERIORES a esta
+    # confirmación, cada fila con todas sus celdas y con la marca de su tabla
+    LC_ALL=C awk -v F="$ff" -v EI="$ei" 'BEGIN { PI=sprintf("%c",124); FS=PI; TB=sprintf("%c",9) }
+      /^## clausulas/ { s="c"; i=0; next }
+      /^## eventos/   { s="e"; i=0; next }
+      /^## /          { s="";  next }
+      s != "" && substr($0,1,1) == PI { i++
+        if (s == "c" && i > F+0) next
+        if (s == "e" && i >= EI+0) next
+        linea = s
+        for (j=2; j<NF; j++) { c=$j; gsub(/^[ ]+|[ ]+$/,"",c); linea = linea TB c }
+        print linea }' "$r" > "$base.s"
+    if [ $? -ne 0 ]; then parado=1; break; fi
+    calc=$( { printf '%s' "$prev"
+              printf 'frontera\t%s\t%s\nliteral\t%s\n' "$ff" "$ll" "$shalit"
+              cat "$base.s"; } | hashear )
+    if [ $? -ne 0 ]; then parado=1; break; fi
+    if [ "$calc" != "$dg" ]; then
+      echo "la confirmacion $k no reproduce lo que firmo"
+      echo "  escrito:     $dg"
+      echo "  recomputado: $calc"
+      malo=1
+    fi
+    # el eslabon anterior es el ESCRITO, no el recomputado: así cada eslabón se juzga solo y el
+    # reporte nombra cuál se rompió, en vez de teñir de rojo a todos los que le siguen
+    prev="$dg"
+  done < "$base.c"
+  rm -f "$base.c" "$base.s"
+  if [ "$parado" -eq 1 ]; then echo "no se pudo calcular el sha256" >&2; return 3; fi
+  if [ "$malo" -eq 0 ]; then return 0; fi
   return 1
 }
 ```
 
 > **Frontera de prueba.** Clase **veredicto**, dirección **admite-de-más**, ante la duda
-> **niega-ante-duda**. Su verde autoriza a afirmar que **el último eslabón** de la cadena reproduce la
-> partición vigente y el literal tal como están hoy: si alguien reescribió una fila vieja o una línea
-> del literal, ese digest deja de dar. **No verifica la cadena entera, y no puede:** los digests
-> intermedios se computaron sobre el estado del registro **en su momento**, y el formato no guarda con
-> qué filas existían entonces —las cláusulas no llevan marca temporal—, así que reconstruirlos exigiría
-> una historia que el artefacto no tiene. Esto es una **limitación del formato**, no del bloque, y por
-> eso se escribe acá: la fila de cuarentena que habla de «un digest que no reproduce» la alcanza este
-> bloque **sobre el último**, y sobre ninguno anterior.
+> **niega-ante-duda**. Su verde autoriza a afirmar que **cada eslabón de la cadena reproduce el
+> prefijo que firmó**: las filas de `## clausulas` hasta su frontera, las filas de `## eventos`
+> anteriores a la suya, y las líneas del literal hasta su frontera. Que la frontera se escriba en
+> claro es lo que vuelve verificable la cadena **entera** y no solo su último eslabón, y lo que
+> distingue una **anexión legítima posterior** —que no toca ningún prefijo firmado, y es el régimen
+> normal del registro— de una **reescritura**, que sí lo toca.
 >
-> Tampoco ve un registro al que le hayan quitado la confirmación entera: sin ningún `digest@` devuelve
-> `0`, porque un pedido todavía sin confirmar es un estado válido. Fallos de ejecución, distintos de su
-> resultado: `3` si falta alguna de las dos sedes, si no hay `sha256sum` ni `shasum`, o si la
-> serialización no se pudo producir. **La ausencia de la herramienta no es un verde**: es la ausencia
-> de comprobación, y el routing la trata como tal.
+> **Lo que no ve.** `## traza` no entra en ningún preimage, y no por olvido: es la única de las tres
+> tablas que **no es append-only** —`hash_criterio` se reescribe en cada adjudicación—, así que un
+> prefijo suyo no es un estado congelable y reescribir una de sus filas no mueve ningún digest. Esa
+> mitad la cubre `pedido-referencias`, con el hash del último evento que nombra a cada criterio.
+> Tampoco ve un registro al que le hayan quitado **la confirmación entera**: sin ningún evento
+> `tipo: confirmacion` devuelve `0`, porque un pedido todavía sin confirmar es un estado válido, y
+> ningún otro bloque comprueba que las confirmaciones sigan ahí. Y las celdas se separan por
+> tabulador: **una celda que contenga un tabulador** serializa igual que dos celdas repartidas de
+> otro modo, así que ahí el digest colisiona — es la restricción hermana de la que ya prohíbe la
+> barra vertical, declarada y no comprobada.
+>
+> Fallos de ejecución, distintos de su resultado: `3` si falta alguna de las dos sedes, si no hay
+> `sha256sum` ni `shasum`, si la herramienta **está y falla** —su salida se comprueba en vez de
+> suponerse— o si la serialización no se pudo producir. **La ausencia de la herramienta no es un
+> verde**: es la ausencia de comprobación, y el routing la trata como tal.
 
 **`pedido-marcador` invoca a `pedido-jsonl` por dentro, y ese orden es único.** El routing invoca
 **un solo bloque** —y **carga dos**, que no es lo mismo: la definición de la dependencia tiene que
