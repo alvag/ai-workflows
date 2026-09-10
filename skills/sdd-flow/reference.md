@@ -3625,7 +3625,26 @@ pedido_digest() {
   # SOLO las dos tablas que entran al preimage. `## traza` es mutable y no se firma —lo dice la
   # frontera de este bloque—, así que una infracción suya es reparable y sigue la ruta del gate:
   # mandarla a cuarentena manda a destruir material que nadie firmó
-  esq=$(awk '
+  #
+  # Y SOLO hasta donde llega lo firmado. Las dos tablas son append-only, así que una fila anexada
+  # DESPUÉS del prefijo sellado no está en ningún preimage: editarla no toca un byte firmado y su
+  # captura es reparable en el gate. El límite es el mismo que usa el serializador —`## clausulas`
+  # hasta la frontera, `## eventos` por encima de la confirmación—, tomado sobre la confirmación
+  # que más abarca. Sin este corte, una fila mal formada anexada al final mandaba a cuarentena un
+  # registro cuyo material firmado estaba intacto: destruir lo irreemplazable por un defecto que
+  # `pedido-unicidad` corrige editando
+  fmax=$(printf '%s\n' "$confs" | awk -F"$(printf '\t')" '
+    { ob=$2
+      if (ob !~ /^digest@[0-9a-f]+@[0-9]+:[0-9]+$/) next
+      sub(/^digest@[0-9a-f]+@/, "", ob); sub(/:.*$/, "", ob)
+      # se compara por CANTIDAD DE DÍGITOS primero: una frontera de treinta dígitos no cabe en el
+      # entero y la comparación numérica dejaría de discriminar sin decirlo
+      if (length(ob) > length(m) || (length(ob) == length(m) && ob > m)) m = ob }
+    END { print (m == "" ? 0 : m) }') || return 3
+  eimax=$(printf '%s\n' "$confs" | awk -F"$(printf '\t')" '
+    { if (length($1) > length(m) || (length($1) == length(m) && $1 > m)) m = $1 }
+    END { print (m == "" ? 0 : m) }') || return 3
+  esq=$(awk -v FM="$fmax" -v EM="$eimax" '
     function celda(x) { sub("^[ " sprintf("%c",9) "*" sprintf("%c",96) "]+", "", x)
                         sub("[ " sprintf("%c",9) "*" sprintf("%c",96) "]+$", "", x)
                         gsub(sprintf("%c",1), sprintf("%c",124), x); return x }
@@ -3636,6 +3655,11 @@ pedido_digest() {
     { $0 = despipe($0) }
     /^## / { s=($0 in ent) ? $0 : ""; fila=0; next }
     s != "" && substr($0,1,1) == sprintf("%c",124) { fila++
+      # el mismo corte que el serializador: hasta `F` en clausulas, por debajo de `EI` en eventos.
+      # La fila de la confirmación tampoco está firmada —lleva el digest, no puede estar en su
+      # propio preimage—, así que queda del lado reparable
+      lim = (s == "## clausulas") ? FM+0 : EM+0 - 1
+      if (fila > lim) next
       nesq = split(ent[s], _d, "|")
       if (fila == 1) {
         act = ""
@@ -3801,6 +3825,16 @@ pedido_digest() {
 > claro es lo que vuelve verificable la cadena **entera** y no solo su último eslabón, y lo que
 > distingue una **anexión legítima posterior** —que no toca ningún prefijo firmado, y es el régimen
 > normal del registro— de una **reescritura**, que sí lo toca.
+>
+> **El clasificador de cuarentena alcanza lo mismo, y ni una fila más.** Cuando hay confirmaciones,
+> este bloque decide además si el registro es **irreparable** —esquema que no es el vigente— y ese
+> `1` sale por cuarentena, que destruye trabajo. Su dominio es exactamente el material firmado: las
+> filas de `## clausulas` hasta la frontera **mayor** entre las confirmaciones y las de `## eventos`
+> por debajo de la **última**. Una fila anexada después de ese prefijo —incluida la fila de la
+> confirmación, que lleva el digest y no puede estar en su propio preimage— **no está firmada**:
+> editarla no mueve ningún digest, así que su captura es reparable y la clasifica `pedido-unicidad`
+> en el gate. Sin ese corte, una fila mal formada anexada al final mandaba a destruir un registro
+> cuyo material firmado estaba intacto.
 >
 > **Lo que no ve.** `## traza` no entra en ningún preimage, y no por olvido: es la única de las tres
 > tablas que **no es append-only** —`hash_criterio` se reescribe en cada adjudicación—, así que un
