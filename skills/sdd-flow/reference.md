@@ -1912,29 +1912,41 @@ nombran por separado porque no son la misma: `literal.jsonl` **nunca se reescrib
 capturada queda exactamente como se captó—, y a `registro.md` **se anexa**: corregir una cláusula
 `P-k` agrega una fila con la versión siguiente, y la anterior sigue siendo legible.
 
-**El techo de quince dígitos, y por qué el dominio tiene que declarar uno.** Alcanza a los dos campos
-que son **identidad** —el `n` de la línea y la `version` de una cláusula— y sale de una restricción de
-las herramientas, no de un tope de negocio: quince es el mayor ancho decimal que entra **exacto** en el
-punto flotante de `awk` (2^53 ≈ 9×10^15) y en el entero de 64 bits del shell. Sin techo declarado, la
-comprobación tiene que convertir una identidad arbitrariamente larga para compararla, y ahí se pierde
-en silencio: medido, un `n` de diecisiete dígitos se convertía en **otro número** —`99999999999999999`
-pasaba a valer `100000000000000000`— y el paquete se clasificaba `aplicable` sin emitir señal alguna;
-con treinta dígitos la conversión devolvía notación científica, el `test` del shell fallaba con
-`integer expression expected` y una corrupción del literal terminaba como **fallo de invocación**,
-dejando a `resume` sin celda. Con el techo declarado y comprobado **antes** de convertir, ninguna
-comparación posterior depende del rango de ninguna de las dos herramientas. Un valor que lo excede es
-corrupción del paquete y va a **cuarentena**, como cualquier otra violación del dominio.
+**Las identidades no llevan máximo, y eso obliga a compararlas en decimal.** Alcanza a los dos campos
+que lo son —el `n` de la línea y la `version` de una cláusula—. La tentación es acotarlos al rango de
+las herramientas que los comprueban: `awk` compara en punto flotante y el `test` del shell en enteros
+de 64 bits, así que un techo de quince dígitos —el mayor ancho decimal exacto en las dos— vuelve
+trivial la comprobación. **Ese techo se escribió, se probó y se retiró, porque deja un borde sin
+transición:** la recuperación de una cuarentena manda reiniciar *después del máximo observado*, y con
+la identidad ya en el techo el sucesor queda prohibido; por el mismo motivo una cláusula cuya versión
+llegara al tope no se podría corregir, porque corregir anexa `version+1`. Y el estado **no exige
+capturar 10^15 líneas**: basta un literal corrupto que traiga ese valor, que es justamente el que va a
+cuarentena. Un dominio cuyo borde no tiene salida no acota: atrapa.
 
-**Los rangos de `fragmentos` quedan fuera del techo, y conviene decir por qué.** También se comparan
-convirtiendo, pero no son identidad: un valor desmesurado hace que el rango caiga fuera del largo del
-texto y la comprobación da **rojo**, que es la salida correcta. El techo existe donde una conversión
-imprecisa produce un **falso verde**, no donde produce un fallo cerrado.
+Entonces las identidades se comparan y se incrementan **en decimal y sobre el lexema**: longitud
+primero y orden lexicográfico después para comparar, acarreo dígito a dígito para el sucesor. Son unas
+líneas más en dos de los bloques, y a cambio **ninguna comprobación depende del rango de ninguna de las
+dos herramientas** —que era lo único que el techo compraba—. La regla de evidencia de este repositorio
+pide que subir un escalón se justifique con el caso en que el barato falló: acá está medido, y es el
+sucesor del máximo.
+
+**Lo que la conversión sí rompía, y por qué el remedio es este y no otro.** Sin comparación decimal, un
+`n` de diecisiete dígitos se convertía en **otro número** —`99999999999999999` pasaba a valer
+`100000000000000000`— y el paquete se clasificaba `aplicable` **sin emitir señal alguna**; con treinta,
+la conversión devolvía notación científica, el `test` del shell fallaba con `integer expression
+expected` y una corrupción del literal terminaba como **fallo de invocación**, dejando a `resume` sin
+celda. El decimal cierra los dos sin inventar un borde.
+
+**Los rangos de `fragmentos` se siguen comparando convirtiendo, y conviene decir por qué.** No son
+identidad: un valor desmesurado hace que el rango caiga fuera del largo del texto y la comprobación da
+**rojo**. La comparación decimal se paga donde una conversión imprecisa produce un **falso verde** o un
+borde sin salida, no donde produce un fallo cerrado.
 
 **`literal.jsonl` — un objeto JSON por línea.** Los siete campos son obligatorios:
 
 | Campo | Tipo | Qué es |
 |---|---|---|
-| `n` | entero ≥ 1 de **a lo sumo 15 dígitos**, monótono, nunca reutilizado | orden de captura |
+| `n` | entero ≥ 1, **sin máximo**, monótono sin huecos, nunca reutilizado | orden de captura |
 | `captado_en` | ISO-8601 | cuándo se captó |
 | `origen` | `usuario` · `tracker` · `adjunto` · `ruta` | qué clase de fuente |
 | `referencia` | texto | qué fuente concreta: número de mensaje, clave del ticket, nombre del adjunto, ruta |
@@ -2013,7 +2025,7 @@ por el que `antecedentes.md` tiene su bloque máquina.
 | Columna | Dominio | Qué es |
 |---|---|---|
 | `P-k` | `P-` + entero ≥ 1, **nunca reutilizado** | identidad de la cláusula |
-| `version` | entero ≥ 1 de **a lo sumo 15 dígitos**, monótono por `P-k` | el par `(P-k, version)` identifica **un texto**; corregir **anexa** una fila con `version+1` y la anterior se conserva legible |
+| `version` | entero ≥ 1, **sin máximo**, monótono por `P-k` | el par `(P-k, version)` identifica **un texto**; corregir **anexa** una fila con `version+1` y la anterior se conserva legible |
 | `aplicabilidad` | `pendiente` · `satisfecha-por-trabajo-previo` · `descartada` | los tres estados, con su vocabulario. Es aplicabilidad, **no** cobertura: dice qué se hace con la cláusula, no cuánto del literal toca |
 | `fragmentos` | lista `n:desde-hasta`, separada por `, ` | qué parte del literal origina esta cláusula |
 | `texto` | texto | la cláusula |
@@ -2436,10 +2448,20 @@ pedido_jsonl() {
     *[!0]*) ;;
     *) echo "n inicial menor que 1: $base" >&2; return 2 ;;
   esac
-  if [ "${#base}" -gt 15 ]; then echo "n inicial excede los 15 dígitos: $base" >&2; return 2; fi
   if [ ! -r "$f" ]; then echo "no se puede leer: $f" >&2; return 3; fi
   salida=$(awk -v base="$base" '
-    BEGIN { split("n captado_en origen referencia medio texto sha256", claves, " ") }
+    # las identidades se siguen en DECIMAL, sobre el lexema: sin conversión no hay rango del que
+    # depender, y ninguna identidad se queda sin sucesor
+    function norm(x) { sub(/^0+/, "", x); return (x == "" ? "0" : x) }
+    function incd(x,   i, d, c, r) {
+      r = ""; c = 1
+      for (i = length(x); i >= 1; i--) {
+        d = substr(x, i, 1) + c
+        if (d >= 10) { d -= 10; c = 1 } else c = 0
+        r = d r }
+      return (c ? "1" r : r) }
+    BEGIN { split("n captado_en origen referencia medio texto sha256", claves, " ")
+            esperado = norm(base) }
     { linea=$0
       if (substr(linea,1,1) != "{" || substr(linea,length(linea),1) != "}")
         print NR ": la línea no abre y cierra con llaves"
@@ -2450,12 +2472,12 @@ pedido_jsonl() {
       # el token se cierra con delimitador: sin eso, "1.5" y "1e3" casan por su prefijo y valen 1
       if (match(linea, /"n"[ ]*:[ ]*[0-9]+[ ]*[,}]/)) {
         s = substr(linea, RSTART, RLENGTH); sub(/^.*:[ ]*/, "", s); sub(/[ ]*[,}]$/, "", s)
-        sub(/^0+/, "", s); if (s == "") s = "0"
-        # el techo se comprueba SOBRE EL LEXEMA y antes de convertir: pasado ese ancho la
-        # conversión devuelve otro número, y la comparación se haría contra un valor inventado
-        if (length(s) > 15) print NR ": el campo n excede los 15 dígitos"
-        else if (s+0 != NR + base - 1)
-          print NR ": el campo n vale " s " y rompe el orden monótono desde " base
+        s = norm(s)
+        if (s == "0") print NR ": el campo n vale 0 y el dominio exige un entero desde 1"
+        else {
+          if (s != esperado) print NR ": el campo n vale " s " y rompe el orden, se esperaba " esperado
+          # se sigue desde lo OBSERVADO, para que un hueco no encadene un error por línea
+          esperado = incd(s) }
       } else print NR ": el campo n no es un entero"
     }
     END { if (NR == 0) print "0: el literal está vacío" }' "$f")
@@ -2473,20 +2495,20 @@ pedido_jsonl() {
 > `n` **se cierra con un delimitador** —coma o llave—, y no es un detalle de escritura: un `match` de
 > solo prefijo acepta `1.5` y `1e3` leyéndolos como el entero `1`, así que una identidad no entera
 > atravesaba el paquete con la celda `aplicable`. El mismo cierre va en **las tres sedes** que leen
-> este campo, por el motivo de siempre: un patrón más ancho en una que en otra las hace discrepar. Y
-> el **techo de quince dígitos se comprueba sobre el lexema, antes de convertir**: pasado ese ancho la
-> conversión devuelve otro número, así que comparar después del techo es lo que hace que el veredicto
-> no dependa del rango de `awk` ni del shell. Un `n` que lo excede da rojo, que es lo que la matriz del
-> marcador traduce a cuarentena. **No autoriza a afirmar que la línea sea JSON válido**: no
+> este campo, por el motivo de siempre: un patrón más ancho en una que en otra las hace discrepar. El
+> orden se sigue **en decimal sobre el lexema** —el esperado arranca en la base y avanza con acarreo
+> dígito a dígito—, así que el veredicto no depende del rango de `awk` ni del shell y **ninguna
+> identidad se queda sin sucesor**. Un desvío se reporta contra lo esperado y el seguimiento continúa
+> desde lo **observado**, para que un hueco no encadene un error por cada línea siguiente. **No autoriza a afirmar que la línea sea JSON válido**: no
 > detecta comillas sin cerrar, comas sobrantes, anidamiento roto, tipos incorrectos, ni que `sha256`
 > corresponda a `texto`. De los **tipos**, comprueba **solo el de `n`** —porque ese campo es la
 > identidad de la línea y el resto del contrato cuelga de él—; los otros seis no se tipan. **No es un
 > parser y no se lo puede leer como uno.** Se eligió así
 > deliberadamente: validar JSON en shell POSIX exige una herramienta que no está garantizada, y el
 > aparato pesaría más que la prosa que verifica. Fallos de ejecución, distintos de su resultado: `2`
-> si el `n` inicial no es un entero ≥ 1 **o excede los quince dígitos**, y `3` si el archivo no se
-> puede leer. Ese argumento también se valida **por texto y no con aritmética**: un valor que el shell
-> no puede comparar como entero haría fallar el propio `test` en vez de rechazarse.
+> si el `n` inicial no es un entero ≥ 1, y `3` si el archivo no se puede leer. Ese argumento se valida
+> **por texto y no con aritmética**: un valor que el shell no puede comparar como entero haría fallar el
+> propio `test` en vez de rechazarse.
 
 #### `pedido-unicidad`
 
@@ -2497,6 +2519,12 @@ pedido_unicidad() {
   f="${1:?ruta de registro.md}"
   if [ ! -r "$f" ]; then echo "no se puede leer: $f" >&2; return 3; fi
   salida=$(awk '
+    # las identidades se comparan en DECIMAL, sobre el lexema y sin convertir
+    function norm(x) { sub(/^0+/, "", x); return (x == "" ? "0" : x) }
+    function cmpd(a, b) {
+      if (length(a) != length(b)) return (length(a) < length(b)) ? -1 : 1
+      if ((a "") == (b "")) return 0
+      return ((a "") < (b "")) ? -1 : 1 }
     BEGIN { FS=sprintf("%c",124) }
     /^## clausulas/ { s="c"; next }
     /^## eventos/   { s="e"; next }
@@ -2504,15 +2532,18 @@ pedido_unicidad() {
     /^## /          { s="";  next }
     { k=$2; v=$3; gsub(/[ *]/,"",k); gsub(sprintf("%c",96),"",k)
       gsub(/[ *]/,"",v); gsub(sprintf("%c",96),"",v) }
-    s == "c" && k ~ /^P-[0-9]+$/ && v ~ /^[0-9]+$/ {
-      sub(/^0+/, "", v); if (v == "") v = "0"
+    s == "c" && k ~ /^P-[0-9]+$/ {
+      # el dominio se aplica ANTES de la unicidad: si la fila no filtra por forma, un valor
+      # fuera del dominio no dispara ninguna regla y pasa en silencio
+      if (norm(substr(k, 3)) == "0") { print "identidad de clausula fuera del dominio: " k; next }
+      if (v !~ /^[0-9]+$/) { print "version fuera del dominio en " k ": " (v == "" ? "(vacia)" : v); next }
+      v = norm(v)
+      if (v == "0") { print "version fuera del dominio en " k ": el dominio exige un entero desde 1"; next }
       par = k "@" v
       if (par in vistos) print "clausula repetida: " par
       vistos[par]=1
-      # mismo techo y mismo motivo que el campo n: version es identidad junto con P-k
-      if (length(v) > 15) { print "version de " k " excede los 15 dígitos: " v; next }
-      if (k in maxv && v+0 <= maxv[k]) print "version no monotona en " k ": " v
-      if (!(k in maxv) || v+0 > maxv[k]) maxv[k]=v+0 }
+      if (k in maxv && cmpd(v, maxv[k]) <= 0) print "version no monotona en " k ": " v
+      if (!(k in maxv) || cmpd(v, maxv[k]) > 0) maxv[k]=v }
     s == "e" && k ~ /^E-[0-9]+$/ {
       if (k in ev) print "evento repetido: " k
       ev[k]=1 }
@@ -2526,15 +2557,17 @@ pedido_unicidad() {
 ```
 
 > **Frontera de prueba.** Clase **veredicto**, dirección **admite-de-más**. Su verde autoriza a
-> afirmar que los identificadores de las tres tablas son únicos y que la versión crece por cláusula.
-> `version` lleva el **mismo techo de quince dígitos que `n`, y por el mismo motivo**: es identidad
-> junto con `P-k`, y la monotonía se evalúa convirtiendo, así que sin techo se compararía contra un
-> número que no es el escrito. Los ceros a la izquierda se normalizan antes de formar el par, de modo
-> que `P-1@01` y `P-1@1` cuentan como la misma versión — que es lo que dice el dominio, donde
-> `version` es un entero y no una cadena.
+> afirmar que los identificadores de las tres tablas son únicos, que la versión crece por cláusula y
+> que **las dos identidades de una fila de cláusula caen dentro de su dominio**. Esto último es una
+> adquisición y no un adorno: mientras la regla **filtraba** por la forma de `version`, un valor fuera
+> del dominio —vacío, `abc`, `+1`, `-1`— no disparaba ninguna regla y el bloque devolvía verde **sin
+> haber comprobado nada**. Ahora el dominio se evalúa **dentro** de la regla y lo que no lo cumple da
+> rojo con su causa. La monotonía se compara **en decimal** —longitud y después orden lexicográfico—,
+> sin convertir y sin máximo. Los ceros a la izquierda se normalizan antes de formar el par, así que
+> `P-1@01` y `P-1@1` cuentan como la misma versión, que es lo que dice el dominio.
 > **No** ve si el texto de la cláusula es el correcto, si la `evidencia` obligatoria está presente,
 > ni si un identificador retirado se reutiliza **fuera** de este flujo. Reconoce los `AC-n` por la
-> misma **forma cerrada** que `pedido-referencias`, así que un identificador fuera de esa forma
+> misma **forma cerrada** que `pedido-referencias`, así que un `AC-n` fuera de esa forma
 > tampoco se comprueba acá: no detectaría su repetición. Fallo de ejecución: `3` si el
 > archivo no se puede leer.
 
@@ -2553,6 +2586,7 @@ pedido_referencias() {
     echo "no se puede leer alguna de las tres sedes" >&2; return 3
   fi
   salida=$(awk '
+    function norm(x) { sub(/^0+/, "", x); return (x == "" ? "0" : x) }
     BEGIN { FS=sprintf("%c",124) }
     FILENAME == ELIT {
       # la cláusula cita el campo n, no la posición física de la línea: tras una cuarentena
@@ -2562,8 +2596,7 @@ pedido_referencias() {
         v = substr($0, RSTART, RLENGTH); sub(/^.*:[ ]*/, "", v); sub(/[ ]*[,}]$/, "", v)
         # el índice es el LEXEMA normalizado, no el número: convertirlo pierde precisión con un n
         # grande, y las dos puntas —el literal y la cita— tienen que normalizar igual
-        sub(/^0+/, "", v); if (v == "") v = "0"
-        nl = v }
+        nl = norm(v) }
       hay[nl]=1
       if (match($0, /"texto"[ ]*:[ ]*"/)) {
         cuerpo = substr($0, RSTART+RLENGTH)
@@ -2588,7 +2621,7 @@ pedido_referencias() {
       for (i=1; i<=m; i++) {
         if (lista[i] !~ /^[0-9]+:[0-9]+-[0-9]+$/) continue
         split(lista[i], p, ":"); split(p[2], q, "-")
-        cit = p[1]; sub(/^0+/, "", cit); if (cit == "") cit = "0"
+        cit = norm(p[1])
         if (!(cit in hay)) { print "fragmento cita una linea inexistente: " lista[i]; continue }
         if (q[1]+0 < 1 || q[2]+0 < q[1]+0 || q[2]+0 > largo[cit]+0)
           print "rango fuera del largo del texto: " lista[i] } }
@@ -2596,7 +2629,11 @@ pedido_referencias() {
       if (!(id in enspec)) print "criterio de la traza ausente en la spec: " id }
     s == "e" && id ~ /^E-[0-9]+$/ {
       ob=$7; gsub(/[ *]/,"",ob); gsub(sprintf("%c",96),"",ob)
-      resuelve = (ob == "" || ob == "-" || ob ~ /^P-[0-9]+@[0-9]+$/ || ob ~ /^AC-[0-9]+[a-z]?@/)
+      resuelve = (ob == "" || ob == "-" || ob ~ /^AC-[0-9]+[a-z]?@/)
+      # P-k@version lleva el MISMO dominio que en el registro: las dos identidades desde 1
+      if (!resuelve && ob ~ /^P-[0-9]+@[0-9]+$/) {
+        split(ob, pp, "@")
+        if (norm(substr(pp[1], 3)) != "0" && norm(pp[2]) != "0") resuelve = 1 }
       # el objetivo de una confirmación es el digest encadenado: 7 de "digest@" mas 64 de sha256
       if (ob ~ /^digest@[0-9a-f]+$/ && length(ob) == 71) resuelve = 1
       if (!resuelve) print "objetivo de evento que no resuelve: " ob }' \
@@ -2624,9 +2661,11 @@ pedido_referencias() {
 > un `AC-7` en el mismo caso daba rojo. El índice del literal es el **lexema normalizado** de `n` —sin
 > ceros a la izquierda y sin convertir a número—, y la cita del fragmento se normaliza igual: son las
 > dos puntas de la misma correspondencia, y con una convertida y la otra cruda dejaban de encontrarse.
-> Los rangos de `fragmentos` **sí** se comparan convirtiendo, y quedan fuera del techo a propósito: no
-> son identidad, y un valor desmesurado hace que el rango caiga fuera del largo del texto, que es rojo
-> — el techo existe donde una conversión imprecisa produce un falso verde, no un fallo cerrado. La correspondencia con el literal es por el **campo `n`**, no
+> Los rangos de `fragmentos` **sí** se comparan convirtiendo, y a propósito: no son identidad, y un
+> valor desmesurado hace que el rango caiga fuera del largo del texto, que es rojo. El objetivo
+> `P-k@version` **lleva el mismo dominio que el registro** —las dos identidades desde 1, sin máximo—,
+> porque una forma que solo mirara el patrón admitía `P-1@0` y `P-0@1`: resolvían de forma y no de
+> dominio. La correspondencia con el literal es por el **campo `n`**, no
 > por la posición física de la línea: mientras la captura arranca en 1 los dos coinciden, pero tras una
 > cuarentena dejan de hacerlo, y con el índice por posición todo fragmento de un paquete recuperado
 > citaba una línea «inexistente». Un `n` repetido en el literal colapsa su entrada del índice y hace
@@ -2685,7 +2724,7 @@ pedido_marcador() {
   # que lo clasifica cuarentena. Todo se decide por texto, sin aritmética sobre un valor no confiable
   case "$base" in
     ''|*[!0-9]*) base=1 ;;
-    *[!0]*) if [ "${#base}" -gt 15 ]; then base=1; fi ;;
+    *[!0]*) ;;
     *) base=1 ;;
   esac
   pedido_jsonl "$paquete/literal.jsonl" "$base" >/dev/null 2>&1
@@ -2728,7 +2767,7 @@ pedido_marcador() {
 > es lo que obliga a que la base viaje como lexema:** convertirla devolvía notación científica con un
 > `n` grande, el `test` del shell fallaba con `integer expression expected`, la comprobación recibía una
 > base no numérica y devolvía `2`, y el bloque volvía a salir `1` sobre un literal legible. Todo lo que
-> el marcador decide sobre la base se decide **por texto**: forma, positividad y ancho.
+> el marcador decide sobre la base se decide **por texto**: forma y positividad.
 
 **`pedido-marcador` invoca a `pedido-jsonl` por dentro, y ese orden es único.** El routing invoca
 **un solo bloque** —y **carga dos**, que no es lo mismo: la definición de la dependencia tiene que
