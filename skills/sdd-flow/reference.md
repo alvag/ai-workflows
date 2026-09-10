@@ -2425,13 +2425,13 @@ afuera se escribe en su frontera en vez de fingirse cubierto:
 |---|---|---|
 | `pedido-jsonl` | por cada línea de `literal.jsonl`: que abra con `{` y cierre con `}`, que estén las siete claves obligatorias, y que `n` sea monótono sin huecos desde el **`n` inicial**, que es 1 salvo que se declare otro | una línea por violación, `<n>: <causa>`; `0` sin violaciones, `1` con, `2` si el `n` inicial no es un entero ≥ 1, `3` si el archivo no se puede leer **o si `awk` no pudo ejecutarse** |
 | `pedido-unicidad` | en `registro.md`: que las identidades de las tres tablas caigan dentro de su dominio y no se repitan, y que la versión crezca por cláusula | ídem |
-| `pedido-referencias` | que cada `fragmentos` cite una línea existente con rango dentro de su largo, que cada `AC-n` de la traza exista en la sede de los criterios, y que cada `objetivo` de evento resuelva | ídem |
+| `pedido-referencias` | que cada `fragmentos` exista y cite una línea con rango dentro de su largo, que cada `AC-n` de la traza exista en la sede de los criterios, y que cada `objetivo` de evento resuelva | ídem |
+| `pedido-marcador` | resuelve la celda de la matriz del marcador desde el estado observado del árbol | **la celda en stdout**; `0` si resolvió una, `1` si el árbol no encaja en ninguna, `2` si la invocación está mal formada o `pedido-jsonl` no está cargado |
 
 **El `3` de los tres primeros incluye «no se pudo ejecutar», y eso es deliberado.** Una salida vacía
 significa «ninguna violación» **solo si el comando terminó bien**; leerla sin mirar el estado convierte
 cualquier fallo del intérprete en un verde. Es la misma razón por la que el `3` no es un veredicto en
 ninguno de los tres: dice que no hubo comprobación, no que la comprobación pasó.
-| `pedido-marcador` | resuelve la celda de la matriz del marcador desde el estado observado del árbol | **la celda en stdout**; `0` si resolvió una, `1` si el árbol no encaja en ninguna, `2` si la invocación está mal formada o `pedido-jsonl` no está cargado |
 
 **Van en POSIX solamente, y hay precedente**: el verificador de aislamiento de este repositorio es
 también un bloque de shell sin variante PowerShell. La exigencia de ofrecer las dos variantes alcanza
@@ -2558,7 +2558,9 @@ pedido_unicidad() {
       if (length(a) != length(b)) return (length(a) < length(b)) ? -1 : 1
       if ((a "") == (b "")) return 0
       return ((a "") < (b "")) ? -1 : 1 }
-    BEGIN { FS=sprintf("%c",124) }
+    BEGIN { FS=sprintf("%c",124)
+            cab["c"]="P-k"; cab["e"]="E-k"; cab["t"]="AC-n"
+            nom["c"]="clausulas"; nom["e"]="eventos"; nom["t"]="traza" }
     /^## clausulas/ { s="c"; fila=0; next }
     /^## eventos/   { s="e"; fila=0; next }
     /^## traza/     { s="t"; fila=0; next }
@@ -2568,8 +2570,16 @@ pedido_unicidad() {
     # y lo que no dispara ninguna regla no se reporta: se ignora
     s != "" && substr($0,1,1) != sprintf("%c",124) { next }
     s != "" { fila++
-      if (fila <= 2) next
-      k=$2; v=$3; gsub(/[ *]/,"",k); gsub(sprintf("%c",96),"",k)
+      c1=$2; gsub(/[ *]/,"",c1); gsub(sprintf("%c",96),"",c1)
+      # la cabecera y el separador se COMPRUEBAN, no se saltan por contarlos: si faltan, saltar
+      # dos filas por posición se come dos filas de datos y la tabla pasa sin comprobarse
+      if (fila == 1) {
+        if (c1 != cab[s]) print "tabla de " nom[s] ": la primera fila no es la cabecera (" (c1 == "" ? "vacia" : c1) ")"
+        next }
+      if (fila == 2) {
+        if (c1 !~ /^-+$/) print "tabla de " nom[s] ": la segunda fila no es el separador (" (c1 == "" ? "vacia" : c1) ")"
+        next }
+      k=c1; v=$3
       gsub(/[ *]/,"",v); gsub(sprintf("%c",96),"",v)
       if (k ~ /-0([a-z])?$/ || (k ~ /^[A-Za-z]+-/ && normid(k) ~ /-0([a-z])?$/)) {
         print "identidad fuera del dominio, no es un entero desde 1: " k; next }
@@ -2607,8 +2617,11 @@ pedido_unicidad() {
 > **filtraban** por la forma del identificador, lo que no la cumplía —`P-abc`, `P-`, `P-1.5`, `Q-1`,
 > `E-abc`, `AC-xyz`, o una `version` vacía, `abc`, `+1`, `-1`— **no disparaba ninguna regla** y el
 > bloque devolvía verde **sin haber comprobado nada**. Lo que no se selecciona no se reporta: se
-> ignora. Ahora se seleccionan las **filas de datos** —las dos primeras de cada tabla son cabecera y
-> separador— y el dominio se evalúa **dentro** de la regla, con su causa.
+> ignora. Ahora la cabecera y el separador se **comprueban** —la primera fila lleva el nombre de la
+> columna de identidad y la segunda es el separador— y solo después se habilitan los datos. Saltarlos
+> **por posición** era otra forma del mismo defecto: en una tabla sin cabecera, las dos primeras filas
+> de datos ocupaban esos lugares y la tabla entera pasaba sin comprobarse. El dominio se evalúa
+> **dentro** de la regla, con su causa.
 >
 > **Los identificadores se normalizan en su parte numérica** antes de formar el par y el máximo, así
 > que `P-1` y `P-01` son **una** identidad y no dos: sin eso, un alias con ceros iniciales duplicaba la
@@ -2669,7 +2682,11 @@ pedido_referencias() {
         # RSTART y RLENGTH se capturan ANTES de llamar a normid: esa función usa `match` por
         # dentro y los pisa, y el avance del bucle depende de ellos — sin esto no termina
         r = RSTART; l = RLENGTH
-        enspec[normid(substr(linea, r, l))]=1
+        # awk no tiene delimitadores de palabra: los dos extremos se cierran a mano, o AC-1ab
+        # satisface a AC-1a y AC-1A satisface a AC-1
+        sig = substr(linea, r + l, 1)
+        ant = (r > 1) ? substr(linea, r - 1, 1) : ""
+        if (sig !~ /[0-9A-Za-z]/ && ant !~ /[0-9A-Za-z-]/) enspec[normid(substr(linea, r, l))]=1
         linea = substr(linea, r + l) }
       next }
     /^## clausulas/ { s="c"; next }
@@ -2679,9 +2696,13 @@ pedido_referencias() {
     { id=$2; gsub(/[ *]/,"",id); gsub(sprintf("%c",96),"",id) }
     s == "c" && id ~ /^P-[0-9]+$/ {
       frags=$5; gsub(/[ *]/,"",frags); gsub(sprintf("%c",96),"",frags)
+      # una cláusula sin fragmentos no tiene origen comprobable: descartarla en silencio dejaba
+      # la relación literal -> cláusula sin verificar, que es lo que este bloque existe para ver
+      if (frags == "" || frags == "-") { print "clausula sin fragmentos: " id; next }
       m = split(frags, lista, ",")
       for (i=1; i<=m; i++) {
-        if (lista[i] !~ /^[0-9]+:[0-9]+-[0-9]+$/) continue
+        if (lista[i] !~ /^[0-9]+:[0-9]+-[0-9]+$/) {
+          print "fragmento mal formado en " id ": " (lista[i] == "" ? "vacio" : lista[i]); continue }
         split(lista[i], p, ":"); split(p[2], q, "-")
         cit = norm(p[1])
         if (!(cit in hay)) { print "fragmento cita una linea inexistente: " lista[i]; continue }
@@ -2691,7 +2712,9 @@ pedido_referencias() {
       if (!(normid(id) in enspec)) print "criterio de la traza ausente en la spec: " id }
     s == "e" && id ~ /^E-[0-9]+$/ {
       ob=$7; gsub(/[ *]/,"",ob); gsub(sprintf("%c",96),"",ob)
-      resuelve = (ob == "" || ob == "-" || ob ~ /^AC-[0-9]+[a-z]?@/)
+      # el vacío NO resuelve: el dominio admite tres formas o el guion, y una celda vacía es una
+      # fila mal formada. Y la forma AC-n@hash exige el hash: AC-1@ no apunta a nada
+      resuelve = (ob == "-" || ob ~ /^AC-[0-9]+[a-z]?@.+$/)
       # P-k@version lleva el MISMO dominio que en el registro: las dos identidades desde 1
       if (!resuelve && ob ~ /^P-[0-9]+@[0-9]+$/) {
         split(ob, pp, "@")
@@ -2710,8 +2733,11 @@ pedido_referencias() {
 ```
 
 > **Frontera de prueba.** Clase **veredicto**, dirección **admite-de-más**. Su verde autoriza a
-> afirmar que cada referencia **resuelve**: la línea citada existe, el rango cae dentro del largo, el
-> criterio está en la spec y el objetivo tiene una forma que apunta a algo. **Nunca** autoriza a
+> afirmar que cada referencia **resuelve**: la cláusula **tiene** fragmentos y cada uno cita una línea
+> existente con su rango dentro del largo, el criterio está en la spec, y el objetivo tiene una forma
+> que apunta a algo. Que los fragmentos **existan** es parte del veredicto y no un supuesto: mientras
+> los elementos sin forma se descartaban en silencio, una cláusula con `fragmentos` vacío o con basura
+> pasaba en verde **sin origen comprobable**, que es justo lo que este bloque existe para ver. **Nunca** autoriza a
 > afirmar que la derivación adjudicada sea **válida** —eso es juicio y queda en prosa—, ni que el
 > fragmento citado sea el que de verdad origina la cláusula. Dos límites más, propios de medir el
 > largo desde el literal serializado: **no interpreta escapes JSON** —una comilla o un salto de línea
@@ -2723,7 +2749,14 @@ pedido_referencias() {
 > indexa desde la sede de los criterios ni se comprueba desde la traza, así que pasa en silencio en
 > vez de dar rojo. Que las tres compartan el patrón es lo que evita el desacuerdo, y no es
 > hipotético: con el indexado más ancho que la consulta, un `AC-7b` colgante devolvía verde mientras
-> un `AC-7` en el mismo caso daba rojo. El índice del literal es el **lexema normalizado** de `n` —sin
+> un `AC-7` en el mismo caso daba rojo. **Los dos extremos del identificador se cierran a mano**,
+> porque `awk` no tiene delimitadores de palabra: sin eso, un `AC-1ab` en la sede de los criterios
+> satisfacía a un `AC-1a` de la traza, y un `AC-1A` satisfacía a `AC-1`. Por el mismo motivo la forma
+> `AC-n@hash` del objetivo **exige el hash**: `AC-1@` no apunta a nada.
+>
+> **El objetivo vacío no resuelve.** El dominio admite tres formas o el guion, y una celda vacía es una
+> fila mal formada, no un objetivo ausente — admitirla dejaba pasar en verde toda fila de evento a la
+> que le faltara esa columna. El índice del literal es el **lexema normalizado** de `n` —sin
 > ceros a la izquierda y sin convertir a número—, y la cita del fragmento se normaliza igual: son las
 > dos puntas de la misma correspondencia, y con una convertida y la otra cruda dejaban de encontrarse.
 > Los rangos de `fragmentos` **sí** se comparan convirtiendo, y a propósito: no son identidad, y un
