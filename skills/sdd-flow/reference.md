@@ -2202,11 +2202,31 @@ autoridades que no son el pedido, y admite la implementación más floja: escrib
 `P-1: realizar el cambio solicitado` y colgar de ahí los cuarenta criterios. Las relaciones son
 **tres**, y se enuncian sobre las tablas de arriba:
 
-| Relación | Forma | Qué impide |
-|---|---|---|
-| **R1** literal → cláusula | sobre la **partición vigente**: cada fragmento tiene exactamente una cláusula, y cada cláusula **cita el fragmento o los fragmentos que la originan** | que una parte del literal desaparezca antes de existir `P-k`; y que una cláusula genérica se declare suficiente sin nombrar qué parte del pedido toca |
-| **R2** criterio → autoridad | cada `AC-n` tiene **exactamente una** autoridad —`pedido`, `constitution`, `repositorio` o `clarify`— con su referencia y su derivación adjudicada | que un criterio flote sin de dónde salió. **Si sus afirmaciones dependen de autoridades distintas, el criterio se parte** |
-| **R3** cláusula pendiente → criterio | cada cláusula con `aplicabilidad: pendiente` tiene **al menos un** `AC-n` que la atiende | que el alcance se achique en silencio |
+| Relación | Forma | Qué impide | Qué la comprueba |
+|---|---|---|---|
+| **R1** literal → cláusula | sobre la **partición vigente**: cada fragmento tiene exactamente una cláusula, y cada cláusula **cita el fragmento o los fragmentos que la originan** | que una parte del literal desaparezca antes de existir `P-k`; y que una cláusula genérica se declare suficiente sin nombrar qué parte del pedido toca | `pedido-referencias` |
+| **R2** criterio → autoridad | cada `AC-n` tiene **exactamente una** autoridad —`pedido`, `constitution`, `repositorio` o `clarify`— con su referencia y su derivación adjudicada | que un criterio flote sin de dónde salió. **Si sus afirmaciones dependen de autoridades distintas, el criterio se parte** | `pedido-referencias`, en las **dos direcciones** y con el dominio de las tres columnas; la concordancia con la anotación de la sede; y `pedido-criterio` para el hash |
+| **R3** cláusula pendiente → criterio | cada cláusula con `aplicabilidad: pendiente` tiene **al menos un** `AC-n` que la atiende | que el alcance se achique en silencio | `pedido-referencias` |
+
+**La cuarta columna no es documentación: es una obligación del documento.** Una relación enunciada sin
+ella es un estado inválido, no una fila incompleta. Se agrega porque las tres se declararon juntas y
+solo `R1` llegó a tener predicado: `R2` comprobaba **presencia** y `R3` **no comprobaba nada**, con los
+seis bloques en verde y el gate presentándose. La que más costaba era `R3`, cuyo propósito escrito
+—«que el alcance no se achique en silencio»— es el objeto entero de este flujo.
+
+**Qué comprueba `R2`, en concreto, porque «exactamente una autoridad» no es un predicado.** Son seis
+cosas: que la `autoridad` caiga en el dominio cerrado de cuatro valores; que `referencia` y
+`derivacion` no estén vacías ni en guion; que cada criterio **declarado** en la sede tenga su fila; que
+cada fila tenga su criterio en la sede; que la **anotación** de la sede y las columnas de la traza digan
+lo mismo —son dos sedes del mismo hecho, y si discrepan una miente—; y que una `autoridad: pedido`
+apunte a una cláusula **de la partición vigente y `pendiente`**, que es su condición de validez.
+
+**Y `R2` rige sobre lo que la sede *declara*, no sobre lo que menciona.** Una línea **abre** un
+criterio cuando, quitados los espacios y un marcador de lista inicial, empieza con su identificador.
+Nombrar un criterio ajeno en prosa —«esto no cubre `AC-9`, que es de otro flujo»— es válido y no
+exige nada; leerlo como declaración bloqueaba una spec correcta. Un identificador **abre a lo sumo
+un criterio**: dos aperturas con la misma identidad son un estado inválido, y sin comprobarlo la
+segunda quedaba sin hashear.
 
 **La partición vigente, que es sobre lo que rige `R1`.** Es el conjunto de filas que son la `version`
 máxima de cada `P-k` no retirado. Sin esta precisión, corregir una cláusula en régimen append-only
@@ -2481,11 +2501,11 @@ cláusula está bien redactada.
 | Bloque | Quién lo invoca | En qué puerta | Argumentos | Qué se lee | Qué pasa si falla |
 |---|---|---|---|---|---|
 | `pedido-jsonl` | `gather-context` | al cerrar 3b, **antes** del sub-paso 4 | la ruta de `literal.jsonl`, y el `n` inicial cuando no es 1 | el código de salida | **fallo cerrado**: no se avanza a la fusión |
-| `pedido-unicidad` | `specify` | antes de presentar el gate de la spec | la ruta de `registro.md` | el código de salida | el gate **no se presenta** |
-| `pedido-referencias` | `specify`, y cada recálculo que la tabla de puertas declare | antes del gate que esa fila nombra | `registro.md` y la **sede de los criterios**: `spec.md`, o `plan.md` en la rama trivial | el código de salida | el gate **no se presenta** |
+| `pedido-unicidad` | `specify`, y `resume` | antes de presentar el gate de la spec; en `resume`, tras la cadena | la ruta de `registro.md` | el código de salida | el gate **no se presenta**; en `resume`, con `1` se retoma en el gate de `specify` — **no** es cuarentena |
+| `pedido-referencias` | `specify`, cada recálculo que la tabla de puertas declare, y `resume` | antes del gate que esa fila nombra; en `resume`, tras la cadena y solo si la traza tiene algún criterio | `registro.md` y la **sede de los criterios**: `spec.md`, o `plan.md` en la rama trivial | el código de salida | el gate **no se presenta**; en `resume`, con `1` se retoma en el gate de `specify` — **no** es cuarentena |
 | `pedido-marcador` | `resume`, y `gather-context` en 3b | en `resume`, **primera** comprobación del paso, antes de enrutar; en 3b, **antes de escribir**, y solo si `.plans/<id>/` ya existe | la raíz del flujo | la celda, en stdout | con `1` o `2` **no se enruta** por ninguna rama, y en 3b no se escribe nada |
 | `pedido-digest` | `resume` | **después** del marcador, y solo si su celda fue «presente y legible» | la ruta de `registro.md` | el código de salida | con `1` la celda pasa a **cuarentena**; con `3` la cadena queda **sin comprobar** y se informa así, sin leerlo como verde |
-| `pedido-criterio` | `specify`, en la misma puerta que `pedido-referencias`; y `resume`, **después** de la cadena y solo si existe la sede de los criterios | antes del gate que esa fila nombra; en `resume`, antes de enrutar | `registro.md` y la **sede de los criterios** | el código de salida | en `specify`, con `1` el gate **no se presenta**; en `resume`, con `1` **no es cuarentena** —el paquete está intacto— sino retomar en el gate de `specify` a re-adjudicar `R2`. Con `3` los hashes quedan **sin comprobar** y se informa así, sin leerlo como verde ni bloquear |
+| `pedido-criterio` | `specify`, en la misma puerta que `pedido-referencias`; y `resume`, **después** de la cadena y solo si la traza tiene algún criterio | antes del gate que esa fila nombra; en `resume`, antes de enrutar | `registro.md` y la **sede de los criterios** | el código de salida | en `specify`, con `1` el gate **no se presenta**; en `resume`, con `1` **no es cuarentena** —el paquete está intacto— sino retomar en el gate de `specify` a re-adjudicar `R2`. Con `3` los hashes quedan **sin comprobar** y se informa así, sin leerlo como verde ni bloquear |
 
 **`pedido-marcador` se invoca una vez y se carga con su dependencia.** Llama a `pedido-jsonl` por
 dentro, así que quien lo invoca tiene que haber **cargado los dos bloques** en el mismo shell.
@@ -2775,7 +2795,20 @@ pedido_referencias() {
       n = length(s); t = 0
       for (i = 1; i <= n; i++) if (index(CONT, substr(s, i, 1)) == 0) t++
       return t }
+    # una línea ABRE un criterio cuando, quitados los espacios y un marcador de lista inicial,
+    # empieza con su identificador. Una MENCIÓN en prosa no abre nada, y esa distinción es la que
+    # separa «el criterio está declarado» de «el criterio se nombra en algún lado»
+    function abrec(s,   t, r, l, sig) {
+      t = s
+      sub("^" ESP "+", "", t)
+      sub("^([-*+]|[0-9]+[.)])" ESP "+", "", t)
+      if (!match(t, /^AC-[0-9]+[a-z]?/)) return ""
+      r = RSTART; l = RLENGTH
+      sig = substr(t, r + l, 1)
+      if (sig ~ /[0-9A-Za-z_]/) return ""
+      return normid(substr(t, r, l)) }
     BEGIN { FS=sprintf("%c",124)
+            ESP = "[ " sprintf("%c",9) "]"
             for (i = 128; i < 192; i++) CONT = CONT sprintf("%c", i) }
     FILENAME == ELIT {
       # la cláusula cita el campo n, no la posición física de la línea: tras una cuarentena
@@ -2811,6 +2844,14 @@ pedido_referencias() {
         if (sig !~ /[0-9A-Za-z_]/ && ant !~ /[0-9A-Za-z_-]/) enspec[normid(substr(linea, r, l))]=1
         pos = pos + r + l - 1
         linea = substr(linea, r + l) }
+      ab = abrec($0)
+      if (ab != "") { abre[ab]++
+        # la anotación de autoridad, que el contrato obliga a poner al final de esa misma línea
+        if (match($0, /\[autoridad:[ ]*[^]]*\]/)) {
+          an = substr($0, RSTART, RLENGTH)
+          sub(/^\[autoridad:[ ]*/, "", an); sub(/[ ]*\]$/, "", an)
+          if (!(ab in anot)) anot[ab] = an }
+        else if (!(ab in anot)) anot[ab] = "-sin-" }
       next }
     /^## clausulas/ { s="c"; next }
     /^## eventos/   { s="e"; next }
@@ -2834,9 +2875,11 @@ pedido_referencias() {
       ck = normid(id)
       # la PARTICIÓN VIGENTE es la versión máxima de cada P-k no retirado: sobre ella rige R1,
       # y sin quedarse con una sola versión por cláusula el régimen append-only fabrica solapamientos
+      apl=$4; gsub(/[ *]/,"",apl); gsub(sprintf("%c",96),"",apl)
       if (ver ~ /^[0-9]+$/) { ver = norm(ver)
         clausula[ck "@" ver] = 1
-        if (!(ck in vmax) || cmpd(ver, vmax[ck]) > 0) { vmax[ck] = ver; fragde[ck] = frags } }
+        if (!(ck in vmax) || cmpd(ver, vmax[ck]) > 0) {
+          vmax[ck] = ver; fragde[ck] = frags; aplde[ck] = apl } }
       # una cláusula sin fragmentos no tiene origen comprobable: descartarla en silencio dejaba
       # la relación literal -> cláusula sin verificar, que es lo que este bloque existe para ver
       if (frags == "" || frags == "-") { print "clausula sin fragmentos: " id; next }
@@ -2856,6 +2899,16 @@ pedido_referencias() {
       hc=$3; gsub(/[ *]/,"",hc); gsub(sprintf("%c",96),"",hc)
       if (hc !~ /^[0-9a-f]+$/ || length(hc) != 64) print "hash_criterio fuera del dominio: " id
       hashtz[ac] = hc
+      # R2 no es presencia: la autoridad tiene dominio cerrado, y la referencia y la derivación
+      # son obligatorias. Una fila con autoridad inventada y las dos columnas vacías pasaba
+      au=$4; gsub(/[ *]/,"",au); gsub(sprintf("%c",96),"",au)
+      re=$5; gsub(/[ *]/,"",re); gsub(sprintf("%c",96),"",re)
+      de=$6; gsub(/^[ ]+|[ ]+$/,"",de); gsub(sprintf("%c",96),"",de)
+      if (au != "pedido" && au != "constitution" && au != "repositorio" && au != "clarify")
+        print "autoridad fuera del dominio en " id ": " (au == "" ? "vacia" : au)
+      if (re == "" || re == "-") print "criterio sin referencia: " id
+      if (de == "" || de == "-") print "criterio sin derivacion adjudicada: " id
+      autz[ac] = au; refz[ac] = re
       if (!(ac in enspec)) print "criterio de la traza ausente en la spec: " id }
     s == "e" && substr($0,1,1) == sprintf("%c",124) { nev++ }
     s == "e" && id ~ /^E-[0-9]+$/ {
@@ -2922,10 +2975,38 @@ pedido_referencias() {
         else if (ob ~ /^AC-/) {
           split(ob, pa, "@")
           if (!(normid(pa[1]) in actraza)) print "objetivo que no existe en la traza: " ob } }
-      # R2 se lee en las DOS direcciones: la traza contra la sede ya estaba, y sin esta mitad un
-      # criterio escrito en la spec sin fila en la traza no tenía autoridad adjudicada y pasaba
-      for (a in enspec) {
-        if (!(a in actraza)) print "criterio en la sede sin fila en la traza: " a }
+      # R2 se lee en las DOS direcciones. La cobertura rige sobre lo que la sede DECLARA, no sobre
+      # toda mención: una spec que nombra un criterio ajeno —«esto no cubre AC-9»— es válida, y
+      # exigirle una fila de traza bloqueaba un artefacto correcto
+      for (a in abre) {
+        if (abre[a] > 1) print "criterio declarado mas de una vez en la sede: " a
+        if (!(a in actraza)) print "criterio en la sede sin fila en la traza: " a
+        if (anot[a] == "-sin-") print "criterio en la sede sin anotacion de autoridad: " a
+        else if (a in actraza) {
+          # la anotación y la traza son dos sedes del MISMO hecho: si discrepan, una miente
+          nq = index(anot[a], ":")
+          aa = (nq > 0) ? substr(anot[a], 1, nq - 1) : anot[a]
+          rr = (nq > 0) ? substr(anot[a], nq + 1) : ""
+          if (aa != autz[a] || rr != refz[a])
+            print "la anotacion de la sede no concuerda con la traza en " a ": " anot[a] " contra " autz[a] ":" refz[a] } }
+      # la condición de validez de la autoridad `pedido`: la referencia tiene que resolver contra
+      # una cláusula de la partición vigente y que esté `pendiente`
+      for (a in autz) {
+        if (autz[a] != "pedido") continue
+        if (refz[a] !~ /^P-[0-9]+@[0-9]+$/) { print "autoridad pedido con referencia que no es P-k@version en " a ": " refz[a]; continue }
+        split(refz[a], pv, "@"); rk = normid(pv[1]); rv = norm(pv[2])
+        if (!(rk in vmax) || rk in retirado || vmax[rk] != rv)
+          print "autoridad pedido que no apunta a la particion vigente en " a ": " refz[a]
+        else if (aplde[rk] != "pendiente")
+          print "autoridad pedido contra una clausula no pendiente en " a ": " refz[a] " esta " aplde[rk]
+        else atendida[rk "@" rv] = 1 }
+      # R3: cada cláusula vigente `pendiente` tiene al menos un criterio que la atiende. Sin este
+      # predicado el alcance se achicaba en silencio: una cláusula del pedido sin ningún AC
+      for (ck in vmax) {
+        if (ck in retirado) continue
+        if (aplde[ck] != "pendiente") continue
+        if (!((ck "@" vmax[ck]) in atendida))
+          print "R3: la clausula pendiente " ck "@" vmax[ck] " no la atiende ningun criterio" }
       # el ciclo de vida de AC-n manda fallar cerrado ante un hash que no coincide con el texto
       # vigente: sin esto, AC-n@<cualquier cosa de 64 hex> resolvía por forma contra nada
       for (a in ultac) {
@@ -3391,10 +3472,25 @@ pedido_criterio() {
       # además lleva la anotación de autoridad, que el contrato obliga a poner al final de la
       # primera línea de cada AC-n. Sin esa condición, una MENCIÓN anterior —«el resumen apunta a
       # AC-1»— arrancaba el preimage, y cambiar el criterio de verdad no movía el hash
-      function declara(s,   id) { id = idlinea(s)
-        return (id != "" && index(s, "[autoridad:") > 0) ? id : "" }
+      BEGIN { ESP = "[ " sprintf("%c",9) "]" }
+      # la MISMA noción de apertura que usa pedido-referencias: una línea abre un criterio cuando,
+      # quitados los espacios y un marcador de lista inicial, empieza con su identificador. Antes
+      # se exigía además la anotación de autoridad, y eso ataba este bloque a una comprobación que
+      # es de otro: un criterio abierto sin anotación tiene que hashearse igual, y la anotación
+      # ausente la reporta quien la gobierna
+      function declara(s,   t, r, l, sig) {
+        t = s
+        sub("^" ESP "+", "", t)
+        sub("^([-*+]|[0-9]+[.)])" ESP "+", "", t)
+        if (!match(t, /^AC-[0-9]+[a-z]?/)) return ""
+        r = RSTART; l = RLENGTH
+        sig = substr(t, r + l, 1)
+        if (sig ~ /[0-9A-Za-z_]/) return ""
+        return normid(substr(t, r, l)) }
+      # el conteo va en su propia regla, sin el corte de `hecho`: contándolo dentro del bloque, una
+      # segunda apertura POSTERIOR al bloque no se veía, que es justo el caso que hay que cazar
+      { d = declara($0); if (d == AC) visto++ }
       { if (hecho) next
-        d = declara($0)
         # el bloque llega hasta —sin incluirla— la línea que declara el criterio siguiente, la
         # primera que empiece con `#`, o el final. Sin ese corte, agregar una sección al final del
         # archivo movía el hash del último criterio sin que nadie hubiera tocado el criterio
@@ -3404,9 +3500,16 @@ pedido_criterio() {
         sub(/\[autoridad: [^]]*\]/, "", linea)
         sub(/[ ]+$/, "", linea)
         buf[++n] = linea }
-      END { while (n > 0 && buf[n] == "") n--
+      # dos aperturas con la misma identidad no se colapsan en silencio: hashear la primera dejaba
+      # la segunda sin comprobar, y cambiarla no movía nada. El 4 es propio y lo lee el llamador
+      END { if (visto > 1) exit 4
+            while (n > 0 && buf[n] == "") n--
             for (i = 1; i <= n; i++) print buf[i] }' "$cs" > "$base.b"
-    if [ $? -ne 0 ]; then parado=1; break; fi
+    rcb=$?
+    if [ "$rcb" -eq 4 ]; then
+      echo "criterio declarado mas de una vez en la sede: $ac"; malo=1; continue
+    fi
+    if [ "$rcb" -ne 0 ]; then parado=1; break; fi
     if [ ! -s "$base.b" ]; then
       echo "criterio de la traza sin declaracion en la sede: $ac"; malo=1; continue
     fi
