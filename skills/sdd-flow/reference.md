@@ -2051,9 +2051,13 @@ columna, «retoma en el gate del productor que las dejó» no era implementable.
 **El preimage de `hash_criterio`, porque «el texto del criterio» no es un conjunto de bytes.**
 Mientras no estuviera definido, ese hash no se podía comprobar contra nada: se comparaba contra otra
 copia de sí mismo —el `hash` del objetivo de un evento— y las dos podían coincidir sin corresponder a
-ningún texto. El **bloque del criterio** es, en la sede de los criterios, desde la línea donde
-aparece su identificador hasta —**sin incluirla**— la primera de estas tres: la línea del
-identificador siguiente, una línea que empiece con `#`, o el final del archivo. De ese bloque se
+ningún texto. El **bloque del criterio** es, en la sede de los criterios, desde la línea que lo
+**declara** hasta —**sin incluirla**— la primera de estas tres: la línea que declara el criterio
+siguiente, una línea que empiece con `#`, o el final del archivo. Una línea **declara** un criterio
+cuando su primer identificador válido es ese criterio **y** lleva la anotación de autoridad, que
+este mismo documento obliga a poner al final de la primera línea de cada `AC-n`. Sin esa condición
+el bloque arrancaba en una **mención** anterior —«el resumen apunta a `AC-1`»— y cambiar el criterio
+de verdad no movía el hash. De ese bloque se
 retira la anotación `\[autoridad: [^]]*\]` con el mismo patrón que usan los dos publicadores, se
 recortan los espacios al final de cada línea, se descartan las líneas vacías del final, y cada línea
 queda terminada en LF. El `sha256` se calcula sobre esos bytes UTF-8.
@@ -2152,10 +2156,16 @@ frontera tiene que cumplir tres condiciones, y las tres nacen de que las dos tab
 | **no excede** lo que hay hoy: `filas ≤` las filas de `## clausulas` y `lineas ≤` las líneas del literal | que una confirmación diga haber firmado filas que nunca existieron, o que se borraron |
 | **no retrocede** respecto de la confirmación anterior, en ninguna de sus dos componentes | que una confirmación posterior firme **menos** de lo que otra ya había firmado, sacando de la cadena todo lo que quedó en el medio |
 | **no es vacua**: el prefijo firmado contiene al menos una fila de datos de `## clausulas`, y `lineas ≥ 1` | una confirmación con la frontera en la cabecera y el separador, que reproduce su digest sin cubrir una sola cláusula |
+| **cierra bajo sus propias referencias**: toda cláusula del prefijo cita solo líneas del literal dentro del prefijo, y todo evento del prefijo cuyo objetivo sea `P-k@version` resuelve contra una fila del prefijo | una confirmación que firma un estado **que nunca existió** — una cláusula sin el fragmento que la origina, o un evento que decide sobre una cláusula que todavía no estaba |
 
-Las tres se comprueban **en las dos sedes que leen el objetivo** —`pedido-referencias` al resolverlo
+Las cuatro se comprueban **en las dos sedes que leen el objetivo** —`pedido-referencias` al resolverlo
 y `pedido-digest` al recomputar—, porque las dos corren en pasos distintos y ninguna puede apoyarse
 en que la otra haya corrido antes.
+
+**Las tres primeras son sobre el dominio de la frontera; la cuarta es sobre la relación entre sus dos
+componentes**, y ese es el corte que faltaba: una frontera puede tener cada mitad dentro de su rango,
+no retroceder y no ser vacua, y aun así describir un estado incoherente porque las dos mitades no se
+eligieron juntas.
 
 **Se sellan las filas, todas, y no la partición vigente.** Una serialización que solo cubriera la
 versión máxima de cada `P-k` dejaba reescribir sin rastro **la versión anterior** —justo la que el
@@ -2475,7 +2485,7 @@ cláusula está bien redactada.
 | `pedido-referencias` | `specify`, y cada recálculo que la tabla de puertas declare | antes del gate que esa fila nombra | `registro.md` y la **sede de los criterios**: `spec.md`, o `plan.md` en la rama trivial | el código de salida | el gate **no se presenta** |
 | `pedido-marcador` | `resume`, y `gather-context` en 3b | en `resume`, **primera** comprobación del paso, antes de enrutar; en 3b, **antes de escribir**, y solo si `.plans/<id>/` ya existe | la raíz del flujo | la celda, en stdout | con `1` o `2` **no se enruta** por ninguna rama, y en 3b no se escribe nada |
 | `pedido-digest` | `resume` | **después** del marcador, y solo si su celda fue «presente y legible» | la ruta de `registro.md` | el código de salida | con `1` la celda pasa a **cuarentena**; con `3` la cadena queda **sin comprobar** y se informa así, sin leerlo como verde |
-| `pedido-criterio` | `specify`, en la misma puerta que `pedido-referencias` | antes del gate que esa fila nombra | `registro.md` y la **sede de los criterios** | el código de salida | con `1` el gate **no se presenta**; con `3` los hashes quedan **sin comprobar** y se informa así, sin leerlo como verde ni bloquear el gate |
+| `pedido-criterio` | `specify`, en la misma puerta que `pedido-referencias`; y `resume`, **después** de la cadena y solo si existe la sede de los criterios | antes del gate que esa fila nombra; en `resume`, antes de enrutar | `registro.md` y la **sede de los criterios** | el código de salida | en `specify`, con `1` el gate **no se presenta**; en `resume`, con `1` **no es cuarentena** —el paquete está intacto— sino retomar en el gate de `specify` a re-adjudicar `R2`. Con `3` los hashes quedan **sin comprobar** y se informa así, sin leerlo como verde ni bloquear |
 
 **`pedido-marcador` se invoca una vez y se carga con su dependencia.** Llama a `pedido-jsonl` por
 dentro, así que quien lo invoca tiene que haber **cargado los dos bloques** en el mismo shell.
@@ -2777,6 +2787,8 @@ pedido_referencias() {
         # grande, y las dos puntas —el literal y la cita— tienen que normalizar igual
         nl = norm(v) }
       hay[nl]=1
+      # la posición física, que es la unidad en que se cuenta el prefijo firmado del literal
+      poslit[nl] = FNR
       nlit = FNR
       if (match($0, /"texto"[ ]*:[ ]*"/)) {
         cuerpo = substr($0, RSTART+RLENGTH)
@@ -2809,7 +2821,11 @@ pedido_referencias() {
     s == "c" && substr($0,1,1) == sprintf("%c",124) {
       nfil++
       c1=$2; gsub(/[ *]/,"",c1); gsub(sprintf("%c",96),"",c1)
-      if (c1 ~ /^P-[0-9]+$/) ndatos++
+      if (c1 ~ /^P-[0-9]+$/) { ndatos++
+        v1=$3; gsub(/[ *]/,"",v1); gsub(sprintf("%c",96),"",v1)
+        f1=$5; gsub(/[ *]/,"",f1); gsub(sprintf("%c",96),"",f1)
+        if (v1 ~ /^[0-9]+$/) filaid[nfil] = normid(c1) "@" norm(v1)
+        filafrag[nfil] = f1 }
       hastaqui[nfil] = ndatos }
     { id=$2; gsub(/[ *]/,"",id); gsub(sprintf("%c",96),"",id) }
     s == "c" && id ~ /^P-[0-9]+$/ {
@@ -2841,9 +2857,11 @@ pedido_referencias() {
       if (hc !~ /^[0-9a-f]+$/ || length(hc) != 64) print "hash_criterio fuera del dominio: " id
       hashtz[ac] = hc
       if (!(ac in enspec)) print "criterio de la traza ausente en la spec: " id }
+    s == "e" && substr($0,1,1) == sprintf("%c",124) { nev++ }
     s == "e" && id ~ /^E-[0-9]+$/ {
       tipo=$6; gsub(/[ *]/,"",tipo); gsub(sprintf("%c",96),"",tipo)
       ob=$7; gsub(/[ *]/,"",ob); gsub(sprintf("%c",96),"",ob)
+      if (ob ~ /^P-[0-9]+@[0-9]+$/) { split(ob, pe, "@"); evclau[nev] = normid(pe[1]) "@" norm(pe[2]) }
       # el vacío NO resuelve: el dominio admite tres formas o el guion, y una celda vacía es una
       # fila mal formada. Y AC-n@hash exige un sha256 completo: AC-1@ y AC-1@x no apuntan a nada
       resuelve = (ob == "-")
@@ -2869,6 +2887,23 @@ pedido_referencias() {
           print "frontera de confirmacion que retrocede: " ob
         else if (hastaqui[fr2[1]+0]+0 == 0 || fr2[2] == "0")
           print "confirmacion que no firma ninguna clausula ni linea: " ob
+        else {
+          # el prefijo firmado tiene que estar CERRADO bajo sus propias referencias: una cláusula
+          # firmada que cita una línea que no se firmó, o un evento firmado que apunta a una
+          # cláusula fuera del prefijo, describen un estado que no existió nunca
+          for (qq = 1; qq <= fr2[1]+0; qq++) {
+            if (!(qq in filaid)) continue
+            dentro[filaid[qq]] = 1
+            nm = split(filafrag[qq], lfr, ",")
+            for (ww = 1; ww <= nm; ww++) {
+              if (lfr[ww] !~ /^[0-9]+:[0-9]+-[0-9]+$/) continue
+              split(lfr[ww], pz, ":"); cn = norm(pz[1])
+              if (!(cn in poslit) || poslit[cn] > fr2[2]+0)
+                print "clausula firmada que cita una linea no firmada: " lfr[ww] " en " ob } }
+          for (qq = 1; qq < nev; qq++) {
+            if (!(qq in evclau)) continue
+            if (!(evclau[qq] in dentro))
+              print "evento firmado que apunta a una clausula no firmada: " evclau[qq] " en " ob } }
         pfr = fr2[1]; plt = fr2[2] }
       # la FORMA no es el destino: el objetivo se resuelve contra las tablas, en END, cuando
       # ya se leyeron las tres — eventos viene antes que traza, así que acá todavía no se puede
@@ -2887,6 +2922,10 @@ pedido_referencias() {
         else if (ob ~ /^AC-/) {
           split(ob, pa, "@")
           if (!(normid(pa[1]) in actraza)) print "objetivo que no existe en la traza: " ob } }
+      # R2 se lee en las DOS direcciones: la traza contra la sede ya estaba, y sin esta mitad un
+      # criterio escrito en la spec sin fila en la traza no tenía autoridad adjudicada y pasaba
+      for (a in enspec) {
+        if (!(a in actraza)) print "criterio en la sede sin fila en la traza: " a }
       # el ciclo de vida de AC-n manda fallar cerrado ante un hash que no coincide con el texto
       # vigente: sin esto, AC-n@<cualquier cosa de 64 hex> resolvía por forma contra nada
       for (a in ultac) {
@@ -3201,6 +3240,44 @@ pedido_digest() {
       echo "la confirmacion $k no firma ninguna clausula o ninguna linea del literal: $ff:$ll"
       malo=1; pf="$ff"; pl="$ll"; prev="$dg"; continue
     fi
+    # el prefijo tiene que estar CERRADO bajo sus propias referencias: una cláusula firmada que
+    # cita una línea que no se firmó, o un evento firmado que apunta a una cláusula fuera del
+    # prefijo, describen un estado que nunca existió. Se lee del prefijo YA materializado
+    cierre=$(LC_ALL=C awk -v PRE="$base.p" '
+      function norm(x) { sub(/^0+/, "", x); return (x == "" ? "0" : x) }
+      function normid(x,   pre, resto, suf) {
+        if (!match(x, /^[A-Za-z]+-/)) return x
+        pre = substr(x, 1, RLENGTH); resto = substr(x, RLENGTH+1); suf = ""
+        if (match(resto, /[a-z]$/)) { suf = substr(resto, RSTART); resto = substr(resto, 1, RSTART-1) }
+        return pre norm(resto) suf }
+      BEGIN { FS=sprintf("%c",9)
+        while ((getline linea < PRE) > 0) {
+          n = split(linea, cc, FS)
+          if (cc[1] == "c" && cc[2] ~ /^P-[0-9]+$/ && cc[3] ~ /^[0-9]+$/) {
+            hayc[normid(cc[2]) "@" norm(cc[3])] = 1; frg[++nc] = cc[5] }
+          else if (cc[1] == "e" && cc[2] ~ /^E-[0-9]+$/ && cc[7] ~ /^P-[0-9]+@[0-9]+$/) {
+            split(cc[7], pe, "@"); obj[++ne] = normid(pe[1]) "@" norm(pe[2]) } }
+        close(PRE) }
+      { if (match($0, /"n"[ ]*:[ ]*[0-9]+[ ]*[,}]/)) {
+          v = substr($0, RSTART, RLENGTH); sub(/^.*:[ ]*/, "", v); sub(/[ ]*[,}]$/, "", v)
+          hayn[norm(v)] = 1 } }
+      END {
+        for (i = 1; i <= nc; i++) {
+          m = split(frg[i], ls, ",")
+          for (j = 1; j <= m; j++) {
+            if (ls[j] !~ /^[0-9]+:[0-9]+-[0-9]+$/) continue
+            split(ls[j], pz, ":")
+            if (!(norm(pz[1]) in hayn))
+              print "clausula firmada que cita una linea no firmada: " ls[j] } }
+        for (i = 1; i <= ne; i++)
+          if (!(obj[i] in hayc))
+            print "evento firmado que apunta a una clausula no firmada: " obj[i] }' "$base.l")
+    if [ $? -ne 0 ]; then parado=1; break; fi
+    if [ -n "$cierre" ]; then
+      printf 'la confirmacion %s no cierra sobre lo que firmo\n' "$k"
+      printf '%s\n' "$cierre"
+      malo=1; pf="$ff"; pl="$ll"; prev="$dg"; continue
+    fi
     calc=$(pedido_sha < "$base.p")
     if [ $? -ne 0 ]; then parado=1; break; fi
     if [ "$calc" != "$dg" ]; then
@@ -3310,13 +3387,19 @@ pedido_criterio() {
           pos = pos + r + l - 1
           linea = substr(linea, r + l) }
         return "" }
+      # una línea DECLARA un criterio cuando su primer identificador válido es ese criterio y
+      # además lleva la anotación de autoridad, que el contrato obliga a poner al final de la
+      # primera línea de cada AC-n. Sin esa condición, una MENCIÓN anterior —«el resumen apunta a
+      # AC-1»— arrancaba el preimage, y cambiar el criterio de verdad no movía el hash
+      function declara(s,   id) { id = idlinea(s)
+        return (id != "" && index(s, "[autoridad:") > 0) ? id : "" }
       { if (hecho) next
-        id = idlinea($0)
-        # el bloque llega hasta —sin incluirla— la línea del identificador siguiente, la primera
-        # que empiece con `#`, o el final. Sin ese corte, agregar una sección al final del archivo
-        # movía el hash del último criterio sin que nadie hubiera tocado el criterio
-        if (dentro && (id != "" || substr($0,1,1) == "#")) { hecho = 1; next }
-        if (!dentro) { if (id == AC) dentro = 1; else next }
+        d = declara($0)
+        # el bloque llega hasta —sin incluirla— la línea que declara el criterio siguiente, la
+        # primera que empiece con `#`, o el final. Sin ese corte, agregar una sección al final del
+        # archivo movía el hash del último criterio sin que nadie hubiera tocado el criterio
+        if (dentro && (d != "" || substr($0,1,1) == "#")) { hecho = 1; next }
+        if (!dentro) { if (d == AC) dentro = 1; else next }
         linea = $0
         sub(/\[autoridad: [^]]*\]/, "", linea)
         sub(/[ ]+$/, "", linea)
@@ -3325,7 +3408,7 @@ pedido_criterio() {
             for (i = 1; i <= n; i++) print buf[i] }' "$cs" > "$base.b"
     if [ $? -ne 0 ]; then parado=1; break; fi
     if [ ! -s "$base.b" ]; then
-      echo "criterio de la traza sin texto en la sede: $ac"; malo=1; continue
+      echo "criterio de la traza sin declaracion en la sede: $ac"; malo=1; continue
     fi
     calc=$(pedido_sha < "$base.b")
     if [ $? -ne 0 ]; then parado=1; break; fi
