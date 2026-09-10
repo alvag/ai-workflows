@@ -2686,6 +2686,8 @@ pedido_unicidad() {
       if (length(a) != length(b)) return (length(a) < length(b)) ? -1 : 1
       if ((a "") == (b "")) return 0
       return ((a "") < (b "")) ? -1 : 1 }
+    function celda(x) { sub("^[ " sprintf("%c",9) "*" sprintf("%c",96) "]+", "", x)
+                        sub("[ " sprintf("%c",9) "*" sprintf("%c",96) "]+$", "", x); return x }
     BEGIN { FS=sprintf("%c",124)
             cab["c"]="P-k"; cab["e"]="E-k"; cab["t"]="AC-n"
             nom["c"]="clausulas"; nom["e"]="eventos"; nom["t"]="traza" }
@@ -2698,7 +2700,7 @@ pedido_unicidad() {
     # y lo que no dispara ninguna regla no se reporta: se ignora
     s != "" && substr($0,1,1) != sprintf("%c",124) { next }
     s != "" { fila++
-      c1=$2; gsub(/[ *]/,"",c1); gsub(sprintf("%c",96),"",c1)
+      c1=$2; c1 = celda(c1)
       # la cabecera y el separador se COMPRUEBAN, no se saltan por contarlos: si faltan, saltar
       # dos filas por posición se come dos filas de datos y la tabla pasa sin comprobarse
       if (fila == 1) {
@@ -2710,7 +2712,7 @@ pedido_unicidad() {
         else print "tabla de " nom[s] ": la segunda fila no es el separador (" (c1 == "" ? "vacia" : c1) ")"
         next }
       k=c1; v=$3
-      gsub(/[ *]/,"",v); gsub(sprintf("%c",96),"",v)
+      v = celda(v)
       if (k ~ /-0([a-z])?$/ || (k ~ /^[A-Za-z]+-/ && normid(k) ~ /-0([a-z])?$/)) {
         print "identidad fuera del dominio, no es un entero desde 1: " k; next }
       k = normid(k) }
@@ -2839,6 +2841,16 @@ pedido_referencias() {
       sig = substr(t, r + l, 1)
       if (sig ~ /[0-9A-Za-z_]/) return ""
       return "Q" norm(substr(t, r + 1, l - 1)) }
+    # los extremos se RECORTAN; los espacios internos no se aplastan. Con `gsub(/[ *]/,"")`,
+    # `spe cify` se volvia `specify` y todo enum de este registro admitia su version con espacios
+    function celda(x) { sub("^[ " sprintf("%c",9) "*" sprintf("%c",96) "]+", "", x)
+                        sub("[ " sprintf("%c",9) "*" sprintf("%c",96) "]+$", "", x); return x }
+    # busca un literal en un archivo del árbol; devuelve 0 si el archivo no existe, que es lo que
+    # corresponde: sin la sede, la autoridad no se puede acreditar
+    function buscar(arch, lit,   ln, hallado) {
+      hallado = 0
+      while ((getline ln < arch) > 0) if (index(ln, lit) > 0) { hallado = 1; break }
+      close(arch); return hallado }
     BEGIN { FS=sprintf("%c",124)
             ESP = "[ " sprintf("%c",9) "]"; BT = sprintf("%c",96)
             for (i = 128; i < 192; i++) CONT = CONT sprintf("%c", i) }
@@ -2868,7 +2880,10 @@ pedido_referencias() {
     FILENAME == ESPEC {
       if ($0 ~ /^##[ ]+Clarifications/) { enclar = 1 }
       else if ($0 ~ /^##[ ]/) { enclar = 0 }
-      if (enclar) { qcl = abreq($0); if (qcl != "") hayq[qcl] = 1 }
+      if (enclar) { qcl = abreq($0)
+        # la entrada tiene que estar RESPONDIDA y ser ÚNICA: una pregunta sin respuesta no decidió
+        # nada, y dos entradas con el mismo número no dicen cuál de las dos decidió
+        if (qcl != "") { hayq[qcl]++; if ($0 ~ /[*][*]A:[*][*]/ || $0 ~ /[*][*]A[*][*]:/) resp[qcl] = 1 } }
       ab = abrec($0)
       if (ab != "") { abre[ab]++
         # la anotación de autoridad, que el contrato obliga a poner al final de esa misma línea,
@@ -2883,7 +2898,13 @@ pedido_referencias() {
             sub(/^\[autoridad: [ ]*/, "", an); sub(/[ ]*\]$/, "", an) }
           resto2 = substr(resto2, RSTART + RLENGTH) }
         if (!(ab in anot)) anot[ab] = (nan == 1) ? an : ((nan == 0) ? "-sin-" : "-varias-")
-        if ($0 ~ /\[autoridad:[^ ]/) mala[ab] = 1 }
+        # un corchete que se PARECE a la anotación y no lo es sobrevive al sanitizador igual que
+        # el que le falta el espacio: `[autoridad : ...]` no matcheaba ni siquiera el detector
+        resto3 = $0
+        while (match(resto3, /\[[^][]*\]/)) {
+          cor = substr(resto3, RSTART, RLENGTH)
+          if (cor ~ /^\[[ ]*autoridad[ ]*:/ && cor !~ /^\[autoridad: /) mala[ab] = 1
+          resto3 = substr(resto3, RSTART + RLENGTH) } }
       next }
     /^## clausulas/ { s="c"; next }
     /^## eventos/   { s="e"; next }
@@ -2893,21 +2914,21 @@ pedido_referencias() {
     # y `hastaqui` guarda cuántas de las primeras k son filas de datos
     s == "c" && substr($0,1,1) == sprintf("%c",124) {
       nfil++
-      c1=$2; gsub(/[ *]/,"",c1); gsub(sprintf("%c",96),"",c1)
+      c1=$2; c1 = celda(c1)
       if (c1 ~ /^P-[0-9]+$/) { ndatos++
-        v1=$3; gsub(/[ *]/,"",v1); gsub(sprintf("%c",96),"",v1)
-        f1=$5; gsub(/[ *]/,"",f1); gsub(sprintf("%c",96),"",f1)
+        v1=$3; v1 = celda(v1)
+        f1=$5; f1 = celda(f1)
         if (v1 ~ /^[0-9]+$/) filaid[nfil] = normid(c1) "@" norm(v1)
         filafrag[nfil] = f1 }
       hastaqui[nfil] = ndatos }
-    { id=$2; gsub(/[ *]/,"",id); gsub(sprintf("%c",96),"",id) }
+    { id=$2; id = celda(id) }
     s == "c" && id ~ /^P-[0-9]+$/ {
-      ver=$3; gsub(/[ *]/,"",ver); gsub(sprintf("%c",96),"",ver)
-      frags=$5; gsub(/[ *]/,"",frags); gsub(sprintf("%c",96),"",frags)
+      ver=$3; ver = celda(ver)
+      frags=$5; frags = celda(frags)
       ck = normid(id)
       # la PARTICIÓN VIGENTE es la versión máxima de cada P-k no retirado: sobre ella rige R1,
       # y sin quedarse con una sola versión por cláusula el régimen append-only fabrica solapamientos
-      apl=$4; gsub(/[ *]/,"",apl); gsub(sprintf("%c",96),"",apl)
+      apl=$4; apl = celda(apl)
       evi=$7; gsub(/^[ ]+|[ ]+$/,"",evi); gsub(sprintf("%c",96),"",evi)
       # el enum de aplicabilidad es cerrado, y sin comprobarlo R3 se evadía sola: un valor fuera
       # del enum no es `pendiente`, así que la cláusula quedaba exenta de tener criterio
@@ -2931,6 +2952,8 @@ pedido_referencias() {
       if (frags == "" || frags == "-") { print "clausula sin fragmentos: " id; next }
       m = split(frags, lista, ",")
       for (i=1; i<=m; i++) {
+        # el contrato separa la lista por `, `: el espacio es del separador, no del elemento
+        lista[i] = celda(lista[i])
         if (lista[i] !~ /^[0-9]+:[0-9]+-[0-9]+$/) {
           print "fragmento mal formado en " id ": " (lista[i] == "" ? "vacio" : lista[i]); continue }
         split(lista[i], p, ":"); split(p[2], q, "-")
@@ -2942,13 +2965,13 @@ pedido_referencias() {
       ac = normid(id)
       actraza[ac] = 1
       # el dominio de hash_criterio es un sha256: sin comprobarlo, comparar contra él no dice nada
-      hc=$3; gsub(/[ *]/,"",hc); gsub(sprintf("%c",96),"",hc)
+      hc=$3; hc = celda(hc)
       if (hc !~ /^[0-9a-f]+$/ || length(hc) != 64) print "hash_criterio fuera del dominio: " id
       hashtz[ac] = hc
       # R2 no es presencia: la autoridad tiene dominio cerrado, y la referencia y la derivación
       # son obligatorias. Una fila con autoridad inventada y las dos columnas vacías pasaba
-      au=$4; gsub(/[ *]/,"",au); gsub(sprintf("%c",96),"",au)
-      re=$5; gsub(/[ *]/,"",re); gsub(sprintf("%c",96),"",re)
+      au=$4; au = celda(au)
+      re=$5; re = celda(re)
       de=$6; gsub(/^[ ]+|[ ]+$/,"",de); gsub(sprintf("%c",96),"",de)
       if (au != "pedido" && au != "constitution" && au != "repositorio" && au != "clarify")
         print "autoridad fuera del dominio en " id ": " (au == "" ? "vacia" : au)
@@ -2961,21 +2984,22 @@ pedido_referencias() {
       else if ((au == "constitution" || au == "repositorio") &&
                (re ~ /^P-[0-9]+@[0-9]+$/ || re ~ /^Q[0-9]+$/))
         print "referencia con la forma de otra autoridad en " id ": " re
+      else if (au == "constitution" || au == "repositorio") refext[id] = au SUBSEP re
       if (de == "" || de == "-") print "criterio sin derivacion adjudicada: " id
       autz[ac] = au; refz[ac] = re
       if (!(ac in abre)) print "criterio de la traza sin declaracion en la sede: " id }
     s == "e" && substr($0,1,1) == sprintf("%c",124) { nev++ }
     s == "e" && id ~ /^E-[0-9]+$/ {
-      tipo=$6; gsub(/[ *]/,"",tipo); gsub(sprintf("%c",96),"",tipo)
-      ob=$7; gsub(/[ *]/,"",ob); gsub(sprintf("%c",96),"",ob)
+      tipo=$6; tipo = celda(tipo)
+      ob=$7; ob = celda(ob)
       # las columnas de enum cerrado gobiernan el routing de `resume` —«retoma en el gate del
       # productor que las dejó»— y ninguna tenía predicado: un `productor` inventado nombraba un
       # gate que no existe, y un `estado` fuera del enum dejaba el evento sin clasificar
-      acto=$4; gsub(/[ *]/,"",acto); gsub(sprintf("%c",96),"",acto)
-      prod=$5; gsub(/[ *]/,"",prod); gsub(sprintf("%c",96),"",prod)
-      sup=$8;  gsub(/[ *]/,"",sup);  gsub(sprintf("%c",96),"",sup)
-      reso=$9; gsub(/[ *]/,"",reso); gsub(sprintf("%c",96),"",reso)
-      esta=$10; gsub(/[ *]/,"",esta); gsub(sprintf("%c",96),"",esta)
+      acto=$4; acto = celda(acto)
+      prod=$5; prod = celda(prod)
+      sup=$8;  sup = celda(sup)
+      reso=$9; reso = celda(reso)
+      esta=$10; esta = celda(esta)
       if (acto != "usuario" && acto != "conductor")
         print "actor fuera del dominio en " id ": " (acto == "" ? "vacio" : acto)
       if (prod != "specify" && prod != "gate-spec" && prod != "clarify" && prod != "trivial" &&
@@ -2990,7 +3014,8 @@ pedido_referencias() {
         print "resolucion fuera del dominio en " id ": " (reso == "" ? "vacia" : reso)
       if (esta != "pendiente" && esta != "resuelta")
         print "estado fuera del dominio en " id ": " (esta == "" ? "vacio" : esta)
-      evtipo[normid(id)] = tipo
+      evtipo[normid(id)] = tipo; evesta[normid(id)] = esta; hayev[normid(id)] = 1
+      if (sup ~ /^E-[0-9]+$/) supde[normid(id)] = normid(sup)
       if (ob ~ /^P-[0-9]+@[0-9]+$/) { split(ob, pe, "@")
         evclau[nev] = normid(pe[1]) "@" norm(pe[2]); evobjt[normid(id)] = evclau[nev] }
       # el vacío NO resuelve: el dominio admite tres formas o el guion, y una celda vacía es una
@@ -3027,6 +3052,7 @@ pedido_referencias() {
             dentro[filaid[qq]] = 1
             nm = split(filafrag[qq], lfr, ",")
             for (ww = 1; ww <= nm; ww++) {
+              lfr[ww] = celda(lfr[ww])
               if (lfr[ww] !~ /^[0-9]+:[0-9]+-[0-9]+$/) continue
               split(lfr[ww], pz, ":"); cn = norm(pz[1])
               if (!(cn in poslit) || poslit[cn] > fr2[2]+0)
@@ -3059,7 +3085,7 @@ pedido_referencias() {
       for (a in abre) {
         if (abre[a] > 1) print "criterio declarado mas de una vez en la sede: " a
         if (!(a in actraza)) print "criterio en la sede sin fila en la traza: " a
-        if (a in mala) print "anotacion fuera de la sintaxis canonica en " a ": falta el espacio tras los dos puntos"
+        if (a in mala) print "anotacion fuera de la sintaxis canonica en " a ": la unica forma es [autoridad: X:Y]"
         if (anot[a] == "-sin-") print "criterio en la sede sin anotacion de autoridad: " a
         else if (anot[a] == "-varias-") print "criterio con mas de una anotacion de autoridad: " a
         else if (a in actraza) {
@@ -3072,8 +3098,11 @@ pedido_referencias() {
       # la condición de validez de la autoridad `pedido`: la referencia tiene que resolver contra
       # una cláusula de la partición vigente y que esté `pendiente`
       for (a in autz) {
-        if (autz[a] == "clarify" && refz[a] ~ /^Q[0-9]+$/ && !(("Q" norm(substr(refz[a], 2))) in hayq))
-          print "autoridad clarify que apunta a una Q inexistente en " a ": " refz[a]
+        if (autz[a] == "clarify" && refz[a] ~ /^Q[0-9]+$/) {
+          qk = "Q" norm(substr(refz[a], 2))
+          if (!(qk in hayq)) print "autoridad clarify que apunta a una Q inexistente en " a ": " refz[a]
+          else if (hayq[qk] > 1) print "autoridad clarify que apunta a una Q repetida en " a ": " refz[a]
+          else if (!(qk in resp)) print "autoridad clarify que apunta a una Q sin respuesta en " a ": " refz[a] }
         if (autz[a] != "pedido") continue
         if (refz[a] !~ /^P-[0-9]+@[0-9]+$/) { print "autoridad pedido con referencia que no es P-k@version en " a ": " refz[a]; continue }
         split(refz[a], pv, "@"); rk = normid(pv[1]); rv = norm(pv[2])
@@ -3082,24 +3111,48 @@ pedido_referencias() {
         else if (aplde[rk] != "pendiente")
           print "autoridad pedido contra una clausula no pendiente en " a ": " refz[a] " esta " aplde[rk]
         else atendida[rk "@" rv] = 1 }
-      # la evidencia de un `descartada` apunta a un evento que existe, es un `descarte`, y decide
-      # sobre esa misma cláusula: las tres, o la referencia no acredita nada
+      # un `supersede` apunta a un evento REAL: con la forma sola, E-999 superseía a nada
+      for (u in supde)
+        if (!(supde[u] in hayev)) print "supersede que apunta a un evento inexistente en " u ": " supde[u]
+      # la evidencia de un `descartada` apunta a un evento que existe, es un `descarte`, decide
+      # sobre esa misma cláusula y **está resuelto**: las cuatro, o la referencia no acredita nada
       for (u in evdesc) {
         ev2 = evdesc[u]
         if (ev2 !~ /^E-[0-9]+$/) { print "evidencia de descarte que no es un E-k en " u ": " ev2; continue }
         en2 = normid(ev2)
         if (!(en2 in evtipo)) { print "evidencia de descarte que no existe en eventos en " u ": " ev2; continue }
         if (evtipo[en2] != "descarte") print "el evento de la evidencia no es un descarte en " u ": " ev2
-        else if (evobjt[en2] != u) print "el evento de descarte no decide sobre esa clausula en " u ": " ev2 }
+        else if (evobjt[en2] != u) print "el evento de descarte no decide sobre esa clausula en " u ": " ev2
+        else if (evesta[en2] != "resuelta") print "el descarte que autoriza sigue sin resolverse en " u ": " ev2 }
       # la de un `satisfecha-por-trabajo-previo` resuelve contra `antecedentes.md`, que es la sede
       # que la acredita. Sin ese archivo no hay nada que acredite trabajo previo
       if (nsat > 0) {
-        while ((getline lant < ANT) > 0) { hayant = 1; antxt = antxt lant "\n" }
+        # solo cuenta lo que vive en `## declaracion`, que es la parte promovida: `## estado` es el
+        # ledger máquina y encontrar ahí la evidencia acreditaba contra un campo interno. Y se busca
+        # como TOKEN, no como subcadena: `complete` casaba dentro de `busqueda: complete`
+        while ((getline lant < ANT) > 0) { hayant = 1
+          if (lant ~ /^##[ ]+declaracion/) { endec = 1; continue }
+          if (lant ~ /^##[ ]/) { endec = 0; continue }
+          if (endec) antxt = antxt " " lant " " }
         close(ANT)
+        gsub(/[^A-Za-z0-9_-]/, " ", antxt)
         for (u in evsat) {
           if (!hayant) { print "clausula satisfecha-por-trabajo-previo sin antecedentes.md que la acredite: " u; continue }
-          if (index(antxt, evsat[u]) == 0)
-            print "la evidencia de " u " no aparece en antecedentes.md: " evsat[u] } }
+          if (index(" " antxt " ", " " evsat[u] " ") == 0)
+            print "la evidencia de " u " no aparece en la declaracion de antecedentes.md: " evsat[u] } }
+      # `constitution` y `repositorio` resuelven contra el ÁRBOL, que está a mano por convención:
+      # la constitución es `.specify/constitution.md` y las reglas viven en los tres archivos de
+      # contrato de la raíz. Comprobar solo que no lleven la forma de otra autoridad dejaba pasar
+      # una regla que no existe, que es una autoridad inventada con forma correcta
+      for (a in refext) {
+        split(refext[a], px, SUBSEP)
+        if (px[1] == "constitution") { arch = RAIZ "/.specify/constitution.md"; nom = "la constitucion" }
+        else { arch = ""; nom = "los archivos de contrato de la raiz" }
+        enc = 0
+        if (px[1] == "constitution") { enc = buscar(arch, px[2]) }
+        else { enc = buscar(RAIZ "/CLAUDE.md", px[2]) || buscar(RAIZ "/AGENTS.md", px[2]) ||
+                     buscar(RAIZ "/CONTRIBUTING.md", px[2]) }
+        if (!enc) print "autoridad " px[1] " que no existe en " nom " en " a ": " px[2] }
       # R3: cada cláusula vigente `pendiente` tiene al menos un criterio que la atiende. Sin este
       # predicado el alcance se achicaba en silencio: una cláusula del pedido sin ningún AC
       for (ck in vmax) {
@@ -3118,6 +3171,7 @@ pedido_referencias() {
         if (ck in retirado) continue
         m = split(fragde[ck], ls, ",")
         for (i=1; i<=m; i++) {
+          ls[i] = celda(ls[i])
           if (ls[i] !~ /^[0-9]+:[0-9]+-[0-9]+$/) continue
           split(ls[i], p2, ":"); split(p2[2], q2, "-")
           ln = norm(p2[1]); c = ++cnt[ln]
@@ -3135,7 +3189,8 @@ pedido_referencias() {
           if (ini[ln SUBSEP a] < esp) print "R1: la linea " ln " se solapa en " ini[ln SUBSEP a] "-" (esp-1)
           if (fin[ln SUBSEP a]+1 > esp) esp = fin[ln SUBSEP a]+1 }
         if (esp <= L) print "R1: la linea " ln " no cubre " esp "-" L } }' \
-    ELIT="$lit" ESPEC="$sp" ANT="$(dirname "$(dirname "$r")")/antecedentes.md" "$lit" "$sp" "$r")
+    ELIT="$lit" ESPEC="$sp" ANT="$(dirname "$(dirname "$r")")/antecedentes.md" \
+    RAIZ="$(dirname "$(dirname "$(dirname "$(dirname "$r")")")")" "$lit" "$sp" "$r")
   rc=$?
   # una salida vacía NO es un verde por sí sola: awk pudo haber muerto sin escribir nada
   if [ "$rc" -ne 0 ]; then echo "la comprobación no pudo ejecutarse: awk salió $rc" >&2; return 3; fi
@@ -3338,11 +3393,14 @@ pedido_digest() {
     END { print n+0 }' "$r") || return 3
   # las confirmaciones, en orden de tabla, con la fila que ocupa cada una. Manda el TIPO y no la
   # forma del objetivo: una propuesta que lleve un digest no confirmó nada
-  confs=$(awk 'BEGIN { FS=sprintf("%c",124) }
+  confs=$(awk '
+    function celda(x) { sub("^[ " sprintf("%c",9) "*" sprintf("%c",96) "]+", "", x)
+                        sub("[ " sprintf("%c",9) "*" sprintf("%c",96) "]+$", "", x); return x }
+    BEGIN { FS=sprintf("%c",124) }
     /^## eventos/ { s=1; i=0; next } /^## / { s=0 }
     s && substr($0,1,1) == sprintf("%c",124) { i++
-      tipo=$6; gsub(/[ *]/,"",tipo); gsub(sprintf("%c",96),"",tipo)
-      ob=$7;   gsub(/[ *]/,"",ob);   gsub(sprintf("%c",96),"",ob)
+      tipo=$6; tipo = celda(tipo)
+      ob=$7;   ob = celda(ob)
       if (tipo == "confirmacion") printf "%s\t%s\n", i, ob }' "$r")
   rc=$?
   if [ "$rc" -ne 0 ]; then echo "la comprobación no pudo ejecutarse: awk salió $rc" >&2; return 3; fi
@@ -3412,8 +3470,11 @@ pedido_digest() {
     if [ $? -ne 0 ]; then parado=1; break; fi
     # una confirmación que no firma ninguna fila de datos no confirma nada: con la frontera en la
     # cabecera y el separador, el digest reproduce y el registro entero queda fuera de la cadena
-    datos=$(LC_ALL=C awk 'BEGIN { FS=sprintf("%c",9) }
-      $1 == "c" { c=$2; gsub(/[ *]/,"",c); gsub(sprintf("%c",96),"",c)
+    datos=$(LC_ALL=C awk '
+    function celda(x) { sub("^[ " sprintf("%c",9) "*" sprintf("%c",96) "]+", "", x)
+                        sub("[ " sprintf("%c",9) "*" sprintf("%c",96) "]+$", "", x); return x }
+      BEGIN { FS=sprintf("%c",9) }
+      $1 == "c" { c=$2; c = celda(c)
                   if (c ~ /^P-[0-9]+$/) n++ }
       END { print n+0 }' "$base.p")
     if [ $? -ne 0 ]; then parado=1; break; fi
@@ -3530,7 +3591,10 @@ pedido_criterio() {
     printf '%s' "$h"
   }
   base="${TMPDIR:-/tmp}/pedido-criterio.$$"
-  LC_ALL=C awk 'BEGIN { FS=sprintf("%c",124) }
+  LC_ALL=C awk '
+    function celda(x) { sub("^[ " sprintf("%c",9) "*" sprintf("%c",96) "]+", "", x)
+                        sub("[ " sprintf("%c",9) "*" sprintf("%c",96) "]+$", "", x); return x }
+    BEGIN { FS=sprintf("%c",124) }
     function norm(x) { sub(/^0+/, "", x); return (x == "" ? "0" : x) }
     function normid(x,   pre, resto, suf) {
       if (!match(x, /^[A-Za-z]+-/)) return x
@@ -3539,9 +3603,9 @@ pedido_criterio() {
       return pre norm(resto) suf }
     /^## traza/ { s=1; next } /^## / { s=0 }
     s && substr($0,1,1) == sprintf("%c",124) {
-      id=$2; gsub(/[ *]/,"",id); gsub(sprintf("%c",96),"",id)
+      id=$2; id = celda(id)
       if (id !~ /^AC-[0-9]+[a-z]?$/) next
-      hc=$3; gsub(/[ *]/,"",hc); gsub(sprintf("%c",96),"",hc)
+      hc=$3; hc = celda(hc)
       printf "%s\t%s\n", normid(id), hc }' "$cr" > "$base.t"
   if [ $? -ne 0 ]; then rm -f "$base.t"; echo "no se pudo leer la traza" >&2; return 3; fi
   # una traza sin criterios es un estado válido: todavía no se adjudicó ninguno
