@@ -2359,7 +2359,7 @@ ausente, contradiciendo su fallo cerrado.
 |---|---|---|
 | 1 | `.plans/<id>/` vacío, o marcador presente y paquete ausente | **fallo cerrado**: re-correr 3b antes de cualquier otra rama |
 | 2 | marcador ausente y paquete presente | **fallo cerrado**: pedido ajeno, no se adopta |
-| 3 | estructura corrupta: una línea que no parsea, un orden imposible, o un digest que no reproduce | **cuarentena**, con el procedimiento de abajo |
+| 3 | estructura corrupta: una línea que no parsea, un orden imposible, o un digest que no reproduce | **cuarentena**, con el procedimiento de abajo. El digest lo comprueba `pedido-digest`, que corre **después** del marcador; su `3` deja la cadena sin comprobar y **no** habilita esta fila |
 | 4 | marcador ausente, paquete ausente y directorio no vacío | flujo heredado: sigue por las ramas vigentes, con la vara declarada no aplicable |
 | 5 | `literal.jsonl` presente y `registro.md` ausente | retoma en la redacción de cláusulas |
 | 6 | cláusulas escritas y ninguna confirmación vigente | retoma en el checkpoint del paso 6, que es donde se congelan |
@@ -2386,9 +2386,9 @@ evidencia y deja el flujo operable, y las dos propiedades se pierden si alguien 
 
 ### La matriz de invocación de los bloques
 
-Cuatro comprobaciones del paquete son **deterministas** y quedarían libradas a que dos agentes lean
-igual la misma prosa: validez estructural del literal, unicidad e identidad, referencias colgantes y
-la matriz del marcador. Van como **bloques embebidos acá** —no como archivos: la regla del
+Cinco comprobaciones del paquete son **deterministas** y quedarían libradas a que dos agentes lean
+igual la misma prosa: validez estructural del literal, unicidad e identidad, referencias colgantes, la
+matriz del marcador y el último eslabón de la cadena de digests. Van como **bloques embebidos acá** —no como archivos: la regla del
 repositorio prohíbe crear nada bajo el `scripts/` de la raíz, y este flujo no la elude creando su
 propia sede—. Queda en prosa lo que es adjudicación semántica: si una derivación es válida y si una
 cláusula está bien redactada.
@@ -2401,6 +2401,7 @@ cláusula está bien redactada.
 | `pedido-unicidad` | `specify` | antes de presentar el gate de la spec | la ruta de `registro.md` | el código de salida | el gate **no se presenta** |
 | `pedido-referencias` | `specify`, y cada recálculo que la tabla de puertas declare | antes del gate que esa fila nombra | `registro.md` y la **sede de los criterios**: `spec.md`, o `plan.md` en la rama trivial | el código de salida | el gate **no se presenta** |
 | `pedido-marcador` | `resume`, y `gather-context` en 3b | en `resume`, **primera** comprobación del paso, antes de enrutar; en 3b, **antes de escribir**, y solo si `.plans/<id>/` ya existe | la raíz del flujo | la celda, en stdout | con `1` o `2` **no se enruta** por ninguna rama, y en 3b no se escribe nada |
+| `pedido-digest` | `resume` | **después** del marcador, y solo si su celda fue «presente y legible» | la ruta de `registro.md` | el código de salida | con `1` la celda pasa a **cuarentena**; con `3` la cadena queda **sin comprobar** y se informa así, sin leerlo como verde |
 
 **`pedido-marcador` se invoca una vez y se carga con su dependencia.** Llama a `pedido-jsonl` por
 dentro, así que quien lo invoca tiene que haber **cargado los dos bloques** en el mismo shell.
@@ -2427,6 +2428,7 @@ afuera se escribe en su frontera en vez de fingirse cubierto:
 | `pedido-unicidad` | en `registro.md`: que las identidades de las tres tablas caigan dentro de su dominio y no se repitan, y que la versión crezca por cláusula | ídem |
 | `pedido-referencias` | que cada `fragmentos` exista y cite una línea con rango dentro de su largo, que cada `AC-n` de la traza exista en la sede de los criterios, y que cada `objetivo` de evento resuelva | ídem |
 | `pedido-marcador` | resuelve la celda de la matriz del marcador desde el estado observado del árbol | **la celda en stdout**; `0` si resolvió una, `1` si el árbol no encaja en ninguna, `2` si la invocación está mal formada o `pedido-jsonl` no está cargado |
+| `pedido-digest` | que el digest de la **última** confirmación reproduzca la partición vigente y el literal de hoy | `0` si reproduce o si no hay ninguna confirmación, `1` si no reproduce —con el escrito y el recomputado—, `3` si falta una sede o no hay `sha256sum` ni `shasum` |
 
 **El `3` de los tres primeros incluye «no se pudo ejecutar», y eso es deliberado.** Una salida vacía
 significa «ninguna violación» **solo si el comando terminó bien**; leerla sin mirar el estado convierte
@@ -2435,7 +2437,14 @@ ninguno de los tres: dice que no hubo comprobación, no que la comprobación pas
 
 **Van en POSIX solamente, y hay precedente**: el verificador de aislamiento de este repositorio es
 también un bloque de shell sin variante PowerShell. La exigencia de ofrecer las dos variantes alcanza
-a los comandos que **invocan un CLI** —el transporte cross-model—, que no es el caso de estos cuatro.
+a los comandos que **invocan un CLI** —el transporte cross-model—, que no es el caso de estos cinco.
+
+**Cuatro son POSIX puro; `pedido-digest` no puede serlo.** Calcular un `sha256` exige una herramienta
+que POSIX no define, así que ese bloque detecta `sha256sum` o `shasum` y, sin ninguna de las dos,
+devuelve `3`: **la ausencia de la herramienta no es un verde**, es la ausencia de comprobación. Se pagó
+esa dependencia porque la alternativa era dejar la cadena de digests —el mecanismo que le da autoridad
+independiente al registro— sin ninguna comprobación, con una fila de cuarentena que ningún instrumento
+podía alcanzar.
 
 #### `pedido-jsonl`
 
@@ -2561,9 +2570,9 @@ pedido_unicidad() {
     BEGIN { FS=sprintf("%c",124)
             cab["c"]="P-k"; cab["e"]="E-k"; cab["t"]="AC-n"
             nom["c"]="clausulas"; nom["e"]="eventos"; nom["t"]="traza" }
-    /^## clausulas/ { s="c"; fila=0; next }
-    /^## eventos/   { s="e"; fila=0; next }
-    /^## traza/     { s="t"; fila=0; next }
+    /^## clausulas/ { s="c"; fila=0; hay_sec["c"]=1; next }
+    /^## eventos/   { s="e"; fila=0; hay_sec["e"]=1; next }
+    /^## traza/     { s="t"; fila=0; hay_sec["t"]=1; next }
     /^## /          { s="";  fila=0; next }
     # solo las FILAS DE DATOS entran: las dos primeras de cada tabla son cabecera y separador.
     # Seleccionar por la forma del identificador dejaba fuera de toda regla lo que no la cumple,
@@ -2574,10 +2583,12 @@ pedido_unicidad() {
       # la cabecera y el separador se COMPRUEBAN, no se saltan por contarlos: si faltan, saltar
       # dos filas por posición se come dos filas de datos y la tabla pasa sin comprobarse
       if (fila == 1) {
-        if (c1 != cab[s]) print "tabla de " nom[s] ": la primera fila no es la cabecera (" (c1 == "" ? "vacia" : c1) ")"
+        if (c1 == cab[s]) hay_cab[s]=1
+        else print "tabla de " nom[s] ": la primera fila no es la cabecera (" (c1 == "" ? "vacia" : c1) ")"
         next }
       if (fila == 2) {
-        if (c1 !~ /^-+$/) print "tabla de " nom[s] ": la segunda fila no es el separador (" (c1 == "" ? "vacia" : c1) ")"
+        if (c1 ~ /^-+$/) hay_sep[s]=1
+        else print "tabla de " nom[s] ": la segunda fila no es el separador (" (c1 == "" ? "vacia" : c1) ")"
         next }
       k=c1; v=$3
       gsub(/[ *]/,"",v); gsub(sprintf("%c",96),"",v)
@@ -2601,7 +2612,14 @@ pedido_unicidad() {
     s == "t" {
       if (k !~ /^AC-[0-9]+[a-z]?$/) { print "identidad de criterio fuera del dominio: " (k == "" ? "(vacia)" : k); next }
       if (k in ac) print "criterio repetido en la traza: " k
-      ac[k]=1 }' "$f")
+      ac[k]=1 }
+    # la ausencia se cierra ACÁ y no cuando aparece una fila: un registro vacío, o una tabla que
+    # nunca llega a tener una segunda fila, no disparaba ninguna regla y pasaba en verde
+    END { split("c e t", orden, " ")
+      for (z=1; z<=3; z++) { x=orden[z]
+        if (!(x in hay_sec)) { print "falta la seccion " nom[x]; continue }
+        if (!(x in hay_cab)) print "tabla de " nom[x] ": sin cabecera"
+        if (!(x in hay_sep)) print "tabla de " nom[x] ": sin separador" } }' "$f")
   rc=$?
   # una salida vacía NO es un verde por sí sola: awk pudo haber muerto sin escribir nada
   if [ "$rc" -ne 0 ]; then echo "la comprobación no pudo ejecutarse: awk salió $rc" >&2; return 3; fi
@@ -2659,6 +2677,10 @@ pedido_referencias() {
       pre = substr(x, 1, RLENGTH); resto = substr(x, RLENGTH+1); suf = ""
       if (match(resto, /[a-z]$/)) { suf = substr(resto, RSTART); resto = substr(resto, 1, RSTART-1) }
       return pre norm(resto) suf }
+    function cmpd(a, b) {
+      if (length(a) != length(b)) return (length(a) < length(b)) ? -1 : 1
+      if ((a "") == (b "")) return 0
+      return ((a "") < (b "")) ? -1 : 1 }
     BEGIN { FS=sprintf("%c",124) }
     FILENAME == ELIT {
       # la cláusula cita el campo n, no la posición física de la línea: tras una cuarentena
@@ -2686,7 +2708,7 @@ pedido_referencias() {
         # satisface a AC-1a y AC-1A satisface a AC-1
         sig = substr(linea, r + l, 1)
         ant = (r > 1) ? substr(linea, r - 1, 1) : ""
-        if (sig !~ /[0-9A-Za-z]/ && ant !~ /[0-9A-Za-z-]/) enspec[normid(substr(linea, r, l))]=1
+        if (sig !~ /[0-9A-Za-z_]/ && ant !~ /[0-9A-Za-z_-]/) enspec[normid(substr(linea, r, l))]=1
         linea = substr(linea, r + l) }
       next }
     /^## clausulas/ { s="c"; next }
@@ -2695,7 +2717,14 @@ pedido_referencias() {
     /^## /          { s="";  next }
     { id=$2; gsub(/[ *]/,"",id); gsub(sprintf("%c",96),"",id) }
     s == "c" && id ~ /^P-[0-9]+$/ {
+      ver=$3; gsub(/[ *]/,"",ver); gsub(sprintf("%c",96),"",ver)
       frags=$5; gsub(/[ *]/,"",frags); gsub(sprintf("%c",96),"",frags)
+      ck = normid(id)
+      # la PARTICIÓN VIGENTE es la versión máxima de cada P-k no retirado: sobre ella rige R1,
+      # y sin quedarse con una sola versión por cláusula el régimen append-only fabrica solapamientos
+      if (ver ~ /^[0-9]+$/) { ver = norm(ver)
+        clausula[ck "@" ver] = 1
+        if (!(ck in vmax) || cmpd(ver, vmax[ck]) > 0) { vmax[ck] = ver; fragde[ck] = frags } }
       # una cláusula sin fragmentos no tiene origen comprobable: descartarla en silencio dejaba
       # la relación literal -> cláusula sin verificar, que es lo que este bloque existe para ver
       if (frags == "" || frags == "-") { print "clausula sin fragmentos: " id; next }
@@ -2709,19 +2738,58 @@ pedido_referencias() {
         if (q[1]+0 < 1 || q[2]+0 < q[1]+0 || q[2]+0 > largo[cit]+0)
           print "rango fuera del largo del texto: " lista[i] } }
     s == "t" && id ~ /^AC-[0-9]+[a-z]?$/ {
+      actraza[normid(id)] = 1
       if (!(normid(id) in enspec)) print "criterio de la traza ausente en la spec: " id }
     s == "e" && id ~ /^E-[0-9]+$/ {
+      tipo=$6; gsub(/[ *]/,"",tipo); gsub(sprintf("%c",96),"",tipo)
       ob=$7; gsub(/[ *]/,"",ob); gsub(sprintf("%c",96),"",ob)
       # el vacío NO resuelve: el dominio admite tres formas o el guion, y una celda vacía es una
-      # fila mal formada. Y la forma AC-n@hash exige el hash: AC-1@ no apunta a nada
-      resuelve = (ob == "-" || ob ~ /^AC-[0-9]+[a-z]?@.+$/)
+      # fila mal formada. Y AC-n@hash exige un sha256 completo: AC-1@ y AC-1@x no apuntan a nada
+      resuelve = (ob == "-")
+      if (!resuelve && ob ~ /^AC-[0-9]+[a-z]?@[0-9a-f]+$/ && length(ob) - index(ob, "@") == 64) resuelve = 1
       # P-k@version lleva el MISMO dominio que en el registro: las dos identidades desde 1
       if (!resuelve && ob ~ /^P-[0-9]+@[0-9]+$/) {
         split(ob, pp, "@")
         if (norm(substr(pp[1], 3)) != "0" && norm(pp[2]) != "0") resuelve = 1 }
       # el objetivo de una confirmación es el digest encadenado: 7 de "digest@" mas 64 de sha256
       if (ob ~ /^digest@[0-9a-f]+$/ && length(ob) == 71) resuelve = 1
-      if (!resuelve) print "objetivo de evento que no resuelve: " ob }' \
+      if (!resuelve) { print "objetivo de evento que no resuelve: " ob; next }
+      # la FORMA no es el destino: el objetivo se resuelve contra las tablas, en END, cuando
+      # ya se leyeron las tres — eventos viene antes que traza, así que acá todavía no se puede
+      if (ob != "-") destino[ob] = 1
+      if (tipo == "retiro" && ob ~ /^P-[0-9]+@[0-9]+$/) {
+        split(ob, pr, "@"); retirado[normid(pr[1])] = 1 } }
+    END {
+      for (ob in destino) {
+        if (ob ~ /^P-[0-9]+@[0-9]+$/) {
+          split(ob, pp, "@")
+          if (!((normid(pp[1]) "@" norm(pp[2])) in clausula))
+            print "objetivo que no existe en clausulas: " ob }
+        else if (ob ~ /^AC-/) {
+          split(ob, pa, "@")
+          if (!(normid(pa[1]) in actraza)) print "objetivo que no existe en la traza: " ob } }
+      # R1 sobre la partición vigente: cada línea del literal, cubierta EXACTAMENTE una vez
+      for (ck in vmax) {
+        if (ck in retirado) continue
+        m = split(fragde[ck], ls, ",")
+        for (i=1; i<=m; i++) {
+          if (ls[i] !~ /^[0-9]+:[0-9]+-[0-9]+$/) continue
+          split(ls[i], p2, ":"); split(p2[2], q2, "-")
+          ln = norm(p2[1]); c = ++cnt[ln]
+          ini[ln SUBSEP c] = q2[1]+0; fin[ln SUBSEP c] = q2[2]+0 } }
+      for (ln in hay) {
+        L = largo[ln]+0; c = cnt[ln]+0
+        if (c == 0) { print "R1: la linea " ln " no la cubre ninguna clausula vigente"; continue }
+        for (a=1; a<=c; a++) for (b=a+1; b<=c; b++)
+          if (ini[ln SUBSEP b] < ini[ln SUBSEP a]) {
+            t1=ini[ln SUBSEP a]; ini[ln SUBSEP a]=ini[ln SUBSEP b]; ini[ln SUBSEP b]=t1
+            t2=fin[ln SUBSEP a]; fin[ln SUBSEP a]=fin[ln SUBSEP b]; fin[ln SUBSEP b]=t2 }
+        esp = 1
+        for (a=1; a<=c; a++) {
+          if (ini[ln SUBSEP a] > esp) print "R1: la linea " ln " no cubre " esp "-" (ini[ln SUBSEP a]-1)
+          if (ini[ln SUBSEP a] < esp) print "R1: la linea " ln " se solapa en " ini[ln SUBSEP a] "-" (esp-1)
+          if (fin[ln SUBSEP a]+1 > esp) esp = fin[ln SUBSEP a]+1 }
+        if (esp <= L) print "R1: la linea " ln " no cubre " esp "-" L } }' \
     ELIT="$lit" ESPEC="$sp" "$lit" "$sp" "$r")
   rc=$?
   # una salida vacía NO es un verde por sí sola: awk pudo haber muerto sin escribir nada
@@ -2733,9 +2801,11 @@ pedido_referencias() {
 ```
 
 > **Frontera de prueba.** Clase **veredicto**, dirección **admite-de-más**. Su verde autoriza a
-> afirmar que cada referencia **resuelve**: la cláusula **tiene** fragmentos y cada uno cita una línea
-> existente con su rango dentro del largo, el criterio está en la spec, y el objetivo tiene una forma
-> que apunta a algo. Que los fragmentos **existan** es parte del veredicto y no un supuesto: mientras
+> afirmar que cada referencia **resuelve contra su destino real**: la cláusula **tiene** fragmentos, la
+> **partición vigente cubre cada línea del literal exactamente una vez** —que es `R1` y no una parte de
+> ella—, el criterio está en la sede de los criterios, y el objetivo de cada evento **existe** en la
+> tabla que dice apuntar. Que el objetivo resolviera *de forma* era menos de lo que el contrato
+> promete: `P-999@1` y `AC-999@<hash>` pasaban sin existir en ninguna tabla. Que los fragmentos **existan** es parte del veredicto y no un supuesto: mientras
 > los elementos sin forma se descartaban en silencio, una cláusula con `fragmentos` vacío o con basura
 > pasaba en verde **sin origen comprobable**, que es justo lo que este bloque existe para ver. **Nunca** autoriza a
 > afirmar que la derivación adjudicada sea **válida** —eso es juicio y queda en prosa—, ni que el
@@ -2870,6 +2940,112 @@ pedido_marcador() {
 > `n` grande, el `test` del shell fallaba con `integer expression expected`, la comprobación recibía una
 > base no numérica y devolvía `2`, y el bloque volvía a salir `1` sobre un literal legible. Todo lo que
 > el marcador decide sobre la base se decide **por texto**: forma y positividad.
+
+#### `pedido-digest`
+
+```sh
+# @bloque: pedido-digest
+# uso: pedido_digest <ruta de registro.md>
+# requiere sha256sum o shasum: sin ninguno devuelve 3, que no es un veredicto
+pedido_digest() {
+  r="${1:?ruta de registro.md}"
+  lit="$(dirname "$r")/literal.jsonl"
+  if [ ! -r "$r" ] || [ ! -r "$lit" ]; then
+    echo "no se puede leer alguna de las dos sedes" >&2; return 3
+  fi
+  if command -v sha256sum >/dev/null 2>&1; then HTOOL=sha256sum
+  elif command -v shasum >/dev/null 2>&1; then HTOOL=shasum
+  else echo "no hay sha256sum ni shasum: la cadena no se puede verificar" >&2; return 3; fi
+  # el comando no viaja en una variable sin comillas: en zsh no se divide y la invocación se rompe
+  hashear() {
+    case "$HTOOL" in
+      sha256sum) sha256sum ;;
+      shasum)    shasum -a 256 ;;
+    esac | cut -d" " -f1
+  }
+  shalit=$(hashear < "$lit")
+  tmp="${TMPDIR:-/tmp}/pedido-digest.$$"
+  # la serialización canónica de la partición vigente, tal como la fija "La serialización de
+  # registro.md": una línea literal, después una fila por cláusula ordenada por k numérico
+  awk -v SHALIT="$shalit" '
+    function norm(x) { sub(/^0+/, "", x); return (x == "" ? "0" : x) }
+    function normid(x,   pre, resto, suf) {
+      if (!match(x, /^[A-Za-z]+-/)) return x
+      pre = substr(x, 1, RLENGTH); resto = substr(x, RLENGTH+1); suf = ""
+      if (match(resto, /[a-z]$/)) { suf = substr(resto, RSTART); resto = substr(resto, 1, RSTART-1) }
+      return pre norm(resto) suf }
+    function cmpd(a, b) {
+      if (length(a) != length(b)) return (length(a) < length(b)) ? -1 : 1
+      if ((a "") == (b "")) return 0
+      return ((a "") < (b "")) ? -1 : 1 }
+    BEGIN { FS=sprintf("%c",124); ultimo="0" }
+    FILENAME == ELIT {
+      if (match($0, /"n"[ ]*:[ ]*[0-9]+[ ]*[,}]/)) {
+        v = substr($0, RSTART, RLENGTH); sub(/^.*:[ ]*/, "", v); sub(/[ ]*[,}]$/, "", v)
+        ultimo = norm(v) }
+      next }
+    /^## clausulas/ { s="c"; next }
+    /^## eventos/   { s="e"; next }
+    /^## traza/     { s="t"; next }
+    /^## /          { s="";  next }
+    { id=$2; gsub(/[ *]/,"",id); gsub(sprintf("%c",96),"",id) }
+    s == "c" && id ~ /^P-[0-9]+$/ {
+      ck=normid(id)
+      ver=$3; apl=$4; frg=$5; txt=$6
+      gsub(/[ *]/,"",ver); gsub(sprintf("%c",96),"",ver)
+      gsub(/^[ ]+|[ ]+$/,"",apl); gsub(/^[ ]+|[ ]+$/,"",frg); gsub(/^[ ]+|[ ]+$/,"",txt)
+      if (ver !~ /^[0-9]+$/) next
+      ver = norm(ver)
+      if (!(ck in vmax) || cmpd(ver, vmax[ck]) > 0) {
+        vmax[ck]=ver; fa[ck]=apl; ff[ck]=frg; ft[ck]=txt } }
+    s == "e" && id ~ /^E-[0-9]+$/ {
+      tipo=$6; ob=$7
+      gsub(/[ *]/,"",tipo); gsub(sprintf("%c",96),"",tipo)
+      gsub(/[ *]/,"",ob); gsub(sprintf("%c",96),"",ob)
+      if (tipo == "retiro" && ob ~ /^P-[0-9]+@[0-9]+$/) { split(ob, pr, "@"); ret[normid(pr[1])]=1 } }
+    END {
+      printf "literal\t%s\t%s\n", ultimo, SHALIT
+      n=0
+      for (ck in vmax) { if (ck in ret) continue; n++; ord[n]=ck }
+      for (a=1; a<=n; a++) for (b=a+1; b<=n; b++)
+        if (cmpd(norm(substr(ord[b],3)), norm(substr(ord[a],3))) < 0) { t=ord[a]; ord[a]=ord[b]; ord[b]=t }
+      for (a=1; a<=n; a++) { ck=ord[a]
+        printf "%s\t%s\t%s\t%s\t%s\n", ck, vmax[ck], fa[ck], ff[ck], ft[ck] } }' \
+    ELIT="$lit" "$lit" "$r" > "$tmp"
+  if [ $? -ne 0 ]; then rm -f "$tmp"; echo "no se pudo serializar la particion vigente" >&2; return 3; fi
+  # los dos últimos eslabones: el previo se lee tal como está escrito, el último se recomputa
+  prev=$(awk 'BEGIN{FS=sprintf("%c",124)} /^## eventos/{s=1;next} /^## /{s=0}
+    s { ob=$7; gsub(/[ *]/,"",ob); gsub(sprintf("%c",96),"",ob)
+        if (ob ~ /^digest@[0-9a-f]+$/) { ant=ult; ult=substr(ob,8) } }
+    END { print ant "\n" ult }' "$r")
+  ant=$(printf '%s\n' "$prev" | sed -n 1p)
+  ult=$(printf '%s\n' "$prev" | sed -n 2p)
+  if [ -z "$ult" ]; then rm -f "$tmp"; return 0; fi
+  calc=$( { printf '%s' "$ant"; cat "$tmp"; } | hashear )
+  rm -f "$tmp"
+  if [ "$calc" = "$ult" ]; then return 0; fi
+  echo "el digest de la ultima confirmacion no reproduce la particion vigente"
+  echo "  escrito:   $ult"
+  echo "  recomputado: $calc"
+  return 1
+}
+```
+
+> **Frontera de prueba.** Clase **veredicto**, dirección **admite-de-más**, ante la duda
+> **niega-ante-duda**. Su verde autoriza a afirmar que **el último eslabón** de la cadena reproduce la
+> partición vigente y el literal tal como están hoy: si alguien reescribió una fila vieja o una línea
+> del literal, ese digest deja de dar. **No verifica la cadena entera, y no puede:** los digests
+> intermedios se computaron sobre el estado del registro **en su momento**, y el formato no guarda con
+> qué filas existían entonces —las cláusulas no llevan marca temporal—, así que reconstruirlos exigiría
+> una historia que el artefacto no tiene. Esto es una **limitación del formato**, no del bloque, y por
+> eso se escribe acá: la fila de cuarentena que habla de «un digest que no reproduce» la alcanza este
+> bloque **sobre el último**, y sobre ninguno anterior.
+>
+> Tampoco ve un registro al que le hayan quitado la confirmación entera: sin ningún `digest@` devuelve
+> `0`, porque un pedido todavía sin confirmar es un estado válido. Fallos de ejecución, distintos de su
+> resultado: `3` si falta alguna de las dos sedes, si no hay `sha256sum` ni `shasum`, o si la
+> serialización no se pudo producir. **La ausencia de la herramienta no es un verde**: es la ausencia
+> de comprobación, y el routing la trata como tal.
 
 **`pedido-marcador` invoca a `pedido-jsonl` por dentro, y ese orden es único.** El routing invoca
 **un solo bloque** —y **carga dos**, que no es lo mismo: la definición de la dependencia tiene que
