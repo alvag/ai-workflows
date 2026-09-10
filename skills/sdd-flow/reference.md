@@ -2044,6 +2044,7 @@ por el que `antecedentes.md` tiene su bloque máquina.
 | `supersede` | `E-j` · `-` |
 | `resolucion` | `admitida` · `no-admitida` · `-` |
 | `estado` | `pendiente` · `resuelta` |
+| `motivo` | texto · `-` — **obligatorio** en un `tipo: descarte`, que sin él es un estado inválido |
 
 `productor` es lo que le permite al routing de `resume` **nombrar** en qué gate retomar: sin esa
 columna, «retoma en el gate del productor que las dejó» no era implementable.
@@ -2282,9 +2283,15 @@ prolijamente lo que ya entró.
 **Las cuatro condiciones tienen una mitad comprobable y una mitad adjudicada, y conviene decir cuál
 es cuál.** `pedido-referencias` comprueba que la referencia **resuelva contra su destino real**: para
 `pedido`, una cláusula de la partición vigente y `pendiente`; para `clarify`, una entrada `Q<n>` que
-existe en `## Clarifications`. Para `constitution` y `repositorio` comprueba que la referencia no
-lleve la forma de otra autoridad, y **no** que la sección o la regla existan: eso exige leer
-`.specify/constitution.md` y el árbol, que el bloque no recibe. Y en las cuatro, «que el criterio no
+existe en `## Clarifications`. Para `constitution` y `repositorio` comprueba que la referencia
+**resuelva contra el árbol**: el `slug` de su encabezado tiene que existir en
+`.specify/constitution.md` o en uno de los tres archivos de contrato de la raíz, alcanzables por
+convención desde la ruta del registro igual que `literal.jsonl` y `antecedentes.md`. Durante un
+tiempo esta frontera declaró lo contrario —«el bloque no recibe esos artefactos»— y eso era falso:
+los recibe por la misma convención que ya usaba dos veces. **La referencia es el slug del
+encabezado**, comparado entero: con una comparación por subcadena, `regla-2` acreditaba contra
+`regla-20`. Lo que sigue sin comprobarse es que la sección o la regla **digan** lo que el criterio
+afirma. Y en las cuatro, «que el criterio no
 exceda lo que esa autoridad decidió» es adjudicación semántica y queda en el juicio del conductor y
 en el gate humano — declararlo acá es lo que impide leer el verde del bloque como si cubriera eso.
 
@@ -2515,11 +2522,11 @@ cláusula está bien redactada.
 | Bloque | Quién lo invoca | En qué puerta | Argumentos | Qué se lee | Qué pasa si falla |
 |---|---|---|---|---|---|
 | `pedido-jsonl` | `gather-context` | al cerrar 3b, **antes** del sub-paso 4 | la ruta de `literal.jsonl`, y el `n` inicial cuando no es 1 | el código de salida | **fallo cerrado**: no se avanza a la fusión |
-| `pedido-unicidad` | `specify`, y `resume` | antes de presentar el gate de la spec; en `resume`, **siempre** tras la cadena, porque no necesita más que el registro | la ruta de `registro.md` | el código de salida | el gate **no se presenta**; en `resume`, con `1` se retoma en el gate de `specify` —**no** es cuarentena— y con `3` **no se enruta**: es un fallo de ejecución |
-| `pedido-referencias` | `specify`, cada recálculo que la tabla de puertas declare, y `resume` | antes del gate que esa fila nombra; en `resume`, tras la cadena y solo si el flujo ya adjudicó criterios —la disyunción de tres artefactos de `SKILL.md`— | `registro.md` y la **sede de los criterios**: `spec.md`, o `plan.md` en la rama trivial | el código de salida | el gate **no se presenta**; en `resume`, con `1` se retoma en el gate de `specify` —**no** es cuarentena— y con `3` **no se enruta**: es un fallo de ejecución, el mismo destino que el `2` del marcador |
+| `pedido-unicidad` | `specify`, y `resume` | antes de presentar el gate de la spec; en `resume`, **siempre** tras la cadena, porque no necesita más que el registro | la ruta de `registro.md` | el código de salida | el gate **no se presenta**; en `resume`, con `1` se retoma en **el gate que gobierna la sede de los criterios** —en trivial, el único del plan combinado— y **no** es cuarentena; con `3` **no se enruta**: es un fallo de ejecución |
+| `pedido-referencias` | `specify`, cada recálculo que la tabla de puertas declare, y `resume` | antes del gate que esa fila nombra; en `resume`, tras la cadena y solo si el flujo ya adjudicó criterios —la disyunción de tres artefactos de `SKILL.md`— | `registro.md` y la **sede de los criterios**: `spec.md`, o `plan.md` en la rama trivial | el código de salida | el gate **no se presenta**; en `resume`, con `1` se retoma en **el gate que gobierna la sede de los criterios** —en trivial, el único del plan combinado— y **no** es cuarentena; con `3` **no se enruta**: es un fallo de ejecución, el mismo destino que el `2` del marcador |
 | `pedido-marcador` | `resume`, y `gather-context` en 3b | en `resume`, **primera** comprobación del paso, antes de enrutar; en 3b, **antes de escribir**, y solo si `.plans/<id>/` ya existe | la raíz del flujo | la celda, en stdout | con `1` o `2` **no se enruta** por ninguna rama, y en 3b no se escribe nada |
 | `pedido-digest` | `resume` | **después** del marcador, y solo si su celda fue «presente y legible» | la ruta de `registro.md` | el código de salida | con `1` la celda pasa a **cuarentena**; con `3` la cadena queda **sin comprobar** y se informa así, sin leerlo como verde |
-| `pedido-criterio` | `specify`, en la misma puerta que `pedido-referencias`; y `resume`, **después** de la cadena y solo si el flujo ya adjudicó criterios | antes del gate que esa fila nombra; en `resume`, antes de enrutar | `registro.md` y la **sede de los criterios** | el código de salida | en `specify`, con `1` el gate **no se presenta**; en `resume`, con `1` **no es cuarentena** —el paquete está intacto— sino retomar en el gate de `specify` a re-adjudicar `R2`. Con `3` los hashes quedan **sin comprobar** y se informa así, sin leerlo como verde ni bloquear |
+| `pedido-criterio` | `specify`, en la misma puerta que `pedido-referencias`; y `resume`, **después** de la cadena y solo si el flujo ya adjudicó criterios | antes del gate que esa fila nombra; en `resume`, antes de enrutar | `registro.md` y la **sede de los criterios** | el código de salida | en `specify`, con `1` el gate **no se presenta**; en `resume`, con `1` **no es cuarentena** —el paquete está intacto— sino retomar en **el gate que gobierna la sede de los criterios**, que en trivial es el único del plan combinado, a re-adjudicar `R2`. Con `3` los hashes quedan **sin comprobar** y se informa así, sin leerlo como verde ni bloquear |
 
 **`pedido-marcador` se invoca una vez y se carga con su dependencia.** Llama a `pedido-jsonl` por
 dentro, así que quien lo invoca tiene que haber **cargado los dos bloques** en el mismo shell.
@@ -2845,11 +2852,19 @@ pedido_referencias() {
     # `spe cify` se volvia `specify` y todo enum de este registro admitia su version con espacios
     function celda(x) { sub("^[ " sprintf("%c",9) "*" sprintf("%c",96) "]+", "", x)
                         sub("[ " sprintf("%c",9) "*" sprintf("%c",96) "]+$", "", x); return x }
-    # busca un literal en un archivo del árbol; devuelve 0 si el archivo no existe, que es lo que
-    # corresponde: sin la sede, la autoridad no se puede acreditar
-    function buscar(arch, lit,   ln, hallado) {
+    # el `slug` de un encabezado: minúsculas, y toda corrida fuera de a-z0-9 a un solo guion. Es
+    # la identidad resoluble de una sección o una regla — sin ella la búsqueda era por SUBCADENA y
+    # `regla-2` acreditaba contra `regla-20`, o el prefijo `reg` contra cualquiera de las dos
+    function slug(x) { x = tolower(x); gsub(/[^a-z0-9]+/, "-", x)
+                       gsub(/^-+|-+$/, "", x); return x }
+    # busca una sección o regla por su slug, comparado ENTERO. Devuelve 0 si el archivo no existe,
+    # que es lo que corresponde: sin la sede, la autoridad no se puede acreditar
+    function buscar(arch, lit,   ln, hallado, t2) {
       hallado = 0
-      while ((getline ln < arch) > 0) if (index(ln, lit) > 0) { hallado = 1; break }
+      while ((getline ln < arch) > 0) {
+        if (ln !~ /^#+[ ]/) continue
+        t2 = ln; sub(/^#+[ ]+/, "", t2)
+        if (slug(t2) == slug(lit)) { hallado = 1; break } }
       close(arch); return hallado }
     BEGIN { FS=sprintf("%c",124)
             ESP = "[ " sprintf("%c",9) "]"; BT = sprintf("%c",96)
@@ -2883,7 +2898,11 @@ pedido_referencias() {
       if (enclar) { qcl = abreq($0)
         # la entrada tiene que estar RESPONDIDA y ser ÚNICA: una pregunta sin respuesta no decidió
         # nada, y dos entradas con el mismo número no dicen cuál de las dos decidió
-        if (qcl != "") { hayq[qcl]++; if ($0 ~ /[*][*]A:[*][*]/ || $0 ~ /[*][*]A[*][*]:/) resp[qcl] = 1 } }
+        if (qcl != "") { hayq[qcl]++
+          # la respuesta tiene que tener CONTENIDO: el marcador vacío no decidió nada
+          cuerpo2 = $0
+          if (sub(/.*[*][*]A:[*][*]/, "", cuerpo2) || sub(/.*[*][*]A[*][*]:/, "", cuerpo2)) {
+            if (celda(cuerpo2) != "") resp[qcl] = 1 } } }
       ab = abrec($0)
       if (ab != "") { abre[ab]++
         # la anotación de autoridad, que el contrato obliga a poner al final de esa misma línea,
@@ -2903,7 +2922,7 @@ pedido_referencias() {
         resto3 = $0
         while (match(resto3, /\[[^][]*\]/)) {
           cor = substr(resto3, RSTART, RLENGTH)
-          if (cor ~ /^\[[ ]*autoridad[ ]*:/ && cor !~ /^\[autoridad: /) mala[ab] = 1
+          if (cor ~ ("^\\[" ESP "*autoridad" ESP "*:") && cor !~ /^\[autoridad: /) mala[ab] = 1
           resto3 = substr(resto3, RSTART + RLENGTH) } }
       next }
     /^## clausulas/ { s="c"; next }
@@ -2929,7 +2948,7 @@ pedido_referencias() {
       # la PARTICIÓN VIGENTE es la versión máxima de cada P-k no retirado: sobre ella rige R1,
       # y sin quedarse con una sola versión por cláusula el régimen append-only fabrica solapamientos
       apl=$4; apl = celda(apl)
-      evi=$7; gsub(/^[ ]+|[ ]+$/,"",evi); gsub(sprintf("%c",96),"",evi)
+      evi = celda($7)
       # el enum de aplicabilidad es cerrado, y sin comprobarlo R3 se evadía sola: un valor fuera
       # del enum no es `pendiente`, así que la cláusula quedaba exenta de tener criterio
       if (apl != "pendiente" && apl != "satisfecha-por-trabajo-previo" && apl != "descartada")
@@ -2972,7 +2991,7 @@ pedido_referencias() {
       # son obligatorias. Una fila con autoridad inventada y las dos columnas vacías pasaba
       au=$4; au = celda(au)
       re=$5; re = celda(re)
-      de=$6; gsub(/^[ ]+|[ ]+$/,"",de); gsub(sprintf("%c",96),"",de)
+      de = celda($6)
       if (au != "pedido" && au != "constitution" && au != "repositorio" && au != "clarify")
         print "autoridad fuera del dominio en " id ": " (au == "" ? "vacia" : au)
       if (re == "" || re == "-") print "criterio sin referencia: " id
@@ -2999,7 +3018,7 @@ pedido_referencias() {
       prod=$5; prod = celda(prod)
       sup=$8;  sup = celda(sup)
       reso=$9; reso = celda(reso)
-      esta=$10; esta = celda(esta)
+      esta=$10; esta = celda(esta); moti=$11; moti = celda(moti)
       if (acto != "usuario" && acto != "conductor")
         print "actor fuera del dominio en " id ": " (acto == "" ? "vacio" : acto)
       if (prod != "specify" && prod != "gate-spec" && prod != "clarify" && prod != "trivial" &&
@@ -3015,6 +3034,10 @@ pedido_referencias() {
       if (esta != "pendiente" && esta != "resuelta")
         print "estado fuera del dominio en " id ": " (esta == "" ? "vacio" : esta)
       evtipo[normid(id)] = tipo; evesta[normid(id)] = esta; hayev[normid(id)] = 1
+      evreso[normid(id)] = reso; evmoti[normid(id)] = moti; evorden[normid(id)] = ++norden
+      # el motivo es obligatorio en un descarte: «un descarte sin motivo es un estado inválido»
+      if (tipo == "descarte" && (moti == "" || moti == "-"))
+        print "descarte sin motivo en " id
       if (sup ~ /^E-[0-9]+$/) supde[normid(id)] = normid(sup)
       if (ob ~ /^P-[0-9]+@[0-9]+$/) { split(ob, pe, "@")
         evclau[nev] = normid(pe[1]) "@" norm(pe[2]); evobjt[normid(id)] = evclau[nev] }
@@ -3112,8 +3135,11 @@ pedido_referencias() {
           print "autoridad pedido contra una clausula no pendiente en " a ": " refz[a] " esta " aplde[rk]
         else atendida[rk "@" rv] = 1 }
       # un `supersede` apunta a un evento REAL: con la forma sola, E-999 superseía a nada
-      for (u in supde)
-        if (!(supde[u] in hayev)) print "supersede que apunta a un evento inexistente en " u ": " supde[u]
+      for (u in supde) {
+        if (!(supde[u] in hayev)) { print "supersede que apunta a un evento inexistente en " u ": " supde[u]; continue }
+        # la tabla es append-only: un evento solo puede superseder a uno ANTERIOR, y nunca a sí mismo
+        if (supde[u] == u) print "supersede que se apunta a si mismo en " u
+        else if (evorden[supde[u]] > evorden[u]) print "supersede que apunta a un evento posterior en " u ": " supde[u] }
       # la evidencia de un `descartada` apunta a un evento que existe, es un `descarte`, decide
       # sobre esa misma cláusula y **está resuelto**: las cuatro, o la referencia no acredita nada
       for (u in evdesc) {
@@ -3123,7 +3149,9 @@ pedido_referencias() {
         if (!(en2 in evtipo)) { print "evidencia de descarte que no existe en eventos en " u ": " ev2; continue }
         if (evtipo[en2] != "descarte") print "el evento de la evidencia no es un descarte en " u ": " ev2
         else if (evobjt[en2] != u) print "el evento de descarte no decide sobre esa clausula en " u ": " ev2
-        else if (evesta[en2] != "resuelta") print "el descarte que autoriza sigue sin resolverse en " u ": " ev2 }
+        else if (evesta[en2] != "resuelta") print "el descarte que autoriza sigue sin resolverse en " u ": " ev2
+        else if (evreso[en2] != "no-admitida") print "el descarte que autoriza no dice no-admitida en " u ": " ev2
+        else if (evmoti[en2] == "" || evmoti[en2] == "-") print "el descarte que autoriza no tiene motivo en " u ": " ev2 }
       # la de un `satisfecha-por-trabajo-previo` resuelve contra `antecedentes.md`, que es la sede
       # que la acredita. Sin ese archivo no hay nada que acredite trabajo previo
       if (nsat > 0) {
