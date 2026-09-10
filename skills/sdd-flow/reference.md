@@ -2221,8 +2221,13 @@ cada fila tenga su criterio en la sede; que la **anotación** de la sede y las c
 lo mismo —son dos sedes del mismo hecho, y si discrepan una miente—; y que una `autoridad: pedido`
 apunte a una cláusula **de la partición vigente y `pendiente`**, que es su condición de validez.
 
-**Y `R2` rige sobre lo que la sede *declara*, no sobre lo que menciona.** Una línea **abre** un
-criterio cuando, quitados los espacios y un marcador de lista inicial, empieza con su identificador.
+**Y `R2` rige sobre lo que la sede *declara*, no sobre lo que menciona — en las dos direcciones.**
+Una línea **abre** un criterio cuando, quitados los espacios, un marcador de lista, una casilla de
+verificación y el énfasis, empieza con su identificador. La gramática se deriva de las **plantillas
+canónicas** de este documento —`- **AC-1:** Given …` y `- [ ] **AC-1** — …`—, y sin esa derivación
+ninguna de las dos abría un criterio: con la plantilla que el propio documento manda usar, las
+comprobaciones del lado de la declaración **se evaporaban enteras**. El guion bajo no se quita:
+`_AC-1_` es una mención en cursiva, y quitarlo la convertía en declaración.
 Nombrar un criterio ajeno en prosa —«esto no cubre `AC-9`, que es de otro flujo»— es válido y no
 exige nada; leerlo como declaración bloqueaba una spec correcta. Un identificador **abre a lo sumo
 un criterio**: dos aperturas con la misma identidad son un estado inválido, y sin comprobarlo la
@@ -2501,11 +2506,11 @@ cláusula está bien redactada.
 | Bloque | Quién lo invoca | En qué puerta | Argumentos | Qué se lee | Qué pasa si falla |
 |---|---|---|---|---|---|
 | `pedido-jsonl` | `gather-context` | al cerrar 3b, **antes** del sub-paso 4 | la ruta de `literal.jsonl`, y el `n` inicial cuando no es 1 | el código de salida | **fallo cerrado**: no se avanza a la fusión |
-| `pedido-unicidad` | `specify`, y `resume` | antes de presentar el gate de la spec; en `resume`, tras la cadena | la ruta de `registro.md` | el código de salida | el gate **no se presenta**; en `resume`, con `1` se retoma en el gate de `specify` — **no** es cuarentena |
-| `pedido-referencias` | `specify`, cada recálculo que la tabla de puertas declare, y `resume` | antes del gate que esa fila nombra; en `resume`, tras la cadena y solo si la traza tiene algún criterio | `registro.md` y la **sede de los criterios**: `spec.md`, o `plan.md` en la rama trivial | el código de salida | el gate **no se presenta**; en `resume`, con `1` se retoma en el gate de `specify` — **no** es cuarentena |
+| `pedido-unicidad` | `specify`, y `resume` | antes de presentar el gate de la spec; en `resume`, **siempre** tras la cadena, porque no necesita más que el registro | la ruta de `registro.md` | el código de salida | el gate **no se presenta**; en `resume`, con `1` se retoma en el gate de `specify` —**no** es cuarentena— y con `3` **no se enruta**: es un fallo de ejecución |
+| `pedido-referencias` | `specify`, cada recálculo que la tabla de puertas declare, y `resume` | antes del gate que esa fila nombra; en `resume`, tras la cadena y solo si el flujo ya adjudicó criterios —la disyunción de tres artefactos de `SKILL.md`— | `registro.md` y la **sede de los criterios**: `spec.md`, o `plan.md` en la rama trivial | el código de salida | el gate **no se presenta**; en `resume`, con `1` se retoma en el gate de `specify` — **no** es cuarentena |
 | `pedido-marcador` | `resume`, y `gather-context` en 3b | en `resume`, **primera** comprobación del paso, antes de enrutar; en 3b, **antes de escribir**, y solo si `.plans/<id>/` ya existe | la raíz del flujo | la celda, en stdout | con `1` o `2` **no se enruta** por ninguna rama, y en 3b no se escribe nada |
 | `pedido-digest` | `resume` | **después** del marcador, y solo si su celda fue «presente y legible» | la ruta de `registro.md` | el código de salida | con `1` la celda pasa a **cuarentena**; con `3` la cadena queda **sin comprobar** y se informa así, sin leerlo como verde |
-| `pedido-criterio` | `specify`, en la misma puerta que `pedido-referencias`; y `resume`, **después** de la cadena y solo si la traza tiene algún criterio | antes del gate que esa fila nombra; en `resume`, antes de enrutar | `registro.md` y la **sede de los criterios** | el código de salida | en `specify`, con `1` el gate **no se presenta**; en `resume`, con `1` **no es cuarentena** —el paquete está intacto— sino retomar en el gate de `specify` a re-adjudicar `R2`. Con `3` los hashes quedan **sin comprobar** y se informa así, sin leerlo como verde ni bloquear |
+| `pedido-criterio` | `specify`, en la misma puerta que `pedido-referencias`; y `resume`, **después** de la cadena y solo si el flujo ya adjudicó criterios | antes del gate que esa fila nombra; en `resume`, antes de enrutar | `registro.md` y la **sede de los criterios** | el código de salida | en `specify`, con `1` el gate **no se presenta**; en `resume`, con `1` **no es cuarentena** —el paquete está intacto— sino retomar en el gate de `specify` a re-adjudicar `R2`. Con `3` los hashes quedan **sin comprobar** y se informa así, sin leerlo como verde ni bloquear |
 
 **`pedido-marcador` se invoca una vez y se carga con su dependencia.** Llama a `pedido-jsonl` por
 dentro, así que quien lo invoca tiene que haber **cargado los dos bloques** en el mismo shell.
@@ -2802,13 +2807,18 @@ pedido_referencias() {
       t = s
       sub("^" ESP "+", "", t)
       sub("^([-*+]|[0-9]+[.)])" ESP "+", "", t)
+      sub("^\\[[ xX]\\]" ESP "+", "", t)
+      # el énfasis y el backtick se sacan porque las plantillas canónicas los usan: `- **AC-1:**`
+      # y `- [ ] **AC-1** —`. El guion bajo NO se saca: `_AC-1` es una mención en cursiva y
+      # sacarlo la convertía en declaración
+      sub("^([*][*]|[*]|" BT ")+", "", t)
       if (!match(t, /^AC-[0-9]+[a-z]?/)) return ""
       r = RSTART; l = RLENGTH
       sig = substr(t, r + l, 1)
       if (sig ~ /[0-9A-Za-z_]/) return ""
       return normid(substr(t, r, l)) }
     BEGIN { FS=sprintf("%c",124)
-            ESP = "[ " sprintf("%c",9) "]"
+            ESP = "[ " sprintf("%c",9) "]"; BT = sprintf("%c",96)
             for (i = 128; i < 192; i++) CONT = CONT sprintf("%c", i) }
     FILENAME == ELIT {
       # la cláusula cita el campo n, no la posición física de la línea: tras una cuarentena
@@ -2830,28 +2840,21 @@ pedido_referencias() {
         largo[nl] = ulargo(cuerpo) }
       # `largo` y `hay` comparten índice por construcción: los dos se escriben con `nl`
       next }
-    FILENAME == ESPEC { linea=$0; pos=0
-      while (match(linea, /AC-[0-9]+[a-z]?/)) {
-        # RSTART y RLENGTH se capturan ANTES de llamar a normid: esa función usa `match` por
-        # dentro y los pisa, y el avance del bucle depende de ellos — sin esto no termina
-        r = RSTART; l = RLENGTH
-        # awk no tiene delimitadores de palabra: los dos extremos se cierran a mano, o AC-1ab
-        # satisface a AC-1a y AC-1A satisface a AC-1. El vecino izquierdo se busca en la línea
-        # ENTERA con el desplazamiento acumulado: mirándolo en el resto recortado, el carácter
-        # anterior al segundo match de `AC-1AC-2` era el fin del primero y se leía como frontera
-        sig = substr(linea, r + l, 1)
-        ant = (pos + r > 1) ? substr($0, pos + r - 1, 1) : ""
-        if (sig !~ /[0-9A-Za-z_]/ && ant !~ /[0-9A-Za-z_-]/) enspec[normid(substr(linea, r, l))]=1
-        pos = pos + r + l - 1
-        linea = substr(linea, r + l) }
+    # el escaneo de MENCIONES se retiró con su único consumidor: la dirección traza -> sede
+    # resolvía contra cualquier aparición del identificador, así que un criterio nombrado en prosa
+    # y nunca declarado la satisfacía. Las dos direcciones de R2 rigen ahora sobre `abre`
+    FILENAME == ESPEC {
       ab = abrec($0)
       if (ab != "") { abre[ab]++
-        # la anotación de autoridad, que el contrato obliga a poner al final de esa misma línea
-        if (match($0, /\[autoridad:[ ]*[^]]*\]/)) {
-          an = substr($0, RSTART, RLENGTH)
-          sub(/^\[autoridad:[ ]*/, "", an); sub(/[ ]*\]$/, "", an)
-          if (!(ab in anot)) anot[ab] = an }
-        else if (!(ab in anot)) anot[ab] = "-sin-" }
+        # la anotación de autoridad, que el contrato obliga a poner al final de esa misma línea,
+        # y con cardinalidad UNO: dos anotaciones son dos autoridades, y el contrato manda partir
+        # el criterio en vez de acumularlas
+        resto2 = $0; nan = 0; an = ""
+        while (match(resto2, /\[autoridad:[ ]*[^]]*\]/)) { nan++
+          if (nan == 1) { an = substr(resto2, RSTART, RLENGTH)
+            sub(/^\[autoridad:[ ]*/, "", an); sub(/[ ]*\]$/, "", an) }
+          resto2 = substr(resto2, RSTART + RLENGTH) }
+        if (!(ab in anot)) anot[ab] = (nan == 1) ? an : ((nan == 0) ? "-sin-" : "-varias-") }
       next }
     /^## clausulas/ { s="c"; next }
     /^## eventos/   { s="e"; next }
@@ -2876,6 +2879,15 @@ pedido_referencias() {
       # la PARTICIÓN VIGENTE es la versión máxima de cada P-k no retirado: sobre ella rige R1,
       # y sin quedarse con una sola versión por cláusula el régimen append-only fabrica solapamientos
       apl=$4; gsub(/[ *]/,"",apl); gsub(sprintf("%c",96),"",apl)
+      evi=$7; gsub(/^[ ]+|[ ]+$/,"",evi); gsub(sprintf("%c",96),"",evi)
+      # el enum de aplicabilidad es cerrado, y sin comprobarlo R3 se evadía sola: un valor fuera
+      # del enum no es `pendiente`, así que la cláusula quedaba exenta de tener criterio
+      if (apl != "pendiente" && apl != "satisfecha-por-trabajo-previo" && apl != "descartada")
+        print "aplicabilidad fuera del dominio en " id ": " (apl == "" ? "vacia" : apl)
+      # la evidencia es obligatoria si la aplicabilidad no es `pendiente`: sin ella, salir de
+      # pendiente es gratis y es la otra forma de evadir R3
+      else if (apl != "pendiente" && (evi == "" || evi == "-"))
+        print "clausula " apl " sin evidencia: " id
       if (ver ~ /^[0-9]+$/) { ver = norm(ver)
         clausula[ck "@" ver] = 1
         if (!(ck in vmax) || cmpd(ver, vmax[ck]) > 0) {
@@ -2907,9 +2919,17 @@ pedido_referencias() {
       if (au != "pedido" && au != "constitution" && au != "repositorio" && au != "clarify")
         print "autoridad fuera del dominio en " id ": " (au == "" ? "vacia" : au)
       if (re == "" || re == "-") print "criterio sin referencia: " id
+      # cada autoridad tiene su forma de referencia: `P-k@version`, `Q<n>`, una sección o una
+      # regla. Sin esto, `clarify` con una referencia libre y `constitution` con la forma del
+      # pedido pasaban — y la columna decía apuntar a algo que no existe en esa sede
+      else if (au == "clarify" && re !~ /^Q[0-9]+$/)
+        print "autoridad clarify con una referencia que no es Q<n> en " id ": " re
+      else if ((au == "constitution" || au == "repositorio") &&
+               (re ~ /^P-[0-9]+@[0-9]+$/ || re ~ /^Q[0-9]+$/))
+        print "referencia con la forma de otra autoridad en " id ": " re
       if (de == "" || de == "-") print "criterio sin derivacion adjudicada: " id
       autz[ac] = au; refz[ac] = re
-      if (!(ac in enspec)) print "criterio de la traza ausente en la spec: " id }
+      if (!(ac in abre)) print "criterio de la traza sin declaracion en la sede: " id }
     s == "e" && substr($0,1,1) == sprintf("%c",124) { nev++ }
     s == "e" && id ~ /^E-[0-9]+$/ {
       tipo=$6; gsub(/[ *]/,"",tipo); gsub(sprintf("%c",96),"",tipo)
@@ -2982,6 +3002,7 @@ pedido_referencias() {
         if (abre[a] > 1) print "criterio declarado mas de una vez en la sede: " a
         if (!(a in actraza)) print "criterio en la sede sin fila en la traza: " a
         if (anot[a] == "-sin-") print "criterio en la sede sin anotacion de autoridad: " a
+        else if (anot[a] == "-varias-") print "criterio con mas de una anotacion de autoridad: " a
         else if (a in actraza) {
           # la anotación y la traza son dos sedes del MISMO hecho: si discrepan, una miente
           nq = index(anot[a], ":")
@@ -3472,7 +3493,7 @@ pedido_criterio() {
       # además lleva la anotación de autoridad, que el contrato obliga a poner al final de la
       # primera línea de cada AC-n. Sin esa condición, una MENCIÓN anterior —«el resumen apunta a
       # AC-1»— arrancaba el preimage, y cambiar el criterio de verdad no movía el hash
-      BEGIN { ESP = "[ " sprintf("%c",9) "]" }
+      BEGIN { ESP = "[ " sprintf("%c",9) "]"; BT = sprintf("%c",96) }
       # la MISMA noción de apertura que usa pedido-referencias: una línea abre un criterio cuando,
       # quitados los espacios y un marcador de lista inicial, empieza con su identificador. Antes
       # se exigía además la anotación de autoridad, y eso ataba este bloque a una comprobación que
@@ -3482,6 +3503,8 @@ pedido_criterio() {
         t = s
         sub("^" ESP "+", "", t)
         sub("^([-*+]|[0-9]+[.)])" ESP "+", "", t)
+        sub("^\\[[ xX]\\]" ESP "+", "", t)
+        sub("^([*][*]|[*]|" BT ")+", "", t)
         if (!match(t, /^AC-[0-9]+[a-z]?/)) return ""
         r = RSTART; l = RLENGTH
         sig = substr(t, r + l, 1)
