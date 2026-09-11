@@ -1,10 +1,15 @@
 # Ejemplo de `.specify/config.yml`
 
 **Este archivo es una vista.** Está ensamblado de los bloques que cada skill posee:
-`sdd-flow/reference.md` → "Esquema" (22 claves), `cross-review/SKILL.md` → "Configuración" (5),
-`co-explore/SKILL.md` → "Configuración" (5) y `cross-implement/SKILL.md` → "Configuración" (3).
+`sdd-flow/reference.md` → "Esquema" (23 claves), `cross-review/SKILL.md` → "Configuración" (5),
+`co-explore/SKILL.md` → "Configuración" (5), `cross-implement/SKILL.md` → "Configuración" (3) y
+`knowledge-vault/reference.md` → "La capa de configuración" (1): 37 claves distintas en total.
 **Ante discrepancia manda el dueño.** Existe para poder mirar el archivo completo y copiar lo que
 sirva; no para ser la autoridad de ninguna clave.
+
+El perfil de entrega no es un override de proyecto: `delivery_profile`, `risk` y la evaluación que
+los sustenta son estado de cada corrida. Por eso no aparecen en esta vista ni adquieren un default
+persistente en `.specify/config.yml`.
 
 **Copialo entero o por bloques.** Una clave que borres vuelve a su default —salvo las marcadas
 `[obl]`, que no tienen uno—, que es lo que la skill aplica cuando la clave está ausente — por eso
@@ -44,7 +49,7 @@ domain_context:
   context_paths: []              # [def] docs de dominio a leer si existen
   adr_paths: []                  # [def] ADRs vigentes a leer si existen
 final_diff_review:
-  mode: auto                     # auto (complex/high-risk inline) | "on" | "off" — [def]
+  mode: auto                     # auto (complex o risk high | unknown inline) | "on" | "off" — [def]
 vault_archive:                   # requiere la skill `knowledge-vault`; el disparador es esta clave, no la instalación
   mode: auto                     # auto (consulta destino declarado: ofrece activarlo, o descubre y persiste) | "on" | "off" — [def] rescatar el flujo al vault al archivarlo
 jira_approval:                   # solo si tracker: jira

@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
 OK, DIFIERE, USO, NO_MEDIBLE = 0, 1, 2, 3
+DEPENDENCY_ERROR = 99
 
 PREFIJOS = {
     "tasks": "sdd-flow/tasks-fingerprint/1",
@@ -46,6 +47,44 @@ MULTIVALOR = ("cubre", "archivos", "consume", "verificar")
 
 class NoMedible(Exception):
     """El documento no admite cálculo. Se traduce al código 3, nunca al 2."""
+
+
+class DeliveryProfileDependency(Exception):
+    def __init__(self, kind: str) -> None:
+        super().__init__(kind)
+        self.kind = kind
+
+
+_DELIVERY_PROFILE = None
+
+
+def _delivery_modulo():
+    global _DELIVERY_PROFILE
+    if _DELIVERY_PROFILE is not None:
+        return _DELIVERY_PROFILE
+    ruta = Path(__file__).resolve().parent / "delivery_profile.py"
+    if not ruta.is_file():
+        raise DeliveryProfileDependency("ausente")
+    try:
+        especificacion = importlib.util.spec_from_file_location("_delivery_profile_huellas", ruta)
+        if especificacion is None or especificacion.loader is None:
+            raise DeliveryProfileDependency("incompatible")
+        modulo = importlib.util.module_from_spec(especificacion)
+        sys.modules[especificacion.name] = modulo
+        especificacion.loader.exec_module(modulo)
+    except DeliveryProfileDependency:
+        raise
+    except Exception as error:
+        raise DeliveryProfileDependency("incompatible") from error
+    requeridos = (
+        "parse_plan_frontmatter", "read_plan_frontmatter", "resolve_delivery_pair",
+        "DeliveryProfileError",
+    )
+    if (getattr(modulo, "DELIVERY_PROFILE_CONTRACT_VERSION", None) != 1
+            or not all(hasattr(modulo, symbol) for symbol in requeridos)):
+        raise DeliveryProfileDependency("incompatible")
+    _DELIVERY_PROFILE = modulo
+    return modulo
 
 
 def _ledger_modulo():
@@ -305,17 +344,18 @@ def preimage_coverage(texto: str, plan: str, forma: str) -> str:
         identificadores.append(identificador)
     # Un alcance vacío **no** falla: su cuerpo es solo la línea del contrato. Lo dicen la prosa
     # normativa y la matriz congelada de vectores, y el código decía lo contrario.
+    header = _plan_header(plan)
     huella = ""
-    for linea in _header(plan):
+    for linea in header:
         campo = re.match(r"^contract_frozen_hash:\s*([0-9a-f]{64})\s*$", linea)
         if campo:
             huella = campo.group(1)
             break
-    if huella and not any(re.match(r"^contract_frozen_version:\s*\d+\s*$", l) for l in _header(plan)):
+    if huella and not any(re.match(r"^contract_frozen_version:\s*\d+\s*$", l) for l in header):
         raise NoMedible("contract_frozen_hash sin su contract_frozen_version: las dos claves se "
                         "congelan en el mismo acto")
     if not huella:
-        declarada = any(l.startswith("contract_frozen_hash:") for l in _header(plan))
+        declarada = any(l.startswith("contract_frozen_hash:") for l in header)
         raise NoMedible("contract_frozen_hash presente pero mal formado: la cadena del contrato no "
                         "produjo un digest válido" if declarada else
                         "no hay contract_frozen_hash en el header: contrato ausente o no congelado")
@@ -361,21 +401,17 @@ def calcular(huella: str, fuente: Optional[str], material: Optional[str],
     return _digest(preimage_delta(valor))
 
 
-def _header(texto: str) -> List[str]:
+def _plan_header(texto: str) -> List[str]:
     """Las líneas del frontmatter del plan, y nada más.
 
     Buscar una clave congelada en todo el documento aceptaba una que viviera en el cuerpo —en una
     tabla, en un ejemplo, en la prosa que la explica— y no en el header, que es su sede declarada.
     """
-    lineas = texto.replace("\r\n", "\n").split("\n")
-    if not lineas or lineas[0].strip() != "---":
+    modulo = _delivery_modulo()
+    try:
+        return list(modulo.parse_plan_frontmatter(texto).raw_lines)
+    except modulo.DeliveryProfileError:
         return []
-    salida: List[str] = []
-    for linea in lineas[1:]:
-        if linea.strip() == "---":
-            return salida
-        salida.append(linea)
-    return []
 
 
 def _leer(ruta: Optional[str]) -> str:
@@ -396,7 +432,7 @@ def _leer(ruta: Optional[str]) -> str:
 
 def _regimen(plan: Optional[str]) -> str:
     """El marcador vive en el header del plan y no en el recibo: por eso `--plan` es obligatorio."""
-    for linea in _header(_leer(plan)):
+    for linea in _plan_header(_leer(plan)):
         campo = re.match(r"^huellas_receta:\s*(\S+)\s*$", linea)
         if campo:
             if campo.group(1) != "v1":
@@ -748,6 +784,10 @@ def main(argv: Sequence[str]) -> int:
     except NoMedible as error:
         print(f"NO MEDIBLE: {error}", file=sys.stderr)
         return NO_MEDIBLE
+    except DeliveryProfileDependency as error:
+        print("ARNES:huellas-secuencia "
+              f"delivery-profile-helper-{error.kind}", file=sys.stderr)
+        return DEPENDENCY_ERROR
 
 
 if __name__ == "__main__":

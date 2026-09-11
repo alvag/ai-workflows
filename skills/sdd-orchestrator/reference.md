@@ -97,6 +97,37 @@ Vive en `<contenedora>/.sdd/<id>/manifest.yml`. Es la fuente de verdad de la coo
 id: ABC-123                    # clave del ticket o slug del título
 master_spec: .sdd/ABC-123/master-spec.md
 created_at: 2026-06-03T12:00:00-03:00
+delivery_profile: expedited    # standard | expedited; elección global all-or-nothing
+risk: low                      # low | high | unknown; fold de integration y todos los repos
+delivery_assessment:           # estado auditable; lista, nunca mapa por scope
+  - scope: global
+    urgency: high
+    complexity: complex
+    risk: low
+    evidence: ["hotfix de compatibilidad solicitado"]
+    provenance: user
+    confidence: high
+  - scope: integration
+    urgency: high
+    complexity: normal
+    risk: low
+    evidence: ["contrato compatible hacia atrás"]
+    provenance: inference:master-spec
+    confidence: high
+  - scope: repo:servicio-a
+    urgency: high
+    complexity: normal
+    risk: low
+    evidence: ["cambio localizado en el emisor"]
+    provenance: repo:servicio-a/src/trace.ts:18
+    confidence: high
+  - scope: repo:servicio-b
+    urgency: high
+    complexity: trivial
+    risk: low
+    evidence: ["consumidor ya tolera el header"]
+    provenance: repo:servicio-b/src/health.ts:27
+    confidence: high
 branch_prefix: ""              # opcional; prefijo único de la orquestación; vacío → semántico por repo (features: feature/, nunca feat/)
 execution_mode: fanout         # fanout (agentes paralelos, default) | inline (en la sesión del orquestador, de a un repo) — opcional
 implement_mode: ""             # opcional; modo de implementación que heredan los sdd-flow delegados: inline | cross (vacío → cada sdd-flow resuelve el suyo: config del repo > default). `cross` exige la capacidad (skill cross-implement + CLI de la otra familia) en el contexto del agente delegado. Un manifest heredado con el modo retirado detiene la orquestación con error de migración (ver `SKILL.md` → "Fan-out")
@@ -111,16 +142,22 @@ cross_review:                  # opcional; segunda opinión cross-model EN LOS G
   artifacts: [master-spec, reparto]
   max_rounds: 3                # rondas POR TANDA, no de la corrida entera; al agotarse se abre el checkpoint
   reviewer: auto               # auto (familia opuesta dentro de la allowlist) | claude | codex; fuera de families → error canónico de cross-review
-co_explore: {mode: auto, deadline: 600}  # co-exploración cross-repo ANTES del reparto; ORTOGONAL a cross_review (bloque hermano, no anidado); default on en orquestación; ver SKILL.md → Co-exploración cross-model
+co_explore:                   # co-exploración cross-repo antes del reparto; ortogonal a cross_review
+  mode: auto                  # auto | "on" | "off"; default "on" en orquestación
+  deadline: 600               # segundos para explore
 repos:
   - path: servicio-a          # relativo a la contenedora
     branch: feature/ABC-123-trace-id
+    complexity: normal         # trivial | normal | complex; copia de repo:servicio-a
+    risk: low                  # low | high | unknown; copia de repo:servicio-a
     status: tasks-ready        # ver "Valores de status"
     depends_on: []             # lista de paths de los que depende (DAG)
     covers_ac: [AC-1, AC-2]    # qué AC globales cubre este repo
     # implement_mode: cross    # opcional; override por repo del implement_mode de la orquestación
   - path: servicio-b
     branch: feature/ABC-123-consume-health
+    complexity: trivial
+    risk: low
     status: planned
     depends_on: [servicio-a]
     covers_ac: [AC-3]
@@ -145,6 +182,21 @@ orchestration_tasks:           # opcional; el trabajo del orquestador, que no vi
     participating_repos:       # mapa AC → repos, una clave por cada AC de covers_ac
       AC-4: [servicio-a, servicio-b]
 ```
+
+`delivery_assessment` es una **lista** y cada fila lleva exactamente `scope`, `urgency`,
+`complexity`, `risk`, `evidence`, `provenance` y `confidence`. No se admite un mapa anidado cuya
+clave sea el `scope`. Debe existir una fila `global`, una `integration` y una `repo:<path>` por cada
+entrada de `repos`. El orden de las claves dentro de esas filas y de cada entrada de `repos` no
+define su identidad: las guardas reconocen `scope` y `path` aunque no sean la primera clave del mapa.
+La clave raíz `repos` aparece exactamente una vez; repetirla se rechaza antes de concatenar filas.
+`orchestration-model.py` valida cobertura, duplicados, fold y carriers antes del orden histórico del
+reparto. Los `path` de `repos` y los carriers `repo` de los planes son únicos: se rechazan antes de
+construir cualquier set o mapa derivado.
+
+`delivery_profile`, `risk`, `delivery_assessment`, `repos` y `orchestration_tasks` son estado de la
+corrida, no configuración copiable. `co_explore.debate.mode` y
+`co_explore.debate.max_rounds` tampoco viven en el manifest: su dueño es `co-explore`, pero el
+orquestador no tiene un consumidor comprobado para ellas.
 
 `families` nombra **workers despachables**; el **conductor no entra en** la lista y siempre conserva
 la conducción. Cada worker es un proceso aparte en **sesión fresca**, incluso si comparte familia
@@ -283,6 +335,11 @@ intentó despachar. Las tres formas de romper la correspondencia son inválidas 
 `consumado` sin su cambio de estado, un evento `rechazado` cuyo estado cambió igual, y un cambio de
 estado que ningún evento consumó.
 
+Una divergencia de perfil detectada por las guardas pre-despacho usa el mismo evento
+`despachar-repo` con `resultado: rechazado`. El evento se registra, pero no se crea sobre ni se cambia
+el estado del repo rechazado. La cascada bloquea después solo sus dependientes; los repos
+independientes se vuelven a evaluar con su propio plan y pueden continuar.
+
 **Dónde vive.**
 
 - La bitácora es local y untracked, sobrevive al `resume` y se archiva con la orquestación.
@@ -330,11 +387,11 @@ después se movió.
 - `id: 13` · `paso: cerrar-tarea` · `actor: orquestador` · `objeto: C1` · `resultado: rechazado` · `timestamp: 2026-06-03T18:04:11-03:00`
 ```
 
-**Este esquema mezcla estado de corrida (`id`, `created_at`, `master_spec`, `repos`,
-`orchestration_tasks`) con configuración.** Las claves de configuración son propias de esta skill (`branch_prefix`,
+**Este esquema mezcla estado de corrida (`id`, `created_at`, `master_spec`, `delivery_profile`, `risk`,
+`delivery_assessment`, `repos`, `orchestration_tasks`) con configuración.** Las claves de configuración son propias de esta skill (`branch_prefix`,
 `execution_mode`, `implement_mode`, `cross_model.*`) salvo `cross_review.*` y `co_explore.*`, cuyo enum lo define su
 dueño: `cross_review.*` en `cross-review/SKILL.md` → "Configuración" y `co_explore.*` en
-`co-explore/SKILL.md` → "Configuración". Solo esas 12 claves, listas para
+`co-explore/SKILL.md` → "Configuración". Solo esas 13 claves, listas para
 copiar y con la misma vista que `config-ejemplo.md` de `sdd-flow`, están en `manifest-ejemplo.md`.
 
 ## Plantilla de `master-spec.md`
@@ -403,6 +460,11 @@ Mantener los IDs globales `AC-n` (no renumerar): la trazabilidad cross-repo del 
 
 > **Self-review del reparto (antes del gate 1.4).** Los `plan.md`/`tasks.md` por repo heredan el formato y la disciplina de `sdd-flow` (ver `sdd-flow/reference.md` → "Plantilla de plan" y "Plantilla de tasks", bloque "Self-review (antes del gate)"). Además de la cobertura AC↔repo (cross-artifact check, regla 5), correr sobre cada `plan.md`/`tasks.md` generado: la **cobertura AC↔fila del contrato de verificación** (bidireccional, ni AC sin fila ni fila sin AC), el **scan anti-placeholder** (sin `TBD`/`TODO`/"etc." colgados) y la **consistencia de contratos** entre servicios — lo que un repo `expone` coincide en firma con lo que el otro `consume` (mismo criterio que `Produce`/`Consume` entre tasks). Reportarlo en una línea antes del gate.
 
+Cada `plan.md` candidato materializa la `complexity` de su fila `repo:<path>` y el par global
+`delivery_profile`/`risk`. El riesgo local no se duplica en el plan: permanece en esa fila y en el
+repo correspondiente del manifest. Antes del gate, `orchestration-model.py` comprueba assessment,
+fold e igualdad entre carriers; una divergencia reabre el reparto y ningún candidato se congela.
+
 ### Contrato de verificación por repo
 
 El `## Verification` de cada `plan.md` generado lleva el **mismo esquema normativo** que en un flujo
@@ -432,9 +494,11 @@ media evidencia.
 **Qué cubre y cuándo nace.**
 
 - Es el contrato de cierre de toda tarea de orquestación, auxiliares incluidas.
-- Su versión inicial se materializa completa y se congela en la Fase 1.
+- Su versión inicial se materializa completa como candidata antes del gate y se congela solo después
+  de la aprobación humana, todavía en la Fase 1.
 - La Fase 3 revalida la versión vigente sin agregar ni quitar IDs.
-- El baseline de toda fila se resuelve al congelarla: `NOT_APPLICABLE` cuando medirlo es inaplicable y `BLOCKED` cuando falta entorno, y con `BLOCKED` no se despacha.
+- El baseline de toda fila se resuelve antes de presentar el gate: `NOT_APPLICABLE` cuando medirlo es
+  inaplicable y `BLOCKED` cuando falta entorno, y con `BLOCKED` no se despacha.
 
 Toda entrada de `orchestration_tasks` tiene su fila: el cierre de un `gate`, el de un `closeout` y el
 de una tarea auxiliar con `covers_ac` vacío, por igual. Una auxiliar no cubre ningún AC y aun así
@@ -447,12 +511,12 @@ es invariante entre versiones"), así que materializar solo las filas de los gat
 rechazaría. Las seis columnas y el bloque de baseline se heredan por puntero de ese mismo documento;
 esta skill no mantiene una forma propia.
 
-Congelar en la Fase 1 fija **cuándo nace** el contrato completo, no prohíbe repararlo: el versionado
+Congelar después de aprobar en la Fase 1 fija **cuándo nace** el contrato completo, no prohíbe repararlo: el versionado
 canónico sigue admitiendo versiones nuevas mientras conserven IDs, `Requisito` y `Esperado`. Por eso
 la Fase 3 no vuelve a congelar nada —el conjunto de filas ya está decidido— y lo que hace es
 revalidar la vigente antes de ejecutar las que le quedan.
 
-Un baseline resuelto es condición de ese congelamiento, y sus dos casos límite no significan lo mismo.
+Un baseline resuelto es condición del gate y de ese congelamiento, y sus dos casos límite no significan lo mismo.
 `NOT_APPLICABLE` es un veredicto sobre la medición: no hay nada que medir antes del cambio, y la fila
 queda igual de exigible. `BLOCKED` no es un veredicto sino una falta de entorno, y mientras dure el
 repo **no se despacha**: despachar contra una fila cuyo baseline nadie pudo medir deja el resultado
@@ -495,7 +559,8 @@ El contrato de integración pasa por un gate **equivalente** al que `cross-imple
 delegar (`cross-implement/contrato-verificacion.md` → "El gate previo al dispatch"): versión vigente
 identificada, cobertura bidireccional contra los AC `[integration]`, campos obligatorios presentes y
 baseline resuelto en toda fila, ninguna en `BLOCKED`. Ese gate corre dos veces con el mismo criterio
-y distinto efecto: en la Fase 1 es lo que habilita el congelamiento de la versión inicial, y en la
+y distinto efecto: en la Fase 1, después de la aprobación humana, es lo que habilita el congelamiento
+de la versión inicial, y en la
 Fase 3 revalida esa misma versión antes de la primera evidencia. La segunda pasada no emite ninguna
 versión ni toca el conjunto de filas: si algo no cierra, la Fase 3 se detiene en vez de reparar el
 contrato sobre la marcha.
@@ -593,10 +658,13 @@ Es **cooperativo** (basado en leer manifests), no un lock de archivo del SO. Reu
 
 ## Cascada de fallos (DAG)
 
-Cuando un agente vuelve con fallo:
+Cuando un agente vuelve con fallo, o cuando una guarda pre-despacho rechaza el plan antes de crear su
+sobre:
 
 ```
-al marcar R como failed:
+al fallar o rechazar R:
+    si fue pre-despacho: conservar R.status y registrar despachar-repo como rechazado
+    si el agente ya volvió: marcar R.status = failed
     no commitear nada en R
     para cada repo D tal que R ∈ D.depends_on (directa o transitivamente):
         si D aún no arrancó o no terminó:
@@ -605,9 +673,15 @@ al marcar R como failed:
 recalcular elegibles (depends_on satisfechos en verde) y continuar el fan-out
 ```
 
-El reporte final distingue `verified`/`committed`/`pushed` (verdes), `failed` (con el error) y `blocked` (con el repo del que dependían).
+El reporte final distingue `verified`/`committed`/`pushed` (verdes), `failed` (con el error), el repo
+pre-despacho conservado con su rechazo y `blocked` (con el repo del que dependían).
 
 ## Ejemplos de `manifest.yml`
+
+E1-E3 son ejemplos **legacy standard**: su ausencia dual de `delivery_profile` y `risk` solo ilustra
+compatibilidad de lectura para manifests heredados. No son plantillas para escritura nueva. Todo
+manifest nuevo usa el esquema vigente de esta referencia y materializa el par, `delivery_assessment`
+y los carriers `complexity`/`risk` por repo.
 
 **E1 — dos repos independientes (paralelo puro):**
 
@@ -710,13 +784,91 @@ Los escenarios contra los que corren esos predicados los materializa una **fábr
 actual y escribe `env.sh` y `env.ps1`; un solo cuerpo decide qué es cada escenario y todas las
 guardas consumen exactamente el mismo material.
 
+`orchestration-model.py` y `orchestration-state.py` importan de `_yaml.py` un único parser
+estructural y una validación semántica común para el perfil, `delivery_assessment` y `repos`; las
+tres guardas del perfil también comparten allí la carga versionada de `delivery_profile.py`. Cada consumidor conserva su política
+propia —el modelo exige la biyección completa de planes y state admite el subconjunto recibido—,
+pero no reimplementa el reconocimiento de claves, orden ni duplicados del carrier.
 
-`python_skill <skill_dir>/scripts/orchestration-model.py <manifest> <master-spec>` valida el reparto
-contra la master-spec: es la guarda que caza el AC
-`[integration]` sin dueño. Lee dos artefactos —el `manifest.yml` y la `master-spec.md`— y emite **un
-solo diagnóstico por corrida**: el primero del orden en que están escritas sus comprobaciones, que
-va de la identidad de la tarea a los enums, de ahí al grafo, después a la ubicación de cada AC y al
-final al mapa de participación. Ese orden no es cosmético. Dos comprobaciones correctas pueden ver
+### Frontera del dialecto estructural
+
+El parser compartido es deliberadamente **más estrecho que YAML general**. Esa restricción evita una
+dependencia externa y forma parte del contrato portable de las guardas:
+
+- las claves raíz y de campos son scalars simples sin comillas;
+- la raíz no lleva sangría, el marcador de cada fila lleva dos espacios y sus campos llevan cuatro;
+- los valores admitidos son scalars —con o sin comillas— o listas inline separadas por comas;
+- un comentario inline comienza en `#` precedido por espacio o tabulación;
+- no se interpretan anchors, aliases, merge keys, tags ni scalars multilínea;
+- el orden de las claves dentro de un mapa no tiene significado;
+- `delivery_assessment` y `repos` deben usar listas en bloque, no una forma inline equivalente;
+- cada aparición raíz de `repos` se cuenta **antes** de interpretar su valor: bloque, `[]`, `null` o
+  cualquier otro scalar siguen siendo la misma clave para detectar duplicados;
+- cada fila de assessment conserva todas sus claves y sus duplicados para que el consumidor exija
+  exactamente el schema de siete campos;
+- cada fila de repo conserva `path`, `complexity` y `risk`; un segundo `path` queda marcado antes de
+  construir colecciones por identidad;
+- los demás campos históricos de una fila de repo no son evidencia de esta frontera; sus listas,
+  cuando el schema las admite, permanecen inline;
+- una fila se abre por su marcador `-`, no por asumir que `scope` o `path` aparece primero.
+
+La salida del parser **no es un veredicto**. Preserva evidencia estructural y multiplicidad; luego
+`orchestration-model.py` exige cobertura total, fold y biyección con todos los planes, mientras
+`orchestration-state.py` valida el mismo manifest pero solo contrasta los planes recibidos para no
+bloquear repos independientes. Los campos históricos de repos y `orchestration_tasks` siguen bajo
+los parsers específicos de cada guarda. La frontera compartida se ejecuta antes: una forma inválida
+de la fila canónica de `repos` gana sobre el parser histórico, mientras campos que no posee —como
+`branch`— no se clasifican aquí.
+
+La compatibilidad se mide contra el manifest que produce esta skill, no contra todo documento que
+una biblioteca YAML de propósito general pueda cargar. Reordenar claves dentro de una fila sí es
+compatible porque no sale del dialecto; citar una clave propia, usar un anchor o cambiar la sangría
+de evidencia propia no lo es. Las guardas no normalizan silenciosamente esas formas; los campos
+históricos no poseídos continúan hacia su parser específico. `clave-duplicada` para `repos`, `delivery_assessment`,
+`delivery_profile` o `risk` tiene precedencia sobre `repos-forma-invalida` y
+`assessment-forma-invalida`; así una segunda raíz no queda escondida por la forma de otro carrier.
+Toda plantilla futura debe permanecer dentro de esta frontera o ampliar conjuntamente parser,
+documentación y matriz de contrapruebas.
+
+Diagnósticos de consistencia y corrección:
+
+| Código | Corrección |
+|---|---|
+| `header-ausente` / `header-mal-cerrado` | Reparar los delimitadores `---` del plan indicado. |
+| `archivo-ilegible` | Hacer legible el plan indicado como UTF-8. |
+| `clave-duplicada` | Dejar una sola aparición de la clave nombrada en su carrier. |
+| `par-parcial` | Materializar juntos `delivery_profile` y `risk`. |
+| `perfil-desconocido` | Usar `standard` o `expedited`. |
+| `riesgo-desconocido` | Usar `low`, `high` o `unknown`. |
+| `complejidad-desconocida` | Usar `trivial`, `normal` o `complex`. |
+| `expedited-inelegible` | Volver a `standard` o eliminar el riesgo/complejidad que impide acelerar. |
+| `carrier-mixto` | Materializar el par completo en manifest y en todos los planes de la corrida. |
+| `assessment-forma-invalida` | Declarar una lista en bloque con exactamente los siete campos por fila. |
+| `assessment-clave-duplicada` | Dejar una sola aparición de cada campo en la fila. |
+| `assessment-scope-invalido` / `assessment-scope-duplicado` | Corregir o deduplicar el `scope`. |
+| `assessment-urgency-invalida` | Usar `high`, `normal` o `unknown`. |
+| `assessment-evidence-vacia` | Agregar al menos una evidencia verificable. |
+| `assessment-provenance-invalida` | Usar `user`, `tracker:…`, `repo:…:<línea>` o `inference:…`. |
+| `assessment-confidence-invalida` | Usar `high`, `medium` o `low`. |
+| `repos-forma-invalida` | Usar lista en bloque con dos espacios para `-`, cuatro para sus campos y listas de fila inline. |
+| `repo-duplicado` / `plan-repo-duplicado` | Dejar una identidad única por repo y por plan. |
+| `plan-repo-invalido` | Declarar exactamente un `repo` en el frontmatter del plan. |
+| `repo-plans-divergen` | Entregar un plan por cada `repos.path`, sin faltantes ni extras. |
+| `assessment-scopes-divergen` | Materializar `global`, `integration` y un `repo:<path>` por cada repo. |
+| `risk-fold-diverge` | Recalcular el fold conservador y copiarlo a `global` y al par del manifest. |
+| `complexity-assessment-manifest-plan-diverge` | Igualar la complejidad del assessment, la fila del manifest y el plan. |
+| `risk-assessment-manifest-diverge` | Igualar el riesgo local del assessment y la fila del manifest. |
+| `perfil-manifest-plan-diverge` | Copiar el mismo par global `delivery_profile`/`risk` al plan indicado. |
+
+Los errores de un plan imprimen `plan: <ruta>`; los estructurales del manifest imprimen
+`manifest: <ruta>`, para que el diagnóstico no atribuya el defecto al carrier equivocado.
+
+La ausencia dual del perfil se decide antes de exigir la estructura nueva del plan: una
+orquestación heredada conserva el comportamiento histórico aunque su plan no sea válido para el
+helper nuevo. Si manifest o plan materializan `delivery_profile` o `risk`, la validación estricta
+vuelve a ser obligatoria y falla cerrada.
+
+`python_skill <skill_dir>/scripts/orchestration-model.py <manifest> <master-spec> <repo-plan> [<repo-plan> ...]` valida primero el perfil, el assessment, su fold y la igualdad entre carriers, y después el reparto contra la master-spec: es la guarda que caza el AC `[integration]` sin dueño. Recibe `manifest.yml`, `master-spec.md` y uno o más planes como argumentos separados, por lo que cada ruta puede contener espacios. Sin planes usa `ARNES:orchestration-model repo_plans vacio`/99; una aridad menor usa `ARNES:orchestration-model argumentos invalidos`/99. La ausencia o incompatibilidad del helper compartido usa `delivery-profile-helper-ausente|incompatible`/99 sin traceback. Los predicados del perfil preceden al orden histórico, que conserva internamente identidad, enums, grafo, ubicación de AC y mapa de participación. Ese orden no es cosmético. Dos comprobaciones correctas pueden ver
 el mismo defecto —un AC `[repo-local]` en el `covers_ac` de una tarea es, a la vez, una clave de
 participación que no es `[integration]`— y emitir las dos convierte un defecto en dos hallazgos, sin
 decir cuál de los dos es el que hay que arreglar.
@@ -742,15 +894,19 @@ tarea sin fila.
 
 
 `python_skill <skill_dir>/scripts/orchestration-state.py <manifest> <master-spec> <contrato>
-<bitácora> <planes-repo>` es la única de las tres que lee la **bitácora**, y por eso la única que
+<bitácora> <repo-plan> [<repo-plan> ...]` es la única de las tres que lee la **bitácora**, y por eso la única que
 juzga **acciones** en vez de estados. El caso que lo resume: el estado final de dos repos puede ser
 idéntico —uno esperó a que se cerrara su gate, el otro se despachó igual y volvió— y lo único que los
 distingue es qué eventos quedaron registrados y en qué orden. De ahí que varios de sus rojos tengan
 un control verde equivalente que difiere solo en el `resultado` del evento: un despacho `consumado`
 con el gate abierto falla, y el mismo intento `rechazado` pasa limpio.
 
-Lee cinco artefactos —el `manifest.yml`, la `master-spec.md`, el contrato de integración, la bitácora
-y el `plan.md` de cada repo— y emite **un solo diagnóstico por corrida**: el primero del orden en que
+Recibe cuatro posiciones fijas —el `manifest.yml`, la `master-spec.md`, el contrato de integración y
+la bitácora— más cero o más `plan.md` como argumentos separados; por eso cada ruta puede contener
+espacios y puede inspeccionar el estado antes de recibir el primer plan. Un argumento de plan vacío
+es inválido y no se interpreta como `.`. Emite **un solo diagnóstico por corrida**. Antes del orden histórico, valida el assessment y los carriers del manifest; para cada
+plan recibido, exige el par global y la `complexity` local. Esto permite guardar un repo por vez y
+continuar con los independientes. El primero del orden en que
 están escritas sus comprobaciones, que va de la integridad del registro (si hay bitácora, y si sus
 eventos están completos) al reparto y sus gates, de ahí a la correspondencia entre cada resultado y
 su transición, y al final al cierre de cada tarea y a la frescura de su evidencia. Ese orden no es
@@ -764,3 +920,11 @@ un modelo inválido no hay nada que agregar, y un `ESTADO:done` al lado de un `G
 mensaje que contradice su propio veredicto. Y `owner: UNASSIGNED` es lo único que **no** bloquea:
 sale como `REPORTE:` con exit 0 mientras la tarea no intente cerrar, porque declarar trabajo todavía
 sin asignar es justo para lo que el centinela existe.
+
+`integracion-ownership.py <manifest> [<repo-plan> ...]` aplica el mismo parser estricto a cero o más
+planes y contrasta su par con los scalars raíz del manifest antes de revisar las referencias de
+integración. Los planes viajan como argumentos separados, admiten espacios en su ruta y un argumento
+vacío es inválido en vez de convertirse en `.`. No recalcula
+el fold ni sustituye a `orchestration-model.py`. En ambas guardas, helper
+ausente o incompatible emite `ARNES:<script> delivery-profile-helper-ausente|incompatible`/99 sin
+traceback; un carrier inválido emite `GUARD:`/1 y nunca `ESTADO:`.

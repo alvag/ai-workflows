@@ -689,8 +689,8 @@ Más allá del spec, estas skills usan patrones consistentes que hay que respeta
 
 ## El ecosistema de skills
 
-- **`sdd-flow`** — SDD de un solo repo, punta a punta: `constitution → gather-context → specify → clarify → create-branch → plan → tasks → implement → verify`, con gates escalados por complejidad (trivial/normal/complejo). Es la skill más grande y el hub del que dependen las demás.
-- **`sdd-orchestrator`** — SDD multi-repo: un objetivo que cruza 2+ repos bajo una carpeta contenedora; arma spec madre, reparte un sub-plan por repo y delega cada uno a `sdd-flow`.
+- **`sdd-flow`** — SDD de un solo repo, punta a punta: `constitution → gather-context → specify → clarify → create-branch → plan → tasks → implement → verify`. `standard` conserva los gates por complejidad; `expedited` solo admite `trivial`/`normal` con riesgo `low` y fusiona ceremonia, no calidad ni autorizaciones. Con Jira en `"on"`, mantiene la aprobación local y externa de la spec antes del gate conjunto de plan y tasks.
+- **`sdd-orchestrator`** — SDD multi-repo para un objetivo que cruza 2+ repos. Evalúa perfil y riesgo globales mediante el helper de `sdd-flow`, aplica `expedited` solo all-or-nothing, materializa el reparto completo antes de su gate atómico y delega cada plan a `sdd-flow`; una divergencia falla cerrado sin bloquear repos independientes.
 - **`sdd-pr-feedback`** — procesa comentarios de review de PRs de **Bitbucket** (MCP `bb_*`).
 - **`co-explore`** — exploración paralela cross-model (read-only). Modos: `explore`, `counter-plan`, `investigate`, `debate`. La invocan `sdd-flow`/`sdd-orchestrator` cuando `co_explore` está activo; `investigate`/`debate` son standalone.
 - **`cross-review`** — segunda opinión adversarial sobre **artefactos de diseño** (spec/plan/tasks), no sobre código. Modo `draft` cuando hay idea pero no artefacto.

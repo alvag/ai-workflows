@@ -33,6 +33,7 @@ class Firma:
     archivo: Path
     posicionales: Tuple[str, ...]
     aridad: int
+    variadica: bool
     cwd: str
     efectos: str
     limpieza: str
@@ -62,7 +63,8 @@ def _leer_firmas() -> Tuple[Firma, ...]:
         celdas = [celda.strip() for celda in linea[1:-1].split("|")]
         if len(celdas) != 9:
             raise ValueError("fila de firma con cardinalidad inválida")
-        aridad = int(celdas[3])
+        variadica = celdas[3].endswith("+")
+        aridad = int(celdas[3].rstrip("+"))
         posicionales = tuple(re.findall(r"\d+\. `([^`]+)`", celdas[2]))
         if len(posicionales) != aridad:
             raise ValueError("posicionales y aridad divergen para " + celdas[0])
@@ -74,6 +76,7 @@ def _leer_firmas() -> Tuple[Firma, ...]:
             archivo=RAIZ / _sin_codigo(celdas[1]),
             posicionales=posicionales,
             aridad=aridad,
+            variadica=variadica,
             cwd=celdas[4],
             efectos=celdas[5],
             limpieza=celdas[7],
@@ -134,8 +137,9 @@ def _preparar_mutacion(firma: Firma, arena: Path) -> Tuple[Path, List[str]]:
         # El plan lleva su cadena de contrato porque a este gate no se llega sin ella: el script
         # congela la version vigente y el `hash` que ella declara, y sin cadena no hay que congelar.
         (cwd / "plan.md").write_text(
-            "---\nstatus: planned\ncomplexity: normal\n"
-            "contract_procedure: measured-v1\n---\ncontenido\n"
+            "--- \nstatus : planned\ncomplexity: normal\n"
+            "contract_procedure: measured-v1\n--- \ncontenido\n"
+            "contract_frozen_hash: body-sentinel\n"
             # El hash es el **canónico** del bloque, no un relleno: el script valida la cadena antes
             # de congelar, así que un valor inventado bloquea. El fixture anterior usaba sesenta y
             # cuatro `a` y la promoción lo congelaba, que era justo el defecto.
@@ -196,6 +200,9 @@ def _comprobar_mutacion_correcta(firma: Firma, arena: Path,
         # calculo de cobertura da 3 y la receta de huellas no arranca en ningun flujo real.
         assert "contract_frozen_version: 1\n" in plan
         assert "contract_frozen_hash: bd3a154d6c9e3149aa6797ce77c5ceb975c0295a3a2eacc0f257b6b28021b7d8\n" in plan
+        assert "contract_frozen_hash: body-sentinel\n" in plan
+        assert "no encontró una clave status reescribible en el header" in \
+            firma.archivo.read_text(encoding=ENCODING)
         assert not tuple(arena.glob(".plan.md.promocion.*"))
     elif firma.nombre == "split":
         assert (arena / "index.md").read_text(encoding=ENCODING) == "| A | uno |\n"
@@ -308,7 +315,8 @@ def _ejercer_firma(firma: Firma) -> None:
         "worktree" in firma.limpieza
 
     argumentos = _argumentos_genericos(firma)
-    for cantidad in (firma.aridad - 1, firma.aridad + 1):
+    cantidades = (firma.aridad - 1,) if firma.variadica else (firma.aridad - 1, firma.aridad + 1)
+    for cantidad in cantidades:
         with tempfile.TemporaryDirectory(prefix="firma-v6-aridad-") as temporal:
             cwd = Path(temporal)
             (cwd / "sentinel.txt").write_text("intacto\n", encoding=ENCODING)

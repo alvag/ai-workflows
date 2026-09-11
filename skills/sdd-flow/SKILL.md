@@ -77,7 +77,7 @@ init (opcional) → constitution → gather-context → co-explore (opcional, pa
                                                                                               ├─► clarify (condicional)
                                                                                               ▼
        publish-spec (Jira, opcional) ──► create-branch → analyze → plan ──► tasks ──► implement ──► verify
-   (gates escalados por complejidad: trivial=1, normal=2, complejo=3 + clarify obligatorio)
+   (base standard escalada por complejidad: trivial=1, normal=2, complejo=3; el router puede fusionar gates)
    (publish-spec: gate externo opcional — aprobación del TL/PO en Jira; solo con jira_approval on)
    (init y constitution son setup checkpoints opcionales, no gates SDD)
    (co-explore: exploración paralela cross-model opcional — ver "Co-exploración cross-model")
@@ -99,7 +99,7 @@ Artefactos en disco:
    │  ├─ plan.md            # header YAML (incluye status + branch) + CÓMO + resultado de verify
    │  ├─ tasks.md           # tareas atómicas [ ], cada una referencia AC-n
    │  ├─ bitacora.md        # constancia append-only de los pasos del contrato
-   │  ├─ handoff.md         # retomado del flujo: dónde quedó + decisiones + cómo sigue (pause / gate Jira)
+   │  ├─ handoff.md         # siempre en `create-branch`; también al pausar o entrar al gate de Jira
    │  └─ jira-spec.md       # copia exacta de lo publicado en Jira (solo con el gate de aprobación)
    └─ archived/             # flujos cerrados (status: done), movidos solo tras tu confirmación
       └─ <id>/              # misma estructura, ya terminada
@@ -111,8 +111,8 @@ Como `.plans/` y `.specify/` son **locales (untracked)**, git no los mueve al ca
 
 ## Reglas no negociables
 
-1. **La spec manda.** No se escribe `plan.md` sin un `spec.md` aprobado (salvo cambio *trivial*, ver "Clasificador de complejidad"). No se implementa sin tasks aprobadas. La verificación final chequea contra los criterios de aceptación de la spec.
-2. **Gates escalados, nunca silenciosos.** El número de gates depende de la complejidad clasificada, pero el agente **siempre** anuncia qué clasificación eligió y por qué, y espera confirmación en cada gate activo. No colapsar gates sin avisar.
+1. **La spec manda.** No se escribe `plan.md` sin un `spec.md` aprobado, salvo el cambio *trivial* y la excepción explícita `normal + expedited + jira_approval: "off"` del router de perfil, donde la spec estable se aprueba atómicamente con plan y tasks. No se implementa sin tasks aprobadas. La verificación final chequea contra los criterios de aceptación de la spec.
+2. **Gates escalados, nunca silenciosos.** La complejidad fija la base `standard`; el número efectivo también depende de `delivery_profile` y `jira_approval` según el router. El agente **siempre** anuncia la clasificación, el perfil y qué gates quedan activos, con su justificación, y espera confirmación en cada uno. No fusionar gates sin avisar.
 3. **No tocar código hasta aprobar las tasks** (en `tasks.md`, o embebidas en el plan combinado en cambios *triviales*). La skill se detiene en cada gate y solo continúa con aprobación explícita ("aprobado", "dale", "sigue", o equivalente).
 4. **Trazabilidad obligatoria.** Cada criterio de aceptación lleva id `AC-n`. Cada task referencia ≥1 `AC-n`. Antes de implementar se valida que no haya AC huérfanos (sin task) ni tasks sin AC.
 5. **Adaptación por descubrimiento, no por suposición.** Detectar stack, comandos de test/build, host de Git, tracker y rama base. Nunca hardcodear comandos ni nombres. Si algo no se puede inferir y no está en `config.yml`, preguntar una vez (y ofrecer persistirlo).
@@ -231,7 +231,7 @@ lee la selección y no se vuelve a preguntar.
 
 Antes de cualquier paso operativo, descubrir el entorno **una vez** por sesión y resumirlo al usuario. Orden de resolución para cada parámetro: `config.yml` → autodetección → preguntar.
 
-**Checkpoint de inicio (no salteable).** El **primer** acto operativo de toda corrida es leer `.specify/config.yml` si existe y **devolverle al usuario en una línea los valores resueltos** de al menos `tracker`, el inventario `cross_model.families`, `cross_review.mode`, `co_explore.mode`, `co_explore.debate`, `domain_context.mode`, `final_diff_review.mode` y `jira_approval.mode`, **con qué implican**. Ej.: *"config: tracker jira · families [claude] → inventario declarado y validado · cross_review on · co_explore on → exploración paralela antes de la spec · co_explore.debate auto → ofrezco debate en decisiones complejas de clarify/plan · domain_context auto → leer ADRs si existen · final_diff_review auto → revisión agregada en complex inline · jira_approval on → publico la spec en Jira tras aprobarla localmente"*. Ese eco es la prueba de que el config se leyó: sin él, es fácil aplicar los defaults (`cross_review` por complejidad, `domain_context: auto`, `final_diff_review: auto`, `jira_approval: off`) y perder cross-review, contexto de dominio, revisión final y `publish-spec` en silencio (ver red-flag "Arranco el flujo sin leer el config").
+**Checkpoint de inicio (no salteable).** El **primer** acto operativo de toda corrida es leer `.specify/config.yml` si existe y **devolverle al usuario en una línea los valores resueltos** de al menos `tracker`, el inventario `cross_model.families`, `cross_review.mode`, `co_explore.mode`, `co_explore.debate`, `domain_context.mode`, `final_diff_review.mode` y `jira_approval.mode`, **con qué implican**. Ej.: *"config: tracker jira · families [claude] → inventario declarado y validado · cross_review on · co_explore on → exploración paralela antes de la spec · co_explore.debate auto → ofrezco debate en decisiones complejas de clarify/plan · domain_context auto → leer ADRs si existen · final_diff_review auto → revisión agregada en complex o risk high | unknown inline · jira_approval on → publico la spec en Jira tras aprobarla localmente"*. Ese eco es la prueba de que el config se leyó: sin él, es fácil aplicar los defaults (`cross_review` por complejidad, `domain_context: auto`, `final_diff_review: auto`, `jira_approval: off`) y perder cross-review, contexto de dominio, revisión final y `publish-spec` en silencio (ver red-flag "Arranco el flujo sin leer el config").
 
 Si existe `.specify/config.yml`, leerlo primero. Esquema (todos los campos opcionales):
 
@@ -251,7 +251,7 @@ cross_review: {mode: auto, execution: auto}  # segunda opinión cross-model en l
 co_explore: {mode: auto, deadline: 600, debate: {mode: auto, max_rounds: 3}}  # exploración paralela + modo debate (decisiones); ver "Co-exploración cross-model"
 domain_context: {mode: auto, context_paths: [], adr_paths: []}  # lectura de contexto/ADRs; ver "Contexto de dominio"
 vault_archive: {mode: auto}  # rescatar el flujo al vault al archivarlo ("auto"|"on"|"off"); el disparador es esta clave, no que la skill esté instalada
-final_diff_review: {mode: auto}  # revisión agregada de diff en cambios complex/high-risk inline
+final_diff_review: {mode: auto}  # revisión agregada en complex o risk high | unknown inline
 jira_approval: {mode: "off"}  # aprobación externa de la spec en Jira ("off"|"on", entre comillas: sin ellas YAML los parsea como booleanos; solo si tracker: jira); ver paso `publish-spec`
 implement_mode: ask         # cómo ejecutar las tasks: ask (preguntar en el gate) | inline | cross | workers
 cross_implement: {execution: auto, max_fix_rounds: 2, deadline: 1800}  # política de los modos cross y workers (solo si implement_mode es uno de esos dos); la familia del implementador la fija el conductor (sin `implementer:`); ver paso `implement` y skill cross-implement
@@ -289,13 +289,13 @@ decisión nueva, pedir un flujo aparte o confirmación explícita.
 
 ## Clasificador de complejidad (escalado de gates)
 
-Tras `gather-context`, clasificar el cambio, **anunciar la clasificación con su justificación** y dejar que el usuario la ajuste. La clasificación define cuántos gates y artefactos:
+Tras `gather-context`, clasificar el cambio, **anunciar la clasificación con su justificación** y dejar que el usuario la ajuste. La clasificación fija la base `standard`; el perfil y Jira determinan el conteo efectivo:
 
-| Nivel | Señales típicas | Artefactos / gates | Clarify |
-|---|---|---|---|
-| **Trivial** | 1 archivo, sin lógica nueva (typo, copy, bump de versión, config simple). | Spec mínima embebida en `plan.md` + tasks inline. **1 gate**. | Se saltea. |
-| **Normal** | Pocos archivos / un módulo, lógica conocida, requisitos claros. | `spec.md` + `plan.md` + `tasks.md` separado (las tasks se aprueban **en el gate del `plan`**, sin STOP extra). **2 gates**. | Solo si hay ambigüedad. |
-| **Complejo** | Varios módulos/subsistemas, lógica nueva, integraciones, o ambigüedad real en requisitos. | `spec.md` + `plan.md` + `tasks.md` separados, con **gate de `tasks` propio**. **3 gates** + cross-artifact check. | **Obligatorio**. |
+| Nivel | Señales típicas | `standard` | `expedited` + Jira off | `expedited` + Jira on | Clarify |
+|---|---|---|---|---|---|
+| **Trivial** | 1 archivo, sin lógica nueva (typo, copy, bump de versión, config simple). | Spec mínima embebida en `plan.md` + tasks inline. **1 gate**. | El mismo plan combinado. **1 gate**; no reduce ceremonia. | No aplica: Jira exige reclasificar explícitamente a normal. | Se saltea. |
+| **Normal** | Pocos archivos / un módulo, lógica conocida, requisitos claros. | `spec.md` + `plan.md` + `tasks.md` separado (las tasks se aprueban **en el gate del `plan`**, sin STOP extra). **2 gates**. | Spec, plan y tasks en un gate atómico. **1 gate**. | Spec local y plan+tasks. **2 gates locales** más publicación y espera externa. | Solo si hay ambigüedad. |
+| **Complejo** | Varios módulos/subsistemas, lógica nueva, integraciones, o ambigüedad real en requisitos. | `spec.md` + `plan.md` + `tasks.md` separados, con **gate de `tasks` propio**. **3 gates** + cross-artifact check. | Inelegible: restaura `standard` con 3 gates. | Inelegible: restaura `standard` con 3 gates. | **Obligatorio**. |
 
 En la duda, subir un nivel: es más barato un gate de más que retrabajo.
 
@@ -306,7 +306,77 @@ En la duda, subir un nivel: es más barato un gate de más que retrabajo.
 > clasificación: "normal por tamaño, complex por dominio (auth)". (No aplica a cambios puramente
 > cosméticos en esos archivos: un typo en la UI de login sigue siendo trivial.)
 
-> **Gates vs checkpoints.** El contador (trivial=1 / normal=2 / complejo=3) cuenta solo los **gates de artefactos SDD** (`specify`, `plan`, `tasks`): los puntos donde el flujo se detiene a aprobar un artefacto. **No** son gates de complejidad: los **checkpoints informativos** (confirmar el contexto en `gather-context`, confirmar el nombre de rama y **la elección de rama** en `create-branch`), los **setup checkpoints** de `init` y `constitution`, ni los **gates operativos** que existen siempre (revisión manual, commit, push).
+> **Gates vs checkpoints.** El contador base `standard` (trivial=1 / normal=2 / complejo=3)
+> cuenta solo los **gates de artefactos SDD** (`specify`, `plan`, `tasks`): los puntos donde el
+> flujo se detiene a aprobar un artefacto. El router calcula después el conteo efectivo: normal +
+> `expedited` + `jira_approval: "off"` lo reduce de 2 a 1; con Jira `"on"` conserva 2 gates locales
+> y agrega publicación y espera externa, que no entran en ese contador. Tampoco cuentan los
+> **checkpoints informativos** (confirmar el contexto en `gather-context`, confirmar el nombre de
+> rama y **la elección de rama** en `create-branch`), los **setup checkpoints** de `init` y
+> `constitution`, ni los **gates operativos** que existen siempre (revisión manual, commit, push).
+
+### Router del perfil de entrega
+
+La política completa y sus matrices viven en `delivery-profile.md`; este bloque solo decide dónde
+ramificar el flujo. `delivery_profile` y `risk` son un par indivisible. Ausencia dual en un carrier
+heredado significa `standard`; cualquier presencia parcial, enum desconocido o combinación expedita
+inelegible falla cerrado.
+
+<!-- delivery-profile-assessment:start -->
+En `gather-context`, todo cambio recibe una evaluación separada de `urgency`, `complexity` y `risk`,
+con evidencia, procedencia y confianza. La recomendación y la elección humana ocurren dentro del
+checkpoint de contexto. Luego `analyze` reevalúa siempre complejidad y riesgo con evidencia del
+código; el plan persiste el riesgo post-análisis. Una señal de urgencia recomienda, pero no clasifica
+riesgo ni activa el perfil por sí sola.
+<!-- delivery-profile-assessment:end -->
+
+<!-- delivery-profile-preset:start -->
+Con `expedited` efectivo, resolver antes de los defaults por complejidad: explore `"on"`, debate
+`auto`, counter-plan `"off"`, cross-review `"on"` e implementación `inline`. Solo overrides
+concretos `"on"`/`"off"` y `implement_mode: ask` prevalecen. Las ramas `cross_family` y
+`same_family` sostienen el perfil; esta última declara diversidad reducida. `single_voice` o
+`FALLO_DE_MAPA` lo revocan. Para cross-review, leer la ruta retornada de `review-log.md` y confirmar
+en su ledger al menos una ronda completada: `UNAVAILABLE` antes de esa ronda revoca el perfil.
+Un override raíz `co_explore.mode: "off"` o `cross_review.mode: "off"` desactiva la capa elegida y
+revoca `expedited` a `standard`; no cuenta como override raíz la supresión por-repo heredada de
+`sdd-orchestrator` después de completar esas capas sobre la master-spec y el reparto.
+<!-- delivery-profile-preset:end -->
+
+<!-- delivery-profile-router:start -->
+- `standard`: aplicar sin cambios los gates por complejidad de la tabla superior.
+<!-- trivial-delivery-profile:start -->
+- `trivial + risk: low`: conservar el plan combinado y un único `→ GATE`; recomendar `standard`
+  porque `expedited` no reduce gates. Si Jira es obligatorio, ofrecer reclasificar a normal; nunca
+  inferirlo. Una elección explícita de `expedited` conserva explore y cross-review.
+<!-- trivial-delivery-profile:end -->
+<!-- normal-expedited-jira-off:start -->
+- `normal + expedited + jira_approval: "off"`: estabilizar y revisar spec; decidir rama; ejecutar
+  analyze; crear plan y tasks; revisar plan con tasks como contexto; presentar spec + plan + tasks
+  en un único `→ GATE` atómico. No promover estado ni congelar contrato antes de la aprobación.
+<!-- normal-expedited-jira-off:end -->
+<!-- normal-expedited-jira-on:start -->
+- `normal + expedited + jira_approval: "on"`: revisar spec y presentarla en `→ GATE` local;
+  publicar con autorización y esperar la aprobación externa de Jira; solo después crear plan y tasks,
+  revisar plan con tasks como contexto y presentarlos en un único `→ GATE`. No promete reducción.
+<!-- normal-expedited-jira-on:end -->
+- `complex`, o cualquier `risk: high | unknown`: hacer efectivo `standard`. Toda revocación conserva
+  rama/base y restaura el gate upstream pendiente; nunca repite `create-branch`.
+<!-- delivery-profile-router:end -->
+
+<!-- delivery-profile-review:start -->
+Cada corrida conserva su tanda finita: spec y plan son corridas distintas, con tasks como contexto
+del plan. `APPROVED` o `UNAVAILABLE` tras al menos una ronda completada y sin aplicaciones pendientes
+habilitan dependientes. `REVISE`, aplicaciones pendientes o `UNAVAILABLE` sin rondas revocan
+`expedited`, abren el checkpoint estándar y reutilizan la misma revisión. Solo una decisión humana
+puede conceder otra tanda finita o seguir hasta `APPROVED` con tope propio.
+<!-- delivery-profile-review:end -->
+
+<!-- delivery-profile-quality:start -->
+El perfil nunca recorta antecedentes, análisis causal, AC, pruebas, evidencia, revisión del diff,
+reversión ni autorizaciones. En inline, `final_diff_review.mode: auto` se activa también para
+`risk: high | unknown`, además de `complexity: complex`. Ningún perfil autoriza por sí solo rama,
+commit, push, PR, merge o escritura externa.
+<!-- delivery-profile-quality:end -->
 
 ## Revisión cross-model (segunda opinión, opcional)
 
@@ -316,12 +386,17 @@ el autor** (Codex cuando conduce Claude; Claude cuando conduce Codex) que
 critica el artefacto en read-only antes de mostrártelo. **Augmenta el gate, no lo reemplaza:** la
 crítica se presenta *junto* al artefacto en el mismo STOP; tú sigues siendo el árbitro final.
 
-- **Dependencia blanda.** Esta capacidad es opcional: si `cross-review` **no está instalada**,
-  omitir la revisión y seguir con el gate humano normal. sdd-flow funciona igual sin ella (no es
-  como un MCP de tracker: es un extra de calidad). Detectarla por capacidad, igual que el resto.
+- **Dependencia blanda.** Esta capacidad es opcional para el flujo `standard`: si `cross-review`
+  **no está instalada**, omitir la revisión y seguir con el gate humano normal. Si el perfil efectivo
+  es `expedited` y no existe una ronda completada, avisar, revocarlo a `standard`, conservar rama/base
+  y restaurar el gate upstream pendiente antes de continuar. Detectarla por capacidad, igual que el
+  resto.
 - **Cuándo se activa** (precedencia: override de la corrida > `cross_review` de `config.yml` >
   default por complejidad): default `trivial` off, `normal` opt-in (off salvo pedido), `complex`
   on. En *normal* el gate combina plan+tasks: se revisan juntos en ese único STOP.
+- **Override `off`.** Un override raíz `cross_review.mode: "off"` desactiva la capa. Con perfil
+  `expedited`, revocarlo a `standard` antes del siguiente gate; con `standard`, solo omitir la
+  revisión. La supresión por-repo heredada del orquestador queda cubierta upstream y no reclasifica.
 - **Cómo invocarla.** Con el **Skill tool** (`cross-review`; esa skill sí es invocable por el
   modelo). Pasarle `artifact_type`, `artifact_path`, los `context_paths` relevantes (al revisar
   `tasks`, también `spec`+`plan`; sumar los paths resueltos de `domain_context` y, con
@@ -335,9 +410,12 @@ crítica se presenta *junto* al artefacto en el mismo STOP; tú sigues siendo el
   está disponible), si la skill
   está instalada pero la invocación falla (p. ej. error del Skill tool), si falla en
   runtime, si vence el timeout/`poll_deadline` de la revisión (la skill garantiza un tope duro: ver
-  `cross-review/reference.md` → "Latencia y timeout (Claude revisor)"), o si `cross_review.mode: off` → avisar en una línea ("revisión
-  cross-model no disponible — sigo con el gate humano") y continuar con el gate normal. Es la misma
-  filosofía de la regla #6. **Si el retorno trae `aplicaciones_pendientes` mayor que cero, declararlo
+  `cross-review/reference.md` → "Latencia y timeout (Claude revisor)") → avisar en una línea ("revisión
+  cross-model no disponible — sigo con el gate humano"). Con perfil `standard`, continuar con el gate
+  normal. Si el perfil efectivo es `expedited`, aplicar la tabla de `delivery-profile.md`: sin una
+  ronda completada, o con aplicaciones pendientes, revocarlo a `standard`; con al menos una ronda y
+  cero pendientes, conservarlo y declarar la limitación. **Si el retorno trae
+  `aplicaciones_pendientes` mayor que cero, declararlo
   con sus `ids_pendientes` antes de liberar el gate:** una degradación no abre checkpoint, así que
   esta es la única oportunidad de decir que quedaron ediciones que ningún revisor observó, y
   aprobarlas sin saberlo es el mismo hueco que la revisión venía a cerrar.
@@ -413,20 +491,32 @@ salen a la luz temprano (en los hallazgos), antes de que las decisiones de la sp
 tomadas. Es **ortogonal** a `cross_review.mode`: esta capacidad gobierna la exploración paralela
 y el contra-enfoque; `cross_review.mode` gobierna las críticas en los gates de artefactos.
 
-- **Dependencia blanda.** Igual que `cross-review`: si `co-explore` **no está instalada**,
-  se omite y el flujo sigue con la exploración de siempre del conductor.
+- **Dependencia blanda.** Igual que `cross-review`, es opcional para `standard`: si `co-explore`
+  **no está instalada**, se omite y el flujo sigue con la exploración de siempre del conductor. Si el
+  perfil efectivo es `expedited`, la ausencia impide completar el preset: avisar, revocarlo a
+  `standard`, conservar rama/base y seguir con la exploración normal.
 - **Cuándo se activa** (precedencia: override de la corrida > `co_explore` de
   `config.yml` > default por complejidad): default `trivial` nunca, `normal` opt-in (off salvo
   pedido), `complex` on.
+- **Override `off`.** Un override raíz `co_explore.mode: "off"` desactiva la capa. Con perfil
+  `expedited`, revocarlo a `standard` antes de escribir la spec; con `standard`, continuar con la
+  exploración del conductor. La supresión por-repo heredada del orquestador queda cubierta upstream
+  y no reclasifica.
 
 **Los dos momentos.** `explore` se despacha tras `gather-context`, antes de escribir la spec;
 `counter-plan`, con la spec aprobada y antes de escribir el plan. Cuando `co_explore` resuelve a
 activo, el detalle de los dos —paquete de contexto, despacho, arbitraje, síntesis y checkpoint—
 está en `co-exploracion.md` → "Los dos momentos".
+
+Un override concreto `counter-plan: "on"` prevalece también cuando el perfil efectivo era
+`expedited`: antes del gate de spec hay que revocar `expedited` a `standard`, registrar el motivo y
+restaurar la secuencia estándar; después de ese gate, con la spec aprobada, ejecutar `counter-plan`.
+No se ejecuta contra una spec candidata ni se agrega un gate a la ruta expedita.
 - **Degradación (nunca bloquea).** La escalera de `co-explore` tiene cuatro ramas y el envelope
   dice cuál se alcanzó; en las degradadas el conductor explora y **se declara** qué diversidad
   quedó. Skill no instalada, `outcome: map_failure`, o los dos workers caídos → avisar en una línea
-  y seguir el flujo normal. Misma filosofía de la regla #6.
+  y seguir el flujo normal. Si el perfil efectivo es `expedited`, `single_voice` o `FALLO_DE_MAPA`
+  obligan a revocarlo a `standard`; `same_family` conserva el perfil y declara diversidad reducida.
 
 ### Debate en decisiones (`clarify` y `plan`)
 
@@ -541,7 +631,7 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
      las rutas vigentes desde `reference.md` → "Matriz de defaults y delta de inicialización". Un
      archivo existente y válido se conserva sin sobrescribirlo.
 7. **STOP** — escribirlos **solo tras confirmación**. Son locales y untracked (regla #10): nunca se trackean, comitean ni se agregan a un `.gitignore` compartido.
-8. **Cierre — apuntar al resto.** Al confirmar, decir en una línea que el config admite **35 claves**, que el wizard solo preguntó lo que la skill no puede saber, y que el resto vive en `config-ejemplo.md`, listo para copiar por bloques con cada valor marcado `[def]`, `[ej]` u `[obl]`; sin este cierre, reducir el wizard convierte "no te lo pregunto" en "no existe": las seis preguntas que salieron —`commit_style`, `implement_mode`, `cross_review`, `domain_context`, `final_diff_review` y `debate`— tienen que quedar descubribles.
+8. **Cierre — apuntar al resto.** Al confirmar, decir en una línea que el config admite **37 claves**, que el wizard solo preguntó lo que la skill no puede saber, y que el resto vive en `config-ejemplo.md`, listo para copiar por bloques con cada valor marcado `[def]`, `[ej]` u `[obl]`; sin este cierre, reducir el wizard convierte "no te lo pregunto" en "no existe": las seis preguntas que salieron —`commit_style`, `implement_mode`, `cross_review`, `domain_context`, `final_diff_review` y `debate`— tienen que quedar descubribles.
 9. **Re-corrida:** si `config.yml` y `constitution.md` ya existían, no pisar a ciegas — el wizard mostró los valores vigentes pre-seleccionados; al confirmar, **fusionar** los cambios respetando lo que el usuario mantuvo. Si `workers.yml` ya existía y es válido, **no se pisa**. Si prefiere no fijar config, puede saltar `init`: el ciclo sigue con autodetección + defaults conversacionales (ver `constitution`).
 
 ## Paso `constitution`
@@ -585,7 +675,11 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
 
    - **Dos de las celdas ausentes cambian lo que el flujo hace**, y por eso se nombran acá: un hallazgo **total y recuperable sin conflictos** *obliga* a reformular —no lo ofrece—, y uno **recuperable con costo** va al **checkpoint con el número de conflictos declarado**, sin recortar por su cuenta. No son las únicas que faltan: ante **cualquier** celda que no sea una de las cuatro de arriba, manda la matriz. Por eso las dos primeras filas llevan su vigencia escrita —una celda `no vigente` vale como contexto histórico y **nunca** como recorte, así que sin ese calificador la fila de cobertura parcial se leería como si cubriera también ese caso.
    - **El resultado entra en el checkpoint del paso 6**, que ya existe: no se abre un stop nuevo ni se agrega un gate. Quien confirma el contexto lo hace con los hallazgos a la vista.
-6. **Clasificar complejidad** (sección de arriba), anunciarla con justificación y confirmar el contexto en 5-8 bullets antes de avanzar. El resumen del paso 5 —qué se buscó, qué fuentes quedaron sin comprobar y con qué impacto en el alcance— se presenta en este mismo checkpoint.
+6. **Evaluar la entrega y clasificar complejidad** (router de arriba y `delivery-profile.md`): registrar
+   urgency, complexity y riesgo provisional con evidencia, procedencia y confianza; anunciar
+   clasificación, recomendación y efectos exactos del perfil. La elección humana ocurre dentro de
+   este mismo checkpoint de 5-8 bullets. El resumen del paso 5 —qué se buscó, qué fuentes quedaron
+   sin comprobar y con qué impacto en el alcance— se presenta aquí.
    - **Y acá se congelan las cláusulas del pedido**, en el **checkpoint** que ya existe y **sin abrir un stop nuevo**: se muestra el **conjunto exacto** de cláusulas provisionales —o su **delta** contra lo confirmado antes, cuando el flujo ya venía congelado— y la confirmación del usuario anexa el evento que las fija. Una línea del literal con `medio: referencia` **bloquea el congelamiento** hasta que el usuario acepte esa limitación acá; el ciclo completo está en `reference.md` → "El paquete del pedido".
 
 ## Paso `specify` → GATE
@@ -604,12 +698,12 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
      <!-- invoca: pedido-referencias -->
      - **Y en la misma puerta, el hash de cada criterio contra su texto.** `pedido-referencias` compara el hash del objetivo de un evento contra el `hash_criterio` de la traza, que son **dos copias del mismo metadato**: coinciden entre sí sin que ninguna corresponda a un texto. Quien las ata al criterio real es este bloque.
        <!-- invoca: pedido-criterio -->
-     **Qué hace el gate con cada código, en un solo enunciado y sin excepciones sueltas después.** Un `1` de cualquiera de los tres —y un `2` o un `3` de los dos primeros, que son POSIX puros y solo fallan por invocación o por sede ilegible— **impide presentar el gate**: se informa la violación y se corrige el registro antes de volver a ofrecerlo. El **único** código que no lo impide es el `3` de `pedido-criterio`, que significa que no hay `sha256sum` ni `shasum` o que la herramienta falló: se informa que los hashes de los criterios quedaron **sin comprobar** y el gate sigue su curso, porque bloquearlo por una herramienta ausente vuelve inalcanzable en ese host el único gate del paso. Ese `3` no es un verde y tampoco es un veredicto — es la ausencia de una comprobación, declarada. Y como los tres se corren *antes de presentar*, un gate **reabierto** —el caso de una corrección del usuario, que anexa línea al literal y cláusula nueva— los vuelve a correr sobre lo anexado: reabrir es volver a presentar.
+     **Qué hace el gate con cada código, en un solo enunciado y sin excepciones sueltas después.** Un `1` de cualquiera de los tres —y un `2` o un `3` de los dos primeros, que son POSIX puros y solo fallan por invocación o por sede ilegible— **impide presentar el gate o continuar hacia el gate atómico expedito**: se informa la violación y se corrige el registro antes de volver a ofrecerlo. El **único** código que no lo impide es el `3` de `pedido-criterio`, que significa que no hay `sha256sum` ni `shasum` o que la herramienta falló: se informa que los hashes de los criterios quedaron **sin comprobar** y el gate sigue su curso, porque bloquearlo por una herramienta ausente vuelve inalcanzable en ese host el único gate del paso. Ese `3` no es un verde y tampoco es un veredicto — es la ausencia de una comprobación, declarada. Y como los tres se corren *antes de presentar o continuar*, un gate **reabierto** —el caso de una corrección del usuario, que anexa línea al literal y cláusula nueva— los vuelve a correr sobre lo anexado: reabrir es volver a presentar.
    - **En la rama trivial la sede de los criterios es `plan.md`, no `spec.md`.** `pedido-referencias` y `pedido-criterio` reciben la sede donde viven los `AC-n`, y en trivial esa sede es el bloque `## Spec` embebido en el plan. Pasarle un `spec.md` que en trivial no existe le hace devolver `3` —no se puede leer— y, con la regla de arriba, **el gate único de trivial quedaría inalcanzable**: una guarda que impide presentar el único gate del flujo que dice gobernar.
    - **La aprobación del gate no convierte por sí sola una propuesta en ampliación del pedido.** Aprobar la spec es aprobar el artefacto tal como está, no autorizar hacia atrás lo que la vara no admitió: una ampliación necesita su confirmación explícita, su línea nueva en el literal y su cláusula, en ese orden y antes de la edición. Sin esta cláusula, una aprobación general se lee como autorización de todo lo que haya quedado dentro del artefacto — que es exactamente el mecanismo por el que el alcance crece sin que nadie lo haya decidido.
 5. **STOP** — si la **revisión cross-model** está activa para `spec` (ver "Revisión cross-model"), ejecutar `cross-review` sobre `spec.md` antes de presentar (sumar `domain_context` resuelto y, con co-exploración, los **índices + la síntesis** de `explore` — nunca los `detail-*` — ver `co-exploracion.md` → "Crítica informada"). **Sumar además la proyección del pedido**, que es lo que hace viajar la autoridad al revisor:
    <!-- proyeccion: pedido/proyeccion-clausulas.md -->
-   Se pasa **esa ruta**, regenerada desde la partición vigente **antes de invocar**, y **no** se pasa el directorio `pedido/`: esa skill inlinea el contenido de lo que recibe en `context_paths`, así que pasar el directorio metería el texto crudo del usuario en un prompt que sale hacia el CLI de la otra familia. Qué recibe y qué nunca recibe cada consumidor lo fija `reference.md` → "La matriz de proyección del pedido". Presentar la spec (con el resumen de crítica, si lo hubo) y pedir aprobación. No avanzar sin ella. Si el usuario corrige, actualizar y volver a ofrecer.
+   Se pasa **esa ruta**, regenerada desde la partición vigente **antes de invocar**, y **no** se pasa el directorio `pedido/`: esa skill inlinea el contenido de lo que recibe en `context_paths`, así que pasar el directorio metería el texto crudo del usuario en un prompt que sale hacia el CLI de la otra familia. Qué recibe y qué nunca recibe cada consumidor lo fija `reference.md` → "La matriz de proyección del pedido". En `normal + expedited + jira_approval: "off"`, una spec estable no abre STOP aquí: después de superar las guardas del paso 4b y la revisión, continúa por el router al gate atómico final. En las demás rutas, **STOP**, presentar la spec con el resumen de crítica y pedir aprobación. No avanzar sin ella. Si el usuario corrige, actualizar y volver a ofrecer.
 
 ## Paso `clarify` (condicional)
 
@@ -640,13 +734,22 @@ Obligatorio en cambios *complejos*; en *normales* solo si hay ambigüedad; se sa
 
 ## Paso `create-branch`
 
-**Objetivo:** dejar el flujo parado en la rama correcta —creándola desde la base resuelta, reutilizando la rama actual o renombrándola— con la nomenclatura acordada. Se ejecuta una vez aprobado el **qué** (tras `specify`/`clarify`); en cambios *triviales* —sin spec separada— se hace al inicio, antes de `plan`.
+**Objetivo:** dejar el flujo parado en la rama correcta —creándola desde la base resuelta,
+reutilizando la rama actual o renombrándola— con la nomenclatura acordada. Por defecto se ejecuta una
+vez aprobado el **qué** (tras `specify`/`clarify`). La excepción es `normal + expedited +
+jira_approval: "off"`: se ejecuta con la spec estable, antes del gate atómico de spec+plan+tasks, sin
+atribuirle aprobación. Con Jira `"on"` conserva el orden posterior al gate local y a la aprobación
+externa. En cambios *triviales* —sin spec separada— se hace al inicio, antes de `plan`.
 
 1. Verificar que no haya **cambios en archivos versionados** pendientes: `git status --porcelain -- ':(exclude).plans' ':(exclude).specify'`. Los artefactos locales del flujo (`.plans/`, `.specify/`) y los generados que el repo ya ignora **no cuentan**: "limpio" significa sin código sin commitear, no sin estos artefactos (que `specify`/`constitution` pudieron crear antes). Si hay cambios de código, detener y avisar.
 2. **Resolver y normalizar la rama base — sin mover el HEAD todavía.** Precedencia de la `base_branch` efectiva: (a) **override de base de la corrida** si el usuario lo indicó (ver router → "override de base"; p. ej. una feature dependiente que corta desde otra rama en QA/revisión, no desde la base habitual) → (b) `default_branch` del `config.yml` → (c) rama base **detectada** (`git symbolic-ref refs/remotes/origin/HEAD`). El override **no** toca el `config.yml`: vale solo para esta corrida. La detección suele devolver `origin/<rama>` (un ref remoto): quitarle el prefijo `origin/` para obtener la **rama local** (`origin/main` → `main`) y `git fetch origin`. **Posicionarse en ella todavía no**: eso movería el HEAD antes de que haya decisión, y se hace en el paso 5 sólo si la salida elegida lo pide. Si la rama base no existe local ni remotamente, detener y avisar (no inventar una base). Nunca hacer `git checkout origin/<rama>` (deja *detached HEAD*) ni asumir `main`/`master`. Registrar la `base_branch` resuelta para el header del `plan.md` y el snapshot del `handoff.md`.
 3. **Determinar el prefijo efectivo** (`{type}`) y **construir el nombre**. Prefijo, primer valor presente: (a) **override de la corrida** si el usuario lo indicó (ver router → "prefijo de rama"); (b) **`branch_prefix`** del `config.yml`; (c) **prefijo semántico** derivado del tipo de issue/contexto (mapeo en `reference.md` → "Mapeo tipo de cambio → prefijo"; para features es **siempre `feature`, nunca `feat`** — `feat` es solo para commits/`change_type`; ante la duda, preguntar), normalizado sin la barra final (`feature/` y `feature` dan lo mismo, porque el `/` ya está en `branch_format`); si `branch_format` fue customizado sin `{type}`, `branch_prefix`/override no aplican. Nombre con `branch_format` (default `{type}/{ticket}-{slug}`): `{ticket}` = clave del tracker (si no hay, se omite **junto con su separador**: `fix/cart-null-guard`, nunca `fix/-cart-null-guard`); `{slug}` = 2-5 palabras del título en kebab, sin acentos, `[a-z0-9-]`. Ejemplos: `feature/ABC-123-export-csv`, `fix/cart-null-guard` (sin ticket); con `branch_prefix: feature/` fijo, hasta un fix queda `feature/PROJ-9-null-cart`.
 4. **Clasificar el HEAD y decidir.** Comparar `git rev-parse --abbrev-ref HEAD` contra la `base_branch` normalizada. Si **coinciden**, mostrar el nombre propuesto y pedir confirmación —aceptando correcciones o un nombre exacto del usuario—, como siempre. Si **no** coinciden, el paso **se detiene y presenta la elección**: seguir en la rama actual, rama nueva desde la base, rama nueva cortada desde la actual, y renombrar la actual cuando es sólo local. Sus precondiciones, las tablas que fijan la recomendación y el aviso, la reparación posterior al rename y los estados **detached** y **sin commits** —donde el paso para con diagnóstico en vez de ofrecer salidas— están en `reference.md` → "Elección de rama". Con **override de base** de la corrida, **no se pregunta**: el usuario ya eligió y un override explícito no se re-consulta.
 5. **Ejecutar la salida elegida, y recién ahí mover el HEAD.** Seguir en la rama actual **no mueve el HEAD** ni ejecuta comando alguno: `branch` = la rama actual, `base_commit` = `git rev-parse HEAD`, y `base_branch` sigue siendo la base resuelta (el destino del PR, que se anuncia junto con la elección). Para una rama nueva, posicionarse primero en la base (`git checkout <rama-local>` + `git pull --ff-only origin <rama-local>`; con override de base, la rama X puede ser **puramente local o estar adelantada del remoto**, así que el pull va **solo si X tiene upstream** —`git rev-parse --abbrev-ref --symbolic-full-name @{u}` no falla— y si no, se corta desde el HEAD local de X) y después `git checkout -b <branch>`. **El `checkout -b` no es incondicional:** si el nombre ya existe, detener mostrando el nombre y reofrecer las mismas salidas; nunca `checkout` sin `-b` a una rama ajena, nunca un sufijo inventado. Guardar `branch` y `base_branch` para el header del `plan.md` y los pasos siguientes.
+6. **Persistir el snapshot pre-plan.** Inmediatamente después de resolver la rama, escribir o
+   actualizar `handoff.md` con `delivery_profile`, `risk`, `complexity`, `change_type`, rama/base y
+   `spec_approved_at`: timestamp de aprobación local en normal/complex, `null` si sigue pendiente, y
+   siempre `null` en trivial. Esta escritura ocurre aunque la ejecución continúe.
 
 ## Paso `analyze`
 
@@ -657,6 +760,9 @@ Obligatorio en cambios *complejos*; en *normales* solo si hay ambigüedad; se sa
   vigentes y marcar conflictos como incógnitas; no escribir ni actualizar esos documentos.
 - **Si es bug:** seguir un método de debugging sistemático (hipótesis → prueba → refutar). Si hay una skill de debugging sistemático disponible, usarla. Si es reproducible en navegador y hay tool de navegador, capturar consola/network; si no, pedir captura/pasos. El mismo método aplica si un test o un AC falla durante `implement`/`verify` (ver `implement`, pasos 3-4).
 - **Si es feature/refactor:** mapear archivos/módulos/utilidades existentes a reutilizar. Preferir reúso sobre código nuevo.
+- **Reevaluar el perfil:** para todo perfil, actualizar complexity y risk con la evidencia del código.
+  Si `expedited` deja de ser elegible, revocarlo antes de generar dependientes, conservar rama/base y
+  volver al gate standard aplicable. El plan recibe este valor post-análisis.
 - Localizar el código con búsqueda en el repo (subagentes de exploración si el entorno los soporta y el alcance lo amerita; si no, `grep`/`ripgrep`/`find` locales). **Con co-exploración nominal esto no se hace**: el terreno ya está mapeado y `analyze` solo comprueba vigencia sobre el HEAD (ver `co-exploracion.md` → "Efecto en `analyze`").
 
 **Output:** hipótesis (bug) o lista de puntos de reúso (feature) con referencias `path:line`.
@@ -679,6 +785,8 @@ Obligatorio en cambios *complejos*; en *normales* solo si hay ambigüedad; se sa
    # base_branch: feature/ABC-100-otra  # solo si se cortó de una rama distinta a default_branch (override de base); destino del PR
    change_type: feat        # feat | fix | refactor | chore | docs | test | perf (vocabulario de commits: acá sí feat)
    complexity: complex      # trivial | normal | complex
+   delivery_profile: standard  # standard | expedited; par indivisible con risk
+   risk: low                   # low | high | unknown; valor post-análisis
    status: planned          # ver "Ciclo de status" abajo
    # sequence_contract_version: 1  # se agrega al iniciar implement, antes de crear el ledger
    # implement_mode: workers        # solo en `workers`: el modo lógico, que el ledger proyecta a `blocks`
@@ -689,7 +797,17 @@ Obligatorio en cambios *complejos*; en *normales* solo si hay ambigüedad; se sa
    ```
 
    Al crear el `plan.md`, escribir `status: planned`.
-4. **STOP** — si la **revisión cross-model** está activa (ver "Revisión cross-model"), ejecutar `cross-review` sobre `plan.md` con `spec` + `domain_context` resuelto como contexto (con co-exploración: sumar los **índices + la síntesis** de `explore` y de `counter-plan` — nunca los `detail-*` — ver `co-exploracion.md` → "Crítica informada") antes de presentar (en *normal*, sobre plan + tasks juntos). En *trivial* y *normal*, antes de presentar este STOP, ejecutar el "Procedimiento previo al último gate". Presentar el plan (con el resumen de crítica, si lo hubo) y pedir aprobación. En *trivial* este es el último gate antes de implementar (tasks inline en `## Tasks`). En *normal*, **antes del STOP se ejecuta el paso `tasks`** (se escribe `tasks.md`) y este gate presenta **plan + tasks juntos** (un solo STOP, sin gate extra). En *complejo*, el plan se aprueba acá y el gate de `tasks` es independiente y posterior (ver paso `tasks`). En *trivial* y *normal* este es el último gate aplicable: al aprobarlo, pasar `status` a `tasks-ready`. En *complejo* todavía falta el gate de `tasks`: al aprobar el plan, pasar `status` a `plan-approved`. Si este es el **último gate antes de implementar** (*normal*) y el modo de implementación resuelto es `ask`, incluir en el **mismo STOP** la pregunta del modo: ¿implemento acá (inline), delego a la otra familia y yo reviso el diff (`cross`), o delego a la familia del conductor con su perfil por rol (`workers`)? Las dos delegaciones se ofrecen solo si su capacidad está disponible (ver `implement` → "Modo de ejecución"; sin gate extra; en *trivial* no se pregunta: default `inline`, y `workers` ni siquiera se ofrece).
+4. **Resolver primero el router del perfil.** Lo que sigue describe `standard`; para normal expedito
+   el router superior decide si este STOP presenta spec+plan+tasks (Jira `"off"`) o plan+tasks tras
+   la espera externa (Jira `"on"`). Si la **revisión cross-model** está activa (ver "Revisión
+   cross-model"), ejecutar `cross-review` sobre `plan.md` con `spec` + `domain_context` resuelto como
+   contexto (con co-exploración: sumar índices + síntesis; en normal, tasks como contexto) antes de
+   presentar. En *trivial* y *normal*, antes de este STOP ejecutar el "Procedimiento previo al último
+   gate". En *trivial* este es el único gate. En *normal standard*, antes del STOP se escribe
+   `tasks.md` y se presenta plan + tasks. En *complejo*, el plan se aprueba aquí y tasks tiene gate
+   propio. Al aprobar el último gate, pasar a `tasks-ready`; en complejo, este gate solo pasa a
+   `plan-approved`. Si el modo resuelto es `ask`, incluir la pregunta de implementación dentro del
+   último STOP, sin gate extra.
 
 ### Procedimiento previo al último gate
 
@@ -750,9 +868,11 @@ Antes de que exista `plan.md` (fase `specify`/`clarify`, o el gate de Jira), no 
 
 Documento de **retomado** del flujo —"dónde quedé, qué decidí y cómo sigo"— en `.plans/<id>/handoff.md` (frontmatter + narrativa): todo el estado del flujo queda junto en `.plans/<id>/` —donde `resume` ya escanea—, sin partirlo en carpetas aparte ni acoplar `sdd-flow` a otra skill. Es local y untracked como el resto (regla #10).
 
-**Se escribe/actualiza en dos situaciones:**
+**Se escribe/actualiza en tres situaciones:**
 - **Sub-paso `pause`** — al dejar un flujo a medias para seguir después o en otra sesión (cualquier fase, no solo `implement`).
 - **Paso `publish-spec`** — el gate de aprobación en Jira es una pausa esperando a un tercero; agrega los campos del gate (ver su paso).
+- **Paso `create-branch`** — inmediatamente después de resolver la rama, aunque la ejecución siga;
+  persiste el perfil, el riesgo y `spec_approved_at` para que rama nunca implique aprobación.
 
 **Estructura:** frontmatter YAML con los campos máquina + cuerpo narrativo legible. Plantilla completa en `reference.md` → "Plantilla de `handoff.md`".
 
@@ -761,10 +881,13 @@ Documento de **retomado** del flujo —"dónde quedé, qué decidí y cómo sigo
 phase: awaiting-jira-approval   # gather-context | specify | clarify | awaiting-jira-approval | implementing | ...
 # snapshot de gather-context (presente mientras NO exista plan.md):
 complexity: normal              # trivial | normal | complex
+delivery_profile: standard      # standard | expedited; hermana de risk
+risk: low                       # low | high | unknown
 change_type: feat               # feat | fix | refactor | ...
 branch_prefix: feature          # el {type} ya resuelto
 slug: export-csv
 base_branch: master             # rama base resuelta (con override de base, la rama de la que se corta)
+spec_approved_at: null          # timestamp de aprobación local o null; trivial siempre null
 overrides: { branch_prefix: null, base_branch: null, cross_review: null, implement_mode: null, jira_approval: null }
 # puntero al ledger de la búsqueda (solo en una pausa durante `gather-context`):
 # antecedentes: .plans/<id>/antecedentes.md   # PUNTERO, no copia: términos, fuentes y fingerprints viven solo ahí
@@ -818,7 +941,12 @@ Punto de entrada cuando vuelves a un flujo ya empezado — en una sesión nueva,
      - **Recomputar los fingerprints** —los que declare `reference.md` → "Búsqueda de antecedentes", que es su única sede: enumerarlos acá crea una segunda que se desincroniza— y compararlos con los persistidos. Se re-corre **solo la unión** de las filas que indique la matriz de invalidación de `reference.md` → "Búsqueda de antecedentes"; las fuentes ya terminadas que ningún fingerprint invalidó **no se vuelven a correr**.
      - **Un parcial no es un resultado.** Con fuentes pendientes, el estado se completa antes de clasificar: leerlo como "no había nada" es el mismo error que la búsqueda viene a evitar.
    - Si tiene **`gate_status: awaiting`** (o `changes-requested`) → el flujo está en el **gate de Jira**; ir a "Gate de Jira (esperando aprobación externa)" abajo.
-   - Si no (pausa común en `specify`/`clarify`, con `spec.md` ya escrita) → chequear si ya existe una rama del flujo (`git branch --list "*<id>*"`): si existe, la spec ya fue aprobada y `create-branch` ya corrió → confirmarlo con el usuario, posicionarse en esa rama (checkout seguro, como abajo) y retomar en `plan` (así `base_commit` se toma del HEAD correcto, no de la rama en la que estés posicionado). Si no hay rama, retomar desde `specify`/`clarify`, sin navegación de rama.
+   - Si no (pausa común en `specify`/`clarify`, con `spec.md` ya escrita), usar
+     `spec_approved_at`, nunca la mera existencia de rama. Timestamp → posicionarse con checkout
+     seguro y continuar después del gate local; `null` explícito → volver al gate sin preguntar;
+     clave ausente en un flujo heredado con spec y rama → preguntar una sola vez y persistir
+     timestamp o `null`. Sin rama, retomar desde `specify`/`clarify`. Aplicar el bloque
+     `delivery-profile-resume` de `reference.md` para perfil, Jira y gate pendiente.
 
 ### Navegar a la rama correcta (checkout seguro)
 3. Parsear el header del `plan.md` elegido: `id`, `branch`, `base_commit`, `complexity`, `status` (y `wip_commit` si está).
@@ -870,7 +998,7 @@ adquiere ownership mientras decide qué estado observa.
 
    | `status` | Dónde retoma |
    |---|---|
-   | `planned` | el plan no está aprobado → **gate del plan**, sea cual sea la complejidad |
+   | `planned` | gate pendiente según `delivery_profile.md`: plan estándar; gate atómico spec+plan+tasks en normal expedito Jira `"off"`; plan+tasks en normal expedito Jira `"on"` |
    | `plan-approved` | plan aprobado, tasks no (solo *complejo*) → **gate de `tasks`** |
    | `tasks-ready` | `implement` (Paso común) |
    | `implementing` | `implement`, continuando desde la primera task `[ ]` (y el WIP, si hay `wip_commit`) |
@@ -1053,7 +1181,7 @@ autoriza despachos por bloques ni convierte la capacidad `cross` en un error.
    Los pasos 3-10 de abajo (tests+build completos, `verify` de AC, revisión manual, staging, commit, push, PR opcional) los ejecuta **siempre el conductor en esta sesión**, en todos los modos: los STOPs no funcionan dentro de un subagente ni de un implementador delegado.
 3. **Tests + build** con los comandos detectados/configurados (+ `lint_cmd` si está configurado). Acotar tests al código tocado si el runner lo permite (`test_scope_hint`). **Un fallo que ya estaba en `base_commit` no es un fallo de este flujo**, y confundirlos traba el paso: en modo `cross` el bloque se acepta por "no empeoró" contra su base, así que un linter que venía rojo cruza la aceptación y llegaría acá a bloquear por algo que el flujo no causó. Ante un fallo, primero comprobarlo sobre `base_commit` —el mismo comando, en un worktree detached que se descarta— y **solo el fallo nuevo bloquea**. Esa comparación exige dos condiciones, y sin ellas clasifica al revés justo en el caso peligroso. **Una: el comando tiene que ser aplicable en la base.** Si viene acotado por `test_scope_hint` a un archivo que este flujo creó, en `base_commit` ese archivo **no existe** y el runner sale distinto de cero por "no tests found" o por un error de carga — no porque el test fallara. Leerlo como "ya fallaba" deja pasar hasta el commit un test nuevo genuinamente en rojo. Cuando el alcance incluye rutas que no existen en `base_commit`, se compara con el comando **sin acotar**, o el fallo se trata como **nuevo**. **Dos: tiene que fallar por la misma causa.** Un exit code distinto de cero no distingue "el mismo fallo" de "otro fallo" ni de "el comando no llegó a correr": lo que se compara es el fallo concreto —el test que falla, la regla del linter, el error del build—, no el código de salida. El preexistente no se arregla de callado ni se declara como `E-n`: `## Extras` es para **cambios** que entran al commit, y un fallo que ya estaba no es un cambio de este flujo. Va al reporte final (paso 10), nombrando el comando y la evidencia de que ya fallaba en `base_commit`. Si es nuevo: **no commitear**; antes de parchar, aplicar **debugging sistemático** — formular **una** hipótesis ("creo que la causa raíz es X porque Y") y probarla mínimamente, en vez de prueba y error (skill de debugging sistemático si está disponible, o el método inline; ver `analyze` y `reference.md` → "Matriz de detección por capacidad"). Mostrar el error + la hipótesis, aplicar el fix y volver al paso 2. **Tope: 3 fixes fallidos de la misma falla = problema de diseño** — parar y volver a `plan`/`specify`, no intentar un fix #4.
 4. **`verify` de los AC** (ver paso `verify`): recorrer `AC-1..N` con la gate function y marcar cumplido/no cumplido con evidencia fresca. Si alguno falla: **no commitear**, reportar y volver al paso 2 (con el mismo debugging sistemático del paso 3; mismo tope de 3 intentos), o a `plan`/`specify` si el gap es de diseño. Solo se commitea con **todos los AC en verde**; cuando lo estén, `verify` persiste el resultado y deja `status: verified`. Verificar antes del commit evita commits/push que después no cumplen lo pedido.
-5. **Gate de revisión manual (STOP):** con tests+build OK y AC verificados, ofrecer revisar (levantar la app, `git diff`, repasar la sección Verification del plan) antes de commitear. Salteable con "commitea directo". Si `final_diff_review.mode` está `on`, o está `auto` y el flujo es `complex`/high-risk ejecutado `inline`, ofrecer en este mismo gate una revisión agregada del diff completo contra spec + estándares del repo: usar un reviewer fresco por capacidad (contrato completo —qué recibe, los ejes **SPEC** y **QUALITY**, y su formato de salida— en `reference.md` → "Revisión final de diff") o, sin esa capacidad, revisión liviana del conductor. Es una revisión de diff **same-model/de capacidad**, no conformance cross-model; el gate cross-model pre-commit sigue diferido salvo dolor concreto.
+5. **Gate de revisión manual (STOP):** con tests+build OK y AC verificados, ofrecer revisar (levantar la app, `git diff`, repasar la sección Verification del plan) antes de commitear. Salteable con "commitea directo". Si `final_diff_review.mode` está `on`, o está `auto` y el flujo se ejecuta `inline` y es `complex` o tiene `risk: high | unknown`, ofrecer en este mismo gate una revisión agregada del diff completo contra spec + estándares del repo: usar un reviewer fresco por capacidad (contrato completo —qué recibe, los ejes **SPEC** y **QUALITY**, y su formato de salida— en `reference.md` → "Revisión final de diff") o, sin esa capacidad, revisión liviana del conductor. Es una revisión de diff **same-model/de capacidad**, no conformance cross-model; el gate cross-model pre-commit sigue diferido salvo dolor concreto.
 6. **Clasificar el working tree antes de stagear.** `git status --porcelain` y repartir cada ruta dirty:
    - **SDD local** (`.plans/`, `.specify/`) y **generados**: **nunca** se stagean ni cuentan como "código sin commitear". **La autoridad de qué es generado es el ignore del repo, y es la única**: una ruta que el ignore no excluye **no** es generada para este paso, por más que su nombre lo sugiera. Se decide con `git check-ignore`, no por inspección del nombre.
      - **Si el repo no tiene ignore versionado**, el conjunto de generados es **vacío**: todo lo dirty que no sea SDD local se trata como **código** y entra a la clasificación de abajo —o sea, se lista como ajeno y se pregunta—. No se infiere por tipo ni por nombre. Es más ruidoso y es deliberado: inferir "esto parece un cache" es lo que hacía que dos corridas del mismo paso sobre el mismo árbol clasificaran distinto la misma ruta. Si el ruido molesta, la salida es que el usuario cree su ignore; la skill no lo toca (regla 10).

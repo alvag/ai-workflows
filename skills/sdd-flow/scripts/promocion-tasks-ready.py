@@ -13,27 +13,40 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+try:
+    import delivery_profile as _delivery_profile
+except ImportError:
+    _delivery_profile = None
+    _DELIVERY_PROFILE_FAILURE = "ausente"
+except Exception:
+    _delivery_profile = None
+    _DELIVERY_PROFILE_FAILURE = "incompatible"
+else:
+    _REQUIRED_DELIVERY_SYMBOLS = (
+        "parse_plan_frontmatter", "read_plan_frontmatter", "resolve_delivery_pair",
+        "DeliveryProfileError",
+    )
+    if (getattr(_delivery_profile, "DELIVERY_PROFILE_CONTRACT_VERSION", None) != 1
+            or not all(hasattr(_delivery_profile, symbol)
+                       for symbol in _REQUIRED_DELIVERY_SYMBOLS)):
+        _DELIVERY_PROFILE_FAILURE = "incompatible"
+    else:
+        _DELIVERY_PROFILE_FAILURE = ""
+
 
 def fallo(mensaje: str, codigo: int) -> int:
     print(f"GUARD:promocion-tasks-ready {mensaje}", file=sys.stderr)
     return codigo
 
 
-def leer_header(texto: str) -> Tuple[bool, Dict[str, List[str]]]:
-    lineas = texto.splitlines()
-    if not lineas or lineas[0].rstrip("\r") != "---":
-        return False, {}
-    campos: Dict[str, List[str]] = {"status": [], "complexity": [], "contract_procedure": []}
-    for linea in lineas[1:]:
-        linea = linea.rstrip("\r")
-        if linea == "---":
-            return True, campos
-        for clave in campos:
-            match = re.match(rf"^{clave}:\s*(.*?)\s*$", linea)
-            if match:
-                campos[clave].append(match.group(1))
-                break
-    return False, campos
+def leer_header(texto: str) -> Dict[str, List[str]]:
+    parsed = _delivery_profile.parse_plan_frontmatter(texto)
+    campos: Dict[str, List[str]] = {
+        clave: list(parsed.fields.get(clave, ()))
+        for clave in ("status", "complexity", "delivery_profile", "risk", "contract_procedure",
+                      "contract_frozen_version", "contract_frozen_hash")
+    }
+    return campos
 
 
 def timestamp_valido(valor: str) -> bool:
@@ -141,6 +154,10 @@ def main() -> int:
             return fallo(f"el {etiqueta} no existe: {valor}", 2)
         if not os.access(ruta, os.R_OK):
             return fallo(f"el {etiqueta} no es legible: {valor}", 2)
+    if _DELIVERY_PROFILE_FAILURE:
+        print("ARNES:promocion-tasks-ready "
+              f"delivery-profile-helper-{_DELIVERY_PROFILE_FAILURE}", file=sys.stderr)
+        return 99
     try:
         # newline="" preserves the plan's original LF/CRLF representation.
         with open(plan_arg, encoding="utf-8", newline="") as archivo:
@@ -150,9 +167,10 @@ def main() -> int:
     except (OSError, UnicodeError):
         return fallo("el frontmatter del plan no se pudo leer", 2)
 
-    delimitado, campos = leer_header(plan)
-    if not delimitado:
-        return fallo("el frontmatter del plan está mal delimitado", 2)
+    try:
+        campos = leer_header(plan)
+    except _delivery_profile.DeliveryProfileError as error:
+        return fallo(error.code, 1 if error.code == "expedited-inelegible" else 2)
     status = campos["status"][0] if campos["status"] else ""
     complexity = campos["complexity"][0] if campos["complexity"] else ""
     marker = campos["contract_procedure"][0] if campos["contract_procedure"] else ""
@@ -168,6 +186,10 @@ def main() -> int:
         return fallo("la clave status está duplicada", 2)
     if len(campos["complexity"]) != 1:
         return fallo("la clave complexity está duplicada", 2)
+    try:
+        _delivery_profile.resolve_delivery_pair(campos, complexity)
+    except _delivery_profile.DeliveryProfileError as error:
+        return fallo(error.code, 1 if error.code == "expedited-inelegible" else 2)
     if len(campos["contract_procedure"]) > 1:
         return fallo("la clave contract_procedure está duplicada", 2)
     if len(campos["contract_procedure"]) != 1:
@@ -205,9 +227,9 @@ def main() -> int:
     for indice, linea in enumerate(lineas):
         contenido = linea.rstrip("\r\n")
         fin = linea[len(contenido) :]
-        if indice == 0 and contenido == "---":
+        if indice == 0 and contenido.strip() == "---":
             dentro = True
-        elif dentro and contenido == "---":
+        elif dentro and contenido.strip() == "---":
             # Las dos claves congeladas se emiten al cerrar el header si no estaban; si estaban, ya
             # se reescribieron en su lugar y el orden del header no se altera.
             faltantes = [(k, v) for k, v in (("contract_frozen_version", str(version_congelada)),
@@ -216,7 +238,7 @@ def main() -> int:
             for clave, valor in faltantes:
                 salida.append(f"{clave}: {valor}\n")
             dentro = False
-        elif dentro and not cambiado and re.match(r"^status:\s*", contenido):
+        elif dentro and not cambiado and re.match(r"^status\s*:\s*", contenido):
             contenido = "status: tasks-ready"
             cambiado = True
         elif dentro and re.match(r"^contract_frozen_version:\s*", contenido):
@@ -227,7 +249,7 @@ def main() -> int:
             escritas.add("contract_frozen_hash")
         salida.append(contenido + fin)
     if not cambiado:
-        return fallo("falló la escritura del temporal hermano del plan", 2)
+        return fallo("no encontró una clave status reescribible en el header", 2)
 
     ruta = Path(plan_arg)
     fd = -1
@@ -249,12 +271,16 @@ def main() -> int:
         Path(temporal).unlink(missing_ok=True)
         return fallo("falló la escritura del temporal hermano del plan", 2)
     candidato = "".join(salida)
-    delimitado, nuevos = leer_header(candidato)
+    try:
+        nuevos = leer_header(candidato)
+    except _delivery_profile.DeliveryProfileError:
+        nuevos = {}
     consistente = (
-        delimitado
-        and nuevos["status"] == ["tasks-ready"]
+        nuevos.get("status") == ["tasks-ready"]
         and nuevos["complexity"] == [complexity]
         and nuevos["contract_procedure"] == ["measured-v1"]
+        and nuevos["contract_frozen_version"] == [str(version_congelada)]
+        and nuevos["contract_frozen_hash"] == [hash_congelado]
     )
     if not consistente:
         Path(temporal).unlink(missing_ok=True)
