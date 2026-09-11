@@ -1,9 +1,9 @@
-"""Predicado: el estado de la orquestación cierra contra su bitácora: ninguna tarea pasa a `done` sin
-dueño real, con un `depends_on` abierto o con evidencia que no sea fresca y de su propia fila;
-ningún repo se despacha con su gate abierto ni con el baseline de su fila local en `BLOCKED`, ni se
-queda sin promover con el gate ya cerrado; cada evento lleva sus seis campos, un `resultado` del
-enum y un `id` único y comparable, y solo un resultado consumado materializa su transición; y la
-precedencia produce un único estado agregado que nunca oculta el más grave.
+"""Predicado: valida primero el perfil, assessment, fold y carriers de los planes recibidos; después
+el estado de la orquestación cierra contra su bitácora: ninguna tarea pasa a `done` sin dueño real,
+con un `depends_on` abierto o evidencia fresca de su propia fila; ningún repo se despacha con su gate
+abierto o baseline local en `BLOCKED`, ni queda sin promover con el gate cerrado; cada evento lleva
+seis campos, un `resultado` del enum y un `id` único y comparable; solo un resultado consumado
+materializa su transición; y la precedencia nunca oculta el estado agregado más grave.
 Un solo diagnóstico por corrida: gana el primero del orden de abajo, que es el de la fábrica."""
 
 from __future__ import annotations
@@ -14,7 +14,8 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-from _yaml import parsear_valor_yaml
+from _yaml import (AssessmentError, DeliveryDependency, delivery_modulo, parsear_perfil_manifest,
+                   parsear_valor_yaml, plegar_riesgo, validar_assessment)
 
 
 def escalar(valor: str) -> str:
@@ -45,11 +46,14 @@ def parsear_master(texto: str) -> Dict[str, str]:
     return anclas
 
 
-def parsear_manifest(texto: str) -> Tuple[str, List[Dict[str, str]], List[Dict[str, object]]]:
+def parsear_manifest(
+        texto: str,
+) -> Tuple[str, List[Dict[str, str]], List[Dict[str, object]], Dict[str, object]]:
     outcome = ""
     repos: List[Dict[str, str]] = []
     tasks: List[Dict[str, object]] = []
     seccion = ""
+    repo: Optional[Dict[str, str]] = None
     task: Optional[Dict[str, object]] = None
     campo = ""
     id_col = -1
@@ -69,13 +73,15 @@ def parsear_manifest(texto: str) -> Tuple[str, List[Dict[str, str]], List[Dict[s
                     outcome = escalar(match.group(1))
             continue
         if seccion == "repos":
-            match = re.match(r"^\s*-\s*path:\s*(.*)$", linea)
-            if match:
-                repos.append({"path": escalar(match.group(1)), "status": ""})
-                continue
-            match = re.match(r"^\s*status:\s*(.*)$", linea)
-            if match and repos:
-                repos[-1]["status"] = escalar(match.group(1))
+            item = re.match(r"^\s{2}-\s*(.*)$", linea)
+            if item:
+                repo = {"path": "", "status": ""}
+                repos.append(repo)
+                match = re.fullmatch(r"([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*)", item.group(1))
+            else:
+                match = re.match(r"^\s{4}([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*)$", linea)
+            if match and repo is not None and match.group(1) in {"path", "status"}:
+                repo[match.group(1)] = escalar(match.group(2))
             continue
         if seccion != "tasks":
             continue
@@ -116,7 +122,7 @@ def parsear_manifest(texto: str) -> Tuple[str, List[Dict[str, str]], List[Dict[s
             mapa = not valor.strip()
         elif campo in {"depends_on", "blocks_repos"}:
             task[campo] = lista(valor)
-    return outcome, repos, tasks
+    return outcome, repos, tasks, parsear_perfil_manifest(texto)
 
 
 def parsear_contrato(texto: str) -> List[Tuple[int, List[List[str]]]]:
@@ -153,32 +159,131 @@ def parsear_eventos(texto: str) -> List[Dict[str, str]]:
     return eventos
 
 
-def parsear_plan(path: Path) -> Tuple[str, str, str, bool]:
-    texto = path.read_text(encoding="utf-8")
-    repo = status = sha = ""
-    frontmatter = 0
+def parsear_plan(path: Path, helper) -> Tuple[str, str, str, bool, str, object]:
+    parsed = helper.read_plan_frontmatter(path)
+    fields = parsed.fields
+    repo_values = fields.get("repo", ())
+    status_values = fields.get("status", ())
+    sha_values = fields.get("head_sha", ())
+    complexity_values = fields.get("complexity", ())
+    if len(repo_values) > 1:
+        raise helper.DeliveryProfileError("clave-duplicada", f"{path} repite repo")
+    repo = repo_values[0] if repo_values else ""
+    status = status_values[-1] if status_values else ""
+    sha = sha_values[-1] if sha_values else ""
+    if len(complexity_values) > 1:
+        raise helper.DeliveryProfileError("clave-duplicada", f"{path} repite complexity")
+    complexity = complexity_values[0] if complexity_values else ""
+    pair = helper.resolve_delivery_pair(fields, complexity)
     blocked = False
-    for linea in texto.splitlines():
-        if re.fullmatch(r"---\s*", linea):
-            frontmatter += 1
-            continue
-        if frontmatter == 1:
-            for nombre in ("repo", "status", "head_sha"):
-                match = re.match(rf"^{nombre}:\s*(.*)$", linea)
-                if match:
-                    if nombre == "repo":
-                        repo = match.group(1).strip()
-                    elif nombre == "status":
-                        status = match.group(1).strip()
-                    else:
-                        sha = match.group(1).strip()
-            continue
+    for linea in parsed.body_lines:
         limpia = linea.strip()
         if limpia.startswith("|") and limpia.endswith("|"):
             celdas = [celda.strip() for celda in limpia[1:-1].split("|")]
             if celdas and celdas[-1] == "BLOCKED":
                 blocked = True
-    return repo, status, sha, blocked
+    return repo, status, sha, blocked, complexity, pair
+
+
+def validar_perfil(profile: Dict[str, object], planes: List[Tuple[str, str, str, bool, str, object]],
+                    helper, plan_paths: List[Path]) -> Optional[Tuple[str, str, Optional[Path]]]:
+    root = profile["root"]
+    assessment = profile["assessment"]
+    assessment_sections = profile["assessment_sections"]
+    assessment_invalid = profile["assessment_invalid"]
+    manifest_repos = profile["repos"]
+    repos_sections = profile["repos_sections"]
+    repos_invalid = profile["repos_invalid"]
+    root_present = bool(root["delivery_profile"] or root["risk"])
+    repo_present = any(repo["complexity"] or repo["risk"] for repo in manifest_repos)
+    plan_present = any(not plan[5].legacy for plan in planes)
+    if not (root_present or assessment_sections or repo_present or plan_present
+            or repos_sections > 1):
+        return None
+
+    if repos_sections > 1:
+        return "clave-duplicada", "el manifest repite repos", None
+    if assessment_sections > 1:
+        return "clave-duplicada", "el manifest repite delivery_assessment", None
+    for key in ("delivery_profile", "risk"):
+        if len(root[key]) > 1:
+            return "clave-duplicada", f"el manifest repite {key}", None
+    if repos_invalid:
+        return ("repos-forma-invalida",
+                "repos y sus filas deben usar lista en bloque con sangría 2/4 y listas inline", None)
+    if assessment_invalid:
+        return ("assessment-forma-invalida",
+                "delivery_assessment debe expresarse como lista en bloque con sangría 2/4", None)
+    try:
+        pair = helper.resolve_delivery_pair(root, None)
+    except helper.DeliveryProfileError as error:
+        return error.code, error.message, None
+    if pair.legacy:
+        return "carrier-mixto", "el manifest no materializa el par pero otro carrier sí", None
+    if planes and any(plan[5].legacy for plan in planes):
+        source = next(path for path, plan in zip(plan_paths, planes) if plan[5].legacy)
+        return "carrier-mixto", "no todos los planes materializan el par", source
+
+    if any(repo["duplicates"] for repo in manifest_repos):
+        return "clave-duplicada", "una entrada de repos repite path", None
+    repo_paths = [str(repo["path"]) for repo in manifest_repos]
+    if len(repo_paths) != len(set(repo_paths)):
+        return "repo-duplicado", "repos contiene paths duplicados", None
+    plan_repos = [plan[0] for plan in planes]
+    if len(plan_repos) != len(set(plan_repos)):
+        duplicate_index = next(index for index, repo in enumerate(plan_repos)
+                               if repo in plan_repos[:index])
+        return ("plan-repo-duplicado", "varios planes declaran el mismo repo",
+                plan_paths[duplicate_index])
+    try:
+        scopes = validar_assessment(assessment)
+    except AssessmentError as error:
+        return error.code, error.message, None
+    expected_scopes = {"global", "integration"} | {f"repo:{path}" for path in repo_paths}
+    if set(scopes) != expected_scopes:
+        return ("assessment-scopes-divergen",
+                f"esperado={sorted(expected_scopes)} actual={sorted(scopes)}", None)
+
+    folded = plegar_riesgo(scopes, repo_paths)
+    if scopes["global"]["risk"] != folded or pair.risk != folded:
+        return ("risk-fold-diverge",
+                f"fold={folded}, global={scopes['global']['risk']}, manifest={pair.risk}", None)
+
+    repos_by_path = {str(repo["path"]): repo for repo in manifest_repos}
+    plans_by_repo = {plan[0]: plan for plan in planes}
+    plan_sources = {plan[0]: path for path, plan in zip(plan_paths, planes)}
+    if not set(plans_by_repo) <= set(repos_by_path):
+        repo = next(path for path in plans_by_repo if path not in repos_by_path)
+        return ("carrier-mixto", "un plan no corresponde a ningún repo del manifest",
+                plan_sources[repo])
+    for path, repo in repos_by_path.items():
+        if len(repo["complexity"]) != 1 or len(repo["risk"]) != 1:
+            return ("carrier-mixto",
+                    f"repo {path} no materializa complexity y risk exactamente una vez", None)
+        row = scopes[f"repo:{path}"]
+        if repo["complexity"][0] != row["complexity"]:
+            return ("complexity-assessment-manifest-plan-diverge",
+                    f"assessment y manifest divergen para {path}", None)
+        if repo["risk"][0] != row["risk"]:
+            return ("risk-assessment-manifest-diverge",
+                    f"assessment y manifest divergen para {path}", None)
+        plan = plans_by_repo.get(path)
+        if plan is None:
+            continue
+        if plan[4] != row["complexity"]:
+            return ("complexity-assessment-manifest-plan-diverge",
+                    f"assessment={row['complexity']}, plan={plan[4]} para {path}",
+                    plan_sources[path])
+        if plan[5].profile != pair.profile or plan[5].risk != pair.risk:
+            return ("perfil-manifest-plan-diverge",
+                    f"el par del plan {path} difiere del manifest", plan_sources[path])
+
+    eligible = (folded == "low" and scopes["integration"]["risk"] == "low"
+                and all(scopes[f"repo:{path}"]["complexity"] in {"trivial", "normal"}
+                        and scopes[f"repo:{path}"]["risk"] == "low" for path in repo_paths))
+    if pair.profile == "expedited" and not eligible:
+        return "expedited-inelegible", "el fold o algún repo impide el perfil expedito", None
+    return None
 
 
 def duenia(requisito: str, identificador: str) -> bool:
@@ -205,11 +310,14 @@ def verde(status: str) -> bool:
 
 
 def main() -> int:
-    if len(sys.argv) != 6:
+    if len(sys.argv) < 5:
         print("ARNES:orchestration-state argumentos invalidos", file=sys.stderr)
         return 99
     manifest_path, master_path, contrato_path, bitacora_path = map(Path, sys.argv[1:5])
-    planes = [Path(item) for item in sys.argv[5].split()]
+    if any(not item.strip() for item in sys.argv[5:]):
+        print("ARNES:orchestration-state repo_plans vacio", file=sys.stderr)
+        return 99
+    planes = [Path(item) for item in sys.argv[5:]]
     for path in (manifest_path, master_path, contrato_path):
         if not path.is_file():
             print(f"ARNES:no existe el artefacto {path}", file=sys.stderr)
@@ -218,15 +326,39 @@ def main() -> int:
         if not plan.is_file():
             print(f"ARNES:no existe el plan {plan}", file=sys.stderr)
             return 99
+    try:
+        helper = delivery_modulo()
+    except DeliveryDependency as error:
+        print(f"ARNES:orchestration-state delivery-profile-helper-{error.kind}", file=sys.stderr)
+        return 99
     master = master_path.read_text(encoding="utf-8")
     manifest = manifest_path.read_text(encoding="utf-8")
     contrato = contrato_path.read_text(encoding="utf-8")
     bitacora = bitacora_path.read_text(encoding="utf-8") if bitacora_path.is_file() else ""
     anclas = parsear_master(master)
-    outcome, repos, tasks = parsear_manifest(manifest)
+    outcome, repos, tasks, profile = parsear_manifest(manifest)
     versiones = parsear_contrato(contrato)
     eventos = parsear_eventos(bitacora)
-    planes_data = {repo: (status, sha, blocked, path) for path in planes for repo, status, sha, blocked in [parsear_plan(path)]}
+    parsed_plans = []
+    for path in planes:
+        try:
+            parsed_plans.append(parsear_plan(path, helper))
+        except helper.DeliveryProfileError as error:
+            print(f"GUARD:state {error.code}", file=sys.stderr)
+            print(f"  {error.message}", file=sys.stderr)
+            print(f"  plan: {path}", file=sys.stderr)
+            return 1
+    profile_failure = validar_perfil(profile, parsed_plans, helper, planes)
+    if profile_failure is not None:
+        print(f"GUARD:state {profile_failure[0]}", file=sys.stderr)
+        print(f"  {profile_failure[1]}", file=sys.stderr)
+        source = profile_failure[2]
+        print(f"  {'plan' if source else 'manifest'}: {source or manifest_path}", file=sys.stderr)
+        return 1
+    planes_data = {
+        repo: (status, sha, blocked, path, complexity, pair)
+        for path, (repo, status, sha, blocked, complexity, pair) in zip(planes, parsed_plans)
+    }
     task_by_id = {str(task["id"]): task for task in tasks}
     repo_by_path = {repo["path"]: repo for repo in repos}
     vigente_num, vigente = max(versiones, default=(0, []), key=lambda item: item[0])

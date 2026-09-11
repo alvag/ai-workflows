@@ -3,16 +3,15 @@
 **Este archivo es una vista.** Está ensamblado de los bloques que cada skill posee: la config
 propia de la orquestación en `sdd-orchestrator/reference.md` → "Esquema de `manifest.yml`"
 (`branch_prefix`, `execution_mode`, `implement_mode`), `cross-review/SKILL.md` → "Configuración"
-(5 de sus 5 claves) y `co-explore/SKILL.md` → "Configuración" (2 de sus 4). **Ante discrepancia manda
+(5 de sus 5 claves) y `co-explore/SKILL.md` → "Configuración" (2 de sus 5). **Ante discrepancia manda
 el dueño.** Existe para poder mirar el archivo completo y copiar lo que sirva; no para ser la
 autoridad de ninguna clave.
 
 **Solo configuración.** El esquema completo de `manifest.yml` (`sdd-orchestrator/reference.md` →
-"Esquema de `manifest.yml`") tiene 17 hojas; 5 son **estado de corrida** de la orquestación, no
-configuración, y no aparecen acá: `id`, `created_at`, `master_spec`, `repos` y
-`orchestration_tasks`. Las dos últimas anidan estado propio: `repos` incluye, por cada repo del DAG,
-`branch`, `status`, `depends_on` y `covers_ac`; y `orchestration_tasks`, por cada tarea, su `phase`,
-`owner`, `status` y `done_when` — también estado, no config. Este archivo documenta las 12
+"Esquema de `manifest.yml`") tiene 21 hojas; 8 son **estado de corrida** de la orquestación, no
+configuración, y no aparecen acá: `id`, `created_at`, `master_spec`, `delivery_profile`, `risk`,
+`delivery_assessment`, `repos` y `orchestration_tasks`. `delivery_assessment` es una lista y cuenta
+como una sola hoja; `repos` y `orchestration_tasks` anidan su estado propio. Este archivo documenta las 13
 restantes.
 
 **Copialo entero o por bloques.** Una clave que borres vuelve a su default —salvo las marcadas
@@ -58,10 +57,6 @@ co_explore:
 
 ```
 
-> **Dos claves de sus dueños no están acá, y no se agregan sin consumidor.**
->
-> - **`co_explore.debate.mode`** y **`co_explore.debate.max_rounds`** — las posee
->   `co-explore/SKILL.md` → "Configuración"; ninguna vive en el `manifest.yml`.
->
-> Ninguna se agrega en este cambio: sería una clave sin consumidor comprobado en el orquestador.
-> Si alguna hace falta, entra junto con su consumidor.
+> **Dos claves del dueño no están acá y no se agregan sin consumidor:**
+> `co_explore.debate.mode` y `co_explore.debate.max_rounds`. `co-explore/SKILL.md` las posee, pero el
+> orquestador no las consume. Si hacen falta, entran junto con un consumidor comprobado.

@@ -33,6 +33,20 @@ def _defaults() -> Dict[str, object]:
         "A_COVERS": "AC-1", "B_COVERS": "AC-2", "C_COVERS": "AC-5",
         "A_REFS": "AC-3=V-C1=ok AC-4=V-C1=ok",
         "B_REFS": "AC-3=V-C1=ok", "C_REFS": "",
+        "PROFILE": "", "GLOBAL_RISK": "", "INTEGRATION_COMPLEXITY": "complex",
+        "INTEGRATION_RISK": "", "A_COMPLEXITY": "normal", "B_COMPLEXITY": "trivial",
+        "C_COMPLEXITY": "normal", "A_RISK": "", "B_RISK": "", "C_RISK": "", "A_REPO_RISK": "", "B_REPO_RISK": "", "C_REPO_RISK": "",
+        "A_PLAN_COMPLEXITY": "", "B_PLAN_COMPLEXITY": "", "C_PLAN_COMPLEXITY": "",
+        "A_PLAN_PROFILE": "", "B_PLAN_PROFILE": "", "C_PLAN_PROFILE": "",
+        "A_PLAN_RISK": "", "B_PLAN_RISK": "", "C_PLAN_RISK": "",
+        "A_PLAN_DELIMITER": "literal", "B_PLAN_DELIMITER": "literal",
+        "C_PLAN_DELIMITER": "literal",
+        "A_PLAN_PAIR": 1, "B_PLAN_PAIR": 1, "C_PLAN_PAIR": 1,
+        "A_REPO_PAIR": 1, "B_REPO_PAIR": 1, "C_REPO_PAIR": 1,
+        "ASSESSMENT": 0, "ASSESSMENT_EXTRA": "", "ASSESSMENT_GLOBAL_RISK": "",
+        "ASSESSMENT_EVIDENCE": "[fixture]", "ASSESSMENT_PROVENANCE": "inference:fixture",
+        "PLAN_RISK": "", "PROFILE_SEPARATOR": ":", "PROFILE_DUPLICATE_SPACED": 0, "PLAN_REPO_DUPLICATE": 0, "REPO_PATH_DUPLICATE": 0, "REORDER_PROFILE_ITEMS": 0, "REPOS_SECTION_DUPLICATE": 0, "REPOS_SECTION_INLINE_DUPLICATE": 0,
+        "A_REPO_RISK_SPACED": "", "B_REPO_RISK_SPACED": "", "C_REPO_RISK_SPACED": "",
     }
     tasks = {
         "G1": ("G1", "gate", "equipo-arquitectura", "done",
@@ -94,6 +108,11 @@ def _retro(v: Dict[str, object]) -> None:
     v.update(RETRO=1, TAREAS="", FILAS="", A_REFS="", B_REFS="")
 
 
+def _profile(v: Dict[str, object], profile: str = "expedited", risk: str = "low") -> None:
+    v.update(PROFILE=profile, GLOBAL_RISK=risk, INTEGRATION_RISK=risk,
+             A_RISK=risk, B_RISK=risk, C_RISK=risk, ASSESSMENT=1)
+
+
 NO_CHANGES = {
     "MODELO_VALIDO", "PARTICIPACION_AUSENTE_SIN_INTEG", "CONTRATO_COMPLETO",
     "BASELINE_NOT_APPLICABLE", "REF_CLOSEOUT", "CIERRE_LEGITIMO",
@@ -103,6 +122,68 @@ NO_CHANGES = {
 
 
 def _aplicar_escenario(name: str, v: Dict[str, object]) -> bool:
+    if name in {"PROFILE_LOW", "PROFILE_INTEGRATION_COMPLEX"}:
+        _profile(v); return True
+    if name == "PROFILE_HIGH_STANDARD":
+        _profile(v, "standard", "high"); v.update(INTEGRATION_RISK="low", A_RISK="low", B_RISK="high"); return True
+    if name == "PROFILE_UNKNOWN_STANDARD":
+        _profile(v, "standard", "unknown"); v.update(INTEGRATION_RISK="low", A_RISK="low", B_RISK="unknown"); return True
+    if name == "PROFILE_EXPEDITED_HIGH":
+        _profile(v, "expedited", "high"); v.update(INTEGRATION_RISK="low", A_RISK="low", B_RISK="high"); return True
+    if name == "PROFILE_PARTIAL":
+        _profile(v); v.update(GLOBAL_RISK="", ASSESSMENT_GLOBAL_RISK="low", PLAN_RISK="low"); return True
+    if name == "PROFILE_ENUM_UNKNOWN":
+        _profile(v); v["PROFILE"] = "fast"; return True
+    if name == "PROFILE_MIXED_PLAN":
+        _profile(v); v["B_PLAN_PAIR"] = 0; return True
+    if name == "PROFILE_COMPLEXITY_DIVERGES":
+        _profile(v); v["B_PLAN_COMPLEXITY"] = "normal"; return True
+    if name == "PROFILE_PAIR_DIVERGES":
+        _profile(v)
+        v["B_PLAN_PROFILE"] = "standard"
+        return True
+    if name == "PROFILE_BAD_DELIMITER":
+        _profile(v)
+        v["B_PLAN_DELIMITER"] = "spaced"
+        return True
+    if name == "PROFILE_PREDISPATCH_REJECTED":
+        _profile(v)
+        _reparto(v)
+        v["B_PLAN_COMPLEXITY"] = "normal"
+        return True
+    if name == "PROFILE_REPO_RISK_DIVERGES":
+        _profile(v)
+        v["B_REPO_RISK"] = "unknown"
+        return True
+    if name == "PROFILE_DUPLICATE_REPO":
+        _profile(v); v["B_REPO_PAIR"] = 2; return True
+    if name == "PROFILE_PLAN_REPO_DUPLICATE": _profile(v); v["PLAN_REPO_DUPLICATE"] = 1; return True
+    if name == "PROFILE_REPO_PATH_DUPLICATE": _profile(v); v["REPO_PATH_DUPLICATE"] = 1; return True
+    if name == "PROFILE_REORDERED_ITEMS": _profile(v); v.update(USA_C=1, REORDER_PROFILE_ITEMS=1); return True
+    if name == "PROFILE_DUPLICATE_REPOS_SECTION": _profile(v); v["REPOS_SECTION_DUPLICATE"] = 1; return True
+    if name == "PROFILE_DUPLICATE_REPOS_INLINE": _profile(v); v["REPOS_SECTION_INLINE_DUPLICATE"] = 1; return True
+    if name == "PROFILE_SPACED_MANIFEST":
+        _profile(v); v["PROFILE_SEPARATOR"] = " :"; return True
+    if name == "PROFILE_DUPLICATE_SPACED":
+        _profile(v); v["PROFILE_DUPLICATE_SPACED"] = 1; return True
+    if name == "PROFILE_REPO_RISK_SPACED_DUPLICATE":
+        _profile(v); v["B_REPO_RISK_SPACED"] = "unknown"; return True
+    if name == "PROFILE_FOLD_DIVERGES":
+        _profile(v)
+        v["B_RISK"] = "high"
+        return True
+    if name == "PROFILE_ASSESSMENT_EXTRA_FIELD":
+        _profile(v)
+        v["ASSESSMENT_EXTRA"] = "decision: automatic"
+        return True
+    if name == "PROFILE_ASSESSMENT_SCALAR_EVIDENCE":
+        _profile(v)
+        v["ASSESSMENT_EVIDENCE"] = "fixture"
+        return True
+    if name == "PROFILE_ASSESSMENT_BAD_PROVENANCE":
+        _profile(v)
+        v["ASSESSMENT_PROVENANCE"] = "automatic"
+        return True
     if name in NO_CHANGES:
         return True
     updates: Dict[str, Dict[str, object]] = {
@@ -230,10 +311,48 @@ class Factory:
     def emit_manifest(self) -> str:
         lines = [f"id: {self.identifier}", f"master_spec: .sdd/{self.identifier}/master-spec.md", "created_at: 2026-06-03T09:00:00-03:00"]
         if self.v["OUTCOME"]: lines.append("outcome: " + str(self.v["OUTCOME"]))
+        if self.v["PROFILE"]:
+            separator = self.v["PROFILE_SEPARATOR"]
+            lines += [f"delivery_profile{separator} {self.v['PROFILE']}"]
+            if self.v["GLOBAL_RISK"]:
+                lines.append(f"risk{separator} {self.v['GLOBAL_RISK']}")
+            if self.v["PROFILE_DUPLICATE_SPACED"]: lines.append("delivery_profile : standard")
+        if self.v["ASSESSMENT"] == 1:
+            lines.append("delivery_assessment:")
+            global_risk = str(self.v["ASSESSMENT_GLOBAL_RISK"] or self.v["GLOBAL_RISK"])
+            rows = [("global", "complex", global_risk),
+                    ("integration", str(self.v["INTEGRATION_COMPLEXITY"]),
+                     str(self.v["INTEGRATION_RISK"]))]
+            rows += [("repo:" + self.repo_path(repo), self.get(self.upper(repo), "COMPLEXITY"),
+                      self.get(self.upper(repo), "RISK")) for repo in self.repos()]
+            if self.v["REORDER_PROFILE_ITEMS"]: rows = rows[-1:] + rows[:-1]
+            for scope, complexity, risk in rows:
+                head = (["  - urgency: normal", f"    scope: {scope}"]
+                        if self.v["REORDER_PROFILE_ITEMS"] and scope == "repo:servicio-c"
+                        else [f"  - scope: {scope}", "    urgency: normal"])
+                lines += head + [f"    complexity: {complexity}", f"    risk: {risk}",
+                          f"    evidence: {self.v['ASSESSMENT_EVIDENCE']}",
+                          f"    provenance: {self.v['ASSESSMENT_PROVENANCE']}",
+                          "    confidence: high"]
+                if self.v["ASSESSMENT_EXTRA"] and scope == "global":
+                    lines.append("    " + str(self.v["ASSESSMENT_EXTRA"]))
         lines.append("repos:")
-        for repo in self.repos():
+        manifest_repos = self.repos()
+        if self.v["REORDER_PROFILE_ITEMS"]: manifest_repos = manifest_repos[-1:] + manifest_repos[:-1]
+        for repo in manifest_repos:
             up, path = self.upper(repo), self.repo_path(repo)
-            lines += [f"  - path: {path}", f"    branch: feature/{self.identifier}-{path}", f"    status: {self.get(up, 'ST')}", "    depends_on: []", f"    covers_ac: [{self.get(up, 'COVERS')}]" ]
+            if self.v["REPOS_SECTION_DUPLICATE"] and repo == "b": lines.append("repos:")
+            head = ([f"  - branch: feature/{self.identifier}-{path}", f"    path: {path}"]
+                    if self.v["REORDER_PROFILE_ITEMS"] and repo == "c"
+                    else [f"  - path: {path}", f"    branch: feature/{self.identifier}-{path}"])
+            lines += head + [f"    status: {self.get(up, 'ST')}", "    depends_on: []", f"    covers_ac: [{self.get(up, 'COVERS')}]" ]
+            if self.v["REPO_PATH_DUPLICATE"] and repo == "b": lines.insert(len(lines) - 4, "    path: servicio-z")
+            if self.v["PROFILE"] and self.v[up + "_REPO_PAIR"] >= 1:
+                lines += [f"    complexity: {self.get(up, 'COMPLEXITY')}",
+                          f"    risk: {self.get(up, 'REPO_RISK') or self.get(up, 'RISK')}"]
+                if self.get(up, "REPO_RISK_SPACED"): lines.append(f"    risk : {self.get(up, 'REPO_RISK_SPACED')}")
+                if self.v[up + "_REPO_PAIR"] == 2: lines += lines[-7:]
+        if self.v["REPOS_SECTION_INLINE_DUPLICATE"]: lines.append("repos: []")
         if not self.v["TAREAS"]: return "\n".join(lines) + "\n"
         lines.append("orchestration_tasks:")
         for task in str(self.v["TAREAS"]).split():
@@ -362,7 +481,16 @@ class Factory:
     def emit_plan(self, repo: str) -> str:
         up, path = self.upper(repo), self.repo_path(repo)
         status = self.get(up, "PLANST") or self.get(up, "ST")
-        lines = ["---", f"id: {self.identifier}", f"repo: {path}", f"branch: feature/{self.identifier}-{path}", "base_commit: 0000000", f"head_sha: {self.get(up, 'SHA')}", f"status: {status}", "---", "", f"# Plan — {path} (parte de {self.identifier})", "", "## Verification", "", "### v1", "", "| ID | Requisito | Evidencia | Comando/observación | Esperado | Baseline |", "|---|---|---|---|---|---|", f"| V1 | {self.get(up, 'COVERS')} [repo-local] — el repo cumple su parte | test | `npm test` | 1 test, verde | {self.get(up, 'LOCALBASE')} |"]
+        opening = "--- " if self.get(up, "PLAN_DELIMITER") == "spaced" else "---"
+        lines = [opening, f"id: {self.identifier}", f"repo: {path}", f"branch: feature/{self.identifier}-{path}", "base_commit: 0000000", f"head_sha: {self.get(up, 'SHA')}", f"status: {status}"]
+        if self.v["PLAN_REPO_DUPLICATE"] and repo == "a": lines.insert(2, "repo: servicio-equivocado")
+        if self.v["PROFILE"] and self.v[up + "_PLAN_PAIR"] == 1:
+            complexity = self.get(up, "PLAN_COMPLEXITY") or self.get(up, "COMPLEXITY")
+            plan_profile = self.get(up, "PLAN_PROFILE") or self.v["PROFILE"]
+            plan_risk = self.get(up, "PLAN_RISK") or self.v["PLAN_RISK"] or self.v["GLOBAL_RISK"]
+            lines += [f"complexity: {complexity}", f"delivery_profile: {plan_profile}",
+                      f"risk: {plan_risk}"]
+        lines += ["---", "", f"# Plan — {path} (parte de {self.identifier})", "", "## Verification", "", "### v1", "", "| ID | Requisito | Evidencia | Comando/observación | Esperado | Baseline |", "|---|---|---|---|---|---|", f"| V1 | {self.get(up, 'COVERS')} [repo-local] — el repo cumple su parte | test | `npm test` | 1 test, verde | {self.get(up, 'LOCALBASE')} |"]
         references = self.get(up, "REFS").split()
         for index, ref in enumerate(references, 2):
             ac, row, mode = ref.split("=")

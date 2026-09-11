@@ -74,9 +74,12 @@ KNOWLEDGE_VAULT_REF_HEADING = r"La capa de configuración"
 KNOWLEDGE_VAULT_SKILL = REPO / "skills/knowledge-vault/SKILL.md"
 KNOWLEDGE_VAULT_SKILL_HEADING = r"El primer uso en un proyecto"
 
-# Las 5 claves de ESTADO DE CORRIDA del esquema de manifest.yml (no son config, no viven en
+# Las 8 claves de ESTADO DE CORRIDA del esquema de manifest.yml (no son config, no viven en
 # manifest-ejemplo.md).
-CLAVES_ESTADO_CORRIDA = {"id", "created_at", "master_spec", "repos", "orchestration_tasks"}
+CLAVES_ESTADO_CORRIDA = {
+    "id", "created_at", "master_spec", "delivery_profile", "risk", "delivery_assessment",
+    "repos", "orchestration_tasks",
+}
 
 # El registro de sedes activas de sede-config-vault (AC-1): (ruta, ancla, rol, extraccion),
 # rol ∈ {"dueno", "consumidora", "vista"} · extraccion ∈ {"bloque", "prosa", "linea"}.

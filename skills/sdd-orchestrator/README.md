@@ -6,9 +6,15 @@ Es una capa de **orquestación sobre `sdd-flow`**: no reimplementa el ciclo SDD.
 
 ## Qué hace
 
-1. **Diseño centralizado (con gates):** consolida el objetivo, detecta y te propone los repos involucrados (tú confirmas), escribe una `master-spec.md` con criterios de aceptación globales y los contratos entre servicios, y reparte el trabajo en un sub-plan por repo (con dependencias declarables). Paras en cada gate.
+1. **Diseño centralizado (con gates):** consolida el objetivo, detecta y te propone los repos involucrados, evalúa urgencia, complejidad y riesgo global, de integración y por repo, y recomienda `standard` o `expedited`. La elección es humana y all-or-nothing. `standard` conserva gates separados para `master-spec.md` y reparto; `expedited` solo admite repos triviales/normales y riesgo global `low`, materializa todos los candidatos y aprueba spec y reparto juntos en un gate atómico.
 2. **Ejecución paralela (delegada):** lanza un agente por repo que corre `/sdd-flow implement` en su `.plans/<id>/`. Cada repo crea su rama, implementa, corre tests/build, verifica sus AC y **frena antes de commitear**. Respeta dependencias (DAG) y aísla los fallos en cascada. Opcional: **modo inline** ("ejecuta `<repo>` acá" o `execution_mode: inline` en el manifest) para ejecutar un repo en la propia sesión del orquestador, de a uno — útil con un solo repo elegible o para seguir la implementación de cerca.
 3. **Cierre centralizado (tú al mando):** reporte consolidado y luego revisión + commit + push por repo, controlado por ti.
+
+Ambos perfiles conservan co-explore, debate, cross-review, pruebas, contratos de integración,
+revisión del diff y cada autorización externa según sus contratos y overrides. El preset expedito
+activa co-explore y cross-review; si la capacidad falla antes de completar una ronda válida, un
+finding material queda abierto o aparece riesgo `high`/`unknown`, revoca `expedited` antes de crear
+dependientes.
 
 ## Cuándo usarla
 
@@ -22,7 +28,10 @@ Es una capa de **orquestación sobre `sdd-flow`**: no reimplementa el ciclo SDD.
 
 ## Requisitos
 
-- **`sdd-flow` instalada** en el entorno (dependencia dura: el orquestador delega en ella).
+- **`sdd-flow` instalada completa** en el entorno (dependencia dura: el orquestador delega en ella y
+  carga una sola vez `sdd-flow/scripts/delivery_profile.py` antes de elegir perfil). Si el helper
+  falta o es incompatible, se detiene con un diagnóstico de arnés; no degrada a una decisión
+  permisiva.
 - Una **carpeta contenedora** con ≥2 repos git como subdirectorios.
 - Capacidad de **subagentes en paralelo** en el entorno (recomendado; mejora mucho el fan-out). Sin ella, el orquestador serializa.
 
@@ -49,9 +58,10 @@ Parado en la carpeta contenedora (p. ej. `backend/`):
 
 Luego, en lenguaje natural: describe el objetivo y los servicios que crees que toca (y, si quieres, un prefijo de rama para toda la orquestación: "con prefijo de rama feature/"). El flujo:
 
-1. Te propone los repos involucrados → confirmas.
-2. Escribe la `master-spec.md` → la apruebas (GATE).
-3. Reparte en sub-planes por repo → los apruebas (GATE).
+1. Te propone los repos, muestra la evaluación y recomienda un perfil → confirmas repos y elección.
+2. Ejecuta co-explore y estabiliza la `master-spec.md`.
+3. En `standard`, apruebas la spec y después el reparto en gates separados. En `expedited`, primero
+   materializa y revisa todos los candidatos y luego apruebas spec y reparto juntos (GATE).
 4. Implementa en paralelo, frenando antes de commitear.
 5. Cierras tú: revisión + commit (con el mecanismo inline de `sdd-flow`) + push por repo.
 6. Cuando confirmas que todo está probado: "archiva `<id>`" mueve la orquestación a `.sdd/archived/<id>/` (sale del listado y libera los locks). Para cancelar una a medias: "aborta `<id>`" (pausa o descarta por repo, y archiva el manifest).
@@ -59,6 +69,15 @@ Luego, en lenguaje natural: describe el objetivo y los servicios que crees que t
 > **Prefijo de rama:** el prefijo de la orquestación aplica a todos los repos, salvo que un repo tenga su propio `branch_prefix` en `.specify/config.yml` (ese gana, p. ej. por su CI/CD). Sin prefijo, cada repo usa el semántico.
 
 > **Config por repo (opcional):** cada repo puede inicializarse con `/sdd-flow init` (parado en el repo) para fijar su `.specify/config.yml` (stack, test/build, `branch_prefix`). Eso hace el reparto más determinista, pero no es obligatorio: sin config, el orquestador autodetecta cada repo.
+
+> **Estado, no config:** `delivery_profile`, `risk` y `delivery_assessment` se persisten en el
+> `manifest.yml`; `complexity` y `risk` locales también viajan en cada entrada de `repos`. No son
+> defaults configurables. `co_explore.debate.*` no entra al manifest mientras el orquestador no
+> tenga un consumidor comprobado para esas claves.
+
+> **Autorizaciones intactas:** el gate atómico no autoriza ramas, commits, pushes, PRs, merges ni
+> escrituras externas. Cada acción conserva el gate que ya tenía en `sdd-flow` o en el host
+> correspondiente.
 
 Para retomar una orquestación a medias: `/sdd-orchestrator` y "retoma `<id>`" (o "¿en qué quedé?" para listar las activas).
 

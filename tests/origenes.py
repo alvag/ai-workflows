@@ -121,6 +121,9 @@ def origins_for(identifier: str, group: str,
         # inventario, porque `origins_for` solo lee sus secciones 1 y 4 y una fila en la 7 no crearia
         # un origen valido.
         return ORIGEN_SIN_MIGRACION
+    if group == "delivery-profile":
+        # Estos casos nacen con el perfil de entrega y no derivan de la migración histórica.
+        return ORIGEN_SIN_MIGRACION
     if group in {"dimensiones", "normalizaciones"}:
         return frozenset({("case", "contrato-cadena/positivo")})
     if identifier in {"cobertura-v14:tres-direcciones", "entrypoint-v20:ids"}:

@@ -7,11 +7,12 @@ Flujo de **Spec-Driven Development (SDD)** portable y agnóstico de proyecto. Ll
 Recorre el ciclo SDD escribiendo artefactos auditables y deteniéndose en gates de aprobación:
 
 ```
-init (opcional) → constitution → gather-context → specify → clarify → publish-spec (Jira, opcional) → create-branch → analyze → plan → tasks → implement → verify
+init (opcional) → constitution → gather-context + perfil → specify → clarify → publish-spec (Jira, opcional) → create-branch → analyze → plan → tasks → implement → verify
 ```
 
 - **Portable:** detecta stack (Node, Go, Rust, Python, Java, .NET…), host de Git (GitHub/GitLab/Bitbucket/otro), issue tracker y rama base por convención. Nada hardcodeado. Override opcional en `.specify/config.yml`.
-- **Gates escalados por complejidad:** un fix trivial usa 1 gate; un cambio complejo, 3 (spec/plan/tasks) más `clarify` obligatorio. El agente clasifica y tú confirmas.
+- **Dos perfiles, la misma calidad:** `standard` conserva la secuencia habitual. `expedited` solo es elegible para cambios `trivial` o `normal` con `risk: low`; acelera la ceremonia, no elimina causa raíz, AC, pruebas, revisión de diff, rollback ni autorizaciones.
+- **Gates escalados y explícitos:** trivial conserva 1 gate y complex, 3 más `clarify` obligatorio. En normal, `standard` usa 2 gates; `expedited` con Jira en `"off"` aprueba spec, plan y tasks en un único gate atómico. El agente muestra evaluación y recomendación, y tú eliges.
 - **Trazabilidad:** cada criterio de aceptación (`AC-n`) se mapea a tasks y se verifica al final; si un AC de comportamiento tiene test, el test debe tener dientes (`revert → FAIL`, `restore → PASS`).
 - **Estado persistido / retomable:** cada flujo guarda su fase (`status`) y su rama en el `plan.md`, y un `handoff.md` con "dónde quedé, qué decidí y cómo sigo". Puedes dejarlo a medias —en cualquier fase—, atender algo urgente en otra rama y retomarlo después desde donde quedó, incluso en otra sesión, sin re-investigar.
 - **Elección de rama, no suposición:** si ya estás parado en una rama que no es la base, el flujo **te pregunta** en vez de asumir: seguir acá, cortar una rama nueva desde la base, o cortarla desde la actual (feature dependiente). Y si esa rama es **sólo local** —la típica que abriste a mano para arrancar el worktree, antes de saber de qué se trataba—, te ofrece **renombrarla** al nombre que el flujo ya sabe construir, reparando los flujos que apuntaban al viejo.
@@ -20,7 +21,8 @@ init (opcional) → constitution → gather-context → specify → clarify → 
   tasks, proceso y owner. `doctor` solo informa; `resume` propone una reconciliación completa, espera
   un único gate y la ejecuta de forma idempotente únicamente si el diagnóstico sigue vigente.
 - **Contexto de dominio opcional:** `domain_context` permite leer docs/ADRs existentes para usar términos y decisiones vigentes, sin crear ni editar documentación versionada.
-- **Aprobación externa de la spec (opcional):** si tu equipo lo necesita, puedes publicar la spec como **subtarea de Jira** para que el TL/PO la aprueben antes de implementar (`jira_approval` en config; off por defecto). El flujo queda en pausa y se retoma —incluso en otra sesión— sin re-explorar el ticket, gracias al `handoff.md`.
+- **Aprobación externa de la spec (opcional):** con `jira_approval.mode: "on"`, incluso en normal `expedited`, se mantiene el gate local de spec, se publica como **subtarea de Jira** y se espera al TL/PO; solo después se materializan plan y tasks y se aprueban juntos. El gate externo no cuenta como gate de complejidad. El flujo queda en pausa y se retoma sin re-explorar el ticket gracias al `handoff.md`. El default es `"off"`.
+- **Autorizaciones intactas:** elegir `expedited` no autoriza por sí solo crear o cambiar ramas, escribir en Jira, commitear, pushear, abrir PRs ni mergear.
 - **Apertura de PR (opcional):** tras el push, crea el PR hacia la rama base con descripción **compacta** (Problema, Solución y los criterios de aceptación como checklist, más el link al spec de Jira si se publicó) y reviewers por defecto (de `.specify/reviewers.json` del repo, si existe). Degrada a PR manual si no hay integración del host; el agente **nunca** mergea ni aprueba, solo crea.
 - **Degradación elegante:** si falta un MCP/CLI (tracker, navegador, host), avisa y continúa con lo que haya.
 
@@ -67,13 +69,13 @@ Como `.plans/` es local (no trackeado), git no lo mueve al cambiar de rama: tus 
    │  ├─ bitacora.md            # constancia append-only de los pasos del contrato
    │  ├─ sequence-ledger.yml    # versión, cursor, intenciones y efectos adjudicados
    │  ├─ sequence-ledger.owner/ # ownership exclusivo mientras un writer publica
-   │  ├─ handoff.md             # al pausar o en el gate de Jira: estado + decisiones para retomar
+   │  ├─ handoff.md             # siempre en `create-branch`; además al pausar o entrar al gate de Jira
    │  └─ jira-spec.md           # copia de lo publicado en Jira (solo con el gate de aprobación)
    └─ archived/                 # flujos cerrados (status: done), movidos solo tras tu confirmación
       └─ <id>/                  # misma estructura, ya terminada
 ```
 
-> **Artefactos por complejidad:** *trivial* genera solo `plan.md` (con `## Spec` y `## Tasks` embebidas); *normal* y *complejo* separan `spec.md` + `plan.md` + `tasks.md`. La diferencia entre normal y complejo es de **gates**, no de archivos: en *normal* las tasks se aprueban en el gate del plan; en *complejo* el gate de `tasks` es propio. La skill **siempre anuncia dónde quedaron las tasks**. La Vía B (bootstrap) y `verify` leen los archivos separados si existen, o las secciones embebidas si no.
+> **Artefactos por complejidad:** *trivial* genera solo `plan.md` (con `## Spec` y `## Tasks` embebidas); *normal* y *complejo* separan `spec.md` + `plan.md` + `tasks.md`. El header del plan materializa `complexity`, `delivery_profile` y `risk`; el par de perfil es indivisible y cualquier forma parcial o desconocida falla cerrado. En `standard`, la diferencia entre normal y complejo es de **gates**, no de archivos: en *normal* las tasks se aprueban en el gate del plan; en *complejo* el gate de `tasks` es propio. `expedited` aplica la secuencia descrita arriba. La skill **siempre anuncia dónde quedaron las tasks**. La Vía B (bootstrap) y `verify` leen los archivos separados si existen, o las secciones embebidas si no.
 
 > **Flujo personal, no del equipo:** ni `.specify/` ni `.plans/` se trackean. La skill nunca los stagea ni commitea. Como es personal, conviene ignorarlos vía `.git/info/exclude` (ignore **local** al clon, que no se versiona) en vez de `.gitignore` (que se comparte). Ese ignore local lo gestiona el usuario; la skill no lo toca.
 
@@ -83,11 +85,14 @@ La skill no necesita configuración para empezar: en su primera corrida detecta 
 
 ### Inicializar el proyecto (opcional): `/sdd-flow init`
 
-Estos archivos **no se crean solos** durante el ciclo (que usa autodetección + defaults conversacionales). Si quieres fijarlos de entrada, corre `/sdd-flow init`: detecta el stack/test/build/tracker y te guía con un **wizard** de una sola pantalla para las decisiones que la skill no puede inferir (tracker, prefijo de rama y, solo si elegiste tracker Jira, aprobación externa de la spec) mostrando cada opción con su descripción —y el valor **actual pre-seleccionado** si el config ya existe—; los comandos quedan autodetectados y editables. El resto de las claves con default (estilo de commit, modo de implementación, cross-review, contexto de dominio…) no se pregunta: la skill las resuelve, y quien quiera fijarlas las copia de `config-ejemplo.md`, el ejemplo completo con las 35 claves del esquema. Al final te **muestra** el `config.yml` y la `constitution.md` y los escribe **solo tras tu confirmación**. Son locales y untracked (nunca se trackean ni commitean). Si ya existen, no los pisa: el wizard parte de lo vigente y fusiona lo que cambies. El ciclo funciona igual sin `init` — es un atajo para dejar la config explícita.
+Estos archivos **no se crean solos** durante el ciclo (que usa autodetección + defaults conversacionales). Si quieres fijarlos de entrada, corre `/sdd-flow init`: detecta el stack/test/build/tracker y te guía con un **wizard** de una sola pantalla para las decisiones que la skill no puede inferir (tracker, prefijo de rama y, solo si elegiste tracker Jira, aprobación externa de la spec) mostrando cada opción con su descripción —y el valor **actual pre-seleccionado** si el config ya existe—; los comandos quedan autodetectados y editables. El resto de las claves con default (estilo de commit, modo de implementación, cross-review, contexto de dominio…) no se pregunta: la skill las resuelve, y quien quiera fijarlas las copia de `config-ejemplo.md`, el ejemplo completo con las 37 claves del esquema. Al final te **muestra** el `config.yml` y la `constitution.md` y los escribe **solo tras tu confirmación**. Son locales y untracked (nunca se trackean ni commitean). Si ya existen, no los pisa: el wizard parte de lo vigente y fusiona lo que cambies. El ciclo funciona igual sin `init` — es un atajo para dejar la config explícita.
 
-Para fijar el comportamiento a mano, sin pasar por el wizard: crea `.specify/config.yml` (todos los campos opcionales) y copia ahí las claves que necesites desde `config-ejemplo.md`, la vista completa con las 35 claves marcadas `[def]`, `[ej]` u `[obl]`. Buenos candidatos para empezar: las tres que resuelve el wizard (`tracker`, `branch_prefix`, `jira_approval.mode`) y los comandos (`test_cmd`/`build_cmd`/`lint_cmd`/`test_scope_hint`) si la autodetección no da con los tuyos.
+Para fijar el comportamiento a mano, sin pasar por el wizard: crea `.specify/config.yml` (todos los campos opcionales) y copia ahí las claves que necesites desde `config-ejemplo.md`, la vista completa con las 37 claves marcadas `[def]`, `[ej]` u `[obl]`. Buenos candidatos para empezar: las tres que resuelve el wizard (`tracker`, `branch_prefix`, `jira_approval.mode`) y los comandos (`test_cmd`/`build_cmd`/`lint_cmd`/`test_scope_hint`) si la autodetección no da con los tuyos.
 
-> El esquema **completo** —las 35 claves de las cuatro skills que la config abarca, cada una marcada `[def]`, `[ej]` u `[obl]` y lista para copiar— está en `config-ejemplo.md`. Cada skill dueña documenta las suyas en su propio `SKILL.md` → "Configuración"; las de `sdd-flow` están en `reference.md` → "Esquema de `.specify/config.yml`".
+`delivery_profile`, `risk` y su evaluación son estado de la corrida, no configuración persistente:
+se eligen con evidencia al iniciar y viajan en los artefactos de retomado.
+
+> El esquema **completo** —las 37 claves de sus cinco dueños, cada una marcada `[def]`, `[ej]` u `[obl]` y lista para copiar— está en `config-ejemplo.md`. Cada skill dueña documenta las suyas en su propio `SKILL.md` o `reference.md`; las de `sdd-flow` están en `reference.md` → "Esquema de `.specify/config.yml`".
 
 > **Prefijo de rama:** por defecto la rama usa un prefijo **semántico** (`feature/`, `fix/`, `chore/`… — para features es siempre `feature`, nunca `feat`: ese queda para los commits). Si tu proyecto necesita un prefijo único para **todo** tipo de cambio (p. ej. siempre `feature/`, incluso en fixes, por CI/CD), fíjalo en `branch_prefix` o pásalo al vuelo: "con prefijo de rama feature/". El prefijo reemplaza el segmento semántico; el resto (`<ticket>-<slug>`) no cambia.
 
@@ -133,6 +138,13 @@ El esquema completo está en `config-ejemplo.md`; la matriz de detección, en `r
 ```
 → tras aprobar las tasks, el propio flujo congela el contrato y `cross-implement` lo recibe congelado para que lo implemente un modelo de la otra familia; tu sesión revisa el diff como un PR ajeno, marca el progreso y conserva la revisión manual, el commit y el push.
 
+**7. Cambio normal, de riesgo bajo y urgente:**
+```
+/sdd-flow fix PROJ-131: corregir serialización del header de trazas
+```
+→ tras evaluar evidencia propone `expedited`; con Jira en `"off"`, ejecuta co-explore, debate cuando
+corresponda y cross-review, materializa spec, plan y tasks, y presenta los tres en un único gate.
+
 ## Verificación: más que "tests en verde"
 
 La garantía de la skill **no** es que pasen los tests, sino que **cada criterio de aceptación (`AC-n`) se cumpla por su medio declarado** — un test, un paso manual o una **observación de comportamiento**. El paso `verify` recorre los AC antes de commitear; si uno falla, no commitea (aunque los tests estén en verde). Si el AC de comportamiento está cubierto por test, el test debe discriminar: revertir el hunk de implementación debe hacerlo fallar y restaurarlo debe volverlo verde.
@@ -171,7 +183,10 @@ la cantidad de filas, no el formato.
 
 ## Dependencias
 
-Ninguna obligatoria. Aprovecha, si están disponibles:
+No tiene dependencias externas obligatorias. El helper interno
+`scripts/delivery_profile.py` forma parte del paquete y es obligatorio para sus consumidores: si
+falta o no expone el contrato compatible, promoción y huellas se detienen con un diagnóstico de
+arnés, sin traceback ni fallback permisivo. Aprovecha, si están disponibles:
 
 - CLI/MCP del issue tracker (Jira, GitHub, GitLab, Linear) para traer issues.
 - CLI/MCP del host de Git (`gh`, `glab`) para PRs y detección de rama remota.

@@ -2,9 +2,17 @@
 
 Detalle operativo de la skill `sdd-flow`. El `SKILL.md` apunta acá cuando necesita la matriz de detección, el esquema de configuración o las plantillas de artefactos.
 
+## Documentos de esta referencia
+
+Leer `delivery-profile.md` antes de evaluar, ejecutar o retomar un perfil de entrega. Ese documento
+es la sede única de vocabulario, elegibilidad, presets, secuencias, estabilidad de review, fold
+multi-repo y piso de calidad. Esta referencia conserva carriers, contratos de salida y mecánica de
+recuperación; no redefine sus matrices.
+
 ## Tabla de contenidos
 
 - [Matriz de detección por capacidad](#matriz-de-detección-por-capacidad)
+- [Documentos de esta referencia](#documentos-de-esta-referencia)
 - [Flujo por tracker](#flujo-por-tracker)
 - [Aprobación externa de la spec (Jira)](#aprobación-externa-de-la-spec-jira)
 - [Detección de stack y comandos](#detección-de-stack-y-comandos)
@@ -29,6 +37,66 @@ Detalle operativo de la skill `sdd-flow`. El `SKILL.md` apunta acá cuando neces
 - [Plantilla de `handoff.md`](#plantilla-de-handoffmd)
 - [Revisión final de diff](#revisión-final-de-diff)
 - [Ejemplo de criterios de aceptación](#ejemplo-de-criterios-de-aceptación)
+
+---
+
+## Contratos de salida del helper de perfil
+
+Los dos consumidores mecánicos de esta skill exigen
+`DELIVERY_PROFILE_CONTRACT_VERSION == 1` y los símbolos públicos
+`parse_plan_frontmatter`, `read_plan_frontmatter`, `resolve_delivery_pair` y
+`DeliveryProfileError`. La ausencia y la incompatibilidad son fallos de arnés distintos de un dato
+inválido y nunca escapan como traceback.
+
+| Consumidor | Dependencia ausente | Dependencia incompatible | Código |
+|---|---|---|---|
+| `promocion-tasks-ready.py` | `ARNES:promocion-tasks-ready delivery-profile-helper-ausente` | `ARNES:promocion-tasks-ready delivery-profile-helper-incompatible` | 99 |
+| `huellas-secuencia.py` | `ARNES:huellas-secuencia delivery-profile-helper-ausente` | `ARNES:huellas-secuencia delivery-profile-helper-incompatible` | 99 |
+
+En promoción, `header-ausente`, `header-mal-cerrado`, `clave-duplicada`,
+`complejidad-desconocida`, `par-parcial`, `perfil-desconocido` y `riesgo-desconocido` salen 2;
+`expedited-inelegible` sale 1. La validación del par precede a `contract_procedure`, a la constancia y
+al retorno idempotente de `tasks-ready`. En huellas, un header ausente o mal cerrado conserva el
+fallback histórico `[]` y termina bajo el contrato `NO MEDIBLE` cuando una operación exige sus
+claves. Los delimitadores aceptan espacio exterior (`--- `), como el lector histórico; el contenido
+sigue exigiendo `---` después de retirar ese espacio.
+
+---
+
+## Persistencia y retomado del perfil de entrega
+
+El plan nuevo siempre materializa `delivery_profile` y `risk` junto a `complexity`; los tres se
+validan antes de leer el resto de su estado. La ausencia dual del par solo es válida como carrier
+heredado `standard`. Antes de que exista el plan, el handoff conserva el snapshot y
+`spec_approved_at`; después, el header del plan manda.
+
+<!-- delivery-profile-resume:start -->
+En pre-plan, una rama existente no acredita que la spec haya sido aprobada. Con
+`spec_approved_at: <timestamp>`, continuar después del gate local; con `spec_approved_at: null`
+explícito, volver al gate y no volver a preguntar. Para un flujo heredado con spec y rama pero sin la
+clave, preguntar una vez: el sí persiste el timestamp de esa confirmación y el no persiste `null`.
+Sin handoff ni plan, anunciar fallback `standard` y volver al gate aplicable. Con plan existente,
+`status`, `delivery_profile` y `risk` del header son autoridad aunque falte el handoff.
+
+Un `planned + expedited + normal + jira_approval: "off"` retoma en el gate atómico de spec, plan y
+tasks; con Jira `"on"`, `planned` retoma en el gate conjunto de plan y tasks porque la aprobación
+externa ya precedió su creación. Revocar el perfil, reclasificar complejidad o cambiar Jira conserva
+rama y base, marca `create-branch` como consumido y restaura el gate standard pendiente.
+<!-- delivery-profile-resume:end -->
+
+<!-- delivery-profile-regeneration:start -->
+Si una aclaración, revisión o decisión cambia un AC o master-spec: registrar arbitraje, cerrar la
+corrida actual, invalidar los artefactos y contratos dependientes, regenerarlos, repetir la evidencia
+y checks afectados y abrir una nueva revisión solo para la versión nueva. No se abre una corrida
+duplicada ni se congela un dependiente cuya autoridad upstream cambió.
+<!-- delivery-profile-regeneration:end -->
+
+<!-- delivery-profile-review-checkpoint:start -->
+Un checkpoint de cross-review conserva el mismo `run_id`. El usuario puede conceder una tanda finita
+adicional, rechazar aplicaciones, seguir con un tope finito o cambiar un criterio de aceptación. Las
+decisiones se registran antes de cerrar la corrida; si cambian el artefacto upstream, se aplica el
+orden de regeneración anterior antes de abrir otro `run_id`.
+<!-- delivery-profile-review-checkpoint:end -->
 
 ---
 
@@ -326,13 +394,13 @@ domain_context:
 vault_archive:                   # rescatar el flujo al vault al archivarlo (opcional; requiere la skill `knowledge-vault`)
   mode: auto                     # auto (default: consulta si hay destino declarado — con destino, ofrece activar la cadena sobre él; sin destino, ofrece descubrimiento y persiste la respuesta) | "on" | "off"  (entre comillas: sin ellas YAML los parsea como booleanos). Con `off` el archivado termina en el movimiento plano y no se vuelve a ofrecer. El disparador es esta clave, **no** que la skill esté instalada: instalarla no es consentir que cada archivado quede encadenado a ella
 final_diff_review:
-  mode: auto                     # auto (complex/high-risk inline) | "on" | "off"
+  mode: auto                     # auto (complex o risk high | unknown inline) | "on" | "off"
 ```
 
-**Este bloque es dueño de las 22 claves que `sdd-flow` gobierna.** Las 13 restantes las poseen sus
+**Este bloque es dueño de las 23 claves que `sdd-flow` gobierna.** Las 14 restantes las poseen sus
 hermanas y su enum se define allá: `cross_review.*` en `cross-review/SKILL.md` → "Configuración";
 `co_explore.*` en `co-explore/SKILL.md` → "Configuración"; `cross_implement.*` en
-`cross-implement/SKILL.md` → "Configuración". El archivo **completo**, con las 34 juntas y listo
+`cross-implement/SKILL.md` → "Configuración" y `vault_archive.*` en `knowledge-vault/reference.md` → "La capa de configuración". El archivo **completo**, con las 37 juntas y listo
 para copiar, está en `config-ejemplo.md`, que es una vista de todos estos dueños.
 
 Placeholders de `branch_format`: `{type}` (prefijo efectivo), `{ticket}` (clave del tracker, se omite si no hay), `{slug}` (2-5 palabras del título en kebab, sin acentos, `[a-z0-9-]`).
@@ -4808,6 +4876,10 @@ base_commit: <SHA del HEAD al escribir el plan>
 # base_branch: feature/ABC-100-otra   # solo si se cortó de una rama != default_branch (override de base); es el destino del PR
 change_type: feat
 complexity: complex
+# delivery_profile admite standard | expedited y forma un par indivisible con risk
+delivery_profile: standard
+# risk admite low | high | unknown y conserva el valor post-análisis
+risk: low
 status: planned        # planned → (plan-approved, solo complejo) → tasks-ready → implementing → verified → committed → pushed → (pr-open) → done
 created_at: 2026-01-01T12:00:00-03:00
 # wip_commit: <sha>            # solo si el flujo quedó pausado (ver sub-paso `pause`); se borra al retomar
@@ -4884,6 +4956,10 @@ branch: fix/cart-null-guard
 base_commit: <SHA del HEAD>
 change_type: fix
 complexity: trivial
+# delivery_profile admite standard | expedited y forma un par indivisible con risk
+delivery_profile: standard
+# risk admite low | high | unknown y conserva el valor post-análisis
+risk: low
 status: planned
 created_at: 2026-01-01T12:00:00-03:00
 ---
@@ -5056,10 +5132,13 @@ Ejemplo concreto de una task:
 phase: awaiting-jira-approval   # gather-context | specify | clarify | awaiting-jira-approval | implementing | ...
 # snapshot de gather-context (presente mientras NO exista plan.md; cuando existe, manda plan.md):
 complexity: normal              # trivial | normal | complex
+delivery_profile: standard      # standard | expedited; hermana de risk, no vive en overrides
+risk: low                       # low | high | unknown
 change_type: feat               # feat | fix | refactor | chore | docs | test | perf
 branch_prefix: feature          # el {type} ya resuelto
 slug: export-csv
 base_branch: master             # rama base resuelta (con override de base, la rama de la que se corta)
+spec_approved_at: null          # timestamp local en normal/complex, o null si sigue pendiente; trivial siempre null
 overrides: { branch_prefix: null, base_branch: null, cross_review: null, implement_mode: null, jira_approval: null }
 # puntero al ledger de la búsqueda (solo en una pausa durante `gather-context`):
 antecedentes: .plans/<id>/antecedentes.md   # PUNTERO, no copia: términos, fuentes y fingerprints viven solo ahí
@@ -5092,11 +5171,15 @@ cloud_id: <uuid del sitio>
 - jira-spec.md — exactamente lo publicado en la subtarea (solo si hubo gate de Jira)
 ```
 
-> **Precedencia:** cuando existe `plan.md`, su `status`/`wip_commit`/marcas `[x]` son la verdad operativa; el `handoff.md` aporta narrativa + overrides. Sin `plan.md` (specify/clarify/gate de Jira), el frontmatter es la fuente de verdad de esa ventana. Los campos del gate de Jira solo aparecen en pausas por aprobación externa. Detalle en `SKILL.md` → "Precedencia con `plan.md`".
+> **Precedencia:** cuando existe `plan.md`, su `status`, `delivery_profile`, `risk`, `wip_commit` y
+> marcas `[x]` son la verdad operativa; el `handoff.md` aporta narrativa + overrides. Sin `plan.md`
+> (specify/clarify/gate de Jira), el frontmatter y `spec_approved_at` son la fuente de verdad de esa
+> ventana. Los campos del gate de Jira solo aparecen en pausas por aprobación externa. Detalle en
+> `SKILL.md` → "Precedencia con `plan.md`".
 
 ## Revisión final de diff
 
-En `final_diff_review.mode: auto`, solo se ofrece para flujos `complex` o high-risk ejecutados en
+En `final_diff_review.mode: auto`, se ofrece para flujos `complex` o con `risk: high | unknown` ejecutados en
 modo `inline`, dentro del gate de revisión manual previo al commit. No es cross-model por defecto
 y no reemplaza `verify`: revisa el **diff completo** ya verificado contra dos ejes.
 
