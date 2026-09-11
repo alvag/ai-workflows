@@ -16,6 +16,7 @@ recuperación; no redefine sus matrices.
 - [Flujo por tracker](#flujo-por-tracker)
 - [Aprobación externa de la spec (Jira)](#aprobación-externa-de-la-spec-jira)
 - [Detección de stack y comandos](#detección-de-stack-y-comandos)
+- [Preflight Git y worktree](#preflight-git-y-worktree)
 - [Esquema de `.specify/config.yml`](#esquema-de-specifyconfigyml)
 - [Contexto de dominio](#contexto-de-dominio)
 - [Doctor read-only](#doctor-read-only)
@@ -246,22 +247,44 @@ Contrato completo en `SKILL.md` → `resume` → "Gate de Jira". En síntesis: "
 
 Resolver en este orden: `config.yml` → manifiesto del repo → preguntar. Comandos sugeridos por stack (ajustar al gestor real presente):
 
-| Stack | Manifiesto | test_cmd típico | build_cmd típico | Acotar test a un archivo |
-|---|---|---|---|---|
-| Node | `package.json` | `npm test` / `pnpm test` / `yarn test` (leer `scripts`) | `npm run build` (si existe el script) | según runner: `jest <patrón>`, `vitest run <patrón>`, `ng test --include=<ruta-exacta.spec.ts>` |
-| Go | `go.mod` | `go test ./...` | `go build ./...` | `go test ./ruta/... -run <Test>` |
-| Rust | `Cargo.toml` | `cargo test` | `cargo build` | `cargo test <nombre>` |
-| Python | `pyproject.toml` / `pytest.ini` / `setup.cfg` | `pytest` | (suele no compilar) | `pytest path/to/test_x.py::test_y` |
-| Java | `pom.xml` / `build.gradle` | `mvn test` / `gradle test` | `mvn package` / `gradle build` | `mvn -Dtest=ClassName test` |
-| .NET | `*.csproj` / `*.sln` | `dotnet test` | `dotnet build` | `dotnet test --filter <expr>` |
+| Stack | Manifiesto | test_cmd típico | build_cmd típico | bootstrap del worktree | Acotar test a un archivo |
+|---|---|---|---|---|---|
+| Node | `package.json` | `npm test` / `pnpm test` / `yarn test` (leer `scripts`) | `npm run build` (si existe el script) | según el gestor de la tabla siguiente | según runner: `jest <patrón>`, `vitest run <patrón>`, `ng test --include=<ruta-exacta.spec.ts>` |
+| Go | `go.mod` | `go test ./...` | `go build ./...` | `none` | `go test ./ruta/... -run <Test>` |
+| Rust | `Cargo.toml` | `cargo test` | `cargo build` | `none` | `cargo test <nombre>` |
+| Python | `pyproject.toml` / `pytest.ini` / `setup.cfg` | `pytest` | (suele no compilar) | sin regla; pedir comando o confirmación de `none` | `pytest path/to/test_x.py::test_y` |
+| Java | `pom.xml` / `build.gradle` | `mvn test` / `gradle test` | `mvn package` / `gradle build` | `none` | `mvn -Dtest=ClassName test` |
+| .NET | `*.csproj` / `*.sln` | `dotnet test` | `dotnet build` | `none` | `dotnet test --filter <expr>` |
 
-Determinar el **gestor de paquetes** en Node por lockfile: `package-lock.json` → npm, `pnpm-lock.yaml` → pnpm, `yarn.lock` → yarn, `bun.lockb` → bun.
+Para Node, `packageManager` manda cuando identifica un gestor y debe ser coherente con el lockfile.
+Sin ese campo, resolver en este orden; señales contradictorias exigen una decisión, nunca el primer
+lockfile encontrado:
 
-**Rama base:** precedencia = (a) **override de base de la corrida** (el usuario pidió cortar desde una rama X; ver `SKILL.md` → router y `create-branch` paso 2) → (b) `default_branch` del `config.yml` → (c) **detección**: `git symbolic-ref --short refs/remotes/origin/HEAD` devuelve `origin/<rama>`; fallback `git remote show origin | sed -n 's/.*HEAD branch: //p'`. **Normalizar a la rama local** quitando el prefijo `origin/` antes de operar (`origin/main` → `main`): posicionarse con `git checkout <rama-local>` + `git pull --ff-only origin <rama-local>`, **nunca** `git checkout origin/<rama>` (deja *detached HEAD*). Nunca asumir `main`/`master`. Con override de base, X puede ser **local o estar adelantada del remoto**: hacer el `pull --ff-only` **solo si X tiene upstream** (`git rev-parse --abbrev-ref --symbolic-full-name @{u}` no falla); si no, cortar desde el HEAD local de X. El override no toca `config.yml`.
+| Gestor | Señales sin `packageManager` | bootstrap |
+|---|---|---|
+| npm | `package-lock.json` | `npm ci` |
+| pnpm | `pnpm-lock.yaml` | `pnpm install --frozen-lockfile` |
+| Yarn Berry | `.yarnrc.yml`, o `yarn.lock` con `__metadata:` | `yarn install --immutable` |
+| Yarn 1 | `yarn.lock` con cabecera `# yarn lockfile v1` y sin señal Berry | `yarn install --frozen-lockfile` |
+| Bun | `bun.lockb` | `bun install --frozen-lockfile` |
+
+Angular no es otro stack para esta decisión: con `package-lock.json` usa la fila npm y deriva
+`npm ci`. `packageManager` fija gestor y, para Yarn, la versión mayor; una contradicción con el
+lockfile detiene la derivación. Si la tabla acredita `none`, el default es `[]`; Python y `other` no
+tienen regla automática, por lo que el checkpoint exige un comando o la confirmación explícita de
+ninguno.
+
+**Rama base:** precedencia = (a) **override de base de la corrida** (el usuario pidió cortar desde una rama X; ver `SKILL.md` → router y `create-branch` paso 2) → (b) `default_branch` del `config.yml` → (c) **detección**: `git symbolic-ref --short refs/remotes/origin/HEAD` devuelve `origin/<rama>`; fallback `git remote show origin | sed -n 's/.*HEAD branch: //p'`. **Normalizar a la rama local** quitando el prefijo `origin/` antes de operar (`origin/main` → `main`). En un tramo read-only, comprobar la existencia contra las refs disponibles y declarar el remoto no comprobado; en la vía heredada con efectos, ejecutar primero `git fetch origin` y recién entonces exigir `refs/heads/<rama>` o `refs/remotes/origin/<rama>`, sin inventarla. Sin una decisión congelada por la preflight, posicionarse con `git checkout <rama-local>` + `git pull --ff-only origin <rama-local>`, **nunca** `git checkout origin/<rama>` (deja *detached HEAD*). Con `origin_sha` congelado, ningún consumidor repite ese checkout/pull: usa el SHA y la rama persistidos. Nunca asumir `main`/`master`. Con override de base, X puede ser **local o estar adelantada del remoto**: hacer el `pull --ff-only` **solo si X tiene upstream** (`git rev-parse --abbrev-ref --symbolic-full-name @{u}` no falla); si no, cortar desde el HEAD local de X. El override no toca `config.yml`.
 
 **Host de Git:** parsear `git remote get-url origin` y buscar `github.com`, `gitlab`, `bitbucket` u otro dominio; define qué CLI/MCP usar para PRs y detección de rama remota.
 
 ### Elección de rama
+
+Si el handoff ya trae `origin_sha` y una decisión de ubicación de la preflight, `create-branch`
+consume esa identidad. Con worktree materializado también consume `worktree_branch`; no vuelve a
+preguntar, hacer pull, checkout, stash ni rename. Si la ref avanzó, muestra ambos OID y solo cambia
+el SHA congelado con autorización. El procedimiento siguiente queda para una invocación directa o un
+flujo heredado sin esa identidad.
 
 Qué hace `create-branch` cuando el HEAD **no** está parado en la base resuelta. El paso dispara la
 decisión; el procedimiento vive acá. Nada mueve el HEAD hasta que la elección está tomada.
@@ -360,6 +383,1211 @@ inventado.
    git branch -m $nuevo
    ```
 
+## Preflight Git y worktree
+
+Esta preflight pertenece al **ciclo completo nuevo**. Su oferta inicial corre al entrar en
+`gather-context`, después de resolver y ecoar la configuración, y no se abre desde `init`,
+`constitution`, `status`, `doctor`, `resume`, un `create-branch` directo ni `implement`. `resume` sí
+reutiliza la maquinaria de materialización de las secciones 4 a 9 cuando retoma una intención ya
+persistida; no repite la oferta inicial. La preflight tiene dos tramos dentro del checkpoint
+existente de contexto:
+
+1. **clasificación read-only inmediata** de HEAD, base efectiva y topología de worktrees;
+2. después de admitir y congelar el pedido en 3b, resolver origen y ubicación; completar la búsqueda
+   breve de antecedentes; mostrar el preview; y solo entonces autorizar cualquier efecto.
+
+El preview incluye `origin_sha`, destino absoluto, rama semántica definitiva, inventario del paquete,
+`seed_paths`, candidatos admisibles omitidos, `startup_commands`, la primitiva acotada y su cota. No
+hay otro gate SDD. En un modo no mutante solo corre el primer tramo en memoria: no hace `fetch`, no
+escribe handoff ni crea nada, declara las refs remotas no comprobadas y repite la preflight completa
+cuando el runtime vuelva a permitir efectos.
+
+### 1. Clasificar HEAD, base y topología
+
+Las entradas son `BASE_OVERRIDE` y `CONFIG_DEFAULT_BRANCH`, ambas vacías si no existen. Los bloques
+no cambian el cwd. `detached`, un repositorio sin commits o una base que no resuelve detienen la
+oferta con el diagnóstico literal.
+
+POSIX:
+
+```sh
+classify_git_position() {
+  repo=$(git rev-parse --show-toplevel) || return 20
+  head_sha=$(git rev-parse --verify HEAD 2>/dev/null) || {
+    printf '%s\n' 'ERROR: repository has no commits; worktree preflight stopped' >&2; return 21;
+  }
+  head_branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null) || {
+    printf '%s\n' 'ERROR: detached HEAD; attach HEAD to a branch before continuing' >&2; return 22;
+  }
+  repo=$(cd "$repo" && pwd -P) || return 23
+  main_worktree=$(git worktree list --porcelain | awk '/^worktree / {sub(/^worktree /, ""); print; exit}')
+  [ -n "$main_worktree" ] || return 23
+  main_worktree=$(cd "$main_worktree" && pwd -P) || return 23
+  current_worktree=$repo
+  if [ -n "${BASE_OVERRIDE:-}" ]; then
+    base_branch=$BASE_OVERRIDE
+  elif [ -n "${CONFIG_DEFAULT_BRANCH:-}" ]; then
+    base_branch=$CONFIG_DEFAULT_BRANCH
+  else
+    base_branch=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null) || {
+      printf '%s\n' 'ERROR: effective base cannot be resolved; configure default_branch' >&2; return 24;
+    }
+    base_branch=${base_branch#origin/}
+  fi
+  git check-ref-format --branch "$base_branch" >/dev/null 2>&1 || {
+    printf 'ERROR: effective base is not a valid branch: %s\n' "$base_branch" >&2; return 25;
+  }
+  git show-ref --verify --quiet "refs/heads/$base_branch" ||
+    git show-ref --verify --quiet "refs/remotes/origin/$base_branch" || {
+      printf 'ERROR: effective base does not exist: %s\n' "$base_branch" >&2; return 25;
+    }
+  linked=no; [ "$current_worktree" = "$main_worktree" ] || linked=yes
+  printf 'HEAD %s %s\nbase %s\nmain_worktree %s\ncurrent_worktree %s\nlinked %s\n' \
+    "$head_branch" "$head_sha" "$base_branch" "$main_worktree" "$current_worktree" "$linked"
+}
+classify_git_position
+```
+
+PowerShell:
+
+```powershell
+function Get-GitPosition {
+  $Repo = git rev-parse --show-toplevel
+  if ($LASTEXITCODE -ne 0) { exit 20 }
+  $HeadSha = git rev-parse --verify HEAD 2>$null
+  if ($LASTEXITCODE -ne 0) {
+    [Console]::Error.WriteLine('ERROR: repository has no commits; worktree preflight stopped'); exit 21
+  }
+  $HeadBranch = git symbolic-ref --quiet --short HEAD 2>$null
+  if ($LASTEXITCODE -ne 0) {
+    [Console]::Error.WriteLine('ERROR: detached HEAD; attach HEAD to a branch before continuing'); exit 22
+  }
+  $MainLine = git worktree list --porcelain | Where-Object { $_ -like 'worktree *' } |
+    Select-Object -First 1
+  if (-not $MainLine) { exit 23 }
+  $Repo = (Resolve-Path -LiteralPath $Repo).Path
+  $MainWorktree = (Resolve-Path -LiteralPath $MainLine.Substring(9)).Path
+  $BaseBranch = if ($env:BASE_OVERRIDE) { $env:BASE_OVERRIDE } elseif ($env:CONFIG_DEFAULT_BRANCH) {
+    $env:CONFIG_DEFAULT_BRANCH
+  } else {
+    $Detected = git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>$null
+    if ($LASTEXITCODE -ne 0) {
+      [Console]::Error.WriteLine('ERROR: effective base cannot be resolved; configure default_branch'); exit 24
+    }
+    $Detected -replace '^origin/', ''
+  }
+  git check-ref-format --branch $BaseBranch *> $null
+  if ($LASTEXITCODE -ne 0) {
+    [Console]::Error.WriteLine("ERROR: effective base is not a valid branch: $BaseBranch"); exit 25
+  }
+  git show-ref --verify --quiet "refs/heads/$BaseBranch"
+  if ($LASTEXITCODE -ne 0) {
+    git show-ref --verify --quiet "refs/remotes/origin/$BaseBranch"
+    if ($LASTEXITCODE -ne 0) {
+      [Console]::Error.WriteLine("ERROR: effective base does not exist: $BaseBranch"); exit 25
+    }
+  }
+  $Linked = if ($Repo -eq $MainWorktree) { 'no' } else { 'yes' }
+  [pscustomobject]@{
+    HeadBranch = $HeadBranch; HeadSha = $HeadSha; BaseBranch = $BaseBranch
+    MainWorktree = $MainWorktree; CurrentWorktree = $Repo; Linked = $Linked
+  }
+}
+$GitPosition = Get-GitPosition
+$HeadBranch = $GitPosition.HeadBranch; $HeadSha = $GitPosition.HeadSha
+$BaseBranch = $GitPosition.BaseBranch; $MainWorktree = $GitPosition.MainWorktree
+$CurrentWorktree = $GitPosition.CurrentWorktree; $Linked = $GitPosition.Linked
+"HEAD $HeadBranch $HeadSha`nbase $BaseBranch`nmain_worktree $MainWorktree`ncurrent_worktree $CurrentWorktree`nlinked $Linked"
+```
+
+### 2. WIP y elección inicial
+
+Después de 3b, volver a capturar HEAD y ejecutar el chequeo siguiente **antes de `fetch`, fast-forward
+o materialización**. `.plans/` y `.specify/` se excluyen; lo que Git ya ignora no aparece. Si hay
+código pendiente, mostrarlo y pedir una sola decisión: commitearlo, pausar para resolverlo, o abandonar
+la materialización y continuar en el árbol actual. Esta última escribe primero
+`worktree_location: current`, `worktree_status: abandoned` y `worktree_stage: planned`. `stash` no
+se ofrece porque es compartido por todos los worktrees.
+
+POSIX:
+
+```sh
+pending=$(git -C "$current_worktree" status --porcelain --untracked-files=all -- . \
+  ':(exclude).plans' ':(exclude).specify') || exit 26
+if [ -n "$pending" ]; then
+  printf '%s\n' 'ERROR: uncommitted code blocks fetch/fast-forward and worktree creation' "$pending" >&2
+  exit 27
+fi
+```
+
+PowerShell:
+
+```powershell
+$Pending = git -C $CurrentWorktree status --porcelain --untracked-files=all -- . ':(exclude).plans' ':(exclude).specify'
+if ($LASTEXITCODE -ne 0) { exit 26 }
+if ($Pending) {
+  [Console]::Error.WriteLine('ERROR: uncommitted code blocks fetch/fast-forward and worktree creation')
+  $Pending | ForEach-Object { [Console]::Error.WriteLine($_) }
+  exit 27
+}
+```
+
+Si HEAD coincide con la base efectiva, comprobar sincronía y después ofrecer **worktree
+(recomendado)** o árbol actual. Si HEAD está fuera, preguntar primero si el origen será la base
+**(recomendada)** o la rama actual; elegir la actual conserva `base_branch: <rama-actual>`. Después
+preguntar árbol actual o worktree **(recomendado)**. Dentro de un linked worktree se recomienda
+reutilizarlo y se advierte que otro árbol duplica entorno, estado y limpieza; el usuario aún puede
+pedir el procedimiento completo para un segundo worktree.
+
+La decisión se persiste al cerrar el checkpoint incluso si no se materializa:
+`worktree_location: current | worktree`, `origin_sha`, `origin_worktree`, `main_worktree` y, cuando
+corresponda, `base_branch`. Una ubicación `current` no lleva `worktree_status`, salvo el terminal
+`abandoned`, que evita volver a ofrecer una materialización rechazada.
+
+### 3. Sincronía y congelamiento de `origin_sha`
+
+`ALLOW_EFFECTS=1` significa que 3b ya terminó y el modo admite efectos. Con cero, no se hace fetch y
+se imprime `remote unverified`. Las cinco relaciones son cerradas: `equal`, `local-ahead`,
+`local-behind`, `diverged`, `unverified`. Esta clasificación corre cuando HEAD ya está en la base o
+cuando, estando fuera, el usuario eligió partir de ella. Si eligió la rama actual, no se clasifica
+otra ref: `base_branch=$head_branch` y `origin_sha=$head_sha`; esa elección no mueve ni actualiza el
+checkout.
+
+POSIX:
+
+```sh
+classify_base_sync() {
+  local_ref="refs/heads/$base_branch"
+  remote_ref="refs/remotes/origin/$base_branch"
+  local_sha=$(git rev-parse --verify "$local_ref" 2>/dev/null ||
+    git rev-parse --verify "$remote_ref") || return 30
+  if [ "${ALLOW_EFFECTS:-0}" != 1 ]; then
+    printf 'relation unverified\nremote_reason effects-disabled\norigin_sha %s\n' "$local_sha"; return 0
+  fi
+  if ! git fetch origin "$base_branch"; then
+    printf 'relation unverified\nremote_reason fetch-failed\norigin_sha %s\n' "$local_sha"; return 0
+  fi
+  remote_sha=$(git rev-parse --verify "$remote_ref") || {
+    printf 'relation unverified\nremote_reason remote-ref-missing\norigin_sha %s\n' "$local_sha"; return 0;
+  }
+  if [ "$local_sha" = "$remote_sha" ]; then relation=equal
+  elif git merge-base --is-ancestor "$remote_sha" "$local_sha"; then relation=local-ahead
+  elif git merge-base --is-ancestor "$local_sha" "$remote_sha"; then relation=local-behind
+  else relation=diverged
+  fi
+  printf 'relation %s\nlocal_sha %s\nremote_sha %s\n' "$relation" "$local_sha" "$remote_sha"
+  [ "$relation" != diverged ] || return 31
+}
+classify_base_sync
+```
+
+PowerShell:
+
+```powershell
+function Get-BaseSync {
+  $LocalRef = "refs/heads/$BaseBranch"; $RemoteRef = "refs/remotes/origin/$BaseBranch"
+  $LocalSha = git rev-parse --verify $LocalRef 2>$null
+  if ($LASTEXITCODE -ne 0) { $LocalSha = git rev-parse --verify $RemoteRef }
+  if ($LASTEXITCODE -ne 0) { exit 30 }
+  if ($env:ALLOW_EFFECTS -ne '1') {
+    return [pscustomobject]@{
+      Relation = 'unverified'; LocalSha = $LocalSha; RemoteSha = $null
+      RemoteReason = 'effects-disabled'
+    }
+  }
+  git fetch origin $BaseBranch
+  if ($LASTEXITCODE -ne 0) {
+    return [pscustomobject]@{
+      Relation = 'unverified'; LocalSha = $LocalSha; RemoteSha = $null
+      RemoteReason = 'fetch-failed'
+    }
+  }
+  $RemoteSha = git rev-parse --verify $RemoteRef
+  if ($LASTEXITCODE -ne 0) {
+    return [pscustomobject]@{
+      Relation = 'unverified'; LocalSha = $LocalSha; RemoteSha = $null
+      RemoteReason = 'remote-ref-missing'
+    }
+  }
+  if ($LocalSha -eq $RemoteSha) { $Relation = 'equal' }
+  else {
+    git merge-base --is-ancestor $RemoteSha $LocalSha
+    if ($LASTEXITCODE -eq 0) { $Relation = 'local-ahead' } else {
+      git merge-base --is-ancestor $LocalSha $RemoteSha
+      if ($LASTEXITCODE -eq 0) { $Relation = 'local-behind' } else { $Relation = 'diverged' }
+    }
+  }
+  [pscustomobject]@{
+    Relation = $Relation; LocalSha = $LocalSha; RemoteSha = $RemoteSha; RemoteReason = $null
+  }
+}
+$BaseSync = Get-BaseSync
+$Relation = $BaseSync.Relation; $LocalSha = $BaseSync.LocalSha; $RemoteSha = $BaseSync.RemoteSha
+if ($Relation -eq 'unverified') {
+  "relation unverified`nremote_reason $($BaseSync.RemoteReason)`norigin_sha $LocalSha"
+} else {
+  "relation $Relation`nlocal_sha $LocalSha`nremote_sha $RemoteSha"
+}
+if ($Relation -eq 'diverged') { exit 31 }
+```
+
+Aplicar la relación así:
+
+| Relación | `origin_sha` | Decisión |
+|---|---|---|
+| `equal` | OID común | ninguna actualización |
+| `local-ahead` | OID local | declarar el adelanto; no reescribirlo |
+| `local-behind` | OID remoto solo tras fast-forward autorizado; si se rechaza, OID local no actualizado | ofrecer `git merge --ff-only <remote-ref>` únicamente si la base es el checkout actual |
+| `diverged` | ninguno hasta resolver | elegir un lado o reconciliar manualmente; no crear |
+| `unverified` | OID local | declarar que no se contrastó el remoto |
+
+La fila `local-behind` describe el caso en que HEAD ya está en la base. Si HEAD está fuera y el
+usuario eligió partir de la base, no se mueve ese checkout ni se actualiza la rama local: tras un
+`fetch` comprobado, `equal` y `local-ahead` conservan el OID local, `local-behind` congela el OID
+remoto, `unverified` conserva el local con aviso y `diverged` sigue bloqueando hasta una decisión.
+
+El fast-forward autorizado tampoco cambia el cwd:
+
+```sh
+[ "$head_branch" = "$base_branch" ] || exit 32
+git merge --ff-only "refs/remotes/origin/$base_branch" || exit 33
+origin_sha=$(git rev-parse HEAD)
+```
+
+```powershell
+if ($HeadBranch -ne $BaseBranch) { exit 32 }
+git merge --ff-only "refs/remotes/origin/$BaseBranch"
+if ($LASTEXITCODE -ne 0) { exit 33 }
+$OriginSha = git rev-parse HEAD
+```
+
+Quien materializa o ejecuta `create-branch` consume el SHA congelado, sin otro `pull`. Si el ref
+avanzó, muestra ambos OID y solo reemplaza `origin_sha` tras autorización explícita.
+
+### 4. Configuración, ruta y rama definitiva
+
+La precedencia por hoja es override conversacional de la corrida → valor **presente** en config →
+default. La presencia importa: `seed_paths: []` y `startup_commands: []` son decisiones explícitas.
+Los defaults son:
+
+| Hoja | Default por ausencia |
+|---|---|
+| `worktree.base_path` | `~/worktrees` |
+| `worktree.seed_paths` | `[]`; no copia entorno opcional, pero conserva la recomendación acotada de candidatos y la continuidad obligatoria del config |
+| `worktree.startup_commands` | comando de bootstrap de la tabla de stack; `[]` solo si acredita `none` |
+
+Si la lista efectiva de `startup_commands` no está vacía, antes de confirmar el preview el runtime
+conductor debe acreditar una primitiva capaz de abortar cada proceso al vencer la cota. Sin esa
+capacidad no se habilita `creating`, no se publica estado ni se crea el destino: se informa
+`refused:unbounded-runtime` y se ofrece continuar en el árbol actual o reintentar desde un runtime
+acotable. La comprobación defensiva de la sección 8 sigue aplicando a destinos parciales heredados.
+
+Toda persistencia ofrecida fusiona solo las hojas aceptadas, crea el bloque si falta y preserva las
+demás claves. En la ruta worktree se ejecuta después de publicar `creating` y antes de expandir o
+copiar; así la configuración no antecede al estado recuperable. Un path configurado que ya no existe
+se omite con aviso y se ofrece quitarlo mediante la misma fusión; no bloquea.
+
+`base_path` acepta una ruta absoluta o un único prefijo `~/`; rechaza otras relativas y `~usuario`.
+El proyecto sale del basename del **primer** worktree de `git worktree list --porcelain`; el último
+componente sale del ID durable. Ambos se normalizan con minúsculas, corridas fuera de
+`[a-z0-9._-]` a `-` y guiones de extremos fuera. El handoff conserva además el ID original, por lo
+que la normalización de ruta no sustituye su identidad.
+
+POSIX:
+
+```sh
+normalize_component() {
+  printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]' |
+    sed -E 's/[^a-z0-9._-]+/-/g; s/^-+//; s/-+$//'
+}
+case "$worktree_base_path" in
+  '~/'*) worktree_base_path=$HOME/${worktree_base_path#'~/'} ;;
+  '~'*) printf '%s\n' 'refused:base-path-invalid' >&2; exit 40 ;;
+  /*) ;;
+  *) printf '%s\n' 'refused:base-path-invalid' >&2; exit 40 ;;
+esac
+[ -n "$main_worktree" ] || exit 23
+project_component=$(normalize_component "$(basename "$main_worktree")")
+flow_component=$(normalize_component "$flow_id")
+[ -n "$project_component" ] && [ -n "$flow_component" ] || {
+  printf '%s\n' 'refused:path-component-invalid' >&2; exit 41;
+}
+[ "$project_component" != . ] && [ "$project_component" != .. ] &&
+  [ "$flow_component" != . ] && [ "$flow_component" != .. ] || {
+    printf '%s\n' 'refused:path-component-invalid' >&2; exit 41;
+  }
+worktree_path=$worktree_base_path/$project_component/$flow_component
+printf '%s\n' "$worktree_path"
+```
+
+PowerShell:
+
+```powershell
+function ConvertTo-SafeComponent([string]$Value) {
+  (($Value.ToLowerInvariant() -replace '[^a-z0-9._-]+', '-') -replace '^-+|-+$', '')
+}
+if ($WorktreeBasePath.StartsWith('~/')) {
+  $WorktreeBasePath = Join-Path $HOME $WorktreeBasePath.Substring(2)
+} elseif ($WorktreeBasePath.StartsWith('~') -or -not [IO.Path]::IsPathFullyQualified($WorktreeBasePath)) {
+  [Console]::Error.WriteLine('refused:base-path-invalid'); exit 40
+}
+if ([string]::IsNullOrWhiteSpace($MainWorktree)) { exit 23 }
+$ProjectComponent = ConvertTo-SafeComponent (Split-Path $MainWorktree -Leaf)
+$FlowComponent = ConvertTo-SafeComponent $FlowId
+if (-not $ProjectComponent -or -not $FlowComponent -or $ProjectComponent -in '.', '..' -or
+    $FlowComponent -in '.', '..') {
+  [Console]::Error.WriteLine('refused:path-component-invalid'); exit 41
+}
+$WorktreePath = Join-Path (Join-Path $WorktreeBasePath $ProjectComponent) $FlowComponent
+$WorktreePath
+```
+
+Canonicalizar el ancestro existente más cercano sin cambiar cwd, rechazar una colisión física y
+rechazar un destino igual o contenido por cualquier worktree existente. Repetir la comparación
+después de crear, porque enlaces o montajes pueden resolver distinto.
+
+POSIX:
+
+```sh
+canonical_missing_path() {
+  probe=$1; suffix=
+  while [ ! -e "$probe" ]; do
+    leaf=$(basename "$probe"); suffix=/$leaf$suffix
+    parent=$(dirname "$probe"); [ "$parent" != "$probe" ] || break; probe=$parent
+  done
+  [ -d "$probe" ] || return 42
+  canonical_parent=$(cd "$probe" && pwd -P) || return 42
+  printf '%s%s\n' "$canonical_parent" "$suffix" | awk -F/ '
+    { n=0; for (i=1; i<=NF; i++) {
+        if ($i=="" || $i==".") continue;
+        if ($i=="..") { if (n>0) n--; continue }
+        part[++n]=$i
+      }
+      if (n==0) { print "/"; next }
+      out=""; for (i=1; i<=n; i++) out=out "/" part[i]; print out
+    }'
+}
+candidate=$(canonical_missing_path "$worktree_path") || {
+  printf '%s\n' 'refused:base-path-invalid' >&2; exit 42;
+}
+[ ! -e "$worktree_path" ] && [ ! -L "$worktree_path" ] || {
+  printf '%s\n' 'refused:destination-collision' >&2; exit 43;
+}
+existing_worktrees_file=$(mktemp) || exit 44
+git worktree list --porcelain | awk '/^worktree / {sub(/^worktree /, ""); print}' \
+  >"$existing_worktrees_file" || { rm -f "$existing_worktrees_file"; exit 44; }
+containment_ok=yes
+while IFS= read -r existing; do
+  registered=$existing
+  existing=$(cd "$registered" && pwd -P) || {
+    printf 'ERROR: registered worktree path cannot be resolved: %s\n' "$registered" >&2
+    containment_ok=error; break
+  }
+  existing_prefix=${existing%/}/
+  case "$candidate/" in "$existing_prefix"*)
+    printf '%s\n' 'refused:destination-contained' >&2; containment_ok=no; break;; esac
+done <"$existing_worktrees_file"
+rm -f "$existing_worktrees_file"
+[ "$containment_ok" != error ] || exit 44
+[ "$containment_ok" = yes ] || exit 45
+```
+
+PowerShell:
+
+```powershell
+$Probe = $WorktreePath; $Suffix = New-Object System.Collections.Generic.List[string]
+while (-not (Test-Path -LiteralPath $Probe)) {
+  $Suffix.Insert(0, (Split-Path $Probe -Leaf)); $Parent = Split-Path $Probe -Parent
+  if ($Parent -eq $Probe) { break }; $Probe = $Parent
+}
+if (-not (Test-Path -LiteralPath $Probe -PathType Container)) {
+  [Console]::Error.WriteLine('refused:base-path-invalid'); exit 42
+}
+$Candidate = (Resolve-Path -LiteralPath $Probe).Path
+foreach ($Part in $Suffix) { $Candidate = Join-Path $Candidate $Part }
+$Candidate = [IO.Path]::GetFullPath($Candidate)
+$Collision = Get-Item -LiteralPath $WorktreePath -Force -ErrorAction SilentlyContinue
+if ($null -ne $Collision) {
+  [Console]::Error.WriteLine('refused:destination-collision'); exit 43
+}
+try {
+  $ExistingWorktrees = @(git worktree list --porcelain | Where-Object { $_ -like 'worktree *' } |
+    ForEach-Object { (Resolve-Path -LiteralPath $_.Substring(9) -ErrorAction Stop).Path })
+} catch { [Console]::Error.WriteLine('ERROR: registered worktree path cannot be resolved'); exit 44 }
+foreach ($Existing in $ExistingWorktrees) {
+  $Prefix = $Existing.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+  if (($Candidate + [IO.Path]::DirectorySeparatorChar).StartsWith($Prefix,
+      [StringComparison]::OrdinalIgnoreCase)) {
+    [Console]::Error.WriteLine('refused:destination-contained'); exit 45
+  }
+}
+```
+
+La rama se deriva **después del escaneo breve** con el prefijo semántico de “Mapeo tipo de cambio →
+prefijo”; usa `git worktree` plano, sin Orca, y no usa `sdd/`, detached ni una rama temporal. Antes del primer efecto se muestra y acepta el
+nombre exacto. La creación/reutilización solo admite una identidad compatible:
+
+POSIX:
+
+```sh
+git check-ref-format --branch "$worktree_branch" >/dev/null 2>&1 || {
+  printf '%s\n' 'refused:branch-name-conflict' >&2; exit 46;
+}
+occupied=$(git worktree list --porcelain | awk -v b="refs/heads/$worktree_branch" \
+  '$1=="branch" && $2==b {print b}')
+[ -z "$occupied" ] || { printf '%s\n' 'refused:branch-occupied' >&2; exit 47; }
+mkdir -p "$(dirname "$worktree_path")" || exit 48
+if git show-ref --verify --quiet "refs/heads/$worktree_branch"; then
+  branch_sha=$(git rev-parse "refs/heads/$worktree_branch") || exit 49
+  [ "$branch_sha" = "$origin_sha" ] || {
+    printf '%s\n' 'refused:branch-oid-conflict' >&2; exit 50;
+  }
+  git worktree add "$worktree_path" "$worktree_branch" || exit 51
+else
+  git worktree add -b "$worktree_branch" "$worktree_path" "$origin_sha" || exit 52
+fi
+git -C "$worktree_path" rev-parse --show-toplevel >/dev/null || exit 53
+actual_candidate=$(cd "$worktree_path" && pwd -P) || exit 53
+post_worktrees_file=$(mktemp) || exit 44
+git worktree list --porcelain | awk '/^worktree / {sub(/^worktree /, ""); print}' \
+  >"$post_worktrees_file" || { rm -f "$post_worktrees_file"; exit 44; }
+post_containment_ok=yes
+while IFS= read -r existing; do
+  registered=$existing
+  existing=$(cd "$registered" && pwd -P) || {
+    printf 'ERROR: registered worktree path cannot be resolved: %s\n' "$registered" >&2
+    post_containment_ok=error; break
+  }
+  [ "$existing" = "$actual_candidate" ] && continue
+  case "$actual_candidate/" in "$existing/"*)
+    printf '%s\n' 'refused:destination-contained' >&2; post_containment_ok=no; break;; esac
+done <"$post_worktrees_file"
+rm -f "$post_worktrees_file"
+[ "$post_containment_ok" != error ] || exit 44
+[ "$post_containment_ok" = yes ] || exit 45
+```
+
+PowerShell:
+
+```powershell
+git check-ref-format --branch $WorktreeBranch *> $null
+if ($LASTEXITCODE -ne 0) { [Console]::Error.WriteLine('refused:branch-name-conflict'); exit 46 }
+$Occupied = git worktree list --porcelain | Where-Object { $_ -eq "branch refs/heads/$WorktreeBranch" }
+if ($Occupied) { [Console]::Error.WriteLine('refused:branch-occupied'); exit 47 }
+New-Item -ItemType Directory -Force -Path (Split-Path $WorktreePath -Parent) | Out-Null
+git show-ref --verify --quiet "refs/heads/$WorktreeBranch"
+if ($LASTEXITCODE -eq 0) {
+  $BranchSha = git rev-parse "refs/heads/$WorktreeBranch"
+  if ($BranchSha -ne $OriginSha) { [Console]::Error.WriteLine('refused:branch-oid-conflict'); exit 50 }
+  git worktree add $WorktreePath $WorktreeBranch
+  if ($LASTEXITCODE -ne 0) { exit 51 }
+} else {
+  git worktree add -b $WorktreeBranch $WorktreePath $OriginSha
+  if ($LASTEXITCODE -ne 0) { exit 52 }
+}
+git -C $WorktreePath rev-parse --show-toplevel *> $null
+if ($LASTEXITCODE -ne 0) { exit 53 }
+$ActualCandidate = (Resolve-Path -LiteralPath $WorktreePath).Path
+try {
+  $PostWorktrees = @(git worktree list --porcelain | Where-Object { $_ -like 'worktree *' } |
+    ForEach-Object { (Resolve-Path -LiteralPath $_.Substring(9) -ErrorAction Stop).Path })
+} catch { [Console]::Error.WriteLine('ERROR: registered worktree path cannot be resolved'); exit 44 }
+foreach ($Existing in $PostWorktrees) {
+  if ($Existing -eq $ActualCandidate) { continue }
+  $Prefix = $Existing.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+  if (($ActualCandidate + [IO.Path]::DirectorySeparatorChar).StartsWith($Prefix,
+      [StringComparison]::OrdinalIgnoreCase)) {
+    [Console]::Error.WriteLine('refused:destination-contained'); exit 45
+  }
+}
+```
+
+### 5. Estado durable y autoridad entre handoffs
+
+El primer efecto no es `git worktree add`: es publicar en el handoff autoritativo del origen la
+intención `creating`. Todo escritor posterior —`pause`, `publish-spec`, `plan`, `resume`— fusiona y
+preserva estos campos:
+
+```yaml
+worktree_location: worktree
+worktree_path: <absoluto>
+worktree_branch: <rama definitiva>
+main_worktree: <absoluto>
+origin_worktree: <absoluto>
+context_root: <raíz donde se exploró>
+context_head: <SHA explorado>
+origin_sha: <SHA de creación>
+worktree_status: creating
+worktree_stage: creating
+worktree_evidence:
+  - stage: creating
+    operation: {kind: create-worktree, target: null}
+    command: <literal o null>
+    result: ok
+    excerpt: <salida acotada>
+```
+
+`worktree_status` es el enum cerrado `creating | transferring | seeding | starting | verifying |
+ready | failed | abandoned`; `worktree_stage`, `planned | creating | transferring | seeding |
+starting | verifying | ready`. `ready` exige la etapa homónima; `failed` conserva la etapa que
+falló; `abandoned` usa `planned` si no comenzó la materialización o conserva la última etapa si
+abandona un destino parcial. `failed` y `abandoned` son estados terminales, no etapas.
+
+Cada evidencia contiene exactamente `stage`, `operation`, `command`, `result` y `excerpt`.
+`operation` contiene `kind` y `target`; su identidad de merge es `(stage, kind, target)` y un `ok`
+previo evita repetir esa operación. `kind` admite `create-worktree | transfer-copy |
+transfer-inventory | transfer-hashes | seed-copy | seed-ignored | seed-clean | seed-exists |
+startup-command | final-path | final-branch | final-sha`; `target` es la ruta repo-relativa con `/`,
+el ordinal decimal 1-based del startup o `null`. `result` admite `ok`, `exit:<n>`,
+`timeout:<cota>` o `refused:<reason-code>`, donde `reason-code` es `branch-name-conflict |
+branch-oid-conflict | branch-occupied | base-path-invalid | path-component-invalid |
+destination-contained | destination-collision | package-inventory-mismatch |
+package-hash-mismatch | seed-forbidden | seed-untracked-not-ignored |
+seed-destination-not-ignored | unbounded-runtime`.
+
+El conductor construye `handoff_body` fusionando el documento vigente en memoria y publica de forma
+atómica. Antes del doble `ready`, `handoff_authority=origin`: se escribe primero el origen y, cuando
+ya existe, después la réplica. Un `ok` aislado en la réplica se diagnostica y se contrasta contra el
+efecto real antes de adoptarlo o reintentar; nunca acredita por sí solo ni dispara una repetición
+ciega. Solo la transición final fija `handoff_transition=ready` / `$HandoffTransition = 'ready'`;
+esa rama publica destino y luego origen. Después del handshake, todo escritor usa
+`handoff_authority=destination` y publica solo el paquete vivo: no reescribe ni recrea el snapshot
+del origen.
+
+```sh
+publish_handoff() (
+  target=$1; body=$2; mkdir -p "$(dirname "$target")" || return 60
+  tmp=$target.tmp.$$; umask 077
+  printf '%s\n' "$body" >"$tmp" && mv "$tmp" "$target"
+)
+if [ "${handoff_transition:-}" = ready ]; then
+  [ -d "$worktree_path/.plans/$flow_id" ] || exit 61
+  publish_handoff "$worktree_path/.plans/$flow_id/handoff.md" "$handoff_body" || exit 61
+  [ -d "$origin_worktree" ] || exit 60
+  publish_handoff "$origin_worktree/.plans/$flow_id/handoff.md" "$handoff_body" || exit 60
+elif [ "${handoff_authority:-origin}" = destination ]; then
+  [ -d "$worktree_path/.plans/$flow_id" ] || exit 61
+  publish_handoff "$worktree_path/.plans/$flow_id/handoff.md" "$handoff_body" || exit 61
+else
+  [ -d "$origin_worktree" ] || exit 60
+  publish_handoff "$origin_worktree/.plans/$flow_id/handoff.md" "$handoff_body" || exit 60
+  [ ! -d "$worktree_path/.plans/$flow_id" ] ||
+    publish_handoff "$worktree_path/.plans/$flow_id/handoff.md" "$handoff_body" || exit 61
+fi
+```
+
+```powershell
+function Publish-Handoff([string]$Target, [string]$Body) {
+  New-Item -ItemType Directory -Force -Path (Split-Path $Target -Parent) | Out-Null
+  $Temporary = "$Target.tmp.$PID"
+  [IO.File]::WriteAllText($Temporary, $Body + [Environment]::NewLine,
+    [Text.UTF8Encoding]::new($false))
+  if ([IO.File]::Exists($Target)) { [IO.File]::Replace($Temporary, $Target, $null) }
+  else { [IO.File]::Move($Temporary, $Target) }
+}
+if ($HandoffTransition -eq 'ready') {
+  if (-not (Test-Path -LiteralPath "$WorktreePath/.plans/$FlowId" -PathType Container)) { exit 61 }
+  try { Publish-Handoff "$WorktreePath/.plans/$FlowId/handoff.md" $HandoffBody } catch { exit 61 }
+  if (-not (Test-Path -LiteralPath $OriginWorktree -PathType Container)) { exit 60 }
+  try { Publish-Handoff "$OriginWorktree/.plans/$FlowId/handoff.md" $HandoffBody } catch { exit 60 }
+} elseif ($HandoffAuthority -eq 'destination') {
+  if (-not (Test-Path -LiteralPath "$WorktreePath/.plans/$FlowId" -PathType Container)) { exit 61 }
+  try { Publish-Handoff "$WorktreePath/.plans/$FlowId/handoff.md" $HandoffBody } catch { exit 61 }
+} else {
+  if (-not (Test-Path -LiteralPath $OriginWorktree -PathType Container)) { exit 60 }
+  try { Publish-Handoff "$OriginWorktree/.plans/$FlowId/handoff.md" $HandoffBody } catch { exit 60 }
+  if (Test-Path -LiteralPath "$WorktreePath/.plans/$FlowId" -PathType Container) {
+    try { Publish-Handoff "$WorktreePath/.plans/$FlowId/handoff.md" $HandoffBody } catch { exit 61 }
+  }
+}
+```
+
+Los seis fallos se mapean a cinco etapas: creación → `creating`; traslado → `transferring`; siembra
+y sus tres controles → `seeding`; arranque → `starting`; control final → `verifying`. Ante cualquiera,
+escribir `failed`, la etapa y evidencia en origen, replicar si es posible y no emitir launcher.
+Antes de cada etapa se publican `worktree_status` y `worktree_stage` con el nombre de esa etapa; al
+terminar cada operación se fusiona su evidencia antes de iniciar la siguiente. El doble
+`worktree_status: ready` se publica únicamente con `worktree_stage: ready`.
+
+### 6. Trasladar el paquete y el contexto breve
+
+El paquete obligatorio no es `seed_paths`. Se copia **solo** `.plans/<id>/` desde
+`origin_worktree`, después de que 3b y la búsqueda breve hayan dejado allí el pedido, handoff,
+antecedentes y los artefactos del flujo. Ningún otro flujo ni directorio de corridas global viaja.
+Inventario, copia y hashes operan archivo por archivo y detectan anidamiento.
+
+POSIX:
+
+```sh
+source_flow=$origin_worktree/.plans/$flow_id
+target_flow=$worktree_path/.plans/$flow_id
+src_inventory=$(mktemp) || exit 62
+dst_inventory=$(mktemp) || { rm -f "$src_inventory"; exit 62; }
+src_hashes=$(mktemp) || { rm -f "$src_inventory" "$dst_inventory"; exit 62; }
+dst_hashes=$(mktemp) || { rm -f "$src_inventory" "$dst_inventory" "$src_hashes"; exit 62; }
+cleanup_transfer_tmp() { rm -f "$src_inventory" "$dst_inventory" "$src_hashes" "$dst_hashes"; }
+trap cleanup_transfer_tmp 0
+(cd "$source_flow" && find . -type f -print | LC_ALL=C sort) >"$src_inventory" || exit 62
+while IFS= read -r rel; do
+  rel=${rel#./}; mkdir -p "$target_flow/$(dirname "$rel")" || exit 63
+  cp -p "$source_flow/$rel" "$target_flow/$rel" || exit 64
+done <"$src_inventory"
+(cd "$target_flow" && find . -type f -print | LC_ALL=C sort) >"$dst_inventory" || exit 65
+cmp -s "$src_inventory" "$dst_inventory" || {
+  printf '%s\n' 'refused:package-inventory-mismatch' >&2; exit 66;
+}
+hash_file() {
+  if command -v sha256sum >/dev/null 2>&1; then hash_output=$(sha256sum "$1") || return 1
+  else hash_output=$(shasum -a 256 "$1") || return 1; fi
+  printf '%s\n' "$hash_output" | awk '{print $1}'
+}
+while IFS= read -r rel; do
+  rel=${rel#./}; hash=$(hash_file "$source_flow/$rel") || exit 67
+  printf '%s  %s\n' "$hash" "$rel"
+done \
+  <"$src_inventory" >"$src_hashes"
+while IFS= read -r rel; do
+  rel=${rel#./}; hash=$(hash_file "$target_flow/$rel") || exit 67
+  printf '%s  %s\n' "$hash" "$rel"
+done \
+  <"$dst_inventory" >"$dst_hashes"
+cmp -s "$src_hashes" "$dst_hashes" || {
+  printf '%s\n' 'refused:package-hash-mismatch' >&2; exit 67;
+}
+rm -f "$src_inventory" "$dst_inventory" "$src_hashes" "$dst_hashes"
+trap - 0
+```
+
+PowerShell:
+
+```powershell
+$SourceFlow = Join-Path $OriginWorktree ".plans/$FlowId"
+$TargetFlow = Join-Path $WorktreePath ".plans/$FlowId"
+try { $SourceRoot = (Resolve-Path -LiteralPath $SourceFlow -ErrorAction Stop).Path.TrimEnd([char[]]"\/") }
+catch { [Console]::Error.WriteLine($_); exit 62 }
+$SourcePrefix = $SourceRoot + [IO.Path]::DirectorySeparatorChar
+$SourceFiles = @(Get-ChildItem -LiteralPath $SourceRoot -Force -File -Recurse |
+  ForEach-Object { $_.FullName.Substring($SourcePrefix.Length).Replace('\','/') } | Sort-Object)
+foreach ($Relative in $SourceFiles) {
+  $Target = Join-Path $TargetFlow $Relative
+  try {
+    New-Item -ItemType Directory -Force -Path (Split-Path $Target -Parent) -ErrorAction Stop | Out-Null
+    Copy-Item -LiteralPath (Join-Path $SourceFlow $Relative) -Destination $Target -Force -ErrorAction Stop
+  } catch { [Console]::Error.WriteLine($_); exit 64 }
+}
+try { $TargetRoot = (Resolve-Path -LiteralPath $TargetFlow -ErrorAction Stop).Path.TrimEnd([char[]]"\/") }
+catch { [Console]::Error.WriteLine($_); exit 65 }
+$TargetPrefix = $TargetRoot + [IO.Path]::DirectorySeparatorChar
+$TargetFiles = @(Get-ChildItem -LiteralPath $TargetRoot -Force -File -Recurse |
+  ForEach-Object { $_.FullName.Substring($TargetPrefix.Length).Replace('\','/') } | Sort-Object)
+if (Compare-Object $SourceFiles $TargetFiles) {
+  [Console]::Error.WriteLine('refused:package-inventory-mismatch'); exit 66
+}
+try {
+  $SourceHashes = $SourceFiles | ForEach-Object {
+    "{0}  {1}" -f (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $SourceFlow $_) -ErrorAction Stop).Hash.ToLower(), $_
+  }
+  $TargetHashes = $TargetFiles | ForEach-Object {
+    "{0}  {1}" -f (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $TargetFlow $_) -ErrorAction Stop).Hash.ToLower(), $_
+  }
+} catch { [Console]::Error.WriteLine($_); exit 67 }
+if (Compare-Object $SourceHashes $TargetHashes) {
+  [Console]::Error.WriteLine('refused:package-hash-mismatch'); exit 67
+}
+```
+
+Si el paquete no está ignorado, nada cambia su política: los comandos de estado y staging lo
+excluyen por pathspec. La skill no toca `.gitignore`, `.git/info/exclude` ni el ignore global.
+
+### 7. Curar y sembrar el entorno ignorado
+
+La recomendación se limita a archivos existentes bajo `.specify/`, `.claude/`, `.agents/`,
+`.codex/` y `.opencode/` que sean untracked e ignorados. Para cada candidato se muestra la salida de
+`git check-ignore -v`, que identifica `.gitignore`, el `.git/info/exclude` común o el ignore global.
+No se recorre todo lo ignorado del repo. `.specify/config.yml` es continuidad obligatoria del flujo:
+si existe y Git no lo versiona, se agrega al conjunto expandido aunque `seed_paths` sea `[]` y debe
+pasar las mismas tres comprobaciones; si está versionado, el worktree ya lo contiene. Quedan
+prohibidos, aunque alguien los agregue:
+
+- `.plans/`, `.cross-model/`, `.co-explore/`, `.cross-review/`, `.cross-implement/`, `.handoffs/` y
+  `.superpowers/`;
+- `.git/`, que es metadata compartida del repositorio y no entorno de la aplicación;
+- repositorios anidados;
+- `node_modules/`, `.venv/`, `venv/`, `dist/`, `build/`, `target/` y `__pycache__/`.
+
+POSIX, inventario y precheck **antes del primer efecto**. `accepted_seed_paths_file` —
+`$AcceptedSeedPathsFile` en PowerShell— es un insumo temporal, una entrada repo-relativa por línea,
+que el conductor escribe desde la lista aceptada. Los
+otros dos archivos temporales son salidas del bloque y se conservan hasta terminar la copia y
+construir el launcher:
+
+```sh
+seed_path_allowed() {
+  selected=$1
+  case "$selected" in ''|/*|*\\*|..|../*|*/..|*/../*) return 1;; esac
+  case "/$selected/" in
+    */.git/*|*/.plans/*|*/.cross-model/*|*/.co-explore/*|*/.cross-review/*|*/.cross-implement/*|\
+*/.handoffs/*|*/.superpowers/*|*/node_modules/*|*/.venv/*|*/venv/*|*/dist/*|*/build/*|\
+*/target/*|*/__pycache__/*) return 1;; esac
+  return 0
+}
+inside_nested_repo() {
+  dir=$(dirname "$1")
+  while [ "$dir" != . ] && [ "$dir" != / ]; do
+    [ ! -e "$origin_worktree/$dir/.git" ] || return 0
+    dir=$(dirname "$dir")
+  done
+  return 1
+}
+expand_seed_path() {
+  selected=$1
+  seed_path_allowed "$selected" || {
+    printf '%s\n' 'refused:seed-forbidden' >&2; return 72;
+  }
+  [ -e "$origin_worktree/$selected" ] || { printf 'missing-seed %s\n' "$selected" >&2; return 0; }
+  if [ -d "$origin_worktree/$selected" ]; then
+    (cd "$origin_worktree" && find "$selected" -type f -print) || return 69
+  else
+    inside_nested_repo "$selected" && {
+      printf '%s\n' 'refused:seed-forbidden' >&2; return 72;
+    }
+    printf '%s\n' "$selected"
+  fi
+}
+check_frozen_ignores() {
+  checked_file=$1; dir=$(dirname "$checked_file")
+  while :; do
+    if [ "$dir" = . ]; then ignore=.gitignore; else ignore=$dir/.gitignore; fi
+    if [ -f "$origin_worktree/$ignore" ]; then
+      current_oid=$(git -C "$origin_worktree" hash-object --path="$ignore" -- "$origin_worktree/$ignore") || return 71
+    else current_oid='<sdd-absent>'; fi
+    frozen_oid=$(git -C "$origin_worktree" rev-parse "$origin_sha:$ignore" 2>/dev/null) ||
+      frozen_oid='<sdd-absent>'
+    [ "$current_oid" = "$frozen_oid" ] || {
+      printf 'predictable-ignore-divergence %s %s\n' "$checked_file" "$ignore" >&2; return 1;
+    }
+    [ "$dir" = . ] && break
+    dir=$(dirname "$dir")
+  done
+}
+seed_raw_candidates_file=$(mktemp) || exit 69
+if [ -z "${seed_candidates_file:-}" ]; then seed_candidates_file=$(mktemp) || exit 69; fi
+if [ -z "${expanded_seed_files:-}" ]; then expanded_seed_files=$(mktemp) || exit 69; fi
+: >"$seed_raw_candidates_file"
+for root in .specify .claude .agents .codex .opencode; do
+  [ -e "$origin_worktree/$root" ] || continue
+  git -C "$origin_worktree" -c core.quotePath=false ls-files --others --ignored \
+    --exclude-standard -- "$root" >>"$seed_raw_candidates_file" || exit 69
+done
+LC_ALL=C sort -u "$seed_raw_candidates_file" -o "$seed_raw_candidates_file" || exit 69
+: >"$seed_candidates_file"
+while IFS= read -r f; do
+  seed_path_allowed "$f" || continue
+  inside_nested_repo "$f" && continue
+  git -C "$origin_worktree" check-ignore -v -- "$f" || exit 70
+  if check_frozen_ignores "$f"; then
+    printf '%s\n' "$f" >>"$seed_candidates_file"
+  else
+    rc=$?; [ "$rc" -eq 1 ] || exit "$rc"
+    printf 'candidate-omitted-ignore-divergence %s\n' "$f" >&2
+  fi
+done <"$seed_raw_candidates_file"
+rm -f "$seed_raw_candidates_file"
+expanded_seed_raw=$(mktemp) || exit 69
+: >"$expanded_seed_raw"
+while IFS= read -r configured; do
+  expand_seed_path "$configured" >>"$expanded_seed_raw" || {
+    rc=$?; rm -f "$expanded_seed_raw"; exit "$rc";
+  }
+done <"$accepted_seed_paths_file"
+if [ -f "$origin_worktree/.specify/config.yml" ] &&
+   ! git -C "$origin_worktree" ls-files --error-unmatch -- .specify/config.yml >/dev/null 2>&1; then
+  printf '%s\n' .specify/config.yml >>"$expanded_seed_raw"
+fi
+LC_ALL=C sort -u "$expanded_seed_raw" -o "$expanded_seed_raw" || exit 69
+: >"$expanded_seed_files"
+while IFS= read -r f; do
+  seed_path_allowed "$f" || continue
+  inside_nested_repo "$f" && continue
+  printf '%s\n' "$f" >>"$expanded_seed_files" || exit 69
+done <"$expanded_seed_raw"
+rm -f "$expanded_seed_raw"
+while IFS= read -r f; do
+  seed_path_allowed "$f" || { printf '%s\n' 'refused:seed-forbidden' >&2; exit 72; }
+  inside_nested_repo "$f" && { printf '%s\n' 'refused:seed-forbidden' >&2; exit 72; }
+  git -C "$origin_worktree" ls-files --error-unmatch -- "$f" >/dev/null 2>&1 && continue
+  git -C "$origin_worktree" check-ignore -v -- "$f" || {
+    printf '%s %s\n' 'refused:seed-untracked-not-ignored' "$f" >&2; exit 73;
+  }
+  check_frozen_ignores "$f" || { rc=$?; [ "$rc" -eq 1 ] && exit 71; exit "$rc"; }
+done <"$expanded_seed_files"
+```
+
+PowerShell:
+
+```powershell
+function Test-ForbiddenSeed([string]$Selected) {
+  [IO.Path]::IsPathRooted($Selected) -or $Selected -match '\\' -or
+    $Selected -match '(^|/)\.\.(/|$)' -or
+    $Selected -match '(^|/)(\.git|\.plans|\.cross-model|\.co-explore|\.cross-review|\.cross-implement|\.handoffs|\.superpowers|node_modules|\.venv|venv|dist|build|target|__pycache__)(/|$)'
+}
+function Test-InsideNestedRepository([string]$File) {
+  $Directory = Split-Path $File -Parent
+  while ($Directory -and $Directory -ne '.') {
+    if (Test-Path -LiteralPath (Join-Path (Join-Path $OriginWorktree $Directory) '.git')) { return $true }
+    $Directory = Split-Path $Directory -Parent
+  }
+  return $false
+}
+function Expand-SeedPath([string]$Selected) {
+  if (Test-ForbiddenSeed $Selected) {
+    [Console]::Error.WriteLine('refused:seed-forbidden'); exit 72
+  }
+  $Source = Join-Path $OriginWorktree $Selected
+  if (-not (Test-Path -LiteralPath $Source)) {
+    [Console]::Error.WriteLine("missing-seed $Selected"); return
+  }
+  if (Test-Path -LiteralPath $Source -PathType Container) {
+    $OriginRoot = (Resolve-Path -LiteralPath $OriginWorktree).Path.TrimEnd([char[]]"\/")
+    $OriginPrefix = $OriginRoot + [IO.Path]::DirectorySeparatorChar
+    try {
+      Get-ChildItem -LiteralPath $Source -Force -File -Recurse -ErrorAction Stop |
+        ForEach-Object {
+          $Relative = $_.FullName.Substring($OriginPrefix.Length).Replace('\','/')
+          if (-not (Test-ForbiddenSeed $Relative) -and -not (Test-InsideNestedRepository $Relative)) {
+            $Relative
+          }
+        }
+    } catch { [Console]::Error.WriteLine($_); exit 69 }
+  } else {
+    if (Test-InsideNestedRepository $Selected) {
+      [Console]::Error.WriteLine('refused:seed-forbidden'); exit 72
+    }
+    $Selected
+  }
+}
+function Test-FrozenIgnores([string]$File) {
+  $Directory = (Split-Path $File -Parent) -replace '\\','/'
+  while ($true) {
+    $Ignore = if ($Directory -and $Directory -ne '.') {
+      $Directory.TrimEnd('/') + '/.gitignore'
+    } else { '.gitignore' }
+    $CurrentPath = Join-Path $OriginWorktree $Ignore
+    $CurrentOid = if (Test-Path -LiteralPath $CurrentPath -PathType Leaf) {
+      $Value = git -C $OriginWorktree hash-object "--path=$Ignore" -- $CurrentPath
+      if ($LASTEXITCODE -ne 0) { exit 71 }; $Value
+    } else { '<sdd-absent>' }
+    $FrozenOid = git -C $OriginWorktree rev-parse "$OriginSha`:$Ignore" 2>$null
+    if ($LASTEXITCODE -ne 0) { $FrozenOid = '<sdd-absent>' }
+    if ($CurrentOid -cne $FrozenOid) {
+      [Console]::Error.WriteLine("predictable-ignore-divergence $File $Ignore"); return $false
+    }
+    if (-not $Directory -or $Directory -eq '.') { break }
+    $Directory = (Split-Path $Directory -Parent) -replace '\\','/'
+  }
+  return $true
+}
+if (-not $SeedCandidatesFile) { $SeedCandidatesFile = (New-TemporaryFile).FullName }
+if (-not $ExpandedSeedFiles) { $ExpandedSeedFiles = (New-TemporaryFile).FullName }
+$RawCandidates = @(foreach ($Root in '.specify','.claude','.agents','.codex','.opencode') {
+  if (Test-Path -LiteralPath (Join-Path $OriginWorktree $Root)) {
+    $Found = @(git -C $OriginWorktree -c core.quotePath=false ls-files --others --ignored --exclude-standard -- $Root)
+    if ($LASTEXITCODE -ne 0) { exit 69 }
+    $Found
+  }
+}) | Sort-Object -Unique
+$Candidates = [Collections.Generic.List[string]]::new()
+foreach ($File in $RawCandidates) {
+  if ((Test-ForbiddenSeed $File) -or (Test-InsideNestedRepository $File)) { continue }
+  git -C $OriginWorktree check-ignore -v -- $File
+  if ($LASTEXITCODE -ne 0) { exit 70 }
+  if (Test-FrozenIgnores $File) { $Candidates.Add($File) }
+  else { [Console]::Error.WriteLine("candidate-omitted-ignore-divergence $File") }
+}
+Set-Content -LiteralPath $SeedCandidatesFile -Value $Candidates -Encoding utf8 -ErrorAction Stop
+$Expanded = @(foreach ($Selected in Get-Content -LiteralPath $AcceptedSeedPathsFile -ErrorAction Stop) {
+  Expand-SeedPath $Selected
+})
+$MandatoryConfig = '.specify/config.yml'
+if (Test-Path -LiteralPath (Join-Path $OriginWorktree $MandatoryConfig) -PathType Leaf) {
+  git -C $OriginWorktree ls-files --error-unmatch -- $MandatoryConfig *> $null
+  if ($LASTEXITCODE -ne 0) { $Expanded += $MandatoryConfig }
+}
+$Expanded = @($Expanded | Sort-Object -Unique)
+Set-Content -LiteralPath $ExpandedSeedFiles -Value $Expanded -Encoding utf8 -ErrorAction Stop
+foreach ($File in Get-Content -LiteralPath $ExpandedSeedFiles -ErrorAction Stop) {
+  if (Test-ForbiddenSeed $File) { [Console]::Error.WriteLine('refused:seed-forbidden'); exit 72 }
+  if (Test-InsideNestedRepository $File) { [Console]::Error.WriteLine('refused:seed-forbidden'); exit 72 }
+  git -C $OriginWorktree ls-files --error-unmatch -- $File *> $null
+  if ($LASTEXITCODE -eq 0) { continue }
+  git -C $OriginWorktree check-ignore -v -- $File
+  if ($LASTEXITCODE -ne 0) {
+    [Console]::Error.WriteLine("refused:seed-untracked-not-ignored $File"); exit 73
+  }
+  if (-not (Test-FrozenIgnores $File)) { exit 71 }
+}
+```
+
+La divergencia es una predicción, no el veredicto final: el usuario debe omitir el path o resolverla
+antes de crear. Tras crear, también cuentan excludes locales/globales y el drift posterior.
+`seed_paths` puede nombrar archivos o directorios repo-relativos; se expande a archivos y cada uno se
+valida. Un ausente avisa y continúa. Un versionado se omite porque Git ya lo materializó. Un untracked
+no ignorado en origen falla. Una entrada configurada que **ella misma** nombra una ruta prohibida
+detiene con `72`: se rechaza una solicitud explícita en vez de acreditarla como omitida. Si una entrada
+admitida nombra un directorio que contiene descendientes prohibidos, la expansión omite solo esos
+descendientes y conserva los demás archivos. Los candidatos admisibles que no se eligen aparecen en el
+preview y en el launcher como diferencias deliberadas; `[]` sigue siendo válido para el entorno
+opcional, pero no suprime la continuidad obligatoria de un `.specify/config.yml` local existente.
+
+POSIX, expansión/copia/las tres comprobaciones:
+
+```sh
+while IFS= read -r f; do
+  inside_nested_repo "$f" && { printf '%s\n' 'refused:seed-forbidden' >&2; exit 72; }
+  git -C "$origin_worktree" ls-files --error-unmatch -- "$f" >/dev/null 2>&1 && continue
+  origin_rule=$(git -C "$origin_worktree" check-ignore -v -- "$f") || {
+    printf '%s %s\n' 'refused:seed-untracked-not-ignored' "$f" >&2; exit 73;
+  }
+  destination_rule=$(git -C "$worktree_path" check-ignore -v -- "$f") || {
+    printf 'origin-ignore %s\n' "$origin_rule" >&2
+    printf 'destination-ignore none\n' >&2
+    printf '%s %s\n' 'refused:seed-destination-not-ignored' "$f" >&2; exit 74;
+  }
+  printf 'origin-ignore %s\ndestination-ignore %s\n' "$origin_rule" "$destination_rule"
+  mkdir -p "$worktree_path/$(dirname "$f")" || exit 75
+  cp -p "$origin_worktree/$f" "$worktree_path/$f" || exit 76
+  git -C "$worktree_path" check-ignore -q -- "$f" || exit 77
+  seed_status=$(git -C "$worktree_path" status --porcelain -- "$f") || exit 78
+  [ -z "$seed_status" ] || exit 78
+  [ -f "$worktree_path/$f" ] || exit 79
+done <"$expanded_seed_files"
+```
+
+PowerShell:
+
+```powershell
+foreach ($File in Get-Content -LiteralPath $ExpandedSeedFiles -ErrorAction Stop) {
+  if (Test-ForbiddenSeed $File) { [Console]::Error.WriteLine('refused:seed-forbidden'); exit 72 }
+  if (Test-InsideNestedRepository $File) { [Console]::Error.WriteLine('refused:seed-forbidden'); exit 72 }
+  git -C $OriginWorktree ls-files --error-unmatch -- $File *> $null
+  if ($LASTEXITCODE -eq 0) { continue }
+  $OriginRule = git -C $OriginWorktree check-ignore -v -- $File
+  if ($LASTEXITCODE -ne 0) { [Console]::Error.WriteLine("refused:seed-untracked-not-ignored $File"); exit 73 }
+  $DestinationRule = git -C $WorktreePath check-ignore -v -- $File
+  if ($LASTEXITCODE -ne 0) {
+    [Console]::Error.WriteLine("origin-ignore $OriginRule")
+    [Console]::Error.WriteLine('destination-ignore none')
+    [Console]::Error.WriteLine("refused:seed-destination-not-ignored $File"); exit 74
+  }
+  "origin-ignore $OriginRule`ndestination-ignore $DestinationRule"
+  $Target = Join-Path $WorktreePath $File
+  try {
+    New-Item -ItemType Directory -Force -Path (Split-Path $Target -Parent) -ErrorAction Stop | Out-Null
+    Copy-Item -LiteralPath (Join-Path $OriginWorktree $File) -Destination $Target -Force -ErrorAction Stop
+  } catch { [Console]::Error.WriteLine($_); exit 76 }
+  git -C $WorktreePath check-ignore -q -- $File
+  if ($LASTEXITCODE -ne 0) { exit 77 }
+  $SeedStatus = git -C $WorktreePath status --porcelain -- $File
+  if ($LASTEXITCODE -ne 0 -or $SeedStatus) { exit 78 }
+  if (-not (Test-Path -LiteralPath $Target -PathType Leaf)) { exit 79 }
+}
+```
+
+Estas son tres pruebas distintas: `check-ignore` acredita la política, `status` que no ensucia Git y
+la existencia en la ruta exacta detecta la copia anidada. No se sustituye ninguna por otra.
+
+### 8. Startup acotado
+
+Antes de ejecutar, mostrar la lista, el intérprete de comandos de la plataforma, la primitiva del
+**runtime conductor** y su cota efectiva. En POSIX se usa `/bin/sh` no interactivo con `ENV` y
+`BASH_ENV` removidos; en PowerShell, el ejecutable del conductor con `-NoProfile`. Esta elección es
+deliberada: los comandos POSIX deben usar sintaxis `sh`, no la de un shell personal. La cota no es
+una cuarta clave, no tiene default por familia y no se implementa con un comando `timeout` del
+sistema. La ausencia de una primitiva acotada ya bloqueó el preview antes del primer efecto; como
+defensa para destinos parciales heredados, si se detecta aquí se registra `starting`, operación
+`startup-command`, resultado `refused:unbounded-runtime`, no se ejecuta ninguno y falla el worktree.
+El perfil se omite en ambos intérpretes para conservar el entorno ya resuelto por el conductor y
+evitar que un script de inicio del host cambie PATH o el comando entre plataformas.
+Cada elemento es un comando no vacío de una sola línea; una lista o elemento con otra forma se
+rechaza antes de ejecutar.
+
+El conductor valida la lista, asigna `command`/`$Command` y su ordinal, e invoca el bloque siguiente
+**una vez por elemento** como proceso separado con el timeout real del runtime. El comando `N+1` solo
+corre si `N` terminó en cero. Un exit no cero registra `exit:<n>`; el aborto impuesto por el runtime,
+`timeout:<cota>`. Ambos cortan la lista y suprimen el launcher. Un elemento vacío o multilínea se
+rechaza con código 68 antes de abrir el intérprete.
+
+```sh
+case "$command" in ''|*'
+'*) printf '%s\n' 'ERROR: startup command must be a non-empty single line' >&2; exit 68;; esac
+printf 'startup %s: %s\n' "$ordinal" "$command"
+(
+  cd "$worktree_path" || exit 1
+  unset ENV BASH_ENV
+  /bin/sh -c "$command"
+)
+rc=$?; [ "$rc" -eq 0 ] || { printf 'exit:%s\n' "$rc" >&2; exit "$rc"; }
+```
+
+```powershell
+if ([string]::IsNullOrWhiteSpace($Command) -or $Command.Contains("`n") -or $Command.Contains("`r")) {
+  [Console]::Error.WriteLine('ERROR: startup command must be a non-empty single line'); exit 68
+}
+"startup $Ordinal`: $Command"
+$NativeShell = (Get-Process -Id $PID).Path
+Push-Location -LiteralPath $WorktreePath
+try { & $NativeShell -NoProfile -Command $Command; $NativeExit = $LASTEXITCODE }
+catch { $NativeExit = 1; [Console]::Error.WriteLine($_) }
+finally { Pop-Location }
+if ($NativeExit -ne 0) {
+  [Console]::Error.WriteLine("exit:$NativeExit"); exit $NativeExit
+}
+```
+
+### 9. Control final y launcher
+
+Después de traslado, seed y startup, pasar a `verifying` y volver a comprobar destino canónico,
+rama y SHA. Toda operación Git usa `git -C`. Publicar `ready` primero en el destino y después en el
+origen; la autoridad se transfiere solo cuando ambos handoffs coinciden y sus back-pointers resuelven.
+Un `ready` aislado nunca habilita launcher.
+
+```sh
+actual_path=$(git -C "$worktree_path" rev-parse --show-toplevel) || exit 80
+[ "$(cd "$actual_path" && pwd -P)" = "$(cd "$worktree_path" && pwd -P)" ] || exit 81
+[ "$(git -C "$worktree_path" symbolic-ref --short HEAD)" = "$worktree_branch" ] || exit 82
+[ "$(git -C "$worktree_path" rev-parse HEAD)" = "$origin_sha" ] || exit 83
+```
+
+```powershell
+$ActualPath = git -C $WorktreePath rev-parse --show-toplevel
+if ($LASTEXITCODE -ne 0) { exit 80 }
+try {
+  $ResolvedActualPath = (Resolve-Path -LiteralPath $ActualPath -ErrorAction Stop).Path
+  $ResolvedWorktreePath = (Resolve-Path -LiteralPath $WorktreePath -ErrorAction Stop).Path
+} catch { exit 81 }
+if ($ResolvedActualPath -ne $ResolvedWorktreePath) { exit 81 }
+$ActualBranch = git -C $WorktreePath symbolic-ref --short HEAD
+if ($LASTEXITCODE -ne 0 -or $ActualBranch -ne $WorktreeBranch) { exit 82 }
+$ActualSha = git -C $WorktreePath rev-parse HEAD
+if ($LASTEXITCODE -ne 0 -or $ActualSha -ne $OriginSha) { exit 83 }
+```
+
+Tras publicar ambos `ready` con el bloque de handoff, acreditar el handshake:
+
+```sh
+origin_handoff=$origin_worktree/.plans/$flow_id/handoff.md
+destination_handoff=$worktree_path/.plans/$flow_id/handoff.md
+[ -f "$origin_handoff" ] && [ -f "$destination_handoff" ] || exit 84
+cmp -s "$origin_handoff" "$destination_handoff" || exit 85
+grep -Eq '^worktree_status:[[:space:]]*ready[[:space:]]*$' "$origin_handoff" || exit 86
+[ -d "$origin_worktree" ] && [ -d "$worktree_path" ] || exit 87
+grep -Fqx "origin_worktree: $origin_worktree" "$origin_handoff" || exit 88
+grep -Fqx "worktree_path: $worktree_path" "$origin_handoff" || exit 89
+```
+
+```powershell
+$OriginHandoff = Join-Path $OriginWorktree ".plans/$FlowId/handoff.md"
+$DestinationHandoff = Join-Path $WorktreePath ".plans/$FlowId/handoff.md"
+if (-not (Test-Path -LiteralPath $OriginHandoff -PathType Leaf) -or
+    -not (Test-Path -LiteralPath $DestinationHandoff -PathType Leaf)) { exit 84 }
+try {
+  $OriginHandoffHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $OriginHandoff -ErrorAction Stop).Hash
+  $DestinationHandoffHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $DestinationHandoff -ErrorAction Stop).Hash
+} catch { exit 85 }
+if ($OriginHandoffHash -ne $DestinationHandoffHash) { exit 85 }
+if (-not (Select-String -LiteralPath $OriginHandoff -Quiet -Pattern '^worktree_status:\s*ready\s*$')) { exit 86 }
+if (-not (Test-Path -LiteralPath $OriginWorktree -PathType Container) -or
+    -not (Test-Path -LiteralPath $WorktreePath -PathType Container)) { exit 87 }
+if (-not (Get-Content -LiteralPath $OriginHandoff | Where-Object { $_ -ceq "origin_worktree: $OriginWorktree" })) { exit 88 }
+if (-not (Get-Content -LiteralPath $OriginHandoff | Where-Object { $_ -ceq "worktree_path: $WorktreePath" })) { exit 89 }
+```
+
+Con el doble `ready`, comprobar el CLI de la familia conductora y mostrar un comando **para abrir una
+sesión nueva**. La sesión actual no cambia cwd, no hace checkout y no despacha nada:
+
+```sh
+quoted_path=$(printf '%s' "$worktree_path" | sed "s/'/'\\\\''/g")
+quoted_flow=$(printf '%s' "$flow_id" | sed "s/'/'\\\\''/g")
+case "$conductor_family" in
+  codex) command -v codex >/dev/null 2>&1 && {
+    printf "codex -C '%s' '\$sdd-flow continuemos con %s'\n" "$quoted_path" "$quoted_flow"; launcher_printed=yes;
+  } ;;
+  claude) command -v claude >/dev/null 2>&1 && {
+    printf "(cd '%s' && exec claude '/sdd-flow continuemos con %s')\n" "$quoted_path" "$quoted_flow"; launcher_printed=yes;
+  } ;;
+  *) printf '%s\n' 'ERROR: unknown conductor family' >&2; exit 90 ;;
+esac
+[ "${launcher_printed:-no}" = yes ] ||
+  case "$conductor_family" in
+    codex) printf "cd '%s'\n\$sdd-flow continuemos con %s\n" "$quoted_path" "$quoted_flow" ;;
+    claude) printf "cd '%s'\n/sdd-flow continuemos con %s\n" "$quoted_path" "$quoted_flow" ;;
+  esac
+```
+
+```powershell
+$QuotedPath = $WorktreePath.Replace("'", "''")
+$QuotedFlow = $FlowId.Replace("'", "''")
+if ($ConductorFamily -eq 'codex' -and (Get-Command codex -ErrorAction SilentlyContinue)) {
+    "codex -C '$QuotedPath' '`$sdd-flow continuemos con $QuotedFlow'"
+  } elseif ($ConductorFamily -eq 'claude' -and (Get-Command claude -ErrorAction SilentlyContinue)) {
+    "Push-Location '$QuotedPath'; try { claude '/sdd-flow continuemos con $QuotedFlow' } finally { Pop-Location }"
+  } elseif ($ConductorFamily -notin 'codex','claude') {
+    [Console]::Error.WriteLine('ERROR: unknown conductor family'); exit 90
+  } else {
+    if ($ConductorFamily -eq 'codex') {
+      "Set-Location '$QuotedPath'`n`$sdd-flow continuemos con $QuotedFlow"
+    } else {
+      "Set-Location '$QuotedPath'`n/sdd-flow continuemos con $QuotedFlow"
+    }
+  }
+```
+
+El launcher recuerda los candidatos admisibles que no aparecen en `expanded_seed_files` y los
+`seed_paths` ausentes; son diferencias informadas, no condiciones para `ready`. Un
+`.specify/config.yml` copiado por continuidad obligatoria no se informa como omitido.
+
+### 10. Fallos, abandono, `resume` y `doctor`
+
+No se limpia automáticamente un destino parcial. Desde el origen, `resume` muestra etapa, operación y
+evidencia y ofrece: reintentar desde la primera operación no acreditada; limpiar con confirmación y
+sin borrado forzado implícito; o abandonar la materialización y continuar en el árbol actual. Todo
+abandono —incluido WIP, escaneo incompleto, intención sin materializar o cleanup rechazado— publica
+`abandoned` primero en el origen y luego en una réplica accesible. Desde un destino no listo, `resume`
+solo muestra la etapa y remite a `origin_worktree`. `doctor` nunca escribe.
+Si el fallo fue `timeout:<cota>`, el reintento puede aumentar explícitamente la cota de la misma
+primitiva del conductor, sin persistir otra clave ni repetir operaciones ya acreditadas.
+
+El orden de resolución es fijo: **celda del pedido → clasificador de secuencia → terminal
+`abandoned` → decisión de ubicación → demás valores de `worktree_status` → routing por fase**.
+
+| Ubicación durable | Routing |
+|---|---|
+| cualquier ubicación con `worktree_status: abandoned` | flujo no trasladado; no volver a ofrecer worktree |
+| `current` sin `worktree_status`, handoff ausente o sin `worktree_location` | flujo no trasladado; usa el routing vigente |
+| `worktree` sin `worktree_status` | intención no materializada; `resume` ofrece materializar desde `origin_sha` (recomendado) o escribir `abandoned`; `doctor` solo informa |
+| `worktree` en `creating`…`verifying` o `failed` | diagnosticar desde el origen; el destino no continúa ni navega |
+| `worktree` con doble `ready` | seguir el paquete vivo sin checkout; antes de `specify`, evaluar `co_explore` como en el ciclo completo, o entrar al plan combinado si es trivial |
+
+Para `ready`, el origen se clasifica como snapshot no autoritativo y sigue el puntero al paquete vivo.
+Ruta ausente, ruta accesible sin `.plans/<id>/` y paquete vivo son tres resultados distintos; los dos
+primeros no se enrutan. Antes de consumir el estado del paquete vivo, se vuelve a resolver allí la
+celda del pedido; ausencia, corrupción o cuarentena prevalecen y no ejecutan una decisión worktree.
+Si el puntero no resuelve, conservar el snapshot y ofrecer continuar en el
+árbol actual o reiniciar manualmente. Solo se reutiliza una rama cuyo OID coincide con el
+`origin_sha` recongelado; no hay sufijos ni rename automáticos. Un override tardío idéntico es no-op;
+uno distinto ofrece conservar la identidad (recomendado) o abandonar y reiniciar manualmente.
+Si Git conserva un registro administrativo obsoleto, ambos pasos muestran primero
+`git worktree prune --dry-run`; solo `resume` puede ofrecer `git worktree prune`, tras confirmación.
+
+`context_root`, `context_head` y `origin_sha` nunca se colapsan. Los fingerprints del escaneo se
+comparan con `context_head`, aunque el worktree nazca de otro SHA. Las búsquedas posteriores usan el
+catálogo de `context_root`; si esa ruta no es accesible o `context_head` ya no es alcanzable, declaran
+qué fuente quedó sin comprobar y su impacto, sin sustituir otro catálogo.
+
+La v1 conserva el snapshot de origen y no administra archive ni retiro del worktree; el prune queda
+limitado a la reparación confirmada anterior. El flujo no se muda ni despacha la sesión: solo entrega
+el launcher cuando el destino ya está comprobado.
+
 ## Esquema de `.specify/config.yml`
 
 Todos los campos son opcionales salvo una excepción (`cross_model.schema_version`, obligatorio si el bloque `cross_model` existe); lo que falte se autodetecta. **No se trackea**: igual que el resto de `.specify/` y `.plans/`, es local (el ignore local lo gestiona el usuario, p. ej. vía `.git/info/exclude`).
@@ -386,6 +1614,10 @@ jira_approval:                   # aprobación externa de la spec en Jira (opcio
   mode: "off"                    # "off" | "on"  (default off; entre comillas: sin ellas YAML los parsea como booleanos)
   subtask_issuetype: auto        # auto (descubrir por createmeta) | "Subtarea" | "Sub-task"
   approval_signal: ask           # ask | status:"<estado Jira que cuenta como aprobado>"
+worktree:
+  base_path: "~/worktrees"        # raíz absoluta o con prefijo ~/ para los worktrees de sdd-flow
+  seed_paths: []                  # entorno local opcional; el config existente se conserva aparte
+  startup_commands: []            # comandos de arranque; si falta la clave se derivan del stack cuando existe una regla
 implement_mode: ask              # cómo ejecutar las tasks: ask (preguntar en el último gate) | inline | cross (delegar a la otra familia vía `cross-implement`; requiere esa skill + el CLI de la otra familia) | workers (delegar a la familia del conductor con el perfil por rol de `.specify/workers.yml`; misma capacidad, y solo en flujos no triviales)
 domain_context:
   mode: auto                     # auto | "on" | "off"; solo lectura, nunca escribe ADRs/docs
@@ -397,11 +1629,12 @@ final_diff_review:
   mode: auto                     # auto (complex o risk high | unknown inline) | "on" | "off"
 ```
 
-**Este bloque es dueño de las 23 claves que `sdd-flow` gobierna.** Las 14 restantes las poseen sus
+**Este bloque es dueño de las 26 claves que `sdd-flow` gobierna.** Las 14 restantes las poseen sus
 hermanas y su enum se define allá: `cross_review.*` en `cross-review/SKILL.md` → "Configuración";
 `co_explore.*` en `co-explore/SKILL.md` → "Configuración"; `cross_implement.*` en
-`cross-implement/SKILL.md` → "Configuración" y `vault_archive.*` en `knowledge-vault/reference.md` → "La capa de configuración". El archivo **completo**, con las 37 juntas y listo
-para copiar, está en `config-ejemplo.md`, que es una vista de todos estos dueños.
+`cross-implement/SKILL.md` → "Configuración" y `vault_archive.*` en
+`knowledge-vault/reference.md` → "La capa de configuración". El archivo **completo**, con las 40 juntas
+y listo para copiar, está en `config-ejemplo.md`, que es una vista de los cinco dueños.
 
 Placeholders de `branch_format`: `{type}` (prefijo efectivo), `{ticket}` (clave del tracker, se omite si no hay), `{slug}` (2-5 palabras del título en kebab, sin acentos, `[a-z0-9-]`).
 
@@ -960,6 +2193,7 @@ que sin este consumidor `validar` sería una guarda que ningún procedimiento in
 | Placeholders | OK/WARN/FAIL | sin TBD/TODO/etc. |
 | Interfaces | OK/WARN/FAIL | Produce `foo()` no coincide con Consume |
 | Git coherence | OK/WARN/FAIL | branch/base_commit/HEAD |
+| Worktree | OK/WARN/FAIL | ubicación, status/etapa, primera operación no acreditada, punteros y paquete |
 | Verify freshness | OK/WARN/FAIL | Verify anterior a <sha> |
 | Working tree | OK/WARN/FAIL | código ajeno / generado / SDD local |
 ```
@@ -969,6 +2203,11 @@ Checks:
 - Leer ACs desde `spec.md` o desde `## Spec` embebido en `plan.md`.
 - Marcar **verify stale** si `## Verify` existe pero hay commits/cambios posteriores a su fecha o
   evidencia.
+- Después de la celda del pedido y del clasificador de secuencia, aplicar la matriz de “Fallos,
+  abandono, `resume` y `doctor`”: comprobar identidad, dominio de status/etapa/evidencia, coincidencia
+  de handoffs y distinguir puntero ausente, destino sin paquete y paquete vivo. Un `ready` exige
+  back-pointers resolubles y contenido coincidente; un registro Git obsoleto se informa con
+  `git worktree prune --dry-run`, que tampoco escribe.
 - Tratar `.plans/`, `.specify/` y `.plans/<id>/work/` como locales; `work/` es scratch/auditoría,
   nunca fuente de progreso.
 - Reportar evidencia concreta; no arreglar ni tocar archivos.
@@ -989,6 +2228,10 @@ El paso `init` (ver `SKILL.md` → "Paso `init`") materializa `.specify/` a pedi
    branch_prefix: ""            # vacío → prefijo semántico
    tracker: jira
    test_scope_hint: "ng test --include={name}"   # {name} = ruta exacta del .spec.ts (no glob **/…: rompe el loader)
+   worktree:
+     base_path: "~/worktrees"
+     seed_paths: []
+     startup_commands: ["npm ci"]
    jira_approval:
      mode: "off"                # elegido en el wizard junto con tracker/branch_prefix (default off)
    domain_context:
@@ -996,7 +2239,7 @@ El paso `init` (ver `SKILL.md` → "Paso `init`") materializa `.specify/` a pedi
      adr_paths: []
    ```
 
-   Los campos de decisión (`tracker`, `branch_prefix` y, solo si se acaba de elegir `tracker: jira`, `jira_approval.mode`) se eligen en el **wizard** (una sola pantalla, con el valor actual/detectado pre-seleccionado). El resto de las claves con default (`commit_style`, `implement_mode`, `cross_review`, `domain_context.mode`, `final_diff_review`, `co_explore.debate.mode`, entre otras) no se pregunta: la skill las resuelve, y quien quiera fijarlas las copia de `config-ejemplo.md`. Los comandos (`test_cmd`/`build_cmd`/`lint_cmd`/`test_scope_hint`) y los paths de `domain_context` se autodetectan y quedan editables en la confirmación final. Nada se inventa. Al escribir el `config.yml`, `cross_review.mode`, `co_explore.mode`, `domain_context.mode`, `final_diff_review.mode`, `jira_approval.mode` y `co_explore.debate.mode` se emiten con `on`/`off` **entre comillas** (`"on"`/`"off"`; `auto` sin comillas es válido): sin ellas YAML los parsea como booleanos.
+   Los campos de decisión (`tracker`, `branch_prefix` y, solo si se acaba de elegir `tracker: jira`, `jira_approval.mode`) se eligen en el **wizard**. El resto no se pregunta: la skill lo resuelve y lo deja editable en el preview; eso incluye las tres hojas `worktree`, con bootstrap derivado del stack. Quien quiera fijar otra clave la copia de `config-ejemplo.md`. Nada se inventa. Al escribir el config, los valores `on`/`off` se emiten entre comillas.
 
 2. **`.specify/constitution.md`** — desde "Plantilla de constitution" (abajo), con el puntero a los principios de código del repo (`CLAUDE.md`/`AGENTS.md`/`CONTRIBUTING.md`) si existen.
 
@@ -4118,6 +5361,14 @@ siempre, sin clave que lo apague—; acá viven el algoritmo que produce los té
 se recorren con sus comandos, las señales que acreditan un candidato y el esquema del artefacto donde
 queda el resultado.
 
+La corrida fija `context_root` como la raíz exacta donde empezó el escaneo y `context_head` como su
+`HEAD`. No son `origin_worktree` ni `origin_sha`: este último puede elegir otro commit para crear el
+worktree. Todos los comandos Git y los catálogos `.plans/` de esta sección se dirigen a
+`context_root`; la fuente HEAD inspecciona `context_head`. Al revalidar, `fp-head` lee el HEAD actual
+de esa raíz y lo compara con `context_head`. Si la raíz no es accesible o el commit dejó de resolver,
+las fuentes afectadas quedan `no comprobadas` con su impacto; nunca se sustituye la raíz de la sesión
+actual ni otro catálogo.
+
 ### El artefacto `antecedentes.md`
 
 La búsqueda termina **antes** de que exista `spec.md`, así que no puede escribir ahí. La sede
@@ -4136,7 +5387,7 @@ promoción: sin ella, quien copiara el archivo entero a la spec estaría publica
 | `busqueda` | `not-run` · `in-progress` · `complete` · `terminal` |
 | `fuentes_terminadas` | lista de las fuentes que corrieron **completas** |
 | `terminos` | lista ordenada de los términos emitidos |
-| `fingerprints` | `head` (SHA del HEAD) · `refs` (digest de `git for-each-ref` sobre nombres y OIDs) · `flujos_activos` (digest del **contenido** recorrido, no del listado) · `archivados` (ídem sobre `.plans/archived/`) · `vault` (ídem sobre el subárbol consultado) · `terminos` (digest del conjunto) |
+| `fingerprints` | `head` (HEAD actual de `context_root`, comparado con `context_head`) · `refs` (digest de `git for-each-ref` en esa raíz) · `flujos_activos` (digest del **contenido** recorrido en su catálogo, no del listado) · `archivados` (ídem sobre `.plans/archived/`) · `vault` (ídem sobre el subárbol consultado) · `terminos` (digest del conjunto) |
 
 **`## declaracion` — lo único que se promueve.** Su esquema está congelado acá porque hay datos que
 tienen que vivir en la parte publicable: dejarlo abierto permite promover una declaración sin la
@@ -4227,11 +5478,11 @@ sexta es **condicional** —depende de que haya un vault que consultar— y es l
 
 | # | Fuente | Qué mira | Obligatoriedad |
 |---|---|---|---|
-| 1 | **HEAD** | el árbol vigente, por **ruta** y por **contenido** | obligatoria |
+| 1 | **HEAD** | el snapshot `context_head`, por **ruta** y por **contenido** | obligatoria |
 | 2 | **refs**, en dos etapas | nombres de ramas y tags; después el **contenido** de las que quedaron candidatas | obligatoria |
 | 3 | **historial de commits** | **mensajes** y **contenido introducido** | obligatoria |
-| 4 | **`.plans/archived/`** | los flujos ya cerrados de este repositorio | obligatoria |
-| 5 | **flujos activos** | los `.plans/<id>/` en curso, incluido el de otra rama y **excluido el propio** | obligatoria |
+| 4 | **`.plans/archived/`** | los flujos ya cerrados del catálogo de `context_root` | obligatoria |
+| 5 | **flujos activos** | los `.plans/<id>/` del catálogo de `context_root`, incluido el de otra rama y **excluido el propio**; un snapshot `ready` sigue su `worktree_path`, y si no resuelve queda no comprobado en vez de contarse activo | obligatoria |
 | 6 | **vault de conocimiento** | flujos rescatados cuyo origen ya se retiró del disco | **condicional** |
 
 ### Los cuatro ejes, y son cuatro
@@ -4292,37 +5543,52 @@ la de **refs locales** que produce `sync-refs`, y está declarada.
 
 ```sh
 # POSIX: sync-refs
-git fetch --quiet <remoto>
+git -C "$CONTEXT_ROOT" fetch --quiet <remoto>
 # POSIX: head-rutas
-git ls-files -- . | grep -F -f "$TERMINOS"
+git -C "$CONTEXT_ROOT" ls-tree -r --name-only "$CONTEXT_HEAD" | grep -F -f "$TERMINOS"
 # POSIX: head-contenido
-git grep -I -n --fixed-strings -f "$TERMINOS" -- .
+git -C "$CONTEXT_ROOT" grep -I -n --fixed-strings -f "$TERMINOS" "$CONTEXT_HEAD" -- .
 # POSIX: refs-nombres
-git for-each-ref --format='%(refname:short) %(objectname)' | grep -F -f "$TERMINOS"
+git -C "$CONTEXT_ROOT" for-each-ref --format='%(refname:short) %(objectname)' | grep -F -f "$TERMINOS"
 # POSIX: refs-contenido
-git grep -I -n --fixed-strings -f "$TERMINOS" <ref> -- .
+git -C "$CONTEXT_ROOT" grep -I -n --fixed-strings -f "$TERMINOS" <ref> -- .
 # POSIX: refs-rutas
-git ls-tree -r --name-only <ref> | grep -F -f "$TERMINOS"
+git -C "$CONTEXT_ROOT" ls-tree -r --name-only <ref> | grep -F -f "$TERMINOS"
 # POSIX: log-mensajes
 set -- --all --oneline --fixed-strings
 while IFS= read -r t; do [ -n "$t" ] && set -- "$@" --grep="$t"; done < "$TERMINOS"
-git log "$@"
+git -C "$CONTEXT_ROOT" log "$@"
 # POSIX: log-contenido
-git log --all --oneline -S "$T1"
+git -C "$CONTEXT_ROOT" log --all --oneline -S "$T1"
 # POSIX: archivados
-grep -rIl -F -f "$TERMINOS" -- .plans/archived/
+grep -rIl -F -f "$TERMINOS" -- "$CONTEXT_ROOT/.plans/archived/"
+# POSIX: resolver las raíces que comparten flujos-activos y fp-flujos
+active_flow_roots() {
+  find "$CONTEXT_ROOT/.plans" -mindepth 1 -maxdepth 1 \( -type f -o -type d \) \
+    ! -name archived ! -name "$ID_ACTUAL" -print | while IFS= read -r flow; do
+    if [ -f "$flow" ]; then printf '%s\n' "$flow"; continue; fi
+    handoff=$flow/handoff.md; scan=$flow; id=$(basename "$flow")
+    if [ -f "$handoff" ] && grep -Fqx 'worktree_location: worktree' "$handoff" &&
+       grep -Fqx 'worktree_status: ready' "$handoff"; then
+      live=$(sed -n 's/^worktree_path: //p' "$handoff" | sed -n '1p')
+      if [ -n "$live" ] && [ -d "$live/.plans/$id" ]; then scan=$live/.plans/$id
+      else printf 'unverified-active-snapshot %s\n' "$flow" >&2; continue; fi
+    fi
+    printf '%s\n' "$scan"
+  done
+}
 # POSIX: flujos-activos
-grep -rIl -F --exclude-dir=archived --exclude-dir="$ID_ACTUAL" -f "$TERMINOS" -- .plans/
+active_flow_roots | while IFS= read -r scan; do grep -rIl -F -f "$TERMINOS" -- "$scan"; done
 # POSIX: vault
 grep -rIl -F -f "$TERMINOS" -- <vault>/projects/<repo>/
 # POSIX: fp-head
-git rev-parse HEAD
+git -C "$CONTEXT_ROOT" rev-parse HEAD
 # POSIX: fp-refs
-git for-each-ref --format='%(refname) %(objectname)' | git hash-object --stdin
+git -C "$CONTEXT_ROOT" for-each-ref --format='%(refname) %(objectname)' | git hash-object --stdin
 # POSIX: fp-flujos
-find .plans/ -type d \( -name archived -o -name "$ID_ACTUAL" \) -prune -o -type f -print | git hash-object --stdin-paths | LC_ALL=C sort | git hash-object --stdin
+active_flow_roots | while IFS= read -r scan; do find "$scan" -type f -print; done | git hash-object --stdin-paths | LC_ALL=C sort | git hash-object --stdin
 # POSIX: fp-archivados
-find .plans/archived/ -type f -print | git hash-object --stdin-paths | LC_ALL=C sort | git hash-object --stdin
+find "$CONTEXT_ROOT/.plans/archived/" -type f -print | git hash-object --stdin-paths | LC_ALL=C sort | git hash-object --stdin
 # POSIX: fp-vault
 find <vault>/projects/<repo>/ -type f -print | git hash-object --stdin-paths | LC_ALL=C sort | git hash-object --stdin
 # POSIX: fp-terminos
@@ -4331,41 +5597,68 @@ git hash-object "$TERMINOS"
 
 ```powershell
 # PowerShell: sync-refs
-git fetch --quiet <remoto>
+git -C $ContextRoot fetch --quiet <remoto>
 # PowerShell: head-rutas
-git ls-files -- . | Select-String -SimpleMatch -Pattern (Get-Content $TERMINOS)
+git -C $ContextRoot ls-tree -r --name-only $ContextHead | Select-String -SimpleMatch -Pattern (Get-Content $TERMINOS)
 # PowerShell: head-contenido
-git grep -I -n --fixed-strings -f $TERMINOS -- .
+git -C $ContextRoot grep -I -n --fixed-strings -f $TERMINOS $ContextHead -- .
 # PowerShell: refs-nombres
-git for-each-ref --format='%(refname:short) %(objectname)' | Select-String -SimpleMatch -Pattern (Get-Content $TERMINOS)
+git -C $ContextRoot for-each-ref --format='%(refname:short) %(objectname)' | Select-String -SimpleMatch -Pattern (Get-Content $TERMINOS)
 # PowerShell: refs-contenido
-git grep -I -n --fixed-strings -f $TERMINOS <ref> -- .
+git -C $ContextRoot grep -I -n --fixed-strings -f $TERMINOS <ref> -- .
 # PowerShell: refs-rutas
-git ls-tree -r --name-only <ref> | Select-String -SimpleMatch -Pattern (Get-Content $TERMINOS)
+git -C $ContextRoot ls-tree -r --name-only <ref> | Select-String -SimpleMatch -Pattern (Get-Content $TERMINOS)
 # PowerShell: log-mensajes
 $gl = @('--all','--oneline','--fixed-strings')
 Get-Content $TERMINOS | Where-Object { $_ -ne '' } | ForEach-Object { $gl += "--grep=$_" }
-git log @gl
+git -C $ContextRoot log @gl
 # PowerShell: log-contenido
-git log --all --oneline -S $T1
+git -C $ContextRoot log --all --oneline -S $T1
 # PowerShell: archivados
-Get-ChildItem -Recurse -File .plans/archived/ | Select-String -SimpleMatch -List -Pattern (Get-Content $TERMINOS)
+Get-ChildItem -Force -Recurse -File (Join-Path $ContextRoot '.plans/archived') | Select-String -SimpleMatch -List -Pattern (Get-Content $TERMINOS)
+# PowerShell: resolver las raíces que comparten flujos-activos y fp-flujos
+function Get-ActiveFlowRoots {
+  foreach ($Flow in Get-ChildItem -LiteralPath (Join-Path $ContextRoot '.plans') -Force) {
+    if ($Flow.Name -in 'archived',$ID_ACTUAL) { continue }
+    if (-not $Flow.PSIsContainer) { $Flow.FullName; continue }
+    $Scan = $Flow.FullName; $Handoff = Join-Path $Scan 'handoff.md'
+    $HandoffLines = if (Test-Path -LiteralPath $Handoff -PathType Leaf) {
+      @(Get-Content -LiteralPath $Handoff)
+    } else { @() }
+    if (($HandoffLines -ccontains 'worktree_location: worktree') -and
+        ($HandoffLines -ccontains 'worktree_status: ready')) {
+      $Line = $HandoffLines | Where-Object { $_ -cmatch '^worktree_path: ' } |
+        Select-Object -First 1
+      $Live = if ($Line) { $Line.Substring(15) } else { '' }
+      $Candidate = Join-Path $Live ".plans/$($Flow.Name)"
+      if ($Live -and (Test-Path -LiteralPath $Candidate -PathType Container)) { $Scan = $Candidate }
+      else { [Console]::Error.WriteLine("unverified-active-snapshot $($Flow.FullName)"); continue }
+    }
+    $Scan
+  }
+}
 # PowerShell: flujos-activos
-Get-ChildItem -Recurse -File .plans/ | Where-Object { $_.FullName -notmatch "[\\/](archived|$ID_ACTUAL)[\\/]" } | Select-String -SimpleMatch -List -Pattern (Get-Content $TERMINOS)
+Get-ActiveFlowRoots | ForEach-Object {
+  $Scan = $_
+  Get-ChildItem -LiteralPath $Scan -Force -Recurse -File |
+    Select-String -SimpleMatch -List -Pattern (Get-Content -LiteralPath $TERMINOS)
+}
 # PowerShell: vault
-Get-ChildItem -Recurse -File <vault>/projects/<repo>/ | Select-String -SimpleMatch -List -Pattern (Get-Content $TERMINOS)
+Get-ChildItem -Force -Recurse -File <vault>/projects/<repo>/ | Select-String -SimpleMatch -List -Pattern (Get-Content $TERMINOS)
 # PowerShell: fp-head
-git rev-parse HEAD
+git -C $ContextRoot rev-parse HEAD
 # PowerShell: fp-refs
-git for-each-ref --format='%(refname) %(objectname)' | git hash-object --stdin
+git -C $ContextRoot for-each-ref --format='%(refname) %(objectname)' | git hash-object --stdin
 # PowerShell: fp-flujos
-$h = [string[]]@(Get-ChildItem -Recurse -File .plans/ | Where-Object { $_.FullName -notmatch "[\\/](archived|$ID_ACTUAL)[\\/]" } | ForEach-Object { $_.FullName } | git hash-object --stdin-paths)
+$h = [string[]]@(Get-ActiveFlowRoots | ForEach-Object {
+  Get-ChildItem -LiteralPath $_ -Force -Recurse -File | ForEach-Object { $_.FullName }
+} | git hash-object --stdin-paths)
 [Array]::Sort($h, [StringComparer]::Ordinal); $h | git hash-object --stdin
 # PowerShell: fp-archivados
-$h = [string[]]@(Get-ChildItem -Recurse -File .plans/archived/ | ForEach-Object { $_.FullName } | git hash-object --stdin-paths)
+$h = [string[]]@(Get-ChildItem -Force -Recurse -File (Join-Path $ContextRoot '.plans/archived') | ForEach-Object { $_.FullName } | git hash-object --stdin-paths)
 [Array]::Sort($h, [StringComparer]::Ordinal); $h | git hash-object --stdin
 # PowerShell: fp-vault
-$h = [string[]]@(Get-ChildItem -Recurse -File <vault>/projects/<repo>/ | ForEach-Object { $_.FullName } | git hash-object --stdin-paths)
+$h = [string[]]@(Get-ChildItem -Force -Recurse -File <vault>/projects/<repo>/ | ForEach-Object { $_.FullName } | git hash-object --stdin-paths)
 [Array]::Sort($h, [StringComparer]::Ordinal); $h | git hash-object --stdin
 # PowerShell: fp-terminos
 git hash-object $TERMINOS
@@ -4534,6 +5827,8 @@ cada una de las seis fuentes** con la razón de cada `no comprobada`, las **coin
 su descarte, los **candidatos** con su evidencia, el **remoto** que se usó, y el
 **impacto en el alcance** cualificado por lo que no se pudo comprobar. Una corrida sin hallazgos
 escribe lo mismo: el registro de que se buscó vale tanto como el de lo que se encontró.
+El `handoff.md` que apunta a este archivo fija su `context_root` y `context_head`; el paquete traslada
+ambos archivos juntos para que la sesión nueva no reinterprete el catálogo desde su propio cwd.
 
 ### Las tres condiciones, y qué señal acredita cada una
 
@@ -4607,7 +5902,7 @@ fuentes, y de esa vecindad sale la regla equivocada de que un cambio invalida "s
 |---|---|
 | `terminos` | **todas las fuentes** — cambió la pregunta, no una respuesta |
 | `refs` | las refs, el historial de commits y la **clasificación de todo candidato** |
-| `head` | el árbol del HEAD y la **compatibilidad de todo candidato** |
+| `head` | el snapshot HEAD en `context_root` y la **compatibilidad de todo candidato**; al aceptar la revalidación, el nuevo OID pasa a `context_head` |
 | `flujos_activos` | esa fuente sola |
 | `archivados` | esa fuente sola |
 | `vault` | esa fuente sola |
@@ -4630,6 +5925,12 @@ re-corre todo.
 
 Un tag nuevo cambia el digest de `refs` aunque el HEAD no se mueva: por eso el fingerprint de refs es
 un digest de nombres y OIDs, y no el SHA del HEAD con una fecha.
+
+La comparación parte del catálogo y Git dir de `context_root`; dentro de `flujos_activos`, cada
+snapshot `ready` aporta el paquete vivo que resuelve su propio puntero, y `fp-flujos` hashea esa misma
+resolución. Un `origin_sha` distinto no invalida por sí mismo el mapa: solo cambian las filas cuyos
+fingerprints cambian. Si `context_root` o `context_head` ya no se pueden comprobar, no se calcula un
+fingerprint sustituto y las fuentes dependientes quedan `no comprobadas`.
 
 ## Plantilla de constitution
 
@@ -5139,7 +6440,30 @@ branch_prefix: feature          # el {type} ya resuelto
 slug: export-csv
 base_branch: master             # rama base resuelta (con override de base, la rama de la que se corta)
 spec_approved_at: null          # timestamp local en normal/complex, o null si sigue pendiente; trivial siempre null
-overrides: { branch_prefix: null, base_branch: null, cross_review: null, implement_mode: null, jira_approval: null }
+overrides:
+  branch_prefix: null
+  base_branch: null
+  cross_review: null
+  implement_mode: null
+  jira_approval: null
+  worktree: null                # o las tres hojas resueltas para esta corrida; no muta config
+# decisión e identidad del worktree; valores permitidos se documentan debajo del bloque
+worktree_location: worktree
+worktree_path: /ruta/absoluta/al/destino
+worktree_branch: feature/export-csv
+main_worktree: /ruta/absoluta/al/arbol-principal
+origin_worktree: /ruta/absoluta/al/arbol-que-inicio-el-flujo
+context_root: /ruta/absoluta/donde-se-exploro
+context_head: <SHA explorado>
+origin_sha: <SHA usado para crear>
+worktree_status: creating
+worktree_stage: creating
+worktree_evidence:
+  - stage: creating
+    operation: {kind: create-worktree, target: null}
+    command: <literal o null>
+    result: ok                  # ok | exit:<n> | timeout:<cota> | refused:<reason-code>
+    excerpt: <salida acotada>
 # puntero al ledger de la búsqueda (solo en una pausa durante `gather-context`):
 antecedentes: .plans/<id>/antecedentes.md   # PUNTERO, no copia: términos, fuentes y fingerprints viven solo ahí
 # puntero al pedido congelado (siempre que el flujo lo tenga):
@@ -5176,6 +6500,16 @@ cloud_id: <uuid del sitio>
 > (specify/clarify/gate de Jira), el frontmatter y `spec_approved_at` son la fuente de verdad de esa
 > ventana. Los campos del gate de Jira solo aparecen en pausas por aprobación externa. Detalle en
 > `SKILL.md` → "Precedencia con `plan.md`".
+
+Los campos de identidad, ubicación, contexto, status, etapa y evidencia del worktree son siempre
+autoridad del handoff y todo escritor los fusiona, incluso cuando ya existe `plan.md`. Se escriben en
+estos momentos: decisión `current` al cerrar el checkpoint; intención `worktree` al cerrarlo; estado
+`creating` antes del primer efecto; entrada y resultado de cada etapa; todo `failed` o `abandoned`;
+y el doble `ready`, primero en destino y luego en origen. `pause`, `publish-spec`, `plan` y `resume`
+solo agregan su información y preservan esa identidad.
+`worktree_location` admite `current | worktree`; los enums cerrados de `worktree_status` y
+`worktree_stage` son los de “Estado durable y autoridad entre handoffs”. Los comentarios explicativos
+de la plantilla no se anexan a esas líneas máquina.
 
 ## Revisión final de diff
 

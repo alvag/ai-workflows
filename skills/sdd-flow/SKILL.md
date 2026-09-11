@@ -73,7 +73,7 @@ Skill **agnóstica de proyecto**: no asume lenguaje, framework, host de Git, tra
 El ciclo SDD:
 
 ```
-init (opcional) → constitution → gather-context → co-explore (opcional, paralela) → specify ─┐
+init (opcional) → constitution → gather-context (preflight Git/worktree) → co-explore (opcional, paralela) → specify ─┐
                                                                                               ├─► clarify (condicional)
                                                                                               ▼
        publish-spec (Jira, opcional) ──► create-branch → analyze → plan ──► tasks ──► implement ──► verify
@@ -99,13 +99,13 @@ Artefactos en disco:
    │  ├─ plan.md            # header YAML (incluye status + branch) + CÓMO + resultado de verify
    │  ├─ tasks.md           # tareas atómicas [ ], cada una referencia AC-n
    │  ├─ bitacora.md        # constancia append-only de los pasos del contrato
-   │  ├─ handoff.md         # siempre en `create-branch`; también al pausar o entrar al gate de Jira
+   │  ├─ handoff.md         # siempre en `create-branch`; perfil, aprobación, worktree + retomado
    │  └─ jira-spec.md       # copia exacta de lo publicado en Jira (solo con el gate de aprobación)
    └─ archived/             # flujos cerrados (status: done), movidos solo tras tu confirmación
       └─ <id>/              # misma estructura, ya terminada
 ```
 
-Como `.plans/` y `.specify/` son **locales (untracked)**, git no los mueve al cambiar de rama: están presentes en **todas** las ramas del working tree. Eso es deliberado — convierte a `.plans/` en un catálogo de flujos visible desde cualquier rama, y cada `plan.md` lleva en su header la `branch` a la que pertenece. Esa es la base del paso `resume` (retomar un flujo aunque estés posicionado en otra rama).
+Como `.plans/` y `.specify/` son **locales (untracked)**, git no los mueve al cambiar de rama y forman un catálogo del working tree actual, pero **no aparecen en otro linked worktree**. El preflight traslada solo `.plans/<id>/`, conserva `.specify/config.yml` si gobernó la corrida y siembra los demás paths locales aceptados; `resume` sigue ese puntero en vez de asumir un catálogo compartido.
 
 `<id>` = clave del ticket si existe (`ABC-123`), o slug del título si no hay tracker.
 
@@ -231,7 +231,7 @@ lee la selección y no se vuelve a preguntar.
 
 Antes de cualquier paso operativo, descubrir el entorno **una vez** por sesión y resumirlo al usuario. Orden de resolución para cada parámetro: `config.yml` → autodetección → preguntar.
 
-**Checkpoint de inicio (no salteable).** El **primer** acto operativo de toda corrida es leer `.specify/config.yml` si existe y **devolverle al usuario en una línea los valores resueltos** de al menos `tracker`, el inventario `cross_model.families`, `cross_review.mode`, `co_explore.mode`, `co_explore.debate`, `domain_context.mode`, `final_diff_review.mode` y `jira_approval.mode`, **con qué implican**. Ej.: *"config: tracker jira · families [claude] → inventario declarado y validado · cross_review on · co_explore on → exploración paralela antes de la spec · co_explore.debate auto → ofrezco debate en decisiones complejas de clarify/plan · domain_context auto → leer ADRs si existen · final_diff_review auto → revisión agregada en complex o risk high | unknown inline · jira_approval on → publico la spec en Jira tras aprobarla localmente"*. Ese eco es la prueba de que el config se leyó: sin él, es fácil aplicar los defaults (`cross_review` por complejidad, `domain_context: auto`, `final_diff_review: auto`, `jira_approval: off`) y perder cross-review, contexto de dominio, revisión final y `publish-spec` en silencio (ver red-flag "Arranco el flujo sin leer el config").
+**Checkpoint de inicio (no salteable).** El **primer** acto operativo de toda corrida es leer `.specify/config.yml` si existe y **devolverle al usuario en una línea los valores resueltos** de al menos `tracker`, el inventario `cross_model.families`, `cross_review.mode`, `co_explore.mode`, `co_explore.debate`, `domain_context.mode`, `final_diff_review.mode`, `jira_approval.mode` y las tres hojas `worktree` (`base_path`, `seed_paths`, `startup_commands`), **con qué implican**. Ej.: *"config: tracker jira · families [claude] → inventario declarado y validado · cross_review on · co_explore on → exploración paralela antes de la spec · co_explore.debate auto → ofrezco debate en decisiones complejas de clarify/plan · domain_context auto → leer ADRs si existen · final_diff_review auto → revisión agregada en complex o risk high | unknown inline · jira_approval on → publico la spec en Jira tras aprobarla localmente · worktree base ~/worktrees · seed vacío · startup autodetectado"*. Ese eco prueba que el config se leyó: sin él, es fácil aplicar defaults y perder cross-review, contexto de dominio, revisión final, `publish-spec` o preparación local en silencio (ver red-flag "Arranco el flujo sin leer el config").
 
 Si existe `.specify/config.yml`, leerlo primero. Esquema (todos los campos opcionales):
 
@@ -246,6 +246,7 @@ branch_prefix: ""           # opcional; reemplaza {type} (p. ej. "feature/"); va
 commit_style: conventional  # conventional | plain
 tracker: jira               # jira | github | gitlab | linear | none
 test_scope_hint: "vitest run {name}"  # plantilla de COMANDO para acotar tests; {name} = archivo/patrón
+worktree: {base_path: "~/worktrees", seed_paths: [], startup_commands: []}  # ruta, entorno local a sembrar y bootstrap; detalle en reference.md
 cross_model: {schema_version: 1, families: [codex], selection: user_choice, manifest: {mode: "on"}}  # allowlist de workers + procedencia; `schema_version` es obligatorio si el bloque existe
 cross_review: {mode: auto, execution: auto}  # segunda opinión cross-model en los gates; ver "Revisión cross-model"
 co_explore: {mode: auto, deadline: 600, debate: {mode: auto, max_rounds: 3}}  # exploración paralela + modo debate (decisiones); ver "Co-exploración cross-model"
@@ -262,6 +263,7 @@ Lo que no esté en `config.yml` se **autodetecta** por convención (detalle y co
 | Parámetro | Cómo se descubre (resumen) |
 |---|---|
 | Stack + test/build | Archivo de manifiesto: `package.json` (scripts), `go.mod`, `Cargo.toml`, `pyproject.toml`/`pytest.ini`, `pom.xml`/`build.gradle`, `*.csproj`. |
+| Bootstrap de worktree | Gestor/lockfile de Node; `none` o falta de regla según la tabla de `reference.md` → "Detección de stack y comandos". |
 | Rama base | `git symbolic-ref refs/remotes/origin/HEAD`; fallback `git remote show origin`. Nunca asumir `main`/`master`. |
 | Host de Git | `git remote get-url origin` → github/gitlab/bitbucket/otro. Define cómo se detecta la rama remota y se referencian PRs. |
 | Tracker | Patrón de clave `[A-Z][A-Z0-9]+-\d+` en el prompt + MCP/CLI disponibles (Jira/GitHub/GitLab/Linear). Si nada aplica → `none`, usar contexto del prompt. |
@@ -311,9 +313,10 @@ En la duda, subir un nivel: es más barato un gate de más que retrabajo.
 > flujo se detiene a aprobar un artefacto. El router calcula después el conteo efectivo: normal +
 > `expedited` + `jira_approval: "off"` lo reduce de 2 a 1; con Jira `"on"` conserva 2 gates locales
 > y agrega publicación y espera externa, que no entran en ese contador. Tampoco cuentan los
-> **checkpoints informativos** (confirmar el contexto en `gather-context`, confirmar el nombre de
-> rama y **la elección de rama** en `create-branch`), los **setup checkpoints** de `init` y
-> `constitution`, ni los **gates operativos** que existen siempre (revisión manual, commit, push).
+> **checkpoints informativos** (confirmar contexto, perfil, origen y ubicación en `gather-context`,
+> incluida la rama worktree si aplica; confirmar nombre y elección de rama en un `create-branch`
+> directo), los **setup checkpoints** de `init` y `constitution`, ni los **gates operativos** que
+> existen siempre (revisión manual, commit, push).
 
 ### Router del perfil de entrega
 
@@ -567,9 +570,9 @@ una línea y seguir. Misma filosofía que el resto de la co-exploración.
 
 Si el entorno prohíbe mutaciones (Plan Mode, modo solo-lectura, etc.):
 
-1. No crear rama, no escribir `.specify/` ni `.plans/`, no modificar código, no ejecutar `implement`, **ni `publish-spec`** (es una escritura externa a Jira: doblemente vedada en estos modos).
-2. Ejecutar solo pasos read-only: detección de entorno, `gather-context`, `analyze` estático, lectura de tracker, búsqueda en código y una propuesta de spec **conversacional**.
-3. Avisar explícitamente que el flujo real queda bloqueado por el modo, y que al salir se retoma **re-corriendo los sub-pasos 3b y 5 de `gather-context`** —el 3b congela el pedido y el 5 escribe `.plans/<id>/antecedentes.md`, y los dos son imposibles en este modo— y recién después desde escribir `spec.md` (y crear la rama si falta). Saltar directo a `specify` deja un camino completo hasta el commit **sin pedido congelado y sin ledger de búsqueda**, y ninguna guarda lo ve. Peor con el pedido que con el ledger: un flujo que salte el 3b llega a `resume` sin marcador y **se clasifica como heredado**, con la vara declarada no aplicable — que es la salida correcta para un flujo viejo y la equivocada para uno que acaba de nacer en este modo.
+1. No hacer `fetch`, fast-forward, rama, handoff, worktree ni otra escritura en `.specify/`/`.plans/`; tampoco modificar código, ejecutar `implement` ni `publish-spec`.
+2. Ejecutar solo pasos read-only: detección de entorno, el tramo de clasificación Git de la preflight, `gather-context`, `analyze` estático, lectura de tracker, búsqueda local y una spec conversacional; las refs remotas quedan no comprobadas con esa razón.
+3. Al permitir efectos, **repetir la preflight completa y los sub-pasos 3b y 5 de `gather-context`** antes de escribir `spec.md`: la clasificación previa no autoriza reutilizar refs, congelar el pedido, materializar ni persistir el mapa conversacional.
 4. No presentar la propuesta conversacional como equivalente a los artefactos en disco, ni preguntar "¿implemento? sí/no" como si el flujo estuviera completo.
 
 ## Router de intención (alias coloquiales → pasos SDD)
@@ -578,10 +581,10 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
 
 | El usuario dice (ej.) | Paso SDD |
 |---|---|
-| "empezar ticket X", pega clave del tracker + descripción, "nuevo feature" | ciclo completo desde `gather-context` (gates según complejidad) → **STOP en cada gate** |
+| "empezar ticket X", pega clave del tracker + descripción, "nuevo feature" | ciclo completo desde `gather-context`, que abre la preflight Git/worktree (gates según complejidad) → **STOP en cada gate** |
 | "/sdd-flow init", "configura el proyecto", "inicializa sdd", "crea el `.specify/`" | `init` |
 | "principios del proyecto", "define el constitution" | `constitution` |
-| "dame el contexto", "qué pide X" | `gather-context` |
+| "dame el contexto", "qué pide X" | `gather-context` directo, sin abrir la elección reservada al ciclo completo nuevo |
 | "qué hay que hacer", "arma la spec", "define el alcance" | `specify` → **GATE** |
 | "aclaremos", "pregúntame lo que falte" | `clarify` |
 | "sube/publica la spec al ticket", "crea la subtarea de spec", "manda la spec a revisión del PO/TL" | `publish-spec` → **GATE externo** (si `jira_approval` aplica) |
@@ -623,7 +626,7 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
 4. **Wizard de decisiones — una sola pantalla, tres preguntas.** Se pregunta lo que la skill no puede saber, por dos motivos: no hay default, o hay default pero la política del equipo puede diferir y nada en el repo la revela. Con una herramienta de **selección interactiva** (descubrir por capacidad, no por nombre) mostrar cada opción con descripción y el valor actual/detectado como "(actual)"; sin ella, degradar al modo conversacional: proponer los valores y confirmar (regla 6).
    - **Sin default** — **`tracker`** (jira · github · gitlab · linear · none): con varios MCP disponibles a la vez la autodetección es ambigua, y fijarlo hace el paso determinista.
    - **Con default, pero política del equipo** — **`branch_prefix`** (default `""` → prefijo semántico; alternativa fija, p. ej. `feature/`) y **`jira_approval.mode`** (default `"off"`; alternativa `"on"`) — este último **solo si se acaba de elegir `tracker: jira`**, con otro tracker la clave no aplica y no se pregunta. Ninguna skill puede detectar cuál prefiere el equipo, y la elección cambia el flujo: `jira_approval` decide si la spec se publica en Jira y espera aprobación.
-5. **Todo lo demás no se pregunta.** Los comandos y paths (`test_cmd`/`build_cmd`/`lint_cmd`/`test_scope_hint`, `default_branch`, `stack`, y los `context_paths`/`adr_paths` de `domain_context`) se **autodetectan** y quedan editables en el preview del paso 6. Las claves con default —entre ellas `commit_style`, `implement_mode`, `cross_review`, `domain_context`, `final_diff_review` y el `debate` de `co_explore`— no van al wizard: la skill las resuelve, y quien quiera fijarlas las copia del ejemplo (paso 8).
+5. **Todo lo demás no se pregunta.** Los comandos y paths (`test_cmd`/`build_cmd`/`lint_cmd`/`test_scope_hint`, `default_branch`, `stack`, `domain_context` y las tres hojas `worktree`) se autodetectan o resuelven por default y quedan editables en el preview. Las claves con default no van al wizard; quien quiera fijarlas las copia del ejemplo.
 6. **Armar y mostrar** el contenido completo de los archivos antes de escribir:
    - `.specify/config.yml` — con las selecciones del wizard + comandos/paths detectados. Esquema en `reference.md` → "Esquema de `.specify/config.yml`". Al escribirlo, emitir `cross_review.mode`, `domain_context.mode`, `final_diff_review.mode`, `jira_approval.mode` y `co_explore.debate.mode` con los valores `on`/`off` **entre comillas** (`"on"`/`"off"`; `auto` sin comillas es válido): sin ellas YAML los parsea como booleanos.
    - `.specify/constitution.md` — desde `reference.md` → "Plantilla de constitution" (definición de *Done*, formato de AC, regla de trazabilidad, y un **puntero** a los principios de código del repo —`CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`— si existen).
@@ -631,7 +634,7 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
      las rutas vigentes desde `reference.md` → "Matriz de defaults y delta de inicialización". Un
      archivo existente y válido se conserva sin sobrescribirlo.
 7. **STOP** — escribirlos **solo tras confirmación**. Son locales y untracked (regla #10): nunca se trackean, comitean ni se agregan a un `.gitignore` compartido.
-8. **Cierre — apuntar al resto.** Al confirmar, decir en una línea que el config admite **37 claves**, que el wizard solo preguntó lo que la skill no puede saber, y que el resto vive en `config-ejemplo.md`, listo para copiar por bloques con cada valor marcado `[def]`, `[ej]` u `[obl]`; sin este cierre, reducir el wizard convierte "no te lo pregunto" en "no existe": las seis preguntas que salieron —`commit_style`, `implement_mode`, `cross_review`, `domain_context`, `final_diff_review` y `debate`— tienen que quedar descubribles.
+8. **Cierre — apuntar al resto.** Al confirmar, decir en una línea que el config admite **40 claves**, que el esquema completo vive en `config-ejemplo.md`, listo para copiar por bloques con cada valor marcado `[def]`, `[ej]` u `[obl]`, y que el wizard solo preguntó lo que la skill no puede saber. Sin este cierre, reducir el wizard convierte "no te lo pregunto" en "no existe": las seis preguntas que salieron —`commit_style`, `implement_mode`, `cross_review`, `domain_context`, `final_diff_review` y `debate`— y las tres hojas `worktree` tienen que quedar descubribles.
 9. **Re-corrida:** si `config.yml` y `constitution.md` ya existían, no pisar a ciegas — el wizard mostró los valores vigentes pre-seleccionados; al confirmar, **fusionar** los cambios respetando lo que el usuario mantuvo. Si `workers.yml` ya existía y es válido, **no se pisa**. Si prefiere no fijar config, puede saltar `init`: el ciclo sigue con autodetección + defaults conversacionales (ver `constitution`).
 
 ## Paso `constitution`
@@ -644,7 +647,7 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
 
 ## Paso `gather-context`
 
-**Objetivo:** consolidar lo que pide el ticket + lo que dijo el usuario en una descripción operable, y clasificar la complejidad.
+**Objetivo:** clasificar primero la posición Git y luego consolidar ticket + pedido en una descripción operable, decidir ubicación y clasificar complejidad. En un ciclo completo nuevo, después del eco de config y **antes del punto 1**, ejecutar incondicionalmente el tramo read-only de `reference.md` → "Preflight Git y worktree": HEAD/SHA, base efectiva, árbol principal y condición linked. Detached, repositorio sin commits o base irresoluble detienen la oferta; las entradas directas excluidas por el router no la abren.
 
 1. Buscar una clave de tracker (`[A-Z][A-Z0-9]+-\d+`) en el último mensaje.
 2. Si hay clave **y** el tracker detectado tiene MCP/CLI: traer el issue (resumen, tipo, descripción, prioridad, labels, estado, links). El flujo concreto por tracker —p. ej. el de Jira/Atlassian con `cloudId`— está en `reference.md` → "Flujo por tracker". Si no hay integración: pedir al usuario que pegue el resumen, o seguir solo con el prompt.
@@ -659,8 +662,9 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
      <!-- invoca: pedido-jsonl -->
      Un código distinto de cero es **fallo cerrado**: no se avanza a la fusión con un literal que no cierra de forma.
    - **En un modo no mutante** —Plan Mode, solo-lectura— 3b corre igual, **en memoria**, y no escribe nada: ni el marcador ni `pedido/`. Al salir del modo se **recapturan las fuentes**, se muestra lo capturado contra lo conversado, se **exige confirmación** y recién entonces se persiste, quedando lo persistido identificado por el digest de la confirmación. Hasta ahí **la vara no puede fundar** ningún rechazo: un resultado conversacional no tiene identidad durable contra la cual comparar, y rechazar contra algo que nadie confirmó es peor que no tener vara.
+   - **Solo después de que 3b admita continuar**, volver a capturar HEAD, comprobar WIP antes de `fetch` o fast-forward, clasificar la sincronía y obtener las decisiones de origen y ubicación según `reference.md` → "Preflight Git y worktree". No se materializa todavía; la elección pasa a formar parte de este mismo checkpoint.
 4. **Fusionar** tracker + prompt; en conflicto gana el prompt.
-5. **Buscar antecedentes en el repositorio.** Antes de clasificar, recorrer el árbol y su historia para saber si el objetivo ya se hizo, se está haciendo, o se descartó con motivo. El procedimiento —las seis fuentes, el algoritmo de términos, las señales que acreditan un candidato y el esquema de `.plans/<id>/antecedentes.md`, donde queda el resultado— vive en `reference.md` → "Búsqueda de antecedentes".
+5. **Buscar antecedentes en el repositorio.** Fijar `context_root` y `context_head`, y recorrer ese árbol, su historia y su catálogo para saber si el objetivo ya se hizo, se está haciendo o se descartó. El procedimiento y `.plans/<id>/antecedentes.md` viven en `reference.md` → "Búsqueda de antecedentes".
    - **Es incondicional.** No hay clave que lo apague, no es una dependencia blanda y no despacha ningún agente: una búsqueda condicional es exactamente el hueco por el que un flujo aprueba una spec y corta una rama sobre la premisa de que no había nada previo. El molde es el sub-paso 1 de `clarify` —"el código responde primero"—, que ya es un acto de lectura del árbol obligatorio dentro de esta misma skill.
    - **Encuentra `.plans/<id>/` ya creado** por el sub-paso 3b, y escribe ahí su ledger: el recorrido termina **antes** de que exista `spec.md`, así que su resultado necesita una sede propia, que es la autoridad sobre la búsqueda durante toda esa ventana. Si faltara —un flujo heredado, anterior a 3b—, crearlo acá.
    - **En un modo no mutante** —Plan Mode, solo-lectura— el sub-paso **corre igual, en memoria, y no escribe nada**: ni `.plans/<id>/` ni el ledger. Su resultado va al checkpoint del paso 6 de forma conversacional. Lo único que queda `no comprobado` son las **refs remotas** —la rama (a) de la actualización de refs—, **no** una fuente entera: las seis se leen perfectamente en local. Es la única forma de que "incondicional" y la garantía read-only —por la que `gather-context` está permitido en esos modos— se sostengan a la vez; al salir del modo, el sub-paso se re-corre y recién entonces persiste.
@@ -675,12 +679,9 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
 
    - **Dos de las celdas ausentes cambian lo que el flujo hace**, y por eso se nombran acá: un hallazgo **total y recuperable sin conflictos** *obliga* a reformular —no lo ofrece—, y uno **recuperable con costo** va al **checkpoint con el número de conflictos declarado**, sin recortar por su cuenta. No son las únicas que faltan: ante **cualquier** celda que no sea una de las cuatro de arriba, manda la matriz. Por eso las dos primeras filas llevan su vigencia escrita —una celda `no vigente` vale como contexto histórico y **nunca** como recorte, así que sin ese calificador la fila de cobertura parcial se leería como si cubriera también ese caso.
    - **El resultado entra en el checkpoint del paso 6**, que ya existe: no se abre un stop nuevo ni se agrega un gate. Quien confirma el contexto lo hace con los hallazgos a la vista.
-6. **Evaluar la entrega y clasificar complejidad** (router de arriba y `delivery-profile.md`): registrar
-   urgency, complexity y riesgo provisional con evidencia, procedencia y confianza; anunciar
-   clasificación, recomendación y efectos exactos del perfil. La elección humana ocurre dentro de
-   este mismo checkpoint de 5-8 bullets. El resumen del paso 5 —qué se buscó, qué fuentes quedaron
-   sin comprobar y con qué impacto en el alcance— se presenta aquí.
+6. **Evaluar la entrega, clasificar complejidad y confirmar el contexto** (router de arriba y `delivery-profile.md`): registrar urgency, complexity y riesgo provisional con evidencia, procedencia y confianza; anunciar clasificación, recomendación y efectos exactos del perfil. En este mismo checkpoint de 5-8 bullets presentar el resumen del paso 5 —qué se buscó, qué fuentes quedaron sin comprobar y con qué impacto en el alcance— y el preview del worktree: origen/SHA, destino absoluto, rama semántica definitiva, inventario del paquete, config local obligatorio si existe, `seed_paths` aceptados y candidatos omitidos, startup, primitiva acotada y cota. Worktree es recomendado, pero solo esta confirmación habilita `creating`, traslado, siembra, startup, doble `ready` y launcher según `reference.md`; con búsqueda `in-progress`, completar es recomendado y continuar en el árbol actual exige escribir `abandoned`. Un trivial ratifica el costo; reclasificar después no deshace un árbol creado.
    - **Y acá se congelan las cláusulas del pedido**, en el **checkpoint** que ya existe y **sin abrir un stop nuevo**: se muestra el **conjunto exacto** de cláusulas provisionales —o su **delta** contra lo confirmado antes, cuando el flujo ya venía congelado— y la confirmación del usuario anexa el evento que las fija. Una línea del literal con `medio: referencia` **bloquea el congelamiento** hasta que el usuario acepte esa limitación acá; el ciclo completo está en `reference.md` → "El paquete del pedido".
+   - Al cerrar el checkpoint, escribir atómicamente ubicación, `origin_sha`, `origin_worktree`, `main_worktree`, `context_root` y `context_head` incluso si se eligió el árbol actual. La rama/worktree pre-spec es preparación, no aprobación; el ciclo del origen termina tras el launcher y continúa solo en una sesión nueva del destino.
 
 ## Paso `specify` → GATE
 
@@ -721,7 +722,7 @@ Obligatorio en cambios *complejos*; en *normales* solo si hay ambigüedad; se sa
 
 **Objetivo:** publicar la spec aprobada localmente en una **subtarea de Jira** para que el TL/PO la revisen y aprueben **antes** de implementar, y dejar el flujo en pausa hasta esa aprobación. Es un **gate externo y asíncrono**: aumenta el gate local de `specify`, no lo reemplaza.
 
-**Cuándo se activa** (precedencia: override de la corrida > `jira_approval` de `config.yml` > default **off**). Requiere además: `tracker: jira`, que `<id>` sea una clave de ticket real (el **padre**), y un MCP/CLI de Atlassian con **capacidad de escritura**. Si falta cualquiera → el paso no aplica (degradación, abajo). Tampoco aplica en cambios **triviales** (no hay `spec.md` separada ni gate de `specify` que publicar): si `jira_approval` está `on` y el equipo requiere la aprobación externa, avisar y ofrecer reclasificar a *normal*. Corre **después** del gate local de `specify` (y de `clarify` si aplica, con la spec ya estable) y **antes** de `create-branch`: no se crea rama ni plan sobre una spec que el TL/PO aún no aprobaron.
+**Cuándo se activa** (precedencia: override de la corrida > `jira_approval` de `config.yml` > default **off**). Requiere además: `tracker: jira`, que `<id>` sea una clave de ticket real (el **padre**), y un MCP/CLI de Atlassian con **capacidad de escritura**. Si falta cualquiera → el paso no aplica (degradación, abajo). Tampoco aplica en cambios **triviales** (no hay `spec.md` separada ni gate de `specify` que publicar): si `jira_approval` está `on` y el equipo requiere la aprobación externa, avisar y ofrecer reclasificar a *normal*. Corre **después** del gate local de `specify` —y de `clarify` si aplica, con la spec estable— y **antes** del `create-branch` pendiente. Una rama/worktree ya creada por la preflight es la excepción pre-spec: prueba preparación, no aprobación, y nunca habilita plan o código antes de estos gates.
 
 1. **Construir el payload** de la subtarea (plantilla y reglas en `reference.md` → "Aprobación externa de la spec (Jira)"): título `SPEC: <título corto>`; descripción con **primero un resumen ejecutivo no técnico** (problema, objetivo, alcance, fuera de alcance, criterios de aceptación en lenguaje de negocio) y **debajo la definición técnica** (cuerpo de `spec.md`, prácticamente literal). **Sanitizar** (acotado: todo lo técnico —`AC-n`, métodos, código y paths de código fuente del proyecto— se publica sin abstraer): nunca publicar menciones a cross-review / co-exploración / segunda opinión / modelos, URLs o entornos locales o de prueba (`localhost`, `127.0.0.1`, hosts de desarrollo como `local.<proyecto>.dev:4200`, `file://`), ni artefactos/mecánica del flujo SDD (`.plans/`, `.specify/`, paths absolutos locales, archivos del propio flujo, `status`, prefijos de rama, comandos de test/build, nombres de fases del flujo). **Y retirar la anotación de autoridad de cada `AC-n`**, que es traza interna y no parte del QUÉ:
    <!-- sanitiza: autoridad -->
@@ -734,22 +735,14 @@ Obligatorio en cambios *complejos*; en *normales* solo si hay ambigüedad; se sa
 
 ## Paso `create-branch`
 
-**Objetivo:** dejar el flujo parado en la rama correcta —creándola desde la base resuelta,
-reutilizando la rama actual o renombrándola— con la nomenclatura acordada. Por defecto se ejecuta una
-vez aprobado el **qué** (tras `specify`/`clarify`). La excepción es `normal + expedited +
-jira_approval: "off"`: se ejecuta con la spec estable, antes del gate atómico de spec+plan+tasks, sin
-atribuirle aprobación. Con Jira `"on"` conserva el orden posterior al gate local y a la aprobación
-externa. En cambios *triviales* —sin spec separada— se hace al inicio, antes de `plan`.
+**Objetivo:** dejar el flujo en la rama correcta. Si la preflight ya materializó el worktree, este paso solo valida y consume su rama/SHA; si eligió el árbol actual, crea desde el origen congelado; sin preflight conserva el procedimiento heredado para crear desde la base, reutilizar o renombrar. Por defecto se ejecuta una vez aprobado el **qué** (tras `specify`/`clarify`). La excepción es `normal + expedited + jira_approval: "off"`: se ejecuta con la spec estable, antes del gate atómico de spec+plan+tasks, sin atribuirle aprobación. Con Jira `"on"` conserva el orden posterior al gate local y a la aprobación externa. En cambios *triviales* —sin spec separada— se hace al inicio, antes de `plan`. La existencia previa nunca prueba aprobación.
 
-1. Verificar que no haya **cambios en archivos versionados** pendientes: `git status --porcelain -- ':(exclude).plans' ':(exclude).specify'`. Los artefactos locales del flujo (`.plans/`, `.specify/`) y los generados que el repo ya ignora **no cuentan**: "limpio" significa sin código sin commitear, no sin estos artefactos (que `specify`/`constitution` pudieron crear antes). Si hay cambios de código, detener y avisar.
-2. **Resolver y normalizar la rama base — sin mover el HEAD todavía.** Precedencia de la `base_branch` efectiva: (a) **override de base de la corrida** si el usuario lo indicó (ver router → "override de base"; p. ej. una feature dependiente que corta desde otra rama en QA/revisión, no desde la base habitual) → (b) `default_branch` del `config.yml` → (c) rama base **detectada** (`git symbolic-ref refs/remotes/origin/HEAD`). El override **no** toca el `config.yml`: vale solo para esta corrida. La detección suele devolver `origin/<rama>` (un ref remoto): quitarle el prefijo `origin/` para obtener la **rama local** (`origin/main` → `main`) y `git fetch origin`. **Posicionarse en ella todavía no**: eso movería el HEAD antes de que haya decisión, y se hace en el paso 5 sólo si la salida elegida lo pide. Si la rama base no existe local ni remotamente, detener y avisar (no inventar una base). Nunca hacer `git checkout origin/<rama>` (deja *detached HEAD*) ni asumir `main`/`master`. Registrar la `base_branch` resuelta para el header del `plan.md` y el snapshot del `handoff.md`.
+1. Verificar que no haya código pendiente con `git -C <repo-root> status --porcelain --untracked-files=all -- . ':(exclude).plans' ':(exclude).specify'`. Si el handoff trae identidad worktree completa y `ready`, comprobar ubicación, rama y `origin_sha` y terminar sin checkout, pull ni pregunta; un origen snapshot remite al launcher.
+2. **Resolver la base sin mover HEAD.** Con `origin_sha` persistido, consumirlo junto con `base_branch` y declarar cualquier avance de ref; solo recongelar tras autorización. Sin identidad previa, aplicar override → config → detección y el procedimiento de `reference.md` → "Elección de rama".
 3. **Determinar el prefijo efectivo** (`{type}`) y **construir el nombre**. Prefijo, primer valor presente: (a) **override de la corrida** si el usuario lo indicó (ver router → "prefijo de rama"); (b) **`branch_prefix`** del `config.yml`; (c) **prefijo semántico** derivado del tipo de issue/contexto (mapeo en `reference.md` → "Mapeo tipo de cambio → prefijo"; para features es **siempre `feature`, nunca `feat`** — `feat` es solo para commits/`change_type`; ante la duda, preguntar), normalizado sin la barra final (`feature/` y `feature` dan lo mismo, porque el `/` ya está en `branch_format`); si `branch_format` fue customizado sin `{type}`, `branch_prefix`/override no aplican. Nombre con `branch_format` (default `{type}/{ticket}-{slug}`): `{ticket}` = clave del tracker (si no hay, se omite **junto con su separador**: `fix/cart-null-guard`, nunca `fix/-cart-null-guard`); `{slug}` = 2-5 palabras del título en kebab, sin acentos, `[a-z0-9-]`. Ejemplos: `feature/ABC-123-export-csv`, `fix/cart-null-guard` (sin ticket); con `branch_prefix: feature/` fijo, hasta un fix queda `feature/PROJ-9-null-cart`.
-4. **Clasificar el HEAD y decidir.** Comparar `git rev-parse --abbrev-ref HEAD` contra la `base_branch` normalizada. Si **coinciden**, mostrar el nombre propuesto y pedir confirmación —aceptando correcciones o un nombre exacto del usuario—, como siempre. Si **no** coinciden, el paso **se detiene y presenta la elección**: seguir en la rama actual, rama nueva desde la base, rama nueva cortada desde la actual, y renombrar la actual cuando es sólo local. Sus precondiciones, las tablas que fijan la recomendación y el aviso, la reparación posterior al rename y los estados **detached** y **sin commits** —donde el paso para con diagnóstico en vez de ofrecer salidas— están en `reference.md` → "Elección de rama". Con **override de base** de la corrida, **no se pregunta**: el usuario ya eligió y un override explícito no se re-consulta.
-5. **Ejecutar la salida elegida, y recién ahí mover el HEAD.** Seguir en la rama actual **no mueve el HEAD** ni ejecuta comando alguno: `branch` = la rama actual, `base_commit` = `git rev-parse HEAD`, y `base_branch` sigue siendo la base resuelta (el destino del PR, que se anuncia junto con la elección). Para una rama nueva, posicionarse primero en la base (`git checkout <rama-local>` + `git pull --ff-only origin <rama-local>`; con override de base, la rama X puede ser **puramente local o estar adelantada del remoto**, así que el pull va **solo si X tiene upstream** —`git rev-parse --abbrev-ref --symbolic-full-name @{u}` no falla— y si no, se corta desde el HEAD local de X) y después `git checkout -b <branch>`. **El `checkout -b` no es incondicional:** si el nombre ya existe, detener mostrando el nombre y reofrecer las mismas salidas; nunca `checkout` sin `-b` a una rama ajena, nunca un sufijo inventado. Guardar `branch` y `base_branch` para el header del `plan.md` y los pasos siguientes.
-6. **Persistir el snapshot pre-plan.** Inmediatamente después de resolver la rama, escribir o
-   actualizar `handoff.md` con `delivery_profile`, `risk`, `complexity`, `change_type`, rama/base y
-   `spec_approved_at`: timestamp de aprobación local en normal/complex, `null` si sigue pendiente, y
-   siempre `null` en trivial. Esta escritura ocurre aunque la ejecución continúe.
+4. **Consumir o decidir.** Con elección congelada no repetir preguntas; el nombre exacto proviene del preview. Sin ella, clasificar HEAD y usar las cuatro salidas, sus precondiciones y la recomendación de `reference.md` → "Elección de rama". Con **override de base** de la corrida, no volver a preguntar.
+5. **Ejecutar solo lo pendiente.** En árbol actual, conservar la rama actual si esa fue la elección o crear la definitiva desde `origin_sha` sin otro pull; con worktree listo no hacer nada. En un flujo heredado ejecutar la salida elegida y posicionarse en una base con upstream mediante `pull --ff-only`; una base local o adelantada conserva su HEAD local. Toda colisión se detiene sin sufijo, rename ni checkout a una rama ajena. Guardar `branch`, `base_branch` y `base_commit` sin confundir existencia con aprobación.
+6. **Persistir el snapshot pre-plan.** Inmediatamente después de resolver la rama, escribir o actualizar `handoff.md` con `delivery_profile`, `risk`, `complexity`, `change_type`, rama/base, la identidad worktree completa y `spec_approved_at`: timestamp de aprobación local en normal/complex, `null` si sigue pendiente y siempre `null` en trivial. Esta escritura ocurre aunque la ejecución continúe.
 
 ## Paso `analyze`
 
@@ -868,11 +861,7 @@ Antes de que exista `plan.md` (fase `specify`/`clarify`, o el gate de Jira), no 
 
 Documento de **retomado** del flujo —"dónde quedé, qué decidí y cómo sigo"— en `.plans/<id>/handoff.md` (frontmatter + narrativa): todo el estado del flujo queda junto en `.plans/<id>/` —donde `resume` ya escanea—, sin partirlo en carpetas aparte ni acoplar `sdd-flow` a otra skill. Es local y untracked como el resto (regla #10).
 
-**Se escribe/actualiza en tres situaciones:**
-- **Sub-paso `pause`** — al dejar un flujo a medias para seguir después o en otra sesión (cualquier fase, no solo `implement`).
-- **Paso `publish-spec`** — el gate de aprobación en Jira es una pausa esperando a un tercero; agrega los campos del gate (ver su paso).
-- **Paso `create-branch`** — inmediatamente después de resolver la rama, aunque la ejecución siga;
-  persiste el perfil, el riesgo y `spec_approved_at` para que rama nunca implique aprobación.
+**Se escribe/actualiza en tres situaciones del flujo base:** `pause`, `publish-spec` y `create-branch`; la preflight agrega el cierre de la decisión de ubicación, el primer efecto, cada etapa, fallo, abandono y mitad del doble `ready`, y los escritores `plan` y `resume` mantienen el documento. Cada escritor fusiona la identidad worktree, el perfil, el riesgo y `spec_approved_at` para que una rama nunca implique aprobación; `publish-spec` agrega los campos del gate externo. Momentos, autoridad y escritura atómica: `reference.md` → "Preflight Git y worktree" y "Plantilla de `handoff.md`".
 
 **Estructura:** frontmatter YAML con los campos máquina + cuerpo narrativo legible. Plantilla completa en `reference.md` → "Plantilla de `handoff.md`".
 
@@ -888,7 +877,8 @@ branch_prefix: feature          # el {type} ya resuelto
 slug: export-csv
 base_branch: master             # rama base resuelta (con override de base, la rama de la que se corta)
 spec_approved_at: null          # timestamp de aprobación local o null; trivial siempre null
-overrides: { branch_prefix: null, base_branch: null, cross_review: null, implement_mode: null, jira_approval: null }
+overrides: { branch_prefix: null, base_branch: null, cross_review: null, implement_mode: null, jira_approval: null, worktree: null }
+# worktree_location: current|worktree · identidad/contexto/status/etapa/evidencia: ver plantilla completa
 # puntero al ledger de la búsqueda (solo en una pausa durante `gather-context`):
 # antecedentes: .plans/<id>/antecedentes.md   # PUNTERO, no copia: términos, fuentes y fingerprints viven solo ahí
 # puntero al pedido congelado (siempre que el flujo lo tenga, no solo al pausar en `gather-context`):
@@ -901,21 +891,17 @@ overrides: { branch_prefix: null, base_branch: null, cross_review: null, impleme
 ```
 
 ### Precedencia con `plan.md` (sin doble fuente de verdad)
-- **`plan.md` existe** → su `status` / `wip_commit` / marcas `[x]` son la **verdad de fase**. Durante
-  una secuencia durable activa, el clasificador canónico de secuencia decide primero si esa fase puede
-  continuar: `status` solo enruta cuando el diagnóstico es terminal o no aplica. `handoff.md` solo
-  aporta la **narrativa** (estado, decisiones, próximos pasos) y los **overrides de la corrida** (que
-  de otro modo no se persisten).
+- **`plan.md` existe** → su `status` / `wip_commit` / marcas `[x]` son la **verdad de fase**; ubicación, identidad, contexto, status/etapa/evidencia del worktree siguen siendo autoridad del handoff. Una secuencia durable se clasifica antes de que `status` enrute; el handoff aporta además narrativa y overrides.
 - **`plan.md` NO existe** (fase `specify`/`clarify`, o el gate de Jira) → el **frontmatter del `handoff.md`** lleva el snapshot operativo (complejidad, tipo de cambio, prefijo) y es la fuente de verdad de esa ventana pre-`plan`.
 
 `handoff.md` **nunca contradice** a `plan.md`: lo complementa y cubre la ventana donde antes no había nada persistido (hoy, pausar en `specify`/`clarify` pierde la narrativa). Al retomar, `resume` lo lee respetando esta precedencia.
 
 ## Paso `resume` (retomar un flujo / cambiar de contexto)
 
-Punto de entrada cuando vuelves a un flujo ya empezado — en una sesión nueva, o tras haber saltado a otra cosa. Funciona **aunque estés posicionado en otra rama**, porque `.plans/` es local y visible desde cualquier rama, y cada `plan.md` sabe a qué `branch` pertenece y en qué `status` quedó.
+Punto de entrada para un flujo empezado. `.plans/` es visible entre ramas del mismo working tree, no entre linked worktrees: un snapshot de origen debe seguir el `worktree_path` y leer el paquete vivo antes de enrutar.
 
 ### Listar / elegir el flujo
-1. Si el usuario nombró un flujo (`<id>` o ruta `.plans/<id>/`), usar ese. Si dijo algo genérico ("¿en qué quedé?", "qué flujos tengo"), **listar** los flujos activos (excluir `.plans/archived/`): para los que tienen `plan.md`, leer su header; para los **pre-`plan`** (sin `plan.md`: `contrato-pedido.md`, `pedido/`, `antecedentes.md`, `spec.md` y/o `handoff.md`, en cualquier combinación), leer el `handoff.md` (`phase`/`gate_status`) **y también `antecedentes.md` si está**, de donde sale el estado de la búsqueda. Un flujo pausado durante la búsqueda puede tener **solo** ese archivo, y un cierre pre-spec deja ahí su `busqueda: terminal`: sin abrirlo no hay con qué mostrar ese estado ni cómo distinguir un cierre deliberado de un flujo abandonado. **El marcador y el paquete entran en esa enumeración por el mismo motivo**, y llegan antes que los tres: una caída dentro de 3b deja un flujo sin ninguno de los artefactos narrativos, así que un listado que solo los mirara no tendría con qué presentarlo y el usuario no podría elegirlo — dejando sin correr el routing del item 1b, que es el único que sabe qué hacer con ese estado. Acá solo se **detecta su presencia** para no omitir el flujo; la celda exacta la resuelve 1b sobre el flujo ya elegido. Mostrar tabla `id · branch · estado · siguiente paso` —donde "estado" es el `status` del plan o, si no hay plan, la `phase`/`gate_status` del handoff (p. ej. "esperando aprobación Jira"), y si tampoco hay handoff pero sí marcador o paquete, `captura del pedido sin terminar`—. Que el usuario elija.
+1. Si el usuario nombró un flujo (`<id>` o ruta `.plans/<id>/`), usar ese. Si dijo algo genérico ("¿en qué quedé?", "qué flujos tengo"), **listar** los flujos activos (excluir `.plans/archived/`): para los que tienen `plan.md`, leer su header; para los **pre-`plan`** (sin `plan.md`: `contrato-pedido.md`, `pedido/`, `antecedentes.md`, `spec.md` y/o `handoff.md`, en cualquier combinación), leer el `handoff.md` (`phase`/`gate_status`) **y también `antecedentes.md` si está**, de donde sale el estado de la búsqueda. Un flujo pausado durante la búsqueda puede tener **solo** ese archivo, y un cierre pre-spec deja ahí su `busqueda: terminal`: sin abrirlo no hay con qué mostrar ese estado ni cómo distinguir un cierre deliberado de un flujo abandonado. **El marcador y el paquete entran en esa enumeración por el mismo motivo**, y llegan antes que los tres: una caída dentro de 3b deja un flujo sin ninguno de los artefactos narrativos, así que un listado que solo los mirara no tendría con qué presentarlo y el usuario no podría elegirlo — dejando sin correr el routing del item 1b, que es el único que sabe qué hacer con ese estado. Acá solo se **detecta su presencia** para no omitir el flujo; la celda exacta la resuelve 1b sobre el flujo ya elegido. Mostrar tabla `id · branch · estado · siguiente paso`; una ubicación `worktree` clasifica la copia del origen como snapshot, sigue el puntero y distingue ruta ausente, destino sin paquete y paquete vivo antes de mostrar estado. Que el usuario elija.
 1b. **Bifurcar por el estado del pedido, antes de toda otra rama.** Con el flujo ya elegido, la **primera** comprobación del paso es el estado del paquete `pedido/`, y de su resultado sale por dónde **enrutar**. Va antes que cualquier rama vigente —incluida la de `antecedentes.md` con `busqueda: terminal`—, porque un flujo terminal puede ocultar un marcador con el paquete ausente, y ahí el fallo cerrado quedaría sin disparar.
    <!-- invoca: pedido-marcador -->
    `resume` invoca **un bloque para resolver la celda** y **carga dos**, que no es lo mismo: `pedido-marcador` llama a `pedido-jsonl` por dentro cuando el paquete está presente, así que su definición tiene que estar en el mismo shell. Cargar no es invocar — lo que vuelve circular al protocolo es ordenar dos *invocaciones* de la celda, porque el marcador no puede imprimir «presente y corrupto» antes de conocer un resultado que llegaría después. Sin la dependencia cargada el bloque devuelve `2` con su causa, y con `2` no se enruta por ninguna rama.
@@ -935,6 +921,7 @@ Punto de entrada cuando vuelves a un flujo ya empezado — en una sesión nueva,
    - **Se ramifica por la celda que el bloque imprime, no por su código de salida.** El código solo dice si resolvió alguna: con `1` —el árbol no encaja en ninguna celda— o con `2` —invocación mal formada— **no se enruta por ninguna rama**, y el paso se detiene informando qué se observó.
    - **Las ocho salidas, en orden de precedencia, viven en `reference.md` → "Salidas del routing de resume ante el pedido"**, que es su sede única: la primera fila que coincide manda y no se sigue mirando. Ahí está también el procedimiento de cuarentena, que exige confirmación humana y nunca es automático.
    - **Flujo heredado**: con el marcador ausente, el paquete ausente y el directorio no vacío, el flujo se abrió antes de este contrato. Sigue por las ramas vigentes y **la vara** queda declarada **no aplicable** en el retomado: no se falla, y tampoco se adopta un pedido que nadie capturó para este flujo.
+1c. **Después de la celda del pedido**, ejecutar el clasificador de secuencia read-only y, solo si permite seguir, resolver primero el terminal `abandoned`, luego ubicación y los demás valores de `status`: `abandoned`, routing local sin reofrecer; sin `worktree_location` o con `current`, routing local; `worktree` sin status, ofrecer materializar desde `origin_sha` —recomendado— o escribir `abandoned`; estado parcial, diagnosticar evidencia y operar solo desde `origin_worktree`; doble `ready`, seguir el paquete vivo del destino, volver a resolver allí la celda y, pre-spec, evaluar `co_explore` como el ciclo completo o entrar al plan combinado si es trivial. Puntero ausente, destino sin paquete y paquete vivo son distintos; no hay checkout, stash, rename, prune, limpieza ni recreación automática. Matriz: `reference.md` → "Preflight Git y worktree".
 2. Si `.plans/<id>/` **no** tiene `plan.md`, el flujo quedó pre-`plan`. **Leer `handoff.md` si existe** (narrativa + snapshot de `gather-context`: complejidad, tipo de cambio, prefijo, slug, rama base, overrides) — es lo que evita re-investigar el ticket o re-clasificar. Luego bifurcar, **en este orden**:
    - Si hay **`antecedentes.md` con `busqueda: terminal`** → el flujo se **cerró antes de la spec**, deliberadamente, porque el objetivo ya estaba cubierto. **No se reanuda**: su ledger sobrevive como registro de qué se buscó y qué se encontró, y sigue visible en el listado con ese estado y sin "siguiente paso". Va **primero** y como rama hermana: anidada bajo la de abajo era inalcanzable —su condición padre exige el estado contrario—, así que un flujo nombrado por su `<id>` caía en la última rama y reabría un cierre deliberado dando por escrita una spec que no existe.
    - Si hay **`antecedentes.md` con `busqueda: in-progress`** —haya handoff o no— → la pausa ocurrió **durante la búsqueda de antecedentes**. La condición arranca por el **artefacto** y no por un campo del handoff a propósito: `pause` escribe el handoff solo cuando la pausa es **ordenada**, y una sesión que muere, un `Ctrl-C` o un cierre de terminal dejan el ledger a medio correr sin handoff ninguno. Retomar así:
@@ -946,21 +933,23 @@ Punto de entrada cuando vuelves a un flujo ya empezado — en una sesión nueva,
      seguro y continuar después del gate local; `null` explícito → volver al gate sin preguntar;
      clave ausente en un flujo heredado con spec y rama → preguntar una sola vez y persistir
      timestamp o `null`. Sin rama, retomar desde `specify`/`clarify`. Aplicar el bloque
-     `delivery-profile-resume` de `reference.md` para perfil, Jira y gate pendiente.
+     `delivery-profile-resume` de `reference.md` para perfil, Jira y gate pendiente. La rama creada
+     por la preflight nunca prueba aprobación; solo un flujo heredado sin identidad worktree puede
+     usarla como pista, y se confirma con el usuario antes de navegar o entrar a `plan`.
 
-### Navegar a la rama correcta (checkout seguro)
-3. Parsear el header del `plan.md` elegido: `id`, `branch`, `base_commit`, `complexity`, `status` (y `wip_commit` si está).
-4. Si la rama actual != `branch` del header:
-   - Antes de cambiar, exigir working tree **sin código sin commitear** en la rama actual: `git status --porcelain -- ':(exclude).plans' ':(exclude).specify'` vacío. Si hay cambios de código (p. ej. otro flujo a medias), **detener**: ofrecer commitearlos, el sub-paso `pause`, o `git stash` — nunca pisar ni arrastrar trabajo ajeno a otra rama.
+### Navegar a la rama correcta (solo ubicación `current` o flujo heredado)
+3. Con destino worktree vivo, no navegar: la sesión debe estar allí y el origen snapshot solo muestra el launcher. En otro caso, parsear `id`, `branch`, `base_commit`, `complexity`, `status` y `wip_commit` del plan.
+4. Si la rama actual != `branch`:
+   - Antes de cambiar, exigir `git -C <repo-root> status --porcelain --untracked-files=all -- . ':(exclude).plans' ':(exclude).specify'` vacío. Si hay cambios, detener y ofrecer commit o `pause`; `stash` no se ofrece en la rama worktree porque es compartido.
    - Con el árbol limpio, `git checkout <branch>`. Los `.plans/`/`.specify/` untracked no bloquean el checkout ni se pierden.
    - Si `branch` no existe (fue borrada): avisar y ofrecer recrearla desde el commit base (`git checkout -b <branch> <base_commit>`).
 5. Coherencia: `git merge-base --is-ancestor <base_commit> HEAD` (si no: avisar que la rama divergió y pedir confirmación).
 
-#### Retoma durable antes del routing
+#### Clasificador durable ejecutado antes de decidir ubicación
 
-Antes de recuperar WIP o enrutar por fase, capturar las seis autoridades y ejecutar el **clasificador
+En 1c, antes de decidir ubicación, capturar las seis autoridades y ejecutar el **clasificador
 canónico de secuencia** de `reference.md` → “Recuperación de la secuencia”. Este diagnóstico es
-read-only y ocurre después del checkout/header seguro: nunca resetea, marca tasks, publica ledger ni
+read-only y ocurre después de la celda del pedido, sin checkout previo: nunca resetea, marca tasks, publica ledger ni
 adquiere ownership mientras decide qué estado observa.
 
 1. Validar presencia, `schema_version` y forma del ledger. Inline, legacy, versión desconocida,
@@ -977,9 +966,8 @@ adquiere ownership mientras decide qué estado observa.
    invocación mal formada que se corrige y se repite, nunca un veredicto.
 3. Clasificar exactamente un cutpoint/terminal. Cero o múltiples predicados, evidencia contradictoria,
    cese incierto u owner obsoleto sin fencing fallan cerrados y no mutan.
-4. Sin secuencia aplicable o con `inline-pass-through`, permitir la retoma normal. Este último solo
-   acredita que inline no tiene un efecto externo parcial: no inventa bloques. **Si el header trae `wip_commit`,**
-   recién ahora recuperar el trabajo pausado según `pause`. Para un terminal, enrutar
+4. Sin secuencia aplicable o con `inline-pass-through`, permitir resolver ubicación. Este último solo
+   acredita que inline no tiene un efecto externo parcial: no inventa bloques. **Después de que la ubicación permita routing**, si el header trae `wip_commit`, recuperar el trabajo según `pause`. Para un terminal, enrutar
    por su subtipo, no por `plan.status`: `completed` habilita la retoma normal solo con una fase coherente con el commit
    final; si la fase quedó atrás, continúa como C12 para sincronizarla idempotentemente. `rolled_back`
    y `abandoned` se detienen y requieren una decisión humana explícita para iniciar otra secuencia;
@@ -1060,12 +1048,10 @@ solo la reconciliación declarada por `reference.md` → “Recuperación de la 
 
 `/sdd-flow status` no introduce un estado nuevo: es un alias read-only de `resume` en modo listar.
 Muestra los mismos datos (`id · branch · estado · siguiente paso`) y, si se pasa un `<id>`, resume
-solo ese flujo. La fuente de verdad sigue siendo `plan.md` (`status` + marcas `[x]`) o
-`handoff.md` en la ventana pre-`plan`.
+solo ese flujo. La fuente de verdad sigue siendo `plan.md` (`status` + marcas `[x]`) o `handoff.md` en la ventana pre-`plan`; los snapshots worktree se rotulan aparte y siguen el puntero solo con destino y paquete presentes.
 
 ### Sub-paso `doctor` (diagnóstico read-only)
-Valida la coherencia de un flujo **sin arreglar nada ni escribir archivos**: resuelve el flujo igual
-que `resume`, consume el **clasificador canónico de secuencia** y reporta clase, fuentes y conflictos.
+Valida la coherencia **sin escribir**: celda del pedido → clasificador de secuencia → decisión de ubicación → status. Reporta identidad, etapa, evidencia, doble handoff, puntero y paquete worktree.
 `doctor solo reporta`; `resume agrega la propuesta`, el gate y la ejecución. `OK`/`WARN`/`FAIL` sigue
 siendo la severidad exterior, no una segunda clasificación. Los demás checks, el formato de salida y
 qué cuenta como ruido del working tree: `reference.md` → "Doctor read-only".
@@ -1080,7 +1066,7 @@ detección por MCP, el loop de observaciones y las escrituras con su STOP de wri
 ### Sub-paso `pause` (dejar un flujo a medias de forma segura)
 Aplica en **cualquier fase** del flujo, no solo `implement`. Al pausar:
 
-1. **Escribir/actualizar `handoff.md`** (ver "`handoff.md` (retomado del flujo)"): **la `phase` en la que se pausó**, estado actual, próximo paso, decisiones/criterio asumido y —si `plan.md` aún no existe— el snapshot de `gather-context` (complejidad, tipo de cambio, prefijo, slug, rama base, overrides de la corrida). Es lo que permite retomar en una sesión nueva sin re-investigar el ticket. **Si la pausa ocurre durante la búsqueda de antecedentes**, la `phase` es `gather-context` y el frontmatter lleva además el **puntero** `antecedentes:` a su ledger: son los dos campos con los que el retomado reconoce esa rama, y sin ellos el flujo cae en la de `specify`/`clarify` —que da por escrita una spec que no existe— dejando huérfano el ledger a medio correr. **Y siempre que el flujo tenga su pedido congelado**, el frontmatter lleva el **puntero** `pedido:` a `.plans/<id>/pedido/` — un puntero, nunca una copia: el literal y el registro se leen en su sede, y copiarlos al retomado duplicaría una autoridad que ya existe. Sin escribirlo acá, ningún `handoff.md` real lo llevaría por más que el ejemplo lo muestre.
+1. **Escribir/actualizar `handoff.md`** con fase, estado, próximo paso, decisiones y snapshot pre-plan. Preservar siempre ubicación, identidad, contexto, status/etapa/evidencia worktree. Durante antecedentes incluir su puntero; con pedido congelado, apuntar a `pedido/`, nunca copiarlo. Plantilla y momentos: `reference.md` → "Plantilla de `handoff.md`".
 2. **Si hay código sin commitear** en la rama del flujo (típicamente en `implement`): **WIP commit en la propia rama** (no `git stash`: el stash es global y se confunde/pierde entre flujos; un commit viaja con su rama): stagear solo `code_touched` y `git commit -m "wip(<id>): pausa sdd-flow"`. Este WIP es **inline a propósito** (no usa `/commit`): es plumbing mecánico y descartable que `resume` deshace con `git reset`, no un commit de contenido. Registrar en el header del `plan.md`: `status: implementing` + `wip_commit: <sha>`. Si además quedan archivos **ajenos** dirty (fuera de `code_touched`), avisarlo: no entran al WIP y quedan sueltos en el working tree — un checkout posterior puede arrastrarlos. (En fases sin `plan.md` ni código —`gather-context`, `specify`/`clarify`, gate de Jira— este paso no aplica: alcanza con el `handoff.md`.)
 3. Avisar que quedó pausado y cómo retomarlo (`resume` con el `<id>`). Al retomar, si hubo WIP commit, `resume` lo deshace dejando los cambios en el working tree **sin** stage (`git reset <wip_commit>^`, reset mixed — así el staging selectivo del Paso común sigue valiendo), **reconstruye `code_touched`** desde los archivos del WIP (`git show --name-only --pretty=format: <wip_commit>` — el set en memoria no sobrevive a la sesión) y limpia `wip_commit` del header. **Guard previo:** solo resetear si `git rev-parse HEAD` == `wip_commit`; si no coinciden (hubo commits posteriores al WIP), no tocar la historia — avisar y dejar que el usuario decida cómo integrar el WIP.
 
@@ -1090,7 +1076,7 @@ Aplica en **cualquier fase** del flujo, no solo `implement`. Al pausar:
 El usuario aprobó el último gate activo. Ir al "Paso común".
 
 ### Vía B — sesión fresca / bootstrap
-Disparador: `/sdd-flow implement <ruta-carpeta>` (p. ej. `.plans/ABC-123/`), o llegada desde `resume` con `status` `tasks-ready`/`implementing`. La carga de contexto, la navegación a la rama y la validación de coherencia git las realiza el paso `resume` (arriba); además, cargar la spec y las tasks:
+Disparador: `/sdd-flow implement <ruta-carpeta>` o llegada desde `resume` con `tasks-ready`/`implementing`. Primero resolver el paquete por `resume`: si es snapshot de origen, seguir `worktree_path` y exigir la sesión fresca en el destino vivo; nunca implementar desde la copia no autoritativa. Luego cargar spec y tasks:
 
 1. Leer `plan.md` (**obligatorio**: contiene el header YAML). Leer `spec.md` y `tasks.md` **solo si existen**; si no, tomar la spec y/o las tasks de las secciones embebidas `## Spec` / `## Tasks` del propio `plan.md`. La `complexity` del header indica qué esperar: `trivial` → todo embebido en `plan.md`; `normal` → `spec.md` + `tasks.md` separados; `complex` → `spec.md` + `tasks.md` separados (con gate de tasks propio).
 2. Confirmar el resumen extraído (incluido el `status` y las tasks pendientes) antes de avanzar al "Paso común".

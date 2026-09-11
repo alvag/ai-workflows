@@ -1,9 +1,9 @@
 # Ejemplo de `.specify/config.yml`
 
 **Este archivo es una vista.** Está ensamblado de los bloques que cada skill posee:
-`sdd-flow/reference.md` → "Esquema" (23 claves), `cross-review/SKILL.md` → "Configuración" (5),
+`sdd-flow/reference.md` → "Esquema" (26 claves), `cross-review/SKILL.md` → "Configuración" (5),
 `co-explore/SKILL.md` → "Configuración" (5), `cross-implement/SKILL.md` → "Configuración" (3) y
-`knowledge-vault/reference.md` → "La capa de configuración" (1): 37 claves distintas en total.
+`knowledge-vault/reference.md` → "La capa de configuración" (1): 40 claves distintas en total.
 **Ante discrepancia manda el dueño.** Existe para poder mirar el archivo completo y copiar lo que
 sirva; no para ser la autoridad de ninguna clave.
 
@@ -35,6 +35,12 @@ build_cmd: "npm run build"       # [ej] omitir si el stack no compila
 lint_cmd: "npm run lint"         # [ej] opcional
 test_scope_hint: "vitest run {name}"   # [ej] plantilla de COMANDO para acotar tests; {name} = archivo/patrón
 default_branch: main             # [ej] rama base; se detecta, nunca se asume main/master
+
+# ── sdd-flow: preparación opcional de worktree ──
+worktree:
+  base_path: "~/worktrees"        # raíz absoluta o con prefijo ~/ para los worktrees de sdd-flow — [def]
+  seed_paths: []                  # entorno local opcional; el config existente se conserva aparte — [def]
+  startup_commands: []            # comandos de arranque; si falta la clave se derivan del stack cuando existe una regla — [ej]
 
 # ── sdd-flow: convenciones ──
 branch_format: "{type}/{ticket}-{slug}"  # [def] placeholders {type} {ticket} {slug}
