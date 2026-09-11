@@ -7,7 +7,7 @@ Flujo de **Spec-Driven Development (SDD)** portable y agnóstico de proyecto. Ll
 Recorre el ciclo SDD escribiendo artefactos auditables y deteniéndose en gates de aprobación:
 
 ```
-init (opcional) → constitution → gather-context + perfil → specify → clarify → publish-spec (Jira, opcional) → create-branch → analyze → plan → tasks → implement → verify
+init (opcional) → constitution → gather-context + perfil + preflight Git/worktree → specify → clarify → publish-spec (Jira, opcional) → create-branch → analyze → plan → tasks → implement → verify
 ```
 
 - **Portable:** detecta stack (Node, Go, Rust, Python, Java, .NET…), host de Git (GitHub/GitLab/Bitbucket/otro), issue tracker y rama base por convención. Nada hardcodeado. Override opcional en `.specify/config.yml`.
@@ -15,7 +15,8 @@ init (opcional) → constitution → gather-context + perfil → specify → cla
 - **Gates escalados y explícitos:** trivial conserva 1 gate y complex, 3 más `clarify` obligatorio. En normal, `standard` usa 2 gates; `expedited` con Jira en `"off"` aprueba spec, plan y tasks en un único gate atómico. El agente muestra evaluación y recomendación, y tú eliges.
 - **Trazabilidad:** cada criterio de aceptación (`AC-n`) se mapea a tasks y se verifica al final; si un AC de comportamiento tiene test, el test debe tener dientes (`revert → FAIL`, `restore → PASS`).
 - **Estado persistido / retomable:** cada flujo guarda su fase (`status`) y su rama en el `plan.md`, y un `handoff.md` con "dónde quedé, qué decidí y cómo sigo". Puedes dejarlo a medias —en cualquier fase—, atender algo urgente en otra rama y retomarlo después desde donde quedó, incluso en otra sesión, sin re-investigar.
-- **Elección de rama, no suposición:** si ya estás parado en una rama que no es la base, el flujo **te pregunta** en vez de asumir: seguir acá, cortar una rama nueva desde la base, o cortarla desde la actual (feature dependiente). Y si esa rama es **sólo local** —la típica que abriste a mano para arrancar el worktree, antes de saber de qué se trataba—, te ofrece **renombrarla** al nombre que el flujo ya sabe construir, reparando los flujos que apuntaban al viejo.
+- **Preflight Git y worktree:** al iniciar un ciclo completo detecta HEAD, base y worktrees; comprueba el remoto, recomienda partir de la base y aislar el cambio, y espera tu decisión. Tras el escaneo propone la rama semántica y `~/worktrees/<proyecto>/<id>`, traslada el paquete del flujo, conserva el config local que lo gobierna, siembra los demás paths ignorados que aceptes, ejecuta el bootstrap y verifica todo. No mueve esta sesión: muestra el comando exacto para abrir otra en el destino.
+- **Ramas heredadas o directas:** fuera del ciclo nuevo, `create-branch` conserva sus cuatro salidas seguras: seguir en la actual, cortar desde la base, cortar desde la actual o renombrar una rama solo-local cuando cumple sus precondiciones.
 - **Doctor read-only:** `/sdd-flow doctor <id>` revisa coherencia del flujo sin escribir: ACs huérfanos, placeholders, Produce/Consume, branch/base, verify stale y ruido del working tree.
 - **Recuperación durable:** `doctor` y `resume` clasifican el mismo snapshot de ledger, recibo, Git,
   tasks, proceso y owner. `doctor` solo informa; `resume` propone una reconciliación completa, espera
@@ -38,13 +39,15 @@ Frases que el router entiende: "configura el proyecto", "arma la spec", "aclarem
 
 ## Retomar y cerrar flujos
 
-Como `.plans/` es local (no trackeado), git no lo mueve al cambiar de rama: tus flujos están visibles desde **cualquier** rama, y cada `plan.md` recuerda su `branch` y su `status`. Eso permite:
+Como `.plans/` es local, está visible entre ramas del mismo working tree, pero no nace en un linked worktree. El preflight copia solo el paquete del flujo y deja punteros para distinguir el origen snapshot del destino vivo. Eso permite:
 
 - **Listar lo pendiente:** "¿en qué quedé?" / "qué flujos tengo" → muestra `id · branch · status · primera task pendiente` de cada flujo activo.
 - **Diagnosticar sin tocar nada:** `/sdd-flow doctor <id>` → valida coherencia del flujo, clasifica la
   secuencia durable y reporta `OK/WARN/FAIL` con evidencia; no arregla ni escribe.
-- **Retomar uno puntual:** "continuemos con `<id>`" → la skill lee la rama del header, hace el
-  `checkout` seguro y clasifica la secuencia **antes** de recuperar WIP o seguir el `status`. Si es
+- **Retomar uno puntual:** "continuemos con `<id>`" → la skill resuelve primero el pedido y la
+  ubicación; si el flujo vive en un worktree, exige la sesión allí sin hacer checkout. Solo para una
+  ubicación local o heredada lee la rama del header y hace el `checkout` seguro. Después clasifica la
+  secuencia **antes** de recuperar WIP o seguir el `status`. Si es
   recuperable, muestra todos los efectos y pide un único sí; después revalida y reconcilia sin gates
   intermedios. Si cambió la evidencia, el proceso puede seguir vivo o el owner obsoleto carece de
   fencing atómico, se detiene fail-closed.
@@ -69,7 +72,7 @@ Como `.plans/` es local (no trackeado), git no lo mueve al cambiar de rama: tus 
    │  ├─ bitacora.md            # constancia append-only de los pasos del contrato
    │  ├─ sequence-ledger.yml    # versión, cursor, intenciones y efectos adjudicados
    │  ├─ sequence-ledger.owner/ # ownership exclusivo mientras un writer publica
-   │  ├─ handoff.md             # siempre en `create-branch`; además al pausar o entrar al gate de Jira
+   │  ├─ handoff.md             # siempre en `create-branch`; perfil, aprobación, worktree y retomado
    │  └─ jira-spec.md           # copia de lo publicado en Jira (solo con el gate de aprobación)
    └─ archived/                 # flujos cerrados (status: done), movidos solo tras tu confirmación
       └─ <id>/                  # misma estructura, ya terminada
@@ -85,14 +88,14 @@ La skill no necesita configuración para empezar: en su primera corrida detecta 
 
 ### Inicializar el proyecto (opcional): `/sdd-flow init`
 
-Estos archivos **no se crean solos** durante el ciclo (que usa autodetección + defaults conversacionales). Si quieres fijarlos de entrada, corre `/sdd-flow init`: detecta el stack/test/build/tracker y te guía con un **wizard** de una sola pantalla para las decisiones que la skill no puede inferir (tracker, prefijo de rama y, solo si elegiste tracker Jira, aprobación externa de la spec) mostrando cada opción con su descripción —y el valor **actual pre-seleccionado** si el config ya existe—; los comandos quedan autodetectados y editables. El resto de las claves con default (estilo de commit, modo de implementación, cross-review, contexto de dominio…) no se pregunta: la skill las resuelve, y quien quiera fijarlas las copia de `config-ejemplo.md`, el ejemplo completo con las 37 claves del esquema. Al final te **muestra** el `config.yml` y la `constitution.md` y los escribe **solo tras tu confirmación**. Son locales y untracked (nunca se trackean ni commitean). Si ya existen, no los pisa: el wizard parte de lo vigente y fusiona lo que cambies. El ciclo funciona igual sin `init` — es un atajo para dejar la config explícita.
+El ciclo no ejecuta `init` ni crea `constitution.md` por sí solo. Sí puede crear o fusionar `.specify/config.yml` tras tu confirmación cuando ofrece persistir una decisión de worktree. Si quieres fijar todo de entrada, corre `/sdd-flow init`: detecta el stack/test/build/tracker y te guía con un **wizard** de una sola pantalla para las decisiones que la skill no puede inferir (tracker, prefijo de rama y, solo si elegiste tracker Jira, aprobación externa de la spec) mostrando cada opción con su descripción —y el valor **actual pre-seleccionado** si el config ya existe—; los comandos quedan autodetectados y editables. El resto de las claves con default, incluidas las tres hojas `worktree`, no se pregunta: la skill las resuelve, y quien quiera fijarlas las copia de `config-ejemplo.md`, el ejemplo completo con las 40 claves del esquema. Al final te **muestra** el `config.yml` y la `constitution.md` y los escribe **solo tras tu confirmación**. Son locales y untracked (nunca se trackean ni commitean). Si ya existen, no los pisa: el wizard parte de lo vigente y fusiona lo que cambies. El ciclo funciona igual sin `init` —es un atajo para dejar la config explícita—.
 
-Para fijar el comportamiento a mano, sin pasar por el wizard: crea `.specify/config.yml` (todos los campos opcionales) y copia ahí las claves que necesites desde `config-ejemplo.md`, la vista completa con las 37 claves marcadas `[def]`, `[ej]` u `[obl]`. Buenos candidatos para empezar: las tres que resuelve el wizard (`tracker`, `branch_prefix`, `jira_approval.mode`) y los comandos (`test_cmd`/`build_cmd`/`lint_cmd`/`test_scope_hint`) si la autodetección no da con los tuyos.
+Para fijar el comportamiento a mano, sin pasar por el wizard: crea `.specify/config.yml` (todos los campos opcionales) y copia ahí las claves que necesites desde `config-ejemplo.md`, la vista completa con las 40 claves marcadas `[def]`, `[ej]` u `[obl]`. Buenos candidatos para empezar: las tres que resuelve el wizard (`tracker`, `branch_prefix`, `jira_approval.mode`), los comandos (`test_cmd`/`build_cmd`/`lint_cmd`/`test_scope_hint`) y, para worktrees, la ruta base, los archivos o directorios locales a sembrar y los comandos de arranque. El default no copia entorno y deriva el bootstrap solo cuando reconoce el stack.
 
 `delivery_profile`, `risk` y su evaluación son estado de la corrida, no configuración persistente:
 se eligen con evidencia al iniciar y viajan en los artefactos de retomado.
 
-> El esquema **completo** —las 37 claves de sus cinco dueños, cada una marcada `[def]`, `[ej]` u `[obl]` y lista para copiar— está en `config-ejemplo.md`. Cada skill dueña documenta las suyas en su propio `SKILL.md` o `reference.md`; las de `sdd-flow` están en `reference.md` → "Esquema de `.specify/config.yml`".
+> El esquema **completo** —las 40 claves de sus cinco dueños, cada una marcada `[def]`, `[ej]` u `[obl]` y lista para copiar— está en `config-ejemplo.md`. Cada skill dueña documenta las suyas en su propio `SKILL.md` o `reference.md`; las de `sdd-flow` están en `reference.md` → "Esquema de `.specify/config.yml`".
 
 > **Prefijo de rama:** por defecto la rama usa un prefijo **semántico** (`feature/`, `fix/`, `chore/`… — para features es siempre `feature`, nunca `feat`: ese queda para los commits). Si tu proyecto necesita un prefijo único para **todo** tipo de cambio (p. ej. siempre `feature/`, incluso en fixes, por CI/CD), fíjalo en `branch_prefix` o pásalo al vuelo: "con prefijo de rama feature/". El prefijo reemplaza el segmento semántico; el resto (`<ticket>-<slug>`) no cambia.
 
