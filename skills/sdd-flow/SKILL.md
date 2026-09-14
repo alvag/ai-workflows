@@ -607,7 +607,7 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
 | "qué flujos tengo", "lista los planes", "¿en qué quedé?", `/sdd-flow status` | `resume` (listar; `status` es alias, no estado paralelo) |
 | "continuemos con `<id>`", "retoma el flujo a", "sigue `.plans/X/`" | `resume` (retomar el flujo nombrado) |
 | `/sdd-flow doctor <id>`, "valida el plan", "revisa coherencia del flujo" | `doctor` (read-only; no arregla ni escribe) |
-| "ya aprobaron la spec", "revisa si aprobaron", "fíjate las observaciones del ticket" | `resume` → "Gate de Jira" (detección de aprobación / observaciones) |
+| "ya aprobaron la spec", "revisa si aprobaron", "fíjate las observaciones del ticket" | `resume` → "Gate de Jira" en `reference.md` (detección de aprobación / observaciones) |
 | "pausa esto", "lo dejo por ahora", "guarda y sigo después" | sub-paso `pause` (escribe `handoff.md`) |
 | "verifica", "¿cumple lo pedido?" | `verify` |
 | "push", "publica la rama" (commit ya hecho) | sub-paso `push` aislado |
@@ -729,7 +729,7 @@ Obligatorio en cambios *complejos*; en *normales* solo si hay ambigüedad; se sa
    El patrón exacto que se retira lo fija `reference.md` → "La serialización de `registro.md`", que es su sede única; acá no se transcribe, porque un regex copiado en dos lados se desincroniza. Guardar la copia exacta de lo que se va a publicar en `.plans/<id>/jira-spec.md`.
 2. **STOP (write-safety).** Mostrar (1) el **recurso** exacto (proyecto + issue padre `<id>`) y (2) el **contenido** exacto a publicar, y pedir confirmación. Recién entonces crear la subtarea (`createJiraIssue` con `parent` + issuetype de subtarea; ver `reference.md` → "Flujo por tracker"). Misma disciplina para toda escritura posterior (actualizar descripción, comentar, transicionar): siempre recurso + contenido a la vista antes de ejecutar.
 3. **Escribir `handoff.md`** con `gate_status: awaiting`, `parent_key`, `subtask_key` (la subtarea creada), `jira_subtask_url` (`<site_url>/browse/<subtask_key>`, con `<site_url>` = la URL del site Atlassian resuelta por el MCP —p. ej. vía `getAccessibleAtlassianResources`—, para que `open-pr` pueda linkear la spec), `cloud_id`, y el snapshot de `gather-context` (ver "`handoff.md` (retomado del flujo)"). Avisar que el flujo queda **en espera de aprobación** y cómo retomarlo (`resume` con `<id>`; o decir "ya aprobaron" / "revisa el ticket"). **No** seguir a `create-branch` hasta la aprobación.
-4. **Al retomar**, la detección de aprobación y el loop de observaciones los maneja `resume` (ver `resume` → "Gate de Jira (esperando aprobación externa)").
+4. **Al retomar**, la detección de aprobación y el loop de observaciones los maneja `resume` (ver `reference.md` → `resume` → "Gate de Jira (esperando aprobación externa)").
 
 **Degradación (regla 6, nunca bloquea).** Si `tracker != jira`, no hay clave de padre, el feature está `off`, o el MCP de Atlassian es solo-lectura / falla la escritura → avisar en una línea y, si igual quieres el gate, ofrecer que crees la subtarea a mano y pegues su clave (se registra en `handoff.md` y se sigue el mismo loop). Si nada de eso aplica, continuar el flujo normal sin gate externo.
 
@@ -898,177 +898,16 @@ overrides: { branch_prefix: null, base_branch: null, cross_review: null, impleme
 
 ## Paso `resume` (retomar un flujo / cambiar de contexto)
 
-Punto de entrada para un flujo empezado. `.plans/` es visible entre ramas del mismo working tree, no entre linked worktrees: un snapshot de origen debe seguir el `worktree_path` y leer el paquete vivo antes de enrutar.
-
-### Listar / elegir el flujo
-1. Si el usuario nombró un flujo (`<id>` o ruta `.plans/<id>/`), usar ese. Si dijo algo genérico ("¿en qué quedé?", "qué flujos tengo"), **listar** los flujos activos (excluir `.plans/archived/`): para los que tienen `plan.md`, leer su header; para los **pre-`plan`** (sin `plan.md`: `contrato-pedido.md`, `pedido/`, `antecedentes.md`, `spec.md` y/o `handoff.md`, en cualquier combinación), leer el `handoff.md` (`phase`/`gate_status`) **y también `antecedentes.md` si está**, de donde sale el estado de la búsqueda. Un flujo pausado durante la búsqueda puede tener **solo** ese archivo, y un cierre pre-spec deja ahí su `busqueda: terminal`: sin abrirlo no hay con qué mostrar ese estado ni cómo distinguir un cierre deliberado de un flujo abandonado. **El marcador y el paquete entran en esa enumeración por el mismo motivo**, y llegan antes que los tres: una caída dentro de 3b deja un flujo sin ninguno de los artefactos narrativos, así que un listado que solo los mirara no tendría con qué presentarlo y el usuario no podría elegirlo — dejando sin correr el routing del item 1b, que es el único que sabe qué hacer con ese estado. Acá solo se **detecta su presencia** para no omitir el flujo; la celda exacta la resuelve 1b sobre el flujo ya elegido. Mostrar tabla `id · branch · estado · siguiente paso`; una ubicación `worktree` clasifica la copia del origen como snapshot, sigue el puntero y distingue ruta ausente, destino sin paquete y paquete vivo antes de mostrar estado. Que el usuario elija.
-1b. **Bifurcar por el estado del pedido, antes de toda otra rama.** Con el flujo ya elegido, la **primera** comprobación del paso es el estado del paquete `pedido/`, y de su resultado sale por dónde **enrutar**. Va antes que cualquier rama vigente —incluida la de `antecedentes.md` con `busqueda: terminal`—, porque un flujo terminal puede ocultar un marcador con el paquete ausente, y ahí el fallo cerrado quedaría sin disparar.
-   <!-- invoca: pedido-marcador -->
-   `resume` invoca **un bloque para resolver la celda** y **carga dos**, que no es lo mismo: `pedido-marcador` llama a `pedido-jsonl` por dentro cuando el paquete está presente, así que su definición tiene que estar en el mismo shell. Cargar no es invocar — lo que vuelve circular al protocolo es ordenar dos *invocaciones* de la celda, porque el marcador no puede imprimir «presente y corrupto» antes de conocer un resultado que llegaría después. Sin la dependencia cargada el bloque devuelve `2` con su causa, y con `2` no se enruta por ninguna rama.
-   - **Y solo si la celda resultó «presente y legible», después se comprueba la cadena de digests.** Va **después** y no antes por el mismo motivo que la dependencia: sobre un paquete que ya se sabe corrupto, la cadena no agrega nada, y sobre uno ausente no hay qué comprobar.
-     <!-- invoca: pedido-digest -->
-     Con `1` la celda pasa a **cuarentena** —es la estructura corrupta de la fila 3 de la tabla de salidas—. Con `3` la cadena queda **sin comprobar**, y eso se informa como tal: no hay `sha256sum` ni `shasum`, o falta una sede. **Un `3` no habilita la cuarentena ni la descarta**; deja el flujo seguir con la limitación declarada, porque leer «no pude comprobar» como «está bien» es el defecto que este bloque vino a cerrar.
-   - **Y después, el registro contra sí mismo y contra la sede de los criterios.** Con la celda «presente y legible», `resume` corre **las mismas comprobaciones deterministas que `specify`**, porque lee los mismos artefactos y es el otro punto donde se decide si el flujo sigue. Un bloque que solo se invoca en la puerta que lo estrenó deja sin mirar todo lo que cambió entre una corrida y la siguiente.
-     <!-- invoca: pedido-unicidad -->
-     <!-- invoca: pedido-referencias -->
-     <!-- invoca: pedido-criterio -->
-     **`pedido-unicidad` corre siempre**, porque no necesita más que el registro. Los otros dos necesitan la **sede de los criterios**, y cuándo se les exige es lo que sigue.
-     **La señal de que el flujo ya adjudicó criterios es una disyunción, y lo que exige no es la misma lista.** Hay que separar dos cosas que confundí:
-     - **El disparador** —qué hace que la comprobación *aplique*— es **alguna** de estas tres: existe la sede de los criterios, existe `plan.md`, o `## traza` tiene al menos un criterio. Son **tres artefactos independientes** a propósito: con una sola señal, borrar ese artefacto apaga la comprobación que existe para detectar ese borrado. Ya pasó dos veces —primero con `spec.md`, después con la traza—, y las dos el paso no falló: siguió.
-     - **Lo que se exige** cuando aplica son **dos**, no tres: la **sede** tiene que existir y la **traza** tiene que tener criterios. `plan.md` **dispara pero no se exige**, porque hay estados perfectamente válidos con sede y traza y **sin plan**: el gate de la spec recién aprobada, y un flujo esperando la aprobación externa en el tracker. Exigirlo rechazaba esos dos estados, que es un gate sin salida practicable para un flujo sano — el defecto simétrico del que esta condición vino a arreglar.
-     La que falte de las dos exigidas es un fallo con salida practicable —**retomar en `specify`**— y no una omisión. Si no se cumple ninguna de las tres del disparador, todavía no se adjudicó nada y los dos bloques no se invocan, declarando por qué.
-     **Qué hace `resume` con cada código, y no se copia de un bloque a otro.** Con `1`: solo el de `pedido-digest` es **cuarentena**, porque es el único que evidencia una **reescritura de lo ya confirmado**; el de los otros tres **no lo es** —el paquete está intacto y lo que quedó mal es el registro o su correspondencia con la spec, que son reparables, porque el `literal.jsonl` es lo irreemplazable y el resto se re-deriva—, así que su salida es **retomar en el gate que gobierna la sede de los criterios**, con la violación a la vista. **Ese gate no siempre es `specify`**: en la rama *trivial* no existe un gate de `specify`, y la sede de los criterios es el bloque `## Spec` embebido en `plan.md`, así que ahí se retoma en el **gate único del plan combinado**. Nombrar `specify` sin más mandaba la rama trivial a un gate que no tiene — una ruta de reparación inexistente, que es un gate sin salida practicable escrito como si la tuviera. Con `3`: el de `pedido-criterio` deja los hashes **sin comprobar** y se informa así, igual que con la cadena; el de `pedido-unicidad` y `pedido-referencias` es otra cosa —son POSIX puros, y su `3` significa que una sede no se pudo leer o que `awk` no pudo ejecutarse—, así que **no se enruta por ninguna rama** y el paso se detiene informando qué no se pudo leer o ejecutar, el mismo destino que el `2` del marcador. Un fallo de ejecución no es un veredicto, y leerlo como uno es leer «no pude» como «está bien».
-   - **Se ramifica por la celda que el bloque imprime, no por su código de salida.** El código solo dice si resolvió alguna: con `1` —el árbol no encaja en ninguna celda— o con `2` —invocación mal formada— **no se enruta por ninguna rama**, y el paso se detiene informando qué se observó.
-   - **Las ocho salidas, en orden de precedencia, viven en `reference.md` → "Salidas del routing de resume ante el pedido"**, que es su sede única: la primera fila que coincide manda y no se sigue mirando. Ahí está también el procedimiento de cuarentena, que exige confirmación humana y nunca es automático.
-   - **Flujo heredado**: con el marcador ausente, el paquete ausente y el directorio no vacío, el flujo se abrió antes de este contrato. Sigue por las ramas vigentes y **la vara** queda declarada **no aplicable** en el retomado: no se falla, y tampoco se adopta un pedido que nadie capturó para este flujo.
-1c. **Después de la celda del pedido**, ejecutar el clasificador de secuencia read-only y, solo si permite seguir, resolver primero el terminal `abandoned`, luego ubicación y los demás valores de `status`: `abandoned`, routing local sin reofrecer; sin `worktree_location` o con `current`, routing local; `worktree` sin status, ofrecer materializar desde `origin_sha` —recomendado— o escribir `abandoned`; estado parcial, diagnosticar evidencia y operar solo desde `origin_worktree`; doble `ready`, seguir el paquete vivo del destino, volver a resolver allí la celda y, pre-spec, evaluar `co_explore` como el ciclo completo o entrar al plan combinado si es trivial. Puntero ausente, destino sin paquete y paquete vivo son distintos; no hay checkout, stash, rename, prune, limpieza ni recreación automática. Matriz: `reference.md` → "Preflight Git y worktree".
-2. Si `.plans/<id>/` **no** tiene `plan.md`, el flujo quedó pre-`plan`. **Leer `handoff.md` si existe** (narrativa + snapshot de `gather-context`: complejidad, tipo de cambio, prefijo, slug, rama base, overrides) — es lo que evita re-investigar el ticket o re-clasificar. Luego bifurcar, **en este orden**:
-   - Si hay **`antecedentes.md` con `busqueda: terminal`** → el flujo se **cerró antes de la spec**, deliberadamente, porque el objetivo ya estaba cubierto. **No se reanuda**: su ledger sobrevive como registro de qué se buscó y qué se encontró, y sigue visible en el listado con ese estado y sin "siguiente paso". Va **primero** y como rama hermana: anidada bajo la de abajo era inalcanzable —su condición padre exige el estado contrario—, así que un flujo nombrado por su `<id>` caía en la última rama y reabría un cierre deliberado dando por escrita una spec que no existe.
-   - Si hay **`antecedentes.md` con `busqueda: in-progress`** —haya handoff o no— → la pausa ocurrió **durante la búsqueda de antecedentes**. La condición arranca por el **artefacto** y no por un campo del handoff a propósito: `pause` escribe el handoff solo cuando la pausa es **ordenada**, y una sesión que muere, un `Ctrl-C` o un cierre de terminal dejan el ledger a medio correr sin handoff ninguno. Retomar así:
-     - **Recomputar los fingerprints** —los que declare `reference.md` → "Búsqueda de antecedentes", que es su única sede: enumerarlos acá crea una segunda que se desincroniza— y compararlos con los persistidos. Se re-corre **solo la unión** de las filas que indique la matriz de invalidación de `reference.md` → "Búsqueda de antecedentes"; las fuentes ya terminadas que ningún fingerprint invalidó **no se vuelven a correr**.
-     - **Un parcial no es un resultado.** Con fuentes pendientes, el estado se completa antes de clasificar: leerlo como "no había nada" es el mismo error que la búsqueda viene a evitar.
-   - Si tiene **`gate_status: awaiting`** (o `changes-requested`) → el flujo está en el **gate de Jira**; ir a "Gate de Jira (esperando aprobación externa)" abajo.
-   - Si no (pausa común en `specify`/`clarify`, con `spec.md` ya escrita), usar
-     `spec_approved_at`, nunca la mera existencia de rama. Timestamp → posicionarse con checkout
-     seguro y continuar después del gate local; `null` explícito → volver al gate sin preguntar;
-     clave ausente en un flujo heredado con spec y rama → preguntar una sola vez y persistir
-     timestamp o `null`. Sin rama, retomar desde `specify`/`clarify`. Aplicar el bloque
-     `delivery-profile-resume` de `reference.md` para perfil, Jira y gate pendiente. La rama creada
-     por la preflight nunca prueba aprobación; solo un flujo heredado sin identidad worktree puede
-     usarla como pista, y se confirma con el usuario antes de navegar o entrar a `plan`.
-
-### Navegar a la rama correcta (solo ubicación `current` o flujo heredado)
-3. Con destino worktree vivo, no navegar: la sesión debe estar allí y el origen snapshot solo muestra el launcher. En otro caso, parsear `id`, `branch`, `base_commit`, `complexity`, `status` y `wip_commit` del plan.
-4. Si la rama actual != `branch`:
-   - Antes de cambiar, exigir `git -C <repo-root> status --porcelain --untracked-files=all -- . ':(exclude).plans' ':(exclude).specify'` vacío. Si hay cambios, detener y ofrecer commit o `pause`; `stash` no se ofrece en la rama worktree porque es compartido.
-   - Con el árbol limpio, `git checkout <branch>`. Los `.plans/`/`.specify/` untracked no bloquean el checkout ni se pierden.
-   - Si `branch` no existe (fue borrada): avisar y ofrecer recrearla desde el commit base (`git checkout -b <branch> <base_commit>`).
-5. Coherencia: `git merge-base --is-ancestor <base_commit> HEAD` (si no: avisar que la rama divergió y pedir confirmación).
-
-#### Clasificador durable ejecutado antes de decidir ubicación
-
-En 1c, antes de decidir ubicación, capturar las seis autoridades y ejecutar el **clasificador
-canónico de secuencia** de `reference.md` → “Recuperación de la secuencia”. Este diagnóstico es
-read-only y ocurre después de la celda del pedido, sin checkout previo: nunca resetea, marca tasks, publica ledger ni
-adquiere ownership mientras decide qué estado observa.
-
-1. Validar presencia, `schema_version` y forma del ledger. Inline, legacy, versión desconocida,
-   documento corrupto y ledger obligatorio ausente son clases distintas; no inferir bloques desde
-   commits o tasks.
-2. Capturar ledger, recibo, Git, plan/tasks, proceso/sobre y owner preservando procedencia y frescura.
-   **Las huellas del ledger y del recibo se recalculan, no se leen como dadas.** Cargar `reference.md` → "La receta de serialización de las huellas"
-   e invocar `python_skill <skill_dir>/scripts/huellas-secuencia.py comparar --huella coverage --fuente <tasks.md o plan> --forma <tasks o embebida> --plan <plan> --esperado <valor del ledger>`,
-   y **con recibo presente además** `comparar --huella tasks --fuente <tasks.md o plan> --forma <tasks o embebida> --esperado <valor del recibo>`:
-   son las dos que `reference.md` exige, y con una sola la recuperación afirmaba más de lo que hacía.
-   Todo esto **solo con `huellas_receta: v1`**; bajo el régimen anterior no se recalcula nada.
-   El resultado entra como **hecho con procedencia**, nunca como predicado nuevo: `0` lo confirma, `1`
-   mapea a `conflict` y `3` mapea a `blocked` —los dos ya declarados no mutantes—, y `2` es una
-   invocación mal formada que se corrige y se repite, nunca un veredicto.
-3. Clasificar exactamente un cutpoint/terminal. Cero o múltiples predicados, evidencia contradictoria,
-   cese incierto u owner obsoleto sin fencing fallan cerrados y no mutan.
-4. Sin secuencia aplicable o con `inline-pass-through`, permitir resolver ubicación. Este último solo
-   acredita que inline no tiene un efecto externo parcial: no inventa bloques. **Después de que la ubicación permita routing**, si el header trae `wip_commit`, recuperar el trabajo según `pause`. Para un terminal, enrutar
-   por su subtipo, no por `plan.status`: `completed` habilita la retoma normal solo con una fase coherente con el commit
-   final; si la fase quedó atrás, continúa como C12 para sincronizarla idempotentemente. `rolled_back`
-   y `abandoned` se detienen y requieren una decisión humana explícita para iniciar otra secuencia;
-   `suspended` vuelve a diseño.
-   Ninguno recupera WIP ni continúa automáticamente una implementación anterior.
-5. Con `recoverable`, `resume agrega la propuesta` completa —digest de evidencia, efectos ordenados y
-   terminal esperado— y hace STOP en el único gate humano. Tras el sí: demostrar cese, adquirir
-   ownership, reclasificar, exigir el mismo digest y ejecutar reconciliaciones idempotentes. Si algo
-   cambió, detener y pedir nueva confirmación.
-6. Con `blocked`, `inline-unsupported`, `legacy-unsupported`, `unsupported-version`,
-   `corrupt-ledger`, `missing-required-ledger` o `conflict:<source>`, mostrar clase + evidencia y
-   detener sin recuperar WIP ni enrutar por `status`.
-
-### Routing por `status`
-6. Leer `status` y retomar en el punto exacto, **confirmando el resumen extraído** antes de actuar:
-
-   | `status` | Dónde retoma |
-   |---|---|
-   | `planned` | gate pendiente según `delivery_profile.md`: plan estándar; gate atómico spec+plan+tasks en normal expedito Jira `"off"`; plan+tasks en normal expedito Jira `"on"` |
-   | `plan-approved` | plan aprobado, tasks no (solo *complejo*) → **gate de `tasks`** |
-   | `tasks-ready` | `implement` (Paso común) |
-   | `implementing` | `implement`, continuando desde la primera task `[ ]` (y el WIP, si hay `wip_commit`) |
-   | `verified` | AC ya en verde; falta commit → `implement` desde el gate de revisión manual |
-   | `committed` | falta push → sub-paso `push` |
-   | `pushed` | completo en disco; ofrecer `open-pr` (si no hay `pr_url`) o `archive` |
-   | `pr-open` | PR ya creado (`pr_url` en el header); no re-ofrecer `open-pr` — ofrecer `archive` si lo das por probado |
-   | `done` | ya cerrado; si sigue fuera de `archived/`, ofrecer archivarlo |
-
-   **Un `planned` con `tasks.md` presente retoma igual en el gate del plan.** Es la forma que escribía un flujo complejo antes de que existiera `plan-approved`, y también la que produce un *normal* reclasificado a complejo después de escribir las tasks: en ninguno de los dos casos el artefacto dice si el gate del plan llegó a darse. Ante esa duda se repite el gate, que es barato; inferir que ya se dio saltearía un gate que quizá nadie aprobó.
-
-   Al retomar en `implement` (`tasks-ready`/`implementing`), **re-resolver el modo de ejecución** (override > `implement_mode` > preguntar; ver `implement` → "Modo de ejecución"). Las tasks ya marcadas `[x]` no se repiten en ningún modo.
-
-#### Flujos heredados: los que nacieron antes de la búsqueda de antecedentes
-
-Un flujo abierto **antes** de que `gather-context` buscara antecedentes llegaría a implementar sin que
-nadie haya mirado si el trabajo ya existía. La adopción es por estado, y su alcance es cerrado:
-
-| `status` al retomar | Qué pasa |
-|---|---|
-| `planned` · `plan-approved` · `tasks-ready` · `implementing`, **sin** ledger de búsqueda | **ningún commit** hasta que la búsqueda haya corrido y su salida esté reconciliada |
-| `verified` o posterior | **explícitamente excluido.** El trabajo ya está hecho y verificado; bloquearlo no evita nada y solo frena un flujo terminado |
-
-**Un flujo heredado respecto del pedido no queda bloqueado, y la asimetría con la búsqueda es
-deliberada.** Una búsqueda de antecedentes que no corrió se puede correr ahora, así que exigirla
-antes del commit repara el hueco; un pedido que no se capturó **no se puede reconstruir**, porque las
-fuentes de entonces ya no están y recapturarlas produciría otro pedido, no el que hubo. Por eso la
-salida es declarar **la vara no aplicable** y seguir, en vez de fallar: bloquear un flujo por algo que
-ninguna acción puede reparar es un gate sin salida practicable.
-
-**Arranca en `planned`, y no en `tasks-ready`, porque `resume` corre una sola vez.** Un flujo heredado retomado en `planned` entra al gate del plan y sigue **en esa misma sesión** a `tasks` → `implement` → commit sin volver a pasar por acá: una guarda que empezara en `tasks-ready` nunca llegaría a evaluarse, y el commit saldría sin que nadie hubiera buscado.
-
-**Qué significa reconciliar, y no queda a criterio de quien implementa.** Por salida de la matriz:
-
-| Salida de la búsqueda | Qué se reconcilia |
-|---|---|
-| **sin hallazgo** | desbloquea sin tocar ningún artefacto |
-| **relacionado** | se anota en el bloque declarativo y desbloquea; el alcance queda intacto |
-| **parcial acreditado** | **reabre el gate de la spec** con el objetivo **residual**, y las tasks que cubrían la parte ya hecha **se retiran** |
-| **total vigente** | **detiene el flujo** y ofrece cerrarlo; reformular exige confirmación humana |
-| **reformular** | el trabajo previo es recuperable sin conflictos: **obliga** a reformular el objetivo, con confirmación humana, y desbloquea sobre el objetivo nuevo |
-| **checkpoint** | hay una ref recuperable **con conflictos declarados**: va al checkpoint del paso 6 con el número a la vista, y desbloquea con la decisión humana registrada — nunca recorta por su cuenta |
-| **incognita** | un candidato quedó `no verificado`: entra como contexto, el alcance queda intacto y desbloquea |
-
-**La condición de desbloqueo es observable, no una declaración de buena fe:** `busqueda: complete`,
-**más** la salida registrada en el bloque declarativo, **más** —si hubo reapertura— la aprobación del
-gate correspondiente. Una marca de "reconciliado" no alcanza: es exactamente la forma que permite
-marcarlo hecho y seguir, que es el no-op más barato y deja el problema intacto.
-
-### Guarda de retomado con bloques en vuelo
-
-La guarda de cuatro superficies queda absorbida por el clasificador canónico de secuencia: HEAD y
-cadena Git, recibo, marcas y ledger se evalúan junto con proceso/sobre y owner. Continúan siendo
-casos críticos las tasks `[ ]` cuyo contenido ya vive en un commit y el aplastado parcialmente
-transformado; ahora se distinguen los desfases legítimos C1-C12 de `conflict:<source>` y se propone
-solo la reconciliación declarada por `reference.md` → “Recuperación de la secuencia”.
-
-### Sub-paso `status` (alias de listado)
-
-`/sdd-flow status` no introduce un estado nuevo: es un alias read-only de `resume` en modo listar.
-Muestra los mismos datos (`id · branch · estado · siguiente paso`) y, si se pasa un `<id>`, resume
-solo ese flujo. La fuente de verdad sigue siendo `plan.md` (`status` + marcas `[x]`) o `handoff.md` en la ventana pre-`plan`; los snapshots worktree se rotulan aparte y siguen el puntero solo con destino y paquete presentes.
-
-### Sub-paso `doctor` (diagnóstico read-only)
-Valida la coherencia **sin escribir**: celda del pedido → clasificador de secuencia → decisión de ubicación → status. Reporta identidad, etapa, evidencia, doble handoff, puntero y paquete worktree.
-`doctor solo reporta`; `resume agrega la propuesta`, el gate y la ejecución. `OK`/`WARN`/`FAIL` sigue
-siendo la severidad exterior, no una segunda clasificación. Los demás checks, el formato de salida y
-qué cuenta como ruido del working tree: `reference.md` → "Doctor read-only".
-
-### Gate de Jira (esperando aprobación externa)
-Con `gate_status: awaiting`/`changes-requested` en `handoff.md` el flujo está parado esperando que
-el TL/PO aprueben la subtarea `SPEC: …`; al aprobarse sigue normal a `create-branch` → `analyze` →
-`plan`, y el `analyze` corre **después** de la aprobación a propósito. Las tres resoluciones, la
-detección por MCP, el loop de observaciones y las escrituras con su STOP de write-safety:
-`reference.md` → "Aprobación externa de la spec (Jira)".
-
-### Sub-paso `pause` (dejar un flujo a medias de forma segura)
-Aplica en **cualquier fase** del flujo, no solo `implement`. Al pausar:
-
-1. **Escribir/actualizar `handoff.md`** con fase, estado, próximo paso, decisiones y snapshot pre-plan. Preservar siempre ubicación, identidad, contexto, status/etapa/evidencia worktree. Durante antecedentes incluir su puntero; con pedido congelado, apuntar a `pedido/`, nunca copiarlo. Plantilla y momentos: `reference.md` → "Plantilla de `handoff.md`".
-2. **Si hay código sin commitear** en la rama del flujo (típicamente en `implement`): **WIP commit en la propia rama** (no `git stash`: el stash es global y se confunde/pierde entre flujos; un commit viaja con su rama): stagear solo `code_touched` y `git commit -m "wip(<id>): pausa sdd-flow"`. Este WIP es **inline a propósito** (no usa `/commit`): es plumbing mecánico y descartable que `resume` deshace con `git reset`, no un commit de contenido. Registrar en el header del `plan.md`: `status: implementing` + `wip_commit: <sha>`. Si además quedan archivos **ajenos** dirty (fuera de `code_touched`), avisarlo: no entran al WIP y quedan sueltos en el working tree — un checkout posterior puede arrastrarlos. (En fases sin `plan.md` ni código —`gather-context`, `specify`/`clarify`, gate de Jira— este paso no aplica: alcanza con el `handoff.md`.)
-3. Avisar que quedó pausado y cómo retomarlo (`resume` con el `<id>`). Al retomar, si hubo WIP commit, `resume` lo deshace dejando los cambios en el working tree **sin** stage (`git reset <wip_commit>^`, reset mixed — así el staging selectivo del Paso común sigue valiendo), **reconstruye `code_touched`** desde los archivos del WIP (`git show --name-only --pretty=format: <wip_commit>` — el set en memoria no sobrevive a la sesión) y limpia `wip_commit` del header. **Guard previo:** solo resetear si `git rev-parse HEAD` == `wip_commit`; si no coinciden (hubo commits posteriores al WIP), no tocar la historia — avisar y dejar que el usuario decida cómo integrar el WIP.
+> **Vive en `reference.md` → "Paso `resume` (retomar un flujo / cambiar de contexto)", y se carga
+> solo cuando la invocación es una retoma.** Eso se decide en el primer turno: `/sdd-flow implement
+> .plans/<id>/`, "continuemos con `<id>`", un `/sdd-flow` sin argumento que encuentra flujos abiertos,
+> o los sub-pasos `status`, `doctor` y `pause`. **Una corrida que arranca de cero no alcanza este paso
+> y no debe cargarlo** — por eso el detalle está divulgado y no inline.
+>
+> Ahí están: el listado y la elección del flujo; la navegación a la rama correcta con su clasificador
+> durable de ubicación; el routing por `status`, incluida la celda de los flujos heredados y la de
+> cuarentena; la guarda de retomado con bloques en vuelo; el gate de Jira al retomar; y los sub-pasos
+> `status`, `doctor` y `pause`.
 
 ## Paso `implement`
 
