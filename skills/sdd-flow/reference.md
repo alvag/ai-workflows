@@ -6636,6 +6636,36 @@ wiring sin seam razonable, documentar la excepción en la evidencia y usar el co
 del `verify`. Anotar el resultado (`revert → FAIL, restore → PASS`) como evidencia del AC en la
 tabla.
 
+### Test caracterizador (`change_type: refactor`)
+
+Simétrico del revert-to-confirm, y por el mismo motivo. Un refactor declara que **no** cambia
+comportamiento, así que lo que hay que fijar es el comportamiento que se va a mover, antes de
+moverlo: donde un `fix` prueba que su test de regresión discrimina, un `refactor` prueba que ya
+existía un test que pasaba y que sigue pasando.
+
+**La forma de la evidencia.** Cada AC de comportamiento afectado por el refactor lleva una fila del
+contrato de `## Verification` con `Baseline: GREEN_ALREADY` adjudicado, cuyo `Esperado` es seguir en
+verde después del refactor. No se agrega vocabulario ni maquinaria nueva: el enum de `Baseline` ya
+tiene ese estado y ya obliga a adjudicar por qué la fila cuenta igual, que es exactamente lo que acá
+hay que declarar.
+
+**Si ningún test cubre el comportamiento afectado**, una task lo escribe antes de tocar el código —
+anterior, en el orden de `tasks.md`, a la que mueve la implementación. Un test escrito después fija
+lo que el refactor dejó, no lo que había: no caracteriza nada.
+
+**Los tests que ya existen sirven**, si cubren el comportamiento afectado. Se declaran como la fila
+del contrato con su `GREEN_ALREADY` medido, y la adjudicación nombra qué comportamiento cubre ese
+test. No alcanza con que la suite esté en verde: una fila cuyo verde no depende del comportamiento
+que se mueve es vacua. Lo que el refactor toque fuera de esa cobertura lleva test nuevo.
+
+**Excepciones:** las mismas excepciones del revert-to-confirm, sin volver a enumerarlas — dos listas
+sobre el mismo dominio divergen. Cuando una aplica, se documenta y la evidencia pasa a ser la
+observación o el comando de `verify`.
+
+**Lo que se descartó, y por qué.** Un revert-to-confirm invertido —mutar el comportamiento para
+probar que el test discrimina— sería más fuerte y no se adopta: la mutación hay que inventarla caso
+por caso, así que su costo escala con el tamaño del refactor, justo donde el refactor ya es caro.
+
 ## Plantilla de tasks
 
 `.plans/<id>/tasks.md` — descomposición atómica. Una task = un cambio coherente y, en lo posible, testeable. El objetivo es que cada task sea **autosuficiente**: ejecutable en una sesión fresca que solo ve **esa task y los artefactos del flujo**, sin re-deducir el diseño ni tener que elegir otro enfoque.
