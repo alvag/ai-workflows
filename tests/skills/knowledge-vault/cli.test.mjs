@@ -164,3 +164,13 @@ test('la forma de la bandera es por verbo, no global', async () => {
   assert.equal(r.exitCode, 2);
   assert.equal(cuenta.llamadas, 0);
 });
+
+test('[KV-SEL AC-20] index propaga NODE_UNREADABLE con código 9', async () => {
+  const comandos = {
+    index: async () => { throw Object.assign(new Error('nodo roto'), { code: 'NODE_UNREADABLE' }); },
+  };
+  const result = await runCli({ argv: ['index', '--vault-root', '/v'], comandos });
+  assert.equal(result.status, 'NODE_UNREADABLE');
+  assert.equal(result.exitCode, 9);
+  assert.match(result.message, /nodo roto/);
+});

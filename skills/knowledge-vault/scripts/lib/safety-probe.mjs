@@ -28,10 +28,11 @@
 
 import path from 'node:path';
 
-import { fronteraPublicada } from './engine-vault.mjs';
+import { inspectFirstPublicationPaths, resolvePublicationState } from './engine-vault.mjs';
+import { parsePublishedNodeMetadata } from './node-builder.mjs';
 import { isCopiable } from './selection.mjs';
 import { scanInventory } from './tree.mjs';
-import { anclaEnHead } from './vault-git.mjs';
+import { rutasNoAncladas } from './vault-git.mjs';
 import { resolveLayout } from './vault-store.mjs';
 
 /** Causas posibles. Enum cerrado: quien consuma esto ramifica sobre él. */
@@ -39,6 +40,10 @@ export const CAUSAS = Object.freeze({
   EMPTY_SET: 'EMPTY_SET',
   FRONTIER_MISSING: 'FRONTIER_MISSING',
   VERIFY_FAILED: 'VERIFY_FAILED',
+  RESERVED_DOCUMENT_PATH: 'RESERVED_DOCUMENT_PATH',
+  NON_PORTABLE_DOCUMENT_PATH: 'NON_PORTABLE_DOCUMENT_PATH',
+  IGNORED_DOCUMENT_PATH: 'IGNORED_DOCUMENT_PATH',
+  NODE_UNREADABLE: 'NODE_UNREADABLE',
   NODE_MISSING: 'NODE_MISSING',
   INDEX_MISSING: 'INDEX_MISSING',
   NOT_ANCHORED: 'NOT_ANCHORED',
@@ -63,34 +68,79 @@ export async function estaASalvo({ fs, vaultRoot, repoId, flowId, flowDir }) {
   const label = `probe.${flowId}`;
   const { frontier, nodePath, indexPaths } = resolveLayout(vaultRoot, repoId, flowId);
 
-  const inventario = await scanInventory({ fs, root: flowDir, label: `${label}.scan` });
-  const esperados = inventario.files.filter((e) => isCopiable(e.path));
-  if (esperados.length === 0) return noSalvo(CAUSAS.EMPTY_SET);
-
+  const inventory = await scanInventory({ fs, root: flowDir, label: `${label}.scan` });
+  const expected = inventory.files.filter((entry) => isCopiable(entry.path));
+  let state;
   try {
-    if (!(await fronteraPublicada(fs, frontier, esperados, label))) {
-      return noSalvo(CAUSAS.FRONTIER_MISSING, esperados.map((e) => e.path));
-    }
+    state = await resolvePublicationState({
+      fs,
+      frontier,
+      nodePath,
+      currentEntries: expected,
+      flowId,
+      label,
+    });
   } catch (error) {
-    // La tercera respuesta de la sonda de frontera: existe y **no** coincide.
-    // Para decidir un borrado eso es un no, y las rutas concretas viajan con él.
+    if (error?.code === 'NODE_UNREADABLE') {
+      return noSalvo(CAUSAS.NODE_UNREADABLE, [nodePath]);
+    }
     if (error?.code !== 'VERIFY_FAILED') throw error;
-    const d = error.detail ?? {};
-    return noSalvo(CAUSAS.VERIFY_FAILED, [...(d.missing ?? []), ...(d.extra ?? []), ...(d.mismatched ?? [])]);
+    const detail = error.detail ?? {};
+    return noSalvo(
+      CAUSAS.VERIFY_FAILED,
+      [...(detail.missing ?? []), ...(detail.extra ?? []), ...(detail.mismatched ?? [])],
+    );
   }
 
-  if (!(await existe(fs, nodePath, `${label}.node.lstat`))) {
-    return noSalvo(CAUSAS.NODE_MISSING, [nodePath]);
+  const nodeExists = await existe(fs, nodePath, `${label}.node.lstat`);
+  if (nodeExists) {
+    try {
+      // La primera lectura sólo clasifica la publicación; esta segunda valida
+      // el nodo actual después de verificar los bytes de la frontera.
+      const text = (await fs.readFile(nodePath, `${label}.node.read`)).toString('utf8');
+      parsePublishedNodeMetadata(text, flowId);
+    } catch (error) {
+      if (error?.code !== 'NODE_UNREADABLE') throw error;
+      return noSalvo(CAUSAS.NODE_UNREADABLE, [nodePath]);
+    }
   }
 
-  const sinIndice = [];
-  for (const ruta of indexPaths) {
-    if (!(await existe(fs, ruta, `${label}.index.lstat`))) sinIndice.push(ruta);
+  if (state.kind === 'first-publication') {
+    const [invalid] = await inspectFirstPublicationPaths(vaultRoot, frontier, expected);
+    if (invalid !== undefined) return noSalvo(CAUSAS[invalid.code], [invalid.path]);
   }
-  if (sinIndice.length > 0) return noSalvo(CAUSAS.INDEX_MISSING, sinIndice);
 
-  const propias = [frontier, nodePath, ...indexPaths].map((p) => path.relative(vaultRoot, p));
-  if (!(await anclaEnHead(vaultRoot, propias))) return noSalvo(CAUSAS.NOT_ANCHORED, propias);
+  if (expected.length === 0) return noSalvo(CAUSAS.EMPTY_SET);
+  if (state.kind === 'first-publication' || state.kind === 'historical-rebuild') {
+    const missing = state.publishedPaths.length > 0
+      ? state.publishedPaths
+      : expected.map((entry) => entry.path);
+    return noSalvo(CAUSAS.FRONTIER_MISSING, missing);
+  }
+  if (!nodeExists) return noSalvo(CAUSAS.NODE_MISSING, [nodePath]);
+
+  const missingIndexes = [];
+  for (const target of indexPaths) {
+    if (!(await existe(fs, target, `${label}.index.lstat`))) missingIndexes.push(target);
+  }
+  if (missingIndexes.length > 0) return noSalvo(CAUSAS.INDEX_MISSING, missingIndexes);
+
+  const exactPaths = [
+    ...expected.map((entry) =>
+      path.relative(vaultRoot, path.join(frontier, ...entry.path.split('/'))).split(path.sep).join('/')),
+    path.relative(vaultRoot, nodePath).split(path.sep).join('/'),
+    ...indexPaths.map((target) => path.relative(vaultRoot, target).split(path.sep).join('/')),
+  ];
+  const scanPaths = [
+    path.relative(vaultRoot, frontier).split(path.sep).join('/'),
+    ...exactPaths.slice(expected.length),
+  ];
+  const diagnostics = await rutasNoAncladas(vaultRoot, exactPaths, { scanPaths });
+  const unanchored = exactPaths.filter((target) =>
+    diagnostics.missing.includes(target) ||
+    diagnostics.dirty.includes(target) ||
+    diagnostics.ignored.includes(target));
+  if (unanchored.length > 0) return noSalvo(CAUSAS.NOT_ANCHORED, unanchored);
 
   return { aSalvo: true, causa: null, faltantes: [] };
 }

@@ -5,11 +5,10 @@
  * automatiza `kv` ramifica sobre el código de salida, y mover un estado de
  * familia le rompe el guion sin que nada avise.
  *
- * Se redujo de dieciocho códigos a ocho al irse `restore`, `doctor`, `inventory`
- * y todo el aparato de retiro: los códigos que quedaron sin ningún estado no se
- * conservan "por compatibilidad" —no había nada con qué ser compatible— pero los
- * que sí quedaron **conservan su número**, para no reescribirle el significado a
- * un `9` que ya quería decir "el destino no verifica".
+ * La tabla conserva ocho familias después de retirar `restore`, `doctor` e
+ * `inventory`. El nuevo `retire` reutiliza esas familias y los estados que ya
+ * existían; los errores de documentos inválidos entran en 4 y los fallos de
+ * verificación o lectura del nodo en 9, sin renumerar a los consumidores.
  */
 
 export class ContractError extends Error {
@@ -85,7 +84,10 @@ const STATUS_BY_EXIT_CODE = Object.freeze({
   // `INTERNAL_ERROR`, así que el mensaje —el que nombra el renombre y ofrece el
   // candidato— era inalcanzable para un consumidor que ramifica por código: leía
   // "kv tiene un bug" sobre algo que se arregla con un `mv`.
-  4: ['PRECONDITION_NOT_MET', 'AMBIGUOUS_IDENTITY', 'INVALID_FLOW_ID', 'RESERVED_FLOW_NAME'],
+  4: [
+    'PRECONDITION_NOT_MET', 'AMBIGUOUS_IDENTITY', 'INVALID_FLOW_ID', 'RESERVED_FLOW_NAME',
+    'RESERVED_DOCUMENT_PATH', 'NON_PORTABLE_DOCUMENT_PATH', 'IGNORED_DOCUMENT_PATH',
+  ],
   // `VAULT_ROOT_UNAVAILABLE` acompaña a `NO_VAULT` y no se queda en
   // `INTERNAL_ERROR`, que es donde caía por no estar en esta tabla. La familia es
   // la correcta: las dos dicen "la raíz del vault no sirve para operar" y quien
@@ -95,7 +97,7 @@ const STATUS_BY_EXIT_CODE = Object.freeze({
   // interno.
   5: ['NO_VAULT', 'VAULT_ROOT_UNAVAILABLE'],
   8: ['SOURCE_UNAVAILABLE'],
-  9: ['VERIFY_FAILED', 'COPY_FAILED', 'PUBLISH_FAILED'],
+  9: ['VERIFY_FAILED', 'COPY_FAILED', 'PUBLISH_FAILED', 'NODE_UNREADABLE'],
 });
 
 const EXIT_CODE_BY_STATUS = new Map();

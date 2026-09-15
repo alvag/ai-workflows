@@ -8,16 +8,30 @@ versionado en Git y navegable en Obsidian.
 
 Un flujo SDD terminado deja en disco lo que se decidió, por qué, qué se descartó
 y qué se midió. Todo eso queda en un directorio que ninguna herramienta indexa y
-ningún agente lee. En un solo repositorio pueden ser cincuenta flujos y 168 MB.
+ningún agente lee.
 
 ## Qué hace
 
-- **Copia** los `.md` de la raíz de cada flujo, verificando cada byte por hash.
+- **Copia** once formatos documentales y de script desde la raíz y desde tres
+  subdirectorios explícitos, verificando cada byte por hash.
 - **Escribe un nodo** por flujo con ocho campos de metadatos, un resumen de una
   línea y un enlace por documento.
 - **Genera índices** regenerables que dejan ubicar cualquier flujo sin abrir un
   solo documento.
 - **Commitea** el vault, un commit por flujo.
+
+## Subdirectorios opt-in
+
+En la raíz entran `.md`, `.sh`, `.js`, `.mjs`, `.py`, `.ts`, `.ps1`, `.json`,
+`.yml`, `.txt` y `.jsonl`, sin distinguir mayúsculas. La misma lista se aplica
+recursivamente sólo bajo `evidencia/`, `runs/` y `decisiones/`, con esos nombres
+exactos. PDF y cualquier otro formato quedan fuera. El selector usa la ubicación
+y el sufijo; no inspecciona contenido ni tamaño.
+
+La regla sólo crea fronteras nuevas. Un flujo ya archivado conserva su conjunto
+histórico: rearchivarlo con archivos que ahora serían elegibles devuelve
+`VERIFY_FAILED`, y `migrate` lo deja sin cambios dentro de `BATCH_PARTIAL`. No hay
+backfill automático.
 
 ## Qué NO hace
 
@@ -44,8 +58,13 @@ por embeddings, esta no es la herramienta.
 
 ## Instalación
 
-Copiá `skills/knowledge-vault/` a `~/.claude/skills/`. El CLI es Node sin
-dependencias; no hay build ni instalación de paquetes.
+Copie `skills/knowledge-vault/` a la sede de skills del operador. El CLI es
+Node sin dependencias; no hay build ni instalación de paquetes. Las copias ya
+instaladas requieren reinstalación manual para recibir este selector. Si una
+frontera nueva ya fue publicada, el rollback seguro es detener `archive` y
+`retire` y reinstalar completa la versión nueva; volver al selector anterior
+haría incompatibles esos flujos. No mezcle scripts y documentación de versiones
+distintas.
 
 ## Uso
 

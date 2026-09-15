@@ -249,6 +249,11 @@ export function assertContainedPath(value, at = null) {
   return segments;
 }
 
+/** Codifica cada segmento de una ruta relativa POSIX contenida. */
+export function encodeRelativePath(relativePath) {
+  return assertContainedPath(relativePath).map(encodeURIComponent).join('/');
+}
+
 export function isContainedPath(value) {
   try {
     assertContainedPath(value);

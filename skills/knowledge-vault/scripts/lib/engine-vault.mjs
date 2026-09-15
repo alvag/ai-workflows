@@ -42,10 +42,17 @@ import { computeSourceFingerprint, buildSourceInventoryV2 } from './identity.mjs
 import { isInjectedCrash } from './durable-fs.mjs';
 import { withFlowLock } from './flow-lock.mjs';
 import { renderIndexes } from './index-render.mjs';
-import { buildNode } from './node-builder.mjs';
+import { buildNode, parsePublishedNode } from './node-builder.mjs';
 import { resolveMetadata } from './metadata-source.mjs';
-import { isCopiable } from './selection.mjs';
-import { copyTree, fsyncTreeDirs, scanInventory, verifyTree } from './tree.mjs';
+import { isCopiable, isReservedDocumentPath } from './selection.mjs';
+import {
+  copyTree,
+  fsyncTreeDirs,
+  inspectIncludedTreePortability,
+  listFiles,
+  scanInventory,
+  verifyTree,
+} from './tree.mjs';
 import {
   appendLogEntry,
   discardOrphanStagings,
@@ -55,7 +62,13 @@ import {
   resolveStagingPath,
   writeDerived,
 } from './vault-store.mjs';
-import { anclaEnHead, assertVaultClean, commitFlow, ensureVaultRepo } from './vault-git.mjs';
+import {
+  anclaEnHead,
+  assertVaultClean,
+  commitFlow,
+  ensureVaultRepo,
+  rutasNoAncladas,
+} from './vault-git.mjs';
 
 export class EngineError extends Error {
   constructor(code, message, { path: target = null, detail = null } = {}) {
@@ -128,6 +141,117 @@ export async function fronteraPublicada(fs, frontier, esperados, label) {
   }
 }
 
+// Esta comparación solo conoce nombres. Los bytes se comparan por separado
+// en la verificación de la frontera; aquí `mismatched` es vacío por contrato.
+function comparePaths(expected, current) {
+  const expectedSet = new Set(expected);
+  const currentSet = new Set(current);
+  return {
+    missing: [...expectedSet].filter((item) => !currentSet.has(item)).sort(),
+    extra: [...currentSet].filter((item) => !expectedSet.has(item)).sort(),
+    mismatched: [],
+  };
+}
+
+export async function resolvePublicationState({
+  fs,
+  frontier,
+  nodePath,
+  currentEntries,
+  flowId,
+  label = 'archive',
+}) {
+  const frontierExists = await existe(fs, frontier, `${label}.frontier.lstat`);
+  const nodeText = await leerSiExiste(fs, nodePath, `${label}.node.read`);
+
+  if (frontierExists) {
+    let publishedEntries;
+    try {
+      publishedEntries = await listFiles({ fs, root: frontier, label: `${label}.frontier.list` });
+    } catch (error) {
+      throw new EngineError('VERIFY_FAILED', error.message, {
+        path: error.path ?? frontier,
+        detail: error.detail ?? null,
+      });
+    }
+    if (publishedEntries.length > 0 || nodeText === null) {
+      await fronteraPublicada(fs, frontier, currentEntries, label);
+      return { kind: 'published-frontier', publishedPaths: publishedEntries.map((entry) => entry.path) };
+    }
+  }
+
+  if (nodeText !== null) {
+    let published;
+    try {
+      published = parsePublishedNode(nodeText, flowId);
+    } catch (error) {
+      if (error?.code !== 'NODE_UNREADABLE') throw error;
+      throw new EngineError('NODE_UNREADABLE', error.message, { path: nodePath });
+    }
+    const detail = comparePaths(currentEntries.map((entry) => entry.path), published.documents);
+    if (detail.missing.length > 0 || detail.extra.length > 0) {
+      throw new EngineError(
+        'VERIFY_FAILED',
+        `el nodo histórico de ${flowId} no coincide con el origen: ` +
+          [...detail.missing, ...detail.extra].join(', '),
+        { path: nodePath, detail },
+      );
+    }
+    return {
+      kind: published.documents.length === 0 ? 'historical-empty' : 'historical-rebuild',
+      publishedPaths: published.documents,
+    };
+  }
+
+  return { kind: 'first-publication', publishedPaths: [] };
+}
+
+const toVaultRelative = (vaultRoot, absolute) =>
+  path.relative(vaultRoot, absolute).split(path.sep).join('/');
+
+export async function inspectFirstPublicationPaths(vaultRoot, frontier, included) {
+  const violations = included
+    .filter((entry) => isReservedDocumentPath(entry.path))
+    .map((entry) => ({
+      path: entry.path,
+      code: 'RESERVED_DOCUMENT_PATH',
+      message: `la ruta ${JSON.stringify(entry.path)} usa el segmento reservado sdd como padre inmediato`,
+      detail: null,
+    }));
+  for (const diagnostic of inspectIncludedTreePortability(included)) {
+    violations.push({ ...diagnostic, code: 'NON_PORTABLE_DOCUMENT_PATH' });
+  }
+
+  const destinationByPath = new Map(included.map((entry) => {
+    const absolute = path.join(frontier, ...entry.path.split('/'));
+    return [toVaultRelative(vaultRoot, absolute), entry.path];
+  }));
+  const { ignored } = await rutasNoAncladas(vaultRoot, [...destinationByPath.keys()], {
+    scanPaths: [toVaultRelative(vaultRoot, frontier)],
+    ignoreIndex: true,
+  });
+  for (const destination of ignored) {
+    const sourcePath = destinationByPath.get(destination);
+    violations.push({
+      path: sourcePath,
+      code: 'IGNORED_DOCUMENT_PATH',
+      message: `el destino de ${JSON.stringify(sourcePath)} está ignorado por Git`,
+      detail: { destination },
+    });
+  }
+
+  const causeOrder = new Map([
+    ['RESERVED_DOCUMENT_PATH', 0],
+    ['NON_PORTABLE_DOCUMENT_PATH', 1],
+    ['IGNORED_DOCUMENT_PATH', 2],
+  ]);
+  violations.sort((a, b) => {
+    if (a.path !== b.path) return a.path < b.path ? -1 : 1;
+    return causeOrder.get(a.code) - causeOrder.get(b.code);
+  });
+  return violations;
+}
+
 async function publicar({ fs, flowDir, frontier, staging, incluidos, label }) {
   await enEtapa('COPY_FAILED', staging, async () => {
     await fs.mkdir(staging, `${label}.stage.create`, { recursive: true });
@@ -185,13 +309,12 @@ export async function runVaultTransaction({
     const { frontier, nodePath, indexPaths } = resolveLayout(vaultRoot, repoSlug, flowId);
 
     await ensureVaultRepo(vaultRoot);
-    // Las rutas que este archivado posee. Todo lo demás que esté sucio es ajeno,
-    // y el commit se lo llevaría puesto.
-    const propias = [frontier, nodePath, ...indexPaths, path.join(vaultRoot, LOG_FILENAME)].map((p) =>
-      path.relative(vaultRoot, p),
-    );
-    // Antes de escribir un solo byte.
-    await assertVaultClean(vaultRoot, propias);
+    // El prefijo admite residuos de recuperación y acota las consultas Git.
+    // Los paths exactos de abajo gobiernan el anclaje y el staging: ningún
+    // archivo ajeno bajo la frontera entra al commit por usar el prefijo.
+    const cleanupPaths = [frontier, nodePath, ...indexPaths, path.join(vaultRoot, LOG_FILENAME)]
+      .map((target) => toVaultRelative(vaultRoot, target));
+    await assertVaultClean(vaultRoot, cleanupPaths);
 
     // Lectura del origen. Es lo único que se hace con él, en todo el archivo.
     const inventario = await scanInventory({ fs, root: flowDir, label: `${label}.scan` });
@@ -200,6 +323,32 @@ export async function runVaultTransaction({
     const fingerprint = computeSourceFingerprint(
       buildSourceInventoryV2({ files: incluidos, directories: [] }),
     );
+    const state = await resolvePublicationState({
+      fs,
+      frontier,
+      nodePath,
+      currentEntries: incluidos,
+      flowId,
+      label,
+    });
+    if (state.kind === 'first-publication') {
+      const [first] = await inspectFirstPublicationPaths(vaultRoot, frontier, incluidos);
+      if (first !== undefined) {
+        throw new EngineError(first.code, first.message, { path: first.path, detail: first.detail });
+      }
+    }
+
+    const documentPaths = incluidos.map((entry) =>
+      toVaultRelative(vaultRoot, path.join(frontier, ...entry.path.split('/'))));
+    const exactPaths = [
+      ...documentPaths,
+      toVaultRelative(vaultRoot, nodePath),
+      ...indexPaths.map((target) => toVaultRelative(vaultRoot, target)),
+      toVaultRelative(vaultRoot, path.join(vaultRoot, LOG_FILENAME)),
+    ];
+    if (state.kind === 'historical-empty' && await anclaEnHead(vaultRoot, exactPaths, { scanPaths: cleanupPaths })) {
+      return { status: 'ALREADY_ARCHIVED', counts, fingerprint };
+    }
 
     // El nodo se compone **antes** de publicar, y ese orden es la garantía.
     // `buildNode` valida contra el emisor de frontmatter, que puede rechazar un
@@ -208,14 +357,17 @@ export async function runVaultTransaction({
     // ese rechazo llegaba con la frontera ya escrita y sin commitear: un
     // residuo sin nodo ni índice que el reintento leía como trabajo ajeno.
     const metadata = await resolveMetadata({ flowDir, flowId, repoSlug });
-    const nodo = buildNode({ metadata, documents: incluidos.map((e) => e.path), summary });
+    const historicalNode = state.kind === 'historical-empty' || state.kind === 'historical-rebuild';
+    const nodo = historicalNode
+      ? await leerSiExiste(fs, nodePath, `${label}.node.preserve`)
+      : buildNode({ metadata, documents: incluidos.map((entry) => entry.path), summary });
 
     // Un staging de una corrida muerta bloquea el reintento, porque `copyTree`
     // crea con exclusión. Se barre antes de intentar nada.
     await discardOrphanStagings({ fs, parentDir: path.dirname(frontier), label: `${label}.stage.discard` });
 
     let reconstruido = false;
-    if (!(await fronteraPublicada(fs, frontier, incluidos, label))) {
+    if (state.kind === 'first-publication' || state.kind === 'historical-rebuild') {
       await publicar({
         fs,
         flowDir,
@@ -239,7 +391,7 @@ export async function runVaultTransaction({
       }
     }
 
-    const conCommit = await anclaEnHead(vaultRoot, propias);
+    const conCommit = await anclaEnHead(vaultRoot, exactPaths, { scanPaths: cleanupPaths });
     if (!conCommit || reconstruido) {
       await appendLogEntry({
         fs,
@@ -247,7 +399,15 @@ export async function runVaultTransaction({
         entry: formatLogEntry({ timestamp: metadata.date, repoSlug, flowId, counts }),
         label: `${label}.log`,
       });
-      await commitFlow({ vaultRoot, flowId, paths: propias });
+      await commitFlow({ vaultRoot, flowId, paths: exactPaths });
+      const postCommit = await rutasNoAncladas(vaultRoot, exactPaths, { scanPaths: cleanupPaths });
+      if (postCommit.missing.length > 0 || postCommit.dirty.length > 0 || postCommit.ignored.length > 0) {
+        throw new EngineError(
+          'VERIFY_FAILED',
+          `las rutas publicadas de ${flowId} no quedaron limpias y ancladas`,
+          { path: vaultRoot, detail: postCommit },
+        );
+      }
       if (!conCommit) reconstruido = true;
     }
 
