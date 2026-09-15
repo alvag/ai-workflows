@@ -19,11 +19,18 @@ from pathlib import Path
 
 
 _RUTA_CONTRATO = Path(__file__).resolve().with_name("contrato-invariantes.py")
-_ESPECIFICACION = importlib.util.spec_from_file_location("rebaseline_contrato", _RUTA_CONTRATO)
-if _ESPECIFICACION is None or _ESPECIFICACION.loader is None:
-    raise RuntimeError(f"no se pudo cargar {_RUTA_CONTRATO}")
-_CONTRATO = importlib.util.module_from_spec(_ESPECIFICACION)
-_ESPECIFICACION.loader.exec_module(_CONTRATO)
+try:
+    _ESPECIFICACION = importlib.util.spec_from_file_location("rebaseline_contrato", _RUTA_CONTRATO)
+    if _ESPECIFICACION is None or _ESPECIFICACION.loader is None:
+        raise RuntimeError(f"no se pudo cargar {_RUTA_CONTRATO}")
+    _CONTRATO = importlib.util.module_from_spec(_ESPECIFICACION)
+    _ESPECIFICACION.loader.exec_module(_CONTRATO)
+    if not callable(getattr(_CONTRATO, "es_envoltura_canonica", None)):
+        raise RuntimeError("API de envoltura ausente")
+except Exception as error:
+    print(f"ARNES:rebaseline-worktree dependencia contrato-invariantes.py no cargable: {error}",
+          file=sys.stderr)
+    raise SystemExit(99) from None
 
 
 def ejecutar(*args: str, cwd: Path = None) -> subprocess.CompletedProcess:
@@ -154,7 +161,7 @@ def main() -> int:
             raise OSError("no se pudo leer el commit del worktree")
         commit = commit_resultado.stdout.decode("utf-8").strip()
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        envuelta = _CONTRATO._envoltura(comando)[0] is not None
+        envuelta = _CONTRATO.es_envoltura_canonica(comando)
         estado = clasificar_proyeccion(salida, resultado.returncode, envuelta)
         obs = observable(salida, resultado.returncode)
         registro = (f"id: {fila} · resultado: {estado} · commit: {commit} · "

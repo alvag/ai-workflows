@@ -402,7 +402,8 @@ después se movió.
 ```
 
 **Este esquema mezcla estado de corrida (`id`, `created_at`, `master_spec`, `delivery_profile`, `risk`,
-`delivery_assessment`, `repos`, `orchestration_tasks`) con configuración.** Las claves de configuración son propias de esta skill (`branch_prefix`,
+`delivery_assessment`, `repos`, `orchestration_tasks`, `integration_contract_frozen_version` y
+`integration_contract_frozen_hash`) con configuración.** Las claves de configuración son propias de esta skill (`branch_prefix`,
 `execution_mode`, `implement_mode`, `cross_model.*`) salvo `cross_review.*` y `co_explore.*`, cuyo enum lo define su
 dueño: `cross_review.*` en `cross-review/SKILL.md` → "Configuración" y `co_explore.*` en
 `co-explore/SKILL.md` → "Configuración". Solo esas 13 claves, listas para

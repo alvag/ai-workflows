@@ -10,11 +10,19 @@ from pathlib import Path
 
 
 _RUTA_CONTRATO = Path(__file__).resolve().with_name("contrato-invariantes.py")
-_ESPECIFICACION = importlib.util.spec_from_file_location("gate_modo_directo_contrato", _RUTA_CONTRATO)
-if _ESPECIFICACION is None or _ESPECIFICACION.loader is None:
-    raise RuntimeError(f"no se pudo cargar {_RUTA_CONTRATO}")
-_CONTRATO = importlib.util.module_from_spec(_ESPECIFICACION)
-_ESPECIFICACION.loader.exec_module(_CONTRATO)
+try:
+    _ESPECIFICACION = importlib.util.spec_from_file_location("gate_modo_directo_contrato", _RUTA_CONTRATO)
+    if _ESPECIFICACION is None or _ESPECIFICACION.loader is None:
+        raise RuntimeError(f"no se pudo cargar {_RUTA_CONTRATO}")
+    _CONTRATO = importlib.util.module_from_spec(_ESPECIFICACION)
+    _ESPECIFICACION.loader.exec_module(_CONTRATO)
+    if not all(callable(getattr(_CONTRATO, nombre, None)) for nombre in
+               ("campos_linea", "operacion_token")):
+        raise RuntimeError("API de campos o token ausente")
+except Exception as error:
+    print(f"ARNES:gate-modo-directo dependencia contrato-invariantes.py no cargable: {error}",
+          file=sys.stderr)
+    raise SystemExit(99) from None
 
 
 def campo(texto: str, paso: str, nombre: str) -> str:
@@ -39,12 +47,21 @@ def main() -> int:
         if actor != "conductor":
             print(f'GUARD:conductor-deriva-y-baseline "{paso}" lo hizo "{actor or "nadie"}"', file=sys.stderr)
             rc = 1
-    timestamps = [campos["timestamp"] for linea in texto.splitlines()
-                  if (campos := _CONTRATO.campos_linea(linea)).get("timestamp")]
+    lineas = texto.splitlines()
+    timestamps = []
+    for numero, linea in enumerate(lineas, 1):
+        if not linea.lstrip().startswith("- `paso: "):
+            continue
+        campos = _CONTRATO.campos_linea(linea)
+        if not campos.get("timestamp"):
+            print(f"GUARD:bitacora-linea-malformada línea {numero}: paso sin timestamp canónico",
+                  file=sys.stderr)
+            rc = 1
+        else:
+            timestamps.append(campos["timestamp"])
     if timestamps != sorted(timestamps):
         print("GUARD:kickoff-antes-de-congelar la bitácora lista los pasos fuera del orden de sus timestamps", file=sys.stderr)
         rc = 1
-    lineas = texto.splitlines()
     indices = {
         paso: [indice for indice, linea in enumerate(lineas)
                if f"`paso: {paso}`" in linea]

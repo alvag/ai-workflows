@@ -108,9 +108,9 @@ def _cargar_invariantes() -> Optional[ModuleType]:
     modulo = importlib.util.module_from_spec(especificacion)
     try:
         especificacion.loader.exec_module(modulo)
-    except (OSError, ImportError):
+    except Exception:
         return None
-    return modulo
+    return modulo if callable(getattr(modulo, "campos_linea", None)) else None
 
 
 def _campos_linea(linea: str, prefijo: str = "- ") -> Dict[str, str]:
@@ -425,6 +425,8 @@ def _validar_refresh(plan_path: Path, bitacora: str, ledger_path: Path,
             return "ledger"
     except Exception:
         return "ledger"
+    if _cargar_invariantes() is None:
+        return "contrato-helper-no-cargable"
     aprobacion = _aprobacion_vigente(bitacora, version, hash_candidato)
     if aprobacion is None or not aprobacion["checkId"] or not aprobacion["verification_defect_ordinal"]:
         return "aprobacion"
@@ -803,6 +805,9 @@ def main() -> int:
             version_congelada, hash_congelado)
         if defecto_refresh == "ledger-helper-no-cargable":
             print("ARNES:promocion-tasks-ready ledger-helper-no-cargable", file=sys.stderr)
+            return 99
+        if defecto_refresh == "contrato-helper-no-cargable":
+            print("ARNES:promocion-tasks-ready contrato-helper-no-cargable", file=sys.stderr)
             return 99
         if defecto_refresh is not None:
             return fallo("refresh sin ledger terminal, paquete, aprobación, owner o cese válidos", 1)

@@ -7,6 +7,7 @@ import importlib.util
 import io
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -354,6 +355,19 @@ def _ejecutar_auxiliar(nombre: str, argumentos: List[str], cwd: Path) -> subproc
     return _ejecutar(archivo, argumentos, cwd)
 
 
+def _probar_dependencia_rota(nombre: str, argumentos: List[str]) -> None:
+    with tempfile.TemporaryDirectory(prefix="aux-dependencia-rota-") as temporal:
+        arena = Path(temporal)
+        origen = RAIZ / "skills" / "cross-implement" / "scripts" / (nombre + ".py")
+        copia = arena / origen.name
+        copia.write_bytes(origen.read_bytes())
+        (arena / "contrato-invariantes.py").write_text(
+            "raise RuntimeError('dependencia rota')\n", encoding=ENCODING)
+        resultado = _ejecutar(copia, argumentos, arena)
+        assert resultado.returncode == 99, (nombre, resultado.returncode, resultado.stderr)
+        assert f"ARNES:{nombre} dependencia contrato-invariantes.py no cargable" in resultado.stderr
+
+
 def test_aux_contrato_baseline(_contexto: Optional[object]) -> None:
     """La matriz cerrada de baseline distingue sus cuatro adjudicaciones."""
     identidades = ("already-satisfied-ok", "weak-check-ok", "adjudicacion-ausente",
@@ -382,6 +396,10 @@ def test_aux_rebaseline_worktree(_contexto: Optional[object]) -> None:
     assert len(set(identidades)) == 4
     firma = next(item for item in FIRMAS if item.nombre == "rebaseline-worktree")
     modulo = _cargar_modulo(firma)
+    assert not modulo._CONTRATO.es_envoltura_canonica("printf directo")
+    envuelta = shlex.join(["sh", "-c", modulo._CONTRATO.PROJECTION_WRAPPER_BODY,
+                           "sh", "printf predicado", "printf 'failures=0\\n'"])
+    assert modulo._CONTRATO.es_envoltura_canonica(envuelta)
     with tempfile.TemporaryDirectory(prefix="aux-rebaseline-") as temporal:
         salida = Path(temporal) / "salida"
         for cuerpo, codigo, envuelta, esperado in (
@@ -462,6 +480,7 @@ def test_aux_rebaseline_worktree(_contexto: Optional[object]) -> None:
             ["git", "-C", str(repo), "worktree", "list", "--porcelain"],
             capture_output=True, text=True, encoding=ENCODING, check=True).stdout
         assert str(worktree) not in listado and not salida_temporal.exists()
+    _probar_dependencia_rota("rebaseline-worktree", ["sha", "V12", ":"])
 
 
 def test_aux_gate_modo_directo(_contexto: Optional[object]) -> None:
@@ -504,6 +523,17 @@ def test_aux_gate_modo_directo(_contexto: Optional[object]) -> None:
         resultado = _ejecutar_auxiliar("gate-modo-directo", [str(log)], arena)
         assert "GUARD:congelar-antes-de-despachar-timestamps" in resultado.stderr
         assert "GUARD:congelar-antes-de-despachar-orden-del-log" not in resultado.stderr
+        clasificacion = ("- `paso: clasificar-falla` · `actor: conductor` · `checkId: V1` · "
+                         "`clase: DESIGN_GAP` · `timestamp: 2026-01-01T00:00:30Z`")
+        lineas = base[:2] + [clasificacion + " (reconstruido)"] + base[2:]
+        log.write_text("\n".join(lineas) + "\n", encoding=ENCODING)
+        resultado = _ejecutar_auxiliar("gate-modo-directo", [str(log)], arena)
+        assert resultado.returncode == 1 and "GUARD:bitacora-linea-malformada" in resultado.stderr
+        lineas[2] = clasificacion
+        log.write_text("\n".join(lineas) + "\n", encoding=ENCODING)
+        resultado = _ejecutar_auxiliar("gate-modo-directo", [str(log)], arena)
+        assert resultado.returncode == 1 and "GUARD:kickoff-antes-de-congelar" in resultado.stderr
+    _probar_dependencia_rota("gate-modo-directo", ["bitacora.md"])
 
 
 def test_aux_ownership_log(_contexto: Optional[object]) -> None:
@@ -550,6 +580,7 @@ def test_aux_ownership_log(_contexto: Optional[object]) -> None:
         invalido = delegado.replace("diff rojo", "diff · rojo")
         log.write_text(invalido, encoding=ENCODING)
         assert _ejecutar_auxiliar("ownership-log", [str(log)], arena).returncode == 1
+    _probar_dependencia_rota("ownership-log", ["log.md"])
 
 
 def test_aux_ownership_presupuesto(_contexto: Optional[object]) -> None:
@@ -599,6 +630,7 @@ def test_aux_ownership_presupuesto(_contexto: Optional[object]) -> None:
         assert resultado.returncode == 1 and "versión u ordinal" in resultado.stderr
         resultado = _ejecutar_auxiliar("ownership-presupuesto", [str(vacio), str(arena / "ausente"), "2"], arena)
         assert resultado.returncode == 1 and "archivo ilegible" in resultado.stderr
+    _probar_dependencia_rota("ownership-presupuesto", ["log.md", "aprobaciones.md", "2"])
 
 
 def test_aux_promocion_tasks_ready(_contexto: Optional[object]) -> None:
@@ -606,6 +638,17 @@ def test_aux_promocion_tasks_ready(_contexto: Optional[object]) -> None:
     firma = next(item for item in FIRMAS if item.nombre == "promocion-tasks-ready")
     modulo = _cargar_modulo(firma)
     modulo.verificar_promocion()
+    with tempfile.TemporaryDirectory(prefix="aux-promocion-dependencia-") as temporal:
+        estado = modulo.preparar_estado_refresh(Path(temporal))
+        previo, sys.argv = sys.argv, [str(firma.archivo)] + [str(ruta) for ruta in estado[:4]]
+        stderr = io.StringIO()
+        try:
+            with mock.patch.object(modulo, "_cargar_invariantes", return_value=None), \
+                    contextlib.redirect_stderr(stderr):
+                codigo = modulo.main()
+        finally:
+            sys.argv = previo
+        assert codigo == 99 and "ARNES:promocion-tasks-ready contrato-helper-no-cargable" in stderr.getvalue()
 
 
 def test_aux_cadena_de_invocacion(_contexto: Optional[object]) -> None:

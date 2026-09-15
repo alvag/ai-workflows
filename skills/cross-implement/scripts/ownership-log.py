@@ -17,11 +17,18 @@ GENERICO = re.compile(
     r"no cubrió|no cubrio|faltó manejar|falto manejar|no entendió|no entendio|"
     r"algún borde|algun borde|no quedó bien|no quedo bien", re.IGNORECASE)
 _RUTA_CONTRATO = Path(__file__).resolve().with_name("contrato-invariantes.py")
-_ESPECIFICACION = importlib.util.spec_from_file_location("ownership_log_contrato", _RUTA_CONTRATO)
-if _ESPECIFICACION is None or _ESPECIFICACION.loader is None:
-    raise RuntimeError(f"no se pudo cargar {_RUTA_CONTRATO}")
-_CONTRATO = importlib.util.module_from_spec(_ESPECIFICACION)
-_ESPECIFICACION.loader.exec_module(_CONTRATO)
+try:
+    _ESPECIFICACION = importlib.util.spec_from_file_location("ownership_log_contrato", _RUTA_CONTRATO)
+    if _ESPECIFICACION is None or _ESPECIFICACION.loader is None:
+        raise RuntimeError(f"no se pudo cargar {_RUTA_CONTRATO}")
+    _CONTRATO = importlib.util.module_from_spec(_ESPECIFICACION)
+    _ESPECIFICACION.loader.exec_module(_CONTRATO)
+    if not callable(getattr(_CONTRATO, "campos_linea", None)):
+        raise RuntimeError("API de campos ausente")
+except Exception as error:
+    print(f"ARNES:ownership-log dependencia contrato-invariantes.py no cargable: {error}",
+          file=sys.stderr)
+    raise SystemExit(99) from None
 
 
 def valor(linea: str, campo: str) -> str:

@@ -364,6 +364,11 @@ def _envoltura(comando: str) -> Tuple[Optional[Tuple[str, str]], Optional[str]]:
     return (argumentos[4], argumentos[5]), None
 
 
+def es_envoltura_canonica(comando: str) -> bool:
+    """Indica si el comando usa la envoltura de proyección de esta versión."""
+    return _envoltura(comando)[0] is not None
+
+
 def _validar_envoltura(nueva: str, previa: str, contexto: str,
                        errores: List[str]) -> None:
     envoltura_nueva, error = _envoltura(nueva)
