@@ -8,9 +8,10 @@ el dueño.** Existe para poder mirar el archivo completo y copiar lo que sirva; 
 autoridad de ninguna clave.
 
 **Solo configuración.** El esquema completo de `manifest.yml` (`sdd-orchestrator/reference.md` →
-"Esquema de `manifest.yml`") tiene 21 hojas; 8 son **estado de corrida** de la orquestación, no
+"Esquema de `manifest.yml`") tiene 23 hojas; 10 son **estado de corrida** de la orquestación, no
 configuración, y no aparecen acá: `id`, `created_at`, `master_spec`, `delivery_profile`, `risk`,
-`delivery_assessment`, `repos` y `orchestration_tasks`. `delivery_assessment` es una lista y cuenta
+`delivery_assessment`, `repos`, `orchestration_tasks`, `integration_contract_frozen_version` y
+`integration_contract_frozen_hash`. `delivery_assessment` es una lista y cuenta
 como una sola hoja; `repos` y `orchestration_tasks` anidan su estado propio. Este archivo documenta las 13
 restantes.
 

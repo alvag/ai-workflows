@@ -166,6 +166,14 @@ entero · capturar resultado, observable, commit y timestamp · **remover** el w
 figura en `git worktree list` · y ante cualquier incertidumbre de creación o de limpieza, dejar la
 fila en `BLOCKED`.
 
+Si la fila declara un `baseline_tipo` `fallos-conjunto`, `fallos-listado` o `fallos-conteo`, el
+re-baseline no queda acreditado por una sola corrida: exige cinco mediciones sobre ese SHA y comando,
+una directa en el checkout de derivación y cuatro invocaciones aisladas de
+`rebaseline-worktree.py`. El conductor compara la clasificación y la proyección canónica de las
+cinco; solo cinco coincidencias resueltas como `RED` o `GREEN_ALREADY` permiten escribir el registro.
+Una divergencia, un fallo de invocación o cualquier `BLOCKED` bloquea antes del sellado. Esta serie no
+aplica a `baseline_tipo: otro`.
+
 > **El alcance de la prohibición, y por qué importa.** Lo prohibido es **reconstruir estado histórico
 > mientras hay un diff ajeno vivo en el árbol** — no `git stash` en sí. El `revert-to-confirm` de
 > `sdd-flow` usa `git stash push`/`pop` a propósito, dentro de la misma corrida, sobre cambios
@@ -219,6 +227,15 @@ persisten entre bloques según la matriz de control de flujo.
 **tope de secuencia: 6 incidencias que consumen presupuesto.** Es un límite global por work order y
 no crece sin cota con la cantidad de bloques. No se multiplica por el número de bloques ni abre un
 presupuesto nuevo para cada dispatch; al agotarse, la secuencia se corta y aplica la matriz de cierre.
+
+El presupuesto de dos por `checkId` de `VERIFICATION_DEFECT` (ver `contrato-verificacion.md` →
+«Qué es invariante entre versiones») no lo cuenta esta sección ni la sección `Ownership:` del
+registro de invocación por sí solas: lo cuenta exclusivamente la aprobación `aprobar-reparación`
+ligada por `(checkId, contract_version)`. Una clasificación delegada acredita la clase; el consumo
+del par lo decide la aprobación. Una reparación post-dispatch no reabre el mismo takeover: se espera
+el terminal del worker en vuelo, se aplica el rollback obligatorio si corresponde, y tanto un
+`completed` como un `abandoned`/`rolled_back` abren una secuencia **nueva** bajo el mismo owner
+cercado — el takeover del bloque anterior no continúa recibiendo reparaciones.
 
 ### Rollback de una secuencia
 

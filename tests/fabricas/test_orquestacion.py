@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import importlib.util
 import runpy
 import shutil
 import stat
@@ -174,7 +175,7 @@ def test_v12_consumers_preserve_precedence(_context: Optional[object]) -> None:
                 plans = [root / service / ".plans" / "notificaciones-v2" / "plan.md"
                          for service in ("servicio-a", "servicio-b")]
                 arguments = [base / "manifest.yml", base / "master-spec.md",
-                             base / "integracion.md", base / "bitacora.md", *plans]
+                             base / "integracion.md", base / "bitacora.md", "final", *plans]
             else:
                 arguments = [root / "skill" / "SKILL.md"]
             result = subprocess.run(
@@ -551,7 +552,7 @@ def test_delivery_profile_predispatch(_context: Optional[object]) -> None:
             root / repo / ".plans" / "notificaciones-v2" / "plan.md" for repo in repos]
         if script_name == "orchestration-state.py":
             arguments = [base / "manifest.yml", base / "master-spec.md",
-                         base / "integracion.md", base / "bitacora.md", *plans]
+                         base / "integracion.md", base / "bitacora.md", "final", *plans]
         else:
             arguments = [base / "manifest.yml", *plans]
         return subprocess.run(
@@ -598,7 +599,7 @@ def test_delivery_profile_predispatch(_context: Optional[object]) -> None:
             wrong_repo = subprocess.run(
                 [sys.executable, str(scripts / "orchestration-state.py"),
                  str(base / "manifest.yml"), str(base / "master-spec.md"),
-                 str(base / "integracion.md"), str(base / "bitacora.md"), *map(str, plans)],
+                 str(base / "integracion.md"), str(base / "bitacora.md"), "final", *map(str, plans)],
                 cwd=root, capture_output=True, text=True, check=False)
             assert (wrong_repo.returncode == 1 and "GUARD:state carrier-mixto" in wrong_repo.stderr
                     and f"  plan: {plans[1]}\n" in wrong_repo.stderr)
@@ -652,7 +653,7 @@ def test_delivery_profile_predispatch(_context: Optional[object]) -> None:
                 result = subprocess.run(
                     [sys.executable, str(scripts / "orchestration-state.py"),
                      str(manifest), str(base / "master-spec.md"),
-                     str(base / "integracion.md"), str(base / "bitacora.md"), *map(str, plans)],
+                     str(base / "integracion.md"), str(base / "bitacora.md"), "final", *map(str, plans)],
                     cwd=root, capture_output=True, text=True, check=False,
                 )
                 assert result.returncode == 1, (field, result.stderr)
@@ -676,7 +677,7 @@ def test_delivery_profile_predispatch(_context: Optional[object]) -> None:
             result = subprocess.run(
                 [sys.executable, str(scripts / "orchestration-state.py"),
                  str(manifest), str(base / "master-spec.md"),
-                 str(base / "integracion.md"), str(base / "bitacora.md"),
+                 str(base / "integracion.md"), str(base / "bitacora.md"), "final",
                  str(only_independent_plan)],
                 cwd=root, capture_output=True, text=True, check=False,
             )
@@ -701,7 +702,7 @@ def test_delivery_profile_predispatch(_context: Optional[object]) -> None:
             result = subprocess.run(
                 [sys.executable, str(scripts / "orchestration-state.py"),
                  str(manifest), str(base / "master-spec.md"),
-                 str(base / "integracion.md"), str(base / "bitacora.md"), str(plan)],
+                 str(base / "integracion.md"), str(base / "bitacora.md"), "final", str(plan)],
                 cwd=root, capture_output=True, text=True, check=False,
             )
             assert result.returncode == 1, result.stderr
@@ -724,7 +725,7 @@ def test_delivery_profile_predispatch(_context: Optional[object]) -> None:
             result = subprocess.run(
                 [sys.executable, str(scripts / "orchestration-state.py"),
                  str(manifest), str(base / "master-spec.md"),
-                 str(base / "integracion.md"), str(base / "bitacora.md"), str(plan)],
+                 str(base / "integracion.md"), str(base / "bitacora.md"), "final", str(plan)],
                 cwd=root, capture_output=True, text=True, check=False,
             )
             assert result.returncode == 1, result.stderr
@@ -748,7 +749,7 @@ def test_delivery_profile_predispatch(_context: Optional[object]) -> None:
             result = subprocess.run(
                 [sys.executable, str(scripts / "orchestration-state.py"),
                  str(manifest), str(base / "master-spec.md"),
-                 str(base / "integracion.md"), str(base / "bitacora.md"), str(plan)],
+                 str(base / "integracion.md"), str(base / "bitacora.md"), "final", str(plan)],
                 cwd=root, capture_output=True, text=True, check=False,
             )
             assert result.returncode == 1, result.stderr
@@ -772,7 +773,7 @@ def test_delivery_profile_predispatch(_context: Optional[object]) -> None:
             result = subprocess.run(
                 [sys.executable, str(scripts / "orchestration-state.py"),
                  str(manifest), str(base / "master-spec.md"),
-                 str(base / "integracion.md"), str(base / "bitacora.md"), str(plan)],
+                 str(base / "integracion.md"), str(base / "bitacora.md"), "final", str(plan)],
                 cwd=root, capture_output=True, text=True, check=False,
             )
             assert result.returncode == 1, result.stderr
@@ -798,7 +799,7 @@ def test_delivery_profile_predispatch(_context: Optional[object]) -> None:
             result = subprocess.run(
                 [sys.executable, str(scripts / "orchestration-state.py"),
                  str(base / "manifest.yml"), str(base / "master-spec.md"),
-                 str(base / "integracion.md"), str(base / "bitacora.md"), *map(str, plans)],
+                 str(base / "integracion.md"), str(base / "bitacora.md"), "final", *map(str, plans)],
                 cwd=root, capture_output=True, text=True, check=False,
             )
             assert result.returncode == 1
@@ -807,7 +808,7 @@ def test_delivery_profile_predispatch(_context: Optional[object]) -> None:
             independent = subprocess.run(
                 [sys.executable, str(scripts / "orchestration-state.py"),
                  str(base / "manifest.yml"), str(base / "master-spec.md"),
-                 str(base / "integracion.md"), str(base / "bitacora.md"),
+                 str(base / "integracion.md"), str(base / "bitacora.md"), "final",
                  str(independent_plan)],
                 cwd=root, capture_output=True, text=True, check=False,
             )
@@ -834,7 +835,7 @@ def test_delivery_profile_predispatch(_context: Optional[object]) -> None:
                          for repo in ("servicio-a", "servicio-b")]
                 if script_name == "orchestration-state.py":
                     arguments = [base / "manifest.yml", base / "master-spec.md",
-                                 base / "integracion.md", base / "bitacora.md", *plans]
+                                 base / "integracion.md", base / "bitacora.md", "final", *plans]
                     label = "orchestration-state"
                 else:
                     arguments = [base / "manifest.yml", *plans]
@@ -875,6 +876,334 @@ def test_delivery_profile_dispatch(_context: Optional[object]) -> None:
     print("DELIVERY_PROFILE_DISPATCH_OK")
 
 
+TRANSICIONES_CONTRATO = (
+    "adopcion-seguida-de-reparacion", "correccion-emparejada", "proyector-mecanico",
+    "verificacion-aislada", "candidate-previo", "final-posterior", "legado-contiguo",
+    "legado-con-salto", "tareas-comparten-fila", "aprobacion-entre-anclas",
+    "aprobacion-anterior-al-ancla", "clasificacion-abandonada",
+    "proyector-con-clasificacion-desfasada", "implementation-defect",
+    "verification-defect", "environment-failure", "design-gap",
+    "cobertura-antes-del-primer-ancla", "cobertura-despues-del-primer-ancla",
+    "claves-sin-ancla", "adopcion-retroactiva-unica", "adopcion-retroactiva-duplicada",
+    "clasificacion-sin-cambio-de-estado", "evento-auxiliar-incompleto",
+    "agotamiento-de-entorno",
+)
+
+PRECEDENCIAS_CONTRATO = (
+    "campos-base", "resultado-base", "identidad-base", "clasificacion-no-consumada",
+    "tarea-invalida", "repos-ausentes", "repos-repetidos", "repos-distintos",
+    "orden-de-repos", "digest-de-repos", "verificacion-no-admitida", "hash-de-adopcion",
+    "modo-de-adopcion", "adopcion-retroactiva-duplicada", "estado-sin-ancla",
+)
+
+
+def _state_module():
+    script = ROOT / "skills/sdd-orchestrator/scripts/orchestration-state.py"
+    spec = importlib.util.spec_from_file_location("orchestration_state_contract_test", script)
+    if spec is None or spec.loader is None:
+        raise AssertionError("no se pudo cargar orchestration-state")
+    module = importlib.util.module_from_spec(spec)
+    sys.path.insert(0, str(script.parent))
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.path.pop(0)
+    return module
+
+
+def _local_contract(versions=(1,), baseline_types=None) -> str:
+    types = baseline_types or {}
+    blocks = []
+    for version in versions:
+        contract_hash = chr(96 + min(version, 6)) * 64
+        blocks.append("\n".join((
+            f"## v{version}",
+            "| ID | Requisito | Evidencia | Comando/observación | Esperado | Baseline |",
+            "|---|---|---|---|---|---|",
+            "| V1 | C1 — integración | test | predicado | verde | RED |",
+            ("- pertinencia: `id: V1` · `autoridad: test local` · `relación: no-aplica` · "
+             f"`baseline_tipo: {types.get(version, 'otro')}` · `baseline_fundamento: fixture`"),
+            f"`hash_previo: ` · `hash: {contract_hash}`",
+        )))
+    return "\n\n".join(blocks) + "\n"
+
+
+def _contract_event(index: int, step: str, version: int, contract_hash: str,
+                    **extra: str) -> Dict[str, str]:
+    event = {
+        "id": str(index), "paso": step,
+        "actor": "usuario" if step == "aprobar-reparación" else "orquestador",
+        "objeto": f"contrato-integracion:v{version}", "resultado": "consumado",
+        "timestamp": f"2026-01-01T00:{index:02d}:00Z", "hash": contract_hash,
+    }
+    if step == "adoptar-estado-contrato":
+        event["modo"] = "materializacion"
+    event.update(extra)
+    return event
+
+
+def _classification_event(index: int, *, task: str = "C1", check_id: str = "V1",
+                          participants: Optional[Dict[str, str]] = None,
+                          classification: str = "VERIFICATION_DEFECT", version: int = 2,
+                          ordinal: int = 1, **extra: str) -> Dict[str, str]:
+    repos = participants or {"servicio-a": "aaa1111", "servicio-b": "bbb2222"}
+    sha = ", ".join(f"{repo}={repos[repo]}" for repo in sorted(repos, key=str.encode))
+    event = {
+        "id": str(index), "paso": "clasificar-falla", "actor": "orquestador",
+        "objeto": task, "resultado": "consumado",
+        "timestamp": f"2026-01-01T00:{index:02d}:00Z", "checkId": check_id,
+        "clase": classification, "consumedRound": "no", "evidencia": "salida",
+        "sha": sha,
+        "delta": "repos-sha256:" + __import__("hashlib").sha256(sha.encode()).hexdigest(),
+        "fix_round": "0", "contract_version": str(version),
+        "verification_defect_ordinal": str(ordinal),
+    }
+    event.update(extra)
+    return event
+
+
+def _local_call(module, *, phase="final", versions=(1,), frozen=True, events=None,
+                repairs=None, types=None, tasks=None, frozen_version=None):
+    contract = _local_contract(versions, types)
+    current = max(versions)
+    state_version = current if frozen_version is None else frozen_version
+    contract_hash = chr(96 + min(state_version, 6)) * 64
+    state = {
+        "integration_contract_frozen_version": [str(state_version)] if frozen else [],
+        "integration_contract_frozen_hash": [contract_hash] if frozen else [],
+    }
+    if events is None:
+        events = [_contract_event(1, "adoptar-estado-contrato", current, contract_hash)]
+    if tasks is None:
+        tasks = [{"id": "C1", "participants": ["servicio-a", "servicio-b"]}]
+    return module.validar_estado_contrato(
+        phase, state, contract, repairs or [], events, tasks)
+
+
+def _ownership_environment_budget() -> None:
+    script = ROOT / "skills/cross-implement/scripts/ownership-presupuesto.py"
+    line = ("- `paso: clasificar-falla` · `checkId: V1` · "
+            "`clase: ENVIRONMENT_FAILURE`\n")
+    with tempfile.TemporaryDirectory(prefix="orchestration-environment-budget-") as temporary:
+        root = Path(temporary)
+        approvals = root / "approvals.md"
+        approvals.write_text("", encoding=ENCODING)
+        for count, expected in ((2, 0), (3, 1)):
+            log = root / f"log-{count}.md"
+            log.write_text(line * count, encoding=ENCODING)
+            result = subprocess.run(
+                [sys.executable, str(script), str(log), str(approvals), "2"],
+                cwd=root, capture_output=True, text=True, encoding=ENCODING, check=False,
+            )
+            assert result.returncode == expected, (count, result.stderr)
+            if expected == 0:
+                assert result.stderr == ""
+            else:
+                assert "V1 · ENVIRONMENT_FAILURE · 3 > 2" in result.stderr
+
+
+def _factory_state_code(scenario: str) -> str:
+    script = ROOT / "skills/sdd-orchestrator/scripts/orchestration-state.py"
+    with tempfile.TemporaryDirectory(prefix="orchestration-precedence-") as temporary:
+        root = Path(temporary)
+        orquestacion.materialize(scenario, root)
+        base = root / ".sdd" / "notificaciones-v2"
+        plans = [root / service / ".plans" / "notificaciones-v2" / "plan.md"
+                 for service in ("servicio-a", "servicio-b")]
+        result = subprocess.run(
+            [sys.executable, str(script), str(base / "manifest.yml"),
+             str(base / "master-spec.md"), str(base / "integracion.md"),
+             str(base / "bitacora.md"), "final", *map(str, plans)],
+            cwd=root, capture_output=True, text=True, encoding=ENCODING, check=False,
+        )
+        guards = [line.removeprefix("GUARD:state ") for line in result.stderr.splitlines()
+                  if line.startswith("GUARD:state ")]
+        assert result.returncode == 1 and len(guards) == 1, (scenario, result.stderr)
+        return guards[0]
+
+
+def test_orchestration_contract_transitions(_context: Optional[object]) -> None:
+    """La tabla local ejecuta sus veinticinco transiciones cerradas."""
+    module = _state_module()
+    a, b = "a" * 64, "b" * 64
+    adopt1 = _contract_event(1, "adoptar-estado-contrato", 1, a)
+    approve2 = _contract_event(
+        2, "aprobar-reparación", 2, b, token="2:V1:esperado-corregido:a1",
+        checkId="V1", contract_version="2", verification_defect_ordinal="1")
+    adopt2 = _contract_event(3, "adoptar-estado-contrato", 2, b)
+    repair = [(2, {"id": "V1", "operación": "esperado-corregido",
+                   "token": "2:V1:esperado-corregido:a1"})]
+    paired_approvals = [
+        _contract_event(2, "aprobar-reparación", 2, b,
+                        token="2:V1:pertinencia-corregida:a1"),
+        _contract_event(3, "aprobar-reparación", 2, b,
+                        token="2:V1:verificacion-corregida:a1",
+                        checkId="V1", contract_version="2",
+                        verification_defect_ordinal="1"),
+    ]
+    paired_repairs = [
+        (2, {"id": "V1", "operación": "pertinencia-corregida",
+             "token": "2:V1:pertinencia-corregida:a1"}),
+        (2, {"id": "V1", "operación": "verificacion-corregida",
+             "token": "2:V1:verificacion-corregida:a1", "campos": "evidencia"}),
+    ]
+    mechanical_approval = _contract_event(
+        3, "aprobar-reparación", 2, b, token="2:V1:verificacion-corregida:a1",
+        checkId="V1", contract_version="2", verification_defect_ordinal="1")
+    mechanical_repair = [(2, {
+        "id": "V1", "operación": "verificacion-corregida",
+        "token": "2:V1:verificacion-corregida:a1", "campos": "comando",
+    })]
+    classification_v2 = _classification_event(2)
+    classification_v3 = _classification_event(3, version=3)
+    approve3 = _contract_event(
+        4, "aprobar-reparación", 3, "c" * 64,
+        token="3:V1:verificacion-corregida:a1", checkId="V1",
+        contract_version="3", verification_defect_ordinal="1")
+    repair3 = [(3, {
+        "id": "V1", "operación": "verificacion-corregida",
+        "token": "3:V1:verificacion-corregida:a1", "campos": "comando",
+    })]
+    shared_tasks = [
+        {"id": "C1", "participants": ["servicio-a"]},
+        {"id": "C2", "participants": ["servicio-b"]},
+    ]
+    _ownership_environment_budget()
+    checks = [
+        _local_call(module, phase="candidate", versions=(1, 2), frozen_version=1,
+                    events=[adopt1, approve2], repairs=repair),
+        _local_call(module, versions=(1, 2), types={2: "fallos-ejecucion"},
+                    events=[adopt1, *paired_approvals,
+                            _contract_event(4, "adoptar-estado-contrato", 2, b)],
+                    repairs=paired_repairs),
+        _local_call(module, versions=(1, 2), types={1: "fallos-previos", 2: "fallos-previos"},
+                    events=[adopt1, classification_v2, mechanical_approval,
+                            _contract_event(4, "adoptar-estado-contrato", 2, b)],
+                    repairs=mechanical_repair),
+        _local_call(module, versions=(1, 2), types={1: "fallos-previos", 2: "fallos-previos"},
+                    events=[adopt1, mechanical_approval,
+                            _contract_event(4, "adoptar-estado-contrato", 2, b)],
+                    repairs=mechanical_repair),
+        _local_call(module, phase="candidate", versions=(1, 2), events=[adopt1], repairs=repair,
+                    frozen_version=1),
+        _local_call(module, versions=(1, 2), events=[adopt1, approve2, adopt2], repairs=repair),
+        _local_call(module, phase="candidate", versions=(1, 2), frozen=False,
+                    events=[approve2], repairs=repair),
+        _local_call(module, versions=(1, 3)),
+        _local_call(module, events=[adopt1,
+                                    _classification_event(2, task="C1", participants={"servicio-a": "aaa1111"}),
+                                    _classification_event(3, task="C2", participants={"servicio-b": "bbb2222"})],
+                    tasks=shared_tasks),
+        _local_call(module, versions=(1, 2), events=[adopt1, approve2, adopt2], repairs=repair),
+        _local_call(module, versions=(1, 2), events=[approve2, adopt1, adopt2], repairs=repair),
+        _local_call(module, versions=(1, 2, 3), types={2: "fallos-previos", 3: "fallos-previos"},
+                    events=[adopt1, classification_v2, classification_v3, approve3,
+                            _contract_event(5, "adoptar-estado-contrato", 3, "c" * 64)],
+                    repairs=repair3),
+        _local_call(module, phase="candidate", versions=(1, 2), frozen_version=1,
+                    types={1: "fallos-previos", 2: "fallos-previos"},
+                    events=[adopt1, _classification_event(2, version=1), mechanical_approval],
+                    repairs=mechanical_repair),
+        _local_call(module, events=[adopt1, _classification_event(
+            2, classification="IMPLEMENTATION_DEFECT", version=1)]),
+        _local_call(module, events=[adopt1, _classification_event(
+            2, classification="VERIFICATION_DEFECT", version=1)]),
+        _local_call(module, events=[adopt1, _classification_event(
+            2, classification="ENVIRONMENT_FAILURE", version=1)]),
+        _local_call(module, events=[adopt1, _classification_event(
+            2, classification="DESIGN_GAP", version=1)]),
+        _local_call(module, versions=(1, 2), events=[approve2, adopt1, adopt2], repairs=[(
+            2, {"id": "V1", "operación": "cobertura-agregada",
+                "token": "2:V1:esperado-corregido:a1"})]),
+        _local_call(module, versions=(1, 2), events=[adopt1,
+                    _contract_event(2, "aprobar-reparación", 2, b,
+                                    token="2:V2:cobertura-agregada:a1"), adopt2],
+                    repairs=[(2, {"id": "V2", "operación": "cobertura-agregada",
+                                  "token": "2:V2:cobertura-agregada:a1"})]),
+        _local_call(module, events=[]),
+        _local_call(module, events=[_contract_event(
+            1, "adoptar-estado-contrato", 1, a, modo="adopcion-retroactiva")]),
+        _local_call(module, events=[_contract_event(
+            1, "adoptar-estado-contrato", 1, a, modo="adopcion-retroactiva"),
+            _contract_event(2, "adoptar-estado-contrato", 1, a, modo="adopcion-retroactiva")]),
+        _local_call(module, events=[adopt1, _classification_event(
+            2, classification="IMPLEMENTATION_DEFECT", version=1)]),
+        _local_call(module, events=[{"paso": "clasificar-falla", "actor": "orquestador",
+                                    "resultado": "consumado"}]),
+        None,
+    ]
+    expected_codes = {
+        "legado-con-salto": "versiones-no-contiguas",
+        "aprobacion-anterior-al-ancla": "aprobacion-anterior-al-ancla",
+        "cobertura-despues-del-primer-ancla": "cobertura-agregada-post-ancla",
+        "claves-sin-ancla": "estado-contrato-sin-ancla",
+        "adopcion-retroactiva-duplicada": "adopcion-retroactiva-duplicada",
+        "evento-auxiliar-incompleto": "clasificacion-incompleta",
+        "verificacion-aislada": "verificacion-no-admitida",
+        "proyector-con-clasificacion-desfasada": "verificacion-no-admitida",
+    }
+    assert len(TRANSICIONES_CONTRATO) == len(checks) == 25
+    for identity, result in zip(TRANSICIONES_CONTRATO, checks):
+        expected = expected_codes.get(identity)
+        assert (result[0] if result else None) == expected, (identity, result)
+    print("orchestration-state transiciones: 25/25 casos ok")
+
+
+def test_orchestration_contract_precedence(_context: Optional[object]) -> None:
+    """Quince precedencias mantienen un único diagnóstico local dominante."""
+    module = _state_module()
+    a, b = "a" * 64, "b" * 64
+    valid_sha = "servicio-a=aaa1111, servicio-b=bbb2222"
+    valid_delta = "repos-sha256:" + __import__("hashlib").sha256(valid_sha.encode()).hexdigest()
+
+    def classification(**changes: str) -> Dict[str, str]:
+        event = _classification_event(2)
+        event.update(changes)
+        return event
+
+    adopt = _contract_event(1, "adoptar-estado-contrato", 1, a)
+    bad_verification = [(2, {"id": "V1", "operación": "verificacion-corregida",
+                             "token": "2:V1:verificacion-corregida:a1", "campos": "evidencia"})]
+    results = [
+        _factory_state_code("BITACORA_EVENTO_SIN_ACTOR"),
+        _factory_state_code("BITACORA_RESULTADO_INVALIDO"),
+        _factory_state_code("BITACORA_ORDEN_AMBIGUO"),
+        _local_call(module, events=[adopt, classification(resultado="rechazado")]),
+        _local_call(module, events=[adopt, classification(objeto="C9")]),
+        _local_call(module, events=[adopt, classification(sha="servicio-a=aaa1111")]),
+        _local_call(module, events=[adopt, classification(
+            sha="servicio-a=aaa1111, servicio-a=aaa1111, servicio-b=bbb2222")]),
+        _local_call(module, events=[adopt, classification(
+            sha="servicio-a=aaa1111, servicio-z=zzz1111")]),
+        _local_call(module, events=[adopt, classification(
+            sha="servicio-b=bbb2222, servicio-a=aaa1111")]),
+        _local_call(module, events=[adopt, classification(delta="repos-sha256:" + "0" * 64)]),
+        _local_call(module, phase="candidate", versions=(1, 2), events=[adopt],
+                    repairs=bad_verification, frozen_version=1),
+        _local_call(module, events=[_contract_event(1, "adoptar-estado-contrato", 1, b)]),
+        _local_call(module, events=[_contract_event(
+            1, "adoptar-estado-contrato", 1, a, modo="otro")]),
+        _local_call(module, events=[_contract_event(
+            1, "adoptar-estado-contrato", 1, a, modo="adopcion-retroactiva"),
+            _contract_event(2, "adoptar-estado-contrato", 1, a, modo="adopcion-retroactiva")]),
+        _local_call(module, events=[]),
+    ]
+    expected = (
+        "evento-sin-actor", "resultado-fuera-de-enum", "orden-no-determinable",
+        "clasificacion-no-consumada", "clasificacion-tarea-invalida",
+        "clasificacion-sha-repos", "clasificacion-sha-repos",
+        "clasificacion-sha-repos", "clasificacion-sha-orden",
+        "clasificacion-delta-invalido", "verificacion-no-admitida",
+        "evento-contrato-hash-diverge", "evento-contrato-invalido",
+        "adopcion-retroactiva-duplicada", "estado-contrato-sin-ancla",
+    )
+    assert len(PRECEDENCIAS_CONTRATO) == len(results) == len(expected) == 15
+    for identity, result, code in zip(PRECEDENCIAS_CONTRATO, results, expected):
+        observed = result[0] if isinstance(result, tuple) else result
+        assert observed == code, (identity, result)
+    print("orchestration-state precedencias: 15/15 casos ok")
+
+
 CASOS: List[Case] = [
     ("delivery-profile:parser-boundary", "delivery-profile",
      test_delivery_profile_parser_boundary),
@@ -891,4 +1220,8 @@ CASOS: List[Case] = [
      test_v12_rename_publication),
     ("fixtures-v12:precedencias", "fixtures-orquestacion-v12",
      test_v12_consumers_preserve_precedence),
+    ("orchestration-state:transiciones", "orchestration-state-v1",
+     test_orchestration_contract_transitions),
+    ("orchestration-state:precedencias", "orchestration-state-v1",
+     test_orchestration_contract_precedence),
 ]

@@ -6176,6 +6176,62 @@ El contrato nace de medir el código sin el cambio, no de declarar un estado esp
 procedimiento rige en toda corrida, sin excepción por complejidad: también en trivial; lo que escala
 es la cantidad de filas, no la obligación de producir evidencia.
 
+### Contrato direccional y reinicio de secuencia
+
+Cada fila producida lleva su línea `- pertinencia:` y supera los dos contrafactuales: su `Esperado`
+no se cumple con la subafirmación falsa ni falla con la verdadera. `observado` documenta el
+baseline; no es el oráculo de una ejecución futura. Cuando la versión candidata agrega cobertura o corrige `Esperado`,
+pertinencia, evidencia o comando, el conductor escribe la operación y su token según
+`cross-implement/contrato-verificacion.md` → «Qué es invariante entre versiones». Antes del `STOP`
+ejecuta `contrato-invariantes.py <contrato> <log_de_aprobaciones> candidate` y lee código y stderr.
+Después de `aprobar-reparación`, ejecuta
+`contrato-invariantes.py <contrato> <log_de_aprobaciones> final`, también leyendo código y stderr.
+La fase `final` precede a congelar, publicar o promover. Una adopción `estado: intermedia` termina en
+`candidate`: nunca se congela ni atraviesa `final`.
+
+Los baselines `fallos-*` usan una ejecución directa y cuatro invocaciones aisladas de
+`rebaseline-worktree.py`, siempre sobre el mismo commit y comando. El conductor conserva y compara
+las cinco parejas de clasificación y proyección canónica; solo si coinciden y todas son `RED` o
+`GREEN_ALREADY` escribe el registro. Una divergencia, un fallo de invocación o cualquier `BLOCKED`
+detiene el sellado. El comando conserva el predicado y proyecta una sola línea mediante
+`PROJECTION_WRAPPER_BODY`; la pareja código 125 y
+`CROSS_IMPLEMENT_PROJECTION_BLOCKED` significa `BLOCKED`, mientras un 125 con proyección válida
+conserva el rojo real. En verify se evalúa el resultado fresco contra `Esperado` y la relación, no
+contra `observado`. La clasificación se valida con `ownership-log.py <log>` y su código de salida y
+stderr; el presupuesto, con
+`ownership-presupuesto.py <log> <log_de_aprobaciones> <max_fix_rounds>` y su código de salida y
+stderr. Dos pares aprobados de `VERIFICATION_DEFECT` agotan el presupuesto; el tercero se clasifica
+`DESIGN_GAP`. `ENVIRONMENT_FAILURE` conserva su presupuesto físico y no consume rondas de fix.
+
+Una reparación post-dispatch autoriza explícitamente abandonar o revertir la secuencia anterior y
+**reiniciar** otra, pero no modifica la entrada del worker en vuelo. Tras terminal, cosecha y retiro
+del sobre, el rollback de `ownership.md` tiene precedencia. El resultado completo no aceptable que
+no requiere rollback queda `terminal:abandoned`; ese terminal exige `A ausente` mientras no exista
+la autoridad saliente de la reparación vigente. La rama restaurada usa `terminal:rolled_back`.
+
+Antes del refresh se publica sin reemplazo el paquete `archive_package` bajo
+`.plans/<id>/sequences/<successor_sequence_id>/`, ligado por `rotation-link.json`. Su rol explícito es
+`incoming | outgoing`; incluye el ledger, el plan, la fuente/recibo que correspondan y, solo para un
+predecesor abandonado cuyo ledger aún no lo contenga, `pending-delta.patch`. El link declara
+`predecessor_terminal`; `base_anchor` sigue siendo la autoridad Git para contrastar el patch. El
+owner se conserva y queda fuera del paquete.
+
+La captura normativa es
+`capture_sequence_snapshot(ledger, receipt, git, tasks, process, owner, archive_package)`. Las siete
+autoridades distinguen las posiciones diagnósticas `rotation-pending`, `rollback-pending` y
+`rotation-completed` sin agregarlas al cursor del ledger. `rotation-pending` y `rollback-pending`
+tienen etapas `pre-refresh` y `post-refresh`; una incompatibilidad del paquete produce
+`conflict:package`. `RecoveryProposal.rotation_steps` solo contiene `plan-refresh` y
+`ledger-rotation`, en ese orden cuando ambos aplican. Cada retoma pasa por el **gate de recuperación**,
+recaptura las siete autoridades y adjudica postcondiciones; el **camino continuo** usa la promoción
+y la escritura ordinaria del ledger sin otro STOP.
+
+La partición `rotación` conserva **seis casos** normativos: pre/post refresh, terminal sin paquete,
+paquete incompatible, owner ajeno y sucesor publicado. La partición `reinicio post-rollback`
+conserva **tres casos**: pre-refresh, post-refresh y sucesor activo. `rotation-completed` exige ledger
+sucesor activo, owner retenido, huellas frescas y ausencia de dispatch; recién entonces vuelve al
+routing ordinario. Estas particiones son corpus normativo, no una afirmación de runtime ejecutado.
+
 ### Los siete pasos de producción
 
 | Paso | Actor | Cuándo |
@@ -6236,7 +6292,7 @@ renombrar los pasos de un reparto para que se parezcan a los del otro.
 
 **El orden de las escrituras es una condición:** procedimiento completo → aprobación en el último
 gate aplicable → línea `paso: congelar` en la bitácora → marcador en el header → el conductor
-ejecuta `python_skill <skill_dir>/scripts/promocion-tasks-ready.py <plan> <bitácora>`. El script corre después de escribir la bitácora y el
+ejecuta `python_skill <skill_dir>/scripts/promocion-tasks-ready.py <plan> <bitácora> <ledger> <active_envelopes>`. El script corre después de escribir la bitácora y el
 marcador, y es la transición que promueve el estado a listo para implementar; un veredicto distinto
 de cero impide promover. Promover el estado por fuera del bloque es una edición manual fuera del
 procedimiento. Esta comprobación aplica a todo plan que atraviesa ese gate, sin exención por origen.
@@ -6262,7 +6318,8 @@ lectura, pero nunca se interpreta como si el procedimiento se hubiera ejecutado.
 |---|---|---|
 | el HEAD avanzó respecto del commit registrado | recomprobar la fila sobre el HEAD y actualizar su registro al commit que se va a implementar | versión nueva con registros, timestamps y hash del HEAD que se implementará |
 | se modificó la evidencia o el comando de la fila | reejecutar la fila dentro de la misma versión | reejecutar la fila y emitir una versión nueva con registro, timestamp y hash frescos |
-| se modificó el requisito o el esperado | es rediseño: vuelve al gate de diseño | es rediseño: vuelve al gate de diseño |
+| se modificó el requisito | es rediseño: vuelve al gate de diseño | es rediseño: vuelve al gate de diseño |
+| se corrige `Esperado` o pertinencia | reescribir y volver a medir antes de sellar | versión nueva con operación direccional, re-medición y aprobación |
 
 Conservar el registro apuntando al commit anterior no es una salida en ningún caso: describiría
 otro código, no el que se va a implementar.

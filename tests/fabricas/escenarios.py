@@ -161,10 +161,11 @@ def _verify_source_hashes(scenarios: Iterable[Escenario]) -> None:
                     matrix, expected, actual))
 
 
-def write_catalog(path: Path = CATALOG_PATH) -> Tuple[Escenario, ...]:
+def write_catalog(path: Path = CATALOG_PATH, verify_sources: bool = True) -> Tuple[Escenario, ...]:
     """Generate one JSON Lines scenario per authoritative matrix/case identity."""
     scenarios = read_inventory()
-    _verify_source_hashes(scenarios)
+    if verify_sources:
+        _verify_source_hashes(scenarios)
     body = "".join(
         json.dumps(scenario.serialized(), ensure_ascii=False, sort_keys=True) + "\n"
         for scenario in scenarios
@@ -196,10 +197,11 @@ def load_catalog(path: Path = CATALOG_PATH) -> Tuple[Escenario, ...]:
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--generate", action="store_true")
+    parser.add_argument("--sin-fuentes", action="store_true")
     args = parser.parse_args(argv)
     if not args.generate:
         parser.error("--generate is required")
-    scenarios = write_catalog()
+    scenarios = write_catalog(verify_sources=not args.sin_fuentes)
     print("generated {0} scenarios in {1}".format(len(scenarios), CATALOG_PATH))
     return 0
 

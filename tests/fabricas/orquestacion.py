@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+import hashlib
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -284,6 +285,7 @@ class Factory:
         self.log = self.base / "bitacora.md"
         self.skill = root / "skill" / "SKILL.md"
         self.event_number = 0
+        self._contract_cache: Optional[Tuple[str, int, str]] = None
 
     def get(self, prefix: str, field: str) -> str:
         return str(self.v[prefix + "_" + field])
@@ -309,7 +311,10 @@ class Factory:
         return "[" + value + "]"
 
     def emit_manifest(self) -> str:
-        lines = [f"id: {self.identifier}", f"master_spec: .sdd/{self.identifier}/master-spec.md", "created_at: 2026-06-03T09:00:00-03:00"]
+        _contract, version, contract_hash = self.contract_materialized()
+        lines = [f"id: {self.identifier}", f"master_spec: .sdd/{self.identifier}/master-spec.md", "created_at: 2026-06-03T09:00:00-03:00",
+                 f"integration_contract_frozen_version: {version}",
+                 f"integration_contract_frozen_hash: {contract_hash}"]
         if self.v["OUTCOME"]: lines.append("outcome: " + str(self.v["OUTCOME"]))
         if self.v["PROFILE"]:
             separator = self.v["PROFILE_SEPARATOR"]
@@ -398,10 +403,11 @@ class Factory:
     def baseline_record(self, row_id: str, baseline: str) -> str:
         line = f"- `id: {row_id}` · `commit: 4f2a9c1` · `timestamp: 2026-06-03T09:10:00-03:00`"
         if baseline == "NOT_APPLICABLE": line += " · `justificación: la evidencia es un acuerdo entre equipos; no hay comando que ejecutar contra el código`"
-        elif baseline == "GREEN_ALREADY": line += " · `adjudicación: already_satisfied`"
+        elif baseline == "GREEN_ALREADY": line += " · `observado: exit 0; resultado esperado` · `adjudicación: already_satisfied`"
+        elif baseline == "RED": line += " · `observado: exit 1; resultado pendiente`"
         return line
 
-    def contract_version(self, version: str, tasks: str) -> str:
+    def contract_version(self, version: str, tasks: str, previous_hash: str) -> Tuple[str, str]:
         lines = [f"## {version}", "", "| ID | Requisito | Evidencia | Comando/observación | Esperado | Baseline |", "|---|---|---|---|---|---|"]
         for task in tasks.split():
             if task == "Z9":
@@ -412,23 +418,53 @@ class Factory:
             lines.append(f"| V-{self.get(task, 'ID')} | {self.get(task, 'ID')} — {self.get(task, 'WHAT')} [{covers}] | {self.evidence(task)} | {self.command(task)} | {self.get(task, 'ESPERADO')} | {self.get(task, 'BASE')} |")
             if self.v["FILA_DUP"] == 1 and task == "X1": lines.append(f"| V-X1-bis | X1 — {self.get('X1', 'WHAT')} [—] | inspección | `grep -c acuerdo wiki.md` | `1` | NOT_APPLICABLE |")
         if self.v["FILA_HUERFANA"] == 1: lines.append("| V-H9 | H9 — publicar el changelog de la orquestación [—] | inspección | `grep -c changelog notas.md` | `1` | NOT_APPLICABLE |")
-        lines += ["", f"### Baseline de {version}", "`hash_previo:` · `hash: 9b1c04e2`", ""]
+        lines.append("")
+        for task in tasks.split():
+            row_id = "V-Z9" if task == "Z9" else "V-" + self.get(task, "ID")
+            lines.append(
+                f"- pertinencia: `id: {row_id}` · `autoridad: fixture de integración` · "
+                "`relación: no-aplica` · `baseline_tipo: otro` · "
+                "`baseline_fundamento: el escenario ejerce estado orquestado`")
+            if self.v["FILA_DUP"] == 1 and task == "X1":
+                lines.append(
+                    "- pertinencia: `id: V-X1-bis` · `autoridad: fixture duplicado` · "
+                    "`relación: no-aplica` · `baseline_tipo: otro` · "
+                    "`baseline_fundamento: el escenario ejerce cardinalidad`")
+        if self.v["FILA_HUERFANA"] == 1:
+            lines.append(
+                "- pertinencia: `id: V-H9` · `autoridad: fixture huérfano` · "
+                "`relación: no-aplica` · `baseline_tipo: otro` · "
+                "`baseline_fundamento: el escenario ejerce cobertura`")
+        lines += ["", f"### Baseline de {version}",
+                  f"`hash_previo: {previous_hash}` · `hash: `", ""]
         for task in tasks.split():
             if task == "Z9": lines.append("- `id: V-Z9` · `commit: 4f2a9c1` · `timestamp: 2026-06-03T09:10:00-03:00` · `justificación: la fila mira un tablero que este cambio no produce`")
             else:
                 lines.append(self.baseline_record("V-" + self.get(task, "ID"), self.get(task, "BASE")))
                 if self.v["FILA_DUP"] == 1 and task == "X1": lines.append(self.baseline_record("V-X1-bis", "NOT_APPLICABLE"))
         if self.v["FILA_HUERFANA"] == 1: lines.append(self.baseline_record("V-H9", "NOT_APPLICABLE"))
-        return "\n".join(lines) + "\n"
+        provisional = "\n".join(lines) + "\n"
+        contract_hash = hashlib.sha256(provisional.encode(ENCODING)).hexdigest()
+        return provisional.replace("`hash: `", f"`hash: {contract_hash}`", 1), contract_hash
 
-    def emit_contract(self) -> str:
-        body = f"# Contrato de integración — {self.identifier}\n\n" + self.contract_version("v1", str(self.v["FILAS"]))
+    def contract_materialized(self) -> Tuple[str, int, str]:
+        if self._contract_cache is not None:
+            return self._contract_cache
+        v1, previous_hash = self.contract_version("v1", str(self.v["FILAS"]), "")
+        body = f"# Contrato de integración — {self.identifier}\n\n" + v1
+        version = 1
         if self.v["V2"]:
             tasks = str(self.v["FILAS"])
             if self.v["V2"] == "agrega": tasks += " Z9"
             elif self.v["V2"] == "quita": tasks = tasks.replace(" X1", "")
-            body += "\n" + self.contract_version("v2", tasks)
-        return body
+            v2, previous_hash = self.contract_version("v2", tasks, previous_hash)
+            body += "\n" + v2
+            version = 2
+        self._contract_cache = (body, version, previous_hash)
+        return self._contract_cache
+
+    def emit_contract(self) -> str:
+        return self.contract_materialized()[0]
 
     def timestamp(self) -> str:
         return f"2026-06-03T{10 + self.event_number // 60:02d}:{self.event_number % 60:02d}:00-03:00"
@@ -455,6 +491,10 @@ class Factory:
     def emit_log(self) -> str:
         if self.v["BIT_VACIA"] == 1: return ""
         lines = [f"# Bitácora de transiciones — {self.identifier}", ""]
+        _contract, version, contract_hash = self.contract_materialized()
+        lines.append(self.event(
+            "adoptar-estado-contrato", "orquestador", f"contrato-integracion:v{version}",
+            "consumado", (f"hash: {contract_hash}", "modo: adopcion-retroactiva")))
         if self.v["REPARTO"] == 1:
             for repo in self.repos():
                 path, status = self.repo_path(repo), self.get(self.upper(repo), "ST")

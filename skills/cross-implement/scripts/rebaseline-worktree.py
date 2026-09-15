@@ -3,10 +3,12 @@ el código de salida y la última línea no vacía de la salida, saneada de cara
 los dos separadores del registro y leída con un recorrido acotado en memoria, el árbol activo
 queda intacto, el
 temporal se remueve y deja de figurar en git worktree list, y cualquier incertidumbre de creación o
-limpieza deja la fila en BLOCKED."""
+limpieza deja la fila en BLOCKED; la pareja 125/CROSS_IMPLEMENT_PROJECTION_BLOCKED también bloquea,
+pero un 125 del predicado con proyección canónica conserva su resultado RED."""
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import re
 import subprocess
@@ -14,6 +16,21 @@ import sys
 import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
+
+
+_RUTA_CONTRATO = Path(__file__).resolve().with_name("contrato-invariantes.py")
+try:
+    _ESPECIFICACION = importlib.util.spec_from_file_location("rebaseline_contrato", _RUTA_CONTRATO)
+    if _ESPECIFICACION is None or _ESPECIFICACION.loader is None:
+        raise RuntimeError(f"no se pudo cargar {_RUTA_CONTRATO}")
+    _CONTRATO = importlib.util.module_from_spec(_ESPECIFICACION)
+    _ESPECIFICACION.loader.exec_module(_CONTRATO)
+    if not callable(getattr(_CONTRATO, "es_envoltura_canonica", None)):
+        raise RuntimeError("API de envoltura ausente")
+except Exception as error:
+    print(f"ARNES:rebaseline-worktree dependencia contrato-invariantes.py no cargable: {error}",
+          file=sys.stderr)
+    raise SystemExit(99) from None
 
 
 def ejecutar(*args: str, cwd: Path = None) -> subprocess.CompletedProcess:
@@ -34,6 +51,9 @@ BLOQUE_BYTES = 65536
 # el punto medio separa los campos entre sí. Si sobreviven dentro del valor, un consumidor que
 # parsee la línea obtiene más campos que los declarados o corta el campo antes de tiempo.
 ESTRUCTURA = {"`": "", "·": "-"}
+PROYECCION = re.compile(
+    rb"(?:failures=[0-9]+|count=[0-9]+;sha256=[0-9a-f]{64})\n")
+PROYECCION_BLOQUEADA = b"CROSS_IMPLEMENT_PROJECTION_BLOCKED\n"
 # Qué es una línea lo define `str.splitlines()`, que corta en bastante más que `\n` —`\r` suelto, que
 # es lo que emite todo indicador de progreso, más `\v`, `\f`, los tres separadores de C1 y NEL, LS y
 # PS—. El recorrido trabaja sobre bytes, así que el corte se busca con las codificaciones UTF-8 de
@@ -93,6 +113,23 @@ def observable(salida: Path, codigo: int) -> str:
     return f"exit {codigo}; {saneada}"
 
 
+def clasificar_proyeccion(salida: Path, codigo: int, envuelta: bool) -> str:
+    """Clasifica el protocolo solo cuando el comando usa la envoltura canónica."""
+    try:
+        # La proyección es un protocolo de bytes: el LF final y la ausencia de bytes adicionales
+        # son parte de su forma, por eso no se abre como texto.
+        contenido = salida.read_bytes()
+    except OSError:
+        return "BLOCKED"
+    if envuelta and contenido == PROYECCION_BLOQUEADA and codigo == 125:
+        return "BLOCKED"
+    if envuelta:
+        lineas = contenido.splitlines(keepends=True)
+        if not lineas or PROYECCION.fullmatch(lineas[-1]) is None:
+            return "BLOCKED"
+    return "GREEN_ALREADY" if codigo == 0 else "RED"
+
+
 def main() -> int:
     if len(sys.argv) != 4:
         print("USO:rebaseline-worktree pre_dispatch_sha check_id command", file=sys.stderr)
@@ -111,30 +148,43 @@ def main() -> int:
     if ejecutar("git", "worktree", "add", "--detach", str(worktree), sha_pre).returncode != 0:
         print(f"BLOCKED {fila}: no se pudo crear el worktree", file=sys.stderr)
         return 1
-    # Binary mode preserves the command's combined output without decoding it.
-    with open(salida, "wb") as archivo:
-        resultado = subprocess.run(comando, cwd=worktree, shell=True, stdout=archivo, stderr=subprocess.STDOUT, check=False)
-    commit = ejecutar("git", "-C", str(worktree), "rev-parse", "HEAD").stdout.decode("utf-8").strip()
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    estado = "GREEN_ALREADY" if resultado.returncode == 0 else "RED"
-    # La limpieza va en `finally` porque calcular el observable es la primera operación de esta
-    # función que puede fallar: antes de que existiera, `print` no tenía modo de fallo. Sin esto,
-    # una excepción acá deja el worktree registrado y la fila sin el `BLOCKED` que el predicado
-    # promete ante cualquier incertidumbre de limpieza.
+    registro = ""
+    fallo = False
     try:
+        # Binary mode preserves the command's combined output without decoding it.
+        with open(salida, "wb") as archivo:
+            resultado = subprocess.run(
+                comando, cwd=worktree, shell=True, stdout=archivo,
+                stderr=subprocess.STDOUT, check=False)
+        commit_resultado = ejecutar("git", "-C", str(worktree), "rev-parse", "HEAD")
+        if commit_resultado.returncode != 0:
+            raise OSError("no se pudo leer el commit del worktree")
+        commit = commit_resultado.stdout.decode("utf-8").strip()
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        envuelta = _CONTRATO.es_envoltura_canonica(comando)
+        estado = clasificar_proyeccion(salida, resultado.returncode, envuelta)
         obs = observable(salida, resultado.returncode)
-    except (OSError, ValueError, MemoryError) as error:
-        obs = f"exit {resultado.returncode}; sin salida legible ({type(error).__name__})"
+        registro = (f"id: {fila} · resultado: {estado} · commit: {commit} · "
+                    f"timestamp: {timestamp} · observado: {obs}")
+    except (OSError, UnicodeError, ValueError, MemoryError):
+        fallo = True
+
+    limpieza_ok = True
     try:
-        print(f"id: {fila} · resultado: {estado} · commit: {commit} · timestamp: {timestamp} · observado: {obs}")
-    finally:
-        ejecutar("git", "worktree", "remove", "--force", str(worktree))
-        ejecutar("git", "worktree", "prune")
-    listado = ejecutar("git", "worktree", "list", "--porcelain").stdout.decode("utf-8", errors="replace")
-    if str(worktree) in listado:
-        print(f"BLOCKED {fila}: el worktree sigue registrado en git worktree list", file=sys.stderr)
+        limpieza_ok = ejecutar(
+            "git", "worktree", "remove", "--force", str(worktree)).returncode == 0
+        limpieza_ok = ejecutar("git", "worktree", "prune").returncode == 0 and limpieza_ok
+        listado_resultado = ejecutar("git", "worktree", "list", "--porcelain")
+        limpieza_ok = listado_resultado.returncode == 0 and limpieza_ok
+        listado = listado_resultado.stdout.decode("utf-8", errors="replace")
+        limpieza_ok = str(worktree) not in listado and limpieza_ok
+        salida.unlink(missing_ok=True)
+    except (OSError, UnicodeError):
+        limpieza_ok = False
+    if fallo or not limpieza_ok:
+        print(f"BLOCKED {fila}: no se pudo ejecutar o limpiar el re-baseline", file=sys.stderr)
         return 1
-    salida.unlink(missing_ok=True)
+    print(registro)
     return 0
 
 

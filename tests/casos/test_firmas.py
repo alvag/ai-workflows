@@ -7,15 +7,17 @@ import importlib.util
 import io
 import os
 import re
-import stat
+import shlex
 import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 from unittest import mock
+
+from tests.arbol import Instantanea, _instantanea
 
 
 ENCODING = "utf-8"
@@ -24,7 +26,6 @@ INVENTARIO = RAIZ / "tests" / "inventario-bloques.md"
 TITULO = "## 6. Tabla cerrada de firmas"
 FIN = "### Firma de infraestructura de tests"
 Caso = Tuple[str, str, Callable[[Optional[object]], None]]
-Instantanea = Dict[str, Tuple[str, int, bytes]]
 
 
 @dataclass(frozen=True)
@@ -89,27 +90,6 @@ def _leer_firmas() -> Tuple[Firma, ...]:
     return tuple(firmas)
 
 
-def _instantanea(raiz: Path) -> Instantanea:
-    resultado: Instantanea = {}
-    for ruta in sorted(raiz.rglob("*")):
-        relativa = ruta.relative_to(raiz)
-        if ".git" in relativa.parts:
-            continue
-        modo = stat.S_IMODE(ruta.lstat().st_mode)
-        if ruta.is_symlink():
-            contenido = os.readlink(ruta).encode(ENCODING)
-            tipo = "symlink"
-        elif ruta.is_dir():
-            contenido = b""
-            tipo = "directory"
-        else:
-            # The snapshot is binary because poststate comparison must preserve exact bytes.
-            contenido = ruta.read_bytes()
-            tipo = "file"
-        resultado[str(relativa)] = (tipo, modo, contenido)
-    return resultado
-
-
 def _ejecutar(archivo: Path, argumentos: List[str], cwd: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, str(archivo)] + argumentos,
@@ -126,6 +106,8 @@ def _argumentos_genericos(firma: Firma) -> List[str]:
             argumentos.append("0" * 40)
         elif nombre == "command":
             argumentos.append(":")
+        elif nombre == "phase":
+            argumentos.append("final")
         else:
             argumentos.append("entrada-{0}-{1}".format(indice, nombre.replace("_", "-")))
     return argumentos
@@ -146,12 +128,13 @@ def _preparar_mutacion(firma: Firma, arena: Path) -> Tuple[Path, List[str]]:
             "## v1\n\n`hash_previo:` · `hash: bd3a154d6c9e3149aa6797ce77c5ceb975c0295a3a2eacc0f257b6b28021b7d8`\n",
             encoding=ENCODING,
         )
-        (cwd / "log.md").write_text(
+        (cwd / "bitacora.md").write_text(
             "- `paso: congelar` · `actor: conductor` · "
             "`timestamp: 2026-08-24T12:00:00Z`\n",
             encoding=ENCODING,
         )
-        return cwd, ["plan.md", "log.md"]
+        return cwd, ["plan.md", "bitacora.md", "sequence-ledger.yml",
+                     str(cwd / ".cross-model/active/cross-implement")]
     if firma.nombre == "split":
         (cwd / "raw.md").write_text(
             "STATUS: transport\n## Índice\n| A | uno |\n"
@@ -365,3 +348,344 @@ for indice, firma_inventariada in enumerate(FIRMAS, 1):
     prueba.__name__ = "test_firma_{0:02d}".format(indice)
     globals()[prueba.__name__] = prueba
     CASOS.append(("firma:" + firma_inventariada.nombre, "firmas-v6", prueba))
+
+
+def _ejecutar_auxiliar(nombre: str, argumentos: List[str], cwd: Path) -> subprocess.CompletedProcess:
+    archivo = RAIZ / "skills" / "cross-implement" / "scripts" / (nombre + ".py")
+    return _ejecutar(archivo, argumentos, cwd)
+
+
+def _probar_dependencia_rota(nombre: str, argumentos: List[str]) -> None:
+    with tempfile.TemporaryDirectory(prefix="aux-dependencia-rota-") as temporal:
+        arena = Path(temporal)
+        origen = RAIZ / "skills" / "cross-implement" / "scripts" / (nombre + ".py")
+        copia = arena / origen.name
+        copia.write_bytes(origen.read_bytes())
+        (arena / "contrato-invariantes.py").write_text(
+            "raise RuntimeError('dependencia rota')\n", encoding=ENCODING)
+        resultado = _ejecutar(copia, argumentos, arena)
+        assert resultado.returncode == 99, (nombre, resultado.returncode, resultado.stderr)
+        assert f"ARNES:{nombre} dependencia contrato-invariantes.py no cargable" in resultado.stderr
+
+
+def test_aux_contrato_baseline(_contexto: Optional[object]) -> None:
+    """La matriz cerrada de baseline distingue sus cuatro adjudicaciones."""
+    identidades = ("already-satisfied-ok", "weak-check-ok", "adjudicacion-ausente",
+                   "adjudicacion-desconocida")
+    assert len(set(identidades)) == 4
+    with tempfile.TemporaryDirectory(prefix="aux-baseline-") as temporal:
+        arena = Path(temporal)
+        plantilla = (
+            "## v1\n\n| ID | Requisito | Evidencia | Comando/observación | Esperado | Baseline |\n"
+            "|---|---|---|---|---|---|\n| A | conducta | test | : | ok | GREEN_ALREADY |\n\n"
+            "- `id: A` · `commit: abc123` · `timestamp: 2026-01-01T00:00:00Z` · "
+            "`observado: exit 0; ok`{adjudicacion}\n")
+        for valor, codigo in (("already_satisfied", 0), ("weak_check", 0), ("", 1),
+                              ("desconocida", 1)):
+            sufijo = f" · `adjudicación: {valor}`" if valor else ""
+            contrato = arena / (valor or "ausente")
+            contrato.write_text(plantilla.format(adjudicacion=sufijo), encoding=ENCODING)
+            resultado = _ejecutar_auxiliar("contrato-baseline", [str(contrato)], arena)
+            assert resultado.returncode == codigo, (valor, resultado.stderr)
+
+
+def test_aux_rebaseline_worktree(_contexto: Optional[object]) -> None:
+    """La proyección separa la pareja reservada de un 125 ordinario."""
+    identidades = ("pareja-reservada-blocked", "codigo-125-proyeccion-valida-red",
+                   "sin-lf-blocked", "contenido-adicional-blocked")
+    assert len(set(identidades)) == 4
+    firma = next(item for item in FIRMAS if item.nombre == "rebaseline-worktree")
+    modulo = _cargar_modulo(firma)
+    assert not modulo._CONTRATO.es_envoltura_canonica("printf directo")
+    envuelta = shlex.join(["sh", "-c", modulo._CONTRATO.PROJECTION_WRAPPER_BODY,
+                           "sh", "printf predicado", "printf 'failures=0\\n'"])
+    assert modulo._CONTRATO.es_envoltura_canonica(envuelta)
+    with tempfile.TemporaryDirectory(prefix="aux-rebaseline-") as temporal:
+        salida = Path(temporal) / "salida"
+        for cuerpo, codigo, envuelta, esperado in (
+                (b"CROSS_IMPLEMENT_PROJECTION_BLOCKED\n", 125, True, "BLOCKED"),
+                (b"CROSS_IMPLEMENT_PROJECTION_BLOCKED\n", 125, False, "RED"),
+                (b"raw\nfailures=2\n", 125, True, "RED"),
+                (b"raw\nfailures=2", 0, True, "BLOCKED"),
+                (b"raw\nfailures=2\nextra\n", 0, True, "BLOCKED"),
+                (b"raw\ncount=12\nextra\n", 0, False, "GREEN_ALREADY")):
+            # La forma incluye el LF final; se escriben bytes para no normalizarlo.
+            salida.write_bytes(cuerpo)
+            assert modulo.clasificar_proyeccion(salida, codigo, envuelta) == esperado
+
+        repo = Path(temporal) / "repo"
+        repo.mkdir()
+        (repo / "tracked.txt").write_text("base\n", encoding=ENCODING)
+        for comando in (
+                ["git", "init", "-q"],
+                ["git", "config", "user.name", "V12"],
+                ["git", "config", "user.email", "v12@example.invalid"],
+                ["git", "add", "tracked.txt"],
+                ["git", "commit", "-qm", "base"]):
+            subprocess.run(comando, cwd=repo, capture_output=True, check=True)
+        sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True,
+            text=True, encoding=ENCODING, check=True).stdout.strip()
+        real_run = subprocess.run
+
+        def rebaseline(comando: str, estado_forzado: Optional[str] = None) -> str:
+            previo, argv = Path.cwd(), sys.argv
+            out = io.StringIO()
+            try:
+                os.chdir(repo)
+                sys.argv = [str(firma.archivo), sha, "V12", comando]
+                parche = (mock.patch.object(modulo, "clasificar_proyeccion",
+                                            return_value=estado_forzado)
+                          if estado_forzado is not None else contextlib.nullcontext())
+                with parche, contextlib.redirect_stdout(out):
+                    assert modulo.main() == 0
+            finally:
+                os.chdir(previo)
+                sys.argv = argv
+            return out.getvalue()
+
+        directo = rebaseline("printf 'count=12\\n'; exit 3")
+        assert "resultado: RED" in directo and "observado: exit 3; count=12" in directo
+        bloqueado = rebaseline("printf 'salida real\\n'; exit 3", "BLOCKED")
+        assert "resultado: BLOCKED" in bloqueado
+        assert "observado: exit 3; salida real" in bloqueado
+
+        def fallo_despues_de_crear(*args: object, **kwargs: object) -> subprocess.CompletedProcess:
+            if kwargs.get("shell"):
+                raise OSError("fallo inyectado al ejecutar la fila")
+            return real_run(*args, **kwargs)
+
+        worktree = repo.parent / f".rebaseline-wt-{os.getpid()}"
+        salida_temporal = Path(f"{worktree}.out")
+        cwd_previo, argv_previo = Path.cwd(), sys.argv
+        out, err = io.StringIO(), io.StringIO()
+        try:
+            os.chdir(repo)
+            sys.argv = [str(firma.archivo), sha, "V12", ":"]
+            with mock.patch.object(modulo.subprocess, "run", side_effect=fallo_despues_de_crear), \
+                    contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                codigo = modulo.main()
+        finally:
+            os.chdir(cwd_previo)
+            sys.argv = argv_previo
+            real_run(["git", "-C", str(repo), "worktree", "remove", "--force", str(worktree)],
+                     capture_output=True, check=False)
+            real_run(["git", "-C", str(repo), "worktree", "prune"],
+                     capture_output=True, check=False)
+            salida_temporal.unlink(missing_ok=True)
+        assert codigo == 1
+        assert out.getvalue() == ""
+        assert err.getvalue() == "BLOCKED V12: no se pudo ejecutar o limpiar el re-baseline\n"
+        listado = real_run(
+            ["git", "-C", str(repo), "worktree", "list", "--porcelain"],
+            capture_output=True, text=True, encoding=ENCODING, check=True).stdout
+        assert str(worktree) not in listado and not salida_temporal.exists()
+    _probar_dependencia_rota("rebaseline-worktree", ["sha", "V12", ":"])
+
+
+def test_aux_gate_modo_directo(_contexto: Optional[object]) -> None:
+    """La aprobación de reparación solo cabe entre sus anclas."""
+    identidades = ("reparacion-entre-kickoff-y-freeze",
+                   "reparacion-antes-de-kickoff-rechazada",
+                   "reparacion-despues-de-freeze-rechazada")
+    assert len(set(identidades)) == 3
+    base = [
+        "- `paso: derivar-tabla` · `actor: conductor` · `timestamp: 2026-01-01T00:00:00Z`",
+        "- `paso: ejecutar-baseline` · `actor: conductor` · `timestamp: 2026-01-01T00:01:00Z`",
+        "- `paso: aprobar-kickoff` · `actor: usuario` · `timestamp: 2026-01-01T00:02:00Z`",
+        "- `paso: congelar` · `actor: conductor` · `timestamp: 2026-01-01T00:04:00Z`",
+        "- `paso: despachar` · `actor: conductor` · `timestamp: 2026-01-01T00:05:00Z`",
+    ]
+    aprobacion = ("- `paso: aprobar-reparación` · `actor: usuario` · `token: 1:A:esperado-corregido:a1` · "
+                  f"`hash: {'a' * 64}` · `timestamp: 2026-01-01T00:03:00Z`")
+    with tempfile.TemporaryDirectory(prefix="aux-gate-directo-") as temporal:
+        arena = Path(temporal)
+        for lineas, codigo in ((base[:3] + [aprobacion] + base[3:], 0),
+                               ([aprobacion] + base, 1), (base + [aprobacion], 1)):
+            log = arena / "bitacora.md"
+            log.write_text("\n".join(lineas) + "\n", encoding=ENCODING)
+            resultado = _ejecutar_auxiliar("gate-modo-directo", [str(log)], arena)
+            assert resultado.returncode == codigo, resultado.stderr
+        tarde = aprobacion.replace("esperado-corregido", "cobertura-agregada")
+        log.write_text("\n".join(base + [tarde]) + "\n", encoding=ENCODING)
+        resultado = _ejecutar_auxiliar("gate-modo-directo", [str(log)], arena)
+        assert "GUARD:cobertura-antes-del-primer-congelamiento" in resultado.stderr
+        invalido = tarde.replace("cobertura-agregada:a1", "cobertura-agregada-a1")
+        log.write_text("\n".join(base + [invalido]) + "\n", encoding=ENCODING)
+        resultado = _ejecutar_auxiliar("gate-modo-directo", [str(log)], arena)
+        assert resultado.returncode == 1 and "GUARD:aprobacion-reparacion-invalida" in resultado.stderr
+        log.write_text("\n".join(base[:3] + [base[4], base[3]]) + "\n", encoding=ENCODING)
+        resultado = _ejecutar_auxiliar("gate-modo-directo", [str(log)], arena)
+        assert "GUARD:congelar-antes-de-despachar-orden-del-log" in resultado.stderr
+        assert "GUARD:congelar-antes-de-despachar-timestamps" not in resultado.stderr
+        log.write_text("\n".join(base[:3] + [base[3].replace("00:04:00", "00:06:00"), base[4]])
+                       + "\n", encoding=ENCODING)
+        resultado = _ejecutar_auxiliar("gate-modo-directo", [str(log)], arena)
+        assert "GUARD:congelar-antes-de-despachar-timestamps" in resultado.stderr
+        assert "GUARD:congelar-antes-de-despachar-orden-del-log" not in resultado.stderr
+        clasificacion = ("- `paso: clasificar-falla` · `actor: conductor` · `checkId: V1` · "
+                         "`clase: DESIGN_GAP` · `timestamp: 2026-01-01T00:00:30Z`")
+        lineas = base[:2] + [clasificacion + " (reconstruido)"] + base[2:]
+        log.write_text("\n".join(lineas) + "\n", encoding=ENCODING)
+        resultado = _ejecutar_auxiliar("gate-modo-directo", [str(log)], arena)
+        assert resultado.returncode == 1 and "GUARD:bitacora-linea-malformada" in resultado.stderr
+        lineas[2] = clasificacion
+        log.write_text("\n".join(lineas) + "\n", encoding=ENCODING)
+        resultado = _ejecutar_auxiliar("gate-modo-directo", [str(log)], arena)
+        assert resultado.returncode == 1 and "GUARD:kickoff-antes-de-congelar" in resultado.stderr
+    _probar_dependencia_rota("gate-modo-directo", ["bitacora.md"])
+
+
+def test_aux_ownership_log(_contexto: Optional[object]) -> None:
+    """Las ocho formas cerradas conservan ownership delegado e inline."""
+    identidades = ("delegado-canonico", "inline-canonico", "orquestador-canonico",
+                   "auxiliar-incompleto", "campos-comunes-incompletos", "delegado-par-prohibido",
+                   "no-implementable-ronda-cero", "implementacion-delta-fragmentado")
+    assert len(set(identidades)) == 8
+    delegado = ("Ownership:\n- `checkId: A` · `clase: IMPLEMENTATION_DEFECT` · "
+                 "`consumedRound: sí` · `evidencia: diff rojo`\n")
+    auxiliar = ("- `paso: clasificar-falla` · `actor: conductor` · `timestamp: 2026-01-01T00:00:00Z` · "
+                "`checkId: A` · `clase: VERIFICATION_DEFECT` · `consumedRound: no` · "
+                "`evidencia: salida divergente` · `delta: sha256:uno` · `fix_round: 0` · "
+                "`contract_version: 2` · `verification_defect_ordinal: 1`\n")
+    orquestado = auxiliar.replace("actor: conductor", "actor: orquestador")
+    no_impl = auxiliar.replace("VERIFICATION_DEFECT", "DESIGN_GAP").replace(
+        " · `contract_version: 2` · `verification_defect_ordinal: 1`", "")
+    casos = (
+        (delegado, 0), (auxiliar, 0), (orquestado, 0),
+        (auxiliar.replace(" · `delta: sha256:uno`", ""), 1),
+        (auxiliar.replace("`evidencia: salida divergente`", "`evidencia: `"), 1),
+        (delegado.replace("`evidencia: diff rojo`", "`evidencia: diff rojo` · `contract_version: 2`"), 1),
+        (no_impl, 0),
+        ("## Ronda 1\n" + delegado.replace("`evidencia: diff rojo`", "`evidencia: uno` · `delta: d` · `fix_round: 1`")
+         + "\n## Ronda 2\n" + delegado.replace("`evidencia: diff rojo`", "`evidencia: dos` · `delta: d` · `fix_round: 2` · `razón: cambió stderr`"), 1),
+    )
+    with tempfile.TemporaryDirectory(prefix="aux-ownership-log-") as temporal:
+        arena = Path(temporal)
+        for indice, (texto, codigo) in enumerate(casos):
+            log = arena / f"log-{indice}.md"
+            log.write_text(texto, encoding=ENCODING)
+            resultado = _ejecutar_auxiliar("ownership-log", [str(log)], arena)
+            assert resultado.returncode == codigo, (indice, resultado.stderr)
+        firma = next(item for item in FIRMAS if item.nombre == "ownership-log")
+        modulo = _cargar_modulo(firma)
+        linea = delegado.splitlines()[1]
+        citado = delegado + "\n## Ejemplo\n" + linea + "\n"
+        with mock.patch.object(modulo, "lineas_ownership", wraps=modulo.lineas_ownership) as leer:
+            assert modulo.clasificaciones(citado) == [("delegada", linea)]
+            assert leer.call_count == 1
+        log = arena / "citado.md"
+        log.write_text(citado, encoding=ENCODING)
+        assert _ejecutar_auxiliar("ownership-log", [str(log)], arena).returncode == 0
+        invalido = delegado.replace("diff rojo", "diff · rojo")
+        log.write_text(invalido, encoding=ENCODING)
+        assert _ejecutar_auxiliar("ownership-log", [str(log)], arena).returncode == 1
+    _probar_dependencia_rota("ownership-log", ["log.md"])
+
+
+def test_aux_ownership_presupuesto(_contexto: Optional[object]) -> None:
+    """El presupuesto usa apariciones físicas salvo para pares aprobados."""
+    identidades = ("delegado-dos-y-tercero", "inline-misma-ruta", "entorno-byte-identico",
+                   "integracion-cuatro-clases")
+    assert len(set(identidades)) == 4
+    with tempfile.TemporaryDirectory(prefix="aux-ownership-budget-") as temporal:
+        arena = Path(temporal)
+        impl = ("Ownership:\n" + "\n".join(
+            f"- `checkId: A` · `clase: IMPLEMENTATION_DEFECT` · `consumedRound: sí` · `evidencia: e{n}`"
+            for n in range(3)) + "\n")
+        vacio = arena / "vacio.md"
+        vacio.write_text("", encoding=ENCODING)
+        log = arena / "impl.md"
+        log.write_text(impl, encoding=ENCODING)
+        assert _ejecutar_auxiliar("ownership-presupuesto", [str(log), str(vacio), "2"], arena).returncode == 1
+        mismo = arena / "mismo.md"
+        mismo.write_text(
+            "Ownership:\n- `checkId: V` · `clase: VERIFICATION_DEFECT` · `consumedRound: no` · `evidencia: x`\n\n"
+            "- `paso: aprobar-reparación` · `checkId: V` · `contract_version: 2` · "
+            "`verification_defect_ordinal: 1`\n", encoding=ENCODING)
+        assert _ejecutar_auxiliar("ownership-presupuesto", [str(mismo), str(mismo), "2"], arena).returncode == 0
+        entorno = arena / "entorno.md"
+        entorno.write_text(
+            "Ownership:\n- `checkId: E` · `clase: ENVIRONMENT_FAILURE` · `consumedRound: no` · `evidencia: x`\n"
+            "- `checkId: E` · `clase: ENVIRONMENT_FAILURE` · `consumedRound: no` · `evidencia: x`\n",
+            encoding=ENCODING)
+        assert _ejecutar_auxiliar("ownership-presupuesto", [str(entorno), str(vacio), "2"], arena).returncode == 0
+        cuatro = arena / "cuatro.md"
+        cuatro.write_text(
+            "Ownership:\n- `checkId: I` · `clase: IMPLEMENTATION_DEFECT` · `consumedRound: sí` · `evidencia: x`\n"
+            "- `checkId: V` · `clase: VERIFICATION_DEFECT` · `consumedRound: no` · `evidencia: x`\n"
+            "- `checkId: E` · `clase: ENVIRONMENT_FAILURE` · `consumedRound: no` · `evidencia: x`\n"
+            "- `checkId: D` · `clase: DESIGN_GAP` · `consumedRound: no` · `evidencia: x`\n",
+            encoding=ENCODING)
+        assert _ejecutar_auxiliar("ownership-presupuesto", [str(cuatro), str(vacio), "2"], arena).returncode == 0
+        cuatro.write_text(cuatro.read_text(encoding=ENCODING).replace("evidencia: x", "evidencia: x · y", 1),
+                          encoding=ENCODING)
+        resultado = _ejecutar_auxiliar("ownership-presupuesto", [str(cuatro), str(vacio), "2"], arena)
+        assert resultado.returncode == 1 and "clasificación inválida" in resultado.stderr
+        aprobacion_mala = arena / "aprobacion-mala.md"
+        aprobacion_mala.write_text(
+            "- `paso: aprobar-reparación` · `checkId: V` · `contract_version: dos` · "
+            "`verification_defect_ordinal: 1`\n", encoding=ENCODING)
+        resultado = _ejecutar_auxiliar("ownership-presupuesto", [str(vacio), str(aprobacion_mala), "2"], arena)
+        assert resultado.returncode == 1 and "versión u ordinal" in resultado.stderr
+        resultado = _ejecutar_auxiliar("ownership-presupuesto", [str(vacio), str(arena / "ausente"), "2"], arena)
+        assert resultado.returncode == 1 and "archivo ilegible" in resultado.stderr
+    _probar_dependencia_rota("ownership-presupuesto", ["log.md", "aprobaciones.md", "2"])
+
+
+def test_aux_promocion_tasks_ready(_contexto: Optional[object]) -> None:
+    """La promoción publica su matriz cerrada de dieciséis identidades."""
+    firma = next(item for item in FIRMAS if item.nombre == "promocion-tasks-ready")
+    modulo = _cargar_modulo(firma)
+    modulo.verificar_promocion()
+    with tempfile.TemporaryDirectory(prefix="aux-promocion-dependencia-") as temporal:
+        estado = modulo.preparar_estado_refresh(Path(temporal))
+        previo, sys.argv = sys.argv, [str(firma.archivo)] + [str(ruta) for ruta in estado[:4]]
+        stderr = io.StringIO()
+        try:
+            with mock.patch.object(modulo, "_cargar_invariantes", return_value=None), \
+                    contextlib.redirect_stderr(stderr):
+                codigo = modulo.main()
+        finally:
+            sys.argv = previo
+        assert codigo == 99 and "ARNES:promocion-tasks-ready contrato-helper-no-cargable" in stderr.getvalue()
+
+
+def test_aux_cadena_de_invocacion(_contexto: Optional[object]) -> None:
+    """Las cinco guardas aparecen invocadas y con su salida leída."""
+    contrato = (RAIZ / "skills/cross-implement/contrato-verificacion.md").read_text(encoding=ENCODING)
+    skill = (RAIZ / "skills/cross-implement/SKILL.md").read_text(encoding=ENCODING)
+    texto = contrato + "\n" + skill
+    marcadores = (
+        "contrato-invariantes.py <contrato> <log_de_aprobaciones> candidate",
+        "contrato-invariantes.py <contrato> <log_de_aprobaciones> final",
+        "código de salida de contrato-invariantes", "stderr de contrato-invariantes",
+        "ownership-log.py <log>", "código de salida de ownership-log", "stderr de ownership-log",
+        "ownership-presupuesto.py <log> <log_de_aprobaciones> <max_fix_rounds>",
+        "código de salida de ownership-presupuesto", "stderr de ownership-presupuesto",
+        "rebaseline-worktree.py", "código de salida de rebaseline-worktree",
+        "stdout de rebaseline-worktree", "gate-modo-directo.py <bitacora>",
+        "código de salida de gate-modo-directo", "stderr de gate-modo-directo",
+    )
+    assert len(marcadores) == 16 and all(marcador in texto for marcador in marcadores)
+
+
+def test_aux_verify_ejecuta(_contexto: Optional[object]) -> None:
+    """La guarda de verify coteja las veinte sedes de producción y recuperación."""
+    script = RAIZ / "skills/sdd-flow/scripts/verify-ejecuta.py"
+    argumentos = [str(RAIZ / "skills/sdd-flow/SKILL.md"),
+                  str(RAIZ / "skills/sdd-flow/reference.md")]
+    resultado = _ejecutar(script, argumentos, RAIZ)
+    assert resultado.returncode == 0, resultado.stderr
+
+
+CASOS.extend((
+    ("contrato-auxiliar:contrato-baseline", "contrato-auxiliares-v1", test_aux_contrato_baseline),
+    ("contrato-auxiliar:rebaseline-worktree", "contrato-auxiliares-v1", test_aux_rebaseline_worktree),
+    ("contrato-auxiliar:gate-modo-directo", "contrato-auxiliares-v1", test_aux_gate_modo_directo),
+    ("contrato-auxiliar:ownership-log", "contrato-auxiliares-v1", test_aux_ownership_log),
+    ("contrato-auxiliar:ownership-presupuesto", "contrato-auxiliares-v1", test_aux_ownership_presupuesto),
+    ("contrato-auxiliar:promocion-tasks-ready", "contrato-auxiliares-v1", test_aux_promocion_tasks_ready),
+    ("contrato-auxiliar:cadena-de-invocacion", "contrato-auxiliares-v1", test_aux_cadena_de_invocacion),
+    ("contrato-auxiliar:verify-ejecuta", "contrato-auxiliares-v1", test_aux_verify_ejecuta),
+))

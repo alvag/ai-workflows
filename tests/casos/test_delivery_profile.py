@@ -711,7 +711,7 @@ def test_sdd_flow_consumer_wiring(_ctx: Optional[object] = None) -> None:
             f"contract_frozen_version: 1\ncontract_frozen_hash: {'a' * 64}\n--- \n",
             encoding="utf-8",
         )
-        (arena / "log.md").write_text("log\n", encoding="utf-8")
+        (arena / "bitacora.md").write_text("log\n", encoding="utf-8")
         (arena / "tasks.md").write_text(
             "- [ ] **T1 — sample** · cubre: AC-1\n  - **Por qué:** sample\n",
             encoding="utf-8",
@@ -723,7 +723,9 @@ def test_sdd_flow_consumer_wiring(_ctx: Optional[object] = None) -> None:
         assert fingerprints.returncode == 0, fingerprints.stderr
         for name, helper_text in (("ausente", None), ("incompatible", "DELIVERY_PROFILE_CONTRACT_VERSION = 2\n")):
             for consumer, args, expected in (
-                (CONSUMERS["sdd-flow:promotion"], ["plan.md", "log.md"],
+                (CONSUMERS["sdd-flow:promotion"],
+                 ["plan.md", "bitacora.md", "sequence-ledger.yml",
+                  str(arena / ".cross-model/active/cross-implement")],
                  f"ARNES:promocion-tasks-ready delivery-profile-helper-{name}"),
                 (CONSUMERS["sdd-flow:fingerprints"],
                  ["calcular", "--huella", "coverage", "--fuente", "tasks.md",
@@ -759,7 +761,9 @@ def test_sdd_flow_consumer_wiring(_ctx: Optional[object] = None) -> None:
             )
             result = subprocess.run(
                 [sys.executable, str(CONSUMERS["sdd-flow:promotion"]),
-                 str(arena / "plan.md"), str(arena / "log.md")],
+                 str(arena / "plan.md"), str(arena / "bitacora.md"),
+                 str(arena / "sequence-ledger.yml"),
+                 str(arena / ".cross-model/active/cross-implement")],
                 capture_output=True, text=True, check=False,
             )
             assert result.returncode == code, result.stderr

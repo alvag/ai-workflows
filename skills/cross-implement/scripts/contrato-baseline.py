@@ -1,7 +1,7 @@
 """Predicado: un registro por fila, en el mismo orden y sin duplicados; todo registro con commit y
 timestamp ISO-8601; evidencia dentro de su enum; observado no vacío en cada RED o GREEN_ALREADY, con
 exit code si la evidencia es ejecutable y sin forma de ejecutable si es manual; adjudicación
-already_satisfied en cada GREEN_ALREADY y justificación en cada NOT_APPLICABLE; y ninguno de esos
+already_satisfied o weak_check en cada GREEN_ALREADY y justificación en cada NOT_APPLICABLE; y ninguno de esos
 cinco campos aparece como columna de la tabla."""
 
 from __future__ import annotations
@@ -116,9 +116,11 @@ def main() -> int:
                 print(f"GUARD:adjudicacion-obligatoria {identificador}: observado de evidencia manual con forma de ejecutable",
                       file=sys.stderr)
                 rc = 1
-        if estados.get(identificador) == "GREEN_ALREADY" and "`adjudicación: already_satisfied`" not in registro:
+        if estados.get(identificador) == "GREEN_ALREADY" and not any(
+                marcador in registro for marcador in (
+                    "`adjudicación: already_satisfied`", "`adjudicación: weak_check`")):
             print(
-                f"GUARD:adjudicacion-obligatoria {identificador}: GREEN_ALREADY sin adjudicación already_satisfied",
+                f"GUARD:adjudicacion-obligatoria {identificador}: GREEN_ALREADY sin adjudicación already_satisfied o weak_check",
                 file=sys.stderr,
             )
             rc = 1

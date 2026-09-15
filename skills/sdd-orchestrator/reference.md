@@ -97,6 +97,8 @@ Vive en `<contenedora>/.sdd/<id>/manifest.yml`. Es la fuente de verdad de la coo
 id: ABC-123                    # clave del ticket o slug del título
 master_spec: .sdd/ABC-123/master-spec.md
 created_at: 2026-06-03T12:00:00-03:00
+integration_contract_frozen_version: 1 # versión materializada del contrato de integración
+integration_contract_frozen_hash: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 delivery_profile: expedited    # standard | expedited; elección global all-or-nothing
 risk: low                      # low | high | unknown; fold de integration y todos los repos
 delivery_assessment:           # estado auditable; lista, nunca mapa por scope
@@ -315,7 +317,8 @@ algo, no **después de qué**: dos eventos pueden compartirlo porque la resoluci
 y ordenar por él dejaría ese empate sin resolver.
 
 `paso` es también un enum cerrado, con un valor por camino instrumentado: `cerrar-tarea`,
-`despachar-repo`, `promover-repo`, `liberar-lock` y `ejecutar-evidencia`. `actor` es quien intentó la
+`despachar-repo`, `promover-repo`, `liberar-lock`, `ejecutar-evidencia`,
+`adoptar-estado-contrato`, `aprobar-reparación` y `clasificar-falla`. `actor` es quien intentó la
 transición —el orquestador, o el dueño de ejecución de la tarea cuando la acción es externa o
 manual—. `objeto` es qué se intentó mover: el `id` de la tarea, el `path` del repo o el recurso del
 lock. Una línea por evento:
@@ -323,6 +326,17 @@ lock. Una línea por evento:
 ```markdown
 - `id: 7` · `paso: despachar-repo` · `actor: orquestador` · `objeto: servicio-b` · `resultado: consumado` · `timestamp: 2026-06-03T14:22:31-03:00`
 ```
+
+Los tres caminos contractuales conservan esos seis campos. `adoptar-estado-contrato` usa
+`actor: orquestador`, `objeto: contrato-integracion:v<n>`, `hash` y
+`modo: materializacion | adopcion-retroactiva`. El modo retroactivo solo constata unas claves
+preexistentes y aparece una vez en toda la corrida. `aprobar-reparación` usa `actor: usuario`, el
+mismo dominio de `objeto`, `token` y `hash`; una corrección post-congelamiento agrega `checkId`,
+`contract_version` y `verification_defect_ordinal`, mientras la adopción legado los omite.
+`clasificar-falla` usa `actor: orquestador`, el ID de la tarea como `objeto`, `checkId`, `clase`,
+`consumedRound`, `evidencia`, `fix_round`, el mapa canónico `sha`, su `delta: repos-sha256:<digest>`
+y, para `VERIFICATION_DEFECT`, versión y ordinal prospectivos. Siempre lleva
+`resultado: consumado`: constata una clasificación y no intenta cambiar estado.
 
 **El resultado y su efecto.** `resultado` admite exactamente dos valores, `consumado` y `rechazado`.
 
@@ -388,7 +402,8 @@ después se movió.
 ```
 
 **Este esquema mezcla estado de corrida (`id`, `created_at`, `master_spec`, `delivery_profile`, `risk`,
-`delivery_assessment`, `repos`, `orchestration_tasks`) con configuración.** Las claves de configuración son propias de esta skill (`branch_prefix`,
+`delivery_assessment`, `repos`, `orchestration_tasks`, `integration_contract_frozen_version` y
+`integration_contract_frozen_hash`) con configuración.** Las claves de configuración son propias de esta skill (`branch_prefix`,
 `execution_mode`, `implement_mode`, `cross_model.*`) salvo `cross_review.*` y `co_explore.*`, cuyo enum lo define su
 dueño: `cross_review.*` en `cross-review/SKILL.md` → "Configuración" y `co_explore.*` en
 `co-explore/SKILL.md` → "Configuración". Solo esas 13 claves, listas para
@@ -555,8 +570,9 @@ sin fila y la cobertura bidireccional no cerraría. Eliminarla para "simplificar
 
 ### Gate de la Fase 3 y agregación
 
-El contrato de integración pasa por un gate **equivalente** al que `cross-implement` aplica antes de
-delegar (`cross-implement/contrato-verificacion.md` → "El gate previo al dispatch"): versión vigente
+El contrato de integración pasa por el régimen global de
+`cross-implement/contrato-verificacion.md` → "Qué es invariante entre versiones" y por el gate que
+esa misma autoridad aplica antes de delegar (`cross-implement/contrato-verificacion.md` → "El gate previo al dispatch"): versión vigente
 identificada, cobertura bidireccional contra los AC `[integration]`, campos obligatorios presentes y
 baseline resuelto en toda fila, ninguna en `BLOCKED`. Ese gate corre dos veces con el mismo criterio
 y distinto efecto: en la Fase 1, después de la aprobación humana, es lo que habilita el congelamiento
@@ -566,6 +582,17 @@ versión ni toca el conjunto de filas: si algo no cierra, la Fase 3 se detiene e
 contrato sobre la marcha.
 
 La enumeración inmediata no es exhaustiva; manda el conjunto canónico completo de la sede enlazada.
+La restricción local conserva completo el conjunto de filas de integración desde la fase inicial,
+pero permite `esperado-corregido` y `pertinencia-corregida`. `verificacion-corregida` solo acompaña
+una corrección de pertinencia que migra a `fallos-*`, o repara mecánicamente el proyector de una fila
+que ya era `fallos-*`, conserva su predicado y tiene una clasificación previa del mismo par.
+
+La ventana transaccional ejecuta `orchestration-state.py` con `candidate`; luego ejecuta la guarda
+global con `final`, registra `adoptar-estado-contrato` consumado, escribe atómicamente
+`integration_contract_frozen_version` y `integration_contract_frozen_hash`, y vuelve a ejecutar
+`orchestration-state.py` con `final`, todo antes de cualquier evidencia. Fuera de esa ventana la fase
+es siempre `final`; `candidate` nunca es un valor por defecto. En legado, una única
+`adopcion-retroactiva` liga las claves ya válidas antes de la primera ejecución ordinaria.
 
 El gate no es un trámite copiado: es lo que hace que sacar estas filas del contrato de cada repo sea
 **moverlas a otro gate** y no dejarlas sin ninguno. Sin él, la separación las volvería invisibles —
@@ -894,15 +921,15 @@ tarea sin fila.
 
 
 `python_skill <skill_dir>/scripts/orchestration-state.py <manifest> <master-spec> <contrato>
-<bitácora> <repo-plan> [<repo-plan> ...]` es la única de las tres que lee la **bitácora**, y por eso la única que
+<bitácora> <phase> <repo-plan> [<repo-plan> ...]` es la única de las tres que lee la **bitácora**, y por eso la única que
 juzga **acciones** en vez de estados. El caso que lo resume: el estado final de dos repos puede ser
 idéntico —uno esperó a que se cerrara su gate, el otro se despachó igual y volvió— y lo único que los
 distingue es qué eventos quedaron registrados y en qué orden. De ahí que varios de sus rojos tengan
 un control verde equivalente que difiere solo en el `resultado` del evento: un despacho `consumado`
 con el gate abierto falla, y el mismo intento `rechazado` pasa limpio.
 
-Recibe cuatro posiciones fijas —el `manifest.yml`, la `master-spec.md`, el contrato de integración y
-la bitácora— más cero o más `plan.md` como argumentos separados; por eso cada ruta puede contener
+Recibe cinco posiciones fijas —el `manifest.yml`, la `master-spec.md`, el contrato de integración,
+la bitácora y `candidate | final`— más cero o más `plan.md` como argumentos separados; por eso cada ruta puede contener
 espacios y puede inspeccionar el estado antes de recibir el primer plan. Un argumento de plan vacío
 es inválido y no se interpreta como `.`. Emite **un solo diagnóstico por corrida**. Antes del orden histórico, valida el assessment y los carriers del manifest; para cada
 plan recibido, exige el par global y la `complexity` local. Esto permite guardar un repo por vez y
@@ -920,6 +947,17 @@ un modelo inválido no hay nada que agregar, y un `ESTADO:done` al lado de un `G
 mensaje que contradice su propio veredicto. Y `owner: UNASSIGNED` es lo único que **no** bloquea:
 sale como `REPORTE:` con exit 0 mientras la tarea no intente cerrar, porque declarar trabajo todavía
 sin asignar es justo para lo que el centinela existe.
+
+La guarda conserva literalmente `parsed = helper.read_plan_frontmatter(path)` y valida primero
+perfil, assessment, fold y carriers. Después carga por ruta absoluta
+`cross-implement/scripts/contrato-invariantes.py::parsear_reparaciones`; una instalación parcial
+falla cerrada con `ARNES:`. Su capa local comprueba las claves congeladas, el orden uno a uno entre
+aprobaciones y anclas `adoptar-estado-contrato`, la prohibición de `cobertura-agregada` posterior al
+primer ancla y los dos emparejamientos restringidos de verificación. No crea un segundo parser de
+reparaciones ni sustituye la validación global.
+La frontera sigue remitida por título exacto a
+`cross-implement/contrato-verificacion.md` → "Qué es invariante entre versiones" y
+`cross-implement/contrato-verificacion.md` → "El gate previo al dispatch".
 
 `integracion-ownership.py <manifest> [<repo-plan> ...]` aplica el mismo parser estricto a cero o más
 planes y contrasta su par con los scalars raíz del manifest antes de revisar las referencias de

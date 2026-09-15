@@ -176,6 +176,16 @@ donde la mentira queda escrita, no la imposibilidad de mentir. Es la misma disti
 sellado en este documento —integridad no es contenido—, y decirla acá evita que la regla prometa una
 garantía que su guarda no da.
 
+**Los tres `baseline_tipo: fallos-*` se miden cinco veces antes de escribir ese registro.** El
+conductor hace una medición en el checkout de derivación y después cuatro invocaciones separadas de
+`rebaseline-worktree.py`, todas sobre el mismo commit y con el mismo comando. Conserva de cada una
+la clasificación y la proyección canónica: las cinco parejas `resultado` + `observado` deben ser
+idénticas y cada `resultado` debe ser `RED` o `GREEN_ALREADY`. Si una pareja diverge, una invocación
+falla o cualquiera resulta `BLOCKED`, no se escribe el registro ni se sella la versión; la fila queda
+`BLOCKED` mientras se re-deriva un predicado estable. El registro final conserva la medición directa;
+las otras cuatro acreditan repetibilidad observada, no determinismo. `baseline_tipo: otro` no paga
+esta serie y sigue el procedimiento ordinario de una sola medición.
+
 **Un contrato congelado antes de esta regla se repara re-midiendo, no volviendo al diseño.** El
 registro lleva `commit` justamente para eso: el código que se midió sigue disponible, y
 `ownership.md` → «Re-baseline en worktree aislado» es el procedimiento que lo recupera —
@@ -222,35 +232,110 @@ del requisito discrimina y se evalúa contra esa subafirmación; el conjunto cie
 las subafirmaciones declaradas cubre la afirmación entera. Así, ante un requisito `A ∧ B`, una fila
 puede discriminar `A` sin pretender discriminar por sí sola el requisito completo.
 
-Al evaluar la pertinencia hay **dos cosas que establecer y un solo test**:
+Al evaluar la pertinencia hay **dos insumos que establecer y dos contrafactuales inseparables**:
 
 1. cargar el requisito **autoritativo** desde su sede, no la paráfrasis de la columna `Requisito`;
 2. identificar qué observa la combinación de `Comando/observación` **más** `Esperado`.
 
-Con esos dos insumos se aplica un único contrafactual: *¿puede cumplirse el `Esperado` mientras la
-afirmación del requisito es falsa?* Si la respuesta es sí, la fila no es pertinente. El mismo test
-se aplica cuando `Comando/observación` contiene una observación sin comando.
+Con esos dos insumos se pregunta: *¿puede cumplirse el `Esperado` mientras la afirmación del
+requisito es falsa?* y *¿puede fallar el `Esperado` mientras esa afirmación es verdadera?* Si
+cualquiera de las respuestas es sí, la fila no es pertinente: la primera detecta falsos verdes y la
+segunda, falsos rojos causados por una vara sobre-especificada. Los dos contrafactuales se aplican
+también cuando `Comando/observación` contiene una observación sin comando.
 
 ### Qué es invariante entre versiones
 
-El contrato se puede corregir; lo que no se puede es **ablandar**. Dos invariantes lo sostienen, y
-se comprueban leyendo el documento actual —no dependen de ningún registro histórico:
+El contrato se puede corregir; lo que no se puede es **ablandar**. La regla ya no es una igualdad
+simétrica entre versiones: es un contrato **direccional**. Dos cosas nunca cambian, y todo lo demás
+solo cambia a través de una de cuatro operaciones nombradas, cada una con su registro y su
+aprobación:
 
-1. **El conjunto de `ID` es invariante.** Una versión nueva que agregue o quite un ID se rechaza.
-2. **Dentro de cada fila, `Requisito` y `Esperado` también.** Se comparan **por ID**, no por
-   posición.
+1. **Ningún `ID` previo desaparece**, y su `Requisito` es byte-idéntico en toda versión posterior.
+   No hay operación que autorice cambiarlo: cambiar `Requisito` es rediseñar el check, no repararlo.
+2. **Todo lo demás de una fila previa —`Esperado`, la línea `- pertinencia:` que la acompaña,
+   `Evidencia` y `Comando/observación`— es byte-idéntico salvo que la diferencia esté cubierta por
+   una de las cuatro operaciones siguientes, cada una con su registro `- reparación:` (o, para la
+   migración legado, `- adopción:`) y su aprobación `aprobar-reparación` ligados por token y hash.**
 
-Es decir: una versión nueva puede cambiar **únicamente** `Evidencia` y `Comando/observación`, y solo
-conservando el poder discriminante de la fila y repitiendo el baseline. Reparar cómo se mide algo es
-legítimo; cambiar qué se mide o qué resultado cuenta como bueno **no es reparar una prueba, es
-rediseñar el requisito**, y vuelve al gate de diseño clasificado como `DESIGN_GAP` (ver "Ownership
-de fallas"). Si la fila corregida arroja `GREEN_ALREADY`, pasa por la adjudicación antes de
-congelarse.
+| Operación | Qué autoriza a cambiar | Registro ligado |
+|---|---|---|
+| `cobertura-agregada` | agrega un `ID` nuevo (con su fila, su línea `- pertinencia:` y su aprobación previa al primer congelamiento) | uno por `ID` nuevo |
+| `esperado-corregido` | la celda `Esperado` de un `ID` existente | uno por `(ID, versión)` |
+| `pertinencia-corregida` | la línea `- pertinencia:` de un `ID` existente | uno por `(ID, versión)` |
+| `verificacion-corregida` | `Evidencia`, `Comando/observación`, o ambas, de un `ID` existente | uno por `(ID, versión)`, con presupuesto de dos por `ID` tras el primer congelamiento |
 
-La segunda invariante es la que hace útil a la primera. Sin ella basta clasificar el problema como
-`VERIFICATION_DEFECT` y emitir una versión donde la misma fila espera `HTTP 200` en vez de
-`HTTP 201`, o donde el comando pasa siempre: los IDs no cambiaron, la cobertura sigue completa, la
-cadena cierra — y el contrato quedó vacío.
+Fuera de estas cuatro operaciones (y de la adopción legado de «Contratos anteriores a esta regla»,
+más abajo) ninguna diferencia se tolera: la guarda mecánica `contrato-invariantes.py` (ver «El gate
+previo al dispatch») la rechaza aunque el conjunto de `ID` se conserve intacto. La dirección de cada
+operación es la que impide el ablandamiento simétrico: no basta con que "algo cambió y algo se
+registró", el registro tiene que declarar **cuál** de las cuatro cosas cambió, con la huella exacta
+del valor anterior, y una aprobación humana tiene que ligarse a ese registro por token y hash — el
+contrato no se autocertifica.
+
+`Baseline` no es una quinta entrada semántica de esa matriz: es el resultado medido de la versión.
+Toda reparación vuelve a medir la fila sobre el commit que corresponda y puede cambiar esa celda y
+su registro sin una operación adicional; la guarda valida la forma y adjudicación del resultado
+nuevo. `baseline_actualizado` existe solo para hacer explícita esa excepción durante la adopción
+legado, cuya gramática conserva por defecto la celda anterior.
+
+Los tres formatos siguientes son las gramáticas cerradas que la guarda mecánica reconoce; viven en
+esta sede y no en el código, que solo las interpreta.
+
+#### `contrato-verificacion.md::reparación-v1`
+
+Una línea `- reparación:` vive dentro del bloque hasheado de la versión que la declara (nunca en la
+tabla ni junto a los registros `- \`id: ...\``), con esta forma y orden cerrados:
+
+```
+- reparación: `version_previa: <n>` · `id: <ID>` · `operación: <cobertura-agregada|esperado-corregido|pertinencia-corregida|verificacion-corregida>` · `token: <token>`[ · <campos condicionales>]
+```
+
+`token` tiene la forma `<versión-candidata>:<ID>:<operación>:a<ordinal>`, único en el log del
+reparto. Los campos condicionales, según `operación`:
+
+- `esperado-corregido` agrega `` `esperado_previo_sha256: <64 hex>` ``: SHA-256 sobre los bytes
+  UTF-8 exactos del valor de la celda `Esperado` en la versión previa.
+- `pertinencia-corregida` agrega `` `pertinencia_previa_sha256: <64 hex>` ``: SHA-256 sobre los
+  bytes UTF-8 de la línea `- pertinencia:` previa completa, sin su terminador de línea.
+- `verificacion-corregida` agrega `` `campos: <evidencia|comando|evidencia+comando>` `` y, según ese
+  valor, `` `evidencia_previa_sha256: <64 hex>` `` o `` `comando_previo_sha256: <64 hex>` `` (o
+  ambos), cada uno sobre los bytes UTF-8 de la celda previa correspondiente.
+- `cobertura-agregada` no agrega campos: el `ID` nuevo no tiene versión previa que hashear.
+
+#### `contrato-verificacion.md::adopción-v1`
+
+La migración legado de «Contratos anteriores a esta regla» usa, en lugar de una reparación por fila,
+una única línea por versión:
+
+```
+- adopción: `version_previa: <n>` · `perfil: pertinencia-v1` · `baseline_reutilizado: <ID,ID,...|ninguno>` · `proyeccion_ajustada: <ID,ID,...|ninguno>` · `baseline_actualizado: <ID,ID,...|ninguno>` · `estado: <final|intermedia>` · `token: <versión-candidata>:adopción-pertinencia:a<ordinal>`
+```
+
+`estado: intermedia` marca una adopción que todavía no revalidó los dos contrafactuales de
+«Pertinencia: poder discriminante por fila» en todas sus filas: completa la fase `candidate` de la
+guarda y recibe su aprobación como paso de migración, pero nunca `final` ni `paso: congelar`. La
+versión siguiente, ya con `estado: final`, es la que se congela.
+
+La envoltura de proyección canónica vive únicamente en
+`contrato-invariantes.py::PROJECTION_WRAPPER_BODY`; su SHA-256 es
+`8dd5a58709576b4f7d7262a67012114de6a834769ce49a88f51d46ed675ff2bd`. La documentación fija el
+efecto y el digest, no una segunda copia de sus bytes.
+
+#### `contrato-verificacion.md::aprobar-reparación-v1`
+
+La línea auxiliar que registra la aprobación humana de una reparación o adopción, común a los
+repartos con gate y con kickoff:
+
+```
+- `paso: aprobar-reparación` · `actor: usuario` · `token: <token>` · `hash: <hash de la versión candidata>` · `timestamp: <ISO-8601>`
+```
+
+Para una operación `esperado-corregido`, `pertinencia-corregida` o `verificacion-corregida`
+posterior al primer congelamiento, la misma línea agrega `` `checkId: <ID>` ``,
+`` `contract_version: <n>` `` y `` `verification_defect_ordinal: <n>` ``; una aprobación de
+`cobertura-agregada` o de adopción nunca los lleva. El `hash` es el SHA-256 canónico de la versión
+candidata (el mismo cómputo que usa `contrato-cadena.py`: el bloque de la versión con su propio
+campo `hash: ` vaciado antes de hashear).
 
 #### Reparación de una fila no pertinente
 
@@ -259,10 +344,13 @@ reparación depende del momento y de los campos que sea necesario cambiar:
 
 | Momento o cambio necesario | Clasificación y salida |
 |---|---|
-| Antes de congelar | Reescribir la fila y volver a medirla. |
-| Ya congelada; alcanza con cambiar `Comando/observación` **o** `Evidencia` | `VERIFICATION_DEFECT`: emitir una versión nueva. Son exactamente los campos que las invariantes autorizan a cambiar. |
-| Ya congelada; hay que cambiar `Requisito` o `Esperado` | `DESIGN_GAP`: volver al diseño. |
-| Ya congelada; hay que agregar o quitar un `ID` | `DESIGN_GAP`: volver al gate de diseño, porque el conjunto de `ID` es invariante entre versiones. |
+| Antes de congelar | Reescribir la fila y volver a medirla; sin registro ni aprobación todavía. |
+| Ya congelada; alcanza con cambiar `Esperado` | `VERIFICATION_DEFECT`: emitir una versión con registro `esperado-corregido` y su `aprobar-reparación`. |
+| Ya congelada; alcanza con cambiar la línea `- pertinencia:` | `VERIFICATION_DEFECT`: emitir una versión con registro `pertinencia-corregida` y su `aprobar-reparación`. |
+| Ya congelada; alcanza con cambiar `Comando/observación` **o** `Evidencia` | `VERIFICATION_DEFECT`: emitir una versión con registro `verificacion-corregida` y su `aprobar-reparación`. Presupuesto de dos por `ID`; al tercero, se reclasifica `DESIGN_GAP`. |
+| Ya congelada; hay que cambiar `Requisito` | `DESIGN_GAP`: volver al diseño. Ninguna operación autoriza tocar `Requisito`. |
+| Ya congelada; hay que agregar un `ID` | `cobertura-agregada`, con aprobación **previa** al primer congelamiento del flujo; si el congelamiento ya ocurrió, es `DESIGN_GAP`. |
+| Ya congelada; hay que quitar un `ID` | `DESIGN_GAP`: ningún `ID` previo puede desaparecer. |
 
 Un contrato congelado antes de esta regla no necesita discriminador: si su gate encuentra una fila
 no pertinente, la reparación entra por esta misma matriz.
@@ -382,7 +470,28 @@ fallido.
 | 3 | **cobertura bidireccional** | queda un requisito en alcance sin fila, o una fila sin requisito. |
 | 4 | **campos obligatorios presentes** | falta una columna o sobra una; un valor cae fuera de los enums; una fila no tiene registro de baseline, o el registro no tiene `commit` y `timestamp`; una `Evidencia` cae fuera de su enum; falta `observado` en `RED` o `GREEN_ALREADY`, o el que hay no cumple la forma que su evidencia exige; un `GREEN_ALREADY` sin `adjudicación` o un `NOT_APPLICABLE` sin `justificación`. |
 | 5 | **baseline resuelto en toda fila** | alguna fila quedó sin estado, o en `BLOCKED`. |
-| 6 | **pertinencia** | una fila no establece los dos insumos exigidos en «Pertinencia: poder discriminante por fila»; el contrafactual responde que sí; o la unión de las subafirmaciones declaradas no cubre la afirmación entera. |
+| 6 | **pertinencia** | una fila no establece los dos insumos exigidos en «Pertinencia: poder discriminante por fila»; cualquiera de sus dos contrafactuales responde que sí; o la unión de las subafirmaciones declaradas no cubre la afirmación entera. |
+
+Como parte de la segunda comprobación, ejecutar
+`python_skill <skill_dir>/scripts/contrato-invariantes.py <contrato> <log_de_aprobaciones> <fase>`
+y leer su código de salida y stderr. `<fase>` es `candidate` antes del `STOP`, cuando la aprobación
+de la propia versión candidata todavía puede no existir pero toda aprobación histórica ya debe
+cerrar, y `final` después de registrar `aprobar-reparación` y antes de invocar
+`promocion-tasks-ready.py` o despachar, cuando la versión vigente también debe estar aprobada. Un
+código distinto de cero detiene el dispatch igual que cualquier otra comprobación de esta tabla.
+
+La cadena concreta ejecuta
+`contrato-invariantes.py <contrato> <log_de_aprobaciones> candidate` antes del STOP y
+`contrato-invariantes.py <contrato> <log_de_aprobaciones> final` después de la aprobación. El
+conductor lee el código de salida de contrato-invariantes y el stderr de contrato-invariantes en
+ambas fases. También ejecuta `ownership-log.py <log>` y lee el código de salida de ownership-log y
+el stderr de ownership-log; ejecuta
+`ownership-presupuesto.py <log> <log_de_aprobaciones> <max_fix_rounds>` y lee el
+código de salida de ownership-presupuesto y el stderr de ownership-presupuesto. Cuando mide el
+baseline con `rebaseline-worktree.py`, lee el código de salida de rebaseline-worktree y el
+stdout de rebaseline-worktree. En modo directo ejecuta `gate-modo-directo.py <bitacora>` y lee el
+código de salida de gate-modo-directo y el stderr de gate-modo-directo. Ninguna invocación se acredita por su
+mera presencia documental: su salida gobierna el gate correspondiente.
 
 Como parte de la cuarta comprobación, ejecutar
 `python_skill <skill_dir>/scripts/contrato-esquema.py <contrato>` y leer su código de salida y stderr.

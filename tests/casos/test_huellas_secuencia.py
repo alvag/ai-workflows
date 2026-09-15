@@ -10,6 +10,7 @@ sustituye nada y admite una implementación que devuelva el código esperado sol
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
@@ -284,12 +285,25 @@ PROMOCION = RAIZ / "skills" / "sdd-flow" / "scripts" / "promocion-tasks-ready.py
 HASH_CANONICO = "bd3a154d6c9e3149aa6797ce77c5ceb975c0295a3a2eacc0f257b6b28021b7d8"
 
 
+def _promocion():
+    especificacion = importlib.util.spec_from_file_location("promocion_publica", PROMOCION)
+    if especificacion is None or especificacion.loader is None:
+        raise AssertionError(f"no se pudo cargar {PROMOCION}")
+    modulo = importlib.util.module_from_spec(especificacion)
+    sys.path.insert(0, str(PROMOCION.parent))
+    try:
+        especificacion.loader.exec_module(modulo)
+    finally:
+        sys.path.pop(0)
+    return modulo
+
+
 def _plan_con_hash(destino: Path, valor: str) -> Path:
     """Un plan que llega al gate de congelamiento, con el `hash` que se le indique."""
     (destino / "plan.md").write_text(
         "---\nstatus: planned\ncomplexity: normal\ncontract_procedure: measured-v1\n---\n"
         "contenido\n## v1\n\n`hash_previo:` · `hash: " + valor + "`\n", encoding="utf-8")
-    (destino / "log.md").write_text(
+    (destino / "bitacora.md").write_text(
         "- `paso: congelar` · `actor: conductor` · `timestamp: 2026-08-24T12:00:00Z`\n",
         encoding="utf-8")
     return destino / "plan.md"
@@ -306,13 +320,17 @@ def test_congelar_exige_una_cadena_valida(_ctx: Optional[object] = None) -> None
     import subprocess
     import tempfile
 
+    _promocion().verificar_promocion()
+
     for valor, codigo, claves, etiqueta in ((HASH_CANONICO, 0, 2, "canónico"),
                                             ("a" * 64, 1, 0, "que no corresponde")):
         arena = Path(tempfile.mkdtemp())
         try:
             plan = _plan_con_hash(arena, valor)
             corrida = subprocess.run(
-                ["python3", str(PROMOCION), str(plan), str(arena / "log.md")],
+                ["python3", str(PROMOCION), str(plan), str(arena / "bitacora.md"),
+                 str(arena / "sequence-ledger.yml"),
+                 str(arena / ".cross-model/active/cross-implement")],
                 capture_output=True, text=True)
             texto = plan.read_text(encoding="utf-8")
             congeladas = [l for l in texto.split("\n") if l.startswith("contract_frozen")]
