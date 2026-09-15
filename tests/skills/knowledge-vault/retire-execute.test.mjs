@@ -29,6 +29,7 @@ import { retireCommand } from '../../../skills/knowledge-vault/scripts/lib/comma
 import { construirManifiesto, digestManifiesto } from '../../../skills/knowledge-vault/scripts/lib/manifest.mjs';
 import { clasificarRetiro } from '../../../skills/knowledge-vault/scripts/lib/retire-state.mjs';
 import { serializarRegistroIdentidades } from '../../../skills/knowledge-vault/scripts/lib/identity.mjs';
+import { ensureVaultRepo } from '../../../skills/knowledge-vault/scripts/lib/vault-git.mjs';
 import { writeIdentitiesFile } from '../../../skills/knowledge-vault/scripts/lib/vault-store.mjs';
 import { createSandbox } from './helpers/sandbox.mjs';
 import { snapshotTree } from './helpers/tree-snapshot.mjs';
@@ -50,9 +51,10 @@ async function escena(t, { flowId = 'abc-1', archivar = true } = {}) {
   const objetivo = await caja.makeTree(path.join(raiz, flowId), {
     'spec.md': `# ${flowId}\n\ncriterios\n`,
     'plan.md': PLAN,
-    'notas.txt': 'andamiaje que no viaja\n',
+    'notas.tsv': 'andamiaje que no viaja\n',
     'cross-review/veredicto.md': 'tampoco viaja\n',
   });
+  if (!archivar) await ensureVaultRepo(vault);
   if (archivar) {
     await runVaultTransaction({
       fs: new DurableFs(), vaultRoot: vault, repoSlug: REPO_ID, flowId, flowDir: objetivo,
@@ -90,6 +92,9 @@ const retirar = (e, opciones = {}) =>
     repoId: REPO_ID,
     raiz: e.raiz,
     flujo: { flowId: e.flowId },
+    ...(opciones.inspectorManifiesto === undefined
+      ? {}
+      : { inspectorManifiesto: opciones.inspectorManifiesto }),
   });
 
 // ── AC-6 · la secuencia, en su orden ─────────────────────────────────────────
@@ -585,4 +590,72 @@ test('[AC-20] borrar todo lo verificado destruye lo que nadie autorizó; el real
   // incluye lo que apareció después de la autorización.
   await flojo.destruye(real.remanente);
   assert.equal(await fs.lstat(path.join(real.remanente, 'de-otro.md')).catch(() => null), null);
+});
+
+
+// ── KV-SEL · el estado durable precede al selector vivo ──────────────────────
+
+test('[KV-SEL AC-21] retire no consulta selector con manifiesto comprometido', async (t) => {
+  const e = await conIdentidad(await autorizado(t));
+  await fs.writeFile(
+    path.join(e.vault, 'projects', REPO_ID, 'sdd', e.flowId, 'spec.md'),
+    '# frontera dañada después de autorizar\n',
+    'utf8',
+  );
+
+  const dry = await retireCommand({
+    fs: new DurableFs(),
+    flags: { root: e.raiz, 'vault-root': e.vault, 'dry-run': true },
+  });
+  assert.equal(dry.informe.flujos[0].aSalvo, true);
+  const result = await retireCommand({
+    fs: new DurableFs(),
+    flags: { root: e.raiz, 'vault-root': e.vault, 'approve-digest': dry.informe.digest },
+  });
+
+  assert.equal(result.status, 'BATCH_OK');
+  assert.deepEqual(await fs.readdir(e.raiz), []);
+});
+
+test('[KV-SEL AC-21] manifiesto presente no anclado bloquea antes de clasificar', async (t) => {
+  for (const conRemanente of [false, true]) {
+    const e = await escena(t, { flowId: conRemanente ? 'con-remanente' : 'sin-remanente' });
+    const manifestPath = rutaDelManifiesto(e.vault, REPO_ID, e.flowId);
+    await fs.mkdir(path.dirname(manifestPath), { recursive: true });
+    await fs.writeFile(manifestPath, '{}\n', 'utf8');
+    if (conRemanente) await reclamar({ fs: new DurableFs(), raiz: e.raiz, flowId: e.flowId });
+    const before = await snapshotTree(e.raiz);
+    const recorder = new Recorder();
+
+    await assert.rejects(
+      () => retirar(e, {
+        fs: new DurableFs({ recorder }),
+        inspectorManifiesto: async () => ({ exists: true, anchored: false, dirty: true, ignored: false }),
+      }),
+      (error) => {
+        assert.equal(error.code, 'PRECONDITION_NOT_MET');
+        return true;
+      },
+    );
+    assert.deepEqual(await snapshotTree(e.raiz), before);
+    assert.ok(!recorder.labels().includes('retire.readdir'), 'se observó o clasificó antes de bloquear');
+  }
+});
+
+test('[KV-SEL AC-21] remanente sin manifiesto se restaura antes de reevaluar', async (t) => {
+  const e = await escena(t);
+  const remanente = await reclamar({ fs: new DurableFs(), raiz: e.raiz, flowId: e.flowId });
+  await fs.mkdir(path.join(remanente, 'evidencia'), { recursive: true });
+  await fs.writeFile(path.join(remanente, 'evidencia', 'nuevo.json'), '{"nuevo":true}\n', 'utf8');
+  const before = await snapshotTree(remanente);
+  const recorder = new Recorder();
+
+  const result = await retirar(e, {
+    fs: new DurableFs({ recorder }),
+    inspectorManifiesto: async () => ({ exists: false, anchored: false, dirty: false, ignored: false }),
+  });
+
+  assert.equal(result.estado, RESULTADOS.RECLAMO_DESHECHO);
+  assert.deepEqual(await snapshotTree(e.objetivo), before);
+  assert.ok(!recorder.labels().some((label) => label.startsWith('probe.')), 'se consultó el selector antes de restaurar');
 });

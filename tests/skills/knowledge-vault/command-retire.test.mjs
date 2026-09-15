@@ -21,9 +21,10 @@ import { promisify } from 'node:util';
 
 import { DurableFs, Recorder } from '../../../skills/knowledge-vault/scripts/lib/durable-fs.mjs';
 import { runVaultTransaction } from '../../../skills/knowledge-vault/scripts/lib/engine-vault.mjs';
-import { retireCommand, ESTADOS } from '../../../skills/knowledge-vault/scripts/lib/commands/retire.mjs';
+import { planificarRetiro, retireCommand, ESTADOS } from '../../../skills/knowledge-vault/scripts/lib/commands/retire.mjs';
 import { runCli } from '../../../skills/knowledge-vault/scripts/lib/cli.mjs';
 import { serializarRegistroIdentidades } from '../../../skills/knowledge-vault/scripts/lib/identity.mjs';
+import { rutaDelManifiesto } from '../../../skills/knowledge-vault/scripts/lib/retire-execute.mjs';
 import { writeIdentitiesFile } from '../../../skills/knowledge-vault/scripts/lib/vault-store.mjs';
 import { createSandbox } from './helpers/sandbox.mjs';
 import { snapshotTree } from './helpers/tree-snapshot.mjs';
@@ -54,7 +55,7 @@ async function escena(t, { archivados = ['abc-1', 'abc-2'], sueltos = [] } = {})
     const dir = await caja.makeTree(path.join(raiz, flowId), {
       'spec.md': `# ${flowId}\n\ncriterios\n`,
       'plan.md': PLAN,
-      'notas.txt': 'no viaja\n',
+      'notas.tsv': 'no viaja\n',
     });
     await runVaultTransaction({
       fs: new DurableFs(), vaultRoot: vault, repoSlug: REPO_ID, flowId, flowDir: dir,
@@ -306,7 +307,7 @@ test('[AC-5b] los dos digests son distintos y el del lote se mueve con el conjun
 test('el ensayo dirigido expone el conjunto exacto omitido', async (t) => {
   const e = await escena(t, { archivados: ['abc-1'] });
   const flowDir = e.flujos[0];
-  // `notas.txt` ya lo pone `escena()`, a la raíz. Se agregan anidados de las dos
+  // `notas.tsv` ya lo pone `escena()`, a la raíz. Se agregan anidados de las dos
   // clases —Markdown y no Markdown— para probar que la exclusión es posicional
   // y no de extensión.
   const anidados = {
@@ -320,9 +321,14 @@ test('el ensayo dirigido expone el conjunto exacto omitido', async (t) => {
   }
 
   const oracle = [];
-  for (const rel of ['notas.txt', 'reports/explore.md', 'reports/nested/data.json']) {
+  for (const rel of ['notas.tsv', 'reports/explore.md', 'reports/nested/data.json']) {
     const bytes = await fs.readFile(path.join(flowDir, rel));
-    oracle.push({ path: rel, size: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') });
+    oracle.push({
+      path: rel,
+      size: bytes.length,
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+      clasificacion: 'omitido',
+    });
   }
   oracle.sort((a, b) => (a.path < b.path ? -1 : 1));
 
@@ -353,7 +359,7 @@ test('un flujo no seguro por VERIFY_FAILED excluye Markdown raíz de omitidos', 
   assert.equal(flujo.aSalvo, false);
   // `spec.md` y `plan.md` son Markdown de raíz y copiables: no figuran, aunque
   // el flujo entero haya quedado sin copia verificada.
-  assert.deepEqual(flujo.omitidos.map((o) => o.path), ['notas.txt']);
+  assert.deepEqual(flujo.omitidos.map((o) => o.path), ['notas.tsv']);
 });
 
 test('una medición fallida conserva omitidos null', async (t) => {
@@ -646,4 +652,113 @@ test('[AC-5c] el ensayo no deja el digest en ningún lado del que leerlo solo', 
   // ninguna bandera lo delatara.
   assert.deepEqual(await snapshotTree(e.raiz), antesRaiz);
   assert.deepEqual(await snapshotTree(e.vault), antesVault);
+});
+
+
+// ── KV-SEL · clasificación ampliada y autoridad durable ─────────────────────
+
+test('[KV-SEL AC-11] dry-run dirigido clasifica omitidos e inválidos con causa', async (t) => {
+  const e = await escena(t, { archivados: ['publicado'] });
+  const flowDir = await e.caja.makeTree(path.join(e.raiz, 'nuevo'), {
+    'spec.md': '# nuevo\n',
+    'notas.tsv': 'fuera por sufijo\n',
+    'reports/explore.md': '# fuera por ubicación\n',
+    'evidencia/aux?.json': '{"portable":false}\n',
+    'evidencia/sdd/proceso.md': '# reservado\n',
+    'evidencia/ignorado.txt': 'ignorado por Git\n',
+  });
+  const ignoredDestination = 'projects/api-pagos/sdd/nuevo/evidencia/ignorado.txt';
+  await fs.writeFile(path.join(e.vault, '.gitignore'), `${ignoredDestination}\n`, 'utf8');
+  await git(e.vault, 'add', '.gitignore');
+  await git(e.vault, 'commit', '-qm', 'test: ignore destination');
+
+  const { informe } = await correr(e, { 'dry-run': true, from: flowDir });
+  const omitted = informe.flujos[0].omitidos;
+  const byPath = Object.fromEntries(omitted.map((entry) => [entry.path, entry]));
+
+  assert.deepEqual(Object.keys(byPath).sort(), [
+    'evidencia/aux?.json',
+    'evidencia/ignorado.txt',
+    'evidencia/sdd/proceso.md',
+    'notas.tsv',
+    'reports/explore.md',
+  ]);
+  assert.deepEqual(
+    [byPath['notas.tsv'].clasificacion, byPath['reports/explore.md'].clasificacion],
+    ['omitido', 'omitido'],
+  );
+  assert.equal(byPath['evidencia/aux?.json'].clasificacion, 'invalido');
+  assert.equal(byPath['evidencia/aux?.json'].causa, 'NON_PORTABLE_DOCUMENT_PATH');
+  assert.equal(byPath['evidencia/ignorado.txt'].causa, 'IGNORED_DOCUMENT_PATH');
+  assert.equal(byPath['evidencia/sdd/proceso.md'].causa, 'RESERVED_DOCUMENT_PATH');
+  assert.ok(!Object.hasOwn(byPath['notas.tsv'], 'causa'));
+  for (const entry of omitted) {
+    assert.equal(typeof entry.size, 'number');
+    assert.match(entry.sha256, /^[0-9a-f]{64}$/);
+  }
+});
+
+test('[KV-SEL AC-11] una ruta incontenible aborta antes del informe', async (t) => {
+  const e = await escena(t, { archivados: ['publicado'] });
+  const flowDir = await e.caja.makeTree(path.join(e.raiz, 'incontenible'), {
+    'spec.md': '# incontenible\n',
+    'evidencia/back\\slash.txt': 'no se puede representar como ruta POSIX\n',
+  });
+
+  await assert.rejects(
+    () => correr(e, { 'dry-run': true, from: flowDir }),
+    (error) => {
+      assert.equal(error.code, 'PATH_SEPARATOR');
+      assert.match(error.message, /back\\\\slash/);
+      return true;
+    },
+  );
+});
+
+test('[KV-SEL AC-11] dry-run registra manifiesto residual y continúa el lote', async (t) => {
+  const e = await escena(t, { archivados: ['abc-1', 'abc-2'] });
+  const residual = rutaDelManifiesto(e.vault, REPO_ID, 'abc-1');
+  await fs.mkdir(path.dirname(residual), { recursive: true });
+  await fs.writeFile(residual, '{}\n', 'utf8');
+
+  const plan = await planificarRetiro({
+    fs: new DurableFs(),
+    vaultRoot: e.vault,
+    repoId: REPO_ID,
+    raiz: e.raiz,
+    objetivos: e.flujos,
+    repoRoot: e.repoRoot,
+  });
+  const blocked = plan.flujos.find((flow) => flow.flowId === 'abc-1');
+  const healthy = plan.flujos.find((flow) => flow.flowId === 'abc-2');
+
+  assert.equal(blocked.causa, 'PRECONDITION_NOT_MET');
+  assert.equal(blocked.aSalvo, false);
+  assert.ok(blocked.manifiesto);
+  assert.match(blocked.digest, /^[0-9a-f]{64}$/);
+  assert.equal(blocked.manifiesto.bytes.total, blocked.manifiesto.bytes.sinCopia);
+  assert.ok(Array.isArray(blocked.omitidos));
+  assert.equal(healthy.aSalvo, true, healthy.causa);
+});
+
+test('[KV-SEL AC-21] autoridad de manifiesto es una dependencia inyectada', async (t) => {
+  const e = await escena(t, { archivados: ['abc-1'] });
+  let inspections = 0;
+  let received = null;
+  const inspectorManifiesto = async () => {
+    inspections += 1;
+    return { exists: false, anchored: false, dirty: false, ignored: false };
+  };
+  const dry = await correr(e, { 'dry-run': true }, { inspectorManifiesto });
+  const result = await correr(e, { 'approve-digest': dry.informe.digest }, {
+    inspectorManifiesto,
+    ejecutor: async (args) => {
+      received = args.inspectorManifiesto;
+      return { flowId: args.flujo.flowId, estado: 'RETIRADO' };
+    },
+  });
+
+  assert.equal(result.status, ESTADOS.BATCH_OK);
+  assert.ok(inspections >= 2, `el inspector se llamó ${inspections} veces`);
+  assert.equal(received, inspectorManifiesto);
 });

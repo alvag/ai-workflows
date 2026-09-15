@@ -249,6 +249,11 @@ export function assertContainedPath(value, at = null) {
   return segments;
 }
 
+/** Encodes each segment of a contained POSIX-style relative path. */
+export function encodeRelativePath(relativePath) {
+  return assertContainedPath(relativePath).map(encodeURIComponent).join('/');
+}
+
 export function isContainedPath(value) {
   try {
     assertContainedPath(value);

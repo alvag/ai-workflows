@@ -24,6 +24,8 @@ import {
   assertVaultClean,
   commitFlow,
   ensureVaultRepo,
+  inspectManifestAuthority,
+  rutasNoAncladas,
 } from '../../../skills/knowledge-vault/scripts/lib/vault-git.mjs';
 import { createSandbox } from './helpers/sandbox.mjs';
 
@@ -214,4 +216,111 @@ test('[AC-16] sobre un vault ya inicializado no se siembra nada', async (t) => {
   // Reponerlo pisaría a quien lo borró, y metería un commit en una historia que
   // es el registro de archivados del vault.
   await assert.rejects(() => fs.access(path.join(raiz, '.gitignore')));
+});
+
+test('[KV-SEL AC-8] Git reporta Unicode, faltante, sucio, ignorado y destino de rename NUL', async (t) => {
+  const { caja, vault } = await vaultNuevo(t);
+  await ensureVaultRepo(vault);
+  await archivo(vault, '.gitignore', '.obsidian/\n.DS_Store\ndocs/ignored.md\n');
+  for (const relative of ['docs/café.md', 'docs/dirty.md', 'docs/origen.md']) {
+    await archivo(vault, relative, `${relative}\n`);
+  }
+  await commitFlow({
+    vaultRoot: vault,
+    flowId: 'git-fixture',
+    paths: ['.gitignore', 'docs/café.md', 'docs/dirty.md', 'docs/origen.md'],
+  });
+
+  await archivo(vault, 'docs/dirty.md', 'modificado\n');
+  await archivo(vault, 'docs/ignored.md', 'ignorado\n');
+  await git(vault, 'mv', 'docs/origen.md', 'docs/destino.md');
+
+  const routes = [
+    'docs/café.md',
+    'docs/missing.md',
+    'docs/dirty.md',
+    'docs/ignored.md',
+    'docs/destino.md',
+    'docs/origen.md',
+  ];
+  assert.deepEqual(await rutasNoAncladas(vault, routes), {
+    missing: ['docs/missing.md', 'docs/ignored.md', 'docs/destino.md'],
+    dirty: ['docs/dirty.md', 'docs/destino.md'],
+    ignored: ['docs/ignored.md'],
+  });
+
+  const unborn = caja.path('vaults', 'sin-head');
+  await fs.mkdir(unborn, { recursive: true });
+  await git(unborn, 'init', '-q');
+  assert.deepEqual(await rutasNoAncladas(unborn, ['uno.md', 'dos.md']), {
+    missing: ['uno.md', 'dos.md'],
+    dirty: [],
+    ignored: [],
+  });
+});
+
+test('[KV-SEL AC-9] Git detecta destino ignorado antes de materializarlo', async (t) => {
+  const { vault } = await vaultNuevo(t);
+  await ensureVaultRepo(vault);
+  await archivo(vault, '.gitignore', '.obsidian/\n.DS_Store\n.kv/retiros/\n');
+  await commitFlow({ vaultRoot: vault, flowId: 'ignore-fixture', paths: ['.gitignore'] });
+
+  const target = '.kv/retiros/repo/flow.json';
+  assert.deepEqual(await rutasNoAncladas(vault, [target]), {
+    missing: [target],
+    dirty: [],
+    ignored: [target],
+  });
+});
+
+test('[KV-SEL AC-21] inspector de manifiesto exige ruta exacta limpia y anclada', async (t) => {
+  const { vault } = await vaultNuevo(t);
+  await ensureVaultRepo(vault);
+  const relative = '.kv/retiros/repo/flow.json';
+  const manifest = path.join(vault, ...relative.split('/'));
+
+  assert.deepEqual(await inspectManifestAuthority(vault, manifest), {
+    exists: false,
+    anchored: false,
+    dirty: false,
+    ignored: false,
+  });
+
+  await archivo(vault, relative, '{}\n');
+  assert.deepEqual(await inspectManifestAuthority(vault, manifest), {
+    exists: true,
+    anchored: false,
+    dirty: true,
+    ignored: false,
+  });
+
+  await commitFlow({ vaultRoot: vault, flowId: 'flow', paths: [relative] });
+  assert.deepEqual(await inspectManifestAuthority(vault, manifest), {
+    exists: true,
+    anchored: true,
+    dirty: false,
+    ignored: false,
+  });
+
+  await fs.rm(manifest);
+  assert.deepEqual(await inspectManifestAuthority(vault, manifest), {
+    exists: true,
+    anchored: false,
+    dirty: true,
+    ignored: false,
+  });
+  await git(vault, 'checkout', '--', relative);
+
+  await archivo(vault, relative, '{"dirty":true}\n');
+  assert.equal((await inspectManifestAuthority(vault, manifest)).dirty, true);
+  await git(vault, 'checkout', '--', relative);
+
+  await fs.appendFile(path.join(vault, '.gitignore'), `${relative}\n`, 'utf8');
+  await commitFlow({ vaultRoot: vault, flowId: 'ignore-manifest', paths: ['.gitignore'] });
+  assert.deepEqual(await inspectManifestAuthority(vault, manifest), {
+    exists: true,
+    anchored: true,
+    dirty: false,
+    ignored: true,
+  });
 });

@@ -21,10 +21,8 @@
  * | `provenance` | las dos últimas partes de la ubicación de origen, más el id |
  * | `state`      | `status` del frontmatter de `plan.md`, **literal** → `desconocido` |
  *
- * Medido sobre los cincuenta flujos archivados: 43 tienen `plan.md` y los 43
- * declaran los tres campos; 45 títulos salen de `spec.md` y ninguno de `plan.md`,
- * aunque ese escalón se conserva porque el corpus de otro repositorio no tiene
- * por qué parecerse a éste.
+ * El fallback desde `spec.md` hacia `plan.md` y luego al id se conserva porque
+ * repositorios distintos pueden persistir fuentes de título diferentes.
  */
 
 import fs from 'node:fs/promises';

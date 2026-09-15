@@ -22,7 +22,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import { DurableFs, Recorder } from '../../../skills/knowledge-vault/scripts/lib/durable-fs.mjs';
-import { runVaultTransaction } from '../../../skills/knowledge-vault/scripts/lib/engine-vault.mjs';
+import { resolvePublicationState, runVaultTransaction } from '../../../skills/knowledge-vault/scripts/lib/engine-vault.mjs';
+import { exitCodeFor } from '../../../skills/knowledge-vault/scripts/lib/contracts.mjs';
 import { resolveLayout } from '../../../skills/knowledge-vault/scripts/lib/vault-store.mjs';
 import { createSandbox } from './helpers/sandbox.mjs';
 import { snapshotTree } from './helpers/tree-snapshot.mjs';
@@ -41,12 +42,14 @@ async function origen(caja, flowId = 'abc-1', extra = {}) {
   const archivos = {
     'spec.md': '# Exportar el carrito\n\ncriterios\n',
     'plan.md': PLAN,
-    'notas.txt': 'esto no viaja\n',
+    'notas.tsv': 'esto no viaja\n',
     'cross-review/veredicto.md': 'esto tampoco\n',
     ...extra,
   };
   for (const [rel, contenido] of Object.entries(archivos)) {
-    await fs.writeFile(path.join(dir, rel), contenido, 'utf8');
+    const target = path.join(dir, rel);
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, contenido, 'utf8');
   }
   return dir;
 }
@@ -365,4 +368,154 @@ test('con frontera preexistente el residuo queda intacto', async (t) => {
 
   await assert.rejects(() => correr(vault, flowDir, 'abc-1', { summary: ILEGIBLE }), /control/i);
   assert.deepEqual(await snapshotTree(frontier), antes, 'el fallo se llevó puesto el residuo');
+});
+
+test('[KV-SEL AC-9] primera publicación rechaza reservado, no portable e ignorado', async (t) => {
+  const cases = [
+    ['evidencia/sdd/note.md', 'RESERVED_DOCUMENT_PATH'],
+    ['evidencia/aux.md', 'NON_PORTABLE_DOCUMENT_PATH'],
+    ['evidencia/ignored.md', 'IGNORED_DOCUMENT_PATH'],
+  ];
+  for (const [relative, code] of cases) {
+    const { vault, flowDir } = await escena(t, { [relative]: 'x\n' });
+    if (code === 'IGNORED_DOCUMENT_PATH') {
+      await git(vault, 'init', '-q');
+      await fs.writeFile(
+        path.join(vault, '.gitignore'),
+        `.obsidian/\n.DS_Store\nprojects/ai-workflows/sdd/abc-1/${relative}\n`,
+        'utf8',
+      );
+      await git(vault, 'add', '.gitignore');
+      await git(vault, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'ignore');
+    }
+    const sourceBefore = await snapshotTree(flowDir);
+    await assert.rejects(() => correr(vault, flowDir), (error) => {
+      assert.equal(error.code, code, relative);
+      assert.equal(error.path, relative, relative);
+      assert.equal(exitCodeFor(error.code), 4);
+      return true;
+    });
+    await assert.rejects(() => fs.stat(resolveLayout(vault, 'ai-workflows', 'abc-1').frontier));
+    assert.deepEqual(await snapshotTree(flowDir), sourceBefore);
+  }
+});
+
+test('[KV-SEL AC-9] historia incompatible gana antes que las guardas nuevas', async (t) => {
+  const { vault, flowDir } = await escena(t);
+  await correr(vault, flowDir);
+  await fs.mkdir(path.join(flowDir, 'evidencia', 'sdd'), { recursive: true });
+  await fs.writeFile(path.join(flowDir, 'evidencia', 'sdd', 'aux.md'), 'nuevo\n', 'utf8');
+  const vaultBefore = await snapshotTree(vault);
+
+  await assert.rejects(() => correr(vault, flowDir), (error) => {
+    assert.equal(error.code, 'VERIFY_FAILED');
+    assert.deepEqual(error.detail.missing, ['evidencia/sdd/aux.md']);
+    return true;
+  });
+  assert.deepEqual(await snapshotTree(vault), vaultBefore);
+});
+
+test('[KV-SEL AC-19] histórico incompatible falla con detalle sin crecer', async (t) => {
+  const { vault, flowDir } = await escena(t);
+  await correr(vault, flowDir);
+  await fs.mkdir(path.join(flowDir, 'runs'), { recursive: true });
+  await fs.writeFile(path.join(flowDir, 'runs', 'new.ts'), 'export {};\n', 'utf8');
+  const before = await snapshotTree(vault);
+
+  await assert.rejects(() => correr(vault, flowDir), (error) => {
+    assert.equal(error.code, 'VERIFY_FAILED');
+    assert.deepEqual(error.detail, { missing: ['runs/new.ts'], extra: [], mismatched: [] });
+    return true;
+  });
+  assert.deepEqual(await snapshotTree(vault), before);
+});
+
+test('[KV-SEL AC-19] autoridad del nodo informa missing y extra sin mismatched', async (t) => {
+  const { vault, flowDir } = await escena(t);
+  await correr(vault, flowDir);
+  const { frontier, nodePath } = resolveLayout(vault, 'ai-workflows', 'abc-1');
+  await fs.rm(frontier, { recursive: true });
+  await fs.rm(path.join(flowDir, 'spec.md'));
+  await fs.mkdir(path.join(flowDir, 'runs'), { recursive: true });
+  await fs.writeFile(path.join(flowDir, 'runs', 'new.ts'), 'export {};\n', 'utf8');
+
+  await assert.rejects(
+    () => resolvePublicationState({
+      fs: new DurableFs(),
+      frontier,
+      nodePath,
+      currentEntries: [
+        { path: 'plan.md', type: 'file', size: 0, sha256: '' },
+        { path: 'runs/new.ts', type: 'file', size: 0, sha256: '' },
+      ],
+      flowId: 'abc-1',
+      label: 'test',
+    }),
+    (error) => {
+      assert.equal(error.code, 'VERIFY_FAILED');
+      assert.deepEqual(error.detail, {
+        missing: ['runs/new.ts'],
+        extra: ['spec.md'],
+        mismatched: [],
+      });
+      return true;
+    },
+  );
+});
+
+test('[KV-SEL AC-20] nodo histórico vacío precede frontera y no cambia con otro summary', async (t) => {
+  const { vault, flowDir } = await escena(t);
+  await fs.rm(path.join(flowDir, 'spec.md'));
+  await fs.rm(path.join(flowDir, 'plan.md'));
+  assert.equal((await correr(vault, flowDir)).status, 'ARCHIVED');
+
+  const { frontier, nodePath } = resolveLayout(vault, 'ai-workflows', 'abc-1');
+  const nodeBefore = await fs.readFile(nodePath, 'utf8');
+  const { stdout: headBefore } = await git(vault, 'rev-parse', 'HEAD');
+  await fs.rm(frontier, { recursive: true });
+
+  const result = await correr(vault, flowDir, 'abc-1', { summary: 'Otro resumen que no debe reemplazar el nodo.' });
+  assert.equal(result.status, 'ALREADY_ARCHIVED');
+  assert.equal(await fs.readFile(nodePath, 'utf8'), nodeBefore);
+  assert.equal((await git(vault, 'rev-parse', 'HEAD')).stdout, headBefore);
+});
+
+test('[KV-SEL AC-20] reconstruye frontera no vacía desde el nodo sin reescribirlo', async (t) => {
+  const { vault, flowDir } = await escena(t, { 'runs/job.ts': 'export {};\n' });
+  await correr(vault, flowDir);
+  const { frontier, nodePath } = resolveLayout(vault, 'ai-workflows', 'abc-1');
+  const nodeBefore = await fs.readFile(nodePath, 'utf8');
+  await fs.rm(frontier, { recursive: true });
+
+  assert.equal((await correr(vault, flowDir, 'abc-1', { summary: 'No reemplazar.' })).status, 'ARCHIVED');
+  assert.equal(await fs.readFile(nodePath, 'utf8'), nodeBefore);
+  assert.equal(await fs.readFile(path.join(frontier, 'runs', 'job.ts'), 'utf8'), 'export {};\n');
+});
+
+test('[KV-SEL AC-20] frontera publicada recupera nodo e índices faltantes', async (t) => {
+  const { vault, flowDir } = await escena(t);
+  await correr(vault, flowDir);
+  const { nodePath, indexPaths } = resolveLayout(vault, 'ai-workflows', 'abc-1');
+  await fs.rm(nodePath);
+  for (const indexPath of indexPaths) await fs.rm(indexPath);
+
+  assert.equal((await correr(vault, flowDir)).status, 'ARCHIVED');
+  for (const target of [nodePath, ...indexPaths]) await assert.doesNotReject(() => fs.stat(target));
+});
+
+test('[KV-SEL AC-20] archive rechaza nodo histórico ilegible sin escribir', async (t) => {
+  const { vault, flowDir } = await escena(t);
+  await correr(vault, flowDir);
+  const { frontier, nodePath } = resolveLayout(vault, 'ai-workflows', 'abc-1');
+  await fs.rm(frontier, { recursive: true });
+  await fs.writeFile(nodePath, 'sin frontmatter\n', 'utf8');
+  const before = await snapshotTree(vault);
+
+  await assert.rejects(() => correr(vault, flowDir), (error) => {
+    assert.equal(error.code, 'NODE_UNREADABLE');
+    assert.equal(error.path, nodePath);
+    assert.equal(exitCodeFor(error.code), 9);
+    return true;
+  });
+  assert.deepEqual(await snapshotTree(vault), before);
 });

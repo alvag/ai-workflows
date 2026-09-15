@@ -1,65 +1,104 @@
-/**
- * La selección es un predicado, no un motor de reglas.
- *
- * Las nueve reglas que este módulo reemplaza filtraban **salida cruda de máquina**
- * (binarios, volcados, artefactos generados) y por eso dejaban pasar el andamiaje
- * de un flujo SDD, que es texto legítimo: transcripciones de revisión, árboles de
- * prueba, veredictos. Medido sobre los cincuenta flujos archivados, colaban 65 %
- * de material que nadie querría consultar.
- *
- * El corte que sí separa conocimiento de andamiaje resultó ser posicional: lo que
- * el flujo decidió vive en la **raíz** del directorio, y lo que el flujo usó para
- * decidirlo vive en subdirectorios.
- */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { isCopiable } from '../../../skills/knowledge-vault/scripts/lib/selection.mjs';
+import {
+  ALLOWED_EXTENSIONS,
+  OPT_IN_DIRECTORIES,
+  isCopiable,
+  isReservedDocumentPath,
+} from '../../../skills/knowledge-vault/scripts/lib/selection.mjs';
 
-test('[AC-4] entran los .md de la raíz del flujo', () => {
-  for (const ruta of ['spec.md', 'plan.md', 'tasks.md', 'index.md', 'bitacora.md']) {
-    assert.equal(isCopiable(ruta), true, ruta);
+const EXTENSIONS = [
+  '.md', '.sh', '.js', '.mjs', '.py', '.ts', '.ps1', '.json', '.yml', '.txt', '.jsonl',
+];
+
+test('[KV-SEL AC-1] selector y listas permanecen puros e inmutables', () => {
+  assert.deepEqual(ALLOWED_EXTENSIONS, EXTENSIONS);
+  assert.deepEqual(OPT_IN_DIRECTORIES, ['evidencia', 'runs', 'decisiones']);
+  for (const values of [ALLOWED_EXTENSIONS, OPT_IN_DIRECTORIES]) {
+    assert.ok(Object.isFrozen(values));
+    assert.throws(() => values.push('otro'), TypeError);
+  }
+  assert.equal(isCopiable.length, 1);
+});
+
+test('[KV-SEL AC-2] scripts admitidos entran en raíz y opt-ins', () => {
+  for (const extension of ['.sh', '.js', '.mjs', '.py', '.ts', '.ps1']) {
+    assert.equal(isCopiable(`script${extension}`), true, extension);
+    assert.equal(isCopiable(`evidencia/run/script${extension.toUpperCase()}`), true, extension);
   }
 });
 
-test('[AC-4] no entra lo que no termina en .md', () => {
-  for (const ruta of ['alcance.txt', 'resumenes.tsv', 'bitacora', 'plan.mdx', 'md']) {
-    assert.equal(isCopiable(ruta), false, ruta);
+test('[KV-SEL AC-3] Markdown raíz conserva selección y casing', () => {
+  for (const path of ['spec.md', 'SPEC.MD', 'Spec.Md']) {
+    assert.equal(isCopiable(path), true, path);
   }
 });
 
-test('[AC-4] no entra nada contenido en un subdirectorio, aunque sea .md', () => {
-  for (const ruta of ['cross-review/veredicto.md', 'co-explore/detail-a.md', 'a/b/c.md']) {
-    assert.equal(isCopiable(ruta), false, ruta);
-  }
-});
-
-test('[AC-4] la extensión se compara sin distinguir mayúsculas', () => {
-  for (const ruta of ['SPEC.MD', 'Spec.Md', 'plan.mD']) {
-    assert.equal(isCopiable(ruta), true, ruta);
-  }
-});
-
-test('[AC-4] el separador es la barra, la única que el inventario emite', () => {
-  // `walkNeutral` arma toda ruta relativa como `${prefijo}/${nombre}`, en cualquier
-  // plataforma. Así que en POSIX una barra invertida es un carácter más del nombre
-  // y el archivo está en la raíz. Que ese nombre sea portable a otro sistema lo
-  // decide `portable-path`, que es otra pregunta y tiene su propio módulo.
+test('[KV-SEL AC-4] ubicación y sufijo son la única frontera', () => {
+  assert.equal(isCopiable('evidencia/result.txt'), true);
+  assert.equal(isCopiable('fixtures/result.txt'), false);
   assert.equal(isCopiable('raro\\nombre.md'), true);
 });
 
-test('[AC-4] el corte es exactamente la partición medida sobre un flujo real', () => {
-  const flujo = [
-    'spec.md', 'plan.md', 'tasks.md', 'bitacora.md', 'handoff.md', 'index.md',
-    'alcance.txt', 'resumenes.tsv',
-    'cross-review/veredicto-1.md', 'cross-review/prompt-1.md',
-    'arbol-desechable/fixture/a.md',
-  ];
-  assert.deepEqual(flujo.filter(isCopiable), [
-    'spec.md', 'plan.md', 'tasks.md', 'bitacora.md', 'handoff.md', 'index.md',
-  ]);
+test('[KV-SEL AC-5] opt-ins exactos admiten profundidad ilimitada y dotfiles', () => {
+  for (const path of [
+    'evidencia/a/b/c/.result.json',
+    'runs/a/b/c/result.md',
+    'decisiones/.result.txt',
+  ]) {
+    assert.equal(isCopiable(path), true, path);
+  }
+  for (const path of [
+    'Evidencia/result.md',
+    'evidenciax/result.md',
+    'fixtures/result.md',
+    'other/evidencia/result.md',
+  ]) {
+    assert.equal(isCopiable(path), false, path);
+  }
 });
 
-test('[AC-4] el predicado no depende de que exista nada en disco', () => {
-  assert.equal(isCopiable('no-existe-en-ningun-lado.md'), true);
+test('[KV-SEL AC-6] allowlist exacta se comparte entre raíz y opt-ins', () => {
+  for (const extension of EXTENSIONS) {
+    assert.equal(isCopiable(`a${extension}`), true, extension);
+    assert.equal(isCopiable(`runs/deep/a${extension.toUpperCase()}`), true, extension);
+  }
+  for (const path of [
+    '.md',
+    'a',
+    'a.yaml',
+    'a.cjs',
+    'a.tsv',
+    'a.sample',
+    'evidencia/.json',
+    'runs/deep/.TXT',
+  ]) {
+    assert.equal(isCopiable(path), false, path);
+  }
+});
+
+test('[KV-SEL AC-9] reserva solo Markdown seleccionado con padre inmediato sdd', () => {
+  for (const path of ['sdd/index.md', 'sdd/log.md', 'evidencia/sdd/index.md', 'runs/a/sdd/note.md']) {
+    assert.equal(isReservedDocumentPath(path), true, path);
+  }
+  for (const path of [
+    'evidencia/sdd/index.MD',
+    'evidencia/sdd/data.json',
+    'evidencia/sdd/ancestor/note.md',
+    'fixtures/sdd/ancestor/note.md',
+  ]) {
+    assert.equal(isReservedDocumentPath(path), false, path);
+  }
+});
+
+test('[KV-SEL AC-17] PDF queda omitido en cualquier ubicación y casing', () => {
+  for (const path of ['a.pdf', 'A.PDF', 'evidencia/a.pdf', 'runs/a.Pdf']) {
+    assert.equal(isCopiable(path), false, path);
+  }
+});
+
+test('[KV-SEL AC-18] subdirectorios fuera de la lista no pueden habilitar selección', () => {
+  assert.equal(isCopiable('decisiones/a/b/result.jsonl'), true);
+  assert.equal(isCopiable('decision/a/b/result.jsonl'), false);
 });

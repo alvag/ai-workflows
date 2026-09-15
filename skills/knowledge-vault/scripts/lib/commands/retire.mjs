@@ -35,13 +35,19 @@ import {
   discoverRepoRootFromDir,
   resolveVaultRootWithDefault,
 } from '../config.mjs';
-import { digestOf } from '../canonical.mjs';
+import { digestOf, parseDocument } from '../canonical.mjs';
 import { ContractError } from '../contracts.mjs';
+import { inspectFirstPublicationPaths } from '../engine-vault.mjs';
 import {
   parseRegistroIdentidades,
   resolverIdentidadRepo,
 } from '../identity.mjs';
-import { construirManifiesto, digestManifiesto } from '../manifest.mjs';
+import {
+  CLASES,
+  SCHEMA_MANIFIESTO,
+  construirManifiesto,
+  digestManifiesto,
+} from '../manifest.mjs';
 import {
   ejecutarRetiro,
   esNombreDeRemanente,
@@ -54,8 +60,12 @@ import { assertContainedPath } from '../portable-path.mjs';
 import { estaASalvo } from '../safety-probe.mjs';
 import { isCopiable } from '../selection.mjs';
 import { scanInventory } from '../tree.mjs';
-import { headDelVault, senalesDelRepositorio } from '../vault-git.mjs';
-import { readIdentitiesFile } from '../vault-store.mjs';
+import {
+  headDelVault,
+  inspectManifestAuthority,
+  senalesDelRepositorio,
+} from '../vault-git.mjs';
+import { readIdentitiesFile, resolveLayout } from '../vault-store.mjs';
 
 /** Estados propios del verbo. Los códigos los fija la tabla del contrato. */
 export const ESTADOS = Object.freeze({
@@ -121,7 +131,16 @@ async function objetivosDe({ fs, raiz, label }) {
  * **No escribe.** Es el mismo recorrido que hace el retiro real, y por eso el
  * ensayo dice la verdad: no es una simulación aparte que pueda divergir.
  */
-export async function planificarRetiro({ fs, vaultRoot, repoId, raiz, objetivos, repoRoot, label = 'retire' }) {
+export async function planificarRetiro({
+  fs,
+  vaultRoot,
+  repoId,
+  raiz,
+  objetivos,
+  repoRoot,
+  label = 'retire',
+  inspectorManifiesto = inspectManifestAuthority,
+}) {
   const vaultCommit = await headDelVault(vaultRoot);
   if (vaultCommit === null) {
     throw new ContractError('PRECONDITION_NOT_MET', `el vault no tiene ningún commit: ${vaultRoot}`);
@@ -134,33 +153,95 @@ export async function planificarRetiro({ fs, vaultRoot, repoId, raiz, objetivos,
     // Las dos señales durables, observadas **antes** de intentar nada: un flujo
     // sin copia verificable pero con remanente no es "nada que hacer", es una
     // secuencia a medio camino que hay que terminar o deshacer.
-    const infoRemanente = await fs.lstat(rutaDelRemanente(raiz, flowId), `${label}.remanente.lstat`);
+    const remanente = rutaDelRemanente(raiz, flowId);
+    const manifestPath = rutaDelManifiesto(vaultRoot, repoId, flowId);
+    const infoObjetivo = await fs.lstat(objetivo, `${label}.objetivo.lstat`);
+    const infoRemanente = await fs.lstat(remanente, `${label}.remanente.lstat`);
     entrada.hayRemanente = infoRemanente !== null && infoRemanente.isDirectory();
-    entrada.hayManifiesto =
-      (await fs.lstat(rutaDelManifiesto(vaultRoot, repoId, flowId), `${label}.manifiesto.lstat`)) !== null;
+    const fuente = infoObjetivo !== null && infoObjetivo.isDirectory()
+      ? objetivo
+      : entrada.hayRemanente ? remanente : null;
+    let clasificacionViva = false;
+    let primeraPublicacion = false;
+    let frontier = null;
     try {
-      await assertObjetivoDestructivo({ objetivo, raizDeclarada: raiz, vaultRoot, repoRoot });
-      const sonda = await estaASalvo({ fs, vaultRoot, repoId, flowId, flowDir: objetivo });
-      entrada.aSalvo = sonda.aSalvo;
-      entrada.causa = sonda.causa;
-      entrada.faltantes = sonda.faltantes;
+      const autoridad = await inspectorManifiesto(vaultRoot, manifestPath);
+      const manifiestoComprometido =
+        autoridad.exists && autoridad.anchored && !autoridad.dirty && !autoridad.ignored;
+      entrada.hayManifiesto = manifiestoComprometido;
 
-      // El manifiesto se construye igual cuando NO está a salvo: es lo que el
-      // ensayo tiene que mostrar —cuántos bytes se perderían— y sin él el
-      // informe diría "no se puede" sin decir de qué se está hablando. Lo que
-      // cambia es la clasificación: sin copia verificada, nada queda `a-salvo`.
-      entrada.manifiesto = await construirManifiesto({
-        fs,
-        flowDir: objetivo,
-        aSalvo: sonda.aSalvo ? await rutasASalvo({ fs, flowDir: objetivo, label }) : [],
-        identidad: { repoId, flowId },
-        vaultCommit,
-        label: `${label}.manifest`,
-      });
-      entrada.digest = digestManifiesto(entrada.manifiesto);
+      if (fuente !== null) {
+        await assertObjetivoDestructivo({ objetivo: fuente, raizDeclarada: raiz, vaultRoot, repoRoot });
+      }
+
+      if (manifiestoComprometido) {
+        entrada.manifiesto = parseDocument(
+          await fs.readFile(manifestPath, `${label}.manifiesto.read`),
+          { expectSchema: SCHEMA_MANIFIESTO },
+        );
+        entrada.aSalvo = true;
+        entrada.faltantes = [];
+      } else if (autoridad.exists) {
+        entrada.causa = 'PRECONDITION_NOT_MET';
+        entrada.error = `${flowId}: el manifiesto existe pero no está limpio y anclado en Git`;
+        if (fuente !== null) {
+          entrada.manifiesto = await construirManifiesto({
+            fs,
+            flowDir: fuente,
+            aSalvo: [],
+            identidad: { repoId, flowId },
+            vaultCommit,
+            label: `${label}.manifest`,
+          });
+        }
+      } else if (entrada.hayRemanente) {
+        entrada.manifiesto = await construirManifiesto({
+          fs,
+          flowDir: remanente,
+          aSalvo: [],
+          identidad: { repoId, flowId },
+          vaultCommit,
+          label: `${label}.manifest`,
+        });
+      } else {
+        clasificacionViva = true;
+        ({ frontier } = resolveLayout(vaultRoot, repoId, flowId));
+        const nodePath = resolveLayout(vaultRoot, repoId, flowId).nodePath;
+        const [frontierInfo, nodeInfo] = await Promise.all([
+          fs.lstat(frontier, `${label}.frontier.lstat`),
+          fs.lstat(nodePath, `${label}.node.lstat`),
+        ]);
+        primeraPublicacion = frontierInfo === null && nodeInfo === null;
+
+        const sonda = await estaASalvo({ fs, vaultRoot, repoId, flowId, flowDir: objetivo });
+        entrada.aSalvo = sonda.aSalvo;
+        entrada.causa = sonda.causa;
+        entrada.faltantes = sonda.faltantes;
+        entrada.manifiesto = await construirManifiesto({
+          fs,
+          flowDir: objetivo,
+          aSalvo: sonda.aSalvo ? await rutasASalvo({ fs, flowDir: objetivo, label }) : [],
+          identidad: { repoId, flowId },
+          vaultCommit,
+          label: `${label}.manifest`,
+        });
+      }
     } catch (error) {
-      entrada.causa = error.code ?? 'ERROR';
+      if (entrada.causa === null) entrada.causa = error.code ?? 'ERROR';
       entrada.error = error.message;
+    }
+    if (entrada.manifiesto !== null) {
+      entrada.digest = digestManifiesto(entrada.manifiesto);
+      entrada.omitidos = clasificacionViva
+        ? await proyectarOmitidosVivos({
+          vaultRoot,
+          frontier,
+          manifiesto: entrada.manifiesto,
+          primeraPublicacion,
+        })
+        : proyectarOmitidosPersistidos(entrada.manifiesto);
+    } else {
+      entrada.omitidos = null;
     }
     flujos.push(entrada);
   }
@@ -184,19 +265,39 @@ async function rutasASalvo({ fs, flowDir, label }) {
   return inventario.files.filter((e) => isCopiable(e.path)).map((e) => e.path);
 }
 
-/**
- * El complemento exacto de lo que `archive` seleccionaría, leído del manifiesto
- * ya construido —no se reescanea el árbol—. `null` cuando la medición falló:
- * un conjunto vacío mentiría "no quedó nada afuera".
- */
-function proyectarOmitidos(manifiesto) {
-  if (manifiesto === null) return null;
+const entradaOmitida = (entrada, clasificacion, causa = null) => {
+  const projected = {
+    path: entrada.path,
+    size: entrada.size,
+    sha256: entrada.sha256,
+    clasificacion,
+  };
+  return causa === null ? projected : { ...projected, causa };
+};
+
+function proyectarOmitidosPersistidos(manifiesto) {
+  for (const entrada of manifiesto.inventario) assertContainedPath(entrada.path, 'omitidos');
   return manifiesto.inventario
-    .filter((entrada) => !isCopiable(entrada.path))
-    .map((entrada) => {
-      assertContainedPath(entrada.path, 'omitidos');
-      return { path: entrada.path, size: entrada.size, sha256: entrada.sha256 };
-    });
+    .filter((entrada) => entrada.clase !== CLASES.A_SALVO)
+    .map((entrada) => entradaOmitida(entrada, 'omitido'));
+}
+
+async function proyectarOmitidosVivos({ vaultRoot, frontier, manifiesto, primeraPublicacion }) {
+  for (const entrada of manifiesto.inventario) assertContainedPath(entrada.path, 'omitidos');
+  const incluidos = manifiesto.inventario.filter((entrada) => isCopiable(entrada.path));
+  const invalidos = primeraPublicacion
+    ? await inspectFirstPublicationPaths(vaultRoot, frontier, incluidos)
+    : [];
+  const causaPorPath = new Map();
+  for (const diagnostico of invalidos) {
+    if (!causaPorPath.has(diagnostico.path)) causaPorPath.set(diagnostico.path, diagnostico.code);
+  }
+
+  return manifiesto.inventario.flatMap((entrada) => {
+    const causa = causaPorPath.get(entrada.path);
+    if (causa !== undefined) return [entradaOmitida(entrada, 'invalido', causa)];
+    return isCopiable(entrada.path) ? [] : [entradaOmitida(entrada, 'omitido')];
+  });
 }
 
 export async function retireCommand({
@@ -205,6 +306,7 @@ export async function retireCommand({
   homeDir = null,
   label = 'retire',
   ejecutor = EJECUTOR_POR_DEFECTO,
+  inspectorManifiesto = inspectManifestAuthority,
 }) {
   // Ensayar y retirar en la **misma** invocación es la forma exacta que tiene un
   // guion de eliminar el gate: corre el ensayo, se copia el digest y lo pasa. Se
@@ -240,7 +342,16 @@ export async function retireCommand({
     ? directorios
     : [path.resolve(flags.from)];
 
-  const plan = await planificarRetiro({ fs, vaultRoot, repoId, raiz, objetivos, repoRoot, label });
+  const plan = await planificarRetiro({
+    fs,
+    vaultRoot,
+    repoId,
+    raiz,
+    objetivos,
+    repoRoot,
+    label,
+    inspectorManifiesto,
+  });
   // El modo dirigido —ensayo **y** `--from` a la vez— es el único que expone
   // `omitidos`: el lote agregado y el retiro real no lo llevan.
   const modoDirigido = flags['dry-run'] === true && flags.from !== undefined;
@@ -252,9 +363,9 @@ export async function retireCommand({
     vaultRoot,
     vaultCommit: plan.vaultCommit,
     digest: plan.digestAlcance,
-    flujos: plan.flujos.map(({ manifiesto, ...resto }) => {
+    flujos: plan.flujos.map(({ manifiesto, omitidos, ...resto }) => {
       const entrada = { ...resto, bytes: manifiesto?.bytes ?? null };
-      return modoDirigido ? { ...entrada, omitidos: proyectarOmitidos(manifiesto) } : entrada;
+      return modoDirigido ? { ...entrada, omitidos } : entrada;
     }),
     remanentesNoProcesados: sueltos,
   };
@@ -305,7 +416,15 @@ export async function retireCommand({
       continue;
     }
     try {
-      resultados.push(await ejecutor({ fs, vaultRoot, repoId, raiz, flujo, label }));
+      resultados.push(await ejecutor({
+        fs,
+        vaultRoot,
+        repoId,
+        raiz,
+        flujo,
+        label,
+        inspectorManifiesto,
+      }));
     } catch (error) {
       // Un fallo individual no se lleva puesto el lote: la verificación por
       // flujo continúa con los demás. Lo que sí falla cerrado son las

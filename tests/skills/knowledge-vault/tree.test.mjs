@@ -15,6 +15,7 @@ import {
   collisionGroups,
   copyTree,
   fsyncTreeDirs,
+  inspectIncludedTreePortability,
   listFiles,
   scanInventory,
   verifyTree,
@@ -591,4 +592,41 @@ test('un directorio vacío entra al inventario y no viaja en la copia', async (t
   const copiados = (await listFiles({ fs: new DurableFs(), root: staging })).map((e) => e.path);
   assert.deepEqual(copiados, ['plan.md']);
   await falla(() => scanInventory({ fs: disco, root: path.join(staging, 'vacio') }), 'SOURCE_UNAVAILABLE');
+});
+
+test('[KV-SEL AC-10] inventario conserva rutas relativas completas', async (t) => {
+  const sandbox = await createSandbox(t);
+  const root = await sandbox.makeTree(sandbox.path('repos', 'nested'), {
+    'evidencia/run 1/deep/result.json': 'resultado',
+  });
+
+  const { files } = await scanInventory({ fs: new DurableFs(), root });
+  assert.deepEqual(files.map((entry) => entry.path), ['evidencia/run 1/deep/result.json']);
+});
+
+test('[KV-SEL AC-9] inspector enumera diagnósticos completos y estables', () => {
+  const included = [
+    { path: 'Plan.md' },
+    { path: 'plan.md' },
+    { path: 'evidencia/aux.md' },
+    { path: 'runs/bad?.json' },
+    { path: 'decisiones/ok.txt' },
+  ];
+
+  const diagnostics = inspectIncludedTreePortability(included, '/source');
+  assert.deepEqual(
+    diagnostics.map(({ path: target, code, detail }) => ({ path: target, code, detail })),
+    [
+      { path: 'evidencia/aux.md', code: 'RESERVED_NAME', detail: 'AUX' },
+      { path: 'runs/bad?.json', code: 'RESERVED_CHARACTER', detail: '?' },
+      { path: 'plan.md', code: 'SIBLING_COLLISION', detail: ['Plan.md', 'plan.md'] },
+    ],
+  );
+  assert.deepEqual(inspectIncludedTreePortability(included, '/source'), diagnostics);
+  assert.ok(diagnostics.every((diagnostic) => typeof diagnostic.message === 'string'));
+
+  assert.throws(() => assertIncludedTreePortable(included, '/source'), (error) => {
+    assert.equal(error.code, 'RESERVED_NAME', 'una colisión no debe adelantarse a un segmento inválido');
+    return true;
+  });
 });

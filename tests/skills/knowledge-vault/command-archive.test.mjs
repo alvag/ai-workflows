@@ -37,7 +37,7 @@ async function escena(t, { plan = PLAN('done'), conConfig = false } = {}) {
   await fsp.mkdir(vault, { recursive: true });
   await fsp.writeFile(path.join(flowDir, 'spec.md'), '# Exportar el carrito\n', 'utf8');
   if (plan !== null) await fsp.writeFile(path.join(flowDir, 'plan.md'), plan, 'utf8');
-  await fsp.writeFile(path.join(flowDir, 'notas.txt'), 'no viaja\n', 'utf8');
+  await fsp.writeFile(path.join(flowDir, 'notas.tsv'), 'no viaja\n', 'utf8');
   await fsp.writeFile(path.join(flowDir, 'cross-review', 'v.md'), 'tampoco\n', 'utf8');
   // El repositorio de origen, para que `discoverRepoRoot` lo encuentre.
   await ejecutar('git', ['init', '-q', repoRoot]);

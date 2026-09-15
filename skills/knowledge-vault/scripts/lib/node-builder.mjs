@@ -14,6 +14,8 @@
  */
 
 import { emitFrontmatter } from './frontmatter-emit.mjs';
+import { parseFrontmatter } from './frontmatter.mjs';
+import { assertContainedPath, encodeRelativePath } from './portable-path.mjs';
 
 /** Los ocho de AC-9, en el orden en que se emiten. */
 const CAMPOS = ['type', 'title', 'project', 'flow', 'branch', 'date', 'provenance', 'state'];
@@ -30,13 +32,12 @@ export class NodeBuilderError extends Error {
  * Enlace relativo desde el nodo hasta un documento.
  *
  * El nodo es `sdd/<flujo>.md` y los documentos viven en `sdd/<flujo>/`, así que
- * la ruta arranca en el nombre del flujo. Se codifica cada segmento: hoy ninguno
- * de los 277 documentos reales tiene un espacio o un paréntesis, pero un solo
- * nombre así rompería el enlace en silencio, y el texto visible se muestra sin
- * codificar para que se lea como el archivo se llama.
+ * la ruta arranca en el nombre del flujo. Se codifica cada segmento sin codificar
+ * las barras: un espacio o un paréntesis no rompe el enlace, y el texto visible se
+ * muestra sin codificar para que se lea como el archivo se llama.
  */
 function enlace(flowId, documento) {
-  const destino = `${encodeURIComponent(flowId)}/${encodeURIComponent(documento)}`;
+  const destino = encodeRelativePath(`${flowId}/${documento}`);
   return `- [${documento}](${destino})`;
 }
 
@@ -75,4 +76,80 @@ export function buildNode({ metadata, documents = [], summary }) {
   const cuerpo = [`# ${metadata.title}`, '', summary, ''];
   if (enlaces.length > 0) cuerpo.push('## Documentos', '', ...enlaces, '');
   return `${cabecera}\n${cuerpo.join('\n')}`;
+}
+
+
+export class PublishedNodeError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'PublishedNodeError';
+    this.code = 'NODE_UNREADABLE';
+  }
+}
+
+/** Reads only the node metadata required by archive and index consumers. */
+export function parsePublishedNodeMetadata(text, flowId) {
+  const { ok, keys } = parseFrontmatter(text);
+  const required = ['title', 'summary', 'flow'];
+  const missing = required.filter((key) => !ok || !keys.has(key));
+  if (missing.length > 0) {
+    throw new PublishedNodeError(`el nodo no declara ${missing.join(', ')} en su frontmatter`);
+  }
+  if (keys.get('flow') !== flowId) {
+    throw new PublishedNodeError(
+      `el nodo declara el flujo ${JSON.stringify(keys.get('flow'))}, se esperaba ${JSON.stringify(flowId)}`,
+    );
+  }
+  return Object.fromEntries(required.map((key) => [key, keys.get(key)]));
+}
+
+/** Recovers the exact document frontier recorded in a previously published node. */
+export function parsePublishedNode(text, flowId) {
+  const metadata = parsePublishedNodeMetadata(text, flowId);
+  const lines = text
+    .replace(/^\uFEFF/, '')
+    .split('\n')
+    .map((line) => (line.endsWith('\r') ? line.slice(0, -1) : line));
+  const headings = lines.flatMap((line, index) => (line === '## Documentos' ? [index] : []));
+  if (headings.length === 0) return { metadata, documents: [] };
+  if (headings.length !== 1) {
+    throw new PublishedNodeError('el nodo declara más de una sección ## Documentos');
+  }
+
+  const start = headings[0] + 1;
+  const nextHeading = lines.findIndex((line, index) => index >= start && /^##(?:\s|$)/.test(line));
+  const body = lines.slice(start, nextHeading === -1 ? undefined : nextHeading).filter((line) => line.trim() !== '');
+  if (body.length === 0) {
+    throw new PublishedNodeError('la sección ## Documentos está presente pero vacía');
+  }
+
+  const encodedFlow = encodeURIComponent(flowId);
+  const documents = body.map((line) => {
+    const match = /^- \[(.*)\]\((.+)\)$/.exec(line);
+    if (match === null) {
+      throw new PublishedNodeError(`contenido inválido en ## Documentos: ${JSON.stringify(line)}`);
+    }
+
+    const targetSegments = match[2].split('/');
+    if (targetSegments.length < 2 || targetSegments.shift() !== encodedFlow) {
+      throw new PublishedNodeError(`target fuera del flujo ${JSON.stringify(flowId)}: ${JSON.stringify(match[2])}`);
+    }
+
+    let decoded;
+    try {
+      decoded = targetSegments.map(decodeURIComponent).join('/');
+      assertContainedPath(decoded);
+    } catch {
+      throw new PublishedNodeError(`target no recuperable en ## Documentos: ${JSON.stringify(match[2])}`);
+    }
+    if (encodeRelativePath(decoded) !== targetSegments.join('/')) {
+      throw new PublishedNodeError(`target no canónico en ## Documentos: ${JSON.stringify(match[2])}`);
+    }
+    return decoded;
+  });
+
+  if (new Set(documents).size !== documents.length) {
+    throw new PublishedNodeError('la sección ## Documentos repite un target');
+  }
+  return { metadata, documents };
 }

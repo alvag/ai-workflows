@@ -13,6 +13,7 @@ import {
   assertNoSiblingCollision,
   assertPortableSegment,
   collisionKey,
+  encodeRelativePath,
   inspectSegment,
   isCanonicalPath,
   isPortableSegment,
@@ -207,4 +208,15 @@ test('`toCanonicalPath` valida antes de unir', () => {
   assert.equal(toCanonicalPath(['input', 'task.md']), 'input/task.md');
   rejects(() => toCanonicalPath(['input', '..']), 'DOT_SEGMENT');
   rejects(() => toCanonicalPath(['input', 'a|b']), 'RESERVED_CHARACTER');
+});
+
+test('[KV-SEL AC-10] codifica por segmento sin perder barras', () => {
+  assert.equal(encodeRelativePath('spec.md'), encodeURIComponent('spec.md'));
+  assert.equal(
+    encodeRelativePath('evidencia/run 1/% bruto.txt'),
+    'evidencia/run%201/%25%20bruto.txt',
+  );
+  assert.ok(!encodeRelativePath('evidencia/run 1/result.txt').includes('%2F'));
+  rejects(() => encodeRelativePath('../fuga.md'), 'DOT_SEGMENT');
+  rejects(() => encodeRelativePath('a\\b.md'), 'PATH_SEPARATOR');
 });

@@ -17,7 +17,7 @@
  * es tarde, porque el commit del archivado se llevaría puestos los cambios ajenos.
  */
 
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -37,6 +37,38 @@ export class VaultGitError extends Error {
 async function git(vaultRoot, args, { config = [] } = {}) {
   return ejecutar('git', ['-C', vaultRoot, ...config, ...args]);
 }
+
+
+async function gitWithInput(vaultRoot, args, input) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('git', ['-C', vaultRoot, ...args], { stdio: ['pipe', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.once('error', reject);
+    child.once('close', (code) => resolve({ code, stdout, stderr }));
+    child.stdin.end(input);
+  });
+}
+
+const splitNul = (value) => value.split('\0').filter((entry) => entry.length > 0);
+
+function statusPaths(stdout) {
+  const records = splitNul(stdout);
+  const paths = [];
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index];
+    const status = record.slice(0, 2);
+    paths.push({ status, path: record.slice(3) });
+    if (/[RC]/.test(status)) index += 1;
+  }
+  return paths;
+}
+
+const covers = (requested, observed) => observed === requested || observed.startsWith(`${requested}/`);
 
 /** `--show-toplevel` resuelto, o `null` si el directorio no está bajo ningún repositorio. */
 async function toplevel(vaultRoot) {
@@ -161,19 +193,20 @@ export async function ensureVaultRepo(vaultRoot) {
  * encontró en `HEAD`, o sea trackeadas, y el colapso es de untracked.
  */
 export async function assertVaultClean(vaultRoot, allowed = []) {
-  const { stdout } = await git(vaultRoot, ['status', '--porcelain', '--untracked-files=all']);
-  const propio = (ruta) => allowed.some((a) => ruta === a || ruta.startsWith(`${a}/`));
-  const sucio = stdout
-    .split('\n')
-    .filter((l) => l.trim().length > 0)
-    // El formato es `XY <ruta>`; un rename trae `origen -> destino` y se juzga
-    // por el destino, que es lo que quedaría staged.
-    .filter((l) => !propio(l.slice(3).split(' -> ').at(-1).replace(/^"|"$/g, '')));
-  if (sucio.length > 0) {
+  const { stdout } = await git(vaultRoot, [
+    '--literal-pathspecs',
+    'status',
+    '--porcelain=v1',
+    '-z',
+    '--untracked-files=all',
+  ]);
+  const own = (target) => allowed.some((candidate) => covers(candidate, target));
+  const dirty = statusPaths(stdout).filter((entry) => !own(entry.path));
+  if (dirty.length > 0) {
     throw new VaultGitError(
       'VAULT_DIRTY',
-      `el vault tiene ${sucio.length} cambio(s) ajeno(s) sin commitear y el archivado se los llevaría puestos`,
-      { path: vaultRoot, detail: sucio },
+      `el vault tiene ${dirty.length} cambio(s) ajeno(s) sin commitear y el archivado se los llevaría puestos`,
+      { path: vaultRoot, detail: dirty.map((entry) => `${entry.status} ${entry.path}`) },
     );
   }
 }
@@ -277,23 +310,93 @@ export async function senalesDelRepositorio(repoRoot) {
  * @param {string[]} rutas relativas a `vaultRoot`; archivos o directorios
  * @returns {Promise<boolean>}
  */
+export async function rutasNoAncladas(vaultRoot, rutas) {
+  if (!Array.isArray(rutas)) {
+    throw new VaultGitError('INVALID_PATHS', 'rutasNoAncladas espera una lista de rutas');
+  }
+  const requested = [...new Set(rutas)];
+  if (requested.length === 0) return { missing: [], dirty: [], ignored: [] };
+
+  let headPaths = [];
+  if (await headDelVault(vaultRoot) !== null) {
+    const { stdout } = await git(vaultRoot, [
+      '--literal-pathspecs',
+      'ls-tree',
+      '-r',
+      '--name-only',
+      '-z',
+      'HEAD',
+      '--',
+      ...requested,
+    ]);
+    headPaths = splitNul(stdout);
+  }
+
+  const { stdout: status } = await git(vaultRoot, [
+    '--literal-pathspecs',
+    'status',
+    '--porcelain=v1',
+    '-z',
+    '--untracked-files=all',
+    '--',
+    ...requested,
+  ]);
+  const dirtyPaths = statusPaths(status).map((entry) => entry.path);
+
+  const ignoredResult = await gitWithInput(
+    vaultRoot,
+    ['check-ignore', '--no-index', '-z', '--stdin'],
+    `${requested.join('\0')}\0`,
+  );
+  if (ignoredResult.code !== 0 && ignoredResult.code !== 1) {
+    throw new VaultGitError(
+      'GIT_CHECK_IGNORE_FAILED',
+      `git check-ignore falló con código ${ignoredResult.code}: ${ignoredResult.stderr.trim()}`,
+      { path: vaultRoot },
+    );
+  }
+  const ignoredPaths = ignoredResult.code === 0 ? splitNul(ignoredResult.stdout) : [];
+
+  return {
+    missing: requested.filter((route) => !headPaths.some((observed) => covers(route, observed))),
+    dirty: requested.filter((route) => dirtyPaths.some((observed) => covers(route, observed))),
+    ignored: requested.filter((route) => ignoredPaths.some((observed) => covers(route, observed))),
+  };
+}
+
+export async function inspectManifestAuthority(vaultRoot, manifestPath) {
+  const absolute = path.isAbsolute(manifestPath)
+    ? manifestPath
+    : path.join(vaultRoot, ...manifestPath.split('/'));
+  const relative = path.relative(vaultRoot, absolute).split(path.sep).join('/');
+  if (relative === '' || relative === '..' || relative.startsWith('../')) {
+    throw new VaultGitError(
+      'MANIFEST_OUTSIDE_VAULT',
+      `el manifiesto ${JSON.stringify(manifestPath)} no está contenido en el vault`,
+      { path: manifestPath },
+    );
+  }
+
+  const info = await fs.lstat(absolute).catch((error) => {
+    if (error?.code === 'ENOENT') return null;
+    throw error;
+  });
+  const diagnostics = await rutasNoAncladas(vaultRoot, [relative]);
+  // La ausencia física no implica ausencia de autoridad: una ruta versionada
+  // eliminada del working tree sigue siendo un manifiesto sucio y debe bloquear.
+  const exists = info !== null || diagnostics.missing.length === 0;
+  return {
+    exists,
+    anchored: info?.isFile() === true && diagnostics.missing.length === 0,
+    dirty: diagnostics.dirty.length > 0,
+    ignored: diagnostics.ignored.length > 0,
+  };
+}
+
 export async function anclaEnHead(vaultRoot, rutas) {
   if (!Array.isArray(rutas) || rutas.length === 0) {
     throw new VaultGitError('NOTHING_TO_ANCHOR', 'anclaEnHead no recibió rutas que anclar');
   }
-  for (const ruta of rutas) {
-    let stdout;
-    try {
-      // `-r` para que un directorio se resuelva a sus blobs, y `--` para que una
-      // ruta que se parezca a un ref no se lea como revisión.
-      ({ stdout } = await git(vaultRoot, ['ls-tree', '-r', '--name-only', 'HEAD', '--', ruta]));
-    } catch {
-      // Un repositorio sin ningún commit: `HEAD` no resuelve.
-      return false;
-    }
-    if (stdout.trim().length === 0) return false;
-  }
-
-  const { stdout: sucio } = await git(vaultRoot, ['status', '--porcelain', '--', ...rutas]);
-  return sucio.trim().length === 0;
+  const diagnostics = await rutasNoAncladas(vaultRoot, rutas);
+  return diagnostics.missing.length === 0 && diagnostics.dirty.length === 0 && diagnostics.ignored.length === 0;
 }

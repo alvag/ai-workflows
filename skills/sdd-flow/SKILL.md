@@ -1269,6 +1269,25 @@ Con la cadena activa el archivado deja de ser el final del camino: `.plans/archi
 
 Cada fila nombra dónde queda el flujo si la cadena se corta ahí, que es lo que permite reconocer el estado al reanudar — incluido el caso en que el flujo ya salió del listado de activos y todavía no llegó a destino.
 
+Al reanudar, estas señales tienen precedencia sobre cualquier intento de repetir la cadena:
+
+| Estado observable | Conducta obligatoria |
+|---|---|
+| sin remanente ni manifiesto | `archive` y el ensayo dirigido usan el selector instalado |
+| frontera histórica incompatible con el origen | `archive` devuelve `VERIFY_FAILED`; `migrate` conserva el histórico dentro de `BATCH_PARTIAL`; no hay backfill |
+| remanente sin manifiesto comprometido | el retiro real restaura primero y devuelve `RECLAMO_DESHECHO`; el siguiente intento puede bloquear por la frontera histórica |
+| manifiesto comprometido y remanente | termina desde el manifiesto, sin consultar el selector instalado |
+| manifiesto comprometido sin remanente | estado terminal; no rearchiva ni consulta el selector |
+| manifiesto físico sucio, ignorado o no anclado | `PRECONDITION_NOT_MET` antes de clasificar y sin destrucción, aunque exista remanente |
+
+En la última fila, el ensayo dirigido todavía entrega un manifiesto neutral,
+digest, bytes y `omitidos` para diagnosticar; esos datos no autorizan el retiro.
+Un operador debe reinstalar la skill completa para desplegar el selector nuevo.
+Si una frontera nueva ya fue publicada, el rollback seguro es detener `archive`
+y `retire` y reinstalar completa la versión nueva: volver al selector anterior
+haría incompatibles esos flujos. Una copia instalada no se actualiza por cambiar
+este repositorio.
+
 **El paso 3 es un gate humano y no se automatiza.** El cierre **no puede correr el ensayo y pasar su digest** al retiro en la misma corrida: un guion que copia el digest de una salida a la siguiente satisface la letra del contrato y elimina el gate, que es lo único que separa un borrado irreversible de un efecto secundario.
 
 **`NO_VAULT` no es un fallo: es la ausencia de configuración, y ahí el movimiento plano ya es el resultado completo.** La distinción importa porque las dos situaciones se parecen y no son la misma. Que el vault esté corrupto, o que el CLI falle a mitad de camino, merece un fallo cerrado: algo salió mal y seguir en silencio dejaría material fuera sin que nada lo señale. Que **no haya vault declarado** significa que el usuario todavía no eligió uno —o no quiere ninguno—, y tratarlo como error produce fricción en cada archivado sin ningún riesgo que la justifique. La propia skill del vault lo dice de su estado: es el que *habilita a preguntar y configurar*, no un archivo roto. Con `mode: auto` ese estado abre el ofrecimiento una vez; con `"off"` ni siquiera se llega a él.

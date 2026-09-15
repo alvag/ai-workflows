@@ -5,7 +5,7 @@
  * liste sólo su nivel deja la raíz de este vault con una sola entrada —
  * `projects/`— y obliga a bajar cuatro niveles para saber qué hay. Cada índice
  * lista todos los flujos que cuelgan de él, directa o indirectamente, así que la
- * raíz alcanza para ubicar cualquiera de los cincuenta.
+ * raíz alcanza para ubicar cualquiera.
  *
  * **Regenerar da los mismos bytes.** Es lo que permite reconstruirlos después de
  * cualquier corrida sin preguntarse si algo cambió, y lo que hace del índice un
@@ -21,7 +21,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { parseFrontmatter } from './frontmatter.mjs';
+import { parsePublishedNodeMetadata } from './node-builder.mjs';
+import { encodeRelativePath } from './portable-path.mjs';
 import { INDEX_FILENAME, isNodeFile } from './vault-store.mjs';
 
 export class IndexRenderError extends Error {
@@ -46,17 +47,20 @@ async function recolectarNodos(vaultRoot) {
       }
       if (!isNodeFile(path.basename(dirAbs), e.name)) continue;
 
-      const { ok, keys } = parseFrontmatter(await fs.readFile(abs, 'utf8'));
-      const faltan = ['title', 'summary', 'flow'].filter((k) => !ok || !keys.has(k));
-      if (faltan.length > 0) {
-        // No se completa ni se saltea en silencio: un nodo ilegible es un nodo
-        // que alguien escribió mal, y esconderlo lo vuelve invisible para siempre.
+      const text = await fs.readFile(abs, 'utf8');
+      const expectedFlow = path.basename(abs, '.md');
+      try {
+        const metadata = parsePublishedNodeMetadata(text, expectedFlow);
+        nodos.push({ abs, dir: dirAbs, ...metadata });
+      } catch (error) {
+        if (error?.code !== 'NODE_UNREADABLE') throw error;
+        // No se completa ni se saltea en silencio: esconder un nodo ilegible lo
+        // volvería invisible para siempre.
         throw new IndexRenderError(
-          `el nodo ${path.basename(abs)} no declara ${faltan.join(', ')} en su frontmatter`,
+          `el nodo ${path.basename(abs)} no se puede leer: ${error.message}`,
           { path: abs },
         );
       }
-      nodos.push({ abs, dir: dirAbs, flow: keys.get('flow'), title: keys.get('title'), summary: keys.get('summary') });
     }
   };
   await visitar(vaultRoot);
@@ -84,7 +88,7 @@ function renderizar(titulo, nodos, dirDelIndice) {
   const lineas = [`# ${titulo}`, ''];
   lineas.push(nodos.length === 1 ? '1 flujo.' : `${nodos.length} flujos.`, '');
   for (const n of nodos) {
-    const rel = path.relative(dirDelIndice, n.abs).split(path.sep).map(encodeURIComponent).join('/');
+    const rel = encodeRelativePath(path.relative(dirDelIndice, n.abs).split(path.sep).join('/'));
     lineas.push(`- [${n.title}](${rel}) — ${n.summary}`);
   }
   lineas.push('');
