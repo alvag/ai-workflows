@@ -4,7 +4,7 @@ consumo, y rechaza cualquier presupuesto excedido."""
 
 from __future__ import annotations
 
-import re
+import importlib.util
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -12,11 +12,12 @@ from typing import Dict, List, Set, Tuple
 
 
 CLASES = {"IMPLEMENTATION_DEFECT", "VERIFICATION_DEFECT", "ENVIRONMENT_FAILURE", "DESIGN_GAP"}
-
-
-def _valor(linea: str, campo: str) -> str:
-    match = re.search(rf"`{campo}: ([^`]*)`", linea)
-    return match.group(1) if match else ""
+_RUTA_CONTRATO = Path(__file__).resolve().with_name("contrato-invariantes.py")
+_ESPECIFICACION = importlib.util.spec_from_file_location("ownership_presupuesto_contrato", _RUTA_CONTRATO)
+if _ESPECIFICACION is None or _ESPECIFICACION.loader is None:
+    raise RuntimeError(f"no se pudo cargar {_RUTA_CONTRATO}")
+_CONTRATO = importlib.util.module_from_spec(_ESPECIFICACION)
+_ESPECIFICACION.loader.exec_module(_CONTRATO)
 
 
 def _clasificaciones(texto: str) -> List[Tuple[str, str]]:
@@ -30,7 +31,10 @@ def _clasificaciones(texto: str) -> List[Tuple[str, str]]:
             dentro = False
         if (dentro and linea.startswith("- `checkId: ")) or \
                 "`paso: clasificar-falla`" in linea:
-            resultado.append((_valor(linea, "checkId"), _valor(linea, "clase")))
+            campos = _CONTRATO.campos_linea(linea)
+            if not campos.get("checkId") or not campos.get("clase"):
+                raise ValueError("clasificación inválida")
+            resultado.append((campos["checkId"], campos["clase"]))
     return resultado
 
 
@@ -39,14 +43,20 @@ def _pares_aprobados(texto: str) -> List[Tuple[str, int, int]]:
     for linea in texto.splitlines():
         if "`paso: aprobar-reparación`" not in linea:
             continue
-        check_id = _valor(linea, "checkId")
-        version = _valor(linea, "contract_version")
-        ordinal = _valor(linea, "verification_defect_ordinal")
+        campos = _CONTRATO.campos_linea(linea)
+        if not campos:
+            raise ValueError("aprobación malformada")
+        check_id = campos.get("checkId", "")
+        version = campos.get("contract_version", "")
+        ordinal = campos.get("verification_defect_ordinal", "")
         if not any((check_id, version, ordinal)):
             continue
         if not all((check_id, version, ordinal)):
             raise ValueError("par de aprobación incompleto")
-        resultado.append((check_id, int(version), int(ordinal)))
+        try:
+            resultado.append((check_id, int(version), int(ordinal)))
+        except ValueError as error:
+            raise ValueError("versión u ordinal de aprobación inválidos") from error
     return resultado
 
 
@@ -59,7 +69,11 @@ def main() -> int:
         approval_path = Path(sys.argv[2])
         max_fix_rounds = int(sys.argv[3])
         if max_fix_rounds < 0:
-            raise ValueError
+            raise ValueError("límite de rondas inválido")
+    except ValueError as error:
+        print(f"GUARD:presupuesto-por-check {error}", file=sys.stderr)
+        return 1
+    try:
         textos: Dict[Path, str] = {}
         for ruta in (log_path, approval_path):
             resuelta = ruta.resolve()
@@ -68,10 +82,17 @@ def main() -> int:
         log = textos[log_path.resolve()]
         approval_log = textos[approval_path.resolve()]
         pares = _pares_aprobados(approval_log)
-    except (OSError, UnicodeError, ValueError):
-        print("GUARD:presupuesto-por-check entrada inválida", file=sys.stderr)
+    except (OSError, UnicodeError) as error:
+        print(f"GUARD:presupuesto-por-check archivo ilegible: {error}", file=sys.stderr)
         return 1
-    clasificaciones = _clasificaciones(log)
+    except ValueError as error:
+        print(f"GUARD:presupuesto-por-check {error}", file=sys.stderr)
+        return 1
+    try:
+        clasificaciones = _clasificaciones(log)
+    except ValueError as error:
+        print(f"GUARD:presupuesto-por-check {error}", file=sys.stderr)
+        return 1
     excesos: List[str] = []
     fisicas = Counter(
         (check_id, clase) for check_id, clase in clasificaciones

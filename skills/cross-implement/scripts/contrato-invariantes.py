@@ -41,8 +41,9 @@ PROJECTION_WRAPPER_BODY = (
     "if ! test -n \"$p\"; then printf '%s\\n' CROSS_IMPLEMENT_PROJECTION_BLOCKED; exit 125; fi; "
     "if ! test -n \"$o\"; then printf '%s\\n' CROSS_IMPLEMENT_PROJECTION_BLOCKED; exit 125; fi; "
     "if ! test -n \"$l\"; then printf '%s\\n' CROSS_IMPLEMENT_PROJECTION_BLOCKED; exit 125; fi; "
-    "sh -c \"$1\" >\"$p\" 2>&1; rc=$?; sh -c \"$2\" <\"$p\" >\"$o\"; prc=$?; "
-    "if [ \"$prc\" -ne 0 ]; then printf '%s\\n' CROSS_IMPLEMENT_PROJECTION_BLOCKED; exit 125; fi; "
+    "sh -c \"$1\" >\"$p\" 2>&1; rc=$?; sh -c \"$2\" <\"$p\" >\"$o\" 2>\"$l\"; prc=$?; "
+    "if [ \"$prc\" -ne 0 ]; then cat \"$l\" >&2; "
+    "printf '%s\\n' CROSS_IMPLEMENT_PROJECTION_BLOCKED; exit 125; fi; "
     "exec 3<\"$o\"; IFS= read -r line <&3; first=$?; IFS= read -r extra <&3; second=$?; "
     "printf '%s\\n' \"$line\" >\"$l\"; cmp -s \"$l\" \"$o\"; same=$?; "
     "grep -Eq '^failures=[0-9]+$' \"$l\"; count=$?; "
@@ -92,12 +93,12 @@ def _cargar_dependencia(nombre_archivo: str, nombre_modulo: str) -> ModuleType:
     ruta = Path(__file__).resolve().with_name(nombre_archivo)
     especificacion = importlib.util.spec_from_file_location(nombre_modulo, ruta)
     if especificacion is None or especificacion.loader is None:
-        raise RuntimeError(nombre_archivo)
+        raise RuntimeError(f"no se pudo crear el cargador de {ruta}")
     modulo = importlib.util.module_from_spec(especificacion)
     try:
         especificacion.loader.exec_module(modulo)
     except Exception as error:
-        raise RuntimeError(nombre_archivo) from error
+        raise RuntimeError(f"no se pudo cargar {ruta}: {error}") from error
     return modulo
 
 
@@ -126,6 +127,29 @@ def _linea_campos(texto: str, prefijo: str, numero: int) -> Optional[Linea]:
         valores[clave] = valor
         orden.append(clave)
     return Linea(valores, tuple(orden), numero, texto)
+
+
+def campos_linea(texto: str, prefijo: str = "- ") -> Dict[str, str]:
+    """Lee una línea completa con la misma gramática estricta que el contrato."""
+    lectura = _linea_campos(texto.strip(), prefijo, 0)
+    if lectura is None or not _campos_validos(lectura, lectura.orden, "línea", []):
+        return {}
+    return dict(lectura.valores)
+
+
+def operacion_token(token: str) -> Optional[str]:
+    """Extrae la operación de un token de reparación con ordinal canónico."""
+    coincidencia = TOKEN_RE.fullmatch(token)
+    if coincidencia is None:
+        return None
+    prefijo = coincidencia.group(1)
+    version_e_id, separador, operacion = prefijo.rpartition(":")
+    version, separador_id, identificador = version_e_id.partition(":")
+    if (not separador or not separador_id or not identificador
+            or re.fullmatch(r"[1-9][0-9]*", version) is None
+            or operacion not in OPERACIONES):
+        return None
+    return operacion
 
 
 def _extraer(lineas: Iterable[str], prefijo: str) -> List[Linea]:

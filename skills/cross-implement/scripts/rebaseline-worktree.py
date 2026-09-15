@@ -8,6 +8,7 @@ pero un 125 del predicado con proyección canónica conserva su resultado RED.""
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import re
 import subprocess
@@ -15,6 +16,14 @@ import sys
 import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
+
+
+_RUTA_CONTRATO = Path(__file__).resolve().with_name("contrato-invariantes.py")
+_ESPECIFICACION = importlib.util.spec_from_file_location("rebaseline_contrato", _RUTA_CONTRATO)
+if _ESPECIFICACION is None or _ESPECIFICACION.loader is None:
+    raise RuntimeError(f"no se pudo cargar {_RUTA_CONTRATO}")
+_CONTRATO = importlib.util.module_from_spec(_ESPECIFICACION)
+_ESPECIFICACION.loader.exec_module(_CONTRATO)
 
 
 def ejecutar(*args: str, cwd: Path = None) -> subprocess.CompletedProcess:
@@ -97,22 +106,20 @@ def observable(salida: Path, codigo: int) -> str:
     return f"exit {codigo}; {saneada}"
 
 
-def clasificar_proyeccion(salida: Path, codigo: int) -> str:
-    """Clasifica solo salidas que pertenecen al transporte de proyección."""
+def clasificar_proyeccion(salida: Path, codigo: int, envuelta: bool) -> str:
+    """Clasifica el protocolo solo cuando el comando usa la envoltura canónica."""
     try:
         # La proyección es un protocolo de bytes: el LF final y la ausencia de bytes adicionales
         # son parte de su forma, por eso no se abre como texto.
         contenido = salida.read_bytes()
     except OSError:
         return "BLOCKED"
-    if contenido == PROYECCION_BLOQUEADA and codigo == 125:
+    if envuelta and contenido == PROYECCION_BLOQUEADA and codigo == 125:
         return "BLOCKED"
-    lineas = contenido.splitlines(keepends=True)
-    parece_proyeccion = any(
-        linea.startswith((b"failures=", b"count=", b"CROSS_IMPLEMENT_"))
-        for linea in lineas)
-    if parece_proyeccion and (not lineas or PROYECCION.fullmatch(lineas[-1]) is None):
-        return "BLOCKED"
+    if envuelta:
+        lineas = contenido.splitlines(keepends=True)
+        if not lineas or PROYECCION.fullmatch(lineas[-1]) is None:
+            return "BLOCKED"
     return "GREEN_ALREADY" if codigo == 0 else "RED"
 
 
@@ -147,9 +154,9 @@ def main() -> int:
             raise OSError("no se pudo leer el commit del worktree")
         commit = commit_resultado.stdout.decode("utf-8").strip()
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        estado = clasificar_proyeccion(salida, resultado.returncode)
-        obs = ("exit 125; CROSS_IMPLEMENT_PROJECTION_BLOCKED" if estado == "BLOCKED"
-               else observable(salida, resultado.returncode))
+        envuelta = _CONTRATO._envoltura(comando)[0] is not None
+        estado = clasificar_proyeccion(salida, resultado.returncode, envuelta)
+        obs = observable(salida, resultado.returncode)
         registro = (f"id: {fila} · resultado: {estado} · commit: {commit} · "
                     f"timestamp: {timestamp} · observado: {obs}")
     except (OSError, UnicodeError, ValueError, MemoryError):

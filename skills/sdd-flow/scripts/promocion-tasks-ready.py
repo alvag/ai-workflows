@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from functools import lru_cache
 from datetime import datetime
 from pathlib import Path
 from types import ModuleType
@@ -98,6 +99,25 @@ def ruta_cadena() -> Path:
             / "cross-implement" / "scripts" / "contrato-cadena.py")
 
 
+@lru_cache(maxsize=1)
+def _cargar_invariantes() -> Optional[ModuleType]:
+    ruta = ruta_cadena().with_name("contrato-invariantes.py")
+    especificacion = importlib.util.spec_from_file_location("promocion_contrato_invariantes", ruta)
+    if especificacion is None or especificacion.loader is None:
+        return None
+    modulo = importlib.util.module_from_spec(especificacion)
+    try:
+        especificacion.loader.exec_module(modulo)
+    except (OSError, ImportError):
+        return None
+    return modulo
+
+
+def _campos_linea(linea: str, prefijo: str = "- ") -> Dict[str, str]:
+    modulo = _cargar_invariantes()
+    return modulo.campos_linea(linea, prefijo) if modulo is not None else {}
+
+
 def validar_cadena(plan_arg: str) -> int:
     """Corre el validador de la cadena y devuelve su código, sin interpretarlo.
 
@@ -159,23 +179,16 @@ def _cargar_ledger() -> Optional[ModuleType]:
     return modulo
 
 
-def _valor(linea: str, campo: str) -> str:
-    match = re.search(rf"`{campo}: ([^`]*)`", linea)
-    return match.group(1) if match else ""
-
-
 def _aprobacion_vigente(bitacora: str, version: int, hash_candidato: str
                         ) -> Optional[Dict[str, str]]:
     candidatas: List[Dict[str, str]] = []
     for linea in bitacora.splitlines():
         if "`paso: aprobar-reparación`" not in linea:
             continue
-        campos = {nombre: _valor(linea, nombre) for nombre in (
-            "token", "hash", "checkId", "contract_version", "verification_defect_ordinal",
-        )}
-        if campos["hash"] == hash_candidato and campos["contract_version"] == str(version):
+        campos = _campos_linea(linea)
+        if campos.get("hash") == hash_candidato and campos.get("contract_version") == str(version):
             candidatas.append(campos)
-    return candidatas[-1] if len(candidatas) == 1 else None
+    return candidatas[0] if len(candidatas) == 1 else None
 
 
 def _sequence_id(predecesor: str, check_id: str, ordinal: str) -> str:
@@ -219,9 +232,11 @@ def _aprobaciones(texto: str) -> List[Dict[str, str]]:
     for linea in texto.splitlines():
         if "`paso: aprobar-reparación`" not in linea:
             continue
-        aprobaciones.append({nombre: _valor(linea, nombre) for nombre in (
-            "token", "hash", "checkId", "contract_version", "verification_defect_ordinal",
-        )})
+        campos = _campos_linea(linea)
+        if any(not campos.get(nombre) for nombre in (
+                "token", "hash", "checkId", "contract_version", "verification_defect_ordinal")):
+            raise ValueError("aprobación malformada")
+        aprobaciones.append(campos)
     return aprobaciones
 
 
@@ -234,12 +249,10 @@ def _reparacion_vigente(plan: str, version: int, aprobacion: Dict[str, str]) -> 
         for linea in bloque.splitlines():
             if not linea.startswith("- reparación: "):
                 continue
-            campos = {nombre: _valor(linea, nombre) for nombre in (
-                "version_previa", "id", "token",
-            )}
-            if (campos["version_previa"] == str(version - 1)
-                    and campos["id"] == aprobacion["checkId"]
-                    and campos["token"] == aprobacion["token"]):
+            campos = _campos_linea(linea, "- reparación: ")
+            if (campos.get("version_previa") == str(version - 1)
+                    and campos.get("id") == aprobacion["checkId"]
+                    and campos.get("token") == aprobacion["token"]):
                 return True
     return False
 
@@ -247,8 +260,6 @@ def _reparacion_vigente(plan: str, version: int, aprobacion: Dict[str, str]) -> 
 def _leer_link(ruta: Path) -> Optional[Dict[str, Any]]:
     try:
         cuerpo = ruta.read_bytes()
-        if not cuerpo.endswith(b"\n") or cuerpo.endswith(b"\n\n"):
-            return None
         link = json.loads(cuerpo.decode("utf-8"))
     except (OSError, UnicodeError, ValueError, TypeError):
         return None
@@ -423,7 +434,10 @@ def _validar_refresh(plan_path: Path, bitacora: str, ledger_path: Path,
         return "plan"
     if not _reparacion_vigente(plan, version, aprobacion):
         return "reparacion"
-    aprobaciones = _aprobaciones(bitacora)
+    try:
+        aprobaciones = _aprobaciones(bitacora)
+    except ValueError:
+        return "aprobacion"
     paquete = _publicar_paquete(
         plan_resuelto, ledger_resuelto, documento, aprobacion, aprobaciones, version)
     return None if paquete is not None else "paquete"

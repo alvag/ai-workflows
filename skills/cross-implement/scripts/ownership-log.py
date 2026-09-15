@@ -4,6 +4,7 @@ clases no implementables y que un mismo delta de implementación no se fragmente
 
 from __future__ import annotations
 
+import importlib.util
 import re
 import sys
 from collections import defaultdict
@@ -15,33 +16,38 @@ CLASES = {"IMPLEMENTATION_DEFECT", "VERIFICATION_DEFECT", "ENVIRONMENT_FAILURE",
 GENERICO = re.compile(
     r"no cubrió|no cubrio|faltó manejar|falto manejar|no entendió|no entendio|"
     r"algún borde|algun borde|no quedó bien|no quedo bien", re.IGNORECASE)
+_RUTA_CONTRATO = Path(__file__).resolve().with_name("contrato-invariantes.py")
+_ESPECIFICACION = importlib.util.spec_from_file_location("ownership_log_contrato", _RUTA_CONTRATO)
+if _ESPECIFICACION is None or _ESPECIFICACION.loader is None:
+    raise RuntimeError(f"no se pudo cargar {_RUTA_CONTRATO}")
+_CONTRATO = importlib.util.module_from_spec(_ESPECIFICACION)
+_ESPECIFICACION.loader.exec_module(_CONTRATO)
 
 
 def valor(linea: str, campo: str) -> str:
-    match = re.search(rf"`{campo}: ([^`]*)`", linea)
-    return match.group(1) if match else ""
+    return _CONTRATO.campos_linea(linea).get(campo, "")
 
 
-def lineas_ownership(texto: str) -> List[str]:
-    resultado: List[str] = []
+def lineas_ownership(texto: str) -> List[Tuple[int, str]]:
+    resultado: List[Tuple[int, str]] = []
     dentro = False
-    for linea in texto.splitlines():
+    for indice, linea in enumerate(texto.splitlines()):
         if linea == "Ownership:":
             dentro = True
             continue
         if dentro and (linea.startswith("## ") or not linea.strip()):
             dentro = False
         if dentro and linea.startswith("- `checkId: "):
-            resultado.append(linea)
+            resultado.append((indice, linea))
     return resultado
 
 
 def clasificaciones(texto: str) -> List[Tuple[str, str]]:
-    delegadas = {(indice, linea) for indice, linea in enumerate(texto.splitlines())
-                 if linea in lineas_ownership(texto)}
+    lineas = texto.splitlines()
+    delegadas = {indice for indice, _linea in lineas_ownership(texto)}
     resultado: List[Tuple[str, str]] = []
-    for indice, linea in enumerate(texto.splitlines()):
-        if (indice, linea) in delegadas:
+    for indice, linea in enumerate(lineas):
+        if indice in delegadas:
             resultado.append(("delegada", linea))
         elif "`paso: clasificar-falla`" in linea:
             resultado.append(("auxiliar", linea.strip()))

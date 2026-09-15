@@ -318,7 +318,7 @@ versión siguiente, ya con `estado: final`, es la que se congela.
 
 La envoltura de proyección canónica vive únicamente en
 `contrato-invariantes.py::PROJECTION_WRAPPER_BODY`; su SHA-256 es
-`b3106e118d7bcfc3eb65a5b4e266b0fedc5af4ce30159a28d5c106b1f008314e`. La documentación fija el
+`8dd5a58709576b4f7d7262a67012114de6a834769ce49a88f51d46ed675ff2bd`. La documentación fija el
 efecto y el digest, no una segunda copia de sus bytes.
 
 #### `contrato-verificacion.md::aprobar-reparación-v1`

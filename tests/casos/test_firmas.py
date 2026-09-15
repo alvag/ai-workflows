@@ -384,14 +384,16 @@ def test_aux_rebaseline_worktree(_contexto: Optional[object]) -> None:
     modulo = _cargar_modulo(firma)
     with tempfile.TemporaryDirectory(prefix="aux-rebaseline-") as temporal:
         salida = Path(temporal) / "salida"
-        for cuerpo, codigo, esperado in (
-                (b"CROSS_IMPLEMENT_PROJECTION_BLOCKED\n", 125, "BLOCKED"),
-                (b"raw\nfailures=2\n", 125, "RED"),
-                (b"raw\nfailures=2", 0, "BLOCKED"),
-                (b"raw\nfailures=2\nextra\n", 0, "BLOCKED")):
+        for cuerpo, codigo, envuelta, esperado in (
+                (b"CROSS_IMPLEMENT_PROJECTION_BLOCKED\n", 125, True, "BLOCKED"),
+                (b"CROSS_IMPLEMENT_PROJECTION_BLOCKED\n", 125, False, "RED"),
+                (b"raw\nfailures=2\n", 125, True, "RED"),
+                (b"raw\nfailures=2", 0, True, "BLOCKED"),
+                (b"raw\nfailures=2\nextra\n", 0, True, "BLOCKED"),
+                (b"raw\ncount=12\nextra\n", 0, False, "GREEN_ALREADY")):
             # La forma incluye el LF final; se escriben bytes para no normalizarlo.
             salida.write_bytes(cuerpo)
-            assert modulo.clasificar_proyeccion(salida, codigo) == esperado
+            assert modulo.clasificar_proyeccion(salida, codigo, envuelta) == esperado
 
         repo = Path(temporal) / "repo"
         repo.mkdir()
@@ -407,6 +409,28 @@ def test_aux_rebaseline_worktree(_contexto: Optional[object]) -> None:
             ["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True,
             text=True, encoding=ENCODING, check=True).stdout.strip()
         real_run = subprocess.run
+
+        def rebaseline(comando: str, estado_forzado: Optional[str] = None) -> str:
+            previo, argv = Path.cwd(), sys.argv
+            out = io.StringIO()
+            try:
+                os.chdir(repo)
+                sys.argv = [str(firma.archivo), sha, "V12", comando]
+                parche = (mock.patch.object(modulo, "clasificar_proyeccion",
+                                            return_value=estado_forzado)
+                          if estado_forzado is not None else contextlib.nullcontext())
+                with parche, contextlib.redirect_stdout(out):
+                    assert modulo.main() == 0
+            finally:
+                os.chdir(previo)
+                sys.argv = argv
+            return out.getvalue()
+
+        directo = rebaseline("printf 'count=12\\n'; exit 3")
+        assert "resultado: RED" in directo and "observado: exit 3; count=12" in directo
+        bloqueado = rebaseline("printf 'salida real\\n'; exit 3", "BLOCKED")
+        assert "resultado: BLOCKED" in bloqueado
+        assert "observado: exit 3; salida real" in bloqueado
 
         def fallo_despues_de_crear(*args: object, **kwargs: object) -> subprocess.CompletedProcess:
             if kwargs.get("shell"):
@@ -463,6 +487,23 @@ def test_aux_gate_modo_directo(_contexto: Optional[object]) -> None:
             log.write_text("\n".join(lineas) + "\n", encoding=ENCODING)
             resultado = _ejecutar_auxiliar("gate-modo-directo", [str(log)], arena)
             assert resultado.returncode == codigo, resultado.stderr
+        tarde = aprobacion.replace("esperado-corregido", "cobertura-agregada")
+        log.write_text("\n".join(base + [tarde]) + "\n", encoding=ENCODING)
+        resultado = _ejecutar_auxiliar("gate-modo-directo", [str(log)], arena)
+        assert "GUARD:cobertura-antes-del-primer-congelamiento" in resultado.stderr
+        invalido = tarde.replace("cobertura-agregada:a1", "cobertura-agregada-a1")
+        log.write_text("\n".join(base + [invalido]) + "\n", encoding=ENCODING)
+        resultado = _ejecutar_auxiliar("gate-modo-directo", [str(log)], arena)
+        assert resultado.returncode == 1 and "GUARD:aprobacion-reparacion-invalida" in resultado.stderr
+        log.write_text("\n".join(base[:3] + [base[4], base[3]]) + "\n", encoding=ENCODING)
+        resultado = _ejecutar_auxiliar("gate-modo-directo", [str(log)], arena)
+        assert "GUARD:congelar-antes-de-despachar-orden-del-log" in resultado.stderr
+        assert "GUARD:congelar-antes-de-despachar-timestamps" not in resultado.stderr
+        log.write_text("\n".join(base[:3] + [base[3].replace("00:04:00", "00:06:00"), base[4]])
+                       + "\n", encoding=ENCODING)
+        resultado = _ejecutar_auxiliar("gate-modo-directo", [str(log)], arena)
+        assert "GUARD:congelar-antes-de-despachar-timestamps" in resultado.stderr
+        assert "GUARD:congelar-antes-de-despachar-orden-del-log" not in resultado.stderr
 
 
 def test_aux_ownership_log(_contexto: Optional[object]) -> None:
@@ -496,6 +537,19 @@ def test_aux_ownership_log(_contexto: Optional[object]) -> None:
             log.write_text(texto, encoding=ENCODING)
             resultado = _ejecutar_auxiliar("ownership-log", [str(log)], arena)
             assert resultado.returncode == codigo, (indice, resultado.stderr)
+        firma = next(item for item in FIRMAS if item.nombre == "ownership-log")
+        modulo = _cargar_modulo(firma)
+        linea = delegado.splitlines()[1]
+        citado = delegado + "\n## Ejemplo\n" + linea + "\n"
+        with mock.patch.object(modulo, "lineas_ownership", wraps=modulo.lineas_ownership) as leer:
+            assert modulo.clasificaciones(citado) == [("delegada", linea)]
+            assert leer.call_count == 1
+        log = arena / "citado.md"
+        log.write_text(citado, encoding=ENCODING)
+        assert _ejecutar_auxiliar("ownership-log", [str(log)], arena).returncode == 0
+        invalido = delegado.replace("diff rojo", "diff · rojo")
+        log.write_text(invalido, encoding=ENCODING)
+        assert _ejecutar_auxiliar("ownership-log", [str(log)], arena).returncode == 1
 
 
 def test_aux_ownership_presupuesto(_contexto: Optional[object]) -> None:
@@ -533,6 +587,18 @@ def test_aux_ownership_presupuesto(_contexto: Optional[object]) -> None:
             "- `checkId: D` · `clase: DESIGN_GAP` · `consumedRound: no` · `evidencia: x`\n",
             encoding=ENCODING)
         assert _ejecutar_auxiliar("ownership-presupuesto", [str(cuatro), str(vacio), "2"], arena).returncode == 0
+        cuatro.write_text(cuatro.read_text(encoding=ENCODING).replace("evidencia: x", "evidencia: x · y", 1),
+                          encoding=ENCODING)
+        resultado = _ejecutar_auxiliar("ownership-presupuesto", [str(cuatro), str(vacio), "2"], arena)
+        assert resultado.returncode == 1 and "clasificación inválida" in resultado.stderr
+        aprobacion_mala = arena / "aprobacion-mala.md"
+        aprobacion_mala.write_text(
+            "- `paso: aprobar-reparación` · `checkId: V` · `contract_version: dos` · "
+            "`verification_defect_ordinal: 1`\n", encoding=ENCODING)
+        resultado = _ejecutar_auxiliar("ownership-presupuesto", [str(vacio), str(aprobacion_mala), "2"], arena)
+        assert resultado.returncode == 1 and "versión u ordinal" in resultado.stderr
+        resultado = _ejecutar_auxiliar("ownership-presupuesto", [str(vacio), str(arena / "ausente"), "2"], arena)
+        assert resultado.returncode == 1 and "archivo ilegible" in resultado.stderr
 
 
 def test_aux_promocion_tasks_ready(_contexto: Optional[object]) -> None:

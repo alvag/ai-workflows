@@ -4,17 +4,24 @@ corresponde, el congelamiento precede al despacho, y los timestamps respetan el 
 
 from __future__ import annotations
 
-import re
+import importlib.util
 import sys
 from pathlib import Path
+
+
+_RUTA_CONTRATO = Path(__file__).resolve().with_name("contrato-invariantes.py")
+_ESPECIFICACION = importlib.util.spec_from_file_location("gate_modo_directo_contrato", _RUTA_CONTRATO)
+if _ESPECIFICACION is None or _ESPECIFICACION.loader is None:
+    raise RuntimeError(f"no se pudo cargar {_RUTA_CONTRATO}")
+_CONTRATO = importlib.util.module_from_spec(_ESPECIFICACION)
+_ESPECIFICACION.loader.exec_module(_CONTRATO)
 
 
 def campo(texto: str, paso: str, nombre: str) -> str:
     for linea in texto.splitlines():
         if f"`paso: {paso}`" not in linea:
             continue
-        match = re.search(rf"`{nombre}: ([^`]*)`", linea)
-        return match.group(1) if match else ""
+        return _CONTRATO.campos_linea(linea).get(nombre, "")
     return ""
 
 
@@ -32,7 +39,8 @@ def main() -> int:
         if actor != "conductor":
             print(f'GUARD:conductor-deriva-y-baseline "{paso}" lo hizo "{actor or "nadie"}"', file=sys.stderr)
             rc = 1
-    timestamps = re.findall(r"`timestamp: ([^`]*)`", texto)
+    timestamps = [campos["timestamp"] for linea in texto.splitlines()
+                  if (campos := _CONTRATO.campos_linea(linea)).get("timestamp")]
     if timestamps != sorted(timestamps):
         print("GUARD:kickoff-antes-de-congelar la bitácora lista los pasos fuera del orden de sus timestamps", file=sys.stderr)
         rc = 1
@@ -49,7 +57,8 @@ def main() -> int:
         print("GUARD:kickoff-antes-de-congelar el kickoff no aprobó antes de congelar", file=sys.stderr)
         rc = 1
     if despachar and (not congelar or congelar > despachar):
-        print("GUARD:congelar-antes-de-despachar se despachó sin congelar antes", file=sys.stderr)
+        print("GUARD:congelar-antes-de-despachar-timestamps se despachó sin congelar antes",
+              file=sys.stderr)
         rc = 1
     for indice in indices["aprobar-reparación"]:
         linea = lineas[indice]
@@ -60,14 +69,19 @@ def main() -> int:
             print("GUARD:reparacion-entre-anclas una aprobación de reparación queda fuera "
                   "de kickoff/congelamiento", file=sys.stderr)
             rc = 1
-        if ":cobertura-agregada:" in linea and indices["congelar"] and \
+        token = _CONTRATO.campos_linea(linea).get("token", "")
+        operacion = _CONTRATO.operacion_token(token)
+        if operacion is None:
+            print("GUARD:aprobacion-reparacion-invalida token o línea malformados", file=sys.stderr)
+            rc = 1
+        if operacion == "cobertura-agregada" and indices["congelar"] and \
                 indice > indices["congelar"][0]:
             print("GUARD:cobertura-antes-del-primer-congelamiento una adición fue aprobada tarde",
                   file=sys.stderr)
             rc = 1
     if indices["despachar"] and indices["congelar"] and \
             min(indices["despachar"]) < max(indices["congelar"]):
-        print("GUARD:congelar-antes-de-despachar el despacho precede al último congelamiento",
+        print("GUARD:congelar-antes-de-despachar-orden-del-log el despacho precede al último congelamiento",
               file=sys.stderr)
         rc = 1
     return rc

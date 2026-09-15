@@ -590,7 +590,7 @@ def _caso(numero: int, tmp: Path) -> None:
             _comprobar_procedimiento_cinco_mediciones()
             _comprobar_wrapper_documentado()
         predicado = "printf 'raw\\n'; exit 7"
-        proyector = "cat >/dev/null; printf 'failures=2\\n'"
+        proyector = "cat >/dev/null; printf 'diagnóstico\\n' >&2; printf 'failures=2\\n'"
         fila_1 = _fila(comando=predicado, baseline="RED")
         v1 = _legado(fila_1, [_registro("A", "exit 7; raw")])
         cuerpo = MODULO.PROJECTION_WRAPPER_BODY
@@ -612,6 +612,7 @@ def _caso(numero: int, tmp: Path) -> None:
                     comando, shell=True, executable="/bin/sh", capture_output=True,
                     text=True, encoding=ENCODING, check=False)
                 assert resultado.returncode == 7 and resultado.stdout == "raw\nfailures=2\n"
+                assert resultado.stderr == ""
         elif numero == 44:
             _comprobar(tmp, [v1, v2], _aprobacion(token, _hash(v2)), "final", 1,
                        "no conserva el predicado previo")
