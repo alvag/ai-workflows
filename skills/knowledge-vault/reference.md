@@ -52,42 +52,83 @@ Todo entra por banderas largas. Un argumento suelto es `USAGE`.
 | 1 | `INTERNAL_ERROR` · `BATCH_PARTIAL` · `BATCH_FAILED` | fallo de la corrida o del lote |
 | 2 | `USAGE` | la invocación es inválida |
 | 3 | `CONFIG_INVALID` | el config existe y no se puede leer sin adivinar |
-| 4 | `PRECONDITION_NOT_MET` · `AMBIGUOUS_IDENTITY` | el vault está sucio, anidado, el nombre del flujo es reservado, el digest aprobado no describe el lote, el estado observado no lo produce la secuencia, o la identidad del repositorio no está declarada o no es única |
+| 4 | `PRECONDITION_NOT_MET` · `AMBIGUOUS_IDENTITY` · `RESERVED_DOCUMENT_PATH` · `NON_PORTABLE_DOCUMENT_PATH` · `IGNORED_DOCUMENT_PATH` | una precondición operativa, de identidad o de ruta impide empezar con seguridad |
 | 5 | `NO_VAULT` | no se declaró la raíz, o el config no la trae |
 | 8 | `SOURCE_UNAVAILABLE` | el origen no se puede leer |
-| 9 | `VERIFY_FAILED` · `COPY_FAILED` · `PUBLISH_FAILED` | el destino no verifica, el remanente no verifica contra el vault, o la publicación falló |
+| 9 | `VERIFY_FAILED` · `COPY_FAILED` · `PUBLISH_FAILED` · `NODE_UNREADABLE` | el destino no verifica, la copia/publicación falló o el nodo histórico no se puede interpretar |
 
 **Un lote incompleto no sale 0.** Migrar 49 de 50 deja un vault que ningún
 criterio distingue de uno completo: no hay manifiesto que enumere lo que debía
 entrar. Quien lo consulte va a concluir que el flujo que falta nunca existió.
 
-La tabla se redujo de dieciocho códigos a ocho al retirarse `restore`, `doctor`,
-`inventory` y el aparato de retiro. Los códigos que **quedaron conservan su
-número**, para no reescribirle el significado a un `9` que ya quería decir "el
-destino no verifica".
+Los estados nuevos reutilizan familias existentes para preservar el contrato
+numérico. `RESERVED_DOCUMENT_PATH`, `NON_PORTABLE_DOCUMENT_PATH` e
+`IGNORED_DOCUMENT_PATH` son precondiciones de primera publicación y salen 4;
+`NODE_UNREADABLE` impide verificar un histórico y sale 9. Los vacantes 6 y 7 no
+se reciclan porque pertenecieron a verbos retirados: asignarles otro significado
+rompería guiones existentes.
 
-Y cuando el retiro volvió, **volvió sin códigos propios**: `retire` reusa
-`DRY_RUN`, `BATCH_OK`, `BATCH_PARTIAL` y `BATCH_FAILED` con exactamente el mismo
-sentido que ya tenían. Quien automatiza `kv` ramifica sobre estos números, así que
-un verbo nuevo que renumerara le rompería el guion sin que nada avisara.
-
-`AMBIGUOUS_IDENTITY` es el único estado que se **agregó** a un código existente, y
-entra en el 4 y no en un código propio por la misma razón: los vacantes —6 y 7—
-pertenecieron a verbos retirados, y darles un sentido nuevo se lo reescribiría a
-un guion viejo. La familia además es la correcta: es una precondición que hay que
-resolver antes de operar. Antes de existir, un `retire` sobre un repositorio sin
-identidad declarada salía `INTERNAL_ERROR`, que le dice a quien automatiza que
-encontró un bug en vez de que le falta un paso.
+`retire` tampoco crea códigos propios: reusa `DRY_RUN`, `BATCH_OK`,
+`BATCH_PARTIAL` y `BATCH_FAILED`. Quien automatiza `kv` puede conservar la misma
+rama por código aunque aparezcan causas más precisas dentro del informe.
 
 ## Qué entra: el predicado
 
+La allowlist de sufijos es única y no distingue mayúsculas:
+
 ```
-isCopiable(ruta relativa) = no contiene "/" y termina en ".md"
+.md .sh .js .mjs .py .ts .ps1 .json .yml .txt .jsonl
 ```
 
-La extensión se compara sin distinguir mayúsculas. La ruta relativa la produce el
-inventario, que la arma siempre con `/` en cualquier plataforma, así que en POSIX
-una barra invertida es un carácter más del nombre.
+En la raíz del flujo entra cualquier archivo con uno de esos sufijos. Un nombre
+debe tener basename antes del sufijo: `.json` queda fuera y `.config.json` entra.
+PDF, `.yaml`, `.cjs`, `.tsv` y cualquier otro sufijo quedan fuera.
+
+### Subdirectorios opt-in
+
+La misma allowlist se aplica con profundidad ilimitada sólo si el primer segmento
+de la ruta es exactamente `evidencia`, `runs` o `decisiones`. Esos nombres
+distinguen mayúsculas; `Evidencia/`, `evidenciax/` y los demás directorios quedan
+fuera. La ruta relativa usa `/` en todas las plataformas y los enlaces codifican
+cada segmento por separado, sin convertir la barra en `%2F`.
+
+El selector sólo recibe la ruta: no filtra por contenido ni tamaño. El criterio
+de contenido anterior no servía porque el andamiaje de proceso y el conocimiento
+son texto legítimo; la posición es la señal que puede declarar el autor del
+flujo. Por la misma razón, `archive` procesa el conjunto completo
+sin vista previa por archivo.
+
+La regla vigente se aplica sólo al crear una frontera. Las fronteras históricas
+son inmutables: no hay versión de selector, backfill ni crecimiento automático.
+Si el origen gana o pierde una ruta frente al conjunto publicado, `archive`
+devuelve `VERIFY_FAILED`; `migrate` deja ese histórico sin cambios y termina en
+`BATCH_PARTIAL`. Esta es la política para todos los flujos archivados con el
+predicado anterior.
+
+En una primera publicación, una ruta seleccionada se rechaza antes de copiar si:
+
+- su basename termina exactamente en `.md` minúsculo y su padre inmediato es
+  exactamente `sdd`: `RESERVED_DOCUMENT_PATH`;
+- algún segmento no es portable o dos rutas colisionan en plataformas con
+  plegado de nombres: `NON_PORTABLE_DOCUMENT_PATH`;
+- el destino exacto queda ignorado por Git: `IGNORED_DOCUMENT_PATH`.
+
+Si ya existe historia incompatible, `VERIFY_FAILED` prevalece sobre estas guardas
+nuevas. Si el nodo histórico no tiene frontmatter válido (`title`, `summary` y
+`flow`) o su sección estricta `## Documentos` no se puede interpretar cuando debe
+gobernar la frontera, el estado es `NODE_UNREADABLE`.
+
+Una publicación inesperada no se sanea borrando el origen. Se detienen `archive`
+y `retire`: eliminar sólo la copia local deja la frontera histórica incompatible
+y produce `VERIFY_FAILED`. Limpiar el vault y el origen es otro cambio, con
+migración, digest, rollback y gate humano propios.
+
+Las instalaciones existentes no se actualizan desde este repositorio. Para
+desplegar el cambio, el operador reinstala la skill completa. Si una frontera
+nueva ya fue publicada, el rollback seguro es detener `archive` y `retire` y
+reinstalar completa la versión nueva: volver al selector anterior haría
+incompatibles esos flujos. No se mezclan scripts y documentación de versiones
+distintas.
 
 Nombres de flujo **reservados**: `index` y `log`. Un flujo así llamado se rechaza
 en vez de pisar un archivo generado, y la comparación va por clave de colisión
@@ -161,7 +202,7 @@ como `ALREADY_ARCHIVED` (`yaEstaban`), sin duplicar ni reescribir nada.
 <vault>/projects/<repo>/sdd/index.md          índice
 <vault>/projects/<repo>/sdd/<flujo>.md        el NODO, hermano del directorio
 <vault>/projects/<repo>/sdd/<flujo>/          FRONTERA VERIFICADA
-<vault>/projects/<repo>/sdd/<flujo>/*.md      copiados, byte-idénticos
+<vault>/projects/<repo>/sdd/<flujo>/<ruta>       copiado byte-idéntico; puede ser anidado
 ```
 
 **Los tres primeros son infraestructura y viven fuera de `projects/`**, que es donde
@@ -349,25 +390,34 @@ sino **sin cambio neto** — mismo conjunto de archivos, mismos hashes, misma ru
 
 ### El estado durable son dos señales, y no hay journal
 
-| Objetivo | Remanente | Manifiesto | Estado | Salida |
+En esta tabla, **manifiesto autoritativo** significa que el archivo existe,
+está limpio, no está ignorado y su ruta exacta está anclada en `HEAD`.
+
+| Objetivo | Remanente | Manifiesto autoritativo | Estado | Salida |
 |---|---|---|---|---|
 | no | no | no | nada ocurrió | nada que hacer |
-| no | no | **sí** | terminal alcanzado | nada que hacer |
-| no | **sí** | no | reclamo sin autorizar | **deshacer**: el flujo vuelve |
-| no | **sí** | **sí** | destrucción autorizada | **terminar** |
-| **sí** | no | no | sin empezar | **reclamar** |
-| **sí** | \* | \* | objetivo recreado | **detener** |
+| no | no | **sí** | terminal alcanzado | `YA_RETIRADO`; no consulta el selector |
+| no | **sí** | no | reclamo sin autorizar | restaura y devuelve `RECLAMO_DESHECHO` |
+| no | **sí** | **sí** | destrucción autorizada | termina desde el manifiesto; no consulta el selector |
+| **sí** | no | no | sin empezar | clasifica con la frontera viva y, si procede, reclama |
+| **sí** | \* | \* | objetivo recreado | detiene |
+
+Un manifiesto físicamente presente pero no autoritativo —sucio, ignorado o no
+anclado— tiene precedencia y produce `PRECONDITION_NOT_MET` antes de clasificar,
+incluso si también hay remanente. El ensayo dirigido sigue siendo legible: emite
+un manifiesto neutral, digest, bytes y `omitidos`, pero nunca habilita destrucción.
 
 La fase se **deriva del estado observable** en vez de leerse de un registro que
-puede contradecir al árbol. Las tres filas que detienen —objetivo recreado,
-colisión de nombres y varios remanentes del mismo flujo— no son fallos de la
-secuencia: son estados que la secuencia **no puede producir**, así que su causa es
-externa y adivinarla sería destruir sobre una hipótesis.
+puede contradecir al árbol. Un remanente sin manifiesto se restaura primero; el
+siguiente intento vuelve a evaluar la frontera histórica y puede bloquear con
+`VERIFY_FAILED`. Un manifiesto autoritativo es la autoridad después del punto de
+no retorno y evita cualquier dependencia del selector instalado.
 
-**La ruta original recreada tiene precedencia sobre todo lo demás.** Si el flujo
-reapareció en su sitio mientras el remanente sigue ahí, el original no se toca
-nunca y el estado del remanente viaja como detalle, no como un segundo estado en
-competencia.
+Las filas que detienen —objetivo recreado, colisión de nombres y varios
+remanentes del mismo flujo— son estados que la secuencia **no puede producir**,
+así que su causa es externa y adivinarla sería destruir sobre una hipótesis. La
+ruta original recreada tiene precedencia sobre todo lo demás: el original no se
+toca y el estado del remanente viaja como detalle.
 
 ### El manifiesto, y por qué su commit cumple tres papeles
 
@@ -413,25 +463,37 @@ Con `--dry-run` **y** `--from <ruta-del-flujo>` a la vez —y sólo entonces— 
 informe agrega a la entrada de ese flujo:
 
 ```
-omitidos: Array<{ path: string, size: number, sha256: string }> | null
+omitidos: Array<{
+  path: string,
+  size: number,
+  sha256: string,
+  clasificacion: 'omitido' | 'invalido',
+  causa?: 'RESERVED_DOCUMENT_PATH' | 'NON_PORTABLE_DOCUMENT_PATH' | 'IGNORED_DOCUMENT_PATH'
+}> | null
 ```
 
 `<ruta-del-flujo>` es el hijo directo `<raíz>/<flujo>` que recibió `--root`. Un
-lote sin `--from` —aunque enumere un único flujo— y el retiro real, con o sin
-`--from`, nunca llevan este campo: es exclusivo del ensayo dirigido.
+lote sin `--from` —aunque enumere un único flujo— y el retiro real nunca llevan
+este campo.
 
-Con manifiesto disponible, el array es el **complemento exacto** de la
-selección de `archive`: recorre `manifiesto.inventario` en su mismo orden y
-conserva las entradas cuyo `path` no satisface `isCopiable(path)` —lo que no es
-un `.md` de raíz—, proyectando sólo `path`, `size` y `sha256`. Cada `path` pasa
-por `assertContainedPath` antes de viajar: una ruta que no se puede reportar
-hace fallar el comando entero, nunca produce un informe engañoso.
+Sin estado durable, el ensayo usa el selector vivo. Incluye con
+`clasificacion: omitido` cada ruta fuera de la allowlist o de los
+subdirectorios opt-in. En la primera publicación también incluye como
+`invalido` toda ruta seleccionada que falle una guarda, con su `causa`. Una ruta
+que no pasa `assertContainedPath` aborta el comando entero antes de emitir un
+informe parcial. `NOT_ANCHORED` pertenece a `flujo.causa` y `faltantes`; nunca es
+una causa de `omitidos`.
 
-Sin manifiesto —una medición fallida— `omitidos` vale `null`, nunca `[]`: un
-conjunto vacío diría "no quedó nada afuera" sobre un flujo que no se llegó a
-medir. `null` no reemplaza ni borra `causa` ni `error`, que viajan intactos
-junto a él; la interpretación es **fail-closed**: ningún consumidor puede tratar
-`omitidos: null` como "nada que rescatar" ni seguir adelante sin la medición.
+Después del punto de no retorno, el manifiesto comprometido gobierna y la
+proyección no consulta el selector instalado. Toda entrada que el manifiesto
+marcó fuera de `a-salvo` se publica como `omitido`; así un cambio de versión no
+reclasifica lo ya aprobado. Un manifiesto físico no autoritativo usa la misma
+proyección neutral para que el dry-run describa el residuo sin autorizarlo.
+
+Sin inventario disponible —una medición fallida— `omitidos` vale `null`, nunca
+`[]`: un conjunto vacío diría "no quedó nada afuera" sobre un flujo que no se
+llegó a medir. `null` no reemplaza `causa` ni `error`; la interpretación es
+**fail-closed**.
 
 ### La identidad del repositorio se declara, no se deriva
 
@@ -669,12 +731,12 @@ confirmación.
   automáticamente — ver `SKILL.md` → "2. Materializar lo aprobado en
   `<flujo>-anexos`".
 
-- **Un flujo sin ningún `.md` en su raíz** se archiva igual: su frontera queda
-  vacía y su nodo no lleva enlaces. Git no versiona directorios vacíos, así que en
-  el vault ese flujo existe como nodo y como entrada del índice. **Para `retire`
-  ese mismo flujo se rechaza** con `EMPTY_SET`: comparar dos conjuntos vacíos pasa
-  de forma vacua, y retirarlo destruiría el 100 % de un flujo que no tiene un byte
-  suyo a salvo. Medido en un árbol real: 1 de 50.
+- **Un flujo sin ningún archivo seleccionado por el predicado vigente** se
+  archiva igual: su frontera queda vacía y su nodo no lleva enlaces. Git no
+  versiona directorios vacíos, así que en el vault ese flujo existe como nodo y
+  como entrada del índice. **Para `retire` ese mismo flujo se rechaza** con
+  `EMPTY_SET`: comparar dos conjuntos vacíos pasa de forma vacua y destruiría un
+  origen que no tiene un byte suyo a salvo.
 - **Un archivo suelto en la raíz de archivados no es un flujo.** `migrate`
   enumera **directorios**. Medido en un árbol real: 51 entradas, 50 directorios.
 - **Un `index.md` dentro de un flujo** se copia como cualquier documento y no
@@ -685,14 +747,13 @@ confirmación.
 - **Un staging huérfano** de una corrida muerta se barre antes de reintentar: la
   copia usa creación exclusiva, así que sin limpieza el reintento queda bloqueado.
 - **La frontera de un flujo archivado no crece.** La verificación compara
-  conjuntos exactos en las **dos** direcciones: un archivo de más en el destino es
-  sobrante, y uno de menos hace fallar la comprobación. Así que agregar un `.md` a
-  la raíz de un flujo ya archivado y volver a archivar devuelve `VERIFY_FAILED`
-  nombrando el documento nuevo, en vez de republicar la frontera. Medido, no
-  deducido. **Si un flujo gana documentos después de archivarse, van como flujo
-  propio**: la frontera vieja queda intacta y el material nuevo obtiene su nodo y
-  su entrada en el índice. Es la salida para el material de origen que vive en un
-  subdirectorio —`insumos/`, por ejemplo— y que la selección deja afuera.
+  conjuntos exactos en las **dos** direcciones: un archivo de más en el destino
+  es sobrante, y uno de menos hace fallar la comprobación. Un archivo que el
+  selector nuevo admitiría pero que no pertenecía a la publicación histórica
+  produce `VERIFY_FAILED`; en `migrate`, ese flujo queda intacto y el lote sale
+  `BATCH_PARTIAL`. No hay backfill ni migración implícita. **Si un flujo gana
+  conocimiento después de archivarse, se publica como un flujo nuevo**: la
+  frontera vieja queda intacta y el material nuevo obtiene su propio nodo.
 - **Abrir el vault en Obsidian lo ensucia, y eso frena el archivado.** Obsidian
   crea `.obsidian/` con su configuración, macOS deja `.DS_Store` al navegar las
   carpetas, y **hacer clic en un `[[enlace]]` no resuelto crea la nota vacía** en

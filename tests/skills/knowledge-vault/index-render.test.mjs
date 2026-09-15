@@ -17,8 +17,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { renderIndexes } from '../../../skills/knowledge-vault/scripts/lib/index-render.mjs';
+import { IndexRenderError, renderIndexes } from '../../../skills/knowledge-vault/scripts/lib/index-render.mjs';
 import { buildNode } from '../../../skills/knowledge-vault/scripts/lib/node-builder.mjs';
+import { exitCodeFor } from '../../../skills/knowledge-vault/scripts/lib/contracts.mjs';
 import { resolveLayout } from '../../../skills/knowledge-vault/scripts/lib/vault-store.mjs';
 import { createSandbox } from './helpers/sandbox.mjs';
 
@@ -141,4 +142,44 @@ test('[AC-11] el resumen del índice es el del frontmatter del nodo, carácter p
   assert.ok(nodo.includes(`summary: ${resumen}`), 'el resumen no quedó en el frontmatter');
   const raiz = await renderIndexes(vault).then((s) => s.get(path.join(vault, 'index.md')));
   assert.ok(raiz.includes(resumen), 'el índice no derivó el resumen del nodo');
+});
+
+test('[KV-SEL AC-10] indexador normaliza separadores nativos antes de codificar', async (t) => {
+  const caja = await createSandbox(t);
+  const vault = path.join(caja.vaultsDir, 'dev-memory');
+  await sembrar(vault, 'repo con espacio', 'flow one', 'Uno', 'Con espacios.');
+
+  const rootIndex = (await renderIndexes(vault)).get(path.join(vault, 'index.md'));
+  assert.ok(rootIndex.includes('(projects/repo%20con%20espacio/sdd/flow%20one.md)'));
+  assert.ok(!rootIndex.includes('%2F'));
+});
+
+test('[KV-SEL AC-20] IndexRenderError conserva NODE_UNREADABLE y path del nodo', async (t) => {
+  const caja = await createSandbox(t);
+  const vault = path.join(caja.vaultsDir, 'dev-memory');
+  const { nodePath } = resolveLayout(vault, 'ai-workflows', 'roto');
+  await fs.mkdir(path.dirname(nodePath), { recursive: true });
+  await fs.writeFile(nodePath, '---\ntitle: Roto\nflow: roto\n---\n', 'utf8');
+
+  await assert.rejects(() => renderIndexes(vault), (error) => {
+    assert.ok(error instanceof IndexRenderError);
+    assert.equal(error.code, 'NODE_UNREADABLE');
+    assert.equal(error.path, nodePath);
+    assert.equal(exitCodeFor(error.code), 9);
+    return true;
+  });
+});
+
+
+test('regenerar índices acepta el flow histórico distinto del basename del nodo', async (t) => {
+  const caja = await createSandbox(t);
+  const vault = path.join(caja.vaultsDir, 'dev-memory');
+  await sembrar(vault, 'ai-workflows', 'nombre-viejo', 'Título histórico', 'Resumen histórico.');
+  const nodePath = resolveLayout(vault, 'ai-workflows', 'nombre-viejo').nodePath;
+  const old = await fs.readFile(nodePath, 'utf8');
+  await fs.writeFile(nodePath, old.replace('flow: nombre-viejo', 'flow: id-histórico'), 'utf8');
+
+  const root = (await renderIndexes(vault)).get(path.join(vault, 'index.md'));
+  assert.ok(root.includes('sdd/nombre-viejo.md'));
+  assert.ok(root.includes('Resumen histórico.'));
 });

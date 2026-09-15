@@ -126,7 +126,7 @@ test('[AC-10] un flujo sin contenido copiable se rechaza en vez de pasar vacuame
   // Sólo andamiaje: nada de esto viaja al vault, así que el conjunto es vacío.
   const flowDir = await caja.makeTree(
     path.join(caja.reposDir, 'proyecto', '.plans', 'archived', 'vacio'),
-    { 'notas.txt': 'no viaja\n', 'cross-review/veredicto.md': 'tampoco\n' },
+    { 'notas.tsv': 'no viaja\n', 'cross-review/veredicto.md': 'tampoco\n' },
   );
 
   const r = await sondear(vault, flowDir, 'vacio');
@@ -213,7 +213,8 @@ test('[AC-12] el asunto del commit no autoriza: revertido, el ancla dice que no'
   const { vault, flowDir, flowId } = await escena(t);
   const { frontier, nodePath, indexPaths } = resolveLayout(vault, REPO, flowId);
   const propias = [frontier, nodePath, ...indexPaths].map((p) => path.relative(vault, p));
-  assert.equal(await anclaEnHead(vault, propias), true, 'la escena no arrancó anclada');
+  assert.equal(await anclaEnHead(vault, propias, { scanPaths: propias }), true,
+    'la escena no arrancó anclada');
 
   // Se revierte el commit: su asunto sigue en la historia —`git log` lo muestra—
   // pero el contenido ya no está en HEAD. La comparación por asunto que había
@@ -222,8 +223,104 @@ test('[AC-12] el asunto del commit no autoriza: revertido, el ancla dice que no'
   const { stdout: historia } = await git(vault, 'log', '--format=%s');
   assert.ok(historia.includes(flowId), 'el asunto tiene que seguir en la historia');
 
-  assert.equal(await anclaEnHead(vault, propias), false);
+  assert.equal(await anclaEnHead(vault, propias, { scanPaths: propias }), false);
   const r = await sondear(vault, flowDir, flowId);
   assert.equal(r.aSalvo, false);
   assert.equal(r.causa, CAUSAS.FRONTIER_MISSING);
+});
+
+test('[KV-SEL AC-9] sonda conserva causas estructuradas y anclaje', async (t) => {
+  for (const [relative, cause] of [
+    ['evidencia/sdd/note.md', 'RESERVED_DOCUMENT_PATH'],
+    ['evidencia/aux.md', 'NON_PORTABLE_DOCUMENT_PATH'],
+  ]) {
+    const caja = await createSandbox(t);
+    const vault = await caja.makeVault(`probe-${cause}`);
+    await git(vault, 'init', '-q');
+    const flowDir = await origen(caja, cause.toLowerCase(), { [relative]: 'x\n' });
+    const result = await sondear(vault, flowDir, cause.toLowerCase());
+    assert.deepEqual(result, { aSalvo: false, causa: cause, faltantes: [relative] });
+  }
+
+  const caja = await createSandbox(t);
+  const vault = await caja.makeVault('probe-ignored');
+  await git(vault, 'init', '-q');
+  const flowId = 'ignored';
+  const relative = 'evidencia/ignored.md';
+  await fs.writeFile(
+    path.join(vault, '.gitignore'),
+    `projects/${REPO}/sdd/${flowId}/${relative}\n`,
+    'utf8',
+  );
+  await git(vault, 'add', '.gitignore');
+  await git(vault, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'ignore');
+  const flowDir = await origen(caja, flowId, { [relative]: 'x\n' });
+  assert.deepEqual(await sondear(vault, flowDir, flowId), {
+    aSalvo: false,
+    causa: 'IGNORED_DOCUMENT_PATH',
+    faltantes: [relative],
+  });
+
+  const anchored = await escena(t, { extra: { 'runs/job.ts': 'export {};\n' } });
+  const { nodePath } = resolveLayout(anchored.vault, REPO, anchored.flowId);
+  await fs.appendFile(nodePath, '\n', 'utf8');
+  const dirty = await sondear(anchored.vault, anchored.flowDir, anchored.flowId);
+  assert.equal(dirty.causa, CAUSAS.NOT_ANCHORED);
+  assert.ok(dirty.faltantes.includes(`projects/${REPO}/sdd/${anchored.flowId}.md`));
+});
+
+test('[KV-SEL AC-19] histórico compatible sigue archivado y a salvo', async (t) => {
+  const scene = await escena(t, {
+    extra: { 'runs/deep/job.ts': 'export {};\n', 'fixtures/ignored.md': 'fuera\n' },
+  });
+  assert.deepEqual(await sondear(scene.vault, scene.flowDir, scene.flowId), {
+    aSalvo: true,
+    causa: null,
+    faltantes: [],
+  });
+});
+
+test('[KV-SEL AC-20] nodo ilegible precede EMPTY_SET sin escribir', async (t) => {
+  const caja = await createSandbox(t);
+  const vault = await caja.makeVault('empty-history');
+  const flowId = 'vacio';
+  const flowDir = await caja.makeTree(
+    path.join(caja.reposDir, 'proyecto', '.plans', 'archived', flowId),
+    { 'notas.tsv': 'omitido\n' },
+  );
+  await archivar(vault, flowDir, flowId);
+  const { frontier, nodePath } = resolveLayout(vault, REPO, flowId);
+  await fs.rm(frontier, { recursive: true });
+  await fs.writeFile(nodePath, 'sin frontmatter\n', 'utf8');
+  const before = await snapshotTree(vault);
+
+  assert.deepEqual(await sondear(vault, flowDir, flowId), {
+    aSalvo: false,
+    causa: 'NODE_UNREADABLE',
+    faltantes: [nodePath],
+  });
+  assert.deepEqual(await snapshotTree(vault), before);
+});
+
+test('[KV-SEL AC-20] frontera publicada valida frontmatter sin reinterpretar el cuerpo', async (t) => {
+  const validMetadata = await escena(t, { flowId: 'body-invalid' });
+  let layout = resolveLayout(validMetadata.vault, REPO, validMetadata.flowId);
+  let node = await fs.readFile(layout.nodePath, 'utf8');
+  node = node.replace('## Documentos\n\n', '## Documentos\n\ntexto no canónico\n');
+  await fs.writeFile(layout.nodePath, node, 'utf8');
+  await git(validMetadata.vault, 'add', '--', path.relative(validMetadata.vault, layout.nodePath));
+  await git(validMetadata.vault, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'body');
+  assert.equal((await sondear(validMetadata.vault, validMetadata.flowDir, validMetadata.flowId)).aSalvo, true);
+
+  const invalidMetadata = await escena(t, { flowId: 'metadata-invalid' });
+  layout = resolveLayout(invalidMetadata.vault, REPO, invalidMetadata.flowId);
+  node = await fs.readFile(layout.nodePath, 'utf8');
+  node = node.replace(/^summary:.*\n/m, '');
+  await fs.writeFile(layout.nodePath, node, 'utf8');
+  await git(invalidMetadata.vault, 'add', '--', path.relative(invalidMetadata.vault, layout.nodePath));
+  await git(invalidMetadata.vault, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'metadata');
+  const result = await sondear(invalidMetadata.vault, invalidMetadata.flowDir, invalidMetadata.flowId);
+  assert.equal(result.aSalvo, false);
+  assert.equal(result.causa, 'NODE_UNREADABLE');
+  assert.deepEqual(result.faltantes, [layout.nodePath]);
 });

@@ -62,9 +62,9 @@ al punto de no retorno, el origen sigue ahí y el vault se descarta y se rehace.
 `--from <ruta-del-flujo>` dirige el ensayo a un único flujo, hijo directo de
 `<raíz>` (`<raíz>/<flujo>`). Sólo en esa combinación —`--dry-run` **y** `--from`
 juntos— el informe trae `omitidos`: el inventario completo de lo que `archive`
-dejaría afuera, con ruta, tamaño y SHA-256. El lote sin `--from` y el retiro real
-no lo llevan; la forma exacta está en `reference.md` → "`retire`: el verbo que
-destruye".
+dejaría afuera o rechazaría, con ruta, tamaño, SHA-256, `clasificacion` y, para
+una ruta inválida, `causa`. El lote sin `--from` y el retiro real no lo llevan;
+la forma exacta está en `reference.md` → "`retire`: el verbo que destruye".
 
 ```bash
 node <skills>/knowledge-vault/scripts/kv.mjs config --config .specify/config.yml --set-root ~/vaults/dev-memory
@@ -120,17 +120,42 @@ revelarlo.
 
 ## Qué entra al vault
 
-**Los archivos `.md` de la raíz del flujo, y nada más.** Ningún subdirectorio.
+En la raíz del flujo entran archivos con uno de estos once sufijos, sin distinguir
+mayúsculas: `.md`, `.sh`, `.js`, `.mjs`, `.py`, `.ts`, `.ps1`, `.json`, `.yml`,
+`.txt` y `.jsonl`. Un dotfile entra sólo si tiene un basename anterior al sufijo:
+`.json` no entra; `.config.json` sí. PDF, `.yaml`, `.cjs`, `.tsv` y cualquier
+otro sufijo quedan fuera.
 
-El corte es posicional y no de contenido, y esa es la decisión de diseño que más
-cuesta entender hasta que se mide: **lo que el flujo decidió vive en la raíz de su
-directorio; lo que usó para decidirlo vive en subdirectorios.** Las reglas
-anteriores filtraban salida cruda de máquina —binarios, volcados— y por eso
-dejaban pasar el andamiaje de proceso, que es texto legítimo: transcripciones de
-revisión, árboles de prueba, veredictos. Medido sobre cincuenta flujos reales,
-colaban un 65 % de material que nadie querría consultar.
+### Subdirectorios opt-in
 
-Con el corte posicional: **277 documentos copiados, 10.726 omitidos.**
+La misma allowlist se aplica recursivamente sólo cuando el primer segmento es
+exactamente `evidencia`, `runs` o `decisiones`. Los nombres distinguen
+mayúsculas: `Evidencia/`, `evidenciax/` y cualquier otro subdirectorio quedan
+fuera.
+
+El corte sigue siendo **posicional**, no semántico: el selector no filtra por
+contenido ni tamaño. Un filtro de contenido no distingue el andamiaje de proceso
+del conocimiento porque ambos son texto legítimo. La ubicación sí permite que el
+autor del flujo declare qué subárboles forman parte de la frontera.
+
+Esta regla gobierna sólo la **primera publicación**. La frontera de todo flujo ya
+archivado permanece inmutable: no se versiona el selector, no hay backfill y ni
+`archive` ni `migrate` agregan archivos que ahora serían elegibles. Si el origen
+ya no coincide con su frontera histórica, `archive` devuelve `VERIFY_FAILED` y
+`migrate` conserva el flujo sin cambios dentro de `BATCH_PARTIAL`.
+
+Antes de una primera publicación, cualquier ruta seleccionada reservada,
+no portable o ignorada en el destino detiene la copia con
+`RESERVED_DOCUMENT_PATH`, `NON_PORTABLE_DOCUMENT_PATH` o
+`IGNORED_DOCUMENT_PATH`. En un histórico incompatible prevalece
+`VERIFY_FAILED`: las guardas nuevas nunca reinterpretan la frontera antigua.
+
+La instalación no se actualiza sola. Quien opere una copia instalada debe
+reinstalar la skill completa para desplegar este predicado. Si una frontera nueva
+ya fue publicada, el rollback seguro es detener `archive` y `retire` y reinstalar
+completa la versión nueva: volver al selector anterior haría incompatibles esos
+flujos. Mezclar scripts y documentación de versiones distintas deja una frontera
+destructiva imposible de auditar.
 
 ### El nombre del directorio también entra en el trato
 
@@ -150,8 +175,8 @@ completo de los dos verbos están en `reference.md` → "El nombre del directori
 ## Después de archivar: qué hacer con lo que quedó afuera
 
 `archive` devuelve `counts: {included, omitted}`, y **`omitted` es el dato que casi
-nadie mira**. Al archivar un flujo de este mismo repositorio dio `included: 9,
-omitted: 43`: nueve documentos viajaron y cuarenta y tres archivos no.
+nadie mira**. Ese conteo indica cuántos archivos viajaron y cuántos quedaron
+afuera, pero no reemplaza el inventario dirigido previo a un retiro.
 
 Con `omitted: 0` no hay nada que hacer. Con `omitted > 0` — o al ofrecer el retiro
 de un flujo que ya se archivó bajo este mismo procedimiento — el rescate de lo
@@ -164,10 +189,13 @@ de alcance.
 
 ### Antes de empezar: la matriz de recuperación manda
 
-Con `hayRemanente` o `hayManifiesto` en verdadero para el flujo, **no se inicia
-un rescate nuevo**: se sigue la matriz de recuperación existente —"El estado
-durable son dos señales" en `reference.md`—, que restaura el origen, termina una
-destrucción ya autorizada, o se detiene ante un estado imposible.
+Con un remanente o un manifiesto físico para el flujo, **no se inicia un rescate
+nuevo**: se sigue la matriz de recuperación existente —"El estado durable son
+dos señales" en `reference.md`. Un manifiesto sólo es autoridad si está limpio y
+anclado en Git; si no, el estado es `PRECONDITION_NOT_MET` y no se destruye nada.
+Un remanente sin manifiesto autoritativo se restaura como `RECLAMO_DESHECHO`. Un
+manifiesto autoritativo con remanente termina desde su inventario, sin consultar
+el selector vigente; sin remanente ya representa el estado terminal.
 
 Con un flujo fresco:
 

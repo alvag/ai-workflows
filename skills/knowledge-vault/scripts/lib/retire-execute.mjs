@@ -44,7 +44,7 @@ import { estaASalvo } from './safety-probe.mjs';
 import { isCopiable } from './selection.mjs';
 import { scanInventory } from './tree.mjs';
 import { isInjectedCrash } from './durable-fs.mjs';
-import { commitFlow, headDelVault } from './vault-git.mjs';
+import { commitFlow, headDelVault, inspectManifestAuthority } from './vault-git.mjs';
 
 /**
  * El prefijo del remanente. Es **reservado**: ningún flujo puede llamarse así, y
@@ -89,7 +89,15 @@ async function existe(fs, ruta, label) {
  * Observa el disco y clasifica. Separado de la decisión a propósito: la tabla es
  * pura, así que el mismo estado observado siempre da la misma salida.
  */
-export async function observarEstado({ fs, vaultRoot, repoId, raiz, flowId, label = 'retire' }) {
+export async function observarEstado({
+  fs,
+  vaultRoot,
+  repoId,
+  raiz,
+  flowId,
+  autoridadManifiesto = null,
+  label = 'retire',
+}) {
   const objetivo = path.join(raiz, flowId);
   const remanente = rutaDelRemanente(raiz, flowId);
   const manifiesto = rutaDelManifiesto(vaultRoot, repoId, flowId);
@@ -100,13 +108,22 @@ export async function observarEstado({ fs, vaultRoot, repoId, raiz, flowId, labe
   const hermanos = await fs.readDirNames(raiz, `${label}.readdir`);
   const remanentes = hermanos.filter(({ name }) => name.startsWith(`${PREFIJO_REMANENTE}${flowId}`)).length;
 
+  const autoridad = autoridadManifiesto ?? {
+    exists: await existe(fs, manifiesto, `${label}.manifiesto.lstat`),
+    anchored: true,
+    dirty: false,
+    ignored: false,
+  };
+  const hayManifiesto =
+    autoridad.exists && autoridad.anchored && !autoridad.dirty && !autoridad.ignored;
+
   return {
     objetivo,
     remanente,
     manifiesto,
     hayObjetivo: await existe(fs, objetivo, `${label}.objetivo.lstat`),
     hayRemanente: infoRemanente !== null && infoRemanente.isDirectory(),
-    hayManifiesto: await existe(fs, manifiesto, `${label}.manifiesto.lstat`),
+    hayManifiesto,
     remanentes,
     // El nombre reservado ocupado por algo que no es un directorio: no es un
     // remanente nuestro y no se puede reclamar encima.
@@ -187,9 +204,37 @@ async function rutasASalvo({ fs, root, label }) {
  * y ninguna es "hice algo parecido": un reintento sobre un terminal no es un
  * error, y un estado que la secuencia no puede producir **detiene**.
  */
-export async function ejecutarRetiro({ fs, vaultRoot, repoId, raiz, flujo, label = 'retire' }) {
+export async function ejecutarRetiro({
+  fs,
+  vaultRoot,
+  repoId,
+  raiz,
+  flujo,
+  label = 'retire',
+  inspectorManifiesto = inspectManifestAuthority,
+}) {
   const flowId = flujo.flowId;
-  const estado = await observarEstado({ fs, vaultRoot, repoId, raiz, flowId, label });
+  const manifestPath = rutaDelManifiesto(vaultRoot, repoId, flowId);
+  const autoridadManifiesto = await inspectorManifiesto(vaultRoot, manifestPath);
+  if (
+    autoridadManifiesto.exists &&
+    (!autoridadManifiesto.anchored || autoridadManifiesto.dirty || autoridadManifiesto.ignored)
+  ) {
+    throw new ContractError(
+      'PRECONDITION_NOT_MET',
+      `${flowId}: el manifiesto existe pero no está limpio y anclado en Git`,
+      { path: manifestPath, detail: autoridadManifiesto },
+    );
+  }
+  const estado = await observarEstado({
+    fs,
+    vaultRoot,
+    repoId,
+    raiz,
+    flowId,
+    autoridadManifiesto,
+    label,
+  });
   const decision = clasificarRetiro(estado);
 
   if (decision.accion === ACCIONES.DETENER) {

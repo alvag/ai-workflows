@@ -25,6 +25,7 @@ import { DurableFs } from '../../../skills/knowledge-vault/scripts/lib/durable-f
 import { migrateCommand } from '../../../skills/knowledge-vault/scripts/lib/commands/migrate.mjs';
 import { indexCommand } from '../../../skills/knowledge-vault/scripts/lib/commands/index.mjs';
 import { createSandbox } from './helpers/sandbox.mjs';
+import { snapshotTree } from './helpers/tree-snapshot.mjs';
 
 const ejecutar = promisify(execFile);
 
@@ -37,7 +38,7 @@ async function escena(t, flujos = ['aaa-1', 'bbb-2', 'ccc-3'], { sueltos = [] } 
   for (const f of flujos) {
     await fsp.mkdir(path.join(archivedRoot, f), { recursive: true });
     await fsp.writeFile(path.join(archivedRoot, f, 'spec.md'), `# Flujo ${f}\n`, 'utf8');
-    await fsp.writeFile(path.join(archivedRoot, f, 'notas.txt'), 'no viaja\n', 'utf8');
+    await fsp.writeFile(path.join(archivedRoot, f, 'notas.tsv'), 'no viaja\n', 'utf8');
   }
   for (const s of sueltos) await fsp.writeFile(path.join(archivedRoot, s), 'suelto\n', 'utf8');
   await ejecutar('git', ['init', '-q', repoRoot]);
@@ -180,4 +181,29 @@ test('[AC-15] un vault dentro del repositorio frena el lote entero, antes de esc
     /disjunto/i,
   );
   assert.deepEqual(await fsp.readdir(adentro), [], 'escribió en el vault rechazado');
+});
+
+
+test('[KV-SEL AC-21] migrate deja incompatible en BATCH_PARTIAL sin mutar historia', async (t) => {
+  const e = await escena(t);
+  const summaries = await tsv(e, TODOS);
+  assert.equal((await correr(e, summaries)).status, 'BATCH_OK');
+
+  const historical = path.join(e.vault, 'projects', 'proyecto', 'sdd');
+  const before = await snapshotTree(historical);
+  const { stdout: headBefore } = await ejecutar('git', ['-C', e.vault, 'rev-parse', 'HEAD']);
+  const newlySelected = path.join(e.archivedRoot, 'aaa-1', 'evidencia', 'nuevo.json');
+  await fsp.mkdir(path.dirname(newlySelected), { recursive: true });
+  await fsp.writeFile(newlySelected, '{"nuevo":true}\n', 'utf8');
+
+  const result = await correr(e, summaries);
+
+  assert.equal(result.status, 'BATCH_PARTIAL');
+  assert.equal(result.fallidos.length, 1);
+  assert.equal(result.fallidos[0].flowId, 'aaa-1');
+  assert.equal(result.fallidos[0].code, 'VERIFY_FAILED');
+  assert.equal(await fsp.readFile(newlySelected, 'utf8'), '{"nuevo":true}\n');
+  assert.deepEqual(await snapshotTree(historical), before);
+  const { stdout: headAfter } = await ejecutar('git', ['-C', e.vault, 'rev-parse', 'HEAD']);
+  assert.equal(headAfter.trim(), headBefore.trim());
 });

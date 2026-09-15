@@ -44,7 +44,30 @@ exploración), con frontmatter que declara `flow`, `branch`, `date`, `state` y u
 Algunos de esos flujos **ya no existen en disco**: su origen se retiró y el vault es la única
 copia.
 
-**Consultalo ante estos disparadores, no en cada tarea:**
+### Subdirectorios opt-in
+
+En una frontera nueva se copian, desde la raíz, `.md`, `.sh`, `.js`, `.mjs`, `.py`, `.ts`,
+`.ps1`, `.json`, `.yml`, `.txt` y `.jsonl`, sin distinguir mayúsculas. La misma allowlist se
+aplica recursivamente sólo bajo los primeros segmentos exactos `evidencia/`, `runs/` y
+`decisiones/`. PDF y cualquier otro sufijo quedan fuera. El selector es posicional: no filtra por contenido ni tamaño,
+y `archive` procesa el conjunto completo sin vista previa por archivo.
+
+La frontera de un flujo archivado es inmutable. No hay backfill: si el origen ya no coincide,
+`archive` devuelve `VERIFY_FAILED`; en un lote, `migrate` conserva ese flujo y devuelve
+`BATCH_PARTIAL`. Antes de la primera publicación, una ruta seleccionada reservada, no portable
+o ignorada detiene con `RESERVED_DOCUMENT_PATH`, `NON_PORTABLE_DOCUMENT_PATH` o
+`IGNORED_DOCUMENT_PATH`. Un nodo histórico ilegible detiene con `NODE_UNREADABLE`.
+
+Si una publicación incluyó material erróneo, se detienen `archive` y `retire`. No se borra sólo
+el origen: eso deja una frontera histórica incompatible y produce `VERIFY_FAILED`. El saneamiento
+del vault y del origen es otro cambio, con migración, digest, rollback y gate humano propios.
+
+Las copias instaladas de la skill no se actualizan solas. Para desplegar estas reglas se reinstala
+la skill completa. Si una frontera nueva ya fue publicada, el rollback seguro es detener `archive`
+y `retire` y reinstalar completa la versión nueva: volver al selector anterior haría incompatibles
+esos flujos. No se mezclan scripts y documentación de versiones distintas.
+
+**Consulta el vault ante estos disparadores, no en cada tarea:**
 - "¿por qué se decidió X?", "¿de dónde salió esta regla?", "¿qué alternativas se descartaron?"
 - antes de rediseñar algo que huele a ya resuelto, o de repetir una investigación
 - cuando un comentario o una guarda del código citan un motivo que no está escrito ahí

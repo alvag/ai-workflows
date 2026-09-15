@@ -14,12 +14,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 
 import { DurableFs, Recorder } from '../../../skills/knowledge-vault/scripts/lib/durable-fs.mjs';
 import { runVaultTransaction } from '../../../skills/knowledge-vault/scripts/lib/engine-vault.mjs';
 import { retireCommand, ESTADOS } from '../../../skills/knowledge-vault/scripts/lib/commands/retire.mjs';
 import { serializarRegistroIdentidades } from '../../../skills/knowledge-vault/scripts/lib/identity.mjs';
+import { estaASalvo } from '../../../skills/knowledge-vault/scripts/lib/safety-probe.mjs';
 import { rutaDelManifiesto } from '../../../skills/knowledge-vault/scripts/lib/retire-execute.mjs';
 import { writeIdentitiesFile } from '../../../skills/knowledge-vault/scripts/lib/vault-store.mjs';
 import { createSandbox } from './helpers/sandbox.mjs';
@@ -50,7 +52,7 @@ async function medir(raiz) {
 }
 
 /** Un árbol de prueba con su vault, dos flujos archivados y la identidad declarada. */
-async function arbol(t, { flujos = ['abc-1', 'abc-2'] } = {}) {
+async function arbol(t, { flujos = ['abc-1', 'abc-2'], documentoAnidado = false } = {}) {
   const caja = await createSandbox(t);
   const repoRoot = await caja.makeRepo('proyecto');
   await git(repoRoot, 'init', '-q');
@@ -63,8 +65,9 @@ async function arbol(t, { flujos = ['abc-1', 'abc-2'] } = {}) {
     const dir = await caja.makeTree(path.join(raiz, flowId), {
       'spec.md': `# ${flowId}\n\n${'criterio '.repeat(40)}\n`,
       'plan.md': PLAN,
-      'notas.txt': `${'andamiaje '.repeat(80)}\n`,
+      'notas.tsv': `${'andamiaje '.repeat(80)}\n`,
       'cross-review/veredicto.md': `${'veredicto '.repeat(60)}\n`,
+      ...(documentoAnidado ? { 'evidencia/traza.txt': `traza de ${flowId}\n` } : {}),
     });
     await runVaultTransaction({
       fs: new DurableFs(), vaultRoot: vault, repoSlug: REPO_ID, flowId, flowDir: dir,
@@ -215,4 +218,113 @@ test('[AC-20-e2e] el que enumera lo presente en vez de leer el manifiesto no pas
   assert.equal(r.status, ESTADOS.BATCH_FAILED);
   assert.deepEqual(await snapshotTree(remanente), antes, 'se destruyó lo que nadie autorizó');
   assert.equal(await fs.readFile(path.join(remanente, 'de-otro.md'), 'utf8'), 'material ajeno\n');
+});
+
+
+// ── KV-SEL · frontera ampliada extremo a extremo ────────────────────────────
+
+test('[KV-SEL AC-8] retire exige bytes y anclaje exacto por documento', async (t) => {
+  const e = await arbol(t, { flujos: ['abc-1'], documentoAnidado: true });
+  const flowDir = path.join(e.raiz, 'abc-1');
+  const relative = 'projects/api-pagos/sdd/abc-1/evidencia/traza.txt';
+  const source = path.join(flowDir, 'evidencia', 'traza.txt');
+  const target = path.join(e.vault, ...relative.split('/'));
+  const before = await snapshotTree(flowDir);
+
+  await fs.writeFile(target, 'bytes distintos\n', 'utf8');
+  const mismatched = await estaASalvo({
+    fs: new DurableFs(), vaultRoot: e.vault, repoId: REPO_ID, flowId: 'abc-1', flowDir,
+  });
+  assert.equal(mismatched.causa, 'VERIFY_FAILED');
+  await git(e.vault, 'checkout', '--', relative);
+  assert.deepEqual(await fs.readFile(target), await fs.readFile(source));
+
+  await git(e.vault, 'rm', '-q', '--cached', '--', relative);
+  const unanchored = await estaASalvo({
+    fs: new DurableFs(), vaultRoot: e.vault, repoId: REPO_ID, flowId: 'abc-1', flowDir,
+  });
+  assert.equal(unanchored.causa, 'NOT_ANCHORED');
+  assert.deepEqual(unanchored.faltantes, [relative]);
+
+  const dry = await correr(e, { 'dry-run': true });
+  assert.equal(dry.informe.flujos[0].causa, 'NOT_ANCHORED');
+  const result = await correr(e, { 'approve-digest': dry.informe.digest });
+  assert.equal(result.status, ESTADOS.BATCH_FAILED);
+  assert.deepEqual(await snapshotTree(flowDir), before);
+});
+
+test('[KV-SEL AC-22] archive a probe a retire conserva y destruye solo tras digest', async (t) => {
+  const caja = await createSandbox(t);
+  const repoRoot = await caja.makeRepo('proyecto');
+  await git(repoRoot, 'init', '-q');
+  await git(repoRoot, 'remote', 'add', 'origin', 'git@github.com:acme/api.git');
+  const raiz = path.join(repoRoot, '.plans', 'archived');
+  const flowId = 'unico';
+  const flowDir = await caja.makeTree(path.join(raiz, flowId), {
+    'evidencia/sesión final.txt': 'único conocimiento preservado\n',
+    'notas.tsv': 'andamiaje omitido\n',
+    'reports/proceso.md': '# proceso omitido por ubicación\n',
+    'archivo.pdf': '%PDF omitido\n',
+  });
+  const vault = await caja.makeVault('dev-memory');
+  const source = path.join(flowDir, 'evidencia', 'sesión final.txt');
+  const sourceBytes = await fs.readFile(source);
+
+  const archived = await runVaultTransaction({
+    fs: new DurableFs(), vaultRoot: vault, repoSlug: REPO_ID, flowId, flowDir,
+    summary: 'Un único documento anidado.',
+  });
+  assert.equal(archived.status, 'ARCHIVED');
+  const target = path.join(vault, 'projects', REPO_ID, 'sdd', flowId, 'evidencia', 'sesión final.txt');
+  const targetBytes = await fs.readFile(target);
+  assert.deepEqual(targetBytes, sourceBytes);
+  assert.equal(
+    createHash('sha256').update(targetBytes).digest('hex'),
+    createHash('sha256').update(sourceBytes).digest('hex'),
+  );
+  const node = await fs.readFile(path.join(vault, 'projects', REPO_ID, 'sdd', `${flowId}.md`), 'utf8');
+  assert.match(node, /unico\/evidencia\/sesi%C3%B3n%20final\.txt/);
+
+  const { stdout } = await git(repoRoot, 'rev-list', '--max-parents=0', 'HEAD').catch(() => ({ stdout: '' }));
+  await writeIdentitiesFile({
+    fs: new DurableFs(),
+    vaultRoot: vault,
+    texto: serializarRegistroIdentidades([{
+      repoId: REPO_ID,
+      remoto: 'git@github.com:acme/api.git',
+      commitRaiz: stdout.trim().split('\n')[0] ?? '',
+      rutaObservada: repoRoot,
+    }]),
+  });
+
+  const probe = await estaASalvo({
+    fs: new DurableFs(), vaultRoot: vault, repoId: REPO_ID, flowId, flowDir,
+  });
+  assert.deepEqual(probe, { aSalvo: true, causa: null, faltantes: [] });
+
+  const e = { raiz, vault };
+  const dry = await correr(e, { 'dry-run': true, from: flowDir });
+  assert.equal(dry.informe.flujos[0].aSalvo, true);
+  assert.deepEqual(
+    dry.informe.flujos[0].omitidos.map((entry) => [entry.path, entry.clasificacion]),
+    [
+      ['archivo.pdf', 'omitido'],
+      ['notas.tsv', 'omitido'],
+      ['reports/proceso.md', 'omitido'],
+    ],
+  );
+  assert.ok(dry.informe.flujos[0].omitidos.every((entry) => !Object.hasOwn(entry, 'causa')));
+
+  await assert.rejects(() => correr(e, { from: flowDir }), (error) => error.code === 'USAGE');
+  assert.ok((await fs.lstat(flowDir)).isDirectory());
+  await assert.rejects(
+    () => correr(e, { from: flowDir, 'approve-digest': 'f'.repeat(64) }),
+    (error) => error.code === 'PRECONDITION_NOT_MET',
+  );
+  assert.ok((await fs.lstat(flowDir)).isDirectory());
+
+  const retired = await correr(e, { from: flowDir, 'approve-digest': dry.informe.digest });
+  assert.equal(retired.status, ESTADOS.BATCH_OK);
+  assert.equal(await fs.lstat(flowDir).catch(() => null), null);
+  assert.deepEqual(await fs.readFile(target), sourceBytes);
 });

@@ -15,7 +15,11 @@
 
 import path from 'node:path';
 
-import { assertNoSiblingCollision, assertPortableSegment } from './portable-path.mjs';
+import {
+  PortablePathError,
+  assertPortableSegment,
+  collisionKey,
+} from './portable-path.mjs';
 
 export class TreeError extends Error {
   constructor(code, message, { path: target = null, detail = null } = {}) {
@@ -136,18 +140,69 @@ async function assertScannableRoot(fs, root, label) {
   return raiz;
 }
 
-export function assertIncludedTreePortable(included, root = '') {
-  const porDirectorio = collisionGroups(included);
-
-  for (const entrada of included) {
-    for (const segmento of entrada.path.split('/')) {
-      assertPortableSegment(segmento, entrada.path);
+export function inspectIncludedTreePortability(included, root = '') {
+  const invalidSegments = [];
+  for (const entry of included) {
+    for (const segment of entry.path.split('/')) {
+      try {
+        assertPortableSegment(segment, entry.path);
+      } catch (error) {
+        if (!(error instanceof PortablePathError)) throw error;
+        invalidSegments.push({
+          path: entry.path,
+          at: error.at,
+          code: error.code,
+          message: error.message,
+          detail: error.detail,
+        });
+      }
     }
   }
 
-  for (const [padre, nombres] of porDirectorio) {
-    assertNoSiblingCollision(nombres, padre === '' ? root : `${root}/${padre}`);
+  const collisions = [];
+  for (const [parent, names] of collisionGroups(included)) {
+    const seen = new Map();
+    for (const name of names) {
+      const key = collisionKey(name);
+      const previous = seen.get(key);
+      if (previous !== undefined) {
+        const at = parent === '' ? root : `${root}/${parent}`;
+        const error = new PortablePathError(
+          'SIBLING_COLLISION',
+          'dos hermanos colisionan en un filesystem con equivalencia canónica o case-insensitivity: ' +
+            `${JSON.stringify(previous)} y ${JSON.stringify(name)}`,
+          { at, detail: [previous, name] },
+        );
+        const depth = parent === '' ? 0 : parent.split('/').length;
+        const conflictingEntry = included.find((entry) => {
+          const segments = entry.path.split('/');
+          return segments[depth] === name && segments.slice(0, depth).join('/') === parent;
+        });
+        collisions.push({
+          path: conflictingEntry?.path ?? (parent === '' ? name : `${parent}/${name}`),
+          at: error.at,
+          code: error.code,
+          message: error.message,
+          detail: error.detail,
+        });
+        continue;
+      }
+      seen.set(key, name);
+    }
   }
+
+  return [...invalidSegments, ...collisions];
+}
+
+export function assertIncludedTreePortable(included, root = '') {
+  const [diagnostic] = inspectIncludedTreePortability(included, root);
+  if (diagnostic === undefined) return;
+
+  const error = new PortablePathError(diagnostic.code, diagnostic.message, {
+    detail: diagnostic.detail,
+  });
+  error.at = diagnostic.at;
+  throw error;
 }
 
 /**

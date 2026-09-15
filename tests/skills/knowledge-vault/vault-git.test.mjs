@@ -21,9 +21,12 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import {
+  anclaEnHead,
   assertVaultClean,
   commitFlow,
   ensureVaultRepo,
+  inspectManifestAuthority,
+  rutasNoAncladas,
 } from '../../../skills/knowledge-vault/scripts/lib/vault-git.mjs';
 import { createSandbox } from './helpers/sandbox.mjs';
 
@@ -136,6 +139,24 @@ test('[AC-13] el commit stagea sólo las rutas dadas', async (t) => {
   ]);
 });
 
+test('un prefijo con tracked y nuevos incorpora ambos al commit', async (t) => {
+  const { vault } = await vaultNuevo(t);
+  await ensureVaultRepo(vault);
+  const directory = 'projects/ai-workflows/sdd/aaa-1';
+  await archivo(vault, `${directory}/spec.md`, 'primera versión\n');
+  await commitFlow({ vaultRoot: vault, flowId: 'aaa-1', paths: [directory] });
+
+  await archivo(vault, `${directory}/spec.md`, 'segunda versión\n');
+  await archivo(vault, `${directory}/evidencia.json`, '{}\n');
+  await commitFlow({ vaultRoot: vault, flowId: 'aaa-1', paths: [directory] });
+
+  const { stdout } = await git(vault, 'show', '--name-only', '--format=', 'HEAD');
+  assert.deepEqual(stdout.trim().split('\n').sort(), [
+    `${directory}/evidencia.json`,
+    `${directory}/spec.md`,
+  ]);
+});
+
 test('[AC-13] el mensaje del commit nombra el flujo', async (t) => {
   const { vault } = await vaultNuevo(t);
   await ensureVaultRepo(vault);
@@ -214,4 +235,161 @@ test('[AC-16] sobre un vault ya inicializado no se siembra nada', async (t) => {
   // Reponerlo pisaría a quien lo borró, y metería un commit en una historia que
   // es el registro de archivados del vault.
   await assert.rejects(() => fs.access(path.join(raiz, '.gitignore')));
+});
+
+test('[KV-SEL AC-8] Git reporta Unicode, faltante, sucio, ignorado y destino de rename NUL', async (t) => {
+  const { caja, vault } = await vaultNuevo(t);
+  await ensureVaultRepo(vault);
+  await archivo(vault, '.gitignore', '.obsidian/\n.DS_Store\ndocs/ignored.md\n');
+  for (const relative of ['docs/café.md', 'docs/dirty.md', 'docs/origen.md']) {
+    await archivo(vault, relative, `${relative}\n`);
+  }
+  await commitFlow({
+    vaultRoot: vault,
+    flowId: 'git-fixture',
+    paths: ['.gitignore', 'docs/café.md', 'docs/dirty.md', 'docs/origen.md'],
+  });
+
+  await archivo(vault, 'docs/dirty.md', 'modificado\n');
+  await archivo(vault, 'docs/ignored.md', 'ignorado\n');
+  await git(vault, 'mv', 'docs/origen.md', 'docs/destino.md');
+
+  const routes = [
+    'docs/café.md',
+    'docs/missing.md',
+    'docs/dirty.md',
+    'docs/ignored.md',
+    'docs/destino.md',
+    'docs/origen.md',
+  ];
+  assert.deepEqual(await rutasNoAncladas(vault, routes, { scanPaths: ['docs'] }), {
+    missing: ['docs/missing.md', 'docs/ignored.md', 'docs/destino.md'],
+    dirty: ['docs/dirty.md', 'docs/destino.md'],
+    ignored: ['docs/ignored.md'],
+  });
+
+  const unborn = caja.path('vaults', 'sin-head');
+  await fs.mkdir(unborn, { recursive: true });
+  await git(unborn, 'init', '-q');
+  assert.deepEqual(await rutasNoAncladas(unborn, ['uno.md', 'dos.md'], {
+    scanPaths: ['uno.md', 'dos.md'],
+  }), {
+    missing: ['uno.md', 'dos.md'],
+    dirty: [],
+    ignored: [],
+  });
+});
+
+test('[KV-SEL AC-9] Git detecta destino ignorado antes de materializarlo', async (t) => {
+  const { vault } = await vaultNuevo(t);
+  await ensureVaultRepo(vault);
+  await archivo(vault, '.gitignore', '.obsidian/\n.DS_Store\n.kv/retiros/\n');
+  await commitFlow({ vaultRoot: vault, flowId: 'ignore-fixture', paths: ['.gitignore'] });
+
+  const target = '.kv/retiros/repo/flow.json';
+  assert.deepEqual(await rutasNoAncladas(vault, [target], { scanPaths: ['.kv/retiros'] }), {
+    missing: [target],
+    dirty: [],
+    ignored: [target],
+  });
+});
+
+test('[KV-SEL AC-21] inspector de manifiesto exige ruta exacta limpia y anclada', async (t) => {
+  const { vault } = await vaultNuevo(t);
+  await ensureVaultRepo(vault);
+  const relative = '.kv/retiros/repo/flow.json';
+  const manifest = path.join(vault, ...relative.split('/'));
+
+  assert.deepEqual(await inspectManifestAuthority(vault, manifest), {
+    exists: false,
+    anchored: false,
+    dirty: false,
+    ignored: false,
+  });
+
+  await archivo(vault, relative, '{}\n');
+  assert.deepEqual(await inspectManifestAuthority(vault, manifest), {
+    exists: true,
+    anchored: false,
+    dirty: true,
+    ignored: false,
+  });
+
+  await commitFlow({ vaultRoot: vault, flowId: 'flow', paths: [relative] });
+  assert.deepEqual(await inspectManifestAuthority(vault, manifest), {
+    exists: true,
+    anchored: true,
+    dirty: false,
+    ignored: false,
+  });
+
+  await fs.rm(manifest);
+  assert.deepEqual(await inspectManifestAuthority(vault, manifest), {
+    exists: true,
+    anchored: false,
+    dirty: true,
+    ignored: false,
+  });
+  await git(vault, 'checkout', '--', relative);
+
+  await archivo(vault, relative, '{"dirty":true}\n');
+  assert.equal((await inspectManifestAuthority(vault, manifest)).dirty, true);
+  await git(vault, 'checkout', '--', relative);
+
+  await fs.appendFile(path.join(vault, '.gitignore'), `${relative}\n`, 'utf8');
+  await commitFlow({ vaultRoot: vault, flowId: 'ignore-manifest', paths: ['.gitignore'] });
+  assert.deepEqual(await inspectManifestAuthority(vault, manifest), {
+    exists: true,
+    anchored: true,
+    dirty: false,
+    ignored: true,
+  });
+});
+
+
+test('una ruta trackeada y limpia sigue anclada aunque un ignore posterior la cubra', async (t) => {
+  const { vault } = await vaultNuevo(t);
+  await ensureVaultRepo(vault);
+  const route = 'projects/demo/sdd/flow/runs/r1.jsonl';
+  await archivo(vault, route, '{"run":1}\n');
+  await commitFlow({ vaultRoot: vault, flowId: 'flow', paths: [route] });
+  await fs.appendFile(path.join(vault, '.gitignore'), 'runs/\n', 'utf8');
+  await commitFlow({ vaultRoot: vault, flowId: 'ignore', paths: ['.gitignore'] });
+
+  assert.deepEqual(await rutasNoAncladas(vault, [route], { scanPaths: [route] }), {
+    missing: [], dirty: [], ignored: [],
+  });
+  assert.equal(await anclaEnHead(vault, [route], { scanPaths: [route] }), true);
+  assert.equal((await git(vault, 'status', '--porcelain')).stdout.trim(), '');
+});
+
+
+test('el anclaje consulta un prefijo acotado aun con miles de rutas exactas', async (t) => {
+  const { vault } = await vaultNuevo(t);
+  await ensureVaultRepo(vault);
+  const prefix = 'projects/demo/sdd/flow';
+  const routes = Array.from({ length: 15000 }, (_, index) =>
+    `${prefix}/runs/${String(index).padStart(5, '0')}-${'x'.repeat(150)}.jsonl`);
+  await assert.rejects(
+    () => rutasNoAncladas(vault, routes),
+    (error) => error?.code === 'INVALID_SCAN_PATHS',
+  );
+  const diagnostics = await rutasNoAncladas(vault, routes, { scanPaths: [prefix] });
+  assert.equal(diagnostics.missing.length, routes.length);
+  assert.equal(diagnostics.missing[0], routes[0]);
+  assert.equal(diagnostics.missing.at(-1), routes.at(-1));
+  assert.deepEqual(diagnostics.dirty, []);
+  assert.deepEqual(diagnostics.ignored, []);
+});
+
+test('omitir scanPaths falla antes de consultar Git', async (t) => {
+  const { vault } = await vaultNuevo(t);
+  await ensureVaultRepo(vault);
+  await assert.rejects(
+    () => rutasNoAncladas(vault, ['index.md']),
+    (error) => error?.code === 'INVALID_SCAN_PATHS',
+  );
+  assert.deepEqual(await rutasNoAncladas(vault, ['index.md'], { scanPaths: ['index.md'] }), {
+    missing: ['index.md'], dirty: [], ignored: [],
+  });
 });

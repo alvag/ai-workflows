@@ -116,3 +116,10 @@ test('cada bandera declara su forma, y solo esas dos', () => {
     }
   }
 });
+
+test('[KV-SEL AC-9] rutas inválidas son precondición y nodo ilegible conserva código 9', () => {
+  for (const status of ['RESERVED_DOCUMENT_PATH', 'NON_PORTABLE_DOCUMENT_PATH', 'IGNORED_DOCUMENT_PATH']) {
+    assert.equal(exitCodeFor(status), 4, status);
+  }
+  assert.equal(exitCodeFor('NODE_UNREADABLE'), 9);
+});

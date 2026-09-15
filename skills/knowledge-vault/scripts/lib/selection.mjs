@@ -1,31 +1,72 @@
 /**
- * Qué documento de un flujo SDD entra al vault.
+ * Qué documentos de un flujo SDD forman la frontera verificada del vault.
  *
- * Un predicado y nada más. La versión anterior tenía nueve reglas, un esquema y
- * una partición total con decisiones nombradas; filtraba **salida cruda de
- * máquina** y por eso el andamiaje de proceso —transcripciones de revisión,
- * árboles de prueba, veredictos— pasaba entero, porque es texto legítimo.
+ * La versión anterior clasificaba por contenido con nueve reglas y un esquema.
+ * Dejó pasar andamiaje de proceso —transcripciones, pruebas y veredictos— porque
+ * es texto legítimo; por eso el corte que discrimina es posicional, no semántico.
+ * Esta versión admite once sufijos en la raíz y recursivamente bajo tres
+ * directorios de primer nivel exactos. PDF y otros primeros niveles quedan
+ * fuera; no se inspecciona contenido ni tamaño.
  *
- * El corte real es posicional, no de contenido: **lo que el flujo decidió vive en
- * la raíz de su directorio; lo que usó para decidirlo vive en subdirectorios.**
- * Medido sobre cincuenta flujos archivados, copia 277 documentos y omite 10.726.
+ * La medición del selector anterior sobre cincuenta flujos fue de 277 copiados
+ * y 10.726 omitidos. Es histórica, no reproducible sin esos orígenes y no mide
+ * la frontera ampliada.
  *
- * Módulo **puro**: no toca el disco. Recibe la ruta relativa a la raíz del flujo,
- * tal como la emite el inventario de `tree.mjs`, que la arma siempre con `/`.
+ * Módulo puro: recibe rutas relativas POSIX del inventario de `tree.mjs` y
+ * no toca disco.
  */
 
-const EXTENSION = '.md';
+export const ALLOWED_EXTENSIONS = Object.freeze([
+  '.md',
+  '.sh',
+  '.js',
+  '.mjs',
+  '.py',
+  '.ts',
+  '.ps1',
+  '.json',
+  '.yml',
+  '.txt',
+  '.jsonl',
+]);
+
+export const OPT_IN_DIRECTORIES = Object.freeze([
+  'evidencia',
+  'runs',
+  'decisiones',
+]);
 
 /**
  * @param {string} relativePath ruta relativa a la raíz del flujo, con `/`.
- * @returns {boolean} verdadero si y sólo si no contiene separador y termina en `.md`.
+ * @returns {boolean} verdadero si la ruta pertenece a la frontera documental.
  */
 export function isCopiable(relativePath) {
   if (typeof relativePath !== 'string') return false;
-  if (relativePath.includes('/')) return false;
-  if (relativePath.length <= EXTENSION.length) return false;
-  // Sólo la extensión se compara sin distinguir mayúsculas, y con `toLowerCase`
-  // sobre los tres últimos caracteres ASCII: bajar el nombre entero haría trabajo
-  // Unicode sobre texto que no se compara, y el repertorio de nombres es completo.
-  return relativePath.slice(-EXTENSION.length).toLowerCase() === EXTENSION;
+
+  const segments = relativePath.split('/');
+  if (segments.length > 1 && !OPT_IN_DIRECTORIES.includes(segments[0])) return false;
+
+  const basename = segments.at(-1);
+  if (!basename) return false;
+
+  const lowercaseBasename = basename.toLowerCase();
+  return ALLOWED_EXTENSIONS.some(
+    (extension) => basename.length > extension.length && lowercaseBasename.endsWith(extension),
+  );
+}
+
+/**
+ * Detecta Markdown cuyo padre inmediato es el segmento reservado `sdd`.
+ * Los llamadores aplican esta guarda solo a rutas seleccionadas en la primera
+ * publicación.
+ *
+ * @param {string} relativePath ruta relativa POSIX.
+ * @returns {boolean} verdadero si colisiona con el namespace de nodos.
+ */
+export function isReservedDocumentPath(relativePath) {
+  if (typeof relativePath !== 'string') return false;
+
+  const segments = relativePath.split('/');
+  const basename = segments.at(-1);
+  return segments.length > 1 && segments.at(-2) === 'sdd' && basename.endsWith('.md');
 }

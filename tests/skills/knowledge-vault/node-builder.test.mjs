@@ -13,7 +13,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildNode } from '../../../skills/knowledge-vault/scripts/lib/node-builder.mjs';
+import { buildNode, parsePublishedNode, parsePublishedNodeMetadata } from '../../../skills/knowledge-vault/scripts/lib/node-builder.mjs';
 import { parseFrontmatter } from '../../../skills/knowledge-vault/scripts/lib/frontmatter.mjs';
 
 const META = {
@@ -99,4 +99,52 @@ test('un resumen con numeral sí produce nodo, y vuelve idéntico', () => {
   const summary = 'Cierra el # 1264 sin tocar el origen.';
   const { keys } = parseFrontmatter(buildNode({ metadata: META, documents: DOCS, summary }));
   assert.equal(keys.get('summary'), summary);
+});
+
+test('[KV-SEL AC-10] enlaces raíz conservan bytes y anidados codifican por segmento', () => {
+  const documents = ['spec.md', 'evidencia/run 1/result%.json'];
+  const node = buildNode({ metadata: META, documents, summary: RESUMEN });
+
+  assert.ok(node.includes('(abc-1/spec.md)'), 'cambió el target raíz vigente');
+  assert.ok(
+    node.includes('(abc-1/evidencia/run%201/result%25.json)'),
+    'la ruta anidada no conservó sus barras',
+  );
+});
+
+test('[KV-SEL AC-20] parser recupera targets legacy y rechaza flujo o encoding inválido', () => {
+  const documents = ['spec.md', 'evidencia/run 1/result%.json'];
+  const node = buildNode({ metadata: META, documents, summary: RESUMEN });
+
+  assert.deepEqual(parsePublishedNodeMetadata(node, META.flow), {
+    title: META.title,
+    summary: RESUMEN,
+    flow: META.flow,
+  });
+  assert.deepEqual(parsePublishedNode(node, META.flow), {
+    metadata: { title: META.title, summary: RESUMEN, flow: META.flow },
+    documents: [...documents].sort(),
+  });
+  assert.deepEqual(
+    parsePublishedNode(node.replace('[spec.md]', '[Documento principal]'), META.flow).documents,
+    [...documents].sort(),
+  );
+  assert.deepEqual(
+    parsePublishedNode(buildNode({ metadata: META, documents: [], summary: RESUMEN }), META.flow).documents,
+    [],
+  );
+
+  assert.throws(() => parsePublishedNode(node, 'otro-flujo'), (error) => error?.code === 'NODE_UNREADABLE');
+  assert.throws(
+    () => parsePublishedNode(node.replace('/spec.md)', '/%73pec.md)'), META.flow),
+    (error) => error?.code === 'NODE_UNREADABLE',
+  );
+  assert.throws(
+    () => parsePublishedNode(node.replace('## Documentos\n', '## Documentos\n\ntexto libre\n'), META.flow),
+    (error) => error?.code === 'NODE_UNREADABLE',
+  );
+  assert.throws(
+    () => parsePublishedNode(node.replace('title:', 'missing-title:'), META.flow),
+    (error) => error?.code === 'NODE_UNREADABLE',
+  );
 });
