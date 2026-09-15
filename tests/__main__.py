@@ -122,14 +122,14 @@ def listar(casos: list[Caso]) -> int:
     return 0
 
 
-def correr(casos: list[Caso]) -> int:
+def correr(casos: list[Caso], node_count: Optional[int] = None) -> int:
     if not casos:
         print("ERROR: la selección quedó vacía", file=sys.stderr)
         return 1
     fallos = 0
     for identificador, _grupo, funcion in casos:
         try:
-            funcion(None)
+            funcion({"python": len(casos), "node": node_count})
             print(f"caso {identificador}: ok")
         except Exception as exc:
             print(f"caso {identificador}: ERROR {type(exc).__name__}: {exc}")
@@ -142,7 +142,7 @@ def correr(casos: list[Caso]) -> int:
 PATRON_NODE = "tests/skills/knowledge-vault/*.test.mjs"
 
 
-def correr_node() -> int:
+def correr_node() -> tuple[int, Optional[int]]:
     """Corre la suite Node **completa** y propaga su veredicto.
 
     El entrypoint durable enumeraba sólo tests de Python, así que el
@@ -158,7 +158,7 @@ def correr_node() -> int:
     if node is None:
         print("ERROR-SUITE: node no está en el PATH y la suite Node es obligatoria",
               file=sys.stderr)
-        return 1
+        return 1, None
 
     proceso = subprocess.run(
         [node, "--test", "--test-reporter=tap", PATRON_NODE],
@@ -174,16 +174,16 @@ def correr_node() -> int:
     if pasados < 0 or fallidos < 0:
         print("ERROR-SUITE: la salida de node no trae su resumen TAP", file=sys.stderr)
         print(salida[-2000:], file=sys.stderr)
-        return 1
+        return 1, None
     if pasados + fallidos == 0:
         print("ERROR-SUITE: la suite Node recolectó cero casos", file=sys.stderr)
-        return 1
+        return 1, None
 
     print(f"{pasados} casos node ok" + (f", {fallidos} con problema" if fallidos else ""))
     if fallidos or proceso.returncode != 0:
         print(salida[-4000:], file=sys.stderr)
-        return 1
-    return 0
+        return 1, pasados
+    return 0, pasados
 
 
 def autotest(casos: list[Caso]) -> int:
@@ -233,11 +233,10 @@ def main(argv: list[str]) -> int:
     if argv:
         print(f"USO argumento no reconocido: {argv[0]}", file=sys.stderr)
         return 2
-    # Las dos suites, y el veredicto es la peor de las dos. Correr la de Python y
-    # salir cero mientras la de Node está roja es exactamente el hueco que este
-    # entrypoint tenía.
-    veredicto_py = correr(casos)
-    veredicto_node = correr_node()
+    # Node corre primero para entregar su conteo TAP a los casos Python sin
+    # repetir la suite. El veredicto sigue siendo la peor de ambas suites.
+    veredicto_node, node_count = correr_node()
+    veredicto_py = correr(casos, node_count)
     return veredicto_py or veredicto_node
 
 
