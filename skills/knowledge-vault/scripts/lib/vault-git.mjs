@@ -263,6 +263,9 @@ export async function commitFlow({ vaultRoot, flowId, paths, subject = null }) {
   const indexedPaths = splitNul(index.stdout);
   const tracked = new Set(indexedPaths);
   const trackedPrefixes = coveredRoutes(indexedPaths);
+  // Un directorio mixto debe pasar por las dos fases: -u toma cambios en los
+  // archivos trackeados y add incorpora archivos nuevos bajo ese mismo prefijo.
+  // Las rutas documentales exactas no se solapan, pero commitFlow acepta prefijos.
   const updatePaths = requested.filter((route) => trackedPrefixes.has(route));
   const newPaths = requested.filter((route) => !tracked.has(route));
   const stage = async (routes, update) => {
@@ -349,11 +352,16 @@ export async function senalesDelRepositorio(repoRoot) {
  *
  * @param {string} vaultRoot
  * @param {string[]} rutas relativas a `vaultRoot`; archivos o directorios
+ * @param {{scanPaths: string[], ignoreIndex?: boolean}} options; prefijos de
+ * consulta obligatorios y acotados, que cubren todas las rutas exactas
  * @returns {Promise<boolean>}
  */
-export async function rutasNoAncladas(vaultRoot, rutas, { scanPaths = rutas, ignoreIndex = false } = {}) {
-  if (!Array.isArray(rutas) || !Array.isArray(scanPaths)) {
-    throw new VaultGitError('INVALID_PATHS', 'rutasNoAncladas espera listas de rutas');
+export async function rutasNoAncladas(vaultRoot, rutas, { scanPaths, ignoreIndex = false } = {}) {
+  if (!Array.isArray(rutas)) {
+    throw new VaultGitError('INVALID_PATHS', 'rutasNoAncladas espera una lista de rutas');
+  }
+  if (!Array.isArray(scanPaths)) {
+    throw new VaultGitError('INVALID_SCAN_PATHS', 'rutasNoAncladas exige prefijos de consulta');
   }
   const requested = [...new Set(rutas)];
   if (requested.length === 0) return { missing: [], dirty: [], ignored: [] };
@@ -435,7 +443,9 @@ export async function inspectManifestAuthority(vaultRoot, manifestPath) {
     if (error?.code === 'ENOENT') return null;
     throw error;
   });
-  const diagnostics = await rutasNoAncladas(vaultRoot, [relative], { ignoreIndex: true });
+  const diagnostics = await rutasNoAncladas(vaultRoot, [relative], {
+    scanPaths: [relative], ignoreIndex: true,
+  });
   // La ausencia física no implica ausencia de autoridad: una ruta versionada
   // eliminada del working tree sigue siendo un manifiesto sucio y debe bloquear.
   const exists = info !== null || diagnostics.missing.length === 0;

@@ -139,6 +139,24 @@ test('[AC-13] el commit stagea sólo las rutas dadas', async (t) => {
   ]);
 });
 
+test('un prefijo con tracked y nuevos incorpora ambos al commit', async (t) => {
+  const { vault } = await vaultNuevo(t);
+  await ensureVaultRepo(vault);
+  const directory = 'projects/ai-workflows/sdd/aaa-1';
+  await archivo(vault, `${directory}/spec.md`, 'primera versión\n');
+  await commitFlow({ vaultRoot: vault, flowId: 'aaa-1', paths: [directory] });
+
+  await archivo(vault, `${directory}/spec.md`, 'segunda versión\n');
+  await archivo(vault, `${directory}/evidencia.json`, '{}\n');
+  await commitFlow({ vaultRoot: vault, flowId: 'aaa-1', paths: [directory] });
+
+  const { stdout } = await git(vault, 'show', '--name-only', '--format=', 'HEAD');
+  assert.deepEqual(stdout.trim().split('\n').sort(), [
+    `${directory}/evidencia.json`,
+    `${directory}/spec.md`,
+  ]);
+});
+
 test('[AC-13] el mensaje del commit nombra el flujo', async (t) => {
   const { vault } = await vaultNuevo(t);
   await ensureVaultRepo(vault);
@@ -244,7 +262,7 @@ test('[KV-SEL AC-8] Git reporta Unicode, faltante, sucio, ignorado y destino de 
     'docs/destino.md',
     'docs/origen.md',
   ];
-  assert.deepEqual(await rutasNoAncladas(vault, routes), {
+  assert.deepEqual(await rutasNoAncladas(vault, routes, { scanPaths: ['docs'] }), {
     missing: ['docs/missing.md', 'docs/ignored.md', 'docs/destino.md'],
     dirty: ['docs/dirty.md', 'docs/destino.md'],
     ignored: ['docs/ignored.md'],
@@ -253,7 +271,9 @@ test('[KV-SEL AC-8] Git reporta Unicode, faltante, sucio, ignorado y destino de 
   const unborn = caja.path('vaults', 'sin-head');
   await fs.mkdir(unborn, { recursive: true });
   await git(unborn, 'init', '-q');
-  assert.deepEqual(await rutasNoAncladas(unborn, ['uno.md', 'dos.md']), {
+  assert.deepEqual(await rutasNoAncladas(unborn, ['uno.md', 'dos.md'], {
+    scanPaths: ['uno.md', 'dos.md'],
+  }), {
     missing: ['uno.md', 'dos.md'],
     dirty: [],
     ignored: [],
@@ -267,7 +287,7 @@ test('[KV-SEL AC-9] Git detecta destino ignorado antes de materializarlo', async
   await commitFlow({ vaultRoot: vault, flowId: 'ignore-fixture', paths: ['.gitignore'] });
 
   const target = '.kv/retiros/repo/flow.json';
-  assert.deepEqual(await rutasNoAncladas(vault, [target]), {
+  assert.deepEqual(await rutasNoAncladas(vault, [target], { scanPaths: ['.kv/retiros'] }), {
     missing: [target],
     dirty: [],
     ignored: [target],
@@ -336,10 +356,10 @@ test('una ruta trackeada y limpia sigue anclada aunque un ignore posterior la cu
   await fs.appendFile(path.join(vault, '.gitignore'), 'runs/\n', 'utf8');
   await commitFlow({ vaultRoot: vault, flowId: 'ignore', paths: ['.gitignore'] });
 
-  assert.deepEqual(await rutasNoAncladas(vault, [route]), {
+  assert.deepEqual(await rutasNoAncladas(vault, [route], { scanPaths: [route] }), {
     missing: [], dirty: [], ignored: [],
   });
-  assert.equal(await anclaEnHead(vault, [route]), true);
+  assert.equal(await anclaEnHead(vault, [route], { scanPaths: [route] }), true);
   assert.equal((await git(vault, 'status', '--porcelain')).stdout.trim(), '');
 });
 
@@ -350,10 +370,26 @@ test('el anclaje consulta un prefijo acotado aun con miles de rutas exactas', as
   const prefix = 'projects/demo/sdd/flow';
   const routes = Array.from({ length: 15000 }, (_, index) =>
     `${prefix}/runs/${String(index).padStart(5, '0')}-${'x'.repeat(150)}.jsonl`);
+  await assert.rejects(
+    () => rutasNoAncladas(vault, routes),
+    (error) => error?.code === 'INVALID_SCAN_PATHS',
+  );
   const diagnostics = await rutasNoAncladas(vault, routes, { scanPaths: [prefix] });
   assert.equal(diagnostics.missing.length, routes.length);
   assert.equal(diagnostics.missing[0], routes[0]);
   assert.equal(diagnostics.missing.at(-1), routes.at(-1));
   assert.deepEqual(diagnostics.dirty, []);
   assert.deepEqual(diagnostics.ignored, []);
+});
+
+test('omitir scanPaths falla antes de consultar Git', async (t) => {
+  const { vault } = await vaultNuevo(t);
+  await ensureVaultRepo(vault);
+  await assert.rejects(
+    () => rutasNoAncladas(vault, ['index.md']),
+    (error) => error?.code === 'INVALID_SCAN_PATHS',
+  );
+  assert.deepEqual(await rutasNoAncladas(vault, ['index.md'], { scanPaths: ['index.md'] }), {
+    missing: ['index.md'], dirty: [], ignored: [],
+  });
 });

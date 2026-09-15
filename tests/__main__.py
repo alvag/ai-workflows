@@ -7,12 +7,14 @@ FRONTERA DE PRUEBA — tres unidades comparten este pasaje.
     que ESOS pasan. Una skill sin casos en el catálogo no tiene quién la contradiga acá.
     NO detecta que un caso ejerza lo que su nombre promete: la cobertura se mide por presencia en el
     catálogo, no por poder discriminante.
-    Su verde autoriza a afirmar: los casos del catálogo pasan sobre el árbol actual.
+    Su verde autoriza a afirmar: los casos del catálogo pasan sobre el árbol actual
+    y los recuentos del README coinciden con esta corrida.
     Dirección: admite-de-mas.
     Fallo de ejecución, distinto de su resultado, Y NO DISTINGUIBLE DE ÉL: un **1** de este modo
-    tiene al menos TRES orígenes que el código no separa —el catálogo que no se pudo cargar en
-    `descubrir()`, un caso Python en rojo, y los `ERROR-SUITE` de la suite de Node—, así que hay que
-    leer la salida para saber cuál fue. El **2** sí discrimina: es invocación mal formada —medido:
+    tiene al menos cuatro orígenes que el código no separa —el catálogo que no se pudo cargar en
+    `descubrir()`, un caso Python en rojo, los `ERROR-SUITE` de Node y un recuento del README
+    desactualizado—, así que hay que leer la salida para saber cuál fue. El **2** sí discrimina:
+    es invocación mal formada —medido:
     `python3 -m tests --loquesea` sale 2—.
 
 `--autotest` — clase: veredicto.
@@ -142,8 +144,8 @@ def correr(casos: list[Caso]) -> int:
 PATRON_NODE = "tests/skills/knowledge-vault/*.test.mjs"
 
 
-def correr_node() -> int:
-    """Corre la suite Node **completa** y propaga su veredicto.
+def correr_node() -> tuple[int, int]:
+    """Corre la suite Node **completa** y devuelve veredicto y casos pasados.
 
     El entrypoint durable enumeraba sólo tests de Python, así que el
     comportamiento destructivo del vault podía degradarse sin que ningún
@@ -158,7 +160,7 @@ def correr_node() -> int:
     if node is None:
         print("ERROR-SUITE: node no está en el PATH y la suite Node es obligatoria",
               file=sys.stderr)
-        return 1
+        return 1, -1
 
     proceso = subprocess.run(
         [node, "--test", "--test-reporter=tap", PATRON_NODE],
@@ -174,14 +176,43 @@ def correr_node() -> int:
     if pasados < 0 or fallidos < 0:
         print("ERROR-SUITE: la salida de node no trae su resumen TAP", file=sys.stderr)
         print(salida[-2000:], file=sys.stderr)
-        return 1
+        return 1, -1
     if pasados + fallidos == 0:
         print("ERROR-SUITE: la suite Node recolectó cero casos", file=sys.stderr)
-        return 1
+        return 1, -1
 
     print(f"{pasados} casos node ok" + (f", {fallidos} con problema" if fallidos else ""))
     if fallidos or proceso.returncode != 0:
         print(salida[-4000:], file=sys.stderr)
+        return 1, pasados
+    return 0, pasados
+
+
+def comprobar_recuentos_documentados(python_ok: int, node_ok: int) -> int:
+    """Guarda de veredicto: compara el README con esta corrida, no con otro literal.
+
+    Detecta un recuento desactualizado en cualquiera de las dos suites. No detecta
+    casos ocultos si el runner y el README coinciden en número; dirección:
+    admite-de-más. Campos: recuentos observados de Python y Node, y los dos
+    declarados en tests/README.md.
+    """
+    try:
+        texto = (RAIZ / "README.md").read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"ERROR-SUITE: no se pudo leer tests/README.md: {exc}", file=sys.stderr)
+        return 1
+    declarado = re.search(
+        r"^La ejecución integrada vigente termina con `(\d+) casos ok` y `(\d+) casos node ok`\.$",
+        texto, re.MULTILINE,
+    )
+    if declarado is None:
+        print("ERROR-SUITE: tests/README.md no declara ambos recuentos de la suite", file=sys.stderr)
+        return 1
+    vistos = (int(declarado.group(1)), int(declarado.group(2)))
+    medidos = (python_ok, node_ok)
+    if vistos != medidos:
+        print(f"ERROR-SUITE: tests/README.md declara {vistos}, la corrida midió {medidos}",
+              file=sys.stderr)
         return 1
     return 0
 
@@ -235,10 +266,12 @@ def main(argv: list[str]) -> int:
         return 2
     # Las dos suites, y el veredicto es la peor de las dos. Correr la de Python y
     # salir cero mientras la de Node está roja es exactamente el hueco que este
-    # entrypoint tenía.
+    # entrypoint tenía. Solo con ambas verdes se cotejan los recuentos documentados.
     veredicto_py = correr(casos)
-    veredicto_node = correr_node()
-    return veredicto_py or veredicto_node
+    veredicto_node, node_ok = correr_node()
+    if veredicto_py or veredicto_node:
+        return 1
+    return comprobar_recuentos_documentados(len(casos), node_ok)
 
 
 if __name__ == "__main__":

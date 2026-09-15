@@ -213,7 +213,8 @@ test('[AC-12] el asunto del commit no autoriza: revertido, el ancla dice que no'
   const { vault, flowDir, flowId } = await escena(t);
   const { frontier, nodePath, indexPaths } = resolveLayout(vault, REPO, flowId);
   const propias = [frontier, nodePath, ...indexPaths].map((p) => path.relative(vault, p));
-  assert.equal(await anclaEnHead(vault, propias), true, 'la escena no arrancó anclada');
+  assert.equal(await anclaEnHead(vault, propias, { scanPaths: propias }), true,
+    'la escena no arrancó anclada');
 
   // Se revierte el commit: su asunto sigue en la historia —`git log` lo muestra—
   // pero el contenido ya no está en HEAD. La comparación por asunto que había
@@ -222,7 +223,7 @@ test('[AC-12] el asunto del commit no autoriza: revertido, el ancla dice que no'
   const { stdout: historia } = await git(vault, 'log', '--format=%s');
   assert.ok(historia.includes(flowId), 'el asunto tiene que seguir en la historia');
 
-  assert.equal(await anclaEnHead(vault, propias), false);
+  assert.equal(await anclaEnHead(vault, propias, { scanPaths: propias }), false);
   const r = await sondear(vault, flowDir, flowId);
   assert.equal(r.aSalvo, false);
   assert.equal(r.causa, CAUSAS.FRONTIER_MISSING);

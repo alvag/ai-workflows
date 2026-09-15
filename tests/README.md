@@ -27,7 +27,7 @@ los cinco consumidores registrados, la frontera estructural única del parser, e
 el rechazo pre-despacho y la estabilidad de los `description`. Sus escenarios enumeran gates de
 artefactos y checkpoints cross-model por separado; no miden duración ni intentan demostrar ahorro.
 
-La ejecución integrada vigente termina con `562 casos ok` y `512 casos node ok`.
+La ejecución integrada vigente termina con `562 casos ok` y `556 casos node ok`.
 
 La fidelidad entre schemas y vistas se verifica aparte con
 `python3 scripts/verificar-vistas-config.py`: hoy compara 37 claves de config y 13 de manifest,
