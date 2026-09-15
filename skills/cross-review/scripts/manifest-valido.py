@@ -1,6 +1,18 @@
-"""Predicado: objeto JSON con exactamente nueve claves raíz, una vez cada una; started_at UTC real,
-duration_s entero no negativo, families como lista de valores válidos (también vacía); mode,
-outcome, degradation y transport en la fila de skill."""
+"""Predicado: objeto JSON con exactamente nueve claves raíz obligatorias, una vez cada una;
+started_at UTC real, duration_s entero no negativo, families como lista de valores válidos (también
+vacía); mode, outcome, degradation y transport en la fila de skill. Admite además dos claves
+opcionales —`transporte_fuente` y `transporte_proceso`—, que pasan a ser obligatorias cuando el
+transporte declarado corre sobre un panel de terminal.
+
+**Qué NO detecta.** No comprueba que `transporte_fuente` nombre una fuente que exista ni que
+`transporte_proceso` apunte a un proceso vivo: lee presencia y no verdad, así que un registro con dos
+literales inventados pasa. Tampoco distingue un `transport` ausente de uno omitido a propósito: la
+ausencia se reporta como campo faltante, no como `cli-exec` implícito, porque los cuatro productores
+lo emiten y aflojarlo perdería una guarda a cambio de nada.
+
+**Campos** (ver CLAUDE.md → "La frontera de prueba de una guarda"). Clase: **veredicto**.
+Dirección: **admite-de-mas** — su verde autoriza a afirmar que el registro cumple la forma y los
+enums de su fila, nunca que lo registrado haya ocurrido."""
 
 from __future__ import annotations
 
@@ -16,30 +28,34 @@ EXPECTED = (
     "skill", "mode", "started_at", "duration_s", "families", "transport",
     "outcome", "degradation", "selection",
 )
+# Los dos transportes por panel son los unicos que exigen la fuente consultable: un panel se puede
+# interrogar, asi que un registro que lo use y no diga por donde no es auditable.
+OPCIONALES = ("transporte_fuente", "transporte_proceso")
+CON_PANEL = {"pane-herdr", "pane-orca"}
 ROWS: Dict[str, Tuple[set[str], set[str], set[str], set[str]]] = {
     "co-explore": (
         {"explore", "counter-plan", "investigate", "debate"},
         {"completed", "map_failure"},
         {"none", "confirmed_wall", "launch_flake", "runtime_failure", "host_sandbox_wall", "branch-2", "branch-3", "branch-4", "deadline_exceeded"},
-        {"none", "subagent", "cli-exec", "cli-resume"},
+        {"none", "subagent", "cli-exec", "cli-resume", "pane-herdr", "pane-orca"},
     ),
     "cross-review": (
         {"spec", "plan", "tasks", "master-spec", "reparto", "sintesis", "draft"},
         {"APPROVED", "REVISE", "UNAVAILABLE"},
         {"none", "confirmed_wall", "launch_flake", "runtime_failure", "host_sandbox_wall", "rounds_exhausted", "deadline_exceeded"},
-        {"none", "subagent", "cli-exec", "cli-resume"},
+        {"none", "subagent", "cli-exec", "cli-resume", "pane-herdr", "pane-orca"},
     ),
     "cross-implement": (
         {"embebido", "directo"},
         {"IMPLEMENTED", "PARTIAL", "UNAVAILABLE"},
         {"none", "confirmed_wall", "launch_flake", "runtime_failure", "host_sandbox_wall", "takeover", "deadline_exceeded"},
-        {"none", "subagent", "cli-exec", "cli-resume"},
+        {"none", "subagent", "cli-exec", "cli-resume", "pane-herdr", "pane-orca"},
     ),
     "bitbucket-code-review": (
         {"conductor", "delegado", "mixto"},
         {"PUBLISHED", "PROPOSED", "UNAVAILABLE"},
         {"none", "confirmed_wall", "launch_flake", "runtime_failure", "host_sandbox_wall", "revisor_invalido", "panel_vacio"},
-        {"none", "subagent", "cli-exec", "cli-resume"},
+        {"none", "subagent", "cli-exec", "cli-resume", "pane-herdr", "pane-orca"},
     ),
 }
 
@@ -68,7 +84,7 @@ def main() -> int:
         if cantidad > 1:
             print(f'GUARD:manifest-valido clave requerida duplicada: "{campo}"', file=sys.stderr)
             rc = 1
-    for campo in sorted(set(claves) - set(EXPECTED)):
+    for campo in sorted(set(claves) - set(EXPECTED) - set(OPCIONALES)):
         print(f'GUARD:manifest-valido clave raíz desconocida: "{campo}"', file=sys.stderr)
         rc = 1
 
@@ -123,8 +139,17 @@ def main() -> int:
             continue
         valor = objeto.get(campo, "")
         if valor not in permitidos:
-            print(f'GUARD:manifest-valido {campo} "{valor}" no pertenece a {skill}', file=sys.stderr)
+            # el mensaje nombra el transporte en la lengua del contrato: un rechazo que solo diga
+            # `transport` no se distingue del nombre de la clave JSON al leer el log
+            sufijo = ": transporte fuera del enum" if campo == "transport" else ""
+            print(f'GUARD:manifest-valido {campo} "{valor}" no pertenece a {skill}{sufijo}', file=sys.stderr)
             rc = 1
+
+    if objeto.get("transport") in CON_PANEL:
+        for campo in OPCIONALES:
+            if not objeto.get(campo):
+                print(f'GUARD:manifest-valido transporte por panel sin "{campo}": la fuente tiene que ser consultable', file=sys.stderr)
+                rc = 1
     return rc
 
 

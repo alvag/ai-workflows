@@ -154,6 +154,8 @@ FUENTES = [
     (("subagent",), "ninguna"),
     (("cli-exec",), "archivo+proceso"),
     (("cli-resume",), "archivo+proceso"),
+    (("pane-herdr",), "archivo+proceso"),
+    (("pane-orca",), "archivo+proceso"),
 ]
 ENUM_PRECEDENCIA = ("cosechar", "clasificar_error", "informar_activo", "esperar_cleanup")
 PRECEDENCIA = [
@@ -1945,6 +1947,8 @@ Es **no bloqueante**, **una por turno**, **sin retry**, y **no modifica** el `de
 | `subagent` | `ninguna` — **no hay fuente consultable** a mitad de vuelo |
 | `cli-exec` | `archivo+proceso` |
 | `cli-resume` | `archivo+proceso` |
+| `pane-herdr` | `archivo+proceso` |
+| `pane-orca` | `archivo+proceso` |
 
 ### Precedencia ante discrepancia
 

@@ -1547,6 +1547,54 @@ El launcher recuerda los candidatos admisibles que no aparecen en `expanded_seed
 `seed_paths` ausentes; son diferencias informadas, no condiciones para `ready`. Un
 `.specify/config.yml` copiado por continuidad obligatoria no se informa como omitido.
 
+#### La rama por terminales: la transferencia de autoridad no se ofrece
+
+**En las dos vías el launcher imprime un comando y una persona lo ejecuta.** Ninguna abre la sesión
+conductora por su cuenta: el paso 9 de esta misma receta hace `printf` y declara que *"la sesión
+actual no cambia cwd, no hace checkout y no despacha nada"*. `terminal.py crear` y `lanzar` abren
+paneles y arrancan **workers**, no conductores.
+
+La idea era que la vía por terminales cerrara además el traspaso de autoridad sola, y por eso haría
+falta un handshake: para que no exista un instante con dos sesiones creyendo que conducen, o ninguna.
+
+**Ese handshake no existe, y eso está medido.** `lanzar-conductor` devuelve `mecanica-no-obtenida` en
+las dos plataformas. De modo que la mudanza es enteramente manual: una persona ejecuta el comando
+impreso y con eso queda conduciendo la sesión nueva.
+
+**Por qué, y no es una opinión de diseño.** Cinco rondas de revisión, y cada intento de acreditar la
+transferencia por observación acotó una superficie y dejó elegible la contigua:
+
+| intento | acotó | quedó elegible |
+|---|---|---|
+| acuse en un archivo | los tres campos ligan datos | quién escribió el archivo |
+| observar la terminal del worker | la procedencia sale de la plataforma | **cuál** terminal se observaba |
+| derivar el panel del dispatch | el panel deja de ser un argumento | **qué** se buscaba en su salida |
+| exigir el digest del plan | la marca deja de ser una frase | el digest es público e **inyectable** con `terminal send` |
+| pedir autorización humana | nada: un booleano de CLI lo pone quien invoca | el verbo no puede constatar quién lo corrió |
+
+La última salida candidata era el canal que Orca **dice** atribuir —un `worker_done` aceptado *"only
+from the dispatched pane"*—, y se midió: sin `--from` lo rechaza con `sender_not_assignee`, pero
+**con** `--from <handle del asignado>` lo acepta desde cualquier terminal, falsea `from_handle` **y**
+`sender_pane_key`, y completa la task y el dispatch. La guía documenta esa bandera en una línea que se
+lee como advertencia y es una capacidad: *"Omit `--from` unless impersonating another terminal"*.
+
+**Lo que falta no es una comprobación mejor: es una evidencia atribuible a la sesión nueva que el
+medio no ofrece.** Mientras siga así, el verbo no transfiere. Si la plataforma agrega una identidad de
+sesión que un tercero no pueda suplantar, la capacidad vuelve — en su propio flujo y con su gate.
+
+La evidencia completa, con los comandos y sus salidas, está en `.plans/<id>/pruebas-herdr.md` →
+Partes 33 a 37 del flujo `transporte-terminales`.
+
+**Qué informa el verbo, y qué no.** Devuelve `mecanica-no-obtenida`, `transferido: false` y la ruta
+manual en `recuperacion`. **No nombra a quién sigue conduciendo**: el conductor vigente saldría de los
+efectos `conductor` del ledger, y este adaptador no los produce —`crear` y `lanzar` asientan otros—,
+así que el campo sale nulo y el sobre lo declara con `acredita.conductor: no-registrado`. Se dice acá
+porque este documento llegó a prometer ese campo como autoridad, y un nulo silencioso en esa ranura es
+peor que decir que no se puede obtener.
+
+**No consulta la plataforma.** Preguntarle algo insinuaría que alguna respuesta podría cambiar el
+resultado, y la medición dice que ninguna puede.
+
 ### 10. Fallos, abandono, `resume` y `doctor`
 
 No se limpia automáticamente un destino parcial. Desde el origen, `resume` muestra etapa, operación y
@@ -6742,6 +6790,74 @@ solo agregan su información y preservan esa identidad.
 `worktree_location` admite `current | worktree`; los enums cerrados de `worktree_status` y
 `worktree_stage` son los de “Estado durable y autoridad entre handoffs”. Los comentarios explicativos
 de la plantilla no se anexan a esas líneas máquina.
+
+### El bloque `transporte` y la retoma
+
+Un flujo que corre sobre una plataforma de terminales agrega al frontmatter un bloque `transporte`.
+Son **cuatro campos** más el puntero a la corrida, y existen para una sola cosa: que una sesión que
+retoma el flujo recupere la elección **de ahí**, sin volver a detectar ni a ofrecer.
+
+```yaml
+transporte:
+  plataforma: orca            # herdr | orca — la registrada, y la única identidad que la retoma consulta
+  esquema: 1                  # versión de ESTE bloque; una que esta instalación no interpreta degrada
+  consentimiento: .plans/<id>/transporte-consentimiento.json   # PUNTERO al consentimiento que autorizó la elección
+  workspace: /ruta/absoluta/al/worktree-de-los-paneles
+  corrida: .plans/<id>/transporte-corrida.jsonl   # ledger de la corrida; su propietario decide la adopción
+```
+
+El bloque **ausente** no es un error: es la señal de que el flujo nació antes de esta vía, y su
+destino está en la primera fila de la matriz. `consentimiento` y `corrida` son **punteros**, no copias:
+el consentimiento se lee en su sede, igual que `pedido/`.
+
+### El consentimiento, y por qué no alcanza una marca
+
+El archivo de **consentimiento** que apunta el bloque no guarda una señal de que alguien dijo que sí: guarda **el texto exacto que se mostró** y su `digest`, y eso es lo que liga la elección a lo que el usuario vio. Una marca suelta pasa un chequeo de existencia sin poder decir **contra qué** se consintió, así que la oferta puede cambiar después y nadie se entera.
+
+```json
+{
+  "corrida": ".plans/<id>/transporte-corrida.jsonl",
+  "mostrado": "<el texto literal de los cuatro puntos de la oferta>",
+  "digest": "<sha256 de `mostrado`>",
+  "momento": "2026-01-01T00:00:00+00:00",
+  "alcance": {"worktree": "/ruta/absoluta", "paneles_max": 2, "roles": ["w1", "w2"]}
+}
+```
+
+`alcance` es lo que la elección autorizó, y el adaptador lo hace cumplir al crear cada panel: un `cwd` fuera del worktree, un rol no enumerado o un panel de más que `paneles_max` salen con `consentimiento-invalido` o `consentimiento-agotado` y **no crean nada**. Es la diferencia entre registrar la elección y **acotarla**: sin `alcance`, consentir una vez autorizaría cualquier cantidad de paneles en cualquier directorio.
+
+**La retoma no detecta.** Consulta la identidad de la plataforma **persistida** y de ninguna otra, y
+reusa los cuatro estados por identidad que `detectar` ya declara. Esa es la diferencia material con
+la detección, que barre las dos plataformas: acá hay una sola candidata, así que no hay nada que
+comparar.
+
+| Lo que dice el documento de retomado | Identidad de la plataforma persistida | Destino |
+|---|---|---|
+| el campo **no está** | no se consulta | headless, **sin oferta**: el flujo termina como empezó |
+| el campo está | `ausente` o `inconsultable` — desapareció, o no se pudo preguntar | headless, **informando la causa** |
+| el campo está | `rancia` — hay identidad y no resuelve: es **otra** instalación que la registrada | headless, informando la causa |
+| el campo está y `resuelve`, y el propietario del ledger de corrida **no está vivo** | `resuelve` | headless, informando la causa |
+| el campo está, `resuelve` y el propietario vive | `resuelve` | continúa por la plataforma registrada, **sin volver a ofrecer** |
+
+**Ninguna corrida viva se adopta ni se convierte.** Una corrida que el ledger declara en vuelo y cuyo
+propietario no es esta sesión exige **consentimiento explícito** antes de tocarla; sin él degrada
+igual que las demás causas, y nunca se convierte de transporte a mitad de camino.
+
+**Por qué `inconsultable` degrada acá y no detiene, al revés que en la detección.** Ahí una consulta
+fallida no descarta a la otra plataforma, porque hay **dos** candidatas y queda una por evaluar. En la
+retoma hay **una sola**, así que no poder preguntar por ella no deja nada que evaluar, y el destino es
+el que ya rige para todo lo que no resuelve: headless.
+
+**Quién la resuelve.** El adaptador, con el documento de retomado como única entrada:
+
+```sh
+python3 skills/co-explore/scripts/terminal.py --retomar .plans/<id>/handoff.md --sesion <id-de-sesion>
+```
+
+Devuelve `0` cuando continúa por la plataforma registrada y `1` en las cuatro degradaciones, con
+`causa` en el sobre — nula solo en la primera fila, donde no hubo nada que degradar. `ofertas` es
+**cero en todas**: la retoma no ofrece. Para adoptar una corrida en vuelo de otro propietario se
+agrega `--consentimiento-adopcion`, que es el único modo de pasar esa guarda.
 
 ## Revisión final de diff
 

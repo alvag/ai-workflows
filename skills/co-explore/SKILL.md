@@ -82,6 +82,18 @@ comparan**.
    tira al cerrar; el revisor sigue en L0 —no ejecuta— y lee un checkout estable, nunca el
    worktree que el conductor está mutando (ver `reference.md` → "Capacidades y worktree
    (`investigate`)").
+
+   > **El alcance de la segunda mitad es la vía headless, y ahí no cambia nada.** El aislamiento por
+   > permisos es una propiedad del **transporte**, no de esta skill: lo que lo garantiza son los flags
+   > con que el CLI lanza al worker. La vía por **terminales** —workers como paneles de la terminal
+   > del conductor— **no tiene ese mecanismo**: el worker arranca en una sesión interactiva que hereda
+   > el entorno de quien la abrió, y el flag de sandbox no acotó la escritura cuando se lo midió. Así
+   > que sobre esa vía la primera mitad —el contrato read-only del prompt— es **lo único** que rige, y
+   > el usuario lo consiente antes de que se cree la primera terminal.
+   >
+   > Esto **acota** el invariante, no lo ablanda: sobre la vía headless las dos mitades siguen
+   > exigiéndose enteras y el preflight sigue siendo fail-closed. Lo que se agrega es que una vía sin
+   > mecanismo **lo declara** en vez de heredar una garantía que no puede dar.
 2. **Independencia (anti-anclaje), por modo.** En `explore`, `counter-plan` e `investigate` la
    independencia rige **entre los dos workers**: ninguno ve la salida del otro, ni ahora ni en
    fases posteriores, y ambos arrancan solo con el paquete de contexto — nunca con hallazgos,

@@ -731,6 +731,31 @@ Cuando conduce Claude, la otra familia es **Codex**; el detalle canónico vive e
 >
 > **La condición para adoptar uno:** una corrida real de `co-explore` con ese transporte contra la misma corrida por CLI, comparando **latencia, fidelidad de la cosecha y líneas de plomería**. Sin ese delta medido, no se adopta. El precedente que fija la regla: la vía de paneles costó **1.245 líneas y nunca se activó** —6 de 6 corridas se fueron por CLI— y se cerró con evidencia, no con opinión. Tampoco esperar un ahorro económico: todos corren sobre la misma suscripción vía CLI headless.
 
+### La vía por terminales no tiene mecanismo de aislamiento, y eso se declara
+
+El transporte por **paneles de terminal** —workers como splits de la terminal del conductor, sobre
+Herdr u Orca— corre en sesiones **interactivas**, no headless. Ahí no hay flags de aislamiento que
+aplicar, y las tres consecuencias están **medidas**, no supuestas. Van escritas porque el usuario las
+consiente antes de que se cree la primera terminal, y no se puede consentir lo que no se enunció:
+
+1. **El worker hereda el entorno del conductor**, credenciales incluidas. Medido: un token de API y
+   un correo corporativo llegaron al worker sin que nada los pasara explícitamente.
+2. **Esa configuración heredada consume presupuesto de contexto del worker** antes de que llegue a
+   leer su encargo. No es solo una superficie de permisos: es ventana que el encargo pierde.
+3. **El flag de sandbox del agente no acota la escritura.** Con `--sandbox read-only` declarado, el
+   worker escribió igual en los **cuatro cuadrantes** de la matriz plataforma × familia. El tercero es
+   el que cambia el tono de los otros dos: no es que se **elija** no aislar, es que el mecanismo que
+   se usaría para aislar **no hace lo que su nombre promete**.
+
+A cambio, la capa supervisada de Orca **redacta tokens de capacidad** de lo que devuelve al leer, que
+acota una superficie distinta y se declara igual.
+
+**Lo que esto no cambia.** Sobre la vía **headless** el invariante de aislamiento sigue entero y su
+preflight sigue siendo fail-closed: los cuatro flags en Codex y `--safe-mode` en Claude. Esto **acota
+el alcance** del invariante por vía; no lo ablanda. Y **no** adopta la vía por paneles: la condición
+del bloque anterior —el delta medido contra la misma corrida por CLI— sigue rigiendo y se cumple o no
+con corridas reales, no con este párrafo.
+
 ## Artefactos en disco (dogfooding)
 
 Las skills SDD escriben artefactos **locales y untracked** (nunca se commitean): `.specify/config.yml` + `constitution.md` por proyecto, y `.plans/<id>/` por flujo. **Este repo se desarrolla a sí mismo con esas skills:** `.superpowers/sdd/` contiene los artefactos SDD (briefs, reports, diffs de review) usados para construir las propias skills, y `docs/superpowers/{specs,plans}/` guarda specs y planes de diseño versionados. Al retomar trabajo, esos archivos son la memoria del flujo.
