@@ -762,3 +762,23 @@ test('[KV-SEL AC-21] autoridad de manifiesto es una dependencia inyectada', asyn
   assert.ok(inspections >= 2, `el inspector se llamó ${inspections} veces`);
   assert.equal(received, inspectorManifiesto);
 });
+
+
+test('el ensayo conserva la precondición y el fallo secundario del manifiesto', async (t) => {
+  const e = await escena(t, { archivados: ['abc-1'] });
+  const residual = rutaDelManifiesto(e.vault, REPO_ID, 'abc-1');
+  await fs.mkdir(path.dirname(residual), { recursive: true });
+  await fs.writeFile(residual, '{}\n', 'utf8');
+
+  const plan = await planificarRetiro({
+    fs: new DurableFs({ failAt: 'retire.manifest.scan.hash' }),
+    vaultRoot: e.vault, repoId: REPO_ID, raiz: e.raiz,
+    objetivos: e.flujos, repoRoot: e.repoRoot,
+  });
+  const row = plan.flujos[0];
+  assert.equal(row.causa, 'PRECONDITION_NOT_MET');
+  assert.match(row.error, /manifiesto existe pero no está limpio y anclado/);
+  assert.match(row.error, /inyectad/);
+  assert.equal(row.manifiesto, null);
+  assert.equal(row.digest, null);
+});

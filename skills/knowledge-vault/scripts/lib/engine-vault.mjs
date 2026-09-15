@@ -141,6 +141,8 @@ export async function fronteraPublicada(fs, frontier, esperados, label) {
   }
 }
 
+// Esta comparación solo conoce nombres. Los bytes se comparan por separado
+// en la verificación de la frontera; aquí `mismatched` es vacío por contrato.
 function comparePaths(expected, current) {
   const expectedSet = new Set(expected);
   const currentSet = new Set(current);
@@ -224,7 +226,10 @@ export async function inspectFirstPublicationPaths(vaultRoot, frontier, included
     const absolute = path.join(frontier, ...entry.path.split('/'));
     return [toVaultRelative(vaultRoot, absolute), entry.path];
   }));
-  const { ignored } = await rutasNoAncladas(vaultRoot, [...destinationByPath.keys()]);
+  const { ignored } = await rutasNoAncladas(vaultRoot, [...destinationByPath.keys()], {
+    scanPaths: [toVaultRelative(vaultRoot, frontier)],
+    ignoreIndex: true,
+  });
   for (const destination of ignored) {
     const sourcePath = destinationByPath.get(destination);
     violations.push({
@@ -304,8 +309,9 @@ export async function runVaultTransaction({
     const { frontier, nodePath, indexPaths } = resolveLayout(vaultRoot, repoSlug, flowId);
 
     await ensureVaultRepo(vaultRoot);
-    // The directory prefix admits recovery residue; exact paths below govern
-    // anchoring and commits so unrelated files cannot enter the transaction.
+    // El prefijo admite residuos de recuperación y acota las consultas Git.
+    // Los paths exactos de abajo gobiernan el anclaje y el staging: ningún
+    // archivo ajeno bajo la frontera entra al commit por usar el prefijo.
     const cleanupPaths = [frontier, nodePath, ...indexPaths, path.join(vaultRoot, LOG_FILENAME)]
       .map((target) => toVaultRelative(vaultRoot, target));
     await assertVaultClean(vaultRoot, cleanupPaths);
@@ -340,7 +346,7 @@ export async function runVaultTransaction({
       ...indexPaths.map((target) => toVaultRelative(vaultRoot, target)),
       toVaultRelative(vaultRoot, path.join(vaultRoot, LOG_FILENAME)),
     ];
-    if (state.kind === 'historical-empty' && await anclaEnHead(vaultRoot, exactPaths)) {
+    if (state.kind === 'historical-empty' && await anclaEnHead(vaultRoot, exactPaths, { scanPaths: cleanupPaths })) {
       return { status: 'ALREADY_ARCHIVED', counts, fingerprint };
     }
 
@@ -385,7 +391,7 @@ export async function runVaultTransaction({
       }
     }
 
-    const conCommit = await anclaEnHead(vaultRoot, exactPaths);
+    const conCommit = await anclaEnHead(vaultRoot, exactPaths, { scanPaths: cleanupPaths });
     if (!conCommit || reconstruido) {
       await appendLogEntry({
         fs,
@@ -394,7 +400,7 @@ export async function runVaultTransaction({
         label: `${label}.log`,
       });
       await commitFlow({ vaultRoot, flowId, paths: exactPaths });
-      const postCommit = await rutasNoAncladas(vaultRoot, exactPaths);
+      const postCommit = await rutasNoAncladas(vaultRoot, exactPaths, { scanPaths: cleanupPaths });
       if (postCommit.missing.length > 0 || postCommit.dirty.length > 0 || postCommit.ignored.length > 0) {
         throw new EngineError(
           'VERIFY_FAILED',

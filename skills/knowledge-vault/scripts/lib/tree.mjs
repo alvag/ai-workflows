@@ -150,6 +150,7 @@ export function inspectIncludedTreePortability(included, root = '') {
         if (!(error instanceof PortablePathError)) throw error;
         invalidSegments.push({
           path: entry.path,
+          at: error.at,
           code: error.code,
           message: error.message,
           detail: error.detail,
@@ -179,6 +180,7 @@ export function inspectIncludedTreePortability(included, root = '') {
         });
         collisions.push({
           path: conflictingEntry?.path ?? (parent === '' ? name : `${parent}/${name}`),
+          at: error.at,
           code: error.code,
           message: error.message,
           detail: error.detail,
@@ -199,8 +201,7 @@ export function assertIncludedTreePortable(included, root = '') {
   const error = new PortablePathError(diagnostic.code, diagnostic.message, {
     detail: diagnostic.detail,
   });
-  error.message = diagnostic.message;
-  error.at = diagnostic.path;
+  error.at = diagnostic.at;
   throw error;
 }
 

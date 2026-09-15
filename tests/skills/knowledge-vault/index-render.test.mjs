@@ -169,3 +169,17 @@ test('[KV-SEL AC-20] IndexRenderError conserva NODE_UNREADABLE y path del nodo',
     return true;
   });
 });
+
+
+test('regenerar índices acepta el flow histórico distinto del basename del nodo', async (t) => {
+  const caja = await createSandbox(t);
+  const vault = path.join(caja.vaultsDir, 'dev-memory');
+  await sembrar(vault, 'ai-workflows', 'nombre-viejo', 'Título histórico', 'Resumen histórico.');
+  const nodePath = resolveLayout(vault, 'ai-workflows', 'nombre-viejo').nodePath;
+  const old = await fs.readFile(nodePath, 'utf8');
+  await fs.writeFile(nodePath, old.replace('flow: nombre-viejo', 'flow: id-histórico'), 'utf8');
+
+  const root = (await renderIndexes(vault)).get(path.join(vault, 'index.md'));
+  assert.ok(root.includes('sdd/nombre-viejo.md'));
+  assert.ok(root.includes('Resumen histórico.'));
+});

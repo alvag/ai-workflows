@@ -38,8 +38,7 @@ async function git(vaultRoot, args, { config = [] } = {}) {
   return ejecutar('git', ['-C', vaultRoot, ...config, ...args]);
 }
 
-
-async function gitWithInput(vaultRoot, args, input) {
+async function gitWithInput(vaultRoot, args, input = '') {
   return new Promise((resolve, reject) => {
     const child = spawn('git', ['-C', vaultRoot, ...args], { stdio: ['pipe', 'pipe', 'pipe'] });
     let stdout = '';
@@ -48,8 +47,13 @@ async function gitWithInput(vaultRoot, args, input) {
     child.stderr.setEncoding('utf8');
     child.stdout.on('data', (chunk) => { stdout += chunk; });
     child.stderr.on('data', (chunk) => { stderr += chunk; });
+    let inputError = null;
+    child.stdin.on('error', (error) => { inputError = error; });
     child.once('error', reject);
-    child.once('close', (code) => resolve({ code, stdout, stderr }));
+    child.once('close', (code) => {
+      if (inputError !== null && code === 0) reject(inputError);
+      else resolve({ code, stdout, stderr });
+    });
     child.stdin.end(input);
   });
 }
@@ -69,6 +73,17 @@ function statusPaths(stdout) {
 }
 
 const covers = (requested, observed) => observed === requested || observed.startsWith(`${requested}/`);
+
+function coveredRoutes(observedPaths) {
+  const covered = new Set();
+  for (const observed of observedPaths) {
+    covered.add(observed);
+    for (let cut = observed.lastIndexOf('/'); cut >= 0; cut = observed.lastIndexOf('/', cut - 1)) {
+      covered.add(observed.slice(0, cut));
+    }
+  }
+  return covered;
+}
 
 /** `--show-toplevel` resuelto, o `null` si el directorio no está bajo ningún repositorio. */
 async function toplevel(vaultRoot) {
@@ -236,16 +251,42 @@ export async function commitFlow({ vaultRoot, flowId, paths, subject = null }) {
   if (!Array.isArray(paths) || paths.length === 0) {
     throw new VaultGitError('NOTHING_TO_STAGE', `commitFlow para ${flowId} no recibió rutas`);
   }
-  // `--` separa rutas de revisiones: sin él, una ruta que se parezca a un ref
-  // haría que `git add` interprete otra cosa.
-  await git(vaultRoot, ['add', '--', ...paths]);
+  // El índice distingue archivos ya trackeados de destinos nuevos: `git add`
+  // rechaza un archivo trackeado bajo un directorio que pasó a estar ignorado,
+  // mientras que `git add -u` lo actualiza sin abrir la puerta a un destino nuevo
+  // ignorado. Los pathspecs viajan por stdin NUL para no crecer con argv.
+  const requested = [...new Set(paths)];
+  const index = await gitWithInput(vaultRoot, ['ls-files', '--cached', '-z']);
+  if (index.code !== 0) {
+    throw new VaultGitError('GIT_LS_FILES_FAILED', `git ls-files falló: ${index.stderr.trim()}`);
+  }
+  const indexedPaths = splitNul(index.stdout);
+  const tracked = new Set(indexedPaths);
+  const trackedPrefixes = coveredRoutes(indexedPaths);
+  const updatePaths = requested.filter((route) => trackedPrefixes.has(route));
+  const newPaths = requested.filter((route) => !tracked.has(route));
+  const stage = async (routes, update) => {
+    if (routes.length === 0) return;
+    const result = await gitWithInput(vaultRoot, [
+      '--literal-pathspecs', 'add', ...(update ? ['-u'] : []),
+      '--pathspec-from-file=-', '--pathspec-file-nul',
+    ], `${routes.join('\0')}\0`);
+    if (result.code !== 0) {
+      throw new VaultGitError('GIT_ADD_FAILED', `git add falló: ${result.stderr.trim()}`);
+    }
+  };
+  await stage(updatePaths, true);
+  await stage(newPaths, false);
 
-  const { stdout: staged } = await git(vaultRoot, ['diff', '--cached', '--name-only']);
+  const staged = await gitWithInput(vaultRoot, ['diff', '--cached', '--name-only']);
+  if (staged.code !== 0) {
+    throw new VaultGitError('GIT_DIFF_FAILED', `git diff --cached falló: ${staged.stderr.trim()}`);
+  }
   // El asunto es parametrizable porque el vault registra **dos** actos distintos
   // sobre el mismo flujo: archivarlo y retirarlo. Compartir el asunto los haría
   // indistinguibles en la historia, que es donde alguien va a buscarlos.
   const asunto = subject ?? `archiva ${flowId}`;
-  if (staged.trim().length === 0) return { committed: false, subject: asunto };
+  if (staged.stdout.trim().length === 0) return { committed: false, subject: asunto };
 
   await git(vaultRoot, ['commit', '-q', '-m', asunto], { config: await identidad(vaultRoot) });
   const { stdout: sha } = await git(vaultRoot, ['rev-parse', 'HEAD']);
@@ -310,16 +351,20 @@ export async function senalesDelRepositorio(repoRoot) {
  * @param {string[]} rutas relativas a `vaultRoot`; archivos o directorios
  * @returns {Promise<boolean>}
  */
-export async function rutasNoAncladas(vaultRoot, rutas) {
-  if (!Array.isArray(rutas)) {
-    throw new VaultGitError('INVALID_PATHS', 'rutasNoAncladas espera una lista de rutas');
+export async function rutasNoAncladas(vaultRoot, rutas, { scanPaths = rutas, ignoreIndex = false } = {}) {
+  if (!Array.isArray(rutas) || !Array.isArray(scanPaths)) {
+    throw new VaultGitError('INVALID_PATHS', 'rutasNoAncladas espera listas de rutas');
   }
   const requested = [...new Set(rutas)];
   if (requested.length === 0) return { missing: [], dirty: [], ignored: [] };
+  const scan = [...new Set(scanPaths)];
+  if (requested.some((route) => !scan.some((prefix) => covers(prefix, route)))) {
+    throw new VaultGitError('INVALID_SCAN_PATHS', 'el prefijo de consulta no cubre todas las rutas exactas');
+  }
 
   let headPaths = [];
   if (await headDelVault(vaultRoot) !== null) {
-    const { stdout } = await git(vaultRoot, [
+    const result = await gitWithInput(vaultRoot, [
       '--literal-pathspecs',
       'ls-tree',
       '-r',
@@ -327,25 +372,31 @@ export async function rutasNoAncladas(vaultRoot, rutas) {
       '-z',
       'HEAD',
       '--',
-      ...requested,
+      ...scan,
     ]);
-    headPaths = splitNul(stdout);
+    if (result.code !== 0) {
+      throw new VaultGitError('GIT_LS_TREE_FAILED', `git ls-tree falló: ${result.stderr.trim()}`);
+    }
+    headPaths = splitNul(result.stdout);
   }
 
-  const { stdout: status } = await git(vaultRoot, [
+  const result = await gitWithInput(vaultRoot, [
     '--literal-pathspecs',
     'status',
     '--porcelain=v1',
     '-z',
     '--untracked-files=all',
     '--',
-    ...requested,
+    ...scan,
   ]);
-  const dirtyPaths = statusPaths(status).map((entry) => entry.path);
+  if (result.code !== 0) {
+    throw new VaultGitError('GIT_STATUS_FAILED', `git status falló: ${result.stderr.trim()}`);
+  }
+  const dirtyPaths = statusPaths(result.stdout).map((entry) => entry.path);
 
   const ignoredResult = await gitWithInput(
     vaultRoot,
-    ['check-ignore', '--no-index', '-z', '--stdin'],
+    ['check-ignore', ...(ignoreIndex ? ['--no-index'] : []), '-z', '--stdin'],
     `${requested.join('\0')}\0`,
   );
   if (ignoredResult.code !== 0 && ignoredResult.code !== 1) {
@@ -357,10 +408,13 @@ export async function rutasNoAncladas(vaultRoot, rutas) {
   }
   const ignoredPaths = ignoredResult.code === 0 ? splitNul(ignoredResult.stdout) : [];
 
+  const headCovered = coveredRoutes(headPaths);
+  const dirtyCovered = coveredRoutes(dirtyPaths);
+  const ignoredCovered = coveredRoutes(ignoredPaths);
   return {
-    missing: requested.filter((route) => !headPaths.some((observed) => covers(route, observed))),
-    dirty: requested.filter((route) => dirtyPaths.some((observed) => covers(route, observed))),
-    ignored: requested.filter((route) => ignoredPaths.some((observed) => covers(route, observed))),
+    missing: requested.filter((route) => !headCovered.has(route)),
+    dirty: requested.filter((route) => dirtyCovered.has(route)),
+    ignored: requested.filter((route) => ignoredCovered.has(route)),
   };
 }
 
@@ -381,7 +435,7 @@ export async function inspectManifestAuthority(vaultRoot, manifestPath) {
     if (error?.code === 'ENOENT') return null;
     throw error;
   });
-  const diagnostics = await rutasNoAncladas(vaultRoot, [relative]);
+  const diagnostics = await rutasNoAncladas(vaultRoot, [relative], { ignoreIndex: true });
   // La ausencia física no implica ausencia de autoridad: una ruta versionada
   // eliminada del working tree sigue siendo un manifiesto sucio y debe bloquear.
   const exists = info !== null || diagnostics.missing.length === 0;
@@ -393,10 +447,10 @@ export async function inspectManifestAuthority(vaultRoot, manifestPath) {
   };
 }
 
-export async function anclaEnHead(vaultRoot, rutas) {
+export async function anclaEnHead(vaultRoot, rutas, options = {}) {
   if (!Array.isArray(rutas) || rutas.length === 0) {
     throw new VaultGitError('NOTHING_TO_ANCHOR', 'anclaEnHead no recibió rutas que anclar');
   }
-  const diagnostics = await rutasNoAncladas(vaultRoot, rutas);
+  const diagnostics = await rutasNoAncladas(vaultRoot, rutas, options);
   return diagnostics.missing.length === 0 && diagnostics.dirty.length === 0 && diagnostics.ignored.length === 0;
 }

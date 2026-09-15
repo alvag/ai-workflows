@@ -95,6 +95,8 @@ export async function estaASalvo({ fs, vaultRoot, repoId, flowId, flowDir }) {
   const nodeExists = await existe(fs, nodePath, `${label}.node.lstat`);
   if (nodeExists) {
     try {
+      // La primera lectura sólo clasifica la publicación; esta segunda valida
+      // el nodo actual después de verificar los bytes de la frontera.
       const text = (await fs.readFile(nodePath, `${label}.node.read`)).toString('utf8');
       parsePublishedNodeMetadata(text, flowId);
     } catch (error) {
@@ -129,7 +131,11 @@ export async function estaASalvo({ fs, vaultRoot, repoId, flowId, flowDir }) {
     path.relative(vaultRoot, nodePath).split(path.sep).join('/'),
     ...indexPaths.map((target) => path.relative(vaultRoot, target).split(path.sep).join('/')),
   ];
-  const diagnostics = await rutasNoAncladas(vaultRoot, exactPaths);
+  const scanPaths = [
+    path.relative(vaultRoot, frontier).split(path.sep).join('/'),
+    ...exactPaths.slice(expected.length),
+  ];
+  const diagnostics = await rutasNoAncladas(vaultRoot, exactPaths, { scanPaths });
   const unanchored = exactPaths.filter((target) =>
     diagnostics.missing.includes(target) ||
     diagnostics.dirty.includes(target) ||

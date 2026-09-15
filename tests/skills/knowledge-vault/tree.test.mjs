@@ -630,3 +630,14 @@ test('[KV-SEL AC-9] inspector enumera diagnósticos completos y estables', () =>
     return true;
   });
 });
+
+
+test('una colisión conserva el directorio en at y en el mensaje', () => {
+  const included = [{ path: 'runs/Plan.md' }, { path: 'runs/plan.md' }];
+  assert.throws(() => assertIncludedTreePortable(included, '/source'), (error) => {
+    assert.equal(error.code, 'SIBLING_COLLISION');
+    assert.equal(error.at, '/source/runs');
+    assert.ok(error.message.includes('(en "/source/runs")'));
+    return true;
+  });
+});

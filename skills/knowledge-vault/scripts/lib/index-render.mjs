@@ -48,9 +48,8 @@ async function recolectarNodos(vaultRoot) {
       if (!isNodeFile(path.basename(dirAbs), e.name)) continue;
 
       const text = await fs.readFile(abs, 'utf8');
-      const expectedFlow = path.basename(abs, '.md');
       try {
-        const metadata = parsePublishedNodeMetadata(text, expectedFlow);
+        const metadata = parsePublishedNodeMetadata(text);
         nodos.push({ abs, dir: dirAbs, ...metadata });
       } catch (error) {
         if (error?.code !== 'NODE_UNREADABLE') throw error;

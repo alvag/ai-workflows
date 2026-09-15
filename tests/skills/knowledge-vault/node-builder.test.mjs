@@ -126,6 +126,10 @@ test('[KV-SEL AC-20] parser recupera targets legacy y rechaza flujo o encoding i
     documents: [...documents].sort(),
   });
   assert.deepEqual(
+    parsePublishedNode(node.replace('[spec.md]', '[Documento principal]'), META.flow).documents,
+    [...documents].sort(),
+  );
+  assert.deepEqual(
     parsePublishedNode(buildNode({ metadata: META, documents: [], summary: RESUMEN }), META.flow).documents,
     [],
   );

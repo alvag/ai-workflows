@@ -24,6 +24,7 @@ import { promisify } from 'node:util';
 import { DurableFs, Recorder } from '../../../skills/knowledge-vault/scripts/lib/durable-fs.mjs';
 import { resolvePublicationState, runVaultTransaction } from '../../../skills/knowledge-vault/scripts/lib/engine-vault.mjs';
 import { exitCodeFor } from '../../../skills/knowledge-vault/scripts/lib/contracts.mjs';
+import { estaASalvo } from '../../../skills/knowledge-vault/scripts/lib/safety-probe.mjs';
 import { resolveLayout } from '../../../skills/knowledge-vault/scripts/lib/vault-store.mjs';
 import { createSandbox } from './helpers/sandbox.mjs';
 import { snapshotTree } from './helpers/tree-snapshot.mjs';
@@ -518,4 +519,27 @@ test('[KV-SEL AC-20] archive rechaza nodo histórico ilegible sin escribir', asy
     return true;
   });
   assert.deepEqual(await snapshotTree(vault), before);
+});
+
+
+test('un documento de runs ya trackeado no rompe el rearchivo ni la sonda al aparecer un ignore', async (t) => {
+  const { vault, flowDir } = await escena(t, { 'runs/r1.jsonl': '{"run":1}\n' });
+  assert.equal((await correr(vault, flowDir)).status, 'ARCHIVED');
+  await fs.appendFile(path.join(vault, '.gitignore'), 'runs/\n', 'utf8');
+  await git(vault, 'add', '--', '.gitignore');
+  await git(vault, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'ignore runs');
+  const before = (await git(vault, 'rev-parse', 'HEAD')).stdout.trim();
+
+  assert.equal((await correr(vault, flowDir)).status, 'ALREADY_ARCHIVED');
+  assert.equal((await git(vault, 'rev-parse', 'HEAD')).stdout.trim(), before);
+  assert.deepEqual(await estaASalvo({
+    fs: new DurableFs(), vaultRoot: vault, repoId: 'ai-workflows', flowId: 'abc-1', flowDir,
+  }), { aSalvo: true, causa: null, faltantes: [] });
+
+  const { nodePath } = resolveLayout(vault, 'ai-workflows', 'abc-1');
+  await fs.rm(nodePath);
+  assert.equal((await correr(vault, flowDir)).status, 'ARCHIVED');
+  assert.deepEqual(await estaASalvo({
+    fs: new DurableFs(), vaultRoot: vault, repoId: 'ai-workflows', flowId: 'abc-1', flowDir,
+  }), { aSalvo: true, causa: null, faltantes: [] });
 });

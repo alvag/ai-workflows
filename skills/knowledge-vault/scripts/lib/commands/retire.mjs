@@ -205,8 +205,9 @@ export async function planificarRetiro({
         });
       } else {
         clasificacionViva = true;
-        ({ frontier } = resolveLayout(vaultRoot, repoId, flowId));
-        const nodePath = resolveLayout(vaultRoot, repoId, flowId).nodePath;
+        const layout = resolveLayout(vaultRoot, repoId, flowId);
+        frontier = layout.frontier;
+        const { nodePath } = layout;
         const [frontierInfo, nodeInfo] = await Promise.all([
           fs.lstat(frontier, `${label}.frontier.lstat`),
           fs.lstat(nodePath, `${label}.node.lstat`),
@@ -227,8 +228,13 @@ export async function planificarRetiro({
         });
       }
     } catch (error) {
-      if (entrada.causa === null) entrada.causa = error.code ?? 'ERROR';
-      entrada.error = error.message;
+      if (entrada.causa === null) {
+        entrada.causa = error.code ?? 'ERROR';
+        entrada.error = error.message;
+      } else {
+        const original = entrada.error ?? `${flowId}: ${entrada.causa}`;
+        entrada.error = `${original}; además falló ${error.code ?? 'ERROR'}: ${error.message}`;
+      }
     }
     if (entrada.manifiesto !== null) {
       entrada.digest = digestManifiesto(entrada.manifiesto);

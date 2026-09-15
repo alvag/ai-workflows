@@ -21,6 +21,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import {
+  anclaEnHead,
   assertVaultClean,
   commitFlow,
   ensureVaultRepo,
@@ -323,4 +324,36 @@ test('[KV-SEL AC-21] inspector de manifiesto exige ruta exacta limpia y anclada'
     dirty: false,
     ignored: true,
   });
+});
+
+
+test('una ruta trackeada y limpia sigue anclada aunque un ignore posterior la cubra', async (t) => {
+  const { vault } = await vaultNuevo(t);
+  await ensureVaultRepo(vault);
+  const route = 'projects/demo/sdd/flow/runs/r1.jsonl';
+  await archivo(vault, route, '{"run":1}\n');
+  await commitFlow({ vaultRoot: vault, flowId: 'flow', paths: [route] });
+  await fs.appendFile(path.join(vault, '.gitignore'), 'runs/\n', 'utf8');
+  await commitFlow({ vaultRoot: vault, flowId: 'ignore', paths: ['.gitignore'] });
+
+  assert.deepEqual(await rutasNoAncladas(vault, [route]), {
+    missing: [], dirty: [], ignored: [],
+  });
+  assert.equal(await anclaEnHead(vault, [route]), true);
+  assert.equal((await git(vault, 'status', '--porcelain')).stdout.trim(), '');
+});
+
+
+test('el anclaje consulta un prefijo acotado aun con miles de rutas exactas', async (t) => {
+  const { vault } = await vaultNuevo(t);
+  await ensureVaultRepo(vault);
+  const prefix = 'projects/demo/sdd/flow';
+  const routes = Array.from({ length: 15000 }, (_, index) =>
+    `${prefix}/runs/${String(index).padStart(5, '0')}-${'x'.repeat(150)}.jsonl`);
+  const diagnostics = await rutasNoAncladas(vault, routes, { scanPaths: [prefix] });
+  assert.equal(diagnostics.missing.length, routes.length);
+  assert.equal(diagnostics.missing[0], routes[0]);
+  assert.equal(diagnostics.missing.at(-1), routes.at(-1));
+  assert.deepEqual(diagnostics.dirty, []);
+  assert.deepEqual(diagnostics.ignored, []);
 });

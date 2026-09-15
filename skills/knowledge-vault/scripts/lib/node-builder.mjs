@@ -32,9 +32,11 @@ export class NodeBuilderError extends Error {
  * Enlace relativo desde el nodo hasta un documento.
  *
  * El nodo es `sdd/<flujo>.md` y los documentos viven en `sdd/<flujo>/`, así que
- * la ruta arranca en el nombre del flujo. Se codifica cada segmento sin codificar
- * las barras: un espacio o un paréntesis no rompe el enlace, y el texto visible se
- * muestra sin codificar para que se lea como el archivo se llama.
+ * la ruta arranca en el nombre del flujo. En el corpus histórico de 277
+ * documentos del selector anterior no había espacios ni paréntesis; esa cifra
+ * no es reproducible sin los orígenes ni extrapolable a la frontera ampliada.
+ * Un solo nombre así rompería el enlace si no se codifica. Se codifica cada
+ * segmento sin codificar las barras, y la etiqueta visible conserva el nombre.
  */
 function enlace(flowId, documento) {
   const destino = encodeRelativePath(`${flowId}/${documento}`);
@@ -78,7 +80,6 @@ export function buildNode({ metadata, documents = [], summary }) {
   return `${cabecera}\n${cuerpo.join('\n')}`;
 }
 
-
 export class PublishedNodeError extends Error {
   constructor(message) {
     super(message);
@@ -87,7 +88,12 @@ export class PublishedNodeError extends Error {
   }
 }
 
-/** Reads only the node metadata required by archive and index consumers. */
+/**
+ * Lee los metadatos del nodo que necesitan archivado e índices.
+ * Cuando se conoce el id del flujo, exige que `flow` coincida: la sonda y la
+ * reconstrucción histórica lo necesitan. El indexador no impone esa igualdad
+ * retroactivamente a nodos ya publicados; conserva las tres claves requeridas.
+ */
 export function parsePublishedNodeMetadata(text, flowId) {
   const { ok, keys } = parseFrontmatter(text);
   const required = ['title', 'summary', 'flow'];
@@ -95,7 +101,7 @@ export function parsePublishedNodeMetadata(text, flowId) {
   if (missing.length > 0) {
     throw new PublishedNodeError(`el nodo no declara ${missing.join(', ')} en su frontmatter`);
   }
-  if (keys.get('flow') !== flowId) {
+  if (flowId !== undefined && keys.get('flow') !== flowId) {
     throw new PublishedNodeError(
       `el nodo declara el flujo ${JSON.stringify(keys.get('flow'))}, se esperaba ${JSON.stringify(flowId)}`,
     );
@@ -103,7 +109,7 @@ export function parsePublishedNodeMetadata(text, flowId) {
   return Object.fromEntries(required.map((key) => [key, keys.get(key)]));
 }
 
-/** Recovers the exact document frontier recorded in a previously published node. */
+/** Recupera el conjunto exacto de documentos declarado por un nodo publicado. */
 export function parsePublishedNode(text, flowId) {
   const metadata = parsePublishedNodeMetadata(text, flowId);
   const lines = text
@@ -130,6 +136,8 @@ export function parsePublishedNode(text, flowId) {
       throw new PublishedNodeError(`contenido inválido en ## Documentos: ${JSON.stringify(line)}`);
     }
 
+    // La etiqueta es presentación; el target es la autoridad del documento.
+    // Exigir igualdad ahora invalidaría nodos históricos con etiquetas propias.
     const targetSegments = match[2].split('/');
     if (targetSegments.length < 2 || targetSegments.shift() !== encodedFlow) {
       throw new PublishedNodeError(`target fuera del flujo ${JSON.stringify(flowId)}: ${JSON.stringify(match[2])}`);
