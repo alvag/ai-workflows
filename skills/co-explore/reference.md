@@ -1028,6 +1028,86 @@ done
 Sin anexo disponible, el worker corre solo con el núcleo y su informe vale igual: pierde su propia
 memoria de la fase anterior, no la validez.
 
+### La vía por terminales dentro del fan-out
+
+Sobre esta vía **no cambia la semántica del fan-out, solo el transporte**: un worker por familia
+seleccionada, el mismo encargo para los dos, los dos despachados antes de esperar a ninguno, y un
+deadline propio por worker. Lo que cambia es que el adaptador **lo hace cumplir** en vez de confiarlo
+al conductor, porque un panel se lanza con tres invocaciones y no con una:
+
+| Propiedad de `AC-5` | Qué la hace cumplir | Qué pasa si se viola |
+|---|---|---|
+| los dos despachados antes de esperar a ninguno | `esperar --corrida` lee el ledger de la corrida | `fan-out-incompleto`, con los paneles pendientes enumerados |
+| exactamente un worker por familia | `lanzar` coteja la familia contra los ya despachados | `familia-duplicada`, y no se lanza |
+| encargo idéntico para los dos | `lanzar` coteja el `sha256` contra los ya despachados | `encargo-divergente`, y no se lanza |
+| deadline propio por worker | `--vence-en` es por invocación de `esperar`, no de la corrida | dos workers comparten vencimiento y uno muere por el reloj del otro |
+
+`--corrida` en `esperar` es **opcional en la firma y obligatorio en el procedimiento**: sin él el verbo
+sondea igual, porque los autotests de estado lo invocan sobre un panel suelto, pero el fan-out lo pasa
+siempre. Esa es la única pieza que separa "lanza A, espera A, lanza B" de la corrida paralela, y es
+justamente el modo de falla que la sección anterior declara que `execution` **no** gobierna.
+
+**El contribuyente de la síntesis es el informe cosechado por esta vía, y ninguno otro.** Es el
+artefacto que el worker dejó en su ruta y que `cosechar` atravesó por el mismo pipeline de validación
+que la vía headless. La distinción es
+material porque el panel ofrece una segunda lectura tentadora y **prohibida**: lo que se ve en la
+terminal no es el contribuyente, ni siquiera cuando coincide. El ledger lo asienta con
+`contribuyente: informe-cosechado` al aceptar, así que qué alimentó la síntesis es una pregunta con
+respuesta en disco y no una reconstrucción.
+
+**El cese, antes de degradar.** Si la vía falla después de crear recursos, el fallback a headless
+exige **evidencia positiva** de que todo proceso previo dejó de escribir: un deadline vencido y un
+reporte terminal **no** prueban el cese. `cerrar --modo liquidar` acredita cuando midió y no quedan
+residuales; si no puede, el resultado es **incierto**, el fallback queda **vedado** y los residuales
+se enumeran en vez de darse por cerrados. Cada intento escribe en una ruta exclusiva, y el worktree
+**nunca** se elimina como parte de la compensación: su ciclo de vida es el del flujo, no el de esta
+vía.
+
+**Qué puede hacer una persona en el panel sin invalidar la corrida.** Tres cosas, y son las únicas
+declaradas admisibles:
+
+1. **inspeccionar** — leer lo que el worker está haciendo, desplazarse por su salida;
+2. **aprobar** una solicitud que el agente levante por su cuenta;
+3. **abortar** la corrida.
+
+Lo que **sí** invalida el intento es alterar el encargo, y el transporte lo observa por dos vías: el
+`digest` del archivo del encargo, cotejado antes y después, y el `hash_encargo_leido` que el worker
+declara en su propio artefacto. Ante cualquiera de las dos, el intento se detiene y hay que
+**relanzar con un encargo nuevo para todos los workers de la corrida**, no solo para el afectado: si
+uno leyó otra cosa, los dos mapas dejaron de ser comparables y esa comparación es el producto.
+
+> **Y hay una intervención que el transporte no puede ver, en ninguna plataforma soportada:** una
+> instrucción **tipeada a mano en el panel**. No toca el archivo del encargo ni el artefacto, así que
+> no mueve ninguno de los dos digests, y ni Herdr ni Orca exponen el input del usuario como algo
+> consultable. La consecuencia hay que decirla entera: una corrida contaminada así **pasa todas las
+> comprobaciones** y su informe entra a la síntesis como válido. La única defensa es de proceso —no
+> tipear en el panel de un worker— y esta línea existe para que esa ausencia esté declarada y no se
+> descubra después como una sorpresa.
+
+### Retirar la oferta: qué se revierte y qué no
+
+La vía se ofrece dentro del checkpoint de contexto de `sdd-flow`, y esa oferta se puede **retirar**
+—porque el delta medido no la justifique, porque una plataforma cambie, o porque se decida volver a
+headless—. Retirarla es barato **a propósito**, y conviene tener escrito qué alcanza:
+
+| | qué pasa al retirar la oferta |
+|---|---|
+| **flujos nuevos** | nacen headless. No se les ofrece y no hay nada que elegir |
+| **registros ya escritos** | siguen siendo **legibles**. `pane-herdr` y `pane-orca` quedan en el enum de las tres sedes; retirarlos convertiría en inválido un registro que describe correctamente lo que pasó |
+| **workers en vuelo** | **terminan por su vía**. No se los migra, no se los mata y no se los convierte a headless a mitad de corrida |
+| **flujos con el bloque `transporte` en su retomado** | la retoma los resuelve por su matriz, como siempre: si la plataforma sigue utilizable continúan por ella |
+
+**El rollback es de la oferta, no de los datos, y esa distinción es la que lo vuelve seguro.** Una
+reversión que también retirara los literales del enum obligaría a migrar o invalidar lo ya escrito, y
+entonces retirar dejaría de ser barato — que es justamente la propiedad que hace que la vía se pueda
+probar sin comprometerse. Dicho al revés: **el enum se agrega antes de que nada lo emita y no se
+retira después**; lo único que se enciende y se apaga es si el checkpoint pregunta.
+
+**Y hay un orden que no se invierte.** La oferta se enciende **después** de que todos los
+consumidores sepan leer lo que produce, nunca antes: el retomado, el fan-out, el sobre en vuelo y el
+manifest de corrida. Al revés queda una ventana en la que el flujo registra y ofrece un transporte
+que un validador aguas abajo rechaza, y el síntoma aparece lejos de la causa.
+
 ### Independencia por modo (regla 2 en topología dual)
 
 La independencia sigue siendo el invariante, pero **cambia de eje según el modo**:

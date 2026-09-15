@@ -564,7 +564,7 @@ mismo turno para ver si cambió, que es un retry con otro nombre.
 ### Fuente por transporte
 
 **La fuente la fija el transporte del intento vigente**, no la skill ni la corrida: el mismo worker
-puede tener una fuente distinta en su segundo intento que en el primero. Estos son los tres
+puede tener una fuente distinta en su segundo intento que en el primero. Estos son los cinco
 transportes y lo que cada uno ofrece:
 
 | transporte | fuente | qué se consulta, y con qué autoridad |
@@ -572,6 +572,8 @@ transportes y lo que cada uno ofrece:
 | `subagent` | `ninguna` | nada a mitad de vuelo: ni proceso propio, ni salida en disco por contrato |
 | `cli-exec` | `archivo+proceso` | la salida del intento en su ruta exclusiva y el proceso hijo; manda el archivo |
 | `cli-resume` | `archivo+proceso` | la salida de **este** intento y el proceso del resume; manda el archivo |
+| `pane-herdr` | `archivo+proceso` | la salida del intento en su ruta exclusiva y el panel, que expone liveness y estado del agente de forma nativa; manda el archivo |
+| `pane-orca` | `archivo+proceso` | la salida del intento en su ruta exclusiva y el panel, cuyo liveness se **deriva** del registro vivo y que no expone estado del agente; manda el archivo |
 
 **Para `subagent` no hay fuente consultable a mitad de vuelo, y eso es el hecho, no una omisión.** Un
 subagente del entorno no expone ningún proceso que se pueda interrogar y no está obligado por su
