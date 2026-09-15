@@ -655,8 +655,8 @@ def test_documented_view_counts(_ctx: Optional[object] = None) -> None:
     flow = _read(FLOW_SKILL); flow_reference = _read(FLOW_REFERENCE)
     orchestrator_reference = _read(ORCHESTRATOR_REFERENCE)
     tests_readme = _read(TESTS_README)
-    assert "config admite **37 claves**" in flow
-    assert all(token in flow_reference for token in ("dueño de las 23 claves", "Las 14 restantes", "37 juntas"))
+    assert "config admite **40 claves**" in flow
+    assert all(token in flow_reference for token in ("dueño de las 26 claves", "Las 14 restantes", "40 juntas"))
     assert "Solo esas 13 claves" in orchestrator_reference
     assert "`id`, `created_at`, `master_spec`, `delivery_profile`, `risk`, `delivery_assessment`, `repos`, `orchestration_tasks`" in " ".join(orchestrator_reference.split())
     assert "562 casos ok" in tests_readme and "512 casos node ok" in tests_readme
