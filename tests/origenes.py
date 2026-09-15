@@ -130,6 +130,21 @@ def origins_for(identifier: str, group: str,
         return frozenset({("guard", "apertura")})
     if identifier in {"acta-ref-invalido", "write-report-destino"}:
         return ORIGEN_SIN_MIGRACION
+    if group == "contrato-invariantes-v1":
+        return frozenset({("guard", "contrato-invariantes")})
+    if group == "contrato-inmutabilidad-v1":
+        return frozenset({("guard", "promocion-tasks-ready")})
+    if group == "orchestration-state-v1":
+        return frozenset({("guard", "orchestration-state")})
+    if group == "contrato-auxiliares-v1":
+        if identifier == "contrato-auxiliar:cadena-de-invocacion":
+            return frozenset({
+                ("guard", "contrato-invariantes"), ("guard", "ownership-log"),
+                ("guard", "ownership-presupuesto"), ("guard", "rebaseline-worktree"),
+                ("guard", "gate-modo-directo"),
+            })
+        nombre = identifier.removeprefix("contrato-auxiliar:")
+        return frozenset({("guard", nombre)})
     return frozenset()
 
 

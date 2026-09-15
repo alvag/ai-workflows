@@ -3,19 +3,34 @@ el estado de la orquestación cierra contra su bitácora: ninguna tarea pasa a `
 con un `depends_on` abierto o evidencia fresca de su propia fila; ningún repo se despacha con su gate
 abierto o baseline local en `BLOCKED`, ni queda sin promover con el gate cerrado; cada evento lleva
 seis campos, un `resultado` del enum y un `id` único y comparable; solo un resultado consumado
-materializa su transición; y la precedencia nunca oculta el estado agregado más grave.
+materializa su transición; además valida fase, claves congeladas, adopción, reparación y orden entre
+anclas del contrato de integración, sin duplicar el parser global; y la precedencia nunca oculta el estado agregado más grave.
 Un solo diagnóstico por corrida: gana el primero del orden de abajo, que es el de la fábrica."""
 
 from __future__ import annotations
 
 import re
 import sys
+import hashlib
+import importlib.util
 from collections import Counter, defaultdict
 from pathlib import Path
+from types import ModuleType
 from typing import Dict, List, Optional, Set, Tuple
 
 from _yaml import (AssessmentError, DeliveryDependency, delivery_modulo, parsear_perfil_manifest,
                    parsear_valor_yaml, plegar_riesgo, validar_assessment)
+
+
+USO = ("USO:orchestration-state manifest master_spec integration_contract log "
+       "phase(candidate/final) [repo_plan ...]")
+OPERACIONES = {
+    "cobertura-agregada", "esperado-corregido", "pertinencia-corregida",
+    "verificacion-corregida",
+}
+CLASES = {
+    "IMPLEMENTATION_DEFECT", "VERIFICATION_DEFECT", "ENVIRONMENT_FAILURE", "DESIGN_GAP",
+}
 
 
 def escalar(valor: str) -> str:
@@ -48,7 +63,8 @@ def parsear_master(texto: str) -> Dict[str, str]:
 
 def parsear_manifest(
         texto: str,
-) -> Tuple[str, List[Dict[str, str]], List[Dict[str, object]], Dict[str, object]]:
+) -> Tuple[str, List[Dict[str, str]], List[Dict[str, object]], Dict[str, object],
+           Dict[str, List[str]]]:
     outcome = ""
     repos: List[Dict[str, str]] = []
     tasks: List[Dict[str, object]] = []
@@ -58,6 +74,10 @@ def parsear_manifest(
     campo = ""
     id_col = -1
     mapa = False
+    contract_state: Dict[str, List[str]] = {
+        "integration_contract_frozen_version": [],
+        "integration_contract_frozen_hash": [],
+    }
     for linea in texto.splitlines():
         if re.match(r"^\s*#", linea):
             continue
@@ -71,6 +91,11 @@ def parsear_manifest(
                 match = re.match(r"^outcome:\s*(.*)$", linea)
                 if match:
                     outcome = escalar(match.group(1))
+                root_match = re.match(
+                    r"^(integration_contract_frozen_version|integration_contract_frozen_hash)"
+                    r"\s*:\s*(.*)$", linea)
+                if root_match:
+                    contract_state[root_match.group(1)].append(escalar(root_match.group(2)))
             continue
         if seccion == "repos":
             item = re.match(r"^\s{2}-\s*(.*)$", linea)
@@ -122,7 +147,7 @@ def parsear_manifest(
             mapa = not valor.strip()
         elif campo in {"depends_on", "blocks_repos"}:
             task[campo] = lista(valor)
-    return outcome, repos, tasks, parsear_perfil_manifest(texto)
+    return outcome, repos, tasks, parsear_perfil_manifest(texto), contract_state
 
 
 def parsear_contrato(texto: str) -> List[Tuple[int, List[List[str]]]]:
@@ -157,6 +182,250 @@ def parsear_eventos(texto: str) -> List[Dict[str, str]]:
                 evento[match.group(1)] = match.group(2).strip()
         eventos.append(evento)
     return eventos
+
+
+def cargar_parser_reparaciones() -> ModuleType:
+    """Carga por ruta absoluta la gramática que posee cross-implement."""
+    ruta = (Path(__file__).resolve().parents[2] / "cross-implement" / "scripts" /
+            "contrato-invariantes.py")
+    if not ruta.is_file():
+        raise RuntimeError("ausente")
+    especificacion = importlib.util.spec_from_file_location(
+        "sdd_orchestrator_contrato_invariantes", ruta)
+    if especificacion is None or especificacion.loader is None:
+        raise RuntimeError("incompatible")
+    modulo = importlib.util.module_from_spec(especificacion)
+    try:
+        especificacion.loader.exec_module(modulo)
+    except Exception as error:
+        raise RuntimeError("incompatible") from error
+    if not callable(getattr(modulo, "parsear_reparaciones", None)):
+        raise RuntimeError("incompatible")
+    return modulo
+
+
+def _campos_linea(linea: str) -> Dict[str, str]:
+    return {
+        match.group(1): match.group(2)
+        for match in re.finditer(r"`([^`:]+): ([^`]*)`", linea)
+    }
+
+
+def _bloques_contrato(texto: str) -> List[Tuple[int, List[str]]]:
+    """Separa versiones solo para resolver el estado local; no parsea reparaciones."""
+    lineas = texto.splitlines()
+    resultado: List[Tuple[int, List[str]]] = []
+    for indice, linea in enumerate(lineas):
+        match = re.fullmatch(r"(#+) v([1-9][0-9]*)", linea)
+        if match is None:
+            continue
+        nivel = len(match.group(1))
+        bloque = [linea]
+        for siguiente in lineas[indice + 1:]:
+            encabezado = re.match(r"^(#+) ", siguiente)
+            if encabezado and len(encabezado.group(1)) <= nivel:
+                break
+            bloque.append(siguiente)
+        resultado.append((int(match.group(2)), bloque))
+    return sorted(resultado)
+
+
+def _estado_versiones(texto: str) -> Dict[int, Dict[str, object]]:
+    tablas = {numero: filas for numero, filas in parsear_contrato(texto)}
+    resultado: Dict[int, Dict[str, object]] = {}
+    for numero, bloque in _bloques_contrato(texto):
+        original = "\n".join(bloque)
+        hash_match = re.search(r"`hash: ([0-9a-f]*)`", original)
+        pertinencias = {}
+        for linea in bloque:
+            if linea.strip().startswith("- pertinencia: "):
+                campos = _campos_linea(linea)
+                if campos.get("id"):
+                    pertinencias[campos["id"]] = campos
+        resultado[numero] = {
+            "hash": hash_match.group(1) if hash_match else "",
+            "filas": {fila[0]: fila for fila in tablas.get(numero, []) if len(fila) == 6},
+            "pertinencias": pertinencias,
+        }
+    return resultado
+
+
+def _version_evento(evento: Dict[str, str]) -> Optional[int]:
+    match = re.fullmatch(r"contrato-integracion:v([1-9][0-9]*)", evento.get("objeto", ""))
+    return int(match.group(1)) if match else None
+
+
+def _clasificar_sha_repos(valor: str, participantes: Set[str]) -> Optional[str]:
+    pares = []
+    for fragmento in valor.split(", ") if valor else []:
+        if "=" not in fragmento:
+            return "repos"
+        repo, sha = fragmento.split("=", 1)
+        if not repo or not re.fullmatch(r"[0-9a-f]{7,64}", sha):
+            return "repos"
+        pares.append((repo, sha))
+    repos = [repo for repo, _sha in pares]
+    if len(repos) != len(set(repos)) or set(repos) != participantes:
+        return "repos"
+    if repos != sorted(repos, key=lambda item: item.encode("utf-8")):
+        return "orden"
+    return None
+
+
+def validar_estado_contrato(
+        phase: str, contract_state: Dict[str, List[str]], contrato: str,
+        reparaciones: List[Tuple[int, Dict[str, str]]], eventos: List[Dict[str, str]],
+        tasks: List[Dict[str, object]]) -> Optional[Tuple[str, str]]:
+    """Aplica solo las restricciones locales de integración, sin duplicar la gramática global."""
+    versiones = _estado_versiones(contrato)
+    if not versiones:
+        return "contrato-sin-version-vigente", "el contrato de integración no contiene versiones"
+    vigente = max(versiones)
+    if sorted(versiones) != list(range(1, vigente + 1)):
+        return "versiones-no-contiguas", "las versiones del contrato de integración tienen un salto"
+    valores_version = contract_state["integration_contract_frozen_version"]
+    valores_hash = contract_state["integration_contract_frozen_hash"]
+    if len(valores_version) > 1 or len(valores_hash) > 1:
+        return "estado-contrato-duplicado", "el manifest repite una clave congelada de integración"
+    if bool(valores_version) != bool(valores_hash):
+        return "estado-contrato-parcial", "el manifest materializa solo una clave congelada"
+    frozen: Optional[Tuple[int, str]] = None
+    if valores_version:
+        if not re.fullmatch(r"[1-9][0-9]*", valores_version[0]) or not re.fullmatch(
+                r"[0-9a-f]{64}", valores_hash[0]):
+            return "estado-contrato-invalido", "las claves congeladas no usan versión y SHA-256 canónicos"
+        frozen = (int(valores_version[0]), valores_hash[0])
+
+    adopciones: List[Tuple[int, int, Dict[str, str]]] = []
+    aprobaciones: List[Tuple[int, int, Dict[str, str]]] = []
+    clasificaciones: List[Tuple[int, Dict[str, str]]] = []
+    task_by_id = {str(task["id"]): task for task in tasks}
+    for indice, evento in enumerate(eventos):
+        paso = evento.get("paso")
+        if paso == "adoptar-estado-contrato":
+            version = _version_evento(evento)
+            if version is None or evento.get("actor") != "orquestador" or evento.get("resultado") not in {
+                    "consumado", "rechazado"} or evento.get("modo") not in {
+                        "materializacion", "adopcion-retroactiva"}:
+                return "evento-contrato-invalido", "adoptar-estado-contrato tiene forma inválida"
+            if evento.get("hash") != versiones.get(version, {}).get("hash"):
+                return "evento-contrato-hash-diverge", f"el ancla de v{version} no coincide con el contrato"
+            if evento.get("resultado") == "consumado":
+                adopciones.append((indice, version, evento))
+        elif paso == "aprobar-reparación":
+            version = _version_evento(evento)
+            if version is None or evento.get("actor") != "usuario" or evento.get("resultado") not in {
+                    "consumado", "rechazado"} or not evento.get("token") or not evento.get("hash"):
+                return "aprobacion-contrato-invalida", "aprobar-reparación tiene forma inválida"
+            if evento.get("resultado") == "consumado":
+                aprobaciones.append((indice, version, evento))
+        elif paso == "clasificar-falla":
+            obligatorios = {"sha", "delta", "fix_round", "checkId", "clase", "consumedRound", "evidencia"}
+            if evento.get("actor") != "orquestador" or not all(
+                    evento.get(campo) for campo in obligatorios):
+                return "clasificacion-incompleta", "clasificar-falla carece de campos locales obligatorios"
+            if evento.get("resultado") != "consumado":
+                return "clasificacion-no-consumada", "clasificar-falla debe registrar resultado consumado"
+            task = task_by_id.get(evento.get("objeto", ""))
+            if task is None:
+                return "clasificacion-tarea-invalida", "clasificar-falla no resuelve la tarea que ejecutó el check"
+            participantes = set(task["participants"])
+            sha = evento.get("sha", "")
+            defecto_sha = _clasificar_sha_repos(sha, participantes)
+            if defecto_sha == "repos":
+                return "clasificacion-sha-repos", "clasificar-falla no declara el conjunto exacto de repos"
+            if defecto_sha == "orden":
+                return "clasificacion-sha-orden", "clasificar-falla no ordena los repos canónicamente"
+            digest = hashlib.sha256(sha.encode("utf-8")).hexdigest()
+            if evento.get("delta") != "repos-sha256:" + digest:
+                return "clasificacion-delta-invalido", "clasificar-falla no liga delta con el mapa de repos"
+            if evento.get("clase") not in CLASES:
+                return "clasificacion-fuera-de-enum", "clasificar-falla declara una clase desconocida"
+            clasificaciones.append((indice, evento))
+
+    retroactivas = [item for item in adopciones if item[2].get("modo") == "adopcion-retroactiva"]
+    if len(retroactivas) > 1:
+        return "adopcion-retroactiva-duplicada", "la corrida registra más de una adopción retroactiva"
+    if frozen is not None:
+        if not adopciones:
+            return "estado-contrato-sin-ancla", "las claves congeladas carecen de adoptar-estado-contrato"
+        ultima = adopciones[-1]
+        if (ultima[1], ultima[2].get("hash", "")) != frozen:
+            return "estado-contrato-diverge", "el último ancla consumada no coincide con las claves congeladas"
+    if phase == "final":
+        esperado = (vigente, str(versiones[vigente]["hash"]))
+        if frozen != esperado or not adopciones or adopciones[-1][1] != vigente:
+            return "estado-contrato-sin-ancla", "final exige materializar la versión vigente y su hash"
+
+    primera_ancla = adopciones[0][0] if adopciones else None
+    ancla_por_version = {version: indice for indice, version, _evento in adopciones}
+    aprobacion_por_token = {
+        evento.get("token", ""): (indice, version, evento)
+        for indice, version, evento in aprobaciones
+    }
+    reparaciones_por_version_id: Dict[Tuple[int, str], Set[str]] = defaultdict(set)
+    for version, reparacion in reparaciones:
+        identificador = reparacion.get("id", "")
+        operacion = reparacion.get("operación", "")
+        reparaciones_por_version_id[(version, identificador)].add(operacion)
+        if operacion not in OPERACIONES:
+            continue
+        aprobacion = aprobacion_por_token.get(reparacion.get("token", ""))
+        if aprobacion is None:
+            if phase == "final" or version < vigente:
+                return "reparacion-sin-aprobacion", f"v{version}:{identificador} no tiene aprobación consumada"
+            continue
+        indice_aprobacion, version_aprobada, evento = aprobacion
+        if version_aprobada != version or evento.get("hash") != versiones.get(version, {}).get("hash"):
+            return "reparacion-aprobacion-diverge", f"v{version}:{identificador} no coincide con su aprobación"
+        if operacion == "cobertura-agregada":
+            if primera_ancla is not None and indice_aprobacion > primera_ancla:
+                return "cobertura-agregada-post-ancla", "la integración no admite filas tras su primera ancla"
+        else:
+            previa = max((n for n in ancla_por_version if n < version), default=None)
+            if previa is not None and indice_aprobacion <= ancla_por_version[previa]:
+                return "aprobacion-anterior-al-ancla", f"v{version}:{identificador} se aprobó antes de su predecesora"
+            if version in ancla_por_version and indice_aprobacion >= ancla_por_version[version]:
+                return "aprobacion-posterior-al-ancla", f"v{version}:{identificador} se aprobó después de materializarla"
+
+    for (version, identificador), operaciones in reparaciones_por_version_id.items():
+        if "verificacion-corregida" not in operaciones:
+            continue
+        reparacion = next(
+            valores for numero, valores in reparaciones
+            if numero == version and valores.get("id") == identificador
+            and valores.get("operación") == "verificacion-corregida")
+        pertinencia_actual = versiones.get(version, {}).get("pertinencias", {}).get(identificador, {})
+        pertinencia_previa = versiones.get(version - 1, {}).get("pertinencias", {}).get(identificador, {})
+        emparejada = "pertinencia-corregida" in operaciones and \
+            pertinencia_actual.get("baseline_tipo", "").startswith("fallos-")
+        mecanica = (operaciones == {"verificacion-corregida"}
+                    and reparacion.get("campos") == "comando"
+                    and pertinencia_previa.get("baseline_tipo", "").startswith("fallos-")
+                    and pertinencia_actual.get("baseline_tipo", "").startswith("fallos-"))
+        if mecanica:
+            aprobacion = aprobacion_por_token.get(reparacion.get("token", ""))
+            ordinal = aprobacion[2].get("verification_defect_ordinal", "") if aprobacion else ""
+            mecanica = any(
+                indice < (aprobacion[0] if aprobacion else len(eventos))
+                and evento.get("checkId") == identificador
+                and evento.get("clase") == "VERIFICATION_DEFECT"
+                and evento.get("contract_version") == str(version)
+                and evento.get("verification_defect_ordinal") == ordinal
+                for indice, evento in clasificaciones)
+        if not (emparejada or mecanica):
+            return "verificacion-no-admitida", (
+                f"v{version}:{identificador} no es una transición local admitida de verificación")
+
+    if phase == "candidate" and frozen is not None:
+        posteriores = [item for item in aprobaciones if item[0] > adopciones[-1][0]]
+        if posteriores and sorted({version for _i, version, _e in posteriores}) != list(
+                range(frozen[0] + 1, vigente + 1)):
+            return "secuencia-candidate-no-contigua", "las aprobaciones posteriores no forman una secuencia contigua"
+    if phase == "final" and adopciones:
+        if any(indice > adopciones[-1][0] for indice, _version, _evento in aprobaciones):
+            return "aprobacion-pendiente", "final conserva una aprobación posterior al último ancla"
+    return None
 
 
 def parsear_plan(path: Path, helper) -> Tuple[str, str, str, bool, str, object]:
@@ -310,14 +579,18 @@ def verde(status: str) -> bool:
 
 
 def main() -> int:
-    if len(sys.argv) < 5:
+    if len(sys.argv) < 6:
         print("ARNES:orchestration-state argumentos invalidos", file=sys.stderr)
         return 99
     manifest_path, master_path, contrato_path, bitacora_path = map(Path, sys.argv[1:5])
-    if any(not item.strip() for item in sys.argv[5:]):
+    phase = sys.argv[5]
+    if phase not in {"candidate", "final"}:
+        print(USO, file=sys.stderr)
+        return 2
+    if any(not item.strip() for item in sys.argv[6:]):
         print("ARNES:orchestration-state repo_plans vacio", file=sys.stderr)
         return 99
-    planes = [Path(item) for item in sys.argv[5:]]
+    planes = [Path(item) for item in sys.argv[6:]]
     for path in (manifest_path, master_path, contrato_path):
         if not path.is_file():
             print(f"ARNES:no existe el artefacto {path}", file=sys.stderr)
@@ -336,7 +609,7 @@ def main() -> int:
     contrato = contrato_path.read_text(encoding="utf-8")
     bitacora = bitacora_path.read_text(encoding="utf-8") if bitacora_path.is_file() else ""
     anclas = parsear_master(master)
-    outcome, repos, tasks, profile = parsear_manifest(manifest)
+    outcome, repos, tasks, profile, contract_state = parsear_manifest(manifest)
     versiones = parsear_contrato(contrato)
     eventos = parsear_eventos(bitacora)
     parsed_plans = []
@@ -355,6 +628,12 @@ def main() -> int:
         source = profile_failure[2]
         print(f"  {'plan' if source else 'manifest'}: {source or manifest_path}", file=sys.stderr)
         return 1
+    try:
+        parser_contrato = cargar_parser_reparaciones()
+        reparaciones = parser_contrato.parsear_reparaciones(contrato)
+    except RuntimeError as error:
+        print(f"ARNES:orchestration-state contrato-helper-{error}", file=sys.stderr)
+        return 99
     planes_data = {
         repo: (status, sha, blocked, path, complexity, pair)
         for path, (repo, status, sha, blocked, complexity, pair) in zip(planes, parsed_plans)
@@ -424,6 +703,10 @@ def main() -> int:
     for evento in eventos:
         if "id" in evento and not re.fullmatch(r"[0-9]+", evento["id"]):
             falla("orden-no-determinable", f"el evento con id [{evento['id']}] no lleva un entero comparable")
+    contract_failure = validar_estado_contrato(
+        phase, contract_state, contrato, reparaciones, eventos, tasks)
+    if contract_failure is not None:
+        falla(contract_failure[0], contract_failure[1])
     if outcome == "archived":
         detalle_pendientes = [str(task["id"]) for task in tasks if task["status"] != "done"]
         if detalle_pendientes:

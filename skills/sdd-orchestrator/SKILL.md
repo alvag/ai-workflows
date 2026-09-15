@@ -445,7 +445,9 @@ Con co-exploración activa, antes del punto 1 se despacha el `counter-plan` (ver
 
 Dejar el contrato de integración para después no es otro orden sino un reparto incompleto: sus tareas quedarían sin dónde probar su cierre y el check del punto 4 —que cruza cada tarea contra su fila— no tendría contra qué correr, así que el gate aprobaría un reparto cuya mitad de orquestación nadie validó. El congelamiento del `v1` exige el mismo gate del contrato que rige antes de ejecutar evidencia (`reference.md` → "Gate de la Fase 3 y agregación"): cobertura bidireccional, campos obligatorios y baseline resuelto en toda fila.
 
-La enumeración inmediata no es exhaustiva; manda el conjunto canónico completo de `cross-implement/contrato-verificacion.md` → «El gate previo al dispatch».
+La enumeración inmediata no es exhaustiva; mandan
+`cross-implement/contrato-verificacion.md` → «Qué es invariante entre versiones» y
+`cross-implement/contrato-verificacion.md` → «El gate previo al dispatch».
 
 1. Por cada repo confirmado, crear `<repo>/.plans/<id>/` como un flujo `sdd-flow` completo:
    - **`spec.md`** — la fuente de los AC que el agente delegado verificará en Fase 2 (sin ella, el `verify` de `sdd-flow` no tiene contra qué chequear). Contenido: problema/objetivo recortado a lo que aporta el repo, los AC de su `covers_ac` copiados **textuales** de la master-spec (manteniendo los IDs globales `AC-n` para trazabilidad), los contratos que el repo expone/consume, y una nota explícita de que los AC `[integration]` en los que participa **no** se verifican en el repo (los cierra la tarea de orquestación dueña de su fila; nunca darlos por cumplidos localmente). Su fila vive en el **contrato de integración** de la orquestación y el contrato del repo solo la **referencia en solo-lectura**, con evidencia `N/A: orchestration-owned` — ni `NOT_APPLICABLE` ni pendiente (`reference.md` → "Contrato de integración"). Mini-plantilla en `reference.md` → "Spec por repo".
@@ -507,7 +509,7 @@ Precondición: reparto aprobado y `sdd-flow` disponible (ver "Dependencia de `sd
    Y el intento se registra **antes** de materializarse, nunca después (`reference.md` → "Bitácora de transiciones"). Un snapshot no distingue el repo que esperó a que su gate cerrara del que se despachó igual; lo único que los separa es el evento, y registrar después pierde justo el intento **rechazado**, que por definición no cambia nada y no dejaría rastro.
 <!-- delivery-profile-predispatch:start -->
 
-   **Guarda del perfil antes de cada despacho.** Ejecutar `orchestration-state.py` sobre el plan del
+   **Guarda del perfil antes de cada despacho.** Ejecutar `orchestration-state.py` en fase `final` sobre el plan del
    repo elegible e `integracion-ownership.py` sobre ese mismo plan antes de escribir su sobre. Ambas
    guardas consumen el helper común y exigen delimitadores `---` (con espacio exterior tolerado) y carrier completo. Solo
    `orchestration-state.py` exige además la igualdad del par global y la `complexity` local coherente
@@ -573,11 +575,19 @@ Y el orden vale acá igual que en el despacho: primero el evento con su resultad
 
 1. **Reporte consolidado.** Tabla por repo: `repo · status · AC repo-local cumplidos · verde/fallido/bloqueado`. Listar aparte los AC `integration` pendientes.
 2. **Commit/push centralizado.** Para cada repo en `verified`, ofrecer (controlado por el usuario): revisión → commit → push, **siguiendo el mecanismo de commit de `sdd-flow`** (leído de sus archivos — no vía Skill tool, que su flag bloquea): staging selectivo + mensaje convencional construido **inline** (`sdd-flow/reference.md` → "Construcción del mensaje de commit"; sdd-flow no depende de ninguna skill externa para commitear). Soportar lote ("commitea todos los verdes"). Mostrar siempre, antes de ejecutar, los archivos staged + mensaje + comando. Actualizar `status` a `committed`/`pushed` en el manifest. El scope del commit por defecto es el `<id>` global (override por repo si el servicio tiene su propia clave de ticket).
-3. **Gate de apertura del contrato de integración.** Antes de ejecutar ninguna evidencia, validar el contrato de `<contenedora>/.sdd/<id>/integracion.md` con el **mismo gate** que `cross-implement` aplica antes de delegar (`cross-implement/contrato-verificacion.md` → "El gate previo al dispatch"): esquema canónico, cobertura bidireccional contra los AC `[integration]`, campos obligatorios y baseline resuelto en toda fila, ninguna en `BLOCKED`.
+3. **Gate de apertura del contrato de integración.** Antes de ejecutar ninguna evidencia, validar el contrato de `<contenedora>/.sdd/<id>/integracion.md` con la política de `cross-implement/contrato-verificacion.md` → "Qué es invariante entre versiones" y el **mismo gate** que `cross-implement` aplica antes de delegar (`cross-implement/contrato-verificacion.md` → "El gate previo al dispatch"): esquema canónico, cobertura bidireccional contra los AC `[integration]`, campos obligatorios y baseline resuelto en toda fila, ninguna en `BLOCKED`.
 
    La enumeración inmediata no es exhaustiva; manda el conjunto canónico completo de la sede enlazada.
 
    - La Fase 3 revalida la versión vigente del contrato antes de ejecutar evidencia.
+
+   Para reparar, ejecutar primero `orchestration-state.py ... candidate`; después de la aprobación,
+   ejecutar la guarda canónica `contrato-invariantes.py ... final`, registrar
+   `adoptar-estado-contrato` consumado, actualizar atómicamente
+   `integration_contract_frozen_version` e `integration_contract_frozen_hash` y ejecutar
+   `orchestration-state.py ... final`. Fuera de esa ventana siempre se usa `final`: `candidate` no
+   es el valor por defecto. La aprobación de `cobertura-agregada` nunca puede quedar después del
+   primer ancla del contrato de integración.
 
    El contrato nació **completo y congelado en la Fase 1** (1.4), así que acá no hay nada que congelar: lo que se hace es revalidar la versión vigente. La revalidación **no emite una versión que agregue o quite IDs** —el conjunto es invariante entre versiones, y por eso el contrato se materializa entero de una vez—; si el gate no pasa, se corrige por el versionado canónico heredado y no se corre ninguna fila hasta que pase. Sacar estas filas del contrato de cada repo sin este gate las dejaría sin ningún gate, en vez de moverlas a otro.
 4. **AC de integración.** Los AC `[integration]` no los cierra un agente aislado. Aplicarles la **gate function** del `verify` de `sdd-flow`, a nivel cross-repo: CARGAR la fila del contrato de integración que prueba este AC (no elegir la evidencia acá: ya está congelada) → CORRERLA fresca → LEER salida + exit code → VERIFICAR contra su `Esperado`. Si no hay comando ejecutable, la fila lo declara como evidencia `manual` y queda como **verificación manual** pendiente. Nunca darlos por cumplidos sin esa evidencia (ley de la sección "Red flags").

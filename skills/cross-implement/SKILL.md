@@ -149,7 +149,7 @@ Ley fundamental:
 | "Le doy acceso total así no falla por permisos" | Bypass de sandbox/permisos = regla 3 rota. Si el work order necesita escribir fuera del working dir, está mal recortado. |
 | "Una ronda más de fix y seguro sale" | `max_fix_rounds` es el tope. Al agotarse: takeover del conductor, registrado (regla 5). |
 | "Falló la verificación, lo mando a corregir" | Antes hay que clasificar de quién es la falla (regla 5). Mandarle un `VERIFICATION_DEFECT` o un `ENVIRONMENT_FAILURE` le pide arreglar algo que no está en su código, y lo más probable es que fuerce el síntoma hasta que pase. |
-| "La fila no se deja cumplir, la ajusto y sigo" | Cambiar `Requisito` o `Esperado` no es reparar una prueba: es `DESIGN_GAP` y vuelve al diseño (`contrato-verificacion.md` → "Qué es invariante entre versiones"). En takeover también. |
+| "La fila no se deja cumplir, la ajusto y sigo" | `Requisito` nunca cambia: es `DESIGN_GAP` y vuelve al diseño. `Esperado`, la pertinencia, `Evidencia` o `Comando/observación` solo cambian mediante su operación direccional con registro y aprobación (`contrato-verificacion.md` → "Qué es invariante entre versiones"); ajustarlos sin ese par sigue siendo ablandar el contrato. En takeover también. |
 | "El diff trae un cambio extra razonable, lo dejo pasar" | Todo hunk fuera del work order se reporta como drift: se pide su reversión en el fix round, o se declara explícitamente (en SDD: `## Extras`). Nada entra sin rastro. |
 | "El árbol está casi limpio, lanzo igual" | Clean-tree gate (regla 2): código sin commitear = diff imposible de aislar. Commitear/stashear antes. |
 

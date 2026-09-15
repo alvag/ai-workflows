@@ -818,7 +818,7 @@ las invariantes que impiden ablandar una versión y la proyección solo-lectura 
 La aprobación del último gate aplicable completa el orden normativo de `reference.md` → "Producción
 del contrato de verificación": el conductor registra `aprobar`, registra `congelar` en la bitácora,
 escribe el marcador y recién entonces ejecuta
-`python_skill <skill_dir>/scripts/promocion-tasks-ready.py <plan> <bitácora>`. El script muta el plan
+`python_skill <skill_dir>/scripts/promocion-tasks-ready.py <plan> <bitácora> <ledger> <active_envelopes>`. El script muta el plan
 y promueve el estado; un veredicto distinto de cero impide promover. Es un cambio de naturaleza
 respecto de las demás guardas del repositorio, que solo verifican. Antes de
 despachar, volver a ejecutar el conjunto completo con esa constancia.
@@ -854,7 +854,7 @@ Antes de que exista `plan.md` (fase `specify`/`clarify`, o el gate de Jira), no 
    - **Cobertura de spec** (cross-artifact check): cada `AC-n` tiene ≥1 task y ninguna task carece de AC. Reportar huérfanos antes del gate.
    - **Scan anti-placeholder:** ni plan ni tasks tienen `TBD`, `TODO`, "agregar X apropiado", "similar a la Task N" o "etc." colgados; cada paso con contenido real (ruta, comando, firma). Un hueco que no se puede precisar es señal de que falta `clarify`.
    - **Consistencia de interfaces:** lo declarado en **Produce** coincide exacto con quien lo **Consume** (mismo nombre, misma firma) — el desajuste rompe a quien implemente sin el contexto de esta conversación.
-   - **Existencia y pertinencia AC ↔ fila del contrato:** comprobar la existencia bidireccional —ni AC sin fila ni fila sin AC— y la pertinencia; aplicar ambas según `cross-implement/contrato-verificacion.md` → «El gate previo al dispatch», incluida «Pertinencia: poder discriminante por fila», antes de llegar al dispatch.
+   - **Existencia y pertinencia AC ↔ fila del contrato:** comprobar la existencia bidireccional —ni AC sin fila ni fila sin AC— y la pertinencia; aplicar según `cross-implement/contrato-verificacion.md` → «El gate previo al dispatch» los dos contrafactuales de «Pertinencia: poder discriminante por fila» —el `Esperado` no se cumple con la subafirmación falsa ni falla con la verdadera— antes de llegar al dispatch.
 4. **STOP** — en *complejo* (gate propio), si la **revisión cross-model** está activa para `tasks` (ver "Revisión cross-model"), ejecutar `cross-review` sobre `tasks.md` con `spec`+`plan`+`domain_context` resuelto como contexto antes de presentar. En *complejo*, antes de presentar este STOP, ejecutar el "Procedimiento previo al último gate". Presentar las tasks (con el resumen de crítica, si lo hubo) y pedir aprobación. En *complejo* es un gate **propio** (STOP independiente tras el plan). En *normal* las tasks se presentan **junto al plan** en el gate de `plan` (sin STOP adicional; la revisión, si aplica, ya cubrió plan+tasks ahí). Al aprobarlas, pasar `status` a `tasks-ready` — en *complejo* se entra a este gate desde `plan-approved`, y es el paso que lo cierra. En *complejo*, si el modo de implementación resuelto es `ask`, incluir en este **mismo STOP** la pregunta del modo: ¿inline, delegación cross-model con revisión del conductor (`cross`), o delegación same-family con perfil por rol (`workers`)? Las dos delegaciones, solo si su capacidad está disponible (ver `implement` → "Modo de ejecución"; sin gate extra).
 
 ## `handoff.md` (retomado del flujo)
@@ -969,6 +969,41 @@ o reapertura explícita del gate existente para aprobar una propuesta. La ausenc
 autoriza despachos por bloques ni convierte la capacidad `cross` en un error.
 
 ### Paso común — Implementación
+
+#### Producción del contrato de verificación y rotación
+
+Antes de pedir aprobación de una versión candidata, ejecutar
+`contrato-invariantes.py <contrato> <log_de_aprobaciones> candidate`; después de
+`aprobar-reparación`, ejecutar `contrato-invariantes.py <contrato> <log_de_aprobaciones> final`.
+Leer el código y stderr de ambas. La fase `candidate` precede al STOP; `final` precede a congelar,
+publicar o promover. Una adopción intermedia nunca llega a `final`.
+
+La medición `fallos-*` usa la envoltura canónica y reconoce solo la pareja 125 más
+`CROSS_IMPLEMENT_PROJECTION_BLOCKED` como `BLOCKED`; verify juzga contra `Esperado`, no contra el
+`observado` del baseline. Ejecutar `ownership-log.py <log>` y
+`ownership-presupuesto.py <log> <log_de_aprobaciones> <max_fix_rounds>`, leyendo código y stderr.
+Al agotarse dos pares de `VERIFICATION_DEFECT`, clasificar `DESIGN_GAP`; un
+`ENVIRONMENT_FAILURE` no consume una ronda de implementación.
+
+Si la reparación aparece post-dispatch, esperar terminal y cosecha, retirar el sobre y aplicar
+primero cualquier rollback. La aprobación debe declarar que autoriza abandonar o revertir y
+**reiniciar** otra secuencia. Publicar el `archive_package` ligado por `rotation-link.json`, con rol
+`incoming | outgoing`, antes del refresh. `terminal:abandoned` exige `A ausente` hasta que exista el
+paquete saliente; la rama restaurada usa `terminal:rolled_back`. El paquete conserva
+`base_anchor` y, cuando corresponda, `pending-delta.patch`.
+
+Capturar
+`capture_sequence_snapshot(ledger, receipt, git, tasks, process, owner, archive_package)` antes del
+routing. Sus siete autoridades clasifican `rotation-pending`, `rollback-pending` y
+`rotation-completed`; las dos primeras distinguen `pre-refresh` y `post-refresh`, y un paquete
+incompatible produce `conflict:package`. Una retoma construye `RecoveryProposal.rotation_steps`
+con `plan-refresh` y `ledger-rotation`, pasa por el **gate de recuperación** y recaptura antes de
+mutar. El **camino continuo** ejecuta ambos pasos con promoción y escritura ordinaria, sin STOP
+adicional, y exige `rotation-completed` antes del routing.
+
+La partición `rotación` enumera **seis casos**; `reinicio post-rollback`, **tres casos**. Son corpus
+normativo. El cursor del ledger no incorpora estas posiciones diagnósticas. En cualquier retoma,
+**CARGAR** la fila ya declarada y mantener `revert-to-confirm`; no volver a identificar evidencia.
 
 1. **Tracking de archivos (por capacidad, no por nombre de tool).** Alimentado por **cualquier** herramienta o comando que cree/modifique/borre archivos (las tools de edición del entorno —cambian entre Claude Code, Codex, etc.— o `mv`/`rm`/`cp` en shell), mantener tres sets de rutas:
    - `code_touched` — código/producto que tocó la skill (candidatos a commit).
