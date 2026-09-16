@@ -4887,18 +4887,50 @@ pedido_referencias() {
       # que la acredita. Sin ese archivo no hay nada que acredite trabajo previo
       if (nsat > 0) {
         # solo cuenta lo que vive en `## declaracion`, que es la parte promovida: `## estado` es el
-        # ledger máquina y encontrar ahí la evidencia acreditaba contra un campo interno. Y se busca
-        # como TOKEN, no como subcadena: `complete` casaba dentro de `busqueda: complete`
+        # ledger máquina y encontrar ahí la evidencia acreditaba contra un campo interno. Cada línea
+        # visible se compara por separado: ni los ejemplos Markdown ni dos líneas vecinas acreditan
+        # una frase. Ambos lados pasan una sola vez por la misma normalización; conserva mayúsculas,
+        # guiones, subrayados y caracteres Unicode no puntuación, mientras la puntuación común
+        # separa tokens y una evidencia vacía no puede acreditarse
+        # Frontera local: clase veredicto, dirección las dos. Su verde acredita solo una secuencia
+        # normalizada dentro de una línea visible, no identidad del texto crudo. No detecta una frase
+        # partida por wrap, y `mdsalta` trata como código toda línea con cuatro espacios, aunque sea
+        # la continuación legítima de un elemento de lista
+        for (i = 192; i < 256; i++) LEAD = LEAD sprintf("%c", i)
+        sepuni["¡"]=sepuni["¿"]=sepuni["«"]=sepuni["»"]=sepuni["‹"]=sepuni["›"]=1
+        sepuni["“"]=sepuni["”"]=sepuni["„"]=sepuni["‟"]=sepuni["‘"]=sepuni["’"]=1
+        sepuni["‚"]=sepuni["‛"]=sepuni["–"]=sepuni["—"]=sepuni["―"]=sepuni["…"]=sepuni["•"]=sepuni["·"]=1
+        mdcom = mdfen = 0; mdchar = ""; mdlen = 0
         while ((getline lant < ANT) > 0) { hayant = 1
+          if (mdsalta(lant)) continue
           if (lant ~ /^##[ ]+declaracion/) { endec = 1; continue }
           if (lant ~ /^##[ ]/) { endec = 0; continue }
-          if (endec) antxt = antxt " " lant " " }
+          if (endec) antline[++nant] = lant }
         close(ANT)
-        gsub(/[^A-Za-z0-9_-]/, " ", antxt)
+        for (i = 1; i <= nant; i++) normalizables["a" SUBSEP i] = antline[i]
+        for (u in evsat) normalizables["e" SUBSEP u] = evsat[u]
+        for (k in normalizables) {
+          bruto = normalizables[k]; normal = ""; separa = 0
+          for (j = 1; j <= length(bruto); j++) {
+            ch = substr(bruto, j, 1); unidad = ""
+            if (ch ~ /[A-Za-z0-9_-]/) unidad = ch
+            else if (index(LEAD, ch) > 0) {
+              unidad = ch
+              while (j < length(bruto) && index(CONT, substr(bruto, j + 1, 1)) > 0)
+                { j++; unidad = unidad substr(bruto, j, 1) }
+              if (unidad in sepuni) unidad = "" }
+            if (unidad != "") {
+              if (separa && normal != "") normal = normal " "
+              normal = normal unidad; separa = 0 }
+            else separa = 1 }
+          normalizados[k] = normal }
         for (u in evsat) {
           if (!hayant) { print "clausula satisfecha-por-trabajo-previo sin antecedentes.md que la acredite: " u; continue }
-          if (index(" " antxt " ", " " evsat[u] " ") == 0)
-            print "la evidencia de " u " no aparece en la declaracion de antecedentes.md: " evsat[u] } }
+          evant = normalizados["e" SUBSEP u]; aparece = 0
+          if (evant != "") for (i = 1; i <= nant; i++)
+            if (index(" " normalizados["a" SUBSEP i] " ", " " evant " ") > 0) { aparece = 1; break }
+          if (!aparece)
+            print "la evidencia de " u " no aparece en la declaracion de antecedentes.md: " evsat[u] " [normalizada: " (evant == "" ? "<vacia>" : evant) "]" } }
       # `constitution` y `repositorio` resuelven contra el ÁRBOL, que está a mano por convención:
       # la constitución es `.specify/constitution.md` y las reglas viven en los tres archivos de
       # contrato de la raíz. Comprobar solo que no lleven la forma de otra autoridad dejaba pasar
@@ -4964,8 +4996,9 @@ pedido_referencias() {
 }
 ```
 
-> **Frontera de prueba.** Clase **veredicto**, dirección **admite-de-más**. Su verde autoriza a
-> afirmar que cada referencia **resuelve contra su destino real**: la cláusula **tiene** fragmentos, la
+> **Frontera de prueba.** Clase **veredicto**, dirección **las dos**. Los límites de la comprobación
+> contra `antecedentes.md` están junto a ese subpredicado. Para el resto, su verde autoriza a afirmar
+> que cada referencia **resuelve contra su destino real**: la cláusula **tiene** fragmentos, la
 > **partición vigente cubre cada línea del literal exactamente una vez** —que es `R1` y no una parte de
 > ella—, el criterio está en la sede de los criterios, y el objetivo de cada evento **existe** en la
 > tabla que dice apuntar. Que el objetivo resolviera *de forma* era menos de lo que el contrato
