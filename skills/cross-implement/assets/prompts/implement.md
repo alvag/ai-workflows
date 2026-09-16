@@ -48,6 +48,7 @@ CONSTRAINTS: <"no toques X", estilo del repo, dependencias que no deben cambiar.
   Escribe `el mínimo que cumple lo pedido`. No agregues lo que ningún criterio de aceptación pide:
   ni abstracciones de un solo uso, ni configurabilidad, ni validaciones, ni manejo de error. Entre
   dos soluciones que cumplen, `la más simple`. Si algo parece faltar, repórtalo — no lo escribas.
+  Si tu alcance no trae criterios de aceptación, hacen sus veces `sus pasos y requisitos aprobados`.
   Ese mínimo `acota la densidad, nunca la cobertura`: cubre completo lo que `tu bloque asignado`
   debe aportar a los criterios que atiende. Atender un criterio compartido no te autoriza a ejecutar
   el trabajo de otro bloque ni las tareas excluidas de tu alcance.
