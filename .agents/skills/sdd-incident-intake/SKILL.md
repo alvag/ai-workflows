@@ -126,6 +126,34 @@ Leer el archivo completo, no solo el índice ni la sección del incidente elegid
 el formato (cómo se forma el ID, qué campos son obligatorios, qué está prohibido escribir); el retiro
 del paso 7 tiene que respetarlo y no se puede respetar un formato que no se leyó.
 
+Y antes de nada: comprobar que el registro
+**conserva su cabecera de reglas antes de admitir** ningún incidente. La cabecera es todo lo anterior
+a la **primera sección de incidente** —la primera línea que abre con `## ` y una fecha `DD/MM/AAAA`—,
+o **el final del archivo si no hay ninguna**: un registro al día es cabecera de punta a punta, y ese
+es justamente el estado que hay que saber leer. Se la reconoce **presente** cuando
+**el archivo existe** y hay un encabezado `## Reglas de este archivo` dentro de ese prefijo.
+
+> **Lo que esta comprobación no ve.** Que la cabecera esté **completa**, o que sea fiel a la que
+> alguien escribió, **no es verificable desde la skill**: no hay original contra el cual compararla.
+> Una cabecera presente pero **degradada** —con reglas perdidas, o con una regla invertida al
+> reconstruirla— pasa esta comprobación sin chistar. Lo que acredita es que hay una cabecera, no que
+> sea la correcta.
+
+**Si no está, la admisión se detiene.** No se admite ningún incidente sobre un registro sin cabecera:
+el paso 7 va a retirar respetando un formato que nadie pudo leer. La salida es reponerla, y tiene
+cuatro condiciones:
+
+- **la admisión se detiene** hasta que la cabecera esté repuesta;
+- la reposición **lo autoriza el usuario**, **con la fuente a la vista** — el intake no se autoriza a
+  sí mismo ni elige la fuente por su cuenta;
+- **sin una copia inequívoca no se repone** nada: se declara lo observado y se detiene. Reconstruir
+  la cabecera por inferencia del cuerpo es lo que ya falló una vez —invirtió la regla del ID, que
+  prohíbe los correlativos, y perdió tres de las cinco reglas—, y estuvo un mes vigente;
+- la **procedencia de lo repuesto** va escrita en el propio archivo: de dónde salió y con qué fecha.
+
+Esta cláusula vive **solo acá**. El paso 7 previene el daño; este paso es el que lee el registro, así
+que es el único que puede detectar la cabecera ausente antes de que se admita nada.
+
 Con `cantidad > 1` se lee **una vez**, al principio del lote. Lo que sí se relee en cada vuelta es el
 índice, que cambió.
 
@@ -373,10 +401,24 @@ Después, comprobar que no quedaron residuos: `grep` de la fecha y hora de cada 
 tres términos distintivos de su título. Un retiro que deja el índice limpio y la sección en el cuerpo
 es peor que no retirar: el archivo pierde su propio inventario.
 
+**El retiro se acredita con tres condiciones, y hacen falta las tres juntas:** que
+**el archivo existe**, que **conserva su cabecera**, y que no quedó **ningún incidente retirado**.
+La salida vacía de esos `grep` no alcanza sola, porque
+**no las distingue de un archivo que no existe**: sobre un registro borrado entero es igual de vacía
+que sobre uno limpio. Lo único que los separa es el código de salida —2 contra 1—, así que un
+criterio que lea la salida y no el código le da el visto bueno al borrado que este paso promete no
+hacer.
+
 **Lo que nunca se toca:** la cabecera de reglas, el resto de los incidentes, y el orden cronológico
 de los que quedan. **Nunca se edita un incidente ajeno "de paso"** — la regla 2 del registro dice que
 una reincidencia se agrega y nunca se edita, y esa regla protege la frecuencia, que es el dato más
 valioso del archivo.
+
+**Y cuando los incidentes tomados son todos**, el archivo queda **con su cabecera y sin incidentes**.
+Ese **registro vacío es el resultado esperado**, no un archivo de más ni un sobrante que convenga
+limpiar: la bandeja quedó al día, que es exactamente para lo que existe este paso. Retirar también la
+cabecera deja sin sede las reglas de formato que el paso 1 lee antes de admitir nada, y reponerlas
+después por inferencia sale mal —ya salió: invirtió la regla del ID y perdió tres de las cinco.
 
 **Si el incidente vino de un issue, el retiro es cerrarlo**, no borrar nada — y quién lo cierra
 depende del vocablo, porque no todos tienen la misma evidencia disponible:
