@@ -1503,8 +1503,178 @@ if (-not (Get-Content -LiteralPath $OriginHandoff | Where-Object { $_ -ceq "orig
 if (-not (Get-Content -LiteralPath $OriginHandoff | Where-Object { $_ -ceq "worktree_path: $WorktreePath" })) { exit 89 }
 ```
 
-Con el doble `ready`, comprobar el CLI de la familia conductora y mostrar un comando **para abrir una
-sesión nueva**. La sesión actual no cambia cwd, no hace checkout y no despacha nada:
+Con el doble `ready`, el flujo **abre la sesión en el destino si la plataforma puede y el usuario lo
+autorizó**, y cae al comando impreso en las cuatro ramas manuales. Abrir y **acreditar la
+transferencia** son cosas distintas: lo primero se hace acá; lo segundo sigue sin obtenerse, y su
+medición está en «La rama por terminales», más abajo.
+
+**Esta es la única sede de la apertura, y va después del doble `ready` y no antes.** Abrirla al crear
+el árbol arrancaría al conductor sobre un worktree todavía sin trasladar, sembrar ni verificar — y en
+Orca, donde la primitiva combina apertura y arranque, eso ocurriría en el mismo acto.
+
+#### Paso 0 — leer la autorización
+
+Precondición de todo lo demás. El bloque `transporte` trae el **puntero** al consentimiento; la
+autorización se lee **de ahí**, no del bloque.
+
+1. Resolver el puntero `consentimiento`. **Sin bloque `transporte` no hay vía consentida:** se va
+   directo al comando impreso.
+2. Leer el JSON y **recomputar el digest sobre `mostrado`**. Si no coincide, o el documento no
+   parsea, se va directo al comando impreso informando que el consentimiento no es legible.
+3. Leer `alcance.abrir_sesion`, con la lectura trivaluada de «El consentimiento». **Solo el valor
+   verdadero autoriza.** El valor **falso no salta al comando impreso: enruta al paso 6**, porque es
+   la clasificación la que decide si corresponde imprimirlo. La **ausencia** también enruta al paso 6,
+   informando que ese consentimiento es anterior a esta capacidad.
+
+**Por qué el falso enruta y el bloque ausente no.** Sin bloque nunca se creó nada en el destino, así
+que no hay conductor que duplicar. Con la vía consentida y la apertura rechazada sí pudo quedar algo
+en pie de una corrida anterior, y ahí imprimir sin clasificar es exactamente lo que abre un segundo
+conductor.
+
+#### Paso 1 — de dónde sale cada identificador
+
+Ninguno se inventa:
+
+- **workspace** — de la respuesta del verbo de apertura de la plataforma.
+- **panel raíz** — `herdr pane list`, filtrando por ese `workspace_id`. Su `cwd` **confirma la ruta
+  real**, que es el mismo patrón por el que el adaptador consulta el worktree de un panel en vez de
+  confiar en el argumento.
+- **nombre del agente** — derivado del identificador del flujo, único dentro del workspace.
+- **familia** — la del conductor, la misma que el launcher ya resuelve.
+- **payload del destino** — el comando del CLI con el prompt de retoma, citado como **una sola
+  palabra del shell**, igual que en los bloques del launcher.
+
+#### Paso 2 — abrir el árbol en la plataforma
+
+Sin este paso el resultado es **invisible para quien lo pidió**: el árbol se crea con la primitiva de
+Git, que la plataforma lista pero no abre.
+
+| Plataforma | Consulta previa | Comando | Observable de éxito |
+|---|---|---|---|
+| `herdr` | `herdr worktree list --cwd <árbol-principal>` | `herdr worktree open --path <destino> --focus` | la entrada de `<destino>` trae `open_workspace_id` |
+| `orca` | `orca worktree list --json` | — lo cubre el paso 3 | — |
+
+Si la consulta previa **ya muestra** `open_workspace_id` para esa ruta, el subpaso está cumplido y no
+se vuelve a abrir. En Orca no hay verbo de apertura separado.
+
+#### Paso 3 — arrancar al conductor
+
+| Plataforma | Comando | Observable de éxito | Cota |
+|---|---|---|---|
+| `herdr` | `herdr agent start <nombre> --kind <familia> --pane <panel raíz>` | `herdr agent get <nombre>` responde con la familia esperada | 30 s |
+| `orca` | `orca terminal create --worktree path:<destino> --command '<payload>' --focus --json` | la entrada del handle devuelto trae `worktreePath` igual al destino y `agentIdentity` igual a la familia | 30 s |
+
+**El selector de worktree de Orca es obligatorio y explícito.** Sin él la primitiva cae en el
+worktree **activo de la interfaz** y no en el del proceso: está medido, y con el `cwd` fuera de un
+worktree el terminal terminó en otro proyecto del usuario.
+
+**Procedencia de cada rama.** La de Herdr está **medida en vivo**, con su comando, versión, salida
+acotada y fecha en la bitácora del flujo. La de Orca **no se corrió en vivo**: se deriva del schema
+de su CLI y de las mediciones del flujo previo, y por eso su observable es el que ese schema sostiene
+y no uno inventado.
+
+#### Paso 4 — entregar el prompt
+
+Solo en Herdr. **En Orca el prompt viajó dentro del comando de arranque**, así que no hay un verbo de
+envío posterior — y eso **no vuelve atómica** la operación ni convierte la identidad del agente en
+prueba de que el prompt se consumió: ahí el prompt es un **argumento no observable**, no una entrega
+acreditada.
+
+1. Capturar `state_change_seq` con `herdr agent get <nombre>`.
+2. `herdr agent prompt <nombre> '<prompt de retoma>'`.
+3. Sondear hasta que la secuencia **avance** y el estado sea `working`, dentro de la cota de 30 s.
+
+**Se exige el estado positivo `working`, no la mera ausencia de error:** reposo, detenido y cancelado
+no satisfacen el criterio aunque no sean fallos.
+
+#### Paso 5 — qué queda acreditado, y qué no
+
+Va junto, en la misma línea, porque separarlo deja el verde leyéndose como más de lo que prueba:
+
+**Acredita** que el árbol está abierto y visible en la plataforma; que hay un agente de la familia
+esperada; y, en Herdr, que ese agente pasó a `working` después del envío. **No acredita** que
+**la transición provenga exclusivamente de ese envío** —una intervención concurrente puede
+simularla—;
+que el agente haya consumido el prompt; ni que la autoridad se haya transferido. **Eso lo constata el
+usuario mirando la pantalla.**
+
+#### Paso 6 — reconciliar una retoma, por subpaso y por plataforma
+
+No se registra estado durable nuevo: la idempotencia sale de **consultar el observable** antes de
+repetir nada. Los efectos ocurren después del terminal `ready`, así que no son etapas de la
+materialización, y `resume` no los recuerda — los reconcilia.
+
+| Plataforma | Subpaso | Cumplido si | Pendiente si | Incierto si | Acción en incierto |
+|---|---|---|---|---|---|
+| `herdr` | árbol abierto | la consulta trae `open_workspace_id` | no lo trae | la consulta falla | no abrir; ir al paso 7 |
+| `herdr` | conductor presente | hay agente de la familia **atribuible a esta apertura** | no hay agente | hay agente de la familia y no se puede atribuir | no arrancar otro; ir al paso 7 |
+| `herdr` | prompt entregado | la secuencia avanzó tras el envío | no avanzó | la consulta de la secuencia falla | ir al paso 7 |
+| `orca` | terminal presente | hay terminal con `worktreePath` igual al destino | no lo hay | la consulta falla | no crear otro; ir al paso 7 |
+| `orca` | agente presente | ese terminal trae `agentIdentity` igual a la familia | no la trae | la consulta falla | ir al paso 7 |
+
+**Terminal y agente de Orca se reconcilian por separado aunque nazcan de la misma invocación**: una
+llamada única no garantiza que sus efectos sean indivisibles, y un terminal creado cuyo comando falló
+es distinguible del éxito solo si se los mira aparte. **El prompt de Orca no se reconcilia**: es
+argumento, no efecto observable.
+
+**El límite de la atribución, declarado.** Como no se persiste el identificador de la apertura, un
+agente **ajeno** de la misma familia en el mismo worktree **no se distingue** del propio. Ese caso es
+`incierto`, y la receta **no promete** continuar desde el subpaso pendiente.
+
+#### Paso 7 — clasificar y salir
+
+Tres estados **del conductor en el destino**. No hay una clasificación paralela por efecto: un
+resultado a medias no tiene salida propia, porque los efectos que no son el conductor no deciden nada
+por sí solos.
+
+| Estado | Cómo se determina | Salida |
+|---|---|---|
+| **sin conductor activo** | la consulta responde y no hay agente atribuible | el comando impreso — la única rama que lo imprime |
+| **con conductor activo** | hay agente atribuible, de la familia esperada | detener, declarar el residual, ofrecer inspeccionar o cerrar |
+| **identidad incierta** | la consulta falla, vence la cota, o hay agente no atribuible | detener, declarar el residual, ofrecer inspeccionar o cerrar |
+
+**La cota vence a `identidad incierta`, nunca a `sin conductor activo`.** Una ausencia transitoria
+leída como definitiva dispararía el fallback justo antes de que el conductor aparezca — y el
+adaptador ya sondea con cota por esa misma razón.
+
+**El residual del workspace abierto sin conductor se conserva y se declara**, no se cierra: cerrarlo
+destruiría un recurso que el usuario ya ve, y el comando impreso lo reutiliza porque abre sobre la
+misma ruta.
+
+#### Paso 8 — el permiso del harness
+
+**Alcance: conductor Claude Code sobre Herdr**, que es el caso medido. Una denegación de otro harness
+o sobre otra plataforma **no inventa una regla equivalente**: se resuelve por la clasificación del
+paso 7.
+
+El arranque de un agente puede toparse con un permiso del harness — en el caso medido, con el motivo
+`Create Unsafe Agents`. No es un imprevisto del entorno: es la consecuencia predecible de arrancar
+agentes, en la única vía donde esta skill manda arrancarlos. Ante la denegación, la receta **muestra
+el fragmento copiable** y pregunta dónde va:
+
+```json
+{ "permissions": { "allow": ["Bash(herdr agent start:*)"] } }
+```
+
+- **de usuario:** `~/.claude/settings.json`
+- **de proyecto:** `.claude/settings.json` del repositorio
+
+**El conductor no escribe esa configuración**, que vive fuera del repositorio: la muestra y la aplica
+el usuario. La secuencia, con su corte: **mostrar → el usuario aplica → el usuario confirma →
+reintentar una sola vez**. Sin confirmación no hay reintento. Si el reintento tampoco pasa, el intento
+va a la clasificación del paso 7 **antes** de decidir el comando impreso.
+
+Y **no se rodea el bloqueo con el verbo de envío de teclas**, aunque la plataforma lo ofrezca y
+escribiría el mismo comando en el panel: eso es un rodeo de la intención del bloqueo, no una
+alternativa, y un agente sin esta línea puede tomarlo por una vía legítima.
+
+---
+
+En las **cuatro ramas manuales** —plataforma sin capacidad, apertura rechazada, permiso no concedido,
+y automatización que terminó en `sin conductor activo`— se comprueba el CLI de la familia conductora
+y se muestra un comando **para abrir una sesión nueva**. En las tres últimas **la clasificación del
+paso 7 corre primero**: el comando sale solo si de ahí resulta que no hay conductor activo. La sesión
+actual no cambia cwd, no hace checkout y no despacha nada:
 
 ```sh
 quoted_path=$(printf '%s' "$worktree_path" | sed "s/'/'\\\\''/g")
@@ -1549,10 +1719,16 @@ El launcher recuerda los candidatos admisibles que no aparecen en `expanded_seed
 
 #### La rama por terminales: la transferencia de autoridad no se ofrece
 
-**En las dos vías el launcher imprime un comando y una persona lo ejecuta.** Ninguna abre la sesión
-conductora por su cuenta: el paso 9 de esta misma receta hace `printf` y declara que *"la sesión
-actual no cambia cwd, no hace checkout y no despacha nada"*. `terminal.py crear` y `lanzar` abren
-paneles y arrancan **workers**, no conductores.
+**Abrir la sesión y acreditar la transferencia son cosas distintas, y solo la segunda sigue sin
+obtenerse.** La plataforma **abre cuando puede**: con una plataforma de terminales resuelta y la
+apertura consentida, el paso 9 de esta misma receta abre el árbol, arranca al conductor y le entrega
+el prompt, con los mismos verbos que `terminal.py crear` y `lanzar` usan para los **workers**. Lo que
+queda manual son las cuatro ramas que esa receta enumera, y ahí el launcher imprime el comando para
+que una persona lo ejecute.
+
+**Lo que no se obtiene es la transferencia de autoridad**, y de eso habla el verbo
+`lanzar-conductor`: **acredita**, no abre. Devuelve `mecanica-no-obtenida` porque ninguna superficie
+medida sostiene un acuse atribuible a la sesión nueva — no porque la plataforma no pueda crearla.
 
 La idea era que la vía por terminales cerrara además el traspaso de autoridad sola, y por eso haría
 falta un handshake: para que no exista un instante con dos sesiones creyendo que conducen, o ninguna.
@@ -6864,12 +7040,69 @@ El archivo de **consentimiento** que apunta el bloque no guarda una señal de qu
 ```json
 {
   "corrida": ".plans/<id>/transporte-corrida.jsonl",
-  "mostrado": "<el texto literal de los cuatro puntos de la oferta>",
+  "mostrado": "<el texto literal de los cinco puntos de la oferta>",
   "digest": "<sha256 de `mostrado`>",
   "momento": "2026-01-01T00:00:00+00:00",
-  "alcance": {"worktree": "/ruta/absoluta", "paneles_max": 2, "roles": ["w1", "w2"]}
+  "alcance": {"worktree": "/ruta/absoluta", "paneles_max": 2, "roles": ["w1", "w2"], "abrir_sesion": true}
 }
 ```
+
+**`alcance.abrir_sesion` registra la respuesta al punto de apertura, y su lectura es trivaluada.**
+Existe porque abrir la sesión del conductor y correr los workers como paneles son **dos efectos
+distintos** sobre la máquina de quien consiente, y una autorización inferida del texto de `mostrado`
+no es verificable: hay que poder señalar el campo que la concede.
+
+| Valor | Qué significa | Qué autoriza |
+|---|---|---|
+| `true` | el usuario aceptó el punto de apertura | abrir la sesión en el destino |
+| `false` | el usuario lo rechazó explícitamente | nada; el flujo va a la clasificación del launcher |
+| **ausente** | el consentimiento es **anterior a esta capacidad** y se dio sobre un texto que prometía apertura manual | nada |
+
+**Solo el valor verdadero autoriza.** Distinguir el falso de la ausencia importa: el primero es una
+decisión que el usuario tomó, y la segunda es una pregunta que nunca se le hizo. Ninguno de los dos
+concede, pero solo el segundo obliga a decirle que su consentimiento es anterior a la capacidad.
+
+**Las combinaciones son tres, y no cuatro.** La apertura **no se ofrece sin workers**: esa
+combinación es la única que no sobrevive a una retoma mientras el adaptador no recupere una señal de
+workers, así que no se ofrece y no hay documento que la represente. Las tres que sí existen:
+
+Vía consentida **con** apertura:
+
+```json
+{
+  "corrida": ".plans/<id>/transporte-corrida.jsonl",
+  "mostrado": "<los cinco puntos>", "digest": "<sha256>", "momento": "<ISO-8601>",
+  "alcance": {"worktree": "/ruta/absoluta", "paneles_max": 2, "roles": ["w1", "w2"], "abrir_sesion": true}
+}
+```
+
+Vía consentida **sin** apertura — mismos campos de workers, la clave en falso:
+
+```json
+{
+  "corrida": ".plans/<id>/transporte-corrida.jsonl",
+  "mostrado": "<los cinco puntos>", "digest": "<sha256>", "momento": "<ISO-8601>",
+  "alcance": {"worktree": "/ruta/absoluta", "paneles_max": 2, "roles": ["w1", "w2"], "abrir_sesion": false}
+}
+```
+
+Vía **rechazada** — y acá **no hay consentimiento que mostrar**, porque su contenido es la ausencia
+del documento. Lo que se observa es el frontmatter del flujo, sin bloque `transporte`:
+
+```yaml
+---
+status: implementing
+branch: feature/<id>
+# sin bloque `transporte`: la vía no se consintió, así que no se creó archivo de consentimiento
+---
+```
+
+**El `esquema` del bloque no sube por este campo, y eso es deliberado.** Subirlo haría que toda
+instalación cuyo adaptador siga en la versión anterior degrade la retoma a headless, porque un
+esquema que no interpreta es su señal de degradación. La compatibilidad la da la **lectura
+trivaluada**: un consentimiento viejo no trae la clave, y la ausencia no autoriza. Por eso el
+puntero a la corrida va **siempre presente** — al no existir la combinación sin workers, no hay
+caso en que falte, y ningún consumidor del bloque cambia.
 
 `alcance` es lo que la elección autorizó, y el adaptador lo hace cumplir al crear cada panel: un `cwd` fuera del worktree, un rol no enumerado o un panel de más que `paneles_max` salen con `consentimiento-invalido` o `consentimiento-agotado` y **no crean nada**. Es la diferencia entre registrar la elección y **acotarla**: sin `alcance`, consentir una vez autorizaría cualquier cantidad de paneles en cualquier directorio.
 
