@@ -1451,8 +1451,10 @@ if ($NativeExit -ne 0) {
 
 Después de traslado, seed y startup, pasar a `verifying` y volver a comprobar destino canónico,
 rama y SHA. Toda operación Git usa `git -C`. Publicar `ready` primero en el destino y después en el
-origen; la autoridad se transfiere solo cuando ambos handoffs coinciden y sus back-pointers resuelven.
-Un `ready` aislado nunca habilita launcher.
+origen; **la autoridad del paquete** —qué documento de retomado manda— se transfiere solo cuando
+ambos handoffs coinciden y sus back-pointers resuelven. Un `ready` aislado nunca habilita launcher.
+**Esa es la única autoridad que el doble `ready` transfiere:** la **conducción de la sesión** es otra,
+ninguna superficie medida la acredita, y quien la constata es el usuario mirando la pantalla.
 
 ```sh
 actual_path=$(git -C "$worktree_path" rev-parse --show-toplevel) || exit 80
@@ -1521,17 +1523,26 @@ autorización se lee **de ahí**, no del bloque.
 
 1. Resolver el puntero `consentimiento`. **Sin bloque `transporte` no hay vía consentida:** se va
    directo al comando impreso.
-2. Leer el JSON y **recomputar el digest sobre `mostrado`**. Si no coincide, o el documento no
-   parsea, se va directo al comando impreso informando que el consentimiento no es legible.
+2. Leer el JSON y **recomputar el digest sobre `mostrado`**. Si el puntero no resuelve, el documento
+   no parsea o el digest no coincide, **no hay autorización vigente y tampoco se salta al comando
+   impreso: enruta al paso 6**, informando que el consentimiento no es legible.
 3. Leer `alcance.abrir_sesion`, con la lectura trivaluada de «El consentimiento». **Solo el valor
    verdadero autoriza.** El valor **falso no salta al comando impreso: enruta al paso 6**, porque es
    la clasificación la que decide si corresponde imprimirlo. La **ausencia** también enruta al paso 6,
    informando que ese consentimiento es anterior a esta capacidad.
 
-**Por qué el falso enruta y el bloque ausente no.** Sin bloque nunca se creó nada en el destino, así
-que no hay conductor que duplicar. Con la vía consentida y la apertura rechazada sí pudo quedar algo
-en pie de una corrida anterior, y ahí imprimir sin clasificar es exactamente lo que abre un segundo
-conductor.
+**Por qué el bloque ausente es la única salida directa.** Sin bloque `transporte` el flujo nunca
+eligió una vía, así que nada de esta receta pudo correr en el destino y no hay conductor que
+duplicar. En los tres casos restantes —apertura rechazada, ausente o ilegible— la vía **sí** se
+consintió y pudo quedar algo en pie de una corrida anterior, y ahí imprimir sin clasificar es
+exactamente lo que abre un segundo conductor.
+
+**Que la autorización no se pueda leer no vuelve seguro el fallback: lo vuelve obligatorio de
+clasificar.** Un consentimiento se corrompe **después** de haber sido escrito, así que un JSON
+ilegible es perfectamente compatible con una apertura automática ya ocurrida. Ninguna de las tres
+salidas autoriza a abrir —eso solo lo hace el valor verdadero—; lo que deciden es otra cosa, si
+corresponde imprimir, y eso lo resuelve el paso 7. Cuando la identidad no se puede determinar, el
+destino es `identidad incierta` y no el comando impreso.
 
 #### Paso 1 — de dónde sale cada identificador
 
@@ -1564,16 +1575,39 @@ se vuelve a abrir. En Orca no hay verbo de apertura separado.
 | Plataforma | Comando | Observable de éxito | Cota |
 |---|---|---|---|
 | `herdr` | `herdr agent start <nombre> --kind <familia> --pane <panel raíz>` | `herdr agent get <nombre>` responde con la familia esperada | 30 s |
-| `orca` | `orca terminal create --worktree path:<destino> --command '<payload>' --focus --json` | la entrada del handle devuelto trae `worktreePath` igual al destino y `agentIdentity` igual a la familia | 30 s |
+| `orca` | `orca terminal create --worktree path:<destino> --command '<payload>' --focus --json` | sondeando `orca terminal list --worktree path:<destino> --json`, la entrada cuyo `handle` es el que devolvió la creación trae `worktreePath` igual al destino y `agentIdentity` igual a la familia | 30 s |
 
 **El selector de worktree de Orca es obligatorio y explícito.** Sin él la primitiva cae en el
 worktree **activo de la interfaz** y no en el del proceso: está medido, y con el `cwd` fuera de un
 worktree el terminal terminó en otro proyecto del usuario.
 
+**La creación devuelve un `handle`, y el observable no está en su respuesta.** `worktreePath` y
+`agentIdentity` viven en la proyección de `terminal list`, no en la de `terminal create`, y
+`agentIdentity` **llega por detección** cuando el agente ya arrancó — por eso hay cota, y por eso se
+sondea en vez de leerse una sola vez. Es el mismo patrón que el adaptador ya usa para los workers:
+toma el `handle` de la respuesta, resuelve el worktree consultando `terminal list` y espera a que
+`agentIdentity` alcance la familia. Sin nombrar esa consulta, el conductor no tiene qué sondear
+durante la cota y no puede distinguir el éxito de un terminal sin agente.
+
+Dos ausencias, y **no son el mismo resultado**:
+
+- **El `handle` no aparece** en la lista dentro de la cota. No hay terminal consultable para esa
+  creación —el CLI advierte que puede caer en un handle de fondo si la interfaz no lo adopta—, así
+  que el destino queda sin terminal atribuible.
+- **El `handle` aparece con su `worktreePath`, y `agentIdentity` no alcanza la familia** dentro de la
+  cota. Eso es un **terminal sin agente**, que es exactamente el caso que el paso 6 reconcilia por
+  separado: el terminal es un residual que se declara, no un éxito a medias.
+
+Las dos van al paso 7, y ahí la cota vencida clasifica `identidad incierta`, nunca `sin conductor
+activo`: una ausencia observada dentro de una cota no es una ausencia acreditada.
+
 **Procedencia de cada rama.** La de Herdr está **medida en vivo**, con su comando, versión, salida
-acotada y fecha en la bitácora del flujo. La de Orca **no se corrió en vivo**: se deriva del schema
-de su CLI y de las mediciones del flujo previo, y por eso su observable es el que ese schema sostiene
-y no uno inventado.
+acotada y fecha en la bitácora del flujo. En Orca, la **creación no se corrió en vivo** —crear un
+terminal es un efecto sobre la máquina del usuario, y medirlo exige producirlo—, así que ese comando
+se deriva del schema de su CLI y de las mediciones del flujo previo. Lo que **sí** se midió es la
+**consulta**, que es read-only y está en la bitácora con sus cuatro campos: `orca terminal list
+--json` proyecta `handle`, `worktreePath` y `agentIdentity`, y `agentIdentity` falta en las entradas
+sin agente. Por eso el observable es el que esa proyección sostiene y no uno inventado.
 
 #### Paso 4 — entregar el prompt
 
@@ -1597,8 +1631,9 @@ Va junto, en la misma línea, porque separarlo deja el verde leyéndose como má
 esperada; y, en Herdr, que ese agente pasó a `working` después del envío. **No acredita** que
 **la transición provenga exclusivamente de ese envío** —una intervención concurrente puede
 simularla—;
-que el agente haya consumido el prompt; ni que la autoridad se haya transferido. **Eso lo constata el
-usuario mirando la pantalla.**
+que el agente haya consumido el prompt; ni que **la conducción de la sesión** se haya transferido —
+que es la autoridad que ninguna superficie acredita, distinta de la del paquete, que el doble `ready`
+sí transfiere. **Eso lo constata el usuario mirando la pantalla.**
 
 #### Paso 6 — reconciliar una retoma, por subpaso y por plataforma
 
@@ -1672,11 +1707,12 @@ alternativa, y un agente sin esta línea puede tomarlo por una vía legítima.
 
 ---
 
-En las **cuatro ramas manuales** —plataforma sin capacidad, apertura rechazada, permiso no concedido,
-y automatización que terminó en `sin conductor activo`— se comprueba el CLI de la familia conductora
-y se muestra un comando **para abrir una sesión nueva**. En las tres últimas **la clasificación del
-paso 7 corre primero**: el comando sale solo si de ahí resulta que no hay conductor activo. La sesión
-actual no cambia cwd, no hace checkout y no despacha nada:
+En las **cuatro ramas manuales** —plataforma sin capacidad, **autorización de apertura no vigente**
+(rechazada, ausente o ilegible), permiso no concedido, y automatización que terminó en `sin conductor
+activo`— se comprueba el CLI de la familia conductora y se muestra un comando **para abrir una sesión
+nueva**. En las tres últimas **la clasificación del paso 7 corre primero**: el comando sale solo si de
+ahí resulta que no hay conductor activo. La sesión actual no cambia cwd, no hace checkout y no
+despacha nada:
 
 ```sh
 quoted_path=$(printf '%s' "$worktree_path" | sed "s/'/'\\\\''/g")
@@ -1736,8 +1772,10 @@ La idea era que la vía por terminales cerrara además el traspaso de autoridad 
 falta un handshake: para que no exista un instante con dos sesiones creyendo que conducen, o ninguna.
 
 **Ese handshake no existe, y eso está medido.** `lanzar-conductor` devuelve `mecanica-no-obtenida` en
-las dos plataformas. De modo que la mudanza es enteramente manual: una persona ejecuta el comando
-impreso y con eso queda conduciendo la sesión nueva.
+las dos plataformas. De modo que **lo que queda manual es el traspaso de la conducción, y no la
+mudanza**: la sesión del destino la abre la plataforma cuando puede, y lo que ninguna superficie
+acredita es que sea ella la que conduce — eso lo constata el usuario mirando la pantalla. En las
+cuatro ramas que la receta enumera, además, la abre él mismo ejecutando el comando impreso.
 
 **Por qué, y no es una opinión de diseño.** Cinco rondas de revisión, y cada intento de acreditar la
 transferencia por observación acotó una superficie y dejó elegible la contigua:
