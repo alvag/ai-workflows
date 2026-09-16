@@ -1272,8 +1272,8 @@ El prompt vive en `assets/prompts/review.md` — es la **entrada exacta** del wo
 
 
 `{dimensiones}` se sustituye por la fila completa del `artifact_type` de "Dimensiones de
-inspección" más los cuatro encargos de forma, como lista enumerada `D1..D10`. `D1..D6` siguen el
-orden de la fila; `D7..D10`, el orden de los encargos de forma.
+inspección" más los cinco encargos de forma, como lista enumerada `D1..D11`. `D1..D6` siguen el
+orden de la fila; `D7..D11`, el orden de los encargos de forma.
 
 Sobre `<constraints>`: las tres prohibiciones evitan que el revisor se disperse —sin ellas, uno
 consultó memoria y buscó en la web antes de mirar el artefacto—, pero la cuarta línea es igual de
@@ -2118,7 +2118,7 @@ sesiones **en la misma copia del directorio**, no entre máquinas ni entre check
 `co-explore` el conductor es **autor de la mitad del insumo y árbitro a la vez**, así que sin esa
 autorización explícita el paso dejaría fuera lo único que nadie más mira.
 
-### Capa transversal — cuatro encargos de forma
+### Capa transversal — cinco encargos de forma
 
 Se entregan **además** de la fila del tipo, en todos los tipos. Ninguna dimensión específica los
 cubre, y las dos primeras destaparon en la corrida que produjo esta spec los defectos que ninguna
@@ -2130,6 +2130,7 @@ lectura había cuestionado:
 | implementación más floja | "¿cuál es la implementación más floja que satisface **todo** lo que pide y **no** resuelve el problema? Nombrala concretamente" |
 | malentendido de buena fe | "¿qué malentendería un implementador de buena fe que no estuvo en la conversación que produjo esto?" |
 | ausencia no pedida | "¿qué falta que nadie pidió? Despliegue, migración, interacción con lo que ya existe" |
+| presencia no pedida | "¿qué **sobra**? Nombrá lo que este artefacto manda hacer y ningún criterio reclama: alcance, abstracciones de un solo uso, configurabilidad, validaciones y manejo de error que nadie pidió, comentarios que repiten lo que ya dice. Si no sobra nada, decilo" |
 
 ### Invariantes de la sede
 
@@ -2138,8 +2139,8 @@ Fusionar dos exige demostrar que dejaron de producir contraejemplos distintos.
 
 ### Proyección al prompt
 
-`{dimensiones}` se sustituye por la fila completa del `artifact_type` más los cuatro encargos de
-forma, como lista enumerada `D1..D10` — no como frase interpolada. La rendición se pide sobre **esos
+`{dimensiones}` se sustituye por la fila completa del `artifact_type` más los cinco encargos de
+forma, como lista enumerada `D1..D11` — no como frase interpolada. La rendición se pide sobre **esos
 mismos** IDs.
 
 **La correspondencia ID→dimensión es normativa y fija**, porque la rendición se emite por ID y dos
@@ -2152,6 +2153,14 @@ productores que intercambien dos IDs producirían rendiciones incomparables sin 
 | D8 | implementación más floja |
 | D9 | malentendido de buena fe |
 | D10 | ausencia no pedida |
+| D11 | presencia no pedida |
+
+**Desde cuándo rige un encargo nuevo, y qué pasa con las revisiones vivas.** El corte es la **ronda
+despachada**, no la corrida: toda ronda despachada después de que el encargo se incorpora lo entrega
+y pide su rendición, **aunque la revisión haya empezado antes** —también si estaba pausada entre
+rondas o entre tandas—. Las rondas ya emitidas **conservan su rendición** y el significado de sus
+identificadores, que no se reasignan: por eso agregar al final es lo que permite este corte, y
+reasignar lo haría imposible.
 
 ## Plantilla de review-log.md
 

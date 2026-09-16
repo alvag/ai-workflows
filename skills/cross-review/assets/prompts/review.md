@@ -10,8 +10,8 @@ LECTURA: no modifiques archivos. Puedes leer el código del repo en {working_dir
 pero no edites nada. Tu objetivo es cazar problemas que cuesten caro después recorriendo estas
 dimensiones:
 
-{dimensiones — lista enumerada D1..D10: las seis dimensiones del artifact_type en su orden
-normativo, seguidas por los cuatro encargos de forma con su consigna literal}
+{dimensiones — lista enumerada D1..D11: las seis dimensiones del artifact_type en su orden
+normativo, seguidas por los cinco encargos de forma con su consigna literal}
 </task>
 
 <artifact>
@@ -59,6 +59,7 @@ COBERTURA:
 - D1: examinada-sin-hallazgos | examinada-con-hallazgos | no-examinable — <motivo>
 - ...
 - D10: examinada-sin-hallazgos | examinada-con-hallazgos | no-examinable — <motivo>
+- D11: examinada-sin-hallazgos | examinada-con-hallazgos | no-examinable — <motivo>
 
 Emite una línea por cada dimensión entregada en `{dimensiones}`, con exactamente uno de los tres
 estados. `no-examinable` exige motivo. La rendición es exhaustiva: omitir una dimensión hace la

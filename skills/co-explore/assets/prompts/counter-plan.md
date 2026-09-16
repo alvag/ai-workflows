@@ -22,6 +22,8 @@ ANEXO (solo si este worker quedó READY en la fase explore):
 Propón tu propio contra-enfoque: qué tocarías, qué reusarías, en qué orden, y qué riesgos ves.
 Las entradas de tipo "hipótesis" llevan acá el peso del informe: ahí va tu enfoque, paso por
 paso. Referencia todo con path:line.
+Que tu enfoque sea el más simple entre los que cumplen los criterios de aceptación: la simplicidad
+se subordina al cumplimiento, no compite con él.
 Calibra cada entrada a lo que necesita: los pasos del enfoque, con su fundamento, y nada de
 preámbulos, recapitulaciones ni boilerplate. Esto es sobre cuánto escribes POR entrada, no sobre
 cuántas emites: no dejes un riesgo o un reúso afuera para ser breve.
