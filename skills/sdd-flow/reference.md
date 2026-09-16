@@ -6649,33 +6649,26 @@ verde después del refactor. No se agrega vocabulario ni maquinaria nueva: el en
 tiene ese estado y ya obliga a adjudicar por qué la fila cuenta igual, que es exactamente lo que acá
 hay que declarar.
 
-**Si ningún test cubre el comportamiento afectado**, una task lo escribe antes de tocar el código —
-anterior, en el orden de `tasks.md`, a la que mueve la implementación. Un test escrito después fija
-lo que el refactor dejó, no lo que había: no caracteriza nada.
+**Si ningún test cubre el comportamiento afectado**, ese test se escribe antes de tocar el código y
+**no dentro del mismo flujo**: va en un flujo propio —`change_type: test`—, y el refactor se planifica
+después contra una base que ya lo tiene. Un test escrito luego del refactor fija lo que el refactor
+dejó, no lo que había: no caracteriza nada.
 
-**Cuándo se mide esa fila, porque en `plan` todavía no se puede.** El contrato se deriva y se mide
-sobre el commit base, y ahí el test que la task va a escribir **no existe**: correr su comando
-devuelve que el archivo falta, que no es el rojo que discrimina —lo ausente es el test, no el
-comportamiento— ni el verde que la fila necesita. Es la misma confusión que el paso `implement` ya
-advierte para un comando acotado a un archivo que el flujo creó, y acá muerde en el otro extremo del
-flujo. La secuencia que sí cierra usa dos versiones del contrato y ninguna maquinaria nueva:
+**Por qué un flujo aparte y no una task anterior del mismo**, que es lo que uno escribe primero. Un
+flujo mide y congela su contrato sobre el commit base, así que la fila de un test que todavía no
+existe no se puede medir ahí: su comando devuelve que falta el archivo, y eso no es el rojo que
+discrimina —lo ausente es el test, no el comportamiento— ni el verde que la fila necesita. Diferirla a
+una versión posterior del contrato tampoco sale, y por tres precondiciones que se acumulan:
 
-| # | Qué | Baseline, y sobre qué commit |
-|---|---|---|
-| 1 | `v1` cubre la task caracterizadora: su criterio es que exista un test que fije el comportamiento afectado y pase sobre el árbol sin refactorizar | `RED` sobre el commit base. El rojo es honesto: ahí la afirmación "existe ese test" **es** falsa, y eso es lo que la fila distingue |
-| 2 | se implementa esa task y su commit entra al árbol | — |
-| 3 | `v2`, con la operación `cobertura-agregada` y su aprobación, agrega la fila del refactor con ese mismo comando | el estado adjudicado `already_satisfied`, medido **sobre el commit del paso 2** y no sobre el commit base |
-| 4 | recién con `v2` congelada se mueve la implementación | — |
+| Precondición del flujo | Qué la rompe |
+|---|---|
+| la cobertura entre requisitos en alcance y filas cierra **en las dos direcciones** antes de congelar | el criterio del refactor quedaría sin fila en la primera versión |
+| el flujo tiene **un** commit, y solo se llega a él con todos los criterios en verde | la task del test tendría que commitear a mitad de `implement`; el único commit intermedio previsto es el WIP de la pausa, que es plomería descartable |
+| refrescar las claves congeladas durante la implementación exige ledger terminal, paquete histórico, owner y recibo | eso es la maquinaria de rotación, no un camino ordinario |
 
-**El registro de baseline es por fila y declara su propio `commit`**, así que dos filas de la misma
-versión pueden haberse medido sobre commits distintos. Eso es lo que vuelve representable el paso 3
-sin inventar nada: la fila del refactor declara el commit que trajo el test. Lo que **no** es una
-salida es declararla `NOT_APPLICABLE`: ese estado es para una inaplicabilidad semántica, y acá la
-medición sí aplica, solo que todavía no se puede hacer.
-
-**Si la brecha de cobertura es grande**, la alternativa es sacar el test a su propio flujo
-—`change_type: test`— y planificar el refactor contra una base que ya lo tenga. Cuesta un flujo más y
-a cambio el refactor entra con una sola versión de contrato.
+Con el test ya en la base, la fila del refactor se mide como cualquier otra y el flujo entra con una
+sola versión de contrato. Cuesta un flujo más, y compra que la obligación sea ejecutable por el camino
+ordinario en vez de exigir una transición que hoy no existe.
 
 **Los tests que ya existen sirven**, si cubren el comportamiento afectado. Se declaran como la fila
 del contrato con su `GREEN_ALREADY` medido, y la adjudicación nombra qué comportamiento cubre ese
