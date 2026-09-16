@@ -886,7 +886,7 @@ Antes de que exista `plan.md` (fase `specify`/`clarify`, o el gate de Jira), no 
 
 Documento de **retomado** del flujo —"dónde quedé, qué decidí y cómo sigo"— en `.plans/<id>/handoff.md` (frontmatter + narrativa): todo el estado del flujo queda junto en `.plans/<id>/` —donde `resume` ya escanea—, sin partirlo en carpetas aparte ni acoplar `sdd-flow` a otra skill. Es local y untracked como el resto (regla #10).
 
-**Se escribe/actualiza en tres situaciones del flujo base:** `pause`, `publish-spec` y `create-branch`; la preflight agrega el cierre de la decisión de ubicación, el primer efecto, cada etapa, fallo, abandono y mitad del doble `ready`, y los escritores `plan` y `resume` mantienen el documento. Cada escritor fusiona la identidad worktree, el perfil, el riesgo y `spec_approved_at` para que una rama nunca implique aprobación; `publish-spec` agrega los campos del gate externo. Momentos, autoridad y escritura atómica: `reference.md` → "Preflight Git y worktree" y "Plantilla de `handoff.md`".
+**Se escribe/actualiza en tres situaciones del flujo base:** `pause`, `publish-spec` y `create-branch`; la preflight agrega el cierre de la decisión de ubicación, el primer efecto, cada etapa, fallo, abandono y mitad del doble `ready`, y los escritores `plan` y `resume` mantienen el documento. Cada escritor fusiona la identidad worktree, el perfil, el riesgo y `spec_approved_at` para que una rama nunca implique aprobación, y preserva el bloque `transporte` si el flujo lo tiene; `publish-spec` agrega los campos del gate externo. Momentos, autoridad y escritura atómica: `reference.md` → "Preflight Git y worktree" y "Plantilla de `handoff.md`".
 
 **Estructura:** frontmatter YAML con los campos máquina + cuerpo narrativo legible. Plantilla completa en `reference.md` → "Plantilla de `handoff.md`".
 
@@ -930,9 +930,10 @@ overrides: { branch_prefix: null, base_branch: null, cross_review: null, impleme
 > y no debe cargarlo** — por eso el detalle está divulgado y no inline.
 >
 > Ahí están: el listado y la elección del flujo; la navegación a la rama correcta con su clasificador
-> durable de ubicación; el routing por `status`, incluida la celda de los flujos heredados y la de
-> cuarentena; la guarda de retomado con bloques en vuelo; el gate de Jira al retomar; y los sub-pasos
-> `status`, `doctor` y `pause`.
+> durable de ubicación; **el consumo del bloque `transporte`**, que resuelve por qué vía sigue la
+> retoma antes de enrutar y es lo que impide que la vía se vuelva a ofrecer; el routing por `status`,
+> incluida la celda de los flujos heredados y la de cuarentena; la guarda de retomado con bloques en
+> vuelo; el gate de Jira al retomar; y los sub-pasos `status`, `doctor` y `pause`.
 
 ## Paso `implement`
 

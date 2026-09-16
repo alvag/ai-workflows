@@ -907,7 +907,9 @@ foreach ($Existing in $PostWorktrees) {
 
 El primer efecto no es `git worktree add`: es publicar en el handoff autoritativo del origen la
 intención `creating`. Todo escritor posterior —`pause`, `publish-spec`, `plan`, `resume`— fusiona y
-preserva estos campos:
+preserva estos campos, **y con ellos el bloque `transporte` si el flujo lo tiene**: un escritor que lo
+pierda deja a la retoma leyendo un bloque ausente, indistinguible de un flujo que nunca eligió
+plataforma.
 
 ```yaml
 worktree_location: worktree
@@ -1607,15 +1609,25 @@ Si el fallo fue `timeout:<cota>`, el reintento puede aumentar explícitamente la
 primitiva del conductor, sin persistir otra clave ni repetir operaciones ya acreditadas.
 
 El orden de resolución es fijo: **celda del pedido → clasificador de secuencia → terminal
-`abandoned` → decisión de ubicación → demás valores de `worktree_status` → routing por fase**.
+`abandoned` → decisión de ubicación → demás valores de `worktree_status` → transporte → routing por fase**.
+
+**El transporte entra como eslabón propio, y su lugar no es decorativo.** Va después de que la
+ubicación esté resuelta —porque el documento de retomado que se consulta es el del paquete vivo, no
+el del snapshot— y **antes** de todo routing, porque el routing por fase es justamente el que puede
+volver a ofrecer la vía. Lo ejecuta `resume`, en su item `1d`; **`doctor` no invoca** el adaptador y
+se limita a reportar lo que el documento de retomado declara, que es coherente con que nunca escriba.
+
+**Y el orden no alcanza si una celda enruta por su cuenta.** Por eso ninguna fila de la tabla de
+abajo continúa hasta el routing: cada una resuelve **ubicación** y entrega al eslabón del transporte,
+que es el que sigue.
 
 | Ubicación durable | Routing |
 |---|---|
-| cualquier ubicación con `worktree_status: abandoned` | flujo no trasladado; no volver a ofrecer worktree |
-| `current` sin `worktree_status`, handoff ausente o sin `worktree_location` | flujo no trasladado; usa el routing vigente |
-| `worktree` sin `worktree_status` | intención no materializada; `resume` ofrece materializar desde `origin_sha` (recomendado) o escribir `abandoned`; `doctor` solo informa |
-| `worktree` en `creating`…`verifying` o `failed` | diagnosticar desde el origen; el destino no continúa ni navega |
-| `worktree` con doble `ready` | seguir el paquete vivo sin checkout; antes de `specify`, evaluar `co_explore` como en el ciclo completo, o entrar al plan combinado si es trivial |
+| cualquier ubicación con `worktree_status: abandoned` | flujo no trasladado; no volver a ofrecer worktree. Sigue por el eslabón del transporte |
+| `current` sin `worktree_status`, handoff ausente o sin `worktree_location` | flujo no trasladado; sigue por el eslabón del transporte y recién después por el routing vigente |
+| `worktree` sin `worktree_status` | intención no materializada; `resume` ofrece materializar desde `origin_sha` (recomendado) o escribir `abandoned`; `doctor` solo informa. Materializada o abandonada, sigue por el eslabón del transporte |
+| `worktree` en `creating`…`verifying` o `failed` | diagnosticar desde el origen; el destino no continúa ni navega. **No** entrega al transporte: no continúa |
+| `worktree` con doble `ready` | seguir el paquete vivo sin checkout; sigue por el eslabón del transporte y recién después, antes de `specify`, evalúa `co_explore` **con el transporte ya resuelto**, o entra al plan combinado si es trivial |
 
 Para `ready`, el origen se clasifica como snapshot no autoritativo y sigue el puntero al paquete vivo.
 Ruta ausente, ruta accesible sin `.plans/<id>/` y paquete vivo son tres resultados distintos; los dos
@@ -1662,7 +1674,21 @@ Punto de entrada para un flujo empezado. `.plans/` es visible entre ramas del mi
    - **Se ramifica por la celda que el bloque imprime, no por su código de salida.** El código solo dice si resolvió alguna: con `1` —el árbol no encaja en ninguna celda— o con `2` —invocación mal formada— **no se enruta por ninguna rama**, y el paso se detiene informando qué se observó.
    - **Las ocho salidas, en orden de precedencia, viven en `reference.md` → "Salidas del routing de resume ante el pedido"**, que es su sede única: la primera fila que coincide manda y no se sigue mirando. Ahí está también el procedimiento de cuarentena, que exige confirmación humana y nunca es automático.
    - **Flujo heredado**: con el marcador ausente, el paquete ausente y el directorio no vacío, el flujo se abrió antes de este contrato. Sigue por las ramas vigentes y **la vara** queda declarada **no aplicable** en el retomado: no se falla, y tampoco se adopta un pedido que nadie capturó para este flujo.
-1c. **Después de la celda del pedido**, ejecutar el clasificador de secuencia read-only y, solo si permite seguir, resolver primero el terminal `abandoned`, luego ubicación y los demás valores de `status`: `abandoned`, routing local sin reofrecer; sin `worktree_location` o con `current`, routing local; `worktree` sin status, ofrecer materializar desde `origin_sha` —recomendado— o escribir `abandoned`; estado parcial, diagnosticar evidencia y operar solo desde `origin_worktree`; doble `ready`, seguir el paquete vivo del destino, volver a resolver allí la celda y, pre-spec, evaluar `co_explore` como el ciclo completo o entrar al plan combinado si es trivial. Puntero ausente, destino sin paquete y paquete vivo son distintos; no hay checkout, stash, rename, prune, limpieza ni recreación automática. Matriz: `reference.md` → "Preflight Git y worktree".
+1c. **Después de la celda del pedido**, ejecutar el clasificador de secuencia read-only y, solo si permite seguir, resolver primero el terminal `abandoned`, luego ubicación y los demás valores de `status`: `abandoned`, no se vuelve a ofrecer worktree; sin `worktree_location` o con `current`, el flujo no se trasladó; `worktree` sin status, ofrecer materializar desde `origin_sha` —recomendado— o escribir `abandoned`; estado parcial, diagnosticar evidencia y operar solo desde `origin_worktree`; doble `ready`, seguir el paquete vivo del destino y volver a resolver allí la celda. Puntero ausente, destino sin paquete y paquete vivo son distintos; no hay checkout, stash, rename, prune, limpieza ni recreación automática. Matriz: `reference.md` → "Preflight Git y worktree".
+   - **Acá termina `1c`, y el corte es la mitad del arreglo.** Resolver la ubicación es lo que este item hace; **enrutar no**. Lo que sigue es el item `1d`, y recién después el routing por fase —incluida la evaluación de `co_explore` como el ciclo completo, y la entrada al plan combinado en un trivial—. El corte existe porque una frase general de orden **no invalida una instrucción local que se ejecuta antes**: mientras esta celda enrutaba por su cuenta, el conductor llegaba al ciclo completo —que **contiene la oferta de vía de transporte**— sin haber pasado por el consumo, y la vía se volvía a ofrecer en cada retoma.
+1d. **Resolver el transporte, antes de enrutar por fase.** Cerrada la ubicación en `1c`, y **antes de todo routing** —incluida la evaluación de `co_explore` como el ciclo completo, la entrada al plan combinado de un trivial y el routing por `status` del paso 6—, la retoma resuelve por qué vía corre. Ocurre **una sola vez por retoma**, sea cual sea la fase del flujo. La autoridad de qué pasa en cada caso es `reference.md` → "El bloque `transporte` y la retoma", con su matriz de cinco casos: acá se ordena la invocación y cómo se lee, no se reescribe esa matriz ni se le agrega una celda.
+   - **El comando**, sobre el documento de retomado del **paquete vivo** —nunca el del snapshot de origen, que para una ubicación `ready` no es autoritativo—:
+
+     ```sh
+     python3 skills/co-explore/scripts/terminal.py --retomar <documento de retomado>
+     ```
+
+   - **Se invoca sin el argumento de identidad de sesión, y eso es una decisión con dos límites medidos, no un olvido.** Primero: este repositorio **no tiene hoy una autoridad de identidad de sesión** que ese argumento pueda consumir, así que escribirlo obligaría a inventarle un valor. Segundo: el adaptador compara esa identidad contra el propietario que el ledger de la corrida declare, y **ese evento está sin productor** — ninguno de los verbos que escriben el ledger lo asienta, solo lo fabrican los autotests del propio adaptador. El adaptador admite el argumento ausente, y mientras no exista el productor tampoco lo lee. La sede documenta la forma general con esa bandera, para el día que la identidad exista; hasta entonces **no se materializa**.
+   - **La adopción de una corrida viva ajena queda escrita y hoy es inalcanzable**, por lo anterior: la guarda que la exige no se dispara. Se escribe igual, porque el día que exista el productor tiene que estar decidida, y la decisión es **humana**: conceder reinvoca **una sola vez** agregando `--consentimiento-adopcion`, y no conceder toma el destino que la matriz da para esa causa sin adoptar nada. El conductor **nunca** pasa esa bandera por su cuenta.
+   - **Cómo se lee la salida.** `0` y `1` son **resultado consumible**, y el routing sale del campo `plataforma` del sobre: `0` cuando continúa por la plataforma registrada, `1` en cada una de las degradaciones, con su `causa`. **Cualquier otro código, una salida ausente o un sobre ilegible `detienen la retoma`**: no se enruta por ninguna rama y se informa qué se observó. Leer un fallo de ejecución como headless es leer «no pude» como «está bien».
+   - **Todo resultado consumible `no vuelve a ofrecer`, y eso vale para los dos códigos.** La sede declara `ofertas` **cero en las cinco filas** —la retoma no ofrece, sin excepción—, así que lo que este item consume no es la oferta de una rama sino la de **todas**: con `0` la retoma continúa por la plataforma registrada, y con `1` degrada informando su causa, pero en ninguno de los dos vuelve a preguntar por la vía. Ese efecto alcanza a **todo lo que corre después**: el routing por fase recibe el transporte ya resuelto, así que la evaluación de `co_explore` como el ciclo completo **no repite su oferta** ni con `0` ni con `1`. Pasar por este item **consume** esa oferta; precederla no alcanza, y confundir las dos cosas es lo que dejaba la vía ofreciéndose de nuevo en cada retoma.
+   - **Sin plataforma declarada en el documento de retomado, resuelve `headless para esa retoma`, y también `sin oferta`.** Es la primera fila de la matriz, y dice las dos cosas: *el flujo termina como empezó*. No hay acá una tercera semántica que separe al flujo que eligió headless del que nació antes de esta vía o del que se pausó antes de su checkpoint — los tres toman ese mismo destino y **ninguno reabre la oferta en esta retoma**. Si alguna vez hiciera falta distinguirlos, para que un flujo pausado antes de su checkpoint pudiera todavía elegir, eso **cambia la matriz canónica** y se hace por su gate: no se decide desde este item, que ordena la invocación y no reescribe la sede.
+
 2. Si `.plans/<id>/` **no** tiene `plan.md`, el flujo quedó pre-`plan`. **Leer `handoff.md` si existe** (narrativa + snapshot de `gather-context`: complejidad, tipo de cambio, prefijo, slug, rama base, overrides) — es lo que evita re-investigar el ticket o re-clasificar. Luego bifurcar, **en este orden**:
    - Si hay **`antecedentes.md` con `busqueda: terminal`** → el flujo se **cerró antes de la spec**, deliberadamente, porque el objetivo ya estaba cubierto. **No se reanuda**: su ledger sobrevive como registro de qué se buscó y qué se encontró, y sigue visible en el listado con ese estado y sin "siguiente paso". Va **primero** y como rama hermana: anidada bajo la de abajo era inalcanzable —su condición padre exige el estado contrario—, así que un flujo nombrado por su `<id>` caía en la última rama y reabría un cierre deliberado dando por escrita una spec que no existe.
    - Si hay **`antecedentes.md` con `busqueda: in-progress`** —haya handoff o no— → la pausa ocurrió **durante la búsqueda de antecedentes**. La condición arranca por el **artefacto** y no por un campo del handoff a propósito: `pause` escribe el handoff solo cuando la pausa es **ordenada**, y una sesión que muere, un `Ctrl-C` o un cierre de terminal dejan el ledger a medio correr sin handoff ninguno. Retomar así:
@@ -1792,7 +1818,7 @@ Muestra los mismos datos (`id · branch · estado · siguiente paso`) y, si se p
 solo ese flujo. La fuente de verdad sigue siendo `plan.md` (`status` + marcas `[x]`) o `handoff.md` en la ventana pre-`plan`; los snapshots worktree se rotulan aparte y siguen el puntero solo con destino y paquete presentes.
 
 ### Sub-paso `doctor` (diagnóstico read-only)
-Valida la coherencia **sin escribir**: celda del pedido → clasificador de secuencia → decisión de ubicación → status. Reporta identidad, etapa, evidencia, doble handoff, puntero y paquete worktree.
+Valida la coherencia **sin escribir**: celda del pedido → clasificador de secuencia → decisión de ubicación → transporte (**solo reportar, no invocar**) → status. Reporta identidad, etapa, evidencia, doble handoff, puntero y paquete worktree, y la plataforma que declare el bloque `transporte` si el flujo lo tiene. El eslabón es el mismo que el de `resume`, con la diferencia que separa a los dos sub-pasos: acá **no se invoca el adaptador**, porque invocarlo consumiría la oferta y resolvería una retoma que este sub-paso no está haciendo.
 `doctor solo reporta`; `resume agrega la propuesta`, el gate y la ejecución. `OK`/`WARN`/`FAIL` sigue
 siendo la severidad exterior, no una segunda clasificación. Los demás checks, el formato de salida y
 qué cuenta como ruido del working tree: `reference.md` → "Doctor read-only".
@@ -1807,7 +1833,7 @@ detección por MCP, el loop de observaciones y las escrituras con su STOP de wri
 ### Sub-paso `pause` (dejar un flujo a medias de forma segura)
 Aplica en **cualquier fase** del flujo, no solo `implement`. Al pausar:
 
-1. **Escribir/actualizar `handoff.md`** con fase, estado, próximo paso, decisiones y snapshot pre-plan. Preservar siempre ubicación, identidad, contexto, status/etapa/evidencia worktree. Durante antecedentes incluir su puntero; con pedido congelado, apuntar a `pedido/`, nunca copiarlo. Plantilla y momentos: `reference.md` → "Plantilla de `handoff.md`".
+1. **Escribir/actualizar `handoff.md`** con fase, estado, próximo paso, decisiones y snapshot pre-plan. Preservar siempre ubicación, identidad, contexto, status/etapa/evidencia worktree, y el bloque `transporte` si el flujo lo tiene. Durante antecedentes incluir su puntero; con pedido congelado, apuntar a `pedido/`, nunca copiarlo. Plantilla y momentos: `reference.md` → "Plantilla de `handoff.md`".
 2. **Si hay código sin commitear** en la rama del flujo (típicamente en `implement`): **WIP commit en la propia rama** (no `git stash`: el stash es global y se confunde/pierde entre flujos; un commit viaja con su rama): stagear solo `code_touched` y `git commit -m "wip(<id>): pausa sdd-flow"`. Este WIP es **inline a propósito** (no usa `/commit`): es plumbing mecánico y descartable que `resume` deshace con `git reset`, no un commit de contenido. Registrar en el header del `plan.md`: `status: implementing` + `wip_commit: <sha>`. Si además quedan archivos **ajenos** dirty (fuera de `code_touched`), avisarlo: no entran al WIP y quedan sueltos en el working tree — un checkout posterior puede arrastrarlos. (En fases sin `plan.md` ni código —`gather-context`, `specify`/`clarify`, gate de Jira— este paso no aplica: alcanza con el `handoff.md`.)
 3. Avisar que quedó pausado y cómo retomarlo (`resume` con el `<id>`). Al retomar, si hubo WIP commit, `resume` lo deshace dejando los cambios en el working tree **sin** stage (`git reset <wip_commit>^`, reset mixed — así el staging selectivo del Paso común sigue valiendo), **reconstruye `code_touched`** desde los archivos del WIP (`git show --name-only --pretty=format: <wip_commit>` — el set en memoria no sobrevive a la sesión) y limpia `wip_commit` del header. **Guard previo:** solo resetear si `git rev-parse HEAD` == `wip_commit`; si no coinciden (hubo commits posteriores al WIP), no tocar la historia — avisar y dejar que el usuario decida cómo integrar el WIP.
 
@@ -6829,7 +6855,8 @@ cloud_id: <uuid del sitio>
 > `SKILL.md` → "Precedencia con `plan.md`".
 
 Los campos de identidad, ubicación, contexto, status, etapa y evidencia del worktree son siempre
-autoridad del handoff y todo escritor los fusiona, incluso cuando ya existe `plan.md`. Se escriben en
+autoridad del handoff y todo escritor los fusiona, incluso cuando ya existe `plan.md`. El bloque
+`transporte` se preserva con ellos y por el mismo motivo. Se escriben en
 estos momentos: decisión `current` al cerrar el checkpoint; intención `worktree` al cerrarlo; estado
 `creating` antes del primer efecto; entrada y resultado de cada etapa; todo `failed` o `abandoned`;
 y el doble `ready`, primero en destino y luego en origen. `pause`, `publish-spec`, `plan` y `resume`
