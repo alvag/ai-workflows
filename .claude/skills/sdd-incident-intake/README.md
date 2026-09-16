@@ -43,8 +43,9 @@ volcar:    leer → mirar aguas arriba → publicar → cotejar → retirar
    despacha; un PR abierto sobre los mismos archivos va al gate.
 5. **Gate:** presenta la agrupación, la verificación, el estado aguas arriba y los descartados. Sin
    respuesta no avanza.
-6. Crea el worktree con Orca, **lo siembra** con la configuración ignorada que el flujo necesita,
-   escribe un dossier autocontenido y despacha el flujo — confirmando que arrancó de verdad.
+6. **Resuelve la plataforma de terminales**, crea el worktree, **lo siembra** con la configuración
+   ignorada que el flujo necesita, escribe un dossier autocontenido y despacha el flujo —
+   acreditando que arrancó por donde debía y con el encargo entero.
 7. Retira los incidentes tomados del índice **y** del cuerpo, y comprueba que no quedaron residuos.
    Si el incidente vino de un issue, el retiro es **cerrarlo** con su marca de resolución.
 
@@ -108,7 +109,9 @@ observó, el código a corregir vive en el repo de skills.
 
 ## Requisitos
 
-- **Orca** corriendo, con el `repo_destino` agregado (`orca repo list`). No hace falta en `volcar`.
+- **Una plataforma de terminales utilizable** —Herdr u Orca—, con el `repo_destino` alcanzable desde
+  ella. Cuál se usa **no se fija acá**: la resuelve el paso 6 consultando las identidades vivas, y un
+  override del usuario dirige esa resolución sin suplirla. No hace falta en `volcar`.
 - **`gh`** autenticado, solo para `volcar` y para leer desde `issues`.
 - Acceso al **remoto** del `repo_destino` para el `fetch` del paso 4. Para los PRs abiertos, `gh`
   autenticado (GitHub) o el MCP `bb_*` (Bitbucket): si no hay ninguno, el chequeo se reporta como
@@ -148,5 +151,5 @@ idéntico:
 | Archivo | Para quién |
 |---|---|
 | `SKILL.md` | El agente, en cada corrida: el invariante, los siete pasos, red flags |
-| `reference.md` | El agente, cuando `SKILL.md` lo manda: comandos de Orca, criterio de siembra, plantilla del dossier, mecánica del despacho, retiro y fallas |
+| `reference.md` | El agente, cuando `SKILL.md` lo manda: resolución de plataforma y comandos por cada una, criterio de siembra, plantilla del dossier, mecánica del despacho, retiro y fallas |
 | `README.md` | Humanos. No se lee en ejecución |

@@ -2,7 +2,8 @@
 name: sdd-incident-intake
 description: >-
   Admite registros de incidentes SDD. despachar verifica defectos y crea de a uno
-  y en secuencia un flujo sdd-flow por worktree de Orca; volcar crea GitHub issues
+  y en secuencia un flujo sdd-flow por worktree, sobre la plataforma de terminales que
+  resuelve; volcar crea GitHub issues
   con needs-triage sin arreglar; ambos retiran lo procesado. Usar ante “toma un
   incidente de una ruta”, “procesa incidentes”, “revisa N incidentes”, “vuelca
   incidentes a issues” o /sdd-incident-intake seguido de ruta. Excluye corregir
@@ -295,17 +296,22 @@ prompt se manda antes de que el registro se toque.
 
 ### 6.1 — Worktree
 
-Con `orca-cli`, desde la rama base del `repo_destino`, con `--agent <agente>`. Comandos exactos en
-`reference.md` → "Worktree con orca-cli".
+**Tres actos, en este orden y no en otro:** resolver la plataforma, clasificar el hook de setup del
+`repo_destino`, y recién entonces crear con la primitiva que esa clasificación elige. Comandos y
+matrices en `reference.md` → "Resolver la plataforma", "Clasificar el hook de setup" y "Crear el
+worktree", que se leen en ese orden.
 
-> **Verificar la base.** `worktree create` usa el base ref del repo —`origin/<default>`—, **no el
-> `main` local. Si el local está adelante, el worktree nace atrasado y nada lo señala.** Comparar el
-> `head` del JSON contra `git rev-parse main` y realinear si difieren.
+> **La plataforma se resuelve, no se elige por costumbre.** Se consultan las **dos** identidades y se
+> aplica la matriz. Un override del usuario **dirige** la resolución y no la suple: si la identidad
+> pedida no está viva, el despacho se detiene. Y `headless` es **parada**, no modo degradado: sin
+> plataforma utilizable no hay agente al que despachar, así que el registro queda intacto.
 
-> **Realinear es solo hacia adelante.** El paso 4 ya midió de qué lado está cada uno: si el que está
-> adelante es **`origin`**, el worktree nació **bien** y resetearlo al `main` local **le borra el
-> arreglo aguas arriba** — que es justamente lo que el paso 4 fue a buscar. Comprobarlo antes de
-> tocar nada, en `reference.md` → "Verificar la base — no es opcional".
+> **El hook se clasifica antes de crear, porque de él depende cómo se crea.** En Herdr, con hook
+> `ausente` o `reproducible` se crea con Git pasando el commit explícito —lo que **retira** el peligro
+> de que el árbol nazca atrasado en vez de obligar a comprobarlo— y el árbol se adopta después. En
+> Orca la primitiva es una sola, porque su CLI no tiene verbo de adopción: ahí la clasificación elige
+> la **política de setup**, y el peligro de base sigue vivo, así que se compara y se realinea **solo
+> hacia adelante**.
 
 ### 6.2 — Sembrar el entorno ignorado
 
@@ -345,10 +351,10 @@ git -C <repo_destino> status --porcelain --ignored=matching -uall | grep '^!!'
 `git status --porcelain` limpio, y que **el archivo esté en la ruta esperada**. Las dos primeras no
 detectan el anidamiento; la tercera sí.
 
-> **Antes de copiar, ver si el hook de setup del repo ya lo hizo.** Orca corre un script de setup por
-> repo al crear el worktree, y algunos repos ya siembran ahí (`orca repo show` →
-> `hookSettings.scripts.setup`). Si ya sembró, no volver a copiar encima: se pisan archivos que el
-> hook pudo adaptar al worktree.
+> **Antes de copiar, ver si el hook de setup ya lo hizo.** El paso 6.1 ya clasificó el hook y leyó su
+> autoridad en la plataforma resuelta; acá solo importa su consecuencia. Si clasificó `reproducible`
+> o `inseparable` y **corrió**, puede haber sembrado ya parte de esto: entonces no copiar encima, que
+> pisa archivos que el hook pudo adaptar al worktree. Con `ausente` no hay nada que mirar.
 
 ### 6.3 — Dossier
 
@@ -364,16 +370,20 @@ de que hubo una corrección.
 
 ### 6.4 — Despacho
 
-Mandar el flujo al agente del worktree y **confirmar que arrancó** leyendo el terminal. Mecánica del
-envío y modos de falla del transporte en `reference.md` → "Despachar el flujo".
+El prompt **apunta** al dossier, no lo transporta; el envío va en **tres tiempos**; y el cierre
+acredita **dos** propiedades. Mecánica, matrices por familia y modos de falla en `reference.md` →
+"Despachar el flujo".
 
-> **El prefijo de invocación cambia con la familia:** `claude` → **`/sdd-flow`**, `codex` →
-> **`$sdd-flow`**. El cuerpo del prompt es el mismo. Con el prefijo equivocado el texto entra como
-> mensaje común, el agente contesta razonablemente **sin la skill cargada**, y eso se lee igual que
-> un arranque exitoso.
+> **El prefijo cambia con la familia, y su forma también.** `claude` → **`/sdd-flow` con espacio
+> final**; `codex` → **`$sdd-flow` sin espacio**. No es un detalle de estilo: está medido que el
+> espacio revela la señal de reconocimiento en una familia y la **oculta** en la otra. Usar la misma
+> forma para las dos falla en una, y falla mostrando el texto correcto sin la señal.
 
-> **`mandé el prompt` no es `el flujo arrancó`.** Leer el terminal y confirmar que la skill cargó. Si
-> no cargó, corregir el envío — nunca continuar al paso 7.
+> **`mandé el prompt` no es `el flujo arrancó`, y `la skill cargó` tampoco.** Ese control lo satisface
+> un agente que compensó leyendo el archivo de la skill por su cuenta. Se acreditan **dos** cosas
+> distintas: la **procedencia** —el prefijo fue reconocido antes de mandar el cuerpo— y la
+> **integridad** —el hash de la fuente del dossier aparece en el pedido que el flujo congeló—. Sin
+> las dos, el arranque es **no confirmado** y no se retira nada.
 
 ### 6.5 — Marcar el issue como tomado
 
@@ -484,10 +494,10 @@ cupos que se repusieron, y el conteo del registro antes y después.
 | "Verifiqué los tres y ninguno falló" | Posible, pero revisalo: un intake que nunca rechaza nada está transcribiendo. |
 | "Para saber si esto pasa tengo que reproducirlo" | Entonces se admite. Reproducir es el trabajo del flujo, no del intake. |
 | "Los retiro ahora que ya los elegí" | Retirados antes del dossier, no queda copia de nada. |
-| "Mandé el prompt, sigo" | El prefijo puede haber quedado dentro del texto pegado, o ser el de la otra familia. Leer el terminal. |
+| "Mandé el prompt, sigo" | El prefijo puede haber quedado dentro del bloque pegado, o llevar la forma de la otra familia. Leer el compositor **antes** de mandar el cuerpo, y buscar la señal de esa familia. |
 | "Son de la misma skill, van juntos" | La misma skill en otra fase es otro diff. El criterio es la superficie. |
-| "Orca lo creó, está en main" | Está en `origin/main`. Comparar contra `git rev-parse main`. |
-| "El local está distinto de origin, lo realineo" | Solo si el que está adelante es el **local**. Al revés, el reset borra el arreglo que vino de arriba. |
+| "La plataforma lo creó, está en main" | Solo en la rama `inseparable`, que conserva la creación de la plataforma: ahí está en `origin/main` y hay que comparar contra `git rev-parse main`. Con creación por Git el commit va explícito y el caso no existe. |
+| "El local está distinto de origin, lo realineo" | Solo si el que está adelante es el **local**, y solo en la rama `inseparable`. Al revés, el reset borra el arreglo que vino de arriba. |
 | "Verifiqué contra el árbol, alcanza" | El árbol local no tiene lo que está en `origin` ni lo que está en un PR. Y el worktree nace de `origin`. |
 | "`git log origin/main` no trajo nada" | ¿Hubo `fetch`? Sin él estás mirando la foto de la última vez que sincronizaste. |
 | "Ningún PR se llama parecido al incidente" | El cruce es por **archivo tocado**. El título no dice qué toca un PR. |
@@ -497,6 +507,8 @@ cupos que se repusieron, y el conteo del registro antes y después.
 | "Al dossier le pongo un resumen" | Es la única copia. Verbatim. |
 | "Verifico los tres y después despacho los tres" | Cada retiro cambia el registro sobre el que se elige el siguiente. De a uno. |
 | "Me falta uno para llegar a tres, agrupo distinto" | El número es de flujos, no una cuota. Un grupo forzado es un diff que hace dos cosas. |
+| "La plataforma que pidió el usuario está en el entorno, la uso" | Una identidad presente no es una identidad viva. El override **dirige** la resolución; la comprobación se hace igual, y si no resuelve se para. |
+| "No hay plataforma, sigo sin terminal" | `headless` es **parada**, no modo degradado: sin agente interactivo no hay a quién despachar. El registro queda intacto. |
 | "Aprovecho y corrijo la skill acá" | Esta skill prepara el flujo. Corregir es del `sdd-flow` despachado. |
 | "El issue existe, ya está volcado" | Que exista no prueba que su cuerpo llegó entero. Cotejar antes de borrar la única copia. |
 | "El `grep` no encontró el ID, falta" | ¿El archivo que grepeaste tiene contenido? `gh` fuera del repo escribe vacío sin fallar, y el `grep` sobre un archivo vacío dice lo mismo que sobre uno incompleto. |
