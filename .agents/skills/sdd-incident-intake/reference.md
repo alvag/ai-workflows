@@ -7,7 +7,10 @@ Detalle que no hace falta en cada corrida. `SKILL.md` indica cuándo abrir cada 
 | Verificar sin investigar | En el paso 2, si el veredicto no es evidente |
 | El lote, vuelta por vuelta | Solo con `cantidad > 1` |
 | Mirar aguas arriba | En el paso 4, siempre |
-| Worktree con `orca-cli` | En el paso 6.1, antes de crear nada |
+| Resolver la plataforma | En el paso 6.1, **antes** de crear nada |
+| Clasificar el hook de setup | En 6.1, después de resolver y **antes** de elegir con qué crear |
+| Crear el worktree | En 6.1, con la primitiva que la clasificación eligió |
+| Adoptar, abrir y rotular | En 6.1, tras crear |
 | Sembrar el entorno ignorado | En el paso 6.2 |
 | El dossier | En el paso 6.3, al redactarlo |
 | Despachar el flujo | En el paso 6.4 |
@@ -221,69 +224,262 @@ sección 6). Un flujo que no sabe que hay un PR abierto sobre sus archivos lo de
 
 ---
 
-## Worktree con `orca-cli`
+## Resolver la plataforma
 
-**Antes de nada, resolver el ejecutable** siguiendo la skill `orca-cli` (`ORCA_CLI_COMMAND` →
-`orca-dev` → `orca-ide` en Linux fuera de Orca → `orca`) y cargar la guía versionada con
-`<orca> skills get orca-cli`. Los comandos de abajo son el esqueleto; **los flags exactos los fija la
-guía del binario**, que cambia entre releases.
+**Antes de crear nada.** La plataforma no se fija: se resuelve consultando las **dos identidades
+vivas**, y el resultado gobierna cada rama de este paso. El criterio vive acá, escrito y
+autocontenido: esta skill se instala como copia y corre sobre repositorios ajenos, así que no puede
+depender de la ruta de ningún script de otro repositorio. El adaptador del ecosistema
+—`terminal.py`, verbo `detectar`— es la **fuente de derivación** de estos estados y de esta matriz, y
+sirve para comprobar paridad; no es una dependencia de ejecución.
+
+### Los cuatro estados por identidad
+
+Cada plataforma se consulta por su identidad de panel. Los estados son cuatro y no dos, porque
+«presente» no es «utilizable»:
+
+| Estado | Qué se observó |
+|---|---|
+| `resuelve` | la identidad existe **y** la plataforma la reconoce como panel vivo |
+| `rancia` | la identidad existe y la plataforma **no** la reconoce |
+| `ausente` | no hay identidad declarada |
+| `inconsultable` | hay identidad y la consulta a la plataforma falló |
+
+### La matriz, y su destino
+
+**Las variables son las que el runtime exporta de verdad, y la salida se parsea, no se grepea.**
+`HERDR_PANE_ID` contra `herdr pane list`, y `ORCA_TERMINAL_HANDLE` contra `orca terminal list
+--json`: la pertenencia de la identidad al conjunto vivo **es** el predicado. Inventar un nombre de
+variable o un subcomando de consulta individual tiene un modo de falla mudo — la condición queda
+falsa en una sesión sana y el destino cae a `headless`, que es indistinguible de no tener plataforma.
+
+> **Por qué el parseo y no un `grep`, con el caso que lo obligó.** Un `grep` del literal acredita
+> `resuelve` sobre una salida **truncada o malformada** que apenas contenga `"handle":"term-1"`, y ahí
+> la comprobación deja de fallar cerrada: medido con una salida `not-json {"handle":"term-1"` que sale
+> con código 0. Y ante bytes ilegibles devuelve `rancia`, que es la lectura que el adaptador dejó de
+> hacer a propósito. Las dos son propiedades **estructurales** de la salida, y ningún patrón de texto
+> las distingue: por eso este es el único lugar del procedimiento donde se sube de `grep` a un
+> intérprete.
+>
+> **Y la consulta corre adentro de ese intérprete, no antes.** Una sustitución de comandos del shell
+> **no conserva los bytes NUL**: medido, un CLI que emite `"handle":"term\0-1"` le entrega al parser
+> `"term-1"`, que coincide con la variable y acredita `resuelve` sobre una salida corrupta. Parsear
+> estricto no alcanza si los bytes ya se sanearon en el camino, así que el proceso hijo se lanza desde
+> adentro y de ahí salen tanto su salida cruda como su código.
+
+```sh
+# uso: estado_identidad <herdr|orca>  → imprime resuelve|rancia|ausente|inconsultable
+# la consulta corre DENTRO del intérprete: una sustitución de comandos del shell no conserva
+# los bytes NUL, así que una salida corrupta llegaría saneada y se acreditaría como viva
+estado_identidad() {
+  estado=$(python3 -c 'import json, os, subprocess, sys
+CUAL = {"herdr": ("HERDR_PANE_ID", ["herdr","pane","list"], "panes", "pane_id"),
+        "orca":  ("ORCA_TERMINAL_HANDLE", ["orca","terminal","list","--json"], "terminals", "handle")}
+if sys.argv[1] not in CUAL: print("inconsultable"); raise SystemExit
+var, cmd, caja, clave = CUAL[sys.argv[1]]
+valor = os.environ.get(var)
+if not valor: print("ausente"); raise SystemExit
+try: hecho = subprocess.run(cmd, capture_output=True, timeout=15)
+except (OSError, subprocess.SubprocessError): print("inconsultable"); raise SystemExit
+if hecho.returncode != 0: print("inconsultable"); raise SystemExit
+try: texto = hecho.stdout.decode("utf-8")
+except UnicodeDecodeError: print("inconsultable"); raise SystemExit
+try: raiz = json.loads(texto)
+except ValueError: raiz = {}
+if not isinstance(raiz, dict): raiz = {}
+hijos = raiz.get("result", raiz)
+hijos = hijos.get(caja, []) if isinstance(hijos, dict) else []
+print("resuelve" if valor in {h.get(clave) for h in hijos if isinstance(h, dict)} else "rancia")
+' "$1" 2>/dev/null)
+  [ -n "$estado" ] || estado=inconsultable   # sin intérprete no se acredita nada
+  echo "$estado"
+}
+# uso: resolver_plataforma [plataforma-pedida]
+#   sigue: imprime "<plataforma> <identidad>" y devuelve 0
+#   para:  imprime "headless <causa>"        y devuelve 1
+resolver_plataforma() {
+  pedida="${1:-}"
+  eh=$(estado_identidad herdr); eo=$(estado_identidad orca)
+  if [ -n "$pedida" ]; then
+    case "$pedida" in
+      herdr) [ "$eh" = resuelve ] && { echo "herdr $HERDR_PANE_ID"; return 0; }
+             echo "headless override-herdr-$eh"; return 1 ;;
+      orca)  [ "$eo" = resuelve ] && { echo "orca $ORCA_TERMINAL_HANDLE"; return 0; }
+             echo "headless override-orca-$eo"; return 1 ;;
+      *)     echo "headless override-no-reconocido"; return 1 ;;
+    esac
+  fi
+  case "$eh:$eo" in
+    resuelve:resuelve) echo "headless ambas-resuelven"; return 1 ;;
+    resuelve:*)        echo "herdr $HERDR_PANE_ID";     return 0 ;;
+    *:resuelve)        echo "orca $ORCA_TERMINAL_HANDLE"; return 0 ;;
+    *)                 echo "headless $eh:$eo";         return 1 ;;
+  esac
+}
+```
+
+**Emite dos campos, la plataforma y la identidad, y el segundo no es decorativo:** es lo que
+revalida cada efecto. Un destino a secas obligaría a re-resolver, que es volver a **elegir**
+plataforma en vez de **comprobar** la que ya se eligió.
+
+> **La paridad con el adaptador, y sus dos divergencias.** Estados, variables y destinos se derivan
+> de `terminal.py detectar`. Cotejados caso por caso con la misma entrada —salida válida, identidad
+> ausente de la lista, JSON truncado, bytes ilegibles, salida vacía y consulta fallida—, los dos
+> coinciden. Difieren en dos puntos, los dos declarados:
+>
+> - el adaptador reserva un código propio para las **dos** identidades inconsultables; acá ese caso
+>   cae en `headless`, que es el mismo destino que su propia tabla le asigna.
+> - ante un JSON **válido** cuya raíz no es un objeto, el adaptador **termina con una excepción** en
+>   vez de emitir su sobre; este bloque comprueba el tipo antes de indexar y resuelve `rancia`. La
+>   divergencia es deliberada y va hacia el lado seguro: **no se replica un fallo**.
+>
+> Si falta el intérprete, el estado es `inconsultable` y no `rancia`: sin con qué comprobar no se
+> acredita una identidad.
+
+**`headless` no es un modo degradado de este paso: es su parada.** El paso 6 necesita un agente
+interactivo al que despachar, y sin plataforma utilizable no hay dónde crearlo. Ante `headless` —por
+cualquiera de sus causas, incluida la de **las dos identidades vivas**, donde no hay observación que
+diga cuál es el anfitrión— el despacho **se detiene**, el registro queda intacto y ningún incidente
+se retira. Es el estado del que se reintenta.
+
+### El override del usuario dirige, no suple
+
+Si el usuario pide una plataforma, esa petición **elige cuál se intenta**, no acredita que sirva:
+viaja como **argumento** de `resolver_plataforma` —no como una decisión tomada antes de llamarlo— y
+la identidad de la elegida se comprueba igual:
+
+| Caso | Resultado |
+|---|---|
+| override, con su identidad `resuelve` | se usa la pedida |
+| override, con su identidad `rancia`, `ausente` o `inconsultable` | **se detiene**; la petición no sustituye la comprobación |
+| sin override, una sola identidad `resuelve` | se usa esa |
+| sin override, las dos `resuelven` | **se detiene**: no hay observable que identifique al anfitrión |
+| las dos `resuelven` **con** override comprobado | el override **desempata** — es el único caso en que lo hace |
+
+### La identidad se revalida antes de cada efecto
+
+Una identidad viva al resolver puede dejar de serlo a mitad del paso, y cada efecto que dependa de
+ella la vuelve a comprobar **inmediatamente antes**, con `estado_identidad "<plataforma>"` sobre la
+plataforma ya resuelta — **nunca** con `resolver_plataforma`, que volvería a elegir en vez de
+comprobar, y que ante una identidad caída podría devolver la **otra** plataforma a mitad del paso.
+Los efectos son estos cinco y la lista es
+exhaustiva: **crear** el worktree por la plataforma, **adoptar** un árbol creado con Git, **abrir** el
+panel, **arrancar** el agente y **rotular** el worktree. Si la revalidación falla, ese efecto no se
+ejecuta y se aplica la fila que le corresponda en «El contrato de fallo por fase».
+
+---
+
+## Clasificar el hook de setup — antes de elegir cómo crear
+
+**El orden importa y es el opuesto al que parece.** La clasificación del hook **decide con qué
+primitiva se crea el worktree**, así que ocurre antes de crear, no después. El `repo_destino` es un
+parámetro de cada corrida: el mismo procedimiento puede encontrar un hook vacío en uno, reproducible
+en otro e inseparable de su plataforma en un tercero.
+
+### De dónde se lee, por plataforma
+
+| Plataforma | Autoridad del hook |
+|---|---|
+| Orca | `orca repo list --json` → la entrada cuyo `path` es el `repo_destino` → su `hookSettings.scripts.setup`. La variante por repositorio es `orca repo show --repo id:<repoId> --json`, y **el selector es obligatorio**: sin él la orden falla con `invalid_argument` antes de clasificar nada. Se prefiere `list` porque no exige haber resuelto el id todavía |
+| Herdr | no expone hooks por repositorio: el estado es `ausente` salvo que el `repo_destino` declare uno propio en su árbol |
+
+### El predicado, con sus tres estados
+
+| Estado | Cómo se reconoce | Qué cambia en la creación, en Herdr | Qué cambia en la creación, en Orca |
+|---|---|---|---|
+| `ausente` | la autoridad no declara script de setup | **Git**: `git worktree add` con el commit explícito, y adopción con `worktree open` | `--setup skip` |
+| `reproducible` | declara un script **y** ese script se puede ejecutar fuera de la creación: es un ejecutable del árbol o un comando del `PATH`, sin argumentos que la plataforma inyecte | **Git**, y el hook se ejecuta después, con las condiciones de abajo | `--setup skip`, y el hook se ejecuta después, con las mismas condiciones |
+| `inseparable` | declara un script que la plataforma invoca con contexto propio —argumentos, entorno o rutas que solo ella arma— | no se da: Herdr no declara hooks por repositorio | `--setup run`, que deja el hook en manos de la plataforma |
+
+> **La ramificación es por estado y por plataforma, y la columna lo dice.** Dónde hay dos primitivas
+> —Herdr— el estado elige entre ellas; donde la plataforma ofrece una sola —Orca— elige su política
+> de setup. Las dos son ramas con postcondición propia, que es lo que el paso exige: lo que **no**
+> se puede prometer es que la primitiva cambie en una plataforma que tiene una.
+
+> **`inseparable` no es un fracaso, es una rama.** Conservar la creación específica donde el hook lo
+> exige es la salida correcta: lo que el defecto pedía es que la plataforma se **resuelva**, no que
+> una primitiva concreta desaparezca.
+
+### Ejecutar el hook tras una creación con Git
+
+Con `reproducible`, después de crear y antes de sembrar: se ejecuta **con el worktree nuevo como
+directorio de trabajo**, con el entorno de la sesión y sin argumentos añadidos. Su **condición de
+éxito** es salida cero; su **postcondición** es que el árbol siga limpio salvo por lo que el propio
+hook declare.
+
+**Los cuatro fallos de esta fase detienen el despacho**, cada uno con su estado escrito: la consulta
+de la autoridad falla; el script está declarado pero no es legible; su ejecución sale distinto de
+cero; o su postcondición no se cumple. Ninguno se degrada a «seguir sin hook».
+
+---
+
+## Crear el worktree
+
+**La primitiva la eligió la clasificación anterior.** Lo común a las dos ramas va acá; los comandos
+van en su fila.
 
 ### 1. Resolver el repo destino
 
-```
-<orca> repo list --json
-```
-
-Buscar la entrada cuyo `path` sea el `repo_destino` y copiar su `id`. Del mismo JSON sale
-`hookSettings.scripts.setup`, que hace falta en el paso 6.2.
+Con la plataforma ya resuelta, obtener la identidad del `repo_destino` en ella. En Orca,
+`orca repo list --json`; en Herdr, el repositorio se nombra por su ruta. Del mismo lugar sale la
+autoridad del hook que la clasificación consultó.
 
 ### 2. Crear
 
-```
-<orca> worktree create --repo id:<repoId> --name <nombre> --no-parent --agent <claude|codex> --json
-```
+| Plataforma | Rama `ausente` o `reproducible` | Rama `inseparable` |
+|---|---|---|
+| Herdr | `git -C <repo_destino> worktree add -b <rama> <ruta> <sha>`, y adoptar con `herdr worktree open --path <ruta>` | no aplica: Herdr no declara hooks por repositorio |
+| Orca | `orca worktree create --repo id:<repoId> --name <nombre> --base-branch <sha> --setup skip --agent <agente> --no-parent --json` | `orca worktree create --repo id:<repoId> --name <nombre> --base-branch <sha> --setup run --agent <agente> --no-parent --json` |
 
-- `--no-parent` porque el flujo es trabajo independiente, no una rama apilada.
-- **Omitir `--base-branch`** para que use la base del repo.
-- `--agent` pone al agente en la **primera** terminal. No crear la terminal aparte: eso deja un shell
-  huérfano cuando el repo no tiene tabs por default configurados.
-- El `worktree.id` de la respuesta ya trae las dos partes (`<repoId>::<path>`). Copiarlo entero: el
-  `repoId` solo no es un selector de worktree.
+> **`--agent` va en las dos ramas, y no es redundante.** Una creación sin él abre un shell de
+> fallback, y `orca terminal list` **observa** la terminal pero no arranca ninguna: sin la flag, las
+> dos ramas llegan al despacho con una terminal viva y **sin agente de la familia esperada**, que es
+> el estado que el control de familia iba a cazar recién al final.
 
-### 3. Verificar la base — no es opcional
+> **En Orca la primitiva es una sola, y no porque se haya elegido así.** Su CLI **no tiene verbo de
+> adopción**: `orca worktree create` no acepta una ruta destino —crea un checkout nuevo— y el grupo
+> `orca worktree` no expone ningún otro que registre un árbol ya existente. Así que un worktree
+> creado con Git en Orca **no se puede continuar**: no hay con qué registrarlo, y sin registro no hay
+> panel, ni agente, ni rótulo. La rama de Git queda para Herdr, que sí adopta con `worktree open`.
+>
+> **Tampoco lo adopta por descubrimiento, y eso se midió en vez de suponerse.** Un worktree creado
+> con `git worktree add` y consultado enseguida devuelve `selector_not_found`, en dos rutas
+> distintas —una fuera del árbol habitual y otra hermana de un worktree que Orca **sí** resuelve—.
+> Que resuelva ese otro prueba que alguien lo registró antes, no que los descubra. Es el control que
+> cierra la búsqueda de una segunda primitiva: no la hay.
+>
+> **Lo que la clasificación decide en Orca es la política de setup** — `--setup skip` con hook
+> `ausente` o `reproducible` (y entonces, si es `reproducible`, se ejecuta aparte con las condiciones
+> de su sección), `--setup run` con `inseparable`. La consulta por corrida, la ramificación por estado
+> y las postcondiciones por rama siguen enteras; lo único que no varía es la primitiva, porque la
+> plataforma ofrece una sola. Prometer que variara exigiría un verbo que su CLI hoy no tiene.
 
-`baseRef` sale como `refs/remotes/origin/<default>`. Si el `main` local tiene commits sin pushear, el
-worktree nace atrás y **la respuesta JSON se lee perfectamente normal**: trae `head` y `baseRef`, y
-ninguno de los dos dice "estás atrasado".
+**Crear con Git retira el peligro de base, no lo traslada.** El bloque que verificaba la base existía
+porque el verbo de creación de una plataforma usa su referencia remota por defecto y el worktree podía
+nacer atrasado sin que nada lo dijera. Pasando el **commit explícito** —el que el paso 4 ya
+resolvió— ese peligro deja de existir: no hay que comparar ni realinear nada.
 
-```
-git -C <repo_destino> rev-parse main origin/main
-```
-
-**Que difieran no dice de qué lado está el retraso, y el reset solo es correcto en una dirección:**
-
-```
-git -C <repo_destino> merge-base --is-ancestor origin/main main
-```
-
-Sale 0 cuando el **local contiene a `origin`** — es decir, el local está adelante y el worktree nació
-atrasado. Ese es el único caso donde se realinea. Si sale distinto de 0, el que está adelante es
-`origin` (o las ramas divergieron), y **resetear al `main` local le borra al worktree el arreglo que
-vino de arriba** — que es justamente lo que el paso 4 fue a buscar. Ante divergencia real, se para y
-se le muestra al usuario.
-
-Con el ancestro confirmado y el worktree **limpio y recién creado**:
-
-```
-git -C <worktree> status --porcelain      # tiene que salir vacío ANTES del reset
-git -C <worktree> reset --hard <sha-de-main-local>
-```
-
-El `status` previo no es ceremonia: `reset --hard` sobre un árbol con cambios los destruye sin aviso.
-
-Si el usuario pidió explícitamente basarse en otra rama, esto no aplica — se respeta lo que pidió.
+> **Donde crea la plataforma, el peligro sigue vivo: en Orca, en sus dos ramas.** `--base-branch`
+> recibe el ref que el paso 4 resolvió, pero que la flag lo acepte **no se midió** como equivalente a
+> pasarle un commit a Git, así que ahí se compara igual el `head` devuelto contra ese commit y se
+> realinea **solo** si el que está adelante es el local. Ante divergencia real se para y se le muestra
+> al usuario. En Herdr, donde crea Git con el commit explícito, no hay nada que comparar.
 
 ---
+
+## Adoptar, abrir y rotular
+
+Un árbol creado con Git **no lo conoce la plataforma**: sin adopción no se puede abrir el panel,
+arrancar el agente ni rotular. Cada fila lleva su comando y el observable que lo acredita.
+
+| Plataforma | Adoptar | Abrir y arrancar | Rotular | Observable que acredita |
+|---|---|---|---|---|
+| Herdr | `herdr worktree open --path <ruta>` sobre el árbol ya existente — `open` adopta, `create` crearía uno nuevo | `herdr pane split --current --direction right --cwd <ruta> --no-focus`, que devuelve el panel en `.result.pane`; después `herdr agent start <nombre> --kind <familia> --pane <id>` | `herdr pane rename <id> <label>`, o `--label` en el propio `worktree open` | `herdr agent get <nombre>` devuelve la familia esperada, su `cwd` igual a la ruta del worktree e `interactive_ready` verdadero |
+| Orca | nada que adoptar: el árbol lo creó su propio verbo y ya está registrado. Un árbol creado con Git **no** se puede adoptar acá, y por eso Orca no tiene rama de Git | lo arranca `--agent <familia>` **en la creación**, que es el único modo: `orca terminal list --worktree id:<repoId>::<ruta> --json` **observa** la terminal, no la inicia | `orca worktree set --worktree id:<repoId>::<ruta> --comment "<qué corre acá>" --json` | `orca terminal list --worktree id:<repoId>::<ruta> --json` devuelve una terminal con el agente de la familia esperada |
+
+**La comprobación de familia y directorio no es opcional.** Un agente de la familia equivocada
+responde razonablemente y no reconoce el prefijo; uno en el directorio equivocado trabaja sobre el
+repositorio que no es. Las dos se leen del mismo observable, antes de despachar.
 
 ## Sembrar el entorno ignorado
 
@@ -366,21 +562,22 @@ los worktrees del mismo repo) o por el ignore global del usuario (que también a
 viaja es `info/exclude` a un **clone** — si el destino es un clone y no un worktree, la comprobación
 es la que salva.
 
-### El hook de setup
+### El hook de setup ya corrió, o no
 
-```
-<orca> repo show --repo id:<repoId> --json
-```
-
-`hookSettings.scripts.setup` puede ya copiar estos directorios — es un patrón común. Si lo hace:
+**La autoridad del hook y su clasificación viven en «Clasificar el hook de setup»**, que corre antes
+de crear y decide con qué primitiva se crea. Acá solo importa una consecuencia para la siembra: si el
+hook clasificó `reproducible` o `inseparable` y **corrió**, puede haber copiado ya estos directorios
+— es un patrón común. Si lo hizo:
 
 - **No copiar encima.** El hook puede adaptar lo que copia al worktree; pisarlo revierte esa
   adaptación.
-- Comprobar igual que el resultado está: un hook con `setupRunPolicy` que no corrió deja el worktree
-  vacío y el `--json` no lo dice.
+- Comprobar igual que el resultado está: un hook que **no corrió** —en Orca, por su
+  `setupRunPolicy`— deja el worktree vacío, y la salida de la creación no lo dice.
 
-Si el hook está vacío y este repo va a repetir el flujo seguido, vale sugerirle al usuario ponerlo
-ahí — pero eso es un cambio de configuración de su Orca, así que **se sugiere, no se hace**.
+Si el hook clasificó `ausente` y este repo va a repetir el flujo seguido, vale sugerirle al usuario
+declararlo donde su plataforma lo aloje: en Orca, el `hookSettings.scripts.setup` del repo; en Herdr,
+un script del propio árbol, que es el único lugar donde esta clasificación lo busca. En las dos es
+configuración ajena al flujo, así que **se sugiere, no se hace**.
 
 ---
 
@@ -432,84 +629,120 @@ sin contexto de esta sesión, y **la única copia** de los incidentes tomados.
 
 ### Esperar a que el agente esté listo
 
-```
-<orca> terminal list --worktree id:<repoId>::<worktreePath> --json
-<orca> terminal wait --terminal <handle> --for tui-idle --timeout-ms 90000 --json
-```
+| Plataforma | Comando | Observable |
+|---|---|---|
+| Herdr | `herdr agent get <nombre>` | `interactive_ready` verdadero |
+| Orca | `orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 90000 --json` | el estado que devuelve |
 
-Mandar antes de `tui-idle` pierde el texto: el TUI todavía no tiene dónde recibirlo.
+Mandar antes de eso pierde el texto: el TUI todavía no tiene dónde recibirlo.
 
-### El prompt
+### El prompt es un puntero, no el encargo
 
-**Una sola línea.** Un salto de línea en el medio envía el texto por la mitad y el resto queda
-huérfano en el buffer.
-
-**Sin comillas dobles ni apóstrofes** si va entre comillas simples del shell — más simple que escapar.
-
-Contenido: qué se corrige, la causa raíz compartida en una frase, **la ruta del dossier con la orden
-de leerlo entero antes de cualquier otra cosa y la advertencia de que es la única copia**, la
-superficie a tocar, la decisión abierta señalada como no pre-decidida, y las restricciones del repo
-que el dossier detalla. **Si el paso 4 encontró un PR abierto sobre la superficie, va en el prompt**
-con su número: es una condición de contorno del trabajo, y el dossier solo se lee si el agente llegó
-a leerlo.
-
-### Enviar en dos tiempos
+**El prompt no transporta el encargo: lo apunta.** El dossier ya existe en disco antes de este
+sub-paso —es el invariante de orden del paso 6— así que el prompt solo tiene que decir dónde está y
+que se lea entero antes de nada.
 
 ```
-<orca> terminal send --terminal <handle> --text '<prompt en una linea>' --json
-<orca> terminal read  --terminal <handle> --json
-<orca> terminal send  --terminal <handle> --text "" --enter --json
+<prefijo> corregí los incidentes del dossier <ruta absoluta>, leelo entero antes de nada: es la única copia
 ```
 
-**Por qué separado del Enter:** un texto largo entra al TUI como bloque pegado y se muestra colapsado
-(`[Pasted text #1]`). Un `--enter` en el mismo envío puede ser consumido por el autocompletado del
-menú de slash commands en vez de enviar el mensaje. El `read` intermedio confirma que el texto entró
-entero antes de confirmarlo.
+**Por qué apuntar y no transportar.** Un encargo largo entra al TUI como bloque pegado, y de ahí
+salen dos fallos distintos: el prefijo queda dentro del bloque, y el cuerpo puede llegar incompleto.
+Un puntero corto no los elimina —la relación entre largo y fallo es una hipótesis, no un hecho
+medido— pero los **reduce**, y el control de abajo es obligatorio igual.
 
-### Diferencia entre familias
+> **Lo que el prompt deja de llevar, el dossier tiene que tenerlo.** Antes viajaban en el prompt la
+> causa raíz, la superficie, las decisiones abiertas, las restricciones del repositorio y el PR
+> abierto si lo había. Todo eso va **al dossier**, y su plantilla lo exige. Un puntero a un dossier
+> incompleto es peor que un encargo largo.
 
-**El prefijo de invocación cambia con la familia.** Es lo único que cambia — el cuerpo del prompt es
-el mismo:
+### Comprobar el dossier antes de enviar
 
-| Agente | Cómo arranca el flujo |
-|---|---|
-| `claude` | **`/sdd-flow <contexto>`** |
-| `codex` | **`$sdd-flow <contexto>`** |
+Tres cosas, y las tres antes del primer tiempo: que **exista**, que sea **legible**, y que su
+**digest** sea el que se calculó **al escribirlo**. El tercero es el que importa y el que se olvida:
+el digest se liga a la **fuente** —los bytes que se escribieron— y no a lo que se mandó, porque un
+digest calculado sobre lo enviado sella también lo que el envío haya roto.
 
-No es intercambiable: el prefijo equivocado deja el texto como un mensaje común, el agente contesta
-razonablemente **sin la skill cargada**, y eso se lee igual que un arranque exitoso.
+### Enviar en tres tiempos
 
-`sdd-flow` tiene `disable-model-invocation: true` —clave de Claude Code— así que en Claude es
-**solo-slash**: no se puede invocar con el Skill tool ni pedírselo en prosa.
+El corte no es texto/Enter: es **prefijo / cuerpo / Enter**, y entre el primero y el segundo hay una
+comprobación que decide si se sigue.
 
-Del lado de Codex, las skills se resuelven desde `~/.agents/skills/`, el alias cross-runtime donde
-las de este ecosistema están simlinkeadas. **Comprobar el symlink antes de despachar a `codex`** en
-vez de asumirlo:
+1. **El prefijo solo**, en la forma que su familia exige.
+2. **Leer el compositor** y buscar la señal de reconocimiento **de esa familia**. Sin la señal, no se
+   manda el cuerpo: se aplica la fila de recuperación.
+3. **El cuerpo**, y leerlo para comprobar que entró entero.
+4. **El Enter**, sobre ese mismo compositor y sin nada tipeado en el medio.
 
-```
-ls -l ~/.agents/skills/sdd-flow
-```
+### Qué se escribe y qué se busca, por familia
 
-### Confirmar el arranque — el control que cierra el paso
+**La secuencia no es la misma, y la diferencia es un espacio.** Está medido: en una familia el espacio
+final revela la señal, y en la otra la oculta. Un procedimiento que use la misma forma para las dos
+falla en una — y falla mostrando el texto correcto sin la señal, que es indistinguible de un prefijo
+no reconocido.
 
-```
-<orca> terminal read --terminal <handle> --json
-```
+| Familia | Qué se escribe en el primer tiempo | Qué acredita el reconocimiento |
+|---|---|---|
+| `claude` | `/sdd-flow` **con** espacio final | el compositor muestra la **gramática de argumentos** de la skill a continuación del prefijo |
+| `codex` | `$sdd-flow` **sin** espacio final | el compositor muestra la **entrada de la skill en el menú filtrado**, con su descripción. El espacio se manda con el cuerpo |
 
-Buscar la señal de que **la skill cargó**, no de que el agente respondió. En Claude Code es una línea
-explícita de carga de skill. Un agente que contesta razonablemente sin haber cargado la skill es el
-modo de falla exacto que este control existe para cazar: la respuesta se lee bien y el flujo no es un
-flujo.
+| Plataforma | Cómo se escribe sin enviar | Cómo se lee el compositor | Cómo se manda el Enter |
+|---|---|---|---|
+| Herdr | `herdr pane send-text <id> '<texto>'` | `herdr pane read <id> --source visible` | `herdr pane send-keys <id> enter` |
+| Orca | `orca terminal send --terminal <handle> --text '<texto>' --json` | `orca terminal read --terminal <handle> --json` → campo `draft` | `orca terminal send --terminal <handle> --text "" --enter --json` |
+
+**Sin comillas dobles ni apóstrofes** en el texto si va entre comillas simples del shell — más simple
+que escapar.
+
+### Confirmar el arranque — dos propiedades, y ninguna sustituye a la otra
+
+El control viejo buscaba «la señal de que la skill cargó». Eso lo satisface también un agente que
+**compensó** leyendo el archivo de la skill por su cuenta, así que no distingue un arranque bueno de
+uno malo. Se parte en dos:
+
+| Propiedad | Qué acredita | Qué **no** acredita | Cómo se comprueba |
+|---|---|---|---|
+| **procedencia** | que la invocación entró por el prefijo, reconocido por el host | nada sobre el contenido del encargo | la **cadena** del envío: el prefijo se reconoció en el tiempo 2, no se tipeó nada en el medio, y el Enter fue sobre ese compositor |
+| **integridad** | que el encargo llegó entero, y que el flujo leyó el dossier que se le escribió | nada sobre **cómo** se invocó la skill | el flujo despachado congela su pedido con el `sha256` de cada fuente: se comprueba que exista una entrada cuyo hash sea el del dossier **en su origen** |
+
+**Se exigen las dos.** El hash correcto con procedencia no acreditada **no** cierra el paso: un
+arranque compensado también lee el dossier entero y produce exactamente el mismo hash.
+
+> **El punto ciego de la procedencia, declarado.** La cadena se apoya en que nadie tipeó nada entre
+> el tiempo 2 y el Enter, y **eso no es observable en ninguna plataforma soportada**: ni Herdr ni Orca
+> exponen el input del usuario como algo consultable. La defensa es de proceso —no tipear en el panel
+> mientras el despacho corre— y esta línea existe para que la ausencia esté declarada y no se
+> descubra después.
+
+**Sin observable de reconocimiento**, el arranque se declara **no confirmado**: el incidente **no se
+retira** y el issue conserva su etiqueta del pool. Eso vale para la pérdida en runtime de un
+observable que sí existe; que una combinación **nunca** lo tenga es otra cosa y la gobierna la matriz
+de soporte.
 
 ### Marcar el worktree
 
-```
-<orca> worktree set --worktree id:<repoId>::<path> --comment "<qué flujo corre acá>" --json
-```
+| Plataforma | Comando |
+|---|---|
+| Herdr | `herdr pane rename <id> "<qué flujo corre acá>"` |
+| Orca | `orca worktree set --worktree id:<repoId>::<path> --comment "<qué flujo corre acá>" --json` |
 
-Es lo que hace legible la tarjeta en Orca cuando hay varios worktrees abiertos.
+Es lo que hace legible la tarjeta cuando hay varios worktrees abiertos.
 
----
+### La matriz de soporte
+
+Las cuatro combinaciones que esta skill promete, cada una con su camino completo. **Ninguna celda
+remite a otra fila.**
+
+| Plataforma × familia | Crear | Abrir y arrancar | Primer tiempo | Observable que acredita |
+|---|---|---|---|---|
+| Herdr × claude | `git -C <repo_destino> worktree add -b <rama> <ruta> <sha>`, y adoptar con `herdr worktree open --path <ruta>` | `herdr pane split --current --direction right --cwd <ruta> --no-focus`, después `herdr agent start <nombre> --kind claude --pane <id>` | `/sdd-flow ` con espacio | gramática de argumentos en el compositor |
+| Herdr × codex | `git -C <repo_destino> worktree add -b <rama> <ruta> <sha>`, y adoptar con `herdr worktree open --path <ruta>` | `herdr pane split --current --direction right --cwd <ruta> --no-focus`, después `herdr agent start <nombre> --kind codex --pane <id>` | `$sdd-flow` sin espacio | la skill en el menú filtrado |
+| Orca × claude | `orca worktree create --repo id:<repoId> --name <nombre> --base-branch <sha> --setup skip --agent claude --no-parent --json`; con hook `inseparable`, el mismo comando con `--setup run` | lo arranca `--agent claude` **en la creación**, que es el único modo: `orca terminal list --worktree id:<repoId>::<ruta> --json` **observa** la terminal, no la inicia | `/sdd-flow ` con espacio | gramática de argumentos en el campo `draft` |
+| Orca × codex | `orca worktree create --repo id:<repoId> --name <nombre> --base-branch <sha> --setup skip --agent codex --no-parent --json`; con hook `inseparable`, el mismo comando con `--setup run` | lo arranca `--agent codex` **en la creación**, que es el único modo: `orca terminal list --worktree id:<repoId>::<ruta> --json` **observa** la terminal, no la inicia | `$sdd-flow` sin espacio | la skill en el menú filtrado, en `draft` |
+
+> **Si una combinación deja de tener observable acreditable, la promesa se cambia con gate humano.**
+> No se la declara soportada con el control apagado: una fila que siempre termina en «no confirmado»
+> no es soporte, es un no-op con buena prosa.
 
 ## El volcado a issues
 
@@ -715,19 +948,47 @@ antes y después para reportarlo.
 
 ---
 
+## El contrato de fallo por fase
+
+Cada efecto de este paso puede fallar **después** de haber dejado algo en pie. Sin una regla por
+fase, el intento siguiente duplica recursos o abandona una corrida viva. Una fila por efecto:
+
+| Fase | Observable previo | Qué queda ligado a la corrida | Si falla | Registro e issue | Residuales | Reintento |
+|---|---|---|---|---|---|---|
+| resolver plataforma | — | nada | se detiene | intactos | ninguno | inmediato |
+| clasificar el hook | plataforma resuelta | nada | se detiene | intactos | ninguno | inmediato |
+| crear el worktree | identidad revalidada | el árbol, si alcanzó a crearse | se detiene | intactos | **el árbol no se elimina**: su ciclo de vida es el del flujo, no el de este paso. Se enumera | el intento siguiente **adopta** el árbol existente si su rama y su commit coinciden; si no, para y lo muestra |
+| ejecutar el hook | árbol creado | el árbol, ya creado | se detiene | intactos | el árbol, y lo que el hook haya escrito | no se re-ejecuta el hook sobre un árbol a medias: se descarta el árbol **con confirmación** y se recrea |
+| sembrar | árbol creado | el árbol y lo sembrado | se detiene | intactos | lo copiado | se completa la siembra sobre el mismo árbol |
+| escribir el dossier | árbol sembrado | el árbol, la siembra y el dossier parcial | se detiene | intactos | el dossier a medias | se reescribe entero: es la única copia y no se parchea |
+| adoptar y abrir | identidad revalidada | el panel, si se abrió | se detiene | intactos | el panel | se cierra el panel con su modo de cierre y se reabre |
+| arrancar el agente | panel abierto | el panel y el agente | se detiene | intactos | panel y agente | se liquida el panel y se reintenta desde la apertura |
+| acreditar el arranque | agente vivo | todo lo anterior | **no confirmado** | el incidente **no se retira**; el issue conserva su etiqueta del pool | el árbol y el panel quedan en pie, enumerados | decisión del usuario: reintentar el envío o abandonar la corrida |
+| marcar el issue | arranque acreditado | la escritura externa | se detiene | el issue puede haber quedado a medias: se comprueba y se repara | ninguno | se repite la escritura, que es idempotente |
+| retirar del registro | issue marcado | la edición del registro | se detiene | **se completa el retiro**: dejarlo a medias es el defecto que su propia fila describe | ninguno | se completa, no se revierte |
+
+**Ninguna limpieza destructiva ocurre sin su gate.** Descartar un árbol, cerrar un panel con trabajo
+sin cosechar o revertir una escritura externa se le pregunta al usuario; nada de eso se infiere de un
+fallo.
+
+**El registro de incidentes nunca se vacía como parte de una reversión.** Es la única copia de lo que
+se iba a corregir, y un fallo de este paso no es motivo para perderla.
+
 ## Cuando algo falla
 
 | Síntoma | Causa probable | Qué hacer |
 |---|---|---|
-| El agente responde pero la skill no cargó | El slash quedó dentro del texto pegado, o el agente es `codex` y no tiene el slash | Reenviar nombrando la skill y su ruta. No retirar nada hasta que cargue |
+| El compositor no muestra la señal de reconocimiento | El prefijo entró dentro del texto pegado, o se usó la forma de la otra familia —con espacio donde iba sin él, o al revés— | Limpiar el compositor, restablecer readiness y **repetir desde el prefijo**, acreditando su reconocimiento antes de mandar el cuerpo. Si no se acredita, el arranque queda **no confirmado** y no se retira nada. La ruta de la skill sirve para **diagnosticar** cuál está instalada, nunca como forma de activarla: pedirle al agente que la lea produce exactamente el arranque compensado que el control existe para rechazar |
 | El flujo pregunta cosas que el config ya responde | El worktree no está sembrado | Sembrar `.specify/` del `<repo_destino>` y avisarle al agente que relea el config |
 | El flujo arranca un `init` que nadie pidió | Igual que arriba, caso agudo | Igual, y verificar que el `init` no haya sobrescrito nada |
 | `git status` del worktree muestra lo sembrado | El destino no ignora esos paths | Sacarlos del árbol y resolver el ignore antes de seguir |
-| El diff del flujo sale contra un árbol raro | El worktree nació en `origin/<default>` | Se previene en 6.1. Ya avanzado, es rebase — y el techo de proporción del repo, si lo tiene, se midió contra el commit equivocado |
+| El diff del flujo sale contra un árbol raro | El worktree nació en la referencia remota por defecto | Solo puede pasar en la rama `inseparable`, que es la única que conserva la creación de la plataforma; con creación por Git el commit va explícito y el caso no existe. Ya avanzado, es rebase — y el techo de proporción del repo, si lo tiene, se midió contra el commit equivocado |
 | El registro quedó sin la fila pero con la sección | El retiro tocó un solo lugar | Completar el retiro y **registrar el incidente**: es un defecto de procedimiento |
 | El flujo abre un diff sobre líneas que ya no existen | El paso 4 no corrió, o corrió sin `fetch` | Rehacer el paso 4 y re-emitir el veredicto contra `origin/<default>`. Si el defecto ya no está, el flujo se cierra y el incidente se reporta como resuelto aguas arriba |
 | El PR del flujo entra en conflicto con otro PR abierto | El cruce del paso 4 se hizo por título y no por archivos | Cruzar `gh pr diff --name-only` contra la superficie. Con el conflicto ya abierto, el orden de merge lo decide el usuario |
-| El worktree perdió commits que estaban en `origin` | El realineo de 6.1 se hizo sin comprobar la dirección | `reset --hard origin/<default>` y rehacer 6.2. Es un defecto de procedimiento: se registra |
+| El worktree perdió commits que estaban en `origin` | El realineo se hizo sin comprobar la dirección, en la rama `inseparable` | `reset --hard origin/<default>` y rehacer 6.2. Es un defecto de procedimiento: se registra |
+| El flujo arrancó pero el hash del dossier no coincide | El encargo se leyó de otro archivo, o el dossier cambió después de calcular su digest | Arranque **no confirmado**: no se retira nada. Recalcular el digest del dossier en su origen y comparar; si difiere del que se envió, el dossier se reescribió a mitad del despacho |
+| La plataforma resolvió `headless` | Ninguna identidad viva, o las dos vivas sin observable que distinga al anfitrión | **No es un modo degradado: es parada.** El despacho no ocurre, el registro queda intacto y se reintenta cuando haya plataforma. Un override no lo arregla: también se comprueba |
 
 Todo fallo atribuible a una skill SDD —esta incluida— se registra según la regla del archivo de
 instrucciones del `<repo_destino>`: en su `.plans/incidentes-skills.md` del **árbol principal**,
