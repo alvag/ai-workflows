@@ -4400,7 +4400,7 @@ afuera se escribe en su frontera en vez de fingirse cubierto:
 
 | Bloque | Qué comprueba | Salida y códigos |
 |---|---|---|
-| `pedido-jsonl` | por cada línea de `literal.jsonl`: que abra con `{` y cierre con `}`, que estén las siete claves obligatorias, que **ninguna barra invertida abra un escape que JSON no define**, y que `n` sea monótono sin huecos desde el **`n` inicial**, que es 1 salvo que se declare otro | una línea por violación, `<n>: <causa>`; `0` sin violaciones, `1` con, `2` si el `n` inicial no es un entero ≥ 1, `3` si el archivo no se puede leer **o si `awk` no pudo ejecutarse** |
+| `pedido-jsonl` | por cada línea de `literal.jsonl`: que abra con `{` y cierre con `}`, que estén las siete claves obligatorias, que **cada cadena se cierre y cada barra invertida abra un escape que JSON defina**, y que `n` sea monótono sin huecos desde el **`n` inicial**, que es 1 salvo que se declare otro | una línea por violación, `<n>: <causa>`; `0` sin violaciones, `1` con, `2` si el `n` inicial no es un entero ≥ 1, `3` si el archivo no se puede leer **o si `awk` no pudo ejecutarse** |
 | `pedido-unicidad` | en `registro.md`: que las identidades de las tres tablas caigan dentro de su dominio y no se repitan, y que la versión crezca por cláusula | ídem |
 | `pedido-referencias` | que cada `fragmentos` exista y cite una línea con rango dentro de su largo —medido sobre el texto, con el escape que JSON no define dando rojo en vez de un largo—, que cada `AC-n` de la traza exista en la sede de los criterios, y que cada `objetivo` de evento resuelva | ídem |
 | `pedido-marcador` | resuelve la celda de la matriz del marcador desde el estado observado del árbol | **la celda en stdout**; `0` si resolvió una, `1` si el árbol no encaja en ninguna, `2` si la invocación está mal formada o `pedido-jsonl` no está cargado |
@@ -4463,10 +4463,21 @@ pedido_jsonl() {
     # esa es la única salida que corresponde: `literal.jsonl` es inmutable, así que mandarlo al gate
     # que repara el registro es mandarlo a una reparación que no se puede hacer. Y corre en 3b,
     # **antes** de la fusión, así que un literal así ni siquiera llega a congelarse
-    function escmal(s,   i, n, ch, sig) {
-      n = length(s); i = 1
+    # El recorrido SIGUE LOS LÍMITES DE CADENA, y no es un refinamiento opcional: mirando solo la
+    # forma léxica de cada escape, un `\` final de valor se come la comilla que cerraba el campo
+    # —`"texto":"\","sha256":…`— y `\"` pasa por escape válido, así que la corrupción que esta
+    # función dice cazar se le escapaba entera. Con los límites, esa misma línea termina **dentro**
+    # de una cadena y da rojo: consumir una comilla desbalancea el resto de la línea
+    function escmal(s,   i, n, ch, sig, dentro) {
+      n = length(s); i = 1; dentro = 0
       while (i <= n) {
         ch = substr(s, i, 1)
+        if (!dentro) {
+          # fuera de una cadena JSON no define ningún escape: una barra acá ya es rojo
+          if (ch == "\\") return "barra invertida fuera de una cadena"
+          if (ch == CO) dentro = 1
+          i++; continue }
+        if (ch == CO) { dentro = 0; i++; continue }
         if (ch != "\\") { i++; continue }
         if (i == n) return "barra invertida al final de la línea"
         sig = substr(s, i + 1, 1)
@@ -4479,10 +4490,12 @@ pedido_jsonl() {
           i += 6; continue }
         if (index(SIMPLES, sig) == 0) return substr(s, i, 2)
         i += 2 }
+      if (dentro) return "la línea termina dentro de una cadena sin cerrar"
       return "" }
     BEGIN { split("n captado_en origen referencia medio texto sha256", claves, " ")
             # los ocho escapes de un carácter que JSON define, además de `\u`
             SIMPLES = sprintf("%c%c/bfnrt", 34, 92)
+            CO = sprintf("%c", 34)
             # el primer archivo es "-", que POSIX define como la entrada estándar
             esperado = ((getline b) > 0) ? norm(b) : "1" }
     { lit++
@@ -4490,7 +4503,7 @@ pedido_jsonl() {
       if (substr(linea,1,1) != "{" || substr(linea,length(linea),1) != "}")
         print lit ": la línea no abre y cierra con llaves"
       em = escmal(linea)
-      if (em != "") print lit ": escape JSON inválido, la línea no es un objeto JSON: " em
+      if (em != "") print lit ": la línea no es un objeto JSON: " em
       faltan=""
       for (i=1; i<=7; i++)
         if (index(linea, sprintf("%c%s%c:", 34, claves[i], 34)) == 0) faltan = faltan " " claves[i]
@@ -4526,9 +4539,12 @@ pedido_jsonl() {
 > atravesaba el paquete con la celda `aplicable`. El mismo cierre va en **las tres sedes** que leen
 > este campo, por el motivo de siempre: un patrón más ancho en una que en otra las hace discrepar. El
 > **Y que ninguna línea lleve un escape que JSON no define** —un `\q`, un `\uXXXX` con algo que no es
-> hexadecimal o truncado, una barra invertida final—, que se comprueba sobre la **línea entera** y no
-> sobre un campo: en este formato toda barra invertida vive dentro de un valor de cadena, así que
-> cualquiera que no abra un escape válido es una línea que ningún parser acepta. Va acá y no donde se
+> hexadecimal o truncado, una barra invertida final—, recorriendo la **línea entera** y **siguiendo
+> los límites de cada cadena**. Lo segundo no es un refinamiento: mirando solo la forma léxica del
+> escape, una barra al final de un valor se come la comilla que cerraba el campo y `\"` pasa por
+> escape legítimo, así que la corrupción que esta comprobación existe para cazar se le escapaba
+> entera. Con los límites, esa línea termina **dentro** de una cadena y da rojo: consumir una
+> comilla desbalancea todo lo que viene después. Va acá y no donde se
 > lee el campo porque **este es el bloque cuyo `1` el marcador convierte en «presente y corrupto»**, y
 > esa es la única salida practicable: `literal.jsonl` es inmutable, así que el gate que repara el
 > registro no puede arreglarlo. Y como este bloque corre en 3b **antes de la fusión**, un literal así
@@ -4550,10 +4566,17 @@ pedido_jsonl() {
 > comprueba antes que su salida**: si no terminó bien, el resultado no es un veredicto. La misma
 > corrección va en los tres bloques que leen la salida de un `awk`, porque el defecto era idéntico en
 > los tres. **Sigue sin autorizar a afirmar que la línea sea JSON válido**, y ahora la frase hay que
-> leerla más fino: de la sintaxis comprueba **las llaves de los extremos y los escapes**, y nada más.
-> No detecta comillas sin cerrar, comas sobrantes, anidamiento roto, tipos incorrectos, caracteres de
-> control sin escapar, bytes UTF-8 inválidos, ni que `sha256`
-> corresponda a `texto`. De los **tipos**, comprueba **solo el de `n`** —porque ese campo es la
+> leerla más fino: de la sintaxis comprueba **las llaves de los extremos, los límites de cada cadena
+> y la forma de cada escape**, y nada más. De ahí se sigue que **sí** caza una cadena que la línea
+> deja abierta —y con ella la barra final que se come su comilla de cierre, que es la corrupción más
+> barata de producir— y una barra invertida fuera de toda cadena. Lo que **no** detecta es la
+> corrupción **estructural con las comillas balanceadas**: un `:` o una `,` que falta entre campos,
+> anidamiento roto, tipos incorrectos, caracteres de control sin escapar, bytes UTF-8 inválidos, ni
+> que `sha256` corresponda a `texto`. **Ese margen está medido y no estimado**: sobre 1.200 líneas
+> canónicas mutadas al azar, de las 899 que un parser rechaza admite **8**, y las ocho son de esa
+> clase; sobre las 301 que el parser acepta **no rechaza ninguna**, que es la dirección que sí tiene
+> que ser dura — un falso rojo acá manda a cuarentena un paquete sano, y de la cuarentena no se
+> vuelve solo. De los **tipos**, comprueba **solo el de `n`** —porque ese campo es la
 > identidad de la línea y el resto del contrato cuelga de él—; los otros seis no se tipan. **No es un
 > parser y no se lo puede leer como uno.** Se eligió así
 > deliberadamente: validar JSON en shell POSIX exige una herramienta que no está garantizada, y el
@@ -4755,9 +4778,11 @@ pedido_referencias() {
     # partición de `R1` nunca podía cubrir el final: el pedido se escribe en español y en Markdown, así
     # que comillas y saltos son la regla y no el borde
     # FALLA CERRADO ante un escape que JSON no define: devuelve -1 y deja en `ujsonerr` el lexema
-    # que lo rompió. Contarlo como un carácter cualquiera dejaba pasar en verde un literal que
-    # ningún parser acepta, y la salida barata —adjudicárselo a `pedido-jsonl`— no existe: ese
-    # bloque comprueba llaves, claves y `n`, y su propia frontera declara que no valida JSON
+    # que lo rompió. Contarlo como un carácter cualquiera dejaba pasar en verde un literal que ningún
+    # parser acepta. Hoy `pedido-jsonl` comprueba las cadenas y sus escapes, así que el veredicto
+    # sobre la corrupción del literal es SUYO y su `1` sale por cuarentena; esto no lo duplica, cubre
+    # la puerta que queda: en `specify` y en cada recálculo ese bloque no se invoca, y sin este
+    # fallo cerrado el campo se mediría igual sobre un valor que no se puede interpretar
     function ujson(s,   i, n, ch, sig, t, cp, cp2) {
       n = length(s); t = 0; i = 1; ujsonerr = ""
       while (i <= n) {
@@ -5486,9 +5511,11 @@ pedido_referencias() {
 > **Y el conteo falla cerrado ante un escape que JSON no define**: un `\q`, un `\uZZZZ`, un `\uXXXX`
 > truncado contra el final del valor o una barra invertida que queda última dan **rojo con su
 > lexema**, no un largo. Antes contaban uno cada uno, y el verde resultante se apoyaba en que
-> `pedido-jsonl` cazaría el literal inválido — que **no lo hace y su propia frontera lo dice**: ese
-> bloque comprueba llaves, claves y `n`, y declara explícitamente que no autoriza a afirmar que la
-> línea sea JSON válido. Medido sobre 850 valores generados: de los 642 que un parser real rechaza,
+> `pedido-jsonl` cazaría el literal inválido — que entonces **no lo hacía**: comprobaba llaves,
+> claves y `n`, y su frontera declaraba que no autorizaba a afirmar que la línea fuera JSON válido.
+> **Eso cambió, y el reparto quedó al revés de como esta prosa lo contaba**: el veredicto sobre la
+> corrupción del literal es de `pedido-jsonl`, que hoy recorre las cadenas y sus escapes, y este
+> fallo cerrado cubre la única puerta que ese bloque no vigila. Medido sobre 850 valores generados: de los 642 que un parser real rechaza,
 > el conteo anterior aceptaba **los 642** y este **ninguno**, con los largos coincidiendo en los 208
 > que el parser acepta.
 >
