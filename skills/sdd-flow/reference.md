@@ -1755,20 +1755,21 @@ El launcher recuerda los candidatos admisibles que no aparecen en `expanded_seed
 `seed_paths` ausentes; son diferencias informadas, no condiciones para `ready`. Un
 `.specify/config.yml` copiado por continuidad obligatoria no se informa como omitido.
 
-#### La rama por terminales: la transferencia de autoridad no se ofrece
+#### La rama por terminales: la transferencia de la conducción no se ofrece
 
-**Abrir la sesión y acreditar la transferencia son cosas distintas, y solo la segunda sigue sin
-obtenerse.** La plataforma **abre cuando puede**: con una plataforma de terminales resuelta y la
+**Abrir la sesión y acreditar la transferencia de la conducción son cosas distintas, y solo la
+segunda sigue sin obtenerse.** La otra transferencia, la del **paquete** —qué documento de retomado
+manda—, sí ocurre y la cierra el doble `ready`; de esa no habla esta sección. La plataforma **abre cuando puede**: con una plataforma de terminales resuelta y la
 apertura consentida, el paso 9 de esta misma receta abre el árbol, arranca al conductor y le entrega
 el prompt, con los mismos verbos que `terminal.py crear` y `lanzar` usan para los **workers**. Lo que
 queda manual son las cuatro ramas que esa receta enumera, y ahí el launcher imprime el comando para
 que una persona lo ejecute.
 
-**Lo que no se obtiene es la transferencia de autoridad**, y de eso habla el verbo
+**Lo que no se obtiene es la transferencia de la conducción**, y de eso habla el verbo
 `lanzar-conductor`: **acredita**, no abre. Devuelve `mecanica-no-obtenida` porque ninguna superficie
 medida sostiene un acuse atribuible a la sesión nueva — no porque la plataforma no pueda crearla.
 
-La idea era que la vía por terminales cerrara además el traspaso de autoridad sola, y por eso haría
+La idea era que la vía por terminales cerrara además el traspaso de la conducción sola, y por eso haría
 falta un handshake: para que no exista un instante con dos sesiones creyendo que conducen, o ninguna.
 
 **Ese handshake no existe, y eso está medido.** `lanzar-conductor` devuelve `mecanica-no-obtenida` en
@@ -1778,7 +1779,7 @@ acredita es que sea ella la que conduce — eso lo constata el usuario mirando l
 cuatro ramas que la receta enumera, además, la abre él mismo ejecutando el comando impreso.
 
 **Por qué, y no es una opinión de diseño.** Cinco rondas de revisión, y cada intento de acreditar la
-transferencia por observación acotó una superficie y dejó elegible la contigua:
+transferencia de la conducción por observación acotó una superficie y dejó elegible la contigua:
 
 | intento | acotó | quedó elegible |
 |---|---|---|
