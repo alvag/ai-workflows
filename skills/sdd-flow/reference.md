@@ -3746,7 +3746,15 @@ toca — fusiona para describir, no para reemplazar lo capturado.
 carácter Unicode** sobre el campo `texto` de la línea `n`, **1-indexadas** e **inclusivas en los dos
 extremos**. El límite es `1 ≤ desde ≤ hasta ≤ largo(texto)`. Se eligen caracteres y no bytes porque
 el pedido se escribe en español: un rango en bytes parte una `é` al medio, y el defecto no se ve
-hasta que alguien recorta por ahí.
+hasta que alguien recorta por ahí. Y `largo(texto)` es el largo del **texto**, no el de su forma
+serializada: un salto de línea o una comilla ocupan dos caracteres dentro del JSON y **uno** acá.
+
+**La cota superior se exige sobre la partición vigente, no sobre toda fila.** `1 ≤ desde ≤ hasta`
+rige siempre; `hasta ≤ largo(texto)` se comprueba solo en la versión máxima de cada cláusula no
+retirada. El motivo es el régimen append-only: una fila anterior **no se puede corregir**, así que
+exigirle la cota deja en rojo permanente a todo registro que alguna vez corrigió un fragmento, o que
+se escribió cuando el medidor contaba distinto. Lo que se conserva legible no es lo que se sigue
+exigiendo.
 
 **Una fuente que no se pudo leer no queda cubierta por vacuidad, y su bloqueo tiene salida.** Toda
 línea con `medio: referencia` **bloquea el congelamiento**; el ciclo que lo levanta son tres actos, y
@@ -4111,6 +4119,16 @@ la pregunta de la respuesta es esa secuencia **en texto plano**; para *nombrarla
 pregunta —al documentar la propia plantilla, que es cuándo aparece— va en un tramo de código
 (`` `— **A:**` ``) o escapada con `\`, y entonces no separa nada. Si aparece **más de una vez** en
 texto plano la entrada es ambigua y se reporta: no se elige la primera ni la última.
+
+**Dónde empieza y dónde termina una entrada, porque «una entrada» no es decidible sin decirlo.** Una
+entrada **empieza** en la línea que abre su `Q` y se extiende **hasta la próxima apertura de `Q`**, el
+**próximo encabezado de sección**, o el **fin del archivo**, lo que llegue primero. El separador y la
+respuesta se buscan dentro de esos límites y en ningún otro lado. La plantilla muestra su ejemplo en
+una sola línea, pero **nunca exigió la línea física**: envolver prosa es lo normal en Markdown, y el
+documento que aloja estas entradas puede terminar publicado en un tracker, donde obligar a una línea
+larguísima por entrada es un costo sin contraparte. Mientras el límite no estuvo escrito, el
+predicado lo resolvía sobre la línea física y una entrada envuelta contaba como pregunta sin
+responder con su respuesta a la vista, una línea más abajo.
 
 **Por qué reservarla y no intentar distinguir mención de uso.** Las dos formas son el mismo texto,
 así que ninguna heurística de posición las separa: elegir la primera coincidencia escondía una
@@ -4671,12 +4689,42 @@ pedido_referencias() {
       if (length(a) != length(b)) return (length(a) < length(b)) ? -1 : 1
       if ((a "") == (b "")) return 0
       return ((a "") < (b "")) ? -1 : 1 }
-    # el rango de un fragmento son POSICIONES DE CARÁCTER Unicode, y `length` de awk mide bytes o
-    # caracteres según la implementación y la locale: la locale se fija a C —donde mide bytes— y
-    # los caracteres se cuentan acá, salteando los bytes de continuación UTF-8
-    function ulargo(s,   i, n, t) {
-      n = length(s); t = 0
-      for (i = 1; i <= n; i++) if (index(CONT, substr(s, i, 1)) == 0) t++
+    # los cuatro hexadecimales de un escape Unicode, o -1 si alguno no lo es
+    function hex4(h,   j, c, v, r) {
+      r = 0
+      for (j = 1; j <= 4; j++) { c = tolower(substr(h, j, 1))
+        v = index("0123456789abcdef", c) - 1
+        if (v < 0) return -1
+        r = r * 16 + v }
+      return r }
+    # el rango de un fragmento son POSICIONES DE CARÁCTER Unicode SOBRE EL TEXTO, y lo que llega acá
+    # es el valor JSON todavía escapado: hay que contar la entidad, no su serialización. Dos cosas se
+    # cruzan y ninguna alcanza sola. `length` de awk mide bytes o caracteres según la implementación y
+    # la locale, así que la locale se fija a C —donde mide bytes— y los caracteres se cuentan acá
+    # salteando los bytes de continuación UTF-8; y cada escape JSON es UN carácter aunque ocupe dos,
+    # seis o doce. Sin lo segundo, un texto con un salto de línea medía uno de más por cada salto y la
+    # partición de `R1` nunca podía cubrir el final: el pedido se escribe en español y en Markdown, así
+    # que comillas y saltos son la regla y no el borde
+    function ujson(s,   i, n, ch, sig, t, cp, cp2) {
+      n = length(s); t = 0; i = 1
+      while (i <= n) {
+        ch = substr(s, i, 1)
+        if (ch == "\\" && i < n) {
+          sig = substr(s, i + 1, 1)
+          if (sig == "u" && i + 5 <= n) {
+            cp = hex4(substr(s, i + 2, 4))
+            # las DOS mitades del par se validan: con solo la primera, un high surrogate suelto
+            # seguido de cualquier escape se comía doce bytes y el largo quedaba corto — un falso
+            # verde, que es peor que el rojo que este bloque vino a arreglar
+            if (cp >= 55296 && cp <= 56319 && i + 11 <= n && substr(s, i + 6, 2) == "\\u") {
+              cp2 = hex4(substr(s, i + 8, 4))
+              if (cp2 >= 56320 && cp2 <= 57343) { i += 12; t++; continue } }
+            i += 6; t++; continue }
+          # `\\` se consume entero acá, y por eso `\\u0041` cuenta seis y no uno: la barra escapada
+          # no abre un escape Unicode, aunque lo parezca
+          i += 2; t++; continue }
+        if (index(CONT, ch) == 0) t++
+        i++ }
       return t }
     # enmascara los tramos de código y los escapes de una línea, conservando el LARGO para que las
     # posiciones sigan valiendo sobre el original: lo que está en código o escapado es una cita
@@ -4723,6 +4771,37 @@ pedido_referencias() {
       sig = substr(t, r + l, 1)
       if (sig ~ /[0-9A-Za-z_]/) return ""
       return normid(substr(t, r, l)) }
+    # cierra la entrada acumulada y resuelve si está respondida. El predicado es el mismo de
+    # siempre; lo único que cambió es SOBRE QUÉ opera: antes la línea física, ahora la entrada.
+    # Se invoca en las tres condiciones de cierre —próxima apertura de `Q`, próximo encabezado de
+    # sección, y `END`—, y es idempotente porque limpia `qab`: cerrar dos veces no cuenta dos veces
+    function cerrar_q(   msk, nsep, dq, bus, off, pq, cuerpo2) {
+      if (qab == "") return
+      # la entrada tiene que estar RESPONDIDA y ser ÚNICA: una pregunta sin respuesta no decidió
+      # nada, y dos entradas con el mismo número no dicen cuál de las dos decidió
+      # la respuesta tiene que tener CONTENIDO: el marcador vacío no decidió nada
+      # la respuesta va en su POSICIÓN canónica —tras el separador de raya— y no es un
+      # placeholder: con el marcador buscado en cualquier lado, «¿Qué significa **A:**?» contaba
+      # como respondida, y `<respuesta>` contaba como respuesta
+      # la raya que cuenta es la que INTRODUCE el marcador, no la primera: con `index()` a secas,
+      # una raya dentro de la pregunta escondía la respuesta que venía después
+      # el marcador es **reservado**: para citarlo dentro de la pregunta va en un tramo de
+      # código o escapado, y solo cuenta como separador el que aparece **en texto plano**. Sin
+      # esa reserva, una pregunta que menciona la sintaxis de la plantilla fabricaba su propia
+      # respuesta; y si aparece más de una vez en texto plano, la entrada es ambigua
+      msk = enmascarar(acu)
+      nsep = 0; dq = 0; bus = msk; off = 0
+      while ((pq = index(bus, RAYA)) > 0) {
+        if (substr(bus, pq + length(RAYA)) ~ /^[ ]*[*][*]A:[*][*]/) { nsep++
+          if (nsep == 1) dq = off + pq }
+        off = off + pq + length(RAYA) - 1
+        bus = substr(bus, pq + length(RAYA)) }
+      if (nsep > 1) print "entrada de Clarifications ambigua, el marcador aparece mas de una vez: " qab
+      if (nsep == 1) { cuerpo2 = substr(acu, dq + length(RAYA))
+        if (match(cuerpo2, /^[ ]*[*][*]A:[*][*]/)) {
+          cuerpo2 = celda(substr(cuerpo2, RLENGTH + 1))
+          if (cuerpo2 != "" && cuerpo2 !~ /^<[^>]*>$/) resp[qab] = 1 } }
+      qab = ""; acu = "" }
     # la misma gramática de apertura, para las entradas de `## Clarifications`: la plantilla
     # canónica las numera —`- **Q1:** … — **A:** …`— y la referencia de una autoridad `clarify`
     # apunta a ese número
@@ -4803,9 +4882,11 @@ pedido_referencias() {
       nlit = FNR
       if (match($0, /"texto"[ ]*:[ ]*"/)) {
         cuerpo = substr($0, RSTART+RLENGTH)
-        # el orden canónico deja sha256 como último campo: ese es el corte
+        # el orden canónico deja sha256 como último campo: ese es el corte. El corte se hace sobre el
+        # crudo y el conteo sobre lo des-escapado, en ese orden: el delimitador de campo vive en la
+        # forma serializada y el largo pertenece al texto
         sub(/"[ ]*,[ ]*"sha256".*$/, "", cuerpo)
-        largo[nl] = ulargo(cuerpo) }
+        largo[nl] = ujson(cuerpo) }
       # `largo` y `hay` comparten índice por construcción: los dos se escriben con `nl`
       next }
     # el escaneo de MENCIONES se retiró con su único consumidor: la dirección traza -> sede
@@ -4813,34 +4894,21 @@ pedido_referencias() {
     # y nunca declarado la satisfacía. Las dos direcciones de R2 rigen ahora sobre `abre`
     FILENAME == ESPEC {
       if (mdsalta($0)) next
-      if ($0 ~ /^##[ ]+Clarifications/) { enclar = 1 }
-      else if ($0 ~ /^##[ ]/) { enclar = 0 }
+      # una entrada de `## Clarifications` es una ENTIDAD y no una línea: se lee desde la línea que
+      # abre su `Q` hasta la próxima apertura, el próximo encabezado de sección, o el fin del
+      # archivo. Resolverla sobre `$0` daba por no respondida toda entrada envuelta —que es lo normal
+      # en Markdown— con la respuesta escrita y visible una línea más abajo
+      if ($0 ~ /^##[ ]+Clarifications/) { cerrar_q(); enclar = 1; next }
+      else if ($0 ~ /^##[ ]/) { cerrar_q(); enclar = 0 }
+      # un encabezado de CUALQUIER nivel cierra la entrada, aunque no cierre la sección: un `###` es
+      # una subsección de `## Clarifications` y las entradas de después siguen contando, pero la
+      # entrada en curso termina ahí. Sin esta rama, la prosa decía «el próximo encabezado de sección»
+      # y el código solo miraba `##`, así que un separador escrito bajo un `###` respondía a una `Q`
+      # que había quedado abierta dos subsecciones más arriba
+      else if ($0 ~ ("^#{1,6}[ " sprintf("%c",9) "]")) cerrar_q()
       if (enclar) { qcl = abreq($0)
-        # la entrada tiene que estar RESPONDIDA y ser ÚNICA: una pregunta sin respuesta no decidió
-        # nada, y dos entradas con el mismo número no dicen cuál de las dos decidió
-        if (qcl != "") { hayq[qcl]++
-          # la respuesta tiene que tener CONTENIDO: el marcador vacío no decidió nada
-          # la respuesta va en su POSICIÓN canónica —tras el separador de raya— y no es un
-          # placeholder: con el marcador buscado en cualquier lado, «¿Qué significa **A:**?» contaba
-          # como respondida, y `<respuesta>` contaba como respuesta
-          # la raya que cuenta es la que INTRODUCE el marcador, no la primera de la línea: con
-          # `index()` a secas, una raya dentro de la pregunta escondía la respuesta que venía después
-          # el marcador es **reservado**: para citarlo dentro de la pregunta va en un tramo de
-          # código o escapado, y solo cuenta como separador el que aparece **en texto plano**. Sin
-          # esa reserva, una pregunta que menciona la sintaxis de la plantilla fabricaba su propia
-          # respuesta; y si aparece más de una vez en texto plano, la entrada es ambigua
-          msk = enmascarar($0)
-          nsep = 0; dq = 0; bus = msk; off = 0
-          while ((pq = index(bus, RAYA)) > 0) {
-            if (substr(bus, pq + length(RAYA)) ~ /^[ ]*[*][*]A:[*][*]/) { nsep++
-              if (nsep == 1) dq = off + pq }
-            off = off + pq + length(RAYA) - 1
-            bus = substr(bus, pq + length(RAYA)) }
-          if (nsep > 1) print "entrada de Clarifications ambigua, el marcador aparece mas de una vez: " qcl
-          if (nsep == 1) { cuerpo2 = substr($0, dq + length(RAYA))
-            if (match(cuerpo2, /^[ ]*[*][*]A:[*][*]/)) {
-              cuerpo2 = celda(substr(cuerpo2, RLENGTH + 1))
-              if (cuerpo2 != "" && cuerpo2 !~ /^<[^>]*>$/) resp[qcl] = 1 } } } }
+        if (qcl != "") { cerrar_q(); qab = qcl; hayq[qab]++; acu = $0 }
+        else if (qab != "") acu = acu " " $0 }
       ab = abrec($0)
       if (ab != "") { abre[ab]++
         # la anotación de autoridad, que el contrato obliga a poner al final de esa misma línea,
@@ -4908,6 +4976,11 @@ pedido_referencias() {
       # cualquier cadena no vacía sacaba una cláusula de `R3`
       else if (apl == "descartada") evdesc[normid(id) "@" norm(ver)] = evi
       else if (apl == "satisfecha-por-trabajo-previo") { nsat++; evsat[normid(id) "@" norm(ver)] = evi }
+      # la `version` tiene dominio, y sin comprobarlo una fila con un typo ahí queda INVISIBLE: no
+      # entra a `vmax`, así que ni `R1`, ni `R3`, ni el rango la alcanzan. Es la puerta por la que una
+      # cláusula entera se evade de las tres relaciones sin que nada lo señale
+      if (ver !~ /^[0-9]+$/)
+        print "version fuera del dominio en " id ": " (ver == "" ? "vacia" : ver)
       if (ver ~ /^[0-9]+$/) { ver = norm(ver)
         clausula[ck "@" ver] = 1
         if (!(ck in vmax) || cmpd(ver, vmax[ck]) > 0) {
@@ -4924,8 +4997,13 @@ pedido_referencias() {
         split(lista[i], p, ":"); split(p[2], q, "-")
         cit = norm(p[1])
         if (!(cit in hay)) { print "fragmento cita una linea inexistente: " lista[i]; continue }
-        if (q[1]+0 < 1 || q[2]+0 < q[1]+0 || q[2]+0 > largo[cit]+0)
-          print "rango fuera del largo del texto: " lista[i] } }
+        # el rango contra el LARGO se comprueba en END y sobre la partición vigente, no acá: la
+        # tabla es append-only, así que una fila histórica no se puede corregir, y juzgarla contra el
+        # largo de hoy deja en rojo permanente a todo registro que alguna vez corrigió un fragmento
+        # —o que fue escrito cuando el medidor contaba distinto—. Lo que sí rige por fila es la forma
+        # del fragmento y que la línea que cita exista: eso vale para toda versión
+        if (q[1]+0 < 1 || q[2]+0 < q[1]+0)
+          print "rango invertido o que empieza antes de 1: " lista[i] } }
     s == "t" && id ~ /^AC-[0-9]+[a-z]?$/ {
       ac = normid(id)
       actraza[ac] = 1
@@ -5040,6 +5118,10 @@ pedido_referencias() {
       if (tipo == "retiro" && ob ~ /^P-[0-9]+@[0-9]+$/) {
         split(ob, pr, "@"); retirado[normid(pr[1])] = 1 } }
     END {
+      # el tercer cierre de la entrada: el fin del archivo. Va ANTES de todo lo demás porque los
+      # bucles de abajo consultan `resp[]`, y la última entrada de la sección no tiene ninguna
+      # apertura ni encabezado detrás que la cierre
+      cerrar_q()
       for (ob in destino) {
         if (ob ~ /^P-[0-9]+@[0-9]+$/) {
           split(ob, pp, "@")
@@ -5177,7 +5259,9 @@ pedido_referencias() {
         if (!(a in actraza)) continue
         if (ultac[a] != hashtz[a])
           print "el ultimo evento sobre " a " pinea un hash que no es el vigente: " ultac[a] }
-      # R1 sobre la partición vigente: cada línea del literal, cubierta EXACTAMENTE una vez
+      # R1 sobre la partición vigente: cada línea del literal, cubierta EXACTAMENTE una vez. Y el
+      # rango contra el largo se comprueba acá, en el mismo recorrido y sobre el mismo conjunto: la
+      # cláusula vigente es la única que el contrato obliga a mantener dentro del texto
       for (ck in vmax) {
         if (ck in retirado) continue
         m = split(fragde[ck], ls, ",")
@@ -5185,11 +5269,19 @@ pedido_referencias() {
           ls[i] = celda(ls[i])
           if (ls[i] !~ /^[0-9]+:[0-9]+-[0-9]+$/) continue
           split(ls[i], p2, ":"); split(p2[2], q2, "-")
-          ln = norm(p2[1]); c = ++cnt[ln]
+          ln = norm(p2[1])
+          if (!(ln in hay)) continue
+          if (q2[2]+0 > largo[ln]+0) {
+            # se marca la línea para NO emitir además el «no la cubre ninguna cláusula vigente» de
+            # abajo: un rango malo dejaba dos diagnósticos y el segundo sugiere una partición
+            # incompleta, que es exactamente el mensaje engañoso que este flujo vino a corregir
+            print "rango fuera del largo del texto: " ls[i]; malrango[ln] = 1; continue }
+          c = ++cnt[ln]
           ini[ln SUBSEP c] = q2[1]+0; fin[ln SUBSEP c] = q2[2]+0 } }
       for (ln in hay) {
         L = largo[ln]+0; c = cnt[ln]+0
-        if (c == 0) { print "R1: la linea " ln " no la cubre ninguna clausula vigente"; continue }
+        if (c == 0) { if (!(ln in malrango)) print "R1: la linea " ln " no la cubre ninguna clausula vigente"
+                      continue }
         for (a=1; a<=c; a++) for (b=a+1; b<=c; b++)
           if (ini[ln SUBSEP b] < ini[ln SUBSEP a]) {
             t1=ini[ln SUBSEP a]; ini[ln SUBSEP a]=ini[ln SUBSEP b]; ini[ln SUBSEP b]=t1
@@ -5212,7 +5304,24 @@ pedido_referencias() {
 ```
 
 > **Frontera de prueba.** Clase **veredicto**, dirección **las dos**. Los límites de la comprobación
-> contra `antecedentes.md` están junto a ese subpredicado. Para el resto, su verde autoriza a afirmar
+> contra `antecedentes.md` están junto a ese subpredicado.
+>
+> **Una entrada de `## Clarifications` se lee como entidad, no como línea**, y eso tiene su propio
+> alcance. Se acumula desde la línea que abre su `Q` hasta la próxima apertura, el próximo encabezado
+> de sección, o el fin del archivo. Lo que **no** cubre: las líneas se unen con **un espacio**, así
+> que las posiciones dentro del acumulado **no corresponden a ninguna línea física** y ningún
+> diagnóstico de esta rama puede señalar línea; lo que `mdsalta` saltea —un fence, un bloque indentado,
+> un comentario HTML— queda **fuera de la entrada** aunque esté visualmente dentro de ella, así que un
+> separador escrito ahí no responde y tampoco vuelve ambigua a la entrada; **el límite por apertura lo
+> resuelve `abreq`**, que reconoce cualquier línea que —quitados espacios, marcador de lista y
+> énfasis— empiece con `Q` y dígitos, así que una línea de continuación que arranque «Q1 ya
+> decidió…» **corta la entrada ahí** y abre una fantasma; y el marcador sigue siendo **reservado**,
+> con lo que una entrada que lo use en texto plano sin querer separar nada acredita como respondida
+> lo que venga después. Antes de esto, la apertura y el separador se resolvían sobre
+> la misma línea física y una entrada envuelta —lo normal en Markdown— daba «Q sin respuesta» con la
+> respuesta escrita una línea más abajo.
+>
+> Para el resto, su verde autoriza a afirmar
 > que cada referencia **resuelve contra su destino real**: la cláusula **tiene** fragmentos, la
 > **partición vigente cubre cada línea del literal exactamente una vez** —que es `R1` y no una parte de
 > ella—, el criterio está en la sede de los criterios, y el objetivo de cada evento **existe** en la
@@ -5221,16 +5330,33 @@ pedido_referencias() {
 > los elementos sin forma se descartaban en silencio, una cláusula con `fragmentos` vacío o con basura
 > pasaba en verde **sin origen comprobable**, que es justo lo que este bloque existe para ver. **Nunca** autoriza a
 > afirmar que la derivación adjudicada sea **válida** —eso es juicio y queda en prosa—, ni que el
-> fragmento citado sea el que de verdad origina la cláusula. **El largo del texto se mide en caracteres Unicode**, que es la unidad
+> fragmento citado sea el que de verdad origina la cláusula. **El rango contra el largo se comprueba
+> solo sobre la partición vigente**, igual que `R1`, y eso acota lo que su verde promete: una fila
+> **histórica** puede citar un rango que hoy excede el texto y el bloque no lo dice. Es deliberado y
+> no un hueco: la tabla es append-only, así que esa fila no se puede corregir, y juzgarla contra el
+> largo de hoy dejaba en rojo permanente a todo registro que alguna vez corrigió un fragmento —o que
+> se escribió cuando el medidor contaba distinto—. Lo que sí sigue rigiendo por fila, en toda versión,
+> es la **forma** del fragmento, que la **línea que cita exista**, que el rango no esté invertido ni
+> empiece antes de 1, y que la **`version` caiga en su dominio** — sin esto último una fila con un
+> typo en esa columna quedaba invisible para `R1`, `R3` y el rango a la vez. Por el mismo corte, el
+> rango de una cláusula **retirada** tampoco se comprueba: está fuera de la partición vigente por
+> definición, igual que para `R1`. **El largo del texto se mide en caracteres Unicode**, que es la unidad
 > que declara el rango de fragmentos: la locale se fija a `C` y los caracteres se cuentan salteando
 > los bytes de continuación, porque `length` de `awk` mide bytes o caracteres según qué
 > implementación esté instalada — con la unidad librada al host, un `1:1-2` sobre un texto de una
 > `é` pasaba en verde y el `1:1-1` correcto daba rojo, así que un pedido escrito en español no tenía
-> forma de cerrar `R1`. Dos límites más, propios de medir el
-> largo desde el literal serializado: **no interpreta escapes JSON** —una comilla o un salto de línea
-> escapados dentro de `texto` desplazan el largo contra el que compara—, y **depende del orden
-> canónico de campos** para saber dónde termina `texto`, así que una línea con los campos en otro
-> orden le queda invisible en vez de dar rojo. Y el reconocimiento de `AC-n` es por **forma
+> forma de cerrar `R1`. **Y los escapes JSON se interpretan**: cada uno cuenta como el carácter que
+> representa —los de dos caracteres, el `\uXXXX` de seis, y el par surrogate válido de doce como uno
+> solo—, porque lo que llega al conteo es el valor todavía serializado y la unidad del rango es el
+> texto. Sin eso, un salto de línea o una comilla escapados corrían el largo contra el que se compara
+> y `R1` reclamaba un tramo final que en el texto no existe; medido, un pedido de 11.052 caracteres
+> con 148 saltos, 12 comillas y 6 barras medía 11.218. Tres límites de ese conteo, que sí quedan:
+> un `\uXXXX` **se cuenta aunque no designe un code point asignado**, un **escape mal formado**
+> —`\uZZZZ`, o uno truncado al final del valor— **también cuenta uno** en vez de dar rojo, un
+> **surrogate aislado cuenta uno** y no se rechaza —la validez del JSON no es lo que este bloque
+> comprueba, y un literal que no parsea lo caza `pedido-jsonl`, que corre antes—, y sigue
+> **dependiendo del orden canónico de campos** para saber dónde termina `texto`, así que una línea
+> con los campos en otro orden le queda invisible en vez de dar rojo. Y el reconocimiento de `AC-n` es por **forma
 > cerrada** —`AC-` seguido de dígitos y a lo sumo una letra minúscula—, **la misma en las cuatro
 > sedes que la usan**, contando la del `objetivo` de un evento: un identificador escrito fuera de esa forma queda invisible en las dos puntas, ni se
 > indexa desde la sede de los criterios ni se comprueba desde la traza, así que pasa en silencio en
