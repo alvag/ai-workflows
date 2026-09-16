@@ -524,6 +524,8 @@ Tres ejes, y ninguno se inventa por incidente:
 |---|---|---|
 | skill | `skill:<nombre>` — una por cada skill que el incidente nombra | el campo `Skill` del registro; un incidente que nombra dos lleva las dos |
 | severidad | `severidad:alta` \| `severidad:media` | el campo `Severidad`. **Si el registro no lo declara, el issue va sin esta etiqueta** |
+| plataforma | `plataforma:macos` \| `plataforma:windows` \| `plataforma:linux` | el campo `Plataforma`. **Si el registro no lo declara, el issue va sin esta etiqueta** |
+| transporte | `transporte:cli` \| `transporte:herdr` \| `transporte:orca` | el campo `Transporte`. **Si el registro no lo declara, el issue va sin esta etiqueta** |
 | estado | `needs-triage` \| `en-curso` | nace `needs-triage`; pasa a `en-curso` cuando el intake lo despacha (paso 6.5) |
 
 Crear la etiqueta que falte antes de publicar (`gh label create <nombre> --color <hex> --description
@@ -543,6 +545,8 @@ pie la procedencia.
 **Sección:** <la seccion o regla que el incidente cita>
 **Conductor:** <herramienta → modelo>
 **Worker:** <herramienta → modelo, o — con el motivo>
+**Plataforma:** <macos|windows|linux, o "no declarada en el registro de origen">
+**Transporte:** <cli|herdr|orca, o "no declarado en el registro de origen">
 **Severidad:** <alta|media, o "no declarada en el registro de origen">
 **Relacionado:** <`DD/MM/AAAA HH:MM` (#<n>) del antecedente; la fecha sola si no tiene
 issue, con el motivo; o — si no hay>
@@ -556,6 +560,14 @@ issue, con el motivo; o — si no hay>
 <sub>Volcado desde el registro local `<ruta>`. **Sin verificar contra el árbol**: la
 verificación es del paso `sdd-incident-intake`.</sub>
 ```
+
+**La plataforma y el transporte no se deducen de la sesión que vuelca.** El volcado corre después
+del incidente, y a menudo en otra máquina o por otra vía: publicar los de quien vuelca le atribuiría
+al defecto un entorno que nunca tuvo. Salen del registro, igual que la severidad, y si no están se
+publica su ausencia dicha. Son **dos ejes independientes** —`plataforma:windows` con
+`transporte:orca` es una combinación real— así que ninguno se deriva del otro. Pagan su lugar porque
+separan las dos clases de defecto que más se confunden al triar: el que solo aparece en un shell
+—las variantes PowerShell contra POSIX— y el que solo aparece por una vía de transporte.
 
 **La primera línea es el mecanismo de idempotencia**, no decoración. GitHub indexa el cuerpo, así que
 la fecha y hora se busca; y es lo que permite que el campo `Relacionado` siga cruzando incidentes por
@@ -571,7 +583,8 @@ gh issue list --repo <owner/repo> --state all --search '"DD/MM/AAAA HH:MM"' \
 # 2. publicar (el cuerpo va por archivo: el markdown con backticks rompe el quoting)
 gh issue create --repo <owner/repo> --title "[<skill>] <titular>" \
   --body-file <ruta/al/cuerpo.md> \
-  --label "skill:<nombre>" --label "severidad:<n>" --label "needs-triage"
+  --label "skill:<nombre>" --label "severidad:<n>" --label "needs-triage" \
+  --label "plataforma:<p>" --label "transporte:<t>"   # omitir la que el registro no declare
 
 # 3. cotejar lo publicado contra el original, antes de retirar
 gh issue view <n> --repo <owner/repo> --json body --jq .body > <ruta/al/publicado.md>
