@@ -43,14 +43,20 @@ El invariante de aislamiento no cambia: se acota. En la vía headless siguen ín
 
 ## Estados al esperar
 
-La autoridad de finalización es el artefacto publicado atómicamente y validado por `cosechar`, no el estado que reporte Herdr. Los cinco primeros estados son universales; los dos últimos quedan sujetos a lo que la plataforma acredita.
+La autoridad de finalización es el artefacto publicado atómicamente y validado por `cosechar`, no el estado que reporte Herdr. Los cinco primeros estados son universales; los seis últimos derivan del estado del agente y **solo se alcanzan cuando la clasificación llega a consultarlo**: sin artefacto válido, con el panel vivo y antes del deadline. Ninguno de ellos acredita finalización ni abre el código afirmativo.
+
+El vocabulario de `agent_status` que Herdr declara es cerrado —`idle`, `working`, `blocked`, `done`, `unknown`— y se lee de `result.agent.agent_status`, no de la raíz de `result`.
 
 | Estado | Observable | Fuerza | Modo de falla |
 |---|---|---|---|
 | `terminado` | Artefacto publicado y panel muerto. | derivado | modo de falla: un archivo presente pero inválido no es finalización; `cosechar` lo rechaza. |
 | `terminado-vivo` | Artefacto publicado y panel vivo. | derivado | modo de falla: una lectura de liveness atrasada puede conservar transitoriamente el panel como vivo. |
-| `trabajando` | Sin artefacto, panel vivo y antes del deadline. | derivado | modo de falla: la ausencia de artefacto no prueba actividad interna. |
+| `trabajando` | `agent_status` informa `working`. En la otra plataforma, donde el estado del agente no se consulta, es el derivado de panel vivo antes del deadline. | nativo | modo de falla: el agente puede informar actividad sin progreso hacia el artefacto. |
 | `vencido` | Sin artefacto, panel vivo y deadline vencido. | derivado | modo de falla: un reloj incorrecto puede vencer antes o después de lo debido. |
 | `muerto` | Sin artefacto y panel muerto, aun si el deadline ya venció. | derivado | modo de falla: una lista de panes atrasada puede declarar muerte prematuramente. |
-| `listo` | `agent_status` informa disponibilidad para recibir el encargo. | nativo | No aplica: se omite si el estado del agente no se puede leer. |
-| `bloqueado` | No se acredita: el enum existe, pero no se observó con ventana declarada. | omitido | No aplica: no se infiere una aprobación pendiente. |
+| `listo` | `agent_status` informa `idle`: el agente no está en un turno. | nativo | modo de falla: no distingue un agente que nunca arrancó su turno de uno que lo terminó y cuya pestaña ya fue vista. |
+| `bloqueado` | `agent_status` informa `blocked`. | nativo | modo de falla: la plataforma no dice **qué** espera, así que no se infiere de qué clase es la aprobación pendiente. |
+| `detenido-sin-cierre` | `agent_status` informa `done`: el turno terminó sin que su pestaña se haya visto, y las lecturas por CLI no marcan «visto». | nativo | modo de falla: **no acredita finalización** — entre el cambio de estado y el renombre atómico del artefacto no hay orden garantizado, así que es diagnóstico y el ciclo sigue hasta que el artefacto válido aparezca, el panel muera o venza el deadline. |
+| `desconocido` | `agent_status` informa `unknown`. | nativo | modo de falla: la plataforma declara que este estado **no** prueba terminación, así que no se lee como fin de turno ni como actividad. |
+| `no-reconocido` | `agent_status` informa un valor que no está en el vocabulario de arriba. | nativo | modo de falla: significa que el vocabulario de la plataforma creció; el adaptador no sabe qué quiere decir y por eso no lo interpreta. Es la señal de que esta tabla quedó vieja. |
+| `estado-no-obtenible` | Se consultó el estado y no hubo valor legible. El campo `causa_estado_agente` distingue las tres formas: `consulta-fallida`, `forma-inesperada` y `campo-ausente`, y `acredita.estado_agente` baja a `omitido` en ese caso. | omitido | modo de falla: la autoridad vuelve a ser el liveness del panel, que acredita que el panel vive y no que el agente trabaje. Un `forma-inesperada` indica que el esquema del payload cambió. |

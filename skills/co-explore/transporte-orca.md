@@ -49,8 +49,8 @@ La autoridad de finalización es el artefacto publicado atómicamente y validado
 |---|---|---|---|
 | `terminado` | Artefacto publicado y liveness supervisada muerta. | derivado | modo de falla: un archivo presente pero inválido no es finalización; `cosechar` lo rechaza. |
 | `terminado-vivo` | Artefacto publicado y terminal vivo. | derivado | modo de falla: una lectura de liveness atrasada puede conservar transitoriamente el terminal como vivo. |
-| `trabajando` | Sin artefacto, terminal vivo y antes del deadline. | derivado | modo de falla: la ausencia de artefacto no prueba actividad interna. |
+| `trabajando` | Sin artefacto, terminal vivo y antes del deadline. Es el destino de toda espera no terminal en esta plataforma, porque el estado del agente no se consulta. | derivado | modo de falla: la ausencia de artefacto no prueba actividad interna. |
 | `vencido` | Sin artefacto, terminal vivo y deadline vencido. | derivado | modo de falla: un reloj incorrecto puede vencer antes o después de lo debido. |
 | `muerto` | Sin artefacto y terminal muerto, aun si el deadline ya venció. | derivado | modo de falla: `orphaned` o `connected` atrasados pueden declarar muerte prematuramente. |
-| `listo` | Capa supervisada: `state: ready` y `stage: input_accepted`. | nativo | No aplica: sin la capa supervisada se omite. |
-| `bloqueado` | Orca no acredita espera de aprobación en ninguna capa. | omitido | No aplica: no se infiere desde fotogramas ni TUI. |
+| `listo` | **No se emite al esperar.** El verbo no consulta estado de agente en esta plataforma, así que los estados derivados de él —`listo`, `bloqueado`, `detenido-sin-cierre`, `desconocido`, `no-reconocido` y `estado-no-obtenible`— no aparecen acá. La capa supervisada informa `state` y `stage`, pero el sondeo no los lee. | omitido | No aplica: su ausencia es una omisión declarada del transporte, no una lectura fallida, y por eso no se clasifica como estado ilegible. |
+| `bloqueado` | Ídem: Orca no acredita espera de aprobación en ninguna capa y el verbo no la consulta. | omitido | No aplica: no se infiere desde fotogramas ni TUI. |

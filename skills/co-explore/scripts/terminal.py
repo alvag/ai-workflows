@@ -136,6 +136,54 @@ def _json(texto):
         return {}
 
 
+# El dominio de `agent_status` que la plataforma declara, medido contra el binario instalado. La
+# clasificacion es un DATO y no una cadena de `elif` para que una inspeccion pueda compararla entera
+# contra ese dominio: con condicionales encadenados lo unico barato es buscar sus literales, que es
+# lo que dejo envejecer la version anterior sin que nadie lo viera.
+ESTADO_AGENTE = {
+    "working": ("trabajando", "estado_agente"),
+    "idle": ("listo", "estado_agente"),
+    "blocked": ("bloqueado", "estado_agente"),
+    "done": ("detenido-sin-cierre", "estado_agente"),
+    "unknown": ("desconocido", "estado_agente"),
+}
+
+
+def _dato_agente(panel, campo, tipo):
+    """Lee un campo del objeto del agente y devuelve `(valor, causa)`.
+
+    La plataforma publica el objeto bajo `result.agent`, no en la raiz de `result`: leerlo un nivel
+    mas arriba devolvia `None` siempre, y como todas las ramas que lo consumian trataban ese `None`
+    como "desconocido", el defecto no emitia ninguna senal.
+
+    `tipo` decide que cuenta como legible, y por eso es un parametro y no una comprobacion del
+    llamador: un contador que llega como texto es una forma inesperada del payload, no un valor
+    valido que el consumidor deba rechazar despues. `causa` es `None` con valor legible, y si no lo
+    hay distingue las tres formas de no tenerlo en vez de colapsarlas.
+    """
+    ok, texto = _consultar(["herdr", "agent", "get", panel])
+    if not ok:
+        return None, "consulta-fallida"
+    # `.get` encadenado NO alcanza: con `{"result": null}` la primera devuelve None y la segunda
+    # levanta AttributeError, que es justo la clase de fallo que este helper existe para clasificar.
+    cuerpo = _json(texto)
+    resultado = cuerpo.get("result") if isinstance(cuerpo, dict) else None
+    agente = resultado.get("agent") if isinstance(resultado, dict) else None
+    if not isinstance(agente, dict):
+        return None, "forma-inesperada"
+    if campo not in agente:
+        return None, "campo-ausente"
+    valor = agente[campo]
+    if tipo == "entero":
+        # `bool` es subclase de `int` y no es un contador: sin excluirlo, un `True` del payload
+        # entraria a la comparacion como 1.
+        if isinstance(valor, bool) or not isinstance(valor, int):
+            return None, "forma-inesperada"
+    elif not isinstance(valor, str):
+        return None, "forma-inesperada"
+    return valor, None
+
+
 def _panes(texto):
     return {p.get("pane_id") for p in _json(texto).get("result", {}).get("panes", []) if p.get("pane_id")}
 
@@ -570,22 +618,32 @@ def enviar(args):
         return emitir(1, "enviar", "adverso", args.plataforma, causa="panel-no-lanzado", detalle="el panel no fue lanzado", acredita={"acuse": "derivado"}, evidencia=["ledger"])
     if args.plataforma == "orca":
         return emitir(3, "enviar", "error", "orca", causa="reintento-no-obtenible", detalle="el dispatch activo impide reenviar")
-    ok, previo = _consultar(["herdr", "agent", "get", args.panel])
-    secuencia = _json(previo).get("result", {}).get("state_change_seq") if ok else None
+    secuencia, causa_contador = _dato_agente(args.panel, "state_change_seq", "entero")
+    # Sin referencia no se envia: enviar igual consume un turno del worker y todo el presupuesto de
+    # sondeo para despues no poder acreditar nada. La version anterior lo enviaba y agotaba siempre.
+    if secuencia is None:
+        return emitir(1, "enviar", "adverso", "herdr", causa="referencia-no-obtenible",
+                      detalle="no se pudo establecer el contador de referencia antes de enviar",
+                      causa_contador=causa_contador, intento=int(args.intento),
+                      acredita={"acuse": "nativo"}, evidencia=["agent-get"])
     prompt = _prompt(args.encargo, args.artefacto)
     ok, texto = _consultar(["herdr", "agent", "prompt", args.panel, prompt])
     if not ok:
         return emitir(1, "enviar", "adverso", "herdr", causa="prompt-rechazado", detalle=texto[:200], acredita={"acuse": "nativo"}, evidencia=["agent-prompt"])
     aceptado = False
     for _ in range(int(args.limite)):
-        ok, estado = _consultar(["herdr", "agent", "get", args.panel])
-        actual = _json(estado).get("result", {}).get("state_change_seq") if ok else None
-        if secuencia is not None and actual is not None and actual > secuencia:
+        # Una lectura ilegible no acredita y tampoco corta: el sondeo sigue hasta agotar. La
+        # comparacion es ESTRICTA a proposito — con `>=` un contador que no avanza acreditaria un
+        # envio que nunca ocurrio.
+        actual, causa_lectura = _dato_agente(args.panel, "state_change_seq", "entero")
+        if actual is not None and actual > secuencia:
             aceptado = True; break
+        if causa_lectura is not None:
+            causa_contador = causa_lectura
         time.sleep(float(args.intervalo))
     digest = hashlib.sha256(contenido).hexdigest()
     if not aceptado:
-        return emitir(1, "enviar", "adverso", "herdr", causa="acuse-no-obtenido", detalle="state_change_seq no avanzo", intento=int(args.intento), hash_encargo=digest, acredita={"acuse": "nativo"}, evidencia=["agent-get"])
+        return emitir(1, "enviar", "adverso", "herdr", causa="acuse-no-obtenido", detalle="state_change_seq no avanzo", intento=int(args.intento), hash_encargo=digest, causa_contador=causa_contador, acredita={"acuse": "nativo"}, evidencia=["agent-get"])
     _asentar(args.corrida, {"efecto": "enviar", "panel": args.panel, "intento": int(args.intento), "hash_encargo": digest})
     return emitir(0, "enviar", "afirmativo", "herdr", intento=int(args.intento), hash_encargo=digest, acredita={"acuse": "nativo"}, evidencia=["state_change_seq"])
 
@@ -611,11 +669,9 @@ def esperar(args):
     vivo, dato = _vivo(args.plataforma, args.panel)
     if vivo is None:
         return emitir(3, "esperar", "error", args.plataforma, causa="liveness-no-obtenible", detalle="no se pudo consultar el panel")
-    estado_agente = None
+    estado_agente = causa_estado_agente = None
     if args.plataforma == "herdr":
-        ok, texto = _consultar(["herdr", "agent", "get", args.panel])
-        if ok:
-            estado_agente = _json(texto).get("result", {}).get("agent_status")
+        estado_agente, causa_estado_agente = _dato_agente(args.panel, "agent_status", "texto")
     # La terminalidad la da el artefacto VALIDO, no su existencia. Un archivo a medio escribir
     # existe, y leerlo como terminal deja de esperar antes de que el worker publique: el estado
     # baja un escalon y el proceso sigue mandando mientras siga vivo.
@@ -625,16 +681,26 @@ def esperar(args):
         estado, autoridad = "muerto", "liveness"
     elif vencido:
         estado, autoridad = "vencido", "deadline"
-    elif estado_agente in ("interactive_ready", "ready", "idle"):
-        estado, autoridad = "listo", "estado_agente"
-    elif estado_agente in ("blocked", "waiting_approval"):
-        estado, autoridad = "bloqueado", "estado_agente"
+    elif estado_agente in ESTADO_AGENTE:
+        estado, autoridad = ESTADO_AGENTE[estado_agente]
+    elif estado_agente is not None:
+        # Un valor que la plataforma emite y este mapeo no conoce: el vocabulario crecio. Cae en un
+        # destino PROPIO para que ese crecimiento sea visible en la salida, en vez del descarte
+        # silencioso que dejo pasar el defecto anterior.
+        estado, autoridad = "no-reconocido", "estado_agente"
+    elif causa_estado_agente is not None:
+        # Se consulto y no hubo valor legible: la autoridad vuelve a ser el liveness del panel y la
+        # causa dice por que, para que un cambio de esquema del payload no se confunda con un fallo
+        # de consulta. Distinto de la rama de abajo, donde no se consulto NADA.
+        estado, autoridad = "estado-no-obtenible", "liveness"
     else:
+        # La otra plataforma no expone estado de agente y aca no se consulta: su ausencia es una
+        # omision declarada del transporte, no una lectura fallida, y su clasificacion no cambia.
         estado, autoridad = "trabajando", "liveness"
     vigente = actual == args.hash_encargo
     codigo = 0 if estado.startswith("terminado") and vigente else 1
     resultado = "afirmativo" if codigo == 0 else "adverso"
-    return emitir(codigo, "esperar", resultado, args.plataforma, estado=estado, fuente_estado=autoridad, autoridad=autoridad, artefacto_presente=presente, cierre_marcado=cierre, intento_vigente=vigente, hash_encargo_actual=actual, estado_agente=estado_agente, acredita={"liveness": "nativo" if args.plataforma == "herdr" else "derivado", "estado_agente": "nativo" if args.plataforma == "herdr" else "omitido"}, evidencia=["ruta-artefacto", "panel", "hash-encargo"])
+    return emitir(codigo, "esperar", resultado, args.plataforma, estado=estado, fuente_estado=autoridad, autoridad=autoridad, artefacto_presente=presente, cierre_marcado=cierre, intento_vigente=vigente, hash_encargo_actual=actual, estado_agente=estado_agente, causa_estado_agente=causa_estado_agente, acredita={"liveness": "nativo" if args.plataforma == "herdr" else "derivado", "estado_agente": "nativo" if (args.plataforma == "herdr" and causa_estado_agente is None) else "omitido"}, evidencia=["ruta-artefacto", "panel", "hash-encargo"])
 
 
 def _digest_declarado(ruta):
@@ -863,7 +929,7 @@ def _ejecutar_crear_orca(raiz, registro):
 
 
 def _autotest(nombre):
-    if nombre in ("estados", "intervencion", "cosecha", "renombrar", "omision", "ciclo", "cese"):
+    if nombre in ("estados", "intervencion", "cosecha", "renombrar", "omision", "ciclo", "cese", "agente"):
         with tempfile.TemporaryDirectory() as temporal:
             raiz = Path(temporal); binario = raiz / "bin"; binario.mkdir(); log = raiz / "log"
             falso = '''#!/usr/bin/env python3
@@ -878,7 +944,25 @@ elif sys.argv[0].endswith("orca") and a[:2]==["orchestration","worker-list"]:
 elif sys.argv[0].endswith("orca") and a[:2]==["orchestration","check"]: r=({"deliveryId":"d1","messages":[{"dispatch":"d1","worker":"w1"},{"dispatch":"d2","worker":"w2"}]} if "--ack" not in a else {"ok":True})
 elif sys.argv[0].endswith("herdr") and a[:2]==["pane","get"]: r={"alive":os.environ.get("MUERTO")!="1","name":"rol"}
 elif sys.argv[0].endswith("herdr") and a[:2]==["pane","process-info"]: r={}
-elif sys.argv[0].endswith("herdr") and a[:2]==["agent","get"]: r={"agent_status":"working","state_change_seq":2}
+elif sys.argv[0].endswith("herdr") and a[:2]==["agent","get"]:
+ falla=os.environ.get("AGENT_GET_FALLA","")
+ if falla=="consulta": sys.exit(1)
+ if falla=="result-nulo": print(json.dumps({"result":None})); sys.exit(0)
+ seq=os.environ.get("STATE_CHANGE_SEQ","2").split(",")
+ # el cursor vive en un archivo porque cada `agent get` es un proceso NUEVO: en memoria la
+ # secuencia se reiniciaria en cada llamada y `N -> N+1` seria irrepresentable. Al agotarse
+ # repite la ultima, que es lo que un contador real hace cuando deja de moverse.
+ cur=os.environ.get("TERMINAL_LOG","")+".seq"
+ try: i=int(open(cur).read())
+ except Exception: i=0
+ open(cur,"w").write(str(i+1))
+ bruto=seq[min(i,len(seq)-1)]
+ ag={"agent_status":os.environ.get("AGENT_STATUS","working")}
+ if falla!="sin-campo-seq":
+  ag["state_change_seq"]=bruto if not bruto.lstrip("-").isdigit() else int(bruto)
+ if falla=="sin-campo": ag.pop("agent_status",None)
+ r={"agent":ag,"type":"agent_info"} if falla!="plana" else dict(ag)
+
 else: r={"ok":True}
 print(json.dumps({"result":r}))
 '''
@@ -912,6 +996,127 @@ print(json.dumps({"result":r}))
                     assert invalido_muerto["estado"] == "muerto", invalido_muerto["estado"]
                 assert sondeo("herdr", True, False, futuro)["acredita"]["estado_agente"] == "nativo"
                 assert sondeo("orca", True, False, futuro)["acredita"]["estado_agente"] == "omitido"
+            elif nombre == "agente":
+                # Frontera de prueba de esta unidad (modo `--autotest-agente`).
+                # QUE DETECTA: que la extraccion resuelve el nivel donde la plataforma publica el
+                # objeto del agente; que cada valor del dominio llega al estado, la autoridad y el
+                # codigo que el contrato declara; que un valor fuera del dominio y las tres formas
+                # de ilegibilidad tienen destinos distinguibles; y que el acuse del reenvio solo se
+                # acredita con avance estricto.
+                # QUÉ **NO detecta**: nada sobre el payload REAL de la plataforma — todo lo que ve
+                # es lo que este doble emite, asi que un cambio de esquema aguas arriba pasa
+                # invisible mientras el doble no se actualice; tampoco cubre la otra plataforma,
+                # donde el estado del agente no se consulta.
+                # CAMPOS — dirección: `admite-de-mas`, su verde no prueba que el adaptador funcione
+                # contra la plataforma instalada. clase de salida: `veredicto`.
+                futuro = "2999-01-01T00:00:00+00:00"
+                def fila(d, rc, estado, autoridad):
+                    """Comprueba la FILA del mapeo normativo, no solo su estado."""
+                    assert d["estado"] == estado, (estado, d)
+                    assert d["fuente_estado"] == autoridad and d["autoridad"] == autoridad, (autoridad, d)
+                    assert rc == 1 and d["resultado"] == "adverso", (rc, d)
+                def agente(estado_agente=None, falla=None, seq=None, artefacto=False, vence=futuro):
+                    crudo.unlink(missing_ok=True)
+                    if artefacto == "invalido": crudo.write_text("INVALID ARTIFACT\n", encoding="utf-8")
+                    elif artefacto: crudo.write_text("STATUS: done\n", encoding="utf-8")
+                    extra = {}
+                    if estado_agente is not None: extra["AGENT_STATUS"] = estado_agente
+                    if falla is not None: extra["AGENT_GET_FALLA"] = falla
+                    if seq is not None: extra["STATE_CHANGE_SEQ"] = seq
+                    Path(str(log) + ".seq").unlink(missing_ok=True)
+                    p = subprocess.run(base + ["esperar", "--plataforma", "herdr", "--panel", "p", "--artefacto", str(crudo), "--encargo", str(encargo), "--hash-encargo", digest, "--vence-en", vence], env=entorno | extra, capture_output=True, text=True)
+                    return json.loads(p.stdout), p.returncode
+
+                # CASO extraccion-nivel: el valor llega, y cada forma de no tener valor se distingue.
+                d, _ = agente("working")
+                assert d["estado_agente"] == "working" and d["causa_estado_agente"] is None, d
+                for falla, causa in (("consulta", "consulta-fallida"), ("plana", "forma-inesperada"),
+                                     ("result-nulo", "forma-inesperada"), ("sin-campo", "campo-ausente")):
+                    d, _ = agente("working", falla=falla)
+                    assert d["estado_agente"] is None and d["causa_estado_agente"] == causa, (falla, d)
+                    assert d["estado"] == "estado-no-obtenible", (falla, d)
+                print("CASO extraccion-nivel: ok")
+
+                # CASO done-detenido-sin-cierre: tambien con un artefacto presente pero invalido,
+                # que es la precondicion real de la rama —no solo con el artefacto ausente—.
+                # las DOS precondiciones de la rama: sin artefacto, y con uno presente pero
+                # invalido. La segunda es la que el autotest viejo no ejercia.
+                for art in (False, "invalido"):
+                    d, rc = agente("done", artefacto=art)
+                    assert d["artefacto_presente"] is bool(art) and d["cierre_marcado"] is False, (art, d)
+                    fila(d, rc, "detenido-sin-cierre", "estado_agente")
+                print("CASO done-detenido-sin-cierre: ok")
+
+                for art in (False, "invalido"):
+                    d, rc = agente("unknown", artefacto=art)
+                    fila(d, rc, "desconocido", "estado_agente")
+                    fila(*agente("working", artefacto=art), "trabajando", "estado_agente")
+                print("CASO unknown-desconocido: ok")
+
+                # CASO fuera-de-dominio-vs-ilegible: los dos destinos no se colapsan.
+                fila(*agente("nuevo_estado_futuro"), "no-reconocido", "estado_agente")
+                fila(*agente("working", falla="plana"), "estado-no-obtenible", "liveness")
+                fuera, _ = agente("nuevo_estado_futuro"); ileg, _ = agente("working", falla="plana")
+                assert fuera["estado"] != ileg["estado"], (fuera, ileg)
+                # la fuerza declarada en el envelope acompana a la causa, como dice la tabla
+                assert ileg["acredita"]["estado_agente"] == "omitido", ileg
+                assert fuera["acredita"]["estado_agente"] == "nativo", fuera
+                print("CASO fuera-de-dominio-vs-ilegible: ok")
+
+                # CASO sin-prefijo-finalizacion: ningun estado derivado abre el codigo afirmativo.
+                for ea, falla in (("done", None), ("unknown", None), ("nuevo_x", None), ("working", "plana")):
+                    d, rc = agente(ea, falla=falla)
+                    assert not d["estado"].startswith("terminado"), d
+                    assert rc == 1 and d["resultado"] == "adverso", d
+                for ea, esperado in (("idle", "listo"), ("blocked", "bloqueado")):
+                    fila(*agente(ea), esperado, "estado_agente")
+                print("CASO sin-prefijo-finalizacion: ok")
+
+                # CASO politica-contador: las tres situaciones de la politica del reenvio.
+                def enviar(seq=None, falla=None):
+                    Path(str(log) + ".seq").unlink(missing_ok=True)
+                    log.write_text("", encoding="utf-8")
+                    extra = {}
+                    if seq is not None: extra["STATE_CHANGE_SEQ"] = seq
+                    if falla is not None: extra["AGENT_GET_FALLA"] = falla
+                    p = subprocess.run(base + ["enviar", "--plataforma", "herdr", "--panel", "p", "--encargo", str(encargo), "--artefacto", str(crudo), "--corrida", str(corrida), "--intento", "2", "--limite", "3", "--intervalo", "0"], env=entorno | extra, capture_output=True, text=True)
+                    enviado = any(json.loads(x)[:2] == ["agent", "prompt"] for x in log.read_text(encoding="utf-8").splitlines() if x.strip())
+                    return json.loads(p.stdout), p.returncode, enviado
+                _ledgear = lambda: [x for x in _ledger(corrida) if x.get("efecto") == "enviar"]
+                # `enviar` solo exige que el panel figure lanzado en la corrida: se asienta directo
+                # en vez de encadenar `crear` y `lanzar`, que arrastrarian consentimiento y perfil
+                # sin aportar nada a lo que este caso mide.
+                corrida.write_text(json.dumps({"efecto": "lanzar", "panel": "p"}) + "\n", encoding="utf-8")
+                antes = len(_ledgear())
+                d, rc, enviado = enviar(seq="5,6")          # N -> N+1 acredita
+                assert rc == 0 and d["resultado"] == "afirmativo" and enviado, d
+                assert len(_ledgear()) == antes + 1, "un acuse acreditado asienta el envio"
+                antes = len(_ledgear())
+                d, rc, enviado = enviar(seq="5,5")          # N -> N no acredita, y no asienta
+                assert rc == 1 and d["causa"] == "acuse-no-obtenido" and enviado, d
+                assert len(_ledgear()) == antes, "un acuse no acreditado no asienta el envio"
+                antes = len(_ledgear())
+                d, rc, enviado = enviar(seq="5,noentero,6")  # ilegible intermedia: no corta, sigue
+                assert rc == 0 and d["resultado"] == "afirmativo", d
+                assert len(_ledgear()) == antes + 1, "una lectura ilegible intermedia no impide acreditar"
+                d, rc, enviado = enviar(falla="plana")      # sin referencia: NO se envia
+                assert rc == 1 and d["causa"] == "referencia-no-obtenible", d
+                assert not enviado, "sin referencia no se envia el prompt"
+                assert d["causa_contador"] == "forma-inesperada", d
+                print("CASO politica-contador: ok")
+
+                # CASO doble-forma-y-secuencia: el doble emite la forma anidada y su secuencia se
+                # consume una entrada por llamada, repitiendo la ultima al agotarse.
+                Path(str(log) + ".seq").unlink(missing_ok=True)
+                binario_herdr = str(binario / "herdr")
+                leidos = []
+                for _ in range(3):
+                    q = subprocess.run([binario_herdr, "agent", "get", "p"], env=entorno | {"STATE_CHANGE_SEQ": "7,8"}, capture_output=True, text=True)
+                    cuerpo = json.loads(q.stdout)["result"]
+                    assert "agent" in cuerpo and cuerpo.get("type") == "agent_info", cuerpo
+                    leidos.append(cuerpo["agent"]["state_change_seq"])
+                assert leidos == [7, 8, 8], leidos
+                print("CASO doble-forma-y-secuencia: ok")
             elif nombre == "intervencion":
                 encargo.write_text("dos", encoding="utf-8")
                 p = subprocess.run(base + ["esperar", "--plataforma", "orca", "--panel", "p", "--artefacto", str(crudo), "--encargo", str(encargo), "--hash-encargo", digest, "--vence-en", "2999-01-01T00:00:00+00:00"], env=entorno, capture_output=True, text=True)
@@ -1295,7 +1500,7 @@ def main(argv=None):
     parser.add_argument("--retomar")
     parser.add_argument("--sesion")
     parser.add_argument("--consentimiento-adopcion", dest="consentimiento", action="store_true")
-    for nombre in ("determinismo", "layout", "perfil", "encargo", "estados", "intervencion", "cosecha", "renombrar", "omision", "ciclo", "cese", "orden", "retomado", "persistencia", "mudanza"):
+    for nombre in ("determinismo", "layout", "perfil", "encargo", "estados", "intervencion", "cosecha", "renombrar", "omision", "ciclo", "cese", "orden", "retomado", "persistencia", "mudanza", "agente"):
         parser.add_argument(f"--autotest-{nombre}", action="store_true")
     sub = parser.add_subparsers(dest="verbo")
     sub.add_parser("detectar").add_argument("--casos", action="store_true")
@@ -1335,7 +1540,7 @@ def main(argv=None):
     for campo in ("dispatch", "flujo", "acuse", "sesion"):
         conductor_p.add_argument("--" + campo)
     args = parser.parse_args(argv)
-    for nombre in ("determinismo", "layout", "perfil", "encargo", "estados", "intervencion", "cosecha", "renombrar", "omision", "ciclo", "cese", "orden", "retomado", "persistencia", "mudanza"):
+    for nombre in ("determinismo", "layout", "perfil", "encargo", "estados", "intervencion", "cosecha", "renombrar", "omision", "ciclo", "cese", "orden", "retomado", "persistencia", "mudanza", "agente"):
         if getattr(args, "autotest_" + nombre):
             return _autotest(nombre)
     # Un ledger ilegible sale por sobre, no por traceback, y en TODOS los verbos: el defecto vive en
