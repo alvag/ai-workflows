@@ -4122,7 +4122,12 @@ texto plano la entrada es ambigua y se reporta: no se elige la primera ni la úl
 
 **Dónde empieza y dónde termina una entrada, porque «una entrada» no es decidible sin decirlo.** Una
 entrada **empieza** en la línea que abre su `Q` y se extiende **hasta la próxima apertura de `Q`**, el
-**próximo encabezado de sección**, o el **fin del archivo**, lo que llegue primero. El separador y la
+**próximo encabezado de sección**, o el **fin del archivo**, lo que llegue primero. **Encabezado es lo
+que Markdown llama encabezado**, y decirlo importa porque es la regla que fija el límite: de una a
+seis almohadillas, con hasta **tres espacios** de sangría —con cuatro es un bloque de código y no
+cierra nada— y separadas del texto por espacio **o tabulador**. Cualquier nivel cierra la entrada en
+curso: un `###` es una subsección de `## Clarifications` y las entradas que vengan después siguen
+contando, pero la de arriba termina ahí. El separador y la
 respuesta se buscan dentro de esos límites y en ningún otro lado. La plantilla muestra su ejemplo en
 una sola línea, pero **nunca exigió la línea física**: envolver prosa es lo normal en Markdown, y el
 documento que aloja estas entradas puede terminar publicado en un tracker, donde obligar a una línea
@@ -4396,7 +4401,7 @@ afuera se escribe en su frontera en vez de fingirse cubierto:
 |---|---|---|
 | `pedido-jsonl` | por cada línea de `literal.jsonl`: que abra con `{` y cierre con `}`, que estén las siete claves obligatorias, y que `n` sea monótono sin huecos desde el **`n` inicial**, que es 1 salvo que se declare otro | una línea por violación, `<n>: <causa>`; `0` sin violaciones, `1` con, `2` si el `n` inicial no es un entero ≥ 1, `3` si el archivo no se puede leer **o si `awk` no pudo ejecutarse** |
 | `pedido-unicidad` | en `registro.md`: que las identidades de las tres tablas caigan dentro de su dominio y no se repitan, y que la versión crezca por cláusula | ídem |
-| `pedido-referencias` | que cada `fragmentos` exista y cite una línea con rango dentro de su largo, que cada `AC-n` de la traza exista en la sede de los criterios, y que cada `objetivo` de evento resuelva | ídem |
+| `pedido-referencias` | que cada `fragmentos` exista y cite una línea con rango dentro de su largo —medido sobre el texto, con el escape que JSON no define dando rojo en vez de un largo—, que cada `AC-n` de la traza exista en la sede de los criterios, y que cada `objetivo` de evento resuelva | ídem |
 | `pedido-marcador` | resuelve la celda de la matriz del marcador desde el estado observado del árbol | **la celda en stdout**; `0` si resolvió una, `1` si el árbol no encaja en ninguna, `2` si la invocación está mal formada o `pedido-jsonl` no está cargado |
 | `pedido-digest` | que **cada** confirmación reproduzca el prefijo de `## clausulas`, `## eventos` y del literal que su frontera declara, y que esa frontera no exceda, no retroceda y no sea vacua | `0` si todas reproducen o si no hay ninguna confirmación, `1` si alguna no —con el escrito y el recomputado—, `3` si falta una sede, si no hay `sha256sum` ni `shasum`, si la herramienta está y falla, o si **cualquiera** de sus invocaciones de `awk` no se pudo ejecutar |
 | `pedido-criterio` | que el `hash_criterio` de cada `AC-n` de la traza sea el `sha256` del bloque de ese criterio en la sede de los criterios | `0` si todos reproducen o si la traza no tiene criterios, `1` si alguno no —con el escrito y el recomputado—, `3` con los mismos fallos de ejecución que `pedido-digest` |
@@ -4705,23 +4710,37 @@ pedido_referencias() {
     # seis o doce. Sin lo segundo, un texto con un salto de línea medía uno de más por cada salto y la
     # partición de `R1` nunca podía cubrir el final: el pedido se escribe en español y en Markdown, así
     # que comillas y saltos son la regla y no el borde
+    # FALLA CERRADO ante un escape que JSON no define: devuelve -1 y deja en `ujsonerr` el lexema
+    # que lo rompió. Contarlo como un carácter cualquiera dejaba pasar en verde un literal que
+    # ningún parser acepta, y la salida barata —adjudicárselo a `pedido-jsonl`— no existe: ese
+    # bloque comprueba llaves, claves y `n`, y su propia frontera declara que no valida JSON
     function ujson(s,   i, n, ch, sig, t, cp, cp2) {
-      n = length(s); t = 0; i = 1
+      n = length(s); t = 0; i = 1; ujsonerr = ""
       while (i <= n) {
         ch = substr(s, i, 1)
-        if (ch == "\\" && i < n) {
+        if (ch == "\\") {
+          # una barra al final del valor abre un escape que nunca se cierra
+          if (i == n) { ujsonerr = "barra invertida al final del valor"; return -1 }
           sig = substr(s, i + 1, 1)
-          if (sig == "u" && i + 5 <= n) {
+          if (sig == "u") {
+            # truncado contra el final del valor, o con algo que no es hexadecimal: las dos son
+            # la misma clase —un `\u` que no designa un code point— y las dos dan rojo
+            if (i + 5 > n) { ujsonerr = substr(s, i); return -1 }
             cp = hex4(substr(s, i + 2, 4))
+            if (cp < 0) { ujsonerr = substr(s, i, 6); return -1 }
             # las DOS mitades del par se validan: con solo la primera, un high surrogate suelto
             # seguido de cualquier escape se comía doce bytes y el largo quedaba corto — un falso
             # verde, que es peor que el rojo que este bloque vino a arreglar
             if (cp >= 55296 && cp <= 56319 && i + 11 <= n && substr(s, i + 6, 2) == "\\u") {
               cp2 = hex4(substr(s, i + 8, 4))
               if (cp2 >= 56320 && cp2 <= 57343) { i += 12; t++; continue } }
+            # el surrogate aislado SÍ cuenta uno y no da rojo, a diferencia de los de arriba: es un
+            # `\uXXXX` bien formado, los parsers reales lo aceptan y producen un carácter, así que
+            # rechazarlo sería un falso rojo sobre un literal que además es inmutable
             i += 6; t++; continue }
           # `\\` se consume entero acá, y por eso `\\u0041` cuenta seis y no uno: la barra escapada
           # no abre un escape Unicode, aunque lo parezca
+          if (index(SIMPLES, sig) == 0) { ujsonerr = substr(s, i, 2); return -1 }
           i += 2; t++; continue }
         if (index(CONT, ch) == 0) t++
         i++ }
@@ -4735,13 +4754,22 @@ pedido_referencias() {
         if (ch == BT) { dentro = 1 - dentro; sal = sal "X"; continue }
         sal = sal (dentro ? "X" : ch) }
       return sal }
+    # un encabezado ATX admite hasta TRES espacios de sangría —con cuatro ya es un bloque de código,
+    # que se saltea antes—, así que toda detección de encabezado de este bloque corre sobre la línea
+    # sin esa sangría. Va en una función porque son CUATRO sedes: el contexto Markdown, la sección de
+    # la sede de los criterios, la de `antecedentes.md` y la búsqueda por slug. Con la normalización
+    # escrita en unas y ausente en otras discrepaban sobre qué es un encabezado, y el precio era en
+    # las dos direcciones: un `### ` sangrado no cerraba la entrada de `Q` en curso —así que un
+    # separador de dos subsecciones más abajo la acreditaba como respondida—, y un `## Clarifications`
+    # sangrado dejaba invisible la sección entera, que es rojo sobre un artefacto bien escrito
+    function desangrar(ln) { sub(/^[ ]?[ ]?[ ]?/, "", ln); return ln }
     # el contexto Markdown, compartido por las TRES gramáticas que leen la sede —el criterio, la
     # `Q` y, con su propia copia sobre otro archivo, el encabezado—: lo que está dentro de un fence
     # o de un comentario HTML es un **ejemplo citado**, no una declaración. El fence se cierra con
     # el MISMO carácter y con al menos su largo, o un `~~~` cerraba un fence de backticks
     function mdsalta(ln,   t, c, n) {
       if (mdcom) { if (index(ln, "-->") > 0) mdcom = 0; return 1 }
-      t = ln; sub(/^[ ]?[ ]?[ ]?/, "", t)
+      t = desangrar(ln)
       if (mdfen) {
         if (match(t, "^" mdchar "+")) { n = RLENGTH
           if (n >= mdlen && substr(t, n + 1) ~ /^[ ]*$/) mdfen = 0 }
@@ -4842,7 +4870,7 @@ pedido_referencias() {
         # el MISMO contexto Markdown que `mdsalta`, con su estado propio porque recorre otro
         # archivo: un encabezado citado en un fence o comentado no es una sección
         if (com) { if (index(ln, "-->") > 0) com = 0; continue }
-        tt = ln; sub(/^[ ]?[ ]?[ ]?/, "", tt)
+        tt = desangrar(ln)
         if (fen) {
           if (match(tt, "^" fch "+")) { nn = RLENGTH
             if (nn >= fln && substr(tt, nn + 1) ~ /^[ ]*$/) fen = 0 }
@@ -4855,7 +4883,7 @@ pedido_referencias() {
         # ATX admite de UNA a SEIS almohadillas: con siete, Markdown no hace un encabezado
         # ATX separa las almohadillas del texto con espacio **o tabulador**: exigir espacio
         # rechazaba un encabezado válido, que es un falso rojo sobre un árbol bien escrito
-        if (tt !~ ("^#{1,6}[ " sprintf("%c",9) "]")) continue
+        if (tt !~ ("^#{1,6}" ESP)) continue
         t2 = tt; sub("^#+[ " sprintf("%c",9) "]+", "", t2); sub("[ " sprintf("%c",9) "]*#*[ " sprintf("%c",9) "]*$", "", t2)
         if (slug(t2) == lit) n2++ }
       close(arch); return n2 }
@@ -4866,6 +4894,9 @@ pedido_referencias() {
             ari["t"]="AC-n|hash_criterio|autoridad|referencia|derivacion"
             RAYA = sprintf("%c%c%c", 226, 128, 148)
             BLANCO = "[ " sprintf("%c",9) sprintf("%c",11) sprintf("%c",12) sprintf("%c",13) "]"
+            # los ocho escapes de un carácter que JSON define, además de `\u`: cualquier otra letra
+            # tras la barra no es un escape y el literal no parsea
+            SIMPLES = sprintf("%c%c/bfnrt", 34, 92)
             for (i = 128; i < 192; i++) CONT = CONT sprintf("%c", i) }
     FILENAME == ELIT {
       # la cláusula cita el campo n, no la posición física de la línea: tras una cuarentena
@@ -4886,7 +4917,12 @@ pedido_referencias() {
         # crudo y el conteo sobre lo des-escapado, en ese orden: el delimitador de campo vive en la
         # forma serializada y el largo pertenece al texto
         sub(/"[ ]*,[ ]*"sha256".*$/, "", cuerpo)
-        largo[nl] = ujson(cuerpo) }
+        largo[nl] = ujson(cuerpo)
+        # sin largo no hay contra qué comparar, así que la línea queda SIN ADJUDICAR por el rango y
+        # por R1: emitir «no cubre 2-3» sobre un texto cuyo largo no se pudo medir es inventar una
+        # frontera. Se marca por el mismo motivo que `malrango` —un diagnóstico por causa, no dos—
+        if (largo[nl] < 0) { print "escape JSON invalido en el texto de la linea " nl ": " ujsonerr
+                             malescape[nl] = 1; largo[nl] = 0 } }
       # `largo` y `hay` comparten índice por construcción: los dos se escriben con `nl`
       next }
     # el escaneo de MENCIONES se retiró con su único consumidor: la dirección traza -> sede
@@ -4898,14 +4934,18 @@ pedido_referencias() {
       # abre su `Q` hasta la próxima apertura, el próximo encabezado de sección, o el fin del
       # archivo. Resolverla sobre `$0` daba por no respondida toda entrada envuelta —que es lo normal
       # en Markdown— con la respuesta escrita y visible una línea más abajo
-      if ($0 ~ /^##[ ]+Clarifications/) { cerrar_q(); enclar = 1; next }
-      else if ($0 ~ /^##[ ]/) { cerrar_q(); enclar = 0 }
+      # las tres detecciones corren sobre la línea DESANGRADA y con el mismo separador que `buscar`
+      # —espacio o tabulador—: leerlas sobre `$0` y solo con espacio hacía que este bloque y su
+      # propia búsqueda por slug discreparan sobre qué es un encabezado
+      hd = desangrar($0)
+      if (hd ~ ("^##" ESP "+Clarifications")) { cerrar_q(); enclar = 1; next }
+      else if (hd ~ ("^##" ESP)) { cerrar_q(); enclar = 0 }
       # un encabezado de CUALQUIER nivel cierra la entrada, aunque no cierre la sección: un `###` es
       # una subsección de `## Clarifications` y las entradas de después siguen contando, pero la
       # entrada en curso termina ahí. Sin esta rama, la prosa decía «el próximo encabezado de sección»
       # y el código solo miraba `##`, así que un separador escrito bajo un `###` respondía a una `Q`
       # que había quedado abierta dos subsecciones más arriba
-      else if ($0 ~ ("^#{1,6}[ " sprintf("%c",9) "]")) cerrar_q()
+      else if (hd ~ ("^#{1,6}" ESP)) cerrar_q()
       if (enclar) { qcl = abreq($0)
         if (qcl != "") { cerrar_q(); qab = qcl; hayq[qab]++; acu = $0 }
         else if (qab != "") acu = acu " " $0 }
@@ -5200,8 +5240,12 @@ pedido_referencias() {
         mdcom = mdfen = 0; mdchar = ""; mdlen = 0
         while ((getline lant < ANT) > 0) { hayant = 1
           if (mdsalta(lant)) continue
-          if (lant ~ /^##[ ]+declaracion/) { endec = 1; continue }
-          if (lant ~ /^##[ ]/) { endec = 0; continue }
+          # la MISMA lectura de encabezado que la sede de los criterios, por la misma razón y con el
+          # mismo costo si no la tuviera: un `## estado` sangrado no cerraba la declaración y el
+          # ledger máquina entraba al conjunto contra el que se acredita la evidencia
+          lh = desangrar(lant)
+          if (lh ~ ("^##" ESP "+declaracion")) { endec = 1; continue }
+          if (lh ~ ("^##" ESP)) { endec = 0; continue }
           if (endec) antline[++nant] = lant }
         close(ANT)
         for (i = 1; i <= nant; i++) normalizables["a" SUBSEP i] = antline[i]
@@ -5271,6 +5315,9 @@ pedido_referencias() {
           split(ls[i], p2, ":"); split(p2[2], q2, "-")
           ln = norm(p2[1])
           if (!(ln in hay)) continue
+          # el largo de esa línea no se pudo medir: ya dio rojo por su escape y compararla contra
+          # un largo inventado agregaría un segundo diagnóstico que apunta a la cláusula equivocada
+          if (ln in malescape) continue
           if (q2[2]+0 > largo[ln]+0) {
             # se marca la línea para NO emitir además el «no la cubre ninguna cláusula vigente» de
             # abajo: un rango malo dejaba dos diagnósticos y el segundo sugiere una partición
@@ -5279,6 +5326,7 @@ pedido_referencias() {
           c = ++cnt[ln]
           ini[ln SUBSEP c] = q2[1]+0; fin[ln SUBSEP c] = q2[2]+0 } }
       for (ln in hay) {
+        if (ln in malescape) continue
         L = largo[ln]+0; c = cnt[ln]+0
         if (c == 0) { if (!(ln in malrango)) print "R1: la linea " ln " no la cubre ninguna clausula vigente"
                       continue }
@@ -5308,7 +5356,26 @@ pedido_referencias() {
 >
 > **Una entrada de `## Clarifications` se lee como entidad, no como línea**, y eso tiene su propio
 > alcance. Se acumula desde la línea que abre su `Q` hasta la próxima apertura, el próximo encabezado
-> de sección, o el fin del archivo. Lo que **no** cubre: las líneas se unen con **un espacio**, así
+> de sección, o el fin del archivo.
+>
+> **Un encabezado se reconoce como lo reconoce Markdown**, y eso es lo que decide dónde termina cada
+> entrada: hasta **tres espacios** de sangría —con cuatro ya es un bloque de código, que `mdsalta`
+> saltea antes—, y espacio **o tabulador** tras las almohadillas. Las **cuatro** sedes de este bloque
+> que leen un encabezado —el contexto Markdown, la sección de la sede de los criterios, la de
+> `antecedentes.md` y la búsqueda por slug— comparten esa normalización en una función, porque
+> mientras estaba escrita en unas y ausente en otras discrepaban sobre qué es un encabezado y el
+> precio iba en **las dos direcciones**: un `### ` sangrado no cerraba la entrada en curso, así que un
+> separador escrito dos subsecciones más abajo la acreditaba como respondida —verde donde el mismo
+> archivo sin sangrar daba rojo—; y un `## Clarifications` sangrado, o separado con tabulador, dejaba
+> la sección entera invisible y devolvía «Q inexistente» sobre un artefacto bien escrito. En
+> `antecedentes.md` la segunda dirección es peor que un falso rojo: un `## estado` sangrado no cerraba
+> la declaración y el ledger máquina entraba al conjunto contra el que se acredita la evidencia, que
+> es exactamente lo que ese recorte existe para impedir. **Las tres secciones del registro** —`##
+> clausulas`, `## eventos`, `## traza`— quedan fuera de esta normalización a propósito: ese archivo lo
+> escribe el flujo desde una plantilla canónica y sus encabezados los leen **tres** bloques con el
+> mismo patrón, así que aflojarlo en uno solo crearía la discrepancia en vez de cerrarla.
+>
+> Lo que **no** cubre: las líneas se unen con **un espacio**, así
 > que las posiciones dentro del acumulado **no corresponden a ninguna línea física** y ningún
 > diagnóstico de esta rama puede señalar línea; lo que `mdsalta` saltea —un fence, un bloque indentado,
 > un comentario HTML— queda **fuera de la entrada** aunque esté visualmente dentro de ella, así que un
@@ -5350,11 +5417,26 @@ pedido_referencias() {
 > solo—, porque lo que llega al conteo es el valor todavía serializado y la unidad del rango es el
 > texto. Sin eso, un salto de línea o una comilla escapados corrían el largo contra el que se compara
 > y `R1` reclamaba un tramo final que en el texto no existe; medido, un pedido de 11.052 caracteres
-> con 148 saltos, 12 comillas y 6 barras medía 11.218. Tres límites de ese conteo, que sí quedan:
-> un `\uXXXX` **se cuenta aunque no designe un code point asignado**, un **escape mal formado**
-> —`\uZZZZ`, o uno truncado al final del valor— **también cuenta uno** en vez de dar rojo, un
-> **surrogate aislado cuenta uno** y no se rechaza —la validez del JSON no es lo que este bloque
-> comprueba, y un literal que no parsea lo caza `pedido-jsonl`, que corre antes—, y sigue
+> con 148 saltos, 12 comillas y 6 barras medía 11.218.
+>
+> **Y el conteo falla cerrado ante un escape que JSON no define**: un `\q`, un `\uZZZZ`, un `\uXXXX`
+> truncado contra el final del valor o una barra invertida que queda última dan **rojo con su
+> lexema**, no un largo. Antes contaban uno cada uno, y el verde resultante se apoyaba en que
+> `pedido-jsonl` cazaría el literal inválido — que **no lo hace y su propia frontera lo dice**: ese
+> bloque comprueba llaves, claves y `n`, y declara explícitamente que no autoriza a afirmar que la
+> línea sea JSON válido. Medido sobre 850 valores generados: de los 642 que un parser real rechaza,
+> el conteo anterior aceptaba **los 642** y este **ninguno**, con los largos coincidiendo en los 208
+> que el parser acepta. **Lo que cuesta el rojo**: sin largo no hay contra qué comparar, así que esa
+> línea queda **sin adjudicar por el rango y por `R1`** y su cobertura no se comprueba en esa corrida
+> — se emite **un** diagnóstico, no dos, porque un «no cubre 2-3» sobre un texto cuyo largo no se
+> pudo medir señala a la cláusula equivocada.
+>
+> Dos límites de ese conteo, que sí quedan: un `\uXXXX` **se cuenta aunque no designe un code point
+> asignado**, y un **surrogate aislado cuenta uno** y **no** da rojo, a diferencia de los de arriba —
+> es un escape bien formado que los parsers reales aceptan produciendo un carácter, así que
+> rechazarlo sería un falso rojo sobre un literal que además es inmutable; comprobado contra un
+> parser en el mismo corpus. **Sigue sin ser un parser**: no mira caracteres de control sin escapar,
+> ni bytes UTF-8 inválidos, ni nada fuera del campo `texto`; y sigue
 > **dependiendo del orden canónico de campos** para saber dónde termina `texto`, así que una línea
 > con los campos en otro orden le queda invisible en vez de dar rojo. Y el reconocimiento de `AC-n` es por **forma
 > cerrada** —`AC-` seguido de dígitos y a lo sumo una letra minúscula—, **la misma en las cuatro
@@ -5970,7 +6052,9 @@ un resultado que llegaría después.
 Corrupto significa corrupto **de forma**, que es lo único que ese bloque ve; una corrupción más
 profunda —JSON inválido dentro de llaves bien puestas— **no la detecta ninguno de los dos** y aparece
 más tarde, cuando algo intente leer el campo. Se escribe porque acotar `pedido-jsonl` compró ese
-hueco a sabiendas.
+hueco a sabiendas. De ese hueco, **una clase sí tiene quién la cace y conviene decir cuál**: un
+escape que JSON no define dentro de `texto` da rojo en `pedido-referencias`, que es el bloque que lee
+ese campo. El resto —tipos, anidamiento, comas, el `sha256` contra su preimage— sigue sin dueño acá.
 
 **El código de salida no codifica la celda**, y esa distinción es deliberada: darle un código a cada
 desenlace deja al protocolo sin código para el flujo heredado, que no es fallo ni cuarentena ni
