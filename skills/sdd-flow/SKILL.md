@@ -581,7 +581,7 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
 
 | El usuario dice (ej.) | Paso SDD |
 |---|---|
-| "hagamos un spike", "probemos si esto es viable", "necesito entender X antes de decidir" — una exploración acotada para reducir incertidumbre, sin compromiso de entregar producto | `co-explore`, en el modo standalone que corresponda a la incógnita: `investigate` si es por qué algo se comporta como lo hace, `debate` si es elegir entre opciones abiertas. Un spike **no abre flujo SDD**: no puede tener criterios de aceptación observables, que es lo que la regla 1 exige antes de escribir nada. Si concluye que hay algo que construir, recién ahí se abre el flujo con lo aprendido |
+| "hagamos un spike", "probemos si esto es viable", "necesito entender X antes de decidir" — una exploración acotada para reducir incertidumbre, sin compromiso de entregar producto | `co-explore` en invocación directa, que por default resuelve `explore` — mapear el terreno y evaluar viabilidad es justo lo que ese modo hace. `investigate` si la incógnita es por qué algo falla, `debate` si es elegir entre opciones ya enunciadas. Un spike **no abre flujo SDD**: no puede tener criterios de aceptación observables, que es lo que la regla 1 exige antes de escribir nada. Si concluye que hay algo que construir, recién ahí se abre el flujo con lo aprendido |
 | "empezar ticket X", pega clave del tracker + descripción, "nuevo feature" | ciclo completo desde `gather-context`, que abre la preflight Git/worktree (gates según complejidad) → **STOP en cada gate** |
 | "/sdd-flow init", "configura el proyecto", "inicializa sdd", "crea el `.specify/`" | `init` |
 | "principios del proyecto", "define el constitution" | `constitution` |
