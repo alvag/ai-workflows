@@ -2,8 +2,8 @@
      placeholders: la ranura PROOF se repite una línea por comando de `proof_cmd`, en su orden;
      con la lista vacía NO se emiten ni la ranura PROOF, ni las dos cláusulas de CONSTRAINTS que
      la referencian, ni el bloque PROOF del reporte — quedarían apuntando a una ranura ausente.
-     La línea de canales heredados de CONSTRAINTS y la del turno único se emiten SIEMPRE, haya
-     comandos o no: no dependen de que exista una comprobación que correr.
+     La línea de canales heredados de CONSTRAINTS, la de economía de alcance y la del turno único
+     se emiten SIEMPRE, haya comandos o no: no dependen de que exista una comprobación que correr.
      ESTE ARCHIVO ES LA ENTRADA EXACTA DEL WORKER: lo que no esté acá no existe para él, y es la
      ÚNICA sede del formato del reporte — `reference.md` describe qué se consume, no lo transcribe.
      SCOPE-CAPABILITY: v1
@@ -45,6 +45,16 @@ CONSTRAINTS: <"no toques X", estilo del repo, dependencias que no deben cambiar.
   No uses servidores MCP, hooks, apps ni plugins de tu entorno: ni memoria persistente, ni notas
   de sesión, ni ningún canal que no sea este turno. Tu única salida durable son el diff en el
   directorio de trabajo y el reporte final.
+  Escribe `el mínimo que cumple lo pedido`. No agregues lo que ningún criterio de aceptación pide:
+  ni abstracciones de un solo uso, ni configurabilidad, ni validaciones, ni manejo de error. Entre
+  dos soluciones que cumplen, `la más simple`. Si algo parece faltar, repórtalo — no lo escribas.
+  Si tu alcance no trae criterios de aceptación, hacen sus veces `sus pasos y requisitos aprobados`.
+  Ese mínimo `acota la densidad, nunca la cobertura`: cubre completo lo que `tu bloque asignado`
+  debe aportar a los criterios que atiende. Atender un criterio compartido no te autoriza a ejecutar
+  el trabajo de otro bloque ni las tareas excluidas de tu alcance.
+  No comentes lo que el código ya dice. Un comentario se escribe `solo cuando es necesario` para
+  comprender o mantener — el porqué que el código no puede expresar. No hay ninguna obligación de
+  comentar.
   Corres en `un solo turno`: `no hay un turno posterior` donde retomar, recibir una notificación ni
   leer el resultado de algo que dejaste corriendo. Todo lo que empieces lo terminas y lo esperas
   `dentro de este mismo turno`. Si un comando tarda, espéralo — pero espéralo aquí, sin cerrar el
