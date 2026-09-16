@@ -99,12 +99,34 @@ def emitir(codigo, verbo, resultado, plataforma, **campos):
     return codigo
 
 
-def _consultar(cmd):
+def _consultar(cmd, causa=None):
+    """Sondea un CLI y devuelve (ok, texto); `causa` recibe el motivo cuando `ok` es falso.
+
+    Lee bytes y decodifica aca: con `text=True` la decodificacion la hace un hilo lector de
+    `subprocess`, donde el UnicodeDecodeError NO propaga —el except de esta funcion no puede
+    verlo— y el fallo vuelve como exito con la salida en None. Ante una salida ilegible el texto
+    se devuelve igual, con reemplazo: la politica estricta es la que clasifica, y doce llamadores
+    rebanan ese texto para su `detalle`, que sin el quedaria mudo.
+    """
+    def anotar(motivo):
+        if causa is not None:
+            causa.append(motivo)
+
     try:
-        proceso = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        proceso = subprocess.run(cmd, capture_output=True, timeout=15)
     except (OSError, subprocess.SubprocessError):
+        anotar("sin-ejecutable")
         return False, ""
-    return (proceso.returncode == 0, proceso.stdout if proceso.returncode == 0 else proceso.stderr)
+    ok = proceso.returncode == 0
+    crudo = proceso.stdout if ok else proceso.stderr
+    try:
+        texto = crudo.decode("utf-8")
+    except UnicodeDecodeError:
+        anotar("salida-ilegible")
+        return False, crudo.decode("utf-8", errors="replace")
+    if not ok:
+        anotar("consulta-fallida")
+    return ok, texto
 
 
 def _json(texto):
@@ -123,21 +145,30 @@ def _terminales(texto):
     return {p.get("handle") for p in raiz.get("result", raiz).get("terminals", []) if p.get("handle")}
 
 
-def estado_identidad(var, cmd, extraer):
-    """Devuelve ausente, rancia, resuelve o inconsultable para una identidad."""
+def estado_identidad(var, cmd, extraer, causa=None):
+    """Devuelve ausente, rancia, resuelve o inconsultable para una identidad.
+
+    `causa` va por parametro de salida y no como tercer elemento del retorno: el otro llamador
+    —`_identidad_registrada`, que consume la retoma— desempaqueta dos y no publica motivos.
+    """
     valor = os.environ.get(var)
     if not valor:
         return "ausente", None
-    ok, salida = _consultar(cmd)
+    ok, salida = _consultar(cmd, causa)
     if not ok:
         return "inconsultable", valor
     return ("resuelve" if valor in extraer(salida) else "rancia"), valor
 
 
 def detectar(args):
-    herdr, hp = estado_identidad("HERDR_PANE_ID", ["herdr", "pane", "list"], _panes)
-    orca, op = estado_identidad("ORCA_TERMINAL_HANDLE", ["orca", "terminal", "list", "--json"], _terminales)
+    causa_herdr, causa_orca = [], []
+    herdr, hp = estado_identidad("HERDR_PANE_ID", ["herdr", "pane", "list"], _panes, causa_herdr)
+    orca, op = estado_identidad("ORCA_TERMINAL_HANDLE", ["orca", "terminal", "list", "--json"], _terminales, causa_orca)
     identidades = {"herdr": {"estado": herdr, "valor": hp}, "orca": {"estado": orca, "valor": op}}
+    # la clave se omite cuando no hubo fallo: en null seria indistinguible de un fallo sin motivo
+    for clave, motivos in (("herdr", causa_herdr), ("orca", causa_orca)):
+        if motivos:
+            identidades[clave]["causa"] = motivos[-1]
     caso, plataforma = DESTINOS[(herdr, orca)]
     if plataforma is None:
         return emitir(3, "detectar", "error", None, causa=caso, detalle="no se pudieron consultar los registros vivos", identidades=identidades)
@@ -623,7 +654,10 @@ def _pipeline(args):
     else:
         pasos += [[sys.executable, str(raiz / "split-paginado.py"), args.crudo, args.base, str(args.por_pagina)], [sys.executable, str(raiz / "validador-paginado.py"), args.base, str(Path(args.base).parent / ("detail-" + Path(args.base).name + ".md"))]]
     for numero, comando in enumerate(pasos):
-        proceso = subprocess.run(comando, capture_output=True, text=True)
+        # reemplazo y no estricto: estos hijos son los scripts de la propia skill, que emiten en la
+        # codificacion local del sistema. Con estricto los dos flujos vuelven None y la
+        # concatenacion de abajo levanta TypeError, justo en el camino de error de la cosecha.
+        proceso = subprocess.run(comando, capture_output=True, text=True, encoding="utf-8", errors="replace")
         if proceso.returncode:
             return proceso.returncode, ("status" if numero == 0 else "split" if numero == 1 else "validador"), proceso.stdout + proceso.stderr, pasos
     return 0, "validador", pasos[-1] and "", pasos
