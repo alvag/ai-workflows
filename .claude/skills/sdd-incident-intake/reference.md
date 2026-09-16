@@ -660,17 +660,33 @@ posterior para no borrar de más.
 **últimos** del archivo, alcanza con cortar desde el separador que los precede; cuando están en el
 medio, es una edición por sección.
 
-Un corte por offset tiene que verificar sus supuestos antes de escribir:
+**Ese corte no aplica cuando los incidentes tomados son todos**, y la diferencia no es un matiz: es
+la fórmula opuesta. El separador que precede al primer incidente tomado pertenece al **par de
+arriba** mientras quede alguno por encima, así que se va con la sección. Pero si no queda ninguno,
+ese mismo separador es el **separador de cierre de la cabecera**, y descartarlo se la come en
+silencio —cinco bytes, `\n---\n`, medidos— justo en el paso que promete no tocarla. La operación que
+lo reemplaza es conservar el prefijo **hasta el final de ese separador, inclusive**.
+
+Un corte por offset tiene que verificar sus supuestos antes de escribir, y ramificar por el caso:
 
 ```python
-marca = '\n---\n\n## <fecha y hora> — <inicio literal del título>'
-i = s.find(marca)
+SEP = '\n---\n'
+marca = SEP + '\n## ' + fecha       # `fecha` es el DD/MM/AAAA HH:MM del primer incidente tomado;
+i = s.find(marca)                   # alcanza para anclar, porque la regla 1 la declara única
 assert i != -1                      # la marca existe
-assert s.count('## <fecha y hora>') == 1   # y es única
+assert s.count('## ' + fecha) == 1  # y es única
+# el separador precedente se va con la sección mientras quede algún incidente por encima; si los
+# tomados son TODOS, ese separador cierra la cabecera y se conserva
+resto = s[:i + len(SEP)] if todos else s[:i]
 ```
 
+`resto` es **lo que se escribe de vuelta al archivo**: el prefijo conservado reemplaza al contenido
+anterior, y ahí termina el retiro sobre el cuerpo.
+
 Sin el `assert` de unicidad, un título repetido corta en el lugar equivocado y el archivo queda
-plausible.
+plausible. Y sin la ramificación, una de las dos ramas siempre sale mal: con `s[:i]` el caso de todos
+pierde el cierre de la cabecera, y con `s[:i + len(SEP)]` el caso del último de varios deja un
+separador huérfano al final.
 
 ### Comprobar residuos
 
@@ -680,7 +696,14 @@ grep -n '<término distintivo del título>' <registro>
 ```
 
 Los dos, no uno: la fecha caza la sección, el término caza la fila del índice si la edición falló.
-**Salida vacía en ambos = retirado.** Y contar líneas antes y después para reportarlo.
+**La salida vacía en ambos no acredita el retiro por sí sola.** Hacen falta tres condiciones juntas:
+que **el archivo existe**, que **conserva su cabecera**, y que no quedó **ningún incidente retirado**
+—que es lo que los dos `grep` miran—. La salida vacía sola
+**no las distingue de un archivo que no existe**: sobre un registro borrado `grep` imprime lo mismo
+que sobre uno limpio, y lo único que los
+separa es el código de salida, 2 contra 1. Comprobar la existencia y la cabecera antes de leer esas
+salidas es lo que impide que un borrado entero se acredite como un retiro prolijo. Y contar líneas
+antes y después para reportarlo.
 
 ### Lo que nunca se toca
 
