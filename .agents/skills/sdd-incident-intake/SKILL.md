@@ -417,7 +417,7 @@ un cuerpo que no llegó entero no se recupera.
 5. **Retirar** (paso 7) solo lo que quedó cotejado.
 
 **Lo que no se inventa.** Un campo que el registro no declara —la severidad, el `Conductor`, el
-`Worker`— no se deduce ni se completa: se publica su ausencia, dicha. El registro ya prefiere dejar
+`Worker`, la `Plataforma`, el `Transporte`— no se deduce ni se completa: se publica su ausencia, dicha. El registro ya prefiere dejar
 filas incompletas antes que inventarlas, y volcar es transportar, no mejorar.
 
 **Lo que no se verifica.** El volcado no corre el paso 2 ni emite veredicto. Correrlo sobre todo el
