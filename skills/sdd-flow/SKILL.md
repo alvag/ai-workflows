@@ -581,6 +581,7 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
 
 | El usuario dice (ej.) | Paso SDD |
 |---|---|
+| "hagamos un spike", "probemos si esto es viable", "necesito entender X antes de decidir" — una exploración acotada para reducir incertidumbre, sin compromiso de entregar producto | `co-explore` en invocación directa, que por default resuelve `explore` — mapear el terreno y evaluar viabilidad es justo lo que ese modo hace. `investigate` si la incógnita es por qué algo falla, `debate` si es elegir entre opciones ya enunciadas. Un spike **no abre flujo SDD**: sin compromiso de producto no hay qué especificar, y lo que deje —un mapa, una hipótesis, una prueba de concepto descartable— es insumo para decidir, no la entrega. Que produzca evidencia verificable no lo saca de acá. Si concluye que hay algo que construir, recién ahí se abre el flujo con lo aprendido |
 | "empezar ticket X", pega clave del tracker + descripción, "nuevo feature" | ciclo completo desde `gather-context`, que abre la preflight Git/worktree (gates según complejidad) → **STOP en cada gate** |
 | "/sdd-flow init", "configura el proyecto", "inicializa sdd", "crea el `.specify/`" | `init` |
 | "principios del proyecto", "define el constitution" | `constitution` |
@@ -760,14 +761,29 @@ Obligatorio en cambios *complejos*; en *normales* solo si hay ambigüedad; se sa
 - **Contexto de dominio.** Leer los paths resueltos de `domain_context` antes de decidir nombres,
   alcance técnico o contratos. Usar ese contexto para adoptar términos canónicos, respetar ADRs
   vigentes y marcar conflictos como incógnitas; no escribir ni actualizar esos documentos.
-- **Si es bug:** seguir un método de debugging sistemático (hipótesis → prueba → refutar). Si hay una skill de debugging sistemático disponible, usarla. Si es reproducible en navegador y hay tool de navegador, capturar consola/network; si no, pedir captura/pasos. El mismo método aplica si un test o un AC falla durante `implement`/`verify` (ver `implement`, pasos 3-4).
-- **Si es feature/refactor:** mapear archivos/módulos/utilidades existentes a reutilizar. Preferir reúso sobre código nuevo.
+- **Foco por tipo de cambio.** El `change_type` del flujo decide qué se busca y qué se produce. Una
+  fila por valor del enum, y ninguna remite a otra:
+
+| `change_type` | Qué se busca | Qué produce |
+|---|---|---|
+| `feat` | archivos, módulos y utilidades existentes que el cambio pueda reutilizar; reúso antes que código nuevo | los puntos de reúso con `path:line`, y qué parte del AC no tiene dónde apoyarse |
+| `fix` | la causa raíz, por hipótesis → prueba → refutar, y la reproducción que la exhibe | la hipótesis de causa raíz con la prueba mínima que la refutaría, y los pasos para reproducir |
+| `refactor` | qué comportamiento se va a mover y qué test lo fija hoy | el comportamiento afectado y su cobertura actual, o la declaración de que ningún test lo cubre |
+| `chore` | quién consume la herramienta, la dependencia o la config que se toca | los consumidores del archivo tocado, y cuál se rompe si el valor cambia |
+| `docs` | dónde vive hoy el contenido y qué copias podrían divergir de él | la sede vigente y sus duplicados, con la ruta de cada uno |
+| `test` | qué comportamiento queda descubierto y en qué seam entra el test | el seam elegido y el hueco de cobertura que cierra |
+| `perf` | la medición de línea base, antes de tocar nada | el número medido y el comando que lo produce |
+
+- **El método de `fix` no es solo suyo.** Si hay una skill de debugging sistemático disponible,
+  usarla. Si es reproducible en navegador y hay tool de navegador, capturar consola/network; si no,
+  pedir captura/pasos. **El mismo método aplica si un test o un AC falla durante
+  `implement`/`verify`** (ver `implement`, pasos 3-4), sea cual sea el `change_type` del flujo.
 - **Reevaluar el perfil:** para todo perfil, actualizar complexity y risk con la evidencia del código.
   Si `expedited` deja de ser elegible, revocarlo antes de generar dependientes, conservar rama/base y
   volver al gate standard aplicable. El plan recibe este valor post-análisis.
 - Localizar el código con búsqueda en el repo (subagentes de exploración si el entorno los soporta y el alcance lo amerita; si no, `grep`/`ripgrep`/`find` locales). **Con co-exploración nominal esto no se hace**: el terreno ya está mapeado y `analyze` solo comprueba vigencia sobre el HEAD (ver `co-exploracion.md` → "Efecto en `analyze`").
 
-**Output:** hipótesis (bug) o lista de puntos de reúso (feature) con referencias `path:line`.
+**Output:** lo que produce la fila de su tipo de cambio, con referencias `path:line`.
 
 **Con co-exploración nominal** (ver `co-exploracion.md` → "Efecto en `analyze`"), este paso **no re-explora ni construye mapa**: comprueba vigencia sobre el HEAD y hace las verificaciones puntuales que habilite un disparador. Las ramas degradadas recuperan el `analyze` completo.
 
@@ -1100,6 +1116,10 @@ La detección es por **disciplina del conductor** al revisar el diff (paso 5/6),
    **debe fallar** → restaurar el hunk → vuelve a verde. Si al revertir el test sigue pasando, el
    test no tiene dientes: rehacerlo o cambiar la evidencia del AC. En `change_type: fix`, este
    paso es obligatorio para el test de regresión; en features/refactors aplica a los AC testeados.
+   Y en `change_type: refactor` rige además su simétrico: el comportamiento que el refactor mueve
+   exige un test caracterizador —uno que ya lo cubra y que pase **antes** de tocarlo, declarado como
+   fila con `Baseline: GREEN_ALREADY` adjudicado—, con su forma, sus tests admisibles y su orden en
+   `reference.md` → "Test caracterizador (`change_type: refactor`)".
    Excepción: tasks mecánicas, copy/config o wiring sin seam razonable; documentar la excepción y
    usar la observación/comando de `verify` como evidencia. Comandos POSIX/PowerShell en
    `reference.md` → "Plantilla de `## Verify`".

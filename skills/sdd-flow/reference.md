@@ -6636,6 +6636,53 @@ wiring sin seam razonable, documentar la excepción en la evidencia y usar el co
 del `verify`. Anotar el resultado (`revert → FAIL, restore → PASS`) como evidencia del AC en la
 tabla.
 
+### Test caracterizador (`change_type: refactor`)
+
+Simétrico del revert-to-confirm, y por el mismo motivo. Un refactor declara que **no** cambia
+comportamiento, así que lo que hay que fijar es el comportamiento que se va a mover, antes de
+moverlo: donde un `fix` prueba que su test de regresión discrimina, un `refactor` prueba que ya
+existía un test que pasaba y que sigue pasando.
+
+**La forma de la evidencia.** Cada AC de comportamiento afectado por el refactor lleva una fila del
+contrato de `## Verification` con `Baseline: GREEN_ALREADY` adjudicado, cuyo `Esperado` es seguir en
+verde después del refactor. No se agrega vocabulario ni maquinaria nueva: el enum de `Baseline` ya
+tiene ese estado y ya obliga a adjudicar por qué la fila cuenta igual, que es exactamente lo que acá
+hay que declarar.
+
+**Si ningún test cubre el comportamiento afectado**, ese test se escribe antes de tocar el código y
+**no dentro del mismo flujo**: va en un flujo propio —`change_type: test`—, y el refactor se planifica
+después contra una base que ya lo tiene. Un test escrito luego del refactor fija lo que el refactor
+dejó, no lo que había: no caracteriza nada.
+
+**Por qué un flujo aparte y no una task anterior del mismo**, que es lo que uno escribe primero. Un
+flujo mide y congela su contrato sobre el commit base, así que la fila de un test que todavía no
+existe no se puede medir ahí: su comando devuelve que falta el archivo, y eso no es el rojo que
+discrimina —lo ausente es el test, no el comportamiento— ni el verde que la fila necesita. Diferirla a
+una versión posterior del contrato tampoco sale, y por tres precondiciones que se acumulan:
+
+| Precondición del flujo | Qué la rompe |
+|---|---|
+| la cobertura entre requisitos en alcance y filas cierra **en las dos direcciones** antes de congelar | el criterio del refactor quedaría sin fila en la primera versión |
+| el flujo tiene **un** commit, y solo se llega a él con todos los criterios en verde | la task del test tendría que commitear a mitad de `implement`; el único commit intermedio previsto es el WIP de la pausa, que es plomería descartable |
+| refrescar las claves congeladas durante la implementación exige ledger terminal, paquete histórico, owner y recibo | eso es la maquinaria de rotación, no un camino ordinario |
+
+Con el test ya en la base, la fila del refactor se mide como cualquier otra y el flujo entra con una
+sola versión de contrato. Cuesta un flujo más, y compra que la obligación sea ejecutable por el camino
+ordinario en vez de exigir una transición que hoy no existe.
+
+**Los tests que ya existen sirven**, si cubren el comportamiento afectado. Se declaran como la fila
+del contrato con su `GREEN_ALREADY` medido, y la adjudicación nombra qué comportamiento cubre ese
+test. No alcanza con que la suite esté en verde: una fila cuyo verde no depende del comportamiento
+que se mueve es vacua. Lo que el refactor toque fuera de esa cobertura lleva test nuevo.
+
+**Excepciones:** las mismas excepciones del revert-to-confirm, sin volver a enumerarlas — dos listas
+sobre el mismo dominio divergen. Cuando una aplica, se documenta y la evidencia pasa a ser la
+observación o el comando de `verify`.
+
+**Lo que se descartó, y por qué.** Un revert-to-confirm invertido —mutar el comportamiento para
+probar que el test discrimina— sería más fuerte y no se adopta: la mutación hay que inventarla caso
+por caso, así que su costo escala con el tamaño del refactor, justo donde el refactor ya es caro.
+
 ## Plantilla de tasks
 
 `.plans/<id>/tasks.md` — descomposición atómica. Una task = un cambio coherente y, en lo posible, testeable. El objetivo es que cada task sea **autosuficiente**: ejecutable en una sesión fresca que solo ve **esa task y los artefactos del flujo**, sin re-deducir el diseño ni tener que elegir otro enfoque.
