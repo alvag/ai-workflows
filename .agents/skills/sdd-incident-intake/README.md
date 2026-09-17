@@ -103,6 +103,7 @@ el flujo — el dossier lleva el número del issue y la instrucción de escribir
 | `agente` | La familia que conduce la sesión actual (`claude` o `codex`) |
 | `incidente` | El de severidad más alta; a igualdad, el más antiguo |
 | `repo_destino` | El repo de skills donde vive esta skill |
+| `plataforma` | **Ninguno.** `herdr` o `orca` para forzar cuál se intenta; sin el parámetro la resuelve el paso 6 consultando las dos identidades vivas |
 
 `registro` y `repo_destino` **son repos distintos por diseño**: el registro vive donde el defecto se
 observó, el código a corregir vive en el repo de skills.
@@ -110,8 +111,11 @@ observó, el código a corregir vive en el repo de skills.
 ## Requisitos
 
 - **Una plataforma de terminales utilizable** —Herdr u Orca—, con el `repo_destino` alcanzable desde
-  ella. Cuál se usa **no se fija acá**: la resuelve el paso 6 consultando las identidades vivas, y un
-  override del usuario dirige esa resolución sin suplirla. No hace falta en `volcar`.
+  ella. Cuál se usa **no se fija acá**: la resuelve el paso 6 consultando las identidades vivas de las
+  **dos**, y el parámetro `plataforma` dirige esa resolución sin suplirla —la identidad pedida se
+  comprueba igual, y si no está viva el despacho se detiene—. Las cuatro combinaciones de plataforma
+  y familia están soportadas punta a punta, y la resuelta viaja al flujo despachado dentro del
+  dossier —como hecho observado, no como consentimiento de transporte—. No hace falta en `volcar`.
 - **`gh`** autenticado, solo para `volcar` y para leer desde `issues`.
 - Acceso al **remoto** del `repo_destino` para el `fetch` del paso 4. Para los PRs abiertos, `gh`
   autenticado (GitHub) o el MCP `bb_*` (Bitbucket): si no hay ninguno, el chequeo se reporta como

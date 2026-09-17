@@ -2,11 +2,12 @@
 name: sdd-incident-intake
 description: >-
   Admite registros de incidentes SDD. despachar verifica defectos y crea de a uno
-  y en secuencia un flujo sdd-flow por worktree, sobre la plataforma de terminales que
-  resuelve; volcar crea GitHub issues
+  y en secuencia un flujo sdd-flow por worktree, sobre la plataforma de terminales
+  —Herdr u Orca— que resuelve, o la que el usuario pida; volcar crea GitHub issues
   con needs-triage sin arreglar; ambos retiran lo procesado. Usar ante “toma un
   incidente de una ruta”, “procesa incidentes”, “revisa N incidentes”, “vuelca
-  incidentes a issues” o /sdd-incident-intake seguido de ruta. Excluye corregir
+  incidentes a issues”, “despacha el incidente en Herdr”, “procesa incidentes en Orca”
+  o /sdd-incident-intake seguido de ruta. Excluye corregir
   skills, registrar incidentes, revisar diseño e implementar; dueños respectivos:
   sdd-flow, CLAUDE.md, cross-review y cross-implement. No invocarla espontáneamente:
   solo ante pedido explícito del usuario.
@@ -98,6 +99,7 @@ regla 2 del registro.
 | `cantidad` | Cuántos **flujos** abrir. Default **1**. "revisá 3 incidentes" → 3. Cuenta worktrees, no incidentes: un flujo que agrupa dos consume **un** cupo. |
 | `agente` | `claude` \| `codex`. **Default: la familia que conduce esta sesión.** Es quién conduce el `sdd-flow` en el worktree, no quién ejecuta esta skill. |
 | `incidente` | Cuál tomar. Default: el de **severidad más alta**; a igualdad, el más antiguo. El usuario puede nombrarlo por su fecha y hora. |
+| `plataforma` | `herdr` \| `orca`. **Default: ninguno**, y no es lo mismo que un default: sin él la plataforma se **resuelve** consultando las dos identidades vivas. “despacha esto en Herdr” → `herdr`. Es un **override que dirige** la resolución y no la suple: viaja como argumento de `resolver_plataforma` y la identidad pedida se comprueba igual. |
 | `repo_destino` | Dónde vive el código a corregir. Default: el repo de skills que contiene esta skill. El registro casi nunca vive ahí — es el proyecto donde el defecto se observó. |
 
 `registro` y `repo_destino` **son repos distintos por diseño**. Confundirlos abre el worktree en el
@@ -302,9 +304,19 @@ matrices en `reference.md` → "Resolver la plataforma", "Clasificar el hook de 
 worktree", que se leen en ese orden.
 
 > **La plataforma se resuelve, no se elige por costumbre.** Se consultan las **dos** identidades y se
-> aplica la matriz. Un override del usuario **dirige** la resolución y no la suple: si la identidad
-> pedida no está viva, el despacho se detiene. Y `headless` es **parada**, no modo degradado: sin
-> plataforma utilizable no hay agente al que despachar, así que el registro queda intacto.
+> aplica la matriz. El parámetro `plataforma` es el único override, y **dirige** la resolución sin
+> suplirla: viaja como **argumento** de `resolver_plataforma` —no como una decisión tomada antes de
+> llamarlo— y la identidad pedida se comprueba igual, así que si no está viva el despacho se detiene.
+> Sin parámetro no se elige por costumbre ni por la plataforma de la corrida anterior: decide la
+> matriz. Y `headless` es **parada**, no modo degradado: sin plataforma utilizable no hay agente al
+> que despachar, así que el registro queda intacto.
+
+> **Lo que este sub-paso deja anotado, porque 6.3 lo consume.** Dos cosas: la **plataforma**
+> resuelta, y **si hubo parámetro `plataforma`** —que es lo que distingue una `pedida` de una
+> `resuelta`, y no se puede reconstruir después—. La **identidad** que devuelve
+> `resolver_plataforma` no es ninguna de esas dos: es la del panel **del intake**, y sirve para
+> revalidar cada efecto. La que el dossier lleva es la del panel **del flujo**, que todavía no
+> existe: se conoce recién al abrirlo, en «Adoptar, abrir y rotular».
 
 > **El hook se clasifica antes de crear, porque de él depende cómo se crea.** En Herdr, con hook
 > `ausente` o `reproducible` se crea con Git pasando el commit explícito —lo que **retira** el peligro
@@ -363,6 +375,13 @@ En `<worktree>/.plans/incidentes-a-corregir.md`. Plantilla y contrato de conteni
 
 > **El dossier es la única copia.** Después del paso 7 los incidentes no existen en ningún otro lado.
 > Van **verbatim**, no resumidos.
+
+> **Y le dice al flujo sobre qué plataforma arranca.** El flujo despachado no hereda nada de esta
+> sesión: la resolución del paso 6.1 se le pasa por el dossier —la plataforma, si salió de la matriz
+> o de un pedido, y la identidad del panel **de él**—. Va acá y **no en el prompt** porque la
+> integridad que el paso 6.4 acredita es el `sha256` del dossier: un dato en el prompt no queda
+> cubierto por ninguna de las dos propiedades. Es un **hecho observado**: el consentimiento de
+> transporte lo sella el flujo, con el usuario delante, y el intake no lo produce en su nombre.
 
 Si el veredicto fue **redimensionado**, el dossier lleva las dos versiones: el incidente tal como se
 escribió y el diagnóstico corregido, marcado como tal. Reemplazar una por la otra borra la evidencia
@@ -505,8 +524,11 @@ cupos que se repusieron, y el conteo del registro antes y después.
 | "Es el mismo repo, el worktree tiene todo" | Tiene lo **versionado**. El config del flujo SDD, por diseño, no lo está. |
 | "Copio el directorio entero y listo" | Puede estar medio versionado: la copia se anida y la comprobación pasa igual. Por archivo. |
 | "Al dossier le pongo un resumen" | Es la única copia. Verbatim. |
+| "Ya sé la plataforma, le dejo el transporte elegido al flujo" | El intake **observa**; `sdd-flow` sella su elección con el texto que le mostró al usuario y su `digest`. Un bloque `transporte` escrito por adelantado es un consentimiento que nadie dio. |
+| "Le paso la identidad de mi panel" | Son dos paneles: el del intake y el que se creó para el flujo. La que va al dossier es la **del flujo**. |
 | "Verifico los tres y después despacho los tres" | Cada retiro cambia el registro sobre el que se elige el siguiente. De a uno. |
 | "Me falta uno para llegar a tres, agrupo distinto" | El número es de flujos, no una cuota. Un grupo forzado es un diff que hace dos cosas. |
+| "El usuario no dijo plataforma, uso la de siempre" | Sin el parámetro `plataforma` no hay override, y entonces decide la matriz sobre las **dos** identidades vivas. La plataforma de la corrida anterior no es una observación de esta. |
 | "La plataforma que pidió el usuario está en el entorno, la uso" | Una identidad presente no es una identidad viva. El override **dirige** la resolución; la comprobación se hace igual, y si no resuelve se para. |
 | "No hay plataforma, sigo sin terminal" | `headless` es **parada**, no modo degradado: sin agente interactivo no hay a quién despachar. El registro queda intacto. |
 | "Aprovecho y corrijo la skill acá" | Esta skill prepara el flujo. Corregir es del `sdd-flow` despachado. |

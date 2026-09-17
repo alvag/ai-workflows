@@ -348,6 +348,12 @@ se retira. Es el estado del que se reintenta.
 
 ### El override del usuario dirige, no suple
 
+**El override es el parámetro `plataforma`**, con valores `herdr` y `orca`, y es la única puerta por
+la que una petición del usuario entra a este paso. Se captura del pedido —“despacha esto en Herdr”,
+“que corra en Orca”— y **no tiene default**: sin él se llama a `resolver_plataforma` sin argumento y
+decide la matriz. Un valor que no sea uno de esos dos no se interpreta ni se corrige: cae en
+`override-no-reconocido`, que es parada.
+
 Si el usuario pide una plataforma, esa petición **elige cuál se intenta**, no acredita que sirva:
 viaja como **argumento** de `resolver_plataforma` —no como una decisión tomada antes de llamarlo— y
 la identidad de la elegida se comprueba igual:
@@ -485,6 +491,11 @@ arrancar el agente ni rotular. Cada fila lleva su comando y el observable que lo
 responde razonablemente y no reconoce el prefijo; uno en el directorio equivocado trabaja sobre el
 repositorio que no es. Las dos se leen del mismo observable, antes de despachar.
 
+**Del mismo observable sale la identidad que el dossier lleva**, y es la de **este** panel —el del
+flujo—, no la del panel del intake: en Herdr, el `pane` que devolvió `pane split`; en Orca, el
+`handle` de la terminal que `terminal list --worktree` devuelve para el worktree recién creado.
+Anotarla acá es lo que permite escribirla en la sección 11 del dossier, que se redacta después.
+
 ## Sembrar el entorno ignorado
 
 ### Derivar el inventario
@@ -620,8 +631,30 @@ sin contexto de esta sesión, y **la única copia** de los incidentes tomados.
     se haya mergeado. Con varios incidentes agrupados van **todos** los números, uno por línea:
     GitHub cierra tantos `Closes` como el PR declare.
 
+11. **La plataforma anfitriona** — sobre cuál de las dos corre el panel donde este flujo vive, y si
+    salió de la matriz o de un pedido del usuario. El flujo arranca **sin contexto de esta sesión**:
+    la resolución del paso 6.1 es justamente contexto que no tiene, y sin ella vuelve a enfrentar la
+    pregunta desde cero —incluido el caso de las **dos** identidades vivas, donde su propio detector
+    no tiene observable que identifique al anfitrión—. Tres campos, y ninguno se deduce:
+
+    | Campo | Valores | Qué dice |
+    |---|---|---|
+    | `plataforma` | `herdr` \| `orca` | la que el paso 6.1 resolvió, y sobre la que se creó el worktree y el panel |
+    | `origen` | `resuelta` \| `pedida` | `resuelta`, la eligió la matriz sobre las identidades vivas; `pedida`, el usuario la dio en el parámetro `plataforma` |
+    | `identidad` | el valor observado | la identidad del panel **de este flujo**, no la del panel del intake: son dos paneles distintos |
+
+    > **Es un hecho observado, no un consentimiento de transporte.** `sdd-flow` persiste su elección
+    > en el bloque `transporte` de su frontmatter, y esa elección se sella con el **texto exacto que
+    > se le mostró al usuario** y su `digest`. Nada de eso puede producirlo el intake en nombre de
+    > nadie. Lo que esta sección aporta es **de dónde arranca**, no qué eligió: el flujo sigue
+    > debiendo su propio ofrecimiento y su propio sellado si va a despachar por plataforma. Un
+    > `origen: pedida` es una **preferencia declarada del usuario**, que la oferta puede nombrar; no
+    > es la respuesta a esa oferta.
+
 ### Lo que no va
 
+- Un consentimiento de transporte pre-sellado, o un bloque `transporte` escrito por adelantado. El
+  intake observa la plataforma; consentir la vía es del flujo, con el usuario delante.
 - Recomendaciones sobre la decisión abierta. El flujo tiene que decidirla con criterio propio; una
   recomendación escrita acá se transcribe en vez de pensarse.
 - Rutas del proyecto donde el incidente se observó. Al flujo no le sirven.
