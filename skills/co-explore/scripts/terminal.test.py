@@ -1,5 +1,30 @@
 #!/usr/bin/env python3
-"""Arnes externo por mutacion para el adaptador de terminales."""
+"""Arnes externo por mutacion para el adaptador de terminales.
+
+Frontera de prueba de esta unidad.
+
+QUE DETECTA: que un cambio deliberado en una decision del adaptador hace fallar al autotest que la
+cubre. Cada mutante declara la fila del contrato de verificacion cuyo poder discriminante acredita,
+y el control propio rechaza un reemplazo que no se aplico, para que un mutante inexistente no cuente
+como cobertura.
+
+QUÉ **NO detecta**, y conviene leerlo antes de tomar su verde por cobertura:
+  * **Da por muerto un mutante ante CUALQUIER codigo distinto de cero.** No comprueba que el fallo
+    sea el esperado, asi que un reemplazo que rompa la sintaxis, un error de importacion o un fallo
+    de entorno cuentan igual que una deteccion real — medido rompiendo una firma a proposito. La
+    reparacion evidente, rechazar todo `Traceback`, **romperia la deteccion legitima**: los mutantes
+    mueren por asercion y una asercion fallida imprime traceback junto con su causa. Repararlo exige
+    un protocolo de fallo esperado y adaptar los mutantes existentes; esta registrado como incidente
+    y es trabajo propio, no un accesorio de quien lo encuentre.
+  * Una decision sin mutante no se ve: la cobertura es la lista de abajo, no el conjunto de
+    decisiones del adaptador.
+  * No compara el comportamiento del adaptador contra la plataforma real. Todo lo que ejercita pasa
+    por el doble del propio archivo, asi que un cambio de esquema aguas arriba queda invisible.
+
+CAMPOS — dirección: **admite-de-mas**, acredita muertes que no lo son, por lo anterior.
+clase de salida: **veredicto**, su codigo de salida discrimina, y las lineas `ROJO <fila>` son el
+detalle que los consumidores leen.
+"""
 from __future__ import annotations
 
 import os
@@ -91,6 +116,28 @@ MUTANTES = (
     Mutante("bloqueado-no-acreditado", "V18", "estados", 'estado, autoridad = ("terminado-vivo" if vivo else "terminado"), "artefacto"', 'estado, autoridad = "muerto", "liveness"'),
     Mutante("lifecycle-con-autoridad", "V18", "estados", 'estado, autoridad = "trabajando", "liveness"', 'estado, autoridad = "muerto", "lifecycle"'),
     Mutante("transporte-en-dos-sedes", "V19", None), Mutante("transporte-inventado", "V19", None),
+    # --- decisiones del arreglo de la extraccion y la clasificacion del estado del agente ---
+    Mutante("nivel-de-lectura", "VD1", "agente",
+            'agente = resultado.get("agent") if isinstance(resultado, dict) else None',
+            'agente = resultado if isinstance(resultado, dict) else None'),
+    Mutante("sin-entrada-done", "VD2", "agente",
+            '    "done": ("detenido-sin-cierre", "estado_agente"),\n', '    '),
+    Mutante("sin-entrada-unknown", "VD3", "agente",
+            '    "unknown": ("desconocido", "estado_agente"),\n', '    '),
+    Mutante("colapsa-no-reconocido", "VD4", "agente",
+            'estado, autoridad = "no-reconocido", "estado_agente"',
+            'estado, autoridad = "estado-no-obtenible", "liveness"'),
+    Mutante("prefijo-de-finalizacion", "VD5", "agente",
+            '"done": ("detenido-sin-cierre", "estado_agente")',
+            '"done": ("terminado-sin-publicar", "estado_agente")'),
+    Mutante("sin-guarda-de-referencia", "VD7", "agente",
+            "    if secuencia is None:", "    if False:"),
+    Mutante("doble-en-forma-plana", "VD8", "agente",
+            ' r={"agent":ag,"type":"agent_info"} if falla!="plana" else dict(ag)',
+            ' r=dict(ag)'),
+    Mutante("acuse-no-estricto", "VD9", "agente",
+            "if actual is not None and actual > secuencia:",
+            "if actual is not None and actual >= secuencia:"),
     Mutante("ramas-perfil-distinto", "V20", None),
     Mutante("no-releer-encargo", "V21", "intervencion", "actual = hashlib.sha256(Path(args.encargo).read_bytes()).hexdigest()", "actual = args.hash_encargo"),
     Mutante("sin-hash-encargo-leido", "V21", "intervencion", 'etapa="digest", veredicto="rechazado"', 'etapa="pipeline", veredicto="rechazado"'),
