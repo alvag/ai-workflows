@@ -57,6 +57,7 @@ const correr = (flags, { cwd, fs = new DurableFs() } = {}) =>
 
 test('[AC-1] archiva y devuelve ARCHIVED, con los documentos byte-idénticos', async (t) => {
   const e = await escena(t);
+  assert.deepEqual(await fsp.readdir(e.vault), [], 'el vault no empezó vacío');
   const r = await correr({ from: e.flowDir, summary: 'Exportación con separador configurable.', 'vault-root': e.vault });
   assert.equal(r.status, 'ARCHIVED');
   const frontera = path.join(e.vault, 'projects', 'proyecto', 'sdd', 'abc-1');

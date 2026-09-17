@@ -441,19 +441,59 @@ test('copia solo lo incluido, con creación exclusiva y fsync por archivo', asyn
   const sandbox = await createSandbox(t);
   const root = await origen(sandbox);
   const staging = sandbox.path('vaults', 'staging');
+  await fsRaw.chmod(path.join(root, 'plan.md'), process.platform === 'win32' ? 0o444 : 0o7444);
   const disco = new DurableFs();
-
   const included = await incluidos(disco, root);
+  const probe = await fsRaw.open(path.join(root, 'plan.md'), 'r');
+  const prototype = Object.getPrototypeOf(probe);
+  await probe.close();
+  const originals = { open: fsRaw.open, readFile: prototype.readFile, writeFile: prototype.writeFile,
+    chmod: prototype.chmod, sync: prototype.sync };
+  const events = [], state = { sync: null };
+  const record = (op, handle, extra = {}) => events.push({ op, handle, fd: handle.fd, ...extra });
+  fsRaw.open = async (...args) => {
+    const handle = await originals.open(...args);
+    const close = handle.close;
+    record('open', handle, { target: String(args[0]), flags: args[1] });
+    handle.close = async function (...values) {
+      record('close', this);
+      return close.apply(this, values);
+    };
+    return handle;
+  };
+  prototype.readFile = async function () {
+    throw Object.assign(new Error('la copia no debe cargar el archivo completo'), { code: 'EWHOLEFILE' });
+  };
+  const observe = (op, original) => async function (...args) {
+    record(op, this);
+    if (op === 'sync' && state.sync) throw Object.assign(new Error(state.sync), { code: state.sync });
+    return original.apply(this, args);
+  };
+  prototype.writeFile = observe('write', originals.writeFile);
+  prototype.chmod = observe('chmod', originals.chmod);
+  prototype.sync = observe('sync', originals.sync);
+  t.after(() => {
+    fsRaw.open = originals.open;
+    Object.assign(prototype, { readFile: originals.readFile, writeFile: originals.writeFile, chmod: originals.chmod, sync: originals.sync });
+  });
   disco.recorder.reset();
   await copyTree({ fs: disco, from: root, to: staging, entries: included });
-
   const copiados = (await listFiles({ fs: new DurableFs(), root: staging })).map((e) => e.path);
   assert.deepEqual(copiados.sort(), ['cross-review/verdict-r1.txt', 'plan.md', 'spec.md']);
-
   assert.equal(disco.recorder.find('copy.file').length, 3);
-  assert.equal(disco.recorder.find('copy.fsync').length, 3);
-  // Lo omitido no viaja.
-  assert.ok(!copiados.some((p) => p.startsWith('node_modules/')));
+  assert.equal(disco.recorder.find('copy.fsync').length, 0);
+  const target = path.join(staging, 'plan.md');
+  const opened = events.find((e) => e.op === 'open' && e.target === target), trace = events.filter((e) => e.handle === opened.handle);
+  assert.equal(opened.flags, 'wx');
+  assert.deepEqual(trace.map((e) => e.op), ['open', 'write', 'chmod', 'sync', 'close']);
+  assert.equal(new Set(trace.map((e) => e.fd)).size, 1);
+  const sourceInfo = await fsRaw.stat(path.join(root, 'plan.md'));
+  const targetInfo = await fsRaw.stat(target);
+  assert.equal(targetInfo.mode & 0o7777, sourceInfo.mode & 0o7777);
+  state.sync = 'EIO';
+  await assert.rejects(() => copyTree({ fs: new DurableFs(), from: root, to: sandbox.path('vaults', 'otro'), entries: included }), (e) => e.code === 'EIO');
+  state.sync = null;
+  await assert.rejects(() => copyTree({ fs: new DurableFs(), from: root, to: staging, entries: included }), (e) => e.code === 'EEXIST');
 });
 
 test('la copia falla si el destino ya tenía ese archivo', async (t) => {
@@ -568,7 +608,12 @@ test('la verificación aborta si el destino tiene un symlink', async (t) => {
 
   const included = await incluidos(disco, root);
   await copyTree({ fs: disco, from: root, to: staging, entries: included });
-  await sandbox.makeSymlink(path.join(staging, 'enlace.md'), path.join(staging, 'plan.md'));
+  try {
+    await sandbox.makeSymlink(path.join(staging, 'enlace.md'), path.join(staging, 'plan.md'));
+  } catch (error) {
+    if (error.code === 'EPERM') { t.skip('Windows no permite crear symlinks sin el privilegio correspondiente'); return; }
+    throw error;
+  }
 
   await falla(() => verifyTree({ fs: disco, root: staging, expected: included }), 'UNSUPPORTED_SOURCE_ENTRY');
 });

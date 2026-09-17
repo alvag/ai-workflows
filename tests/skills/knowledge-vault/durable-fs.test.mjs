@@ -12,7 +12,6 @@ import {
   DurableFsError,
   InjectedCrash,
   Recorder,
-  classifyFsyncError,
   decodeEntryName,
   isInjectedCrash,
 } from '../../../skills/knowledge-vault/scripts/lib/durable-fs.mjs';
@@ -27,6 +26,70 @@ function falla(fn, code) {
     assert.equal(err.code, code);
     return true;
   });
+}
+
+const errno = (code) => Object.assign(new Error(code), { code });
+async function observeHandles(t, sandbox) {
+  const probe = await fsRaw.open(sandbox.path('.handle-probe'), 'w');
+  const prototype = Object.getPrototypeOf(probe);
+  await probe.close();
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+  const originals = { open: fsRaw.open, write: prototype.writeFile, sync: prototype.sync };
+  const events = [], state = { open: null, openTarget: null, sync: null, close: null };
+  const record = (op, handle, extra = {}) => events.push({ op, fd: handle.fd, handle, ...extra });
+  fsRaw.open = async (target, ...args) => {
+    if (state.open) throw errno(state.open);
+    const handle = await originals.open(state.openTarget ?? target, ...args);
+    const close = handle.close;
+    record('open', handle, { path: String(target), flags: args[0] });
+    handle.close = async function observedClose(...values) {
+      record('close', this);
+      if (state.close) throw errno(state.close);
+      return close.apply(this, values);
+    };
+    return handle;
+  };
+  prototype.writeFile = async function observedWrite(...args) {
+    record('writeFile', this);
+    return originals.write.apply(this, args);
+  };
+  prototype.sync = async function observedSync(...args) {
+    record('sync', this);
+    if (state.sync) throw errno(state.sync);
+    return originals.sync.apply(this, args);
+  };
+  t.after(() => {
+    fsRaw.open = originals.open;
+    Object.assign(prototype, { writeFile: originals.write, sync: originals.sync });
+    Object.defineProperty(process, 'platform', platform);
+  });
+  const setPlatform = (value) => Object.defineProperty(process, 'platform', { ...platform, value });
+  return { events, state, setPlatform };
+}
+
+function assertWriterSequence(events, target) {
+  const opened = events.find((event) => event.op === 'open' && event.path === target && event.flags !== 'r');
+  const trace = events.filter((event) => event.handle === opened?.handle), fds = trace.map((event) => event.fd);
+  assert.deepEqual(trace.map((event) => event.op), ['open', 'writeFile', 'sync', 'close']);
+  assert.equal(new Set(fds).size, 1);
+}
+
+async function exerciseAtomicFailure({ sandbox, events, stage, crash }) {
+  const kind = crash ? 'crash' : 'error', target = sandbox.path(`journal-${kind}-${stage}.json`);
+  const label = `journal.${kind}.${stage}`, temporal = sandbox.path(`.kv-tmp-journal-${kind}-${stage}.json`);
+  await fsRaw.writeFile(target, 'original');
+  const eventStart = events.length;
+  const options = crash ? { crashAt: `${label}.${stage}` } : { failAt: `${label}.${stage}` };
+  const operation = new DurableFs(options).writeFileAtomic(target, Buffer.from('nuevo'), label);
+  if (crash) await assert.rejects(operation, isInjectedCrash);
+  else await assert.rejects(operation);
+  assert.equal(await fsRaw.readFile(target, 'utf8'), 'original');
+  if (crash) assert.equal(await fsRaw.readFile(temporal, 'utf8'), 'nuevo');
+  else await assert.rejects(() => fsRaw.stat(temporal), (error) => error.code === 'ENOENT');
+  const trace = events.slice(eventStart);
+  const opened = trace.find((event) => event.op === 'open' && event.path === temporal);
+  if (stage === 'tmp') assert.equal(opened, undefined);
+  else assert.ok(trace.some((event) => event.op === 'close' && event.handle === opened.handle));
 }
 
 // ── Etiquetado obligatorio ────────────────────────────────────────────────────
@@ -45,27 +108,25 @@ test('el recorder registra op, label y rutas en orden de invocación', async (t)
 
   await disco.mkdir(sandbox.path('a'), 'mkdir.staging');
   await disco.writeFile(sandbox.path('a', 'f.txt'), Buffer.from('hola'), 'write.manifest');
-  await disco.fsyncFile(sandbox.path('a', 'f.txt'), 'fsync.file');
   await disco.rename(sandbox.path('a'), sandbox.path('b'), 'publish.rename');
 
   assert.deepEqual(disco.recorder.labels(), [
     'mkdir.staging',
     'write.manifest',
-    'fsync.file',
     'publish.rename',
   ]);
   assert.deepEqual(
     disco.recorder.entries.map((e) => e.op),
-    ['mkdir', 'writeFile', 'fsyncFile', 'rename'],
+    ['mkdir', 'writeFile', 'rename'],
   );
   assert.ok(disco.recorder.entries.every((e) => e.outcome === 'ok'));
-  assert.deepEqual(disco.recorder.entries[3].paths, [sandbox.path('a'), sandbox.path('b')]);
+  assert.deepEqual(disco.recorder.entries[2].paths, [sandbox.path('a'), sandbox.path('b')]);
 
   // El campo `seq` es un ordinal estable: sobrevive a filtrar la traza, que es
   // lo que hace falta para ubicar una operación dentro de la secuencia entera
   // después de quedarse solo con las que ocurrieron.
-  assert.deepEqual(disco.recorder.entries.map((e) => e.seq), [0, 1, 2, 3]);
-  assert.deepEqual(disco.recorder.succeeded().map((e) => e.seq), [0, 1, 2, 3]);
+  assert.deepEqual(disco.recorder.entries.map((e) => e.seq), [0, 1, 2]);
+  assert.deepEqual(disco.recorder.succeeded().map((e) => e.seq), [0, 1, 2]);
 });
 
 test('el recorder es el oracle del ORDEN, no solo del disparo', async (t) => {
@@ -303,71 +364,92 @@ test('acepta el repertorio completo de nombres válidos', async (t) => {
   for (const nombre of nombres) assert.ok(leidos.includes(nombre), nombre);
 });
 
-// ── fsync fail-closed (R8) ────────────────────────────────────────────────────
+// ── Durabilidad de archivos y degradación acotada de directorios ──────────────
 
-test('`fsyncFile` y `fsyncDir` funcionan sobre rutas reales', async (t) => {
+test('writeFile sincroniza el mismo handle escritor antes de cerrarlo', async (t) => {
   const sandbox = await createSandbox(t);
-  const disco = new DurableFs();
-  await fsRaw.writeFile(sandbox.path('f.txt'), 'a');
-
-  await disco.fsyncFile(sandbox.path('f.txt'), 'fsync.file');
-  await disco.fsyncDir(sandbox.root, 'fsync.dir');
-  assert.deepEqual(disco.recorder.succeeded().map((e) => e.label), ['fsync.file', 'fsync.dir']);
+  const { events } = await observeHandles(t, sandbox);
+  const target = sandbox.path('f.txt');
+  assert.equal(await new DurableFs().writeFile(target, Buffer.from('a'), 'write.file'), undefined);
+  assertWriterSequence(events, target);
 });
 
-test('un errno de "no soportado" se traduce a FSYNC_UNSUPPORTED', () => {
-  // Se prueba la traducción real con errores sintéticos. Inyectar directamente
-  // un `FSYNC_UNSUPPORTED` por label probaría el inyector, no esta lógica — y en
-  // una plataforma que sí soporta fsync de directorios no hay otra forma.
-  const errno = (code) => Object.assign(new Error(code), { code });
-
+test('fsyncDir degrada solo errores de capacidad en Windows', async (t) => {
+  const sandbox = await createSandbox(t);
+  const injected = await observeHandles(t, sandbox);
+  injected.setPlatform('win32');
+  for (const code of ['EISDIR', 'EPERM']) {
+    injected.state.open = code;
+    await new DurableFs().fsyncDir(sandbox.root, `dir.open.${code}`);
+  }
+  injected.state.open = null;
+  injected.state.openTarget = sandbox.path('.dir-sync-probe');
+  await fsRaw.writeFile(injected.state.openTarget, 'probe');
   for (const code of ['EINVAL', 'EPERM', 'ENOTSUP', 'EBADF']) {
-    const traducido = classifyFsyncError(errno(code), '/v/raw', { stage: 'sync' });
-    assert.ok(traducido instanceof DurableFsError);
-    assert.equal(traducido.code, 'FSYNC_UNSUPPORTED');
-    assert.equal(traducido.path, '/v/raw');
-    assert.equal(traducido.cause.code, code);
+    injected.state.sync = code;
+    await new DurableFs().fsyncDir(sandbox.root, `dir.sync.${code}`);
   }
-
-  for (const code of ['EISDIR', 'EPERM', 'EACCES']) {
-    assert.equal(classifyFsyncError(errno(code), '/v', { stage: 'open' }).code, 'FSYNC_UNSUPPORTED');
-  }
+  assert.equal(injected.events.filter((event) => event.op === 'sync').length, 4);
 });
 
-test('un errno que NO es "no soportado" se deja pasar tal cual', () => {
-  // Un disco lleno o un archivo ausente son fallos reales, no ausencia de
-  // soporte: confundirlos taparía el problema de verdad.
-  const errno = (code) => Object.assign(new Error(code), { code });
-
-  for (const code of ['ENOSPC', 'ENOENT', 'EIO']) {
-    const pasado = classifyFsyncError(errno(code), '/v/raw', { stage: 'sync' });
-    assert.ok(!(pasado instanceof DurableFsError));
-    assert.equal(pasado.code, code);
-  }
-  // En `open`, la traducción solo aplica a directorios; un EISDIR de archivo sube crudo.
-  assert.equal(classifyFsyncError(errno('EISDIR'), '/v/f', { stage: 'sync' }).code, 'EISDIR');
-});
-
-test('no se degrada a seguir sin sincronizar', async (t) => {
+test('fsyncDir propaga errores no degradables y cualquier error fuera de Windows', async (t) => {
   const sandbox = await createSandbox(t);
-  const disco = new DurableFs();
-  // Un fsync sobre una ruta inexistente sube el error; nunca se traga.
-  await assert.rejects(
-    () => disco.fsyncDir(sandbox.path('no-existe'), 'fsync.dir'),
-    (err) => err.code === 'ENOENT',
-  );
-  assert.equal(disco.recorder.entries[0].outcome, 'failed');
+  const injected = await observeHandles(t, sandbox);
+  injected.setPlatform('win32');
+  for (const code of ['EACCES', 'ENOENT', 'EIO']) {
+    injected.state.open = code;
+    await assert.rejects(() => new DurableFs().fsyncDir(sandbox.root, `dir.open.${code}`), (error) => error.code === code);
+  }
+  injected.state.open = null;
+  injected.state.openTarget = sandbox.path('.dir-sync-probe');
+  await fsRaw.writeFile(injected.state.openTarget, 'probe');
+  for (const code of ['EACCES', 'ENOENT', 'EIO', 'EBUSY']) {
+    injected.state.sync = code;
+    await assert.rejects(() => new DurableFs().fsyncDir(sandbox.root, `dir.sync.${code}`), (error) => error.code === code);
+  }
+  injected.setPlatform('linux');
+  injected.state.openTarget = null;
+  injected.state.sync = null;
+  for (const code of ['EISDIR', 'EPERM']) {
+    injected.state.open = code;
+    await assert.rejects(() => new DurableFs().fsyncDir(sandbox.root, `dir.linux.open.${code}`), (error) => error.code === 'FSYNC_UNSUPPORTED' && error.cause.code === code);
+  }
+  injected.state.open = null;
+  injected.state.openTarget = sandbox.path('.dir-sync-probe');
+  for (const code of ['EINVAL', 'EPERM', 'ENOTSUP', 'EBADF']) {
+    injected.state.sync = code;
+    await assert.rejects(() => new DurableFs().fsyncDir(sandbox.root, `dir.linux.sync.${code}`), (error) => error.code === 'FSYNC_UNSUPPORTED' && error.cause.code === code);
+  }
+});
+
+test('las primitivas de archivo propagan EACCES ENOENT y EIO de sync', async (t) => {
+  const sandbox = await createSandbox(t);
+  const injected = await observeHandles(t, sandbox);
+  await fsRaw.writeFile(sandbox.path('source.md'), 'source');
+  const calls = [
+    (target) => new DurableFs().openExclusive(target, Buffer.from('a'), 'exclusive'),
+    (target) => new DurableFs().writeFile(target, Buffer.from('a'), 'write'),
+    (target) => new DurableFs().copyFile(sandbox.path('source.md'), target, 'copy'),
+    (target) => new DurableFs().writeFileAtomic(target, Buffer.from('a'), 'atomic'),
+  ];
+  for (const code of ['EACCES', 'ENOENT', 'EIO']) {
+    injected.state.sync = code;
+    for (const [index, call] of calls.entries()) {
+      await assert.rejects(() => call(sandbox.path(`${code}-${index}.md`)), (error) => error.code === code);
+    }
+  }
 });
 
 // ── Resto de primitivas ───────────────────────────────────────────────────────
 
-test('`openExclusive` crea y falla si el destino ya existe', async (t) => {
+test('openExclusive crea en exclusiva y sincroniza el mismo handle escritor antes de cerrarlo', async (t) => {
   const sandbox = await createSandbox(t);
+  const { events } = await observeHandles(t, sandbox);
   const disco = new DurableFs();
   const destino = sandbox.path('receipt.json');
-
-  await disco.openExclusive(destino, Buffer.from('{"a":1}'), 'receipt.write');
+  assert.equal(await disco.openExclusive(destino, Buffer.from('{"a":1}'), 'receipt.write'), undefined);
   assert.equal(await fsRaw.readFile(destino, 'utf8'), '{"a":1}');
+  assertWriterSequence(events, destino);
 
   await assert.rejects(
     () => disco.openExclusive(destino, Buffer.from('{"a":2}'), 'receipt.write'),
@@ -403,47 +485,42 @@ test('`lstat` devuelve null ante ENOENT y no sigue symlinks', async (t) => {
   assert.ok(info.isSymbolicLink(), 'lstat no debe seguir el enlace');
 });
 
-test('`writeFileAtomic` descompone la secuencia durable en la traza', async (t) => {
+test('writeFileAtomic sincroniza el temporal desde su handle escritor', async (t) => {
   const sandbox = await createSandbox(t);
+  const { events } = await observeHandles(t, sandbox);
   const disco = new DurableFs();
-
   await disco.writeFileAtomic(sandbox.path('journal.json'), Buffer.from('{"phase":"PREPARED"}'), 'journal.write');
-
-  assert.deepEqual(disco.recorder.labels(), [
-    'journal.write.tmp',
-    'journal.write.tmp.fsync',
-    'journal.write.rename',
-    'journal.write.fsync-dir',
-  ]);
+  assert.deepEqual(disco.recorder.labels(), ['journal.write.tmp', 'journal.write.tmp.fsync', 'journal.write.rename', 'journal.write.fsync-dir']);
+  assert.equal(disco.recorder.entries[1].op, 'fsyncFile');
   assert.equal(await fsRaw.readFile(sandbox.path('journal.json'), 'utf8'), '{"phase":"PREPARED"}');
+  assertWriterSequence(events, sandbox.path('.kv-tmp-journal.json'));
   // El temporal no queda tirado.
   assert.ok(!(await fsRaw.readdir(sandbox.root)).some((n) => n.startsWith('.kv-tmp-')));
 });
 
-test('el temporal abandonado por una caída es reconocible como de `kv`', async (t) => {
+test('writeFileAtomic conserva el temporal ante InjectedCrash', async (t) => {
   const sandbox = await createSandbox(t);
-  const disco = new DurableFs({ crashAt: 'journal.write.tmp.fsync' });
-
-  await assert.rejects(
-    () => disco.writeFileAtomic(sandbox.path('journal.json'), Buffer.from('{}'), 'journal.write'),
-    isInjectedCrash,
-  );
-
-  // Lleva prefijo propio y oculto: no se confunde con material del usuario ni
-  // con un staging de publicación, que usan otros prefijos.
-  const restos = (await fsRaw.readdir(sandbox.root)).filter((n) => n.startsWith('.kv-tmp-'));
-  assert.deepEqual(restos, ['.kv-tmp-journal.json']);
-  await assert.rejects(() => fsRaw.stat(sandbox.path('journal.json')));
+  const { events } = await observeHandles(t, sandbox);
+  for (const stage of ['tmp.fsync', 'rename']) {
+    await exerciseAtomicFailure({ sandbox, events, stage, crash: true });
+  }
 });
 
-test('si `writeFileAtomic` falla en el rename, el destino no aparece a medias', async (t) => {
+test('writeFileAtomic limpia el temporal ante un error ordinario', async (t) => {
   const sandbox = await createSandbox(t);
-  const disco = new DurableFs({ failAt: 'journal.write.rename' });
+  const { events } = await observeHandles(t, sandbox);
+  for (const stage of ['tmp', 'tmp.fsync', 'rename']) {
+    await exerciseAtomicFailure({ sandbox, events, stage, crash: false });
+  }
+});
 
-  await assert.rejects(() =>
-    disco.writeFileAtomic(sandbox.path('journal.json'), Buffer.from('{}'), 'journal.write'),
-  );
-  await assert.rejects(() => fsRaw.stat(sandbox.path('journal.json')));
+test('writeFileAtomic preserva el error primario y cierra el handle', async (t) => {
+  const sandbox = await createSandbox(t);
+  const { events, state } = await observeHandles(t, sandbox);
+  Object.assign(state, { sync: 'EIO', close: 'ECLOSE' });
+  await assert.rejects(() => new DurableFs().writeFileAtomic(sandbox.path('journal.json'), Buffer.from('{}'), 'journal'),
+    (error) => error.code === 'EIO');
+  assert.ok(events.some((event) => event.op === 'close'));
 });
 
 // ── uniqueTemp y expectBytes (T4) ─────────────────────────────────────────────
@@ -477,10 +554,10 @@ test('con uniqueTemp, dos INSTANCIAS de DurableFs no repiten el temporal aunque 
   const disco2 = new DurableFs({ recorder: new Recorder() });
   const target = sandbox.path('compartido.yml');
 
-  await Promise.all([
+  const outcomes = await Promise.allSettled([
     disco1.writeFileAtomic(target, Buffer.from('uno\n'), 'w1', { uniqueTemp: true }),
     disco2.writeFileAtomic(target, Buffer.from('dos\n'), 'w2', { uniqueTemp: true }),
-  ]);
+  ]); assert.ok(outcomes.some(({ status }) => status === 'fulfilled')); for (const outcome of outcomes) if (outcome.status === 'rejected') assert.equal(outcome.reason.code, 'EPERM');
 
   const temporal1 = disco1.recorder.find('w1.tmp')[0].paths[0];
   const temporal2 = disco2.recorder.find('w2.tmp')[0].paths[0];
@@ -497,13 +574,10 @@ test('con uniqueTemp, dos escrituras concurrentes al MISMO target no colisionan 
   const fs = new DurableFs({ recorder: new Recorder() });
   const target = sandbox.path('mismo.yml');
 
-  // Acá sí está la colisión real que el test anterior no puede ver: mismo basename,
-  // mismo target, así que sin `uniqueTemp` ambas escrituras comparten un único
-  // temporal y una le pisa el intermedio a la otra.
-  await Promise.all([
+  const outcomes = await Promise.allSettled([
     fs.writeFileAtomic(target, Buffer.from('uno\n'), 'w1', { uniqueTemp: true }),
     fs.writeFileAtomic(target, Buffer.from('dos\n'), 'w2', { uniqueTemp: true }),
-  ]);
+  ]); assert.ok(outcomes.some(({ status }) => status === 'fulfilled')); for (const outcome of outcomes) if (outcome.status === 'rejected') assert.equal(outcome.reason.code, 'EPERM');
 
   // No importa cuál ganó la carrera del `rename`: lo que importa es que el
   // resultado sea una de las dos escrituras completas, no un intermedio corrupto.
@@ -520,7 +594,6 @@ test('expectBytes aborta si el archivo cambió en disco entre la lectura y la pu
   await fsRaw.writeFile(target, 'original\n');
 
   const leidos = Buffer.from('original\n');
-  // Alguien más lo guarda: el usuario en su editor.
   await fsRaw.writeFile(target, 'editado por el usuario\n');
 
   await assert.rejects(
@@ -530,11 +603,17 @@ test('expectBytes aborta si el archivo cambió en disco entre la lectura y la pu
       return true;
     },
   );
-  // Y lo importante: la edición del usuario sigue intacta.
   assert.equal(await fsRaw.readFile(target, 'utf8'), 'editado por el usuario\n');
-  // Y el temporal que se llegó a escribir no queda tirado tras el aborto.
   const restos = (await fsRaw.readdir(sandbox.root)).filter((n) => n.startsWith('.kv-tmp-'));
   assert.deepEqual(restos, [], 'no quedan temporales abandonados tras el CONFLICT');
+
+  const recorder = new Recorder();
+  const brokenCleanup = new DurableFs({ recorder, failAt: { label: 'w2.tmp.unlink', code: 'EIO' } });
+  await assert.rejects(brokenCleanup.writeFileAtomic(target, Buffer.from('nuestro\n'), 'w2', { expectBytes: leidos }), (e) => e.code === 'CONFLICT');
+  const failedUnlink = recorder.find('w2.tmp.unlink')[0];
+  assert.equal(failedUnlink.error.code, 'EIO');
+  assert.deepEqual(recorder.find('w2.tmp.cleanup'), []);
+  assert.equal(await fsRaw.readFile(failedUnlink.paths[0], 'utf8'), 'nuestro\n');
 });
 
 test('expectBytes con un archivo que todavía no existe exige el buffer vacío', async (t) => {

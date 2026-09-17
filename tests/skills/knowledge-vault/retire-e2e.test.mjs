@@ -125,7 +125,7 @@ test('[AC-20-e2e] lo copiable sobrevive exacto y el manifiesto queda en HEAD', a
 
     // Y el manifiesto está **en HEAD**, no sólo escrito: es lo que lo vuelve
     // autorización durable y registro del retiro a la vez.
-    const rel = path.relative(e.vault, rutaDelManifiesto(e.vault, REPO_ID, flowId));
+    const rel = path.relative(e.vault, rutaDelManifiesto(e.vault, REPO_ID, flowId)).split(path.sep).join('/');
     const { stdout } = await git(e.vault, 'ls-tree', '-r', '--name-only', 'HEAD', '--', rel);
     assert.equal(stdout.trim(), rel, `el manifiesto de ${flowId} no está en HEAD`);
   }
@@ -157,6 +157,15 @@ test('[AC-20-e2e] una caída en cada transición termina en un reintento que cie
       `caída en ${transicion}: quedó un remanente colgado (${quedan.join(', ')})`,
     );
   }
+});
+
+test('[AC-20-e2e] un remanente sin manifiesto se restaura', async (t) => {
+  const e = await arbol(t, { flujos: ['abc-1'] }), original = path.join(e.raiz, 'abc-1');
+  const before = await snapshotTree(original); await fs.rename(original, path.join(e.raiz, '.kv-retirando-abc-1'));
+  const { informe } = await correr(e, { 'dry-run': true });
+  const result = await correr(e, { 'approve-digest': informe.digest });
+  assert.equal(result.informe.resultados[0].estado, 'RECLAMO_DESHECHO');
+  assert.deepEqual(await snapshotTree(original), before);
 });
 
 // ── Los tres mutantes que el contrato tiene que rechazar ─────────────────────
@@ -236,7 +245,8 @@ test('[KV-SEL AC-8] retire exige bytes y anclaje exacto por documento', async (t
     fs: new DurableFs(), vaultRoot: e.vault, repoId: REPO_ID, flowId: 'abc-1', flowDir,
   });
   assert.equal(mismatched.causa, 'VERIFY_FAILED');
-  await git(e.vault, 'checkout', '--', relative);
+  const { stdout: committed } = await git(e.vault, 'show', `HEAD:${relative}`);
+  await fs.writeFile(target, committed, 'utf8');
   assert.deepEqual(await fs.readFile(target), await fs.readFile(source));
 
   await git(e.vault, 'rm', '-q', '--cached', '--', relative);
@@ -327,4 +337,24 @@ test('[KV-SEL AC-22] archive a probe a retire conserva y destruye solo tras dige
   assert.equal(retired.status, ESTADOS.BATCH_OK);
   assert.equal(await fs.lstat(flowDir).catch(() => null), null);
   assert.deepEqual(await fs.readFile(target), sourceBytes);
+});
+
+test('instalación desechable ejecuta config, archive y retire desde el candidato', async (t) => {
+  const caja = await createSandbox(t), candidate = path.join(caja.root, 'candidate', 'skills', 'knowledge-vault');
+  await fs.cp(path.resolve('skills/knowledge-vault'), candidate, { recursive: true });
+  const repoRoot = await caja.makeRepo('proyecto'); await git(repoRoot, 'init', '-q');
+  await git(repoRoot, 'remote', 'add', 'origin', 'git@github.com:acme/candidate.git');
+  const root = path.join(repoRoot, '.plans', 'archived');
+  const flow = await caja.makeTree(path.join(root, 'abc-1'), { 'plan.md': PLAN, 'spec.md': '# Spec\n' });
+  const vault = await caja.makeVault('candidate-vault'), config = path.join(repoRoot, '.specify', 'config.yml');
+  await fs.mkdir(path.dirname(config), { recursive: true });
+  const cli = path.join(candidate, 'scripts/kv.mjs');
+  const run = async (...args) => JSON.parse((await promisify(execFile)(process.execPath, [cli, ...args], { cwd: repoRoot, env: caja.env() })).stdout);
+  assert.equal((await run('config', '--config', config, '--set-root', vault)).status, 'VAULT_SET');
+  assert.equal((await run('archive', '--from', flow, '--summary', 'Candidato.', '--config', config)).status, 'ARCHIVED');
+  assert.equal((await run('identity', '--declare', 'proyecto', '--config', config)).status, 'IDENTITY_DECLARED');
+  const dry = await run('retire', '--root', root, '--config', config, '--dry-run');
+  const retired = await run('retire', '--root', root, '--config', config, '--approve-digest', dry.informe.digest);
+  assert.equal(retired.status, ESTADOS.BATCH_OK); assert.equal(await fs.lstat(flow).catch(() => null), null);
+  assert.ok(cli.startsWith(candidate) && candidate.startsWith(caja.root));
 });

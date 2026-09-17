@@ -34,6 +34,8 @@ const correr = (flags, fs = new DurableFs()) => configCommand({ fs, flags, homeD
 
 test('escribe path_vault y conserva intactas las claves ajenas', async (t) => {
   const e = await escena(t, AJENO);
+  const temporal = path.join(path.dirname(e.ruta), '.kv-tmp-config.yml');
+  await fsp.writeFile(temporal, 'residuo de una corrida anterior\n', 'utf8');
   const r = await correr({ config: e.ruta, 'set-root': e.vault });
   assert.equal(r.status, 'VAULT_SET');
 
@@ -41,6 +43,7 @@ test('escribe path_vault y conserva intactas las claves ajenas', async (t) => {
   for (const linea of AJENO.trim().split('\n')) assert.ok(texto.includes(linea), linea);
   assert.ok(texto.includes('knowledge-vault:'));
   assert.equal((await correr({ config: e.ruta })).root, e.vault);
+  assert.equal(await fsp.stat(temporal).catch(() => null), null, 'quedó .kv-tmp-config.yml');
 });
 
 test('crea el config si no existía', async (t) => {

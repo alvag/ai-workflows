@@ -249,7 +249,6 @@ export async function copyTree({ fs, from, to, entries, label = 'copy' }) {
       directorios.add(padre);
     }
     await fs.copyFile(path.join(from, entrada.path), destino, `${label}.file`);
-    await fs.fsyncFile(destino, `${label}.fsync`);
   }
 
   return [...directorios];

@@ -130,6 +130,14 @@ reinstalar completa la versión nueva: volver al selector anterior haría
 incompatibles esos flujos. No se mezclan scripts y documentación de versiones
 distintas.
 
+## Durabilidad en Windows
+
+El contenido de los archivos sigue siendo **fail-closed**: cada escritura se
+sincroniza desde el mismo handle escritor antes de cerrarlo. Solo el `fsync` de
+metadatos de directorio degrada a **best-effort** en Windows, y únicamente para
+los errores documentados de capacidad de esa plataforma; los demás se propagan.
+Este límite no introduce estados ni recuperaciones diferentes por comando.
+
 Nombres de flujo **reservados**: `index` y `log`. Un flujo así llamado se rechaza
 en vez de pisar un archivo generado, y la comparación va por clave de colisión
 —no por igualdad— porque en macOS y Windows `Index.md` pisa `index.md`.
