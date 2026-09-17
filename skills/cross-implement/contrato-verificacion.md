@@ -381,6 +381,16 @@ nivel menor o igual** al de esa versión, o en EOF. Así `#### Baseline de vN` q
 profundo— y `## Tests y build` queda afuera. Los encabezados dentro de cercas ` ``` ` no cuentan: un
 `# comentario` de un bloque de código no cierra nada.
 
+**Qué pasa con lo que queda afuera.** El gate rechaza cuatro formas contractuales fuera de todo
+bloque de versión: la cabecera canónica de seis columnas, comparada como línea completa tras recortar
+sus extremos; el prefijo de comienzo de línea ``- `id: ``; un encabezado completo de una a seis
+almohadillas con la forma `#+ Baseline de vN`; y los literales completos
+`` `hash: <64 hex minúsculos>` `` o `` `hash_previo: <64 hex minúsculos>` `` —`hash_previo`
+también admite el literal vacío `` `hash_previo:` `` de `v1`—. Las
+cuatro quedan excluidas dentro de una cerca abierta o cerrada por una línea que empieza con tres
+acentos graves. Una fila de datos suelta sin la cabecera no se detecta: hacerlo confundiría la tabla
+ordinaria de `## Verify` con el contrato.
+
 Fijarlo importa tanto como fijar la normalización, y por la misma razón. Definir el hash sin definir
 su frontera dejaba a la **última** versión absorbiendo todo lo que viniera después: en un plan de
 `sdd-flow`, la sección "Tests y build" y el `## Verify` que el propio flujo escribe al terminar. La
@@ -390,7 +400,8 @@ Bytes canónicos = el bloque tal cual, con finales de línea `LF`, sin espacios 
 y sin líneas en blanco al final. Sin fijar la normalización, un editor que reescriba los finales de
 línea rompe la cadena sin que nadie haya tocado el contenido.
 
-El gate previo al dispatch recomputa la cadena entera y rechaza el contrato si no cierra.
+El gate previo al dispatch recomputa la cadena entera y rechaza el contrato si no cierra o si una de
+las cuatro formas contractuales aparece fuera de todo bloque de versión.
 
 **Nada de esto se implementa a mano.** Ejecutar
 `python_skill <skill_dir>/scripts/contrato-cadena.py <contrato>`: el script recorta cada versión por
@@ -398,7 +409,8 @@ la frontera de arriba, canoniza y compara los dos hashes. Sus tests durables cal
 esperados con una implementación independiente. **Ante cualquier discrepancia entre esta descripción
 y el script, manda el script:** la descripción existe para explicar su efecto, no para reescribirlo.
 
-**Lo que esto detecta:** una edición retroactiva que no recalculó la cadena.
+**Lo que esto detecta:** una edición retroactiva que no recalculó la cadena y contenido contractual
+con una de las cuatro formas publicadas que quedó fuera de todo bloque de versión.
 
 **Lo que explícitamente NO prueba:** que una versión vieja no haya sido editada. Quien edita `v1` y
 recalcula la cadena obtiene un documento válido, y no hay ancla externa que lo desmienta: el
@@ -466,7 +478,7 @@ fallido.
 | # | Comprobación | Falla cuando |
 |---|---|---|
 | 1 | **existe un contrato** | el work order no trae tabla. |
-| 2 | **versión vigente identificada** | falta la numeración, hay un salto en la serie, o la cadena de integridad no cierra. |
+| 2 | **versión vigente identificada** | falta la numeración, hay un salto en la serie, la cadena de integridad no cierra o aparece una de las cuatro formas contractuales fuera de todo bloque de versión. |
 | 3 | **cobertura bidireccional** | queda un requisito en alcance sin fila, o una fila sin requisito. |
 | 4 | **campos obligatorios presentes** | falta una columna o sobra una; un valor cae fuera de los enums; una fila no tiene registro de baseline, o el registro no tiene `commit` y `timestamp`; una `Evidencia` cae fuera de su enum; falta `observado` en `RED` o `GREEN_ALREADY`, o el que hay no cumple la forma que su evidencia exige; un `GREEN_ALREADY` sin `adjudicación` o un `NOT_APPLICABLE` sin `justificación`. |
 | 5 | **baseline resuelto en toda fila** | alguna fila quedó sin estado, o en `BLOCKED`. |
