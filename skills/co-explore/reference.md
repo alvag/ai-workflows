@@ -171,6 +171,11 @@ Postura independiente: cada worker la forma sin ver la del otro.
 
 El prompt vive en `assets/prompts/debate-round-0.md` — es la **entrada exacta** del worker y se escribe a archivo con la tool Write. Placeholders que hay que sustituir antes de despachar: `{constraints}`, `{working_dir}`.
 
+**La composición de esta ronda declara `dominio.anterior: []`**, y no es una formalidad: la fila de
+este punto es `delta-sobre-el-anterior`, así que el preflight pide el intento previo. La lista vacía
+es cómo se declara que **no lo hay** —es la ronda 0—; omitir el campo es distinto y falla cerrado,
+porque el instrumento no puede distinguir «no existe» de «nadie lo escribió».
+
 
 #### Prompt de debate — cruce
 

@@ -25,9 +25,18 @@ FRONTERA DE PRUEBA — dos unidades comparten este pasaje, y no comparten su alc
 
 `despacho.py --preflight` — clase: veredicto. Dirección: admite-de-mas.
     Detecta: una fila ausente o con una celda fuera de su enum; una clave prevista vacía o repetida;
-    los SEIS valores de `cardinalidad`, los CINCO de `familias` y los CINCO de `encargos`, cada uno
-    contra el dato que su celda necesita; y la ausencia de ese dato, que **falla cerrado** en vez de
-    pasar en silencio.
+    un operando ausente —`family`, `assignment_digest`, y `nucleo_digest` en las dos direcciones que
+    la sede declara—; los SEIS valores de `cardinalidad`, los CINCO de `familias` y los CINCO de
+    `encargos`, cada uno contra el dato que su celda necesita; y la ausencia de ese dato, que
+    **falla cerrado** en vez de pasar en silencio.
+    Los operandos se exigen ANTES de evaluar ninguna relación, porque una comparación entre dos
+    ausencias da verdadero: medido, los dos `assignment_digest` en `null` satisfacían
+    `identico-por-digest` y una `family` ausente satisfacía `opuesta-al-conductor`, las dos sobre
+    puntos reales y las dos con el mensaje `composicion-valida`.
+    Distingue `anterior` AUSENTE de `anterior: []`: la lista vacía **declara la ronda inicial** y
+    satisface `delta-sobre-el-anterior` sin comparar nada, que es lo que las filas de `debate` y del
+    loop de revisión necesitan en su ronda 0 y su ronda 1. La ausencia del campo sigue fallando
+    cerrado.
     **El dato viaja en el nodo `dominio` de la composición**, y esa es la diferencia con la versión
     anterior de este modo: mientras el dominio no viajaba, cuatro valores de `cardinalidad` y tres de
     `familias` se evaluaban como `n >= 1` y como nada respectivamente. Medido entonces: un fan-out
@@ -47,8 +56,9 @@ FRONTERA DE PRUEBA — dos unidades comparten este pasaje, y no comparten su alc
     NO que lo despachado coincida con lo previsto.
 
 `despacho.py --corrida` — clase: veredicto. Dirección: admite-de-mas.
-    Detecta: una clave prevista o efectiva vacía o repetida; un previsto sin despachar; un despachado
-    sin prever; un worker despachado con familia o digest distintos de los suyos; un worker sin
+    Detecta: una clave prevista o efectiva vacía o repetida; un operando ausente en cualquiera de las
+    dos listas —el mismo hueco dejaba pasar un sobre con todas sus familias y digests en `null` como
+    `corrida-conforme`—; un previsto sin despachar; un despachado sin prever; un worker despachado con familia o digest distintos de los suyos; un worker sin
     vencimiento, y dos que compartan el mismo.
     Empareja previsto con despachado por `expected_workers[].key` == `workers[].expected_key`, que
     la sede declara como el campo de correlación. **No** empareja por `name`: la sede define `name`
@@ -199,6 +209,37 @@ def _claves(workers, etiqueta):
     return claves, None
 
 
+def _operandos(workers, etiqueta, encargos=None):
+    """Los valores que las relaciones **comparan**, exigidos antes de compararlas.
+
+    Sin esto, la ausencia se comporta como coincidencia y el verde miente en la dirección más cara:
+    dos digests `null` dan `len(set(...)) == 1` y satisfacen `identico-por-digest`; una `family`
+    ausente nunca es igual a la del conductor y satisface `opuesta-al-conductor`. Los dos casos
+    están medidos sobre puntos reales —el panel de revisores y el implementador inicial—, y los dos
+    salían `composicion-valida` con exactamente cero datos comparados.
+
+    `encargos` decide qué se hace con `nucleo_digest`: la sede lo declara **obligatorio** con
+    `nucleo-comun` y **ausente en los demás valores**, así que las dos direcciones se hacen cumplir.
+    Con `encargos=None` no se mira: es la forma de `workers[]`, que no lleva ese campo."""
+    for i, w in enumerate(workers):
+        for campo in ("family", "assignment_digest"):
+            v = w.get(campo)
+            if not isinstance(v, str) or not v.strip():
+                return (f"forma-no-reconocida: la entrada {i} de {etiqueta} no declara `{campo}` "
+                        f"({campo}={v!r}), y es uno de los valores que este modo compara")
+        if encargos is None:
+            continue
+        n = w.get("nucleo_digest")
+        if encargos == "nucleo-comun":
+            if not isinstance(n, str) or not n.strip():
+                return (f"forma-no-reconocida: la entrada {i} de {etiqueta} no declara "
+                        f"`nucleo_digest` ({n!r}), que `encargos: nucleo-comun` exige")
+        elif n is not None:
+            return (f"forma-no-reconocida: la entrada {i} de {etiqueta} declara `nucleo_digest` "
+                    f"y la sede lo quiere ausente con `encargos: {encargos}`")
+    return None
+
+
 def _falta_dominio(campo, columna, valor):
     """El dato contra el que se comprobaría no viaja: falla cerrado.
 
@@ -210,8 +251,18 @@ def _falta_dominio(campo, columna, valor):
 
 
 def _anterior_por_clave(dominio):
+    """`None` = la composición NO declara el campo. `{}` = lo declara **vacío**.
+
+    La distinción es el arreglo entero de la ronda inicial: `anterior: []` es el conductor
+    **declarando** que no hay intento previo —la ronda 0 de `debate`, la ronda 1 del loop de
+    revisión—, y eso es un dato, no un dato que falta. Tratar las dos igual ponía en rojo a los dos
+    puntos reales que declaran `delta-sobre-el-anterior` justo en la ronda que su propia fila nombra:
+    «incluida la ronda 0» y «la ronda 1 y cada ronda siguiente». Medido, las dos salían
+    `forma-no-reconocida` con código 1."""
+    if "anterior" not in dominio:
+        return None
     previos = dominio.get("anterior")
-    if not isinstance(previos, list) or not previos:
+    if not isinstance(previos, list):
         return None
     return {w.get("key"): w for w in previos if isinstance(w.get("key"), str)}
 
@@ -295,7 +346,7 @@ def _evaluar_encargos(valor, workers, dominio):
     if valor in ("identico-por-digest", "nucleo-comun") and len(set(digs)) > 1:
         if valor == "identico-por-digest":
             return "encargo-divergente: los digests previstos difieren y el punto exige identidad"
-        nucleos = [w.get("nucleo_digest", w.get("assignment_digest")) for w in workers]
+        nucleos = [w.get("nucleo_digest") for w in workers]
         if len(set(nucleos)) > 1:
             return "encargo-divergente: los nucleos comunes previstos difieren"
         return None
@@ -305,6 +356,11 @@ def _evaluar_encargos(valor, workers, dominio):
         previos = _anterior_por_clave(dominio)
         if previos is None:
             return _falta_dominio("anterior", "encargos", valor)
+        if not previos:
+            # ronda inicial DECLARADA: no hay encargo anterior sobre el cual medir un delta, y la
+            # relación se satisface sin comparar nada. El predicado sigue pudiendo ponerse rojo en
+            # toda ronda posterior, que es donde la relación tiene sujeto.
+            return None
         for w in workers:
             prev = previos.get(w.get("key"))
             if prev is None:
@@ -327,6 +383,9 @@ def evaluar_composicion(fila, workers, dominio=None):
     _, mal = _claves(workers, "expected_workers")
     if mal:
         return mal
+    mal = _operandos(workers, "expected_workers", fila["encargos"])
+    if mal:
+        return mal
     for evaluar, columna in ((_evaluar_cardinalidad, "cardinalidad"),
                              (_evaluar_familias, "familias"),
                              (_evaluar_encargos, "encargos")):
@@ -342,6 +401,15 @@ def evaluar_corrida(fila, esperados, efectivos):
     if mal:
         return mal
     claves_efe, mal = _claves(efectivos, "workers")
+    if mal:
+        return mal
+    # el mismo hueco existía de este lado, y no lo nombraba el hallazgo: con familia y digest en
+    # `null` en las dos listas, cada cotejo comparaba `None` contra `None` y el sobre salía
+    # `corrida-conforme`. `workers[]` no lleva `nucleo_digest`, así que ese campo no se mira acá.
+    mal = _operandos(esperados, "expected_workers", fila["encargos"])
+    if mal:
+        return mal
+    mal = _operandos(efectivos, "workers")
     if mal:
         return mal
     por_clave_esp = dict(zip(claves_esp, esperados))
@@ -620,6 +688,89 @@ def autotest():
                   evaluar_corrida(dual, esp, [w("a", "codex", "D", "2026-01-01T00:00:00Z"),
                                               w("b", "claude", "D", None)]),
                   "deadline-compartido"))
+
+    # --- operandos ausentes: la ausencia se comportaba como coincidencia ---
+    casos.append(("family ausente donde la fila la compara",
+                  evaluar_composicion(fila(cardinalidad="n-acotado", familias="opuesta-al-conductor"),
+                                      [{"key": "a", "family": None, "assignment_digest": "D"}],
+                                      {"tope": 2, "conductor": "claude"}), "forma-no-reconocida"))
+    casos.append(("family vacía donde la fila la compara",
+                  evaluar_composicion(dual, [w("a", "", "D"), w("b", "claude", "D")], inv),
+                  "forma-no-reconocida"))
+    casos.append(("los dos assignment_digest ausentes con identidad exigida",
+                  evaluar_composicion(dual, [{"key": "a", "family": "codex", "assignment_digest": None},
+                                             {"key": "b", "family": "claude", "assignment_digest": None}],
+                                      inv), "forma-no-reconocida"))
+    casos.append(("nucleo_digest ausente donde nucleo-comun lo exige",
+                  evaluar_composicion(nuc, [w("a", "codex", "D"), w("b", "claude", "E")], inv),
+                  "forma-no-reconocida"))
+    casos.append(("nucleo_digest presente donde la sede lo quiere ausente",
+                  evaluar_composicion(dual, [{**w("a", "codex", "D"), "nucleo_digest": "N"},
+                                             {**w("b", "claude", "D"), "nucleo_digest": "N"}], inv),
+                  "forma-no-reconocida"))
+    casos.append(("corrida con family y digest ausentes en las dos listas",
+                  evaluar_corrida(dual,
+                                  [{"key": "a", "family": None, "assignment_digest": None, "deadline": "T1"},
+                                   {"key": "b", "family": None, "assignment_digest": None, "deadline": "T2"}],
+                                  [{"key": "a", "family": None, "assignment_digest": None, "deadline": "T1"},
+                                   {"key": "b", "family": None, "assignment_digest": None, "deadline": "T2"}]),
+                  "forma-no-reconocida"))
+
+    # --- la ronda inicial DECLARADA, que es un dato y no un dato que falta ---
+    inicial = {"tope": 2, "cardinal": 1, "conductor": "claude", "anterior": []}
+    casos.append(("delta-sobre-el-anterior en una ronda inicial declarada",
+                  evaluar_composicion(delta, [w("a", "codex", "D1")], inicial), None))
+    casos.append(("delta-sobre-el-anterior con el campo AUSENTE sigue fallando cerrado",
+                  evaluar_composicion(delta, [w("a", "codex", "D1")], {"tope": 2}),
+                  "forma-no-reconocida"))
+    casos.append(("continuacion-del-anterior no puede continuar una ronda inicial vacía",
+                  evaluar_composicion(cont, [w("a", "codex", "D")], inicial), "familia-invalida"))
+
+    # --- los PUNTOS REALES del árbol, no filas sintéticas ---
+    raiz = pathlib.Path(__file__).resolve().parents[3]
+    if not (raiz / SEDE_ENUMS).is_file():
+        casos.append(("la sede se resuelve desde el árbol", f"sede ilegible en {raiz}", None))
+    else:
+        r = lambda skill, punto: leer_fila(raiz, skill, punto)
+        wr = lambda k, f, d, **extra: {"key": k, "family": f, "assignment_digest": d,
+                                       "role": "w", "scope": "/w", "deadline": "2026-01-01T00:00:00Z",
+                                       **extra}
+        f_cr = r("cross-review", "revisor por ronda")
+        f_ce = r("co-explore", "worker por ronda del modo")
+        f_ci = r("cross-implement", "implementador inicial")
+        f_bb = r("bitbucket-code-review", "panel de revisores")
+        for nombre, f in (("cross-review/revisor por ronda", f_cr),
+                          ("co-explore/worker por ronda", f_ce),
+                          ("cross-implement/implementador inicial", f_ci),
+                          ("bitbucket-code-review/panel de revisores", f_bb)):
+            casos.append((f"la fila real de {nombre} se lee del árbol", None if f else "fila ausente", None))
+        if f_cr and f_ce and f_ci and f_bb:
+            ronda_ini = {"cardinal": 1, "conductor": "claude", "anterior": []}
+            casos.append(("REAL cross-review · ronda 1, sin intento previo",
+                          evaluar_composicion(f_cr, [wr("ronda-1", "codex", "sha256:r1")], ronda_ini), None))
+            casos.append(("REAL co-explore · debate ronda 0, sin intento previo",
+                          evaluar_composicion(f_ce, [wr("ronda-0", "codex", "sha256:d0")], ronda_ini), None))
+            casos.append(("REAL cross-review · ronda 2 repitiendo el encargo de la ronda 1",
+                          evaluar_composicion(f_cr, [wr("ronda-1", "codex", "sha256:r1")],
+                                              {"cardinal": 1, "conductor": "claude",
+                                               "anterior": [{"key": "ronda-1", "family": "codex",
+                                                             "assignment_digest": "sha256:r1"}]}),
+                          "encargo-divergente"))
+            casos.append(("REAL co-explore · debate con la familia del conductor",
+                          evaluar_composicion(f_ce, [wr("ronda-0", "claude", "sha256:d0")], ronda_ini),
+                          "familia-invalida"))
+            casos.append(("REAL cross-implement · implementador inicial con family ausente",
+                          evaluar_composicion(f_ci, [wr("impl", None, "sha256:aa")], {"conductor": "claude"}),
+                          "forma-no-reconocida"))
+            casos.append(("REAL cross-implement · implementador inicial bien formado",
+                          evaluar_composicion(f_ci, [wr("impl", "codex", "sha256:aa")], {"conductor": "claude"}),
+                          None))
+            casos.append(("REAL panel de revisores con los dos digests ausentes",
+                          evaluar_composicion(f_bb, [wr("codex", "codex", None), wr("claude", "claude", None)],
+                                              inv), "forma-no-reconocida"))
+            casos.append(("REAL panel de revisores bien formado",
+                          evaluar_composicion(f_bb, [wr("codex", "codex", "D"), wr("claude", "claude", "D")],
+                                              inv), None))
 
     malos = 0
     for nombre, obtenido, esperado in casos:

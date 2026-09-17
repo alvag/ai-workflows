@@ -305,7 +305,7 @@ nodo `dominio` de la composición, al lado de `expected_workers[]`.
 | `cardinal` | `cardinalidad: 1-por-ronda` · `1-por-repo` · `1-por-hallazgo` | cuántos elementos tiene el dominio que esa celda nombra |
 | `tope` | `cardinalidad: n-acotado` | el máximo de workers que ese punto admite |
 | `conductor` | `familias: opuesta-al-conductor` · `misma-que-el-conductor` | la familia del conductor de la corrida |
-| `anterior` | `familias: continuacion-del-anterior` · `encargos: delta-sobre-el-anterior` | los workers del intento previo, con su `key`, su `family` y su `assignment_digest` |
+| `anterior` | `familias: continuacion-del-anterior` · `encargos: delta-sobre-el-anterior` | los workers del intento previo, con su `key`, su `family` y su `assignment_digest`; **una lista vacía declara la ronda inicial** |
 
 **Un campo que la fila no nombra no se exige**, y su ausencia no es un fallo: `indiferente` y
 `cardinalidad: 1` no tienen contra qué contrastarse y su silencio es correcto.
@@ -334,11 +334,40 @@ el criterio pide cuando dice «falla cerrado».
 }
 ```
 
+**`anterior: []` no es lo mismo que `anterior` ausente, y la diferencia es una ronda entera.** La
+lista vacía es el conductor **declarando** que no hay intento previo; la ausencia del campo es que
+nadie dijo nada. Las dos filas que declaran `delta-sobre-el-anterior` nombran su ronda inicial en su
+propio texto —«incluida la ronda 0» en `debate`, «la ronda 1 y cada ronda siguiente» en el loop de
+revisión—, así que tratarlas igual ponía en rojo a los dos puntos justo en la ronda que su fila
+incluye. Con la lista vacía, `delta-sobre-el-anterior` **se satisface sin comparar nada**: no hay
+delta que medir contra lo que no existe, y el predicado sigue pudiendo ponerse rojo en toda ronda
+posterior, que es donde la relación tiene sujeto.
+
+**Las dos columnas leen esa misma lista vacía distinto, y es correcto que así sea.**
+`encargos: delta-sobre-el-anterior` pregunta si este encargo difiere del anterior, y sin anterior la
+pregunta no tiene contenido. `familias: continuacion-del-anterior` pregunta **de quién** hereda su
+familia este worker, y sin anterior no hay de quién: ahí la lista vacía es `familia-invalida`, porque
+no se puede reanudar una sesión que no existe.
+
 **Lo que el nodo no acredita, y conviene que esté acá y no solo en el docstring.** El `dominio` lo
 escribe **el mismo conductor** que escribe la composición, así que el instrumento comprueba
 coherencia entre dos cosas que declaró la misma autoridad, nunca contra el mundo: que diga
 `cardinal: 3` no prueba que el reparto tenga tres repos. Es la misma frontera que ya tiene el resto
 del contrato —los dos modos leen documentos— y no se repara con un predicado mejor.
+
+### Los operandos se exigen antes de compararlos
+
+`family` y `assignment_digest` son **valores que las relaciones comparan**, y una comparación entre
+dos ausencias da verdadero. Están medidos los dos casos, sobre puntos reales: los dos
+`assignment_digest` en `null` satisfacen `identico-por-digest` —porque `null` es igual a `null`— y
+una `family` ausente satisface `opuesta-al-conductor` —porque nunca coincide con la del conductor—.
+Las dos composiciones salían `composicion-valida` habiendo comparado exactamente cero datos.
+
+Entonces se exigen **no vacíos antes de evaluar ninguna relación**, y su ausencia es
+`forma-no-reconocida`. `nucleo_digest` se exige en las **dos** direcciones que esta sede ya declara:
+presente con `encargos: nucleo-comun`, ausente con los demás valores. La regla vale para
+`expected_workers[]` en los dos modos y para `workers[]` en la reconciliación, donde el mismo hueco
+dejaba pasar un sobre con **todas** sus familias y digests en `null` como `corrida-conforme`.
 
 ### Los campos por worker
 
