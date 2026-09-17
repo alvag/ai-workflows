@@ -122,8 +122,8 @@ haya declarado su fila.
 
 | Momento | Invocación | Qué corta |
 |---|---|---|
-| antes de crear **ningún** recurso | `despacho.py --preflight <raiz> <skill> <punto> <composicion.json>` | `forma-no-reconocida` · `cardinalidad-invalida` · `familia-duplicada` · `familia-invalida` · `encargo-divergente` |
-| antes de esperar a **ningún** worker, y al consumir cada resultado | `despacho.py --corrida <raiz> <skill> <punto> <sobre.json>` | `forma-no-reconocida` · `fan-out-incompleto` · `despacho-no-previsto` · `familia-invalida` · `encargo-divergente` · `deadline-compartido` |
+| antes de crear **ningún** recurso | `despacho.py --preflight <raiz> <skill> <punto> <composicion.json>` | `forma-no-reconocida` · `cardinalidad-invalida` · `familia-duplicada` · `familia-invalida` · `encargo-divergente` · `deadline-invalido` · `deadline-compartido` |
+| antes de esperar a **ningún** worker, y al consumir cada resultado | `despacho.py --corrida <raiz> <skill> <punto> <sobre.json>` | `forma-no-reconocida` · `fan-out-incompleto` · `despacho-no-previsto` · `familia-invalida` · `encargo-divergente` · `deadline-invalido` · `deadline-compartido` |
 
 Cada punto de despacho lleva la directiva **estructurada** en su sección, no una frase:
 
@@ -131,6 +131,11 @@ Cada punto de despacho lleva la directiva **estructurada** en su sección, no un
 <!-- invoca: despacho-preflight -->
 <!-- invoca: despacho-corrida -->
 ```
+
+**`deadline-compartido` y `deadline-invalido` también son dos, por la misma razón.** La primera es
+que dos workers mueren por el mismo reloj; la segunda es que el vencimiento **falta** o **no es el
+que se selló**. Con un solo nombre, «compartido» se emitía ante un worker sin vencimiento alguno, que
+no comparte nada con nadie.
 
 **`familia-duplicada` y `familia-invalida` son dos violaciones, no una.** La primera es que dos
 workers del lote comparten familia donde el punto exige una por worker; la segunda es que la familia
@@ -260,7 +265,7 @@ Siete campos por cada entrada, y uno de ellos es condicional:
 | `assignment_digest` | el digest del encargo que va a recibir |
 | `nucleo_digest` | el digest de la **parte común** del encargo, solo con `encargos: nucleo-comun`; ausente en los demás valores |
 | `scope` | el worktree sobre el que va a correr |
-| `deadline` | su vencimiento **propio**, previsto antes de lanzarlo |
+| `deadline` | su vencimiento **propio**, previsto antes de lanzarlo; el preflight lo exige presente y **distinto del de los demás** |
 
 **La `key` es estable a lo largo de las rondas, y la ronda es el intento.** La fila de arriba nombra
 «una ronda» entre los dominios posibles, y leído solo, eso sugiere que el worker de la ronda 2 lleva
@@ -292,6 +297,14 @@ uno previsto. Las dos son violaciones distintas con nombres distintos —`fan-ou
 `despacho-no-previsto`— y ninguna es observable con un solo nodo. Es la misma razón por la que
 `workers[]` excluye a una familia ausente: un nodo que mezcla lo que pasó con lo que iba a pasar no
 puede fundar ninguna de las dos afirmaciones.
+
+**La columna `deadline` se hace cumplir en los dos momentos, y el preflight es donde se decide.**
+`propio-por-worker` dice dos cosas —que cada worker tenga vencimiento y que no sea el de otro— y las
+dos son decidibles **antes de crear nada**, que es donde conviene cortar: un lote con dos
+vencimientos iguales no se arregla después, se deja de despachar. Sin esa comprobación el campo
+sellado no acreditaba nada: medido, una composición sin `deadline` y otra con el mismo vencimiento
+para los dos workers salían las dos `composicion-valida`, y la corrida con un previsto `T1` contra un
+efectivo `T2` salía `corrida-conforme`.
 
 **`deadline` vive acá porque antes no vivía en ningún lado.** De las cuatro propiedades que el
 fan-out exige, tres se comprobaban y la cuarta —el vencimiento propio por worker— la garantizaba la
@@ -390,6 +403,35 @@ Entonces se exigen **no vacíos antes de evaluar ninguna relación**, y su ausen
 presente con `encargos: nucleo-comun`, ausente con los demás valores. La regla vale para
 `expected_workers[]` en los dos modos y para `workers[]` en la reconciliación, donde el mismo hueco
 dejaba pasar un sobre con **todas** sus familias y digests en `null` como `corrida-conforme`.
+
+### La reconciliación recorre los intentos, y el sellado gobierna el primero
+
+`expected_workers[]` se sella **antes del primer efecto** y lleva **un** `assignment_digest` por
+worker. `workers[].attempts[]` lleva **uno por intento**. Con un punto de una sola ronda las dos
+cosas coinciden y no hay nada que decidir; con un fix loop no, y ahí el contrato tenía una
+contradicción que conviene nombrar en vez de tapar: **el encargo de la ronda 2 no es predecible al
+sellar**, porque es un delta que depende de lo que la ronda 1 encontró. Ninguna expectativa sellada
+antes del primer efecto puede describirlo, así que exigir que el último intento coincida con el
+sellado ponía en rojo a la reanudación válida —medido: un sobre con `r1` y `r2` salía
+`encargo-divergente`— y «arreglarlo» actualizando el sellado destruiría su inmutabilidad, que es lo
+único que lo hace evidencia.
+
+La salida no es sellar más, es **cotejar cada intento contra lo que corresponde**:
+
+| Qué se coteja | Contra qué |
+|---|---|
+| el **primer** intento | el `assignment_digest` sellado: es el lanzamiento para el que se escribió |
+| cada intento siguiente, con `encargos: delta-sobre-el-anterior` | el intento **anterior**, del que tiene que diferir |
+| cada intento siguiente, con cualquier otro valor | el sellado: un relanzamiento reenvía el mismo encargo, no uno nuevo |
+
+**Esto le da a `delta-sobre-el-anterior` su mitad de runtime.** Hasta acá el valor solo se comprobaba
+en el preflight contra `dominio.anterior`; dentro del sobre no lo miraba nadie, y una reanudación que
+**repetía** el encargo de la ronda previa salía `corrida-conforme` —medido— porque el último intento
+coincidía con el sellado, que era justo el encargo repetido.
+
+**El vencimiento sigue la misma regla, y por el mismo motivo.** El `deadline` previsto acredita el
+**primer** lanzamiento; un relanzamiento abre una espera nueva con su propio presupuesto, y el
+sellado no la gobierna. Lo que sí vale en todos los intentos es que cada uno lleve el suyo.
 
 ### Los campos por worker
 

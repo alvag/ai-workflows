@@ -26,9 +26,14 @@ FRONTERA DE PRUEBA — dos unidades comparten este pasaje, y no comparten su alc
 `despacho.py --preflight` — clase: veredicto. Dirección: admite-de-mas.
     Detecta: una fila ausente o con una celda fuera de su enum; una clave prevista vacía o repetida;
     un operando ausente —`family`, `assignment_digest`, y `nucleo_digest` en las dos direcciones que
-    la sede declara—; los SEIS valores de `cardinalidad`, los CINCO de `familias` y los CINCO de
-    `encargos`, cada uno contra el dato que su celda necesita; y la ausencia de ese dato, que
-    **falla cerrado** en vez de pasar en silencio.
+    la sede declara—; las CUATRO columnas enteras —los seis valores de `cardinalidad`, los cinco de
+    `familias`, los cinco de `encargos` y el único de `deadline`, que era el que no se evaluaba—,
+    cada una contra el dato que su celda necesita; y la ausencia de ese dato, que **falla cerrado**
+    en vez de pasar en silencio.
+    `deadline: propio-por-worker` se hace cumplir acá porque sus dos mitades son decidibles antes de
+    crear nada: que cada previsto tenga vencimiento (`deadline-invalido`) y que no sea el de otro
+    (`deadline-compartido`). Medido antes de exigirlo, las dos violaciones salían
+    `composicion-valida`.
     Los operandos se exigen ANTES de evaluar ninguna relación, porque una comparación entre dos
     ausencias da verdadero: medido, los dos `assignment_digest` en `null` satisfacían
     `identico-por-digest` y una `family` ausente satisfacía `opuesta-al-conductor`, las dos sobre
@@ -70,7 +75,8 @@ FRONTERA DE PRUEBA — dos unidades comparten este pasaje, y no comparten su alc
 `despacho.py --corrida` — clase: veredicto. Dirección: admite-de-mas.
     Detecta: una clave prevista o efectiva vacía o repetida; un operando ausente en cualquiera de las
     dos listas —el mismo hueco dejaba pasar un sobre con todas sus familias y digests en `null` como
-    `corrida-conforme`—; un previsto sin despachar; un despachado sin prever; un worker despachado con familia o digest distintos de los suyos; un worker sin
+    `corrida-conforme`—; un worker sin ningún intento; un previsto sin despachar; un despachado sin
+    prever; un worker despachado con familia o digest distintos de los suyos; un worker sin
     vencimiento, y dos que compartan el mismo.
     Empareja previsto con despachado por `expected_workers[].key` == `workers[].expected_key`, que
     la sede declara como el campo de correlación. **No** empareja por `name`: la sede define `name`
@@ -78,6 +84,12 @@ FRONTERA DE PRUEBA — dos unidades comparten este pasaje, y no comparten su alc
     distintas — medido sobre corridas reales de este repositorio, `key: codex` convive con
     `name: ctr-codex`, así que emparejar por nombre daba `fan-out-incompleto` sobre un sobre
     conforme.
+    Recorre los INTENTOS y no solo el último: el sellado gobierna el primero, y entre intentos
+    gobierna lo que la fila declara —con `delta-sobre-el-anterior` cada uno difiere del anterior, y
+    con cualquier otro valor todos valen el sellado, porque un relanzamiento reenvía el mismo
+    encargo—. Quedarse con el último ponía en rojo la reanudación válida y dejaba pasar la que
+    repetía el encargo de la ronda previa: las dos medidas. El `deadline` sigue la misma regla, y
+    por eso el previsto acredita el primer intento y no los posteriores, que abren su propia espera.
     NO detecta el ORDEN de los despachos ni el instante de cada uno: lee el estado asentado, no una
     traza temporal, así que «todos despachados antes de esperar a ninguno» lo acredita solo en la
     forma débil de que ninguno falta al momento de leer.
@@ -410,17 +422,112 @@ def _evaluar_encargos(valor, workers, dominio):
     return None
 
 
+def _deadlines_previstos(workers):
+    """La columna `deadline` es la única que el preflight no evaluaba, y es decidible antes de crear.
+
+    `propio-por-worker` dice dos cosas y las dos se comprueban acá: que cada worker **tenga** su
+    vencimiento previsto —el campo existe justamente para ser el sujeto del invariante, porque
+    retirada la CLI no había dónde leer qué vencimiento le tocaba a cada uno— y que sea **propio**,
+    o sea distinto del de los demás. Medido antes de exigirlo: una composición sin `deadline` y otra
+    con el mismo vencimiento para los dos workers salían las dos `composicion-valida`, y el segundo
+    caso es exactamente «uno muere por el reloj del otro», que es lo que la columna impide."""
+    vistos = {}
+    for i, w in enumerate(workers):
+        d = w.get("deadline")
+        if not isinstance(d, str) or not d.strip():
+            return (f"deadline-invalido: la entrada {i} de expected_workers no declara un `deadline` "
+                    f"previsto ({d!r}), y la columna lo exige propio por worker")
+        if d in vistos:
+            return (f"deadline-compartido: los workers previstos {vistos[d]} y {w.get('key')} "
+                    f"comparten el vencimiento {d}")
+        vistos[d] = w.get("key")
+    return None
+
+
+def _operandos_efectivos(efectivos):
+    """Lo que `_operandos` hace sobre lo previsto, acá sobre la forma de `workers[]`.
+
+    La diferencia es que un worker efectivo tiene **una lista de intentos**, no un valor: un digest
+    ausente en el tercer intento es tan mentiroso como en el primero, y quedarse con el último
+    escondía a los anteriores."""
+    for i, e in enumerate(efectivos):
+        f = e.get("family")
+        if not isinstance(f, str) or not f.strip():
+            return (f"forma-no-reconocida: la entrada {i} de workers no declara `family` "
+                    f"(family={f!r}), y es uno de los valores que este modo compara")
+        digs = e.get("digests") or []
+        if not digs:
+            return f"forma-no-reconocida: la entrada {i} de workers no declara ningun intento"
+        for j, d in enumerate(digs):
+            if not isinstance(d, str) or not d.strip():
+                return (f"forma-no-reconocida: el intento {j} de la entrada {i} de workers no "
+                        f"declara `assignment_digest` ({d!r})")
+    return None
+
+
+def _encargos_por_intento(valor, clave, esp, efe):
+    """El cotejo de encargos recorre los intentos, y no solo el último.
+
+    **El sellado gobierna el primer intento, no todos**, y esa es la salida a una contradicción real
+    del contrato: `expected_workers[]` se sella antes del primer efecto y lleva UN digest, pero el
+    encargo de la ronda 2 de un fix loop es un delta que depende de lo que la ronda 1 encontró — no
+    es predecible al sellar, así que ninguna expectativa sellada puede describirlo. Comparar el
+    último intento contra el sellado ponía en rojo a la reanudación válida: medido, un sobre con
+    `r1` y `r2` salía `encargo-divergente`.
+
+    Lo que sí es comprobable desde el sobre es lo que la fila declara **entre rondas**: con
+    `delta-sobre-el-anterior`, cada intento difiere del anterior —que es el invariante mismo, ahora
+    también en runtime y no solo contra `dominio.anterior`—; con cualquier otro valor, un relanzamiento
+    reenvía el mismo encargo, así que **todos** los intentos valen el digest sellado."""
+    digs = efe["digests"]
+    if digs[0] != esp.get("assignment_digest"):
+        return (f"encargo-divergente: el primer intento del worker {clave} se despacho con un "
+                f"encargo distinto del previsto")
+    if valor == "delta-sobre-el-anterior":
+        for j in range(1, len(digs)):
+            if digs[j] == digs[j - 1]:
+                return (f"encargo-divergente: el intento {j} del worker {clave} repite el encargo "
+                        f"del intento anterior y el punto exige un delta")
+        return None
+    for j in range(1, len(digs)):
+        if digs[j] != esp.get("assignment_digest"):
+            return (f"encargo-divergente: el intento {j} del worker {clave} cambio de encargo y el "
+                    f"punto no declara delta entre rondas")
+    return None
+
+
+def _deadline_por_intento(clave, esp, efe):
+    """Cada intento lleva su vencimiento, y el primero acredita al que se selló.
+
+    Un relanzamiento abre una espera nueva, así que sus intentos posteriores tienen presupuesto
+    propio y el sellado no los gobierna; lo que el sellado sí gobierna es el lanzamiento para el que
+    se escribió. Sin esta comparación el campo previsto no acreditaba nada: medido, un previsto `T1`
+    contra un efectivo `T2` salía `corrida-conforme`."""
+    dls = efe["deadlines"]
+    for j, d in enumerate(dls):
+        if not isinstance(d, str) or not d.strip():
+            return (f"deadline-invalido: el intento {j} del worker {clave} no lleva vencimiento "
+                    f"propio")
+    if dls[0] != esp.get("deadline"):
+        return (f"deadline-invalido: el primer intento del worker {clave} vencio en {dls[0]} y el "
+                f"previsto sellado era {esp.get('deadline')}")
+    return None
+
+
 def evaluar_composicion(fila, workers, dominio=None):
     """Los invariantes comprobables ANTES de lanzar, contra el `dominio` que la composición declara.
 
-    Las tres columnas se evalúan enteras —los seis valores de `cardinalidad`, los cinco de `familias`
-    y los cinco de `encargos`—, y el dato que cada celda necesita se exige: sin él **falla cerrado**.
-    Antes, la ausencia de ese dato producía un verde que decía haber comprobado la celda."""
+    Las **cuatro** columnas se evalúan: los seis valores de `cardinalidad`, los cinco de `familias`,
+    los cinco de `encargos` y el único de `deadline`. El dato que cada celda necesita se exige: sin
+    él **falla cerrado**."""
     dominio = dominio if isinstance(dominio, dict) else {}
     _, mal = _claves(workers, "expected_workers")
     if mal:
         return mal
     mal = _operandos(workers, "expected_workers", fila["encargos"])
+    if mal:
+        return mal
+    mal = _deadlines_previstos(workers)
     if mal:
         return mal
     for evaluar, columna in ((_evaluar_cardinalidad, "cardinalidad"),
@@ -440,13 +547,13 @@ def evaluar_corrida(fila, esperados, efectivos):
     claves_efe, mal = _claves(efectivos, "workers")
     if mal:
         return mal
-    # el mismo hueco existía de este lado, y no lo nombraba el hallazgo: con familia y digest en
-    # `null` en las dos listas, cada cotejo comparaba `None` contra `None` y el sobre salía
-    # `corrida-conforme`. `workers[]` no lleva `nucleo_digest`, así que ese campo no se mira acá.
     mal = _operandos(esperados, "expected_workers", fila["encargos"])
     if mal:
         return mal
-    mal = _operandos(efectivos, "workers")
+    mal = _deadlines_previstos(esperados)
+    if mal:
+        return mal
+    mal = _operandos_efectivos(efectivos)
     if mal:
         return mal
     por_clave_esp = dict(zip(claves_esp, esperados))
@@ -462,19 +569,21 @@ def evaluar_corrida(fila, esperados, efectivos):
         if esp.get("family") != efe.get("family"):
             return (f"familia-invalida: el worker {clave} se previo {esp.get('family')} "
                     f"y se despacho {efe.get('family')}")
-        if esp.get("assignment_digest") != efe.get("assignment_digest"):
-            return f"encargo-divergente: el worker {clave} se despacho con otro encargo"
-        if not efe.get("deadline"):
-            return f"deadline-compartido: el worker {clave} no lleva vencimiento propio"
+        mal = _encargos_por_intento(fila["encargos"], clave, esp, efe)
+        if mal:
+            return mal
+        mal = _deadline_por_intento(clave, esp, efe)
+        if mal:
+            return mal
     # PROPIO no es lo mismo que PRESENTE, y el nombre de la violación habla de lo primero: dos
-    # workers con el mismo vencimiento exacto mueren por el mismo reloj, que es justo lo que este
+    # workers con el mismo vencimiento vigente mueren por el mismo reloj, que es justo lo que este
     # invariante impide. Medido: comprobando solo presencia, ese caso salía `corrida-conforme`.
     vistos = {}
     for clave, efe in por_clave_efe.items():
-        d = efe.get("deadline")
+        d = efe["deadlines"][-1]
         if d in vistos:
             return (f"deadline-compartido: los workers {vistos[d]} y {clave} comparten "
-                    f"el vencimiento {d}")
+                    f"el vencimiento vigente {d}")
         vistos[d] = clave
     return None
 
@@ -526,10 +635,18 @@ def ejecutar(modo, raiz, skill, punto, documento):
     # está escrito acá. `name` NO sirve de correlación: la sede lo define como el nombre del worker
     # despachado, y las corridas reales de este repositorio lo usan así (`ctr-codex` para la clave
     # de dominio `codex`), así que emparejar por él ponía en rojo sobres conformes.
-    efectivos = [{"key": w.get("expected_key"), "family": w.get("family"),
-                  "assignment_digest": (w.get("attempts") or [{}])[-1].get("assignment_digest"),
-                  "deadline": ((w.get("attempts") or [{}])[-1].get("wait_budget") or {}).get("deadline")}
-                 for w in datos.get("workers", [])]
+    # Y se conserva la LISTA de intentos, no su último elemento: un worker reanudado lleva un digest
+    # y un presupuesto de espera por ronda, así que quedarse con el último escondía a los anteriores
+    # y ponía en rojo la reanudación válida contra un previsto que se selló para la primera.
+    efectivos = []
+    for w in datos.get("workers", []):
+        intentos = w.get("attempts") or []
+        efectivos.append({
+            "key": w.get("expected_key"),
+            "family": w.get("family"),
+            "digests": [a.get("assignment_digest") for a in intentos],
+            "deadlines": [(a.get("wait_budget") or {}).get("deadline") for a in intentos],
+        })
     mal = evaluar_corrida(fila, esperados, efectivos)
     if mal:
         print(mal)
@@ -555,7 +672,15 @@ def autotest():
     uno = {"cardinalidad": "1", "familias": "misma-que-el-conductor",
            "encargos": "no-aplica", "deadline": "propio-por-worker"}
     fila = lambda **k: {**dual, **k}
-    w = lambda k, f, d, dl="2026-01-01": {"key": k, "family": f, "assignment_digest": d, "deadline": dl}
+    # el vencimiento por defecto se deriva de la clave: el corpus anterior le daba el MISMO a todos
+    # los previstos, o sea era en sí mismo la violación que `deadline: propio-por-worker` nombra, y
+    # pasaba porque el preflight no evaluaba esa columna. Es la segunda vez en este archivo.
+    w = lambda k, f, d, dl=None: {"key": k, "family": f, "assignment_digest": d,
+                                  "deadline": dl or f"2026-01-01T00:00:00Z#{k}"}
+    # un worker EFECTIVO lleva sus intentos en orden, no un valor: `e` es el de un solo intento y
+    # `em` el reanudado, que es el caso que la reconciliación rechazaba.
+    e = lambda k, f, d, dl: {"key": k, "family": f, "digests": [d], "deadlines": [dl]}
+    em = lambda k, f, digs, dls: {"key": k, "family": f, "digests": list(digs), "deadlines": list(dls)}
     inv = {"familias": ["claude", "codex"]}
 
     casos = []
@@ -655,6 +780,8 @@ def autotest():
     casos.append(("continuacion-del-anterior sin anterior en el dominio",
                   evaluar_composicion(cont, [w("a", "codex", "D")], {"tope": 2}), "forma-no-reconocida"))
     ind = fila(cardinalidad="n-acotado", familias="indiferente", encargos="distinto-por-worker")
+    uno_ind = {"cardinalidad": "1", "familias": "indiferente", "encargos": "no-aplica",
+               "deadline": "propio-por-worker"}
     casos.append(("indiferente no mira la familia",
                   evaluar_composicion(ind, [w("a", "codex", "D"), w("b", "codex", "E")], {"tope": 2}),
                   None))
@@ -692,7 +819,8 @@ def autotest():
     # cada worker con SU vencimiento: el positivo con un deadline compartido era, en sí mismo, la
     # violación que `deadline-compartido` nombra — pasaba porque el predicado miraba presencia.
     esp = [w("a", "codex", "D", "2026-01-01T00:00:00Z"), w("b", "claude", "D", "2026-01-01T00:10:00Z")]
-    casos.append(("corrida conforme", evaluar_corrida(dual, esp, esp), None))
+    efe = [e("a", "codex", "D", "2026-01-01T00:00:00Z"), e("b", "claude", "D", "2026-01-01T00:10:00Z")]
+    casos.append(("corrida conforme", evaluar_corrida(dual, esp, efe), None))
     # las dos direcciones del colapso que el reviewer reprodujo: antes daban None, porque el mapa
     # se comía una entrada y los dos tamaños coincidían por la pérdida.
     # las entradas que colisionan son IDÉNTICAS salvo el vencimiento, y eso es deliberado: con
@@ -700,31 +828,36 @@ def autotest():
     # mentía sobre qué se estaba probando. Sobre entradas iguales, el colapso es lo único que queda.
     casos.append(("dos previstos con la misma clave frente a un efectivo",
                   evaluar_corrida(dual, [w("a", "codex", "D", "T1"), w("a", "codex", "D", "T2")],
-                                  [w("a", "codex", "D", "T1")]), "forma-no-reconocida"))
+                                  [e("a", "codex", "D", "T1")]), "forma-no-reconocida"))
     casos.append(("un previsto frente a dos efectivos con la misma clave",
                   evaluar_corrida(dual, [w("a", "codex", "D", "T1")],
-                                  [w("a", "codex", "D", "T1"), w("a", "codex", "D", "T2")]),
+                                  [e("a", "codex", "D", "T1"), e("a", "codex", "D", "T2")]),
                   "forma-no-reconocida"))
     casos.append(("efectivo sin clave de correlacion",
-                  evaluar_corrida(dual, esp, [w("a", "codex", "D", "T1"), w(None, "claude", "D", "T2")]),
+                  evaluar_corrida(dual, esp, [e("a", "codex", "D", "T1"), e(None, "claude", "D", "T2")]),
                   "forma-no-reconocida"))
     casos.append(("dos workers comparten el mismo vencimiento",
-                  evaluar_corrida(dual, esp, [w("a", "codex", "D", "T"), w("b", "claude", "D", "T")]),
-                  "deadline-compartido"))
+                  evaluar_corrida(dual, [w("a", "codex", "D", "T"), w("b", "claude", "D", "T2")],
+                                  [e("a", "codex", "D", "T"), e("b", "claude", "D", "T")]),
+                  "deadline-invalido"))
     casos.append(("previsto sin despachar",
-                  evaluar_corrida(dual, esp, [w("a", "codex", "D", "T1")]), "fan-out-incompleto"))
+                  evaluar_corrida(dual, esp, [e("a", "codex", "D", "2026-01-01T00:00:00Z")]),
+                  "fan-out-incompleto"))
     casos.append(("despachado sin prever",
-                  evaluar_corrida(dual, esp, esp + [w("c", "codex", "D", "T3")]), "despacho-no-previsto"))
+                  evaluar_corrida(dual, esp, efe + [e("c", "codex", "D", "T3")]),
+                  "despacho-no-previsto"))
     casos.append(("familia distinta de la prevista",
-                  evaluar_corrida(dual, esp, [w("a", "codex", "D", "T1"), w("b", "codex", "D", "T2")]),
+                  evaluar_corrida(dual, esp, [e("a", "codex", "D", "2026-01-01T00:00:00Z"),
+                                              e("b", "codex", "D", "2026-01-01T00:10:00Z")]),
                   "familia-invalida"))
     casos.append(("encargo distinto del previsto",
-                  evaluar_corrida(dual, esp, [w("a", "codex", "D", "T1"), w("b", "claude", "E", "T2")]),
+                  evaluar_corrida(dual, esp, [e("a", "codex", "D", "2026-01-01T00:00:00Z"),
+                                              e("b", "claude", "E", "2026-01-01T00:10:00Z")]),
                   "encargo-divergente"))
     casos.append(("worker sin vencimiento propio",
-                  evaluar_corrida(dual, esp, [w("a", "codex", "D", "2026-01-01T00:00:00Z"),
-                                              w("b", "claude", "D", None)]),
-                  "deadline-compartido"))
+                  evaluar_corrida(dual, esp, [e("a", "codex", "D", "2026-01-01T00:00:00Z"),
+                                              e("b", "claude", "D", None)]),
+                  "deadline-invalido"))
 
     # --- operandos ausentes: la ausencia se comportaba como coincidencia ---
     casos.append(("family ausente donde la fila la compara",
@@ -749,8 +882,8 @@ def autotest():
                   evaluar_corrida(dual,
                                   [{"key": "a", "family": None, "assignment_digest": None, "deadline": "T1"},
                                    {"key": "b", "family": None, "assignment_digest": None, "deadline": "T2"}],
-                                  [{"key": "a", "family": None, "assignment_digest": None, "deadline": "T1"},
-                                   {"key": "b", "family": None, "assignment_digest": None, "deadline": "T2"}]),
+                                  [{"key": "a", "family": None, "digests": [None], "deadlines": ["T1"]},
+                                   {"key": "b", "family": None, "digests": [None], "deadlines": ["T2"]}]),
                   "forma-no-reconocida"))
 
     # --- la ronda inicial DECLARADA, que es un dato y no un dato que falta ---
@@ -763,6 +896,60 @@ def autotest():
     casos.append(("continuacion-del-anterior no puede continuar una ronda inicial vacía",
                   evaluar_composicion(cont, [w("a", "codex", "D")], inicial), "familia-invalida"))
 
+    # --- la reanudación: varios intentos con su digest por ronda ---
+    esp_r = [w("revisor-codex", "codex", "sha256:r1", "2026-01-01T00:00:00Z")]
+    casos.append(("reanudación válida: r1 luego r2 sobre una fila de delta",
+                  evaluar_corrida(delta, esp_r,
+                                  [em("revisor-codex", "codex", ["sha256:r1", "sha256:r2"],
+                                      ["2026-01-01T00:00:00Z", "2026-01-01T01:00:00Z"])]), None))
+    casos.append(("reanudación que repite el encargo de la ronda anterior",
+                  evaluar_corrida(delta, esp_r,
+                                  [em("revisor-codex", "codex", ["sha256:r1", "sha256:r1"],
+                                      ["2026-01-01T00:00:00Z", "2026-01-01T01:00:00Z"])]),
+                  "encargo-divergente"))
+    casos.append(("el PRIMER intento se despacho con otro encargo que el sellado",
+                  evaluar_corrida(delta, esp_r,
+                                  [em("revisor-codex", "codex", ["sha256:otro", "sha256:r2"],
+                                      ["2026-01-01T00:00:00Z", "2026-01-01T01:00:00Z"])]),
+                  "encargo-divergente"))
+    casos.append(("relanzamiento con el MISMO encargo donde no hay delta declarado",
+                  evaluar_corrida(uno_ind, [w("a", "codex", "D", "T1")],
+                                  [em("a", "codex", ["D", "D"], ["T1", "T9"])]), None))
+    casos.append(("un intento cambia de encargo donde la fila no declara delta",
+                  evaluar_corrida(uno_ind, [w("a", "codex", "D", "T1")],
+                                  [em("a", "codex", ["D", "E"], ["T1", "T9"])]),
+                  "encargo-divergente"))
+    casos.append(("un worker sin ningun intento",
+                  evaluar_corrida(uno_ind, [w("a", "codex", "D", "T1")],
+                                  [em("a", "codex", [], [])]), "forma-no-reconocida"))
+    casos.append(("un digest ausente en el SEGUNDO intento",
+                  evaluar_corrida(delta, esp_r,
+                                  [em("revisor-codex", "codex", ["sha256:r1", None],
+                                      ["2026-01-01T00:00:00Z", "T9"])]), "forma-no-reconocida"))
+
+    # --- el deadline previsto, que era la única columna que el preflight no evaluaba ---
+    casos.append(("composicion sin deadline previsto",
+                  evaluar_composicion(dual, [{"key": "a", "family": "codex", "assignment_digest": "D"},
+                                             {"key": "b", "family": "claude", "assignment_digest": "D"}],
+                                      inv), "deadline-invalido"))
+    casos.append(("dos previstos con el MISMO vencimiento",
+                  evaluar_composicion(dual, [w("a", "codex", "D", "T"), w("b", "claude", "D", "T")],
+                                      inv), "deadline-compartido"))
+    casos.append(("dos previstos con vencimiento propio",
+                  evaluar_composicion(dual, [w("a", "codex", "D", "T1"), w("b", "claude", "D", "T2")],
+                                      inv), None))
+    casos.append(("el efectivo vence en otro momento que el previsto sellado",
+                  evaluar_corrida(dual, [w("a", "codex", "D", "T1"), w("b", "claude", "D", "T3")],
+                                  [e("a", "codex", "D", "T2"), e("b", "claude", "D", "T4")]),
+                  "deadline-invalido"))
+    casos.append(("el efectivo vence cuando el previsto sellado decia",
+                  evaluar_corrida(dual, [w("a", "codex", "D", "T1"), w("b", "claude", "D", "T3")],
+                                  [e("a", "codex", "D", "T1"), e("b", "claude", "D", "T3")]), None))
+    casos.append(("la reanudación abre su propia espera y el sellado no la gobierna",
+                  evaluar_corrida(delta, esp_r,
+                                  [em("revisor-codex", "codex", ["sha256:r1", "sha256:r2"],
+                                      ["2026-01-01T00:00:00Z", "2026-06-06T06:06:06Z"])]), None))
+
     # --- los PUNTOS REALES del árbol, no filas sintéticas ---
     raiz = pathlib.Path(__file__).resolve().parents[3]
     if not (raiz / SEDE_ENUMS).is_file():
@@ -770,8 +957,8 @@ def autotest():
     else:
         r = lambda skill, punto: leer_fila(raiz, skill, punto)
         wr = lambda k, f, d, **extra: {"key": k, "family": f, "assignment_digest": d,
-                                       "role": "w", "scope": "/w", "deadline": "2026-01-01T00:00:00Z",
-                                       **extra}
+                                       "role": "w", "scope": "/w",
+                                       "deadline": f"2026-01-01T00:00:00Z#{k}", **extra}
         f_cr = r("cross-review", "revisor por ronda")
         f_ce = r("co-explore", "worker por ronda del modo")
         f_ci = r("cross-implement", "implementador inicial")
@@ -839,6 +1026,26 @@ def autotest():
                           evaluar_composicion(f_or, [wr("a", "codex", "D"), wr("b", "codex", "D"),
                                                      wr("c", "codex", "E")], {"cardinal": 3}),
                           "encargo-divergente"))
+            er = lambda k, f, digs, dls: {"key": k, "family": f, "digests": list(digs),
+                                          "deadlines": list(dls)}
+            casos.append(("REAL cross-review · reanudación de dos intentos con delta por ronda",
+                          evaluar_corrida(f_cr, [wr("revisor-codex", "codex", "sha256:r1")],
+                                          [er("revisor-codex", "codex", ["sha256:r1", "sha256:r2"],
+                                              ["2026-01-01T00:00:00Z#revisor-codex", "2026-01-01T09:00:00Z"])]),
+                          None))
+            casos.append(("REAL cross-review · reanudación que repite el encargo",
+                          evaluar_corrida(f_cr, [wr("revisor-codex", "codex", "sha256:r1")],
+                                          [er("revisor-codex", "codex", ["sha256:r1", "sha256:r1"],
+                                              ["2026-01-01T00:00:00Z#revisor-codex", "2026-01-01T09:00:00Z"])]),
+                          "encargo-divergente"))
+            casos.append(("REAL panel de revisores · vencimiento previsto compartido",
+                          evaluar_composicion(f_bb, [{**wr("codex", "codex", "D"), "deadline": "T"},
+                                                     {**wr("claude", "claude", "D"), "deadline": "T"}],
+                                              inv), "deadline-compartido"))
+            casos.append(("REAL panel de revisores · sin vencimiento previsto",
+                          evaluar_composicion(f_bb, [{k: v for k, v in wr("codex", "codex", "D").items() if k != "deadline"},
+                                                     {k: v for k, v in wr("claude", "claude", "D").items() if k != "deadline"}],
+                                              inv), "deadline-invalido"))
             casos.append(("REAL fan-out por repo · tres encargos distintos",
                           evaluar_composicion(f_or, [wr("a", "codex", "D"), wr("b", "codex", "F"),
                                                      wr("c", "codex", "E")], {"cardinal": 3}), None))
