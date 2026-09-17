@@ -185,8 +185,26 @@ Todo agente que esta skill despacha nace con su **sobre** en `.cross-model/activ
 mientras el sobre siga activo cada turno del conductor cierra informando su estado. El punto de
 despacho propio es uno:
 
-- el **fan-out por repo** de la Fase 2.3: un agente por repo elegible y libre, corriendo la Vía B de
-  `sdd-flow`
+| Punto de despacho | Cardinalidad | Familias | Encargos | Deadline |
+|---|---|---|---|---|
+| el **fan-out por repo** de la Fase 2.3: un agente por repo elegible y libre | `1-por-repo` | `indiferente` | `distinto-por-worker` | `propio-por-worker` |
+
+Enums cerrados, forma de la tabla y qué pasa con un punto sin fila:
+`skills/cross-review/corridas-en-vuelo.md` → «Los invariantes que cada punto de despacho declara»,
+que es su **sede única**.
+
+**Cada punto de arriba resuelve su vía por el carrier de transporte**, con las cuatro ramas de
+`skills/sdd-flow/reference.md` → «El carrier de transporte, y sus cuatro ramas» y **ninguna otra**.
+En la rama de plataforma el punto expresa **intención** y **no nombra verbos de ninguna plataforma**.
+
+<!-- invoca: despacho-preflight -->
+<!-- invoca: despacho-corrida -->
+
+**Y acá el carrier se persiste en el `manifest.yml` de la orquestación, no en un handoff.** Es la
+sede equivalente al bloque `transporte` de `sdd-flow`, y vale la misma regla: **por fase**, para que
+la segunda no herede la vía de la primera sin que nadie la eligiera. El alcance que su consentimiento
+autoriza es el **lote real** del reparto —cada repo con su worktree y su rol—, que es el caso que un
+tope numérico no sabe describir.
 
 El orden es fijo y no se altera: **bitácora** → **sobre** → **despacho**. Primero se registra el
 intento de la transición en la bitácora, después se escribe el sobre bajo `.cross-model/active/`, y

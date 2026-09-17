@@ -89,8 +89,20 @@ Todo subagente que esta skill despacha nace con su **sobre** en `.cross-model/ac
 escrito **antes** del despacho, y mientras el sobre siga activo cada turno del conductor cierra
 informando su estado. El punto de despacho propio es uno:
 
-- el **implement delegado** del Paso 5: el subagente que corre la Vía B de `sdd-flow` sobre
-  `.plans/<id>/` y frena antes de commitear
+| Punto de despacho | Cardinalidad | Familias | Encargos | Deadline |
+|---|---|---|---|---|
+| el **implement delegado** del Paso 5: el subagente que corre la Vía B de `sdd-flow` | `1` | `indiferente` | `no-aplica` | `propio-por-worker` |
+
+Enums cerrados, forma de la tabla y qué pasa con un punto sin fila:
+`skills/cross-review/corridas-en-vuelo.md` → «Los invariantes que cada punto de despacho declara»,
+que es su **sede única**.
+
+**Cada punto de arriba resuelve su vía por el carrier de transporte**, con las cuatro ramas de
+`skills/sdd-flow/reference.md` → «El carrier de transporte, y sus cuatro ramas» y **ninguna otra**.
+En la rama de plataforma el punto expresa **intención** y **no nombra verbos de ninguna plataforma**.
+
+<!-- invoca: despacho-preflight -->
+<!-- invoca: despacho-corrida -->
 
 Campos del sobre, transiciones, sonda por turno, cosecha y condiciones del retiro:
 `skills/cross-review/corridas-en-vuelo.md`, la **sede única** del contrato. Es la regla normativa; acá solo se enumera dónde

@@ -69,9 +69,87 @@ desambiguar con lo que ya tiene en la mano. Deduplicar por `run_id` solo —que 
 es el único de los tres que parece un identificador— fundiría dos corridas reales de repos
 concurrentes que eligieron el mismo sufijo, y las informaría como una.
 
+### Los invariantes que cada punto de despacho declara
+
+Cada punto de despacho declara sus invariantes como **fila de tabla** en su propia sección
+`## Corridas delegadas en vuelo`. Son cuatro columnas con **enums cerrados**, definidos acá y en
+ningún otro lado. **Un punto sin fila, o con una celda fuera de su enum, es un fallo y no un
+permiso.**
+
+| Columna | Valores admitidos |
+|---|---|
+| `cardinalidad` | `1` · `1-por-familia` · `1-por-ronda` · `1-por-repo` · `1-por-hallazgo` · `n-acotado` |
+| `familias` | `una-por-worker` · `opuesta-al-conductor` · `misma-que-el-conductor` · `continuacion-del-anterior` · `indiferente` |
+| `encargos` | `identico-por-digest` · `nucleo-comun` · `distinto-por-worker` · `delta-sobre-el-anterior` · `no-aplica` |
+| `deadline` | `propio-por-worker` |
+
+**Por qué los invariantes son heterogéneos, y por qué eso no los ablanda.** Solo dos de los once
+puntos tienen forma «una familia por worker»; la revisión final de diff es **mismo-modelo por
+doctrina declarada**, y el fan-out por repo reparte encargos **distintos** por construcción. Un
+invariante universal los pondría en rojo por cumplir su propio diseño. Lo obligatorio es lo que
+**ese** punto declaró, y para el fan-out dual sigue siendo el conjunto histórico completo.
+
+**`encargos: no-aplica` es válido solo con `cardinalidad: 1`.** Con un solo worker no hay relación
+entre encargos que declarar, y escribir ahí `identico-por-digest` sería un predicado vacuo que da
+verde sin comprobar nada.
+
+**`encargos: nucleo-comun` no es una versión débil de `identico-por-digest`: es la misma regla.**
+Exige que el núcleo común sea byte-idéntico y admite un **anexo privado declarado**. Donde no hay
+anexo —`explore`, `investigate`— el núcleo **es** el encargo entero y la relación degenera en
+identidad, sin que haya que declarar dos valores para el mismo punto. La distinción existe porque
+`counter-plan` reparte por contrato un anexo por familia: portar ahí `identico-por-digest` haría
+que el segundo worker se rechace siempre, que es un defecto hoy **latente** —nunca se disparó porque
+esas corridas fueron por línea de comandos— y que activar esta vía volvería vivo.
+
+**`familias: continuacion-del-anterior`** nombra al worker que **reanuda la sesión** de un intento
+previo en vez de nacer fresco: su familia no se elige, se hereda, y exigirle una elección sería
+pedirle que contradiga a la sesión que continúa.
+
+**El deadline tiene un solo valor, y el enum existe igual.** No es redundancia: sin la columna, una
+fila podría **omitirlo**, y la omisión es exactamente el modo de falla que el campo `deadline` de
+`expected_workers[]` viene a cerrar.
+
+**Una sola tabla por sección.** El extractor que lee estas filas **fusiona todas las tablas** de la
+sección, así que un segundo cuadro ahí adentro —un ejemplo, una matriz de estados— rompe la
+biyección del inventario con un mensaje que habla de puntos de despacho y no de tablas. Si hace
+falta otra tabla, va en una sección hermana.
+
+### La matriz de invocación del instrumento
+
+Los invariantes de arriba no se hacen cumplir solos. **Esta es la sede única de quién invoca qué, y
+en qué momento**; un punto de despacho que no aparezca acá no los está haciendo cumplir, por más que
+haya declarado su fila.
+
+| Momento | Invocación | Qué corta |
+|---|---|---|
+| antes de crear **ningún** recurso | `despacho.py --preflight <raiz> <skill> <punto> <composicion.json>` | `forma-no-reconocida` · `cardinalidad-invalida` · `familia-duplicada` · `encargo-divergente` |
+| antes de esperar a **ningún** worker, y al consumir cada resultado | `despacho.py --corrida <raiz> <skill> <punto> <sobre.json>` | `forma-no-reconocida` · `fan-out-incompleto` · `despacho-no-previsto` · `familia-duplicada` · `encargo-divergente` · `deadline-compartido` |
+
+Cada punto de despacho lleva la directiva **estructurada** en su sección, no una frase:
+
+```
+<!-- invoca: despacho-preflight -->
+<!-- invoca: despacho-corrida -->
+```
+
+**Por qué una marca y no una oración.** Una frase que diga «acá se invoca el preflight» satisface
+cualquier comprobación por palabras, y una que diga «acá no hace falta» también. Una directiva de
+máquina no: o está o no está, y su ausencia es contable.
+
+**Los dos momentos no son intercambiables, y por eso son dos.** El preflight es previo a crear
+recursos **por contrato**, así que no puede ver un despacho; la guarda de corrida lee despachos
+asentados, así que no puede correr antes de que existan. Colapsarlos en uno dejaría sin comprobar
+dos de los cuatro invariantes: cuál, depende de cuándo se corriera el único que quedara.
+
+**Lo que ninguno de los dos acredita.** Los dos leen lo que el conductor declaró y lo que el
+conductor asentó. **Un despacho que nunca se asentó no existe para ninguno**, y esa dirección la
+cubre únicamente la reconciliación contra la fuente efectiva de la plataforma. No es un hueco
+reparable endureciendo estos modos: es la frontera de un instrumento que lee documentos, y está
+escrita en su docstring para que su verde no se lea como más de lo que autoriza.
+
 ### Los campos del sobre
 
-Doce campos operativos en la raíz, más un par condicional de autoridades del manifest:
+Trece campos operativos en la raíz, más un par condicional de autoridades del manifest:
 
 | campo | qué registra |
 |---|---|
@@ -82,6 +160,7 @@ Doce campos operativos en la raíz, más un par condicional de autoridades del m
 | `parent` | el sobre del que este despacho es hijo, cuando el despacho es anidado; nulo si no lo es |
 | `children` | los sobres que este conductor creó al despachar hacia abajo |
 | `descendants_summary` | el resumen que esta corrida publica de su propia descendencia |
+| `expected_workers` | la composición **prevista**, sellada antes del primer efecto |
 | `workers` | los workers **directos** de esta corrida, con sus intentos |
 | `scope` | el repo y el worktree afectados por la corrida |
 | `transport` | la vía por la que viaja la corrida, **derivada** de los intentos vigentes |
@@ -151,6 +230,60 @@ retirarlo.
 **`scope` es un nodo estructurado, no un texto.** Escribir el repo y el worktree como una frase obliga
 a cada consumidor a parsearla, y cada uno la parsea distinto.
 
+### La composición prevista
+
+> **El título no comparte prefijo con el de la sección siguiente, y es deliberado.** El extractor
+> de secciones de los verificadores resuelve por **prefijo de título**, así que un encabezado que
+> empiece igual que otro se lleva su tabla: medido, `### Los campos por worker esperado` hacía que
+> `--ac 1` leyera esta tabla como la de `workers[]` y reportara que faltaban sus cuatro campos.
+
+`expected_workers[]` lista la composición que el punto de despacho **previó**, y se sella **antes del
+primer efecto**. Es un nodo distinto de `workers[]` y los dos significan cosas distintas: el primero
+es lo que se va a despachar, el segundo es lo que se despachó. Sin los dos no hay forma de nombrar
+las dos direcciones del error.
+
+Siete campos por cada entrada, y uno de ellos es condicional:
+
+| campo | qué registra |
+|---|---|
+| `key` | la clave del dominio que este worker cubre: una familia, un repo, una ronda, un hallazgo |
+| `family` | la familia prevista para atenderlo |
+| `role` | el rol con el que se lo va a despachar |
+| `assignment_digest` | el digest del encargo que va a recibir |
+| `nucleo_digest` | el digest de la **parte común** del encargo, solo con `encargos: nucleo-comun`; ausente en los demás valores |
+| `scope` | el worktree sobre el que va a correr |
+| `deadline` | su vencimiento **propio**, previsto antes de lanzarlo |
+
+**`nucleo_digest` existe porque `nucleo-comun` no es identidad de digests.** Ese valor admite un
+**anexo privado declarado** por worker, así que los `assignment_digest` difieren por construcción y lo
+que tiene que coincidir es el núcleo. Sin el campo, el único predicado posible sería el de identidad,
+y `counter-plan` —que reparte un anexo por familia— daría `encargo-divergente` **siempre**: es
+exactamente el defecto latente que este valor existe para impedir. Es el único campo condicional de
+la tabla, y su ausencia con los otros cuatro valores de `encargos` no es un hueco: ahí no hay núcleo
+que declarar por separado.
+
+**Por qué `expected_workers[]` no puede ser una vista de `workers[]`.** `workers[]` lista solo los
+efectivamente despachados, así que derivar de él lo previsto haría que un worker **que nunca se
+despachó** sea indistinguible de uno que nunca se previó, y un worker **de más** sea indistinguible de
+uno previsto. Las dos son violaciones distintas con nombres distintos —`fan-out-incompleto` y
+`despacho-no-previsto`— y ninguna es observable con un solo nodo. Es la misma razón por la que
+`workers[]` excluye a una familia ausente: un nodo que mezcla lo que pasó con lo que iba a pasar no
+puede fundar ninguna de las dos afirmaciones.
+
+**`deadline` vive acá porque antes no vivía en ningún lado.** De las cuatro propiedades que el
+fan-out exige, tres se comprobaban y la cuarta —el vencimiento propio por worker— la garantizaba la
+**forma de la invocación** del adaptador retirado, que lo recibía por parámetro en cada llamada de
+espera: dos workers compartían vencimiento solo si quien invocaba se equivocaba, y nada lo
+verificaba. Retirada esa vía el invariante quedaba **sin sujeto** —no había dónde leer qué
+vencimiento le tocaba a cada worker—, y este campo es ese sujeto. El
+campo previsto es ese sujeto, y por eso se sella antes y no después: un vencimiento escrito una vez
+lanzado el worker ya no puede contradecir a quien lo lanzó.
+
+**El sellado es previo al primer efecto, no previo al primer despacho.** La distinción importa porque
+crear la terminal ya es un efecto: si `expected_workers[]` se sellara entre la creación y el
+lanzamiento, la composición prevista podría ajustarse a los recursos que ya existen, que es
+exactamente la circularidad que el nodo viene a impedir.
+
 ### Los campos por worker
 
 `workers[]` lista solo los workers **efectivamente despachados**. Una familia ausente que no generó
@@ -177,8 +310,8 @@ campo, habría que deducir el permiso del transporte, que no lo dice.
 
 ### Los campos por intento
 
-Seis campos por cada entrada de `attempts[]`. **El intento, y no el worker, es la unidad que lleva
-transporte, salida, proceso, presupuesto y cosecha:**
+Siete campos por cada entrada de `attempts[]`. **El intento, y no el worker, es la unidad que lleva
+transporte, salida, proceso, presupuesto, encargo y cosecha:**
 
 | campo | qué registra |
 |---|---|
@@ -187,7 +320,16 @@ transporte, salida, proceso, presupuesto y cosecha:**
 | `output` | la ruta exclusiva donde este intento escribe su salida |
 | `process_ref` | la referencia consultable a su proceso, o `null` donde no hay proceso consultable |
 | `wait_budget` | el presupuesto de espera de este intento |
+| `assignment_digest` | el digest del encargo que este intento **recibió**, para contrastarlo contra el previsto |
 | `harvested` | si este intento ya fue cosechado |
+
+**`assignment_digest` cuelga del intento y no del worker, y no es simetría con `expected_workers[]`.**
+Un fix loop entrega un **delta distinto en cada ronda** —es lo que el valor `delta-sobre-el-anterior`
+nombra—, así que un digest por worker no podría expresar esa relación: diría que el worker recibió un
+encargo cuando recibió varios. Y sin él **la mitad de runtime del instrumento no tiene qué leer**:
+medido, sobre un sobre conforme a los seis campos anteriores, `--corrida` salía `1
+encargo-divergente` para cualquier composición, porque comparaba el previsto contra un campo que el
+contrato nunca declaró. Una guarda que **no puede ponerse verde** no discrimina nada.
 
 **Por qué cuelgan del intento y no del worker.** Cada relanzamiento y cada resume necesita **rutas
 exclusivas**: si `output` y `process_ref` colgaran del worker, un relanzamiento pisaría los del

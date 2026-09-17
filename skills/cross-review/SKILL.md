@@ -92,8 +92,20 @@ su estado. Con manifest habilitado, el sobre nace con `manifest_seed` inmutable 
 `manifest_first_dispatch_at: null`; inmediatamente antes de la primera tool call se fija ese
 timestamp una sola vez. El punto de despacho propio es uno:
 
-- el **revisor por ronda** del loop de revisión — la ronda 1 y cada ronda siguiente que reanuda el
-  mismo thread, por cualquiera de las vías A/B/C
+| Punto de despacho | Cardinalidad | Familias | Encargos | Deadline |
+|---|---|---|---|---|
+| el **revisor por ronda** del loop de revisión — la ronda 1 y cada ronda siguiente que reanuda el mismo thread | `1-por-ronda` | `opuesta-al-conductor` | `delta-sobre-el-anterior` | `propio-por-worker` |
+
+Enums cerrados, forma de la tabla y qué pasa con un punto sin fila:
+`skills/cross-review/corridas-en-vuelo.md` → «Los invariantes que cada punto de despacho declara»,
+que es su **sede única**.
+
+**Cada punto de arriba resuelve su vía por el carrier de transporte**, con las cuatro ramas de
+`skills/sdd-flow/reference.md` → «El carrier de transporte, y sus cuatro ramas» y **ninguna otra**.
+En la rama de plataforma el punto expresa **intención** y **no nombra verbos de ninguna plataforma**.
+
+<!-- invoca: despacho-preflight -->
+<!-- invoca: despacho-corrida -->
 
 Campos del sobre, transiciones, sonda por turno, cosecha y condiciones del retiro:
 `corridas-en-vuelo.md`, hermano de este archivo. Es la regla normativa; acá solo se enumera dónde

@@ -102,10 +102,13 @@ comparan**.
    El valor está en dos mapas sin contaminar, no en uno que copia al otro.
    Ver `reference.md` → "Independencia por modo (regla 2 en topología dual)".
 
-3. **Nunca se bloquea por dudas.** El explorador corre no-interactivo: no puede preguntar a
-   mitad de camino ni esperar una respuesta. Toda duda se registra y se sigue explorando — una
-   pregunta abierta que no pudo resolver va a `## Incógnitas`; una decisión que tomó para
-   poder seguir avanzando va a `## Supuestos`, con el porqué.
+3. **Nunca se bloquea por dudas.** El explorador **tiene prohibido** preguntar a mitad de camino o
+   esperar una respuesta — no es que no pueda: sobre la vía por paneles corre en una terminal
+   interactiva, así que la regla la sostiene la prohibición y no el transporte. Toda duda se registra
+   y se sigue explorando — una pregunta abierta que no pudo resolver va a `## Incógnitas`; una
+   decisión que tomó para poder seguir avanzando va a `## Supuestos`, con el porqué. **Alcanza al
+   worker y no al conductor**, que sí consulta al usuario; qué herramienta concreta se le deshabilita
+   al worker lo gobierna la plataforma (`reference.md` → "`{constraints}`").
 4. **Informe estructurado o nada.** La salida tiene que respetar el "Formato de dos capas"
    (`reference.md`). Si la respuesta del revisor no parsea contra ese formato, se degrada: se
    conserva como texto libre si aporta contexto, o se descarta si es ruido — y en cualquier
@@ -145,9 +148,21 @@ su estado. Con manifest habilitado, la selección fija `families`/`selection`, e
 fan-out. Inmediatamente antes de la primera tool call se fija el timestamp una sola vez; los
 despachos posteriores no cambian el transporte ni el inicio históricos. Los puntos propios son dos:
 
-- **fan-out dual** — un worker por familia en `explore`, `counter-plan` e `investigate`, los dos
-  lanzados antes de esperar a ninguno
-- un worker por ronda del modo `debate`, incluida la ronda 0
+| Punto de despacho | Cardinalidad | Familias | Encargos | Deadline |
+|---|---|---|---|---|
+| **fan-out dual** — un worker por familia en `explore`, `counter-plan` e `investigate`, los dos lanzados antes de esperar a ninguno | `1-por-familia` | `una-por-worker` | `nucleo-comun` | `propio-por-worker` |
+| un worker por ronda del modo `debate`, incluida la ronda 0 | `1-por-ronda` | `opuesta-al-conductor` | `delta-sobre-el-anterior` | `propio-por-worker` |
+
+Enums cerrados, forma de la tabla y qué pasa con un punto sin fila:
+`skills/cross-review/corridas-en-vuelo.md` → «Los invariantes que cada punto de despacho declara»,
+que es su **sede única**.
+
+**Cada punto de arriba resuelve su vía por el carrier de transporte**, con las cuatro ramas de
+`skills/sdd-flow/reference.md` → «El carrier de transporte, y sus cuatro ramas» y **ninguna otra**.
+En la rama de plataforma el punto expresa **intención** y **no nombra verbos de ninguna plataforma**.
+
+<!-- invoca: despacho-preflight -->
+<!-- invoca: despacho-corrida -->
 
 Campos del sobre, transiciones, sonda por turno, cosecha y condiciones del retiro:
 `skills/cross-review/corridas-en-vuelo.md`, la **sede única** del contrato. Es la regla normativa; acá solo se enumera dónde
