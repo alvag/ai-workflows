@@ -262,6 +262,21 @@ Siete campos por cada entrada, y uno de ellos es condicional:
 | `scope` | el worktree sobre el que va a correr |
 | `deadline` | su vencimiento **propio**, previsto antes de lanzarlo |
 
+**La `key` es estable a lo largo de las rondas, y la ronda es el intento.** La fila de arriba nombra
+«una ronda» entre los dominios posibles, y leído solo, eso sugiere que el worker de la ronda 2 lleva
+la clave `ronda-2`. **No es así, y el contrato ya lo decidía en otro lado:** un punto cuyas rondas
+**reanudan el mismo worker** —el loop de revisión, el fix loop— tiene **una** entrada en `workers[]`
+con **varios** `attempts[]`, y `assignment_digest` cuelga del intento justamente para expresar eso. Un
+worker con clave por ronda no cabría en ese nodo: `expected_key` es uno por worker, así que cambiarla
+cada ronda dejaría a la reconciliación sin poder nombrar al worker que se reanudó.
+
+Está medido sobre una corrida real de este repositorio: el sobre cerrado del loop de revisión lleva
+`name: revisor-codex` con **dos intentos** y dos transportes distintos, no dos workers. Entonces la
+clave de ese worker es **su identidad de dominio** —qué cubre— y la ronda se lee en `attempts[]`.
+Una composición que declare `ronda-2` mientras `dominio.anterior` trae `ronda-1` describe **dos
+workers distintos**, y el preflight lo dice con `encargo-divergente: … no tiene encargo anterior`,
+que es el veredicto correcto para lo que esa composición declara.
+
 **`nucleo_digest` existe porque `nucleo-comun` no es identidad de digests.** Ese valor admite un
 **anexo privado declarado** por worker, así que los `assignment_digest` difieren por construcción y lo
 que tiene que coincidir es el núcleo. Sin el campo, el único predicado posible sería el de identidad,
@@ -305,7 +320,7 @@ nodo `dominio` de la composición, al lado de `expected_workers[]`.
 | `cardinal` | `cardinalidad: 1-por-ronda` · `1-por-repo` · `1-por-hallazgo` | cuántos elementos tiene el dominio que esa celda nombra |
 | `tope` | `cardinalidad: n-acotado` | el máximo de workers que ese punto admite |
 | `conductor` | `familias: opuesta-al-conductor` · `misma-que-el-conductor` | la familia del conductor de la corrida |
-| `anterior` | `familias: continuacion-del-anterior` · `encargos: delta-sobre-el-anterior` | los workers del intento previo, con su `key`, su `family` y su `assignment_digest`; **una lista vacía declara la ronda inicial** |
+| `anterior` | `familias: continuacion-del-anterior` · `encargos: delta-sobre-el-anterior` | los workers del intento previo, con su `key` —**la misma** que la de esta ronda—, su `family` y su `assignment_digest`; **solo una lista vacía declara la ronda inicial** |
 
 **Un campo que la fila no nombra no se exige**, y su ausencia no es un fallo: `indiferente` y
 `cardinalidad: 1` no tienen contra qué contrastarse y su silencio es correcto.
@@ -342,6 +357,13 @@ revisión—, así que tratarlas igual ponía en rojo a los dos puntos justo en 
 incluye. Con la lista vacía, `delta-sobre-el-anterior` **se satisface sin comparar nada**: no hay
 delta que medir contra lo que no existe, y el predicado sigue pudiendo ponerse rojo en toda ronda
 posterior, que es donde la relación tiene sujeto.
+
+**Cada entrada de `anterior` se valida como se valida la composición, y un anterior mal formado no
+es una ronda inicial.** Clave no vacía y única, `family` y `assignment_digest` presentes: los tres
+campos que esta tabla le pide. Sin esa validación, descartar en silencio las entradas sin clave
+convertía a `anterior: [{}]` en un mapa vacío, que es indistinguible de la lista vacía — medido, el
+preflight real del loop de revisión salía `composicion-valida` sobre un anterior que no declaraba
+nada. **Solo la lista literalmente vacía** es la declaración de la ronda inicial.
 
 **Las dos columnas leen esa misma lista vacía distinto, y es correcto que así sea.**
 `encargos: delta-sobre-el-anterior` pregunta si este encargo difiere del anterior, y sin anterior la

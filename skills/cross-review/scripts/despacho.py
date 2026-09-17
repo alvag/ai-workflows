@@ -36,7 +36,19 @@ FRONTERA DE PRUEBA — dos unidades comparten este pasaje, y no comparten su alc
     Distingue `anterior` AUSENTE de `anterior: []`: la lista vacía **declara la ronda inicial** y
     satisface `delta-sobre-el-anterior` sin comparar nada, que es lo que las filas de `debate` y del
     loop de revisión necesitan en su ronda 0 y su ronda 1. La ausencia del campo sigue fallando
-    cerrado.
+    cerrado, y **solo la lista literalmente vacía** cuenta como ronda inicial: cada entrada de
+    `anterior` pasa la misma validación que la composición —clave no vacía y única, `family` y
+    `assignment_digest` presentes—, porque filtrar en silencio las entradas sin clave convertía
+    `anterior: [{}]` en un mapa vacío indistinguible de la ronda inicial.
+    Los dos predicados multiworker comparan el conjunto entero y no solo su extremo: `nucleo-comun`
+    coteja los núcleos SIEMPRE —no solo cuando los encargos difieren, porque el anexo privado hace
+    que coincidir no diga nada del núcleo— y `distinto-por-worker` exige digests **únicos**, no
+    «no todos iguales», que dejaba pasar el duplicado parcial `D, D, E`.
+    La correlación con el intento anterior es **por clave, y la clave es estable a lo largo de las
+    rondas**: un punto cuyas rondas reanudan el mismo worker tiene una entrada en `workers[]` con
+    varios `attempts[]`, así que una composición que declare `ronda-2` contra un `anterior` de
+    `ronda-1` describe dos workers distintos y se reporta como tal. Está en la sede, con la corrida
+    real que lo mide.
     **El dato viaja en el nodo `dominio` de la composición**, y esa es la diferencia con la versión
     anterior de este modo: mientras el dominio no viajaba, cuatro valores de `cardinalidad` y tres de
     `familias` se evaluaban como `n >= 1` y como nada respectivamente. Medido entonces: un fan-out
@@ -251,20 +263,28 @@ def _falta_dominio(campo, columna, valor):
 
 
 def _anterior_por_clave(dominio):
-    """`None` = la composición NO declara el campo. `{}` = lo declara **vacío**.
+    """Devuelve `(mapa, violacion)`. `mapa is None` = el campo **no viaja**; `{}` = lista vacía.
 
-    La distinción es el arreglo entero de la ronda inicial: `anterior: []` es el conductor
-    **declarando** que no hay intento previo —la ronda 0 de `debate`, la ronda 1 del loop de
-    revisión—, y eso es un dato, no un dato que falta. Tratar las dos igual ponía en rojo a los dos
-    puntos reales que declaran `delta-sobre-el-anterior` justo en la ronda que su propia fila nombra:
-    «incluida la ronda 0» y «la ronda 1 y cada ronda siguiente». Medido, las dos salían
-    `forma-no-reconocida` con código 1."""
+    Solo la lista **literalmente vacía** es la ronda inicial. Antes, cada entrada sin `key` de texto
+    se descartaba en silencio y los duplicados se colapsaban al construir el diccionario, así que
+    `anterior: [{}]` producía un mapa vacío y se leía como ronda inicial declarada: medido, el
+    preflight real de `cross-review` salía `composicion-valida` sobre un anterior que no declaraba
+    nada. Un anterior mal formado no es una ronda inicial, es un anterior mal formado, y ahora falla
+    cerrado con la misma validación que se le exige a la composición — clave no vacía y única,
+    `family` y `assignment_digest` presentes, que son los tres campos que la sede le pide."""
     if "anterior" not in dominio:
-        return None
+        return None, None
     previos = dominio.get("anterior")
     if not isinstance(previos, list):
-        return None
-    return {w.get("key"): w for w in previos if isinstance(w.get("key"), str)}
+        return None, (f"forma-no-reconocida: `dominio.anterior` no es una lista "
+                      f"({type(previos).__name__})")
+    _, mal = _claves(previos, "dominio.anterior")
+    if mal:
+        return None, mal
+    mal = _operandos(previos, "dominio.anterior")
+    if mal:
+        return None, mal
+    return {w["key"]: w for w in previos}, None
 
 
 def _evaluar_cardinalidad(valor, workers, dominio):
@@ -325,7 +345,9 @@ def _evaluar_familias(valor, workers, dominio):
                         f"conductor, y el punto exige la opuesta")
         return None
     if valor == "continuacion-del-anterior":
-        previos = _anterior_por_clave(dominio)
+        previos, mal = _anterior_por_clave(dominio)
+        if mal:
+            return mal
         if previos is None:
             return _falta_dominio("anterior", "familias", valor)
         for w in workers:
@@ -343,17 +365,32 @@ def _evaluar_familias(valor, workers, dominio):
 def _evaluar_encargos(valor, workers, dominio):
     n = len(workers)
     digs = [w.get("assignment_digest") for w in workers]
-    if valor in ("identico-por-digest", "nucleo-comun") and len(set(digs)) > 1:
-        if valor == "identico-por-digest":
+    if valor == "identico-por-digest":
+        if len(set(digs)) > 1:
             return "encargo-divergente: los digests previstos difieren y el punto exige identidad"
+        return None
+    if valor == "nucleo-comun":
+        # el núcleo se compara SIEMPRE, no solo cuando los encargos difieren. `nucleo-comun` admite
+        # un anexo privado declarado por worker, así que dos `assignment_digest` iguales no dicen
+        # nada del núcleo: medido sobre el fan-out dual, encargos `D, D` con núcleos `N, M` salía
+        # `composicion-valida`, que es la violación que este valor existe para nombrar.
         nucleos = [w.get("nucleo_digest") for w in workers]
         if len(set(nucleos)) > 1:
             return "encargo-divergente: los nucleos comunes previstos difieren"
         return None
-    if valor == "distinto-por-worker" and n > 1 and len(set(digs)) == 1:
-        return "encargo-divergente: el punto declara encargos distintos y todos los previstos coinciden"
+    if valor == "distinto-por-worker" and n > 1:
+        # ÚNICOS, no «no todos iguales». Rechazar solo cuando los N coinciden deja pasar el duplicado
+        # parcial, que es el caso realista: medido sobre el fan-out por repo, `D, D, E` con tres
+        # repos salía `composicion-valida` con dos repos compartiendo encargo.
+        if len(set(digs)) != n:
+            repetidos = sorted({str(d) for d in digs if digs.count(d) > 1})
+            return ("encargo-divergente: el punto declara encargos distintos por worker y se repite "
+                    + " ".join(repetidos))
+        return None
     if valor == "delta-sobre-el-anterior":
-        previos = _anterior_por_clave(dominio)
+        previos, mal = _anterior_por_clave(dominio)
+        if mal:
+            return mal
         if previos is None:
             return _falta_dominio("anterior", "encargos", valor)
         if not previos:
@@ -739,23 +776,72 @@ def autotest():
         f_ce = r("co-explore", "worker por ronda del modo")
         f_ci = r("cross-implement", "implementador inicial")
         f_bb = r("bitbucket-code-review", "panel de revisores")
+        f_ce_dual = r("co-explore", "fan-out dual")
+        f_or = r("sdd-orchestrator", "fan-out por repo")
         for nombre, f in (("cross-review/revisor por ronda", f_cr),
                           ("co-explore/worker por ronda", f_ce),
                           ("cross-implement/implementador inicial", f_ci),
-                          ("bitbucket-code-review/panel de revisores", f_bb)):
+                          ("bitbucket-code-review/panel de revisores", f_bb),
+                          ("co-explore/fan-out dual", f_ce_dual),
+                          ("sdd-orchestrator/fan-out por repo", f_or)):
             casos.append((f"la fila real de {nombre} se lee del árbol", None if f else "fila ausente", None))
-        if f_cr and f_ce and f_ci and f_bb:
+        if f_cr and f_ce and f_ci and f_bb and f_ce_dual and f_or:
             ronda_ini = {"cardinal": 1, "conductor": "claude", "anterior": []}
             casos.append(("REAL cross-review · ronda 1, sin intento previo",
                           evaluar_composicion(f_cr, [wr("ronda-1", "codex", "sha256:r1")], ronda_ini), None))
             casos.append(("REAL co-explore · debate ronda 0, sin intento previo",
                           evaluar_composicion(f_ce, [wr("ronda-0", "codex", "sha256:d0")], ronda_ini), None))
+            # la transición REAL de la ronda 1 a la 2: el worker se reanuda, así que su clave es
+            # ESTABLE y lo que cambia es el encargo. El caso anterior reusaba `ronda-1` para el
+            # worker actual, así que no ejercía ninguna transición y pasaba por vacuidad.
+            prev_r1 = [{"key": "revisor-codex", "family": "codex", "assignment_digest": "sha256:r1"}]
+            casos.append(("REAL cross-review · transición ronda 1 -> 2 con delta real",
+                          evaluar_composicion(f_cr, [wr("revisor-codex", "codex", "sha256:r2")],
+                                              {"cardinal": 1, "conductor": "claude",
+                                               "anterior": prev_r1}), None))
             casos.append(("REAL cross-review · ronda 2 repitiendo el encargo de la ronda 1",
-                          evaluar_composicion(f_cr, [wr("ronda-1", "codex", "sha256:r1")],
+                          evaluar_composicion(f_cr, [wr("revisor-codex", "codex", "sha256:r1")],
+                                              {"cardinal": 1, "conductor": "claude",
+                                               "anterior": prev_r1}), "encargo-divergente"))
+            casos.append(("REAL cross-review · clave por ronda (ronda-2 contra ronda-1) no correlaciona",
+                          evaluar_composicion(f_cr, [wr("ronda-2", "codex", "sha256:r2")],
                                               {"cardinal": 1, "conductor": "claude",
                                                "anterior": [{"key": "ronda-1", "family": "codex",
                                                              "assignment_digest": "sha256:r1"}]}),
                           "encargo-divergente"))
+            casos.append(("REAL cross-review · anterior mal formado NO es una ronda inicial",
+                          evaluar_composicion(f_cr, [wr("revisor-codex", "codex", "sha256:r2")],
+                                              {"cardinal": 1, "conductor": "claude",
+                                               "anterior": [{}]}), "forma-no-reconocida"))
+            casos.append(("REAL cross-review · anterior sin assignment_digest",
+                          evaluar_composicion(f_cr, [wr("revisor-codex", "codex", "sha256:r2")],
+                                              {"cardinal": 1, "conductor": "claude",
+                                               "anterior": [{"key": "revisor-codex",
+                                                             "family": "codex",
+                                                             "assignment_digest": None}]}),
+                          "forma-no-reconocida"))
+            casos.append(("REAL cross-review · anterior con la clave repetida",
+                          evaluar_composicion(f_cr, [wr("revisor-codex", "codex", "sha256:r2")],
+                                              {"cardinal": 1, "conductor": "claude",
+                                               "anterior": [{"key": "k", "family": "codex", "assignment_digest": "A"},
+                                                            {"key": "k", "family": "claude", "assignment_digest": "B"}]}),
+                          "forma-no-reconocida"))
+            casos.append(("REAL fan-out dual · encargos iguales con nucleos divergentes",
+                          evaluar_composicion(f_ce_dual,
+                                              [wr("codex", "codex", "D", nucleo_digest="N"),
+                                               wr("claude", "claude", "D", nucleo_digest="M")], inv),
+                          "encargo-divergente"))
+            casos.append(("REAL fan-out dual · encargos iguales con el mismo nucleo",
+                          evaluar_composicion(f_ce_dual,
+                                              [wr("codex", "codex", "D", nucleo_digest="N"),
+                                               wr("claude", "claude", "D", nucleo_digest="N")], inv), None))
+            casos.append(("REAL fan-out por repo · duplicado PARCIAL de encargos (D, D, E)",
+                          evaluar_composicion(f_or, [wr("a", "codex", "D"), wr("b", "codex", "D"),
+                                                     wr("c", "codex", "E")], {"cardinal": 3}),
+                          "encargo-divergente"))
+            casos.append(("REAL fan-out por repo · tres encargos distintos",
+                          evaluar_composicion(f_or, [wr("a", "codex", "D"), wr("b", "codex", "F"),
+                                                     wr("c", "codex", "E")], {"cardinal": 3}), None))
             casos.append(("REAL co-explore · debate con la familia del conductor",
                           evaluar_composicion(f_ce, [wr("ronda-0", "claude", "sha256:d0")], ronda_ini),
                           "familia-invalida"))
