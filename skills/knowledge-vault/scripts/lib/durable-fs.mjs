@@ -19,9 +19,8 @@
  * - **`removeEmptyDir` es una primitiva propia, no recursiva, que falla ante
  *   `ENOTEMPTY`.** Entre clasificar un directorio como vacío y borrarlo puede
  *   aparecer contenido, y un `rmTree` lo eliminaría en silencio.
- * - **`fsync` es fail-closed.** Si la plataforma no lo soporta, se levanta el
- *   error en vez de seguir: no se reporta una durabilidad que no se puede
- *   sostener (R8 del plan).
+ * - **El contenido de archivos es fail-closed.** Cada escritura sincroniza
+ *   su mismo handle escritor; en Windows solo el `fsync` de directorio enumerado degrada a best-effort.
  */
 
 import { isUtf8 } from 'node:buffer';
@@ -312,25 +311,45 @@ export class DurableFs {
    * justamente lo que esta capa garantiza.
    */
   async openExclusive(target, bytes, label) {
-    return this.#run('openExclusive', label, [target], async () => {
-      const handle = await fs.open(target, 'wx');
-      try {
+    return this.#run('openExclusive', label, [target], () =>
+      withWritableHandle(target, 'wx', async (handle) => {
         await handle.writeFile(bytes);
-      } finally {
-        await handle.close();
-      }
-      return bytes.length;
-    });
-  }
-
-  async copyFile(source, target, label, { exclusive = true } = {}) {
-    return this.#run('copyFile', label, [source, target], () =>
-      fs.copyFile(source, target, exclusive ? fs.constants.COPYFILE_EXCL : 0),
+        await handle.sync();
+      }),
     );
   }
 
+  async copyFile(source, target, label) {
+    return this.#run('copyFile', label, [source, target], async () => {
+      let sourceHandle;
+      let targetHandle;
+      let primaryError = null;
+      try {
+        sourceHandle = await fs.open(source, 'r');
+        const sourceMode = (await sourceHandle.stat()).mode & 0o7777;
+        targetHandle = await fs.open(target, 'wx');
+        const buffer = Buffer.allocUnsafe(64 * 1024);
+        for (let read; (read = await sourceHandle.read(buffer)).bytesRead;) {
+          await targetHandle.writeFile(buffer.subarray(0, read.bytesRead));
+        }
+        await targetHandle.chmod(sourceMode);
+        await targetHandle.sync();
+      } catch (error) {
+        primaryError = error;
+        throw error;
+      } finally {
+        await closeHandles([targetHandle, sourceHandle], primaryError);
+      }
+    });
+  }
+
   async writeFile(target, bytes, label) {
-    return this.#run('writeFile', label, [target], () => fs.writeFile(target, bytes));
+    return this.#run('writeFile', label, [target], () =>
+      withWritableHandle(target, 'w', async (handle) => {
+        await handle.writeFile(bytes);
+        await handle.sync();
+      }),
+    );
   }
 
   async readFile(target, label) {
@@ -367,12 +386,17 @@ export class DurableFs {
     });
   }
 
-  async fsyncFile(target, label) {
-    return this.#run('fsyncFile', label, [target], () => syncPath(target, false));
-  }
-
   async fsyncDir(target, label) {
-    return this.#run('fsyncDir', label, [target], () => syncPath(target, true));
+    return this.#run('fsyncDir', label, [target], async () => {
+      try {
+        await syncPath(target);
+      } catch (error) {
+        if (process.platform === 'win32' && error instanceof DurableFsError && error.code === 'FSYNC_UNSUPPORTED') {
+          return;
+        }
+        throw error;
+      }
+    });
   }
 
   async rename(from, to, label) {
@@ -549,23 +573,53 @@ export class DurableFs {
     const sufijo = uniqueTemp ? `.${process.pid}.${randomBytes(4).toString('hex')}` : '';
     const temporal = path.join(padre, atomicTempName(target, sufijo));
 
-    await this.writeFile(temporal, bytes, `${label}.tmp`);
-    await this.fsyncFile(temporal, `${label}.tmp.fsync`);
+    let handle = null, published = false, cleanupHandled = false;
+    try {
+      await this.#run('writeFile', `${label}.tmp`, [temporal], async () => {
+        handle = await fs.open(temporal, 'w');
+        await handle.writeFile(bytes);
+      });
+      await this.#run('fsyncFile', `${label}.tmp.fsync`, [temporal], () => handle.sync());
+      const writtenHandle = handle;
+      handle = null;
+      await closeHandles([writtenHandle]);
 
-    if (expectBytes !== null) {
-      const actual = await this.#leerParaComparar(target, `${label}.cas`);
-      if (!actual.equals(expectBytes)) {
-        await this.unlink(temporal, `${label}.tmp.unlink`);
-        throw new DurableFsError(
-          'CONFLICT',
-          `${target} cambió en disco entre la lectura y la publicación; no se sobrescribe`,
-          { path: target },
-        );
+      if (expectBytes !== null) {
+        const actual = await this.#leerParaComparar(target, `${label}.cas`);
+        if (!actual.equals(expectBytes)) {
+          const conflict = new DurableFsError(
+            'CONFLICT',
+            `${target} cambió en disco entre la lectura y la publicación; no se sobrescribe`,
+            { path: target },
+          );
+          cleanupHandled = true;
+          try {
+            await this.unlink(temporal, `${label}.tmp.unlink`);
+          } catch (error) {
+            if (isInjectedCrash(error)) throw error;
+          }
+          throw conflict;
+        }
       }
-    }
 
-    await this.rename(temporal, target, `${label}.rename`);
-    await this.fsyncDir(padre, `${label}.fsync-dir`);
+      await this.rename(temporal, target, `${label}.rename`);
+      published = true;
+      await this.fsyncDir(padre, `${label}.fsync-dir`);
+    } catch (error) {
+      if (handle !== null) {
+        const openHandle = handle;
+        handle = null;
+        await closeHandles([openHandle], error);
+      }
+      if (!published && !cleanupHandled && !isInjectedCrash(error)) {
+        try {
+          await this.unlink(temporal, `${label}.tmp.cleanup`);
+        } catch {
+          // La limpieza nunca sustituye la causa que abortó la publicación.
+        }
+      }
+      throw error;
+    }
   }
 
   /** Los bytes actuales, o un buffer vacío si el archivo no existe. */
@@ -628,7 +682,7 @@ async function statOrNull(fn, target) {
 }
 
 /** Errno que significan "esta plataforma no lo soporta", no "esto falló". */
-const OPEN_UNSUPPORTED = ['EISDIR', 'EPERM', 'EACCES'];
+const OPEN_UNSUPPORTED = ['EISDIR', 'EPERM'];
 const SYNC_UNSUPPORTED = ['EINVAL', 'EPERM', 'ENOTSUP', 'EBADF'];
 
 /**
@@ -650,27 +704,56 @@ export function classifyFsyncError(error, target, { stage }) {
 }
 
 /**
- * `fsync` fail-closed. Si la plataforma no lo soporta se levanta el error en vez
- * de seguir: reportar una durabilidad que no se puede sostener es peor que
- * fallar (R8 del plan).
+ * Intenta sincronizar un directorio. La decisión de degradar el error traducido
+ * pertenece a `fsyncDir`; fuera de esa primitiva todo fallo sigue propagándose.
  */
-async function syncPath(target, isDirectory) {
+async function syncPath(target) {
   let handle;
   try {
     handle = await fs.open(target, 'r');
   } catch (error) {
-    // Esta rama solo dispara en Windows: en POSIX abrir un directorio en modo
-    // lectura funciona. La suite la cubre por `classifyFsyncError` con errores
-    // sintéticos, no de punta a punta — es el R6 del plan, que declara que
-    // Windows no se valida en vez de afirmar que sí.
-    throw isDirectory ? classifyFsyncError(error, target, { stage: 'open' }) : error;
+    throw classifyFsyncError(error, target, { stage: 'open' });
   }
+  let primaryError = null;
   try {
     await handle.sync();
   } catch (error) {
-    throw classifyFsyncError(error, target, { stage: 'sync' });
+    primaryError = classifyFsyncError(error, target, { stage: 'sync' });
+    throw primaryError;
   } finally {
-    await handle.close();
+    await closeHandles([handle], primaryError);
+  }
+}
+
+async function withWritableHandle(target, flags, action) {
+  let handle, primaryError = null;
+  try {
+    handle = await fs.open(target, flags);
+    return await action(handle);
+  } catch (error) {
+    primaryError = error;
+    throw error;
+  } finally {
+    await closeHandles([handle], primaryError);
+  }
+}
+
+async function closeHandles(handles, primaryError = null) {
+  let failure = primaryError;
+  for (const handle of handles) {
+    if (handle === undefined || handle === null) {
+      continue;
+    }
+    try {
+      await handle.close();
+    } catch (error) {
+      if (failure === null) {
+        failure = error;
+      }
+    }
+  }
+  if (primaryError === null && failure !== null) {
+    throw failure;
   }
 }
 
