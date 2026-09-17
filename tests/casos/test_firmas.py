@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import importlib.util
 import io
 import os
@@ -633,11 +634,154 @@ def test_aux_ownership_presupuesto(_contexto: Optional[object]) -> None:
     _probar_dependencia_rota("ownership-presupuesto", ["log.md", "aprobaciones.md", "2"])
 
 
+def _ejercer_contrato_cadena(script: Path) -> List[str]:
+    cabecera = "| ID | Requisito | Evidencia | Comando/observación | Esperado | Baseline |"
+    registro = "- `id: A` · `commit: abc123`"
+    encabezado = "### Baseline de v1"
+    hash_actual = "`hash: {0}`".format("a" * 64)
+    hash_previo = "`hash_previo: {0}`".format("b" * 64)
+    base = (
+        "## v1\n\n"
+        "`hash_previo:` · `hash: bd3a154d6c9e3149aa6797ce77c5ceb975c0295a3a2eacc0f257b6b28021b7d8`\n"
+        "## Fin\n"
+    )
+
+    def diagnostico(linea: int, forma: str) -> str:
+        return f"GUARD:contrato-fuera-de-version línea {linea}: {forma}"
+
+    casos = [
+        ("tabla-huerfana-completa",
+         base + cabecera + "\n|---|---|---|---|---|---|\n" + registro + "\n" +
+         encabezado + "\n`hash_previo:`\n", 1,
+         (diagnostico(5, "cabecera"), diagnostico(7, "registro"),
+          diagnostico(8, "encabezado-baseline"), diagnostico(9, "hashes"))),
+        ("cabecera-huerfana", base + cabecera + "\n", 1, (diagnostico(5, "cabecera"),)),
+        ("registro-huerfano", base + registro + "\n", 1, (diagnostico(5, "registro"),)),
+        ("encabezado-huerfano", base + encabezado + "\n", 1,
+         (diagnostico(5, "encabezado-baseline"),)),
+        ("hash-huerfano", base + hash_actual + "\n", 1, (diagnostico(5, "hashes"),)),
+        ("cabecera-con-espacio-previo", base + "  " + cabecera + " \n", 1,
+         (diagnostico(5, "cabecera"),)),
+        ("cabecera-celda-extra", base + cabecera[:-1] + " Extra |\n", 0, ()),
+        ("cabecera-columnas-permutadas",
+         base + "| Requisito | ID | Evidencia | Comando/observación | Esperado | Baseline |\n",
+         0, ()),
+        ("registro-sin-acento-grave", base + "- id: A`\n", 0, ()),
+        ("registro-con-espacio-previo", base + " - `id: A`\n", 0, ()),
+        ("encabezado-siete-almohadillas", base + "####### Baseline de v1\n", 0, ()),
+        ("encabezado-sin-digito", base + "### Baseline de v\n", 0, ()),
+        ("hash-minuscula-64", base + hash_actual + "\n", 1, (diagnostico(5, "hashes"),)),
+        ("hash-previo-minuscula-64", base + hash_previo + "\n", 1,
+         (diagnostico(5, "hashes"),)),
+        ("hash-previo-vacio", base + "`hash_previo:`\n", 1, (diagnostico(5, "hashes"),)),
+        ("hash-vacio", base + "`hash: `\n", 0, ()),
+        ("hash-63", base + "`hash: {0}`\n".format("a" * 63), 0, ()),
+        ("hash-65", base + "`hash: {0}`\n".format("a" * 65), 0, ()),
+        ("hash-mayuscula-64", base + "`hash: {0}`\n".format("A" * 64), 0, ()),
+        ("dos-literales-una-linea", base + hash_actual + " · " + hash_previo + "\n", 1,
+         (diagnostico(5, "hashes"),)),
+        ("sin-versiones", cabecera + "\n", 1, (diagnostico(1, "cabecera"),)),
+        ("verify-ordinario",
+         base + "## Verify\n| Caso | Comando | Esperado |\n|---|---|---|\n| uno | : | ok |\n",
+         0, ()),
+    ]
+    for indice, forma in enumerate((cabecera, registro, encabezado, hash_actual), 1):
+        casos.append((f"forma-cercada-{indice}", base + "```\n" + forma + "\n```\n", 0, ()))
+
+    formas = [cabecera, registro, encabezado]
+    lineas_version = ["## v1", *formas, "`hash_previo:` · `hash: `"]
+    canon = [re.sub(r"`hash: [^`]*`", "`hash: `", linea).rstrip()
+             for linea in lineas_version]
+    hash_version = hashlib.sha256(("\n".join(canon) + "\n").encode(ENCODING)).hexdigest()
+    lineas_version[-1] = f"`hash_previo:` · `hash: {hash_version}`"
+    casos.append(("cuatro-formas-dentro-version",
+                  "\n".join(lineas_version + ["## Fin", ""]), 0, ()))
+
+    interior_base = ["### v1", registro, "`hash_previo:` · `hash: `"]
+    hash_interior = hashlib.sha256(
+        ("\n".join(interior_base) + "\n").encode(ENCODING)).hexdigest()
+    interior = interior_base[:-1] + [f"`hash_previo:` · `hash: {hash_interior}`"]
+    exterior_base = ["## v2", cabecera,
+                     f"`hash_previo: {hash_interior}` · `hash: `", *interior]
+    canon_exterior = [re.sub(r"`hash: [^`]*`", "`hash: `", linea).rstrip()
+                      for linea in exterior_base]
+    hash_exterior = hashlib.sha256(
+        ("\n".join(canon_exterior) + "\n").encode(ENCODING)).hexdigest()
+    exterior = exterior_base.copy()
+    exterior[2] = f"`hash_previo: {hash_interior}` · `hash: {hash_exterior}`"
+    anidado = "\n".join(exterior + ["## Fin", ""])
+    casos.append(("bloques-anidados-union", anidado, 0, ()))
+
+    desajustes: List[str] = []
+    with tempfile.TemporaryDirectory(prefix="aux-contrato-cadena-") as temporal:
+        arena = Path(temporal)
+        for nombre, contenido, codigo, diagnosticos in casos:
+            contrato = arena / (nombre + ".md")
+            contrato.write_text(contenido, encoding=ENCODING)
+            resultado = _ejecutar(script, [str(contrato)], arena)
+            lineas_error = tuple(resultado.stderr.splitlines())
+            if resultado.returncode != codigo or lineas_error != diagnosticos:
+                desajustes.append(
+                    f"{nombre}: rc={resultado.returncode}, stderr={lineas_error!r}, "
+                    f"esperado=({codigo}, {diagnosticos!r})")
+
+        nombre_modulo = "tests_contrato_cadena_" + str(abs(hash(str(script))))
+        especificacion = importlib.util.spec_from_file_location(nombre_modulo, script)
+        if especificacion is None or especificacion.loader is None:
+            desajustes.append("versiones-anidadas: no se pudo cargar el módulo")
+        else:
+            modulo = importlib.util.module_from_spec(especificacion)
+            especificacion.loader.exec_module(modulo)
+            esperadas = sorted(((1, interior), (2, exterior)))
+            if modulo.versiones(anidado) != esperadas:
+                desajustes.append("versiones-anidadas: la salida cambió")
+    return desajustes
+
+
+def test_aux_contrato_cadena(_contexto: Optional[object]) -> None:
+    """La matriz huérfana es roja en la base y verde en el árbol actual."""
+    with tempfile.TemporaryDirectory(prefix="aux-contrato-cadena-base-") as temporal:
+        base = Path(temporal) / "contrato-cadena.py"
+        resultado = subprocess.run(
+            ["git", "show", "48903a1:skills/cross-implement/scripts/contrato-cadena.py"],
+            cwd=RAIZ, capture_output=True, check=False)
+        assert resultado.returncode == 0, resultado.stderr.decode(ENCODING, "replace")
+        base.write_bytes(resultado.stdout)
+        desajustes_base = _ejercer_contrato_cadena(base)
+        assert any(desajuste.startswith("tabla-huerfana-completa: rc=0")
+                   for desajuste in desajustes_base), \
+            "la regresión de la tabla huérfana no da rojo contra 48903a1"
+    assert not _ejercer_contrato_cadena(
+        RAIZ / "skills/cross-implement/scripts/contrato-cadena.py")
+
+
 def test_aux_promocion_tasks_ready(_contexto: Optional[object]) -> None:
     """La promoción publica su matriz cerrada de dieciséis identidades."""
     firma = next(item for item in FIRMAS if item.nombre == "promocion-tasks-ready")
     modulo = _cargar_modulo(firma)
     modulo.verificar_promocion()
+    with tempfile.TemporaryDirectory(prefix="aux-promocion-huerfano-") as temporal:
+        arena = Path(temporal)
+        estado = modulo.preparar_estado_refresh(arena)
+        plan = estado[0]
+        plan.write_text(
+            plan.read_text(encoding=ENCODING) + "## Fin\n- `id: huerfano`\n",
+            encoding=ENCODING,
+        )
+        antes = plan.read_bytes()
+        header_antes = plan.read_text(encoding=ENCODING).split("---", 2)[1]
+        argumentos = [str(ruta) for ruta in estado[:4]]
+        codigo, stdout, stderr, error = _invocar_main(
+            modulo, firma.archivo, argumentos, arena)
+        assert error is None and codigo == 1 and stdout == ""
+        assert "GUARD:contrato-fuera-de-version" in stderr and \
+            "registro" in stderr and "línea" in stderr
+        assert "la estructura o la cadena del contrato no valida" in stderr
+        assert plan.read_bytes() == antes
+        header_despues = plan.read_text(encoding=ENCODING).split("---", 2)[1]
+        assert header_despues == header_antes
+        assert header_despues.count("contract_frozen_version:") == 1
+        assert header_despues.count("contract_frozen_hash:") == 1
     with tempfile.TemporaryDirectory(prefix="aux-promocion-dependencia-") as temporal:
         estado = modulo.preparar_estado_refresh(Path(temporal))
         previo, sys.argv = sys.argv, [str(firma.archivo)] + [str(ruta) for ruta in estado[:4]]
@@ -681,6 +825,7 @@ def test_aux_verify_ejecuta(_contexto: Optional[object]) -> None:
 
 CASOS.extend((
     ("contrato-auxiliar:contrato-baseline", "contrato-auxiliares-v1", test_aux_contrato_baseline),
+    ("contrato-auxiliar:contrato-cadena", "contrato-auxiliares-v1", test_aux_contrato_cadena),
     ("contrato-auxiliar:rebaseline-worktree", "contrato-auxiliares-v1", test_aux_rebaseline_worktree),
     ("contrato-auxiliar:gate-modo-directo", "contrato-auxiliares-v1", test_aux_gate_modo_directo),
     ("contrato-auxiliar:ownership-log", "contrato-auxiliares-v1", test_aux_ownership_log),

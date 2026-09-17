@@ -119,12 +119,11 @@ def _campos_linea(linea: str, prefijo: str = "- ") -> Dict[str, str]:
 
 
 def validar_cadena(plan_arg: str) -> int:
-    """Corre el validador de la cadena y devuelve su código, sin interpretarlo.
+    """Corre el validador de la estructura y la cadena, y devuelve su código sin interpretarlo.
 
-    Va acá y no en la prosa de un paso: la sede normativa **decía** que la cadena se valida antes de
-    congelar y ningún paso la corría, así que un contrato cuyo `hash` declarado no correspondía a sus
-    bytes se congelaba igual y la huella congelada no identificaba al contrato que congela. Una
-    precondición que solo vive en prosa es una precondición que nadie ejecuta.
+    Va acá y no en la prosa de un paso: la sede normativa exige validar antes de congelar tanto la
+    estructura como la cadena. Una precondición que solo vive en prosa es una precondición que nadie
+    ejecuta.
     """
     try:
         corrida = subprocess.run([sys.executable, str(ruta_cadena()), plan_arg],
@@ -132,9 +131,8 @@ def validar_cadena(plan_arg: str) -> int:
     except OSError:
         return 2
     if corrida.returncode != 0:
-        # El diagnóstico del validador nombra la versión y los dos hashes; el código solo dice que
-        # algo falló. Sin reemitirlo, el conductor tiene que volver a correrlo a mano para saber qué
-        # arreglar, y el mensaje ya existía.
+        # El diagnóstico específico nombra la propiedad y su ubicación; el código solo dice que
+        # algo falló. Reemitirlo evita que el conductor tenga que repetir la corrida para conocerla.
         detalle = corrida.stderr.decode("utf-8", "replace").strip()
         if detalle:
             print(detalle, file=sys.stderr)
@@ -766,8 +764,8 @@ def main() -> int:
     # real: el ledger no se creaba y la receta no podía arrancar.
     codigo_cadena = validar_cadena(plan_arg)
     if codigo_cadena != 0:
-        return fallo("la cadena del contrato no valida: contrato-cadena.py devolvió "
-                     f"{codigo_cadena}, así que el hash declarado no identifica a sus bytes", 1)
+        return fallo("la estructura o la cadena del contrato no valida: "
+                     f"contrato-cadena.py devolvió {codigo_cadena}", 1)
     congelada = congelar_contrato(plan)
     if congelada is None:
         return fallo("no se pudo determinar la versión vigente del contrato ni su hash", 1)
