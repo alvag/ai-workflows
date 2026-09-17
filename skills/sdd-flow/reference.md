@@ -6203,9 +6203,10 @@ promoción: sin ella, quien copiara el archivo entero a la spec estaría publica
 | Campo | Forma |
 |---|---|
 | `busqueda` | `not-run` · `in-progress` · `complete` · `terminal` |
-| `fuentes_terminadas` | lista de las fuentes que corrieron **completas** |
+| `fuentes_terminadas` | lista de las fuentes que corrieron **completas**; `refs` entra solo cuando toda su población elegible terminó sin excepciones |
 | `terminos` | lista ordenada de los términos emitidos |
-| `fingerprints` | `head` (HEAD actual de `context_root`, comparado con `context_head`) · `refs` (digest de `git for-each-ref` en esa raíz) · `flujos_activos` (digest del **contenido** recorrido en su catálogo, no del listado) · `archivados` (ídem sobre `.plans/archived/`) · `vault` (ídem sobre el subárbol consultado) · `terminos` (digest del conjunto) |
+| `procedimiento_refs` | versión **autoritativa** del procedimiento de la fuente `refs`; versión vigente **2**, la que recorre por OID efectivo en vez de filtrar por nombre. Vive solo en `## estado`: ningún campo de `## declaracion` la duplica |
+| `fingerprints` | `head` (HEAD actual de `context_root`, comparado con `context_head`) · `refs` (digest de la proyección elegible de refnames y OIDs efectivos, `fp-refs`) · `historial` (digest de los commits únicos de `git rev-list --all`, `fp-historial`) · `inventario-refs` (digest de los conteos excluidos por clase genérica, `fp-inventario-refs`) · `flujos_activos` (digest del **contenido** recorrido en su catálogo, no del listado) · `archivados` (ídem sobre `.plans/archived/`) · `vault` (ídem sobre el subárbol consultado) · `terminos` (digest del conjunto) |
 
 **`## declaracion` — lo único que se promueve.** Su esquema está congelado acá porque hay datos que
 tienen que vivir en la parte publicable: dejarlo abierto permite promover una declaración sin la
@@ -6214,32 +6215,37 @@ evidencia que la sostiene.
 | Campo | Qué lleva |
 |---|---|
 | `terminos_buscados` | el conjunto emitido, **copiado** acá — el conjunto tiene que quedar registrado en la declaración, y `## estado` no se publica |
-| `coincidencias_crudas` | cada coincidencia con su **fuente**, su **ref** y su **ruta**, el **SHA** cuando la fuente es histórica, y **su descarte** cuando no se acreditó |
-| `estado_por_fuente` | cada fuente como `examinada` · `no comprobada` con su razón · `no aplicable por política` |
+| `coincidencias_crudas` | cada coincidencia con su **fuente**, su **ref** y su **ruta**, el **SHA** cuando la fuente es histórica, y **su descarte** cuando no se acreditó. Coincidencias de la misma clave de agrupación —fuente, ref, término y eje— y la misma adjudicación admiten una **fila agregada** que conserva la clave, el **conteo total**, al menos un **puntero representativo** y el **descarte o destino**; candidatos y evidencia acreditada conservan siempre su **puntero completo**, sin truncamiento implícito |
+| `estado_por_fuente` | cada fuente como `examinada` · `examinada parcialmente`, limitada a una fuente que declare población y denominador —hoy solo `refs`, mediante `cobertura_refs`— · `no comprobada` con su razón · `no aplicable por política` |
+| `cobertura_refs` | solo de la fuente `refs`, con esta forma literal: `conteos_incluidos_por_namespace` —exactamente las tres raíces `refs/heads`, `refs/tags` y `refs/remotes`, sin desagregar esta última por nombre de remoto—, `conteos_excluidos_por_clase`, `total_elegible`, `completas`, `no_comprobadas`, `unidades_logicas`, `invocaciones` —los registros individuales o agregados admitidos por "### El resultado por invocación"—, y `condicion`, que toma exactamente uno de `completa` · `parcial` · `no-comprobada`, la misma agregación de "Degradación: los cuatro estados por fuente" trasladada a un valor literal de tres. Las candidatas de tipo blob llevan `ruta: null` dentro de sus invocaciones, porque `refs-rutas` no aplica sobre un blob. La versión se lee exclusivamente de `## estado.procedimiento_refs` |
 | `candidatos` | por cada uno: ref o ruta, celda de la matriz de salidas, qué parte del objetivo cubre, y la evidencia de las **tres** condiciones —cobertura, terminación, compatibilidad— |
 | `remoto` | cuál se actualizó, o por qué no se intentó — declararlo **siempre**, porque "no había remoto" y "había uno y no lo nombré" no pueden quedar indistinguibles |
-| `impacto_en_alcance` | `ninguno` · `contexto` · `incognita` · `checkpoint` · `reformular` · `residual` · `cierre`, **cualificado** por las fuentes no comprobadas. Se escriben **sin tilde**, porque el valor se compara literal |
+| `impacto_en_alcance` | `ninguno` · `contexto` · `incognita` · `checkpoint` · `reformular` · `residual` · `cierre`, **cualificado** por las fuentes no comprobadas y por una cobertura parcial de `refs`. Se escriben **sin tilde**, porque el valor se compara literal |
 
 El archivo **sobrevive** a la promoción con su `## estado` intacto: la spec pasa a mandar sobre el
 QUÉ, y `antecedentes.md` sigue mandando sobre **qué se corrió y qué hay que re-correr**. Una sola
 autoridad por pregunta, en cada momento.
 
-> **Señal negativa.** Si alguna de las cuatro claves de `## estado` aparece en `spec.md`, en el
-> `### Antecedentes` del plan combinado o en `master-spec.md`, la promoción se hizo mal.
+> **Señal negativa.** Si cualquiera de las claves de `## estado` —incluida `procedimiento_refs`—
+> aparece en `spec.md`, en el `### Antecedentes` del plan combinado o en `master-spec.md`, la
+> promoción se hizo mal. La cobertura de esta señal es el bloque entero de `## estado`, no una
+> cardinalidad fija de claves: alcanza a las que tenga el esquema en cada versión.
 
 **Al promover se sanitiza, porque el bloque declarativo contiene mecánica del flujo.** Retener solo
 `## estado` no alcanza: `coincidencias_crudas` lleva rutas como `.plans/archived/<id>/spec.md`,
-`estado_por_fuente` nombra las seis fuentes —dos de ellas son directorios del propio flujo— y
-`candidatos` lleva **nombres de ref**. Todo eso es exactamente lo que la lista de "qué NUNCA se
-publica" retiene, y `spec.md` puede terminar en un tracker.
+`estado_por_fuente` nombra las seis fuentes —dos de ellas son directorios del propio flujo—,
+`cobertura_refs` lleva refnames, OIDs y rutas, y `candidatos` lleva **nombres de ref**. Todo eso es
+exactamente lo que la lista de "qué NUNCA se publica" retiene, y `spec.md` puede terminar en un
+tracker.
 
 La proyección se define **campo por campo**, y no como un criterio a interpretar:
 
 | Campo de `## declaracion` | Qué se promueve |
 |---|---|
 | `terminos_buscados` | **tal cual** — son palabras del objetivo, no mecánica |
-| `estado_por_fuente` | **agregado y sin nombrar directorios**: "seis fuentes examinadas", o "cinco examinadas y una no comprobada por \<razón\>". Se promueve **siempre**, porque es lo único que cualifica el resultado: un `ninguno` con dos fuentes sin comprobar no dice lo mismo que uno con las seis |
+| `estado_por_fuente` | **agregado y sin nombrar directorios**, en tres formas, y solo con **conteos y condición** — nunca refnames, rutas, OIDs/SHAs, diagnósticos ni texto de coincidencias: todas examinadas —"seis fuentes examinadas"—; con no comprobadas —"cinco examinadas y una no comprobada por \<razón\>"—; o con `refs` parcial —"cinco examinadas, `refs` examinada parcialmente sobre \<total_elegible\> refs elegibles con \<n\> no comprobadas por \<razón\>", combinable con otras no comprobadas—. Cuando `refs` corrió, **cualquiera de las tres formas** incorpora de `cobertura_refs` la `condicion` y sus conteos ya sanitizados —`conteos_incluidos_por_namespace`, limitado a las raíces `refs/heads`, `refs/tags` y `refs/remotes` sin desagregar por remoto, y `conteos_excluidos_por_clase`, con cualquier `excluida-namespace:<raíz>` local reducida a una clase genérica sin raíz, "namespace ajeno" y nunca `refs/backup`— junto con `total_elegible`, `completas` y `no_comprobadas`; nunca las identidades de `unidades_logicas` ni de `invocaciones`. Se promueve **siempre**, porque es lo único que cualifica el resultado: un `ninguno` con dos fuentes sin comprobar no dice lo mismo que uno con las seis, y una `refs` parcial no dice lo mismo que una `refs` examinada entera |
 | `coincidencias_crudas` | **el conteo y su descarte**, sin ref, ruta ni SHA |
+| `cobertura_refs` | **no se promueve tal cual.** Solo sus conteos —con las raíces de namespace ya reducidas a clase genérica— y su `condicion` quedan absorbidos por la forma agregada de `estado_por_fuente`; refnames, OIDs, rutas, diagnósticos y texto de coincidencias de sus `invocaciones` permanecen en `antecedentes.md` y nunca cruzan a la declaración publicada |
 | `candidatos` | **descritos**: "un flujo archivado de este repositorio", "una rama con trabajo previo", con qué parte del objetivo cubren y la evidencia de las tres condiciones en prosa — nunca el nombre de la ref ni la ruta |
 | `impacto_en_alcance` | **tal cual**: es el valor del enum |
 | `remoto` | **no se promueve.** Un `git remote get-url` arrastra host y ruta de un repositorio que puede ser privado |
@@ -6248,7 +6254,10 @@ La versión con rutas, refs, SHAs y remoto vive en `antecedentes.md`, que es loc
 nunca — y es la que consume el paquete de co-exploración, que corre en la máquina y no publica nada.
 
 En la orquestación el equivalente es `.sdd/<id>/antecedentes.md`, con el mismo esquema extendido por
-repo: ver `sdd-orchestrator` → paso `1.2`.
+repo: ver `sdd-orchestrator` → paso `1.2`. Esa skill hermana ejecuta este mismo procedimiento sobre la
+fuente `refs`, pero su esquema extendido y la proyección de la master-spec todavía no enumeran
+`procedimiento_refs` ni `cobertura_refs` por repo, así que no representan ahí la cobertura parcial que
+`sdd-flow` sí distingue; queda como residual conocido, no como una segunda sede de este cambio.
 
 ### El algoritmo de términos
 
@@ -6297,13 +6306,13 @@ sexta es **condicional** —depende de que haya un vault que consultar— y es l
 | # | Fuente | Qué mira | Obligatoriedad |
 |---|---|---|---|
 | 1 | **HEAD** | el snapshot `context_head`, por **ruta** y por **contenido** | obligatoria |
-| 2 | **refs**, en dos etapas | nombres de ramas y tags; después el **contenido** de las que quedaron candidatas | obligatoria |
+| 2 | **refs** | población elegible de `refs/heads/**`, `refs/tags/**` y `refs/remotes/**` —excepto el puntero simbólico remoto `HEAD`—: nombre corto como señal auxiliar, y snapshot más historia exclusiva sobre **cada referencia elegible**, sin depender del nombre | obligatoria |
 | 3 | **historial de commits** | **mensajes** y **contenido introducido** | obligatoria |
 | 4 | **`.plans/archived/`** | los flujos ya cerrados del catálogo de `context_root` | obligatoria |
 | 5 | **flujos activos** | los `.plans/<id>/` del catálogo de `context_root`, incluido el de otra rama y **excluido el propio**; un snapshot `ready` sigue su `worktree_path`, y si no resuelve queda no comprobado en vez de contarse activo | obligatoria |
 | 6 | **vault de conocimiento** | flujos rescatados cuyo origen ya se retiró del disco | **condicional** |
 
-### Los cuatro ejes, y son cuatro
+### Los cuatro ejes
 
 Un antecedente puede ser visible por cualquiera de estas cuatro vías, y **buscar por una sola deja
 el hueco de las otras tres**. Es exactamente el modo en que este defecto se reproduce: una búsqueda
@@ -6320,10 +6329,15 @@ mira contenido no ve el que se anunció en el mensaje de un commit o quedó en e
 Los flujos —activos y archivados— se recorren por el **contenido** de sus artefactos, no por el
 nombre de su carpeta: un flujo con `<id>` opaco puede llevar adentro el objetivo exacto.
 
-**Una ref que quedó candidata por su nombre o por su historia se valida abriendo su contenido**: el
-nombre es una pista, no una acreditación. Y a la inversa: **una ref que ningún eje volvió candidata
-no se inspecciona entera** —sería recorrer todo el repositorio por cada rama—, así que esa limitación
-**se declara en la salida** en vez de dejar que la ausencia de hallazgos parezca cobertura.
+**El recorrido de la fuente `refs` ya no depende de que el nombre vuelva candidata a una ref.** El
+snapshot por `(OID efectivo, término)` y la historia exclusiva por commit se ejecutan sobre todas las
+filas elegibles del inventario: el procedimiento intenta inspeccionar el contenido o la historia de
+cada referencia elegible, y el nombre nunca decide qué contenido se abre: la señal nominal consume el
+nombre corto de la foto congelada, nunca el refname completo, y queda como señal auxiliar compatible
+con el productor anterior, sin sustituir el recorrido causal. Lo único que sigue acotado es la ruta:
+refs-rutas corre después de que una señal causal o nominal ya volvió candidata a la ref, porque abrir
+el árbol completo de cada rama por cada término multiplicaría el costo sin ampliar la completitud que
+ya aportan el snapshot y la historia.
 
 ### Los comandos
 
@@ -6331,9 +6345,22 @@ Cada comando lleva un **ID** y aparece **dos veces**, en su variante POSIX y en 
 PowerShell, con el mismo conjunto de IDs en las dos.
 
 **Los términos viajan por archivo, uno por línea, y esa es la decisión que sostiene todo lo demás.**
-`$TERMINOS` es la ruta de ese archivo, que el algoritmo escribe una vez por corrida. No es una
-preferencia de estilo: pasarlos por una variable de shell fallaba de **tres** formas a la vez, y las
-tres desaparecen con el archivo.
+`$TERMINOS` es la ruta de ese archivo, que el algoritmo escribe una vez por corrida en **UTF-8 sin
+BOM**, con LF entre términos y un LF final porque el fallback garantiza al menos uno. En POSIX el
+productor emite cada término con `printf '%s\n'`. En PowerShell, el preámbulo común del sub-paso se
+ejecuta en la sede del productor, antes del primer uso del encoding, y el bloque de comandos posterior
+reutiliza esa misma instancia:
+
+```powershell
+$Utf8NoBom = [Text.UTF8Encoding]::new($false)
+$ContenidoTerminos = ($TerminosEmitidos -join "`n") + "`n"
+[IO.File]::WriteAllText($TERMINOS, $ContenidoTerminos, $Utf8NoBom)
+```
+
+La escritura es parte del contrato: una
+lectura `-Encoding utf8` no puede depender del default de `Out-File`, `Set-Content` ni `>` en Windows
+PowerShell 5.1. No es una preferencia de estilo: pasarlos por una variable de shell fallaba de
+**tres** formas a la vez, y las tres desaparecen con el archivo.
 
 | Lo que fallaba con una variable | Por qué |
 |---|---|
@@ -6359,6 +6386,48 @@ declara en la salida, como cualquier otra.
 **Ninguno de estos comandos muta el working tree.** La única mutación admitida en todo el sub-paso es
 la de **refs locales** que produce `sync-refs`, y está declarada.
 
+**La fuente `refs` construye primero un inventario congelado y clasificado, y solo después ejecuta
+las señales causales sobre él.** Una sola llamada a `for-each-ref` materializa, por fila, **los diez
+campos de la foto**: el refname completo, el `nombre_corto` que calcula Git, `symref`, OID y tipo
+**directos**, OID y tipo **pelados**, OID y tipo **efectivos**, y la `clase`. La misma foto clasifica
+cada fila como `elegible`, `excluida-remote-head-simbolica` o `excluida-namespace:<raíz>`, sin volver
+a enumerar para obtener el nombre corto, los pelados ni para contar las excluidas: `refs-inventario`
+escribe la foto entera una sola vez, y toda proyección o conteo posterior —`fp-refs`,
+`fp-inventario-refs`, `refs-nombres`, `refs-contenido`, `refs-historial`, `refs-rutas`— **lee** de esa
+misma foto en vez de recalcular columnas. La población elegible es `refs/heads/**`, `refs/tags/**` y
+`refs/remotes/**`, excepto el puntero simbólico remoto `HEAD`; cualquier otro namespace —por ejemplo
+`refs/backup/**`— queda excluido y solo se cuenta por clase, nunca se inspecciona. El **OID efectivo**
+y el tipo efectivo son el pelado cuando el objeto directo es un tag anotado, y el directo en cualquier
+otro caso; la proyección exacta `refname<TAB>OID-efectivo<TAB>tipo-efectivo<LF>` de las filas
+`elegible` es la única que alimenta `fp-refs`.
+
+**El productor de `refs` tiene cuatro señales, no tres, y ninguna sustituye a otra: nominal, snapshot,
+historia exclusiva y ruta condicional.** `refs-nombres` es la señal nominal: se evalúa siempre, para
+cada `(ref elegible, término)`, comparando el `nombre_corto` de la fila contra ese término —también
+cuando no coincide—, nunca contra el refname completo, y **no gobierna** qué contenido se abre —solo
+aporta compatibilidad con el productor anterior—. `refs-contenido` es el snapshot y `refs-historial` es
+la historia exclusiva: las dos son **exhaustivas** sobre toda fila elegible aplicable, sin condición
+previa. `refs-rutas` es la cuarta señal y la única **condicional**: solo corre después de que
+`refs-nombres`, `refs-contenido` o `refs-historial` ya volvieron candidata a la ref. `refs-contenido`,
+`refs-historial` y `refs-rutas` se invocan con el `"$OID_EFECTIVO"` de cada fila elegible, nunca con
+`<ref>` por nombre ni con el resultado de `refs-nombres`. `refs-contenido` se **deduplica físicamente**
+por el par único
+`(OID efectivo, término)`: se ejecuta una vez por cada par, con un archivo temporal **de una sola
+línea** que lleva ese único término y viaja por `-f`, y esa sola ejecución alimenta después a cada
+ref lógica que comparte el OID sin que la propagación cuente como una segunda ejecución física —
+`invocaciones_snapshot_fisicas` mide las ejecuciones, no las refs propagadas. `refs-historial` no se deduplica por OID: corre una vez por término no vacío y **por cada ref
+elegible de tipo commit**, sobre el rango exclusivo `$CONTEXT_HEAD..$OID_EFECTIVO` de esa fila. El
+costo asintótico ya distingue las dos poblaciones —`OIDs únicos` para el snapshot, `refs commit` para
+la historia—, así que esta invocación se mide por ref y no se optimiza deduplicando por OID.
+
+> **Ni cuota, muestreo ni lote son causa técnica.** El recorrido causal cubre toda fila elegible del
+> inventario sin recortes internos: no hay salida temprana por tamaño de población, y una cuota,
+> muestreo, lote o timeout elegido por la propia implementación no acredita una unidad como no
+> comprobada por causa técnica. Un timeout solo es causa técnica admisible cuando proviene de una
+> cota externa de plataforma o transporte, o de un límite humano explícito, y se registra junto con
+> su valor y su origen del timeout. Error de lectura, objeto no resoluble y cualquier código de
+> salida distinto de 0 o 1 también dejan la invocación no comprobada, con su causa y su diagnóstico.
+
 ```sh
 # POSIX: sync-refs
 git -C "$CONTEXT_ROOT" fetch --quiet <remoto>
@@ -6366,12 +6435,69 @@ git -C "$CONTEXT_ROOT" fetch --quiet <remoto>
 git -C "$CONTEXT_ROOT" ls-tree -r --name-only "$CONTEXT_HEAD" | grep -F -f "$TERMINOS"
 # POSIX: head-contenido
 git -C "$CONTEXT_ROOT" grep -I -n --fixed-strings -f "$TERMINOS" "$CONTEXT_HEAD" -- .
+# POSIX: refs-inventario
+git -C "$CONTEXT_ROOT" for-each-ref \
+  --format='%(refname)%09%(refname:short)%09%(symref)%09%(objectname)%09%(objecttype)%09%(*objectname)%09%(*objecttype)' \
+  > "$TMP_INVENTARIO_REFS_CRUDO"
+refs_code=$?
+if [ "$refs_code" -ne 0 ]; then
+  printf 'no-comprobada\tfor-each-ref\t%s\n' "$refs_code" >&2
+else
+  awk -F'\t' '{
+    refname=$1; corto=$2; symref=$3; oid=$4; otype=$5; poid=$6; potype=$7
+    if (refname ~ /^refs\/remotes\/[^\/]+\/HEAD$/ && symref != "") { clase="excluida-remote-head-simbolica" }
+    else if (refname ~ /^refs\/(heads|tags|remotes)\//) { clase="elegible" }
+    else { n=split(refname,partes,"/"); clase="excluida-namespace:" partes[1] "/" partes[2] }
+    eff_oid = (potype != "") ? poid : oid
+    eff_type = (potype != "") ? potype : otype
+    print refname "\t" corto "\t" symref "\t" oid "\t" otype "\t" poid "\t" potype "\t" eff_oid "\t" eff_type "\t" clase
+  }' "$TMP_INVENTARIO_REFS_CRUDO" > "$INVENTARIO_REFS"
+fi
 # POSIX: refs-nombres
-git -C "$CONTEXT_ROOT" for-each-ref --format='%(refname:short) %(objectname)' | grep -F -f "$TERMINOS"
+while IFS= read -r t; do
+  [ -n "$t" ] || continue
+  awk -F'\t' -v termino="$t" '
+    $10 == "elegible" {
+      resultado = (index($2, termino) > 0) ? "hit" : "sin-coincidencia"
+      print $1 "\t" termino "\t" resultado
+    }
+  ' "$INVENTARIO_REFS"
+done < "$TERMINOS"
 # POSIX: refs-contenido
-git -C "$CONTEXT_ROOT" grep -I -n --fixed-strings -f "$TERMINOS" <ref> -- .
+while IFS= read -r t; do
+  [ -n "$t" ] || continue
+  printf '%s\n' "$t" > "$TMP_TERMINO_UNO"
+  git -C "$CONTEXT_ROOT" grep -I -n --fixed-strings -f "$TMP_TERMINO_UNO" "$OID_EFECTIVO" -- .
+  grep_code=$?
+  if [ "$grep_code" -ne 0 ] && [ "$grep_code" -ne 1 ]; then
+    printf 'no-comprobada\tgit-grep\t%s\n' "$grep_code" >&2
+  fi
+done < "$TERMINOS"
+# POSIX: refs-historial
+while IFS= read -r t; do
+  [ -n "$t" ] || continue
+  git -C "$CONTEXT_ROOT" log --oneline -S "$t" "$CONTEXT_HEAD..$OID_EFECTIVO"
+  log_code=$?
+  if [ "$log_code" -ne 0 ]; then
+    printf 'no-comprobada\tgit-log\t%s\n' "$log_code" >&2
+  fi
+done < "$TERMINOS"
 # POSIX: refs-rutas
-git -C "$CONTEXT_ROOT" ls-tree -r --name-only <ref> | grep -F -f "$TERMINOS"
+git -C "$CONTEXT_ROOT" ls-tree -r --name-only "$OID_EFECTIVO" > "$TMP_RUTAS_REF"
+ls_code=$?
+if [ "$ls_code" -ne 0 ]; then
+  printf 'no-comprobada\tls-tree\t%s\n' "$ls_code" >&2
+else
+  while IFS= read -r t; do
+    [ -n "$t" ] || continue
+    printf '%s\n' "$t" > "$TMP_TERMINO_UNO"
+    grep -F -f "$TMP_TERMINO_UNO" "$TMP_RUTAS_REF"
+    filter_code=$?
+    if [ "$filter_code" -ne 0 ] && [ "$filter_code" -ne 1 ]; then
+      printf 'no-comprobada\tgrep-rutas\t%s\n' "$filter_code" >&2
+    fi
+  done < "$TERMINOS"
+fi
 # POSIX: log-mensajes
 set -- --all --oneline --fixed-strings
 while IFS= read -r t; do [ -n "$t" ] && set -- "$@" --grep="$t"; done < "$TERMINOS"
@@ -6402,7 +6528,21 @@ grep -rIl -F -f "$TERMINOS" -- <vault>/projects/<repo>/
 # POSIX: fp-head
 git -C "$CONTEXT_ROOT" rev-parse HEAD
 # POSIX: fp-refs
-git -C "$CONTEXT_ROOT" for-each-ref --format='%(refname) %(objectname)' | git hash-object --stdin
+awk -F'\t' '$10 == "elegible" { print $1 "\t" $8 "\t" $9 }' "$INVENTARIO_REFS" > "$TMP_PROYECCION_REFS"
+LC_ALL=C sort -o "$TMP_PROYECCION_REFS" "$TMP_PROYECCION_REFS"
+git hash-object "$TMP_PROYECCION_REFS"
+# POSIX: fp-historial
+git -C "$CONTEXT_ROOT" rev-list --all > "$TMP_COMMITS_CRUDOS"
+rev_list_code=$?
+if [ "$rev_list_code" -ne 0 ]; then
+  printf 'no-comprobada\trev-list\t%s\n' "$rev_list_code" >&2
+else
+  LC_ALL=C sort -u "$TMP_COMMITS_CRUDOS" > "$TMP_COMMITS_UNICOS"
+  git hash-object "$TMP_COMMITS_UNICOS"
+fi
+# POSIX: fp-inventario-refs
+awk -F'\t' '$10 != "elegible" { c[$10]++ } END { for (k in c) print k "\t" c[k] }' "$INVENTARIO_REFS" | LC_ALL=C sort > "$TMP_INVENTARIO_EXCLUIDO"
+git hash-object "$TMP_INVENTARIO_EXCLUIDO"
 # POSIX: fp-flujos
 active_flow_roots | while IFS= read -r scan; do find "$scan" -type f -print; done | git hash-object --stdin-paths | LC_ALL=C sort | git hash-object --stdin
 # POSIX: fp-archivados
@@ -6417,23 +6557,77 @@ git hash-object "$TERMINOS"
 # PowerShell: sync-refs
 git -C $ContextRoot fetch --quiet <remoto>
 # PowerShell: head-rutas
-git -C $ContextRoot ls-tree -r --name-only $ContextHead | Select-String -SimpleMatch -Pattern (Get-Content $TERMINOS)
+git -C $ContextRoot ls-tree -r --name-only $ContextHead | Select-String -SimpleMatch -Pattern (Get-Content -Encoding utf8 $TERMINOS)
 # PowerShell: head-contenido
 git -C $ContextRoot grep -I -n --fixed-strings -f $TERMINOS $ContextHead -- .
+# PowerShell: refs-inventario
+$Rows = @(git -C $ContextRoot for-each-ref `
+  --format='%(refname)%09%(refname:short)%09%(symref)%09%(objectname)%09%(objecttype)%09%(*objectname)%09%(*objecttype)'
+)
+$RefsCode = $LASTEXITCODE
+if ($RefsCode -ne 0) {
+  [Console]::Error.WriteLine("no-comprobada`tfor-each-ref`t$RefsCode")
+} else {
+  $Clasificadas = @(foreach ($Row in $Rows) {
+    $F = $Row -split "`t"
+    $RefName = $F[0]; $Corto = $F[1]; $SymRef = $F[2]; $Oid = $F[3]; $OType = $F[4]; $POid = $F[5]; $PType = $F[6]
+    if ($RefName -match '^refs/remotes/[^/]+/HEAD$' -and $SymRef) { $Clase = 'excluida-remote-head-simbolica' }
+    elseif ($RefName -match '^refs/(heads|tags|remotes)/') { $Clase = 'elegible' }
+    else { $Partes = $RefName -split '/'; $Clase = "excluida-namespace:$($Partes[0])/$($Partes[1])" }
+    $EffOid = if ($PType) { $POid } else { $Oid }
+    $EffType = if ($PType) { $PType } else { $OType }
+    "$RefName`t$Corto`t$SymRef`t$Oid`t$OType`t$POid`t$PType`t$EffOid`t$EffType`t$Clase"
+  })
+  $Contenido = if ($Clasificadas.Count -gt 0) { ($Clasificadas -join "`n") + "`n" } else { '' }
+  [IO.File]::WriteAllText($INVENTARIO_REFS, $Contenido, $Utf8NoBom)
+}
 # PowerShell: refs-nombres
-git -C $ContextRoot for-each-ref --format='%(refname:short) %(objectname)' | Select-String -SimpleMatch -Pattern (Get-Content $TERMINOS)
+$TerminosList = @(Get-Content -Encoding utf8 $TERMINOS | Where-Object { $_ -ne '' })
+$InventarioLineas = @(Get-Content -Encoding utf8 $INVENTARIO_REFS)
+foreach ($T in $TerminosList) {
+  foreach ($Linea in $InventarioLineas) {
+    $F = $Linea -split "`t"
+    if ($F[9] -ne 'elegible') { continue }
+    $Resultado = if ($F[1].Contains($T)) { 'hit' } else { 'sin-coincidencia' }
+    "$($F[0])`t$T`t$Resultado"
+  }
+}
 # PowerShell: refs-contenido
-git -C $ContextRoot grep -I -n --fixed-strings -f $TERMINOS <ref> -- .
+Get-Content -Encoding utf8 $TERMINOS | Where-Object { $_ -ne '' } | ForEach-Object {
+  [IO.File]::WriteAllText($TMP_TERMINO_UNO, ($_ + "`n"), $Utf8NoBom)
+  git -C $ContextRoot grep -I -n --fixed-strings -f $TMP_TERMINO_UNO $OID_EFECTIVO -- .
+  $GrepCode = $LASTEXITCODE
+  if ($GrepCode -ne 0 -and $GrepCode -ne 1) {
+    [Console]::Error.WriteLine("no-comprobada`tgit-grep`t$GrepCode")
+  }
+}
+# PowerShell: refs-historial
+Get-Content -Encoding utf8 $TERMINOS | Where-Object { $_ -ne '' } | ForEach-Object {
+  git -C $ContextRoot log --oneline -S $_ "$ContextHead..$OID_EFECTIVO"
+  $LogCode = $LASTEXITCODE
+  if ($LogCode -ne 0) { [Console]::Error.WriteLine("no-comprobada`tgit-log`t$LogCode") }
+}
 # PowerShell: refs-rutas
-git -C $ContextRoot ls-tree -r --name-only <ref> | Select-String -SimpleMatch -Pattern (Get-Content $TERMINOS)
+$RutasRef = git -C $ContextRoot ls-tree -r --name-only $OID_EFECTIVO
+$LsCode = $LASTEXITCODE
+if ($LsCode -ne 0) {
+  Write-Error "no-comprobada`tls-tree`t$LsCode"
+} else {
+  Get-Content -Encoding utf8 $TERMINOS | Where-Object { $_ -ne '' } | ForEach-Object {
+    [IO.File]::WriteAllText($TMP_TERMINO_UNO, ($_ + "`n"), $Utf8NoBom)
+    $CoincidenciasRuta = @($RutasRef | Select-String -SimpleMatch -Pattern (Get-Content -Encoding utf8 $TMP_TERMINO_UNO))
+    $CodigoRutas = if ($CoincidenciasRuta.Count -gt 0) { 0 } else { 1 }
+    $CoincidenciasRuta
+  }
+}
 # PowerShell: log-mensajes
 $gl = @('--all','--oneline','--fixed-strings')
-Get-Content $TERMINOS | Where-Object { $_ -ne '' } | ForEach-Object { $gl += "--grep=$_" }
+Get-Content -Encoding utf8 $TERMINOS | Where-Object { $_ -ne '' } | ForEach-Object { $gl += "--grep=$_" }
 git -C $ContextRoot log @gl
 # PowerShell: log-contenido
 git -C $ContextRoot log --all --oneline -S $T1
 # PowerShell: archivados
-Get-ChildItem -Force -Recurse -File (Join-Path $ContextRoot '.plans/archived') | Select-String -SimpleMatch -List -Pattern (Get-Content $TERMINOS)
+Get-ChildItem -Force -Recurse -File (Join-Path $ContextRoot '.plans/archived') | Select-String -SimpleMatch -List -Pattern (Get-Content -Encoding utf8 $TERMINOS)
 # PowerShell: resolver las raíces que comparten flujos-activos y fp-flujos
 function Get-ActiveFlowRoots {
   foreach ($Flow in Get-ChildItem -LiteralPath (Join-Path $ContextRoot '.plans') -Force) {
@@ -6459,14 +6653,42 @@ function Get-ActiveFlowRoots {
 Get-ActiveFlowRoots | ForEach-Object {
   $Scan = $_
   Get-ChildItem -LiteralPath $Scan -Force -Recurse -File |
-    Select-String -SimpleMatch -List -Pattern (Get-Content -LiteralPath $TERMINOS)
+    Select-String -SimpleMatch -List -Pattern (Get-Content -LiteralPath $TERMINOS -Encoding utf8)
 }
 # PowerShell: vault
-Get-ChildItem -Force -Recurse -File <vault>/projects/<repo>/ | Select-String -SimpleMatch -List -Pattern (Get-Content $TERMINOS)
+Get-ChildItem -Force -Recurse -File <vault>/projects/<repo>/ | Select-String -SimpleMatch -List -Pattern (Get-Content -Encoding utf8 $TERMINOS)
 # PowerShell: fp-head
 git -C $ContextRoot rev-parse HEAD
 # PowerShell: fp-refs
-git -C $ContextRoot for-each-ref --format='%(refname) %(objectname)' | git hash-object --stdin
+$h = [string[]]@(Get-Content -Encoding utf8 $INVENTARIO_REFS | Where-Object { ($_ -split "`t")[9] -eq 'elegible' } |
+  ForEach-Object { $F = $_ -split "`t"; "$($F[0])`t$($F[7])`t$($F[8])" })
+[Array]::Sort($h, [StringComparer]::Ordinal)
+$TmpProyeccionRefs = [IO.Path]::GetTempFileName()
+$Contenido = if ($h.Count -gt 0) { ($h -join "`n") + "`n" } else { '' }
+[IO.File]::WriteAllText($TmpProyeccionRefs, $Contenido, $Utf8NoBom)
+git hash-object $TmpProyeccionRefs
+# PowerShell: fp-historial
+$h = [string[]]@(git -C $ContextRoot rev-list --all)
+$RevListCode = $LASTEXITCODE
+if ($RevListCode -ne 0) {
+  [Console]::Error.WriteLine("no-comprobada`trev-list`t$RevListCode")
+} else {
+  [Array]::Sort($h, [StringComparer]::Ordinal)
+  $h = @($h | Get-Unique)
+  $TmpCommitsUnicos = [IO.Path]::GetTempFileName()
+  $Contenido = if ($h.Count -gt 0) { ($h -join "`n") + "`n" } else { '' }
+  [IO.File]::WriteAllText($TmpCommitsUnicos, $Contenido, $Utf8NoBom)
+  git hash-object $TmpCommitsUnicos
+}
+# PowerShell: fp-inventario-refs
+$Conteos = Get-Content -Encoding utf8 $INVENTARIO_REFS | Where-Object { ($_ -split "`t")[9] -ne 'elegible' } |
+  ForEach-Object { ($_ -split "`t")[9] } | Group-Object -CaseSensitive | ForEach-Object { "$($_.Name)`t$($_.Count)" }
+$h = [string[]]@($Conteos)
+[Array]::Sort($h, [StringComparer]::Ordinal)
+$TmpInventarioExcluido = [IO.Path]::GetTempFileName()
+$Contenido = if ($h.Count -gt 0) { ($h -join "`n") + "`n" } else { '' }
+[IO.File]::WriteAllText($TmpInventarioExcluido, $Contenido, $Utf8NoBom)
+git hash-object $TmpInventarioExcluido
 # PowerShell: fp-flujos
 $h = [string[]]@(Get-ActiveFlowRoots | ForEach-Object {
   Get-ChildItem -LiteralPath $_ -Force -Recurse -File | ForEach-Object { $_.FullName }
@@ -6485,6 +6707,34 @@ git hash-object $TERMINOS
 `$ID_ACTUAL` es el `<id>` del flujo en curso: `flujos-activos` **lo excluye**, porque su propio
 artefacto contiene el objetivo palabra por palabra y sin la exclusión toda búsqueda se encuentra a sí
 misma como antecedente.
+
+> **`$INVENTARIO_REFS`, `$TMP_INVENTARIO_REFS_CRUDO`, `$TMP_TERMINO_UNO`, `$TMP_RUTAS_REF`,
+> `$TMP_COMMITS_CRUDOS` en POSIX y los demás temporales de `refs` son archivos efímeros, no rutas del
+> corpus.** Se crean con `mktemp` en POSIX y `[IO.Path]::GetTempFileName()` en
+> PowerShell, **fuera del worktree**, y se limpian con `trap`/`finally` al terminar la corrida, corra
+> bien o mal. `$TMP_TERMINO_UNO` se **reescribe** en cada vuelta de los bucles de `refs-contenido` y
+> `refs-rutas`, siempre con una sola línea: el término que le toca a esa ejecución física.
+> `$TMP_RUTAS_REF` captura la salida de `ls-tree` **antes** de filtrar por término, para que su código
+> de salida se compruebe aparte del de `grep`/`Select-String` — ver la tabla de semántica por ID más
+> abajo. La regla "las rutas nunca viajan como argumento" y el hashing por `git hash-object --stdin`
+> —abiertas más abajo— hablan de rutas del corpus enumeradas por la implementación; estos tres streams
+> generados (`fp-refs`, `fp-historial`, `fp-inventario-refs`) son la excepción declarada: se digieren
+> con `git hash-object <archivo-temporal>` porque son un único archivo ya materializado, no una lista
+> de rutas que deba pasar por `--stdin-paths`.
+>
+> **Paridad de bytes: LF sin BOM, orden ordinal, y el mismo stream vacío en las dos shells.** El archivo
+> de términos y todo temporal de `refs` —`$INVENTARIO_REFS` incluido— se escribe y se lee con **UTF-8 sin BOM
+> declarado explícitamente**, nunca con `Set-Content -Encoding ascii` ni con el overload sin encoding
+> de `Get-Content`/`[IO.File]::WriteAllText`: ASCII trunca cualquier `nombre_corto` con un carácter no
+> ASCII, y el encoding por defecto de `Get-Content` puede variar entre Windows PowerShell 5.1 y
+> PowerShell 7. La receta fija `$Utf8NoBom = [Text.UTF8Encoding]::new($false)` una vez en el
+> **preámbulo común PowerShell del sub-paso**, antes de que el productor escriba `$TERMINOS`, y la
+> reutiliza en cada `[IO.File]::WriteAllText(...)` posterior de la fuente `refs`; toda lectura usa
+> `Get-Content -Encoding utf8`. El LF final se emite **solo si hay al menos
+> una fila**: `awk`/`print` en POSIX no agrega una línea vacía cuando la entrada está vacía, y la
+> variante PowerShell arma el contenido como `($filas -join "`n") + "`n"` únicamente cuando
+> `$filas.Count -gt 0`, o como cadena vacía si no — sin esa condición, un `+ "`n"` incondicional deja
+> un archivo de un byte donde POSIX deja cero, y los dos digests dejan de coincidir en el caso vacío.
 
 > **Las opciones van antes de `--`, y esto no es estilo.** `--` termina el parseo de opciones, así que
 > un `--exclude-dir` escrito **después** se lee como una **ruta**: `grep` avisa `No such file or
@@ -6543,6 +6793,12 @@ misma como antecedente.
 > Con `--stdin-paths` las dos desaparecen, y de paso se hashea todo el subárbol en **un** proceso en
 > vez de uno por archivo. Verificado: sobre ese corpus, POSIX y PowerShell dan el mismo digest, y
 > sobre los 75 archivos de un `.plans/` real el par también coincide.
+>
+> Esta regla es sobre **rutas del corpus** que la implementación enumera —archivos de `.plans/`, del
+> vault, del árbol versionado—. No alcanza a `$INVENTARIO_REFS` ni a los streams temporales de
+> `fp-refs`, `fp-historial` y `fp-inventario-refs`: esos son archivos generados por la propia receta,
+> ya materializados en un único temporal, y se digieren con `git hash-object <archivo-temporal>`
+> según la nota anterior sobre temporales.
 
 > **El `@()` de la variante PowerShell no es decorativo, y el conjunto vacío es el caso normal.**
 > `.plans/archived/` recién creado está vacío, y `fp-flujos` excluye el flujo en curso, así que un
@@ -6568,10 +6824,80 @@ antes de usarlo y un vacío se descarta.
 `shasum` no existe en Windows, y `Get-FileHash` **no hashea una cadena**: desde un pipeline interpreta
 cada línea como una **ruta de archivo** y falla con `Cannot find path` — medido, no supuesto.
 `git hash-object` ya está presente por definición en las dos plataformas y lee de stdin en ambas, así
-que el par queda idéntico en vez de ser dos comandos distintos que parecen equivalentes.
+que el par queda idéntico en vez de ser dos comandos distintos que parecen equivalentes. Esta regla
+rige `fp-head`, `fp-terminos` y los digests que se calculan directamente sobre una cadena o el
+contenido de un archivo estable como `$TERMINOS`; no contradice que `fp-refs`, `fp-historial` y
+`fp-inventario-refs` se hasheen con `git hash-object <archivo-temporal>`, porque ese archivo temporal
+es la materialización de un stream generado, no una cadena que quepa pasar por stdin sin escribirla
+antes a disco.
 
 `log-contenido` se corre **una vez por término**: `-S` toma una sola cadena por invocación, y
-acumularlas en un `--grep` no es lo mismo — ese busca en el mensaje, no en el diff.
+acumularlas en un `--grep` no es lo mismo — ese busca en el mensaje, no en el diff. `refs-historial`
+aplica la misma regla por cada término, sobre cada referencia elegible de tipo commit.
+
+### El resultado por invocación
+
+Cada ejecución física de `refs-nombres`, `refs-contenido`, `refs-historial` o `refs-rutas` produce
+primero un registro con esta forma exacta; solo después de adjudicar cobertura se puede aplicar la
+agregación acotada que sigue:
+
+`{id, refname, oid_efectivo, tipo_efectivo, termino, eje, codigo, resultado, ruta, causa?, diagnostico?, timeout_valor?, timeout_origen?}`
+
+Las invocaciones con `resultado: no-comprobada` y toda invocación que sostenga un candidato se
+conservan **individuales y completas**. Solo las `sin-coincidencia` ya adjudicadas admiten abreviación,
+y únicamente después de calcular la cobertura: una fila
+`{agregada: true, eje, tipo_efectivo, termino, codigo, resultado: sin-coincidencia, condicion_aplicabilidad, ejecuciones_fisicas, refs_logicas}`
+reemplaza registros de la misma clave y conserva ambos conteos. La agregación nunca acredita una ref,
+oculta un fallo ni sustituye `unidades_logicas`; por eso una implementación reconstruye `completas` y
+`no_comprobadas` **antes** de abreviar y no desde las filas agregadas.
+
+- `id` — identificador único de la **ejecución física**; la propagación por OID compartido lo reutiliza
+  desde varias refs lógicas sin fingir ejecuciones adicionales.
+- `refname` — la ref lógica que consume este resultado; puede repetirse entre registros que apuntan al
+  mismo `id` cuando el OID es compartido.
+- `oid_efectivo`, `tipo_efectivo` — los de la fila del inventario que originó la ejecución.
+- `termino` — el término único de esa invocación lógica, conservando el **orden del archivo de
+  términos**; `refs-nombres` y `refs-rutas` registran ese mismo término contra el que se comparó, sea
+  o no el que produjo la coincidencia, nunca la lista completa de una sola vez.
+- `eje` — `nombre` · `contenido` · `contenido-introducido` · `ruta`, correspondiente a los cuatro ejes.
+- `codigo` — el código de esa invocación, **cuya semántica depende del ID** y no de una regla única;
+  ver la tabla siguiente.
+- `resultado` — `hit` · `sin-coincidencia` · `no-comprobada`.
+- `ruta` — la ruta donde ocurrió la coincidencia, solo cuando `eje: ruta` o `eje: contenido` sobre
+  `commit`/`tree`. **`ruta: null`** en cualquier otro caso: para `blob` —`refs-rutas` no aplica sobre
+  un blob, y `refs-contenido` sobre un blob no tiene ruta que ofrecer dentro del árbol—, para
+  `eje: nombre` —`refs-nombres` compara `nombre_corto`, que no es una ruta— y para
+  `eje: contenido-introducido` —`refs-historial` no inventa una ruta: `git log -S` señala commits, no
+  posiciones dentro del árbol—.
+- `causa?`, `diagnostico?` — presentes solo cuando `resultado: no-comprobada`: la causa técnica —nunca
+  una cuota, muestreo o lote elegido por la implementación— y su diagnóstico concreto.
+- `timeout_valor?`, `timeout_origen?` — presentes solo cuando la causa es un timeout, con su valor y su
+  origen del timeout —cota externa de plataforma/transporte o límite humano explícito—.
+
+**La semántica de `codigo` es exacta por ID, no una regla universal.** Cada comando tiene su propio
+mecanismo y su propia correspondencia entre código de proceso y `resultado`:
+
+| ID | Mecanismo | `resultado` según código | Qué deja `no-comprobada` |
+|---|---|---|---|
+| `refs-nombres` | comparación fija en memoria de `(nombre_corto, término)`, sin proceso externo: el `codigo` es **lógico**, asignado por la propia receta | `hit` si `index(nombre_corto, término) > 0` —el código lógico es 0—; `sin-coincidencia` si no —código lógico 1— | no aplica: no hay proceso que pueda fallar |
+| `refs-contenido` | `git grep -f <temporal-de-un-término>` sobre `$OID_EFECTIVO` | 0 → `hit`; 1 → `sin-coincidencia` | cualquier código distinto de 0/1 —objeto no resoluble, error de lectura, timeout externo— |
+| `refs-historial` | `git log -S <término> $CONTEXT_HEAD..$OID_EFECTIVO`; el código de `git log` **no distingue** hallazgo de ausencia: los dos casos normales salen con 0 | 0 **y** stdout no vacío → `hit`; 0 **y** stdout vacío → `sin-coincidencia` | cualquier código distinto de 0 |
+| `refs-rutas` | `ls-tree` capturado en `$TMP_RUTAS_REF` **antes** de filtrar, y luego `grep -F -f <temporal-de-un-término>` / `Select-String` sobre esa captura | POSIX: código de `grep`, 0 → `hit`, 1 → `sin-coincidencia`; PowerShell: código lógico 0/1 según `Select-String` devuelva o no coincidencias, porque el cmdlet no fija `$LASTEXITCODE` | el código de `ls-tree` capturado aparte —nunca enmascarado por el filtro—; en POSIX, cualquier código de `grep` distinto de 0/1; en PowerShell, un error terminante del cmdlet, registrado como causa y no como código nativo |
+
+**Los parsers son por tipo efectivo.** `commit` y `tree` habilitan `refs-rutas`; `blob` no, y su
+`refs-contenido` emite `ruta: null` en vez de intentar listar un árbol que no tiene. `refs-historial`
+solo aplica a `tipo_efectivo: commit`; sobre `tree` o `blob` esa invocación no es aplicable y no se
+cuenta como pendiente.
+
+**Las invocaciones aplicables de una ref dependen de su tipo efectivo, y `refs-nombres` es siempre
+una de ellas.** Para `commit`: `refs-nombres` por cada término —**evaluada siempre, también cuando no
+hay coincidencia**: no puede declararse aplicable solo después de conocer un hit—, `refs-contenido`
+por cada término, `refs-historial` por cada término, y `refs-rutas` solo si alguna señal previa
+—nominal, snapshot o historia— ya volvió candidata a la ref. Para `tree` y `blob`: `refs-nombres` y
+`refs-contenido` por cada término, `refs-rutas` bajo la misma condición, y ninguna invocación de
+`refs-historial`, porque no aplica. **Una ref es completa solo si terminaron todas sus invocaciones
+aplicables** —ni una más, porque `refs-historial` no es aplicable a `tree`/`blob`, ni una menos, porque
+omitir una invocación aplicable sin marcarla dejaría la ref completa con una causa sin declarar—.
 
 ### Remotos, `fetch` y fingerprints
 
@@ -6580,9 +6906,9 @@ acumularlas en un `--grep` no es lo mismo — ese busca en el mensaje, no en el 
 
 | Rama | Cuándo | Qué queda declarado |
 |---|---|---|
-| **(a) no se intenta** | sin remoto configurado, **o en un entorno que prohíbe mutaciones** —Plan Mode, modo solo-lectura— | las refs remotas quedan **`no comprobadas`** con esa razón |
+| **(a) no se intenta** | sin remoto configurado, **o en un entorno que prohíbe mutaciones** —Plan Mode, modo solo-lectura— | la **frescura remota** queda **`no comprobada`** con esa razón |
 | **(b) se intenta** | hay remoto **y** el entorno admite mutación | se actualiza y se sigue |
-| **(c) el intento falla** | se intentó y no se pudo —remoto inalcanzable, credenciales, red— | **`no comprobadas`** con el **error concreto** |
+| **(c) el intento falla** | se intentó y no se pudo —remoto inalcanzable, credenciales, red— | la **frescura remota** queda **`no comprobada`** con el **error concreto** |
 
 **(a) y (c) no se agrupan.** Un fallo solo se conoce **después** de intentar, así que meterlo en "no
 se intenta" describe un estado imposible; y al revés, declarar un error de red donde nunca se salió a
@@ -6595,35 +6921,53 @@ La rama (a) cubre expresamente los **modos de solo lectura**, donde `gather-cont
 justamente por ser read-only: intentar mutar refs ahí rompería esa garantía, así que la búsqueda
 sigue con lo que tiene y lo dice.
 
+**Frescura remota e inspección local de `refs` son dos cosas distintas, y (a)/(c) solo tocan la
+primera.** Una frescura remota no comprobada **cualifica** `impacto_en_alcance`, pero **no degrada por
+sí sola** la cobertura de las refs remotas locales elegibles cuyo OID sí resuelve: esas siguen
+inspeccionándose por sus señales causales igual que cualquier otra fila elegible del inventario, y
+entran a `cobertura_refs` con su resultado propio. Lo que queda sin comprobar es si esa foto local es
+la más reciente que existe en el remoto, no si la foto local se recorrió.
+
 **Se actualiza un solo remoto:** `origin` si existe; si no hay `origin`, el **primero por orden
-alfabético**. Actualizarlos todos multiplicaría el costo de un paso que tiene que ser barato. **Cuál
-se usó se declara en la salida**, siempre — con un solo remoto también, porque "no había remoto" y
-"había uno y no lo nombré" no pueden quedar indistinguibles.
+alfabético**. Actualizarlos todos multiplicaría el costo de un paso que tiene que ser barato:
+`sync-refs`, no el recorrido causal completo de `refs`, cuyo costo es lineal en refs por términos y no
+se abarata saltando remotos. **Cuál se usó se declara en la salida**, siempre — con un solo remoto
+también, porque "no había remoto" y "había uno y no lo nombré" no pueden quedar indistinguibles.
 
 **El `fetch` no se revierte.** Muta refs locales, eso se acepta y se declara; deshacerlo dejaría el
 repositorio en un estado que nadie pidió. Y **los fingerprints se capturan después del `fetch`**,
 nunca antes: tomados antes, el propio `fetch` los invalida y el retomado siguiente re-corre de más.
 
-### Degradación: los tres estados por fuente
+### Degradación: los cuatro estados por fuente
 
 | Estado | Cuándo | Qué significa |
 |---|---|---|
-| `examinada` | el comando **completó** y su salida está entera | la fuente se recorrió |
-| `no comprobada` | timeout, salida truncada, error de permisos, remoto inalcanzable, herramienta ausente | la fuente **no** se recorrió, y va con su **razón** |
+| `examinada` | el comando **completó** y su salida está entera; para `refs`, todas las refs elegibles quedaron completas | la fuente se recorrió entera |
+| `examinada parcialmente` | solo `refs`, mediante `cobertura_refs`: al menos una ref elegible completó todas sus invocaciones y al menos una conserva invocaciones no comprobadas | la fuente se recorrió sobre una parte de su población elegible, con el denominador declarado |
+| `no comprobada` | timeout, salida truncada, error de permisos, remoto inalcanzable, herramienta ausente; para `refs`, ninguna ref elegible completó y la población no es vacía | la fuente **no** se recorrió, y va con su **razón** |
 | `no aplicable por política` | solo el **vault**, y solo cuando no hay ninguno que consultar | no existe la fuente |
 
 Un timeout o una salida truncada **no es una fuente examinada**: es `no comprobada`. Confundirlas es
 lo que convierte "no busqué ahí" en "busqué y no había nada", que es el error que este paso existe
-para evitar.
+para evitar. `examinada parcialmente` tampoco es una degradación silenciosa a `no comprobada`: exige
+población y denominador declarados, y por ahora solo `refs` los produce; las demás fuentes conservan
+los tres estados previos mientras no incorporen esa misma evidencia.
 
 **`.plans/archived/` es obligatoria y solo admite `no comprobada`.** Que el directorio no exista **no
 la vuelve examinada**: no hubo nada que consultar, así que queda `no comprobada` con esa razón. Leerla
 como "examinada, sin hallazgos" afirma que se buscó donde no se buscó, que es exactamente la confusión
-que estos tres estados existen para impedir. Y `no aplicable por política` tampoco le corresponde
+que estos cuatro estados existen para impedir. Y `no aplicable por política` tampoco le corresponde
 nunca: esa salida es solo del vault.
 
+**La población elegible de `refs` cero cuenta como `examinada` completa solo si `refs-inventario`
+terminó con código 0.** Con una enumeración exitosa y `total_elegible: 0`, la agregación no tiene
+ninguna invocación pendiente que declarar, así que la condición es completa y el denominador visible
+en cero. Si `for-each-ref` falla, no existe un denominador acreditado: la fuente queda `no comprobada`
+con su causa y no se escribe ni se interpreta un inventario vacío.
+
 Toda fuente `no comprobada` **cualifica el resultado global**: un `impacto_en_alcance: ninguno` con
-dos fuentes sin comprobar no es lo mismo que uno con las seis examinadas, y la declaración lo dice.
+dos fuentes sin comprobar no es lo mismo que uno con las seis examinadas, y la declaración lo dice. Una
+`refs` `examinada parcialmente` cualifica igual, con el conteo de refs no comprobadas a la vista.
 
 ### Resolver el vault
 
@@ -6641,10 +6985,11 @@ dos fuentes sin comprobar no es lo mismo que uno con las seis examinadas, y la d
 ### Qué queda escrito
 
 Termine como termine, el sub-paso deja en `antecedentes.md`: los **términos emitidos**, el **estado de
-cada una de las seis fuentes** con la razón de cada `no comprobada`, las **coincidencias crudas** con
-su descarte, los **candidatos** con su evidencia, el **remoto** que se usó, y el
-**impacto en el alcance** cualificado por lo que no se pudo comprobar. Una corrida sin hallazgos
-escribe lo mismo: el registro de que se buscó vale tanto como el de lo que se encontró.
+cada una de las seis fuentes** con la razón de cada `no comprobada`, la **cobertura de `refs`** en
+`cobertura_refs` cuando esa fuente corrió, las **coincidencias crudas** con su descarte, los
+**candidatos** con su evidencia, el **remoto** que se usó, y el **impacto en el alcance** cualificado
+por lo que no se pudo comprobar. Una corrida sin hallazgos escribe lo mismo: el registro de que se
+buscó vale tanto como el de lo que se encontró.
 El `handoff.md` que apunta a este archivo fija su `context_root` y `context_head`; el paquete traslada
 ambos archivos juntos para que la sesión nueva no reinterprete el catálogo desde su propio cwd.
 
@@ -6702,7 +7047,7 @@ con la evidencia que la cubre y lo que queda pendiente:
 
 | Parte del objetivo | Evidencia que la cubre | Delta |
 |---|---|---|
-| `<parte>` | `<ref o ruta>` + las tres señales | `<lo que falta, o nada>` |
+| `<parte>` | `<ref o ruta>` + cobertura, terminación y compatibilidad | `<lo que falta, o nada>` |
 
 **El residual es la resta exacta** de lo acreditado, no una estimación ni un redondeo: lo que ninguna
 fila acredita sigue entero en el alcance. Toda modulación del alcance **se anuncia** en el checkpoint
@@ -6719,15 +7064,50 @@ fuentes, y de esa vecindad sale la regla equivocada de que un cambio invalida "s
 | Fingerprint que cambió | Qué se vuelve a correr |
 |---|---|
 | `terminos` | **todas las fuentes** — cambió la pregunta, no una respuesta |
-| `refs` | las refs, el historial de commits y la **clasificación de todo candidato** |
-| `head` | el snapshot HEAD en `context_root` y la **compatibilidad de todo candidato**; al aceptar la revalidación, el nuevo OID pasa a `context_head` |
+| `refs` | el inventario, la clasificación y las cuatro señales de `refs` —nombre, snapshot, historia exclusiva y ruta condicional— sobre las filas cuyo OID efectivo cambió, más la **clasificación de todo candidato** de esa fuente. La historia exclusiva se re-corre acá porque su rango `context_head..OID` depende del OID efectivo de la fila, y ese OID es justo lo que este fingerprint mide |
+| `historial` | solo el historial de commits **global** de la fuente 3 (`git rev-list --all`); no toca la historia exclusiva por ref de `refs`, que se invalida por `refs` o por `head` |
+| `inventario-refs` | los conteos excluidos por clase genérica de `cobertura_refs`, sin volver a recorrer contenido |
+| `head` | el snapshot HEAD en `context_root`, la **compatibilidad de todo candidato** y, de forma **transaccional**, la **historia exclusiva de toda ref elegible de tipo commit**: `context_head..OID` cambia de extremo inferior aunque ningún OID efectivo se haya movido, así que recalcularla junto con `head` evita un rango a medio invalidar. Al aceptar la revalidación, el nuevo OID pasa a `context_head` |
 | `flujos_activos` | esa fuente sola |
 | `archivados` | esa fuente sola |
 | `vault` | esa fuente sola |
 
+**La población que digiere cada fingerprint es la misma que invalida, fila por fila.** `refs` digiere
+la proyección elegible de refnames y OIDs —por eso invalida el inventario, las cuatro señales y la
+historia exclusiva, que dependen todas del OID efectivo—; `historial` digiere los commits únicos
+globales de `git rev-list --all` —por eso invalida solo la fuente 3, que recorre ese mismo universo, y
+no la historia exclusiva por ref, que no comparte población con él—; `head` digiere el HEAD de
+`context_root` —por eso invalida la compatibilidad y el extremo inferior de todo rango exclusivo, que
+es literalmente ese valor—. Ninguna fila invalida más población de la que su fingerprint mide, ni
+menos.
+
 **Las seis fuentes tienen fingerprint, y ninguna queda sin quién la invalide.** Con cuatro, las
 fuentes 4 y 6 no se re-corrían nunca una vez terminadas —salvo que cambiara `terminos`, que arrastra
-a todas—, así que una pausa larga las congelaba.
+a todas—, así que una pausa larga las congelaba. `refs` e `inventario-refs` separan dentro de la
+fuente 2 la población elegible de los conteos excluidos; `historial` conserva aparte el universo
+global de la fuente 3. Así invalidar conteos excluidos no obliga a recorrer contenido, y cambiar el
+historial global tampoco vuelve elegible una ref de un namespace que la fuente 2 excluye.
+
+**Versión del procedimiento y compatibilidad legacy.** `## estado.procedimiento_refs` es la sede
+autoritativa que distingue la cobertura vigente de la anterior; `cobertura_refs` no conserva una
+copia. La versión vigente 2 implementa el recorrido causal por OID efectivo de este documento. Si
+esa clave de `## estado` falta o es menor que 2, la cobertura de la fuente `refs` es legacy.
+La cobertura legacy durante in-progress no se reutiliza: con `busqueda: in-progress`, la fuente `refs`
+vuelve a correr con la versión vigente, y lo mismo ocurre ante una reejecución explícita de esa fuente.
+Si el flujo ya salió de la búsqueda con `busqueda: complete` y no la reejecuta, el artefacto permanece
+observable como legacy: se puede leer, pero no se migra ni se reinterpreta con la semántica nueva. Para
+esta matriz, una clave historial ausente en un artefacto previo se trata como cambiada, igual que
+cualquier fingerprint que ese artefacto no registraba.
+
+**La retoma evalúa fingerprints y condiciones persistidas juntos, y reintenta una sola vez.** Si
+población y términos no cambiaron y la condición persistida es `refs: examinada parcialmente`, la
+retoma reintenta una vez las invocaciones no comprobadas de esa fuente. Si la causa externa persiste,
+la parcial cualificada es terminal para esa corrida —no un resultado completo—, queda fuera de
+`fuentes_terminadas` y habilita el checkpoint humano del paso siguiente en vez de un bucle de
+reintentos. **`busqueda: complete` puede cerrar con esa cobertura parcial ya cualificada**: el paso 6
+puede avanzar con el checkpoint resuelto por una persona sin que `refs` deje de estar
+`examinada parcialmente` ni entre a `fuentes_terminadas` — cerrar la búsqueda no convierte una fuente
+pendiente en resultado, ni acredita como cubierta ninguna unidad que quedó no comprobada.
 
 **El de los flujos mide contenido y no el listado**, porque la fuente recorre lo que hay *adentro* de
 `.plans/`. Con un digest del listado hay dos pérdidas medibles: otro flujo escribe el objetivo dentro
