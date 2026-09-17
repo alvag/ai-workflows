@@ -5,7 +5,14 @@ Detecta versiones no consecutivas, hashes rotos y cabeceras, registros, encabeza
 hashes canónicos fuera de un bloque de versión. NO detecta una fila de datos suelta sin su cabecera,
 contenido huérfano dentro de una cerca ni el punto ciego de gate-congelado.py y gate-blocked.py, que
 replican la frontera y no consumen este predicado. Campos: línea física y forma detectada; versión,
-hash declarado, recalculado y previo para la cadena."""
+hash declarado, recalculado y previo para la cadena.
+
+Fallo de ejecución, distinto del resultado: 2 ante una invocación mal formada, con
+`USO:contrato-cadena contract` en stderr, y es el único que se distingue. Un contrato inexistente,
+ilegible o no decodificable NO llega a 2: se lee como texto vacío y el modo sale 0, así que ese
+verde no acredita que el archivo exista ni que se haya leído, solo que lo leído no violó el
+predicado. Quien invoque comprueba la existencia por su cuenta; un baseline apoyado en ese 0 puede
+haberse ganado por ausencia."""
 
 from __future__ import annotations
 
