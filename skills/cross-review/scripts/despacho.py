@@ -24,33 +24,38 @@ Códigos de salida, iguales en los dos modos:
 FRONTERA DE PRUEBA — dos unidades comparten este pasaje, y no comparten su alcance.
 
 `despacho.py --preflight` — clase: veredicto. Dirección: admite-de-mas.
-    Detecta: una fila ausente o con una celda fuera de su enum; dos workers de la misma familia donde
-    el punto exige una por worker; digests previstos que no satisfacen la relación declarada; y, de
-    la cardinalidad, SOLO el valor `1`.
-    NO detecta, y las tres ausencias tienen la MISMA causa —el dato contra el que se comprobaría no
-    viaja en la composición— así que ninguna se repara con un predicado mejor:
-      · CARDINALIDAD, en los otros cinco valores del enum —`1-por-familia`, `1-por-ronda`,
-        `1-por-repo`, `1-por-hallazgo`, `n-acotado`—: el número que cada uno exige sale de las
-        familias del inventario, las rondas, los repos del reparto o los hallazgos. Medido: un
-        fan-out dual con UN worker previsto, sobre un inventario de dos familias, sale 0.
-      · FAMILIAS, en cuatro de sus cinco valores. Solo `una-por-worker` se hace cumplir.
-        `opuesta-al-conductor` y `misma-que-el-conductor` necesitan la familia del CONDUCTOR, que
-        este modo no recibe; `continuacion-del-anterior` necesita el intento previo; `indiferente`
-        no tiene nada que comprobar y su silencio es correcto. Medido: dos workers de la misma
-        familia sobre una fila que declara `opuesta-al-conductor` salen `composicion-valida` 0.
-      · ENCARGOS, en `delta-sobre-el-anterior`: sin el encargo anterior no hay delta que evaluar.
+    Detecta: una fila ausente o con una celda fuera de su enum; una clave prevista vacía o repetida;
+    los SEIS valores de `cardinalidad`, los CINCO de `familias` y los CINCO de `encargos`, cada uno
+    contra el dato que su celda necesita; y la ausencia de ese dato, que **falla cerrado** en vez de
+    pasar en silencio.
+    **El dato viaja en el nodo `dominio` de la composición**, y esa es la diferencia con la versión
+    anterior de este modo: mientras el dominio no viajaba, cuatro valores de `cardinalidad` y tres de
+    `familias` se evaluaban como `n >= 1` y como nada respectivamente. Medido entonces: un fan-out
+    dual con UN worker previsto sobre un inventario de dos familias salía 0, y dos workers de la
+    misma familia sobre una fila `opuesta-al-conductor` salían `composicion-valida` 0.
+    NO detecta, y lo que queda es de otra clase —ya no es un dato que falta, es un juicio que ningún
+    predicado hace:
+      · que el `dominio` declarado sea **verdadero**. Que diga `cardinal: 3` no acredita que el
+        reparto tenga tres repos: lo escribe el mismo conductor que escribe la composición, así que
+        este modo comprueba coherencia entre lo que el conductor declara, nunca contra el mundo.
+      · que el `assignment_digest` previsto sea el digest del encargo que el worker va a recibir de
+        verdad. Compara digests entre sí; no los recomputa sobre ningún texto.
     NO detecta nada de lo que pasa DESPUÉS de correr: es previo a crear recursos por contrato, así
     que no puede ver un despacho, ni su orden, ni su vencimiento real.
-    Su verde autoriza a afirmar: los previstos no se contradicen entre sí **en las celdas que este
-    modo sí comprueba** — `familias: una-por-worker`, `encargos` identidad y núcleo común, y la
-    cardinalidad `1`. NO que la composición satisfaga las demás celdas de su fila; NO que sean TODOS
-    los que el punto exige; NO que se haya despachado; NO que lo despachado coincida con lo previsto.
+    Su verde autoriza a afirmar: los previstos satisfacen las cuatro celdas de su fila **contra el
+    dominio que el conductor declaró**. NO que ese dominio sea el real; NO que se haya despachado;
+    NO que lo despachado coincida con lo previsto.
 
 `despacho.py --corrida` — clase: veredicto. Dirección: admite-de-mas.
-    Detecta: un previsto sin despachar; un despachado sin prever; un worker despachado con familia o
-    digest distintos de los suyos; un worker sin vencimiento, y dos que compartan el mismo.
-    Empareja previsto con despachado por `expected_workers[].key` == `workers[].name`, que la sede
-    declara: sin esa igualdad no hay reconciliación posible, solo dos listas sin relación.
+    Detecta: una clave prevista o efectiva vacía o repetida; un previsto sin despachar; un despachado
+    sin prever; un worker despachado con familia o digest distintos de los suyos; un worker sin
+    vencimiento, y dos que compartan el mismo.
+    Empareja previsto con despachado por `expected_workers[].key` == `workers[].expected_key`, que
+    la sede declara como el campo de correlación. **No** empareja por `name`: la sede define `name`
+    como el nombre del worker despachado y `key` como la clave del dominio que cubre, y son cosas
+    distintas — medido sobre corridas reales de este repositorio, `key: codex` convive con
+    `name: ctr-codex`, así que emparejar por nombre daba `fan-out-incompleto` sobre un sobre
+    conforme.
     NO detecta el ORDEN de los despachos ni el instante de cada uno: lee el estado asentado, no una
     traza temporal, así que «todos despachados antes de esperar a ninguno» lo acredita solo en la
     forma débil de que ninguno falta al momento de leer.
@@ -174,51 +179,183 @@ def validar_fila(fila, dominios, skill, punto):
     return None
 
 
-def _cardinalidad_ok(valor, n):
-    if valor == "1":
-        return n == 1
-    return n >= 1  # las demás dependen del dominio resuelto en runtime, no de un número fijo
+def _claves(workers, etiqueta):
+    """Las claves, validadas ANTES de indexar por ellas.
+
+    Un mapa construido por comprehension sobre claves repetidas o ausentes **colapsa** entradas, y el
+    colapso se lee como coincidencia: dos previstos con la misma clave frente a un efectivo daban
+    `corrida-conforme` en vez de `fan-out-incompleto`, y varias entradas sin clave se fundían todas
+    bajo `None`. La validación va primero porque después del mapa la evidencia del colapso ya no
+    existe — los dos tamaños coinciden justamente porque uno se comió al otro."""
+    claves = []
+    for i, w in enumerate(workers):
+        k = w.get("key")
+        if not isinstance(k, str) or not k.strip():
+            return None, (f"forma-no-reconocida: la entrada {i} de {etiqueta} no declara una clave "
+                          f"no vacia (key={k!r})")
+        if k in claves:
+            return None, f"forma-no-reconocida: la clave {k!r} se repite en {etiqueta}"
+        claves.append(k)
+    return claves, None
 
 
-def evaluar_composicion(fila, workers):
-    """Los invariantes comprobables ANTES de lanzar."""
+def _falta_dominio(campo, columna, valor):
+    """El dato contra el que se comprobaría no viaja: falla cerrado.
+
+    Es la diferencia entre este modo y el que lo precedía. Devolver `None` acá —«no puedo
+    comprobarlo, entonces pasa»— es lo que dejaba cuatro valores de `cardinalidad` y tres de
+    `familias` sin hacer cumplir, con el verde de un modo que decía comprobarlos."""
+    return (f"forma-no-reconocida: {columna}={valor!r} se comprueba contra `{campo}` del nodo "
+            f"`dominio`, y la composicion no lo declara")
+
+
+def _anterior_por_clave(dominio):
+    previos = dominio.get("anterior")
+    if not isinstance(previos, list) or not previos:
+        return None
+    return {w.get("key"): w for w in previos if isinstance(w.get("key"), str)}
+
+
+def _evaluar_cardinalidad(valor, workers, dominio):
     n = len(workers)
-    if not _cardinalidad_ok(fila["cardinalidad"], n):
-        return f"cardinalidad-invalida: se previeron {n} workers y el punto declara {fila['cardinalidad']}"
-    if fila["familias"] == "una-por-worker":
-        fams = [w.get("family") for w in workers]
+    if valor == "1":
+        if n != 1:
+            return f"cardinalidad-invalida: se previeron {n} workers y el punto declara 1"
+        return None
+    if valor == "1-por-familia":
+        inventario = dominio.get("familias")
+        if not isinstance(inventario, list) or not inventario:
+            return _falta_dominio("familias", "cardinalidad", valor)
+        esperadas = sorted(set(inventario))
+        previstas = sorted(str(w.get("family")) for w in workers)
+        if previstas != esperadas:
+            return (f"cardinalidad-invalida: el inventario declara {len(esperadas)} familias "
+                    f"({' '.join(esperadas)}) y se previeron {n} workers "
+                    f"({' '.join(previstas) or 'ninguno'})")
+        return None
+    if valor in ("1-por-ronda", "1-por-repo", "1-por-hallazgo"):
+        cardinal = dominio.get("cardinal")
+        if not isinstance(cardinal, int) or isinstance(cardinal, bool) or cardinal < 1:
+            return _falta_dominio("cardinal", "cardinalidad", valor)
+        if n != cardinal:
+            return (f"cardinalidad-invalida: el dominio de {valor} tiene {cardinal} elementos "
+                    f"y se previeron {n} workers")
+        return None
+    if valor == "n-acotado":
+        tope = dominio.get("tope")
+        if not isinstance(tope, int) or isinstance(tope, bool) or tope < 1:
+            return _falta_dominio("tope", "cardinalidad", valor)
+        if not 1 <= n <= tope:
+            return f"cardinalidad-invalida: se previeron {n} workers y el tope declarado es {tope}"
+        return None
+    return None
+
+
+def _evaluar_familias(valor, workers, dominio):
+    if valor == "una-por-worker":
         vistas = set()
-        for f in fams:
+        for w in workers:
+            f = w.get("family")
             if f in vistas:
                 return f"familia-duplicada: {f} aparece mas de una vez"
             vistas.add(f)
-    rel = fila["encargos"]
+        return None
+    if valor in ("opuesta-al-conductor", "misma-que-el-conductor"):
+        conductor = dominio.get("conductor")
+        if not isinstance(conductor, str) or not conductor.strip():
+            return _falta_dominio("conductor", "familias", valor)
+        for w in workers:
+            f = w.get("family")
+            if valor == "misma-que-el-conductor" and f != conductor:
+                return (f"familia-invalida: el worker {w.get('key')} se previo {f} y el punto exige "
+                        f"la del conductor ({conductor})")
+            if valor == "opuesta-al-conductor" and f == conductor:
+                return (f"familia-invalida: el worker {w.get('key')} se previo {f}, la misma del "
+                        f"conductor, y el punto exige la opuesta")
+        return None
+    if valor == "continuacion-del-anterior":
+        previos = _anterior_por_clave(dominio)
+        if previos is None:
+            return _falta_dominio("anterior", "familias", valor)
+        for w in workers:
+            prev = previos.get(w.get("key"))
+            if prev is None:
+                return (f"familia-invalida: el worker {w.get('key')} no tiene intento anterior que "
+                        f"continuar y el punto declara continuacion-del-anterior")
+            if w.get("family") != prev.get("family"):
+                return (f"familia-invalida: el worker {w.get('key')} se previo {w.get('family')} "
+                        f"y continua un intento de {prev.get('family')}")
+        return None
+    return None  # `indiferente` no tiene nada que comprobar, y su silencio es correcto
+
+
+def _evaluar_encargos(valor, workers, dominio):
+    n = len(workers)
     digs = [w.get("assignment_digest") for w in workers]
-    if rel in ("identico-por-digest", "nucleo-comun") and len(set(digs)) > 1:
-        if rel == "identico-por-digest":
+    if valor in ("identico-por-digest", "nucleo-comun") and len(set(digs)) > 1:
+        if valor == "identico-por-digest":
             return "encargo-divergente: los digests previstos difieren y el punto exige identidad"
         nucleos = [w.get("nucleo_digest", w.get("assignment_digest")) for w in workers]
         if len(set(nucleos)) > 1:
             return "encargo-divergente: los nucleos comunes previstos difieren"
-    if rel == "distinto-por-worker" and n > 1 and len(set(digs)) == 1:
+        return None
+    if valor == "distinto-por-worker" and n > 1 and len(set(digs)) == 1:
         return "encargo-divergente: el punto declara encargos distintos y todos los previstos coinciden"
+    if valor == "delta-sobre-el-anterior":
+        previos = _anterior_por_clave(dominio)
+        if previos is None:
+            return _falta_dominio("anterior", "encargos", valor)
+        for w in workers:
+            prev = previos.get(w.get("key"))
+            if prev is None:
+                return (f"encargo-divergente: el worker {w.get('key')} no tiene encargo anterior "
+                        f"contra el cual medir el delta")
+            if w.get("assignment_digest") == prev.get("assignment_digest"):
+                return (f"encargo-divergente: el worker {w.get('key')} repite el encargo anterior "
+                        f"y el punto exige un delta sobre el")
+        return None
+    return None
+
+
+def evaluar_composicion(fila, workers, dominio=None):
+    """Los invariantes comprobables ANTES de lanzar, contra el `dominio` que la composición declara.
+
+    Las tres columnas se evalúan enteras —los seis valores de `cardinalidad`, los cinco de `familias`
+    y los cinco de `encargos`—, y el dato que cada celda necesita se exige: sin él **falla cerrado**.
+    Antes, la ausencia de ese dato producía un verde que decía haber comprobado la celda."""
+    dominio = dominio if isinstance(dominio, dict) else {}
+    _, mal = _claves(workers, "expected_workers")
+    if mal:
+        return mal
+    for evaluar, columna in ((_evaluar_cardinalidad, "cardinalidad"),
+                             (_evaluar_familias, "familias"),
+                             (_evaluar_encargos, "encargos")):
+        mal = evaluar(fila[columna], workers, dominio)
+        if mal:
+            return mal
     return None
 
 
 def evaluar_corrida(fila, esperados, efectivos):
     """Los invariantes que solo son comprobables DESPUÉS, contrastando en las dos direcciones."""
-    por_clave_esp = {w.get("key"): w for w in esperados}
-    por_clave_efe = {w.get("key"): w for w in efectivos}
+    claves_esp, mal = _claves(esperados, "expected_workers")
+    if mal:
+        return mal
+    claves_efe, mal = _claves(efectivos, "workers")
+    if mal:
+        return mal
+    por_clave_esp = dict(zip(claves_esp, esperados))
+    por_clave_efe = dict(zip(claves_efe, efectivos))
     faltan = sorted(k for k in por_clave_esp if k not in por_clave_efe)
     if faltan:
-        return f"fan-out-incompleto: previstos sin despachar: {' '.join(map(str, faltan))}"
+        return f"fan-out-incompleto: previstos sin despachar: {' '.join(faltan)}"
     sobran = sorted(k for k in por_clave_efe if k not in por_clave_esp)
     if sobran:
-        return f"despacho-no-previsto: despachados sin prever: {' '.join(map(str, sobran))}"
+        return f"despacho-no-previsto: despachados sin prever: {' '.join(sobran)}"
     for clave, esp in por_clave_esp.items():
         efe = por_clave_efe[clave]
         if esp.get("family") != efe.get("family"):
-            return (f"familia-duplicada: el worker {clave} se previo {esp.get('family')} "
+            return (f"familia-invalida: el worker {clave} se previo {esp.get('family')} "
                     f"y se despacho {efe.get('family')}")
         if esp.get("assignment_digest") != efe.get("assignment_digest"):
             return f"encargo-divergente: el worker {clave} se despacho con otro encargo"
@@ -266,8 +403,12 @@ def ejecutar(modo, raiz, skill, punto, documento):
         return 1
     datos = _cargar(documento)
     if modo == "--preflight":
-        workers = datos if isinstance(datos, list) else datos.get("expected_workers", [])
-        mal = evaluar_composicion(fila, workers)
+        # una composición que es una lista pelada no puede declarar su dominio, así que solo sirve
+        # para las filas que no lo necesitan; las demás fallan cerrado por `_falta_dominio`.
+        lista = isinstance(datos, list)
+        workers = datos if lista else datos.get("expected_workers", [])
+        dominio = {} if lista else datos.get("dominio", {})
+        mal = evaluar_composicion(fila, workers, dominio)
         if mal:
             print(mal)
             return 1
@@ -275,9 +416,12 @@ def ejecutar(modo, raiz, skill, punto, documento):
         return 0
     esperados = datos.get("expected_workers", [])
     # los nombres salen de la SEDE, no de la conveniencia: `assignment_digest` es el campo del
-    # intento y `name` el del worker. Leer un campo que el contrato no declara deja a este modo sin
-    # poder ponerse verde sobre un sobre conforme — medido, y por eso está escrito acá.
-    efectivos = [{"key": w.get("name"), "family": w.get("family"),
+    # intento y `expected_key` el campo de correlación del worker. Leer un campo que el contrato no
+    # declara deja a este modo sin poder ponerse verde sobre un sobre conforme — medido, y por eso
+    # está escrito acá. `name` NO sirve de correlación: la sede lo define como el nombre del worker
+    # despachado, y las corridas reales de este repositorio lo usan así (`ctr-codex` para la clave
+    # de dominio `codex`), así que emparejar por él ponía en rojo sobres conformes.
+    efectivos = [{"key": w.get("expected_key"), "family": w.get("family"),
                   "assignment_digest": (w.get("attempts") or [{}])[-1].get("assignment_digest"),
                   "deadline": ((w.get("attempts") or [{}])[-1].get("wait_budget") or {}).get("deadline")}
                  for w in datos.get("workers", [])]
@@ -292,7 +436,9 @@ def ejecutar(modo, raiz, skill, punto, documento):
 def autotest():
     """Un control POSITIVO y uno NEGATIVO por cada violación. Una guarda que solo se vio en verde es
     indistinguible de una que no puede ponerse roja, así que cada nombre del vocabulario tiene acá el
-    caso que lo produce."""
+    caso que lo produce. Los SEIS valores de `cardinalidad` y los CINCO de `familias` tienen cada uno
+    su par, más el negativo de **dominio ausente**: sin ese último, un valor podría pasar por no
+    poder comprobarse, que es exactamente el defecto que este modo tenía."""
     dom = {"cardinalidad": {"1", "1-por-familia", "1-por-ronda", "1-por-repo", "1-por-hallazgo", "n-acotado"},
            "familias": {"una-por-worker", "opuesta-al-conductor", "misma-que-el-conductor",
                         "continuacion-del-anterior", "indiferente"},
@@ -303,7 +449,9 @@ def autotest():
             "encargos": "identico-por-digest", "deadline": "propio-por-worker"}
     uno = {"cardinalidad": "1", "familias": "misma-que-el-conductor",
            "encargos": "no-aplica", "deadline": "propio-por-worker"}
+    fila = lambda **k: {**dual, **k}
     w = lambda k, f, d, dl="2026-01-01": {"key": k, "family": f, "assignment_digest": d, "deadline": dl}
+    inv = {"familias": ["claude", "codex"]}
 
     casos = []
     # --- validar_fila ---
@@ -314,25 +462,147 @@ def autotest():
     casos.append(("no-aplica con cardinalidad != 1",
                   validar_fila({**dual, "encargos": "no-aplica"}, dom, "s", "p"), "forma-no-reconocida"))
     casos.append(("no-aplica con cardinalidad 1", validar_fila(uno, dom, "s", "p"), None))
-    # --- evaluar_composicion ---
-    casos.append(("composicion valida",
-                  evaluar_composicion(dual, [w("a", "codex", "D"), w("b", "claude", "D")]), None))
-    casos.append(("dos de la misma familia",
-                  evaluar_composicion(dual, [w("a", "codex", "D"), w("b", "codex", "D")]), "familia-duplicada"))
-    casos.append(("digests distintos donde se exige identidad",
-                  evaluar_composicion(dual, [w("a", "codex", "D"), w("b", "claude", "E")]), "encargo-divergente"))
+
+    # --- claves de la composición: el mapa colapsa si no se validan antes ---
+    casos.append(("clave prevista ausente",
+                  evaluar_composicion(dual, [w(None, "codex", "D"), w("b", "claude", "D")], inv),
+                  "forma-no-reconocida"))
+    casos.append(("clave prevista repetida",
+                  evaluar_composicion(dual, [w("a", "codex", "D"), w("a", "claude", "D")], inv),
+                  "forma-no-reconocida"))
+
+    # --- cardinalidad: los seis valores, cada uno con su par ---
+    casos.append(("cardinalidad 1 con un previsto",
+                  evaluar_composicion(uno, [w("a", "claude", "D")], {"conductor": "claude"}), None))
     casos.append(("cardinalidad 1 con dos previstos",
-                  evaluar_composicion(uno, [w("a", "claude", "D"), w("b", "claude", "D")]), "cardinalidad-invalida"))
-    repo = {**dual, "cardinalidad": "1-por-repo", "familias": "indiferente", "encargos": "distinto-por-worker"}
-    casos.append(("encargos iguales donde se exigen distintos",
-                  evaluar_composicion(repo, [w("a", "codex", "D"), w("b", "codex", "D")]), "encargo-divergente"))
-    casos.append(("encargos distintos donde se exigen distintos",
-                  evaluar_composicion(repo, [w("a", "codex", "D"), w("b", "codex", "E")]), None))
+                  evaluar_composicion(uno, [w("a", "claude", "D"), w("b", "claude", "D")],
+                                      {"conductor": "claude"}), "cardinalidad-invalida"))
+    casos.append(("1-por-familia con una por familia del inventario",
+                  evaluar_composicion(dual, [w("a", "codex", "D"), w("b", "claude", "D")], inv), None))
+    casos.append(("1-por-familia con UN worker sobre un inventario de dos",
+                  evaluar_composicion(dual, [w("a", "codex", "D")], inv), "cardinalidad-invalida"))
+    casos.append(("1-por-familia sin inventario en el dominio",
+                  evaluar_composicion(dual, [w("a", "codex", "D"), w("b", "claude", "D")], {}),
+                  "forma-no-reconocida"))
+    ronda = fila(cardinalidad="1-por-ronda", familias="indiferente", encargos="distinto-por-worker")
+    casos.append(("1-por-ronda con tantos workers como rondas",
+                  evaluar_composicion(ronda, [w("a", "codex", "D"), w("b", "codex", "E")],
+                                      {"cardinal": 2}), None))
+    casos.append(("1-por-ronda con menos workers que rondas",
+                  evaluar_composicion(ronda, [w("a", "codex", "D"), w("b", "codex", "E")],
+                                      {"cardinal": 3}), "cardinalidad-invalida"))
+    casos.append(("1-por-ronda sin cardinal en el dominio",
+                  evaluar_composicion(ronda, [w("a", "codex", "D")], {}), "forma-no-reconocida"))
+    repo = fila(cardinalidad="1-por-repo", familias="indiferente", encargos="distinto-por-worker")
+    casos.append(("1-por-repo con un worker por repo",
+                  evaluar_composicion(repo, [w("a", "codex", "D"), w("b", "codex", "E")],
+                                      {"cardinal": 2}), None))
+    casos.append(("1-por-repo con un worker de mas",
+                  evaluar_composicion(repo, [w("a", "codex", "D"), w("b", "codex", "E")],
+                                      {"cardinal": 1}), "cardinalidad-invalida"))
+    hall = fila(cardinalidad="1-por-hallazgo", familias="indiferente", encargos="distinto-por-worker")
+    casos.append(("1-por-hallazgo con un worker por hallazgo",
+                  evaluar_composicion(hall, [w("a", "codex", "D")], {"cardinal": 1}), None))
+    casos.append(("1-por-hallazgo con menos workers que hallazgos",
+                  evaluar_composicion(hall, [w("a", "codex", "D")], {"cardinal": 2}),
+                  "cardinalidad-invalida"))
+    acot = fila(cardinalidad="n-acotado", familias="indiferente", encargos="distinto-por-worker")
+    casos.append(("n-acotado dentro del tope",
+                  evaluar_composicion(acot, [w("a", "codex", "D"), w("b", "codex", "E")],
+                                      {"tope": 3}), None))
+    casos.append(("n-acotado por encima del tope",
+                  evaluar_composicion(acot, [w("a", "codex", "D"), w("b", "codex", "E")],
+                                      {"tope": 1}), "cardinalidad-invalida"))
+    casos.append(("n-acotado sin tope en el dominio",
+                  evaluar_composicion(acot, [w("a", "codex", "D")], {}), "forma-no-reconocida"))
+
+    # --- familias: los cinco valores, cada uno con su par ---
+    casos.append(("una-por-worker con una por worker",
+                  evaluar_composicion(dual, [w("a", "codex", "D"), w("b", "claude", "D")], inv), None))
+    casos.append(("una-por-worker con dos de la misma familia",
+                  evaluar_composicion(fila(cardinalidad="n-acotado"),
+                                      [w("a", "codex", "D"), w("b", "codex", "D")], {"tope": 2}),
+                  "familia-duplicada"))
+    opu = fila(cardinalidad="n-acotado", familias="opuesta-al-conductor")
+    casos.append(("opuesta-al-conductor con la familia opuesta",
+                  evaluar_composicion(opu, [w("a", "codex", "D")], {"tope": 2, "conductor": "claude"}),
+                  None))
+    casos.append(("opuesta-al-conductor con la MISMA familia del conductor",
+                  evaluar_composicion(opu, [w("a", "claude", "D"), w("b", "claude", "D")],
+                                      {"tope": 2, "conductor": "claude"}), "familia-invalida"))
+    casos.append(("opuesta-al-conductor sin conductor en el dominio",
+                  evaluar_composicion(opu, [w("a", "codex", "D")], {"tope": 2}), "forma-no-reconocida"))
+    mis = fila(cardinalidad="n-acotado", familias="misma-que-el-conductor")
+    casos.append(("misma-que-el-conductor con la del conductor",
+                  evaluar_composicion(mis, [w("a", "claude", "D")], {"tope": 2, "conductor": "claude"}),
+                  None))
+    casos.append(("misma-que-el-conductor con otra familia",
+                  evaluar_composicion(mis, [w("a", "codex", "D")], {"tope": 2, "conductor": "claude"}),
+                  "familia-invalida"))
+    cont = fila(cardinalidad="n-acotado", familias="continuacion-del-anterior")
+    previo = {"tope": 2, "anterior": [{"key": "a", "family": "codex", "assignment_digest": "D0"}]}
+    casos.append(("continuacion-del-anterior con la familia heredada",
+                  evaluar_composicion(cont, [w("a", "codex", "D")], previo), None))
+    casos.append(("continuacion-del-anterior con otra familia",
+                  evaluar_composicion(cont, [w("a", "claude", "D")], previo), "familia-invalida"))
+    casos.append(("continuacion-del-anterior sin intento previo para esa clave",
+                  evaluar_composicion(cont, [w("z", "codex", "D")], previo), "familia-invalida"))
+    casos.append(("continuacion-del-anterior sin anterior en el dominio",
+                  evaluar_composicion(cont, [w("a", "codex", "D")], {"tope": 2}), "forma-no-reconocida"))
+    ind = fila(cardinalidad="n-acotado", familias="indiferente", encargos="distinto-por-worker")
+    casos.append(("indiferente no mira la familia",
+                  evaluar_composicion(ind, [w("a", "codex", "D"), w("b", "codex", "E")], {"tope": 2}),
+                  None))
+
+    # --- encargos: los cinco valores ---
+    casos.append(("identico-por-digest con digests iguales",
+                  evaluar_composicion(dual, [w("a", "codex", "D"), w("b", "claude", "D")], inv), None))
+    casos.append(("identico-por-digest con digests distintos",
+                  evaluar_composicion(dual, [w("a", "codex", "D"), w("b", "claude", "E")], inv),
+                  "encargo-divergente"))
+    nuc = fila(encargos="nucleo-comun")
+    casos.append(("nucleo-comun con anexos distintos y nucleo igual",
+                  evaluar_composicion(nuc, [{**w("a", "codex", "D"), "nucleo_digest": "N"},
+                                            {**w("b", "claude", "E"), "nucleo_digest": "N"}], inv), None))
+    casos.append(("nucleo-comun con nucleos distintos",
+                  evaluar_composicion(nuc, [{**w("a", "codex", "D"), "nucleo_digest": "N"},
+                                            {**w("b", "claude", "E"), "nucleo_digest": "M"}], inv),
+                  "encargo-divergente"))
+    casos.append(("distinto-por-worker con encargos distintos",
+                  evaluar_composicion(ind, [w("a", "codex", "D"), w("b", "codex", "E")], {"tope": 2}),
+                  None))
+    casos.append(("distinto-por-worker con encargos iguales",
+                  evaluar_composicion(ind, [w("a", "codex", "D"), w("b", "codex", "D")], {"tope": 2}),
+                  "encargo-divergente"))
+    delta = fila(cardinalidad="n-acotado", familias="indiferente", encargos="delta-sobre-el-anterior")
+    casos.append(("delta-sobre-el-anterior con un encargo nuevo",
+                  evaluar_composicion(delta, [w("a", "codex", "D1")], previo), None))
+    casos.append(("delta-sobre-el-anterior repitiendo el encargo anterior",
+                  evaluar_composicion(delta, [w("a", "codex", "D0")], previo), "encargo-divergente"))
+    casos.append(("delta-sobre-el-anterior sin anterior en el dominio",
+                  evaluar_composicion(delta, [w("a", "codex", "D1")], {"tope": 2}),
+                  "forma-no-reconocida"))
+
     # --- evaluar_corrida ---
     # cada worker con SU vencimiento: el positivo con un deadline compartido era, en sí mismo, la
     # violación que `deadline-compartido` nombra — pasaba porque el predicado miraba presencia.
     esp = [w("a", "codex", "D", "2026-01-01T00:00:00Z"), w("b", "claude", "D", "2026-01-01T00:10:00Z")]
     casos.append(("corrida conforme", evaluar_corrida(dual, esp, esp), None))
+    # las dos direcciones del colapso que el reviewer reprodujo: antes daban None, porque el mapa
+    # se comía una entrada y los dos tamaños coincidían por la pérdida.
+    # las entradas que colisionan son IDÉNTICAS salvo el vencimiento, y eso es deliberado: con
+    # familias o digests distintos el caso lo cazaba `familia-invalida` por otra razón, y el rojo
+    # mentía sobre qué se estaba probando. Sobre entradas iguales, el colapso es lo único que queda.
+    casos.append(("dos previstos con la misma clave frente a un efectivo",
+                  evaluar_corrida(dual, [w("a", "codex", "D", "T1"), w("a", "codex", "D", "T2")],
+                                  [w("a", "codex", "D", "T1")]), "forma-no-reconocida"))
+    casos.append(("un previsto frente a dos efectivos con la misma clave",
+                  evaluar_corrida(dual, [w("a", "codex", "D", "T1")],
+                                  [w("a", "codex", "D", "T1"), w("a", "codex", "D", "T2")]),
+                  "forma-no-reconocida"))
+    casos.append(("efectivo sin clave de correlacion",
+                  evaluar_corrida(dual, esp, [w("a", "codex", "D", "T1"), w(None, "claude", "D", "T2")]),
+                  "forma-no-reconocida"))
     casos.append(("dos workers comparten el mismo vencimiento",
                   evaluar_corrida(dual, esp, [w("a", "codex", "D", "T"), w("b", "claude", "D", "T")]),
                   "deadline-compartido"))
@@ -341,9 +611,11 @@ def autotest():
     casos.append(("despachado sin prever",
                   evaluar_corrida(dual, esp, esp + [w("c", "codex", "D", "T3")]), "despacho-no-previsto"))
     casos.append(("familia distinta de la prevista",
-                  evaluar_corrida(dual, esp, [w("a", "codex", "D", "T1"), w("b", "codex", "D", "T2")]), "familia-duplicada"))
+                  evaluar_corrida(dual, esp, [w("a", "codex", "D", "T1"), w("b", "codex", "D", "T2")]),
+                  "familia-invalida"))
     casos.append(("encargo distinto del previsto",
-                  evaluar_corrida(dual, esp, [w("a", "codex", "D", "T1"), w("b", "claude", "E", "T2")]), "encargo-divergente"))
+                  evaluar_corrida(dual, esp, [w("a", "codex", "D", "T1"), w("b", "claude", "E", "T2")]),
+                  "encargo-divergente"))
     casos.append(("worker sin vencimiento propio",
                   evaluar_corrida(dual, esp, [w("a", "codex", "D", "2026-01-01T00:00:00Z"),
                                               w("b", "claude", "D", None)]),

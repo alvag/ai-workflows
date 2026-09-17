@@ -204,7 +204,14 @@ En la rama de plataforma el punto expresa **intención** y **no nombra verbos de
 sede equivalente al bloque `transporte` de `sdd-flow`, y vale la misma regla: **por fase**, para que
 la segunda no herede la vía de la primera sin que nadie la eligiera. El alcance que su consentimiento
 autoriza es el **lote real** del reparto —cada repo con su worktree y su rol—, que es el caso que un
-tope numérico no sabe describir.
+tope numérico no sabe describir. El bloque, su resolución por rama y su propagación al agente
+delegado: `reference.md` → «Esquema de `manifest.yml`» y «El bloque `transporte`».
+
+**Y el fan-out lo propaga, o el punto delegado no lo tiene.** El agente de cada repo arranca en un
+proceso fresco: si el prompt no lleva la entrada de la fase activa, ese punto observa **carrier
+ausente** y vuelve a ofrecer una vía que esta orquestación ya selló. La plantilla está en
+`reference.md` → «Prompt del agente delegado», junto al `family_inventory`, y los dos son
+condicionales por la misma razón y **no** son el mismo carrier.
 
 El orden es fijo y no se altera: **bitácora** → **sobre** → **despacho**. Primero se registra el
 intento de la transición en la bitácora, después se escribe el sobre bajo `.cross-model/active/`, y

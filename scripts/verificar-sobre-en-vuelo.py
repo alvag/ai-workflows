@@ -130,7 +130,7 @@ READMES = [f"skills/{s}/README.md" for s in
 CAMPOS_RAIZ = {"run_id", "skill", "mode", "owner", "parent", "children", "descendants_summary",
                "expected_workers", "workers", "scope", "transport", "harvest_pending",
                "proxima_accion", "manifest_seed", "manifest_first_dispatch_at"}
-CAMPOS_WORKER = {"name", "family", "write", "attempts"}
+CAMPOS_WORKER = {"name", "expected_key", "family", "write", "attempts"}
 CAMPOS_INTENTO = {"attempt_id", "transport", "output", "process_ref", "wait_budget",
                   "assignment_digest", "harvested"}
 SUBESQUEMAS = {
@@ -1850,6 +1850,7 @@ En modo off ambos nodos permanecen ausentes; no se vuelven a leer ni inventar al
 | campo | qué |
 |---|---|
 | `name` | nombre del agente |
+| `expected_key` | la clave prevista que cumple |
 | `family` | familia |
 | `write` | read-only o escritor |
 | `attempts` | sus intentos |

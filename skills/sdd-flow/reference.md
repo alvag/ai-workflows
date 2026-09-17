@@ -8320,6 +8320,15 @@ propio instrumento: los dos leen lo que el conductor **declaró** y lo que el co
 así que **ninguno detecta un despacho que nunca se asentó**. Esa dirección la cubre solo la
 reconciliación contra la fuente efectiva de la plataforma.
 
+**La composición que recibe el preflight lleva su `dominio`, y sin él el punto se detiene.** Tres de
+las cuatro columnas no se pueden evaluar mirando solo a los workers previstos —`1-por-repo` necesita
+cuántos repos tiene el reparto, `opuesta-al-conductor` necesita la familia del conductor,
+`delta-sobre-el-anterior` necesita el encargo anterior—, así que la composición declara ese dato al
+lado de `expected_workers[]`. La ausencia del campo que la fila nombra **falla cerrado** con
+`forma-no-reconocida`: una celda que no se puede comprobar no pasa. Los campos y qué celda exige cada
+uno: `skills/cross-review/corridas-en-vuelo.md` → «El dominio contra el que se comprueba la
+composición».
+
 ---
 
 #### La matriz de adopción: qué pasa con lo que ya existe

@@ -1066,6 +1066,14 @@ comprobar nada.
 | encargo idéntico para los dos | el instrumento, en el momento `preflight`, cotejando el `sha256` | `encargo-divergente`, y no se lanza |
 | deadline propio por worker | el campo propio del worker en el sobre, comprobado en el momento `corrida` | dos workers comparten vencimiento y uno muere por el reloj del otro |
 
+**La composición que recibe el preflight declara su `dominio`, y sin él no se lanza.** Este punto
+es `1-por-familia`, así que «exactamente un worker por familia» se comprueba contra el **inventario**
+de la corrida: la composición lleva `dominio.familias`, y su ausencia sale `forma-no-reconocida` en
+vez de pasar. Es la diferencia entre comprobar la cardinalidad y suponerla — medido, un fan-out dual
+con **un** solo worker previsto salía verde mientras el dato no viajaba. Los campos y qué celda exige
+cada uno: `skills/cross-review/corridas-en-vuelo.md` → «El dominio contra el que se comprueba la
+composición».
+
 **Los dos momentos no son una comodidad de implementación.** Dos de los cuatro invariantes son
 comprobables **antes** de lanzar —la familia y el encargo se conocen al componer— y dos solo
 **después**, porque hablan de la corrida entera. Comprobar los cuatro en un solo momento obliga a

@@ -122,8 +122,8 @@ haya declarado su fila.
 
 | Momento | Invocación | Qué corta |
 |---|---|---|
-| antes de crear **ningún** recurso | `despacho.py --preflight <raiz> <skill> <punto> <composicion.json>` | `forma-no-reconocida` · `cardinalidad-invalida` · `familia-duplicada` · `encargo-divergente` |
-| antes de esperar a **ningún** worker, y al consumir cada resultado | `despacho.py --corrida <raiz> <skill> <punto> <sobre.json>` | `forma-no-reconocida` · `fan-out-incompleto` · `despacho-no-previsto` · `familia-duplicada` · `encargo-divergente` · `deadline-compartido` |
+| antes de crear **ningún** recurso | `despacho.py --preflight <raiz> <skill> <punto> <composicion.json>` | `forma-no-reconocida` · `cardinalidad-invalida` · `familia-duplicada` · `familia-invalida` · `encargo-divergente` |
+| antes de esperar a **ningún** worker, y al consumir cada resultado | `despacho.py --corrida <raiz> <skill> <punto> <sobre.json>` | `forma-no-reconocida` · `fan-out-incompleto` · `despacho-no-previsto` · `familia-invalida` · `encargo-divergente` · `deadline-compartido` |
 
 Cada punto de despacho lleva la directiva **estructurada** en su sección, no una frase:
 
@@ -131,6 +131,14 @@ Cada punto de despacho lleva la directiva **estructurada** en su sección, no un
 <!-- invoca: despacho-preflight -->
 <!-- invoca: despacho-corrida -->
 ```
+
+**`familia-duplicada` y `familia-invalida` son dos violaciones, no una.** La primera es que dos
+workers del lote comparten familia donde el punto exige una por worker; la segunda es que la familia
+de un worker **no es la que su fila declara** —no es la opuesta al conductor, no es la del conductor,
+o no es la que continúa—. Colapsarlas en un nombre costaba dos cosas medidas: el mensaje de la
+reconciliación decía «familia duplicada» ante un worker despachado con **otra** familia que la
+prevista, que no duplica nada; y la celda `opuesta-al-conductor` no tenía cómo emitir su fallo, así
+que no lo emitía.
 
 **Por qué una marca y no una oración.** Una frase que diga «acá se invoca el preflight» satisface
 cualquier comprobación por palabras, y una que diga «acá no hace falta» también. Una directiva de
@@ -284,19 +292,84 @@ crear la terminal ya es un efecto: si `expected_workers[]` se sellara entre la c
 lanzamiento, la composición prevista podría ajustarse a los recursos que ya existen, que es
 exactamente la circularidad que el nodo viene a impedir.
 
+### El dominio contra el que se comprueba la composición
+
+Tres de las cuatro columnas de la fila **no se pueden evaluar mirando solo a los workers previstos**:
+`1-por-repo` necesita saber cuántos repos tiene el reparto, `opuesta-al-conductor` necesita la
+familia del conductor, y `delta-sobre-el-anterior` necesita el encargo anterior. Ese dato viaja en el
+nodo `dominio` de la composición, al lado de `expected_workers[]`.
+
+| campo | lo exige | qué lleva |
+|---|---|---|
+| `familias` | `cardinalidad: 1-por-familia` | el inventario de familias de la corrida; se exige **una por cada una**, ni de más ni de menos |
+| `cardinal` | `cardinalidad: 1-por-ronda` · `1-por-repo` · `1-por-hallazgo` | cuántos elementos tiene el dominio que esa celda nombra |
+| `tope` | `cardinalidad: n-acotado` | el máximo de workers que ese punto admite |
+| `conductor` | `familias: opuesta-al-conductor` · `misma-que-el-conductor` | la familia del conductor de la corrida |
+| `anterior` | `familias: continuacion-del-anterior` · `encargos: delta-sobre-el-anterior` | los workers del intento previo, con su `key`, su `family` y su `assignment_digest` |
+
+**Un campo que la fila no nombra no se exige**, y su ausencia no es un fallo: `indiferente` y
+`cardinalidad: 1` no tienen contra qué contrastarse y su silencio es correcto.
+
+**La ausencia del campo que la fila SÍ nombra falla cerrado**, con `forma-no-reconocida`, y ese es el
+punto entero de este nodo. Sin él, el preflight evaluaba `n >= 1` para cuatro de los seis valores de
+`cardinalidad` y no evaluaba nada para tres de los cinco de `familias` —y salía **verde**, con un
+mensaje que decía `composicion-valida`—. Medido sobre el instrumento anterior: un fan-out dual con
+**un** worker previsto sobre un inventario de dos familias salía 0, y un punto que declara
+`opuesta-al-conductor` con dos workers de la familia del conductor salía 0. Una celda que no se puede
+comprobar **no pasa**: se declara sin el dato y el punto se detiene antes de crear nada, que es lo que
+el criterio pide cuando dice «falla cerrado».
+
+```json
+{
+  "dominio": {
+    "familias": ["claude", "codex"],
+    "conductor": "claude",
+    "cardinal": 3,
+    "tope": 4,
+    "anterior": [
+      {"key": "codex", "family": "codex", "assignment_digest": "sha256:…"}
+    ]
+  },
+  "expected_workers": [ ]
+}
+```
+
+**Lo que el nodo no acredita, y conviene que esté acá y no solo en el docstring.** El `dominio` lo
+escribe **el mismo conductor** que escribe la composición, así que el instrumento comprueba
+coherencia entre dos cosas que declaró la misma autoridad, nunca contra el mundo: que diga
+`cardinal: 3` no prueba que el reparto tenga tres repos. Es la misma frontera que ya tiene el resto
+del contrato —los dos modos leen documentos— y no se repara con un predicado mejor.
+
 ### Los campos por worker
 
 `workers[]` lista solo los workers **efectivamente despachados**. Una familia ausente que no generó
 un despacho no tiene entrada en el sobre: no existe proceso que sondar, cosechar o relanzar.
 
-Cuatro campos por cada entrada de `workers[]`:
+Cinco campos por cada entrada de `workers[]`:
 
 | campo | qué registra |
 |---|---|
 | `name` | el nombre del worker despachado, único dentro de la corrida |
+| `expected_key` | la `key` de la entrada de `expected_workers[]` que este worker cumple |
 | `family` | la familia que lo atiende: Claude o GPT/Codex |
 | `write` | si el worker es read-only o escritor |
 | `attempts` | los intentos de este worker, en orden de despacho |
+
+**`expected_key` existe porque la correlación entre los dos nodos era una convención oculta.** La
+reconciliación en las dos direcciones necesita saber qué entrada efectiva cumple qué entrada
+prevista, y hasta acá eso se resolvía **suponiendo** que `name` era igual a `key`. La sede nunca lo
+declaró —define `key` como la clave del **dominio** que el worker cubre y `name` como el **nombre**
+del worker despachado, que son cosas distintas— y las corridas reales de este repositorio las usan
+distintas: `name: ctr-codex` para la clave de dominio `codex`, `name: revisor-codex` para la misma.
+Con la suposición, un sobre **conforme** daba `fan-out-incompleto`. El campo vuelve la correlación un
+**dato declarado** en vez de un parecido entre dos cadenas, y por eso no admite derivarse de `name`
+cuando falta: una correlación adivinada es la misma convención oculta, con un paso más.
+
+**Su valor es obligatorio, también en el worker que nadie previó.** Un despacho sin entrada prevista
+es `despacho-no-previsto`, y esa violación se nombra **comparando claves**: el worker declara la
+clave que dice cumplir y el contraste muestra que no está entre las previstas. Un worker que no
+declara ninguna no produce esa violación, produce un sobre que no se puede reconciliar — y eso es
+`forma-no-reconocida`, que es un defecto del registro y no del despacho.
 
 **`family` está por worker porque la corrida puede ser mixta.** El fan-out dual de `co-explore`
 despacha uno por familia en la misma corrida; un panel de revisores puede repartirse entre las dos. Un

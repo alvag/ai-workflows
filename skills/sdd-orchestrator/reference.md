@@ -138,6 +138,8 @@ cross_model:                   # opcional; inventario común de familias para to
   schema_version: 1            # obligatorio si el bloque existe; esta obligación se introduce aquí y no se hereda de otra superficie
   families: [claude, codex]    # claude | codex — allowlist de workers; el conductor no entra
   selection: full              # full | user_choice — obligatorio con families; sin default
+# transporte: [...]            # estado de corrida, no configuración: el carrier sellado, una entrada por
+#                              # fase. Su forma y su resolución por rama, en "El bloque `transporte`"
 cross_review:                  # opcional; segunda opinión cross-model EN LOS GATES (ver skill cross-review)
   mode: auto                   # auto | "on" | "off"  (entre comillas: sin ellas YAML los parsea como booleanos)
   execution: auto              # auto (por capacidad del conductor) | sync | background
@@ -218,6 +220,68 @@ un merge **no destructivo**. **No se infiere un default** ni se sondea el entorn
 por la clave ausente no es descubrir familias.
 
 El `branch` de cada repo se computa al hacer el reparto resolviendo el prefijo con precedencia **`branch_prefix` local del repo (`<repo>/.specify/config.yml`) > `branch_prefix` de la orquestación (este `manifest.yml`) > prefijo semántico**. Por eso dos repos de la misma orquestación pueden tener prefijos distintos (uno con config local, otro no).
+
+### El bloque `transporte`
+
+Es la **sede del carrier** de esta orquestación, equivalente al bloque `transporte` del handoff de
+`sdd-flow`. Su contrato —los siete campos, las cuatro ramas de resolución y el preflight que falla
+cerrado antes de crear— **no se redefine acá**: vive en `skills/sdd-flow/reference.md` → «El carrier
+de transporte, y sus cuatro ramas», y escribirlo dos veces es cómo se desincronizan dos sedes. Lo que
+esta sección fija es lo propio del manifest.
+
+**Es una lista con una entrada por fase, y el punto lo lee por la fase activa.** Una fase sin entrada
+propia **no hereda** la de otra: entra por la rama (c) —carrier ausente— y resuelve, propone y sella
+uno antes del primer efecto. Sin la clave `fase`, una orquestación de dos fases dejaría que la
+segunda corriera por la vía que alguien eligió para la primera, que es exactamente lo que la rama (d)
+existe para impedir.
+
+| Lo que el punto observa en el manifest | Rama |
+|---|---|
+| una entrada con `fase` igual a la activa, identidad que revalida y consentimiento cuyo digest verifica | **(a)** la consume sin volver a ofrecer |
+| una entrada de la fase activa con `transport: cli` | **(b)** corre su receta headless y no carga ninguna skill de plataforma |
+| ninguna entrada para la fase activa, o el bloque ausente | **(c)** resuelve, propone y sella |
+| una entrada de **otra** fase, o de la activa con identidad rancia o consentimiento que no revalida | **(d)** nunca se usa; con efectos o residuales de la vía anterior, **se detiene** |
+
+```yaml
+transporte:                    # opcional; carrier de transporte de la orquestación, UNA ENTRADA POR FASE
+  - fase: 1                    # la fase que este carrier gobierna; uno de otra fase NO es válido y cae en la rama (d)
+    transport: plataforma      # plataforma | cli — `cli` es una elección con asiento propio, distinta de la ausencia del bloque
+    plataforma: orca           # herdr | orca — presente solo con transport: plataforma
+    identidad: w1F:t1:p2       # la identidad de panel que emitió el detector; se revalida antes de cada efecto
+    consentimiento:            # puntero al consentimiento sellado, con su digest
+      ruta: .sdd/ABC-123/transporte-consentimiento-fase1.json
+      digest: sha256:585613ec…
+    alcance:                   # el LOTE REAL que ese consentimiento autoriza: un worker por repo, con su worktree
+      workers:
+        - rol: impl-servicio-a
+          worktree: /ruta/absoluta/a/servicio-a
+        - rol: impl-servicio-b
+          worktree: /ruta/absoluta/a/servicio-b
+      abrir_sesion: true
+    skills_plataforma: [orca-cli, orchestration]  # el conjunto cargado; vacío con transport: cli
+```
+
+**No aparece en `manifest-ejemplo.md`, y no es un olvido.** Esa vista documenta la
+**configuración** del manifest —lo que alguien copia y edita antes de correr—, y este bloque es
+**estado de corrida**: lo escribe el orquestador al sellar el consentimiento, y lleva una identidad
+de panel y un digest que nadie escribe a mano. Está del lado de `repos` y `delivery_assessment`, no
+del de `branch_prefix`. Por eso el esquema lo nombra con la forma comentada que ya usa para
+`outcome`.
+
+**El `alcance` de un reparto es por repo, y ahí se nota por qué no alcanza un tope numérico.** Cada
+worker del fan-out corre sobre **su** worktree, así que el consentimiento enumera el par rol–worktree
+de cada repo elegible. Un tope de «cuatro paneles» autorizaría cuatro efectos sin decir sobre qué
+árboles, y el usuario consentiría un número mientras recibe escrituras en directorios que nunca vio.
+
+**Por qué no lleva un validador propio en `orchestration-model.py`.** La validación del carrier ya
+tiene dueño ejecutable —el preflight de la rama, que corre **en el punto de despacho** y falla cerrado
+antes de crear ningún recurso—, y un segundo validador acá comprobaría la **forma** del bloque en un
+momento en que todavía no hay identidad que revalidar ni consentimiento que verificar: el manifest se
+escribe en el reparto y el carrier se consume en el fan-out. Es además la misma decisión que ya rige
+para `cross_model`, que tampoco tiene validador en ese script. Lo que sí es contable es la
+**propagación**: si el manifest declara una entrada para la fase activa, el prompt del agente
+delegado la lleva, y sin ella el agente entra por (c) y vuelve a ofrecer — que es la salida que
+AC-37 prohíbe.
 
 ### Valores de `status`
 
@@ -634,6 +698,17 @@ family_inventory:
   source: declared
   selection: <full | user_choice>
   root: sdd-orchestrator
+Carrier de transporte heredado, solo si el manifest declara una entrada para la fase activa:
+carrier_transporte:
+  fase: <la fase activa>
+  transport: <plataforma | cli>
+  plataforma: <herdr | orca; omitir con transport: cli>
+  identidad: <la identidad de panel; revalidala antes de CADA efecto>
+  consentimiento: {ruta: <ruta absoluta>, digest: <sha256:...>}
+  alcance: <el lote sellado: rol y worktree de cada worker autorizado>
+  skills_plataforma: [<las skills de plataforma cargadas; vacío con transport: cli>]
+Este carrier se CONSUME, no se vuelve a ofrecer: es la rama (a). Si no viene, no supongas
+ninguna vía — resolvé y sellá el tuyo antes del primer efecto, que es la rama (c).
 Reglas duras:
 - FRENA antes de commitear (nada de git commit/push); no toques nada fuera del repo.
 - Eres un agente sin usuario: NO hagas los checkpoints conversacionales de la Vía B (no
@@ -648,6 +723,15 @@ FAILURE_REASON: <1-3 líneas si failed; omitir si verified>
 AC: <una línea por AC-n: cumplido | no cumplido — evidencia breve>
 FILES: <una línea por archivo tocado>
 ```
+
+> **El carrier viaja por el prompt por la misma razón que la procedencia.** El agente delegado
+> arranca en un proceso fresco cuyo único contexto es este texto: un carrier que no viaje acá **no
+> existe para él**, y un punto que no observa carrier entra por la rama (c) y vuelve a ofrecer una
+> vía que la orquestación ya eligió y selló. Heredarlo «implícitamente» es la otra salida que el
+> criterio prohíbe, y las dos se ven igual desde el registro. Por eso el bloque es **condicional y
+> explícito**: se agrega solo si el manifest declara una entrada para la fase activa, igual que
+> `family_inventory` se agrega solo si declara `families`. Son dos carriers distintos —quiénes
+> pueden atender y por dónde se los despacha— y comparten nada más que la palabra.
 
 > **La línea `Procedencia:` no es decorativa.** La cláusula de parada de `sdd-flow` —entre su
 > frontmatter y su primer encabezado— admite esta delegación **por esa línea**: sin ella el worker
