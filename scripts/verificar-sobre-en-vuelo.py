@@ -128,10 +128,11 @@ READMES = [f"skills/{s}/README.md" for s in
            ("co-explore", "cross-review", "cross-implement", "bitbucket-code-review")]
 
 CAMPOS_RAIZ = {"run_id", "skill", "mode", "owner", "parent", "children", "descendants_summary",
-               "workers", "scope", "transport", "harvest_pending", "proxima_accion",
-               "manifest_seed", "manifest_first_dispatch_at"}
-CAMPOS_WORKER = {"name", "family", "write", "attempts"}
-CAMPOS_INTENTO = {"attempt_id", "transport", "output", "process_ref", "wait_budget", "harvested"}
+               "expected_workers", "workers", "scope", "transport", "harvest_pending",
+               "proxima_accion", "manifest_seed", "manifest_first_dispatch_at"}
+CAMPOS_WORKER = {"name", "expected_key", "family", "write", "attempts"}
+CAMPOS_INTENTO = {"attempt_id", "transport", "output", "process_ref", "wait_budget",
+                  "assignment_digest", "harvested"}
 SUBESQUEMAS = {
     "wait_budget": {"deadline", "limite", "consumidos"},
     "process_ref": {"tipo", "referencia", "evidencia_de_frescura", "autoridad"},
@@ -1817,6 +1818,7 @@ Orden fijo: evento de intento → sobre → tool call del despacho.
 | `parent` | sobre padre |
 | `children` | hijas, escritas por el padre |
 | `descendants_summary` | resumen de la descendencia |
+| `expected_workers` | la composición prevista, sellada antes del primer efecto |
 | `workers` | los workers directos |
 | `scope` | `scope = {repo, worktree}` |
 | `transport` | derivado |
@@ -1848,6 +1850,7 @@ En modo off ambos nodos permanecen ausentes; no se vuelven a leer ni inventar al
 | campo | qué |
 |---|---|
 | `name` | nombre del agente |
+| `expected_key` | la clave prevista que cumple |
 | `family` | familia |
 | `write` | read-only o escritor |
 | `attempts` | sus intentos |
@@ -1861,6 +1864,7 @@ En modo off ambos nodos permanecen ausentes; no se vuelven a leer ni inventar al
 | `output` | ruta exclusiva de salida |
 | `process_ref` | `process_ref = {tipo, referencia, evidencia_de_frescura, autoridad}`, `null` si no hay proceso consultable |
 | `wait_budget` | `wait_budget = {deadline, limite, consumidos}`, con `consumidos <= limite` |
+| `assignment_digest` | el digest del encargo que este intento recibió |
 | `harvested` | si este intento ya se cosechó |
 
 Ante frescura no comprobada el proceso se clasifica **incierto** y **nunca se cancela**.

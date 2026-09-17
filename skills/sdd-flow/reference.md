@@ -1550,7 +1550,7 @@ Ninguno se inventa:
 
 - **workspace** — de la respuesta del verbo de apertura de la plataforma.
 - **panel raíz** — `herdr pane list`, filtrando por ese `workspace_id`. Su `cwd` **confirma la ruta
-  real**, que es el mismo patrón por el que el adaptador consulta el worktree de un panel en vez de
+  real**, que es el mismo patrón por el que el adaptador retirado consultaba el worktree de un panel en vez de
   confiar en el argumento.
 - **nombre del agente** — derivado del identificador del flujo, único dentro del workspace.
 - **familia** — la del conductor, la misma que el launcher ya resuelve.
@@ -1584,7 +1584,7 @@ worktree el terminal terminó en otro proyecto del usuario.
 **La creación devuelve un `handle`, y el observable no está en su respuesta.** `worktreePath` y
 `agentIdentity` viven en la proyección de `terminal list`, no en la de `terminal create`, y
 `agentIdentity` **llega por detección** cuando el agente ya arrancó — por eso hay cota, y por eso se
-sondea en vez de leerse una sola vez. Es el mismo patrón que el adaptador ya usa para los workers:
+sondea en vez de leerse una sola vez. Es el mismo patrón que el adaptador retirado usaba para los workers:
 toma el `handle` de la respuesta, resuelve el worktree consultando `terminal list` y espera a que
 `agentIdentity` alcance la familia. Sin nombrar esa consulta, el conductor no tiene qué sondear
 durante la cota y no puede distinguir el éxito de un terminal sin agente.
@@ -1761,7 +1761,7 @@ El launcher recuerda los candidatos admisibles que no aparecen en `expanded_seed
 segunda sigue sin obtenerse.** La otra transferencia, la del **paquete** —qué documento de retomado
 manda—, sí ocurre y la cierra el doble `ready`; de esa no habla esta sección. La plataforma **abre cuando puede**: con una plataforma de terminales resuelta y la
 apertura consentida, el paso 9 de esta misma receta abre el árbol, arranca al conductor y le entrega
-el prompt, con los mismos verbos que `terminal.py crear` y `lanzar` usan para los **workers**. Lo que
+el prompt, con las mismas capacidades de la plataforma que se usan para crear y lanzar **workers**. Lo que
 queda manual son las cuatro ramas que esa receta enumera, y ahí el launcher imprime el comando para
 que una persona lo ejecute.
 
@@ -1804,7 +1804,7 @@ Partes 33 a 37 del flujo `transporte-terminales`.
 
 **Qué informa el verbo, y qué no.** Devuelve `mecanica-no-obtenida`, `transferido: false` y la ruta
 manual en `recuperacion`. **No nombra a quién sigue conduciendo**: el conductor vigente saldría de los
-efectos `conductor` del ledger, y este adaptador no los produce —`crear` y `lanzar` asientan otros—,
+efectos `conductor` del ledger, y el adaptador retirado no los producía —`crear` y `lanzar` asentaban otros—,
 así que el campo sale nulo y el sobre lo declara con `acredita.conductor: no-registrado`. Se dice acá
 porque este documento llegó a prometer ese campo como autoridad, y un nulo silencioso en esa ranura es
 peor que decir que no se puede obtener.
@@ -1829,7 +1829,7 @@ El orden de resolución es fijo: **celda del pedido → clasificador de secuenci
 **El transporte entra como eslabón propio, y su lugar no es decorativo.** Va después de que la
 ubicación esté resuelta —porque el documento de retomado que se consulta es el del paquete vivo, no
 el del snapshot— y **antes** de todo routing, porque el routing por fase es justamente el que puede
-volver a ofrecer la vía. Lo ejecuta `resume`, en su item `1d`; **`doctor` no invoca** el adaptador y
+volver a ofrecer la vía. Lo ejecuta `resume`, en su item `1d`; **`doctor` no la resuelve** y
 se limita a reportar lo que el documento de retomado declara, que es coherente con que nunca escriba.
 
 **Y el orden no alcanza si una celda enruta por su cuenta.** Por eso ninguna fila de la tabla de
@@ -1891,18 +1891,14 @@ Punto de entrada para un flujo empezado. `.plans/` es visible entre ramas del mi
    - **Flujo heredado**: con el marcador ausente, el paquete ausente y el directorio no vacío, el flujo se abrió antes de este contrato. Sigue por las ramas vigentes y **la vara** queda declarada **no aplicable** en el retomado: no se falla, y tampoco se adopta un pedido que nadie capturó para este flujo.
 1c. **Después de la celda del pedido**, ejecutar el clasificador de secuencia read-only y, solo si permite seguir, resolver primero el terminal `abandoned`, luego ubicación y los demás valores de `status`: `abandoned`, no se vuelve a ofrecer worktree; sin `worktree_location` o con `current`, el flujo no se trasladó; `worktree` sin status, ofrecer materializar desde `origin_sha` —recomendado— o escribir `abandoned`; estado parcial, diagnosticar evidencia y operar solo desde `origin_worktree`; doble `ready`, seguir el paquete vivo del destino y volver a resolver allí la celda. Puntero ausente, destino sin paquete y paquete vivo son distintos; no hay checkout, stash, rename, prune, limpieza ni recreación automática. Matriz: `reference.md` → "Preflight Git y worktree".
    - **Acá termina `1c`, y el corte es la mitad del arreglo.** Resolver la ubicación es lo que este item hace; **enrutar no**. Lo que sigue es el item `1d`, y recién después el routing por fase —incluida la evaluación de `co_explore` como el ciclo completo, y la entrada al plan combinado en un trivial—. El corte existe porque una frase general de orden **no invalida una instrucción local que se ejecuta antes**: mientras esta celda enrutaba por su cuenta, el conductor llegaba al ciclo completo —que **contiene la oferta de vía de transporte**— sin haber pasado por el consumo, y la vía se volvía a ofrecer en cada retoma.
-1d. **Resolver el transporte, antes de enrutar por fase.** Cerrada la ubicación en `1c`, y **antes de todo routing** —incluida la evaluación de `co_explore` como el ciclo completo, la entrada al plan combinado de un trivial y el routing por `status` del paso 6—, la retoma resuelve por qué vía corre. Ocurre **una sola vez por retoma**, sea cual sea la fase del flujo. La autoridad de qué pasa en cada caso es `reference.md` → "El bloque `transporte` y la retoma", con su matriz de cinco casos: acá se ordena la invocación y cómo se lee, no se reescribe esa matriz ni se le agrega una celda.
-   - **El comando**, sobre el documento de retomado del **paquete vivo** —nunca el del snapshot de origen, que para una ubicación `ready` no es autoritativo—:
-
-     ```sh
-     python3 skills/co-explore/scripts/terminal.py --retomar <documento de retomado>
-     ```
-
-   - **Se invoca sin el argumento de identidad de sesión, y eso es una decisión con dos límites medidos, no un olvido.** Primero: este repositorio **no tiene hoy una autoridad de identidad de sesión** que ese argumento pueda consumir, así que escribirlo obligaría a inventarle un valor. Segundo: el adaptador compara esa identidad contra el propietario que el ledger de la corrida declare, y **ese evento está sin productor** — ninguno de los verbos que escriben el ledger lo asienta, solo lo fabrican los autotests del propio adaptador. El adaptador admite el argumento ausente, y mientras no exista el productor tampoco lo lee. La sede documenta la forma general con esa bandera, para el día que la identidad exista; hasta entonces **no se materializa**.
-   - **La adopción de una corrida viva ajena queda escrita y hoy es inalcanzable**, por lo anterior: la guarda que la exige no se dispara. Se escribe igual, porque el día que exista el productor tiene que estar decidida, y la decisión es **humana**: conceder reinvoca **una sola vez** agregando `--consentimiento-adopcion`, y no conceder toma el destino que la matriz da para esa causa sin adoptar nada. El conductor **nunca** pasa esa bandera por su cuenta.
-   - **Cómo se lee la salida.** `0` y `1` son **resultado consumible**, y el routing sale del campo `plataforma` del sobre: `0` cuando continúa por la plataforma registrada, `1` en cada una de las degradaciones, con su `causa`. **Cualquier otro código, una salida ausente o un sobre ilegible `detienen la retoma`**: no se enruta por ninguna rama y se informa qué se observó. Leer un fallo de ejecución como headless es leer «no pude» como «está bien».
-   - **Todo resultado consumible `no vuelve a ofrecer`, y eso vale para los dos códigos.** La sede declara `ofertas` **cero en las cinco filas** —la retoma no ofrece, sin excepción—, así que lo que este item consume no es la oferta de una rama sino la de **todas**: con `0` la retoma continúa por la plataforma registrada, y con `1` degrada informando su causa, pero en ninguno de los dos vuelve a preguntar por la vía. Ese efecto alcanza a **todo lo que corre después**: el routing por fase recibe el transporte ya resuelto, así que la evaluación de `co_explore` como el ciclo completo **no repite su oferta** ni con `0` ni con `1`. Pasar por este item **consume** esa oferta; precederla no alcanza, y confundir las dos cosas es lo que dejaba la vía ofreciéndose de nuevo en cada retoma.
+1d. **Resolver el transporte, antes de enrutar por fase.** Cerrada la ubicación en `1c`, y **antes de todo routing** —incluida la evaluación de `co_explore` como el ciclo completo, la entrada al plan combinado de un trivial y el routing por `status` del paso 6—, la retoma resuelve por qué vía corre **la fase activa**. Ocurre **una sola vez por retoma**, y el transporte de una fase ya cerrada no se recupera para la activa. La autoridad de qué pasa en cada caso son dos secciones hermanas de `reference.md`: "El bloque `transporte` y la retoma", con su matriz de **seis** casos —la sexta es la elección registrada por línea de comandos, que no consulta identidad alguna—, y "La retoma resuelve el transporte de la fase activa", que gobierna la carga atómica de las skills, el override y la discrepancia. Acá se ordena la invocación y cómo se lee, no se reescribe ninguna de las dos ni se les agrega una celda.
+   - **La entrada es el documento de retomado del `paquete vivo`** —nunca el del snapshot de origen, que para una ubicación `ready` no es autoritativo—. De ahí se lee el bloque `transporte` y se aplica la matriz de las dos secciones hermanas; no hay un verbo que invocar.
+   - **La identidad de sesión no participa, y eso es una decisión con dos límites medidos, no un olvido.** Primero: este repositorio **no tiene hoy una autoridad de identidad de sesión** que pueda consumirse, así que exigirla obligaría a inventarle un valor. Segundo: la comparación que esa identidad habilitaría es contra el propietario que el ledger de la corrida declare, y **ese evento está sin productor** — ninguno de los verbos que escriben el ledger lo asienta. La sede documenta la forma general para el día que la identidad exista; hasta entonces **no se materializa**.
+   - **La adopción de una corrida viva ajena queda escrita y hoy es inalcanzable**, por lo anterior: la guarda que la exige no se dispara. Se escribe igual, porque el día que exista el productor tiene que estar decidida, y la decisión es **humana**: conceder resuelve **una sola vez** con el consentimiento explícito del usuario, y no conceder toma el destino que la matriz da para esa causa sin adoptar nada. El conductor **nunca** la concede por su cuenta.
+   - **Cómo se lee el resultado.** Las dos formas —continuar por la plataforma registrada, o degradar con su `causa`— son **resultado consumible**, y el routing sale de la `plataforma` que la resolución deja fija. **Un bloque `transporte` ilegible, una `plataforma` que el enum no admite o una matriz que no resuelve ninguna celda `detienen la retoma`**: no se enruta por ninguna rama y se informa qué se observó. Leer una lectura fallida como headless es leer «no pude» como «está bien».
+   - **Todo resultado consumible `no vuelve a ofrecer`, y eso vale para sus dos formas.** La sede declara `ofertas` **cero en sus seis filas** —resuelto el transporte de una fase que lo tiene registrado, la retoma no ofrece; una fase activa **sin registro propio** no entra en esa matriz y sí abre el ofrecimiento—, así que lo que este item consume no es la oferta de una rama sino la de **todas**: con `0` la retoma continúa por la plataforma registrada, y con `1` degrada informando su causa, pero en ninguno de los dos vuelve a preguntar por la vía. Ese efecto alcanza a **todo lo que corre después**: el routing por fase recibe el transporte ya resuelto, así que la evaluación de `co_explore` como el ciclo completo **no repite su oferta** ni con `0` ni con `1`. Pasar por este item **consume** esa oferta; precederla no alcanza, y confundir las dos cosas es lo que dejaba la vía ofreciéndose de nuevo en cada retoma.
    - **Sin plataforma declarada en el documento de retomado, resuelve `headless para esa retoma`, y también `sin oferta`.** Es la primera fila de la matriz, y dice las dos cosas: *el flujo termina como empezó*. No hay acá una tercera semántica que separe al flujo que eligió headless del que nació antes de esta vía o del que se pausó antes de su checkpoint — los tres toman ese mismo destino y **ninguno reabre la oferta en esta retoma**. Si alguna vez hiciera falta distinguirlos, para que un flujo pausado antes de su checkpoint pudiera todavía elegir, eso **cambia la matriz canónica** y se hace por su gate: no se decide desde este item, que ordena la invocación y no reescribe la sede.
+     **Esto habla de la fase que el bloque registra, y no alcanza a una fase activa sin registro propio**, que es el caso del bullet anterior: ahí no hay bloque que leer para esa fase, así que la matriz no se aplica y rige el ofrecimiento con consentimiento nuevo. Los dos observables se parecen —en los dos falta algo que declare la vía— y por eso se distinguen acá: uno es **un documento sin bloque**, el otro es **un bloque de otra fase**.
 
 2. Si `.plans/<id>/` **no** tiene `plan.md`, el flujo quedó pre-`plan`. **Leer `handoff.md` si existe** (narrativa + snapshot de `gather-context`: complejidad, tipo de cambio, prefijo, slug, rama base, overrides) — es lo que evita re-investigar el ticket o re-clasificar. Luego bifurcar, **en este orden**:
    - Si hay **`antecedentes.md` con `busqueda: terminal`** → el flujo se **cerró antes de la spec**, deliberadamente, porque el objetivo ya estaba cubierto. **No se reanuda**: su ledger sobrevive como registro de qué se buscó y qué se encontró, y sigue visible en el listado con ese estado y sin "siguiente paso". Va **primero** y como rama hermana: anidada bajo la de abajo era inalcanzable —su condición padre exige el estado contrario—, así que un flujo nombrado por su `<id>` caía en la última rama y reabría un cierre deliberado dando por escrita una spec que no existe.
@@ -7814,14 +7810,561 @@ solo agregan su información y preservan esa identidad.
 `worktree_stage` son los de “Estado durable y autoridad entre handoffs”. Los comentarios explicativos
 de la plantilla no se anexan a esas líneas máquina.
 
+## Resolver la plataforma de terminales
+
+**Antes de crear nada.** La plataforma no se fija: se resuelve consultando las **dos identidades
+vivas**, y el resultado gobierna cada rama de este paso. El criterio vive acá, escrito y
+autocontenido: esta skill se instala como copia y corre sobre repositorios ajenos, así que no puede
+depender de la ruta de ningún script de otro repositorio. **Esta es la sede del detector, y el flujo SDD la consume por lectura.** No hay ninguna dependencia
+de ejecución sobre un script de otro repositorio: el criterio está escrito acá y es autocontenido,
+que es lo que permite que una instalación suelta lo aplique sobre un repositorio ajeno.
+
+### Los cuatro estados por identidad
+
+Cada plataforma se consulta por su identidad de panel. Los estados son cuatro y no dos, porque
+«presente» no es «utilizable»:
+
+| Estado | Qué se observó |
+|---|---|
+| `resuelve` | la identidad existe **y** la plataforma la reconoce como panel vivo |
+| `rancia` | la identidad existe y la plataforma **no** la reconoce |
+| `ausente` | no hay identidad declarada |
+| `inconsultable` | hay identidad y la consulta a la plataforma falló |
+
+### La matriz, y su destino
+
+**Las variables son las que el runtime exporta de verdad, y la salida se parsea, no se grepea.**
+`HERDR_PANE_ID` contra `herdr pane list`, y `ORCA_TERMINAL_HANDLE` contra `orca terminal list
+--json`: la pertenencia de la identidad al conjunto vivo **es** el predicado. Inventar un nombre de
+variable o un subcomando de consulta individual tiene un modo de falla mudo — la condición queda
+falsa en una sesión sana y el destino cae a `headless`, que es indistinguible de no tener plataforma.
+
+> **Por qué el parseo y no un `grep`, con el caso que lo obligó.** Un `grep` del literal acredita
+> `resuelve` sobre una salida **truncada o malformada** que apenas contenga `"handle":"term-1"`, y ahí
+> la comprobación deja de fallar cerrada: medido con una salida `not-json {"handle":"term-1"` que sale
+> con código 0. Y ante bytes ilegibles devuelve `rancia`, que es la lectura que el adaptador retirado dejó de
+> hacer a propósito. Las dos son propiedades **estructurales** de la salida, y ningún patrón de texto
+> las distingue: por eso este es el único lugar del procedimiento donde se sube de `grep` a un
+> intérprete.
+>
+> **Y la consulta corre adentro de ese intérprete, no antes.** Una sustitución de comandos del shell
+> **no conserva los bytes NUL**: medido, un CLI que emite `"handle":"term\0-1"` le entrega al parser
+> `"term-1"`, que coincide con la variable y acredita `resuelve` sobre una salida corrupta. Parsear
+> estricto no alcanza si los bytes ya se sanearon en el camino, así que el proceso hijo se lanza desde
+> adentro y de ahí salen tanto su salida cruda como su código.
+
+```sh
+# uso: estado_identidad <herdr|orca>  → imprime resuelve|rancia|ausente|inconsultable
+# la consulta corre DENTRO del intérprete: una sustitución de comandos del shell no conserva
+# los bytes NUL, así que una salida corrupta llegaría saneada y se acreditaría como viva
+estado_identidad() {
+  estado=$(python3 -c 'import json, os, subprocess, sys
+CUAL = {"herdr": ("HERDR_PANE_ID", ["herdr","pane","list"], "panes", "pane_id"),
+        "orca":  ("ORCA_TERMINAL_HANDLE", ["orca","terminal","list","--json"], "terminals", "handle")}
+if sys.argv[1] not in CUAL: print("inconsultable"); raise SystemExit
+var, cmd, caja, clave = CUAL[sys.argv[1]]
+valor = os.environ.get(var)
+if not valor: print("ausente"); raise SystemExit
+try: hecho = subprocess.run(cmd, capture_output=True, timeout=15)
+except (OSError, subprocess.SubprocessError): print("inconsultable"); raise SystemExit
+if hecho.returncode != 0: print("inconsultable"); raise SystemExit
+try: texto = hecho.stdout.decode("utf-8")
+except UnicodeDecodeError: print("inconsultable"); raise SystemExit
+try: raiz = json.loads(texto)
+except ValueError: raiz = {}
+if not isinstance(raiz, dict): raiz = {}
+hijos = raiz.get("result", raiz)
+hijos = hijos.get(caja, []) if isinstance(hijos, dict) else []
+print("resuelve" if valor in {h.get(clave) for h in hijos if isinstance(h, dict)} else "rancia")
+' "$1" 2>/dev/null)
+  [ -n "$estado" ] || estado=inconsultable   # sin intérprete no se acredita nada
+  echo "$estado"
+}
+# uso: resolver_plataforma [plataforma-pedida]
+#   sigue: imprime "<plataforma> <identidad>" y devuelve 0
+#   para:  imprime "headless <causa>"        y devuelve 1
+resolver_plataforma() {
+  pedida="${1:-}"
+  eh=$(estado_identidad herdr); eo=$(estado_identidad orca)
+  if [ -n "$pedida" ]; then
+    case "$pedida" in
+      herdr) [ "$eh" = resuelve ] && { echo "herdr $HERDR_PANE_ID"; return 0; }
+             echo "headless override-herdr-$eh"; return 1 ;;
+      orca)  [ "$eo" = resuelve ] && { echo "orca $ORCA_TERMINAL_HANDLE"; return 0; }
+             echo "headless override-orca-$eo"; return 1 ;;
+      *)     echo "headless override-no-reconocido"; return 1 ;;
+    esac
+  fi
+  case "$eh:$eo" in
+    resuelve:resuelve) echo "headless ambas-resuelven"; return 1 ;;
+    resuelve:*)        echo "herdr $HERDR_PANE_ID";     return 0 ;;
+    *:resuelve)        echo "orca $ORCA_TERMINAL_HANDLE"; return 0 ;;
+    *)                 echo "headless $eh:$eo";         return 1 ;;
+  esac
+}
+```
+
+**Emite dos campos, la plataforma y la identidad, y el segundo no es decorativo:** es lo que
+revalida cada efecto. Un destino a secas obligaría a re-resolver, que es volver a **elegir**
+plataforma en vez de **comprobar** la que ya se eligió.
+
+> **De dónde salió esta matriz, y las dos divergencias que conserva.** Estados, variables y destinos
+> se derivaron del adaptador que este ecosistema retiró, y esa derivación ya ocurrió: **la sede es
+> ahora esta**, no aquel archivo, y la dirección no vuelve a invertirse. Se dejan escritas las dos
+> divergencias porque son decisiones y no accidentes, no porque haya nada contra lo que cotejar.
+> Cotejados en su momento caso por caso con la misma entrada —salida válida, identidad
+> ausente de la lista, JSON truncado, bytes ilegibles, salida vacía y consulta fallida—, los dos
+> coincidían. Difieren en dos puntos, los dos declarados:
+>
+> - el adaptador reservaba un código propio para las **dos** identidades inconsultables; acá ese caso
+>   cae en `headless`, que es el mismo destino que su propia tabla le asigna.
+> - ante un JSON **válido** cuya raíz no es un objeto, el adaptador **terminaba con una excepción** en
+>   vez de emitir su sobre; este bloque comprueba el tipo antes de indexar y resuelve `rancia`. La
+>   divergencia es deliberada y va hacia el lado seguro: **no se replica un fallo**.
+>
+> Si falta el intérprete, el estado es `inconsultable` y no `rancia`: sin con qué comprobar no se
+> acredita una identidad.
+
+**`headless` no significa lo mismo en todas sus causas, y la matriz de abajo es la que manda.** En
+este flujo la vía por línea de comandos **existe y es legítima** —es la rama (b) del carrier—, así
+que la ausencia de plataforma viva no detiene nada: continúa por ahí. Lo que **sí detiene** es la
+causa del empate: con **las dos identidades vivas** y sin override no hay observación que diga cuál
+es el anfitrión, y elegir una sería adivinar sobre qué máquina se crean recursos.
+
+> **Una skill hermana dice lo contrario, y con razón.** En la admisión de incidentes `headless` es
+> **parada** por cualquiera de sus causas, porque ahí el paso siguiente necesita un agente
+> interactivo al que despachar y no hay vía por línea de comandos que lo reemplace. Acá sí la hay.
+> El enunciado no es portable entre las dos, y copiarlo de una a otra deja a este flujo deteniéndose
+> ante un caso que su propia matriz resuelve.
+
+### El override del usuario dirige, no suple
+
+Si el usuario pide una plataforma, esa petición **elige cuál se intenta**, no acredita que sirva:
+viaja como **argumento** de `resolver_plataforma` —no como una decisión tomada antes de llamarlo— y
+la identidad de la elegida se comprueba igual:
+
+| Caso | Resultado |
+|---|---|
+| override, con su identidad `resuelve` | se usa la pedida |
+| override, con su identidad `rancia`, `ausente` o `inconsultable` | **se detiene**; la petición no sustituye la comprobación |
+| sin override, una sola identidad `resuelve` | se usa esa |
+| sin override, las dos `resuelven` | **se detiene**: no hay observable que identifique al anfitrión |
+| las dos `resuelven` **con** override comprobado | el override **desempata** — es el único caso en que lo hace |
+| sin override, **ninguna** identidad `resuelve` | continúa por la **vía por línea de comandos** |
+
+**La matriz es total sobre las dos señales, y por eso tiene seis filas y no cinco.** Las cinco
+primeras cubren override y empate; la sexta cubre el caso en que **ninguna** identidad resuelve, que
+no es una detención sino la parada normal del detector: sin plataforma viva, el flujo continúa por
+la vía por línea de comandos, que no se retira. Sin esa fila la matriz dejaba un caso sin destino, y
+un caso sin destino lo resuelve quien implementa, no quien especifica.
+
+### La identidad se revalida antes de cada efecto
+
+Una identidad viva al resolver puede dejar de serlo a mitad del paso, y cada efecto que dependa de
+ella la vuelve a comprobar **inmediatamente antes**, con `estado_identidad "<plataforma>"` sobre la
+plataforma ya resuelta — **nunca** con `resolver_plataforma`, que volvería a elegir en vez de
+comprobar, y que ante una identidad caída podría devolver la **otra** plataforma a mitad del paso.
+Los efectos son estos cinco y la lista es
+exhaustiva: **crear** el worktree por la plataforma, **adoptar** un árbol creado con Git, **abrir** el
+panel, **arrancar** el agente y **rotular** el worktree. Si la revalidación falla, ese efecto no se
+ejecuta y se aplica la fila que le corresponda en «El contrato de fallo por fase».
+
+---
+
+### El carrier de transporte, y sus cuatro ramas
+
+Un punto de despacho que va a emitir workers **no elige** su vía: la resuelve desde el **carrier de
+transporte**, el objeto que viaja con la invocación y declara por dónde corre este lote. Se lo invoque
+desde el flujo que resolvió la plataforma, de forma anidada, de forma autónoma o al retomar, el punto
+aplica la misma máquina de **cuatro ramas exhaustivas, y ninguna otra**. **Ninguna rama se hereda por
+suposición:** un carrier que no viajó es ausencia, no una autorización tácita a reusar la elección que
+tomó otro punto.
+
+> **No es el carrier del inventario de familias, y confundirlos rompe los dos.** `family_inventory`
+> lleva **quiénes** pueden atender —`families` y `selection`—, y su raíz es quien ya anunció una
+> ausencia; el carrier de transporte lleva **por dónde** se los despacha. Un punto puede heredar el
+> primero y no tener el segundo, y al revés: son dos preguntas distintas con dos autoridades
+> distintas, y lo único que comparten es la palabra «carrier».
+
+#### Los campos
+
+| Campo | Qué lleva |
+|---|---|
+| `fase` | la fase del flujo que este carrier gobierna; uno de otra fase **no es válido** |
+| `transport` | `plataforma` cuando el lote corre por paneles; `transport: cli` cuando la elección registrada es la vía por línea de comandos |
+| `plataforma` | `herdr` \| `orca`, presente solo con `transport: plataforma` |
+| `identidad` | la identidad de panel que emitió el detector, y que se **revalida antes de cada efecto** |
+| `consentimiento` | puntero al consentimiento sellado, con su `digest` |
+| `alcance` | el **lote real** que ese consentimiento autoriza |
+| `skills_plataforma` | el conjunto de skills de plataforma cargado; vacío con `transport: cli` |
+
+#### Las cuatro ramas
+
+| Rama | Qué observa el punto | Qué hace |
+|---|---|---|
+| **(a) carrier de plataforma válido** | `transport: plataforma`, fase igual a la activa, identidad que revalida y consentimiento cuyo digest verifica | lo **consume sin volver a ofrecer**, revalidando la identidad inmediatamente antes de cada efecto |
+| **(b) `transport: cli` registrado** | la vía por línea de comandos, registrada **como elección** | corre su receta headless, **no carga ninguna skill de plataforma** y no ofrece nada |
+| **(c) carrier ausente** | no viajó ninguno | resuelve la plataforma, propone y **sella** un carrier antes del primer efecto |
+| **(d) carrier presente pero inválido** | rancio, de otra fase, o con consentimiento que no revalida | **nunca se usa**; su salida depende de si ya hubo efectos |
+
+**(b) no es (c), y distinguirlas es la mitad del criterio.** Un carrier con `transport: cli` es una
+elección con asiento propio: alguien resolvió que este lote corre por línea de comandos. La ausencia
+de carrier es que nadie resolvió nada. Leer la segunda como la primera es exactamente cómo un punto
+termina corriendo headless sin que ninguna persona lo haya elegido, y después **el registro no las
+distingue**, porque las dos se ven igual: sin paneles.
+
+**Las dos salidas de (d):**
+
+| Estado de la vía anterior | Salida |
+|---|---|
+| **sin efectos previos** | pide consentimiento nuevo, igual que (c), y no reusa nada del carrier inválido |
+| **con efectos o residuales** | **se detiene** hasta acreditar su cese con una señal de **cese positivo** |
+
+**Qué cuenta como cese positivo acá, porque «no veo nada» no es una señal.** El cese de la vía
+anterior se acredita **observando** que sus recursos dejaron de existir —enumerando con la propia
+plataforma y no encontrando los workers de esa corrida—, nunca por la ausencia de una señal
+contraria: una plataforma que dejó de responder produce exactamente la misma nada que una cuyos
+paneles se cerraron, y una de las dos sigue teniendo procesos vivos escribiendo en el worktree. Lo
+que no se puede acreditar se enumera como **residual**, que es lo que el punto 3 de la oferta —la
+política de cierre— le prometió al usuario, y con residuales el carrier inválido no se reemplaza: se
+detiene.
+
+#### El preflight de capacidades falla cerrado antes de crear
+
+Antes del primer recurso, el punto comprueba lo que su rama exige —identidad que revalida, digest que
+verifica, alcance que cubre el lote, skills de plataforma cargadas—. Ese preflight **falla cerrado
+antes de crear** cualquier recurso: ante una comprobación que no pasa no se crea nada y el punto se
+detiene. El orden no es intercambiable, y por eso se escribe: comprobar después de crear deja
+recursos vivos que nadie autorizó, y convierte el remedio en liquidarlos en vez de no haberlos
+creado — que es la misma asimetría por la que el sellado del lote precede al primer efecto y no al
+primer despacho.
+
+#### El alcance es el lote real, no un tope fijo
+
+`alcance` enumera el **lote real** de ese punto —cuántos workers, con qué rol cada uno y sobre qué
+worktree—, y es exactamente lo que el consentimiento autoriza. Un reparto por repo autoriza sus N
+repos, sus worktrees y sus roles, o **no se despacha**.
+
+```json
+"alcance": {
+  "workers": [
+    {"rol": "w1", "worktree": "/ruta/absoluta/al/worktree"},
+    {"rol": "w2", "worktree": "/ruta/absoluta/al/worktree"}
+  ],
+  "abrir_sesion": true
+}
+```
+
+**Por qué no alcanza un tope numérico.** Un máximo de paneles sirve mientras todos los puntos tengan
+la forma del fan-out dual —dos workers, dos roles, un worktree—, y **once puntos no la tienen**: el
+panel de revisores de `bitbucket-code-review` es uno por familia disponible, la revisión final de
+diff es uno solo, y un reparto de `sdd-orchestrator` es uno por repo, cada uno sobre **su** worktree.
+Con un tope, el consentimiento de un reparto de cuatro repos autoriza «cuatro paneles» sin decir
+sobre qué árboles: el usuario consiente un número y recibe efectos sobre directorios que nunca vio.
+Con el lote enumerado, cada worker que se crea tiene que **estar en la lista**, y eso es una
+comprobación por worker en vez de una cuenta.
+
+**Qué se comprueba contra el alcance antes de crear cada worker:** que su rol esté enumerado, que su
+worktree sea uno de los declarados, y que ese worker no esté ya creado. Un worker que no figura no se
+crea y la corrida se detiene — no es un exceso que se recorta, es un lote distinto del consentido.
+
+**Un consentimiento con la forma anterior —un tope numérico y un solo worktree— sigue siendo
+legible, y no cae en (d).** Es válido para el lote que sí describe, y queda corto solo ante uno que lo
+exceda, que es donde el punto se detiene. Esa forma la emitía el productor que este cambio retiró, así
+que **ningún productor la escribe ya**; lo que se conserva es la capacidad de leerla, porque un
+consentimiento sellado bajo ella describe correctamente lo que el usuario autorizó en su momento —es
+la misma razón por la que la matriz de adopción no retira los valores viejos de ningún enum.
+
+#### Dónde se persiste, y por qué por fase
+
+El **transporte por fase** es la regla: cada fase lleva su propio carrier y su propio consentimiento
+sellado, y ninguna hereda el de otra.
+
+`sdd-flow` persiste el carrier en el bloque `transporte` de su documento de retomado, **por fase**:
+cerrada una fase, el carrier de la siguiente queda sin resolver y la retoma vuelve a ofrecer la vía,
+con su propio consentimiento sellado. `sdd-orchestrator` lo persiste en el `manifest.yml` de la
+orquestación, que es su sede equivalente.
+
+**Por fase y no por flujo, porque un flujo de dos plataformas tiene dos elecciones.** Un carrier por
+flujo haría que la segunda fase heredara la vía de la primera sin que nadie la eligiera, que es la
+herencia por suposición que la máquina de arriba prohíbe. Y la retoma, que tiene prohibido volver a
+ofrecer una vía ya consentida, no tendría con qué distinguir «esta fase no eligió» de «esta fase ya
+eligió»: el mismo bloque significaría las dos cosas.
+
+### Cómo un punto de despacho opera por la plataforma
+
+Resuelta la rama (a) del carrier, el punto **expresa intención y consume el resultado**. Las
+capacidades son cinco y la lista es exhaustiva: **crear** el worker, **entregarle** su encargo,
+**esperar** con su presupuesto, **obtener** su resultado y **liquidar** lo creado. En esa rama **no
+sobrevive ningún verbo de plataforma**: un punto que nombra un subcomando de Orca o de Herdr está
+modelando la plataforma en vez de usarla, y esa prosa envejece con cada release ajeno sin que nada
+la ponga roja.
+
+#### El routing entre guías lo deciden las guías
+
+Una plataforma puede publicar **más de una skill** —una que cubre la coordinación de workers y otra
+la operación de terminales—. El flujo carga las que cubren esas dos capacidades y **no elige entre
+ellas**: aplica el **routing que sus propias descripciones declaran**, que es lo que esas skills ya
+dicen sobre cuándo usar cada una y cuándo no.
+
+**Por qué no un criterio propio.** Un reparto escrito acá es una copia del de la plataforma, y la
+copia se desincroniza con la primera versión que reordene sus capacidades — sin que ningún
+verificador de este repositorio pueda verlo, porque la fuente vive afuera. Delegarlo tiene su costo
+declarado: si las dos descripciones se solapan o se contradicen, el flujo **no desempata**, lo
+declara y se detiene.
+
+#### Una indicación concreta del usuario no se vuelve a decidir
+
+> **Disparador:** el usuario indica **qué skill de plataforma** usar para abrir una terminal con un
+> agente y darle un encargo — típicamente un **encargo de prueba**, para ver el mecanismo funcionando
+> de punta a punta.
+> **Efecto:** se usa **esa**, tal como se indicó. No se vuelve a detectar la plataforma, no se vuelve
+> a resolver el routing entre guías y **no se vuelve a proponer** ninguna alternativa.
+> **Excepción:** ninguna. Si la skill indicada no puede servir su guía desde el binario, eso se
+> declara como precondición no satisfecha y se detiene — no se sustituye por otra.
+
+**Por qué es una regla y no una cortesía.** Las dos secciones de arriba existen para decidir cuando
+**nadie decidió**: el detector resuelve la plataforma y las descripciones resuelven el reparto. Una
+indicación del usuario ya cerró las dos preguntas, así que volver a correrlas no agrega información
+— puede **contradecirla**, y ahí el flujo estaría discutiendo con quien lo dirige. Re-proponer tiene
+además un costo propio: convierte una instrucción en una consulta, y el usuario que ya eligió tiene
+que volver a elegir lo mismo.
+
+**Lo que la indicación no dispensa.** Sigue rigiendo la carga desde el binario: una skill nombrada
+por el usuario también tiene que servir su guía por el verbo que publica, porque lo que la
+indicación fija es **cuál**, no que se pueda saltear la precondición. Y sigue rigiendo el
+consentimiento del transporte: nombrar la skill no amplía por sí solo cuántos recursos se pueden
+crear ni con qué roles.
+
+#### El protocolo de la plataforma no se modela
+
+Cómo la plataforma comunica sus terminales —sus mensajes, sus estados, sus latidos y su forma de
+reportar el fin— **no se modela** en el flujo: no se replica, no se traduce a un vocabulario propio
+y no se le agregan estados intermedios. El flujo pide una capacidad y lee lo que vuelve.
+
+**Y hay una medición que lo obliga, no una preferencia de estilo.** El último latido de un worker
+dice «vivo» **seis segundos antes de morir**, así que un modelo propio del protocolo que derive
+«sigue trabajando» de un latido reciente afirma algo que la plataforma nunca dijo. Lo que se lee es
+la señal que la plataforma emite para eso, y lo que no emita queda **incierto** — que es un estado
+del flujo, no una traducción del protocolo ajeno.
+
+#### La cosecha por pantalla se normaliza antes de comparar, y eso no es modelar el protocolo
+
+Cuando la capacidad de **obtener el resultado** devuelve una lectura de la pantalla del worker, lo
+que vuelve **no es el texto que el worker emitió**: es ese texto ya maquetado por el TUI del agente,
+que lo envuelve y lo indenta a su ancho. Comparar un resultado esperado contra esa lectura **línea
+por línea** hace que el veredicto dependa de la geometría del panel.
+
+**Medido, en dos corridas de la misma prueba sobre la misma plataforma.** Un resultado de una línea
+—una marca más un `sha256`, 90 caracteres— se verificó con un `grep` de literal exacto: **verde** en
+los paneles de 146 columnas de ancho, y **rojo en los de 73**, donde el TUI lo partió en dos con dos
+espacios de sangría. Las **cuatro** fuentes de lectura que la plataforma ofrece devolvieron lo mismo,
+incluida la que une los saltos blandos: ese salto **no** es un salto blando del terminal, así que no
+hay fuente que lo repare. El resultado estaba entero y correcto en las dos.
+
+**Entonces el flujo normaliza antes de comparar** —junta las líneas y descarta los espacios—, o usa
+el camino que la guía de la plataforma declare para recuperar una salida completa. Lo que **no** se
+hace es ensanchar el panel para que el veredicto dé verde, y hay **dos** razones, la segunda medida:
+ata la corrección de la verificación a una decisión de layout, y **el verbo que ensancha mueve el
+foco**. Medido: un conductor delegado que topó con este mismo corte lo resolvió agrandando el panel
+del worker, y el foco pasó **al panel del worker** en vez de quedarse donde la persona estaba
+trabajando — un efecto sobre la pantalla de alguien, para arreglar una comparación de texto. Duró lo
+que duró ese panel y volvió solo al cerrarlo, así que el costo es de la ventana, no permanente; se
+escribe igual porque esa ventana es justo cuando alguien está mirando la corrida.
+
+**Y normalizar una lectura de pantalla no es modelar el protocolo.** La sección siguiente prohíbe
+replicar los mensajes, los estados y los latidos de la plataforma, y esto no toca nada de eso: no
+inventa una señal de fin, no traduce estados y no deriva «sigue trabajando» de ningún indicio. Es
+leer un texto que llegó maquetado. Conviene dejarlo escrito porque las dos cosas se parecen desde
+lejos, y confundirlas empuja a la salida contraria: no normalizar y creerle al falso rojo.
+
+#### El perfil viaja al crear, y se contrasta
+
+Cuando el punto **crea** la terminal de un worker, el perfil solicitado —rol y familia— viaja en el
+lanzamiento, y el flujo lo contrasta contra el **perfil efectivo** que la plataforma reporta. Si
+difiere del solicitado, **se detiene antes de crear más recursos**: un worker corriendo con otro
+perfil que el pedido ya es un resultado que nadie autorizó, y crear los siguientes multiplica el
+error antes de que alguien lo mire.
+
+**El discriminante es quién arranca al agente, no si la terminal preexistía.** Si lo arranca **la
+plataforma**, la familia viaja en el lanzamiento y el contraste se exige; si lo arrancó **otro** —el
+comando con que se creó la terminal, o un operador—, el perfil **no es solicitable ni acreditable** y
+eso **se declara sin detener**. Declarar que no se pudo acreditar es información; detenerse por ello
+sería detener toda reutilización.
+
+**La primera redacción decía «terminal preexistente» y era una generalización de una sola
+plataforma.** Las dos mediciones, que es lo que la corrige:
+
+| Plataforma | Cómo se crea el worker | Perfil efectivo | Por qué |
+|---|---|---|---|
+| Orca | la colocación por splits obliga a crear la terminal antes y adjuntarla | `launch.effective.agent: null` | el agente lo fijó el `--command` del split, que la plataforma no interpreta; y sus dos opciones son **excluyentes por contrato** |
+| Herdr | el split crea un pane **vacío** y la plataforma arranca al agente sobre él | **acreditado** | el arranque es de la plataforma, que valida la identidad del agente antes de devolver |
+
+**Entonces la terminal preexiste en las dos y el resultado es opuesto**, entre otras cosas porque
+Herdr separa el pane del agente: el pane es una ubicación y el agente se arranca aparte, así que la
+colocación pedida por el usuario y el registro de familia **no compiten**. Escrito como estaba, el
+flujo le atribuía al mecanismo una carencia que era de una plataforma — y la habría arrastrado a
+cualquier plataforma que se integre después.
+
+#### Cuándo se puede degradar a la vía por línea de comandos
+
+Una vía por plataforma que **ya creó recursos** y falló **no degrada por su cuenta**. Para degradar
+hace falta una **señal positiva de terminación emitida por la plataforma**; ante su ausencia el
+resultado se declara **incierto**, la degradación queda **vedada** y los residuales se enumeran. Es
+el mismo criterio de cese positivo del carrier inválido, aplicado al fallo en curso: la nada no
+acredita, y aquí acredita menos todavía, porque ya hay recursos creados de los que responder.
+
+#### El universo del transporte, y qué pasa con una capacidad ausente
+
+El universo normativo es **todo sitio que emite workers**, no la lista que el inventario declara. El
+inventario es una **proyección auditable** de ese universo: su verde acredita que lo declarado
+coincide con lo inventariado, y **nunca** que estén todos —su propia frontera admite que un despacho
+sin marca le es invisible—. Por eso crear un punto de despacho nuevo incorpora **marca, declaración
+de invariantes y fila de inventario** como parte del acto de crearlo, y no como un trámite posterior
+que alguien recuerde.
+
+**Una capacidad que un punto necesita es obligatoria a efectos del preflight.** Si falta, el
+preflight falla cerrado y eso **no habilita emitir ese worker** por línea de comandos mientras haya
+plataforma resuelta. La tentación es la contraria y por eso se escribe: degradar ese worker suelto
+parece el remedio barato, y lo que produce es una corrida mitad por paneles y mitad por CLI en la que
+ninguna de las dos mitades tiene el registro completa de la otra.
+
+#### El bundle se carga del binario de la plataforma, no de una copia instalada
+
+La guía que el flujo carga **la sirve el binario de la plataforma resuelta**, por el verbo que ella
+publique para eso, y es la que corresponde a **la versión instalada**. Una copia en el harness del
+conductor no sirve: envejece con cada release ajeno y nada la pone roja.
+
+**Medido en este árbol, y no es una diferencia de redacción.** La copia instalada de la guía de
+Herdr —de dos meses antes— difería de la que sirve el binario en **once tramos**: un grupo de
+comandos **entero ausente**, dos códigos de error que la copia no nombra (`agent_not_ready` al
+arrancar, `agent_blocked` al entregar el encargo), la advertencia de que un `timeout` **no prueba**
+que el encargo no se entregó, y la semántica de dos estados del ciclo de vida cambiada. Un flujo que
+operara con la copia le pediría a la plataforma cosas que su versión ya no hace y leería sus estados
+con el significado anterior — sin un solo error, porque los dos textos son válidos por separado.
+
+**Cuántas guías del terreno hay lo dice el binario, no una suposición del flujo.** No es una por
+plataforma: Herdr publica **una**, y Orca **ocho**, de las cuales **dos** cubren este terreno — y ahí
+se cargan **las dos del terreno** como conjunto, porque una capacidad puede estar en cualquiera. Por
+eso la pregunta siguiente —cuál de ellas provee cada capacidad— solo se abre cuando son varias.
+
+**Lo que la carga acredita, y lo que no.** El binario acredita que la guía corresponde a **su**
+versión; **no** a la del servidor con el que habla. La propia guía de Herdr lo declara: cliente y
+servidor pueden diferir tras una actualización, y un método ausente no autoriza a detener ni a
+actualizar un servidor. Cargar resuelve qué **dice** la plataforma, no qué **acepta** el proceso que
+la atiende — y eso último solo lo dice el intento, con su error.
+
+#### Cuál de las guías del terreno provee cada capacidad
+
+Cuando una plataforma publica **más de una** skill que cubre este terreno —coordinación de workers y
+operación de terminales—, el flujo resuelve cuál provee la capacidad concreta **a partir de lo que
+ellas declaran**, y **no le pide al usuario que conozca la diferencia**. Se cargan **todas** como
+conjunto, cuantas sean, y el reparto sale de sus descripciones. Con **una sola** no hay reparto que resolver, y esa es la otra mitad del
+criterio: la pregunta la abre el binario al servir más de una, no el flujo al suponerlo.
+
+**Que el usuario no tenga que saberlo es el criterio, no una comodidad.** La partición entre esas dos
+skills es una decisión de quien las publica y puede cambiar en la versión siguiente: una interfaz que
+obligue a elegir entre ellas traslada al usuario una distinción que no es suya y que envejece sola.
+Si las descripciones no alcanzan para resolver la capacidad, el flujo **lo declara y se detiene**; no
+adivina por el nombre de la skill.
+
+#### Los tres destinos del preflight de capacidades
+
+El preflight comprueba que las skills cargadas exponen lo que el flujo necesita, y **cada fallo tiene
+su destino fijado**, que depende de dos cosas: si lo que falta es obligatorio, y si ya se crearon
+recursos.
+
+| Qué se observó | Destino |
+|---|---|
+| falta una capacidad **obligatoria**, o el **perfil efectivo** reportado difiere del solicitado al crear una terminal | **falla cerrado antes de crear** ningún recurso |
+| falla **antes del primer recurso** y no falta ninguna capacidad obligatoria | **degrada** a la vía por línea de comandos |
+| devuelve evidencia **ilegible o contradictoria** **después** de haber creado recursos | el resultado es **incierto**: **no degrada** y los residuales se enumeran |
+
+**Las tres filas se distinguen por dos preguntas, y el orden entre ellas importa.** Primero: ¿falta
+algo obligatorio? Si falta, no hay degradación posible —degradar sería emitir ese worker por línea de
+comandos, que es justo lo que la plataforma resuelta prohíbe—. Después: ¿ya hay recursos? Con
+recursos creados, una evidencia que no se puede leer **no es un permiso para empezar de nuevo por
+otra vía**: los procesos anteriores pueden seguir vivos, y arrancar la vía por línea de comandos
+sobre el mismo worktree pone dos corridas a escribir encima.
+
+#### La activación de la plataforma es atómica
+
+Resuelta una plataforma para la fase, **ningún punto se escapa por línea de comandos**. Eso es lo que
+compra que el reemplazo del productor del carrier sea **un acto único** y no una migración punto por
+punto: mientras conviven puntos migrados y sin migrar, una misma corrida despacha mitad por paneles y
+mitad por CLI, y **ninguna de las dos mitades tiene el registro de la otra** — que es exactamente la
+propiedad que el ledger existe para dar.
+
+**Lo que se paga, dicho antes de cobrarlo:** el valor de la plataforma no se ve hasta que los once
+puntos están listos. Es deliberado. La alternativa —migrar de a uno y ver el beneficio antes— entrega
+el beneficio parcial y **pierde la invariante entera**, que es lo único que este trabajo compra.
+
+**Qué sigue igual después del cutover.** La oferta conserva sus **cinco puntos** y la pregunta
+**independiente** de apertura de sesión: cambiar quién produce el carrier no cambia qué se le
+muestra al usuario ni qué se le pregunta. Y la vía por línea de comandos **sigue existiendo y no se
+retira**: es el destino de un entorno sin plataforma, de un usuario que rechaza la propuesta y de una
+skill de plataforma que no carga.
+
+#### Los dos momentos del instrumento
+
+Los invariantes del punto se hacen cumplir en dos momentos, con los dos modos del instrumento de
+`skills/cross-review/scripts/despacho.py`:
+
+| Momento | Invocación | Qué contrasta |
+|---|---|---|
+| **antes de crear ningún recurso** | `despacho.py --preflight <raíz> <skill> <punto> <composición>` | la composición **prevista** contra la cardinalidad, las familias y la relación entre encargos que ese punto declara |
+| **antes de esperar a ningún worker, y al consumir cada resultado** | `despacho.py --corrida <raíz> <skill> <punto> <sobre.json>` | la composición **efectiva** contra la prevista, **en las dos direcciones**, y por worker su familia, el digest de su encargo y su deadline propio |
+
+Ninguno de los dos reemplaza al otro, y su frontera está declarada en la matriz de invocación del
+propio instrumento: los dos leen lo que el conductor **declaró** y lo que el conductor **asentó**,
+así que **ninguno detecta un despacho que nunca se asentó**. Esa dirección la cubre solo la
+reconciliación contra la fuente efectiva de la plataforma.
+
+**La composición que recibe el preflight lleva su `dominio`, y sin él el punto se detiene.** Tres de
+las cuatro columnas no se pueden evaluar mirando solo a los workers previstos —`1-por-repo` necesita
+cuántos repos tiene el reparto, `opuesta-al-conductor` necesita la familia del conductor,
+`delta-sobre-el-anterior` necesita el encargo anterior—, así que la composición declara ese dato al
+lado de `expected_workers[]`. La ausencia del campo que la fila nombra **falla cerrado** con
+`forma-no-reconocida`: una celda que no se puede comprobar no pasa. Los campos y qué celda exige cada
+uno: `skills/cross-review/corridas-en-vuelo.md` → «El dominio contra el que se comprueba la
+composición».
+
+---
+
+#### La matriz de adopción: qué pasa con lo que ya existe
+
+Retirar la invocación del adaptador no ocurre sobre un repositorio vacío: hay flujos abiertos,
+registros escritos y corridas en vuelo. **Cada estado preexistente tiene su destino declarado acá**,
+y ninguno queda librado a que el conductor lo resuelva en el momento.
+
+| Estado cuando el cambio llega | Su destino |
+|---|---|
+| **flujo nuevo** | nace **sin transporte resuelto**. No hereda nada y elige por el checkpoint, como siempre |
+| **registros ya escritos** | siguen siendo **legibles**, y los valores que nombran la vía anterior **no se retiran de ningún enum**: retirarlos volvería inválido un registro que describe correctamente lo que pasó |
+| **corridas vivas** | **terminan por su vía**. No se migran, no se matan y no se convierten a mitad de corrida |
+| **documento de retomado con una sola plataforma fijada** | se resuelve por su matriz y **continúa por ella** si sigue utilizable |
+| **el archivo del adaptador** | dejó de invocarse en la primera fase y **se eliminó al cerrar la segunda**, que es el orden que esta fila fijaba |
+
+**El orden de cutover no sobrescribe la evidencia de ninguna fase.** Lo que una fase midió sigue
+siendo suyo aunque la siguiente corra por otra plataforma.
+
+**Y el supuesto que sostuvo la última fila no era comprobable, así que se declara en vez de
+afirmarse.** Eliminar el archivo al cerrar la segunda fase asumía que para entonces no quedaba
+ninguna corrida de la vía anterior — y el estado de cada flujo es **local a su árbol de trabajo**,
+así que ninguna fuente disponible podía responder por todos. No se convirtió en una guarda que
+mienta: quedó escrito como supuesto, que es lo que es, y **sigue abierto**: una corrida de la vía
+anterior que siga viva en otro árbol no tiene ya el archivo que la operaba.
+
 ### El bloque `transporte` y la retoma
 
-Un flujo que corre sobre una plataforma de terminales agrega al frontmatter un bloque `transporte`.
-Son **cuatro campos** más el puntero a la corrida, y existen para una sola cosa: que una sesión que
-retoma el flujo recupere la elección **de ahí**, sin volver a detectar ni a ofrecer.
+Un flujo que corre sobre una plataforma de terminales agrega al frontmatter un bloque `transporte`:
+es **la sede donde `sdd-flow` persiste el carrier de transporte**, y existe para una sola cosa, que una
+sesión que retoma el flujo recupere la elección de esa fase **de ahí**, sin volver a detectar ni a ofrecer.
 
 ```yaml
 transporte:
+  fase: orca                  # la fase que este carrier gobierna; uno de otra fase NO es válido
+  transport: plataforma       # plataforma | cli — `cli` es una ELECCIÓN registrada, no una ausencia
   plataforma: orca            # herdr | orca — la registrada, y la única identidad que la retoma consulta
   esquema: 1                  # versión de ESTE bloque; una que esta instalación no interpreta degrada
   consentimiento: .plans/<id>/transporte-consentimiento.json   # PUNTERO al consentimiento que autorizó la elección
@@ -7829,9 +8372,15 @@ transporte:
   corrida: .plans/<id>/transporte-corrida.jsonl   # ledger de la corrida; su propietario decide la adopción
 ```
 
+Con `transport: cli` sobran `plataforma`, `workspace` y `corrida`: no hay paneles que registrar. Lo
+que queda es el asiento de la elección y su consentimiento, que es de lo que se trata la rama (b).
+
 El bloque **ausente** no es un error: es la señal de que el flujo nació antes de esta vía, y su
-destino está en la primera fila de la matriz. `consentimiento` y `corrida` son **punteros**, no copias:
-el consentimiento se lee en su sede, igual que `pedido/`.
+destino está en la primera fila de la matriz. **No es lo mismo que `transport: cli`**, y por eso el
+campo existe: la ausencia dice que nadie eligió, y `cli` dice que alguien eligió la vía por línea de
+comandos. Hasta que el campo existió las dos se escribían igual —sin bloque—, así que el registro no
+podía distinguir una elección de un flujo que nunca la enfrentó. `consentimiento` y `corrida` son
+**punteros**, no copias: el consentimiento se lee en su sede, igual que `pedido/`.
 
 ### El consentimiento, y por qué no alcanza una marca
 
@@ -7843,7 +8392,7 @@ El archivo de **consentimiento** que apunta el bloque no guarda una señal de qu
   "mostrado": "<el texto literal de los cinco puntos de la oferta>",
   "digest": "<sha256 de `mostrado`>",
   "momento": "2026-01-01T00:00:00+00:00",
-  "alcance": {"worktree": "/ruta/absoluta", "paneles_max": 2, "roles": ["w1", "w2"], "abrir_sesion": true}
+  "alcance": {"workers": [{"rol": "w1", "worktree": "/ruta/absoluta"}, {"rol": "w2", "worktree": "/ruta/absoluta"}], "abrir_sesion": true}
 }
 ```
 
@@ -7863,8 +8412,9 @@ decisión que el usuario tomó, y la segunda es una pregunta que nunca se le hiz
 concede, pero solo el segundo obliga a decirle que su consentimiento es anterior a la capacidad.
 
 **Las combinaciones son tres, y no cuatro.** La apertura **no se ofrece sin workers**: esa
-combinación es la única que no sobrevive a una retoma mientras el adaptador no recupere una señal de
-workers, así que no se ofrece y no hay documento que la represente. Las tres que sí existen:
+combinación es la única que no sobrevive a una retoma mientras nada publique una señal de
+workers, así que no se ofrece y no hay documento que la represente. Las tres que sí existen —y las
+tres tienen documento, incluida la rechazada, que antes se representaba por su ausencia:
 
 Vía consentida **con** apertura:
 
@@ -7872,7 +8422,7 @@ Vía consentida **con** apertura:
 {
   "corrida": ".plans/<id>/transporte-corrida.jsonl",
   "mostrado": "<los cinco puntos>", "digest": "<sha256>", "momento": "<ISO-8601>",
-  "alcance": {"worktree": "/ruta/absoluta", "paneles_max": 2, "roles": ["w1", "w2"], "abrir_sesion": true}
+  "alcance": {"workers": [{"rol": "w1", "worktree": "/ruta/absoluta"}, {"rol": "w2", "worktree": "/ruta/absoluta"}], "abrir_sesion": true}
 }
 ```
 
@@ -7882,42 +8432,68 @@ Vía consentida **sin** apertura — mismos campos de workers, la clave en falso
 {
   "corrida": ".plans/<id>/transporte-corrida.jsonl",
   "mostrado": "<los cinco puntos>", "digest": "<sha256>", "momento": "<ISO-8601>",
-  "alcance": {"worktree": "/ruta/absoluta", "paneles_max": 2, "roles": ["w1", "w2"], "abrir_sesion": false}
+  "alcance": {"workers": [{"rol": "w1", "worktree": "/ruta/absoluta"}, {"rol": "w2", "worktree": "/ruta/absoluta"}], "abrir_sesion": false}
 }
 ```
 
-Vía **rechazada** — y acá **no hay consentimiento que mostrar**, porque su contenido es la ausencia
-del documento. Lo que se observa es el frontmatter del flujo, sin bloque `transporte`:
+Vía **rechazada** — el usuario enfrentó la oferta y eligió la vía por línea de comandos. **Eso deja
+asiento**, que es la rama (b) del carrier: el bloque se escribe con `transport: cli` y su
+consentimiento conserva el texto que se rechazó, porque lo que hay que poder reconstruir después es
+**contra qué** se decidió:
 
 ```yaml
----
-status: implementing
-branch: feature/<id>
-# sin bloque `transporte`: la vía no se consintió, así que no se creó archivo de consentimiento
----
+transporte:
+  fase: orca
+  transport: cli              # elección registrada: este lote corre por línea de comandos
+  esquema: 1
+  consentimiento: .plans/<id>/transporte-consentimiento.json
 ```
 
+```json
+{
+  "mostrado": "<los cinco puntos>", "digest": "<sha256>", "momento": "<ISO-8601>",
+  "alcance": {"workers": [], "abrir_sesion": false}
+}
+```
+
+**`workers` vacío no es un lote de cero: es la declaración de que no hay lote**, y por eso el
+documento existe igual. Un consentimiento ausente y uno con el lote vacío responden preguntas
+distintas —«nadie preguntó» y «se preguntó y la respuesta fue que no»—, y la única que autoriza algo
+es ninguna de las dos. Lo que cambia es qué puede hacer la retoma: ante la primera vuelve a ofrecer,
+ante la segunda **no**, porque la elección ya está tomada para esta fase.
+
 **El `esquema` del bloque no sube por este campo, y eso es deliberado.** Subirlo haría que toda
-instalación cuyo adaptador siga en la versión anterior degrade la retoma a headless, porque un
+instalación que no interprete el esquema nuevo degrade la retoma a headless, porque un
 esquema que no interpreta es su señal de degradación. La compatibilidad la da la **lectura
 trivaluada**: un consentimiento viejo no trae la clave, y la ausencia no autoriza. Por eso el
 puntero a la corrida va **siempre presente** — al no existir la combinación sin workers, no hay
 caso en que falte, y ningún consumidor del bloque cambia.
 
-`alcance` es lo que la elección autorizó, y el adaptador lo hace cumplir al crear cada panel: un `cwd` fuera del worktree, un rol no enumerado o un panel de más que `paneles_max` salen con `consentimiento-invalido` o `consentimiento-agotado` y **no crean nada**. Es la diferencia entre registrar la elección y **acotarla**: sin `alcance`, consentir una vez autorizaría cualquier cantidad de paneles en cualquier directorio.
+`alcance` es lo que la elección autorizó, y quien crea cada panel lo hace cumplir: un `cwd` que no
+figura entre los worktrees declarados, un rol no enumerado o un worker que no está en el lote salen
+con `consentimiento-invalido` o `consentimiento-agotado` y **no crean nada**. Es la diferencia entre
+registrar la elección y **acotarla**: sin `alcance`, consentir una vez autorizaría cualquier cantidad
+de paneles en cualquier directorio. Su forma es la del **lote real** —ver «El alcance es el lote
+real, no un tope fijo»—, y un consentimiento sellado con la forma anterior se sigue leyendo: por qué
+se conserva esa lectura está declarado ahí, en una sola sede.
 
-**La retoma no detecta.** Consulta la identidad de la plataforma **persistida** y de ninguna otra, y
-reusa los cuatro estados por identidad que `detectar` ya declara. Esa es la diferencia material con
-la detección, que barre las dos plataformas: acá hay una sola candidata, así que no hay nada que
-comparar.
+**La retoma no detecta, y eso no es lo mismo que no mirar el entorno.** Para **resolver el destino**
+consulta la identidad de la plataforma **persistida** y de ninguna otra, reusando los cuatro estados
+por identidad que el detector ya declara: acá hay una sola candidata, así que no hay nada que
+**elegir**. El contraste contra las dos señales del entorno sí ocurre, y ocurre **antes** —es el paso
+de discrepancia de «La retoma resuelve el transporte de la fase activa»—, con otro propósito:
+comprobar si el entorno **contradice** al registro, no elegir una plataforma. Los dos pasos miran
+cosas distintas y el orden entre ellos está fijado: primero se contrasta, y solo con el registro no
+contradicho se resuelve su destino por la matriz de abajo.
 
 | Lo que dice el documento de retomado | Identidad de la plataforma persistida | Destino |
 |---|---|---|
-| el campo **no está** | no se consulta | headless, **sin oferta**: el flujo termina como empezó |
-| el campo está | `ausente` o `inconsultable` — desapareció, o no se pudo preguntar | headless, **informando la causa** |
-| el campo está | `rancia` — hay identidad y no resuelve: es **otra** instalación que la registrada | headless, informando la causa |
-| el campo está y `resuelve`, y el propietario del ledger de corrida **no está vivo** | `resuelve` | headless, informando la causa |
-| el campo está, `resuelve` y el propietario vive | `resuelve` | continúa por la plataforma registrada, **sin volver a ofrecer** |
+| el bloque **no está** | no se consulta | headless, **sin oferta**: el flujo termina como empezó |
+| el bloque está con `transport: cli` | no se consulta: no hay plataforma registrada que consultar | línea de comandos, **sin oferta** — es la rama (b), una elección ya tomada para esta fase |
+| el bloque está con `transport: plataforma` | `ausente` o `inconsultable` — desapareció, o no se pudo preguntar | headless, **informando la causa** |
+| el bloque está con `transport: plataforma` | `rancia` — hay identidad y no resuelve: es **otra** instalación que la registrada | headless, informando la causa |
+| el bloque está con `transport: plataforma` y `resuelve`, y el propietario del ledger de corrida **no está vivo** | `resuelve` | headless, informando la causa |
+| el bloque está con `transport: plataforma`, `resuelve` y el propietario vive | `resuelve` | continúa por la plataforma registrada, **sin volver a ofrecer** |
 
 **Ninguna corrida viva se adopta ni se convierte.** Una corrida que el ledger declara en vuelo y cuyo
 propietario no es esta sesión exige **consentimiento explícito** antes de tocarla; sin él degrada
@@ -7928,16 +8504,100 @@ fallida no descarta a la otra plataforma, porque hay **dos** candidatas y queda 
 retoma hay **una sola**, así que no poder preguntar por ella no deja nada que evaluar, y el destino es
 el que ya rige para todo lo que no resuelve: headless.
 
-**Quién la resuelve.** El adaptador, con el documento de retomado como única entrada:
+**Quién la resuelve: el conductor, leyendo el documento de retomado.** No hay un verbo que invocar —
+la resolución es **leer el bloque `transporte` y aplicar esta matriz**, más, en las filas que lo
+piden, preguntarle al terreno si esa plataforma sigue utilizable con el detector que esta misma sede
+declara. Se escribe así, y no como un comando, porque **lo que hay acá es una lectura y una
+adjudicación**, no un cómputo: un script que envolviera las dos no agregaría determinismo y sí una
+sede más que mantener sincronizada con esta matriz.
 
-```sh
-python3 skills/co-explore/scripts/terminal.py --retomar .plans/<id>/handoff.md --sesion <id-de-sesion>
-```
+**El resultado de la resolución tiene dos formas, y las dos son consumibles.** *Continúa por la
+plataforma registrada* cuando el bloque la declara y el terreno la confirma; *degrada* en los otros
+cuatro casos, y entonces la **causa** se declara —no la hay solo en la primera fila, donde no hubo
+nada que degradar—. **Ninguna de las dos vuelve a ofrecer**: resuelto el transporte **de una fase que
+lo tiene registrado**, la retoma no ofrece. Eso no alcanza a la fase activa **sin registro propio**,
+que no entra en esta matriz: ahí no hay elección que recuperar y rige el ofrecimiento con
+consentimiento nuevo.
 
-Devuelve `0` cuando continúa por la plataforma registrada y `1` en las cuatro degradaciones, con
-`causa` en el sobre — nula solo en la primera fila, donde no hubo nada que degradar. `ofertas` es
-**cero en todas**: la retoma no ofrece. Para adoptar una corrida en vuelo de otro propietario se
-agrega `--consentimiento-adopcion`, que es el único modo de pasar esa guarda.
+**Adoptar una corrida en vuelo de otro propietario exige consentimiento explícito del usuario**, y es
+la única forma de pasar esa guarda. El conductor **nunca** la concede por su cuenta.
+
+### La retoma resuelve el transporte de la fase activa
+
+Antes de enrutar y **antes de todo efecto**, la retoma identifica la fase de forma read-only y
+resuelve el transporte **de esa fase**. Resuelto, carga las skills de esa plataforma como
+**conjunto atómico**: el routing no continúa sin el conjunto completo. Un conjunto que no carga entero **es** el
+caso de una skill de plataforma que no carga, y se resuelve por los criterios que ya lo gobiernan —
+no tiene destino propio ni precedencia nueva.
+
+**El transporte de una fase ya cerrada no se recupera para la activa.** Cuando la
+fase activa no tiene registro propio, rige el ofrecimiento con **consentimiento nuevo**, aunque la
+anterior haya corrido por paneles y el usuario ya haya consentido una vez. Es la contracara de persistir por fase: heredar
+la vía sería la herencia por suposición que el carrier prohíbe, y además haría imposible el pedido
+que originó todo esto —empezar con una plataforma y continuar con otra.
+
+**Un bloque heredado sin `fase`** —escrito antes de que el campo existiera— **se proyecta a la fase
+activa de forma declarada**, diciéndolo, y **sin borrar la evidencia de la fase anterior**. No se
+reescribe el bloque viejo para que parezca de esta fase: lo que se pierde ahí no es un campo, es la
+única prueba de por dónde corrió lo que ya ocurrió.
+
+#### El override al retomar: dos ramas, y el orden no es negociable
+
+Si el usuario indica un transporte **distinto** del registrado, las dos ramas se separan:
+
+| Lo que indica | Qué se hace |
+|---|---|
+| **otra plataforma** | se valida **primero** su identidad; **solo si resuelve** se inicia el cese y la adopción. Si no resuelve, **se detiene** conservando intactos el registro, su consentimiento y los recursos anteriores, **sin liquidar nada** |
+| la **vía por línea de comandos** | no hay identidad de plataforma que validar, y esa rama **no exige** esa validación; conserva íntegra la obligación de acreditar el cese de la vía anterior |
+
+**Validar antes de liquidar, y no al revés.** El orden es lo que la fila compra: liquidar primero y
+descubrir después que la plataforma indicada no resuelve deja al flujo sin la vía vieja —ya
+liquidada— y sin la nueva —que nunca sirvió—, con los recursos destruidos y nada a lo que volver.
+Validar **antes de liquidar** cuesta una consulta y hace que el peor caso sea no haber hecho nada.
+
+**Las dos ramas exigen el cese positivo de los recursos de la vía anterior antes de adoptar la
+nueva.** Si alguno sigue vivo, o el cese no es comprobable, el flujo **conserva esa vía para
+liquidarla**, declara el resultado **incierto** con sus residuales y **no ejecuta ningún efecto en el
+transporte nuevo**. **Una pausa no acredita cese:** que nadie haya mirado durante horas no es una
+observación sobre los procesos, y tratarla como una deja workers vivos escribiendo sobre un worktree
+que el transporte nuevo cree suyo.
+
+En las dos, la elección queda registrada con su **propio consentimiento sellado** —la vía por línea
+de comandos de forma distinguible de la ausencia de bloque, y sin cargar ninguna skill—, y en la
+primera son las skills del transporte **nuevo** las que se cargan.
+
+#### Discrepancia entre el registro y el entorno
+
+Cuando el transporte registrado **no coincide** con lo que las señales del entorno resuelven, y el
+usuario no declara nada, el flujo **no continúa en silencio** por el registrado: la discrepancia
+tiene un destino declarado y observable.
+
+**Se detiene solo en las dos celdas donde la discrepancia es real**, antes de cargar ninguna skill y
+antes de crear ningún recurso:
+
+| Lo que resuelven las señales | Destino |
+|---|---|
+| **las dos** resuelven | **se detiene**: no hay observable que diga cuál es el anfitrión |
+| **una sola** resuelve, y **difiere** del registrado | **se detiene**: el entorno contradice al registro |
+| una señal **confirma** al registrado | **continúa**, aunque la otra no resuelva o sea inconsultable |
+| **ninguna** resuelve | rige la precedencia ya aprobada hacia la vía por línea de comandos, salvo que la veda por recursos o residuales lo impida |
+
+**Por qué solo esas dos, y no toda diferencia.** Una señal que no resuelve no contradice nada: no
+saber si Herdr está vivo no es evidencia de que el registro de Orca sea falso. Detenerse ahí
+convertiría cada retoma en un ambiente sin la otra plataforma en un checkpoint, que es el costo sin
+la propiedad — la discrepancia es real cuando **hay** una observación que se opone al registro, no
+cuando falta una que lo confirme.
+
+**Al detenerse, presenta lo observado con la evidencia de cada señal, y solo una decisión del usuario
+lo resuelve.** El registro previo y su consentimiento **no desempatan por sí solos**: son justamente
+lo que está en duda. La identidad elegida vuelve a pasar la validación **antes de cada efecto**, y
+una identidad ausente, rancia o inconsultable **no resuelve** la discrepancia.
+
+**La respuesta obtenida se trata como declaración actual**, y se bifurca: si **confirma** al
+registrado, se valida su identidad, se conservan el registro y su consentimiento y continúa la carga
+del registrado; solo una plataforma **distinta** o la vía por línea de comandos entra por el criterio
+del override de arriba. Una declaración explícita del usuario tiene precedencia sobre esta matriz y
+se bifurca igual: confirmar no es lo mismo que elegir otra cosa, y solo lo segundo liquida algo.
 
 ## Revisión final de diff
 

@@ -90,10 +90,21 @@ Con manifest habilitado, el sobre nace con `manifest_seed` inmutable y
 `manifest_first_dispatch_at: null`, que se fija inmediatamente antes del primer despacho externo.
 Los puntos de despacho propios son dos:
 
-- el **panel de revisores** externos del Paso 7, uno por cada familia disponible, sync o background
-  con tope duro
-- el **validador adversarial** por hallazgo del Paso 8, cuando la refutación se delega a una familia
-  externa en vez de resolverla el conductor
+| Punto de despacho | Cardinalidad | Familias | Encargos | Deadline |
+|---|---|---|---|---|
+| el **panel de revisores** externos del Paso 7, uno por cada familia disponible | `1-por-familia` | `una-por-worker` | `identico-por-digest` | `propio-por-worker` |
+| el **validador adversarial** por hallazgo del Paso 8 | `1-por-hallazgo` | `indiferente` | `distinto-por-worker` | `propio-por-worker` |
+
+Enums cerrados, forma de la tabla y qué pasa con un punto sin fila:
+`skills/cross-review/corridas-en-vuelo.md` → «Los invariantes que cada punto de despacho declara»,
+que es su **sede única**.
+
+**Cada punto de arriba resuelve su vía por el carrier de transporte**, con las cuatro ramas de
+`skills/sdd-flow/reference.md` → «El carrier de transporte, y sus cuatro ramas» y **ninguna otra**.
+En la rama de plataforma el punto expresa **intención** y **no nombra verbos de ninguna plataforma**.
+
+<!-- invoca: despacho-preflight -->
+<!-- invoca: despacho-corrida -->
 
 Campos del sobre, transiciones, sonda por turno, cosecha y condiciones del retiro:
 `skills/cross-review/corridas-en-vuelo.md`, la **sede única** del contrato. Es la regla normativa; acá solo se enumera dónde

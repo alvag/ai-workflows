@@ -229,9 +229,10 @@ sección 6). Un flujo que no sabe que hay un PR abierto sobre sus archivos lo de
 **Antes de crear nada.** La plataforma no se fija: se resuelve consultando las **dos identidades
 vivas**, y el resultado gobierna cada rama de este paso. El criterio vive acá, escrito y
 autocontenido: esta skill se instala como copia y corre sobre repositorios ajenos, así que no puede
-depender de la ruta de ningún script de otro repositorio. El adaptador del ecosistema
-—`terminal.py`, verbo `detectar`— es la **fuente de derivación** de estos estados y de esta matriz, y
-sirve para comprobar paridad; no es una dependencia de ejecución.
+depender de la ruta de ningún script de otro repositorio. La **sede** de estos estados y de esta
+matriz es `skills/sdd-flow/reference.md` → «Resolver la plataforma de terminales», y esta copia
+**deriva de ella**: la dirección es esa y no la inversa. Sigue sin haber dependencia de ejecución
+sobre ningún script, que es lo que permite aplicarla sobre un repositorio ajeno.
 
 ### Los cuatro estados por identidad
 
@@ -322,10 +323,13 @@ resolver_plataforma() {
 revalida cada efecto. Un destino a secas obligaría a re-resolver, que es volver a **elegir**
 plataforma en vez de **comprobar** la que ya se eligió.
 
-> **La paridad con el adaptador, y sus dos divergencias.** Estados, variables y destinos se derivan
-> de `terminal.py detectar`. Cotejados caso por caso con la misma entrada —salida válida, identidad
+> **De dónde salió esta matriz, y las dos divergencias que conserva.** Estados, variables y destinos
+> se derivaron del adaptador que este ecosistema retiró, y esa derivación ya ocurrió: **la sede es
+> ahora esta**, no aquel archivo, y la dirección no vuelve a invertirse. Se dejan escritas las dos
+> divergencias porque son decisiones y no accidentes, no porque haya nada contra lo que cotejar.
+> Cotejados en su momento caso por caso con la misma entrada —salida válida, identidad
 > ausente de la lista, JSON truncado, bytes ilegibles, salida vacía y consulta fallida—, los dos
-> coinciden. Difieren en dos puntos, los dos declarados:
+> coincidían. Difieren en dos puntos, los dos declarados:
 >
 > - el adaptador reserva un código propio para las **dos** identidades inconsultables; acá ese caso
 >   cae en `headless`, que es el mismo destino que su propia tabla le asigna.

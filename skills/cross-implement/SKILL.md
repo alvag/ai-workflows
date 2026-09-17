@@ -125,8 +125,21 @@ sobre nace con `manifest_first_dispatch_at: null`; ese timestamp se fija una vez
 antes de la primera tool call. Resume y fix loop conservan la vía y el inicio del lanzamiento
 original. Los puntos de despacho propios son dos:
 
-- el **implementador inicial**, lanzado con el prompt-contrato tras los gates previos
-- cada ronda del **fix loop**, que reanuda esa misma sesión con el delta
+| Punto de despacho | Cardinalidad | Familias | Encargos | Deadline |
+|---|---|---|---|---|
+| el **implementador inicial**, lanzado con el prompt-contrato tras los gates previos | `1` | `opuesta-al-conductor` | `no-aplica` | `propio-por-worker` |
+| cada ronda del **fix loop**, que reanuda esa misma sesión con el delta | `1-por-ronda` | `continuacion-del-anterior` | `delta-sobre-el-anterior` | `propio-por-worker` |
+
+Enums cerrados, forma de la tabla y qué pasa con un punto sin fila:
+`skills/cross-review/corridas-en-vuelo.md` → «Los invariantes que cada punto de despacho declara»,
+que es su **sede única**.
+
+**Cada punto de arriba resuelve su vía por el carrier de transporte**, con las cuatro ramas de
+`skills/sdd-flow/reference.md` → «El carrier de transporte, y sus cuatro ramas» y **ninguna otra**.
+En la rama de plataforma el punto expresa **intención** y **no nombra verbos de ninguna plataforma**.
+
+<!-- invoca: despacho-preflight -->
+<!-- invoca: despacho-corrida -->
 
 Campos del sobre, transiciones, sonda por turno, cosecha y condiciones del retiro:
 `skills/cross-review/corridas-en-vuelo.md`, la **sede única** del contrato. Es la regla normativa; acá solo se enumera dónde

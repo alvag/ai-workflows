@@ -133,8 +133,21 @@ Todo agente que este flujo despacha nace con su **sobre** en `.cross-model/activ
 **antes** del despacho, y mientras el sobre siga activo cada turno del conductor cierra informando su
 estado. Los puntos de despacho propios son dos:
 
-- los subagentes de exploración de `analyze`, cuando el entorno los soporta y el alcance lo amerita
-- el reviewer de la **revisión final de diff**, dentro del gate de revisión manual
+| Punto de despacho | Cardinalidad | Familias | Encargos | Deadline |
+|---|---|---|---|---|
+| los subagentes de exploración de `analyze`, cuando el entorno los soporta y el alcance lo amerita | `n-acotado` | `indiferente` | `distinto-por-worker` | `propio-por-worker` |
+| el reviewer de la **revisión final de diff**, dentro del gate de revisión manual | `1` | `misma-que-el-conductor` | `no-aplica` | `propio-por-worker` |
+
+Enums cerrados, forma de la tabla y qué pasa con un punto sin fila:
+`skills/cross-review/corridas-en-vuelo.md` → «Los invariantes que cada punto de despacho declara»,
+que es su **sede única**.
+
+**Cada punto de arriba resuelve su vía por el carrier de transporte**, con las cuatro ramas de
+`skills/sdd-flow/reference.md` → «El carrier de transporte, y sus cuatro ramas» y **ninguna otra**.
+En la rama de plataforma el punto expresa **intención** y **no nombra verbos de ninguna plataforma**.
+
+<!-- invoca: despacho-preflight -->
+<!-- invoca: despacho-corrida -->
 
 Campos del sobre, transiciones, sonda por turno, cosecha y condiciones del retiro:
 `skills/cross-review/corridas-en-vuelo.md`, la **sede única** del contrato. Es la regla normativa; acá solo se enumera dónde
@@ -560,7 +573,6 @@ usuario **no resuelve** las posiciones, no se inicia una crítica cuyo objeto to
 `cross_review.artifacts` — esa lista gobierna los artefactos de `cross_review.mode`, no este paso. De
 `cross_review` se heredan solo tres campos: `execution`, `max_rounds` y `reviewer`.
 
-
 Si el predicado habilita la pasada, su procedimiento —los tres terminales, qué se hace con lo que
 encuentre, la sesión fresca y la métrica— está en `co-exploracion.md` → "Tercera pasada adversarial".
 **Degradación:** sin la otra familia, o sin `cross-review` instalada, no hay tercera pasada: avisar en
@@ -682,14 +694,14 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
    - **El resultado entra en el checkpoint del paso 6**, que ya existe: no se abre un stop nuevo ni se agrega un gate. Quien confirma el contexto lo hace con los hallazgos a la vista.
 6. **Evaluar la entrega, clasificar complejidad y confirmar el contexto** (router de arriba y `delivery-profile.md`): registrar urgency, complexity y riesgo provisional con evidencia, procedencia y confianza; anunciar clasificación, recomendación y efectos exactos del perfil. En este mismo checkpoint de 5-8 bullets presentar el resumen del paso 5 —qué se buscó, qué fuentes quedaron sin comprobar y con qué impacto en el alcance— y el preview del worktree: origen/SHA, destino absoluto, rama semántica definitiva, inventario del paquete, config local obligatorio si existe, `seed_paths` aceptados y candidatos omitidos, startup, primitiva acotada y cota. Worktree es recomendado, pero solo esta confirmación habilita `creating`, traslado, siembra, startup, doble `ready` y launcher según `reference.md`; con búsqueda `in-progress`, completar es recomendado y continuar en el árbol actual exige escribir `abandoned`. Un trivial ratifica el costo; reclasificar después no deshace un árbol creado.
    - **Y acá se congelan las cláusulas del pedido**, en el **checkpoint** que ya existe y **sin abrir un stop nuevo**: se muestra el **conjunto exacto** de cláusulas provisionales —o su **delta** contra lo confirmado antes, cuando el flujo ya venía congelado— y la confirmación del usuario anexa el evento que las fija. Una línea del literal con `medio: referencia` **bloquea el congelamiento** hasta que el usuario acepte esa limitación acá; el ciclo completo está en `reference.md` → "El paquete del pedido".
-   - **Y acá se ofrece la vía de transporte**, en el **mismo checkpoint** y **sin abrir un stop nuevo**. Si el adaptador resuelve una plataforma utilizable —`python3 skills/co-explore/scripts/terminal.py detectar`, que devuelve `herdr`, `orca` o `headless`—, la elección se ofrece acá y **nunca se toma sola**: correr los workers como paneles de terminal cambia dónde vive la sesión y qué permisos hereda cada worker, así que es del usuario. La oferta enumera **lo que la elección autoriza**, en cinco puntos y sin agregarlos después:
-     1. los **recursos que se van a crear** — cuántos paneles, con qué rol cada uno, sobre qué worktree y con qué tope;
+   - **Y acá se ofrece la vía de transporte**, en el **mismo checkpoint** y **sin abrir un stop nuevo**. Si el **detector del flujo** resuelve una plataforma utilizable —su sede es `reference.md` → «Resolver la plataforma de terminales», que consulta las dos identidades vivas y aplica una matriz total de seis filas: override comprobado, empate, una sola, y ninguna, que continúa por línea de comandos—, la elección se ofrece acá y **nunca se toma sola**: correr los workers como paneles de terminal cambia dónde vive la sesión y qué permisos hereda cada worker, así que es del usuario. La oferta enumera **lo que la elección autoriza**, en cinco puntos y sin agregarlos después:
+     1. los **recursos que se van a crear** — el **lote real** de este punto: cada worker enumerado con su rol y su worktree, que es lo que el consentimiento autoriza y contra lo que se comprueba cada creación. No un tope numérico: un número no dice sobre qué árboles caen los efectos (`reference.md` → «El alcance es el lote real, no un tope fijo»);
      2. la **mudanza de la sesión** — el conductor pasa a convivir con los workers en la misma terminal, y el flujo continúa en el destino. **Abrir la sesión y acreditar la conducción son dos cosas distintas:** la primera se hace cuando la plataforma resuelta lo permite, y la segunda **no es obtenible** — nadie declara que la conducción se transfirió, y quien constata que el destino tomó el flujo es el usuario mirando la pantalla. **La abre una persona en cuatro ramas, y solo en esas cuatro:** plataforma sin capacidad · **autorización de apertura no vigente** (rechazada, ausente o ilegible) · permiso del harness no concedido · automatización que falló **sin dejar un conductor activo**, según la clasificación de `reference.md` → "9. Control final y launcher";
      3. la **política de cierre** — qué se liquida al terminar, qué queda en pie y qué se enumera como residual cuando el cese no se puede acreditar;
      4. el **modelo de permisos** — esta vía **no tiene mecanismo de aislamiento**: el worker hereda el entorno del conductor, credenciales incluidas, y esa configuración **le consume contexto antes de que lea su encargo**. Se nombra acá porque es el costo que la elección compra, y quien elige tiene que verlo;
      5. **si abro la sesión del destino** — una pregunta propia, con su sí y su no, **independiente de las cuatro anteriores**: correr los workers como paneles y abrir la sesión del conductor son efectos distintos sobre la misma máquina, y se responden por separado. La respuesta **se registra** en `alcance.abrir_sesion` del consentimiento, nunca se infiere del texto mostrado, y **sin un sí la receta no abre nada**. Este punto **no se ofrece sin workers**: esa combinación es la única que no sobrevive a una retoma mientras el adaptador no recupere una señal de workers, así que queda fuera de la oferta.
 
-     **Ninguna terminal se crea antes de la respuesta**, y lo que se consiente queda ligado al texto exacto que se mostró, no a una marca suelta: el mecanismo está en `reference.md` → "El bloque `transporte` y la retoma". Un `headless` no abre oferta y no agrega una línea al checkpoint.
+     **Ninguna terminal se crea antes de la respuesta**, y lo que se consiente queda ligado al texto exacto que se mostró, no a una marca suelta: el mecanismo está en `reference.md` → "El bloque `transporte` y la retoma". Al resolverse una plataforma, sus skills se cargan como **conjunto atómico** —el routing no sigue sin el conjunto completo—, y lo que la respuesta sella es el **carrier de transporte** de **esta fase** —incluida la elección de seguir por línea de comandos, que se registra y no se confunde con no haber elegido—, y es de ahí que cada punto de despacho resuelve su vía por las cuatro ramas de `reference.md` → "El carrier de transporte, y sus cuatro ramas". Un `headless` no abre oferta y no agrega una línea al checkpoint.
 
      **La oferta está activa**, y lo está recién desde que los cuatro consumidores —el retomado, el fan-out, el sobre y el manifest— saben leer lo que produce. Ese orden no es cosmético: al revés deja una ventana en la que el flujo **ofrece** un transporte que ningún consumidor sabe interpretar. Si alguna vez hay que **retirar la oferta**, lo que eso garantiza —y lo que no— está en `co-explore/reference.md` → "Retirar la oferta: qué se revierte y qué no".
    - Al cerrar el checkpoint, escribir atómicamente ubicación, `origin_sha`, `origin_worktree`, `main_worktree`, `context_root` y `context_head` incluso si se eligió el árbol actual. La rama/worktree pre-spec es preparación, no aprobación. **El origen deja de conducir cuando quedó comprobado lo que su plataforma puede acreditar** —no una «entrega» que ninguna de las dos observa— y lo declara al cerrar; **ese cese no garantiza la continuidad**: acredita que el origen dejó de conducir, no que el destino haya tomado el flujo, y eso último lo constata el usuario.

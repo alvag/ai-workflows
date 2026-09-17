@@ -135,6 +135,23 @@ worker *pueda* alcanzar MCP y hooks, pero no que decida buscar en la web ni que 
 ramas. Medido acá: un worker sin estas restricciones hizo dos búsquedas web y 44 comandos antes de
 mirar el artefacto.
 
+**La prohibición de preguntar alcanza al worker, y no al conductor.** Son dos partes con dueños
+distintos, y repartirlas mal rompe una de las dos:
+
+| Parte | Dónde vive | Por qué ahí |
+|---|---|---|
+| que el worker **no pregunte ni se bloquee**, y registre su duda en `## Incógnitas` o `## Supuestos` | **el flujo**, en este bloque y en la regla 3 del `SKILL.md` | es agnóstica del transporte: vale corra donde corra |
+| **qué herramienta concreta** se le prohíbe, y cómo se la deshabilita | **la plataforma** | el nombre de la tool y la forma de apagarla son de cada host, y envejecen con cada release ajeno |
+| que **el conductor sí la use** para consultarte a vos | **el flujo**, dicho explícitamente | sin decirlo, la prohibición del worker se lee como si alcanzara a los dos |
+
+**Y la razón por la que esto dejó de poder darse por sentado está medida.** La regla se apoyaba en que
+el worker *corría no-interactivo*, que era una propiedad del transporte headless y no una decisión: no
+había a quién preguntarle. Sobre la vía por paneles **ya no es cierta** — el worker corre en una
+terminal con su interfaz completa, y en las corridas de esta vía apareció texto tipeado en el campo de
+entrada de un worker que ningún conductor envió. Entonces lo que impide que pregunte no es el
+transporte: es **esta prohibición**, y por eso tiene que estar escrita en vez de heredarse de una
+propiedad que cambió.
+
 **El perímetro no se cierra a una lista de archivos.** `explore` e `investigate` reciben un síntoma
 o un ticket, no un inventario: descubrir dónde vive el cambio y cuál es la cadena causal *es* el
 objetivo, y una lista cerrada esconde justamente las dependencias que nadie conocía. Solo cuando
@@ -153,6 +170,11 @@ Postura independiente: cada worker la forma sin ver la del otro.
 
 
 El prompt vive en `assets/prompts/debate-round-0.md` — es la **entrada exacta** del worker y se escribe a archivo con la tool Write. Placeholders que hay que sustituir antes de despachar: `{constraints}`, `{working_dir}`.
+
+**La composición de esta ronda declara `dominio.anterior: []`**, y no es una formalidad: la fila de
+este punto es `delta-sobre-el-anterior`, así que el preflight pide el intento previo. La lista vacía
+es cómo se declara que **no lo hay** —es la ronda 0—; omitir el campo es distinto y falla cerrado,
+porque el instrumento no puede distinguir «no existe» de «nadie lo escribió».
 
 
 #### Prompt de debate — cruce
@@ -1032,20 +1054,42 @@ memoria de la fase anterior, no la validez.
 
 Sobre esta vía **no cambia la semántica del fan-out, solo el transporte**: un worker por familia
 seleccionada, el mismo encargo para los dos, los dos despachados antes de esperar a ninguno, y un
-deadline propio por worker. Lo que cambia es que el adaptador **lo hace cumplir** en vez de confiarlo
-al conductor, porque un panel se lanza con tres invocaciones y no con una:
+deadline propio por worker. Lo que cambia es **quién lo hace cumplir**. Antes era un efecto secundario
+de lanzar por el adaptador; delegado el transporte a la skill de la plataforma ese efecto desaparece,
+y los invariantes pasan a comprobarse explícitamente contra lo que **cada punto declara**.
+
+**Los invariantes obligatorios no son una lista fija de esta sección: son los `invariantes que ese punto`
+declara en su fila del inventario**, y por eso la tabla de abajo enumera los de este punto y no los de
+todos. Un punto **sin declaración es un fallo** y no un permiso: la ausencia de fila no significa «no
+tiene invariantes», significa que nadie los escribió, y se falla cerrado en vez de despachar sin
+comprobar nada.
 
 | Propiedad de `AC-5` | Qué la hace cumplir | Qué pasa si se viola |
 |---|---|---|
-| los dos despachados antes de esperar a ninguno | `esperar --corrida` lee el ledger de la corrida | `fan-out-incompleto`, con los paneles pendientes enumerados |
-| exactamente un worker por familia | `lanzar` coteja la familia contra los ya despachados | `familia-duplicada`, y no se lanza |
-| encargo idéntico para los dos | `lanzar` coteja el `sha256` contra los ya despachados | `encargo-divergente`, y no se lanza |
-| deadline propio por worker | `--vence-en` es por invocación de `esperar`, no de la corrida | dos workers comparten vencimiento y uno muere por el reloj del otro |
+| los dos despachados antes de esperar a ninguno | el instrumento, en el momento `corrida`, sobre el sobre | `fan-out-incompleto`, con los paneles pendientes enumerados |
+| exactamente un worker por familia | el instrumento, en el momento `preflight`, sobre la composición | `familia-duplicada`, y no se lanza |
+| encargo idéntico para los dos | el instrumento, en el momento `preflight`, cotejando el `sha256` | `encargo-divergente`, y no se lanza |
+| deadline propio por worker | el campo propio del worker en el sobre, comprobado en el momento `corrida` | dos workers comparten vencimiento y uno muere por el reloj del otro |
 
-`--corrida` en `esperar` es **opcional en la firma y obligatorio en el procedimiento**: sin él el verbo
-sondea igual, porque los autotests de estado lo invocan sobre un panel suelto, pero el fan-out lo pasa
-siempre. Esa es la única pieza que separa "lanza A, espera A, lanza B" de la corrida paralela, y es
-justamente el modo de falla que la sección anterior declara que `execution` **no** gobierna.
+**La composición que recibe el preflight declara su `dominio`, y sin él no se lanza.** Este punto
+es `1-por-familia`, así que «exactamente un worker por familia» se comprueba contra el **inventario**
+de la corrida: la composición lleva `dominio.familias`, y su ausencia sale `forma-no-reconocida` en
+vez de pasar. Es la diferencia entre comprobar la cardinalidad y suponerla — medido, un fan-out dual
+con **un** solo worker previsto salía verde mientras el dato no viajaba. Los campos y qué celda exige
+cada uno: `skills/cross-review/corridas-en-vuelo.md` → «El dominio contra el que se comprueba la
+composición».
+
+**Los dos momentos no son una comodidad de implementación.** Dos de los cuatro invariantes son
+comprobables **antes** de lanzar —la familia y el encargo se conocen al componer— y dos solo
+**después**, porque hablan de la corrida entera. Comprobar los cuatro en un solo momento obliga a
+elegir cuál se pierde: en el preflight no existe todavía la corrida, y en la corrida ya se creó el
+recurso que el invariante quería impedir.
+
+**El deadline por worker dejó de ser una forma de la invocación y pasó a ser un campo.** Cuando lo
+hacía cumplir la firma de un verbo —un vencimiento por invocación y no por corrida—, lo que lo
+garantizaba era la **forma de la CLI**, no una comprobación; retirada esa CLI, el invariante quedaba
+sin sujeto. Ahora vive como campo propio de cada worker en el sobre, que es lo que un instrumento
+puede leer.
 
 **El contribuyente de la síntesis es el informe cosechado por esta vía, y ninguno otro.** Es el
 artefacto que el worker dejó en su ruta y que `cosechar` atravesó por el mismo pipeline de validación
@@ -1087,8 +1131,8 @@ uno leyó otra cosa, los dos mapas dejaron de ser comparables y esa comparación
 ### Retirar la oferta: qué se revierte y qué no
 
 La vía se ofrece dentro del checkpoint de contexto de `sdd-flow`, y esa oferta se puede **retirar**
-—porque el delta medido no la justifique, porque una plataforma cambie, o porque se decida volver a
-headless—. Retirarla es barato **a propósito**, y conviene tener escrito qué alcanza:
+—porque la prueba viva de su plataforma no la acredite, porque una plataforma cambie, o porque se
+decida volver a headless—. Retirarla es barato **a propósito**, y conviene tener escrito qué alcanza:
 
 | | qué pasa al retirar la oferta |
 |---|---|

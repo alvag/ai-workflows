@@ -69,9 +69,100 @@ desambiguar con lo que ya tiene en la mano. Deduplicar por `run_id` solo —que 
 es el único de los tres que parece un identificador— fundiría dos corridas reales de repos
 concurrentes que eligieron el mismo sufijo, y las informaría como una.
 
+### Los invariantes que cada punto de despacho declara
+
+Cada punto de despacho declara sus invariantes como **fila de tabla** en su propia sección
+`## Corridas delegadas en vuelo`. Son cuatro columnas con **enums cerrados**, definidos acá y en
+ningún otro lado. **Un punto sin fila, o con una celda fuera de su enum, es un fallo y no un
+permiso.**
+
+| Columna | Valores admitidos |
+|---|---|
+| `cardinalidad` | `1` · `1-por-familia` · `1-por-ronda` · `1-por-repo` · `1-por-hallazgo` · `n-acotado` |
+| `familias` | `una-por-worker` · `opuesta-al-conductor` · `misma-que-el-conductor` · `continuacion-del-anterior` · `indiferente` |
+| `encargos` | `identico-por-digest` · `nucleo-comun` · `distinto-por-worker` · `delta-sobre-el-anterior` · `no-aplica` |
+| `deadline` | `propio-por-worker` |
+
+**Por qué los invariantes son heterogéneos, y por qué eso no los ablanda.** Solo dos de los once
+puntos tienen forma «una familia por worker»; la revisión final de diff es **mismo-modelo por
+doctrina declarada**, y el fan-out por repo reparte encargos **distintos** por construcción. Un
+invariante universal los pondría en rojo por cumplir su propio diseño. Lo obligatorio es lo que
+**ese** punto declaró, y para el fan-out dual sigue siendo el conjunto histórico completo.
+
+**`encargos: no-aplica` es válido solo con `cardinalidad: 1`.** Con un solo worker no hay relación
+entre encargos que declarar, y escribir ahí `identico-por-digest` sería un predicado vacuo que da
+verde sin comprobar nada.
+
+**`encargos: nucleo-comun` no es una versión débil de `identico-por-digest`: es la misma regla.**
+Exige que el núcleo común sea byte-idéntico y admite un **anexo privado declarado**. Donde no hay
+anexo —`explore`, `investigate`— el núcleo **es** el encargo entero y la relación degenera en
+identidad, sin que haya que declarar dos valores para el mismo punto. La distinción existe porque
+`counter-plan` reparte por contrato un anexo por familia: portar ahí `identico-por-digest` haría
+que el segundo worker se rechace siempre, que es un defecto hoy **latente** —nunca se disparó porque
+esas corridas fueron por línea de comandos— y que activar esta vía volvería vivo.
+
+**`familias: continuacion-del-anterior`** nombra al worker que **reanuda la sesión** de un intento
+previo en vez de nacer fresco: su familia no se elige, se hereda, y exigirle una elección sería
+pedirle que contradiga a la sesión que continúa.
+
+**El deadline tiene un solo valor, y el enum existe igual.** No es redundancia: sin la columna, una
+fila podría **omitirlo**, y la omisión es exactamente el modo de falla que el campo `deadline` de
+`expected_workers[]` viene a cerrar.
+
+**Una sola tabla por sección.** El extractor que lee estas filas **fusiona todas las tablas** de la
+sección, así que un segundo cuadro ahí adentro —un ejemplo, una matriz de estados— rompe la
+biyección del inventario con un mensaje que habla de puntos de despacho y no de tablas. Si hace
+falta otra tabla, va en una sección hermana.
+
+### La matriz de invocación del instrumento
+
+Los invariantes de arriba no se hacen cumplir solos. **Esta es la sede única de quién invoca qué, y
+en qué momento**; un punto de despacho que no aparezca acá no los está haciendo cumplir, por más que
+haya declarado su fila.
+
+| Momento | Invocación | Qué corta |
+|---|---|---|
+| antes de crear **ningún** recurso | `despacho.py --preflight <raiz> <skill> <punto> <composicion.json>` | `forma-no-reconocida` · `cardinalidad-invalida` · `familia-duplicada` · `familia-invalida` · `encargo-divergente` · `deadline-invalido` · `deadline-compartido` |
+| antes de esperar a **ningún** worker, y al consumir cada resultado | `despacho.py --corrida <raiz> <skill> <punto> <sobre.json>` | `forma-no-reconocida` · `fan-out-incompleto` · `despacho-no-previsto` · `familia-invalida` · `encargo-divergente` · `deadline-invalido` · `deadline-compartido` |
+
+Cada punto de despacho lleva la directiva **estructurada** en su sección, no una frase:
+
+```
+<!-- invoca: despacho-preflight -->
+<!-- invoca: despacho-corrida -->
+```
+
+**`deadline-compartido` y `deadline-invalido` también son dos, por la misma razón.** La primera es
+que dos workers mueren por el mismo reloj; la segunda es que el vencimiento **falta** o **no es el
+que se selló**. Con un solo nombre, «compartido» se emitía ante un worker sin vencimiento alguno, que
+no comparte nada con nadie.
+
+**`familia-duplicada` y `familia-invalida` son dos violaciones, no una.** La primera es que dos
+workers del lote comparten familia donde el punto exige una por worker; la segunda es que la familia
+de un worker **no es la que su fila declara** —no es la opuesta al conductor, no es la del conductor,
+o no es la que continúa—. Colapsarlas en un nombre costaba dos cosas medidas: el mensaje de la
+reconciliación decía «familia duplicada» ante un worker despachado con **otra** familia que la
+prevista, que no duplica nada; y la celda `opuesta-al-conductor` no tenía cómo emitir su fallo, así
+que no lo emitía.
+
+**Por qué una marca y no una oración.** Una frase que diga «acá se invoca el preflight» satisface
+cualquier comprobación por palabras, y una que diga «acá no hace falta» también. Una directiva de
+máquina no: o está o no está, y su ausencia es contable.
+
+**Los dos momentos no son intercambiables, y por eso son dos.** El preflight es previo a crear
+recursos **por contrato**, así que no puede ver un despacho; la guarda de corrida lee despachos
+asentados, así que no puede correr antes de que existan. Colapsarlos en uno dejaría sin comprobar
+dos de los cuatro invariantes: cuál, depende de cuándo se corriera el único que quedara.
+
+**Lo que ninguno de los dos acredita.** Los dos leen lo que el conductor declaró y lo que el
+conductor asentó. **Un despacho que nunca se asentó no existe para ninguno**, y esa dirección la
+cubre únicamente la reconciliación contra la fuente efectiva de la plataforma. No es un hueco
+reparable endureciendo estos modos: es la frontera de un instrumento que lee documentos, y está
+escrita en su docstring para que su verde no se lea como más de lo que autoriza.
+
 ### Los campos del sobre
 
-Doce campos operativos en la raíz, más un par condicional de autoridades del manifest:
+Trece campos operativos en la raíz, más un par condicional de autoridades del manifest:
 
 | campo | qué registra |
 |---|---|
@@ -82,6 +173,7 @@ Doce campos operativos en la raíz, más un par condicional de autoridades del m
 | `parent` | el sobre del que este despacho es hijo, cuando el despacho es anidado; nulo si no lo es |
 | `children` | los sobres que este conductor creó al despachar hacia abajo |
 | `descendants_summary` | el resumen que esta corrida publica de su propia descendencia |
+| `expected_workers` | la composición **prevista**, sellada antes del primer efecto |
 | `workers` | los workers **directos** de esta corrida, con sus intentos |
 | `scope` | el repo y el worktree afectados por la corrida |
 | `transport` | la vía por la que viaja la corrida, **derivada** de los intentos vigentes |
@@ -151,19 +243,226 @@ retirarlo.
 **`scope` es un nodo estructurado, no un texto.** Escribir el repo y el worktree como una frase obliga
 a cada consumidor a parsearla, y cada uno la parsea distinto.
 
+### La composición prevista
+
+> **El título no comparte prefijo con el de la sección siguiente, y es deliberado.** El extractor
+> de secciones de los verificadores resuelve por **prefijo de título**, así que un encabezado que
+> empiece igual que otro se lleva su tabla: medido, `### Los campos por worker esperado` hacía que
+> `--ac 1` leyera esta tabla como la de `workers[]` y reportara que faltaban sus cuatro campos.
+
+`expected_workers[]` lista la composición que el punto de despacho **previó**, y se sella **antes del
+primer efecto**. Es un nodo distinto de `workers[]` y los dos significan cosas distintas: el primero
+es lo que se va a despachar, el segundo es lo que se despachó. Sin los dos no hay forma de nombrar
+las dos direcciones del error.
+
+Siete campos por cada entrada, y uno de ellos es condicional:
+
+| campo | qué registra |
+|---|---|
+| `key` | la clave del dominio que este worker cubre: una familia, un repo, una ronda, un hallazgo |
+| `family` | la familia prevista para atenderlo |
+| `role` | el rol con el que se lo va a despachar |
+| `assignment_digest` | el digest del encargo que va a recibir |
+| `nucleo_digest` | el digest de la **parte común** del encargo, solo con `encargos: nucleo-comun`; ausente en los demás valores |
+| `scope` | el worktree sobre el que va a correr |
+| `deadline` | su vencimiento **propio**, previsto antes de lanzarlo; el preflight lo exige presente y **distinto del de los demás** |
+
+**La `key` es estable a lo largo de las rondas, y la ronda es el intento.** La fila de arriba nombra
+«una ronda» entre los dominios posibles, y leído solo, eso sugiere que el worker de la ronda 2 lleva
+la clave `ronda-2`. **No es así, y el contrato ya lo decidía en otro lado:** un punto cuyas rondas
+**reanudan el mismo worker** —el loop de revisión, el fix loop— tiene **una** entrada en `workers[]`
+con **varios** `attempts[]`, y `assignment_digest` cuelga del intento justamente para expresar eso. Un
+worker con clave por ronda no cabría en ese nodo: `expected_key` es uno por worker, así que cambiarla
+cada ronda dejaría a la reconciliación sin poder nombrar al worker que se reanudó.
+
+Está medido sobre una corrida real de este repositorio: el sobre cerrado del loop de revisión lleva
+`name: revisor-codex` con **dos intentos** y dos transportes distintos, no dos workers. Entonces la
+clave de ese worker es **su identidad de dominio** —qué cubre— y la ronda se lee en `attempts[]`.
+Una composición que declare `ronda-2` mientras `dominio.anterior` trae `ronda-1` describe **dos
+workers distintos**, y el preflight lo dice con `encargo-divergente: … no tiene encargo anterior`,
+que es el veredicto correcto para lo que esa composición declara.
+
+**`nucleo_digest` existe porque `nucleo-comun` no es identidad de digests.** Ese valor admite un
+**anexo privado declarado** por worker, así que los `assignment_digest` difieren por construcción y lo
+que tiene que coincidir es el núcleo. Sin el campo, el único predicado posible sería el de identidad,
+y `counter-plan` —que reparte un anexo por familia— daría `encargo-divergente` **siempre**: es
+exactamente el defecto latente que este valor existe para impedir. Es el único campo condicional de
+la tabla, y su ausencia con los otros cuatro valores de `encargos` no es un hueco: ahí no hay núcleo
+que declarar por separado.
+
+**Por qué `expected_workers[]` no puede ser una vista de `workers[]`.** `workers[]` lista solo los
+efectivamente despachados, así que derivar de él lo previsto haría que un worker **que nunca se
+despachó** sea indistinguible de uno que nunca se previó, y un worker **de más** sea indistinguible de
+uno previsto. Las dos son violaciones distintas con nombres distintos —`fan-out-incompleto` y
+`despacho-no-previsto`— y ninguna es observable con un solo nodo. Es la misma razón por la que
+`workers[]` excluye a una familia ausente: un nodo que mezcla lo que pasó con lo que iba a pasar no
+puede fundar ninguna de las dos afirmaciones.
+
+**La columna `deadline` se hace cumplir en los dos momentos, y el preflight es donde se decide.**
+`propio-por-worker` dice dos cosas —que cada worker tenga vencimiento y que no sea el de otro— y las
+dos son decidibles **antes de crear nada**, que es donde conviene cortar: un lote con dos
+vencimientos iguales no se arregla después, se deja de despachar. Sin esa comprobación el campo
+sellado no acreditaba nada: medido, una composición sin `deadline` y otra con el mismo vencimiento
+para los dos workers salían las dos `composicion-valida`, y la corrida con un previsto `T1` contra un
+efectivo `T2` salía `corrida-conforme`.
+
+**`deadline` vive acá porque antes no vivía en ningún lado.** De las cuatro propiedades que el
+fan-out exige, tres se comprobaban y la cuarta —el vencimiento propio por worker— la garantizaba la
+**forma de la invocación** del adaptador retirado, que lo recibía por parámetro en cada llamada de
+espera: dos workers compartían vencimiento solo si quien invocaba se equivocaba, y nada lo
+verificaba. Retirada esa vía el invariante quedaba **sin sujeto** —no había dónde leer qué
+vencimiento le tocaba a cada worker—, y este campo es ese sujeto. El
+campo previsto es ese sujeto, y por eso se sella antes y no después: un vencimiento escrito una vez
+lanzado el worker ya no puede contradecir a quien lo lanzó.
+
+**El sellado es previo al primer efecto, no previo al primer despacho.** La distinción importa porque
+crear la terminal ya es un efecto: si `expected_workers[]` se sellara entre la creación y el
+lanzamiento, la composición prevista podría ajustarse a los recursos que ya existen, que es
+exactamente la circularidad que el nodo viene a impedir.
+
+### El dominio contra el que se comprueba la composición
+
+Tres de las cuatro columnas de la fila **no se pueden evaluar mirando solo a los workers previstos**:
+`1-por-repo` necesita saber cuántos repos tiene el reparto, `opuesta-al-conductor` necesita la
+familia del conductor, y `delta-sobre-el-anterior` necesita el encargo anterior. Ese dato viaja en el
+nodo `dominio` de la composición, al lado de `expected_workers[]`.
+
+| campo | lo exige | qué lleva |
+|---|---|---|
+| `familias` | `cardinalidad: 1-por-familia` | el inventario de familias de la corrida; se exige **una por cada una**, ni de más ni de menos |
+| `cardinal` | `cardinalidad: 1-por-ronda` · `1-por-repo` · `1-por-hallazgo` | cuántos elementos tiene el dominio que esa celda nombra |
+| `tope` | `cardinalidad: n-acotado` | el máximo de workers que ese punto admite |
+| `conductor` | `familias: opuesta-al-conductor` · `misma-que-el-conductor` | la familia del conductor de la corrida |
+| `anterior` | `familias: continuacion-del-anterior` · `encargos: delta-sobre-el-anterior` | los workers del intento previo, con su `key` —**la misma** que la de esta ronda—, su `family` y su `assignment_digest`; **solo una lista vacía declara la ronda inicial** |
+
+**Un campo que la fila no nombra no se exige**, y su ausencia no es un fallo: `indiferente` y
+`cardinalidad: 1` no tienen contra qué contrastarse y su silencio es correcto.
+
+**La ausencia del campo que la fila SÍ nombra falla cerrado**, con `forma-no-reconocida`, y ese es el
+punto entero de este nodo. Sin él, el preflight evaluaba `n >= 1` para cuatro de los seis valores de
+`cardinalidad` y no evaluaba nada para tres de los cinco de `familias` —y salía **verde**, con un
+mensaje que decía `composicion-valida`—. Medido sobre el instrumento anterior: un fan-out dual con
+**un** worker previsto sobre un inventario de dos familias salía 0, y un punto que declara
+`opuesta-al-conductor` con dos workers de la familia del conductor salía 0. Una celda que no se puede
+comprobar **no pasa**: se declara sin el dato y el punto se detiene antes de crear nada, que es lo que
+el criterio pide cuando dice «falla cerrado».
+
+```json
+{
+  "dominio": {
+    "familias": ["claude", "codex"],
+    "conductor": "claude",
+    "cardinal": 3,
+    "tope": 4,
+    "anterior": [
+      {"key": "codex", "family": "codex", "assignment_digest": "sha256:…"}
+    ]
+  },
+  "expected_workers": [ ]
+}
+```
+
+**`anterior: []` no es lo mismo que `anterior` ausente, y la diferencia es una ronda entera.** La
+lista vacía es el conductor **declarando** que no hay intento previo; la ausencia del campo es que
+nadie dijo nada. Las dos filas que declaran `delta-sobre-el-anterior` nombran su ronda inicial en su
+propio texto —«incluida la ronda 0» en `debate`, «la ronda 1 y cada ronda siguiente» en el loop de
+revisión—, así que tratarlas igual ponía en rojo a los dos puntos justo en la ronda que su fila
+incluye. Con la lista vacía, `delta-sobre-el-anterior` **se satisface sin comparar nada**: no hay
+delta que medir contra lo que no existe, y el predicado sigue pudiendo ponerse rojo en toda ronda
+posterior, que es donde la relación tiene sujeto.
+
+**Cada entrada de `anterior` se valida como se valida la composición, y un anterior mal formado no
+es una ronda inicial.** Clave no vacía y única, `family` y `assignment_digest` presentes: los tres
+campos que esta tabla le pide. Sin esa validación, descartar en silencio las entradas sin clave
+convertía a `anterior: [{}]` en un mapa vacío, que es indistinguible de la lista vacía — medido, el
+preflight real del loop de revisión salía `composicion-valida` sobre un anterior que no declaraba
+nada. **Solo la lista literalmente vacía** es la declaración de la ronda inicial.
+
+**Las dos columnas leen esa misma lista vacía distinto, y es correcto que así sea.**
+`encargos: delta-sobre-el-anterior` pregunta si este encargo difiere del anterior, y sin anterior la
+pregunta no tiene contenido. `familias: continuacion-del-anterior` pregunta **de quién** hereda su
+familia este worker, y sin anterior no hay de quién: ahí la lista vacía es `familia-invalida`, porque
+no se puede reanudar una sesión que no existe.
+
+**Lo que el nodo no acredita, y conviene que esté acá y no solo en el docstring.** El `dominio` lo
+escribe **el mismo conductor** que escribe la composición, así que el instrumento comprueba
+coherencia entre dos cosas que declaró la misma autoridad, nunca contra el mundo: que diga
+`cardinal: 3` no prueba que el reparto tenga tres repos. Es la misma frontera que ya tiene el resto
+del contrato —los dos modos leen documentos— y no se repara con un predicado mejor.
+
+### Los operandos se exigen antes de compararlos
+
+`family` y `assignment_digest` son **valores que las relaciones comparan**, y una comparación entre
+dos ausencias da verdadero. Están medidos los dos casos, sobre puntos reales: los dos
+`assignment_digest` en `null` satisfacen `identico-por-digest` —porque `null` es igual a `null`— y
+una `family` ausente satisface `opuesta-al-conductor` —porque nunca coincide con la del conductor—.
+Las dos composiciones salían `composicion-valida` habiendo comparado exactamente cero datos.
+
+Entonces se exigen **no vacíos antes de evaluar ninguna relación**, y su ausencia es
+`forma-no-reconocida`. `nucleo_digest` se exige en las **dos** direcciones que esta sede ya declara:
+presente con `encargos: nucleo-comun`, ausente con los demás valores. La regla vale para
+`expected_workers[]` en los dos modos y para `workers[]` en la reconciliación, donde el mismo hueco
+dejaba pasar un sobre con **todas** sus familias y digests en `null` como `corrida-conforme`.
+
+### La reconciliación recorre los intentos, y el sellado gobierna el primero
+
+`expected_workers[]` se sella **antes del primer efecto** y lleva **un** `assignment_digest` por
+worker. `workers[].attempts[]` lleva **uno por intento**. Con un punto de una sola ronda las dos
+cosas coinciden y no hay nada que decidir; con un fix loop no, y ahí el contrato tenía una
+contradicción que conviene nombrar en vez de tapar: **el encargo de la ronda 2 no es predecible al
+sellar**, porque es un delta que depende de lo que la ronda 1 encontró. Ninguna expectativa sellada
+antes del primer efecto puede describirlo, así que exigir que el último intento coincida con el
+sellado ponía en rojo a la reanudación válida —medido: un sobre con `r1` y `r2` salía
+`encargo-divergente`— y «arreglarlo» actualizando el sellado destruiría su inmutabilidad, que es lo
+único que lo hace evidencia.
+
+La salida no es sellar más, es **cotejar cada intento contra lo que corresponde**:
+
+| Qué se coteja | Contra qué |
+|---|---|
+| el **primer** intento | el `assignment_digest` sellado: es el lanzamiento para el que se escribió |
+| cada intento siguiente, con `encargos: delta-sobre-el-anterior` | el intento **anterior**, del que tiene que diferir |
+| cada intento siguiente, con cualquier otro valor | el sellado: un relanzamiento reenvía el mismo encargo, no uno nuevo |
+
+**Esto le da a `delta-sobre-el-anterior` su mitad de runtime.** Hasta acá el valor solo se comprobaba
+en el preflight contra `dominio.anterior`; dentro del sobre no lo miraba nadie, y una reanudación que
+**repetía** el encargo de la ronda previa salía `corrida-conforme` —medido— porque el último intento
+coincidía con el sellado, que era justo el encargo repetido.
+
+**El vencimiento sigue la misma regla, y por el mismo motivo.** El `deadline` previsto acredita el
+**primer** lanzamiento; un relanzamiento abre una espera nueva con su propio presupuesto, y el
+sellado no la gobierna. Lo que sí vale en todos los intentos es que cada uno lleve el suyo.
+
 ### Los campos por worker
 
 `workers[]` lista solo los workers **efectivamente despachados**. Una familia ausente que no generó
 un despacho no tiene entrada en el sobre: no existe proceso que sondar, cosechar o relanzar.
 
-Cuatro campos por cada entrada de `workers[]`:
+Cinco campos por cada entrada de `workers[]`:
 
 | campo | qué registra |
 |---|---|
 | `name` | el nombre del worker despachado, único dentro de la corrida |
+| `expected_key` | la `key` de la entrada de `expected_workers[]` que este worker cumple |
 | `family` | la familia que lo atiende: Claude o GPT/Codex |
 | `write` | si el worker es read-only o escritor |
 | `attempts` | los intentos de este worker, en orden de despacho |
+
+**`expected_key` existe porque la correlación entre los dos nodos era una convención oculta.** La
+reconciliación en las dos direcciones necesita saber qué entrada efectiva cumple qué entrada
+prevista, y hasta acá eso se resolvía **suponiendo** que `name` era igual a `key`. La sede nunca lo
+declaró —define `key` como la clave del **dominio** que el worker cubre y `name` como el **nombre**
+del worker despachado, que son cosas distintas— y las corridas reales de este repositorio las usan
+distintas: `name: ctr-codex` para la clave de dominio `codex`, `name: revisor-codex` para la misma.
+Con la suposición, un sobre **conforme** daba `fan-out-incompleto`. El campo vuelve la correlación un
+**dato declarado** en vez de un parecido entre dos cadenas, y por eso no admite derivarse de `name`
+cuando falta: una correlación adivinada es la misma convención oculta, con un paso más.
+
+**Su valor es obligatorio, también en el worker que nadie previó.** Un despacho sin entrada prevista
+es `despacho-no-previsto`, y esa violación se nombra **comparando claves**: el worker declara la
+clave que dice cumplir y el contraste muestra que no está entre las previstas. Un worker que no
+declara ninguna no produce esa violación, produce un sobre que no se puede reconciliar — y eso es
+`forma-no-reconocida`, que es un defecto del registro y no del despacho.
 
 **`family` está por worker porque la corrida puede ser mixta.** El fan-out dual de `co-explore`
 despacha uno por familia en la misma corrida; un panel de revisores puede repartirse entre las dos. Un
@@ -177,8 +476,8 @@ campo, habría que deducir el permiso del transporte, que no lo dice.
 
 ### Los campos por intento
 
-Seis campos por cada entrada de `attempts[]`. **El intento, y no el worker, es la unidad que lleva
-transporte, salida, proceso, presupuesto y cosecha:**
+Siete campos por cada entrada de `attempts[]`. **El intento, y no el worker, es la unidad que lleva
+transporte, salida, proceso, presupuesto, encargo y cosecha:**
 
 | campo | qué registra |
 |---|---|
@@ -187,7 +486,16 @@ transporte, salida, proceso, presupuesto y cosecha:**
 | `output` | la ruta exclusiva donde este intento escribe su salida |
 | `process_ref` | la referencia consultable a su proceso, o `null` donde no hay proceso consultable |
 | `wait_budget` | el presupuesto de espera de este intento |
+| `assignment_digest` | el digest del encargo que este intento **recibió**, para contrastarlo contra el previsto |
 | `harvested` | si este intento ya fue cosechado |
+
+**`assignment_digest` cuelga del intento y no del worker, y no es simetría con `expected_workers[]`.**
+Un fix loop entrega un **delta distinto en cada ronda** —es lo que el valor `delta-sobre-el-anterior`
+nombra—, así que un digest por worker no podría expresar esa relación: diría que el worker recibió un
+encargo cuando recibió varios. Y sin él **la mitad de runtime del instrumento no tiene qué leer**:
+medido, sobre un sobre conforme a los seis campos anteriores, `--corrida` salía `1
+encargo-divergente` para cualquier composición, porque comparaba el previsto contra un campo que el
+contrato nunca declaró. Una guarda que **no puede ponerse verde** no discrimina nada.
 
 **Por qué cuelgan del intento y no del worker.** Cada relanzamiento y cada resume necesita **rutas
 exclusivas**: si `output` y `process_ref` colgaran del worker, un relanzamiento pisaría los del
