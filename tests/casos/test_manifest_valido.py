@@ -46,7 +46,8 @@ def _run_manifest(dispatches: list[object]) -> dict[str, object]:
     }
 
 
-def _dispatch_log(mode: str = "apply", dispatches: Optional[list[object]] = None) -> dict[str, object]:
+def _dispatch_log(mode: str = "apply", dispatches: Optional[list[object]] = None,
+                  **extra: object) -> dict[str, object]:
     return {
         "record_type": "dispatch-log/1",
         "skill": "sdd-pr-feedback",
@@ -54,6 +55,7 @@ def _dispatch_log(mode: str = "apply", dispatches: Optional[list[object]] = None
         "run_id": "3f10c4ab",
         "started_at": "2026-08-02T11:45:07Z",
         "dispatches": [DESPACHO] if dispatches is None else dispatches,
+        **extra,
     }
 
 
@@ -78,9 +80,10 @@ def _json(objeto: dict[str, object]) -> str:
 
 
 def test_dos_formas_y_conjuntos(_ctx: Optional[object] = None) -> None:
-    """Las dos formas admiten exactamente sus claves raíz."""
+    """Las dos formas admiten exactamente sus claves raíz: ni de menos ni de más."""
     _afirmar(_json(_run_manifest([DESPACHO])), 0)
     _afirmar(_json(_dispatch_log()), 0)
+    _afirmar(_json({**_run_manifest([DESPACHO]), "clave_inventada": 1}), 1)
 
 
 def test_outcome_anidado_no_duplica_la_raiz(_ctx: Optional[object] = None) -> None:
@@ -113,9 +116,30 @@ def test_cardinalidad_asimetrica_de_dispatches(_ctx: Optional[object] = None) ->
 
 
 def test_quinto_productor(_ctx: Optional[object] = None) -> None:
-    """sdd-pr-feedback usa su única fila de modo válida."""
-    _afirmar(_json(_dispatch_log()), 0)
+    """La fila del quinto productor existe, y su modo es el único que le sirve."""
+    # El positivo va con una carga distinta de la de `dos-formas`: si repitiera la de aquel caso no
+    # ejercería nada propio, y si se quitara, este caso dejaría de distinguir el predicado anterior
+    # —que rechazaba todo dispatch-log— del que declara la fila.
+    _afirmar(_json(_dispatch_log(dispatches=[{**DESPACHO, "role": "review"}])), 0)
     _afirmar(_json(_dispatch_log(mode="modo-que-no-existe")), 1)
+
+
+def test_prohibida_en_dispatch_log(_ctx: Optional[object] = None) -> None:
+    """Un campo de telemetría en la raíz de dispatch-log/1 se rechaza nombrándolo."""
+    resultado = _resultado(_json(_dispatch_log(duration_s=412)))
+    assert resultado.returncode == 1, "una clave prohibida tiene que rechazar"
+    # El diagnóstico exacto, no solo el nombre del campo: con el conjunto `prohibidas` vacío el
+    # campo cae igual en "clave raíz desconocida", así que una aserción por nombre pasa en las dos
+    # ramas y el caso no discrimina lo que dice discriminar.
+    assert 'campo "duration_s" no corresponde a dispatch-log/1' in resultado.stderr, resultado.stderr
+
+
+def test_entrada_de_despacho_incompleta(_ctx: Optional[object] = None) -> None:
+    """A una entrada sin una de sus once claves se la nombra por índice y clave."""
+    incompleta = {k: v for k, v in DESPACHO.items() if k != "at"}
+    resultado = _resultado(_json(_dispatch_log(dispatches=[incompleta])))
+    assert resultado.returncode == 1, "una entrada incompleta tiene que rechazar"
+    assert 'entrada 1 sin la clave "at"' in resultado.stderr, resultado.stderr
 
 
 CASOS: list[Caso] = [
@@ -124,4 +148,6 @@ CASOS: list[Caso] = [
     ("manifest-valido:duplicado-raiz", GRUPO, test_duplicado_real_en_la_raiz),
     ("manifest-valido:cardinalidad", GRUPO, test_cardinalidad_asimetrica_de_dispatches),
     ("manifest-valido:quinto-productor", GRUPO, test_quinto_productor),
+    ("manifest-valido:prohibida-dispatch-log", GRUPO, test_prohibida_en_dispatch_log),
+    ("manifest-valido:entrada-incompleta", GRUPO, test_entrada_de_despacho_incompleta),
 ]

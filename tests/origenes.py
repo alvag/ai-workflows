@@ -125,7 +125,9 @@ def origins_for(identifier: str, group: str,
         # Estos casos nacen con el perfil de entrega y no derivan de la migración histórica.
         return ORIGEN_SIN_MIGRACION
     if group == "manifest-valido-v1":
-        return ORIGEN_SIN_MIGRACION
+        # Ejercen directamente la guarda `manifest-valido`, que tiene fila propia en el inventario:
+        # se le atribuyen a ella y no al origen genérico, que inflaría la cobertura de otra.
+        return frozenset({("guard", "manifest-valido")})
     if group in {"dimensiones", "normalizaciones"}:
         return frozenset({("case", "contrato-cadena/positivo")})
     if identifier in {"cobertura-v14:tres-direcciones", "entrypoint-v20:ids"}:

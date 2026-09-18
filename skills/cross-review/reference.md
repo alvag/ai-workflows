@@ -2727,6 +2727,17 @@ Los nueve campos de telemetría siguen siendo de los cuatro: `sdd-pr-feedback` p
 | `cross-review` | `spec` · `plan` · `tasks` · `master-spec` · `reparto` · `sintesis` · `draft` | `APPROVED` · `REVISE` · `UNAVAILABLE` | `rounds_exhausted` · `confirmed_wall` · `launch_flake` · `runtime_failure` · `deadline_exceeded` · `host_sandbox_wall` |
 | `cross-implement` | `embebido` · `directo` | `IMPLEMENTED` · `PARTIAL` · `UNAVAILABLE` | `takeover` · `confirmed_wall` · `launch_flake` · `runtime_failure` · `deadline_exceeded` · `host_sandbox_wall` |
 | `bitbucket-code-review` | `conductor` · `delegado` · `mixto` | `PUBLISHED` · `PROPOSED` · `UNAVAILABLE` | `revisor_invalido` · `panel_vacio` · `confirmed_wall` · `launch_flake` · `runtime_failure` · `host_sandbox_wall` |
+| `sdd-pr-feedback` | `apply` | — | — |
+
+La quinta fila declara **solo `mode`**, y los guiones de las otras dos columnas no son un hueco a
+llenar: `sdd-pr-feedback` publica la forma `dispatch-log/1`, que prohíbe `outcome` y `degradation`,
+así que esos dos enums nunca se evalúan para ella. Un término ahí sería vocabulario que ningún
+archivo puede llevar.
+
+> **`apply` todavía no está adoptado por su skill, y eso se declara.** Hoy ese literal no aparece en
+> ningún archivo de `skills/sdd-pr-feedback/`: la fila lo fija acá para que el enum tenga sede
+> documental en vez de vivir solo dentro del predicado, que es lo que esta misma sección prohíbe.
+> Cuando esa skill nombre su modo, **manda ella** y esta fila se actualiza — no al revés.
 
 Cada uno de esos términos ya existe en la skill que lo produce: el manifest los **serializa**, no
 los define. Un manifest con taxonomía propia se desincroniza del envelope que dice resumir, y cuando

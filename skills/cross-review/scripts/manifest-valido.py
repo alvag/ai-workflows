@@ -1,14 +1,28 @@
 """Predicado: valida las formas `run-manifest/1` y `dispatch-log/1` según `record_type`: sus claves
-raíz obligatorias, condicionales y prohibidas; los tipos, la cardinalidad y las claves de
-`dispatches`; el UTC de `started_at`; y los enums aplicables a la fila de `skill`. En
-`run-manifest/1`, `transporte_fuente` y `transporte_proceso` son obligatorias con transporte por
-panel y admisibles en otro caso.
+raíz obligatorias, condicionales y prohibidas; el tipo y la cardinalidad de `dispatches` y, de cada
+entrada, sus once claves —presencia, desconocidas y duplicadas—; el UTC de `started_at`; que `run_id`
+sea una cadena no vacía; y los enums aplicables a la fila de `skill`. En `run-manifest/1`,
+`transporte_fuente` y `transporte_proceso` son obligatorias con transporte por panel y admisibles en
+otro caso. Un `record_type` ausente o desconocido rechaza el archivo **sin inferir** su forma, y aun
+así sigue emitiendo los diagnósticos que no dependen de ella.
 
 **Qué NO detecta.** No comprueba que `transporte_fuente` nombre una fuente existente ni que
 `transporte_proceso` apunte a un proceso vivo: lee presencia y no verdad;
 ninguna receta de productor invoca este predicado: su verde acredita la forma del archivo que se le
 pasa, nunca que las corridas publiquen manifests validados. La precisión fraccionaria de
 `started_at` no se aflojó porque no se reprodujo contra el árbol.
+
+**De cada entrada de `dispatches` mira las claves, nunca los valores**: `attempt` con un texto,
+`family` con una familia que no existe o `outcome` con un término inventado pasan sin diagnóstico,
+mientras el `families` de la raíz sí se coteja contra su enum.
+
+**Tampoco distingue un `transport` ausente de uno omitido a propósito**: en `run-manifest/1`, donde
+es obligatorio, la ausencia se reporta como campo faltante y no como `cli-exec` implícito. En
+`dispatch-log/1` está prohibido, así que ahí la distinción no existe: esa forma no proyecta
+transporte.
+
+**Y no coteja un `dispatch-log/1` contra su propia regla de identidad**, la que dice que toma su
+`started_at` del `at` del primer intento: se valida que los dos sean UTC, no que coincidan.
 
 **Campos** (ver CLAUDE.md → "La frontera de prueba de una guarda"). Clase: **veredicto**.
 Dirección: **admite-de-más** — su verde autoriza a afirmar que el registro cumple la forma y los
@@ -85,8 +99,11 @@ ROWS: Dict[str, Tuple[set[str], set[str], set[str], set[str]]] = {
 }
 
 
-def claves_raiz(texto: str) -> Tuple[dict, set[str]]:
-    duplicadas_por_objeto: Dict[int, set[str]] = {}
+def claves_raiz(texto: str) -> Tuple[dict, Dict[int, set[str]]]:
+    # El mapa guarda el propio objeto junto a sus duplicadas: mientras esa referencia viva, CPython
+    # no puede reusar su id() para otro diccionario. Sin ella el indexado por id() dependería de que
+    # ningún objeto se libere durante el parseo, que no es algo que `object_pairs_hook` prometa.
+    por_objeto: Dict[int, Tuple[dict, set[str]]] = {}
 
     def hook(pares: List[Tuple[str, object]]) -> dict:
         objeto = {}
@@ -95,11 +112,11 @@ def claves_raiz(texto: str) -> Tuple[dict, set[str]]:
             if clave in objeto:
                 duplicadas.add(clave)
             objeto[clave] = valor
-        duplicadas_por_objeto[id(objeto)] = duplicadas
+        por_objeto[id(objeto)] = (objeto, duplicadas)
         return objeto
 
     objeto = json.loads(texto, object_pairs_hook=hook)
-    return objeto, duplicadas_por_objeto.get(id(objeto), set())
+    return objeto, {ident: dup for ident, (_obj, dup) in por_objeto.items()}
 
 
 def main() -> int:
@@ -108,7 +125,7 @@ def main() -> int:
         return 99
     try:
         texto = Path(sys.argv[1]).read_text(encoding="utf-8")
-        objeto, duplicadas_en_raiz = claves_raiz(texto)
+        objeto, duplicadas_por_objeto = claves_raiz(texto)
     except (OSError, UnicodeError, json.JSONDecodeError):
         print("GUARD:manifest-valido el archivo no es un objeto JSON válido", file=sys.stderr)
         return 1
@@ -117,16 +134,22 @@ def main() -> int:
         return 1
 
     claves = set(objeto)
+    duplicadas_en_raiz = duplicadas_por_objeto.get(id(objeto), set())
+    rc = 0
+    record_type = objeto.get("record_type")
+    # La forma NO se infiere cuando falta o no se reconoce: el archivo se rechaza igual. Lo que sí
+    # se hace es seguir validando lo que no depende de la forma, para que migrar un registro viejo
+    # no cueste una corrida por problema.
+    forma = FORMAS.get(record_type) if isinstance(record_type, str) else None
     if "record_type" not in claves:
         print('GUARD:manifest-valido falta el campo "record_type"', file=sys.stderr)
-        return 1
-    record_type = objeto.get("record_type")
-    if record_type not in FORMAS:
-        print(f'GUARD:manifest-valido record_type desconocido: "{record_type}"', file=sys.stderr)
-        return 1
+        rc = 1
+    elif forma is None:
+        mostrado = record_type if isinstance(record_type, str) else "<valor no textual>"
+        print(f'GUARD:manifest-valido record_type desconocido: "{mostrado}"', file=sys.stderr)
+        rc = 1
 
-    rc = 0
-    obligatorias, condicionales, prohibidas = FORMAS[record_type]
+    obligatorias, condicionales, prohibidas = forma if forma else (set(), set(), set())
     for campo in sorted(obligatorias):
         if campo not in claves:
             print(f'GUARD:manifest-valido falta el campo "{campo}"', file=sys.stderr)
@@ -134,12 +157,22 @@ def main() -> int:
         if campo in duplicadas_en_raiz:
             print(f'GUARD:manifest-valido clave requerida duplicada: "{campo}"', file=sys.stderr)
             rc = 1
-    for campo in sorted(claves & prohibidas):
-        print(f'GUARD:manifest-valido campo "{campo}" no corresponde a {record_type}', file=sys.stderr)
-        rc = 1
-    for campo in sorted(claves - obligatorias - condicionales - prohibidas):
-        print(f'GUARD:manifest-valido clave raíz desconocida: "{campo}"', file=sys.stderr)
-        rc = 1
+    if forma:
+        for campo in sorted(claves & prohibidas):
+            print(f'GUARD:manifest-valido campo "{campo}" no corresponde a {record_type}', file=sys.stderr)
+            rc = 1
+        for campo in sorted(claves - obligatorias - condicionales - prohibidas):
+            print(f'GUARD:manifest-valido clave raíz desconocida: "{campo}"', file=sys.stderr)
+            rc = 1
+
+    # F12: run_id es la identidad que separa dos corridas del mismo segundo y una de las cuatro
+    # partes del nombre del archivo; un valor vacío o no textual produce una ruta inderivable.
+    if "run_id" in claves and "run_id" not in duplicadas_en_raiz:
+        run_id = objeto.get("run_id")
+        if not isinstance(run_id, str) or not run_id:
+            mostrado = run_id if isinstance(run_id, str) else json.dumps(run_id)
+            print(f'GUARD:manifest-valido run_id no es una cadena no vacía: {mostrado}', file=sys.stderr)
+            rc = 1
 
     if "started_at" in claves and "started_at" not in duplicadas_en_raiz:
         inicio = objeto.get("started_at", "")
@@ -155,9 +188,7 @@ def main() -> int:
     if "duration_s" in claves and "duration_s" not in duplicadas_en_raiz:
         duracion = objeto.get("duration_s")
         if isinstance(duracion, bool) or not isinstance(duracion, int) or duracion < 0:
-            bruto = re.search(r'"duration_s"\s*:\s*([^,}]*)', texto)
-            valor = bruto.group(1).strip() if bruto else ""
-            print(f'GUARD:manifest-valido duration_s no es entero no negativo: "{valor}"', file=sys.stderr)
+            print(f'GUARD:manifest-valido duration_s no es entero no negativo: {json.dumps(duracion)}', file=sys.stderr)
             rc = 1
 
     if "families" in claves and "families" not in duplicadas_en_raiz:
@@ -176,10 +207,14 @@ def main() -> int:
                 vistos.append(family)
 
     skill = objeto.get("skill", "")
-    if skill not in ROWS:
-        print(f'GUARD:manifest-valido skill fuera del ecosistema: "{skill}"', file=sys.stderr)
-        return 1
-    modos, outcomes, degradations, transports = ROWS[skill]
+    fila = ROWS.get(skill) if isinstance(skill, str) else None
+    if fila is None:
+        mostrado = skill if isinstance(skill, str) else "<valor no textual>"
+        print(f'GUARD:manifest-valido skill fuera del ecosistema: "{mostrado}"', file=sys.stderr)
+        rc = 1
+    # Sin fila no hay contra qué cotejar los enums, pero el resto del archivo se sigue validando:
+    # cortar acá escondía los diagnósticos de `dispatches`, que no dependen de la skill.
+    modos, outcomes, degradations, transports = fila if fila else (set(), set(), set(), set())
     permits = {
         "mode": modos,
         "outcome": outcomes,
@@ -188,20 +223,23 @@ def main() -> int:
         "selection": {"full", "user_choice"},
     }
     for campo, permitidos in permits.items():
+        if fila is None and campo != "selection":
+            continue
         if campo not in obligatorias and campo not in condicionales:
             continue
         if campo not in claves or campo in duplicadas_en_raiz:
             continue
         valor = objeto.get(campo, "")
-        if valor not in permitidos:
+        if not isinstance(valor, str) or valor not in permitidos:
             # el mensaje nombra el transporte en la lengua del contrato: un rechazo que solo diga
             # `transport` no se distingue del nombre de la clave JSON al leer el log
             sufijo = ": transporte fuera del enum" if campo == "transport" else ""
-            print(f'GUARD:manifest-valido {campo} "{valor}" no pertenece a {skill}{sufijo}', file=sys.stderr)
+            visible = valor if isinstance(valor, str) else "<valor no textual>"
+            print(f'GUARD:manifest-valido {campo} "{visible}" no pertenece a {skill}{sufijo}', file=sys.stderr)
             rc = 1
 
     if record_type == RUN_MANIFEST and objeto.get("transport") in CON_PANEL:
-        for campo in condicionales:
+        for campo in sorted(condicionales):
             if not objeto.get(campo):
                 print(f'GUARD:manifest-valido transporte por panel sin "{campo}": la fuente tiene que ser consultable', file=sys.stderr)
                 rc = 1
@@ -222,6 +260,14 @@ def main() -> int:
                     continue
                 for campo in sorted(CLAVES_DESPACHO - set(entrada)):
                     print(f'GUARD:manifest-valido entrada {indice} sin la clave "{campo}"', file=sys.stderr)
+                    rc = 1
+                # El predicado anterior cazaba estas dos con su conteo global sobre el texto; al
+                # pasar a un parseo por nivel había que reponerlas en su nivel.
+                for campo in sorted(set(entrada) - CLAVES_DESPACHO):
+                    print(f'GUARD:manifest-valido entrada {indice} con la clave desconocida "{campo}"', file=sys.stderr)
+                    rc = 1
+                for campo in sorted(duplicadas_por_objeto.get(id(entrada), set())):
+                    print(f'GUARD:manifest-valido entrada {indice} con la clave duplicada "{campo}"', file=sys.stderr)
                     rc = 1
     return rc
 
