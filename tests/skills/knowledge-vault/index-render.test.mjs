@@ -194,25 +194,29 @@ test('grafias equivalentes dan el mismo resultado, y la guarda de contencion acr
   const control = await renderIndexes(vault);
   const posix = vault.split(path.sep).join('/');
 
-  // Las seis familias que AC-2 exige como mínimo, todas derivadas de la MISMA raíz sembrada. Las
-  // cuatro últimas rompen la igualdad en las dos plataformas, así que el caso no queda verde por
-  // vacuidad en POSIX, donde la grafía del config *es* la nativa.
+  // Las siete familias que el criterio de grafías exige como mínimo, todas derivadas de la MISMA
+  // raíz sembrada. Las cinco últimas rompen la igualdad en las dos plataformas, así que el caso no
+  // queda verde por vacuidad en POSIX, donde la grafía del config *es* la nativa.
+  const MEZCLADOS = 'separadores mezclados';
   const grafias = [
     ['nativa (control)', vault],
     ['separadores POSIX (la del config)', posix],
     ['separador final', `${posix}/`],
     ['segmento punto', posix.replace(/\/([^/]+)$/, '/./$1')],
     ['separadores repetidos', posix.replace(/\//g, '//')],
+    // alterna el separador nativo y `/` segmento por segmento: donde no coinciden —Windows— la
+    // ruta lleva los dos a la vez, que es la mezcla que ninguna de las otras cinco ejerce.
+    [MEZCLADOS, posix.split('/').reduce((acc, seg, i) => (i === 0 ? seg : `${acc}${i % 2 ? path.sep : '/'}${seg}`), '')],
     ['unidad y segmentos en otra caja', posix.charAt(0).toLowerCase() + posix.slice(1).toLowerCase()],
   ];
 
-  let ejercidas = 0;
+  const ejercidas = new Set();
   for (const [nombre, raiz] of grafias) {
     if (!mismaRuta(vault, raiz)) {
       t.diagnostic(`salteada ${nombre}: esta plataforma no la resuelve a la misma ruta que la nativa`);
       continue;
     }
-    ejercidas += 1;
+    ejercidas.add(nombre);
     const salida = await renderIndexes(raiz);
     assert.equal(salida.size, control.size, `${nombre}: distinta cantidad de índices`);
     for (const [clave, contenido] of salida) {
@@ -220,8 +224,8 @@ test('grafias equivalentes dan el mismo resultado, y la guarda de contencion acr
       assert.ok(par, `${nombre}: ${clave} no tiene equivalente en la corrida nativa`);
       assert.equal(contenido, control.get(par), `${nombre}: el contenido de ${clave} difiere`);
     }
-    // AC-3, sobre las claves ORIGINALES: normalizar antes de contar pisa la duplicada y hace
-    // desaparecer justo lo que este criterio manda detectar.
+    // Sobre las claves ORIGINALES: normalizar antes de contar pisa la duplicada y hace
+    // desaparecer justo el índice raíz repetido que este caso manda detectar.
     const raices = [...salida.keys()].filter((k) => mismaRuta(k, path.join(vault, 'index.md')));
     assert.equal(raices.length, 1, `${nombre}: ${raices.length} claves para el índice raíz`);
     const indiceRaiz = salida.get(raices[0]);
@@ -229,7 +233,12 @@ test('grafias equivalentes dan el mismo resultado, y la guarda de contencion acr
       assert.ok(indiceRaiz.includes(titulo), `${nombre}: el índice raíz no lista ${titulo}`);
     }
   }
-  assert.ok(ejercidas >= 2, 'ninguna grafía no nativa quedó ejercida en esta plataforma');
+  assert.ok(ejercidas.size >= 2, 'ninguna grafía no nativa quedó ejercida en esta plataforma');
+  // Donde el separador nativo no es `/`, la grafía mezclada es la única que ejerce la mezcla, y
+  // saltearla dejaría el criterio verde sin haberla corrido nunca.
+  if (path.sep !== '/') {
+    assert.ok(ejercidas.has(MEZCLADOS), `${MEZCLADOS} no se ejerció en una plataforma que sí la distingue`);
+  }
 
   // La reversión solo se puede observar donde la grafía del config rompe la igualdad con la
   // nativa. En POSIX `path.join(posix, '.') === posix`, así que revertir el sitio no emite
