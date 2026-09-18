@@ -524,7 +524,7 @@ Las demás invocaciones —`agent start`, `pane split` y `workspace rename`— y
 
 | Plataforma | Adoptar | Abrir y arrancar | Rotular | Observable que acredita |
 |---|---|---|---|---|
-| Herdr | `herdr worktree open --path <ruta> --cwd <checkout principal del repo_destino> --label "<qué flujo corre acá>" --no-focus` sobre el árbol ya existente — `open` adopta y devuelve el panel raíz en `.result.root_pane.pane_id`, mientras `create` crearía uno nuevo | Ramificar por `.result.root_pane` de esa misma respuesta —`already_open` es un booleano y no discrimina nada—: con `.agent` nulo y `.cwd` igual a `<ruta>`, arrancar ahí con `herdr agent start <nombre> --kind <familia> --pane <.pane_id>`; con `.agent` igual a la familia esperada y ese mismo `.cwd`, reutilizarlo; en todo otro caso —otra familia, `.cwd` distinto, o el panel ocupado —su único proceso en foreground no es su shell de login— según `herdr pane process-info --pane <.pane_id>`— abrir uno propio con `herdr pane split --pane <.pane_id> --direction right --cwd <ruta> --no-focus` y arrancar ahí | lo deja puesto `--label` en la misma adopción, **también cuando `already_open` viene verdadero** —medido: una re-apertura con `--label` distinto reescribe la etiqueta del workspace y `workspace list` la devuelve cambiada—; para cambiarlo después, `herdr workspace rename <.result.workspace.workspace_id> "<qué flujo corre acá>"` | `herdr agent get <nombre>` devuelve el mismo `pane_id`, la familia esperada, su `cwd` igual a la ruta del worktree e `interactive_ready` verdadero; ante discrepancias con el resultado de `agent start`, seguir «Esperar a que el agente esté listo» |
+| Herdr | `herdr worktree open --path <ruta> --cwd <checkout principal del repo_destino> --label "<qué flujo corre acá>" --no-focus` sobre el árbol ya existente — `open` adopta y devuelve el panel raíz en `.result.root_pane.pane_id`, mientras `create` crearía uno nuevo | Ramificar por `.result.root_pane` de esa misma respuesta —`already_open` es un booleano y no discrimina nada—: con `.agent` nulo y `.cwd` igual a `<ruta>`, arrancar ahí con `herdr agent start <nombre> --kind <familia> --pane <.pane_id>`; con `.agent` igual a la familia esperada y ese mismo `.cwd`, reutilizarlo; en todo otro caso —otra familia, `.cwd` distinto, o el panel ocupado —su único proceso en foreground no es su shell de login— según `herdr pane process-info --pane <.pane_id>`— abrir uno propio con `herdr pane split --pane <.pane_id> --direction right --cwd <ruta> --no-focus` y arrancar ahí | lo deja puesto `--label` en la misma adopción, **también cuando `already_open` viene verdadero** —medido: una re-apertura con `--label` distinto reescribe la etiqueta del workspace y `workspace list` la devuelve cambiada—; para cambiarlo después, `herdr workspace rename <.result.workspace.workspace_id> "<qué flujo corre acá>"` | `herdr agent get <nombre>` devuelve el mismo `pane_id`, la familia esperada, su `cwd` igual a la ruta del worktree, y un `agent_status` que la plataforma declara listo —`idle` o `done`—; ante cualquier otro resultado, incluido `blocked`, y ante discrepancias con el resultado de `agent start`, seguir «Esperar a que el agente esté listo» |
 | Orca | nada que adoptar: el árbol lo creó su propio verbo y ya está registrado. Un árbol creado con Git **no** se puede adoptar acá, y por eso Orca no tiene rama de Git | lo arranca `--agent <familia>` **en la creación**, que es el único modo: `orca terminal list --worktree id:<repoId>::<ruta> --json` **observa** la terminal, no la inicia | `orca worktree set --worktree id:<repoId>::<ruta> --comment "<qué corre acá>" --json` | `orca terminal list --worktree id:<repoId>::<ruta> --json` devuelve una terminal con el agente de la familia esperada |
 
 **La comprobación de familia y directorio no es opcional.** Un agente de la familia equivocada
@@ -710,7 +710,7 @@ sin contexto de esta sesión, y **la única copia** de los incidentes tomados.
 
 | Plataforma | Comando | Observable |
 |---|---|---|
-| Herdr | `herdr agent get <nombre>` | `interactive_ready` verdadero |
+| Herdr | `herdr agent get <nombre>` | `agent_status` que la plataforma declara listo: `idle` o `done` |
 | Orca | `orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 90000 --json` | el estado que devuelve |
 
 `herdr agent get` es la autoridad.
@@ -721,34 +721,49 @@ descripción del síntoma: un `agent get <nombre-inexistente>` sale **distinto d
 `error.code: agent_not_found`, así que «no devuelve el agente» y «el comando falla» describen **el
 mismo** resultado y no pueden ser dos filas.
 
-| Código de salida | Salida | Contenido | Resultado observable |
-|---|---|---|---|
-| `0` | parsea | mismo `pane_id`, familia esperada, `cwd` del worktree, y `interactive_ready` **presente y verdadero** | **continuar**, cualquiera sea el código de salida de `agent start` |
-| `0` | parsea | esa misma identidad, `interactive_ready` **presente y falso** | **esperar y reconsultar** |
-| `0` | parsea | esa misma identidad, `interactive_ready` **ausente** | **esperar y reconsultar**, igual que el anterior pero por otro motivo: la ausencia **no se lee como falso** |
-| `0` | parsea | **cualquier otro contenido**: identidad distinta —otro panel, otra familia u otro `cwd`—, o una respuesta que no trae el agente | **detener y mostrar lo que devolvió**; nunca esperar, porque esperar a que cambie una identidad equivocada no la corrige |
-| `0` | no parsea | — | **detener sin destruir**: una salida que no se puede leer no prueba que el agente no esté |
-| ≠ `0` | `error.code` es `agent_not_found` | — | **detener sin destruir**: el agente no está registrado con ese nombre, que no es lo mismo que no existir el panel |
-| ≠ `0` | cualquier otro `error.code`, o ninguno legible | — | **detener sin destruir**: la consulta no se pudo hacer, así que no dice nada del agente |
+| Código de salida | Salida | Identidad | `agent_status` | Resultado observable |
+|---|---|---|---|---|
+| `0` | parsea | la esperada | `idle` o `done` | **continuar**, cualquiera sea el código de salida de `agent start` |
+| `0` | parsea | la esperada | `working` | **esperar y reconsultar** |
+| `0` | parsea | la esperada | `blocked` | **detener y mostrar la aprobación o la pregunta abierta**: el agente responde, pero lo que reciba entra en esa UI y no en el compositor |
+| `0` | parsea | la esperada | `unknown`, o un estado que esta tabla no enumera | **detener sin destruir**: la plataforma declara que `unknown` no prueba completitud, y un estado que no conocemos tampoco |
+| `0` | parsea | **cualquier otra**: una **identidad distinta** —otro panel, otra familia u otro `cwd`—, o una respuesta que no trae el agente | — | **detener y mostrar lo que devolvió**; nunca esperar, porque esperar a que cambie una identidad equivocada no la corrige |
+| `0` | no parsea | — | — | **detener sin destruir**: una salida que no se puede leer no prueba que el agente no esté |
+| ≠ `0` | `error.code` es `agent_not_found` | — | — | **detener sin destruir**: el agente no está registrado con ese nombre, que no es lo mismo que no existir el panel |
+| ≠ `0` | cualquier otro `error.code`, o ninguno legible | — | — | **detener sin destruir**: la consulta no se pudo hacer, así que no dice nada del agente |
 
-**La cuarta fila es el complemento, y por eso la tabla es total.** Las tres primeras exigen la
-identidad esperada y se reparten por el estado de `interactive_ready`; la cuarta toma **todo lo demás
-que parsea**, así que ningún contenido con `exit 0` queda sin clasificar. Enumerar solo los desvíos
-que uno se imagina es como se abren los huecos: el de la clave ausente estuvo abierto una versión
-entera.
+**Quien declara el readiness es `agent_status`, no `interactive_ready`, y eso está medido.** La
+plataforma define `idle` como listo para recibir input, `done` como **ese mismo estado** después de
+un trabajo en background que nadie miró, `blocked` como una UI de aprobación o pregunta reconocida, y
+`unknown` como presente pero sin clasificar, que **no prueba completitud**. Contra el runtime,
+`interactive_ready` **no sigue esa semántica**: viene `true` en un agente `blocked` —que no puede
+recibir el encargo, porque lo que llegue entra en su aprobación— y **no viene** en uno `done`, que sí
+está listo. Clasificar por esa clave tomaba las dos decisiones al revés: despachaba dentro de una
+pregunta abierta y rechazaba a un agente disponible.
 
-**La clave ausente tiene fila propia, y no se colapsa con la falsa.** Medido contra el runtime:
-`interactive_ready` **no viene** en la respuesta de un agente sin nombre registrado —consultado por
-su `pane_id`— ni en uno cuyo `agent_status` es `done`, y **sí** viene verdadera en `working` y en
-`blocked`. Como `done` es un estado en el que el agente está listo, **su ausencia no prueba que no lo
-esté**: leerla como un falso afirmaría algo que el CLI no dijo. Tampoco se lee como verdadera, porque
-entonces se despacharía sin acreditar. Queda donde corresponde: no acredita, y por eso espera.
+**Y la ausencia no se resuelve esperando.** Medido con dos lecturas separadas del mismo agente
+`done`: el estado y la ausencia de la clave se conservan, así que reconsultar no converge y el único
+final posible era agotar el límite. Una espera que por construcción no puede terminar bien no es una
+espera: es un rechazo con demora.
+
+**Qué pasa entonces con `interactive_ready`.** Deja de ser condición de acreditación y **no aparece
+en la tabla**. Se conserva como dato al inspeccionar, con una sola regla: si está presente y es
+**falso** mientras `agent_status` declara listo, los dos observables se contradicen y **no se
+continúa** —se detiene y se muestra la discrepancia—, porque una acreditación necesita que sus
+señales concuerden. Ese caso no se observó; la regla existe para no tener que decidirlo en el
+momento.
+
+**La quinta fila es el complemento, y por eso la tabla es total.** Las cuatro primeras exigen la
+identidad esperada y se reparten por `agent_status`; la quinta toma **toda identidad distinta** —incluida
+una respuesta que no trae el agente—, así que ningún contenido con `exit 0` queda sin clasificar.
+Enumerar solo los desvíos que uno se imagina es como se abren los huecos: el de la clave ausente
+estuvo abierto una versión entera, y el de `blocked` sobrevivió a que la tabla ya fuera total en la
+forma.
 
 **El límite no es un resultado de `agent get`, y por eso no es una fila.** Es una transición del
-estado de espera: reconsultan **las dos filas que no acreditan con identidad correcta** —la falsa y
-la ausente—, cada 2 s hasta 60 s. Al agotarse el límite, la acreditación **nunca se completó**, así
-que se **detiene sin destruir** y toda liquidación posterior pasa por el gate humano. Modelarlo como
-un resultado más lo ponía dentro de una partición a la que no pertenece.
+estado de espera: reconsulta **la única fila que espera**, la de `working`, cada 2 s hasta 60 s. Al
+agotarse, la acreditación **nunca se completó**, así que se **detiene sin destruir** y toda
+liquidación posterior pasa por el gate humano.
 
 **El invariante de orden nombra sus hitos, porque `acreditar` designa dos distintos:**
 
@@ -864,8 +879,8 @@ remite a otra fila.**
 
 | Plataforma × familia | Crear | Abrir y arrancar | Acreditar el arranque | Primer tiempo | Observable que acredita |
 |---|---|---|---|---|---|
-| Herdr × claude | `git -C <repo_destino> worktree add -b <rama> <ruta> <sha>`, y adoptar con `herdr worktree open --path <ruta> --cwd <checkout principal del repo_destino> --label "<qué flujo corre acá>" --no-focus` | Ramificar por `.result.root_pane` de esa misma respuesta —`already_open` es un booleano y no discrimina nada—: con `.agent` nulo y `.cwd` igual a `<ruta>`, arrancar ahí con `herdr agent start <nombre> --kind claude --pane <.pane_id>`; con `.agent` igual a la familia esperada y ese mismo `.cwd`, reutilizarlo; en todo otro caso —otra familia, `.cwd` distinto, o el panel ocupado —su único proceso en foreground no es su shell de login— según `herdr pane process-info --pane <.pane_id>`— abrir uno propio con `herdr pane split --pane <.pane_id> --direction right --cwd <ruta> --no-focus` y arrancar ahí | `herdr agent get <nombre>` devuelve el mismo `pane_id`, la familia esperada, el `cwd` del worktree e `interactive_ready` verdadero; ante cualquier otro resultado, seguir «Esperar a que el agente esté listo» | `/sdd-flow ` con espacio | gramática de argumentos en el compositor |
-| Herdr × codex | `git -C <repo_destino> worktree add -b <rama> <ruta> <sha>`, y adoptar con `herdr worktree open --path <ruta> --cwd <checkout principal del repo_destino> --label "<qué flujo corre acá>" --no-focus` | Ramificar por `.result.root_pane` de esa misma respuesta —`already_open` es un booleano y no discrimina nada—: con `.agent` nulo y `.cwd` igual a `<ruta>`, arrancar ahí con `herdr agent start <nombre> --kind codex --pane <.pane_id>`; con `.agent` igual a la familia esperada y ese mismo `.cwd`, reutilizarlo; en todo otro caso —otra familia, `.cwd` distinto, o el panel ocupado —su único proceso en foreground no es su shell de login— según `herdr pane process-info --pane <.pane_id>`— abrir uno propio con `herdr pane split --pane <.pane_id> --direction right --cwd <ruta> --no-focus` y arrancar ahí | `herdr agent get <nombre>` devuelve el mismo `pane_id`, la familia esperada, el `cwd` del worktree e `interactive_ready` verdadero; ante cualquier otro resultado, seguir «Esperar a que el agente esté listo» | `$sdd-flow` sin espacio | la skill en el menú filtrado |
+| Herdr × claude | `git -C <repo_destino> worktree add -b <rama> <ruta> <sha>`, y adoptar con `herdr worktree open --path <ruta> --cwd <checkout principal del repo_destino> --label "<qué flujo corre acá>" --no-focus` | Ramificar por `.result.root_pane` de esa misma respuesta —`already_open` es un booleano y no discrimina nada—: con `.agent` nulo y `.cwd` igual a `<ruta>`, arrancar ahí con `herdr agent start <nombre> --kind claude --pane <.pane_id>`; con `.agent` igual a la familia esperada y ese mismo `.cwd`, reutilizarlo; en todo otro caso —otra familia, `.cwd` distinto, o el panel ocupado —su único proceso en foreground no es su shell de login— según `herdr pane process-info --pane <.pane_id>`— abrir uno propio con `herdr pane split --pane <.pane_id> --direction right --cwd <ruta> --no-focus` y arrancar ahí | `herdr agent get <nombre>` devuelve el mismo `pane_id`, la familia esperada, el `cwd` del worktree, y `agent_status` `idle` o `done`; ante cualquier otro resultado, incluido `blocked`, seguir «Esperar a que el agente esté listo» | `/sdd-flow ` con espacio | gramática de argumentos en el compositor |
+| Herdr × codex | `git -C <repo_destino> worktree add -b <rama> <ruta> <sha>`, y adoptar con `herdr worktree open --path <ruta> --cwd <checkout principal del repo_destino> --label "<qué flujo corre acá>" --no-focus` | Ramificar por `.result.root_pane` de esa misma respuesta —`already_open` es un booleano y no discrimina nada—: con `.agent` nulo y `.cwd` igual a `<ruta>`, arrancar ahí con `herdr agent start <nombre> --kind codex --pane <.pane_id>`; con `.agent` igual a la familia esperada y ese mismo `.cwd`, reutilizarlo; en todo otro caso —otra familia, `.cwd` distinto, o el panel ocupado —su único proceso en foreground no es su shell de login— según `herdr pane process-info --pane <.pane_id>`— abrir uno propio con `herdr pane split --pane <.pane_id> --direction right --cwd <ruta> --no-focus` y arrancar ahí | `herdr agent get <nombre>` devuelve el mismo `pane_id`, la familia esperada, el `cwd` del worktree, y `agent_status` `idle` o `done`; ante cualquier otro resultado, incluido `blocked`, seguir «Esperar a que el agente esté listo» | `$sdd-flow` sin espacio | la skill en el menú filtrado |
 | Orca × claude | `orca worktree create --repo id:<repoId> --name <nombre> --base-branch <sha> --setup skip --agent claude --no-parent --json`; con hook `inseparable`, el mismo comando con `--setup run` | lo arranca `--agent claude` **en la creación**, que es el único modo: `orca terminal list --worktree id:<repoId>::<ruta> --json` **observa** la terminal, no la inicia | `orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 90000 --json` devuelve su estado | `/sdd-flow ` con espacio | gramática de argumentos en el campo `draft` |
 | Orca × codex | `orca worktree create --repo id:<repoId> --name <nombre> --base-branch <sha> --setup skip --agent codex --no-parent --json`; con hook `inseparable`, el mismo comando con `--setup run` | lo arranca `--agent codex` **en la creación**, que es el único modo: `orca terminal list --worktree id:<repoId>::<ruta> --json` **observa** la terminal, no la inicia | `orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 90000 --json` devuelve su estado | `$sdd-flow` sin espacio | la skill en el menú filtrado, en `draft` |
 
