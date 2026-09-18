@@ -16,6 +16,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import { IndexRenderError, renderIndexes } from '../../../skills/knowledge-vault/scripts/lib/index-render.mjs';
 import { buildNode } from '../../../skills/knowledge-vault/scripts/lib/node-builder.mjs';
@@ -182,4 +183,83 @@ test('regenerar índices acepta el flow histórico distinto del basename del nod
   const root = (await renderIndexes(vault)).get(path.join(vault, 'index.md'));
   assert.ok(root.includes('sdd/nombre-viejo.md'));
   assert.ok(root.includes('Resumen histórico.'));
+});
+
+
+/** Misma ruta según la plataforma, no igualdad de string: en Windows `path.resolve` conserva la caja. */
+const mismaRuta = (a, b) => path.relative(a, b) === '';
+
+test('grafias equivalentes dan el mismo resultado, y la guarda de contencion acredita por reversion', async (t) => {
+  const vault = await vaultDeTres(t);
+  const control = await renderIndexes(vault);
+  const posix = vault.split(path.sep).join('/');
+
+  // Las seis familias que AC-2 exige como mínimo, todas derivadas de la MISMA raíz sembrada. Las
+  // cuatro últimas rompen la igualdad en las dos plataformas, así que el caso no queda verde por
+  // vacuidad en POSIX, donde la grafía del config *es* la nativa.
+  const grafias = [
+    ['nativa (control)', vault],
+    ['separadores POSIX (la del config)', posix],
+    ['separador final', `${posix}/`],
+    ['segmento punto', posix.replace(/\/([^/]+)$/, '/./$1')],
+    ['separadores repetidos', posix.replace(/\//g, '//')],
+    ['unidad y segmentos en otra caja', posix.charAt(0).toLowerCase() + posix.slice(1).toLowerCase()],
+  ];
+
+  let ejercidas = 0;
+  for (const [nombre, raiz] of grafias) {
+    if (!mismaRuta(vault, raiz)) {
+      t.diagnostic(`salteada ${nombre}: esta plataforma no la resuelve a la misma ruta que la nativa`);
+      continue;
+    }
+    ejercidas += 1;
+    const salida = await renderIndexes(raiz);
+    assert.equal(salida.size, control.size, `${nombre}: distinta cantidad de índices`);
+    for (const [clave, contenido] of salida) {
+      const par = [...control.keys()].find((k) => mismaRuta(k, clave));
+      assert.ok(par, `${nombre}: ${clave} no tiene equivalente en la corrida nativa`);
+      assert.equal(contenido, control.get(par), `${nombre}: el contenido de ${clave} difiere`);
+    }
+    // AC-3, sobre las claves ORIGINALES: normalizar antes de contar pisa la duplicada y hace
+    // desaparecer justo lo que este criterio manda detectar.
+    const raices = [...salida.keys()].filter((k) => mismaRuta(k, path.join(vault, 'index.md')));
+    assert.equal(raices.length, 1, `${nombre}: ${raices.length} claves para el índice raíz`);
+    const indiceRaiz = salida.get(raices[0]);
+    for (const titulo of ['Primero', 'Segundo', 'Tercero']) {
+      assert.ok(indiceRaiz.includes(titulo), `${nombre}: el índice raíz no lista ${titulo}`);
+    }
+  }
+  assert.ok(ejercidas >= 2, 'ninguna grafía no nativa quedó ejercida en esta plataforma');
+
+  // La reversión solo se puede observar donde la grafía del config rompe la igualdad con la
+  // nativa. En POSIX `path.join(posix, '.') === posix`, así que revertir el sitio no emite
+  // ninguna ruta externa y no habría nada que acreditar: se saltea declarando por qué, igual que
+  // el bucle de grafías.
+  if (path.join(posix, '.') === posix) {
+    t.diagnostic('salteada la acreditación por reversión: en esta plataforma la grafía del config ya es la nativa');
+    return;
+  }
+
+  // El sitio revertido es `ancestros(raiz, …)`, el único de los cuatro cuya reversión hace que
+  // esta escena emita una ruta externa. Revertir la definición de la raíz canónica desarmaría
+  // también la guarda, y el caso dejaría de probar lo que dice.
+  const original = new URL('../../../skills/knowledge-vault/scripts/lib/index-render.mjs', import.meta.url);
+  const fuente = await fs.readFile(original, 'utf8');
+  const revertido = fuente.replace('ancestros(raiz, n.dir)', 'ancestros(vaultRoot, n.dir)');
+  assert.notEqual(revertido, fuente, 'la mutación de reversión no encontró su sitio');
+  // La copia vive en el sandbox, que se borra solo. Escribirla junto al original dejaría un .mjs
+  // untracked en el árbol de producto si el proceso muere entre el write y el borrado, y sus
+  // imports relativos por eso se reescriben a la carpeta del módulo real.
+  const mutado = path.join(path.resolve(vault, '..', '..'), 'scratch', 'index-render.reversion.mjs');
+  await fs.writeFile(mutado, revertido.replaceAll("from './", `from '${new URL('./', original).href}`), 'utf8');
+  const { renderIndexes: renderRevertido } = await import(pathToFileURL(mutado).href);
+  await assert.rejects(() => renderRevertido(posix), (error) => {
+    // Por el identificador y la ruta ofensora, no por el código 9, que `NODE_UNREADABLE` comparte.
+    assert.equal(error.name, 'IndexRenderError');
+    assert.equal(error.code, 'INDEX_OUTSIDE_VAULT');
+    assert.equal(exitCodeFor(error.code), 9);
+    assert.ok(error.path && path.relative(vault, error.path).startsWith('..'),
+      `la ruta ofensora ${error.path} no está fuera del vault`);
+    return true;
+  });
 });

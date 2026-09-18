@@ -55,7 +55,7 @@ Todo entra por banderas largas. Un argumento suelto es `USAGE`.
 | 4 | `PRECONDITION_NOT_MET` · `AMBIGUOUS_IDENTITY` · `RESERVED_DOCUMENT_PATH` · `NON_PORTABLE_DOCUMENT_PATH` · `IGNORED_DOCUMENT_PATH` | una precondición operativa, de identidad o de ruta impide empezar con seguridad |
 | 5 | `NO_VAULT` | no se declaró la raíz, o el config no la trae |
 | 8 | `SOURCE_UNAVAILABLE` | el origen no se puede leer |
-| 9 | `VERIFY_FAILED` · `COPY_FAILED` · `PUBLISH_FAILED` · `NODE_UNREADABLE` | el destino no verifica, la copia/publicación falló o el nodo histórico no se puede interpretar |
+| 9 | `VERIFY_FAILED` · `COPY_FAILED` · `PUBLISH_FAILED` · `NODE_UNREADABLE` · `INDEX_OUTSIDE_VAULT` | el destino no verifica, la copia/publicación falló, el nodo histórico no se puede interpretar, o una ruta de índice caería fuera de la raíz del vault |
 
 **Un lote incompleto no sale 0.** Migrar 49 de 50 deja un vault que ningún
 criterio distingue de uno completo: no hay manifiesto que enumere lo que debía

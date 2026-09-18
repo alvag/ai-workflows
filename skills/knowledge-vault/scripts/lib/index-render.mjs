@@ -26,10 +26,10 @@ import { encodeRelativePath } from './portable-path.mjs';
 import { INDEX_FILENAME, isNodeFile } from './vault-store.mjs';
 
 export class IndexRenderError extends Error {
-  constructor(message, { path: target = null } = {}) {
+  constructor(message, { path: target = null, code = 'NODE_UNREADABLE' } = {}) {
     super(message);
     this.name = 'IndexRenderError';
-    this.code = 'NODE_UNREADABLE';
+    this.code = code;
     this.path = target;
   }
 }
@@ -83,6 +83,16 @@ function ancestros(vaultRoot, dirAbs) {
   return cadena.reverse();
 }
 
+/**
+ * Encierro de `abs` en `raiz`. Es el mismo predicado que aplica la capa durable: el
+ * `path.isAbsolute(rel)` es lo que caza una ruta en otra unidad, donde `path.relative`
+ * devuelve una ruta absoluta sin `..` adelante.
+ */
+function contenido(raiz, abs) {
+  const rel = path.relative(raiz, abs);
+  return rel === '' || (!path.isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${path.sep}`));
+}
+
 function renderizar(titulo, nodos, dirDelIndice) {
   const lineas = [`# ${titulo}`, ''];
   lineas.push(nodos.length === 1 ? '1 flujo.' : `${nodos.length} flujos.`, '');
@@ -99,24 +109,38 @@ function renderizar(titulo, nodos, dirDelIndice) {
  * @returns {Promise<Map<string,string>>} ruta absoluta de cada índice → su contenido.
  */
 export async function renderIndexes(vaultRoot) {
-  const nodos = await recolectarNodos(vaultRoot);
+  // `path.join(x, '.')` y no `path.resolve`: resolve inyecta la unidad del proceso ante una
+  // raíz POSIX-style, que es la grafía que el config entrega.
+  const raiz = path.join(vaultRoot, '.');
+  const nodos = await recolectarNodos(raiz);
 
   // Cada directorio que tenga al menos un nodo por debajo recibe índice, y hereda
   // todos los que cuelgan de él. Derivarlo de los nodos —en vez de enumerar los
   // cuatro niveles del layout— hace que un vault con otra forma siga funcionando.
   const porDirectorio = new Map();
   for (const n of nodos) {
-    for (const dir of ancestros(vaultRoot, n.dir)) {
+    for (const dir of ancestros(raiz, n.dir)) {
       if (!porDirectorio.has(dir)) porDirectorio.set(dir, []);
       porDirectorio.get(dir).push(n);
     }
   }
-  if (!porDirectorio.has(vaultRoot)) porDirectorio.set(vaultRoot, []);
+  if (!porDirectorio.has(raiz)) porDirectorio.set(raiz, []);
 
   const salida = new Map();
   for (const [dir, suyos] of porDirectorio) {
-    const titulo = dir === vaultRoot ? 'Índice del vault' : path.basename(dir);
+    const titulo = dir === raiz ? 'Índice del vault' : path.basename(dir);
     salida.set(path.join(dir, INDEX_FILENAME), renderizar(titulo, suyos, dir));
+  }
+
+  // El invariante explícito: ninguna ruta emitida cae fuera de la raíz declarada. No se
+  // entrega resultado parcial, porque los dos consumidores escriben lo que reciben.
+  for (const destino of salida.keys()) {
+    if (!contenido(raiz, destino)) {
+      throw new IndexRenderError(
+        `el índice ${destino} cae fuera de la raíz del vault ${raiz}`,
+        { path: destino, code: 'INDEX_OUTSIDE_VAULT' },
+      );
+    }
   }
   return salida;
 }

@@ -123,3 +123,8 @@ test('[KV-SEL AC-9] rutas inválidas son precondición y nodo ilegible conserva 
   }
   assert.equal(exitCodeFor('NODE_UNREADABLE'), 9);
 });
+
+test('INDEX_OUTSIDE_VAULT está en la tabla y resuelve al código 9', () => {
+  assert.ok(isStatus('INDEX_OUTSIDE_VAULT'));
+  assert.equal(exitCodeFor('INDEX_OUTSIDE_VAULT'), 9);
+});
