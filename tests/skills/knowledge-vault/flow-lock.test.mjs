@@ -6,14 +6,21 @@
  * origen y una corrida muerta a mitad de camino podía dejar el mundo sin ninguna
  * copia. **Este flujo no borra nada**, así que ese aparato no tiene qué proteger.
  *
- * Lo que sí queda es un problema real y chico: `discardOrphanStagings` barre por
- * prefijo, y dos archivados del mismo flujo a la vez harían que uno leyera el
- * staging **vivo** del otro como huérfano y lo borrara. Alcanza con serializar,
- * en proceso, las corridas sobre un mismo flujo.
+ * Lo que sí queda es un problema real y chico.
+ * La identidad de flujo no distingue corridas concurrentes, y dos archivados
+ * del mismo flujo a la vez harían que uno recuperara el staging **vivo** del
+ * otro como propio y lo borrara. Alcanza con serializar, en proceso, las
+ * corridas sobre un mismo flujo.
  *
  * Lo que este lock explícitamente **no** hace: no escribe journal, no sobrevive
  * al proceso y no cubre retiro. Dos procesos distintos sobre el mismo vault no
- * se excluyen — y no hace falta, porque no hay operación destructiva que proteger.
+ * se excluyen, y ya no es cierto que no haya nada que proteger: la recuperación
+ * acotada sí borra staging, y sin este lock dos procesos pueden borrarse el
+ * staging vivo el uno al otro. Es un límite aceptado: la corrida afectada aborta
+ * después en su tramo de copia, verificación o publicación, el origen queda
+ * intacto porque el archivado nunca lo toca, y un reintento puede reconstruir
+ * lo perdido. El retiro conserva su propia defensa por orden y no depende de
+ * este lock.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
