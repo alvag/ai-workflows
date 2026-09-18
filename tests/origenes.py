@@ -124,6 +124,8 @@ def origins_for(identifier: str, group: str,
     if group == "delivery-profile":
         # Estos casos nacen con el perfil de entrega y no derivan de la migración histórica.
         return ORIGEN_SIN_MIGRACION
+    if group == "manifest-valido-v1":
+        return ORIGEN_SIN_MIGRACION
     if group in {"dimensiones", "normalizaciones"}:
         return frozenset({("case", "contrato-cadena/positivo")})
     if identifier in {"cobertura-v14:tres-direcciones", "entrypoint-v20:ids"}:
