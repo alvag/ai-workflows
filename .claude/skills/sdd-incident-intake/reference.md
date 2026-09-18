@@ -438,7 +438,7 @@ autoridad del hook que la clasificación consultó.
 
 | Plataforma | Rama `ausente` o `reproducible` | Rama `inseparable` |
 |---|---|---|
-| Herdr | `git -C <repo_destino> worktree add -b <rama> <ruta> <sha>`, y adoptar con `herdr worktree open --path <ruta>` | no aplica: Herdr no declara hooks por repositorio |
+| Herdr | `git -C <repo_destino> worktree add -b <rama> <ruta> <sha>`, y adoptar con `herdr worktree open --path <ruta> --workspace "$WS_PADRE" --no-focus` | no aplica: Herdr no declara hooks por repositorio |
 | Orca | `orca worktree create --repo id:<repoId> --name <nombre> --base-branch <sha> --setup skip --agent <agente> --no-parent --json` | `orca worktree create --repo id:<repoId> --name <nombre> --base-branch <sha> --setup run --agent <agente> --no-parent --json` |
 
 > **`--agent` va en las dos ramas, y no es redundante.** Una creación sin él abre un shell de
@@ -482,9 +482,38 @@ resolvió— ese peligro deja de existir: no hay que comparar ni realinear nada.
 Un árbol creado con Git **no lo conoce la plataforma**: sin adopción no se puede abrir el panel,
 arrancar el agente ni rotular. Cada fila lleva su comando y el observable que lo acredita.
 
+Resolver antes el workspace del repositorio padre desde el vínculo `source` que informa Herdr. No
+usar la variable de entorno del panel llamador: identifica el workspace que ejecuta el intake, que
+no necesariamente es el workspace fuente del repositorio.
+
+POSIX:
+
+```
+resolver_ws_padre() {
+  WS_PADRE=
+  HERDR_WORKTREES=$(herdr worktree list 2>/dev/null) || { echo "No se pudo resolver el workspace padre" >&2; return 1; }
+  WS_PADRE=$(printf '%s\n' "$HERDR_WORKTREES" | python3 -c 'import json, sys; value = json.load(sys.stdin)["result"]["source"]["source_workspace_id"]; print(value) if value else sys.exit(1)') || { echo "No se pudo resolver el workspace padre" >&2; return 1; }
+  [ -n "$WS_PADRE" ] || { echo "El workspace padre está vacío" >&2; return 1; }
+}
+resolver_ws_padre
+```
+
+PowerShell:
+
+```
+$HERDR_WORKTREES = herdr worktree list
+if ($LASTEXITCODE -ne 0) { throw "No se pudo resolver el workspace padre" }
+try { $WS_PADRE = ($HERDR_WORKTREES | ConvertFrom-Json -ErrorAction Stop).result.source.source_workspace_id } catch { throw "No se pudo resolver el workspace padre" }
+if ([string]::IsNullOrWhiteSpace($WS_PADRE)) { throw "El workspace padre está vacío" }
+```
+
+Cada una de las demás invocaciones —`agent start` y `pane rename`— ya nombra su destino con `--pane`
+o un id explícito, así que no hay nada más que anclar. Se usa `--no-focus` porque, en un
+lote, cada adopción robaría el foco.
+
 | Plataforma | Adoptar | Abrir y arrancar | Rotular | Observable que acredita |
 |---|---|---|---|---|
-| Herdr | `herdr worktree open --path <ruta>` sobre el árbol ya existente — `open` adopta, `create` crearía uno nuevo | `herdr pane split --current --direction right --cwd <ruta> --no-focus`, que devuelve el panel en `.result.pane`; después `herdr agent start <nombre> --kind <familia> --pane <id>` | `herdr pane rename <id> <label>`, o `--label` en el propio `worktree open` | `herdr agent get <nombre>` devuelve la familia esperada, su `cwd` igual a la ruta del worktree e `interactive_ready` verdadero |
+| Herdr | `herdr worktree open --path <ruta> --workspace "$WS_PADRE" --no-focus` sobre el árbol ya existente — `open` adopta y devuelve el panel raíz en `.result.root_pane.pane_id`, mientras `create` crearía uno nuevo | Sobre `.result.root_pane.pane_id`, evaluar los tres estados de `already_open`: sin agente, arrancar ahí con `herdr agent start <nombre> --kind <familia> --pane <id del panel raíz>`; con un agente cuyo observable acredita el mismo `pane_id`, familia y `cwd`, reutilizarlo; con un agente fuera de ese panel o identidad ambigua, detenerse sin arrancar ni cerrar nada | `herdr pane rename <id del panel raíz> <label>` | `herdr agent get <nombre>` devuelve el mismo `pane_id`, la familia esperada, su `cwd` igual a la ruta del worktree e `interactive_ready` verdadero |
 | Orca | nada que adoptar: el árbol lo creó su propio verbo y ya está registrado. Un árbol creado con Git **no** se puede adoptar acá, y por eso Orca no tiene rama de Git | lo arranca `--agent <familia>` **en la creación**, que es el único modo: `orca terminal list --worktree id:<repoId>::<ruta> --json` **observa** la terminal, no la inicia | `orca worktree set --worktree id:<repoId>::<ruta> --comment "<qué corre acá>" --json` | `orca terminal list --worktree id:<repoId>::<ruta> --json` devuelve una terminal con el agente de la familia esperada |
 
 **La comprobación de familia y directorio no es opcional.** Un agente de la familia equivocada
@@ -492,7 +521,8 @@ responde razonablemente y no reconoce el prefijo; uno en el directorio equivocad
 repositorio que no es. Las dos se leen del mismo observable, antes de despachar.
 
 **Del mismo observable sale la identidad que el dossier lleva**, y es la de **este** panel —el del
-flujo—, no la del panel del intake: en Herdr, el `pane` que devolvió `pane split`; en Orca, el
+flujo—, no la del panel del intake: en Herdr, el panel raíz que `worktree open` devuelve en
+`.result.root_pane.pane_id`; en Orca, el
 `handle` de la terminal que `terminal list --worktree` devuelve para el worktree recién creado.
 Anotarla acá es lo que permite escribirla en la sección 11 del dossier, que se redacta después.
 
@@ -772,8 +802,8 @@ remite a otra fila.**
 
 | Plataforma × familia | Crear | Abrir y arrancar | Primer tiempo | Observable que acredita |
 |---|---|---|---|---|
-| Herdr × claude | `git -C <repo_destino> worktree add -b <rama> <ruta> <sha>`, y adoptar con `herdr worktree open --path <ruta>` | `herdr pane split --current --direction right --cwd <ruta> --no-focus`, después `herdr agent start <nombre> --kind claude --pane <id>` | `/sdd-flow ` con espacio | gramática de argumentos en el compositor |
-| Herdr × codex | `git -C <repo_destino> worktree add -b <rama> <ruta> <sha>`, y adoptar con `herdr worktree open --path <ruta>` | `herdr pane split --current --direction right --cwd <ruta> --no-focus`, después `herdr agent start <nombre> --kind codex --pane <id>` | `$sdd-flow` sin espacio | la skill en el menú filtrado |
+| Herdr × claude | `git -C <repo_destino> worktree add -b <rama> <ruta> <sha>`, y adoptar con `herdr worktree open --path <ruta> --workspace "$WS_PADRE" --no-focus` | Con `.result.root_pane.pane_id`, `herdr agent start <nombre> --kind claude --pane <id del panel raíz>` | `/sdd-flow ` con espacio | gramática de argumentos en el compositor |
+| Herdr × codex | `git -C <repo_destino> worktree add -b <rama> <ruta> <sha>`, y adoptar con `herdr worktree open --path <ruta> --workspace "$WS_PADRE" --no-focus` | Con `.result.root_pane.pane_id`, `herdr agent start <nombre> --kind codex --pane <id del panel raíz>` | `$sdd-flow` sin espacio | la skill en el menú filtrado |
 | Orca × claude | `orca worktree create --repo id:<repoId> --name <nombre> --base-branch <sha> --setup skip --agent claude --no-parent --json`; con hook `inseparable`, el mismo comando con `--setup run` | lo arranca `--agent claude` **en la creación**, que es el único modo: `orca terminal list --worktree id:<repoId>::<ruta> --json` **observa** la terminal, no la inicia | `/sdd-flow ` con espacio | gramática de argumentos en el campo `draft` |
 | Orca × codex | `orca worktree create --repo id:<repoId> --name <nombre> --base-branch <sha> --setup skip --agent codex --no-parent --json`; con hook `inseparable`, el mismo comando con `--setup run` | lo arranca `--agent codex` **en la creación**, que es el único modo: `orca terminal list --worktree id:<repoId>::<ruta> --json` **observa** la terminal, no la inicia | `$sdd-flow` sin espacio | la skill en el menú filtrado, en `draft` |
 
