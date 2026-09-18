@@ -845,19 +845,34 @@ no reconocido.
 **Sin comillas dobles ni apóstrofes** en el texto si va entre comillas simples del shell — más simple
 que escapar.
 
-### Confirmar el arranque — dos propiedades, y ninguna sustituye a la otra
+### Confirmar el arranque — tres propiedades, y ninguna sustituye a la otra
 
 El control viejo buscaba «la señal de que la skill cargó». Eso lo satisface también un agente que
 **compensó** leyendo el archivo de la skill por su cuenta, así que no distingue un arranque bueno de
-uno malo. Se parte en dos:
+uno malo. Se parte en tres:
 
 | Propiedad | Qué acredita | Qué **no** acredita | Cómo se comprueba |
 |---|---|---|---|
 | **procedencia** | que la invocación entró por el prefijo, reconocido por el host | nada sobre el contenido del encargo | la **cadena** del envío: el prefijo se reconoció en el tiempo 2, no se tipeó nada en el medio, y el Enter fue sobre ese compositor |
-| **integridad** | que el encargo llegó entero, y que el flujo leyó el dossier que se le escribió | nada sobre **cómo** se invocó la skill | el flujo despachado congela su pedido con el `sha256` de cada fuente: se comprueba que exista una entrada cuyo hash sea el del dossier **en su origen** |
+| **integridad** | que el flujo leyó el dossier que se le escribió | nada sobre **cómo** se invocó la skill ni sobre el cuerpo del prompt | el flujo despachado congela su pedido con el `sha256` de cada fuente: se comprueba que exista una entrada cuyo hash sea el del dossier **en su origen** |
+| **completitud** | que el cuerpo del encargo entró entero en el compositor antes del Enter | nada sobre si el agente lo ejecutó ni sobre cómo se invocó la skill | la **primera** entrada `origen: usuario` del `literal.jsonl` que el flujo despachado congela —la de menor `n`— contiene el cuerpo canónico del puntero |
 
-**Se exigen las dos.** El hash correcto con procedencia no acreditada **no** cierra el paso: un
-arranque compensado también lee el dossier entero y produce exactamente el mismo hash.
+**Se exigen las tres.** El hash correcto con procedencia no acreditada **no** cierra el paso: un
+arranque compensado también lee el dossier entero y produce exactamente el mismo hash. Ese mismo
+agente puede compensar tras recibir un cuerpo truncado: con prefijo reconocido y dossier intacto,
+procedencia e integridad dan verde; la completitud lo discrimina porque falta el puntero canónico entero.
+
+La contención busca el cuerpo canónico del puntero que manda escribir la plantilla, **excluidos el
+prefijo y el separador que lo activa**, dentro del campo `texto` decodificado de esa primera entrada.
+La receta manda el separador dentro del prefijo en una familia y dentro del cuerpo en la otra, por lo
+que incluirlo cambiaría el operando según la familia. Es contención y no igualdad porque no está
+comprobado si el host captura el prefijo junto con el cuerpo; un truncamiento rompe la contención
+igual.
+
+Esta regla rige desde la siguiente activación: el despacho ya iniciado cierra con el contrato que
+cargó, conserva el hueco y no se reacredita. La lectura posterior del literal es una auditoría sin
+efecto sobre ese cierre: no lo revierte, no reabre el despacho ni cambia el estado del incidente, del
+issue o del worktree; solo es posible mientras el literal exista.
 
 > **El punto ciego de la procedencia, declarado.** La cadena se apoya en que nadie tipeó nada entre
 > el tiempo 2 y el Enter, y **eso no es observable en ninguna plataforma soportada**: ni Herdr ni Orca
