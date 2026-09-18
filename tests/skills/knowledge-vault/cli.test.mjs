@@ -174,3 +174,16 @@ test('[KV-SEL AC-20] index propaga NODE_UNREADABLE con código 9', async () => {
   assert.equal(result.exitCode, 9);
   assert.match(result.message, /nodo roto/);
 });
+
+test('index propaga INDEX_OUTSIDE_VAULT con código 9', async () => {
+  const comandos = {
+    index: async () => {
+      throw Object.assign(new Error('el índice cae fuera de la raíz del vault'),
+        { code: 'INDEX_OUTSIDE_VAULT' });
+    },
+  };
+  const result = await runCli({ argv: ['index', '--vault-root', '/v'], comandos });
+  assert.equal(result.status, 'INDEX_OUTSIDE_VAULT');
+  assert.equal(result.exitCode, 9);
+  assert.match(result.message, /fuera de la raíz/);
+});
