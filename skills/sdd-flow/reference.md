@@ -1931,25 +1931,30 @@ solapado—, incluida la opción de no hacer nada.
 <!-- ruta-directa:algoritmo:inicio -->
 ### El algoritmo
 
-El orden carga una obligación que no es de estilo: **la elegibilidad se resuelve con la evidencia ya
-reunida, nunca antes**. **[C1]** toma su dato de la búsqueda de antecedentes y **[C4]** del riesgo
-reevaluado, así que resolver las cinco al entrar las declararía indeterminadas, y **[K3]** mataría la
-ruta antes de haber mirado nada — una condición de entrada que ninguna corrida podría satisfacer.
+El orden carga **dos** obligaciones, y ninguna es de estilo. Una: **la elegibilidad se resuelve con
+la evidencia ya reunida, nunca antes** — **[C1]** toma su dato de la búsqueda de antecedentes y
+**[C4]** del riesgo reevaluado, así que resolver las cinco al entrar las declararía indeterminadas y
+**[K3]** mataría la ruta antes de haber mirado nada. La otra: **nada se escribe ni se publica antes
+de clasificar el árbol** — el tramo read-only del preflight corre primero, así que un HEAD
+desprendido, un repositorio sin commits o una base irresoluble detienen la ruta cuando todavía no
+dejó ningún artefacto ni tocó nada afuera.
 
 1. El Router deriva el pedido acá, dentro de una invocación explícita ya admitida.
-2. Buscar antecedentes con el procedimiento incondicional de siempre, y establecer la causa raíz antes de editar. Corre **antes** de saber si la ruta entra, y no es trabajo perdido cuando no entra: es el mismo acto incondicional que `gather-context` corre en el ciclo completo, y su ledger queda escrito igual.
-3. Reevaluar el riesgo con esa evidencia. Es el dato de **[C4]**, y es la razón por la que este paso no puede ir después del que resuelve las condiciones.
-4. Resolver las cinco condiciones y presentarlas en el **checkpoint de la ruta**, que es donde el usuario ejerce la autoridad de **[C2]** y ratifica el riesgo de **[C4]**. Las cinco se resuelven en un solo acto: una resolución parcial anterior tendría que declarar indeterminadas justamente las dos que dependen de los pasos 2 y 3. Resolver por **[K1]**, **[K2]** o **[K3]**; solo **[K2]** admite entrar, y las otras dos nombran cuál falló y derivan a la invocación explícita del ciclo completo.
-5. Resolver la aprobación externa por los cuatro estados de abajo. Con **[J1]** o **[J2]** la ruta sigue sin escribir spec. Con **[J3]** o **[J4]** produce `spec.md` y entra a `publish-spec`; al quedar a la espera, escribe el marcador con `fase: awaiting-jira-approval`.
-6. Presentar el checkpoint de ubicación y rama: lo elige el usuario, nunca se decide solo. Si elige un worktree, `.plans/<id>/` viaja con él igual que en la preflight canónica — lo que el paso 2 dejó escrito **es** el paquete que se traslada.
-7. Correr el preflight propio y, recién con su resultado, tocar el árbol por primera vez.
-8. Implementar, reuniendo la evidencia que C3 nombró antes de empezar.
-9. Integrar por las autorizaciones vigentes, cada una pedida por separado.
+2. Correr el **tramo read-only** del preflight propio: clasificar HEAD, la base y el estado del árbol, **antes de la primera escritura y de todo efecto externo**. Un estado no admitido detiene la ruta acá, sin artefactos y sin haber publicado nada.
+3. Persistir la **identidad de procedencia** **[R1]** y, recién entonces, buscar antecedentes con el procedimiento incondicional de siempre y establecer la causa raíz antes de editar. La identidad va primero porque el ledger es la **primera escritura**, y quien encuentre ese directorio después tiene que poder saber de dónde vino. El paso corre **antes** de saber si la ruta entra, y no es trabajo perdido cuando no entra: es el mismo acto incondicional que `gather-context` corre en el ciclo completo, y su ledger queda escrito igual.
+4. Reevaluar el riesgo con esa evidencia. Es el dato de **[C4]**, y es la razón por la que este paso no puede ir después del que resuelve las condiciones.
+5. Resolver las cinco condiciones y presentarlas en el **checkpoint de la ruta**, que es donde el usuario ejerce la autoridad de **[C2]** y ratifica el riesgo de **[C4]**. Las cinco se resuelven en un solo acto: una resolución parcial anterior tendría que declarar indeterminadas justamente las dos que dependen de los pasos 3 y 4. Resolver por **[K1]**, **[K2]** o **[K3]**; solo **[K2]** admite entrar, y las otras dos nombran cuál falló y derivan a la invocación explícita del ciclo completo.
+6. Resolver la aprobación externa por los cuatro estados de abajo. Con **[J1]** o **[J2]** la ruta sigue sin escribir spec. Con **[J3]** o **[J4]** produce `spec.md` y entra a `publish-spec`; al quedar a la espera, completa el marcador con `fase: awaiting-jira-approval`.
+7. Presentar el checkpoint de ubicación y rama: lo elige el usuario, nunca se decide solo. Elegir no muta.
+8. Correr el **tramo que muta** del preflight —materializar rama o worktree—, revalidando contra el árbol de ese momento la clasificación del paso 2. Es la primera vez que se toca el árbol. Si el destino es un worktree, `.plans/<id>/` viaja con él igual que en la preflight canónica: lo que el paso 3 dejó escrito **es** el paquete que se traslada.
+9. Implementar, reuniendo la evidencia que C3 nombró antes de empezar.
+10. Integrar por las autorizaciones vigentes, cada una pedida por separado.
 
 **El punto de reentrada de una invocación posterior lo decide el marcador**, no este orden: sin
-marcador se vuelve al paso 1 y se evalúa todo de nuevo, con la salvedad que **[N1]**
-declara; con `fase: awaiting-jira-approval` se retoma la espera externa; con
-`fase: interrumpida-con-diff`, el checkpoint de expansión.
+marcador se vuelve al paso 1 y se evalúa todo de nuevo, con la salvedad que **[N1]** declara; con
+`fase: awaiting-jira-approval` se retoma la espera externa; con `fase: interrumpida-con-diff`, el
+checkpoint de expansión.
+
 <!-- ruta-directa:algoritmo:fin -->
 
 <!-- ruta-directa:sustitucion:inicio -->
@@ -1972,7 +1977,7 @@ así que acá se declara qué hace la ruta con **cada** consumidor.
 | la metadata del commit | reutiliza | el tipo sale del cambio y el scope del ticket de la rama, igual que siempre |
 | el PR | reutiliza | su descripción se arma desde el criterio enunciado y la evidencia, no desde spec y plan |
 | el reporte final | reutiliza | mismo contenido, con el criterio en lugar de la tabla de `AC-n` |
-| `archive` | reutiliza, acotado | sí hay `.plans/<id>/` que archivar —al menos el ledger del paso 2—, así que corre sus pasos 2 y 3; **omite el paso 1**, que escribe `status: done` en un `plan.md` que no existe, y en su lugar deja `ruta_directa.activa: false` cuando haya marcador. Su precondición también lee ese `status` ausente: acá la sustituye haber llegado al paso 9 con las autorizaciones de integración ya ejercidas |
+| `archive` | reutiliza, acotado | sí hay `.plans/<id>/` que archivar —al menos el marcador y el ledger del paso 3—, así que corre los pasos 2 y 3 **del sub-paso `archive`**; **omite su paso 1**, que escribe `status: done` en un `plan.md` que no existe, y en su lugar deja `ruta_directa.activa: false` cuando haya marcador. Su precondición también lee ese `status` ausente: acá la sustituye haber llegado al paso 10 con las autorizaciones de integración ya ejercidas |
 
 **[O1]** persistir campos en el header · **[O2]** marcar tasks · **[O3]** escribir Extras ·
 **[O4]** avanzar el `status` · **[O5]** construir el PR desde spec y plan: las cinco operaciones que
@@ -1987,10 +1992,10 @@ lista es **cerrada**:
 
 | Artefacto | Cuándo | Quién lo escribe |
 |---|---|---|
-| `antecedentes.md` | **siempre**, en el paso 2 | la búsqueda de antecedentes, con su procedimiento de siempre |
-| `handoff.md` | solo cuando la ruta deja estado durable | el marcador **[R1]** |
-| `spec.md` | solo con **[J3]** o **[J4]** | el paso 5 |
-| `jira-spec.md` | solo con **[J3]** | `publish-spec`, con su copia exacta de lo publicado |
+| `handoff.md` | **siempre**, en el paso 3 y antes del ledger | la identidad de procedencia **[R1]**; sus demás claves llegan solo si aparece un estado durable |
+| `antecedentes.md` | **siempre**, en el paso 3 | la búsqueda de antecedentes, con su procedimiento de siempre |
+| `spec.md` | solo con **[J3]** o **[J4]** | el paso 6 |
+| `jira-spec.md` | con **[J3]** o **[J4]** | `publish-spec`, que lo guarda en su **paso 1** al construir el payload — antes del STOP y antes del intento de escritura externa, así que una escritura fallida, que es lo que define **[J4]**, lo deja escrito igual |
 
 **Lo que la ruta no escribe es `contrato-pedido.md` ni `pedido/`**: los produce el sub-paso 3b de
 `gather-context`, que esta ruta no recorre. No hace falta nada nuevo para eso — la búsqueda de
@@ -2025,8 +2030,17 @@ final del diff.
 ### El preflight propio
 
 Una entrada directa del Router **no** abre la preflight Git y de worktree, así que la ruta corre la
-suya antes de mutar. La clasificación de estados es la misma de "Preflight Git y worktree", que se
-lee al llegar acá; lo que sigue es el delta.
+suya. La clasificación de estados es la misma de "Preflight Git y worktree", que se lee al llegar
+acá; lo que sigue es el delta.
+
+**Se parte en dos tramos que corren en momentos distintos, y esa partición no es propia:** es la que
+`gather-context` ya aplica, corriendo su tramo read-only **antes del punto 1** y materializando
+recién después del checkpoint. El **tramo read-only** —HEAD, base efectiva y estado del árbol— corre
+en el **paso 2**, antes de la primera escritura y de todo efecto externo. El **tramo que muta**
+—materializar rama o worktree— corre en el **paso 8**, después del checkpoint de ubicación, y
+revalida la clasificación contra el árbol de ese momento en vez de confiar en la del paso 2. Sin la
+partición, un HEAD desprendido o una base irresoluble se descubrían con el ledger ya escrito y la
+spec quizá ya publicada afuera, que es un efecto que ningún fallo cerrado posterior deshace.
 
 Estados admitidos de HEAD y de rama, como lista cerrada: HEAD en una rama con nombre, y el árbol sin
 cambios ajenos. Todo lo demás —HEAD desprendido, repositorio sin commits, rama base irresoluble— no
@@ -2048,34 +2062,41 @@ Editar la rama base por defecto no es un resultado alcanzable por esta vía.
 
 Se clasifica por predicado en cuatro estados disjuntos, cada uno con su conducta:
 
-- **[J1] inactiva** — el modo está apagado. La ruta corre sin producir spec; el ledger del paso 2 se escribe igual.
+- **[J1] inactiva** — el modo está apagado. La ruta corre sin producir spec; el marcador y el ledger del paso 3 se escriben igual.
 - **[J2] inaplicable** — el modo está activo pero falta el tracker o la clave padre, así que no hay destino de publicación. **No** se ofrece vía manual: devuelve la decisión al usuario.
 - **[J3] aplicable** — hay destino y capacidad de escritura. Produce `spec.md`, atraviesa el gate local de aprobación y el preview con confirmación de la escritura externa, y publica.
 - **[J4] degradada recuperable** — hay destino pero la escritura automática falla. Produce igual `spec.md` y ofrece la vía manual con su clave de subtarea.
 
 La ruta **reutiliza** los gates vigentes de `publish-spec` y no define variantes propias. Lo único
-propio es **cuándo** se entra, y es el paso 5 del algoritmo: después de resolver las condiciones y la
+propio es **cuándo** se entra, y es el paso 6 del algoritmo: después de resolver las condiciones y la
 reevaluación de riesgo, y **antes** del checkpoint de ubicación y rama. Ese orden importa porque
 `spec.md` es el artefacto que se publica, así que tiene que existir antes de que haya rama, y porque
 una spec rechazada afuera no debe dejar rama creada.
 
 #### El marcador durable
 
-**[R1]** Cuando la ruta deja estado que una sesión nueva tiene que poder reanudar, lo escribe en el
-frontmatter de `handoff.md`:
+**[R1]** El marcador vive en el frontmatter de `handoff.md` y se escribe en **dos momentos**:
 
 ```yaml
 ruta_directa:
-  activa: true
-  fase: awaiting-jira-approval    # o interrumpida-con-diff
+  activa: true                    # la IDENTIDAD DE PROCEDENCIA: paso 3, antes del ledger
+  fase: awaiting-jira-approval    # o interrumpida-con-diff; solo si aparece un estado durable
   criterio: "<el criterio de éxito enunciado, en una línea>"
   archivos: ["<rutas tocadas hasta la pausa>"]
   inventario_completo: true       # solo con interrumpida-con-diff
 ```
 
-Son **dos** fases porque son dos estados durables distintos: la espera por aprobación externa, y la
-salida del checkpoint de expansión cuando el usuario elige conservar. Sin la segunda, la promesa de
-que el trabajo "queda registrado" no tenía sede ni campo.
+**`activa: true` es una identidad, no un estado, y por eso se escribe primero.** Va en el paso 3
+antes que el ledger, que es la primera escritura de la ruta, y declara una sola cosa: este
+`.plans/<id>/` nació de la ruta directa. Lo que no se puede es deducirla de lo que **falta** —la
+ausencia de `contrato-pedido.md` y de `pedido/` la comparte con un flujo heredado, que nació del
+ciclo completo antes de que ese paquete existiera—, así que la procedencia se afirma o no se sabe.
+
+**Las demás claves llegan después, y las `fase` siguen siendo dos** porque son dos estados durables
+distintos: la espera por aprobación externa, y la salida del checkpoint de expansión cuando el
+usuario elige conservar. Sin la segunda, la promesa de que el trabajo "queda registrado" no tenía
+sede ni campo. Un marcador **con identidad y sin `fase`** no es un tercer estado durable: es una
+corrida a medias, y **[N1]** dice qué se hace con ella.
 <!-- ruta-directa:jira:fin -->
 
 <!-- ruta-directa:integracion:inicio -->
@@ -2094,8 +2115,8 @@ y el diff contra el plan, recibe el criterio de éxito enunciado y la evidencia 
 su `gate_status`. Con el marcador presente, la retoma continúa la ruta —aprobación, observaciones o
 degradación— y no deriva al ciclo completo. Sin marcador, ese routing queda intacto.
 
-- **[N1]** Una corrida interrumpida **sin** marcador se trata como ruta nueva —la invocación posterior vuelve a evaluar predicado, antecedentes y evidencia **desde cero**— cuando su `.plans/<id>/` contiene **solo** el residuo que la ruta puede dejar sin marcador: `antecedentes.md`, sin `contrato-pedido.md` ni `pedido/`. Con cualquier otro contenido —el caso alcanzable es un `spec.md` de **[J3]** o **[J4]** cuya corrida murió antes de escribir el marcador— el estado **no está enumerado**: **falla cerrado** y la decisión vuelve al usuario con lo observado a la vista, sin adivinar si esa spec llegó a publicarse.
-- **[N2]** Si existe un `.plans/<id>/` abierto por `gather-context` —lo declaran `contrato-pedido.md` o `pedido/`—, ese flujo tiene **precedencia** y la ruta no entra. El discriminador es **el artefacto y no la antigüedad**: sin él, el ledger que la propia ruta escribe en su paso 2 la dejaría bloqueada por su propio residuo, y **[N1]** sería inalcanzable en el único caso que describe.
+- **[N1]** Una corrida interrumpida se reconoce por su **identidad de procedencia**, nunca por lo que le falta: un `.plans/<id>/` cuyo `handoff.md` trae `ruta_directa.activa: true` **sin** `fase` nació de esta ruta y quedó a medias, así que la invocación posterior la trata como ruta nueva y vuelve a evaluar predicado, antecedentes y evidencia **desde cero**. La excepción es que además exista `spec.md`: ahí **[J3]** o **[J4]** arrancó y murió antes de declarar su fase, la ruta **falla cerrado** y la decisión vuelve al usuario, porque re-evaluar desde cero podría publicar dos veces y solo una persona puede mirar el tracker y decidir.
+- **[N2]** Cualquier `.plans/<id>/` que exista para el mismo pedido **sin** esa identidad no es de esta ruta y tiene **precedencia**: la ruta no entra. Alcanza por igual al flujo abierto por `gather-context` —lo declaran `contrato-pedido.md` o `pedido/`— y al **heredado**, que no tiene ninguno de los dos y que por eso es indistinguible de la ruta si se la identifica por ausencia. La identidad se afirma antes de escribir; deducirla de lo que falta le daba dos rutas incompatibles al mismo observable.
 <!-- ruta-directa:integracion:fin -->
 
 <!-- ruta-directa:matriz:inicio -->
@@ -2141,8 +2162,8 @@ un pedido entre por esta ruta.
 | E17 | push confirmado: se deniega | worktree descartable creado desde el commit base | pedir esa autorización | la ruta no avanza y ninguna otra autorización se da por concedida | el usuario no concede push confirmado | la salida del comando que decide, más el estado del árbol antes y después | se remueve el worktree descartable al terminar |
 | E18 | apertura de PR: se deniega | worktree descartable creado desde el commit base | pedir esa autorización | la ruta no avanza y ninguna otra autorización se da por concedida | el usuario no concede apertura de PR | la salida del comando que decide, más el estado del árbol antes y después | se remueve el worktree descartable al terminar |
 | E19 | retoma durable tras la aprobación externa | worktree descartable creado desde el commit base | retomar en sesión nueva | continúa la espera externa sin volver al ciclo completo | handoff con fase awaiting-jira-approval | la salida del comando que decide, más el estado del árbol antes y después | se remueve el worktree descartable al terminar |
-| E20 | corrida interrumpida sin marcador | worktree descartable creado desde el commit base | invocar de nuevo | se trata como ruta nueva y evalúa todo desde cero | no hay marcador y el directorio solo tiene `antecedentes.md` | la salida del comando que decide, más el estado del árbol antes y después | se remueve el worktree descartable al terminar |
-| E21 | precedencia de un flujo vivo | worktree descartable creado desde el commit base | evaluar la ruta | la ruta no entra y gana el flujo existente | existe .plans/<id>/ abierto por gather-context (con contrato-pedido.md o pedido/) para el mismo pedido | la salida del comando que decide, más el estado del árbol antes y después | se remueve el worktree descartable al terminar |
+| E20 | corrida interrumpida sin marcador | worktree descartable creado desde el commit base | invocar de nuevo | se trata como ruta nueva y evalúa todo desde cero | el handoff trae ruta_directa.activa true sin fase, y no hay spec.md | la salida del comando que decide, más el estado del árbol antes y después | se remueve el worktree descartable al terminar |
+| E21 | precedencia de un flujo vivo | worktree descartable creado desde el commit base | evaluar la ruta | la ruta no entra y gana el flujo existente | existe .plans/<id>/ sin la identidad ruta_directa.activa para el mismo pedido | la salida del comando que decide, más el estado del árbol antes y después | se remueve el worktree descartable al terminar |
 | E22 | registro local presente | worktree descartable creado desde el commit base | registrar un incidente | queda escrito en el registro del worktree | el worktree tiene su registro con cabecera admisible | la salida del comando que decide, más el estado del árbol antes y después | se remueve el worktree descartable al terminar |
 | E23 | registro local ausente | worktree descartable creado desde el commit base | registrar un incidente | se detiene sin reconstruir la cabecera ni escribir a medias | el worktree no tiene registro | la salida del comando que decide, más el estado del árbol antes y después | se remueve el worktree descartable al terminar |
 | E24 | conflicto de autoridades | ninguno: se evalúa sin tocar el árbol | leer la doctrina | la precedencia declarada resuelve, sin migración | constitution local ordena el árbol principal | la conducta observada al resolver el predicado, con la condición que la produjo | no aplica: no hubo mutación |
@@ -2165,7 +2186,8 @@ Punto de entrada para un flujo empezado. `.plans/` es visible entre ramas del mi
 
 ### Listar / elegir el flujo
 1. Si el usuario nombró un flujo (`<id>` o ruta `.plans/<id>/`), usar ese. Si dijo algo genérico ("¿en qué quedé?", "qué flujos tengo"), **listar** los flujos activos (excluir `.plans/archived/`): para los que tienen `plan.md`, leer su header; para los **pre-`plan`** (sin `plan.md`: `contrato-pedido.md`, `pedido/`, `antecedentes.md`, `spec.md` y/o `handoff.md`, en cualquier combinación), leer el `handoff.md` (`phase`/`gate_status`) **y también `antecedentes.md` si está**, de donde sale el estado de la búsqueda. Un flujo pausado durante la búsqueda puede tener **solo** ese archivo, y un cierre pre-spec deja ahí su `busqueda: terminal`: sin abrirlo no hay con qué mostrar ese estado ni cómo distinguir un cierre deliberado de un flujo abandonado. **El marcador y el paquete entran en esa enumeración por el mismo motivo**, y llegan antes que los tres: una caída dentro de 3b deja un flujo sin ninguno de los artefactos narrativos, así que un listado que solo los mirara no tendría con qué presentarlo y el usuario no podría elegirlo — dejando sin correr el routing del item 1b, que es el único que sabe qué hacer con ese estado. Acá solo se **detecta su presencia** para no omitir el flujo; la celda exacta la resuelve 1b sobre el flujo ya elegido. Mostrar tabla `id · branch · estado · siguiente paso`; una ubicación `worktree` clasifica la copia del origen como snapshot, sigue el puntero y distingue ruta ausente, destino sin paquete y paquete vivo antes de mostrar estado. Que el usuario elija.
-1b. **Bifurcar por el estado del pedido, antes de toda otra rama.** Con el flujo ya elegido, la **primera** comprobación del paso es el estado del paquete `pedido/`, y de su resultado sale por dónde **enrutar**. Va antes que cualquier rama vigente —incluida la de `antecedentes.md` con `busqueda: terminal`—, porque un flujo terminal puede ocultar un marcador con el paquete ausente, y ahí el fallo cerrado quedaría sin disparar.
+1b. **Bifurcar por el estado del pedido, antes de toda otra rama.** Con el flujo ya elegido, la **primera** comprobación de este contrato es el estado del paquete `pedido/`, y de su resultado sale por dónde **enrutar**. Va antes que cualquier rama vigente —incluida la de `antecedentes.md` con `busqueda: terminal`—, porque un flujo terminal puede ocultar un marcador con el paquete ausente, y ahí el fallo cerrado quedaría sin disparar.
+   - **Y antes que este contrato entero, la identidad de procedencia.** Si el `handoff.md` del flujo trae `ruta_directa.activa`, ese `.plans/<id>/` **nació de la ruta directa** y no del ciclo completo: se enruta por `reference.md` → "La ruta directa" → "La integración, y cómo se retoma", y la celda de abajo **no se resuelve**. Va primero porque la ruta directa no corre 3b, así que su directorio llega acá con marcador ausente, paquete ausente y contenido —exactamente la celda de **flujo heredado**, que lo mandaría por las ramas vigentes del ciclo completo. Las dos reglas serían verdaderas sobre el mismo observable, y solo una puede enrutar. La ausencia del paquete **no** prueba de dónde vino un flujo; la identidad, que se afirma antes de la primera escritura, sí.
    <!-- invoca: pedido-marcador -->
    `resume` invoca **un bloque para resolver la celda** y **carga dos**, que no es lo mismo: `pedido-marcador` llama a `pedido-jsonl` por dentro cuando el paquete está presente, así que su definición tiene que estar en el mismo shell. Cargar no es invocar — lo que vuelve circular al protocolo es ordenar dos *invocaciones* de la celda, porque el marcador no puede imprimir «presente y corrupto» antes de conocer un resultado que llegaría después. Sin la dependencia cargada el bloque devuelve `2` con su causa, y con `2` no se enruta por ninguna rama.
    - **Y solo si la celda resultó «presente y legible», después se comprueba la cadena de digests.** Va **después** y no antes por el mismo motivo que la dependencia: sobre un paquete que ya se sabe corrupto, la cadena no agrega nada, y sobre uno ausente no hay qué comprobar.
@@ -2200,7 +2222,7 @@ Punto de entrada para un flujo empezado. `.plans/` es visible entre ramas del mi
    - Si hay **`antecedentes.md` con `busqueda: in-progress`** —haya handoff o no— → la pausa ocurrió **durante la búsqueda de antecedentes**. La condición arranca por el **artefacto** y no por un campo del handoff a propósito: `pause` escribe el handoff solo cuando la pausa es **ordenada**, y una sesión que muere, un `Ctrl-C` o un cierre de terminal dejan el ledger a medio correr sin handoff ninguno. Retomar así:
      - **Recomputar los fingerprints** —los que declare `reference.md` → "Búsqueda de antecedentes", que es su única sede: enumerarlos acá crea una segunda que se desincroniza— y compararlos con los persistidos. Se re-corre **solo la unión** de las filas que indique la matriz de invalidación de `reference.md` → "Búsqueda de antecedentes"; las fuentes ya terminadas que ningún fingerprint invalidó **no se vuelven a correr**.
      - **Un parcial no es un resultado.** Con fuentes pendientes, el estado se completa antes de clasificar: leerlo como "no había nada" es el mismo error que la búsqueda viene a evitar.
-   - Si el frontmatter trae **`ruta_directa.activa: true`** → la pausa es de una **ruta directa**, no de un flujo con artefactos, y se retoma por su propia rama: `reference.md` → "La ruta directa" → "La integración, y cómo se retoma". Va **antes** que la rama de abajo porque una ruta directa que espera aprobación externa también trae `gate_status`, y sin este orden caería en la rama del flujo con artefactos y seguiría a `create-branch → analyze → plan`, que es justo lo que no tiene que hacer. Sin el campo, el routing de abajo queda intacto.
+   - Si el frontmatter trae **`ruta_directa.activa: true`** → el flujo es de una **ruta directa**, no uno con artefactos —el campo es su identidad de procedencia y se escribe antes de la primera escritura, así que está presente con pausa y sin ella—, y se retoma por su propia rama: `reference.md` → "La ruta directa" → "La integración, y cómo se retoma". Va **antes** que la rama de abajo porque una ruta directa que espera aprobación externa también trae `gate_status`, y sin este orden caería en la rama del flujo con artefactos y seguiría a `create-branch → analyze → plan`, que es justo lo que no tiene que hacer. Sin el campo, el routing de abajo queda intacto.
    - Si tiene **`gate_status: awaiting`** (o `changes-requested`) → el flujo está en el **gate de Jira**; ir a "Gate de Jira (esperando aprobación externa)" abajo.
    - Si no (pausa común en `specify`/`clarify`, con `spec.md` ya escrita), usar
      `spec_approved_at`, nunca la mera existencia de rama. Timestamp → posicionarse con checkout
@@ -4596,7 +4618,7 @@ La matriz es exhaustiva y no deja ninguna combinación a criterio de quien la le
 | Directorio del flujo | Marcador | Paquete | Estado | Vara |
 |---|---|---|---|---|
 | vacío | ausente | ausente | caída dentro de 3b, entre el `mkdir` y el marcador | **fallo cerrado**: re-corre 3b desde cero |
-| no vacío | ausente | ausente | flujo heredado, abierto antes de este contrato | **no aplicable**, y se declara así en el retomado |
+| no vacío | ausente | ausente | flujo heredado, abierto antes de este contrato — la celda se alcanza solo si antes se descartó la identidad `ruta_directa.activa`, que enruta por su propia rama | **no aplicable**, y se declara así en el retomado |
 | cualquiera | presente | ausente | adopción interrumpida entre el marcador y la sede | **fallo cerrado**: re-corre 3b; nunca se lee como heredado |
 | cualquiera | presente | presente y legible | flujo bajo el contrato | **aplicable** |
 | cualquiera | presente | presente y corrupto | sede dañada: el literal mal formado, o ausente con el registro presente | **cuarentena**, con su procedimiento |
@@ -8062,7 +8084,8 @@ antecedentes: .plans/<id>/antecedentes.md   # PUNTERO, no copia: términos, fuen
 pedido: .plans/<id>/pedido/   # PUNTERO, no copia: el literal y el registro se leen en su sede
 # marcador de la ruta directa (solo si la pausa es de una ruta directa; lo consume `resume` ANTES
 # de la rama de `gate_status`):
-# ruta_directa: { activa: true, fase: awaiting-jira-approval | interrumpida-con-diff,
+# ruta_directa: { activa: true,                       # identidad de procedencia: SIEMPRE, antes de la primera escritura
+#                 fase: awaiting-jira-approval | interrumpida-con-diff,   # opcional: solo con estado durable
 #                 criterio: "<el criterio de éxito enunciado>", archivos: [...],
 #                 inventario_completo: true | false }
 # campos del gate de Jira (solo si es una pausa por aprobación externa):
