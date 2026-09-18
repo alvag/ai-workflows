@@ -823,17 +823,22 @@ comprobación que decide si se sigue.
 2. **Leer el compositor** y buscar la señal de reconocimiento **de esa familia**. Sin la señal, no se
    manda el cuerpo: se aplica la fila de recuperación.
 3. **El cuerpo**, y leerlo para comprobar que entró entero. Si el compositor devuelve el marcador de
-   colapso, la integridad no es observable y **no se manda el Enter**:
-   1. Vaciar el compositor con tantos borrados como caracteres tenga el marcador y comprobar por
-      lectura que quedó vacío.
-   2. Volver a esperar readiness con el mismo observable de «Esperar a que el agente esté listo».
-   3. **Reiniciar desde el primer tiempo**: reenviar el prefijo y volver a acreditar su reconocimiento.
-   4. Reenviar el cuerpo, **partido a la mitad tantas veces como haga falta**, leyendo entre fragmento
-      y fragmento hasta que el compositor muestre texto en vez del marcador.
-   5. Con el cuerpo entero visible, mandar el Enter.
-   Si tras dos reinicios completos el compositor sigue colapsando, el arranque queda **no confirmado**
-   y no se retira nada.
+   colapso, esa lectura queda **inconcluyente y no negativa** —el marcador dice que el host colapsó el
+   bloque pegado para mostrarlo, no que el cuerpo haya llegado truncado—, así que se sigue: al cuerpo
+   lo acredita la **completitud** al cerrar, contra el `literal.jsonl` del flujo despachado.
 4. **El Enter**, sobre ese mismo compositor y sin nada tipeado en el medio.
+
+> **Por qué el tercer tiempo no recupera y el segundo sí.** No es una asimetría de rigor sino de qué
+> observable sobrevive. El segundo protege la **procedencia**, que solo existe como cadena del envío:
+> un prefijo no reconocido no deja rastro en el pedido congelado, así que perderla ahí es perderla del
+> todo. El tercero protege el cuerpo, que sí tiene un observable posterior y canónico — y frenar acá
+> lo destruiría, porque sin Enter no hay flujo, sin flujo no hay `literal.jsonl`, y el único control
+> que de verdad ve el cuerpo se pierde por evitar el riesgo que ese mismo control acota.
+>
+> Una recuperación acá tampoco sería **ejecutable**: vaciar el compositor exige borrar el draft, y
+> ningún subcomando de `orca terminal` lo hace —medido contra 1.4.205, donde `send` admite `--text`,
+> `--enter` e `--interrupt` y ninguna operación de tecla—. Prescribirla dejaría a las dos familias
+> sobre esa plataforma con un paso sin salida practicable.
 
 ### Qué se escribe y qué se busca, por familia
 
@@ -1163,7 +1168,7 @@ se iba a corregir, y un fallo de este paso no es motivo para perderla.
 |---|---|---|
 | `agent start` devuelve `agent_not_ready` con el agente vivo y listo | **Hipótesis no comprobada:** el CLI puede reportar el error aunque el agente haya quedado disponible | Consultar las cuatro condiciones de «Esperar a que el agente esté listo» y continuar si acreditan; cualquier limpieza pasa por el gate del contrato de fallo por fase |
 | El compositor no muestra la señal de reconocimiento | El prefijo entró dentro del texto pegado, se usó la forma de la otra familia —con espacio donde iba sin él, o al revés—, o actuó la conversión de rutas: en el compositor aparece una ruta absoluta del sistema de archivos en lugar del prefijo | Limpiar el compositor, restablecer readiness y **repetir desde el prefijo**, acreditando su reconocimiento antes de mandar el cuerpo. Ante la conversión de rutas, usar la forma con `MSYS_NO_PATHCONV=1` de la tabla de plataformas. Si no se acredita, el arranque queda **no confirmado** y no se retira nada. La ruta de la skill sirve para **diagnosticar** cuál está instalada, nunca como forma de activarla: pedirle al agente que la lea produce exactamente el arranque compensado que el control existe para rechazar |
-| El compositor devuelve el marcador de colapso | El cuerpo no quedó observable en el compositor | No mandar el Enter y aplicar, en orden, la recuperación del tercer tiempo de «Enviar en tres tiempos»; si tras dos reinicios completos sigue colapsando, el arranque queda **no confirmado** y no se retira nada |
+| El compositor devuelve el marcador de colapso | El host colapsó el bloque pegado para mostrarlo; no dice nada sobre si el cuerpo llegó entero | Mandar el Enter igual: la lectura del compositor es una comprobación temprana y barata, no la autoridad, y acá queda inconcluyente y no negativa. Al cuerpo lo acredita la **completitud** al cerrar, y si llegó truncado el arranque queda **no confirmado** ahí |
 | El flujo pregunta cosas que el config ya responde | El worktree no está sembrado | Sembrar `.specify/` del `<repo_destino>` y avisarle al agente que relea el config |
 | El flujo arranca un `init` que nadie pidió | Igual que arriba, caso agudo | Igual, y verificar que el `init` no haya sobrescrito nada |
 | `git status` del worktree muestra lo sembrado | El destino no ignora esos paths | Sacarlos del árbol y resolver el ignore antes de seguir |
