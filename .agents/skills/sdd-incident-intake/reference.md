@@ -822,7 +822,17 @@ comprobación que decide si se sigue.
 1. **El prefijo solo**, en la forma que su familia exige.
 2. **Leer el compositor** y buscar la señal de reconocimiento **de esa familia**. Sin la señal, no se
    manda el cuerpo: se aplica la fila de recuperación.
-3. **El cuerpo**, y leerlo para comprobar que entró entero.
+3. **El cuerpo**, y leerlo para comprobar que entró entero. Si el compositor devuelve el marcador de
+   colapso, la integridad no es observable y **no se manda el Enter**:
+   1. Vaciar el compositor con tantos borrados como caracteres tenga el marcador y comprobar por
+      lectura que quedó vacío.
+   2. Volver a esperar readiness con el mismo observable de «Esperar a que el agente esté listo».
+   3. **Reiniciar desde el primer tiempo**: reenviar el prefijo y volver a acreditar su reconocimiento.
+   4. Reenviar el cuerpo, **partido a la mitad tantas veces como haga falta**, leyendo entre fragmento
+      y fragmento hasta que el compositor muestre texto en vez del marcador.
+   5. Con el cuerpo entero visible, mandar el Enter.
+   Si tras dos reinicios completos el compositor sigue colapsando, el arranque queda **no confirmado**
+   y no se retira nada.
 4. **El Enter**, sobre ese mismo compositor y sin nada tipeado en el medio.
 
 ### Qué se escribe y qué se busca, por familia
@@ -839,11 +849,17 @@ no reconocido.
 
 | Plataforma | Cómo se escribe sin enviar | Cómo se lee el compositor | Cómo se manda el Enter |
 |---|---|---|---|
-| Herdr | `herdr pane send-text <id> '<texto>'` | `herdr pane read <id> --source visible` | `herdr pane send-keys <id> enter` |
-| Orca | `orca terminal send --terminal <handle> --text '<texto>' --json` | `orca terminal read --terminal <handle> --json` → campo `draft` | `orca terminal send --terminal <handle> --text "" --enter --json` |
+| Herdr | `herdr pane send-text <id> '<texto>'`; para el primer tiempo de `claude` en Git Bash o cualquier shell MSYS sobre Windows: `MSYS_NO_PATHCONV=1 herdr pane send-text <id> '/sdd-flow '` | `herdr pane read <id> --source visible` | `herdr pane send-keys <id> enter` |
+| Orca | `orca terminal send --terminal <handle> --text '<texto>' --json`; para el primer tiempo de `claude` en Git Bash o cualquier shell MSYS sobre Windows: `MSYS_NO_PATHCONV=1 orca terminal send --terminal <handle> --text '/sdd-flow ' --json` | `orca terminal read --terminal <handle> --json` → campo `draft` | `orca terminal send --terminal <handle> --text "" --enter --json` |
 
 **Sin comillas dobles ni apóstrofes** en el texto si va entre comillas simples del shell — más simple
-que escapar.
+que escapar. Como condición distinta, un argumento que abre con barra se convierte en ruta bajo Git
+Bash o cualquier shell MSYS sobre Windows, cualquiera sea la comilla que lo rodee. La forma con
+`MSYS_NO_PATHCONV=1` solo aplica al shell que convierte; PowerShell y los POSIX reales no convierten,
+no la necesitan y la invocación sin ella sigue siendo válida ahí.
+
+Esta clasificación se midió: el cuerpo, el prefijo de la otra familia y el texto vacío del Enter no
+abren con barra y por eso no se convierten.
 
 ### Confirmar el arranque — tres propiedades, y ninguna sustituye a la otra
 
@@ -1146,7 +1162,8 @@ se iba a corregir, y un fallo de este paso no es motivo para perderla.
 | Síntoma | Causa probable | Qué hacer |
 |---|---|---|
 | `agent start` devuelve `agent_not_ready` con el agente vivo y listo | **Hipótesis no comprobada:** el CLI puede reportar el error aunque el agente haya quedado disponible | Consultar las cuatro condiciones de «Esperar a que el agente esté listo» y continuar si acreditan; cualquier limpieza pasa por el gate del contrato de fallo por fase |
-| El compositor no muestra la señal de reconocimiento | El prefijo entró dentro del texto pegado, o se usó la forma de la otra familia —con espacio donde iba sin él, o al revés— | Limpiar el compositor, restablecer readiness y **repetir desde el prefijo**, acreditando su reconocimiento antes de mandar el cuerpo. Si no se acredita, el arranque queda **no confirmado** y no se retira nada. La ruta de la skill sirve para **diagnosticar** cuál está instalada, nunca como forma de activarla: pedirle al agente que la lea produce exactamente el arranque compensado que el control existe para rechazar |
+| El compositor no muestra la señal de reconocimiento | El prefijo entró dentro del texto pegado, se usó la forma de la otra familia —con espacio donde iba sin él, o al revés—, o actuó la conversión de rutas: en el compositor aparece una ruta absoluta del sistema de archivos en lugar del prefijo | Limpiar el compositor, restablecer readiness y **repetir desde el prefijo**, acreditando su reconocimiento antes de mandar el cuerpo. Ante la conversión de rutas, usar la forma con `MSYS_NO_PATHCONV=1` de la tabla de plataformas. Si no se acredita, el arranque queda **no confirmado** y no se retira nada. La ruta de la skill sirve para **diagnosticar** cuál está instalada, nunca como forma de activarla: pedirle al agente que la lea produce exactamente el arranque compensado que el control existe para rechazar |
+| El compositor devuelve el marcador de colapso | El cuerpo no quedó observable en el compositor | No mandar el Enter y aplicar, en orden, la recuperación del tercer tiempo de «Enviar en tres tiempos»; si tras dos reinicios completos sigue colapsando, el arranque queda **no confirmado** y no se retira nada |
 | El flujo pregunta cosas que el config ya responde | El worktree no está sembrado | Sembrar `.specify/` del `<repo_destino>` y avisarle al agente que relea el config |
 | El flujo arranca un `init` que nadie pidió | Igual que arriba, caso agudo | Igual, y verificar que el `init` no haya sobrescrito nada |
 | `git status` del worktree muestra lo sembrado | El destino no ignora esos paths | Sacarlos del árbol y resolver el ignore antes de seguir |

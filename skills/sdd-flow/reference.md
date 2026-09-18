@@ -1728,7 +1728,7 @@ case "$conductor_family" in
     printf "codex -C '%s' '\$sdd-flow continuemos con %s'\n" "$quoted_path" "$quoted_flow"; launcher_printed=yes;
   } ;;
   claude) command -v claude >/dev/null 2>&1 && {
-    printf "(cd '%s' && exec claude '/sdd-flow continuemos con %s')\n" "$quoted_path" "$quoted_flow"; launcher_printed=yes;
+    printf "(cd '%s' && exec env MSYS_NO_PATHCONV=1 claude '/sdd-flow continuemos con %s')\n" "$quoted_path" "$quoted_flow"; launcher_printed=yes;
   } ;;
   *) printf '%s\n' 'ERROR: unknown conductor family' >&2; exit 90 ;;
 esac
