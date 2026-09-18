@@ -142,6 +142,30 @@ def test_entrada_de_despacho_incompleta(_ctx: Optional[object] = None) -> None:
     assert 'entrada 1 sin la clave "at"' in resultado.stderr, resultado.stderr
 
 
+def _sin_forma() -> dict[str, object]:
+    """Un registro anterior al contrato: sin el discriminador y sin dos de las claves comunes."""
+    return {k: v for k, v in _run_manifest([DESPACHO]).items()
+            if k not in {"record_type", "run_id", "dispatches"}}
+
+
+def test_sin_forma_exige_las_claves_comunes(_ctx: Optional[object] = None) -> None:
+    """Sin `record_type` se siguen exigiendo las claves que las dos formas comparten."""
+    resultado = _resultado(_json(_sin_forma()))
+    assert resultado.returncode == 1, "un archivo sin forma reconocida tiene que rechazar"
+    # Se afirma que los NOMBRA, no cuántos son: sin exigir las comunes sale un solo diagnóstico, y
+    # un conteo no distingue "falta el discriminador" de "faltan además estas otras".
+    for campo in ("run_id", "dispatches"):
+        assert 'falta el campo "{0}"'.format(campo) in resultado.stderr, resultado.stderr
+
+
+def test_sin_forma_no_repite_el_discriminador(_ctx: Optional[object] = None) -> None:
+    """El `record_type` ausente se nombra una vez, no una por cada sede que lo mira."""
+    salida = _resultado(_json(_sin_forma())).stderr
+    # Ni el veredicto ni un conteo total sirven acá: repetir este diagnóstico no cambia qué archivos
+    # pasan ni cuántos, solo cuántas veces se nombra el mismo problema. Solo lo ve el texto.
+    assert salida.count('falta el campo "record_type"') == 1, salida
+
+
 CASOS: list[Caso] = [
     ("manifest-valido:dos-formas", GRUPO, test_dos_formas_y_conjuntos),
     ("manifest-valido:outcome-anidado", GRUPO, test_outcome_anidado_no_duplica_la_raiz),
@@ -150,4 +174,6 @@ CASOS: list[Caso] = [
     ("manifest-valido:quinto-productor", GRUPO, test_quinto_productor),
     ("manifest-valido:prohibida-dispatch-log", GRUPO, test_prohibida_en_dispatch_log),
     ("manifest-valido:entrada-incompleta", GRUPO, test_entrada_de_despacho_incompleta),
+    ("manifest-valido:sin-forma-claves-comunes", GRUPO, test_sin_forma_exige_las_claves_comunes),
+    ("manifest-valido:sin-forma-sin-repetir", GRUPO, test_sin_forma_no_repite_el_discriminador),
 ]
