@@ -8540,7 +8540,10 @@ la ponga roja.
 Al routing entre guías se entrega la **operación con su régimen**, no las capacidades sueltas. La
 lectura atomizada queda negada: sin su objeto ni su régimen, las cinco capacidades caen enteras en la
 guía ordinaria, cuya descripción cubre crear un agente, mandarle un prompt y esperar en una terminal.
-El régimen se obtiene de «La clase de operación se sigue de la pertenencia».
+El régimen lo da la regla de pertenencia, en
+`skills/cross-review/corridas-en-vuelo.md` → «La clase de operación se sigue de la pertenencia»,
+que **se carga antes del preflight**: sin ella el punto no tiene con qué expresar su intención y
+el routing resuelve sin el dato que lo decide.
 
 #### El routing entre guías lo deciden las guías
 

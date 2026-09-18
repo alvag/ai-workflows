@@ -124,9 +124,15 @@ Queda fuera toda operación de terminales que no emita workers que haya que espe
 `sdd-incident-intake` es un caso real: opera la plataforma con verbos propios y no es un punto de
 despacho.
 
-La guía de orquestación de la plataforma exige para el régimen supervisado crear o vincular una
-corrida, crear la tarea y adjuntar el worker. Esa exigencia procede de la guía que sirve el binario
-de la plataforma resuelta, no de una copia instalada.
+Qué exige ese régimen lo declara la guía del terreno que sirve el **binario de la plataforma
+resuelta**, no una copia instalada. Medido sobre **Orca**: su guía `orchestration` exige crear o
+vincular una corrida, crear la tarea y adjuntar el worker.
+
+**Esa medición no se generaliza, y por eso se nombra su plataforma.** Esta sede gobierna las dos
+vías por paneles, y el bundle no es uno por plataforma: Herdr publica **una** guía del terreno y
+Orca **dos**, así que en Herdr no hay reparto que resolver y la exigencia se lee de su propia guía.
+Lo que rige en todas es el régimen —supervisado o no—; lo que cada plataforma pide para cumplirlo
+sale de su binario.
 
 ### La matriz de invocación del instrumento
 
