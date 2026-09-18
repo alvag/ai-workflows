@@ -2099,7 +2099,7 @@ sección persigue en otras skills:
 | Salida | Qué hace la ruta | Estado durable |
 |---|---|---|
 | **continuar sin aprobación externa** | sigue conduciendo y no escribe spec: el modo estaba activo pero no hay destino, y fabricar uno es justamente lo que la vía manual no hace | ninguno propio — `activa: true` sin `fase`, que es el estado normal de una ruta en curso |
-| **detener y derivar al ciclo completo** | ahí `publish-spec` se resuelve con el tracker ya configurado | `activa: false` con `cierre: derivada`, escrito antes de devolver el control |
+| **detener y derivar al ciclo completo** | la ruta **no configura nada**, y conviene decirlo porque `[J2]` se alcanza justamente por esa ausencia: lo que esta salida compra es sacar el pedido de la ruta para que el usuario **pueda** resolver el destino —declarar el tracker, conseguir la clave padre— antes de volver a invocar. Si no lo resuelve, `publish-spec` del ciclo completo encuentra la misma ausencia y degrada por su propia regla, sin gate externo | `activa: false` con `cierre: derivada`, escrito antes de devolver el control |
 
 **Y su regla de retoma.** Mientras el checkpoint está abierto la ruta **sigue conduciendo**, así que
 una sesión que muera ahí deja `activa: true` sin `fase` y **[N1]** la trata como corrida interrumpida
