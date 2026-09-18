@@ -723,17 +723,32 @@ mismo** resultado y no pueden ser dos filas.
 
 | Código de salida | Salida | Contenido | Resultado observable |
 |---|---|---|---|
-| `0` | parsea | mismo `pane_id`, familia esperada, `cwd` del worktree e `interactive_ready` verdadero | **continuar**, cualquiera sea el código de salida de `agent start` |
-| `0` | parsea | esa misma identidad con `interactive_ready` falso | **esperar y reconsultar** |
-| `0` | parsea | **identidad distinta** —otro panel, otra familia u otro `cwd`— | **detener y mostrar la discrepancia**; nunca esperar, porque esperar a que cambie una identidad equivocada no la corrige |
+| `0` | parsea | mismo `pane_id`, familia esperada, `cwd` del worktree, y `interactive_ready` **presente y verdadero** | **continuar**, cualquiera sea el código de salida de `agent start` |
+| `0` | parsea | esa misma identidad, `interactive_ready` **presente y falso** | **esperar y reconsultar** |
+| `0` | parsea | esa misma identidad, `interactive_ready` **ausente** | **esperar y reconsultar**, igual que el anterior pero por otro motivo: la ausencia **no se lee como falso** |
+| `0` | parsea | **cualquier otro contenido**: identidad distinta —otro panel, otra familia u otro `cwd`—, o una respuesta que no trae el agente | **detener y mostrar lo que devolvió**; nunca esperar, porque esperar a que cambie una identidad equivocada no la corrige |
 | `0` | no parsea | — | **detener sin destruir**: una salida que no se puede leer no prueba que el agente no esté |
 | ≠ `0` | `error.code` es `agent_not_found` | — | **detener sin destruir**: el agente no está registrado con ese nombre, que no es lo mismo que no existir el panel |
 | ≠ `0` | cualquier otro `error.code`, o ninguno legible | — | **detener sin destruir**: la consulta no se pudo hacer, así que no dice nada del agente |
 
+**La cuarta fila es el complemento, y por eso la tabla es total.** Las tres primeras exigen la
+identidad esperada y se reparten por el estado de `interactive_ready`; la cuarta toma **todo lo demás
+que parsea**, así que ningún contenido con `exit 0` queda sin clasificar. Enumerar solo los desvíos
+que uno se imagina es como se abren los huecos: el de la clave ausente estuvo abierto una versión
+entera.
+
+**La clave ausente tiene fila propia, y no se colapsa con la falsa.** Medido contra el runtime:
+`interactive_ready` **no viene** en la respuesta de un agente sin nombre registrado —consultado por
+su `pane_id`— ni en uno cuyo `agent_status` es `done`, y **sí** viene verdadera en `working` y en
+`blocked`. Como `done` es un estado en el que el agente está listo, **su ausencia no prueba que no lo
+esté**: leerla como un falso afirmaría algo que el CLI no dijo. Tampoco se lee como verdadera, porque
+entonces se despacharía sin acreditar. Queda donde corresponde: no acredita, y por eso espera.
+
 **El límite no es un resultado de `agent get`, y por eso no es una fila.** Es una transición del
-estado de espera: solo la segunda fila reconsulta, cada 2 s hasta 60 s, y al agotarse el límite lo
-que hay sigue siendo esa fila. Ahí **se detiene**, y toda liquidación posterior pasa por el gate
-humano. Modelarlo como un séptimo resultado lo ponía dentro de una partición a la que no pertenece.
+estado de espera: reconsultan **las dos filas que no acreditan con identidad correcta** —la falsa y
+la ausente—, cada 2 s hasta 60 s. Al agotarse el límite, la acreditación **nunca se completó**, así
+que se **detiene sin destruir** y toda liquidación posterior pasa por el gate humano. Modelarlo como
+un resultado más lo ponía dentro de una partición a la que no pertenece.
 
 **El invariante de orden nombra sus hitos, porque `acreditar` designa dos distintos:**
 
