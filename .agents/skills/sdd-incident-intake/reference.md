@@ -715,24 +715,38 @@ sin contexto de esta sesión, y **la única copia** de los incidentes tomados.
 
 `herdr agent get` es la autoridad.
 
-Sus resultados forman esta partición cerrada. Los estados se evalúan en orden y el primero que
-corresponde determina la salida, sin que un resultado pueda caer en dos estados.
+Sus resultados se clasifican por **tres discriminantes en este orden —código de salida, parseo y
+contenido—**, y cada fila es el caso que las anteriores no tomaron. No se clasifica por la
+descripción del síntoma: un `agent get <nombre-inexistente>` sale **distinto de cero** y trae
+`error.code: agent_not_found`, así que «no devuelve el agente» y «el comando falla» describen **el
+mismo** resultado y no pueden ser dos filas.
 
-| Resultado de `agent get` | Resultado observable |
-|---|---|
-| Devuelve el agente con el mismo `pane_id`, la familia esperada, el `cwd` del worktree e `interactive_ready` verdadero | **continuar**, cualquiera sea el código de salida de `agent start` |
-| Devuelve el agente con la identidad correcta e `interactive_ready` falso | **esperar y reconsultar** |
-| No devuelve el agente | **detener sin destruir**, porque no prueba que el agente no esté |
-| Devuelve una salida ilegible | **detener sin destruir**, porque no prueba que el agente no esté |
-| El comando falla | **detener sin destruir**, porque no prueba que el agente no esté |
-| Devuelve una **identidad distinta** —otro panel, otra familia u otro `cwd`— | **detener y mostrar la discrepancia**; no espera |
-| Se agota el límite | **detener**; toda liquidación posterior pasa por el gate humano |
+| Código de salida | Salida | Contenido | Resultado observable |
+|---|---|---|---|
+| `0` | parsea | mismo `pane_id`, familia esperada, `cwd` del worktree e `interactive_ready` verdadero | **continuar**, cualquiera sea el código de salida de `agent start` |
+| `0` | parsea | esa misma identidad con `interactive_ready` falso | **esperar y reconsultar** |
+| `0` | parsea | **identidad distinta** —otro panel, otra familia u otro `cwd`— | **detener y mostrar la discrepancia**; nunca esperar, porque esperar a que cambie una identidad equivocada no la corrige |
+| `0` | no parsea | — | **detener sin destruir**: una salida que no se puede leer no prueba que el agente no esté |
+| ≠ `0` | `error.code` es `agent_not_found` | — | **detener sin destruir**: el agente no está registrado con ese nombre, que no es lo mismo que no existir el panel |
+| ≠ `0` | cualquier otro `error.code`, o ninguno legible | — | **detener sin destruir**: la consulta no se pudo hacer, así que no dice nada del agente |
 
-El invariante de orden es **arrancar → acreditar → primer tiempo → cuerpo**.
+**El límite no es un resultado de `agent get`, y por eso no es una fila.** Es una transición del
+estado de espera: solo la segunda fila reconsulta, cada 2 s hasta 60 s, y al agotarse el límite lo
+que hay sigue siendo esa fila. Ahí **se detiene**, y toda liquidación posterior pasa por el gate
+humano. Modelarlo como un séptimo resultado lo ponía dentro de una partición a la que no pertenece.
 
-Solo el segundo estado habilita reconsultar: se hace cada 2 s hasta 60 s; agotado ese límite se
-aplica el séptimo estado. Esta regla rige desde la siguiente activación, porque una sesión que ya
-cargó el archivo sigue con lo que cargó.
+**El invariante de orden nombra sus hitos, porque `acreditar` designa dos distintos:**
+
+    arrancar el agente → acreditar identidad y readiness → primer tiempo
+      → acreditar el reconocimiento → cuerpo
+
+`acreditar identidad y readiness` es esta sección y se resuelve con la tabla de arriba.
+`acreditar el reconocimiento` es el paso 2 del envío en tres tiempos —leer el compositor y buscar la
+señal de esa familia— y ocurre **después** del primer tiempo, no antes. Llamar `acreditar` a los dos
+ponía el segundo delante de su propio prerequisito.
+
+Esta regla rige desde la siguiente activación, porque una sesión que ya cargó el archivo sigue con
+lo que cargó.
 
 Mandar antes de eso pierde el texto: el TUI todavía no tiene dónde recibirlo.
 
@@ -1063,8 +1077,8 @@ fase, el intento siguiente duplica recursos o abandona una corrida viva. Una fil
 | escribir el dossier | árbol sembrado | el árbol, la siembra y el dossier parcial | se detiene | intactos | el dossier a medias | se reescribe entero: es la única copia y no se parchea |
 | adoptar y abrir | identidad revalidada | el panel, si se abrió | se detiene | intactos | el panel | se cierra el panel con su modo de cierre y se reabre |
 | arrancar el agente | panel abierto | el panel y el agente | el resultado se decide en «Esperar a que el agente esté listo», no por el código de salida | intactos | panel y agente | no liquida ni reintenta por su cuenta; sigue con la acreditación |
-| esperar la acreditación | panel abierto y arranque intentado | el panel siempre; el agente solo si `get` lo devolvió | **no confirmado** — se detiene sin liquidar | intactos; el incidente **no se retira** | el panel queda en pie; el agente se enumera solo si se acreditó que existe | solo el estado 2 de «Esperar a que el agente esté listo» reconsulta dentro del límite; los estados 3 a 6 siguen su salida propia; agotado el límite, decisión del usuario. Rige el invariante de orden de esa sede |
-| acreditar el arranque | agente vivo | todo lo anterior | **no confirmado** | el incidente **no se retira**; el issue conserva su etiqueta del pool | el árbol y el panel quedan en pie, enumerados | decisión del usuario: reintentar el envío o abandonar la corrida |
+| acreditar identidad y readiness | panel abierto y arranque intentado | el panel siempre; el agente solo si `get` lo devolvió | **no confirmado** — se detiene sin liquidar | intactos; el incidente **no se retira** | el panel queda en pie; el agente se enumera solo si se acreditó que existe | solo la fila que reconsulta de «Esperar a que el agente esté listo» lo hace dentro del límite; las demás siguen su salida propia; agotado el límite, decisión del usuario. Rige el invariante de orden de esa sede |
+| acreditar el arranque del flujo | reconocimiento acreditado | todo lo anterior | **no confirmado** | el incidente **no se retira**; el issue conserva su etiqueta del pool | el árbol y el panel quedan en pie, enumerados | decisión del usuario: reintentar el envío o abandonar la corrida |
 | marcar el issue | arranque acreditado | la escritura externa | se detiene | el issue puede haber quedado a medias: se comprueba y se repara | ninguno | se repite la escritura, que es idempotente |
 | retirar del registro | issue marcado | la edición del registro | se detiene | **se completa el retiro**: dejarlo a medias es el defecto que su propia fila describe | ninguno | se completa, no se revierte |
 
