@@ -81,11 +81,13 @@ Como `.plans/` es local, está visible entre ramas del mismo working tree, pero 
       └─ <id>/                  # misma estructura, ya terminada
 ```
 
-> El árbol de arriba describe el ciclo completo. La **ruta directa** no produce `plan.md`, `spec.md`
-> ni `tasks.md`: su estado durable, cuando lo deja, vive en el marcador `ruta_directa` del handoff.
-> <!-- ruta-directa:vista -->
+> El árbol de arriba describe el ciclo completo. La **ruta directa** no produce `plan.md` ni
+> `tasks.md`. Con `spec.md` hay una excepción, y tiene una sola causa: cuando la aprobación externa
+> aplica, la spec es **lo que se publica**, así que la ruta la produce y entra a `publish-spec`.
+> Escribe además el ledger de antecedentes, siempre. Su estado durable, cuando lo deja, vive en el
+> marcador `ruta_directa` del handoff. <!-- ruta-directa:vista -->
 
-> **Artefactos por complejidad:** *trivial* genera solo `plan.md` (con `## Spec` y `## Tasks` embebidas); *normal* y *complejo* separan `spec.md` + `plan.md` + `tasks.md`. El header del plan materializa `complexity`, `delivery_profile` y `risk`; el par de perfil es indivisible y cualquier forma parcial o desconocida falla cerrado. En `standard`, la diferencia entre normal y complejo es de **gates**, no de archivos: en *normal* las tasks se aprueban en el gate del plan; en *complejo* el gate de `tasks` es propio. `expedited` aplica la secuencia descrita arriba. La skill **siempre anuncia dónde quedaron las tasks**. La Vía B (bootstrap) y `verify` leen los archivos separados si existen, o las secciones embebidas si no. La **ruta directa** queda fuera de esta tabla: no produce ninguno de los tres. <!-- ruta-directa:vista -->
+> **Artefactos por complejidad:** *trivial* genera solo `plan.md` (con `## Spec` y `## Tasks` embebidas); *normal* y *complejo* separan `spec.md` + `plan.md` + `tasks.md`. El header del plan materializa `complexity`, `delivery_profile` y `risk`; el par de perfil es indivisible y cualquier forma parcial o desconocida falla cerrado. En `standard`, la diferencia entre normal y complejo es de **gates**, no de archivos: en *normal* las tasks se aprueban en el gate del plan; en *complejo* el gate de `tasks` es propio. `expedited` aplica la secuencia descrita arriba. La skill **siempre anuncia dónde quedaron las tasks**. La Vía B (bootstrap) y `verify` leen los archivos separados si existen, o las secciones embebidas si no. La **ruta directa** queda fuera de esta tabla: no produce `plan.md` ni `tasks.md`, y produce `spec.md` solo cuando la aprobación externa aplica. <!-- ruta-directa:vista -->
 
 > **Flujo personal, no del equipo:** ni `.specify/` ni `.plans/` se trackean. La skill nunca los stagea ni commitea. Como es personal, conviene ignorarlos vía `.git/info/exclude` (ignore **local** al clon, que no se versiona) en vez de `.gitignore` (que se comparte). Ese ignore local lo gestiona el usuario; la skill no lo toca.
 
