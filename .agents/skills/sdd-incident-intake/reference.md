@@ -746,12 +746,19 @@ pregunta abierta y rechazaba a un agente disponible.
 final posible era agotar el límite. Una espera que por construcción no puede terminar bien no es una
 espera: es un rechazo con demora.
 
-**Qué pasa entonces con `interactive_ready`.** Deja de ser condición de acreditación y **no aparece
-en la tabla**. Se conserva como dato al inspeccionar, con una sola regla: si está presente y es
-**falso** mientras `agent_status` declara listo, los dos observables se contradicen y **no se
-continúa** —se detiene y se muestra la discrepancia—, porque una acreditación necesita que sus
-señales concuerden. Ese caso no se observó; la regla existe para no tener que decidirlo en el
-momento.
+**Qué pasa entonces con `interactive_ready`: nada.** Deja de ser condición de acreditación, **no
+aparece en la tabla y no tiene poder de veto**. La tabla es la única sede que clasifica, así que una
+entrada tiene exactamente una salida y ninguna superficie que la consuma necesita recordar una guarda
+aparte.
+
+Hubo una versión intermedia que sí le daba veto —«si está presente y es falso mientras el estado
+declara listo, no se continúa»—, y **se retiró por dos razones**. La primera es que contradecía a la
+tabla: el mismo caso tenía dos resultados, continuar y detener, y el contrato no decía cuál manda. La
+segunda es que esa guarda **no nacía de un caso observado**: se escribió por precaución, para no
+tener que decidirlo si alguna vez aparecía. Darle poder de veto a un observable que esta misma
+sección declara no autoritativo, sobre un caso que nadie vio, es exactamente lo que el escalón barato
+evita. Si alguna vez se observa esa combinación, será un caso medido y entonces se decidirá con él
+delante.
 
 **La quinta fila es el complemento, y por eso la tabla es total.** Las cuatro primeras exigen la
 identidad esperada y se reparten por `agent_status`; la quinta toma **toda identidad distinta** —incluida
