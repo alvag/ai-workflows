@@ -4,7 +4,9 @@ entrada, sus once claves —presencia, desconocidas y duplicadas—; el UTC de `
 sea una cadena no vacía; y los enums aplicables a la fila de `skill`. En `run-manifest/1`,
 `transporte_fuente` y `transporte_proceso` son obligatorias con transporte por panel y admisibles en
 otro caso. Un `record_type` ausente o desconocido rechaza el archivo **sin inferir** su forma, y aun
-así sigue emitiendo los diagnósticos que no dependen de ella.
+así exige las claves que las dos formas comparten —`run_id`, `mode`, `started_at` y `dispatches`— más
+todo lo que no dependa de la forma, de modo que un registro anterior al contrato se pueda migrar
+leyendo sus faltantes en una corrida y no de a uno.
 
 **Qué NO detecta.** No comprueba que `transporte_fuente` nombre una fuente existente ni que
 `transporte_proceso` apunte a un proceso vivo: lee presencia y no verdad;
@@ -138,8 +140,7 @@ def main() -> int:
     rc = 0
     record_type = objeto.get("record_type")
     # La forma NO se infiere cuando falta o no se reconoce: el archivo se rechaza igual. Lo que sí
-    # se hace es seguir validando lo que no depende de la forma, para que migrar un registro viejo
-    # no cueste una corrida por problema.
+    # se hace es seguir validando lo que no depende de la forma.
     forma = FORMAS.get(record_type) if isinstance(record_type, str) else None
     if "record_type" not in claves:
         print('GUARD:manifest-valido falta el campo "record_type"', file=sys.stderr)
@@ -149,7 +150,14 @@ def main() -> int:
         print(f'GUARD:manifest-valido record_type desconocido: "{mostrado}"', file=sys.stderr)
         rc = 1
 
-    obligatorias, condicionales, prohibidas = forma if forma else (set(), set(), set())
+    # Sin forma reconocida se exigen igual las claves que las DOS formas comparten: las obligatorias
+    # de `dispatch-log/1` son subconjunto de las de `run-manifest/1`, así que su intersección vale
+    # para cualquiera de las dos y pedirla no elige ninguna. Se descuentan las que ya tienen su
+    # propia comprobación —`record_type` acá arriba y `skill` contra su fila—, porque repetirlas
+    # emitiría dos diagnósticos del mismo problema con distintas palabras.
+    obligatorias, condicionales, prohibidas = forma if forma else (
+        (FORMAS[RUN_MANIFEST][0] & FORMAS[DISPATCH_LOG][0]) - {"record_type", "skill"},
+        set(), set())
     for campo in sorted(obligatorias):
         if campo not in claves:
             print(f'GUARD:manifest-valido falta el campo "{campo}"', file=sys.stderr)
