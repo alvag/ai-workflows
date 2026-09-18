@@ -1918,7 +1918,7 @@ automática.
 
 | Opción | Precondición | Efecto sobre el diff parcial | Estado que deja |
 |---|---|---|---|
-| revertir solo lo propio | la única con precondición fuerte: el inventario está completo y ninguno es ajeno | se revierten esos archivos y solo esos | el árbol como antes; la ruta termina sin entregar |
+| revertir solo lo propio | la única con precondición fuerte: el inventario está completo y ninguno es ajeno | se revierten esos archivos y solo esos | el árbol como antes; la ruta termina sin entregar y **cierra la identidad** con `cierre: revertida` |
 | conservar y promover al ciclo completo | que el inventario esté enumerado, aunque sea incompleto o se solape con cambios ajenos | el diff queda intacto | se **cierra la identidad** con `cierre: promovida` y se abre un `.plans/<id>/` cuyo `gather-context` declara ese diff como trabajo propio de una ruta interrumpida, no como suciedad ajena |
 | conservar y detener | ídem que la anterior | el diff queda intacto y sin flujo | el marcador de abajo queda escrito con `fase: interrumpida-con-diff` y su inventario |
 
@@ -2002,6 +2002,23 @@ lista es **cerrada**:
 antecedentes ya contempla encontrar el directorio sin ellos y crearlo ella misma—, y esa ausencia es
 además el **discriminador observable** con el que **[N1]** y **[N2]** dejan de pisarse.
 
+#### La derivación al ciclo completo, y por qué necesita una transición escrita
+
+Cerrar la identidad con `derivada` o `promovida` no alcanza: el ciclo completo tiene que poder
+**tomar** ese `.plans/<id>/`, y con las reglas vigentes no podía. El sub-paso 3b de `gather-context`
+resuelve su celda **antes de escribir**, y un directorio con el ledger y el handoff que la ruta dejó
+—no vacío, sin `contrato-pedido.md` y sin `pedido/`— cae en la celda de **flujo heredado**, que
+*detiene la captura*. O sea que la derivación que **[K1]**, **[K3]** y la promoción de **[K4]**
+ordenan no tenía a dónde aterrizar: sus dos salidas practicables eran retomar un flujo que ya no
+conduce nadie, o capturar bajo otro `<id>` y perder el ledger.
+
+Por eso la derivación es una **transición con nombre**, que 3b consume antes de resolver su celda:
+un `handoff.md` con `ruta_directa.cierre` en `derivada` o `promovida` declara que ese directorio es
+una ruta directa que entregó su trabajo al ciclo completo, y **3b lo adopta** — escribe el marcador
+y el paquete sobre él, sin tocar `antecedentes.md` ni el handoff, que es exactamente lo que se quiere
+conservar. Es la misma forma que ya usa la identidad en `resume`: un observable afirmado que se lee
+antes que una celda que no puede distinguirlo.
+
 #### La sede de lo que plan y tasks sostenían
 
 Es **temporal y de la corrida**, no durable, salvo que el marcador la vuelva durable:
@@ -2077,9 +2094,11 @@ Se clasifica por predicado en cuatro estados disjuntos, cada uno con su conducta
 
 La ruta **reutiliza** los gates vigentes de `publish-spec` y no define variantes propias. Lo único
 propio es **cuándo** se entra, y es el paso 7 del algoritmo: después de resolver las condiciones y la
-reevaluación de riesgo, y **antes** del checkpoint de ubicación y rama. Ese orden importa porque
-`spec.md` es el artefacto que se publica, así que tiene que existir antes de que haya rama, y porque
-una spec rechazada afuera no debe dejar rama creada.
+reevaluación de riesgo, **después** de que el usuario haya elegido ubicación y rama en el paso 3, y
+**antes** de materializarlas en el paso 8. Lo que importa de ese orden es el segundo tramo: `spec.md`
+es el artefacto que se publica, y una spec rechazada afuera no debe dejar **materializada** la rama
+ni el worktree. Elegir no es materializar, así que esperar a publicar para elegir no compraba nada y
+dejaba la elección después de mutaciones que ya habían ocurrido.
 
 #### El marcador durable
 
@@ -2089,7 +2108,7 @@ una spec rechazada afuera no debe dejar rama creada.
 ruta_directa:
   activa: true                    # la IDENTIDAD DE PROCEDENCIA: paso 4, antes del ledger; `false` la cierra
   fase: awaiting-jira-approval    # o interrumpida-con-diff; solo si aparece un estado durable
-  cierre: derivada                # derivada | promovida | cerrada | archivada; solo con activa: false
+  cierre: derivada                # derivada | promovida | revertida | cerrada | archivada; solo con activa: false
   criterio: "<el criterio de éxito enunciado, en una línea>"
   archivos: ["<rutas tocadas hasta la pausa>"]
   inventario_completo: true       # solo con interrumpida-con-diff
@@ -2111,8 +2130,25 @@ rechazarlo. Cuando la ruta deja de conducir se escribe `activa: false` con su mo
 |---|---|
 | **[K1]** o **[K3]** derivan al ciclo completo | `derivada` |
 | **[K4]**, en la opción «conservar y promover al ciclo completo» | `promovida` |
+| **[K4]**, en la opción «revertir solo lo propio»: el árbol vuelve atrás y la ruta termina sin entregar | `revertida` |
 | la búsqueda del paso 4 cierra el flujo antes de la spec, porque el objetivo ya estaba cubierto | `cerrada` |
 | `archive` | `archivada` |
+
+**La invariante manda sobre la tabla, y es lo que la vuelve exhaustiva.** La ruta **nunca** termina
+con `activa: true` y sin `fase`: o deja una `fase` durable —y entonces sigue conduciendo y se
+retoma—, o cierra con `activa: false` y su motivo. Un tercer resultado es exactamente el estado que
+**[N1]** lee como corrida interrumpida, así que una salida **deliberada** que lo dejara haría que la
+invocación siguiente reiniciara un trabajo que el usuario terminó a propósito. La tabla enumera las
+salidas que el algoritmo nombra; la invariante alcanza también a cualquier otra.
+
+**Y la primera escritura lleva también la decisión del checkpoint del paso 3.** No hace falta campo
+nuevo: son los que el `handoff.md` ya tiene —`worktree_location`, `worktree_path`, `branch`,
+`base_branch` y `origin_sha`—, escritos en el mismo acto del paso 4. Sin eso, el paso 7 puede dejar
+el flujo en `awaiting-jira-approval` y la sesión que lo retoma sabe **que** hay que materializar pero
+no **qué** eligió el usuario, así que al aprobarse tendría que volver a preguntar o adivinar — y
+adivinar una rama es justo lo que el checkpoint existe para impedir. `publish-spec`, que escribe el
+handoff al abrir el gate externo, **preserva** ese bloque y el de `ruta_directa` con la misma
+disciplina de fusión con la que ya preserva `transporte`.
 
 **Se escribe antes de devolver el control, no después.** En las tres primeras filas el cierre es
 parte del acto y no un trámite posterior, porque el defecto que corta es exactamente el de una
@@ -2140,8 +2176,11 @@ y el diff contra el plan, recibe el criterio de éxito enunciado y la evidencia 
 #### La retoma
 
 `resume` evalúa `ruta_directa.activa` **antes de** la rama que hoy clasifica todo flujo sin plan por
-su `gate_status`. Con el marcador presente, la retoma continúa la ruta —aprobación, observaciones o
-degradación— y no deriva al ciclo completo. Sin marcador, ese routing queda intacto.
+su `gate_status`. Con `activa: true` —el literal— y sin cierre terminal en el ledger, la retoma
+continúa la ruta —aprobación, observaciones o degradación— y no deriva al ciclo completo. Con
+`activa: false`, con la clave ausente o con un `busqueda: terminal`, ese routing queda intacto: no
+alcanza con que el marcador **exista**, porque un flujo que derivó, promovió, revirtió o cerró
+conserva su bloque `ruta_directa` con la actividad ya cerrada.
 
 - **[N1]** Una corrida interrumpida se reconoce por su **identidad de procedencia**, nunca por lo que le falta: un `.plans/<id>/` cuyo `handoff.md` trae `ruta_directa.activa: true` —el literal— **sin** `fase`, y cuyo ledger no declara `busqueda: terminal` nació de esta ruta y quedó a medias, así que la invocación posterior la trata como ruta nueva y vuelve a evaluar predicado, antecedentes y evidencia **desde cero**. La excepción es que además exista `spec.md`: ahí **[J3]** o **[J4]** arrancó y murió antes de declarar su fase, la ruta **falla cerrado** y la decisión vuelve al usuario, porque re-evaluar desde cero podría publicar dos veces y solo una persona puede mirar el tracker y decidir.
 - **[N2]** Cualquier `.plans/<id>/` que exista para el mismo pedido **sin** esa identidad no es de esta ruta y tiene **precedencia**: la ruta no entra. Alcanza por igual al flujo abierto por `gather-context` —lo declaran `contrato-pedido.md` o `pedido/`— y al **heredado**, que no tiene ninguno de los dos y que por eso es indistinguible de la ruta si se la identifica por ausencia. La identidad se afirma antes de escribir; deducirla de lo que falta le daba dos rutas incompatibles al mismo observable.
@@ -4646,7 +4685,7 @@ La matriz es exhaustiva y no deja ninguna combinación a criterio de quien la le
 | Directorio del flujo | Marcador | Paquete | Estado | Vara |
 |---|---|---|---|---|
 | vacío | ausente | ausente | caída dentro de 3b, entre el `mkdir` y el marcador | **fallo cerrado**: re-corre 3b desde cero |
-| no vacío | ausente | ausente | flujo heredado, abierto antes de este contrato — la celda se alcanza solo si antes se descartó la identidad `ruta_directa.activa`, que enruta por su propia rama | **no aplicable**, y se declara así en el retomado |
+| no vacío | ausente | ausente | flujo heredado, abierto antes de este contrato — la celda se alcanza solo si antes se descartaron las dos precedencias del bloque `ruta_directa`: `activa: true`, que enruta por la rama directa, y `cierre: derivada \| promovida`, que 3b adopta | **no aplicable**, y se declara así en el retomado |
 | cualquiera | presente | ausente | adopción interrumpida entre el marcador y la sede | **fallo cerrado**: re-corre 3b; nunca se lee como heredado |
 | cualquiera | presente | presente y legible | flujo bajo el contrato | **aplicable** |
 | cualquiera | presente | presente y corrupto | sede dañada: el literal mal formado, o ausente con el registro presente | **cuarentena**, con su procedimiento |
@@ -8114,7 +8153,7 @@ pedido: .plans/<id>/pedido/   # PUNTERO, no copia: el literal y el registro se l
 # de la rama de `gate_status`):
 # ruta_directa: { activa: true,                       # identidad de procedencia: SIEMPRE, antes de la primera escritura
 #                 fase: awaiting-jira-approval | interrumpida-con-diff,   # opcional: solo con estado durable
-#                 cierre: derivada | promovida | cerrada | archivada,      # solo con activa: false
+#                 cierre: derivada | promovida | revertida | cerrada | archivada,   # solo con activa: false
 #                 criterio: "<el criterio de éxito enunciado>", archivos: [...],
 #                 inventario_completo: true | false }
 # campos del gate de Jira (solo si es una pausa por aprobación externa):
