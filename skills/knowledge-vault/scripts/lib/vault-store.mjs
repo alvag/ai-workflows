@@ -305,28 +305,51 @@ export async function appendLogEntry({ fs, vaultRoot, entry, label = 'log.append
  *
  * Sólo elimina nombres ya clasificados del flujo actual: `names` llega
  * validado por quien llama —propio, directorio real, no trackeado—, y esta
- * función revalida esa identidad justo antes de cada borrado para cerrar la
- * ventana entre clasificar y destruir. Un fallo de borrado aborta en ese
- * nombre; no se promete una lista parcial de lo que se llegó a eliminar.
+ * función revalida las tres propiedades justo antes de cada borrado para
+ * cerrar la ventana entre clasificar y destruir. Un fallo de borrado aborta en
+ * ese nombre; no se promete una lista parcial de lo que se llegó a eliminar.
+ *
+ * @param {object} args
+ * @param {(target: string) => Promise<boolean>} args.estaTrackeado consulta fresca del índice
  */
-export async function discardOrphanStagings({ fs, parentDir, flowId, names, label = 'stage.discard' }) {
-  const descartados = [];
-  for (const name of names) {
-    const target = path.join(parentDir, name);
-    const info = await fs.lstat(target, `${label}.lstat`);
-    if (info === null) continue; // ya desapareció
-
-    const parsed = parseStagingName(name);
-    if (parsed?.flowId !== flowId || !info.isDirectory()) {
-      throw new VaultStoreError(
-        'STAGING_CHANGED',
-        `el staging ${JSON.stringify(target)} cambió de identidad antes de poder eliminarlo`,
-        { path: target },
-      );
-    }
-    await fs.rmTree(target, label);
-    descartados.push(name);
+export async function discardOrphanStagings({
+  fs,
+  parentDir,
+  flowId,
+  names,
+  estaTrackeado,
+  label = 'stage.discard',
+}) {
+  if (typeof estaTrackeado !== 'function') {
+    throw new TypeError('discardOrphanStagings requiere una consulta fresca del índice');
   }
-  if (descartados.length > 0) await fs.fsyncDir(parentDir, `${label}.fsync-dir`);
+  const descartados = [];
+  try {
+    for (const name of names) {
+      const target = path.join(parentDir, name);
+      const info = await fs.lstat(target, `${label}.lstat`);
+      if (info === null) continue; // ya desapareció
+
+      const parsed = parseStagingName(name);
+      if (parsed?.flowId !== flowId || !info.isDirectory()) {
+        throw new VaultStoreError(
+          'STAGING_CHANGED',
+          `el staging ${JSON.stringify(target)} cambió de identidad antes de poder eliminarlo`,
+          { path: target },
+        );
+      }
+      if (await estaTrackeado(target)) {
+        throw new VaultStoreError(
+          'STAGING_CHANGED',
+          `el staging ${JSON.stringify(target)} pasó a estar trackeado antes de poder eliminarlo`,
+          { path: target },
+        );
+      }
+      await fs.rmTree(target, label);
+      descartados.push(name);
+    }
+  } finally {
+    if (descartados.length > 0) await fs.fsyncDir(parentDir, `${label}.fsync-dir`);
+  }
   return descartados;
 }

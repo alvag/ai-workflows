@@ -25,7 +25,7 @@ import { DurableFs, Recorder } from '../../../skills/knowledge-vault/scripts/lib
 import { resolvePublicationState, runVaultTransaction } from '../../../skills/knowledge-vault/scripts/lib/engine-vault.mjs';
 import { exitCodeFor } from '../../../skills/knowledge-vault/scripts/lib/contracts.mjs';
 import { estaASalvo } from '../../../skills/knowledge-vault/scripts/lib/safety-probe.mjs';
-import { resolveLayout } from '../../../skills/knowledge-vault/scripts/lib/vault-store.mjs';
+import { discardOrphanStagings, resolveLayout } from '../../../skills/knowledge-vault/scripts/lib/vault-store.mjs';
 import { createSandbox } from './helpers/sandbox.mjs';
 import { snapshotTree } from './helpers/tree-snapshot.mjs';
 
@@ -557,6 +557,23 @@ async function trackear(vault, relative, mensaje) {
   await git(vault, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', mensaje);
 }
 
+test('[KV-STAGING] fsyncs prior deletions when a later entry changed', async () => {
+  const parentDir = path.join(path.sep, 'vault', 'sdd');
+  const names = ['.kv-staging-abc-1-aaaaaaaa', '.kv-staging-abc-1-bbbbbbbb'];
+  const removed = [], synced = [];
+  let read = 0;
+  const fakeFs = {
+    lstat: async () => ({ isDirectory: () => read++ === 0 }),
+    rmTree: async (target) => removed.push(target),
+    fsyncDir: async (target) => synced.push(target),
+  };
+
+  await assert.rejects(() => discardOrphanStagings({
+    fs: fakeFs, parentDir, flowId: 'abc-1', names, estaTrackeado: async () => false,
+  }), { code: 'STAGING_CHANGED' });
+  assert.deepEqual([removed, synced], [[path.join(parentDir, names[0])], [parentDir]]);
+});
+
 test('[KV-STAGING][AC-6] first publication removes own staging', async (t) => {
   const { vault, flowDir } = await escena(t);
   const staging = await plantarStaging(sddDirOf(vault), '.kv-staging-abc-1-deadbeef');
@@ -647,6 +664,27 @@ test('[KV-STAGING][AC-8] index-only own staging blocks and preserves the batch',
     assert.doesNotMatch(error.message, /sin commitear/);
     return true;
   });
+  assert.equal(await fs.readFile(path.join(staging, 'residuo.md'), 'utf8'), 'x\n');
+});
+
+test('[KV-STAGING][AC-8] index tracking that appears before deletion blocks it', async (t) => {
+  const { vault, flowDir } = await escena(t);
+  await correr(vault, flowDir);
+  const staging = await plantarStaging(sddDirOf(vault), '.kv-staging-abc-1-deadbeef');
+  const relative = path.relative(vault, staging);
+  const raceFs = new DurableFs();
+  const lstat = raceFs.lstat.bind(raceFs);
+  raceFs.lstat = async (target, label) => {
+    const info = await lstat(target, label);
+    if (target === staging && label.endsWith('.stage.discard.lstat')) {
+      await git(vault, 'add', '--', relative);
+    }
+    return info;
+  };
+  await assert.rejects(
+    () => correr(vault, flowDir, 'abc-1', { fs: raceFs }),
+    { code: 'STAGING_CHANGED', message: /trackeado/i },
+  );
   assert.equal(await fs.readFile(path.join(staging, 'residuo.md'), 'utf8'), 'x\n');
 });
 

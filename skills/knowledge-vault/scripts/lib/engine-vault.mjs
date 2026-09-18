@@ -355,6 +355,10 @@ export async function runVaultTransaction({
         parentDir: stagingDir,
         flowId,
         names: propias.map((entrada) => entrada.name),
+        estaTrackeado: async (target) => {
+          const [trackeada] = await rutasTrackeadas(vaultRoot, [toVaultRelative(vaultRoot, target)]);
+          return trackeada !== undefined;
+        },
         label: `${label}.stage.discard`,
       });
     }
