@@ -2295,7 +2295,7 @@ Punto de entrada para un flujo empezado. `.plans/` es visible entre ramas del mi
      La que falte de las dos exigidas es un fallo con salida practicable —**retomar en `specify`**— y no una omisión. Si no se cumple ninguna de las tres del disparador, todavía no se adjudicó nada y los dos bloques no se invocan, declarando por qué.
      **Qué hace `resume` con cada código, y no se copia de un bloque a otro.** Con `1`: solo el de `pedido-digest` es **cuarentena**, porque es el único que evidencia una **reescritura de lo ya confirmado**; el de los otros tres **no lo es** —el paquete está intacto y lo que quedó mal es el registro o su correspondencia con la spec, que son reparables, porque el `literal.jsonl` es lo irreemplazable y el resto se re-deriva—, así que su salida es **retomar en el gate que gobierna la sede de los criterios**, con la violación a la vista. **Ese gate no siempre es `specify`**: en la rama *trivial* no existe un gate de `specify`, y la sede de los criterios es el bloque `## Spec` embebido en `plan.md`, así que ahí se retoma en el **gate único del plan combinado**. Nombrar `specify` sin más mandaba la rama trivial a un gate que no tiene — una ruta de reparación inexistente, que es un gate sin salida practicable escrito como si la tuviera. Con `3`: el de `pedido-criterio` deja los hashes **sin comprobar** y se informa así, igual que con la cadena; el de `pedido-unicidad` y `pedido-referencias` es otra cosa —son POSIX puros, y su `3` significa que una sede no se pudo leer o que `awk` no pudo ejecutarse—, así que **no se enruta por ninguna rama** y el paso se detiene informando qué no se pudo leer o ejecutar, el mismo destino que el `2` del marcador. **El `3` de `pedido-referencias` tiene una causa más, y no es un fallo de ejecución**: que el literal lleve un escape que JSON no define, con lo que no hay largo contra el que comparar. Comparte el `3` porque comparte destino —no se enruta—, y **no** el `1`, que mandaría a reparar el registro un daño que vive en un archivo inmutable. Quién sí lo adjudica es el marcador, en la primera comprobación del paso: con los escapes rotos su celda es «presente y corrupto» y la salida es **cuarentena**, así que por esta vía el bloque ni llega a correr. Un fallo de ejecución no es un veredicto, y leerlo como uno es leer «no pude» como «está bien».
    - **Se ramifica por la celda que el bloque imprime, no por su código de salida.** El código solo dice si resolvió alguna: con `1` —el árbol no encaja en ninguna celda— o con `2` —invocación mal formada— **no se enruta por ninguna rama**, y el paso se detiene informando qué se observó.
-   - **Las ocho salidas, en orden de precedencia, viven en `reference.md` → "Salidas del routing de resume ante el pedido"**, que es su sede única: la primera fila que coincide manda y no se sigue mirando. Ahí está también el procedimiento de cuarentena, que exige confirmación humana y nunca es automático.
+   - **Las nueve salidas, en orden de precedencia, viven en `reference.md` → "Salidas del routing de resume ante el pedido"**, que es su sede única: la primera fila que coincide manda y no se sigue mirando. Ahí está también el procedimiento de cuarentena, que exige confirmación humana y nunca es automático.
    - **Flujo heredado**: con el marcador ausente, el paquete ausente y el directorio no vacío, el flujo se abrió antes de este contrato. Sigue por las ramas vigentes y **la vara** queda declarada **no aplicable** en el retomado: no se falla, y tampoco se adopta un pedido que nadie capturó para este flujo.
 1c. **Después de la celda del pedido**, ejecutar el clasificador de secuencia read-only y, solo si permite seguir, resolver primero el terminal `abandoned`, luego ubicación y los demás valores de `status`: `abandoned`, no se vuelve a ofrecer worktree; sin `worktree_location` o con `current`, el flujo no se trasladó; `worktree` sin status, ofrecer materializar desde `origin_sha` —recomendado— o escribir `abandoned`; estado parcial, diagnosticar evidencia y operar solo desde `origin_worktree`; doble `ready`, seguir el paquete vivo del destino y volver a resolver allí la celda. Puntero ausente, destino sin paquete y paquete vivo son distintos; no hay checkout, stash, rename, prune, limpieza ni recreación automática. Matriz: `reference.md` → "Preflight Git y worktree".
    - **Acá termina `1c`, y el corte es la mitad del arreglo.** Resolver la ubicación es lo que este item hace; **enrutar no**. Lo que sigue es el item `1d`, y recién después el routing por fase —incluida la evaluación de `co_explore` como el ciclo completo, y la entrada al plan combinado en un trivial—. El corte existe porque una frase general de orden **no invalida una instrucción local que se ejecuta antes**: mientras esta celda enrutaba por su cuenta, el conductor llegaba al ciclo completo —que **contiene la oferta de vía de transporte**— sin haber pasado por el consumo, y la vía se volvía a ofrecer en cada retoma.
@@ -4167,7 +4167,8 @@ los tres son obligatorios:
    inspeccionar esa fuente** — no una cláusula genérica, sino la instrucción concreta;
 2. el usuario **acepta esa limitación en el checkpoint** del paso 6, que es donde las cláusulas se
    congelan;
-3. esa aceptación queda como evento `tipo: admision` con `actor: usuario`.
+3. esa aceptación queda como evento `tipo: admision` con `actor: usuario`, `productor: gather-context`
+   y `estado: resuelta`.
 
 Sin los tres, el bloqueo no tiene transición y el flujo queda trabado: bloquear sin declarar quién lo
 levanta y con qué constancia es un gate sin salida practicable. Y sin la regla entera, el criterio de
@@ -4224,7 +4225,7 @@ por el que `antecedentes.md` tiene su bloque máquina.
 | `E-k` | `E-` + entero ≥ 1, nunca reutilizado |
 | `momento` | ISO-8601 |
 | `actor` | `usuario` · `conductor` |
-| `productor` | `specify` · `gate-spec` · `clarify` · `trivial` · `revision-adversarial` · `tracker` — las seis filas de la tabla de puertas |
+| `productor` | `specify` · `gate-spec` · `clarify` · `trivial` · `revision-adversarial` · `tracker` · `gather-context` — los siete valores admitidos, independientes de `tipo` y `estado`; `gather-context` no abre una puerta de edición de spec y sus pendientes vuelven al checkpoint del paso 6 |
 | `tipo` | `propuesta` · `admision` · `correccion` · `retiro` · `descarte` · `confirmacion` |
 | `objetivo` | `P-k@version` · `AC-n@hash` · `digest@<sha256>@<filas>:<lineas>` · `-` |
 | `supersede` | `E-j` · `-` |
@@ -4257,8 +4258,9 @@ confirmado, corregirle la cabecera rompe la cadena —que firma cabecera y separ
 en **cuarentena**, con su procedimiento declarado. No hay forma de tener las dos cosas: o los bytes
 firmados son inmutables, o el esquema puede cambiar sin romperlos.
 
-`productor` es lo que le permite al routing de `resume` **nombrar** en qué gate retomar: sin esa
-columna, «retoma en el gate del productor que las dejó» no era implementable.
+`productor` es lo que le permite al routing de `resume` **nombrar** dónde retomar: los seis
+productores de texto nombran su gate y `gather-context` nombra el checkpoint existente del paso 6.
+Sin esa columna, ninguna de las dos salidas era implementable.
 
 **El preimage de `hash_criterio`, porque «el texto del criterio» no es un conjunto de bytes.**
 Mientras no estuviera definido, ese hash no se podía comprobar contra nada: se comparaba contra otra
@@ -4308,9 +4310,9 @@ sanitización: sin él escrito, cada publicador tenía que adivinar qué borrar.
 
 **La versión confirmada se identifica por una cadena de digests, no por un contador.** Un contador
 identifica el último literal, y el conjunto de cláusulas puede cambiar sin que ese número se mueva.
-En su lugar, cada confirmación del checkpoint anexa un evento `tipo: confirmacion` cuyo `objetivo` se
-escribe **`digest@<digest_k>@<filas>:<lineas>`**, con `digest_k` en hexadecimal minúscula de 64
-caracteres y:
+En su lugar, cada confirmación del checkpoint anexa un evento con `actor: usuario`,
+`productor: gather-context`, `tipo: confirmacion` y `estado: resuelta`. Su `objetivo` se escribe
+**`digest@<digest_k>@<filas>:<lineas>`**, con `digest_k` en hexadecimal minúscula de 64 caracteres y:
 
 ```
 digest_k = sha256( digest_{k-1} || serializacion_canonica_sellada )
@@ -4580,7 +4582,7 @@ silencio, o dejarlo en el artefacto esperando que el gate lo bendiga.
 | Salida | Dónde queda | Qué la cierra |
 |---|---|---|
 | **descarte con motivo** | un evento `tipo: descarte` con su `resolucion: no-admitida` y el motivo en su fila | el motivo escrito; un descarte sin motivo es un estado inválido, no un default |
-| **propuesta sin resolver** | una fila de `registro.md`: la cláusula queda con `aplicabilidad: pendiente` y su evento con `estado: pendiente`, nombrando el `productor` que la originó | que alguien la resuelva en el gate de ese productor, o un `descarte` posterior que la cierre |
+| **propuesta sin resolver** | una fila de `registro.md`: la cláusula queda con `aplicabilidad: pendiente` y su evento con `estado: pendiente`, nombrando el `productor` que la originó | que el gate de ese productor anexe un evento posterior con `estado: resuelta` que nombre al pendiente en `supersede`; un `descarte` posterior lo cierra por ese mismo mecanismo |
 | **ampliación del pedido** | una línea nueva en `literal.jsonl` más la cláusula que la traza, tras confirmación explícita del usuario | la confirmación del usuario; hasta entonces sigue siendo propuesta y no autoridad `pedido` |
 
 **La segunda es la que necesita sede durable, y por eso se nombra su archivo y su estado.** Una
@@ -4741,8 +4743,18 @@ ausente, contradiciendo su fallo cerrado.
 | 4 | marcador ausente, paquete ausente y directorio no vacío | flujo heredado: sigue por las ramas vigentes, con la vara declarada no aplicable |
 | 5 | `literal.jsonl` presente y `registro.md` ausente | retoma en la redacción de cláusulas |
 | 6 | cláusulas escritas y ninguna confirmación vigente | retoma en el checkpoint del paso 6, que es donde se congelan |
-| 7 | confirmado, con eventos en `estado: pendiente` | retoma en el gate del productor que los dejó, **nombrándolo** por la columna `productor` |
-| 8 | confirmado y sin `spec.md` | sigue a `specify` con la vara activa |
+| 7 | confirmado, con eventos de `productor: gather-context` en `estado: pendiente` | retoma en el checkpoint del paso 6; antes de confirmar, cierra cada pendiente mediante el acto append-only de abajo, sin abrir una puerta de edición de spec |
+| 8 | confirmado, con otros eventos en `estado: pendiente` | retoma en el gate del productor que los dejó, **nombrándolo** por la columna `productor` |
+| 9 | confirmado y sin `spec.md` | sigue a `specify` con la vara activa |
+
+**Qué deja de hacer coincidir a un pendiente.** En las filas 7 y 8 cuenta únicamente un evento en
+`estado: pendiente` que ningún evento posterior haya nombrado en `supersede` con `estado: resuelta`;
+el régimen append-only no modifica la fila original. Al entrar por la fila 7, el checkpoint adjudica
+cada pendiente de `gather-context` y, **antes** de anexar su nueva confirmación, anexa el evento que lo
+cierra: lleva `actor: usuario` y `productor: gather-context`, conserva su `objetivo`, lo nombra en
+`supersede`, lleva `estado: resuelta` y escribe `tipo`, `resolucion` y `motivo` según lo decidido. La
+confirmación posterior sella esas filas en la cadena de digests. En la retoma siguiente la fila 7
+deja de coincidir y, si queda un pendiente de otro productor, la fila 8 vuelve a ser alcanzable.
 
 **El procedimiento de cuarentena, porque «va al checkpoint» no era realizable.** Una línea de
 `literal.jsonl` que no parsea no se puede reparar sin violar la inmutabilidad, y el checkpoint no
@@ -5558,9 +5570,9 @@ pedido_referencias() {
     s == "e" && id ~ /^E-[0-9]+$/ {
       tipo=$6; tipo = celda(tipo)
       ob=$7; ob = celda(ob)
-      # las columnas de enum cerrado gobiernan el routing de `resume` —«retoma en el gate del
-      # productor que las dejó»— y ninguna tenía predicado: un `productor` inventado nombraba un
-      # gate que no existe, y un `estado` fuera del enum dejaba el evento sin clasificar
+      # las columnas de enum cerrado gobiernan el routing de `resume`: seis productores nombran su
+      # gate y `gather-context` nombra el checkpoint del paso 6. Sin predicado, un `productor`
+      # inventado no tenía destino y un `estado` fuera del enum dejaba el evento sin clasificar
       acto=$4; acto = celda(acto)
       prod=$5; prod = celda(prod)
       sup=$8;  sup = celda(sup)
@@ -5569,7 +5581,7 @@ pedido_referencias() {
       if (acto != "usuario" && acto != "conductor")
         print "actor fuera del dominio en " id ": " (acto == "" ? "vacio" : acto)
       if (prod != "specify" && prod != "gate-spec" && prod != "clarify" && prod != "trivial" &&
-          prod != "revision-adversarial" && prod != "tracker")
+          prod != "revision-adversarial" && prod != "tracker" && prod != "gather-context")
         print "productor fuera del dominio en " id ": " (prod == "" ? "vacio" : prod)
       if (tipo != "propuesta" && tipo != "admision" && tipo != "correccion" && tipo != "retiro" &&
           tipo != "descarte" && tipo != "confirmacion")
@@ -5989,6 +6001,14 @@ pedido_referencias() {
 > fallo de ejecución**, y comparte código porque comparte destino —no se enruta—: un escape que JSON
 > no define, y entonces no hay largo que medir. Las tres se distinguen por su diagnóstico, no por el
 > código, que es el mismo límite que la convención ya declara para toda señal que no discrimina causa.
+>
+> **El dominio de `productor` admite `gather-context` en cualquier fila.** Su verde acredita que
+> `actor`, `productor`, `tipo`, `supersede`, `resolucion` y `estado` caen cada uno en su dominio
+> cerrado, columna por columna. Para `objetivo`, además de la forma admitida, comprueba que resuelva
+> contra su destino y las fronteras vigentes. De `motivo` solo comprueba que un `descarte` no lo deje
+> vacío ni en `-`; fuera de ese tipo no lo valida. **No** valida combinaciones entre `productor`,
+> `tipo` y `estado` —un `gather-context` con cualquier `tipo` y cualquier `estado` de su dominio pasa
+> igual—: el destino de los pendientes lo resuelve la tabla ordenada de routing, no esta guarda.
 
 #### `pedido-marcador`
 
