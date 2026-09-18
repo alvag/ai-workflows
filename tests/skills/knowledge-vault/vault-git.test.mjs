@@ -7,8 +7,9 @@
  * commiteado dentro del proyecto de alguien. Por eso se compara `--show-toplevel`
  * contra la raíz exacta, y un vault anidado se **rechaza** en vez de inicializarse.
  *
- * El chequeo de árbol sucio corre **antes de escribir nada**: si ya hay cambios
- * ajenos sin commitear, el commit del archivado se los llevaría puestos.
+ * El chequeo de árbol sucio corre **antes de comprometer el archivado**: para
+ * entonces la recuperación acotada de staging del flujo actual ya barrió lo
+ * propio, y si queda un cambio ajeno sin commitear, el commit se lo llevaría puesto.
  *
  * Se prueba contra repositorios reales, no contra un mock: lo que hay que
  * verificar es cómo se comporta `git`, y un mock afirma lo que uno ya creía.
@@ -27,6 +28,7 @@ import {
   ensureVaultRepo,
   inspectManifestAuthority,
   rutasNoAncladas,
+  rutasTrackeadas,
 } from '../../../skills/knowledge-vault/scripts/lib/vault-git.mjs';
 import { createSandbox } from './helpers/sandbox.mjs';
 
@@ -380,6 +382,25 @@ test('el anclaje consulta un prefijo acotado aun con miles de rutas exactas', as
   assert.equal(diagnostics.missing.at(-1), routes.at(-1));
   assert.deepEqual(diagnostics.dirty, []);
   assert.deepEqual(diagnostics.ignored, []);
+});
+
+test('[KV-STAGING] rutasTrackeadas distingue HEAD, sólo-índice y no trackeada', async (t) => {
+  const { vault } = await vaultNuevo(t);
+  await ensureVaultRepo(vault);
+  await archivo(vault, 'projects/p/sdd/en-head/spec.md');
+  await commitFlow({ vaultRoot: vault, flowId: 'en-head', paths: ['projects/p/sdd/en-head'] });
+  await archivo(vault, 'projects/p/sdd/solo-indice/spec.md');
+  await git(vault, 'add', '--', 'projects/p/sdd/solo-indice');
+  await archivo(vault, 'projects/p/sdd/no-trackeada/spec.md');
+
+  assert.deepEqual(
+    await rutasTrackeadas(vault, [
+      'projects/p/sdd/en-head',
+      'projects/p/sdd/solo-indice',
+      'projects/p/sdd/no-trackeada',
+    ]),
+    ['projects/p/sdd/en-head', 'projects/p/sdd/solo-indice'],
+  );
 });
 
 test('omitir scanPaths falla antes de consultar Git', async (t) => {

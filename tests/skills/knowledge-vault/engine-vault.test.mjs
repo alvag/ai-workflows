@@ -543,3 +543,151 @@ test('un documento de runs ya trackeado no rompe el rearchivo ni la sonda al apa
     fs: new DurableFs(), vaultRoot: vault, repoId: 'ai-workflows', flowId: 'abc-1', flowDir,
   }), { aSalvo: true, causa: null, faltantes: [] });
 });
+
+// ── Recuperación acotada de `.kv-staging-*` huérfanos (punto muerto) ──────────
+const sddDirOf = (vault) => path.dirname(resolveLayout(vault, 'ai-workflows', 'abc-1').frontier);
+async function plantarStaging(sddDir, name, contenido = 'x\n') {
+  const dir = path.join(sddDir, name);
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(dir, 'residuo.md'), contenido, 'utf8');
+  return dir;
+}
+async function trackear(vault, relative, mensaje) {
+  await git(vault, 'add', '--', relative);
+  await git(vault, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', mensaje);
+}
+
+test('[KV-STAGING][AC-6] first publication removes own staging', async (t) => {
+  const { vault, flowDir } = await escena(t);
+  const staging = await plantarStaging(sddDirOf(vault), '.kv-staging-abc-1-deadbeef');
+  assert.equal((await correr(vault, flowDir)).status, 'ARCHIVED');
+  await assert.rejects(() => fs.stat(staging));
+});
+
+test('[KV-STAGING][AC-5] rearchive removes all own stagings', async (t) => {
+  const { vault, flowDir } = await escena(t);
+  assert.equal((await correr(vault, flowDir)).status, 'ARCHIVED');
+  const sddDir = sddDirOf(vault);
+  const stagings = await Promise.all(
+    ['aaaaaaaa', 'bbbbbbbb'].map((token) => plantarStaging(sddDir, `.kv-staging-abc-1-${token}`)),
+  );
+  assert.equal((await correr(vault, flowDir)).status, 'ALREADY_ARCHIVED');
+  for (const dir of stagings) await assert.rejects(() => fs.stat(dir));
+});
+
+test('[KV-STAGING][AC-3] own stagings are removed before foreign residue blocks', async (t) => {
+  const { vault, flowDir } = await escena(t);
+  const sddDir = sddDirOf(vault);
+  const staging = await plantarStaging(sddDir, '.kv-staging-abc-1-cafebabe', 'propio\n');
+  const ajeno = path.join(sddDir, 'ajeno-sin-forma.md');
+  await fs.writeFile(ajeno, 'trabajo de otro\n', 'utf8');
+  await assert.rejects(() => correr(vault, flowDir), (error) => error.code === 'VAULT_DIRTY');
+  await assert.rejects(() => fs.stat(staging));
+  assert.equal(await fs.readFile(ajeno, 'utf8'), 'trabajo de otro\n');
+});
+
+test('[KV-STAGING][AC-7] malformed names and non-directories preserve the batch', async (t) => {
+  const casos = [
+    ['.kv-staging-abc-1-XYZ12345', 'dir', 'x\n'],
+    ['.kv-staging-abc-1-abc', 'dir', 'x\n'],
+    ['.kv-staging-abc-1-cafebabe', 'file', 'no es un directorio\n'],
+    ['.kv-staging-abc-1-1234abcd', 'symlink', 'objetivo\n'],
+  ];
+  for (const [name, kind, contenido] of casos) {
+    const { vault, flowDir } = await escena(t);
+    const sddDir = sddDirOf(vault);
+    await fs.mkdir(sddDir, { recursive: true });
+    const target = path.join(sddDir, name);
+    // Un staging propio recuperable en el mismo lote: si el bloqueador no
+    // conservara el lote entero, este desaparecería antes del VAULT_DIRTY.
+    const recuperable = await plantarStaging(sddDir, '.kv-staging-abc-1-eeeeeeee');
+    if (kind === 'dir') await plantarStaging(sddDir, name);
+    else if (kind === 'symlink') {
+      const real = path.join(sddDir, 'enlace-real.md');
+      await fs.writeFile(real, contenido, 'utf8');
+      await fs.symlink(real, target);
+    } else await fs.writeFile(target, contenido, 'utf8');
+    await assert.rejects(() => correr(vault, flowDir), (error) => {
+      assert.equal(error.code, 'VAULT_DIRTY');
+      assert.match(error.message, /\.kv-staging-/);
+      return true;
+    }, name);
+    const leido = await fs.readFile(kind === 'dir' ? path.join(target, 'residuo.md') : target, 'utf8');
+    assert.equal(leido, contenido, name);
+    if (kind === 'symlink') assert.ok((await fs.lstat(target)).isSymbolicLink(), name);
+    assert.equal(await fs.readFile(path.join(recuperable, 'residuo.md'), 'utf8'), 'x\n', name);
+  }
+});
+
+test('[KV-STAGING][AC-8] HEAD-tracked own staging blocks with manual diagnosis', async (t) => {
+  const { vault, flowDir } = await escena(t);
+  await correr(vault, flowDir);
+  const staging = await plantarStaging(sddDirOf(vault), '.kv-staging-abc-1-deadbeef');
+  await git(vault, 'add', '-A');
+  await git(vault, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'trackea el staging');
+  await assert.rejects(() => correr(vault, flowDir), (error) => {
+    assert.equal(error.code, 'VAULT_DIRTY');
+    assert.match(error.message, /\.kv-staging-/);
+    assert.match(error.message, /manualmente/);
+    assert.doesNotMatch(error.message, /sin commitear/);
+    return true;
+  });
+  assert.equal(await fs.readFile(path.join(staging, 'residuo.md'), 'utf8'), 'x\n');
+});
+
+test('[KV-STAGING][AC-8] index-only own staging blocks and preserves the batch', async (t) => {
+  const { vault, flowDir } = await escena(t);
+  await correr(vault, flowDir);
+  const staging = await plantarStaging(sddDirOf(vault), '.kv-staging-abc-1-deadbeef');
+  await git(vault, 'add', '--', path.relative(vault, staging));
+  await assert.rejects(() => correr(vault, flowDir), (error) => {
+    assert.equal(error.code, 'VAULT_DIRTY');
+    assert.match(error.message, /\.kv-staging-/);
+    assert.match(error.message, /manualmente/);
+    assert.doesNotMatch(error.message, /sin commitear/);
+    return true;
+  });
+  assert.equal(await fs.readFile(path.join(staging, 'residuo.md'), 'utf8'), 'x\n');
+});
+
+test('[KV-STAGING][AC-10] own recoverable plus own tracked preserves both', async (t) => {
+  const { vault, flowDir } = await escena(t);
+  await correr(vault, flowDir);
+  const sddDir = sddDirOf(vault);
+  const recuperable = await plantarStaging(sddDir, '.kv-staging-abc-1-aaaaaaaa');
+  const trackeado = await plantarStaging(sddDir, '.kv-staging-abc-1-bbbbbbbb');
+  await trackear(vault, path.relative(vault, trackeado), 'trackea uno de los dos');
+  await assert.rejects(() => correr(vault, flowDir), (error) => error.code === 'VAULT_DIRTY');
+  assert.equal(await fs.readFile(path.join(recuperable, 'residuo.md'), 'utf8'), 'x\n');
+  assert.equal(await fs.readFile(path.join(trackeado, 'residuo.md'), 'utf8'), 'x\n');
+});
+
+test('[KV-STAGING][AC-12] foreign untracked blocks and foreign tracked clean does not', async (t) => {
+  const { vault, flowDir } = await escena(t);
+  await correr(vault, flowDir);
+  const sddDir = sddDirOf(vault);
+  const ajenoSucio = await plantarStaging(sddDir, '.kv-staging-otro-flujo-cafebabe', 'ajeno\n');
+  await assert.rejects(() => correr(vault, flowDir), (error) => error.code === 'VAULT_DIRTY');
+  await assert.doesNotReject(() => fs.stat(ajenoSucio));
+  await fs.rm(ajenoSucio, { recursive: true });
+  const ajenoLimpio = await plantarStaging(sddDir, '.kv-staging-otro-flujo-fefefefe', 'ajeno\n');
+  await trackear(vault, path.relative(vault, ajenoLimpio), 'commitea el staging ajeno');
+  assert.equal((await correr(vault, flowDir)).status, 'ALREADY_ARCHIVED');
+  await assert.doesNotReject(() => fs.stat(ajenoLimpio));
+});
+test('[KV-STAGING][AC-12] shared engine isolates recovery by flow', async (t) => {
+  const caja = await createSandbox(t);
+  const vault = path.join(caja.vaultsDir, 'dev-memory');
+  await fs.mkdir(vault, { recursive: true });
+  const flowDir1 = await origen(caja, 'flujo-1');
+  const flowDir2 = await origen(caja, 'flujo-2');
+  const sddDir = sddDirOf(vault);
+  const staging1 = await plantarStaging(sddDir, '.kv-staging-flujo-1-aaaaaaaa');
+  const staging2 = await plantarStaging(sddDir, '.kv-staging-flujo-2-bbbbbbbb');
+  await assert.rejects(() => correr(vault, flowDir1, 'flujo-1'), (error) => error.code === 'VAULT_DIRTY');
+  await assert.rejects(() => fs.stat(staging1));
+  assert.equal(await fs.readFile(path.join(staging2, 'residuo.md'), 'utf8'), 'x\n');
+  const r = await correr(vault, flowDir2, 'flujo-2');
+  assert.equal(r.status, 'ARCHIVED');
+  await assert.rejects(() => fs.stat(staging2));
+});

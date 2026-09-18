@@ -13,8 +13,10 @@
  * vault. Un vault anidado se rechaza; inicializar un repositorio adentro de otro
  * sería peor, porque el problema se vuelve invisible.
  *
- * El chequeo de árbol sucio corre **antes de escribir**: encontrarlo después ya
- * es tarde, porque el commit del archivado se llevaría puestos los cambios ajenos.
+ * El chequeo de árbol sucio corre **antes de comprometer el archivado**: para
+ * entonces la recuperación acotada de staging del flujo actual ya barrió lo
+ * propio, y encontrar un cambio ajeno después sería tarde, porque el commit se
+ * lo llevaría puesto.
  */
 
 import { execFile, spawn } from 'node:child_process';
@@ -181,7 +183,9 @@ export async function ensureVaultRepo(vaultRoot) {
 }
 
 /**
- * Falla si el vault tiene cambios **ajenos** sin commitear. Se llama antes de escribir.
+ * Falla si el vault tiene cambios **ajenos** sin commitear. Corre después de que
+ * la recuperación acotada de staging del flujo actual ya barrió lo propio, y
+ * antes de comprometer el archivado.
  *
  * El invariante no es "el árbol está impoluto" sino "el commit del archivado no
  * se va a llevar puesto trabajo de otro". La diferencia importa y costó un
@@ -333,6 +337,27 @@ export async function senalesDelRepositorio(repoRoot) {
     rutaObservada: repoRoot,
     nombreDirectorio: path.basename(repoRoot),
   };
+}
+
+/**
+ * ¿Cuáles de estas rutas están cubiertas por un archivo presente en el índice?
+ *
+ * El índice decide si una ruta está trackeada, no el árbol de trabajo: un
+ * archivo agregado con `git add` pero sin commitear ya bloquea un borrado
+ * destructivo, y `ls-tree HEAD` no lo vería porque todavía no hay commit.
+ *
+ * @param {string} vaultRoot
+ * @param {string[]} rutas relativas a `vaultRoot`; archivos o directorios
+ * @returns {Promise<string[]>} el subconjunto de `rutas` cubierto por el índice
+ */
+export async function rutasTrackeadas(vaultRoot, rutas) {
+  const requested = [...new Set(rutas)];
+  if (requested.length === 0) return [];
+  const { stdout } = await git(vaultRoot, [
+    '--literal-pathspecs', 'ls-files', '--cached', '-z', '--', ...requested,
+  ]);
+  const indexedCovered = coveredRoutes(splitNul(stdout));
+  return requested.filter((route) => indexedCovered.has(route));
 }
 
 /**

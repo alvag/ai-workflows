@@ -7,18 +7,22 @@
  * archivado no borra nada**, así que ese aparato no tiene qué proteger y se fue
  * con el retiro.
  *
- * Queda un problema real y mucho más chico. `discardOrphanStagings` barre por
- * prefijo, así que dos archivados del **mismo** flujo a la vez harían que uno
- * leyera el staging vivo del otro como huérfano y lo borrara. Serializar las
- * corridas sobre un mismo flujo alcanza para eliminarlo.
+ * Queda un problema real y mucho más chico.
+ * La identidad de flujo no distingue corridas concurrentes: dos archivados del
+ * **mismo** flujo a la vez harían que uno recuperara el staging vivo del otro
+ * como propio y lo borrara. Serializar las corridas sobre un mismo flujo
+ * alcanza para eliminarlo.
  *
  * Lo que este lock **no** hace, dicho para que nadie lo confunda con el anterior:
  * no escribe journal, no sobrevive al proceso, y no excluye a otro proceso sobre
- * el mismo vault. Eso último se justificaba en que sin operación destructiva lo
- * peor entre dos procesos era un reintento, y esa frase dejó de ser verdadera con
- * el verbo de retiro. La conclusión no cambia, pero por otra razón: **el retiro
- * no se apoya en este lock**. Cierra su carrera por el **orden** —reclama el
- * flujo renombrándolo antes de verificarlo, y desde ahí ningún otro proceso lo
+ * el mismo vault. Ese límite ya no se justifica en "sin operación destructiva lo
+ * peor es un reintento": la recuperación acotada sí borra staging, y dos procesos
+ * sin este lock pueden borrarse el staging vivo el uno al otro. Es un límite
+ * aceptado: la corrida afectada aborta después en su tramo de copia,
+ * verificación o publicación, el origen queda intacto porque el archivado nunca
+ * lo toca, y un reintento puede reconstruir lo perdido. El retiro **no se apoya
+ * en este lock** y conserva su propia defensa por **orden** —reclama el flujo
+ * renombrándolo antes de verificarlo, y desde ahí ningún otro proceso lo
  * alcanza por su ruta original—, que es exclusión sin lock.
  */
 

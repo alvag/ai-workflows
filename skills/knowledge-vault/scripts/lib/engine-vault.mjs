@@ -57,6 +57,7 @@ import {
   appendLogEntry,
   discardOrphanStagings,
   formatLogEntry,
+  inspectStagingEntries,
   resolveLayout,
   LOG_FILENAME,
   resolveStagingPath,
@@ -68,6 +69,7 @@ import {
   commitFlow,
   ensureVaultRepo,
   rutasNoAncladas,
+  rutasTrackeadas,
 } from './vault-git.mjs';
 
 export class EngineError extends Error {
@@ -309,6 +311,54 @@ export async function runVaultTransaction({
     const { frontier, nodePath, indexPaths } = resolveLayout(vaultRoot, repoSlug, flowId);
 
     await ensureVaultRepo(vaultRoot);
+
+    // La recuperación acotada corre antes de la guarda general: clasifica el
+    // lote completo de `.kv-staging-*` del mismo `sdd/` y no borra nada hasta
+    // que toda la validación termina.
+    const stagingDir = path.dirname(frontier);
+    const entradasStaging = await inspectStagingEntries({
+      fs, parentDir: stagingDir, label: `${label}.stage.inspect`,
+    });
+    const nombreInvalido = entradasStaging.find((entrada) => entrada.parsed === null);
+    if (nombreInvalido !== undefined) {
+      throw new EngineError(
+        'VAULT_DIRTY',
+        `el staging ${JSON.stringify(nombreInvalido.path)} no tiene forma de identidad y token ` +
+          'reconocible: elimínelo manualmente antes de reintentar',
+        { path: nombreInvalido.path },
+      );
+    }
+    const propias = entradasStaging.filter((entrada) => entrada.parsed.flowId === flowId);
+    const propiaNoDirectorio = propias.find((entrada) => entrada.kind !== 'directory');
+    if (propiaNoDirectorio !== undefined) {
+      throw new EngineError(
+        'VAULT_DIRTY',
+        `el staging ${JSON.stringify(propiaNoDirectorio.path)} del flujo actual no es un ` +
+          'directorio: elimínelo manualmente antes de reintentar',
+        { path: propiaNoDirectorio.path },
+      );
+    }
+    if (propias.length > 0) {
+      const rutasPropias = propias.map((entrada) => toVaultRelative(vaultRoot, entrada.path));
+      const trackeadas = new Set(await rutasTrackeadas(vaultRoot, rutasPropias));
+      const propiaTrackeada = propias.find((_entrada, i) => trackeadas.has(rutasPropias[i]));
+      if (propiaTrackeada !== undefined) {
+        throw new EngineError(
+          'VAULT_DIRTY',
+          `el staging ${JSON.stringify(propiaTrackeada.path)} del flujo actual está trackeado en ` +
+            'Git: sáquelo del índice o del commit manualmente antes de reintentar',
+          { path: propiaTrackeada.path },
+        );
+      }
+      await discardOrphanStagings({
+        fs,
+        parentDir: stagingDir,
+        flowId,
+        names: propias.map((entrada) => entrada.name),
+        label: `${label}.stage.discard`,
+      });
+    }
+
     // El prefijo admite residuos de recuperación y acota las consultas Git.
     // Los paths exactos de abajo gobiernan el anclaje y el staging: ningún
     // archivo ajeno bajo la frontera entra al commit por usar el prefijo.
@@ -361,10 +411,6 @@ export async function runVaultTransaction({
     const nodo = historicalNode
       ? await leerSiExiste(fs, nodePath, `${label}.node.preserve`)
       : buildNode({ metadata, documents: incluidos.map((entry) => entry.path), summary });
-
-    // Un staging de una corrida muerta bloquea el reintento, porque `copyTree`
-    // crea con exclusión. Se barre antes de intentar nada.
-    await discardOrphanStagings({ fs, parentDir: path.dirname(frontier), label: `${label}.stage.discard` });
 
     let reconstruido = false;
     if (state.kind === 'first-publication' || state.kind === 'historical-rebuild') {

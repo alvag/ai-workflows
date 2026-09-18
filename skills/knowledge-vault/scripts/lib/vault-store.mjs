@@ -189,6 +189,58 @@ export function isStagingName(name) {
   return name.startsWith(STAGING_PREFIX);
 }
 
+/**
+ * Descompone un nombre de staging en `{flowId, token}`, o `null` si no hay una
+ * forma inequívoca. El token es el último segmento tras el `-` final, y debe
+ * ser exactamente ocho hexadecimales en minúscula: es la forma que produce
+ * `resolveStagingPath`, y cualquier otra cosa no se puede atribuir con certeza
+ * a un flujo.
+ */
+function parseStagingName(name) {
+  const rest = name.slice(STAGING_PREFIX.length);
+  const sep = rest.lastIndexOf('-');
+  if (sep <= 0) return null;
+  const flowId = rest.slice(0, sep);
+  const token = rest.slice(sep + 1);
+  if (!/^[0-9a-f]{8}$/.test(token)) return null;
+  return { flowId, token };
+}
+
+/**
+ * Inspecciona, sin mutar nada, las entradas `.kv-staging-*` de un directorio.
+ *
+ * Puro respecto de Git: no consulta el índice ni el árbol. Clasificar por
+ * identidad y tipo antes de destruir es lo que permite fallar cerrado ante un
+ * nombre ambiguo, un archivo o un enlace donde se esperaba un directorio.
+ *
+ * @returns {Promise<Array<{name: string, path: string, parsed: {flowId:string,token:string}|null, kind: 'directory'|'file'|'symlink'|'other'}>>}
+ */
+export async function inspectStagingEntries({ fs, parentDir, label }) {
+  const padre = await fs.lstat(parentDir, `${label}.lstat`);
+  if (padre === null) return [];
+
+  const nombres = (await fs.readDirNames(parentDir, `${label}.readdir`))
+    .map(({ name }) => name)
+    .filter(isStagingName)
+    .sort();
+
+  const entradas = [];
+  for (const name of nombres) {
+    const entryPath = path.join(parentDir, name);
+    const info = await fs.lstat(entryPath, `${label}.entry.lstat`);
+    if (info === null) continue; // desapareció antes de poder clasificarla
+    const kind = info.isDirectory()
+      ? 'directory'
+      : info.isSymbolicLink()
+        ? 'symlink'
+        : info.isFile()
+          ? 'file'
+          : 'other';
+    entradas.push({ name, path: entryPath, parsed: parseStagingName(name), kind });
+  }
+  return entradas;
+}
+
 async function leerSiExiste(fs, ruta, label) {
   try {
     return await fs.readFile(ruta, label);
@@ -245,20 +297,34 @@ export async function appendLogEntry({ fs, vaultRoot, entry, label = 'log.append
 }
 
 /**
- * Barre los stagings que quedaron de una corrida muerta.
+ * Elimina los stagings **ya clasificados** del flujo actual.
  *
  * Se conserva aunque el resto de la recuperación se haya retirado, y no por
  * simetría: `copyTree` crea el destino con creación **exclusiva**, así que un
- * staging huérfano bloquea el reintento en vez de ser ruido inofensivo.
+ * staging recuperable bloquea el reintento en vez de ser ruido inofensivo.
+ *
+ * Sólo elimina nombres ya clasificados del flujo actual: `names` llega
+ * validado por quien llama —propio, directorio real, no trackeado—, y esta
+ * función revalida esa identidad justo antes de cada borrado para cerrar la
+ * ventana entre clasificar y destruir. Un fallo de borrado aborta en ese
+ * nombre; no se promete una lista parcial de lo que se llegó a eliminar.
  */
-export async function discardOrphanStagings({ fs, parentDir, label = 'stage.discard' }) {
-  const info = await fs.lstat(parentDir, `${label}.lstat`);
-  if (info === null) return [];
-
+export async function discardOrphanStagings({ fs, parentDir, flowId, names, label = 'stage.discard' }) {
   const descartados = [];
-  for (const { name } of await fs.readDirNames(parentDir, `${label}.readdir`)) {
-    if (!isStagingName(name)) continue;
-    await fs.rmTree(path.join(parentDir, name), label);
+  for (const name of names) {
+    const target = path.join(parentDir, name);
+    const info = await fs.lstat(target, `${label}.lstat`);
+    if (info === null) continue; // ya desapareció
+
+    const parsed = parseStagingName(name);
+    if (parsed?.flowId !== flowId || !info.isDirectory()) {
+      throw new VaultStoreError(
+        'STAGING_CHANGED',
+        `el staging ${JSON.stringify(target)} cambió de identidad antes de poder eliminarlo`,
+        { path: target },
+      );
+    }
+    await fs.rmTree(target, label);
     descartados.push(name);
   }
   if (descartados.length > 0) await fs.fsyncDir(parentDir, `${label}.fsync-dir`);
