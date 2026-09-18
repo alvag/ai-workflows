@@ -2430,6 +2430,8 @@ Ejemplo: `.cross-model/runs/20260731T140211Z-co-explore-explore-95b6d861.json`
 
 ```json
 {
+  "record_type": "run-manifest/1",
+  "run_id": "95b6d861",
   "skill": "co-explore",
   "mode": "explore",
   "started_at": "2026-07-31T14:02:11Z",
@@ -2438,7 +2440,8 @@ Ejemplo: `.cross-model/runs/20260731T140211Z-co-explore-explore-95b6d861.json`
   "transport": "cli-exec",
   "outcome": "completed",
   "degradation": "branch-3",
-  "selection": "user_choice"
+  "selection": "user_choice",
+  "dispatches": []
 }
 ```
 
@@ -2560,10 +2563,24 @@ reloj terminal, cierra con `started_at: 2026-08-01T09:00:03Z` y `duration_s: 7`.
 proyecta exclusivamente desde sus autoridades: no se lee A, y copiar `412` o el timestamp de A
 violaría la comparabilidad que justifica el manifest aunque el JSON siguiera pareciendo válido.
 
-### Los campos
+### Las formas y sus claves raíz
 
-Los nueve son **obligatorios**. Un campo que solo aparece a veces hace que "no hubo" y "no se supo"
-sean el mismo dato ausente.
+El archivo siempre lleva `record_type`, que selecciona una de estas formas. Cada forma declara sus
+claves obligatorias, condicionales y prohibidas; una clave fuera de esos conjuntos se rechaza.
+
+| Forma | Obligatorias | Condicionales | Prohibidas |
+|---|---|---|---|
+| `run-manifest/1` | `record_type`, `run_id`, `skill`, `mode`, `started_at`, `duration_s`, `families`, `transport`, `outcome`, `degradation`, `selection`, `dispatches` | `transporte_fuente`, `transporte_proceso`: obligatorias si `transport` es `pane-herdr` o `pane-orca`; admisibles en otro caso | ninguna |
+| `dispatch-log/1` | `record_type`, `run_id`, `skill`, `mode`, `started_at`, `dispatches` | ninguna | `duration_s`, `families`, `transport`, `outcome`, `degradation`, `selection`, `transporte_fuente`, `transporte_proceso` |
+
+Las claves de transporte por panel son prohibidas en `dispatch-log/1`: su condición depende de
+`transport`, que esa forma no lleva. `dispatches` es una lista en las dos formas: `run-manifest/1`
+admite la lista vacía y `dispatch-log/1` exige al menos una entrada.
+
+### Los campos de telemetría
+
+Los nueve campos de telemetría de `run-manifest/1` son **obligatorios**. Un campo que solo aparece a
+veces hace que "no hubo" y "no se supo" sean el mismo dato ausente.
 
 | Campo | Qué es | De dónde sale |
 |---|---|---|
@@ -2681,7 +2698,7 @@ Los nueve campos de telemetría siguen siendo de los cuatro: `sdd-pr-feedback` p
   "started_at": "2026-08-02T11:45:07Z",
   "dispatches": [
     {
-      "attempt": 1, "role": "implement", "family": "codex",
+      "attempt": 1, "at": "2026-08-02T11:45:07Z", "role": "implement", "family": "codex",
       "requested": {"model": "gpt-5.6-terra", "effort": "heredado"},
       "resolved": {"model": "gpt-5.6-terra", "effort": "heredado"},
       "origin": {"model": 3, "effort": 4},
@@ -2690,7 +2707,7 @@ Los nueve campos de telemetría siguen siendo de los cuatro: `sdd-pr-feedback` p
       "outcome": "rejected_by_provider", "retry_of": null
     },
     {
-      "attempt": 2, "role": "implement", "family": "codex",
+      "attempt": 2, "at": "2026-08-02T11:45:08Z", "role": "implement", "family": "codex",
       "requested": {"model": "gpt-5.6-terra", "effort": "heredado"},
       "resolved": {"model": "gpt-5.6-terra", "effort": "heredado"},
       "origin": {"model": 3, "effort": 4},
@@ -2710,6 +2727,17 @@ Los nueve campos de telemetría siguen siendo de los cuatro: `sdd-pr-feedback` p
 | `cross-review` | `spec` · `plan` · `tasks` · `master-spec` · `reparto` · `sintesis` · `draft` | `APPROVED` · `REVISE` · `UNAVAILABLE` | `rounds_exhausted` · `confirmed_wall` · `launch_flake` · `runtime_failure` · `deadline_exceeded` · `host_sandbox_wall` |
 | `cross-implement` | `embebido` · `directo` | `IMPLEMENTED` · `PARTIAL` · `UNAVAILABLE` | `takeover` · `confirmed_wall` · `launch_flake` · `runtime_failure` · `deadline_exceeded` · `host_sandbox_wall` |
 | `bitbucket-code-review` | `conductor` · `delegado` · `mixto` | `PUBLISHED` · `PROPOSED` · `UNAVAILABLE` | `revisor_invalido` · `panel_vacio` · `confirmed_wall` · `launch_flake` · `runtime_failure` · `host_sandbox_wall` |
+| `sdd-pr-feedback` | `apply` | — | — |
+
+La quinta fila declara **solo `mode`**, y los guiones de las otras dos columnas no son un hueco a
+llenar: `sdd-pr-feedback` publica la forma `dispatch-log/1`, que prohíbe `outcome` y `degradation`,
+así que esos dos enums nunca se evalúan para ella. Un término ahí sería vocabulario que ningún
+archivo puede llevar.
+
+> **`apply` todavía no está adoptado por su skill, y eso se declara.** Hoy ese literal no aparece en
+> ningún archivo de `skills/sdd-pr-feedback/`: la fila lo fija acá para que el enum tenga sede
+> documental en vez de vivir solo dentro del predicado, que es lo que esta misma sección prohíbe.
+> Cuando esa skill nombre su modo, **manda ella** y esta fila se actualiza — no al revés.
 
 Cada uno de esos términos ya existe en la skill que lo produce: el manifest los **serializa**, no
 los define. Un manifest con taxonomía propia se desincroniza del envelope que dice resumir, y cuando
