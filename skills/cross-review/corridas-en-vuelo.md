@@ -114,6 +114,24 @@ sección, así que un segundo cuadro ahí adentro —un ejemplo, una matriz de e
 biyección del inventario con un mensaje que habla de puntos de despacho y no de tablas. Si hace
 falta otra tabla, va en una sección hermana.
 
+### La clase de operación se sigue de la pertenencia
+
+Toda corrida que este contrato gobierna es **coordinación supervisada**. El propio contrato registra
+qué workers salieron, hasta cuándo el conductor los espera y si la cosecha sigue pendiente, y aplica
+ese mecanismo a los once puntos de despacho del ecosistema.
+
+Queda fuera toda operación de terminales que no emita workers que haya que esperar y cosechar.
+`sdd-incident-intake` es un caso real: opera la plataforma con verbos propios y no es un punto de
+despacho.
+
+Qué exige ese régimen lo declara la guía del terreno que sirve el **binario de la plataforma
+resuelta**, no una copia instalada. Medido sobre **Orca**: su guía `orchestration` exige crear o
+vincular una corrida, crear la tarea y adjuntar el worker.
+
+**Esa medición es de una plataforma y no se generaliza, y por eso se nombra cuál.** Lo que rige en
+todas es el régimen —supervisado o no—; lo que cada plataforma exige para cumplirlo se le pregunta a
+su propio binario, en el momento.
+
 ### La matriz de invocación del instrumento
 
 Los invariantes de arriba no se hacen cumplir solos. **Esta es la sede única de quién invoca qué, y
