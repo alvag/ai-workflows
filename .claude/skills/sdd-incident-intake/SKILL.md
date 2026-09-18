@@ -390,7 +390,7 @@ de que hubo una corrección.
 ### 6.4 — Despacho
 
 El prompt **apunta** al dossier, no lo transporta; el envío va en **tres tiempos**; y el cierre
-acredita **dos** propiedades. Mecánica, matrices por familia y modos de falla en `reference.md` →
+acredita **tres** propiedades. Mecánica, matrices por familia y modos de falla en `reference.md` →
 "Despachar el flujo".
 
 > **El prefijo cambia con la familia, y su forma también.** `claude` → **`/sdd-flow` con espacio
@@ -399,10 +399,11 @@ acredita **dos** propiedades. Mecánica, matrices por familia y modos de falla e
 > forma para las dos falla en una, y falla mostrando el texto correcto sin la señal.
 
 > **`mandé el prompt` no es `el flujo arrancó`, y `la skill cargó` tampoco.** Ese control lo satisface
-> un agente que compensó leyendo el archivo de la skill por su cuenta. Se acreditan **dos** cosas
-> distintas: la **procedencia** —el prefijo fue reconocido antes de mandar el cuerpo— y la
-> **integridad** —el hash de la fuente del dossier aparece en el pedido que el flujo congeló—. Sin
-> las dos, el arranque es **no confirmado** y no se retira nada.
+> un agente que compensó leyendo el archivo de la skill por su cuenta. Se acreditan **tres** cosas
+> distintas: la **procedencia** —el prefijo fue reconocido antes de mandar el cuerpo—, la
+> **integridad** —el hash de la fuente del dossier aparece en el pedido que el flujo congeló— y la
+> **completitud** —la primera entrada `origen: usuario` del `literal.jsonl` contiene el cuerpo
+> canónico del puntero—. Sin las tres, el arranque es **no confirmado** y no se retira nada.
 
 ### 6.5 — Marcar el issue como tomado
 
@@ -513,7 +514,7 @@ cupos que se repusieron, y el conteo del registro antes y después.
 | "Verifiqué los tres y ninguno falló" | Posible, pero revisalo: un intake que nunca rechaza nada está transcribiendo. |
 | "Para saber si esto pasa tengo que reproducirlo" | Entonces se admite. Reproducir es el trabajo del flujo, no del intake. |
 | "Los retiro ahora que ya los elegí" | Retirados antes del dossier, no queda copia de nada. |
-| "Mandé el prompt, sigo" | El prefijo puede haber quedado dentro del bloque pegado, o llevar la forma de la otra familia. Leer el compositor **antes** de mandar el cuerpo, y buscar la señal de esa familia. |
+| "Mandé el prompt, sigo" | El prefijo puede haber quedado dentro del bloque pegado, o llevar la forma de la otra familia; el cuerpo puede llegar truncado aunque el prefijo se reconozca. Leer el compositor **antes** de mandar el cuerpo, buscar la señal de esa familia y comprobar la completitud al cerrar. |
 | "Son de la misma skill, van juntos" | La misma skill en otra fase es otro diff. El criterio es la superficie. |
 | "La plataforma lo creó, está en main" | Solo en la rama `inseparable`, que conserva la creación de la plataforma: ahí está en `origin/main` y hay que comparar contra `git rev-parse main`. Con creación por Git el commit va explícito y el caso no existe. |
 | "El local está distinto de origin, lo realineo" | Solo si el que está adelante es el **local**, y solo en la rama `inseparable`. Al revés, el reset borra el arreglo que vino de arriba. |
