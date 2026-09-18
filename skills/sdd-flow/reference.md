@@ -283,7 +283,9 @@ ninguno.
 ### Elección de rama
 
 Si el handoff ya trae `origin_sha` y una decisión de ubicación de la preflight, `create-branch`
-consume esa identidad. Con worktree materializado también consume `worktree_branch`; no vuelve a
+consume esa identidad. Consume `worktree_branch` como el nombre definitivo ya elegido —con worktree
+materializado, y también con `worktree_location: current` cuando el handoff lo trae, que es lo que
+escribe la ruta directa en su paso 4 antes de que exista `plan.md`—; no vuelve a
 preguntar, hacer pull, checkout, stash ni rename. Si la ref avanzó, muestra ambos OID y solo cambia
 el SHA congelado con autorización. El procedimiento siguiente queda para una invocación directa o un
 flujo heredado sin esa identidad.
@@ -1945,7 +1947,7 @@ incluye las que no tocan el working tree — la búsqueda de antecedentes actual
 4. Persistir la **identidad de procedencia** **[R1]** y, recién entonces, buscar antecedentes con el procedimiento incondicional de siempre y establecer la causa raíz antes de editar. La identidad va primero porque el ledger es la **primera escritura**, y quien encuentre ese directorio después tiene que poder saber de dónde vino. El paso corre **antes** de saber si la ruta entra, y no es trabajo perdido cuando no entra: es el mismo acto incondicional que `gather-context` corre en el ciclo completo, y su ledger queda escrito igual. Si la búsqueda cierra el flujo antes de la spec —el objetivo ya estaba cubierto—, ese cierre **también cierra la identidad**, con la fila `cerrada` de **[R1]**.
 5. Reevaluar el riesgo con esa evidencia. Es el dato de **[C4]**, y es la razón por la que este paso no puede ir después del que resuelve las condiciones.
 6. Resolver las cinco condiciones y presentarlas en el **checkpoint de la ruta**, que es donde el usuario ejerce la autoridad de **[C2]** y ratifica el riesgo de **[C4]**. Las cinco se resuelven en un solo acto: una resolución parcial anterior tendría que declarar indeterminadas justamente las dos que dependen de los pasos 4 y 5. Resolver por **[K1]**, **[K2]** o **[K3]**; solo **[K2]** admite entrar, y las otras dos nombran cuál falló, **cierran la identidad** con la fila `derivada` de **[R1]** y derivan a la invocación explícita del ciclo completo.
-7. Resolver la aprobación externa por los cuatro estados de abajo. Con **[J1]** o **[J2]** la ruta sigue sin escribir spec. Con **[J3]** o **[J4]** produce `spec.md` y entra a `publish-spec`; al quedar a la espera, completa el marcador con `fase: awaiting-jira-approval`.
+7. Resolver la aprobación externa por los cuatro estados de abajo. Con **[J1]** la ruta sigue sin escribir spec; **[J2]** abre su checkpoint de dos salidas, y solo una de ellas sigue. Con **[J3]** o **[J4]** produce `spec.md` y entra a `publish-spec`; al quedar a la espera, completa el marcador con `fase: awaiting-jira-approval`.
 8. Correr el **tramo que muta** del preflight: materializar la rama o el worktree que el usuario eligió en el paso 3, revalidando contra el árbol de ese momento la clasificación del paso 2. Va después del gate externo para que una spec rechazada afuera no deje rama creada. Si el destino es un worktree, `.plans/<id>/` viaja con él igual que en la preflight canónica: lo que el paso 4 dejó escrito **es** el paquete que se traslada.
 9. Implementar, reuniendo la evidencia que C3 nombró antes de empezar.
 10. Integrar por las autorizaciones vigentes, cada una pedida por separado.
@@ -2088,7 +2090,22 @@ Editar la rama base por defecto no es un resultado alcanzable por esta vía.
 Se clasifica por predicado en cuatro estados disjuntos, cada uno con su conducta:
 
 - **[J1] inactiva** — el modo está apagado. La ruta corre sin producir spec; el marcador y el ledger del paso 4 se escriben igual.
-- **[J2] inaplicable** — el modo está activo pero falta el tracker o la clave padre, así que no hay destino de publicación. **No** se ofrece vía manual: devuelve la decisión al usuario.
+- **[J2] inaplicable** — el modo está activo pero falta el tracker o la clave padre, así que no hay destino de publicación. **No** se ofrece vía manual: abre un checkpoint y devuelve la decisión al usuario, con **dos** salidas y ninguna más.
+
+**Las dos salidas de [J2], y qué estado durable deja cada una.** Se enumeran porque «devuelve la
+decisión al usuario» sin opciones es un gate sin salida practicable, que es el defecto que esta
+sección persigue en otras skills:
+
+| Salida | Qué hace la ruta | Estado durable |
+|---|---|---|
+| **continuar sin aprobación externa** | sigue conduciendo y no escribe spec: el modo estaba activo pero no hay destino, y fabricar uno es justamente lo que la vía manual no hace | ninguno propio — `activa: true` sin `fase`, que es el estado normal de una ruta en curso |
+| **detener y derivar al ciclo completo** | ahí `publish-spec` se resuelve con el tracker ya configurado | `activa: false` con `cierre: derivada`, escrito antes de devolver el control |
+
+**Y su regla de retoma.** Mientras el checkpoint está abierto la ruta **sigue conduciendo**, así que
+una sesión que muera ahí deja `activa: true` sin `fase` y **[N1]** la trata como corrida interrumpida
+— que acá es la conducta **correcta** y no un hueco: en **[J2]** no se escribió spec ni se tocó el
+tracker, así que re-evaluar desde cero no puede duplicar ningún efecto. Es exactamente la diferencia
+con **[J3]** y **[J4]**, donde **[N1]** falla cerrado porque ahí sí pudo haber publicación.
 - **[J3] aplicable** — hay destino y capacidad de escritura. Produce `spec.md`, atraviesa el gate local de aprobación y el preview con confirmación de la escritura externa, y publica.
 - **[J4] degradada recuperable** — hay destino pero la escritura automática falla. Produce igual `spec.md` y ofrece la vía manual con su clave de subtarea.
 
@@ -2142,8 +2159,13 @@ invocación siguiente reiniciara un trabajo que el usuario terminó a propósito
 salidas que el algoritmo nombra; la invariante alcanza también a cualquier otra.
 
 **Y la primera escritura lleva también la decisión del checkpoint del paso 3.** No hace falta campo
-nuevo: son los que el `handoff.md` ya tiene —`worktree_location`, `worktree_path`, `branch`,
-`base_branch` y `origin_sha`—, escritos en el mismo acto del paso 4. Sin eso, el paso 7 puede dejar
+nuevo: son los que el `handoff.md` ya tiene —`worktree_location`, `worktree_path`, `worktree_branch`,
+`base_branch` y `origin_sha`—, escritos en el mismo acto del paso 4. **`worktree_branch` es la clave
+del nombre de rama también con `worktree_location: current`**, y eso pide una línea del lado del
+consumidor, que hoy solo lo lee con worktree materializado: es la **única** clave canónica del nombre
+definitivo antes de que exista `plan.md`, que esta ruta no escribe. Sin ella `create-branch` tendría
+que rederivar el nombre desde `branch_prefix` y `slug`, que es lo que hace un flujo **sin** identidad
+—y una rederivación no es la elección que el usuario aprobó—. Sin eso, el paso 7 puede dejar
 el flujo en `awaiting-jira-approval` y la sesión que lo retoma sabe **que** hay que materializar pero
 no **qué** eligió el usuario, así que al aprobarse tendría que volver a preguntar o adivinar — y
 adivinar una rama es justo lo que el checkpoint existe para impedir. `publish-spec`, que escribe el
@@ -2191,7 +2213,7 @@ conserva su bloque `ruta_directa` con la actividad ya cerrada.
 
 Un escenario por cada rama crítica. Los que mutan el árbol corren en un worktree descartable creado
 desde el commit base y removido al terminar; los que tocarían el tracker usan el estado `[J2]`, que
-no escribe nada externo. Cada fila declara su fixture, su acción, su entrada, el resultado observado
+no escribe nada externo y cuyo checkpoint se resuelve con «continuar sin aprobación externa». Cada fila declara su fixture, su acción, su entrada, el resultado observado
 que la cierra, su evidencia y su restauración.
 
 **Cuáles se ejercen al escribir esta sección, y cuáles quedan diferidos.** Solo cuatro son ejercibles
@@ -2200,9 +2222,9 @@ agente: **E22** y **E23** —el registro local presente y ausente—, **E34** �
 copias instaladas— y **E35** —la ausencia exhaustiva de la regla anterior—. Esos cuatro se ejecutan y
 su resultado se registra.
 
-Los **treinta y uno restantes quedan diferidos a la primera corrida real de la ruta**, y el motivo es
-el mismo para todos: su sujeto es **un conductor recorriendo la ruta**, no un archivo. `E1` a `E21` y
-`E24` a `E33` describen qué hace la ruta cuando alguien la usa —evaluar el predicado, derivar al ciclo
+Los **treinta y tres restantes quedan diferidos a la primera corrida real de la ruta**, y el motivo es
+el mismo para todos: su sujeto es **un conductor recorriendo la ruta**, no un archivo. `E1` a `E21`,
+`E24` a `E33`, `E36` y `E37` describen qué hace la ruta cuando alguien la usa —evaluar el predicado, derivar al ciclo
 completo, abrir el checkpoint de expansión, pedir una autorización—, y eso no ocurre al escribir la
 instrucción: ocurre al seguirla. Declararlos ejecutados desde acá sería exactamente el "diff
 documental con búsquedas en verde" que AC-21 rechaza. Se ejercen, y se registran, la primera vez que
@@ -2245,6 +2267,8 @@ un pedido entre por esta ruta.
 | E33 | piso de calidad: nunca silenciar linters o compiladores | ninguno: se evalúa sin tocar el árbol | comprobar nunca silenciar linters o compiladores | el ítem se cumplió igual que en el ciclo completo | una corrida por la ruta directa | la conducta observada al resolver el predicado, con la condición que la produjo | no aplica: no hubo mutación |
 | E34 | paridad entre las dos copias del intake | worktree descartable creado desde el commit base | comparar byte a byte | cmp sin salida en los tres archivos | las dos sedes instaladas | la salida del comando que decide, más el estado del árbol antes y después | se remueve el worktree descartable al terminar |
 | E35 | ausencia exhaustiva de la regla anterior | worktree descartable creado desde el commit base | buscar la regla retirada | ninguna manda al árbol principal | las tres vistas del intake | la salida del comando que decide, más el estado del árbol antes y después | se remueve el worktree descartable al terminar |
+| E36 | un `.plans/<id>/` cerrado por derivación o promoción lo adopta el ciclo completo | worktree descartable creado desde el commit base | invocar el ciclo completo sobre ese mismo `<id>` | 3b adopta el directorio: escribe marcador y paquete, y `antecedentes.md` y el handoff quedan intactos | el handoff trae `ruta_directa.cierre` en `derivada` o `promovida` | la salida del comando que decide, más el inventario del directorio antes y después | se remueve el worktree descartable al terminar |
+| E37 | una reversión de **[K4]** no se reabre como corrida interrumpida | worktree descartable creado desde el commit base | invocar de nuevo tras revertir lo propio | la ruta no entra por **[N1]** y no reinicia el trabajo que el usuario terminó | el handoff trae `ruta_directa.activa: false` con `cierre: revertida` | la salida del comando que decide, más el estado del árbol antes y después | se remueve el worktree descartable al terminar |
 <!-- ruta-directa:matriz:fin -->
 
 ## Paso `resume` (retomar un flujo / cambiar de contexto)
