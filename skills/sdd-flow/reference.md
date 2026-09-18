@@ -8531,19 +8531,48 @@ eligió»: el mismo bloque significaría las dos cosas.
 ### Cómo un punto de despacho opera por la plataforma
 
 Resuelta la rama (a) del carrier, el punto **expresa intención y consume el resultado**. Las
-capacidades son cinco y la lista es exhaustiva: **crear** el worker, **entregarle** su encargo,
-**esperar** con su presupuesto, **obtener** su resultado y **liquidar** lo creado. En esa rama **no
-sobrevive ningún verbo de plataforma**: un punto que nombra un subcomando de Orca o de Herdr está
-modelando la plataforma en vez de usarla, y esa prosa envejece con cada release ajeno sin que nada
-la ponga roja.
+capacidades son seis y la lista es exhaustiva: **crear** el worker, **colocarlo** respecto del
+conductor, **entregarle** su encargo, **esperar** con su presupuesto, **obtener** su resultado y
+**liquidar** lo creado. En esa rama **no sobrevive ningún verbo de plataforma**: un punto que
+nombra un subcomando de Orca o de Herdr está modelando la plataforma en vez de usarla, y esa prosa
+envejece con cada release ajeno sin que nada la ponga roja.
 
 Al routing entre guías se entrega la **operación con su régimen**, no las capacidades sueltas. La
-lectura atomizada queda negada: sin su objeto ni su régimen, las cinco capacidades caen enteras en la
+lectura atomizada queda negada: sin su objeto ni su régimen, las seis capacidades caen enteras en la
 guía ordinaria, cuya descripción cubre crear un agente, mandarle un prompt y esperar en una terminal.
 El régimen lo da la regla de pertenencia, en
 `skills/cross-review/corridas-en-vuelo.md` → «La clase de operación se sigue de la pertenencia»,
 que **se carga antes del preflight**: sin ella el punto no tiene con qué expresar su intención y
 el routing resuelve sin el dato que lo decide.
+
+#### La colocación se pide como intención, y su resultado se declara
+
+La colocación admite una lista cerrada de exactamente dos valores: `adyacente-al-conductor` e
+`independiente`. Es una capacidad y no un atributo de **crear** porque su contrato contiene una
+intención elegible, un costo consentido y un resultado observable; cuántas operaciones internas
+requiera una plataforma no la define. La asimetría de la tabla de «El perfil viaja al crear, y se
+contrasta» es evidencia del costo en una plataforma medida, no una definición universal.
+
+Pedir `adyacente-al-conductor` puede volver **inacreditable el perfil**. En al menos una plataforma
+medida las dos opciones son **excluyentes por contrato**; por ese costo, el invariante de familia se
+comprueba **antes de lanzar**, en vez de acreditarse después.
+
+**Excepción al fallo cerrado, y su destino en la matriz canónica.** Si falta la capacidad de colocar
+como se pidió, esa ausencia no hace fallar cerrado el preflight: la corrida **continúa por la
+plataforma**, con la colocación que esa plataforma aplique, y declara la colocación efectivamente
+obtenida o su estado **incierto** con el motivo. La excepción existe porque la colocación determina
+dónde se ve el worker, no si existe, trabaja o se liquida; afirmar una colocación no obtenida sigue
+vedado.
+
+**Ese destino tiene precedencia sobre la segunda fila de «Los cuatro destinos del preflight de
+capacidades», y la matriz lo declara de su lado.** Sin esa precedencia, la ausencia de colocación cae
+en «falla antes del primer recurso y no falta ninguna capacidad obligatoria» y ordenaría **degradar a
+la vía por línea de comandos**, que contradice dos cosas a la vez: esta excepción, que manda
+continuar; y «La activación de la plataforma es atómica», que prohíbe que un punto se escape por
+línea de comandos. Con las tres redacciones conviviendo, dos conductores igualmente conformes
+ejecutaban comportamientos distintos. Degradar toda la fase por dónde queda una ventana sería además
+desproporcionado: se perdería el registro que la plataforma da, para comprar una preferencia de
+visibilidad.
 
 #### El routing entre guías lo deciden las guías
 
@@ -8708,7 +8737,7 @@ la atiende — y eso último solo lo dice el intento, con su error.
 
 Este criterio se define en «El routing entre guías lo deciden las guías».
 
-#### Los tres destinos del preflight de capacidades
+#### Los cuatro destinos del preflight de capacidades
 
 El preflight comprueba que las skills cargadas exponen lo que el flujo necesita, y **cada fallo tiene
 su destino fijado**, que depende de dos cosas: si lo que falta es obligatorio, y si ya se crearon
@@ -8719,9 +8748,17 @@ recursos.
 | falta una capacidad **obligatoria**, o el **perfil efectivo** reportado difiere del solicitado al crear una terminal | **falla cerrado antes de crear** ningún recurso |
 | falla **antes del primer recurso** y no falta ninguna capacidad obligatoria | **degrada** a la vía por línea de comandos |
 | devuelve evidencia **ilegible o contradictoria** **después** de haber creado recursos | el resultado es **incierto**: **no degrada** y los residuales se enumeran |
+| falta la capacidad de **colocar** como se pidió, y solo ella | **continúa por la plataforma** con la colocación que aplique, y **declara la obtenida** o su estado incierto |
 
-**Las tres filas se distinguen por dos preguntas, y el orden entre ellas importa.** Primero: ¿falta
-algo obligatorio? Si falta, no hay degradación posible —degradar sería emitir ese worker por línea de
+**La cuarta fila se evalúa primero, porque es la única acotada a una capacidad concreta.** La
+colocación no es obligatoria, así que sin esta precedencia caería en la segunda fila y ordenaría
+degradar; y degradar un punto suelto por línea de comandos es justo lo que «La activación de la
+plataforma es atómica» prohíbe. Su fundamento está del lado de la capacidad, en «La colocación se
+pide como intención, y su resultado se declara»: lo que se pierde al no colocar es visibilidad, no
+corrección, y la corrida sigue teniendo el registro completo de la plataforma.
+
+**Las otras tres filas se distinguen por dos preguntas, y el orden entre ellas importa.** Primero:
+¿falta algo obligatorio? Si falta, no hay degradación posible —degradar sería emitir ese worker por línea de
 comandos, que es justo lo que la plataforma resuelta prohíbe—. Después: ¿ya hay recursos? Con
 recursos creados, una evidencia que no se puede leer **no es un permiso para empezar de nuevo por
 otra vía**: los procesos anteriores pueden seguir vivos, y arrancar la vía por línea de comandos
@@ -8806,7 +8843,9 @@ transporte:
   fase: orca                  # la fase que este carrier gobierna; uno de otra fase NO es válido
   transport: plataforma       # plataforma | cli — `cli` es una ELECCIÓN registrada, no una ausencia
   plataforma: orca            # herdr | orca — la registrada, y la única identidad que la retoma consulta
-  esquema: 1                  # versión de ESTE bloque; una que esta instalación no interpreta degrada
+  esquema: 2                  # versión de ESTE bloque; una que esta instalación no interpreta degrada
+                              # es 2 porque el consentimiento al que apunta trae `colocacion_pedida`;
+                              # un consentimiento sin ese campo se escribe con 1 y nada cambia
   consentimiento: .plans/<id>/transporte-consentimiento.json   # PUNTERO al consentimiento que autorizó la elección
   workspace: /ruta/absoluta/al/worktree-de-los-paneles
   corrida: .plans/<id>/transporte-corrida.jsonl   # ledger de la corrida; su propietario decide la adopción
@@ -8832,9 +8871,37 @@ El archivo de **consentimiento** que apunta el bloque no guarda una señal de qu
   "mostrado": "<el texto literal de los cinco puntos de la oferta>",
   "digest": "<sha256 de `mostrado`>",
   "momento": "2026-01-01T00:00:00+00:00",
-  "alcance": {"workers": [{"rol": "w1", "worktree": "/ruta/absoluta"}, {"rol": "w2", "worktree": "/ruta/absoluta"}], "abrir_sesion": true}
+  "alcance": {"workers": [{"rol": "w1", "worktree": "/ruta/absoluta", "colocacion_pedida": "adyacente-al-conductor"}, {"rol": "w2", "worktree": "/ruta/absoluta", "colocacion_pedida": "adyacente-al-conductor"}], "abrir_sesion": true}
 }
 ```
+
+**`alcance.workers[].colocacion_pedida` registra la intención de colocación**, y su lectura
+es de tres valores.
+Sus valores presentes son los dos del dominio cerrado —`adyacente-al-conductor` e `independiente`—;
+si el campo está **ausente**, el consentimiento es **anterior a esta capacidad**, no se infiere ningún
+valor y su lectura no falla. La lectura remite a la tabla trivaluada de `alcance.abrir_sesion`: el
+campo presente es una decisión expresada y la ausencia una pregunta que nunca se hizo.
+
+**Esa lectura cubre una sola dirección, y la otra la cierra el `esquema`.** Un consumidor que conoce
+el campo leyendo un consentimiento que no lo trae queda cubierto por la ausencia. La dirección
+contraria —un consumidor que **no** conoce el campo leyendo un consentimiento que **sí** lo trae— no
+la cubre ninguna lectura del documento nuevo, porque ese consumidor nunca lo va a leer: lo único que
+mira es el `esquema` del bloque. Entonces **un bloque cuyo consentimiento lleva `colocacion_pedida`
+se escribe con `esquema: 2`**, y una instalación que no interprete ese esquema **degrada**, que es la
+conducta que ese campo ya declara.
+
+**Por qué acá sube y en el puntero a la corrida no, que es la asimetría que lo decide.** Aquel campo
+no sube el esquema porque **su ausencia no autoriza**: un consumidor que lo ignore no concede nada y
+falla del lado seguro. La colocación no se comporta así. Ignorar un `colocacion_pedida` **presente**
+no es abstenerse: es aplicar el default de la plataforma, que puede **contradecir el texto que el
+usuario consintió** — exactamente el defecto que esta capacidad viene a cerrar. Un campo cuya
+presencia cambia el comportamiento no se puede compatibilizar con una lectura que el otro lado no
+ejecuta.
+
+**Lo que esto cuesta, dicho antes de cobrarlo.** Una instalación anterior degrada la retoma de una
+corrida con colocación consentida, en vez de continuarla. Es el precio de que no pueda aplicar un
+default contra lo consentido, y se paga solo en las corridas que efectivamente piden colocación: un
+consentimiento sin el campo sigue en `esquema: 1` y ningún consumidor cambia.
 
 **`alcance.abrir_sesion` registra la respuesta al punto de apertura, y su lectura es trivaluada.**
 Existe porque abrir la sesión del conductor y correr los workers como paneles son **dos efectos
@@ -8862,7 +8929,7 @@ Vía consentida **con** apertura:
 {
   "corrida": ".plans/<id>/transporte-corrida.jsonl",
   "mostrado": "<los cinco puntos>", "digest": "<sha256>", "momento": "<ISO-8601>",
-  "alcance": {"workers": [{"rol": "w1", "worktree": "/ruta/absoluta"}, {"rol": "w2", "worktree": "/ruta/absoluta"}], "abrir_sesion": true}
+  "alcance": {"workers": [{"rol": "w1", "worktree": "/ruta/absoluta", "colocacion_pedida": "adyacente-al-conductor"}, {"rol": "w2", "worktree": "/ruta/absoluta", "colocacion_pedida": "adyacente-al-conductor"}], "abrir_sesion": true}
 }
 ```
 
@@ -8872,7 +8939,7 @@ Vía consentida **sin** apertura — mismos campos de workers, la clave en falso
 {
   "corrida": ".plans/<id>/transporte-corrida.jsonl",
   "mostrado": "<los cinco puntos>", "digest": "<sha256>", "momento": "<ISO-8601>",
-  "alcance": {"workers": [{"rol": "w1", "worktree": "/ruta/absoluta"}, {"rol": "w2", "worktree": "/ruta/absoluta"}], "abrir_sesion": false}
+  "alcance": {"workers": [{"rol": "w1", "worktree": "/ruta/absoluta", "colocacion_pedida": "adyacente-al-conductor"}, {"rol": "w2", "worktree": "/ruta/absoluta", "colocacion_pedida": "adyacente-al-conductor"}], "abrir_sesion": false}
 }
 ```
 
@@ -8905,7 +8972,10 @@ ante la segunda **no**, porque la elección ya está tomada para esta fase.
 **El `esquema` del bloque no sube por este campo, y eso es deliberado.** Subirlo haría que toda
 instalación que no interprete el esquema nuevo degrade la retoma a headless, porque un
 esquema que no interpreta es su señal de degradación. La compatibilidad la da la **lectura
-trivaluada**: un consentimiento viejo no trae la clave, y la ausencia no autoriza. Por eso el
+trivaluada**: un consentimiento viejo no trae la clave, y la ausencia no autoriza. **El criterio es
+la ausencia, no la novedad del campo**: vale para todo campo cuya ausencia no conceda nada, y **no**
+se extiende a uno cuya presencia cambie el comportamiento de quien lo ignora — ver
+`alcance.workers[].colocacion_pedida`, que por eso sí sube el esquema. Por eso el
 puntero a la corrida va **siempre presente** — al no existir la combinación sin workers, no hay
 caso en que falte, y ningún consumidor del bloque cambia.
 
@@ -8916,6 +8986,10 @@ registrar la elección y **acotarla**: sin `alcance`, consentir una vez autoriza
 de paneles en cualquier directorio. Su forma es la del **lote real** —ver «El alcance es el lote
 real, no un tope fijo»—, y un consentimiento sellado con la forma anterior se sigue leyendo: por qué
 se conserva esa lectura está declarado ahí, en una sola sede.
+
+Después del consentimiento, el ledger de la corrida registra por cada worker su rol y la colocación
+obtenida con su evidencia, o el estado **incierto** con su motivo. Ese registro es posterior al
+consentimiento y no modifica su texto ni su `digest`.
 
 **La retoma no detecta, y eso no es lo mismo que no mirar el entorno.** Para **resolver el destino**
 consulta la identidad de la plataforma **persistida** y de ninguna otra, reusando los cuatro estados
