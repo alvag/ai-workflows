@@ -1519,6 +1519,9 @@ medición está en «La rama por terminales», más abajo.
 el árbol arrancaría al conductor sobre un worktree todavía sin trasladar, sembrar ni verificar — y en
 Orca, donde la primitiva combina apertura y arranque, eso ocurriría en el mismo acto.
 
+El régimen de esta receta es la **operación de terminales ordinaria**. Sus verbos no se portan a un
+punto de despacho, que está gobernado por la regla de pertenencia del contrato y no por esta receta.
+
 #### Paso 0 — leer la autorización
 
 Precondición de todo lo demás. El bloque `transporte` trae el **puntero** al consentimiento; la
@@ -8534,18 +8537,28 @@ sobrevive ningún verbo de plataforma**: un punto que nombra un subcomando de Or
 modelando la plataforma en vez de usarla, y esa prosa envejece con cada release ajeno sin que nada
 la ponga roja.
 
+Al routing entre guías se entrega la **operación con su régimen**, no las capacidades sueltas. La
+lectura atomizada queda negada: sin su objeto ni su régimen, las cinco capacidades caen enteras en la
+guía ordinaria, cuya descripción cubre crear un agente, mandarle un prompt y esperar en una terminal.
+El régimen se obtiene de «La clase de operación se sigue de la pertenencia».
+
 #### El routing entre guías lo deciden las guías
 
 Una plataforma puede publicar **más de una skill** —una que cubre la coordinación de workers y otra
-la operación de terminales—. El flujo carga las que cubren esas dos capacidades y **no elige entre
-ellas**: aplica el **routing que sus propias descripciones declaran**, que es lo que esas skills ya
-dicen sobre cuándo usar cada una y cuándo no.
+la operación de terminales—. El flujo carga **todas las guías del terreno como conjunto**. Con una
+sola no hay reparto que resolver; cuando hay varias, el reparto sale de sus descripciones.
+
+Si una descripción es insuficiente, las descripciones se solapan o se contradicen, el flujo lo
+declara y se detiene; no desempata.
 
 **Por qué no un criterio propio.** Un reparto escrito acá es una copia del de la plataforma, y la
 copia se desincroniza con la primera versión que reordene sus capacidades — sin que ningún
-verificador de este repositorio pueda verlo, porque la fuente vive afuera. Delegarlo tiene su costo
-declarado: si las dos descripciones se solapan o se contradicen, el flujo **no desempata**, lo
-declara y se detiene.
+verificador de este repositorio pueda verlo, porque la fuente vive afuera.
+
+**Que el usuario no tenga que saberlo es el criterio, no una comodidad.** La partición entre esas
+skills es una decisión de quien las publica y puede cambiar en la versión siguiente: una interfaz
+que obligue a elegir entre ellas traslada al usuario una distinción que no es suya y que envejece
+sola.
 
 #### Una indicación concreta del usuario no se vuelve a decidir
 
@@ -8690,17 +8703,7 @@ la atiende — y eso último solo lo dice el intento, con su error.
 
 #### Cuál de las guías del terreno provee cada capacidad
 
-Cuando una plataforma publica **más de una** skill que cubre este terreno —coordinación de workers y
-operación de terminales—, el flujo resuelve cuál provee la capacidad concreta **a partir de lo que
-ellas declaran**, y **no le pide al usuario que conozca la diferencia**. Se cargan **todas** como
-conjunto, cuantas sean, y el reparto sale de sus descripciones. Con **una sola** no hay reparto que resolver, y esa es la otra mitad del
-criterio: la pregunta la abre el binario al servir más de una, no el flujo al suponerlo.
-
-**Que el usuario no tenga que saberlo es el criterio, no una comodidad.** La partición entre esas dos
-skills es una decisión de quien las publica y puede cambiar en la versión siguiente: una interfaz que
-obligue a elegir entre ellas traslada al usuario una distinción que no es suya y que envejece sola.
-Si las descripciones no alcanzan para resolver la capacidad, el flujo **lo declara y se detiene**; no
-adivina por el nombre de la skill.
+Este criterio se define en «El routing entre guías lo deciden las guías».
 
 #### Los tres destinos del preflight de capacidades
 
