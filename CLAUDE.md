@@ -689,7 +689,7 @@ Más allá del spec, estas skills usan patrones consistentes que hay que respeta
 
 ## El ecosistema de skills
 
-- **`sdd-flow`** — SDD de un solo repo, punta a punta: `constitution → gather-context → specify → clarify → create-branch → plan → tasks → implement → verify`. `standard` conserva los gates por complejidad; `expedited` solo admite `trivial`/`normal` con riesgo `low` y fusiona ceremonia, no calidad ni autorizaciones. Con Jira en `"on"`, mantiene la aprobación local y externa de la spec antes del gate conjunto de plan y tasks.
+- **`sdd-flow`** — SDD de un solo repo, punta a punta: `constitution → gather-context → specify → clarify → create-branch → plan → tasks → implement → verify`. `standard` conserva los gates por complejidad; `expedited` solo admite `trivial`/`normal` con riesgo `low` y fusiona ceremonia, no calidad ni autorizaciones. Con Jira en `"on"`, mantiene la aprobación local y externa de la spec antes del gate conjunto de plan y tasks. Un cambio chico, entendido y de riesgo bajo puede salir por la **ruta directa**, que implementa sin producir plan ni tasks y conserva el piso de calidad entero. <!-- ruta-directa:vista -->
 - **`sdd-orchestrator`** — SDD multi-repo para un objetivo que cruza 2+ repos. Evalúa perfil y riesgo globales mediante el helper de `sdd-flow`, aplica `expedited` solo all-or-nothing, materializa el reparto completo antes de su gate atómico y delega cada plan a `sdd-flow`; una divergencia falla cerrado sin bloquear repos independientes.
 - **`sdd-pr-feedback`** — procesa comentarios de review de PRs de **Bitbucket** (MCP `bb_*`).
 - **`co-explore`** — exploración paralela cross-model (read-only). Modos: `explore`, `counter-plan`, `investigate`, `debate`. La invocan `sdd-flow`/`sdd-orchestrator` cuando `co_explore` está activo; `investigate`/`debate` son standalone.
@@ -788,12 +788,33 @@ artefactos que generan y a las instrucciones erróneas que contengan: una instru
 un artefacto que otra skill rechaza, un gate que se dispara sin salida practicable, una plantilla que no
 coincide con lo que su validador exige, un paso cuyo orden vuelve imposible cumplir el siguiente.
 
-**Siempre el archivo del árbol principal del repo, nunca el del worktree en el que estés
-corriendo.** Como `.plans/` es local y untracked, un worktree no lo hereda: escribir ahí crea un
-segundo registro que nadie lee y que desaparece cuando el worktree se remueve, y el archivo único es
-justamente lo que permite ver que un incidente se repite. Si la sesión corre en un worktree, el
-árbol principal se resuelve con `git worktree list` —es la primera entrada— y el registro va a
-`<árbol-principal>/.plans/incidentes-skills.md`.
+<!-- registro-incidentes:sede:inicio -->
+**[L1] La sede es el registro del worktree donde corre la sesión, y quien registra es el
+conductor.** El archivo es `.plans/incidentes-skills.md` **de ese worktree**, no el del árbol
+principal. Quien lee la doctrina y escribe la entrada es el **conductor** del flujo, venga de donde
+venga el pedido: mover el archivo no vuelve capaz a un actor incapaz, y el actor de esta regla es y
+sigue siendo él.
+
+La razón es la que el propio aislamiento compra: un conductor que corre en un worktree tiene que
+escribir **fuera de él** para cumplir la regla anterior, rompiendo el aislamiento que se compró al
+crearlo, y contra el preámbulo que le dice que ejecute todo desde ese directorio.
+
+**[L2] Lo que se acepta a cambio, dicho por escrito.** La frecuencia de reincidencias queda
+**particionada** entre worktrees: dos apariciones del mismo defecto en dos worktrees distintos ya no
+se ven juntas, y esa frecuencia era justamente lo que distinguía una trampa estructural de un
+descuido puntual. Y el registro de un worktree **se pierde** al retirarlo. Las dos pérdidas se
+aceptan: la práctica del usuario ya resuelve la consolidación a mano, flujo por flujo.
+
+**[L3] El registro existente con cabecera admisible es precondición de la práctica.** Abrirlo es
+**responsabilidad del usuario**, que lo hace al iniciar un flujo. Si falta, el registro se detiene
+**sin reconstruir** la cabecera ni escribir a medias: un archivo a medio formar es peor que ninguno,
+porque el lector del intake lo rechaza sin decir por qué.
+
+**[L4] Si el repositorio tiene un `constitution` local que ordena registrar en el árbol principal**,
+esta doctrina **tiene precedencia** y es lo que hay que **actualizar** en ese `constitution` para que
+las dos digan lo mismo. No se construye **migración automática**: mover los registros existentes, si
+se quiere, es una decisión del usuario y un trabajo aparte.
+<!-- registro-incidentes:sede:fin -->
 
 El destinatario del archivo es **el agente que va a corregir la skill**, no quien trabaja en el
 proyecto donde se usó: nada de rutas ni artefactos del proyecto, sí la skill, la sección o regla

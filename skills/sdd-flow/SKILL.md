@@ -3,8 +3,10 @@ name: sdd-flow
 description: >-
   Desarrolla un cambio de punta a punta en un repositorio con SDD: spec, plan, tasks, gates y
   verificación previa al commit. Invocación explícita: /sdd-flow inicia; /sdd-flow implement seguido
-  de la ruta retoma o implementa; admite prefijo de rama. Para varios repos, sdd-orchestrator; para un
+  de la ruta retoma o implementa; admite prefijo de rama. Un cambio chico, entendido y de riesgo bajo
+  puede salir por la ruta directa, sin plan ni tasks. Para varios repos, sdd-orchestrator; para un
   work order aprobado, cross-implement.
+# <!-- ruta-directa:vista -->
 argument-hint: "[init | <ticket|descripción> | implement .plans/<id>/ | continuemos con <id>]"
 # disable-model-invocation es una clave REAL de Claude Code: bloquea la invocación
 # vía Skill tool (la skill queda solo-slash: /sdd-flow). Se mantiene a propósito:
@@ -68,9 +70,9 @@ disable-model-invocation: true
 
 # sdd-flow — Spec-Driven Development portable
 
-Skill **agnóstica de proyecto**: no asume lenguaje, framework, host de Git, tracker ni rama base. Todo se **descubre por convención** y se puede sobrescribir en `.specify/config.yml` (ver "Adaptación al proyecto"). La fuente de verdad es la **especificación**, no el código: cada cambio nace de un `spec.md` con criterios de aceptación verificables, y se cierra comprobándolos.
+Skill **agnóstica de proyecto**: no asume lenguaje, framework, host de Git, tracker ni rama base. Todo se **descubre por convención** y se puede sobrescribir en `.specify/config.yml` (ver "Adaptación al proyecto"). La fuente de verdad es la **especificación**, no el código: cada cambio nace de un `spec.md` con criterios de aceptación verificables, y se cierra comprobándolos. La **ruta directa** es la excepción acotada: ver el Router de intención. <!-- ruta-directa:vista -->
 
-El ciclo SDD:
+El ciclo SDD, que la **ruta directa** no recorre porque sale temprano del Router: <!-- ruta-directa:vista -->
 
 ```
 init (opcional) → constitution → gather-context (preflight Git/worktree) → co-explore (opcional, paralela) → specify ─┐
@@ -110,6 +112,12 @@ Como `.plans/` y `.specify/` son **locales (untracked)**, git no los mueve al ca
 `<id>` = clave del ticket si existe (`ABC-123`), o slug del título si no hay tracker.
 
 ## Reglas no negociables
+
+> Las reglas 1 a 4 admiten una excepción acotada, la **ruta directa**: no produce `spec.md` salvo
+> con aprobación externa, no tiene gates de artefacto, no produce tasks que aprobar y, por eso
+> mismo, no tiene relación `AC-n`↔task que validar — liga el criterio de éxito con su prueba y su
+> evidencia. Sus condiciones de entrada y su conducta viven en `reference.md` → "La ruta directa".
+> Las reglas 5 a 11 rigen sin excepción. <!-- ruta-directa:vista -->
 
 1. **La spec manda.** No se escribe `plan.md` sin un `spec.md` aprobado, salvo el cambio *trivial* y la excepción explícita `normal + expedited + jira_approval: "off"` del router de perfil, donde la spec estable se aprueba atómicamente con plan y tasks. No se implementa sin tasks aprobadas. La verificación final chequea contra los criterios de aceptación de la spec.
 2. **Gates escalados, nunca silenciosos.** La complejidad fija la base `standard`; el número efectivo también depende de `delivery_profile` y `jira_approval` según el router. El agente **siempre** anuncia la clasificación, el perfil y qué gates quedan activos, con su justificación, y espera confirmación en cada uno. No fusionar gates sin avisar.
@@ -594,6 +602,7 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
 | El usuario dice (ej.) | Paso SDD |
 |---|---|
 | "hagamos un spike", "probemos si esto es viable", "necesito entender X antes de decidir" — una exploración acotada para reducir incertidumbre, sin compromiso de entregar producto | `co-explore` en invocación directa, que por default resuelve `explore` — mapear el terreno y evaluar viabilidad es justo lo que ese modo hace. `investigate` si la incógnita es por qué algo falla, `debate` si es elegir entre opciones ya enunciadas. Un spike **no abre flujo SDD**: sin compromiso de producto no hay qué especificar, y lo que deje —un mapa, una hipótesis, una prueba de concepto descartable— es insumo para decidir, no la entrega. Que produzca evidencia verificable no lo saca de acá. Si concluye que hay algo que construir, recién ahí se abre el flujo con lo aprendido |
+| "esto es chico y lo tengo claro, implementalo directo", "sin plan, andá derecho al cambio" — siempre **dentro** de una invocación explícita (`/sdd-flow …` en Claude, `$sdd-flow …` en Codex), nunca por prosa suelta | **ruta directa**: un pedido cuyo alcance, comprensión, verificación, riesgo y dominio ya están resueltos se implementa sin producir plan ni tasks. Las condiciones observables que la habilitan, y la conducta ante cada una, viven en `reference.md` → "La ruta directa", que se lee al derivar un pedido acá. Si alguna condición no se satisface, la ruta no entra: se nombra cuál falló y se vuelve al **ciclo completo** por su invocación explícita  <!-- ruta-directa:fila --> |
 | "empezar ticket X", pega clave del tracker + descripción, "nuevo feature" | ciclo completo desde `gather-context`, que abre la preflight Git/worktree (gates según complejidad) → **STOP en cada gate** |
 | "/sdd-flow init", "configura el proyecto", "inicializa sdd", "crea el `.specify/`" | `init` |
 | "principios del proyecto", "define el constitution" | `constitution` |

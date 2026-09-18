@@ -17,6 +17,7 @@ recuperación; no redefine sus matrices.
 - [Aprobación externa de la spec (Jira)](#aprobación-externa-de-la-spec-jira)
 - [Detección de stack y comandos](#detección-de-stack-y-comandos)
 - [Preflight Git y worktree](#preflight-git-y-worktree)
+- [La ruta directa](#la-ruta-directa)
 - [Paso `resume` (retomar un flujo / cambiar de contexto)](#paso-resume-retomar-un-flujo--cambiar-de-contexto)
 - [Esquema de `.specify/config.yml`](#esquema-de-specifyconfigyml)
 - [Contexto de dominio](#contexto-de-dominio)
@@ -1864,6 +1865,275 @@ La v1 conserva el snapshot de origen y no administra archive ni retiro del workt
 limitado a la reparación confirmada anterior. El flujo no se muda ni despacha la sesión: solo entrega
 el launcher cuando el destino ya está comprobado.
 
+## La ruta directa
+
+Un cambio chico y entendido paga hoy el pipeline de fases completo. Esta sección aloja lo que es
+**exclusivo** de la salida temprana que lo evita: sus condiciones de entrada, la conducta ante cada
+resultado de evaluarlas, su algoritmo, qué hace con el procedimiento ligado a plan y tasks, su
+preflight, la aprobación externa, la integración y su matriz funcional.
+
+Lo que **no** es exclusivo no se repite acá: el piso de calidad, la clasificación Git y las
+autorizaciones de integración tienen sede vigente y se citan por puntero. Reenumerarlas crearía una
+autoridad paralela que diverge sola de la original, y entonces habría dos respuestas para la misma
+pregunta sin nada que señale cuál rige.
+
+**Se lee cuando el Router deriva un pedido a la ruta directa**, y no en cada corrida.
+
+<!-- ruta-directa:condiciones:inicio -->
+### Condiciones de entrada
+
+Conjunción **cerrada**: estas cinco y ninguna más. Cada término nombra el dato observable que lo
+decide y quién tiene autoridad sobre él, porque sin esas dos cosas dos implementaciones
+incompatibles pueden declararse correctas.
+
+- **[C1] alcance local** — dato: el conjunto de archivos que el pedido nombra, unido al que la búsqueda de antecedentes identificó · autoridad: el conductor, con el árbol delante · satisfecha si todos caen dentro de un único módulo o skill · no satisfecha si alguno cae fuera · indeterminada si el conjunto no se puede enumerar antes de editar.
+- **[C2] comprensión del pedido** — dato: que no quede ninguna ambigüedad que `clarify` abriría · autoridad: el usuario, en el checkpoint de la ruta · satisfecha si el conductor no tiene ninguna pregunta que cambiaría el diseño · no satisfecha si hay al menos una · indeterminada si el conductor no puede decidir si la hay.
+- **[C3] verificación conocida** — dato: un comando o una observación concreta, nombrable antes de editar, con su resultado esperado · autoridad: el conductor · satisfecha si se pueden nombrar los dos · no satisfecha si falta alguno · indeterminada si no se puede decidir sin explorar.
+- **[C4] riesgo bajo** — dato: el valor que produce la reevaluación propia descrita abajo · autoridad: el análisis vigente, que es quien lo produce; el usuario lo ratifica en el checkpoint y no lo produce · satisfecha con `low` · no satisfecha con `high` · indeterminada con `unknown`.
+- **[C5] dominio no sensible** — dato: la lista de dominios caros de equivocar, **citada** de su sede vigente · autoridad: esa sede, que es la señal de dominio de alto riesgo de `SKILL.md` → "Clasificador de complejidad" y se lee al evaluar C5 · satisfecha si ninguno aplica · no satisfecha si alguno aplica · indeterminada si no se puede decidir cuál aplica.
+
+Un valor **indeterminado** cuenta como no satisfecha. La columna existe para que la conducta sea
+observable, no para abrir una tercera salida.
+
+**C4 exige una reevaluación propia, y por eso no alcanza con el valor de `gather-context`.** Ese
+valor es provisional por contrato, y en el ciclo completo lo reevalúa `analyze` con evidencia del
+código. Una ruta que evita `analyze` y admite el provisional deja entrar cambios que el análisis
+habría marcado altos. Entonces la ruta reevalúa el riesgo **después** de la búsqueda de antecedentes
+y de la causa raíz, y **antes** de tocar el árbol; `high` o `unknown` derivan al ciclo completo.
+<!-- ruta-directa:condiciones:fin -->
+
+<!-- ruta-directa:conducta:inicio -->
+### Conducta ante cada resultado
+
+- **[K1] alguna condición no satisfecha** — la ruta no entra. Se nombra **cuál** falló y se deriva a la invocación explícita del ciclo completo. No hay variante permisiva: no existe una ruta directa "con menos garantías".
+- **[K2] las cinco satisfechas** — la ruta entra y el pedido se implementa por ella. Es el caso positivo, y está escrito porque sin él un predicado siempre falso satisface a los demás sin ofrecer nunca la ruta.
+- **[K3] un dato ausente o indeterminado** — cuenta como no satisfecha. La ausencia de evidencia no es evidencia de elegibilidad.
+- **[K4] expansión material del alcance** — la elegibilidad se revalida antes de la primera mutación y otra vez ante la expansión. Si aparece con un diff ya parcial, la ruta se detiene y la decisión vuelve al usuario.
+
+#### El checkpoint de expansión con diff parcial
+
+El conductor presenta el inventario de archivos propios, el diff visible, y estas tres opciones. Lo
+que no se hace en ninguna de ellas es revertir sin preguntar: **nunca se revierte** de forma
+automática.
+
+| Opción | Precondición | Efecto sobre el diff parcial | Estado que deja |
+|---|---|---|---|
+| revertir solo lo propio | la única con precondición fuerte: el inventario está completo y ninguno es ajeno | se revierten esos archivos y solo esos | el árbol como antes; la ruta termina sin entregar |
+| conservar y promover al ciclo completo | que el inventario esté enumerado, aunque sea incompleto o se solape con cambios ajenos | el diff queda intacto | se abre un `.plans/<id>/` cuyo `gather-context` declara ese diff como trabajo propio de una ruta interrumpida, no como suciedad ajena |
+| conservar y detener | ídem que la anterior | el diff queda intacto y sin flujo | el marcador de abajo queda escrito con `fase: interrumpida-con-diff` y su inventario |
+
+**Por qué la precondición fuerte gobierna solo la primera.** Revertir destruye, así que exige saber
+exactamente qué es propio; conservar no destruye nada. Atar las tres a la misma precondición dejaba
+sin salida practicable justo el caso que este checkpoint existe para atender —inventario incierto o
+solapado—, incluida la opción de no hacer nada.
+<!-- ruta-directa:conducta:fin -->
+
+<!-- ruta-directa:algoritmo:inicio -->
+### El algoritmo
+
+1. El Router deriva el pedido acá, dentro de una invocación explícita ya admitida.
+2. Evaluar las cinco condiciones de entrada y resolver por la conducta que corresponda.
+3. Buscar antecedentes con el procedimiento incondicional de siempre, y establecer la causa raíz antes de editar.
+4. Reevaluar el riesgo con la evidencia reunida; `high` o `unknown` derivan al ciclo completo.
+5. Resolver la aprobación externa por los cuatro estados de abajo. Con **[J1]** o **[J2]** la ruta sigue sin producir artefactos. Con **[J3]** o **[J4]** produce `spec.md` y entra a `publish-spec`, que es el único artefacto que esta ruta llega a escribir y el único momento en que lo hace; al quedar a la espera, escribe el marcador con `fase: awaiting-jira-approval`.
+6. Presentar el checkpoint de ubicación y rama: lo elige el usuario, nunca se decide solo.
+7. Correr el preflight propio y, recién con su resultado, tocar el árbol por primera vez.
+8. Implementar, reuniendo la evidencia que C3 nombró antes de empezar.
+9. Integrar por las autorizaciones vigentes, cada una pedida por separado.
+
+**El punto de reentrada de una invocación posterior lo decide el marcador**, no este orden: sin
+marcador se vuelve al paso 1 y se evalúa todo de nuevo; con `fase: awaiting-jira-approval` se retoma
+la espera externa; con `fase: interrumpida-con-diff`, el checkpoint de expansión.
+<!-- ruta-directa:algoritmo:fin -->
+
+<!-- ruta-directa:sustitucion:inicio -->
+### Qué pasa con el procedimiento ligado a plan y tasks
+
+El procedimiento vigente de implementación es **plan-bound**: persiste campos en el header del plan,
+marca tasks, escribe Extras en el plan, avanza su `status` y construye el PR desde spec y plan. Una
+excepción que libere las reglas y deje el procedimiento intacto entra a implementar y se traba ahí,
+así que acá se declara qué hace la ruta con **cada** consumidor.
+
+| Consumidor del procedimiento | Decisión | Con qué |
+|---|---|---|
+| el `ledger` de secuencia | omite | no hay secuencia que registrar: la ruta no delega ni particiona |
+| las `huellas` de cobertura y delta | omite | su insumo es el par plan/tasks, que acá no existe |
+| `promocion-tasks-ready` | omite | no hay gate de tasks que promover |
+| las marcas de task `[x]` | sustituye | el estado de avance vive en la sede temporal de abajo |
+| `verify` | reutiliza | se ejecuta igual, contra el criterio enunciado en vez de contra los `AC-n` de una spec |
+| `Extras` | sustituye | los cambios fuera de criterio se anotan en la sede temporal **[S4]** **antes de stagear**, que es la garantía que el Paso común compra con su `E-n`, y de ahí viajan al reporte final y al cuerpo del commit |
+| el `status` del plan | omite | no hay artefacto donde persistirlo; el avance es de la corrida |
+| la metadata del commit | reutiliza | el tipo sale del cambio y el scope del ticket de la rama, igual que siempre |
+| el PR | reutiliza | su descripción se arma desde el criterio enunciado y la evidencia, no desde spec y plan |
+| el reporte final | reutiliza | mismo contenido, con el criterio en lugar de la tabla de `AC-n` |
+| `archive` | omite | no hay `.plans/<id>/` que archivar |
+
+**[O1]** persistir campos en el header · **[O2]** marcar tasks · **[O3]** escribir Extras ·
+**[O4]** avanzar el `status` · **[O5]** construir el PR desde spec y plan: las cinco operaciones que
+la excepción alcanza, cada una resuelta en la tabla de arriba.
+
+#### La sede de lo que plan y tasks sostenían
+
+Es **temporal y de la corrida**, no durable, salvo que el marcador la vuelva durable:
+
+- **[S1]** el criterio de éxito enunciado — lo que C3 nombró antes de editar.
+- **[S2]** los archivos tocados — el inventario que alimenta el stage selectivo.
+- **[S3]** la evidencia — la salida del comando u observación que C3 nombró.
+- **[S4]** los cambios fuera de criterio — lo que entra al commit sin mapear al criterio.
+- **[S5]** el estado de avance — qué se hizo y qué falta.
+- **[S6]** la ligadura — el criterio de éxito nombra su comprobación y su evidencia **antes** de editar, y eso es lo que sustituye a la relación AC↔task, que en esta ruta no existe.
+<!-- ruta-directa:sustitucion:fin -->
+
+<!-- ruta-directa:piso:inicio -->
+### El piso de calidad
+
+Los nueve ítems del piso rigen **sin excepción**. No se enumeran acá: su sede vigente es
+`skills/sdd-flow/delivery-profile.md` → "9. Piso de calidad y autorización externa", que se lee al
+entrar a la ruta y enumera qué conserva toda corrida cualquiera sea su perfil.
+
+**El delta es uno solo:** la ruta no produce plan ni tasks. Eso es lo que ahorra, y es todo lo que
+ahorra — ni la búsqueda de antecedentes, ni la causa raíz, ni la evidencia fresca, ni la revisión
+final del diff.
+<!-- ruta-directa:piso:fin -->
+
+<!-- ruta-directa:preflight:inicio -->
+### El preflight propio
+
+Una entrada directa del Router **no** abre la preflight Git y de worktree, así que la ruta corre la
+suya antes de mutar. La clasificación de estados es la misma de "Preflight Git y worktree", que se
+lee al llegar acá; lo que sigue es el delta.
+
+Estados admitidos de HEAD y de rama, como lista cerrada: HEAD en una rama con nombre, y el árbol sin
+cambios ajenos. Todo lo demás —HEAD desprendido, repositorio sin commits, rama base irresoluble— no
+es admitido: se nombra el estado observado y la decisión vuelve al usuario.
+
+El criterio de árbol sucio es observable y su dato es **el mismo comando de esa sede**, con sus
+exclusiones incluidas: `git status --porcelain --untracked-files=all -- . ':(exclude).plans' ':(exclude).specify'`.
+Lo que aparezca ahí y no esté en el inventario propio es ajeno. Las dos exclusiones no son un
+detalle: sin ellas, todo repositorio con flujos SDD locales clasifica `.plans/` como cambio ajeno
+y el preflight falla cerrado siempre.
+
+**El usuario elige** ubicación y rama, en un checkpoint previo a toda mutación: ninguna elección de
+rama es automática. Ante duda, ante un cambio ajeno o ante un estado no enumerado, **falla cerrado**.
+Editar la rama base por defecto no es un resultado alcanzable por esta vía.
+<!-- ruta-directa:preflight:fin -->
+
+<!-- ruta-directa:jira:inicio -->
+### La aprobación externa
+
+Se clasifica por predicado en cuatro estados disjuntos, cada uno con su conducta:
+
+- **[J1] inactiva** — el modo está apagado. La ruta corre sin artefactos.
+- **[J2] inaplicable** — el modo está activo pero falta el tracker o la clave padre, así que no hay destino de publicación. **No** se ofrece vía manual: devuelve la decisión al usuario.
+- **[J3] aplicable** — hay destino y capacidad de escritura. Produce `spec.md`, atraviesa el gate local de aprobación y el preview con confirmación de la escritura externa, y publica.
+- **[J4] degradada recuperable** — hay destino pero la escritura automática falla. Produce igual `spec.md` y ofrece la vía manual con su clave de subtarea.
+
+La ruta **reutiliza** los gates vigentes de `publish-spec` y no define variantes propias. Lo único
+propio es **cuándo** se entra, y es el paso 5 del algoritmo: después de resolver las condiciones y la
+reevaluación de riesgo, y **antes** del checkpoint de ubicación y rama. Ese orden importa porque
+`spec.md` es el artefacto que se publica, así que tiene que existir antes de que haya rama, y porque
+una spec rechazada afuera no debe dejar rama creada.
+
+#### El marcador durable
+
+**[R1]** Cuando la ruta deja estado que una sesión nueva tiene que poder reanudar, lo escribe en el
+frontmatter de `handoff.md`:
+
+```yaml
+ruta_directa:
+  activa: true
+  fase: awaiting-jira-approval    # o interrumpida-con-diff
+  criterio: "<el criterio de éxito enunciado, en una línea>"
+  archivos: ["<rutas tocadas hasta la pausa>"]
+  inventario_completo: true       # solo con interrumpida-con-diff
+```
+
+Son **dos** fases porque son dos estados durables distintos: la espera por aprobación externa, y la
+salida del checkpoint de expansión cuando el usuario elige conservar. Sin la segunda, la promesa de
+que el trabajo "queda registrado" no tenía sede ni campo.
+<!-- ruta-directa:jira:fin -->
+
+<!-- ruta-directa:integracion:inicio -->
+### La integración, y cómo se retoma
+
+Las cinco autorizaciones de integración quedan **intactas**, y cada una conserva su
+**autorización independiente**: no producir artefactos no concede ninguna. Su sede vigente es el **Paso común** de
+`SKILL.md`, que se lee al llegar a integrar; acá no se reenumeran.
+
+**El delta es uno solo:** lo que cada autorización recibe para decidir. En vez de la tabla de `AC-n`
+y el diff contra el plan, recibe el criterio de éxito enunciado y la evidencia que lo prueba.
+
+#### La retoma
+
+`resume` evalúa `ruta_directa.activa` **antes de** la rama que hoy clasifica todo flujo sin plan por
+su `gate_status`. Con el marcador presente, la retoma continúa la ruta —aprobación, observaciones o
+degradación— y no deriva al ciclo completo. Sin marcador, ese routing queda intacto.
+
+- **[N1]** Una corrida interrumpida **sin** marcador se trata como ruta nueva: la invocación posterior vuelve a evaluar predicado, antecedentes y evidencia **desde cero**.
+- **[N2]** Si existe un `.plans/<id>/` vivo para el mismo pedido, ese flujo tiene **precedencia** y la ruta no entra.
+<!-- ruta-directa:integracion:fin -->
+
+<!-- ruta-directa:matriz:inicio -->
+### Matriz funcional
+
+Un escenario por cada rama crítica. Los que mutan el árbol corren en un worktree descartable creado
+desde el commit base y removido al terminar; los que tocarían el tracker usan el estado `[J2]`, que
+no escribe nada externo. Cada fila declara su fixture, su acción, su entrada, el resultado observado
+que la cierra, su evidencia y su restauración.
+
+**Cuáles se ejercen al escribir esta sección, y cuáles quedan diferidos.** Solo cuatro son ejercibles
+desde un cambio documental, porque su sujeto es el estado del repositorio y no la conducta de un
+agente: **E22** y **E23** —el registro local presente y ausente—, **E34** —la paridad entre las dos
+copias instaladas— y **E35** —la ausencia exhaustiva de la regla anterior—. Esos cuatro se ejecutan y
+su resultado se registra.
+
+Los **treinta y uno restantes quedan diferidos a la primera corrida real de la ruta**, y el motivo es
+el mismo para todos: su sujeto es **un conductor recorriendo la ruta**, no un archivo. `E1` a `E21` y
+`E24` a `E33` describen qué hace la ruta cuando alguien la usa —evaluar el predicado, derivar al ciclo
+completo, abrir el checkpoint de expansión, pedir una autorización—, y eso no ocurre al escribir la
+instrucción: ocurre al seguirla. Declararlos ejecutados desde acá sería exactamente el "diff
+documental con búsquedas en verde" que AC-21 rechaza. Se ejercen, y se registran, la primera vez que
+un pedido entre por esta ruta.
+
+| ID | Rama que cubre | Fixture | Acción | Resultado observado | Entrada | Evidencia | Restauración |
+|---|---|---|---|---|---|---|---|
+| E1 | ruta positiva de extremo a extremo, sin plan ni tasks | worktree descartable creado desde el commit base | recorrer la ruta hasta el reporte final | reporte final emitido; no existe plan.md ni tasks.md | pedido chico con las cinco condiciones satisfechas | la salida del comando que decide, más el estado del árbol antes y después | se remueve el worktree descartable al terminar |
+| E2 | entrada positiva | ninguno: se evalúa sin tocar el árbol | evaluar el predicado | la ruta entra por [K2] | las cinco satisfechas | la conducta observada al resolver el predicado, con la condición que la produjo | no aplica: no hubo mutación |
+| E3 | C1 no satisfecha, las otras cuatro sí | ninguno: se evalúa sin tocar el árbol | evaluar el predicado | la ruta no entra, nombra C1 y deriva al ciclo completo | el pedido toca dos módulos | la conducta observada al resolver el predicado, con la condición que la produjo | no aplica: no hubo mutación |
+| E4 | C2 no satisfecha, las otras cuatro sí | ninguno: se evalúa sin tocar el árbol | evaluar el predicado | la ruta no entra, nombra C2 y deriva al ciclo completo | queda una ambigüedad que clarify abriría | la conducta observada al resolver el predicado, con la condición que la produjo | no aplica: no hubo mutación |
+| E5 | C3 no satisfecha, las otras cuatro sí | ninguno: se evalúa sin tocar el árbol | evaluar el predicado | la ruta no entra, nombra C3 y deriva al ciclo completo | no se puede nombrar el comando antes de editar | la conducta observada al resolver el predicado, con la condición que la produjo | no aplica: no hubo mutación |
+| E6 | C4 no satisfecha, las otras cuatro sí | ninguno: se evalúa sin tocar el árbol | evaluar el predicado | la ruta no entra, nombra C4 y deriva al ciclo completo | la reevaluación da high | la conducta observada al resolver el predicado, con la condición que la produjo | no aplica: no hubo mutación |
+| E7 | C5 no satisfecha, las otras cuatro sí | ninguno: se evalúa sin tocar el árbol | evaluar el predicado | la ruta no entra, nombra C5 y deriva al ciclo completo | el cambio toca un dominio caro de equivocar | la conducta observada al resolver el predicado, con la condición que la produjo | no aplica: no hubo mutación |
+| E8 | un dato indeterminado | ninguno: se evalúa sin tocar el árbol | evaluar el predicado | cuenta como no satisfecha por [K3] | el conjunto de archivos no se puede enumerar | la conducta observada al resolver el predicado, con la condición que la produjo | no aplica: no hubo mutación |
+| E9 | expansión antes de la primera mutación | ninguno: se evalúa sin tocar el árbol | revalidar | se revalida y se resuelve sin diff que atender | aparece alcance nuevo sin árbol tocado | la conducta observada al resolver el predicado, con la condición que la produjo | no aplica: no hubo mutación |
+| E10 | expansión después de la primera mutación | ninguno: se evalúa sin tocar el árbol | revalidar | la ruta se detiene y abre el checkpoint con sus tres opciones | aparece alcance nuevo con diff parcial | la conducta observada al resolver el predicado, con la condición que la produjo | no aplica: no hubo mutación |
+| E11 | preflight ante HEAD desprendido | worktree descartable creado desde el commit base | correr el preflight propio | falla cerrado y la decisión vuelve al usuario | HEAD en un commit sin rama | la salida del comando que decide, más el estado del árbol antes y después | se remueve el worktree descartable al terminar |
+| E12 | preflight ante rama base irresoluble | worktree descartable creado desde el commit base | correr el preflight propio | falla cerrado y la decisión vuelve al usuario | el remoto no resuelve su HEAD | la salida del comando que decide, más el estado del árbol antes y después | se remueve el worktree descartable al terminar |
+| E13 | preflight ante árbol sucio con cambio ajeno | worktree descartable creado desde el commit base | correr el preflight propio | falla cerrado y la decisión vuelve al usuario | un archivo modificado fuera del inventario propio | la salida del comando que decide, más el estado del árbol antes y después | se remueve el worktree descartable al terminar |
+| E14 | stage selectivo: se deniega | worktree descartable creado desde el commit base | pedir esa autorización | la ruta no avanza y ninguna otra autorización se da por concedida | el usuario no concede stage selectivo | la salida del comando que decide, más el estado del árbol antes y después | se remueve el worktree descartable al terminar |
+| E15 | gate de revisión manual: se deniega | worktree descartable creado desde el commit base | pedir esa autorización | la ruta no avanza y ninguna otra autorización se da por concedida | el usuario no concede gate de revisión manual | la salida del comando que decide, más el estado del árbol antes y después | se remueve el worktree descartable al terminar |
+| E16 | commit confirmado: se deniega | worktree descartable creado desde el commit base | pedir esa autorización | la ruta no avanza y ninguna otra autorización se da por concedida | el usuario no concede commit confirmado | la salida del comando que decide, más el estado del árbol antes y después | se remueve el worktree descartable al terminar |
+| E17 | push confirmado: se deniega | worktree descartable creado desde el commit base | pedir esa autorización | la ruta no avanza y ninguna otra autorización se da por concedida | el usuario no concede push confirmado | la salida del comando que decide, más el estado del árbol antes y después | se remueve el worktree descartable al terminar |
+| E18 | apertura de PR: se deniega | worktree descartable creado desde el commit base | pedir esa autorización | la ruta no avanza y ninguna otra autorización se da por concedida | el usuario no concede apertura de PR | la salida del comando que decide, más el estado del árbol antes y después | se remueve el worktree descartable al terminar |
+| E19 | retoma durable tras la aprobación externa | worktree descartable creado desde el commit base | retomar en sesión nueva | continúa la espera externa sin volver al ciclo completo | handoff con fase awaiting-jira-approval | la salida del comando que decide, más el estado del árbol antes y después | se remueve el worktree descartable al terminar |
+| E20 | corrida interrumpida sin marcador | worktree descartable creado desde el commit base | invocar de nuevo | se trata como ruta nueva y evalúa todo desde cero | no hay handoff | la salida del comando que decide, más el estado del árbol antes y después | se remueve el worktree descartable al terminar |
+| E21 | precedencia de un flujo vivo | worktree descartable creado desde el commit base | evaluar la ruta | la ruta no entra y gana el flujo existente | existe .plans/<id>/ para el mismo pedido | la salida del comando que decide, más el estado del árbol antes y después | se remueve el worktree descartable al terminar |
+| E22 | registro local presente | worktree descartable creado desde el commit base | registrar un incidente | queda escrito en el registro del worktree | el worktree tiene su registro con cabecera admisible | la salida del comando que decide, más el estado del árbol antes y después | se remueve el worktree descartable al terminar |
+| E23 | registro local ausente | worktree descartable creado desde el commit base | registrar un incidente | se detiene sin reconstruir la cabecera ni escribir a medias | el worktree no tiene registro | la salida del comando que decide, más el estado del árbol antes y después | se remueve el worktree descartable al terminar |
+| E24 | conflicto de autoridades | ninguno: se evalúa sin tocar el árbol | leer la doctrina | la precedencia declarada resuelve, sin migración | constitution local ordena el árbol principal | la conducta observada al resolver el predicado, con la condición que la produjo | no aplica: no hubo mutación |
+| E25 | piso de calidad: búsqueda completa de antecedentes | ninguno: se evalúa sin tocar el árbol | comprobar búsqueda completa de antecedentes | el ítem se cumplió igual que en el ciclo completo | una corrida por la ruta directa | la conducta observada al resolver el predicado, con la condición que la produjo | no aplica: no hubo mutación |
+| E26 | piso de calidad: causa raíz antes de editar | ninguno: se evalúa sin tocar el árbol | comprobar causa raíz antes de editar | el ítem se cumplió igual que en el ciclo completo | una corrida por la ruta directa | la conducta observada al resolver el predicado, con la condición que la produjo | no aplica: no hubo mutación |
+| E27 | piso de calidad: criterios de aceptación observables | ninguno: se evalúa sin tocar el árbol | comprobar criterios de aceptación observables | el ítem se cumplió igual que en el ciclo completo | una corrida por la ruta directa | la conducta observada al resolver el predicado, con la condición que la produjo | no aplica: no hubo mutación |
+| E28 | piso de calidad: pruebas enfocadas | ninguno: se evalúa sin tocar el árbol | comprobar pruebas enfocadas | el ítem se cumplió igual que en el ciclo completo | una corrida por la ruta directa | la conducta observada al resolver el predicado, con la condición que la produjo | no aplica: no hubo mutación |
+| E29 | piso de calidad: evidencia fresca | ninguno: se evalúa sin tocar el árbol | comprobar evidencia fresca | el ítem se cumplió igual que en el ciclo completo | una corrida por la ruta directa | la conducta observada al resolver el predicado, con la condición que la produjo | no aplica: no hubo mutación |
+| E30 | piso de calidad: checks relevantes | ninguno: se evalúa sin tocar el árbol | comprobar checks relevantes | el ítem se cumplió igual que en el ciclo completo | una corrida por la ruta directa | la conducta observada al resolver el predicado, con la condición que la produjo | no aplica: no hubo mutación |
+| E31 | piso de calidad: revisión final del diff | ninguno: se evalúa sin tocar el árbol | comprobar revisión final del diff | el ítem se cumplió igual que en el ciclo completo | una corrida por la ruta directa | la conducta observada al resolver el predicado, con la condición que la produjo | no aplica: no hubo mutación |
+| E32 | piso de calidad: reversión o forward-fix | ninguno: se evalúa sin tocar el árbol | comprobar reversión o forward-fix | el ítem se cumplió igual que en el ciclo completo | una corrida por la ruta directa | la conducta observada al resolver el predicado, con la condición que la produjo | no aplica: no hubo mutación |
+| E33 | piso de calidad: nunca silenciar linters o compiladores | ninguno: se evalúa sin tocar el árbol | comprobar nunca silenciar linters o compiladores | el ítem se cumplió igual que en el ciclo completo | una corrida por la ruta directa | la conducta observada al resolver el predicado, con la condición que la produjo | no aplica: no hubo mutación |
+| E34 | paridad entre las dos copias del intake | worktree descartable creado desde el commit base | comparar byte a byte | cmp sin salida en los tres archivos | las dos sedes instaladas | la salida del comando que decide, más el estado del árbol antes y después | se remueve el worktree descartable al terminar |
+| E35 | ausencia exhaustiva de la regla anterior | worktree descartable creado desde el commit base | buscar la regla retirada | ninguna manda al árbol principal | las tres vistas del intake | la salida del comando que decide, más el estado del árbol antes y después | se remueve el worktree descartable al terminar |
+<!-- ruta-directa:matriz:fin -->
+
 ## Paso `resume` (retomar un flujo / cambiar de contexto)
 
 Punto de entrada para un flujo empezado. `.plans/` es visible entre ramas del mismo working tree, no entre linked worktrees: un snapshot de origen debe seguir el `worktree_path` y leer el paquete vivo antes de enrutar.
@@ -1905,6 +2175,7 @@ Punto de entrada para un flujo empezado. `.plans/` es visible entre ramas del mi
    - Si hay **`antecedentes.md` con `busqueda: in-progress`** —haya handoff o no— → la pausa ocurrió **durante la búsqueda de antecedentes**. La condición arranca por el **artefacto** y no por un campo del handoff a propósito: `pause` escribe el handoff solo cuando la pausa es **ordenada**, y una sesión que muere, un `Ctrl-C` o un cierre de terminal dejan el ledger a medio correr sin handoff ninguno. Retomar así:
      - **Recomputar los fingerprints** —los que declare `reference.md` → "Búsqueda de antecedentes", que es su única sede: enumerarlos acá crea una segunda que se desincroniza— y compararlos con los persistidos. Se re-corre **solo la unión** de las filas que indique la matriz de invalidación de `reference.md` → "Búsqueda de antecedentes"; las fuentes ya terminadas que ningún fingerprint invalidó **no se vuelven a correr**.
      - **Un parcial no es un resultado.** Con fuentes pendientes, el estado se completa antes de clasificar: leerlo como "no había nada" es el mismo error que la búsqueda viene a evitar.
+   - Si el frontmatter trae **`ruta_directa.activa: true`** → la pausa es de una **ruta directa**, no de un flujo con artefactos, y se retoma por su propia rama: `reference.md` → "La ruta directa" → "La integración, y cómo se retoma". Va **antes** que la rama de abajo porque una ruta directa que espera aprobación externa también trae `gate_status`, y sin este orden caería en la rama del flujo con artefactos y seguiría a `create-branch → analyze → plan`, que es justo lo que no tiene que hacer. Sin el campo, el routing de abajo queda intacto.
    - Si tiene **`gate_status: awaiting`** (o `changes-requested`) → el flujo está en el **gate de Jira**; ir a "Gate de Jira (esperando aprobación externa)" abajo.
    - Si no (pausa común en `specify`/`clarify`, con `spec.md` ya escrita), usar
      `spec_approved_at`, nunca la mera existencia de rama. Timestamp → posicionarse con checkout
@@ -7764,6 +8035,11 @@ worktree_evidence:
 antecedentes: .plans/<id>/antecedentes.md   # PUNTERO, no copia: términos, fuentes y fingerprints viven solo ahí
 # puntero al pedido congelado (siempre que el flujo lo tenga):
 pedido: .plans/<id>/pedido/   # PUNTERO, no copia: el literal y el registro se leen en su sede
+# marcador de la ruta directa (solo si la pausa es de una ruta directa; lo consume `resume` ANTES
+# de la rama de `gate_status`):
+# ruta_directa: { activa: true, fase: awaiting-jira-approval | interrumpida-con-diff,
+#                 criterio: "<el criterio de éxito enunciado>", archivos: [...],
+#                 inventario_completo: true | false }
 # campos del gate de Jira (solo si es una pausa por aprobación externa):
 gate_status: awaiting           # awaiting | changes-requested | approved
 parent_key: ABC-123
