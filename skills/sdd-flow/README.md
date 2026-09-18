@@ -10,11 +10,14 @@ Recorre el ciclo SDD escribiendo artefactos auditables y deteniéndose en gates 
 init (opcional) → constitution → gather-context + perfil + preflight Git/worktree → specify → clarify → publish-spec (Jira, opcional) → create-branch → analyze → plan → tasks → implement → verify
 ```
 
+> La **ruta directa** es la excepción acotada y no recorre ese ciclo: sale temprano del Router de
+> intención e implementa sin producir plan ni tasks. <!-- ruta-directa:vista -->
+
 - **Portable:** detecta stack (Node, Go, Rust, Python, Java, .NET…), host de Git (GitHub/GitLab/Bitbucket/otro), issue tracker y rama base por convención. Nada hardcodeado. Override opcional en `.specify/config.yml`.
 - **Dos perfiles, la misma calidad:** `standard` conserva la secuencia habitual. `expedited` solo es elegible para cambios `trivial` o `normal` con `risk: low`; acelera la ceremonia, no elimina causa raíz, AC, pruebas, revisión de diff, rollback ni autorizaciones.
 - **Gates escalados y explícitos:** trivial conserva 1 gate y complex, 3 más `clarify` obligatorio. En normal, `standard` usa 2 gates; `expedited` con Jira en `"off"` aprueba spec, plan y tasks en un único gate atómico. El agente muestra evaluación y recomendación, y tú eliges.
-- **Trazabilidad:** cada criterio de aceptación (`AC-n`) se mapea a tasks y se verifica al final; si un AC de comportamiento tiene test, el test debe tener dientes (`revert → FAIL`, `restore → PASS`).
-- **Estado persistido / retomable:** cada flujo guarda su fase (`status`) y su rama en el `plan.md`, y un `handoff.md` con "dónde quedé, qué decidí y cómo sigo". Puedes dejarlo a medias —en cualquier fase—, atender algo urgente en otra rama y retomarlo después desde donde quedó, incluso en otra sesión, sin re-investigar.
+- **Trazabilidad:** cada criterio de aceptación (`AC-n`) se mapea a tasks y se verifica al final —salvo por la **ruta directa**, que no produce tasks y liga el criterio con su prueba y su evidencia—; si un AC de comportamiento tiene test, el test debe tener dientes (`revert → FAIL`, `restore → PASS`). <!-- ruta-directa:vista -->
+- **Estado persistido / retomable:** cada flujo guarda su fase (`status`) y su rama en el `plan.md`, y un `handoff.md` con "dónde quedé, qué decidí y cómo sigo". Puedes dejarlo a medias —en cualquier fase—, atender algo urgente en otra rama y retomarlo después desde donde quedó, incluso en otra sesión, sin re-investigar. La **ruta directa** es la excepción: su estado durable, cuando lo deja, vive en el marcador `ruta_directa` del handoff. <!-- ruta-directa:vista -->
 - **Preflight Git y worktree:** al iniciar un ciclo completo detecta HEAD, base y worktrees; comprueba el remoto, recomienda partir de la base y aislar el cambio, y espera tu decisión. Tras el escaneo propone la rama semántica y `~/worktrees/<proyecto>/<id>`, traslada el paquete del flujo, conserva el config local que lo gobierna, siembra los demás paths ignorados que aceptes, ejecuta el bootstrap y verifica todo. No mueve esta sesión: muestra el comando exacto para abrir otra en el destino.
 - **Ramas heredadas o directas:** fuera del ciclo nuevo, `create-branch` conserva sus cuatro salidas seguras: seguir en la actual, cortar desde la base, cortar desde la actual o renombrar una rama solo-local cuando cumple sus precondiciones.
 - **Doctor read-only:** `/sdd-flow doctor <id>` revisa coherencia del flujo sin escribir: ACs huérfanos, placeholders, Produce/Consume, branch/base, verify stale y ruido del working tree.
@@ -66,7 +69,7 @@ Como `.plans/` es local, está visible entre ramas del mismo working tree, pero 
    ├─ <id>/                     # un flujo en curso
    │  ├─ contrato-pedido.md     # marcador de adopción: decide si la vara del pedido aplica
    │  ├─ pedido/                # el pedido congelado: literal.jsonl (inmutable) + registro.md (append-only)
-   │  ├─ plan.md                # SIEMPRE: header YAML (incl. status + branch) + CÓMO + resultado de verify
+   │  ├─ plan.md                # salvo por la ruta directa: header YAML (incl. status + branch) + CÓMO + resultado de verify
    │  ├─ spec.md                # en NORMAL y COMPLEJO (en trivial va embebida en plan.md → ## Spec)
    │  ├─ tasks.md               # en NORMAL y COMPLEJO (en trivial van embebidas en plan.md → ## Tasks)
    │  ├─ bitacora.md            # constancia append-only de los pasos del contrato
@@ -78,7 +81,13 @@ Como `.plans/` es local, está visible entre ramas del mismo working tree, pero 
       └─ <id>/                  # misma estructura, ya terminada
 ```
 
-> **Artefactos por complejidad:** *trivial* genera solo `plan.md` (con `## Spec` y `## Tasks` embebidas); *normal* y *complejo* separan `spec.md` + `plan.md` + `tasks.md`. El header del plan materializa `complexity`, `delivery_profile` y `risk`; el par de perfil es indivisible y cualquier forma parcial o desconocida falla cerrado. En `standard`, la diferencia entre normal y complejo es de **gates**, no de archivos: en *normal* las tasks se aprueban en el gate del plan; en *complejo* el gate de `tasks` es propio. `expedited` aplica la secuencia descrita arriba. La skill **siempre anuncia dónde quedaron las tasks**. La Vía B (bootstrap) y `verify` leen los archivos separados si existen, o las secciones embebidas si no.
+> El árbol de arriba describe el ciclo completo. La **ruta directa** no produce `plan.md` ni
+> `tasks.md`. Con `spec.md` hay una excepción, y tiene una sola causa: cuando la aprobación externa
+> aplica, la spec es **lo que se publica**, así que la ruta la produce y entra a `publish-spec`.
+> Escribe además el ledger de antecedentes, siempre. Su estado durable, cuando lo deja, vive en el
+> marcador `ruta_directa` del handoff. <!-- ruta-directa:vista -->
+
+> **Artefactos por complejidad:** *trivial* genera solo `plan.md` (con `## Spec` y `## Tasks` embebidas); *normal* y *complejo* separan `spec.md` + `plan.md` + `tasks.md`. El header del plan materializa `complexity`, `delivery_profile` y `risk`; el par de perfil es indivisible y cualquier forma parcial o desconocida falla cerrado. En `standard`, la diferencia entre normal y complejo es de **gates**, no de archivos: en *normal* las tasks se aprueban en el gate del plan; en *complejo* el gate de `tasks` es propio. `expedited` aplica la secuencia descrita arriba. La skill **siempre anuncia dónde quedaron las tasks**. La Vía B (bootstrap) y `verify` leen los archivos separados si existen, o las secciones embebidas si no. La **ruta directa** queda fuera de esta tabla: no produce `plan.md` ni `tasks.md`, y produce `spec.md` solo cuando la aprobación externa aplica. <!-- ruta-directa:vista -->
 
 > **Flujo personal, no del equipo:** ni `.specify/` ni `.plans/` se trackean. La skill nunca los stagea ni commitea. Como es personal, conviene ignorarlos vía `.git/info/exclude` (ignore **local** al clon, que no se versiona) en vez de `.gitignore` (que se comparte). Ese ignore local lo gestiona el usuario; la skill no lo toca.
 

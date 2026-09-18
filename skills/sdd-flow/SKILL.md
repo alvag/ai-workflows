@@ -3,8 +3,10 @@ name: sdd-flow
 description: >-
   Desarrolla un cambio de punta a punta en un repositorio con SDD: spec, plan, tasks, gates y
   verificación previa al commit. Invocación explícita: /sdd-flow inicia; /sdd-flow implement seguido
-  de la ruta retoma o implementa; admite prefijo de rama. Para varios repos, sdd-orchestrator; para un
+  de la ruta retoma o implementa; admite prefijo de rama. Un cambio chico, entendido y de riesgo bajo
+  puede salir por la ruta directa, sin plan ni tasks. Para varios repos, sdd-orchestrator; para un
   work order aprobado, cross-implement.
+# <!-- ruta-directa:vista -->
 argument-hint: "[init | <ticket|descripción> | implement .plans/<id>/ | continuemos con <id>]"
 # disable-model-invocation es una clave REAL de Claude Code: bloquea la invocación
 # vía Skill tool (la skill queda solo-slash: /sdd-flow). Se mantiene a propósito:
@@ -68,9 +70,9 @@ disable-model-invocation: true
 
 # sdd-flow — Spec-Driven Development portable
 
-Skill **agnóstica de proyecto**: no asume lenguaje, framework, host de Git, tracker ni rama base. Todo se **descubre por convención** y se puede sobrescribir en `.specify/config.yml` (ver "Adaptación al proyecto"). La fuente de verdad es la **especificación**, no el código: cada cambio nace de un `spec.md` con criterios de aceptación verificables, y se cierra comprobándolos.
+Skill **agnóstica de proyecto**: no asume lenguaje, framework, host de Git, tracker ni rama base. Todo se **descubre por convención** y se puede sobrescribir en `.specify/config.yml` (ver "Adaptación al proyecto"). La fuente de verdad es la **especificación**, no el código: cada cambio nace de un `spec.md` con criterios de aceptación verificables, y se cierra comprobándolos. La **ruta directa** es la excepción acotada: ver el Router de intención. <!-- ruta-directa:vista -->
 
-El ciclo SDD:
+El ciclo SDD, que la **ruta directa** no recorre porque sale temprano del Router: <!-- ruta-directa:vista -->
 
 ```
 init (opcional) → constitution → gather-context (preflight Git/worktree) → co-explore (opcional, paralela) → specify ─┐
@@ -110,6 +112,12 @@ Como `.plans/` y `.specify/` son **locales (untracked)**, git no los mueve al ca
 `<id>` = clave del ticket si existe (`ABC-123`), o slug del título si no hay tracker.
 
 ## Reglas no negociables
+
+> Las reglas 1 a 4 admiten una excepción acotada, la **ruta directa**: no produce `spec.md` salvo
+> con aprobación externa, no tiene gates de artefacto, no produce tasks que aprobar y, por eso
+> mismo, no tiene relación `AC-n`↔task que validar — liga el criterio de éxito con su prueba y su
+> evidencia. Sus condiciones de entrada y su conducta viven en `reference.md` → "La ruta directa".
+> Las reglas 5 a 11 rigen sin excepción. <!-- ruta-directa:vista -->
 
 1. **La spec manda.** No se escribe `plan.md` sin un `spec.md` aprobado, salvo el cambio *trivial* y la excepción explícita `normal + expedited + jira_approval: "off"` del router de perfil, donde la spec estable se aprueba atómicamente con plan y tasks. No se implementa sin tasks aprobadas. La verificación final chequea contra los criterios de aceptación de la spec.
 2. **Gates escalados, nunca silenciosos.** La complejidad fija la base `standard`; el número efectivo también depende de `delivery_profile` y `jira_approval` según el router. El agente **siempre** anuncia la clasificación, el perfil y qué gates quedan activos, con su justificación, y espera confirmación en cada uno. No fusionar gates sin avisar.
@@ -594,6 +602,7 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
 | El usuario dice (ej.) | Paso SDD |
 |---|---|
 | "hagamos un spike", "probemos si esto es viable", "necesito entender X antes de decidir" — una exploración acotada para reducir incertidumbre, sin compromiso de entregar producto | `co-explore` en invocación directa, que por default resuelve `explore` — mapear el terreno y evaluar viabilidad es justo lo que ese modo hace. `investigate` si la incógnita es por qué algo falla, `debate` si es elegir entre opciones ya enunciadas. Un spike **no abre flujo SDD**: sin compromiso de producto no hay qué especificar, y lo que deje —un mapa, una hipótesis, una prueba de concepto descartable— es insumo para decidir, no la entrega. Que produzca evidencia verificable no lo saca de acá. Si concluye que hay algo que construir, recién ahí se abre el flujo con lo aprendido |
+| "esto es chico y lo tengo claro, implementalo directo", "sin plan, andá derecho al cambio" — siempre **dentro** de una invocación explícita (`/sdd-flow …` en Claude, `$sdd-flow …` en Codex), nunca por prosa suelta | **ruta directa**: un pedido cuyo alcance, comprensión, verificación, riesgo y dominio ya están resueltos se implementa sin producir plan ni tasks. Las condiciones observables que la habilitan, y la conducta ante cada una, viven en `reference.md` → "La ruta directa", que se lee al derivar un pedido acá. Si alguna condición no se satisface, la ruta no entra: se nombra cuál falló y se vuelve al **ciclo completo** por su invocación explícita  <!-- ruta-directa:fila --> |
 | "empezar ticket X", pega clave del tracker + descripción, "nuevo feature" | ciclo completo desde `gather-context`, que abre la preflight Git/worktree (gates según complejidad) → **STOP en cada gate** |
 | "/sdd-flow init", "configura el proyecto", "inicializa sdd", "crea el `.specify/`" | `init` |
 | "principios del proyecto", "define el constitution" | `constitution` |
@@ -668,6 +677,7 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
 3b. **Congelar el pedido, antes de fusionar nada.** Resolver `<id>` y persistir el literal de lo pedido en `.plans/<id>/pedido/literal.jsonl`, más las cláusulas provisionales en `registro.md`. Esquemas, vara, tablas normativas y bloques: `reference.md` → "El pedido congelado". Va **antes** del sub-paso 4 porque la fusión ya interpreta, y lo que la vara necesita comparar es lo que se dijo, no lo que el conductor entendió de eso.
    - **Es incondicional**, igual que el sub-paso 5: no hay clave que lo apague, no es una dependencia blanda y no despacha ningún agente. Un pedido capturado a veces no sirve de vara nunca — el criterio para decir «esto no se pidió» tiene que existir **antes** de que empiece a escribirse lo que se pide, porque si vive dentro de la spec crece junto con ella y cada criterio aplicado amplía su propio patrón de medición.
    - **Un `.plans/<id>/` que ya existe no se adopta: primero se resuelve qué es.** `mkdir -p` es idempotente para el sistema de archivos, no para el flujo. Si ese directorio ya tiene un flujo heredado, uno pausado o un paquete ajeno, escribir el marcador y un literal nuevo lo mete bajo este contrato sin que nadie lo haya decidido —el flujo anterior deja de clasificar heredado y queda gobernado por un pedido que no lo originó— y reescribir `literal.jsonl` rompe la única garantía que el paquete da. Entonces, **si `.plans/<id>/` existe, la celda se resuelve antes de escribir nada**, con la misma sede que usa `resume`.
+     - **Antes de resolver la celda, la transición de la ruta directa.** Si el `handoff.md` de ese directorio trae `ruta_directa.cierre` en `derivada` o `promovida`, no es un flujo heredado: es una **ruta directa que entregó su trabajo a este ciclo**, y 3b **adopta** el directorio —escribe el marcador y el paquete sobre él y conserva `antecedentes.md` y el handoff—. Sin esta precedencia, ese directorio cae en la celda de flujo heredado y la captura se detiene, dejando sin salida practicable la derivación que la propia ruta ordena. La celda de abajo **no se resuelve** en ese caso.
      <!-- invoca: pedido-marcador -->
      **Solo dos celdas continúan la captura**: el directorio **vacío**, que es la caída entre (1) y (2) y la propia celda manda re-correr; y **marcador presente con paquete ausente**, la adopción interrumpida, donde no hay literal que pisar. **Las otras cuatro la detienen** e informan qué se observó: el flujo heredado y el pedido ajeno no se adoptan, y un paquete presente —legible o corrupto— ya está bajo el contrato, así que su salida es `resume`, cuya tabla es la única sede de la cuarentena y de su confirmación humana. Las dos salidas practicables al detenerse son retomar ese flujo o capturar bajo otro `<id>`; ninguna de las dos se elige sola.
    - **La secuencia de creación, en este orden y no en otro:** (1) `mkdir -p .plans/<id>/`, ya resuelta la celda del bullet anterior; (2) escribir `contrato-pedido.md` de forma **atómica** —temporal y `rename`—, que es el marcador que decide si la vara aplica; (3) `mkdir -p .plans/<id>/pedido/`; (4) `literal.jsonl`, una línea por fuente y en orden de llegada; (5) `registro.md`, con las cláusulas provisionales y su traza. El marcador precede al paquete, y `.plans/<id>/` **vacío** es el estado observable de una caída entre (1) y (2): fallo cerrado, se re-corre 3b desde cero.

@@ -623,8 +623,8 @@ sin contexto de esta sesión, y **la única copia** de los incidentes tomados.
 8. **Las restricciones del repo destino** que este flujo puede violar sin darse cuenta: topes de
    verificación, prohibiciones sobre directorios, guardas que hay que correr y **cómo se leen** (hay
    guardas cuyo código de salida no es la señal de salud).
-9. **Dónde se registran los incidentes** si alguna skill falla durante el flujo — con la ruta del
-   árbol principal, porque un worktree no hereda `.plans/`.
+9. **Dónde se registran los incidentes** si alguna skill falla durante el flujo — con la ruta que
+   el archivo de instrucciones del repo destino declare, que es su autoridad.
 10. **El issue de origen**, si el incidente vino de uno: su número, su URL, y la instrucción de
     escribir `Closes #<n>` en el PR. Sin esto el flujo no tiene cómo saber a qué issue pertenece —
     arranca sin contexto de esta sesión— y el issue queda `en-curso` para siempre aunque el arreglo
@@ -1028,6 +1028,5 @@ se iba a corregir, y un fallo de este paso no es motivo para perderla.
 | La plataforma resolvió `headless` | Ninguna identidad viva, o las dos vivas sin observable que distinga al anfitrión | **No es un modo degradado: es parada.** El despacho no ocurre, el registro queda intacto y se reintenta cuando haya plataforma. Un override no lo arregla: también se comprueba |
 
 Todo fallo atribuible a una skill SDD —esta incluida— se registra según la regla del archivo de
-instrucciones del `<repo_destino>`: en su `.plans/incidentes-skills.md` del **árbol principal**,
-resuelto con `git worktree list` si
-la sesión corre en un worktree.
+instrucciones del `<repo_destino>`, que declara su sede. Esta skill no la fija ni la supone: la
+lee de ahí.

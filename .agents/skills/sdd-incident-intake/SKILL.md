@@ -555,5 +555,5 @@ cupos que se repusieron, y el conteo del registro antes y después.
   (topes de verificación, prohibiciones sobre directorios, guardas que hay que correr), van escritas.
   `reference.md` → "El dossier" lo detalla.
 - **Si algo de este procedimiento falla por culpa de una skill SDD**, eso es un incidente y se
-  registra según la regla del archivo de instrucciones del `repo_destino` — en el árbol principal,
-  nunca en el worktree.
+  registra según la regla del archivo de instrucciones del `repo_destino`, que es la autoridad de
+  dónde va.

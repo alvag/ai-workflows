@@ -675,7 +675,7 @@ def test_review_checkpoint(_ctx: Optional[object] = None) -> None:
 def test_descriptions_unchanged(_ctx: Optional[object] = None) -> None:
     """Frontmatter descriptions remain byte-stable while body routers carry the profile."""
     expected = {
-        FLOW_SKILL: "cd0088b8383e8b142e88f15d65529193bf8e799c269017553c8975ae58f0ff99",
+        FLOW_SKILL: "ff1e97e390c3b819ed7187c98091539a26ad1d0ab3181b3450c0d64d43cfb9c3",
         ORCHESTRATOR_SKILL:
             "e2eb2e126c07128afe87efc0cfaf8702ced2cf1594f8bd9b7793060e67548082",
     }
