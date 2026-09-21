@@ -1,11 +1,18 @@
 # Inventario histórico de bloques ejecutables
 
 Este documento es la sede única de los inventarios exigidos por AC-3, AC-6, AC-8 y AC-16.
-Toda evidencia histórica se extrajo del commit `5013b4589d5b6429f9705539268eb0d8ac7ae3fc` mediante `git show`; el árbol de
-trabajo no es autoridad para estos conteos.
+La evidencia se extrajo del commit `5013b4589d5b6429f9705539268eb0d8ac7ae3fc` mediante `git show`; el
+árbol de trabajo no es autoridad para el **contenido** de sus filas.
 
-La identidad de un caso es siempre `matriz/caso`. Los 397 casos contienen 347
-nombres locales distintos y `positivo` aparece 28 veces.
+**Pero el inventario sí se poda cuando una guarda se retira del árbol**, así que dejó de reproducir
+los conteos de aquel commit: el retiro del perfil de entrega se llevó tres guardas con sus casos. Las
+cifras históricas las conserva el snapshot sellado en el tag `migracion/snapshot-dual` —**37** guardas
+y **397** casos—, contra el que recalcula `python3 tests/migracion.py --verify-report`. Por eso las
+dos cardinalidades viven en constantes distintas, `EXPECTED_GUARDS` y `SNAPSHOT_GUARDS`: mientras
+compartieron una sola, podar el inventario dejaba esa comprobación en rojo.
+
+La identidad de un caso es siempre `matriz/caso`. Los 387 casos que quedan contienen 340
+nombres locales distintos y `positivo` aparece 26 veces.
 
 ## Convenciones
 

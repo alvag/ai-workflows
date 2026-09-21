@@ -15,9 +15,9 @@ medido, 26-29 s y verde con la maquina tranquila, 178-194 s y rojo bajo carga, c
 distinto de identidades divergentes en cada corrida. Un caso que da resultados distintos sobre el
 mismo commit no acredita nada, y obligaba a un juicio a mano en cada gate.
 
-La cobertura no se pierde: se comprobo que `validate_coverage` cierra sin el —los 397 tests
-`escenario:` ya cubren los casos migrados y las guardas estan cubiertas por `firma:` y
-`mutante-v24:`—, asi que su aporte era redundante.
+La cobertura no se pierde: se comprobo que `validate_coverage` cierra sin el —los tests
+`escenario:`, uno por caso del catalogo, ya cubren los casos migrados, y las guardas estan cubiertas
+por `firma:` y `mutante-v24:`—, asi que su aporte era redundante.
 """
 
 from __future__ import annotations
@@ -52,6 +52,14 @@ BASE_COMMIT = "5013b4589d5b6429f9705539268eb0d8ac7ae3fc"
 EXPECTED_CASES = 387
 EXPECTED_GUARDS = 34
 EXPECTED_MARKERS = 70
+SNAPSHOT_GUARDS = 37
+
+# `EXPECTED_GUARDS` cuenta las filas `guarda` del inventario **vigente**, que baja cuando una guarda
+# se retira del árbol. `SNAPSHOT_GUARDS` cuenta los scripts del commit sellado en `TAG`, que es
+# inmutable por construcción. Fueron el mismo número hasta que el retiro del perfil de entrega sacó
+# tres guardas del árbol: ahí el inventario bajó a 34 y el snapshot se quedó en 37, y una sola
+# constante para los dos dejó `verify_report` en rojo sin que ningún gate lo mirara —salió de
+# `python3 -m tests` el 2026-08-31—. `EXPECTED_MARKERS` también es del snapshot y por eso no se movió.
 SECTION_TARGETS = "## 1. Nombres base y destino propuesto"
 SECTION_SIGNATURES = "## 6. Tabla cerrada de firmas"
 EVIDENCE_START = "<!-- evidencia-migracion:inicio -->"
@@ -93,7 +101,7 @@ def _read_destinations(root: Path) -> Dict[str, Path]:
         if cells[2] == "guarda":
             destinations[_unquote(cells[0])] = root / _unquote(cells[3])
     if len(destinations) != EXPECTED_GUARDS:
-        raise ValueError("expected 37 guard destinations, found " + str(len(destinations)))
+        raise ValueError(f"expected {EXPECTED_GUARDS} guard destinations, found {len(destinations)}")
     return destinations
 
 
@@ -107,7 +115,7 @@ def _read_arities(root: Path) -> Dict[str, int]:
         if _unquote(cells[1]).startswith("skills/"):
             arities[_unquote(cells[0])] = int(cells[3])
     if len(arities) != EXPECTED_GUARDS:
-        raise ValueError("expected 37 signatures, found " + str(len(arities)))
+        raise ValueError(f"expected {EXPECTED_GUARDS} signatures, found {len(arities)}")
     return arities
 
 
@@ -121,7 +129,7 @@ def _read_catalog(root: Path) -> Dict[str, dict]:
             raise ValueError("duplicate generated identity: " + identity)
         scenarios[identity] = value
     if len(scenarios) != EXPECTED_CASES:
-        raise ValueError("expected 397 generated scenarios, found " + str(len(scenarios)))
+        raise ValueError(f"expected {EXPECTED_CASES} generated scenarios, found {len(scenarios)}")
     return scenarios
 
 
@@ -521,11 +529,13 @@ def verify_report(ref: str = REPORT_TAG, root: Path = ROOT) -> dict:
         for markdown in (extracted / "skills").rglob("*.md"):
             marker_count += markdown.read_text(encoding=ENCODING).count("# @bloque:")
         if marker_count != EXPECTED_MARKERS:
-            raise AssertionError("snapshot marker count is " + str(marker_count))
+            raise AssertionError(
+                f"snapshot marker count is {marker_count}, expected {EXPECTED_MARKERS}")
         scripts = list((extracted / "skills").glob("*/scripts/*.py"))
         guard_scripts = [script for script in scripts if not script.name.startswith("_")]
-        if len(guard_scripts) != EXPECTED_GUARDS:
-            raise AssertionError("snapshot guard script count is " + str(len(guard_scripts)))
+        if len(guard_scripts) != SNAPSHOT_GUARDS:
+            raise AssertionError(
+                f"snapshot guard script count is {len(guard_scripts)}, expected {SNAPSHOT_GUARDS}")
         environment = dict(os.environ)
         environment["PYTHONDONTWRITEBYTECODE"] = "1"
         result = subprocess.run(
