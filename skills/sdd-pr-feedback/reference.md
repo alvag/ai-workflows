@@ -158,7 +158,7 @@ Parámetros comunes:
 |---|---|
 | `context_paths` | el `spec.md` del triage (al revisar plan/tasks) + los artefactos **previos** del Paso 0 (`spec.md`/`plan.md`/`tasks.md`/`review-log.md` de la ronda que generó el PR) + el diff del PR |
 | `working_dir` | raíz del repo |
-| `complexity` | la del flujo |
+| `profundidad` | la del flujo |
 | `ac_context` | los `AC-n` nuevos del triage |
 
 Foco por gate:
@@ -261,7 +261,7 @@ id: PQTCH2025-332
 branch: feature/PQTCH2025-332-...   # la rama del PR (no crear una nueva)
 base_commit: <SHA base del PR>
 change_type: fix
-complexity: normal
+profundidad: normal
 status: tasks-ready                 # listo para implementar; sin esto, resume espera gates
 created_at: <ISO-8601>
 ---

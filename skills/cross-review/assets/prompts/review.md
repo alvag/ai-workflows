@@ -1,5 +1,5 @@
 <!-- prompt `review` · lo despacha `cross-review` · formato: xml
-     placeholders: {artifact_type}, {complexity}, {working_dir}, {dimensiones}, {self_review}
+     placeholders: {artifact_type}, {profundidad}, {working_dir}, {dimensiones}, {self_review}
      ESTE ARCHIVO ES LA ENTRADA EXACTA DEL WORKER: lo que no esté acá no existe para él.
      Se escribe a archivo y nunca se arma inline; cómo llega al worker lo fija el transporte. -->
 
@@ -20,7 +20,7 @@ normativo, seguidas por los cinco encargos de forma con su consigna literal}
 
 <context>
 {contenido de los context_paths relevantes: spec/plan relacionados, master-spec, AC y contratos}
-Complejidad declarada: {complexity}.
+Profundidad declarada: {profundidad}.
 </context>
 
 <self_review>

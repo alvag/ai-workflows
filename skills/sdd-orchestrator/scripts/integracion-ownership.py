@@ -1,4 +1,4 @@
-"""Predicado: valida primero el par global de los planes recibidos; después ninguna fila de un AC
+"""Predicado: valida primero el frontmatter de los planes recibidos; después ninguna fila de un AC
 [integration] vive completa en el contrato de un repo, y cada repo referencia en solo-lectura
 EXACTAMENTE los AC en los que participating_repos lo declara participante —ni uno de menos ni uno de
 más, y ninguno cuando no participa en ninguno—, con la evidencia N/A: orchestration-owned y

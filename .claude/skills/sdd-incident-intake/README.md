@@ -45,7 +45,7 @@ volcar:    leer → mirar aguas arriba → publicar → cotejar → retirar
    respuesta no avanza.
 6. **Resuelve la plataforma de terminales**, crea el worktree, **lo siembra** con la configuración
    ignorada que el flujo necesita, escribe un dossier autocontenido y despacha el flujo —
-   acreditando que arrancó por donde debía y con el encargo entero.
+   acreditando que arrancó por donde debía.
 7. Retira los incidentes tomados del índice **y** del cuerpo, y comprueba que no quedaron residuos.
    Si el incidente vino de un issue, el retiro es **cerrarlo** con su marca de resolución.
 

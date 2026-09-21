@@ -22,10 +22,10 @@ del inventario tiene al menos un test, cada par `matriz/caso` migrado conserva s
 ningún test carece de un origen reconocido. La procedencia vive en `tests/origenes.py`; no exige
 igualdad entre conjuntos de distinta naturaleza.
 
-El grupo `delivery-profile` cubre el contrato compartido, las secuencias `standard`/`expedited`,
-los cinco consumidores registrados, la frontera estructural única del parser, el fold multi-repo,
-el rechazo pre-despacho y la estabilidad de los `description`. Sus escenarios enumeran gates de
-artefactos y checkpoints cross-model por separado; no miden duración ni intentan demostrar ahorro.
+El grupo `delivery-profile` cubre hoy **una sola** propiedad: la frontera estructural del parser
+compartido del manifest (`delivery-profile:parser-boundary`). Las secuencias del perfil de entrega
+que también cubría se retiraron junto con el perfil, y el nombre del grupo sobrevive porque es la
+identidad con la que su caso entró al inventario.
 
 La ejecución integrada vigente termina con `595 casos ok` y `574 casos node ok`.
 

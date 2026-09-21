@@ -7,8 +7,8 @@
 **Ante discrepancia manda el dueño.** Existe para poder mirar el archivo completo y copiar lo que
 sirva; no para ser la autoridad de ninguna clave.
 
-El perfil de entrega no es un override de proyecto: `delivery_profile`, `risk` y la evaluación que
-los sustenta son estado de cada corrida. Por eso no aparecen en esta vista ni adquieren un default
+La profundidad del flujo no es un override de proyecto: ella, el `risk` y la evidencia que los
+sustenta son estado de cada corrida. Por eso no aparecen en esta vista ni adquieren un default
 persistente en `.specify/config.yml`.
 
 **Copialo entero o por bloques.** Una clave que borres vuelve a su default —salvo las marcadas

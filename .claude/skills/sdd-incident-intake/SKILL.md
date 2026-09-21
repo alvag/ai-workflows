@@ -378,10 +378,10 @@ En `<worktree>/.plans/incidentes-a-corregir.md`. Plantilla y contrato de conteni
 
 > **Y le dice al flujo sobre qué plataforma arranca.** El flujo despachado no hereda nada de esta
 > sesión: la resolución del paso 6.1 se le pasa por el dossier —la plataforma, si salió de la matriz
-> o de un pedido, y la identidad del panel **de él**—. Va acá y **no en el prompt** porque la
-> integridad que el paso 6.4 acredita es el `sha256` del dossier: un dato en el prompt no queda
-> cubierto por ninguna de las dos propiedades. Es un **hecho observado**: el consentimiento de
-> transporte lo sella el flujo, con el usuario delante, y el intake no lo produce en su nombre.
+> o de un pedido, y la identidad del panel **de él**—. Va acá y **no en el prompt** porque el prompt
+> solo apunta: lo que viaje ahí no queda escrito en ninguna parte y se pierde con el compositor. Es
+> un **hecho observado**: el consentimiento de transporte lo sella el flujo, con el usuario delante,
+> y el intake no lo produce en su nombre.
 
 Si el veredicto fue **redimensionado**, el dossier lleva las dos versiones: el incidente tal como se
 escribió y el diagnóstico corregido, marcado como tal. Reemplazar una por la otra borra la evidencia
@@ -390,7 +390,7 @@ de que hubo una corrección.
 ### 6.4 — Despacho
 
 El prompt **apunta** al dossier, no lo transporta; el envío va en **tres tiempos**; y el cierre
-acredita **tres** propiedades. Mecánica, matrices por familia y modos de falla en `reference.md` →
+acredita la **procedencia**. Mecánica, matrices por familia y modos de falla en `reference.md` →
 "Despachar el flujo".
 
 > **El prefijo cambia con la familia, y su forma también.** `claude` → **`/sdd-flow` con espacio
@@ -399,11 +399,11 @@ acredita **tres** propiedades. Mecánica, matrices por familia y modos de falla 
 > forma para las dos falla en una, y falla mostrando el texto correcto sin la señal.
 
 > **`mandé el prompt` no es `el flujo arrancó`, y `la skill cargó` tampoco.** Ese control lo satisface
-> un agente que compensó leyendo el archivo de la skill por su cuenta. Se acreditan **tres** cosas
-> distintas: la **procedencia** —el prefijo fue reconocido antes de mandar el cuerpo—, la
-> **integridad** —el hash de la fuente del dossier aparece en el pedido que el flujo congeló— y la
-> **completitud** —la primera entrada `origen: usuario` del `literal.jsonl` contiene el cuerpo
-> canónico del puntero—. Sin las tres, el arranque es **no confirmado** y no se retira nada.
+> un agente que compensó leyendo el archivo de la skill por su cuenta. Lo que se acredita es la
+> **procedencia**: el prefijo fue reconocido antes de mandar el cuerpo, no se tipeó nada en el medio,
+> y el Enter fue sobre ese compositor. Sin ella el arranque es **no confirmado** y no se retira nada.
+> Que el cuerpo haya entrado entero **no se acredita acá**, y el alcance exacto de esa ausencia está
+> en `reference.md` → "Confirmar el arranque".
 
 ### 6.5 — Marcar el issue como tomado
 
@@ -514,7 +514,7 @@ cupos que se repusieron, y el conteo del registro antes y después.
 | "Verifiqué los tres y ninguno falló" | Posible, pero revisalo: un intake que nunca rechaza nada está transcribiendo. |
 | "Para saber si esto pasa tengo que reproducirlo" | Entonces se admite. Reproducir es el trabajo del flujo, no del intake. |
 | "Los retiro ahora que ya los elegí" | Retirados antes del dossier, no queda copia de nada. |
-| "Mandé el prompt, sigo" | El prefijo puede haber quedado dentro del bloque pegado, o llevar la forma de la otra familia; el cuerpo puede llegar truncado aunque el prefijo se reconozca. Leer el compositor **antes** de mandar el cuerpo, buscar la señal de esa familia y comprobar la completitud al cerrar. |
+| "Mandé el prompt, sigo" | El prefijo puede haber quedado dentro del bloque pegado, o llevar la forma de la otra familia; el cuerpo puede llegar truncado aunque el prefijo se reconozca. Leer el compositor **antes** de mandar el cuerpo y buscar la señal de esa familia. |
 | "Son de la misma skill, van juntos" | La misma skill en otra fase es otro diff. El criterio es la superficie. |
 | "La plataforma lo creó, está en main" | Solo en la rama `inseparable`, que conserva la creación de la plataforma: ahí está en `origin/main` y hay que comparar contra `git rev-parse main`. Con creación por Git el commit va explícito y el caso no existe. |
 | "El local está distinto de origin, lo realineo" | Solo si el que está adelante es el **local**, y solo en la rama `inseparable`. Al revés, el reset borra el arreglo que vino de arriba. |

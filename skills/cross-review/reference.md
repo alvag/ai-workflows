@@ -1268,7 +1268,7 @@ válidos**, y el prompt los distingue.
 Estructura XML compacta (estilo `gpt-5-4-prompting`: operador, no colaborador). Plantilla base:
 
 
-El prompt vive en `assets/prompts/review.md` — es la **entrada exacta** del worker y se escribe a archivo con la tool Write. Placeholders que hay que sustituir antes de despachar: `{artifact_type}`, `{complexity}`, `{working_dir}`.
+El prompt vive en `assets/prompts/review.md` — es la **entrada exacta** del worker y se escribe a archivo con la tool Write. Placeholders que hay que sustituir antes de despachar: `{artifact_type}`, `{profundidad}`, `{working_dir}`.
 
 
 `{dimensiones}` se sustituye por la fila completa del `artifact_type` de "Dimensiones de

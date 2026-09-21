@@ -1,5 +1,5 @@
 <!-- prompt `review-round-n` · lo despacha `cross-review` desde la ronda 2 · formato: xml
-     placeholders: {artifact_type}, {complexity}, {working_dir}, {ronda}, {delta}, {rechazos},
+     placeholders: {artifact_type}, {profundidad}, {working_dir}, {ronda}, {delta}, {rechazos},
                    {artefacto}, {dimensiones}, {self_review}, {modalidad}
      ESTE ARCHIVO ES LA ENTRADA EXACTA DEL WORKER: lo que no esté acá no existe para él.
      Se escribe a archivo y nunca se arma inline; cómo llega al worker lo fija el transporte.

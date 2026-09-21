@@ -66,7 +66,7 @@ Como `.plans/` es local, está visible entre ramas del mismo working tree, pero 
    │  ├─ tasks.md               # en NORMAL y COMPLETA (en corta van embebidas en plan.md → ## Tasks)
    │  ├─ sequence-ledger.yml    # versión, cursor, intenciones y efectos adjudicados
    │  ├─ sequence-ledger.owner/ # ownership exclusivo mientras un writer publica
-   │  ├─ handoff.md             # siempre en `create-branch`; perfil, aprobación, worktree y retomado
+   │  ├─ handoff.md             # siempre en `create-branch`; profundidad, aprobación, worktree y retomado
    │  └─ jira-spec.md           # copia de lo publicado en Jira (solo con el gate de aprobación)
    └─ archived/                 # flujos cerrados (status: done), movidos solo tras tu confirmación
       └─ <id>/                  # misma estructura, ya terminada
@@ -87,8 +87,8 @@ El ciclo no ejecuta `init` ni crea `constitution.md` por sí solo. Sí puede cre
 
 Para fijar el comportamiento a mano, sin pasar por el wizard: crea `.specify/config.yml` (todos los campos opcionales) y copia ahí las claves que necesites desde `config-ejemplo.md`, la vista completa con las 37 claves marcadas `[def]`, `[ej]` u `[obl]`. Buenos candidatos para empezar: las tres que resuelve el wizard (`tracker`, `branch_prefix`, `jira_approval.mode`), los comandos (`test_cmd`/`build_cmd`/`lint_cmd`/`test_scope_hint`) y, para worktrees, la ruta base, los archivos o directorios locales a sembrar y los comandos de arranque. El default no copia entorno y deriva el bootstrap solo cuando reconoce el stack.
 
-`delivery_profile`, `risk` y su evaluación son estado de la corrida, no configuración persistente:
-se eligen con evidencia al iniciar y viajan en los artefactos de retomado.
+La profundidad y el `risk` son estado de la corrida, no configuración persistente: se proponen con
+evidencia al iniciar y viajan en los artefactos de retomado.
 
 > El esquema **completo** —las 37 claves de sus cinco dueños, cada una marcada `[def]`, `[ej]` u `[obl]` y lista para copiar— está en `config-ejemplo.md`. Cada skill dueña documenta las suyas en su propio `SKILL.md` o `reference.md`; las de `sdd-flow` están en `reference.md` → "Esquema de `.specify/config.yml`".
 
@@ -181,9 +181,9 @@ la cantidad de filas, no el formato.
 ## Dependencias
 
 No tiene dependencias externas obligatorias. El helper interno
-`scripts/delivery_profile.py` forma parte del paquete y es obligatorio para sus consumidores: si
-falta o no expone el contrato compatible, promoción y huellas se detienen con un diagnóstico de
-arnés, sin traceback ni fallback permisivo. Aprovecha, si están disponibles:
+`scripts/plan_frontmatter.py` forma parte del paquete y es obligatorio para su consumidor
+`sdd-orchestrator`: si falta o no expone el contrato compatible, la guarda que lo carga se detiene
+con un diagnóstico de arnés, sin traceback ni fallback permisivo. Aprovecha, si están disponibles:
 
 - CLI/MCP del issue tracker (Jira, GitHub, GitLab, Linear) para traer issues.
 - CLI/MCP del host de Git (`gh`, `glab`) para PRs y detección de rama remota.

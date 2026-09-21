@@ -270,7 +270,7 @@ Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario en modo directo) prove
 - **`family_inventory`** — selección declarada y resuelta por la raíz, con `families`, `source`,
   `selection` y `root`. La skill **hereda la elección** sin releer config, repetir la auditoría ni
   reanunciar; si falta, esta invocación resuelve antes de despachar.
-- **`complexity`** — `trivial | normal | complex`; modula profundidad/esfuerzo.
+- **`profundidad`** — `corta | normal | completa`; modula profundidad/esfuerzo.
 - **`execution`** — `auto | sync | background`. Para `explore` e `investigate` el valor útil es
   `background`: el conductor explora/investiga mientras tanto. En `counter-plan` o si el
   conductor no puede lanzar background, se espera con tope (`sync`). En `debate` el loop es

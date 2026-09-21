@@ -2,17 +2,23 @@
 
 Detalle operativo de la skill `sdd-flow`. El `SKILL.md` apunta acá cuando necesita la matriz de detección, el esquema de configuración o las plantillas de artefactos.
 
-## Documentos de esta referencia
+## Cómo se decide el `risk`
 
-Leer `delivery-profile.md` antes de evaluar, ejecutar o retomar un perfil de entrega. Ese documento
-es la sede única de vocabulario, elegibilidad, presets, secuencias, estabilidad de review, fold
-multi-repo y piso de calidad. Esta referencia conserva carriers, contratos de salida y mecánica de
-recuperación; no redefine sus matrices.
+`risk` admite `low | high | unknown`, y el header del plan lo materializa con el valor
+post-análisis. Tres reglas lo gobiernan:
+
+- Un cambio es **sensible** si altera lógica, contratos o efectos en datos o schemas, autenticación,
+  autorización, pagos, seguridad o concurrencia. **Ningún cambio sensible puede ser `low`.** Uno
+  puramente cosmético o documental no se vuelve sensible por el nombre de su archivo ni por su
+  dominio.
+- Falta de evidencia, una dependencia incierta o un rollback no verificable producen `unknown`.
+- Ni un indicio del tracker ni la frase «trátalo como hotfix» deciden el riesgo: lo decide el
+  análisis vigente, con su evidencia citada.
 
 ## Tabla de contenidos
 
 - [Matriz de detección por capacidad](#matriz-de-detección-por-capacidad)
-- [Documentos de esta referencia](#documentos-de-esta-referencia)
+- [Cómo se decide el `risk`](#cómo-se-decide-el-risk)
 - [Flujo por tracker](#flujo-por-tracker)
 - [Aprobación externa de la spec (Jira)](#aprobación-externa-de-la-spec-jira)
 - [Detección de stack y comandos](#detección-de-stack-y-comandos)
@@ -39,59 +45,54 @@ recuperación; no redefine sus matrices.
 
 ---
 
-## Contratos de salida del helper de perfil
+## Contrato de salida del helper de frontmatter
 
-Los dos consumidores mecánicos de esta skill exigen
-`DELIVERY_PROFILE_CONTRACT_VERSION == 1` y los símbolos públicos
-`parse_plan_frontmatter`, `read_plan_frontmatter`, `resolve_delivery_pair` y
-`DeliveryProfileError`. La ausencia y la incompatibilidad son fallos de arnés distintos de un dato
-inválido y nunca escapan como traceback.
+`scripts/plan_frontmatter.py` lee el header YAML de un `plan.md`. Su único consumidor mecánico es
+`sdd-orchestrator`, que lo carga por ruta y exige `PLAN_FRONTMATTER_CONTRACT_VERSION == 1` y los
+símbolos públicos `parse_plan_frontmatter`, `read_plan_frontmatter` y `PlanFrontmatterError`. La
+ausencia y la incompatibilidad del módulo son fallos de arnés distintos de un dato inválido, y
+ninguno escapa como traceback.
 
-(El helper `delivery_profile.py` lo consume hoy solo `sdd-orchestrator`.)
-
-En promoción, `header-ausente`, `header-mal-cerrado`, `clave-duplicada` y `riesgo-desconocido`
-salen 2. La validación del par precede a `contract_procedure`, a la constancia y
-al retorno idempotente de `tasks-ready`. En huellas, un header ausente o mal cerrado conserva el
-fallback histórico `[]` y termina bajo el contrato `NO MEDIBLE` cuando una operación exige sus
-claves. Los delimitadores aceptan espacio exterior (`--- `), como el lector histórico; el contenido
-sigue exigiendo `---` después de retirar ese espacio.
+El helper levanta `PlanFrontmatterError` con los códigos `header-ausente`, `header-mal-cerrado` y
+`archivo-ilegible`; `clave-duplicada` lo levanta cada consumidor sobre la clave que le importa,
+porque el helper **no** adjudica la semántica de los valores. Los delimitadores aceptan espacio
+exterior (`--- `), como el lector histórico; el contenido sigue exigiendo `---` después de retirar
+ese espacio.
 
 ---
 
-## Persistencia y retomado del perfil de entrega
+## Persistencia y retomado del estado del plan
 
-El plan nuevo siempre materializa `delivery_profile` y `risk` junto a `complexity`; los tres se
-validan antes de leer el resto de su estado. La ausencia dual del par solo es válida como carrier
-heredado `standard`. Antes de que exista el plan, el handoff conserva el snapshot y
+El plan nuevo materializa `profundidad` y `risk` en su header, y los dos se validan antes de leer el
+resto de su estado. Antes de que exista el plan, el handoff conserva el snapshot y
 `spec_approved_at`; después, el header del plan manda.
 
-<!-- delivery-profile-resume:start -->
+<!-- retomado-pre-plan:start -->
 En pre-plan, una rama existente no acredita que la spec haya sido aprobada. Con
 `spec_approved_at: <timestamp>`, continuar después del gate local; con `spec_approved_at: null`
 explícito, volver al gate y no volver a preguntar. Para un flujo heredado con spec y rama pero sin la
 clave, preguntar una vez: el sí persiste el timestamp de esa confirmación y el no persiste `null`.
-Sin handoff ni plan, anunciar fallback `standard` y volver al gate aplicable. Con plan existente,
-`status`, `delivery_profile` y `risk` del header son autoridad aunque falte el handoff.
+Sin handoff ni plan, volver al gate aplicable. Con plan existente, `status`, `profundidad` y `risk`
+del header son autoridad aunque falte el handoff.
 
-Un `planned + expedited + normal + jira_approval: "off"` retoma en el gate atómico de spec, plan y
-tasks; con Jira `"on"`, `planned` retoma en el gate conjunto de plan y tasks porque la aprobación
-externa ya precedió su creación. Revocar el perfil, reclasificar complejidad o cambiar Jira conserva
-rama y base, marca `create-branch` como consumido y restaura el gate standard pendiente.
-<!-- delivery-profile-resume:end -->
+Cambiar la profundidad o el ajuste de Jira conserva rama y base, marca `create-branch` como
+consumido y restaura el gate pendiente que la profundidad nueva exija — que es el que nombra
+«Profundidad del flujo» en `SKILL.md`, y no uno fijo.
+<!-- retomado-pre-plan:end -->
 
-<!-- delivery-profile-regeneration:start -->
+<!-- regeneracion-upstream:start -->
 Si una aclaración, revisión o decisión cambia un AC o master-spec: registrar arbitraje, cerrar la
 corrida actual, invalidar los artefactos y contratos dependientes, regenerarlos, repetir la evidencia
 y checks afectados y abrir una nueva revisión solo para la versión nueva. No se abre una corrida
 duplicada ni se congela un dependiente cuya autoridad upstream cambió.
-<!-- delivery-profile-regeneration:end -->
+<!-- regeneracion-upstream:end -->
 
-<!-- delivery-profile-review-checkpoint:start -->
+<!-- checkpoint-cross-review:start -->
 Un checkpoint de cross-review conserva el mismo `run_id`. El usuario puede conceder una tanda finita
 adicional, rechazar aplicaciones, seguir con un tope finito o cambiar un criterio de aceptación. Las
 decisiones se registran antes de cerrar la corrida; si cambian el artefacto upstream, se aplica el
 orden de regeneración anterior antes de abrir otro `run_id`.
-<!-- delivery-profile-review-checkpoint:end -->
+<!-- checkpoint-cross-review:end -->
 
 ---
 
@@ -433,12 +434,12 @@ Punto de entrada para un flujo empezado. `.plans/` es visible entre ramas del mi
      seguro y continuar después del gate local; `null` explícito → volver al gate sin preguntar;
      clave ausente en un flujo heredado con spec y rama → preguntar una sola vez y persistir
      timestamp o `null`. Sin rama, retomar desde `specify`/`clarify`. Aplicar el bloque
-     `delivery-profile-resume` de `reference.md` para perfil, Jira y gate pendiente. La rama creada
+     `retomado-pre-plan` de `reference.md` para Jira y gate pendiente. La rama creada
      por la preflight nunca prueba aprobación; solo un flujo heredado sin identidad worktree puede
      usarla como pista, y se confirma con el usuario antes de navegar o entrar a `plan`.
 
 ### Navegar a la rama correcta (solo ubicación `current` o flujo heredado)
-3. Con destino worktree vivo, no navegar: la sesión debe estar allí y el origen snapshot solo muestra el launcher. En otro caso, parsear `id`, `branch`, `base_commit`, `complexity`, `status` y `wip_commit` del plan.
+3. Con destino worktree vivo, no navegar: la sesión debe estar allí y el origen snapshot solo muestra el launcher. En otro caso, parsear `id`, `branch`, `base_commit`, `profundidad`, `status` y `wip_commit` del plan.
 4. Si la rama actual != `branch`:
    - Antes de cambiar, exigir `git -C <repo-root> status --porcelain --untracked-files=all -- . ':(exclude).plans' ':(exclude).specify'` vacío. Si hay cambios, detener y ofrecer commit o `pause`; `stash` no se ofrece en la rama worktree porque es compartido.
    - Con el árbol limpio, `git checkout <branch>`. Los `.plans/`/`.specify/` untracked no bloquean el checkout ni se pierden.
@@ -481,7 +482,7 @@ adquiere ownership mientras decide qué estado observa.
 
    | `status` | Dónde retoma |
    |---|---|
-   | `planned` | gate pendiente según `delivery_profile.md`: plan estándar; gate atómico spec+plan+tasks en normal expedito Jira `"off"`; plan+tasks en normal expedito Jira `"on"` |
+   | `planned` | el gate pendiente que la profundidad del header exige: único en **corta**, de plan+tasks en **normal**, de plan en **completa** |
    | `plan-approved` | plan aprobado, tasks no (solo *complejo*) → **gate de `tasks`** |
    | `tasks-ready` | `implement` (Paso común) |
    | `implementing` | `implement`, continuando desde la primera task `[ ]` (y el WIP, si hay `wip_commit`) |
@@ -1767,9 +1768,7 @@ id: none
 branch: fix/cart-null-guard
 base_commit: <SHA del HEAD>
 change_type: fix
-complexity: trivial
-# delivery_profile admite standard | expedited y forma un par indivisible con risk
-delivery_profile: standard
+profundidad: corta  # corta | normal | completa — ver "Profundidad del flujo"
 # risk admite low | high | unknown y conserva el valor post-análisis
 risk: low
 status: planned
@@ -1981,8 +1980,7 @@ Ejemplo concreto de una task:
 ---
 phase: awaiting-jira-approval   # gather-context | specify | clarify | awaiting-jira-approval | implementing | ...
 # snapshot de gather-context (presente mientras NO exista plan.md; cuando existe, manda plan.md):
-complexity: normal              # trivial | normal | complex
-delivery_profile: standard      # standard | expedited; hermana de risk, no vive en overrides
+profundidad: normal             # corta | normal | completa
 risk: low                       # low | high | unknown
 change_type: feat               # feat | fix | refactor | chore | docs | test | perf
 branch_prefix: feature          # el {type} ya resuelto
@@ -2036,7 +2034,7 @@ cloud_id: <uuid del sitio>
 - jira-spec.md — exactamente lo publicado en la subtarea (solo si hubo gate de Jira)
 ```
 
-> **Precedencia:** cuando existe `plan.md`, su `status`, `delivery_profile`, `risk`, `wip_commit` y
+> **Precedencia:** cuando existe `plan.md`, su `status`, `profundidad`, `risk`, `wip_commit` y
 > marcas `[x]` son la verdad operativa; el `handoff.md` aporta narrativa + overrides. Sin `plan.md`
 > (specify/clarify/gate de Jira), el frontmatter y `spec_approved_at` son la fuente de verdad de esa
 > ventana. Los campos del gate de Jira solo aparecen en pausas por aprobación externa. Detalle en

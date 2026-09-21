@@ -187,7 +187,7 @@ orchestration_tasks:           # opcional; el trabajo del orquestador, que no vi
 ```
 
 `delivery_assessment` es una **lista** y cada fila lleva exactamente `scope`, `urgency`,
-`complexity`, `risk`, `evidence`, `provenance` y `confidence`. No se admite un mapa anidado cuya
+`profundidad`, `risk`, `evidence`, `provenance` y `confidence`. No se admite un mapa anidado cuya
 clave sea el `scope`. Debe existir una fila `global`, una `integration` y una `repo:<path>` por cada
 entrada de `repos`. El orden de las claves dentro de esas filas y de cada entrada de `repos` no
 define su identidad: las guardas reconocen `scope` y `path` aunque no sean la primera clave del mapa.
@@ -412,7 +412,7 @@ intentó despachar. Las tres formas de romper la correspondencia son inválidas 
 `consumado` sin su cambio de estado, un evento `rechazado` cuyo estado cambió igual, y un cambio de
 estado que ningún evento consumó.
 
-Una divergencia de perfil detectada por las guardas pre-despacho usa el mismo evento
+Una divergencia de carrier detectada por las guardas pre-despacho usa el mismo evento
 `despachar-repo` con `resultado: rechazado`. El evento se registra, pero no se crea sobre ni se cambia
 el estado del repo rechazado. La cascada bloquea después solo sus dependientes; los repos
 independientes se vuelven a evaluar con su propio plan y pueden continuar.
@@ -538,9 +538,9 @@ Mantener los IDs globales `AC-n` (no renumerar): la trazabilidad cross-repo del 
 
 > **Self-review del reparto (antes del gate 1.4).** Los `plan.md`/`tasks.md` por repo heredan el formato y la disciplina de `sdd-flow` (ver `sdd-flow/reference.md` → "Plantilla de plan" y "Plantilla de tasks", bloque "Self-review (antes del gate)"). Además de la cobertura AC↔repo (cross-artifact check, regla 5), correr sobre cada `plan.md`/`tasks.md` generado: la **cobertura AC↔fila del contrato de verificación** (bidireccional, ni AC sin fila ni fila sin AC), el **scan anti-placeholder** (sin `TBD`/`TODO`/"etc." colgados) y la **consistencia de contratos** entre servicios — lo que un repo `expone` coincide en firma con lo que el otro `consume` (mismo criterio que `Produce`/`Consume` entre tasks). Reportarlo en una línea antes del gate.
 
-Cada `plan.md` candidato materializa la `complexity` de su fila `repo:<path>` y el par global
-`delivery_profile`/`risk`. El riesgo local no se duplica en el plan: permanece en esa fila y en el
-repo correspondiente del manifest. Antes del gate, `orchestration-model.py` comprueba assessment,
+Cada `plan.md` candidato materializa la `profundidad` de su fila `repo:<path>` y el `risk` global.
+El riesgo local no se duplica en el plan: permanece en esa fila y en el repo correspondiente del
+manifest. Antes del gate, `orchestration-model.py` comprueba assessment,
 fold e igualdad entre carriers; una divergencia reabre el reparto y ningún candidato se congela.
 
 ### Contrato de verificación por repo
@@ -788,10 +788,10 @@ pre-despacho conservado con su rechazo y `blocked` (con el repo del que dependí
 
 ## Ejemplos de `manifest.yml`
 
-E1-E3 son ejemplos **legacy standard**: su ausencia dual de `delivery_profile` y `risk` solo ilustra
-compatibilidad de lectura para manifests heredados. No son plantillas para escritura nueva. Todo
-manifest nuevo usa el esquema vigente de esta referencia y materializa el par, `delivery_assessment`
-y los carriers `complexity`/`risk` por repo.
+E1-E3 son ejemplos **legacy**: su ausencia de `risk` solo ilustra compatibilidad de lectura para
+manifests heredados. No son plantillas para escritura nueva. Todo manifest nuevo usa el esquema
+vigente de esta referencia y materializa el `risk` global, `delivery_assessment` y los carriers
+`profundidad`/`risk` por repo.
 
 **E1 — dos repos independientes (paralelo puro):**
 
@@ -895,8 +895,8 @@ actual y escribe `env.sh` y `env.ps1`; un solo cuerpo decide qué es cada escena
 guardas consumen exactamente el mismo material.
 
 `orchestration-model.py` y `orchestration-state.py` importan de `_yaml.py` un único parser
-estructural y una validación semántica común para el perfil, `delivery_assessment` y `repos`; las
-tres guardas del perfil también comparten allí la carga versionada de `delivery_profile.py`. Cada consumidor conserva su política
+estructural y una validación semántica común para el carrier, `delivery_assessment` y `repos`; las
+tres guardas también comparten allí la carga versionada de `plan_frontmatter.py`. Cada consumidor conserva su política
 propia —el modelo exige la biyección completa de planes y state admite el subconjunto recibido—,
 pero no reimplementa el reconocimiento de claves, orden ni duplicados del carrier.
 
@@ -916,7 +916,7 @@ dependencia externa y forma parte del contrato portable de las guardas:
   cualquier otro scalar siguen siendo la misma clave para detectar duplicados;
 - cada fila de assessment conserva todas sus claves y sus duplicados para que el consumidor exija
   exactamente el schema de siete campos;
-- cada fila de repo conserva `path`, `complexity` y `risk`; un segundo `path` queda marcado antes de
+- cada fila de repo conserva `path`, `profundidad` y `risk`; un segundo `path` queda marcado antes de
   construir colecciones por identidad;
 - los demás campos históricos de una fila de repo no son evidencia de esta frontera; sus listas,
   cuando el schema las admite, permanecen inline;
@@ -934,8 +934,8 @@ La compatibilidad se mide contra el manifest que produce esta skill, no contra t
 una biblioteca YAML de propósito general pueda cargar. Reordenar claves dentro de una fila sí es
 compatible porque no sale del dialecto; citar una clave propia, usar un anchor o cambiar la sangría
 de evidencia propia no lo es. Las guardas no normalizan silenciosamente esas formas; los campos
-históricos no poseídos continúan hacia su parser específico. `clave-duplicada` para `repos`, `delivery_assessment`,
-`delivery_profile` o `risk` tiene precedencia sobre `repos-forma-invalida` y
+históricos no poseídos continúan hacia su parser específico. `clave-duplicada` para `repos`, `delivery_assessment`
+o `risk` tiene precedencia sobre `repos-forma-invalida` y
 `assessment-forma-invalida`; así una segunda raíz no queda escondida por la forma de otro carrier.
 Toda plantilla futura debe permanecer dentro de esta frontera o ampliar conjuntamente parser,
 documentación y matriz de contrapruebas.
@@ -947,12 +947,9 @@ Diagnósticos de consistencia y corrección:
 | `header-ausente` / `header-mal-cerrado` | Reparar los delimitadores `---` del plan indicado. |
 | `archivo-ilegible` | Hacer legible el plan indicado como UTF-8. |
 | `clave-duplicada` | Dejar una sola aparición de la clave nombrada en su carrier. |
-| `par-parcial` | Materializar juntos `delivery_profile` y `risk`. |
-| `perfil-desconocido` | Usar `standard` o `expedited`. |
 | `riesgo-desconocido` | Usar `low`, `high` o `unknown`. |
-| `complejidad-desconocida` | Usar `trivial`, `normal` o `complex`. |
-| `expedited-inelegible` | Volver a `standard` o eliminar el riesgo/complejidad que impide acelerar. |
-| `carrier-mixto` | Materializar el par completo en manifest y en todos los planes de la corrida. |
+| `profundidad-desconocida` | Usar `corta`, `normal` o `completa`. |
+| `carrier-mixto` | Materializar el carrier completo en manifest y en todos los planes de la corrida. |
 | `assessment-forma-invalida` | Declarar una lista en bloque con exactamente los siete campos por fila. |
 | `assessment-clave-duplicada` | Dejar una sola aparición de cada campo en la fila. |
 | `assessment-scope-invalido` / `assessment-scope-duplicado` | Corregir o deduplicar el `scope`. |
@@ -966,19 +963,18 @@ Diagnósticos de consistencia y corrección:
 | `repo-plans-divergen` | Entregar un plan por cada `repos.path`, sin faltantes ni extras. |
 | `assessment-scopes-divergen` | Materializar `global`, `integration` y un `repo:<path>` por cada repo. |
 | `risk-fold-diverge` | Recalcular el fold conservador y copiarlo a `global` y al par del manifest. |
-| `complexity-assessment-manifest-plan-diverge` | Igualar la complejidad del assessment, la fila del manifest y el plan. |
+| `profundidad-assessment-manifest-plan-diverge` | Igualar la profundidad del assessment, la fila del manifest y el plan. |
 | `risk-assessment-manifest-diverge` | Igualar el riesgo local del assessment y la fila del manifest. |
-| `perfil-manifest-plan-diverge` | Copiar el mismo par global `delivery_profile`/`risk` al plan indicado. |
 
 Los errores de un plan imprimen `plan: <ruta>`; los estructurales del manifest imprimen
 `manifest: <ruta>`, para que el diagnóstico no atribuya el defecto al carrier equivocado.
 
-La ausencia dual del perfil se decide antes de exigir la estructura nueva del plan: una
-orquestación heredada conserva el comportamiento histórico aunque su plan no sea válido para el
-helper nuevo. Si manifest o plan materializan `delivery_profile` o `risk`, la validación estricta
-vuelve a ser obligatoria y falla cerrada.
+La ausencia del carrier se decide antes de exigir la estructura nueva del plan: una orquestación
+heredada conserva el comportamiento histórico aunque su plan no sea válido para el helper nuevo. Si
+manifest o plan materializan `profundidad` o `risk`, la validación estricta vuelve a ser obligatoria
+y falla cerrada.
 
-`python_skill <skill_dir>/scripts/orchestration-model.py <manifest> <master-spec> <repo-plan> [<repo-plan> ...]` valida primero el perfil, el assessment, su fold y la igualdad entre carriers, y después el reparto contra la master-spec: es la guarda que caza el AC `[integration]` sin dueño. Recibe `manifest.yml`, `master-spec.md` y uno o más planes como argumentos separados, por lo que cada ruta puede contener espacios. Sin planes usa `ARNES:orchestration-model repo_plans vacio`/99; una aridad menor usa `ARNES:orchestration-model argumentos invalidos`/99. La ausencia o incompatibilidad del helper compartido usa `delivery-profile-helper-ausente|incompatible`/99 sin traceback. Los predicados del perfil preceden al orden histórico, que conserva internamente identidad, enums, grafo, ubicación de AC y mapa de participación. Ese orden no es cosmético. Dos comprobaciones correctas pueden ver
+`python_skill <skill_dir>/scripts/orchestration-model.py <manifest> <master-spec> <repo-plan> [<repo-plan> ...]` valida primero el carrier, el assessment, su fold y la igualdad entre carriers, y después el reparto contra la master-spec: es la guarda que caza el AC `[integration]` sin dueño. Recibe `manifest.yml`, `master-spec.md` y uno o más planes como argumentos separados, por lo que cada ruta puede contener espacios. Sin planes usa `ARNES:orchestration-model repo_plans vacio`/99; una aridad menor usa `ARNES:orchestration-model argumentos invalidos`/99. La ausencia o incompatibilidad del helper compartido usa `plan-frontmatter-helper-ausente|incompatible`/99 sin traceback. Los predicados del carrier preceden al orden histórico, que conserva internamente identidad, enums, grafo, ubicación de AC y mapa de participación. Ese orden no es cosmético. Dos comprobaciones correctas pueden ver
 el mismo defecto —un AC `[repo-local]` en el `covers_ac` de una tarea es, a la vez, una clave de
 participación que no es `[integration]`— y emitir las dos convierte un defecto en dos hallazgos, sin
 decir cuál de los dos es el que hay que arreglar.
@@ -1015,7 +1011,7 @@ Recibe cinco posiciones fijas —el `manifest.yml`, la `master-spec.md`, el cont
 la bitácora y `candidate | final`— más cero o más `plan.md` como argumentos separados; por eso cada ruta puede contener
 espacios y puede inspeccionar el estado antes de recibir el primer plan. Un argumento de plan vacío
 es inválido y no se interpreta como `.`. Emite **un solo diagnóstico por corrida**. Antes del orden histórico, valida el assessment y los carriers del manifest; para cada
-plan recibido, exige el par global y la `complexity` local. Esto permite guardar un repo por vez y
+plan recibido, exige el `risk` global y la `profundidad` local. Esto permite guardar un repo por vez y
 continuar con los independientes. El primero del orden en que
 están escritas sus comprobaciones, que va de la integridad del registro (si hay bitácora, y si sus
 eventos están completos) al reparto y sus gates, de ahí a la correspondencia entre cada resultado y
@@ -1032,7 +1028,7 @@ sale como `REPORTE:` con exit 0 mientras la tarea no intente cerrar, porque decl
 sin asignar es justo para lo que el centinela existe.
 
 La guarda conserva literalmente `parsed = helper.read_plan_frontmatter(path)` y valida primero
-perfil, assessment, fold y carriers. Después carga por ruta absoluta
+carrier, assessment, fold y planes. Después carga por ruta absoluta
 `cross-implement/scripts/contrato-invariantes.py::parsear_reparaciones`; una instalación parcial
 falla cerrada con `ARNES:`. Su capa local comprueba las claves congeladas, el orden uno a uno entre
 aprobaciones y anclas `adoptar-estado-contrato`, la prohibición de `cobertura-agregada` posterior al
@@ -1047,5 +1043,5 @@ planes y contrasta su par con los scalars raíz del manifest antes de revisar la
 integración. Los planes viajan como argumentos separados, admiten espacios en su ruta y un argumento
 vacío es inválido en vez de convertirse en `.`. No recalcula
 el fold ni sustituye a `orchestration-model.py`. En ambas guardas, helper
-ausente o incompatible emite `ARNES:<script> delivery-profile-helper-ausente|incompatible`/99 sin
+ausente o incompatible emite `ARNES:<script> plan-frontmatter-helper-ausente|incompatible`/99 sin
 traceback; un carrier inválido emite `GUARD:`/1 y nunca `ESTADO:`.

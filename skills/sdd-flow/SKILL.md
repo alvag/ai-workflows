@@ -68,7 +68,7 @@ Artefactos en disco:
    │  ├─ spec.md            # QUÉ + por qué + criterios de aceptación (AC-n) + Clarifications
    │  ├─ plan.md            # header YAML (incluye status + branch) + CÓMO + resultado de verify
    │  ├─ tasks.md           # tareas atómicas [ ], cada una referencia AC-n
-   │  ├─ handoff.md         # siempre en `create-branch`; perfil, aprobación, worktree + retomado
+   │  ├─ handoff.md         # siempre en `create-branch`; profundidad, aprobación, worktree + retomado
    │  └─ jira-spec.md       # copia exacta de lo publicado en Jira (solo con el gate de aprobación)
    └─ archived/             # flujos cerrados (status: done), movidos solo tras tu confirmación
       └─ <id>/              # misma estructura, ya terminada
@@ -314,10 +314,6 @@ atravesó, y eso no se deshace.
 elección de rama—, los **setup checkpoints** de `init` y `constitution`, y los **gates operativos**
 que existen siempre: revisión manual, revisión final de diff, commit y push.
 
-> **El perfil de entrega (`delivery_profile`) sigue existiendo para `sdd-orchestrator`**, que lo
-> evalúa a nivel global con el helper de `delivery-profile.md`. Este flujo ya no lo consulta: su
-> profundidad la decide la tabla de arriba. Ver `delivery-profile.md`.
-
 ## Revisión cross-model (segunda opinión, opcional)
 
 Antes de cada gate de artefacto (`specify`, `plan`, `tasks`), si está disponible la skill
@@ -326,7 +322,7 @@ el autor** (Codex cuando conduce Claude; Claude cuando conduce Codex) que
 critica el artefacto en read-only antes de mostrártelo. **Augmenta el gate, no lo reemplaza:** la
 crítica se presenta *junto* al artefacto en el mismo STOP; tú sigues siendo el árbitro final.
 
-- **Dependencia blanda.** Esta capacidad es opcional para el flujo `standard`: si `cross-review`
+- **Dependencia blanda.** Esta capacidad es opcional en toda profundidad: si `cross-review`
   **no está instalada**, omitir la revisión y seguir con el gate humano normal, conservando rama/base
   y restaurar el gate upstream pendiente antes de continuar. Detectarla por capacidad, igual que el
   resto.
@@ -428,7 +424,7 @@ salen a la luz temprano (en los hallazgos), antes de que las decisiones de la sp
 tomadas. Es **ortogonal** a `cross_review.mode`: esta capacidad gobierna la exploración paralela
 y el contra-enfoque; `cross_review.mode` gobierna las críticas en los gates de artefactos.
 
-- **Dependencia blanda.** Igual que `cross-review`, es opcional para `standard`: si `co-explore`
+- **Dependencia blanda.** Igual que `cross-review`, es opcional en toda profundidad: si `co-explore`
   **no está instalada**, se omite y el flujo sigue con la exploración de siempre del conductor. Si el
   la ausencia se avisa y se sigue con la exploración normal, conservando rama/base.
 - **Cuándo se activa** (precedencia: override de la corrida > `co_explore` de
@@ -830,7 +826,7 @@ El usuario aprobó el último gate activo. Ir al "Paso común".
 ### Vía B — sesión fresca / bootstrap
 Disparador: `/sdd-flow implement <ruta-carpeta>` o llegada desde `resume` con `tasks-ready`/`implementing`. Primero resolver el paquete por `resume`: si es snapshot de origen, seguir `worktree_path` y exigir la sesión fresca en el destino vivo; nunca implementar desde la copia no autoritativa. Luego cargar spec y tasks:
 
-1. Leer `plan.md` (**obligatorio**: contiene el header YAML, con la profundidad). Leer `spec.md` y `tasks.md` **solo si existen**; si no, tomar la spec y/o las tasks de las secciones embebidas `## Spec` / `## Tasks` del propio `plan.md`. La `complexity` del header indica qué esperar: `trivial` → todo embebido en `plan.md`; `normal` → `spec.md` + `tasks.md` separados; `complex` → `spec.md` + `tasks.md` separados (con gate de tasks propio).
+1. Leer `plan.md` (**obligatorio**: contiene el header YAML, con la profundidad). Leer `spec.md` y `tasks.md` **solo si existen**; si no, tomar la spec y/o las tasks de las secciones embebidas `## Spec` / `## Tasks` del propio `plan.md`. La `profundidad` del header indica qué esperar: `corta` → todo embebido en `plan.md`; `normal` → `spec.md` + `tasks.md` separados; `completa` → `spec.md` + `tasks.md` separados (con gate de tasks propio).
 2. Confirmar el resumen extraído (incluido el `status` y las tasks pendientes) antes de avanzar al "Paso común".
 
 ### Modo de ejecución (`inline` | `cross` | `workers`)

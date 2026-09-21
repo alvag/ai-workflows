@@ -148,7 +148,7 @@ Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario) proveen:
 - **`family_inventory`** — selección declarada y resuelta por la raíz, con `families`, `source`,
   `selection` y `root`. La skill **hereda la elección**; si falta, esta invocación es la raíz y la
   resuelve antes de despachar.
-- **`complexity`** — `trivial | normal | complex` (de `sdd-flow`); modula profundidad/esfuerzo.
+- **`profundidad`** — `corta | normal | completa` (de `sdd-flow`); modula profundidad/esfuerzo.
 - **`execution`** — `auto | sync | background` (de la config `cross_review`); cómo se espera al
   revisor. `auto` (default) elige por la capacidad de timeout del conductor; `sync` fuerza llamada
   bloqueante; `background` fuerza poll acotado. En todos hay tope duro → `UNAVAILABLE` (ver
@@ -184,7 +184,7 @@ fuera de todo flujo SDD (inspirado en `codex-review` de chaseai):
    `## Decisiones y trade-offs` (las apuestas contestables, nombradas — los blancos del revisor),
    `## Riesgos y preguntas abiertas`, `## Fuera de alcance`.
 3. **Correr el loop normal** con `artifact_type: plan`, `artifact_path` ese archivo,
-   `working_dir` el repo y `complexity` estimada (anunciarla). El `review-log.md` y el scratch
+   `working_dir` el repo y `profundidad` estimada (anunciarla). El `review-log.md` y el scratch
    `cross-review/` quedan junto al plan draft.
 4. **Presentar** el plan convergido (o el deadlock con sus disputas, regla 2) y **ofrecer el
    handoff**: implementarlo el conductor, o —si la skill `cross-implement` y el CLI de la otra

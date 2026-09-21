@@ -563,8 +563,8 @@ señales se evalúan **en este orden**, y el orden es parte de la regla:
 | Orden | Señal | Resultado |
 |---|---|---|
 | 1 | ¿el portador **declara un flujo SDD**? — una ruta `.plans/<id>/`, o un directorio con `plan.md` | si **no** declara: **(a) contrato directo**, y ahí termina |
-| 2 | ¿el `plan.md` existe, se lee, y su header trae `complexity` válida? | si falta, no se interpreta, o el valor cae fuera del enum: **(c) bloquea** |
-| 3 | fuente autoritativa: con `normal` o `complex`, el `tasks.md` hermano; con `trivial`, la sección `## Tasks` del plan | ausente o ilegible: **(c) bloquea** |
+| 2 | ¿el `plan.md` existe, se lee, y su header trae `profundidad` válida? | si falta, no se interpreta, o el valor cae fuera del enum: **(c) bloquea** |
+| 3 | fuente autoritativa: con `normal` o `completa`, el `tasks.md` hermano; con `corta`, la sección `## Tasks` del plan | ausente o ilegible: **(c) bloquea** |
 | 4 | contar encabezados de task en la fuente elegida | cero: **(c) bloquea** nombrando la fuente; uno o más: **(b)** |
 
 **(a) queda reservado a portadores que no declaran flujo** — un plan suelto, un contrato destilado, el
@@ -572,11 +572,12 @@ plan draft que por escrito no tiene header. **Un flujo declarado y roto nunca ca
 a contrato directo convertiría un error en un despacho silencioso con el prompt equivocado, que es
 exactamente lo que la rama (c) existe para impedir.
 
-**Cómo se lee el header, y hasta dónde.** Como lo lee la función `leer_header` de
-el plan de `sdd-flow`, y **solo ese subconjunto**: delimitadores de apertura y
-cierre, unicidad de la clave, y enum cerrado de `complexity`. El resto de ese script —`status`,
-`contract_procedure`, bitácora, estado de promoción— **no se aplica acá**: es el gate de promoción, y
-arrastrarlo al clasificador bloquearía flujos válidos por precondiciones que este criterio no pide.
+**Cómo se lee el header, y hasta dónde.** Con `read_plan_frontmatter` de
+`sdd-flow/scripts/plan_frontmatter.py` —delimitadores de apertura y cierre, y unicidad de la clave—
+más el enum cerrado de `profundidad`, que ese helper **no** adjudica: sus tres valores viven en su
+constante `PROFUNDIDADES` y los aplica este clasificador. Nada más del estado del plan se mira acá:
+`status`, marcas y promoción son otro gate, y arrastrarlo bloquearía flujos válidos por
+precondiciones que este criterio no pide.
 
 #### Diagnósticos, literales
 
@@ -641,7 +642,7 @@ conjunto como una novena ranura.
 
 - **Identificador de task:** el árbol admite `T2`, `T16b` y `T15A`, con o sin backticks. Un
   reconocedor de `Tn` a secas rechaza referencias válidas que ya existen.
-- **Encabezado de task:** las **dos** formas normativas, la compacta de un flujo trivial y la
+- **Encabezado de task:** las **dos** formas normativas, la compacta de un flujo de profundidad corta y la
   completa. En la compacta, `cubre` viaja **inline** y se parsea de ahí.
 
 #### Tabla cerrada de resolución
@@ -652,7 +653,7 @@ tabla no se resuelve nada: lo que no encaje **bloquea**, y no se repara con patr
 | Pieza | Fuente autoritativa | Apertura | Frontera |
 |---|---|---|---|
 | task | la fuente elegida por la clasificación | las dos formas de encabezado | siguiente encabezado de task o de sección |
-| criterio | la `spec.md`, o la sección `## Spec` del plan en `trivial` | su ítem definitorio `AC-n` | siguiente ítem `AC-` o encabezado, con sus continuaciones indentadas |
+| criterio | la `spec.md`, o la sección `## Spec` del plan en profundidad `corta` | su ítem definitorio `AC-n` | siguiente ítem `AC-` o encabezado, con sus continuaciones indentadas |
 | fila | la versión **vigente** de `## Verification`, la de número mayor | la fila cuyo identificador coincide | la fila entera, con sus seis columnas |
 | productor | la task que declara `Produce` | el encabezado de esa task | su línea `Produce` |
 | sección compartida | el bloque global que el `Consume` nombra | su encabezado | el siguiente encabezado de igual o menor nivel |
@@ -727,7 +728,7 @@ presentes** —el enunciado de los criterios, el contrato de verificación y las
 después de validar, y se comprueba que ninguna cambió hasta escribir y lanzar el prompt. Cualquier
 discrepancia bloquea.
 
-Son fuentes **lógicas y no archivos**: en un flujo trivial las tres viven en un solo documento, y
+Son fuentes **lógicas y no archivos**: en un flujo de profundidad corta las tres viven en un solo documento, y
 exigir tres archivos ahí bloquearía un caso válido.
 
 **No se reutiliza el fingerprint del recibo**, por dos razones independientes: normaliza el checkbox

@@ -824,16 +824,16 @@ comprobación que decide si se sigue.
    manda el cuerpo: se aplica la fila de recuperación.
 3. **El cuerpo**, y leerlo para comprobar que entró entero. Si el compositor devuelve el marcador de
    colapso, esa lectura queda **inconcluyente y no negativa** —el marcador dice que el host colapsó el
-   bloque pegado para mostrarlo, no que el cuerpo haya llegado truncado—, así que se sigue: al cuerpo
-   lo acredita la **completitud** al cerrar, contra el `literal.jsonl` del flujo despachado.
+   bloque pegado para mostrarlo, no que el cuerpo haya llegado truncado—, así que se sigue: un cuerpo
+   roto no sobrevive al primer artefacto que el flujo somete a gate, con el usuario delante.
 4. **El Enter**, sobre ese mismo compositor y sin nada tipeado en el medio.
 
 > **Por qué el tercer tiempo no recupera y el segundo sí.** No es una asimetría de rigor sino de qué
 > observable sobrevive. El segundo protege la **procedencia**, que solo existe como cadena del envío:
-> un prefijo no reconocido no deja rastro en el pedido congelado, así que perderla ahí es perderla del
-> todo. El tercero protege el cuerpo, que sí tiene un observable posterior y canónico — y frenar acá
-> lo destruiría, porque sin Enter no hay flujo, sin flujo no hay `literal.jsonl`, y el único control
-> que de verdad ve el cuerpo se pierde por evitar el riesgo que ese mismo control acota.
+> un prefijo no reconocido no deja rastro en ningún artefacto posterior, así que perderla ahí es
+> perderla del todo. El cuerpo no está en esa situación: lo que llegue roto se ve en lo que el flujo
+> produce, y frenar acá lo tapa, porque sin Enter no hay flujo y sin flujo no hay artefacto que
+> delate el defecto.
 >
 > Una recuperación acá tampoco sería **ejecutable**: vaciar el compositor exige borrar el draft, y
 > ningún subcomando de `orca terminal` lo hace —medido contra 1.4.205, donde `send` admite `--text`,
@@ -866,34 +866,28 @@ no la necesitan y la invocación sin ella sigue siendo válida ahí.
 Esta clasificación se midió: el cuerpo, el prefijo de la otra familia y el texto vacío del Enter no
 abren con barra y por eso no se convierten.
 
-### Confirmar el arranque — tres propiedades, y ninguna sustituye a la otra
+### Confirmar el arranque — la procedencia, y lo que ya no se acredita
 
 El control viejo buscaba «la señal de que la skill cargó». Eso lo satisface también un agente que
 **compensó** leyendo el archivo de la skill por su cuenta, así que no distingue un arranque bueno de
-uno malo. Se parte en tres:
+uno malo. Lo que sí discrimina:
 
 | Propiedad | Qué acredita | Qué **no** acredita | Cómo se comprueba |
 |---|---|---|---|
-| **procedencia** | que la invocación entró por el prefijo, reconocido por el host | nada sobre el contenido del encargo | la **cadena** del envío: el prefijo se reconoció en el tiempo 2, no se tipeó nada en el medio, y el Enter fue sobre ese compositor |
-| **integridad** | que el flujo leyó el dossier que se le escribió | nada sobre **cómo** se invocó la skill ni sobre el cuerpo del prompt | el flujo despachado congela su pedido con el `sha256` de cada fuente: se comprueba que exista una entrada cuyo hash sea el del dossier **en su origen** |
-| **completitud** | que el cuerpo del encargo entró entero en el compositor antes del Enter | nada sobre si el agente lo ejecutó ni sobre cómo se invocó la skill | la **primera** entrada `origen: usuario` del `literal.jsonl` que el flujo despachado congela —la de menor `n`— contiene el cuerpo canónico del puntero |
+| **procedencia** | que la invocación entró por el prefijo, reconocido por el host | nada sobre el contenido del encargo ni sobre el cuerpo del prompt | la **cadena** del envío: el prefijo se reconoció en el tiempo 2, no se tipeó nada en el medio, y el Enter fue sobre ese compositor |
 
-**Se exigen las tres.** El hash correcto con procedencia no acreditada **no** cierra el paso: un
-arranque compensado también lee el dossier entero y produce exactamente el mismo hash. Ese mismo
-agente puede compensar tras recibir un cuerpo truncado: con prefijo reconocido y dossier intacto,
-procedencia e integridad dan verde; la completitud lo discrimina porque falta el puntero canónico entero.
+**Y nada más, a propósito.** Antes se exigían dos propiedades más: que el `sha256` del dossier
+apareciera entre las fuentes que el flujo congelaba, y que el cuerpo canónico del puntero estuviera
+en la primera entrada de su literal. Las dos se comprobaban contra artefactos de acreditación que
+`sdd-flow` **ya no produce**, así que seguir exigiéndolas deja este paso sin salida practicable:
+ningún arranque puede confirmarse, y entonces ningún incidente puede retirarse nunca.
 
-La contención busca el cuerpo canónico del puntero que manda escribir la plantilla, **excluidos el
-prefijo y el separador que lo activa**, dentro del campo `texto` decodificado de esa primera entrada.
-La receta manda el separador dentro del prefijo en una familia y dentro del cuerpo en la otra, por lo
-que incluirlo cambiaría el operando según la familia. Es contención y no igualdad porque no está
-comprobado si el host captura el prefijo junto con el cuerpo; un truncamiento rompe la contención
-igual.
-
-Esta regla rige desde la siguiente activación: el despacho ya iniciado cierra con el contrato que
-cargó, conserva el hueco y no se reacredita. La lectura posterior del literal es una auditoría sin
-efecto sobre ese cierre: no lo revierte, no reabre el despacho ni cambia el estado del incidente, del
-issue o del worktree; solo es posible mientras el literal exista.
+**Qué queda sin cubrir, dicho en concreto.** Que el flujo haya leído **ese** dossier y no otro, y que
+el cuerpo haya entrado entero en el compositor. Las dos las delata el flujo despachado un paso más
+adelante y con el usuario delante: sin el puntero entero no hay dossier que leer, y el primer
+artefacto que somete a gate se escribe sobre lo que el flujo sí leyó. Pero el retiro del incidente
+ocurre **antes** de ese gate, así que el riesgo se acepta con nombre: **un despacho que arrancó bien
+y entendió mal deja el registro vacío**, y el defecto se vuelve a registrar como incidente nuevo.
 
 > **El punto ciego de la procedencia, declarado.** La cadena se apoya en que nadie tipeó nada entre
 > el tiempo 2 y el Enter, y **eso no es observable en ninguna plataforma soportada**: ni Herdr ni Orca
@@ -1168,7 +1162,7 @@ se iba a corregir, y un fallo de este paso no es motivo para perderla.
 |---|---|---|
 | `agent start` devuelve `agent_not_ready` con el agente vivo y listo | **Hipótesis no comprobada:** el CLI puede reportar el error aunque el agente haya quedado disponible | Consultar las cuatro condiciones de «Esperar a que el agente esté listo» y continuar si acreditan; cualquier limpieza pasa por el gate del contrato de fallo por fase |
 | El compositor no muestra la señal de reconocimiento | El prefijo entró dentro del texto pegado, se usó la forma de la otra familia —con espacio donde iba sin él, o al revés—, o actuó la conversión de rutas: en el compositor aparece una ruta absoluta del sistema de archivos en lugar del prefijo | Limpiar el compositor, restablecer readiness y **repetir desde el prefijo**, acreditando su reconocimiento antes de mandar el cuerpo. Ante la conversión de rutas, usar la forma con `MSYS_NO_PATHCONV=1` de la tabla de plataformas. Si no se acredita, el arranque queda **no confirmado** y no se retira nada. La ruta de la skill sirve para **diagnosticar** cuál está instalada, nunca como forma de activarla: pedirle al agente que la lea produce exactamente el arranque compensado que el control existe para rechazar |
-| El compositor devuelve el marcador de colapso | El host colapsó el bloque pegado para mostrarlo; no dice nada sobre si el cuerpo llegó entero | Mandar el Enter igual: la lectura del compositor es una comprobación temprana y barata, no la autoridad, y acá queda inconcluyente y no negativa. Al cuerpo lo acredita la **completitud** al cerrar, y si llegó truncado el arranque queda **no confirmado** ahí |
+| El compositor devuelve el marcador de colapso | El host colapsó el bloque pegado para mostrarlo; no dice nada sobre si el cuerpo llegó entero | Mandar el Enter igual: la lectura del compositor es una comprobación temprana y barata, y acá queda inconcluyente y no negativa. Un cuerpo truncado ya no lo caza el cierre —ver «Confirmar el arranque»—, lo delata el primer artefacto que el flujo somete a gate |
 | El flujo pregunta cosas que el config ya responde | El worktree no está sembrado | Sembrar `.specify/` del `<repo_destino>` y avisarle al agente que relea el config |
 | El flujo arranca un `init` que nadie pidió | Igual que arriba, caso agudo | Igual, y verificar que el `init` no haya sobrescrito nada |
 | `git status` del worktree muestra lo sembrado | El destino no ignora esos paths | Sacarlos del árbol y resolver el ignore antes de seguir |

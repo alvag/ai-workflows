@@ -10,11 +10,10 @@ Es una capa de **orquestación sobre `sdd-flow`**: no reimplementa el ciclo SDD.
 2. **Ejecución paralela (delegada):** lanza un agente por repo que corre `/sdd-flow implement` en su `.plans/<id>/`. Cada repo crea su rama, implementa, corre tests/build, verifica sus AC y **frena antes de commitear**. Respeta dependencias (DAG) y aísla los fallos en cascada. Opcional: **modo inline** ("ejecuta `<repo>` acá" o `execution_mode: inline` en el manifest) para ejecutar un repo en la propia sesión del orquestador, de a uno — útil con un solo repo elegible o para seguir la implementación de cerca.
 3. **Cierre centralizado (tú al mando):** reporte consolidado y luego revisión + commit + push por repo, controlado por ti.
 
-Ambos perfiles conservan co-explore, debate, cross-review, pruebas, contratos de integración,
-revisión del diff y cada autorización externa según sus contratos y overrides. El preset expedito
-activa co-explore y cross-review; si la capacidad falla antes de completar una ronda válida, un
-finding material queda abierto o aparece riesgo `high`/`unknown`, lo resuelve o lo declara antes de crear
-dependientes.
+Toda profundidad conserva co-explore, debate, cross-review, pruebas, contratos de integración,
+revisión del diff y cada autorización externa según sus contratos y overrides. Si la capacidad falla
+antes de completar una ronda válida, un finding material queda abierto o aparece riesgo
+`high`/`unknown`, se resuelve o se declara antes de crear dependientes.
 
 ## Cuándo usarla
 
@@ -29,7 +28,7 @@ dependientes.
 ## Requisitos
 
 - **`sdd-flow` instalada completa** en el entorno (dependencia dura: el orquestador delega en ella y
-  carga una sola vez `sdd-flow/scripts/delivery_profile.py`). Si el helper
+  carga una sola vez `sdd-flow/scripts/plan_frontmatter.py`). Si el helper
   falta o es incompatible, se detiene con un diagnóstico de arnés; no degrada a una decisión
   permisiva.
 - Una **carpeta contenedora** con ≥2 repos git como subdirectorios.
