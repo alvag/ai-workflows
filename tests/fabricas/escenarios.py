@@ -16,7 +16,7 @@ REPO_DIR = TESTS_DIR.parent
 INVENTORY_PATH = TESTS_DIR / "inventario-bloques.md"
 CATALOG_PATH = TESTS_DIR / "casos" / "escenarios.jsonl"
 SECTION_TITLE = "## 4. Pares matriz/caso"
-EXPECTED_SCENARIOS = 397
+EXPECTED_SCENARIOS = 387
 
 
 @dataclass(frozen=True)

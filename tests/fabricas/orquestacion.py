@@ -34,8 +34,8 @@ def _defaults() -> Dict[str, object]:
         "A_COVERS": "AC-1", "B_COVERS": "AC-2", "C_COVERS": "AC-5",
         "A_REFS": "AC-3=V-C1=ok AC-4=V-C1=ok",
         "B_REFS": "AC-3=V-C1=ok", "C_REFS": "",
-        "PROFILE": "", "GLOBAL_RISK": "", "INTEGRATION_COMPLEXITY": "complex",
-        "INTEGRATION_RISK": "", "A_COMPLEXITY": "normal", "B_COMPLEXITY": "trivial",
+        "PROFILE": "", "GLOBAL_RISK": "", "INTEGRATION_COMPLEXITY": "completa",
+        "INTEGRATION_RISK": "", "A_COMPLEXITY": "normal", "B_COMPLEXITY": "corta",
         "C_COMPLEXITY": "normal", "A_RISK": "", "B_RISK": "", "C_RISK": "", "A_REPO_RISK": "", "B_REPO_RISK": "", "C_REPO_RISK": "",
         "A_PLAN_COMPLEXITY": "", "B_PLAN_COMPLEXITY": "", "C_PLAN_COMPLEXITY": "",
         "A_PLAN_PROFILE": "", "B_PLAN_PROFILE": "", "C_PLAN_PROFILE": "",
@@ -321,11 +321,11 @@ class Factory:
             lines += [f"delivery_profile{separator} {self.v['PROFILE']}"]
             if self.v["GLOBAL_RISK"]:
                 lines.append(f"risk{separator} {self.v['GLOBAL_RISK']}")
-            if self.v["PROFILE_DUPLICATE_SPACED"]: lines.append("delivery_profile : standard")
+            if self.v["PROFILE_DUPLICATE_SPACED"]: lines.append("risk : low")
         if self.v["ASSESSMENT"] == 1:
             lines.append("delivery_assessment:")
             global_risk = str(self.v["ASSESSMENT_GLOBAL_RISK"] or self.v["GLOBAL_RISK"])
-            rows = [("global", "complex", global_risk),
+            rows = [("global", "completa", global_risk),
                     ("integration", str(self.v["INTEGRATION_COMPLEXITY"]),
                      str(self.v["INTEGRATION_RISK"]))]
             rows += [("repo:" + self.repo_path(repo), self.get(self.upper(repo), "COMPLEXITY"),
@@ -335,7 +335,7 @@ class Factory:
                 head = (["  - urgency: normal", f"    scope: {scope}"]
                         if self.v["REORDER_PROFILE_ITEMS"] and scope == "repo:servicio-c"
                         else [f"  - scope: {scope}", "    urgency: normal"])
-                lines += head + [f"    complexity: {complexity}", f"    risk: {risk}",
+                lines += head + [f"    profundidad: {complexity}", f"    risk: {risk}",
                           f"    evidence: {self.v['ASSESSMENT_EVIDENCE']}",
                           f"    provenance: {self.v['ASSESSMENT_PROVENANCE']}",
                           "    confidence: high"]
@@ -353,7 +353,7 @@ class Factory:
             lines += head + [f"    status: {self.get(up, 'ST')}", "    depends_on: []", f"    covers_ac: [{self.get(up, 'COVERS')}]" ]
             if self.v["REPO_PATH_DUPLICATE"] and repo == "b": lines.insert(len(lines) - 4, "    path: servicio-z")
             if self.v["PROFILE"] and self.v[up + "_REPO_PAIR"] >= 1:
-                lines += [f"    complexity: {self.get(up, 'COMPLEXITY')}",
+                lines += [f"    profundidad: {self.get(up, 'COMPLEXITY')}",
                           f"    risk: {self.get(up, 'REPO_RISK') or self.get(up, 'RISK')}"]
                 if self.get(up, "REPO_RISK_SPACED"): lines.append(f"    risk : {self.get(up, 'REPO_RISK_SPACED')}")
                 if self.v[up + "_REPO_PAIR"] == 2: lines += lines[-7:]
@@ -528,8 +528,7 @@ class Factory:
             complexity = self.get(up, "PLAN_COMPLEXITY") or self.get(up, "COMPLEXITY")
             plan_profile = self.get(up, "PLAN_PROFILE") or self.v["PROFILE"]
             plan_risk = self.get(up, "PLAN_RISK") or self.v["PLAN_RISK"] or self.v["GLOBAL_RISK"]
-            lines += [f"complexity: {complexity}", f"delivery_profile: {plan_profile}",
-                      f"risk: {plan_risk}"]
+            lines += [f"profundidad: {complexity}", f"risk: {plan_risk}"]
         lines += ["---", "", f"# Plan — {path} (parte de {self.identifier})", "", "## Verification", "", "### v1", "", "| ID | Requisito | Evidencia | Comando/observación | Esperado | Baseline |", "|---|---|---|---|---|---|", f"| V1 | {self.get(up, 'COVERS')} [repo-local] — el repo cumple su parte | test | `npm test` | 1 test, verde | {self.get(up, 'LOCALBASE')} |"]
         references = self.get(up, "REFS").split()
         for index, ref in enumerate(references, 2):

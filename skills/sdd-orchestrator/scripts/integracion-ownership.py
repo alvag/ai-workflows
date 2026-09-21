@@ -33,7 +33,7 @@ def lista(valor: str) -> List[str]:
 
 
 def parsear_manifest(texto: str) -> Tuple[Dict[str, List[str]], List[Dict[str, object]]]:
-    root: Dict[str, List[str]] = {"delivery_profile": [], "risk": []}
+    root: Dict[str, List[str]] = {"risk": []}
     tasks: List[Dict[str, object]] = []
     seccion = ""
     task: Optional[Dict[str, object]] = None
@@ -45,7 +45,7 @@ def parsear_manifest(texto: str) -> Tuple[Dict[str, List[str]], List[Dict[str, o
         if re.match(r"^\s*#", linea):
             continue
         if linea and not linea[0].isspace():
-            scalar = re.match(r"^(delivery_profile|risk)\s*:\s*(.*)$", linea)
+            scalar = re.match(r"^(risk)\s*:\s*(.*)$", linea)
             if scalar:
                 root[scalar.group(1)].append(escalar(scalar.group(2)))
                 seccion = ""
@@ -91,18 +91,13 @@ def parsear_manifest(texto: str) -> Tuple[Dict[str, List[str]], List[Dict[str, o
     return root, tasks
 
 
-def parsear_plan(path: Path, helper) -> Tuple[str, List[Tuple[str, str, str, str]], object]:
+def parsear_plan(path: Path, helper) -> Tuple[str, List[Tuple[str, str, str, str]]]:
     parsed = helper.read_plan_frontmatter(path)
     fields = parsed.fields
     repo_values = fields.get("repo", ())
-    complexity_values = fields.get("complexity", ())
     if len(repo_values) > 1:
-        raise helper.DeliveryProfileError("clave-duplicada", f"{path} repite repo")
+        raise helper.PlanFrontmatterError("clave-duplicada", f"{path} repite repo")
     repo = repo_values[0] if repo_values else ""
-    if len(complexity_values) > 1:
-        raise helper.DeliveryProfileError("clave-duplicada", f"{path} repite complexity")
-    complexity = complexity_values[0] if complexity_values else ""
-    pair = helper.resolve_delivery_pair(fields, complexity)
     filas = []
     for linea in parsed.body_lines:
         if not linea.lstrip().startswith("|") or "[integration]" not in linea:
@@ -116,33 +111,7 @@ def parsear_plan(path: Path, helper) -> Tuple[str, List[Tuple[str, str, str, str
         ac = re.search(r"AC-[0-9]+", celdas[1])
         if ac:
             filas.append((ac.group(0), celdas[2], celdas[3], celdas[5]))
-    return repo, filas, pair
-
-
-def validar_perfil(
-        root: Dict[str, List[str]], planes: List[Tuple[str, object]], helper,
-) -> Optional[Tuple[str, str, Optional[str]]]:
-    root_present = bool(root["delivery_profile"] or root["risk"])
-    plan_present = any(not pair.legacy for _repo, pair in planes)
-    if not root_present and not plan_present:
-        return None
-    for key in ("delivery_profile", "risk"):
-        if len(root[key]) > 1:
-            return "clave-duplicada", f"el manifest repite {key}", None
-    try:
-        pair = helper.resolve_delivery_pair(root, None)
-    except helper.DeliveryProfileError as error:
-        return error.code, error.message, None
-    if pair.legacy:
-        return "carrier-mixto", "manifest y todos los planes deben materializar el par juntos", None
-    if any(plan_pair.legacy for _repo, plan_pair in planes):
-        repo = next(repo for repo, plan_pair in planes if plan_pair.legacy)
-        return "carrier-mixto", "manifest y todos los planes deben materializar el par juntos", repo
-    for repo, plan_pair in planes:
-        if plan_pair.profile != pair.profile or plan_pair.risk != pair.risk:
-            return ("perfil-manifest-plan-diverge",
-                    f"el par del plan {repo} difiere del manifest", repo)
-    return None
+    return repo, filas
 
 
 def main() -> int:
@@ -164,27 +133,18 @@ def main() -> int:
     try:
         helper = delivery_modulo()
     except DeliveryDependency as error:
-        print(f"ARNES:integracion-ownership delivery-profile-helper-{error.kind}", file=sys.stderr)
+        print(f"ARNES:integracion-ownership plan-frontmatter-helper-{error.kind}", file=sys.stderr)
         return 99
     root, tasks = parsear_manifest(manifest_path.read_text(encoding="utf-8"))
     parsed_plans = []
     for path in planes:
         try:
             parsed_plans.append((path, parsear_plan(path, helper)))
-        except helper.DeliveryProfileError as error:
+        except helper.PlanFrontmatterError as error:
             print(f"GUARD:integracion {error.code}", file=sys.stderr)
             print(f"  {error.message}", file=sys.stderr)
             print(f"  plan: {path}", file=sys.stderr)
             return 1
-    profile_failure = validar_perfil(
-        root, [(repo, pair) for _path, (repo, _rows, pair) in parsed_plans], helper)
-    if profile_failure is not None:
-        print(f"GUARD:integracion {profile_failure[0]}", file=sys.stderr)
-        print(f"  {profile_failure[1]}", file=sys.stderr)
-        source = next((path for path, (repo, _rows, _pair) in parsed_plans
-                       if repo == profile_failure[2]), None)
-        print(f"  {'plan' if source else 'manifest'}: {source or manifest_path}", file=sys.stderr)
-        return 1
     autoritativa = {}
     participa: Set[Tuple[str, str]] = set()
     esperados: Dict[str, List[str]] = {}
@@ -204,7 +164,7 @@ def main() -> int:
             fallo = (codigo, contexto, archivo)
 
     presentes: Dict[str, Set[str]] = {}
-    for plan, (repo, filas, _pair) in parsed_plans:
+    for plan, (repo, filas) in parsed_plans:
         if not repo:
             print(f"ARNES:el plan {plan} no declara repo: en su frontmatter", file=sys.stderr)
             return 99
@@ -222,11 +182,11 @@ def main() -> int:
                 actual = referencia.group(0) if referencia else ""
                 if autoritativa.get(ac) and actual != autoritativa[ac]:
                     falla("referencia-a-fila-equivocada", f"el repo {repo} referencia {ac} apuntando a [{actual}], y su fila autoritativa es {autoritativa[ac]}", plan)
-    for plan, (repo, _rows, _pair) in parsed_plans:
+    for plan, (repo, _rows) in parsed_plans:
         faltan = [ac for ac in esperados.get(repo, []) if ac not in presentes.get(repo, set())]
         if faltan:
             falla("referencia-esperada-ausente", f"el repo {repo} participa en {', '.join(faltan)} y no lo referencia", plan)
-    for plan, (repo, _rows, _pair) in parsed_plans:
+    for plan, (repo, _rows) in parsed_plans:
         sobran = [ac for ac in presentes.get(repo, set()) if (repo, ac) not in participa]
         if sobran:
             falla("referencia-en-repo-no-participante", f"el repo {repo} referencia {', '.join(sorted(sobran))}, y participating_repos no lo declara participante", plan)

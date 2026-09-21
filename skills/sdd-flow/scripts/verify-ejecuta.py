@@ -11,30 +11,17 @@ from typing import Dict, Tuple
 USO = "USO:verify-ejecuta sdd_flow_skill sdd_flow_reference"
 
 
-# Veinte identidades cerradas. El valor indica en qué sede debe aparecer cada marcador.
+# Cuatro identidades cerradas. El valor indica en qué sede debe aparecer cada marcador.
+#
+# Qué detecta: que `verify` siga CARGANDO su fila declarada en vez de elegir evidencia al final.
+# Qué NO detecta: que la fila cargada sea la correcta, ni que el comando discrimine algo.
+# Campos: clase **veredicto**; dirección **admite-de-mas** — es una guarda de literales textuales,
+# así que una reescritura que conserve las frases y pierda la propiedad pasa igual.
 IDENTIDADES: Dict[str, Tuple[str, Tuple[str, ...]]] = {
-    "documentos-canonicos": ("ambos", ("Producción del contrato de verificación",)),
+    "documentos-canonicos": ("ambos", ("El contrato de verificación, en dos formas",)),
     "cargar-ausente": ("skill", ("**CARGAR**",)),
     "identificar-presente": ("skill-ausente", ("**IDENTIFICAR**",)),
     "revert-ausente": ("skill", ("revert-to-confirm",)),
-    "puntero-produccion-ausente": (
-        "ambos", ("contrato-invariantes.py", "candidate", "final",
-                  "`final` precede a congelar")),
-    "medicion-directa-blocked-ausente": ("ambos", ("CROSS_IMPLEMENT_PROJECTION_BLOCKED",)),
-    "verify-ownership-ausente": ("ambos", ("ownership-presupuesto.py",)),
-    "agotamiento-entorno-ausente": ("ambos", ("ENVIRONMENT_FAILURE", "DESIGN_GAP")),
-    "recuperacion-rotacion-ausente": ("ambos", ("rotation-pending", "rotation-completed")),
-    "rotation-pending-disjunta": ("ambos", ("terminal:abandoned", "A ausente")),
-    "rotation-pending-autoridad-paquete": ("ambos", ("archive_package", "incoming | outgoing")),
-    "rotation-pending-resultado-cerrado": ("ambos", ("rollback-pending", "rotation-completed")),
-    "rotation-pending-tupla-completa": ("ambos", ("pre-refresh", "post-refresh", "conflict:package")),
-    "rotation-completed-autoridad-git": ("ambos", ("base_anchor", "pending-delta.patch")),
-    "rotation-pending-propuesta-autorizada": ("ambos", ("RecoveryProposal.rotation_steps",)),
-    "rotation-pending-cadena-sucesora": ("ambos", ("plan-refresh", "ledger-rotation")),
-    "rotation-gate-acotado": ("ambos", ("gate de recuperación", "camino continuo")),
-    "rotation-particion-minima": ("ambos", ("partición `rotación`", "seis casos")),
-    "reinicio-explicitamente-aprobado": ("ambos", ("aprobar-reparación", "reiniciar")),
-    "rollback-pending-particion-minima": ("ambos", ("reinicio post-rollback", "tres casos")),
 }
 
 
@@ -48,8 +35,8 @@ def main() -> int:
     except (OSError, UnicodeError):
         print("GUARD:verify-solo-ejecuta documentos canónicos inaccesibles", file=sys.stderr)
         return 1
-    if len(IDENTIDADES) != 20 or len(set(IDENTIDADES)) != 20:
-        print("GUARD:verify-solo-ejecuta tabla interna distinta de veinte", file=sys.stderr)
+    if len(IDENTIDADES) != 4 or len(set(IDENTIDADES)) != 4:
+        print("GUARD:verify-solo-ejecuta tabla interna distinta de cuatro", file=sys.stderr)
         return 1
     errores = []
     for identidad, (sede, marcadores) in IDENTIDADES.items():

@@ -1,7 +1,0 @@
---- a/CLAUDE.md
-+++ b/CLAUDE.md
-@@ -1,4 +1,4 @@
- ---
--title: viejo
-+title: nuevo
- ---

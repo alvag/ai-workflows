@@ -124,15 +124,15 @@ def validar_perfil(
     manifest_repos = profile["repos"]
     repos_sections = profile["repos_sections"]
     repos_invalid = profile["repos_invalid"]
-    root_present = bool(root["delivery_profile"] or root["risk"])
-    repo_present = any(repo["complexity"] or repo["risk"] for repo in manifest_repos)
+    root_present = bool(root["risk"])
+    repo_present = any(repo["profundidad"] or repo["risk"] for repo in manifest_repos)
     parsed_plans: Dict[Path, object] = {}
     plan_present = False
     if not (root_present or assessment_sections or repo_present or repos_sections > 1):
         for plan in planes:
             try:
                 parsed = helper.read_plan_frontmatter(plan)
-            except helper.DeliveryProfileError as error:
+            except helper.PlanFrontmatterError as error:
                 if error.code == "archivo-ilegible":
                     return error.code, error.message, plan
                 try:
@@ -140,11 +140,11 @@ def validar_perfil(
                 except (OSError, UnicodeError) as read_error:
                     return ("archivo-ilegible",
                             f"el plan no se pudo leer como UTF-8: {read_error}", plan)
-                if re.search(r"^(?:delivery_profile|risk)\s*:", raw, re.MULTILINE):
+                if re.search(r"^risk\s*:", raw, re.MULTILINE):
                     return error.code, error.message, plan
                 continue
             parsed_plans[plan] = parsed
-            if parsed.fields.get("delivery_profile") or parsed.fields.get("risk"):
+            if parsed.fields.get("risk"):
                 plan_present = True
                 break
     any_new = (root_present or bool(assessment_sections) or repo_present or plan_present
@@ -156,21 +156,17 @@ def validar_perfil(
         return "clave-duplicada", "el manifest repite repos", None
     if assessment_sections > 1:
         return "clave-duplicada", "el manifest repite delivery_assessment", None
-    for key in ("delivery_profile", "risk"):
-        if len(root[key]) > 1:
-            return "clave-duplicada", f"el manifest repite {key}", None
+    if len(root["risk"]) > 1:
+        return "clave-duplicada", "el manifest repite risk", None
     if repos_invalid:
         return ("repos-forma-invalida",
                 "repos y sus filas deben usar lista en bloque con sangría 2/4 y listas inline", None)
     if assessment_invalid:
         return ("assessment-forma-invalida",
                 "delivery_assessment debe expresarse como lista en bloque con sangría 2/4", None)
-    try:
-        pair = helper.resolve_delivery_pair(root, None)
-    except helper.DeliveryProfileError as error:
-        return error.code, error.message, None
-    if pair.legacy:
-        return "carrier-mixto", "el manifest no materializa el par pero otro carrier sí", None
+    if len(root["risk"]) > 1:
+        return "clave-duplicada", "el manifest repite risk", None
+    manifest_risk = root["risk"][0] if root["risk"] else ""
 
     plan_data: List[Dict[str, object]] = []
     for plan in planes:
@@ -178,17 +174,15 @@ def validar_perfil(
             parsed = parsed_plans.get(plan) or helper.read_plan_frontmatter(plan)
             fields = parsed.fields
             repo_values = fields.get("repo", ())
-            complexity_values = fields.get("complexity", ())
+            depth_values = fields.get("profundidad", ())
             if len(repo_values) != 1:
                 return "plan-repo-invalido", f"{plan} debe declarar repo exactamente una vez", plan
-            if len(complexity_values) > 1:
-                return "clave-duplicada", f"{plan} repite complexity", plan
-            complexity = complexity_values[0] if complexity_values else ""
-            plan_pair = helper.resolve_delivery_pair(fields, complexity)
-        except helper.DeliveryProfileError as error:
+            if len(depth_values) > 1:
+                return "clave-duplicada", f"{plan} repite profundidad", plan
+            profundidad = depth_values[0] if depth_values else ""
+        except helper.PlanFrontmatterError as error:
             return error.code, error.message, plan
-        plan_data.append({"path": plan, "repo": repo_values[0], "complexity": complexity,
-                          "pair": plan_pair})
+        plan_data.append({"path": plan, "repo": repo_values[0], "profundidad": profundidad})
 
     try:
         scopes = validar_assessment(assessment)
@@ -214,40 +208,28 @@ def validar_perfil(
         return "repo-plans-divergen", "los planes no están en biyección con repos", None
 
     folded = plegar_riesgo(scopes, repo_paths)
-    if scopes["global"]["risk"] != folded or pair.risk != folded:
+    if scopes["global"]["risk"] != folded or manifest_risk != folded:
         return ("risk-fold-diverge",
-                f"fold={folded}, global={scopes['global']['risk']}, manifest={pair.risk}", None)
+                f"fold={folded}, global={scopes['global']['risk']}, manifest={manifest_risk}", None)
 
     by_repo = {str(repo["path"]): repo for repo in manifest_repos}
     by_plan = {str(data["repo"]): data for data in plan_data}
     for path in repo_paths:
         repo = by_repo[path]
-        if len(repo["complexity"]) != 1 or len(repo["risk"]) != 1:
+        if len(repo["profundidad"]) != 1 or len(repo["risk"]) != 1:
             return ("carrier-mixto",
-                    f"repo {path} no materializa complexity y risk exactamente una vez", None)
+                    f"repo {path} no materializa profundidad y risk exactamente una vez", None)
         row = scopes[f"repo:{path}"]
-        if repo["complexity"][0] != row["complexity"]:
-            return ("complexity-assessment-manifest-plan-diverge",
+        if repo["profundidad"][0] != row["profundidad"]:
+            return ("profundidad-assessment-manifest-plan-diverge",
                     f"assessment y manifest divergen para {path}", None)
         if repo["risk"][0] != row["risk"]:
             return "risk-assessment-manifest-diverge", f"assessment y manifest divergen para {path}", None
         plan = by_plan[path]
-        if plan["pair"].legacy:
-            return "carrier-mixto", f"plan {path} es heredado dentro de una corrida materializada", plan["path"]
-        if plan["complexity"] != row["complexity"]:
-            return ("complexity-assessment-manifest-plan-diverge",
-                    f"assessment={row['complexity']}, plan={plan['complexity']} para {path}",
+        if plan["profundidad"] != row["profundidad"]:
+            return ("profundidad-assessment-manifest-plan-diverge",
+                    f"assessment={row['profundidad']}, plan={plan['profundidad']} para {path}",
                     plan["path"])
-        # The plan carries the global pair so an autonomous worker cannot reactivate expedited.
-        if plan["pair"].profile != pair.profile or plan["pair"].risk != pair.risk:
-            return ("perfil-manifest-plan-diverge",
-                    f"el par del plan {path} difiere del manifest", plan["path"])
-
-    eligible = (folded == "low" and scopes["integration"]["risk"] == "low"
-                and all(scopes[f"repo:{path}"]["complexity"] in {"trivial", "normal"}
-                        and scopes[f"repo:{path}"]["risk"] == "low" for path in repo_paths))
-    if pair.profile == "expedited" and not eligible:
-        return "expedited-inelegible", "el fold o algún repo impide el perfil expedito", None
     return None
 
 
@@ -275,7 +257,7 @@ def main() -> int:
         helper = delivery_modulo()
     except DeliveryDependency as error:
         print("ARNES:orchestration-model "
-              f"delivery-profile-helper-{error.kind}", file=sys.stderr)
+              f"plan-frontmatter-helper-{error.kind}", file=sys.stderr)
         return 99
     manifest = manifest_path.read_text(encoding="utf-8")
     master = master_path.read_text(encoding="utf-8")

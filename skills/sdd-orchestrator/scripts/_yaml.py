@@ -12,7 +12,7 @@ scopes, fold, biyección ni igualdad con manifest o planes; eso pertenece a cada
 
 ``parsear_perfil_manifest`` — clase: evidencia; dirección: admite-de-mas y rechaza-de-mas. Conserva
 raíces del perfil, todas las claves del assessment y, de cada repo, el marcador más
-path/complexity/risk. NO clasifica sintaxis YAML general, campos históricos de repo ni semántica
+path/profundidad/risk. NO clasifica sintaxis YAML general, campos históricos de repo ni semántica
 entre carriers; puede admitir texto que un parser YAML rechazaría y rechazar YAML válido fuera de
 las formas que sí posee.
 """
@@ -31,7 +31,7 @@ __all__ = [
 ]
 
 ASSESSMENT_FIELDS = {
-    "scope", "urgency", "complexity", "risk", "evidence", "provenance", "confidence",
+    "scope", "urgency", "profundidad", "risk", "evidence", "provenance", "confidence",
 }
 
 
@@ -49,12 +49,12 @@ class DeliveryDependency(Exception):
 
 
 def delivery_modulo():
-    """Load the versioned sdd-flow delivery contract for orchestrator guards."""
-    path = Path(__file__).resolve().parents[2] / "sdd-flow" / "scripts" / "delivery_profile.py"
+    """Load the versioned sdd-flow plan-frontmatter reader for orchestrator guards."""
+    path = Path(__file__).resolve().parents[2] / "sdd-flow" / "scripts" / "plan_frontmatter.py"
     if not path.is_file():
         raise DeliveryDependency("ausente")
     try:
-        spec = importlib.util.spec_from_file_location("_delivery_profile_orchestrator", path)
+        spec = importlib.util.spec_from_file_location("_plan_frontmatter_orchestrator", path)
         if spec is None or spec.loader is None:
             raise DeliveryDependency("incompatible")
         module = importlib.util.module_from_spec(spec)
@@ -64,11 +64,8 @@ def delivery_modulo():
         raise
     except Exception as error:
         raise DeliveryDependency("incompatible") from error
-    required = (
-        "parse_plan_frontmatter", "read_plan_frontmatter", "resolve_delivery_pair",
-        "DeliveryProfileError",
-    )
-    if (getattr(module, "DELIVERY_PROFILE_CONTRACT_VERSION", None) != 1
+    required = ("parse_plan_frontmatter", "read_plan_frontmatter", "PlanFrontmatterError")
+    if (getattr(module, "PLAN_FRONTMATTER_CONTRACT_VERSION", None) != 1
             or not all(hasattr(module, symbol) for symbol in required)):
         raise DeliveryDependency("incompatible")
     return module
@@ -127,9 +124,9 @@ def validar_assessment(rows: Sequence[Dict[str, object]]) -> Dict[str, Dict[str,
         if not isinstance(values["urgency"], str) or values["urgency"] not in {
                 "high", "normal", "unknown"}:
             raise AssessmentError("assessment-urgency-invalida", str(values["urgency"]))
-        if not isinstance(values["complexity"], str) or values["complexity"] not in {
-                "trivial", "normal", "complex"}:
-            raise AssessmentError("complejidad-desconocida", str(values["complexity"]))
+        if not isinstance(values["profundidad"], str) or values["profundidad"] not in {
+                "corta", "normal", "completa"}:
+            raise AssessmentError("profundidad-desconocida", str(values["profundidad"]))
         if not isinstance(values["risk"], str) or values["risk"] not in {
                 "low", "high", "unknown"}:
             raise AssessmentError("riesgo-desconocido", str(values["risk"]))
@@ -162,12 +159,12 @@ def parsear_perfil_manifest(texto: str) -> Dict[str, object]:
     Owned root and field keys are plain scalars with canonical two/four-space indentation. Mapping
     key order is irrelevant. Every root ``repos`` occurrence is counted before its value form is
     interpreted. All assessment keys remain observable; repo evidence is limited to row markers and
-    ``path``, ``complexity`` and ``risk``. Misindented owned evidence is recorded in ``*_invalid``;
+    ``path``, ``profundidad`` and ``risk``. Misindented owned evidence is recorded in ``*_invalid``;
     historical repo fields are deliberately left to the downstream parser.
     This function only preserves structural evidence; model and state retain their different
     completeness policies.
     """
-    root: Dict[str, List[str]] = {"delivery_profile": [], "risk": []}
+    root: Dict[str, List[str]] = {"risk": []}
     assessment: List[Dict[str, object]] = []
     assessment_sections = 0
     assessment_invalid: List[str] = []
@@ -190,7 +187,7 @@ def parsear_perfil_manifest(texto: str) -> Dict[str, object]:
             current = None
             continue
         if line and not line[0].isspace():
-            root_scalar = re.match(r"^(delivery_profile|risk)\s*:\s*(.*)$", line)
+            root_scalar = re.match(r"^(risk)\s*:\s*(.*)$", line)
             if root_scalar:
                 root[root_scalar.group(1)].append(scalar(root_scalar.group(2)))
                 section = ""
@@ -226,12 +223,12 @@ def parsear_perfil_manifest(texto: str) -> Dict[str, object]:
         if section == "repos":
             start = re.match(r"^  -\s*(.*)$", line)
             if start:
-                current = {"path": "", "complexity": [], "risk": [],
+                current = {"path": "", "profundidad": [], "risk": [],
                            "duplicates": set(), "path_seen": False}
                 repos.append(current)
-                field = re.fullmatch(r"(path|complexity|risk)\s*:\s*(.*)", start.group(1))
+                field = re.fullmatch(r"(path|profundidad|risk)\s*:\s*(.*)", start.group(1))
             else:
-                field = re.match(r"^    (path|complexity|risk)\s*:\s*(.*)$", line)
+                field = re.match(r"^    (path|profundidad|risk)\s*:\s*(.*)$", line)
             if current is not None and field:
                 key, value = field.group(1), field.group(2)
                 if key == "path" and current["path_seen"]: current["duplicates"].add("path")
@@ -239,7 +236,7 @@ def parsear_perfil_manifest(texto: str) -> Dict[str, object]:
                 else: current[key].append(scalar(value))
             elif ((marker := re.match(r"^([ \t]*)-\s*", line))
                   and marker.group(1) != "  ") or re.match(
-                    r"^\s*(path|complexity|risk)\s*:", line):
+                    r"^\s*(path|profundidad|risk)\s*:", line):
                 repos_invalid.append(line.strip())
     return {"root": root, "assessment": assessment,
             "assessment_sections": assessment_sections,

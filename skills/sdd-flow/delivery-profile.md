@@ -174,10 +174,11 @@ Ambos perfiles conservan: búsqueda completa de antecedentes; causa raíz antes 
 aceptación observables; pruebas enfocadas; evidencia fresca; checks relevantes; revisión final del
 diff; reversión o forward-fix; y la regla de nunca silenciar linters o compiladores.
 
-En ejecución inline, `final_diff_review.mode: auto` se activa por `complexity: complex` o por
-`risk: high | risk: unknown`. Los modos delegados conservan sus revisiones y gates propios. El perfil
-no concede permiso para crear rama, commit, push, pull request, merge ni escritura externa. Cada
-autorización vigente sigue siendo explícita e independiente.
+La **revisión final de diff corre siempre** y ningún perfil la modula ni la condiciona a
+`complexity` o `risk` (ver `reference.md` → "Revisión final de diff"). Los modos delegados conservan
+sus revisiones y gates propios. El perfil no concede permiso para crear rama, commit, push, pull
+request, merge ni escritura externa. Cada autorización vigente sigue siendo explícita e
+independiente.
 
 ## 10. Matriz de escenarios y dry runs
 

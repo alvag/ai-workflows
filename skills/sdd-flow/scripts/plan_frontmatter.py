@@ -1,4 +1,10 @@
-"""Contrato mecánico compartido del perfil de entrega de SDD."""
+"""Lector del frontmatter YAML de un `plan.md` de SDD.
+
+Qué detecta: header ausente, mal cerrado y claves duplicadas.
+Qué NO detecta: la semántica de los valores — eso lo adjudica cada consumidor.
+Campos: clase **veredicto** (levanta `PlanFrontmatterError` con su código);
+dirección **admite-de-mas**: no valida que las claves presentes sean las esperadas.
+"""
 
 from __future__ import annotations
 
@@ -8,10 +14,9 @@ from types import MappingProxyType
 from typing import FrozenSet, Mapping, Optional, Sequence, Tuple
 
 
-DELIVERY_PROFILE_CONTRACT_VERSION: int = 1
-DELIVERY_PROFILES: FrozenSet[str] = frozenset({"standard", "expedited"})
+PLAN_FRONTMATTER_CONTRACT_VERSION: int = 1
 RISKS: FrozenSet[str] = frozenset({"low", "high", "unknown"})
-COMPLEXITIES: FrozenSet[str] = frozenset({"trivial", "normal", "complex"})
+PROFUNDIDADES: FrozenSet[str] = frozenset({"corta", "normal", "completa"})
 
 
 @dataclass(frozen=True)
@@ -21,14 +26,7 @@ class PlanFrontmatter:
     fields: Mapping[str, Tuple[str, ...]]
 
 
-@dataclass(frozen=True)
-class DeliveryPair:
-    profile: str
-    risk: Optional[str]
-    legacy: bool
-
-
-class DeliveryProfileError(ValueError):
+class PlanFrontmatterError(ValueError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
         self.code = code
@@ -36,7 +34,7 @@ class DeliveryProfileError(ValueError):
 
 
 def _fail(code: str, message: str) -> None:
-    raise DeliveryProfileError(code, message)
+    raise PlanFrontmatterError(code, message)
 
 
 def _scalar(value: str) -> str:
@@ -84,38 +82,3 @@ def read_plan_frontmatter(path: Path) -> PlanFrontmatter:
     except (OSError, UnicodeError) as error:
         _fail("archivo-ilegible", f"el plan no se pudo leer como UTF-8: {error}")
     return parse_plan_frontmatter(text)
-
-
-def resolve_delivery_pair(fields: Mapping[str, Sequence[str]], complexity: Optional[str]) -> DeliveryPair:
-    for key in ("complexity", "delivery_profile", "risk"):
-        values = fields.get(key, ())
-        if len(values) > 1:
-            _fail("clave-duplicada", f"la clave {key} está duplicada")
-
-    profile_values = fields.get("delivery_profile", ())
-    risk_values = fields.get("risk", ())
-    has_profile = len(profile_values) == 1
-    has_risk = len(risk_values) == 1
-
-    if not has_profile and not has_risk and not complexity:
-        return DeliveryPair(profile="standard", risk=None, legacy=True)
-    if complexity is not None and complexity not in COMPLEXITIES:
-        _fail("complejidad-desconocida", f"la complejidad {complexity!r} no pertenece al contrato")
-    if not has_profile and not has_risk:
-        return DeliveryPair(profile="standard", risk=None, legacy=True)
-    if has_profile != has_risk:
-        _fail("par-parcial", "delivery_profile y risk deben declararse juntos")
-
-    profile = profile_values[0]
-    risk = risk_values[0]
-    if profile not in DELIVERY_PROFILES:
-        _fail("perfil-desconocido", f"delivery_profile {profile!r} no pertenece al contrato")
-    if risk not in RISKS:
-        _fail("riesgo-desconocido", f"risk {risk!r} no pertenece al contrato")
-    if profile == "expedited" and (risk != "low" or (complexity is not None
-                                                       and complexity not in {"trivial", "normal"})):
-        _fail(
-            "expedited-inelegible",
-            "expedited exige risk low y, cuando aplica, complexity trivial|normal",
-        )
-    return DeliveryPair(profile=profile, risk=risk, legacy=False)

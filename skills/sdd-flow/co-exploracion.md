@@ -2,7 +2,7 @@
 
 Detalle de la sección `## Co-exploración cross-model (opcional)` de `SKILL.md`, que conserva los
 predicados que deciden si hay que abrir este archivo. No se lee de entrada: se llega desde uno de
-sus tres punteros, y cada uno depende de su propio gobierno.
+sus punteros, y cada uno depende de su propio gobierno.
 
 ## Los dos momentos
 - **Momento 1 — `explore` (pre-spec).** Tras confirmar el contexto y la clasificación en
@@ -60,54 +60,8 @@ sus tres punteros, y cada uno depende de su propio gobierno.
   matriz de `cross-review/reference.md` → "Matriz de resume desde co-exploración", que nunca
   resuelve a la familia del autor ni a un worker `INVALID`.
 
-## Debate en decisiones
-- **En `clarify`:** cuando una pregunta es una decisión abierta real (no algo que el código
-  responde) y `co_explore.debate.mode` es `on`/`auto`, ofrecer: *"esta decisión (X vs Y) es
-  contestable — ¿la someto a debate cross-model antes de que decidas?"*. Si aceptas → invocar
-  `co-explore` con `mode: debate` (la pregunta + las opciones + `spec.md` como contexto) → presentar
-  la síntesis → decides → registrar la respuesta en `## Clarifications`. Si no → clarify normal.
-- **En `plan`:** cuando hay un trade-off contestable (los que ya se nombran en "Decisiones y
-  trade-offs" del plan) y el modo lo habilita, ofrecer someter *ese* trade-off a debate (con
-  `plan.md` como contexto) antes del gate del plan; la decisión resultante se refleja en el plan.
-- **Lo que aterriza en el artefacto va limpio.** La respuesta de `clarify` en `spec.md` y el
-  trade-off resuelto en `plan.md` se escriben **sin** mencionar el debate, las familias ni el
-  método (fluyen a Jira/PR). La atribución por familia vive solo en `co-explore/debate.md`, local
-  (ver `co-explore` → "Publicado vs local").
+## Lo que aterriza en el artefacto va limpio
 
-## Tercera pasada adversarial
-**Qué hacer con cada terminal del retorno.** Acá **no existe** el gate de artefacto donde
-`cross-review` espera que su salida se presente —todavía no hay spec ni plan escritos—, así que los
-tres se consumen explícitamente:
-
-| Terminal | Qué hace `sdd-flow` |
-|---|---|
-| `APPROVED` | continúa, y escribe el artefacto **desde la síntesis revisada** |
-| `UNAVAILABLE` | avisa en una línea y continúa con la síntesis tal como estaba |
-| `REVISE` | presenta las **cinco opciones** del checkpoint según el orden normado del retorno, conserva el `run_id` para reanudar la misma corrida, y **no escribe la spec ni el plan** hasta que se resuelva |
-
-**Qué se hace con lo que la crítica encuentre.** Cada hallazgo se arbitra por el **ledger** de
-`cross-review` —aplicado, rechazado con motivo, o escalado—, y **un hallazgo adoptado corrige la
-síntesis**: aceptarlo sin que cambie ningún insumo posterior es un estado inválido. La corrección se
-publica de forma **atómica** y vuelve a validar el **predicado de cierre** de `co-explore` **antes**
-de escribir la spec o el plan; una edición puede romper la cabecera, los IDs o una sección
-obligatoria, y entonces el flujo consumiría un cierre que `co-explore` rechazaría al retomar.
-
-**La crítica también se verifica.** Los hallazgos son insumo, no órdenes, y acá hay un dato medido:
-en la corrida que originó este paso, **uno de los ocho** hallazgos era falso — y era justamente el que
-acusaba de roto al comando de verificación del conductor. Se refutó con un control positivo de una
-línea. Aceptar una crítica sin verificarla es el mismo error que ignorarla.
-
-**La sesión que criticó no se reutiliza.** Para juzgar si la síntesis representó bien los informes, el
-crítico los recibe completos, así que esa sesión queda **contaminada** con material que la revisión
-posterior de la spec o del plan no debe ver. Esa revisión sale con **worker fresco**, y recibe los
-**índices** y la **síntesis corregida** como contexto.
-
-**Cómo se sabría que el paso paga.** Sobre las pasadas **aceptadas y completadas** —no las declinadas
-ni las degradadas—, en una ventana de al menos **seis**, se registra cuántas cambiaron una
-recomendación. Se revisa la consigna **salvo que `cambios / pasadas > 1/3`**: la evidencia pedía
-cambiar una recomendación en *más* de una de cada tres, así que exactamente un tercio no paga. El
-registro vive en una sección `### Métrica de tercera pasada` del `review-log.md`, **separada del
-ledger** —cuyo esquema es cerrado y no se amplía en silencio—, con los campos `eligible`,
-`recommendation_changed` y `run_id`, y la escribe `sdd-flow` **después** del terminal. El cálculo es
-manual y no lleva guarda.
-
+La respuesta de `clarify` en `spec.md` y el trade-off resuelto en `plan.md` se escriben **sin**
+mencionar las familias ni el método: esos textos fluyen a Jira y al PR. La atribución por familia
+vive solo en los artefactos locales de `co-explore` (ver `co-explore` → "Publicado vs local").

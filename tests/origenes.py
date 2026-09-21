@@ -76,7 +76,7 @@ def read_targets(path: Path = INVENTORY) -> CoverageTargets:
     for line in _section(text, SECTION_CASES).splitlines():
         if line.startswith("| `"):
             cases.add(_unquote(line[2:].split(" | ", 1)[0]))
-    if len(guards) != 37 or len(infrastructure) != 1 or len(cases) != 397:
+    if len(guards) != 34 or len(infrastructure) != 1 or len(cases) != 387:
         raise ValueError(
             "unexpected coverage cardinality: guards={0}, infrastructure={1}, cases={2}".format(
                 len(guards), len(infrastructure), len(cases)))
@@ -136,8 +136,6 @@ def origins_for(identifier: str, group: str,
         return ORIGEN_SIN_MIGRACION
     if group == "contrato-invariantes-v1":
         return frozenset({("guard", "contrato-invariantes")})
-    if group == "contrato-inmutabilidad-v1":
-        return frozenset({("guard", "promocion-tasks-ready")})
     if group == "orchestration-state-v1":
         return frozenset({("guard", "orchestration-state")})
     if group == "contrato-auxiliares-v1":

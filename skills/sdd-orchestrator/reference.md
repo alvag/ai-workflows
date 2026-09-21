@@ -99,33 +99,32 @@ master_spec: .sdd/ABC-123/master-spec.md
 created_at: 2026-06-03T12:00:00-03:00
 integration_contract_frozen_version: 1 # versión materializada del contrato de integración
 integration_contract_frozen_hash: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-delivery_profile: expedited    # standard | expedited; elección global all-or-nothing
 risk: low                      # low | high | unknown; fold de integration y todos los repos
 delivery_assessment:           # estado auditable; lista, nunca mapa por scope
   - scope: global
     urgency: high
-    complexity: complex
+    profundidad: completa
     risk: low
     evidence: ["hotfix de compatibilidad solicitado"]
     provenance: user
     confidence: high
   - scope: integration
     urgency: high
-    complexity: normal
+    profundidad: normal
     risk: low
     evidence: ["contrato compatible hacia atrás"]
     provenance: inference:master-spec
     confidence: high
   - scope: repo:servicio-a
     urgency: high
-    complexity: normal
+    profundidad: normal
     risk: low
     evidence: ["cambio localizado en el emisor"]
     provenance: repo:servicio-a/src/trace.ts:18
     confidence: high
   - scope: repo:servicio-b
     urgency: high
-    complexity: trivial
+    profundidad: corta
     risk: low
     evidence: ["consumidor ya tolera el header"]
     provenance: repo:servicio-b/src/health.ts:27
@@ -152,7 +151,7 @@ co_explore:                   # co-exploración cross-repo antes del reparto; or
 repos:
   - path: servicio-a          # relativo a la contenedora
     branch: feature/ABC-123-trace-id
-    complexity: normal         # trivial | normal | complex; copia de repo:servicio-a
+    profundidad: normal        # corta | normal | completa; copia de repo:servicio-a
     risk: low                  # low | high | unknown; copia de repo:servicio-a
     status: tasks-ready        # ver "Valores de status"
     depends_on: []             # lista de paths de los que depende (DAG)
@@ -160,7 +159,7 @@ repos:
     # implement_mode: cross    # opcional; override por repo del implement_mode de la orquestación
   - path: servicio-b
     branch: feature/ABC-123-consume-health
-    complexity: trivial
+    profundidad: corta
     risk: low
     status: planned
     depends_on: [servicio-a]
@@ -197,7 +196,7 @@ La clave raíz `repos` aparece exactamente una vez; repetirla se rechaza antes d
 reparto. Los `path` de `repos` y los carriers `repo` de los planes son únicos: se rechazan antes de
 construir cualquier set o mapa derivado.
 
-`delivery_profile`, `risk`, `delivery_assessment`, `repos` y `orchestration_tasks` son estado de la
+`risk`, `delivery_assessment`, `repos` y `orchestration_tasks` son estado de la
 corrida, no configuración copiable. `co_explore.debate.mode` y
 `co_explore.debate.max_rounds` tampoco viven en el manifest: su dueño es `co-explore`, pero el
 orquestador no tiene un consumidor comprobado para ellas.
@@ -465,7 +464,7 @@ después se movió.
 - `id: 13` · `paso: cerrar-tarea` · `actor: orquestador` · `objeto: C1` · `resultado: rechazado` · `timestamp: 2026-06-03T18:04:11-03:00`
 ```
 
-**Este esquema mezcla estado de corrida (`id`, `created_at`, `master_spec`, `delivery_profile`, `risk`,
+**Este esquema mezcla estado de corrida (`id`, `created_at`, `master_spec`, `risk`,
 `delivery_assessment`, `repos`, `orchestration_tasks`, `integration_contract_frozen_version` y
 `integration_contract_frozen_hash`) con configuración.** Las claves de configuración son propias de esta skill (`branch_prefix`,
 `execution_mode`, `implement_mode`, `cross_model.*`) salvo `cross_review.*` y `co_explore.*`, cuyo enum lo define su

@@ -489,7 +489,7 @@ Como parte de la segunda comprobación, ejecutar
 y leer su código de salida y stderr. `<fase>` es `candidate` antes del `STOP`, cuando la aprobación
 de la propia versión candidata todavía puede no existir pero toda aprobación histórica ya debe
 cerrar, y `final` después de registrar `aprobar-reparación` y antes de invocar
-`promocion-tasks-ready.py` o despachar, cuando la versión vigente también debe estar aprobada. Un
+promover o despachar, cuando la versión vigente también debe estar aprobada. Un
 código distinto de cero detiene el dispatch igual que cualquier otra comprobación de esta tabla.
 
 La cadena concreta ejecuta

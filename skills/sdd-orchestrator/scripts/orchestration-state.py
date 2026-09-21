@@ -434,16 +434,15 @@ def parsear_plan(path: Path, helper) -> Tuple[str, str, str, bool, str, object]:
     repo_values = fields.get("repo", ())
     status_values = fields.get("status", ())
     sha_values = fields.get("head_sha", ())
-    complexity_values = fields.get("complexity", ())
+    depth_values = fields.get("profundidad", ())
     if len(repo_values) > 1:
-        raise helper.DeliveryProfileError("clave-duplicada", f"{path} repite repo")
+        raise helper.PlanFrontmatterError("clave-duplicada", f"{path} repite repo")
     repo = repo_values[0] if repo_values else ""
     status = status_values[-1] if status_values else ""
     sha = sha_values[-1] if sha_values else ""
-    if len(complexity_values) > 1:
-        raise helper.DeliveryProfileError("clave-duplicada", f"{path} repite complexity")
-    complexity = complexity_values[0] if complexity_values else ""
-    pair = helper.resolve_delivery_pair(fields, complexity)
+    if len(depth_values) > 1:
+        raise helper.PlanFrontmatterError("clave-duplicada", f"{path} repite profundidad")
+    profundidad = depth_values[0] if depth_values else ""
     blocked = False
     for linea in parsed.body_lines:
         limpia = linea.strip()
@@ -451,7 +450,7 @@ def parsear_plan(path: Path, helper) -> Tuple[str, str, str, bool, str, object]:
             celdas = [celda.strip() for celda in limpia[1:-1].split("|")]
             if celdas and celdas[-1] == "BLOCKED":
                 blocked = True
-    return repo, status, sha, blocked, complexity, pair
+    return repo, status, sha, blocked, profundidad
 
 
 def validar_perfil(profile: Dict[str, object], planes: List[Tuple[str, str, str, bool, str, object]],
@@ -463,9 +462,9 @@ def validar_perfil(profile: Dict[str, object], planes: List[Tuple[str, str, str,
     manifest_repos = profile["repos"]
     repos_sections = profile["repos_sections"]
     repos_invalid = profile["repos_invalid"]
-    root_present = bool(root["delivery_profile"] or root["risk"])
-    repo_present = any(repo["complexity"] or repo["risk"] for repo in manifest_repos)
-    plan_present = any(not plan[5].legacy for plan in planes)
+    root_present = bool(root["risk"])
+    repo_present = any(repo["profundidad"] or repo["risk"] for repo in manifest_repos)
+    plan_present = any(plan[4] for plan in planes)
     if not (root_present or assessment_sections or repo_present or plan_present
             or repos_sections > 1):
         return None
@@ -474,9 +473,8 @@ def validar_perfil(profile: Dict[str, object], planes: List[Tuple[str, str, str,
         return "clave-duplicada", "el manifest repite repos", None
     if assessment_sections > 1:
         return "clave-duplicada", "el manifest repite delivery_assessment", None
-    for key in ("delivery_profile", "risk"):
-        if len(root[key]) > 1:
-            return "clave-duplicada", f"el manifest repite {key}", None
+    if len(root["risk"]) > 1:
+        return "clave-duplicada", "el manifest repite risk", None
     if repos_invalid:
         return ("repos-forma-invalida",
                 "repos y sus filas deben usar lista en bloque con sangría 2/4 y listas inline", None)
@@ -484,14 +482,12 @@ def validar_perfil(profile: Dict[str, object], planes: List[Tuple[str, str, str,
         return ("assessment-forma-invalida",
                 "delivery_assessment debe expresarse como lista en bloque con sangría 2/4", None)
     try:
-        pair = helper.resolve_delivery_pair(root, None)
-    except helper.DeliveryProfileError as error:
+        manifest_risk = root["risk"][0] if root["risk"] else ""
+    except helper.PlanFrontmatterError as error:
         return error.code, error.message, None
-    if pair.legacy:
-        return "carrier-mixto", "el manifest no materializa el par pero otro carrier sí", None
-    if planes and any(plan[5].legacy for plan in planes):
-        source = next(path for path, plan in zip(plan_paths, planes) if plan[5].legacy)
-        return "carrier-mixto", "no todos los planes materializan el par", source
+    if planes and any(not plan[4] for plan in planes):
+        source = next(path for path, plan in zip(plan_paths, planes) if not plan[4])
+        return "carrier-mixto", "no todos los planes declaran su profundidad", source
 
     if any(repo["duplicates"] for repo in manifest_repos):
         return "clave-duplicada", "una entrada de repos repite path", None
@@ -514,9 +510,9 @@ def validar_perfil(profile: Dict[str, object], planes: List[Tuple[str, str, str,
                 f"esperado={sorted(expected_scopes)} actual={sorted(scopes)}", None)
 
     folded = plegar_riesgo(scopes, repo_paths)
-    if scopes["global"]["risk"] != folded or pair.risk != folded:
+    if scopes["global"]["risk"] != folded or manifest_risk != folded:
         return ("risk-fold-diverge",
-                f"fold={folded}, global={scopes['global']['risk']}, manifest={pair.risk}", None)
+                f"fold={folded}, global={scopes['global']['risk']}, manifest={manifest_risk}", None)
 
     repos_by_path = {str(repo["path"]): repo for repo in manifest_repos}
     plans_by_repo = {plan[0]: plan for plan in planes}
@@ -526,12 +522,12 @@ def validar_perfil(profile: Dict[str, object], planes: List[Tuple[str, str, str,
         return ("carrier-mixto", "un plan no corresponde a ningún repo del manifest",
                 plan_sources[repo])
     for path, repo in repos_by_path.items():
-        if len(repo["complexity"]) != 1 or len(repo["risk"]) != 1:
+        if len(repo["profundidad"]) != 1 or len(repo["risk"]) != 1:
             return ("carrier-mixto",
-                    f"repo {path} no materializa complexity y risk exactamente una vez", None)
+                    f"repo {path} no materializa profundidad y risk exactamente una vez", None)
         row = scopes[f"repo:{path}"]
-        if repo["complexity"][0] != row["complexity"]:
-            return ("complexity-assessment-manifest-plan-diverge",
+        if repo["profundidad"][0] != row["profundidad"]:
+            return ("profundidad-assessment-manifest-plan-diverge",
                     f"assessment y manifest divergen para {path}", None)
         if repo["risk"][0] != row["risk"]:
             return ("risk-assessment-manifest-diverge",
@@ -539,19 +535,10 @@ def validar_perfil(profile: Dict[str, object], planes: List[Tuple[str, str, str,
         plan = plans_by_repo.get(path)
         if plan is None:
             continue
-        if plan[4] != row["complexity"]:
-            return ("complexity-assessment-manifest-plan-diverge",
-                    f"assessment={row['complexity']}, plan={plan[4]} para {path}",
+        if plan[4] != row["profundidad"]:
+            return ("profundidad-assessment-manifest-plan-diverge",
+                    f"assessment={row['profundidad']}, plan={plan[4]} para {path}",
                     plan_sources[path])
-        if plan[5].profile != pair.profile or plan[5].risk != pair.risk:
-            return ("perfil-manifest-plan-diverge",
-                    f"el par del plan {path} difiere del manifest", plan_sources[path])
-
-    eligible = (folded == "low" and scopes["integration"]["risk"] == "low"
-                and all(scopes[f"repo:{path}"]["complexity"] in {"trivial", "normal"}
-                        and scopes[f"repo:{path}"]["risk"] == "low" for path in repo_paths))
-    if pair.profile == "expedited" and not eligible:
-        return "expedited-inelegible", "el fold o algún repo impide el perfil expedito", None
     return None
 
 
@@ -602,7 +589,7 @@ def main() -> int:
     try:
         helper = delivery_modulo()
     except DeliveryDependency as error:
-        print(f"ARNES:orchestration-state delivery-profile-helper-{error.kind}", file=sys.stderr)
+        print(f"ARNES:orchestration-state plan-frontmatter-helper-{error.kind}", file=sys.stderr)
         return 99
     master = master_path.read_text(encoding="utf-8")
     manifest = manifest_path.read_text(encoding="utf-8")
@@ -616,7 +603,7 @@ def main() -> int:
     for path in planes:
         try:
             parsed_plans.append(parsear_plan(path, helper))
-        except helper.DeliveryProfileError as error:
+        except helper.PlanFrontmatterError as error:
             print(f"GUARD:state {error.code}", file=sys.stderr)
             print(f"  {error.message}", file=sys.stderr)
             print(f"  plan: {path}", file=sys.stderr)
@@ -635,8 +622,8 @@ def main() -> int:
         print(f"ARNES:orchestration-state contrato-helper-{error}", file=sys.stderr)
         return 99
     planes_data = {
-        repo: (status, sha, blocked, path, complexity, pair)
-        for path, (repo, status, sha, blocked, complexity, pair) in zip(planes, parsed_plans)
+        repo: (status, sha, blocked, path, profundidad)
+        for path, (repo, status, sha, blocked, profundidad) in zip(planes, parsed_plans)
     }
     task_by_id = {str(task["id"]): task for task in tasks}
     repo_by_path = {repo["path"]: repo for repo in repos}

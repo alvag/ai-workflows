@@ -573,7 +573,7 @@ a contrato directo convertiría un error en un despacho silencioso con el prompt
 exactamente lo que la rama (c) existe para impedir.
 
 **Cómo se lee el header, y hasta dónde.** Como lo lee la función `leer_header` de
-`sdd-flow/scripts/promocion-tasks-ready.py`, y **solo ese subconjunto**: delimitadores de apertura y
+el plan de `sdd-flow`, y **solo ese subconjunto**: delimitadores de apertura y
 cierre, unicidad de la clave, y enum cerrado de `complexity`. El resto de ese script —`status`,
 `contract_procedure`, bitácora, estado de promoción— **no se aplica acá**: es el gate de promoción, y
 arrastrarlo al clasificador bloquearía flujos válidos por precondiciones que este criterio no pide.
@@ -1331,9 +1331,10 @@ propio. Las dos condiciones van juntas:
 > de esta skill son pocas, así que esperar significancia estadística es esperar para siempre. Uno
 > puede ser mala suerte; dos ya es un patrón que vale un flujo.
 
-**Qué se abre, si se abre:** sede `cross-implement`, **sin skill nueva**, y con
-`final_diff_review.mode` como dueño de configuración. Eso ya está decidido y no se re-litiga: lo
-único que faltaba era saber si hace falta.
+**Qué se abre, si se abre:** sede `cross-implement`, **sin skill nueva**. Eso ya está decidido y no
+se re-litiga: lo único que faltaba era saber si hace falta. Su configuración se decide entonces — la
+clave que este pasaje nombraba se retiró al volverse obligatoria la revisión final de diff de
+`sdd-flow`.
 
 En modo embebido, sdd-flow referencia este log desde su flujo; el commit y el `verify` siguen
 siendo de sdd-flow.

@@ -91,8 +91,8 @@ Como `.sdd/` y los `.plans/<id>/` son **locales (untracked)**, conviven N featur
 
 ## Reglas no negociables
 
-1. **La spec madre manda.** En `standard`, no se reparte trabajo sin un `master-spec.md` aprobado. En `expedited`, una spec madre estable puede originar candidatos todavía no aprobados, pero nada se congela, promueve ni delega hasta que el gate atómico aprueba spec y reparto juntos. La verificación final chequea contra sus criterios de aceptación.
-2. **Gates de diseño, una sola vez y centralizados.** `standard` conserva gates separados de `master-spec.md` y reparto. `expedited` los fusiona en un gate atómico después de materializar y revisar todos los candidatos. Cada gate se anuncia y espera confirmación humana explícita; nunca es una aprobación automática.
+1. **La spec madre manda.** No se reparte trabajo sin un `master-spec.md` aprobado. Nada se congela, promueve ni delega antes de esa aprobación.
+2. **Gates de diseño, una sola vez y centralizados.** Gates separados de `master-spec.md` y de reparto. Cada gate se anuncia con lo que aprueba y espera confirmación; no se fusionan en silencio.
 3. **No se delega a un repo no confirmado.** La lista de repos involucrados la confirma el usuario (Fase 1). Nunca se crea rama ni se implementa en un repo que el usuario no eligió.
 4. **Los agentes frenan antes de commitear.** La Fase 2 implementa y verifica, pero el commit/push de cada repo se decide en la Fase 3, bajo control del usuario.
 5. **Trazabilidad cross-repo.** Todo `AC-n` global tiene cobertura declarada, y declarada donde corresponde según su etiqueta; ninguna sub-task referencia un AC inexistente. Se valida antes de salir de Fase 1 (cross-artifact check). Sus cláusulas exactas, abajo en "Regla 5 — trazabilidad cross-repo".
@@ -101,6 +101,14 @@ Como `.sdd/` y los `.plans/<id>/` son **locales (untracked)**, conviven N featur
 8. **Degradación elegante.** Si falta un MCP/CLI (tracker, navegador, host de Git) o `sdd-flow` no está disponible, avisar y continuar con lo que haya, o detenerse explicando el bloqueo. Descubrir por capacidad, no por nombre de tool.
 
 ### Regla 5 — trazabilidad cross-repo
+
+> **Por qué acá se conserva lo que `sdd-flow` retiró.** En una corrida de un solo repo el usuario
+> mira el diff y el contrato completo sobra. Acá **no puede mirar cuatro repos a la vez**: un AC de
+> integración no pertenece al `verify` de ninguno aislado, así que sin dueño declarado todos terminan
+> verdes con un requisito que ningún reparto incluyó. Por eso el baseline resuelto y el
+> `integration_contract_frozen_hash` de la Fase 3 **no son acreditación retrospectiva**: son la
+> precondición que el cierre multi-repo comprueba antes de dar por cumplido un AC que nadie vio
+> entero.
 
 Cobertura del **100 %** de los `AC-n` de la `master-spec.md`, con la **misma** cardinalidad que valida el cross-artifact check de la Fase 1: si acá dijera "≥1" para los de integración, la regla admitiría duplicados que el check rechaza, y lo escrito contradiría a lo que se ejecuta.
 
@@ -176,6 +184,12 @@ Solo después de esa resolución y comparación se entrega el mismo `family_inve
 **hereda la elección**: no la recalcula, no redetecta y no vuelve a avisar.
 
 ## Corridas delegadas en vuelo
+
+> **Se lee al despachar, no en cada corrida.** Y a diferencia de `sdd-flow`, acá el sobre **siempre**
+> se usa: una orquestación despacha por definición, y su capa operativa —qué worker sigue vivo, dónde
+> escribe, qué falta cosechar— es lo que permite retomar sin duplicar ni olvidar un repo. Lo que no
+> se conserva de él es la capa histórica: manifest de autoridades, huellas y reconciliación
+> bidireccional.
 
 Antes del primer despacho, comprobar en la raíz efectiva si existe
 `.cross-model/conmutacion.lock`. Si existe, detener la corrida antes de crear o escribir el sobre e
@@ -261,8 +275,7 @@ entre servicios** y los **AC `[integration]`** son justo donde un segundo modelo
 inconsistencias que un humano pasa por alto. **Augmenta el gate, no lo reemplaza.**
 
 - **Dependencia blanda.** Si `cross-review` no está instalada, el perfil `standard` omite la revisión
-  y sigue con el gate humano normal. Si el perfil efectivo es `expedited` y no existe una ronda
-  completada, avisar, revocarlo a `standard` y restaurar los gates separados antes de continuar.
+  y sigue con el gate humano normal. La ausencia de la capa no fusiona gates ni cambia el reparto.
   Detectarla por capacidad (regla 8). Si está instalada, invocarla con el **Skill tool**
   (`cross-review`; esa skill sí es invocable por el modelo). (Distinta de `sdd-flow`, que **sí** es
   dependencia dura: sin ella no hay Fase 2.)
@@ -270,11 +283,9 @@ inconsistencias que un humano pasa por alto. **Augmenta el gate, no lo reemplaza
   y `reparto` (foco en cobertura AC↔repo, `depends_on` y ciclos del DAG) en el gate 1.4. El
   `review-log.md` queda en `.sdd/<id>/review-log.md` (local, untracked).
 - **Defaults del orquestador:** `cross_review.mode: auto` equivale a **on** para estos dos gates, y
-  la revisión se invoca con `complexity: complex` (los artefactos de orquestación son, por
+  la revisión se invoca con profundidad **completa** (los artefactos de orquestación son, por
   definición, el caso complejo — eso fija el presupuesto de tiempo del revisor).
-- **Override `off`.** Un override raíz `cross_review.mode: "off"` desactiva la capa. Con perfil
-  `expedited`, revocarlo a `standard` y restaurar los gates separados antes de crear dependientes;
-  con `standard`, solo omitir la revisión. El `off` que la Fase 2 deriva para evitar duplicarla no
+- **Override `off`.** Un override raíz `cross_review.mode: "off"` desactiva la capa. Se solo omitir la revisión. El `off` que la Fase 2 deriva para evitar duplicarla no
   es una nueva decisión de perfil: hereda la revisión upstream del reparto y no reclasifica.
 - **Review en capas, sin redundancia.** Los `plan.md`/`tasks.md` por-repo se generan en el reparto
   (1.4) y quedan cubiertos por la revisión del **reparto**. Por eso, cuando la Fase 2 delega a
@@ -287,9 +298,7 @@ inconsistencias que un humano pasa por alto. **Augmenta el gate, no lo reemplaza
   skill garantiza un **tope duro** → `UNAVAILABLE`, nunca espera indefinida.
 - **Degradación (nunca bloquea).** Sin revisor, invocación de la skill fallida, fallo en runtime o
   timeout/`poll_deadline` vencido → avisar en una línea. Con perfil
-  `standard`, seguir con el gate humano. Si el perfil efectivo es `expedited`, aplicar la tabla de
-  `sdd-flow/delivery-profile.md`: sin una ronda completada, o con aplicaciones pendientes, revocarlo a
-  `standard`; con al menos una ronda y cero pendientes, conservarlo y declarar la limitación. **Si el
+  `standard`, seguir con el gate humano. con al menos una ronda y cero pendientes, conservarlo y declarar la limitación. **Si el
   retorno trae `aplicaciones_pendientes` mayor
   que cero, declararlo con sus `ids_pendientes` antes de liberar el gate:** una degradación no abre
   checkpoint, así que es la única oportunidad de decir que quedaron ediciones sin observar.
@@ -357,7 +366,7 @@ en la propia `co-explore`; acá solo cuándo se despacha y qué contexto recibe.
   propone su propio **reparto tentativo** (qué repo cubre qué AC, `depends_on`, orden) que el
   conductor contrasta antes de escribir el reparto real. Errores de DAG y cobertura AC↔repo son el
   objetivo. Un override concreto `counter-plan: "on"` prevalece si el perfil efectivo era
-  `expedited`: antes del gate de `master-spec` hay que revocar `expedited` a `standard`, registrar el
+  antes del gate de `master-spec` se registra el
   motivo y restaurar la secuencia estándar; después del gate, con la spec aprobada, ejecutar
   `counter-plan`. No se ejecuta sobre una candidata sin aprobar ni agrega un gate a la ruta expedita.
 - **Artefactos.** `.sdd/<id>/co-explore/` (mismos nombres que en `sdd-flow`), local y untracked
@@ -367,9 +376,8 @@ en la propia `co-explore`; acá solo cuándo se despacha y qué contexto recibe.
 - **Config.** Clave **top-level** `co_explore` en el `manifest.yml` de la orquestación
   (hermana de `cross_review`, no anidada — son ortogonales; ver "Esquema de `manifest.yml`").
   Default `auto` = **on**: los artefactos de orquestación son el caso complejo por definición,
-  igual que su cross-review. Deadlines: usar los de `complexity: complex` (600 s) como piso.
-- **Override `off`.** Un override raíz `co_explore.mode: "off"` desactiva la capa. Con perfil
-  `expedited`, revocarlo a `standard` antes de escribir `master-spec.md`; con `standard`, continuar
+  igual que su cross-review. Deadlines: usar los de profundidad **completa** (600 s) como piso.
+- **Override `off`.** Un override raíz `co_explore.mode: "off"` desactiva la capa. Se continúa
   con la exploración del conductor. El `off` derivado para Fase 2 solo evita repetir la exploración
   global ya completada y no reclasifica el par heredado.
 - **Crítica informada.** Los informes se pasan como `context_paths` adicionales a
@@ -432,17 +440,17 @@ Consolidar el objetivo del cambio desde el ticket (si hay clave de tracker y MCP
    repite por repo.
 
    Evaluar filas `global`, `integration` y una `repo:<path>` por cada repo confirmado. Cada fila lleva
-   exactamente `scope`, `urgency`, `complexity`, `risk`, `evidence`, `provenance` y `confidence`.
-   `integration.complexity` es informativa; el fold usa `integration.risk` y el `risk` de cada repo:
-   `high` gana, luego `unknown`, y solo todos `low` producen `low`. La fila global y el `risk` raíz
-   reciben ese fold. Recomendar el perfil, explicar qué gate se fusionaría y registrar la elección
-   humana all-or-nothing. `expedited` exige fold `low`, integración `low` y cada repo
-   `trivial | normal` con riesgo `low`.
+   exactamente `scope`, `urgency`, `profundidad`, `risk`, `evidence`, `provenance` y `confidence`.
+   El fold del riesgo usa `integration.risk` y el `risk` de cada repo: `high` gana, luego `unknown`, y
+   solo todos `low` producen `low`. La fila global y el `risk` raíz reciben ese fold.
 
-   Crear o actualizar el `manifest.yml` real con `delivery_profile`, `risk`, la lista
-   `delivery_assessment` y los carriers `complexity`/`risk` por repo; registrar la misma decisión en
-   `bitacora.md`. Ambos se escriben antes de co-explore. Un análisis posterior puede revocar
-   `expedited`, pero no activarlo sin otra elección humana.
+   **La profundidad se propone por repo, dentro del reparto**, no all-or-nothing: un repo donde se
+   toca un archivo no necesita tres gates porque otro los necesite. El usuario ve la tabla completa
+   al aprobar el reparto, así que sigue siendo una sola aprobación — y una recomendación no necesita
+   ser uniforme para aprobarse de una vez, que es lo que la elegibilidad sí exigía.
+
+   Crear o actualizar el `manifest.yml` real con `risk`, la lista `delivery_assessment` y la
+   profundidad propuesta por repo. Se escribe antes de co-explore.
 <!-- delivery-profile-assessment:end -->
 5. **Despacho del `explore` global:** con co-exploración activa, se despacha acá, ya con los repos confirmados (ver "Co-exploración cross-model"). Su paquete de contexto lleva los **hechos crudos** del paso 2 —términos, estado por fuente y coincidencias con su ref, ruta y SHA— y **ninguna** clasificación resuelta.
 
@@ -453,12 +461,9 @@ Consolidar el objetivo del cambio desde el ticket (si hay clave de tracker y MCP
 3. Si la **revisión cross-model** está activa (ver "Revisión cross-model"), ejecutar `cross-review`
    sobre `master-spec.md` (foco en contratos entre servicios y AC `[integration]`; con co-exploración
    corrida, sumar los **índices + la síntesis** de la co-exploración como `context_paths` adicional —
-   nunca los `detail-*` completos — ver "Co-exploración cross-model"). Aplicar la tabla normativa de
-   `sdd-flow/delivery-profile.md`: un finding material abierto, todo `REVISE`, un `UNAVAILABLE` sin
-   rondas o con aplicaciones pendientes revocan `expedited` y restauran la secuencia `standard` antes
-   de crear dependientes. `APPROVED` y `UNAVAILABLE` con al menos una ronda y cero pendientes no
-   revocan; un finding histórico ya cerrado no se vuelve a contar.
-4. Con perfil `standard`, **STOP → GATE**: presentar la spec madre y pedir aprobación; no avanzar sin ella. Con `expedited`, estabilizar la spec sin promoverla ni congelarla y continuar a `1.4`: su aprobación queda dentro del único gate atómico de spec y reparto.
+   nunca los `detail-*` completos — ver "Co-exploración cross-model"). Un finding material abierto se
+   resuelve o se declara antes de crear dependientes.
+4. **STOP → GATE**: presentar la spec madre y pedir aprobación; no avanzar sin ella.romoverla ni congelarla y continuar a `1.4`: su aprobación queda dentro del único gate atómico de spec y reparto.
 
 ### 1.4 Reparto → GATE
 Con co-exploración activa, antes del punto 1 se despacha el `counter-plan` (ver "Co-exploración cross-model"): el revisor propone su **reparto tentativo**, que el conductor contrasta antes de escribir el reparto real.
@@ -476,11 +481,11 @@ La enumeración inmediata no es exhaustiva; mandan
 
 1. Por cada repo confirmado, crear `<repo>/.plans/<id>/` como un flujo `sdd-flow` completo:
    - **`spec.md`** — la fuente de los AC que el agente delegado verificará en Fase 2 (sin ella, el `verify` de `sdd-flow` no tiene contra qué chequear). Contenido: problema/objetivo recortado a lo que aporta el repo, los AC de su `covers_ac` copiados **textuales** de la master-spec (manteniendo los IDs globales `AC-n` para trazabilidad), los contratos que el repo expone/consume, y una nota explícita de que los AC `[integration]` en los que participa **no** se verifican en el repo (los cierra la tarea de orquestación dueña de su fila; nunca darlos por cumplidos localmente). Su fila vive en el **contrato de integración** de la orquestación y el contrato del repo solo la **referencia en solo-lectura**, con evidencia `N/A: orchestration-owned` — ni `NOT_APPLICABLE` ni pendiente (`reference.md` → "Contrato de integración"). Mini-plantilla en `reference.md` → "Spec por repo".
-   - **`plan.md`** con el **header YAML de `sdd-flow` y la extensión obligatoria `repo` del orquestador** (`id`, `repo`, `branch`, `base_commit`, `change_type`, `complexity`, `delivery_profile`, `risk`, `status: planned`, `created_at`) + las secciones de enfoque/archivos/tests, y su `## Verification` con el **contrato de verificación obligatorio**: el mismo esquema normativo que `sdd-flow`, heredado por puntero (`sdd-flow/reference.md` → "Plantilla de plan"), nunca una plantilla propia. El template genérico de `sdd-flow` no declara `repo`; el productor orquestado debe agregarlo porque las guardas exigen la biyección plan↔manifest. Sin esa herencia los planes multi-repo nacen sin contrato y `implement_mode: cross` se rompe solo acá. La **`complexity` por repo la asigna el orquestador** desde su fila `repo:<path>` (default `normal`; `trivial` solo si el cambio del repo es trivial → spec y tasks embebidas en `plan.md`, igual que `sdd-flow`). El plan lleva el `delivery_profile` y el `risk` globales; el riesgo local permanece en la fila de assessment y en el carrier del repo dentro del manifest. `base_commit` = HEAD actual de la rama base del repo; la rama todavía no existe — la crea `sdd-flow` en Fase 2 (su `resume` la recrea desde `base_commit` cuando no la encuentra).
+   - **`plan.md`** con el **header YAML de `sdd-flow` y la extensión obligatoria `repo` del orquestador** (`id`, `repo`, `branch`, `base_commit`, `change_type`, `profundidad`, `risk`, `status: planned`, `created_at`) + las secciones de enfoque/archivos/tests, y su `## Verification` con el **contrato de verificación obligatorio**: el mismo esquema normativo que `sdd-flow`, heredado por puntero (`sdd-flow/reference.md` → "Plantilla de plan"), nunca una plantilla propia. El template genérico de `sdd-flow` no declara `repo`; el productor orquestado debe agregarlo porque las guardas exigen la biyección plan↔manifest. Sin esa herencia los planes multi-repo nacen sin contrato y `implement_mode: cross` se rompe solo acá. La **`complexity` por repo la asigna el orquestador** desde su fila `repo:<path>` (default `normal`; **corta** solo si ese repo se entiende con 1–3 archivos → spec y tasks embebidas en `plan.md`, igual que `sdd-flow`). El plan lleva el `risk` global; el riesgo local permanece en la fila de assessment y en el carrier del repo dentro del manifest. `base_commit` = HEAD actual de la rama base del repo; la rama todavía no existe — la crea `sdd-flow` en Fase 2 (su `resume` la recrea desde `base_commit` cuando no la encuentra).
    - **`tasks.md`** (salvo *trivial*) con el **formato detallado** de `sdd-flow` (cada task con Por qué / Archivos / Pasos / Verificar / `AC-n`).
 
    El `branch` se nombra con la convención de `sdd-flow` (`<prefijo>/{id}-{slug}`), resolviendo el `<prefijo>` (el `{type}`) por repo con esta **precedencia**: (1) `branch_prefix` del `<repo>/.specify/config.yml` si lo tiene (su CI/CD manda) → (2) `branch_prefix` de la orquestación (del `manifest.yml`) → (3) prefijo **semántico** del cambio. Normalizar quitando la barra final si la trae. (Ese `<repo>/.specify/config.yml` se puede generar con `/sdd-flow init` dentro del repo; hace el reparto más determinista.)
-2. Escribir/actualizar `manifest.yml` (esquema en `reference.md`): conservar el `delivery_profile`, el `risk` y `delivery_assessment` decididos en `1.2`; por repo, añadir `path`, `branch`, `complexity`, `risk`, `status`, `depends_on` (el DAG) y `covers_ac`; y en `orchestration_tasks`, el trabajo que no vive en ningún repo —una entrada por tarea, con su `phase`, `what`, `owner`, `status`, `depends_on`, `covers_ac`, `done_when`, y `blocks_repos` / `participating_repos` donde correspondan (campo por campo en `reference.md` → "Campos de `orchestration_tasks`")—.
+2. Escribir/actualizar `manifest.yml` (esquema en `reference.md`): conservar el `risk` y `delivery_assessment` decididos en `1.2`; por repo, añadir `path`, `branch`, `profundidad`, `risk`, `status`, `depends_on` (el DAG) y `covers_ac`; y en `orchestration_tasks`, el trabajo que no vive en ningún repo —una entrada por tarea, con su `phase`, `what`, `owner`, `status`, `depends_on`, `covers_ac`, `done_when`, y `blocks_repos` / `participating_repos` donde correspondan (campo por campo en `reference.md` → "Campos de `orchestration_tasks`")—.
 3. Escribir el **contrato de integración** completo como candidato en `<contenedora>/.sdd/<id>/integracion.md` —una fila por cada entrada de `orchestration_tasks`, cubra AC `[integration]` o sea auxiliar—, con el baseline de cada fila resuelto (`reference.md` → "Contrato de integración"). Al escribir cada fila, aplicar `cross-implement/contrato-verificacion.md` → «Pertinencia: poder discriminante por fila». El `done_when` de cada tarea referencia el ID de su fila en vez de reescribir su criterio, y la referencia solo-lectura del punto 1 de cada repo participante apunta a esa misma fila.
 4. **Cross-artifact check (regla 5), ampliado a la orquestación:**
 
@@ -504,7 +509,7 @@ La enumeración inmediata no es exhaustiva; mandan
 5. Ejecutar sobre **todos los candidatos** los predicados que no dependen del sellado, incluido
    `orchestration-model.py` para el assessment, el fold y la igualdad entre carriers. Cualquier rojo
    reabre diseño/reparto antes del gate; no se presenta material inconsistente.
-6. **STOP → GATE** — si la **revisión cross-model** está activa, ejecutar `cross-review` sobre el `reparto` (artefacto: `manifest.yml`; contexto: `master-spec.md` + los `plan.md` por repo + los índices + la síntesis de `counter-plan`, si co-exploración corrió; foco en cobertura AC↔repo, `depends_on` y ciclos del DAG) antes de presentar. En `standard`, presentar el reparto; en `expedited`, presentar juntos spec y reparto para su gate atómico. No promover ni congelar antes del gate.
+6. **STOP → GATE** — si la **revisión cross-model** está activa, ejecutar `cross-review` sobre el `reparto` (artefacto: `manifest.yml`; contexto: `master-spec.md` + los `plan.md` por repo + los índices + la síntesis de `counter-plan`, si co-exploración corrió; foco en cobertura AC↔repo, `depends_on` y ciclos del DAG) antes de presentar. Presentar el reparto, con la profundidad propuesta por repo. No promover ni congelar antes del gate.
 7. **Solo después de aprobar**, congelar `v1` una vez y ejecutar el conjunto canónico completo del gate
    previo al dispatch. Un fallo exclusivamente de hash o cadena con contenido idéntico permite volver
    a sellar. Cualquier otro rojo reabre diseño/reparto, invalida la aprobación y bloquea el fan-out.
@@ -651,7 +656,7 @@ Punto de entrada cuando vuelves a una orquestación ya empezada (sesión nueva, 
 2. Inspeccionar por separado `manifest.yml`, `master-spec.md` y los `plan.md`; la presencia del primero no basta para decidir la fase:
    - **sin `master-spec.md` y sin manifest** → retomar `1.2` desde el ledger.
    - **con manifest y sin `master-spec.md`** → retomar `1.2` después del checkpoint: conservar repos, perfil y assessment del manifest, no volver a preguntarlos y aplicar la decisión de retoma de `co-explore` antes de continuar a `1.3`.
-   - **con `master-spec.md` y sin ningún plan** → retomar `1.3` desde su punto 3 para recuperar o completar la revisión. El perfil materializado decide el punto 4: `standard` vuelve a presentar su gate si no hay aprobación durable; `expedited` estabiliza la spec y continúa a `1.4`. Sin manifest, tratarlo como legado `standard`.
+   - **con `master-spec.md` y sin ningún plan** → retomar `1.3` desde su punto 3 para recuperar o completar la revisión. Si no hay aprobación durable, el punto 4 vuelve a presentar su gate.
    - **con `master-spec.md` y al menos un plan** → solo con al menos un plan se trata el manifest como reparto materializado. Si los candidatos todavía no fueron aprobados, retomar `1.4` desde su punto 2 sin recrear los artefactos existentes; si sus estados ya fueron promovidos tras el gate, pasar al retome por repo del punto 3.
    En las tres últimas **no se re-corre la búsqueda ni se reabre la selección de repos**: con manifest, los confirmados salen de sus filas `repos`; sin él, salen de `confirmados` en el bloque `## estado` del ledger. Si `<repo>/.plans/<id>/` no existe, buscar `<repo>/.plans/archived/<id>/` (el flujo fue archivado por `sdd-flow` → tratarlo como `done`). Antes de pasar al retome por repo, leer el `status` tanto del manifest como de cada plan y anunciar el punto de cada uno. Si un reparto materializado no trae `orchestration_tasks`, resolver el caso antes de seguir (ver "Orquestación sin el bloque"): este camino no re-corre por sí solo el cross-artifact check.
 <!-- delivery-profile-resume-orchestrator:end -->

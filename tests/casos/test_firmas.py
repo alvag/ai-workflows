@@ -755,46 +755,6 @@ def test_aux_contrato_cadena(_contexto: Optional[object]) -> None:
         RAIZ / "skills/cross-implement/scripts/contrato-cadena.py")
 
 
-def test_aux_promocion_tasks_ready(_contexto: Optional[object]) -> None:
-    """La promoción publica su matriz cerrada de dieciséis identidades."""
-    firma = next(item for item in FIRMAS if item.nombre == "promocion-tasks-ready")
-    modulo = _cargar_modulo(firma)
-    modulo.verificar_promocion()
-    with tempfile.TemporaryDirectory(prefix="aux-promocion-huerfano-") as temporal:
-        arena = Path(temporal)
-        estado = modulo.preparar_estado_refresh(arena)
-        plan = estado[0]
-        plan.write_text(
-            plan.read_text(encoding=ENCODING) + "## Fin\n- `id: huerfano`\n",
-            encoding=ENCODING,
-        )
-        antes = plan.read_bytes()
-        header_antes = plan.read_text(encoding=ENCODING).split("---", 2)[1]
-        argumentos = [str(ruta) for ruta in estado[:4]]
-        codigo, stdout, stderr, error = _invocar_main(
-            modulo, firma.archivo, argumentos, arena)
-        assert error is None and codigo == 1 and stdout == ""
-        assert "GUARD:contrato-fuera-de-version" in stderr and \
-            "registro" in stderr and "línea" in stderr
-        assert "la estructura o la cadena del contrato no valida" in stderr
-        assert plan.read_bytes() == antes
-        header_despues = plan.read_text(encoding=ENCODING).split("---", 2)[1]
-        assert header_despues == header_antes
-        assert header_despues.count("contract_frozen_version:") == 1
-        assert header_despues.count("contract_frozen_hash:") == 1
-    with tempfile.TemporaryDirectory(prefix="aux-promocion-dependencia-") as temporal:
-        estado = modulo.preparar_estado_refresh(Path(temporal))
-        previo, sys.argv = sys.argv, [str(firma.archivo)] + [str(ruta) for ruta in estado[:4]]
-        stderr = io.StringIO()
-        try:
-            with mock.patch.object(modulo, "_cargar_invariantes", return_value=None), \
-                    contextlib.redirect_stderr(stderr):
-                codigo = modulo.main()
-        finally:
-            sys.argv = previo
-        assert codigo == 99 and "ARNES:promocion-tasks-ready contrato-helper-no-cargable" in stderr.getvalue()
-
-
 def test_aux_cadena_de_invocacion(_contexto: Optional[object]) -> None:
     """Las cinco guardas aparecen invocadas y con su salida leída."""
     contrato = (RAIZ / "skills/cross-implement/contrato-verificacion.md").read_text(encoding=ENCODING)
@@ -830,7 +790,6 @@ CASOS.extend((
     ("contrato-auxiliar:gate-modo-directo", "contrato-auxiliares-v1", test_aux_gate_modo_directo),
     ("contrato-auxiliar:ownership-log", "contrato-auxiliares-v1", test_aux_ownership_log),
     ("contrato-auxiliar:ownership-presupuesto", "contrato-auxiliares-v1", test_aux_ownership_presupuesto),
-    ("contrato-auxiliar:promocion-tasks-ready", "contrato-auxiliares-v1", test_aux_promocion_tasks_ready),
     ("contrato-auxiliar:cadena-de-invocacion", "contrato-auxiliares-v1", test_aux_cadena_de_invocacion),
     ("contrato-auxiliar:verify-ejecuta", "contrato-auxiliares-v1", test_aux_verify_ejecuta),
 ))
