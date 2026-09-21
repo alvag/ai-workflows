@@ -36,7 +36,7 @@ post-análisis. Tres reglas lo gobiernan:
 - [El contrato de verificación, en dos formas](#el-contrato-de-verificación-en-dos-formas)
 - [Casos de routing al cambiar un `description`](#casos-de-routing-al-cambiar-un-description)
 - [Plantilla de plan](#plantilla-de-plan)
-- [Plantilla de plan combinado (trivial)](#plantilla-de-plan-combinado-trivial)
+- [Plantilla de plan combinado (profundidad corta)](#plantilla-de-plan-combinado-profundidad-corta)
 - [Plantilla de `## Verify`](#plantilla-de--verify)
 - [Plantilla de tasks](#plantilla-de-tasks)
 - [Plantilla de `handoff.md`](#plantilla-de-handoffmd)
@@ -448,10 +448,10 @@ Punto de entrada para un flujo empezado. `.plans/` es visible entre ramas del mi
 
 #### Clasificador durable ejecutado antes de decidir ubicación
 
-En 1c, antes de decidir ubicación, capturar las seis autoridades y ejecutar el **clasificador
-canónico de secuencia** de `reference.md` → “Recuperación de la secuencia”. Este diagnóstico es
-read-only y ocurre después de la celda del pedido, sin checkout previo: nunca resetea, marca tasks, publica ledger ni
-adquiere ownership mientras decide qué estado observa.
+En 1c, antes de decidir ubicación, capturar las seis autoridades y clasificar el estado durable con
+los cinco pasos de abajo, que son su única sede. El diagnóstico es read-only y va sin checkout
+previo: nunca resetea, marca tasks, publica ledger ni adquiere ownership mientras decide qué estado
+observa.
 
 1. Validar presencia, `schema_version` y forma del ledger. Inline, legacy, versión desconocida,
    documento corrupto y ledger obligatorio ausente son clases distintas; no inferir bloques desde
@@ -483,7 +483,7 @@ adquiere ownership mientras decide qué estado observa.
    | `status` | Dónde retoma |
    |---|---|
    | `planned` | el gate pendiente que la profundidad del header exige: único en **corta**, de plan+tasks en **normal**, de plan en **completa** |
-   | `plan-approved` | plan aprobado, tasks no (solo *complejo*) → **gate de `tasks`** |
+   | `plan-approved` | plan aprobado, tasks no (solo profundidad **completa**) → **gate de `tasks`** |
    | `tasks-ready` | `implement` (Paso común) |
    | `implementing` | `implement`, continuando desde la primera task `[ ]` (y el WIP, si hay `wip_commit`) |
    | `verified` | AC ya en verde; falta commit → `implement` desde el gate de revisión manual |
@@ -498,11 +498,11 @@ adquiere ownership mientras decide qué estado observa.
 
 ### Guarda de retomado con bloques en vuelo
 
-La guarda de cuatro superficies queda absorbida por el clasificador canónico de secuencia: HEAD y
+La guarda de cuatro superficies queda absorbida por el clasificador durable de arriba: HEAD y
 cadena Git, recibo, marcas y ledger se evalúan junto con proceso/sobre y owner. Continúan siendo
 casos críticos las tasks `[ ]` cuyo contenido ya vive en un commit y el aplastado parcialmente
 transformado; ahora se distinguen los desfases legítimos C1-C12 de `conflict:<source>` y se propone
-solo la reconciliación declarada por `reference.md` → “Recuperación de la secuencia”.
+solo la reconciliación que admite «El contrato con la recuperación».
 
 ### Sub-paso `status` (alias de listado)
 
@@ -994,8 +994,8 @@ conserva la familia a propósito y declara lo que se pierde.
 
 #### Cuándo se ofrece
 
-`workers` se ofrece **solo en flujos no triviales**, junto a `inline` y `cross`, **dentro del gate
-único** que ya pregunta el modo y **sin abrir un gate nuevo**. En un cambio **trivial** no se ofrece:
+`workers` se ofrece **solo fuera de la profundidad corta**, junto a `inline` y `cross`, **dentro del gate
+único** que ya pregunta el modo y **sin abrir un gate nuevo**. En profundidad **corta** no se ofrece:
 ahí el modo es `inline` sin pregunta, y sumar una opción abriría una decisión que ese nivel excluye a
 propósito. Un **override explícito de `workers` vale igual en trivial**, como cualquier otro override
 conversacional: lo que trivial suprime es la pregunta, no la elección del usuario.
@@ -1302,20 +1302,20 @@ avance: conserva exactamente qué partición aprobó el humano y permite comprob
 transporta ese mismo alcance. Su esquema mínimo contiene `tasks_fingerprint`, la lista `blocks` en
 su orden aprobado y, para cada bloque, `block_id`, `task_ids` y `work_commit`.
 
-El `tasks_fingerprint` se calcula sobre el **modelo canónico** de cada task, cuya proyección exacta
-fija «La receta de serialización de las huellas»: además de neutralizar el estado del checkbox,
-normaliza los finales de línea, recorta los espacios de cada valor y proyecta los campos a una forma
-declarada. Decir «únicamente el checkbox» describía el contrato **anterior** a esa receta, cuando la
-entrada de la huella no estaba definida. El título, los pasos, los archivos y las dependencias (`Produce` y
+El `tasks_fingerprint` se calcula sobre el **modelo canónico** de cada task, y esa proyección se
+declara **acá**, que es su única sede: neutraliza el estado del checkbox, normaliza los finales de
+línea, recorta los espacios de cada valor y proyecta los campos que nombra la frase siguiente. Decir
+«únicamente el checkbox» describe un contrato **anterior**, de cuando la entrada de la huella no
+estaba definida. El título, los pasos, los archivos y las dependencias (`Produce` y
 `Consume`) son contenido semántico: modificarlos invalida la aprobación. Hashear los bytes completos
 de `tasks.md` sería incorrecto porque la transición esperada `[ ]` → `[x]` cambiaría el fingerprint;
 hashear solamente los IDs también sería incorrecto porque no detectaría cambios en pasos, archivos o
 dependencias.
 
 **El valor de tasks_fingerprint tiene la forma** `sha256:` seguido de
-**64 dígitos hexadecimales en minúscula**, con la misma precisión con que el ledger declara los suyos. De qué bytes se calcula lo
-fija «La receta de serialización de las huellas»; acá se declara su forma, que es lo que el recibo
-tiene que poder validar sin leer aquella sección.
+**64 dígitos hexadecimales en minúscula**, con la misma precisión con que el ledger declara los
+suyos. De qué bytes se calcula lo fija el párrafo anterior; esto declara su **forma**, que es lo que
+el recibo tiene que poder validar sin recomputar el hash.
 
 **El esquema del recibo, adoptado.** La raíz es **cerrada** y contiene exactamente `tasks_fingerprint`
 y `blocks`. `blocks` es una lista en su orden aprobado y cada bloque contiene exactamente `block_id`
@@ -1505,8 +1505,10 @@ La recuperación consume un contrato compuesto por seis piezas:
 5. el grafo declarado en la tabla de aristas; y
 6. el protocolo de adopción con su ganador observable.
 
-Las tablas anteriores siguen siendo las autoridades de esas piezas. La sección siguiente concreta
-su serialización, lectura y reconciliación; no redefine el grafo, los cutpoints ni los terminales.
+Las tablas anteriores siguen siendo las autoridades de esas piezas, y **ninguna sección posterior
+las concreta**: la serialización y la lectura viven en «Escritura del ledger», más arriba, y la
+reconciliación la resuelve el conductor con el usuario delante. Nada de esto redefine el grafo, los
+cutpoints ni los terminales.
 
 ## Búsqueda de antecedentes
 
@@ -1756,11 +1758,11 @@ evidencia: ya está declarada desde antes de implementar.>
 
 > **Header dinámico:** `status` lo actualiza la skill al cerrar cada paso (es la fuente de verdad de en qué fase quedó el flujo, leída por `resume`). `wip_commit` aparece solo si el flujo se pausó con cambios sin commitear; `jira_subtask`/`jira_subtask_url` solo si se publicó la spec a Jira (gate `publish-spec`); `pr_url` solo si se abrió PR (`open-pr`). Detalle del ciclo en `SKILL.md` → "Ciclo de status".
 
-> Solo en cambios *triviales* la spec y las tasks van **embebidas** en `plan.md` (no se crean `spec.md`/`tasks.md` aparte). En *normal* la spec va en `spec.md` y las tasks en `tasks.md` (separados, aunque las tasks se aprueben en el gate del plan). Ver "Plantilla de plan combinado".
+> Solo en profundidad **corta** la spec y las tasks van **embebidas** en `plan.md` (no se crean `spec.md`/`tasks.md` aparte). En *normal* la spec va en `spec.md` y las tasks en `tasks.md` (separados, aunque las tasks se aprueben en el gate del plan). Ver "Plantilla de plan combinado".
 
-## Plantilla de plan combinado (trivial)
+## Plantilla de plan combinado (profundidad corta)
 
-Para *trivial*, un único `plan.md` con la spec y las tasks **embebidas** — es lo que la Vía B y `verify` parsean cuando no existen `spec.md`/`tasks.md`:
+En profundidad **corta**, un único `plan.md` con la spec y las tasks **embebidas** — es lo que la Vía B y `verify` parsean cuando no existen `spec.md`/`tasks.md`:
 
 ```markdown
 ---

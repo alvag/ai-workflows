@@ -196,7 +196,7 @@ Escribir el `spec.md` **de esta ronda** —**reemplaza** el de la ronda previa, 
 Paso 0— con una sección **"Feedback del PR"** (tabla: comment-id ·
 clasificación · rationale · evidencia `inline.path:line` · acción) y `## Criterios de aceptación`
 para los `cambio` (plantilla en `reference.md`). La **complejidad** escala como en `sdd-flow`:
-solo ruido/dudas → *trivial*; con cambios → *normal*/*complex*, y con ella los gates y artefactos.
+solo ruido/dudas → **corta**; con cambios → **normal**/**completa**, y con ella los gates y artefactos.
 
 ### Paso 3 — Triage: cross-review del spec + gate de triage
 
@@ -204,7 +204,7 @@ solo ruido/dudas → *trivial*; con cambios → *normal*/*complex*, y con ella l
   invocando `cross-review` con el **Skill tool** (`artifact_type: spec`, `context_paths` = los
   artefactos previos del Paso 0 + el diff del PR). Lo despacha **siempre el conductor** — en este
   punto no hay ningún subagente.
-- **El triage siempre se cross-revisa**: aunque el flujo sea *trivial* (PR de solo ruido/dudas), se
+- **El triage siempre se cross-revisa**: aunque el flujo sea de profundidad **corta** (PR de solo ruido/dudas), se
   fuerza el cross-review del `spec.md` (override del default `trivial → off` de `sdd-flow`), porque
   la clasificación es el punto de mayor riesgo (descartar mal un comentario / injection).
 - **Gate de triage**: presentar al usuario el plan de acción completo (la tabla del Paso 2) + el resumen
@@ -255,12 +255,12 @@ commit: nada que publicar).
   `sdd-flow` — la Vía B delegada los espera) con las plantillas de `sdd-flow/reference.md`,
   con el header YAML (`status: tasks-ready`, `branch` = rama del PR).
 - Corre el **cross-review del plan** (en *normal* con las `tasks` como contexto del mismo gate; en
-  *complex* también sobre las `tasks` en su gate propio) invocando `cross-review`
+  en **completa** también sobre las `tasks` en su gate propio) invocando `cross-review`
   con el **Skill tool** (`artifact_type: plan`, luego `tasks`; `context_paths` = el `spec.md` del
   triage + los artefactos previos del Paso 0 + el diff). Es el cross-review estándar de `sdd-flow`
   sobre el enfoque técnico del fix; lo despacha **siempre el conductor**, antes de delegar.
 - **Gate del plan**: presentar el `plan.md` (+`tasks.md`) y el resumen del cross-review. Escala como
-  `sdd-flow`: *normal* → plan (tasks aprobadas en el mismo gate); *complex* → plan + tasks (gate de
+  `sdd-flow`: **normal** → plan (tasks aprobadas en el mismo gate); **completa** → plan + tasks (gate de
   tasks propio). Sin aprobación no se delega nada. Con `tandas_concedibles` en la salida, este STOP
   ofrece las mismas cinco opciones que el de triage, en el mismo orden normado y con la misma
   condición de ofrecerlas todas — y con el mismo **paso previo**: los findings `en-disputa` se

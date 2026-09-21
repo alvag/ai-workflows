@@ -113,8 +113,8 @@ Configuración bajo `cross_review` en `.specify/config.yml` (sdd-flow) o en el `
 → descubre el revisor, corre el loop read-only, edita el plan con lo aplicado, deja `review-log.md`
 y presenta el resumen de la crítica.
 
-**2. Desde sdd-flow, automático en complejo:** al llegar al gate de `plan` de un cambio
-clasificado *complejo*, sdd-flow invoca esta skill, y presenta el plan **con** la crítica en el
+**2. Desde sdd-flow, automático en profundidad completa:** al llegar al gate de `plan` de un flujo
+de esa profundidad, sdd-flow invoca esta skill, y presenta el plan **con** la crítica en el
 mismo STOP de aprobación.
 
 **3. Saltarla para una corrida:**

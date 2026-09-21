@@ -89,8 +89,8 @@ Metadata de un PR puntual: `path: "/repositories/<ws>/<repo>/pullrequests/<id>"`
 `.plans/<id>/spec.md` — el triage materializado de la **ronda en curso**. **Reemplaza** el `spec.md`
 de la ronda previa (que el Paso 0 snapshotó a `.plans/<id>/rounds/…`): en la raíz solo quedan los AC
 del feedback, que son los que el implement delegado verifica. Hereda el formato de spec de `sdd-flow`
-y le agrega la sección "Feedback del PR". Se escribe **siempre como archivo aparte** (también en
-*trivial*): el cross-review del triage lo toma como `artifact_path` y, en rondas de solo
+y le agrega la sección "Feedback del PR". Se escribe **siempre como archivo aparte** (también en profundidad
+**corta**): el cross-review del triage lo toma como `artifact_path` y, en rondas de solo
 ruido/dudas, no existe ningún `plan.md` de esta ronda donde embeberlo.
 
 ```markdown
@@ -149,8 +149,8 @@ diseño antes de delegar el implement**, invocando `cross-review` con el **Skill
 | Gate | `artifact_type` | `artifact_path` | Cuándo |
 |---|---|---|---|
 | Triage (Paso 3) | `spec` | `.plans/<id>/spec.md` | **siempre**, aun en `trivial` (override del default `trivial → off`) |
-| Plan (Paso 4) | `plan` | `.plans/<id>/plan.md` | cuando hay `cambio` (*normal*/*complex*) |
-| Tasks (Paso 4) | `tasks` | `.plans/<id>/tasks.md` | solo *complex* |
+| Plan (Paso 4) | `plan` | `.plans/<id>/plan.md` | cuando hay `cambio` (**normal**/**completa**) |
+| Tasks (Paso 4) | `tasks` | `.plans/<id>/tasks.md` | solo **completa** |
 
 Parámetros comunes:
 

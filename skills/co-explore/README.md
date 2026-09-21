@@ -96,8 +96,8 @@ solo aplica cuando el resto del mapa depende de la respuesta.
 - **Esperando que el conductor aporte su propio mapa:** en la topología nominal no lo hace, y es
   deliberado. Solo vuelve a explorar si un worker cae y la corrida degrada — y entonces se declara
   qué diversidad quedó.
-- **En cambios triviales** (modos SDD): el default por complejidad es "nunca" (ver "Configuración");
-  no aporta frente al costo de dos exploraciones completas.
+- **En profundidad corta** (modos SDD): el default es "nunca" (ver "Configuración"); no aporta
+  frente al costo de dos exploraciones completas.
 
 ## Requisitos
 
@@ -166,9 +166,9 @@ los gates. Detalle completo en `SKILL.md` → "Configuración".
 
 ## Ejemplos de uso
 
-**1. Embebida por sdd-flow en un cambio complejo (automático):** al clasificar el cambio como
-*complejo*, `sdd-flow` invoca esta skill con `mode: explore` en el gate post-`gather-context`
-(default `complex`: on). El explorador corre en background mientras `sdd-flow` hace su propia
+**1. Embebida por sdd-flow en profundidad completa (automático):** con esa profundidad propuesta,
+`sdd-flow` invoca esta skill con `mode: explore` en el gate post-`gather-context`
+(default en **completa**: on). El explorador corre en background mientras `sdd-flow` hace su propia
 exploración; en el punto de encuentro, ambos informes se sintetizan (convergencias/divergencias +
 duelo de enfoques) antes de escribir `spec.md`.
 
