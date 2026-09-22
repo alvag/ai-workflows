@@ -1390,7 +1390,7 @@ El hueco que este registro vigila es **estrecho y de una sola clase**: el par *a
 ↔ revisor del diff* es la misma familia, así que un contrato ambiguo lo transcribe fielmente el
 <!-- corpus-invariante:fin:cross-implement.reference.md.b95da3b4ded1 -->
 implementador y el revisor comparte el punto ciego que lo produjo. Todo lo demás ya cruza familia
-(ver `CLAUDE.md` → regla de fronteras). **Hoy no se escribe nada para cubrirlo**, y el motivo es que
+(regla de fronteras entre skills, que cada `description` repite y por eso viaja con ellas). **Hoy no se escribe nada para cubrirlo**, y el motivo es que
 está medido en vez de discutido.
 
 **Qué cuenta como señal:** una falla clasificada `VERIFICATION_DEFECT` o `DESIGN_GAP` **con

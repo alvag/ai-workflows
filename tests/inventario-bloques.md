@@ -131,8 +131,8 @@ o asigna al bloque un efecto consumido por otro flujo. Se excluyen marcadores y 
 
 | id | instrucción base | consumidor actual | efecto observable |
 |---:|---|---|---|
-| C01 | `CLAUDE.md:L179` | nueve guardas del arnés | auditan catálogo, matrices y siete autotests; 0 es verde. |
-| C02 | `CLAUDE.md:L180-L182` | --reporte y --registrar-auditoria | comparan las cuatro dimensiones y renuevan la huella. |
+| C01 | `AGENTS.md:L179` | nueve guardas del arnés | auditan catálogo, matrices y siete autotests; 0 es verde. |
+| C02 | `AGENTS.md:L180-L182` | --reporte y --registrar-auditoria | comparan las cuatro dimensiones y renuevan la huella. |
 | C03 | `skills/cross-implement/contrato-verificacion.md:L258-L266` | contrato-cadena y gemelo | canonizan y validan o sellan hashes. |
 | C04 | `skills/cross-implement/contrato-verificacion.md:L342-L344` | contrato-cobertura y gemelo | validan existencia bidireccional requisito-fila. |
 | C06 | `skills/sdd-flow/reference.md:L1172-L1176` | contrato-cadena y gemelo | sellan con la canonización autoritativa. |

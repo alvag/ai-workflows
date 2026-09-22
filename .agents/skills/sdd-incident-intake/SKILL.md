@@ -9,7 +9,7 @@ description: >-
   incidentes a issues”, “despacha el incidente en Herdr”, “procesa incidentes en Orca”
   o /sdd-incident-intake seguido de ruta. Excluye corregir
   skills, registrar incidentes, revisar diseño e implementar; dueños respectivos:
-  sdd-flow, CLAUDE.md, cross-review y cross-implement. No invocarla espontáneamente:
+  sdd-flow, AGENTS.md, cross-review y cross-implement. No invocarla espontáneamente:
   solo ante pedido explícito del usuario.
 ---
 

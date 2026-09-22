@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -294,7 +294,7 @@ flujo aparte con su propio gate.
 
   Como el ancla liga regla e instrumento **dentro de cada worktree**, incorporar el **texto sin el
   script** detiene la medición con código `3` en vez de calcular con una fórmula que no corresponde.
-  **La dirección contraria no la ve, y por construcción**: el ancla hashea la sección de `CLAUDE.md`,
+  **La dirección contraria no la ve, y por construcción**: el ancla hashea la sección de `AGENTS.md`,
   no el instrumento, así que un script con otra banda y un documento intacto **mide y emite
   veredicto**. Y el veredicto cambia: medido sobre el mismo diff `num=46 den=25`, la banda declarada
   bloquea y una diez líneas más ancha pasa, con la línea de salida idéntica salvo la última palabra.
@@ -658,7 +658,7 @@ for f in $(git ls-files -- 'scripts/*.py' 'tests/__main__.py'); do
   echo "$f"
   grep -ohE '"--[a-z][a-z-]*"' "$f" | tr -d '"' | sort -u | sed "s|^|$f |"
 done
-grep -oE '^      (correccion|candidatos)\)' CLAUDE.md | tr -d ' )'
+grep -oE '^      (correccion|candidatos)\)' AGENTS.md | tr -d ' )'
 ```
 
 **Emite candidatos, y la clase la adjudica una persona.** No es una limitación a reparar: derivarla
@@ -838,6 +838,53 @@ parecido, va un registro nuevo cruzado con el anterior por su fecha y hora en el
 `Relacionado`. Editar el registro viejo para "actualizarlo" borra la frecuencia, que es lo único que
 distingue una trampa estructural de la skill de un descuido puntual. Las reglas completas del
 formato viven en la cabecera del propio archivo.
+
+## Nomenclatura del código
+
+El idioma de los **artefactos** de este repo es el español neutro, y eso no cambia: la prosa
+normativa, los `SKILL.md`, los comentarios y los docstrings se siguen escribiendo en español. Lo que
+esta regla gobierna es el **código**, que es otra cosa y hasta ahora no estaba dicho.
+
+> **Disparador:** al escribir un identificador nuevo en código de este repositorio — `scripts/`,
+> `tests/` y los `skills/<nombre>/scripts/`.
+> **Efecto:** va en **inglés**. Alcanza a nombres de funciones, variables, parámetros, clases,
+> constantes, atributos y claves de estructuras internas.
+> **Excepción:** tres, y son las de abajo.
+
+**Qué NO alcanza, y por qué cada una.**
+
+- **La prosa que rodea al código.** Comentarios, docstrings, mensajes al usuario y nombres de
+  archivo siguen en español. Un docstring explica *por qué*, y esa es la parte que se lee como
+  doctrina; traducirla partiría el idioma de la explicación entre el script y la sede normativa que
+  lo acompaña.
+- **Lo que ya está escrito.** La regla es **prospectiva**: `verificar_aislamiento`,
+  `evaluar_composicion`, `estado_identidad` y sus hermanos se quedan como están. Renombrarlos no es
+  gratis —varias guardas los referencian por literal, la prosa normativa los cita y `medir-techo`
+  ancla hashes—, así que una migración es un flujo aparte con su propio gate, si alguna vez se
+  decide. Tocar un archivo no obliga a traducir lo que ya vivía ahí.
+- **Los literales que son contrato.** Un valor de enum, una clave de configuración o un código de
+  diagnóstico que ya existe en español **no se traduce, y uno nuevo sigue a sus hermanos**:
+  `una-por-worker`, `opuesta-al-autor-del-codigo`, `familia-invalida`, `forma-no-reconocida`,
+  `profundidad`, `cardinalidad`. No son identificadores sino **datos que cruzan la frontera** — las
+  guardas los comparan por literal, la prosa normativa los cita textualmente y los artefactos en
+  disco los llevan escritos. Un enum mitad español y mitad inglés es peor que cualquiera de los dos
+  enteros.
+
+**Dónde está el corte, dicho en concreto.** Si el nombre lo elige quien escribe el código y solo lo
+lee el intérprete, va en inglés. Si el nombre tiene que coincidir con algo que ya está escrito
+afuera —un artefacto, una tabla normativa, otra guarda—, manda la coincidencia.
+
+```python
+def resolve_platform(root, requested=None):        # inglés: lo elige quien escribe
+    """Resuelve la plataforma consultando las dos identidades vivas."""   # español: explica
+    if verdict == "forma-no-reconocida":           # español: es contrato, lo cita la sede
+```
+
+**No tiene verificador, por decisión declarada.** Un predicado que distinga «identificador en
+inglés» de «identificador en español» es exactamente el escalón 4 que la regla 1 pide no subir sin
+evidencia de que el barato falló, y su modo de falla obvio —marcar `digest`, `worker` o `commit`
+como español, o dejar pasar `valor_previo`— lo volvería una guarda que miente en las dos
+direcciones. Se sostiene en la revisión de diff, que ya corre siempre.
 
 ## Git
 

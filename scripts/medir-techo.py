@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Aplica el techo de proporción (regla 2 de CLAUDE.md) a un diff.
+"""Aplica el techo de proporción (regla 2 de AGENTS.md) a un diff.
 
-LA SEDE NORMATIVA DE LA FÓRMULA ES `CLAUDE.md`, NO ESTE ARCHIVO. Acá se la implementa; si las dos
+LA SEDE NORMATIVA DE LA FÓRMULA ES `AGENTS.md`, NO ESTE ARCHIVO. Acá se la implementa; si las dos
 discrepan, manda la regla. Para que esa discrepancia no pase inadvertida, el script ancla el hash de
 la sección normativa y se detiene si cambió (ver ANCLA_SHA256).
 
@@ -66,7 +66,7 @@ FRONTERA DE PRUEBA — cuatro unidades comparten este pasaje.
     es la lectura peligrosa. Por eso NO lleva `no-aplica` como los otros dos: resume en vez de
     exponer, y un resumen tiene punto ciego propio.
     Fallo de ejecución, distinto de su resultado: sale 3 —medición detenida— ante cualquier `Detener`
-    de su camino. Las vías NO se enumeran acá: son las que el código levante —leer CLAUDE.md,
+    de su camino. Las vías NO se enumeran acá: son las que el código levante —leer AGENTS.md,
     encontrar `### Regla 2`, resolver el commit— y una lista escrita a mano se queda corta sola.
     Según dónde caiga puede imprimir `esperado=` sin `actual__=`, o no imprimir nada.
 
@@ -97,7 +97,7 @@ import re
 import subprocess
 import sys
 
-ANCLA_SHA256 = "6de2c47946d0d8f4d46266c1aa45ff3e846201540e2aa26a49ed06847798ec13"
+ANCLA_SHA256 = "b5f786ed2417ce28949a07a0e8bc394a9e4487e69a89f172c4c4c63e5029a0e5"
 # RENOVACIÓN 2026-08-31 — la regla 2 dejó de detener al flujo cuyo objeto declarado es el andamiaje:
 # ahí el veredicto informa y se registra. La FÓRMULA no cambió —partición, numerador, denominador,
 # descartes y códigos de salida son los mismos—, así que este instrumento no se tocó salvo el hash.
@@ -156,7 +156,7 @@ ANCLA_SHA256 = "6de2c47946d0d8f4d46266c1aa45ff3e846201540e2aa26a49ed06847798ec13
 #   · enumeración untracked — sin cambio: sigue `--exclude-from=.gitignore`, la fuente versionada.
 #   · num/den/nuevos        — ya correcta: `startswith("scripts/")` está anclado a la raíz, que es
 #                             exactamente lo que la regla 3 nueva delimita. No hizo falta tocarla.
-# Hash de la sección `### Regla 2 …` de CLAUDE.md, desde su encabezado hasta el siguiente de nivel <= 3,
+# Hash de la sección `### Regla 2 …` de AGENTS.md, desde su encabezado hasta el siguiente de nivel <= 3,
 # con los finales de línea recortados y sin líneas vacías al cierre.
 #
 # CÓMO SE RENUEVA cuando la regla cambia a propósito:
@@ -180,7 +180,7 @@ ANCLA_SHA256 = "6de2c47946d0d8f4d46266c1aa45ff3e846201540e2aa26a49ed06847798ec13
 # Contra eso protege `--autotest-dominio`, que muta cada superficie conservando el hash vigente.
 # Atribuirle más a esta constante es lo que hizo que se diera por cubierto un hueco que estaba abierto.
 
-# Banda de tolerancia del umbral (regla 2 de CLAUDE.md). El margen efectivo es min(BANDA, den), y con
+# Banda de tolerancia del umbral (regla 2 de AGENTS.md). El margen efectivo es min(BANDA, den), y con
 # denominador cero la banda no aplica. Es UNA sola sede: el texto del resumen, el código de salida y
 # `--banda` la consumen de acá, así que no pueden divergir.
 BANDA = 20
@@ -248,16 +248,16 @@ def correr(cmd, punto):
 
 def seccion_normativa(raiz):
     """La sección de la regla 2, normalizada. No el archivo entero: un cambio en otra parte de
-    CLAUDE.md no debe detener la medición."""
+    AGENTS.md no debe detener la medición."""
     try:
-        texto = (raiz / "CLAUDE.md").read_text(encoding="utf-8")
+        texto = (raiz / "AGENTS.md").read_text(encoding="utf-8")
     except OSError as exc:
         raise Detener("ancla", str(exc)) from exc
     lineas = texto.split("\n")
     try:
         i = next(k for k, l in enumerate(lineas) if l.startswith("### Regla 2"))
     except StopIteration:
-        raise Detener("ancla", "no se encontró la sección '### Regla 2' en CLAUDE.md") from None
+        raise Detener("ancla", "no se encontró la sección '### Regla 2' en AGENTS.md") from None
     j = len(lineas)
     for k in range(i + 1, len(lineas)):
         if re.match(r"^#{1,3} ", lineas[k]):

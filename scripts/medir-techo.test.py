@@ -192,7 +192,7 @@ def repo(base_claude=True, con_gitignore=True):
     if con_gitignore:
         (d / ".gitignore").write_text(GITIGNORE_FIXTURE)
     if base_claude:
-        shutil.copy(RAIZ / "CLAUDE.md", d / "CLAUDE.md")
+        shutil.copy(RAIZ / "AGENTS.md", d / "AGENTS.md")
     (d / "scripts").mkdir(exist_ok=True)
     (d / "skills").mkdir(exist_ok=True)
     return d
@@ -323,10 +323,10 @@ def caso_divergencia_normativa(_):
     d = repo()
     escribir(d, "skills/s.md", 1)
     base = commit(d)
-    texto = (d / "CLAUDE.md").read_text()
+    texto = (d / "AGENTS.md").read_text()
     marcado = texto.replace("### Regla 2", "### Regla 2 MODIFICADA", 1)
     esperar(marcado != texto, "no se pudo modificar la sección normativa del fixture")
-    (d / "CLAUDE.md").write_text(marcado)
+    (d / "AGENTS.md").write_text(marcado)
     rc, out, _ = medir(d, base)
     esperar(rc == DETENIDA, f"esperaba {DETENIDA} por divergencia, dio {rc}: {out}")
     esperar("punto=ancla" in out, f"no nombró el punto: {out}")
@@ -633,7 +633,7 @@ def caso_banda_dos_representaciones(_):
     era **falso**: `_autotest_mutantes` acumula todos los casos caídos y los reporta juntos, sin cortar
     en el primero, así que el mutante del valor aparece detectado por los dos.
     """
-    texto = (RAIZ / "CLAUDE.md").read_text(encoding="utf-8")
+    texto = (RAIZ / "AGENTS.md").read_text(encoding="utf-8")
     # La sección se recorta con las MISMAS FRONTERAS que usa el instrumento —del encabezado de la
     # regla 2 al siguiente de nivel <= 3— pero **sin su normalización**: el instrumento además hace
     # `rstrip()` por línea y poda las vacías del final, y acá no. Medido, los dos recortes difieren hoy
@@ -670,7 +670,7 @@ def caso_banda_dos_representaciones(_):
     # Control positivo del propio predicado, y hace falta: ningún mutante del arnés puede ponerlo rojo
     # —`_autotest_mutantes` muta el INSTRUMENTO y rechaza un rojo por `punto=ancla`—, así que sin esto
     # la guarda de arriba no tendría quién demuestre que discrimina. Se ejerce sobre texto sintético,
-    # sin tocar `CLAUDE.md`.
+    # sin tocar `AGENTS.md`.
     # La expectativa es RELATIVA a lo que la sección ya tiene, no el absoluto `== 2`: ese absoluto
     # presuponía la propiedad que la guarda de arriba verifica, y cuando se rompía el diagnóstico
     # mentía. Medido con la banda movida a 37 —un valor plausible: es la holgura mayor que esta misma
@@ -886,7 +886,7 @@ def _autotest_mutantes(etiqueta, grupo, mutantes):
     que algún caso del grupo se ponga rojo.
 
     Dos condiciones lo vuelven un control y no un adorno. **El hash del ancla se conserva**: se muta el
-    código y nunca `CLAUDE.md`, así que un rojo por `punto=ancla` sería el exit code mintiendo sobre la
+    código y nunca `AGENTS.md`, así que un rojo por `punto=ancla` sería el exit code mintiendo sobre la
     causa y acá se rechaza explícitamente. Y **se reporta qué caso cayó** por cada mutante: uno cuya
     precondición ningún caso ejerce daría verde y se leería como cobertura.
 

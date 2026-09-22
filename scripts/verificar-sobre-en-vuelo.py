@@ -1024,7 +1024,7 @@ def ac_12(ctx: Ctx) -> str:
 
 
 def ac_13(ctx: Ctx) -> str:
-    """AC-13 — sede única del contrato, el trigger de CLAUDE.md y los cuatro README.
+    """AC-13 — sede única del contrato, el trigger de AGENTS.md y los cuatro README.
 
     Antes exigía siete copias byte-idénticas. Las copias se retiraron: la autocontención que
     justificaban ya estaba rota —`co-explore` y `cross-implement` mandaban leer la sede canónica por
@@ -1047,7 +1047,7 @@ def ac_13(ctx: Ctx) -> str:
                       if str(q.relative_to(ctx.raiz)) != CONTRATO_FUENTE) if raiz_skills.is_dir() else []
     ctx.check(not intrusas, "sede única: ninguna copia fuera de la canónica",
               "" if not intrusas else f"copias halladas: {', '.join(intrusas)}")
-    ctx.exigir(ctx.texto("CLAUDE.md"), "CLAUDE.md", {
+    ctx.exigir(ctx.texto("AGENTS.md"), "AGENTS.md", {
         f"trigger: `{CONTRATO}` tiene sede única y se lee por ruta":
             [[CONTRATO, "sede unica"]],
     })
@@ -2105,8 +2105,8 @@ def corpus_verde(raiz: Path) -> None:
         "**Centinelas.** La corrida A usa `started_at: 2026-07-31T14:02:11Z` y `duration_s: 412`; "
         "la corrida B usa `started_at: 2026-08-01T09:00:03Z` y `duration_s: 7`.\n",
         encoding="utf-8")
-    (raiz / "CLAUDE.md").write_text(
-        "# CLAUDE.md\n\n- `corridas-en-vuelo.md` tiene **sede unica** en "
+    (raiz / "AGENTS.md").write_text(
+        "# AGENTS.md\n\n- `corridas-en-vuelo.md` tiene **sede unica** en "
         "`skills/cross-review/corridas-en-vuelo.md` y se lee por ruta; al tocarla, correr `--ac 13`.\n",
         encoding="utf-8")
 

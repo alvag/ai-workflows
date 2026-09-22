@@ -26,7 +26,7 @@ transporte.
 **Y no coteja un `dispatch-log/1` contra su propia regla de identidad**, la que dice que toma su
 `started_at` del `at` del primer intento: se valida que los dos sean UTC, no que coincidan.
 
-**Campos** (ver CLAUDE.md → "La frontera de prueba de una guarda"). Clase: **veredicto**.
+**Campos.** Clase: **veredicto**.
 Dirección: **admite-de-más** — su verde autoriza a afirmar que el registro cumple la forma y los
 enums de su fila, nunca que lo registrado haya ocurrido."""
 
