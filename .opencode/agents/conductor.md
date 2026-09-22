@@ -1,7 +1,7 @@
 ---
 description: "Conduce sdd-flow, sdd-orchestrator, sdd-pr-feedback y bitbucket-code-review. Arbitra voces Codex/Claude, conserva los gates humanos y es el único responsable de publicar, commitear o pushear tras confirmación."
 mode: primary
-model: openai/gpt-5.6-sol
+model: openai/gpt-6-sol
 variant: xhigh
 permission:
   task:

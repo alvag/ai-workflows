@@ -699,56 +699,56 @@ roles:
       model: opus
       effort: alto
     codex:
-      model: gpt-5.6-sol
+      model: gpt-6-sol
       effort: alto
   counter-plan:
     claude:
       model: opus
       effort: alto
     codex:
-      model: gpt-5.6-sol
+      model: gpt-6-sol
       effort: alto
   investigate:
     claude:
       model: opus
       effort: alto
     codex:
-      model: gpt-5.6-sol
+      model: gpt-6-sol
       effort: alto
   debate:
     claude:
       model: opus
       effort: alto
     codex:
-      model: gpt-5.6-sol
+      model: gpt-6-sol
       effort: alto
   design-review:
     claude:
       model: opus
       effort: alto
     codex:
-      model: gpt-5.6-sol
+      model: gpt-6-sol
       effort: alto
   implement:
     claude:
       model: opus
       effort: alto
     codex:
-      model: gpt-5.6-sol
+      model: gpt-6-sol
       effort: alto
   refute:
     claude:
       model: opus
       effort: alto
     codex:
-      model: gpt-5.6-sol
+      model: gpt-6-sol
       effort: alto
   pr:
     claude:
       model: opus
       effort: alto
     codex:
-      model: gpt-5.6-sol
+      model: gpt-6-sol
       effort: alto
 ```
 
@@ -862,14 +862,14 @@ El archivo nuevo contiene los dieciséis perfiles siguientes:
 
 | Rol | `claude` | `codex` |
 |---|---|---|
-| `explore` | `opus` / `alto` | `gpt-5.6-sol` / `alto` |
-| `counter-plan` | `opus` / `alto` | `gpt-5.6-sol` / `alto` |
-| `investigate` | `opus` / `muy_alto` | `gpt-5.6-sol` / `muy_alto` |
-| `debate` | `opus` / `alto` | `gpt-5.6-sol` / `alto` |
-| `design-review` | `opus` / `muy_alto` | `gpt-5.6-sol` / `muy_alto` |
+| `explore` | `opus` / `alto` | `gpt-6-sol` / `alto` |
+| `counter-plan` | `opus` / `alto` | `gpt-6-sol` / `alto` |
+| `investigate` | `opus` / `muy_alto` | `gpt-6-sol` / `muy_alto` |
+| `debate` | `opus` / `alto` | `gpt-6-sol` / `alto` |
+| `design-review` | `opus` / `muy_alto` | `gpt-6-sol` / `muy_alto` |
 | `implement` | `sonnet` / `medio` | `gpt-5.6-terra` / `medio` |
-| `refute` | `opus` / `alto` | `gpt-5.6-sol` / `alto` |
-| `pr` | `opus` / `alto` | `gpt-5.6-sol` / `alto` |
+| `refute` | `opus` / `alto` | `gpt-6-sol` / `alto` |
+| `pr` | `opus` / `alto` | `gpt-6-sol` / `alto` |
 
 `init` muestra el archivo completo con estos defaults y el delta de abajo antes de escribir. Crea
 `.specify/workers.yml` solo tras una confirmación explícita. Si el archivo ya existe y es válido, lo
@@ -882,8 +882,8 @@ observado como dependiente del entorno, no un dato pendiente:
 |---|---|---|
 | familia `claude`; todas las rutas de la matriz salvo las regiones `ci-wc-lanzamiento` y `ci-wc-fix` | procedencia: modelo cableado por la receta y default del CLI; valor anterior: `opus` / esfuerzo `indeterminado` | perfil nuevo: `explore`, `counter-plan`, `debate`, `refute` y `pr` → `opus` / `alto`; `investigate` y `design-review` → `opus` / `muy_alto`; cambio conocido: modelo no cambia, esfuerzo indeterminado |
 | familia `claude`; regiones `ci-wc-lanzamiento` y `ci-wc-fix`, ruta `implement` | procedencia: modelo cableado por la receta y default del CLI; valor anterior: `sonnet` / esfuerzo `indeterminado` | perfil nuevo: `implement` → `sonnet` / `medio`; cambio conocido: modelo no cambia, esfuerzo indeterminado |
-| familia `codex`; regiones de `cross-review`, `co-explore` y `cross-implement` | procedencia: reinyección de la raíz del config personal; valor anterior: modelo y esfuerzo `indeterminado` | perfil nuevo: `explore`, `counter-plan` y `debate` → `gpt-5.6-sol` / `alto`; `investigate` y `design-review` → `gpt-5.6-sol` / `muy_alto`; `implement` → `gpt-5.6-terra` / `medio`; cambio conocido: no, depende del config personal |
-| familia `codex`; regiones `bbcr-viab-posix`, `bbcr-viab-ps` y `prfb-codex` | procedencia: default del CLI porque la receta no reinyecta el config; valor anterior: modelo y esfuerzo `indeterminado` | perfil nuevo: `pr` y `refute` → `gpt-5.6-sol` / `alto`; `implement` → `gpt-5.6-terra` / `medio`; cambio conocido: no, depende del default efectivo del CLI |
+| familia `codex`; regiones de `cross-review`, `co-explore` y `cross-implement` | procedencia: reinyección de la raíz del config personal; valor anterior: modelo y esfuerzo `indeterminado` | perfil nuevo: `explore`, `counter-plan` y `debate` → `gpt-6-sol` / `alto`; `investigate` y `design-review` → `gpt-6-sol` / `muy_alto`; `implement` → `gpt-5.6-terra` / `medio`; cambio conocido: no, depende del config personal |
+| familia `codex`; regiones `bbcr-viab-posix`, `bbcr-viab-ps` y `prfb-codex` | procedencia: default del CLI porque la receta no reinyecta el config; valor anterior: modelo y esfuerzo `indeterminado` | perfil nuevo: `pr` y `refute` → `gpt-6-sol` / `alto`; `implement` → `gpt-5.6-terra` / `medio`; cambio conocido: no, depende del default efectivo del CLI |
 
 En Claude ningún rol cambia de modelo: las catorce regiones marcadas son doce regiones `opus` y dos
 regiones `sonnet`, exactamente la partición de la matriz. Todo su delta está en `effort`, que las
