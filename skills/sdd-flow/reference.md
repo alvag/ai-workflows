@@ -2207,10 +2207,11 @@ Una identidad viva al resolver puede dejar de serlo a mitad del paso, y cada efe
 ella la vuelve a comprobar **inmediatamente antes**, con `estado_identidad "<plataforma>"` sobre la
 plataforma ya resuelta — **nunca** con `resolver_plataforma`, que volvería a elegir en vez de
 comprobar, y que ante una identidad caída podría devolver la **otra** plataforma a mitad del paso.
-Los efectos son estos cinco y la lista es
+Los efectos son estos seis y la lista es
 exhaustiva: **crear** el worktree por la plataforma, **adoptar** un árbol creado con Git, **abrir** el
-panel, **arrancar** el agente y **rotular** el worktree. Si la revalidación falla, ese efecto no se
-ejecuta y se aplica la fila que le corresponda en «El contrato de fallo por fase».
+panel, **arrancar** el agente, **rotular** el worktree y **entregar** el encargo. Si la
+revalidación falla, ese efecto no se ejecuta y se aplica la fila que le corresponda en «El contrato
+de fallo por fase».
 
 ---
 
@@ -2281,6 +2282,18 @@ detiene. El orden no es intercambiable, y por eso se escribe: comprobar después
 recursos vivos que nadie autorizó, y convierte el remedio en liquidarlos en vez de no haberlos
 creado — que es la misma asimetría por la que el sellado del lote precede al primer efecto y no al
 primer despacho.
+
+Para **entregar** por plataforma, el conjunto de guías del terreno servido por su binario debe
+declarar, antes de crear, cinco clases de observación: disponibilidad previa del worker; un medio
+para contrastar la identidad del worker creado con el despacho activo; cadencia y cota de reconsulta
+de la disponibilidad; cadencia y cota de consulta posterior al envío; y un efecto atribuible al
+encargo actual que acredite ejecución comenzada o concluida. El medio de contraste se comprueba en
+el preflight y su valor después de crear. Cada espera por condición solo cuenta como cadencia
+dirigida por eventos si la guía especifica condición, cota y resultado al no satisfacerse. Si falta
+o es ilegible cualquiera de las cinco definiciones, no se inventan estados, pausas ni plazos: la
+capacidad obligatoria está incompleta y el punto falla cerrado **antes de crear**, sin degradar. La
+entrada pendiente separada se comprueba únicamente cuando el conjunto la expone y aplica; no es una
+sexta obligación universal.
 
 #### El alcance es el lote real, no un tope fijo
 
@@ -2370,7 +2383,7 @@ obtenida o su estado **incierto** con el motivo. La excepción existe porque la 
 dónde se ve el worker, no si existe, trabaja o se liquida; afirmar una colocación no obtenida sigue
 vedado.
 
-**Ese destino tiene precedencia sobre la segunda fila de «Los cuatro destinos del preflight de
+**Ese destino tiene precedencia sobre la segunda fila de «Los cinco destinos del preflight de
 capacidades», y la matriz lo declara de su lado.** Sin esa precedencia, la ausencia de colocación cae
 en «falla antes del primer recurso y no falta ninguna capacidad obligatoria» y ordenaría **degradar a
 la vía por línea de comandos**, que contradice dos cosas a la vez: esta excepción, que manda
@@ -2491,6 +2504,63 @@ colocación pedida por el usuario y el registro de familia **no compiten**. Escr
 flujo le atribuía al mecanismo una carencia que era de una plataforma — y la habría arrastrado a
 cualquier plataforma que se integre después.
 
+#### La entrega exige disponibilidad previa y efecto atribuible posterior
+
+Para cada worker creado, antes de escribir se contrasta su identidad con el despacho activo por el
+medio declarado en el conjunto vigente de guías. Esto no repite el contraste de rol, familia o
+perfil hecho al crear. Se conserva una muestra previa **vigente**, vinculada al worker y al encargo
+actual solo durante esta entrega; no se agrega un campo durable. La escritura se habilita únicamente
+si esa muestra acredita disponibilidad y la guía permite distinguir después un efecto atribuible al
+encargo nuevo. Un worker ya terminal sin marca monótona o única que pueda atribuirse a la ejecución
+de un encargo nuevo no se reutiliza: se detiene antes de escribir, sin destruirlo.
+
+La indisponibilidad transitoria se reconsulta con la cadencia y hasta la cota de la guía. Una
+condición que requiere intervención humana o una identidad distinta detiene como **causa conocida**;
+una muestra ausente, desconocida, ilegible o contradictoria detiene como **resultado incierto**. En
+ambos casos se conservan los recursos y se presentan al usuario como se indica abajo. Ni una pausa
+fija ni un acuse de transporte acreditan disponibilidad.
+
+La cota efectiva de reconsulta se recorta al `wait_budget` restante, sin reiniciarlo. Si el
+presupuesto vence antes o **a la vez** que la cota propia, rige `corte_presupuesto` y la corrida
+permanece activa según `skills/cross-review/corridas-en-vuelo.md` → «Outcome de la espera». Solo si
+vence la cota propia mientras queda presupuesto se detiene como resultado incierto, sin degradar ni
+destruir, y se presentan los recursos residuales. Este mismo orden rige para la consulta posterior.
+
+Con disponibilidad acreditada se emite una sola solicitud para ese worker. En un lote se conserva
+una muestra previa por worker, se asientan los envíos previstos y se reconcilian los efectivos con
+`despacho.py --corrida` **antes de esperar a cualquiera**. Después del envío se consulta, con la
+cadencia y cota publicadas y el mismo `wait_budget`, un efecto posterior ligado a esa solicitud y
+al worker. Acreditan el comienzo una transición desde la muestra previa hacia ejecución, o hacia
+terminación con evidencia atribuible al encargo actual. La repetición de un estado terminal solo
+acredita si una marca monótona o única cambió tras el envío y la guía la atribuye al encargo actual.
+Sin efecto acreditado no se entra en la espera ordinaria.
+
+No acreditan ejecución el acuse de transporte, los bytes aceptados, `assignment_digest`, un estado
+ocupado estático sin muestra previa, el estado terminal repetido sin marca nueva ni la desaparición
+de una entrada pendiente. Si el conjunto expone una entrada pendiente separada y esta todavía
+contiene el encargo, esa lectura positiva prueba **no envío**; una superficie inexistente o vacía no
+prueba que se haya enviado. La integridad del contenido se comprueba además cuando una salida
+derivada permite medirla, no como precondición universal de la espera ordinaria.
+
+Solo la prueba positiva de no envío permite corregir esa entrada en el **mismo** worker y repetir
+desde la acreditación de disponibilidad. Ante silencio, cota propia agotada con presupuesto
+remanente, efecto ausente, ilegible, contradictorio o no atribuible, no se reenvía, no se abre otro
+intento, no se degrada ni se destruye automáticamente. El sobre, el intento asentado y los recursos
+se conservan. Toda detención con recursos de esta fase, incluida la previa a escribir, presenta al
+usuario identidad y último estado observable del worker, muestras disponibles según la fase,
+motivo exacto, sobre, intento asentado si existe y cada residual con su acción pendiente. Una causa
+comprobada se declara conocida; si falta evidencia sobre lo ocurrido con el encargo, el resultado
+es incierto. La corrida queda detenida hasta que el usuario decida investigar, cerrar tras cese
+acreditado o relanzar solo con cese previo confirmado y las demás guardas vigentes. No se borra ni
+reemplaza un intento asentado ni se lo marca cosechado sin adjudicar una salida real.
+
+Esta regla se adopta en el siguiente despacho nuevo o retomado **antes de crear recursos**. Una
+corrida que ya envió el encargo termina por la versión que cargó, aunque aún no haya entrado en
+espera; no se migra ni acredita retroactivamente. Una retoma con recursos y envío no acreditado
+adopta la regla nueva solo con prueba positiva de que no se envió. Si no puede distinguirlo, se
+detiene sin reentregar y presenta los residuales para decisión humana como arriba. La matriz
+histórica de adopción del transporte no se altera por esta adopción de la entrega.
+
 #### Cuándo se puede degradar a la vía por línea de comandos
 
 Una vía por plataforma que **ya creó recursos** y falló **no degrada por su cuenta**. Para degradar
@@ -2543,7 +2613,7 @@ la atiende — y eso último solo lo dice el intento, con su error.
 
 Este criterio se define en «El routing entre guías lo deciden las guías».
 
-#### Los cuatro destinos del preflight de capacidades
+#### Los cinco destinos del preflight de capacidades
 
 El preflight comprueba que las skills cargadas exponen lo que el flujo necesita, y **cada fallo tiene
 su destino fijado**, que depende de dos cosas: si lo que falta es obligatorio, y si ya se crearon
@@ -2551,24 +2621,33 @@ recursos.
 
 | Qué se observó | Destino |
 |---|---|
-| falta una capacidad **obligatoria**, o el **perfil efectivo** reportado difiere del solicitado al crear una terminal | **falla cerrado antes de crear** ningún recurso |
+| falta una capacidad **obligatoria**, incluida cualquiera de las cinco definiciones observables de entrega, o alguna es ilegible en el preflight, o el **perfil efectivo** reportado difiere del solicitado al crear una terminal | **falla cerrado antes de crear** ningún recurso; no degrada |
 | falla **antes del primer recurso** y no falta ninguna capacidad obligatoria | **degrada** a la vía por línea de comandos |
-| devuelve evidencia **ilegible o contradictoria** **después** de haber creado recursos | el resultado es **incierto**: **no degrada** y los residuales se enumeran |
+| la identidad del worker no coincide con el despacho o se observa una condición que exige intervención humana | **se detiene por causa conocida** antes de crear más recursos; no degrada y presenta los ya creados |
+| con recursos creados, alguna evidencia necesaria falta, es desconocida, ilegible, contradictoria o no atribuible, o vence la cota propia de disponibilidad o efecto sin acreditarlos mientras queda `wait_budget` | el resultado es **incierto**: **no degrada**, no destruye y presenta sobre, intento y residuales |
 | falta la capacidad de **colocar** como se pidió, y solo ella | **continúa por la plataforma** con la colocación que aplique, y **declara la obtenida** o su estado incierto |
 
-**La cuarta fila se evalúa primero, porque es la única acotada a una capacidad concreta.** La
+Cuando la evidencia contradictoria es la identidad del worker, prevalece la fila de causa conocida;
+la fila incierta se aplica a las demás evidencias necesarias para decidir qué ocurrió con el encargo.
+
+**La última fila se evalúa primero, porque es la única acotada a una capacidad concreta.** La
 colocación no es obligatoria, así que sin esta precedencia caería en la segunda fila y ordenaría
 degradar; y degradar un punto suelto por línea de comandos es justo lo que «La activación de la
 plataforma es atómica» prohíbe. Su fundamento está del lado de la capacidad, en «La colocación se
 pide como intención, y su resultado se declara»: lo que se pierde al no colocar es visibilidad, no
 corrección, y la corrida sigue teniendo el registro completo de la plataforma.
 
-**Las otras tres filas se distinguen por dos preguntas, y el orden entre ellas importa.** Primero:
-¿falta algo obligatorio? Si falta, no hay degradación posible —degradar sería emitir ese worker por línea de
-comandos, que es justo lo que la plataforma resuelta prohíbe—. Después: ¿ya hay recursos? Con
-recursos creados, una evidencia que no se puede leer **no es un permiso para empezar de nuevo por
-otra vía**: los procesos anteriores pueden seguir vivos, y arrancar la vía por línea de comandos
-sobre el mismo worktree pone dos corridas a escribir encima.
+**Las otras filas se distinguen por la obligación y por los recursos ya creados.** La falta de una
+definición obligatoria prevalece sobre el fallo genérico previo al primer recurso: degradar sería
+emitir ese worker por línea de comandos, que la plataforma resuelta prohíbe. Con recursos creados,
+una causa conocida se nombra como tal; evidencia ausente o inválida no permite decidir qué ocurrió
+con el encargo ni empezar de nuevo por otra vía: los procesos anteriores pueden seguir vivos, y
+arrancar la vía por línea de comandos sobre el mismo worktree pondría dos corridas a escribir
+encima. Si `wait_budget` vence antes o a la vez que la cota
+propia de disponibilidad o de efecto, prevalece `corte_presupuesto` y la corrida **sigue activa**;
+solo la cota propia vencida con presupuesto remanente toma la fila incierta con recursos. El sentido
+de `corte_presupuesto` y la conservación del sobre viven en
+`skills/cross-review/corridas-en-vuelo.md` → «Outcome de la espera».
 
 #### La activación de la plataforma es atómica
 
@@ -2606,11 +2685,14 @@ reconciliación contra la fuente efectiva de la plataforma.
 **La composición que recibe el preflight lleva su `dominio`, y sin él el punto se detiene.** Tres de
 las cuatro columnas no se pueden evaluar mirando solo a los workers previstos —`1-por-repo` necesita
 cuántos repos tiene el reparto, `opuesta-al-conductor` necesita la familia del conductor,
+`opuesta-al-autor-del-codigo` necesita el autor real y el inventario de familias resuelto,
 `delta-sobre-el-anterior` necesita el encargo anterior—, así que la composición declara ese dato al
-lado de `expected_workers[]`. La ausencia del campo que la fila nombra **falla cerrado** con
-`forma-no-reconocida`: una celda que no se puede comprobar no pasa. Los campos y qué celda exige cada
-uno: `skills/cross-review/corridas-en-vuelo.md` → «El dominio contra el que se comprueba la
-composición».
+lado de `expected_workers[]`. La ausencia de un dato necesario para comprobar la composición **falla
+cerrado** con `forma-no-reconocida`. Si no existe una familia opuesta en el inventario y el worker
+previsto coincide con el autor, omitir `degradacion: same-family` también falla cerrado, pero con
+`familia-invalida`: la familia se puede comprobar, aunque no se autorizó su uso degradado. Los campos
+y qué celda exige cada uno: `skills/cross-review/corridas-en-vuelo.md` → «El dominio contra el que se
+comprueba la composición».
 
 ---
 

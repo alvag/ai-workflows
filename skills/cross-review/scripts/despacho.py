@@ -26,7 +26,7 @@ FRONTERA DE PRUEBA — dos unidades comparten este pasaje, y no comparten su alc
 `despacho.py --preflight` — clase: veredicto. Dirección: admite-de-mas.
     Detecta: una fila ausente o con una celda fuera de su enum; una clave prevista vacía o repetida;
     un operando ausente —`family`, `assignment_digest`, y `nucleo_digest` en las dos direcciones que
-    la sede declara—; las CUATRO columnas enteras —los seis valores de `cardinalidad`, los cinco de
+    la sede declara—; las CUATRO columnas enteras —los seis valores de `cardinalidad`, los seis de
     `familias`, los cinco de `encargos` y el único de `deadline`, que era el que no se evaluaba—,
     cada una contra el dato que su celda necesita; y la ausencia de ese dato, que **falla cerrado**
     en vez de pasar en silencio.
@@ -356,6 +356,34 @@ def _evaluar_familias(valor, workers, dominio):
                 return (f"familia-invalida: el worker {w.get('key')} se previo {f}, la misma del "
                         f"conductor, y el punto exige la opuesta")
         return None
+    if valor == "opuesta-al-autor-del-codigo":
+        autor = dominio.get("autor")
+        if not isinstance(autor, str) or not autor.strip():
+            return _falta_dominio("autor", "familias", valor)
+        inventario = dominio.get("familias")
+        if (not isinstance(inventario, list) or not inventario
+                or any(not isinstance(f, str) or not f.strip() for f in inventario)):
+            return _falta_dominio("familias", "familias", valor)
+        degradacion = dominio.get("degradacion")
+        if degradacion not in (None, "same-family"):
+            return ("forma-no-reconocida: `dominio.degradacion` solo admite `same-family` "
+                    "para la revisión final")
+        opuestas = [f for f in set(inventario) if f != autor]
+        if opuestas and degradacion is not None:
+            return ("familia-invalida: se declaro degradacion aunque la familia opuesta al autor "
+                    "esta disponible")
+        for w in workers:
+            f = w.get("family")
+            if f not in inventario:
+                return (f"familia-invalida: el worker {w.get('key')} se previo {f} fuera del "
+                        "inventario resuelto")
+            if opuestas and f == autor:
+                return (f"familia-invalida: el worker {w.get('key')} se previo de la familia "
+                        f"del autor ({autor}) aunque esta disponible la opuesta")
+            if not opuestas and degradacion != "same-family":
+                return (f"familia-invalida: el worker {w.get('key')} coincide con el autor "
+                        "sin degradacion declarada")
+        return None
     if valor == "continuacion-del-anterior":
         previos, mal = _anterior_por_clave(dominio)
         if mal:
@@ -517,7 +545,7 @@ def _deadline_por_intento(clave, esp, efe):
 def evaluar_composicion(fila, workers, dominio=None):
     """Los invariantes comprobables ANTES de lanzar, contra el `dominio` que la composición declara.
 
-    Las **cuatro** columnas se evalúan: los seis valores de `cardinalidad`, los cinco de `familias`,
+    Las **cuatro** columnas se evalúan: los seis valores de `cardinalidad`, los seis de `familias`,
     los cinco de `encargos` y el único de `deadline`. El dato que cada celda necesita se exige: sin
     él **falla cerrado**."""
     dominio = dominio if isinstance(dominio, dict) else {}
@@ -658,11 +686,12 @@ def ejecutar(modo, raiz, skill, punto, documento):
 def autotest():
     """Un control POSITIVO y uno NEGATIVO por cada violación. Una guarda que solo se vio en verde es
     indistinguible de una que no puede ponerse roja, así que cada nombre del vocabulario tiene acá el
-    caso que lo produce. Los SEIS valores de `cardinalidad` y los CINCO de `familias` tienen cada uno
+    caso que lo produce. Los SEIS valores de `cardinalidad` y los SEIS de `familias` tienen cada uno
     su par, más el negativo de **dominio ausente**: sin ese último, un valor podría pasar por no
     poder comprobarse, que es exactamente el defecto que este modo tenía."""
     dom = {"cardinalidad": {"1", "1-por-familia", "1-por-ronda", "1-por-repo", "1-por-hallazgo", "n-acotado"},
-           "familias": {"una-por-worker", "opuesta-al-conductor", "misma-que-el-conductor",
+           "familias": {"una-por-worker", "opuesta-al-conductor", "opuesta-al-autor-del-codigo",
+                        "misma-que-el-conductor",
                         "continuacion-del-anterior", "indiferente"},
            "encargos": {"identico-por-digest", "nucleo-comun", "distinto-por-worker",
                         "delta-sobre-el-anterior", "no-aplica"},
@@ -746,7 +775,7 @@ def autotest():
     casos.append(("n-acotado sin tope en el dominio",
                   evaluar_composicion(acot, [w("a", "codex", "D")], {}), "forma-no-reconocida"))
 
-    # --- familias: los cinco valores, cada uno con su par ---
+    # --- familias: los seis valores, cada uno con su par ---
     casos.append(("una-por-worker con una por worker",
                   evaluar_composicion(dual, [w("a", "codex", "D"), w("b", "claude", "D")], inv), None))
     casos.append(("una-por-worker con dos de la misma familia",
@@ -762,6 +791,66 @@ def autotest():
                                       {"tope": 2, "conductor": "claude"}), "familia-invalida"))
     casos.append(("opuesta-al-conductor sin conductor en el dominio",
                   evaluar_composicion(opu, [w("a", "codex", "D")], {"tope": 2}), "forma-no-reconocida"))
+    op_autor = fila(cardinalidad="1", familias="opuesta-al-autor-del-codigo", encargos="no-aplica")
+    casos.append(("opuesta-al-autor con conductor de otra familia",
+                  evaluar_composicion(op_autor, [w("a", "claude", "D")],
+                                      {"autor": "codex", "conductor": "claude",
+                                       "familias": ["codex", "claude"]}), None))
+    casos.append(("opuesta-al-autor con autor Claude y conductor Codex",
+                  evaluar_composicion(op_autor, [w("a", "codex", "D")],
+                                      {"autor": "claude", "conductor": "codex",
+                                       "familias": ["codex", "claude"]}), None))
+    casos.append(("opuesta-al-autor admite familia opaca y duplicados en inventario",
+                  evaluar_composicion(op_autor, [w("a", "tercera", "D")],
+                                      {"autor": "codex", "familias": ["tercera", "tercera"]}),
+                  None))
+    casos.append(("opuesta-al-autor rechaza misma familia disponible",
+                  evaluar_composicion(op_autor, [w("a", "codex", "D")],
+                                      {"autor": "codex", "familias": ["codex", "claude"]}),
+                  "familia-invalida"))
+    casos.append(("opuesta-al-autor exige autor declarado",
+                  evaluar_composicion(op_autor, [w("a", "claude", "D")],
+                                      {"familias": ["codex", "claude"]}), "forma-no-reconocida"))
+    casos.append(("opuesta-al-autor exige inventario declarado",
+                  evaluar_composicion(op_autor, [w("a", "claude", "D")],
+                                      {"autor": "codex"}), "forma-no-reconocida"))
+    casos.append(("opuesta-al-autor rechaza inventario vacio",
+                  evaluar_composicion(op_autor, [w("a", "codex", "D")],
+                                      {"autor": "codex", "familias": []}),
+                  "forma-no-reconocida"))
+    casos.append(("opuesta-al-autor rechaza elemento vacio del inventario",
+                  evaluar_composicion(op_autor, [w("a", "codex", "D")],
+                                      {"autor": "codex", "familias": ["codex", ""]}),
+                  "forma-no-reconocida"))
+    casos.append(("opuesta-al-autor rechaza degradacion desconocida",
+                  evaluar_composicion(op_autor, [w("a", "codex", "D")],
+                                      {"autor": "codex", "familias": ["codex"],
+                                       "degradacion": "desconocida"}), "forma-no-reconocida"))
+    casos.append(("opuesta-al-autor admite degradacion declarada sin opuesta",
+                  evaluar_composicion(op_autor, [w("a", "codex", "D")],
+                                      {"autor": "codex", "familias": ["codex"],
+                                       "degradacion": "same-family"}), None))
+    casos.append(("opuesta-al-autor rechaza degradacion con worker opuesto disponible",
+                  evaluar_composicion(op_autor, [w("a", "claude", "D")],
+                                      {"autor": "codex", "familias": ["codex", "claude"],
+                                       "degradacion": "same-family"}),
+                  "familia-invalida: se declaro degradacion"))
+    casos.append(("opuesta-al-autor rechaza degradacion no declarada",
+                  evaluar_composicion(op_autor, [w("a", "codex", "D")],
+                                      {"autor": "codex", "familias": ["codex"]}),
+                  "familia-invalida"))
+    casos.append(("opuesta-al-autor rechaza degradacion con opuesta disponible",
+                  evaluar_composicion(op_autor, [w("a", "codex", "D")],
+                                      {"autor": "codex", "familias": ["codex", "claude"],
+                                       "degradacion": "same-family"}), "familia-invalida"))
+    casos.append(("opuesta-al-autor rechaza worker fuera del inventario",
+                  evaluar_composicion(op_autor, [w("a", "claude", "D")],
+                                      {"autor": "codex", "familias": ["codex"]}),
+                  "familia-invalida"))
+    casos.append(("opuesta-al-autor rechaza worker ajeno con opuesta disponible",
+                  evaluar_composicion(op_autor, [w("a", "tercera", "D")],
+                                      {"autor": "codex", "familias": ["codex", "claude"]}),
+                  "familia-invalida: el worker a se previo tercera fuera del inventario resuelto"))
     mis = fila(cardinalidad="n-acotado", familias="misma-que-el-conductor")
     casos.append(("misma-que-el-conductor con la del conductor",
                   evaluar_composicion(mis, [w("a", "claude", "D")], {"tope": 2, "conductor": "claude"}),

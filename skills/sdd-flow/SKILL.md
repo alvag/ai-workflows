@@ -111,13 +111,13 @@ estado. Los puntos de despacho propios son dos:
 | Punto de despacho | Cardinalidad | Familias | Encargos | Deadline |
 |---|---|---|---|---|
 | los subagentes de exploración de `analyze`, cuando el entorno los soporta y el alcance lo amerita | `n-acotado` | `indiferente` | `distinto-por-worker` | `propio-por-worker` |
-| el reviewer de la **revisión final de diff**, dentro del gate de revisión manual | `1` | `indiferente` | `no-aplica` | `propio-por-worker` |
+| el reviewer de la **revisión final de diff**, dentro del gate de revisión manual | `1` | `opuesta-al-autor-del-codigo` | `no-aplica` | `propio-por-worker` |
 
-En esta fila, `indiferente` describe solo lo que el instrumento puede comprobar: sus enums no
-representan al autor real del diff, que puede diferir del conductor. Antes de sellar
-`expected_workers[]`, el conductor acredita quién escribió el código y qué familias están instaladas;
-elige la opuesta, o la misma solo si la opuesta no está instalada y declara la degradación. Sin esos
-datos, no despacha. Un preflight verde no acredita esta relación.
+El enum no descubre al autor real del diff, que puede diferir del conductor. Antes de sellar
+`expected_workers[]` y su dominio, el conductor acredita quién escribió el código y qué familias
+están instaladas; elige la opuesta, o la misma solo si la opuesta no está instalada y declara
+`dominio.degradacion: same-family` en el gate de revisión manual. Sin esos datos no despacha. Un
+preflight verde acredita que el worker previsto respeta la declaración sellada, no la autoría externa.
 
 Enums cerrados, forma de la tabla y qué pasa con un punto sin fila:
 `skills/cross-review/corridas-en-vuelo.md` → «Los invariantes que cada punto de despacho declara»,
