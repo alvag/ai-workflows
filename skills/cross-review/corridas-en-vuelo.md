@@ -84,10 +84,13 @@ permiso.**
 | `deadline` | `propio-por-worker` |
 
 **Por qué los invariantes son heterogéneos, y por qué eso no los ablanda.** Solo dos de los once
-puntos tienen forma «una familia por worker»; la revisión final de diff es **mismo-modelo por
-doctrina declarada**, y el fan-out por repo reparte encargos **distintos** por construcción. Un
-invariante universal los pondría en rojo por cumplir su propio diseño. Lo obligatorio es lo que
-**ese** punto declaró, y para el fan-out dual sigue siendo el conjunto histórico completo.
+puntos tienen forma «una familia por worker»; la revisión final de diff selecciona respecto del
+**autor real del código**, que puede diferir del conductor y no está en los enums de este instrumento.
+Por eso su fila declara `indiferente` aquí, mientras el propio punto exige la familia opuesta o una
+degradación declarada cuando esta no está instalada. El fan-out por repo reparte encargos **distintos**
+por construcción. Un invariante universal los pondría en rojo por cumplir su propio diseño. Lo
+obligatorio es lo que **ese** punto declaró, y para el fan-out dual sigue siendo el conjunto histórico
+completo.
 
 **`encargos: no-aplica` es válido solo con `cardinalidad: 1`.** Con un solo worker no hay relación
 entre encargos que declarar, y escribir ahí `identico-por-digest` sería un predicado vacuo que da
