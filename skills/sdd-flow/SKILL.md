@@ -111,7 +111,11 @@ estado. Los puntos de despacho propios son dos:
 | Punto de despacho | Cardinalidad | Familias | Encargos | Deadline |
 |---|---|---|---|---|
 | los subagentes de exploración de `analyze`, cuando el entorno los soporta y el alcance lo amerita | `n-acotado` | `indiferente` | `distinto-por-worker` | `propio-por-worker` |
-| el reviewer de la **revisión final de diff**, dentro del gate de revisión manual | `1` | `opuesta-al-autor-del-codigo`, con degradación declarada a la misma | `no-aplica` | `propio-por-worker` |
+| el reviewer de la **revisión final de diff**, dentro del gate de revisión manual | `1` | `opuesta-al-autor-del-codigo` | `no-aplica` | `propio-por-worker` |
+
+La degradación a la misma familia se declara en `dominio.degradacion: same-family` solo cuando el
+inventario resuelto no contiene la familia opuesta al autor real del código; el conductor la nombra
+en el gate de revisión manual. La celda de la tabla conserva únicamente el enum cerrado.
 
 Enums cerrados, forma de la tabla y qué pasa con un punto sin fila:
 `skills/cross-review/corridas-en-vuelo.md` → «Los invariantes que cada punto de despacho declara»,

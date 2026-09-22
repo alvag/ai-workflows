@@ -79,14 +79,15 @@ permiso.**
 | Columna | Valores admitidos |
 |---|---|
 | `cardinalidad` | `1` · `1-por-familia` · `1-por-ronda` · `1-por-repo` · `1-por-hallazgo` · `n-acotado` |
-| `familias` | `una-por-worker` · `opuesta-al-conductor` · `misma-que-el-conductor` · `continuacion-del-anterior` · `indiferente` |
+| `familias` | `una-por-worker` · `opuesta-al-conductor` · `opuesta-al-autor-del-codigo` · `misma-que-el-conductor` · `continuacion-del-anterior` · `indiferente` |
 | `encargos` | `identico-por-digest` · `nucleo-comun` · `distinto-por-worker` · `delta-sobre-el-anterior` · `no-aplica` |
 | `deadline` | `propio-por-worker` |
 
 **Por qué los invariantes son heterogéneos, y por qué eso no los ablanda.** Solo dos de los once
-puntos tienen forma «una familia por worker»; la revisión final de diff es **mismo-modelo por
-doctrina declarada**, y el fan-out por repo reparte encargos **distintos** por construcción. Un
-invariante universal los pondría en rojo por cumplir su propio diseño. Lo obligatorio es lo que
+puntos tienen forma «una familia por worker»; la revisión final de diff elige la familia **opuesta
+al autor del código**, con degradación declarada solo cuando no está disponible, y el fan-out por
+repo reparte encargos **distintos** por construcción. Un invariante universal los pondría en rojo
+por cumplir su propio diseño. Lo obligatorio es lo que
 **ese** punto declaró, y para el fan-out dual sigue siendo el conjunto histórico completo.
 
 **`encargos: no-aplica` es válido solo con `cardinalidad: 1`.** Con un solo worker no hay relación
@@ -342,23 +343,34 @@ exactamente la circularidad que el nodo viene a impedir.
 
 Tres de las cuatro columnas de la fila **no se pueden evaluar mirando solo a los workers previstos**:
 `1-por-repo` necesita saber cuántos repos tiene el reparto, `opuesta-al-conductor` necesita la
-familia del conductor, y `delta-sobre-el-anterior` necesita el encargo anterior. Ese dato viaja en el
+familia del conductor, `opuesta-al-autor-del-codigo` necesita la familia del autor real y el
+inventario resuelto, y `delta-sobre-el-anterior` necesita el encargo anterior. Ese dato viaja en el
 nodo `dominio` de la composición, al lado de `expected_workers[]`.
 
 | campo | lo exige | qué lleva |
 |---|---|---|
-| `familias` | `cardinalidad: 1-por-familia` | el inventario de familias de la corrida; se exige **una por cada una**, ni de más ni de menos |
+| `familias` | `cardinalidad: 1-por-familia` · `familias: opuesta-al-autor-del-codigo` | el inventario resuelto de familias disponibles; para `1-por-familia` se exige **una por cada una**; para la revisión final decide si existe una opuesta al autor |
 | `cardinal` | `cardinalidad: 1-por-ronda` · `1-por-repo` · `1-por-hallazgo` | cuántos elementos tiene el dominio que esa celda nombra |
 | `tope` | `cardinalidad: n-acotado` | el máximo de workers que ese punto admite |
 | `conductor` | `familias: opuesta-al-conductor` · `misma-que-el-conductor` | la familia del conductor de la corrida |
+| `autor` | `familias: opuesta-al-autor-del-codigo` | la familia comprobada del autor real del diff, que puede diferir del conductor |
+| `degradacion` | `familias: opuesta-al-autor-del-codigo` solo si falta la familia opuesta | el literal `same-family`; sin él, la misma familia no pasa el preflight |
 | `anterior` | `familias: continuacion-del-anterior` · `encargos: delta-sobre-el-anterior` | los workers del intento previo, con su `key` —**la misma** que la de esta ronda—, su `family` y su `assignment_digest`; **solo una lista vacía declara la ronda inicial** |
+
+El instrumento comprueba la coherencia entre `autor`, `familias`, `degradacion` y el worker previsto;
+el conductor acredita fuera del instrumento quién escribió el diff y qué familias están realmente
+disponibles. La marca de degradación no reemplaza la declaración visible en el gate humano. Con la
+familia opuesta en el inventario, prever la misma familia o declarar `same-family` falla cerrado.
 
 **Un campo que la fila no nombra no se exige**, y su ausencia no es un fallo: `indiferente` y
 `cardinalidad: 1` no tienen contra qué contrastarse y su silencio es correcto.
 
-**La ausencia del campo que la fila SÍ nombra falla cerrado**, con `forma-no-reconocida`, y ese es el
-punto entero de este nodo. Sin él, el preflight evaluaba `n >= 1` para cuatro de los seis valores de
-`cardinalidad` y no evaluaba nada para tres de los cinco de `familias` —y salía **verde**, con un
+**La ausencia de un campo exigido por la fila falla cerrado**. Devuelve `forma-no-reconocida` cuando
+falta un dato necesario para comprobar la composición. Hay una excepción: si no existe una familia
+opuesta en el inventario y el worker previsto coincide con el autor, omitir `degradacion: same-family`
+devuelve `familia-invalida`. La familia se puede comprobar, pero no se autorizó su uso degradado.
+Sin este nodo, el preflight evaluaba `n >= 1` para cuatro de los seis valores de `cardinalidad` y no
+evaluaba nada para tres de los cinco valores anteriores de `familias` —y salía **verde**, con un
 mensaje que decía `composicion-valida`—. Medido sobre el instrumento anterior: un fan-out dual con
 **un** worker previsto sobre un inventario de dos familias salía 0, y un punto que declara
 `opuesta-al-conductor` con dos workers de la familia del conductor salía 0. Una celda que no se puede
