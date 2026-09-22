@@ -119,7 +119,7 @@ Acá cambia el rol buscado: no un crítico read-only sino un **implementador con
 | Familia del autor | Implementador por default | Cómo detectarlo | Vía |
 |---|---|---|---|
 | Claude | Codex | `command -v codex` (PowerShell: `Get-Command codex -ErrorAction SilentlyContinue`) | Vía W-B (workspace-write) |
-| GPT/Codex | Claude | `command -v claude` | Vía W-C (permisos path-scoped) |
+| GPT/Codex | Claude | `command -v claude` | Vía W-C (headless medido o panel supervisado) |
 
 <!-- corpus-invariante:inicio:cross-implement.reference.md.7cce0044363c -->
 
@@ -184,11 +184,12 @@ Sin CLI para el implementador seleccionado → `UNAVAILABLE` (regla 7 del `SKILL
 
 Tres reglas invariantes (además de las del `SKILL.md`):
 
-1. **Escritura acotada por construcción, nunca por confianza**: sandbox `workspace-write` en
-   Codex, permisos path-scoped en Claude. **Nunca** `--yolo` /
+1. **Escritura acotada según la capacidad acreditada, nunca por confianza**: Codex usa el sandbox
+   `workspace-write`; en Claude, la combinación W-C headless solo acreditó el límite de escritura
+   de las file tools observadas, no un confinamiento global. **Nunca** `--yolo` /
    `--dangerously-bypass-approvals-and-sandbox` / `--dangerously-skip-permissions` /
-   `acceptEdits` sin scoping — ver la matriz de verificación: `acceptEdits` escribe fuera del
-   working dir.
+   `acceptEdits` como atajo de aislamiento. La medición histórica de `acceptEdits` observó escritura
+   fuera del working directory; la evidencia vigente y sus límites están en la matriz de abajo.
 2. **Aislamiento fail-closed antes de lanzar**, con el preflight de la sede única:
    `cross-review/reference.md` → "Preflight de aislamiento (fail-closed)". Se ejecuta
    `preflight_aislamiento <familia>` para la familia del implementador seleccionado y **se ramifica
@@ -378,28 +379,33 @@ nada lo señale — que es exactamente el efecto silencioso que el aislamiento v
 
 ### Vía W-C — Claude implementador (autor GPT/Codex)
 
-La forma canónica acota la escritura con **permisos path-scoped** — `--permission-mode default`
-deniega en headless toda tool fuera de `--allowedTools` — y lo hace con **dos entradas que cumplen
-funciones distintas**:
+La realización headless usa la combinación `default_restricted` medida en Claude Code 2.1.278.
+`--tools` declara disponibilidad y `--allowedTools` aporta reglas de preautorización, pero esta
+última **no** es una frontera exclusiva de tools ni un sandbox global. Bajo la combinación completa,
+las file tools crearon y editaron dentro del working directory y denegaron escrituras fuera;
+`--restricted` no confina los efectos de un Bash preautorizado. Ninguna propiedad se atribuye a
+`--safe-mode`, `--restricted`, `--permission-mode default` ni a una regla aislada.
 
-- **`Write`, sin scope, `habilita la herramienta`** de escritura. Es una entrada de la allowlist: sin
-  ella la tool queda denegada y `no se pueden crear archivos` nuevos, porque `Edit` no crea archivos,
-  los modifica.
-- **`Edit(./**)` es la `regla de path`** que acota dónde se escribe. La comprobación de permisos de
-  archivo del CLI **solo** consulta reglas `Edit(path)`, y esas cubren *todas* las herramientas que
-  escriben archivos, `Write` incluida.
+Se conservan `Write` y `Edit(./**)` en el argv elegido porque esa combinación fue medida, no
+porque cada entrada sea indispensable por sí sola. En los controles 2.1.278, omitir `Write` de
+`--allowedTools` **no** impidió crear dentro; omitir `Edit(./**)` **no** impidió que `Write` creara
+dentro; y `Write(./**)` no emitió la advertencia histórica. Por tanto, no se afirma que solo las
+reglas `Edit(path)` cubran todas las tools de escritura ni que quitar una entrada cierre toda
+escritura. Los límites de la evidencia están en «Evidencia vigente».
 
-**Por eso `ninguna de las dos es redundante`, y conviene tener medido qué pasa al quitar cada una**
-(ver "Matriz de verificación"): sin `Write`, el worker no puede crear un archivo aunque el path esté
-autorizado; sin `Edit(./**)`, `el fallo es cerrado` — no escribe **nada**, ni dentro ni fuera. Lo
-segundo importa porque invita a la lectura contraria: quitar la regla de path **no** deja al worker
-escribiendo libre, lo deja sin escribir.
-
-**No escribir `Write(./**)`.** El CLI rechaza esa forma al arrancar, por `stderr`, y lo dice con
-todas las letras: *no participa de la comprobación de permisos de archivo — solo las reglas
-`Edit(path)` lo hacen*. El scope se ignora, queda la entrada de allowlist, y el aviso se repite en
-cada corrida. El texto exacto está en la "Matriz de verificación", junto a las cuatro
-configuraciones medidas.
+**Gate por despacho headless, antes de construir cualquier argv.** Congelar la lista concreta de
+`proof_cmd` del work order y su identidad. Cada comando debe ser simple y comenzar con un ejecutable
+externo: su primer token es `proof_bin`. No aceptar wrappers, asignaciones de entorno iniciales ni
+comandos compuestos como permisos anchos. Para **cada comando real**, comprobar en «Evidencia vigente»
+de esta referencia que la regla desnuda `Bash(<proof_bin>:*)` fue medida con ese comando en fresh y
+resume, bajo el argv combinado y la versión vigentes. Un control de `node` no acredita `npm` ni otro
+comando de `node`; la regla autoriza más invocaciones del binario que la sonda concreta y no confina
+sus efectos. Si falta la pareja binario/comando, detener el despacho: medirla y publicarla en esta
+sede trackeada requiere un cambio y gate propios. Si la regla falla o no puede representarse,
+el contrato queda bloqueado y se vuelve al gate de spec; nunca se degrada a `Bash` libre. Con la lista
+vacía, no se ofrece Bash. `PROOF_BINS` abajo es la lista única, separada por espacios, de primeros
+tokens ya validados y acreditados, sin espacios internos ni metacaracteres de shell; no se obtiene
+de ejemplos o del scratch de una corrida.
 
 - **Lanzamiento** (sesión fresca, con session id propio para el resume):
   <!-- despacho:inicio:ci-wc-lanzamiento:claude -->
@@ -410,8 +416,18 @@ configuraciones medidas.
   # el modelo cableado de esta ruta de implementación, y ningún flag de esfuerzo.
   MODEL="${PERFIL_MODEL:-sonnet}"
   EFFORT="$PERFIL_EFFORT"
+  PROOF_BINS="${PROOF_BINS:-}"
+  TOOLS='Read,Grep,Glob,Edit,Write'
+  ALLOWED_TOOLS='Read,Grep,Glob,Edit(./**),Write'
+  if [ -n "$PROOF_BINS" ]; then
+    TOOLS="$TOOLS,Bash"
+    for PROOF_BIN in $PROOF_BINS; do
+      ALLOWED_TOOLS="$ALLOWED_TOOLS,Bash($PROOF_BIN:*)"
+    done
+  fi
   set -- -p --safe-mode --model "$MODEL" --permission-mode default \
-         '--allowedTools=Read,Grep,Glob,Edit(./**),Write,Bash(<proof_bin>:*)' \
+         --permission-prompts none --restricted --strict-mcp-config \
+         "--tools=$TOOLS" "--allowedTools=$ALLOWED_TOOLS" \
          --session-id "$SESSION_ID"
   [ -n "$EFFORT" ] && set -- "$@" --effort "$EFFORT"
   ( cd <working_dir> && claude "$@" \
@@ -419,51 +435,81 @@ configuraciones medidas.
   echo "$SESSION_ID" > <scratch>/session.txt
   ```
   <!-- despacho:fin:ci-wc-lanzamiento -->
-  En **PowerShell** (mismo patrón `Start-Process`/pipe que la Vía C de cross-review, con estas
-  tools; entrecomillar el `--allowedTools=…` completo para que las comas no se parseen como array).
-- **`Bash(<proof_bin>:*)`**: derivar un patrón por **cada comando** de la lista `proof_cmd`, del
-  primer token de cada uno (p. ej. `["node check.js", "npm run lint"]` → `Bash(node:*)` y
-  `Bash(npm:*)`). La lista mínima que el contrato necesita, nunca `Bash` a secas.
+- **`Bash(<proof_bin>:*)`**: la derivación no acredita el permiso. La única pareja desnuda medida
+  aquí es `Bash(node:*)` con `node -e 'process.stdout.write("bare-bash-ok")'` fresh/resume.
+  `npm run lint` es un ejemplo **no acreditado y bloqueado** hasta medir y publicar su comando real.
+  Si no hay `proof_cmd`, `PROOF_BINS` queda vacío, no se agrega `Bash` a `--tools` ni se emite regla
+  `Bash(...)` en `--allowedTools`.
+- **No usar `--permission-mode acceptEdits`** como forma canónica: la medición histórica observó
+  escritura fuera del working directory (ver «Evidencia histórica»). Tampoco usar
+  `--dangerously-skip-permissions`.
+- **Working directory**: el `cd <working_dir>` previo fija el cwd de la medición y de las file
+  tools observadas. No convierte las reglas de path ni el Bash autorizado en un sandbox global.
+- **Modelo**: default `sonnet` para implementación; la calidad se comprueba con el contrato de
+  verificación y la revisión del conductor. `--effort` solo se agrega cuando el perfil lo exige.
 
-  **Cuál es la forma admitida, y qué pasa si un comando no la tiene.** Un elemento es
-  representable cuando es un comando
-  simple con su ejecutable en el **primer token**. Un comando compuesto (`cd app && npm run lint`),
-  con wrapper o con asignaciones de entorno delante **no** es representable: su ejecutable real no
-  está en el primer token, y autorizar solo ese token bloquea la comprobación. Ante una forma no
-  representable **se detiene el dispatch** y se arregla el comando — nunca se relaja a `Bash` entero
-  para acomodarlo, que es cambiar el mínimo privilegio por comodidad.
+**Gate de reanudación antes de construir argv de fix.** `session.txt` debe pertenecer al scratch
+exclusivo `cross-implement/<invocation_id>/` y correlacionarse con el intento fresh y su
+`process_ref` en el mismo sobre, iniciado bajo esta receta publicada. El id aislado no prueba
+procedencia. Si la sesión es heredada o no atribuible, detener en gate humano; el proceso anterior
+ya iniciado puede terminar. Reusar el perfil y los `proof_cmd` congelados de esa sesión y volver a
+comprobar las entradas vigentes del gate Bash antes del resume.
 
-  **Con la lista vacía no se emite ningún `Bash(...)`**, y `--allowedTools` queda en
-  `'Read,Grep,Glob,Edit(./**),Write'` — las dos entradas de escritura se conservan, porque lo que
-  cae con la lista vacía es la ejecución, no la escritura. No hay comprobación que correr, así que autorizar un
-  binario "por las dudas" sería conceder ejecución sin nadie que la pida. Es el caso coherente con
-  la ranura `PROOF` que tampoco se emite.
-- **NUNCA `--permission-mode acceptEdits`** como forma canónica: verificado que escribe **fuera**
-  del working dir sin restricción (ver matriz). Tampoco `--dangerously-skip-permissions`.
-- **La regla `Edit(./**)` es relativa al cwd**: por eso el `cd <working_dir>` previo (o
-  `Push-Location`) es parte del contrato, no cosmético. `Write` no lleva scope y no lo necesita —
-  quien acota su alcance es la regla de path, no ella misma.
-- **Modelo**: default `sonnet` para implementación (velocidad; la calidad la garantiza e
+- **Reanudación** (misma sesión y perfil congelado):
   <!-- despacho:inicio:ci-wc-fix:claude -->
-# Resuelto por la cadena de `sdd-flow/reference.md` → "La cadena de resolución del perfil".
   ```bash
+  # Resuelto por la cadena de `sdd-flow/reference.md` → "La cadena de resolución del perfil".
   # Reanudación: la autoridad es el perfil CONGELADO de la sesión (escalón 1), que reemplaza los dos
   # campos juntos; no se consulta el archivo. Escalón 4: `sonnet` cableado y ningún flag.
   MODEL="${PERFIL_CONGELADO_MODEL:-sonnet}"
   EFFORT="$PERFIL_CONGELADO_EFFORT"
+  SESSION_ID=$(cat <scratch>/session.txt)
+  PROOF_BINS="${PROOF_BINS:-}"
+  TOOLS='Read,Grep,Glob,Edit,Write'
+  ALLOWED_TOOLS='Read,Grep,Glob,Edit(./**),Write'
+  if [ -n "$PROOF_BINS" ]; then
+    TOOLS="$TOOLS,Bash"
+    for PROOF_BIN in $PROOF_BINS; do
+      ALLOWED_TOOLS="$ALLOWED_TOOLS,Bash($PROOF_BIN:*)"
+    done
+  fi
   set -- -p --safe-mode --model "$MODEL" --permission-mode default \
-         '--allowedTools=Read,Grep,Glob,Edit(./**),Write,Bash(<proof_bin>:*)' \
+         --permission-prompts none --restricted --strict-mcp-config \
+         "--tools=$TOOLS" "--allowedTools=$ALLOWED_TOOLS" \
          --resume "$SESSION_ID"
   [ -n "$EFFORT" ] && set -- "$@" --effort "$EFFORT"
   ( cd <working_dir> && claude "$@" \
       < <scratch>/fix-rN.txt ) > <scratch>/report.txt 2> <scratch>/impl.err.txt
   ```
 <!-- despacho:fin:ci-wc-fix -->
+- **Diferencia con la sonda:** la medición añadió `--output-format stream-json --verbose` para
+  observar eventos y no usó `--effort`; estas formas omiten esos flags de observación y agregan
+  `--effort` solo si el perfil lo exige. No se afirma paridad byte a byte ni se despacha W-C durante
+  este cambio documental.
 - Con conductor de exec corto (Codex ~120s): lanzar en background y pollear el `report.txt`
   buscando `STATUS: done` — mismo patrón BACKGROUND de `cross-review/reference.md` → "Latencia
   y timeout (Claude revisor)", con el deadline de esta skill.
 
+**Alternativa interactiva supervisada.** El carrier de transporte de `sdd-flow/reference.md` →
+«El carrier de transporte, y sus cuatro ramas» selecciona la plataforma; el carrier **existente**
+abre el panel y entrega el encargo. Antes de crear el panel, su consentimiento propio y sellado para
+el lote debe enumerar herencia de entorno y credenciales, consumo de contexto, necesidad de red y
+ausencia de confinamiento de escritura por un sandbox del agente. No se reutiliza el consentimiento
+de otra fase ni se crea otro consentimiento independiente del carrier. Antes de entregar el trabajo,
+el conductor observa `auto mode on` en ese panel y registra el literal, la identidad observada y el
+momento en `## Consentimiento de transporte` del `plan.md` de la invocación directa, o en un evento
+del ledger llamador si la skill está embebida; ese asiento apunta al consentimiento sellado del
+carrier como autoridad de la selección. `transporte_fuente` y `transporte_proceso` del manifest
+mantienen su significado de panel consultable y proceso del agente: no son campos de consentimiento.
+Si falta cualquiera de esos hechos, usar la vía headless; si el encargo exige expresamente panel
+interactivo, detenerse. El panel no hereda el argv ni las garantías headless.
+
+**PowerShell W-C no está soportada** por este contrato hasta una medición propia. No se traslada la
+forma POSIX ni se presume equivalencia con `Start-Process` o con el panel supervisado.
+
 ## Matriz de verificación
+
+### Evidencia histórica (no canónica)
 
 Verificado end-to-end el 2026-07-09 (codex-cli 0.143.0; Claude Code local, `claude -p`):
 
@@ -497,10 +543,50 @@ diagnóstico:
 > `Permission allow rule (--allowed-tools): Write(./**) is not matched by file permission checks —
 > only Edit(path) rules are. Use Edit(./**) instead (Edit rules cover all file-editing tools).`
 
-**Las dos últimas filas son el par que hay que leer junto.** La tercera es la forma que la receta
-usa; la cuarta muestra que retirar la regla de path **no** abre un escape sino que corta la escritura
-entera — el fallo es cerrado. Quien vea la cuarta y concluya "entonces sobra `Edit(./**)`" tiene la
-tercera al lado para desmentirlo.
+Estas filas y la advertencia literal pertenecen a Claude 2.1.261. No son autoridad del contrato
+actual: en 2.1.278, omitir `Write` no impidió crear, omitir `Edit(./**)` no impidió a `Write` crear,
+y `Write(./**)` no produjo esa advertencia. Las filas Codex del 09/07 se conservan como historia,
+no como una medición nueva.
+
+### Evidencia vigente — 2026-09-22
+
+La matriz gobernante local es `.plans/receta-wc-permission-mode/matrix-2.1.278/summary.md`, medida
+el 2026-09-21 con Claude Code 2.1.278 (`claude-sonnet-5`), seis configuraciones fresh/resume y 102 archivos en
+`evidence.sha256` (digest `776fed879ba0c72c1ce1446ce3356b0198d0ae9be5660e55ae3b688f1d537470`).
+La candidata elegida fue `default_restricted`: `-p --safe-mode --model sonnet --permission-mode
+default --permission-prompts none --restricted --strict-mcp-config`, con
+`--tools=Read,Grep,Glob,Edit,Write,Bash` y
+`--allowedTools=Read,Grep,Glob,Edit(./**),Write,Bash(/usr/bin/printf:*),Bash(/usr/bin/printenv:*)`
+en la fila principal. La sonda añadió `--output-format stream-json --verbose` para observar eventos
+y no usó `--effort`; la receta omite esos flags de observación y solo agrega `--effort` si lo pide el
+perfil. No se afirma paridad byte a byte ni un efecto marginal de esos flags.
+
+En fresh y resume, esa combinación creó y editó dentro, y las file tools denegaron escritura fuera
+del working directory; no hubo prompt interactivo. El marcador de settings de proyecto
+`MATRIX_INHERITED` y el servidor MCP señuelo no aparecieron en la ejecución elegida (`mcp_servers=[]`).
+Esta observación no certifica settings de usuario/locales o administrados, un `--settings` explícito
+ni efectos de Bash autorizado fuera del cwd. `review-probes/unallowed_bash/` midió un Bash disponible
+pero no preautorizado: la tool devolvió denegación automática fresh/resume sin crear el archivo
+externo; el CLI terminó exit 0 en ambas fases, por lo que el exit no fue el criterio.
+
+**Conjunto acreditado de reglas Bash desnudas para el gate W-C:** únicamente
+`Bash(node:*)` con el comando exacto `node -e 'process.stdout.write("bare-bash-ok")'`, medido el
+2026-09-22 con el mismo perfil `default_restricted`, `--tools=Read,Grep,Glob,Edit,Write,Bash` y
+`--allowedTools=Read,Grep,Glob,Edit(./**),Write,Bash(node:*)`. Los eventos `tool_use` y
+`tool_result` correlacionados devolvieron `bare-bash-ok` sin error fresh/resume, exit 0, stderr
+vacío y filesystem sin cambios. La primera ejecución en el sandbox del conductor falló por
+autenticación antes de usar tools; se conserva, pero no cuenta como medición de permisos. El
+suplemento `review-probes/bare_bash/` tiene inventario **separado** de 36 archivos en
+`review-probes/bare-bash.evidence.sha256` (digest
+`ea8df5bfb2f6257237461bc65dd3488587c8749973169dd96ea81aebd8859755`). No se acreditó
+`npm`, otro binario ni otro comando de `node`; agregar uno exige medición fresh/resume y publicación
+en esta sede bajo un gate propio antes de construir argv o despachar. La regla `Bash(node:*)` no
+limita sus efectos al comando de la sonda ni confina sus efectos en disco.
+
+`dontAsk` no aportó ventaja observable sobre `default` en las celdas restringidas. El parser aceptó
+`auto`, pero **no** se midió `auto --restricted`; queda reservado a la alternativa interactiva con
+consentimiento y observación propia. `--allowedTools` no demostró ser una frontera exclusiva de
+tools, y ninguna garantía anterior se atribuye a `--safe-mode` aislado.
 
 Flags pueden variar por versión: ante la duda, `codex exec --help` / `claude --help`.
 
