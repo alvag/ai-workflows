@@ -402,10 +402,11 @@ resume, bajo el argv combinado y la versión vigentes. Un control de `node` no a
 comando de `node`; la regla autoriza más invocaciones del binario que la sonda concreta y no confina
 sus efectos. Si falta la pareja binario/comando, detener el despacho: medirla y publicarla en esta
 sede trackeada requiere un cambio y gate propios. Si la regla falla o no puede representarse,
-el contrato queda bloqueado y se vuelve al gate de spec; nunca se degrada a `Bash` libre. Con la lista
-vacía, no se ofrece Bash. `PROOF_BINS` abajo es la lista única, con un primer token validado y
-acreditado por línea, sin espacios internos ni metacaracteres de shell; no se obtiene de ejemplos o
-del scratch de una corrida.
+el contrato queda bloqueado y se vuelve al gate de spec; nunca se degrada a `Bash` libre. Sin
+`proof_cmd`, no se ofrece Bash. `PROOF_BIN` abajo es el único primer token distinto que requieren los
+comandos concretos, ya validado y acreditado; con la evidencia vigente solo puede ser `node`. Un
+segundo binario exige medirlo y editar esta sede bajo su gate propio, así que no se anticipa con una
+lista ni se obtiene de ejemplos o del scratch de una corrida.
 
 - **Lanzamiento** (sesión fresca, con session id propio para el resume):
   <!-- despacho:inicio:ci-wc-lanzamiento:claude -->
@@ -416,16 +417,12 @@ del scratch de una corrida.
   # el modelo cableado de esta ruta de implementación, y ningún flag de esfuerzo.
   MODEL="${PERFIL_MODEL:-sonnet}"
   EFFORT="$PERFIL_EFFORT"
-  PROOF_BINS="${PROOF_BINS:-}"
+  PROOF_BIN="${PROOF_BIN:-}"
   TOOLS='Read,Grep,Glob,Edit,Write'
   ALLOWED_TOOLS='Read,Grep,Glob,Edit(./**),Write'
-  if [ -n "$PROOF_BINS" ]; then
+  if [ -n "$PROOF_BIN" ]; then
     TOOLS="$TOOLS,Bash"
-    while IFS= read -r PROOF_BIN; do
-      [ -n "$PROOF_BIN" ] && ALLOWED_TOOLS="$ALLOWED_TOOLS,Bash($PROOF_BIN:*)"
-    done <<EOF
-$PROOF_BINS
-EOF
+    ALLOWED_TOOLS="$ALLOWED_TOOLS,Bash($PROOF_BIN:*)"
   fi
   set -- -p --safe-mode --model "$MODEL" --permission-mode default \
          --permission-prompts none --restricted --strict-mcp-config \
@@ -440,7 +437,7 @@ EOF
 - **`Bash(<proof_bin>:*)`**: la derivación no acredita el permiso. La única pareja desnuda medida
   aquí es `Bash(node:*)` con `node -e 'process.stdout.write("bare-bash-ok")'` fresh/resume.
   `npm run lint` es un ejemplo **no acreditado y bloqueado** hasta medir y publicar su comando real.
-  Si no hay `proof_cmd`, `PROOF_BINS` queda vacío, no se agrega `Bash` a `--tools` ni se emite regla
+  Si no hay `proof_cmd`, `PROOF_BIN` queda vacío, no se agrega `Bash` a `--tools` ni se emite regla
   `Bash(...)` en `--allowedTools`.
 - **No usar `--permission-mode acceptEdits`** como forma canónica: la medición histórica observó
   escritura fuera del working directory (ver «Evidencia histórica»). Tampoco usar
@@ -466,16 +463,12 @@ comprobar las entradas vigentes del gate Bash antes del resume.
   MODEL="${PERFIL_CONGELADO_MODEL:-sonnet}"
   EFFORT="$PERFIL_CONGELADO_EFFORT"
   SESSION_ID=$(cat <scratch>/session.txt)
-  PROOF_BINS="${PROOF_BINS:-}"
+  PROOF_BIN="${PROOF_BIN:-}"
   TOOLS='Read,Grep,Glob,Edit,Write'
   ALLOWED_TOOLS='Read,Grep,Glob,Edit(./**),Write'
-  if [ -n "$PROOF_BINS" ]; then
+  if [ -n "$PROOF_BIN" ]; then
     TOOLS="$TOOLS,Bash"
-    while IFS= read -r PROOF_BIN; do
-      [ -n "$PROOF_BIN" ] && ALLOWED_TOOLS="$ALLOWED_TOOLS,Bash($PROOF_BIN:*)"
-    done <<EOF
-$PROOF_BINS
-EOF
+    ALLOWED_TOOLS="$ALLOWED_TOOLS,Bash($PROOF_BIN:*)"
   fi
   set -- -p --safe-mode --model "$MODEL" --permission-mode default \
          --permission-prompts none --restricted --strict-mcp-config \
@@ -574,7 +567,7 @@ perfil. No se afirma paridad byte a byte ni un efecto marginal de esos flags.
 El caso por defecto sin `proof_cmd` no se infiere de esa fila: `review-probes/no_bash/` midió fresh
 y resume con `--tools=Read,Grep,Glob,Edit,Write` y
 `--allowedTools=Read,Grep,Glob,Edit(./**),Write`, sin `Bash`. En ambas fases las file tools crearon y
-editaron dentro y denegaron escritura fuera. La receta reproduce ese argv cuando `PROOF_BINS` está
+editaron dentro y denegaron escritura fuera. La receta reproduce ese argv cuando `PROOF_BIN` está
 vacío.
 
 En fresh y resume, esa combinación creó y editó dentro, y las file tools denegaron escritura fuera
