@@ -403,9 +403,9 @@ comando de `node`; la regla autoriza más invocaciones del binario que la sonda 
 sus efectos. Si falta la pareja binario/comando, detener el despacho: medirla y publicarla en esta
 sede trackeada requiere un cambio y gate propios. Si la regla falla o no puede representarse,
 el contrato queda bloqueado y se vuelve al gate de spec; nunca se degrada a `Bash` libre. Con la lista
-vacía, no se ofrece Bash. `PROOF_BINS` abajo es la lista única, separada por espacios, de primeros
-tokens ya validados y acreditados, sin espacios internos ni metacaracteres de shell; no se obtiene
-de ejemplos o del scratch de una corrida.
+vacía, no se ofrece Bash. `PROOF_BINS` abajo es la lista única, con un primer token validado y
+acreditado por línea, sin espacios internos ni metacaracteres de shell; no se obtiene de ejemplos o
+del scratch de una corrida.
 
 - **Lanzamiento** (sesión fresca, con session id propio para el resume):
   <!-- despacho:inicio:ci-wc-lanzamiento:claude -->
@@ -421,9 +421,11 @@ de ejemplos o del scratch de una corrida.
   ALLOWED_TOOLS='Read,Grep,Glob,Edit(./**),Write'
   if [ -n "$PROOF_BINS" ]; then
     TOOLS="$TOOLS,Bash"
-    for PROOF_BIN in $PROOF_BINS; do
-      ALLOWED_TOOLS="$ALLOWED_TOOLS,Bash($PROOF_BIN:*)"
-    done
+    while IFS= read -r PROOF_BIN; do
+      [ -n "$PROOF_BIN" ] && ALLOWED_TOOLS="$ALLOWED_TOOLS,Bash($PROOF_BIN:*)"
+    done <<EOF
+$PROOF_BINS
+EOF
   fi
   set -- -p --safe-mode --model "$MODEL" --permission-mode default \
          --permission-prompts none --restricted --strict-mcp-config \
@@ -469,9 +471,11 @@ comprobar las entradas vigentes del gate Bash antes del resume.
   ALLOWED_TOOLS='Read,Grep,Glob,Edit(./**),Write'
   if [ -n "$PROOF_BINS" ]; then
     TOOLS="$TOOLS,Bash"
-    for PROOF_BIN in $PROOF_BINS; do
-      ALLOWED_TOOLS="$ALLOWED_TOOLS,Bash($PROOF_BIN:*)"
-    done
+    while IFS= read -r PROOF_BIN; do
+      [ -n "$PROOF_BIN" ] && ALLOWED_TOOLS="$ALLOWED_TOOLS,Bash($PROOF_BIN:*)"
+    done <<EOF
+$PROOF_BINS
+EOF
   fi
   set -- -p --safe-mode --model "$MODEL" --permission-mode default \
          --permission-prompts none --restricted --strict-mcp-config \
@@ -505,7 +509,10 @@ Si falta cualquiera de esos hechos, usar la vía headless; si el encargo exige e
 interactivo, detenerse. El panel no hereda el argv ni las garantías headless.
 
 **PowerShell W-C no está soportada** por este contrato hasta una medición propia. No se traslada la
-forma POSIX ni se presume equivalencia con `Start-Process` o con el panel supervisado.
+forma POSIX ni se presume equivalencia con `Start-Process` o con el panel supervisado. Git Bash usa
+la forma POSIX; en PowerShell nativo, la presencia de `claude` no basta: W-C devuelve `UNAVAILABLE`
+y la llamadora continúa inline. Si el encargo exige expresamente W-C, se detiene. Este retiro es una
+excepción intencional a la regla general que exige variantes POSIX y PowerShell para comandos nuevos.
 
 ## Matriz de verificación
 
@@ -550,9 +557,12 @@ no como una medición nueva.
 
 ### Evidencia vigente — 2026-09-22
 
-La matriz gobernante local es `.plans/receta-wc-permission-mode/matrix-2.1.278/summary.md`, medida
-el 2026-09-21 con Claude Code 2.1.278 (`claude-sonnet-5`), seis configuraciones fresh/resume y 102 archivos en
-`evidence.sha256` (digest `776fed879ba0c72c1ce1446ce3356b0198d0ae9be5660e55ae3b688f1d537470`).
+El registro local de la corrida que produjo esta sección es
+`.plans/receta-wc-permission-mode/matrix-2.1.278/summary.md`, medido el 2026-09-21 con Claude Code
+2.1.278 (`claude-sonnet-5`), seis configuraciones fresh/resume y 102 archivos en `evidence.sha256`
+(digest `776fed879ba0c72c1ce1446ce3356b0198d0ae9be5660e55ae3b688f1d537470`). Ese registro preserva
+la evidencia local, pero no viaja con la skill: la autoridad portable del contrato es esta sección
+«Evidencia vigente».
 La candidata elegida fue `default_restricted`: `-p --safe-mode --model sonnet --permission-mode
 default --permission-prompts none --restricted --strict-mcp-config`, con
 `--tools=Read,Grep,Glob,Edit,Write,Bash` y
@@ -560,6 +570,12 @@ default --permission-prompts none --restricted --strict-mcp-config`, con
 en la fila principal. La sonda añadió `--output-format stream-json --verbose` para observar eventos
 y no usó `--effort`; la receta omite esos flags de observación y solo agrega `--effort` si lo pide el
 perfil. No se afirma paridad byte a byte ni un efecto marginal de esos flags.
+
+El caso por defecto sin `proof_cmd` no se infiere de esa fila: `review-probes/no_bash/` midió fresh
+y resume con `--tools=Read,Grep,Glob,Edit,Write` y
+`--allowedTools=Read,Grep,Glob,Edit(./**),Write`, sin `Bash`. En ambas fases las file tools crearon y
+editaron dentro y denegaron escritura fuera. La receta reproduce ese argv cuando `PROOF_BINS` está
+vacío.
 
 En fresh y resume, esa combinación creó y editó dentro, y las file tools denegaron escritura fuera
 del working directory; no hubo prompt interactivo. El marcador de settings de proyecto

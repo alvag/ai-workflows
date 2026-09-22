@@ -93,7 +93,8 @@ la delegación ocurra hace falta el CLI de la otra familia:
   escrituras de file tools fuera; no demostró confinamiento de Bash autorizado ni eficacia aislada
   de `--safe-mode` o de `--allowedTools`. La vía **interactiva** usa el carrier de panel existente,
   consentimiento de la corrida y observación de `auto mode on` antes de entregar el encargo; no
-  hereda el argv ni las garantías headless. PowerShell W-C queda sin soporte hasta medición propia.
+  hereda el argv ni las garantías headless. PowerShell nativo W-C queda sin soporte hasta medición
+  propia: devuelve `UNAVAILABLE` y la llamadora continúa inline; Git Bash usa la forma POSIX.
   `acceptEdits` permanece descartado por su escape observado históricamente. Ver `reference.md` →
   «Vía W-C» y «Evidencia vigente».
 
