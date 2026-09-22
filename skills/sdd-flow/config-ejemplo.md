@@ -110,56 +110,56 @@ roles:
       model: opus
       effort: alto
     codex:
-      model: gpt-5.6-sol
+      model: gpt-6-sol
       effort: alto
   counter-plan:
     claude:
       model: opus
       effort: alto
     codex:
-      model: gpt-5.6-sol
+      model: gpt-6-sol
       effort: alto
   investigate:
     claude:
       model: opus
       effort: alto
     codex:
-      model: gpt-5.6-sol
+      model: gpt-6-sol
       effort: alto
   debate:
     claude:
       model: opus
       effort: alto
     codex:
-      model: gpt-5.6-sol
+      model: gpt-6-sol
       effort: alto
   design-review:
     claude:
       model: opus
       effort: alto
     codex:
-      model: gpt-5.6-sol
+      model: gpt-6-sol
       effort: alto
   implement:
     claude:
       model: opus
       effort: alto
     codex:
-      model: gpt-5.6-sol
+      model: gpt-6-sol
       effort: alto
   refute:
     claude:
       model: opus
       effort: alto
     codex:
-      model: gpt-5.6-sol
+      model: gpt-6-sol
       effort: alto
   pr:
     claude:
       model: opus
       effort: alto
     codex:
-      model: gpt-5.6-sol
+      model: gpt-6-sol
       effort: alto
 ```
 

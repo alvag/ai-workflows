@@ -372,10 +372,11 @@ Una identidad viva al resolver puede dejar de serlo a mitad del paso, y cada efe
 ella la vuelve a comprobar **inmediatamente antes**, con `estado_identidad "<plataforma>"` sobre la
 plataforma ya resuelta — **nunca** con `resolver_plataforma`, que volvería a elegir en vez de
 comprobar, y que ante una identidad caída podría devolver la **otra** plataforma a mitad del paso.
-Los efectos son estos cinco y la lista es
+Los efectos son estos seis y la lista es
 exhaustiva: **crear** el worktree por la plataforma, **adoptar** un árbol creado con Git, **abrir** el
-panel, **arrancar** el agente y **rotular** el worktree. Si la revalidación falla, ese efecto no se
-ejecuta y se aplica la fila que le corresponda en «El contrato de fallo por fase».
+panel, **arrancar** el agente, **rotular** el worktree y **entregar** el encargo. Si la
+revalidación falla, ese efecto no se ejecuta y se aplica la fila que le corresponda en «El contrato
+de fallo por fase».
 
 ---
 

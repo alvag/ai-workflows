@@ -62,22 +62,21 @@ el primero al armar y aprobar el contrato, el segundo cuando una ronda falla.
 - **Cambios triviales** (~<20 líneas): el overhead de delegar supera al cambio.
 - **Para revisar código existente** (eso es code review) ni artefactos de diseño (eso es
   `cross-review`).
-- **Tasks que dependen de tools de sesión** (MCPs, secretos, navegador): el implementador
-  delegado no las tiene. Se lanza con los **canales heredados** del entorno apagados por
-  construcción —los cuatro flags de aislamiento en Codex, `--safe-mode` en Claude—, así que no
-  hereda tus servidores MCP ni tus hooks. Decía "no las ve" cuando el aislamiento todavía no
-  existía, y era falso: un worker llegó a escribir en una memoria persistente compartida.
+- **Tasks que dependen de tools de sesión** (MCPs, secretos, navegador): no asumir que la
+  delegación les da acceso ni que los aísla por completo. En la combinación headless W-C medida,
+  no se heredaron el marcador de settings de proyecto ni el MCP señuelo; eso no acredita que
+  `--safe-mode` aislado apague todos los canales heredados. Un panel supervisado sí puede heredar
+  entorno y credenciales, por lo que requiere consentimiento propio antes de abrirse.
 
 ## Pendiente conocido
 
-La integración de `.opencode/` reproduce este contrato en TypeScript y **acepta un solo comando de
-prueba**, así que ahí el hueco de las comprobaciones agregadas sigue abierto: un flujo iniciado
-desde `/sdd` en OpenCode puede entregar deuda de lint o de build igual que antes. Y **su allowlist
-conserva `Write(./**)`**, la forma que el CLI rechaza por inefectiva: el de los canales heredados
-está cerrado ahí por `--safe-mode` y por el prompt, pero la superficie de escritura la declara con un
-scope que no se aplica. Es trabajo de otro flujo —el producto de este
-repo son las skills en Markdown— y se declara acá para que la exclusión sea una decisión visible y
-no un olvido.
+`.opencode/lib/claude-runner.ts` acepta un solo `proofCommand` y deriva de él las reglas Bash;
+separa tools disponibles de reglas preautorizadas, pero **no adopta** el argv W-C
+`--permission-prompts none --restricted --strict-mcp-config`. Conserva `Write(./**)`; la matriz
+2.1.278 no observó rechazo ni advertencia de esa regla, por lo que aquí no se le atribuye un fallo
+o una protección marginal. Las comprobaciones agregadas y los demás consumidores Claude quedan
+fuera de esta corrección y no evaluados. El contrato del runner requiere otro flujo y su propia
+medición antes de afirmar garantías equivalentes.
 
 ## Requisitos
 
@@ -85,15 +84,19 @@ Ninguno obligatorio: es una **capacidad opcional** que degrada a implementación
 la delegación ocurra hace falta el CLI de la otra familia:
 
 - Autor Claude → Codex: `codex exec -s workspace-write` en el PATH (codex-cli ≥ 0.130).
-- Autor GPT/Codex → Claude: `claude -p` en el PATH, con la escritura acotada por permisos
-  path-scoped: `--permission-mode default` más **dos entradas de función distinta**, `Write` —que
-  `habilita la herramienta` de escritura, sin la cual `no se pueden crear archivos` porque `Edit` no
-  los crea— y `Edit(./**)`, que es la `regla de path`: la comprobación de permisos del CLI solo
-  consulta reglas `Edit(path)`, y esas cubren todas las herramientas que escriben.
-  Por eso `ninguna de las dos es redundante`: quitar la de path no libera la escritura sino que la
-  corta, porque `el fallo es cerrado`. Nunca `acceptEdits`, que escribe fuera del working dir; y
-  nunca `Write(./**)`, que el CLI rechaza por inefectiva al arrancar (ver `reference.md` → "Matriz
-  de verificación").
+- Autor GPT/Codex → Claude: `claude -p` en el PATH. La vía **headless POSIX** usa la combinación
+  Claude Code 2.1.278 medida: `--safe-mode`, `--permission-mode default`,
+  `--permission-prompts none`, `--restricted`, `--strict-mcp-config`,
+  `--tools=Read,Grep,Glob,Edit,Write` y
+  `--allowedTools=Read,Grep,Glob,Edit(./**),Write`; añade `Bash` y solo reglas desnudas acreditadas
+  si hay `proof_cmd` concretos congelados. La combinación permitió crear y editar dentro y denegó
+  escrituras de file tools fuera; no demostró confinamiento de Bash autorizado ni eficacia aislada
+  de `--safe-mode` o de `--allowedTools`. La vía **interactiva** usa el carrier de panel existente,
+  consentimiento de la corrida y observación de `auto mode on` antes de entregar el encargo; no
+  hereda el argv ni las garantías headless. PowerShell nativo W-C queda sin soporte hasta medición
+  propia: devuelve `UNAVAILABLE` y la llamadora continúa inline; Git Bash usa la forma POSIX.
+  `acceptEdits` permanece descartado por su escape observado históricamente. Ver `reference.md` →
+  «Vía W-C» y «Evidencia vigente».
 
 `cross-review` recomendada (no obligatoria): aporta el algoritmo canónico de descubrimiento
 por familia y la sección de portabilidad de shells que esta skill referencia.

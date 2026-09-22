@@ -9,7 +9,7 @@ Todos los nombres son planos:
 ```text
 .opencode/
 ├── agents/
-│   ├── conductor.md          # primary: GPT-5.6 Sol xhigh
+│   ├── conductor.md          # primary: GPT-6 Sol xhigh
 │   ├── explorer.md           # Codex Terra high: explore/counter-plan
 │   ├── investigator.md       # Codex Terra xhigh: causa raíz
 │   ├── builder.md            # Codex Terra high: task aprobada
@@ -33,7 +33,7 @@ No existe roster ni detección dinámica de familias. Los cuatro comandos usan e
 
 | Trabajo | Perfil |
 |---|---|
-| Conductor | `openai/gpt-5.6-sol`, `xhigh` |
+| Conductor | `openai/gpt-6-sol`, `xhigh` |
 | Explore / counter-plan nativo | `openai/gpt-5.6-terra`, `high` |
 | Investigación nativa | `openai/gpt-5.6-terra`, `xhigh` |
 | Builder / reviewer / repo-worker nativo | `openai/gpt-5.6-terra`, `high` |

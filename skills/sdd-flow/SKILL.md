@@ -113,9 +113,11 @@ estado. Los puntos de despacho propios son dos:
 | los subagentes de exploración de `analyze`, cuando el entorno los soporta y el alcance lo amerita | `n-acotado` | `indiferente` | `distinto-por-worker` | `propio-por-worker` |
 | el reviewer de la **revisión final de diff**, dentro del gate de revisión manual | `1` | `opuesta-al-autor-del-codigo` | `no-aplica` | `propio-por-worker` |
 
-La degradación a la misma familia se declara en `dominio.degradacion: same-family` solo cuando el
-inventario resuelto no contiene la familia opuesta al autor real del código; el conductor la nombra
-en el gate de revisión manual. La celda de la tabla conserva únicamente el enum cerrado.
+El enum no descubre al autor real del diff, que puede diferir del conductor. Antes de sellar
+`expected_workers[]` y su dominio, el conductor acredita quién escribió el código y qué familias
+están instaladas; elige la opuesta, o la misma solo si la opuesta no está instalada y declara
+`dominio.degradacion: same-family` en el gate de revisión manual. Sin esos datos no despacha. Un
+preflight verde acredita que el worker previsto respeta la declaración sellada, no la autoría externa.
 
 Enums cerrados, forma de la tabla y qué pasa con un punto sin fila:
 `skills/cross-review/corridas-en-vuelo.md` → «Los invariantes que cada punto de despacho declara»,

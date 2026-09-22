@@ -85,10 +85,13 @@ permiso.**
 
 **Por qué los invariantes son heterogéneos, y por qué eso no los ablanda.** Solo dos de los once
 puntos tienen forma «una familia por worker»; la revisión final de diff elige la familia **opuesta
-al autor del código**, con degradación declarada solo cuando no está disponible, y el fan-out por
-repo reparte encargos **distintos** por construcción. Un invariante universal los pondría en rojo
-por cumplir su propio diseño. Lo obligatorio es lo que
-**ese** punto declaró, y para el fan-out dual sigue siendo el conjunto histórico completo.
+al autor real del código**, con degradación declarada solo cuando no está disponible. El enum no
+descubre quién escribió el diff: el conductor acredita ese hecho y el inventario antes de sellar el
+dominio, y el instrumento comprueba que el worker previsto respeta esa declaración. Un preflight
+verde acredita esa coherencia, no la autoría externa. El fan-out por repo reparte encargos
+**distintos** por construcción. Un invariante universal los pondría en rojo por cumplir su propio
+diseño. Lo obligatorio es lo que **ese** punto declaró, y para el fan-out dual sigue siendo el
+conjunto histórico completo.
 
 **`encargos: no-aplica` es válido solo con `cardinalidad: 1`.** Con un solo worker no hay relación
 entre encargos que declarar, y escribir ahí `identico-por-digest` sería un predicado vacuo que da
