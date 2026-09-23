@@ -376,11 +376,11 @@ En `<worktree>/.plans/incidentes-a-corregir.md`. Plantilla y contrato de conteni
 > **El dossier es la única copia.** Después del paso 7 los incidentes no existen en ningún otro lado.
 > Van **verbatim**, no resumidos.
 
-> **Y le dice al flujo sobre qué plataforma arranca.** El flujo despachado no hereda nada de esta
-> sesión: la resolución del paso 6.1 se le pasa por el dossier —la plataforma, si salió de la matriz
+> **Y deja escrito sobre qué plataforma arranca el flujo.** El flujo despachado no hereda nada de
+> esta sesión: la resolución del paso 6.1 queda en el dossier —la plataforma, si salió de la matriz
 > o de un pedido, y la identidad del panel **de él**—. Va acá y **no en el prompt** porque el prompt
 > solo apunta: lo que viaje ahí no queda escrito en ninguna parte y se pierde con el compositor. Es
-> un **hecho observado**.
+> un **hecho observado**, y `sdd-flow` no lo consume para despachar: sus workers van por CLI.
 
 Si el veredicto fue **redimensionado**, el dossier lleva las dos versiones: el incidente tal como se
 escribió y el diagnóstico corregido, marcado como tal. Reemplazar una por la otra borra la evidencia

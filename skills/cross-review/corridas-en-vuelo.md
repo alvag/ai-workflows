@@ -109,7 +109,7 @@ Exige que el núcleo común sea byte-idéntico y admite un **anexo privado decla
 anexo —`explore`, `investigate`— el núcleo **es** el encargo entero y la relación degenera en
 identidad, sin que haya que declarar dos valores para el mismo punto. La distinción existe porque
 `counter-plan` reparte por contrato un anexo por familia: portar ahí `identico-por-digest` haría
-que el segundo worker se rechace siempre, que es un defecto hoy **latente**.
+que el segundo worker se rechace siempre.
 
 **`familias: continuacion-del-anterior`** nombra al worker que **reanuda la sesión** de un intento
 previo en vez de nacer fresco: su familia no se elige, se hereda, y exigirle una elección sería
@@ -325,10 +325,11 @@ vencimiento le tocaba a cada worker—, y este campo es ese sujeto. El
 campo previsto es ese sujeto, y por eso se sella antes y no después: un vencimiento escrito una vez
 lanzado el worker ya no puede contradecir a quien lo lanzó.
 
-**El sellado es previo al primer efecto, no previo al primer despacho.** La distinción importa porque
-crear la terminal ya es un efecto: si `expected_workers[]` se sellara entre la creación y el
-lanzamiento, la composición prevista podría ajustarse a los recursos que ya existen, que es
-exactamente la circularidad que el nodo viene a impedir.
+**El sellado es previo al primer efecto, no previo al primer despacho.** Por CLI los dos coinciden:
+el despacho no crea ningún recurso del worker antes de lanzarlo. La distinción protege a cualquier
+transporte que sí los cree: si `expected_workers[]` se sellara entre la creación y el lanzamiento,
+la composición prevista podría ajustarse a los recursos que ya existen, que es exactamente la
+circularidad que el nodo viene a impedir.
 
 ### El dominio contra el que se comprueba la composición
 

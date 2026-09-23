@@ -675,10 +675,9 @@ sin contexto de esta sesión, y **la única copia** de los incidentes tomados.
     GitHub cierra tantos `Closes` como el PR declare.
 
 11. **La plataforma anfitriona** — sobre cuál de las dos corre el panel donde este flujo vive, y si
-    salió de la matriz o de un pedido del usuario. El flujo arranca **sin contexto de esta sesión**:
-    la resolución del paso 6.1 es justamente contexto que no tiene, y sin ella vuelve a enfrentar la
-    pregunta desde cero —incluido el caso de las **dos** identidades vivas, donde su propio detector
-    no tiene observable que identifique al anfitrión—. Tres campos, y ninguno se deduce:
+    salió de la matriz o de un pedido del usuario. El flujo arranca **sin contexto de esta sesión**,
+    y la resolución del paso 6.1 no queda escrita en ningún otro lado. Tres campos, y ninguno se
+    deduce:
 
     | Campo | Valores | Qué dice |
     |---|---|---|
@@ -686,8 +685,9 @@ sin contexto de esta sesión, y **la única copia** de los incidentes tomados.
     | `origen` | `resuelta` \| `pedida` | `resuelta`, la eligió la matriz sobre las identidades vivas; `pedida`, el usuario la dio en el parámetro `plataforma` |
     | `identidad` | el valor observado | la identidad del panel **de este flujo**, no la del panel del intake: son dos paneles distintos |
 
-    > **Es un hecho observado.** Lo que esta sección aporta es **de dónde arranca** el flujo, no qué
-    > eligió. Un `origen: pedida` es una **preferencia declarada del usuario**.
+    > **Es un hecho observado, y queda escrito.** Lo que esta sección aporta es **de dónde arranca**
+    > el flujo. `sdd-flow` no la consume para despachar: sus workers van por CLI, sea cual sea la
+    > plataforma.
 
 ### Lo que no va
 
