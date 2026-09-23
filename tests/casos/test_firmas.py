@@ -356,6 +356,51 @@ def test_aux_contrato_baseline(_contexto: Optional[object]) -> None:
             assert resultado.returncode == codigo, (valor, resultado.stderr)
 
 
+def test_aux_contrato_cobertura(_contexto: Optional[object]) -> None:
+    """La cobertura bidireccional separa su veredicto de la entrada que no pudo evaluar.
+
+    Detecta que un archivo ilegible, una lista con prosa o una lista vacía vuelvan a salir 0 o 1; que
+    una fila con varios requisitos deje de contarlos todos; y que cambie un byte de los dos literales
+    `GUARD:` que ya existían. No detecta que la sede y el script declaren la misma forma de la lista:
+    eso se lee en la revisión."""
+    header = ("## v1\n\n| ID | Requisito | Evidencia | Comando/observación | Esperado | Baseline |\n"
+              "|---|---|---|---|---|---|\n")
+    files = {
+        "simple.md": header + "| V1 | A — uno | test | : | ok | RED |\n| V2 | B — dos | test | : | ok | RED |\n",
+        "multi.md": header + "| V1 | A, B, C — varios | test | : | ok | RED |\n",
+        "sin-id.md": header + "| V1 | A — uno | test | : | ok | RED |\n| V2 | `B` — otro | test | : | ok | RED |\n",
+        "a.txt": "A\n", "ab.txt": "A\nB\n", "abc.txt": "A\nB\nC\n",
+        "spec.md": "# Spec\n\n- **A:** algo.\n", "blank.txt": "\n \n",
+    }
+    # Un esperado sin salto final es un prefijo: el detalle del error de lectura lo escribe Python.
+    cases = (
+        ("simple.md", "ab.txt", 0, ""),
+        ("simple.md", "abc.txt", 1, "GUARD:cobertura-bidireccional requisito en alcance sin fila: C \n"),
+        ("simple.md", "a.txt", 1, "GUARD:cobertura-bidireccional fila sin requisito en alcance: B \n"),
+        ("multi.md", "abc.txt", 0, ""),
+        ("sin-id.md", "a.txt", 1, "GUARD:cobertura-bidireccional fila sin identificador de requisito: V2\n"),
+        ("simple.md", "bom.txt", 0, ""),
+        ("simple.md", "spec.md", 2, "USO:contrato-cobertura requirements línea 1 no es un identificador: # Spec\n"),
+        ("simple.md", "blank.txt", 2, "USO:contrato-cobertura requirements sin ningún identificador\n"),
+        ("missing.md", "ab.txt", 2, "USO:contrato-cobertura contract ilegible: "),
+        ("simple.md", "latin1.txt", 2, "USO:contrato-cobertura requirements ilegible: "),
+    )
+    with tempfile.TemporaryDirectory(prefix="aux-cobertura-") as temporal:
+        workspace = Path(temporal)
+        for name, content in files.items():
+            (workspace / name).write_text(content, encoding=ENCODING)
+        (workspace / "bom.txt").write_bytes("﻿A\nB\n".encode(ENCODING))
+        (workspace / "latin1.txt").write_bytes(b"A\n\xe9\n")
+        for contract, requirements, code, expected in cases:
+            result = _ejecutar_auxiliar("contrato-cobertura", [contract, requirements], workspace)
+            assert result.returncode == code, (contract, requirements, result.stderr)
+            if expected.endswith("\n") or not expected:
+                assert result.stderr == expected, (contract, requirements, result.stderr)
+            else:
+                assert result.stderr.startswith(expected), (contract, requirements, result.stderr)
+            assert code != 2 or "GUARD:" not in result.stderr, (contract, requirements, result.stderr)
+
+
 def test_aux_rebaseline_worktree(_contexto: Optional[object]) -> None:
     """La proyección separa la pareja reservada de un 125 ordinario."""
     identidades = ("pareja-reservada-blocked", "codigo-125-proyeccion-valida-red",
@@ -751,6 +796,7 @@ def test_aux_verify_ejecuta(_contexto: Optional[object]) -> None:
 
 CASOS.extend((
     ("contrato-auxiliar:contrato-baseline", "contrato-auxiliares-v1", test_aux_contrato_baseline),
+    ("contrato-auxiliar:contrato-cobertura", "contrato-auxiliares-v1", test_aux_contrato_cobertura),
     ("contrato-auxiliar:contrato-cadena", "contrato-auxiliares-v1", test_aux_contrato_cadena),
     ("contrato-auxiliar:rebaseline-worktree", "contrato-auxiliares-v1", test_aux_rebaseline_worktree),
     ("contrato-auxiliar:gate-modo-directo", "contrato-auxiliares-v1", test_aux_gate_modo_directo),
