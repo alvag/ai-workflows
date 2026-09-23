@@ -82,18 +82,6 @@ comparan**.
    tira al cerrar; el revisor sigue en L0 —no ejecuta— y lee un checkout estable, nunca el
    worktree que el conductor está mutando (ver `reference.md` → "Capacidades y worktree
    (`investigate`)").
-
-   > **El alcance de la segunda mitad es la vía headless, y ahí no cambia nada.** El aislamiento por
-   > permisos es una propiedad del **transporte**, no de esta skill: lo que lo garantiza son los flags
-   > con que el CLI lanza al worker. La vía por **terminales** —workers como paneles de la terminal
-   > del conductor— **no tiene ese mecanismo**: el worker arranca en una sesión interactiva que hereda
-   > el entorno de quien la abrió, y el flag de sandbox no acotó la escritura cuando se lo midió. Así
-   > que sobre esa vía la primera mitad —el contrato read-only del prompt— es **lo único** que rige, y
-   > el usuario lo consiente antes de que se cree la primera terminal.
-   >
-   > Esto **acota** el invariante, no lo ablanda: sobre la vía headless las dos mitades siguen
-   > exigiéndose enteras y el preflight sigue siendo fail-closed. Lo que se agrega es que una vía sin
-   > mecanismo **lo declara** en vez de heredar una garantía que no puede dar.
 2. **Independencia (anti-anclaje), por modo.** En `explore`, `counter-plan` e `investigate` la
    independencia rige **entre los dos workers**: ninguno ve la salida del otro, ni ahora ni en
    fases posteriores, y ambos arrancan solo con el paquete de contexto — nunca con hallazgos,
@@ -103,10 +91,9 @@ comparan**.
    Ver `reference.md` → "Independencia por modo (regla 2 en topología dual)".
 
 3. **Nunca se bloquea por dudas.** El explorador **tiene prohibido** preguntar a mitad de camino o
-   esperar una respuesta — no es que no pueda: sobre la vía por paneles corre en una terminal
-   interactiva, así que la regla la sostiene la prohibición y no el transporte. Toda duda se registra
-   y se sigue explorando — una pregunta abierta que no pudo resolver va a `## Incógnitas`; una
-   decisión que tomó para poder seguir avanzando va a `## Supuestos`, con el porqué. **Alcanza al
+   esperar una respuesta. Toda duda se registra y se sigue explorando — una pregunta abierta que no
+   pudo resolver va a `## Incógnitas`; una decisión que tomó para poder seguir avanzando va a
+   `## Supuestos`, con el porqué. **Alcanza al
    worker y no al conductor**, que sí consulta al usuario; qué herramienta concreta se le deshabilita
    al worker lo gobierna la plataforma (`reference.md` → "`{constraints}`").
 4. **Informe estructurado o nada.** La salida tiene que respetar el "Formato de dos capas"
@@ -156,10 +143,6 @@ despachos posteriores no cambian el transporte ni el inicio históricos. Los pun
 Enums cerrados, forma de la tabla y qué pasa con un punto sin fila:
 `skills/cross-review/corridas-en-vuelo.md` → «Los invariantes que cada punto de despacho declara»,
 que es su **sede única**.
-
-**Cada punto de arriba resuelve su vía por el carrier de transporte**, con las cuatro ramas de
-`skills/sdd-flow/reference.md` → «El carrier de transporte, y sus cuatro ramas» y **ninguna otra**.
-En la rama de plataforma el punto expresa **intención** y **no nombra verbos de ninguna plataforma**.
 
 <!-- invoca: despacho-preflight -->
 <!-- invoca: despacho-corrida -->

@@ -65,8 +65,7 @@ el primero al armar y aprobar el contrato, el segundo cuando una ronda falla.
 - **Tasks que dependen de tools de sesión** (MCPs, secretos, navegador): no asumir que la
   delegación les da acceso ni que los aísla por completo. En la combinación headless W-C medida,
   no se heredaron el marcador de settings de proyecto ni el MCP señuelo; eso no acredita que
-  `--safe-mode` aislado apague todos los canales heredados. Un panel supervisado sí puede heredar
-  entorno y credenciales, por lo que requiere consentimiento propio antes de abrirse.
+  `--safe-mode` aislado apague todos los canales heredados.
 
 ## Pendiente conocido
 
@@ -91,9 +90,7 @@ la delegación ocurra hace falta el CLI de la otra familia:
   `--allowedTools=Read,Grep,Glob,Edit(./**),Write`; añade `Bash` y solo reglas desnudas acreditadas
   si hay `proof_cmd` concretos congelados. La combinación permitió crear y editar dentro y denegó
   escrituras de file tools fuera; no demostró confinamiento de Bash autorizado ni eficacia aislada
-  de `--safe-mode` o de `--allowedTools`. La vía **interactiva** usa el carrier de panel existente,
-  consentimiento de la corrida y observación de `auto mode on` antes de entregar el encargo; no
-  hereda el argv ni las garantías headless. PowerShell nativo W-C queda sin soporte hasta medición
+  de `--safe-mode` o de `--allowedTools`. PowerShell nativo W-C queda sin soporte hasta medición
   propia: devuelve `UNAVAILABLE` y la llamadora continúa inline; Git Bash usa la forma POSIX.
   `acceptEdits` permanece descartado por su escape observado históricamente. Ver `reference.md` →
   «Vía W-C» y «Evidencia vigente».

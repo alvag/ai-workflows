@@ -726,54 +726,26 @@ Cuando conduce Claude, la otra familia es **Codex**; el detalle canónico vive e
 - **`exec resume` NO acepta las mismas flags que `exec`** — rechaza `-C`, `-s`/`--sandbox`, `--add-dir` y cinco más. Por eso el sandbox viaja como `-c sandbox_mode=...`, y el working dir **es el cwd del proceso**: hay que posicionarse antes de invocar. Copiar el comando de lanzamiento y cambiarle el subcomando falla; y la flag que falta no siempre grita —`-C` de más corta con error, `-C` de menos opera sobre el repo equivocado con exit 0—. Tabla derivada del CLI en `cross-review/reference.md` → "Asimetría de flags entre `exec` y `exec resume`".
 - **Prompt por archivo, nunca inline:** el markdown con backticks rompe el quoting del shell. POSIX pasa el prompt por `< prompt.txt`; **PowerShell no soporta `<`** → `Get-Content -Raw prompt.txt | codex exec ... -`. Todo comando nuevo que invoque un CLI debe ofrecer **ambas** variantes (POSIX y PowerShell).
 - Degradación elegante: si falta el binario/MCP, avisar y continuar con lo que haya.
+- **Aislamiento fail-closed:** el preflight no lanza un worker sin los cuatro flags de Codex
+  (`--ignore-user-config` y `--disable hooks|apps|plugins`) ni sin `--safe-mode` en Claude. Sede:
+  `cross-review/reference.md` → "Preflight de aislamiento (fail-closed)".
 
 > **El CLI headless es el transporte, y cambiarlo exige medirlo — no que la arquitectura sea más linda.** Cada tanto aparece un runtime que promete resolver esto mejor (paneles de terminal, IDEs agénticos con threads y salida estructurada, hosts multi-máquina). Encajan: el transporte está detrás de una abstracción en los `reference.md` de `co-explore` y `cross-implement`, así que sustituirlo es posible. El criterio para juzgarlos es **transporte contra criterio**: esos runtimes resuelven el transporte —lanzar, esperar, cosechar, reanudar, aislar—, y **ninguno tiene el criterio**: no saben si les están pidiendo un mapa o una crítica, y sobre todo **no tienen el invariante de familia opuesta** (se pueden lanzar dos workers del mismo proveedor y no se enteran). De ahí que lo único que se porta bien sea plomería, nunca doctrina.
 >
 > **La condición para adoptar uno es una prueba viva de extremo a extremo por plataforma**, y reemplaza al delta medido que esta sede pedía antes. Por cada plataforma, una prueba **por cada familia conductora**, que cargue la skill de la plataforma por la vía disponible para ese conductor, no dependa de rutas del repositorio anfitrión y ejerza el **ciclo real** —crear, lanzar, entregar el encargo, esperar, cosechar, cerrar— con sus acreditaciones y residuales registrados, más la reconciliación de los workers contra el registro de la corrida en las dos direcciones.
+>
+> **Lo que la vía por paneles ya midió, y por qué esa prueba no se negocia.** Sobre Herdr y Orca, en
+> sesiones interactivas, se midieron cuatro cosas que ningún flag de la vía cerraba: el worker
+> heredaba el entorno y las credenciales del conductor; esa configuración le consumía contexto antes
+> de leer su encargo; el sandbox de escritura del agente no acotaba lo que escribía; y el sandbox de
+> red le impedía operar la plataforma. Una propuesta de paneles empieza por demostrar que las cuatro
+> tienen salida.
 >
 > **La evidencia la adjudica el conductor del flujo, y el pase entre fases lo habilita un gate humano** con esa adjudicación a la vista. **Quien ejecuta la prueba no la acredita**: es la misma separación que el resto del repositorio aplica entre producir evidencia y leerla, y acá pesa más porque el ejecutor es a menudo un worker delegado cuyo reporte no es prueba hasta que alguien lo contrasta con el árbol.
 >
 > **Por qué se reemplazó, y no es que el delta fuera caro.** El delta comparaba **latencia, fidelidad de la cosecha y líneas de plomería** entre dos transportes, y esas tres se pueden medir con el ciclo a medio ejercer. Medido al ejercerlo entero: de las tres corridas que hicieron falta para una sola prueba, **dos terminaron en verde siendo defectuosas** —una cosechó de un archivo inventado por el conductor en vez del canal de la plataforma, y la otra colocó los workers contra la directiva de colocación—, y **ninguna** habría movido esas tres magnitudes lo suficiente para delatarse. Lo que las delató fue una persona mirando la pantalla. Un criterio de adopción que un transporte defectuoso puede satisfacer no es un criterio.
 >
 > **Lo que el precedente sigue enseñando.** La vía de paneles costó **1.245 líneas y nunca se activó** —6 de 6 corridas se fueron por CLI— y se cerró con evidencia, no con opinión. Eso no cambia: una vía que nadie usa se retira igual, y el ciclo ejercido tampoco autoriza a conservar plomería muerta. Tampoco esperar un ahorro económico: todos corren sobre la misma suscripción vía CLI headless.
-
-### La vía por terminales no tiene mecanismo de aislamiento, y eso se declara
-
-El transporte por **paneles de terminal** —workers como splits de la terminal del conductor, sobre
-Herdr u Orca— corre en sesiones **interactivas**, no headless. Ahí no hay flags de aislamiento que
-aplicar, y las tres consecuencias están **medidas**, no supuestas. Van escritas porque el usuario las
-consiente antes de que se cree la primera terminal, y no se puede consentir lo que no se enunció:
-
-1. **El worker hereda el entorno del conductor**, credenciales incluidas. Medido: un token de API y
-   un correo corporativo llegaron al worker sin que nada los pasara explícitamente.
-2. **Esa configuración heredada consume presupuesto de contexto del worker** antes de que llegue a
-   leer su encargo. No es solo una superficie de permisos: es ventana que el encargo pierde.
-3. **El flag de sandbox del agente no acota la escritura.** Con `--sandbox read-only` declarado, el
-   worker escribió igual en los **cuatro cuadrantes** de la matriz plataforma × familia. El tercero es
-   el que cambia el tono de los otros dos: no es que se **elija** no aislar, es que el mecanismo que
-   se usaría para aislar **no hace lo que su nombre promete**.
-
-A cambio, la capa supervisada de Orca **redacta tokens de capacidad** de lo que devuelve al leer, que
-acota una superficie distinta y se declara igual.
-
-4. **Y el sandbox que sí está activo impide operar la plataforma.** Es el simétrico del punto
-   anterior y se midió después: el CLI de la plataforma alcanza el runtime de su app **por red
-   local**, así que un agente cuyo sandbox deniegue red **no puede operar la plataforma** — ni crear,
-   ni enumerar, ni reconciliar, ni emitir su propia señal de fin. Probado por contraste, con el mismo
-   agente, el mismo binario y la misma app: cambiando **solo** la red del sandbox, la corrida pasó de
-   **10/10 fallos** a ciclo completo. Entonces los dos flags fallan, y en direcciones opuestas: el de
-   escritura no acota lo que debería, y el de red corta lo que no debería.
-
-   **Y el error miente, que es lo que lo vuelve caro.** El mensaje dice que la app no está corriendo,
-   con la app viva y en el mismo pid; el `error.code` del JSON sí es honesto (`runtime_unavailable`).
-   **Se lee el código, nunca el texto** — medido: un conductor le creyó al mensaje y se puso a abrir
-   con automatización de escritorio la app dentro de la cual ya estaba corriendo.
-
-**Lo que esto no cambia.** Sobre la vía **headless** el invariante de aislamiento sigue entero y su
-preflight sigue siendo fail-closed: los cuatro flags en Codex y `--safe-mode` en Claude. Esto **acota
-el alcance** del invariante por vía; no lo ablanda. Y **no** adopta la vía por paneles: la condición
-del bloque anterior —la prueba viva por plataforma y familia, adjudicada por el conductor y aprobada
-en un gate humano— sigue rigiendo y se cumple o no con corridas reales, no con este párrafo.
 
 ## Artefactos en disco (dogfooding)
 

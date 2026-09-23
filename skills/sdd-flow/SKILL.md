@@ -123,10 +123,6 @@ Enums cerrados, forma de la tabla y qué pasa con un punto sin fila:
 `skills/cross-review/corridas-en-vuelo.md` → «Los invariantes que cada punto de despacho declara»,
 que es su **sede única**.
 
-**Cada punto de arriba resuelve su vía por el carrier de transporte**, con las cuatro ramas de
-`skills/sdd-flow/reference.md` → «El carrier de transporte, y sus cuatro ramas» y **ninguna otra**.
-En la rama de plataforma el punto expresa **intención** y **no nombra verbos de ninguna plataforma**.
-
 <!-- invoca: despacho-preflight -->
 <!-- invoca: despacho-corrida -->
 
@@ -561,16 +557,6 @@ Internamente los pasos se llaman como el ciclo SDD; el router acepta frases natu
    - **Es incondicional.** No hay clave que lo apague: una búsqueda condicional es el hueco por el que se rehace trabajo ya hecho.
    - **El resultado entra en el checkpoint del paso 6**, que ya existe: no se abre un stop nuevo. Si aparece algo que cubre el objetivo entero, el flujo **no avanza a `specify`** sin que el usuario decida entre cerrarlo o reformular el alcance.
 6. **Proponer la profundidad y confirmar el contexto** (ver "Profundidad del flujo"): registrar urgency y riesgo provisional con evidencia, procedencia y confianza; anunciar la profundidad propuesta, su motivo y cuántos gates implica. En este mismo checkpoint de 5-8 bullets presentar el resumen del paso 5 —qué se buscó, qué fuentes quedaron sin comprobar y con qué impacto en el alcance— y, si el flujo corre en un worktree, qué se sembró y qué candidatos quedaron fuera (`reference.md` → «Siembra del entorno local»). **El worktree lo crea el usuario, no este paso**, así que acá no hay nada que autorizar sobre el árbol: la profundidad se cambia en una frase y cambiarla después no deshace lo ya escrito.
-   - **Y acá se ofrece la vía de transporte**, en el **mismo checkpoint** y **sin abrir un stop nuevo**. Si el **detector del flujo** resuelve una plataforma utilizable —su sede es `reference.md` → «Resolver la plataforma de terminales», que consulta las dos identidades vivas y aplica una matriz total de seis filas: override comprobado, empate, una sola, y ninguna, que continúa por línea de comandos—, la elección se ofrece acá y **nunca se toma sola**: correr los workers como paneles de terminal cambia dónde vive la sesión y qué permisos hereda cada worker, así que es del usuario. La oferta enumera **lo que la elección autoriza**, en cinco puntos y sin agregarlos después:
-     1. los **recursos que se van a crear** — el **lote real** de este punto: cada worker enumerado con su rol y su worktree, que es lo que el consentimiento autoriza y contra lo que se comprueba cada creación. No un tope numérico: un número no dice sobre qué árboles caen los efectos (`reference.md` → «El alcance es el lote real, no un tope fijo»);
-     2. la **mudanza de la sesión** — la **colocación de los workers** se pide `adyacente-al-conductor`, y la convivencia se pide, no se garantiza. Si la plataforma no la honra, la corrida declara la colocación efectivamente obtenida en el registro de la corrida, no en el consentimiento, que ya está sellado cuando ese resultado se conoce. **Abrir la sesión y acreditar la conducción son dos cosas distintas:** la primera se hace cuando la plataforma resuelta lo permite, y la segunda **no es obtenible** — nadie declara que la conducción se transfirió, y quien constata que el destino tomó el flujo es el usuario mirando la pantalla. **La abre una persona en cuatro ramas, y solo en esas cuatro:** plataforma sin capacidad · **autorización de apertura no vigente** (rechazada, ausente o ilegible) · permiso del harness no concedido · automatización que falló **sin dejar un conductor activo**;
-     3. la **política de cierre** — qué se liquida al terminar, qué queda en pie y qué se enumera como residual cuando el cese no se puede acreditar;
-     4. el **modelo de permisos** — esta vía **no tiene mecanismo de aislamiento**: el worker hereda el entorno del conductor, credenciales incluidas, y esa configuración **le consume contexto antes de que lea su encargo**. Se nombra acá porque es el costo que la elección compra, y quien elige tiene que verlo;
-     5. **si abro la sesión del destino** — una pregunta propia, con su sí y su no, **independiente de las cuatro anteriores**: correr los workers como paneles y abrir la sesión del conductor son efectos distintos sobre la misma máquina, y se responden por separado. La respuesta **se registra** en `alcance.abrir_sesion` del consentimiento, nunca se infiere del texto mostrado, y **sin un sí la receta no abre nada**. Este punto **no se ofrece sin workers**: esa combinación es la única que no sobrevive a una retoma mientras el adaptador no recupere una señal de workers, así que queda fuera de la oferta.
-
-     **Ninguna terminal se crea antes de la respuesta**, y lo que se consiente queda ligado al texto exacto que se mostró, no a una marca suelta: el mecanismo está en `reference.md` → "El bloque `transporte` y la retoma". Al resolverse una plataforma, sus skills se cargan como **conjunto atómico** —el routing no sigue sin el conjunto completo—, y lo que la respuesta sella es el **carrier de transporte** de **esta fase** —incluida la elección de seguir por línea de comandos, que se registra y no se confunde con no haber elegido—, y es de ahí que cada punto de despacho resuelve su vía por las cuatro ramas de `reference.md` → "El carrier de transporte, y sus cuatro ramas". Un `headless` no abre oferta y no agrega una línea al checkpoint.
-
-     **La oferta está activa**, y lo está recién desde que los cuatro consumidores —el retomado, el fan-out, el sobre y el manifest— saben leer lo que produce. Ese orden no es cosmético: al revés deja una ventana en la que el flujo **ofrece** un transporte que ningún consumidor sabe interpretar. Si alguna vez hay que **retirar la oferta**, lo que eso garantiza —y lo que no— está en `co-explore/reference.md` → "Retirar la oferta: qué se revierte y qué no".
    - **Sembrar el entorno local si falta.** Comprobar si existen `.specify/` y `.claude/`: un worktree hereda las reglas de ignore del repositorio pero **no el contenido ignorado**, así que sin `.specify/` el flujo arrancaría un `init` que nadie pidió. Si faltan, se siembran **desde un origen que alguien nombra** —el usuario, o la skill que creó el worktree—, nunca inferido, y se dice en una línea. Sin origen declarado, se pregunta; no se copia en silencio. El conjunto acotado y sus prohibiciones, en `reference.md` → "Siembra del entorno local".
    - **Este paso no crea worktrees ni ramas.** El worktree lo crea el usuario antes de arrancar; la rama la crea `create-branch`. Lo que el flujo necesita saber de esa decisión —desde qué base se cortó, si importa para medir un diff— se pregunta acá, no se clasifica.
 
@@ -779,7 +765,7 @@ Antes de que exista `plan.md` (fase `specify`/`clarify`, o el gate de Jira), no 
 
 Documento de **retomado** del flujo —"dónde quedé, qué decidí y cómo sigo"— en `.plans/<id>/handoff.md` (frontmatter + narrativa): todo el estado del flujo queda junto en `.plans/<id>/` —donde `resume` ya escanea—, sin partirlo en carpetas aparte ni acoplar `sdd-flow` a otra skill. Es local y untracked como el resto (regla #10).
 
-**Se escribe/actualiza en tres situaciones del flujo base:** `pause`, `publish-spec` y `create-branch`; los escritores `plan` y `resume` mantienen el documento. Cada escritor fusiona la identidad worktree, la profundidad, el riesgo y `spec_approved_at` para que una rama nunca implique aprobación, y preserva el bloque `transporte` si el flujo lo tiene; `publish-spec` agrega los campos del gate externo. Momentos, autoridad y escritura atómica: `reference.md` → "Plantilla de `handoff.md`".
+**Se escribe/actualiza en tres situaciones del flujo base:** `pause`, `publish-spec` y `create-branch`; los escritores `plan` y `resume` mantienen el documento. Cada escritor fusiona la identidad worktree, la profundidad, el riesgo y `spec_approved_at` para que una rama nunca implique aprobación; `publish-spec` agrega los campos del gate externo. Momentos, autoridad y escritura atómica: `reference.md` → "Plantilla de `handoff.md`".
 
 **Estructura:** frontmatter YAML con los campos máquina + cuerpo narrativo legible. Plantilla completa en `reference.md` → "Plantilla de `handoff.md`".
 
@@ -818,10 +804,9 @@ overrides: { branch_prefix: null, base_branch: null, cross_review: null, impleme
 > y no debe cargarlo** — por eso el detalle está divulgado y no inline.
 >
 > Ahí están: el listado y la elección del flujo; la navegación a la rama correcta con su clasificador
-> durable de ubicación; **el consumo del bloque `transporte`**, que resuelve por qué vía sigue la
-> retoma antes de enrutar y es lo que impide que la vía se vuelva a ofrecer; el routing por `status`,
-> incluida la celda de los flujos heredados y la de cuarentena; la guarda de retomado con bloques en
-> vuelo; el gate de Jira al retomar; y los sub-pasos `status` y `pause`.
+> durable de ubicación; el routing por `status`, incluida la celda de los flujos heredados y la de
+> cuarentena; la guarda de retomado con bloques en vuelo; el gate de Jira al retomar; y los
+> sub-pasos `status` y `pause`.
 
 ## Paso `implement`
 

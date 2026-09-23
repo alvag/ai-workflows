@@ -2566,16 +2566,15 @@ violaría la comparabilidad que justifica el manifest aunque el JSON siguiera pa
 ### Las formas y sus claves raíz
 
 El archivo siempre lleva `record_type`, que selecciona una de estas formas. Cada forma declara sus
-claves obligatorias, condicionales y prohibidas; una clave fuera de esos conjuntos se rechaza.
+claves obligatorias y prohibidas; una clave fuera de esos conjuntos se rechaza.
 
-| Forma | Obligatorias | Condicionales | Prohibidas |
-|---|---|---|---|
-| `run-manifest/1` | `record_type`, `run_id`, `skill`, `mode`, `started_at`, `duration_s`, `families`, `transport`, `outcome`, `degradation`, `selection`, `dispatches` | `transporte_fuente`, `transporte_proceso`: obligatorias si `transport` es `pane-herdr` o `pane-orca`; admisibles en otro caso | ninguna |
-| `dispatch-log/1` | `record_type`, `run_id`, `skill`, `mode`, `started_at`, `dispatches` | ninguna | `duration_s`, `families`, `transport`, `outcome`, `degradation`, `selection`, `transporte_fuente`, `transporte_proceso` |
+| Forma | Obligatorias | Prohibidas |
+|---|---|---|
+| `run-manifest/1` | `record_type`, `run_id`, `skill`, `mode`, `started_at`, `duration_s`, `families`, `transport`, `outcome`, `degradation`, `selection`, `dispatches` | ninguna |
+| `dispatch-log/1` | `record_type`, `run_id`, `skill`, `mode`, `started_at`, `dispatches` | `duration_s`, `families`, `transport`, `outcome`, `degradation`, `selection` |
 
-Las claves de transporte por panel son prohibidas en `dispatch-log/1`: su condición depende de
-`transport`, que esa forma no lleva. `dispatches` es una lista en las dos formas: `run-manifest/1`
-admite la lista vacía y `dispatch-log/1` exige al menos una entrada.
+`dispatches` es una lista en las dos formas: `run-manifest/1` admite la lista vacía y
+`dispatch-log/1` exige al menos una entrada.
 
 ### Los campos de telemetría
 

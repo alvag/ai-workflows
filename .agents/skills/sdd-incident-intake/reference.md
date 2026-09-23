@@ -675,10 +675,9 @@ sin contexto de esta sesión, y **la única copia** de los incidentes tomados.
     GitHub cierra tantos `Closes` como el PR declare.
 
 11. **La plataforma anfitriona** — sobre cuál de las dos corre el panel donde este flujo vive, y si
-    salió de la matriz o de un pedido del usuario. El flujo arranca **sin contexto de esta sesión**:
-    la resolución del paso 6.1 es justamente contexto que no tiene, y sin ella vuelve a enfrentar la
-    pregunta desde cero —incluido el caso de las **dos** identidades vivas, donde su propio detector
-    no tiene observable que identifique al anfitrión—. Tres campos, y ninguno se deduce:
+    salió de la matriz o de un pedido del usuario. El flujo arranca **sin contexto de esta sesión**,
+    y la resolución del paso 6.1 no queda escrita en ningún otro lado. Tres campos, y ninguno se
+    deduce:
 
     | Campo | Valores | Qué dice |
     |---|---|---|
@@ -686,18 +685,12 @@ sin contexto de esta sesión, y **la única copia** de los incidentes tomados.
     | `origen` | `resuelta` \| `pedida` | `resuelta`, la eligió la matriz sobre las identidades vivas; `pedida`, el usuario la dio en el parámetro `plataforma` |
     | `identidad` | el valor observado | la identidad del panel **de este flujo**, no la del panel del intake: son dos paneles distintos |
 
-    > **Es un hecho observado, no un consentimiento de transporte.** `sdd-flow` persiste su elección
-    > en el bloque `transporte` de su frontmatter, y esa elección se sella con el **texto exacto que
-    > se le mostró al usuario** y su `digest`. Nada de eso puede producirlo el intake en nombre de
-    > nadie. Lo que esta sección aporta es **de dónde arranca**, no qué eligió: el flujo sigue
-    > debiendo su propio ofrecimiento y su propio sellado si va a despachar por plataforma. Un
-    > `origen: pedida` es una **preferencia declarada del usuario**, que la oferta puede nombrar; no
-    > es la respuesta a esa oferta.
+    > **Es un hecho observado, y queda escrito.** Lo que esta sección aporta es **de dónde arranca**
+    > el flujo. `sdd-flow` no la consume para despachar: sus workers van por CLI, sea cual sea la
+    > plataforma.
 
 ### Lo que no va
 
-- Un consentimiento de transporte pre-sellado, o un bloque `transporte` escrito por adelantado. El
-  intake observa la plataforma; consentir la vía es del flujo, con el usuario delante.
 - Recomendaciones sobre la decisión abierta. El flujo tiene que decidirla con criterio propio; una
   recomendación escrita acá se transcribe en vez de pensarse.
 - Rutas del proyecto donde el incidente se observó. Al flujo no le sirven.

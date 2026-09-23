@@ -1,18 +1,15 @@
 """Predicado: valida las formas `run-manifest/1` y `dispatch-log/1` según `record_type`: sus claves
-raíz obligatorias, condicionales y prohibidas; el tipo y la cardinalidad de `dispatches` y, de cada
+raíz obligatorias y prohibidas; el tipo y la cardinalidad de `dispatches` y, de cada
 entrada, sus once claves —presencia, desconocidas y duplicadas—; el UTC de `started_at`; que `run_id`
-sea una cadena no vacía; y los enums aplicables a la fila de `skill`. En `run-manifest/1`,
-`transporte_fuente` y `transporte_proceso` son obligatorias con transporte por panel y admisibles en
-otro caso. Un `record_type` ausente o desconocido rechaza el archivo **sin inferir** su forma, y aun
-así exige las claves que las dos formas comparten —`run_id`, `mode`, `started_at` y `dispatches`— más
-todo lo que no dependa de la forma, de modo que un registro anterior al contrato se pueda migrar
-leyendo sus faltantes en una corrida y no de a uno.
+sea una cadena no vacía; y los enums aplicables a la fila de `skill`. Un `record_type` ausente o
+desconocido rechaza el archivo **sin inferir** su forma, y aun así exige las claves que las dos
+formas comparten —`run_id`, `mode`, `started_at` y `dispatches`— más todo lo que no dependa de la
+forma, de modo que un registro anterior al contrato se pueda migrar leyendo sus faltantes en una
+corrida y no de a uno.
 
-**Qué NO detecta.** No comprueba que `transporte_fuente` nombre una fuente existente ni que
-`transporte_proceso` apunte a un proceso vivo: lee presencia y no verdad;
-ninguna receta de productor invoca este predicado: su verde acredita la forma del archivo que se le
-pasa, nunca que las corridas publiquen manifests validados. La precisión fraccionaria de
-`started_at` no se aflojó porque no se reprodujo contra el árbol.
+**Qué NO detecta.** Ninguna receta de productor invoca este predicado: su verde acredita la forma
+del archivo que se le pasa, nunca que las corridas publiquen manifests validados. La precisión
+fraccionaria de `started_at` no se aflojó porque no se reprodujo contra el árbol.
 
 **De cada entrada de `dispatches` mira las claves, nunca los valores**: `attempt` con un texto,
 `family` con una familia que no existe o `outcome` con un término inventado pasan sin diagnóstico,
@@ -42,27 +39,21 @@ from typing import Dict, List, Tuple
 
 RUN_MANIFEST = "run-manifest/1"
 DISPATCH_LOG = "dispatch-log/1"
-FORMAS: Dict[str, Tuple[set[str], set[str], set[str]]] = {
+FORMAS: Dict[str, Tuple[set[str], set[str]]] = {
     RUN_MANIFEST: (
         {
             "record_type", "run_id", "skill", "mode", "started_at", "duration_s", "families",
             "transport", "outcome", "degradation", "selection", "dispatches",
         },
-        {"transporte_fuente", "transporte_proceso"},
         set(),
     ),
     DISPATCH_LOG: (
         {"record_type", "run_id", "skill", "mode", "started_at", "dispatches"},
-        set(),
         {
             "duration_s", "families", "transport", "outcome", "degradation", "selection",
-            "transporte_fuente", "transporte_proceso",
         },
     ),
 }
-# Los dos transportes por panel son los unicos que exigen la fuente consultable: un panel se puede
-# interrogar, asi que un registro que lo use y no diga por donde no es auditable.
-CON_PANEL = {"pane-herdr", "pane-orca"}
 CLAVES_DESPACHO = {
     "attempt", "at", "role", "family", "requested", "resolved", "origin", "materialized",
     "sent", "outcome", "retry_of",
@@ -72,25 +63,25 @@ ROWS: Dict[str, Tuple[set[str], set[str], set[str], set[str]]] = {
         {"explore", "counter-plan", "investigate", "debate"},
         {"completed", "map_failure"},
         {"none", "confirmed_wall", "launch_flake", "runtime_failure", "host_sandbox_wall", "branch-2", "branch-3", "branch-4", "deadline_exceeded"},
-        {"none", "subagent", "cli-exec", "cli-resume", "pane-herdr", "pane-orca"},
+        {"none", "subagent", "cli-exec", "cli-resume"},
     ),
     "cross-review": (
         {"spec", "plan", "tasks", "master-spec", "reparto", "sintesis", "draft"},
         {"APPROVED", "REVISE", "UNAVAILABLE"},
         {"none", "confirmed_wall", "launch_flake", "runtime_failure", "host_sandbox_wall", "rounds_exhausted", "deadline_exceeded"},
-        {"none", "subagent", "cli-exec", "cli-resume", "pane-herdr", "pane-orca"},
+        {"none", "subagent", "cli-exec", "cli-resume"},
     ),
     "cross-implement": (
         {"embebido", "directo"},
         {"IMPLEMENTED", "PARTIAL", "UNAVAILABLE"},
         {"none", "confirmed_wall", "launch_flake", "runtime_failure", "host_sandbox_wall", "takeover", "deadline_exceeded"},
-        {"none", "subagent", "cli-exec", "cli-resume", "pane-herdr", "pane-orca"},
+        {"none", "subagent", "cli-exec", "cli-resume"},
     ),
     "bitbucket-code-review": (
         {"conductor", "delegado", "mixto"},
         {"PUBLISHED", "PROPOSED", "UNAVAILABLE"},
         {"none", "confirmed_wall", "launch_flake", "runtime_failure", "host_sandbox_wall", "revisor_invalido", "panel_vacio"},
-        {"none", "subagent", "cli-exec", "cli-resume", "pane-herdr", "pane-orca"},
+        {"none", "subagent", "cli-exec", "cli-resume"},
     ),
     "sdd-pr-feedback": (
         {"apply"},
@@ -155,9 +146,9 @@ def main() -> int:
     # para cualquiera de las dos y pedirla no elige ninguna. Se descuentan las que ya tienen su
     # propia comprobación —`record_type` acá arriba y `skill` contra su fila—, porque repetirlas
     # emitiría dos diagnósticos del mismo problema con distintas palabras.
-    obligatorias, condicionales, prohibidas = forma if forma else (
+    obligatorias, prohibidas = forma if forma else (
         (FORMAS[RUN_MANIFEST][0] & FORMAS[DISPATCH_LOG][0]) - {"record_type", "skill"},
-        set(), set())
+        set())
     for campo in sorted(obligatorias):
         if campo not in claves:
             print(f'GUARD:manifest-valido falta el campo "{campo}"', file=sys.stderr)
@@ -169,7 +160,7 @@ def main() -> int:
         for campo in sorted(claves & prohibidas):
             print(f'GUARD:manifest-valido campo "{campo}" no corresponde a {record_type}', file=sys.stderr)
             rc = 1
-        for campo in sorted(claves - obligatorias - condicionales - prohibidas):
+        for campo in sorted(claves - obligatorias - prohibidas):
             print(f'GUARD:manifest-valido clave raíz desconocida: "{campo}"', file=sys.stderr)
             rc = 1
 
@@ -233,7 +224,7 @@ def main() -> int:
     for campo, permitidos in permits.items():
         if fila is None and campo != "selection":
             continue
-        if campo not in obligatorias and campo not in condicionales:
+        if campo not in obligatorias:
             continue
         if campo not in claves or campo in duplicadas_en_raiz:
             continue
@@ -245,12 +236,6 @@ def main() -> int:
             visible = valor if isinstance(valor, str) else "<valor no textual>"
             print(f'GUARD:manifest-valido {campo} "{visible}" no pertenece a {skill}{sufijo}', file=sys.stderr)
             rc = 1
-
-    if record_type == RUN_MANIFEST and objeto.get("transport") in CON_PANEL:
-        for campo in sorted(condicionales):
-            if not objeto.get(campo):
-                print(f'GUARD:manifest-valido transporte por panel sin "{campo}": la fuente tiene que ser consultable', file=sys.stderr)
-                rc = 1
 
     if "dispatches" in claves and "dispatches" not in duplicadas_en_raiz:
         dispatches = objeto.get("dispatches")
