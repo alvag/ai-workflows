@@ -217,6 +217,28 @@ direcciones**, y cada dirección bloquea por su cuenta:
 Una sola dirección no alcanza: un contrato con una fila por requisito **más** tres filas huérfanas
 cumple "todo requisito tiene fila" y sigue roto.
 
+**Qué recibe la guarda como alcance.** La guarda de esta comprobación (`contrato-cobertura.py`, ver
+«El gate previo al dispatch») compara el contrato contra una **lista de requisitos en alcance**, no
+contra la spec ni contra el work order entero. La forma de esa lista es cerrada:
+
+- **un identificador por línea**, sin prosa: ni encabezados, ni viñetas, ni texto al lado. Un
+  identificador empieza y termina con letra o dígito, y en el medio admite letras, dígitos, `.`, `_`
+  y `-` (`AC-3`, `R-2`). Las líneas en blanco se ignoran y un BOM inicial se tolera;
+- **la escribe el conductor**, porque ningún artefacto del flujo la produce tal cual, con el alcance
+  **del work order que va a validar**: en un plan de `sdd-flow`, los `AC-n` de su spec; en el
+  contrato de integración de `sdd-orchestrator`, solo los `AC-n` marcados `[integration]`. El alcance
+  lo decide quien invoca, y por eso la guarda no lo deduce leyendo la spec: le haría exigir fila a
+  requisitos que no le tocan.
+
+Pasarle la spec en lugar de la lista no produce un rechazo de cobertura: la guarda se detiene en la
+primera línea que no es un identificador y dice cuál es.
+
+**Cómo cita una fila sus requisitos.** La celda `Requisito` abre con el identificador. Si la fila
+prueba varios requisitos, los cita **separados por comas** antes del texto —`AC-2, AC-4 — el guard
+redirige y no consulta`—. La lista termina en lo primero que no sea una coma seguida de otro
+identificador, y lo que sigue es descripción que la guarda no lee. Una celda que no abre con un
+identificador cuenta como fila sin requisito.
+
 ### Pertinencia: poder discriminante por fila
 
 La **pertinencia** exige que la observación de cada fila distinga la afirmación de su requisito de
@@ -479,7 +501,7 @@ fallido.
 |---|---|---|
 | 1 | **existe un contrato** | el work order no trae tabla. |
 | 2 | **versión vigente identificada** | falta la numeración, hay un salto en la serie, la cadena de integridad no cierra o aparece una de las cuatro formas contractuales fuera de todo bloque de versión. |
-| 3 | **cobertura bidireccional** | queda un requisito en alcance sin fila, o una fila sin requisito. |
+| 3 | **cobertura bidireccional** | queda un requisito en alcance sin fila, o una fila sin requisito; o la guarda no pudo evaluarla porque un archivo no se lee o la lista no tiene la forma de «Cobertura bidireccional». |
 | 4 | **campos obligatorios presentes** | falta una columna o sobra una; un valor cae fuera de los enums; una fila no tiene registro de baseline, o el registro no tiene `commit` y `timestamp`; una `Evidencia` cae fuera de su enum; falta `observado` en `RED` o `GREEN_ALREADY`, o el que hay no cumple la forma que su evidencia exige; un `GREEN_ALREADY` sin `adjudicación` o un `NOT_APPLICABLE` sin `justificación`. |
 | 5 | **baseline resuelto en toda fila** | alguna fila quedó sin estado, o en `BLOCKED`. |
 | 6 | **pertinencia** | una fila no establece los dos insumos exigidos en «Pertinencia: poder discriminante por fila»; cualquiera de sus dos contrafactuales responde que sí; o la unión de las subafirmaciones declaradas no cubre la afirmación entera. |
@@ -505,6 +527,15 @@ stdout de rebaseline-worktree. En modo directo ejecuta `gate-modo-directo.py <bi
 código de salida de gate-modo-directo y el stderr de gate-modo-directo. Ninguna invocación se acredita por su
 mera presencia documental: su salida gobierna el gate correspondiente.
 
+Como parte de la tercera comprobación, ejecutar
+`python_skill <skill_dir>/scripts/contrato-cobertura.py <contrato> <requisitos>`, donde
+`<requisitos>` es la lista de «Cobertura bidireccional» —un identificador por línea— y no la spec, y
+leer su código de salida y stderr. `0`: la cobertura cierra. `1`: no cierra, con una línea
+`GUARD:cobertura-bidireccional` por cada defecto. `2`: la guarda **no la evaluó** —aridad, un
+archivo ilegible o una lista mal formada—, con una línea `USO:contrato-cobertura` que dice cuál. Un
+`2` no es un rechazo del contrato, pero tampoco lo habilita: detiene el dispatch igual que un `1`, y
+lo que se corrige es la invocación, no el contrato.
+
 Como parte de la cuarta comprobación, ejecutar
 `python_skill <skill_dir>/scripts/contrato-esquema.py <contrato>` y leer su código de salida y stderr.
 La guarda valida la cabecera normativa, que cada fila tenga seis columnas y que `Evidencia` y
@@ -517,9 +548,8 @@ En la misma comprobación, ejecutar
 La guarda valida la paridad entre tabla y registros, y los campos que corresponden a cada estado;
 su éxito tampoco sustituye las demás validaciones de esta comprobación.
 
-La comprobación de pertinencia **no está mecanizada**. La guarda
-`python_skill <skill_dir>/scripts/contrato-cobertura.py <contrato> <requisitos>` implementa la
-existencia del mapeo y nada más; que pase no acredita el poder discriminante de las filas.
+La comprobación de pertinencia **no está mecanizada**. La guarda `contrato-cobertura.py` implementa
+la existencia del mapeo y nada más; que pase no acredita el poder discriminante de las filas.
 
 Una tabla presente pero incompleta, sin congelar, o con baseline pendiente **no habilita el
 dispatch**. Es la diferencia entre cumplir esto documentalmente y cumplirlo en operación: un gate que
