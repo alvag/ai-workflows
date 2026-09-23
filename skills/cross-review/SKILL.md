@@ -120,7 +120,7 @@ Si reconoces alguno de estos pensamientos, detente y aplica la disciplina de `su
 | "El revisor lo marcó, lo aplico" | Antes de aplicar: verificar técnicamente, rebatir lo incorrecto/inaplicable y **registrar el porqué** (regla 3). |
 | "Tiene razón, le agradezco y edito" | Sin sycophancy. La respuesta correcta es reformular el requisito o directamente corregir — no validación performativa. |
 | "Le respondo el delta y de paso pulo el wording que sugirió" | Foco, no estilo (regla 4): wording/formato es review theater. La revisión apunta a correctitud, AC, riesgos y contratos. |
-| "No hay revisor disponible, espero / reintento en loop" | Degradación: avisar en una línea y ceder al gate humano. Loop acotado a `max_rounds`, con tope duro → `UNAVAILABLE` (reglas 2, 6). |
+| "No hay revisor disponible, espero / reintento en loop" | Degradación: avisar en una línea y ceder al gate humano. Loop acotado a `max_rounds`, con tope duro → `UNAVAILABLE` tras la recuperación única, si aplica (`reference.md` → "Recuperación tras vencer el tope") (reglas 2, 6). |
 
 ## Contrato de invocación (lo que pasa la skill llamadora)
 
@@ -147,8 +147,9 @@ Al invocarla, `sdd-flow`/`sdd-orchestrator` (o el usuario) proveen:
 - **`profundidad`** — `corta | normal | completa` (de `sdd-flow`); modula profundidad/esfuerzo.
 - **`execution`** — `auto | sync | background` (de la config `cross_review`); cómo se espera al
   revisor. `auto` (default) elige por la capacidad de timeout del conductor; `sync` fuerza llamada
-  bloqueante; `background` fuerza poll acotado. En todos hay tope duro → `UNAVAILABLE` (ver
-  `reference.md` → "Latencia y timeout (Claude revisor)").
+  bloqueante; `background` fuerza poll acotado. En todos hay tope duro → `UNAVAILABLE` tras la
+  recuperación única, si aplica (ver `reference.md` → "Latencia y timeout (Claude revisor)" y
+  "Recuperación tras vencer el tope").
 - **`ac_context`** — los `AC-n` y contratos en juego, para que la crítica los referencie.
   Opcional: si la llamadora no lo pasa, derivarlos de `context_paths` (la spec/master-spec ya
   los contiene).
@@ -430,12 +431,17 @@ Tres modos de falla, todos terminan en el gate humano de siempre con un aviso de
    - **Flake transitorio** (el binario existe pero el lanzamiento flaqueó por arranque frío o
      timeout de spawn): 2-3 reintentos con backoff corto, no un loop abierto; solo ahí `UNAVAILABLE`.
    (Distinto del punto 2, el fallo en runtime **tras** arrancar bien, que es por-intento.)
-2. **El revisor falla en runtime** (error, timeout de exec, `poll_deadline` vencido sin `VERDICT:`,
+2. **El revisor falla en runtime** (error, timeout de exec, `poll_deadline` vencido sin la marca de cierre,
    o respuesta no parseable) → registrar el fallo en `review-log.md`, cortar el loop (y matar el
    proceso en background si lo hubo) y devolver `UNAVAILABLE` con lo que haya. **Nunca quedar
    esperando indefinida** — todos los caminos tienen tope duro (ver `reference.md` → "Latencia y timeout (Claude revisor)").
+   **Salvo un tope vencido sin la marca de cierre en las Vías B o C**: ahí, antes de degradar, la
+   ronda se recupera **una sola vez** reanudando el mismo hilo y pidiendo solo emitir su salida
+   (`reference.md` → "Recuperación tras vencer el tope"). Si prospera, cuenta como la misma ronda y
+   el aviso del gate declara que se recuperó tras vencer el tope y cuántas dimensiones quedaron sin
+   examinar; si no aplica o no prospera, rige lo de arriba.
    Son dos **causas**, no dos veredictos: `runtime_failure` para el error de ejecución o la respuesta
-   ilegible, y `deadline_exceeded` cuando venció el tope de pared sin `VERDICT:`. El revisor arrancó
+   ilegible, y `deadline_exceeded` cuando venció el tope de pared sin la marca de cierre. El revisor arrancó
    bien y el corte lo puso el conductor, así que registrarlo como `runtime_failure` sugiere una falla
    de infraestructura que no ocurrió — y esconde que la palanca es el presupuesto.
 3. **Config la desactiva** (`cross_review.mode: off`, o complejidad por debajo del umbral) → ni
@@ -465,8 +471,9 @@ config > default por complejidad**. Default por complejidad en `sdd-flow`: `triv
 `normal` opt-in (off salvo pedido), `complex` on. En `sdd-orchestrator`, `auto` = **on** para
 `master-spec`/`reparto`, que se revisan como `complex`. `execution: auto` (default) corre **sync** cuando
 el conductor puede fijar un timeout largo (Claude Code: `Bash` hasta 600000ms) y **background+poll
-acotado** cuando su exec es corto (Codex ~120s); en todos los modos hay tope duro → `UNAVAILABLE`,
-nunca espera indefinida (ver `reference.md` → "Latencia y timeout (Claude revisor)").
+acotado** cuando su exec es corto (Codex ~120s); en todos los modos hay tope duro → `UNAVAILABLE`
+tras la recuperación única, si aplica, y nunca espera indefinida (ver `reference.md` → "Latencia y
+timeout (Claude revisor)" y "Recuperación tras vencer el tope").
 
 ## Router de intención
 

@@ -368,7 +368,23 @@ en la raíz del flujo:
 - **`session-meta.json`** acompaña al `session.txt` con `{"model": "...", "effort": "..."}`. Existe
   porque cada ronda corre en un proceso shell nuevo y las variables de la ronda 1 no sobreviven;
   el resume las relee de ahí. Un campo vacío significa "default del CLI", nunca cadena vacía a
-  pasar como flag.
+  pasar como flag. **Se escribe antes de lanzar la ronda 1**, en las Vías B y C: es lo único que
+  la reanudación necesita y ya se conoce antes. El `session.txt` también, en la Vía C, donde el id
+  se genera antes; en la Vía B el id recién aparece en el stream, y lo escribe el bloque «Derivar el
+  id del hilo» cuando el lanzamiento termina.
+- **`<artifact_type>-launch-rN.mark`** es la marca de lanzamiento de cada intento: toda receta de
+  lanzamiento o de resume la escribe **inmediatamente antes de invocar el CLI**, después de las
+  demás escrituras previas. **Una salida o un stream cuenta como de ese intento solo si es más
+  nuevo que su marca** (POSIX `-nt`; PowerShell `LastWriteTime`): el scratch reusa los nombres de
+  ronda entre corridas, y sin la marca un archivo de una corrida anterior se leería como del intento
+  vigente. Las escrituras previas y la marca se encadenan: si una falla no se lanza, y la causa es
+  `launch_flake`, o `host_sandbox_wall` si el host declara que su sandbox la impidió.
+- **`<artifact_type>-codex-r1.<run_id>.pid`** y **`<artifact_type>-claude-rN.pid`** guardan el PID
+  de la ronda 1 de la Vía B y del camino background de la Vía C, escrito justo después de lanzar: es
+  la única escritura posterior al lanzamiento. El de la Vía B lleva el `run_id` porque su testigo de
+  cese —la ruta de salida— lo comparten dos corridas del mismo artefacto; el de la Vía C no lo
+  necesita, porque su testigo es el session id. Si la escritura falla, el intento sigue vivo y se
+  informa; en la Vía B su proceso solo podrá observarse, no terminarse.
 - **`review-log.md` NO va acá.** Es el registro auditable consolidado (rondas, findings, decisiones,
   veredicto), hermano de `spec.md`/`plan.md`/`tasks.md`: queda en `<dir del artefacto>/review-log.md`
   (la raíz del flujo).
@@ -627,12 +643,23 @@ set -- exec --ignore-user-config --disable hooks --disable apps --disable plugin
 [ -n "$MODEL" ]  && set -- "$@" -m "$MODEL"
 [ -n "$EFFORT" ] && set -- "$@" -c "model_reasoning_effort=$EFFORT"
 set -- "$@" -
-codex "$@" < <ruta/al/prompt-r1.txt> > <ruta/al/thread-r1.jsonl> 2> <ruta/al/r1.err.txt>
 
-# Persistir thread id + modelo/esfuerzo efectivos: las rondas siguientes corren en otro proceso.
-grep -m1 -o '"thread_id":"[^"]*"' <ruta/al/thread-r1.jsonl> | cut -d'"' -f4 \
-  > <ruta/al/session.txt>
-printf '{"model":"%s","effort":"%s"}\n' "$MODEL" "$EFFORT" > <ruta/al/session-meta.json>
+# Persistir el modelo/esfuerzo efectivos ANTES de lanzar —las rondas siguientes corren en otro
+# proceso— y después la marca de lanzamiento. Si una escritura falla no se lanza: `launch_flake`,
+# o `host_sandbox_wall` si el host declara que su sandbox la impidió. El thread id no se conoce
+# todavía: lo escribe el bloque «Derivar el id del hilo», que se corre al terminar.
+printf '{"model":"%s","effort":"%s"}\n' "$MODEL" "$EFFORT" > <ruta/al/session-meta.json> &&
+  touch <ruta/al/launch-r1.mark> ||
+  { echo "launch_flake: no se pudo preparar el scratch; no se lanza" >&2; exit 1; }
+
+# Proceso hijo con PID persistido, esperado en el mismo bloque: la ronda 1 no lleva en su argv nada
+# exclusivo de la corrida, y sin el PID un CLI vivo tras el tope no se podría terminar. El PID es
+# la única escritura posterior al lanzamiento; si falla, el proceso solo podrá observarse.
+codex "$@" < <ruta/al/prompt-r1.txt> > <ruta/al/thread-r1.jsonl> 2> <ruta/al/r1.err.txt> &
+PID=$!
+printf '%s\n' "$PID" > <ruta/al/codex-r1.<run_id>.pid> ||
+  echo "PID no persistido: el proceso solo podrá observarse, no terminarse" >&2
+wait "$PID"   # conserva el código de salida de codex
 ```
 <!-- despacho:fin:cr-ronda1-posix -->
 
@@ -659,14 +686,62 @@ $CodexArgs = @('exec','--ignore-user-config','--disable','hooks','--disable','ap
 if ($Model)  { $CodexArgs += @('-m', $Model) }
 if ($Effort) { $CodexArgs += @('-c', "model_reasoning_effort=$Effort") }
 $CodexArgs += '-'
-Get-Content -Raw <ruta\al\prompt-r1.txt> |
-  & codex @CodexArgs > <ruta\al\thread-r1.jsonl> 2> <ruta\al\r1.err.txt>
 
-(Select-String -Path <ruta\al\thread-r1.jsonl> -Pattern '"thread_id":"([^"]+)"' |
-  Select-Object -First 1).Matches.Groups[1].Value > <ruta\al\session.txt>
-@{ model = $Model; effort = $Effort } | ConvertTo-Json -Compress > <ruta\al\session-meta.json>
+# Persistir el modelo/esfuerzo efectivos ANTES de lanzar —las rondas siguientes corren en otro
+# proceso— y después la marca de lanzamiento. Si una escritura falla no se lanza: `launch_flake`,
+# o `host_sandbox_wall` si el host declara que su sandbox la impidió. El thread id no se conoce
+# todavía: lo escribe el bloque «Derivar el id del hilo», que se corre al terminar.
+try {
+  @{ model = $Model; effort = $Effort } | ConvertTo-Json -Compress |
+    Set-Content -ErrorAction Stop <ruta\al\session-meta.json>
+  New-Item -ItemType File -Force -ErrorAction Stop <ruta\al\launch-r1.mark> | Out-Null
+} catch { Write-Error 'launch_flake: no se pudo preparar el scratch; no se lanza'; exit 1 }
+
+# Proceso hijo con PID persistido, esperado en el mismo bloque: la ronda 1 no lleva en su argv nada
+# exclusivo de la corrida, y sin el PID un CLI vivo tras el tope no se podría terminar. El PID es
+# la única escritura posterior al lanzamiento; si falla, el proceso solo podrá observarse.
+# `Start-Process` une `-ArgumentList` con espacios sin citar, así que un elemento con espacios —una
+# ruta— se cita acá; y se resuelve el binario como aplicación para no tomar el shim `codex.ps1`.
+$CodexExe = (Get-Command codex -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+$ArgLine  = ($CodexArgs | ForEach-Object { if ($_ -match '\s') { "`"$_`"" } else { $_ } }) -join ' '
+$proc = Start-Process $CodexExe -ArgumentList $ArgLine -NoNewWindow -PassThru `
+          -RedirectStandardInput <ruta\al\prompt-r1.txt> `
+          -RedirectStandardOutput <ruta\al\thread-r1.jsonl> -RedirectStandardError <ruta\al\r1.err.txt>
+$null = $proc.Handle   # retiene el handle: sin él, ExitCode puede quedar vacío al terminar
+try { $proc.Id | Set-Content -ErrorAction Stop <ruta\al\codex-r1.<run_id>.pid> }
+catch { Write-Warning 'PID no persistido: el proceso solo podrá observarse, no terminarse' }
+$proc.WaitForExit()
+# `Start-Process` no fija $LASTEXITCODE como `& codex`: sin esta línea un fallo del CLI se leería
+# como éxito.
+exit $proc.ExitCode
 ```
 <!-- despacho:fin:cr-ronda1-ps -->
+
+**Derivar el id del hilo.** Se corre **después** del lanzamiento de ronda 1 de esta vía, termine
+como termine —veredicto, error o el tope del conductor—, y va fuera de toda región porque no invoca
+un CLI de familia. Lee el stream en disco **solo si es más nuevo que la marca** del intento: el
+scratch reusa nombres entre corridas, y un stream anterior daría el hilo de otra corrida. Sin stream
+fresco no escribe nada, y la reanudación de ese intento no tiene id. En el `bash` 3.2 de macOS `-nt`
+compara segundos enteros: un stream escrito en el mismo segundo que la marca no cuenta como más
+nuevo. Es el lado seguro —descarta un stream fresco, nunca acepta uno viejo— y zsh no lo tiene.
+
+```bash
+# POSIX
+[ <ruta/al/thread-r1.jsonl> -nt <ruta/al/launch-r1.mark> ] &&
+  grep -m1 -o '"thread_id":"[^"]*"' <ruta/al/thread-r1.jsonl> | cut -d'"' -f4 \
+    > <ruta/al/session.txt>
+```
+
+```powershell
+# PowerShell
+$Stream = Get-Item <ruta\al\thread-r1.jsonl> -ErrorAction SilentlyContinue
+$Mark   = Get-Item <ruta\al\launch-r1.mark>  -ErrorAction SilentlyContinue
+if ($Stream -and $Mark -and $Stream.LastWriteTime -gt $Mark.LastWriteTime) {
+  $Id = (Select-String -Path $Stream.FullName -Pattern '"thread_id":"([^"]+)"' |
+           Select-Object -First 1).Matches.Groups[1].Value
+  if ($Id) { Set-Content -Path <ruta\al\session.txt> -Value $Id }
+}
+```
 
   Los cuatro flags de aislamiento —`--ignore-user-config --disable hooks --disable apps
   --disable plugins`— son el corazón del cambio: sin ellos el worker hereda los MCP del entorno,
@@ -697,11 +772,14 @@ Get-Content -Raw <ruta\al\prompt-r1.txt> |
   0.145.0: acepta `--ignore-user-config`, `--disable` y `-m`.
 
   **Y el modelo se relee de disco, no de una variable.** Cada ronda corre en un proceso shell
-  nuevo: `$MODEL`/`$EFFORT` de la ronda 1 no existen acá. Por eso la ronda 1 los persistió en
-  `session-meta.json` junto al `session.txt`.
+  nuevo: `$MODEL`/`$EFFORT` de la ronda 1 no existen acá. Por eso la ronda 1 los persiste en
+  `session-meta.json` **antes de lanzar**, y el id queda en `session.txt` por el bloque «Derivar el
+  id del hilo».
 
   <!-- despacho:inicio:cr-resume-posix:codex -->
   ```bash
+  # Todas las rutas <ruta/al/…> van ABSOLUTAS: el `cd` de abajo cambia el directorio, y el scratch
+  # deriva de `artifact_path`, no de `working_dir`.
   SESSION_ID=$(cat <ruta/al/session.txt>)
   echo "resume → ${SESSION_ID:?vacío}"   # eco visible + corte si quedó vacío (ver nota --last)
   # Escalón 1 de la cadena de `sdd-flow/reference.md` → "La cadena de resolución del perfil":
@@ -718,6 +796,11 @@ Get-Content -Raw <ruta\al\prompt-r1.txt> |
   [ -n "$MODEL" ]  && set -- "$@" -m "$MODEL"
   [ -n "$EFFORT" ] && set -- "$@" -c "model_reasoning_effort=$EFFORT"
   set -- "$@" -
+  # Marca de lanzamiento de este intento, inmediatamente antes de invocar: si falla, no se lanza.
+  touch <ruta/al/launch-rN.mark> ||
+    { echo "launch_flake: no se pudo escribir la marca; no se lanza" >&2; exit 1; }
+  # `exec resume` no acepta `-C`: el working dir es el cwd del proceso (ver "Asimetría de flags").
+  cd <working_dir> || { echo "no se pudo posicionar en el working_dir; no se lanza" >&2; exit 1; }
   codex "$@" < <ruta/al/delta-rN.txt> > <ruta/al/thread-rN.jsonl> 2> <ruta/al/rN.err.txt>
   ```
   <!-- despacho:fin:cr-resume-posix -->
@@ -726,6 +809,8 @@ Get-Content -Raw <ruta\al\prompt-r1.txt> |
   ```powershell
   # Escalón 1 de la cadena de `sdd-flow/reference.md` → "La cadena de resolución del perfil": la autoridad
 # es el perfil CONGELADO de la sesión, que reemplaza los dos campos juntos; no se consulta el archivo.
+  # Todas las rutas <ruta\al\…> van ABSOLUTAS: el `Push-Location` de abajo cambia el directorio, y el
+  # scratch deriva de `artifact_path`, no de `working_dir`.
 $SessionId = (Get-Content <ruta\al\session.txt>).Trim()
   if (-not $SessionId) { throw 'session id vacío' }; "resume → $SessionId"
   $Meta   = Get-Content -Raw <ruta\al\session-meta.json> | ConvertFrom-Json
@@ -739,8 +824,15 @@ $SessionId = (Get-Content <ruta\al\session.txt>).Trim()
   if ($Model)  { $CodexArgs += @('-m', $Model) }
   if ($Effort) { $CodexArgs += @('-c', "model_reasoning_effort=$Effort") }
   $CodexArgs += '-'
-  Get-Content -Raw <ruta\al\delta-rN.txt> |
-    & codex @CodexArgs > <ruta\al\thread-rN.jsonl> 2> <ruta\al\rN.err.txt>
+  # Marca de lanzamiento de este intento, inmediatamente antes de invocar: si falla, no se lanza.
+  try { New-Item -ItemType File -Force -ErrorAction Stop <ruta\al\launch-rN.mark> | Out-Null }
+  catch { Write-Error 'launch_flake: no se pudo escribir la marca; no se lanza'; exit 1 }
+  # `exec resume` no acepta `-C`: el working dir es el cwd del proceso (ver "Asimetría de flags").
+  Push-Location <working_dir> -ErrorAction Stop
+  try {
+    Get-Content -Raw <ruta\al\delta-rN.txt> |
+      & codex @CodexArgs > <ruta\al\thread-rN.jsonl> 2> <ruta\al\rN.err.txt>
+  } finally { Pop-Location }
   ```
   <!-- despacho:fin:cr-resume-ps -->
   Capturar el stderr no es opcional: es donde aparecen los fallos de refresh de OAuth y los
@@ -802,6 +894,14 @@ Trampas de este CLI que la invocación debe esquivar:
   set -- -p --safe-mode --model "$MODEL" --permission-mode default \
          --allowedTools=Read,Grep,Glob --session-id "$SESSION_ID"
   [ -n "$EFFORT" ] && set -- "$@" --effort "$EFFORT"
+  # Antes de lanzar, todo lo que la reanudación necesita y ya se conoce: el id —se fija acá—, el
+  # perfil efectivo y la marca de lanzamiento, en ese orden. Si una escritura falla no se lanza:
+  # `launch_flake`, o `host_sandbox_wall` si el host declara que su sandbox la impidió. Las rutas
+  # <ruta/al/…> van absolutas: el subshell cambia de directorio antes de leer el prompt.
+  printf '%s\n' "$SESSION_ID" > <ruta/al/session.txt> &&
+    printf '{"model":"%s","effort":"%s"}\n' "$MODEL" "$EFFORT" > <ruta/al/session-meta.json> &&
+    touch <ruta/al/launch-r1.mark> ||
+    { echo "launch_flake: no se pudo preparar el scratch; no se lanza" >&2; exit 1; }
   (cd <working_dir> && claude "$@" < <ruta/al/prompt-r1.txt>) > <ruta/al/veredicto.txt>
   ```
   <!-- despacho:fin:cr-viac-r1-posix -->
@@ -816,6 +916,14 @@ Trampas de este CLI que la invocación debe esquivar:
   $ClaudeArgs = @('-p','--safe-mode','--model',$Model,'--permission-mode','default',
                   '--allowedTools=Read,Grep,Glob','--session-id',$SessionId)
   if ($PerfilEffort) { $ClaudeArgs += @('--effort', $PerfilEffort) }
+  # Antes de lanzar: el id, el perfil efectivo y la marca, en ese orden; si una escritura falla no
+  # se lanza (`launch_flake`, o `host_sandbox_wall` si el host declara su sandbox). Rutas absolutas.
+  try {
+    Set-Content -ErrorAction Stop -Path <ruta\al\session.txt> -Value $SessionId
+    @{ model = $Model; effort = $PerfilEffort } | ConvertTo-Json -Compress |
+      Set-Content -ErrorAction Stop <ruta\al\session-meta.json>
+    New-Item -ItemType File -Force -ErrorAction Stop <ruta\al\launch-r1.mark> | Out-Null
+  } catch { Write-Error 'launch_flake: no se pudo preparar el scratch; no se lanza'; exit 1 }
   Push-Location <working_dir>
   try {
     Get-Content -Raw <ruta\al\prompt-r1.txt> |
@@ -829,13 +937,21 @@ Trampas de este CLI que la invocación debe esquivar:
   <!-- despacho:inicio:cr-viac-resume-posix:claude -->
   ```bash
   # Reanudación: escalón 1 de la cadena de `sdd-flow/reference.md` → "La cadena de resolución del perfil"
-  # — la autoridad es el perfil CONGELADO de la sesión, que reemplaza los dos campos juntos; no se
-  # consulta ni se valida el archivo. Escalón 4: `opus` cableado y ningún flag.
-  MODEL="${PERFIL_CONGELADO_MODEL:-opus}"
-  EFFORT="$PERFIL_CONGELADO_EFFORT"
-  set -- -p --safe-mode --model "$MODEL" --permission-mode default \
+  # — la autoridad es el perfil CONGELADO de la sesión, que reemplaza los dos campos juntos y se lee
+  # de `session-meta.json`, escrito antes de lanzar la ronda 1: las variables de aquel proceso no
+  # sobreviven. No se consulta el archivo de workers ni el config personal. Campo vacío: sin flag.
+  # Las rutas <ruta/al/…> van absolutas: el subshell cambia de directorio antes de leer el delta.
+  SESSION_ID=$(cat <ruta/al/session.txt>)
+  echo "resume → ${SESSION_ID:?vacío}"   # eco visible + corte si quedó vacío
+  MODEL=$(sed -n 's/.*"model":"\([^"]*\)".*/\1/p'  <ruta/al/session-meta.json>)
+  EFFORT=$(sed -n 's/.*"effort":"\([^"]*\)".*/\1/p' <ruta/al/session-meta.json>)
+  set -- -p --safe-mode --permission-mode default \
          --allowedTools=Read,Grep,Glob --resume "$SESSION_ID"
+  [ -n "$MODEL" ]  && set -- "$@" --model "$MODEL"
   [ -n "$EFFORT" ] && set -- "$@" --effort "$EFFORT"
+  # Marca de lanzamiento de este intento, inmediatamente antes de invocar: si falla, no se lanza.
+  touch <ruta/al/launch-rN.mark> ||
+    { echo "launch_flake: no se pudo escribir la marca; no se lanza" >&2; exit 1; }
   (cd <working_dir> && claude "$@" < <ruta/al/delta-rN.txt>) > <ruta/al/veredicto.txt>
   ```
   <!-- despacho:fin:cr-viac-resume-posix -->
@@ -843,11 +959,18 @@ Trampas de este CLI que la invocación debe esquivar:
   <!-- despacho:inicio:cr-viac-resume-ps:claude -->
   ```powershell
   # Reanudación: escalón 1 de la cadena de `sdd-flow/reference.md` → "La cadena de resolución del perfil"
-  # — la autoridad es el perfil CONGELADO, que reemplaza los dos campos juntos. Escalón 4: `opus`.
-  $Model = if ($PerfilCongeladoModel) { $PerfilCongeladoModel } else { 'opus' }
-  $ClaudeArgs = @('-p','--safe-mode','--model',$Model,'--permission-mode','default',
+  # — la autoridad es el perfil CONGELADO, que reemplaza los dos campos juntos y se lee de
+  # `session-meta.json`, escrito antes de lanzar la ronda 1. Campo vacío: sin flag. Rutas absolutas.
+  $SessionId = (Get-Content <ruta\al\session.txt>).Trim()
+  if (-not $SessionId) { throw 'session id vacío' }; "resume → $SessionId"
+  $Meta = Get-Content -Raw <ruta\al\session-meta.json> | ConvertFrom-Json
+  $ClaudeArgs = @('-p','--safe-mode','--permission-mode','default',
                   '--allowedTools=Read,Grep,Glob','--resume',$SessionId)
-  if ($PerfilCongeladoEffort) { $ClaudeArgs += @('--effort', $PerfilCongeladoEffort) }
+  if ($Meta.model)  { $ClaudeArgs += @('--model', $Meta.model) }
+  if ($Meta.effort) { $ClaudeArgs += @('--effort', $Meta.effort) }
+  # Marca de lanzamiento de este intento, inmediatamente antes de invocar: si falla, no se lanza.
+  try { New-Item -ItemType File -Force -ErrorAction Stop <ruta\al\launch-rN.mark> | Out-Null }
+  catch { Write-Error 'launch_flake: no se pudo escribir la marca; no se lanza'; exit 1 }
   Push-Location <working_dir>
   try {
     Get-Content -Raw <ruta\al\delta-rN.txt> |
@@ -892,7 +1015,10 @@ que darle tiempo. El modo lo controla `cross_review.execution` (ver "Configuraci
 > ambos abajo.
 
 **Invariante (vale para los dos caminos): ningún camino espera indefinida.** Siempre hay un tope de
-pared duro; si vence sin `VERDICT:`, es `UNAVAILABLE` (regla 6) y se degrada al gate humano.
+pared duro; si vence sin la marca de cierre, la ronda se recupera **una sola vez** cuando aplica
+("Recuperación tras vencer el tope", más abajo), y si no aplica o no prospera es `UNAVAILABLE`
+(regla 6) y se degrada al gate humano. La recuperación tiene su propio tope, así que el invariante
+se conserva: el peor caso son dos topes, nunca una espera abierta.
 
 ##### Camino SYNC — preferido (conductor con timeout de exec largo)
 
@@ -908,71 +1034,117 @@ cuando el conductor puede sostener ese timeout, y lo que fuerza `execution: sync
 # Perfil del rol `design-review`, familia `claude`, por la cadena de
 # `sdd-flow/reference.md` → "La cadena de resolución del perfil". Escalón 4 por campo: `opus`, el modelo cableado
 # de esta ruta de juicio, y ningún flag de esfuerzo.
+SESSION_ID=$(uuidgen)   # Git Bash en Windows no trae uuidgen → ver "Portabilidad entre shells"
 MODEL="${PERFIL_MODEL:-opus}"
 EFFORT="$PERFIL_EFFORT"
 set -- -p --safe-mode --model "$MODEL" --permission-mode default \
        --allowedTools=Read,Grep,Glob --session-id "$SESSION_ID"
 [ -n "$EFFORT" ] && set -- "$@" --effort "$EFFORT"
+# Antes de lanzar: el id, el perfil efectivo y la marca, en ese orden; si una escritura falla no se
+# lanza (`launch_flake`, o `host_sandbox_wall` si el host declara su sandbox). Rutas absolutas.
+printf '%s\n' "$SESSION_ID" > <ruta/al/session.txt> &&
+  printf '{"model":"%s","effort":"%s"}\n' "$MODEL" "$EFFORT" > <ruta/al/session-meta.json> &&
+  touch <ruta/al/launch-r1.mark> ||
+  { echo "launch_flake: no se pudo preparar el scratch; no se lanza" >&2; exit 1; }
 ( cd <working_dir> && claude "$@" \
     < <ruta/al/prompt-r1.txt> ) > <ruta/al/veredicto.txt> 2> <ruta/al/claude-r1.err.txt>
 ```
 <!-- despacho:fin:cr-latencia-sync -->
-Si el comando excede el `timeout` del conductor → `UNAVAILABLE`. Vías A/B (Codex revisor) ya son
+Si el comando excede el `timeout` del conductor → "Recuperación tras vencer el tope", una vez; si no
+aplica o no prospera, `UNAVAILABLE`. Vías A/B (Codex revisor) ya son
 bloqueantes por naturaleza: mismo contrato, el tope lo da el timeout del conductor.
 
 ##### Camino BACKGROUND + poll **acotado** — fallback (conductor con exec corto, p.ej. Codex ~120s)
 
 Solo cuando el conductor **no puede** subir su timeout de exec. Lanzar `claude -p` en segundo plano
 escribiendo el veredicto a archivo; el **comando de lanzamiento retorna en <1s** (no excede el tope),
-y después se **pollea el archivo en comandos cortos separados** hasta ver el `VERDICT:`. Ningún
-comando único bloquea más que el límite del conductor. Lo fuerza `execution: background`.
+y después se **pollea el archivo en comandos cortos separados** hasta que el veredicto sea **más
+nuevo que la marca** del intento **y** termine en la marca de cierre (`STATUS: done`, ver "Señal de
+cierre"): la primera línea `VERDICT:` no alcanza, porque una salida cortada después de ella se leería
+como terminada. Ningún comando único bloquea más que el límite del conductor. Lo fuerza
+`execution: background`.
 
 > **El poll SIEMPRE tiene corte.** Definir un `poll_deadline` = el mismo presupuesto del modo sync
 > (≥5 min `normal`, ~10 min `complex`). Como `Date.now()` puede no estar disponible, llevar un
 > **contador de iteraciones** (`intentos × ~10s`) como proxy del reloj. Al alcanzar `poll_deadline`
-> **sin** ver `^VERDICT:` → **abandonar, marcar `UNAVAILABLE`, degradar al gate humano** y matar el
-> proceso en background si se puede (`kill <pid>`). Nunca seguir poleando indefinida.
+> **sin** salida conforme no se degrada directo: se aplica **una** vez "Recuperación tras vencer el
+> tope", cuyo bloque de cese usa el PID persistido; solo si no aplica o no prospera, `UNAVAILABLE` y
+> gate humano. Nunca seguir poleando indefinida.
 
 <!-- despacho:inicio:cr-latencia-background:claude -->
 ```bash
-# Lanzar en background (POSIX) — capturar el PID para poder matarlo al vencer el deadline:
+# Lanzar en background (POSIX) — el PID queda en el scratch, en el mismo comando que lanza, para que
+# el bloque de cese de "Recuperación tras vencer el tope" pueda encontrarlo:
 # Perfil del rol `design-review`, familia `claude`, por la cadena de
 # `sdd-flow/reference.md` → "La cadena de resolución del perfil". Escalón 4 por campo: `opus`, el modelo cableado
 # de esta ruta de juicio, y ningún flag de esfuerzo.
+SESSION_ID=$(uuidgen)   # Git Bash en Windows no trae uuidgen → ver "Portabilidad entre shells"
 MODEL="${PERFIL_MODEL:-opus}"
 EFFORT="$PERFIL_EFFORT"
 set -- -p --safe-mode --model "$MODEL" --permission-mode default \
        --allowedTools=Read,Grep,Glob --session-id "$SESSION_ID"
 [ -n "$EFFORT" ] && set -- "$@" --effort "$EFFORT"
-( cd <working_dir> && claude "$@" \
+# Antes de lanzar: el id, el perfil efectivo y la marca, en ese orden; si una escritura falla no se
+# lanza (`launch_flake`, o `host_sandbox_wall` si el host declara su sandbox). Rutas absolutas.
+printf '%s\n' "$SESSION_ID" > <ruta/al/session.txt> &&
+  printf '{"model":"%s","effort":"%s"}\n' "$MODEL" "$EFFORT" > <ruta/al/session-meta.json> &&
+  touch <ruta/al/launch-r1.mark> ||
+  { echo "launch_flake: no se pudo preparar el scratch; no se lanza" >&2; exit 1; }
+# `exec` para que el PID sea el de `claude` y no el del subshell.
+( cd <working_dir> && exec claude "$@" \
     < <ruta/al/prompt-r1.txt> > <ruta/al/veredicto.txt> 2> <ruta/al/claude-r1.err.txt> ) &
-PID=$!
+PID=$!; printf '%s\n' "$PID" > <ruta/al/claude-r1.pid> ||
+  echo "PID no persistido: el session id del argv sigue haciéndolo atribuible" >&2
 # Poll (repetir como comandos cortos separados; tope DURO: ~N intentos = poll_deadline / 10s):
 #   normal  → ~30 intentos (~5 min);  complex → ~60 intentos (~10 min).
-grep -q '^VERDICT:' <ruta/al/veredicto.txt> 2>/dev/null && cat <ruta/al/veredicto.txt> || echo 'corriendo…'
-# Si se agotan los intentos sin VERDICT: → kill "$PID"; tratar como UNAVAILABLE.
+# Listo solo si el veredicto es más nuevo que la marca Y termina en la marca de cierre: el hijo trunca
+# la ruta recién al abrirla, después del `cd`, y antes de eso —o si el `cd` falla— la ruta todavía
+# tiene el veredicto de otra corrida.
+[ <ruta/al/veredicto.txt> -nt <ruta/al/launch-r1.mark> ] &&
+  awk 'NF{l=$0} END{exit !(l=="STATUS: done")}' <ruta/al/veredicto.txt> &&
+  cat <ruta/al/veredicto.txt> || echo 'corriendo…'
+# Si se agotan los intentos sin eso → "Recuperación tras vencer el tope", cuyo cese usa
+# claude-r1.pid; no se degrada directo.
 ```
 <!-- despacho:fin:cr-latencia-background -->
+<!-- despacho:inicio:cr-latencia-background-ps:claude -->
 ```powershell
 # Lanzar en background (PowerShell; Start-Process toma el prompt como archivo de stdin):
 $SessionId = [guid]::NewGuid().ToString()
+# Antes de lanzar: el id, el perfil que este comando lanza de verdad —`opus` cableado, sin esfuerzo—
+# y la marca, en ese orden; si una escritura falla no se lanza (`launch_flake`, o
+# `host_sandbox_wall` si el host declara su sandbox). Rutas absolutas.
+try {
+  Set-Content -ErrorAction Stop -Path <ruta\al\session.txt> -Value $SessionId
+  @{ model = 'opus'; effort = '' } | ConvertTo-Json -Compress |
+    Set-Content -ErrorAction Stop <ruta\al\session-meta.json>
+  New-Item -ItemType File -Force -ErrorAction Stop <ruta\al\launch-r1.mark> | Out-Null
+} catch { Write-Error 'launch_flake: no se pudo preparar el scratch; no se lanza'; exit 1 }
 $proc = Start-Process -FilePath claude -WorkingDirectory <working_dir> -NoNewWindow -PassThru `
   -RedirectStandardInput  <ruta\al\prompt-r1.txt> `
   -RedirectStandardOutput <ruta\al\veredicto.txt> `
   -RedirectStandardError  <ruta\al\claude-r1.err.txt> `
   -ArgumentList '-p','--safe-mode','--model','opus','--permission-mode','default','--allowedTools=Read,Grep,Glob','--session-id',$SessionId
-# Poll (repetir como comandos cortos; tope DURO de ~N intentos = poll_deadline / 10s):
-if ((Test-Path <ruta\al\veredicto.txt>) -and ((Get-Content <ruta\al\veredicto.txt> -Raw) -match 'VERDICT:')) {
-  Get-Content <ruta\al\veredicto.txt>      # listo → parsear
-} else { 'corriendo…' }                    # volver a chequear; al agotar intentos → Stop-Process $proc; UNAVAILABLE
+try { $proc.Id | Set-Content -ErrorAction Stop <ruta\al\claude-r1.pid> }
+catch { Write-Warning 'PID no persistido: el session id del argv sigue haciéndolo atribuible' }
+# Poll (repetir como comandos cortos; tope DURO de ~N intentos = poll_deadline / 10s). Listo solo si
+# el veredicto es más nuevo que la marca Y su última línea no vacía es la marca de cierre:
+$Out  = Get-Item <ruta\al\veredicto.txt> -ErrorAction SilentlyContinue
+$Mark = Get-Item <ruta\al\launch-r1.mark> -ErrorAction SilentlyContinue
+$Ultima = if ($Out) { Get-Content $Out.FullName | Where-Object { $_.Trim() } | Select-Object -Last 1 }
+if ($Out -and $Mark -and $Out.LastWriteTime -gt $Mark.LastWriteTime -and "$Ultima".Trim() -eq 'STATUS: done') {
+  Get-Content $Out.FullName      # listo → parsear
+} else { 'corriendo…' }          # al agotar intentos → "Recuperación tras vencer el tope"; su cese usa claude-r1.pid
 ```
+<!-- despacho:fin:cr-latencia-background-ps -->
 
 ##### Diagnóstico y palancas (ambos caminos)
 
 - **Distinguir dos fallas** (no confundirlas con la trampa de parseo de arriba):
   - *Cuelga de entrada, 0 progreso* → parseo de flags roto (`--allowedTools`/stdin).
-  - *Avanza pero excede el timeout/deadline* → lentitud real del modelo → subir el tope (sync), o
-    bajar de modelo.
+  - *Avanza pero excede el timeout/deadline* → lentitud real del modelo. La primera palanca es
+    automática: "Recuperación tras vencer el tope" reanuda el hilo una vez y pide solo la salida.
+    Si no prospera, subir el tope (sync) o bajar de modelo.
 - **Capturar stderr** (`2> claude-rN.err.txt`, ya incluido arriba): distingue un cuelgue (sin
   stderr) de un error real (auth, flag inválido, modelo no disponible). Registrarlo en el
   `review-log.md`.
@@ -980,7 +1152,8 @@ if ((Test-Path <ruta\al\veredicto.txt>) -and ((Get-Content <ruta\al\veredicto.tx
   reduce latencia a cambio de profundidad. El default sigue `opus`; bajarlo es una decisión consciente.
 
 En todas las vías, si la invocación falla (error, timeout, deadline vencido, salida vacía o no
-parseable) → tratarlo como `UNAVAILABLE` en runtime (degradación, regla 6 del SKILL).
+parseable) → tratarlo como `UNAVAILABLE` en runtime (degradación, regla 6 del SKILL). El timeout y el
+deadline vencido pasan antes por "Recuperación tras vencer el tope" cuando aplica.
 
 ##### Las causas de la indisponibilidad, y la que no lo es
 
@@ -993,14 +1166,14 @@ nuevo — todas acompañan al que la skill ya devuelve:
 | `confirmed_wall` | binario ausente, auth rechazada, versión incompatible, aislamiento imposible | nada: terminal para la corrida |
 | `launch_flake` | el binario existe pero el lanzamiento flaqueó | 2-3 reintentos con backoff corto |
 | `runtime_failure` | arrancó bien y falló ejecutando: error, salida no parseable | reintento por-intento |
-| `deadline_exceeded` | arrancó bien y venció el tope de pared —`poll_deadline` o `timeout` del exec— sin `VERDICT:` | subir el presupuesto, no reintentar igual |
+| `deadline_exceeded` | arrancó bien y venció el tope de pared —`poll_deadline` o `timeout` del exec— sin la marca de cierre | la recuperación única de "Recuperación tras vencer el tope"; si no aplica o no prospera, subir el presupuesto, no reintentar igual |
 | `host_sandbox_wall` | el sandbox del **conductor** impidió la operación, y el host lo declara | uno solo, **escalado fuera del sandbox**; por intento, sin degradar la corrida |
 
 **`deadline_exceeded` es una causa, no un estado.** Hasta acá el deadline vencido se registraba como
 `runtime_failure`, que sugiere una falla de infraestructura que no ocurrió: el revisor arrancó bien y
-el corte lo puso el conductor al fijar el tope. La palanca que corresponde es distinta —subir el tope
-o bajar de modelo, como dice "Diagnóstico y palancas"—, y con un solo literal para las dos no había
-cómo elegirla leyendo la serie de manifests.
+el corte lo puso el conductor al fijar el tope. La palanca que corresponde es distinta —primero la
+recuperación única, y si no prospera subir el tope o bajar de modelo, como dice "Diagnóstico y
+palancas"—, y con un solo literal para las dos no había cómo elegirla leyendo la serie de manifests.
 
 ##### `recovery-required` bloquea retry y fallback
 
@@ -1029,6 +1202,190 @@ otro transporte hasta cerrar el recovery.
 fija "Estados terminales que liberan el gate". `recovery-required` bloquea el reintento y el fallback;
 no agrega una casilla de espera antes de presentar.
 
+##### Recuperación tras vencer el tope
+
+Cuando el tope de pared de una ronda vence **sin la marca de cierre** (`STATUS: done`, ver "Señal de
+cierre"), el hilo del revisor casi siempre sigue siendo reanudable: el tope lo puso el conductor, no
+el revisor. En vez de degradar directo, la ronda se **recupera una sola vez**, automáticamente y sin
+agregar un stop. El peor caso son dos veces el tope.
+
+**Cuándo aplica.** A cualquier ronda de las Vías B y C. **No aplica** a la Vía A, cuyo hilo lo
+administra su runtime; a un **bloqueo no resuelto** —una aprobación interactiva que no se destrabó—,
+porque reanudar el hilo lo volvería a bloquear; ni a una serie lanzada por la receta del seed desde co-exploración, que se
+reconoce porque el **primer** intento del worker en el sobre tiene `transport: cli-resume`: la serie
+empezó reanudando una sesión ajena, y ahí rige la degradación de siempre. El fallback del seed a una
+sesión nueva tampoco corre ante un tope vencido, porque relanzar sin cese confirmado contradice
+`corridas-en-vuelo.md` → «Relanzamiento seguro».
+
+**Orden.** Una salida es **conforme** si pasa "Validación por bloque", termina en la marca de cierre y
+es **más nueva que la marca de lanzamiento** de su intento (ver "Archivos de trabajo (scratch)").
+
+- **(a)** Si la salida del intento original está conforme, se cosecha como una ronda normal y **no
+  hay recuperación**, esté vivo o no su proceso. Si sigue vivo, el sobre sigue activo hasta que el
+  bloque de cese lo resuelva.
+- **(b)** Si no, se corre el **bloque de cese** sobre el proceso original: solicita el cese si sigue
+  activo y lo comprueba dentro de un plazo acotado.
+- **(c)** Con el cese confirmado, se vuelve a leer esa salida y se aplica (a) si ahora está conforme.
+- **(d)** Si sigue sin salida conforme y el **identificador del hilo** y el **perfil congelado** están
+  en disco, se reanuda **ese mismo hilo una sola vez**, con la receta de resume de su vía y la tabla
+  de sustituciones de abajo: posicionado en el `working_dir` de la ronda que venció, con el prompt
+  `assets/prompts/review-recover.md` —que pide solo emitir la salida de esa ronda en su formato
+  vigente, cobertura incluida, sin volver a explorar—, con un tope propio que **no excede** el de la
+  ronda que venció y en rutas exclusivas de ese intento.
+
+**De dónde sale el id.** En la **ronda 1 de la Vía B**, del stream del intento que venció: si el
+bloque «Derivar el id del hilo» todavía no corrió, se corre ahora, y el `session.txt` solo vale si es
+**más nuevo que `launch-r1.mark`** —uno anterior es de otra corrida—. En una **ronda N de la Vía B**,
+del `session.txt`, que es el id con que ese intento se lanzó y ya estaba escrito antes de lanzarlo.
+En la **Vía C**, del `session.txt`, escrito antes de la ronda 1. El **perfil congelado** es el
+`session-meta.json` de la corrida; un campo vacío significa default del CLI, igual que en toda
+reanudación entre rondas. Un intento que no escribió su marca —lanzado con una receta anterior a la
+que la escribe— no tiene nada de esto acreditado y no se recupera.
+
+**El bloque de cese.** No invoca ningún CLI de familia, así que va fuera de toda región `despacho:`.
+Trabaja en dos etapas: el proceso por su **nombre exacto** (`codex` · `claude`) y después el
+**testigo** como subcadena literal de su línea de comando —en la Vía B, la ruta de
+`--output-last-message` del intento; en la Vía C, el session id—. **Solo se termina un proceso
+atribuible a este intento**: el del PID persistido por esta corrida —en la Vía B,
+`codex-r1.<run_id>.pid`— que pasa las dos etapas, o uno cuyo `argv` lleva el id del hilo de esta
+corrida —las rondas N y la recuperación de la Vía B lo pasan a `exec resume`; la Vía C, a
+`--session-id` o `--resume`—. Un proceso que coincide **solo por la ruta de salida**, que dos corridas
+del mismo artefacto comparten, se observa y no se termina: si sigue vivo, el cese es incierto. Así el
+bloque nunca termina el proceso de otra corrida. Un proceso con el nombre correcto y sin línea de
+comando legible cuenta como **incierto**, nunca como «sin coincidencias», y sin herramienta de
+observación —o si la consulta falla— el resultado también es incierto.
+
+```bash
+# POSIX — parámetros: NAME (codex|claude); TESTIGO (Vía B: la ruta absoluta de
+# --output-last-message del intento; Vía C: el session id); ID (el id del hilo si viaja en el argv
+# del intento; vacío en la ronda 1 de la Vía B); PIDFILE (el .pid del intento, o vacío).
+cese_intento() {
+  command -v pgrep >/dev/null 2>&1 && command -v ps >/dev/null 2>&1 ||
+    { echo "cese incierto: sin herramienta de observación"; return 1; }
+  pid_propio=""; [ -n "$PIDFILE" ] && [ -f "$PIDFILE" ] && pid_propio=$(cat "$PIDFILE")
+  candidatos=$(pgrep -x "$NAME"); rc=$?
+  # pgrep sale 1 cuando no hay coincidencias; 2 o más es que la consulta falló, y eso no es «ninguno»
+  [ "$rc" -le 1 ] || { echo "cese incierto: pgrep falló (código $rc)"; return 1; }
+  incierto=0
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    # si ps falla con el proceso vivo, la segunda etapa no se hizo: incierto, no «terminó»
+    cmd=$(ps -o command= -p "$p" 2>/dev/null) ||
+      { kill -0 "$p" 2>/dev/null && incierto=1; continue; }
+    [ -n "$cmd" ] || { incierto=1; continue; }                 # nombre correcto, argv ilegible
+    printf '%s\n' "$cmd" | grep -qF -- "$TESTIGO" || continue
+    if [ "$p" = "$pid_propio" ] || { [ -n "$ID" ] && printf '%s\n' "$cmd" | grep -qF -- "$ID"; }; then
+      kill -TERM "$p" 2>/dev/null
+      n=0; while kill -0 "$p" 2>/dev/null && [ "$n" -lt 5 ]; do sleep 1; n=$((n + 1)); done
+      kill -0 "$p" 2>/dev/null && { kill -KILL "$p" 2>/dev/null; sleep 1; }
+      kill -0 "$p" 2>/dev/null && incierto=1
+    else
+      incierto=1                                               # solo por la ruta: se observa
+    fi
+  done <<EOF
+$candidatos
+EOF
+  if [ "$incierto" -eq 0 ]; then echo "cese confirmado"; else echo "cese incierto"; fi
+  return "$incierto"
+}
+```
+
+```powershell
+# PowerShell — mismos parámetros: $Name, $Testigo, $Id, $PidFile. Las dos etapas salen de una fuente
+# que entrega nombre y línea de comando: Get-CimInstance en Windows (5.1 y 7); fuera de Windows,
+# Get-Process para el nombre y `ps -o command=` para la línea, porque Get-Process da CommandLine
+# vacía en macOS. En Windows no hay TERM: Stop-Process termina el proceso.
+function Stop-Intento {
+  $PidPropio = if ($PidFile -and (Test-Path $PidFile)) { (Get-Content $PidFile).Trim() }
+  $EnWindows = ($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows
+  # Una consulta que falla no es «ningún proceso»: -ErrorAction Stop la vuelve incierto.
+  try {
+    if ($EnWindows) {
+      $Procs = @(Get-CimInstance Win32_Process -Filter "Name='$Name.exe'" -ErrorAction Stop |
+                 ForEach-Object { [pscustomobject]@{ Id = $_.ProcessId; Cmd = $_.CommandLine } })
+    } elseif (Get-Command ps -CommandType Application -ErrorAction SilentlyContinue) {
+      # filtrar por nombre y no `-Name`: sin coincidencias, `-Name` da un error indistinguible de un fallo
+      $Procs = @(Get-Process -ErrorAction Stop | Where-Object { $_.ProcessName -eq $Name } |
+                 ForEach-Object { [pscustomobject]@{ Id = $_.Id; Cmd = "$(& ps -o command= -p $_.Id)" } })
+    } else { 'cese incierto: sin herramienta de observación'; return $false }
+  } catch { "cese incierto: la consulta de procesos falló ($($_.Exception.Message))"; return $false }
+  $Incierto = $false
+  $Vivo = { param($i) [bool](Get-Process -Id $i -ErrorAction SilentlyContinue) }
+  foreach ($p in $Procs) {
+    if (-not $p.Cmd) { if (& $Vivo $p.Id) { $Incierto = $true }; continue }   # vivo con argv ilegible
+    if (-not $p.Cmd.Contains($Testigo)) { continue }
+    if ("$($p.Id)" -eq $PidPropio -or ($Id -and $p.Cmd.Contains($Id))) {
+      if ($EnWindows) { Stop-Process -Id $p.Id -ErrorAction SilentlyContinue }
+      else { & kill -TERM $p.Id 2>$null }
+      $n = 0; while ((& $Vivo $p.Id) -and $n -lt 5) { Start-Sleep 1; $n++ }
+      if (& $Vivo $p.Id) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; Start-Sleep 1 }
+      if (& $Vivo $p.Id) { $Incierto = $true }
+    } else { $Incierto = $true }                                     # solo por la ruta: se observa
+  }
+  if ($Incierto) { 'cese incierto'; $false } else { 'cese confirmado'; $true }
+}
+```
+
+**Tabla de sustituciones.** La recuperación no trae recetas propias: es la receta de resume de su vía
+—`cr-resume-posix`/`-ps` en la Vía B, `cr-viac-resume-posix`/`-ps` en la Vía C— con estos cambios.
+Todas las rutas se resuelven a **absolutas antes** de posicionarse en el `working_dir`.
+
+| Qué | En la receta de resume | En la recuperación |
+|---|---|---|
+| entrada | `<ruta/al/delta-rN.txt>` | `<ruta/al/recover-rN.txt>`: el cuerpo del asset `review-recover.md` —sin su comentario de cabecera, como los otros prompts— y sin otros cambios, escrito con la tool de escritura |
+| veredicto | `<ruta/veredicto.txt>` · `<ruta/al/veredicto.txt>` | `<ruta/al/verdict-rN-rec.txt>` |
+| stream y stderr | `thread-rN.jsonl` · `rN.err.txt` | `thread-rN-rec.jsonl` · `rN-rec.err.txt` |
+| marca | `launch-rN.mark` | `launch-rN-rec.mark` |
+| id | `session.txt` | el que resolvió «De dónde sale el id» |
+| tope | el de la ronda | igual o menor al de la ronda que venció |
+| posición | `<working_dir>` | el `working_dir` de la ronda que venció |
+
+**El intento en el sobre.** El intento `rN-rec` se asienta **completo antes de despachar**, con sus
+siete campos: `attempt_id` `rN-rec`, `transport: cli-resume`, `output` = la ruta `-rec`,
+`process_ref: null` —antes de lanzar no hay proceso que observar, y una referencia sin frescura no
+puede autorizar un cese—, `wait_budget` propio, `assignment_digest` del prompt de emisión y
+`harvested: false`. Después, `process_ref` se completa con sus cuatro componentes —`tipo`,
+`referencia` (el PID o el id del hilo), `evidencia_de_frescura` (la coincidencia de las dos etapas) y
+`autoridad`— con el rename atómico del sobre. Ese completado **no es una línea del bloque de
+lanzamiento**, porque las recetas de resume son bloqueantes y el tope las corta: lo hace el conductor
+cuando recupera el control, con la observación del bloque de cese, antes de decidir nada sobre el
+intento. Solo se completa si esa observación encuentra el proceso vivo y atribuible: si la
+recuperación ya terminó, `process_ref` queda `null` —no hay proceso consultable ni frescura que
+acreditar— y eso no impide cosechar su salida.
+
+**Antes de despachar se lee `attempts[]`**: si ya existe un `rN-rec` para esa ronda, no se despacha
+otro. Si quien lo encuentra es el conductor que creó el sobre, lo cosecha o lo clasifica; si es otra
+sesión, **lee e informa** y no escribe, porque el sobre tiene un solo escritor
+(`corridas-en-vuelo.md` → «Un solo escritor: el creador del sobre»), y operarlo exige la adopción con
+autorización explícita.
+
+**Bordes.** Antes de **cualquier** despacho posterior sobre ese hilo —la ronda siguiente o la
+recuperación— el cese del intento anterior se confirma con el mismo bloque, también cuando (a)
+cosechó con el proceso vivo; con cese incierto no se despacha y el gate se presenta con lo cosechado.
+Y **el fallback a rondas independientes no rige durante la recuperación**: si su resume falla, el
+resultado sale de la tabla de abajo y no se despacha otro revisor.
+
+**Resultados cuando la recuperación no aplica o no prospera.** Nunca hay otra espera:
+
+| Caso | Resultado | Sobre |
+|---|---|---|
+| sin id o sin perfil congelado en disco —incluido un intento lanzado con la receta anterior— | `UNAVAILABLE` · `deadline_exceeded` | se retira cuando se cumplen sus tres condiciones |
+| el cese del original no se confirma dentro de su plazo | `recovery-required`, sin recuperación ni fallback; el gate se libera con `UNAVAILABLE` · `deadline_exceeded` | **sigue activo** |
+| la recuperación vence su tope | `UNAVAILABLE` · `deadline_exceeded` | activo hasta confirmar el cese de la recuperación |
+| la recuperación termina antes de su tope sin salida conforme | `UNAVAILABLE` · `runtime_failure` | se retira cuando se cumplen sus tres condiciones |
+| salida conforme, pero su cobertura declara `no-examinable` todas las dimensiones | la recuperación no prosperó: `UNAVAILABLE` · `deadline_exceeded` | se retira cuando se cumplen sus tres condiciones |
+
+El intento de recuperación queda sujeto a los **mismos invariantes de recuperación** que el original
+(`corridas-en-vuelo.md` → «Invariantes de recuperación»): vencer su tope no prueba su cese ni retira
+el sobre, y su cese se comprueba con el mismo bloque, con su propia ruta `-rec` como testigo.
+
+**Registro de una ronda recuperada.** Cuenta como **una** ronda —la misma que venció, no una
+adicional— dentro de `max_rounds`. Su fila de cierre en el `review-log.md` lleva en el rationale
+«recuperada tras vencer el tope, reanudando el hilo interrumpido» y cuántas dimensiones declaró el
+revisor `no-examinable` en su cobertura, y el aviso que acompaña al gate lleva lo mismo en una línea.
+Ninguno de los dos afirma que el contexto del revisor se detuvo en el instante del corte: entre el
+vencimiento y el cese confirmado pudo seguir trabajando.
+
 ##### Callback o poll: el segundo predicado, una vez en `background`
 
 `execution` sigue siendo un enum **cerrado de tres valores** (`auto | sync | background`), y los
@@ -1054,8 +1411,9 @@ proceso; despertar al conductor cuando el comando termina es del **host** que lo
 procesos bien no vuelve verdadero el predicado.
 
 **Falla cerrado.** Con el predicado en falso, `background` **falla cerrado al poll acotado de hoy**:
-el `poll_deadline`, el contador de iteraciones y el `UNAVAILABLE` con causa `deadline_exceeded` al
-vencer, tal como quedan definidos arriba. El invariante no se toca: ningún camino espera indefinida.
+el `poll_deadline`, el contador de iteraciones y, al vencer, la recuperación única y después el
+`UNAVAILABLE` con causa `deadline_exceeded` si no prospera, tal como quedan definidos arriba. El
+invariante no se toca: ningún camino espera indefinida.
 
 ##### Estados terminales que liberan el gate
 
@@ -1070,7 +1428,7 @@ casilla en la que quedarse esperando.
 | Observable | Qué se presenta |
 |---|---|
 | **veredicto cosechado y validado** — parseado al formato estructurado y triado | el gate **con** la crítica incorporada: es el único que aporta findings |
-| **deadline vencido** sin el marcador de cierre | el gate **igual**, con el aviso de degradación de una línea (`UNAVAILABLE` · `deadline_exceeded`) |
+| **deadline vencido** sin el marcador de cierre, cuando la recuperación no aplica o no prosperó | el gate **igual**, con el aviso de degradación de una línea (`UNAVAILABLE` · `deadline_exceeded`). Una ronda **recuperada** con salida conforme cae en la primera fila, con el aviso de "Recuperación tras vencer el tope" |
 | **bloqueo no resuelto** — esperó una aprobación interactiva y no se destrabó dentro de su deadline | el gate **igual**, con el aviso de degradación (`UNAVAILABLE` · `deadline_exceeded`, que es lo que ocurrió) |
 | **artefacto ausente** — terminó **por su cuenta, antes de que venciera el tope**, sin dejar salida en la ruta acordada, o dejó una que no se puede parsear ni con parseo tolerante | el gate **igual**, con el aviso de degradación (`UNAVAILABLE` · `runtime_failure`) |
 | **indisponibilidad** — no se pudo lanzar, o arrancó y falló ejecutando, con cualquiera de sus causas | el gate **igual**, con el aviso de degradación |
@@ -2013,7 +2371,9 @@ quinto son:
 7. **Revisor read-only.** “Las reglas invariantes de ‘Invocar al revisor’ valen en ambos shells:
    read-only siempre” permanece en “Vías de invocación”.
 8. **Degradación que nunca bloquea.** Los fallos y vencimientos conservan la salida
-   “`UNAVAILABLE`, degradar al gate humano”; el tope de pared sigue evitando una espera indefinida.
+   “`UNAVAILABLE`, degradar al gate humano”; un vencimiento pasa antes por la recuperación única
+   cuando aplica (“Recuperación tras vencer el tope”), con su propio tope, así que el tope de pared
+   sigue evitando una espera indefinida.
 9. **Predicado y cuatro ramas.** “Las ramas se evalúan en este orden y la primera que aplica decide”
    permanece junto a la tabla byte-invariante de cuatro ramas en “Veredicto derivado”.
 10. **Finding tardío esperado, sin cuota.** “Un finding genuinamente nuevo en una ronda tardía es
@@ -2306,8 +2666,9 @@ cross_review:
 - `execution: auto` elige por la **capacidad de timeout de exec del conductor** (ver "Latencia y timeout (Claude revisor)"): conductor que puede fijar un tope largo (Claude Code: `Bash` con `timeout` hasta
   600000ms) → **sync** (camino preferido); conductor con exec corto no ampliable (Codex ~120s/comando)
   → **background + poll acotado**. `sync` fuerza una única llamada bloqueante; `background` fuerza el
-  poll acotado. En **todos** los modos hay un tope de pared duro: vencido → `UNAVAILABLE` (regla 6),
-  nunca espera indefinida. Ese predicado resuelve **solo** entre `sync` y `background`; una vez en
+  poll acotado. En **todos** los modos hay un tope de pared duro: vencido → la recuperación única de
+  "Recuperación tras vencer el tope", si aplica, y si no prospera `UNAVAILABLE` (regla 6); nunca
+  espera indefinida. Ese predicado resuelve **solo** entre `sync` y `background`; una vez en
   `background`, callback o poll lo decide un segundo predicado (ver "Callback o poll: el segundo
   predicado, una vez en `background`"). Los defaults de las tres skills viven en
   `co-explore/reference.md` → "Latencia y deadlines"; el de `cross-review` es `auto`.
