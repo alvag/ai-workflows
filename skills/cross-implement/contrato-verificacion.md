@@ -233,6 +233,13 @@ contra la spec ni contra el work order entero. La forma de esa lista es cerrada:
 Pasarle la spec en lugar de la lista no produce un rechazo de cobertura: la guarda se detiene en la
 primera línea que no es un identificador y dice cuál es.
 
+**Lo que la guarda no comprueba: que la lista esté completa.** Valida la forma de la lista, no que
+contenga todo el alcance. Un requisito que falta en la lista **y** en el contrato sale en verde: con
+una spec que declara `AC-1` y `AC-2`, una lista que solo trae `AC-1` y un contrato con una sola fila
+para `AC-1`, la guarda devuelve `0` aunque `AC-2` no tenga fila. No hay todavía un productor canónico
+de la lista, así que su completitud la sostiene quien la escribe, cotejándola contra la fuente
+autoritativa de su alcance antes de invocar la guarda.
+
 **Cómo cita una fila sus requisitos.** La celda `Requisito` abre con el identificador. Si la fila
 prueba varios requisitos, los cita **separados por comas** antes del texto —`AC-2, AC-4 — el guard
 redirige y no consulta`—. La lista termina en lo primero que no sea una coma seguida de otro
