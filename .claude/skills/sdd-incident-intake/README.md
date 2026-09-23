@@ -115,7 +115,7 @@ observó, el código a corregir vive en el repo de skills.
   **dos**, y el parámetro `plataforma` dirige esa resolución sin suplirla —la identidad pedida se
   comprueba igual, y si no está viva el despacho se detiene—. Las cuatro combinaciones de plataforma
   y familia están soportadas punta a punta, y la resuelta viaja al flujo despachado dentro del
-  dossier —como hecho observado, no como consentimiento de transporte—. No hace falta en `volcar`.
+  dossier, como hecho observado. No hace falta en `volcar`.
 - **`gh`** autenticado, solo para `volcar` y para leer desde `issues`.
 - Acceso al **remoto** del `repo_destino` para el `fetch` del paso 4. Para los PRs abiertos, `gh`
   autenticado (GitHub) o el MCP `bb_*` (Bitbucket): si no hay ninguno, el chequeo se reporta como

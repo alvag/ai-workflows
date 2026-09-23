@@ -83,6 +83,13 @@ permiso.**
 | `encargos` | `identico-por-digest` · `nucleo-comun` · `distinto-por-worker` · `delta-sobre-el-anterior` · `no-aplica` |
 | `deadline` | `propio-por-worker` |
 
+El universo normativo es **todo sitio que emite workers**, no la lista que el inventario declara. El
+inventario es una **proyección auditable** de ese universo: su verde acredita que lo declarado
+coincide con lo inventariado, y **nunca** que estén todos —su propia frontera admite que un despacho
+sin marca le es invisible—. Por eso crear un punto de despacho nuevo incorpora **marca, declaración
+de invariantes y fila de inventario** como parte del acto de crearlo, y no como un trámite posterior
+que alguien recuerde.
+
 **Por qué los invariantes son heterogéneos, y por qué eso no los ablanda.** Solo dos de los once
 puntos tienen forma «una familia por worker»; la revisión final de diff elige la familia **opuesta
 al autor real del código**, con degradación declarada solo cuando no está disponible. El enum no
@@ -102,8 +109,7 @@ Exige que el núcleo común sea byte-idéntico y admite un **anexo privado decla
 anexo —`explore`, `investigate`— el núcleo **es** el encargo entero y la relación degenera en
 identidad, sin que haya que declarar dos valores para el mismo punto. La distinción existe porque
 `counter-plan` reparte por contrato un anexo por familia: portar ahí `identico-por-digest` haría
-que el segundo worker se rechace siempre, que es un defecto hoy **latente** —nunca se disparó porque
-esas corridas fueron por línea de comandos— y que activar esta vía volvería vivo.
+que el segundo worker se rechace siempre, que es un defecto hoy **latente**.
 
 **`familias: continuacion-del-anterior`** nombra al worker que **reanuda la sesión** de un intento
 previo en vez de nacer fresco: su familia no se elige, se hereda, y exigirle una elección sería
@@ -117,24 +123,6 @@ fila podría **omitirlo**, y la omisión es exactamente el modo de falla que el 
 sección, así que un segundo cuadro ahí adentro —un ejemplo, una matriz de estados— rompe la
 biyección del inventario con un mensaje que habla de puntos de despacho y no de tablas. Si hace
 falta otra tabla, va en una sección hermana.
-
-### La clase de operación se sigue de la pertenencia
-
-Toda corrida que este contrato gobierna es **coordinación supervisada**. El propio contrato registra
-qué workers salieron, hasta cuándo el conductor los espera y si la cosecha sigue pendiente, y aplica
-ese mecanismo a los once puntos de despacho del ecosistema.
-
-Queda fuera toda operación de terminales que no emita workers que haya que esperar y cosechar.
-`sdd-incident-intake` es un caso real: opera la plataforma con verbos propios y no es un punto de
-despacho.
-
-Qué exige ese régimen lo declara la guía del terreno que sirve el **binario de la plataforma
-resuelta**, no una copia instalada. Medido sobre **Orca**: su guía `orchestration` exige crear o
-vincular una corrida, crear la tarea y adjuntar el worker.
-
-**Esa medición es de una plataforma y no se generaliza, y por eso se nombra cuál.** Lo que rige en
-todas es el régimen —supervisado o no—; lo que cada plataforma exige para cumplirlo se le pregunta a
-su propio binario, en el momento.
 
 ### La matriz de invocación del instrumento
 
@@ -177,8 +165,8 @@ asentados, así que no puede correr antes de que existan. Colapsarlos en uno dej
 dos de los cuatro invariantes: cuál, depende de cuándo se corriera el único que quedara.
 
 **Lo que ninguno de los dos acredita.** Los dos leen lo que el conductor declaró y lo que el
-conductor asentó. **Un despacho que nunca se asentó no existe para ninguno**, y esa dirección la
-cubre únicamente la reconciliación contra la fuente efectiva de la plataforma. No es un hueco
+conductor asentó. **Un despacho que nunca se asentó no existe para ninguno**, y esa dirección no la
+cubre ninguno de los dos. No es un hueco
 reparable endureciendo estos modos: es la frontera de un instrumento que lee documentos, y está
 escrita en su docstring para que su verde no se lea como más de lo que autoriza.
 
@@ -905,7 +893,7 @@ mismo turno para ver si cambió, que es un retry con otro nombre.
 ### Fuente por transporte
 
 **La fuente la fija el transporte del intento vigente**, no la skill ni la corrida: el mismo worker
-puede tener una fuente distinta en su segundo intento que en el primero. Estos son los cinco
+puede tener una fuente distinta en su segundo intento que en el primero. Estos son los tres
 transportes y lo que cada uno ofrece:
 
 | transporte | fuente | qué se consulta, y con qué autoridad |
@@ -913,8 +901,6 @@ transportes y lo que cada uno ofrece:
 | `subagent` | `ninguna` | nada a mitad de vuelo: ni proceso propio, ni salida en disco por contrato |
 | `cli-exec` | `archivo+proceso` | la salida del intento en su ruta exclusiva y el proceso hijo; manda el archivo |
 | `cli-resume` | `archivo+proceso` | la salida de **este** intento y el proceso del resume; manda el archivo |
-| `pane-herdr` | `archivo+proceso` | la salida del intento en su ruta exclusiva y el panel, que expone liveness y estado del agente de forma nativa; manda el archivo |
-| `pane-orca` | `archivo+proceso` | la salida del intento en su ruta exclusiva y el panel, cuyo liveness se **deriva** del registro vivo y que no expone estado del agente; manda el archivo |
 
 **Para `subagent` no hay fuente consultable a mitad de vuelo, y eso es el hecho, no una omisión.** Un
 subagente del entorno no expone ningún proceso que se pueda interrogar y no está obligado por su

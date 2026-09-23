@@ -99,10 +99,6 @@ Enums cerrados, forma de la tabla y qué pasa con un punto sin fila:
 `skills/cross-review/corridas-en-vuelo.md` → «Los invariantes que cada punto de despacho declara»,
 que es su **sede única**.
 
-**Cada punto de arriba resuelve su vía por el carrier de transporte**, con las cuatro ramas de
-`skills/sdd-flow/reference.md` → «El carrier de transporte, y sus cuatro ramas» y **ninguna otra**.
-En la rama de plataforma el punto expresa **intención** y **no nombra verbos de ninguna plataforma**.
-
 <!-- invoca: despacho-preflight -->
 <!-- invoca: despacho-corrida -->
 

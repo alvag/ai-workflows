@@ -119,7 +119,7 @@ Acá cambia el rol buscado: no un crítico read-only sino un **implementador con
 | Familia del autor | Implementador por default | Cómo detectarlo | Vía |
 |---|---|---|---|
 | Claude | Codex | `command -v codex` (PowerShell: `Get-Command codex -ErrorAction SilentlyContinue`) | Vía W-B (workspace-write) |
-| GPT/Codex | Claude | `command -v claude` | Vía W-C (headless medido o panel supervisado) |
+| GPT/Codex | Claude | `command -v claude` | Vía W-C (headless medido) |
 
 <!-- corpus-invariante:inicio:cross-implement.reference.md.7cce0044363c -->
 
@@ -487,22 +487,8 @@ comprobar las entradas vigentes del gate Bash antes del resume.
   buscando `STATUS: done` — mismo patrón BACKGROUND de `cross-review/reference.md` → "Latencia
   y timeout (Claude revisor)", con el deadline de esta skill.
 
-**Alternativa interactiva supervisada.** El carrier de transporte de `sdd-flow/reference.md` →
-«El carrier de transporte, y sus cuatro ramas» selecciona la plataforma; el carrier **existente**
-abre el panel y entrega el encargo. Antes de crear el panel, su consentimiento propio y sellado para
-el lote debe enumerar herencia de entorno y credenciales, consumo de contexto, necesidad de red y
-ausencia de confinamiento de escritura por un sandbox del agente. No se reutiliza el consentimiento
-de otra fase ni se crea otro consentimiento independiente del carrier. Antes de entregar el trabajo,
-el conductor observa `auto mode on` en ese panel y registra el literal, la identidad observada y el
-momento en `## Consentimiento de transporte` del `plan.md` de la invocación directa, o en un evento
-del ledger llamador si la skill está embebida; ese asiento apunta al consentimiento sellado del
-carrier como autoridad de la selección. `transporte_fuente` y `transporte_proceso` del manifest
-mantienen su significado de panel consultable y proceso del agente: no son campos de consentimiento.
-Si falta cualquiera de esos hechos, usar la vía headless; si el encargo exige expresamente panel
-interactivo, detenerse. El panel no hereda el argv ni las garantías headless.
-
 **PowerShell W-C no está soportada** por este contrato hasta una medición propia. No se traslada la
-forma POSIX ni se presume equivalencia con `Start-Process` o con el panel supervisado. Git Bash usa
+forma POSIX ni se presume equivalencia con `Start-Process`. Git Bash usa
 la forma POSIX; en PowerShell nativo, la presencia de `claude` no basta: W-C devuelve `UNAVAILABLE`
 y la llamadora continúa inline. Si el encargo exige expresamente W-C, se detiene. Este retiro es una
 excepción intencional a la regla general que exige variantes POSIX y PowerShell para comandos nuevos.
@@ -593,9 +579,8 @@ en esta sede bajo un gate propio antes de construir argv o despachar. La regla `
 limita sus efectos al comando de la sonda ni confina sus efectos en disco.
 
 `dontAsk` no aportó ventaja observable sobre `default` en las celdas restringidas. El parser aceptó
-`auto`, pero **no** se midió `auto --restricted`; queda reservado a la alternativa interactiva con
-consentimiento y observación propia. `--allowedTools` no demostró ser una frontera exclusiva de
-tools, y ninguna garantía anterior se atribuye a `--safe-mode` aislado.
+`auto`, pero **no** se midió `auto --restricted`. `--allowedTools` no demostró ser una frontera
+exclusiva de tools, y ninguna garantía anterior se atribuye a `--safe-mode` aislado.
 
 Flags pueden variar por versión: ante la duda, `codex exec --help` / `claude --help`.
 

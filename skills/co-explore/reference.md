@@ -144,14 +144,6 @@ distintos, y repartirlas mal rompe una de las dos:
 | **qué herramienta concreta** se le prohíbe, y cómo se la deshabilita | **la plataforma** | el nombre de la tool y la forma de apagarla son de cada host, y envejecen con cada release ajeno |
 | que **el conductor sí la use** para consultarte a vos | **el flujo**, dicho explícitamente | sin decirlo, la prohibición del worker se lee como si alcanzara a los dos |
 
-**Y la razón por la que esto dejó de poder darse por sentado está medida.** La regla se apoyaba en que
-el worker *corría no-interactivo*, que era una propiedad del transporte headless y no una decisión: no
-había a quién preguntarle. Sobre la vía por paneles **ya no es cierta** — el worker corre en una
-terminal con su interfaz completa, y en las corridas de esta vía apareció texto tipeado en el campo de
-entrada de un worker que ningún conductor envió. Entonces lo que impide que pregunte no es el
-transporte: es **esta prohibición**, y por eso tiene que estar escrita en vez de heredarse de una
-propiedad que cambió.
-
 **El perímetro no se cierra a una lista de archivos.** `explore` e `investigate` reciben un síntoma
 o un ticket, no un inventario: descubrir dónde vive el cambio y cuál es la cadena causal *es* el
 objetivo, y una lista cerrada esconde justamente las dependencias que nadie conocía. Solo cuando
@@ -1050,13 +1042,12 @@ done
 Sin anexo disponible, el worker corre solo con el núcleo y su informe vale igual: pierde su propia
 memoria de la fase anterior, no la validez.
 
-### La vía por terminales dentro del fan-out
+### Los invariantes del fan-out
 
-Sobre esta vía **no cambia la semántica del fan-out, solo el transporte**: un worker por familia
-seleccionada, el mismo encargo para los dos, los dos despachados antes de esperar a ninguno, y un
-deadline propio por worker. Lo que cambia es **quién lo hace cumplir**. Antes era un efecto secundario
-de lanzar por el adaptador; delegado el transporte a la skill de la plataforma ese efecto desaparece,
-y los invariantes pasan a comprobarse explícitamente contra lo que **cada punto declara**.
+El fan-out despacha un worker por familia seleccionada, con el mismo encargo para los dos, los dos
+despachados antes de esperar a ninguno y un deadline propio por worker. Esos invariantes no se
+cumplen como efecto de lanzar: se comprueban explícitamente contra lo que **cada punto declara**,
+con el instrumento de despacho.
 
 **Los invariantes obligatorios no son una lista fija de esta sección: son los `invariantes que ese punto`
 declara en su fila del inventario**, y por eso la tabla de abajo enumera los de este punto y no los de
@@ -1066,7 +1057,7 @@ comprobar nada.
 
 | Propiedad de `AC-5` | Qué la hace cumplir | Qué pasa si se viola |
 |---|---|---|
-| los dos despachados antes de esperar a ninguno | el instrumento, en el momento `corrida`, sobre el sobre | `fan-out-incompleto`, con los paneles pendientes enumerados |
+| los dos despachados antes de esperar a ninguno | el instrumento, en el momento `corrida`, sobre el sobre | `fan-out-incompleto`, con los workers pendientes enumerados |
 | exactamente un worker por familia | el instrumento, en el momento `preflight`, sobre la composición | `familia-duplicada`, y no se lanza |
 | encargo idéntico para los dos | el instrumento, en el momento `preflight`, cotejando el `sha256` | `encargo-divergente`, y no se lanza |
 | deadline propio por worker | el campo propio del worker en el sobre, comprobado en el momento `corrida` | dos workers comparten vencimiento y uno muere por el reloj del otro |
@@ -1085,72 +1076,8 @@ comprobables **antes** de lanzar —la familia y el encargo se conocen al compon
 elegir cuál se pierde: en el preflight no existe todavía la corrida, y en la corrida ya se creó el
 recurso que el invariante quería impedir.
 
-**El deadline por worker dejó de ser una forma de la invocación y pasó a ser un campo.** Cuando lo
-hacía cumplir la firma de un verbo —un vencimiento por invocación y no por corrida—, lo que lo
-garantizaba era la **forma de la CLI**, no una comprobación; retirada esa CLI, el invariante quedaba
-sin sujeto. Ahora vive como campo propio de cada worker en el sobre, que es lo que un instrumento
-puede leer.
-
-**El contribuyente de la síntesis es el informe cosechado por esta vía, y ninguno otro.** Es el
-artefacto que el worker dejó en su ruta y que `cosechar` atravesó por el mismo pipeline de validación
-que la vía headless. La distinción es
-material porque el panel ofrece una segunda lectura tentadora y **prohibida**: lo que se ve en la
-terminal no es el contribuyente, ni siquiera cuando coincide. El ledger lo asienta con
-`contribuyente: informe-cosechado` al aceptar, así que qué alimentó la síntesis es una pregunta con
-respuesta en disco y no una reconstrucción.
-
-**El cese, antes de degradar.** Si la vía falla después de crear recursos, el fallback a headless
-exige **evidencia positiva** de que todo proceso previo dejó de escribir: un deadline vencido y un
-reporte terminal **no** prueban el cese. `cerrar --modo liquidar` acredita cuando midió y no quedan
-residuales; si no puede, el resultado es **incierto**, el fallback queda **vedado** y los residuales
-se enumeran en vez de darse por cerrados. Cada intento escribe en una ruta exclusiva, y el worktree
-**nunca** se elimina como parte de la compensación: su ciclo de vida es el del flujo, no el de esta
-vía.
-
-**Qué puede hacer una persona en el panel sin invalidar la corrida.** Tres cosas, y son las únicas
-declaradas admisibles:
-
-1. **inspeccionar** — leer lo que el worker está haciendo, desplazarse por su salida;
-2. **aprobar** una solicitud que el agente levante por su cuenta;
-3. **abortar** la corrida.
-
-Lo que **sí** invalida el intento es alterar el encargo, y el transporte lo observa por dos vías: el
-`digest` del archivo del encargo, cotejado antes y después, y el `hash_encargo_leido` que el worker
-declara en su propio artefacto. Ante cualquiera de las dos, el intento se detiene y hay que
-**relanzar con un encargo nuevo para todos los workers de la corrida**, no solo para el afectado: si
-uno leyó otra cosa, los dos mapas dejaron de ser comparables y esa comparación es el producto.
-
-> **Y hay una intervención que el transporte no puede ver, en ninguna plataforma soportada:** una
-> instrucción **tipeada a mano en el panel**. No toca el archivo del encargo ni el artefacto, así que
-> no mueve ninguno de los dos digests, y ni Herdr ni Orca exponen el input del usuario como algo
-> consultable. La consecuencia hay que decirla entera: una corrida contaminada así **pasa todas las
-> comprobaciones** y su informe entra a la síntesis como válido. La única defensa es de proceso —no
-> tipear en el panel de un worker— y esta línea existe para que esa ausencia esté declarada y no se
-> descubra después como una sorpresa.
-
-### Retirar la oferta: qué se revierte y qué no
-
-La vía se ofrece dentro del checkpoint de contexto de `sdd-flow`, y esa oferta se puede **retirar**
-—porque la prueba viva de su plataforma no la acredite, porque una plataforma cambie, o porque se
-decida volver a headless—. Retirarla es barato **a propósito**, y conviene tener escrito qué alcanza:
-
-| | qué pasa al retirar la oferta |
-|---|---|
-| **flujos nuevos** | nacen headless. No se les ofrece y no hay nada que elegir |
-| **registros ya escritos** | siguen siendo **legibles**. `pane-herdr` y `pane-orca` quedan en el enum de las tres sedes; retirarlos convertiría en inválido un registro que describe correctamente lo que pasó |
-| **workers en vuelo** | **terminan por su vía**. No se los migra, no se los mata y no se los convierte a headless a mitad de corrida |
-| **flujos con el bloque `transporte` en su retomado** | la retoma los resuelve por su matriz, como siempre: si la plataforma sigue utilizable continúan por ella |
-
-**El rollback es de la oferta, no de los datos, y esa distinción es la que lo vuelve seguro.** Una
-reversión que también retirara los literales del enum obligaría a migrar o invalidar lo ya escrito, y
-entonces retirar dejaría de ser barato — que es justamente la propiedad que hace que la vía se pueda
-probar sin comprometerse. Dicho al revés: **el enum se agrega antes de que nada lo emita y no se
-retira después**; lo único que se enciende y se apaga es si el checkpoint pregunta.
-
-**Y hay un orden que no se invierte.** La oferta se enciende **después** de que todos los
-consumidores sepan leer lo que produce, nunca antes: el retomado, el fan-out, el sobre en vuelo y el
-manifest de corrida. Al revés queda una ventana en la que el flujo registra y ofrece un transporte
-que un validador aguas abajo rechaza, y el síntoma aparece lejos de la causa.
+**El deadline por worker es un campo, no una forma de la invocación.** Vive como campo propio de
+cada worker en el sobre, que es lo que un instrumento puede leer.
 
 ### Independencia por modo (regla 2 en topología dual)
 

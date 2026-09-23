@@ -6,9 +6,9 @@ LA SEDE NORMATIVA DE LOS ENUMS ES `skills/cross-review/corridas-en-vuelo.md`, NO
 los **lee** de su tabla delimitada; duplicarlos en el código crearía una segunda sede que puede
 divergir en silencio. Es el mismo recurso que usa el verificador de aislamiento con su política.
 
-Existe porque el adaptador de terminales hacía cumplir cuatro invariantes como **efecto secundario de
-lanzar**, y al delegar el transporte a la skill de la plataforma ese efecto desaparece. Dos de los
-cuatro son comprobables antes de lanzar y dos solo después, y por eso hay dos modos y no uno.
+Existe porque los invariantes que cada punto declara no se cumplen solos al lanzar, sea cual sea la
+vía del despacho: hay que comprobarlos. Dos de los cuatro son comprobables antes de lanzar y dos solo
+después, y por eso hay dos modos y no uno.
 
 Uso:
     despacho.py --preflight <raiz> <skill> <punto> <composicion.json>
@@ -95,8 +95,8 @@ FRONTERA DE PRUEBA — dos unidades comparten este pasaje, y no comparten su alc
     forma débil de que ninguno falta al momento de leer.
     NO detecta un despacho que **nunca se asentó**, y es su punto ciego estructural: lee el sobre que
     el conductor escribió y lo contrasta contra la composición que el mismo conductor declaró, así
-    que ningún worker fuera de ese documento existe para este modo. Esa dirección la cubre
-    **únicamente** la reconciliación contra la fuente efectiva de la plataforma, que es otra unidad.
+    que ningún worker fuera de ese documento existe para este modo. Esa dirección no la cubre
+    ninguno de los dos modos.
     Su verde autoriza a afirmar: lo asentado coincide con lo previsto. NO que lo asentado sea todo lo
     que se lanzó.
 

@@ -380,8 +380,7 @@ En `<worktree>/.plans/incidentes-a-corregir.md`. Plantilla y contrato de conteni
 > sesión: la resolución del paso 6.1 se le pasa por el dossier —la plataforma, si salió de la matriz
 > o de un pedido, y la identidad del panel **de él**—. Va acá y **no en el prompt** porque el prompt
 > solo apunta: lo que viaje ahí no queda escrito en ninguna parte y se pierde con el compositor. Es
-> un **hecho observado**: el consentimiento de transporte lo sella el flujo, con el usuario delante,
-> y el intake no lo produce en su nombre.
+> un **hecho observado**.
 
 Si el veredicto fue **redimensionado**, el dossier lleva las dos versiones: el incidente tal como se
 escribió y el diagnóstico corregido, marcado como tal. Reemplazar una por la otra borra la evidencia
@@ -525,7 +524,6 @@ cupos que se repusieron, y el conteo del registro antes y después.
 | "Es el mismo repo, el worktree tiene todo" | Tiene lo **versionado**. El config del flujo SDD, por diseño, no lo está. |
 | "Copio el directorio entero y listo" | Puede estar medio versionado: la copia se anida y la comprobación pasa igual. Por archivo. |
 | "Al dossier le pongo un resumen" | Es la única copia. Verbatim. |
-| "Ya sé la plataforma, le dejo el transporte elegido al flujo" | El intake **observa**; `sdd-flow` sella su elección con el texto que le mostró al usuario y su `digest`. Un bloque `transporte` escrito por adelantado es un consentimiento que nadie dio. |
 | "Le paso la identidad de mi panel" | Son dos paneles: el del intake y el que se creó para el flujo. La que va al dossier es la **del flujo**. |
 | "Verifico los tres y después despacho los tres" | Cada retiro cambia el registro sobre el que se elige el siguiente. De a uno. |
 | "Me falta uno para llegar a tres, agrupo distinto" | El número es de flujos, no una cuota. Un grupo forzado es un diff que hace dos cosas. |
