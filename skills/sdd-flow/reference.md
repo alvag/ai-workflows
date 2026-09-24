@@ -2329,12 +2329,13 @@ Al reanudar un archivado interrumpido, el paso 1 lee las marcas antes de redacta
 |---|---|
 | `**Publicado:**` | no redacta ni publica: dice dónde quedó el comentario y el archivado sigue |
 | `**Publicando:**` sin `**Publicado:**` | el resultado de la escritura anterior es desconocido, y se reconcilia leyendo en solo lectura los comentarios del ticket posteriores a esa fecha cuya primera línea contiene `cierre de <id>`. Si hay uno, se escribe `**Publicado:**` con su id y el archivado sigue sin publicar; si no hay ninguno, la escritura no ocurrió y se vuelve a ofrecer el STOP |
-| `**Publicando:**` sin `**Publicado:**`, y Jira no se puede leer | se detiene sin republicar: entrega el texto listo para pegar y dice que la publicación anterior quedó sin confirmar |
+| `**Publicando:**` sin `**Publicado:**`, y Jira no se puede leer | fallo cerrado de la **publicación**, no del archivado: no se republica, se entrega el texto listo para pegar con el aviso de que la publicación anterior quedó sin confirmar —para que alguien lo mire en el ticket—, la marca `**Publicando:**` queda como está y el archivado sigue con su paso 2 |
 | ninguna | el paso sigue como la primera vez |
 
 La confirmación del STOP no distingue una publicación nueva de una ya hecha; las marcas sí. Y como
 la intención se escribe **antes** del efecto, ningún corte posterior a una escritura deja las dos
-ausentes: el peor caso es una intención sin confirmar, que se reconcilia o falla cerrado.
+ausentes: el peor caso es una intención sin confirmar, que se reconcilia o, sin Jira legible, deja
+la publicación sin repetir mientras el archivado sigue.
 
 ### Degradación
 
