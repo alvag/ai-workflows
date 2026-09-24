@@ -2316,14 +2316,25 @@ Un solo STOP, que es a la vez la curación y el write-safety de toda escritura e
 En la degradación no hay recurso ni publicación que confirmar: el STOP muestra el contenido, dice
 por qué no se publica y solo cura; lo que sale es el texto listo para pegar.
 
-**Registrar la publicación, antes de seguir.** Apenas Jira confirma la escritura —y antes del paso
-2 de `archive`—, se agrega al final de `hallazgos.md` la línea
-`**Publicado:** <id o URL del comentario> · <fecha y hora>`. Al reanudar un archivado interrumpido,
-si esa línea existe el paso 1 no redacta ni publica: dice dónde quedó el comentario y el archivado
-sigue. La confirmación del STOP no distingue una publicación nueva de una ya hecha, y esta marca sí.
-Queda una ventana: si la sesión se corta entre la respuesta de Jira y esta escritura, la marca no
-existe y el paso vuelve a ofrecer publicar. Por eso escribirla es lo primero que se hace con la
-respuesta.
+**Registrar la publicación, con la intención antes del efecto.** Dos marcas al final de
+`hallazgos.md`, en este orden:
+
+1. Antes de llamar a Jira: `**Publicando:** <fecha y hora>`.
+2. Apenas Jira confirma, y antes del paso 2 de `archive`:
+   `**Publicado:** <id o URL del comentario> · <fecha y hora>`.
+
+Al reanudar un archivado interrumpido, el paso 1 lee las marcas antes de redactar nada:
+
+| Marcas | Qué pasa |
+|---|---|
+| `**Publicado:**` | no redacta ni publica: dice dónde quedó el comentario y el archivado sigue |
+| `**Publicando:**` sin `**Publicado:**` | el resultado de la escritura anterior es desconocido, y se reconcilia leyendo en solo lectura los comentarios del ticket posteriores a esa fecha cuya primera línea contiene `cierre de <id>`. Si hay uno, se escribe `**Publicado:**` con su id y el archivado sigue sin publicar; si no hay ninguno, la escritura no ocurrió y se vuelve a ofrecer el STOP |
+| `**Publicando:**` sin `**Publicado:**`, y Jira no se puede leer | se detiene sin republicar: entrega el texto listo para pegar y dice que la publicación anterior quedó sin confirmar |
+| ninguna | el paso sigue como la primera vez |
+
+La confirmación del STOP no distingue una publicación nueva de una ya hecha; las marcas sí. Y como
+la intención se escribe **antes** del efecto, ningún corte posterior a una escritura deja las dos
+ausentes: el peor caso es una intención sin confirmar, que se reconcilia o falla cerrado.
 
 ### Degradación
 
