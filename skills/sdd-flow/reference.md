@@ -40,6 +40,7 @@ post-análisis. Tres reglas lo gobiernan:
 - [Plantilla de `## Verify`](#plantilla-de--verify)
 - [Plantilla de tasks](#plantilla-de-tasks)
 - [Plantilla de `handoff.md`](#plantilla-de-handoffmd)
+- [Hallazgos fuera de alcance](#hallazgos-fuera-de-alcance)
 - [Revisión final de diff](#revisión-final-de-diff)
 - [Ejemplo de criterios de aceptación](#ejemplo-de-criterios-de-aceptación)
 
@@ -182,7 +183,7 @@ Estos son ejemplos por tracker; los nombres de tools cambian entre entornos, as�
   1. `getAccessibleAtlassianResources` → obtener el `cloudId` del sitio (cachearlo para la sesión).
   2. `getJiraIssue` con `{ cloudId, issueIdOrKey: "<CLAVE>" }`.
   3. Extraer `summary`, `issuetype.name` (→ prefijo, ver "Mapeo tipo de cambio → prefijo"), `description` (renderizar ADF a texto), `priority`, `labels`, `status`, links.
-  4. **Escritura (solo para el gate `publish-spec`; ver "Aprobación externa de la spec (Jira)").** Descubrir por capacidad que el MCP/CLI permite **escribir** (si es solo-lectura → degradar, no bloquear). Operaciones: crear subtarea con `createJiraIssue` (`{ cloudId, fields: { project, parent: { key: "<padre>" }, issuetype: { name: "<subtask>" }, summary, description } }`); el **nombre del issuetype de subtarea** varía ("Subtarea"/"Sub-task") → tomarlo de `jira_approval.subtask_issuetype` o descubrirlo con `createmeta` (el issuetype con `subtask: true`). Actualizar descripción con `editJiraIssue`; comentar con `addCommentToJiraIssue` (el cuerpo va en ADF y admite nodos `mention` con `accountId` para etiquetar al autor de una observación; ver "Comentario de ajuste"); transicionar con la operación de transición del MCP. **Toda** escritura va con el STOP de write-safety (recurso + contenido a la vista antes de ejecutar).
+  4. **Escritura (para el gate `publish-spec` y para publicar los hallazgos al archivar; ver "Aprobación externa de la spec (Jira)" y "Hallazgos fuera de alcance").** Descubrir por capacidad que el MCP/CLI permite **escribir** (si es solo-lectura → degradar, no bloquear). Operaciones: crear subtarea con `createJiraIssue` (`{ cloudId, fields: { project, parent: { key: "<padre>" }, issuetype: { name: "<subtask>" }, summary, description } }`); el **nombre del issuetype de subtarea** varía ("Subtarea"/"Sub-task") → tomarlo de `jira_approval.subtask_issuetype` o descubrirlo con `createmeta` (el issuetype con `subtask: true`). Actualizar descripción con `editJiraIssue`; comentar con `addCommentToJiraIssue` (el cuerpo va en ADF y admite nodos `mention` con `accountId` para etiquetar al autor de una observación; ver "Comentario de ajuste"); transicionar con la operación de transición del MCP. **Toda** escritura va con el STOP de write-safety (recurso + contenido a la vista antes de ejecutar).
 - **GitHub** (`gh` o MCP): `gh issue view <n> --json title,body,labels,state` (o la API del MCP). El "tipo" sale de labels (`bug`, `enhancement`, …).
 - **GitLab** (`glab` o MCP): `glab issue view <n>`; tipo desde labels.
 - **Linear** (MCP): traer el issue por identificador; el estado/etiquetas mapean al prefijo.
@@ -2210,6 +2211,124 @@ exhaustiva: **crear** el worktree por la plataforma, **adoptar** un árbol cread
 panel, **arrancar** el agente, **rotular** el worktree y **entregar** el encargo. Si la
 revalidación falla, ese efecto no se ejecuta y se aplica el contrato de fallo del consumidor —en la
 admisión de incidentes, su sección «El contrato de fallo por fase»—.
+
+## Hallazgos fuera de alcance
+
+Detalle de `hallazgos.md` (ver `SKILL.md` → "`hallazgos.md` (lo que se vio fuera de alcance)") y de
+su publicación en el paso 1 del sub-paso `archive`.
+
+### La entrada
+
+Se agrega al final de `.plans/<id>/hallazgos.md` en el momento en que aparece el hallazgo; si el
+archivo no existe, se crea con el título `# Hallazgos — <id>`. Una entrada por hallazgo, numerada
+`H-n` en orden de aparición, para poder nombrarla al curar («quita H-2»):
+
+```markdown
+## H-1 — <área>: <el defecto, en una frase>
+- **Cuándo:** <fecha y hora> · fase `<fase del flujo>`
+- **Qué se vio:** <el defecto o el riesgo, y dónde: `path:line`, el comando y su salida, la cita>
+- **Impacto:** <qué pasa, y a quién, si nadie lo toma — una o dos frases>
+- **Relación con el cambio:** <cómo lo roza el cambio de este flujo; se omite si no la tiene>
+```
+
+Lo necesario para entenderlo sin la conversación, y nada más: decidir si merece un ticket es trabajo
+del TL/PO, no del conductor. La evidencia va completa acá —con rutas y líneas— porque es lo que se
+pierde si no se captura en el momento; el comentario publicado no la lleva.
+
+### El comentario
+
+Solo si `hallazgos.md` tiene entradas. Se redacta **para un TL y un PO**, con esta forma:
+
+```markdown
+@<TL> @<PO>: cierre de <id>. <línea de cierre: solo lo confirmado>. Quedaron <N> hallazgos fuera
+del alcance del ticket, sin tocar, para evaluar aparte:
+
+1. **<Área>: <el defecto, dicho para quien no leyó el código>.**
+   <Impacto en una o dos frases.> <Relación con el cambio, si la tiene.>
+2. **<Área>: <…>.**
+   <…>
+```
+
+- **El titular** va en negrita y dice área y defecto. El área es la que el equipo reconoce —un
+  producto, un flujo, «tests del repositorio»—, nunca una ruta.
+- **Sin `archivo:línea`**, rutas, SHAs ni nombres de rama, y sin mecánica del flujo SDD: se aplica
+  "Aprobación externa de la spec (Jira)" → "Sanitización", y además se quita toda ubicación en el
+  código. Lo lee alguien que decide, no quien arregla.
+- **La relación con el cambio**, cuando existe, es lo que más le sirve a quien decide: si el cambio
+  la agrava, la esquiva o la deja aislada.
+
+Un cierre real escrito a mano, anonimizado. Vale por su forma, no por su contenido:
+
+> @TL @PO : cierre de TICKET-N. El fix está mergeado (PR #N) y validado en QA. Quedaron tres
+> hallazgos fuera del alcance del ticket, sin tocar, para evaluar aparte:
+>
+> 1. **B2B y B2BCORP: la búsqueda directa de un hotel desde el buscador de la ficha no se ejecuta.**
+>    El buscador no usa el resultado del flujo, así que elegir un hotel puntual no hace nada. Si se
+>    corrige, esa búsqueda tiene que desbloquear los botones de reserva al cargar el hotel nuevo,
+>    porque con este fix quedan bloqueados después del primer clic.
+> 2. **Analytics: el evento de GA "Habitacion Hoteles / Elegir" se envía antes de comprobar si el
+>    botón ya está bloqueado.** Un clic repetido que se ignora igual puede registrarse como selección.
+> 3. **Tests del repositorio: una de las specs que reemplazan `globalThis.location` lo deja sin
+>    `origin` y no lo restaura.** Como los tests comparten el estado global, otras specs que lean
+>    `location.origin` pueden fallar solo al correr la suite completa. Los tests de este fix quedaron
+>    aislados de eso.
+
+### La línea de cierre
+
+Afirma **solo lo confirmado**. Merge y QA —y el PR, si el header no lo trae— se le preguntan al
+usuario al llegar a este paso, en una sola pregunta. Lo que no confirma, no se afirma, y una pregunta
+sin respuesta no confirma nada, ni en un sentido ni en el otro:
+
+| Dato | De dónde sale | Qué dice la línea |
+|---|---|---|
+| ticket | el `<id>` del flujo | siempre; sin clave no hay publicación (ver "Degradación") |
+| PR | `pr_url` del header del `plan.md`; si no está, la pregunta lo pide o admite que no hay | «PR #N»; sin PR, se omite |
+| merge | la pregunta | confirmado: «está mergeado»; confirmado que no: el PR se nombra en revisión («El PR #N está en revisión»); sin respuesta: el PR se nombra sin estado |
+| QA | la pregunta | confirmada: «validado en QA»; si no, no se menciona |
+
+Una validación en QA confirmada se escribe como hecho del flujo —«validado en QA»—, sin
+atribuírsela a una persona.
+
+### Menciones
+
+- **A quién:** se pregunta a quién mencionar —nombres o correos—, salvo que el usuario
+  ya los haya nombrado en la corrida; entonces no se vuelve a preguntar.
+- **Cómo se resuelve:** la cuenta de cada persona sale de una consulta de solo lectura del MCP de
+  Atlassian (p. ej. `lookupJiraAccountId`, descubierto por capacidad), con el `cloudId` de "Flujo
+  por tracker".
+- **No se persiste:** la lista vale para este archivado, y el siguiente vuelve a preguntar.
+- **Cómo se etiqueta:** un nodo `mention` por persona en el cuerpo ADF, como en "Comentario de
+  ajuste".
+- **Si no se resuelve** —cero cuentas, más de una, o un MCP que no acepta menciones—, esa persona
+  va con su nombre en texto plano, y el STOP lo dice persona por persona.
+
+### El STOP de publicación
+
+Un solo STOP, que es a la vez la curación y el write-safety de toda escritura en Jira:
+
+1. Con Jira, muestra el **recurso** exacto —sitio y ticket `<id>`— y el
+   **contenido** exacto, con las menciones resueltas y las que quedaron en texto plano.
+2. El usuario puede quitar, editar o agregar hallazgos; cada cambio vuelve a mostrar el contenido.
+3. Se publica solo con una **confirmación explícita de esta publicación**. La del archivado
+   —«probado y correcto»— no la sustituye. Sin esa confirmación, o si se descartan todos, no se
+   publica nada y el archivado sigue.
+
+En la degradación no hay recurso ni publicación que confirmar: el STOP muestra el contenido, dice
+por qué no se publica y solo cura; lo que sale es el texto listo para pegar.
+
+Publicado el comentario, el archivado sigue con su paso 2.
+
+### Degradación
+
+| Situación | Qué pasa |
+|---|---|
+| `tracker` distinto de `jira`, o sin tracker | el mismo borrador, curado en el mismo STOP, se entrega listo para pegar, con los nombres en texto plano |
+| el `<id>` no es una clave de ticket | ídem |
+| el MCP de Atlassian no tiene escritura, o la escritura falla | ídem, con el error a la vista |
+| el archivado lo delega `sdd-orchestrator` | no se redacta ni se publica: se dice, y los hallazgos quedan en el `hallazgos.md` de cada repo |
+
+**Nunca bloquea el archivado:** la publicación es un efecto del cierre, no una condición para
+cerrar.
 
 ## Revisión final de diff
 
