@@ -2316,7 +2316,14 @@ Un solo STOP, que es a la vez la curación y el write-safety de toda escritura e
 En la degradación no hay recurso ni publicación que confirmar: el STOP muestra el contenido, dice
 por qué no se publica y solo cura; lo que sale es el texto listo para pegar.
 
-Publicado el comentario, el archivado sigue con su paso 2.
+**Registrar la publicación, antes de seguir.** Apenas Jira confirma la escritura —y antes del paso
+2 de `archive`—, se agrega al final de `hallazgos.md` la línea
+`**Publicado:** <id o URL del comentario> · <fecha y hora>`. Al reanudar un archivado interrumpido,
+si esa línea existe el paso 1 no redacta ni publica: dice dónde quedó el comentario y el archivado
+sigue. La confirmación del STOP no distingue una publicación nueva de una ya hecha, y esta marca sí.
+Queda una ventana: si la sesión se corta entre la respuesta de Jira y esta escritura, la marca no
+existe y el paso vuelve a ofrecer publicar. Por eso escribirla es lo primero que se hace con la
+respuesta.
 
 ### Degradación
 
