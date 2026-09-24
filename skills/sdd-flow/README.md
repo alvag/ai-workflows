@@ -23,6 +23,7 @@ init (opcional) → constitution → gather-context → specify → clarify → 
 - **Autorizaciones intactas:** ninguna profundidad autoriza por sí sola crear o cambiar ramas, escribir en Jira, commitear, pushear o abrir un PR: cada una se pide aparte.
 - **Apertura de PR (opcional):** tras el push, crea el PR hacia la rama base con descripción **compacta** (Problema, Solución y los criterios de aceptación como checklist, más el link al spec de Jira si se publicó) y reviewers por defecto (de `.specify/reviewers.json` del repo, si existe). Degrada a PR manual si no hay integración del host; el agente **nunca** mergea ni aprueba, solo crea.
 - **Revisión final del diff, obligatoria:** antes del commit, un agente fresco de la **familia opuesta a la que escribió el código** revisa el diff completo y responde tres ejes, en orden: ¿**sobra** algo que nadie pidió?, ¿cumple los AC?, ¿sigue los patrones del repo? Con una sola familia instalada, degrada a un revisor fresco de la misma y lo declara.
+- **Hallazgos fuera de alcance:** lo que se ve y no se toca se anota en `hallazgos.md` en el momento; al archivar, si hay, se redacta un comentario para el TL/PO en el ticket de Jira, que se publica solo si lo confirmas (sin Jira, queda listo para pegar).
 - **Degradación elegante:** si falta un MCP/CLI (tracker, navegador, host), avisa y continúa con lo que haya.
 
 ## Cuándo usarla
@@ -49,7 +50,7 @@ Como `.plans/` es local, está visible entre ramas del mismo working tree, pero 
   intermedios. Si cambió la evidencia, el proceso puede seguir vivo o el owner obsoleto carece de
   fencing atómico, se detiene fail-closed.
 - **Pausar sin perder nada (en cualquier fase):** "pausa esto" → escribe un `handoff.md` (estado, decisiones, próximo paso) y, si hay código a medias, lo guarda como WIP commit en su propia rama (no `stash`, que se confunde entre flujos). Al retomar —incluso en otra sesión— reconstruye todo desde ahí, sin re-investigar.
-- **Cerrar y archivar:** cuando confirmas que está probado y correcto, el flujo pasa a `done` y se mueve a `.plans/archived/<id>/`. Nunca automático: lo decides tú.
+- **Cerrar y archivar:** cuando confirmas que está probado y correcto, el flujo pasa a `done` y se mueve a `.plans/archived/<id>/`. Nunca automático: lo decides tú. Si el flujo tiene hallazgos, antes ofrece publicarlos en el ticket.
 
 ## Artefactos en disco
 
@@ -67,6 +68,7 @@ Como `.plans/` es local, está visible entre ramas del mismo working tree, pero 
    │  ├─ sequence-ledger.yml    # versión, cursor, intenciones y efectos adjudicados
    │  ├─ sequence-ledger.owner/ # ownership exclusivo mientras un writer publica
    │  ├─ handoff.md             # siempre en `create-branch`; profundidad, aprobación, worktree y retomado
+   │  ├─ hallazgos.md           # lo visto fuera de alcance y no tocado; se publica al archivar
    │  └─ jira-spec.md           # copia de lo publicado en Jira (solo con el gate de aprobación)
    └─ archived/                 # flujos cerrados (status: done), movidos solo tras tu confirmación
       └─ <id>/                  # misma estructura, ya terminada
