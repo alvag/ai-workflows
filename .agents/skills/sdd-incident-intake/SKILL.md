@@ -342,8 +342,29 @@ el repo donde vive esta skill:
 | **Sí** | `.specify/` — config del flujo, constitution | Sin esto el flujo se cree no inicializado y arranca un `init` que nadie pidió |
 | **Sí** | `.claude/` — settings locales, permisos concedidos | Sin esto el flujo se traba pidiendo permisos que en el árbol principal ya están dados |
 | **No** | Directorios de trabajo de las skills: `.co-explore/`, `.cross-review/`, `.cross-implement/`, `.cross-model/` | Son corridas anteriores. El flujo nuevo genera las suyas; arrastrarlas le da un estado que no es el suyo |
+| **Condicional, por vía separada** | Un solo registro de incidentes, en la ruta que las instrucciones raíz del destino declaren para cada worktree | El agente despachado necesita la cabecera, no el historial de otros flujos; ver «Preparar el registro declarado del worktree» en `reference.md` solo si la declaración sitúa el registro en el worktree |
 | **No** | El resto de `.plans/` | Son flujos ajenos. Salvo que este flujo sea una **retoma**, y entonces se copia **ese** plan y solo ese |
 | **No** | Cachés, `.idea/`, `.handoffs/` | Ruido; y una caché con rutas del árbol viejo adentro es peor que ruido |
+
+**Resolver la excepción antes de copiar.** Leer `AGENTS.md` y `CLAUDE.md` de la raíz de
+`repo_destino`, si existen, tal como están en disco. Extraer solo una instrucción explícita que
+declare la **sede** del registro de incidentes de las skills en cada worktree y su **ruta**; el
+silencio de un archivo no contradice al otro. No inferirla de palabras sueltas, de un pedido
+conversacional ni de la constitution local. Si dos instrucciones raíz divergen, la ruta falta o su
+lectura es ambigua, detenerse antes de escribir y pedir corrección o decisión humana; el intake no
+edita esas instrucciones. Repetir la extracción en el worktree recién creado y comparar la tupla
+`(sede, ruta)` con la de `repo_destino`, no los textos completos. Una diferencia también detiene.
+
+Con ambas tuplas concordantes, **sin declaración** se conserva la exclusión y se entrega
+`sin-declaración`; si declaran **otra sede**, se conserva la exclusión y se entrega `otra-sede` con
+su sede y ruta. Solo una declaración que asigne el registro a **este worktree** activa la vía
+separada de `reference.md` → «Preparar el registro declarado del worktree». Esa vía entrega
+`sembrado` solo después de inventario → mapa explícito → construcción → cotejo independiente,
+con ruta, fuente, `copied_at`, digest de instantánea, mapa y candidato, los bytes UTF-8 del mapa
+y conteos retirados. `preexistente` lleva ruta, cantidad, IDs y estado Git sin atribuir una siembra;
+`sin-declaración` y `otra-sede` no inventan mapa. `Detenido` conserva motivo y residuales,
+no habilita dossier ni despacho y bloquea el resto del lote. Estos estados, y no la mera
+existencia del archivo, pasan a 6.3 y al cierre.
 
 **El inventario se deriva, el criterio se congela.** No transcribir una lista de directorios: leerlos
 del repo en el momento, porque la lista de arriba envejece y una entrada que ya no existe se lee
@@ -362,6 +383,8 @@ git -C <repo_destino> status --porcelain --ignored=matching -uall | grep '^!!'
 **Después de copiar, comprobar las tres cosas** — `git check-ignore -v` sobre cada archivo sembrado,
 `git status --porcelain` limpio, y que **el archivo esté en la ruta esperada**. Las dos primeras no
 detectan el anidamiento; la tercera sí.
+El registro condicional no entra en este bucle ni en esas tres comprobaciones generales: tiene su
+preparación y cotejo por ruta única antes de 6.3.
 
 > **Antes de copiar, ver si el hook de setup ya lo hizo.** El paso 6.1 ya clasificó el hook y leyó su
 > autoridad en la plataforma resuelta; acá solo importa su consecuencia. Si clasificó `reproducible`
@@ -381,6 +404,13 @@ En `<worktree>/.plans/incidentes-a-corregir.md`. Plantilla y contrato de conteni
 > o de un pedido, y la identidad del panel **de él**—. Va acá y **no en el prompt** porque el prompt
 > solo apunta: lo que viaje ahí no queda escrito en ninguna parte y se pierde con el compositor. Es
 > un **hecho observado**, y `sdd-flow` no lo consume para despachar: sus workers van por CLI.
+
+Escribir el dossier **solo** después de que 6.2 entregue un estado distinto de `detenido`; la
+sección 9 consume ese estado para informar la sede y la procedencia reales, sin deducirlas de que
+el archivo exista. Con `sembrado`, insertar allí el mapa literal de la misma vuelta y acreditar
+su SHA-256 contra `scratch/mapa` **antes de limpiar scratch**; ver `reference.md` → «El dossier»
+→ sección 9. Si escribir o verificar falla, conservar scratch, árbol, registro y dossier parcial
+como residuales y no despachar.
 
 Si el veredicto fue **redimensionado**, el dossier lleva las dos versiones: el incidente tal como se
 escribió y el diagnóstico corregido, marcado como tal. Reemplazar una por la otra borra la evidencia
@@ -501,6 +531,10 @@ Reportar, por cada flujo: incidentes tomados, **veredicto de cada uno**, por qu�
 de verificación, **el resultado del chequeo aguas arriba** —qué commits y qué PRs se cruzaron contra
 la superficie, o que no se pudo mirar y por qué—, decisiones abiertas que quedaron en el dossier,
 worktree y rama, y estado del flujo.
+
+Si 6.2 preparó un registro, distinguir `sembrado` de `preexistente`. Si se detuvo, informar motivo,
+árbol y demás residuales con su ruta y la decisión necesaria; no afirmar que hubo despacho ni
+retirar el incidente de origen. `sin-declaración` y `otra-sede` no se presentan como siembras.
 
 Y una vez para todo el lote: los **rechazados con su evidencia** —es lo único que queda de ellos—, los
 cupos que se repusieron, y el conteo del registro antes y después.
