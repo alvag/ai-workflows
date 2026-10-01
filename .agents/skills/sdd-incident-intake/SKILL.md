@@ -342,6 +342,7 @@ el repo donde vive esta skill:
 | **Sí** | `.specify/` — config del flujo, constitution | Sin esto el flujo se cree no inicializado y arranca un `init` que nadie pidió |
 | **Sí** | `.claude/` — settings locales, permisos concedidos | Sin esto el flujo se traba pidiendo permisos que en el árbol principal ya están dados |
 | **No** | Directorios de trabajo de las skills: `.co-explore/`, `.cross-review/`, `.cross-implement/`, `.cross-model/` | Son corridas anteriores. El flujo nuevo genera las suyas; arrastrarlas le da un estado que no es el suyo |
+| **Sí, solo su cabecera** | El registro de incidentes, si las instrucciones raíz del destino lo ubican en cada worktree | Sin él, el flujo despachado no tiene dónde registrar, y las reglas del registro le prohíben reconstruirlo. Ver `reference.md` → «La cabecera del registro de incidentes» |
 | **No** | El resto de `.plans/` | Son flujos ajenos. Salvo que este flujo sea una **retoma**, y entonces se copia **ese** plan y solo ese |
 | **No** | Cachés, `.idea/`, `.handoffs/` | Ruido; y una caché con rutas del árbol viejo adentro es peor que ruido |
 

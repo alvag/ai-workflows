@@ -568,7 +568,8 @@ Casos que se ven seguido:
   en prompts que en el árbol principal ya estaban resueltos.
 - `.co-explore/`, `.cross-review/`, `.cross-implement/`, `.cross-model/` — **no**. Artefactos de
   corridas.
-- `.plans/` — **no**, salvo retoma. En una retoma se copia **la carpeta de ese plan y solo esa**.
+- `.plans/` — **no**, salvo retoma y salvo la cabecera del registro de incidentes (ver «La cabecera
+  del registro de incidentes»). En una retoma se copia **la carpeta de ese plan y solo esa**.
 - `node_modules/`, `__pycache__/`, `.idea/` — **no**. Si el flujo necesita dependencias, se instalan
   en el worktree; una caché copiada puede traer rutas absolutas del árbol viejo adentro.
 
@@ -620,6 +621,52 @@ los worktrees del mismo repo) o por el ignore global del usuario (que también a
 viaja es `info/exclude` a un **clone** — si el destino es un clone y no un worktree, la comprobación
 es la que salva.
 
+### La cabecera del registro de incidentes
+
+Es la única excepción a «`.plans/` no se siembra», y es estrecha a propósito.
+
+**Cuándo.** Solo si `AGENTS.md` o `CLAUDE.md` de la raíz del `repo_destino` declaran que el registro
+de incidentes de las skills vive **en cada worktree**, y en qué `<ruta>`. Si lo ubican en el árbol
+principal, o no dicen nada, no se siembra: el flujo registra donde esas instrucciones digan. Si el
+worktree ya tiene el archivo —porque lo creó el hook—, no se pisa.
+
+**Qué.** El prefijo del registro del árbol principal hasta su primera sección de incidente —la misma
+definición de cabecera del paso 1—, **sin las filas del índice** que apuntan a incidentes. Nada más
+de `.plans/`.
+
+```
+mkdir -p "<worktree>/$(dirname <ruta>)"
+awk '/^## [0-9][0-9]\/[0-9][0-9]\/[0-9][0-9][0-9][0-9]/ {exit}
+     /^\| `[0-9][0-9]\/[0-9][0-9]\/[0-9][0-9][0-9][0-9]/ {next}
+     {print}' "<repo_destino>/<ruta>" > "<worktree>/<ruta>"
+grep -c '^## Reglas de este archivo' "<worktree>/<ruta>"
+grep -cE '^(## |\| `)[0-9]{2}/[0-9]{2}/[0-9]{4}' "<worktree>/<ruta>"
+```
+
+PowerShell:
+
+```
+$origen = Join-Path '<repo_destino>' '<ruta>'
+$destino = Join-Path '<worktree>' '<ruta>'
+$cab = foreach ($l in (Get-Content -LiteralPath $origen -Encoding UTF8)) {
+  if ($l -match '^## \d{2}/\d{2}/\d{4}') { break }
+  if ($l -notmatch '^\| `\d{2}/\d{2}/\d{4}') { $l }
+}
+New-Item -ItemType Directory -Force -Path (Split-Path $destino -Parent) | Out-Null
+[IO.File]::WriteAllLines($destino, [string[]]$cab, (New-Object Text.UTF8Encoding $false))
+(Select-String -LiteralPath $destino -Pattern '^## Reglas de este archivo').Count
+(Select-String -LiteralPath $destino -Pattern '^(## |\| `)\d{2}/\d{2}/\d{4}').Count
+```
+
+**Se acredita con `1` y `0`:** la cabecera de reglas está y no quedó ningún incidente ni fila de
+índice. Cualquier otro resultado —o un registro de origen que no existe— es **no sembrar**: borrar lo
+copiado y detenerse. Sin una copia inequívoca no se repone nada (paso 1), y abrir el registro queda del
+lado del usuario. Con la siembra acreditada, `<ruta>` entra en las tres comprobaciones de arriba como
+un archivo sembrado más.
+
+**La procedencia va en el dossier** (sección 9), no dentro del registro: el flujo lo hereda como una
+cabecera limpia.
+
 ### El hook de setup ya corrió, o no
 
 **La autoridad del hook y su clasificación viven en «Clasificar el hook de setup»**, que corre antes
@@ -667,7 +714,8 @@ sin contexto de esta sesión, y **la única copia** de los incidentes tomados.
    verificación, prohibiciones sobre directorios, guardas que hay que correr y **cómo se leen** (hay
    guardas cuyo código de salida no es la señal de salud).
 9. **Dónde se registran los incidentes** si alguna skill falla durante el flujo — con la ruta que
-   el archivo de instrucciones del repo destino declare, que es su autoridad.
+   el archivo de instrucciones del repo destino declare, que es su autoridad. Si 6.2 sembró la
+   cabecera del registro, decir de qué archivo salió y cuándo se copió.
 10. **El issue de origen**, si el incidente vino de uno: su número, su URL, y la instrucción de
     escribir `Closes #<n>` en el PR. Sin esto el flujo no tiene cómo saber a qué issue pertenece —
     arranca sin contexto de esta sesión— y el issue queda `en-curso` para siempre aunque el arreglo
