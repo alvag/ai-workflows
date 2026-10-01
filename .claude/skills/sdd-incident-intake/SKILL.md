@@ -54,7 +54,9 @@ el trabajo** y encima lo hace sin el aparato del flujo.
 
 ## El invariante
 
-> **Verificar → decidir → agrupar → mirar aguas arriba → despachar → confirmar arranque → retirar.**
+> **Verificar → decidir → agrupar → mirar aguas arriba → cerrar IDs → simular → efecto
+> acreditado → revalidar → escribir → cotejar.** El gate de despacho se resuelve **antes** de
+> simular; el gate de un rechazo ocurre **después** de simular y antes de registrarlo.
 
 El orden **es** el procedimiento. Cada flecha depende de la anterior y ninguna se adelanta:
 
@@ -65,14 +67,17 @@ El orden **es** el procedimiento. Cada flecha depende de la anterior y ninguna s
   una segunda rama sobre las mismas líneas que un PR abierto.
 - Retirar antes de despachar borra la única copia si el despacho falla.
 - Retirar sin confirmar que el flujo arrancó deja un registro vacío y un worktree inerte.
+- Simular antes de cerrar IDs/gate, o escribir sin revalidar después del efecto, puede retirar
+  bytes distintos de los que el dossier o el issue recibió. `10` obliga a resimular; `11/12`
+  detienen y conservan la doble sede si el efecto ya ocurrió.
 
 El paso que más se saltea es el último control: *mandé el prompt* no es *el flujo arrancó*.
 
 ## Los dos modos
 
 El invariante de arriba es del modo **`despachar`**. El modo **`volcar`** publica los incidentes como
-issues de GitHub y no arregla nada: comparte los pasos 1, 4 y 7 —leer el registro, mirar aguas arriba
-y retirar— y reemplaza agrupar, worktree y despacho por publicar.
+issues de GitHub y no arregla nada: comparte lectura, aguas arriba y la barrera de retiro, y
+reemplaza agrupar, worktree y despacho por publicación y cotejo del issue.
 
 | | `despachar` (default) | `volcar` |
 |---|---|---|
@@ -85,10 +90,12 @@ y retirar— y reemplaza agrupar, worktree y despacho por publicar.
 abierto significa lo mismo que una entrada del registro —alguien vio algo—, no un defecto confirmado.
 La verificación con veredicto sigue siendo del modo `despachar`, cuando tome ese issue.
 
-**Las dos fuentes nunca sostienen el mismo incidente a la vez.** El archivo es lo capturado y no
-volcado; el issue es lo volcado. Volcar retira del archivo, y despachar cierra el issue. Sin esa
-disciplina hay dos sedes del mismo incidente, que es como se pierde la frecuencia que protege la
-regla 2 del registro.
+**El estado final no deja dos sedes del mismo incidente.** El archivo es lo capturado y no
+volcado; el issue es lo volcado. Entre publicar y cotejar el retiro hay una **doble sede
+transitoria**, y si el retiro se detiene queda como residual explícito con respaldo y recibos,
+no como éxito ni como permiso para publicar otra vez. Despachar cierra el issue solo según el
+vocablo y momento de la tabla del paso 7. Silenciar una doble sede pierde la frecuencia que
+protege la regla 2 del registro.
 
 ## Parámetros
 
@@ -114,11 +121,13 @@ lo que evita que dos flujos se pisen el mismo incidente.
 ```
 por cada cupo:
   elegir → verificar → decidir → agrupar → aguas arriba → [gate si hay duda]
-         → worktree → despachar → retirar
+         → simular retiro → worktree → despachar → confirmar efecto
+         → revalidar → escribir → cotejar retiro
 ```
 
-**Un rechazo no consume cupo.** Si el incidente no se sostiene, se retira igual (ver "El veredicto") y
-se sigue bajando por el registro hasta juntar los `cantidad` flujos pedidos.
+**Un rechazo no consume cupo.** Si el incidente no se sostiene, se simula antes del gate de retiro;
+solo tras aprobación humana se registra el rechazo y se revalida, escribe y coteja el retiro.
+Luego se sigue bajando por el registro hasta juntar los `cantidad` flujos pedidos.
 
 **El lote termina antes si el registro se agota.** Pedir 3 sobre un registro de 2 abre 2 y lo dice; no
 inventa un tercero ni parte un grupo para llegar al número.
@@ -128,6 +137,8 @@ inventa un tercero ni parte un grupo para llegar al número.
 Leer el archivo completo, no solo el índice ni la sección del incidente elegido. La cabecera declara
 el formato (cómo se forma el ID, qué campos son obligatorios, qué está prohibido escribir); el retiro
 del paso 7 tiene que respetarlo y no se puede respetar un formato que no se leyó.
+Esta lectura orienta la decisión; **no ancla los bytes del efecto**. Una vez fijados los IDs,
+`simular-retiro` crea la imagen que alimenta el dossier o el cuerpo del issue.
 
 Y antes de nada: comprobar que el registro
 **conserva su cabecera de reglas antes de admitir** ningún incidente. La cabecera es todo lo anterior
@@ -165,6 +176,13 @@ Con `cantidad > 1` se lee **una vez**, al principio del lote. Lo que sí se rele
 de formato no viajan en el issue: viven en el archivo, así que hay que leerlas igual de su cabecera.
 Comandos en `reference.md` → "El volcado a issues".
 
+**Antes del primer efecto de cada selección o issue**, cargar `reference.md` → «Preparar y
+reanudar la vuelta congelada». Esta preparación es incondicional: rige para `cantidad = 1`
+o mayor, `despachar`, rechazados, `volcar`, `registro: issues` y destinos sin declaración local
+de registro. Cada vuelta tiene scratch y unidad congelada propios; 6.2 crea, si hace falta,
+otro scratch solo para la siembra. En reentrada usar la ruta literal entregada, validar la
+cadena de eventos y no repetir un efecto cuya existencia no se haya reconciliado.
+
 ## Paso 2 — Comprobar contra el árbol y emitir veredicto
 
 Tomar cada afirmación **comprobable** del incidente y comprobarla en el `repo_destino`, con el
@@ -198,7 +216,7 @@ no está verificando, está transcribiendo.
 |---|---|---|
 | **Confirmado** | Las afirmaciones se sostienen | Se despacha |
 | **Redimensionado** | El defecto existe pero no es el que dice: otra causa, otro alcance, otra sección | Se despacha **con el diagnóstico corregido** en el dossier, y el gate se abre para que el usuario lo vea |
-| **Rechazado** | El defecto no está en el árbol | **No se despacha.** Gate obligatorio con la evidencia |
+| **Rechazado** | El defecto no está en el árbol | **No se despacha.** Simulación del retiro y luego gate obligatorio con la evidencia |
 
 **Un rechazado se retira igual, con permiso del usuario.** La regla 1 del registro dice que un
 incidente se remueve **cuando se revisa** — no cuando se arregla. Dejarlo ahí garantiza que la próxima
@@ -276,7 +294,7 @@ pidió.
 
 **Se para si se cumple cualquiera de estas — es lista cerrada, no criterio:**
 
-1. El veredicto fue **rechazado** o **redimensionado**.
+1. El veredicto fue **redimensionado**.
 2. Hay **más de una agrupación defendible** — un candidato comparte archivo pero no sección, o
    comparte causa pero no superficie.
 3. La verificación destapó que **el arreglo correcto es otro** que el que el incidente propone.
@@ -290,9 +308,27 @@ causa raíz en una frase, la tabla de verificación, las decisiones abiertas y l
 
 Sin respuesta no se avanza — **ni en ese flujo ni en el resto del lote**: un "no contestó" no es un sí.
 
+**Rechazado:** no abrir aquí su gate de retiro. Tras mirar aguas arriba, preparar la vuelta
+congelada, registrar el ID en `ids-definitivos` y simular el retiro si el registro es un archivo;
+solo entonces mostrar la evidencia y el recibo al usuario y pedir permiso para registrar el
+rechazo. Con `registro: issues` no hay simulación de archivo: el gate precede al cierre del issue.
+Si lo aprueba, comparar la unidad instalada, registrar `rechazo-aprobado` y pasar al paso 7 sin
+crear worktree. Sin respuesta, sin simulación verde cuando aplica o con un cambio de ID,
+detenerse o repetir la simulación según corresponda; no consumir cupo.
+
 ## Paso 6 — Worktree, siembra, dossier y despacho
 
-Los cuatro son un solo paso porque el orden entre ellos también es el invariante: **el worktree está
+Antes de 6.1, después de agrupar, mirar aguas arriba y resolver el gate, leer **siempre**
+`reference.md` → «Preparar y reanudar la vuelta congelada» y crear su scratch privado, aun con
+`cantidad = 1`, sin declaración de 6.2 o `registro: issues`. Solo entonces registrar los IDs
+de esta vuelta en `ids-definitivos`. Para un registro de archivo, leer `reference.md` → «Retirar del registro»,
+consultar `plazo-retiro` y ejecutar `simular-retiro ... nuevo <id>...` **inmediatamente antes de
+6.1**. Código `12` bloquea todo efecto; el literal cronológico ausente no se presume. Si los IDs
+cambian, registrar otro evento y crear nueva raíz. `registro: issues` prepara la vuelta pero no
+simula ni escribe retiro de archivo. Antes de cualquier efecto, `comparar-unidad` debe informar
+`instalada_coincide: true`; si no, detener y empezar otra vuelta sin efectuarlo.
+
+Los cuatro actos siguen siendo un solo paso porque el orden entre ellos también es el invariante: **el worktree está
 sembrado antes de que el flujo arranque**, el dossier existe antes de que el prompt se mande, y el
 prompt se manda antes de que el registro se toque.
 
@@ -342,29 +378,17 @@ el repo donde vive esta skill:
 | **Sí** | `.specify/` — config del flujo, constitution | Sin esto el flujo se cree no inicializado y arranca un `init` que nadie pidió |
 | **Sí** | `.claude/` — settings locales, permisos concedidos | Sin esto el flujo se traba pidiendo permisos que en el árbol principal ya están dados |
 | **No** | Directorios de trabajo de las skills: `.co-explore/`, `.cross-review/`, `.cross-implement/`, `.cross-model/` | Son corridas anteriores. El flujo nuevo genera las suyas; arrastrarlas le da un estado que no es el suyo |
-| **Condicional, por vía separada** | Un solo registro de incidentes, en la ruta que las instrucciones raíz del destino declaren para cada worktree | El agente despachado necesita la cabecera, no el historial de otros flujos; ver «Preparar el registro declarado del worktree» en `reference.md` solo si la declaración sitúa el registro en el worktree |
+| **Condicional, por vía separada** | Un solo registro de incidentes, en la ruta que las instrucciones raíz del destino declaren para cada worktree | El agente despachado necesita la cabecera, no el historial de otros flujos; ver «Preparar el registro declarado del worktree» en `reference.md` al clasificar la declaración y ejecutar la siembra solo si sitúa el registro en el worktree |
 | **No** | El resto de `.plans/` | Son flujos ajenos. Salvo que este flujo sea una **retoma**, y entonces se copia **ese** plan y solo ese |
 | **No** | Cachés, `.idea/`, `.handoffs/` | Ruido; y una caché con rutas del árbol viejo adentro es peor que ruido |
 
-**Resolver la excepción antes de copiar.** Leer `AGENTS.md` y `CLAUDE.md` de la raíz de
-`repo_destino`, si existen, tal como están en disco. Extraer solo una instrucción explícita que
-declare la **sede** del registro de incidentes de las skills en cada worktree y su **ruta**; el
-silencio de un archivo no contradice al otro. No inferirla de palabras sueltas, de un pedido
-conversacional ni de la constitution local. Si dos instrucciones raíz divergen, la ruta falta o su
-lectura es ambigua, detenerse antes de escribir y pedir corrección o decisión humana; el intake no
-edita esas instrucciones. Repetir la extracción en el worktree recién creado y comparar la tupla
-`(sede, ruta)` con la de `repo_destino`, no los textos completos. Una diferencia también detiene.
-
-Con ambas tuplas concordantes, **sin declaración** se conserva la exclusión y se entrega
-`sin-declaración`; si declaran **otra sede**, se conserva la exclusión y se entrega `otra-sede` con
-su sede y ruta. Solo una declaración que asigne el registro a **este worktree** activa la vía
-separada de `reference.md` → «Preparar el registro declarado del worktree». Esa vía entrega
-`sembrado` solo después de inventario → mapa explícito → construcción → cotejo independiente,
-con ruta, fuente, `copied_at`, digest de instantánea, mapa y candidato, los bytes UTF-8 del mapa
-y conteos retirados. `preexistente` lleva ruta, cantidad, IDs y estado Git sin atribuir una siembra;
-`sin-declaración` y `otra-sede` no inventan mapa. `Detenido` conserva motivo y residuales,
-no habilita dossier ni despacho y bloquea el resto del lote. Estos estados, y no la mera
-existencia del archivo, pasan a 6.3 y al cierre.
+**Resolver la excepción antes de copiar.** Leer las instrucciones raíz `AGENTS.md` y
+`CLAUDE.md` de `repo_destino` y del worktree creado, comparar su declaración explícita de
+`(sede, ruta)` y detenerse si falta ruta o discrepan. Cargar `reference.md` → «Preparar el registro
+declarado del worktree» para clasificar el resultado; solo si ambas declaran **este worktree**
+como sede, ejecutar su vía separada de inventario → mapa → construcción → cotejo. Sin declaración, otra sede o fallo,
+no inferir ni sembrar por mera existencia; entregar `sin-declaración`, `otra-sede` o `detenido`
+con la evidencia prescrita allí. `sembrado` y `preexistente` conservan procedencias distintas.
 
 **El inventario se deriva, el criterio se congela.** No transcribir una lista de directorios: leerlos
 del repo en el momento, porque la lista de arriba envejece y una entrada que ya no existe se lee
@@ -411,10 +435,14 @@ el archivo exista. Con `sembrado`, insertar allí el mapa literal de la misma vu
 su SHA-256 contra `scratch/mapa` **antes de limpiar scratch**; ver `reference.md` → «El dossier»
 → sección 9. Si escribir o verificar falla, conservar scratch, árbol, registro y dossier parcial
 como residuales y no despachar.
+Los incidentes verbatim del dossier se toman de la **imagen del recibo de simulación** de esta
+vuelta, no de la lectura orientativa del paso 1. Tras limpiar únicamente el scratch de siembra,
+la ruta literal del scratch de vuelta y su imagen siguen disponibles hasta `cotejar-retiro`.
 
 Si el veredicto fue **redimensionado**, el dossier lleva las dos versiones: el incidente tal como se
-escribió y el diagnóstico corregido, marcado como tal. Reemplazar una por la otra borra la evidencia
-de que hubo una corrección.
+escribió y el diagnóstico corregido bajo un H2 propio (`## Diagnóstico corregido`) después del
+original completo. Un H3, un rótulo en negrita o una cita no delimitan el original para el cotejo
+post-efecto. Reemplazar una versión por la otra borra la evidencia de que hubo una corrección.
 
 ### 6.4 — Despacho
 
@@ -450,34 +478,34 @@ elige y nadie sabe que está libre.
 
 ## Paso 7 — Retirar del registro
 
-Recién ahora, y solo si el paso 6 confirmó el arranque (o si el veredicto fue **rechazado** y el
-usuario lo aprobó en el gate). **Dos lugares, siempre los dos:**
+Solo después de confirmar arranque, publicación y cotejo del issue, resolución aguas arriba o
+rechazo aprobado, según corresponda. **Nunca** retirar por edición manual ni por `grep` vacío.
+Para archivo, acreditar **un solo evento causal** antes de la cadena: tras un arranque nuevo de
+`despachar`, registrar `efecto-acreditado` con identidad y evidencia confirmadas; ante rechazo o
+resolución aguas arriba, conservar el `rechazo-aprobado` del paso 5 o, en `volcar`, registrarlo
+después de su gate de retiro; para un issue nuevo publicado y cotejado por `volcar`,
+conservar el `efecto-acreditado` del paso 4; para un externo ya existente reconciliado, conservar
+`reconciliacion-aprobada`. No registrar otro efecto ni rechazo si la vuelta ya tiene uno de esos
+eventos; si falta el evento que corresponde, detenerse. Luego ejecutar desde `reference.md` →
+«Retirar del registro»: consultar plazo → `revalidar-retiro` → `escribir-retiro` →
+`cotejar-retiro`. Exigir recibo `0`
+de revalidación, resultado de escritura vinculado y cotejo `acreditado`. El candidato elimina
+fila y sección completas, pero el cotejo reconstruye el esperado de la imagen previa sin creerle
+al simulador. La imagen sigue siendo respaldo hasta ese verde. Con todos los incidentes retirados,
+la cabecera **permanece**: un registro vacío es un resultado válido. Un vacío legado mantiene su
+comentario tras el cierre; el siguiente incidente se agrega después del comentario y un blanco,
+sin segundo cierre.
 
-1. **El índice** — la fila de cada incidente tomado.
-2. **El cuerpo** — la sección completa de cada uno, con su separador.
-
-Después, comprobar que no quedaron residuos: `grep` de la fecha y hora de cada incidente y de dos o
-tres términos distintivos de su título. Un retiro que deja el índice limpio y la sección en el cuerpo
-es peor que no retirar: el archivo pierde su propio inventario.
-
-**El retiro se acredita con tres condiciones, y hacen falta las tres juntas:** que
-**el archivo existe**, que **conserva su cabecera**, y que no quedó **ningún incidente retirado**.
-La salida vacía de esos `grep` no alcanza sola, porque
-**no las distingue de un archivo que no existe**: sobre un registro borrado entero es igual de vacía
-que sobre uno limpio. Lo único que los separa es el código de salida —2 contra 1—, así que un
-criterio que lea la salida y no el código le da el visto bueno al borrado que este paso promete no
-hacer.
-
-**Lo que nunca se toca:** la cabecera de reglas, el resto de los incidentes, y el orden cronológico
-de los que quedan. **Nunca se edita un incidente ajeno "de paso"** — la regla 2 del registro dice que
-una reincidencia se agrega y nunca se edita, y esa regla protege la frecuencia, que es el dato más
-valioso del archivo.
-
-**Y cuando los incidentes tomados son todos**, el archivo queda **con su cabecera y sin incidentes**.
-Ese **registro vacío es el resultado esperado**, no un archivo de más ni un sobrante que convenga
-limpiar: la bandeja quedó al día, que es exactamente para lo que existe este paso. Retirar también la
-cabecera deja sin sede las reglas de formato que el paso 1 lee antes de admitir nada, y reponerlas
-después por inferencia sale mal —ya salió: invirtió la regla del ID y perdió tres de las cinco.
+`10` significa anexo benigno o nueva identidad: volver a simular desde la **primera raíz**, con
+los mismos IDs, dentro del plazo, y repetir revalidación. `11` detiene por deriva y `12` por
+estructura/ID o enlace inadmisible; tras un efecto, cualquiera deja **doble sede**. Plazo vencido,
+retroceso de reloj o sello inválido detienen sin invocar otra etapa; solo `motivo: plazo-vencido`
+permite pedir una nueva ventana con aprobación humana registrada. Un ancla monotónica inconsistente
+requiere reconciliación humana: otra ventana UTC no la corrige. No seguir al siguiente ID ni repetir
+despacho/publicación. Entregar
+ruta literal de scratch, raíz, simulación vigente, recibos, imagen de respaldo, IDs e identidad
+del efecto para reconciliación. El escritor no puede excluir una carrera con terceros que no
+cooperen: una discrepancia posterior se resuelve humanamente desde el respaldo.
 
 **Si el incidente vino de un issue, el retiro es cerrarlo**, no borrar nada — y quién lo cierra
 depende del vocablo, porque no todos tienen la misma evidencia disponible:
@@ -500,9 +528,9 @@ En modo lote, este paso cierra la vuelta: recién con el registro actualizado se
 
 ## Modo `volcar` — publicar el registro como issues
 
-Sustituye los pasos 3, 5 y 6. El orden es **leer → aguas arriba → publicar → cotejar → retirar**, y
-las dos últimas no se invierten: **cotejar antes de retirar**, porque el archivo es la única copia y
-un cuerpo que no llegó entero no se recupera.
+Sustituye los pasos 3, 5 y 6. Cada issue tiene vuelta y scratch propios. El orden es **leer →
+aguas arriba → simular → validar publicación → publicar → cotejar issue → revalidar → escribir → cotejar retiro**.
+El cuerpo que no llegó entero no se recupera después de retirar la única copia.
 
 1. **Leer el registro entero** (paso 1). Se vuelcan los incidentes que el índice lista **y** los que
    no: un índice incompleto es lo habitual, y tomar el índice por inventario deja incidentes atrás.
@@ -510,12 +538,27 @@ un cuerpo que no llegó entero no se recupera.
    `origin` no se publica: se retira con su evidencia en el reporte, como un rechazado.
 3. **Publicar uno por incidente, en orden cronológico ascendente**, con el formato de `reference.md`
    → "El volcado a issues". Antes de cada creación, buscar su **ID de registro** —la fecha y hora—
-   entre los issues abiertos **y** cerrados: si aparece, ya está volcado y se saltea. El orden no es
+   entre los issues abiertos **y** cerrados: si aparece, cotejar el existente y pasar solo a retiro
+   con recibo previo válido o reconciliación humana; **nunca publicar otra vez**. Antes de publicar,
+   fijar ese único ID, preparar la vuelta incondicional de `reference.md` y registrar
+   `ids-definitivos` si es nueva (o validar ese evento al reentrar). Exigir
+   `comparar-unidad` con `instalada_coincide: true` antes de publicar; simular raíz `nuevo`
+   desde el registro y construir el cuerpo **solo** con los tramos de su imagen. Antes de crear
+   el issue, ejecutar `validar-publicacion` con el recibo vigente: exige un único campo `Skill`
+   no vacío en una línea física exterior a cercas del incidente. Si devuelve `10`, resimular
+   antes de publicar; si solo existe `Skill / sección`, detener para decisión humana,
+   sin desdoblarlo por inferencia. Este preflight es exclusivo de la creación de un issue;
+   no se ejecuta al retirar un incidente resuelto aguas arriba sin publicarlo.
+   Si el issue ya existía sin raíz válida, `nuevo-post-efecto` exige cotejo y aprobación humana enlazados al
+   issue; no se infiere permiso de la mera existencia. El orden no es
    estético: una reincidencia cita a su antecedente, así que publicando de viejo a nuevo el número ya
    existe cuando hay que escribirlo. Las referencias del campo `Relacionado` se resuelven a `#<n>` al
    publicar — ver `reference.md` → "Los issues relacionados".
-4. **Cotejar lo publicado contra el original**, línea por línea, no por muestreo.
-5. **Retirar** (paso 7) solo lo que quedó cotejado.
+4. **Cotejar lo publicado contra la imagen de simulación**, línea sustantiva por línea y campo por
+   valor, no por muestreo ni igualdad superficial del cuerpo; aplicar solo las transformaciones de
+   `reference.md` → «El formato del issue»/«El cotejo». Registrar el efecto acreditado.
+5. **Retirar** (paso 7) solo lo que quedó cotejado, con revalidación y cotejo independientes. Un
+   resuelto aguas arriba pasa por simulación → gate → retiro sin crear issue.
 
 **Lo que no se inventa.** Un campo que el registro no declara —la severidad, el `Conductor`, el
 `Worker`, la `Plataforma`, el `Transporte`— no se deduce ni se completa: se publica su ausencia, dicha. El registro ya prefiere dejar
@@ -535,6 +578,14 @@ worktree y rama, y estado del flujo.
 Si 6.2 preparó un registro, distinguir `sembrado` de `preexistente`. Si se detuvo, informar motivo,
 árbol y demás residuales con su ruta y la decisión necesaria; no afirmar que hubo despacho ni
 retirar el incidente de origen. `sin-declaración` y `otra-sede` no se presentan como siembras.
+Para archivo, declarar por ID la cadena de recibos y si el retiro quedó `acreditado` o en doble
+sede. En doble sede, entregar ruta **literal** del scratch de vuelta, respaldo, raíz, simulación,
+IDs y efecto; no presentarlo como retirado ni empezar la siguiente vuelta. Si se perdió el
+scratch o un recibo, reconciliar humanamente antes de repetir un efecto; no reconstruirlos como
+si no hubiera ocurrido nada.
+Si el retiro total deja un vacío legado, imprimir la regla de alta siguiente: H2 directamente
+después del comentario y un blanco, sin segundo `---`; si el comentario termina en EOF `-->\n`,
+agregar un LF antes del H2, y si ya hay blancos posteriores, conservarlos.
 
 Y una vez para todo el lote: los **rechazados con su evidencia** —es lo único que queda de ellos—, los
 cupos que se repusieron, y el conteo del registro antes y después.
