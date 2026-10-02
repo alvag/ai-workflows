@@ -10,6 +10,7 @@ from pathlib import Path
 
 
 def main() -> int:
+    sys.stdout.reconfigure(encoding="utf-8")
     if len(sys.argv) != 3:
         print("USO:apertura detail requested_id", file=sys.stderr)
         return 2
