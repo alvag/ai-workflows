@@ -172,6 +172,26 @@ ofrece el candidato cuando existe. En `migrate` hay un paso más, porque el TSV 
 referencia el nombre viejo: el dominio exacto, el porqué de no transformar y el procedimiento
 completo de los dos verbos están en `reference.md` → "El nombre del directorio es el `flow-id`".
 
+### Un archivo suelto se envuelve en un flujo de un documento
+
+`archive --from` exige un directorio; un archivo da `SOURCE_UNAVAILABLE`. Cuando el usuario pide
+archivar un archivo suelto, el agente lo envuelve:
+
+1. **Comprobar el sufijo.** Si no es uno de los once de "Qué entra al vault", decirlo y no seguir:
+   el flujo se archivaría vacío.
+2. **Crear `<nombre>/` como hermano del archivo**, con `<nombre>` igual al basename sin el sufijo,
+   en el dominio canónico del `flow-id`. Si no lo está, proponer el candidato en minúsculas y
+   esperar confirmación. Va al lado del archivo y no en un temporal porque la raíz del repo y el
+   proyecto del vault se derivan del padre de lo que se archiva. Si `<nombre>/` ya existe,
+   detenerse y pedir otro nombre: nunca se mezcla con un directorio ajeno.
+3. **Copiar el archivo adentro —nunca moverlo— y archivar `<nombre>/`.**
+4. **Con `ARCHIVED` o `ALREADY_ARCHIVED`, borrar `<nombre>/`**: es la copia que hizo el agente, y
+   el original sigue en su lugar. Con cualquier otro estado, conservarla y reportarla.
+
+`retire` no alcanza al original: la destrucción verificada es de flujos, y este archivo nunca fue
+uno. Y como la frontera no crece, volver a archivar el mismo archivo ya editado con el mismo
+`<nombre>` devuelve `VERIFY_FAILED`; la salida es usar otro nombre.
+
 ## Después de archivar: qué hacer con lo que quedó afuera
 
 `archive` devuelve `counts: {included, omitted}`, y **`omitted` es el dato que casi
