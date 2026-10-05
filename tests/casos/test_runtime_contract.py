@@ -29,6 +29,9 @@ CASOS_PATH = (
     ("python-valido", "valid", "valid", "python3", 0),
     ("ambos-rotos", "broken", "broken", None, 1),
 )
+APERTURA_SCRIPT = RAIZ / "skills" / "co-explore" / "scripts" / "apertura.py"
+APERTURA_TARGET_ID = "CDX-C-EXP-UTF8"
+APERTURA_NEXT_ID = "CDX-C-EXP-NEXT"
 Caso = Tuple[str, str, Callable[[Optional[object]], None]]
 
 
@@ -290,6 +293,56 @@ def test_v5_aperturas_explicitas(_contexto: Optional[object]) -> None:
                         "{0}:{1}: apertura de texto sin encoding".format(ruta, nodo.lineno)
 
 
+def _run_apertura(mode: str) -> subprocess.CompletedProcess[bytes]:
+    with tempfile.TemporaryDirectory(prefix="apertura-stdout-") as temporary:
+        detail = Path(temporary) / "detail.md"
+        detail.write_text("\n".join((
+            "### " + APERTURA_TARGET_ID,
+            "canción →",
+            "",
+            "### " + APERTURA_NEXT_ID,
+        )), encoding=ENCODING)
+        environment = dict(os.environ)
+        environment.update({
+            "PYTHONUTF8": "1",
+            "PYTHONIOENCODING": mode,
+        })
+        return subprocess.run(
+            [sys.executable, str(APERTURA_SCRIPT), str(detail), APERTURA_TARGET_ID],
+            env=environment,
+            capture_output=True,
+            check=False,
+        )
+
+
+def test_v5_apertura_stdout_utf8_strict(_context: Optional[object]) -> None:
+    """La apertura emite UTF-8 aunque el entorno fuerce cp1252 estricto."""
+    result = _run_apertura("cp1252:strict")
+    expected = (os.linesep.join((
+        "### " + APERTURA_TARGET_ID,
+        "canción →",
+        "",
+    )) + os.linesep).encode(ENCODING)
+    assert result.returncode == 0, "returncode={0} stderr={1}".format(
+        result.returncode, result.stderr.decode(ENCODING, "replace"))
+    assert result.stdout == expected, "stdout={0!r} expected={1!r}".format(
+        result.stdout, expected)
+
+
+def test_v5_apertura_stdout_utf8_replace(_context: Optional[object]) -> None:
+    """La apertura emite UTF-8 aunque el entorno fuerce reemplazo cp1252."""
+    result = _run_apertura("cp1252:replace")
+    expected = (os.linesep.join((
+        "### " + APERTURA_TARGET_ID,
+        "canción →",
+        "",
+    )) + os.linesep).encode(ENCODING)
+    assert result.returncode == 0, "returncode={0} stderr={1}".format(
+        result.returncode, result.stderr.decode(ENCODING, "replace"))
+    assert result.stdout == expected, "stdout={0!r} expected={1!r}".format(
+        result.stdout, expected)
+
+
 CASOS: List[Caso] = []
 for indice_referencia, ruta_referencia in enumerate(REFERENCIAS, 1):
     for indice_configuracion, configuracion_path in enumerate(CASOS_PATH, 1):
@@ -307,4 +360,6 @@ CASOS.extend((
     ("runtime-v5:python-3.9", "runtime-v5", test_v5_compila_python39),
     ("runtime-v5:stdlib", "runtime-v5", test_v5_solo_stdlib),
     ("runtime-v5:aperturas", "runtime-v5", test_v5_aperturas_explicitas),
+    ("runtime-v5:apertura-stdout-strict", "runtime-v5", test_v5_apertura_stdout_utf8_strict),
+    ("runtime-v5:apertura-stdout-replace", "runtime-v5", test_v5_apertura_stdout_utf8_replace),
 ))

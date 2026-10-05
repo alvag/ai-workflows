@@ -27,7 +27,7 @@ compartido del manifest (`delivery-profile:parser-boundary`). Las secuencias del
 que también cubría se retiraron junto con el perfil, y el nombre del grupo sobrevive porque es la
 identidad con la que su caso entró al inventario.
 
-La ejecución integrada vigente termina con `596 casos ok` y `574 casos node ok`.
+La ejecución integrada vigente termina con `598 casos ok` y `574 casos node ok`.
 
 La fidelidad entre schemas y vistas se verifica aparte con
 `python3 scripts/verificar-vistas-config.py`. Su salida informa los conteos vigentes derivados
